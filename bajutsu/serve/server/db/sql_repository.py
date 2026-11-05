@@ -7,8 +7,13 @@ from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from ._functions import _age_seconds, _as_utc, _to_org, _to_record
-from ._shared import DEFAULT_LEASE_MAX_ATTEMPTS, DEFAULT_RUN_LIMIT
+from ._functions import _age_seconds, _as_utc, _rowcount, _to_org, _to_record
+from ._shared import (
+    DEFAULT_LEASE_MAX_ATTEMPTS,
+    DEFAULT_RUN_LIMIT,
+    TERMINAL_JOB_STATUSES,
+    cancelled_job_result,
+)
 from .job_metrics import JobMetrics
 from .leased_job import LeasedJob
 from .org_record import OrgRecord
@@ -22,9 +27,47 @@ if TYPE_CHECKING:
 # worker's heartbeat interval must stay well under the timeout so a live long run is never reclaimed.
 DEFAULT_LEASE_TIMEOUT_SECONDS = 120.0
 
+# How many times `cancel_job` retries its queued-then-leased pair when the row moves between the two
+# updates. Each retry needs a lease or a reclaim to land in a window of one statement, so a handful
+# is far past what a real race produces.
+_CANCEL_ATTEMPTS = 5
+
 # The clock skew a spent-`jti` row must outlive, matching `bajutsu.serve.oidc`'s own allowance —
 # duplicated as a constant rather than imported so this module stays free of the OIDC one.
 _REPLAY_SKEW_SECONDS = 60
+
+
+def _run_fields(run: RunRecord) -> dict[str, Any]:
+    """The `Run` row's columns for *run*; `created_at` is left to the server default unless given."""
+    fields: dict[str, Any] = {
+        "id": run.id,
+        "org_id": run.org_id,
+        "status": run.status,
+        "created_by": run.created_by,
+        "ok": run.ok,
+        "summary": run.summary,
+        "scenario_hash": run.scenario_hash,
+        "tool_version": run.tool_version,
+        "git_revision": run.git_revision,
+        "device_runtime": run.device_runtime,
+        "label": run.label,
+        "target": run.target,
+        "run_coordinates": run.run_coordinates,
+    }
+    if run.created_at is not None:
+        fields["created_at"] = run.created_at
+    return fields
+
+
+def _reclaimed_outcome(
+    job_id: str, attempts: int, *, exhausted: bool, cancelling: bool
+) -> dict[str, Any]:
+    """The status (and terminal result, if any) a reclaimed lease moves its job to."""
+    if cancelling:
+        return {"status": "cancelled", "result": cancelled_job_result(job_id)}
+    if exhausted:
+        return {"status": "failed", "result": {"error": f"lease expired after {attempts} attempts"}}
+    return {"status": "queued"}
 
 
 class SqlRepository:
@@ -43,31 +86,48 @@ class SqlRepository:
         self._max_attempts = max_attempts
 
     def record_run(self, run: RunRecord) -> None:
+        from sqlalchemy.exc import IntegrityError
         from sqlalchemy.orm import Session
 
         from bajutsu.serve.server.models import Run
 
         # `merge` upserts by primary key, so re-recording a run (e.g. a status change) updates it
-        # rather than colliding. `created_at` is left to the server default unless given.
-        fields: dict[str, Any] = {
-            "id": run.id,
-            "org_id": run.org_id,
-            "status": run.status,
-            "created_by": run.created_by,
-            "ok": run.ok,
-            "summary": run.summary,
-            "scenario_hash": run.scenario_hash,
-            "tool_version": run.tool_version,
-            "git_revision": run.git_revision,
-            "device_runtime": run.device_runtime,
-            "label": run.label,
-            "target": run.target,
-        }
-        if run.created_at is not None:
-            fields["created_at"] = run.created_at
+        # rather than colliding.
+        fields = _run_fields(run)
         with Session(self._engine) as session:
             session.merge(Run(**fields))
-            session.commit()
+            try:
+                session.commit()
+            except IntegrityError:
+                # `merge` selects, then inserts: an insert-only writer (a rescan, BE-0449) can land
+                # the same id in between. Retry once; the row now exists, so the merge updates it
+                # and this write's actor and label still win.
+                session.rollback()
+                session.merge(Run(**fields))
+                session.commit()
+
+    def record_run_if_absent(self, run: RunRecord) -> bool:
+        from sqlalchemy.exc import IntegrityError
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import Run
+
+        fields = _run_fields(run)
+        with Session(self._engine) as session:
+            if session.get(Run, run.id) is not None:
+                return False
+            session.add(Run(**fields))
+            try:
+                session.commit()
+            except IntegrityError:
+                # Another writer inserted the same id between the read and the commit; the primary
+                # key turned that race into a no-op, which is the outcome this method promises. Any
+                # other constraint (a foreign key) is a real failure, so it is raised, not hidden.
+                session.rollback()
+                if session.get(Run, run.id) is not None:
+                    return False
+                raise
+        return True
 
     def get_run(self, run_id: str) -> RunRecord | None:
         from sqlalchemy.orm import Session
@@ -615,25 +675,30 @@ class SqlRepository:
                 session.commit()
 
     def lease_job(self, worker_id: str, capabilities: Iterable[str] = ()) -> LeasedJob | None:
-        from sqlalchemy import select
+        from sqlalchemy import select, update
         from sqlalchemy.orm import Session
 
-        from bajutsu.serve.capabilities import can_serve
+        from bajutsu.serve.capabilities import UNCHECKED_PROVENANCE, can_serve, unchecked_lease
         from bajutsu.serve.server.models import JobRecord
 
         # Sweep dead workers' leases back into the queue before serving, so a stuck job is picked up
         # on the next poll without a separate reaper process.
         self.reclaim_expired_leases(self._lease_timeout, max_attempts=self._max_attempts)
         advertised = set(capabilities)
+        skip_locked = self._engine.dialect.name != "sqlite"
         with Session(self._engine) as session:
             # Scan queued jobs oldest-first for the first this worker can serve — capability filtering
             # can't be a `.limit(1)` because the oldest queued job may need a capability this worker
             # lacks, and skipping it must still find a younger servable one (the `status` index bounds
-            # the scan to queued rows). Only (id, capabilities) is read up front, taking no locks, so a
-            # capability-skipped row is never locked (which would starve a concurrent leaser). The
-            # chosen candidate is then locked on its own — `FOR UPDATE SKIP LOCKED` on that single row —
-            # and re-checked for `queued`: if another worker took it between the scan and the lock, the
-            # row reads as gone/leased and this worker moves on to the next candidate.
+            # the scan to queued rows). Only (id, capabilities) is read up front, taking no locks.
+            #
+            # The chosen candidate is then claimed by a conditional UPDATE on `status = 'queued'`
+            # whose row count says whether this worker won it (BE-0449): one statement both checks
+            # and writes, so two leasers can never both take a row — on SQLite, which has no
+            # `FOR UPDATE SKIP LOCKED`, as on PostgreSQL. A lost race reads as 0 rows and moves on.
+            # PostgreSQL first takes the candidate with `FOR UPDATE SKIP LOCKED`, so a row another
+            # leaser is mid-claim on is skipped at once instead of waited on — without it every
+            # leaser would convoy on the oldest candidate behind one stalled claimant.
             #
             # The scan is deliberately unbounded rather than capped at the oldest N: an unroutable
             # backlog piles up at the *head* (oldest), so a fixed N would let it hide a servable
@@ -650,19 +715,101 @@ class SqlRepository:
             for job_id, caps in candidates:
                 if not can_serve(caps or [], advertised):
                     continue
-                stmt = select(JobRecord).where(JobRecord.id == job_id, JobRecord.status == "queued")
-                if self._engine.dialect.name != "sqlite":
-                    stmt = stmt.with_for_update(skip_locked=True)
-                row = session.scalars(stmt).first()
-                if row is None:  # taken (or locked) by another worker since the scan — try the next
+                if skip_locked:
+                    locked = session.execute(
+                        select(JobRecord.id)
+                        .where(JobRecord.id == job_id, JobRecord.status == "queued")
+                        .with_for_update(skip_locked=True)
+                    ).first()
+                    if locked is None:  # held by another leaser, or already taken — try the next
+                        continue
+                claimed = session.execute(
+                    update(JobRecord)
+                    .where(JobRecord.id == job_id, JobRecord.status == "queued")
+                    .values(status="leased", leased_at=datetime.now(UTC), leased_by=worker_id)
+                )
+                if _rowcount(claimed) != 1:  # taken by another worker since the scan — try the next
                     continue
-                row.status = "leased"
-                row.leased_at = datetime.now(UTC)
-                row.leased_by = worker_id
-                leased = LeasedJob(id=row.id, org_id=row.org_id, spec=dict(row.spec))
+                row = session.get(JobRecord, job_id)
+                assert row is not None  # just claimed inside this transaction
+                spec = dict(row.spec)
+                # A worker from before BE-0467 serves the job on today's tokens alone, so the job
+                # carries that on to its report. Set or cleared on every lease: a job re-queued
+                # after such a worker died, then run by a checking one, reports no stale note.
+                provenance = {
+                    k: v
+                    for k, v in (spec.get("provenance") or {}).items()
+                    if k not in UNCHECKED_PROVENANCE
+                }
+                if unchecked_lease(caps or [], advertised):
+                    provenance.update(UNCHECKED_PROVENANCE)
+                if provenance != (spec.get("provenance") or {}):
+                    spec["provenance"] = provenance or None
+                    row.spec = spec
+                leased = LeasedJob(
+                    id=row.id, org_id=row.org_id, spec=spec, capabilities=list(caps or [])
+                )
                 session.commit()
                 return leased
             return None
+
+    def live_worker_capabilities(self) -> list[list[str]]:
+        from sqlalchemy import select
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import WorkerRecord
+
+        cutoff = datetime.now(UTC) - self._lease_timeout
+        with Session(self._engine) as session:
+            live = session.scalars(
+                select(WorkerRecord.capabilities).where(WorkerRecord.last_seen >= cutoff)
+            ).all()
+        return [list(caps or []) for caps in live]
+
+    def lacks_live_worker(self, job_id: str) -> bool:
+        from sqlalchemy import select
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.capabilities import can_serve
+        from bajutsu.serve.server.models import JobRecord, WorkerRecord
+
+        cutoff = datetime.now(UTC) - self._lease_timeout
+        with Session(self._engine) as session:
+            # Only the routing key is read, never `spec`, which carries the run's materials.
+            row = session.execute(
+                select(JobRecord.status, JobRecord.capabilities).where(JobRecord.id == job_id)
+            ).first()
+            if row is None or row.status != "queued":
+                return False
+            required = list(row.capabilities or [])
+            live = session.scalars(
+                select(WorkerRecord.capabilities).where(WorkerRecord.last_seen >= cutoff)
+            ).all()
+        return not any(can_serve(required, list(caps or [])) for caps in live)
+
+    def live_environments(self) -> dict[str, int]:
+        from sqlalchemy import select
+        from sqlalchemy.orm import Session
+
+        from bajutsu.common.capability.worker_capability import ENVIRONMENT_ROUTING_PREFIX
+        from bajutsu.serve.server.models import WorkerRecord
+
+        cutoff = datetime.now(UTC) - self._lease_timeout
+        with Session(self._engine) as session:
+            live = session.scalars(
+                select(WorkerRecord.capabilities).where(WorkerRecord.last_seen >= cutoff)
+            ).all()
+        counts: dict[str, int] = {}
+        for caps in live:
+            # A set, so a worker advertising one name twice still counts once.
+            names = {
+                cap.removeprefix(ENVIRONMENT_ROUTING_PREFIX)
+                for cap in caps or []
+                if cap.startswith(ENVIRONMENT_ROUTING_PREFIX)
+            }
+            for name in names:
+                counts[name] = counts.get(name, 0) + 1
+        return counts
 
     def touch_worker(self, worker_id: str) -> None:
         from sqlalchemy import update
@@ -679,29 +826,130 @@ class SqlRepository:
             session.commit()
 
     def heartbeat_job(self, job_id: str, worker_id: str) -> bool:
+        from sqlalchemy import update
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import JobRecord
+
+        with Session(self._engine) as session:
+            # One conditional UPDATE checks ownership and renews in the same statement, so a
+            # heartbeat that lands after a reclaim matches no row (the job is `queued` again) and
+            # returns False rather than resurrecting `leased_at` on a re-queued job (BE-0449).
+            renewed = session.execute(
+                update(JobRecord)
+                .where(
+                    JobRecord.id == job_id,
+                    JobRecord.status == "leased",
+                    JobRecord.leased_by == worker_id,
+                )
+                .values(leased_at=datetime.now(UTC))
+            )
+            session.commit()
+            return _rowcount(renewed) == 1
+
+    def holds_lease(self, job_id: str, worker_id: str) -> bool:
         from sqlalchemy import select
         from sqlalchemy.orm import Session
 
         from bajutsu.serve.server.models import JobRecord
 
         with Session(self._engine) as session:
-            # Lock the row so a heartbeat and a concurrent reclaim serialize instead of racing: the
-            # loser re-reads fresh state under the lock, so a heartbeat that lands after a reclaim
-            # sees `queued` and returns False rather than resurrecting `leased_at` on a re-queued job.
-            stmt = select(JobRecord).where(JobRecord.id == job_id)
-            if self._engine.dialect.name != "sqlite":
-                stmt = stmt.with_for_update()
-            row = session.scalars(stmt).first()
-            if row is None or row.status != "leased" or row.leased_by != worker_id:
-                return False
-            row.leased_at = datetime.now(UTC)
+            held = session.scalar(
+                select(JobRecord.id).where(
+                    JobRecord.id == job_id,
+                    JobRecord.status == "leased",
+                    JobRecord.leased_by == worker_id,
+                )
+            )
+            return held is not None
+
+    def cancel_requested(self, job_id: str, worker_id: str) -> bool:
+        from sqlalchemy import select
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import JobRecord
+
+        with Session(self._engine) as session:
+            flag = session.scalar(
+                select(JobRecord.cancel_requested).where(
+                    JobRecord.id == job_id,
+                    JobRecord.status == "leased",
+                    JobRecord.leased_by == worker_id,
+                )
+            )
+            return bool(flag)
+
+    def open_handoff(self, job_id: str, worker_id: str) -> bool:
+        from sqlalchemy import update
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import JobRecord
+
+        with Session(self._engine) as session:
+            # An answer left from an earlier request is dropped, so the worker takes only an answer
+            # to the request it just made. A request still waiting on a person keeps the handoff:
+            # one at a time, so a looping worker cannot stack prompts on the page.
+            opened = session.execute(
+                update(JobRecord)
+                .where(
+                    JobRecord.id == job_id,
+                    JobRecord.status == "leased",
+                    JobRecord.leased_by == worker_id,
+                    JobRecord.handoff_pending.is_(False),
+                )
+                .values(handoff_pending=True, handoff_response=None)
+            )
             session.commit()
-            return True
+            return _rowcount(opened) == 1
+
+    def answer_handoff(self, job_id: str, token: str) -> bool:
+        from sqlalchemy import update
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import JobRecord
+
+        with Session(self._engine) as session:
+            answered = session.execute(
+                update(JobRecord)
+                .where(
+                    JobRecord.id == job_id,
+                    JobRecord.status == "leased",
+                    JobRecord.handoff_pending.is_(True),
+                    JobRecord.cancel_requested.is_(False),
+                )
+                .values(handoff_pending=False, handoff_response=token)
+            )
+            session.commit()
+            return _rowcount(answered) == 1
+
+    def take_handoff_response(self, job_id: str, worker_id: str) -> str | None:
+        from sqlalchemy import select, update
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import JobRecord
+
+        owned = (
+            JobRecord.id == job_id,
+            JobRecord.status == "leased",
+            JobRecord.leased_by == worker_id,
+        )
+        with Session(self._engine) as session:
+            token = session.scalar(select(JobRecord.handoff_response).where(*owned))
+            if token is None:
+                return None
+            # Cleared on the value read, so two polls racing for one answer cannot both take it.
+            taken = session.execute(
+                update(JobRecord)
+                .where(*owned, JobRecord.handoff_response == token)
+                .values(handoff_response=None)
+            )
+            session.commit()
+            return token if _rowcount(taken) == 1 else None
 
     def reclaim_expired_leases(
         self, timeout: timedelta, *, max_attempts: int = DEFAULT_LEASE_MAX_ATTEMPTS
     ) -> list[str]:
-        from sqlalchemy import delete, select
+        from sqlalchemy import delete, select, update
         from sqlalchemy.orm import Session
 
         from bajutsu.serve.server.models import JobRecord, WorkerRecord
@@ -714,23 +962,54 @@ class SqlRepository:
             # routability and the table stays bounded to the live pool (BE-0166), never leaking a row
             # per restarted `worker-<pid>`.
             session.execute(delete(WorkerRecord).where(WorkerRecord.last_seen < cutoff))
-            stmt = select(JobRecord).where(
-                JobRecord.status == "leased", JobRecord.leased_at < cutoff
+            scan = (
+                select(JobRecord.id, JobRecord.attempts, JobRecord.cancel_requested)
+                .where(JobRecord.status == "leased", JobRecord.leased_at < cutoff)
+                # One lock order for every reclaimer, so two sweeps running at once (each lease
+                # poll runs one) never deadlock on PostgreSQL.
+                .order_by(JobRecord.id)
             )
-            # Skip rows a concurrent heartbeat is holding: that worker is alive and just renewed its
-            # lease, so leave it be rather than reclaiming a job out from under it (lost update).
             if self._engine.dialect.name != "sqlite":
-                stmt = stmt.with_for_update(skip_locked=True)
-            for row in session.scalars(stmt):
-                row.attempts += 1
-                row.leased_by = None
-                row.leased_at = None
-                if row.attempts >= max_attempts:
-                    row.status = "failed"
-                    row.result = {"error": f"lease expired after {row.attempts} attempts"}
-                else:
-                    row.status = "queued"
-                    requeued.append(row.id)
+                # Skip a row a heartbeat (or another sweep) holds rather than wait on it: that
+                # worker is alive, and since every lease poll runs this sweep, waiting would let
+                # one delayed heartbeat stall queue service for every worker.
+                scan = scan.with_for_update(skip_locked=True)
+            expired = session.execute(scan).all()
+            for job_id, previous_attempts, cancelling in expired:
+                attempts = previous_attempts + 1
+                exhausted = attempts >= max_attempts
+                # A job a cancel already reached is not run again when its worker dies: it ends
+                # `cancelled`, the outcome its requester asked for (BE-0449).
+                outcome = _reclaimed_outcome(
+                    job_id, attempts, exhausted=exhausted, cancelling=cancelling
+                )
+                # Re-checked in the UPDATE itself: a heartbeat that renewed the lease since the scan
+                # moved `leased_at` past the cutoff, so that live worker's job matches no row and is
+                # left alone rather than reclaimed out from under it (BE-0449). `attempts` must still
+                # read what the scan saw, so a count from before a concurrent reclaim never
+                # overwrites the newer one, whatever the replicas' clocks say. The cancel flag must
+                # too, so a cancel landing after the scan is never re-queued with the flag still set.
+                reclaimed = session.execute(
+                    update(JobRecord)
+                    .where(
+                        JobRecord.id == job_id,
+                        JobRecord.status == "leased",
+                        JobRecord.leased_at < cutoff,
+                        JobRecord.attempts == previous_attempts,
+                        JobRecord.cancel_requested == cancelling,
+                    )
+                    .values(
+                        attempts=attempts,
+                        leased_by=None,
+                        leased_at=None,
+                        # The paused `record` died with the lease, so its handoff ends too.
+                        handoff_pending=False,
+                        handoff_response=None,
+                        **outcome,
+                    )
+                )
+                if _rowcount(reclaimed) == 1 and outcome["status"] == "queued":
+                    requeued.append(job_id)
             session.commit()
         return requeued
 
@@ -751,25 +1030,66 @@ class SqlRepository:
 
         Only a job still ``leased`` (by *worker_id*, when given) accepts its result; a reclaimed,
         re-leased, or already-finished job rejects the stale write so the winning run is never
-        overwritten. Locks the row on non-SQLite so the check-and-write is atomic against reclaim."""
-        from sqlalchemy import select
+        overwritten. One conditional UPDATE checks and writes, so it is atomic against a reclaim on
+        every dialect (BE-0449)."""
+        from sqlalchemy import update
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import JobRecord
+
+        conditions = [JobRecord.id == job_id, JobRecord.status == "leased"]
+        if worker_id is not None:
+            conditions.append(JobRecord.leased_by == worker_id)
+        with Session(self._engine) as session:
+            finished = session.execute(
+                update(JobRecord)
+                .where(*conditions)
+                # A finished job keeps no handoff answer: it may hold a one-time password.
+                .values(status=status, result=payload, handoff_pending=False, handoff_response=None)
+            )
+            session.commit()
+            return _rowcount(finished) == 1
+
+    def cancel_job(self, job_id: str) -> tuple[str, bool] | None:
+        from sqlalchemy import update
         from sqlalchemy.orm import Session
 
         from bajutsu.serve.server.models import JobRecord
 
         with Session(self._engine) as session:
-            stmt = select(JobRecord).where(JobRecord.id == job_id)
-            if self._engine.dialect.name != "sqlite":
-                stmt = stmt.with_for_update()
-            row = session.scalars(stmt).first()
-            if row is None or row.status != "leased":
-                return False
-            if worker_id is not None and row.leased_by != worker_id:
-                return False
-            row.status = status
-            row.result = payload
-            session.commit()
-            return True
+            # Each step is one conditional UPDATE, like every other transition (BE-0449). A row can
+            # move between them — leased by a worker after the first missed, or reclaimed back to
+            # the queue after the second — so the pair is retried a bounded number of times; a
+            # terminal status ends it at once.
+            status = "queued"
+            for _ in range(_CANCEL_ATTEMPTS):
+                queued = session.execute(
+                    update(JobRecord)
+                    .where(JobRecord.id == job_id, JobRecord.status == "queued")
+                    .values(status="cancelled", result=cancelled_job_result(job_id))
+                )
+                if _rowcount(queued) == 1:
+                    session.commit()
+                    return "cancelled", True
+                leased = session.execute(
+                    update(JobRecord)
+                    .where(JobRecord.id == job_id, JobRecord.status == "leased")
+                    .values(cancel_requested=True)
+                )
+                session.commit()
+                if _rowcount(leased) == 1:
+                    return "leased", True
+                row = session.get(JobRecord, job_id)
+                if row is None:
+                    return None
+                status = row.status
+                if status in TERMINAL_JOB_STATUSES:
+                    return status, False
+                session.expire_all()
+            return status, False
+
+    def cancel_leased_job(self, job_id: str, result: dict[str, Any], *, worker_id: str) -> bool:
+        return self._finish_job(job_id, status="cancelled", payload=result, worker_id=worker_id)
 
     def get_job(self, job_id: str) -> dict[str, Any] | None:
         from sqlalchemy.orm import Session
@@ -786,6 +1106,7 @@ class SqlRepository:
                 "org_id": row.org_id,
                 "leased_by": row.leased_by,
                 "spec": dict(row.spec),
+                "awaiting_human": bool(row.handoff_pending),
             }
 
     def finished_job_ids(self, job_ids: Iterable[str]) -> set[str]:
@@ -798,22 +1119,31 @@ class SqlRepository:
         if not ids:
             return set()
         stmt = select(JobRecord.id).where(
-            JobRecord.id.in_(ids), JobRecord.status.in_(("done", "failed"))
+            JobRecord.id.in_(ids), JobRecord.status.in_(TERMINAL_JOB_STATUSES)
         )
         with Session(self._engine) as session:
             return set(session.scalars(stmt))
 
-    def save_batch_run_arn(self, job_id: str, run_arn: str) -> None:
+    def save_batch_run_arn(self, job_id: str, run_arn: str, *, worker_id: str) -> bool:
+        from sqlalchemy import update
         from sqlalchemy.orm import Session
 
         from bajutsu.serve.server.models import JobRecord
 
         with Session(self._engine) as session:
-            row = session.get(JobRecord, job_id)
-            if row is None:
-                return
-            row.batch_state = {"run_arn": run_arn}
+            # One conditional UPDATE, as `heartbeat_job` does: a save landing after a reclaim matches
+            # no row, so a stale worker never overwrites the run the job's next attempt resumes.
+            saved = session.execute(
+                update(JobRecord)
+                .where(
+                    JobRecord.id == job_id,
+                    JobRecord.status == "leased",
+                    JobRecord.leased_by == worker_id,
+                )
+                .values(batch_state={"run_arn": run_arn})
+            )
             session.commit()
+            return _rowcount(saved) == 1
 
     def load_batch_run_arn(self, job_id: str) -> str | None:
         from sqlalchemy.orm import Session
@@ -871,8 +1201,9 @@ class SqlRepository:
             # What the *live* pool can serve: a worker seen within the lease timeout is alive (the
             # same freshness window the reclaim path uses; the heartbeat refreshes `last_seen` so a
             # worker busy on a long run still counts). A queued job is unroutable when no single live
-            # worker advertises all of its required capabilities — the same `can_serve` subset test
-            # the lease filter uses, so "unroutable" means exactly "no worker would lease it".
+            # worker advertises all of its required capabilities — the same `can_serve` test (a subset
+            # test, with an `anyof:` group met by any one member) the lease filter uses, so
+            # "unroutable" means exactly "no worker would lease it".
             live = [
                 list(w.capabilities or [])
                 for w in session.scalars(

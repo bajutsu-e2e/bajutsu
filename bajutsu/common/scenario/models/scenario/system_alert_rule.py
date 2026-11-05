@@ -1,4 +1,4 @@
-"""One `systemAlertHandling.rules` entry: the choice to make on one named prompt."""
+"""One prompt the reactive guard answers, and how: a `systemAlert` interrupt resolved over its layers."""
 
 from __future__ import annotations
 
@@ -7,7 +7,11 @@ from bajutsu.common.scenario.system_alerts import SystemAlertChoice, SystemAlert
 
 
 class SystemAlertRule(_Model):
-    """One entry of `systemAlertHandling.rules`: the choice to make on one named prompt.
+    """The choice the guard makes on one named prompt, once the layers have resolved.
+
+    A `systemAlert` entry of `interrupts` (BE-0473) whose `choice` is not `leave` becomes one of
+    these after the scenario's entries are layered over the target's; a `leave` answers nothing, so
+    it produces none.
 
     `prompt` and `choice` reuse the vocabulary the proactive `handleSystemAlert` step already takes
     (its `prompt`/`choice` form) instead of a literal button label, so the same rule grants or denies

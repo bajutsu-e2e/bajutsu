@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import subprocess
 import threading
@@ -18,11 +19,13 @@ from typing import Any, TypeGuard
 import yaml
 
 from bajutsu.common.backend_cli import simctl as _simctl
-from bajutsu.common.backends import KNOWN_ACTUATORS, PLATFORMS
-from bajutsu.common.config import Config, IosConfig, resolve
+from bajutsu.common.backends import KNOWN_ACTUATORS, PLATFORMS, backend_override, resolve_actuators
+from bajutsu.common.config import Config, Effective, IosConfig, resolve, unknown_target
 from bajutsu.common.devices.id import is_valid_device_id
+from bajutsu.common.report.manifest import history_summary
+from bajutsu.common.run_meta.files import is_soft_deleted
 from bajutsu.common.scenario import load_scenario_file
-from bajutsu.serve.capabilities import required_capabilities
+from bajutsu.serve.capabilities import device_requirements, required_capabilities, required_host
 from bajutsu.serve.orgs import OrgConfig, load_serve_config
 
 # Tokens a `--backend` may name: a platform (ios/android/web/fake) or a known actuator (xcuitest/…).
@@ -33,6 +36,85 @@ _VALID_BACKENDS = frozenset(PLATFORMS) | frozenset(KNOWN_ACTUATORS)
 _RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 # A content-addressed upload's identity (see `valid_sha256`): exactly 64 lowercase hex characters.
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
+# Environment variables a stored secret must never set in a job's environment: the shell and system
+# variables a job relies on, and those that make an interpreter or the dynamic loader run code a
+# job did not ask for. On a worker that several orgs share, a secret named `LD_PRELOAD` or
+# `PYTHONSTARTUP` would otherwise run one org's code inside every later step of its job (BE-0449).
+UNSAFE_ENV_VARS = frozenset(
+    {
+        "PATH",
+        "HOME",
+        "USER",
+        "SHELL",
+        "LANG",
+        "TERM",
+        "PWD",
+        "OLDPWD",
+        "LOGNAME",
+        "TMPDIR",
+        "DISPLAY",
+        "IFS",
+        "ENV",
+        "BASH_ENV",
+        "PS4",
+        "PROMPT_COMMAND",
+        "NODE_OPTIONS",
+        "NODE_PATH",
+        "RUBYOPT",
+        "RUBYLIB",
+        "PERL5OPT",
+        "PERL5LIB",
+        "JAVA_TOOL_OPTIONS",
+        "_JAVA_OPTIONS",
+    }
+)
+# Whole families of the same kind: the loaders' `LD_*` / `DYLD_*`, the interpreter's `PYTHON*`, and
+# Bajutsu's own `BAJUTSU_*`, which steer the worker and the run themselves.
+UNSAFE_ENV_PREFIXES = ("LD_", "DYLD_", "PYTHON", "BAJUTSU_")
+
+
+def unsafe_env_name(name: str) -> bool:
+    """Whether *name* is a variable a stored secret may not set in a job's environment.
+
+    The names compare exactly on POSIX, where `ld_preload` is a different variable from
+    `LD_PRELOAD` and no loader or interpreter reads it. Windows folds the case of every
+    environment name, so there any spelling of a denied name is denied.
+    """
+    key = name.upper() if os.name == "nt" else name
+    return key in UNSAFE_ENV_VARS or key.startswith(UNSAFE_ENV_PREFIXES)
+
+
+class ServeStartupError(ValueError):
+    """A startup check refused the server's settings: a flag, an environment variable, or a file.
+
+    Raised at each check site (a `--port 0` for a local start, a missing or unsafe key, a
+    `--baselines` directory that encloses the server's own state), so the CLI prints the reason and
+    exits 2. Any other `ValueError` keeps its traceback.
+    """
+
+
+_warned_env_names: set[tuple[str, str]] = set()
+_warned_lock = threading.Lock()
+
+
+def warn_unsafe_env_name(name: str, where: str) -> None:
+    """Log, once per process for each *name* and *where*, that a denied variable name was dropped.
+
+    The name alone is logged, never a value, so an operator learns why a secret or `ai.keyEnv`
+    they set has no effect without the log disclosing it (BE-0449).
+    """
+    with _warned_lock:
+        if (name, where) in _warned_env_names:
+            return
+        _warned_env_names.add((name, where))
+    logging.getLogger(__name__).warning(
+        "%s: ignoring %r — a secret may not set a loader, interpreter, shell, or BAJUTSU_* "
+        "variable (see docs/self-hosting.md)",
+        where,
+        name,
+    )
 
 
 def mask_secret(value: str) -> str:
@@ -178,7 +260,7 @@ def _load_serve_config_cached(config_path: Path) -> tuple[Config, dict[str, OrgC
         if cached is not None and cached[0] == stamp:
             return cached[1], cached[2]
     try:
-        config, orgs = load_serve_config(config_path.read_text(encoding="utf-8"))
+        config, orgs = load_serve_config(config_path.read_text(encoding="utf-8"), path=config_path)
     except yaml.YAMLError as e:
         raise ValueError(str(e)) from e  # so callers catching ValueError handle a malformed config
     with _config_cache_lock:
@@ -231,38 +313,171 @@ def target_build_info(config_path: Path, target: str) -> tuple[str | None, str |
     return (ios.app_path, ios.build) if isinstance(ios, IosConfig) else (None, None)
 
 
-def target_batch_info(
-    config_path: Path, target: str
-) -> tuple[str | None, str | None, str | None, int | None]:
-    """``(cloud_batch, platform, app_path, budget)`` for *target* — which registered batch provider
-    its cloud runs use, its resolved platform axis, the app artifact to install on the reserved
-    device (BE-0336 Unit 3), and the per-target device budget K (BE-0336 Unit 4). Each is ``None`` on
-    any load/resolve error, so a fan-out request against an unreadable config fails closed at the
-    endpoint rather than crashing dispatch. Only an iOS/Android target carries an installable
-    ``app_path``; a web target's sub-config has none. ``budget`` is ``None`` when the target sets no
-    `cloudBatchBudget` (unbounded by config)."""
+def target_batch_info(config_path: Path, target: str) -> tuple[str | None, str | None]:
+    """``(platform, app_path)`` for *target* — its resolved platform axis and the app artifact to
+    install on a reserved cloud device (BE-0336 Unit 3). Both ``None`` on any load/resolve error, so a
+    fan-out request against an unreadable config fails closed at the endpoint rather than crashing
+    dispatch. Only an iOS/Android target carries an installable ``app_path``; a web target's
+    sub-config has none. Which provider runs the batch is the request's `environment`, not the
+    target's (BE-0452)."""
     try:
         eff = resolve(_load_config_cached(config_path), target)
     except (OSError, ValueError, KeyError):
-        return (None, None, None, None)
+        return (None, None)
     app_path = getattr(eff.platform_config, "app_path", None)
-    return (eff.cloud_batch, eff.platform, app_path, eff.cloud_batch_budget)
+    return (eff.platform, app_path)
 
 
-def target_capabilities(config_path: Path, target: str) -> list[str]:
+def target_capabilities(config_path: Path, target: str, backend: str = "") -> list[str]:
     """The capability tokens a worker must advertise to run *target* (BE-0166): its resolved
-    platform axis (`platform:ios` / `platform:web`) plus the target's operator-declared `requires`.
+    platform axis (`platform:ios` / `platform:web`) and the host operating system its driver is bound
+    to (`host:darwin` for xcuitest, BE-0450).
+
+    *backend* is the request's checked `backend` (BE-0452), which picks the driver the run selects,
+    so a run sent to the fake driver requires no host its target's own driver would.
 
     Empty on any load/resolve error, so a job with an unreadable config routes as before: with no
     required capabilities it is servable by any worker (an empty set is always a subset in
     `can_serve`) — including one that can't actually run it — rather than crashing dispatch. In
     practice `start_run` resolves the same config a step earlier (`target_build_info`), so this
-    error path is not reached on the normal dispatch flow."""
+    error path is not reached on the normal dispatch flow.
+
+    Raises:
+        ValueError: *backend* names neither the target's platform, its actuator, nor `fake`. The
+            dispatcher checks the request first (`request_backend_error`), so routing never widens
+            a mismatched pair to any worker.
+    """
     try:
         eff = resolve(_load_config_cached(config_path), target)
     except (OSError, ValueError, KeyError):
         return []
-    return required_capabilities(eff.platform, eff.requires)
+    backends = backend_override(backend, eff.backend)
+    # The actuators `run` itself selects from, so the routing requirement and the worker's own check
+    # judge the same drivers (BE-0450).
+    required = required_capabilities(eff.platform, host=required_host(resolve_actuators(backends)))
+    # The fake driver drives no device, so a run sent to it needs none of the family's devices.
+    if backends == ["fake"]:
+        return required
+    return sorted({*required, *_family_requirements(eff)})
+
+
+def _family_requirements(eff: Effective) -> list[str]:
+    """The device-family tokens an iOS target's runs need of a worker, over every kind it lists.
+
+    A serve job runs the target's whole kind list, so one worker must hold a fitting device of each
+    kind (BE-0468).
+    """
+    from bajutsu.run.device_matrix import driven_kind
+
+    if eff.platform != "ios":
+        return []
+    listed = eff.conditions.get("kind")
+    kinds = list(listed) if isinstance(listed, list) else [driven_kind(eff) or "simulator"]
+    family = eff.conditions.get("family")
+    return device_requirements(kinds, family)
+
+
+def scenario_route_needs(
+    config_path: Path,
+    target: str,
+    backend: str,
+    text: str | None,
+    directory: Path | None,
+    *,
+    tags: str = "",
+    exclude: str = "",
+    grid: bool = False,
+) -> dict[str, list[str]]:
+    """The `cap:` / `setting:` tokens a run of scenario *text* needs, each with why (BE-0467).
+
+    Read from the scenario and the target config the way the run preflight reads them, so the job
+    reaches only a worker whose routes can run every step and apply every setting it needs.
+
+    Empty when there is no text to read (an override's scenarios travel unopened) or it does not
+    load, so such a job routes on its platform and host as before; the run preflight still judges it.
+
+    Args:
+        config_path: The bound config.
+        target: The run's `--target`.
+        backend: The run's checked `--backend`.
+        text: The scenario file's text, or None when the server cannot read it.
+        directory: The dir its file refs resolve in; None resolves none (server storage).
+        tags: The run's `--tag` selection, comma separated.
+        exclude: The run's `--exclude` selection, comma separated.
+        grid: Whether the run goes to an Appium grid, which puts its iOS targets on the live route.
+    """
+    if text is None:
+        return {}
+    import tempfile
+
+    from bajutsu.common.target_lint import TargetRequired, required_route_tokens
+
+    try:
+        config = _load_config_cached(config_path)
+    except (OSError, ValueError):
+        return {}  # `target_capabilities` gives this job no routing either; dispatch reports it
+    with tempfile.TemporaryDirectory() as empty:
+        # An empty root keeps a file ref of a storage-backed scenario from reaching a host path.
+        root = directory or Path(empty)
+        try:
+            return required_route_tokens(
+                text,
+                root / "scenario.yaml",
+                lambda name: resolve(config, name),
+                target,
+                root=root,
+                backend=backend,
+                tags=[t.strip() for t in tags.split(",") if t.strip()],
+                exclude=[t.strip() for t in exclude.split(",") if t.strip()],
+                grid=grid,
+            )
+        except (TargetRequired, KeyError, OSError, ValueError) as e:
+            # The run preflight judges the scenario anyway and fails it with the same cause, so the
+            # job routes on its platform and host alone rather than being refused here.
+            logging.getLogger(__name__).debug(
+                "no route tokens for %s on %s: %s", config_path, target, e
+            )
+            return {}
+
+
+def request_backend_error(config_path: Path, target: str, backend: str) -> str | None:
+    """Why a request's *backend* cannot drive *target*, or None (BE-0452).
+
+    The same check `--backend` makes: the target's platform, its actuator, or `fake`. An unreadable
+    config or unknown target answers None, leaving that failure to the dispatcher's own checks.
+    """
+    try:
+        eff = resolve(_load_config_cached(config_path), target)
+    except (OSError, ValueError, KeyError):
+        return None
+    try:
+        backend_override(backend, eff.backend)
+    except ValueError as e:
+        return str(e)
+    return None
+
+
+def target_platforms(config_path: Path) -> dict[str, str]:
+    """Each target's declared platform, or an empty mapping on a load error."""
+    try:
+        config = _load_config_cached(config_path)
+    except (OSError, ValueError):
+        return {}
+    return {name: t.platform for name, t in config.targets.items()}
+
+
+def unknown_target_error(config_path: Path, target: str) -> str | None:
+    """Why *target* names no target in the config at *config_path*, or None when it does.
+
+    For an endpoint that would otherwise hand the name to a CLI job: the CLI's own error lists every
+    target, and a job log reaches the caller, who on a multi-tenant server must not see other orgs'
+    targets (BE-0471). An unreadable config answers None and is left to the job's own load error.
+    """
+    try:
+        config = _load_config_cached(config_path)
+    except (OSError, ValueError):
+        return None
+    return None if target in config.targets else unknown_target(config, target, list_targets=False)
 
 
 def target_scenarios_dir(config_path: Path, target: str) -> Path | None:
@@ -341,21 +556,22 @@ def list_runs(runs_dir: Path) -> list[dict[str, Any]]:
         return out
     for d in runs_dir.iterdir():
         manifest = d / "manifest.json"
-        if not (d.is_dir() and manifest.is_file()):
+        if not (d.is_dir() and manifest.is_file()) or is_soft_deleted(d):
             continue
         try:
             data = json.loads(manifest.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             continue
-        scenarios = [s for s in (data.get("scenarios") or []) if isinstance(s, dict)]
+        if not isinstance(data, dict):
+            continue
         out.append(
             {
                 "id": d.name,
                 "ok": bool(data.get("ok")),
                 "report": (d / "report.html").is_file(),
-                "scenarios": [str(s.get("scenario", "")) for s in scenarios],
-                "passed": sum(1 for s in scenarios if s.get("ok")),
-                "total": len(scenarios),
+                # The scenario names, the counts, and any not-applicable count (BE-0452), read the
+                # same way by every history list.
+                **history_summary(data),
                 # The run-history partition and the target axis (BE-0404 units 2-4). Both empty on a
                 # run recorded before the stamp, which reads as "unlabeled" and so stays visible
                 # under the label filter's empty-match fallback.
@@ -382,7 +598,7 @@ def list_crawl_runs(runs_dir: Path) -> list[dict[str, Any]]:
         return out
     for d in runs_dir.iterdir():
         screenmap = d / "screenmap.json"
-        if not (d.is_dir() and screenmap.is_file()):
+        if not (d.is_dir() and screenmap.is_file()) or is_soft_deleted(d):
             continue
         try:
             data = json.loads(screenmap.read_text(encoding="utf-8"))
@@ -483,10 +699,10 @@ def unique_scenario_path(path: Path, stamp: str | None = None) -> Path:
 
 
 def valid_backend(backend: str) -> bool:
-    """Whether `backend` is a comma-list of known platform/actuator tokens (not free text).
-    Used to reject arbitrary `--backend` strings from a serve client before they reach argv."""
-    tokens = [t.strip() for t in backend.split(",") if t.strip()]
-    return bool(tokens) and all(t in _VALID_BACKENDS for t in tokens)
+    """Whether `backend` is one known platform/actuator token (not free text, not a list).
+    Used to reject arbitrary `--backend` strings from a serve client before they reach argv; the
+    spawned command then checks the token against the target's platform (BE-0452)."""
+    return backend.strip() in _VALID_BACKENDS
 
 
 def valid_udid(udid: str) -> bool:

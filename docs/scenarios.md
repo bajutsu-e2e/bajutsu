@@ -69,24 +69,24 @@ misinterpret rather than merely reject; a purely additive optional field needs n
 | `primaryTarget` | str | none | The target a step or top-level `expect` entry runs against when it omits `target`; must be the first name in `targets`, the first member of the first group ([below](#targets--target-multi-target-scenarios-be-0428)) |
 | `installs` | list[str] | `[]` | The device-group members that install and launch at the start beside the primary; every other member of a group of two or more installs later through an `installApp` step ([device groups](#device-groups-several-apps-on-one-device-be-0447)) |
 | `data` / `dataFile` | list / str | none | Data-driven rows — inline `data`, or `dataFile` (a CSV path). Expands into one run per row, substituting `${row.col}`. Mutually exclusive ([reuse, data, and tags](#reuse-data-and-tags)) |
-| `preconditions` | object | `{}` | Per-test environment setup (below) |
-| `before` | list | `[]` | Setup steps run as their **own phase** ahead of `steps`; a failure there aborts the scenario ([below](#before--after-setup-and-teardown-phases)) |
+| `preconditions` | object | `{}` | Per-test environment setup: the target's `subject` group merged over the target's, the device state under `device`, and `inheritSetup` ([below](#preconditions-environment-setup)) |
+| `setup` | list | `[]` | Setup steps run as their **own phase** ahead of `steps`; a failure there aborts the scenario ([below](#setup--cleanup-setup-and-teardown-phases)) |
 | `steps` | list | required | The ordered actions (below) |
 | `expect` | list | `[]` | Final assertions after all steps pass ([selectors](selectors.md#assertion-evaluation)) |
-| `after` | list | `[]` | Teardown rules — each `{ on: always \| success \| error, steps }`, run once the verdict exists, on every path out of `steps` ([below](#before--after-setup-and-teardown-phases)) |
+| `cleanup` | list | `[]` | Teardown rules — each `{ on: always \| success \| failure, steps }`, run once the verdict exists, on every path out of `steps` ([below](#setup--cleanup-setup-and-teardown-phases)) |
 | `capturePolicy` | list | `[]` | Repeatedly-firing evidence rules ([evidence](evidence.md#a-capturepolicy-rule-based)) |
 | `network` | object | none | `{ filter: { domains: [...] } }` — `filter.domains` scopes which observed requests are interleaved into the report's Steps timeline (by URL host; a parent domain matches subdomains). Unset shows all; the Network tab always lists them all ([reporting](reporting.md#reporthtml)) |
 | `mocks` | list | `[]` | Deterministic network stubs — a matching outgoing request gets a canned response instead of hitting the network ([network mocks](#network-mocks-deterministic-stubs)) |
 | `redact` | object | none | Masking applied before evidence is written ([evidence](evidence.md#masking-redact)) |
-| `systemAlertHandling` | bool / object | none (on) | The reactive **alert guard** — clears OS prompts the iOS backend cannot see, natively on XCUITest (no model, reusing BE-0316); a prompt it cannot name is reported, never guessed at. On by default; `false` disables it, `{ rules: [{ prompt: notifications, choice: grant }] }` keeps it on and answers a named prompt, `{ pollInterval: 2 }` retunes the native poll cadence. CLI `--system-alert-handling`/`--no-system-alert-handling` overrides ([below](#systemalerthandling-the-system-alert-guard)) |
-| `iosTipKitHandling` | bool | none (off) | Dismiss a blocking Apple **TipKit** tip — the framework-owned popover, so that no scenario has to hand-author the same recovery. The guard recognizes a tip by its dismiss scrim (`PopoverDismissRegion`) **and** its own container (`TipView`) together, because a plain `confirmationDialog` installs an identical scrim and must be left alone; an author who does write an `interrupts` entry for a tip keys it on `TipView` for the same reason (`TipView` is TipKit's own container, measured on both the SwiftUI and UIKit presentations). iOS only (inert elsewhere), and **off** by default: a tip is sometimes the very thing a scenario asserts on. CLI `--ios-tipkit-handling`/`--no-ios-tipkit-handling` overrides |
 | `permissions` | dict | `{}` | Declarative OS permission state — `{ <service>: grant \| revoke }` — applied **before the app launches** ([below](#permissions-pre-launch-permission-state)) |
-| `interrupts` | list | `[]` | Handlers for an interstitial screen that surfaces at an **unpredictable** point — each `{ condition, steps }`, checked opportunistically wherever the screen appears ([below](#interrupts-handling-unpredictable-interstitial-screens)) |
+| `interrupts` | list | `[]` | What the run clears on its own when it surfaces at an **unpredictable** point, layered over the target's `hooks.interrupts`. Each entry takes one of three forms, decided by the key it writes: a screen (`{ condition, steps }`, [below](#interrupts-handling-unpredictable-interstitial-screens)), an operating-system prompt (`{ systemAlert, choice }`, [below](#systemalert-the-system-alert-guard)), or Apple's TipKit popover (`{ tipKit }`, [below](#tipkit-a-blocking-tipkit-tip)) |
 
 ```yaml
 - name: filter narrows the catalog
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    subject:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Search", traits: [button] }
     - wait: { for: { id: search.field }, timeout: 10 }
@@ -101,36 +101,163 @@ misinterpret rather than merely reject; a purely additive optional field needs n
 
 ## preconditions (environment setup)
 
-Implementation: `scenario/models/scenario.py` `Preconditions`. The runner's `launch_driver` reads this to build
-the launch sequence ([run-loop](run-loop.md#runner-the-run-pipeline)).
+Implementation: `Preconditions` in `scenario/models/scenario/preconditions.py`. The module
+`bajutsu/common/config/preconditions.py` merges it over each target. The runner's `launch_driver`
+reads the merged result to build the launch sequence ([run-loop](run-loop.md#runner-the-run-pipeline)).
 
-| Key | Type | Default | Description | Wired |
-|---|---|---|---|---|
-| `erase` | bool | unset (inherits; off unless the config sets it) | Wipe the whole simulator (`simctl erase` — apps/data/settings) before the test. Off by default; `reinstall` keeps the app fresh without a full wipe, so set `true` only when a test needs a pristine device | ✅ |
-| `reinstall` | `clean` \| `overwrite` | `clean` | How the app is reinstalled before each run when the app config sets `appPath`: `clean` = uninstall then install (fresh app + data); `overwrite` = install over the existing app (keeps its data) | ✅ |
-| `launchArgs` | list[str] | `[]` | Launch arguments (appended to config's `launchArgs`) | ✅ |
-| `launchEnv` | dict | `{}` | Launch env (injected via `SIMCTL_CHILD_*`; merged onto config's `launchEnv`) | ✅ |
-| `deeplink` | str | none | Opened after launch via `simctl openurl` | ✅ |
-| `locale` | str | none | Force the locale/language at launch (`-AppleLocale`/`-AppleLanguages`); overrides the app/config default | ✅ |
-| `setup` | str | none | A reusable prelude scenario file (resolved relative to this scenario); its steps run before this scenario's own | ✅ |
+A scenario's `preconditions` holds two groups and one flag. `subject` uses the target's own group
+name. A field thus has one spelling in the config and in the scenario
+([BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)).
+`device` holds the device state the scenario applies, keyed by destination. Today `device.ios` is
+the one block
+([BE-0469](../roadmaps/BE-0469-runson-destination-blocks/BE-0469-runson-destination-blocks.md)).
+`inheritSetup` decides whether the targets' `hooks.setup` runs before this scenario.
+A scenario field overrides the same field of the target ([configuration](configuration.md)). Two
+fields combine with the target's instead:
 
-> **launchEnv resolution order** is **config's `launchEnv` < preconditions' `launchEnv`** (the
-> one closer to the test wins). `launch_driver` merges `{**eff.launch_env, **pre.launch_env}`.
+- `subject.launch.env` merges key by key.
+- `subject.launch.args` appends after the target's arguments.
 
-> **`erase` resolution order** is **CLI `--erase`/`--no-erase` > this scenario's own `erase` >
-> the target config's `run_defaults.erase` > built-in off** ([BE-0177](../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md);
-> [configuration](configuration.md#config-layering-defaults--targets)) — an unset scenario value
-> (the common case) inherits whatever the target config defaults to, which is itself off unless the
-> config sets it. `_filter_scenarios` (`cli/commands/run.py`) resolves this before the run starts.
+A system alert or a TipKit tip, which the run answers on its own, is not a precondition. A
+scenario declares one as an entry of its own top-level `interrupts`. Those entries layer over the
+target's `hooks.interrupts` ([below](#layering-a-key-reaches-a-run-from-three-places)).
+
+```yaml
+preconditions:
+  subject:
+    reinstall: erase
+    launch: { env: { FEATURE_X: "1" }, args: ["-debug"], deeplink: "showcase://cart" }
+  device:
+    ios: { locale: ja_JP, seedPhotos: [photos/cat.jpg] }
+  inheritSetup: false
+```
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `subject.reinstall` | `overwrite` \| `clean` \| `erase` | unset (the target's `subject.reinstall`, then `clean`) | How much state is reset before each run, weakest first: `overwrite` installs over the existing app (keeps its data); `clean` uninstalls and then installs (fresh app and data); `erase` wipes the whole device (`simctl erase`: apps, data, settings), then installs. The install needs the target config's `subject.path`. Android has no device-wide wipe, so `erase` there acts as `clean`. iOS and Android; a web target accepts `erase` alone, which its fresh browser context already satisfies ([BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md)) |
+| `subject.launch.env` | dict | `{}` | Launch environment, merged onto the target's `subject.launch.env` key by key. iOS injects it through `SIMCTL_CHILD_*`, Android as intent extras; on the web the Playwright code generator reads it |
+| `subject.launch.args` | list[str] | `[]` | Launch arguments, appended after the target's `subject.launch.args`. iOS only |
+| `subject.launch.deeplink` | str | unset (the target's `subject.launch.deeplink`) | A URL the app opens after launch (`simctl openurl` on iOS, an intent on Android) |
+| `device.ios.locale` | str | unset (the target's `runsOn.ios.locale`) | Force the locale and language at launch (`-AppleLocale` / `-AppleLanguages`), and pin the Simulator's system language. A value that differs from the target's forces a cold respawn |
+| `device.ios.seedPhotos` | list[str] | unset (the target's `runsOn.ios.seedPhotos`) | Images seeded into the Simulator's photo library on the erase path, in order; paths resolve against the scenario file, and a scenario's list replaces the target's |
+| `inheritSetup` | bool | `true` | `false` skips the `hooks.setup` of every target this scenario declares; their `hooks.cleanup` still runs ([below](#setup--cleanup-setup-and-teardown-phases)) |
+
+A scenario cannot set `id`, `path`, or `build`. Nor can it set `startWhen` or `idNamespaces`. The
+target owns these fields, which identify or build the app. `evidence.secrets` stays a target-level union,
+so a scenario cannot set it either.
+
+> **Each field is checked against the targets the scenario drives, before any device work.** A `subject`
+> field that no driven target's platform has fails the run and names the field, rather than being
+> ignored: `subject.launch.args` in a web-only scenario, for one. A `tipKit` entry in the scenario's
+> `interrupts` fails the same way when no driven target is iOS. Each target applies the `subject` fields its own platform has, so an
+> iOS-and-web scenario can still set `subject.launch.args` for its iOS side. A scenario file that
+> several single-platform targets pick up through `paths.scenarios` therefore names its `targets`, or
+> sits in a directory only the matching targets read. The `device` block is keyed by destination.
+> A `device.ios` block in a scenario that drives no iOS target has no effect and is not an error.
+
+**A scenario declares no device condition.** Where a run happens belongs to the target. A condition
+such as a model or an OS range thus lives in the target's
+[`runsOn`](configuration.md#device-conditions-runson). A scenario for a screen that iPad alone has
+names a target that runs on an iPad:
+
+```yaml
+# bajutsu.config.yaml
+targets:
+  app-ipad:
+    platform: ios
+    subject: { id: com.example.app }
+    runsOn:
+      ios: { model: "iPad Pro 13-inch (M4)", os: ">=18" }
+```
+
+```yaml
+# the scenario
+targets: [app-ipad]
+```
+
+A list or a range on that target multiplies each of its scenarios into runs, as
+[configuration](configuration.md#device-conditions-runson) describes.
+
+> **Earlier releases accepted `preconditions.runsOn`.** The loader now rejects it. A
+> `preconditions.runsOn.ios.locale` or `seedPhotos` fails and names
+> `preconditions.device.ios.<field>`. A condition such as `preconditions.runsOn.ios.model` fails and
+> names the target path that declares it instead, `runsOn.ios.model`.
+
+> **`subject.reinstall` resolution order** is **this scenario's own `subject.reinstall` > the target's
+> `subject.reinstall` > built-in `clean`**, and the CLI flag then moves the result: `--erase` makes it
+> `erase`, and `--no-erase` lowers an `erase` to `clean` while leaving `overwrite` and `clean` alone.
+> An unset scenario value (the common case) inherits whatever the target config sets.
+> `_filter_scenarios` (`run/cli.py`) applies the flag before the run starts. A target that states
+> `erase` therefore uninstalls under `--no-erase`; a scenario that must keep the app's data writes
+> `overwrite`. The removed `preconditions.run` fails at load, and the error names where each of its
+> fields went ([below](#migrating-from-the-old-keys)). See
+> [BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md) and
+> [configuration](configuration.md#config-layering-defaults--targets).
+
+> **Seeding needs a wiped device.** After merging, a non-empty `seedPhotos` requires the effective
+> `subject.reinstall` (the scenario's, else the target's, then moved by the flag) to be `erase`, because
+> the photo library is seeded only on the erase path. A target-level `subject.reinstall: erase` satisfies
+> the rule. In a
+> scenario that drives several targets, the primary alone seeds photos. A non-primary target with
+> a merged `seedPhotos` fails the run. `record`, `crawl`, and `repl` refuse `--no-erase` on a
+> target that seeds photos. Both refusals exit 2 before any device work.
 
 > **`reinstall: clean` also resets permission state** (`permissions`, below): iOS via `simctl
-> privacy reset all`, Android via `pm clear`. `overwrite` resets neither — it exists to keep a
+> privacy reset all`, Android via `pm clear`. `overwrite` resets neither. `overwrite` exists to keep a
 > scenario's data across runs, and permission grants are part of that same preserved state, so a
 > scenario relying on an earlier one's grant under `overwrite` keeps seeing it.
 
-## systemAlertHandling (the system-alert guard)
+> **A run stored before BE-0452, BE-0469, or BE-0473 still loads.** The scenario loader rejects the old flat
+> keys: `erase`, `reinstall`, `launchEnv`, `launchArgs`, `deeplink`, `locale`, and `seedPhotos`. It
+> rejects `preconditions.runsOn`, `preconditions.run`, and the top-level `systemAlertHandling` and
+> `iosTipKitHandling`. Each message names the key's new home. The offline readers of a run directory translate the old
+> keys in its stored `scenario.yaml` instead. They are the report re-render, `trace`, and `triage`.
+> A stored `preconditions.runsOn` keeps its iOS `locale` and `seedPhotos` under `device.ios` and
+> drops its conditions, which already chose the devices that run used. A stored
+> `preconditions.erase` or `preconditions.run.erase: true` becomes `subject.reinstall: erase`, and a
+> stored `false` is dropped. A stored `preconditions.run.systemAlertHandling` becomes one
+> `systemAlert` entry per rule in the scenario's `interrupts`, a stored `tipKitHandling` becomes a
+> `tipKit` entry, and a stored `inheritSetup` moves to `preconditions.inheritSetup`.
 
-The iOS backend cannot see or tap **SpringBoard-level prompts** (a notification or App Tracking Transparency request, "Allow Paste"). These prompts cover the app and collapse its element tree, silently blocking a step. The **alert guard** clears them reactively. On the iOS XCUITest backend it takes a **deterministic native path** (BE-0315): reusing BE-0316's SpringBoard query, it reads which buttons the alert offers and taps the one a rule names — no screenshot and no model round trip, so it clears the common prompts in well under a tenth of a second and runs **without `ANTHROPIC_API_KEY`**. Where nothing deterministic can act — a backend without the capability, an alert no rule of yours identifies, or a non-SpringBoard surface the query cannot enumerate that no rule identifies either (the in-tree path below clears the ones a rule does identify) — **the guard does nothing** ([BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md)). The blocked step or `wait` runs on to its own timeout, exactly as it would with no guard configured, and that timeout **names what the guard saw**: `wait timeout: for {'id': 'submit'} (10.0s) — an unhandled system alert is blocking the screen (buttons: Allow, Don't Allow)`, or the hedged `… — the screen appears blocked, possibly by a system alert or another overlay outside the app's view` where nothing enumerated it. Before BE-0402 that case fell back to an AI-vision guard reading a screenshot; `run` no longer does, so **no flag of `run`'s reaches a model at all**. (`record` and `crawl` keep that guard for authoring — [details](recording.md#dismissing-system-alerts-automatically).) For a `wait` step (`for`/`gone`/`settled`/`screenChanged`), the guard fires **mid-wait**: the native path polls SpringBoard on its own interval (default one second), recovering before the wait's own timeout elapses rather than waiting for the step to fail first (BE-0269).
+Not every environment can apply every precondition. A real iPhone cannot run `simctl erase`, and a
+browser has no app launch to pass `subject.launch.env` to. When the target's environment cannot apply a
+precondition, the scenario fails before any device work. The target can declare the precondition
+ignored instead ([configuration](configuration.md#environment-specific-settings-runsonignoredsettings-be-0467)).
+`bajutsu lint --config <file> --target <name>` reports the same finding with no device
+([cli](cli.md#lint)).
+
+## tipKit (a blocking TipKit tip)
+
+Write `- tipKit: dismiss` in the scenario's `interrupts` to turn the TipKit guard on. The guard dismisses a
+blocking Apple **TipKit** tip, so no scenario has to hand-author that recovery. A tip is the
+framework-owned popover. The guard requires a tip's dismiss scrim (`PopoverDismissRegion`) **and**
+its container together. A plain `confirmationDialog` installs the same scrim, so the scrim alone
+cannot identify a tip. The container, `TipView`, belongs to TipKit alone. We measured it on both the
+SwiftUI and UIKit presentations. An `interrupts` entry for a tip keys on `TipView` for the same
+reason. The guard applies to iOS alone and stays **off** by default. A scenario sometimes asserts on
+the tip itself, and the guard would dismiss it.
+
+```yaml
+- name: open the catalog past a blocking tip
+  interrupts:
+    - tipKit: dismiss
+  steps:
+    - tap: { id: catalog.open }
+```
+
+A target turns the guard on for each of its scenarios with the same entry in `hooks.interrupts`.
+The scenario's entry, when it writes one, wins over the target's. A scenario that asserts on a tip
+writes `- tipKit: leave` to turn off its target's `dismiss`. Absent from both, the guard stays off.
+The command-line flag `--ios-tipkit-handling` / `--no-ios-tipkit-handling` sets every scenario's
+entry to `dismiss` or `leave`.
+
+## systemAlert (the system-alert guard)
+
+A `systemAlert` entry in an `interrupts` list names an operating-system prompt and the run's answer.
+The scenario's own top-level `interrupts` takes the entry. The target's `hooks.interrupts` takes it
+too ([configuration](configuration.md#system-alerts-and-tipkit-in-hooksinterrupts)).
+
+The iOS backend cannot see or tap **SpringBoard-level prompts** (a notification or App Tracking Transparency request, "Allow Paste"). These prompts cover the app and collapse its element tree, silently blocking a step. The **alert guard** clears them reactively. On the iOS XCUITest backend it takes a **deterministic native path** (BE-0315): reusing BE-0316's SpringBoard query, it reads which buttons the alert offers and taps the one a `systemAlert` entry names — no screenshot and no model round trip, so it clears the common prompts in well under a tenth of a second and runs **without `ANTHROPIC_API_KEY`**. Where nothing deterministic can act — a backend without the capability, an alert no entry of yours identifies, or a non-SpringBoard surface the query cannot enumerate that no entry identifies either (the in-tree path below clears the ones an entry does identify) — **the guard does nothing** ([BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md)). The blocked step or `wait` runs on to its own timeout, exactly as it would with no guard configured, and that timeout **names what the guard saw**: `wait timeout: for {'id': 'submit'} (10.0s) — an unhandled system alert is blocking the screen (buttons: Allow, Don't Allow)`, or the hedged `… — the screen appears blocked, possibly by a system alert or another overlay outside the app's view` where nothing enumerated it. Before BE-0402 that case fell back to an AI-vision guard reading a screenshot; `run` no longer does, so **no flag of `run`'s reaches a model at all**. (`record` and `crawl` keep that guard for authoring — [details](recording.md#dismissing-system-alerts-automatically).) For a `wait` step (`for`/`gone`/`settled`/`screenChanged`), the guard acts **mid-wait**: on XCUITest, each of the wait's own tree reads answers a prompt an entry names before it returns the tree, checking SpringBoard at most once per `pollInterval` (default one second) ([BE-0461](../roadmaps/BE-0461-request-boundary-alert-resolution/BE-0461-request-boundary-alert-resolution.md)). The wait recovers before its own timeout elapses rather than waiting for the step to fail first (BE-0269).
 
 On the XCUITest backend, a frozen screen stops a `for` or `screenChanged` wait before its deadline. A screen counts as frozen when both conditions below hold. A fresh SpringBoard check finds no alert. Yet for 10 seconds, no element below the application has carried a label or an identifier. We measured such a screen on an iOS 26.5 Simulator. A notification request can land while iOS presents its Save Password alert. That alert then halts mid-presentation. It never draws and is in no process's accessibility tree, yet it stays modal over the app. Nothing the guard can reach clears it, so the wait fails at that point with a reason like this:
 
@@ -138,102 +265,135 @@ On the XCUITest backend, a frozen screen stops a `for` or `screenChanged` wait b
 wait stopped: for {'id': 'Close'} after 10.4s — no element below the application has carried a label or identifier for 10s while no system alert is up — …
 ```
 
-A scenario opts into this stop by declaring an in-app prompt such as `savePassword` in its `rules`. Without one, a long empty tree may be the app's own unlabelled loading screen. The wait then keeps its own timeout. An app with a slower unlabelled loading screen raises the bound with `frozenScreenTimeout`. A value of `0` turns the stop off. A `gone` or `settled` wait never stops this way, because a frozen tree already satisfies it. A `handleSystemAlert` step does not either: it waits on SpringBoard, which can still raise its prompt.
+A scenario opts into this stop by declaring a `systemAlert` entry for an in-app prompt such as `savePassword`. Without one, a long empty tree may be the app's own unlabelled loading screen. The wait then keeps its own timeout. An app with a slower unlabelled loading screen raises the bound with `frozenScreenTimeout` on that entry. A value of `0` turns the stop off. A `gone` or `settled` wait never stops this way, because a frozen tree already satisfies it. A `handleSystemAlert` step does not either: it waits on SpringBoard, which can still raise its prompt.
 
-It is **on by default** and fires **only when a step (or `expect`) is blocked, or — for a guarded `wait` — the native poll finds an alert**, so a passing scenario does no extra work. It needs **no `ANTHROPIC_API_KEY`** and consults none. Use `systemAlertHandling` to change the behavior per scenario:
+It is **on by default**. On XCUITest it rides the reads a step already makes, and a step that passes takes no retry, so a passing scenario pays one SpringBoard check per `pollInterval` at most. It needs **no `ANTHROPIC_API_KEY`** and consults none. No scenario or target key turns the guard off; `bajutsu run --no-system-alert-handling` turns it off for the whole run. A scenario declares what the guard answers with `systemAlert` entries in its own top-level `interrupts`, which layer over the target's `hooks.interrupts` ([below](#layering-a-key-reaches-a-run-from-three-places)).
 
-**`rules` is the guard's whole declaration**
-([BE-0406](../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts.md)):
+**The `systemAlert` entries are the guard's whole declaration**
+([BE-0406](../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts.md),
+[BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md)):
 a scenario names the prompts it expects and the choice to make on each, and every answer path
 matches against those alone. BE-0406 removed the ordered `labels` list BE-0401 had introduced. A
 button label names a button and never the alert it sits on, and "Cancel" and "Close" are ordinary
 application vocabulary, so a label licensed a tap on a screen no scenario had described.
-`visionInstruction` steered the vision fallback, and now reaches nothing — **`run` rejects it**
-(below), and `record` / `crawl` read the free-text form only from their own
-`--alert-vision-instruction` flag, never from a scenario. The boolean carries on and off, so a mapping always means on.
+`record` and `crawl` still keep a free-text vision instruction for authoring, but they read it only
+from their own `--alert-vision-instruction` flag, never from a scenario or a config.
 
-| Form | Meaning |
+An entry takes `systemAlert`, the prompt, and `choice`, the answer. Two optional keys tune the
+guard. Each row below is one entry of the scenario's top-level `interrupts`:
+
+| Entry | Meaning |
 |---|---|
-| (omitted) | on; the guard answers no prompt of its own, so an alert it meets is named on the blocked step's failure |
-| `systemAlertHandling: false` | off for this scenario |
-| `systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] }` | on; answer a **named, covered prompt** by its own choice, regardless of which label it shares with another prompt |
-| `systemAlertHandling: { visionInstruction: "tap Allow" }` | **reaches no command.** `run` **fails before any scenario starts** rather than ignoring it ([BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md)); `record` / `crawl` never read a scenario's key. The schema keeps it only so a file carrying it gets that message |
-| `systemAlertHandling: { pollInterval: 2 }` | on; poll the native presence query every 2 s instead of the one-second default |
-| `systemAlertHandling: { frozenScreenTimeout: 30 }` | on; tolerate a frozen screen for 30 s instead of the 10-second default before a guarded wait stops (`0` turns the stop off) |
+| (no `systemAlert` entry) | the scenario answers no prompt of its own; the target's entries still apply, and an alert no entry names is reported on the blocked step's failure |
+| `{ systemAlert: notifications, choice: grant }` | answer a **named, covered prompt** by its own choice, regardless of which label it shares with another prompt |
+| `{ systemAlert: notifications, choice: leave }` | answer nothing for that prompt, even when the target's entry answers it |
+| `{ systemAlert: notifications, choice: grant, pollInterval: 2 }` | also check SpringBoard at most every 2 s instead of the one-second default |
+| `{ systemAlert: savePassword, choice: deny, frozenScreenTimeout: 30 }` | also tolerate a frozen screen for 30 s instead of the 10-second default before a guarded wait stops (`0` turns the stop off); accepted only on a prompt raised into the app's own tree, such as `savePassword` |
 
 ```yaml
 - name: grant notification permission
-  systemAlertHandling:
-    rules:
-      - prompt: notifications
-        choice: grant       # accept the prompt instead of leaving it alone
+  interrupts:
+    - systemAlert: notifications
+      choice: grant       # accept the prompt instead of leaving it alone
   steps:
     - tap:  { id: sys.requestNotif }
     - wait: { for: { id: sys.notif.authorized }, timeout: 4 }   # the guard taps Allow, then this passes
 ```
 
-Write the grant as a rule. `visionInstruction` reaches no command from a scenario, so under `run` it
-names an answer nothing can act on — and rather than leave the prompt standing and **refuse** what
-the file says to accept, `run` refuses the whole invocation before any scenario starts. That
-inversion is what BE-0401 split the old single `instruction` key to expose, and what BE-0402 removed
-the remaining way of reaching.
+`choice: leave` is how a scenario proves that its own `handleSystemAlert` step does the work: the
+entry turns off the target's answer for that one prompt, while every other prompt the target answers
+still applies to the scenario.
 
-A rule for a prompt the tree can reach also arms a second, in-tree path on iOS, for a prompt that is
+An entry for a prompt the tree can reach also arms a second, in-tree path on iOS, for a prompt that is
 **not** a SpringBoard alert at all. The one such prompt covered today is `savePassword`, which iOS
 raises in the *app's own* process: its buttons reach the element tree with a label and no identifier,
-and the SpringBoard query never sees it, so only a tap in the tree can clear it. That tap is paced by
-the same `pollInterval` and issued only on a poll whose own SpringBoard query just came back empty — because XCUITest resolves
+and the SpringBoard query never sees it, so only a tap in the tree can clear it. The runner makes that
+tap inside a read, and only after a fresh SpringBoard check in the same read comes back empty — because XCUITest resolves
 whatever out-of-process alert is interrupting *before* it synthesizes an element interaction, and the
 app's tree cannot see that alert. So when both prompts are up, the SpringBoard alert is answered
 first, and the app-attached alert is cleared from the tree afterwards.
 
 Which button an interrupting alert receives is your policy's decision too. XCUITest resolves such an
 alert before the interaction it interrupts, and left alone answers it with the alert's own *default*
-button — granting a permission your `rules` may have refused, with nothing in the run's report. The
-runner therefore installs an interruption monitor that presses the button your `rules` name, by the
-same discipline the native path applies, and the dismissal is reported as an ordinary alert event. A
-rule this monitor can never meet is dropped rather than pushed: `savePassword` never interrupts an
-interaction from another process. An alert none of your rules identifies is still left to XCUITest's
+button — granting a permission your entries may have refused, with nothing in the run's report. The
+runner therefore installs an interruption monitor that presses the button your entries name, by the
+same discipline the native path applies, and the dismissal is reported as an ordinary alert event. An
+entry this monitor can never meet is dropped rather than pushed: `savePassword` never interrupts an
+interaction from another process. An alert none of your entries identifies is still left to XCUITest's
 own default handler — nothing here can change that tap — but the step or `expect` it interrupted
 fails, naming the buttons it offered, rather than the run continuing as if nothing had answered on
 your behalf.
 (real file: [`demos/showcase/scenarios/save_password_browser.yaml`](../demos/showcase/scenarios/save_password_browser.yaml))
 
-A rule names a prompt, and the guard taps only once it has identified that prompt on screen: every
-one of the prompt's identifying labels must be present, each exactly once. An alert no rule
+An entry names a prompt, and the guard taps only once it has identified that prompt on screen: every
+one of the prompt's identifying labels must be present, each exactly once. An alert no entry
 identifies is left alone and reported on the blocked step's own failure, rather than answered by a
 guessed button.
 
-The CLI `--system-alert-handling` / `--no-system-alert-handling` flag **overrides every scenario**
-(otherwise the per-scenario default applies); `--alert-poll-interval` supplies that one key for a
-single run, between the scenario and the target config (see [layering](#layering-a-key-reaches-a-run-from-three-places) below).
+The CLI flag `--no-system-alert-handling` **turns the guard off for every scenario**, and
+`--system-alert-handling` keeps it on. `--alert-poll-interval` supplies `pollInterval` for a single
+run, between the scenario and the target config (see [layering](#layering-a-key-reaches-a-run-from-three-places) below).
 (real file: [`demos/showcase/scenarios/permission.yaml`](../demos/showcase/scenarios/permission.yaml))
+
+### Preventing a prompt instead of answering it
+
+A prompt the app never raises needs no answer. The supported way for an app to skip its own prompts
+under test is a launch argument or environment variable in the target's config, `targets.<name>`
+(`subject.launch.args` and `subject.launch.env`), which the app reads at start-up:
+
+```yaml
+targets:
+  my-app:
+    platform: ios
+    subject:
+      id: com.example.myapp
+      launch: { env: { UITEST_SKIP_ONBOARDING_PROMPTS: "1" } }   # the app checks this and asks nothing
+```
+
+Prevention makes the guard's work rarer, but it cannot replace the guard. Three prompts stay
+reactive:
+
+- **Notifications** are not a privacy service `xcrun simctl privacy` can grant
+  ([BE-0276](../roadmaps/BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md)).
+- **App Tracking Transparency (ATT)** has no `simctl privacy` service either: the tool's own service
+  list names none.
+- **Save Password** depends on the Simulator's AutoFill Passwords setting. We found no supported way
+  to turn that setting off before a run, so the scenario answers the prompt with a `savePassword`
+  entry ([BE-0461](../roadmaps/BE-0461-request-boundary-alert-resolution/BE-0461-request-boundary-alert-resolution.md)).
 
 ### Notification banners are swiped away, never tapped
 
 A foreground **notification banner** interrupts a step the way a system alert does. The same
-interruption monitor answers a banner. Your `rules` never do
+interruption monitor answers a banner. Your `systemAlert` entries never do
 ([BE-0416](../roadmaps/BE-0416-ios-notification-banner-swipe-dismiss/BE-0416-ios-notification-banner-swipe-dismiss.md)).
 
-A banner is not an alert. It offers no button a rule could name. Its one tappable region carries the
+A banner is not an alert. It offers no button an entry could name. Its one tappable region carries the
 notification's own text. Pressing that region opens the notification's app. A run that
 pressed it would leave the scenario under test.
 
 The runner swipes the banner upward instead, anchored to the banner's own measured frame. The
-runner confirms the banner has gone before claiming the interruption. An unconfirmed swipe hands the
-banner back to XCUITest, whose own handler clears a banner too. Under either path the step's
-interaction lands on the element the scenario named.
+runner reads that frame after the banner has come to rest. A banner still sliding in sits above the
+screen, so a swipe from its frame would travel downward. The runner then confirms the banner has
+gone before claiming the interruption. Once the banner leaves, the step's interaction lands on the
+element the scenario named.
+
+A swipe can miss the banner. The runner then waits up to 10 seconds for the banner's own
+auto-dismissal. Handing the banner back to XCUITest is the last resort. On iOS 26.5, XCUITest's own
+handler ignores a banner. Each XCUITest lookup of the banner records an error, and those errors stop
+the runner.
 
 A *confirmed* dismissal reaches the run's report on the step it interrupted, under its own kind.
 The text recorded beside that dismissal belongs to the notification, not a button. That kind keeps
 a reader from misreading the text as a button the guard chose.
 
-A swipe the runner could not confirm carries no such record. The runner logs the attempt to its own
-output instead. The report shows nothing beyond the step running slower than usual.
+A banner still on screen after that 10-second wait carries no such record. The runner logs the
+attempt to its own output and hands the banner back to XCUITest. A temporary banner leaves within
+the wait in the common case. A persistent-style banner never dismisses itself, so it can reach the
+hand-off. On iOS 26.5, that hand-off can still stop the runner.
 
-Nothing about a banner is yours to declare. The banner path runs regardless of whether
-`systemAlertHandling` is on. Before BE-0416 a governed run met the banner on the alert path instead.
-No rule matched, so the step failed. Its reason named the notification's body text among the
+Nothing about a banner is yours to declare. The banner path runs regardless of whether the
+system-alert guard is on. Before BE-0416 a governed run met the banner on the alert path instead.
+No entry matched, so the step failed. Its reason named the notification's body text among the
 buttons the run had expected.
 
 That monitor answers merely a banner that is *interrupting* something. A plain query never invokes
@@ -243,39 +403,38 @@ sweep closes that gap: the runner looks for a banner and swipes it away before t
 does this at three sites — once per step, right before that step's own screenshot; once more before
 the `expect`-phase capture a `visual` assertion there reads; and once more before a step's own
 `assert` captures its own `visual` entry (below). The per-step sweep rate-limits its query to
-`systemAlertHandling`'s own poll interval, so a passing scenario pays it once per interval, not once
+the system-alert guard's own poll interval, so a passing scenario pays it once per interval, not once
 per step. The `expect`-phase and step-level `visual` captures each pay their own query
 unconditionally instead, since either runs far less often than every step. Like the interruption
 path above, all three sites run with no scenario or CLI toggle of their own, on the iOS XCUITest
 backend alone.
 
-### Answering more than one prompt differently: `rules`
+### Answering more than one prompt differently
 
-One onboarding flow often meets several prompts and means a different answer on each. A rule pairs
-one covered prompt with one choice, reusing `handleSystemAlert`'s own `prompt` / `choice`
-vocabulary, so the file says which prompt it expects rather than which words it would accept seeing
+One onboarding flow often meets several prompts and means a different answer on each. A
+`systemAlert` entry pairs one covered prompt with one choice, reusing `handleSystemAlert`'s own
+`prompt` / `choice` vocabulary, so the file says which prompt it expects rather than which words it would accept seeing
 tapped:
 
 ```yaml
 - name: onboarding — accept notifications, refuse tracking
-  systemAlertHandling:
-    rules:
-      - prompt: notifications
-        choice: grant
-      - prompt: tracking
-        choice: deny
+  interrupts:
+    - systemAlert: notifications
+      choice: grant
+    - systemAlert: tracking
+      choice: deny
   steps:
     - tap:  { id: onboarding.start }
     - wait: { for: { id: home.title }, timeout: 10 }
 ```
 
-The guard identifies which alert is on screen from a rule's prompt — every label that identifies
-that prompt, resolved for the run's locale, must be present on the alert — not from the order rules
-appear in; two rules naming the same prompt fail at parse time. A prompt that renders differently by
-context or by iOS version contributes one matchable shape per rendering, so a single rule still
+The guard identifies which alert is on screen from an entry's prompt — every label that identifies
+that prompt, resolved for the run's locale, must be present on the alert — not from the order entries
+appear in; two entries naming the same prompt in one list fail at load. A prompt that renders differently by
+context or by iOS version contributes one matchable shape per rendering, so a single entry still
 answers every shape its prompt has.
 
-An alert no rule identifies — one outside the label table, or any alert at all on a backend with
+An alert no entry identifies — one outside the label table, or any alert at all on a backend with
 neither answer path — is left alone and named in the blocked step's own failure. That silence is the
 point: the guard answers the screens a scenario described, and nothing else.
 
@@ -288,15 +447,42 @@ surfaces can declare and answer it:
 | `tracking` | ✅ | ✅ | — |
 | `paste` | ✅ | ✅ | — |
 | `savePassword` | — | — | ✅ |
+| `localNetwork` | ✅ | ✅ | — |
 
-SpringBoard owns the first three, so the step and the native probe both reach them and the tree never
+SpringBoard owns every prompt but `savePassword`, so the step and the native probe both reach them and the tree never
 sees them. `savePassword` is the mirror image: iOS raises it inside the application's own process, so
 `springboard.alerts` never enumerates it and the in-tree dismissal alone can clear it. A
 `handleSystemAlert` step naming `savePassword` is therefore rejected at parse time — that step reads
 the SpringBoard query alone, so it could only poll an empty button list until its deadline
 ([BE-0406](../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts.md)).
 
-`savePassword` also renders three ways, where the other three prompts each render one:
+`localNetwork` is the iOS Local Network permission prompt. On a real device, Bajutsu's own network
+collector raises it the first time the app reports to the host
+([iOS on a real device](ios-device-cloud.md#device-to-host-an-exchanged-host-address)). Its buttons
+are the same as the notification prompt's, so the buttons alone cannot tell the two apart. The guard
+reads the alert's title too. It reduces the title to Apple's template, with the app's name replaced
+by `%@`. The `localNetwork` entry names that template, and the `notifications` entry excludes it. A
+`notifications` entry therefore never answers the Local Network prompt, and the reverse holds too. A
+real-device target that records network exchanges declares it like any other prompt:
+
+```yaml
+interrupts:
+  - { systemAlert: localNetwork, choice: grant }
+```
+
+The app raises this prompt during launch, before the scenario's first step. The guard otherwise first looks inside a pending wait. A first `tap` could then land on the
+prompt. To prevent that, the guard reads the SpringBoard query once before the first step. It answers a declared
+prompt already on screen.
+That read is native alone. It never taps the app's own buttons. It leaves an undeclared alert
+alone. A first `handleSystemAlert` step keeps its own prompt. The step may choose the opposite of an
+entry's choice. A step names a prompt by `prompt`, so the title still tells a look-alike apart. A
+Local Network prompt in front of a `notifications` step still goes to its entry. A step written with
+`sel` names no prompt, so the guard skips the read for it.
+
+A `handleSystemAlert` step checks the title the same way. A step naming `notifications` never taps
+the Local Network prompt, even though both offer its button.
+
+`savePassword` also renders three ways, where the other four prompts each render one:
 
 | Rendering | English | Japanese |
 |---|---|---|
@@ -304,7 +490,7 @@ the SpringBoard query alone, so it could only poll an empty button list until it
 | the app's own fields, iOS 18.6 | Save Password / Not Now | パスワードを保存 / 今はしない |
 | the app's own fields, iOS 26.5 | Save / Not Now | 保存 / 今はしない |
 
-One rule still covers all three. `choice: grant` follows the accepting button as it moves, and
+One entry still covers all three. `choice: grant` follows the accepting button as it moves, and
 `choice: deny` taps the refusing one, which reads "Not Now" throughout. The covered languages are
 English and Japanese, as for the other prompts.
 
@@ -315,54 +501,63 @@ places it.
 
 ### Layering: a key reaches a run from three places
 
-A setting reaches a run from the scenario, the command line, and the target config
-([BE-0177](../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md)).
-Two rules cover every key, chosen by whether it holds a list or a scalar:
+A declaration reaches a run from the scenario, the command line, and the target config
+([BE-0177](../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md),
+[BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md)).
+The scenario's own `interrupts` and the target's `hooks.interrupts` take the same three forms, and
+each form combines by its own rule:
 
-| Key | Type | How the layers combine |
-|---|---|---|
-| `rules` | list | concatenated, innermost layer first: scenario, then target |
-| `pollInterval` | scalar | the innermost layer that supplies one wins: scenario, else command line, else target |
-| `frozenScreenTimeout` | scalar | the innermost layer that supplies one wins: scenario, else target |
-| on / off | scalar | `--system-alert-handling` / `--no-system-alert-handling`, else the scenario, else the target, else on |
+| Entry form | How the target's and the scenario's entries combine |
+|---|---|
+| Screen | Concatenated, the target's entries first |
+| System alert | Per prompt: the scenario's entry replaces the target's `choice` for that prompt and inherits an omitted `frozenScreenTimeout` from the target's entry; the other prompts from both apply |
+| TipKit | The scenario's entry (`dismiss` or `leave`), else the target's; absent from both means off |
 
-A list composes because concatenation keeps both layers' entries: the scenario's answers are tried
-first, and the target's stay reachable for whatever the scenario did not answer. A scalar holds one
-value, so the innermost layer wins. No layer's declaration is deleted by another's — which is the
-property BE-0401 exists to establish. `rules` names only two layers because no flag carries a prompt
-paired with a choice legibly; `visionInstruction` is absent because `run` accepts it from no layer at
-all, and the flag that used to carry it was retired with the fallback it steered (BE-0402).
+The two tuning values resolve differently, because the guard holds one of each per scenario:
 
-**Specificity settles a conflict, not the layer a declaration came from.** A target rule for the
-tracking prompt answers tracking even inside a scenario that rules on notifications alone, because
-each rule reaches the one prompt it names; both stay in effect. To override the target's rule, write
-the scenario's own rule for the same prompt — an override whose reach is the one prompt you named.
-When a target rule does answer inside a scenario declaring rules of its own, the guard prints a
-notice at construction saying so, once per affected scenario and prompt.
+| Value | How the layers combine |
+|---|---|
+| `pollInterval` | The first layer that sets one wins: the scenario, then `--alert-poll-interval`, then the target. Within one layer, the smallest value wins, since a shorter interval satisfies every entry that asked for a longer one. The built-in value is one second |
+| `frozenScreenTimeout` | The most tolerant value among the entries that answer a prompt: the largest, with `0` (the stop off) over any value. A stricter bound would stop a wait on a screen another entry's app was declared to hold that long. The built-in value is 10 seconds |
+| on / off | `--no-system-alert-handling` turns the guard off for every scenario; no scenario or target key does. `--ios-tipkit-handling` / `--no-ios-tipkit-handling` set every scenario's `tipKit` entry to `dismiss` or `leave` |
+
+**Specificity settles a conflict, not the layer a declaration came from.** A target entry for the
+tracking prompt answers tracking even inside a scenario that declares notifications alone. Each
+entry reaches the one prompt it names, so both stay in effect. To override the target's entry,
+write the scenario's own entry for the same prompt. That override reaches the one prompt you named.
+`choice: leave` is the override for a scenario that means to answer nothing. The removed
+`systemAlertHandling: false` named no prompt, whereas a `leave` entry names the prompt it leaves. A
+prompt the target adds later thus still applies to the scenario. Sometimes a target entry answers
+inside a scenario that declares `systemAlert` entries of its own. `run` then prints a notice naming
+the prompt, once per affected scenario and prompt.
 
 ### Migrating from the old keys
 
-BE-0401 and BE-0406 removed the keys below with no aliases. Each fails to load with an error naming
-its replacement, rather than parsing into something that behaves differently from what it says.
+BE-0401, BE-0406, and BE-0473 removed the keys below with no aliases. Each fails to load with an
+error naming its replacement, rather than parsing into something that behaves differently from what
+it says. A run directory stored before the change still loads in the offline readers (the report
+re-render, `trace`, and `triage`), which translate its `scenario.yaml` to the new keys.
 
 | Removed | Write instead |
 |---|---|
-| `labels: ["Allow"]` | `rules: [{ prompt: notifications, choice: grant }]` — name the prompt you expect, since the label named no prompt at all (BE-0406) |
-| `instruction: ["Allow"]` | the same rule form — BE-0401 renamed this key to `labels`, which BE-0406 then removed |
-| `instruction: "tap Allow"` | the same rule form — `visionInstruction` is what BE-0401 renamed it to, but BE-0402 left it reaching no command |
-| `enabled: false` | `systemAlertHandling: false` |
-| `enabled: true` | a mapping (or `systemAlertHandling: true`) — a mapping always means on |
-| `alertHandling:` / `dismissAlerts:` | `systemAlertHandling:` |
-| `--alert-labels "Allow,OK"` / `--alert-instruction "Allow,OK"` | a scenario or target-config `rules` entry — no flag carries a prompt paired with a choice legibly. A `run` request to the serve HTTP API carrying `alertLabels` is refused with 400, naming `systemAlertHandling.rules` |
+| `preconditions.run.systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] }` | `- { systemAlert: notifications, choice: grant }` in the scenario's `interrupts` (BE-0473) |
+| `preconditions.run.systemAlertHandling: false` | `choice: leave` on each prompt the scenario answers itself, or `--no-system-alert-handling` for the whole run (BE-0473) |
+| `systemAlertHandling.pollInterval` / `.frozenScreenTimeout` | the same keys on the `systemAlert` entries they serve (BE-0473) |
+| `preconditions.run.tipKitHandling: true` / `false` | `- tipKit: dismiss` / `- tipKit: leave` in the scenario's `interrupts` (BE-0473) |
+| `preconditions.run.inheritSetup` | `preconditions.inheritSetup` (BE-0473) |
+| `visionInstruction` | nothing; `run` reaches no model (BE-0402), and `record` / `crawl` take `--alert-vision-instruction` |
+| `labels: ["Allow"]` | `- { systemAlert: notifications, choice: grant }` — name the prompt you expect, since the label named no prompt at all (BE-0406) |
+| `instruction: ["Allow"]` | the same entry form — BE-0401 renamed this key to `labels`, which BE-0406 then removed |
+| `instruction: "tap Allow"` | the same entry form — BE-0401 renamed it to `visionInstruction`, which BE-0402 left reaching no command |
+| a scenario's top-level `systemAlertHandling:` / `alertHandling:` / `dismissAlerts:` | `systemAlert` entries in the scenario's `interrupts` |
+| a scenario's top-level `iosTipKitHandling:` | `- tipKit: dismiss` in the scenario's `interrupts` |
+| `--alert-labels "Allow,OK"` / `--alert-instruction "Allow,OK"` | a `systemAlert` entry in the scenario or the target config — no flag carries a prompt paired with a choice legibly. A `run` request to the serve HTTP API carrying `alertLabels` is refused with 400 |
 | `--alert-instruction "tap Allow"` | `--alert-vision-instruction "tap Allow"` (`record` / `crawl` only — `run` retired it, BE-0402) |
 | `--alert-handling` / `--dismiss-alerts` | `--system-alert-handling` |
 
-An empty `visionInstruction` is an error too: it used to normalize away and fall through to the
-default dismissive policy, so a typo answered the opposite of what the file said.
-
 ## handleSystemAlert (the deterministic system-alert step)
 
-`systemAlertHandling` above is a **reactive guard**: it fires automatically wherever a prompt surfaces.
+The `systemAlert` guard above is **reactive**: it fires automatically wherever a prompt surfaces.
 `handleSystemAlert` is its proactive counterpart — an explicit,
 **deterministic step** the author places at the exact point a prompt is expected, which taps the
 prompt's button by a native accessibility query, with **no screenshot and no model**
@@ -384,7 +579,7 @@ To dismiss the prompt rather than accept it, target the dismissive button
 - **`sel` is label-based only.** A SpringBoard alert button carries no app-assigned identifier, trait,
   or value — only its visible text — so `sel` accepts `label` / `labelMatches` / `index` and rejects
   `id` / `idMatches` / `traits` / `value` / `within` at parse time.
-- **The label a run must match is the one the target's [`locale`](configuration.md#config-layering-defaults--targets)
+- **The label a run must match is the one the target's [`runsOn.ios.locale`](configuration.md#config-layering-defaults--targets)
   renders.** SpringBoard owns the prompt, so it used to render in whatever system language the
   Simulator happened to carry — making `label: "Allow"` work by accident on an English machine and
   fail on a Japanese one. A run now pins the Simulator's own system language to that `locale` before
@@ -395,13 +590,13 @@ To dismiss the prompt rather than accept it, target the dismissive button
   bound. The step waits the prompt in, then taps — no fixed sleep.
 - **The reactive guard runs while the step waits**
   ([BE-0406](../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts.md)).
-  That wait is the runner's, not the backend's, so `systemAlertHandling` clears an interruption
+  That wait is the runner's, not the backend's, so the system-alert guard clears an interruption
   *during* the step instead of only after it has already spent its timeout and failed. This is what
   the step needs when another prompt lands first — iOS's save-password alert, which the app's own
   process raises and the SpringBoard query cannot see, covers the screen and stops the prompt this
   step waits for from ever being raised. Without the guard running here, the step spent its whole
   timeout and failed naming the permission prompt it never saw. The guard leaves this step's own
-  prompt alone, so a scenario may hold a `rules` entry for it with the opposite choice and the step
+  prompt alone, so a scenario may hold a `systemAlert` entry for it with the opposite choice and the step
   still decides it.
 - **Zero or many both fail.** No prompt within `timeout` fails the step; more than one button
   matching the label is ambiguous and is never tapped **unless** `index` selects the nth — the same
@@ -430,7 +625,7 @@ When to reach for `handleSystemAlert` versus the two alert fields it stands besi
 |---|---|---|---|
 | `permissions` | an OS permission prompt you can avoid outright | pre-launch, before the app starts | deterministic device mutation |
 | `handleSystemAlert` | a **known** mid-flow prompt you mean to tap | an explicit step where you place it | deterministic (native accessibility tap) |
-| `systemAlertHandling` | an **unexpected** prompt: out of process, or the in-process save-password sheet | reactive, when a step or wait is blocked | native SpringBoard query on XCUITest (no model, reusing BE-0316), plus an in-tree tap for the sheet that query cannot see; a prompt no rule identifies is reported on the failure |
+| `systemAlert` entries in `interrupts` | an **unexpected** prompt: out of process, or the in-process save-password sheet | reactive, when a step or wait is blocked | native SpringBoard query on XCUITest (no model, reusing BE-0316), plus an in-tree tap for the sheet that query cannot see; a prompt no entry identifies is reported on the failure |
 
 ### Naming the intent instead of the text
 
@@ -447,9 +642,11 @@ resolves the label the pinned `locale` renders
 - handleSystemAlert: { prompt: notifications, choice: grant, timeout: 5 }
 ```
 
-`prompt` is `notifications`, `tracking`, or `paste`; `choice` is `grant` or `deny`. The guard's own
-`rules` take a fourth prompt this step cannot, `savePassword`, which the step rejects at parse time —
-see [the surfaces table](#answering-more-than-one-prompt-differently-rules) above. One step names the
+`prompt` is `notifications`, `tracking`, `paste`, or `localNetwork`; `choice` is `grant` or `deny`.
+The step rejects `choice: leave` at load, because a step that taps no button means nothing.
+`leave` belongs to a `systemAlert` entry alone. The guard's own `systemAlert` entries take one more prompt
+this step cannot, `savePassword`, which the step rejects at parse time —
+see [the surfaces table](#answering-more-than-one-prompt-differently) above. One step names the
 button by its meaning, so the same file grants the prompt under `en_US` and under `ja_JP` without an
 author transcribing either language's text — worth having even for English alone, whose deny buttons
 spell their apostrophe typographically (`Don’t Allow`, `Don’t Allow Paste`), not as the ASCII
@@ -472,20 +669,20 @@ right after the action that raises its prompt. A run with no locale at all (`rec
 report row shows the button it tapped and the rule that chose it — `sel`, `label table: <locale>`,
 or `position: button 2 of 2`. Every other alert keeps naming its button through `sel`, unchanged.
 
-The position rule belongs to this step alone. A `systemAlertHandling.rules` entry must first tell
+The position rule belongs to this step alone. A `systemAlert` entry must first tell
 which declared prompt is on screen, which a position cannot do, so under a language the label table
 does not cover it still fails the scenario loudly before any device work, naming what is covered.
 
 Two limits are worth knowing before reaching for it:
 
-- **The Simulator only.** The pin is a `simctl` operation, so a target on `xcuitest.deviceType:
+- **The Simulator only.** The pin is a `simctl` operation, so a target on `runsOn.ios.kind:
   device` runs against whatever system language the physical device carries — the intent form would
   resolve a label nothing guarantees is on screen. Name the button with `sel.label` there.
-- **The interruption monitor carries no English assumption either.** A `rules` entry resolves its
+- **The interruption monitor carries no English assumption either.** A `systemAlert` entry resolves its
   labels for the pinned language before it reaches the monitor, and there is no built-in fallback
-  list behind it any more — an alert none of your rules identifies is always declined, in every
+  list behind it any more — an alert none of your entries identifies is always declined, in every
   `locale`, and the step or `expect` it interrupted fails naming its buttons rather than guessing at
-  one. Write a rule for any prompt a run must decide itself.
+  one. Write an entry for any prompt a run must decide itself.
 
 (real files:
 [`demos/showcase/scenarios/permission_system_alert.yaml`](../demos/showcase/scenarios/permission_system_alert.yaml),
@@ -493,7 +690,7 @@ Two limits are worth knowing before reaching for it:
 
 ## permissions (pre-launch permission state)
 
-`systemAlertHandling` reacts to a permission prompt only *after* it appears, and only by tapping it —
+The system-alert guard reacts to a permission prompt only *after* it appears, and only by tapping it —
 useful when the prompt is unexpected, but it cannot **revoke** a permission or guarantee the app
 starts from a known state. When the permission is known ahead of time, `permissions` sets it
 **before the app process starts**, so the prompt never appears at all: a deterministic,
@@ -517,12 +714,12 @@ Each backend maps a service to its own native mechanism:
 - **iOS** drives `simctl privacy <udid> <grant|revoke> <tcc-service> <bundle>` — the same TCC
   (Transparency, Consent, and Control) database SpringBoard's permission prompts read.
 - **Android** drives `pm grant` / `pm revoke`, reusing the plumbing behind the config-level
-  `grantPermissions` list ([drivers](drivers.md)); a scenario's `permissions` layers on top of that
+  `subject.grantPermissions` list ([drivers](drivers.md)); a scenario's `permissions` layers on top of that
   config-level default and can revoke what it grants.
 
 **iOS has no TCC service for `notifications`** (iOS notification authorization is not part of
 TCC), so a scenario naming `notifications` on an iOS target fails **preflight** — before any device
-work, naming the unsupported capability; `systemAlertHandling` remains the reactive path for that one
+work, naming the unsupported capability; a `systemAlert` entry remains the reactive path for that one
 prompt. Android's `POST_NOTIFICATIONS` *is* a runtime permission (API 33+), so Android supports the
 whole vocabulary. Every other unsupported combination (a service unsupported on the chosen backend)
 fails preflight the same way, named individually.
@@ -541,7 +738,13 @@ expected, or not at all, depending on account state, network timing, or an A/B c
 only catches the screen when it appears exactly where the `if` sits; every other timing slips through
 and fails the rest of the scenario against a screen it was not written to expect.
 
-`interrupts` handles that case. Each entry names a `condition` — the same assertion DSL `if` uses —
+`interrupts` handles that case. The list holds three forms of entry, and the key an entry writes
+decides its form. This section covers the screen form. The other two forms are
+[`systemAlert`](#systemalert-the-system-alert-guard), for an operating-system prompt, and
+[`tipKit`](#tipkit-a-blocking-tipkit-tip), for Apple's TipKit popover. An entry that mixes keys of
+two forms fails at load and names both forms.
+
+A screen entry names a `condition` — the same assertion DSL `if` uses —
 and the `steps` that clear the screen. The runner checks each entry **opportunistically**, wherever in
 the sequence the screen happens to appear, and runs the entry's `steps` when the condition matches.
 That check is free where it rides a tree already read for this step — a `wait`'s poll tick, or
@@ -556,10 +759,13 @@ author no longer has to predict the one spot to place an `if`.
 # config.yaml — an app-wide default: this app's onboarding screen, on every scenario
 targets:
   myapp:
-    interrupts:
-      - condition: { exists: { id: onboarding.skip } }
-        steps:
-          - tap: { id: onboarding.skip }
+    platform: ios
+    subject: { id: com.example.myapp }
+    hooks:
+      interrupts:
+        - condition: { exists: { id: onboarding.skip } }
+          steps:
+            - tap: { id: onboarding.skip }
 ```
 
 ```yaml
@@ -574,13 +780,13 @@ targets:
     - wait: { for: { id: home.title }, timeout: 10 }   # an interstitial mid-flow is cleared, then this passes
 ```
 
-An `interrupts` list set at the **config** level (`targets.<name>.interrupts`) is an app-wide
+An `interrupts` list set at the **config** level (`targets.<name>.hooks.interrupts`) is an app-wide
 default; a scenario's own `interrupts` is **appended** to it, config entries checked first — the
-same config-then-scenario layering `systemAlertHandling` follows. An entry's `steps` share the
+same config-then-scenario layering every form of entry follows ([layering](#layering-a-key-reaches-a-run-from-three-places)). An entry's `steps` share the
 enclosing scenario's `vars.*` bindings, exactly as `if`'s branches do. A handler may itself `use` a
-[component](#reuse-data-and-tags), which expands before the run. A config-level entry may not: a
-target config never goes through component expansion. A `use` under `targets.<name>.interrupts`
-fails the config load. Inline the steps there, or move the handler to the scenario. If a handler's
+[component](#reuse-data-and-tags), which expands before the run. A config-level entry may too: a
+`use` under `targets.<name>.hooks.interrupts` resolves when the config loads, against the config
+file's directory ([reuse](#reuse-data-and-tags)). If a handler's
 own `steps` never clear its `condition` (a broken selector, a screen that re-renders identically),
 the entry fires only a small bounded number of times per step and then the step falls back to its
 ordinary outcome (pass, fail, or timeout) — a mis-set entry fails the step cleanly rather than
@@ -617,7 +823,7 @@ already fixes its target. A `target` there would repeat that name or contradict 
 adds anything. The config load refuses `target` on such an entry and on any step in its `steps`.
 
 The check is the deterministic assertion DSL, never a model call, so `interrupts` adds no AI to the
-`run` verdict — and neither does `systemAlertHandling` since BE-0402. The difference between them is
+`run` verdict — and neither does a `systemAlert` entry since BE-0402. The difference between them is
 what they reach: the alert guard answers out-of-process system prompts the accessibility tree
 **cannot see**, through the SpringBoard query, while `interrupts` handles a screen the tree **can**
 see with a machine-checkable condition. When to reach for which:
@@ -627,28 +833,26 @@ see with a machine-checkable condition. When to reach for which:
 | `if` | a screen at a **known** point in the sequence | one scripted check | deterministic (assertion DSL) |
 | `interrupts` | a screen at an **unpredictable** point, visible in the tree | checked opportunistically throughout | deterministic (assertion DSL) |
 | `handleSystemAlert` | a **known** out-of-process prompt you mean to tap mid-flow | an explicit step where you place it | deterministic (native accessibility tap) |
-| `systemAlertHandling` | an **unexpected** prompt: out of process, or the in-process save-password sheet | reactive, when a step or wait is blocked | native SpringBoard query on XCUITest (no model, reusing BE-0316), plus an in-tree tap for the sheet that query cannot see; a prompt no rule identifies is reported on the failure |
+| `systemAlert` entries in `interrupts` | an **unexpected** prompt: out of process, or the in-process save-password sheet | reactive, when a step or wait is blocked | native SpringBoard query on XCUITest (no model, reusing BE-0316), plus an in-tree tap for the sheet that query cannot see; a prompt no entry identifies is reported on the failure |
 | `permissions` | an OS permission prompt you can avoid outright | pre-launch, before the app starts | deterministic device mutation |
 
 No native XCUITest / Espresso / Playwright construct maps onto "check this condition opportunistically
 throughout the whole test," so `codegen` emits a labeled `// TODO` naming the field and each
 configured condition rather than generating code for it — `bajutsu run` is the faithful path.
 
-## `before` / `after` (setup and teardown phases)
+## `setup` / `cleanup` (setup and teardown phases)
 
-`preconditions.setup` ([above](#preconditions-environment-setup)) names a prelude scenario file, and
-the runner prepends that prelude's steps onto this scenario's own `steps` before the run starts. The
-prelude then runs indistinguishably from the scenario's own steps: the report lists them in one
-numbered sequence, and a prelude failure surfaces as an ordinary step failure with no marker showing
-it came from setup. Teardown has no mechanism at all. The only place to put cleanup is the tail of
+Setup written at the front of `steps` runs indistinguishably from the scenario's own steps: the
+report lists them in one numbered sequence, and a setup failure surfaces as an ordinary step failure
+with no marker showing it came from setup. Teardown has no mechanism at all. The only place to put cleanup is the tail of
 `steps`, and the step loop breaks on the first failure ([the run loop](run-loop.md)), so a trailing
 cleanup step runs only when every preceding step already passed — exactly the run that needed
 cleanup least. A scenario that signs up a test user, then hits a broken button three steps later,
 leaves that user behind.
 
-`before` and `after` close both gaps. `before` is an ordered list of steps that runs first, reported
+`setup` and `cleanup` close both gaps. `setup` is an ordered list of steps that runs first, reported
 as its own section, and a failure there aborts the scenario before `steps` and `expect` run at all.
-`after` is a list of rules, each pairing an outcome — `always`, `success`, or `error` — with the
+`cleanup` is a list of rules, each pairing an outcome — `always`, `success`, or `failure` — with the
 steps to run for that outcome. The runner evaluates the rules once the scenario's verdict exists,
 and reaches the phase on every path out of `steps`, the failing path included. Both fields reuse the
 ordinary step grammar and the ordinary assertion DSL, so a hook's steps are exactly as
@@ -657,53 +861,62 @@ machine-checkable as the scenario's own, and both share the run's `${vars.*}` bi
 
 ```yaml
 - name: sign up, then release the account
-  before:
+  setup:
     # the seed endpoint returns the new user's bare id as its response body
     - http: { method: POST, url: "https://api.test/users", saveBody: userId }
   steps:
     - tap:  { id: login.button }
     - type: { text: "${vars.userId}", into: { id: login.username } }
-  after:
+  cleanup:
     - on: always
       steps:
         - tap: { id: session.logout }
     - on: success
       steps:
         - http: { method: DELETE, url: "https://api.test/users/${vars.userId}" }
-    - on: error
+    - on: failure
       steps:
         - http: { method: POST, url: "https://api.test/diagnostics", body: '{"failed":true}' }
 ```
 
-(real file: [`demos/showcase/scenarios/before_after.yaml`](../demos/showcase/scenarios/before_after.yaml))
+(real file: [`demos/showcase/scenarios/setup_cleanup.yaml`](../demos/showcase/scenarios/setup_cleanup.yaml))
+
+Before [BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md),
+the two fields were `before` and `after`, and the outcome word `failure` was `error`. BE-0452 gave a
+target's hooks and a scenario's phases one pair of words. The loader reads no old name. A scenario
+that still writes one fails to load, and the error names the replacement.
 
 More than one rule may carry the same `on` value, and rules composing that way run in declaration
 order — the same way two `capturePolicy` rules may share a trigger. A rule whose own steps fail does
 not stop the phase: the remaining rules still run, because skipping the rest of the cleanup is the
 outcome teardown exists to avoid. What that failure does to the run's verdict depends on where the
 run already stood. On a run that was passing, the failing rule becomes the failure
-(`after: step 0 (tap): …`). On a run that had already failed, the failing rule is appended behind
+(`cleanup: step 0 (tap): …`). On a run that had already failed, the failing rule is appended behind
 the original failure instead of replacing it, so the reason a reader sees first is still the original
 cause rather than a symptom of the cleanup it triggered.
 
 A cancelled run (`SIGTERM`, the `serve` Web UI's Cancel button) reaches the phase too, dispatching
-`after` as an `error` outcome, and the cleanup rules get a bounded slice of the cancellation grace
+`cleanup` as a `failure` outcome, and the cleanup rules get a bounded slice of the cancellation grace
 window to run in. Once that slice is spent, the remaining rules are abandoned so the shutdown tail
 that writes the report still fits inside the window.
 
-### Both fields at the target-config level
+### The target's hooks: `hooks.setup` and `hooks.cleanup`
 
-`targets.<name>.before` and `targets.<name>.after` take the same shapes as an app-wide default, and
-the two merge in opposite orders:
+`targets.<name>.hooks.setup` takes the shape of a scenario's `setup` as an app-wide default.
+`targets.<name>.hooks.cleanup` takes the shape of a scenario's `cleanup`. Each merges with the scenario's own field,
+in opposite orders:
 
 | Field | Merge order | Why |
 |---|---|---|
-| `before` | config, then scenario | The app-wide prelude seeds the state this scenario's own setup then builds on — the same config-then-scenario layering `interrupts` follows |
-| `after` | scenario, then config | This scenario releases what it created before the app-wide teardown closes around it, the last-acquired-first-released order a fixture-based teardown pair gives |
+| `setup` | config (`hooks.setup`), then scenario | The app-wide setup seeds the state this scenario's own setup then builds on — the same config-then-scenario layering `interrupts` follows |
+| `cleanup` | scenario, then config (`hooks.cleanup`) | This scenario releases what it created before the app-wide teardown closes around it, the last-acquired-first-released order a fixture-based teardown pair gives |
 
-`targets.<name>.before` does not replace `targets.<name>.setup`: only `before` is its own report
-phase, and a `before` phase runs ahead of the prelude that `setup` splices onto `steps`. A `before`
-step therefore must not depend on a screen the prelude reaches.
+With `use:`, a hook step calls a [component](#reuse-data-and-tags). A login flow that every
+scenario of a target shares then lives in one file.
+[BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)
+removed the `setup` prelude file, at the target level and as `preconditions.setup` alike. A
+scenario that must not run its targets' setup sets `preconditions.inheritSetup: false`. Their
+`hooks.cleanup` still runs, since cleanup runs on every path out of a scenario.
 
 ### When to reach for which
 
@@ -711,19 +924,19 @@ Three fields sit near this ground, and each answers a different question:
 
 | Field | Runs | Reported as | For |
 |---|---|---|---|
-| `before` / `after` | as its own phase, before `steps` / after the verdict | its own Before / After block | setup and teardown the reader must be able to tell apart from the scenario under test |
-| `preconditions.setup` | spliced onto the front of `steps` | more numbered steps | a reusable prelude shared by several scenarios, where no separation is wanted |
+| `setup` / `cleanup` | as its own phase, before `steps` / after the verdict | its own setup / cleanup block | setup and teardown the reader must be able to tell apart from the scenario under test |
+| `use` (a component) | expanded in place, where the step calls it | more numbered steps | a reusable flow shared by several scenarios, where no separation is wanted |
 | `capturePolicy` | throughout the step loop, per step | evidence attached to a step | capturing extra evidence when a step fails, not running steps |
 
-`capturePolicy`'s `on: { result: error }` trigger and an `after` rule's `on: error` share the word
-`error` for the same idea, at two scales: a `capturePolicy` trigger fires for one failed step,
-wherever in the run it happened, while an `after` rule fires once, for the whole scenario's verdict.
+`capturePolicy`'s `on: { result: failure }` trigger and a `cleanup` rule's `on: failure` share the
+word `failure` for the same idea, at two scales: a `capturePolicy` trigger fires for one failed step,
+wherever in the run it happened, while a `cleanup` rule fires once, for the whole scenario's verdict.
 
 ### What `codegen` emits
 
-`before` needs no framework construct: `codegen` emits its steps inline at the top of the generated
-test body under a `// before` divider, which is exactly the phase's meaning — they run first, and a
-failure aborts what follows. `after` needs one, and each target reaches it differently. Playwright and
+`setup` needs no framework construct: `codegen` emits its steps inline at the top of the generated
+test body under a `// setup` divider, which is exactly the phase's meaning — they run first, and a
+failure aborts what follows. `cleanup` needs one, and each target reaches it differently. Playwright and
 UI Automator wrap the test body in `try` / `catch` / `finally`, since an assertion on either target
 throws, so the `catch` sees the very failure the verdict would have been. XCUITest registers a single
 `addTeardownBlock` instead, because `XCTAssert` records a failure rather than throwing, and reads the
@@ -765,6 +978,8 @@ A scenario is shared across platforms only to the extent its selectors are by `i
 
 The dotted form matches on iOS and Android Compose (which reproduce it verbatim); the underscore form matches on Android Views. Only one form is ever on screen for a given app, so the selection stays deterministic: if **both** candidate forms happened to be present at once, the selector is ambiguous and fails fast — an OR never turns a two-or-more match into a silent pick. The candidate list keeps the id convention **explicit in the scenario**, rather than a hidden driver-side `.`↔`_` rewrite that could conflate distinct ids. The showcase's shared scenarios use this so `showcase-swiftui` / `showcase-compose` / `showcase-views` all run the same files.
 
+List the underscore form only in a scenario a Views target actually runs: `E2E_VIEWS_SCENARIOS` in [`demos/showcase/android/Makefile`](../demos/showcase/android/Makefile), or a lane that drives `showcase-views` directly. In any other scenario no lane resolves that candidate, so a typo in it never fails and a reader cannot tell a needed candidate from a dead one; such a scenario carries the single dotted id.
+
 ## Step grammar (`steps`)
 
 Each step is **exactly one action** + optional modifiers (`capture:` / `name:`). Two or more
@@ -787,6 +1002,7 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `drag` | `drag: { on: <Selector>, direction: up\|down\|left\|right, amount?: <frac> }` | a real pointer **drag** of the element (a handle / divider / slider), not a scroll |
 | `scroll` | `scroll: { to: <Selector>, direction?: up\|down\|left\|right, within?: <Selector>, amount?: <frac>, maxScrolls?: <int> }` | scroll (non-inertially) until `to` is on-screen, or fail at a bound; `direction` is **scroll** direction (default `down`), the inverse of `swipe`'s |
 | `back` | `back: {}` | navigate back one level, each backend using its platform-correct primitive — the Android system back key, the iOS OS-provided back button, or web history ([BE-0210](../roadmaps/BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md)) |
+| `navigate` | `navigate: "<url>"` | load a URL in the current page, resolved against the target's `baseUrl` ([below](#navigate)); web only (iOS / Android fail in preflight) |
 | `pinch` | `pinch: { sel: <Selector>, scale: <num> }` | two-finger magnify; `scale > 0` (`>1` zooms in, `<1` out) |
 | `rotate` | `rotate: { sel: <Selector>, radians: <num> }` | two-finger rotation; `>0` is clockwise |
 | `handleSystemAlert` | `handleSystemAlert: { sel: <Selector>, timeout: <sec> }` | tap a button on an iOS SpringBoard permission prompt, deterministically ([below](#handlesystemalert-the-deterministic-system-alert-step)); iOS (XCUITest) only. `sel` accepts only `label` / `labelMatches` / `index`, and resolves against the system language the run pins the Simulator to. In place of `sel`, `prompt: notifications\|tracking\|paste` + `choice: grant\|deny` names the button by meaning and lets the run resolve its label (BE-0320), or its position under a language the label table does not cover (BE-0445) |
@@ -800,6 +1016,7 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `totp` | `totp: { secret, into: { var } }` | generate an RFC 6238 time-based one-time password (2FA) locally into `${vars.<var>}` |
 | `email` | `email: { match: { to?, subject?, subjectMatches? }, extract: { var, bodyMatches }, timeout }` | poll the configured mailbox until a matching message arrives, extract a code into `${vars.<var>}` |
 | `generate` | `generate: { random\|datetime: {...}, into: { var } }` | compute a random or current-datetime value at run time into `${vars.<var>}` ([below](#generate-a-value-computed-at-run-time)) |
+| `eval` | `eval: { from, ops: [...], into: { var } \| { vars: [...] } }` | split, join, filter, and otherwise transform a value the scenario already holds, into `${vars.*}` ([below](#eval-transform-a-value-held-in-a-variable)) |
 | `manual` | `manual: { label: "...", bypass?: "..." }` | a human takeover recorded during `record` (BE-0185); has no deterministic run-time equivalent, so it **fails loudly** at `run` time — never a silent pass |
 | `background` | `background: {}` | send the app to the background (Home button) |
 | `foreground` | `foreground: {}` | bring the step's target app to the front without terminating it; an app that is not running launches the way `relaunch` would, minus the terminate, then waits until ready. iOS and Android |
@@ -852,6 +1069,31 @@ label) and fires a `change` event, so the page reacts exactly as it would to a u
 value matches what a `value` assertion reads back from the `<select>`, so a selection is directly
 assertable. `selectOption` is a web-only action — a `<select>` has no native counterpart on iOS or Android,
 so those backends fail the step with a clear "unsupported action" reason rather than doing nothing.
+
+### `navigate`
+
+```yaml
+- navigate: /settings                       # resolves against the target's baseUrl
+- navigate: https://idp.example.com/login   # an absolute URL is used as written
+- navigate: "/items/${vars.itemId}"         # ${...} tokens are expanded like any step field
+```
+
+`navigate` opens a URL in the middle of a scenario, for a page that no control links to (a link from
+an email, a shared-item URL), a deep page a UI walk would otherwise have to reach, or a redirect to
+exercise ([BE-0464](../roadmaps/BE-0464-web-navigate-step/BE-0464-web-navigate-step.md)). The value is
+a plain string, not a mapping. It resolves against the target's `baseUrl` the way a browser resolves a
+link (`urljoin`): `/settings` replaces any path in `baseUrl`, `settings` resolves against that path,
+and an absolute `http` / `https` URL is used as written, even on another origin. Any other scheme
+(`javascript:`, `file:`, `data:`) is rejected: a literal value when the scenario loads, and a value
+with a `${...}` token once the run has substituted it, which fails the step.
+
+The step returns once the page's `load` event fires. It does not read the response status, so a 404
+page loads and the step passes; the next `assert` or `wait` decides the verdict. Cookies and storage
+persist, so `navigate` continues the session rather than resetting it. A failure the URL itself
+causes, such as an unresolvable host or a timeout, fails the step with the browser's message.
+`navigate` needs the `urlNavigation` capability, which only the web backend declares, so a scenario
+that uses it on iOS or Android fails in preflight, before any device is leased, including a
+`navigate` nested inside a `web:` block.
 
 ### `setPickerValue`
 
@@ -935,7 +1177,7 @@ modifiers are not allowed on the `web` step itself. The step needs a WebView bri
 (`BAJUTSU_WEBVIEW_PORT`); without one it fails cleanly rather than doing nothing. This first slice
 supports `tap` / `tapPoint` / `doubleTap` / `type` / `wait` / `assert` inside the block. `longPress` /
 `swipe` / `drag` / `clear` / `delete` / `select` / `copy` / `selectOption` / `scroll` / `back` /
-`pinch` / `rotate` / `handleSystemAlert` / `setPickerValue` are not reachable there, and each fails
+`navigate` / `pinch` / `rotate` / `handleSystemAlert` / `setPickerValue` are not reachable there, and each fails
 with a clear "not supported in web context" reason.
 
 ### `app` (driving another app's UI, iOS only)
@@ -983,11 +1225,11 @@ every gap below.
 The constraints come from driving an operating-system screen the scenario does not own:
 
 - **Measured on the iOS Simulator, iOS 26.5.** We checked no real device and no other runtime.
-- **Pin the layout with `erase: true`.** The long press lands on the icon grid's centre, which must
+- **Pin the layout with `preconditions.subject.reinstall: erase`.** The long press lands on the icon grid's centre, which must
   be empty wallpaper. After an erase and reinstall, SpringBoard opens on the page that holds the
   test apps, and that page leaves its lower half free. Erasing also removes the widgets an earlier
   run added, so the assertion on the new widget stays unambiguous.
-- **Pin the language with `preconditions.locale`.** Every label is SpringBoard's own text. Even an
+- **Pin the language with `preconditions.device.ios.locale`.** Every label is SpringBoard's own text. Even an
   icon's `identifier` is its localized name: `Calendar` in English, `カレンダー` in Japanese.
 - **A search result row is absent from the tree.** Once the gallery's search field holds text,
   SpringBoard's snapshot reports the result list as an empty container. The row still shows on
@@ -1011,7 +1253,7 @@ is a validation error).
 
 The **directional** form means "scroll", and each backend realizes it with the primitive that
 actually scrolls: a real OS drag on iOS / Android, and — since a mouse drag does not scroll a web
-page — a wheel event (desktop) or a touch drag (a mobile [`deviceMode`](drivers.md#playwright-web))
+page — a wheel event (desktop) or a touch drag (a mobile [`runsOn.browser.emulate`](drivers.md#playwright-web))
 on web (BE-0227). The **coordinate** form is a literal pointer drag for its own sake (a canvas / map
 pan / drag handle), the same raw-drag last resort on every backend.
 
@@ -1239,6 +1481,24 @@ the current time — and stores the current code in `${vars.<var>}` for a later 
 This automates a 2FA sign-in without a scripting escape hatch or an LLM: the value is a deterministic
 function of the secret and the clock ([BE-0046](../roadmaps/BE-0046-otp-email-steps/BE-0046-otp-email-steps.md)).
 
+A code is valid for one 30-second window of the clock, so a `totp` step that lands in the last
+seconds of a window can hand the app a code that expires before the following `type` and `tap`
+submit it. Set `minRemaining` to the seconds those steps need:
+
+```yaml
+- totp: { secret: "${secrets.TOTP_SEED}", into: { var: code }, minRemaining: 10 }
+```
+
+When the current window has fewer than `minRemaining` seconds left, the step waits for the next
+window to start, then generates the code
+([BE-0474](../roadmaps/BE-0474-totp-window-alignment/BE-0474-totp-window-alignment.md)). The value
+is an integer from 1 to 30. Omitting it means no wait. The wait ends on the window boundary the
+clock decides, never on an author-chosen pause, so it is bounded by one window and the determinism
+audit does not list it as a `fixed-sleep`. The live log labels the step `totp (≥10s left)`, and the
+report shows the time the wait took as the step's duration. If the wall clock jumps during the wait
+(a Network Time Protocol (NTP) correction, say), the step still passes and records a warning on its report row that states
+the jump and the seconds left, so a later sign-in that fails on an expired code shows its cause.
+
 ### `email` (poll a mailbox for a received code)
 
 ```yaml
@@ -1250,7 +1510,7 @@ function of the secret and the clock ([BE-0046](../roadmaps/BE-0046-otp-email-st
 ```
 
 `email` waits for a 2FA / verification code delivered by email: it polls a generic HTTP mailbox
-(configured under `targets.<name>.mailbox`, see [configuration](configuration.md#mailbox-the-email-step))
+(configured under `targets.<name>.services.mailbox`, see [configuration](configuration.md#mailbox-the-email-step))
 until a message that arrived **after the step started** satisfies `match`, then extracts the value
 from its body by the `bodyMatches` regex (first capturing group, or the whole match) into
 `${vars.<var>}`. The wait is a **condition wait with a mandatory `timeout`** (no fixed sleep): a
@@ -1302,6 +1562,108 @@ must check a specific value captures it through `${vars.*}` and compares against
 against a literal it could not have known in advance. Every codegen target renders `generate` as a
 labeled `// TODO`, because the step runs in the runner rather than the app.
 
+### `eval` (transform a value held in a variable)
+
+```yaml
+- tap: { id: cart.open }
+  extract:
+    items: { sel: { id: cart.summary }, prop: label }   # "Apple, banana ,Cherry"
+
+- eval:
+    from: "${vars.items}"
+    ops:
+      - split: { by: "\\s*,\\s*", regex: true }
+      - filter: { notEmpty: true }
+      - sort
+    into: { var: sortedItems }                           # ["Apple","Cherry","banana"]
+
+- eval: { from: "${vars.sortedItems}", ops: [json, { pick: first }], into: { var: firstItem } }
+
+- eval:
+    from: "Taro Yamada"
+    ops: [{ split: " " }]
+    into: { vars: [givenName, familyName] }              # givenName=Taro, familyName=Yamada
+
+- eval:
+    from: "${secrets.API_TOKEN}"
+    ops: [{ substring: { start: 0, end: 8 } }]
+    into: { var: tokenPrefix }                           # masked in every later artifact
+```
+
+`eval` transforms a value the scenario already holds and stores the result under `${vars.*}`. The
+values a target shows are often not the values a later step needs. A cart label may need to become
+sorted items. A banner reading `Order #A-1042 confirmed` may need to become `A-1042`. Without `eval`,
+the author asserts the whole string or moves the logic out of the scenario
+([BE-0472](../roadmaps/BE-0472-eval-step-value-operations/BE-0472-eval-step-value-operations.md)).
+
+The name does not mean the step runs code. `ops` draws from a fixed vocabulary. A scenario cannot add
+an operation. `from` is a string with the usual `${...}` interpolation. Joining two variables needs no
+operation: `from: "${vars.a}-${vars.b}"` builds the joined string. Each entry of `ops` runs on the result of the one
+before it. An operation without arguments is a bare name. Every other operation is a mapping with one
+key.
+
+| Operation | Form | Input → output | Behavior |
+|---|---|---|---|
+| `split` | `split: ","` or `split: { by, regex? }` | string → list | splits on a literal separator, or on a regular expression when `regex` is true; capture groups in the pattern are not kept |
+| `join` | `join: "-"` | list → string | joins the elements; an empty separator is allowed |
+| `filter` | `filter: { matches \| equals \| contains \| notEmpty, not? }` | list → list | keeps the elements that satisfy exactly one predicate; `not: true` keeps the others |
+| `pick` | `pick: first`, `last`, or an index | list → string | takes one element; an index counts from zero |
+| `count` | `count` | list → string | the number of elements, as decimal text |
+| `sort` | `sort`, `sort: desc`, or `sort: { order, numeric? }` | list → list | orders by Unicode code point, or by decimal value with `numeric: true`; `desc` equals `sort` followed by `reverse` |
+| `unique` | `unique` | list → list | drops repeats and keeps the first of each |
+| `reverse` | `reverse` | list → list | reverses the order |
+| `json` | `json` | string → list | parses a JSON array; a non-string element renders as compact JSON text |
+| `regex` | `regex: { pattern, group? }` | string → string | capture `group` (default 0) of the first match |
+| `replace` | `replace: { find, with, regex? }` | string → string | replaces every occurrence |
+| `substring` | `substring: { start, end? }` | string → string | the characters from `start` up to `end`, both counted from zero |
+| `trim` | `trim` | string → string | removes leading and trailing spaces, tabs, and line breaks |
+| `case` | `case: lower` or `upper` | string → string | changes letter case |
+
+The result goes to `into`:
+
+- **`into: { var }`** stores one value. The run stores a string as it stands. The run stores a list
+  as compact JSON array text such as `["a","b"]`. A later `eval` turns that text back into a list
+  with `json`.
+- **`into: { vars: [...] }`** spreads a list result over the named variables in order. The first
+  element goes into the first name, the second into the second, and so on. A list longer than `vars`
+  leaves its extra elements unassigned. A shorter list stops the step: a variable left unset would
+  surface later as an unrelated mismatch.
+
+The loader checks the step before the run starts. It tracks the string-or-list type from `from` to the
+end. An operation applied to the wrong kind stops the load with an error naming the operation. The
+loader also refuses these forms:
+
+- an empty `ops` or an empty `split` separator
+- a `filter` with no predicate or with two or more
+- a negative index or an unknown `sort` order
+- `into.vars` on a string result
+- a regular expression that does not compile
+
+A free-text or index argument may hold a `${vars.*}` or `${secrets.*}` token. The loader cannot check
+such an argument, so the run applies the same checks to it after substitution. The fixed-choice
+arguments (`sort`'s `order` and `case`) and the flags `regex`, `not`, and `numeric` take literal
+values only.
+
+The step stops at run time, with no fallback value, in these cases:
+
+- a `regex` finds no match, or the pattern lacks the `group`
+- an index or a `substring` bound falls outside the value
+- `json` reads text that is not a JSON array
+- `numeric` sorting meets an element that is not a number
+- a `${...}` token has no value bound
+- a value exceeds 1,048,576 characters or 10,000 elements
+
+The message names the operation's position and never quotes a value. A step that stops this way writes
+no variable. The run records the produced value in the manifest and the report, as for `generate`.
+
+A result derived from a secret is itself a secret. An input counts as secret when it holds a
+`${secrets.*}` token. A `${vars.*}` token that an earlier `eval` marked secret counts too. The run
+masks the result in that scenario's evidence from the step on, its own report row included. The run
+also marks the target variables secret. `count` is the one exception: an element count carries no character of its input.
+Evidence written before the step stays as written. The step's failure reasons and produced values
+are masked too, so the manifest, the reports, and CI annotations never show the value.
+Every codegen target renders `eval` as a labeled `// TODO`, because the step runs in the runner.
+
 ### `manual`
 
 A human takeover recorded during `record`.
@@ -1348,7 +1710,7 @@ freeze the clock and signal bars for a stable image.
 - An app that is not running, as after an `installApp`, launches the way `relaunch` would launch it.
   `foreground` then waits on a condition until the app is ready.
 - On Android, and on iOS inside a device group, a running app gets the same condition wait. When the app never reaches the front, the step fails with `AppNotInFront`.
-  The wait looks for the app's own screen, not the target's `readyWhen`: `readyWhen` names the
+  The wait looks for the app's own screen, not the target's `subject.startWhen`: `subject.startWhen` names the
   screen a launch lands on, and a resumed app comes back on whatever screen it left.
 
 `setClipboard` seeds the pasteboard for a paste flow ([BE-0052](../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)).
@@ -1427,6 +1789,16 @@ including which invocations still require `--target`.
 
 With one declared target, a step may omit `target`. A step may also name that target directly, and
 both spellings behave the same way.
+
+A scenario declares nothing about the machine that runs it. Bajutsu computes what the scenario
+needs from the scenario itself. The scenario needs the driver each declared target resolves to. It
+also holds one device per declared target, counted across every driver. One Simulator target and
+one browser target count two. Before any device work, `bajutsu run` compares those needs with the
+machine's [worker capability file](drivers.md#worker-capability-check-be-0450). It also compares
+them with the host operating system
+([BE-0450](../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability.md)).
+A scenario this machine cannot run fails with a reason that names the driver or the limit. That
+reason starts with `worker-capability-unsupported:`. The other scenarios run.
 
 `${vars.*}` carries across every declared target in one run. These are the same
 [runtime variables](#runtime-variables-vars) `extract` populates. A value one target's step captures
@@ -1511,18 +1883,18 @@ Each declared target keeps its own config, not the primary target's. Resolution 
 
 | Reads that target's own config | Why |
 |---|---|
-| `before` / `after` lifecycle steps | Each target's own hooks fold in, in declared order, stamped with that target's name — so an app-side teardown and a web-side one each run against the right driver |
-| `mailbox` | An `email` or `totp` step polls the inbox its own target configured |
-| `locale`, `launchEnv`, `capture`, `interrupts` | Each is a property of the app under test, not of the run |
-| `baselines` / `schemas` / `goldens` | A `visual` or `golden` assertion compares against its own target's directory when that target configures one, else the run's |
+| `hooks.setup` / `hooks.cleanup` lifecycle steps | Each target's own hooks fold in, in declared order, stamped with that target's name — so an app-side teardown and a web-side one each run against the right driver |
+| `services.mailbox` | An `email` or `totp` step polls the inbox its own target configured |
+| `runsOn.ios.locale`, `subject.launch.env`, `evidence.capture`, `hooks.interrupts` | Each is a property of the app under test, not of the run |
+| `paths.baselines` / `paths.schemas` / `paths.goldens` | A `visual` or `golden` assertion compares against its own target's directory when that target configures one, else the run's |
 | Backend capabilities | Each target's steps are checked against its own backend before any device is leased, so a construct only one platform supports fails the right one |
 
-A nested `if` / `forEach` step from a target config's own `before` / `after` list omits `target`
+A nested `if` / `forEach` step from a target's own `hooks.setup` / `hooks.cleanup` list omits `target`
 too. It resolves to that config's own target, never to the scenario's `primaryTarget`. The flat,
 every-nesting-depth default above applies to a scenario's own steps alone.
 
 Two run-wide values stay shared. The `redact` secret set unions every declared target's own
-secrets. That union scrubs every target's evidence, since scrubbing too widely is the safer error.
+`evidence.secrets`. That union scrubs every target's evidence, since scrubbing too widely is the safer error.
 The run directory is a run-level artifact, never per target.
 
 The web engine flags still apply to a run's single web target. Those flags are `--headed`,
@@ -1543,19 +1915,18 @@ device instead:
 A **device group** expresses both. A device group is an entry of `targets` that holds two or more
 names. Its members share one device.
 
-The config does not change. Two builds of one app become two targets. They share a bundle identifier
-or an Android package, and each has its own `appPath`. A companion app is a target of its own:
+The config does not change. Two builds of one app become two targets. They share a `subject.id` (a
+bundle identifier or an Android package), and each has its own `subject.path`. A companion app is a
+target of its own:
 
 ```yaml
 targets:
   showcase-previous:                      # the old build the scenario starts on
-    backend: xcuitest
-    bundleId: com.example.showcase
-    appPath: build/Showcase-1.app
+    platform: ios
+    subject: { id: com.example.showcase, path: build/Showcase-1.app }
   showcase:                               # the current build
-    backend: xcuitest
-    bundleId: com.example.showcase
-    appPath: build/Showcase-2.app
+    platform: ios
+    subject: { id: com.example.showcase, path: build/Showcase-2.app }
 ```
 
 A bare name in `targets` stays a group of one. A scenario that writes no array runs as before. The
@@ -1573,7 +1944,7 @@ the primary:
 
 | Member | At the start |
 |---|---|
-| The primary (the first member of the first group) | Installs its `appPath` and launches. Listing it in `installs` is optional |
+| The primary (the first member of the first group) | Installs its `subject.path` and launches. Listing it in `installs` is optional |
 | A group of one (a bare name) | Installs and launches, as in any multi-target scenario |
 | A member listed in `installs` | Installs and launches |
 | Any other member of a group of two or more | A **later member**: nothing installs or launches until an `installApp` step and a `foreground` step bring it up |
@@ -1616,7 +1987,7 @@ omits `target` runs on the named target. The same holds for an `interrupts` entr
 `expect` entry.
 
 The step changes routing and nothing else. Leasing, the evidence directories, and crash recovery stay
-with the declared primary. In the `before` and `after` phases, an omitted `target` still resolves
+with the declared primary. In the `setup` and `cleanup` phases, an omitted `target` still resolves
 to the declared primary, since teardown has to run no matter where the run stopped.
 
 `setPrimaryTarget` belongs among a scenario's top-level `steps` alone. The loader refuses it inside
@@ -1625,7 +1996,7 @@ these constructs:
 - `if` or `forEach`
 - a target group, `web:`, or `app:`
 - an `interrupts` entry
-- `before` or `after`
+- `setup` or `cleanup`
 
 That placement lets the loader follow the current primary through the steps in order. A component
 may contain a `setPrimaryTarget` when its `use:` or `group:` call is a top-level step. Expansion never
@@ -1661,10 +2032,10 @@ adds a second app beside the first and retires nothing.
 `run` exits with status 2. The check refuses these cases:
 
 - Members of one group differ in platform, backend, device route, or effective `locale`. The device route is
-  `deviceProvider`, `device`, and `xcuitest.deviceType`.
+  the device provider (an `appium` environment named by `--worker-config`) and `runsOn.ios.kind`.
 - A web target sits in a group of two or more, since a browser has no device to share.
 - Two starting members of one group share an identifier. The second install would replace the first.
-- An `installApp.from` target has no `appPath`, or its `appPath` does not exist. A Git-sourced config
+- An `installApp.from` target has no `subject.path`, or its `subject.path` does not exist. A Git-sourced config
   builds the binary on demand, as it does for the primary.
 - A `setPrimaryTarget` names a member that an earlier `installApp` retired.
 
@@ -1770,6 +2141,7 @@ are in [selectors](selectors.md#assertion-evaluation).
 | `responseSchema` | a captured response body conforms to a JSON Schema (needs `--network`) | `responseSchema: { request: { urlMatches: "/api/items" }, schema: items.json }` |
 | `visual` | the screen matches a baseline image (visual regression) | `visual: { baseline: home.png, threshold: 0.02 }` |
 | `clipboard` | the device pasteboard matches (read back via `simctl pbpaste`) | `clipboard: { equals: "COUPON123" }` / `clipboard: { matches: "\\d{6}" }` |
+| `attribute` | an element's HTML attribute matches, or is absent (web only) | `attribute: { sel: { id: docs.link }, name: href, equals: /docs }` / `attribute: { sel: { id: panel }, name: aria-busy, absent: true }` |
 
 - `exists` writes its selector **inline** (`{ id: ... }` directly). `negate` is optional.
 - `value` / `label` take `sel:` + **exactly one** of `equals` / `contains` / `matches`.
@@ -1781,9 +2153,10 @@ are in [selectors](selectors.md#assertion-evaluation).
 - `responseSchema` validates a captured **response body against a JSON Schema** ([details below](#responseschema-json-schema-of-a-response)); needs the `--network` run flag.
 - `visual` pixel-compares a screenshot against a baseline image ([details below](#visual-visual-regression)).
 - `clipboard` reads the device pasteboard (`simctl pbpaste`) and checks **exactly one** of `equals` / `matches` (regex) — the read-back half of `setClipboard`, for verifying a "copy" action. It needs the per-device control channel, so it is unavailable on the fake driver / in parallel runs and fails cleanly there ([BE-0052](../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)).
+- `attribute` takes `sel:` + `name:` + **exactly one** of `equals` / `contains` / `matches` / `absent: true`. See [details below](#attribute-html-attribute-of-an-element) and [BE-0466](../roadmaps/BE-0466-web-attribute-assertion/BE-0466-web-attribute-assertion.md). The web (Playwright) backend reads the attribute on demand. Any other backend fails it before the device lease.
 
 > **Locale caveat**: string comparisons on `label`/`value` and assertions that look at visible
-> text break under translation. Write these against config's fixed locale, and write the selector
+> text break under translation. Write these against the target's fixed `runsOn.ios.locale`, and write the selector
 > itself by `id`.
 
 ### `request` (network assertion)
@@ -1796,11 +2169,13 @@ wait and `mocks` (below). At least one match field is required; the listed field
 |---|---|---|
 | `method` | str | HTTP method (`GET`, `POST`, …) |
 | `url` | str | Exact full URL (the endpoint) |
-| `urlMatches` | str | Regex / substring over the URL (query strings live here) |
+| `urlMatches` | str | Regex / substring over the full URL |
 | `path` | str | Exact path (query ignored) |
 | `pathMatches` | str | Regex over the path |
+| `query` | map | Key/value dictionary over the URL's query parameters ([below](#keyvalue-dictionaries-query-and-body)) |
+| `body` | map | Key/value dictionary over the JSON **request body** ([below](#keyvalue-dictionaries-query-and-body)) |
 | `status` | int | Response status code |
-| `bodyMatches` | str | Regex / substring over the **request body** |
+| `bodyMatches` | str | Regex / substring over the raw **request body** |
 | `count` | int | Number of matching exchanges — **exact** for the assertion, a **lower bound** for the `wait` |
 
 ```yaml
@@ -1810,8 +2185,66 @@ wait and `mocks` (below). At least one match field is required; the listed field
 ```
 
 > `count` is **not** a match field — at least one of `method` / `url` / `urlMatches` / `path` /
-> `pathMatches` / `status` / `bodyMatches` must be present. (real file:
+> `pathMatches` / `query` / `body` / `status` / `bodyMatches` must be present. (real file:
 > [`demos/showcase/scenarios/network_mock.yaml`](../demos/showcase/scenarios/network_mock.yaml))
+
+#### Key/value dictionaries (`query` and `body`)
+
+A regex over the URL or the body breaks on a harmless change. Reordered parameters break
+`urlMatches: "page=2&sort=asc"`. A pretty-printed JavaScript Object Notation (JSON) body breaks
+`bodyMatches: '"id":\s*42'`. The `query` and `body` dictionaries name keys instead, so order and
+formatting no longer matter
+([BE-0463](../roadmaps/BE-0463-network-expect-dict-matchers/BE-0463-network-expect-dict-matchers.md)).
+
+```yaml
+expect:
+  - request:
+      method: POST
+      path: /api/orders
+      query: { page: "2", sort: { $matches: "^(asc|desc)$" } }
+      body:
+        user: { id: "42", email: { $exists: true } }
+        items: [ { sku: A-1, qty: "1" } ]
+        coupon: { $exists: false }
+```
+
+- **`query`** checks the URL's query string. Keys and values are URL-decoded (`+` reads as a space).
+  A key with an empty or missing value (`?debug`, `?page=`) holds the value `""`. A repeated key
+  matches when any occurrence satisfies the value.
+- **`body`** checks the request body parsed as JSON, recursing into nested maps and lists. A
+  non-JSON, non-object, or absent body fails every `body` criterion.
+
+Each value takes one of four forms:
+
+| Form | Example | Holds when |
+|---|---|---|
+| Scalar | `id: "42"` | The text form of the JSON value equals the string (`"42"` matches the number `42`; booleans and null read as `true` / `false` / `null`) |
+| Operator map | `id: { $matches: "^4" }` | Every operator holds: `$matches` searches the text form with a regex, and `$exists: true` / `false` requires the key present / absent |
+| Plain map | `user: { id: "42" }` | The JSON value is an object, and each listed key holds; unlisted keys are ignored |
+| List | `tags: [a, b]` | The JSON value is an array of the same length, each element holding against the matcher at its index |
+
+`query` takes the scalar and operator-map forms alone, because a query string has no nesting.
+
+The scenario fails to load when a dictionary breaks the grammar:
+
+- **An unquoted scalar.** The loader refuses a value such as `qty: 1` or `ok: true`. Quote it
+  (`qty: "1"`). An unquoted number would never equal the text it is compared with.
+- **An empty dictionary.** `query: {}` or `body: {}` would match every exchange.
+- **A mixed or unknown operator map.** The loader refuses a map that mixes `$` keys with plain
+  keys. It also refuses any operator other than `$matches` or `$exists`.
+- **A bare operator at the top.** The top-level keys of `query` and `body` always name fields.
+
+To check a field whose own name starts with `$`, double the prefix: `$$ref` checks the field `$ref`.
+
+Suppose the assertion does not hold, and one exchange alone satisfies the endpoint and method
+criteria. The message then names the first key that did not hold, such as
+`query.page: expected "2", got "3"`. Otherwise the message keeps the plain count. That holds with no
+candidate, with more than one, and with `count` set.
+
+`query` and `body` work wherever this matcher does. That covers `request`, `event`,
+`requestSequence`, `responseSchema.request`, and `until: { request }`. Values accept `${vars.*}` /
+`${secrets.*}` tokens. `mocks` refuse both fields for now. The in-app matcher would ignore them and
+stub more traffic than the scenario says.
 
 ### `event` (analytics event assertion)
 
@@ -1819,13 +2252,14 @@ wait and `mocks` (below). At least one match field is required; the listed field
 ([BE-0048](../roadmaps/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md)).
 It is a pure check over the same observed exchanges `request` reads (needs the `--network` run flag),
 so the verdict stays machine-only — no LLM. It filters the timeline by the event's **endpoint** (the
-same `method` / `url` / `urlMatches` / `path` / `pathMatches` matcher as `request`), then by structured
-**request-body fields**, and checks how many exchanges survive against a count operator.
+same `method` / `url` / `urlMatches` / `path` / `pathMatches` matcher as `request`), then by its
+`query` / `body` dictionaries, and checks how many exchanges survive against a count operator.
 
 | Field | Type | Description |
 |---|---|---|
 | `method` / `url` / `urlMatches` / `path` / `pathMatches` | str | Endpoint matcher (AND-ed), same meaning as `request` |
-| `body` | map | Each `key: value` must be present in the JSON request body and equal the value, compared as text (so `amount: "300"` matches the JSON number `300`; a JSON boolean / null matches `"true"` / `"false"` / `"null"`) |
+| `query` | map | Key/value dictionary over the URL's query parameters, the same grammar as `request` ([dictionaries](#keyvalue-dictionaries-query-and-body)) |
+| `body` | map | Key/value dictionary over the JSON request body, the same grammar as `request`. The flat form compares top-level fields as text (so `amount: "300"` matches the JSON number `300`); nested maps, lists, `$matches`, and `$exists` work too ([dictionaries](#keyvalue-dictionaries-query-and-body)) |
 | `count` | object | Expected multiplicity — **exactly one** of `equals` / `atLeast` / `atMost`. Omitted means **at least one** |
 
 ```yaml
@@ -1837,9 +2271,11 @@ expect:
       count: { equals: 1 }
 ```
 
-> At least one of an endpoint field or `body` must be present, so an event always pins something. A
-> non-JSON, non-object, or absent request body matches no `body` criterion (it fails rather than
-> guessing). Body values support `${vars.*}` / `${secrets.*}` tokens like the rest of the DSL.
+> At least one of an endpoint field, `query`, or `body` must be present, so an event always pins
+> something. A non-JSON, non-object, or absent request body matches no `body` criterion (it fails
+> rather than guessing). Dictionary values support `${vars.*}` / `${secrets.*}` tokens like the rest
+> of the DSL. Write a top-level `body` key that starts with `$` as `$$`, since a single `$` marks an
+> operator.
 
 ### `requestSequence` (ordered requests)
 
@@ -1869,7 +2305,7 @@ check the screen can't express ([BE-0048](../roadmaps/BE-0048-behavioral-protoco
 It is a pure, deterministic check over the observed timeline plus a stored schema file (needs the
 `--network` run flag), so the verdict stays machine-only. `request` selects the exchange (the same
 matcher fields) whose response is validated; `schema` is a file path resolved within the target's
-**schemas directory** (`--schemas` flag, config `targets.<name>.schemas`, or `schemas/` beside the
+**schemas directory** (`--schemas` flag, config `targets.<name>.paths.schemas`, or `schemas/` beside the
 scenario). Validation uses the `jsonschema` library — install the `schema` extra
 (`pip install bajutsu[schema]`).
 
@@ -1904,8 +2340,8 @@ The comparison engine is selectable via `compare` (BE-0165):
 | `exact` | Pixel-perfect — any channel difference counts as a changed pixel. | Yes (backward-compatible) |
 | `pixelmatch` | Perceptual YIQ color distance with anti-aliasing detection. Tolerates sub-pixel rendering noise and one-pixel edge shifts. | No |
 
-When `compare` is omitted, the engine falls back to the target's `visualCompare` config
-(under `defaults:` or `targets.<name>`), and then to `exact`.
+When `compare` is omitted, the engine falls back to the target's `evidence.visualCompare` config
+(under `defaults.evidence` or `targets.<name>.evidence`), and then to `exact`.
 
 `threshold` is the allowed percentage of differing pixels (default `0.0` = exact match), shared
 by all engines. `colorTolerance` (0–1, default `0.1`) sets the per-pixel perceptual color
@@ -1937,6 +2373,53 @@ masked exactly as a rectangle is. A mask selector that matches nothing is a no-o
 on screen to hide); an ambiguous one fails, consistent with the determinism rule. Selector masks
 and rectangles can be mixed in one `exclude` list, and both work with an element-scoped comparison
 (a mask inside the cropped element is translated into the crop's coordinates).
+
+### `attribute` (HTML attribute of an element)
+
+```yaml
+- assert:
+    - attribute: { sel: { id: docs.link }, name: href, equals: /docs }
+    - attribute: { sel: { id: hero.image }, name: alt, contains: Bajutsu }
+    - attribute: { sel: { id: panel }, name: data-state, matches: "^(ready|idle)$" }
+    - attribute: { sel: { id: panel }, name: aria-busy, absent: true }
+```
+
+`attribute` checks one HTML attribute of one element on the web (Playwright) backend
+([BE-0466](../roadmaps/BE-0466-web-attribute-assertion/BE-0466-web-attribute-assertion.md)). It
+covers what the element tree does not carry. Examples are a link's `href`, an image's `alt`, and a
+`data-*` or `aria-*` state attribute.
+
+- **`sel`** resolves the same way it does for `value`. No match fails the assertion, and two or
+  more matches fail it as ambiguous. The element must be one the web query lists: one with a
+  `data-testid`, a `role`, or an interactive tag, or a text element addressed by its `label`. A bare
+  `<img>` carries no text, so it needs a `data-testid`. Two content-identical elements whose
+  attribute values differ also fail as ambiguous, since nothing else tells them apart.
+- **`name`** must be a valid HTML attribute name. An empty name fails to load. A name holding a
+  space, a quote, `>`, `/`, `=`, or a control character fails too. Bajutsu never lowercases the name. It
+  reaches the DOM's `getAttribute` as written. HTML elements match it case-insensitively. SVG and
+  MathML elements match it case-sensitively.
+- **The operator** is one of four, and a scenario names one alone. `equals`, `contains`, and
+  `matches` (a regular expression) follow the rules of `value` and `label`. `absent: true` passes
+  when the element has no attribute by that name. The scenario loader refuses `absent: false`.
+- **Presence differs from emptiness.** A present attribute with an empty value reads as `""`. So
+  `equals: ""` passes and `absent: true` fails. A missing attribute fails `equals`, `contains`, and
+  `matches`. The reason says so: `expected equals='x' but attribute 'href' is absent`. A mismatch
+  prints the actual value: `expected equals='/docs' but actual='/about'`. That reason passes the
+  artifact redaction boundary like every other reason.
+- **`${...}` tokens** in the expected string expand like any other assertion field.
+
+`attribute` works in a step's `assert`, in `expect`, in an `if` condition, and in an `interrupts`
+condition. A `wait` step cannot use it. The runner reads the attribute on demand, right after each
+query that feeds the block. A step's `assert` re-reads it on every tick of the condition wait. The poll stops once the attribute matches or the lane's wait floor runs out. The floor comes
+from `BAJUTSU_MIN_WAIT_TIMEOUT`. Element snapshots, goldens, crawl output, and reports gain no
+field. A report shows merely the attributes an assertion names.
+
+The assertion needs the `elementAttribute` capability, and the web backend alone declares it. On
+any other backend, the capability preflight fails the scenario before any device lease. The check
+finds an `attribute` anywhere, the iOS WebView context of a `web:` block included. Config
+validation also refuses an `attribute` in a non-web target's `hooks.interrupts` at load time. `attribute`
+reads attributes, not DOM properties: the `value` assertion keeps covering a form control's live
+value.
 
 ## Network mocks (deterministic stubs)
 
@@ -2069,7 +2552,7 @@ A scenario file carries `components:` in its `{description, scenarios}` mapping 
 
 A bare name the map does not define is an error naming the ref. No fallback opens a file. The map is **scoped to one file**. The loader reads it per file and never merges it across a suite directory. A name declared in one file stays invisible from its siblings. Reuse that spans files stays the component file's job. Crossing into a component file drops the map entirely. A component file declares no `components:`, so a bare `use` inside one is always undefined. A file-scoped component's own steps expand in the declaring file's scope. One may `use` another by bare name, or `use` a file by path.
 
-A `setup` prelude is a scenario-file-shaped document, so it may carry its own `components:`. The loader expands a prelude's `use` steps in the prelude's own scope before prepending them. A same-named entry in the calling scenario file cannot capture them. A path ref inside a prelude resolves against the prelude's own directory too, not the calling scenario file's.
+A target's `hooks` may call a component too ([above](#the-targets-hooks-hookssetup-and-hookscleanup)). Such a `use` resolves when the config loads. It resolves against the config file's directory, confined to the suite root. A config declares no `components:` map, so a hook's `use` names a component file by path. Its `with` values substitute at load, and `${secrets.*}` and `${vars.*}` still resolve when the step runs. A hook may not use `group:` or `setMocks`, directly or through a component.
 
 #### Components in a multi-target scenario
 
@@ -2171,7 +2654,7 @@ A `group:` step that omits `target` leaves each child to resolve as a hand-writt
 
 ### Data-driven scenarios (`data` / `dataFile`)
 
-A scenario with `data` (inline rows) or `dataFile` (a CSV path — the two are **mutually exclusive**) is expanded into **one scenario per row**, substituting `${row.<column>}` (`expand_data`, `scenario/expand.py`). Each derived scenario is renamed `"<name> [row N: col=val, …]"` and keeps the original preconditions, so every row reinstalls the app fresh and inherits the template's `erase` / `reinstall`.
+A scenario with `data` (inline rows) or `dataFile` (a CSV path — the two are **mutually exclusive**) is expanded into **one scenario per row**, substituting `${row.<column>}` (`expand_data`, `scenario/expand.py`). Each derived scenario is renamed `"<name> [row N: col=val, …]"` and keeps the original preconditions, so every row reinstalls the app fresh and inherits the template's `subject.reinstall`.
 
 ```yaml
 - name: search returns a result
@@ -2216,10 +2699,10 @@ uv run bajutsu run --target showcase-swiftui --tag smoke --exclude wip   # run @
 
 ### Secrets (`${secrets.X}`)
 
-Declare secret environment-variable names in config (`secrets: [API_TOKEN, ...]`). Each declared name `X` is resolved from the environment and substituted into the executed step **at action time** as `${secrets.X}`. The scenario file stores the **token**, never the value, and literal values are **auto-masked** in evidence, making secrets safe to commit and review. Unlike `${params.*}` / `${row.*}` (load-time expansion), this namespace is resolved by the run loop.
+Declare secret environment-variable names in config (`evidence: { secrets: [API_TOKEN, ...] }`). Each declared name `X` is resolved from the environment and substituted into the executed step **at action time** as `${secrets.X}`. The scenario file stores the **token**, never the value, and literal values are **auto-masked** in evidence, making secrets safe to commit and review. Unlike `${params.*}` / `${row.*}` (load-time expansion), this namespace is resolved by the run loop.
 
 ```yaml
-# config declares: secrets: [API_TOKEN]
+# config declares: evidence: { secrets: [API_TOKEN] }
 steps:
   - type: { text: "${secrets.API_TOKEN}", into: { id: auth.token } }   # real value typed; token kept in the report
 ```

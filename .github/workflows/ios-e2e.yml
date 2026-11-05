@@ -235,7 +235,7 @@ env:
   # time: a runner that crashes and never comes back keeps respawning, and each respawn runs simctl prep
   # and re-runs the scenario. BAJUTSU_XCUITEST_RESPAWN_TIMEOUT (90s, above) caps a *bare* in-place
   # respawn's readiness wait, but a crash-triggered retry (attempt > 1) now forces the same `erase`
-  # precondition a scenario already gets from `erase: true` (bajutsu/common/runner/pipeline.py's forced-erase
+  # precondition a scenario already gets from `reinstall: erase` (bajutsu/common/runner/pipeline.py's forced-erase
   # retry) unless the scenario opts out or the route rejects `erase` outright — and `erase` is exactly
   # what makes `is_respawn` false (bajutsu/platform_lifecycle/environments/xcuitest.py:661), so that
   # attempt pays the *full* 300s STARTUP_TIMEOUT ceiling plus the unbounded erase/boot/install prep
@@ -496,9 +496,7 @@ jobs:
       # restores the .app bundles' executable bits + symlinks and the runner Products dir whole, so
       # the .xctestrun's __TESTROOT__-relative references resolve (see the build job's header).
       - name: Download the prebuilt app + runner
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
-        with:
-          name: ios-build
+        uses: ./.github/actions/download-ios-build
 
       - name: Unpack the build products
         run: tar -xpf ios-build.tar
@@ -641,9 +639,7 @@ jobs:
       # Install the prebuilt products from the `build` job instead of compiling here (see the build
       # job's header for the tar / __TESTROOT__ rationale).
       - name: Download the prebuilt app + runner
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
-        with:
-          name: ios-build
+        uses: ./.github/actions/download-ios-build
 
       - name: Unpack the build products
         run: tar -xpf ios-build.tar
@@ -710,6 +706,12 @@ jobs:
           udid: ${{ steps.toolchain.outputs.udid }}
           artifact-name: actuation-run
 
+      # `bajutsu repl --attach` (BE-0455): launch the app, attach the shell, and compare the app's pid
+      # before and after. Here rather than in `run` for the reason every step in this job is: new
+      # on-device coverage earns its stability first. After the scenarios step, which synced the venv.
+      - name: Attach the REPL to the running app (BE-0455)
+        run: scripts/repl_attach_e2e.sh "${{ steps.toolchain.outputs.udid }}"
+
   # The BE-0006 element-tree golden over XCUITest: pins the normalized accessibility tree for the
   # Stable catalog's list rows, reached on the launch tab. Runs golden.yaml per PR — the iOS twin of
   # android-e2e.yml's `golden (adb)` job. Deliberately NOT in the `e2e` gate's `needs:` (like
@@ -742,9 +744,7 @@ jobs:
       # Install the prebuilt products from the `build` job instead of compiling here (see the build
       # job's header for the tar / __TESTROOT__ rationale).
       - name: Download the prebuilt app + runner
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
-        with:
-          name: ios-build
+        uses: ./.github/actions/download-ios-build
 
       - name: Unpack the build products
         run: tar -xpf ios-build.tar
@@ -808,9 +808,7 @@ jobs:
       # Install the prebuilt products from the `build` job instead of compiling here (see the build
       # job's header for the tar / __TESTROOT__ rationale).
       - name: Download the prebuilt app + runner
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
-        with:
-          name: ios-build
+        uses: ./.github/actions/download-ios-build
 
       - name: Unpack the build products
         run: tar -xpf ios-build.tar
@@ -1023,9 +1021,7 @@ jobs:
       # so the two smoke runs below resolve to the staged copy with no testRunner path (BE-0292) — see
       # the build job's header for the tar / __TESTROOT__ rationale.
       - name: Download the prebuilt apps + bundled runner
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
-        with:
-          name: ios-build
+        uses: ./.github/actions/download-ios-build
 
       - name: Unpack the build products
         run: tar -xpf ios-build.tar
@@ -1083,9 +1079,7 @@ jobs:
       # Install the prebuilt products from the `build` job instead of compiling here (see the build
       # job's header for the tar / __TESTROOT__ rationale).
       - name: Download the prebuilt app + runner
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
-        with:
-          name: ios-build
+        uses: ./.github/actions/download-ios-build
 
       - name: Unpack the build products
         run: tar -xpf ios-build.tar
@@ -1197,9 +1191,7 @@ jobs:
       # Install the prebuilt products from the `build` job instead of compiling here (see the build
       # job's header for the tar / __TESTROOT__ rationale).
       - name: Download the prebuilt app + runner
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
-        with:
-          name: ios-build
+        uses: ./.github/actions/download-ios-build
 
       - name: Unpack the build products
         run: tar -xpf ios-build.tar

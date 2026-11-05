@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 from _shared import (
     FakeProc,
+    WorkerStandIn,
     _get_json,
     _post,
     _serve,
@@ -25,6 +26,7 @@ from bajutsu import serve as srv
 def test_http_run_then_job_status(tmp_path: Path) -> None:
     scn_dir, cfg, runs = project(tmp_path)
     state = srv.ServeState(
+        executor=WorkerStandIn(),
         scenarios_dir=scn_dir,
         config=cfg,
         runs_dir=runs,
@@ -51,6 +53,42 @@ def test_http_run_then_job_status(tmp_path: Path) -> None:
         server.server_close()
 
 
+def test_a_machine_dispatched_run_audits_the_ci_job(tmp_path: Path) -> None:
+    from sqlalchemy import create_engine, select
+    from sqlalchemy.orm import Session
+
+    from bajutsu.serve.operations.dispatch import start_run
+    from bajutsu.serve.server.db import SqlRepository
+    from bajutsu.serve.server.models import AuditLog, Base
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'serve.db'}")
+    Base.metadata.create_all(engine)
+    repository = SqlRepository(engine)
+    repository.ensure_org("default", slug="default", name="default")
+    scn_dir, cfg, runs = project(tmp_path)
+    state = srv.ServeState(
+        executor=WorkerStandIn(),
+        scenarios_dir=scn_dir,
+        config=cfg,
+        runs_dir=runs,
+        cwd=tmp_path,
+        repository=repository,
+        popen=fake_popen(["PASS  runs/done-1/manifest.json\n"]),
+    )
+    job = {"runId": "1", "checkRunId": "2"}
+    _payload, status = start_run(
+        state,
+        {"scenario": "smoke.yaml", "target": "demo"},
+        actor="repo:acme/app",
+        machine_org="default",
+        ci_job=job,
+    )
+    assert status == 200
+    with Session(engine) as session:
+        (row,) = session.scalars(select(AuditLog).where(AuditLog.action == "run"))
+    assert row.detail["actor"] == job
+
+
 def test_http_run_boots_pool_and_passes_workers(tmp_path: Path) -> None:
     """The UI's picked devices are booted, and the udid pool + workers reach the run command."""
     scn_dir, cfg, runs = project(tmp_path)
@@ -67,6 +105,7 @@ def test_http_run_boots_pool_and_passes_workers(tmp_path: Path) -> None:
 
     server, port = _serve(
         srv.ServeState(
+            executor=WorkerStandIn(),
             scenarios_dir=scn_dir,
             config=cfg,
             runs_dir=runs,
@@ -101,7 +140,9 @@ def test_http_run_boots_pool_and_passes_workers(tmp_path: Path) -> None:
 def test_http_run_requires_scenario_and_app(tmp_path: Path) -> None:
     scn_dir, cfg, runs = project(tmp_path)
     server, port = _serve(
-        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+        srv.ServeState(
+            executor=WorkerStandIn(), scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path
+        )
     )
     try:
         body = json.dumps({"scenario": "s.yaml"}).encode()  # missing app
@@ -119,7 +160,9 @@ def test_http_run_requires_scenario_and_app(tmp_path: Path) -> None:
 
 def test_http_run_requires_open_config(tmp_path: Path) -> None:
     _, _, runs = project(tmp_path)
-    server, port = _serve(srv.ServeState(runs_dir=runs, root=tmp_path, cwd=tmp_path))  # no config
+    server, port = _serve(
+        srv.ServeState(executor=WorkerStandIn(), runs_dir=runs, root=tmp_path, cwd=tmp_path)
+    )  # no config
     try:
         status, resp = _post(port, "/api/run", {"scenario": "smoke.yaml", "target": "demo"})
         assert status == 400 and "open a config" in resp["error"]
@@ -130,7 +173,11 @@ def test_http_run_requires_open_config(tmp_path: Path) -> None:
 
 def _run_server(tmp_path: Path) -> tuple[Any, int]:
     scn_dir, cfg, runs = project(tmp_path)
-    return _serve(srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path))
+    return _serve(
+        srv.ServeState(
+            executor=WorkerStandIn(), scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path
+        )
+    )
 
 
 def test_http_run_rejects_scenario_outside_dir(tmp_path: Path) -> None:
@@ -203,7 +250,12 @@ def test_run_cmd_always_points_runs_dir_at_the_store(tmp_path: Path) -> None:
         return FakeProc(["PASS  runs/p/manifest.json\n"])
 
     state = srv.ServeState(
-        scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path, popen=popen
+        executor=WorkerStandIn(),
+        scenarios_dir=scn_dir,
+        config=cfg,
+        runs_dir=runs,
+        cwd=tmp_path,
+        popen=popen,
     )
     server, port = _serve(state)
     try:

@@ -1,6 +1,8 @@
 import Darwin
 import Foundation
 
+@testable import BajutsuKit
+
 // Only the control channel's tests need a collector to talk to, so the stub is selected by the same
 // compilation condition the channel is.
 #if BAJUTSU_ENABLE_CONTROL_CHANNEL
@@ -11,7 +13,11 @@ import Foundation
 /// It answers the collector's contract and nothing more: `GET /commands` hands over whatever is
 /// queued and empties it, `POST /commands/ack` takes the app's report, and every other path is a
 /// 404 — the same shape unit 1 landed. Each request is recorded whole, so a test can assert the
-/// method, the path, the bearer token, and the body that actually went over the wire.
+/// method, the path, the `Authorization` header, and the body that actually went over the wire.
+///
+/// With `signingToken` set, it signs every answer to a signed request against that request's nonce
+/// as the collector does (BE-0459); a token other than the app's stands in for an answer rewritten
+/// on the route. `drainStatuses` scripts the status of the next drains, ahead of the normal 200.
 final class LoopbackCollectorStub {
     struct Request {
         let method: String
@@ -23,6 +29,14 @@ final class LoopbackCollectorStub {
     /// Called on the server's own thread once an acknowledgement has been answered, so a test can
     /// wait on the round trip finishing instead of on a duration.
     var onAcknowledge: (() -> Void)?
+    /// The token answers are signed with; nil sends them unsigned. Set before `start()`.
+    var signingToken: String?
+    /// Signs every answer against this nonce instead of the request's: a captured answer replayed
+    /// to a later poll. Set before `start()`.
+    var staleNonce: String?
+    /// Statuses the next drains answer with, in order, before the stub serves the queue. Set before
+    /// `start()`.
+    var drainStatuses: [Int] = []
 
     private let lock = NSLock()
     private var listenFD: Int32 = -1
@@ -108,17 +122,21 @@ final class LoopbackCollectorStub {
         lock.withLock { recorded.append(request) }
         switch (request.method, request.path) {
         case ("GET", "/commands"):
+            if let scripted = lock.withLock({ drainStatuses.isEmpty ? nil : drainStatuses.removeFirst() }) {
+                write(fd, status: "\(scripted) Scripted", body: Data(), for: request)
+                return
+            }
             let body = lock.withLock { () -> String in
                 let queued = pending
                 pending = "[]"  // the collector's drain empties the queue in the same step
                 return queued
             }
-            write(fd, status: "200 OK", body: Data(body.utf8))
+            write(fd, status: "200 OK", body: Data(body.utf8), for: request)
         case ("POST", "/commands/ack"):
-            write(fd, status: "204 No Content", body: Data())
+            write(fd, status: "204 No Content", body: Data(), for: request)
             onAcknowledge?()
         default:
-            write(fd, status: "404 Not Found", body: Data())
+            write(fd, status: "404 Not Found", body: Data(), for: request)
         }
     }
 
@@ -162,7 +180,17 @@ final class LoopbackCollectorStub {
         )
     }
 
-    private func write(_ fd: Int32, status: String, body: Data) {
+    private func write(_ fd: Int32, status: String, body: Data, for request: Request) {
+        // The collector leaves a 401 and a 409 unsigned: neither has a verified request to bind to.
+        var signature = ""
+        let code = Int(status.prefix(3)) ?? 0
+        if let signingToken, code != 401, code != 409,
+           let nonce = staleNonce ?? Self.nonce(in: request.authorization) {
+            let value = CollectorSigning.answerSignature(
+                token: signingToken, nonce: nonce, status: code, body: body
+            )
+            signature = "\(CollectorSigning.answerHeader): \(value)\r\n"
+        }
         // `Connection: close` and an explicit length keep the client from waiting on a reuse this
         // one-connection-at-a-time stub never offers.
         let head = """
@@ -170,7 +198,7 @@ final class LoopbackCollectorStub {
             Content-Type: application/json\r
             Content-Length: \(body.count)\r
             Connection: close\r
-            \r
+            \(signature)\r
 
             """
         var out = Data(head.utf8)
@@ -178,6 +206,17 @@ final class LoopbackCollectorStub {
         out.withUnsafeBytes { bytes in
             _ = Darwin.send(fd, bytes.baseAddress, bytes.count, 0)
         }
+    }
+
+    /// The nonce a signed `Authorization` value carries, or nil for any other value.
+    static func nonce(in authorization: String) -> String? {
+        guard authorization.hasPrefix("\(CollectorSigning.scheme) ") else { return nil }
+        let params = authorization.dropFirst(CollectorSigning.scheme.count + 1)
+        for part in params.split(separator: ",") {
+            let pair = part.trimmingCharacters(in: .whitespaces).split(separator: "=", maxSplits: 1)
+            if pair.count == 2, pair[0] == "nonce" { return String(pair[1]) }
+        }
+        return nil
     }
 
     enum Failure: Error {

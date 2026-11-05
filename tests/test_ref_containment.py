@@ -53,11 +53,11 @@ def test_in_root_seed_photos_still_loads(tmp_path: Path) -> None:
     _write(root / "fixtures" / "red.png", "not a real png, path resolution only")
     scenario = _write(
         root / "scenarios" / "s.yaml",
-        "- name: s\n  preconditions: { erase: true, seedPhotos: [../fixtures/red.png] }\n"
+        "- name: s\n  preconditions: { subject: { reinstall: erase }, device: { ios: { seedPhotos: [../fixtures/red.png] } } }\n"
         "  steps:\n    - tap: { id: a }\n",
     )
     out = load_expanded_scenarios(scenario, root=root)
-    resolved = out[0].preconditions.seed_photos
+    resolved = out[0].preconditions.seed_photos_for("ios")
     assert resolved == [str((root / "fixtures" / "red.png").resolve())]
 
 
@@ -65,7 +65,7 @@ def test_parent_chain_seed_photos_rejected(tmp_path: Path) -> None:
     _write(tmp_path / "secret.png", "TOPSECRET")
     scenario = _write(
         tmp_path / "suite" / "s.yaml",
-        "- name: s\n  preconditions: { erase: true, seedPhotos: [../secret.png] }\n"
+        "- name: s\n  preconditions: { subject: { reinstall: erase }, device: { ios: { seedPhotos: [../secret.png] } } }\n"
         "  steps:\n    - tap: { id: a }\n",
     )
     with pytest.raises(ValueError, match="outside the suite root") as ei:
@@ -162,8 +162,6 @@ def test_run_expand_file_rejects_escape(tmp_path: Path, capsys: pytest.CaptureFi
     # It reports the rejection as a clean `typer.Exit(2)`, and the message names only the ref.
     import typer
 
-    from bajutsu.common.config import Effective, WebConfig
-    from bajutsu.common.scenario import Redact
     from bajutsu.run.cli import _expand_file
 
     _write(tmp_path / "secret.yaml", "steps:\n  - tap: { id: TOPSECRET }\n")
@@ -171,29 +169,12 @@ def test_run_expand_file_rejects_escape(tmp_path: Path, capsys: pytest.CaptureFi
         tmp_path / "suite" / "s.yaml",
         "- name: s\n  steps:\n    - use: { component: ../secret.yaml }\n",
     )
-    eff = Effective(
-        target="web",
-        platform_config=WebConfig(base_url=None),
-        backend=["playwright"],
-        device="",
-        locale="en_US",
-        launch_env={},
-        launch_args=[],
-        id_namespaces=[],
-        reserved_namespaces=[],
-        mock_server=None,
-        setup=None,
-        capture=[],
-        redact=Redact(),
-    )
     with pytest.raises(typer.Exit):
-        _expand_file(scenario, eff, root=scenario.parent)
+        _expand_file(scenario, root=scenario.parent)
     assert "TOPSECRET" not in capsys.readouterr().out
 
 
 def test_run_expand_file_in_root_component_loads(tmp_path: Path) -> None:
-    from bajutsu.common.config import Effective, WebConfig
-    from bajutsu.common.scenario import Redact
     from bajutsu.run.cli import _expand_file
 
     root = tmp_path / "suite"
@@ -202,55 +183,23 @@ def test_run_expand_file_in_root_component_loads(tmp_path: Path) -> None:
         root / "scenarios" / "s.yaml",
         "- name: s\n  steps:\n    - use: { component: ../components/login.yaml }\n",
     )
-    eff = Effective(
-        target="web",
-        platform_config=WebConfig(base_url=None),
-        backend=["playwright"],
-        device="",
-        locale="en_US",
-        launch_env={},
-        launch_args=[],
-        id_namespaces=[],
-        reserved_namespaces=[],
-        mock_server=None,
-        setup=None,
-        capture=[],
-        redact=Redact(),
-    )
-    scenarios, _desc, _plan_sources = _expand_file(scenario, eff, root=root)
+    scenarios, _desc, _plan_sources = _expand_file(scenario, root=root)
     assert scenarios[0].steps[0].tap.id == "login"  # type: ignore[union-attr]
 
 
 def test_run_expand_file_resolves_seed_photos(tmp_path: Path) -> None:
     # `bajutsu run`'s own loader resolves `seedPhotos` the same way as the device-free readers
     # (`contained_ref`, roadmap item) — not a second implementation that could drift from it.
-    from bajutsu.common.config import Effective, WebConfig
-    from bajutsu.common.scenario import Redact
     from bajutsu.run.cli import _expand_file
 
     root = tmp_path / "suite"
     _write(root / "fixtures" / "red.png", "not a real png, path resolution only")
     scenario = _write(
         root / "scenarios" / "s.yaml",
-        "- name: s\n  preconditions: { erase: true, seedPhotos: [../fixtures/red.png] }\n"
+        "- name: s\n  preconditions: { subject: { reinstall: erase }, device: { ios: { seedPhotos: [../fixtures/red.png] } } }\n"
         "  steps:\n    - tap: { id: a }\n",
     )
-    eff = Effective(
-        target="web",
-        platform_config=WebConfig(base_url=None),
-        backend=["playwright"],
-        device="",
-        locale="en_US",
-        launch_env={},
-        launch_args=[],
-        id_namespaces=[],
-        reserved_namespaces=[],
-        mock_server=None,
-        setup=None,
-        capture=[],
-        redact=Redact(),
-    )
-    scenarios, _desc, _plan_sources = _expand_file(scenario, eff, root=root)
-    assert scenarios[0].preconditions.seed_photos == [
+    scenarios, _desc, _plan_sources = _expand_file(scenario, root=root)
+    assert scenarios[0].preconditions.seed_photos_for("ios") == [
         str((root / "fixtures" / "red.png").resolve())
     ]

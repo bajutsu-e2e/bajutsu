@@ -7,6 +7,8 @@ The Playwright (web CI) and XCUITest (on-device E2E) backends reuse the same con
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import pytest
 from driver_conformance import (
     FIELD_ID,
@@ -23,6 +25,7 @@ from driver_conformance import (
     TAP_MIRROR_B_VALUE_ID,
     ConformanceHarness,
     DriverConformanceContract,
+    _measure_one_step,
     element,
 )
 
@@ -152,3 +155,66 @@ class TestFakeDriverConformance(DriverConformanceContract):
     @pytest.fixture
     def harness(self) -> ConformanceHarness:
         return FakeConformanceHarness()
+
+
+class _StaleBoundsDriver(FakeDriver):
+    """Answers the first read after a scroll with the pre-scroll bounds, as a starved emulator did.
+
+    That read drops the tall row, so the scroll loop's catch-up sees the tree change and stops at it,
+    while every row the two reads share still sits where it was before the gesture (#2197).
+    """
+
+    def __init__(self, screen: list[base.Element], *, lag: float) -> None:
+        super().__init__(screen=screen, viewport=_SCROLL_VIEWPORT)
+        self._lag = lag
+        self._stale: list[base.Element] | None = None
+
+    def read_lag(self) -> float:
+        return self._lag
+
+    def scroll(self, frm: base.Point, to: base.Point) -> None:
+        self._stale = [el for el in super().query() if el["identifier"] != SCROLL_TALL_ID]
+        super().scroll(frm, to)
+
+    def query(self) -> list[base.Element]:
+        stale, self._stale = self._stale, None
+        return stale if stale is not None else super().query()
+
+
+class _StuckDriver(FakeDriver):
+    """A backend whose scroll moves nothing, but which admits its reads may lag."""
+
+    def read_lag(self) -> float:
+        return 0.2
+
+    def scroll(self, frm: base.Point, to: base.Point) -> None:
+        pass
+
+
+class _ScreenHarness(FakeConformanceHarness):
+    """Hands the fake's scroll screen to a driver built by `make`, so a case controls how it reads."""
+
+    def __init__(self, make: Callable[[list[base.Element]], base.Driver]) -> None:
+        self._make = make
+
+    def scrollable_screen(self) -> base.Driver:
+        return self._make(FakeConformanceHarness().scrollable_screen().query())
+
+
+def test_step_travel_waits_past_a_read_with_pre_gesture_bounds() -> None:
+    # The read the catch-up accepted described the moved tree's rows at their old positions; the
+    # measurement must read on to the rows' own travel rather than report the step as 0.0 (#2197).
+    requested, realized, _ = _measure_one_step(
+        _ScreenHarness(lambda screen: _StaleBoundsDriver(screen, lag=1.0)), 0.25
+    )
+    assert realized == pytest.approx(requested)
+
+
+def test_step_travel_still_reads_zero_for_a_step_that_moved_nothing() -> None:
+    # The wait is bounded by the backend's declared lag, so it cannot turn a genuinely stuck scroll
+    # into a pass: the measurement ends at 0.0 and the contract's tolerance rejects it.
+    requested, realized, _ = _measure_one_step(
+        _ScreenHarness(lambda screen: _StuckDriver(screen=screen, viewport=_SCROLL_VIEWPORT)), 0.25
+    )
+    assert requested > 0
+    assert realized == 0.0

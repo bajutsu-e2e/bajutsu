@@ -19,6 +19,7 @@ from bajutsu.common.backend_cli import simctl as simctl_mod
 from bajutsu.serve import jobs as srv_jobs
 from bajutsu.serve import operations as ops
 from bajutsu.serve import state as srv_state
+from bajutsu.serve.helpers import unknown_target_error
 from bajutsu.serve.logbus import InMemoryLogBus
 from bajutsu.serve.uploads import Upload
 
@@ -61,6 +62,7 @@ def test_run_job_cloud_batch_records_the_manifest_verdict(tmp_path: Path) -> Non
             dest: Path,
             checkpoint: Any = None,
             job_id: str = "",
+            interrupt: Any = None,
         ) -> Any:
             run_dir = dest / "runs" / "20260101-1"
             run_dir.mkdir(parents=True)
@@ -135,6 +137,7 @@ def test_run_job_cloud_batch_fails_loud_when_submit_raises(tmp_path: Path) -> No
             dest: Path,
             checkpoint: Any = None,
             job_id: str = "",
+            interrupt: Any = None,
         ) -> Any:
             raise RuntimeError("simulated AWS failure")
 
@@ -390,8 +393,15 @@ def test_run_job_build_failure_skips_the_run(tmp_path: Path) -> None:
 def test_target_build_info_reads_config(tmp_path: Path) -> None:
     cfg = tmp_path / "c.yaml"
     cfg.write_text(
-        "targets:\n  demo:\n    bundleId: com.example.demo\n"
-        "    appPath: build/Demo.app\n    build: make demo\n  bare: { bundleId: com.example.bare }\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    subject: {id: com.example.demo, path: build/Demo.app, build: make demo}\n"
+            "  bare:\n"
+            "    platform: ios\n"
+            "    subject: {id: com.example.bare}\n"
+        ),
         encoding="utf-8",
     )
     assert srv.target_build_info(cfg, "demo") == ("build/Demo.app", "make demo")
@@ -400,11 +410,41 @@ def test_target_build_info_reads_config(tmp_path: Path) -> None:
     assert srv.target_build_info(tmp_path / "missing.yaml", "demo") == (None, None)  # no config
 
 
+def test_unknown_target_error_names_a_template_and_lists_no_targets(tmp_path: Path) -> None:
+    cfg = tmp_path / "c.yaml"
+    cfg.write_text(
+        (
+            "templates:\n"
+            "  tpl: {platform: ios}\n"
+            "targets:\n"
+            "  demo:\n"
+            "    extends: tpl\n"
+            "    subject: {id: com.example.demo}\n"
+        ),
+        encoding="utf-8",
+    )
+    assert unknown_target_error(cfg, "demo") is None
+    assert unknown_target_error(cfg, "tpl") == "'tpl' is a template, not a target"
+    assert unknown_target_error(cfg, "ghost") == (
+        "unknown target: 'ghost' (define targets.ghost in config)"
+    )
+    # An unreadable config is the job's own load error to report, not this guard's.
+    assert unknown_target_error(tmp_path / "missing.yaml", "demo") is None
+
+
 def test_target_scenarios_dir_reads_config(tmp_path: Path) -> None:
     cfg = tmp_path / "c.yaml"
     cfg.write_text(
-        "targets:\n  demo: { bundleId: com.example.demo, scenarios: scn/dir }\n"
-        "  bare: { bundleId: com.example.bare }\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    subject: {id: com.example.demo}\n"
+            "    paths: {scenarios: scn/dir}\n"
+            "  bare:\n"
+            "    platform: ios\n"
+            "    subject: {id: com.example.bare}\n"
+        ),
         encoding="utf-8",
     )
     assert srv.target_scenarios_dir(cfg, "demo") == Path("scn/dir")
@@ -709,26 +749,6 @@ def test_try_new_job_per_user_and_per_org_caps_compose(tmp_path: Path) -> None:
     assert state.try_register(srv.Job(cmd=[], actor="alice", org="globex")) is None
 
 
-def test_try_register_forwards_the_per_call_device_budget(tmp_path: Path) -> None:
-    # The device budget is per-target, not a state-wide field like the other caps, so `try_register`
-    # takes it per call and forwards it to the registry's batch pool cap (BE-0336 Unit 4).
-    from bajutsu.serve.batch_provider import BatchRequest
-
-    request = BatchRequest(
-        provider="devicefarm",
-        scenario="scenarios/s.yaml",
-        target="demo",
-        config="bajutsu.config.yaml",
-        platform="android",
-        app_path="app.apk",
-    )
-    state = srv.ServeState(runs_dir=tmp_path / "runs")
-    assert state.try_register(srv.Job(batch=request), device_budget=1) is not None
-    assert state.try_register(srv.Job(batch=request), device_budget=1) is None
-    # With no budget passed (the default), the batch pool is unbounded — every other run path.
-    assert state.try_register(srv.Job(batch=request)) is not None
-
-
 # The concurrency logic lives in JobRegistry (BE-0198), so it is tested directly against the
 # registry — the id sequence, the register-twice guard, and each cap — without standing up a full
 # ServeState, whose __post_init__ resolves stores, secrets, and a launch dir that the caps don't
@@ -793,35 +813,9 @@ def test_job_registry_caps_concurrency_per_org() -> None:
     assert reg.try_register(srv.Job(cmd=[], org="globex"), max_concurrent_per_org=1) is not None
 
 
-def test_job_registry_caps_concurrent_batch_by_provider_pool() -> None:
-    # The device budget caps in-flight cloud-batch jobs keyed on the batch device pool — the
-    # provider — so at most K reserve a device at once (BE-0336 Unit 4). A run on a different
-    # provider draws on a different pool and is unaffected; a non-batch job is exempt entirely.
-    from bajutsu.serve.batch_provider import BatchRequest
-
-    def _batch(provider: str) -> BatchRequest:
-        return BatchRequest(
-            provider=provider,
-            scenario="scenarios/s.yaml",
-            target="demo",
-            config="bajutsu.config.yaml",
-            platform="android",
-            app_path="app.apk",
-        )
-
-    reg = srv_state.JobRegistry(logbus=InMemoryLogBus())
-    assert reg.try_register(srv.Job(batch=_batch("devicefarm")), max_concurrent_batch=1) is not None
-    # A second devicefarm run would reserve a second device beyond the budget of 1 — rejected.
-    assert reg.try_register(srv.Job(batch=_batch("devicefarm")), max_concurrent_batch=1) is None
-    # A different provider is a different device pool, so its own budget of 1 still has room.
-    assert reg.try_register(srv.Job(batch=_batch("firebase")), max_concurrent_batch=1) is not None
-    # A non-batch (local) job reserves no cloud device, so the batch budget never applies to it.
-    assert reg.try_register(srv.Job(cmd=[]), max_concurrent_batch=1) is not None
-
-
-def test_job_registry_batch_budget_unlimited_by_default() -> None:
-    # Default 0 = unbounded, so a target with no configured device budget dispatches every scenario
-    # as before (BE-0336 Unit 4). A cap <= 0 is likewise treated as unlimited.
+def test_job_registry_puts_no_cap_of_its_own_on_batch_jobs() -> None:
+    # The server-side device budget is gone (BE-0452): a Device Farm worker's `maxJobConcurrency`
+    # bounds its own jobs, so the registry registers every batch job the other caps admit.
     from bajutsu.serve.batch_provider import BatchRequest
 
     request = BatchRequest(
@@ -835,7 +829,6 @@ def test_job_registry_batch_budget_unlimited_by_default() -> None:
     reg = srv_state.JobRegistry(logbus=InMemoryLogBus())
     assert reg.try_register(srv.Job(batch=request)) is not None
     assert reg.try_register(srv.Job(batch=request)) is not None
-    assert reg.try_register(srv.Job(batch=request), max_concurrent_batch=0) is not None
 
 
 def test_job_registry_counts_only_running_jobs() -> None:
@@ -918,6 +911,7 @@ class _CapturingProvider:
         dest: Path,
         checkpoint: Any = None,
         job_id: str = "",
+        interrupt: Any = None,
     ) -> Any:
         import json
 
@@ -951,33 +945,29 @@ def _batch_state(tmp_path: Path, provider: Any, **kwargs: Any) -> tuple[srv.Serv
     return state, job
 
 
-def test_batch_job_gets_a_durable_checkpoint_on_the_db_backend(
-    tmp_path: Path, serve_engine: Any
-) -> None:
-    # On the hosted DB backend the worker hands the provider a durable checkpoint, so a 150-minute
-    # poll interrupted by a serve restart resumes the scheduled run rather than losing it (Unit 5).
+def test_batch_job_hands_the_provider_its_lease_checkpoint(tmp_path: Path) -> None:
+    # A leased worker sets the job's checkpoint, its route to the server's stored ARN, so a poll
+    # interrupted by a restart resumes the scheduled run rather than losing it (BE-0448).
     from bajutsu.serve import batch_provider as bp
-    from bajutsu.serve.server.db import SqlRepository
-    from bajutsu.serve.server.models import Base
 
-    engine = serve_engine()
-    Base.metadata.create_all(engine)
     provider = _CapturingProvider()
+    checkpoint = object()
     saved = dict(bp._PROVIDERS)
     try:
-        state, job = _batch_state(tmp_path, provider, repository=SqlRepository(engine))
+        state, job = _batch_state(tmp_path, provider)
+        job.batch_checkpoint = checkpoint  # type: ignore[assignment]
         srv.run_job(state, job)
     finally:
         bp._PROVIDERS.clear()
         bp._PROVIDERS.update(saved)
 
-    assert provider.checkpoint is not None
+    assert provider.checkpoint is checkpoint
     assert job.view()["ok"] is True
 
 
-def test_batch_job_has_no_durable_checkpoint_on_the_local_backend(tmp_path: Path) -> None:
-    # A local single-process backend has no database to persist to, so the checkpoint is None: its
-    # best-effort path is the in-process retry, never a cross-restart resume (BE-0336 Unit 5).
+def test_batch_job_without_a_lease_has_no_checkpoint(tmp_path: Path) -> None:
+    # A job nobody leased (`worker --once`) has no server to store an ARN on, so the checkpoint is
+    # None and nothing is resumed across a restart (BE-0448).
     from bajutsu.serve import batch_provider as bp
 
     provider = _CapturingProvider()
@@ -1005,9 +995,28 @@ def test_batch_run_arn_persists_across_a_repository_reload(serve_engine: Any) ->
     repo.enqueue_job("j1", "o", {}, capabilities=[])
 
     assert repo.load_batch_run_arn("j1") is None
-    repo.save_batch_run_arn("j1", "arn:run/xyz")
+    assert repo.lease_job("w1", []) is not None
+    assert repo.save_batch_run_arn("j1", "arn:run/xyz", worker_id="w1") is True
 
     assert SqlRepository(engine).load_batch_run_arn("j1") == "arn:run/xyz"
+
+
+def test_only_the_lease_holder_stores_a_batch_run_arn(serve_engine: Any) -> None:
+    # A worker whose lease was reclaimed must not overwrite the run the job's next attempt resumes,
+    # so the save is checked against the lease owner as the heartbeat is (BE-0448).
+    from bajutsu.serve.server.db import SqlRepository
+    from bajutsu.serve.server.models import Base
+
+    engine = serve_engine()
+    Base.metadata.create_all(engine)
+    repo = SqlRepository(engine)
+    repo.enqueue_job("j1", "o", {}, capabilities=[])
+
+    assert repo.save_batch_run_arn("j1", "arn:run/queued", worker_id="w1") is False
+    assert repo.lease_job("w1", []) is not None
+    assert repo.save_batch_run_arn("j1", "arn:run/stale", worker_id="w2") is False
+    assert repo.save_batch_run_arn("gone", "arn:run/x", worker_id="w1") is False
+    assert repo.load_batch_run_arn("j1") is None
 
 
 # --- cooperative cancellation of a `run` job (BE-0370) ---

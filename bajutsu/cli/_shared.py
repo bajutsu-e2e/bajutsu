@@ -10,25 +10,42 @@ import json
 import os
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, overload
+from typing import TYPE_CHECKING, get_args, overload
 
 import typer
+from pydantic import ValidationError
 
 from bajutsu.common.agents import ai_config, anthropic_client
 from bajutsu.common.ai import credential_gap
 from bajutsu.common.ai import disabled as ai_disabled
-from bajutsu.common.backends import ensure_web_runtime, select_actuator
+from bajutsu.common.backends import (
+    backend_override,
+    current_host_os,
+    ensure_web_runtime,
+    resolve_actuators,
+    select_actuator,
+)
+from bajutsu.common.capability import capability_preflight
+from bajutsu.common.capability.worker_capability import (
+    WorkerCapability,
+    WorkerCapabilityError,
+    load_worker_capability,
+)
 from bajutsu.common.config import (
-    WEB_ENGINES,
     AiConfig,
     Config,
     Effective,
+    ResolvedPreconditions,
     WebConfig,
+    check_preconditions,
+    command_preconditions,
     ios_bundle_id,
-    load_config,
+    load_config_file,
     resolve,
     web_engine,
 )
+from bajutsu.common.config.schema.platform.ios import IosKind
+from bajutsu.common.config.schema.platform.web import WebBrowser
 from bajutsu.common.config_source import (
     DEFAULT_CONFIG as DEFAULT_CONFIG,  # re-exported: the single owner is config_source (BE-0251)
 )
@@ -38,16 +55,23 @@ from bajutsu.common.config_source import (
     parse_config_spec,
     source_provenance,
 )
+from bajutsu.common.deprecations import warn_once
+from bajutsu.common.devices.browsers import BROWSER_KINDS
+from bajutsu.common.devices.runs import condition_path
 from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.github import GitHubAccessError
+from bajutsu.common.run_meta.files import is_soft_deleted
 from bajutsu.common.runner.launch_server import start_launch_server
+from bajutsu.common.scenario import tip_kit_entry
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
 
     from bajutsu.common.agents.alerts import ClaudeAlertLocator
+    from bajutsu.common.devices.facts import DeviceFacts
     from bajutsu.common.drivers import base
     from bajutsu.common.orchestrator import AlertEvent
+    from bajutsu.common.scenario import Scenario
 
 
 @overload
@@ -63,10 +87,10 @@ def resolve_system_alert_handling_flag(
 ) -> bool | None:
     """Resolve the `--system-alert-handling` flag against each command's own unset behavior.
 
-    `run` leaves it None (each scenario's own value applies), while `record` and `crawl` pass
-    `default=True` (the guard is on while authoring / crawling). Shared by all three so the flag
-    behaves identically on each. The `--alert-handling` / `--dismiss-alerts` aliases this once merged
-    were deleted with no replacement (BE-0401).
+    `run` leaves it None (the guard is on unless the flag turns it off), while `record` and `crawl`
+    pass on as the default; no config key switches the whole guard off (BE-0473).
+    Shared by all three so the flag behaves identically on each. The `--alert-handling` /
+    `--dismiss-alerts` aliases this once merged were deleted with no replacement (BE-0401).
     """
     return default if system_alert_handling is None else system_alert_handling
 
@@ -199,7 +223,7 @@ def read_manifests(runs_dir: Path) -> list[dict[str, object]]:
     manifests: list[dict[str, object]] = []
     for d in sorted(runs_dir.iterdir()):
         manifest = d / "manifest.json"
-        if not (d.is_dir() and manifest.is_file()):
+        if not (d.is_dir() and manifest.is_file()) or is_soft_deleted(d):
             continue
         try:
             data = json.loads(manifest.read_text(encoding="utf-8"))
@@ -233,7 +257,7 @@ def _load_effective_with_source(
     Exits 2 (via ``typer.Exit``) for the user-friendly failures: a missing config file, an unknown
     target name, a private-repo access/auth failure (``GitHubAccessError``, BE-0224), and (with
     `require_pinned`) a Git source that isn't pinned to a commit SHA. Other errors — YAML parse /
-    schema validation from ``load_config`` — propagate as exceptions.
+    schema validation from ``load_config_file`` — propagate as exceptions.
     """
     loaded = _load_config_with_source(config, offline=offline, require_pinned=require_pinned)
     return _effective_for(loaded, target_name), loaded.source, loaded.root
@@ -288,7 +312,9 @@ def _load_config_with_source(
     if not cfg_path.exists():
         typer.echo(f"config not found: {config}")
         raise typer.Exit(2)
-    cfg = load_config(cfg_path.read_text(encoding="utf-8"))
+    # A component the target's hooks call stays inside the checkout for a Git source, and inside the
+    # config file's own directory for a local file (BE-0452).
+    cfg = load_config_file(cfg_path, root=root)
     return LoadedConfig(config=cfg, path=cfg_path, source=source, root=root)
 
 
@@ -344,28 +370,245 @@ def _refuse_out_in_checkout(out_path: Path, checkout_root: Path | None) -> None:
 
 
 def _backends(backend: str, fallback: list[str]) -> list[str]:
-    """Parse a comma-separated backend string into a list, or return *fallback* when the string is empty."""
-    return [b.strip() for b in backend.split(",") if b.strip()] if backend else fallback
+    """The backend list in force: *fallback* (the target's), or the checked `--backend`, or exit 2.
+
+    `--backend` accepts the target's platform, its actuator, or `fake` (BE-0452,
+    `backends.backend_override`).
+    """
+    try:
+        return backend_override(backend, fallback)
+    except ValueError as e:
+        typer.echo(str(e))
+        raise typer.Exit(2) from None
+
+
+def _note_fake_conditions(eff: Effective, backends: list[str]) -> bool:
+    """Say once that `--backend fake` evaluates none of the target's conditions; True when it did.
+
+    The fake driver has no device to read, so a run under it matches no `runsOn` condition (BE-0452).
+    """
+    if not eff.conditions or backends != ["fake"]:
+        return False
+    named = ", ".join(condition_path(eff.schema_platform, field) for field in eff.conditions)
+    warn_once(
+        "conditions.fake",
+        f"note: --backend fake evaluates no device condition; {named} of target "
+        f"'{eff.target}' is not checked",
+    )
+    return True
+
+
+def parse_engine_flag(flag: str, value: str) -> str:
+    """Parse one browser named on the command line as a value of `runsOn.browser.kind` (BE-0468).
+
+    The flag is read by the model that reads the target's own field, so the command line and the
+    config accept the same browsers. An unknown one is a clean exit 2, before it reaches Playwright.
+
+    Args:
+        flag: The flag that named the browser, for the message (`--browser`, `--browsers`).
+        value: The browser kind as written.
+
+    Raises:
+        typer.Exit: *value* is not one of the known browser kinds (exit code 2).
+    """
+    try:
+        WebBrowser.model_validate({"kind": value})
+    except ValidationError:
+        typer.echo(f"unknown {flag} {value!r}: use one of {', '.join(BROWSER_KINDS)}")
+        raise typer.Exit(2) from None
+    return value
+
+
+def _precondition_checks(
+    loaded: LoadedConfig, scenarios: list[Scenario], target_name: str, eff: Effective
+) -> list[tuple[Scenario, list[Effective]]]:
+    """Pair each scenario with the targets it drives, for `_refuse_bad_preconditions` (BE-0452).
+
+    A scenario drives its declared `targets`, else the command's own *target_name* (*eff*). Shared
+    by `run` and `audit` so both commands check one suite against the same targets.
+
+    Returns:
+        Each scenario with its driven targets. A scenario whose declared names are all unknown is
+        left out: the target checks that follow name the typo, which an empty platform list here
+        would only obscure.
+    """
+    effs = {target_name: eff}
+    checks: list[tuple[Scenario, list[Effective]]] = []
+    for s in scenarios:
+        if not s.target_names:
+            checks.append((s, [eff]))
+            continue
+        known = [n for n in s.target_names if n in effs or n in loaded.config.targets]
+        if not known:
+            continue
+        for name in known:
+            if name not in effs:
+                effs[name] = _effective_for(loaded, name)
+        checks.append((s, [effs[name] for name in known]))
+    return checks
+
+
+def _refuse_bad_preconditions(
+    checks: list[tuple[Scenario, list[Effective]]], *, erase: bool | None
+) -> None:
+    """Refuse every scenario whose preconditions its driven targets cannot honor (BE-0452).
+
+    Runs before any device work, on the scenarios as written: a `subject` or iOS-only `run` field no
+    driven platform has, and a merged `seedPhotos` without an effective erase
+    (`check_preconditions`).
+
+    Args:
+        checks: Each scenario with the targets it drives.
+        erase: The `--erase` / `--no-erase` flag, or None when absent.
+
+    Raises:
+        typer.Exit: Any scenario has a problem; each is printed with the scenario's name (exit 2).
+    """
+    problems: list[str] = []
+    for s, targets in checks:
+        problems += [
+            f"{s.name}: {problem}"
+            for problem in check_preconditions(
+                s.preconditions,
+                targets,
+                erase_flag=erase,
+                tip_kit=tip_kit_entry(s.interrupts) is not None,
+            )
+        ]
+    if problems:
+        for problem in problems:
+            typer.echo(problem)
+        raise typer.Exit(2)
+
+
+def _command_preconditions_or_exit(eff: Effective, *, erase: bool) -> ResolvedPreconditions:
+    """The target's preconditions for `record`, `crawl`, or `repl`, or a clean exit 2.
+
+    A target that seeds photos needs the wipe its `--no-erase` turned off; seeding nothing would
+    ignore a field the config wrote (BE-0452), so the command refuses before any device work.
+
+    Raises:
+        typer.Exit: The target seeds photos and *erase* is false (exit code 2).
+    """
+    try:
+        return command_preconditions(eff, erase=erase)
+    except ValueError as e:
+        typer.echo(str(e))
+        raise typer.Exit(2) from None
 
 
 def _resolve_browser(eff: Effective, browser: str) -> Effective:
-    """Apply a `--browser` flag over the target's `browser` config (web backend, BE-0076).
+    """Apply a `--browser` flag over the target's `runsOn.browser.kind` (web backend, BE-0076).
 
     Precedence mirrors `--headed`: an explicit flag wins, else the target's config (already on
-    `eff`), else the chromium default. An unknown engine is a clean exit 2 — before it reaches
-    Playwright's `getattr(pw, engine)`.
+    `eff`), else the chromium default. The flag replaces the field, so a listed engine the target
+    declares stops counting as a condition once the flag names one engine.
 
     Raises:
-        typer.Exit: *browser* is set but not one of the known engines (exit code 2).
+        typer.Exit: *browser* is set but not one of the known engines, or not one the target lists
+            (exit code 2).
     """
     if not browser:
         return eff
-    if browser not in WEB_ENGINES:
-        typer.echo(f"unknown --browser {browser!r}: use one of {', '.join(WEB_ENGINES)}")
+    parse_engine_flag("--browser", browser)
+    check_listed_browsers(eff, "--browser", [browser])
+    from bajutsu.run.device_matrix import apply_engine
+
+    # `runsOn.browser` is a web-only field; a non-web target ignores the flag.
+    return apply_engine(eff, browser)
+
+
+def check_listed_browsers(eff: Effective, flag: str, kinds: Sequence[str]) -> None:
+    """Refuse a browser that the target's own `runsOn.browser.kind` list leaves out (BE-0468).
+
+    A list declares the browsers the target supports, so a flag picks among them rather than past
+    them. A target that leaves `kind` unset, or names a single browser, takes any kind, as before.
+
+    Raises:
+        typer.Exit: The target lists its browsers and *kinds* names one it does not (exit code 2).
+    """
+    listed = eff.conditions.get("browser.kind")
+    if not isinstance(listed, list):
+        return
+    missing = [k for k in kinds if k not in listed]
+    if missing:
+        typer.echo(
+            f"{flag} {', '.join(missing)}: target '{eff.target}' lists runsOn.browser.kind "
+            f"{', '.join(listed)}"
+        )
         raise typer.Exit(2)
-    if not isinstance(eff.platform_config, WebConfig):
-        return eff  # `browser` is a web-only knob; a non-web target ignores the flag
-    return replace(eff, platform_config=replace(eff.platform_config, browser=browser))
+
+
+def parse_kind_flag(value: str, *, single: bool = False) -> list[str]:
+    """Parse `--kind` into an ordered, de-duplicated list of iOS kinds (BE-0468).
+
+    Args:
+        value: One kind, or a comma list of kinds, as written.
+        single: The command never multiplies runs (`record`, `crawl`, `repl`), so it takes one kind.
+
+    Raises:
+        typer.Exit: The value names no kind, an entry is not a known kind, or *single* and more than
+            one is named (exit code 2).
+    """
+    kinds = list(dict.fromkeys(k.strip() for k in value.split(",") if k.strip()))
+    allowed = get_args(IosKind)
+    if not kinds:
+        typer.echo(f"--kind {value!r} names no kind: use one of {', '.join(allowed)}")
+        raise typer.Exit(2)
+    for kind in kinds:
+        if kind not in allowed:
+            typer.echo(f"unknown --kind {kind!r}: use one of {', '.join(allowed)}")
+            raise typer.Exit(2)
+    if single and len(kinds) > 1:
+        typer.echo(f"--kind takes one kind here, not {', '.join(kinds)}: this command runs once")
+        raise typer.Exit(2)
+    return kinds
+
+
+def _resolve_kind(eff: Effective, kind: str, *, single: bool = False) -> Effective:
+    """Apply a `--kind` flag over the target's `runsOn.ios.kind` (BE-0468).
+
+    A target that lists its kinds runs the ones the flag names; a target with a single kind accepts
+    that kind alone, so the flag may repeat it. Either way the flag never adds a kind the target does
+    not declare.
+
+    Args:
+        eff: The target's effective configuration.
+        kind: The flag as written; empty leaves *eff* unchanged.
+        single: The command takes one kind (`parse_kind_flag`).
+
+    Raises:
+        typer.Exit: The flag is unparsable, the target is not an iOS target, or it names a kind the
+            target does not declare; the message names the target's kinds (exit code 2).
+    """
+    if not kind:
+        return eff
+    kinds = parse_kind_flag(kind, single=single)
+    if eff.platform != "ios":
+        typer.echo(f"--kind is iOS-only; target '{eff.target}' runs on {eff.platform}")
+        raise typer.Exit(2)
+    from bajutsu.run.device_matrix import driven_kind, select_kinds
+
+    listed = eff.conditions.get("kind")
+    declared = list(listed) if isinstance(listed, list) else [driven_kind(eff) or "simulator"]
+    missing = [k for k in kinds if k not in declared]
+    if missing:
+        typer.echo(
+            f"--kind {', '.join(missing)}: target '{eff.target}' runs on runsOn.ios.kind "
+            f"{', '.join(declared)}"
+        )
+        raise typer.Exit(2)
+    return select_kinds(eff, kinds)
+
+
+def _without_engine_condition(eff: Effective) -> Effective:
+    """*eff* with its listed `runsOn.browser.kind` no longer counted as a device condition.
+
+    `--browsers` strips it here and `--browser` through `apply_engine`; both share one rule.
+    """
+    from bajutsu.run.device_matrix import without_engine_condition
+
+    return without_engine_condition(eff)
 
 
 def _resolve_language(eff: Effective, language: str) -> Effective:
@@ -394,13 +637,25 @@ def _resolve_language(eff: Effective, language: str) -> Effective:
 
 
 def _with_headed(eff: Effective, headed: bool | None) -> Effective:
-    """Apply `--headed`/`--no-headed` to a web target's `headless` (BE-0126).
+    """Apply `--headed`/`--no-headed` over a web target's `driver.headless` (BE-0126, BE-0452).
 
-    Web-only, like `--browser`: a non-web target has no `headless` knob and ignores the flag.
+    Web-only, like `--browser`: a non-web target's `driver` has no `headless` and ignores the flag.
     """
     if headed is None or not isinstance(eff.platform_config, WebConfig):
         return eff
     return replace(eff, platform_config=replace(eff.platform_config, headless=not headed))
+
+
+def _with_erase_flag(eff: Effective, erase: bool | None) -> Effective:
+    """Apply `--no-erase` over the target's `subject.reinstall`: an `erase` drops to `clean` (BE-0473).
+
+    Each target a scenario drives merges its own `subject.reinstall`, so the flag reaches every target
+    here rather than through the scenario. `--erase` needs no counterpart: it raises the scenario's
+    own value, which wins over every target's.
+    """
+    if erase is False and eff.reinstall == "erase":
+        return replace(eff, reinstall="clean")
+    return eff
 
 
 def _log_subsystem_default(eff: Effective) -> str:
@@ -412,20 +667,32 @@ def _log_subsystem_default(eff: Effective) -> str:
 
 
 def _select_actuator_or_exit(
-    backend: str, eff: Effective, engines: list[str]
+    backend: str, eff: Effective, engines: list[str], worker: WorkerCapability | None = None
 ) -> tuple[str, list[str]]:
     """Resolve the actuator for the requested backends, provisioning any web runtime, or exit 2 (BE-0260).
 
-    The backend bring-up all four commands (`run` / `crawl` / `record` / `audit`) share: parse the
-    backend list, auto-install the web runtime for each engine a web run needs (idempotent), then
-    select the actuator — so a bad/unavailable backend exits cleanly (2) rather than crashing later
+    The backend bring-up all five commands (`run` / `crawl` / `record` / `audit` / `repl`) share:
+    parse the backend list, auto-install the web runtime for each engine a web run needs
+    (idempotent), then select the actuator — so a bad/unavailable backend exits cleanly (2) rather than crashing later
     on a missing device CLI. `run` passes its `--browsers` matrix and keeps the web-only-axis check
-    at its call site; the other three pass no engines and provision the single resolved engine.
+    at its call site; the other four pass no engines and provision the single resolved engine.
+
+    Before selecting, every actuator the worker cannot run — its host cannot drive the driver, or
+    `worker.yaml` omits it (BE-0450) — is dropped, and the returned backend list leaves it out so a
+    later per-scenario selection cannot pick it again. A fallback list such as `[ios, web]` still
+    resolves to `playwright` on Linux; only an empty remainder exits 2, on the named reason.
+
+    Args:
+        backend: The `--backend` override; empty means the target's configured list.
+        eff: The target's effective configuration.
+        engines: The web engines to provision; empty provisions the target's one engine.
+        worker: The worker capability in force; the shipped default when None.
 
     Returns:
         The resolved actuator and the ordered backend list.
     """
-    backends = _backends(backend, eff.backend)
+    backends = _worker_backends(_backends(backend, eff.backend), worker)
+    _note_fake_conditions(eff, backends)
     try:
         # A matrix provisions every listed engine (each install idempotent); with no engines the
         # single resolved default (with one, it already equals that).
@@ -436,6 +703,155 @@ def _select_actuator_or_exit(
         typer.echo(str(e))
         raise typer.Exit(2) from None
     return actuator, backends
+
+
+def _worker_backends(backends: list[str], worker: WorkerCapability | None) -> list[str]:
+    """*backends* without the actuators the worker cannot run, or exit 2 when none remains (BE-0450).
+
+    The list comes back unchanged when nothing is dropped, so a run the worker fully supports keeps
+    its platform tokens exactly as before.
+    """
+    if worker is None:
+        worker = _load_worker_capability_or_exit(None)
+    kept, reasons = capability_preflight.filter_actuators(
+        resolve_actuators(backends), worker, current_host_os()
+    )
+    if not reasons:
+        return backends
+    if not kept:
+        typer.echo(capability_preflight.worker_capability_failure(reasons))
+        raise typer.Exit(2)
+    # The fallback is the operator's own declaration at work, not a missing tool, so say why the
+    # earlier backends were skipped rather than leave a run on a different platform unexplained.
+    for reason in reasons:
+        typer.echo(f"note: skipping a backend this worker cannot run: {reason}", err=True)
+    return kept
+
+
+def _load_worker_capability_or_exit(path: Path | None) -> WorkerCapability:
+    """The worker capability named by `--worker-config` (the shipped default when None), or exit 2."""
+    try:
+        return load_worker_capability(path)
+    except WorkerCapabilityError as e:
+        typer.echo(str(e))
+        raise typer.Exit(2) from None
+
+
+WORKER_CONFIG_HELP = (
+    "the worker capability file (worker.yaml) this machine runs under, used in place of the shipped "
+    "default (BE-0450); its environment is `local`, or `appium` to drive one platform's targets on "
+    "the grid it names (BE-0452)"
+)
+
+
+def _load_device_worker_or_exit(path: Path | None) -> WorkerCapability:
+    """The `--worker-config` in force for a command that drives a device, or exit 2 (BE-0450).
+
+    Such a command drives devices on its own host, or through an `appium` grid (BE-0452), and never
+    submits to a device cloud, so a file naming a batch provider describes a different kind of
+    worker and is a usage error, not a silent override.
+    """
+    worker = _load_worker_capability_or_exit(path)
+    if worker.is_batch:
+        typer.echo(
+            f"--worker-config: environment '{worker.environment}' is a device cloud; this command "
+            "drives devices on its own host or through an appium grid, and needs "
+            "`environment: local` or `environment: appium`"
+        )
+        raise typer.Exit(2)
+    return worker
+
+
+def _reject_url_udid(udid: str) -> None:
+    """Refuse a URL as `--udid`: an Appium grid is named by an `appium` environment (BE-0452).
+
+    Raises:
+        typer.Exit: *udid* holds an http(s) URL (exit code 2).
+    """
+    if any(t.strip().startswith(("http://", "https://")) for t in udid.split(",")):
+        typer.echo(
+            "--udid no longer takes a URL: name the grid in an `appium` environment of the "
+            "--worker-config file (BE-0452)"
+        )
+        raise typer.Exit(2)
+
+
+def _with_worker_device(eff: Effective, worker: WorkerCapability) -> Effective:
+    """*eff* with the device provider the worker's environment gives its platform (BE-0452).
+
+    An `appium` environment hands its grid to the targets of the grid's platform; every other
+    target keeps the built-in local provider. The platform is the target's declared one, so a target
+    run under `--backend fake` still reads as its own platform here.
+    """
+    provider = worker.device_provider_for(eff.backend[0] if eff.backend else eff.platform)
+    return replace(eff, device_provider=provider) if provider is not None else eff
+
+
+def _device_udid_or_exit(eff: Effective, udid: str) -> str:
+    """The udid spec *eff*'s device provider hands back for *udid*, or exit 2 (BE-0236, BE-0452).
+
+    The single route every device-driving command takes to its device, as `run` does: the `--udid`
+    pool for the local provider, the grid's endpoint for an `appium` one. Neither reserves anything,
+    so there is no lease to release.
+    """
+    _reject_url_udid(udid)
+    # Imported here: the provider registry reaches the platform environments, which only a command
+    # that drives a device needs.
+    from bajutsu.common.runner.device_provider import acquire_device
+
+    try:
+        return acquire_device(eff, udid).udid_spec
+    except ValueError as e:
+        typer.echo(str(e))
+        raise typer.Exit(2) from None
+
+
+def _first_run_or_exit(
+    eff: Effective,
+    actuator: str,
+    udid: str,
+    *,
+    read_ios: Callable[[Sequence[str]], list[DeviceFacts]] | None = None,
+    read_android: Callable[[Sequence[str]], list[DeviceFacts]] | None = None,
+    read_browser: Callable[[str], DeviceFacts] | None = None,
+) -> tuple[Effective, str]:
+    """The run `record`, `crawl`, `repl`, and `doctor`'s probe take under the conditions, or exit 2.
+
+    These commands never multiply runs (BE-0452): they take the first listed value and the newest
+    major version the pool has within a range, on the first device of that run's eligible set
+    (`first_run_device`). A target with no condition, and the fake backend, keep *udid* as given.
+
+    Args:
+        eff: The target's effective configuration.
+        actuator: The selected actuator, which resolves each udid of the pool.
+        udid: The udid spec the device provider handed back (a comma list for a pool).
+        read_ios: Reads Simulator facts; injectable for tests.
+        read_android: Reads Android device facts; injectable for tests.
+        read_browser: Reads a web engine's launched version; injectable for tests.
+
+    Returns:
+        The configuration with the run's web engine applied, and the udid of the device it takes.
+
+    Raises:
+        typer.Exit: The target runs where no pool can be read, a device could not be read, or no
+            available device fits (exit code 2).
+    """
+    if not eff.conditions or _note_fake_conditions(eff, ["fake"] if actuator == "fake" else []):
+        return eff, udid
+    from bajutsu.run.device_matrix import first_run_device
+
+    try:
+        return first_run_device(
+            eff,
+            actuator,
+            udid,
+            read_ios=read_ios,
+            read_android=read_android,
+            read_browser=read_browser,
+        )
+    except ValueError as e:
+        typer.echo(str(e))
+        raise typer.Exit(2) from None
 
 
 def _start_launch_server_or_exit(

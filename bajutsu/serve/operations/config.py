@@ -31,7 +31,7 @@ from bajutsu.common.agents.anthropic_client import ANT_BINARY, ANT_CLI_MISSING, 
 from bajutsu.common.ai import credential_gap, resolved_provider, selectable_providers
 from bajutsu.common.ai.registry import DISABLED_PROVIDER
 from bajutsu.common.backends import IMPLEMENTED
-from bajutsu.common.config import load_config, resolve, xcuitest_pins_runner
+from bajutsu.common.config import load_config_file, resolve, xcuitest_pins_runner
 from bajutsu.common.config_source import (
     config_source_record,
     config_spec_from_record,
@@ -48,6 +48,8 @@ from bajutsu.serve.authz import _record_audit, forbidden_for_role
 from bajutsu.serve.helpers import (
     list_targets,
     load_serve_config_file,
+    unsafe_env_name,
+    warn_unsafe_env_name,
 )
 from bajutsu.serve.operations.orgs import NO_ORG_STORE_ERROR
 from bajutsu.serve.operations.upload import (
@@ -69,20 +71,19 @@ AI_API_KEY_SECRET = "aiApiKey"  # noqa: S105 — a secret's logical name, not a 
 # The logical name of the `claude-code` provider's OAuth token in the same secret store (BE-0215) —
 # the second named secret BE-0136's generalization anticipated, reusing the store and its write-once
 # guarantee with no new plumbing. Local serve materializes it into `CLAUDE_CODE_OAUTH_TOKEN` (via
-# `ServeState._env_var_for_secret`); the hosted backend encrypts it per org like every named secret.
+# `ServeState.env_var_for_secret`); the hosted backend encrypts it per org like every named secret.
 AI_CLAUDE_CODE_TOKEN_SECRET = "aiClaudeCodeOauthToken"  # noqa: S105 — a logical name, not a value
 
 # The logical name of the GitHub credential for a private-repo config source (BE-0224) — a third
-# named secret reusing the same write-once store. Local serve materializes it into the bajutsu-owned
-# `BAJUTSU_GIT_CONFIG_TOKEN` (via `ServeState._env_var_for_secret`), which the in-process
-# `bind_git_config` fetch then reads. The hosted backend encrypts it per org, so each tenant's stored
-# credential is its own; wiring the per-org value into the hosted control plane's in-process fetch is
-# a follow-up (the write-once store discloses no plaintext to a handler), so on hosted a private bind
-# resolves through the process-global App / env credential today.
+# named secret reusing the same write-once store. A store without a database writes it into the
+# bajutsu-owned `BAJUTSU_GIT_CONFIG_TOKEN` (via `ServeState.env_var_for_secret`); the database store
+# encrypts it per org, so each tenant's stored credential is its own. Either way `bind_git_config`
+# hands the org's value to its fetch (`jobs.stored_git_credential`, BE-0449), and no response
+# discloses it.
 GIT_CONFIG_TOKEN_SECRET = "gitConfigToken"  # noqa: S105 — a logical name, not a value
 
 # The three logical names above are all valid identifiers, so `_valid_key_env_name` alone would let a
-# scenario-declared secret collide with one of them: `_env_var_for_secret` maps `AI_API_KEY_SECRET` to
+# scenario-declared secret collide with one of them: `env_var_for_secret` maps `AI_API_KEY_SECRET` to
 # `active_key_env`'s env var (the operator's real Anthropic API key, or a configured `ai.keyEnv`), so
 # a config that declares e.g. `secrets: [aiApiKey]` would let `GET /api/secrets` disclose that key's
 # masked preview to any actor and `POST /api/secrets` overwrite it — the same collision applies to the
@@ -92,28 +93,10 @@ _RESERVED_SECRET_NAMES = frozenset(
     {AI_API_KEY_SECRET, AI_CLAUDE_CODE_TOKEN_SECRET, GIT_CONFIG_TOKEN_SECRET}
 )
 
-_UNSAFE_ENV_VARS = frozenset(
-    {
-        "PATH",
-        "HOME",
-        "USER",
-        "SHELL",
-        "LANG",
-        "TERM",
-        "PWD",
-        "OLDPWD",
-        "LOGNAME",
-        "TMPDIR",
-        "DISPLAY",
-        "LD_LIBRARY_PATH",
-        "DYLD_LIBRARY_PATH",
-    }
-)
-
 
 def _valid_key_env_name(name: str) -> bool:
     """Whether *name* is a safe env-var name for an API key."""
-    return bool(name) and name.isidentifier() and name not in _UNSAFE_ENV_VARS
+    return bool(name) and name.isidentifier() and not unsafe_env_name(name)
 
 
 def active_key_env(state: ServeState) -> str:
@@ -127,10 +110,17 @@ def active_key_env(state: ServeState) -> str:
     launch = state.binding
     if launch.config is not None:
         try:
-            cfg = load_config(launch.config.read_text(encoding="utf-8"))
+            cfg = load_config_file(launch.config)
             ai_settings = cfg.defaults.ai if cfg.defaults else None
-            if ai_settings and ai_settings.key_env and _valid_key_env_name(ai_settings.key_env):
-                return ai_settings.key_env
+            if ai_settings and ai_settings.key_env:
+                if _valid_key_env_name(ai_settings.key_env):
+                    return ai_settings.key_env
+                # The CLI would still read this variable, so the server reading another one is a
+                # disagreement an operator must hear about.
+                if unsafe_env_name(ai_settings.key_env):
+                    warn_unsafe_env_name(
+                        ai_settings.key_env, f"ai.keyEnv (the server reads {ANTHROPIC_KEY_ENV})"
+                    )
         except Exception:
             logging.getLogger(__name__).debug("cannot read ai.keyEnv from config", exc_info=True)
     return ANTHROPIC_KEY_ENV
@@ -159,11 +149,10 @@ CAPTURE_HOSTED_REASON = (
     "— capture from a local serve instead"
 )
 
-# Why a local deployment that nonetheless serves no `local_only` route cannot capture: `serve
-# --asgi` runs the FastAPI transport with the local backend, and that transport registers no
-# `local_only` route (`serve.server.app.make_app`). The devices are right there, so the reason names
-# the transport rather than the deployment.
-CAPTURE_NO_LOCAL_ROUTES_REASON = "this server does not serve the capture routes — run `bajutsu serve` without `--asgi` to capture"
+# Why a deployment that is not hosted but serves no `local_only` route cannot capture. `make_app`
+# serves them whenever the deployment is not hosted (BE-0449), so no transport this repository
+# ships reaches this; it stays so a transport that omits them reports why instead of a 404.
+CAPTURE_NO_LOCAL_ROUTES_REASON = "this server does not serve the capture routes"
 
 # Why a caller cannot administer orgs on a deployment that does have a database: the roster
 # discloses one tenant's membership to another, so every `/api/orgs` verb is admin-only.
@@ -179,9 +168,9 @@ def _capability(reason: str | None) -> dict[str, Any]:
 def _capture_unavailable(state: ServeState) -> str | None:
     """Why capture is unavailable here, or None when it is available.
 
-    Keyed to whether the transport serves the `local_only` routes, not to `hosted`: both hosted and
-    a local `serve --asgi` go through `make_app` and so serve none of them. Hosted is reported
-    first, since there the devices really are elsewhere and the transport is beside the point.
+    Keyed to whether the transport serves the `local_only` routes as well as to `hosted`. Hosted is
+    reported first, since there the devices really are elsewhere and the transport is beside the
+    point.
     """
     if state.hosted:
         return CAPTURE_HOSTED_REASON
@@ -329,7 +318,7 @@ def config_content(
 
 
 def _config_overrides_ios_runner(binding: ConfigBinding) -> bool:
-    """Whether the bound config names an explicit ``xcuitest.testRunner`` on any iOS target (BE-0318).
+    """Whether the bound config names an explicit ``driver.runner.testRunner`` on any iOS target (BE-0318).
 
     A config can carry several iOS targets; the server-wide readiness line reports "overridden" when
     *any* of them sets a runner, since such a target never falls back to the bundled one. No config
@@ -343,10 +332,10 @@ def _config_overrides_ios_runner(binding: ConfigBinding) -> bool:
     if binding.config is None:
         return False
     try:
-        cfg = load_config(binding.config.read_text(encoding="utf-8"))
+        cfg = load_config_file(binding.config)
     except Exception:
         logging.getLogger(__name__).debug(
-            "cannot load config to check the xcuitest.testRunner override", exc_info=True
+            "cannot load config to check the driver.runner.testRunner override", exc_info=True
         )
         return False
     for name in cfg.targets:
@@ -355,7 +344,7 @@ def _config_overrides_ios_runner(binding: ConfigBinding) -> bool:
                 return True
         except Exception:
             logging.getLogger(__name__).debug(
-                "cannot resolve target %r to check the xcuitest.testRunner override",
+                "cannot resolve target %r to check the driver.runner.testRunner override",
                 name,
                 exc_info=True,
             )
@@ -373,7 +362,7 @@ def _ios_runner_status(binding: ConfigBinding) -> dict[str, Any]:
     Fields: ``bundled`` (this build ships the generic runner as package data — the fallback a
     runner-less Simulator run resolves to), ``buildInfo`` (the ``{"xcode", "sdk"}`` toolchain the
     runner was built against, or ``None`` when no bundle / no metadata), and ``override`` (the bound
-    config names an explicit ``xcuitest.testRunner``, so the bundle isn't the runner that would run).
+    config names an explicit ``driver.runner.testRunner``, so the bundle isn't the runner that would run).
     """
     return {
         "bundled": bundled_products_dir() is not None,
@@ -755,7 +744,7 @@ def bind_config(
     if not target.is_file():
         return {"error": "config not found"}, 404
     try:
-        cfg = load_config(target.read_text(encoding="utf-8"))
+        cfg = load_config_file(target)
     except (OSError, ValueError, yaml.YAMLError) as e:
         return {"error": f"invalid config: {e}"}, 400
     # Validate path fields stay within `--root` (BE-0051): resolved against the config's own
@@ -820,8 +809,13 @@ def bind_git_config(
         return {
             "error": f"not a Git config spec: {spec_str!r} (use github:owner/repo@ref:path)"
         }, 400
+    from bajutsu.serve.jobs import stored_git_credential
+
+    org = org if org is not None else state.org_of(actor)  # see `bind_config`
     try:
-        mat = materialize(spec)
+        # The org's stored credential reaches the fetch even when its store keeps it out of the
+        # process environment, as the database of a local start does (BE-0449).
+        mat = materialize(spec, credential=stored_git_credential(state, org))
     except (OSError, ValueError) as e:
         return {"error": f"could not fetch the Git config: {e}"}, 400
     if not mat.config_path.is_file():
@@ -829,7 +823,7 @@ def bind_git_config(
             "error": f"config not found in the repository at {spec.path or 'bajutsu.config.yaml'}"
         }, 404
     try:
-        cfg = load_config(mat.config_path.read_text(encoding="utf-8"))
+        cfg = load_config_file(mat.config_path)
         # Confine every target's path fields to the checkout: a fetched config that points
         # `scenarios`/`appPath`/… at an absolute or `../` path outside the tree is rejected here, so
         # serve's (unconfined) scenario/build resolution only ever sees in-checkout paths (BE-0051).
@@ -846,7 +840,6 @@ def bind_git_config(
     # (BE-0121). A Git-sourced config is bound *as* the acting org, and its content is not this
     # deployment's, so that org owns every target it declares and its `orgs:` block partitions
     # nothing (BE-0375).
-    org = org if org is not None else state.org_of(actor)  # see `bind_config`
     state.rebind(
         session,
         org,
@@ -951,12 +944,14 @@ def declared_secret_names(
     if binding.config is None:
         return []
     try:
-        cfg = load_config(binding.config.read_text(encoding="utf-8"))
+        cfg = load_config_file(binding.config)
         names: dict[str, None] = {}
         for target in cfg.targets:
             for name in resolve(cfg, target).secrets:
                 if _valid_key_env_name(name) and name not in _RESERVED_SECRET_NAMES:
                     names.setdefault(name, None)
+                elif unsafe_env_name(name):
+                    warn_unsafe_env_name(name, f"secrets: of target {target!r}")
         return list(names)
     except Exception:
         logging.getLogger(__name__).debug(

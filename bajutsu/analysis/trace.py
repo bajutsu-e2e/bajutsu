@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Any, TypeGuard
 
 from bajutsu.common.evidence.intervals import INTERVAL_KINDS
 from bajutsu.common.report.from_grouping import grouped_provenance
-from bajutsu.common.scenario import load_scenario_file
+from bajutsu.common.scenario import load_stored_scenario_file
 
 if TYPE_CHECKING:
     from bajutsu.common.scenario import CaptureRule, Scenario, Step
@@ -80,7 +80,7 @@ def _is_broad(rule: CaptureRule) -> bool:
     """Whether a rule matches broadly — not pinned to a specific element.
 
     An action rule with no `idMatches` (every step of that action) or a leading-`*` glob, or a
-    `screenChanged` event. `result: error` is the safety net — rare by design, so not broad.
+    `screenChanged` event. `result: failure` is the safety net — rare by design, so not broad.
     """
     on = rule.on
     if on.action is not None:
@@ -291,7 +291,7 @@ def _provenance_by_scenario(run_dir: Path) -> dict[str, list[str | None]]:
     """
     try:
         text = (run_dir / "scenario.yaml").read_text(encoding="utf-8")
-        scenarios = load_scenario_file(text).scenarios
+        scenarios = load_stored_scenario_file(text).scenarios
     except (OSError, ValueError):
         return {}
     return {

@@ -1,6 +1,6 @@
 """Tests for the wheel-bundled XCUITest runner resolution (BE-0292).
 
-BE-0019 required `xcuitest.testRunner` (or a `build` command) in config; this adds a third,
+BE-0019 required `driver.runner.testRunner` (or a `build` command) in config; this adds a third,
 lowest-priority tier — a runner shipped in the wheel — so a Simulator run with neither configured
 resolves to it. The resolution and the version-keyed materialize-to-cache are pure file-path logic,
 so both are exercised here without a Simulator (the sanctioned gate boundary). A real device stays
@@ -28,6 +28,8 @@ from bajutsu.common.platform_lifecycle.environments import _bundled_runner, xcui
 
 # The spawn reads `bundled_products_dir` from `_functions`'s own globals since BE-0411 split
 # the package, so patching the package's re-export would not reach it.
+from bajutsu.common.platform_lifecycle.environments.device_runner.errors import DeviceRunnerError
+from bajutsu.common.platform_lifecycle.environments.device_runner.signing import SIGNING_FILE_ENV
 from bajutsu.common.platform_lifecycle.environments.xcuitest import _functions as xcuitest_impl
 
 
@@ -68,11 +70,52 @@ def test_missing_test_runner_runs_the_build_command(
     runner = tmp_path / "Built.xctestrun"
     cfg = XcuitestConfig.model_validate({"testRunner": str(runner), "build": "make runner"})
 
-    def _fake_run(argv: list[str], check: bool = False) -> None:
+    def _fake_run(argv: list[str], cwd: Path | None = None, check: bool = False) -> None:
         runner.write_bytes(b"")  # the build produces the configured path
 
     monkeypatch.setattr(subprocess, "run", _fake_run)
     assert xcuitest._resolve_runner(cfg, "simulator") == runner
+
+
+def test_the_build_command_runs_in_build_cwd(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # #2277: the build runs where the config's relative paths resolve, not the shell's directory —
+    # a `make runner-build` only the config's own Makefile defines must still find it.
+    runner = tmp_path / "Built.xctestrun"
+    cfg = XcuitestConfig.model_validate({"testRunner": str(runner), "build": "make runner"})
+    seen: list[Path | None] = []
+
+    def _fake_run(argv: list[str], cwd: Path | None = None, check: bool = False) -> None:
+        seen.append(cwd)
+        runner.write_bytes(b"")
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+    assert xcuitest._resolve_runner(cfg, "simulator", build_cwd=tmp_path) == runner
+    assert seen == [tmp_path]
+
+
+def test_a_failing_build_command_is_a_device_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cfg = XcuitestConfig.model_validate(
+        {"testRunner": str(tmp_path / "Built.xctestrun"), "build": "make runner"}
+    )
+
+    def _fake_run(argv: list[str], cwd: Path | None = None, check: bool = False) -> None:
+        raise subprocess.CalledProcessError(2, argv)
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+    with pytest.raises(simctl.DeviceError, match="xcuitest build command failed: make runner"):
+        xcuitest._resolve_runner(cfg, "simulator", build_cwd=tmp_path)
+
+
+def test_a_mis_quoted_build_command_is_a_device_error(tmp_path: Path) -> None:
+    cfg = XcuitestConfig.model_validate(
+        {"testRunner": str(tmp_path / "Built.xctestrun"), "build": 'make "runner'}
+    )
+    with pytest.raises(simctl.DeviceError, match="not valid shell syntax"):
+        xcuitest._resolve_runner(cfg, "simulator", build_cwd=tmp_path)
 
 
 def test_missing_test_runner_without_build_fails(tmp_path: Path) -> None:
@@ -89,7 +132,9 @@ def test_build_without_a_test_runner_fails_instead_of_using_the_bundle(
     bundle = _products(tmp_path / "bundle")
     monkeypatch.setattr(xcuitest_impl, "bundled_products_dir", lambda: bundle)
     cfg = XcuitestConfig.model_validate({"build": "make runner"})
-    with pytest.raises(simctl.DeviceError, match=r"xcuitest\.build requires xcuitest\.testRunner"):
+    with pytest.raises(
+        simctl.DeviceError, match=r"driver\.runner\.build requires driver\.runner\.testRunner"
+    ):
         xcuitest._resolve_runner(cfg, "simulator")
 
 
@@ -144,10 +189,15 @@ def test_explicit_test_runner_never_checks_bundle_freshness(
     assert xcuitest._resolve_runner(cfg, "simulator") == runner
 
 
+def _no_device_build() -> Path:
+    raise DeviceRunnerError("no device runner is built; run `bajutsu runner build --device`")
+
+
 def test_device_tier_never_checks_bundle_freshness(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(xcuitest_impl, "ensure_bundled_runner_fresh", _boom)
+    monkeypatch.setattr(xcuitest_impl, "resolve_device_runner", _no_device_build)
     cfg = XcuitestConfig.model_validate({"deviceType": "device"})
-    with pytest.raises(simctl.DeviceError, match="deviceType: device requires"):
+    with pytest.raises(simctl.DeviceError, match="bajutsu runner build --device"):
         xcuitest._resolve_runner(cfg, "device")
 
 
@@ -163,9 +213,30 @@ def test_device_without_a_test_runner_never_uses_the_bundle(
     # A real device must not silently take a Simulator runner it cannot install (BE-0288).
     bundle = _products(tmp_path / "bundle")
     monkeypatch.setattr(xcuitest_impl, "bundled_products_dir", lambda: bundle)
+    monkeypatch.setattr(xcuitest_impl, "resolve_device_runner", _no_device_build)
     cfg = XcuitestConfig.model_validate({"deviceType": "device"})
-    with pytest.raises(simctl.DeviceError, match="deviceType: device requires"):
+    with pytest.raises(simctl.DeviceError, match="bajutsu runner build --device"):
         xcuitest._resolve_runner(cfg, "device")
+
+
+def test_device_without_a_test_runner_uses_the_signed_device_build(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # BE-0456: the cached per-user build fills the gap an explicit testRunner used to.
+    built = tmp_path / "Products" / "BajutsuRunner.xctestrun"
+    monkeypatch.setattr(xcuitest_impl, "resolve_device_runner", lambda: built)
+    cfg = XcuitestConfig.model_validate({"deviceType": "device"})
+    assert xcuitest._resolve_runner(cfg, "device") == built
+
+
+def test_an_explicit_test_runner_wins_over_the_device_build(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(xcuitest_impl, "resolve_device_runner", _no_device_build)
+    explicit = tmp_path / "Signed.xctestrun"
+    explicit.write_bytes(b"")
+    cfg = XcuitestConfig.model_validate({"deviceType": "device", "testRunner": str(explicit)})
+    assert xcuitest._resolve_runner(cfg, "device") == explicit
 
 
 # --- materialize-to-cache: copy once, reuse a warm, version-keyed cache --- #
@@ -362,7 +433,7 @@ def test_bundled_products_dir_found_when_staged(
 
 
 def _write_bajutsukit_fixture(root: Path) -> dict[str, bytes]:
-    """Write a minimal BajutsuKit tree covering every `_HASH_SOURCE_PATHS` entry.
+    """Write a minimal BajutsuKit tree covering every `HASH_SOURCE_PATHS` entry.
 
     Returns the relative-path -> content map, so a test can flip one entry and know exactly which
     hashed line that changes.
@@ -416,7 +487,7 @@ def test_source_hash_ignores_files_outside_the_hashed_paths(tmp_path: Path) -> N
 
 
 def test_source_hash_raises_on_a_missing_hashed_path(tmp_path: Path) -> None:
-    # A `_HASH_SOURCE_PATHS` entry that moves or is renamed (this project's own history hit exactly
+    # A `HASH_SOURCE_PATHS` entry that moves or is renamed (this project's own history hit exactly
     # this with `BajutsuKit/Package.swift` -> `Package.swift`) must fail loudly rather than silently
     # shrink the hashed set — a quietly smaller input would stop noticing edits under the moved path.
     contents = _write_bajutsukit_fixture(tmp_path)
@@ -668,19 +739,51 @@ def test_runner_source_reports_bundled(monkeypatch: pytest.MonkeyPatch, tmp_path
 def test_runner_source_reports_no_bundle_present(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(xcuitest_impl, "bundled_products_dir", lambda: None)
     assert xcuitest.runner_source(None, "simulator") == (
-        "none: no bundled runner in this build (set xcuitest.testRunner)"
+        "none: no bundled runner in this build (set driver.runner.testRunner)"
     )
 
 
-def test_runner_source_reports_device_requires_test_runner(
+def test_runner_source_reports_a_device_without_a_signing_file(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr(
         xcuitest_impl, "bundled_products_dir", lambda: _products(tmp_path / "bundle")
     )
+    monkeypatch.delenv(SIGNING_FILE_ENV, raising=False)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    source = xcuitest.runner_source(None, "device")
+    assert source.startswith("none: runsOn.ios.kind: device needs driver.runner.testRunner")
+    assert str(tmp_path / "xdg" / "bajutsu" / "signing.yaml") in source
+
+
+def test_runner_source_reports_the_device_build_signing_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    signing = tmp_path / "signing.yaml"
+    signing.write_text("bundleIdPrefix: com.acme\nteamId: T\n")
+    monkeypatch.setenv(SIGNING_FILE_ENV, str(signing))
     assert xcuitest.runner_source(None, "device") == (
-        "none: xcuitest.deviceType: device requires an explicit testRunner"
+        "device build: would use the signed runner `bajutsu runner build --device` caches "
+        f"(signing file {signing}; not validated here)"
     )
+
+
+def test_an_invalid_signing_file_fails_a_device_run_loudly(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    signing = tmp_path / "signing.yaml"
+    signing.write_text("teamId: T\n")
+    monkeypatch.setenv(SIGNING_FILE_ENV, str(signing))
+    cfg = XcuitestConfig.model_validate({"deviceType": "device"})
+    with pytest.raises(simctl.DeviceError, match="invalid signing file"):
+        xcuitest._resolve_runner(cfg, "device")
+
+
+def test_runner_source_reports_a_signing_file_env_pointing_nowhere(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv(SIGNING_FILE_ENV, str(tmp_path / "missing.yaml"))
+    assert xcuitest.runner_source(None, "device").startswith("none: signing file not found")
 
 
 def test_runner_source_reports_an_existing_test_runner(tmp_path: Path) -> None:
@@ -709,7 +812,7 @@ def test_runner_source_reports_a_missing_test_runner_without_build(tmp_path: Pat
 def test_runner_source_reports_build_without_test_runner_as_misconfigured() -> None:
     cfg = XcuitestConfig.model_validate({"build": "make runner"})
     assert xcuitest.runner_source(cfg, "simulator") == (
-        "misconfigured: xcuitest.build requires xcuitest.testRunner"
+        "misconfigured: driver.runner.build requires driver.runner.testRunner"
     )
 
 
@@ -796,7 +899,7 @@ def test_toolchain_warning_flags_an_xcode_major_mismatch() -> None:
     assert warning is not None
     assert "Xcode 16.0 (bundled runner) vs 15.4 (host)" in warning
     # Names the escape hatch so a mismatched host has a concrete next step.
-    assert "xcuitest.testRunner" in warning and "xcuitest.build" in warning
+    assert "driver.runner.testRunner" in warning and "driver.runner.build" in warning
 
 
 def test_toolchain_warning_flags_an_sdk_major_mismatch() -> None:

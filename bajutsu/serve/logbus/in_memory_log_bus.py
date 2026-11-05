@@ -30,6 +30,17 @@ class InMemoryLogBus:
             ch.lines.append(line)
             ch.cond.notify_all()
 
+    def publish_many(self, job_id: str, lines: list[str]) -> None:
+        ch = self._chan(job_id)
+        with ch.cond:
+            ch.lines.extend(lines)
+            ch.cond.notify_all()
+
+    def discard(self, job_id: str) -> None:
+        """Forget *job_id*'s buffered lines, so a finished job's log does not stay in memory."""
+        with self._lock:
+            self._chans.pop(job_id, None)
+
     def close(self, job_id: str, final: str | None = None) -> None:
         ch = self._chan(job_id)
         with ch.cond:

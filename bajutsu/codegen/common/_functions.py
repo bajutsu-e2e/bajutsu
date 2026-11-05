@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import math
 import re
+from typing import Any
 
-from bajutsu.common.scenario import Scenario, Step
+from bajutsu.common.scenario import Interrupt, InterruptEntry, Scenario, Step
 from bajutsu.common.scenario.models.actions import bypass_hint
 
 from .code_generator import CodeGenerator
@@ -16,10 +17,10 @@ from .codegen_error import CodegenError
 # comment in C-style, so the `// expect` divider is shared.
 _BODY_INDENT = "    "
 _EXPECT_COMMENT = "// expect"
-# The `before` phase (BE-0392) needs no per-target construct: emitting its steps inline at the top of
+# The `setup` phase (BE-0392) needs no per-target construct: emitting its steps inline at the top of
 # the test body is exactly its runtime meaning — they run first, and a failure aborts the rest. The
 # divider is what keeps them readable as a phase rather than as more of the scenario's own steps.
-_BEFORE_COMMENT = "// before (bajutsu lifecycle phase)"
+_SETUP_COMMENT = "// setup (bajutsu lifecycle phase)"
 
 # Regex metacharacters. A `labelMatches` value is a Python `re.search` pattern; only a
 # metacharacter-free one is a plain substring a black-box target can map faithfully (NSPredicate
@@ -167,6 +168,19 @@ def device_group_todo(step: Step) -> str | None:
     return None
 
 
+def eval_todo(step: Step) -> str | None:
+    """The `// TODO` for an `eval` step (BE-0472), else None.
+
+    `eval` transforms a `${vars.*}` value inside the bajutsu runner; no generated test has that
+    runner, so — like `generate` — it renders as a labeled comment naming the variables it would
+    have written, never a silent skip.
+    """
+    if step.eval_ is None:
+        return None
+    names = ", ".join(_collapse_line_terminators(n) for n in step.eval_.into.names)
+    return f"// TODO: eval(into: {names}) — runner-computed value; not generated"
+
+
 def permissions_setup_lines(scenario: Scenario) -> list[str]:
     """The `// TODO` lines naming each `permissions` entry (BE-0276), one per service.
 
@@ -194,10 +208,17 @@ def interrupts_setup_lines(scenario: Scenario) -> list[str]:
     """
     return [
         f"// TODO: interrupts[{i}] "
-        f"{_collapse_line_terminators(str(entry.condition.model_dump(by_alias=True, exclude_none=True, exclude_defaults=True)))}"
+        f"{_collapse_line_terminators(str(_interrupt_summary(entry)))}"
         " — bajutsu checks this opportunistically at run time; not generated"
         for i, entry in enumerate(scenario.interrupts)
     ]
+
+
+def _interrupt_summary(entry: InterruptEntry) -> dict[str, Any]:
+    # A screen entry is named by its condition, as before BE-0473; a systemAlert or tipKit entry is
+    # its own whole declaration.
+    target = entry.condition if isinstance(entry, Interrupt) else entry
+    return target.model_dump(by_alias=True, exclude_none=True, exclude_defaults=True)
 
 
 def indent_lines(lines: list[str], levels: int = 1) -> list[str]:
@@ -227,22 +248,22 @@ def _reject_runtime_only(step: Step) -> None:
 def _scenario_lines(
     scenario: Scenario, app_launch_env: dict[str, str], gen: CodeGenerator
 ) -> list[str]:
-    env = {**app_launch_env, **scenario.preconditions.launch_env}
-    for rule in scenario.after:
+    env = {**app_launch_env, **scenario.preconditions.subject.launch.env}
+    for rule in scenario.cleanup:
         for hook_step in rule.steps:
             _reject_runtime_only(hook_step)
-    after = gen.after_lines(scenario.after)
+    cleanup = gen.cleanup_lines(scenario.cleanup)
     body: list[str] = list(gen.setup_lines(scenario))
     body.extend(gen.launch_env_line(k, v) for k, v in env.items())
     body.append(gen.launch_line())
     body.append("")
-    # Everything the teardown must observe sits inside the wrap — `before` included, since a failing
-    # `before` step dispatches `after` as an `error` outcome at run time too.
-    body.extend(after.prologue)
+    # Everything the teardown must observe sits inside the wrap — `setup` included, since a failing
+    # `setup` step dispatches `cleanup` as a `failure` outcome at run time too.
+    body.extend(cleanup.prologue)
     inner: list[str] = []
-    if scenario.before:
-        inner.append(_BEFORE_COMMENT)
-        for step in scenario.before:
+    if scenario.setup:
+        inner.append(_SETUP_COMMENT)
+        for step in scenario.setup:
             _reject_runtime_only(step)
             inner.extend(gen.step_lines(step))
         inner.append("")
@@ -254,9 +275,9 @@ def _scenario_lines(
         inner.append(_EXPECT_COMMENT)
         for assertion in scenario.expect:
             inner.extend(gen.assertion_lines(assertion))
-    pad = _BODY_INDENT * after.body_indent
+    pad = _BODY_INDENT * cleanup.body_indent
     body.extend(f"{pad}{line}" if line else "" for line in inner)
-    body.extend(after.epilogue)
+    body.extend(cleanup.epilogue)
     return [
         gen.scenario_open(scenario.name),
         *(f"{_BODY_INDENT}{line}" if line else "" for line in body),

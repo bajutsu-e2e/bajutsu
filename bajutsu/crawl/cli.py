@@ -25,26 +25,34 @@ import json
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Annotated
 
 import typer
 
 from bajutsu import crawl as crawl_engine
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
+    WORKER_CONFIG_HELP,
     _ai_redactor,
     _build_alert_guard,
+    _command_preconditions_or_exit,
+    _device_udid_or_exit,
+    _first_run_or_exit,
     _install_usage_ledger,
+    _load_device_worker_or_exit,
     _load_effective_with_source,
     _refuse_out_in_checkout,
     _require_ai_credential,
+    _resolve_kind,
     _resolve_language,
     _select_actuator_or_exit,
     _start_launch_server_or_exit,
     _with_headed,
+    _with_worker_device,
     resolve_system_alert_handling_flag,
 )
 from bajutsu.common.ai import announce_ai
-from bajutsu.common.config import Effective, web_base_url
+from bajutsu.common.config import Effective, command_preconditions, web_base_url
 from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.drivers import base
 from bajutsu.common.evidence.redaction import Redactor
@@ -53,7 +61,6 @@ from bajutsu.common.platform_lifecycle import CrawlEnvironment, environment_for
 from bajutsu.common.run_meta.files import RunArtifactReader, runs_root
 from bajutsu.common.run_meta.id import new_run_id
 from bajutsu.common.runner import launch_driver
-from bajutsu.common.scenario import Preconditions
 from bajutsu.crawl import flows as crawl_flows
 from bajutsu.crawl import report as crawl_report
 from bajutsu.crawl import repro as crawl_repro
@@ -295,7 +302,11 @@ def _build_lane(
     """
     env = environment_for(plan.actuator, udid)
     driver, _readiness = launch_driver(
-        udid, plan.eff, plan.actuator, Preconditions(erase=plan.erase), environment=env
+        udid,
+        plan.eff,
+        plan.actuator,
+        command_preconditions(plan.eff, erase=plan.erase),
+        environment=env,
     )
     # After the launch, deliberately: `crawl_reset` snapshots `simctl.Env(self._udid)` eagerly, so a
     # reset built ahead of it would bind the udid the launch may have just replaced.
@@ -348,7 +359,7 @@ def _execute(plan: _CrawlPlan, guide: crawl_engine.Guide, report: Report) -> cra
         # The primary lane is built here (on the main thread): it drives bootstrap and the in-place
         # walk, so its driver lives on this thread. A launch failure surfaces cleanly as exit 2.
         primary = build_lane(plan.udids[0])
-    except device_errors.DeviceError as e:
+    except (device_errors.DeviceError, base.UnsupportedAction) as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
 
@@ -392,7 +403,7 @@ def _execute(plan: _CrawlPlan, guide: crawl_engine.Guide, report: Report) -> cra
             extra_workers=extra_factories,  # built on their own threads (BE-0064 sims / BE-0077 browsers)
             app_crash_artifacts=primary[2],
         )
-    except device_errors.DeviceError as e:
+    except (device_errors.DeviceError, base.UnsupportedAction) as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
     _write_screenmap(plan.writer, screen_map)
@@ -455,12 +466,16 @@ def crawl(
         "screen that shows it (on by default; the WebUI lets you resume a pruned branch on demand)",
     ),
     erase: bool = typer.Option(
-        True, "--erase/--no-erase", help="erase the device before launching (app must be installed)"
+        True,
+        "--erase/--no-erase",
+        help="erase the device before launching (app must be installed); the target's "
+        "subject.reinstall: erase "
+        "does not apply here (default: erase)",
     ),
     system_alert_handling: bool | None = typer.Option(
         None,
         "--system-alert-handling/--no-system-alert-handling",
-        help="handle unexpected OS prompts while crawling (on by default; uses the same API key)",
+        help="handle unexpected OS prompts while crawling (default: on; uses the same API key)",
     ),
     alert_vision_instruction: str = typer.Option(
         "",
@@ -491,7 +506,13 @@ def crawl(
         None,
         "--headed/--no-headed",
         help="web backend: crawl a visible (headed, slow-motion) browser instead of headless; "
-        "default leaves the target's `headless` config",
+        "overrides the target's driver.headless",
+    ),
+    kind: str = typer.Option(
+        "",
+        "--kind",
+        help="iOS: the one of the target's runsOn.ios.kind to crawl on — simulator / device; "
+        "a kind the target does not declare exits 2 (default: the first listed kind)",
     ),
     language: str = typer.Option(
         "",
@@ -506,6 +527,9 @@ def crawl(
         help="internal: serve sets this for an uploaded bundle to govern its launchServer command "
         "(deny | reuse | sandbox); empty = ungoverned local/Git run (BE-0090)",
     ),
+    worker_config: Annotated[
+        Path | None, typer.Option("--worker-config", help=WORKER_CONFIG_HELP)
+    ] = None,
     config: str = typer.Option(DEFAULT_CONFIG),
 ) -> None:
     """Explore the app breadth-first and write a screen map (`screenmap.json`).
@@ -521,8 +545,10 @@ def crawl(
         typer.echo("crawl: --continue and --resume-src/--resume-key are mutually exclusive")
         raise typer.Exit(2)
     eff, _source, checkout_root = _load_effective_with_source(config, target_name)
-    # --headed/--no-headed overrides the target's `headless` config (web backend only; iOS ignores it).
+    # --headed/--no-headed overrides the target's `driver.headless` (web only; iOS ignores it).
     eff = _with_headed(eff, headed)
+    # --kind picks one of the target's `runsOn.ios.kind` (iOS only; BE-0468).
+    eff = _resolve_kind(eff, kind, single=True)
     # --language overrides the target's `ai.language` (flag > config > auto), BE-0188.
     eff = _resolve_language(eff, language)
 
@@ -531,7 +557,14 @@ def crawl(
     def say(msg: str) -> None:
         typer.echo(msg, err=True)
 
-    actuator, _ = _select_actuator_or_exit(backend, eff, [])
+    worker = _load_device_worker_or_exit(worker_config)
+    eff = _with_worker_device(eff, worker)
+    actuator, _ = _select_actuator_or_exit(backend, eff, [], worker)
+    # The device comes through the target's provider, as in `run`: the `--udid` pool, or the grid
+    # an `appium` environment names (BE-0452).
+    udid = _device_udid_or_exit(eff, udid)
+    # Under `runsOn` conditions the command takes the first run's device, never several (BE-0452).
+    eff, udid = _first_run_or_exit(eff, actuator, udid)
     # Fail closed (BE-0097 / BE-0047): the guide and the alert guard both reach the model via the
     # resolved SDK provider (Anthropic / Bedrock / ant), so a missing credential is an actionable
     # error, not a quiet fallback. Placed after backend selection so a config/backend error surfaces
@@ -573,11 +606,14 @@ def crawl(
     environment = environment_for(actuator, "")
     udids = _plan_lanes(environment, udid, workers, seed_path)
 
-    # On by default while crawling (a crawl carries no scenario to hold its own setting).
+    # The guard is on unless the flag turns it off: a config can answer or leave a prompt by name,
+    # but carries no switch for the whole guard (BE-0473).
     system_alert_handling_enabled = resolve_system_alert_handling_flag(
         system_alert_handling, default=True
     )
 
+    # Refused here, before any lane starts, rather than inside a lane's own launch.
+    _command_preconditions_or_exit(eff, erase=erase)
     plan = _CrawlPlan(
         eff=eff,
         actuator=actuator,

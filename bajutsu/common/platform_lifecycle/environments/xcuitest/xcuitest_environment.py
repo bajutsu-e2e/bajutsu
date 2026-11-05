@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import contextlib
-import json
+import dataclasses
 import math
 import os
 import shutil
@@ -14,21 +14,24 @@ import time
 from collections import deque
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, cast
+from typing import IO, TYPE_CHECKING, Literal, cast
 
 from bajutsu.common import backends, stall_diagnostics
 from bajutsu.common.backend_cli import simctl
+from bajutsu.common.capability.settings_support import enforce_settings
 from bajutsu.common.config import Effective, require_ios
+from bajutsu.common.config.preconditions import ResolvedPreconditions
 from bajutsu.common.devices import os as device_os
 from bajutsu.common.devices.os import DeviceOS
 from bajutsu.common.drivers import base
-from bajutsu.common.drivers.zorder import ZOrderSource
+from bajutsu.common.drivers.zorder import ZOrderResponder, ZOrderSource
 from bajutsu.common.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.common.platform_lifecycle import readiness
 from bajutsu.common.platform_lifecycle.device_control import device_control
 from bajutsu.common.platform_lifecycle.environments._bundled_runner import _products_digest
 from bajutsu.common.platform_lifecycle.environments.ios import _DeviceEnvironment
-from bajutsu.common.scenario import Preconditions, Relaunch, Scenario
+from bajutsu.common.platform_lifecycle.protocols import CollectorHost
+from bajutsu.common.scenario import Relaunch, Scenario
 from bajutsu.crawl import Reset
 
 from ._attempt_failure import _AttemptFailure
@@ -41,6 +44,7 @@ from ._functions import (
     _bundle_executable,
     _destination,
     _diagnostic_reports_dir,
+    _forwarded_launch,
     _max_warm_reuses,
     _never_ended,
     _no_recovery,
@@ -59,9 +63,11 @@ from ._functions import (
     _zorder_client,
     effective_device_type,
 )
+from ._host_address import HOST_ADDRESS_ENV, HostAddressError, host_candidates
 from ._recovery import _Recovery
 from ._shared import _logger
 from ._spawned import _Spawned
+from ._usbmux import UsbmuxForwarder
 
 # Overrides the directory the runner subprocess's combined stdout/stderr is captured into, one file
 # per cold spawn. Capture is on by default (BE-0319 unit 1): a startup failure or mid-run crash is
@@ -160,6 +166,12 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # because it is compared against a file's `st_mtime`.
         self._runner_spawned_at: float = 0.0
         self._runner_port: int = 0
+        # The host→device port bridge a real-device runner is reached through; None on the Simulator,
+        # whose loopback the host already shares (`_spawn_runner`).
+        self._forwarder: UsbmuxForwarder | None = None
+        # The same bridge for the app's `nativeZ` responder on a real device (BE-0355), held per
+        # lease rather than per spawn attempt: the responder lives in the app, not the runner.
+        self._zorder_forwarder: UsbmuxForwarder | None = None
         self._patched_runner: Path | None = None
         # Where the current runner's captured output went; a mid-run-crash warning and a startup
         # failure both point at it (`_runner_log_hint`). Capture is on by default (BE-0319 unit 1).
@@ -193,6 +205,9 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # (`_terminate_app_under_test`). None until the first spawn, and on a real device, where
         # simctl does not apply.
         self._bundle_id: str | None = None
+        # Whether this lease's own `start` asked to wipe the Simulator, which a device-group member
+        # shares (BE-0473): a member that asks for `erase` the lead did not ask for cannot have it.
+        self._lead_erases = False
         # The installed app bundle this environment prepped, for the `CFBundleExecutable` read that
         # builds the `.ips` sweep's own match pattern — `app_crash_artifacts()` takes no arguments, so
         # it has no `eff` in scope to reach `ios.app_path` through (BE-0424). None on a target that
@@ -247,25 +262,59 @@ class XcuitestEnvironment(_DeviceEnvironment):
         self._lease_driver: base.Driver | None = None
         self._member_drivers: dict[str, base.Driver] = {}
         self._group: RunnerTarget | None = None
-        self._launch_inputs: tuple[Preconditions, Mapping[str, str]] = (Preconditions(), {})
+        self._launch_inputs: tuple[ResolvedPreconditions, Mapping[str, str]] = (
+            ResolvedPreconditions(),
+            {},
+        )
+        # `repl --attach` (BE-0455): set by `request_attach` before `start`, which then drives the
+        # app the operator already has open instead of preparing the device; `attach_outcome` says
+        # whether that app was running (`attached`) or had to be launched (`launched`). The app is
+        # never this environment's to terminate in either case, so every discard keeps it.
+        self._attach = False
+        self._attach_outcome: Literal["attached", "launched"] | None = None
+
+    def request_attach(self) -> None:
+        """Make the next `start` attach to the target app's running process (BE-0455).
+
+        The attach start touches nothing device-wide — no erase, boot, install, locale pin,
+        permission grant, or deeplink — and spawns the runner once, with no recovery ladder, because
+        every retry or repair path terminates the app or reboots the device it runs on. When the app
+        is not running it is launched instead, still without any device prep. Exiting goes through
+        `release_runner`, and `teardown` routes there too, so nothing terminates the app.
+        """
+        self._attach = True
+
+    @property
+    def attach_outcome(self) -> Literal["attached", "launched"] | None:
+        """What the attach `start` found: `attached`, `launched`, or None before one ran."""
+        return self._attach_outcome
 
     def start(
         self,
         eff: Effective,
-        pre: Preconditions,
+        pre: ResolvedPreconditions,
         *,
         extra_env: Mapping[str, str] | None = None,
         record_video_dir: Path | None = None,
         permissions: Mapping[str, str] | None = None,
     ) -> base.Driver:
+        # The route's settings table decides what this launch may apply (BE-0467): an unsupported
+        # setting the target does not ignore raises, and an ignored one is dropped before any branch.
+        pre, permissions = enforce_settings(self._actuator, eff, pre, permissions, self._udid)
         stale = self._group
-        driver = self._start(
-            eff,
-            pre,
-            extra_env=extra_env,
-            record_video_dir=record_video_dir,
-            permissions=permissions,
-        )
+        try:
+            driver = self._start(
+                eff,
+                pre,
+                extra_env=extra_env,
+                record_video_dir=record_video_dir,
+                permissions=permissions,
+            )
+        except BaseException:
+            # No driver comes back, so no teardown will close the lease's `nativeZ` bridge, which
+            # `_start` opens before any precondition can refuse the lease.
+            self._close_zorder_forwarder()
+            raise
         bundle_id = require_ios(eff).bundle_id
         if stale is not None and stale.current != bundle_id:
             # A warm runner a previous lease's device group retargeted still addresses that lease's
@@ -280,7 +329,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
     def _start(
         self,
         eff: Effective,
-        pre: Preconditions,
+        pre: ResolvedPreconditions,
         *,
         extra_env: Mapping[str, str] | None = None,
         record_video_dir: Path | None = None,  # noqa: ARG002  # Environment shape
@@ -297,34 +346,21 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # The app answers `nativeZ` on the port this run injected, so the client is built from the
         # same launch env the app will read (BE-0355). Held on the environment rather than threaded
         # through the spawn path, so a warm resume reuses the responder its own launch set up.
-        self._zorder = _zorder_client(extra_env)
+        self._zorder = self._zorder_channel(_zorder_client(extra_env), device_type)
         # Read once and cleared here rather than where it is honored, so no `start` can leave a stale
         # escalation behind for a later lease — including the real-device route below, which returns
         # before the rung and has no simctl to mint a device through anyway.
         replace_device = self._replacement_requested
         self._replacement_requested = False
+        self._lead_erases = pre.erase
+
+        if self._attach:
+            return self._start_attached(eff, pre, device_type, extra_env, permissions)
 
         if device_type == "device":
-            # A real device is not managed through simctl: it is already powered on, its build is
-            # installed out of band, and `simctl privacy` cannot reach it. The simctl-only
-            # preconditions it cannot honour fail loudly here (real-device install / permissions
-            # are BE-0238 Unit 2/3) rather than silently no-op'ing — determinism first.
-            if pre.erase:
-                raise simctl.DeviceError(
-                    "erase is a simctl operation and does not apply to a real device "
-                    "(xcuitest.deviceType: device)"
-                )
-            if ios.app_path:
-                raise simctl.DeviceError(
-                    "installing appPath through simctl does not apply to a real device "
-                    "(xcuitest.deviceType: device); install the app and its device-build test "
-                    "runner out of band"
-                )
-            if permissions:
-                raise simctl.DeviceError(
-                    "permission grants use simctl and do not apply to a real device "
-                    "(xcuitest.deviceType: device)"
-                )
+            # A real device is not managed through simctl: it is already powered on and its build is
+            # installed out of band. `enforce_settings` in `start` already refused the erase, the
+            # install, and the permission grants this route cannot apply, unless the target ignores them.
             return self._spawn_cold(eff, pre, device_type, extra_env, permissions)
 
         # A pending escalation (BE-0354) is served before anything else touches the device: the run
@@ -358,7 +394,11 @@ class XcuitestEnvironment(_DeviceEnvironment):
             # never reached this instance (a lease whose environment the pool had already evicted)
             # would then leave the retry with neither remedy.
             return self._spawn_cold(
-                eff, pre.model_copy(update={"erase": False}), device_type, extra_env, permissions
+                eff,
+                dataclasses.replace(pre, reinstall="clean"),
+                device_type,
+                extra_env,
+                permissions,
             )
 
         # Simulator: reuse a healthy warm runner across leases (BE-0291). `erase` shuts the Simulator
@@ -380,10 +420,89 @@ class XcuitestEnvironment(_DeviceEnvironment):
         self._discard_runner()  # drop any dead / lingering / reuse-spent runner before a fresh spawn
         return self._spawn_cold(eff, pre, device_type, extra_env, permissions)
 
+    def _start_attached(
+        self,
+        eff: Effective,
+        pre: ResolvedPreconditions,
+        device_type: str,
+        extra_env: Mapping[str, str] | None,
+        permissions: Mapping[str, str] | None,
+    ) -> base.Driver:
+        """Bring the runner up over the app the operator left running, or launch it bare (BE-0455)."""
+        # The CLI rejects these combinations before any device is touched; repeated here so no other
+        # caller can reach a path that would wipe or miss the device the operator is looking at.
+        if device_type == "device":
+            raise simctl.DeviceError("attach is only supported on the local iOS Simulator")
+        if pre.erase:
+            raise simctl.DeviceError("attach never erases the device it attaches to")
+        # Neither is applied on attach, so a caller asking for one is refused rather than left to run
+        # against an app whose deeplink never opened or whose grant never landed.
+        if pre.deeplink is not None:
+            raise simctl.DeviceError("attach never opens a deeplink in the app it attaches to")
+        if permissions:
+            raise simctl.DeviceError(
+                "attach never changes the permissions of the app it attaches to"
+            )
+        # Attach never boots a device, because booting is device-wide. The listing is read first so a
+        # wedged CoreSimulator is not reported as "nothing booted": `resolve_udid` leaves the `booted`
+        # alias unresolved on both, and only a listing that did answer tells them apart.
+        booted = simctl.device_booted(self._udid, self._run)
+        if booted is None:
+            raise simctl.DeviceError(f"could not read whether Simulator {self._udid} is booted")
+        if self._udid == "booted":
+            raise simctl.DeviceError("no booted Simulator; boot one first")
+        if not booted:
+            raise simctl.DeviceError(f"Simulator {self._udid} is not booted; boot it first")
+        ios = require_ios(eff)
+        e = simctl.Env(self._udid, run=self._run)
+        try:
+            running = e.is_app_running(ios.bundle_id)
+            # `XCUIApplication.launch()` does not fail cleanly on a bundle id with nothing installed,
+            # so the fallback launch checks first.
+            if not running and not e.app_container_exists(ios.bundle_id):
+                raise simctl.DeviceError(
+                    f"{ios.bundle_id} is not installed on Simulator {self._udid}; install it first"
+                )
+        except subprocess.CalledProcessError as exc:
+            raise simctl.device_error(exc) from exc
+        self._bundle_id = ios.bundle_id
+        self._app_path = ios.app_path
+        forwarded_base: dict[str, str] = {"BAJUTSU_BUNDLE_ID": ios.bundle_id}
+        if running:
+            # An attached app already started with whatever env it has; there is nothing to forward.
+            forwarded_base["BAJUTSU_ATTACH"] = "1"
+        else:
+            launch_env, launch_args = self._launch_params(eff, pre, extra_env)
+            forwarded_base.update(_forwarded_launch(launch_env, launch_args))
+            self._app_launched_at = time.time()
+        runner_path = _resolve_runner(ios.xcuitest, device_type, build_cwd=eff.base_dir)
+
+        def spawn() -> _Spawned:
+            return self._spawn_runner(runner_path, forwarded_base, device_type)
+
+        # One attempt and no recovery: the retry's discard and the ladder's reboot would each destroy
+        # the app this start exists to keep, so a failed spawn fails once, with the runner's log tail.
+        spawned = _spawn_cold_with_retry(
+            spawn, timeout=_runner_startup_timeout(), recover=_no_recovery, attempts=1
+        )
+        self._cold_spawned_before = True
+        # Warm reuse terminates and relaunches the app, so an attached runner is never offered to it.
+        self._reusable = False
+        self._attach_outcome = "attached" if running else "launched"
+        return spawned.driver
+
+    def release_runner(self) -> None:
+        """Stop the runner and leave the app under test running — the attach session's exit (BE-0455).
+
+        `xcodebuild` runs in its own session (`_spawn_runner`), so a shell that merely exits would
+        leave it behind, still holding the device's automation session.
+        """
+        self._discard_runner()
+
     def _spawn_cold(
         self,
         eff: Effective,
-        pre: Preconditions,
+        pre: ResolvedPreconditions,
         device_type: str,
         extra_env: Mapping[str, str] | None,
         permissions: Mapping[str, str] | None,
@@ -403,17 +522,18 @@ class XcuitestEnvironment(_DeviceEnvironment):
         if device_type != "device":
             self._prepare_simulator(eff, pre, permissions, cold=True)
 
-        # The runner launches the app via XCUIApplication.launch(). Preconditions are forwarded
-        # through env vars: the runner reads BAJUTSU_LAUNCH_ENV_* and sets them on
-        # launchEnvironment, BAJUTSU_LAUNCH_ARGS as launchArguments, and opens BAJUTSU_DEEPLINK.
+        # The runner launches the app via XCUIApplication.launch(). The resolved preconditions are
+        # forwarded through env vars: the runner sets BAJUTSU_ENCODED_LAUNCH_ENV on launchEnvironment
+        # and BAJUTSU_ENCODED_LAUNCH_ARGS as launchArguments, falling back to BAJUTSU_LAUNCH_ENV_* /
+        # BAJUTSU_LAUNCH_ARGS only for a runner older than the encoded pair (`_forwarded_launch`);
+        # the plain form's URLs arrive with `//` collapsed, so it is not the one to inspect.
         launch_env, launch_args = self._launch_params(eff, pre, extra_env)
-        runner_path = _resolve_runner(ios.xcuitest, device_type)
+        runner_path = _resolve_runner(ios.xcuitest, device_type, build_cwd=eff.base_dir)
         forwarded_base = {
             # One generic runner drives whatever app the run targets, so it launches this
             # bundle id via XCUIApplication(bundleIdentifier:) rather than its own target app.
             "BAJUTSU_BUNDLE_ID": ios.bundle_id,
-            **{f"BAJUTSU_LAUNCH_ENV_{k}": v for k, v in launch_env.items()},
-            "BAJUTSU_LAUNCH_ARGS": json.dumps(launch_args),
+            **_forwarded_launch(launch_env, launch_args),
         }
         if pre.deeplink is not None:
             forwarded_base["BAJUTSU_DEEPLINK"] = pre.deeplink
@@ -462,7 +582,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         self,
         failure: _AttemptFailure,
         eff: Effective,
-        pre: Preconditions,
+        pre: ResolvedPreconditions,
         permissions: Mapping[str, str] | None,
     ) -> _Recovery:
         """Repair the Simulator a failed cold attempt leaves behind, so the retry spawns onto a live device.
@@ -607,7 +727,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         return _Recovery(f"rebooted {self._udid}", fresh_budget=_runner_startup_timeout())
 
     def _finish_repair(
-        self, eff: Effective, pre: Preconditions, permissions: Mapping[str, str] | None
+        self, eff: Effective, pre: ResolvedPreconditions, permissions: Mapping[str, str] | None
     ) -> None:
         """Re-prepare the device a reboot or replacement just brought back, outside the recovery bound.
 
@@ -708,26 +828,28 @@ class XcuitestEnvironment(_DeviceEnvironment):
         Raises:
             DeviceError: if no replacement can be created — chiefly a host that lost its iOS runtimes
                 along with the device, where there is nothing left to run on — or if the target
-                configures no `appPath`, since a blank replacement would have no app to install.
+                configures no `subject.path`, since a blank replacement would have no app to install.
         """
         old = self._udid
-        # A replacement is a blank device, so without an `appPath` to install onto it the retry has
+        # A replacement is a blank device, so without a `subject.path` to install onto it the retry has
         # nothing to launch: say so here rather than spending the create, the boot and a full cold
         # ceiling proving it.
         if require_ios(eff).app_path is None:
             raise simctl.DeviceError(
-                f"Simulator {old} {why} and this target configures no appPath, so a replacement "
-                "device would have no app to launch; set appPath so the recovery can install it, "
+                f"Simulator {old} {why} and this target configures no subject.path, so a replacement "
+                "device would have no app to launch; set subject.path so the recovery can install it, "
                 "or bring a fresh Simulator up with the app installed and re-run"
             )
-        device_type = self._replacement_device_type(eff)
-        if device_type is None:
+        if self._device_type_id is None or self._device_runtime_id is None:
+            # A replacement of another model or OS would change what the run observes, so one that
+            # cannot keep the vanished device's own type and runtime fails rather than guesses
+            # (BE-0452).
             raise simctl.DeviceError(
-                f"Simulator {old} {why} and no device type matching {eff.device} is available to "
-                "replace it; the host's Simulator runtimes may be gone, or the configured device "
-                "name doesn't exactly match a simctl device type"
+                f"Simulator {old} {why} and its device type and runtime were never read, so no "
+                "replacement of the same model and OS can be created; bring a fresh Simulator up "
+                "and re-run"
             )
-        return device_type
+        return self._device_type_id
 
     def _create_replacement(self, device_type: str) -> str:
         """Create, boot, and adopt a fresh Simulator of `device_type`; the diagnostic note.
@@ -762,8 +884,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # operator reading `simctl list` afterwards tell which recovery minted which device.
         name = f"{simctl.device_type_label(device_type)} (bajutsu-recovered-{old})"
         # Pinning the replaced device's own runtime keeps the replacement on the same iOS version a
-        # scenario was written against; `create_device` retries unpinned if that runtime is itself
-        # gone, so this only trades away version fidelity in the case it has to.
+        # scenario was written against; when that runtime is itself gone, the create fails the run.
         requested_runtime = self._device_runtime_id
         replacement = simctl.create_device(
             device_type, self._run, name=name, runtime=requested_runtime
@@ -772,36 +893,11 @@ class XcuitestEnvironment(_DeviceEnvironment):
         self._replaced_from = old
         self._pinned_locale = None  # a fresh device: nothing has pinned its SpringBoard yet
         self._installed_app_digest = None  # a fresh device: nothing is installed on it yet
-        # Cleared, not set: `create_device` falls back to an unpinned create when the pinned runtime
-        # is gone, so what it got is not necessarily what was asked for. `_finish_repair`'s prep
-        # re-reads both from the replacement itself.
+        # Cleared, not set: `_finish_repair`'s prep re-reads both from the replacement itself, so the
+        # recorded facts come from the device rather than from what was asked for.
         self._device_type_id = self._device_runtime_id = None
         self._await_boot()
-        return (
-            f"created replacement {replacement} "
-            f"({device_type}, requested runtime {requested_runtime or 'any'})"
-        )
-
-    def _replacement_device_type(self, eff: Effective) -> str | None:
-        """The device type a replacement is created from, or None when no matching type is available.
-
-        Prefers the vanished device's own type, so the replacement is the device the run was written
-        against; falls back to the configured model, then — only for an iPhone target — to whichever
-        iPhone this host's Xcode ships, since the config may name a model a later Xcode dropped and
-        any iPhone beats failing the run. The fallback is scoped to an iPhone target because it is not
-        scoped to a device *class*: `eff.device` matches simctl's device-type name exactly, and an
-        iPad's name carries parentheses (`iPad Pro (12.9-inch) (6th generation)`), so a near-miss is
-        ordinary rather than exotic — substituting an iPhone for a missed iPad would finish the run on
-        a layout the scenario was never written against, silently.
-        """
-        if self._device_type_id is not None:
-            return self._device_type_id
-        configured = simctl.device_type_identifier(eff.device, self._run)
-        if configured is not None:
-            return configured
-        if "iphone" not in eff.device.lower():
-            return None
-        return simctl.newest_iphone_device_type(self._run)
+        return f"created replacement {replacement} ({device_type}, runtime {requested_runtime})"
 
     def _spawn_runner(
         self, runner_path: Path, forwarded_base: Mapping[str, str], device_type: str
@@ -813,7 +909,19 @@ class XcuitestEnvironment(_DeviceEnvironment):
         channel driver. Returns a `_Spawned` reading from this environment's just-set state — the
         surviving attempt's state is the environment's, which warm reuse and teardown then own.
         """
-        self._runner_port = _allocate_port()
+        self._runner_port = self._runner_channel_port(device_type)
+        try:
+            return self._spawn_on_port(runner_path, forwarded_base, device_type)
+        except BaseException:
+            # The retry loop discards only an attempt that spawned; one that failed before then
+            # would otherwise leave the bridge's listener and accept thread running.
+            self._close_forwarder()
+            raise
+
+    def _spawn_on_port(
+        self, runner_path: Path, forwarded_base: Mapping[str, str], device_type: str
+    ) -> _Spawned:
+        """`_spawn_runner`'s body once `_runner_port` is set: patch, spawn, and build the driver."""
         forwarded = {"BAJUTSU_RUNNER_PORT": str(self._runner_port), **forwarded_base}
         # `xcodebuild` does not pass its own environment through to the test-runner process
         # inside the Simulator, so the runner reads these from the .xctestrun's per-target
@@ -919,10 +1027,32 @@ class XcuitestEnvironment(_DeviceEnvironment):
             run_ended=self._run_ended,
         )
 
+    def _runner_channel_port(self, device_type: str) -> int:
+        """The port the runner binds and the driver dials, bridged to the device when it is real.
+
+        The runner binds its server on its own loopback. A Simulator shares the host's, so a free
+        host port is enough; a real device does not, so the port is the host end of a usbmuxd
+        bridge to the same number on the device — the iOS counterpart of the resident Android
+        channel's `adb forward`.
+        """
+        self._close_forwarder()  # a previous attempt's bridge, should a discard have missed it
+        if device_type != "device":
+            return _allocate_port()
+        forwarder = UsbmuxForwarder(self._udid)
+        try:
+            port = forwarder.start()
+        except OSError as exc:  # usbmuxd unreachable or silent, the device unlisted, or no bind
+            forwarder.close()
+            raise simctl.DeviceError(
+                f"cannot bridge to the runner on device {self._udid}: {exc}"
+            ) from exc
+        self._forwarder = forwarder
+        return port
+
     def _resume_warm(
         self,
         eff: Effective,
-        pre: Preconditions,
+        pre: ResolvedPreconditions,
         extra_env: Mapping[str, str] | None,
         permissions: Mapping[str, str] | None,
         driver: base.Driver,
@@ -968,7 +1098,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
     def _prepare_simulator(
         self,
         eff: Effective,
-        pre: Preconditions,
+        pre: ResolvedPreconditions,
         permissions: Mapping[str, str] | None,
         *,
         cold: bool,
@@ -1000,17 +1130,17 @@ class XcuitestEnvironment(_DeviceEnvironment):
                     resolved = simctl.device_type_of(self._udid, self._run)
                     self._device_type_id, self._device_runtime_id = resolved or (None, None)
                 self._pin_system_locale(e, pre.resolved_locale(eff.locale))
-                # `seedPhotos` requires `erase: true` (`Preconditions`'s own validator), so this
-                # reuses the same wipe that already guarantees a known-empty library — never runs on
+                # A merged `seedPhotos` requires an effective `reinstall: erase` (`check_preconditions`), so
+                # this reuses the same wipe that already guarantees a known-empty library — never runs on
                 # a warm resume (`cold` is False there) or seeds twice into the same device lease.
                 if pre.erase and pre.seed_photos:
                     e.add_media(pre.seed_photos)
-            clean_reinstall = pre.reinstall == "clean" and not pre.erase
+            clean_reinstall = pre.reinstall == "clean"
             if ios.app_path:
                 app_path = Path(ios.app_path)
                 if not app_path.exists():
                     raise simctl.DeviceError(
-                        f"appPath not found: {ios.app_path} (build the app first)"
+                        f"subject.path not found: {ios.app_path} (build the app first)"
                     )
                 if clean_reinstall:
                     e.uninstall(ios.bundle_id)
@@ -1128,7 +1258,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         self._pinned_locale = locale
 
     def _launch_params(
-        self, eff: Effective, pre: Preconditions, extra_env: Mapping[str, str] | None
+        self, eff: Effective, pre: ResolvedPreconditions, extra_env: Mapping[str, str] | None
     ) -> tuple[dict[str, str], list[str]]:
         """The launch env and args for this scenario (scenario locale overrides the config default)."""
         launch_env = {**eff.launch_env, **pre.launch_env, **(extra_env or {})}
@@ -1400,7 +1530,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
     def start_member(
         self,
         eff: Effective,
-        pre: Preconditions,
+        pre: ResolvedPreconditions,
         *,
         extra_env: Mapping[str, str] | None = None,
         permissions: Mapping[str, str] | None = None,
@@ -1417,6 +1547,19 @@ class XcuitestEnvironment(_DeviceEnvironment):
         ios = require_ios(eff)
         if self._lease_driver is None or self._is_real_device or self._bundle_id is None:
             raise base.UnsupportedAction("device groups need a Simulator this environment started")
+        # A member launches its own app under its own target's declarations, so it reads the table
+        # exactly as `start` does (BE-0467).
+        pre, permissions = enforce_settings(self._actuator, eff, pre, permissions, self._udid)
+        if install and pre.erase and not self._lead_erases:
+            # Each target merges its own `subject.reinstall`, so two targets on one Simulator can
+            # disagree; wiping it now would destroy the lead's app, and skipping it would ignore
+            # what the member declared. The run preflight refuses this before any lease
+            # (`_group_erase_problem`); this is the backstop for any other caller. A later member
+            # (`install=False`) was installed by the scenario itself, so it asks for no wipe here.
+            raise simctl.DeviceError(
+                f"target {eff.target!r} sets subject.reinstall: erase, but it shares this Simulator "
+                "with a target that does not erase it; give both targets the same reinstall"
+            )
         e = simctl.Env(self._udid, run=self._run)
         try:
             if install:
@@ -1455,17 +1598,20 @@ class XcuitestEnvironment(_DeviceEnvironment):
         return self._group
 
     def _install_member_build(
-        self, e: simctl.Env, bundle_id: str, app_path: str | None, pre: Preconditions
+        self, e: simctl.Env, bundle_id: str, app_path: str | None, pre: ResolvedPreconditions
     ) -> None:
-        # The member's own reinstall mode; `erase` is device-wide and `start` already ran it.
+        # The member's own reinstall mode. `erase` wipes the whole device, which `start` already did
+        # (`start_member` refuses a member that erases on a lead that does not), so here it resets
+        # the member's app as `clean` does.
         if not app_path:
             return
         if not Path(app_path).exists():
-            raise simctl.DeviceError(f"appPath not found: {app_path} (build the app first)")
-        if pre.reinstall == "clean":
+            raise simctl.DeviceError(f"subject.path not found: {app_path} (build the app first)")
+        fresh = pre.reinstall != "overwrite"
+        if fresh:
             e.uninstall(bundle_id)
         e.install(app_path)
-        if pre.reinstall == "clean":
+        if fresh:
             e.reset_permissions(bundle_id)
 
     def install_member(self, eff: Effective, *, keep_data: bool) -> None:
@@ -1477,7 +1623,9 @@ class XcuitestEnvironment(_DeviceEnvironment):
         """
         ios = require_ios(eff)
         if not ios.app_path or not Path(ios.app_path).exists():
-            raise simctl.DeviceError(f"appPath not found: {ios.app_path} (build the app first)")
+            raise simctl.DeviceError(
+                f"subject.path not found: {ios.app_path} (build the app first)"
+            )
         e = simctl.Env(self._udid, run=self._run)
         try:
             e.terminate(ios.bundle_id)
@@ -1534,11 +1682,11 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # group shares keeps the old behaviour, with no wait at all.
         if driver is None or (self._group is None and not launched):
             return
-        # `readyWhen` names the app's launch screen, so it gates a launch alone: a resumed app comes
+        # `startWhen` names the app's launch screen, so it gates a launch alone: a resumed app comes
         # back on whatever screen it left, and waiting there for the launch screen would time out.
         result = readiness.await_ready(
             driver,
-            ready_sel=eff.ready_when if launched else None,
+            ready_sel=eff.start_when if launched else None,
             id_namespaces=eff.id_namespaces,
         )
         if not result.ready and self._group is not None:
@@ -1718,7 +1866,10 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # discard's own bookkeeping — the capture, the patched .xctestrun, the reuse flag — must
         # still complete, or surfacing a wedged device would cost a leaked temp file each time.
         try:
-            self._terminate_app_under_test()
+            # An attach session's app is the operator's, not this run's (BE-0455): keyed on the mode
+            # rather than passed per call, so no discard reached in attach mode can terminate it.
+            if not self._attach:
+                self._terminate_app_under_test()
             self._terminate_runner_app()
         finally:
             self._release_log(keep=keep_log or crashed)  # after the hint above has read the tail
@@ -1726,6 +1877,41 @@ class XcuitestEnvironment(_DeviceEnvironment):
                 self._patched_runner.unlink(missing_ok=True)
                 self._patched_runner = None
             self._reusable = False
+            self._close_forwarder()
+
+    def _zorder_channel(
+        self, client: ZOrderResponder | None, device_type: str
+    ) -> ZOrderResponder | None:
+        """`client` as the driver should reach it: through a usbmuxd bridge on a real device.
+
+        The app's responder binds the device's loopback (`BajutsuZOrder.swift`), which the host
+        does not share. A bridge that cannot be opened leaves `nativeZ` absent rather than failing
+        the run: it is diagnostic, the same honest absence an app without a responder reports.
+        """
+        self._close_zorder_forwarder()  # a previous lease's, should its teardown have missed it
+        if client is None or device_type != "device":
+            return client
+        forwarder = UsbmuxForwarder(self._udid, device_port=client.port)
+        try:
+            port = forwarder.start()
+        except OSError as exc:
+            forwarder.close()
+            _logger.warning("nativeZ unavailable: cannot bridge to device %s: %s", self._udid, exc)
+            return None
+        self._zorder_forwarder = forwarder
+        return ZOrderResponder(port=port, token=client.token)
+
+    def _close_zorder_forwarder(self) -> None:
+        """Close the lease's real-device `nativeZ` bridge, if one is open."""
+        if self._zorder_forwarder is not None:
+            self._zorder_forwarder.close()
+            self._zorder_forwarder = None
+
+    def _close_forwarder(self) -> None:
+        """Close the real-device port bridge, if one is open; a no-op on the Simulator."""
+        if self._forwarder is not None:
+            self._forwarder.close()
+            self._forwarder = None
 
     def _terminate_app_under_test(self) -> None:
         """Best-effort `simctl terminate` of the app the runner launched (Simulator only).
@@ -1755,7 +1941,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         it. Every cold spawn that leaves one behind narrows what the next spawn can obtain, which is
         one way a device reaches the state where the runner never comes up at all. The ids come from
         the resolved `.xctestrun` (`_runner_host_bundle_ids`) rather than the bundled runner's known
-        id, so an explicit `xcuitest.testRunner` is cleaned up just as readily. Failures are ignored
+        id, so an explicit `driver.runner.testRunner` is cleaned up just as readily. Failures are ignored
         for the same reason as the app under test: the common case is one that is not running — and
         a deadline exceeded is excluded for that same reason, being a wedged device rather than an
         absent app (BE-0363).
@@ -1793,6 +1979,44 @@ class XcuitestEnvironment(_DeviceEnvironment):
                 self._runner_log.unlink(missing_ok=True)
         self._runner_log = None
 
+    def collector_host(self, eff: Effective) -> CollectorHost:
+        """Loopback on the Simulator; on a real device, every interface and the host's addresses.
+
+        A real device shares no loopback with the host, and usbmuxd carries no connection the device
+        opens, so the app is offered the host addresses it might route to and probes them itself.
+        """
+        xcfg = require_ios(eff).xcuitest
+        if effective_device_type(xcfg) != "device":
+            return CollectorHost()
+        try:
+            found = host_candidates(xcfg.host_address if xcfg is not None else None)
+        except HostAddressError as exc:
+            raise simctl.DeviceError(str(exc)) from exc
+        if not found.addresses:
+            raise simctl.DeviceError(
+                "the network collector needs a host address a real device can reach, and none was "
+                f"found ({found.source}); set driver.runner.hostAddress or {HOST_ADDRESS_ENV}"
+            )
+        return CollectorHost(bind="::", advertised=found.addresses)
+
+    def reach_device_port(self, eff: Effective, port: int) -> tuple[int, Callable[[], None]]:
+        """`port` itself on the Simulator; on a real device, the host end of a usbmuxd bridge to it.
+
+        Raises:
+            DeviceError: usbmuxd is unreachable or does not list the device.
+        """
+        if effective_device_type(require_ios(eff).xcuitest) != "device":
+            return port, lambda: None
+        forwarder = UsbmuxForwarder(self._udid, device_port=port)
+        try:
+            host_port = forwarder.start()
+        except OSError as exc:
+            forwarder.close()
+            raise simctl.DeviceError(
+                f"cannot bridge to port {port} on device {self._udid}: {exc}"
+            ) from exc
+        return host_port, forwarder.close
+
     def has_reusable_resident(self) -> bool:
         return self._reusable  # BE-0291: a Simulator start left a warm runner the pool should keep
 
@@ -1817,7 +2041,12 @@ class XcuitestEnvironment(_DeviceEnvironment):
         super().teardown(driver, eff)
 
     def teardown(self, driver: base.Driver, eff: Effective) -> None:
+        if self._attach:
+            # The base teardown terminates the app, which an attach session must never do (BE-0455).
+            self.release_runner()
+            return
         self._discard_runner()
+        self._close_zorder_forwarder()
         super().teardown(driver, eff)
 
 

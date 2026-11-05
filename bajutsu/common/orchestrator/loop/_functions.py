@@ -41,7 +41,9 @@ from bajutsu.common.orchestrator.types import (
     DEFAULT_ALERT_POLL_INTERVAL,
     AlertEvent,
     AlertGuardConfig,
+    AlertTitleCheck,
     Clock,
+    DerivedSecrets,
     DeviceControl,
     MailboxReader,
     NetworkSource,
@@ -62,17 +64,19 @@ from bajutsu.common.orchestrator.types import (
     undeclared_interruption_note,
 )
 from bajutsu.common.orchestrator.waits import (
+    ResolvingReads,
     WaitTick,
     WaitTrace,
     _adaptive_sleep,
     _timeout_floor,
     _wait,
+    records_note,
     settle_after_alert_dismiss,
     wait_for_system_alert,
 )
 from bajutsu.common.scenario import (
-    AfterRule,
     Assertion,
+    CleanupRule,
     Email,
     Extract,
     ForEach,
@@ -83,9 +87,11 @@ from bajutsu.common.scenario import (
     Step,
     interp,
 )
+from bajutsu.common.scenario.models.actions import Totp
+from bajutsu.common.totp import TOTP_PERIOD_SECONDS
 
 from ._loop_config import _LoopConfig
-from ._shared import _ExecSteps, _logger
+from ._shared import _ExecSteps, _logger, _with_attributes
 from ._step_counter import _StepCounter
 from .app_crash_latches import AppCrashLatches
 from .step_loop_state import StepLoopState
@@ -155,7 +161,10 @@ def _poll_asserts(
     while True:
         t0 = clock.now()
         tree = driver.query()
-        results = assertions.evaluate(tree, asserts, network(), ctx=ctx)
+        # An `attribute` assertion's element is read beside each tree, never once up front: the
+        # attributes it targets (`data-state`, `aria-busy`) settle a beat after an action (BE-0466).
+        tick_ctx = _with_attributes(ctx, driver, asserts)
+        results = assertions.evaluate(tree, asserts, network(), ctx=tick_ctx)
         if assertions.passed(results) or clock.now() >= deadline:
             return results, tree
         if cancelled():
@@ -380,6 +389,59 @@ def _do_sleep(seconds: float, clock: Clock, cancelled: CancelSource) -> None:
         clock.sleep(min(_SLEEP_SLICE, remaining))
 
 
+def _wait_for_totp_window(
+    min_remaining: int,
+    clock: Clock,
+    cancelled: CancelSource,
+    wall: Callable[[], float] = time.time,
+) -> str | None:
+    """Wait for the next TOTP window when the current one has under `min_remaining` seconds left.
+
+    A condition wait the clock decides (BE-0474): it ends on the window boundary itself, so
+    `minRemaining: 30` terminates, and a monotonic deadline of one window plus one slice bounds it
+    whatever the wall clock does. `wall` supplies the window phase, which `clock` — monotonic — cannot.
+
+    Returns:
+        A warning naming the jump when the wall clock moved apart from the monotonic one during the
+        wait, so the code may have less time left than asked; `None` otherwise, including when no
+        wait was needed and when the host merely woke late.
+
+    Raises:
+        RunCancelled: the run was cancelled mid-wait, noticed within one slice (BE-0370).
+    """
+    start_wall = wall()
+    if TOTP_PERIOD_SECONDS - start_wall % TOTP_PERIOD_SECONDS >= min_remaining:
+        return None
+    target = (start_wall // TOTP_PERIOD_SECONDS + 1) * TOTP_PERIOD_SECONDS
+    start_mono = clock.now()
+    deadline = start_mono + (target - start_wall) + _SLEEP_SLICE
+    # Re-read the wall clock each slice: a monotonic sleep can return just before the wall clock
+    # crosses the boundary, and the code must be for the window that has begun.
+    while (now_wall := wall()) < target and (left := deadline - clock.now()) > 0:
+        if cancelled():
+            raise RunCancelled
+        clock.sleep(min(_SLEEP_SLICE, left, target - now_wall))
+    end_wall = wall()
+    drift = (end_wall - start_wall) - (clock.now() - start_mono)
+    # A late wake-up moves both clocks together, so only a gap between them names a jump. One second,
+    # not one slice: `{drift:+.0f}` below would print a smaller gap as "+0s".
+    if abs(drift) <= 1.0:
+        return None
+    left_s = TOTP_PERIOD_SECONDS - end_wall % TOTP_PERIOD_SECONDS
+    return f"totp: wall clock jumped {drift:+.0f}s during window wait; {left_s:.0f}s left"
+
+
+def _align_totp_window(
+    totp: Totp, clock: Clock, cancelled: CancelSource, warnings: list[str] | None
+) -> None:
+    """Run a `totp` step's `minRemaining` wait, if it asks for one, and keep any jump warning."""
+    if totp.min_remaining is None:
+        return
+    warning = _wait_for_totp_window(totp.min_remaining, clock, cancelled)
+    if warning is not None and warnings is not None:
+        warnings.append(warning)
+
+
 def _run_step_body(
     driver: base.Driver,
     step: Step,
@@ -396,6 +458,8 @@ def _run_step_body(
     alert_guard: AlertGuardConfig | None = None,
     alerts: list[AlertEvent] | None = None,
     system_alert_taps: list[str] | None = None,
+    warnings: list[str] | None = None,
+    system_alert_title: AlertTitleCheck | None = None,
     on_wait_tick: WaitTick | None = None,
     transitions: TransitionSource = _no_transitions,
     on_interrupt_poll: Callable[[list[base.Element]], bool] | None = None,
@@ -404,6 +468,7 @@ def _run_step_body(
     step_index: int | None = None,
     channel: Collector | None = None,
     hide_markers: bool = False,
+    resolving: ResolvingReads | None = None,
 ) -> tuple[bool, str, list[AssertionResult], list[base.Element] | None]:
     """Execute one step's effect, returning (ok, reason, assertion_results, snapshot).
 
@@ -418,7 +483,9 @@ def _run_step_body(
     timeout is diagnosable from artifacts (BE-0231 Unit 1). ``alert_guard``/``alerts``, when given
     for a ``wait`` or ``handleSystemAlert`` step, drive the alert guard while that step's own wait
     runs (BE-0269, BE-0406); other step kinds ignore them. ``system_alert_taps`` receives the label
-    a ``handleSystemAlert`` step tapped, for the report (BE-0445). ``on_interrupt_poll``, when given for a
+    a ``handleSystemAlert`` step tapped, for the report (BE-0445), and ``system_alert_title`` is
+    that step's title check (``prompt_title_check``). ``warnings`` receives the non-fatal note a
+    ``totp`` step's window wait leaves when the wall clock jumped (BE-0474). ``on_interrupt_poll``, when given for a
     wait step, is passed to ``_wait`` so a scenario's ``interrupts`` handlers can clear an
     interstitial screen mid-wait (BE-0314). ``cancelled`` reaches the step kinds that poll —
     ``wait``, ``handleSystemAlert``, ``assert``, and ``email`` — so each notices a cancelled run
@@ -427,7 +494,11 @@ def _run_step_body(
     given for an ``assert`` step whose block carries a ``visual`` entry, back that entry's own
     single-shot screenshot: ``step_id`` and ``step_index`` scope the capture's evidence path to this
     step's own execution, and ``channel``/``hide_markers`` back the same touch-marker suspension
-    ``expect``'s own visual capture already gets."""
+    ``expect``'s own visual capture already gets. ``resolving`` (reset by the caller with
+    ``start_body`` before each run), on a backend that answers alerts
+    inside its own reads under a governing guard (BE-0461 Unit 4), carries a ``wait``'s polls, a
+    ``handleSystemAlert`` step's tree reads, and an action's selector-resolution reads; an
+    ``assert`` keeps the plain read, so a check never changes the screen it is checking."""
     try:
         if kind == "wait":
             assert step.wait is not None
@@ -438,11 +509,11 @@ def _run_step_body(
                 network,
                 trace=wait_trace,
                 alert_guard=alert_guard,
-                alerts=alerts,
                 on_tick=on_wait_tick,
                 transitions=transitions,
                 on_interrupt_poll=on_interrupt_poll,
                 cancelled=cancelled,
+                resolving=resolving,
             )
             return ok, reason, [], tree
         if kind == "handle_system_alert":
@@ -458,7 +529,9 @@ def _run_step_body(
                 alert_guard=alert_guard,
                 alerts=alerts,
                 tapped=system_alert_taps,
+                title_check=system_alert_title,
                 cancelled=cancelled,
+                resolving=resolving,
             )
             if ok and selection is not None:
                 # `_do_action` invalidates the live selection after every action but `select` and
@@ -537,7 +610,19 @@ def _run_step_body(
             )
             ok = assertions.passed(results)
             return ok, "" if ok else _fail_reason(results), results, tree
-        _do_action(driver, step, relaunch, control, bindings, selection)
+        if step.totp is not None and bindings is not None:
+            # Here rather than in the handler, like `sleep`: the wait needs the clock and the cancel
+            # source, which the action-handler signature carries neither of (BE-0474). No var scope
+            # means the handler writes nothing, so there is no code to keep fresh either.
+            _align_totp_window(step.totp, clock, cancelled, warnings)
+        _do_action(
+            _action_driver(driver, resolving),
+            step,
+            relaunch,
+            control,
+            bindings,
+            selection,
+        )
         # Four branches return from this block; hoisting only the last into an `else` would suggest
         # the other three are not on the success path.
         return True, "", [], None  # noqa: TRY300
@@ -547,7 +632,23 @@ def _run_step_body(
         base.UnsupportedAction,
         NotImplementedError,
     ) as e:
+        _note_refusal(resolving, e)
         return False, str(e), [], None
+
+
+def _action_driver(driver: base.Driver, resolving: ResolvingReads | None) -> base.Driver:
+    """The driver an action's handler reads its target through: resolving under the capability."""
+    return resolving.view(driver, "true") if resolving is not None else driver
+
+
+def _note_refusal(resolving: ResolvingReads | None, error: Exception) -> None:
+    """Mark a body run that failed the way an alert covering the screen explains (BE-0461 Unit 5).
+
+    A refused actuation or a target a read could not find; an ambiguous selector is the author's to
+    fix, so it is left out.
+    """
+    if resolving is not None and isinstance(error, base.ElementNotFound | base.ElementNotTappable):
+        resolving.refused = True
 
 
 def _resolve_video_start_offset(
@@ -602,14 +703,14 @@ def _resolve_video_start_offset(
     return offset
 
 
-def _dispatch_after(
-    rules: list[AfterRule],
+def _dispatch_cleanup(
+    rules: list[CleanupRule],
     failure: str | None,
     run_steps: Callable[[list[Step], CancelSource], str | None],
     clock: Clock,
     cancelled: CancelSource,
 ) -> tuple[str | None, str]:
-    """Run the `after` rules this run's verdict selects; return the run's composed failure (BE-0392).
+    """Run the `cleanup` rules this run's verdict selects; return the run's composed failure (BE-0392).
 
     Entries run in declaration order — interleaved, not grouped by `on` — so the scenario-then-config
     merge order holds across the whole phase rather than only within one outcome group. The verdict
@@ -630,7 +731,7 @@ def _dispatch_after(
         latter to know which rules ran, which `failure` alone can no longer say once a cleanup
         step's own reason has been folded into it.
     """
-    verdict = "success" if failure is None else "error"
+    verdict = "success" if failure is None else "failure"
     # A run that is shutting down cannot be bounded by `cancelled`: that source is latched, so its
     # first read inside this phase would raise and no cleanup step would run at all. Give the phase
     # its own deadline instead — cleanup gets a bounded chance to run without pushing the shutdown
@@ -656,16 +757,16 @@ def _dispatch_after(
                 # The teardown budget above, spent. Abandoning the rest is the designed bound, not a
                 # new failure: a run cancelled early already carries that as its reason, and one
                 # cancelled after its last boundary keeps the real verdict BE-0370 gives it. Either
-                # way the After block's not-run rows are what disclose the abandoned entries.
-                _logger.debug("after: teardown budget spent; abandoning the remaining entries")
+                # way the cleanup block's not-run rows are what disclose the abandoned entries.
+                _logger.debug("cleanup: teardown budget spent; abandoning the remaining entries")
                 break
             # A cancel that arrived *during* teardown. On a passing run the failure must still lead
             # with the cancellation spelling downstream reads (BE-0370).
             if failure is None:
                 return CANCELLED_FAILURE, verdict
-            return f"{failure}; after: {CANCELLED_FAILURE}", verdict
+            return f"{failure}; cleanup: {CANCELLED_FAILURE}", verdict
         if reason is not None:
-            failure = f"after: {reason}" if failure is None else f"{failure}; after: {reason}"
+            failure = f"cleanup: {reason}" if failure is None else f"{failure}; cleanup: {reason}"
     return failure, verdict
 
 
@@ -681,7 +782,7 @@ def _hides_touch_markers(
     the marker key itself on a run that armed no channel for it, say — is left alone rather than
     failed for a capture it never asked bajutsu to correct.
 
-    `target_launch_env` is the target's own `launchEnv`, which the launch merges *underneath* the
+    `target_launch_env` is the target's own `subject.launch.env`, which the launch merges *underneath* the
     scenario's (`environments/xcuitest.py`'s `_launch_params`); this predicate merges the same two
     layers, in the same order, before reading either key — so a target pinning
     `BAJUTSU_TOUCH_MARKERS` for every scenario is seen here exactly as the app that actually launched
@@ -689,7 +790,7 @@ def _hides_touch_markers(
     that passes `None` (a test constructing a scenario directly) sees the unchanged
     scenario-launch-env-only behavior.
     """
-    env = {**(target_launch_env or {}), **scenario.preconditions.launch_env}
+    env = {**(target_launch_env or {}), **scenario.preconditions.subject.launch.env}
     return env.get("BAJUTSU_TOUCH_MARKERS") == "1" and env.get("BAJUTSU_CONTROL_CHANNEL") == "1"
 
 
@@ -716,8 +817,9 @@ def _capture_visual_actual(
 # C901 and PLR0915 fold each nested function's count into the function enclosing it, so this score
 # measures the closures defined below (`run_phase` among them), not genuine branching here — the
 # same reasoning `pool.py`'s own `lease()` exemption gives (BE-0386). BE-0428's own-target interval
-# start/finish loop pushed the plain statement count over the line for the first time.
-def run_scenario(  # noqa: C901, PLR0915
+# start/finish loop pushed the plain statement count over the line for the first time, and BE-0466's
+# `UnsupportedAction` handler the branch count.
+def run_scenario(  # noqa: C901, PLR0912, PLR0915
     driver: base.Driver,
     scenario: Scenario,
     clock: Clock | None = None,
@@ -746,6 +848,7 @@ def run_scenario(  # noqa: C901, PLR0915
     capture_app_crash: Callable[[], list[tuple[str, bytes]]] | None = None,
     app_launch_unconfirmed: bool = False,
     roster: TargetRoster | None = None,
+    derived_secrets: DerivedSecrets | None = None,
 ) -> RunResult:
     """Run one scenario deterministically, firing capturePolicy rules into `sink`.
 
@@ -770,7 +873,7 @@ def run_scenario(  # noqa: C901, PLR0915
     `capture:` tokens — the default is empty, so a caller that doesn't pass one (a test
     constructing a scenario directly) sees the unchanged capturePolicy/inline-only behavior.
 
-    The scenario's `before` / `after` lifecycle phases (BE-0392) are read off `scenario` itself,
+    The scenario's `setup` / `cleanup` lifecycle phases (BE-0392) are read off `scenario` itself,
     not passed alongside it the way `interrupts` is: `runner.pipeline` folds the target config's own
     phases into each scenario before the run, so the scenario this function executes and the scenario
     the report renders are the same object. A caller that builds a `Scenario` directly therefore gets
@@ -785,7 +888,7 @@ def run_scenario(  # noqa: C901, PLR0915
     step's own `assert` — which a scenario or target pinning the pair reaches whether or not
     `run --touch-markers` was passed — so a `None` channel there fails the scenario loudly rather
     than skipping the suspension.
-    `target_launch_env` is the target's own `launchEnv` (`Effective.launch_env`); a caller that omits
+    `target_launch_env` is the target's own `subject.launch.env` (`Effective.launch_env`); a caller that omits
     it (a test constructing a scenario directly) sees only the scenario's own launch env, as before.
 
     `cancelled` (BE-0370) makes a cancelled run land as an ordinary failed scenario: it is read at
@@ -799,7 +902,7 @@ def run_scenario(  # noqa: C901, PLR0915
     *app under test*, called from inside the step loop the moment a driver confirms one. Unlike
     `base.BackendCrashError` below, that event is classified in-band: it fails the step that observed
     it, and this function's ordinary `RunResult` assembly — the steps, the artifacts, the running
-    video, the `after: on: error` dispatch — finishes exactly as it would for an `ElementNotFound`.
+    video, the `cleanup: on: failure` dispatch — finishes exactly as it would for an `ElementNotFound`.
     `app_launch_unconfirmed` says the lease's readiness gate never established that the app reached
     the foreground, which suppresses the probe until a step succeeds against the app: without it a
     scenario's very first failing step, having no earlier step to have observed the app running, would
@@ -852,7 +955,7 @@ def run_scenario(  # noqa: C901, PLR0915
     before_outcomes: list[StepOutcome] = []
     after_outcomes: list[StepOutcome] = []
     after_verdict = ""
-    # One counter for the whole `after` phase: it runs one `run_phase` call per dispatched rule, and
+    # One counter for the whole `cleanup` phase: it runs one `run_phase` call per dispatched rule, and
     # a per-call counter would restart each rule at zero, colliding their evidence `step_id`s.
     after_counter = _StepCounter()
     expect_results: list[AssertionResult] = []
@@ -898,9 +1001,17 @@ def run_scenario(  # noqa: C901, PLR0915
     # expect sees the accumulated values.
     live_bindings: dict[str, str] = dict(bindings or {})
     # Scenario-scoped, and shared across every phase for the same reason `live_bindings` is: what a
-    # failing `relaunch` in `steps` latched must still suppress the probe for an `after: on: error`
+    # failing `relaunch` in `steps` latched must still suppress the probe for a `cleanup: on: failure`
     # rule dispatched afterward, which runs through its own freshly built `StepLoopState` (BE-0424).
     app_crash_latches = AppCrashLatches(unconfirmed_launch=app_launch_unconfirmed)
+    # Scenario-scoped for the same reason (BE-0472): a value `steps` derived from a secret stays
+    # secret in `cleanup`. The runner passes one object across crash-recovery attempts, so a sink
+    # this attempt leased starts out masking what an earlier attempt already derived.
+    derived = derived_secrets if derived_secrets is not None else DerivedSecrets()
+    for each_sink in (sink, *(rt.sink for rt in (target_runtimes or {}).values())):
+        if derived.values:
+            each_sink.add_secret_values(derived.values)
+        derived.listeners.append(each_sink.add_secret_values)
 
     def run_phase(
         steps: list[Step],
@@ -909,8 +1020,8 @@ def run_scenario(  # noqa: C901, PLR0915
         phase_cancelled: CancelSource,
         counter: _StepCounter | None = None,
     ) -> str | None:
-        # Every phase shares `live_bindings`, so a `before` step's `vars.*` reaches `steps` and an
-        # `after` step can address what `steps` captured; everything else is per-phase.
+        # Every phase shares `live_bindings`, so a `setup` step's `vars.*` reaches `steps` and a
+        # `cleanup` step can address what `steps` captured; everything else is per-phase.
         return _run_steps(
             driver,
             scenario,
@@ -945,18 +1056,19 @@ def run_scenario(  # noqa: C901, PLR0915
             capture_app_crash,
             roster,
             step_gate,
+            derived,
         )
 
     try:
         try:
             try:
-                if scenario.before:
+                if scenario.setup:
                     # A precondition for the scenario, not a step within it: its failure skips `steps`
                     # and `expect` outright, the way an unsatisfiable `preconditions` already fails a
                     # scenario before this function is reached at all.
-                    reason = run_phase(list(scenario.before), before_outcomes, "before", cancelled)
+                    reason = run_phase(list(scenario.setup), before_outcomes, "setup", cancelled)
                     if reason is not None:
-                        failure = "before: " + reason
+                        failure = "setup: " + reason
                 if failure is None:
                     failure = run_phase(scenario.steps, outcomes, "", cancelled)
                 if failure is None and roster is not None:
@@ -1002,39 +1114,12 @@ def run_scenario(  # noqa: C901, PLR0915
                     expect_alerts.extend(expect_drained.alerts)
                     expect_undeclared.extend(expect_drained.undeclared)
                     if not assertions.passed(expect_results) and alert_guard is not None:
-                        # The guard's own call settles the screen after every round it dismisses
-                        # something in (BE-0418), the last one included, so nothing here settles again
-                        # before the retry below reads the screen -- `_retry_expect_after_guard_dismiss`
-                        # no longer settles for that reason (review finding, merging BE-0416 and
-                        # BE-0418).
-                        cleared = alert_guard(
-                            driver,
-                            expect_alerts,
-                            settle=lambda: settle_after_alert_dismiss(
-                                driver, clock, transitions=transitions, cancelled=cancelled
-                            ),
-                        )
-                        # A prompt the guard could not fully clear (BE-0402 leaves an alert no rule
-                        # identifies alone rather than guessing where to tap), named on the `expect`
-                        # failure below, which would otherwise report only the assertion that never held.
-                        # Taken whether or not the call cleared anything: a multi-round call can clear a
-                        # stacked alert while leaving a second one unhandled, so both facts hold at once.
-                        expect_block_note = alert_guard.blocked_note
-                        # Drained whether or not anything cleared: since BE-0418 a call can tap and
-                        # still return False, once a withdrawn `AlertEvent` leaves `alerts` no
-                        # longer than it started (BE-0402's report still needs that tap). Uses the
-                        # shared helper so this drain's own dropped count folds into
-                        # `RunResult.dropped_expect_actuations` the same way the banner sweep's does
-                        # (BE-0416 Unit 8).
-                        expect_dropped_actuations += _drain_into_expect_actuations(
-                            driver, expect_actuations, wall_offset_s
+                        cleared, expect_block_note = _recover_expect_from_alert(
+                            driver, clock, transitions, cancelled
                         )
                         if cleared:
-                            # Does not settle the screen itself, unlike an ordinary post-dismiss
-                            # retry (BE-0406): the guard's own multi-round call above already
-                            # settles after every round it dismisses something in (BE-0418), the
-                            # last one included, so settling again here would just repeat a
-                            # condition wait the guard's own call already resolved.
+                            # Settled already: `_recover_expect_from_alert` settles after whatever
+                            # it cleared, so the retry reads a screen that has stopped moving.
                             expect_results, dropped = _evaluate_expect(
                                 driver,
                                 expect,
@@ -1057,10 +1142,11 @@ def run_scenario(  # noqa: C901, PLR0915
                                 ),
                             )
                             expect_dropped_actuations += dropped
-                        # The guard's own rounds just now, and the retry's queries when one ran, can
-                        # each be interrupted too, and nothing else drains this phase again afterwards
-                        # (BE-0406 Unit 2b). Outside the `if cleared` branch above so a call that cleared
-                        # nothing is still covered.
+                        # The recovery read's records, and whatever interrupted the retry's queries,
+                        # are this scenario's: nothing else drains this phase again afterwards, and the
+                        # next scenario's policy push would discard them (BE-0406 Unit 2b, BE-0461).
+                        # Outside the `if cleared` branch above so a read that cleared nothing is
+                        # still covered.
                         retry_drained = drain_interruptions(driver)
                         expect_alerts.extend(retry_drained.alerts)
                         expect_undeclared.extend(retry_drained.undeclared)
@@ -1081,6 +1167,12 @@ def run_scenario(  # noqa: C901, PLR0915
                 # letting it proceed on an app state bajutsu never established (BE-0365). It lands as an
                 # ordinary failure, so the verdict stays machine-checkable and the cause is in the report.
                 failure = f"control channel: {exc}"
+            except base.UnsupportedAction as exc:
+                # A construct the backend refuses outside a step body (an `expect` entry, an `if`
+                # condition, an interrupt check before an act) — normally refused by the preflight
+                # before a lease (BE-0466). Failing this scenario keeps one bypassed check from
+                # escaping `run_all` and discarding every other scenario's result.
+                failure = f"unsupported: {exc}"
             except RunCancelled:
                 # A cancelled run is a failed run, not a silent gap: the scenario the cancel interrupted
                 # (or one whose first boundary was already past it) fails with the one spelling
@@ -1088,14 +1180,14 @@ def run_scenario(  # noqa: C901, PLR0915
                 # report and the manifest are written exactly as they are for any other failure
                 # (BE-0370).
                 failure = CANCELLED_FAILURE
-            if scenario.after:
+            if scenario.cleanup:
                 # Reached on every path out of `steps`/`expect`, the cancelled one included — the same
                 # reason the `finally` below finalizes unconditionally.
-                failure, after_verdict = _dispatch_after(
-                    list(scenario.after),
+                failure, after_verdict = _dispatch_cleanup(
+                    list(scenario.cleanup),
                     failure,
                     lambda steps, src: run_phase(
-                        steps, after_outcomes, "after", src, after_counter
+                        steps, after_outcomes, "cleanup", src, after_counter
                     ),
                     clock,
                     cancelled,
@@ -1153,6 +1245,7 @@ def run_scenario(  # noqa: C901, PLR0915
         after_outcomes=after_outcomes,
         after_verdict=after_verdict,
         interactive=manual_action or "",
+        derived_secrets=list(derived.values),
     )
 
 
@@ -1163,7 +1256,7 @@ def _dismiss_blocking_tip(driver: base.Driver, scenario: Scenario) -> bool:
     query for it, and a scenario that did not ask keeps today's behavior exactly. The driver decides
     what identifies a tip, so no backend-specific selector reaches this layer.
     """
-    if not scenario.ios_tip_kit_handling:
+    if not scenario.dismisses_tips:
         return False
     if base.Capability.HANDLE_TIPKIT_TIP not in driver.capabilities():
         return False
@@ -1184,7 +1277,7 @@ def _tip_poll_hook(
     succeed. The poll's tree is passed down so the overwhelmingly common "no tip" answer needs no
     query of its own; only an actual tip costs the driver a fresh snapshot to mint a handle from.
     """
-    if not scenario.ios_tip_kit_handling:
+    if not scenario.dismisses_tips:
         return interrupt_poll
     if base.Capability.HANDLE_TIPKIT_TIP not in driver.capabilities():
         return interrupt_poll
@@ -1202,12 +1295,13 @@ def _tip_poll_hook(
     return poll
 
 
-# How long a swipe's clearance is re-checked before the shutter proceeds regardless — the same
-# deadline `RunnerUITest.swift`'s own `bannerClearanceTimeout` re-observes a banner's absence by
-# (BE-0416), so a banner still mid-animation when the swipe lands does not reach the screenshot
-# this sweep exists to protect. A condition wait against the injected `clock`, not a fixed sleep or
-# a real-time deadline: each tick is a real presence query, and a fake clock in tests never pays
-# the real 2s.
+# How long a swipe's clearance is re-checked before the shutter proceeds regardless, so a banner
+# still mid-animation when the swipe lands does not reach the screenshot this sweep exists to
+# protect (BE-0416). The same kind of wait `RunnerUITest.swift` re-observes a banner's absence by,
+# though not the same budget: the runner's monitor waits longer, because declining there can stop
+# the runner (#2156), while proceeding here costs at most a banner in one screenshot. A condition
+# wait against the injected `clock`, not a fixed sleep or a real-time deadline: each tick is a real
+# presence query, and a fake clock in tests never pays the real 2s.
 _BANNER_CLEARANCE_TIMEOUT = 2.0
 _BANNER_CLEARANCE_POLL = 0.1
 
@@ -1322,7 +1416,7 @@ def _sweep_notification_banner(
 
     No scenario/CLI toggle (BE-0416 Unit 8): a scenario cannot observe a banner, so none can be
     broken by clearing it — the same "no known use for a toggle" the interruption path's own
-    design already established (Unit 4). The interval reuses whatever `systemAlertHandling`
+    design already established (Unit 4). The interval reuses whatever `pollInterval` the guard
     resolved for this scenario when the guard is configured, so the two SpringBoard polls (this
     one and `_AlertGuardGate`'s own) share one cadence; a scenario with the guard off still gets
     BE-0315's plain default, since nothing here is the guard's to turn off.
@@ -1346,7 +1440,8 @@ def _run_if(
     """Evaluate the condition (with interpolation) and run the matching branch."""
     interp_condition = _interp_asserts([if_block.condition], bindings)[0]
     elements = driver.query()
-    results = assertions.evaluate(elements, [interp_condition], network())
+    ctx = _with_attributes(EvalContext(), driver, [interp_condition])
+    results = assertions.evaluate(elements, [interp_condition], network(), ctx=ctx)
     branch = if_block.then if assertions.passed(results) else (if_block.else_ or [])
     if not branch:
         return True, ""
@@ -1448,14 +1543,15 @@ def _run_steps(
     capture_app_crash: Callable[[], list[tuple[str, bytes]]] | None = None,
     roster: TargetRoster | None = None,
     step_gate: StepGate | None = None,
+    derived: DerivedSecrets | None = None,
 ) -> str | None:
     """Run one phase's step loop, appending outcomes; return the failure string or None.
 
-    ``steps`` is the list to run — the scenario's own, or a `before` / `after` hook's (BE-0392).
+    ``steps`` is the list to run — the scenario's own, or a `setup` / `cleanup` hook's (BE-0392).
     Each phase gets its own `StepLoopState`, so its steps are numbered from zero and reported as
     their own block, while ``bindings`` stays the one dict every phase shares.
 
-    ``counter`` continues an already-started phase's numbering. The `after` phase runs one call per
+    ``counter`` continues an already-started phase's numbering. The `cleanup` phase runs one call per
     dispatched rule, so without it every rule would restart at zero — two rules' first steps would
     then claim the same evidence `step_id` and overwrite each other's screenshots.
 
@@ -1480,6 +1576,7 @@ def _run_steps(
         # phase directly) gets a fresh one, which simply starts every latch cleared.
         app_crash=app_crash if app_crash is not None else AppCrashLatches(),
         roster=roster,
+        derived=derived if derived is not None else DerivedSecrets(),
     )
     cfg = _LoopConfig(
         driver=driver,
@@ -1532,3 +1629,28 @@ def _run_steps(
     # `_handle_action`, so the net only reached the step that returns before acting at all, where it
     # paired post-run pixels with a pre-action tree (BE-0341, "Later revision").
     return result
+
+
+def _recover_expect_from_alert(
+    driver: base.Driver,
+    clock: Clock,
+    transitions: TransitionSource,
+    cancelled: CancelSource,
+) -> tuple[bool, str]:
+    """Clear what may be blocking a failed `expect`, once: whether a retry is worth it, and the note
+    naming what still blocks the screen (BE-0461 Unit 5).
+
+    One forced resolving read, on a backend answering alerts inside its own reads; every other
+    backend has nothing here to clear. The assertions keep reading through `Driver.query`, so a read
+    never changes the screen in the middle of the check itself. The screen settles after an answer,
+    or after a showing the pacing memo withheld, before the caller evaluates again.
+    """
+    if base.Capability.RESOLVE_ALERTS not in driver.capabilities() or not isinstance(
+        driver, base.AlertResolvingTarget
+    ):
+        return False, ""
+    recovery = driver.query_resolving("true", force_check=True)
+    cleared = bool(recovery.drained.tapped) or recovery.withheld
+    if cleared:
+        settle_after_alert_dismiss(driver, clock, transitions=transitions, cancelled=cancelled)
+    return cleared, records_note(recovery.drained)

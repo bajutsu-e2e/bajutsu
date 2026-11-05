@@ -401,7 +401,14 @@ def _target_forbidden(state: ServeState, org: str, target: str, session: str | N
 
 
 def _record_audit(
-    state: ServeState, actor: str | None, org: str, action: str, target: str, detail: dict[str, Any]
+    state: ServeState,
+    actor: str | None,
+    org: str,
+    action: str,
+    target: str,
+    detail: dict[str, Any],
+    *,
+    ci_job: dict[str, str] | None = None,
 ) -> None:
     """Append an audit entry (who did what, when) when a database is wired and the actor is known.
     A no-op otherwise — local, no database, or a shared-token request with no identity (BE-0015 7c-1).
@@ -410,17 +417,22 @@ def _record_audit(
     A machine principal (BE-0414 unit 3) keeps its entry but writes a null `actor_id`: that column is
     a foreign key to `users.id`, and a pipeline has no user row — minting a synthetic one would put
     the machine in the roster `/api/orgs` discloses and give it a role column besides. The repository
-    goes into *detail* instead, so "which pipeline did this" is still answerable.
+    goes into *detail* instead, so "which pipeline did this" is still answerable, and *ci_job* goes
+    in under `actor`, so "which job of that pipeline" is too.
     """
     if state.repository is None or not actor:
         return
     repository = machine_repository(actor)
+    if repository is not None:
+        detail = {**detail, "repository": repository}
+        if ci_job:
+            detail["actor"] = ci_job
     state.repository.record_audit(
         org_id=org,
         actor_id=None if repository is not None else actor,
         action=action,
         target=target,
-        detail=detail if repository is None else {**detail, "repository": repository},
+        detail=detail,
     )
 
 
@@ -431,6 +443,7 @@ _ROLE_RANK = {"viewer": 0, "editor": 1, "admin": 2}
 # uploaded bundle (BE-0073). A bind repoints only the asking session since BE-0393 unit 2, so what
 # keeps it admin is not its reach but what it does: it materializes content the deployment does not
 # own and decides that content's build trust (BE-0121).
+_RESCAN_PATH = "/api/runs/rescan"
 _ADMIN_PATHS = frozenset(
     {
         "/api/config",
@@ -459,11 +472,15 @@ _ADMIN_PATHS = frozenset(
         "/api/secrets",
         "/api/provider",
         "/api/ant/login",
+        # Rescanning the runs tree (BE-0449) writes every unrecorded tree into the history under the
+        # default org, an operator's decision.
+        _RESCAN_PATH,
     }
 )
 _EDITOR_PATHS = frozenset(
     {
         "/api/run",
+        "/api/run-set",
         "/api/record",
         "/api/crawl",
         "/api/scenario",
@@ -562,8 +579,10 @@ def required_role(method: str, path: str) -> str | None:
     # triggering a run. Permanent purge (``?purge=true``) is admin, but the query string isn't in the
     # `path` seen here, so that gate lives in the operation (`delete_run`/`bulk_delete_runs`). Handled
     # ahead of the POST-only guard because the soft-delete is a DELETE; the worker upload-urls POST
-    # keeps its own no-role handling (falls through to None).
-    if path.startswith(("/api/runs/", "/api/crawl/runs/")):
+    # keeps its own no-role handling (falls through to None). The rescan POST is no run's lifecycle,
+    # so it passes on to `_ADMIN_PATHS`; any other verb on that path stays a run's (an editor's).
+    rescan = method == "POST" and path == _RESCAN_PATH
+    if path.startswith(("/api/runs/", "/api/crawl/runs/")) and not rescan:
         if method == "DELETE":
             return "editor"
         if method == "POST" and (path == "/api/runs/bulk-delete" or path.endswith("/restore")):

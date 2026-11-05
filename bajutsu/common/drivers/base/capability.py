@@ -14,6 +14,12 @@ class Capability:
     SEMANTIC_TAP = "semanticTap"  # tap directly by id/label (no coordinates; most stable)
     CONDITION_WAIT = "conditionWait"  # native condition waiting
     NETWORK = "network"  # native network monitoring
+    # The whole-scenario interval evidence kinds, one token each (BE-0467). Evidence never decides a
+    # verdict, so a route lacking one records a `SkippedCapture` instead of failing; the token is what
+    # lets `resolve_evidence_providers` name that gap before the sink tries a recorder that cannot run.
+    VIDEO = "video"
+    DEVICE_LOG = "deviceLog"
+    APP_TRACE = "appTrace"
     SCREENSHOT = "screenshot"
     ELEMENTS = "elements"
     MULTI_TOUCH = (
@@ -21,6 +27,8 @@ class Capability:
     )
     WEBVIEW = "webView"  # DOM query/tap inside an embedded WKWebView (BE-0037)
     SELECT_OPTION = "selectOption"  # set a native <select> by value; web only (BE-0191)
+    URL_NAVIGATION = "urlNavigation"  # open a URL mid-scenario (`navigate`); web only (BE-0464)
+    ELEMENT_ATTRIBUTE = "elementAttribute"  # read one named HTML attribute; web only (BE-0466)
     # `select`/`copy` on the focused field (BE-0265). A backend that can select and copy natively
     # advertises this; a coordinate-only backend with no select-all handle does not and raises
     # UnsupportedAction — the same actuate-or-raise promise as MULTI_TOUCH (BE-0280). `delete` needs
@@ -34,6 +42,11 @@ class Capability:
     # top-level token like MULTI_TOUCH rather than a `deviceControl.*` one. Android reaches a system
     # dialog through an ordinary `tap`, and the web backend has no OS-level prompt, so neither needs it.
     HANDLE_SYSTEM_ALERT = "handleSystemAlert"
+    # Answer the system alert the pushed policy names inside the request that reads the screen
+    # (BE-0461): a resolving `/elements`, and `/systemAlert/resolve` for a `handleSystemAlert` step.
+    # Only the resident-runner XCUITest backend advertises it, the one backend whose runner holds the
+    # Simulator connection the alert lives behind; every other backend keeps the collapsed-tree proxy.
+    RESOLVE_ALERTS = "resolveAlerts"
     # Set a wheel-style picker (`UIPickerView`, a wheel-mode `UIDatePicker`) to an exact value
     # (BE-0356). Only the resident-runner XCUITest backend advertises it: a picker wheel is an
     # iOS control, and XCUITest's `adjust(toPickerWheelValue:)` is what makes landing on a named

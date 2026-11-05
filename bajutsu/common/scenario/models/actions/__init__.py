@@ -20,6 +20,7 @@ from .drag import Drag
 from .email import Email
 from .email_extract import EmailExtract
 from .email_match import EmailMatch
+from .eval_step import Eval, EvalTarget
 from .foreground import Foreground
 from .generate import Generate
 from .handle_system_alert import _SYSTEM_ALERT_SEL_FIELDS as _SYSTEM_ALERT_SEL_FIELDS
@@ -28,6 +29,7 @@ from .http_request import HttpRequest
 from .install_app import InstallApp
 from .long_press import LongPress
 from .manual import Manual
+from .navigate import Navigate, navigate_url_problem
 from .override_status_bar import OverrideStatusBar
 from .pinch import Pinch
 from .push import Push
@@ -68,6 +70,8 @@ __all__ = [
     "Email",
     "EmailExtract",
     "EmailMatch",
+    "Eval",
+    "EvalTarget",
     "Foreground",
     "Generate",
     "HandleSystemAlert",
@@ -75,6 +79,7 @@ __all__ = [
     "InstallApp",
     "LongPress",
     "Manual",
+    "Navigate",
     "OverrideStatusBar",
     "Pinch",
     "Push",
@@ -100,4 +105,5 @@ __all__ = [
     "TypeText",
     "VarTarget",
     "bypass_hint",
+    "navigate_url_problem",
 ]

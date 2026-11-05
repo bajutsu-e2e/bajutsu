@@ -8,7 +8,7 @@ import json
 import re
 from dataclasses import dataclass
 
-from bajutsu.common.assertions.evaluate import _json_text
+from bajutsu.common.assertions.dict_match import json_text
 from bajutsu.common.drivers import base
 from bajutsu.common.orchestrator.actions._registry import _handler
 from bajutsu.common.scenario import HttpRequest, Step
@@ -164,7 +164,7 @@ def _extract_body_fields(http: HttpRequest, body: str, bindings: dict[str, str] 
 
     All-or-nothing: every entry is parsed and resolved into a local list first, and `bindings` is
     written only once every entry has succeeded — never one entry's var left set while a later
-    entry in the same list fails, which `after`/`interrupts` steps could otherwise read as if the
+    entry in the same list fails, which `cleanup`/`interrupts` steps could otherwise read as if the
     whole step had populated cleanly.
     """
     if not http.extract_body or bindings is None:
@@ -190,7 +190,7 @@ def _extract_body_fields(http: HttpRequest, body: str, bindings: dict[str, str] 
         (var, _resolve_path(parsed, _parse_path(path, var), var, path)) for var, path in substituted
     ]
     for var, resolved in resolved_values:
-        bindings[f"vars.{var}"] = resolved if isinstance(resolved, str) else _json_text(resolved)
+        bindings[f"vars.{var}"] = resolved if isinstance(resolved, str) else json_text(resolved)
 
 
 def _do_http(http: HttpRequest, bindings: dict[str, str] | None) -> None:

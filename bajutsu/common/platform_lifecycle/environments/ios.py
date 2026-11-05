@@ -1,7 +1,8 @@
 """The device-style lifecycle base shared by the simctl family.
 
-`_DeviceEnvironment` holds every lease-shaping method the simctl family (XCUITest, fake) share; each
-concrete environment adds only its own `start` sequence.
+`_DeviceEnvironment` holds the lease-shaping methods the simctl family (XCUITest, fake) share.
+XCUITest adds its own `start` sequence; the fake backend, which drives no device, also overrides
+every method that would narrow the target to iOS or drive the Simulator (issue #2208).
 """
 
 from __future__ import annotations
@@ -10,14 +11,16 @@ from collections.abc import Callable, Mapping
 
 from bajutsu.common.backend_cli import simctl
 from bajutsu.common.config import Effective, require_ios
+from bajutsu.common.config.preconditions import ResolvedPreconditions
 from bajutsu.common.drivers import base
 from bajutsu.common.evidence import intervals
 from bajutsu.common.evidence.network import Collector
 from bajutsu.common.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.common.platform_lifecycle import readiness
 from bajutsu.common.platform_lifecycle.device_control import device_control
+from bajutsu.common.platform_lifecycle.protocols import CollectorHost
 from bajutsu.common.platform_lifecycle.relaunchers import device_relauncher
-from bajutsu.common.scenario import Preconditions, Scenario
+from bajutsu.common.scenario import Scenario
 from bajutsu.crawl import AliveCheck, ClearBlocking, Recover, Reset
 
 
@@ -25,8 +28,10 @@ class _DeviceEnvironment:
     """The device-style lifecycle: the iOS Simulator (`simctl`) backend and the fake test backend,
     which mimics the same shape without a real device.
 
-    Only `start` differs between them — the fake runs no device sequence — so every lease-shaping
-    method (catalog, relaunch, control, teardown, the external-receiver network strategy) lives here.
+    The lease-shaping methods (catalog, relaunch, control, teardown, the external-receiver network
+    strategy) live here. The fake runs no device sequence, so it overrides `start` and every method
+    that would narrow the target to iOS or drive the Simulator (issue #2208); only the best-effort
+    `device_catalog` probe still reads simctl.
     """
 
     def __init__(
@@ -60,6 +65,12 @@ class _DeviceEnvironment:
     def observes_network_via_driver(self) -> bool:
         return False  # the app reports to an external collector via BAJUTSU_COLLECTOR
 
+    def collector_host(self, eff: Effective) -> CollectorHost:  # noqa: ARG002  # Environment shape
+        return CollectorHost()  # the Simulator shares the Mac's loopback
+
+    def reach_device_port(self, eff: Effective, port: int) -> tuple[int, Callable[[], None]]:  # noqa: ARG002  # Environment shape
+        return port, lambda: None  # nothing between the host and the port to bridge
+
     def mirrors_collector_port_on_device(self) -> bool:
         return False  # the Simulator shares the Mac's loopback: nothing binds the port device-side
 
@@ -91,7 +102,7 @@ class _DeviceEnvironment:
     def start_member(
         self,
         eff: Effective,  # noqa: ARG002  # Environment shape
-        pre: Preconditions,  # noqa: ARG002
+        pre: ResolvedPreconditions,  # noqa: ARG002
         *,
         extra_env: Mapping[str, str] | None = None,  # noqa: ARG002
         permissions: Mapping[str, str] | None = None,  # noqa: ARG002
@@ -163,7 +174,7 @@ class _DeviceEnvironment:
         def reset(driver: base.Driver) -> None:
             e.terminate(bundle_id)
             e.launch(bundle_id, [*eff.launch_args, *simctl.locale_args(eff.locale)], eff.launch_env)
-            readiness.await_ready(driver, ready_sel=eff.ready_when, id_namespaces=eff.id_namespaces)
+            readiness.await_ready(driver, ready_sel=eff.start_when, id_namespaces=eff.id_namespaces)
 
         return reset
 

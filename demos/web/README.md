@@ -11,13 +11,16 @@ toolchain as `make check`.
 | Path | Purpose |
 |---|---|
 | `app/index.html` | the app under test — onboarding → login → counter, a Sync button that POSTs to `/api/sync` (the network lane's request), plus a device-verification flow for the handoff demo, vanilla JS, stable `data-testid` ids |
+| `app/help.html` | a page nothing in `index.html` links to, reachable only by its address — what `scenarios/navigate.yaml` opens |
 | `scenarios/smoke.yaml` | the deterministic smoke scenario (same step/expect schema as the iOS demos) |
+| `scenarios/navigate.yaml` | opens `help.html` with a `navigate` step and returns by a relative reference ([BE-0464](../../roadmaps/BE-0464-web-navigate-step/BE-0464-web-navigate-step.md)) |
+| `scenarios/html_attribute.yaml` | asserts the home screen's `docs.link` `href`, then taps `panel.load` and waits for the panel's `data-state` to settle from `loading` to `ready` with `aria-busy` removed ([BE-0466](../../roadmaps/BE-0466-web-attribute-assertion/BE-0466-web-attribute-assertion.md)) |
 | `scenarios/network.yaml` | the network smoke ([BE-0282](../../roadmaps/BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md)) — a mocked, captured `POST /api/sync` carrying a secret; tagged `network` so the default `e2e` (`--no-network`) skips it |
 | `network/assert_redaction.py` | checks the persisted `network.json` masks the Sync request's secret — the redaction gap the run grammar can't assert |
 | `record/goals.txt` | the natural-language goal `make -C demos/web record` authors from |
 | `record/record_offline.py` | the offline, API-key-free twin of `record` — the same loop, a keyword agent + FakeDriver |
 | `record/record_handoff_offline.py` | the offline, key-free twin of the human-in-the-loop handoff demo — the real pause/resume with a scripted agent + responder |
-| `demo.config.yaml` | `targets.web` with `baseUrl` + `scenarios` + `backend: [web]` (no `bundleId`) |
+| `demo.config.yaml` | `targets.web` with `platform: web` + `subject.url` + `paths.scenarios` + `evidence.redact` (no `subject.id`) |
 | `codegen/smoke.spec.ts` | the checked-in Playwright test **generated** from `scenarios/smoke.yaml` — the codegen real-compile gate's fixture ([BE-0293](../../roadmaps/BE-0293-codegen-playwright-real-compile/BE-0293-codegen-playwright-real-compile.md)), the web twin of the iOS `ComponentsUITests.swift` |
 | `codegen/package.json` · `codegen/playwright.config.ts` | the `@playwright/test` runner (pinned to the Python `web` extra's Playwright version) and its config — serves `app/` on the spec's baked-in port |
 | `Makefile` | `web-deps` / `app-serve` / `e2e` / `e2e-network` / `codegen-e2e` / `record` / `record-handoff` / `record-offline` / `record-handoff-offline` |
@@ -32,6 +35,12 @@ This installs the web backend (`uv sync --extra web` + `playwright install chrom
 `app/` on `127.0.0.1:8787`, runs the smoke scenario through the Playwright backend, and tears the
 server down. The run is fully deterministic — pass/fail comes only from the scenario's machine
 assertions (the counter reads `2`), never an LLM.
+
+`e2e` sets `BAJUTSU_MIN_WAIT_TIMEOUT` to `E2E_WAIT_FLOOR` (default `10` seconds), as the Android
+lane does. A step's `assert` then polls within that floor, which `scenarios/html_attribute.yaml` needs:
+the panel's `data-state` reads `loading` for about 400 ms after the tap. The poll returns as soon as
+the assertions pass, so the floor is an upper bound, not a fixed delay. Override it with
+`make -C demos/web e2e E2E_WAIT_FLOOR=<seconds>`.
 
 To poke the app by hand (or point the Web UI at it), `make -C demos/web app-serve` and open
 <http://127.0.0.1:8787/index.html>.

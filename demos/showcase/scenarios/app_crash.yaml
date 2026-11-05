@@ -25,11 +25,21 @@
 # lane runs it with `--backend xcuitest` and the Android lane with `--backend android`, unchanged.
 - name: a crash in the app under test is diagnosed and its report captured
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_CRASH: "1" }
+    subject:
+      launch:
+        env: { SHOWCASE_UITEST: "1", SHOWCASE_CRASH: "1" }
   steps:
     - wait: { for: { id: crash.trigger }, timeout: 10 }
     - assert:
         - exists: { sel: { id: crash.alive } }
+    # A stopgap that keeps the trigger from being the session's first synthesized touch. On the iOS
+    # 26.4 CI Simulator, backboardd now and then registers XCUITest's per-touch virtual digitizer
+    # twice and drops the touch ("unknown digitizer", then "skipping event"), while the tap still
+    # reports success: the app never faults, and the run goes green with no crash to diagnose. Any
+    # tap can hit the race (#2157), but two of the three captured drops were a session's first tap,
+    # so this tap may absorb it. The title is static text, so a dropped or delivered tap here does
+    # nothing. Remove it once dropped touches are detected and re-issued (#2161).
+    - tap: { id: crash.title }
     # Faults the process. Reports success: the tap lands before the app goes down.
     - tap: { id: crash.trigger }
     # Fails against the dead app, and *this* failure is what carries the app-crash classification.

@@ -330,6 +330,8 @@ def _settle_target(assertion: Assertion) -> base.Selector | None:
         return assertion.value.sel.as_selector()
     if assertion.label is not None:
         return assertion.label.sel.as_selector()
+    if assertion.attribute is not None:
+        return assertion.attribute.sel.as_selector()
     for state in (assertion.enabled, assertion.disabled, assertion.selected):
         if state is not None:
             return state.as_selector()

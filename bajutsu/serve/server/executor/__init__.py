@@ -1,7 +1,7 @@
 """An RQ/Redis-backed `RunExecutor` for the hosted backend (BE-0015 server phase, legacy).
 
-Where `LocalExecutor` runs each job on an in-process thread, `QueueExecutor` serializes the job and
-**enqueues** it for a remote `bajutsu worker` to consume; everything `run_job` does is unchanged.
+`QueueExecutor` serializes the job and **enqueues** it for a remote `bajutsu worker` to consume;
+everything `run_job` does is unchanged.
 Superseded by `db_executor.DbQueueExecutor` (BE-0106), which dispatches without Redis and is what
 the server backend wires today.
 

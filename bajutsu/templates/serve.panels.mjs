@@ -11,6 +11,7 @@ import {
   restoreRun, purgeRun, wireHistoryList, retentionDays, labelParam, loadLabels, setLabelChoice,
 } from './serve.core.mjs';
 import {replayCodegen} from './serve.author.mjs';
+import {cloudEnvironment, dispatchRunSet} from './serve.runset.mjs';
 
 // ---- Record: author a scenario from a goal ----
 async function recDone(j){
@@ -308,7 +309,9 @@ async function runTriage(id){
   const d=r&&r.ok?await r.json():{error:r?('HTTP '+r.status):'request failed'};
   if(!r||!r.ok||d.error){setBusy(go,stop,false);res.innerHTML=`<div class="triageerr">${esc(d.error||'triage failed')}</div>`;return}
   state.triageJobId=d.jobId;
-  streamJob(d.jobId,line=>{const l=$('#triage-log');if(l)appendLine(l,line)},j=>triageDone(id,target,scenario,j));
+  // A triage job waits in the queue for a worker (BE-0449), so the panel says why while none can take it.
+  streamJob(d.jobId,line=>{const l=$('#triage-log');if(l)appendLine(l,line)},j=>triageDone(id,target,scenario,j),null,
+    n=>{const el=$('#triage-result');if(el)el.innerHTML=n?`<div class="triagefix muted" data-testid="replay.triage-notice">${esc(n)}</div>`:''});
 }
 function triageDone(id,target,scenario,j){
   state.triageJobId=null;
@@ -365,6 +368,8 @@ async function applyTriage(target,scenario,d,rerun){
   $('#target').value=target;
   await loadScenarios();
   $('#scn').value=scenario;
+  // The re-run confirms this one patched scenario, so it must not fan out (BE-0465).
+  $('#env').value='local';$('#env').dispatchEvent(new Event('change'));
   $('#go').click();
 }
 async function loadStats(){
@@ -442,7 +447,7 @@ async function loadHistory(){
   renderHistFilter(shown.length);
   const ul=$('#history');
   if(!shown.length){ul.innerHTML=`<li class="muted">${historyFilter?'no matching runs':'no runs yet'}</li>`;if(histSel)histSel.sync();return;}
-  ul.innerHTML=shown.map(r=>`<li data-id="${esc(r.id)}" data-ok="${r.ok?1:0}"${r.id===state.selectedRun?' class="sel"':''}><input type="checkbox" class="rowck" aria-label="select run for deletion" data-testid="replay.history-select" value="${esc(r.id)}"><span class="dot ${r.ok?'ok':'ng'}"></span><span class="hid">${esc(r.id)}</span><span class="hsum">${r.passed}/${r.total}${r.scenarios.length?' · '+esc(r.scenarios.join(', ')):''}</span><button type="button" class="rowdel" title="Delete this run" aria-label="Delete run" data-testid="replay.history-delete">&#128465;</button></li>`).join('');
+  ul.innerHTML=shown.map(r=>`<li data-id="${esc(r.id)}" data-ok="${r.ok?1:0}"${r.id===state.selectedRun?' class="sel"':''}><input type="checkbox" class="rowck" aria-label="select run for deletion" data-testid="replay.history-select" value="${esc(r.id)}"><span class="dot ${r.ok?'ok':'ng'}"></span><span class="hid">${esc(r.id)}</span><span class="hsum">${r.passed}/${r.total}${r.notApplicable?' · '+r.notApplicable+' n/a':''}${r.scenarios.length?' · '+esc(r.scenarios.join(', ')):''}</span><button type="button" class="rowdel" title="Delete this run" aria-label="Delete run" data-testid="replay.history-delete">&#128465;</button></li>`).join('');
   if(histSel)histSel.sync();
 }
 // ---- Trash view (BE-0239): soft-deleted runs (regular + crawl share the trash), each restorable or,
@@ -748,7 +753,8 @@ function initPanels(){
     const {jobId,error}=await r.json();
     if(error){setStatus($('#rec-runstatus'),error,'ng');setBusy($('#rec-run'),$('#rec-runstop'),false);return;}
     state.recRunJobId=jobId;
-    state.recRunPoll=streamJob(jobId,line=>appendLine($('#rec-out'),line),recRunDone);
+    state.recRunPoll=streamJob(jobId,line=>appendLine($('#rec-out'),line),recRunDone,null,
+      n=>{const el=$('#rec-runstatus');if(el)setStatus(el,n||'',n?'ng':'run')});
   });
   $('#rec-runstop').addEventListener('click',()=>cancelJob(state.recRunJobId,$('#rec-runstop')));
   // Dismiss the Run-result pane with its X. A run in progress keeps going (Stop lives on the Generated
@@ -774,6 +780,7 @@ function initPanels(){
   $('#scnviewmodal').addEventListener('click',e=>{if(e.target===$('#scnviewmodal'))closeScnView()});
   $('#simrefresh').addEventListener('click',loadSims);
   $('#go').addEventListener('click',async()=>{
+    if(cloudEnvironment())return dispatchRunSet();  // a device-cloud environment fans out (BE-0465)
     $('#out').textContent='';  // Replay's own pane clearing (the shared start skeleton lives in startJob)
     state.poll=await startJob({
       prev:state.poll,btn:$('#go'),stop:$('#stop'),busyLabel:'Running…',status:$('#status'),
@@ -832,5 +839,5 @@ async function onLabelChange(value){
 
 export {
   loadHistory, loadStats, loadFlaky, loadUsage, coverageInit, showInfo, replayAudit, onSimChange,
-  setHistoryFilter, showTab, initPanels, loadTrash, seedComposeFromCurrent, onLabelChange,
+  setHistoryFilter, showTab, initPanels, loadTrash, seedComposeFromCurrent, onLabelChange, setReport,
 };

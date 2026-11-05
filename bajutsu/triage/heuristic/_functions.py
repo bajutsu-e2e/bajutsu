@@ -24,6 +24,7 @@ from bajutsu.common.scenario import (
     Wait,
     dump_scenarios,
     load_scenarios,
+    load_stored_scenario_file,
 )
 
 from ._lax_metrics import _LaxMetrics
@@ -514,7 +515,8 @@ def _failed_expectations(scenario: dict[str, Any]) -> list[str]:
 
 def _load_scenario(run_dir: Path, name: str) -> Any:
     try:
-        scenarios = load_scenarios((run_dir / "scenario.yaml").read_text(encoding="utf-8"))
+        text = (run_dir / "scenario.yaml").read_text(encoding="utf-8")
+        scenarios = load_stored_scenario_file(text).scenarios
     except (OSError, ValueError):
         return None
     return next((s for s in scenarios if s.name == name), None)

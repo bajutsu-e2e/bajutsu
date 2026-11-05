@@ -57,13 +57,13 @@ class _LoopConfig:
     capture: list[str] | None
     # The lease's own sweep for the platform's report of an app crash (BE-0424), called the moment a
     # driver confirms one rather than after the scenario finishes: a teardown `relaunch` in the same
-    # `after` phase re-stamps the launch marker the sweep matches against, so reading it any later
+    # `cleanup` phase re-stamps the launch marker the sweep matches against, so reading it any later
     # would widen the window past the crash it exists to attribute. A callable the loop only invokes,
     # like `relaunch` and `mailbox` above — never state it writes through, so it belongs here and not
     # on `StepLoopState`. `None` on every caller with no lease behind it.
     capture_app_crash: Callable[[], list[tuple[str, bytes]]] | None = None
     # Which lifecycle phase this loop is running (BE-0392): "" for the scenario's own `steps`,
-    # "before" / "after" for the hook phases. Each phase counts its steps from zero, so the label
+    # "setup" / "cleanup" for the hook phases. Each phase counts its steps from zero, so the label
     # also namespaces their evidence `step_id`s — without it a hook's `step0` would write into the
     # directory the scenario's own first step already owns.
     phase: str = ""
@@ -80,6 +80,6 @@ class _LoopConfig:
     channel: Collector | None = None
     hide_markers: bool = False
     # The `run --step` pause hook. Consulted at each boundary of the scenario's own steps — never a
-    # `before` / `after` hook phase — right beside the `cancelled` check above, for the same reason:
+    # `setup` / `cleanup` hook phase — right beside the `cancelled` check above, for the same reason:
     # nothing has acted yet, so an operator looking at the app sees a settled screen.
     step_gate: StepGate | None = None

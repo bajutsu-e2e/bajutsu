@@ -28,6 +28,7 @@ from bajutsu.common.backend_cli import adb
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.actuation import Actuation
 from bajutsu.common.drivers.adb import (
+    AdbActUncertain,
     AdbActUnsupported,
     AdbDriver,
     AdbResidentError,
@@ -823,6 +824,129 @@ def test_type_text_passes_value_over_stdin_not_argv(monkeypatch: pytest.MonkeyPa
     assert "${secrets.password}" not in " ".join(cmd)  # the secret is not on the command line
     # `input text` splits on spaces, so a space becomes its `%s` escape; the arg is device-quoted.
     assert script == "input text '${secrets.password}%sval'"
+
+
+@pytest.mark.parametrize(
+    ("text", "can"),
+    [
+        ("horse 1", True),
+        ("", True),
+        ("100%", True),
+        ("馬", False),
+        ("cafe\u0301", False),
+        ("a%sb", True),
+    ],
+)
+def test_input_text_can_type_only_what_it_enters_unaltered(text: str, can: bool) -> None:
+    assert adb.input_text_can_type(text) is can
+
+
+@pytest.mark.parametrize(
+    ("text", "script"),
+    [
+        ("100%sure", "input text 100% && input text sure"),
+        ("%s", "input text % && input text s"),
+        ("a%s b", "input text a% && input text s%sb"),
+        ("%s%s", "input text % && input text s% && input text s"),
+        ("50% off", "input text 50%%soff"),
+    ],
+)
+def test_text_script_keeps_a_literal_percent_s_from_reading_as_a_space(
+    text: str, script: str
+) -> None:
+    # `input` turns `%s` into a space with no way to escape it, so no one call may hold the pair.
+    assert adb.text_script(text) == script
+
+
+def _no_shell(_cmd: list[str], _script: str) -> None:
+    raise AssertionError("this text must not reach `input text`")
+
+
+@pytest.mark.parametrize("text", ["馬術", "a%sb馬"])
+def test_type_text_routes_what_input_text_cannot_carry_to_the_server(
+    monkeypatch: pytest.MonkeyPatch, text: str
+) -> None:
+    monkeypatch.setattr(AdbDriver, "_run_text", staticmethod(_no_shell))
+    typed: list[str] = []
+    AdbDriver("U", run=lambda a: "", type_on_device=lambda t, _since: typed.append(t)).type_text(
+        text
+    )
+    assert typed == [text]
+
+
+def test_type_text_keeps_plain_ascii_on_input_text(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Real key events stay the route for what they can express, so existing scenarios do not change.
+    scripts: list[str] = []
+    monkeypatch.setattr(
+        AdbDriver, "_run_text", staticmethod(lambda _cmd, script: scripts.append(script))
+    )
+
+    def _no_server(_text: str, _since: float | None) -> None:
+        raise AssertionError("plain ASCII must stay on `input text`")
+
+    AdbDriver("U", run=lambda a: "", type_on_device=_no_server).type_text("horse")
+    assert scripts == ["input text horse"]
+
+
+def test_type_text_fails_the_step_without_a_server(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(AdbDriver, "_run_text", staticmethod(_no_shell))
+    with pytest.raises(base.UnsupportedAction, match="needs the resident UI Automator server"):
+        AdbDriver("U", run=lambda a: "").type_text("馬")
+
+
+@pytest.mark.parametrize(
+    ("fault", "match"),
+    [
+        (AdbActUnsupported("no /type endpoint"), "rebuild it"),
+        (AdbResidentError("the focused field is a password field"), "password field"),
+    ],
+)
+def test_type_text_fails_the_step_on_a_refusal_naming_the_reason(
+    fault: Exception, match: str
+) -> None:
+    def _refuse(_text: str, _since: float | None) -> None:
+        raise fault
+
+    with pytest.raises(base.UnsupportedAction, match=match):
+        AdbDriver("U", run=lambda a: "", type_on_device=_refuse).type_text("馬")
+
+
+def test_server_text_entry_postdates_the_previous_entry_on_either_route(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # `/type` rewrites the whole field from its read, so a read older than the last entry would erase it.
+    monkeypatch.setattr(AdbDriver, "_run_text", staticmethod(lambda _cmd, _script: None))
+    clock = iter([10.0, 20.0, 30.0])
+    sent: list[float | None] = []
+    driver = AdbDriver(
+        "U",
+        run=lambda a: "",
+        fetch_clock=lambda: next(clock),
+        type_on_device=lambda _t, since: sent.append(since),
+    )
+    driver.type_text("abc")
+    driver.type_text("馬")
+    driver.type_text("術")
+    assert sent == [10.0, 20.0]
+
+
+def test_server_text_entry_sends_no_mark_with_nothing_to_postdate() -> None:
+    sent: list[float | None] = []
+    AdbDriver("U", run=lambda a: "", type_on_device=lambda _t, s: sent.append(s)).type_text("馬")
+    assert sent == [None]
+
+
+def test_type_text_does_not_resend_after_a_lost_reply(caplog: pytest.LogCaptureFixture) -> None:
+    calls: list[str] = []
+
+    def _lost(text: str, _since: float | None) -> None:
+        calls.append(text)
+        raise AdbActUncertain("reply lost")
+
+    AdbDriver("U", run=lambda a: "", type_on_device=_lost).type_text("秘密")
+    assert calls == ["秘密"]
+    assert "may or may not have landed" in caplog.text
+    assert "秘密" not in caplog.text
 
 
 def test_delete_text_sends_count_backspaces_in_one_keyevent() -> None:

@@ -288,6 +288,9 @@ _LANE_PATHS: dict[str, str] = {
         # rather than swept into the shared core: only the iOS and Android lanes boot real devices, so
         # the web lane never invokes it and must not re-run its whole fleet when it changes.
         r"|scripts/assert_pool_isolation\.py$"
+        # The attach end-to-end case this lane's `actuation` job runs (BE-0455): only the iOS lane
+        # invokes it, so a change to it must fire this lane and no other.
+        r"|scripts/repl_attach_e2e\.sh$"
         r"|BajutsuKit/"
         # The SwiftPM manifest lives at the repo root (not under BajutsuKit/) so it resolves via
         # `.package(url:)` from another repo, which SPM's git-based resolution requires — but it's
@@ -319,6 +322,8 @@ _LANE_PATHS: dict[str, str] = {
         # same jobs the two actions above do, and a change to it (a probe that hangs, a collection
         # that fails a step) can take a lane down as surely as editing the workflow file.
         r"|\.github/actions/collect-ios-diagnostics/"
+        # The retrying `ios-build` download every build-artifact consumer starts from (issue #2266).
+        r"|\.github/actions/download-ios-build/"
     ),
     "android": (
         # Only the adb driver and the Python side of the resident UI Automator channel (BE-0245) this
@@ -369,6 +374,7 @@ _LANE_PATHS: dict[str, str] = {
         r"|demos/serve-ui/"
         r"|demos/web/"
         r"|tests/test_driver_conformance_web\.py$"
+        r"|tests/test_dom_query_js_web\.py$"
         r"|Makefile$"
         r"|\.github/workflows/web-e2e\.yml$"
     ),

@@ -138,13 +138,29 @@ def test_a_token_older_than_the_ceiling_is_refused_while_still_unexpired() -> No
 
 @pytest.mark.parametrize("jti", [None, "", 42, {"a": 1}])
 def test_a_token_without_a_usable_jti_is_refused(jti: object) -> None:
-    """Fail closed rather than skip the replay cache. The absent and empty forms are caught by the
-    claims registry; a *numeric* one reaches `verify`'s own guard, which is the only thing between
-    a token with no spendable identifier and an unbounded replay window."""
+    """Fail closed rather than skip the replay cache. The claims registry catches every form here
+    (joserfc 1.7.5 began type-checking registered claims); `verify`'s own guard is the backstop the
+    test below pins."""
     key = _key()
     cache = JwksCache(ISSUER, fetch=_fetcher(key))
     with pytest.raises(OidcError):
         verify(_token(key, jti=jti), _config(), cache)
+
+
+@pytest.mark.parametrize(
+    ("claims", "match"),
+    [({"jti": 42}, "no 'jti'"), ({"iat": "not-a-number"}, "not a number")],
+)
+def test_verify_refuses_a_malformed_claim_the_registry_let_through(
+    monkeypatch: pytest.MonkeyPatch, claims: dict[str, Any], match: str
+) -> None:
+    """The replay cache and the age ceiling must not rest on the library's type checks alone: an
+    upstream change that stopped making them would otherwise open an unbounded replay window."""
+    monkeypatch.setattr(jwt.JWTClaimsRegistry, "validate", lambda self, claims: None)
+    key = _key()
+    cache = JwksCache(ISSUER, fetch=_fetcher(key))
+    with pytest.raises(OidcError, match=match):
+        verify(_token(key, **claims), _config(), cache)
 
 
 @pytest.mark.parametrize("iat", [None, "not-a-number"])
@@ -325,6 +341,47 @@ def test_the_provider_table_maps_claim_names_without_touching_verification() -> 
     assert workload.repository == "acme/app"
     assert workload.environment == "production"
     assert workload.workflow_ref.endswith(".gitlab-ci.yml@refs/heads/main")  # type: ignore[union-attr]
+
+
+def test_a_github_token_names_the_job_that_presented_it() -> None:
+    key = _key()
+    cache = JwksCache(ISSUER, fetch=_fetcher(key))
+    token = _token(
+        key, run_id="123", run_attempt="2", check_run_id="456", sha="abc", actor="octocat"
+    )
+    workload = verify(token, _config(), cache).workload
+    # The repository is left out: the audit entry names it beside the record already.
+    assert workload.ci_job() == {
+        "runId": "123",
+        "runAttempt": "2",
+        "checkRunId": "456",
+        "ref": "refs/heads/main",
+        "workflowRef": "acme/app/.github/workflows/e2e.yml@refs/heads/main",
+        "sha": "abc",
+        "triggeredBy": "octocat",
+    }
+
+
+def test_a_token_without_job_claims_still_verifies() -> None:
+    """The job claims describe the caller rather than authorize it, so their absence refuses
+    nothing, and the record keeps whichever of them the token did assert."""
+    key = _key()
+    cache = JwksCache(ISSUER, fetch=_fetcher(key))
+    record = verify(_token(key, run_id="123"), _config(), cache).workload.ci_job()
+    assert record == {
+        "runId": "123",
+        "ref": "refs/heads/main",
+        "workflowRef": "acme/app/.github/workflows/e2e.yml@refs/heads/main",
+    }
+
+
+def test_numeric_job_ids_are_recorded_as_text() -> None:
+    """GitHub documents no type for the id claims; a number must not silently drop the job."""
+    key = _key()
+    cache = JwksCache(ISSUER, fetch=_fetcher(key))
+    token = _token(key, run_id=123, run_attempt=1, check_run_id=456)
+    record = verify(token, _config(), cache).workload.ci_job()
+    assert (record["runId"], record["runAttempt"], record["checkRunId"]) == ("123", "1", "456")
 
 
 def test_github_actions_is_the_registered_default_provider() -> None:

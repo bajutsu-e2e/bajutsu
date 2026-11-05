@@ -205,6 +205,15 @@ def test_the_ios_toolchain_composite_fires_its_own_lane() -> None:
     assert is_relevant([android], "ios") is False
 
 
+def test_the_repl_attach_e2e_script_fires_the_ios_lane_alone() -> None:
+    # The `actuation` job runs it (BE-0455); without a claim, a PR editing only the script would
+    # leave the required aggregator green having never executed it.
+    script = "scripts/repl_attach_e2e.sh"
+    assert is_relevant([script], "ios") is True
+    assert is_relevant([script], "android") is False
+    assert is_relevant([script], "web") is False
+
+
 def test_only_e2e_workflow_is_relevant() -> None:
     assert is_relevant([".github/workflows/ios-e2e.yml"]) is True
     assert is_relevant([".github/workflows/ci.yml"]) is False
@@ -321,6 +330,9 @@ def test_ios_lane_surface() -> None:
     assert is_relevant([".github/actions/bajutsu-e2e/action.yml"]) is True
     assert is_relevant([".github/actions/boot-simulator/action.yml"]) is True
     assert is_relevant([".github/actions/collect-ios-diagnostics/action.yml"]) is True
+    # The retrying `ios-build` download every build-artifact consumer starts from (issue #2266).
+    assert is_relevant([".github/actions/download-ios-build/action.yml"]) is True
+    assert is_relevant([".github/actions/download-ios-build/action.yml"], "android") is False
     # The deterministic check the `network (xcuitest)` job runs over the persisted network.json
     # (BE-0282). iOS-only: no other lane invokes it, and it must fire *this* lane — otherwise editing
     # the checker fires nothing, the job never runs on the PR that changed it, and `E2E (iOS)` reports
@@ -396,6 +408,7 @@ def test_web_lane_surface() -> None:
     assert is_relevant(["demos/serve-ui/scenario.yaml"], "web") is True
     assert is_relevant(["demos/web/scenario.yaml"], "web") is True
     assert is_relevant(["tests/test_driver_conformance_web.py"], "web") is True
+    assert is_relevant(["tests/test_dom_query_js_web.py"], "web") is True
     assert is_relevant([".github/workflows/web-e2e.yml"], "web") is True
     # ...but not the Android app SDK, the iOS showcase, another lane's driver, or another lane's
     # workflow — the regression this fixes: a bare `bajutsu/common/drivers/` sweep previously fired the
@@ -1517,6 +1530,7 @@ def test_makefile_declared_scenarios_match_the_targets() -> None:
         "network": {
             "demos/showcase/scenarios/network_mock.yaml",
             "demos/showcase/scenarios/network_live.yaml",
+            "demos/showcase/scenarios/network_echo.yaml",
         },
         "device-group": {
             "demos/showcase/scenarios/device_group_update.yaml",
@@ -1553,6 +1567,7 @@ def test_lane_job_scenario_map_folds_the_makefile_jobs_on_ios_only() -> None:
     assert ios_map["network"] == {
         "demos/showcase/scenarios/network_mock.yaml",
         "demos/showcase/scenarios/network_live.yaml",
+        "demos/showcase/scenarios/network_echo.yaml",
     }
     for lane in ("android", "web"):
         text = lane_workflow_text(lane)

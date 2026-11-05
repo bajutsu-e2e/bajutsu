@@ -20,13 +20,14 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from bajutsu.common.devices.browsers import browser_launch
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
 
 if TYPE_CHECKING:
     from bajutsu.common.config import Effective
     from bajutsu.common.devices.os import DeviceOS
-    from bajutsu.common.drivers.adb import ActFn, ClockFetch, HierarchyFetch
+    from bajutsu.common.drivers.adb import ActFn, ClockFetch, HierarchyFetch, TypeFn
     from bajutsu.common.drivers.zorder import ZOrderSource
     from bajutsu.common.scenario import Scenario
 
@@ -103,6 +104,38 @@ def resolve_actuators(backends: list[str]) -> list[str]:
     return [a for token in backends for a in _expand(token)]
 
 
+def backend_override(override: str, target_backend: list[str]) -> list[str]:
+    """The backend list a command drives a target with: the target's own, or a checked override.
+
+    A target names one platform (BE-0452), so `--backend` is a check rather than a fallback list: it
+    accepts the target's platform, that platform's actuator name (such as `xcuitest`), or `fake`,
+    which runs any target on the fake driver. The same rule holds for a serve request body's
+    `backend`.
+
+    Args:
+        override: The `--backend` value; empty keeps the target's own list.
+        target_backend: The target's resolved backend, `[platform]`.
+
+    Returns:
+        The backend list in force, one token long.
+
+    Raises:
+        ValueError: *override* names anything else, or a comma list; the message names what the
+            target accepts.
+    """
+    token = override.strip()
+    if not token:
+        return list(target_backend)
+    platform = target_backend[0] if target_backend else ""
+    accepted = list(dict.fromkeys([platform, *PLATFORMS.get(platform, ()), "fake"]))
+    if token not in accepted:
+        raise ValueError(
+            f"--backend {override!r} does not match the target's platform {platform!r}: "
+            f"use one of {', '.join(accepted)}"
+        )
+    return [token]
+
+
 def select_actuator(
     backends: list[str], available: Callable[[str], bool] = default_available
 ) -> str:
@@ -122,14 +155,15 @@ def select_actuator(
 
 
 def ensure_web_runtime(backends: list[str], browser: str = "chromium") -> None:
-    """Provision the web backend (and the requested engine) on demand.
+    """Provision the web backend (and the requested browser kind's bundled engine) on demand.
 
     When a `web`/`playwright` backend is requested but the Playwright package is absent
     (e.g. the venv carries only the base install), install it *additively* — `uv pip install` so it
     doesn't evict another backend's extra. Then, whether or not the package was just added, install
-    the engine this run needs (`playwright install <browser>`). `playwright install` is idempotent —
-    a present browser is a fast no-op and a missing one is fetched — so a `firefox` / `webkit` run
-    pulls its binary on first use without disturbing Chromium (BE-0076).
+    the bundled engine this run needs (`playwright install <browser>`). `playwright install` is
+    idempotent — a present browser is a fast no-op and a missing one is fetched — so a `firefox` /
+    `webkit` run pulls its binary on first use without disturbing Chromium (BE-0076). Chrome and
+    Edge are the host's own installs, launched on a channel, so they are never fetched (BE-0468).
 
     A no-op unless web is requested; mirrors how `make serve` provisions a backend's deps on demand.
     The deterministic run/CI gate drives the fake backend and never reaches this.
@@ -141,6 +175,7 @@ def ensure_web_runtime(backends: list[str], browser: str = "chromium") -> None:
     import sys
 
     pkg_missing = not _playwright_available()
+    bundled = browser_launch(browser)[1] is None
     try:
         if pkg_missing:
             sys.stderr.write(
@@ -150,12 +185,25 @@ def ensure_web_runtime(backends: list[str], browser: str = "chromium") -> None:
             sys.stderr.flush()
             subprocess.run(["uv", "pip", "install", "playwright"], check=True)
             importlib.invalidate_caches()  # so find_spec() in select_actuator sees the new package
-        subprocess.run([sys.executable, "-m", "playwright", "install", browser], check=True)
+        # Fetching Chrome or Edge would install a system browser, so a missing one fails when
+        # Playwright launches it instead.
+        if bundled:
+            subprocess.run([sys.executable, "-m", "playwright", "install", browser], check=True)
     except (OSError, subprocess.CalledProcessError) as e:
+        manual = (
+            f"uv pip install playwright && uv run playwright install {browser}"
+            if bundled
+            else "uv pip install playwright"
+        )
+        host = ""
+        if not bundled:
+            # The host-install hint `doctor` gives, so the two never name different remedies.
+            from bajutsu.common.provisioning import requirements
+
+            host = f" Then {requirements.remedy(requirements.playwright_browser(browser).install)}."
         raise RuntimeError(
             "failed to auto-install the web backend (Playwright). Install it manually with "
-            f"`uv pip install playwright && uv run playwright install {browser}`, or `uv sync "
-            "--extra web`."
+            f"`{manual}`, or `uv sync --extra web`.{host}"
         ) from e
 
 
@@ -191,6 +239,50 @@ def capabilities_for(actuator: str) -> frozenset[str]:
     raise ValueError(f"unknown backend: {actuator!r}")
 
 
+def host_os_for(actuator: str) -> frozenset[str] | None:
+    """The host operating systems an actuator's driver can run on, or None for any host (BE-0450).
+
+    Read from each driver's `HOST_OS` class constant, beside `CAPABILITIES`, without constructing
+    a driver — the same lazy-import shape as `capabilities_for`.
+
+    Raises:
+        ValueError: The actuator is unknown or has no driver yet.
+    """
+    if actuator == "fake":
+        return FakeDriver.HOST_OS
+    if actuator == "playwright":
+        from bajutsu.common.drivers.playwright import PlaywrightDriver
+
+        return PlaywrightDriver.HOST_OS
+    if actuator == "xcuitest":
+        from bajutsu.common.drivers.xcuitest import XcuitestDriver
+
+        return XcuitestDriver.HOST_OS
+    if actuator == "adb":
+        from bajutsu.common.drivers.adb import AdbDriver
+
+        return AdbDriver.HOST_OS
+    raise ValueError(f"unknown or unimplemented backend: {actuator!r}")
+
+
+def current_host_os(platform: str | None = None) -> str:
+    """The operating system this process runs on, as a `HOST_OS` name (BE-0450).
+
+    The host is a fact about the machine, read here and never declared in `worker.yaml`.
+
+    Args:
+        platform: A `sys.platform` value to map instead of the running one (for tests).
+    """
+    import sys
+
+    p = sys.platform if platform is None else platform
+    if p.startswith("linux"):
+        return "linux"
+    if p in ("win32", "cygwin"):
+        return "windows"
+    return p
+
+
 def capabilities_for_run(
     actuator: str, eff: Effective, udid_spec: str = "booted"
 ) -> frozenset[str]:
@@ -206,10 +298,11 @@ def capabilities_for_run(
       truth). This is the narrower of the two, dropping text selection and photo selection on top
       of the real-device narrowing below. The signal is `udid_spec` being a WebDriver URL — the *same*
       `is_webdriver_endpoint` check `environment_for` routes on, so preflight and routing can never
-      disagree (whether the URL arrives from the `appium` provider's endpoint or a raw
-      `--udid https://…` under the local provider).
-    - **A real device via `xcuitest.deviceType: device`** loses the simctl-backed `DeviceControl`
-      family and the simctl-privacy permission grants (simctl cannot reach a physical device), the
+      disagree. The URL arrives from the `appium` provider's endpoint (BE-0452), which a target's
+      `device_provider` carries before any device is acquired, so it is read from there first.
+    - **A real device via `runsOn.ios.kind: device`** loses the simctl-backed `DeviceControl`
+      family, the simctl-privacy permission grants, and the simctl interval evidence kinds (simctl
+      cannot reach a physical device), the
       same fail-fast the permission preconditions already get in the XCUITest lifecycle (Unit 1). This
       keys on config (`deviceType`), which a udid spec cannot express, so it stays an `eff` check.
 
@@ -220,6 +313,9 @@ def capabilities_for_run(
     from bajutsu.common.config import xcuitest_targets_real_device
 
     caps = capabilities_for(actuator)
+    provider = eff.device_provider
+    if provider is not None and provider.kind == "appium" and provider.endpoint:
+        udid_spec = provider.endpoint.strip()
     if actuator == "xcuitest":
         # Route on the resolved udid spec with the very predicate `environment_for` uses, so the
         # advertised set and the environment actually chosen stay in lockstep — a capability the
@@ -230,18 +326,43 @@ def capabilities_for_run(
         )
 
         if is_webdriver_endpoint(udid_spec):
-            from bajutsu.common.drivers.xcuitest_live import XcuitestLiveDriver
-
-            return XcuitestLiveDriver.CAPABILITIES
+            return capabilities_for_route("ios-live")
         if xcuitest_targets_real_device(eff):
-            # Nothing installs a second build on a real iPhone, so it cannot share it either.
-            return (
-                caps
-                - base.DEVICE_CONTROL_ALL
-                - base.IOS_PERMISSION_CAPABILITIES
-                - {base.Capability.DEVICE_GROUP}
-            )
+            return capabilities_for_route("ios-device")
     return caps
+
+
+def capabilities_for_route(route: str) -> frozenset[str]:
+    """The capability set of one environment route (BE-0467), with no target config to read.
+
+    The routes are the columns of the settings table (`settings_support.Route`). serve's dispatch
+    reads this to advertise what a worker's routes can run before any target is resolved, and
+    `capabilities_for_run` narrows a target to the same sets, so the two never disagree.
+
+    Raises:
+        ValueError: *route* is not a known route.
+    """
+    if route == "ios-simulator":
+        return capabilities_for("xcuitest")
+    if route == "ios-live":
+        from bajutsu.common.drivers.xcuitest_live import XcuitestLiveDriver
+
+        return XcuitestLiveDriver.CAPABILITIES
+    if route == "ios-device":
+        # simctl cannot reach a physical device, and nothing installs a second build on a real
+        # iPhone, so it cannot share it either.
+        return (
+            capabilities_for("xcuitest")
+            - base.DEVICE_CONTROL_ALL
+            - base.IOS_PERMISSION_CAPABILITIES
+            - base.SIMCTL_EVIDENCE_CAPABILITIES
+            - {base.Capability.DEVICE_GROUP}
+        )
+    if route == "android":
+        return capabilities_for("adb")
+    if route == "web":
+        return capabilities_for("playwright")
+    raise ValueError(f"unknown route: {route!r}")
 
 
 def erase_precondition_supported(
@@ -249,25 +370,17 @@ def erase_precondition_supported(
 ) -> bool:
     """Whether forcing an `erase` precondition is safe on this run's resolved route.
 
-    Reuses the exact two routing predicates `capabilities_for_run` above narrows on (BE-0238): a
-    live WebDriver endpoint and a real iOS device (`xcuitest.deviceType: device`) both reject any
-    `erase` precondition outright (`XcuitestLiveEnvironment.start`, `XcuitestEnvironment.start` raise
-    rather than honoring it) instead of the silent no-op every other route treats it as. Kept next to
-    `capabilities_for_run` — the one place that already classifies a route's capabilities — rather
-    than in a second file, so a future XCUITest-adjacent route (a device farm, a new transport) is
-    reviewed here alongside its capability narrowing instead of risking a caller elsewhere assuming
-    `erase` is always safe.
+    A lookup in the BE-0467 settings table, which classifies each route the way `capabilities_for_run`
+    narrows it: a live WebDriver endpoint and a real iOS device (`runsOn.ios.kind: device`) cannot
+    erase, and a web run's fresh browser context already satisfies it.
 
     `bajutsu/common/runner/pipeline.py`'s crash-triggered retry is the one caller today: forcing `erase`
     where this returns `False` would raise past its `except BackendCrashError` and abort the whole
     run instead of retrying the one scenario.
     """
-    if actuator != "xcuitest":
-        return True
-    from bajutsu.common.config import xcuitest_targets_real_device
-    from bajutsu.common.platform_lifecycle.environments.xcuitest_live import is_webdriver_endpoint
+    from bajutsu.common.capability.settings_support import settings_support
 
-    return not (is_webdriver_endpoint(udid_spec) or xcuitest_targets_real_device(eff))
+    return settings_support(actuator, eff, udid_spec)["erase"] != "unsupported"
 
 
 def device_replacement_supported(
@@ -419,6 +532,7 @@ def make_driver(
     fetch_hierarchy: HierarchyFetch | None = None,
     fetch_clock: ClockFetch | None = None,
     act: ActFn | None = None,
+    type_on_device: TypeFn | None = None,
     device_os: DeviceOS | None = None,
     is_real_device: bool = False,
     package: str | None = None,
@@ -432,7 +546,8 @@ def make_driver(
     supplied, else via `uiautomator dump`, and takes a `fetch_clock` device-clock probe to anchor its
     read-lag barrier (BE-0332 Unit 3). `act` is that channel's actuation endpoint: with it a `tap`
     resolves its target on the device, so no host-computed coordinate is injected; without it the
-    coordinate actuators stand in. Every other actuator ignores all three. The xcuitest backend reads
+    coordinate actuators stand in. `type_on_device` is its text endpoint, the route for text `input
+    text` cannot carry. Every other actuator ignores all four. The xcuitest backend reads
     `runner_alive` — the environment's `xcodebuild`-process liveness check — so crash-recovery can fail
     fast on a runner whose process has exited. It also takes `on_stall`, the environment's bounded
     diagnostics capture (BE-0361), called when that same layer declares a mid-run crash, and
@@ -463,6 +578,7 @@ def make_driver(
             fetch_hierarchy=fetch_hierarchy,
             fetch_clock=fetch_clock,
             act=act,
+            type_on_device=type_on_device,
             package=package,
             api_level=api_level,
             launched_at=launched_at,
@@ -490,7 +606,7 @@ def make_driver(
         from bajutsu.common.drivers.playwright import PlaywrightDriver
 
         if not base_url:
-            raise ValueError("web backend requires base_url (set apps.<app>.baseUrl)")
+            raise ValueError("web backend requires base_url (set targets.<name>.subject.url)")
         return PlaywrightDriver(
             base_url,
             headless=headless,
@@ -505,9 +621,18 @@ def make_driver(
     raise ValueError(f"unknown backend: {actuator!r}")
 
 
-# Evidence *kind* -> the capability that supplies it natively (BE-0020). Today only network; a
-# kind whose capability the actuator lacks is filled read-only by a same-platform provider below.
-KIND_CAPABILITY: dict[str, str] = {"network": base.Capability.NETWORK}
+# Evidence *kind* -> the capability that supplies it natively (BE-0020). The interval kinds joined
+# in BE-0467, so a route that cannot record one names the gap instead of the sink silently trying.
+KIND_CAPABILITY: dict[str, str] = {
+    "network": base.Capability.NETWORK,
+    "video": base.Capability.VIDEO,
+    "deviceLog": base.Capability.DEVICE_LOG,
+    "appTrace": base.Capability.APP_TRACE,
+}
+
+# The kinds a same-platform read-only provider can fill: the pool wires a provider's collector into
+# the lease, and nothing yet hands a provider's recorder to the sink, so the rest only skip.
+_FALLBACK_KINDS = frozenset({"network"})
 
 
 def _platform_of(actuator: str, platforms: dict[str, tuple[str, ...]]) -> str | None:
@@ -553,23 +678,30 @@ def resolve_evidence_providers(
     backends: list[str],
     actuator: str,
     available: Callable[[str], bool] = default_available,
+    actuator_caps: frozenset[str] | None = None,
     caps: Callable[[str], frozenset[str]] = capabilities_for,
     platforms: dict[str, tuple[str, ...]] = PLATFORMS,
 ) -> tuple[dict[str, str], dict[str, str]]:
     """Resolve one read-only provider per evidence gap (BE-0020).
 
-    For each kind the actuator lacks natively (its `caps` miss the kind's capability), pick the
-    first eligible same-platform provider that advertises it. Returns ``(providers, skipped)``:
-    ``providers`` maps a gap kind to its provider actuator; ``skipped`` maps a gap kind with no
-    provider to a recorded reason (graceful degradation, never a run failure).
+    For each kind the actuator lacks natively (its capabilities miss the kind's capability), pick
+    the first eligible same-platform provider that advertises it, for a kind a provider can fill.
+    `actuator_caps` is the actuator's set on this run's route, as `capabilities_for_run` narrows it
+    (a real iOS device records no simctl evidence, BE-0467); it defaults to the static
+    `caps(actuator)`. Returns ``(providers, skipped)``: ``providers`` maps a gap kind to its
+    provider actuator; ``skipped`` maps a gap kind with no provider to a recorded reason (graceful
+    degradation, never a run failure).
     """
-    actuator_caps = caps(actuator)
+    native = caps(actuator) if actuator_caps is None else actuator_caps
     providers = evidence_backends(backends, actuator, available, platforms)
     chosen: dict[str, str] = {}
     skipped: dict[str, str] = {}
     for kind, capability in KIND_CAPABILITY.items():
-        if capability in actuator_caps:
+        if capability in native:
             continue  # the actuator supplies it natively — no fallback needed
+        if kind not in _FALLBACK_KINDS:
+            skipped[kind] = f"the {actuator} backend cannot record {kind} on this route"
+            continue
         provider = next((b for b in providers if capability in caps(b)), None)
         if provider is not None:
             chosen[kind] = provider

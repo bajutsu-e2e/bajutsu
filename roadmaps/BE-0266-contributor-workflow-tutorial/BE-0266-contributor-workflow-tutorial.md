@@ -15,96 +15,113 @@
 
 ## Introduction
 
-[`docs/roadmap-workflow.md`](../../docs/roadmap-workflow.md) explains *what* the `ideation` →
-`implement-be` loop is and [`docs/ai-development.md`](../../docs/ai-development.md) explains the
-mechanics in full (BE-ID lifecycle, model tiering, the three-skill triangle including
-`propose-and-build`), but neither is a walkthrough: there is no single page that puts a
-first-time contributor's hands on the keyboard and walks `/ideation` → merged proposal →
-`/implement-be` → merged PR end to end, the way [`docs/getting-started.md`](../../docs/getting-started.md)
-does for running Bajutsu itself. This proposal adds that walkthrough, plus the two things a
-first-timer reaches for that the current reference pages don't provide: a worked example
-contrasting a well-scoped proposal against an underspecified one, and a `propose-and-build`
-section proportional to `ideation` / `implement-be`'s.
+Two existing pages describe the `ideation` → `implement-be` loop, and neither is a walkthrough.
+
+- [`docs/roadmap-workflow.md`](../../docs/roadmap-workflow.md) explains *what* the loop is.
+- [`docs/ai-development.md`](../../docs/ai-development.md) explains the mechanics in full: the
+  BE-ID lifecycle, model tiering, and the three-skill triangle that includes `propose-and-build`.
+
+No single page puts a first-time contributor's hands on the keyboard and walks `/ideation` → merged
+proposal → `/implement-be` → merged PR end to end. [`docs/getting-started.md`](../../docs/getting-started.md)
+does this for running Bajutsu itself.
+
+This proposal adds that walkthrough. It also adds two items that a first-timer reaches for.
+The current reference pages do not provide them:
+
+- a worked example that contrasts a well-scoped proposal with an underspecified one
+- a `propose-and-build` section proportional to the `ideation` and `implement-be` sections
 
 ## Motivation
 
-Three gaps surfaced when checking whether this exact contribution-workflow document already
-existed (it mostly did, spread across three files):
+We checked whether this contribution-workflow document already existed. It existed, with most of the content spread
+across three files. The check surfaced three gaps.
 
-1. **No single onboarding path.** `CONTRIBUTING.md` orients a human contributor and links out;
-   `docs/roadmap-workflow.md` diagrams the ideation/implement-be loop; `docs/ai-development.md`
-   holds the detailed rules (BE-ID mechanics, model tiers, PR templates). A newcomer has to
-   assemble the actual "what do I type, in what order, to ship my first change" sequence
-   themselves from three pages written for different purposes (orientation, conceptual overview,
-   reference). [`docs/getting-started.md`](../../docs/getting-started.md) solved exactly this
-   problem for *running* Bajutsu — install → scenario → run → report, one page, in order — and
-   this proposal does the analogous thing for *contributing* to it.
-2. **`propose-and-build` is a footnote.** `docs/roadmap-workflow.md`'s diagram and walkthrough
-   cover only the two-skill loop (`ideation`, `implement-be`); `propose-and-build` gets one
-   paragraph in `docs/ai-development.md`'s "Authoring and shipping roadmap items" section (its
-   own [BE-0216](../BE-0216-propose-and-build-parallel-skill/BE-0216-propose-and-build-parallel-skill.md)
-   documents the skill's mechanics, not when a contributor should reach for it over the serial
-   path). A contributor deciding how to start a small, well-scoped feature has no walkthrough-level
-   guidance on the trade-off, only a one-line rule of thumb.
-3. **No worked example of what makes a proposal good or bad.** Every existing doc describes the
-   *shape* a proposal must take (metadata block, MECE `Detailed design`, `Progress` checklist) but
-   none shows a concrete before/after — a vague one-liner reshaped into a scoped, machine-checkable
-   proposal — which is the fastest way for a newcomer to internalize "scoped enough" without first
-   getting it wrong on a real PR.
+1. **No single onboarding path.**
+   - `CONTRIBUTING.md` orients a human contributor and links out.
+   - `docs/roadmap-workflow.md` diagrams the ideation and implement-be loop.
+   - `docs/ai-development.md` holds the detailed rules: BE-ID mechanics, model tiers, and PR
+     templates.
 
-Fixing these means a new contributor (human or agent, per this project's working agreement) reaches
-their first merged proposal and first merged implementation without needing a maintainer to walk
-them through it live.
+   A newcomer has to assemble the actual sequence themselves: "what do I type, in what order, to
+   ship my first change". The three pages were written for different purposes (orientation,
+   conceptual overview, reference).
+   [`docs/getting-started.md`](../../docs/getting-started.md) solved this same problem for
+   *running* Bajutsu, on one page and in order: install → scenario → run → report. This proposal does
+   the analogous thing for *contributing* to Bajutsu.
+2. **`propose-and-build` is a footnote.**
+   - The diagram and walkthrough in `docs/roadmap-workflow.md` cover the two-skill loop alone
+     (`ideation`, `implement-be`).
+   - `propose-and-build` gets one paragraph in the "Authoring and shipping roadmap items" section of
+     `docs/ai-development.md`.
+   - Its own [BE-0216](../BE-0216-propose-and-build-parallel-skill/BE-0216-propose-and-build-parallel-skill.md)
+     documents the skill's mechanics, not when a contributor should reach for it over the serial
+     path.
+
+   A contributor deciding how to start a small, well-scoped feature has a one-line rule of
+   thumb on the trade-off and no walkthrough-level guidance.
+3. **No worked example of what makes a proposal good or bad.** Every existing document describes the
+   *shape* a proposal must take: the metadata block, a MECE `Detailed design`, and the `Progress`
+   checklist. None shows a concrete before and after, in which a vague one-liner becomes a
+   scoped, machine-checkable proposal. A before-and-after example is the fastest way to internalize
+   "scoped enough". The newcomer need not first get it wrong on a real PR.
+
+Fixing these gaps lets a new contributor reach a first merged proposal and a first merged
+implementation. No maintainer needs to walk them through the process live. The contributor may be
+human or agent, per this project's working agreement.
 
 ## Detailed design
 
-1. **A new tutorial page**, `docs/contributor-workflow-tutorial.md` (+ `docs/ja/` mirror), in the
-   same tutorial register as `docs/getting-started.md` ("do these steps, in order" rather than
-   "here is what each feature does"). It does not re-explain the BE-ID lifecycle, model tiers, or
-   PR template — those stay owned by `docs/ai-development.md` and `docs/roadmap-workflow.md`,
-   linked rather than duplicated — it walks a single concrete idea through:
+1. **A new tutorial page**, `docs/contributor-workflow-tutorial.md` (plus a `docs/ja/` mirror). It
+   uses the same tutorial register as `docs/getting-started.md`: "do these steps, in order" rather
+   than "here is what each feature does". The page does not re-explain the BE-ID lifecycle, model
+   tiers, or the PR template. `docs/ai-development.md` and `docs/roadmap-workflow.md` keep ownership of those topics. The page links to them instead of duplicating them. The page walks a single
+   concrete idea through three stages:
    - Starting `/ideation`, grounding in the existing roadmap, and reaching a drafted `BE-0266`
      proposal.
-   - Opening the proposal PR and watching CI (`roadmap-id`) allocate the real `BE-NNNN`.
-   - Starting `/implement-be BE-NNNN` against the merged proposal, through plan-confirmation,
+   - Opening the proposal PR and watching CI (`roadmap-id`) assign the real `BE-NNNN`.
+   - Starting `/implement-be BE-NNNN` against the merged proposal, through plan confirmation,
      implementation, the gate, and a merged PR.
-2. **A worked good-vs-bad proposal example**, embedded in the tutorial page: a short, deliberately
-   underspecified one-liner idea ("add retry to flaky steps"), followed by the reshaped version
-   `ideation` should produce (bounded scope, which tier it touches, the machine-checkable outcome,
-   surfaced tension with a prime directive if any) — reusing real, already-merged BE items (e.g.
-   [BE-0214](../BE-0214-web-only-beginner-tutorial/BE-0214-web-only-beginner-tutorial.md) for a
-   docs-shaped item, one code-shaped item) as the "here is what good looks like" reference rather
-   than inventing hypothetical ones from scratch.
-3. **A proportional `propose-and-build` section**: when to reach for it over the serial path (the
-   existing rule of thumb from `docs/ai-development.md`, expanded with the walkthrough's own idea
-   run through it hypothetically — same idea, "what if it had been small and settled enough to
-   stack instead"), and what the hand-off (proposal merges → real `BE-NNNN` allocated →
-   implementation branch rebases and retargets) looks like from the contributor's side.
-4. **Cross-links, not duplication.** `CONTRIBUTING.md` (+ ja) points first-time contributors at
-   this tutorial before the reference pages; `docs/roadmap-workflow.md` and
-   `docs/ai-development.md` gain a "new to this? start with the tutorial" pointer at their top;
-   `docs/README.md` / `docs/overview.md` reading order and `mkdocs.yml` nav include the new page
-   next to `Getting started`.
-5. **Bilingual pass.** `docs/ja/` mirror written as natural Japanese per the
-   [`japanese-tech-writing`](../../.claude/skills/japanese-tech-writing/) skill, not a mechanical
-   translation of the English walkthrough.
+2. **A worked good-versus-bad proposal example**, embedded in the tutorial page.
+   - It opens with a short, intentionally underspecified one-liner idea ("add retry to flaky
+     steps").
+   - It then shows the reshaped version that `ideation` should produce: bounded scope, which tier the
+     change touches, the machine-checkable outcome, and any surfaced tension with a prime directive.
+   - It reuses real, already-merged BE items as the "here is what good looks like" reference, rather
+     than inventing hypothetical ones from scratch. One example is
+     [BE-0214](../BE-0214-web-only-beginner-tutorial/BE-0214-web-only-beginner-tutorial.md), for a
+     docs-shaped item. Another is one code-shaped item.
+3. **A proportional `propose-and-build` section.**
+   - It explains when to reach for `propose-and-build` over the serial path. It starts from the
+     existing rule of thumb in `docs/ai-development.md`. It expands the rule by running the
+     walkthrough's own idea through it hypothetically: the same idea, as if it had been small and
+     settled enough to stack instead.
+   - It shows what the hand-off looks like from the contributor's side: the proposal merges, CI assigns the real `BE-NNNN`, and the implementation branch rebases and retargets.
+4. **Cross-links, not duplication.**
+   - `CONTRIBUTING.md` (plus its `ja` counterpart) points first-time contributors at this tutorial
+     before the reference pages.
+   - `docs/roadmap-workflow.md` and `docs/ai-development.md` gain a "new to this? start with the
+     tutorial" pointer at their top.
+   - The reading order in `docs/README.md` and `docs/overview.md`, and the `mkdocs.yml` nav, include
+     the new page next to `Getting started`.
+5. **Bilingual pass.** The `docs/ja/` mirror is written as natural Japanese, per the
+   [`japanese-tech-writing`](../../.claude/skills/japanese-tech-writing/) skill. It is not a
+   mechanical translation of the English walkthrough.
 
 ## Alternatives considered
 
-- **Fold the walkthrough into `docs/roadmap-workflow.md` instead of a new page.** Rejected: that
-  page is deliberately a conceptual overview (the loop diagram, why two skills not one) in the
-  reference register; interleaving step-by-step tutorial prose into it would blur both purposes,
-  the same reason `getting-started.md` and `overview.md` stay separate pages for the product itself.
+- **Fold the walkthrough into `docs/roadmap-workflow.md` instead of a new page.** Rejected. That page
+  is, by design, a conceptual overview in the reference register: the loop diagram, and why two
+  skills rather than one. Interleaving step-by-step tutorial prose would blur both purposes. The same
+  reason keeps `getting-started.md` and `overview.md` separate pages for the product itself.
 - **Expand `docs/ai-development.md`'s existing propose-and-build paragraph in place, without a
-  tutorial page.** Addresses gap 2 alone; leaves gaps 1 and 3 (no onboarding sequence, no worked
-  example) unaddressed. This proposal's `Detailed design` item 3 folds the expanded
-  `propose-and-build` guidance into the tutorial rather than leaving it stranded in the reference
-  page.
+  tutorial page.** This addresses gap 2 alone. It leaves gaps 1 and 3 (no onboarding sequence, no
+  worked example) unaddressed. Item 3 of this proposal's `Detailed design` folds the expanded
+  `propose-and-build` guidance into the tutorial, so the guidance does not sit stranded in the reference page.
 - **Write the tutorial from a hypothetical idea instead of reusing real, merged BE items as the
-  worked example.** Rejected: a hypothetical example can't show a reader the real proposal file,
-  the real PR, or the real `Progress` log — reusing an already-merged item (like BE-0214) gives the
-  reader something to click through and verify, which is exactly what a first-timer needs before
-  trusting the shape of their own first proposal.
+  worked example.** Rejected. A hypothetical example cannot show a reader the real proposal file, the
+  real PR, or the real `Progress` log. Reusing an already-merged item (like BE-0214) gives the reader
+  something to click through and verify. A first-timer needs that before trusting the shape of their
+  own first proposal.
 
 ## Progress
 
@@ -122,9 +139,10 @@ them through it live.
 
 **Log**
 
-- (this PR) Added `docs/contributor-workflow-tutorial.md` (+ `docs/ja/` mirror) and cross-linked it
-  from `CONTRIBUTING.md`/`.ja`, `docs/roadmap-workflow.md`, `docs/ai-development.md`,
-  `docs/README.md`, `docs/overview.md` (both languages), and `mkdocs.yml` nav.
+- (this PR) Added `docs/contributor-workflow-tutorial.md` (plus a `docs/ja/` mirror). Cross-linked the
+  page from `CONTRIBUTING.md` and its `ja` counterpart, `docs/roadmap-workflow.md`,
+  `docs/ai-development.md`, `docs/README.md`, `docs/overview.md` (both languages), and the
+  `mkdocs.yml` nav.
 
 ## References
 

@@ -38,8 +38,6 @@ updated `package-lock.json`.
 `overrides` in `package.json` holds floors that resolve npm advisories in transitive dependencies —
 **keep them when bumping a rule.** Removing one silently reintroduces the advisory:
 
-- `hono: ^4.13.5` (via `@modelcontextprotocol/sdk`) — GHSA-gqvv-2mrq-wpjv, GHSA-g6gw-c38x-mqfc,
-  GHSA-crvj-82cr-hjcx
 - `js-yaml: ^4.3.2`, with per-parent `^3.15.2` for `prh`, `textlint-rule-ja-hiragana-fukushi`, and
   `textlint-rule-ja-hiragana-hojodoushi` (which require the 3.x line) — GHSA-2883-xcg3-v3hh
 

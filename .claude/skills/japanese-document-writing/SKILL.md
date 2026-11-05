@@ -22,12 +22,13 @@ description: 日本語の技術文書を執筆、翻訳、推敲するときに�
 
 ## 規範の読み込み
 
-規範の本体は [`references/`](references/) に置いた3つのファイルに分かれている。**執筆、翻訳、推敲の
-いずれであっても、書き始める前に3つとも読む。**
+規範の本体は [`references/`](references/) に置いた4つのファイルに分かれている。**執筆、翻訳、推敲の
+いずれであっても、書き始める前に4つとも読む。**
 
 - [`references/formatting.md`](references/formatting.md)：整形と見出しの付け方
 - [`references/argument.md`](references/argument.md)：段落の構成、論証の厳密さ、読み手の負荷の管理
 - [`references/expression.md`](references/expression.md)：視点と語り、演出の抑制、LLM 口調の排除、冗長の排除、読者への誠実さ
+- [`references/structure.md`](references/structure.md)：文書の構成と手順の書き方を日本語に当てはめるときの補足（本体は上位規範の同名ファイル）
 
 必要になった段階で1つずつ読む形は採らない。どの手順がどの規範を必要とするかという対応が規範の側に
 なく、一部だけを適用したまま規範に従ったつもりになれてしまうからである。

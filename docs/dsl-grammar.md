@@ -50,8 +50,8 @@ graph LR
   SC -->|mocks| MK["Mock"]
   SC -->|redact| RD["Redact"]
   SC -->|interrupts| IR["Interrupt"]
-  SC -->|before| ST
-  SC -->|after| AR["AfterRule"]
+  SC -->|setup| ST
+  SC -->|cleanup| AR["CleanupRule"]
   AR -->|steps| ST
 
   ST -->|"tap·doubleTap·longPress·<br/>type·swipe·pinch·rotate·<br/>select·clear·delete·<br/>selectOption·setPickerValue·<br/>drag·scroll·handleSystemAlert"| SEL["Selector"]
@@ -121,19 +121,17 @@ Scenario ::= {
   installs?:       list(string),            # default []  — device-group members that install and launch at the start beside the primary (BE-0447); every other member of a group of ≥ 2 is a later member, brought up by `installApp` + `foreground` (§4)
   data?:           list(map(string,string)),# inline rows   ┐ XOR
   dataFile?:       string,                  # CSV path      ┘ (§6.3)
-  preconditions?:  <Preconditions>,         # default {}
-  before?:         list(<Step>),            # default []  — setup phase run ahead of `steps`, reported apart from it (BE-0392); the target config's own precede these
+  preconditions?:  <Preconditions>,         # default {}  — the target's `subject` / `run` overridden per scenario (BE-0452, BE-0470), and the device state (BE-0469)
+  setup?:          list(<Step>),            # default []  — setup phase run ahead of `steps`, reported apart from it (BE-0392); each declared target's `hooks.setup` precede these
   steps:           list(<Step>),            # required
   expect?:         list(<Assertion>),       # default []  — final checks
-  after?:          list(<AfterRule>),       # default []  — teardown rules run once the verdict exists (BE-0392); the target config's own follow these
+  cleanup?:        list(<CleanupRule>),     # default []  — teardown rules run once the verdict exists (BE-0392); each declared target's `hooks.cleanup` follow these
   capturePolicy?:  list(<CaptureRule>),     # default []
   network?:        <Network>,
   mocks?:          list(<Mock>),            # default []
   redact?:         <Redact>,
-  systemAlertHandling?: <SystemAlertHandling>,  # alert guard; on when unset
-  iosTipKitHandling?: <bool>,                   # dismiss a blocking TipKit tip; off when unset (iOS only)
   permissions?:    <Permissions>,           # pre-launch OS permission state; default {}
-  interrupts?:     list(<Interrupt>),       # default []  — handlers for interstitials that surface at an unpredictable point (BE-0314), appended after the target config's own
+  interrupts?:     list(<InterruptEntry>),  # default []  — what the run clears on its own at an unpredictable point (BE-0314, BE-0473), layered over the target's `hooks.interrupts`
 }
 
 Component ::= { params?: list(string), steps: list(<Step>) }
@@ -144,33 +142,62 @@ Component ::= { params?: list(string), steps: list(<Step>) }
 # it watches the primary target (BE-0438).
 Interrupt ::= { condition: <Assertion>, steps: list(<Step>), target?: string }
 
+# One `interrupts` list holds three forms, told apart by the key an entry writes (BE-0473): a screen in
+# the app's own tree, an operating-system prompt the system-alert guard answers, and Apple's TipKit
+# popover. An entry that mixes keys of two forms fails at load. The target's `hooks.interrupts` takes
+# the same forms. Screen entries concatenate, the target's first; how the other two forms combine is
+# under SystemAlertInterrupt and TipKitInterrupt below.
+InterruptEntry ::= <Interrupt> | <SystemAlertInterrupt> | <TipKitInterrupt>
+
 # One teardown rule (BE-0392): the outcome it answers, and the steps to run for that outcome. The
 # outcome is the scenario's own machine-checked verdict, never a model call.
-AfterRule ::= { on: "always" | "success" | "error", steps: list(<Step>) }
+CleanupRule ::= { on: "always" | "success" | "failure", steps: list(<Step>) }
 
 # ── Preconditions ──────────────────────────────────────────────────────
+# `subject` takes the target's own group name (BE-0452, BE-0470). Each field overrides the same field of every target the
+# scenario drives; `subject.launch.env` merges key by key and `subject.launch.args` appends. A field no
+# driven target's platform has fails the run before any device work. The former `preconditions.run`
+# fails at load and names each field's new home (BE-0473). A scenario declares no device condition: `runsOn` belongs
+# to the target alone (BE-0469).
 Preconditions ::= {
-  erase?:      boolean,                     # unset inherits the target config's erase, else off (BE-0177); simctl erase first
-  reinstall?:  ("clean" | "overwrite"),     # default "clean" — app reinstall when config sets appPath
-  launchArgs?: list(string),                # default []
-  launchEnv?:  map(string,string),          # default {}    — injected as SIMCTL_CHILD_*
-  deeplink?:   string,
-  locale?:     string,
-  setup?:      string,                      # a reusable prelude file (§6.4)
+  subject?: {
+    reinstall?: ("overwrite" | "clean" | "erase"),  # weakest first; unset: the target's `subject.reinstall`, else "clean"; iOS and Android, plus "erase" on web (BE-0473)
+    launch?: {
+      env?:      map(string,string),        # default {} — merged over the target's `subject.launch.env`
+      args?:     list(string),              # default [] — appended after the target's; iOS only
+      deeplink?: string,                    # unset: the target's `subject.launch.deeplink`; iOS and Android
+    },
+  },
+  device?: { ios?: <IosDevice> },           # keyed by destination; a block for an undriven platform has no effect
+  inheritSetup?: boolean,                   # default true — false skips every declared target's `hooks.setup`; their cleanup still runs
 }
 
-# ── SystemAlertHandling (reactive system-alert guard; on by default) ───
-# Native SpringBoard query + tap on XCUITest (no model, reusing BE-0316; BE-0315), plus an in-tree
-# tap for a prompt that query cannot see. An alert no rule identifies is reported on the blocked
-# step's own failure, never guessed at (BE-0402, BE-0406).
-SystemAlertHandling ::= boolean                                   # true = on with no rules, false = off
-               | { rules?: [<SystemAlertRule>],             # the guard's whole declaration (BE-0406)
-                   visionInstruction?: string,              # free text; reaches no command — `run` rejects it
-                   pollInterval?: number,                    # native poll cadence, seconds (default 1)
-                   frozenScreenTimeout?: number }            # frozen-screen stop, seconds (default 10, 0 = off)
-SystemAlertRule ::= { prompt: notifications|tracking|paste|savePassword, choice: grant|deny }  # unique prompt per list
+# The iOS device state a scenario applies; each field replaces the target's `runsOn.ios` value of the
+# same name. `seedPhotos` paths resolve against the scenario file, and a merged, non-empty list needs
+# an effective `subject.reinstall: erase`.
+IosDevice ::= { locale?: string, seedPhotos?: list(string) }
+
+# ── SystemAlertInterrupt (the reactive system-alert guard's answers) ───
+# The guard is on unless `run --no-system-alert-handling`; no scenario or target switches it off as a
+# whole. It answers a prompt by a native SpringBoard query + tap on XCUITest (no model, reusing
+# BE-0316; BE-0315), plus an in-tree tap for a prompt that query cannot see. An alert no entry names
+# is reported on the blocked step's own failure, never guessed at (BE-0402, BE-0406). Per prompt, a
+# scenario entry replaces the target's `choice` and inherits an omitted `frozenScreenTimeout`; other
+# prompts from both lists apply. One prompt appears at most once per list (BE-0473).
+SystemAlertInterrupt ::= {
+  systemAlert: notifications|tracking|paste|savePassword|localNetwork,
+  choice: grant|deny|leave,             # leave: answer nothing, e.g. when the scenario's own handleSystemAlert step does
+  pollInterval?: number,                # native poll cadence, seconds (default 1); scenario › --alert-poll-interval › target, smallest within a layer
+  frozenScreenTimeout?: number,         # frozen-screen stop, seconds (default 10, 0 = off); a prompt raised in the app's own tree (savePassword)
+}
                 # savePassword is guard-only: iOS raises it in-process, so the in-tree dismissal
                 # alone answers it and the handleSystemAlert step below rejects it (BE-0406)
+
+# ── TipKitInterrupt (Apple's TipKit popover; iOS only) ─────────────────
+# Off unless an entry asks for it, since a tip is sometimes the assertion's own subject. The
+# scenario's entry wins over the target's; `run --ios-tipkit-handling` / `--no-ios-tipkit-handling`
+# set every scenario's entry to dismiss / leave. At most one per list (BE-0473).
+TipKitInterrupt ::= { tipKit: dismiss|leave }
 
 Permissions ::= map(PermissionService, PermissionAction)    # applied before the app launches
 PermissionService ::= "location" | "camera" | "microphone" | "contacts"
@@ -200,6 +227,7 @@ Action    ::=
   | { select:      { into: <Selector>, mode?: "all" } }    # focus the field and select its content (mode default "all"; web-context raises; codegen emits the native XCUITest equivalent)
   | { copy:        {} }                                    # copy the active selection to the clipboard (requires a prior select; web-context raises)
   | { selectOption:{ sel: <Selector>, option: string } }   # set a web <select> to the option with this value (web only; iOS/Android raise)
+  | { navigate:    string }                                # load a URL resolved against baseUrl; http/https only (web only; BE-0464)
   | { setPickerValue:{ sel: <Selector>, value: string } }  # move a wheel-style picker to the row with this value (iOS only; sel addresses one wheel)
   | { swipe:       <Swipe> }                          # directional form scrolls; coordinate form is a raw drag
   | { drag:        <Drag> }                           # pointer-drag a grabbed element (handle / divider / slider), not a scroll
@@ -208,7 +236,7 @@ Action    ::=
   | { pinch:       { sel: <Selector>, scale: number } }    # scale > 0  (>1 in, <1 out)
   | { rotate:      { sel: <Selector>, radians: number } }  # >0 clockwise
   | { handleSystemAlert: { sel: <Selector>, timeout: number } }  # tap an iOS SpringBoard permission prompt (iOS/XCUITest only); sel accepts only label/labelMatches/index
-  | { handleSystemAlert: { prompt: notifications|tracking|paste, choice: grant|deny, timeout: number } }  # same step, label resolved from the run's locale (BE-0320), or by position under an uncovered language (BE-0445); savePassword is not nameable here (BE-0406)
+  | { handleSystemAlert: { prompt: notifications|tracking|paste|localNetwork, choice: grant|deny, timeout: number } }  # same step, label resolved from the run's locale (BE-0320), or by position under an uncovered language (BE-0445); savePassword is not nameable here (BE-0406)
   | { wait:        <Wait> }
   | { sleep:       { seconds: number, reason: string } }  # fixed pause: 0 < seconds <= 30, reason non-blank; the one exception to condition waits
   | { assert:      list(<Assertion>) }
@@ -216,9 +244,10 @@ Action    ::=
   | { setLocation: { lat: number, lon: number } }
   | { push:        { payload: map(string,any) } }          # APNs payload, e.g. {aps:{alert:"…"}}
   | { http:        { method?: string, url: string, headers?: map(string,string), body?: string, status?: integer, saveBody?: string, extractBody?: list({ var: string, path: string }) } }  # method default GET; saveBody → vars.<name>; extractBody → vars.<var> per JSON path (BE-0440)
-  | { totp:        { secret: string, into: { var: string } } }  # RFC 6238 OTP → vars.<var> (secret is base32)
+  | { totp:        { secret: string, into: { var: string }, minRemaining?: integer } }  # RFC 6238 OTP → vars.<var> (secret is base32); minRemaining 1–30: wait for the next 30s window when fewer seconds are left (BE-0474)
   | { email:       { match: { to?: string, subject?: string, subjectMatches?: string }, extract: { var: string, bodyMatches: string }, timeout: number } }  # poll mailbox → vars.<var>
   | { generate:    <Generate> }                            # a random or current-datetime value computed at run time → vars.<var> (BE-0377)
+  | { eval:        <Eval> }                                # transform a held value through a fixed op vocabulary → vars.* (BE-0472)
   | { background:       {} }                               # Home button (backgrounds via SpringBoard, no terminate)
   | { foreground:       {} }                               # bring the app to the front, no terminate; an app that is not running launches as `relaunch` would and waits until ready (iOS and Android, BE-0447); the other half of background
   | { installApp:       { from: string, keepData?: boolean } }  # install a later device-group member's build on the step's device; keepData default true (install over, data kept), false uninstalls first; launches nothing (BE-0447)
@@ -274,6 +303,24 @@ Datetime ::= { format?: string, offsetSeconds?: integer, offsetMinutes?: integer
     # format: a strftime pattern; omitted = ISO 8601 to the second. The four offsets are signed and additive.
     # timezone: an IANA name (e.g. "America/Los_Angeles"); omitted = UTC. An unrenderable format or an unknown zone fails at load.
 
+Eval ::= { from: string, ops: list(<EvalOp>), into: { var: string } | { vars: list(string) } }
+    # ops: non-empty; each runs on the previous result. The loader tracks string/list from `from` (a string) to the end.
+    # into.var: a list result is stored as compact JSON array text. into.vars: needs a list result; element i → vars[i],
+    #   extra elements dropped, a shorter list fails the step. Names in vars are distinct.
+EvalOp ::=
+    "trim" | "json" | "count" | "unique" | "reverse" | "sort"                     # bare names
+  | { split:     string | { by: string, regex?: boolean } }                       # string → list; by non-empty
+  | { join:      string }                                                         # list → string
+  | { filter:    { matches: string | equals: string | contains: string | notEmpty: true, not?: boolean } }  # exactly one predicate
+  | { pick:      "first" | "last" | integer }                                     # list → string; index ≥ 0
+  | { sort:      ("asc"|"desc") | { order?: ("asc"|"desc"), numeric?: boolean } }
+  | { regex:     { pattern: string, group?: integer } }                          # string → string; group default 0
+  | { replace:   { find: string, with: string, regex?: boolean } }               # string → string
+  | { substring: { start: integer, end?: integer } }                             # string → string; both ≥ 0
+  | { case:      ("lower"|"upper") }                                              # string → string
+    # A free-text or index argument may hold ${vars.*} / ${secrets.*}; it is checked after substitution instead of at load.
+    # sort's order, case, and the regex / not / numeric flags take literal values only.
+
 # ── Selector (≥1 field; provided fields are AND-ed) ────────────────────
 Selector ::= {
   id?:           string | list(string),        # a list is an OR over candidates (BE-0221) — one shared scenario can carry every platform's spelling of an id; list the canonical (dotted) form first
@@ -308,12 +355,15 @@ Assertion ::=
   | { responseSchema: <ResponseSchemaMatch> }   # validate a captured response body against a JSON Schema (BE-0048)
   | { visual:   <VisualMatch> }
   | { clipboard: <ClipboardMatch> }   # read-back of the device pasteboard (simctl pbpaste)
+  | { attribute: <AttributeMatch> }   # an HTML attribute of one element, read on demand (web only; BE-0466)
   | { golden:   <GoldenMatch> }       # compare the live element tree to a recorded golden file (BE-0006)
 
 TextMatch  ::= { sel: <Selector> } & ( {equals:string} | {contains:string} | {matches:string} )
 CountMatch ::= { sel: <Selector> } & ( {equals:integer} | {atLeast:integer} | {atMost:integer} )
 CountOp    ::= ( {equals:integer} | {atLeast:integer} | {atMost:integer} )   # a count comparison with no selector — an EventMatch's multiplicity
 ClipboardMatch ::= ( {equals:string} | {matches:string} )   # exactly one; matches is a regex
+AttributeMatch ::= { sel: <Selector>, name: string }   # name: a valid HTML attribute name, never lowercased
+               & ( {equals:string} | {contains:string} | {matches:string} | {absent:true} )   # exactly one
 GoldenMatch ::= { path: string }   # resolved against the golden context's base directory (BE-0006)
 
 VisualMatch ::= {                  # pixel-compare the screen against a baseline image
@@ -337,21 +387,30 @@ outright (§4).
 RequestMatch ::= {              # ≥1 of the match fields below
   method?:      string,
   url?:         string,         # exact full URL (the endpoint)
-  urlMatches?:  string,         # regex/substring over the URL (query strings live here)
+  urlMatches?:  string,         # regex/substring over the full URL
   path?:        string,         # exact path (query ignored)
   pathMatches?: string,         # regex over the path
+  query?:       DictMatch,      # URL-decoded query parameters; values: string | operator map (BE-0463)
+  body?:        DictMatch,      # parsed JSON request body; values: any DictValue (BE-0463)
   status?:      integer,
   bodyMatches?: string,         # regex/substring over the request body
   count?:       integer,        # assertion → exact count; wait → lower bound
 }
 
-EventMatch ::= {                # ≥1 of an endpoint field (method/url/urlMatches/path/pathMatches) or body
+DictMatch ::= map(string, DictValue)   # non-empty; a key starting `$$` names a field starting `$`
+DictValue ::= string                   # equals the JSON value's text form (quoted: no bare 1/true/null)
+  | { $matches?: string, $exists?: boolean }   # operator map (≥1 operator)
+  | map(string, DictValue)             # subset of a JSON object
+  | list(DictValue)                    # JSON array of the same length, element by element
+
+EventMatch ::= {                # ≥1 of an endpoint field (method/url/urlMatches/path/pathMatches), query, or body
   method?:      string,
   url?:         string,
   urlMatches?:  string,
   path?:        string,
   pathMatches?: string,
-  body?:        map(string,string),  # each key must be present and equal (as text) to the request body's JSON value
+  query?:       DictMatch,      # same grammar as RequestMatch.query
+  body?:        DictMatch,      # same grammar as RequestMatch.body
   count?:       <CountOp>,           # expected multiplicity (default: at least one)
 }
 
@@ -367,7 +426,7 @@ CaptureRule ::= { on: <Trigger>, capture: list(<CaptureToken>), from?: string }
 Trigger ::=                                    # exactly one of action / event / result
     { action: string, idMatches?: string }     # idMatches only alongside action
   | { event: "screenChanged" }
-  | { result: "error" }
+  | { result: "failure" }
 
 # ── Network / mocks / redact ───────────────────────────────────────────
 Network ::= { filter?: { domains?: list(string) } }
@@ -418,8 +477,9 @@ error). This table is the **authoritative list of "exactly one / at least one / 
 | `TextMatch` (`value`/`label`) | **exactly one** of `equals` / `contains` / `matches` | `scenario/models/assertions.py` |
 | `CountMatch` (`count`) | **exactly one** of `equals` / `atLeast` / `atMost` | `scenario/models/assertions.py` |
 | `ClipboardMatch` (`clipboard`) | **exactly one** of `equals` / `matches` | `scenario/models/assertions.py` |
-| `RequestMatch` | **≥ 1** of `method`/`url`/`urlMatches`/`path`/`pathMatches`/`status`/`bodyMatches` (`count` is not a match field) | `scenario/models/assertions.py` |
-| `EventMatch` (`event`) | **≥ 1** of `method`/`url`/`urlMatches`/`path`/`pathMatches`/`body` | `scenario/models/assertions.py` |
+| `AttributeMatch` (`attribute`) | **exactly one** of `equals` / `contains` / `matches` / `absent: true` (`absent: false` is rejected); `name` a non-empty, valid HTML attribute name | `scenario/models/assertions/attribute_match.py` |
+| `RequestMatch` | **≥ 1** of `method`/`url`/`urlMatches`/`path`/`pathMatches`/`query`/`body`/`status`/`bodyMatches` (`count` is not a match field); a `query`/`body` dictionary is non-empty and holds only quoted scalars, `$matches`/`$exists` operator maps, and (in `body`) nested maps and lists | `scenario/models/assertions.py` |
+| `EventMatch` (`event`) | **≥ 1** of `method`/`url`/`urlMatches`/`path`/`pathMatches`/`query`/`body` | `scenario/models/assertions.py` |
 | `CountOp` (`event.count`) | **exactly one** of `equals` / `atLeast` / `atMost` | `scenario/models/assertions.py` |
 | `Assertion.requestSequence` | **≥ 1** item | `scenario/models/assertions.py` |
 | `Trigger` (`capturePolicy[].on`) | **exactly one** of `action` / `event` / `result`; `idMatches` only **with** `action` | `scenario/models/evidence.py` |
@@ -428,11 +488,11 @@ error). This table is the **authoritative list of "exactly one / at least one / 
 | `Scenario.primaryTarget` | omitted, or equal to the first name of `targets` (the first member of the first group); **rejected** when `targets` is empty (BE-0436) | `scenario/models/scenario/_targets.py` |
 | `Scenario.installs` | every entry a declared target, none repeated; a group of ≥ 2 that does not hold the primary lists **≥ 1** of its members (BE-0447) | `scenario/models/scenario/_targets.py` |
 | `installApp` | `from` names a **later member** (neither the primary nor in `installs`, in a group of ≥ 2) of the group holding the step's device; **at most one** top-level `installApp` per member; **rejected** inside `web:` / `app:`, and in an `interrupts` recovery with no explicit device once the scenario contains a `setPrimaryTarget` (BE-0447) | `scenario/models/scenario/_targets.py` |
-| `setPrimaryTarget` | `target` names a declared target; **top-level `steps` only** — rejected inside `if`, `forEach`, a target group, `web:`, `app:`, an `interrupts` entry, `before`, or `after`; a component's is valid when its `use:` / `group:` call is top-level, and expansion never stamps a caller's `target` onto it (BE-0447) | `scenario/models/scenario/_targets.py`, `scenario/expand.py` |
+| `setPrimaryTarget` | `target` names a declared target; **top-level `steps` only** — rejected inside `if`, `forEach`, a target group, `web:`, `app:`, an `interrupts` entry, `setup`, or `cleanup`; a component's is valid when its `use:` / `group:` call is top-level, and expansion never stamps a caller's `target` onto it (BE-0447) | `scenario/models/scenario/_targets.py`, `scenario/expand.py` |
 | `Step.target` / `Assertion.target` (`expect` only) | omitted or matching the one entry when `len(target_names) ≤ 1`; **required** — including on an `if`/`forEach`/`web` wrapper, not only a leaf action — naming a declared target, when `len(target_names) ≥ 2` and `primaryTarget` is unset; **optional** when `len(target_names) ≥ 2` and `primaryTarget` is set, an omitted one running against the primary at every nesting depth (BE-0436) — the current primary, which a `setPrimaryTarget` step moves (BE-0447); **rejected** on a step nested inside `web:`, and on an `Assertion` reached through an inline `assert:` list, an `if`'s `condition`, or an `interrupts` entry's `condition` (BE-0428) | `scenario/models/scenario/_targets.py` |
 | `Step.target` on a `use:` / `group:` step | **optional** at any `len(target_names)`, even with no `primaryTarget`, and never resolved itself; one that is set must name a declared target. Expansion stamps it onto every step the call produces that omits one, and refuses a produced step naming a different target (BE-0446) | `scenario/models/scenario/_targets.py`, `scenario/expand.py` |
 | `Interrupt.target`, and `Step.target` in an `interrupts` entry's `steps` | **optional** at any `len(target_names)`, regardless of `primaryTarget`: an omitted entry `target` watches the primary target, and an omitted recovery-step `target` runs on the entry's own target (or an enclosing `if`/`forEach` step's when that step names one); a value that is set follows the `Step.target` rule above for naming a declared target (BE-0438) | `scenario/models/scenario/_targets.py` |
-| `Interrupt.target`, and `Step.target` in its `steps`, under `targets.<name>.interrupts` | **rejected** — the entry already belongs to the target that config block configures (BE-0438) | `config/schema/target_config.py` |
+| `Interrupt.target`, and `Step.target` in its `steps`, under `targets.<name>.hooks.interrupts` | **rejected** — the entry already belongs to the target that config block configures (BE-0438) | `config/schema/target_config.py` |
 | every mapping | **no unknown keys** (`extra="forbid"`) | `scenario/models/_base.py` |
 
 `exists` is special: its selector is written **inline** (`exists: { id: home.title }`), and an
@@ -447,17 +507,15 @@ Omitted optional keys take these values (so a minimal scenario is just `name` + 
 
 | Field | Default |
 |---|---|
-| `Scenario.tags` / `expect` / `capturePolicy` / `mocks` / `interrupts` / `before` / `after` | `[]` |
-| `Scenario.preconditions` | `{}` (i.e. `erase` unset — off unless the target config says otherwise — and `reinstall: clean`) |
-| `Scenario.systemAlertHandling` | unset (alert guard on, with no rules — so it answers no prompt of its own) |
-| `Scenario.iosTipKitHandling` | unset (off — a tip is sometimes the assertion; iOS only) |
+| `Scenario.tags` / `expect` / `capturePolicy` / `mocks` / `interrupts` / `setup` / `cleanup` | `[]` |
+| `Scenario.preconditions` | `{}` (every field falls through to the target, then the built-in default) |
 | `Scenario.permissions` | `{}` (no pre-launch permission state applied) |
-| `Preconditions.erase` | unset — inherits the target config's `erase`, else off (BE-0177) |
-| `Preconditions.reinstall` | `clean` |
-| `Preconditions.launchArgs` | `[]` |
-| `Preconditions.launchEnv` | `{}` |
-| `SystemAlertHandling.rules` | `[]` (no prompt is declared, so the guard answers none; an alert it meets is named on the blocked step's failure) |
-| `SystemAlertHandling.visionInstruction` | unset — and no other value is usable: `run` refuses one (BE-0402) and `record` / `crawl` read the free text only from their own `--alert-vision-instruction` flag |
+| `Preconditions.inheritSetup` | `true` (every declared target's `hooks.setup` runs ahead of the scenario's `setup`) |
+| `Preconditions.subject.reinstall` | unset — the target's `subject.reinstall`, else `clean`; `--erase` raises it to `erase`, `--no-erase` lowers an `erase` to `clean` (BE-0473) |
+| `Preconditions.subject.launch.args` | `[]` |
+| `Preconditions.subject.launch.env` | `{}` |
+| `systemAlert` entries | none (the guard is on but answers no prompt; an alert it meets is named on the blocked step's failure) |
+| `tipKit` entry | none (the target's entry, else off — a tip is sometimes the assertion; iOS only) |
 | `TypeText.submit` | `false` |
 | `Exists.negate` | `false` |
 | `MockResponse.status` | `200` |
@@ -495,7 +553,7 @@ trimmed). Substitution is **type-preserving at the edges**:
   only its own namespace.
 
 Namespaces: `params.*` (components, §6.2), `row.*` (data-driven, §6.3), `secrets.*` (declared
-via config `secrets:`, resolved from the environment by the run loop at action time, §6.4), and
+via config `evidence.secrets`, resolved from the environment by the run loop at action time, §6.4), and
 `vars.*` (runtime capture via `extract`, §6.5).
 
 ### 6.2 Components (`use` → reusable steps)
@@ -577,7 +635,7 @@ those bodies. A `group` step's own `target` follows the `use` rule above.
 A scenario with `data` (inline rows) or `dataFile` (a CSV path; mutually exclusive) is expanded into
 **one scenario per row**, substituting `${row.<column>}` (`expand_data`, `scenario/expand.py`). Each
 derived scenario is renamed `"<name> [row N: col=val, …]"` and **keeps the original preconditions**
-(so every row reinstalls the app fresh and inherits the template's `erase` / `reinstall`).
+(so every row reinstalls the app fresh and inherits the template's `subject.reinstall`).
 
 ```yaml
 - name: search returns a result
@@ -590,15 +648,16 @@ derived scenario is renamed `"<name> [row N: col=val, …]"` and **keeps the ori
     - label: { sel: { id: home.status }, equals: "${row.expect}" }
 ```
 
-### 6.4 `setup` preludes, secrets, and tag selection
+### 6.4 Shared setup, secrets, and tag selection
 
-- **`setup`** (a `Preconditions` key, or the app/config default): names a reusable scenario file
-  whose steps are **prepended** to this scenario's own (`apply_setups`, `scenario/expand.py`) — a shared
-  login / navigation flow written once. The prelude's own `use` steps expand **before** the splice,
-  in the prelude's own scope. Its bare names resolve against the prelude's `components:`, not the
-  calling file's (§6.5). A path ref inside a prelude resolves against the prelude's own directory
-  too.
-- **`secrets`** (declared in config as `secrets:` — a list of environment-variable names): each
+- **Shared setup**: a login / navigation flow written once is a component (§6.2). A `use` step
+  calls it from the scenario's own `setup`, or from a target's `hooks.setup` in config. A target's
+  component resolves when the config loads, against the config file's directory. It must stay
+  inside the suite root (BE-0174).
+  [BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)
+  removed the former `preconditions.setup` prelude file.
+  A scenario that must not run its targets' `hooks.setup` sets `preconditions.inheritSetup: false`.
+- **`secrets`** (declared in config as `evidence.secrets` — a list of environment-variable names): each
   declared name `X` is resolved from `os.environ[X]` and bound to `${secrets.X}`, substituted into the
   executed step **at action time** (`cli/commands/run.py`, `orchestrator/substitution.py` `_interp_step`). The scenario keeps the
   `${secrets.X}` token, never the value, and the literal values are auto-masked in evidence
@@ -613,7 +672,6 @@ The load pipeline (`cli/commands/run.py`) applies these deterministically, in or
 ```
 load_scenarios        # parse + validate against this grammar
   → select_scenarios  # --tag / --exclude
-  → apply_setups      # prepend the setup prelude (already expanded in its own scope, §6.4)
   → expand_components  # `use` → component steps  (${params.*})
   → expand_data        # one scenario per row     (${row.*})
   → run               # the deterministic loop sees only expanded scenarios
@@ -627,7 +685,7 @@ load_scenarios        # parse + validate against this grammar
   a sequence of scenarios or a `{description, scenarios}` mapping, and any rule in
   [§4](#4-cardinality--mutual-exclusion-constraints) failing is a load error (`scenario/load.py`).
 - `dump_scenarios(scenarios) -> str` serializes back to YAML, dropping only fields the author never
-  set and emitting alias keys (`idMatches`, `launchEnv`, …). The output **reloads cleanly** — this
+  set and emitting alias keys (`idMatches`, `inheritSetup`, …). The output **reloads cleanly** — this
   is the round-trip `record` relies on (`scenario/serialize.py`).
 
 For the semantics behind the shapes — how a selector resolves to 0/1/2+ elements, how each assertion compares, how waits time out — see [selectors](selectors.md) and [run-loop](run-loop.md). To start writing scenarios by example, see [scenarios](scenarios.md).

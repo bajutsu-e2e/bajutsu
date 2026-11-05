@@ -2,7 +2,7 @@
 
 # CLI リファレンス
 
-> 実装: `bajutsu/cli/`（Typer。各コマンドは所属する機能のディレクトリに置かれます。例：`run/cli.py`、`record/cli.py` — `cli/commands/` には機能を持たない `doctor`/`lint`/`schema`/`report` のみが残ります）。エントリポイントは `pyproject.toml` の `bajutsu = "bajutsu.cli:app"`。
+> 実装: `bajutsu/cli/`（Typer。各コマンドは所属する機能のディレクトリに置かれます。例：`run/cli.py`、`record/cli.py` — `cli/commands/` には機能を持たない `doctor`/`lint`/`schema`/`config`/`report`/`runner` のみが残ります）。エントリポイントは `pyproject.toml` の `bajutsu = "bajutsu.cli:app"`。
 > この CLI（コマンドラインインターフェース）のすべてのコマンドは `--target <name>` で 1 [アプリ](glossary.md#target-app-device)を選び、
 > `--config`（既定 `bajutsu.config.yaml`）で設定を指します。アプリ固有の差分は config 側にあります（[configuration](configuration.md)）。
 
@@ -14,20 +14,51 @@
 
 - 全コマンドの前に `.env` を読み込みます（`_bootstrap`、下記）。
 - config が無い / アプリ未定義 / actuator 無し → メッセージを出して **終了コード 2**。
-- `--backend` はカンマ区切り（例 `ios`）。空なら config の `backend` を使います。先頭から
-  順に可用性を確認し、**最初に使えるものが actuator** になります（[drivers](drivers.md#バックエンド選択と-actuator)）。
+- `--backend` は選択ではなく検査です。ターゲットは 1 つの `platform` を名指しし、それが actuator を
+  決めます（[drivers](drivers.md#バックエンド選択と-actuator)）。このフラグが受け付けるのは、ターゲットの
+  platform（例 `ios`）、その platform の actuator 名（`xcuitest`、`adb`、`playwright`）、`fake` です。
+  それ以外の値やカンマ区切りのリストは終了コード 2 で終わります。空ならターゲット自身の platform を
+  使います（[BE-0452](../../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)）。
+- `--udid` は URL を受け付けません。Appium グリッド経由でデバイスを動かすコマンドは、`--worker-config`
+  のファイルの `appium` 環境でグリッドを名指しします（[`run`](#run) を参照）。
 
 ## `run`
 
-シナリオを **決定的に実行**します。合否は機械判定のみで、[BE-0402](../../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md) 以降は**どのフラグを付けてもモデルに到達しません**。**アラートガード**（シナリオごとに既定 ON）は、ステップをブロックした OS プロンプトをネイティブの SpringBoard 経路（iOS XCUITest、モデル不使用）で片付けます。その経路が名指しできないプロンプトには手を触れず、ブロックされたステップ自身の失敗理由に書き出します。詳しくは [`systemAlertHandling`](scenarios.md#systemalerthandlingシステムアラートガード) を参照してください。
+シナリオを **決定的に実行**します。合否は機械判定のみで、[BE-0402](../../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md) 以降は**どのフラグを付けてもモデルに到達しません**。**アラートガード**は、`--no-system-alert-handling` を付けない限り ON です。ガードが答えるのは、シナリオの `interrupts` とターゲットの `hooks.interrupts` にある `systemAlert` エントリが名指しする OS プロンプトです。答えにはネイティブの SpringBoard 経路（iOS XCUITest、モデル不使用）を使います。どのエントリも名指ししないプロンプトや、その経路が名指しできないプロンプトには手を触れず、ブロックされたステップ自身の失敗理由に書き出します。詳しくは [`systemAlert` の interrupts エントリ](scenarios.md#systemalertシステムアラートガード) を参照してください。
 
 ```bash
 bajutsu run --target <name> [--scenario <file.yaml>] [options]
 bajutsu run --scenario <self-declaring.yaml> [options]          # --target は省略可
 ```
 
-既定では、そのアプリの設定済みシナリオディレクトリ（`targets.<name>.scenarios`、[configuration](configuration.md) 参照）内の
+既定では、アプリの設定済みシナリオディレクトリ（`targets.<name>.paths.scenarios`、[configuration](configuration.md) 参照）の
 **すべての `*.yaml`** を読み込んで実行します。config だけで実行できます。1 ファイルだけ実行するには `--scenario <file>` を渡してください。このフラグを繰り返すと、指定した複数ファイルを1つの warm な runner を共有しながら1プロセスで実行できます。
+
+`run` は run 本体を子プロセスで実行します（[BE-0449](../../roadmaps/BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs-ja.md)）。
+`run` はフラグを子プロセスに渡し、`bajutsu worker --once` と同じ 1 回実行の経路を通ります。そのため、コマンドラインと worker は同じ実装で run を実行します。
+子プロセスは端末の標準入力、標準出力、標準エラーを引き継ぎます。
+したがって `PASS|FAIL` の行は stdout に、進捗は stderr に出て、`--step` もこれまでどおり端末から読みます。
+子プロセスは独自のセッションで動くので、Ctrl-C は run 本体ではなく `run` に届きます。
+`run` は SIGINT、SIGTERM、SIGHUP を、`serve` の job が受けるキャンセルに変えます。
+run は次の安全な区切りで止まり、マニフェストとレポートを書き出します（[BE-0370](../../roadmaps/BE-0370-graceful-run-cancel/BE-0370-graceful-run-cancel-ja.md)）。
+呼び出し側がすでに無視しているシグナルは無視したままにします（`nohup` が SIGHUP を無視する場合など）。
+
+子プロセスが独自のセッションで動くことで、端末での振る舞いがほかに 3 つ変わります。
+
+- **2 回目の Ctrl-C。** 1 回目の Ctrl-C は run に停止を求めます。ドライバーの呼び出しが進行中なら、停止まで猶予時間（既定 90 秒、`BAJUTSU_CANCEL_GRACE`）かかることがあります。もう一度 Ctrl-C を押すと、マニフェストを書かずに run をすぐ止めます。
+- **Ctrl-Z。** `run` は run のプロセスグループを停止してから、自身も停止します。`fg` か `bg` で両方が再開します。
+- **バックグラウンドの `--step` の run。** run は端末のジョブ制御に属さないので、`&` で起動した run の `--step` プロンプトは、ジョブを停止せずに端末から読みます。`--step` はフォアグラウンドで実行してください。
+
+`run` 自身が捕捉できない形で終了した場合（`kill -9`、メモリ不足による強制終了）も、run 本体は呼び出し側がいなくなったことに気づき、同じ方法で自らをキャンセルします。
+
+web backend が動く Windows では、`run` は BE-0449 以前と同じく run 本体を自身のプロセスで実行します。子プロセス、シグナルの中継、上記の端末での 3 つの振る舞いは、macOS と Linux だけに当てはまります。
+
+| 終了コード | 条件 |
+|---|---|
+| 0 | すべてのシナリオが成功した。対象外の記録が並んでいても変わらない |
+| 1 | いずれかのシナリオが失敗した。または、すべての記録が対象外だった（`no run executed`） |
+| 2 | 未知のフラグや読み込めない config などの使い方の誤り |
+| 128 + シグナル番号 | `run` が SIGINT（130）、SIGTERM（143）、SIGHUP（129）を受け取った。キャンセルされた run の結果にかかわらずこの値です |
 
 ### `--target` を省略できる場合
 
@@ -39,7 +70,7 @@ bajutsu run --scenario <self-declaring.yaml> [options]          # --target は�
 |---|---|
 | 代わりに `--scenario` が必須になります | スイート全体の短縮記法は、1つのターゲットの設定済みシナリオディレクトリを glob します。2つ以上のターゲットを名指しするシナリオは、そのどのディレクトリにも属しません。そのため、ファイルを明示的に名指しします |
 | `--target` を明示したら、無視せず検査します | 自分で宣言するシナリオに添えて渡した場合、そのシナリオが宣言しているターゲットのどれかを名指しする必要があります。ファイルを編集したあとに残った古いフラグは、ファイルが外したターゲットを選ばず、終了コード 2 で止まります |
-| シナリオディレクトリは、自分で宣言するファイルを拒みます | 自分の `targets` を持つファイルが、あるターゲットの設定済みディレクトリにあると、発見の時点で失敗します。エラーはそのファイルを名指しし、`--scenario` を指し示します |
+| シナリオディレクトリは、自分で宣言するファイルを拒みます | 自分の `targets` を持つファイルが、あるターゲットの設定済みディレクトリにあると、実行を始める前に失敗します。エラーはそのファイルを名指しし、`--scenario` を指し示します。この確認は `--tag` / `--exclude` の絞り込みの後に行うので、そのファイルを選択から外したスイートは残りを実行します |
 | 両方の形が混ざったバッチには、なお `--target` が要ります | `targets` を宣言しないファイルは、起動の `--target` 以外にターゲットを解決する手がかりを持ちません。そのファイルが1つでもバッチにあると、フラグの省略は失敗し、そのファイルを名指しします |
 
 両方の形が混ざっていても、`--target` を渡せば従来どおり動きます。ターゲットを宣言しないファイルは、
@@ -48,25 +79,26 @@ bajutsu run --scenario <self-declaring.yaml> [options]          # --target は�
 | オプション | 既定 | 説明 |
 |---|---|---|
 | `--target` | （必須。ただし `--scenario` のファイルがすべて自分の `targets` を宣言していれば省略可） | 対象アプリ（config の `targets.<name>`）。[`--target` を省略できる場合](#--target-を省略できる場合)を参照 |
-| `--scenario` | config の `scenarios` ディレクトリ | アプリのシナリオディレクトリ全体ではなく指定した `*.yaml` を実行。フラグを繰り返すと、複数ファイルを1つの warm な runner を共有しながら1プロセスで実行 |
-| `--backend` | config | actuator 順（カンマ区切り。先頭から最初に使えるもの） |
+| `--scenario` | config の `paths.scenarios` ディレクトリ | アプリのシナリオディレクトリ全体ではなく指定した `*.yaml` を実行。フラグを繰り返すと、複数ファイルを1つの warm な runner を共有しながら1プロセスで実行 |
+| `--backend` | ターゲットの `platform` | ターゲットの platform に対する検査。platform、その actuator 名、`fake` のいずれか（[共通](#共通)を参照） |
 | `--tag` | "" | カンマ区切り。これらの tag のいずれかを持つシナリオのみ実行 |
 | `--exclude` | "" | カンマ区切り。これらの tag のいずれかを持つシナリオをスキップ |
-| `--udid` | `booted` | 対象 Simulator（カンマ区切り = `--workers` 用のデバイスプール） |
-| `--erase / --no-erase` | シナリオ › config › off | 各シナリオの `preconditions.erase`（シム全体を wipe）を上書き。省略時は各シナリオの値、次にターゲットの `erase` config、次に off の順で解決（[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)）。アプリはどちらでも毎回 fresh に再インストール（config `appPath` + `preconditions.reinstall`） |
-| `--system-alert-handling / --no-system-alert-handling` | シナリオ › config › ON | 各シナリオの `systemAlertHandling` を上書きします。iOS バックエンドから見えないシステムアラートを消すリアクティブなガードで、XCUITest 上ではネイティブに処理します（モデル不使用、BE-0315）。決定的な経路がどれも片付けられないアラートには何もしません。ガード対象の `wait` は見たものを自身のタイムアウトで必ず名指しし、wait の外のステップは、ネイティブ照会がアラートを列挙できたときだけ名指しします。ネイティブ照会を持たないバックエンドでは名指しする材料がないため、そのステップは従来どおり失敗します（BE-0402）。省略時は各シナリオの値、次にターゲットの `systemAlertHandling` config、次に ON の順で解決します。AI 認証情報は一切不要です（[recording](recording.md#システムアラートの自動対処)） |
-| `--ios-tipkit-handling / --no-ios-tipkit-handling` | シナリオ › config › OFF | 各シナリオの `iosTipKitHandling` を上書きします。操作をブロックしている Apple **TipKit** の tip を閉じます。フレームワークが所有する popover であり、同じ回避策をシナリオごとに手で書かずに済ませるためのガードです。ガードは tip を、閉じるための scrim（`PopoverDismissRegion`）とその tip 自身のコンテナ（`TipView`）の両方で判定します。`confirmationDialog` が同一の scrim を設置するため、そちらには手を触れないようにする必要があるからです。同じ理由で、tip 向けの `interrupts` エントリを手で書く場合は `TipView` を手がかりにします。iOS 専用（他のバックエンドでは何もしません）で、求められない限り **OFF** です。tip 自体がアサーションの対象になる場合があるからです。省略時は各シナリオの値、次にターゲットの `iosTipKitHandling` config、次に OFF の順で解決します。認証情報は不要です（[scenarios](scenarios.md)） |
-| `--alert-poll-interval` | 未設定 | ネイティブのシステムアラート presence 照会の間隔（秒）。シナリオ自身の `pollInterval` の下位、ターゲットの上位に位置します。ガードのもう 1 つのキーである `rules` にフラグはありません。1 エントリはプロンプトと選択の組であり、フラグの値 1 つでは読みやすく運べないため、宣言はシナリオファイルとターゲット config に置いたままにしています（[BE-0406](../../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md)） |
+| `--udid` | `booted` | 対象 Simulator（カンマ区切り = `--workers` 用のデバイスプール）。URL は終了コード 2 |
+| `--erase / --no-erase` | シナリオ › config › `clean` | すべてのシナリオについて、実効の `subject.reinstall` を段階（`overwrite` < `clean` < `erase`）に沿って動かします。`--erase` は値を `erase`（シム全体を wipe）にし、`--no-erase` は `erase` を `clean` に下げ、`overwrite` と `clean` はそのままにします。どちらも省略すると、各シナリオの `preconditions.subject.reinstall`、次にターゲットの `subject.reinstall`、次に `clean` の順で解決します（[BE-0473](../../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts-ja.md)）。そのため、`erase` を指定したターゲットは `--no-erase` でアプリをアンインストールします。アプリのデータを残したいシナリオは `preconditions.subject.reinstall: overwrite` と書きます |
+| `--system-alert-handling / --no-system-alert-handling` | ON | すべてのシナリオについてシステムアラートガードを ON / OFF にします。ON のとき、ガードはシナリオの `interrupts` とターゲットの `hooks.interrupts` にある `systemAlert` エントリに答えます。iOS バックエンドから見えないシステムアラートを消すリアクティブなガードで、XCUITest 上ではネイティブに処理します（モデル不使用、BE-0315）。シナリオやターゲットがガード全体を OFF にする手段はありません。プロンプトを自分で処理するシナリオは、そのプロンプトのエントリに `choice: leave` と書きます（[BE-0473](../../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts-ja.md)）。どのエントリも名指ししないアラートには何もしません。ガード対象の `wait` は見たものを自身のタイムアウトで必ず名指しし、wait の外のステップは、ネイティブ照会がアラートを列挙できたときだけ名指しします。ネイティブ照会を持たないバックエンドでは名指しする材料がないため、そのステップは従来どおり失敗します（BE-0402）。AI 認証情報は一切不要です（[recording](recording.md#システムアラートの自動対処)） |
+| `--ios-tipkit-handling / --no-ios-tipkit-handling` | シナリオ › config › OFF | 操作をブロックしている Apple **TipKit** の tip（フレームワークが所有する popover）を閉じるか、残すかを決めます。このフラグは、すべてのシナリオの `tipKit` の interrupts エントリを `dismiss` または `leave` に設定し、シナリオ自身のエントリとターゲットのエントリに優先します。同じ回避策をシナリオごとに手で書かずに済ませるためのガードです。ガードは tip を、閉じるための scrim（`PopoverDismissRegion`）とその tip 自身のコンテナ（`TipView`）の両方で判定します。`confirmationDialog` が同一の scrim を設置するため、そちらには手を触れないようにする必要があるからです。同じ理由で、tip 向けの画面エントリを `interrupts`（またはターゲットの `hooks.interrupts`）に手で書く場合は `TipView` を手がかりにします。iOS 専用（他のバックエンドでは何もしません）で、求められない限り **OFF** です。tip 自体がアサーションの対象になる場合があるからです。省略時は各シナリオ自身の `tipKit` エントリ、次にターゲットのエントリ、次に OFF の順で解決します。認証情報は不要です（[scenarios](scenarios.md)） |
+| `--alert-poll-interval` | 未設定 | ネイティブのシステムアラート presence 照会の間隔（秒）。シナリオ自身の `systemAlert` エントリの `pollInterval` がこのフラグに優先し、このフラグはターゲットの値に優先します。同じ層の中では、いちばん小さい値を使います。エントリそのものにフラグはありません。1 エントリはプロンプトと選択の組であり、フラグの値 1 つでは読みやすく運べないため、宣言はシナリオファイルとターゲット config に置いたままにしています（[BE-0406](../../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md)） |
 | `--log-predicate` | "" | `deviceLog` ストリームを絞る NSPredicate（例 subsystem） |
-| `--log-subsystem` | "" | `appTrace` 用の os_log subsystem（既定はアプリの `bundleId`） |
-| `--network / --no-network` | config › ON | `request` アサーション用にアプリの通信を収集。省略時はターゲットの `network` config、次に ON の順で解決（[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)）。iOS はアプリに BajutsuKit が必要。web は Playwright でネイティブに観測し、シナリオの `mocks` をその場でスタブします |
+| `--log-subsystem` | "" | `appTrace` 用の os_log subsystem（既定はアプリの `subject.id`） |
+| `--network / --no-network` | config › ON | `request` アサーション用にアプリの通信を収集。省略時はターゲットの `evidence.collectNetwork` config、次に ON の順で解決（[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)）。iOS はアプリに BajutsuKit が必要。web は Playwright でネイティブに観測し、シナリオの `mocks` をその場でスタブします |
 | `--workers` | 1 | デバイスプール上で並列実行します。複数のターゲットを宣言するシナリオは、ターゲットごとに1台のデバイスをそのシナリオの全長にわたって保持します。そのため `run` は、ワーカーが互いのデバイスを奪い合わない範囲までこの値を抑えます。iOS では `--udid u1,u2,…` が必要で、そのプール数で上限になります。web では `--workers N` だけで N 本の並列ブラウザコンテキストレーンになります（`--udid` 不要、[BE-0054](../../roadmaps/BE-0054-web-backend-completion/BE-0054-web-backend-completion-ja.md)）。各レーンが自前のネットワークコレクタ、インターバル録画、（iOS では）デバイス制御を持つので、network / 動画 / `setLocation` / `push` はシングルデバイス実行と同じく機能します |
-| `--baselines` | config の `baselines`、次にシナリオ隣の `baselines/` | `visual` アサーション用のベースライン画像ディレクトリ。`baseline: home.png` はこの中で解決されます |
-| `--schemas` | config の `schemas`、次にシナリオ隣の `schemas/` | `responseSchema` アサーション用の JSON Schema ファイルのディレクトリ。`schema: items.json` はこの中で解決されます（`schema` extra が必要です） |
-| `--goldens` | config の `goldens`、次にシナリオ隣の `goldens/` | `golden` アサーション用の golden JSON ファイルのディレクトリ。`golden: response.json` はこの中で解決されます |
-| `--headed / --no-headed` | アプリの `headless`（既定はヘッドレス） | web backend: ヘッドレスの代わりにブラウザを画面に表示し（低速再生）、実行の各ステップを確認できます（コマンドを実行しているマシン上でウィンドウが開きます）。省略時はアプリの `headless` 設定に従います。iOS は無視します |
-| `--browser` | アプリの `browser`（既定 chromium） | web backend: この run で使う Playwright のレンダリングエンジン。`chromium` / `firefox` / `webkit` から選びます。省略時はターゲットの `browser` config に従います（[configuration](configuration.md)、[BE-0076](../../roadmaps/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)） |
-| `--browsers` | "" | web backend: **クロスブラウザマトリクス**を実行します。エンジンのカンマ区切りリスト（例 `chromium,firefox,webkit`）を指定すると、各シナリオがエンジンごとに1回ずつ走り、全エンジンが合格して初めて run 全体が緑になります（[configuration](configuration.md#クロスブラウザマトリクス--browsersbe-0076)）。エンジンを1つだけ指定するのは `--browser` と同じです |
+| `--baselines` | config の `paths.baselines`、次にシナリオ隣の `baselines/` | ターゲットの `paths.baselines` を上書きします。`visual` アサーション用のベースライン画像ディレクトリ。`baseline: home.png` はこの中で解決されます |
+| `--schemas` | config の `paths.schemas`、次にシナリオ隣の `schemas/` | ターゲットの `paths.schemas` を上書きします。`responseSchema` アサーション用の JSON Schema ファイルのディレクトリ。`schema: items.json` はこの中で解決されます（`schema` extra が必要です） |
+| `--goldens` | config の `paths.goldens`、次にシナリオ隣の `goldens/` | ターゲットの `paths.goldens` を上書きします。`golden` アサーション用の golden JSON ファイルのディレクトリ。`golden: response.json` はこの中で解決されます |
+| `--headed / --no-headed` | ターゲットの `driver.headless`（既定はヘッドレス） | web backend: ヘッドレスの代わりにブラウザを画面に表示し（低速再生）、実行の各ステップを確認できます（コマンドを実行しているマシン上でウィンドウが開きます）。省略時はターゲットの `driver.headless` 設定に従います。iOS は無視します |
+| `--browser` | ターゲットの `runsOn.browser.kind`（既定 chromium） | web backend: この run で使うブラウザ。`chromium` / `chrome` / `edge` / `firefox` / `webkit` から選びます。省略時はターゲットの `runsOn.browser.kind` config に従います。フラグはこのフィールドを置き換えるので、ターゲットがリストで宣言したブラウザはデバイス条件として数えなくなります。ブラウザをリストで宣言したターゲットでは、そのリストにあるブラウザを指定します。リストにないブラウザを指定すると終了コード 2 で終わります（[configuration](configuration.md)、[BE-0076](../../roadmaps/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)、[BE-0468](../../roadmaps/BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of-ja.md)） |
+| `--browsers` | "" | web backend: **クロスブラウザマトリクス**を実行します。ブラウザの種類のカンマ区切りリスト（例 `chromium,firefox,webkit`）を指定すると、各シナリオがブラウザごとに1回ずつ走り、全ブラウザが合格して初めて run 全体が緑になります（[configuration](configuration.md#クロスブラウザマトリクス--browsersbe-0076)）。ブラウザをリストで宣言したターゲットでは、指定するブラウザがすべてリストに含まれている必要があり、含まれないものがあると終了コード 2 で終わります。エンジンを1つだけ指定するのは `--browser` と同じです |
+| `--kind` | ターゲットの `runsOn.ios.kind` にあるすべての種類 | iOS: 指定した種類だけを実行します。`simulator`、`device`、または両方のカンマ区切りリストを指定でき、種類ごとに1回ずつ走ります。指定する種類はターゲットが宣言したものに限ります。`runsOn.ios.kind` のリストにない種類を指定すると、ターゲットの種類を示して終了コード 2 で終わります。種類を1つだけ宣言したターゲットは、その種類だけを受け付けます。指定した種類は座標に残るので、`--kind device` の run は、リスト全体を実行したときの device の run と同じ履歴にまとまります。このフラグはコマンドの `--target` に適用するので、シナリオが 2 つ目の iOS ターゲットを宣言する run では終了コード 2 で終わります（[BE-0468](../../roadmaps/BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of-ja.md)） |
 | `--progress / --no-progress` | off | シナリオ / ステップごとの進捗を stderr に流します（`serve` UI が消費します） |
 | `--score / --no-score` | off | アプリの入口画面の規約スコア（doctor の Ready/Partial/Blocked グレード）を、この run 自身の最初の起動から算出して stderr に出力します。2 つめの XCUITest ランナーをコールド起動する別立ての `doctor` を挟まずに、CI がこの目印を読み取れます。診断専用で、pass/fail には一切影響しません |
 | `--trace-driver` | off | シナリオごとに `<sid>/driver_trace.json` を書き出します。呼び出されたドライバーのメソッド、ホストとデバイス間の各ラウンドトリップ、Android ではそのうちどれがサブプロセスにフォールバックしたかといった、Python とドライバー間のすべての呼び出しを、開始時刻と所要時間つきで、発生したステップに紐づけて記録します（[BE-0415](../../roadmaps/BE-0415-driver-call-trace-per-scenario/BE-0415-driver-call-trace-per-scenario-ja.md)）。診断専用で、pass/fail には一切影響しません |
@@ -80,10 +112,37 @@ bajutsu run --scenario <self-declaring.yaml> [options]          # --target は�
 | `--label` | config 自身の名前 | この run の履歴エントリに、短い自由記述のラベルを付けます。2 つの config の run を、run 一覧・Replay・run 統計ダッシュボードで読み分けられるようになります（[BE-0404](../../roadmaps/BE-0404-collapse-project-layer/BE-0404-collapse-project-layer-ja.md)）。ツールにとってラベルは不透明な値で、解析も config との照合も権限判定もしません。120 文字を超える値は、切り詰めずに拒否します |
 | `--config-offline` | off | Git ソースの `--config`（[configuration](configuration.md#git-リポジトリからの-configbe-0063)）向け。ローカルキャッシュだけを使い、ネットワークには一切触れません。ブランチはオフラインで解決できないので、pinned な `@<sha>` が必要です |
 | `--require-pinned-config` | off | Git ソースの `--config` 向け。コミット SHA を pin していなければ失敗します。ブランチや tag はゲート下で動きうるので、SHA だけを受け付けます |
+| `--worker-config` | 同梱の既定（`bajutsu/common/capability/worker.yaml`） | この run の判定に使う worker 能力ファイル。既定の代わりに使い、既定とはマージしません（[BE-0450](../../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability-ja.md)。[このマシンで動かせるもの](drivers.md#worker-の能力検査be-0450)を参照）。`run` は自分のホストか Appium グリッド経由でデバイスを動かすので、ファイルの `environment` は `local` か `appium` です。`devicefarm` のようなデバイスクラウドの環境は終了コード 2 で終わります。Device Farm のパッケージ内の実行は `devicefarm-host` を使います。デバイスは Device Farm が起動し、アプリもインストール済みなので、実行は `app.path` をインストールせずにそのビルドを起動します（[BE-0465](../../roadmaps/BE-0465-serve-ui-device-farm-fan-out/BE-0465-serve-ui-device-farm-fan-out-ja.md)）。`appium` のファイルは、グリッドの `endpoint` と、グリッドが受け持つ 1 つの `platform`（現在は `ios`）を名指しします。その platform のターゲットはエンドポイントをデバイスとして使い、シナリオのほかのターゲットはこのホストに残ります。グリッドのターゲットを 2 つ持つシナリオは拒否します（[BE-0452](../../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)）。`record`、`crawl`、`repl`、`audit`、`doctor`、`bajutsu mcp` も同じフラグを受け付けます |
 
 - 証跡は `FileSink(runs/<runId>, udid=..., log_predicate=...)` に書きます（[evidence](evidence.md#sink証跡の出力先)）。
 - `runId` は `YYYYMMDD-HHMMSS`。
 - 出力: `PASS|FAIL  runs/<runId>/manifest.json`。**終了コードは全シナリオ成功で 0、失敗で 1**。
+- **worker の能力（BE-0450）。** `run` は target を解決する前に、各シナリオを検査します。
+  照らし合わせる対象は、worker 能力ファイルとホストの OS です。ファイルは `--worker-config` で指定し、
+  指定がなければ同梱の既定を使います。このマシンで動かせない
+  ドライバを必要とするシナリオや、`maxTargetsPerJob` を超える数の target を宣言するシナリオは、
+  `worker-capability-unsupported:` で始まる理由で失敗します。この失敗は、ほかの失敗シナリオと同じく
+  run の結果とレポートに記録されます。そのシナリオのためにデバイスは確保せず、残りのシナリオは実行します。
+  実行できるシナリオが 1 つもなければ、`run` は理由を列挙して終了コード 2 で終了します。
+- **デバイス条件から run を作ります（BE-0452）。** ターゲットはデバイス条件を宣言できます。
+  `runsOn.ios.model`、`runsOn.ios.os`、`runsOn.ios.family`、`runsOn.android.avd`、`runsOn.android.apiLevel`、
+  `runsOn.browser.version`、および `kind`、`model`、`avd`、`browser.kind` に書いたリストがデバイス条件です。シナリオは自分では条件を
+  宣言しません（BE-0469）。`run` は `--udid` のプールの
+  すべてのデバイスを読みます。並べた値ごと、範囲のメジャーバージョンごとに run を 1 つ作り、
+  それぞれを自分の適格なデバイスで実行します（[configuration](configuration.md#デバイスの条件runson)）。
+  各 run の証跡は `runs/<id>/run-NN/` に置き、JUnit と CTRF のテスト名には座標が付きます。
+  合うデバイスがない run は失敗します。片側が開いた範囲でデバイスがなかった run は「not applicable」
+  （対象外）になり、コンソール、マニフェスト、各レポートが別に並べます（[reporting](reporting.md)）。
+  判定の行の直前の行が、成功、失敗、対象外の件数を示します。すべての記録が対象外の
+  ときは、`run` は終了コード 1 で終わり、`no run executed` を出します。`audit --repeat` と MCP の
+  run も同じように run を作ります。`record`、`crawl`、`repl` は最初の run だけを使います。`doctor` は
+  その run を一覧にします（[後述](#doctor)）。`--backend fake` はどの条件も照合せず、通知を 1 回
+  出します。`browser.version` のような条件が残る状態で `--browsers` を渡すと終了コード 2 で終わり、
+  条件が複数の run を作るときの `--step` も終了コード 2 で終わります。
+- **シナリオの preconditions は、デバイスを操作する前に検査します（BE-0452）。** `run` と `audit` は、
+  各シナリオを、そのシナリオが動かすターゲットと照合します。動かすどのターゲットのプラットフォームにも
+  ない `subject` のフィールドや、iOS 専用の `tipKit` エントリは、フィールド名を示して終了コード 2 で
+  終わります。実効の `subject.reinstall: erase` を伴わない `seedPhotos` も同じです（[scenarios](scenarios.md#preconditions環境準備)）。
 - `AI usage:` 行は出力しません。`run` はどのフラグを付けてもトークンを消費しないため（BE-0402）、
   使用量台帳を導入せず、報告もしません。`record`、`crawl`、`triage --ai` は従来どおり出力します。
 
@@ -91,6 +150,18 @@ bajutsu run --scenario <self-declaring.yaml> [options]          # --target は�
 bajutsu run --target showcase-swiftui --udid <UDID> --backend ios --no-erase            # アプリのシナリオディレクトリ全体
 bajutsu run --scenario demos/showcase/scenarios/smoke.yaml --target showcase-swiftui --no-erase   # 単一ファイル
 bajutsu run --scenario cross-platform.yaml --config both-targets.yaml                   # ファイルが自分でターゲットを名指しする
+bajutsu run --target showcase-swiftui --worker-config worker.yaml                         # iOS のターゲットを Appium グリッドで動かす
+```
+
+最後の行の `worker.yaml` は、`appium` 環境でグリッドを名指しします。
+
+```yaml
+version: 1
+environment: appium
+appium:
+  endpoint: https://grid.example.com/wd/hub
+  platform: ios          # 現在受け付ける値はこれだけ
+drivers: [xcuitest, adb, playwright, fake]
 ```
 
 ### シナリオをステップ実行する
@@ -105,7 +176,7 @@ bajutsu run --scenario cross-platform.yaml --config both-targets.yaml           
 | `next`（`n`、または空行） | ステップを実行し、次のステップの前で止まります |
 | `continue`（`c`） | 次のブレークポイントか終端まで止まらず実行します |
 | `quit`（`q`、`exit`、または入力の終端） | ここで run を終了します。シナリオは `cancelled` として報告し、終了コードは 1 です。失敗で止まっているときは、失敗理由をそのまま残します |
-| Ctrl-C | `quit` と同じく run を終了します。端末は run の録画やブラウザにも割り込むため、続行できません |
+| Ctrl-C | `quit` と同じく run を終了します。終了コードは 130 です（[`run`](#run) を参照） |
 | `tree`、`find`、`screenshot` | [`repl`](#repl) と同じく、動作中のアプリを読み取ります |
 | `tap`、`type`、`scroll`、`back`、`step <yaml>` | `repl` と同じく、アプリを操作します |
 
@@ -120,7 +191,7 @@ bajutsu run --scenario cross-platform.yaml --config both-targets.yaml           
 **実行可能ゲート** + 現在画面の **規約充足度スコア**（AI 非依存。[configuration](configuration.md#doctor規約充足度スコア)）。
 
 ```bash
-bajutsu doctor --target <name> [--udid booted] [--backend ...] [--config ...] [--scenario <file.yaml>] [--environment-only]
+bajutsu doctor --target <name> [--udid booted] [--backend ...] [--config ...] [--scenario <file.yaml>] [--environment-only] [--worker-config <worker.yaml>]
 ```
 
 - まず env ゲート（`preflight.py`）: actuator が必要とする CLI（XCUITest なら `xcrun` / `xcodebuild`）
@@ -130,7 +201,35 @@ bajutsu doctor --target <name> [--udid booted] [--backend ...] [--config ...] [-
   をスキップします。実機に対して環境ゲートだけを検証したい CI レーン（BE-0304）は、これでプローブ固有の
   失敗要因（ランナー自体の起動の不安定さを含む）を避けられます。
 - `--scenario <file.yaml>` は端末不要の **capability プリフライト**（BE-0024）を実行します。画面プローブの前に、選択したバックエンドが実行できない構文をシナリオが使っていないかを検査し、非対応があれば**終了 1** とします。
-- それ以外は actuator で `query()` し、`score(elements, idNamespaces)` を表示します。**grade が Blocked で 1、それ以外 0**。
+- `--worker-config` は [`run`](#run) と同じ worker 能力ファイルを受け付けます。`appium` のファイルを
+  渡すと、グリッドの platform のターゲットに対する画面プローブはグリッドで動きます。
+- 端末の条件があるとき、`runs:` セクションに条件が作る実行を列挙します。条件とは、iOS の `kind`、`family`、
+  `model`、`os`、Android の `avd` と `apiLevel`、web の `browser.*` です。条件はターゲットの `runsOn` に
+  書きます。`--scenario` があればそのファイルの各シナリオについて、なければターゲット自身について、
+  条件が作る実行を列挙します。`doctor` は `run` と同じ方法で `--udid` の
+  プールを読み、同じ実行を作ります。そのため各行には、その実行に合う端末が並びます。
+
+  ```
+  runs:
+    checkout:
+      ✓ iPhone SE (3rd generation) / iOS 17 [kind: simulator]: iOS 17.5 "iPhone SE (3rd generation)" (5A3F...)
+      ✘ iPad Pro 13-inch (M4) / iOS 17 [kind: simulator]: fails: no available device fits this run
+      – one run [kind: simulator]: not applicable: runsOn.ios.os  ">=19"  available: ...
+  ```
+
+  `✓` は実行と、その実行が使える端末を示します。`✘` は端末がないため失敗する実行を、`–` は対象外
+  （not applicable）の記録を示します。iOS の行は、実行が使う kind と family のうちラベルに含まれない
+  ものを角括弧で示します。単一の `kind` や `family` は座標にならないので、`family: ipad` の実行は
+  `one run [kind: simulator, family: ipad]` と表示します。列挙した `kind` と `family` のリストは
+  座標になるので、`device / ipad` のようにラベルに入ります（BE-0468）。このセクションは情報の表示だけで、
+  終了コードを変えません。
+  読めるプールがないターゲットでは、宣言された実行だけを `•` 付きで列挙します。該当するのは、`appium`
+  グリッドのターゲット、`kind` と `family` 以外の条件を持つ実機、端末を読めないプールです。このとき片側が開いた範囲は
+  「one run per available major version」（利用できるメジャーバージョンごとに1回）と表示します。
+  `--backend fake` は条件を評価しないため、`runs:` セクションを表示しません。
+- それ以外は actuator で `query()` し、`score(elements, subject.idNamespaces)` を表示します。端末の条件が
+  あるときは、ターゲットの最初の実行の端末（[`record`](#record) が使う端末）をスコアの対象にします。
+  **grade が Blocked で 1、それ以外 0**。
 
 ## `audit`
 
@@ -147,7 +246,7 @@ bajutsu audit <scenario.yaml> [--json]
 静的な採点に加えて、**観測**によって決定性を示すモードが2つあります。
 
 ```bash
-bajutsu audit <scenario.yaml> --repeat K --target <name>   # K 回実行して結果を差分する
+bajutsu audit <scenario.yaml> --repeat K --target <name>   # K 回実行して結果を差分する（run と同じく --worker-config を受け付ける）
 bajutsu audit --history <runs-dir>                         # 過去の run からフレーキネスを掘り起こす
 ```
 
@@ -157,7 +256,7 @@ bajutsu audit --history <runs-dir>                         # 過去の run か�
 
 ## `coverage`
 
-スイートの **静的な e2e カバレッジマップ**です。`doctor` の規約充足度スコアの、read-only な従兄弟にあたります（AI 非依存。[BE-0050](../../roadmaps/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map-ja.md)）。`doctor` が1画面の*提供する* id を採点するのに対し、こちらはスイート全体が*行使する* id を採点します。アプリの設定済み `scenarios` ディレクトリの `*.yaml` をすべて読み込み（components / data を展開）、参照している安定した id を namespace ごとにまとめ、アプリが宣言した `idNamespaces`（[configuration](configuration.md#doctor規約充足度スコア)）に対して、実行せずに突き合わせます。
+スイートの **静的な e2e カバレッジマップ**です。`doctor` の規約充足度スコアの、read-only な従兄弟にあたります（AI 非依存。[BE-0050](../../roadmaps/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map-ja.md)）。`doctor` が1画面の*提供する* id を採点するのに対し、こちらはスイート全体が*行使する* id を採点します。アプリの設定済み `paths.scenarios` ディレクトリの `*.yaml` をすべて読み込み（components / data を展開）、参照している安定した id を namespace ごとにまとめ、アプリが宣言した `subject.idNamespaces`（[configuration](configuration.md#doctor規約充足度スコア)）に対して、実行せずに突き合わせます。
 
 ```bash
 bajutsu coverage --target <name> [--config ...] [--runs <dir>] [--crawl <screenmap>] [--json] [--html <path>]
@@ -226,8 +325,9 @@ bajutsu flakiness [--org <org>] [--json] [--window N]          # serve のデー
 - **入力元は二つ、ランク付けは一つ**です。`--history <runs-dir>` は過去の run の `manifest.json` を集めたディレクトリを掘り起こします（CI やスクリプト向けの形）。省略するとデータベース（`BAJUTSU_DATABASE_URL`）を読み、各 run の行に刻まれた `provenance.scenarioHash` から直接グルーピングします。runs ディレクトリが無いとき、またはデータベースが未設定のときは終了 2 です。
 - run は `provenance.scenarioHash` でグルーピングし、各シナリオを**判定の反転率**（`2·min(passed, failed)/runs`。一貫していれば 0、五分五分で 1）で採点します。分類は [BE-0049](../../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md) から再利用します。出力は flaky を先頭に、次いで反転率の降順、さらに run 数の降順で並びます。
 - **グループ化は OS バージョン単位でもあります。** 規則は `audit --history` と同じです（[BE-0358](../../roadmaps/BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact-ja.md)）。デバイスのマトリックスで 1 つのスイートを走らせる fleet が、そこにある本物の OS 差をフレーキネスとして採点することは、もうありません。この面が束ねる単位は run です（`audit --history` はシナリオ単位です）。そのため、複数の OS バージョンにまたがった run はどのバージョンも代表できず、解釈できないラベルと同じ `unknown OS` のグループに入ります。データベースを読むときの OS は、各 run の行が持つ列から得ます。その列より早く記録された run は、`serve` のパネルがランク付けするたびに、その run の manifest からメモリ上で修復します。データベースには書き戻しません。読み取り経路での書き込みは、運用者が消去した run を挿入し直しかねないためです。manifest が失われている行は `unknown OS` のまま残し、レポートがその件数を開示します。
+- **グループ化は、ターゲットと run の座標の単位でもあります**（[BE-0452](../../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)）。デバイスの条件がシナリオを複数の run に分けるとき（並べたモデルごとの run など）は、各 run の座標がキーに加わります。そのため、1 つのモデルだけで起きるレイアウトの失敗が、フレーキーなシナリオとして読まれることはありません。ターゲットもキーに加わるので、2 つのターゲットで動かしたシナリオは 2 つの履歴を持ちます。テキストの出力は、OS の後ろに座標を角括弧で示します。条件のない run の座標は空のままなので、BE-0452 より前に記録した履歴はそのまま続きます。1 回の実行は、条件が作ったすべての run を 1 つの run ID で記録するので、結果が 2 つ以上の座標にまたがることがあります。そのような run は `*` としてまとめ、ほかのどの履歴とも合流させません。
 - 各エントリは最新の合格 run と最新の失敗 run の id を持ちます。`--json` の利用側や serve パネルは、両側の代表的な証跡へ直接リンクできます。
-- **`--window N`** は採点前に、各履歴の最新 N run だけを残します。採点する単位がシナリオ × OS バージョンなので、残す単位もそれに揃えます（既定の 0 は履歴全体です）。シナリオ単位で残すと、最新の run がすべて新しい OS に移った時点で古い OS の履歴が落ち、この grouping が浮かび上がらせるはずのバージョン間の所見が隠れます。**`--org <org>`** はデータベースを読むときに掘り起こす対象のテナントを選びます。
+- **`--window N`** は採点前に、各履歴の最新 N run だけを残します。採点する単位が履歴（シナリオ、OS バージョン、ターゲット、run の座標の組）なので、残す単位もそれに揃えます（既定の 0 は履歴全体です）。シナリオ単位で残すと、最新の run がすべて新しい OS に移った時点で古い OS の履歴が落ち、この grouping が浮かび上がらせるはずのバージョン間の所見が隠れます。**`--org <org>`** はデータベースを読むときに掘り起こす対象のテナントを選びます。
 - `provenance.scenarioHash` を持たない run（provenance 導入前）や、判定が記録されていない run はグルーピングできず、`audit --history` と同様にスキップとして報告します。
 - **助言的かつ read-only** です。履歴にすでに記録されたフレーキネスを報告するだけで、何も再実行せず、判定を再計算せず、**CI ゲートにもなりません**。
 
@@ -264,7 +364,7 @@ bajutsu trace --explain <scenario.yaml>     # 実行前のドライラン（デ�
   数えて該当ステップを列挙し、`event` / `result` ルールは実行時依存として報告します。広くマッチする
   ルールに heavy capture（`video` / `deviceLog` / `appTrace` / `network`）が付いていれば ⚠ で警告し、
   コストを払う前にマッチを絞り込めます。読み取り専用かつ決定的で、デバイスも LLM も不要です
-  （components と data 行は展開しますが、config の `setup` プレリュードは含みません）。シナリオファイルが
+  （components と data 行は展開しますが、ターゲットの `hooks.setup` は含みません）。シナリオファイルが
   無ければ**終了 2**。
 
 ## `report`
@@ -345,7 +445,7 @@ bajutsu triage --flaky --scenario <name> --history <runs-dir> --ai [--apply <fil
 ## `record`
 
 AI でゴールに向けて探索し、**記録したシナリオを書き出します**（Tier 1、[recording](recording.md)）。
-既定ではアプリの設定済みシナリオディレクトリ（`targets.<name>.scenarios`）配下に自動命名の `*.yaml` を書きます。
+既定ではアプリの設定済みシナリオディレクトリ（`targets.<name>.paths.scenarios`）配下に自動命名の `*.yaml` を書きます。
 特定パスに書くには `--out` を渡してください。
 
 ```bash
@@ -356,23 +456,25 @@ bajutsu record --target <name> --goal "<自然言語ゴール>" [--out <file.yam
 |---|---|---|
 | `--target` | （必須） | 対象アプリ |
 | `--goal` | （必須） | 著すゴール（自然言語） |
-| `--out` | config の `scenarios` 配下に自動命名 | 出力パスを明示（アプリのシナリオディレクトリを上書き） |
+| `--out` | config の `paths.scenarios` 配下に自動命名 | 出力パスを明示（アプリのシナリオディレクトリを上書き） |
 | `--name` | （ゴールから） | 自動命名するファイル名（`--out` 指定時は無視） |
 | `--udid` | `booted` | 対象 Simulator |
-| `--backend` | config | actuator 順 |
-| `--erase / --no-erase` | `--erase` | 起動前に erase（アプリはインストール済みである必要） |
-| `--system-alert-handling` | on | オーサリング中のプロンプトを片付ける（要 API キー） |
+| `--backend` | ターゲットの `platform` | ターゲットの platform に対する検査（[共通](#共通)を参照） |
+| `--erase / --no-erase` | `--erase` | 起動前に erase（アプリはインストール済みである必要）。`--erase` は実効の `subject.reinstall` を `erase` に引き上げ、`--no-erase` は `erase` を `clean` に下げます。そのため、ここではターゲットの `subject.reinstall: erase` で wipe するかどうかは決まりません |
+| `--system-alert-handling / --no-system-alert-handling` | on | オーサリング中のプロンプトを片付ける（要 API キー） |
 | `--max-steps` | `30` | オーサリングのターン数（＝トークン消費の上限）に上限を設けます（[BE-0194](../../roadmaps/BE-0194-record-turn-payload-diet/BE-0194-record-turn-payload-diet-ja.md)） |
 | `--screenshot / --no-screenshot` | `--screenshot` | 毎ターン、スクリーンショットを送ります。`--no-screenshot` は要素情報だけを記録し（コストが安い）、id を十分に備えたアプリ向けです（[BE-0194](../../roadmaps/BE-0194-record-turn-payload-diet/BE-0194-record-turn-payload-diet-ja.md)） |
-| `--headed / --no-headed` | アプリの `headless` | web backend: ヘッドレスではなく目に見える（低速再生の）ブラウザでオーサリングします。省略時はアプリの `headless` 設定に従います |
-| `--browser` | アプリの `browser`（既定 chromium） | web backend: オーサリングに使う Playwright のレンダリングエンジン。`chromium` / `firefox` / `webkit` から選びます。省略時はターゲットの `browser` config に従います |
+| `--headed / --no-headed` | ターゲットの `driver.headless` | web backend: ヘッドレスではなく目に見える（低速再生の）ブラウザでオーサリングします。省略時はターゲットの `driver.headless` 設定に従います |
+| `--browser` | ターゲットの `runsOn.browser.kind`（既定 chromium） | web backend: オーサリングに使うブラウザ。`chromium` / `chrome` / `edge` / `firefox` / `webkit` から選びます。省略時はターゲットの `runsOn.browser.kind` config に従います。ブラウザをリストで宣言したターゲットでは、リストにないブラウザを指定すると終了コード 2 で終わります |
+| `--kind` | ターゲットの `runsOn.ios.kind` の最初の種類 | iOS: オーサリングに使う種類を1つ指定します（`simulator` または `device`）。ターゲットが宣言していない種類を指定すると終了コード 2 で終わります。このコマンドは1回しか実行しないので、カンマ区切りのリストを指定しても終了コード 2 で終わります（[BE-0468](../../roadmaps/BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of-ja.md)） |
 | `--alert-vision-instruction` | "" | プロンプトを片付ける代わりに視覚ガードが読む自由記述 |
 | `--language` | config の `ai.language`（`auto`） | 著すプローズ（`from:` 由来、推論）の AI 出力言語。`ja` / `en` / `auto` から選び `ai.language` を上書きします。`auto` はゴールに追従します（[BE-0188](../../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language-ja.md)） |
 | `--config` | `bajutsu.config.yaml` | config |
+| `--worker-config` | 同梱のデフォルト | [`run`](#run) と同じ worker 能力ファイル。`appium` のファイルを渡すと、グリッドの platform のターゲットをグリッド上でオーサリングします |
 
 - 内部で `launch_driver` → `record_loop(driver, goal, ClaudeAgent(), ...)` → `dump_scenarios` で書き出します。
 - 出力: `recorded <N> steps -> <path>`。**要 `ANTHROPIC_API_KEY`**（`ClaudeAgent`）。
-- **Git の `--config` は読み取り専用入力です**（[BE-0063](../../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）。`record` は config を取得したチェックアウトから読みますが、生成したシナリオは**ローカル**へ書きます。`--out` 省略時は（読み取り専用の SHA キーのキャッシュであるチェックアウト内の `scenarios` ディレクトリではなく）**カレントディレクトリ**に自動命名し、チェックアウト内を指す `--out` は拒否します。そのファイルをレビューし、通常の git でリポジトリへコミットしてください。
+- **Git の `--config` は読み取り専用入力です**（[BE-0063](../../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）。`record` は config を取得したチェックアウトから読みますが、生成したシナリオは**ローカル**へ書きます。`--out` 省略時は（読み取り専用の SHA キーのキャッシュであるチェックアウト内の `paths.scenarios` ディレクトリではなく）**カレントディレクトリ**に自動命名し、チェックアウト内を指す `--out` は拒否します。そのファイルをレビューし、通常の git でリポジトリへコミットしてください。
 - 続けて、オーサリング（およびアラートガード）の AI が消費したトークン量を示す `AI usage:` 行を
   stderr に出力します。
 
@@ -397,16 +499,18 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
 | `--prune-global / --no-prune-global` | ON | 複数の画面で使われる共通コントロール（タブ / ナビゲーションなど）を、それを表示するすべての画面からではなく1回だけ探索します。Web UI からは pruned なブランチを後から resume できます（`--resume-src`/`--resume-key` 参照） |
 | `--udid` | `booted` | 対象 Simulator。カンマ区切り（`A,B,C`）で並列プールも指定できる（`--workers` 参照） |
 | `--workers` | `1` | 同時に動かすワーカー数。1 つの画面マップを共有する。iOS は同数のシミュレータ（[BE-0064](../../roadmaps/BE-0064-parallel-crawl/BE-0064-parallel-crawl-ja.md)、`--udid` のデバイス数で上限）、web は同数のブラウザプロセス（[BE-0077](../../roadmaps/BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl-ja.md)）。`1` はシングルワーカーのクロール |
-| `--backend` | config | actuator 順 |
-| `--erase / --no-erase` | `--erase` | 起動前に erase（アプリはインストール済みである必要） |
-| `--system-alert-handling / --no-system-alert-handling` | `--system-alert-handling` | クロール中に予期せぬ OS プロンプトを片付ける（クラッシュ誤判定を防ぐ。設定した AI プロバイダを使用し、`ANTHROPIC_API_KEY`、Bedrock なら AWS 認証情報） |
+| `--backend` | ターゲットの `platform` | ターゲットの platform に対する検査（[共通](#共通)を参照） |
+| `--erase / --no-erase` | `--erase` | 起動前に erase（アプリはインストール済みである必要）。`--erase` は実効の `subject.reinstall` を `erase` に引き上げ、`--no-erase` は `erase` を `clean` に下げます。そのため、ここではターゲットの `subject.reinstall: erase` で wipe するかどうかは決まりません |
+| `--system-alert-handling / --no-system-alert-handling` | on | クロール中に予期せぬ OS プロンプトを片付ける（クラッシュ誤判定を防ぐ。設定した AI プロバイダを使用し、`ANTHROPIC_API_KEY`、Bedrock なら AWS 認証情報） |
 | `--alert-vision-instruction` | "" | プロンプトを片付ける代わりに視覚ガードが読む自由記述 |
-| `--headed / --no-headed` | アプリの `headless` | web backend: ヘッドレスではなく目に見える（低速再生の）ブラウザでクロールする。省略時はアプリの `headless` 設定に従う |
+| `--headed / --no-headed` | ターゲットの `driver.headless` | web backend: ヘッドレスではなく目に見える（低速再生の）ブラウザでクロールする。省略時はターゲットの `driver.headless` 設定に従う |
+| `--kind` | ターゲットの `runsOn.ios.kind` の最初の種類 | iOS: クロールに使う種類を1つ指定します（`simulator` または `device`）。ターゲットが宣言していない種類を指定すると終了コード 2 で終わります。このコマンドは1回しか実行しないので、カンマ区切りのリストを指定しても終了コード 2 で終わります（[BE-0468](../../roadmaps/BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of-ja.md)） |
 | `--language` | config の `ai.language`（`auto`） | ガイドの流れる推論の AI 出力言語。`ja` / `en` / `auto` から選び `ai.language` を上書きします。`auto` はクロールでは英語のままです（[BE-0188](../../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language-ja.md)） |
 | `--out` | `runs/<timestamp>` | 画面マップを書き出す run ディレクトリ |
 | `--resume-src` / `--resume-key` | "" | Web UI の「tap to resume」が指す、pruned な1ブランチだけを resume します。`--resume-src` は pruned にした画面の fingerprint、`--resume-key` はその replay key で、どちらも既存の run を指す `--out` と組み合わせます。`--continue` とは同時に指定できません |
 | `--continue` | オフ | 過去の run（`--out` でその run を指します）を続きから探索します。1 つのブランチだけでなく、未試行の操作が残る**すべて**の画面を再探索します。`--max-screens`/`--max-steps` を上げるとさらに深く進み、`--workers`/`--udid` で continuation を並列に実行します（[BE-0181](../../roadmaps/BE-0181-crawl-continuation/BE-0181-crawl-continuation-ja.md)）。`--resume-src`/`--resume-key` とは同時に指定できません |
 | `--config` | `bajutsu.config.yaml` | config |
+| `--worker-config` | 同梱のデフォルト | [`run`](#run) と同じ worker 能力ファイル。`appium` のファイルを渡すと、グリッドの platform のターゲットをグリッド上でクロールします |
 
 - **Git の `--config` は読み取り専用入力です**（[BE-0063](../../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）。`crawl` は config を取得したチェックアウトから読みますが、画面マップ／スクリーンショットはローカルの `--out` run ディレクトリ（既定 `runs/<timestamp>`）に書き、読み取り専用の SHA キーのキャッシュには書きません。チェックアウト内を指す `--out` は拒否します。
 - 走査は**決定的リプレイ**で行い、その場での後戻りはしません。既知の画面を再訪するには、アプリを
@@ -507,12 +611,12 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
 
 クロールは Simulator に対するのと同じように web アプリにも走ります。探索エンジンはプラットフォーム非依存
 なので、`bajutsu crawl --target <web-app> --backend web` は同じ `screenmap.json`、スクリーンショット、クラッシュ
-一覧を出力します。web アプリは `bundleId` ではなく `baseUrl` で指定し、ブラウザは Mac もエミュレータも要らない
+一覧を出力します。web アプリは `subject.id` ではなく `subject.url` で指定し、ブラウザは Mac もエミュレータも要らない
 ので、web クロールは Linux の `make check` / CI ゲート内で走ります。iOS と違う点は次の 3 つで、いずれも決定的
 です（[BE-0066](../../roadmaps/BE-0066-web-crawl/BE-0066-web-crawl-ja.md)）。
 
 - **クリーンな起点 = 再ナビゲート。** 再起動するアプリプロセスはありません。クリーンな状態に戻すのは、新しい
-  ブラウザコンテキストに対する `page.goto(baseUrl)`（`erase` 相当で、ほぼ無償）です。`run` が使うのと同じ
+  ブラウザコンテキストに対する `page.goto(subject.url)`（`erase` 相当で、ほぼ無償）です。`run` が使うのと同じ
   ライフサイクルの接合点です。
 - **クラッシュ検出。** iOS の信号（アクセシビリティツリーの崩壊）は web には存在しないため、ブラウザ自身の
   決定的な信号を使います。未捕捉の JS 例外（`pageerror`）、メインフレームの 4xx/5xx ナビゲーション、空の
@@ -540,12 +644,15 @@ bajutsu repl --target <name> [options]
 | オプション | 既定 | 説明 |
 |---|---|---|
 | `--target` | （必須） | 対象アプリ |
-| `--udid` | `booted` | 対象 Simulator（live 経路では WebDriver エンドポイント） |
-| `--backend` | config | actuator 順 |
-| `--erase / --no-erase` | live 経路以外は erase | 起動前に erase（アプリはインストール済みである必要）。live の `--udid https://…` 経路は erase を受け付けないため、その経路の既定は off になり、そこで明示的に `--erase` を指定すると CLI エラーで終了します |
-| `--headed / --no-headed` | アプリの `headless` | web backend: ヘッドレスではなく目に見える（低速再生の）ブラウザを調べます。省略時はアプリの `headless` 設定に従います |
-| `--browser` | アプリの `browser`（既定 chromium） | web backend: 調べる対象の Playwright レンダリングエンジン。`chromium` / `firefox` / `webkit` から選びます。省略時はターゲットの `browser` config に従います |
+| `--udid` | `booted` | 対象 Simulator。URL は終了コード 2（Appium グリッドは `--worker-config` で指定します） |
+| `--backend` | ターゲットの `platform` | ターゲットの platform に対する検査（[共通](#共通)を参照） |
+| `--erase / --no-erase` | live 経路以外は erase | 起動前に erase（アプリはインストール済みである必要）。`--erase` は実効の `subject.reinstall` を `erase` に引き上げ、`--no-erase` は `erase` を `clean` に下げます。そのため、ここではターゲットの `subject.reinstall: erase` で wipe するかどうかは決まりません。`appium` グリッドへの live 経路は erase を受け付けないため、その経路の既定は off になり、そこで明示的に `--erase` を指定すると CLI エラーで終了します |
+| `--headed / --no-headed` | ターゲットの `driver.headless` | web backend: ヘッドレスではなく目に見える（低速再生の）ブラウザを調べます。省略時はターゲットの `driver.headless` 設定に従います |
+| `--browser` | ターゲットの `runsOn.browser.kind`（既定 chromium） | web backend: 調べる対象のブラウザ。`chromium` / `chrome` / `edge` / `firefox` / `webkit` から選びます。省略時はターゲットの `runsOn.browser.kind` config に従います。ブラウザをリストで宣言したターゲットでは、リストにないブラウザを指定すると終了コード 2 で終わります |
+| `--kind` | ターゲットの `runsOn.ios.kind` の最初の種類 | iOS: 調べるときに使う種類を1つ指定します（`simulator` または `device`）。ターゲットが宣言していない種類を指定すると終了コード 2 で終わります。このコマンドは1回しか実行しないので、カンマ区切りのリストを指定しても終了コード 2 で終わります（[BE-0468](../../roadmaps/BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of-ja.md)） |
+| `--attach` | off | ローカルの iOS Simulator（`xcuitest`）専用です。起動済みの Simulator で動いているアプリに、そのままの状態で接続します。erase、インストール、再起動はしません（後述の「起動中のアプリへの接続」を参照） |
 | `--config` | `bajutsu.config.yaml` | config |
+| `--worker-config` | 同梱のデフォルト | [`run`](#run) と同じ worker 能力ファイル。`appium` のファイルを渡すと、グリッドの platform のターゲットに対してグリッド上（live 経路）でシェルを開きます |
 
 アプリが立ち上がると、シェルは `bajutsu>` のプロンプトを出します。
 
@@ -602,9 +709,9 @@ bajutsu repl --target <name> [options]
   固有のアクション（`setPickerValue`、`selectOption`）も同様です。
 - **シェルを抜けてもアプリは動いたままです。** Simulator や実機の上のアプリは抜けた時点の状態で残るので、
   そのまま手で調べ続けられます。閉じるのは、このコマンド自身が持っている 2 つのセッションだけです。1 つは
-  web backend のブラウザ、もう 1 つは `--udid https://…` の live 経路の WebDriver セッションです。この
+  web backend のブラウザ、もう 1 つは `appium` グリッドへの live 経路の WebDriver セッションです。この
   WebDriver セッションは、閉じないとグリッド上で期限切れまで予約されたままになります。
-- `launchServer` を宣言しているターゲットでは、シェルを開く前にサーバを起動し、抜けるときに停止します。これが
+- `services.server` を宣言しているターゲットでは、シェルを開く前にサーバを起動し、抜けるときに停止します。これが
   ないと、web ターゲットは待ち受けていないホストに対してブラウザを開き、`tree` のたびにエラーページを読むことに
   なります。
 
@@ -644,6 +751,40 @@ bajutsu repl --target <name> [options]
 します。curses
 には読み取れる Ctrl-D / EOF の合図がありません。
 
+### 起動中のアプリへの接続
+
+`--attach` を付けると、起動済みの Simulator 上のアプリに、操作者が残したままの状態でシェルを接続します
+（[BE-0455](../../roadmaps/BE-0455-repl-attach-running-app/BE-0455-repl-attach-running-app-ja.md)）。
+フラグなしのシェルは、まずアプリを起動します。その起動は、動いているプロセスを新しいプロセスに置き換えます。
+その結果、操作者がたどり着いた画面、ログイン状態、Xcode から接続したデバッガが失われます。
+`--attach` では、XCUITest ランナーが既存のプロセスをそのまま操作します。最初の `tree` は、すでに前面に
+出ていた画面を表示します。セッションの前後で、アプリのプロセス ID は変わりません。
+
+attach での開始は、デバイス全体に及ぶ操作を何もしません。
+
+- **デバイスの準備をしません。** デバイスの erase やブート、アプリのインストールをせず、ロケールの固定、
+  権限の付与、deeplink も飛ばします。`--erase` は強制的に off になり、`--attach --erase` は終了コード 2 で終わります。
+- **readiness を待ちません。** アプリは操作者が残した画面にあるので、ターゲットの `subject.startWhen` の画面を
+  待ちません。
+- **再試行しません。** ランナーは 1 回だけ起動し、リカバリの手順も使いません。再試行や修復の経路は、
+  どれもアプリを終了させるか Simulator を再起動させるためです。ランナーが立ち上がらなければ、ログの末尾を
+  添えて終了コード 2 で終わります。
+- **アプリを終了しません。** シェルを抜けるとランナーだけが止まり、アプリは動き続けます。
+
+シェルはランナーを起動する前にデバイスを、ランナーは操作を受け付ける前にアプリを確かめます。
+
+| 状況 | 結果 |
+|---|---|
+| Simulator が 1 台も起動していない、または指定した `--udid` が停止している | 終了コード 2 で終わります。attach がデバイスを起動することはありません |
+| ターゲットの bundle id のプロセスが動いている | ランナーがそのプロセスに接続します |
+| アプリは動いているがバックグラウンドにある | ランナーのログの末尾を添えて終了コード 2 で終わります。先にアプリを前面に出してください |
+| アプリはインストール済みだが動いていない | シェルが `<bundle id> was not running; launching it` と表示し、ランナーがターゲットの launch env と引数でアプリを起動します。このときも erase やインストールはしません |
+| アプリがインストールされていない | bundle id を示して終了コード 2 で終わります |
+
+それ以外の経路では、`--attach` はデバイスへ触れる前に終了コード 2 で終わります。対象は、`playwright` と
+`adb` の backend、`appium` グリッドへの live 経路、`runsOn.ios.kind: device` のターゲットです。
+bundle id と id の名前空間はターゲットの config から取るので、`--target` は引き続き必須です。
+
 ## `codegen`
 
 シナリオから **ネイティブテスト** を生成します（AI 非依存、構造マッピング、[codegen](codegen.md)）。出力先は
@@ -658,10 +799,10 @@ bajutsu codegen <scenario.yaml> --target <name> [--emit xcuitest | playwright | 
 | `--emit` | `xcuitest` | 出力形式。`xcuitest`、`playwright`、または `uiautomator`（他は終了コード 2） |
 | `-o, --out` | `-` | 出力ファイル。`-` で標準出力 |
 
-- config の `launchEnv` が生成テストに入ります。XCUITest では `app.launchEnvironment`、Playwright では
+- config の `subject.launch.env` が生成テストに入ります。XCUITest では `app.launchEnvironment`、Playwright では
   `localStorage` のシードに反映されます。
-- `--emit playwright` は対象が web ターゲットであること（`targets.<name>.baseUrl`）を要求します。`--emit
-  uiautomator` は対象が Android ターゲットであること（`targets.<name>.package`）を要求します。どちらも
+- `--emit playwright` は対象が web ターゲット（`platform: web` で `subject.url` を持つ）であることを要求します。`--emit
+  uiautomator` は対象が Android ターゲット（`platform: android` で `subject.id` を持つ）であることを要求します。どちらも
   満たさない場合は終了コード 2 で終わります。
 - ファイル出力時は `wrote <N> scenario(s) -> <out>`。
 
@@ -690,14 +831,14 @@ bajutsu approve [<run_dir>] --baselines <dir> [--scenario <id>] [--all] [--runs 
 
 **オーサリング、実行、探索**のためのローカル Web UI です。Tier 1 の利便機能で、**CI ゲートには含まれません**。
 CLI を覆う 4 つのトップレベルタブがあります。**Record** はゴールからシナリオを著し（`python -m bajutsu
-record ...`）、**Replay** はシナリオを実行してレポートを表示し（`python -m bajutsu run ...`）、**Crawl** は
+record ...`）、**Replay** はシナリオを実行してレポートを表示し（`bajutsu run` の本体である `python -m bajutsu.run.internal ...`）、**Crawl** は
 アプリを探索して画面マップをリアルタイムに描き（`python -m bajutsu crawl ...`）、**Stats** は run 履歴を
 横断した集計 run 統計ダッシュボードを表示します（`bajutsu stats`）。いずれも**アクティブな
 config** に対して動きます。config はファイルブラウザ、Git リポジトリ、アップロードした `.zip` バンドルの
-いずれかから開きます（後述の「Open config」を参照）。リクエストごとに CLI を
-バックグラウンドスレッドで起動し、出力をストリームし、生成された `runs/<id>/` ツリーを配信します（report の
-相対アセットリンクと crawl の `screenmap.json` が解決します）。stdlib のみ（Web フレームワーク不要）、
-`127.0.0.1` バインド。
+いずれかから開きます（後述の「Open config」を参照）。リクエストごとに job をキューに積み、
+`bajutsu worker` がその job を実行します。サーバ自身は job を実行しません（BE-0449）。サーバは job の出力を
+ストリームし、生成された `runs/<id>/` ツリーを配信します（report の相対アセットリンクと crawl の
+`screenmap.json` が解決します）。バインド先は `127.0.0.1` です。
 
 ```bash
 bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs runs] [--baselines <dir>]
@@ -725,7 +866,7 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
 - **Git リポジトリから（[BE-0063](../../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）。**
   `--config` は Git ソース（`github:owner/repo@ref:path`）も受け付け、「Open config」ダイアログにも同じ spec を入れる
   **From a Git repository** 欄があります。serve はその ref のリポジトリ部分木をキャッシュへ実体化し、その config を bind し、
-  チェックアウトのルートから serve します。これにより config の相対パス（`scenarios` / `appPath` / `build`）は取得したツリーを
+  チェックアウトのルートから serve します。これにより config の相対パス（`paths.scenarios` / `subject.path` / `subject.build`）は取得したツリーを
   基準に解決されます。これはセルフホストの狙い（[BE-0016](../../roadmaps/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)
   Tier A）そのもので、ファイルを手で同期する代わりにチームのテストリポジトリを serve に向け、ブランチの切り替えを再デプロイではなく
   UI 上で行えます。ファイルブラウザは `--root` 配下に限定されたままです。チェックアウトは管理された content-addressed キャッシュで、
@@ -770,17 +911,17 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
 - **バンドルのアップロード（[BE-0073](../../roadmaps/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md)）。**
   「Open config」ダイアログには 3 つめのソース **Upload a bundle** があり、ホストのファイルシステムに触れない
   ブラウザ利用者が、ホスト型の `serve` に**自分のスイートを持ち込め**ます。レイアウトが動くローカル checkout
-  そのものの `.zip`、つまり `bajutsu.config.yaml`、その `scenarios` ツリー、config の `appPath` が指すビルド済み
+  そのものの `.zip`、つまり `bajutsu.config.yaml`、その `paths.scenarios` ツリー、config の `subject.path` が指すビルド済み
   アプリバイナリ（`.app` ディレクトリ、zip 化した `.app`、`.ipa`）を投下します。`serve` はそれを封じ込めた
   サンドボックス（`runs/` の兄弟で、`--root` ではない）へ展開し、ファイルブラウザや Git ソースとまったく同じく
   **アクティブな config としてバインド**します。以後 **Replay / Record / Crawl** タブはその展開先から動きます
-  （config の相対パス `appPath` / `scenarios` / `baselines` はバンドルを基準に解決されます）。run は
+  （config の相対パス `subject.path` / `paths.scenarios` / `paths.baselines` はバンドルを基準に解決されます）。run は
   サンドボックスではなく `serve` 自身のストアに着地するので（`--runs-dir`）、**History** に残ります。アップロードの
   ファイル名と zip の **sha256** は各 run の `manifest.json`（`provenance`）に記録するので、「この run は何を実行
   したか」を後から辿れます。バインドできるバンドルは同時に一つだけで、別の config（どのソースでも）を開くと
   サンドボックスは削除されます。バンドルは**秘匿情報を運びません**。`${secrets.*}` は通常の run と同じく `serve`
   ホストの環境から解決し（[BE-0032](../../roadmaps/BE-0032-secret-variables/BE-0032-secret-variables-ja.md)）、
-  アップロードされた config の `build` コマンドはホスト上で**決して実行しません**（バンドルはビルド済みバイナリを
+  アップロードされた config の `subject.build` コマンドはホスト上で**決して実行しません**（バンドルはビルド済みバイナリを
   同梱します。DESIGN §1）。展開は zip-slip（絶対パス、`..`、symlink エントリは拒否）と zip-bomb（エントリ数、
   展開後の総サイズ、エントリごとの圧縮率の上限）に対して堅牢で、各ターゲットのパス項目はバインド時にバンドル内へ
   封じ込められ、config のバインドは他のリクエストと同じトークン認証の裏にある admin ロールの操作です。任意の
@@ -791,15 +932,15 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   zip 全体を送り直すことになり、変わっていないバイナリの分まで再び支払います。「Open config」ダイアログの
   4 つめのソース **Compose from artifacts** は、バンドルを 3 つの**独立してアップロードできる content-addressed**
   な部品、**Config**、**Scenarios**（scenario ツリーの `.zip`、または単一の `.yaml`。内容で判別し、単一
-  ファイルは config の `scenarios` ディレクトリへ拡張子を `.yaml` に正規化して配置します）、**Binary**（zip 化
-  した `.app`、`.ipa`、または Android の `.apk`。config の `appPath` の拡張子で展開するか raw で書き出すかを
+  ファイルは config の `paths.scenarios` ディレクトリへ拡張子を `.yaml` に正規化して配置します）、**Binary**（zip 化
+  した `.app`、`.ipa`、または Android の `.apk`。config の `subject.path` の拡張子で展開するか raw で書き出すかを
   決めます）に分割します。
   各部品はバイト列の sha256 で保存します（`POST /api/artifacts/{config,scenarios,binary}`）。部品を内容で
   アドレス指定するので、変わっていない部品はまるごと省けます。ブラウザはファイルをハッシュし、アップロード前に
   `GET /api/artifacts/exists` で在庫を問い合わせるため、同じバイナリが 2 度も回線を通ることはありません。
   **Compose & load**（`POST /api/compose`）は、選んだ `(config, scenarios, binary)` の**三つ組**を、結合バンドルが
-  生むのと同じ封じ込めたツリーに組み立てます。**レイアウトの唯一の権威は config** で、自身の相対パス `scenarios` /
-  `appPath` によって各部品の置き場所を指定します。組み立てたツリーはアクティブな config としてバインドするので、
+  生むのと同じ封じ込めたツリーに組み立てます。**レイアウトの唯一の権威は config** で、自身の相対パス `paths.scenarios` /
+  `subject.path` によって各部品の置き場所を指定します。組み立てたツリーはアクティブな config としてバインドするので、
   バンドルのときと同じく **Replay / Record / Crawl** タブがそこから動きます。config が必要とする部品を渡していない
   三つ組は、run に入る前に**拒否**します（中途半端なツリーで走ることはありません）。1 本の脚だけ差し替えて合成し
   直せば、共有する部品を**再アップロードせず**に新しい**組み合わせ**（同じ scenario に対するバイナリ A と B、あるいは
@@ -824,29 +965,37 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   Author タブの YAML エディタは、保存時だけでなく**入力しながら**検証します。デバウンスした `POST /api/lint`
   が `bajutsu lint` と同じチェックを実行し、行に紐づく診断を返します。診断は該当行のガターのマーカーと、
   クリックで該当行へ移動できる問題リストに表示されます。YAML のパースエラーは正確な行と列を持ち、スキーマや
-  検証のエラーは可能な限り行を解決します。シナリオの JSON Schema（`GET /api/schema`。`bajutsu schema` が出力する
+  検証のエラーは可能な限り行を解決します。ターゲットを選択していると、リクエストにそのターゲットが入ります。
+  サーバーは、バインド済みの config に対して `bajutsu lint --config --target` が出す指摘を、それぞれの行に
+  付けて加えます（[BE-0467](../../roadmaps/BE-0467-environment-specific-settings/BE-0467-environment-specific-settings-ja.md)）。
+  ターゲットを選択していなければ、エディタの lint の結果は変わりません。シナリオの JSON Schema（`GET /api/schema`。`bajutsu schema` が出力する
   ものと同じ）は、軽量なキー補完（Ctrl/⌘+Space）と hover の説明表示にも使われます。決定的で AI を使わず、デバイスも
   モデルも起動しません。保存は保存自身の検証を保持するので、インライン検証は失敗をより早く見せるだけです。
-- アプリのビルド済みバイナリ（config `appPath`）が無い場合は、先にそのアプリの `build` コマンドを
-  実行します（出力は job ログにストリーム）。ビルド失敗時は run を開始せず中止します。`targets.<name>.build`
-  に `appPath` を生成するシェルコマンド（例: `make -C demos/showcase swiftui-build`）を設定すると、
+- アプリのビルド済みバイナリ（config `subject.path`）が無い場合は、先にそのアプリの `subject.build` コマンドを
+  実行します（出力は job ログにストリーム）。ビルド失敗時は run を開始せず中止します。`targets.<name>.subject.build`
+  に `subject.path` を生成するシェルコマンド（例: `make -C demos/showcase swiftui-build`）を設定すると、
   手動ビルド無しに UI からオンデマンドでビルドできます。
 - 操作 UI の下の **History** リストに過去の run（新しい順、pass/fail ドット、シナリオ要約）が並び、
   クリックでそのレポートを再表示します。`GET /api/runs` が裏側です。
-- run サブプロセスは起動環境を継承します（venv の `bin` を `PATH` 先頭に付与）。
-  `bajutsu.config.yaml` が解決するようプロジェクトルートから実行してください。
+- run サブプロセスは worker が起動し、worker の環境（venv の `bin` を `PATH` 先頭に付与）と、lease が
+  中継する保存済みのシークレットを受け取ります。ローカルの job は config のディレクトリで動くので、
+  `bajutsu.config.yaml` が解決します。
 - **`/api/run` の入力検証。** scenario は**選択中アプリの scenarios dir 内**に実在する `*.yaml` でなければ
   なりません（任意のホストパスや `..` トラバーサル不可）。`backend` / `udid` も既知のトークンに限定され、
   自由入力は拒否されます。これにより、リクエストが任意ファイルを実行したり想定外の argv を紛れ込ませたりするのを防ぎます。
+  `backend` は `run --backend` と同じ検査に従い、ターゲットの platform、その actuator 名、`fake` 以外は 400 になります。
   これは `serve` を loopback を越えてホスティングするための前提です
   （[BE-0015](../../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) / [BE-0016](../../roadmaps/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)）。
   現状は `127.0.0.1` バインドかつ認証なしなので、信頼できないネットワークにはまだ晒さないでください。
+- **`/api/run` から Appium グリッドで動かす（BE-0452）。** リクエストは任意の `environment: appium` を
+  受け付けます。この値を付けた job は、worker 能力ファイルに `appium` 環境を持つ worker へ振り分けます。
+  その job が要求するのは `environment:appium` だけです。それ以外の値は 400 になります。
 
 - **`/api/run` での job 単位のアーティファクト差し替え（BE-0431）。** ホスト型デプロイの `POST /api/run` は、
   `binaryArtifact` と `scenariosArtifact` も受け付けます。どちらも、org に保存済みのアーティファクトの sha256 です。
-  その job だけが、指定したバイナリを target の `appPath` に置き、指定した scenarios の zip で実行します。
+  その job だけが、指定したバイナリを target の `subject.path` に置き、指定した scenarios の zip で実行します。
   org のアクティブな config は、バインドされたまま変わりません。run の `manifest.json` は、差し替えた sha256 を
-  `provenance` の下に記録します。単一プロセスの `serve` は、どちらのフィールドも拒否します。
+  `provenance` の下に記録します。job のキューを持たないサーバは、どちらのフィールドも拒否します。
   詳しくは [self-hosting](self-hosting.md#ci-の-run-に-job-単位でアーティファクトを差し替えるbe-0431) を参照してください。
 
 ### 同時実行数、証跡、ホスティング
@@ -854,14 +1003,16 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
 - **`--max-concurrent-runs`（既定 4）** は同時実行できる run/record ジョブ数の上限です。1 呼び出し元が
   希少なデバイスを独占しないようにします（BE-0051）。上限超過の dispatch は **429** を返します。`0` で無制限。
 - **`--evidence-store <uri>`（または `$BAJUTSU_EVIDENCE_STORE`）。各 run の証跡をアップロードします（[BE-0110](../../roadmaps/BE-0110-evidence-store-uri/BE-0110-evidence-store-uri-ja.md)）。** `s3://bucket/prefix` または `gs://bucket/prefix` を指定すると、完了した run のツリーがそこへアップロードされます。キーは `<prefix><evidence_prefix><runId>/…` の形になるので、パスによってクラウドのライフサイクルポリシーが切り替わります。スタンドアロンの `run --evidence-store`（Runner 自身の認証情報で直接アップロードする）と違い、**`serve` は認証情報を保持し、Worker には渡しません**。コントロールプレーンがファイルごとに presigned PUT URL を発行し、Worker はクラウド SDK も認証情報も持たずに平文 HTTP でアップロードします。呼び出し元は `POST /api/run` のボディに `evidence_prefix`（安全な相対セグメントとして検証されます）を渡して run ごとのパスを選びます。サーバが自分のバケットとベースプレフィックスを前置するので、run ID が必ずキーに含まれ、run 同士が衝突しません。アップロードは判定の後に走るため、失敗しても警告のみです。**サーバ側**に `s3` または `gcs` extra が必要です（Worker には不要）。トポロジは [self-hosting](self-hosting.md) を参照してください。
-- **ホスティング向けフラグ（応用）。** `--emit-launchagent` は `serve` を単一 Mac 上でトークン認証付きの LaunchAgent として動かす launchd plist を出力します。`--backend server`（と `--asgi`）はホスティング用の FastAPI コントロールプレーンに切り替えます。`--upload-exec`（または環境変数 `BAJUTSU_UPLOAD_EXEC`）は、アップロードされたバンドルの `launchServer` コマンドを実行してよいかを決めます（`deny` / `reuse` / `sandbox`、既定は `sandbox`）。`--allow-remote-build`（または環境変数 `BAJUTSU_ALLOW_REMOTE_BUILD`）は、UI で bind した **Git** ソースの config の `build` コマンドをホスト上で実行することを許可します（既定はオフ）。いずれも [self-hosting](self-hosting.md) で扱います。
+- **すべての job を worker が実行します（BE-0449）。** `serve` は `bajutsu worker` に渡す job のキューを持ち、すべての job をキューに積みます。対象は、ビルド段階を含む各 run、Device Farm への展開、triage、record、crawl です。`serve` のプロセスは、どの job も実行しません。キューの job は worker を待ちます。その job を実行できる稼働中の worker がないあいだ、job には使える worker がないという通知が付きます。`make serve` はサーバの横で worker を起動します。`bajutsu serve` を直接起動したときは、横で `bajutsu worker` を起動する必要があります。lease は、その job の org に保存されたシークレットを worker に渡します。1台のマシンで `BAJUTSU_SERVER_STORE` を設定しなければ、サーバに環境変数は要りません。キューは runs ディレクトリの隣の `.bajutsu/queue.db`（SQLite）に置きます。キーも同じ場所に `0600` の権限で生成します。1つは署名付き URL 用で、もう1つは保存するシークレット用です（`BAJUTSU_SECRETS_KEY` を設定したときは生成しません）。アーティファクトのストアは default org の run を runs のツリーから直接、サーバが署名した URL で読み、それ以外のオブジェクトは `.bajutsu/objects/` に置きます。起動時には、すでに `runs/` の下にある run を履歴に登録します。その後の run は、admin が `POST /api/runs/rescan` を呼ぶと登録されます。`BAJUTSU_DATABASE_URL`、`BAJUTSU_SECRETS_KEY`、`BAJUTSU_SERVER_STORE`、`BAJUTSU_HOSTED` を設定すると、これらの既定値を上書きします。バケットのないサーバは、`--asgi` と同じく FastAPI のトランスポートを使います。また、`--port 0` ではなく固定のポートが必要です。バケットを指定したサーバは、`BAJUTSU_DATABASE_URL` も設定する必要があります。設定しなければ、キューを持たないので起動を拒否します。詳しくは [self-hosting の「1台のマシンで動かすサーバ backend」](self-hosting.md#1台のマシンで動かすサーバ-backendbe-0449)を参照してください。
+- **`--backend`（非推奨）。** 以前このフラグは、2つの backend を選んでいました。`local` backend は `serve` のプロセス内で job を実行し、`server` backend は job をキューに積みました。今はどちらの値でも同じサーバが起動します。`serve` は `local` と `server` を受け付けて警告を表示し、値を無視します。未知の値を渡すと、これまでどおり終了コード 2 で終わります。次のリリースでフラグを取り除くので、コマンドラインから外してください。
+- **ホスティング向けフラグ（応用）。** `--emit-launchagent` は `serve` を単一 Mac 上でトークン認証付きの LaunchAgent として動かす launchd plist を出力します。`--upload-exec`（または環境変数 `BAJUTSU_UPLOAD_EXEC`）は、アップロードされたバンドルの `services.server` コマンドを実行してよいかを決めます（`deny` / `reuse` / `sandbox`、既定は `sandbox`）。`--allow-remote-build`（または環境変数 `BAJUTSU_ALLOW_REMOTE_BUILD`）は、UI で bind した **Git** ソースの config の `subject.build` コマンドをホスト上で実行することを許可します（既定はオフ）。いずれも [self-hosting](self-hosting.md) で扱います。
 
 ## `mcp`
 
 エージェント（Claude Desktop / Code）がシナリオを実行し、run の証跡を読めるように **MCP（Model Context Protocol）サーバ**を起動します。オプションの `bajutsu[mcp]` extra（`fastmcp`）が必要です。
 
 ```bash
-bajutsu mcp [--config bajutsu.config.yaml] [--runs runs] [--transport stdio]
+bajutsu mcp [--config bajutsu.config.yaml] [--runs runs] [--transport stdio] [--worker-config <worker.yaml>]
 ```
 
 | オプション | 既定 | 説明 |
@@ -869,31 +1020,78 @@ bajutsu mcp [--config bajutsu.config.yaml] [--runs runs] [--transport stdio]
 | `--config` | `bajutsu.config.yaml` | ツールがアプリを解決する config |
 | `--runs` | `runs` | リソースとして公開する runs ディレクトリ |
 | `--transport` | `stdio` | `stdio`（ローカルエージェント）または `sse`（HTTP） |
+| `--worker-config` | 同梱のデフォルト | ツールが従う worker 能力ファイル（[`run`](#run) と同じ）。`appium` のファイルを渡すと、グリッドの platform のターゲットに対する `bajutsu_run` と `bajutsu_doctor` はグリッドで動きます |
 
 - **ツール**: `bajutsu_run`（決定的 run）と `bajutsu_doctor`（規約スコア）。どちらも CLI と同じで、合否に AI は入りません。
 - **リソース**: 完了した run の `manifest.json` / `report.html` / `junit.xml` と任意の入れ子の artifact（`bajutsu://runs/<id>/…`）、および `runs/latest`。
 
 ## `worker`
 
-ホスト型コントロールプレーン（`serve --backend=server`）にキュー済みの run をポーリングし、実行します。
-ホスティング用サーバ backend の実行側です（[BE-0015](../../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)、[self-hosting](self-hosting.md)）。
+コントロールプレーン（`bajutsu serve`）にキュー済みの job をポーリングし、実行します。1台のマシンでも
+ホスティング用サーバ backend でも、すべてのデプロイの実行側です（[BE-0015](../../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)、[self-hosting](self-hosting.md)）。
 
-`/api/worker/lease` を単純な HTTP でポーリングして job をリースします。Redis や RQ には頼りません（BE-0106）。リースした job はそのまま `run_job` で実行し、結果を `/api/worker/result` に返します。worker は cloud の資格情報を一切持ちません。run 前のベースラインのダウンロードも、run 後の run ツリーのアップロードも、コントロールプレーンが発行する署名付き URL（presigned URL）を経由します（BE-0160）。そのため worker に必要なのは HTTP クライアントだけです。ローカル利用には不要です。
+`/api/worker/lease` を単純な HTTP でポーリングして job をリースします。Redis や RQ には頼りません（BE-0106）。リースした job はそのまま `run_job` で実行し、結果を `/api/worker/result` に返します。worker は cloud の資格情報を一切持ちません。run 前のベースラインのダウンロードも、run 後の run ツリーのアップロードも、コントロールプレーンが発行する署名付き URL（presigned URL）を経由します（BE-0160）。そのため worker に必要なのは HTTP クライアントだけです。
+
+ローカルの `bajutsu serve` も run をすべてキューに積むので、worker が要ります（BE-0449）。`make serve` は worker を1つ起動します。lease の応答は、worker にさらに2つのフィールドを渡します。
+
+- `secret_env` は、lease した job の org に保存されたシークレットを持ちます。AI のキーと、ユーザーが UI で設定した `${secrets.X}` の値がこれにあたります。サーバはこれらを lease の時点で読み、キューには保存しません。worker はこれらを run の環境変数に重ね、引数には載せません。共有トークンで取った lease はこれらを受け取ります。トークンのないループバックでの起動でも、lease は受け取ります。ブラウザのログインは受け取りません。
+- 仕様の `cwd` は、自前のファイルを送らない job のために、bind した config のディレクトリを示します。ローカル起動での run はこの種の job で、config、シナリオ、runs、ベースラインをパスで指定します。worker は、そのディレクトリで job をビルドして実行します。これで config の相対的な `subject.path` と `subject.build` が、サーバのプロセスの中と同じように解決します。別のマシンの worker はそのディレクトリを持たないので、サーバのマシンの worker が必要だと伝えて job を失敗にします。
+
+SIGINT や SIGTERM を受けた worker は、サーバからのキャンセルと同じように止まります。lease した job をキャンセルし（run なら穏やかに止めます）、キャンセルした結果を送ってから、128 にシグナル番号を足した終了コードで終わります。キューはその job をキャンセル済みとして記録し、再び実行しません。2 回目の SIGINT は、`--once` と同じく job のプロセスグループをすぐに終わらせます。
+
+`maxJobConcurrency` が 1 を超えるデバイスクラウドの worker は、停止シグナルを別のように扱います（BE-0448）。リースをやめ、何も取り消さず、結果も送りません。処理中のリースはそれぞれ期限切れになり、再起動した worker が実行を再開します。2 回目の SIGINT を受けると、スロットを待たずに終了します。各実行がどうなるかは [AWS Device Farm で実行する](devicefarm.md#再起動とリースの喪失) で説明しています。
 
 ```bash
 bajutsu worker [--server-url <url>] [--token <t>] [--platform ios] [--capabilities <tokens>]
                [--poll-interval 2.0] [--heartbeat-interval 30.0] [--worker-id <id>]
+               [--worker-config <worker.yaml>] [--workdir <dir>]
+               [--machine-id <id> | --server-state-dir <dir>]
+bajutsu worker --once <spec.json> [--worker-config <worker.yaml>]
 ```
 
 | オプション | 既定 | 説明 |
 |---|---|---|
+| `--once` | オフ | この JSON ファイルの job 仕様を 1 つ、サーバーなしでこのマシン上で実行し、job の終了コードで終了します。詳しくは下記を参照してください |
 | `--server-url` | `$BAJUTSU_SERVER_URL` または `http://localhost:8765` | コントロールプレーンの URL |
 | `--token` | "" | 認証用の operator トークン（コントロールプレーン側の `--token` / `$BAJUTSU_SERVE_TOKEN`） |
-| `--platform` | `ios` | この worker が動かせる backend のカンマ区切りリスト（`ios` / `web` / `android`）。コントロールプレーンが job を振り分ける軸です |
-| `--capabilities` | "" (`$BAJUTSU_WORKER_CAPABILITIES` も可) | platform と Simulator の在庫情報に加えて広告する追加の capability トークン（例: `ios18,ipad`）。job がそのトークンを要求する場合、それを持つ worker にしかリースされません |
+| `--platform` | `ios` | この worker が動かせる backend のカンマ区切りリスト（`ios` / `web` / `android`）。コントロールプレーンが job を振り分ける軸です。ローカルの worker は、worker 能力ファイルが含まないドライバや、ホストで動かせないドライバのプラットフォームを指定されると、ドライバを名指しして起動時に終了します。そのため、Linux の worker は `--platform ios` で止まります（[BE-0450](../../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability-ja.md)）。device cloud の worker と `appium` の worker は指定を受け付けません |
+| `--capabilities` | "" (`$BAJUTSU_WORKER_CAPABILITIES` も可) | **非推奨**（[BE-0450](../../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability-ja.md)）。platform、ホスト、Simulator の在庫情報に加えて広告する追加の capability トークン（例: `ios18,ipad`）です。今回のリリースでは 1 回だけの通知とともに引き続き効き、次のリリースで削除します。これらのトークンは、在庫情報と worker 能力ファイルがすでに提供しています。予約済みの接頭辞 `environment:`、`host:`、`machine:`、`device:`、`cap:`、`setting:` を持つトークンを渡すと、worker は起動時に止まります |
 | `--poll-interval` | `2.0` | 空き時間にリースを試みる間隔（秒） |
 | `--heartbeat-interval` | `30.0` | run 中にリースのハートビートを送る間隔（秒）。コントロールプレーンのリースタイムアウトより短く保つことで、長時間の run を停止した worker と誤認して回収されないようにしています |
+| `--machine-id` | "" (`$BAJUTSU_WORKER_MACHINE_ID` も可) | サーバのマシンの識別子です。サーバの `.bajutsu/machine-id` に保存されています。worker はこれを `machine:<id>` として広告し、サーバのマシン上のパスでファイルを指定する job を受け取ります。対象は、ローカルで起動したサーバの `run`、`triage`、`record`、`crawl` です（[self-hosting](self-hosting.md#1台のマシンで動かすサーバ-backendbe-0449)）。そのパスを読める worker にだけ渡します。デバイスクラウドの worker は受け付けません |
+| `--server-state-dir` | なし | `--machine-id` を読むサーバの状態ディレクトリ（runs ディレクトリの隣の `.bajutsu`）です。サーバと同じマシンの worker に使い、`make serve` はこれを渡します。ディレクトリにまだ識別子がなければ、worker は起動時に終了します。このフラグと `--machine-id` は、どちらか一方だけを渡します。`$BAJUTSU_WORKER_MACHINE_ID` は `--machine-id` の代わりにだけ使うので、このフラグを渡したときは読みません |
+| `--workdir` | 新しい一時ディレクトリ | lease した job を実行する場所です。job の materials、取得したバンドル、アップロード前の run のツリーを置きます。既定のディレクトリは worker の停止時に削除するので、プロジェクトの中で起動した worker がプロジェクトに書き込むことはありません |
 | `--worker-id` | "" (自動生成) | worker の識別子 |
+| `--worker-config` | 同梱の既定 | この worker が従う worker 能力ファイル（[BE-0450](../../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability-ja.md)。[drivers](drivers.md#worker-の能力検査be-0450) を参照）。worker は起動時にファイルを検証し、不正なら job をリースする前に終了します。`environment` に device cloud を指定したファイルでは、worker はそのプロバイダを登録し、`environment:<name>` を広告します（[Device Farm](devicefarm.md)）。`appium` のファイルでは、worker は `environment:appium` だけを広告し、`--platform` を受け付けません。各 job は、グリッドを動かすローカルの `bajutsu run` として実行します（[BE-0452](../../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)）。worker は起動するすべての `bajutsu run` にファイルの絶対パスを渡すので、リースした run はどれも同じファイルで検査されます。サーバーはこのファイルを読みません |
+
+`--once` は job 仕様を 1 つ、サーバーなしで実行します（[BE-0449](../../roadmaps/BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs-ja.md)）。
+job 仕様はキューが保存する形と同じで、`cmd` のリストと、キュー済みの job が持つ任意のフィールドからなります。
+worker はまず `--worker-config` を検証し、リースした job と同じく、起動する run にその絶対パスを渡します。
+そのあとの job は、リースした job と同じコードで動きます。違いは次のとおりです。
+
+- 子プロセスは端末の標準入力、標準出力、標準エラーを引き継ぎます。
+- ダウンロードとアップロードをしないので、run ツリーは run が書いた場所に残ります。
+- worker は run ID を `PASS|FAIL` の行ではなく run ツリーから読み取ります。
+- SIGINT、SIGTERM、SIGHUP は、ハートビートによるキャンセルと同じく job をキャンセルします。終了コードは 128 にシグナル番号を足した値になります。
+
+`--once` は次の仕様を、何も実行する前に拒否し、終了コード 2 で終了します。
+
+- アップロードされたバンドル、成果物の差し替え、ビジュアルベースラインの取得を指定する仕様。これらは署名付き URL で届きますが、1 回実行の job には URL に署名するサーバーがありません。ベースラインは、ディスク上のディレクトリを `--baselines` で指定してください。
+- `--worker-config` の環境が実行しない仕様。`local` か `appium` のファイルでの Device Farm のバッチ仕様と、デバイスクラウドのファイルでの通常の run 仕様がこれにあたります。
+- `udids` が文字列のリストでない仕様、または `materials` がパスから文字列への対応になっていない仕様
+- worker が認識しない形で run を指定する `cmd`。認識する形は `python -m bajutsu.run.internal …` と、以前の `python -m bajutsu run …` です。
+- 絶対パス、`..` を含むパス、シンボリックリンクを通ってカレントディレクトリの外に出るパスを持つ `materials`
+- カレントディレクトリにある別の内容のファイルを上書きしてしまう `materials`
+- Windows 上のすべての仕様（シグナルの中継と生存確認のパイプには macOS か Linux が必要なため）
+
+worker は仕様の `materials`（サーバーが送るシナリオと config）をカレントディレクトリに書き出します。リースした worker が自分の作業ディレクトリに書き出すのと同じです。
+同じ内容のファイルはそのまま使います。内容が異なるファイルは呼び出し側のものなので、`--once` は上書きせずに拒否します。
+そうした仕様は空のディレクトリから実行してください。
+
+捕捉できない形で終了した `worker --once` に気づくのは `run` の仕様だけです。worker を `kill -9` で終了させても、`record`、`crawl`、`triage` の子プロセスは自分で終わるまで動き続けます。
+
+サーバーなしで Device Farm の job を投入する機能は、[BE-0448](../../roadmaps/BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch-ja.md) で追加します。
+ほかのオプションはポーリングする worker のためのもので、`--once` では無視します。
 
 ## `lint`
 
@@ -901,7 +1099,33 @@ bajutsu worker [--server-url <url>] [--token <t>] [--platform ios] [--capabiliti
 
 ```bash
 bajutsu lint <scenario.yaml>
+bajutsu lint <scenario.yaml> --config <bajutsu.config.yaml> --target <name>
 ```
+
+`--config` を付けると、lint はシナリオが実際に動くターゲットに対するチェックも行います。`run` がデバイスを
+lease する前に行うのと同じチェックです（[BE-0467](../../roadmaps/BE-0467-environment-specific-settings/BE-0467-environment-specific-settings-ja.md)）。ターゲットは `run` と同じ方法で解決します。
+自分で `targets` を宣言したシナリオは、宣言したターゲットそれぞれに対してチェックします。宣言していない
+シナリオは、`--target` のターゲットに対してチェックします。展開後のシナリオに対し、ターゲットごとに次の
+3 つを行います。
+
+- **ステップのチェック**：そのターゲットに割り当てたステップが必要とする capability を、ターゲットのルートが
+  持っているかを調べます。run の capability preflight と同じチェックです。
+- **設定のチェック**：シナリオが有効にする設定を、ルートが適用できるかを調べます。ターゲットが
+  `runsOn.ignoredSettings` で無視を宣言した設定は対象外です（[設定](configuration.md#環境ごとの設定runsonignoredsettingsbe-0467)）。
+- **前提条件のチェック**：`preconditions` の各フィールドが、シナリオの動かすプラットフォームに存在するかを
+  調べます。
+
+指摘には、ファイル、行、シナリオ、ターゲットが付きます。component が展開したステップの指摘は、その
+component を呼び出した `use:` の行に付きます。どのチェックもデバイスを必要としません。アクチュエータには、
+ターゲットの backend が挙げる実装済みのものの先頭を使います。
+
+| 終了コード | 意味 |
+|---|---|
+| 0 | 指摘なし |
+| 1 | スキーマのエラー、または指摘あり |
+| 2 | 指定どおりにチェックできない（config がない、未知のターゲット、`targets` も `--target` もないシナリオ、`--config` なしの `--target`） |
+
+`--config` を付けない場合、lint は config を読まず、これまでどおりに動きます。
 
 ## `schema`
 
@@ -910,6 +1134,43 @@ bajutsu lint <scenario.yaml>
 ```bash
 bajutsu schema > bajutsu.schema.json
 ```
+
+## `config schema`
+
+`bajutsu.config.yaml` の **JSON Schema** を stdout に出力します。エディタ連携用です。オプションはありません。
+
+```bash
+bajutsu config schema > bajutsu.config.schema.json
+```
+
+このコマンドは、config のモデルと platform のレジストリからスキーマを生成します。各ターゲットは、
+登録された platform ごとに1つの分岐を持つ `oneOf` で、`platform` がその判別子（discriminator）です。
+そのためスキーマを読むエディタは、書かれた platform の `subject`、`runsOn`、`driver`、`run` のキーを補完できます。
+`defaults.platforms` も同じ platform をキーに持ち、すべてのフィールドを省略可能にしています。デフォルトが
+書かなかった部分は、各ターゲットが補うためです。
+
+スキーマは、`defaults` を重ねる前の、書かれたままのターゲットを検査します。そのため、デフォルトが
+補いうるグループはスキーマ上で省略可能です。`{ platform: ios }` のようなターゲットはスキーマを通りますが、
+`subject.id` を補うデフォルトがなければ、読み込みの段階で拒否されます。
+
+## `runner`
+
+汎用の XCUITest runner をビルドします。
+
+現在のサブコマンドは `build --device` の 1 つだけで、実機の iPhone や iPad 向けに runner を署名してビルドします。署名はユーザーごとの署名ファイルから取り、ビルド結果はキャッシュに置きます。以後、`runsOn.ios.kind: device` を指定して `driver.runner.testRunner` を指定しないターゲットは、そのキャッシュに解決します。このビルドは Xcode のある macOS で行うオーサリングの手順で、`bajutsu run` の中では動きません。署名ファイル、キャッシュのキー、実行時のエラーは [iOS の実機](ios-device-cloud.md#署名済みの実機用-runner)で説明しています。
+
+```bash
+bajutsu runner build --device [--signing PATH] [--out DIR] [--force]
+```
+
+| オプション | 意味 |
+|---|---|
+| `--device` | 署名済みの実機用 runner をビルドします。現在は必須です。このフラグは、将来 Simulator 用のビルドを加える余地として残しています。 |
+| `--signing PATH` | 署名ファイルです。省略すると `BAJUTSU_SIGNING_FILE`、次に `~/.config/bajutsu/signing.yaml`（`XDG_CONFIG_HOME` に従います）を使います。 |
+| `--out DIR` | `Products` ディレクトリ全体を `DIR` にもコピーします。パッケージング（Device Farm の経路）用です。`DIR` は空か、存在しないディレクトリにします。 |
+| `--force` | 一致するビルドがキャッシュにあっても、ビルドし直します。 |
+
+ビルドに成功すると、キャッシュした runner のパスを表示し、終了コード 0 で終了します。`--device` を省くと使い方の誤りとして終了コード 2 で終了します。それ以外の場合は終了コード 1 で終了し、原因を示します。原因は、前提条件の不足、署名ファイルの誤り、ビルドの失敗のいずれかです。
 
 ## 環境変数（.env）
 
@@ -930,6 +1191,8 @@ bajutsu schema > bajutsu.schema.json
   すると、API キーの代わりに Claude の Pro / Max / Console のシートに課金されます。`ANTHROPIC_PROFILE`
   で名前付きの CLI プロファイルを選べます。**`ANTHROPIC_API_KEY` は不要**で、すべての AI 経路で画像も
   そのまま使えます。
+- `BAJUTSU_SIGNING_FILE`（BE-0456）: 実機用 runner のユーザーごとの署名ファイルです。
+  [`runner build --device`](#runner) と、実機での実行が読みます。
 
 ```bash
 # .env：Anthropic（既定）

@@ -89,7 +89,7 @@ class ProviderSettingsManager:
         the persisted/not-persisted signaling stay with that caller — this owns only the race-safe
         re-snapshot and the write."""
         # Imported lazily: `provider_store` imports `ProviderSettings` from this module, so a
-        # top-level import here would be a cycle (the same reason `_env_var_for_secret` imports late).
+        # top-level import here would be a cycle (the same reason `env_var_for_secret` imports late).
         from bajutsu.serve.provider_store import PersistedProviderSettings
 
         with self._persist_lock:

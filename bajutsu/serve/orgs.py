@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 import re
 from collections.abc import Iterable, Sequence
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from pydantic import Field, ValidationError, model_validator
@@ -23,6 +24,7 @@ from pydantic import Field, ValidationError, model_validator
 from bajutsu.common import _yaml
 from bajutsu.common.config import Config, _Model, parse_config_dict
 from bajutsu.serve.oidc import WorkloadClaims
+from bajutsu.serve.store_keys import reserved_slug_error
 
 if TYPE_CHECKING:  # keeps the default serve/CLI path free of `serve.server` (server/__init__.py)
     from bajutsu.serve.server.db import Repository
@@ -371,6 +373,11 @@ def parse_orgs(orgs_block: object) -> dict[str, OrgConfig]:
         return {}
     if not isinstance(orgs_block, dict):
         raise ValueError("orgs: must be a mapping of org name to its config")  # noqa: TRY004  # invalid external payload, not a caller type error
+    for name in orgs_block:
+        # The name becomes the org id and its object-key prefix, as an API-created slug does, so the
+        # same reserved names are refused here, for the seed and for sign-in alike (BE-0449).
+        if isinstance(name, str) and (reason := reserved_slug_error(name)):
+            raise ValueError(f"orgs: {reason}")
     return {name: OrgConfig.model_validate(body or {}) for name, body in orgs_block.items()}
 
 
@@ -476,12 +483,15 @@ def seed_orgs_from_config(repository: Repository, orgs: dict[str, OrgConfig]) ->
     return stale
 
 
-def load_serve_config(text: str) -> tuple[Config, dict[str, OrgConfig]]:
+def load_serve_config(
+    text: str, *, path: Path | None = None, root: Path | None = None
+) -> tuple[Config, dict[str, OrgConfig]]:
     """Parse a raw config into the core `Config` plus its org model (BE-0129).
 
     The document is parsed once: `serve` validates the `orgs:` block locally, while
-    `parse_config_dict` builds the org-agnostic `Config` (dropping `orgs:` itself).
+    `parse_config_dict` builds the org-agnostic `Config` (dropping `orgs:` itself). *path* and *root*
+    are `parse_config_dict`'s, for a component a target's hooks call.
     """
     data = _yaml.safe_load(text) or {}
     orgs = parse_orgs(data.get("orgs") if isinstance(data, dict) else None)
-    return parse_config_dict(data), orgs
+    return parse_config_dict(data, path=path, root=root), orgs

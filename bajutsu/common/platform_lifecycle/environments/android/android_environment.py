@@ -12,15 +12,17 @@ from typing import TYPE_CHECKING
 
 from bajutsu.common import backends
 from bajutsu.common.backend_cli import adb
-from bajutsu.common.config import Effective, require_android
+from bajutsu.common.capability.settings_support import enforce_settings
+from bajutsu.common.config import Effective, require_android, resolve_preconditions
+from bajutsu.common.config.preconditions import ResolvedPreconditions
 from bajutsu.common.drivers import base
 from bajutsu.common.evidence import intervals
 from bajutsu.common.evidence.network import Collector
 from bajutsu.common.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.common.platform_lifecycle import readiness
 from bajutsu.common.platform_lifecycle.device_control import android_device_control
-from bajutsu.common.platform_lifecycle.protocols import ProvisionProfile
-from bajutsu.common.scenario import Preconditions, Relaunch, Scenario
+from bajutsu.common.platform_lifecycle.protocols import CollectorHost, ProvisionProfile
+from bajutsu.common.scenario import Relaunch, Scenario
 from bajutsu.crawl import AliveCheck, ClearBlocking, Recover, Reset
 
 from .resident_server_like import ResidentServerLike
@@ -157,7 +159,10 @@ class AndroidEnvironment:
         # `_drivers`, so the front check reaches all of them (BE-0447).
         self._group_drivers: list[base.Driver] = []
         self._member_markers: dict[str, tuple[float, str] | None] = {}
-        self._launch_inputs: tuple[Preconditions, Mapping[str, str]] = (Preconditions(), {})
+        self._launch_inputs: tuple[ResolvedPreconditions, Mapping[str, str]] = (
+            ResolvedPreconditions(),
+            {},
+        )
 
     def resolve_device(self, udid: str) -> str:
         return adb.resolve_serial(udid, self._run)
@@ -168,12 +173,16 @@ class AndroidEnvironment:
     def start(
         self,
         eff: Effective,
-        pre: Preconditions,
+        pre: ResolvedPreconditions,
         *,
         extra_env: Mapping[str, str] | None = None,
         record_video_dir: Path | None = None,
         permissions: Mapping[str, str] | None = None,
     ) -> base.Driver:
+        # The route's settings table decides what this launch may apply (BE-0467): a setting Android
+        # cannot apply (a launch argument, an ungranted permission service) raises unless the target
+        # ignores it, and an ignored one is dropped here.
+        pre, permissions = enforce_settings(self._actuator, eff, pre, permissions, self._serial)
         android = require_android(eff)
         self._launch_inputs = (pre, dict(extra_env or {}))
         # `app_crash_artifacts()` takes no arguments, so this is the only route the `logcat` extraction
@@ -193,18 +202,18 @@ class AndroidEnvironment:
             if android.app_path and not self._provision.app_preinstalled:
                 if not Path(android.app_path).exists():
                     raise adb.DeviceError(
-                        f"appPath not found: {android.app_path} (build the app first)"
+                        f"subject.path not found: {android.app_path} (build the app first)"
                     )
                 # Only where the data is going anyway. A clean reinstall may cross a signing key or
                 # drop a component the old build had, and `install -r` cannot express either — but on
                 # the keep-data path removing the package first would throw away exactly what that
                 # path exists to preserve, so there `install -r` is left to fail loudly instead.
-                if pre.erase or pre.reinstall == "clean":
+                if pre.reinstall != "overwrite":
                     e.uninstall(android.package)
                 e.install(android.app_path)
             # `pm clear` is the clean-state reset (fresh app data); skip it only on an explicit
-            # `overwrite` reinstall with no erase, matching iOS's "keep data" overwrite path.
-            if pre.erase or pre.reinstall == "clean":
+            # `overwrite` reinstall, matching iOS's "keep data" overwrite path.
+            if pre.reinstall != "overwrite":
                 e.clear(android.package)
             e.force_stop(android.package)  # clean start so readiness reflects the new launch
             # Grant runtime permissions after `pm clear` (which resets grants) but before launch, so
@@ -264,6 +273,7 @@ class AndroidEnvironment:
             fetch_hierarchy=channel.fetch if channel is not None else None,
             fetch_clock=channel.clock if channel is not None else None,
             act=channel.act if channel is not None else None,
+            type_on_device=channel.type_text if channel is not None else None,
             package=package,
             api_level=self._read_api_level(),
             launched_at=launched_at,
@@ -375,6 +385,14 @@ class AndroidEnvironment:
         # external-receiver shape as iOS, and a real capture rather than a mocked one.
         return False
 
+    def collector_host(self, eff: Effective) -> CollectorHost:  # noqa: ARG002  # Environment shape
+        return (
+            CollectorHost()
+        )  # `adb reverse` makes the host's loopback the emulator's (`bridge_collector`)
+
+    def reach_device_port(self, eff: Effective, port: int) -> tuple[int, Callable[[], None]]:  # noqa: ARG002  # Environment shape
+        return port, lambda: None  # nothing between the host and the port to bridge
+
     def mirrors_collector_port_on_device(self) -> bool:
         # `bridge_collector`'s `adb reverse tcp:<port> tcp:<port>` binds the same number inside the
         # guest, so the collector's port must be one the emulator can bind too.
@@ -471,7 +489,7 @@ class AndroidEnvironment:
     ) -> RelaunchFn:
         package = require_android(eff).package
         e = adb.Env(self._serial, run=self._run)
-        pre = scenario.preconditions
+        pre = resolve_preconditions(eff, scenario.preconditions)
 
         def relaunch(opts: Relaunch) -> None:
             e.force_stop(package)  # restart only the app; the device is not rebooted
@@ -498,7 +516,7 @@ class AndroidEnvironment:
             # again — a separate seam from the cache invalidation above, which every ordinary gesture
             # also triggers and which would therefore clear this latch far too eagerly (BE-0424).
             _reset_exit_info_poll(driver)
-            readiness.await_ready(driver, ready_sel=eff.ready_when, id_namespaces=eff.id_namespaces)
+            readiness.await_ready(driver, ready_sel=eff.start_when, id_namespaces=eff.id_namespaces)
 
         return relaunch
 
@@ -546,11 +564,11 @@ class AndroidEnvironment:
             return
         if isinstance(driver, base.SettledCacheInvalidator):
             driver.invalidate_settled_cache()
-        # `readyWhen` names the app's launch screen, so it gates a launch alone: a resumed app comes
+        # `startWhen` names the app's launch screen, so it gates a launch alone: a resumed app comes
         # back on whatever screen it left, and waiting there for the launch screen would time out.
         result = readiness.await_ready(
             driver,
-            ready_sel=None if resumed else eff.ready_when,
+            ready_sel=None if resumed else eff.start_when,
             id_namespaces=eff.id_namespaces,
         )
         if not result.ready:
@@ -576,7 +594,7 @@ class AndroidEnvironment:
     def start_member(
         self,
         eff: Effective,  # Environment shape
-        pre: Preconditions,
+        pre: ResolvedPreconditions,
         *,
         extra_env: Mapping[str, str] | None = None,  # noqa: ARG002
         permissions: Mapping[str, str] | None = None,
@@ -585,7 +603,9 @@ class AndroidEnvironment:
         # The resident channel dumps whichever app is in front, so one channel serves every member:
         # each gets its own driver over it, bound to its own package (BE-0447). `start` already ran
         # the device-wide part (boot, the erase-equivalent clears of the first member), so this
-        # never clears an app it did not install itself.
+        # never clears an app it did not install itself. The member's own target decides which of its
+        # settings this route may apply, exactly as `start` does (BE-0467).
+        pre, permissions = enforce_settings(self._actuator, eff, pre, permissions, self._serial)
         android = require_android(eff)
         e = adb.Env(self._serial, run=self._run)
         try:
@@ -612,14 +632,14 @@ class AndroidEnvironment:
         return driver
 
     def _install_for_start(
-        self, e: adb.Env, package: str, app_path: str | None, pre: Preconditions
+        self, e: adb.Env, package: str, app_path: str | None, pre: ResolvedPreconditions
     ) -> None:
         # Android has no device-wide wipe: `erase` is each app's own uninstall and `pm clear`, as in
         # `start`. Clearing this member's package never touches another member's data.
-        fresh = pre.erase or pre.reinstall == "clean"
+        fresh = pre.reinstall != "overwrite"
         if app_path and not self._provision.app_preinstalled:
             if not Path(app_path).exists():
-                raise adb.DeviceError(f"appPath not found: {app_path} (build the app first)")
+                raise adb.DeviceError(f"subject.path not found: {app_path} (build the app first)")
             if fresh:
                 e.uninstall(package)
             e.install(app_path)
@@ -638,7 +658,9 @@ class AndroidEnvironment:
         # process stops first, so the step's outcome does not depend on whether the install kills it.
         android = require_android(eff)
         if not android.app_path or not Path(android.app_path).exists():
-            raise adb.DeviceError(f"appPath not found: {android.app_path} (build the app first)")
+            raise adb.DeviceError(
+                f"subject.path not found: {android.app_path} (build the app first)"
+            )
         e = adb.Env(self._serial, run=self._run)
         try:
             e.force_stop(android.package)
@@ -828,7 +850,7 @@ class AndroidEnvironment:
             # And the same second seam: a crawl builds one driver for the whole walk, so without this
             # the first unconfirmed detection would latch the poll off for every later one (BE-0424).
             _reset_exit_info_poll(driver)
-            readiness.await_ready(driver, ready_sel=eff.ready_when, id_namespaces=eff.id_namespaces)
+            readiness.await_ready(driver, ready_sel=eff.start_when, id_namespaces=eff.id_namespaces)
 
         return reset
 

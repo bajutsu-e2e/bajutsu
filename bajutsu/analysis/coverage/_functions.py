@@ -288,11 +288,13 @@ def screen_fingerprints(rendered: Iterable[list[Any]]) -> frozenset[str]:
 
     Each per-step element list is one rendered screen, fingerprinted with the same
     `crawl.fingerprint` the crawl uses — that shared reduction is what makes a visited screen
-    comparable to a discovered one. A list holding no element dicts contributes nothing, so a
-    partial capture narrows the numerator instead of inventing a screen.
+    comparable to a discovered one. Cross-origin iframe elements are dropped first, as the crawl's
+    own observation drops them, or an embedded widget on a visited screen would read as a screen the
+    crawl never mapped. A list holding no element dicts contributes nothing, so a partial capture
+    narrows the numerator instead of inventing a screen.
     """
     return frozenset(
-        fingerprint(cast(list[base.Element], elements)).value
+        fingerprint(base.without_cross_origin_frames(cast(list[base.Element], elements))).value
         for data in rendered
         if (elements := [e for e in data if isinstance(e, dict)])
     )

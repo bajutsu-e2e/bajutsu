@@ -26,10 +26,15 @@ A Simulator app runs as a host process and shares the Mac's loopback, so:
    per-run shared token via `BAJUTSU_COLLECTOR_TOKEN`.
 2. The app (linked with **BajutsuKit**) installs a `URLProtocol` that records each
    request/response and POSTs it to the collector — **after TLS (Transport Layer Security)** (no proxy, no CA / certificate authority), so it
-   works regardless of which backend drives the app and is readable programmatically. Each POST carries the token as an
-   `Authorization: Bearer` header, and the collector rejects any request without the
-   matching token (401), so another local process can't inject fabricated exchanges into
-   the run's evidence.
+   works regardless of which backend drives the app and is readable programmatically. Each POST
+   proves the token. The collector rejects any request that does not (401). Another local process
+   thus can't inject fabricated exchanges into the run's evidence.
+   - bajutsu always announces `BAJUTSU_COLLECTOR_AUTH=hmac`. A current BajutsuKit then signs each
+     request with the token.
+   - An older BajutsuKit sends the token as an `Authorization: Bearer` header instead. A loopback
+     collector still accepts that header.
+   - On a real device the collector accepts signed requests alone
+     ([the real-device guide](ios-device-cloud.md#how-the-device-to-host-route-is-authenticated)).
 3. The collector keeps the exchanges in memory; a step's `request` assertion is evaluated
    against them in real time, and bajutsu writes them (redacted) to `<sid>/network.json` as
    scenario evidence.
@@ -85,11 +90,13 @@ expect:
 |---|---|
 | `method` | HTTP method (case-insensitive) |
 | `url` | exact full URL (the endpoint) |
-| `urlMatches` | regex/substring over the URL (query strings live here) |
+| `urlMatches` | regex/substring over the full URL |
 | `path` | exact URL path (query ignored) |
 | `pathMatches` | regex over the path |
+| `query` | key/value dictionary over the URL-decoded query parameters, order-independent (BE-0463) |
+| `body` | key/value dictionary over the JavaScript Object Notation (JSON) request body, nested maps and lists included (BE-0463) |
 | `status` | response status code |
-| `bodyMatches` | regex/substring over the request body |
+| `bodyMatches` | regex/substring over the raw request body |
 | `count` | exact number of matching exchanges — an aggregate, exempt from the 1:1 rule (omit ⇒ at least one) |
 
 ## Deterministic mocks
@@ -115,7 +122,8 @@ mocks:
 ```
 
 The first matching rule wins. `match` reuses the request matcher's request-side fields
-(`method` / `url` / `urlMatches` / `path` / `pathMatches` / `bodyMatches`). Mocks ride the
+(`method` / `url` / `urlMatches` / `path` / `pathMatches` / `bodyMatches`). A mock refuses the
+`query` / `body` dictionaries, since the in-app matcher would ignore them. Mocks ride the
 same channel as observation, so they need `--network`. On iOS, the rules reach the app via the
 `BAJUTSU_MOCKS` launch env (like `BAJUTSU_COLLECTOR`); on web there is no app to launch into, so
 `network_collector()` takes the scenario's `mocks` directly and fulfills them in-process.

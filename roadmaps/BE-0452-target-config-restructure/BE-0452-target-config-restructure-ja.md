@@ -7,9 +7,9 @@
 |---|---|
 | 提案 | [BE-0452](BE-0452-target-config-restructure-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **承認済み** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0452") |
-| 実装 PR | — |
+| 実装 PR | [#2191](https://github.com/bajutsu-e2e/bajutsu/pull/2191)（単位 1〜3）、[#2193](https://github.com/bajutsu-e2e/bajutsu/pull/2193)（単位 4）、[#2194](https://github.com/bajutsu-e2e/bajutsu/pull/2194)（単位 5）、[#2195](https://github.com/bajutsu-e2e/bajutsu/pull/2195)（単位 6〜7）、[#2196](https://github.com/bajutsu-e2e/bajutsu/pull/2196)（単位 8〜9）、[#2200](https://github.com/bajutsu-e2e/bajutsu/pull/2200)（単位 10〜12）、[#2201](https://github.com/bajutsu-e2e/bajutsu/pull/2201)（単位 13） |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 | 関連 | [BE-0126](../BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config-ja.md)、[BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact-ja.md)、[BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation-ja.md)、[BE-0076](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)、[BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks-ja.md)、[BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md)、[BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch-ja.md)、[BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md)、[BE-0447](../BE-0447-install-app-step/BE-0447-install-app-step-ja.md)、[BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md) |
 <!-- /BE-METADATA -->
@@ -118,7 +118,7 @@ targets:
 | `app` | `id`、`path`、`build`、`reinstall`、`launch.env`、`launch.args`、`launch.deeplink` | `id`、`path`、`build`、`reinstall`、`launch.env`、`launch.deeplink`、`grantPermissions` | `url`、`launch.env` |
 | `app`（iOS、Android、Web で共通） | `startWhen`、`idNamespaces` | 同左 | 同左 |
 | `runsOn` | `model`、`os`、`kind`、`locale`、`seedPhotos` | `avd`、`apiLevel` | `browser.engine`、`browser.version`、`emulate` |
-| `driver` | `runner.testRunner`、`runner.build` | `nativeZ` | `headless` |
+| `driver` | `runner.testRunner`、`runner.build`、`runner.hostAddress` | `nativeZ` | `headless` |
 | `run`（追加分） | `tipKitHandling` | — | — |
 
 どの配置も、現在のコードにある読み手に従っています。Android は`launchEnv`を intent の extra として読み、シナリオの`deeplink`を開きます。Web の Playwright のコード生成は`launchEnv`を読みます。Web の run 自体はこの値をどこにも渡さないので、Web の`launch.env`はコード生成のための入力です。`launchArgs`と`locale`を読むのは iOS だけです。`runsOn.locale`は、iOS で現在の組み込みのデフォルト`en_US`を引き継ぎます。[BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md)の Simulator の言語の固定が、この値に依存しているためです。
@@ -148,8 +148,8 @@ hook のフェーズについては、2つの階層の順序を現在のまま�
 - シナリオは、現在と同じく、自分の`setup`の中で`use:`としてコンポーネントを呼びます。
 - シナリオが宣言したすべての target が、自分の setup を出します。現在は主 target の前置きだけを差し込むので、複数 target のシナリオでは、ほかの target の前置きも走るようになります。この変化は意図したものです。target の setup は、その target を使うのに必要な準備だからです。
 - target の setup を走らせたくないシナリオは、`preconditions.run.inheritSetup: false`を書きます。飛ばすのは、シナリオが宣言したすべての target の setup だけです。`targets`を宣言しないシナリオは、自分を走らせる target を宣言したものとみなします。target の cleanup はどの経路でも走るので、引き続き走ります。現在は、シナリオが target の前置きを差し替えつつ target の`before`を残せますが、この組み合わせはできなくなります。
-- 前置きのファイルとコンポーネントのファイルは形式が違うので、各前置きのファイルを一度だけコンポーネントの形式に書き換えます。`group:`、`setMocks`、データ行の差し込みを使う前置きは、target の hook のコンポーネントにできません。それを必要とする各シナリオが、自分の`setup`の中で`use:`として呼びます。こうした前置きは作業単位2で洗い出します。
-- 前置きの参照の基準が変わります。現在、target の`setup:`は各シナリオのファイルのディレクトリを基準に解決するので、1つの参照がディレクトリごとに別の前置きを指せます。コンポーネントのパスは、設定ファイルを基準に解決します。作業単位2でそうした target を洗い出し、該当するシナリオは、それぞれ自分の前置きを`use:`で呼ぶようにします。
+- 前置きのファイルとコンポーネントのファイルは形式が違うので、各前置きのファイルを一度だけコンポーネントの形式に書き換えます。`group:`、`setMocks`、データ行の差し込みを使う前置きは、target の hook のコンポーネントにできません。それを必要とする各シナリオが、自分の`setup`の中で`use:`として呼びます。作業単位2の調査では、テストの固定データの外に前置きはありませんでした。該当する固定データはログに挙げます。
+- 前置きの参照の基準が変わります。現在、target の`setup:`は各シナリオのファイルのディレクトリを基準に解決するので、1つの参照がディレクトリごとに別の前置きを指せます。コンポーネントのパスは、設定ファイルを基準に解決します。そうした target の各シナリオは、それぞれ自分の前置きを`use:`で呼ぶようにします。作業単位2の調査では、そうした target はリポジトリにありませんでした。
 - 前置きが走る順番が変わります。現在は`steps`に差し込まれるので、シナリオの`before`のあとに走ります。target の`setup`の末尾（target の旧`before`の手順のあと）に足すコンポーネントになると、シナリオの`setup`より前に走ります。シナリオ自身の前置きは、`use:`に変換してシナリオの`setup`の末尾に足すので、現在と同じく、そのシナリオの旧`before`の手順のあとに走ります。
 
 シナリオは`setup`、`cleanup`、`interrupts`をトップレベルに、`steps`と並べて持ちます。target はこれらを`hooks`の下にまとめますが、フィールドの名前は両方の階層で同じです。
@@ -237,7 +237,7 @@ preconditions:
 | iOS の`runsOn.os` | Simulator の runtime ラベルを`DeviceOS`で解析した値 | 版の範囲 |
 | iOS の`runsOn.model` | その udid の simctl のデバイスタイプ名 | 完全一致 |
 | Android の`runsOn.apiLevel` | `ro.build.version.sdk` | 整数に対する版の範囲 |
-| Android の`runsOn.avd` | エミュレータの Android Virtual Device（AVD）名 | 完全一致。実機は一致しない |
+| Android の`runsOn.avd` | エミュレータの Android Virtual Device（AVD）名。`ro.boot.qemu.avd_name`、なければ`ro.kernel.qemu.avd_name` | 完全一致。実機は一致しない |
 | Web の`runsOn.browser.version` | Playwright の`browser.version` | 版の範囲 |
 
 照合の対象は、invocation が自分のホストで動かす端末です。`runsOn.kind`が`device`の target（iPhone の実機）や、device cloud や Appium のグリッドへ送る run には、実行前に読める端末群がありません。そうした target は、`model`、`os`、リストを書けません。`kind: device`の場合は、defaults を重ねたあとでローダーが拒否します。有効な`runsOn`が条件を持つシナリオ（条件は target 由来でもシナリオ由来でもかまいません）をそうした target やリモートの環境で走らせると、端末を操作する前に失敗し、そのフィールドを示します。黙って無視することはありません。この検査は target ごとに行います。グリッドの target とローカルの target が混ざるシナリオでは、グリッドの target の有効な`runsOn`だけを見て、ローカルの target の条件はいつもどおり照合します。リモートの環境では、この検査をジョブを出す場所で行います。BE-0448 の worker が、何かを投入する前にそうしたシナリオを失敗させるので、Device Farm のホスト上の素の`bajutsu run`は、自分がどこで動いているかを知る必要がありません。`locale`と`seedPhotos`は条件ではなく端末の状態なので、そこでも書けます。確保したリモートの端末から事実を読み取ることは、後続の項目に残します。それまでは、条件を取り入れた一式は Device Farm や iPhone の実機では走らせられません。この項目は、これを代償として受け入れます。
@@ -347,7 +347,7 @@ target は、どこで実行するかを持たなくなります。target が書
 | `device` | `runsOn.model`。意味が、置き換えの Simulator のためのヒントから、すべての回が満たすべき条件に変わる |
 | `locale`、`xcuitest.deviceType` | `runsOn.locale`、`runsOn.kind` |
 | `browser`、`deviceMode` | `runsOn.browser.engine`、`runsOn.emulate`（省略で desktop） |
-| `headless`、`nativeZ`、`xcuitest.testRunner`、`xcuitest.build` | `driver.headless`、`driver.nativeZ`、`driver.runner.*` |
+| `headless`、`nativeZ`、`xcuitest.testRunner`、`xcuitest.build`、`xcuitest.hostAddress` | `driver.headless`、`driver.nativeZ`、`driver.runner.*` |
 | `launchServer`、`mockServer`、`mailbox` | `services.server`、`services.mockServer`、`services.mailbox` |
 | `deviceProvider`、`cloudBatch`、`cloudBatchBudget`、`requires` | target から外す（「どこで実行するか」を参照） |
 | `erase`、`network`、`visualCompare`、`secrets`、`systemAlertHandling`、`iosTipKitHandling` | `run.*`（最後は`run.tipKitHandling`） |
@@ -396,7 +396,7 @@ target は、どこで実行するかを持たなくなります。target が書
 5. **setup と cleanup。** フェーズと、シナリオの`before`と`after`を`setup`と`cleanup`に改め、`on: error`と capturePolicy の`result: error`を`failure`に改め、それらを使うシナリオファイルとテストの固定データ（`demos/showcase/scenarios/before_after.yaml`など）を変換し、report のフェーズの表示を改めます。保存する`after_verdict`の値`error`を`failure`に改め、`report/load.py`は古い manifest の`error`を`failure`として読むので、以前の run も読み込めます。
 6. **コマンドラインのフラグ。** `--browser`、`--browsers`、`--headed`を`runsOn.browser.engine`と`driver.headless`に、`--erase`、`--system-alert-handling`、`--ios-tipkit-handling`を`run`のフィールドに、`--scenarios`、`--baselines`、`--goldens`を`paths`に向けます。作業単位4は、変わらない`Effective`の名前を通じてこれらのフラグを動かし続けます。この作業単位は、フラグの解釈とヘルプの文面を新しいフィールドへ移します。これらを、`run`、`record`、`crawl`、`repl`、`triage --rerun`、`audit`、MCP のツールに当てはめます。
 7. **シナリオの preconditions。** `preconditions`を`app`、`runsOn`、`run`のグループに組み直し、トップレベルの実行の方針のフィールドを`run`の下へ移し、`runsOn`をプラットフォームごとに分け、各グループを target の値の上に重ねます。target の階層の`app.reinstall`、`app.launch.deeplink`、`runsOn.seedPhotos`を、その`Effective`の属性と一緒に足し、シナリオの`reinstall`のデフォルトを未設定にし、重ね合わせた`seedPhotos`の消去の条件を確かめます。`app`のフィールドと iOS 専用の`run`のフィールドを、run の解決時に、動かす target のプラットフォームと照らします。シナリオを読む箇所（Device Farm の batch provider の`launchEnv`、`analysis/impact`の deeplink の読み取り、コード生成）を更新します。
-8. **端末の読み取り。** 手元の各端末から、機種と OS（iOS）、API レベルと AVD 名（Android）、ブラウザのバージョン（Web）を読みます。`kind: device`とリモートの環境では、条件を拒否します。
+8. **端末の読み取り。** 手元の各端末から、機種と OS（iOS）、API レベルと AVD 名（Android）、ブラウザのバージョン（Web）を読みます。`kind: device`とリモートの環境では、条件を拒否します。AVD 名を使う前に、対応する各 API レベルの実際のエミュレータで読み取りを確かめます。作業単位2では確かめられなかったので、この確認は未完了の項目として残ります。
 9. **回と結果。** リストと範囲から回を作り、複数 target のシナリオとデバイスグループでは組み合わせ、各回をその候補の集合から割り当てます。端末のない回を失敗させ、片側が開いた範囲では対象外を記録し、1回も走らなかったときは終了コード1で終了します。各回の座標と結果を run のマニフェストと、hosted の runs のテーブルの新しい列（そのマイグレーションを含む）に保存し、flakiness の履歴をそれで記録します。作業単位10までは、対象外の記録はコンソールとマニフェストにだけ出し、ほかの出力では各回を別々の項目として示し、JUnit と CTRF のテスト名が重ならないように、シナリオ名に座標を付けた名前にします。そのうえで、`record`、`crawl`、`repl`には最初の回を渡し、`audit`と MCP のツールには`run`と同じく回を作らせ、`doctor`を除くすべてのコマンドで、作業単位4の「not yet supported」の検査を外します。`doctor`の端末を使う経路では、作業単位11までこの検査を残します。
 10. **報告。** 回の結果表と対象外の状態を、HTML の report、JUnit と CTRF の出力、通知の本文、serve の Web UI に表示します。
 11. **`doctor`。** シナリオごとに、その回と各回に合う端末を一覧にし、端末を使う経路に残っていた「not yet supported」の検査を外します。
@@ -440,23 +440,129 @@ target は、どこで実行するかを持たなくなります。target が書
 > 反映し（作業単位ごとに1つ）、ログは何がいつ変わったかを（古い順に）PR へのリンクつきで
 > 記録します。
 
-- [ ] 作業単位 1: `VersionSpec`
-- [ ] 作業単位 2: 未確定の事実の確認
-- [ ] 作業単位 3: プラットフォームのレジストリとモデル
-- [ ] 作業単位 4: スキーマの切り替え、固定データ、`demos/`の設定ファイル
-- [ ] 作業単位 5: setup と cleanup
-- [ ] 作業単位 6: コマンドラインのフラグ
-- [ ] 作業単位 7: シナリオの preconditions
-- [ ] 作業単位 8: 端末の読み取り
-- [ ] 作業単位 9: 回と結果
-- [ ] 作業単位 10: 報告
-- [ ] 作業単位 11: `doctor`
-- [ ] 作業単位 12: `bajutsu config schema`
-- [ ] 作業単位 13: 文書
+- [x] 作業単位 1: `VersionSpec`
+- [x] 作業単位 2: 未確定の事実の確認
+- [x] 作業単位 3: プラットフォームのレジストリとモデル
+- [x] 作業単位 4: スキーマの切り替え、固定データ、`demos/`の設定ファイル
+- [x] 作業単位 5: setup と cleanup
+- [x] 作業単位 6: コマンドラインのフラグ
+- [x] 作業単位 7: シナリオの preconditions
+- [x] 作業単位 8: 端末の読み取り
+- [x] 作業単位 9: 回と結果
+- [x] 作業単位 10: 報告
+- [x] 作業単位 11: `doctor`
+- [x] 作業単位 12: `bajutsu config schema`
+- [x] 作業単位 13: 文書
 
 ### ログ
 
-- まだ記録はありません。
+- [#2191](https://github.com/bajutsu-e2e/bajutsu/pull/2191)（単位 1〜3）— 最初の3つの作業単位が入りました。既存の設定の動作は変わりません。
+  - `bajutsu/common/devices/version.py`の`VersionSpec`は、npm の範囲の文法を自前で実装します。パッケージを採用すると、小さなパーサー1つのために依存が1つ増えるからです。テストは、node-semver の README にある展開の例を固定します。npm と同じく、ビルドメタデータは無視します。プレリリースのタグは、読み込みの時点で失敗します。`majors()`は、和集合のうち両側に境界を持つ範囲について、含まれるメジャーバージョンを返します。片側が開いた範囲は何も加えません。そのメジャーバージョンは端末の集まりで決まるからです。
+  - レジストリは`bajutsu/common/config/schema/platform/`に置き、プラットフォームごとに1つのモジュールに分けました。`validate_group`は、1つのグループをそのプラットフォームのモデルで検証します。未知のキーがあると、そのブロックが受け付けるフィールドをメッセージに並べます。入れ子のブロックでも同じです。ローダーはまだ`validate_group`を呼びません。`TargetConfig`へは作業単位4でつなぎます。レジストリのキーが`backends.PLATFORMS`と一致することは、テストで固定しました。
+  - 作業単位2の調査では、テストの外に前置きはありませんでした。前置きを設定する設定ファイルやシナリオはありません。前置きを使うテストの固定データは、次の8つのファイルにあります。
+    - `tests/`：`test_config.py`、`test_run_lanes.py`、`test_inline_components.py`、`test_components.py`、`test_impact.py`
+    - `tests/scenario/`：`test_loading.py`、`test_primary_target.py`、`test_target_groups.py`
+
+    前置きの説明は、`DESIGN.md`、`docs/configuration.md`、`docs/dsl-grammar.md`にあります。target の`setup:`を設定する設定ファイルがないので、シナリオのディレクトリによって別のファイルに解決される参照もありません。
+  - 作業単位2では AVD 名も確かめました。リポジトリには、AVD 名を読むコードがまだありません。Android の CI が起動するのは API レベル34だけで、この作業単位では読み取れるエミュレータもありませんでした。エミュレータは、AVD 名をカーネルのコマンドラインで渡します。API レベル31以降のイメージは`ro.boot.qemu.avd_name`として公開し、それより古いイメージは`ro.kernel.qemu.avd_name`として公開します。この区別は、端末から読んだ結果ではなく、エミュレータの既知の動作に基づきます。そのため確度は中程度です。作業単位8では両方のプロパティを読み、どちらも返さないエミュレータでは失敗させるべきです。そうすれば、`avd`の条件がメッセージなしに外れることはありません。この読み取りは未完了の項目として残し、作業単位8で各 API レベルの実際のエミュレータを使って確かめます。手元のエミュレータなら、`adb emu avd name`でエミュレータのコンソールに問い合わせる方法も、さらなる代替になります。
+  - 設計の記述から外れた点が2つあります。1つ目は`xcuitest.hostAddress`で、設計の記述より後に加わったキーです。runner の他のキーと一緒に`driver.runner.hostAddress`へ移すことにし、2つの表に記載しました。2つ目は Web のエンジンの一覧`WEB_ENGINES`で、Web のモデルの隣へ移しました。現在のローダーは、そこから読み込みます。
+- [#2193](https://github.com/bajutsu-e2e/bajutsu/pull/2193)（単位 4）— スキーマの切り替えが入りました。ローダーは用途別の11個のキーだけを読みます。設定ファイル、デモ、テストの固定データも、すべて新しい形へ移しました。
+  - `Config`は、検証の前に`defaults`を各 target の生の値へマージします。そのあと`TargetConfig`が、`app`、`runsOn`、`driver`を`validate_group`で検証します。target の`run`は、プラットフォームごとに1つのモデルで検証します。このモデルは、共通の`RunPolicy`にプラットフォームのフィールドを加えたものです。そのため未知のキーのエラーは、両方のフィールドを並べます。範囲は文字列のまま持ち、iOS の`en_US`の既定値は`resolve`が与えます。
+  - ローダーは、設定ファイルのパスとスイートのルートを受け取ります。`load_config(text, path=, root=)`と`load_config_file(path, root=)`です。Git のソースを指す`--config`は、チェックアウトをルートとして渡します。ほかの呼び出し元はファイルだけを渡し、そのときのルートは設定ファイル自身のディレクトリです。
+  - target は、`run.secrets`、`evidence.redact`の各リスト、それらを含むブロックに`null`を書けません。読み込みはそのパスを示して失敗するので、target がチームのマスクを消すことはありません。
+  - 動作の変更です。設定の`evidence.redact.unmaskSecureFields`と`unmaskCredentialNames`が効くようになりました。以前の解決処理は両方を捨てていたので、マスクは常に有効でした。`defaults`に書いた値は、すべての target に届きます。
+  - serve は、run、record、crawl のリクエストの`backend`を target と照らし合わせ、合わなければ400を返します。振り分けが、そのような組をどのワーカーにも広げることはありません。`environment: appium`の run で、グリッドの target とローカルの target を混ぜたシナリオは、設計のとおり振り分けの時点で400になります。
+  - `--target`を省いた run は、最初のファイルが最初に宣言した target を主 target にします。`--tag`や`--exclude`でその target のシナリオがすべて外れたときは、残った最初のシナリオから主 target を選び直すようにしました。showcase の Android 向けデバイスグループのレーンは、この修正を必要とします。そのレーンのファイルは、iOS のシナリオを先に並べているからです。修正前は、使われない iOS の主 target も確保され、厳しくなった`--backend android`の検査が終了コード2で止めていました。検査そのものは変えていません。
+  - `deviceProvider`、`cloudBatch`、`cloudBatchBudget`、`requires`を取り除き、サーバー側の予算の仕組みも取り除きました。`run-set`はバッチの provider を指す`environment`を必須とし、`deviceBudget`を含むリクエストには400を返します。通常の run のリクエストは`environment: appium`を受け付けます。端末を操作するすべてのコマンドが`appium`の environment を持つ`--worker-config`を受け付け、`triage --rerun`はそれを引き継ぎます。`--udid`は URL を受け付けなくなりました。
+  - 未対応の検査です。`_select_actuator_or_exit`は、`runsOn`に条件を持つ target を`run`、`record`、`crawl`、`repl`、`audit`で拒否します。MCP の doctor ツールと`doctor`の画面の検査も拒否します。`--backend fake`はこの検査を飛ばし、通知を1回だけ出します。宣言されたフィールドは、作業単位9のために`Effective.conditions`が持ちます。
+  - `preconditions.setup`と`apply_setups`を取り除き、`preconditions.run.inheritSetup`を加えました。前置きは、作業単位2が挙げた8つのテストのファイルの外にはありませんでした。それらのテストは、代わりにコンポーネントの解決を確かめます。target の hook の`use:`は、新しい`expand_steps`で読み込み時に解決します。`hooks.cleanup`は引き続き`on: error`を受け付けます。
+  - 置き換えの Simulator は、記録した端末の種類とランタイムを保つか、run を失敗させます。`simctl.create_device`は、ランタイムを指定しない作成を再試行しなくなりました。設定の端末と最新の iPhone への代替も取り除きました。
+  - 設計の記述から外れた点が10個あり、それぞれをここに記録します。
+    - `worker.yaml`は、グリッドを`environment: appium`の隣の`appium:`ブロックに書きます。`environment`は現在スカラーの値だからです。このブロックは`endpoint`と`platform`を持ちます。
+    - serve のリクエストの`backend`は、1つのトークンに限ります。capture、enrich、doctor は、それをプロセスの中で確かめます。run、record、crawl は、起動したコマンドに確認を任せます。振り分けは確認済みの値を読むので、`backend: fake`のジョブは macOS のホストを要求しません。設定の`backend: [fake]`と同じ扱いです。
+    - `backends.py`のコスト順の選択と、`doctor`の actuator の解決の表示は残しました。backend のトークンが1つなので、どちらも常に固定の経路を通ります。そのため取り除いても動作は変わらず、後の整理に回します。
+    - `fake`プラットフォームの`app`は、`startWhen`と`idNamespaces`も受け付けます。fake のドライバは、準備完了の判定と`doctor`の採点で id の規約を読むからです。
+    - run の manifest に記録する準備完了のシグナルは`readyWhen`のまま残し、古い manifest も同じように読めるようにしました。
+    - doctor の設定の検査（`preflight.config_checks`）は、防御のための検査として残しました。スキーマがあるので、コマンドラインからはもう届きません。対処の案内は`app.id`と`app.url`を示します。
+    - 文書全体の見直しは作業単位13に残します。この作業単位では`docs/configuration.md`を書き直し、削除したキーを現行のものとして説明していたほかのページを更新しました。
+    - serve の設定の表示は、アップロードのバンドルのルートや束縛のディレクトリではなく、設定ファイル自身のディレクトリをスイートのルートにします。serve が起動する run は設定をローカルのファイルとして読むので、両者が同じ hook のコンポーネントを受け付けます。
+    - コンポーネントのファイルの中のパス参照は、ほかのコンポーネントと同じく、呼び出したシナリオのディレクトリを基準に解決します。そのため、コンポーネントに書き直した前置きは、自分のディレクトリを基準にできなくなります。作業単位2はテストの外に前置きを見つけなかったので、変わる設定はありません。
+    - `serve --backend`の意味は変えません。BE-0449 がすでに非推奨にしています。
+- [#2194](https://github.com/bajutsu-e2e/bajutsu/pull/2194)（単位 5）— シナリオのフェーズを、target の hook と同じ`setup`と`cleanup`という名前にしました。失敗の結末を表す語も、どこでも`failure`になりました。
+  - シナリオの`before`と`after`は、`setup`と`cleanup`になりました。cleanup の規則の`on`と、`capturePolicy`のトリガーの`result`は、`error`の代わりに`failure`を受け付けます。「範囲外」に書いたとおり、ローダーは古い名前を読みません。`before`や`after`を書いたシナリオと、`error`を書いた規則やトリガーは、読み込みの時点で失敗します。そのメッセージは新しい名前を示します。
+  - コードの名前も揃えました。`AfterRule`は`CleanupRule`になり、`RunDefaults`は`setup`と`cleanup`を持ちます。showcase の固定データは`demos/showcase/scenarios/setup_cleanup.yaml`へ移しました。
+  - レポートは、2つのフェーズを`setup`と`cleanup`と表示します。対象は、HTML のブロックとその`data-phase`、失敗の接頭辞（`setup: …`と`cleanup: …`）、JUnit の本文です。hook のステップの証跡のディレクトリも同じ接頭辞を使い、`codegen`は`// setup`の区切りを出力します。
+  - `RunResult.after_verdict`は、`error`の代わりに`failure`を保存します。`report/load.py`は、古い manifest の`error`を`failure`として読みます。名前を変える前の run を固定データとして加え、この読み方をテストで確かめます。
+  - 設計の記述から外れた点が3つあります。
+    - 保存するキーの`before_outcomes`、`after_outcomes`、`after_verdict`は、名前を変えていません。設計が名前を変えるのは保存する値だけです。キーを保つので、古い版の読み手も manifest を解析できます。その場合のオフラインの再描画は、run が書き出したレポートへフォールバックします。
+    - `report/load.py`は、`before`、`after`、`error`を使う保存済みの`scenario.yaml`も書き換えて読みます。シナリオのモデルがこれらの名前を拒否するようになったので、書き換えなしでは manifest が読めても以前の run を読み込めないからです。
+    - CTRF の記録の`extra`は、フェーズを`setup`と`cleanup`という名前で持ちます。`extra.before`や`extra.after`を読んでいた CTRF の利用側は、新しいキーへ移る必要があります。
+  - この作業単位では、これらの名前を説明しているページを更新しました。文書全体の見直しは作業単位13に残します。
+- [#2195](https://github.com/bajutsu-e2e/bajutsu/pull/2195)（単位 6〜7）— コマンドラインのフラグが組み直したフィールドを読むようになりました。シナリオの`preconditions`は、target と同じグループ名を使います。
+  - 作業単位6：`--browser`の値と`--browsers`の各要素は、`runsOn.browser.engine`のモデルで読みます（`parse_engine_flag`）。`--browser`と`--browsers`のマトリックスはこのフィールドを置き換えるので、リストで書いたエンジンは条件として数えなくなります。`run`、`record`、`crawl`、`repl`のヘルプは、各フラグが上書きするフィールドを示します。`triage --rerun`と MCP の run の docstring も同じです。フラグは引き続き、名前を変えていない`Effective`を通して働きます。
+  - 動作の変更があります。`record`と`crawl`は、`--system-alert-handling`の既定値に target の`run.systemAlertHandling`を使います。そのため、target が`false`と書けば、そこでもガードは止まります。`record`、`crawl`、`repl`の`--erase`は独自の既定値のままで、ヘルプには`run.erase`が効かないと書きました。
+  - 作業単位7：`preconditions`は`app`、`runsOn`、`run`を持ちます。トップレベルの`systemAlertHandling`と`iosTipKitHandling`は、`run.systemAlertHandling`と`run.tipKitHandling`へ移しました。平坦なキーとこの2つのフィールドは、読み込みの時点で失敗し、メッセージが移動先を示します。シナリオの`app.reinstall`は、既定で未設定です。
+  - 動作の変更があります。クラッシュ後の再試行の回復処理は、重ね合わせたあとの`reinstall`を読みます。そのため、target が`app.reinstall: overwrite`と書くと、その target のシナリオでは再試行時の強制 erase が止まります。強制 erase に続くデバイスの差し替えも同じく止まります。シナリオが自身で`reinstall: clean`と書けば、どちらも残ります。target のフィールドはシナリオが書かないときに使う値で、`overwrite`はアプリのデータをリースをまたいで残すという宣言だからです。
+  - target は`app.reinstall`、`app.launch.deeplink`（iOS と Android）、`runsOn.seedPhotos`（iOS）を持つようになりました。これらは`Effective.reinstall`、`.deeplink`、`.seed_photos`に解決します。投入する写真のパスは config ファイルを基準に解決します。
+  - `resolve_preconditions`は、1つの target にシナリオを重ねて`ResolvedPreconditions`を作ります。プラットフォームの environment は、シナリオのモデルの代わりにこれを読みます。`record`、`crawl`、`repl`は、target と自身の`--erase`から作ります。
+  - `run`と`audit`は、選んだ各シナリオを、そのシナリオが動かす target と照合します。照合はデバイスを操作する前で、run の既定値を埋める前です。動かすどのプラットフォームにもない`app`のフィールドや、iOS 専用の`run`のフィールドは失敗します。形の誤った`runsOn`のブロックと、実効の`run.erase`を伴わない`seedPhotos`も失敗します。シナリオの`runsOn`に書いた条件は、作業単位4と同じ「not yet supported」で拒否します。`--backend fake`は通知を1回出してこの拒否を飛ばします。
+  - `load_stored_scenario_file`は、保存されたプランの平坦なキーを組み直します。トップレベルの run のフィールドも移すので、以前の run も読み込めます。新しいグループを読むようになった処理は4つあります。Device Farm の`launchEnv`の衝突検査、`analysis/impact`の deeplink の読み取り、コード生成、レポートの preconditions の表です。`demos/`のシナリオとテストの固定データは、すべて移しました。
+  - 設計の記述から外れた点が5つあります。
+    - シナリオのモデルは、`runsOn`の各ブロックを書かれたとおりに保持します。import の契約により、シナリオのスキーマは config を参照できません。そのため、形の誤ったブロックは、読み込みの時点ではなく、`run`、`audit`、`bajutsu lint`（serve のエディタの lint を含む）で失敗します。
+    - `Effective`に`declared_platform`と`schema_platform`プロパティを加えました。`fake`の target は iOS の形の sub-config に解決するので、`platform`では照合に使うモデルを選べないからです。
+    - `ResolvedPreconditions`は、シナリオの起動環境と起動引数を target のものと分けて持ちます。マージと追記は従来どおり environment が行うので、起動の経路は変わっていません。
+    - `_filter_scenarios`は、`run.tipKitHandling`が有効になるときか、フラグが指定したときだけ値を設定します。そのため、iOS の target を動かさないシナリオの保存済みプランに、iOS 専用のフィールドが加わることはありません。
+    - 作業単位6は`--scenarios`フラグを変えていません。`run`が受け取るのは`--scenario`のファイルで、`--scenarios`を持つのは`serve`だけです。`serve`の`--scenarios`は target のフィールドを指しません。また、`crawl`は`--browser`を持ちません。
+  - 投入する写真が無視されないよう、拒否を2つ加えました。複数のターゲットを動かすシナリオで、プライマリ以外のターゲットが重ね合わせたあとの`seedPhotos`を持つと失敗します。run が`run.erase`を決めて写真を投入するのは、プライマリだけだからです。`record`、`crawl`、`repl`は、写真を投入するターゲットに対する`--no-erase`を終了コード2で拒否します。`fake`の target は、平坦な`locale`のときと同じく、シナリオの iOS のロケールを読みます。
+  - この作業単位では、これらの名前を説明しているページを更新しました。文書全体の見直しは作業単位13に残します。
+- [#2196](https://github.com/bajutsu-e2e/bajutsu/pull/2196)（単位 8〜9）— run は利用できるすべてのデバイスを読み、条件から自分の run を作るようになりました。「not yet supported」の拒否は、`doctor`を除くすべてのコマンドから外れました。
+  - 作業単位8：`bajutsu/common/devices/facts.py`は、simctl と adb の層を通して各デバイスを読みます。iOS では、`simctl list devicetypes`のデバイスタイプ名とランタイムのバージョンを読みます。デバイス自身の名前は自由に付けられるので、比較には使いません。Android では`ro.build.version.sdk`と、エミュレータなら AVD 名を読みます。web では、ヘッドレスの Playwright を短く起動してバージョンを読みます。読めないデバイスがあると、run は終了コード2で失敗します。
+  - AVD 名は、`ro.boot.qemu.avd_name`、`ro.kernel.qemu.avd_name`、`adb emu avd name`の順に読みます。どれも返さないエミュレータは失敗します。テストは偽の adb の出力だけを使います。対応する各 API レベルの実機のエミュレータでの読み取りはまだ確かめていないので、この点は未解決のまま残します。
+  - `appium`のグリッドが受け持つターゲットと物理の iPhone は、実効的な条件があれば失敗します。検査はターゲットごとに、デバイスを操作する前に行います。Device Farm のプロバイダは、ターゲットかシナリオが条件を宣言したジョブを、何もアップロードする前に拒否します。
+  - 作業単位9：`bajutsu/common/devices/runs.py`は、ターゲットの run を作って組み合わせ、各 run の適格な集合を選びます。`bajutsu/run/device_matrix.py`は、各シナリオのブロックをターゲットに重ね、プールごとに1回だけデバイスを読みます。そのうえで、同じデバイスを使う run をセルにまとめます。どのシナリオも条件のもとで動かないときは、`run`は従来の経路を通ります。
+  - 各 run の結果は`coordinates`と`run_coordinates`を持ちます。JUnit と CTRF のテスト名には座標を付けます。スキーマのバージョン14のマニフェストは、対象外の記録を`notApplicable`に並べます。すべての記録が対象外になった呼び出しは、終了コード1で終わり、`no run executed`を出します。判定の行の直前の行が、成功、失敗、対象外の件数を示します。
+  - ホストする runs の表に`run_coordinates`の列を加えました（マイグレーション`0024`）。フレーキネスの履歴は、OS に加えてターゲットと座標で呼び出しを分けます。
+  - `record`、`crawl`、`repl`は、最初の run のデバイスを使います。`audit --repeat`は`run`と同じように run を作ります。MCP の run は`bajutsu run`そのものです。MCP の doctor ツールと`doctor`の画面のプローブは、作業単位11まで拒否を続けます。
+  - 設計の記述から外れた点が7つあります。
+    - セルは1つずつ順に実行します。各セルは、適格な集合に絞ったプールで動きます。`--workers`は、セルの run を同一のデバイスに振り分けます。
+    - 1つのプールに属する参加者どうしは、デバイスを共有しません。条件を持つ集合が、宣言の順でデバイスを先に確保します。同じプールの条件を持たないターゲットは、残ったデバイスを使います。
+    - 既存の履歴は、最初からにはせず引き継ぎます。値が null の行と、スキーマのバージョンが14より古いマニフェストは、空のキーとして読みます。この作業単位より前の run は条件を持てなかったからです。そのため、条件を持たないシナリオの履歴は、更新の前後で1つのままです。
+    - 呼び出しのホスト側の行は、すべての結果に共通する座標を持ちます。複数の座標で動いた結果を含む行は、専用のキー`*`を持ちます。そのため、条件を持たない履歴と混ざることはありません。run ごとの履歴には run ごとの行が必要で、作業単位10で加えられます。
+    - シナリオに書いた単一の`browser.engine`は、そのシナリオの run についてターゲットのエンジンを置き換えます。`--browsers`は、`browser.version`に限らず、条件が残っていれば終了コード2で終わります。
+    - 条件が複数の run を作るとき、`--step`は終了コード2で終わります。
+    - `audit --repeat`は、実行できる run をすべて報告してから、デバイスのなかった run があれば終了コード1で終わります。
+  - この作業単位では、これらの動作を説明しているページを更新しました。文書全体の見直しは作業単位13に残します。
+- [#2200](https://github.com/bajutsu-e2e/bajutsu/pull/2200)（単位 10〜12）— すべての報告の出力が、run の行列表と対象外の記録を示すようになりました。`doctor`は各シナリオの run を列挙し、`bajutsu config schema`は config の JSON Schema を出力します。
+  - 作業単位10：スキーマのバージョン15のマニフェストは`runMatrix`を持ちます。このグリッドのセルは、シナリオと座標をキーに持ちます。各セルには run か対象外の記録が入ります。HTML のレポートはグリッドを描画し、ヘッダーで記録の件数を示し、各記録の理由を別に並べます。各シナリオのカードには座標を添えます。
+  - JUnit は対象外の記録を`<skipped>`のケースとして、CTRF は`skipped`のテストとして並べます。CTRF は run の座標を`extra.coordinates`に持ちます。Webhook の通知は記録の件数を示し、失敗した run の座標を添えます。serve の run 履歴は件数を`N n/a`と表示します。
+  - どの条件も作らなかった run では、すべての出力の形が変わりません。テストがその場合の各出力を固定します。
+  - 作業単位11：条件があるとき、`doctor`は`runs:`のセクションを出力します。`run`と同じように`--udid`のプールを読んで同じ run を作り、各 run の適格なデバイスを示します。失敗する run と対象外の記録には、理由を示します。
+  - 読めるプールがないとき、`doctor`は宣言された run だけを並べます。このとき片側が開いた範囲は「one run per available major version」と表示します。グリッドのターゲット、物理デバイス、読めないプールが、この経路を通ります。
+  - `doctor`の画面のプローブと MCP の doctor ツールは、ターゲットの最初の run のデバイス（`record`が使うデバイス）を採点します。最後に残っていた「not yet supported」の拒否はなくなりました。
+  - 作業単位12：`bajutsu config schema`は、config のモデルとレジストリから生成した JSON Schema を出力します。各ターゲットは、`platform`をキーにした`oneOf`です。`defaults.platforms`は各 platform のグループを並べ、そのフィールドはすべて省略できます。`bajutsu schema`の出力でも、シナリオの`preconditions.runsOn`が platform ごとの形を持ちます。各 platform のフィールドはレジストリから取ります。
+  - `exists`のアサーションは、両方のスキーマで、ファイルに書くとおりのセレクタを並べる形を示すようになりました。モデルはセレクタを`sel`に格納しますが、ファイルに`sel`を書くことはありません。
+  - テストが両方のスキーマをモデルに固定し、リポジトリにあるすべての config をスキーマで検証します。
+  - 設計の記述から外れた点が2つあります。
+    - `runs:`のセクションは情報の表示です。失敗するはずの run があっても、`doctor`の終了コードは変わりません。
+    - ホストする runs の表は、呼び出しごとに1行のままです。作業単位9の記録は run ごとの行をこの作業単位に残しましたが、設計はそれを求めていません。そのため行は作業単位9の形のままです。
+  - この変更では、`docs/cli.md`と`docs/reporting.md`を両言語で更新しました。文書全体の見直しは作業単位13に残します。
+- [#2201](https://github.com/bajutsu-e2e/bajutsu/pull/2201)（単位 13）— 文書全体を見直しました。作業単位13が挙げるすべてのページが、両言語でコードと一致します。この作業単位で、この項目は完了しました。
+  - 古いキーとシナリオのフィールドは、作業単位4〜12が、それぞれ触れたページですでに書き換えていました。この作業単位では、挙げられた各ページを「旧キーの移行先」のキーで調べました。各ページの config とシナリオの例は、ローダで読み込んで確かめました。読み込めなかった例は2つあり、どちらも直しました。`docs/scenarios.md`の`interrupts`のターゲットには、`platform`と`app.id`が欠けていました。`docs/ios-device-cloud.md`の物理デバイスのターゲットには、`app.id`が欠けていました。
+  - 作業単位8〜12が加えた動作を、各ページが説明するようになりました。
+    - `docs/configuration.md`：run の行列の例、対象外の記録を並べる出力、`doctor`の`runs:`のセクション、`bajutsu config schema`を加えました。
+    - `docs/scenarios.md`：シナリオ自身のデバイスの条件を加えました。
+    - `docs/run-loop.md`：`device_matrix.py`がセルを計画する流れと、`RunResult`の新しいフィールドを説明します。
+    - `docs/cli.md`：終了コードに対象外の場合を、フレーキネスのキーに座標を加えました。
+    - `docs/recording.md`：`record`が使うデバイスを説明します。
+    - `docs/codegen.md`：生成したテストが条件を持たないことを説明します。
+    - `docs/devicefarm.md`：Device Farm のジョブが条件を拒否することを説明します。
+    - `docs/web-ui.md`：`N n/a`の件数を説明します。
+    - `docs/drivers.md`：`--backend fake`のときの通知を説明します。
+    - `docs/glossary.md`：`device`の項目で照合を説明します。
+    - `docs/architecture.md`：`config`コマンドと、`preconditions`と`json_schema`のモジュールを挙げます。
+    - `DESIGN.md`の§3.3：run の行列とその決定性を述べます。`README.md`と`README.ja.md`はデバイスの条件を挙げます。
+  - 作業単位4と9が残した記述のうち、2つが古くなっていました。`doctor`の画面のプローブは、作業単位11の変更により、もう条件を拒否しません。用語集も、条件を照合しないとは書かなくなりました。
+  - 1つの例は、説明のための例のまま残しました。`DESIGN.md`の§8の config は、フックのコンポーネント`./scenarios/showcase/_setup.yaml`を指しますが、リポジトリにそのファイルはありません。そのため、この例はそのファイルを置いたときにだけ読み込めます。
 
 ## 参考
 

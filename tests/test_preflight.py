@@ -19,7 +19,7 @@ def test_config_checks_ios_requires_bundle_id() -> None:
 
     missing = preflight.config_checks("xcuitest", target="demo", bundle_id="", base_url=None)
     assert not preflight.passed(missing)
-    assert "set targets.demo.bundleId" in missing[0].detail
+    assert "set targets.demo.subject.id" in missing[0].detail
 
 
 def test_config_checks_web_requires_base_url() -> None:
@@ -30,7 +30,7 @@ def test_config_checks_web_requires_base_url() -> None:
 
     missing = preflight.config_checks("playwright", target="site", bundle_id="", base_url=None)
     assert not preflight.passed(missing)
-    assert "set targets.site.baseUrl" in missing[0].detail
+    assert "set targets.site.subject.url" in missing[0].detail
 
 
 def test_config_checks_fake_needs_nothing() -> None:
@@ -92,6 +92,16 @@ def test_web_missing_browser_fails_with_hint() -> None:
     assert not browser.ok and "playwright install firefox" in browser.detail
 
 
+def test_a_missing_channel_browser_asks_for_the_host_install() -> None:
+    # BE-0468: Edge is the host's own browser, so the hint never renders a `playwright install`.
+    checks = preflight.runnability(
+        "playwright", web_engine="edge", web_pkg=lambda: True, web_browser=lambda _e: False
+    )
+    browser = next(c for c in checks if c.name == "edge browser")
+    assert "install Microsoft Edge on this host" in browser.detail
+    assert "playwright install" not in browser.detail
+
+
 # --- iOS (xcuitest) — the sole iOS backend since BE-0290 ---
 
 
@@ -134,7 +144,7 @@ def test_config_checks_adb_requires_package() -> None:
     assert preflight.passed(ok)
     missing = preflight.config_checks("adb", target="app", bundle_id="", base_url=None, package="")
     assert not preflight.passed(missing)
-    assert "targets.app.package" in missing[0].detail
+    assert "targets.app.subject.id" in missing[0].detail
 
 
 def test_adb_needs_platform_tools_and_a_device() -> None:

@@ -3,10 +3,10 @@
 Covers the `Step`-level validator (target required unconditionally; capture/extract/name/from_
 forbidden; a direct child must omit target, which also rejects a nested group; refused inside
 `web:`/`app:`) and `_expand_target_groups` — that a group-authored scenario produces the same
-flat, stamped step list a hand-written one would, on every step list it walks (`steps`, `before`,
-`after`, `interrupts`), through `if`/`forEach`/`web`/`app` nesting, and that the expansion survives
-`expand_components`, `apply_setups`, and config hook-folding the same way `_check_target_requirements`
-already does (see `test_target_routing.py`, `test_components.py`, `tests/orchestrator/test_before_after.py`).
+flat, stamped step list a hand-written one would, on every step list it walks (`steps`, `setup`,
+`cleanup`, `interrupts`), through `if`/`forEach`/`web`/`app` nesting, and that the expansion survives
+`expand_components` and config hook-folding the same way `_check_target_requirements`
+already does (see `test_target_routing.py`, `test_components.py`, `tests/orchestrator/test_setup_cleanup.py`).
 """
 
 from __future__ import annotations
@@ -17,7 +17,6 @@ from pydantic import ValidationError
 from bajutsu.common.config import load_config, resolve
 from bajutsu.common.runner.pipeline import with_lifecycle_phases
 from bajutsu.common.scenario import Component, Scenario, expand_components, load_scenarios
-from bajutsu.common.scenario.expand import apply_setups
 from bajutsu.common.scenario.models import Step
 
 
@@ -263,9 +262,9 @@ def test_before_and_after_and_interrupts_are_expanded_the_same_way() -> None:
         {
             "name": "s",
             "targets": ["app"],
-            "before": [_group("app", [{"tap": {"id": "b"}}])],
+            "setup": [_group("app", [{"tap": {"id": "b"}}])],
             "steps": [{"target": "app", "tap": {"id": "s"}}],
-            "after": [{"on": "always", "steps": [_group("app", [{"tap": {"id": "a"}}])]}],
+            "cleanup": [{"on": "always", "steps": [_group("app", [{"tap": {"id": "a"}}])]}],
             "interrupts": [
                 {
                     "condition": {"exists": {"id": "popup"}},
@@ -274,12 +273,12 @@ def test_before_and_after_and_interrupts_are_expanded_the_same_way() -> None:
             ],
         }
     )
-    assert s.before[0].target == "app"
-    assert s.before[0].tap is not None and s.before[0].tap.id == "b"
-    assert s.after[0].steps[0].target == "app"
-    assert s.after[0].steps[0].tap is not None and s.after[0].steps[0].tap.id == "a"
-    assert s.interrupts[0].steps[0].target == "app"
-    assert s.interrupts[0].steps[0].tap is not None and s.interrupts[0].steps[0].tap.id == "i"
+    assert s.setup[0].target == "app"
+    assert s.setup[0].tap is not None and s.setup[0].tap.id == "b"
+    assert s.cleanup[0].steps[0].target == "app"
+    assert s.cleanup[0].steps[0].tap is not None and s.cleanup[0].steps[0].tap.id == "a"
+    assert s.screens[0].steps[0].target == "app"
+    assert s.screens[0].steps[0].tap is not None and s.screens[0].steps[0].tap.id == "i"
 
 
 def test_if_as_a_direct_child_inherits_the_groups_target() -> None:
@@ -440,7 +439,7 @@ def test_group_nested_inside_for_each_body_is_its_own_fresh_scope() -> None:
     assert fe_step.for_each is not None and fe_step.for_each.steps[0].target == "web"
 
 
-# --- re-expansion survives expand_components / apply_setups / hook-folding --------------------
+# --- re-expansion survives expand_components / hook-folding --------------------
 
 
 LOGIN_GROUP = Component(
@@ -478,43 +477,27 @@ def test_expand_components_expands_a_group_the_component_carries() -> None:
     ]
 
 
-def test_apply_setups_expands_a_group_the_prelude_carries() -> None:
-    scns = load_scenarios(
-        """
-- name: s
-  targets: [app, web]
-  preconditions: { setup: login }
-  steps:
-    - target: app
-      tap: { id: own }
-"""
-    )
-    prelude = [Step.model_validate(_group("web", [{"tap": {"id": "setup1"}}]))]
-    apply_setups(scns, None, lambda ref: prelude)
-    assert [(st.target, _tap_id(st)) for st in scns[0].steps] == [
-        ("web", "setup1"),
-        ("app", "own"),
-    ]
-
-
-_GROUPED_HOOK_CONFIG = """
-targets:
-  app:
-    bundleId: com.example.app
-    before:
-      - target: app
-        steps:
-          - tap: { id: a1 }
-          - tap: { id: a2 }
-    after:
-      - on: always
-        steps:
-          - target: app
-            steps:
-              - tap: { id: a3 }
-  web:
-    baseUrl: http://localhost:1/
-"""
+_GROUPED_HOOK_CONFIG = (
+    "targets:\n"
+    "  app:\n"
+    "    platform: ios\n"
+    "    subject: {id: com.example.app}\n"
+    "    hooks:\n"
+    "      setup:\n"
+    "      - target: app\n"
+    "        steps:\n"
+    "        - tap: {id: a1}\n"
+    "        - tap: {id: a2}\n"
+    "      cleanup:\n"
+    "      - 'on': always\n"
+    "        steps:\n"
+    "        - target: app\n"
+    "          steps:\n"
+    "          - tap: {id: a3}\n"
+    "  web:\n"
+    "    platform: web\n"
+    "    subject: {url: 'http://localhost:1/'}\n"
+)
 
 
 def test_hook_folding_expands_a_group_a_config_level_hook_carries() -> None:
@@ -528,6 +511,6 @@ def test_hook_folding_expands_a_group_a_config_level_hook_carries() -> None:
         }
     )
     merged = with_lifecycle_phases(effs["app"], [scenario], effs)[0]
-    assert [(s.target, _tap_id(s)) for s in merged.before] == [("app", "a1"), ("app", "a2")]
-    after_steps = merged.after[0].steps
+    assert [(s.target, _tap_id(s)) for s in merged.setup] == [("app", "a1"), ("app", "a2")]
+    after_steps = merged.cleanup[0].steps
     assert [(s.target, _tap_id(s)) for s in after_steps] == [("app", "a3")]

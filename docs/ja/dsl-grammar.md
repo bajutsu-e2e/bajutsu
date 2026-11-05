@@ -48,8 +48,8 @@ graph LR
   SC -->|mocks| MK["Mock"]
   SC -->|redact| RD["Redact"]
   SC -->|interrupts| IR["Interrupt"]
-  SC -->|before| ST
-  SC -->|after| AR["AfterRule"]
+  SC -->|setup| ST
+  SC -->|cleanup| AR["CleanupRule"]
   AR -->|steps| ST
 
   ST -->|"tap·doubleTap·longPress·<br/>type·swipe·pinch·rotate·<br/>select·clear·delete·<br/>selectOption·setPickerValue·<br/>drag·scroll·handleSystemAlert"| SEL["Selector"]
@@ -119,19 +119,17 @@ Scenario ::= {
   installs?:       list(string),            # 既定 []  — プライマリと並んで開始時にインストールして起動するデバイスグループのメンバー（BE-0447）。2つ以上のメンバーを持つグループのそれ以外のメンバーは後から入るメンバーで、`installApp` と `foreground` が立ち上げる（§4）
   data?:           list(map(string,string)),# インライン行  ┐ XOR
   dataFile?:       string,                  # CSV パス      ┘ （§6.3）
-  preconditions?:  <Preconditions>,         # 既定 {}
-  before?:         list(<Step>),            # 既定 []  — steps の前に独立したフェーズとして走るセットアップ（BE-0392）。target config 自身のものの後に連結される
+  preconditions?:  <Preconditions>,         # 既定 {}  — ターゲットの `subject` / `run` をシナリオごとに上書き（BE-0452、BE-0470）し、デバイスの状態を持つ（BE-0469）
+  setup?:          list(<Step>),            # 既定 []  — steps の前に独立したフェーズとして走るセットアップ（BE-0392）。宣言した各ターゲットの `hooks.setup` の後に連結される
   steps:           list(<Step>),            # 必須
   expect?:         list(<Assertion>),       # 既定 []  — 最終チェック
-  after?:          list(<AfterRule>),       # 既定 []  — 判定が出たあとに走るティアダウンのルール（BE-0392）。target config 自身のものはこの後に続く
+  cleanup?:        list(<CleanupRule>),     # 既定 []  — 判定が出たあとに走るティアダウンのルール（BE-0392）。宣言した各ターゲットの `hooks.cleanup` はこの後に続く
   capturePolicy?:  list(<CaptureRule>),     # 既定 []
   network?:        <Network>,
   mocks?:          list(<Mock>),            # 既定 []
   redact?:         <Redact>,
-  systemAlertHandling?: <SystemAlertHandling>,  # アラートガード; 未指定で ON
-  iosTipKitHandling?: <bool>,                   # ブロックしている TipKit の tip を閉じる; 未指定で OFF（iOS のみ）
   permissions?:    <Permissions>,           # 起動前の OS 権限状態; 既定 {}
-  interrupts?:     list(<Interrupt>),       # 既定 []  — 予測できないタイミングで現れる中断画面のハンドラ（BE-0314）。target config 自身のものの後に追加される
+  interrupts?:     list(<InterruptEntry>),  # 既定 []  — 予測できないタイミングで現れたものを run が自分で片付ける宣言（BE-0314、BE-0473）。ターゲットの `hooks.interrupts` に重ねる
 }
 
 Component ::= { params?: list(string), steps: list(<Step>) }
@@ -142,33 +140,63 @@ Component ::= { params?: list(string), steps: list(<Step>) }
 # 監視する宣言済みターゲットを指定します。省略するとプライマリターゲットを監視します（BE-0438）。
 Interrupt ::= { condition: <Assertion>, steps: list(<Step>), target?: string }
 
+# 1 つの `interrupts` リストは 3 つの形を持ち、エントリが書くキーで区別します（BE-0473）。アプリ自身の
+# ツリーにある画面、システムアラートガードが答える OS のプロンプト、Apple の TipKit の popover です。
+# 2 つの形のキーを混ぜたエントリはロード時に失敗します。ターゲットの `hooks.interrupts` も同じ形を取ります。
+# 画面のエントリは、ターゲットのものを先にして連結します。残る 2 つの形の重ね方は、後述の
+# SystemAlertInterrupt と TipKitInterrupt に書きます。
+InterruptEntry ::= <Interrupt> | <SystemAlertInterrupt> | <TipKitInterrupt>
+
 # ティアダウンのルール 1 件です（BE-0392）。答える結末と、その結末のときに走らせるステップを組にします。
 # 結末はシナリオ自身のマシンチェックされた判定であり、モデル呼び出しではありません。
-AfterRule ::= { on: "always" | "success" | "error", steps: list(<Step>) }
+CleanupRule ::= { on: "always" | "success" | "failure", steps: list(<Step>) }
 
 # ── Preconditions ──────────────────────────────────────────────────────
+# `subject` はターゲットと同じグループ名を使います（BE-0452、BE-0470）。各フィールドは、シナリオが動かす各ターゲットの
+# 同じフィールドを上書きします。`subject.launch.env` はキーごとにマージし、`subject.launch.args` は追記します。
+# 動かすどのターゲットのプラットフォームにもないフィールドは、デバイスを操作する前に run を失敗させます。
+# 以前の `preconditions.run` はロード時に失敗し、各フィールドの移動先を示します（BE-0473）。シナリオは
+# デバイスの条件を宣言しません。`runsOn` はターゲットだけが持ちます（BE-0469）。
 Preconditions ::= {
-  erase?:      boolean,                     # 未設定は target config の erase を継承し、それもなければオフ（BE-0177）。先頭で simctl erase
-  reinstall?:  ("clean" | "overwrite"),     # 既定 "clean" — config が appPath 指定時の再インストール
-  launchArgs?: list(string),                # 既定 []
-  launchEnv?:  map(string,string),          # 既定 {}    — SIMCTL_CHILD_* として注入
-  deeplink?:   string,
-  locale?:     string,
-  setup?:      string,                      # 再利用プレリュードファイル（§6.4）
+  subject?: {
+    reinstall?: ("overwrite" | "clean" | "erase"),  # 弱い順。未設定はターゲットの `subject.reinstall`、なければ "clean"。iOS と Android、web は "erase" のみ（BE-0473）
+    launch?: {
+      env?:      map(string,string),        # 既定 {} — ターゲットの `subject.launch.env` にマージ
+      args?:     list(string),              # 既定 [] — ターゲットの引数の後ろに追記。iOS のみ
+      deeplink?: string,                    # 未設定はターゲットの `subject.launch.deeplink`。iOS と Android
+    },
+  },
+  device?: { ios?: <IosDevice> },           # 宛先がキー。動かさないプラットフォームのブロックは効果なし
+  inheritSetup?: boolean,                   # 既定 true — false で、宣言した全ターゲットの `hooks.setup` を省く。cleanup は走る
 }
 
-# ── SystemAlertHandling（リアクティブなシステムアラートガード; 既定 ON）─
-# XCUITest ではネイティブの SpringBoard 照会 + tap（モデルなし、BE-0316 を再利用。BE-0315）に加え、
-# その照会に映らないプロンプト向けのツリー内タップ。どの規則も同定しないアラートは、
-# 推測せずブロックされたステップの失敗理由に書き出す（BE-0402、BE-0406）。
-SystemAlertHandling ::= boolean                              # true=規則なしで ON、false=OFF
-               | { rules?: [<SystemAlertRule>],             # ガードの宣言のすべて（BE-0406）
-                   visionInstruction?: string,              # 自由記述。どのコマンドにも届かない。run は拒否する
-                   pollInterval?: number,                    # ネイティブのポーリング間隔・秒（既定 1）
-                   frozenScreenTimeout?: number }            # 止まった画面での打ち切り・秒（既定 10、0 で無効）
-SystemAlertRule ::= { prompt: notifications|tracking|paste|savePassword, choice: grant|deny }  # 1リストにつきプロンプトは一意
+# シナリオが適用する iOS のデバイスの状態です。各フィールドは、ターゲットの `runsOn.ios` の同名の値を
+# 置き換えます。`seedPhotos` のパスはシナリオファイルを基準に解決します。重ね合わせたあとのリストが
+# 空でなければ、実効の `subject.reinstall: erase` が必要です。
+IosDevice ::= { locale?: string, seedPhotos?: list(string) }
+
+# ── SystemAlertInterrupt（リアクティブなシステムアラートガードの答え）─
+# ガードは `run --no-system-alert-handling` を付けない限り ON です。シナリオやターゲットがガード全体を
+# OFF にする手段はありません。XCUITest ではネイティブの SpringBoard 照会 + tap（モデルなし、BE-0316 を
+# 再利用。BE-0315）で答え、その照会に映らないプロンプトにはツリー内でタップします。どのエントリも名指し
+# しないアラートは、推測せずブロックされたステップの失敗理由に書き出します（BE-0402、BE-0406）。
+# プロンプトごとに、シナリオのエントリがターゲットの `choice` を置き換え、省略した `frozenScreenTimeout`
+# はターゲットから受け継ぎます。それ以外のプロンプトは両方のリストから適用します。
+# 1 つのリストに同じプロンプトは 1 回だけ書けます（BE-0473）。
+SystemAlertInterrupt ::= {
+  systemAlert: notifications|tracking|paste|savePassword|localNetwork,
+  choice: grant|deny|leave,             # leave は何も答えない。シナリオ自身の handleSystemAlert ステップが処理する場合など
+  pollInterval?: number,                # ネイティブのポーリング間隔・秒（既定 1）。シナリオ › --alert-poll-interval › ターゲット、同じ層では最小値
+  frozenScreenTimeout?: number,         # 止まった画面での打ち切り・秒（既定 10、0 で無効）。アプリ自身のツリーに出るプロンプト（savePassword）のみ
+}
                 # savePassword はガード専用。iOS がプロセス内に出すため、ツリー内タップだけが答えられる。
                 # 後述の handleSystemAlert ステップはこれを拒否する（BE-0406）
+
+# ── TipKitInterrupt（Apple の TipKit の popover。iOS のみ）─────────────
+# エントリが求めない限り OFF です。tip 自体がアサーションの対象になる場合があるためです。シナリオの
+# エントリがターゲットのエントリに優先します。`run --ios-tipkit-handling` / `--no-ios-tipkit-handling`
+# は、すべてのシナリオのエントリを dismiss / leave に設定します。1 つのリストに 1 件までです（BE-0473）。
+TipKitInterrupt ::= { tipKit: dismiss|leave }
 
 Permissions ::= map(PermissionService, PermissionAction)    # アプリの起動前に適用する
 PermissionService ::= "location" | "camera" | "microphone" | "contacts"
@@ -197,6 +225,7 @@ Action    ::=
   | { select:      { into: <Selector>, mode?: "all" } }    # フィールドをフォーカスして内容を選択（mode 既定 "all"。web コンテキストは非対応。codegen は XCUITest の同等コードを出力）
   | { copy:        {} }                                    # 選択中の内容をクリップボードにコピー（事前に select が必要。web コンテキストは非対応）
   | { selectOption:{ sel: <Selector>, option: string } }   # web の <select> をこの value を持つ option に設定（web 専用。iOS/Android は非対応）
+  | { navigate:    string }                                # baseUrl を基準に解決した URL を開く。http/https のみ（web 専用。BE-0464）
   | { setPickerValue:{ sel: <Selector>, value: string } }  # ホイール型のピッカーをこの value を持つ行へ動かす（iOS 専用。sel は 1 つのホイールを指す）
   | { swipe:       <Swipe> }                          # 方向指定形式はスクロール。座標形式は素のドラッグ
   | { drag:        <Drag> }                           # 掴んだ要素（ハンドル / 仕切り / スライダー）をポインタドラッグする。スクロールではない
@@ -205,7 +234,7 @@ Action    ::=
   | { pinch:       { sel: <Selector>, scale: number } }    # scale > 0  （>1 拡大, <1 縮小）
   | { rotate:      { sel: <Selector>, radians: number } }  # >0 時計回り
   | { handleSystemAlert: { sel: <Selector>, timeout: number } }  # iOS SpringBoard の権限プロンプトを tap（iOS/XCUITest 専用）。sel は label/labelMatches/index のみ
-  | { handleSystemAlert: { prompt: notifications|tracking|paste, choice: grant|deny, timeout: number } }  # 同じステップ。label は run の locale から解決し、対応表にない言語ではボタンの位置で解決する（BE-0320、BE-0445）。savePassword はここでは名指しできない（BE-0406）
+  | { handleSystemAlert: { prompt: notifications|tracking|paste|localNetwork, choice: grant|deny, timeout: number } }  # 同じステップ。label は run の locale から解決し、対応表にない言語ではボタンの位置で解決する（BE-0320、BE-0445）。savePassword はここでは名指しできない（BE-0406）
   | { wait:        <Wait> }
   | { sleep:       { seconds: number, reason: string } }  # 固定の待機: 0 < seconds <= 30、reason は空白不可。条件待機の唯一の例外
   | { assert:      list(<Assertion>) }
@@ -213,9 +242,10 @@ Action    ::=
   | { setLocation: { lat: number, lon: number } }
   | { push:        { payload: map(string,any) } }          # APNs ペイロード 例 {aps:{alert:"…"}}
   | { http:        { method?: string, url: string, headers?: map(string,string), body?: string, status?: integer, saveBody?: string, extractBody?: list({ var: string, path: string }) } }  # method 既定 GET; saveBody → vars.<name>; extractBody → JSON path ごとに vars.<var>（BE-0440）
-  | { totp:        { secret: string, into: { var: string } } }  # RFC 6238 OTP → vars.<var>（secret は base32）
+  | { totp:        { secret: string, into: { var: string }, minRemaining?: integer } }  # RFC 6238 OTP → vars.<var>（secret は base32）。minRemaining は 1〜30 で、残りがそれ未満なら次の 30 秒ウィンドウを待つ（BE-0474）
   | { email:       { match: { to?: string, subject?: string, subjectMatches?: string }, extract: { var: string, bodyMatches: string }, timeout: number } }  # メールボックスをポーリング → vars.<var>
   | { generate:    <Generate> }                            # 実行時に計算した乱数または現在日時の値 → vars.<var>（BE-0377）
+  | { eval:        <Eval> }                                # 保持している値を固定語彙の操作で変換 → vars.*（BE-0472）
   | { background:       {} }                               # Home ボタン（SpringBoard 経由でバックグラウンド化。終了はしない）
   | { foreground:       {} }                               # アプリを終了させずに前面に出す。動いていないアプリは `relaunch` と同じように起動し、準備が整うまで待つ（iOS と Android、BE-0447）。background の対
   | { installApp:       { from: string, keepData?: boolean } }  # 後から入るデバイスグループのメンバーのビルドをステップのデバイスにインストールする。keepData 既定 true（上書きでデータを保持）、false は先にアンインストール。何も起動しない（BE-0447）
@@ -272,6 +302,24 @@ Datetime ::= { format?: string, offsetSeconds?: integer, offsetMinutes?: integer
     # format: strftime のパターン。省略時は秒までの ISO 8601。4つの offset は符号付きで、加算されます。
     # timezone: IANA 名（例 "America/Los_Angeles"）。省略時は UTC。描画できない format と解決できないゾーンはロード時に失敗します。
 
+Eval ::= { from: string, ops: list(<EvalOp>), into: { var: string } | { vars: list(string) } }
+    # ops: 空にできません。各操作は直前の結果に適用します。ローダは from（文字列）から最後まで文字列かリストかを追跡します。
+    # into.var: リストの結果はコンパクトな JSON 配列テキストで保存します。into.vars: リストの結果が必要です。要素 i → vars[i]、
+    #   余った要素は捨て、リストが短ければステップを失敗させます。vars の名前は重複できません。
+EvalOp ::=
+    "trim" | "json" | "count" | "unique" | "reverse" | "sort"                     # 名前だけで書く操作
+  | { split:     string | { by: string, regex?: boolean } }                       # 文字列 → リスト。by は空にできません
+  | { join:      string }                                                         # リスト → 文字列
+  | { filter:    { matches: string | equals: string | contains: string | notEmpty: true, not?: boolean } }  # 条件はちょうど1つ
+  | { pick:      "first" | "last" | integer }                                     # リスト → 文字列。添字 ≥ 0
+  | { sort:      ("asc"|"desc") | { order?: ("asc"|"desc"), numeric?: boolean } }
+  | { regex:     { pattern: string, group?: integer } }                          # 文字列 → 文字列。group の既定は 0
+  | { replace:   { find: string, with: string, regex?: boolean } }               # 文字列 → 文字列
+  | { substring: { start: integer, end?: integer } }                             # 文字列 → 文字列。どちらも ≥ 0
+  | { case:      ("lower"|"upper") }                                              # 文字列 → 文字列
+    # 自由文と添字の引数には ${vars.*} / ${secrets.*} を書けます。その引数はロード時ではなく置換後に検査します。
+    # sort の order、case、フラグの regex / not / numeric にはリテラルだけを書けます。
+
 # ── Selector（1 条件以上・指定フィールドは AND）────────────────────────
 Selector ::= {
   id?:           string | list(string),        # リストは候補の OR（BE-0221）。1つのシナリオでプラットフォームごとの id 表記をすべて持てる。正本（ドット区切り）の形を先頭に置く
@@ -306,12 +354,15 @@ Assertion ::=
   | { responseSchema: <ResponseSchemaMatch> }   # 取得したレスポンスボディを JSON Schema で検証する（BE-0048）
   | { visual:   <VisualMatch> }
   | { clipboard: <ClipboardMatch> }   # デバイスのペーストボードの読み戻し（simctl pbpaste）
+  | { attribute: <AttributeMatch> }   # 1 つの要素の HTML 属性を必要なときに読み取る（web のみ。BE-0466）
   | { golden:   <GoldenMatch> }       # 実行中の要素ツリーを記録済みの golden ファイルと比較する（BE-0006）
 
 TextMatch  ::= { sel: <Selector> } & ( {equals:string} | {contains:string} | {matches:string} )
 CountMatch ::= { sel: <Selector> } & ( {equals:integer} | {atLeast:integer} | {atMost:integer} )
 CountOp    ::= ( {equals:integer} | {atLeast:integer} | {atMost:integer} )   # セレクタを持たない件数比較。EventMatch の多重度に使う
 ClipboardMatch ::= ( {equals:string} | {matches:string} )   # ちょうど 1 つ。matches は正規表現
+AttributeMatch ::= { sel: <Selector>, name: string }   # name は正しい HTML 属性名。小文字に変換しない
+               & ( {equals:string} | {contains:string} | {matches:string} | {absent:true} )   # ちょうど 1 つ
 GoldenMatch ::= { path: string }   # golden コンテキストのベースディレクトリに対して解決する（BE-0006）
 
 VisualMatch ::= {                  # 画面をベースライン画像とピクセル比較する
@@ -335,21 +386,30 @@ SelectorRegion ::= { selector: <Selector> }   # 要素のフレームをマス�
 RequestMatch ::= {              # 下記マッチフィールドの 1 つ以上
   method?:      string,
   url?:         string,         # 完全一致 URL（エンドポイント）
-  urlMatches?:  string,         # URL への正規表現/部分一致（クエリはここ）
+  urlMatches?:  string,         # URL 全体への正規表現/部分一致
   path?:        string,         # 完全一致パス（クエリ無視）
   pathMatches?: string,         # パスへの正規表現
+  query?:       DictMatch,      # URL デコードしたクエリパラメータ。値は string か演算子 map（BE-0463）
+  body?:        DictMatch,      # 解析した JSON リクエストボディ。値は任意の DictValue（BE-0463）
   status?:      integer,
   bodyMatches?: string,         # リクエストボディへの正規表現/部分一致
   count?:       integer,        # アサーション → 厳密一致数 / wait → 下限
 }
 
-EventMatch ::= {                # エンドポイント条件（method/url/urlMatches/path/pathMatches）または body の 1 つ以上
+DictMatch ::= map(string, DictValue)   # 空は不可。`$$` で始まるキーは `$` で始まるフィールドを指す
+DictValue ::= string                   # JSON 値のテキスト形式と等しい（引用符必須。裸の 1/true/null は不可）
+  | { $matches?: string, $exists?: boolean }   # 演算子 map（演算子 1 つ以上）
+  | map(string, DictValue)             # JSON オブジェクトの部分集合
+  | list(DictValue)                    # 同じ長さの JSON 配列。要素ごとに照合
+
+EventMatch ::= {                # エンドポイント条件（method/url/urlMatches/path/pathMatches）、query、body の 1 つ以上
   method?:      string,
   url?:         string,
   urlMatches?:  string,
   path?:        string,
   pathMatches?: string,
-  body?:        map(string,string),  # 各キーがリクエストボディの JSON に存在し、値がテキストとして一致すること
+  query?:       DictMatch,      # RequestMatch.query と同じ文法
+  body?:        DictMatch,      # RequestMatch.body と同じ文法
   count?:       <CountOp>,           # 期待する多重度（既定: 1 回以上）
 }
 
@@ -365,7 +425,7 @@ CaptureRule ::= { on: <Trigger>, capture: list(<CaptureToken>), from?: string }
 Trigger ::=                                    # action / event / result のどれか 1 つ
     { action: string, idMatches?: string }     # idMatches は action と併用のときだけ
   | { event: "screenChanged" }
-  | { result: "error" }
+  | { result: "failure" }
 
 # ── Network / mocks / redact ───────────────────────────────────────────
 Network ::= { filter?: { domains?: list(string) } }
@@ -407,8 +467,9 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 | `TextMatch`（`value`/`label`） | `equals` / `contains` / `matches` の **ちょうど 1 つ** | `scenario/models/assertions.py` |
 | `CountMatch`（`count`） | `equals` / `atLeast` / `atMost` の **ちょうど 1 つ** | `scenario/models/assertions.py` |
 | `ClipboardMatch`（`clipboard`） | `equals` / `matches` の **ちょうど 1 つ** | `scenario/models/assertions.py` |
-| `RequestMatch` | `method`/`url`/`urlMatches`/`path`/`pathMatches`/`status`/`bodyMatches` の **1 つ以上**（`count` はマッチフィールドではない） | `scenario/models/assertions.py` |
-| `EventMatch`（`event`） | `method`/`url`/`urlMatches`/`path`/`pathMatches`/`body` の **1 つ以上** | `scenario/models/assertions.py` |
+| `AttributeMatch`（`attribute`） | `equals` / `contains` / `matches` / `absent: true` の **ちょうど 1 つ**。`absent: false` は拒否します。`name` は空でない正しい HTML 属性名です | `scenario/models/assertions/attribute_match.py` |
+| `RequestMatch` | `method`/`url`/`urlMatches`/`path`/`pathMatches`/`query`/`body`/`status`/`bodyMatches` の **1 つ以上**（`count` はマッチフィールドではない）。`query`/`body` の辞書は空にできず、引用符付きのスカラー、`$matches`/`$exists` の演算子 map、（`body` では）入れ子の map とリストだけを含む | `scenario/models/assertions.py` |
+| `EventMatch`（`event`） | `method`/`url`/`urlMatches`/`path`/`pathMatches`/`query`/`body` の **1 つ以上** | `scenario/models/assertions.py` |
 | `CountOp`（`event.count`） | `equals` / `atLeast` / `atMost` の **ちょうど 1 つ** | `scenario/models/assertions.py` |
 | `Assertion.requestSequence` | **1 件以上** | `scenario/models/assertions.py` |
 | `Trigger`（`capturePolicy[].on`） | `action` / `event` / `result` の **ちょうど 1 つ**。`idMatches` は `action` と **併用時のみ** | `scenario/models/evidence.py` |
@@ -417,11 +478,11 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 | `Scenario.primaryTarget` | 省略するか、`targets` の最初の名前（最初のグループの最初のメンバー）と一致。`targets` が空なら**拒否**（BE-0436） | `scenario/models/scenario/_targets.py` |
 | `Scenario.installs` | 各エントリは宣言済みのターゲットで、重複不可。プライマリを含まない、2つ以上のメンバーを持つグループは、自分のメンバーを**1つ以上**書く（BE-0447） | `scenario/models/scenario/_targets.py` |
 | `installApp` | `from` は、ステップのデバイスを持つグループの**後から入るメンバー**（プライマリでも `installs` 記載でもない、2つ以上のメンバーを持つグループのメンバー）を指す。トップレベルの `installApp` は1つのメンバーにつき**1つまで**。`web:` / `app:` の中では**拒否**。シナリオが `setPrimaryTarget` を含むとき、デバイスを明示しない `interrupts` の復旧ステップでも**拒否**（BE-0447） | `scenario/models/scenario/_targets.py` |
-| `setPrimaryTarget` | `target` は宣言済みのターゲットを指す。**トップレベルの `steps` だけ**に書ける。`if`、`forEach`、ターゲットグループ、`web:`、`app:`、`interrupts` エントリ、`before`、`after` の中では拒否。コンポーネント内のものは、呼び出す `use:` / `group:` がトップレベルにあれば有効で、展開は呼び出し側の `target` をこのステップに刻まない（BE-0447） | `scenario/models/scenario/_targets.py`、`scenario/expand.py` |
+| `setPrimaryTarget` | `target` は宣言済みのターゲットを指す。**トップレベルの `steps` だけ**に書ける。`if`、`forEach`、ターゲットグループ、`web:`、`app:`、`interrupts` エントリ、`setup`、`cleanup` の中では拒否。コンポーネント内のものは、呼び出す `use:` / `group:` がトップレベルにあれば有効で、展開は呼び出し側の `target` をこのステップに刻まない（BE-0447） | `scenario/models/scenario/_targets.py`、`scenario/expand.py` |
 | `Step.target` / `Assertion.target`（`expect` のみ） | `len(target_names) ≤ 1` なら省略可、または宣言済みの1つと一致。`len(target_names) ≥ 2` で `primaryTarget` が未設定なら**必須**（`if`/`forEach`/`web` ラッパーも含み、末端のアクションだけではない）で、宣言済みターゲットの1つを名指し。`len(target_names) ≥ 2` で `primaryTarget` を設定していれば**省略可**で、省略したものは入れ子の深さによらず主ターゲットに対して走る（BE-0436）。この主ターゲットは現在のプライマリで、`setPrimaryTarget` ステップが移す（BE-0447）。`web` ブロック内に入れ子になったステップと、インラインの `assert:` リスト・`if` の `condition`・`interrupts` エントリの `condition` を通して届く `Assertion` では**拒否**（BE-0428） | `scenario/models/scenario/_targets.py` |
 | `use:` / `group:` ステップの `Step.target` | `len(target_names)` によらず、`primaryTarget` がなくても**省略可**で、ステップ自身は解決しない。指定した値は宣言済みターゲットを名指しする。展開は、呼び出しが生むステップのうち `target` を省略したものへその値を刻印し、異なるターゲットを名指しするステップを拒否する（BE-0446） | `scenario/models/scenario/_targets.py`、`scenario/expand.py` |
 | `Interrupt.target` と、`interrupts` エントリの `steps` にある `Step.target` | `primaryTarget` の有無にかかわらず、`len(target_names)` にかかわらず**省略可**。エントリの `target` を省略するとプライマリターゲットを監視し、リカバリ用ステップの `target` を省略するとエントリ自身のターゲットで実行する(ただし、`target` を指定した `if`/`forEach` ステップの内側では、そのステップのターゲットで実行する)。指定した値は、宣言済みターゲットの名指しについて上の `Step.target` の規則に従う（BE-0438） | `scenario/models/scenario/_targets.py` |
-| `targets.<name>.interrupts` の `Interrupt.target` と、その `steps` にある `Step.target` | **拒否**。エントリは、その config ブロックが設定するターゲットにすでに属している（BE-0438） | `config/schema/target_config.py` |
+| `targets.<name>.hooks.interrupts` の `Interrupt.target` と、その `steps` にある `Step.target` | **拒否**。エントリは、その config ブロックが設定するターゲットにすでに属している（BE-0438） | `config/schema/target_config.py` |
 | すべてのマッピング | **未知キー不可**（`extra="forbid"`） | `scenario/models/_base.py` |
 
 `exists` は特別です。セレクタを **インライン**で書き（`exists: { id: home.title }`）、任意の `negate: true` で不在を確認します。ローダは検証前にこれを `{ sel, negate }` へ書き換えます（`Exists._inline`, `scenario/models/assertions.py`）。
@@ -434,17 +495,15 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 
 | フィールド | 既定値 |
 |---|---|
-| `Scenario.tags` / `expect` / `capturePolicy` / `mocks` / `interrupts` / `before` / `after` | `[]` |
-| `Scenario.preconditions` | `{}`（= `erase` は未設定 — target config が指定しない限りオフ、`reinstall: clean`） |
-| `Scenario.systemAlertHandling` | 未指定（アラートガード ON。ただし規則が無いので、自分からはどのプロンプトにも答えない） |
-| `Scenario.iosTipKitHandling` | 未指定（OFF — tip 自体が検証対象になる場合があるため。iOS のみ） |
+| `Scenario.tags` / `expect` / `capturePolicy` / `mocks` / `interrupts` / `setup` / `cleanup` | `[]` |
+| `Scenario.preconditions` | `{}`（どのフィールドもターゲットの値に、次に組み込みの既定値に従います） |
 | `Scenario.permissions` | `{}`（起動前の権限状態を適用しない） |
-| `Preconditions.erase` | 未設定 — target config の `erase` を継承し、それもなければオフ（BE-0177） |
-| `Preconditions.reinstall` | `clean` |
-| `Preconditions.launchArgs` | `[]` |
-| `Preconditions.launchEnv` | `{}` |
-| `SystemAlertHandling.rules` | `[]`（プロンプトの宣言が無いのでガードは何にも答えない。出会ったアラートはブロックされたステップの失敗理由に書き出される） |
-| `SystemAlertHandling.visionInstruction` | 未設定。ほかの値は使えません。`run` は拒否し（BE-0402）、`record` / `crawl` は自由記述を自身の `--alert-vision-instruction` フラグからのみ読みます |
+| `Preconditions.inheritSetup` | `true`（宣言した各ターゲットの `hooks.setup` がシナリオの `setup` の前に走る） |
+| `Preconditions.subject.reinstall` | 未設定 — ターゲットの `subject.reinstall`、なければ `clean`。`--erase` は `erase` に引き上げ、`--no-erase` は `erase` を `clean` に下げます（BE-0473） |
+| `Preconditions.subject.launch.args` | `[]` |
+| `Preconditions.subject.launch.env` | `{}` |
+| `systemAlert` エントリ | なし（ガードは ON ですが、どのプロンプトにも答えません。出会ったアラートはブロックされたステップの失敗理由に書き出します） |
+| `tipKit` エントリ | なし（ターゲットのエントリ、なければ OFF。tip 自体が検証対象になる場合があるためです。iOS のみ） |
 | `TypeText.submit` | `false` |
 | `Exists.negate` | `false` |
 | `MockResponse.status` | `200` |
@@ -477,7 +536,7 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 - 大きな文字列に **埋め込まれた**トークンはテキストとして差し込まれます（`"item-${row.id}"`）。
 - いま置換していない名前空間のトークンは **そのまま残る**ため、各層は自分の名前空間だけを埋めます。
 
-名前空間は次の 4 つです。`params.*`（コンポーネント、§6.2）、`row.*`（データ駆動、§6.3）、`secrets.*`（config の `secrets:` で宣言し、run ループがアクション時に環境変数から解決する、§6.4）、`vars.*`（ランタイムキャプチャ。`extract` 経由、§6.5）。
+名前空間は次の 4 つです。`params.*`（コンポーネント、§6.2）、`row.*`（データ駆動、§6.3）、`secrets.*`（config の `evidence.secrets` で宣言し、run ループがアクション時に環境変数から解決する、§6.4）、`vars.*`（ランタイムキャプチャ。`extract` 経由、§6.5）。
 
 ### 6.2 コンポーネント（`use` → 再利用ステップ）
 
@@ -527,7 +586,7 @@ scenarios:
 
 ### 6.3 データ駆動シナリオ（`data` / `dataFile`）
 
-`data`（インライン行）か `dataFile`（CSV パス。両者は排他）を持つシナリオは、`${row.<column>}` を置換して **1 行 1 シナリオ**に展開されます（`expand_data`, `scenario/expand.py`）。派生シナリオは `"<name> [row N: col=val, …]"` に改名され、**元の preconditions を保ちます**。そのためどの行も、元の preconditions（`erase` / `reinstall`）を継承した状態でアプリを準備します。
+`data`（インライン行）か `dataFile`（CSV パス。両者は排他）を持つシナリオは、`${row.<column>}` を置換して **1 行 1 シナリオ**に展開されます（`expand_data`, `scenario/expand.py`）。派生シナリオは `"<name> [row N: col=val, …]"` に改名され、**元の preconditions を保ちます**。そのためどの行も、元の preconditions（`subject.reinstall`）を継承した状態でアプリを準備します。
 
 ```yaml
 - name: search returns a result
@@ -540,10 +599,10 @@ scenarios:
     - label: { sel: { id: home.status }, equals: "${row.expect}" }
 ```
 
-### 6.4 `setup` プレリュード、secrets、タグ選択
+### 6.4 共有のセットアップ、secrets、タグ選択
 
-- **`setup`**（`Preconditions` のキー、またはアプリや config の既定）：再利用シナリオファイルを指し、その steps をこのシナリオ自身の前に **前置**します（`apply_setups`, `scenario/expand.py`）。共有のログインやナビゲーション手順を 1 度だけ記述する用途に使います。プレリュード自身の `use` ステップは、前置の**前**に、プレリュード自身のスコープで展開されます。素の名前はプレリュードの `components:` を引き、`setup` に指定した側のシナリオファイルは参照しません（§6.5）。プレリュードの中のパス参照も、呼び出す側ではなくプレリュード自身のディレクトリを基準に解決します。
-- **`secrets`**（config の `secrets:` で宣言する、環境変数名のリスト）：宣言した各名 `X` は `os.environ[X]` から解決され `${secrets.X}` に束縛され、**アクション時**に実行ステップへ置換されます（`cli/commands/run.py`, `orchestrator/substitution.py` `_interp_step`）。シナリオは `${secrets.X}` トークンを保ち値は持たず、リテラル値は証跡で自動マスクされます（`Redactor`）。`params.*` / `row.*` と異なり、この名前空間はロード時ではなく run ループが解決します。
+- **共有のセットアップ**：1 度だけ記述するログインやナビゲーションの手順は、コンポーネント（§6.2）にします。シナリオ自身の `setup` か、config にあるターゲットの `hooks.setup` から `use` で呼び出します。ターゲットの hooks が呼ぶコンポーネントは config のロード時に config ファイルのディレクトリを基準に解決し、スイートのルートの内側に収まっている必要があります（BE-0174）。以前の `preconditions.setup` プレリュードファイルは廃止しました（[BE-0452](../../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)）。ターゲットの `hooks.setup` を走らせたくないシナリオは、`preconditions.inheritSetup: false` を指定します。
+- **`secrets`**（config の `evidence.secrets` で宣言する、環境変数名のリスト）：宣言した各名 `X` は `os.environ[X]` から解決され `${secrets.X}` に束縛され、**アクション時**に実行ステップへ置換されます（`cli/commands/run.py`, `orchestrator/substitution.py` `_interp_step`）。シナリオは `${secrets.X}` トークンを保ち値は持たず、リテラル値は証跡で自動マスクされます（`Redactor`）。`params.*` / `row.*` と異なり、この名前空間はロード時ではなく run ループが解決します。
 - **`tags`** と CLI の `--tag` / `--exclude` で実行対象を絞ります。`exclude` が `include` より優先されます（`select_scenarios`, `scenario/select.py`）。
 
 ### 6.5 展開順
@@ -553,7 +612,6 @@ scenarios:
 ```
 load_scenarios        # この文法に対しパース + 検証
   → select_scenarios  # --tag / --exclude
-  → apply_setups      # setup プレリュードを前置（自身のスコープで展開済み。§6.4）
   → expand_components  # use → コンポーネントステップ（${params.*}）
   → expand_data        # 1 行 1 シナリオ（${row.*}）
   → run               # 決定的ループは展開済みシナリオだけを見る
@@ -564,6 +622,6 @@ load_scenarios        # この文法に対しパース + 検証
 ## 7. 検証とラウンドトリップ
 
 - `load_scenarios(text) -> list[Scenario]` は上記すべてに対して検証します。トップレベルはシナリオのシーケンスか `{description, scenarios}` マッピングのいずれかが必須で、[§4](#4-個数と排他の制約) のいずれかの規則違反はロードエラーになります（`scenario/load.py`）。
-- `dump_scenarios(scenarios) -> str` は YAML へ戻します。著者が設定しなかったフィールドだけを落とし、エイリアスキー（`idMatches`、`launchEnv` など）で出力します。出力は **そのまま再ロード可能**で、`record` が依存するラウンドトリップです（`scenario/serialize.py`）。
+- `dump_scenarios(scenarios) -> str` は YAML へ戻します。著者が設定しなかったフィールドだけを落とし、エイリアスキー（`idMatches`、`inheritSetup` など）で出力します。出力は **そのまま再ロード可能**で、`record` が依存するラウンドトリップです（`scenario/serialize.py`）。
 
 形の背後にある意味論（セレクタが 0/1/2+ 件にどう解決するか、各アサーションがどう比較するか、wait がどうタイムアウトするか）は [selectors](selectors.md) と [run-loop](run-loop.md) を参照してください。例でシナリオを書き始めるには [scenarios](scenarios.md) を参照してください。

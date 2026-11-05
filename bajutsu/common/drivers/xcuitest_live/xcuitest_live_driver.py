@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Sequence
 from pathlib import Path
 
 from bajutsu.common.drivers import base
@@ -330,8 +331,17 @@ class XcuitestLiveDriver:
             "first-class XCUITest command"
         )
 
+    def goto(self, url: str) -> None:  # noqa: ARG002  # Driver shape
+        raise base.UnsupportedAction("navigate is web-backend-only; iOS opens no URL mid-run")
+
     def select_option(self, sel: base.Selector, option: str) -> None:  # noqa: ARG002  # Driver shape
         raise base.UnsupportedAction("selectOption is web-only; iOS has no native <select>")
+
+    def read_attributes(
+        self,
+        reads: Sequence[tuple[base.Selector, str]],  # noqa: ARG002  # Driver shape
+    ) -> list[str | None | base.SelectorError]:
+        raise base.UnsupportedAction("attribute is web-only; iOS has no HTML attributes")
 
     def set_picker_value(self, sel: base.Selector, value: str) -> None:  # noqa: ARG002  # Driver shape
         # The same platform as the resident runner, so a live-route implementation through Appium's

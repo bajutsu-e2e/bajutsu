@@ -1,0 +1,24 @@
+# attribute real-backend coverage (BE-0466): assert HTML attributes no other assertion reaches — a
+# link's `href`, and a panel's `data-state` / `aria-busy` that settle a beat after the tap. The
+# second assert block passes only because the step's assertions poll within the lane's wait floor
+# (`BAJUTSU_MIN_WAIT_TIMEOUT`, set by `make -C demos/web e2e`); a single read would see `loading`.
+description: >-
+  Web attribute — check a link's destination by its href, then load a panel and wait for the state it
+  publishes in data-state to settle, with its aria-busy flag removed.
+scenarios:
+  - name: attribute reads a link target and a settling data-state
+    steps:
+      - tap: { id: onboarding.start }
+      - type: { text: "a@b.com", into: { id: auth.email } }
+      - type: { text: "pw", into: { id: auth.password } }
+      - tap: { id: auth.submit }
+      - wait: { for: { id: home.title }, timeout: 5 }
+      - assert:
+          - attribute: { sel: { id: docs.link }, name: href, equals: "https://bajutsu-e2e.github.io/bajutsu/" }
+          - attribute: { sel: { label: Documentation }, name: href, contains: bajutsu }
+          - attribute: { sel: { id: panel }, name: data-state, equals: idle }
+          - attribute: { sel: { id: panel }, name: aria-busy, absent: true }
+      - tap: { id: panel.load }
+      - assert:
+          - attribute: { sel: { id: panel }, name: data-state, matches: "^ready$" }
+          - attribute: { sel: { id: panel }, name: aria-busy, absent: true }

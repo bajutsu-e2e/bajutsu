@@ -85,14 +85,15 @@ orchestrator、証跡、config、レポート）は [`bajutsu/common/`](bajutsu/
 実装済み・テスト済みです（Simulator 不要で実行できます）。
 
 - ドライバ抽象と **セレクタ解決**（決定性の核）
-- **プラットフォーム対応の backend レジストリ**。`--backend` / `backend:` は `ios` / `android` /
-  `web` / `fake` を受け取り、それぞれが安定度順に actuator へ展開されます（`ios` は idb 廃止以降
-  唯一の iOS actuator である `xcuitest` に展開されます）
+- **プラットフォーム対応の backend レジストリ**。ターゲットの必須キー `platform:` が actuator を
+  決めます。`ios` は、BE-0290 で idb を撤去して以来唯一の iOS actuator である `xcuitest` に解決します。
+  `android` / `web` / `fake` も、それぞれの actuator に解決します。`--backend` は検査であり、
+  ターゲットのプラットフォーム、その actuator、`fake` のいずれかを受け付けます
 - **シナリオスキーマ**: ステップ（tap / type / swipe / drag / scroll / double-tap / pinch / rotate、
   WebView コンテンツ向けの `web`、デバイス制御、`http` / `totp` / `email` / `generate` /
   `manual` など）、待機、ステップ内の `assert`、再利用可能なコンポーネント（`use`）、制御フロー
   （`if` / `forEach`）、変数（`extract` → `${vars.*}`）、パラメータ化（`data` / `dataFile`）、
-  `preconditions`、`permissions`、`interrupts`、`systemAlertHandling`、ネットワーク `mocks`、
+  `preconditions`、`permissions`、`interrupts`（アプリ内の画面、システムアラート、TipKit の tip）、ネットワーク `mocks`、
   `network` フィルタ、`capturePolicy` 証跡ルール、`redact`。厳格検証・YAML ラウンドトリップ・
   生成された JSON Schema 付きです
 - **アサーション評価**（exists / value / label / count / enabled / disabled / selected /
@@ -102,8 +103,11 @@ orchestrator、証跡、config、レポート）は [`bajutsu/common/`](bajutsu/
   `appTrace` の区間証跡、ネットワーク観測 + `mocks`、**ビジュアルリグレッション**（baseline +
   `approve`）、golden 要素ツリー比較、`capturePolicy` トリガールール、シークレットの **redaction**
 - **レポート**（`manifest.json` + JUnit XML + CTRF JSON + 自己完結のインタラクティブ HTML）
-- **config 解決**（チーム既定 × アプリ別。iOS は `bundleId`、web は `baseUrl`）と **backend 選択**
-  （安定度順）
+- **config 解決**（チーム既定 × アプリ別。iOS と Android は `subject.id`、web は `subject.url`）と
+  **backend 選択**（ターゲットの `platform`）。`bajutsu config schema` がプラットフォームごとの JSON Schema を出力します
+- **デバイスの条件**（`runsOn`）。モデルのリストや OS の範囲を書くと、シナリオはモデルごと、メジャー
+  バージョンごとの run に分かれ、各 run は読み取ったデバイスと照合します。片側が開いた範囲に合う
+  デバイスがなければ、失敗ではなく対象外として報告します
 - **backend コマンド層**（iOS 向け simctl、Android 向け adb）、**XCUITest チャネル**（常駐ランナーの
   要素スナップショット）、**Playwright web ドライバ**、**adb ドライバ**（常駐の UI Automator サーバ、
   フォールバックとして `uiautomator dump`）、**doctor** 規約スコアと環境 preflight
@@ -121,7 +125,7 @@ orchestrator、証跡、config、レポート）は [`bajutsu/common/`](bajutsu/
   agent に切り替えられます。原因 + 最小修正案を出す、CI ゲートから外れた助言です
 - 配線済み CLI: `run` / `doctor` / `audit` / `coverage` / `impact` / `stats` / `flakiness` /
   `export` / `trace` / `report` / `triage` / `record` / `crawl` / `repl` / `codegen` / `approve` /
-  `serve` / `mcp` / `worker` / `lint` / `schema`
+  `serve` / `mcp` / `worker` / `lint` / `schema` / `runner`
 - **MCP サーバ**（`bajutsu mcp`）: `run` と `doctor` を MCP ツールとして、run の証跡
   （manifest / report / JUnit / artifact）をリソースとして公開し、Claude Desktop / Code 連携に
   使えます
@@ -129,7 +133,7 @@ orchestrator、証跡、config、レポート）は [`bajutsu/common/`](bajutsu/
   あらゆる証跡の閲覧、ビジュアル baseline の承認、SSE によるジョブのライブ配信、usage / flakiness /
   coverage の各ダッシュボードです。各タブの操作方法は [docs/ja/web-ui.md](docs/ja/web-ui.md) を
   参照してください
-- **ホスティング可能なサーバ backend**（`serve --backend server`、`bajutsu worker`）: FastAPI、
+- **ホスティング可能なサーバ backend**（バケットとデータベースを設定した `bajutsu serve`、`bajutsu worker`）: FastAPI、
   Postgres、S3 互換オブジェクトストレージ、GitHub OAuth ログイン、RBAC（ロールベースアクセス
   制御）、クォータを備えた、自前でホスティングできる制御プレーンです。Mac / Linux ワーカーは制御
   プレーンの URL とトークンだけを持ち、クラウド SDK やオブジェクトストレージの認証情報は要りま
@@ -164,7 +168,7 @@ Android エミュレータで検証済みです（Linux・Mac 不要）。
   コンテナに対して走らせて確認済みです。参考情報の任意チェック（signal）として着地し、安定が
   確認された後に**必須チェック**へ昇格しました。
 
-未配線: 外部 `mockServer` コマンド（シナリオ内 `mocks` で代替済み）、web backend 上の `appTrace`
+未配線: 外部 `services.mockServer` コマンド（シナリオ内 `mocks` で代替済み）、web backend 上の `appTrace`
 区間証跡（iOS 専用で、web backend は独自の `video` / `deviceLog` 相当の証跡を持ちます）、
 SwiftUI / Compose 画面での `nativeZ` z-order レポート（宣言的ツールキット側の制約であり、
 Bajutsu 側の欠落ではありません）。完全な「実装済み vs 未配線」表は
@@ -230,32 +234,38 @@ bajutsu schema                                            # エディタ連携�
 > `make serve`（または `scripts/serve.sh`）は `bajutsu serve` をラップし、設定された backend の
 > 依存を必要時に導入します。これにより、クリーンなチェックアウトでも
 > `no available actuator among ['xcuitest']` に当たりません。フラグは `make serve ARGS="--port 8766"`
-> のように渡します。
+> のように渡します。サーバは run を `bajutsu worker` のキューに積むので、`make serve` はサーバの横で
+> worker も1つ起動し、サーバの停止とともに止めます。サーバだけを起動するには
+> `SERVE_WORKER=0 make serve` とします。
 
 アプリ別・プラットフォーム別の設定は、`--config` で渡す config ファイルに置きます。デモにはすぐ動く
 ものが同梱されています（例: [`demos/showcase/showcase.config.yaml`](demos/showcase/showcase.config.yaml)、
-[`demos/web/demo.config.yaml`](demos/web/demo.config.yaml)）。アプリは `bundleId` で iOS を、`baseUrl`
-で web を対象にします。
+[`demos/web/demo.config.yaml`](demos/web/demo.config.yaml)）。各ターゲットは `platform` を名指しし、
+それが actuator を決めます。iOS アプリは `subject.id` で、web アプリは `subject.url` で特定します。
 
 ```yaml
 defaults:
-  backend: [ios]            # 安定度順; 最初に利用可能な backend が actuator
-  device: "iPhone 17 Pro"
-  locale: en_US
+  platforms:
+    ios:
+      runsOn: { ios: { locale: en_US } }
 
 targets:
   showcase-swiftui:         # iOS アプリ — XCUITest 経由で Simulator を操作
-    bundleId: com.bajutsu.showcase.ios.swiftui
-    deeplinkScheme: showcaseswiftui
-    launchEnv: { SHOWCASE_UITEST: "1" }
-    idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
-    scenarios: demos/showcase/scenarios
+    platform: ios
+    subject:
+      id: com.bajutsu.showcase.ios.swiftui
+      launch: { env: { SHOWCASE_UITEST: "1" } }
+      idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
+    paths: { scenarios: demos/showcase/scenarios }
 
   web:                      # web アプリ — Playwright 経由でブラウザを操作
-    baseUrl: "http://127.0.0.1:8787/index.html"
-    backend: [web]
-    scenarios: demos/web/scenarios
+    platform: web
+    subject: { url: "http://127.0.0.1:8787/index.html" }
+    paths: { scenarios: demos/web/scenarios }
 ```
+
+ターゲットのキーとそのまとめ方は
+[BE-0452](roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md) にあります。
 
 ## デモ
 
@@ -330,7 +340,7 @@ bajutsu/
 │                         #   flakiness / impact / stats / trace
 ├── serve/                # ローカル Web UI（オーサリング + 実行 + レポート; Tier 1）、および
 │                         #   server/ 配下にホスティング制御プレーン（FastAPI + Postgres +
-│                         #   OAuth）。`serve --backend server` の背後にあります
+│                         #   OAuth）。すべてのジョブは `bajutsu worker` が実行します
 ├── mcp/                  # MCP サーバ（エージェント連携用のツール + リソース）
 ├── templates/            # Jinja のレポート / ダッシュボードテンプレート + Web UI 自身の JS / CSS
 ├── cli/                  # CLI (typer) — コマンドごとに 1 ファイル

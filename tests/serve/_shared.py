@@ -33,9 +33,16 @@ def project(tmp_path: Path) -> tuple[Path, Path, Path]:
     (scn_dir / "smoke.yaml").write_text(SCENARIO, encoding="utf-8")
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [ios] }\ntargets:\n"
-        f"  demo: {{ bundleId: com.example.demo, scenarios: {scn_dir} }}\n"
-        "  other: { bundleId: com.example.other }\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            f"    subject: {{id: com.example.demo}}\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+            "  other:\n"
+            "    platform: ios\n"
+            f"    subject: {{id: com.example.other}}\n"
+        ),
         encoding="utf-8",
     )
     runs = tmp_path / "runs"
@@ -88,6 +95,19 @@ def fake_popen(lines: list[str], code: int = 0) -> Callable[..., FakeProc]:
         return FakeProc(lines, code)
 
     return popen
+
+
+class WorkerStandIn:
+    """A test executor that runs each job through `run_job` on a thread, as a worker would.
+
+    The server never runs a job itself (BE-0449), so production has no such executor. A worker
+    leases the job and runs it through the same `run_job` body (`execute_job_spec`), so a test of
+    what an HTTP request makes a job do (its argv, its stream, its run id) wires this in place of
+    the queue and a live worker. The secrets a lease would relay are not read here.
+    """
+
+    def dispatch(self, state: srv.ServeState, job: srv.Job) -> None:
+        threading.Thread(target=srv.run_job, args=(state, job), daemon=True).start()
 
 
 def _serve(state: srv.ServeState) -> tuple[ThreadingHTTPServer, int]:
@@ -178,3 +198,23 @@ def patch_gcs_client(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(storage, "Client", FakeGCSClient)
     monkeypatch.setattr(google.auth, "default", fake_default)
+
+
+def queue_repository() -> Any:
+    """An empty in-memory jobs database, for a state that must count as having a queue (BE-0449).
+
+    A test that wires a recording executor still needs a repository: the server refuses a fan-out
+    or an artifact override on a state with no queue, since nothing there could run the job.
+    """
+    from sqlalchemy import create_engine
+    from sqlalchemy.pool import StaticPool
+
+    from bajutsu.serve.server.db import SqlRepository
+    from bajutsu.serve.server.models import Base
+
+    # One shared connection, so an HTTP handler thread sees the tables this thread created.
+    engine = create_engine(
+        "sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False}
+    )
+    Base.metadata.create_all(engine)
+    return SqlRepository(engine)

@@ -370,7 +370,11 @@ def test_step_level_assert_visual_hides_the_touch_markers_and_restores_them(
             {
                 "name": "step visual markers",
                 "preconditions": {
-                    "launchEnv": {"BAJUTSU_TOUCH_MARKERS": "1", "BAJUTSU_CONTROL_CHANNEL": "1"}
+                    "subject": {
+                        "launch": {
+                            "env": {"BAJUTSU_TOUCH_MARKERS": "1", "BAJUTSU_CONTROL_CHANNEL": "1"}
+                        }
+                    }
                 },
                 "steps": [{"assert": [{"visual": {"baseline": "home.png"}}]}],
             }
@@ -464,7 +468,7 @@ def _visual_scenario(launch_env: dict[str, str]) -> Scenario:
     return _scenario(
         {
             "name": "visual one",
-            "preconditions": {"launchEnv": launch_env},
+            "preconditions": {"subject": {"launch": {"env": launch_env}}},
             "steps": [],
             "expect": [{"visual": {"baseline": "home.png"}}],
         }
@@ -611,7 +615,11 @@ def test_a_visual_capture_hides_the_markers_on_the_post_alert_dismiss_retry_too(
             {
                 "name": "visual after alert",
                 "preconditions": {
-                    "launchEnv": {"BAJUTSU_TOUCH_MARKERS": "1", "BAJUTSU_CONTROL_CHANNEL": "1"}
+                    "subject": {
+                        "launch": {
+                            "env": {"BAJUTSU_TOUCH_MARKERS": "1", "BAJUTSU_CONTROL_CHANNEL": "1"}
+                        }
+                    }
                 },
                 "steps": [],
                 "expect": [{"exists": {"id": "home.title"}}],
@@ -899,7 +907,7 @@ def test_screenshot_reuse_is_disabled_under_an_alert_guard(tmp_path: Path) -> No
 
 def test_final_capture_does_not_duplicate_a_rule_fired_after_png(tmp_path: Path) -> None:
     """When a `capturePolicy` rule already fires `screenshot.after` post-step on the scenario's
-    last (and only) leaf step — e.g. a `result: error` safety net on a failing final step — the
+    last (and only) leaf step — e.g. a `result: failure` safety net on a failing final step — the
     always-on shutter must not shoot it a second time (review follow-up): both name the one file,
     so a duplicate would overwrite the pixel and leave two manifest entries for it."""
     driver = FakeDriver([el("a", "A", ["button"])])
@@ -909,7 +917,7 @@ def test_final_capture_does_not_duplicate_a_rule_fired_after_png(tmp_path: Path)
         _scenario(
             {
                 "name": "x",
-                "capturePolicy": [{"on": {"result": "error"}, "capture": ["screenshot.after"]}],
+                "capturePolicy": [{"on": {"result": "failure"}, "capture": ["screenshot.after"]}],
                 "steps": [{"tap": {"id": "missing"}}],
             }
         ),
@@ -1540,6 +1548,9 @@ class _VideoSink:
     on disk; here it is set on the interval the moment `finish_scenario_intervals` is called, which
     is the same ordering `run_scenario` depends on — the anchor is resolved *after* the finalize.
     """
+
+    def add_secret_values(self, values: object) -> None:  # EvidenceSink shape
+        return None  # these doubles write no artifact, so there is nothing to mask
 
     def __init__(self, true_start: float | None, measured_start: float | None = None) -> None:
         self._true_start = true_start

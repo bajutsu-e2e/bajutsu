@@ -49,6 +49,7 @@ CAPABILITIES: tuple[Capability, ...] = (
     Capability("trace", uses_claude=False),
     Capability("lint", uses_claude=False),
     Capability("schema", uses_claude=False),
+    Capability("config", uses_claude=False),
     Capability("approve", uses_claude=False),
     Capability("mcp", uses_claude=False),
     Capability("worker", uses_claude=False),
@@ -60,6 +61,7 @@ CAPABILITIES: tuple[Capability, ...] = (
     Capability("flakiness", uses_claude=False),
     Capability("export", uses_claude=False),
     Capability("serve", uses_claude=False),
+    Capability("runner", uses_claude=False),
 )
 
 _BY_COMMAND = {c.command: c for c in CAPABILITIES}

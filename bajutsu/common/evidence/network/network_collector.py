@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import errno
+import ipaddress
+import logging
 import secrets
+import socket
 import threading
 import time
 from collections.abc import Callable, Sequence
@@ -30,6 +33,8 @@ if TYPE_CHECKING:
 # lane a run can hold and every other bajutsu process on the machine.
 _BRIDGE_PORT_BASE = 6800
 _BRIDGE_PORT_SPAN = 100
+
+_logger = logging.getLogger(__name__)
 
 
 class NetworkCollector:
@@ -63,6 +68,14 @@ class NetworkCollector:
         # reused id would let a cleared scenario's late acknowledgement match a fresh command and
         # release its wait without the app having applied anything.
         self._issued_count = 0
+        # The signed scheme's replay guard (BE-0459): every nonce whose signature matched, for the
+        # collector's whole life. `clear()` keeps it, so a request captured in one scenario stays
+        # refused in the next.
+        self._nonces: set[str] = set()
+        # The bearer header is accepted on the loopback alone; `start()` narrows this for a binding
+        # that reaches beyond it, and counts the refused bearers that carried this run's token.
+        self._bearer_accepted = True
+        self._refused_bearers = 0
 
     # --- data ---
 
@@ -184,6 +197,60 @@ class NetworkCollector:
         """
         return bool(self.token) and secrets.compare_digest(candidate, self.token)
 
+    def check_bearer(self, candidate: str) -> bool:
+        """Whether a bearer header may authenticate: on the loopback binding alone (BE-0459).
+
+        Beyond the loopback the token would cross the network in cleartext, so every bearer is
+        refused there. One that carries this run's token is counted — an app built against a
+        BajutsuKit that predates signing — and a made-up value is not, so a stranger reaching the
+        listener cannot raise a false warning.
+        """
+        if self._bearer_accepted:
+            return self.check_token(candidate)
+        if self.check_token(candidate):
+            with self._lock:
+                self._refused_bearers += 1
+                first = self._refused_bearers == 1
+            if first:
+                # Warned at the first refusal, not at teardown: the scenario failing on an empty
+                # record is read while the run is still going, and this names its cause.
+                _logger.warning(
+                    "the network collector refused a bearer-token request carrying this run's "
+                    "token: the app's BajutsuKit predates signed requests (BE-0459), so a "
+                    "real-device run records no exchanges until the app is rebuilt against a "
+                    "current BajutsuKit"
+                )
+        return False
+
+    def nonce_spent(self, nonce: str) -> bool:
+        """Whether a signed request with this nonce has already been accepted."""
+        with self._lock:
+            return nonce in self._nonces
+
+    def claim_nonce(self, nonce: str) -> bool:
+        """Record a verified request's nonce; False when another copy already claimed it.
+
+        The check and the record are one step under the lock, so of two copies handled at once on
+        the server's threads exactly one passes.
+        """
+        with self._lock:
+            if nonce in self._nonces:
+                return False
+            self._nonces.add(nonce)
+            return True
+
+    @property
+    def refused_bearer_count(self) -> int:
+        """How many bearer headers with this run's token a non-loopback binding refused."""
+        with self._lock:
+            return self._refused_bearers
+
+    @property
+    def nonce_count(self) -> int:
+        """How many signed requests this collector has accepted, one nonce each."""
+        with self._lock:
+            return len(self._nonces)
+
     def snapshot(self) -> list[NetworkExchange]:
         """The exchanges received so far, in arrival order."""
         with self._lock:
@@ -213,18 +280,23 @@ class NetworkCollector:
 
     # --- lifecycle ---
 
-    def start(self, port: int = 0) -> int:
-        """Start the receiver on the loopback interface and begin accepting the app's POSTs.
+    def start(self, port: int = 0, *, host: str = "127.0.0.1") -> int:
+        """Start the receiver and begin accepting the app's POSTs.
 
         Args:
-            port: TCP port to bind on `127.0.0.1`; `0` requests an ephemeral port.
+            port: TCP port to bind; `0` requests an ephemeral port.
+            host: The address to bind. The loopback, unless the app runs on a real device that does
+                not share it; `"::"` then binds every IPv4 and IPv6 interface, which the per-run token
+                every request must prove keeps closed to anything but this run's app. Beyond the
+                loopback, a request signs with the token rather than carrying it (BE-0459).
 
         Returns:
             The actual bound port (resolved when `port` is `0`), to inject into the app via
             `BAJUTSU_COLLECTOR`.
         """
         self.token = secrets.token_urlsafe()
-        server = ThreadingHTTPServer(("127.0.0.1", port), _make_handler(self))
+        self._bearer_accepted = _is_loopback(host)
+        server = _bind(host, port, _make_handler(self))
         self.port = server.server_address[1]
         self._server = server
         # Poll often (vs the 0.5s default) so `stop()`'s shutdown() returns promptly — it blocks
@@ -281,6 +353,7 @@ class NetworkCollector:
     def stop(self) -> None:
         """Stop the receiver and release its socket. Idempotent — a no-op if never started."""
         if self._server is not None:
+            self._report_auth()  # inside the started guard, so a second stop() logs nothing
             self._server.shutdown()
             self._server.server_close()
             self._server = None
@@ -288,3 +361,44 @@ class NetworkCollector:
             self._thread.join()  # serve_forever has returned; join so no stale thread lingers
             self._thread = None
         self.port = 0
+
+    def _report_auth(self) -> None:
+        """Log how many signed requests the run accepted — the size of its nonce set (BE-0459)."""
+        _logger.info(
+            "network collector accepted %d signed requests and refused %d bearer requests",
+            self.nonce_count,
+            self.refused_bearer_count,
+        )
+
+
+def _is_loopback(host: str) -> bool:
+    """Whether binding `host` keeps the collector on this machine's loopback."""
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def _bind(host: str, port: int, handler: Any) -> ThreadingHTTPServer:
+    """The receiver's server on `host`; `::` falls back to every IPv4 interface without IPv6."""
+    if host != "::":
+        return ThreadingHTTPServer((host, port), handler)
+    try:
+        return _DualStackServer((host, port), handler)
+    except OSError as exc:
+        if exc.errno not in (errno.EAFNOSUPPORT, errno.EADDRNOTAVAIL):
+            raise
+        return ThreadingHTTPServer(("0.0.0.0", port), handler)  # noqa: S104 — token-gated, see start()
+
+
+class _DualStackServer(ThreadingHTTPServer):
+    """A `ThreadingHTTPServer` on `::` that also accepts IPv4, for a real device's collector."""
+
+    address_family = socket.AF_INET6
+
+    def server_bind(self) -> None:
+        # Off by default on some hosts; a candidate list mixes both families, so accept both.
+        self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+        super().server_bind()

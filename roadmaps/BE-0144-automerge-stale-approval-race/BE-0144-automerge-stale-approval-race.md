@@ -15,57 +15,63 @@
 
 ## Introduction
 
-The codebase-analysis report flags a possible auto-merge stale-approval race — a PR could
-merge on an approval given before a later, unreviewed commit — but whether this is actually
-possible depends on the `main` branch ruleset's exact configuration, which the report did not
-confirm. This finding is **unconfirmed**; the first task is to check the ruleset before deciding
-whether a fix is needed at all.
+The codebase-analysis report flags a possible auto-merge stale-approval race. A PR could merge on an
+approval given before a later, unreviewed commit. Whether the race is possible depends on the exact
+configuration of the `main` branch ruleset, and the report did not confirm that configuration.
+
+This finding is **unconfirmed**. The first task is to check the ruleset, before deciding whether a
+fix is needed at all.
 
 ## Motivation
 
-The race the report describes is: a reviewer approves a PR, the author pushes a further commit,
-and if the platform doesn't dismiss the earlier approval, an auto-merge (BE-0061's atomic
-claim-refs automation, or GitHub's native auto-merge) could land the unreviewed commit under the
-strength of a stale approval. Whether this can happen on this repo depends entirely on the
-`main` branch protection ruleset's review requirements, not on any bajutsu-specific code — this
-proposal exists to record that dependency and pin down the answer, not to assert the race is
-real.
+The report describes the following race:
+
+1. A reviewer approves a PR.
+2. The author pushes a further commit.
+3. The platform does not dismiss the earlier approval.
+4. An auto-merge lands the unreviewed commit under the strength of the stale approval. The
+   auto-merge could be BE-0061's atomic claim-refs automation or GitHub's native auto-merge.
+
+Whether the race can happen in this repository depends entirely on the review requirements of the
+`main` branch protection ruleset. No bajutsu-specific code is involved. This proposal exists to
+record that dependency and pin down the answer. It does not assert that the race is real.
 
 A read of the repository's "Require code review" ruleset (`pull_request` rule) shows
-`dismiss_stale_reviews_on_push: true` and `require_last_push_approval: true` already configured,
-which — if this is in fact the ruleset governing `main` and these fields behave as GitHub
-documents — would already close the race: any new commit after approval invalidates prior
-approvals, and merge additionally requires an approval on the exact last pushed commit. But this
-proposal does not treat that reading as the final word: confirming it against the live ruleset
-(not a point-in-time read) and against how BE-0061's automation and native auto-merge interact
-with dismissed approvals is the actual first step.
+`dismiss_stale_reviews_on_push: true` and `require_last_push_approval: true` already configured.
+Suppose this ruleset governs `main`, and these fields behave as GitHub documents. The race would
+then already be closed. Any new commit after approval invalidates prior approvals, and a merge
+additionally requires an approval on the exact last pushed commit.
+
+This proposal does not treat that reading as the final word. The actual first step has two parts:
+
+- Confirm the configuration against the live ruleset, not a point-in-time read.
+- Confirm how BE-0061's automation and native auto-merge interact with dismissed approvals.
 
 ## Detailed design
 
-1. **Confirm the `main` ruleset's live configuration** — via `gh api
-   repos/{owner}/{repo}/rulesets` (or the Settings → Rules UI) — for the `pull_request` rule's
-   `dismiss_stale_reviews_on_push` and `require_last_push_approval` fields, on the ruleset that
-   actually governs the branch protection enforced on `main` merges.
-2. **If both are already enabled and cover every merge path** (including BE-0061's automated
-   claim+push re-allocation flow and GitHub's native auto-merge), close this proposal as already
-   mitigated by existing configuration — no code or workflow change needed, just a documented
-   confirmation.
-3. **If either is missing or a merge path bypasses them** (e.g. an automation-driven push that
-   re-triggers merge without re-evaluating the ruleset), enable/enforce
-   `dismiss_stale_reviews_on_push` and `require_last_push_approval` on the ruleset covering
-   `main`, and re-verify BE-0061's automation still functions under that constraint (its
-   claim-ref push flow re-pushes to the PR branch, which is exactly the kind of push a
-   stale-approval dismissal policy would apply to).
+1. **Confirm the live configuration of the `main` ruleset.** Use `gh api
+   repos/{owner}/{repo}/rulesets` or the Settings → Rules UI. Check the `pull_request` rule's
+   `dismiss_stale_reviews_on_push` and `require_last_push_approval` fields. Check them on the
+   ruleset that actually governs the branch protection enforced on `main` merges.
+2. **If both fields are already enabled and cover every merge path, close this proposal as already
+   mitigated by existing configuration.** The merge paths include BE-0061's automated claim+push
+   re-allocation flow and GitHub's native auto-merge. No code or workflow change is needed, merely
+   a documented confirmation.
+3. **If either field is missing, or a merge path bypasses them, enable and enforce both fields on
+   the ruleset covering `main`.** An example of a bypass is an automation-driven push that
+   re-triggers merge without re-evaluating the ruleset. After the change, re-verify that BE-0061's
+   automation still functions under the constraint. Its claim-ref push flow re-pushes to the PR
+   branch, which is exactly the kind of push that a stale-approval dismissal policy applies to.
 
 ## Alternatives considered
 
-- **Assume the race is real and ship a fix without confirming the ruleset first.** Rejected: the
-  report explicitly flags this as needs-confirmation, and the ruleset read already suggests the
-  relevant settings exist — building a fix for an already-mitigated issue would be wasted work
-  and risks conflicting with BE-0061's existing automation.
-- **Ignore the finding since severity is unclear.** Rejected: even a small chance of an
-  unreviewed commit merging under a stale approval is worth a one-time confirmation, given how
-  cheap that confirmation is relative to the risk.
+- **Assume the race is real and ship a fix without confirming the ruleset first.** Rejected. The
+  report explicitly flags the finding as needs-confirmation, and the ruleset read already suggests
+  that the relevant settings exist. A fix for an already-mitigated issue would be wasted work. It
+  also risks conflicting with BE-0061's existing automation.
+- **Ignore the finding since severity is unclear.** Rejected. Even a small chance of an unreviewed
+  commit merging under a stale approval is worth a one-time confirmation. The confirmation is cheap
+  relative to the risk.
 
 ## Progress
 
@@ -98,25 +104,28 @@ with dismissed approvals is the actual first step.
 
 **Merge-path analysis**
 
-1. **Human merge** — the ruleset applies directly; any push after approval dismisses it and merge
-   requires approval on the last pushed commit. Race closed.
-2. **Native auto-merge** (`auto-merge.yml`) — enabled by `bajutsu-automation-bot` (Integration
-   4178537), which is a bypass actor (`bypass_mode: always`) on this ruleset. Despite the bypass
-   status, empirical observation of PRs #677 and #678 (both merged by the App via auto-merge)
-   shows that auto-merge waited for the review approval before merging (PR #677: approved
-   04:49:50 → merged 04:49:51; PR #678: approved 04:20:53 → merged 04:21:04). `gh pr merge
-   --auto` voluntarily waits for all branch-protection requirements regardless of the actor's
-   bypass privileges; the bypass path is direct `gh pr merge` (without `--auto`), which is not
-   used anywhere in the automation. Race closed.
-3. **roadmap-id.yml** (BE-0089) — a post-merge push directly to `main` that allocates BE IDs. Not
-   a PR merge path; irrelevant to the stale-approval race.
+1. **Human merge** — the ruleset applies directly. Any push after approval dismisses the approval,
+   and merge requires approval on the last pushed commit. Race closed.
+2. **Native auto-merge** (`auto-merge.yml`) — `bajutsu-automation-bot` (Integration 4178537)
+   enables it. That App is a bypass actor (`bypass_mode: always`) on this ruleset. Despite the
+   bypass status, PRs #677 and #678 (both merged by the App via auto-merge) show that auto-merge
+   waited for the review approval before merging:
+   - PR #677: approved 04:49:50, merged 04:49:51.
+   - PR #678: approved 04:20:53, merged 04:21:04.
 
-**Verdict**: the stale-approval race described in the codebase-analysis report is already mitigated
-by the live configuration. No code, workflow, or ruleset change is needed.
+   `gh pr merge --auto` voluntarily waits for all branch-protection requirements, regardless of the
+   actor's bypass privileges. The bypass path is a direct `gh pr merge` (without `--auto`), and the
+   automation uses it nowhere. Race closed.
+3. **roadmap-id.yml** (BE-0089) — a post-merge push directly to `main` that allocates BE IDs. It is
+   not a PR merge path, so it is irrelevant to the stale-approval race.
+
+**Verdict**: the live configuration already mitigates the stale-approval race described in the
+codebase-analysis report. No code, workflow, or ruleset change is needed.
 
 ## References
 
-GitHub repository ruleset "Require code review" (`pull_request` rule:
-`dismiss_stale_reviews_on_push`, `require_last_push_approval`). Related: BE-0089 (merge-time
-BE-id allocation), BE-0061 (BE-id allocation hardening), BE-0069 (executable contributor
-guardrails). Originates from the 2026-07-02 codebase-analysis report (security).
+- GitHub repository ruleset "Require code review" (`pull_request` rule:
+  `dismiss_stale_reviews_on_push`, `require_last_push_approval`)
+- Related: BE-0089 (merge-time BE-id allocation), BE-0061 (BE-id allocation hardening), BE-0069
+  (executable contributor guardrails)
+- Originates from the 2026-07-02 codebase-analysis report (security).

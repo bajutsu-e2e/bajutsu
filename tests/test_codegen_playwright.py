@@ -71,6 +71,20 @@ def test_wait_until_gone() -> None:
     assert "await expect(page.getByTestId('spinner')).toBeHidden({ timeout: 3000 });" in code
 
 
+def test_navigate_resolves_against_base_url_like_the_driver() -> None:
+    # BE-0464: `new URL(ref, BASE_URL)` resolves a reference as the driver's `urljoin` does, and the
+    # value goes through `_ts`, since a `'` is legal in a URL query.
+    code = _gen('- name: x\n  steps:\n    - navigate: "/search?q=it\'s"\n')
+    assert "await page.goto(new URL('/search?q=it\\'s', BASE_URL).toString());" in code
+    assert "TODO" not in code
+
+
+def test_navigate_with_a_runtime_token_is_a_labeled_todo() -> None:
+    code = _gen("- name: x\n  steps:\n    - navigate: '/items/${vars.id}'\n")
+    assert "// TODO: navigate('/items/${vars.id}') — runtime-substituted URL; not generated" in code
+    assert "page.goto(new URL" not in code
+
+
 def test_back_goes_back_in_history() -> None:
     # BE-0210: the web `back` step is browser history — emitted faithfully, not an unlabeled TODO.
     code = _gen("- name: x\n  steps:\n    - back: {}\n")
@@ -220,7 +234,7 @@ def test_relaunch_gotos_base_url() -> None:
 
 def test_launch_env_seeds_localstorage() -> None:
     code = _gen(
-        "- name: x\n  preconditions:\n    launchEnv: { B: '2' }\n  steps:\n    - tap: { id: a }\n",
+        "- name: x\n  preconditions:\n    subject: { launch: { env: { B: '2' } } }\n  steps:\n    - tap: { id: a }\n",
         env={"A": "1"},
     )
     assert "await page.addInitScript(() => localStorage.setItem('A', '1'));" in code
@@ -402,9 +416,19 @@ def _cli_setup(tmp_path: Path) -> tuple[Path, Path]:
     """A config with one web app (baseUrl) and one iOS app (bundleId), plus a scenario file."""
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "targets:\n"
-        "  web: { baseUrl: 'http://localhost:3000', idNamespaces: [home] }\n"
-        "  ios: { bundleId: com.example.ios, idNamespaces: [home] }\n",
+        (
+            "targets:\n"
+            "  web:\n"
+            "    platform: web\n"
+            "    subject:\n"
+            "      url: http://localhost:3000\n"
+            "      idNamespaces: [home]\n"
+            "  ios:\n"
+            "    platform: ios\n"
+            "    subject:\n"
+            "      id: com.example.ios\n"
+            "      idNamespaces: [home]\n"
+        ),
         encoding="utf-8",
     )
     scn = tmp_path / "s.yaml"
@@ -442,7 +466,7 @@ def test_cli_emit_playwright_without_base_url_exits(tmp_path: Path) -> None:
         app, ["codegen", str(scn), "--target", "ios", "--emit", "playwright", "--config", str(cfg)]
     )
     assert r.exit_code == 2
-    assert "baseUrl" in r.output
+    assert "subject.url" in r.output
 
 
 def test_cli_unsupported_emit_exits(tmp_path: Path) -> None:
@@ -481,3 +505,21 @@ def test_handle_system_alert_is_todo() -> None:
     assert "// TODO: handleSystemAlert" in code
     assert "iOS-only" in code
     assert "unsupported step" not in code
+
+
+def test_attribute_assertion_emits_to_have_attribute() -> None:
+    # BE-0466: each operator maps onto Playwright's own attribute matcher, pinned line for line.
+    code = _gen(
+        "- name: x\n  steps:\n    - assert:\n"
+        "      - attribute: { sel: { id: docs.link }, name: href, equals: /docs }\n"
+        "      - attribute: { sel: { id: hero }, name: alt, contains: 'a.b' }\n"
+        "      - attribute: { sel: { id: cart }, name: data-state, matches: '^(ready|idle)$' }\n"
+        "      - attribute: { sel: { id: submit }, name: aria-busy, absent: true }\n"
+    )
+    lines = [ln.strip() for ln in code.splitlines() if "toHaveAttribute" in ln]
+    assert lines == [
+        "await expect(page.getByTestId('docs.link')).toHaveAttribute('href', '/docs');",
+        "await expect(page.getByTestId('hero')).toHaveAttribute('alt', /a\\.b/);",
+        "await expect(page.getByTestId('cart')).toHaveAttribute('data-state', /^(ready|idle)$/);",
+        "await expect(page.getByTestId('submit')).not.toHaveAttribute('aria-busy');",
+    ]

@@ -91,6 +91,7 @@ from bajutsu.serve.operations.reads import (
     crawl_runs_payload,
     flakiness_html,
     job_view,
+    list_environments,
     list_scenarios,
     list_targets_payload,
     read_scenario,
@@ -107,6 +108,7 @@ from bajutsu.serve.operations.reads import (
 from bajutsu.serve.operations.runs import (
     bulk_delete_runs,
     delete_run,
+    rescan_runs,
     restore_run,
     sweep_expired_trash,
 )
@@ -134,8 +136,13 @@ from bajutsu.serve.operations.upload import (
 )
 from bajutsu.serve.operations.version import server_checkout, server_version
 from bajutsu.serve.operations.worker import (
+    worker_artifact,
+    worker_batch_run,
+    worker_handoff,
+    worker_handoff_response,
     worker_heartbeat,
     worker_lease,
+    worker_log,
     worker_result,
 )
 from bajutsu.serve.operations.worker_uploads import (
@@ -203,6 +210,7 @@ __all__ = [
     "job_sse",
     "job_view",
     "lint_scenario",
+    "list_environments",
     "list_orgs_view",
     "list_scenarios",
     "list_targets_payload",
@@ -215,6 +223,7 @@ __all__ = [
     "read_scenario",
     "render_metrics",
     "required_role",
+    "rescan_runs",
     "resolve_capture_pick",
     "resolve_scenario_pick",
     "respond_human",
@@ -254,9 +263,14 @@ __all__ = [
     "upload_scenarios",
     "upload_theme",
     "usage_html",
+    "worker_artifact",
     "worker_artifact_urls",
+    "worker_batch_run",
+    "worker_handoff",
+    "worker_handoff_response",
     "worker_heartbeat",
     "worker_lease",
+    "worker_log",
     "worker_result",
     "worker_scenario_url",
 ]

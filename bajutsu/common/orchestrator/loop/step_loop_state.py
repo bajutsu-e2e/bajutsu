@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 
 from bajutsu.common.drivers import base
 from bajutsu.common.evidence import Artifact
-from bajutsu.common.orchestrator.types import SelectionState, StepOutcome
+from bajutsu.common.orchestrator.types import DerivedSecrets, SelectionState, StepOutcome
 
 from ._step_counter import _StepCounter
 from .app_crash_latches import AppCrashLatches
@@ -30,16 +30,22 @@ class StepLoopState:
     bindings: dict[str, str]
     # Scenario-scoped like `bindings`, and for the same reason: `run_scenario` creates one and hands
     # every phase the same object, so what a failing `relaunch` in `steps` latched still suppresses
-    # the probe for an `after: on: error` rule dispatched afterward (BE-0424).
+    # the probe for a `cleanup: on: failure` rule dispatched afterward (BE-0424).
     app_crash: AppCrashLatches
     # One selection tracker per run, shared across the recursive step loop (like `_StepCounter`), so
     # a `copy` sees the selection a prior `select` left — and any action in between clears it (BE-0265).
     selection: SelectionState = field(default_factory=SelectionState)
+    # Scenario-scoped like `bindings` and shared by every phase the same way: a `cleanup` step that
+    # reads a variable `steps` derived from a secret must still know it is secret (BE-0472).
+    derived: DerivedSecrets = field(default_factory=DerivedSecrets)
     # `prev_after` carries a step's post-step tree to the next step's `before` (BE-0234 Unit 2):
     # nothing actuates between the two, so they observe the same device state and the `before` read
     # is skipped. It holds only a tree we actually read; a step that took no read leaves it None so
     # the next `before` reads fresh, and a `web` block resets it (the tree is a different driver's).
     prev_after: list[base.Element] | None = None
+    # Whether the scenario's first step has run the guard once before acting (`_clear_entry_alert`).
+    # Scenario-scoped like the counter, so a nested group's first step does not run it again.
+    entry_alert_checked: bool = False
     # The previous step's `after.png` artifact, reused as this step's `before.png` (BE-0407 Unit 1)
     # instead of a fresh `driver.screenshot()`: nothing actuates between the two, so they are the
     # identical pixels. Set only when the shutter actually wrote a screenshot (a `NullSink` writes
@@ -66,8 +72,8 @@ class StepLoopState:
     running_recovery: bool = False
     # When the proactive notification-banner sweep (BE-0416 Unit 8) last actually queried the
     # backend, in `clock.now()` units — `None` before the run's first step. Rate-limits that query
-    # to the resolved poll interval, decoupled from how often a step runs, the same way
-    # `_AlertGuardGate` rate-limits its own native probe (BE-0315).
+    # to the resolved poll interval, decoupled from how often a step runs, the same way the
+    # runner rate-limits its own SpringBoard check (BE-0461).
     last_notification_banner_poll_at: float | None = None
     # Which declared targets can take a step and which one is the primary now (BE-0447). Shared by
     # every phase like `app_crash`; `None` for a scenario declaring no targets.

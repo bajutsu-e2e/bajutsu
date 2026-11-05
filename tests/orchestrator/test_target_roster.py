@@ -246,7 +246,7 @@ def test_a_member_brought_up_in_steps_stays_routable_from_after() -> None:
                 "targets": [["old", "new"]],
                 "primaryTarget": "old",
                 "steps": [{"target": "new", "foreground": {}}],
-                "after": [
+                "cleanup": [
                     {"on": "always", "steps": [{"target": "new", "tap": {"id": "new.button"}}]}
                 ],
                 "expect": [{"target": "new", "exists": {"id": "new.button"}}],

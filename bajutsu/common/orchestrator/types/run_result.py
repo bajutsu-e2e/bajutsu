@@ -9,6 +9,7 @@ from bajutsu.common.drivers.actuation import Actuation
 from bajutsu.common.evidence import Artifact
 
 from .alert_event import AlertEvent
+from .ignored_setting import IgnoredSetting
 from .skipped_capture import SkippedCapture
 from .step_outcome import StepOutcome
 from .target_device_info import TargetDeviceInfo
@@ -29,6 +30,12 @@ class RunResult:
     # — set only on a `--browsers` cross-engine run (BE-0076). Empty for iOS and any single-engine
     # run, so `backend` stays the actuator and `engine` carries the rendering-engine axis.
     engine: str = ""
+    # The run's coordinates when `runsOn` conditions form the scenario's runs (BE-0452): `coordinates`
+    # names them as a test name shows them (`iPhone SE (3rd generation) / iOS 17`), and
+    # `run_coordinates` holds them per target and condition field, the key the flakiness history
+    # groups by. Both empty for a scenario no condition multiplies.
+    coordinates: str = ""
+    run_coordinates: dict[str, dict[str, str]] = field(default_factory=dict)
     # The scenario's evidence-dir slug under the run dir (`NN-slug`), stamped by the runner that
     # named the dir, so anything cross-linking to that evidence reads the authoritative value
     # instead of re-deriving it (BE-0076). Empty when no evidence dir was written (e.g. tests).
@@ -64,6 +71,10 @@ class RunResult:
     # so `pipeline.py` converts them through this rather than sampling its own wall/monotonic pair at
     # write time — a second pair would drift from every other timestamp on an NTP correction.
     wall_offset_s: float = 0.0
+    # Secret values an `eval` step derived during this scenario (BE-0472), for a writer that runs on
+    # the finished result, such as the app-crash artifacts. In memory only: serializing the set
+    # would write the very values it exists to hide, so `manifest.py` drops it like `wall_offset_s`.
+    derived_secrets: list[str] = field(default_factory=list)
     # System prompts the guard cleared before the scenario-level `expect` re-checked.
     expect_alerts: list[AlertEvent] = field(default_factory=list)
     # Actuations the guard performed for that same expect-phase retry — the one place a gesture happens
@@ -75,16 +86,21 @@ class RunResult:
     dropped_expect_actuations: int = 0
     # Evidence kinds the run couldn't supply (no eligible backend) — disclosed, not silent (BE-0020).
     skipped_captures: list[SkippedCapture] = field(default_factory=list)
+    # Settings a target's route could not apply and the target declared ignored (BE-0467), so the
+    # report says what the run went without; the verdict never reads it.
+    ignored_settings: list[IgnoredSetting] = field(default_factory=list)
     # The lifecycle phases' own step outcomes (BE-0392), each numbered from zero and kept beside
     # `steps` rather than folded into it — the separation `expect_results` already gets, and what
     # lets a report show setup and teardown as their own blocks instead of merging them into the
     # scenario's numbered sequence the way a `preconditions.setup` prelude does.
     before_outcomes: list[StepOutcome] = field(default_factory=list)
     after_outcomes: list[StepOutcome] = field(default_factory=list)
-    # The verdict the `after` phase dispatched on — "success" / "error", or "" when the scenario
-    # declared no `after` rules. Recorded rather than re-derived from `failure`, which by then may
-    # also carry a cleanup step's own reason: without it a report cannot tell which rules ran, and
-    # so cannot line an outcome up with the rule that produced it.
+    # The verdict the `cleanup` phase dispatched on — "success" / "failure" (BE-0452; "error" before
+    # it, which `report/load.py` reads as "failure"), or "" when the scenario declared no `cleanup`
+    # rules. The stored key keeps its name, so manifests stay readable both ways. Recorded rather
+    # than re-derived from `failure`, which by then may also carry a cleanup step's own reason:
+    # without it a report cannot tell which rules ran, and so cannot line an outcome up with the
+    # rule that produced it.
     after_verdict: str = ""
     # The first command an operator ran against the app while a `bajutsu run --step` pause held the
     # loop. Non-empty makes the result a failure whatever the assertions said: a hand-driven run is

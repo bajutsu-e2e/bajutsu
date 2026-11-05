@@ -21,7 +21,8 @@ final class RunnerUITest: XCTestCase {
         // would abort the runner regardless. `APIHandler` catches that at every handler boundary
         // (`caught`: actuation → stale, query → empty screen, screenshot → 500), so the two
         // together keep the runner serving; a genuinely failed operation still surfaces to the Python
-        // side through its response status.
+        // side through its response status. XCUIAutomation's own failures interrupt the test
+        // regardless of this flag; `serve` contains that interruption (`ResidentLoop`).
         continueAfterFailure = true
 
         // Take the answer to an out-of-process system prompt away from XCUITest. Before it
@@ -51,13 +52,17 @@ final class RunnerUITest: XCTestCase {
             // BE-0416): a governed run would record it as an undeclared interruption and fail a
             // passing step, an ungoverned one would leave XCUITest to wait it out.
             if isNotificationBanner(identifier: alert.identifier) {
-                return Self.swipeAwayNotificationBanner(alert)
+                return Self.swipeAwayNotificationBanner()
             }
             let policy = InterruptionPolicyStore.shared.policy
             guard policy.governs else { return false }
             let buttons = alert.buttons
             let labels = (0..<buttons.count).map { buttons.element(boundBy: $0).label }
-            guard let label = policy.label(for: labels) else {
+            // The title joins the matched labels as a marker, so a prompt sharing another's buttons
+            // (Local Network and notifications) is told apart the way the Python guard tells it.
+            let title = alert.label
+            let matched = title.isEmpty ? labels : labels + [alertTitleMarker(title)]
+            guard let rule = policy.rule(for: matched, surface: .native) else {
                 // A `labels` carrying no real button text is the same benign race `button.exists`
                 // guards below: the alert lost the race with its own dismissal between XCUITest
                 // flagging the interruption and this query — `buttons.count` can already reflect
@@ -70,13 +75,17 @@ final class RunnerUITest: XCTestCase {
                 }
                 return false
             }
+            let label = rule.tap
             guard let ordinal = labels.firstIndex(of: label) else { return false }
             let button = buttons.element(boundBy: ordinal)
             guard button.exists else { return false }
-            button.tap()
+            // Marked as the monitor's own touch, never the interrupted request's (BE-0462).
+            let press = SynthesisLedger.shared.mark(actuation: false) { button.tap() }
             // Recorded so the driver can report this as an `AlertEvent`: a prompt answered here
-            // being missing from the report is the failure this mechanism exists to end.
-            InterruptionPolicyStore.shared.record(label)
+            // being missing from the report is the failure this mechanism exists to end. The store
+            // records only a showing's first press, so a showing a resolving read already answered
+            // is not reported twice (BE-0461 Unit 2) — the press itself always happens.
+            InterruptionPolicyStore.shared.recordMonitorPress(rule, alert: matched, synthesisId: press.id)
             return true
         }
     }
@@ -87,61 +96,150 @@ final class RunnerUITest: XCTestCase {
     /// navigate the run away from the scenario under test. The gesture is anchored to the banner's
     /// measured frame rather than a fixed screen coordinate, so it holds across device sizes, and it
     /// ends just above that frame rather than past the screen's edge, where the drag would become
-    /// SpringBoard's own top-edge gesture instead.
+    /// SpringBoard's own top-edge gesture instead. That frame is read only once the banner has
+    /// settled: XCUITest can flag the banner while it is still sliding in from above the screen, and
+    /// a frame read then puts the swipe's start off-screen and its end *below* it — a downward drag
+    /// that cannot dismiss anything (issue #2156, measured on iOS 26.5 at a frame centred at y=-78.7).
     ///
     /// Returning `true` claims the interruption, and XCUITest re-invokes a monitor that claimed one
     /// it did not actually clear — the same unbounded reinvocation loop BE-0399 measured for an
     /// alert (above), reproduced for a banner while measuring BE-0416 by capping a throwaway test
     /// monitor at six invocations rather than letting it run to the failure BE-0399 hit. So the
-    /// clearance is *confirmed* before claiming it, and an unconfirmed swipe declines instead,
-    /// handing the banner back to XCUITest's own handler, which does clear it.
+    /// clearance is *confirmed* before claiming it.
     ///
-    /// A decline here still needs to be *legible*, or it reproduces in miniature the invisibility
+    /// Declining is the last resort, not the fallback: XCUITest's own handler does not clear a
+    /// banner. Measured on iOS 26.5, it ignores a non-alert element, and every lookup it makes of the
+    /// banner by its `BannerNotification` type misses ("Automation type mismatch": the snapshot
+    /// classifies the banner as `Other`) and records a UI automation failure; those failures then
+    /// preempted the interrupted `swipe` and ended the test case, losing the runner (#2156). So an
+    /// unconfirmed swipe keeps waiting for the banner's own auto-dismissal, which clears it as surely
+    /// as the swipe would, and declines only if the banner outlasts that too — or if the identifier
+    /// query cannot see the banner at all, where its absence would prove nothing (below).
+    ///
+    /// Either outcome still needs to be *legible*, or it reproduces in miniature the invisibility
     /// this whole mechanism exists to end: nothing calls `recordDeclined` for a banner (that path
     /// classifies as an `UndeclaredInterruption` and would fail the step, the outcome BE-0416 removes
-    /// for a banner), so an unconfirmed swipe is logged instead — observable without being fatal.
-    private static func swipeAwayNotificationBanner(_ banner: XCUIElement) -> Bool {
-        let frame = banner.frame
-        guard frame.height > 0 else {
-            logUnconfirmedBanner("the interrupting element reported an empty frame")
+    /// for a banner), so an unconfirmed swipe is logged instead — observable without failing the step.
+    private static func swipeAwayNotificationBanner() -> Bool {
+        let springboard = XCUIApplication(bundleIdentifier: springboardBundleID)
+        let remaining = springboard.descendants(matching: .any)
+            .matching(identifier: notificationBannerIdentifier)
+        // Every later check reads the banner's absence from this query as its clearance, which holds
+        // only once the query has seen the banner. A query that cannot resolve it here may simply be
+        // missing a banner still on screen, and claiming that is the reinvocation loop above — so
+        // decline rather than claim an interruption nothing here can confirm.
+        let current = remaining.firstMatch
+        guard current.exists else {
+            logBanner("the identifier query could not see the interrupting banner — declining to XCUITest's own handler")
             return false
         }
         // Read before the swipe: once the banner is gone its label resolves to empty, and the label
         // is the only thing that identifies the dismissal in the run's report.
-        let label = banner.label
-        let springboard = XCUIApplication(bundleIdentifier: springboardBundleID)
+        let label = current.label
+        guard let frame = settledFrame(of: remaining.firstMatch) else {
+            return awaitBannerClearance(
+                remaining, label: label, swiped: false, unconfirmed: "the banner never settled on screen"
+            )
+        }
+        // The outcome itself, not only its proxy: a settled frame implies an upward swipe of at least
+        // `bannerSwipeTravel` for the banner shapes measured, but the top-margin clamp can still
+        // shorten or invert it for others. The same rule the step loop's proactive sweep applies
+        // (`notification_banner_swipe_points`), so the two cannot drift.
+        let endY = max(bannerSwipeTopMargin, frame.minY - bannerSwipeTravel)
+        guard frame.midY - endY >= bannerSwipeTravel else {
+            return awaitBannerClearance(
+                remaining, label: label, swiped: false,
+                unconfirmed: "the settled frame left the swipe shorter than \(bannerSwipeTravel) points"
+            )
+        }
         let origin = springboard.coordinate(withNormalizedOffset: .zero)
         let from = origin.withOffset(CGVector(dx: frame.midX, dy: frame.midY))
-        let to = origin.withOffset(
-            CGVector(dx: frame.midX, dy: max(bannerSwipeTopMargin, frame.minY - bannerSwipeTravel))
-        )
+        let to = origin.withOffset(CGVector(dx: frame.midX, dy: endY))
         // Re-checked immediately before the gesture, mirroring the alert branch's own `button.exists`
         // guard above: the banner can lose the race with its own auto-dismissal between the frame
         // read and this press, and a flick delivered at its former screen position would then land on
         // whatever the application under test draws there instead — a gesture the scenario never
-        // asked for.
-        guard banner.exists else {
-            logUnconfirmedBanner("the banner disappeared before the swipe could be sent")
-            return false
+        // asked for. A banner already gone is cleared, so it is confirmed rather than declined.
+        guard remaining.firstMatch.exists else {
+            return awaitBannerClearance(
+                remaining, label: label, swiped: false, unconfirmed: "the banner disappeared before the swipe"
+            )
         }
-        from.press(forDuration: bannerSwipePressDuration, thenDragTo: to)
+        let swipe = SynthesisLedger.shared.mark(actuation: false) {
+            from.press(forDuration: bannerSwipePressDuration, thenDragTo: to)
+        }
+        return awaitBannerClearance(
+            remaining, label: label, swiped: true, synthesisId: swipe.id,
+            unconfirmed: "the swipe did not clear the banner"
+        )
+    }
 
-        let remaining = springboard.descendants(matching: .any)
-            .matching(identifier: notificationBannerIdentifier)
-        let deadline = Date().addingTimeInterval(bannerClearanceTimeout)
+    /// The banner's frame once it is fully on screen and has stopped moving, or `nil` if it never
+    /// does (or disappears) within `bannerSettleTimeout`. Two consecutive reads agreeing within a
+    /// point mark the end of the slide-in animation; a top edge at or below the screen's own rules
+    /// out a banner that is still partly above it.
+    ///
+    /// Read through the type-agnostic identifier query rather than the typed interrupting element.
+    /// The lookups seen missing in #2156 were XCUITest's own, by the banner's `BannerNotification`
+    /// type, after the monitor declined; the monitor's typed reads did resolve there. The identifier
+    /// query is what the banner is matched on in the first place, so the monitor's reads stay off
+    /// the type that iOS 26.5 misclassifies.
+    private static func settledFrame(of banner: XCUIElement) -> CGRect? {
+        var previous: CGRect?
+        let deadline = Date().addingTimeInterval(bannerSettleTimeout)
+        repeat {
+            // `exists` first: reading `frame` of a vanished element records a UI automation failure.
+            // Two separate resolutions, so this narrows that race rather than closing it; the paced
+            // poll below bounds how many times the race is taken.
+            guard banner.exists else { return nil }
+            let frame = banner.frame
+            // Within a point rather than exact `CGRect` equality: a frame that jitters by a fraction
+            // of a point would otherwise never count as settled, and the gesture depends only on
+            // `minY` and `height`.
+            if let previous, frame.height > 0, frame.minY >= 0,
+               abs(frame.minY - previous.minY) < 1, abs(frame.height - previous.height) < 1 {
+                return frame
+            }
+            previous = frame
+            Thread.sleep(forTimeInterval: bannerSettlePollInterval)
+        } while Date() < deadline
+        return nil
+    }
+
+    /// Confirm the banner is gone and claim it, or decline once it has outlasted
+    /// `bannerClearanceTimeout`. A cleared banner is still claimed when the swipe was skipped, or when
+    /// it went only after `bannerSwipeClearanceWindow`, since it is cleared either way; both cases are
+    /// logged so the path that cleared it stays observable.
+    private static func awaitBannerClearance(
+        _ remaining: XCUIElementQuery, label: String, swiped: Bool, synthesisId: String? = nil,
+        unconfirmed reason: String
+    ) -> Bool {
+        let start = Date()
         repeat {
             if !remaining.firstMatch.exists {
-                InterruptionPolicyStore.shared.recordBanner(label)
+                let elapsed = Date().timeIntervalSince(start)
+                if !swiped || elapsed > bannerSwipeClearanceWindow {
+                    logBanner("\(reason); it cleared on its own after \(String(format: "%.1f", elapsed))s")
+                }
+                // An empty label would put a blank event in the run's report; the clearance is
+                // still real, so it is claimed and only logged.
+                if label.isEmpty {
+                    logBanner("cleared, but its label read empty, so the report records nothing")
+                } else {
+                    InterruptionPolicyStore.shared.recordBanner(
+                        label, synthesisIds: synthesisId.map { [$0] } ?? []
+                    )
+                }
                 return true
             }
-        } while Date() < deadline
-        logUnconfirmedBanner("the banner was still on screen \(bannerClearanceTimeout)s after the swipe")
+        } while Date().timeIntervalSince(start) < bannerClearanceTimeout
+        logBanner("\(reason); still on screen after \(bannerClearanceTimeout)s — declining to XCUITest's own handler")
         return false
     }
 
-    private static func logUnconfirmedBanner(_ reason: String) {
+    private static func logBanner(_ message: String) {
         FileHandle.standardError.write(
-            Data("bajutsu runner: notification banner swipe unconfirmed (\(reason)) — declining to XCUITest's own handler\n".utf8)
+            Data("bajutsu runner: notification banner: \(message)\n".utf8)
         )
     }
 
@@ -162,13 +260,34 @@ final class RunnerUITest: XCTestCase {
     /// (`XcuitestElementProvider.scrollVelocity`, BE-0400).
     private static let bannerSwipePressDuration: TimeInterval = 0.05
 
-    /// How long the swipe's clearance is re-checked before it counts as unconfirmed. A deadline, not
-    /// a sample count: a fixed count of SpringBoard queries scales with host speed, so it can decide
-    /// "unconfirmed" for a swipe that actually landed on a slow host, or block a fast one for far
-    /// longer than the ~32ms per query measured while sizing this. A deadline instead gives the
-    /// dismissal animation the same real time on every host, while each poll is still a real
-    /// SpringBoard query rather than a sleep (determinism first).
-    private static let bannerClearanceTimeout: TimeInterval = 2
+    /// How long the banner may take to finish sliding in before the swipe is abandoned. The
+    /// slide-in is a fraction of a second; this only bounds a banner that never comes to rest.
+    private static let bannerSettleTimeout: TimeInterval = 2
+
+    /// The pause between settle reads. Each read is an `exists` → `frame` pair that a banner
+    /// vanishing in between turns into a recorded UI automation failure, so an unpaced poll would
+    /// take that race once per ~64ms query pair, about 30 times in `bannerSettleTimeout`. Paced, it
+    /// takes it at most ~20 times on any host, and the usual fraction-of-a-second slide-in settles in
+    /// a handful. Two equal reads 0.1s apart are also firmer evidence the banner has stopped moving
+    /// than two taken back to back.
+    private static let bannerSettlePollInterval: TimeInterval = 0.1
+
+    /// Not a deadline: the line past which a clearance after a real swipe is logged as the banner's
+    /// own auto-dismissal rather than the swipe's work. It keeps the confirmation window the swipe had
+    /// before #2156.
+    private static let bannerSwipeClearanceWindow: TimeInterval = 2
+
+    /// How long clearance is re-checked before the monitor declines. Deadlines, not sample counts: a
+    /// fixed count of SpringBoard queries scales with host speed, so it can decide "unconfirmed" for a
+    /// swipe that actually landed on a slow host, or block a fast one for far longer than the ~32ms
+    /// per query measured while sizing this. A deadline instead gives the dismissal the same real
+    /// time on every host, while each poll is still a real SpringBoard query rather than a sleep
+    /// (determinism first). Sized to outlast a temporary banner's own display time, so declining
+    /// after a clearance wait — fatal to the runner, see `swipeAwayNotificationBanner` — is reached
+    /// only by a banner that will not leave by itself. The worst case per interruption, settle
+    /// (`bannerSettleTimeout`, 2s) plus clearance (10s), is about 12s, well inside the 30s actuation window
+    /// (`_ACTUATION_TIMEOUT_SECONDS` in `bajutsu/common/drivers/xcuitest/_functions.py`).
+    private static let bannerClearanceTimeout: TimeInterval = 10
 
     override func record(_ issue: XCTIssue) {
         super.record(issue)
@@ -196,6 +315,19 @@ final class RunnerUITest: XCTestCase {
         } else {
             app = XCUIApplication()
         }
+        if RunnerServer.forwardedAttach {
+            // BE-0455: drive the process the operator already has open. No launch, so no launch env
+            // or arguments to apply and no launch hang for the watchdog below to catch. An app that
+            // exited after Python's probe, or sits in the background, would serve an empty tree under
+            // a healthy runner; failing before the server binds exits through `record(_:)` instead,
+            // so the one attach spawn fails loudly with this line in its log tail.
+            guard app.state == .runningForeground else {
+                XCTFail("bajutsu attach: \(RunnerServer.forwardedBundleId ?? "the app") is not running in the foreground (XCUIApplication.State \(app.state.rawValue))")
+                return
+            }
+            try serve(app)
+            return
+        }
         for (key, value) in RunnerServer.forwardedLaunchEnvironment {
             app.launchEnvironment[key] = value
         }
@@ -213,7 +345,11 @@ final class RunnerUITest: XCTestCase {
         let launchWatchdog = LaunchWatchdog(timeout: 90)
         app.launch()
         launchWatchdog.disarm()
+        try serve(app)
+    }
 
+    /// Serve the loopback endpoints over `app` until Python terminates the process at teardown.
+    private func serve(_ app: XCUIApplication) throws {
         let provider = XcuitestElementProvider(app: app)
         let server = RunnerServer(provider: provider)
         let port = try server.startFromEnvironment()
@@ -224,9 +360,13 @@ final class RunnerUITest: XCTestCase {
         defer { server.stop() }
 
         // Stay resident: pump the main run loop (servicing the server thread's
-        // DispatchQueue.main work) until Python terminates the process at teardown.
+        // DispatchQueue.main work) until Python terminates the process at teardown. Each turn is
+        // contained, because XCTest raises a deferred test interruption as the turn returns —
+        // outside every handler boundary (`ResidentLoop`).
         while true {
-            RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 1))
+            ResidentLoop.runTurn {
+                RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 1))
+            }
         }
     }
 }

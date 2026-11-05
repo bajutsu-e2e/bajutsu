@@ -54,6 +54,16 @@ def permission_capability(service: str) -> str:
     return f"deviceControl.permissions.{service}"
 
 
+def without_cross_origin_frames(elements: list[Element]) -> list[Element]:
+    """The elements the app itself serves, dropping those read from a cross-origin iframe.
+
+    For readers that judge the app rather than the screen — `doctor`'s id coverage and the crawl's
+    screen model — an embedded third-party widget is noise the app cannot change. Every backend
+    but the web one never marks an element, so for them this returns the list unchanged.
+    """
+    return [el for el in elements if not el.get("crossOriginFrame")]
+
+
 def native_z_from_json(value: object) -> float | None:
     """Read a persisted `nativeZ` back off JSON, degrading anything unrepresentable to `None`.
 
@@ -82,7 +92,7 @@ def id_candidates(v: str | list[str]) -> list[str]:
 def validate_id_candidates(field: str, value: str | list[str] | None) -> None:
     """Reject a malformed `id` / `idMatches` OR-candidate list; a no-op for a string or None (BE-0221).
 
-    Shared by the scenario `Selector` model and config's `readyWhen` (a `base.Selector`) so a
+    Shared by the scenario `Selector` model and config's `startWhen` (a `base.Selector`) so a
     candidate list is checked the same way wherever it is authored. A list must be non-empty with no
     blank entry, and if it contains any dotted (SPEC-form) candidate, that candidate must lead:
     single-id consumers — the resolver's representative pick, `audit` coverage bucketing

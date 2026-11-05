@@ -45,6 +45,12 @@ DEVICE_CONTROL_ALL = frozenset(
     }
 )
 
+# The interval evidence kinds simctl records (video, `log stream`, the app's os_log trace) — the
+# Simulator alone, so a real iOS device drops them like `DEVICE_CONTROL_ALL` (BE-0467).
+SIMCTL_EVIDENCE_CAPABILITIES = frozenset(
+    {Capability.VIDEO, Capability.DEVICE_LOG, Capability.APP_TRACE}
+)
+
 # The permission services iOS's `simctl privacy` backs — every vocabulary entry but `notifications`
 # (iOS notification authorization is not part of TCC — Transparency, Consent, and Control — the
 # database `simctl privacy` drives). Provided by xcuitest, which wires a real

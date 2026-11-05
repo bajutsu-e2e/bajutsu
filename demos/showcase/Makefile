@@ -22,7 +22,7 @@ FLUTTER := $(HERE)/flutter
 RUNNER  := $(ROOT)/BajutsuKit/Runner
 
 # A built scheme lands at build/dd/Build/Products/Debug-iphonesimulator/<Scheme>.app,
-# which is exactly the appPath each iOS targets.<name> entry in showcase.config.yaml points to.
+# which is exactly the subject.path each iOS targets.<name> entry in showcase.config.yaml points to.
 # (The Android targets' APKs are built by demos/showcase/android/Makefile — see SPEC §2.1.)
 define build_scheme
 	cd $(1) && xcodegen generate
@@ -75,6 +75,8 @@ runner-build:
 # parameterized on an Apple Developer team, never hardcoded: pass DEVELOPMENT_TEAM=<10-char Team ID>
 # with that team signed into Xcode, so -allowProvisioningUpdates can mint the development profile.
 # Device Farm re-signs the uploaded .ipa with its own profile, so a development export is enough.
+# The runner is the exception: `runner-build-device` signs from the per-user signing file instead
+# (BE-0456), because its bundle identifiers must belong to the signing team too.
 # The Simulator recipes above are untouched — device signing is turned on only here, via command-line
 # build settings, so `make check` and the Simulator lanes stay unsigned. See docs/ios-device-cloud.md
 # and demos/showcase/devicefarm/showcase.devicefarm.ios.config.yaml.
@@ -108,19 +110,18 @@ swiftui-ipa-device: swiftui-archive-device
 		-exportPath build/export-device -exportOptionsPlist build/ExportOptions.plist -allowProvisioningUpdates
 	@echo "device .ipa: $(SWIFTUI_EXPORT)/BajutsuShowcaseSwiftUI.ipa"
 
-# The device XCUITest runner (signed .xctestrun). The runner project defaults CODE_SIGNING_ALLOWED=NO
-# for the Simulator; a real device requires signing, so override it here only. A separate derivedData
-# path keeps the device .xctestrun from colliding with the Simulator one under the glob below. The
-# .xctestrun's __TESTROOT__ points beside the built products, so package the whole Products dir.
-# Stale per-SDK .xctestrun files are deleted before the build for the same reason as runner-build.
+# The device XCUITest runner (signed .xctestrun), built by `bajutsu runner build --device` (BE-0456)
+# from the per-user signing file: bundle identifiers, team, and automatic or manual signing all come
+# from it, so DEVELOPMENT_TEAM no longer signs the runner. SIGNING=<path> picks a file explicitly;
+# unset, the command falls through to $$BAJUTSU_SIGNING_FILE and ~/.config/bajutsu/signing.yaml.
+# The build lands in Bajutsu's cache and --out copies its whole Products dir to the path the Device
+# Farm runbook packages, since the .xctestrun's __TESTROOT__ points beside the built products.
 runner-build-device:
-	$(require_team)
-	rm -f $(RUNNER_DEVICE_PRODUCTS)/BajutsuRunner_*.xctestrun
-	cd $(RUNNER) && xcodegen generate
-	cd $(RUNNER) && xcodebuild build-for-testing -project BajutsuRunner.xcodeproj -scheme BajutsuRunner \
-		-destination 'generic/platform=iOS' -derivedDataPath build/dd-device -skipPackagePluginValidation \
-		-allowProvisioningUpdates CODE_SIGNING_ALLOWED=YES CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM=$(DEVELOPMENT_TEAM)
-	cp $(RUNNER_DEVICE_PRODUCTS)/BajutsuRunner_*.xctestrun $(RUNNER_DEVICE_PRODUCTS)/BajutsuRunner.xctestrun
+	@if [ -n "$(DEVELOPMENT_TEAM)" ] && [ -z "$(SIGNING)" ]; then \
+		echo "note: DEVELOPMENT_TEAM does not sign the runner; it reads the signing file (docs/ios-device-cloud.md)"; \
+	fi
+	rm -rf $(RUNNER_DEVICE_PRODUCTS)
+	cd $(ROOT) && uv run bajutsu runner build --device --out $(RUNNER_DEVICE_PRODUCTS) $(if $(SIGNING),--signing $(SIGNING))
 	@echo "device .xctestrun: $(RUNNER_DEVICE_PRODUCTS)/BajutsuRunner.xctestrun (package its Products dir alongside)"
 
 # Run the shared id-based scenarios against the a11y apps on a booted Simulator. `--backend ios`
@@ -331,6 +332,11 @@ e2e-visual-approve:
 # exchanges, but not on the persisted network.json, so whether a *really captured* secret is masked
 # there — and whether `mocked` is provenance rather than a default — is checked by that script.
 #
+# network_echo.yaml runs last, into its own `echo/` subdirectory of the same runs dir: it POSTs the
+# same secret-bearing body to a live echo server, whose response repeats those secrets back, so it
+# stays out of the evidence check above (which expects exactly one `/post` exchange, the mocked one)
+# while the CI artifact upload of `$(NET_RUNS)` still carries its evidence.
+#
 # `--target showcase-swiftui`, not both toolkits like `run-swiftui`/`run-uikit`: only the SwiftUI Log
 # submit sends the Authorization header and the `password` field the redaction check reads
 # (ios/uikit/Sources/LogController.swift sends neither), so the UIKit twin would fail that check for
@@ -349,6 +355,10 @@ e2e-network: swiftui-build runner-build
 		--target showcase-swiftui --udid $(SIM) --backend xcuitest --config $(CONFIG) \
 		--network --runs-dir $(NET_RUNS)
 	cd $(ROOT) && uv run python demos/showcase/network/assert_network_evidence.py $(NET_RUNS)
+	cd $(ROOT) && uv run bajutsu run \
+		--scenario demos/showcase/scenarios/network_echo.yaml \
+		--target showcase-swiftui --udid $(SIM) --backend xcuitest --config $(CONFIG) \
+		--network --runs-dir $(NET_RUNS)/echo
 
 # ---- In-app browser (SFSafariViewController) -------------------------------------------------------
 # scenarios/browser.yaml on its own, with the fixture page it loads served for the length of the run.
@@ -392,7 +402,7 @@ SHOWCASE_WEB_PORT ?= 8789
 
 e2e-multi-target-web: swiftui-build runner-build
 	@grep -q "http://127.0.0.1:$(SHOWCASE_WEB_PORT)/index.html" $(CONFIG) || \
-	  { echo "SHOWCASE_WEB_PORT=$(SHOWCASE_WEB_PORT) does not match targets.web's baseUrl in $(CONFIG)" >&2; exit 1; }
+	  { echo "SHOWCASE_WEB_PORT=$(SHOWCASE_WEB_PORT) does not match targets.web's subject.url in $(CONFIG)" >&2; exit 1; }
 	python3 -m http.server --directory $(ROOT)/demos/web/app $(SHOWCASE_WEB_PORT) >/dev/null 2>&1 & srv=$$!; \
 	trap 'kill $$srv 2>/dev/null' EXIT; \
 	ready=0; for i in $$(seq 1 100); do \
@@ -529,15 +539,18 @@ flutter-android-noax-build:
 # `systemalert`, `alert` (scenarios/alert.yaml — no Flutter Log screen has a native-alert affordance
 # yet), `visual` (scenarios/visual.yaml, which needs the `--baselines` directory `vrt` supplies), and
 # `app` (scenarios/app.yaml — its return-leg assertion targets the a11y showcase apps' own
-# "Permissions" screen, which Flutter has no counterpart for).
+# "Permissions" screen, which Flutter has no counterpart for). `android` drops the scenarios that
+# only an Android target can run.
 # Prereqs: a booted Simulator, `make runner-build`; an attached emulator for Android.
 run-flutter: flutter-build runner-build
 	cd $(ROOT) && uv run bajutsu run --target showcase-flutter --udid $(SIM) --backend xcuitest \
-		--exclude network,systemalert,alert,visual,swiftui,browser,app --config $(CONFIG)
+		--exclude network,systemalert,alert,visual,swiftui,browser,app,android --config $(CONFIG)
 
-# The same on-device set the native Compose lane runs (demos/showcase/android/Makefile), minus
-# device.yaml — its device-control clipboard round-trips through the in-app BajutsuAndroid receiver
-# the plugin-free Flutter app does not link (docs/drivers.md "Flutter" out-of-scope). `adb root`
+# The same on-device set the native Compose lane runs (demos/showcase/android/Makefile), minus two
+# files. device.yaml's device-control clipboard round-trips through the in-app BajutsuAndroid receiver
+# the plugin-free Flutter app does not link (docs/drivers.md "Flutter" out-of-scope).
+# text_entry_android's non-ASCII text needs ACTION_SET_TEXT, which no one has checked on a Flutter
+# field, so it joins this set only once this lane has run it. `adb root`
 # enables the `sendevent` path the gestures double-tap and multi-touch use, exactly as the native
 # android-e2e lane does; `text_editing` / `push` stay iOS-only in the native suite too.
 # BAJUTSU_MIN_WAIT_TIMEOUT=15 mirrors the native Compose lane (demos/showcase/android/Makefile): a

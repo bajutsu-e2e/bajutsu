@@ -21,4 +21,4 @@ EXPOSE 8765
 # A sensible default for `docker run`, but compose supplies the real command for both services it
 # builds from this image: `alembic … upgrade head` for the one-shot `migrate`, and the serve command
 # with `--config /config/bajutsu.config.yaml` for the control plane (see docker-compose.yml).
-CMD ["bajutsu", "serve", "--asgi", "--backend=server", "--host", "0.0.0.0", "--port", "8765"]
+CMD ["bajutsu", "serve", "--asgi", "--host", "0.0.0.0", "--port", "8765"]

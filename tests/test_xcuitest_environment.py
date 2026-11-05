@@ -12,20 +12,27 @@ from __future__ import annotations
 
 import os
 import plistlib
-import re
 import signal
 import subprocess
 import time
 from collections.abc import Callable, Mapping
+from dataclasses import replace
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 
 from bajutsu.common import backends, stall_diagnostics
 from bajutsu.common.backend_cli import simctl
-from bajutsu.common.config import Effective, load_config, resolve
+from bajutsu.common.config import (
+    DeviceProvider,
+    Effective,
+    ResolvedPreconditions,
+    load_config,
+    resolve,
+)
 from bajutsu.common.devices.os import DeviceOS
+from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.drivers.xcuitest import XcuitestChannelError
 from bajutsu.common.platform_lifecycle.environments.xcuitest import (
@@ -58,18 +65,53 @@ from bajutsu.common.platform_lifecycle.environments.xcuitest import (
 from bajutsu.common.platform_lifecycle.environments.xcuitest import (
     xcuitest_environment as xcuitest_env_impl,
 )
-from bajutsu.common.scenario import Preconditions
+from bajutsu.common.platform_lifecycle.factories import environment_for
+from bajutsu.common.platform_lifecycle.protocols import CollectorHost
 
 _DEVICE_UDID = "00008030-000A1B2C3D4E"  # a physical-device id shape (not a simctl UUID)
 
 
-def _device_eff(*, app_path: str | None = None, test_runner: str | None = None) -> Effective:
-    lines = ["targets:", "  s:", "    bundleId: com.x"]
+class _FakeForwarder:
+    """Stands in for the usbmuxd bridge a real-device spawn opens; the gate has no usbmuxd."""
+
+    instances: ClassVar[list[_FakeForwarder]] = []
+    fail_with: ClassVar[Exception | None] = None
+
+    def __init__(self, udid: str, *, device_port: int | None = None) -> None:
+        self.udid = udid
+        self.device_port = device_port
+        self.port = 0
+        self.closed = False
+        _FakeForwarder.instances.append(self)
+
+    def start(self) -> int:
+        if _FakeForwarder.fail_with is not None:
+            raise _FakeForwarder.fail_with
+        self.port = 5150 + len(_FakeForwarder.instances)
+        return self.port
+
+    def close(self) -> None:
+        self.closed = True
+
+
+@pytest.fixture(autouse=True)
+def _fake_usbmux(monkeypatch: pytest.MonkeyPatch) -> None:
+    _FakeForwarder.instances = []
+    _FakeForwarder.fail_with = None
+    monkeypatch.setattr(xcuitest_env_impl, "UsbmuxForwarder", _FakeForwarder)
+
+
+def _device_eff(
+    *, app_path: str | None = None, test_runner: str | None = None, ignored: str | None = None
+) -> Effective:
+    lines = ["targets:", "  s:", "    platform: ios", "    subject:", "      id: com.x"]
     if app_path is not None:
-        lines.append(f"    appPath: {app_path}")
-    lines += ["    xcuitest:", "      deviceType: device"]
+        lines.append(f"      path: {app_path}")
+    lines += ["    runsOn:", "      ios: {kind: device}"]
+    if ignored is not None:
+        lines += [f"      ignoredSettings: {{{ignored}: preinstalled}}"]
     if test_runner is not None:
-        lines.append(f"      testRunner: {test_runner}")
+        lines += ["    driver:", f"      runner: {{testRunner: {test_runner}}}"]
     return resolve(load_config("\n".join(lines) + "\n"), "s")
 
 
@@ -108,37 +150,58 @@ def test_start_on_a_real_device_refuses_simctl_install() -> None:
     # A real device installs its build out of band; asking the simctl installer to place `appPath`
     # must fail loudly (BE-0238 Unit 2/3), never silently skip (determinism first).
     env = XcuitestEnvironment("xcuitest", _DEVICE_UDID)
-    with pytest.raises(simctl.DeviceError, match="real device"):
-        env.start(_device_eff(app_path="build/App.app"), Preconditions())
+    with pytest.raises(base.UnsupportedAction, match="route ios-device"):
+        env.start(_device_eff(app_path="build/App.app"), ResolvedPreconditions())
+
+
+def test_start_on_a_real_device_that_declares_install_launches_the_build_in_place(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A device that already holds the build (Device Farm installs the uploaded app, BE-0465) runs a
+    # target declaring `install` under `runsOn.ignoredSettings` (BE-0467): `subject.path` names that build.
+    runner, captured = _fake_device_runner(monkeypatch, tmp_path)
+    env = XcuitestEnvironment("xcuitest", _DEVICE_UDID)
+    eff = _device_eff(app_path="App.ipa", test_runner=str(runner), ignored="install")
+    env.start(eff, ResolvedPreconditions())
+    assert f"platform=iOS,id={_DEVICE_UDID}" in captured["argv"]
+
+
+def test_the_factory_builds_an_ios_environment_that_honours_ignored_settings(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    runner, captured = _fake_device_runner(monkeypatch, tmp_path)
+    env = environment_for("xcuitest", _DEVICE_UDID)
+    eff = _device_eff(app_path="App.ipa", test_runner=str(runner), ignored="install")
+    # The declaration covers the install alone; an undeclared erase still fails loudly.
+    with pytest.raises(base.UnsupportedAction, match=r"subject\.reinstall: erase"):
+        env.start(eff, ResolvedPreconditions(reinstall="erase"))
+    env.start(eff, ResolvedPreconditions())
+    assert f"platform=iOS,id={_DEVICE_UDID}" in captured["argv"]
 
 
 def test_start_on_a_real_device_refuses_permission_grants() -> None:
     env = XcuitestEnvironment("xcuitest", _DEVICE_UDID)
-    with pytest.raises(simctl.DeviceError, match="real device"):
-        env.start(_device_eff(), Preconditions(), permissions={"camera": "yes"})
+    with pytest.raises(base.UnsupportedAction, match="route ios-device"):
+        env.start(_device_eff(), ResolvedPreconditions(), permissions={"camera": "yes"})
 
 
 def test_start_on_a_real_device_refuses_erase() -> None:
     env = XcuitestEnvironment("xcuitest", _DEVICE_UDID)
-    with pytest.raises(simctl.DeviceError, match="real device"):
-        env.start(_device_eff(), Preconditions(erase=True))
+    with pytest.raises(base.UnsupportedAction, match="route ios-device"):
+        env.start(_device_eff(), ResolvedPreconditions(reinstall="erase"))
 
 
-def test_start_on_a_real_device_targets_the_device_and_skips_simctl(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
-) -> None:
-    # The happy real-device path: no simctl call, and the xcodebuild destination is the device.
-    # Faked at the process boundary (Popen) and the driver factory — the runner needs Xcode + a
-    # device, which the gate has neither of.
+def _fake_device_runner(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> tuple[Path, dict[str, list[str]]]:
+    """A device-build runner file, with the runner's process and driver faked at their boundaries.
+
+    The runner needs Xcode and a device, which the gate has neither of. The returned dict receives
+    the spawned `xcodebuild` argv under "argv".
+    """
     runner = tmp_path / "Runner.xctestrun"
     with runner.open("wb") as f:
         plistlib.dump({"Target": {"TestingEnvironmentVariables": {}}}, f)
-
-    simctl_calls: list[list[str]] = []
-
-    def _record_run(argv: list[str], extra_env: Mapping[str, str] | None = None) -> str:
-        simctl_calls.append(argv)
-        return ""
 
     captured: dict[str, list[str]] = {}
 
@@ -161,9 +224,22 @@ def test_start_on_a_real_device_targets_the_device_and_skips_simctl(
 
     monkeypatch.setattr(subprocess, "Popen", _fake_popen)
     monkeypatch.setattr(backends, "make_driver", lambda *_a, **_k: _FakeDriver())
+    return runner, captured
+
+
+def test_start_on_a_real_device_targets_the_device_and_skips_simctl(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The happy real-device path: no simctl call, and the xcodebuild destination is the device.
+    runner, captured = _fake_device_runner(monkeypatch, tmp_path)
+    simctl_calls: list[list[str]] = []
+
+    def _record_run(argv: list[str], extra_env: Mapping[str, str] | None = None) -> str:
+        simctl_calls.append(argv)
+        return ""
 
     env = XcuitestEnvironment("xcuitest", _DEVICE_UDID, env_run=_record_run)
-    env.start(_device_eff(test_runner=str(runner)), Preconditions())
+    env.start(_device_eff(test_runner=str(runner)), ResolvedPreconditions())
 
     assert f"platform=iOS,id={_DEVICE_UDID}" in captured["argv"]
     assert simctl_calls == []  # a real device is never touched through simctl
@@ -205,9 +281,275 @@ def test_a_real_device_never_enters_the_recovery_ladder(
     _patch_group_signals(monkeypatch)
     env = XcuitestEnvironment("xcuitest", _DEVICE_UDID, env_run=_run)
     with pytest.raises(XcuitestChannelError, match="did not come up"):
-        env.start(_device_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+        env.start(_device_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions())
     assert simctl_calls == []  # no probe, no reboot, and above all no `simctl create`
     assert env.replaced_device() is None
+
+
+def _env_of(patched: Path) -> dict[str, str]:
+    with patched.open("rb") as f:
+        return dict(plistlib.load(f)["Target"]["TestingEnvironmentVariables"])
+
+
+def test_a_real_device_runner_is_reached_through_a_usbmux_bridge(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The runner binds the *device's* loopback, which the host does not share, so the port it is
+    # told to bind is the host end of a bridge to the same number on the device, and the driver
+    # dials that same number. The discard closes the bridge with the runner.
+    ports: list[int] = []
+    patched_env: dict[str, str] = {}
+
+    class _FakeDriver:
+        def await_ready(self, timeout: float) -> None:
+            return None
+
+        def health_ready(self) -> bool:
+            return True
+
+    def _make_driver(*_a: Any, runner_port: int = 0, **_k: Any) -> _FakeDriver:
+        ports.append(runner_port)
+        return _FakeDriver()
+
+    def _popen(argv: list[str], **_kw: Any) -> _FakeProc:
+        patched_env.update(_env_of(Path(argv[argv.index("-xctestrun") + 1])))
+        return _FakeProc()
+
+    monkeypatch.setattr(subprocess, "Popen", _popen)
+    monkeypatch.setattr(backends, "make_driver", _make_driver)
+    monkeypatch.setattr(
+        xcuitest_env_impl, "_allocate_port", lambda: pytest.fail("a real device needs the bridge")
+    )
+    _patch_group_signals(monkeypatch)
+    env = XcuitestEnvironment("xcuitest", _DEVICE_UDID, env_run=lambda *_a, **_k: "")
+    env.start(_device_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions())
+
+    (bridge,) = _FakeForwarder.instances
+    assert bridge.udid == _DEVICE_UDID
+    assert patched_env["BAJUTSU_RUNNER_PORT"] == str(bridge.port)
+    assert ports == [bridge.port]
+    env._discard_runner(warn_on_crash=False, keep_log=True)
+    assert bridge.closed
+
+
+def test_a_simulator_runner_opens_no_bridge(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The Simulator shares the host's loopback, so its path is unchanged: a plain free port.
+    _, _, run = _fake_toolchain(monkeypatch)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions())
+    assert _FakeForwarder.instances == []
+
+
+def test_an_unbridgeable_device_fails_the_spawn_with_its_reason(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A device usbmuxd does not list (unplugged, untrusted) fails before `xcodebuild` is spawned,
+    # naming the cause rather than surfacing later as a startup timeout.
+    from bajutsu.common.platform_lifecycle.environments.xcuitest._usbmux import UsbmuxError
+
+    _FakeForwarder.fail_with = UsbmuxError("usbmuxd does not list device")
+    monkeypatch.setattr(
+        subprocess, "Popen", lambda *_a, **_k: pytest.fail("no spawn without a bridge")
+    )
+    env = XcuitestEnvironment("xcuitest", _DEVICE_UDID, env_run=lambda *_a, **_k: "")
+    with pytest.raises(simctl.DeviceError, match="cannot bridge to the runner"):
+        env.start(_device_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions())
+
+
+def test_a_spawn_that_fails_after_bridging_closes_the_bridge(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The retry loop discards only an attempt that spawned, so a failure between opening the bridge
+    # and `Popen` returning must close it here, or its listener and accept thread outlive the run.
+    def _popen(*_a: Any, **_k: Any) -> _FakeProc:
+        raise OSError("xcodebuild: not found")
+
+    monkeypatch.setattr(subprocess, "Popen", _popen)
+    env = XcuitestEnvironment("xcuitest", _DEVICE_UDID, env_run=lambda *_a, **_k: "")
+    with pytest.raises(simctl.DeviceError, match="failed to start xcodebuild"):
+        env.start(_device_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions())
+    assert _FakeForwarder.instances
+    assert all(bridge.closed for bridge in _FakeForwarder.instances)
+    assert env._forwarder is None
+
+
+_ZORDER_ENV = {"BAJUTSU_ZORDER_PORT": "47001", "BAJUTSU_ZORDER_TOKEN": "tok"}
+
+
+def _start_with_zorder(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, udid: str, eff: Effective
+) -> tuple[XcuitestEnvironment, list[Any]]:
+    """Start with a `nativeZ` port injected; returns the env and each driver's `zorder` argument."""
+    zorders: list[Any] = []
+
+    class _FakeDriver:
+        def await_ready(self, timeout: float) -> None:
+            return None
+
+        def health_ready(self) -> bool:
+            return True
+
+    def _make_driver(*_a: Any, zorder: Any = None, **_k: Any) -> _FakeDriver:
+        zorders.append(zorder)
+        return _FakeDriver()
+
+    monkeypatch.setattr(subprocess, "Popen", lambda *_a, **_k: _FakeProc())
+    monkeypatch.setattr(backends, "make_driver", _make_driver)
+    _patch_group_signals(monkeypatch)
+    env = XcuitestEnvironment("xcuitest", udid, env_run=lambda *_a, **_k: "")
+    env.start(eff, ResolvedPreconditions(), extra_env=_ZORDER_ENV)
+    return env, zorders
+
+
+def test_a_real_device_reaches_the_nativez_responder_through_its_own_bridge(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The app's responder binds the injected port on the *device's* loopback, so the driver dials
+    # the host end of a second bridge to exactly that port, with the same token. The bridge lives
+    # for the lease, not one spawn attempt, and teardown closes it.
+    eff = _device_eff(test_runner=str(_write_runner(tmp_path)))
+    env, zorders = _start_with_zorder(monkeypatch, tmp_path, _DEVICE_UDID, eff)
+
+    (zbridge,) = [b for b in _FakeForwarder.instances if b.device_port == 47001]
+    (zorder,) = zorders
+    assert zorder.port == zbridge.port != 47001
+    assert zorder.token == "tok"
+    env._discard_runner(warn_on_crash=False, keep_log=True)
+    assert not zbridge.closed  # a retried spawn keeps the lease's responder bridge
+    env.teardown(FakeDriver([]), eff)
+    assert zbridge.closed
+
+
+def test_the_simulator_reaches_the_nativez_responder_directly(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _, _, run = _fake_toolchain(monkeypatch)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env.start(
+        _sim_eff(test_runner=str(_write_runner(tmp_path))),
+        ResolvedPreconditions(),
+        extra_env=_ZORDER_ENV,
+    )
+    assert _FakeForwarder.instances == []
+    assert env._zorder is not None
+    assert getattr(env._zorder, "port", None) == 47001
+
+
+def test_an_unbridgeable_nativez_responder_leaves_nativez_absent(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # `nativeZ` is diagnostic: a bridge that cannot open must not fail the run, only drop it.
+    from bajutsu.common.platform_lifecycle.environments.xcuitest._usbmux import UsbmuxError
+
+    original_start = _FakeForwarder.start
+
+    def _start(self: _FakeForwarder) -> int:
+        if self.device_port is not None:
+            raise UsbmuxError("usbmuxd does not list device")
+        return original_start(self)
+
+    monkeypatch.setattr(_FakeForwarder, "start", _start)
+    eff = _device_eff(test_runner=str(_write_runner(tmp_path)))
+    with caplog.at_level("WARNING"):
+        _, zorders = _start_with_zorder(monkeypatch, tmp_path, _DEVICE_UDID, eff)
+    assert zorders == [None]
+    assert any("nativeZ unavailable" in r.getMessage() for r in caplog.records)
+
+
+def test_a_failed_real_device_start_closes_the_nativez_bridge(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # No driver comes back, so no teardown will run: the start itself must close the bridge.
+    def _popen(*_a: Any, **_k: Any) -> _FakeProc:
+        raise OSError("xcodebuild: not found")
+
+    monkeypatch.setattr(subprocess, "Popen", _popen)
+    env = XcuitestEnvironment("xcuitest", _DEVICE_UDID, env_run=lambda *_a, **_k: "")
+    with pytest.raises(simctl.DeviceError):
+        env.start(
+            _device_eff(test_runner=str(_write_runner(tmp_path))),
+            ResolvedPreconditions(),
+            extra_env=_ZORDER_ENV,
+        )
+    assert all(bridge.closed for bridge in _FakeForwarder.instances)
+    assert env._zorder_forwarder is None
+
+
+@pytest.mark.parametrize(
+    ("app_path", "pre"),
+    [("build/App.app", ResolvedPreconditions()), (None, ResolvedPreconditions(reinstall="erase"))],
+)
+def test_a_refused_real_device_start_never_opens_the_nativez_bridge(
+    app_path: str | None, pre: ResolvedPreconditions
+) -> None:
+    # The settings table refuses a simctl-only precondition before `_start` opens the bridge (BE-0467).
+    env = XcuitestEnvironment("xcuitest", _DEVICE_UDID, env_run=lambda *_a, **_k: "")
+    with pytest.raises(base.UnsupportedAction, match="route ios-device"):
+        env.start(_device_eff(app_path=app_path), pre, extra_env=_ZORDER_ENV)
+    assert _FakeForwarder.instances == []
+    assert env._zorder_forwarder is None
+
+
+def test_the_simulator_collector_stays_on_the_loopback() -> None:
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=lambda *_a, **_k: "")
+    assert env.collector_host(_sim_eff(test_runner="R.xctestrun")) == CollectorHost()
+    assert env.reach_device_port(_sim_eff(test_runner="R.xctestrun"), 4100)[0] == 4100
+    assert _FakeForwarder.instances == []
+
+
+def test_a_real_device_collector_binds_everywhere_and_offers_the_host_addresses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("BAJUTSU_HOST_ADDRESS", "192.0.2.7,fd00::1")
+    env = XcuitestEnvironment("xcuitest", _DEVICE_UDID, env_run=lambda *_a, **_k: "")
+    assert env.collector_host(_device_eff()) == CollectorHost(
+        bind="::", advertised=("192.0.2.7", "fd00::1")
+    )
+
+
+def test_a_real_device_with_no_host_address_fails_naming_the_fix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("BAJUTSU_HOST_ADDRESS", raising=False)
+    monkeypatch.setattr(
+        "bajutsu.common.platform_lifecycle.environments.xcuitest._host_address._ifconfig",
+        lambda: "",
+    )
+    env = XcuitestEnvironment("xcuitest", _DEVICE_UDID, env_run=lambda *_a, **_k: "")
+    with pytest.raises(
+        simctl.DeviceError, match=r"driver\.runner\.hostAddress or BAJUTSU_HOST_ADDRESS"
+    ):
+        env.collector_host(_device_eff())
+
+
+def test_a_real_device_with_an_unusable_host_address_fails_naming_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("BAJUTSU_HOST_ADDRESS", "192.0.2.7:8080")
+    env = XcuitestEnvironment("xcuitest", _DEVICE_UDID, env_run=lambda *_a, **_k: "")
+    with pytest.raises(simctl.DeviceError, match=r"BAJUTSU_HOST_ADDRESS: '192\.0\.2\.7:8080'"):
+        env.collector_host(_device_eff())
+
+
+def test_a_real_device_reaches_a_device_port_through_a_usbmux_bridge() -> None:
+    env = XcuitestEnvironment("xcuitest", _DEVICE_UDID, env_run=lambda *_a, **_k: "")
+    host_port, close = env.reach_device_port(_device_eff(), 4100)
+    (bridge,) = _FakeForwarder.instances
+    assert (bridge.device_port, bridge.port) == (4100, host_port)
+    close()
+    assert bridge.closed
+
+
+def test_an_unreachable_device_port_fails_with_the_device_named() -> None:
+    from bajutsu.common.platform_lifecycle.environments.xcuitest._usbmux import UsbmuxError
+
+    _FakeForwarder.fail_with = UsbmuxError("usbmuxd does not list device")
+    env = XcuitestEnvironment("xcuitest", _DEVICE_UDID, env_run=lambda *_a, **_k: "")
+    with pytest.raises(simctl.DeviceError, match=f"port 4100 on device {_DEVICE_UDID}"):
+        env.reach_device_port(_device_eff(), 4100)
+    assert all(b.closed for b in _FakeForwarder.instances)
 
 
 # --- the live-route boundary: an Appium endpoint routes around the udid machinery (BE-0238) --- #
@@ -233,10 +575,14 @@ def test_appium_lease_endpoint_routes_to_the_live_environment() -> None:
     from bajutsu.common.runner import device_provider as dp
 
     cfg = load_config(
-        "targets:\n  s:\n    bundleId: com.x\n    xcuitest:\n      deviceType: device\n"
-        "    deviceProvider:\n      kind: appium\n      endpoint: http://grid.local:4723\n"
+        "targets:\n  s:\n    platform: ios\n    subject: {id: com.x}\n    runsOn: {ios: {kind: device}}\n"
     )
-    lease = dp.acquire_device(resolve(cfg, "s"), "booted")
+    # The grid comes from an `appium` environment of the worker config (BE-0452), not the target.
+    eff = replace(
+        resolve(cfg, "s"),
+        device_provider=DeviceProvider(kind="appium", endpoint="http://grid.local:4723"),
+    )
+    lease = dp.acquire_device(eff, "booted")
     assert lease.udid_spec == "http://grid.local:4723"  # the endpoint, not the --udid flag
     env = environment_for("xcuitest", lease.udid_spec)
     assert isinstance(env, XcuitestLiveEnvironment)
@@ -253,10 +599,10 @@ def test_appium_lease_endpoint_routes_to_the_live_environment() -> None:
 
 
 def _sim_eff(*, test_runner: str, app_path: str | None = None) -> Effective:
-    lines = ["targets:", "  s:", "    bundleId: com.x"]
+    lines = ["targets:", "  s:", "    platform: ios", "    subject:", "      id: com.x"]
     if app_path is not None:
-        lines.append(f"    appPath: {app_path}")
-    lines += ["    xcuitest:", f"      testRunner: {test_runner}"]
+        lines.append(f"      path: {app_path}")
+    lines += ["    driver:", f"      runner: {{testRunner: {test_runner}}}"]
     return resolve(load_config("\n".join(lines) + "\n"), "s")
 
 
@@ -433,9 +779,9 @@ def test_start_reuses_a_healthy_runner_across_leases(
     popen_argvs, _, run = _fake_toolchain(monkeypatch)
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     eff = _sim_eff(test_runner=str(_write_runner(tmp_path)))
-    env.start(eff, Preconditions())  # cold: spawn the runner
+    env.start(eff, ResolvedPreconditions())  # cold: spawn the runner
     assert env.has_reusable_resident()
-    env.start(eff, Preconditions())  # warm: reuse it
+    env.start(eff, ResolvedPreconditions())  # warm: reuse it
     assert len(popen_argvs) == 1  # the runner was spawned once and reused (BE-0291)
 
 
@@ -448,8 +794,16 @@ def test_start_reuses_a_healthy_runner_across_leases(
 
 def _sim_eff_locale(*, test_runner: str, locale: str) -> Effective:
     cfg = (
-        f"defaults:\n  locale: {locale}\n"
-        f"targets:\n  s:\n    bundleId: com.x\n    xcuitest:\n      testRunner: {test_runner}\n"
+        "defaults:\n"
+        "  platforms:\n"
+        "    ios:\n"
+        f"      runsOn: {{ios: {{locale: {locale}}}}}\n"
+        "targets:\n"
+        "  s:\n"
+        "    platform: ios\n"
+        f"    subject: {{id: com.x}}\n"
+        "    driver:\n"
+        f"      runner: {{testRunner: {test_runner}}}\n"
     )
     return resolve(load_config(cfg), "s")
 
@@ -468,7 +822,8 @@ def test_cold_spawn_pins_the_system_locale_and_reboots_for_it(
     _, simctl_calls, run = _fake_toolchain(monkeypatch, system_locale=domain)
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     env.start(
-        _sim_eff_locale(test_runner=str(_write_runner(tmp_path)), locale="ja_JP"), Preconditions()
+        _sim_eff_locale(test_runner=str(_write_runner(tmp_path)), locale="ja_JP"),
+        ResolvedPreconditions(),
     )
 
     assert domain["v"] == "ja_JP"  # the device now carries the configured locale
@@ -502,7 +857,8 @@ def test_cold_spawn_skips_the_extra_boot_when_the_device_already_matches(
     _, simctl_calls, run = _fake_toolchain(monkeypatch, system_locale={"v": "en_US"})
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     env.start(
-        _sim_eff_locale(test_runner=str(_write_runner(tmp_path)), locale="en_US"), Preconditions()
+        _sim_eff_locale(test_runner=str(_write_runner(tmp_path)), locale="en_US"),
+        ResolvedPreconditions(),
     )
 
     assert _verbs(simctl_calls).count("boot") == 1  # no second boot cycle
@@ -520,8 +876,10 @@ def test_a_locale_change_forces_a_cold_respawn_rather_than_a_stale_warm_reuse(
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     eff = _sim_eff_locale(test_runner=str(_write_runner(tmp_path)), locale="en_US")
 
-    env.start(eff, Preconditions())
-    env.start(eff, Preconditions(locale="ja_JP"))  # the per-scenario override wins over the config
+    env.start(eff, ResolvedPreconditions())
+    env.start(
+        eff, ResolvedPreconditions(locale="ja_JP")
+    )  # the per-scenario override wins over the config
 
     assert len(popen_argvs) == 2  # the locale change forced a fresh runner
     assert domain["v"] == "ja_JP"
@@ -537,8 +895,8 @@ def test_the_same_locale_still_reuses_the_warm_runner(
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     eff = _sim_eff_locale(test_runner=str(_write_runner(tmp_path)), locale="en_US")
 
-    env.start(eff, Preconditions())
-    env.start(eff, Preconditions(locale="en_US"))
+    env.start(eff, ResolvedPreconditions())
+    env.start(eff, ResolvedPreconditions(locale="en_US"))
 
     assert len(popen_argvs) == 1
 
@@ -554,7 +912,7 @@ def test_a_pin_that_does_not_take_fails_loudly(
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     eff = _sim_eff_locale(test_runner=str(_write_runner(tmp_path)), locale="ja_JP")
     with pytest.raises(simctl.DeviceError, match="BE-0320"):
-        env.start(eff, Preconditions())
+        env.start(eff, ResolvedPreconditions())
 
 
 def test_an_erasing_cold_spawn_re_pins_the_wiped_domain(
@@ -567,7 +925,9 @@ def test_an_erasing_cold_spawn_re_pins_the_wiped_domain(
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     eff = _sim_eff_locale(test_runner=str(_write_runner(tmp_path)), locale="ja_JP")
 
-    env.start(eff, Preconditions(erase=True))
+    env.start(eff, ResolvedPreconditions(reinstall="erase"))
+    # A device-group member may ask for the wipe only when the lease's own start did (BE-0473).
+    assert env._lead_erases is True
 
     assert domain["v"] == "ja_JP"  # re-pinned after the wipe, not left to the boot default
     verbs = _verbs(simctl_calls)
@@ -584,9 +944,9 @@ def test_an_unconfirmable_pin_runs_on_but_is_not_remembered(
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     eff = _sim_eff_locale(test_runner=str(_write_runner(tmp_path)), locale="ja_JP")
 
-    env.start(eff, Preconditions())  # no raise: nothing was observed to be wrong
+    env.start(eff, ResolvedPreconditions())  # no raise: nothing was observed to be wrong
     assert env._pinned_locale is None
-    env.start(eff, Preconditions())
+    env.start(eff, ResolvedPreconditions())
     assert (
         len(popen_argvs) == 2
     )  # the unconfirmed pin blocked warm reuse, so the next lease is cold
@@ -609,7 +969,8 @@ def test_the_cold_prep_waits_for_the_boot_before_it_uses_the_device(
     _, simctl_calls, run = _fake_toolchain(monkeypatch, system_locale={"v": "en_US"})
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     env.start(
-        _sim_eff_locale(test_runner=str(_write_runner(tmp_path)), locale="en_US"), Preconditions()
+        _sim_eff_locale(test_runner=str(_write_runner(tmp_path)), locale="en_US"),
+        ResolvedPreconditions(),
     )
 
     verbs = _verbs(simctl_calls)
@@ -625,7 +986,7 @@ def test_an_erasing_cold_prep_waits_for_the_boot_that_follows_the_erase(
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     env.start(
         _sim_eff_locale(test_runner=str(_write_runner(tmp_path)), locale="en_US"),
-        Preconditions(erase=True),
+        ResolvedPreconditions(reinstall="erase"),
     )
 
     verbs = _verbs(simctl_calls)
@@ -635,14 +996,16 @@ def test_an_erasing_cold_prep_waits_for_the_boot_that_follows_the_erase(
 def test_cold_erase_prep_seeds_the_photo_library_one_call_per_path_in_order(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    # `seedPhotos` requires `erase: true` (`Preconditions`'s own validator), and `_prepare_simulator`
+    # `seedPhotos` requires `reinstall: erase` (`check_preconditions`), and `_prepare_simulator`
     # reuses that same wipe — one `simctl addmedia` per path, in the order given, never batched
     # (roadmap item: nothing documents the relative order a batched call would assign several paths).
     _, simctl_calls, run = _fake_toolchain(monkeypatch, system_locale={"v": "en_US"})
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     env.start(
         _sim_eff_locale(test_runner=str(_write_runner(tmp_path)), locale="en_US"),
-        Preconditions(erase=True, seedPhotos=["/fixtures/red.png", "/fixtures/green.png"]),
+        ResolvedPreconditions(
+            reinstall="erase", seed_photos=["/fixtures/red.png", "/fixtures/green.png"]
+        ),
     )
 
     addmedia_calls = [c for c in simctl_calls if c[2:3] == ["addmedia"]]
@@ -660,7 +1023,7 @@ def test_a_cold_prep_with_no_seed_photos_never_calls_addmedia(
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     env.start(
         _sim_eff_locale(test_runner=str(_write_runner(tmp_path)), locale="en_US"),
-        Preconditions(erase=True),
+        ResolvedPreconditions(reinstall="erase"),
     )
     assert "addmedia" not in _verbs(simctl_calls)
 
@@ -677,7 +1040,7 @@ def test_a_boot_that_never_completes_fails_the_run_loudly(
 
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     with pytest.raises(simctl.DeviceError, match="Unable to boot device"):
-        env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+        env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions())
 
 
 def test_the_locale_pin_waits_for_its_reboot_before_reading_the_value_back(
@@ -691,7 +1054,7 @@ def test_the_locale_pin_waits_for_its_reboot_before_reading_the_value_back(
     with caplog.at_level("INFO"):
         env.start(
             _sim_eff_locale(test_runner=str(_write_runner(tmp_path)), locale="ja_JP"),
-            Preconditions(),
+            ResolvedPreconditions(),
         )
 
     verbs = _verbs(simctl_calls)
@@ -717,9 +1080,9 @@ def test_a_pin_whose_shutdown_was_refused_is_not_remembered(
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     eff = _sim_eff_locale(test_runner=str(_write_runner(tmp_path)), locale="ja_JP")
 
-    env.start(eff, Preconditions())  # no raise: nothing was observed to be wrong
+    env.start(eff, ResolvedPreconditions())  # no raise: nothing was observed to be wrong
     assert env._pinned_locale is None
-    env.start(eff, Preconditions())
+    env.start(eff, ResolvedPreconditions())
     assert (
         len(popen_argvs) == 2
     )  # the unconfirmed pin blocked warm reuse, so the next lease is cold
@@ -733,8 +1096,8 @@ def test_start_respawns_the_runner_when_the_scenario_erases(
     popen_argvs, simctl_calls, run = _fake_toolchain(monkeypatch)
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     eff = _sim_eff(test_runner=str(_write_runner(tmp_path)))
-    env.start(eff, Preconditions())
-    env.start(eff, Preconditions(erase=True))
+    env.start(eff, ResolvedPreconditions())
+    env.start(eff, ResolvedPreconditions(reinstall="erase"))
     assert len(popen_argvs) == 2  # the erase forced a fresh runner
     assert any(c[:3] == ["xcrun", "simctl", "erase"] for c in simctl_calls)  # the device was erased
 
@@ -747,9 +1110,9 @@ def test_start_respawns_a_wedged_runner(monkeypatch: pytest.MonkeyPatch, tmp_pat
     popen_argvs, _, run = _fake_toolchain(monkeypatch, wedged=wedged)
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     eff = _sim_eff(test_runner=str(_write_runner(tmp_path)))
-    env.start(eff, Preconditions())
+    env.start(eff, ResolvedPreconditions())
     wedged["v"] = True  # the runner wedges after the first lease
-    env.start(eff, Preconditions())
+    env.start(eff, ResolvedPreconditions())
     assert len(popen_argvs) == 2  # the wedged runner was discarded and a fresh one spawned
 
 
@@ -761,7 +1124,7 @@ def test_end_lease_keeps_the_runner_but_teardown_terminates_it(
     _, simctl_calls, run = _fake_toolchain(monkeypatch)
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     eff = _sim_eff(test_runner=str(_write_runner(tmp_path)))
-    driver = env.start(eff, Preconditions())
+    driver = env.start(eff, ResolvedPreconditions())
     proc = env._runner_proc
 
     simctl_calls.clear()
@@ -789,9 +1152,11 @@ def test_start_respawns_cold_before_the_app_launch_cycle_crash(
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     eff = _sim_eff(test_runner=str(_write_runner(tmp_path)))
     for _ in range(_MAX_WARM_REUSES + 1):  # cold spawn, then `_MAX_WARM_REUSES` warm reuses
-        env.start(eff, Preconditions())
+        env.start(eff, ResolvedPreconditions())
     assert len(popen_argvs) == 1  # one runner across the whole reuse budget (all warm, all healthy)
-    env.start(eff, Preconditions())  # budget spent → proactive cold respawn, not another reuse
+    env.start(
+        eff, ResolvedPreconditions()
+    )  # budget spent → proactive cold respawn, not another reuse
     assert len(popen_argvs) == 2
     assert env._warm_reuses == 0  # the fresh runner's cycle count started over
 
@@ -803,8 +1168,8 @@ def test_max_warm_reuses_env_override(monkeypatch: pytest.MonkeyPatch, tmp_path:
     popen_argvs, _, run = _fake_toolchain(monkeypatch)
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     eff = _sim_eff(test_runner=str(_write_runner(tmp_path)))
-    env.start(eff, Preconditions())
-    env.start(eff, Preconditions())
+    env.start(eff, ResolvedPreconditions())
+    env.start(eff, ResolvedPreconditions())
     assert len(popen_argvs) == 2  # no warm reuse: each lease spawns cold
 
 
@@ -858,8 +1223,12 @@ def test_respawn_uses_the_tighter_readiness_ceiling(
         spy,
     )
 
-    XcuitestEnvironment("xcuitest", "UDID", env_run=run, respawn=False).start(eff, Preconditions())
-    XcuitestEnvironment("xcuitest", "UDID", env_run=run, respawn=True).start(eff, Preconditions())
+    XcuitestEnvironment("xcuitest", "UDID", env_run=run, respawn=False).start(
+        eff, ResolvedPreconditions()
+    )
+    XcuitestEnvironment("xcuitest", "UDID", env_run=run, respawn=True).start(
+        eff, ResolvedPreconditions()
+    )
     assert seen == [300.0, 90.0]  # first bring-up: cold ceiling; respawn: the tighter one
 
 
@@ -889,10 +1258,12 @@ def test_in_place_respawn_uses_the_tighter_readiness_ceiling(
     )
 
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)  # respawn=False: a first bring-up
-    env.start(eff, Preconditions())  # first cold spawn: full ceiling
+    env.start(eff, ResolvedPreconditions())  # first cold spawn: full ceiling
     assert env._runner_proc is not None
     env._runner_proc.alive = False  # type: ignore[attr-defined]  # the runner crashed mid-run
-    env.start(eff, Preconditions())  # same instance respawns cold in place: the tighter ceiling
+    env.start(
+        eff, ResolvedPreconditions()
+    )  # same instance respawns cold in place: the tighter ceiling
     assert seen == [300.0, 90.0]
 
 
@@ -921,8 +1292,10 @@ def test_erase_forced_cold_spawn_keeps_the_full_ceiling(
     )
 
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
-    env.start(eff, Preconditions())  # first cold spawn: full ceiling
-    env.start(eff, Preconditions(erase=True))  # erase reboots the Simulator: a genuine cold start
+    env.start(eff, ResolvedPreconditions())  # first cold spawn: full ceiling
+    env.start(
+        eff, ResolvedPreconditions(reinstall="erase")
+    )  # erase reboots the Simulator: a genuine cold start
     assert seen == [300.0, 300.0]  # the erase spawn keeps the full ceiling, not the respawn one
 
 
@@ -932,10 +1305,10 @@ def test_start_respawns_a_dead_runner(monkeypatch: pytest.MonkeyPatch, tmp_path:
     popen_argvs, _, run = _fake_toolchain(monkeypatch)
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     eff = _sim_eff(test_runner=str(_write_runner(tmp_path)))
-    env.start(eff, Preconditions())
+    env.start(eff, ResolvedPreconditions())
     assert env._runner_proc is not None
     env._runner_proc.alive = False  # type: ignore[attr-defined]  # the runner process exited
-    env.start(eff, Preconditions())
+    env.start(eff, ResolvedPreconditions())
     assert len(popen_argvs) == 2  # the dead runner was discarded and a fresh one spawned
 
 
@@ -949,7 +1322,7 @@ def test_discarding_a_crashed_runner_warns_and_sweeps_its_group(
     # holding the device's automation session, so the crashed branch sweeps the group by pid-as-pgid.
     _, _, run = _fake_toolchain(monkeypatch)
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
-    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions())
     proc = env._runner_proc
     assert proc is not None
     proc.alive = False  # type: ignore[attr-defined]  # the runner crashed mid-run
@@ -979,7 +1352,7 @@ def test_a_discarded_cold_attempt_terminates_the_app_under_test(
     # the runner process.
     _, simctl_calls, run = _fake_toolchain(monkeypatch)
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
-    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions())
     simctl_calls.clear()
     env._discard_runner(warn_on_crash=False, keep_log=True)
     assert ["xcrun", "simctl", "terminate", "UDID", "com.x"] in simctl_calls
@@ -995,7 +1368,7 @@ def test_a_discard_terminates_the_xctrunner_app_too(
     _, simctl_calls, run = _fake_toolchain(monkeypatch)
     runner = _write_runner(tmp_path, host_bundle_id="com.bajutsu.common.runner.uitests.xctrunner")
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
-    env.start(_sim_eff(test_runner=str(runner)), Preconditions())
+    env.start(_sim_eff(test_runner=str(runner)), ResolvedPreconditions())
     simctl_calls.clear()
     env._discard_runner(warn_on_crash=False, keep_log=True)
     assert [
@@ -1023,7 +1396,7 @@ def test_a_hung_terminate_is_not_absorbed_by_a_discard(
     _, _, run = _fake_toolchain(monkeypatch)
     runner = _write_runner(tmp_path, host_bundle_id="com.bajutsu.common.runner.uitests.xctrunner")
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
-    env.start(_sim_eff(test_runner=str(runner)), Preconditions())
+    env.start(_sim_eff(test_runner=str(runner)), ResolvedPreconditions())
 
     def hung(argv: list[str], extra_env: Mapping[str, str] | None = None) -> str:
         if argv[2:3] == ["terminate"]:
@@ -1059,7 +1432,7 @@ def test_a_failing_terminate_is_still_absorbed_by_a_discard(
     # that has gone) and a plain `simctl.DeviceError`.
     _, _, run = _fake_toolchain(monkeypatch)
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
-    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions())
 
     def _failing(exc: Exception) -> simctl.RunFn:
         def fake(argv: list[str], extra_env: Mapping[str, str] | None = None) -> str:
@@ -1086,7 +1459,7 @@ def test_end_lease_leaves_the_xctrunner_app_running(
     runner = _write_runner(tmp_path, host_bundle_id="com.bajutsu.common.runner.uitests.xctrunner")
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     eff = _sim_eff(test_runner=str(runner))
-    driver = env.start(eff, Preconditions())
+    driver = env.start(eff, ResolvedPreconditions())
     simctl_calls.clear()
     env.end_lease(driver, eff)
     terminated = [c[4] for c in simctl_calls if c[:3] == ["xcrun", "simctl", "terminate"]]
@@ -1100,7 +1473,7 @@ def test_a_discard_survives_an_xctestrun_without_a_host_bundle_id(
     # discard its other work: nothing is terminated for the runner, and the app under test still is.
     _, simctl_calls, run = _fake_toolchain(monkeypatch)
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
-    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions())
     simctl_calls.clear()
     env._discard_runner(warn_on_crash=False, keep_log=True)
     terminated = [c[4] for c in simctl_calls if c[:3] == ["xcrun", "simctl", "terminate"]]
@@ -1128,7 +1501,7 @@ def test_a_real_device_discard_never_terminates_through_simctl(
     _patch_group_signals(monkeypatch)
     runner = _write_runner(tmp_path, host_bundle_id="com.bajutsu.common.runner.uitests.xctrunner")
     env = XcuitestEnvironment("xcuitest", _DEVICE_UDID, env_run=_run)
-    env.start(_device_eff(test_runner=str(runner)), Preconditions())
+    env.start(_device_eff(test_runner=str(runner)), ResolvedPreconditions())
     env._discard_runner(warn_on_crash=False, keep_log=True)
     assert simctl_calls == []
 
@@ -1169,7 +1542,7 @@ def test_runner_output_is_captured_when_the_env_var_is_set(
     log_dir = tmp_path / "runner-logs"
     monkeypatch.setenv("BAJUTSU_XCUITEST_RUNNER_LOG", str(log_dir))
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
-    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions())
     assert env._runner_log is not None and env._runner_log.parent == log_dir
     assert env._runner_log.exists()  # the sink file was opened for the spawn
     assert (
@@ -1192,7 +1565,7 @@ def test_the_spawn_hands_the_channel_a_stall_capture_bound_to_this_device(
         stall_diagnostics, "capture", lambda reason, probes: captured.append((reason, probes))
     )
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
-    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions())
 
     hook = DRIVER_KWARGS[-1]["on_stall"]
     assert callable(hook)
@@ -1211,14 +1584,14 @@ def test_result_bundle_is_requested_only_when_the_env_var_is_set(
     monkeypatch.delenv(_RESULT_BUNDLE_ENV, raising=False)
     popen_argvs, _, run = _fake_toolchain(monkeypatch)
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
-    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions())
     assert "-resultBundlePath" not in popen_argvs[0]
 
     bundles = tmp_path / "bundles"
     monkeypatch.setenv(_RESULT_BUNDLE_ENV, str(bundles))
     popen_argvs, _, run = _fake_toolchain(monkeypatch)
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
-    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions())
     argv = popen_argvs[0]
     assert "-resultBundlePath" in argv
     bundle = Path(argv[argv.index("-resultBundlePath") + 1])
@@ -1239,7 +1612,7 @@ def test_a_requested_bundle_declines_xcodebuilds_own_sysdiagnose(
     monkeypatch.setenv(_RESULT_BUNDLE_ENV, str(tmp_path / "bundles"))
     popen_argvs, _, run = _fake_toolchain(monkeypatch)
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
-    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions())
     argv = popen_argvs[0]
     assert argv[argv.index("-collect-test-diagnostics") + 1] == "never"
 
@@ -1247,7 +1620,7 @@ def test_a_requested_bundle_declines_xcodebuilds_own_sysdiagnose(
     monkeypatch.delenv(_RESULT_BUNDLE_ENV, raising=False)
     popen_argvs, _, run = _fake_toolchain(monkeypatch)
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
-    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions())
     assert "-collect-test-diagnostics" not in popen_argvs[0]
 
 
@@ -1268,7 +1641,7 @@ def test_result_bundle_path_is_cleared_before_the_spawn(
     keep = bundles / "result-UDID-9999.xcresult"
     keep.mkdir(parents=True)
 
-    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions())
     assert not stale.exists()
     assert keep.exists()  # another spawn's bundle is never collateral
 
@@ -1287,7 +1660,7 @@ def test_a_leftover_that_survives_the_clearing_degrades_to_no_bundles(
     bundles.mkdir(parents=True)
     (bundles / "result-UDID-4242.xcresult").write_text("not a directory")
 
-    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions())
     assert "-resultBundlePath" not in popen_argvs[0]
 
 
@@ -1315,7 +1688,7 @@ def test_an_unusable_result_bundle_directory_never_fails_the_spawn(
     monkeypatch.setenv(_RESULT_BUNDLE_ENV, str(blocker))
     popen_argvs, _, run = _fake_toolchain(monkeypatch)
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
-    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions())
     assert "-resultBundlePath" not in popen_argvs[0]
 
 
@@ -1329,15 +1702,19 @@ def test_warm_resume_reapplies_the_per_scenario_reset(
     app = tmp_path / "App.app"
     app.mkdir()
     cfg = (
-        f"targets:\n  s:\n    bundleId: com.x\n    appPath: {app}\n"
-        f"    xcuitest:\n      testRunner: {_write_runner(tmp_path)}\n"
+        "targets:\n"
+        "  s:\n"
+        "    platform: ios\n"
+        f"    subject: {{id: com.x, path: {app}}}\n"
+        "    driver:\n"
+        f"      runner: {{testRunner: {_write_runner(tmp_path)}}}\n"
     )
     eff = resolve(load_config(cfg), "s")
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
-    env.start(eff, Preconditions())  # cold spawn
+    env.start(eff, ResolvedPreconditions())  # cold spawn
     simctl_calls.clear()
     env.start(
-        eff, Preconditions(deeplink="myapp://open"), permissions={"camera": "grant"}
+        eff, ResolvedPreconditions(deeplink="myapp://open"), permissions={"camera": "grant"}
     )  # warm resume
     assert len(popen_argvs) == 1  # no respawn — the runner was reused
     verbs = [c[2] for c in simctl_calls if len(c) >= 3 and c[:2] == ["xcrun", "simctl"]]
@@ -1361,14 +1738,20 @@ def test_clean_reinstall_resets_permissions_even_when_the_scenario_names_none(
     app = tmp_path / "App.app"
     app.mkdir()
     cfg = (
-        f"targets:\n  s:\n    bundleId: com.x\n    appPath: {app}\n"
-        f"    xcuitest:\n      testRunner: {_write_runner(tmp_path)}\n"
+        "targets:\n"
+        "  s:\n"
+        "    platform: ios\n"
+        f"    subject: {{id: com.x, path: {app}}}\n"
+        "    driver:\n"
+        f"      runner: {{testRunner: {_write_runner(tmp_path)}}}\n"
     )
     eff = resolve(load_config(cfg), "s")
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
-    env.start(eff, Preconditions())  # cold spawn
+    env.start(eff, ResolvedPreconditions())  # cold spawn
     simctl_calls.clear()
-    env.start(eff, Preconditions())  # warm resume, reinstall defaults to "clean", no permissions
+    env.start(
+        eff, ResolvedPreconditions()
+    )  # warm resume, reinstall defaults to "clean", no permissions
     assert len(popen_argvs) == 1  # no respawn — the runner was reused
     reset_calls = [c for c in simctl_calls if c[2:3] == ["privacy"] and c[4:6] == ["reset", "all"]]
     assert reset_calls, f"expected a `simctl privacy reset all` call, got: {simctl_calls}"
@@ -1393,9 +1776,11 @@ def test_clean_reinstall_resets_permissions_with_no_app_path(
     popen_argvs, simctl_calls, run = _fake_toolchain(monkeypatch)
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     eff = _sim_eff(test_runner=str(_write_runner(tmp_path)))  # app_path=None
-    env.start(eff, Preconditions())  # cold spawn
+    env.start(eff, ResolvedPreconditions())  # cold spawn
     simctl_calls.clear()
-    env.start(eff, Preconditions())  # warm resume, reinstall defaults to "clean", no permissions
+    env.start(
+        eff, ResolvedPreconditions()
+    )  # warm resume, reinstall defaults to "clean", no permissions
     assert len(popen_argvs) == 1  # no respawn — the runner was reused
     assert "install" not in _verbs(simctl_calls)  # nothing to (re)install without an appPath
     reset_calls = [c for c in simctl_calls if c[2:3] == ["privacy"] and c[4:6] == ["reset", "all"]]
@@ -1415,14 +1800,18 @@ def test_overwrite_reinstall_does_not_reset_permissions(
     app = tmp_path / "App.app"
     app.mkdir()
     cfg = (
-        f"targets:\n  s:\n    bundleId: com.x\n    appPath: {app}\n"
-        f"    xcuitest:\n      testRunner: {_write_runner(tmp_path)}\n"
+        "targets:\n"
+        "  s:\n"
+        "    platform: ios\n"
+        f"    subject: {{id: com.x, path: {app}}}\n"
+        "    driver:\n"
+        f"      runner: {{testRunner: {_write_runner(tmp_path)}}}\n"
     )
     eff = resolve(load_config(cfg), "s")
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
-    env.start(eff, Preconditions(reinstall="overwrite"))  # cold spawn
+    env.start(eff, ResolvedPreconditions(reinstall="overwrite"))  # cold spawn
     simctl_calls.clear()
-    env.start(eff, Preconditions(reinstall="overwrite"))  # warm resume, still overwrite
+    env.start(eff, ResolvedPreconditions(reinstall="overwrite"))  # warm resume, still overwrite
     assert len(popen_argvs) == 1  # no respawn — the runner was reused (the case this guards)
     reset_calls = [c for c in simctl_calls if c[2:3] == ["privacy"] and c[4:6] == ["reset", "all"]]
     assert not reset_calls, f"overwrite must not reset permissions, got: {simctl_calls}"
@@ -1440,14 +1829,18 @@ def test_warm_resume_skips_reinstall_under_overwrite_when_the_bundle_is_unchange
     app.mkdir()
     (app / "App").write_bytes(b"binary")
     cfg = (
-        f"targets:\n  s:\n    bundleId: com.x\n    appPath: {app}\n"
-        f"    xcuitest:\n      testRunner: {_write_runner(tmp_path)}\n"
+        "targets:\n"
+        "  s:\n"
+        "    platform: ios\n"
+        f"    subject: {{id: com.x, path: {app}}}\n"
+        "    driver:\n"
+        f"      runner: {{testRunner: {_write_runner(tmp_path)}}}\n"
     )
     eff = resolve(load_config(cfg), "s")
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
-    env.start(eff, Preconditions(reinstall="overwrite"))  # cold spawn
+    env.start(eff, ResolvedPreconditions(reinstall="overwrite"))  # cold spawn
     simctl_calls.clear()
-    env.start(eff, Preconditions(reinstall="overwrite"))  # warm resume, same bundle
+    env.start(eff, ResolvedPreconditions(reinstall="overwrite"))  # warm resume, same bundle
     assert len(popen_argvs) == 1  # no respawn — the runner was reused
     verbs = [c[2] for c in simctl_calls if len(c) >= 3 and c[:2] == ["xcrun", "simctl"]]
     assert "install" not in verbs  # the digest matched what this environment already put there
@@ -1462,16 +1855,20 @@ def test_warm_resume_reinstalls_under_overwrite_when_the_bundle_changed(
     app.mkdir()
     (app / "App").write_bytes(b"binary")
     cfg = (
-        f"targets:\n  s:\n    bundleId: com.x\n    appPath: {app}\n"
-        f"    xcuitest:\n      testRunner: {_write_runner(tmp_path)}\n"
+        "targets:\n"
+        "  s:\n"
+        "    platform: ios\n"
+        f"    subject: {{id: com.x, path: {app}}}\n"
+        "    driver:\n"
+        f"      runner: {{testRunner: {_write_runner(tmp_path)}}}\n"
     )
     eff = resolve(load_config(cfg), "s")
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
-    env.start(eff, Preconditions(reinstall="overwrite"))  # cold spawn
+    env.start(eff, ResolvedPreconditions(reinstall="overwrite"))  # cold spawn
     (app / "Added.bundle").mkdir()
     (app / "Added.bundle" / "payload").write_bytes(b"x")  # a rebuilt bundle: the digest shifts
     simctl_calls.clear()
-    env.start(eff, Preconditions(reinstall="overwrite"))  # warm resume, changed bundle
+    env.start(eff, ResolvedPreconditions(reinstall="overwrite"))  # warm resume, changed bundle
     assert len(popen_argvs) == 1  # no respawn — the runner was reused
     verbs = [c[2] for c in simctl_calls if len(c) >= 3 and c[:2] == ["xcrun", "simctl"]]
     assert "install" in verbs  # the rebuilt bundle was reinstalled
@@ -1490,7 +1887,7 @@ def test_runner_output_is_captured_by_default_and_is_ephemeral(
         tmp_path / "default-logs",
     )
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
-    driver = env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    driver = env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions())
     log = env._runner_log
     assert log is not None and log.exists()  # captured even with the env var unset
     assert env._runner_log_ephemeral  # a default capture is marked for pruning
@@ -1508,7 +1905,7 @@ def test_an_explicit_capture_directory_is_kept_on_teardown(
     monkeypatch.setenv("BAJUTSU_XCUITEST_RUNNER_LOG", str(log_dir))
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     eff = _sim_eff(test_runner=str(_write_runner(tmp_path)))
-    driver = env.start(eff, Preconditions())
+    driver = env.start(eff, ResolvedPreconditions())
     log = env._runner_log
     assert log is not None and log.parent == log_dir and not env._runner_log_ephemeral
     env.teardown(driver, eff)
@@ -1529,7 +1926,7 @@ def test_a_kept_default_capture_is_logged_at_the_moment_it_is_kept(
         tmp_path / "default-logs",
     )
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
-    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions())
     log = env._runner_log
     assert log is not None and log.exists()
     with caplog.at_level("INFO"):
@@ -1548,7 +1945,7 @@ def test_runner_log_hint_shows_the_bounded_tail_of_the_capture(
     _, _, run = _fake_toolchain(monkeypatch)
     monkeypatch.setenv("BAJUTSU_XCUITEST_RUNNER_LOG", str(tmp_path / "logs"))
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
-    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions())
     assert env._runner_log is not None
     env._runner_log.write_text("".join(f"line-{i}\n" for i in range(50)))
     hint = env._runner_log_hint()
@@ -1605,7 +2002,7 @@ def test_a_repeatable_cold_spawn_failure_fails_loudly_and_keeps_the_logs(
         caplog.at_level("WARNING"),
         pytest.raises(XcuitestChannelError, match="did not come up") as excinfo,
     ):
-        env.start(eff, Preconditions())
+        env.start(eff, ResolvedPreconditions())
     message = str(excinfo.value)
     assert "attempt 1/2" in message and "attempt 2/2" in message  # exactly two attempts
     assert "exited (code 71)" in message  # the fail-fast reason reached the loud error
@@ -1816,7 +2213,7 @@ def test_runner_alive_reports_gone_once_the_test_run_ended(
     # on a port that will never bind again.
     _, _, run = _fake_toolchain(monkeypatch)
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
-    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions())
     assert env._runner_alive()  # the process runs and the capture shows a live run
     assert env._runner_log is not None
     with env._runner_log.open("ab") as fh:
@@ -1835,13 +2232,13 @@ def test_a_fresh_spawn_starts_the_run_ended_probe_over(
     _, _, run = _fake_toolchain(monkeypatch, wedged=wedged)
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     eff = _sim_eff(test_runner=str(_write_runner(tmp_path)))
-    env.start(eff, Preconditions())
+    env.start(eff, ResolvedPreconditions())
     first_log = env._runner_log
     assert first_log is not None
     with first_log.open("ab") as fh:
         fh.write(b"Test Suite 'All tests' failed at 2026-08-09 23:38:12.001.\n")
     assert not env._runner_alive()
-    env.start(eff, Preconditions())
+    env.start(eff, ResolvedPreconditions())
     assert env._runner_log != first_log  # a genuinely new spawn, with its own capture
     assert env._runner_alive()
 
@@ -2367,7 +2764,7 @@ def test_a_process_exit_leaves_the_booted_device_alone() -> None:
     recovery = env._recover_between_attempts(
         _AttemptFailure("process-exit", "exited (code 65)"),
         _eff_for_ladder(),
-        Preconditions(),
+        ResolvedPreconditions(),
         None,
     )
     assert recovery is not None and recovery.fresh_budget is None
@@ -2382,7 +2779,7 @@ def test_an_app_launch_timeout_reboots_and_re_prepares_the_device() -> None:
     recovery = env._recover_between_attempts(
         _AttemptFailure("run-ended", "the xctest run ended after the app launch timed out"),
         _eff_for_ladder(),
-        Preconditions(),
+        ResolvedPreconditions(),
         None,
     )
     assert recovery is not None and recovery.fresh_budget == _runner_startup_timeout()
@@ -2411,7 +2808,7 @@ def test_a_device_that_will_not_shut_down_earns_no_fresh_budget() -> None:
     recovery = env._recover_between_attempts(
         _AttemptFailure("run-ended", "the xctest run ended after the app launch timed out"),
         _eff_for_ladder(),
-        Preconditions(),
+        ResolvedPreconditions(),
         None,
     )
     assert recovery is not None and recovery.fresh_budget is None
@@ -2431,12 +2828,18 @@ def test_an_unreadable_booted_listing_also_earns_no_fresh_budget() -> None:
     recovery = env._recover_between_attempts(
         _AttemptFailure("run-ended", "the xctest run ended after the app launch timed out"),
         _eff_for_ladder(),
-        Preconditions(),
+        ResolvedPreconditions(),
         None,
     )
     assert recovery is not None and recovery.fresh_budget is None
     assert "would not shut down" in recovery.note
     assert _verb_seq(calls) == ["list", "shutdown", "list"]
+
+
+def _capture_device(env: XcuitestEnvironment) -> None:
+    """Record the device type and runtime a cold prep reads, which a replacement must keep (BE-0452)."""
+    env._device_type_id = "com.apple.x.iPhone-17-Pro"
+    env._device_runtime_id = "com.apple.CoreSimulator.SimRuntime.iOS-26-0"
 
 
 def test_a_vanished_device_is_replaced_and_reported_to_the_pool(tmp_path: Path) -> None:
@@ -2446,17 +2849,17 @@ def test_a_vanished_device_is_replaced_and_reported_to_the_pool(tmp_path: Path) 
     app.mkdir()
     calls, run = _ladder_run([])  # the leased device is gone from the listing
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    _capture_device(env)
     recovery = env._recover_between_attempts(
         _AttemptFailure("run-ended", "the xctest run ended"),
         _eff_for_ladder(app_path=str(app)),
-        Preconditions(),
+        ResolvedPreconditions(),
         None,
     )
     assert recovery is not None and recovery.fresh_budget == _runner_startup_timeout()
     assert env._udid == "UDID-NEW" and env.replaced_device() == "UDID-NEW"
     # Created, then booted to completion *before* the prep, so the first boot is not charged to the
-    # next attempt's readiness ceiling. The listings ahead of `create` are the probe and the
-    # device-type lookup (this environment never cold-prepped, so it captured no type to clone).
+    # next attempt's readiness ceiling. The listing ahead of `create` is the probe.
     seq = _verb_seq(calls)
     assert seq[0] == "list" and "create" in seq
     assert seq[seq.index("create") + 1] == "bootstatus"
@@ -2486,8 +2889,8 @@ def test_both_driver_construction_sites_hand_over_the_parsed_device_os(
     monkeypatch.setattr(backends, "make_driver", _make_driver)
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     eff = _sim_eff(test_runner=str(_write_runner(tmp_path)))
-    env.start(eff, Preconditions())  # cold spawn
-    env.start(eff, Preconditions())  # warm resume — the second construction site
+    env.start(eff, ResolvedPreconditions())  # cold spawn
+    env.start(eff, ResolvedPreconditions())  # warm resume — the second construction site
 
     assert len(handed) == 2
     assert handed == [DeviceOS("ios", 26, 0, "iOS 26.0")] * 2
@@ -2502,7 +2905,7 @@ def test_a_replacement_clones_the_type_captured_while_the_device_was_healthy(
     # against rather than whatever the host happens to offer.
     _, simctl_calls, run = _fake_toolchain(monkeypatch)
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
-    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions())
     assert simctl.list_all_devices_cmd() in simctl_calls
     assert env._device_type_id == "com.apple.x.iPhone-17-Pro"
     # The runtime comes from the same listing, for free, so the replacement can clone the OS version
@@ -2517,7 +2920,7 @@ def test_a_replacement_clones_the_type_captured_while_the_device_was_healthy(
     env._recover_between_attempts(
         _AttemptFailure("run-ended", "ended"),
         _eff_for_ladder(app_path=str(app)),
-        Preconditions(),
+        ResolvedPreconditions(),
         None,
     )
     # The name leads with the model (the report's device row and `serve`'s `iphone`/`ipad` capability
@@ -2534,11 +2937,9 @@ def test_a_replacement_clones_the_type_captured_while_the_device_was_healthy(
 
 
 def test_a_replacement_re_reads_its_actual_type_and_runtime(tmp_path: Path) -> None:
-    # create_device retries unpinned when the requested runtime is gone, so a replacement can land on
-    # a different iOS version than _device_runtime_id named — caching the *requested* type/runtime
-    # after create would leave the environment believing it got what it asked for. Clearing both
-    # instead lets _finish_repair's prep (which runs `device_type_of` when _device_type_id is None)
-    # re-read them from the device that actually exists.
+    # The recorded type and runtime come from the device, not from what the create asked for:
+    # clearing both lets _finish_repair's prep (which runs `device_type_of` when _device_type_id is
+    # None) re-read them from the device that actually exists.
     app = tmp_path / "App.app"
     app.mkdir()
     _calls, run = _ladder_run([])  # the leased device is gone; devicetypes default to iPhone 17 Pro
@@ -2549,7 +2950,7 @@ def test_a_replacement_re_reads_its_actual_type_and_runtime(tmp_path: Path) -> N
     env._recover_between_attempts(
         _AttemptFailure("run-ended", "ended"),
         _eff_for_ladder(app_path=str(app)),
-        Preconditions(),
+        ResolvedPreconditions(),
         None,
     )
     # Re-read from the replacement (iOS 26.0, per _device_json), not left at the stale iOS 19.0.
@@ -2569,7 +2970,7 @@ def test_a_probe_that_could_not_run_changes_nothing() -> None:
     recovery = env._recover_between_attempts(
         _AttemptFailure("never-ready", "health never ready"),
         _eff_for_ladder(),
-        Preconditions(),
+        ResolvedPreconditions(),
         None,
     )
     assert recovery is not None and recovery.fresh_budget is None
@@ -2577,29 +2978,39 @@ def test_a_probe_that_could_not_run_changes_nothing() -> None:
     assert "could not probe" in recovery.note
 
 
-def test_a_vanished_device_with_no_replaceable_type_fails_loudly(tmp_path: Path) -> None:
-    # A host that lost its runtimes along with the device: nothing is left to run on, so this is a
-    # device fault rather than another doomed attempt.
-    import json
-
+def test_a_vanished_device_whose_type_was_never_read_fails_loudly(tmp_path: Path) -> None:
+    # A replacement of another model or OS would change what the run observes (BE-0452), so with no
+    # captured type and runtime to keep, the recovery fails rather than guesses one from the host.
     app = tmp_path / "App.app"
     app.mkdir()
-
-    def run(argv: list[str], env: Mapping[str, str] | None = None) -> str:
-        if argv[2:4] == ["list", "devicetypes"]:
-            return json.dumps({"devicetypes": []})  # no iPhone type at all
-        if argv[2:3] == ["list"]:
-            return _device_json([])
-        return ""
-
+    calls, run = _ladder_run([])  # the host still ships an iPhone type the recovery must not take
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
-    with pytest.raises(simctl.DeviceError, match="no device type matching iPhone 15 is available"):
+    with pytest.raises(simctl.DeviceError, match="device type and runtime were never read"):
         env._recover_between_attempts(
             _AttemptFailure("run-ended", "ended"),
             _eff_for_ladder(app_path=str(app)),
-            Preconditions(),
+            ResolvedPreconditions(),
             None,
         )
+    assert not any(c[2:3] == ["create"] for c in calls)
+
+
+def test_a_vanished_device_whose_runtime_was_never_read_fails_loudly(tmp_path: Path) -> None:
+    # The type alone is not enough: a replacement on whichever runtime simctl picks could run another
+    # iOS version than the one the scenario observed.
+    app = tmp_path / "App.app"
+    app.mkdir()
+    calls, run = _ladder_run([])
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env._device_type_id = "com.apple.x.iPhone-17-Pro"
+    with pytest.raises(simctl.DeviceError, match="never read"):
+        env._recover_between_attempts(
+            _AttemptFailure("run-ended", "ended"),
+            _eff_for_ladder(app_path=str(app)),
+            ResolvedPreconditions(),
+            None,
+        )
+    assert not any(c[2:3] == ["create"] for c in calls)
 
 
 def test_a_vanished_device_with_no_app_path_fails_loudly() -> None:
@@ -2607,73 +3018,16 @@ def test_a_vanished_device_with_no_app_path_fails_loudly() -> None:
     # onto a device with no app to launch. Fail before paying the create/boot/re-prep proving that.
     calls, run = _ladder_run([])  # the leased device is gone from the listing
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
-    with pytest.raises(simctl.DeviceError, match="configures no appPath"):
+    with pytest.raises(simctl.DeviceError, match=r"configures no subject\.path"):
         env._recover_between_attempts(
             _AttemptFailure("run-ended", "ended"),
             _eff_for_ladder(),  # no appPath
-            Preconditions(),
+            ResolvedPreconditions(),
             None,
         )
     assert not any(
         c[2:3] == ["create"] for c in calls
     )  # no device was minted for nothing to run on
-
-
-def test_a_replacement_prefers_the_configured_model_over_the_newest_iphone(tmp_path: Path) -> None:
-    # Tier 2 of the fallback ladder (the configured device model) sits between tier 1 (the vanished
-    # device's own captured type) and tier 3 (whichever iPhone this host ships) — and only shows up
-    # when the host has more than one iPhone type, since a single-entry listing can't tell "the
-    # configured model happens to be newest" from "tier 3 fired instead of tier 2".
-    app = tmp_path / "App.app"
-    app.mkdir()
-    devicetypes = [
-        {"name": "iPhone 15", "identifier": "com.apple.x.iPhone-15", "productFamily": "iPhone"},
-        {
-            "name": "iPhone 17 Pro",
-            "identifier": "com.apple.x.iPhone-17-Pro",
-            "productFamily": "iPhone",
-        },
-    ]
-    calls, run = _ladder_run([], devicetypes=devicetypes)  # the leased device is gone
-    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
-    env._recover_between_attempts(
-        _AttemptFailure("run-ended", "ended"),
-        _eff_for_ladder(app_path=str(app)),  # defaults.device is "iPhone 15"
-        Preconditions(),
-        None,
-    )
-    created = next(c for c in calls if c[2:3] == ["create"])
-    # The configured identifier, not the newest-iPhone fallback — tier 2 wins over tier 3.
-    assert created[4] == "com.apple.x.iPhone-15"
-
-
-def test_an_ipad_target_is_never_replaced_with_an_iphone(tmp_path: Path) -> None:
-    # "Any iPhone beats failing" only holds for an iPhone target. `device_type_identifier` matches
-    # simctl's device-type name exactly, and iPad names carry parentheses (e.g. "iPad Pro
-    # (12.9-inch) (6th generation)"), so an exact-match miss is ordinary rather than exotic —
-    # substituting an iPhone for a missed iPad would finish the run on a layout the scenario was
-    # never written against, silently. This must fail loudly instead.
-    app = tmp_path / "App.app"
-    app.mkdir()
-    cfg = (
-        'defaults:\n  device: "iPad Pro (12.9-inch) (6th generation)"\n'
-        f"targets:\n  s:\n    bundleId: com.x\n    appPath: {app}\n"
-        "    xcuitest:\n      testRunner: /nonexistent.xctestrun\n"
-    )
-    ipad_eff = resolve(load_config(cfg), "s")
-    calls, run = _ladder_run([])  # devicetypes lists only "iPhone 17 Pro" — never an iPad match
-    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
-    with pytest.raises(
-        simctl.DeviceError,
-        match=re.escape("no device type matching iPad Pro (12.9-inch) (6th generation)"),
-    ):
-        env._recover_between_attempts(
-            _AttemptFailure("run-ended", "ended"),
-            ipad_eff,
-            Preconditions(),
-            None,
-        )
-    assert not any(c[2:3] == ["create"] for c in calls)  # no iPhone replacement was minted
 
 
 # --- the crash retry's replacement rung (BE-0354) --- #
@@ -2704,10 +3058,10 @@ def test_a_requested_replacement_swaps_the_device_before_the_next_bring_up(
     # The rung itself: the escalated lease runs on a device that has never run anything, and
     # `replaced_device()` is how the pool learns to re-key everything it holds by udid.
     calls, env, eff = _replacement_env(monkeypatch, tmp_path)
-    env.start(eff, Preconditions())
+    env.start(eff, ResolvedPreconditions())
     env.request_device_replacement()
     del calls[:]
-    env.start(eff, Preconditions())
+    env.start(eff, ResolvedPreconditions())
     assert env._udid == "UDID-NEW" and env.replaced_device() == "UDID-NEW"
     seq = _verb_seq(calls)
     # The degraded device is shut down before the replacement is minted — the quarantine — and the
@@ -2728,10 +3082,10 @@ def test_a_replacement_bring_up_never_resumes_the_warm_runner(
     _, ladder_run = _ladder_run(["UDID"])
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     eff = _sim_eff(test_runner=str(_write_runner(tmp_path)), app_path=str(app))
-    env.start(eff, Preconditions())
+    env.start(eff, ResolvedPreconditions())
     env.request_device_replacement()
     env._run = ladder_run  # the ladder's simctl can mint a device
-    env.start(eff, Preconditions())
+    env.start(eff, ResolvedPreconditions())
     assert len(popen_argvs) == 2  # a second `xcodebuild`, not a warm resume
     assert env._udid == "UDID-NEW"
 
@@ -2742,11 +3096,11 @@ def test_a_replacement_request_is_served_once_and_then_forgotten(
     # The request names one escalation, not a mode: a later lease that nothing escalated must not
     # keep minting `bajutsu-recovered-*` devices for every scenario that follows.
     calls, env, eff = _replacement_env(monkeypatch, tmp_path)
-    env.start(eff, Preconditions())
+    env.start(eff, ResolvedPreconditions())
     env.request_device_replacement()
-    env.start(eff, Preconditions())
+    env.start(eff, ResolvedPreconditions())
     del calls[:]
-    env.start(eff, Preconditions())
+    env.start(eff, ResolvedPreconditions())
     assert env._udid == "UDID-NEW"  # still on the first replacement
     assert "create" not in _verb_seq(calls)
 
@@ -2762,10 +3116,10 @@ def test_a_degraded_device_that_refuses_to_shut_down_is_still_replaced(
     calls, run = _ladder_run(["UDID"], stays_booted_after_shutdown=True)
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     eff = _sim_eff(test_runner=str(_write_runner(tmp_path)), app_path=str(app))
-    env.start(eff, Preconditions())
+    env.start(eff, ResolvedPreconditions())
     env.request_device_replacement()
     del calls[:]
-    env.start(eff, Preconditions())
+    env.start(eff, ResolvedPreconditions())
     assert env._udid == "UDID-NEW"
     assert "create" in _verb_seq(calls)
 
@@ -2790,10 +3144,10 @@ def test_a_degraded_device_whose_shutdown_hangs_is_still_replaced(
 
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=hanging_shutdown)
     eff = _sim_eff(test_runner=str(_write_runner(tmp_path)), app_path=str(app))
-    env.start(eff, Preconditions())
+    env.start(eff, ResolvedPreconditions())
     env.request_device_replacement()
     del calls[:]
-    env.start(eff, Preconditions())
+    env.start(eff, ResolvedPreconditions())
     assert env._udid == "UDID-NEW"
     assert "create" in _verb_seq(calls)
 
@@ -2818,11 +3172,11 @@ def test_a_degraded_device_whose_discard_hangs_is_still_replaced(
 
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=hanging_terminate)
     eff = _sim_eff(test_runner=str(_write_runner(tmp_path)), app_path=str(app))
-    env.start(eff, Preconditions())
+    env.start(eff, ResolvedPreconditions())
     env.request_device_replacement()
     del calls[:]
     with caplog.at_level("WARNING"):
-        env.start(eff, Preconditions())
+        env.start(eff, ResolvedPreconditions())
     assert env._udid == "UDID-NEW"
     assert "create" in _verb_seq(calls)
     # Absorbed, never silent: this is the one caller whose own `shutdown` may still return, so a
@@ -2838,10 +3192,10 @@ def test_a_replacement_bring_up_drops_the_erase_it_was_asked_to_carry(
     # the drop happens here, where the swap actually happened: a device just created has nothing to
     # erase, and honoring the precondition would pay a second shutdown-and-boot cycle for no change.
     calls, env, eff = _replacement_env(monkeypatch, tmp_path)
-    env.start(eff, Preconditions())
+    env.start(eff, ResolvedPreconditions())
     env.request_device_replacement()
     del calls[:]
-    env.start(eff, Preconditions(erase=True))
+    env.start(eff, ResolvedPreconditions(reinstall="erase"))
     assert env._udid == "UDID-NEW"
     seq = _verb_seq(calls)
     # The one shutdown is the degraded device's quarantine, before the create; nothing erases the
@@ -2859,13 +3213,13 @@ def test_a_replacement_that_cannot_be_created_leaves_the_device_running(
     calls, run = _ladder_run(["UDID"])
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     eff = _sim_eff(test_runner=str(_write_runner(tmp_path)))  # no appPath
-    env.start(eff, Preconditions())
+    env.start(eff, ResolvedPreconditions())
     env.request_device_replacement()
     del calls[:]
     # The wording names *this* rung, so an operator knows which one ran, and stays neutral about
     # which signal selected it — the stall-triggered path escalates with no erase ever forced.
     with pytest.raises(simctl.DeviceError, match="needs replacing after a crash"):
-        env.start(eff, Preconditions())
+        env.start(eff, ResolvedPreconditions())
     assert "shutdown" not in _verb_seq(calls) and "create" not in _verb_seq(calls)
 
 
@@ -2877,13 +3231,17 @@ def test_a_real_device_start_clears_a_replacement_request_without_serving_it(
     _fake_toolchain(monkeypatch)
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=lambda argv, e: "")
     cfg = (
-        "targets:\n  s:\n    bundleId: com.x\n"
-        "    xcuitest:\n      deviceType: device\n"
-        f"      testRunner: {_write_runner(tmp_path)}\n"
+        "targets:\n"
+        "  s:\n"
+        "    platform: ios\n"
+        f"    subject: {{id: com.x}}\n"
+        f"    runsOn: {{ios: {{kind: device}}}}\n"
+        "    driver:\n"
+        f"      runner: {{testRunner: {_write_runner(tmp_path)}}}\n"
     )
     device_eff = resolve(load_config(cfg), "s")
     env.request_device_replacement()
-    env.start(device_eff, Preconditions())
+    env.start(device_eff, ResolvedPreconditions())
     assert env._replacement_requested is False
     assert env.replaced_device() is None
 
@@ -2898,7 +3256,7 @@ def test_a_recovery_that_overran_its_bound_fails_the_run(monkeypatch: pytest.Mon
         env._recover_between_attempts(
             _AttemptFailure("run-ended", "ended"),
             _eff_for_ladder(),
-            Preconditions(),
+            ResolvedPreconditions(),
             None,
         )
 
@@ -2932,7 +3290,7 @@ def test_the_recovery_bound_excludes_the_unbounded_reprep(monkeypatch: pytest.Mo
     recovery = env._recover_between_attempts(
         _AttemptFailure("run-ended", "the xctest run ended after the app launch timed out"),
         _eff_for_ladder(),
-        Preconditions(),
+        ResolvedPreconditions(),
         None,
     )
     assert recovery is not None and recovery.fresh_budget == _runner_startup_timeout()
@@ -2949,7 +3307,7 @@ def test_a_rebooted_device_earns_the_full_cold_ceiling_even_on_a_tight_respawn()
     recovery = env._recover_between_attempts(
         _AttemptFailure("run-ended", "ended"),
         _eff_for_ladder(),
-        Preconditions(),
+        ResolvedPreconditions(),
         None,
     )
     assert recovery is not None and recovery.fresh_budget == _runner_startup_timeout()
@@ -2962,10 +3320,11 @@ def test_a_replacement_device_earns_the_full_cold_ceiling(tmp_path: Path) -> Non
     app.mkdir()
     _calls, run = _ladder_run([])  # the leased device is gone, so a replacement is created
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    _capture_device(env)
     recovery = env._recover_between_attempts(
         _AttemptFailure("run-ended", "ended"),
         _eff_for_ladder(app_path=str(app)),
-        Preconditions(),
+        ResolvedPreconditions(),
         None,
     )
     assert recovery is not None and recovery.fresh_budget == _runner_startup_timeout()
@@ -2989,11 +3348,12 @@ def test_the_recovery_bound_covers_a_rung_that_changes_nothing(
     app.mkdir()
     _calls, run = _ladder_run(list(present))
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    _capture_device(env)
     with pytest.raises(simctl.DeviceError, match="recovery exceeded"):
         env._recover_between_attempts(
             _AttemptFailure(kind, "why"),  # type: ignore[arg-type]
             _eff_for_ladder(app_path=str(app)),
-            Preconditions(),
+            ResolvedPreconditions(),
             None,
         )
 
@@ -3008,7 +3368,7 @@ def test_an_unknown_probe_is_still_reported_within_the_bound() -> None:
     recovery = env._recover_between_attempts(
         _AttemptFailure("never-ready", "health never ready"),
         _eff_for_ladder(),
-        Preconditions(),
+        ResolvedPreconditions(),
         None,
     )
     assert recovery.fresh_budget is None and "could not probe" in recovery.note
@@ -3029,10 +3389,11 @@ def test_a_replacements_name_keeps_its_capability_token_and_report_row(tmp_path:
     old_udid = "2A6DC5A9-CE8C-4BC5-959D-F98D5F4BD9AA"
     calls, run = _ladder_run([])
     env = XcuitestEnvironment("xcuitest", old_udid, env_run=run)
+    _capture_device(env)
     env._recover_between_attempts(
         _AttemptFailure("run-ended", "ended"),
         _eff_for_ladder(app_path=str(app)),
-        Preconditions(),
+        ResolvedPreconditions(),
         None,
     )
     created = next(c for c in calls if c[2:3] == ["create"])
@@ -3085,7 +3446,7 @@ def _crashed_runner(
     monkeypatch.setattr(f"{_XCUITEST_MODULE}._diagnostic_reports_dir", lambda: reports)
     _patch_group_signals(monkeypatch)
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
-    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions())
     assert env._runner_log is not None
     env._runner_log.write_text("first line\nthe crash reason\n", encoding="utf-8")
     assert env._runner_proc is not None
@@ -3217,7 +3578,7 @@ def test_a_cold_spawn_failure_discard_leaves_a_real_crashs_evidence_alone(
     env._discard_runner()
     crashed = env.take_crash_snapshot()
     assert crashed()  # the real crash was captured, and this lease now owns it
-    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions())
     assert env._runner_proc is not None
     env._runner_proc.alive = False  # type: ignore[attr-defined]
     env._discard_runner(warn_on_crash=False, keep_log=True)
@@ -3237,7 +3598,7 @@ def test_a_second_crash_on_one_environment_belongs_to_the_next_lease(
     # crash's evidence once the second has happened, regardless of whether anyone read the first.
     env, _reports = _crashed_runner(monkeypatch, tmp_path)
     env._discard_runner()
-    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions())
     assert env._runner_log is not None
     env._runner_log.write_text("the second scenario's crash\n", encoding="utf-8")
     assert env._runner_proc is not None
@@ -3254,7 +3615,7 @@ def test_an_environment_that_never_crashed_captures_nothing(
     _, _, run = _fake_toolchain(monkeypatch)
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     eff = _sim_eff(test_runner=str(_write_runner(tmp_path)))
-    driver = env.start(eff, Preconditions())
+    driver = env.start(eff, ResolvedPreconditions())
     env.teardown(driver, eff)
     assert env.take_crash_snapshot()() == []
 
@@ -3330,7 +3691,7 @@ def test_taking_the_snapshot_moves_it_off_the_shared_environment(
     env.end_lease(FakeDriver([]), eff)
     first = env.take_crash_snapshot()
     assert first()  # this lease's own crash, now this lease's to keep
-    env.start(eff, Preconditions())  # the next scenario leases the same warm environment
+    env.start(eff, ResolvedPreconditions())  # the next scenario leases the same warm environment
     env.end_lease(FakeDriver([]), eff)  # and ends healthy
     assert env.take_crash_snapshot()() == []  # it inherits nothing
     assert first()  # and the crashed scenario can still read its own, after that healthy lease
@@ -3351,3 +3712,265 @@ def test_the_report_store_is_located_on_demand_and_tolerates_an_unresolvable_hom
 
     monkeypatch.setattr(Path, "home", classmethod(no_home))
     assert _diagnostic_reports_dir() is None  # reads as "no reports", never as a failure
+
+
+# --- `repl --attach`: drive the app the operator already has open (BE-0455) --- #
+#
+# The attach start must touch nothing device-wide and must never terminate the app, on any path —
+# the happy one, the fallback launch, a failed spawn, and the exit. Same fake points as above, plus a
+# guest `launchctl list` and app-container answer the probe reads.
+
+
+def _attach_toolchain(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    running: bool = True,
+    installed: bool = True,
+    booted: bool = True,
+) -> tuple[list[list[str]], list[dict[str, str]], list[list[str]], simctl.RunFn]:
+    """`_fake_toolchain` plus the attach probe; return (popen argv, popen env, simctl log, run)."""
+    popen_argvs, simctl_calls, base_run = _fake_toolchain(monkeypatch)
+    popen_envs: list[dict[str, str]] = []
+    fake_popen = subprocess.Popen
+
+    def _popen(argv: list[str], **kw: Any) -> Any:
+        popen_envs.append(dict(kw.get("env") or {}))
+        return fake_popen(argv, **kw)
+
+    monkeypatch.setattr(subprocess, "Popen", _popen)
+    pid = "4242" if running else "-"
+    jobs = f"PID\tStatus\tLabel\n{pid}\t0\tUIKitApplication:com.x[2f1a][rb-legacy]\n"
+
+    def _run(argv: list[str], env: Mapping[str, str] | None = None) -> str:
+        if argv[4:6] == ["launchctl", "list"]:
+            simctl_calls.append(argv)
+            return jobs
+        if argv[2:3] == ["get_app_container"] and not installed:
+            simctl_calls.append(argv)
+            raise subprocess.CalledProcessError(2, argv, stderr="No such file or directory")
+        if argv[2:5] == ["list", "devices", "booted"] and not booted:
+            simctl_calls.append(argv)
+            return _device_json([])
+        return base_run(argv, env)
+
+    return popen_argvs, popen_envs, simctl_calls, _run
+
+
+def _assert_read_only(simctl_calls: list[list[str]]) -> None:
+    """An allowlist, not a denylist: the attach start may only read the device (BE-0455).
+
+    `spawn` is allowed for the `launchctl list` probe alone, so a regression that pinned the locale
+    through `spawn … defaults write` fails here just as an `erase` or an `openurl` would.
+    """
+    assert set(_verbs(simctl_calls)) <= {"list", "spawn", "get_app_container"}
+    assert all(c[4:6] == ["launchctl", "list"] for c in simctl_calls if c[2:3] == ["spawn"])
+
+
+# A scenario locale the cold path pins through `spawn … defaults write`; the attach start must not.
+_RICH_PRE = ResolvedPreconditions(locale="ja_JP")
+
+
+def _attach_env(run: simctl.RunFn, udid: str = "UDID") -> XcuitestEnvironment:
+    env = XcuitestEnvironment("xcuitest", udid, env_run=run)
+    env.request_attach()
+    return env
+
+
+def test_attach_drives_the_running_app_without_touching_the_device(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    popen_argvs, popen_envs, simctl_calls, run = _attach_toolchain(monkeypatch)
+    env = _attach_env(run)
+    eff = _sim_eff(test_runner=str(_write_runner(tmp_path)))
+    env.start(eff, _RICH_PRE)
+
+    assert env.attach_outcome == "attached"
+    assert len(popen_argvs) == 1
+    assert popen_envs[0]["BAJUTSU_ATTACH"] == "1"
+    assert popen_envs[0]["BAJUTSU_BUNDLE_ID"] == "com.x"
+    # Nothing is launched, so the target's launch env/args have nowhere to go.
+    assert "BAJUTSU_LAUNCH_ARGS" not in popen_envs[0]
+    _assert_read_only(simctl_calls)
+    # Warm reuse terminates and relaunches the app, so the attached runner is never offered to it.
+    assert not env.has_reusable_resident()
+
+
+def test_attach_launches_an_installed_app_that_is_not_running(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    popen_argvs, popen_envs, simctl_calls, run = _attach_toolchain(monkeypatch, running=False)
+    env = _attach_env(run)
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), _RICH_PRE)
+
+    assert env.attach_outcome == "launched"
+    assert len(popen_argvs) == 1
+    # The runner launches it, with the target's launch env/args, and still erases nothing.
+    assert "BAJUTSU_ATTACH" not in popen_envs[0]
+    assert "BAJUTSU_LAUNCH_ARGS" in popen_envs[0]
+    _assert_read_only(simctl_calls)
+
+
+def test_attach_fails_before_spawning_when_the_app_is_not_installed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    popen_argvs, _, _, run = _attach_toolchain(monkeypatch, running=False, installed=False)
+    env = _attach_env(run)
+    with pytest.raises(simctl.DeviceError, match=r"com\.x is not installed"):
+        env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions())
+    assert popen_argvs == []
+
+
+def test_attach_propagates_a_wedged_install_probe(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A probe timeout is a wedged Simulator, not an uninstalled app, and must not be reported as one.
+    _, _, _, run = _attach_toolchain(monkeypatch, running=False)
+
+    def _wedged(argv: list[str], env: Mapping[str, str] | None = None) -> str:
+        if argv[2:3] == ["get_app_container"]:
+            raise simctl.DeviceTimeout("xcrun simctl get_app_container timed out")
+        return run(argv, env)
+
+    env = _attach_env(_wedged)
+    with pytest.raises(simctl.DeviceTimeout):
+        env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions())
+
+
+def test_attach_turns_a_failed_probe_into_a_device_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # `launchctl list` failing (a half-booted device) exits the CLI 2 rather than a traceback.
+    popen_argvs, _, _, run = _attach_toolchain(monkeypatch)
+
+    def _failing(argv: list[str], env: Mapping[str, str] | None = None) -> str:
+        if argv[4:6] == ["launchctl", "list"]:
+            raise subprocess.CalledProcessError(1, argv, stderr="Unable to lookup in current state")
+        return run(argv, env)
+
+    env = _attach_env(_failing)
+    with pytest.raises(simctl.DeviceError):
+        env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions())
+    assert popen_argvs == []
+
+
+@pytest.mark.parametrize("udid", ["UDID", "booted"])
+def test_attach_reports_an_unreadable_boot_state_as_such(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, udid: str
+) -> None:
+    # Including the unresolved `booted` alias: a wedged listing is not "nothing booted".
+    popen_argvs, _, _, run = _attach_toolchain(monkeypatch)
+
+    def _unreadable(argv: list[str], env: Mapping[str, str] | None = None) -> str:
+        if argv[2:5] == ["list", "devices", "booted"]:
+            raise subprocess.CalledProcessError(1, argv, stderr="CoreSimulatorService")
+        return run(argv, env)
+
+    with pytest.raises(simctl.DeviceError, match=f"could not read whether Simulator {udid} is"):
+        _attach_env(_unreadable, udid).start(
+            _sim_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions()
+        )
+    assert popen_argvs == []
+
+
+@pytest.mark.parametrize(
+    ("udid", "message"),
+    [("booted", "no booted Simulator"), ("UDID", "Simulator UDID is not booted")],
+)
+def test_attach_never_boots_a_device(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, udid: str, message: str
+) -> None:
+    popen_argvs, _, simctl_calls, run = _attach_toolchain(monkeypatch, booted=False)
+    env = _attach_env(run, udid)
+    with pytest.raises(simctl.DeviceError, match=message):
+        env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions())
+    assert popen_argvs == []
+    assert "boot" not in _verbs(simctl_calls)
+
+
+@pytest.mark.parametrize(
+    ("pre", "permissions", "message"),
+    [
+        (ResolvedPreconditions(deeplink="app://x"), None, "never opens a deeplink"),
+        (ResolvedPreconditions(), {"camera": "grant"}, "never changes the permissions"),
+    ],
+)
+def test_attach_refuses_inputs_it_cannot_apply(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    pre: ResolvedPreconditions,
+    permissions: dict[str, str] | None,
+    message: str,
+) -> None:
+    # Dropping either in silence would leave a caller running against an app whose deeplink never
+    # opened or whose grant never landed.
+    popen_argvs, _, _, run = _attach_toolchain(monkeypatch)
+    with pytest.raises(simctl.DeviceError, match=message):
+        _attach_env(run).start(
+            _sim_eff(test_runner=str(_write_runner(tmp_path))), pre, permissions=permissions
+        )
+    assert popen_argvs == []
+
+
+def test_attach_refuses_erase_and_a_real_device(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The CLI rejects both first; the environment backstops any other caller.
+    _, _, _, run = _attach_toolchain(monkeypatch)
+    runner = str(_write_runner(tmp_path))
+    with pytest.raises(simctl.DeviceError, match="never erases"):
+        _attach_env(run).start(
+            _sim_eff(test_runner=runner), ResolvedPreconditions(reinstall="erase")
+        )
+    with pytest.raises(simctl.DeviceError, match="only supported on the local iOS Simulator"):
+        _attach_env(run, _DEVICE_UDID).start(
+            _device_eff(test_runner=runner), ResolvedPreconditions()
+        )
+
+
+def test_a_failed_attach_spawn_fails_once_and_keeps_the_app(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The retry's discard terminates the app and the recovery ladder reboots the device; an attach
+    # start takes neither, so one dead runner fails the start and the app is left alone.
+    popen_argvs, _, simctl_calls, run = _attach_toolchain(monkeypatch)
+    fake_popen = subprocess.Popen
+
+    def _dying(argv: list[str], **kw: Any) -> Any:
+        proc: Any = fake_popen(argv, **kw)
+        proc.alive = False
+        return proc
+
+    class _NeverReady:
+        def health_ready(self) -> bool:
+            return False  # the runner exits before /health ever answers
+
+    monkeypatch.setattr(subprocess, "Popen", _dying)
+    monkeypatch.setattr(backends, "make_driver", lambda *_a, **_k: _NeverReady())
+    env = _attach_env(run)
+    with pytest.raises(XcuitestChannelError, match="did not come up"):
+        env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions())
+    assert len(popen_argvs) == 1
+    _assert_read_only(simctl_calls)
+
+
+@pytest.mark.parametrize("running", [True, False], ids=["attached", "launched"])
+@pytest.mark.parametrize("exit_path", ["release_runner", "teardown"])
+def test_an_attach_session_exits_by_stopping_only_the_runner(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, exit_path: str, running: bool
+) -> None:
+    # Kept in the fallback too, where the runner itself launched the app: it is still the operator's.
+    _, _, simctl_calls, run = _attach_toolchain(monkeypatch, running=running)
+    env = _attach_env(run)
+    eff = _sim_eff(test_runner=str(_write_runner(tmp_path, host_bundle_id="com.x.runner")))
+    driver = env.start(eff, ResolvedPreconditions())
+    proc = env._runner_proc
+    assert proc is not None
+
+    if exit_path == "release_runner":
+        env.release_runner()
+    else:
+        env.teardown(driver, eff)
+
+    assert proc.poll() is not None  # the runner's process group was stopped
+    terminated = [c[-1] for c in simctl_calls if c[2:3] == ["terminate"]]
+    assert terminated == ["com.x.runner"]  # the XCTRunner app, never the app under test

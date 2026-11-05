@@ -4,21 +4,26 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 from fastmcp import FastMCP
 
 from bajutsu.common.backends import select_actuator
-from bajutsu.common.config import Effective, load_config, resolve
+from bajutsu.common.capability.worker_capability import WorkerCapability, load_worker_capability
+from bajutsu.common.config import Effective, load_config_file, resolve
 from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.doctor import DoctorProbeError, probe_screen, render, score
+from bajutsu.common.drivers import base
+from bajutsu.run import INTERNAL_MODULE as INTERNAL_RUN_MODULE
+from bajutsu.run.device_matrix import first_run_device
 
 
 def _load_effective(config_path: Path, target: str) -> Effective:
     """Load config and resolve effective settings. Raises ValueError on failure."""
     if not config_path.exists():
         raise ValueError(f"config not found: {config_path}")
-    cfg = load_config(config_path.read_text(encoding="utf-8"))
+    cfg = load_config_file(config_path)
     try:
         return resolve(cfg, target)
     except KeyError as e:
@@ -44,12 +49,46 @@ def _parse_verdict(stdout: str) -> str:
     return ""
 
 
-def register_tools(mcp: FastMCP, config_path: Path) -> None:
+def _probe_device(eff: Effective, udid: str, worker: WorkerCapability) -> tuple[Effective, str]:
+    """*eff* with the worker's device provider, and the device of the target's first run (BE-0452).
+
+    The probe scores the screen of the first run the target's `runsOn` conditions form, as `doctor`
+    does; a target with no condition keeps the udid spec the provider hands back.
+
+    Raises:
+        ValueError: *udid* is a URL, the provider cannot resolve a device, or no available device
+            fits the first run.
+    """
+    if any(t.strip().startswith(("http://", "https://")) for t in udid.split(",")):
+        raise ValueError(
+            "udid no longer takes a URL: name the grid in an `appium` environment of the "
+            "server's --worker-config (BE-0452)"
+        )
+    # Imported here: the provider registry reaches the platform environments.
+    from bajutsu.common.runner.device_provider import acquire_device
+
+    provider = worker.device_provider_for(eff.backend[0] if eff.backend else eff.platform)
+    if provider is not None:
+        eff = replace(eff, device_provider=provider)
+    spec = acquire_device(eff, udid).udid_spec
+    return first_run_device(eff, select_actuator(eff.backend), spec)
+
+
+def register_tools(
+    mcp: FastMCP,
+    config_path: Path,
+    *,
+    worker_config: Path | None = None,
+    worker: WorkerCapability | None = None,
+) -> None:
     """Register ``bajutsu_doctor`` and ``bajutsu_run`` as MCP tools on *mcp*.
 
     Both tools close over ``config_path`` so callers need only pass ``target``
-    (and optional tuning parameters) at invocation time.
+    (and optional tuning parameters) at invocation time. They close over the server's
+    `--worker-config` too: `bajutsu_run` passes it on, and `bajutsu_doctor` probes the grid an
+    `appium` environment names (BE-0452).
     """
+    in_force = worker if worker is not None else load_worker_capability(worker_config)
 
     @mcp.tool()
     def bajutsu_doctor(target: str, udid: str = "booted") -> str:
@@ -63,13 +102,17 @@ def register_tools(mcp: FastMCP, config_path: Path) -> None:
         id coverage, namespace conformance, and duplicates.
         """
         eff = _load_effective(config_path, target)
+        try:
+            eff, udid_spec = _probe_device(eff, udid, in_force)
+        except ValueError as e:
+            return str(e)
         backends = eff.backend
         actuator = select_actuator(backends)
         try:
-            elements = probe_screen(actuator, udid, eff)
+            elements = probe_screen(actuator, udid_spec, eff)
         except DoctorProbeError as e:
             return str(e)
-        except device_errors.DeviceError as e:
+        except (device_errors.DeviceError, base.UnsupportedAction) as e:
             return f"could not read the screen to score: {e}"
         s = score(
             elements,
@@ -93,13 +136,17 @@ def register_tools(mcp: FastMCP, config_path: Path) -> None:
 
         Returns a summary with the manifest path. The scenario parameter is
         a path to a *.yaml file; if omitted, all scenarios in the target's
-        configured directory are run.
+        `paths.scenarios` directory are run. `erase=True` erases the device
+        before every scenario, overriding each scenario's
+        `preconditions.subject.reinstall` and the target's; False leaves
+        those in force.
         """
+        # The internal run module, not the public wrapper: the tool's timeout kills what it spawned,
+        # and the run must die with it rather than outlive it in a session of its own (BE-0449).
         cmd = [
             sys.executable,
             "-m",
-            "bajutsu",
-            "run",
+            INTERNAL_RUN_MODULE,
             "--target",
             target,
             "--config",
@@ -117,6 +164,8 @@ def register_tools(mcp: FastMCP, config_path: Path) -> None:
             cmd.extend(["--exclude", exclude])
         if erase:
             cmd.append("--erase")
+        if worker_config is not None:
+            cmd.extend(["--worker-config", str(worker_config)])
 
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=600, check=False)
 

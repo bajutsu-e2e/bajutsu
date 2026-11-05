@@ -7,7 +7,7 @@ import urllib.request
 from pathlib import Path
 
 import pytest
-from _shared import _post, _serve, fake_popen, project
+from _shared import WorkerStandIn, _post, _serve, fake_popen, project
 
 from bajutsu import serve as srv
 
@@ -15,6 +15,7 @@ from bajutsu import serve as srv
 def test_run_events_stream_delivers_lines_and_done(tmp_path: Path) -> None:
     scn_dir, cfg, runs = project(tmp_path)
     state = srv.ServeState(
+        executor=WorkerStandIn(),
         scenarios_dir=scn_dir,
         config=cfg,
         runs_dir=runs,
@@ -44,7 +45,9 @@ def test_run_events_stream_delivers_lines_and_done(tmp_path: Path) -> None:
 def test_events_unknown_job_is_404(tmp_path: Path) -> None:
     scn_dir, cfg, runs = project(tmp_path)
     server, port = _serve(
-        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+        srv.ServeState(
+            executor=WorkerStandIn(), scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path
+        )
     )
     try:
         with pytest.raises(urllib.error.HTTPError, match="404"):

@@ -9,6 +9,7 @@ half calls back into execution.
 from __future__ import annotations
 
 import contextlib
+import functools
 import json
 import logging
 import os
@@ -20,7 +21,7 @@ import subprocess
 import sys
 import tempfile
 import threading
-from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -28,14 +29,22 @@ from bajutsu.common.agents.ai_config import PROVIDER_MANAGED_ENV
 from bajutsu.common.backend_cli import simctl as _simctl
 from bajutsu.common.cancellation import GRACE_ENV, grace_seconds
 from bajutsu.common.devices import os as device_os
+from bajutsu.common.devices.runs import coordinates_from_manifest
 from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.common.handoff import REQUEST_LINE_PREFIX as _HANDOFF_REQUEST_PREFIX
-from bajutsu.common.run_meta.files import RunArtifactReader
-from bajutsu.serve.helpers import valid_run_id
+from bajutsu.common.report.manifest import history_summary
+from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR, RunArtifactReader
+from bajutsu.run import PARENT_FD_ENV
+from bajutsu.serve.helpers import unsafe_env_name, valid_run_id, warn_unsafe_env_name
+from bajutsu.serve.logbus import ARTIFACT_LINE_PREFIX
+from bajutsu.serve.orgs import DEFAULT_ORG
 from bajutsu.serve.state import Job, ServeState
 
 if TYPE_CHECKING:
+    from bajutsu.common.capability.worker_capability import WorkerCapability
+    from bajutsu.common.cloud.devicefarm import Interrupt, RunInterrupted
+    from bajutsu.serve.batch_provider import BatchRequest
     from bajutsu.serve.server.db import Repository
 
 logger = logging.getLogger(__name__)
@@ -55,14 +64,25 @@ def _spawn_env(job: Job) -> dict[str, str]:
     ``os.environ`` — the tenant-isolation guarantee. When the overlay names a provider it is
     authoritative, so the Bajutsu-managed provider vars are cleared from the inherited env first and
     then replaced, rather than letting a stale launch-env value leak through; an empty overlay (no
-    selection) leaves the inherited env untouched, preserving the zero-config path (BE-0101)."""
+    selection) leaves the inherited env untouched, preserving the zero-config path (BE-0101).
+
+    A store that keeps secrets out of ``os.environ`` (the database store of a local start, BE-0449)
+    reaches the child through the job's `secret_env` instead, which the worker fills from its lease.
+
+    A job with `keep_caller_path` (the public `bajutsu run`, BE-0449) skips the bin dir: that run
+    lives in the caller's own shell environment, as it always has, so a `launchServer` command or a
+    device tool resolves on the caller's `PATH` exactly as before the wrapper existed."""
     e = dict(os.environ)
+    # The org's stored secrets go on before the provider overlay, so the overlay stays authoritative
+    # for the provider variables it manages (BE-0449).
+    e.update(job.secret_env)
     if job.env_overlay:
         for var in PROVIDER_MANAGED_ENV:
             e.pop(var, None)
         e.update(job.env_overlay)
-    bindir = str(Path(sys.executable).parent)
-    e["PATH"] = bindir + os.pathsep + e.get("PATH", "")
+    if not job.keep_caller_path:
+        bindir = str(Path(sys.executable).parent)
+        e["PATH"] = bindir + os.pathsep + e.get("PATH", "")
     if job.graceful_cancel:
         # Tell the spawned run how long it has to close itself out, so the deadline its own SIGTERM
         # handler enforces is bound to *this* grace window (BE-0370). An independently chosen constant
@@ -71,6 +91,66 @@ def _spawn_env(job: Job) -> dict[str, str]:
         # rescue a run that already killed itself.
         e[GRACE_ENV] = f"{grace_seconds():g}"
     return e
+
+
+def job_secret_env(state: ServeState, org: str) -> dict[str, str]:
+    """The environment variables *org*'s stored secrets give a job (BE-0449).
+
+    Each secret lands under the variable a spawned job reads it from (`env_var_for_secret`): the
+    AI key under the bound config's ``ai.keyEnv``, the Claude Code token under its CLI variable, a
+    scenario secret under its own name, so ``${secrets.X}`` resolves. The Git credential is left
+    out: the server's own config fetch is its only reader, and a job never fetches.
+
+    One of the two callers of `SecretStore.values_for_job`, both here, on the job-execution path
+    and never on a response path an HTTP reader sees (BE-0136). A worker's lease reads it
+    (`lease_secret_env`).
+    """
+    from bajutsu.serve.operations.config import GIT_CONFIG_TOKEN_SECRET
+
+    values = state.for_org(org).secrets.values_for_job()
+    env = {
+        state.env_var_for_secret(name): value
+        for name, value in values.items()
+        if name != GIT_CONFIG_TOKEN_SECRET
+    }
+    # The names were screened when each secret was set; a row written before a name joined the
+    # deny list still must not reach a job's environment.
+    for var in env:
+        if unsafe_env_name(var):
+            warn_unsafe_env_name(var, f"a stored secret of org {org!r}")
+    return {var: value for var, value in env.items() if not unsafe_env_name(var)}
+
+
+def lease_secret_env(state: ServeState, org: str) -> dict[str, str]:
+    """The environment a leased job of *org* gets from that org's stored secrets (BE-0449).
+
+    The lease response carries it to the worker that just leased the job, which lays it over the
+    job's child environment. It is read at lease time and never stored: the job spec in the queue
+    holds none of it, so the database row and every other response stay free of the values. A
+    store failure propagates, so the lease can fail the job rather than run it without them.
+    """
+    return job_secret_env(state, org)
+
+
+def stored_git_credential(state: ServeState, org: str) -> str | None:
+    """*org*'s stored Git credential for the server's own private-repository fetch, or None.
+
+    The other caller of `SecretStore.values_for_job` (BE-0449). A store that keeps secrets out of
+    the process environment (the database of a local start) otherwise leaves the credential a user
+    set in the UI unread by the fetch, which reads only the environment. The value goes to the Git
+    transport alone and never into a response. A store that fails reads as no stored credential, so
+    the fetch still tries the environment and the configured GitHub App.
+    """
+    from bajutsu.serve.operations.config import GIT_CONFIG_TOKEN_SECRET
+
+    try:
+        values = state.for_org(org).secrets.values_for_job()
+    # Any failure of the store, whatever its backend raises, must leave the fetch on its other
+    # credentials rather than fail the bind outright.
+    except Exception:
+        logger.warning("could not read the stored Git credential of org %s", org, exc_info=True)
+        return None
+    return values.get(GIT_CONFIG_TOKEN_SECRET) or None
 
 
 def _log(job: Job, line: str) -> None:
@@ -226,20 +306,26 @@ def _request_graceful_stop(proc: Any) -> None:
 
 def _register_proc(job: Job, proc: Any, *, graceful: bool = False) -> bool:
     """Attach *proc* as the job's live subprocess so a cancel request can reach it.  If a cancel
-    already arrived, kill *proc* at once and return False so the caller stops before streaming.
+    already arrived, stop *proc* at once and return False so the caller stops before streaming; a
+    latched `kill_requested` makes that stop a SIGKILL rather than a SIGTERM.
 
     `graceful` records that *proc* answers a cancel cooperatively (BE-0370), so `cancel_job` can tell
     a `run` job's spawned run from its own build phase, which keeps today's kill.
     """
     with job.lock:
-        if job.cancelled:
-            kill = True
-        else:
-            job.proc = proc
-            job.proc_graceful = graceful
-            kill = False
+        # A latched hard kill stands on its own: the cancel that normally precedes it runs on another
+        # helper thread and may not have landed yet.
+        hard = job.kill_requested
+        kill = job.cancelled or hard
+        # Registered even when it is about to be stopped, so a hard kill asked for while the caller
+        # waits for it to exit still reaches it.
+        job.proc = proc
+        job.proc_graceful = graceful and not kill
     if kill:
-        _terminate(proc)
+        if hard:
+            _kill(proc)
+        else:
+            _terminate(proc)
     return not kill
 
 
@@ -380,22 +466,56 @@ def _build_app(state: ServeState, job: Job) -> bool:
     return True
 
 
-def run_job(state: ServeState, job: Job) -> None:
+def run_job(
+    state: ServeState, job: Job, *, inherit_stdio: bool = False, one_shot: bool = False
+) -> None:
     """Boot the job's devices (if any), build the app if its binary is missing, then run
     ``job.cmd``, capturing combined output line-by-line and the produced run id. The job's live
-    log channel is closed on every exit path, so an ``/events`` subscriber's stream always ends."""
+    log channel is closed on every exit path, so an ``/events`` subscriber's stream always ends.
+
+    Args:
+        state: The serve or worker state the job runs under.
+        job: The job to run; its status, exit code, and run id are set in place.
+        inherit_stdio: Run ``job.cmd`` on this process's own standard input, output, and error,
+            instead of the piped, merged capture a served or leased job uses. The one-shot worker
+            and the public `bajutsu run` set it (BE-0449), so the PASS or FAIL line reaches the
+            caller's standard output and an interactive `--step` prompt reads the caller's
+            terminal. The run id then comes from the run tree the child wrote, since no output is
+            read here.
+        one_shot: The job comes from the caller's own command line, not a server's lease, so a
+            cloud-batch job may upload an `appPath` from anywhere on this host (BE-0448). Kept
+            apart from *inherit_stdio*, which governs where output goes and nothing else.
+    """
     try:
-        _run_job(state, job)
+        _run_job(state, job, inherit_stdio=inherit_stdio, one_shot=one_shot)
     finally:
-        _record_provenance(state, job)
-        _persist_run(state, job)
-        if job.bus is not None:  # run_job returning means the job finished — end the live stream
-            # Record the terminal status on the bus so a control-plane replica reading a
-            # worker-run job sees the real exit/run id (its own Job stays "running") (BE-0015 W2).
-            # Exclude the log buffer — the lines already live in the bus's own stream (or, on the
-            # server backend, in the worker's uploaded console.log), so duplicating them into the
-            # done payload would needlessly bloat it.
-            job.bus.close(job.id, json.dumps(job.view(include_lines=False)))
+        _finish_job(state, job)
+
+
+def _finish_job(state: ServeState, job: Job) -> None:
+    """The tail every finished job goes through, however it ended."""
+    _record_provenance(state, job)
+    _persist_run(state, job)
+    if job.bus is not None:  # the job finished — end the live stream
+        # Record the terminal status on the bus so a control-plane replica reading a
+        # worker-run job sees the real exit/run id (its own Job stays "running") (BE-0015 W2).
+        # Exclude the log buffer — the lines already live in the bus's own stream (or, on the
+        # server backend, in the worker's uploaded console.log), so duplicating them into the
+        # done payload would needlessly bloat it.
+        job.bus.close(job.id, json.dumps(job.view(include_lines=False)))
+
+
+def fail_unrun_job(state: ServeState, job: Job, reason: str) -> None:
+    """End *job*, which nothing will run, with *reason* in its console and a failing exit code.
+
+    The tail every finished job takes still runs, so the job's live stream closes and its
+    concurrency slot is released rather than left waiting on a run that never starts.
+    """
+    _log(job, reason)
+    with job.lock:
+        job.exit_code = 1
+        job.status = "done"
+    _finish_job(state, job)
 
 
 def _record_provenance(state: ServeState, job: Job) -> None:
@@ -469,48 +589,150 @@ def persist_run(
     FK violation on Postgres, a flaky DB) is caught and logged rather than stranding the stream."""
     if state.repository is None:
         return  # local / stdlib serve: no system of record to write into
-    repo = state.repository
     try:
-        # Lazy import: only a server backend has a repository, where SQLAlchemy is already loaded,
-        # so the default serve path never pulls server.db in (the import guard stays green).
-        from bajutsu.serve.server.db import RunRecord
-
-        # The run's org was decided at job creation (and travels to a worker in the spec). Attribute
-        # `created_by` only to a user that actually exists, so the foreign key can't fail (a token /
-        # CI run has no actor; an OAuth run's user was upserted at login).
-        repo.ensure_org(org, slug=org, name=org)
-        created_by = actor if actor and repo.user_org(actor) is not None else None
         # Read + parse the manifest once and feed both the summary and the provenance stamp: a hosted
         # `open_bytes` can be an object-storage round trip, so a second read per run would double the
         # cost `_run_summary` was written to avoid.
         manifest = _read_manifest(state, run_id, org)
-        scenario_hash, tool_version, git_revision = _run_provenance(manifest)
-        # The enqueue-time label wins: it is the only source for a cloud-batch run, whose manifest
-        # comes back from the device cloud without one. The manifest is the fallback for a job built
-        # outside the enqueue path.
-        label = label or _run_str(manifest, "label")
-        target = _run_str(manifest, "target")
-        repo.record_run(
-            RunRecord(
-                id=run_id,
-                org_id=org,
-                status="done",
-                created_by=created_by,
-                ok=ok,
-                # The summary carries the same two values as the columns beside it: the DB-backed
-                # history list reads the summary, so a disagreement would hide a run from the very
-                # label filter its column says it belongs to (BE-0404 unit 4).
-                summary=_run_summary(run_id, manifest, ok=ok, label=label, target=target),
-                scenario_hash=scenario_hash,
-                tool_version=tool_version,
-                git_revision=git_revision,
-                device_runtime=_run_device_runtime(manifest),
-                label=label,
-                target=target,
-            )
+        _record_run(
+            state.repository,
+            run_id=run_id,
+            org=org,
+            actor=actor,
+            label=label,
+            ok=ok,
+            manifest=manifest,
         )
     except Exception:
         logger.warning("failed to persist run %s to the system of record", run_id, exc_info=True)
+
+
+def _record_run(
+    repo: Repository,
+    *,
+    run_id: str,
+    org: str,
+    actor: str | None,
+    label: str | None,
+    ok: bool,
+    manifest: dict[str, Any] | None,
+    created_at: datetime | None = None,
+    if_absent: bool = False,
+) -> bool:
+    """Write one run row from its parsed manifest, returning whether a row was written:
+    `persist_run`'s body, shared with `index_run_trees` so a run recorded at completion and one
+    indexed from disk carry the same row. *if_absent* inserts only, never overwriting a row."""
+    # Lazy import: only a server backend has a repository, where SQLAlchemy is already loaded, so
+    # the default serve path never pulls server.db in (the import guard stays green).
+    from bajutsu.serve.server.db import RunRecord
+
+    # The run's org was decided at job creation (and travels to a worker in the spec). Attribute
+    # `created_by` only to a user that actually exists, so the foreign key can't fail (a token / CI
+    # run has no actor; an OAuth run's user was upserted at login).
+    repo.ensure_org(org, slug=org, name=org)
+    created_by = actor if actor and repo.user_org(actor) is not None else None
+    scenario_hash, tool_version, git_revision = _run_provenance(manifest)
+    # The enqueue-time label wins: it is the only source for a cloud-batch run, whose manifest comes
+    # back from the device cloud without one. The manifest is the fallback for a job built outside
+    # the enqueue path.
+    label = label or _run_str(manifest, "label")
+    target = _run_str(manifest, "target")
+    record = RunRecord(
+        id=run_id,
+        org_id=org,
+        status="done",
+        created_by=created_by,
+        ok=ok,
+        created_at=created_at,
+        # The summary carries the same two values as the columns beside it: the DB-backed
+        # history list reads the summary, so a disagreement would hide a run from the very label
+        # filter its column says it belongs to (BE-0404 unit 4).
+        summary=_run_summary(run_id, manifest, ok=ok, label=label, target=target),
+        scenario_hash=scenario_hash,
+        tool_version=tool_version,
+        git_revision=git_revision,
+        device_runtime=_run_device_runtime(manifest),
+        run_coordinates=coordinates_from_manifest(manifest) if manifest is not None else None,
+        label=label,
+        target=target,
+    )
+    if if_absent:
+        return repo.record_run_if_absent(record)
+    repo.record_run(record)
+    return True
+
+
+def index_run_trees(state: ServeState, org: str = DEFAULT_ORG) -> int:
+    """Record every run tree under ``state.runs_dir`` that the run history does not hold yet, under
+    *org*, and return how many were recorded (BE-0449).
+
+    Once a repository exists the history is read from the database, so a run that ``bajutsu run``
+    wrote from the command line, or one that was already under ``runs/``, would otherwise vanish
+    from the UI. Each tree is read through *org*'s artifact store, which a local start mounts on the
+    runs tree, so the row is built exactly as `persist_run` builds it at completion.
+
+    Idempotent, and never in a completing job's way: a row is only ever inserted, so a run id
+    already recorded keeps its row, and a run an in-process job is still producing is left to that
+    job. A queued job's run id is unknown until its worker reports it, so a worker's run is guarded
+    by the insert-only write alone. A tree with no readable ``manifest.json`` is skipped, since it is
+    not a finished run, and one unreadable tree never stops the rest. Its ``created_at`` is the
+    manifest's modification time, so indexed runs keep their order.
+
+    A no-op unless this is a local start (`ServeState.local_file_store`): elsewhere the runs tree is
+    not where the deployment's artifacts live.
+    """
+    repo = state.repository
+    if repo is None or not state.local_file_store or not state.runs_dir.is_dir():
+        return 0
+    # Lazy, like every server-side import here: only a server backend reaches this line.
+    from bajutsu.serve.server.artifacts import TOMBSTONE
+
+    in_flight = {j.run_id for j in list(state.jobs.values()) if j.status != "done" and j.run_id}
+    indexed = 0
+    for entry in sorted(state.runs_dir.iterdir()):
+        run_id = entry.name
+        # A symlinked tree could point anywhere; `bajutsu run` never writes one (`make_run_dir`).
+        if not valid_run_id(run_id) or entry.is_symlink() or not entry.is_dir():
+            continue
+        if run_id in in_flight:
+            continue
+        try:
+            # A trashed run stays trashed: its tombstone outlives a lost database row, so the row
+            # must not come back from disk (BE-0239).
+            if (entry / TOMBSTONE).exists():
+                continue
+            manifest_path = entry / "manifest.json"
+            # A symlinked manifest, even one pointing at another run in the tree, would record one
+            # run's verdict under another's id.
+            if manifest_path.is_symlink():
+                logger.debug("not indexing %s: manifest.json is a symlink", run_id)
+                continue
+            if repo.get_run(run_id) is not None:
+                continue
+            manifest = _read_manifest(state, run_id, org)
+            if manifest is None:
+                logger.debug("not indexing %s: no readable manifest.json", run_id)
+                continue
+            recorded = _record_run(
+                repo,
+                run_id=run_id,
+                org=org,
+                actor=None,
+                label=None,
+                ok=bool(manifest.get("ok")),
+                manifest=manifest,
+                created_at=datetime.fromtimestamp(manifest_path.lstat().st_mtime, UTC),
+                if_absent=True,
+            )
+        except Exception:
+            # One unreadable or unwritable run must not keep the rest out of the history, nor stop
+            # the server from starting.
+            logger.warning(
+                "failed to index run %s into the system of record", run_id, exc_info=True
+            )
+            continue
+        indexed += recorded
+    return indexed
 
 
 def _run_str(manifest: dict[str, Any] | None, key: str) -> str | None:
@@ -593,14 +815,11 @@ def _run_summary(
             "label": label or "",
             "target": target or "",
         }
-    scenarios = [s for s in (manifest.get("scenarios") or []) if isinstance(s, dict)]
     return {
         "id": run_id,
         "ok": bool(manifest.get("ok")),
         "report": True,
-        "scenarios": [str(s.get("scenario", "")) for s in scenarios],
-        "passed": sum(1 for s in scenarios if s.get("ok")),
-        "total": len(scenarios),
+        **history_summary(manifest),
         # Mirrored so the DB-backed history list and the local artifact-store one carry the same
         # shape, and the label filter reads one field either way (BE-0404 unit 4).
         "label": label or str(manifest.get("label") or ""),
@@ -608,15 +827,19 @@ def _run_summary(
     }
 
 
-def _run_job(state: ServeState, job: Job) -> None:
+def _run_job(
+    state: ServeState, job: Job, *, inherit_stdio: bool = False, one_shot: bool = False
+) -> None:
     if job.batch is not None:
         # A cloud-batch job runs its scenario on a remote reserved device, not a local subprocess
         # (BE-0336). No device to boot, no app to build here — the provider packages and submits.
-        _run_batch_job(state, job)
+        _run_batch_job(state, job, one_shot=one_shot)
+        _echo_lines(job, inherit_stdio)
         return
-    if not _boot_devices(state, job):
+    if not (_boot_devices(state, job) and _build_app(state, job)):
         return
-    if not _build_app(state, job):
+    if inherit_stdio:
+        _run_inherited(state, job)
         return
     # A stdin pipe is the human-handoff response channel (BE-0179): a paused `record --handoff stream`
     # reads the human's response line here. Only handoff-capable commands get the pipe; every other
@@ -642,25 +865,13 @@ def _run_job(state: ServeState, job: Job) -> None:
         return
     # Read while the leader is alive, for the post-exit sweep below (see `_pgid_of`).
     pgid = _pgid_of(proc)
+    # A triage job reads a run and produces none. A run path in its output must not become its run
+    # id, or the job's tail would re-record that run under triage's exit code and, on a worker,
+    # write triage's console over the run's own `console.log` (BE-0449).
+    produces_run = job.kind != "triage"
     try:
         for raw in proc.stdout or []:
-            line = raw.rstrip("\n")
-            if line.startswith(_HANDOFF_REQUEST_PREFIX):
-                # A handoff request (BE-0179): mark the job awaiting-human and relay the line to the
-                # bus (where the SSE layer turns it into a `human-request` event). Kept out of
-                # `job.lines` so the transcript view isn't polluted by the serialized payload.
-                with job.lock:
-                    job.awaiting_human = True
-                if job.bus is not None:
-                    job.bus.publish(job.id, line)
-                continue
-            match = _RUN_ID_RE.search(line)
-            with job.lock:
-                job.lines.append(line)
-                if match:
-                    job.run_id = match.group(1)
-            if job.bus is not None:
-                job.bus.publish(job.id, line)
+            _take_line(job, raw.rstrip("\n"), produces_run=produces_run)
     except OSError:
         _terminate(proc)
     proc.wait()
@@ -678,54 +889,193 @@ def _run_job(state: ServeState, job: Job) -> None:
         _sweep_group(pgid)
 
 
-@dataclass
-class _RepositoryBatchCheckpoint:
-    """Persist and resume a cloud-batch run's scheduled ARN through the system of record (Unit 5).
+def _take_line(job: Job, line: str, *, produces_run: bool) -> None:
+    """Record one line a spawned job printed and publish it to the job's live stream."""
+    if line.startswith(ARTIFACT_LINE_PREFIX):
+        # Only the server publishes an artifact snapshot (BE-0449); a child's line shaped like one
+        # would otherwise reach the page as a forged screen map.
+        return
+    if line.startswith(_HANDOFF_REQUEST_PREFIX):
+        # A handoff request (BE-0179): mark the job awaiting-human and relay the line to the bus
+        # (where the SSE layer turns it into a `human-request` event). Kept out of `job.lines` so
+        # the transcript view isn't polluted by the serialized payload. Only a `record` pauses for
+        # a person, so another kind's line shaped like one is dropped (BE-0449).
+        if job.kind != "record":
+            return
+        with job.lock:
+            job.awaiting_human = True
+        if job.bus is not None:
+            job.bus.publish(job.id, line)
+        return
+    match = _RUN_ID_RE.search(line) if produces_run else None
+    with job.lock:
+        job.lines.append(line)
+        if match:
+            job.run_id = match.group(1)
+    if job.bus is not None:
+        job.bus.publish(job.id, line)
 
-    Keyed by job id on the ``jobs`` row, so a worker that re-leases the job after a restart resumes the
-    scheduled run instead of resubmitting it.
+
+def _run_inherited(state: ServeState, job: Job) -> None:
+    """Run ``job.cmd`` on this process's standard streams and wait for it (BE-0449, one-shot).
+
+    The child still gets a session of its own, as a served job does: a Ctrl-C at the terminal then
+    reaches only the caller, which turns it into the same cancel a served job receives, rather than
+    killing the run and its driver children before the run can write its manifest. A child in
+    another session can still read the terminal it inherited, so `--step` keeps its prompt.
+
+    A session of its own also means a `run` child outlives a caller that dies without a signal it can
+    catch (SIGKILL, an out-of-memory kill), still driving the device. So for a `run` the caller holds
+    the write end of a pipe until the child exits, and the internal run module reads the other end
+    (`PARENT_FD_ENV`): end of file there means the caller is gone, and the run cancels itself as on
+    SIGTERM. The other kinds have no such reader, so they get no pipe.
     """
+    cwd = Path(job.cwd or state.binding.cwd)
+    is_run = job.kind == "run"
+    runs = _runs_dir_of(job.cmd, cwd) if is_run else None
+    before = _run_dir_names(runs)
+    alive_r, alive_w = os.pipe() if is_run else (None, None)
+    try:
+        env = _spawn_env(job)
+        extra: dict[str, Any] = {}
+        if alive_r is not None:
+            env[PARENT_FD_ENV] = str(alive_r)
+            extra["pass_fds"] = (alive_r,)
+        try:
+            proc = state.popen(job.cmd, cwd=str(cwd), env=env, start_new_session=True, **extra)
+        finally:
+            if alive_r is not None:
+                os.close(alive_r)
+        _wait_inherited(job, proc, runs, before)
+    finally:
+        if alive_w is not None:
+            os.close(alive_w)
 
-    repo: Repository
-    job_id: str
 
-    def load(self) -> str | None:
-        return self.repo.load_batch_run_arn(self.job_id)
-
-    def save(self, run_arn: str) -> None:
-        self.repo.save_batch_run_arn(self.job_id, run_arn)
+# How long one slice of `_wait_in_slices` blocks before the main thread runs Python again.
+_INHERITED_WAIT_SLICE_SECONDS = 0.2
 
 
-def _batch_checkpoint(state: ServeState, job_id: str) -> _RepositoryBatchCheckpoint | None:
-    """A durable checkpoint when the hosted DB backend is wired, else None (BE-0336 Unit 5).
+def _wait_in_slices(proc: Any) -> None:
+    """Wait for *proc* to exit without ever blocking the main thread for longer than one slice.
 
-    The local single-process backend keeps only the in-process best-effort path — a restart there loses
-    all in-memory state regardless, so there is nothing durable to resume from."""
-    repo = state.repository
-    if repo is None:
+    The inherited-stdio path runs on the main thread of a one-shot caller (`worker --once`, the
+    public `bajutsu run`) whose own signal handlers relay a Ctrl-C or SIGTERM to the child
+    (`one_shot.cancel_on_signals`). Python runs a handler only on the main thread, and only once
+    that thread executes bytecode again, while the kernel may deliver a process-directed signal to
+    any thread — one of the relay's helpers, say. An untimed `wait` sleeps in `waitpid`, which such
+    a signal does not interrupt, so the cancel would never be relayed and the caller would wait on
+    a child nobody asked to stop.
+    """
+    while True:
+        try:
+            proc.wait(timeout=_INHERITED_WAIT_SLICE_SECONDS)
+        except subprocess.TimeoutExpired:
+            continue
+        return
+
+
+def _wait_inherited(job: Job, proc: Any, runs: Path | None, before: frozenset[str]) -> None:
+    """Wait for an inherited-stdio child and record how it ended (see `_run_inherited`)."""
+    if not _register_proc(job, proc, graceful=job.graceful_cancel):
+        _wait_in_slices(proc)
+        with job.lock:
+            job.exit_code, job.status, job.proc = proc.returncode or 1, "done", None
+            job.proc_graceful = False
+        return
+    pgid = _pgid_of(proc)
+    _wait_in_slices(proc)
+    run_id = _new_run_id_in(runs, before)
+    with job.lock:
+        swept = job.cancelled and job.proc_graceful
+        job.proc = None
+        job.proc_graceful = False
+        job.exit_code = proc.returncode
+        job.run_id = run_id
+        job.status = "done"
+    if swept:
+        _sweep_group(pgid)
+
+
+def _runs_dir_of(cmd: list[str], cwd: Path) -> Path:
+    """The runs directory a `run` command line writes into: its last `--runs-dir`, else the default."""
+    value = DEFAULT_RUNS_DIR
+    for i, arg in enumerate(cmd):
+        if arg == "--runs-dir" and i + 1 < len(cmd):
+            value = cmd[i + 1]
+        elif arg.startswith("--runs-dir="):
+            value = arg.removeprefix("--runs-dir=")
+    return cwd / value
+
+
+def _run_dir_names(runs: Path | None) -> frozenset[str]:
+    """The run directories already under *runs*, so the one a run adds can be told apart."""
+    if runs is None:
+        return frozenset()
+    try:
+        return frozenset(p.name for p in runs.iterdir() if p.is_dir())
+    except OSError:
+        return frozenset()
+
+
+def _new_run_id_in(runs: Path | None, before: frozenset[str]) -> str | None:
+    """The id of the run tree that appeared under *runs* since *before*, or None when none did.
+
+    Read from the tree and not from the PASS or FAIL line, which goes to the caller's own standard
+    output in a one-shot run. A tree counts once it holds its `manifest.json`. Run ids are UTC
+    timestamps, so when another process wrote into the same directory meanwhile, the latest wins.
+    """
+    if runs is None:
         return None
-    return _RepositoryBatchCheckpoint(repo, job_id)
+    try:
+        added = [
+            p.name
+            for p in runs.iterdir()
+            if p.name not in before and valid_run_id(p.name) and (p / "manifest.json").is_file()
+        ]
+    except OSError:
+        return None
+    return max(added, default=None)
 
 
-def _run_batch_job(state: ServeState, job: Job) -> None:
+def _run_batch_job(state: ServeState, job: Job, *, one_shot: bool = False) -> None:
     """Run a cloud-batch job (BE-0336): submit its one scenario to the named batch provider, land the
-    downloaded run under ``runs_dir`` so serve records and renders it like a local run, and set the
+    downloaded run under ``runs_dir`` so it is recorded and rendered like a local run, and set the
     job's verdict from the run's own manifest — no local device, no subprocess, off the verdict path.
 
-    Note: cloud-batch dispatch currently works only through the in-process serve path. The DB-queue
-    worker path (``bajutsu/serve/server/worker_job.py``) builds its own ``ServeState`` without
-    ``devicefarm_package_root``, so it falls back to the ephemeral workspace — a directory that holds
-    only the scenario and config, not Bajutsu's ``tests/`` or ``pyproject.toml``. Any cloud-batch job
-    leased from the DB queue will fail Device Farm's ``APPIUM_PYTHON_TEST_PACKAGE`` validation until
-    the worker's ``ServeState`` is wired with the package root and a host-portable app artifact path.
+    Only a worker whose environment registered the provider gets here (BE-0448): the server registers
+    none. The job's bundle directory — the directory it names on this machine (``job.cwd``), else the
+    workspace its materials or bundle were placed in — is what the request's paths are relative to.
+    A job that shipped its files must name a binary inside that workspace; a job that names a
+    directory on this machine, or a *one_shot* job, may name any path here.
+
+    The run's ARN goes through ``job.batch_checkpoint``, the leased worker's route to the server, so a
+    re-leased job resumes the run it names instead of submitting again; a one-shot job has none. A
+    cancel stops the scheduled run and ends the job cancelled; a lost lease (``job.lease_lost``)
+    leaves the run to the worker that holds the job now.
     """
     request = job.batch
     if (
         request is None
     ):  # _run_job routes here only when batch is set; the guard keeps intent + mypy honest
         return
+    bundle_dir = job.cwd or state.binding.cwd
+    confined = job.cwd is None and not one_shot
+    if confined and (reason := _app_outside(request.app_path, bundle_dir)) is not None:
+        _fail_batch(job, reason)
+        return
+    # A job resuming a stored run is past the check: an earlier attempt submitted it, and failing it
+    # here would orphan that run on Device Farm, holding a device nobody polls.
+    if (
+        job.worker_capability is not None
+        and (job.batch_checkpoint is None or job.batch_checkpoint.load() is None)
+        and (reason := _batch_capability_reason(request, bundle_dir, job.worker_capability))
+    ):
+        _fail_batch(job, reason)
+        return
     # Lazy import: only a cloud-batch job needs the batch seam (and its provider's optional deps), so
     # the default serve path never pulls it in.
+    from bajutsu.common.cloud.devicefarm import RunInterrupted
     from bajutsu.serve import batch_provider
 
     try:
@@ -738,13 +1088,16 @@ def _run_batch_job(state: ServeState, job: Job) -> None:
         try:
             verdict = provider.submit(
                 request,
-                # Same package root start_run_set relativized the config/scenario paths against (see
-                # ServeState.devicefarm_package_root), falling back to the job's own cwd then state.binding.cwd.
-                work_dir=state.devicefarm_package_root or job.cwd or state.binding.cwd,
+                # The bundle directory start_run_set made the config and scenario paths relative to.
+                work_dir=bundle_dir,
                 dest=Path(download_name),
-                checkpoint=_batch_checkpoint(state, job.id),
+                checkpoint=job.batch_checkpoint,
                 job_id=job.id,
+                interrupt=functools.partial(_batch_interrupt, job),
             )
+        except RunInterrupted as exc:
+            _end_interrupted_batch(job, exc)
+            return
         except Exception as exc:
             # A provider or submission failure is a failed run, never a stranded worker thread: catch
             # broadly (like `_persist_run`'s finalization guards) and surface it as a loud FAIL. Log the
@@ -780,6 +1133,89 @@ def _run_batch_job(state: ServeState, job: Job) -> None:
             job.bus.publish(job.id, line)
 
 
+def _batch_capability_reason(
+    request: BatchRequest, bundle_dir: Path, worker: WorkerCapability
+) -> str | None:
+    """Why *worker* cannot run *request*'s scenario, or None when it can (BE-0450, on BE-0448's worker).
+
+    The same check `bajutsu run` makes against its `--worker-config`, made here before anything is
+    uploaded: the run on the device cloud's host knows nothing of this worker's `drivers` or
+    `maxTargetsPerJob`. Every target is judged on the `--backend` that host passes for the request's
+    platform, since that flag overrides each target's own. A scenario that cannot be read fails
+    too, as the host could not run it either.
+    """
+    from bajutsu.common.backends import current_host_os
+    from bajutsu.common.capability import capability_preflight
+    from bajutsu.common.cloud.devicefarm import host_backend
+    from bajutsu.common.scenario.load_expanded import load_expanded_scenarios
+
+    try:
+        scenarios = load_expanded_scenarios(bundle_dir / request.scenario, root=bundle_dir)
+    except (OSError, ValueError) as exc:
+        return f"{capability_preflight.WORKER_CAPABILITY_PREFIX} cannot read the scenario: {exc}"
+    backends = [host_backend(request.platform)]
+    host = current_host_os()
+    reasons = [
+        reason
+        for scenario in scenarios
+        for reason in capability_preflight.worker_capability_unsupported(
+            scenario, lambda _target: backends, worker, host
+        )
+    ]
+    return capability_preflight.worker_capability_failure(reasons) if reasons else None
+
+
+def _batch_interrupt(job: Job) -> Interrupt | None:
+    """What a cloud-batch poll should do about *job* now: stop on a cancel, leave on a lost lease."""
+    with job.lock:
+        cancelled = job.cancelled
+    if cancelled:
+        return "stop"
+    if job.lease_lost is not None and job.lease_lost.is_set():
+        return "leave"
+    return None
+
+
+def _end_interrupted_batch(job: Job, exc: RunInterrupted) -> None:
+    """Finish a cloud-batch job whose run was given up: cancelled, or left to another worker."""
+    line = f"cloud-batch run {exc}"
+    with job.lock:
+        job.lines.append(line)
+        job.exit_code = 1
+        job.status = "done"
+    if job.bus is not None:
+        job.bus.publish(job.id, line)
+    logger.info("cloud-batch job %s %s", job.id, exc)
+
+
+def _app_outside(app_path: str, bundle_dir: Path) -> str | None:
+    """Why *app_path* may not be uploaded from a job's shipped workspace, or None when it may.
+
+    The path comes from a spec the server queued, so on a worker it must not reach a file outside
+    the workspace the job shipped, by an absolute path, `..`, or a symbolic link (BE-0448): the
+    worker would otherwise upload a file of its own host to Device Farm.
+    """
+    app = Path(app_path)
+    resolved = (app if app.is_absolute() else bundle_dir / app).resolve()
+    if resolved.is_relative_to(bundle_dir.resolve()):
+        return None
+    return f"cloud-batch application {app_path!r} is outside this job's bundle ({bundle_dir})"
+
+
+def _echo_lines(job: Job, inherit_stdio: bool) -> None:
+    """Write a one-shot batch's lines to standard output, when it is one (BE-0448).
+
+    It has no console to stream to, so its verdict lines go where a one-shot run prints its PASS or
+    FAIL line. A served batch streams them on its bus instead, so nothing is written for it.
+    """
+    if not inherit_stdio:
+        return
+    with job.lock:
+        lines = list(job.lines)
+    sys.stdout.write("".join(f"{line}\n" for line in lines))
+    sys.stdout.flush()
+
+
 def _fail_batch(job: Job, message: str) -> None:
     """Fail a cloud-batch job loudly: surface `message`, set a non-zero exit, and mark it done — a
     provider or submission error is a failed run, never a silent hang (determinism first)."""
@@ -787,6 +1223,7 @@ def _fail_batch(job: Job, message: str) -> None:
         job.lines.append(message)
         job.exit_code = 1
         job.status = "done"
+        job.error = message
     if job.bus is not None:
         job.bus.publish(job.id, message)
     logger.warning("cloud-batch job %s failed: %s", job.id, message)

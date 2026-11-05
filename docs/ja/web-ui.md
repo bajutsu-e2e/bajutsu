@@ -44,11 +44,31 @@ make serve ARGS="--config demos/showcase/showcase.config.yaml --port 8766"   # �
 リポジトリにはルートの `bajutsu.config.yaml` が無いため、ショーケースアプリにはこの config 指定が
 必要です。
 
+サーバ自身は run のためにデバイスを操作しません。run を `bajutsu worker` のキューに積みます。worker が
+run を lease し、デバイスやブラウザを操作します。そのため `make serve` はサーバの横で worker を1つ
+起動します。この worker は同じマシンで同じトークンを使い、サーバが止まると止まります。worker が宣言するのは
+起動時の config のターゲットが使うプラットフォームです。後から別のプラットフォームのターゲットを bind
+したときは、それに合う worker が必要で、使える worker がないという通知がそれを示します。自前の worker を
+つなぐ場合など、サーバだけを起動するには `SERVE_WORKER=0` を指定します。
+
+```bash
+SERVE_WORKER=0 make serve
+```
+
+キューで待つ run は、待っている理由を示します。Replay のステータス行には、使える worker がないという
+通知が出ます。`GET /api/jobs/<id>` は同じ文を `notice` として返します。この通知は、run を実行できる
+worker がサーバに問い合わせると消えます。triage、record、crawl のジョブも同じ worker が実行し、
+サーバのプロセスはジョブを実行しません（BE-0449）。バケットを指定したデプロイは、キューのためにデータベースを
+指定する必要があり、指定しなければサーバは起動を拒否します。Crawl タブは、crawl の実行中に worker が中継する画面マップから
+グラフを描きます。人の助けを求めて一時停止した record は、従来どおり要求を表示し、回答は worker に戻ります。
+
 `make serve` は内部で `python -m bajutsu serve`、すなわち [CLI リファレンス](cli.md#serve) が説明する
 `bajutsu serve` コマンドを実行します。checkout の外で Bajutsu を導入した場合（`make` が無い場合）は、
 `bajutsu serve`（または `python -m bajutsu serve`）を直接実行してください。その場合、backend の依存は
 自分で用意します。iOS ターゲットには XCUITest ランナー（と Xcode）が要りますが、web（Playwright）
-ターゲットには不要です。いずれの方法でも、サーバがブラウザを自動で開くことはありません。`127.0.0.1` に
+ターゲットには不要です。worker も、別の端末で `bajutsu worker` を実行して自分で起動します（web ターゲットには `--platform web` を
+付けます）。
+いずれの方法でも、サーバがブラウザを自動で開くことはありません。`127.0.0.1` に
 bind するので、起動したら表示された URL（既定は `http://127.0.0.1:8765`、`--port` を渡した場合はその
 ポート）を自分で開いてください。よく使うフラグ（`--port`、`--config`、`--root`、`--runs`、
 `--baselines`、`--themes`、`--host`、`--token`、`--max-concurrent-runs`、`--evidence-store`）は
@@ -152,8 +172,8 @@ Stats、Flaky、Usage、Coverage）は AI の設定なしで動きます。
   デフォルトブランチ）。部分木ごと取得するので、config のシナリオやビルド済みアプリも一緒に来ます。
 - **Upload a bundle (.zip)。** **Choose a .zip…** を押す（またはボックスにファイルをドロップする）と、
   ホストのファイルシステムに触れないまま、自分のスイートをホスト型のサーバへ持ち込めます。zip の中身は
-  動くローカル checkout そのもの、つまり `bajutsu.config.yaml`、その `scenarios` ツリー、config の
-  `appPath` が指すビルド済みアプリバイナリです。秘匿情報は運びません。`${secrets.*}` はサーバの環境から
+  動くローカル checkout そのもの、つまり `bajutsu.config.yaml`、その `paths.scenarios` ツリー、config の
+  `subject.path` が指すビルド済みアプリバイナリです。秘匿情報は運びません。`${secrets.*}` はサーバの環境から
   解決されます。
 - **or browse the server。** サーバの `--root` 配下に限定されたファイルブラウザで、ローカルの
   `.yml`/`.yaml` の config を選びます。リモートの利用者はホストのファイルシステムと関係を持たないため、
@@ -257,7 +277,7 @@ provider だけで、Anthropic API と `ant` の実装にはこの仕組みが�
 （[BE-0188](../../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language-ja.md)）は
 AI が生成する文章、すなわち `record` の `from:` 由来と `crawl` が逐次出力する推論テキストを、どの言語で書くかを固定します。
 既定の *auto* は現状の挙動を保ちます（`record` はゴールに追従し、`crawl` は英語のままです）。決定論的な
-`run` の判定には触れず、対象のデバイス `locale` とは別物です。
+`run` の判定には触れず、対象のデバイスのロケール（`runsOn.ios.locale`）とは別物です。
 
 **Claude API key**（Anthropic API provider を選ぶと現れます）は **write-once** です。キーを入力して **Save** すると、以後はマスクした表示だけになり、
 内容が再表示されることはありません。変更するには新しいキーを設定します。**Clear** で削除します。これは
@@ -269,14 +289,14 @@ Anthropic API プロバイダで使われます（Bedrock は代わりに AWS �
 
 **Scenario secrets**（[BE-0274](../../roadmaps/BE-0274-serve-scenario-secrets/BE-0274-serve-scenario-secrets-ja.md)）
 は、バインド中の config が宣言するシークレット、つまりシナリオが `${secrets.X}` として参照する
-`secrets:` の環境変数名を一覧します（[シークレット](configuration.md#シークレットsecrets)、
+`evidence.secrets` の環境変数名を一覧します（[シークレット](configuration.md#シークレットevidencesecrets)、
 [BE-0032](../../roadmaps/BE-0032-secret-variables/BE-0032-secret-variables-ja.md)）。宣言された名前ごと
 に **write-once** のフィールドを並べ、API キーと同じくマスク表示だけで再表示はされません。これにより、
 `serve` を起動する前に環境変数を export したり `.env` を手で編集したりしなくても、シナリオが必要とする
 認証情報を Web UI から用意できます。ここで設定した値はその宣言済みの名前の環境変数に入り、spawn される
 **Replay** / **Record** / **Crawl** が引き継ぐので、run のなかで `${secrets.X}` が解決します。バインド中の
 config がシークレットを宣言していないときも、このセクション自体は表示されたままで、機能を説明する
-案内文が代わりに現れます。`secrets:` の内容が異なる config に切り替えると、一覧は更新されます。設定
+案内文が代わりに現れます。`evidence.secrets` の内容が異なる config に切り替えると、一覧は更新されます。設定
 できるのは config 自身が宣言している名前だけで、任意の環境変数を設定することはできません。ロールで
 保護されたデプロイでは、設定は **admin** の操作です。
 
@@ -288,7 +308,7 @@ backend、runs と baselines のディレクトリ、ゴミ箱の保持期間、
 ランナー
 （[BE-0292](../../roadmaps/BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner-ja.md)）
 を含むかどうか、含む場合はビルド対象の Xcode と Simulator SDK のバージョン、そしてバインド中の config が
-明示的な `xcuitest.testRunner` でランナーを上書きしているかを示します。iOS の Simulator の run が
+明示的な `driver.runner.testRunner` でランナーを上書きしているかを示します。iOS の Simulator の run が
 始まるかどうかは、この行だけで決まります。ホスト型のデプロイではホストのパス（config のパス、runs と
 baselines のディレクトリ）を伏せますが、それ以外の行はどちらでも表示されます。このタブは入力を受け付けず、
 起動コマンドと環境からすでに解決された値を報告するだけで、何も書き戻しません。
@@ -352,6 +372,31 @@ run と同じレポートを書きます。中断された試行は、ほかの�
 停止し、レポートを残しません。まだ合否に到達していないからです。Record タブと Crawl タブの **Stop** も
 同じ理由で今までどおりです。どちらも run の合否を出しません。
 
+**デバイスクラウドで実行する**
+（[BE-0465](../../roadmaps/BE-0465-serve-ui-device-farm-fan-out/BE-0465-serve-ui-device-farm-fan-out-ja.md)）。
+**Environment** セレクタには、`local` と、稼働中の worker が広告しているバッチ環境が並びます。
+バッチ環境の例は、AWS Device Farm のプロバイダーです。各項目には稼働中の worker 数が付きます。worker は出入りするので、一覧はタブを開くたびに再取得します。
+隣の更新ボタンで、任意のタイミングでも再取得できます。web ターゲットはデバイスクラウドを使えません。
+fan-out はアプリをクラウド上のデバイスへインストールしますが、ブラウザのターゲットにはそのデバイスがないからです。
+このときセレクタは `local` のままで、理由を表示します。
+
+デバイスクラウドの環境を選ぶと、フォームは 1 回の run ではなく fan-out を投入します。
+
+1. マルチセレクトでシナリオを選ぶか、**All scenarios** をオンにします。**All scenarios** は、一覧にあるすべての名前を明示して送ります。
+   リクエストの途中でファイルが保存されても、行がほかのシナリオへずれることはありません。
+2. クラウドのデバイスが使わない欄は消えます。デバイスの選択、**Workers**、**erase device first**、
+   **show browser (headed)**、**disable alert-dismiss**、**Readiness**、単一シナリオの選択、View、グレードです。
+3. **Run** は `POST /api/run-set` へ送ります。単一シナリオの **Run** と同じく、editor 権限が必要です。
+   拒否（不正なリクエストは 400、権限不足は 403、キューが満杯なら 429）はステータス行に表示します。
+
+投入すると **run-set パネル**が、投入したジョブごとに 1 行を、リクエストの順に並べます。各行はジョブが
+完了、失敗、またはエラーになるまで、約 2 秒ごとにジョブを取得します。行には状態を表示し、run ができたら
+**report** リンクを出し、ジョブを処理できる worker がいないときは通知を示します。サーバがジョブを追跡しなくなったとき
+（再起動の後など）も行は unknown で終わりますが、**Stop all** はその行にも取り消しを送ります。行を展開すると、そのジョブのログを
+ストリームします。ログを流すのは一度に 1 本だけなので、大きな fan-out でも接続を多数開き続けることはありません。
+**Stop all** は、未完了の行をすべて取り消します。サーバの同時実行数の上限が fan-out を途中で打ち切ったときは、
+投入できなかったシナリオの数をパネルが示します。
+
 ログパネルの下には **Generate code** バーがあり、選択中のシナリオをネイティブテストとして書き出します。
 Author タブ（後述）と同じ codegen を、シナリオを走らせたその場所に置いたものです。
 
@@ -361,7 +406,10 @@ run はそれと比較されます。これは run → 確認 → approve → �
 レポートの各セクションが何を示すかは [reporting](reporting.md) を参照してください。
 
 **History。** このサブタブは過去の run を新しい順に並べ、それぞれに pass/fail のドットとシナリオの
-要約が付きます。クリックするとそのレポートを再表示します。更新ボタンで再取得します。
+要約が付きます。要約は、成功した run の数と全体の数を示します。デバイスの条件によっては、合う
+デバイスのない run が生じます（[configuration](configuration.md#デバイスの条件runson)）。そのとき要約は、
+対象外の記録の数を `N n/a` として加えます。行をクリックするとそのレポートを再表示します。
+更新ボタンで再取得します。
 
 **run を削除する**（[BE-0239](../../roadmaps/BE-0239-deletable-runs-serve/BE-0239-deletable-runs-serve-ja.md)）。
 各行にはゴミ箱ボタンがあり、その run（レポート、スクリーンショット、動画、ネットワークキャプチャ）を
@@ -563,7 +611,7 @@ ledger 上の決定的な合計で、モデルは使いません。サブスク�
 ## Coverage — E2E カバレッジマップ
 
 **何をする画面か。** ターゲットの E2E カバレッジマップを描きます。`coverage` コマンドをブラウザにした
-ものです。シナリオスイートが参照する安定 id を、アプリが宣言した `idNamespaces` と突き合わせ、名前空間
+ものです。シナリオスイートが参照する安定 id を、アプリが宣言した `subject.idNamespaces` と突き合わせ、名前空間
 ごとのカバレッジ、不足の一覧（どのシナリオも触れていない宣言済み名前空間）、名前空間から外れた id を
 示します。run が実行時に束縛するセレクタ、つまり `totp` や `email` ステップの出力を受け取る
 `${vars.*}` プレースホルダは、どの要素も指していません。マップはプレースホルダの文字列を id として
@@ -595,7 +643,7 @@ run の証跡に基づく次元には `&runs=<id>,<id>` を、screens-visited �
 既定の `make serve` は `127.0.0.1` に無認証で bind します。loopback インターフェースでのみ安全です。
 自分のマシンの外に公開するにはトークン（`--token`）が要ります。トークンは認証と CSRF 対策を有効にし、
 非 loopback の `--host` への bind にはトークンが必須です。単一 Mac でのチーム向けホスティング
-（`--emit-launchagent`）や本格的なコントロールプレーンの backend（`--backend server`）、そして
+（`--emit-launchagent`）や本格的なホスティング用コントロールプレーン（バケットとデータベース）、そして
 `--max-concurrent-runs` と `--evidence-store` は、[CLI リファレンス](cli.md#serve) と
 [self-hosting](self-hosting.md) で扱います。
 

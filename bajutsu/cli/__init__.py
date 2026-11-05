@@ -53,18 +53,30 @@ _CLAUDE_FREE_PANEL = "Claude-free (zero-config)"
 _CLAUDE_USING_PANEL = "Uses Claude"
 
 
-def _bootstrap(ctx: typer.Context) -> None:
-    """Load a gitignored .env (e.g. ANTHROPIC_API_KEY) and wire up logging before any command runs."""
+def bootstrap(*, configure_logging: bool) -> None:
+    """Load a gitignored .env (e.g. ANTHROPIC_API_KEY) and wire up logging before a command runs.
+
+    The one setup every command shares: the `bajutsu` app's callback runs it, and so does the
+    internal run module (`bajutsu.run.internal`), whose process every `bajutsu run` executes in
+    without passing through that callback (BE-0449). A new setup step added here reaches both.
+
+    Args:
+        configure_logging: False for `serve`, which owns its logging (see `_bootstrap`).
+    """
     load_dotenv()
     # After the .env, so a project can set BAJUTSU_LOG_LEVEL there alongside its other run settings.
-    #
+    if configure_logging:
+        diagnostics.configure()
+
+
+def _bootstrap(ctx: typer.Context) -> None:
+    """Run the shared `bootstrap` before any command of the `bajutsu` app."""
     # Every command but `serve`, which owns its logging and reads the same variable (BE-0055).
     # `oplog.configure` takes over the *root* logger with a secret-redacting sink seeded with the
     # operator token and the API key, and it can only clear root's handlers — one left here on the
     # `bajutsu` logger would survive it, write every record to stderr a second time, and write it
     # unredacted. A deployment that raises its serve log level must not thereby leak its secrets.
-    if ctx.invoked_subcommand != "serve":
-        diagnostics.configure()
+    bootstrap(configure_logging=ctx.invoked_subcommand != "serve")
 
 
 def _register_commands(app: typer.Typer) -> None:
@@ -90,6 +102,12 @@ def _group_by_claude_use(app: typer.Typer) -> None:
         cap = capabilities.by_command(name)
         if cap is not None:
             info.rich_help_panel = _CLAUDE_USING_PANEL if cap.uses_claude else _CLAUDE_FREE_PANEL
+    # A command group (`bajutsu runner …`) is registered apart from plain commands but is one entry in
+    # `--help` all the same, so it is classified by the same table.
+    for group in app.registered_groups:
+        cap = capabilities.by_command(group.name or "")
+        if cap is not None:
+            group.rich_help_panel = _CLAUDE_USING_PANEL if cap.uses_claude else _CLAUDE_FREE_PANEL
 
 
 @cache

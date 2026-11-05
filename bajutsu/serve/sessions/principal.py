@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 #: A session belongs either to a person who signed in, or to a CI pipeline that exchanged an OIDC
@@ -87,19 +87,26 @@ class Principal:
             rather than re-derived per request. None for a human session, whose org comes from
             their persisted user row instead.
         kind: Which gate governs this session.
+        ci_job: The CI job a machine session was minted for, as `WorkloadClaims.ci_job` records
+            it — what the audit trail writes in place of a user. None for a human session.
     """
 
     identity: str | None
     org: str | None = None
     kind: PrincipalKind = HUMAN
+    # Out of the hash, in the equality: a dict member would make the generated `__hash__` raise for
+    # the one shape that carries a job, while two principals for different jobs still compare unequal.
+    ci_job: dict[str, str] | None = field(default=None, hash=False)
 
     @classmethod
-    def from_stored(cls, identity: object, org: object, kind: object) -> Principal:
+    def from_stored(
+        cls, identity: object, org: object, kind: object, ci_job: object = None
+    ) -> Principal:
         """Narrow a principal read back out of a store, whose fields arrive untyped.
 
         One place for the whole read-side narrowing, rather than one check per store: a session
         row reaches this from a JSON blob (Redis) or from bare `String` columns with no CHECK
-        constraint behind them (SQL), so nothing upstream of here proves any of the three fields
+        constraint behind them (SQL), so nothing upstream of here proves any field
         has the type the dataclass declares.
 
         A value of any other type reads as absent rather than being coerced — the same rule
@@ -110,7 +117,16 @@ class Principal:
             identity=identity if isinstance(identity, str) and identity else None,
             org=org if isinstance(org, str) and org else None,
             kind=kind_from_stored(kind),
+            ci_job=_ci_job_from_stored(ci_job),
         )
+
+
+def _ci_job_from_stored(value: object) -> dict[str, str] | None:
+    if not isinstance(value, dict) or not value:
+        return None
+    if not all(isinstance(k, str) and isinstance(v, str) for k, v in value.items()):
+        return None
+    return value
 
 
 def kind_from_stored(value: object) -> PrincipalKind:

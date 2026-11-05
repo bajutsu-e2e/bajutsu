@@ -1,0 +1,903 @@
+"""Tests for `setup` / `cleanup` — the scenario's own lifecycle phases (BE-0392, BE-0452).
+
+`setup` runs ahead of `steps` as its own phase and gates them; `cleanup` runs once a verdict exists,
+dispatching each rule on the run's own machine-checked outcome. Both reuse the ordinary step loop,
+so the whole feature is covered here with a `FakeDriver` and no Simulator. Nothing an LLM decides
+enters any of it: `on` is compared against the `failure` value the deterministic loop already
+computed (prime directive 1).
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+from _orch import FakeClock, _scenario
+from conftest import el
+from pydantic import ValidationError
+
+from bajutsu.common.cancellation import RunCancelled, cancelled_teardown_seconds, grace_seconds
+from bajutsu.common.capability.capability_preflight import unsupported
+from bajutsu.common.config import load_config, load_config_file, resolve
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.fake import FakeDriver
+from bajutsu.common.orchestrator import run_scenario
+from bajutsu.common.orchestrator.evidence_rules import requested_intervals
+from bajutsu.common.runner.pipeline import with_lifecycle_phases
+from bajutsu.common.scenario import (
+    CleanupRule,
+    Component,
+    Scenario,
+    dump_scenarios,
+    expand_components,
+    load_scenarios,
+)
+
+_SCREEN = [el("a"), el("b"), el("c"), el("gone", label="gone")]
+
+
+def _driver() -> FakeDriver:
+    return FakeDriver(screen=list(_SCREEN))
+
+
+def _run(scenario: Scenario, **kw: object) -> object:
+    return run_scenario(_driver(), scenario, FakeClock(), **kw)  # type: ignore[arg-type]
+
+
+# --- schema (Unit 1) -------------------------------------------------------------------------
+
+
+def test_scenario_parses_both_phases_and_round_trips() -> None:
+    text = """
+- name: lifecycle
+  setup:
+    - tap: { id: a }
+  steps:
+    - tap: { id: b }
+  cleanup:
+    - on: always
+      steps: [{ tap: { id: c } }]
+    - on: failure
+      steps: [{ tap: { id: a } }]
+"""
+    s = load_scenarios(text)[0]
+    assert [st.tap.id for st in s.setup if st.tap] == ["a"]
+    assert [r.on for r in s.cleanup] == ["always", "failure"]
+    # `on` survives a dump: YAML 1.1 would resolve the bare key to True, so the dump quotes it and
+    # `_yaml`'s restricted bool resolver reads it back as the string — the same round trip
+    # `capturePolicy`'s own `on:` trigger already relies on.
+    assert load_scenarios(dump_scenarios([s]))[0].cleanup[0].on == "always"
+
+
+def test_unset_phases_prune_from_a_dump() -> None:
+    s = load_scenarios("- name: bare\n  steps: [{ tap: { id: a } }]\n")[0]
+    dumped = dump_scenarios([s])
+    assert "setup:" not in dumped
+    assert "cleanup:" not in dumped
+
+
+def test_unknown_outcome_word_is_rejected() -> None:
+    # An outcome the runner has no dispatch for must fail at load time, not silently never fire.
+    with pytest.raises(ValidationError):
+        CleanupRule.model_validate({"on": "never", "steps": []})
+
+
+def test_the_renamed_outcome_word_names_its_replacement() -> None:
+    # BE-0452 reads no old spelling, so `on: error` fails — but says what to write instead.
+    with pytest.raises(ValidationError, match="'error' was renamed; write 'failure' instead"):
+        CleanupRule.model_validate({"on": "error", "steps": []})
+
+
+@pytest.mark.parametrize(("old", "new"), [("before", "setup"), ("after", "cleanup")])
+def test_the_renamed_phase_keys_name_their_replacement(old: str, new: str) -> None:
+    with pytest.raises(ValidationError, match=f"'{old}' was removed; rename it to '{new}'"):
+        _scenario({"name": "s", "steps": [], old: []})
+
+
+def test_target_config_carries_both_phases() -> None:
+    cfg = load_config(
+        "targets:\n"
+        "  app:\n"
+        "    platform: ios\n"
+        "    subject: {id: com.example.app}\n"
+        "    hooks:\n"
+        "      setup:\n"
+        "      - tap: {id: a}\n"
+        "      cleanup:\n"
+        "      - 'on': always\n"
+        "        steps:\n"
+        "        - tap: {id: c}\n"
+    )
+    eff = resolve(cfg, "app")
+    assert len(eff.run_defaults.setup) == 1
+    assert [r.on for r in eff.run_defaults.cleanup] == ["always"]
+
+
+def test_a_target_cleanup_rule_takes_failure_and_names_it_for_error() -> None:
+    def config(on: str) -> str:
+        return (
+            "targets:\n"
+            "  app:\n"
+            "    platform: ios\n"
+            "    subject: {id: com.example.app}\n"
+            "    hooks:\n"
+            "      cleanup:\n"
+            f"      - 'on': {on}\n"
+            "        steps:\n"
+            "        - tap: {id: c}\n"
+        )
+
+    eff = resolve(load_config(config("failure")), "app")
+    assert [r.on for r in eff.run_defaults.cleanup] == ["failure"]
+    with pytest.raises(ValueError, match="'error' was renamed; write 'failure' instead"):
+        load_config(config("error"))
+
+
+# --- runner integration (Unit 3) -------------------------------------------------------------
+
+
+def test_setup_runs_first_and_reports_as_its_own_phase() -> None:
+    r = run_scenario(
+        _driver(),
+        _scenario(
+            {
+                "name": "s",
+                "setup": [{"tap": {"id": "a"}}],
+                "steps": [{"tap": {"id": "b"}}],
+            }
+        ),
+        FakeClock(),
+    )
+    assert r.ok
+    # Its own block, numbered from zero — not spliced into the scenario's own sequence the way a
+    # `preconditions.setup` prelude is.
+    assert [o.index for o in r.before_outcomes] == [0]
+    assert [o.index for o in r.steps] == [0]
+
+
+def test_a_failing_setup_skips_steps_and_expect() -> None:
+    r = run_scenario(
+        _driver(),
+        _scenario(
+            {
+                "name": "s",
+                "setup": [{"tap": {"id": "missing"}}],
+                "steps": [{"tap": {"id": "b"}}],
+                "expect": [{"exists": {"id": "b"}}],
+            }
+        ),
+        FakeClock(),
+    )
+    assert not r.ok
+    assert r.failure is not None and r.failure.startswith("setup: ")
+    assert r.steps == []
+    assert r.expect_results == []
+
+
+def test_vars_flow_from_setup_into_steps_and_on_into_cleanup() -> None:
+    # One `live_bindings` dict across all three phases: `setup` seeds a var `steps` addresses, and
+    # `cleanup` addresses one `steps` captured — the sharing a cleanup step needs to delete the very
+    # record the run created.
+    r = run_scenario(
+        _driver(),
+        _scenario(
+            {
+                "name": "s",
+                "setup": [
+                    {
+                        "tap": {"id": "a"},
+                        "extract": {"first": {"sel": {"id": "a"}, "prop": "identifier"}},
+                    }
+                ],
+                "steps": [
+                    {
+                        "assert": [{"exists": {"id": "${vars.first}"}}],
+                        "extract": {"second": {"sel": {"id": "b"}, "prop": "identifier"}},
+                    }
+                ],
+                "cleanup": [
+                    {
+                        "on": "always",
+                        "steps": [{"assert": [{"exists": {"id": "${vars.second}"}}]}],
+                    }
+                ],
+            }
+        ),
+        FakeClock(),
+    )
+    assert r.ok, r.failure
+    assert r.after_outcomes[0].ok
+
+
+def test_cleanup_runs_even_when_a_step_failed() -> None:
+    r = run_scenario(
+        _driver(),
+        _scenario(
+            {
+                "name": "s",
+                "steps": [{"tap": {"id": "missing"}}],
+                "cleanup": [{"on": "always", "steps": [{"tap": {"id": "c"}}]}],
+            }
+        ),
+        FakeClock(),
+    )
+    assert not r.ok
+    # The gap this item exists to close: an identical trailing step would never have run, because
+    # the step loop already broke.
+    assert len(r.after_outcomes) == 1 and r.after_outcomes[0].ok
+
+
+def test_outcome_dispatch_picks_only_the_matching_rules() -> None:
+    rules = [
+        {"on": "always", "steps": [{"tap": {"id": "a"}}]},
+        {"on": "success", "steps": [{"tap": {"id": "b"}}]},
+        {"on": "failure", "steps": [{"tap": {"id": "c"}}]},
+    ]
+    passing = run_scenario(
+        _driver(),
+        _scenario({"name": "s", "steps": [{"tap": {"id": "a"}}], "cleanup": rules}),
+        FakeClock(),
+    )
+    failing = run_scenario(
+        _driver(),
+        _scenario({"name": "s", "steps": [{"tap": {"id": "missing"}}], "cleanup": rules}),
+        FakeClock(),
+    )
+    assert [o.action for o in passing.after_outcomes] == ["tap", "tap"]
+    assert [o.action for o in failing.after_outcomes] == ["tap", "tap"]
+    assert passing.ok and not failing.ok
+
+
+def test_a_failing_setup_dispatches_cleanup_as_failure() -> None:
+    r = run_scenario(
+        _driver(),
+        _scenario(
+            {
+                "name": "s",
+                "setup": [{"tap": {"id": "missing"}}],
+                "steps": [{"tap": {"id": "b"}}],
+                "cleanup": [
+                    {"on": "success", "steps": [{"tap": {"id": "a"}}]},
+                    {"on": "failure", "steps": [{"tap": {"id": "c"}}]},
+                ],
+            }
+        ),
+        FakeClock(),
+    )
+    assert not r.ok
+    assert len(r.after_outcomes) == 1  # the `failure` rule alone
+
+
+def test_a_success_rule_failure_becomes_the_sole_failure() -> None:
+    r = run_scenario(
+        _driver(),
+        _scenario(
+            {
+                "name": "s",
+                "steps": [{"tap": {"id": "a"}}],
+                "cleanup": [{"on": "success", "steps": [{"tap": {"id": "missing"}}]}],
+            }
+        ),
+        FakeClock(),
+    )
+    assert not r.ok
+    assert r.failure is not None and r.failure.startswith("cleanup: ")
+
+
+def test_a_failure_rule_failure_is_appended_behind_the_original_cause() -> None:
+    r = run_scenario(
+        _driver(),
+        _scenario(
+            {
+                "name": "s",
+                "steps": [{"tap": {"id": "missing"}}],
+                "cleanup": [{"on": "failure", "steps": [{"tap": {"id": "also-missing"}}]}],
+            }
+        ),
+        FakeClock(),
+    )
+    assert not r.ok
+    assert r.failure is not None
+    # The reason a reader sees first is the original cause, not the cleanup it triggered.
+    assert r.failure.startswith("step 0 (tap)")
+    assert "; cleanup: " in r.failure
+
+
+def test_a_failing_rule_does_not_skip_the_remaining_cleanup() -> None:
+    r = run_scenario(
+        _driver(),
+        _scenario(
+            {
+                "name": "s",
+                "steps": [{"tap": {"id": "a"}}],
+                "cleanup": [
+                    {"on": "always", "steps": [{"tap": {"id": "missing"}}]},
+                    {"on": "always", "steps": [{"tap": {"id": "c"}}]},
+                ],
+            }
+        ),
+        FakeClock(),
+    )
+    assert not r.ok
+    assert [o.ok for o in r.after_outcomes] == [False, True]
+
+
+# --- the two merge orders (Unit 2) ----------------------------------------------------------
+
+
+_MERGE_CONFIG = (
+    "targets:\n"
+    "  app:\n"
+    "    platform: ios\n"
+    "    subject: {id: com.example.app}\n"
+    "    hooks:\n"
+    "      setup:\n"
+    "      - tap: {id: a}\n"
+    "      cleanup:\n"
+    "      - 'on': always\n"
+    "        steps:\n"
+    "        - tap: {id: b}\n"
+)
+
+
+_WEB_HOOKS_CONFIG = (
+    "targets:\n"
+    "  app:\n"
+    "    platform: ios\n"
+    "    subject: {id: com.example.app}\n"
+    "    hooks:\n"
+    "      setup:\n"
+    "      - tap: {id: a}\n"
+    "      cleanup:\n"
+    "      - 'on': always\n"
+    "        steps:\n"
+    "        - tap: {id: b}\n"
+    "  web:\n"
+    "    platform: web\n"
+    "    subject: {url: 'http://localhost:1/'}\n"
+    "    hooks:\n"
+    "      setup:\n"
+    "      - tap: {id: w}\n"
+    "      cleanup:\n"
+    "      - 'on': always\n"
+    "        steps:\n"
+    "        - tap: {id: z}\n"
+)
+
+_STRAY_TARGET_HOOK_CONFIG = (
+    "targets:\n"
+    "  app:\n"
+    "    platform: ios\n"
+    "    subject: {id: com.example.app}\n"
+    "    hooks:\n"
+    "      setup:\n"
+    "      - target: staging\n"
+    "        tap: {id: a}\n"
+    "  web:\n"
+    "    platform: web\n"
+    "    subject: {url: 'http://localhost:1/'}\n"
+)
+
+
+def _merged(scenario: dict[str, object]) -> Scenario:
+    eff = resolve(load_config(_MERGE_CONFIG), "app")
+    return with_lifecycle_phases(eff, [_scenario({"name": "s", **scenario})])[0]
+
+
+def test_setup_merges_config_first_then_the_scenarios_own() -> None:
+    # The app-wide prelude seeds the state this scenario's own setup builds on, so it runs first —
+    # the config-then-scenario order `interrupts` already follows.
+    merged = _merged({"steps": [{"tap": {"id": "a"}}], "setup": [{"tap": {"id": "c"}}]})
+    assert [s.tap.id for s in merged.setup if s.tap] == ["a", "c"]
+
+
+def test_cleanup_merges_the_scenarios_own_first_then_config() -> None:
+    # The reverse order: this scenario releases what it created before the app-wide teardown closes
+    # around it, the last-acquired-first-released order a fixture teardown pair gives.
+    merged = _merged(
+        {
+            "steps": [{"tap": {"id": "a"}}],
+            "cleanup": [{"on": "always", "steps": [{"tap": {"id": "c"}}]}],
+        }
+    )
+    assert [r.steps[0].tap.id for r in merged.cleanup if r.steps[0].tap] == ["c", "b"]
+
+
+def test_a_config_with_no_phases_leaves_the_scenarios_untouched() -> None:
+    eff = resolve(
+        load_config("targets:\n  app:\n    platform: ios\n    subject: {id: com.example.app}\n"),
+        "app",
+    )
+    scenarios = [_scenario({"name": "s", "steps": [{"tap": {"id": "a"}}]})]
+    assert with_lifecycle_phases(eff, scenarios) is scenarios
+
+
+def test_source_stem_survives_the_setup_cleanup_merge_copy() -> None:
+    # BE-0417: whenever the target config declares setup/cleanup, this returns a `model_copy`, not
+    # the caller's own object — the evidence-dir naming must survive that copy, not just the
+    # no-op path `test_a_config_with_no_phases_leaves_the_scenarios_untouched` covers.
+    eff = resolve(load_config(_MERGE_CONFIG), "app")
+    scenario = _scenario({"name": "s", "steps": [{"tap": {"id": "a"}}]})
+    scenario.set_source_stem("login_flow")
+    merged = with_lifecycle_phases(eff, [scenario])[0]
+    assert merged.source_stem == "login_flow"
+
+
+def test_each_declared_targets_own_hooks_fold_in_stamped_with_its_name() -> None:
+    # BE-0428: a config-level hook is config on the target it acts on, so a two-target scenario
+    # folds in each declared target's own `hooks.setup`/`cleanup` — in declared order, each step stamped
+    # with that target's name, so an app-side hook and a web-side one never run against each other's
+    # driver. `_WEB_HOOKS_CONFIG` gives `web` its own pair with different ids, so the assertion
+    # below distinguishes "stamped correctly" from "the primary's hooks folded in twice".
+    cfg = load_config(_WEB_HOOKS_CONFIG)
+    effs = {"app": resolve(cfg, "app"), "web": resolve(cfg, "web")}
+    scenario = _scenario(
+        {"name": "s", "targets": ["app", "web"], "steps": [{"target": "app", "tap": {"id": "x"}}]}
+    )
+    merged = with_lifecycle_phases(effs["app"], [scenario], effs)[0]
+    assert [(s.target, s.tap.id) for s in merged.setup if s.tap] == [("app", "a"), ("web", "w")]
+    assert [(s.target, s.tap.id) for rule in merged.cleanup for s in rule.steps if s.tap] == [
+        ("app", "b"),
+        ("web", "z"),
+    ]
+
+
+def test_folding_config_hooks_re_checks_target_requirements() -> None:
+    # The re-check still has to run on the folded result: stamping fills a hook's blank `target`,
+    # but a hook that names a target *itself* is left alone, so one naming a target the scenario
+    # never declared has to be caught here — `model_copy(update=...)` never re-runs the load-time
+    # validator that would otherwise have rejected it.
+    cfg = load_config(_STRAY_TARGET_HOOK_CONFIG)
+    effs = {"app": resolve(cfg, "app"), "web": resolve(cfg, "web")}
+    scenario = _scenario(
+        {"name": "s", "targets": ["app", "web"], "steps": [{"target": "app", "tap": {"id": "x"}}]}
+    )
+    with pytest.raises(ValueError, match="is not one of the scenario's declared targets"):
+        with_lifecycle_phases(effs["app"], [scenario], effs)
+
+
+_NESTED_HOOK_CONFIG = (
+    "targets:\n"
+    "  a:\n"
+    "    platform: ios\n"
+    "    subject: {id: com.example.app}\n"
+    "  b:\n"
+    "    platform: web\n"
+    "    subject: {url: 'http://localhost:1/'}\n"
+    "    hooks:\n"
+    "      setup:\n"
+    "      - if:\n"
+    "          condition:\n"
+    "            exists: {id: x}\n"
+    "          then:\n"
+    "          - tap: {id: omitted}\n"
+    "          - target: a\n"
+    "            tap: {id: named}\n"
+    "          else:\n"
+    "          - tap: {id: else_step}\n"
+    "      - forEach:\n"
+    "          sel: {idMatches: row.*}\n"
+    "          as: row\n"
+    "          steps:\n"
+    "          - tap: {id: for_each_step}\n"
+    "      - web:\n"
+    "          within: {id: webview}\n"
+    "          steps:\n"
+    "          - tap: {id: web_step}\n"
+)
+
+
+def _fold_nested_hook(targets: list[str]) -> Scenario:
+    cfg = load_config(_NESTED_HOOK_CONFIG)
+    effs = {"a": resolve(cfg, "a"), "b": resolve(cfg, "b")}
+    scenario = _scenario(
+        {
+            "name": "s",
+            "targets": targets,
+            "primaryTarget": targets[0],
+            "steps": [{"tap": {"id": "x"}}],
+        }
+    )
+    return with_lifecycle_phases(effs[targets[0]], [scenario], effs)[0]
+
+
+def test_a_hooks_nested_steps_run_against_the_hooks_own_target() -> None:
+    # A nested step omitting `target` would otherwise resolve to each scenario's own primary, so
+    # `b`'s hook would run its body against `a` in the first scenario.
+    folded = [_fold_nested_hook(["a", "b"]), _fold_nested_hook(["b", "a"])]
+    nested = []
+    for merged in folded:
+        hook_if, hook_for_each, _ = merged.setup
+        assert hook_if.if_ is not None
+        assert hook_if.resolved_target == "b"
+        assert hook_if.if_.then[0].resolved_target == "b"
+        assert hook_if.if_.else_ is not None
+        assert hook_if.if_.else_[0].resolved_target == "b"
+        assert hook_for_each.for_each is not None
+        assert hook_for_each.for_each.steps[0].resolved_target == "b"
+        nested.append(hook_if.if_.then[0])
+    assert nested[0] is not nested[1]
+
+
+def test_a_hooks_nested_step_naming_a_target_keeps_it() -> None:
+    hook_if, _, _ = _fold_nested_hook(["b", "a"]).setup
+    assert hook_if.if_ is not None
+    assert hook_if.if_.then[1].target == "a"
+
+
+def test_a_hooks_web_body_is_left_out_of_the_target_fill() -> None:
+    # `_fill_target` must not descend into a `web:`/`app:` body — its nested steps still always
+    # run against the block's own device, and must keep omitting `target` outright.
+    _, _, hook_web = _fold_nested_hook(["b", "a"]).setup
+    assert hook_web.web is not None
+    assert hook_web.web.steps[0].target is None
+    assert hook_web.web.steps[0].resolved_target is None
+
+
+def test_the_merged_phases_are_what_the_run_executes() -> None:
+    merged = _merged({"steps": [{"tap": {"id": "a"}}], "setup": [{"tap": {"id": "c"}}]})
+    r = run_scenario(_driver(), merged, FakeClock())
+    assert r.ok, r.failure
+    assert len(r.before_outcomes) == 2  # the app-wide step and this scenario's own
+    assert len(r.after_outcomes) == 1  # the app-wide teardown
+
+
+def test_each_dispatched_rule_gets_its_own_step_numbering() -> None:
+    # The `cleanup` phase runs one step-loop call per rule. Restarting the numbering per rule would
+    # give two rules' first steps the same evidence `step_id`, so the second would overwrite the
+    # first's screenshots and the JUnit body would print two lines both labeled `cleanup step 0`.
+    r = run_scenario(
+        _driver(),
+        _scenario(
+            {
+                "name": "s",
+                "steps": [{"tap": {"id": "a"}}],
+                "cleanup": [
+                    {"on": "always", "steps": [{"tap": {"id": "b"}}]},
+                    {"on": "success", "steps": [{"tap": {"id": "c"}}]},
+                ],
+            }
+        ),
+        FakeClock(),
+    )
+    assert [o.index for o in r.after_outcomes] == [0, 1]
+
+
+# --- cancellation (Unit 3) -------------------------------------------------------------------
+
+
+def test_a_cancelled_run_still_runs_its_cleanup() -> None:
+    # The latched source: once set it never clears, so reading it inside the phase would abandon
+    # every entry before the first one ran.
+    r = run_scenario(
+        _driver(),
+        _scenario(
+            {
+                "name": "s",
+                "steps": [{"tap": {"id": "a"}}],
+                "cleanup": [{"on": "always", "steps": [{"tap": {"id": "c"}}]}],
+            }
+        ),
+        FakeClock(),
+        cancelled=lambda: True,
+    )
+    assert not r.ok
+    assert r.failure is not None and r.failure.startswith("cancelled")
+    assert len(r.after_outcomes) == 1 and r.after_outcomes[0].ok
+
+
+def test_a_cancelled_runs_cleanup_is_abandoned_once_its_budget_is_spent() -> None:
+    clock = FakeClock()
+    budget = cancelled_teardown_seconds(grace_seconds())
+
+    def burn(_driver: FakeDriver, _action: str, _payload: object) -> None:
+        clock.sleep(budget)  # the first entry alone spends the whole window
+
+    r = run_scenario(
+        FakeDriver(screen=list(_SCREEN), react=burn),
+        _scenario(
+            {
+                "name": "s",
+                "steps": [{"tap": {"id": "a"}}],
+                "cleanup": [
+                    {"on": "always", "steps": [{"tap": {"id": "b"}}]},
+                    {"on": "always", "steps": [{"tap": {"id": "c"}}]},
+                ],
+            }
+        ),
+        clock,
+        cancelled=lambda: True,
+    )
+    assert len(r.after_outcomes) == 1  # the second entry never started
+    # Abandoning the rest is the designed bound, not a second failure to report.
+    assert r.failure == "cancelled"
+
+
+def test_a_cancel_arriving_during_teardown_fails_the_passing_run_as_cancelled() -> None:
+    # The genuine mid-teardown case: the run reached the phase uncancelled, so the phase reads the
+    # live source the way any step does, and the cancel that lands inside it fails the run.
+    taps = 0
+
+    def arm(_driver: FakeDriver, action: str, _payload: object) -> None:
+        nonlocal taps
+        if action == "tap":
+            taps += 1
+
+    r = run_scenario(
+        FakeDriver(screen=list(_SCREEN), react=arm),
+        _scenario(
+            {
+                "name": "s",
+                "steps": [{"tap": {"id": "a"}}],
+                "cleanup": [
+                    {"on": "always", "steps": [{"tap": {"id": "b"}}, {"tap": {"id": "c"}}]},
+                ],
+            }
+        ),
+        FakeClock(),
+        cancelled=lambda: taps >= 2,  # latches once the phase's first step has acted
+    )
+    assert r.failure == "cancelled"
+    assert len(r.after_outcomes) == 1  # the second teardown step never started
+
+
+def test_a_cancel_latching_after_the_last_step_still_lets_cleanup_run() -> None:
+    # The window the deadline exists for: the cancel lands after the last step's boundary check, so
+    # `steps` finishes and the run keeps its real verdict (BE-0370). The phase is still bounded by
+    # its own deadline rather than by the latched source, which would abandon every rule unread.
+    stop = False
+
+    def arm(_driver: FakeDriver, _action: str, _payload: object) -> None:
+        nonlocal stop
+        stop = True
+
+    r = run_scenario(
+        FakeDriver(screen=list(_SCREEN), react=arm),
+        _scenario(
+            {
+                "name": "s",
+                "steps": [{"tap": {"id": "a"}}],
+                "cleanup": [{"on": "success", "steps": [{"tap": {"id": "c"}}]}],
+            }
+        ),
+        FakeClock(),
+        cancelled=lambda: stop,
+    )
+    assert r.ok, r.failure
+    assert r.after_verdict == "success"
+    assert len(r.after_outcomes) == 1
+
+
+def test_run_cancelled_is_never_raised_out_of_the_cleanup_phase() -> None:
+    try:
+        run_scenario(
+            _driver(),
+            _scenario(
+                {
+                    "name": "s",
+                    "steps": [{"tap": {"id": "a"}}],
+                    "cleanup": [{"on": "always", "steps": [{"tap": {"id": "c"}}]}],
+                }
+            ),
+            FakeClock(),
+            cancelled=lambda: True,
+        )
+    except RunCancelled:  # pragma: no cover - the assertion is that we never get here
+        raise AssertionError("the cleanup phase must absorb its own cancellation") from None
+
+
+# --- components inside a phase (Unit 1 / Unit 3) ----------------------------------------------
+
+
+def test_a_use_step_inside_either_phase_is_expanded() -> None:
+    # `use` is part of the ordinary step grammar the phases reuse. Left unexpanded it reaches the
+    # step loop as a step with no action and aborts the whole run with an `AssertionError` — not one
+    # failed scenario — so the expansion must cover the phases as well as `steps`.
+    scenario = _scenario(
+        {
+            "name": "s",
+            "setup": [{"use": {"component": "c"}}],
+            "steps": [{"tap": {"id": "a"}}],
+            "cleanup": [{"on": "always", "steps": [{"use": {"component": "c"}}]}],
+        }
+    )
+    expand_components(
+        [scenario], lambda _ref: Component.model_validate({"steps": [{"tap": {"id": "b"}}]})
+    )
+    assert scenario.setup[0].use is None
+    assert scenario.cleanup[0].steps[0].use is None
+    r = run_scenario(_driver(), scenario, FakeClock())
+    assert r.ok, r.failure
+    assert [o.action for o in r.before_outcomes] == ["tap"]
+    assert [o.action for o in r.after_outcomes] == ["tap"]
+
+
+def _hooks_config(tmp_path: Path, hooks: str) -> Path:
+    """A config file in *tmp_path* whose `app` target carries *hooks*, for `load_config_file`."""
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "targets:\n  app:\n    platform: ios\n    subject: {id: com.example.app}\n    hooks:\n"
+        + hooks,
+        encoding="utf-8",
+    )
+    return cfg
+
+
+def test_an_app_wide_phase_resolves_a_component_against_the_config_file(tmp_path: Path) -> None:
+    # BE-0452: a target's hooks may call a component, resolved when the config loads against the
+    # config file's directory, so no `use:` reaches the step loop unexpanded.
+    (tmp_path / "components").mkdir()
+    (tmp_path / "components" / "login.yaml").write_text(
+        "params: [user]\nsteps:\n  - type: { text: '${params.user}', into: { id: login.user } }\n"
+        "  - tap: { id: login.go }\n",
+        encoding="utf-8",
+    )
+    cfg = _hooks_config(
+        tmp_path,
+        "      setup:\n"
+        "      - use: { component: components/login.yaml, with: { user: alice } }\n"
+        "      cleanup:\n"
+        "      - 'on': always\n"
+        "        steps:\n"
+        "        - use: { component: components/login.yaml, with: { user: bob } }\n",
+    )
+    eff = resolve(load_config_file(cfg), "app")
+    setup = eff.run_defaults.setup
+    assert [st.use for st in setup] == [None, None]
+    assert setup[0].type is not None and setup[0].type.text == "alice"  # `with` at load
+    assert eff.run_defaults.cleanup[0].steps[0].type is not None
+
+
+def test_a_component_in_hooks_needs_the_config_files_path() -> None:
+    # A document with no file has nothing to resolve a component against, so it fails loudly.
+    with pytest.raises(ValidationError, match="loaded without its path"):
+        load_config(
+            "targets:\n"
+            "  app:\n"
+            "    platform: ios\n"
+            "    subject: {id: com.example.app}\n"
+            "    hooks:\n"
+            "      cleanup:\n"
+            "      - 'on': always\n"
+            "        steps:\n"
+            "        - use: {component: c.yaml}\n"
+        )
+
+
+def test_a_hooks_component_cannot_escape_the_suite_root(tmp_path: Path) -> None:
+    # The same containment `contained_ref` gives a scenario's refs (BE-0174): a config serve
+    # receives untrusted cannot read beyond its tree.
+    (tmp_path / "secret.yaml").write_text("steps:\n  - tap: { id: TOP }\n", encoding="utf-8")
+    suite = tmp_path / "suite"
+    suite.mkdir()
+    cfg = _hooks_config(suite, "      setup:\n      - use: { component: ../secret.yaml }\n")
+    with pytest.raises(ValidationError, match="outside the suite root"):
+        load_config_file(cfg)
+
+
+def test_a_hooks_component_cannot_bring_in_a_stub_swap(tmp_path: Path) -> None:
+    (tmp_path / "swap.yaml").write_text("steps:\n  - setMocks: []\n", encoding="utf-8")
+    cfg = _hooks_config(tmp_path, "      setup:\n      - use: { component: swap.yaml }\n")
+    with pytest.raises(ValidationError, match=r"cannot use setMocks \(through a component\)"):
+        load_config_file(cfg)
+
+
+def test_an_app_wide_phase_cannot_use_a_group() -> None:
+    # Same reason as `use:` above — `group` is expanded per scenario file too.
+    with pytest.raises(ValidationError, match="cannot use a group"):
+        load_config(
+            "targets:\n"
+            "  app:\n"
+            "    platform: ios\n"
+            "    subject: {id: com.example.app}\n"
+            "    hooks:\n"
+            "      setup:\n"
+            "      - group:\n"
+            "          name: setup\n"
+            "          steps:\n"
+            "          - tap: {id: a}\n"
+        )
+
+
+def test_a_use_inside_an_app_wide_hooks_target_group_is_resolved_too(tmp_path: Path) -> None:
+    # BE-0437: a target group is never flattened at `TargetConfig`-parse time, so the resolution
+    # must still reach a `use:` one level inside it.
+    (tmp_path / "c.yaml").write_text("steps:\n  - tap: { id: from.c }\n", encoding="utf-8")
+    cfg = _hooks_config(
+        tmp_path,
+        "      setup:\n      - target: app\n        steps:\n        - use: {component: c.yaml}\n",
+    )
+    setup = resolve(load_config_file(cfg), "app").run_defaults.setup
+    assert not any(st.use is not None for top in setup for st in [top, *(top.steps or [])])
+
+
+def test_a_group_hidden_inside_an_app_wide_hooks_target_group_is_caught_too() -> None:
+    # Same reason as the `use:` case above, symmetrically, for `group:`.
+    with pytest.raises(ValidationError, match="cannot use a group"):
+        load_config(
+            "targets:\n"
+            "  app:\n"
+            "    platform: ios\n"
+            "    subject: {id: com.example.app}\n"
+            "    hooks:\n"
+            "      setup:\n"
+            "      - target: app\n"
+            "        steps:\n"
+            "        - group:\n"
+            "            name: setup\n"
+            "            steps:\n"
+            "            - tap: {id: a}\n"
+        )
+
+
+def test_an_app_wide_phase_resolves_a_use_nested_inside_if(tmp_path: Path) -> None:
+    # BE-0438 review: the resolution descends into `if`/`forEach`/`web`/`app` bodies too.
+    (tmp_path / "c.yaml").write_text("steps:\n  - tap: { id: from.c }\n", encoding="utf-8")
+    cfg = _hooks_config(
+        tmp_path,
+        "      setup:\n"
+        "      - if:\n"
+        "          condition:\n"
+        "            exists: {id: a}\n"
+        "          then:\n"
+        "          - use: {component: c.yaml}\n",
+    )
+    (step,) = resolve(load_config_file(cfg), "app").run_defaults.setup
+    assert step.if_ is not None
+    assert [s.tap.id for s in step.if_.then if s.tap is not None] == ["from.c"]
+
+
+def test_the_capability_preflight_sees_a_hook_steps_construct() -> None:
+    # Missed here, an unsupported teardown step passes the preflight, a device is leased, and the
+    # whole scenario is driven before the step fails — and a failing `cleanup` rule on an otherwise
+    # passing run becomes that run's failure, so a green scenario reports red after full device work.
+    scenario = _scenario(
+        {
+            "name": "s",
+            "setup": [{"pinch": {"sel": {"id": "a"}, "scale": 2.0}}],
+            "steps": [{"tap": {"id": "a"}}],
+            "cleanup": [
+                {
+                    "on": "always",
+                    "steps": [{"selectOption": {"sel": {"id": "a"}, "option": "y"}}],
+                }
+            ],
+        }
+    )
+    reasons = unsupported(scenario, {base.Capability.QUERY, base.Capability.ELEMENTS})
+    assert any(r.startswith("setup ") for r in reasons), reasons
+    assert any(r.startswith("cleanup[0]") for r in reasons), reasons
+
+
+def test_an_interval_capture_on_a_hook_step_opens_its_interval() -> None:
+    # An interval kind is opened once for the whole scenario and split back out of the per-step list
+    # downstream, so a hook step naming one and not seen here records nothing — and appends no
+    # `SkippedCapture` either, leaving the gap undisclosed (the opposite of BE-0020).
+    scenario = _scenario(
+        {
+            "name": "s",
+            "setup": [{"tap": {"id": "a"}, "capture": ["video"]}],
+            "steps": [{"tap": {"id": "a"}}],
+            "cleanup": [
+                {"on": "always", "steps": [{"tap": {"id": "c"}, "capture": ["deviceLog"]}]}
+            ],
+        }
+    )
+    assert set(requested_intervals(scenario)) == {"video", "deviceLog"}
+
+
+@pytest.mark.parametrize("field", ["setup", "interrupts"])
+def test_an_app_wide_phase_cannot_replace_the_stub_table(field: str) -> None:
+    # `run` arms the control channel from a scenario's own steps (BE-0365 unit 4), so an app-wide
+    # swap would reach the app unarmed; refused at load instead of timing out mid-run.
+    step = "{ setMocks: [] }"
+    block = (
+        f"    hooks:\n      setup:\n      - {step}\n"
+        if field == "setup"
+        else "    hooks:\n      interrupts:\n"
+        f"      - condition: {{ exists: {{ id: x }} }}\n        steps: [{step}]\n"
+    )
+    with pytest.raises(ValidationError, match="cannot use setMocks"):
+        load_config(
+            ("targets:\n  app:\n    platform: ios\n    subject: {id: com.example.app}\n") + block
+        )

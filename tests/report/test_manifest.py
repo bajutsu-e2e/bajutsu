@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from xml.etree import ElementTree as ET
 
 from _report import _failing, _json_obj, _json_str, _passing, _scenarios
 
-from bajutsu.common.orchestrator import AlertEvent, RunResult, StepOutcome
+from bajutsu.common.orchestrator import AlertEvent, IgnoredSetting, RunResult, StepOutcome
 from bajutsu.common.report import junit_xml, manifest_dict, write_report
 
 
@@ -237,6 +238,29 @@ def test_junit_pass_and_fail() -> None:
     assert "<failure" in bad_xml
 
 
+def test_junit_carries_ignored_settings_as_a_property() -> None:
+    # BE-0467: CI reads what the run went without from the case itself, and the verdict is unchanged.
+    r = _passing()
+    r.ignored_settings = [IgnoredSetting(target="device", key="erase", reason="keeps app data")]
+    case = ET.fromstring(junit_xml([r])).find("testcase")
+    assert case is not None and case.find("failure") is None
+    prop = case.find("properties/property")
+    assert prop is not None and prop.get("name") == "bajutsu.ignoredSettings"
+    assert json.loads(prop.get("value") or "") == [
+        {"target": "device", "key": "erase", "reason": "keeps app data"}
+    ]
+    assert "<properties" not in junit_xml([_passing()])
+
+
+def test_manifest_records_ignored_settings_per_scenario() -> None:
+    r = _passing()
+    r.ignored_settings = [IgnoredSetting(target="device", key="erase", reason="keeps app data")]
+    (scenario,) = _scenarios(manifest_dict("r", [r]))
+    assert scenario["ignored_settings"] == [
+        {"target": "device", "key": "erase", "reason": "keeps app data"}
+    ]
+
+
 def test_write_report(tmp_path: Path) -> None:
     run_dir = tmp_path / "runs" / "run3"
     manifest_path = write_report(run_dir, "run3", [_passing(), _failing()])
@@ -276,9 +300,18 @@ def test_manifest_excludes_wall_offset_s() -> None:
     r = RunResult(scenario="s1", ok=True, steps=[], wall_offset_s=123456.789)
     scenario = _scenarios(manifest_dict("run1", [r]))[0]
     assert "wall_offset_s" not in scenario
-    # Exactly this one field is missing — not a different field excluded by mistake, and not this
-    # field plus others dropped by a broader (over-eager) exclusion.
-    assert {f.name for f in fields(RunResult)} - set(scenario) == {"wall_offset_s"}
+    # Exactly these fields are missing — not a different field excluded by mistake, and not one
+    # dropped by a broader (over-eager) exclusion. `derived_secrets` holds raw secret values an
+    # `eval` step derived, kept in memory for the writers to mask (BE-0472).
+    assert {f.name for f in fields(RunResult)} - set(scenario) == {
+        "wall_offset_s",
+        "derived_secrets",
+    }
+
+
+def test_manifest_never_writes_the_derived_secret_values() -> None:
+    r = RunResult(scenario="s1", ok=True, steps=[], derived_secrets=["abcd1234"])
+    assert "abcd1234" not in json.dumps(manifest_dict("run1", [r]))
 
 
 def test_manifest_records_device_environment() -> None:

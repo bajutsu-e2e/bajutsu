@@ -1,0 +1,139 @@
+{
+  "schemaVersion": 13,
+  "runId": "pre-rename",
+  "ok": false,
+  "backend": "fake",
+  "sourceName": null,
+  "scenarios": [
+    {
+      "scenario": "lifecycle",
+      "ok": false,
+      "steps": [
+        {
+          "index": 0,
+          "action": "tap",
+          "target": "",
+          "ok": false,
+          "reason": "no match: {'id': 'missing'}",
+          "duration_s": 1.808302477002144e-05,
+          "started_at": 1791947669.7924743,
+          "assertion_results": [],
+          "artifacts": [],
+          "alerts": [],
+          "actuations": [],
+          "dropped_actuations": 0,
+          "generated": null,
+          "system_alert": null,
+          "app_crashed": false
+        }
+      ],
+      "expect_results": [],
+      "failure": "step 0 (tap): no match: {'id': 'missing'}",
+      "artifacts": [],
+      "backend": "fake",
+      "engine": "",
+      "sid": "",
+      "device": "",
+      "device_name": "",
+      "device_runtime": "",
+      "target_devices": {},
+      "duration_s": 0.00021791597828269005,
+      "video_anchor_s": 1791947669.792347,
+      "target_video_anchors": {},
+      "expect_alerts": [],
+      "expect_actuations": [],
+      "dropped_expect_actuations": 0,
+      "skipped_captures": [],
+      "before_outcomes": [
+        {
+          "index": 0,
+          "action": "tap",
+          "target": "",
+          "ok": true,
+          "reason": "",
+          "duration_s": 4.2707950342446566e-05,
+          "started_at": 1791947669.7923694,
+          "assertion_results": [],
+          "artifacts": [],
+          "alerts": [],
+          "actuations": [
+            {
+              "gesture": "tap",
+              "via": "coordinate",
+              "unit": "point",
+              "points": [
+                [
+                  5.0,
+                  5.0
+                ]
+              ],
+              "frame": [
+                0.0,
+                0.0,
+                10.0,
+                10.0
+              ],
+              "target": "a",
+              "accepted": null,
+              "duration_s": null,
+              "scale": null,
+              "radians": null,
+              "substitution": null,
+              "at": 1791947669.7924025
+            }
+          ],
+          "dropped_actuations": 0,
+          "generated": null,
+          "system_alert": null,
+          "app_crashed": false
+        }
+      ],
+      "after_outcomes": [
+        {
+          "index": 0,
+          "action": "tap",
+          "target": "",
+          "ok": true,
+          "reason": "",
+          "duration_s": 1.795799471437931e-05,
+          "started_at": 1791947669.7925293,
+          "assertion_results": [],
+          "artifacts": [],
+          "alerts": [],
+          "actuations": [
+            {
+              "gesture": "tap",
+              "via": "coordinate",
+              "unit": "point",
+              "points": [
+                [
+                  5.0,
+                  5.0
+                ]
+              ],
+              "frame": [
+                0.0,
+                0.0,
+                10.0,
+                10.0
+              ],
+              "target": "c",
+              "accepted": null,
+              "duration_s": null,
+              "scale": null,
+              "radians": null,
+              "substitution": null,
+              "at": 1791947669.7925432
+            }
+          ],
+          "dropped_actuations": 0,
+          "generated": null,
+          "system_alert": null,
+          "app_crashed": false
+        }
+      ],
+      "after_verdict": "error",
+      "interactive": ""
+    }
+  ]
+}

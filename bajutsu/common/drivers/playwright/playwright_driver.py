@@ -6,16 +6,30 @@ import contextlib
 import json
 import shutil
 import time
+from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
+from urllib.parse import urljoin
 
+from bajutsu.common.backend_cli import simctl
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.actuation import Actuation, ActuationLog, Drained
-from bajutsu.common.drivers.dom import QUERY_JS, parse_dom
+from bajutsu.common.drivers.base import _collapse_identical_duplicates
+from bajutsu.common.drivers.dom import (
+    ATTRIBUTE_QUERY_JS,
+    QUERY_JS,
+    parse_dom,
+    parse_dom_with_attributes,
+)
 from bajutsu.common.evidence import intervals
 
+from ._frame_scope import _FrameScope
 from ._functions import (
     _device_context_kwargs,
+    _iframe_elements,
+    _iframe_records,
+    _is_browser_fault,
+    _nav_reason,
     _playwright_error_types,
     _rotate_point,
     _start_browser,
@@ -32,6 +46,35 @@ if TYPE_CHECKING:
 # `getBoundingClientRect` reports CSS pixels, so that is the space stamped on this backend's actuation
 # records — a coordinate only means something alongside its unit.
 _UNIT = "cssPixel"
+
+# Names whatever `elementFromPoint` hit, the same way for the element check and the `<iframe>` check.
+_DESCRIBE_COVER_JS = (
+    "const describe = (node) => {"
+    "  const r = node.getBoundingClientRect();"
+    "  const testid = node.getAttribute('data-testid');"
+    "  const cover = testid || (node.tagName.toLowerCase() + (node.id ? '#' + node.id : ''));"
+    "  return {ok: false, cover: cover, rect: [r.x, r.y, r.width, r.height]};"
+    "};"
+)
+
+# Whether a point in an `<iframe>`'s owner document lands on that iframe, not on a cover above it.
+_HOST_HIT_JS = (
+    "(host, [x, y]) => {"
+    f"{_DESCRIBE_COVER_JS}"
+    "if (x < 0 || y < 0 || x >= window.innerWidth || y >= window.innerHeight) "
+    "return {ok: true, cover: null, rect: null};"
+    "let hit = document.elementFromPoint(x, y);"
+    # `elementFromPoint` stops at a shadow host, so an iframe inside a shadow root (which Playwright's
+    # frame tree does list) would always read as covered by its own host without descending.
+    "while (hit && hit !== host && hit.shadowRoot) {"
+    "  const inner = hit.shadowRoot.elementFromPoint(x, y);"
+    "  if (!inner || inner === hit) break;"
+    "  hit = inner;"
+    "}"
+    "if (!hit) return {ok: false, cover: null, rect: null};"
+    "return hit === host ? {ok: true, cover: null, rect: null} : describe(hit);"
+    "}"
+)
 
 
 class PlaywrightDriver:
@@ -370,19 +413,78 @@ class PlaywrightDriver:
 
     @_wedge_guard
     def query(self) -> list[base.Element]:
+        return [el for el, _ in self._scoped_query()]
+
+    def _scoped_query(self) -> list[tuple[base.Element, _FrameScope | None]]:
+        """The main document's elements, then every iframe's, each with the frame it came from.
+
+        `None` is the main document. Iframe elements are already framed in main-page CSS pixels,
+        so a selector resolves over one flat snapshot whatever document an element lives in.
+        """
         records = self._page.evaluate(QUERY_JS)
-        return parse_dom(records if isinstance(records, list) else [])
+        main: list[tuple[base.Element, _FrameScope | None]] = [
+            (el, None) for el in parse_dom(records if isinstance(records, list) else [])
+        ]
+        return main + list(_iframe_elements(self._page))
+
+    @_wedge_guard
+    def read_attributes(
+        self, reads: Sequence[tuple[base.Selector, str]]
+    ) -> list[str | None | base.SelectorError]:
+        # One walk carries every requested attribute beside each record, so a whole block is read
+        # from one instant, and each pair resolves by the same `resolve_unique` a tap uses (BE-0466):
+        # no window between finding an element and reading it, and no second matching rule. The
+        # names reach the script `json.dumps`-encoded, as `_point_hits` encodes its strings.
+        names = list(dict.fromkeys(name for _, name in reads))
+        records = self._page.evaluate(f"() => ({ATTRIBUTE_QUERY_JS})({json.dumps(names)})")
+        rows = parse_dom_with_attributes(records if isinstance(records, list) else [])
+        rows += [(el, values) for el, _, values in _iframe_records(self._page, names)]
+        elements = [el for el, _ in rows]
+        out: list[str | None | base.SelectorError] = []
+        for sel, name in reads:
+            try:
+                out.append(_attribute_of(rows, elements, sel, name, names.index(name)))
+            except base.SelectorError as e:
+                out.append(e)
+        return out
 
     def _center(self, sel: base.Selector) -> base.Point:
-        point, _ = self._center_with_element(sel)
+        point, _, _ = self._center_with_element(sel)
         return point
 
-    def _center_with_element(self, sel: base.Selector) -> tuple[base.Point, base.Element]:
-        """The resolved element's frame center, plus the element (for the actuation record)."""
-        el = base.resolve_unique(self.query(), sel)
-        return base.frame_center(el["frame"]), el
+    def _center_with_element(
+        self, sel: base.Selector
+    ) -> tuple[base.Point, base.Element, _FrameScope | None]:
+        """The resolved element's frame center, the element (for the actuation record), and its frame."""
+        scoped = self._scoped_query()
+        el = base.resolve_unique([e for e, _ in scoped], sel)
+        # resolve_unique hands back one of the snapshot's own dicts, so identity finds its frame.
+        scope = next(s for e, s in scoped if e is el)
+        return base.frame_center(el["frame"]), el, scope
 
-    def _point_hits(self, point: base.Point, el: base.Element) -> _HitResult:
+    def _hosts_hit(self, point: base.Point, scope: _FrameScope) -> _HitResult:
+        """Whether `point` reaches `scope`'s frame through every enclosing `<iframe>` uncovered."""
+        for frame, owner_origin in scope.hosts:
+            ox, oy = owner_origin
+            host = frame.frame_element()
+            try:
+                result = host.evaluate(_HOST_HIT_JS, [point[0] - ox, point[1] - oy])
+            finally:
+                host.dispose()
+            if not result["ok"]:
+                rect = result["rect"]
+                return _HitResult(
+                    ok=False,
+                    cover=result["cover"],
+                    rect=(rect[0] + ox, rect[1] + oy, rect[2], rect[3])
+                    if rect is not None
+                    else None,
+                )
+        return _HitResult(ok=True, cover=None, rect=None)
+
+    def _point_hits(
+        self, point: base.Point, el: base.Element, scope: _FrameScope | None = None
+    ) -> _HitResult:
         """Whether `document.elementFromPoint` actually resolves to `el`, not an unrelated cover.
 
         Generalizes the `elementFromPoint` pattern already used by `select_option` below: walk the
@@ -401,6 +503,11 @@ class PlaywrightDriver:
         `base.raise_if_covered` names a cover on the other backends, so a failure message does not
         force reproducing the screen by hand to learn what blocked the tap.
 
+        An element read from an iframe (`scope` set) is checked in its own document, at the point
+        and frame shifted by the frame's origin, after `_hosts_hit` confirms that each enclosing
+        `<iframe>` is itself what the point lands on. A cover's rect is reported in main-page pixels
+        either way.
+
         A point outside the current viewport is a different question this check does not answer:
         `elementFromPoint` returns `null` there regardless of occlusion (`query()`'s frames are
         viewport-relative, BE-0326, so a below-the-fold `el` is resolvable with a point past
@@ -409,18 +516,22 @@ class PlaywrightDriver:
         as adb-only. So an off-viewport point is reported as hit here, leaving that case to the
         explicit `scroll` action rather than this occlusion check.
         """
-        x, y = point
+        target: Any = self._page
+        ox = oy = 0.0
+        if scope is not None:
+            hosts = self._hosts_hit(point, scope)
+            if not hosts.ok:
+                return hosts
+            target = scope.frame
+            ox, oy = scope.origin
+        x, y = point[0] - ox, point[1] - oy
         tx, ty, tw, th = el["frame"]
+        tx, ty = tx - ox, ty - oy
         identifier = json.dumps(el["identifier"])
         label = json.dumps(el["label"])
-        result = self._page.evaluate(
+        result = target.evaluate(
             "(() => {"
-            "const describe = (node) => {"
-            "  const r = node.getBoundingClientRect();"
-            "  const testid = node.getAttribute('data-testid');"
-            "  const cover = testid || (node.tagName.toLowerCase() + (node.id ? '#' + node.id : ''));"
-            "  return {ok: false, cover: cover, rect: [r.x, r.y, r.width, r.height]};"
-            "};"
+            f"{_DESCRIBE_COVER_JS}"
             f"if ({x} < 0 || {y} < 0 || {x} >= window.innerWidth || {y} >= window.innerHeight) "
             "return {ok: true, cover: null, rect: null};"
             f"const hit = document.elementFromPoint({x}, {y});"
@@ -451,7 +562,7 @@ class PlaywrightDriver:
         return _HitResult(
             ok=result["ok"],
             cover=result["cover"],
-            rect=(rect[0], rect[1], rect[2], rect[3]) if rect is not None else None,
+            rect=(rect[0] + ox, rect[1] + oy, rect[2], rect[3]) if rect is not None else None,
         )
 
     @_wedge_guard
@@ -464,25 +575,27 @@ class PlaywrightDriver:
         immediately, since occlusion is a different question from selector ambiguity.
         """
         try:
-            point, el = self._center_with_element(sel)
+            point, el, scope = self._center_with_element(sel)
         except base.ElementNotFound:
             return False
-        return self._point_hits(point, el).ok
+        return self._point_hits(point, el, scope).ok
 
-    def _center_checked(self, sel: base.Selector) -> tuple[base.Point, base.Element]:
+    def _center_checked(
+        self, sel: base.Selector
+    ) -> tuple[base.Point, base.Element, _FrameScope | None]:
         """`_center_with_element`, but raises `ElementNotTappable` when the point does not hit `sel`.
 
         The one seam `tap` / `double_tap` / `long_press` route through, so the check applies once
         rather than being duplicated at each call site.
         """
-        point, el = self._center_with_element(sel)
-        hit = self._point_hits(point, el)
+        point, el, scope = self._center_with_element(sel)
+        hit = self._point_hits(point, el, scope)
         if not hit.ok:
             named = f" ({hit.cover!r} at {hit.rect})" if hit.cover is not None else ""
             raise base.ElementNotTappable(
                 f"element resolved but covered by another element{named}: {sel!r}"
             )
-        return point, el
+        return point, el, scope
 
     def drain_actuations(self) -> Drained:
         """The concrete actuations performed since the last drain (`ActuationReporter`)."""
@@ -515,7 +628,7 @@ class PlaywrightDriver:
 
     @_wedge_guard
     def tap(self, sel: base.Selector) -> None:
-        (x, y), el = self._center_checked(sel)
+        (x, y), el, _ = self._center_checked(sel)
         self._log_coordinate("tap", (x, y), el)
         self._page.mouse.click(x, y)
 
@@ -526,13 +639,13 @@ class PlaywrightDriver:
 
     @_wedge_guard
     def double_tap(self, sel: base.Selector) -> None:
-        (x, y), el = self._center_checked(sel)
+        (x, y), el, _ = self._center_checked(sel)
         self._log_coordinate("doubleTap", (x, y), el)
         self._page.mouse.dblclick(x, y)
 
     @_wedge_guard
     def long_press(self, sel: base.Selector, duration: float) -> None:
-        (x, y), el = self._center_checked(sel)
+        (x, y), el, _ = self._center_checked(sel)
         self._log_coordinate("longPress", (x, y), el, duration_s=duration)
         self._page.mouse.move(x, y)
         self._page.mouse.down()
@@ -618,6 +731,34 @@ class PlaywrightDriver:
         # iOS's OS back button (BE-0210).
         self._actuations.record(Actuation(gesture="back", via="history", unit=_UNIT))
         self._page.go_back()
+
+    @_wedge_guard
+    def goto(self, url: str) -> None:
+        """Load *url*, resolved against the base URL as a browser resolves a link (BE-0464).
+
+        Returns once the page's `load` event fires; the response status is not read, so a 404 page
+        loads and the scenario's next assertion decides. A failure the URL itself causes (a failed
+        lookup, a refused connection, a timeout) fails the step as a `SelectorError` rather than
+        reaching `_wedge_guard`, which would report an author's typo as a recoverable browser
+        fault. A closed or crashed page stays a wedge, since no URL could have loaded there; a
+        timeout counts as the URL's, since a scenario run cannot tell a slow server from a hung
+        renderer.
+        """
+        target = urljoin(self._base_url, url)
+        # The URL is author data, so the record names only the gesture (`actuation` rule 3).
+        self._actuations.record(Actuation(gesture="navigate", via="url", unit=_UNIT))
+        try:
+            self._page.goto(target)
+        except _playwright_error_types() as exc:
+            if _is_browser_fault(exc, target):
+                # Raised here rather than left to `_wedge_guard`, which embeds `{exc}` whole: the
+                # wedge reason has to leave the URL out as the step failure below does.
+                raise simctl.DeviceError(
+                    f"web browser fault (recoverable wedge): {_nav_reason(exc, target)}"
+                ) from exc
+            raise base.SelectorError(
+                f"navigate could not load the URL: {_nav_reason(exc, target)}"
+            ) from exc
 
     @_wedge_guard
     def pinch(self, sel: base.Selector, scale: float) -> None:
@@ -730,13 +871,17 @@ class PlaywrightDriver:
         # null, and the old unchecked path raise the factually wrong "not a <select>" — the selector
         # did resolve to a <select>, occlusion is why the point misses it. Checking first raises
         # `ElementNotTappable` naming the actual cover, like every other web tap-family failure.
-        (x, y), el = self._center_checked(sel)
+        (x, y), el, scope = self._center_checked(sel)
         # `option` never reaches the record: like a typed string, it can hold a resolved secret.
         self._log_coordinate("selectOption", (x, y), el)
         opt = json.dumps(option)
-        result = self._page.evaluate(
+        # Located in the element's own document: `elementFromPoint` in the main one would stop at
+        # the `<iframe>`.
+        target: Any = self._page if scope is None else scope.frame
+        lx, ly = (x, y) if scope is None else (x - scope.origin[0], y - scope.origin[1])
+        result = target.evaluate(
             "(() => {"
-            f"const el = document.elementFromPoint({x}, {y});"
+            f"const el = document.elementFromPoint({lx}, {ly});"
             "const select = el && el.closest('select');"
             "if (!select) return 'no-select';"
             f"if (![...select.options].some(o => o.value === {opt})) return 'no-option';"
@@ -813,6 +958,9 @@ class PlaywrightDriver:
 
         return WebNetworkCollector(self._page, mocks)
 
+    # Runs anywhere Bajutsu runs (BE-0450): None means no host restriction.
+    HOST_OS: frozenset[str] | None = None
+
     # Playwright has a genuine semantic click, native auto-waiting, native network observation +
     # stubbing, and (via CDP touch synthesis) two-finger gestures (BE-0054). Class constant so the
     # preflight (BE-0082) reads it via `backends.capabilities_for` without starting a browser.
@@ -827,8 +975,37 @@ class PlaywrightDriver:
             base.Capability.MULTI_TOUCH,
             base.Capability.SELECT_OPTION,
             base.Capability.TEXT_SELECTION,
+            base.Capability.URL_NAVIGATION,
+            base.Capability.ELEMENT_ATTRIBUTE,
+            # The context's recording and the browser console (`driver_interval`); no appTrace.
+            base.Capability.VIDEO,
+            base.Capability.DEVICE_LOG,
         }
     )
 
     def capabilities(self) -> set[str]:
         return set(self.CAPABILITIES)
+
+
+def _attribute_of(
+    rows: list[tuple[base.Element, list[str | None]]],
+    elements: list[base.Element],
+    sel: base.Selector,
+    name: str,
+    column: int,
+) -> str | None:
+    """`name`'s value on the one element `sel` resolves to among `rows` (BE-0466)."""
+    el = base.resolve_unique(elements, sel)
+    # `resolve_unique` collapses content-identical twins, which compare no attribute; twins that
+    # disagree on this one are two elements the read cannot tell apart, so they stay ambiguous.
+    values = {
+        vals[column] if column < len(vals) else None
+        for e, vals in rows
+        if len(_collapse_identical_duplicates([el, e])) == 1
+    }
+    if len(values) > 1:
+        raise base.AmbiguousSelector(
+            f"content-identical elements matched {sel!r} with different "
+            f"{name!r} values — give them a distinguishing `data-testid`"
+        )
+    return values.pop()

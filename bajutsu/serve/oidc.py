@@ -74,12 +74,45 @@ class WorkloadClaims:
         ref: The git ref the run was triggered on.
         workflow_ref: The workflow definition the job ran from (GitHub Actions'
             `job_workflow_ref`), which pins the file rather than the repository.
+        run_id: The pipeline run the job belongs to.
+        run_attempt: Which attempt of that run; a rerun keeps the `run_id`.
+        check_run_id: The job itself within the run. Named after GitHub Actions' claim rather than
+            `job_id`, which would read as serve's own job id beside it in an audit entry.
+        sha: The commit the run built.
+        triggered_by: The account that started the run.
     """
 
     repository: str
     environment: str | None = None
     ref: str | None = None
     workflow_ref: str | None = None
+    run_id: str | None = None
+    run_attempt: str | None = None
+    check_run_id: str | None = None
+    sha: str | None = None
+    triggered_by: str | None = None
+
+    def ci_job(self) -> dict[str, str]:
+        """The job this workload names, as the audit trail records it in place of a user.
+
+        Absent fields are left out rather than written as null, so the record carries only what the
+        token asserted. The repository is left out, since the audit entry names it on its own.
+
+        The ids are kept as parts rather than folded into a link to the job's page: the link's host
+        is not in the token (GitHub Enterprise Server runs on its own), and a link built from one id
+        alone opens the wrong page, while the parts stay true in both cases.
+        """
+        fields = {
+            "runId": self.run_id,
+            "runAttempt": self.run_attempt,
+            "checkRunId": self.check_run_id,
+            "ref": self.ref,
+            "workflowRef": self.workflow_ref,
+            "sha": self.sha,
+            "environment": self.environment,
+            "triggeredBy": self.triggered_by,
+        }
+        return {key: value for key, value in fields.items() if value is not None}
 
 
 @dataclass(frozen=True)
@@ -96,6 +129,11 @@ class OidcProvider:
     environment_claim: str | None = None
     ref_claim: str | None = None
     workflow_ref_claim: str | None = None
+    run_id_claim: str | None = None
+    run_attempt_claim: str | None = None
+    check_run_id_claim: str | None = None
+    sha_claim: str | None = None
+    triggered_by_claim: str | None = None
 
     def workload(self, claims: Mapping[str, Any]) -> WorkloadClaims:
         """Map this provider's raw claims onto the provider-independent shape.
@@ -109,14 +147,29 @@ class OidcProvider:
             raise OidcError(f"the token carries no {self.repository_claim!r} claim")
         return WorkloadClaims(
             repository=repository,
-            environment=_text(claims.get(self.environment_claim))
-            if self.environment_claim
-            else None,
-            ref=_text(claims.get(self.ref_claim)) if self.ref_claim else None,
-            workflow_ref=(
-                _text(claims.get(self.workflow_ref_claim)) if self.workflow_ref_claim else None
-            ),
+            environment=self._claim(claims, self.environment_claim),
+            ref=self._claim(claims, self.ref_claim),
+            workflow_ref=self._claim(claims, self.workflow_ref_claim),
+            run_id=self._id(claims, self.run_id_claim),
+            run_attempt=self._id(claims, self.run_attempt_claim),
+            check_run_id=self._id(claims, self.check_run_id_claim),
+            sha=self._claim(claims, self.sha_claim),
+            triggered_by=self._claim(claims, self.triggered_by_claim),
         )
+
+    @staticmethod
+    def _claim(claims: Mapping[str, Any], name: str | None) -> str | None:
+        return _text(claims.get(name)) if name else None
+
+    @staticmethod
+    def _id(claims: Mapping[str, Any], name: str | None) -> str | None:
+        """A numeric id claim as text. Unlike `_text`, a number is accepted: these ids only describe
+        the job and are never matched against a bound, and GitHub documents no type for them, so a
+        number left out would silently drop the job from the record rather than refuse anything."""
+        value = claims.get(name) if name else None
+        if isinstance(value, int) and not isinstance(value, bool):
+            return str(value)
+        return _text(value)
 
 
 GITHUB_ACTIONS = OidcProvider(
@@ -129,6 +182,11 @@ GITHUB_ACTIONS = OidcProvider(
     environment_claim="environment",
     ref_claim="ref",
     workflow_ref_claim="job_workflow_ref",
+    run_id_claim="run_id",
+    run_attempt_claim="run_attempt",
+    check_run_id_claim="check_run_id",
+    sha_claim="sha",
+    triggered_by_claim="actor",
 )
 
 #: Every CI platform `serve` can verify a token from, by the name `BAJUTSU_OIDC_PROVIDER` selects.

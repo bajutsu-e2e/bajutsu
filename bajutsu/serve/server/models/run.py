@@ -50,6 +50,9 @@ class Run(Base):
     # of its own rather than a reserved `label` value: a target name is config-declared and carries
     # authorization weight (`orgs.<name>.targets`), while a label is untrusted operator free-text.
     target: Mapped[str | None] = mapped_column(default=None)
+    # The run's coordinates when `runsOn` conditions formed its runs (BE-0452), mirrored from the
+    # manifest like `device_runtime`, for the flakiness grouping key; see `db.RunRecord`.
+    run_coordinates: Mapped[str | None] = mapped_column(default=None)
     # Soft-delete (BE-0239): a run with `deleted_at` set is trashed — hidden from `list_runs` but
     # restorable within the retention window; `deleted_by` records the user id who did it, for the
     # audit reach. Null for a live run. `deleted_by` is a plain column, not an FK to users.id like

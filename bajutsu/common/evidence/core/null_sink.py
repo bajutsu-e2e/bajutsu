@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from bajutsu.common.drivers import base
@@ -50,3 +51,6 @@ class NullSink:
         started: list[intervals.Interval],  # noqa: ARG002
     ) -> list[Artifact]:
         return []
+
+    def add_secret_values(self, values: Sequence[str]) -> None:  # noqa: ARG002  # EvidenceSink shape
+        return None  # nothing is written, so nothing needs masking

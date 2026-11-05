@@ -16,9 +16,9 @@ Related: [the capture tokens in scenarios](scenarios.md#capture-token-grammar) �
 |---|---|---|
 | **A. Rules (`capturePolicy`)** ★ central | automatic capture **every time** a particular action happens | network exchanges on every tap of `settings.*` |
 | **B. Per-step (`capture:`)** | this one step only | video + deviceLog around a specific wait |
-| **C. Default policy** | a baseline guarantee | config's `capture: [screenshot.after, elements, actionLog]` |
+| **C. Default policy** | a baseline guarantee | config's `evidence: { capture: [screenshot.after, elements, actionLog] }` |
 
-> C (config default) `capture` resolves to `Effective.capture` ([configuration](configuration.md))
+> C (config default) `evidence.capture` resolves to `Effective.capture` ([configuration](configuration.md))
 > and is applied on top of every step, alongside the scenario's `capturePolicy` and the per-step
 > `capture` — unlike those two, it fires unconditionally rather than on a trigger, so it acts as a
 > baseline guarantee rather than a rule.
@@ -54,7 +54,9 @@ A `capture:` token is `<kind>[.<modifier>]` ([scenarios](scenarios.md#capture-to
 > ([BE-0355](../roadmaps/BE-0355-native-z-position/BE-0355-native-z-position.md)). Reading it changes
 > nothing a run decides — no selector matches on `nativeZ`, and the occlusion checks
 > (`is_tappable`, `topmost_at_point`, and XCUITest's own `isHittable`) behave exactly as they did
-> before the field existed.
+> before the field existed. On the web backend, an element read from a cross-origin iframe also
+> carries `crossOriginFrame: true` ([drivers](drivers.md#playwright-web)); every other element omits
+> the field.
 >
 > **What the number means is the backend's own, and only its direction carries across.** On both
 > backends a larger `nativeZ` is closer to the viewer; nothing else about two values is comparable
@@ -89,8 +91,8 @@ A `capture:` token is `<kind>[.<modifier>]` ([scenarios](scenarios.md#capture-to
 > ([the Home Screen widget spike](specs/ios-home-screen-widget-feasibility.md)). The driver skips the
 > round trip until the block ends.
 >
-> **On Android the target must also ask for it, with `nativeZ: true` under its `targets.<name>`
-> entry.** The reading comes from a walk the resident server performs over every node on every screen
+> **On Android the target must also ask for it, with `driver: { nativeZ: true }` under its
+> `targets.<name>` entry.** The reading comes from a walk the resident server performs over every node on every screen
 > read, and that walk costs 20-100 milliseconds whether or not the app opted a single view in
 > ([BE-0407](../roadmaps/BE-0407-step-latency-driver-internal-tuning/BE-0407-step-latency-driver-internal-tuning.md)
 > unit 18). An app that calls `BajutsuZOrder.report(view)` and does not set the flag reads `null`,
@@ -129,8 +131,8 @@ tree cannot: *where did this tap land, and how far did this swipe travel*.
 
 | Field | Meaning |
 |---|---|
-| `gesture` | the driver primitive — `tap`, `doubleTap`, `longPress`, `swipe`, `scroll`, `pinch`, `rotate`, the text primitives, `selectOption`, `setPickerValue`, `systemAlert`, `back` |
-| `via` | how the gesture reached its target: `coordinate` (the driver computed a point and sent it), `handle` (XCUITest actuated a snapshot handle), `identity` (the Android device resolved the element and chose the point), `bridge` (a WebView call addressed by element id), `focused` (a text primitive on whatever field holds focus), `key`, `history` |
+| `gesture` | the driver primitive — `tap`, `doubleTap`, `longPress`, `swipe`, `scroll`, `pinch`, `rotate`, the text primitives, `selectOption`, `setPickerValue`, `systemAlert`, `back`, `navigate` |
+| `via` | how the gesture reached its target: `coordinate` (the driver computed a point and sent it), `handle` (XCUITest actuated a snapshot handle), `identity` (the Android device resolved the element and chose the point), `bridge` (a WebView call addressed by element id), `focused` (a text primitive on whatever field holds focus), `key`, `history`, `url` (a page load by `navigate`; the URL itself is not recorded) |
 | `unit` | the coordinate space: `point` (iOS), `pixel` (Android), `cssPixel` (a browser page, or a WebView's own space) |
 | `points` | the coordinates the driver sent, in order — one for a tap, two for a drag's start and end. A two-finger gesture records the single anchor its two contacts were derived from, not the contacts |
 | `frame` · `target` | the resolved element's bounds and its accessibility identifier |
@@ -149,8 +151,8 @@ Three rules bound what a record may say, and every backend honors them:
   read, or round trip.
 - **No authored string, ever.** `manifest.json` is written without a redactor, so the record carries
   neither a `type` step's text (not even its length — `Redactor` uses a fixed-width placeholder
-  precisely so no artifact discloses a secret's length), nor a `selectOption`'s option or a
-  `setPickerValue`'s value, nor an element's
+  precisely so no artifact discloses a secret's length), nor a `selectOption`'s option, a
+  `setPickerValue`'s value, or a `navigate` step's URL, nor an element's
   accessibility label. `target` is always the resolved accessibility identifier and nothing else, so it
   is unset for an element that has none.
 
@@ -187,7 +189,7 @@ capturePolicy:
     capture: [screenshot.around, elements]
 
   # On error in any step, capture the maximum (the safety net)
-  - on: { result: error }
+  - on: { result: failure }
     capture: [screenshot, video, deviceLog, elements, actionLog]
 ```
 
@@ -196,7 +198,7 @@ The trigger `on` is **exactly one** of `action` / `event` / `result`:
 - `action: <tap|longPress|type|swipe|...>` — optionally combined with `idMatches` (glob against the
   primary target's `id`). `idMatches` can only be used with `action`.
 - `event: screenChanged` — fires if `query()` changed during that step.
-- `result: error` — fires if the step failed (the safety net).
+- `result: failure` — fires if the step failed (the safety net).
 
 The detailed firing logic is in [run-loop](run-loop.md#evidence-rule-firing).
 
@@ -229,7 +231,7 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
 
 > **Interval kinds are opt-in (BE-0028).** `video` / `deviceLog` / `appTrace` are heavy, so a
 > scenario records an interval **only when it asks for that kind** — through an inline `capture:`
-> or a `capturePolicy` rule (e.g. a `result: error` rule that captures `video`). A scenario that
+> or a `capturePolicy` rule (e.g. a `result: failure` rule that captures `video`). A scenario that
 > requests none records none, keeping the common case cheap; the lightweight instant baseline
 > (`screenshot` + `elements`) is always captured, so a failure still leaves evidence (DESIGN §10).
 > Every step captures a screenshot on **both** sides of its action, but a tree only after it:
@@ -240,9 +242,9 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
 > copy of it rather than a fresh capture. Four cases skip the copy and always shoot fresh, because
 > an asynchronous interstitial could have arrived between the two steps: an interrupt's recovery
 > step, a `handleSystemAlert` step, any step in a scenario declaring `interrupts`, and any step
-> running under `systemAlertHandling`. That last case is on by default, so a stock `run` shoots
-> fresh on every step — the copy reaches a step only where a scenario or the target config turns
-> the guard off.
+> running under the system-alert guard. That guard is on by default, so a stock `run` shoots
+> fresh on every step — the copy reaches a step only where `--no-system-alert-handling` turns the
+> guard off.
 > `elements.json` has a single filename, so the post-action write is
 > the tree a run keeps: it describes the screen the action produced, which is the screen `after.png`
 > shows and the one every viewer draws element frames from. On a non-mutating step (`assert`,
@@ -460,10 +462,9 @@ scenario whose verdict reads a screenshot. Everywhere else, a screenshot-compari
 the pre-BE-0365 behavior. It draws no markers. The investigator loses the touch evidence for that
 one scenario. That is the same trade-off this channel exists to remove, where it can.
 
-A multi-candidate `--backend` has to meet the actuator condition twice over. The run pre-starts
-its collectors from the run-level actuator. Each scenario then resolves an actuator of its own
-(BE-0240). Under `--backend web,ios` the run pre-starts no collector at all. A scenario escalating
-to `xcuitest` within that run finds nothing to carry a command. That scenario stays unmarked too.
+`--backend` names one target's platform, never an ordered fallback list
+([BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)).
+No scenario escalates past the run-level actuator to one with no pre-started collector.
 
 That fallback stays local to the scenario that took it. One scenario can arm the channel while the
 next stays unmarked. Between scenarios, the run relaunches the app with **each scenario's own**
@@ -479,7 +480,7 @@ markers.
 
 The run loop reads those two launch-environment keys and nothing else, so it cannot tell a pair
 the flag armed from one a scenario assembled itself. It reads them from the scenario's *effective*
-launch environment. That environment merges the target's own `launchEnv` underneath the
+launch environment. That environment merges the target's own `subject.launch.env` underneath the
 scenario's own. The merge follows the same order the launch itself uses. A target-level pin
 counts here the same as a scenario's own pin. That is why `--touch-markers` leaves a scenario
 with no `visual` verdict unmarked. That happens whenever the effective environment already sets
@@ -520,7 +521,7 @@ The file is self-contained so a rerun-to-green does not discard it:
 
 | Field | What it answers |
 |---|---|
-| `readiness` | Whether the post-launch readiness gate had passed, on which signal (`readyWhen` / `namespace` / `count`, or `timeout`), and whether the screen had `settled` — separates "the gate returned before the content" from "the content rendered but the awaited element did not". A `settled: false` says the gate returned while the tree was still changing, which is when a synthesized touch is dropped: read it as "the actuation before this wait may never have landed", since a dropped tap is still reported as delivered. `null` on a lane that carried no readiness result. |
+| `readiness` | Whether the post-launch readiness gate had passed, on which signal (`readyWhen`, the target's `subject.startWhen` condition / `namespace` / `count`, or `timeout`), and whether the screen had `settled` — separates "the gate returned before the content" from "the content rendered but the awaited element did not". A `settled: false` says the gate returned while the tree was still changing, which is when a synthesized touch is dropped: read it as "the actuation before this wait may never have landed", since a dropped tap is still reported as delivered. `null` on a lane that carried no readiness result. |
 | `trace` | The poll timeline: how many polls, when the tree first became non-empty (`firstNonemptySeconds`, `null` if it never did), and how many elements were present at the timeout — separating "nothing rendered / transient-empty" from "rendered, awaited element absent" from "slow cold-boot render". |
 | `provenance` | A [BE-0049](../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md) stamp (scenario hash, tool version, git revision), so the evidence stays identifiable independently of the run. Its `scenarioHash` fingerprints **this scenario alone**, without the file-level `description` the run manifest's `scenarioHash` folds in when present — so it can diverge from the manifest's hash even for a single-scenario run, not only for a suite/matrix run. |
 | `elements` | The (redacted) element tree at the moment of timeout. |
@@ -539,13 +540,13 @@ unloaded screen before suspecting the app at all.
 It is a diagnostic, never a verdict: the scenario fails because its step failed, exactly as it would
 for any other terminal step failure, and nothing here decides pass/fail (prime directive 1). The
 crash is classified **in-band**, so the scenario finishes normally — the failing step's screenshot,
-the running video recording, and any `after: on: error` rule all land the way they always do — and
+the running video recording, and any `cleanup: on: failure` rule all land the way they always do — and
 the backend-crash retry loop (`crash-diagnostics/` above, BE-0421) is never triggered: that one names
 a fault in the *test infrastructure*, this one a likely defect in the app a team is testing.
 
 | Backend | What lands in `app-crash/` | How the crash is confirmed |
 |---|---|---|
-| iOS (XCUITest), **Simulator only** | the `.ips` report macOS's `ReportCrash` wrote for the faulting process, under its own name. Where no report exists, `unified-log.txt` instead: the Simulator's own unified log for the app's launch window, bounded to its last 256 KB. On the GitHub-hosted macOS runner, `ReportCrash` writes no report for a Simulator app at all | `XCUIApplication.state` answering `notRunning`. On a real device (`xcuitest.deviceType: device`) nothing is confirmed: the same answer can mean an OS memory-pressure kill, and the device's reports never reach this host |
+| iOS (XCUITest), **Simulator only** | the `.ips` report macOS's `ReportCrash` wrote for the faulting process, under its own name. Where no report exists, `unified-log.txt` instead: the Simulator's own unified log for the app's launch window, bounded to its last 256 KB. On the GitHub-hosted macOS runner, `ReportCrash` writes no report for a Simulator app at all | `XCUIApplication.state` answering `notRunning`. On a real device (`runsOn.ios.kind: device`) nothing is confirmed: the same answer can mean an OS memory-pressure kill, and the device's reports never reach this host |
 | Android (adb), **API 30 and above** | `logcat-crash.txt`, the crash buffer's own block for this process — managed (`FATAL EXCEPTION`) or native (`Fatal signal`) — plus `tombstone_NN` where the device allows `adb root` | `pidof` reporting no process, corroborated by `dumpsys activity exit-info` reporting `CRASH` / `CRASH_NATIVE` at or after this launch. Below API 30 `ApplicationExitInfo` does not exist, so nothing is confirmed |
 | web (Playwright) | nothing | left to a follow-up item |
 
@@ -559,13 +560,13 @@ end-of-scenario probe (which is the every-green-run cost the design exists to av
 
 - A crash caused by a scenario's **last** step, where that step's own actuation still reports
   success — a tap the runner delivered before the app died — is never probed, so a scenario
-  declaring neither `expect` nor a non-failure `after` rule stays **green**.
+  declaring neither `expect` nor a non-failure `cleanup` rule stays **green**.
 - The same shape *with* a scenario-level `expect` goes **red but unclassified**: `expect` produces
   assertion results rather than step outcomes, so it never reaches the check, and the reader sees an
   assertion mismatch instead of a crash.
 
 A scenario written to exercise this signal therefore takes one more step after the crash trigger, so
-it is that later step — not the trigger itself — that fails and gets probed. An `after` rule that
+it is that later step — not the trigger itself — that fails and gets probed. A `cleanup` rule that
 runs on success or always is enough too: its own teardown step does reach the check, so the crash is
 caught one step later rather than missed.
 
@@ -607,6 +608,22 @@ class Artifact:
 When an evidence kind cannot be supplied by any backend in the list, a `SkippedCapture(kind,
 reason)` is recorded per scenario and disclosed in the manifest — the gap is never silently empty.
 
+Each interval kind is a capability of its own (`video`, `deviceLog`, `appTrace`), judged against the
+route the scenario runs on
+([BE-0467](../roadmaps/BE-0467-environment-specific-settings/BE-0467-environment-specific-settings.md)):
+
+| Route | `video` | `deviceLog` | `appTrace` |
+|---|---|---|---|
+| iOS Simulator | Recorded | Recorded | Recorded |
+| iOS real device (`runsOn.ios.kind: device`) | Skipped | Skipped | Skipped |
+| Live WebDriver endpoint | Skipped | Skipped | Skipped |
+| Android | Recorded | Recorded | Skipped |
+| Web | Recorded | Recorded | Skipped |
+
+A gap is recorded only for a kind the scenario asked for, and the sink never starts a recorder for
+it: simctl reaches the Simulator alone, so it is not pointed at a real device. Evidence never decides
+a verdict, so a skipped kind leaves the result unchanged.
+
 ## Which screen an artifact shows (`depicts`)
 
 A step's screenshot and its element tree are shown together, and a viewer draws a hovered element's
@@ -645,12 +662,12 @@ percentage of pixels that differed) and `engine` — the comparison engine that 
 verdict (`"exact"` or `"pixelmatch"`; [BE-0165](../roadmaps/BE-0165-visual-compare-engines/BE-0165-visual-compare-engines.md)).
 
 The engine is selected per assertion (`compare:`) with a target-level config fallback
-(`visualCompare`), and is recorded in the manifest so the algorithm that produced each
+(`evidence.visualCompare`), and is recorded in the manifest so the algorithm that produced each
 verdict is traceable. Implementation: `bajutsu/assertions/visual.py` `VisualEvidence`.
 
 ## Masking (redact)
 
-Screenshots, logs, and network data can capture personally identifiable information (PII) and tokens. Declare what to mask before writing. Implementation: `scenario/models/evidence.py` `Redact`. Config's `redact` and the scenario's `redact` are merged (union) ([configuration](configuration.md#merging-redact)).
+Screenshots, logs, and network data can capture personally identifiable information (PII) and tokens. Declare what to mask before writing. Implementation: `scenario/models/evidence.py` `Redact`. The run merges config's `evidence.redact` with the scenario's `redact` (union) ([configuration](configuration.md#merging-redact)).
 
 ```yaml
 redact:
@@ -747,8 +764,8 @@ remain, and an operator deciding whether to share a report should weigh them.
 > are left as-is.
 >
 > Redaction also extends to **secret input values**: the literal values behind `${secrets.X}`
-> (resolved from the environment, declared via config's `secrets:`
-> [configuration](configuration.md#secrets-secrets)) are masked wherever they would appear in
+> (resolved from the environment, declared via config's `evidence.secrets`
+> [configuration](configuration.md#secrets-evidencesecrets)) are masked wherever they would appear in
 > evidence — not just the configured `labels` / `headers` / `fields`. Longest values are masked
 > first so a value that is a substring of another never leaves a partial leak.
 >

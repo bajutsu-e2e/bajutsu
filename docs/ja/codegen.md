@@ -22,11 +22,15 @@ bajutsu codegen <scenario.yaml> --target <name> [--emit xcuitest | playwright | 
 ```
 
 `--emit` は `xcuitest`（既定）、`playwright`、`uiautomator` のいずれかです。`-o -`（既定）なら標準出力に、
-ファイルパスならそのファイルに書き出します。`--emit playwright` は web ターゲット（`targets.<name>.baseUrl` の設定）を、
-`--emit uiautomator` は Android ターゲット（`targets.<name>.package` の設定）を要求します。
+ファイルパスならそのファイルに書き出します。`--emit playwright` は web ターゲット（`platform: web` と `targets.<name>.subject.url` の設定）を、
+`--emit uiautomator` は Android ターゲット（`platform: android` と `targets.<name>.subject.id` の設定）を要求します。
 対応するターゲットでなければ終了コード 2 で終わります。config の
-`launchEnv` は生成テストに引き継がれます（[cli](cli.md#codegen)）。XCUITest では `app.launchEnvironment` に、
+`subject.launch.env` は生成テストに引き継がれます（[cli](cli.md#codegen)）。XCUITest では `app.launchEnvironment` に、
 Playwright では `localStorage` のシードに反映され、UI Automator では intent extra として渡されます。
+
+生成したテストは、デバイスの条件を持ちません（[configuration](configuration.md#デバイスの条件runson)）。
+`bajutsu run` では、`runsOn` の条件がシナリオを動かすデバイスを選びます。生成したテストは、それを
+起動したデバイスやブラウザの上でそのまま動きます。
 
 ## XCUITest の出力の形
 
@@ -60,8 +64,8 @@ final class ComponentsUITests: XCTestCase {
 
 - ヘルパ `el(id)` / `byLabel(label)` / `matchingId(glob)` が、単一フィールドのセレクタ 3 形（id / label /
   idMatches）を XCUIElement に橋渡しします。
-- 各メソッドは冒頭で `launchEnvironment` を設定してから `app.launch()` を呼びます。env は **config の `launchEnv` <
-  シナリオの `preconditions.launchEnv`** のマージで、テスト側が勝ちます。
+- 各メソッドは冒頭で `launchEnvironment` を設定してから `app.launch()` を呼びます。env は **config の `subject.launch.env` <
+  シナリオの `preconditions.subject.launch.env`** のマージで、テスト側が勝ちます。
 
 ### セレクタのマッピング（XCUITest）
 
@@ -103,6 +107,7 @@ final class ComponentsUITests: XCTestCase {
 | `select` | `.tap()` + 全選択（BE-0265） |
 | `copy` | `app.typeKey("c", modifierFlags: .command)` |
 | `back` | OS のナビゲーション戻るボタンを tap します。XCUITest ドライバが実行時に tap するのと同じ要素（共有定数、BE-0210） |
+| `navigate` | `// TODO: navigate(url: …) — web-only; not generated`（BE-0464） |
 | `sleep` | `// fixed pause: <reason>` と `Thread.sleep(forTimeInterval: <秒>)` |
 | `swipe { on, direction }` | `.swipeUp/Down/Left/Right()` |
 | `swipe { from, to }` | `coord(x1, y1).press(forDuration: 0.1, thenDragTo: coord(x2, y2))`（`XCUICoordinate` のドラッグ。BE-0025） |
@@ -127,6 +132,7 @@ final class ComponentsUITests: XCTestCase {
 | `enabled` / `disabled` | `XCTAssertTrue/False(...isEnabled)` |
 | `selected` | `XCTAssertTrue(...isSelected)` |
 | `count` (equals/atLeast/atMost) | `matchingId(glob).count`（id 単体は `exists ? 1 : 0`）を `XCTAssertEqual/GreaterThanOrEqual/LessThanOrEqual` |
+| `attribute` | `// TODO: attribute(name: "href", equals: "/docs") — web-only; not generated`（BE-0466） |
 
 ## 未対応は TODO コメントに落とす
 
@@ -179,8 +185,8 @@ test.describe('Components', () => {
 });
 ```
 
-- 各テストは `BASE_URL`（アプリの `baseUrl`。web では `page.goto` が `launch` に相当）へ遷移します。config の
-  `launchEnv` < シナリオの `preconditions.launchEnv` は `page.addInitScript(() => localStorage.setItem(...))` で
+- 各テストは `BASE_URL`（アプリの `subject.url`。web では `page.goto` が `launch` に相当）へ遷移します。config の
+  `subject.launch.env` < シナリオの `preconditions.subject.launch.env` は `page.addInitScript(() => localStorage.setItem(...))` で
   シードします。別のチャネル（クエリパラメータやクッキー）を期待するアプリには `// TODO` を出します。
 - 待機はすべて Playwright の自動待機を使います。出力する固定の時間は `longPress` の `delay` だけで、これは
   ジェスチャ固有のものです。iOS 側が `press(forDuration:)` に対して取るのと同じ扱いです。方向指定の
@@ -214,6 +220,7 @@ test.describe('Components', () => {
 | `select` | `await loc.selectText()`。web における全選択の対応物です（BE-0265） |
 | `copy` | `await page.keyboard.press('Control+c')` |
 | `back` | `await page.goBack()`。ブラウザ履歴で、ドライバの `back()` と同じ基本操作です（BE-0210） |
+| `navigate` | `await page.goto(new URL('<value>', BASE_URL).toString())`。ドライバが `baseUrl` を基準に解決するのと同じ規則で、値を `BASE_URL` を基準に解決します。`${...}` トークンを含む値は、生成したテストに展開元の値がないので `// TODO` になります（BE-0464） |
 | `sleep` | `// fixed pause: <reason>` と `await page.waitForTimeout(<ミリ秒>)` |
 | `swipe { on, direction }` | 要素中心からその方向への `page.mouse.wheel` スクロール（BE-0227） |
 | `swipe { from, to }` | `// TODO`（座標スワイプは生成しない） |
@@ -236,6 +243,7 @@ test.describe('Components', () => {
 | `enabled` / `disabled` | `.toBeEnabled()` / `.toBeDisabled()` |
 | `selected` | `.toBeChecked()` |
 | `count` (equals/atLeast/atMost) | `.toHaveCount(n)`。atLeast/atMost は `await loc.count()` を比較 |
+| `attribute` (equals/contains/matches/absent) | `await expect(loc).toHaveAttribute('name', '…')`。`contains` はエスケープした正規表現、`matches` は正規表現そのものを渡します。`absent` は `await expect(loc).not.toHaveAttribute('name')` を出力します（BE-0466） |
 
 XCUITest や UI Automator と異なり、web backend はネットワーク通信を実際に傍受します。そのため
 `request` / `requestSequence` アサーション（および `until: { request }` の待機）は、この出力先では
@@ -448,7 +456,7 @@ class ComponentsUITest {
   は、セレクタではなくパッケージと試行回数の上限を名指しして失敗します。
   読み取り専用のアサーションは、従来どおり `device.findObject` /
   `device.findObjects` を直接呼び、待機しません。これはドライバ自身のアサーションと同じ挙動です。
-- 各メソッドは `extras` マップ（config の `launchEnv` < シナリオの `preconditions.launchEnv`）を組み立て、
+- 各メソッドは `extras` マップ（config の `subject.launch.env` < シナリオの `preconditions.subject.launch.env`）を組み立て、
   `launch(extras)` を呼びます。この関数は env を intent extra として渡します。adb backend の `am start --es` の
   逆向きです。
 - `launch` はアプリの最初のウィンドウを待ってから、そのウィンドウの描画が落ち着くまで待ちます
@@ -467,7 +475,7 @@ class ComponentsUITest {
   起動途中のアプリを最初からやり直させてしまいます。それを繰り返すと、1回の長い待機なら間に合った起動を
   枯渇させかねません。上限いっぱいウィンドウが現れなかった場合だけを、遅いのではなく詰まったものとして扱います。
   `LAUNCH_ATTEMPTS` 回の試行を終えると、`launch` は実際に見えていたウィンドウを名指しして失敗します。
-  intent は試行ごとに組み立て直します。これにより `launchEnv` は `onCreate` に届き続けます。既存のタスクを
+  intent は試行ごとに組み立て直します。これにより起動時の環境（`subject.launch.env`）は `onCreate` に届き続けます。既存のタスクを
   再開する形にすると、extra は `onNewIntent` に回ってしまいます。
 - **`wait` は待機時間を複数回の読み取りに分け、その合間にキャッシュを破棄します。** 理由は2つあります。
   1つは、`hasObject` や `findObject`、`Until` の条件が、接続ごとに保持される
@@ -629,6 +637,7 @@ Gradle 自身のレポートとあわせて回収済みのディレクトリを�
 | `select` | `.click()` + `device.pressKeyCode(KeyEvent.KEYCODE_A, KeyEvent.META_CTRL_ON)`（BE-0265） |
 | `copy` | `device.pressKeyCode(KeyEvent.KEYCODE_C, KeyEvent.META_CTRL_ON)` |
 | `back` | `device.pressBack()`。UI Automator ネイティブのシステム戻る操作で、adb ドライバの `keyevent 4` に対応します（BE-0210） |
+| `navigate` | `// TODO: navigate(url: …) — web-only; not generated`（BE-0464） |
 | `sleep` | `// fixed pause: <reason>` と `Thread.sleep(<ミリ秒>)` |
 | `swipe { on, direction }` | `.swipe(Direction.<UP/DOWN/LEFT/RIGHT>, 0.75f)` |
 | `swipe { from, to }` | `// TODO`（座標スワイプは生成しない） |
@@ -652,6 +661,7 @@ Gradle 自身のレポートとあわせて回収済みのディレクトリを�
 | `enabled` / `disabled` | `assertTrue/False(device.findObject(<by>).isEnabled)` |
 | `selected` | `assertTrue(device.findObject(<by>).isSelected)` |
 | `count` (equals/atLeast/atMost) | `device.findObjects(<by>).size` を `assertEquals` / `assertTrue(size >= n)` / `assertTrue(size <= n)` |
+| `attribute` | `// TODO: attribute(name: "href", equals: "/docs") — web-only; not generated`（BE-0466） |
 
 adb backend にはネットワーク傍受の面が無いので、ネットワークのアサーション（`request` / `requestSequence` /
 `responseSchema`）とデバイス制御の一群（`setLocation` / `push` / `setClipboard` など）はすべて、理由を明記した

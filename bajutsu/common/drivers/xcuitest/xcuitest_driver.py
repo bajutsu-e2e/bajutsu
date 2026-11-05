@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from bajutsu.common.devices.os import DeviceOS
 from bajutsu.common.drivers import base, tracing
@@ -16,9 +16,13 @@ from ._drain_carry import _DrainCarry
 from ._functions import (
     _as_float,
     _await_health,
+    _drain_fold,
     _http_transport,
+    _is_resolving_read,
     _parse_drain_fold,
+    _parse_resolving_drain_fold,
     _parse_tap_drain_fold,
+    _resolving_body,
     _tip_is_up,
     _to_element,
 )
@@ -27,6 +31,9 @@ from ._reply import _Reply
 from ._shared import _OK, _TIPKIT_DISMISS_REGION, TransportFn
 from .runner_target import RunnerTarget
 from .xcuitest_channel_error import XcuitestChannelError
+
+# Every status `/systemAlert/resolve` answers with (BE-0461 Unit 3).
+_RESOLVE_STATUSES = frozenset({"answered", "changed", "absent", "unidentified", "pending"})
 
 _STALE = "stale"  # the resolved handle no longer maps to a live element (the screen changed)
 _NOT_FOUND = "not-found"  # the runner could not act on the handle (no matching live element)
@@ -64,6 +71,10 @@ class XcuitestDriver:
 
     name = "xcuitest"
 
+    # XCUITest needs Xcode, which exists only on macOS, so a worker on any other host cannot run
+    # this driver (BE-0450). Read without constructing a driver, like CAPABILITIES.
+    HOST_OS: frozenset[str] | None = frozenset({"darwin"})
+
     # Capabilities: a semantic tap (by handle, no coordinates), native condition waiting, and
     # two-finger gestures. No NETWORK — network evidence comes from
     # the app-side collector (BE-0020 boundary), not the actuator. The whole device-control family
@@ -91,6 +102,7 @@ class XcuitestDriver:
                 base.Capability.SELECT_PHOTOS,
                 base.Capability.HANDLE_TIPKIT_TIP,
                 base.Capability.HANDLE_NOTIFICATION_BANNER,
+                base.Capability.RESOLVE_ALERTS,
                 # Members of a device group share this runner, each retargeting it to its own app
                 # (BE-0447); a real device drops it, since nothing installs a second build there.
                 base.Capability.DEVICE_GROUP,
@@ -98,6 +110,7 @@ class XcuitestDriver:
         )
         | base.DEVICE_CONTROL_ALL
         | base.IOS_PERMISSION_CAPABILITIES
+        | base.SIMCTL_EVIDENCE_CAPABILITIES
     )
 
     def __init__(
@@ -113,7 +126,7 @@ class XcuitestDriver:
         is_real_device: bool = False,
         zorder: ZOrderSource | None = None,
     ) -> None:
-        # Whether this drives a real iPhone rather than a Simulator (`xcuitest.deviceType: device`).
+        # Whether this drives a real iPhone rather than a Simulator (`runsOn.ios.kind: device`).
         # Read only by `app_crash_signal`, which scopes itself out on one: a real device jetsam-kills
         # a foreground app under memory pressure, so `notRunning` there is not the proof it is on the
         # Simulator — and its crash reports never reach this host to be attached anyway (BE-0424).
@@ -156,6 +169,16 @@ class XcuitestDriver:
 
         def _tracking_transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
             reply = _channel_transport(method, path, body)
+            if _is_resolving_read(method, path) or path == "/systemAlert/resolve":
+                # A resolving read, and `/systemAlert/resolve` (Unit 3), drain the runner's whole
+                # store into the reply, as `/tap` does, so they leave the carry just as current
+                # (BE-0461 Unit 2). The flag drops first: a
+                # reply that fails to parse has lost its records, and the next drain must then ask
+                # the wire rather than trust a carry an earlier tap left current.
+                carry.is_current = False
+                carry.drained = carry.drained.merged_with(_parse_resolving_drain_fold(reply.raw))
+                carry.is_current = True
+                return reply
             if path != "/tap":
                 # This call may itself have let something new interrupt, or (the stale-retry
                 # re-resolution case) run *between* the tap the carry describes and its own retry, so
@@ -212,12 +235,18 @@ class XcuitestDriver:
         self._screen: base.Point | None = None
         # What this driver actually actuated, drained per step by the run loop.
         self._actuations = ActuationLog()
+        # The titles of the SpringBoard alerts the latest `system_alert_labels` read saw, from that
+        # same `/systemAlert/query` reply, so the guard can tell apart two prompts sharing buttons
+        # without a second cross-process query (`system_alert_titles`).
+        self._alert_titles: list[str] = []
         # The raw `GET /elements` body behind the last query (`base.RawSourceProvider`, the `rawTree`
         # capture kind), kept undecoded: `last_raw_source()` is read only on the rare step that actually
         # requests `rawTree` capture, so decoding here on every query — the common, capture-off case —
         # would be pure waste. None until the first read. No `parsed_input`: unlike adb's resident
         # channel, nothing here narrows the runner's own reply before it becomes `elements`.
         self._raw_bytes: bytes | None = None
+        # The reply behind the last tree read, so a resolving read can take its two flags off it.
+        self._last_tree_reply: _Reply | None = None
         # The in-app responder that measures `nativeZ` (BE-0355). None when the run allocated no
         # port, or when the app never links BajutsuKit — either way every element keeps `None`.
         self._zorder = zorder
@@ -264,7 +293,7 @@ class XcuitestDriver:
     # --- the channel ---
 
     def _query_with_handles(
-        self, *, apply_native_z: bool = True
+        self, *, apply_native_z: bool = True, path: str = "/elements"
     ) -> tuple[list[base.Element], dict[int, str]]:
         """A snapshot plus a map from each element's object identity to its handle.
 
@@ -279,6 +308,7 @@ class XcuitestDriver:
                 resolves a handle to act on and discards the rest of the tree gains nothing from it.
                 `False` for those internal resolutions; `True` (the default) for `query()`, whose
                 result reaches evidence and the serve read API.
+            path: The tree route, carrying `resolveAlerts` for a resolving read (BE-0461).
         """
         if self._member_bundle is not None and (state := self.app_state()) != "runningForeground":
             # Another member's app holds the screen: raised, never read as an empty tree, so no
@@ -287,8 +317,9 @@ class XcuitestDriver:
                 f"{self._member_bundle} is not in front (its state is {state}) — bring it up with a "
                 "foreground step addressed to its target"
             )
-        reply = self._transport("GET", "/elements", None)
+        reply = self._transport("GET", path, None)
         self._raw_bytes = reply.raw
+        self._last_tree_reply = reply
         elements, handles = self._parse_elements(reply)
         if apply_native_z:
             self._apply_native_z(elements)
@@ -451,6 +482,47 @@ class XcuitestDriver:
     def query(self) -> list[base.Element]:
         elements, _ = self._query_with_handles()
         return elements
+
+    def query_resolving(
+        self, mode: base.ResolveMode, *, force_check: bool = False
+    ) -> base.ResolvingRead:
+        """Answer the alert the pushed policy names, then read the tree (BE-0461 Unit 4).
+
+        The records the reply drained already sit in `_drain_carry` (`_tracking_transport`), so the
+        drain that consumes them reports each once; they are returned here for the caller to read.
+        """
+        path = f"/elements?resolveAlerts={mode}" + ("&forceCheck=true" if force_check else "")
+        elements, _ = self._query_with_handles(path=path)
+        reply = self._last_tree_reply
+        assert reply is not None  # set by the read just above
+        # Decoded once, with the records checked, so a malformed reply raises the channel error
+        # rather than a JSON one; the tree itself is the whole body, so a decode is not free.
+        body = _resolving_body(reply.raw)
+        drained = _drain_fold(body)
+        return base.ResolvingRead(
+            elements=elements,
+            drained=drained,
+            springboard_checked=body.get("springboardChecked") is True,
+            withheld=body.get("withheld") is True,
+        )
+
+    def resolve_system_alert(self, labels: Sequence[str]) -> base.SystemAlertResolution:
+        """Answer the SpringBoard alert by policy while it still offers *labels* (BE-0461 Unit 3).
+
+        Raises:
+            XcuitestChannelError: The runner answered with no known status (a build predating the
+                route answers 404), or without its records.
+        """
+        reply = self._transport("POST", "/systemAlert/resolve", {"labels": list(labels)})
+        if reply.status not in _RESOLVE_STATUSES:
+            raise XcuitestChannelError(
+                f"resolving a system alert failed (status={reply.status}); "
+                "rebuild the runner (make runner-build)"
+            )
+        return base.SystemAlertResolution(
+            status=cast("base.SystemAlertResolutionStatus", reply.status),
+            drained=_parse_resolving_drain_fold(reply.raw),
+        )
 
     def tap(self, sel: base.Selector) -> None:
         handle, el = self._resolve_handle(sel)
@@ -643,6 +715,12 @@ class XcuitestDriver:
             "selectOption is web-backend-only, for a <select>; iOS has no native <select>"
         )
 
+    def read_attributes(
+        self,
+        reads: Sequence[tuple[base.Selector, str]],  # noqa: ARG002  # Driver shape
+    ) -> list[str | None | base.SelectorError]:
+        raise base.UnsupportedAction("attribute is web-backend-only; iOS has no HTML attributes")
+
     def set_picker_value(self, sel: base.Selector, value: str) -> None:
         # Handle-based like `tap`, not coordinate-based like `swipe` / `drag` (BE-0356): the runner
         # calls `adjust(toPickerWheelValue:)` on the element XCTest already resolved, so the wheel
@@ -811,7 +889,8 @@ class XcuitestDriver:
         # had declared held the screen for the whole call and the step failed for a prompt it never
         # saw. `timeout` stays on the signature so every backend keeps one shape; every caller now
         # passes zero.
-        buttons, handles = self._parse_elements(self._transport("POST", "/systemAlert/query", {}))
+        elements, handles = self._parse_elements(self._transport("POST", "/systemAlert/query", {}))
+        buttons, _ = _split_alert_titles(elements)
         if not buttons:
             raise base.ElementNotFound(f"no system alert is showing: {sel!r}")
         el = base.resolve_unique(buttons, sel)
@@ -842,8 +921,18 @@ class XcuitestDriver:
         prompt is showing and which button its policy should tap. Unlabeled buttons are dropped:
         the policy resolves by visible label.
         """
-        buttons, _ = self._parse_elements(self._transport("POST", "/systemAlert/query", {}))
+        elements, _ = self._parse_elements(self._transport("POST", "/systemAlert/query", {}))
+        buttons, self._alert_titles = _split_alert_titles(elements)
         return [label for b in buttons if (label := b["label"])]
+
+    def system_alert_titles(self) -> list[str]:
+        """The titles of the alerts the latest `system_alert_labels` read saw, [] when none.
+
+        Read off that same reply rather than queried again, so a caller pairing the two pays one
+        round trip. The reactive guard needs it for prompts whose buttons alone cannot tell them
+        apart: Local Network and notifications both offer "Allow" / "Don't Allow".
+        """
+        return list(self._alert_titles)
 
     def app_crash_signal(self) -> str | None:
         """Whether the app under test has crashed, from `XCUIApplication.state` (BE-0424).
@@ -852,7 +941,7 @@ class XcuitestDriver:
         or unexpected tree is equally consistent with a system alert covering the app or a deliberate
         `background` step, while a backgrounded-but-alive app reports one of the running states here.
 
-        Simulator only. On a real device (`xcuitest.deviceType: device`) the same `notRunning` can
+        Simulator only. On a real device (`runsOn.ios.kind: device`) the same `notRunning` can
         mean an OS memory-pressure kill instead, and there is no `.ips` report on this host to attach
         anyway — so this answers `None` outright, the same "cannot confirm" a backend with no signal
         at all gives, rather than misreading an OS kill as an app crash.
@@ -880,7 +969,13 @@ class XcuitestDriver:
         return banners[0]["frame"] if banners else None
 
     def set_interruption_policy(
-        self, rules: Sequence[tuple[frozenset[str], str]], governs: bool
+        self,
+        rules: Sequence[tuple[frozenset[str], str, frozenset[str]]],
+        governs: bool,
+        *,
+        in_tree_rules: Sequence[tuple[frozenset[str], str, frozenset[str]]] = (),
+        pacing: base.AlertPacing | None = None,
+        scenario_start: bool = False,
     ) -> None:
         """Push the button policy the runner's interruption monitor applies.
 
@@ -892,22 +987,36 @@ class XcuitestDriver:
         only the rules this surface can actually meet: an alert raised inside the application's own
         process never interrupts an XCUITest interaction, so its rules are dropped (BE-0406).
 
-        `governs` is true for any scenario whose `systemAlertHandling` is on, independent of whether
+        `governs` is true for any scenario whose system-alert guard is on, independent of whether
         any rule survived that drop — a real declaration filtered down to nothing this surface can
         act on is not the same as no declaration at all, and only the latter should keep the silent
         grant an absent monitor gives (BE-0406 Unit 2b).
 
         A rule's identifying labels are sent as a sorted list so the request is byte-stable across
         runs — the set is order-free, and a stable body keeps a replayed request comparable.
+
+        The in-tree rules follow the native ones, each marked with its surface (BE-0461): the runner
+        matches each surface's rules in the order they arrive, so appending keeps both orders. The
+        runner answers them only inside a resolving `/elements`; its interruption monitor never
+        matches one.
         """
-        reply = self._transport(
-            "POST",
-            "/interruptionPolicy",
-            {
-                "rules": [{"identify": sorted(identify), "tap": tap} for identify, tap in rules],
-                "governs": governs,
-            },
-        )
+        body: dict[str, object] = {
+            "rules": [
+                *(_policy_rule(rule, "native") for rule in rules),
+                *(_policy_rule(rule, "inTree") for rule in in_tree_rules),
+            ],
+            "governs": governs,
+        }
+        if pacing is not None:
+            body |= {
+                "pollIntervalSeconds": pacing.poll_interval,
+                "retapDelaySeconds": pacing.retap_delay,
+                "maxTapsPerShowing": pacing.max_taps,
+                "giveUpSeconds": pacing.give_up,
+            }
+        if scenario_start:
+            body["scenarioStart"] = True
+        reply = self._transport("POST", "/interruptionPolicy", body)
         if reply.status != _OK:
             # A runner that did not store the policy answers the next interrupting alert with
             # XCUITest's own default button, which is the silent grant this method exists to end —
@@ -989,6 +1098,10 @@ class XcuitestDriver:
         # iOS has no hardware back: tap the OS navigation back button. Reuses `tap` rather than
         # re-issuing the actuate call (BE-0210).
         self.tap({"id": base.OS_BACK_BUTTON})
+
+    def goto(self, url: str) -> None:  # noqa: ARG002  # Driver shape
+        # An iOS deep link is its own item (BE-0464's out-of-scope list), not a `navigate` alias.
+        raise base.UnsupportedAction("navigate is web-backend-only; iOS opens no URL mid-run")
 
     def type_text(self, text: str) -> None:
         # `text` is deliberately absent from the record — not even its length (see `actuation.py`).
@@ -1105,3 +1218,29 @@ def _post_target(transport: TransportFn, bundle_id: str) -> None:
         raise XcuitestChannelError(
             f"runner could not retarget to {bundle_id!r}: the handler raised (status={reply.status})"
         )
+
+
+# The identifier the runner gives the one non-button entry it adds per SpringBoard alert to a
+# `/systemAlert/query` reply: the alert's own title, as its label. Kept out of every button list, so
+# a selector or a position rule only ever counts and resolves real buttons.
+_ALERT_TITLE_ID = "bajutsu.systemAlert.title"
+
+
+def _split_alert_titles(elements: list[base.Element]) -> tuple[list[base.Element], list[str]]:
+    """A `/systemAlert/query` reply's buttons, and the titles of the alerts they sit on."""
+    buttons = [el for el in elements if el["identifier"] != _ALERT_TITLE_ID]
+    titles = [el["label"] for el in elements if el["identifier"] == _ALERT_TITLE_ID and el["label"]]
+    return buttons, titles
+
+
+def _policy_rule(
+    rule: tuple[frozenset[str], str, frozenset[str]], surface: str
+) -> dict[str, object]:
+    """One `/interruptionPolicy` rule entry, its sets sorted so the body is byte-stable."""
+    identify, tap, exclude = rule
+    return {
+        "identify": sorted(identify),
+        "tap": tap,
+        **({"exclude": sorted(exclude)} if exclude else {}),
+        "surface": surface,
+    }

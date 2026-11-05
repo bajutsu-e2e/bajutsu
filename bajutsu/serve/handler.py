@@ -29,7 +29,7 @@ from bajutsu.serve.helpers import (
     range_reply,
     valid_run_id,
 )
-from bajutsu.serve.routes import ROUTES, match_route
+from bajutsu.serve.routes import ROUTES, json_body_cap, match_route
 from bajutsu.serve.sessions import MACHINE
 from bajutsu.serve.state import ServeState
 from bajutsu.serve.upload_artifacts import ArtifactKind
@@ -78,9 +78,11 @@ class _StdlibCtx:
         params: dict[str, str],
         body: dict[str, Any],
         qs: Callable[[str], str | None],
+        *,
         actor: Callable[[], str | None],
         session: Callable[[], str | None],
         machine_org: Callable[[], str | None],
+        ci_job: Callable[[], dict[str, str] | None],
     ) -> None:
         self._params = params
         self._body = body
@@ -88,6 +90,7 @@ class _StdlibCtx:
         self._actor = actor
         self._session = session
         self._machine_org = machine_org
+        self._ci_job = ci_job
 
     def path_param(self, name: str) -> str:
         # The matcher runs on the raw (still percent-encoded) request path, so decode here to honor
@@ -111,6 +114,9 @@ class _StdlibCtx:
     def machine_org(self) -> str | None:
         return self._machine_org()
 
+    def ci_job(self) -> dict[str, str] | None:
+        return self._ci_job()
+
 
 # C901 and PLR0915 fold each nested function's count into the function enclosing it, so this score
 # measures the handler methods defined below, not branching here. Ruff bounds each of those on its
@@ -130,6 +136,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:  # noqa: C
         # person it also resolves `org_of(None)`, so the write lands in `default` rather than their
         # own tenant. One read, used everywhere, cannot disagree with itself.
         _machine_org: str | None = None
+        _ci_job: dict[str, str] | None = None
         _gate_actor: str | None = None
 
         def end_headers(self) -> None:
@@ -256,6 +263,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:  # noqa: C
             # instance serves a whole keep-alive connection, so a value left behind here would leak
             # one request's tenant into the next request on the same socket.
             self._machine_org = None
+            self._ci_job = None
             self._gate_actor = None
             if not self._host_ok():
                 # DNS-rebinding defense (BE-0121): a Host that names no bound interface is refused
@@ -301,6 +309,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:  # noqa: C
                     # — a cross-tenant hole on exactly the routes just opened. Reusing the principal
                     # already read above also keeps this off a second session lookup.
                     self._machine_org = principal.org
+                    self._ci_job = principal.ci_job
                 # For an OAuth session (an identity) with a database wired, enforce the user's role
                 # on mutating endpoints (BE-0015 7c-2). A token/Bearer request has no identity and
                 # stays full-access (the operator credential). A machine principal never reaches
@@ -383,7 +392,13 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:  # noqa: C
                 self._json({"error": "not found"}, 404)
                 return
             ctx = _StdlibCtx(
-                params, body, self._qs, self._actor, self._session_id, lambda: self._machine_org
+                params,
+                body,
+                self._qs,
+                actor=self._actor,
+                session=self._session_id,
+                machine_org=lambda: self._machine_org,
+                ci_job=lambda: self._ci_job,
             )
             payload, code = route.handle(state, ctx)
             if route.content_type is not None:
@@ -440,6 +455,14 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:  # noqa: C
                 self._handle_scenarios_upload()
                 return
             length = int(self.headers.get("Content-Length") or 0)
+            cap = json_body_cap(ROUTES, path)
+            if length > cap:
+                # Refused before a byte is read, so an oversized body never reaches memory; the
+                # connection closes rather than draining it. `http.server` reads no chunked body
+                # (no Content-Length means an empty one), so the declared length is the whole bound.
+                self.close_connection = True
+                self._json({"error": f"request body over {cap} bytes"}, 413)
+                return
             # Block cross-origin state-changing requests unconditionally (BE-0121) — not only when a
             # token is configured. The no-token loopback default is the common `make serve` case, and
             # an unguarded POST there is the CSRF-to-arbitrary-config hole this closes.
@@ -606,6 +629,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:  # noqa: C
                         sha256=receiver.digest(),
                         actor=self._actor(),
                         machine_org=self._machine_org,
+                        ci_job=self._ci_job,
                     )
                 )
             except Exception as exc:
@@ -800,6 +824,7 @@ _JS_MODULES = (
     "serve.crawl.mjs",
     "serve.metrics.mjs",
     "serve.orgs.mjs",
+    "serve.runset.mjs",
     "serve.author.mjs",
 )
 _JS_ENTRY = "serve.author.mjs"  # the module <script type="module"> loads; pulls in the rest

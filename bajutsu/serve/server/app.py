@@ -2,10 +2,10 @@
 
 `make_app(state)` serves the **same** SPA + API as the local stdlib handler, delegating every
 request to the shared `bajutsu.serve.operations` — so the local and hosted backends stay in
-lockstep and only differ in which seam implementations the `ServeState` carries. This module is
-imported only when the server backend is selected (the import guard in
-``tests/serve/test_import_guard.py`` keeps it off the default path); FastAPI lives in the
-``server`` optional-dependency group.
+lockstep and only differ in which seam implementations the `ServeState` carries. FastAPI is a base
+dependency (BE-0449), but this module is still imported only when the FastAPI transport is selected
+(the import guard in ``tests/serve/test_import_guard.py`` keeps it off the default path), so the CLI
+starts without loading it.
 
 The uniform (JSON/text) routes are generated from the shared `bajutsu.serve.routes` registry
 (BE-0253 Part 3): `make_app` iterates `ROUTES` and registers each entry that carries a `handle` and
@@ -13,8 +13,10 @@ is not `local_only`, so this backend's route table is derived from the same sour
 stdlib handler dispatches from — the two can't drift. `off_loop` routes (the SPA index, the
 ES-module frontend, run file / range / archive serving, SSE, the OAuth round-trip, login, and the
 raw-body uploads) write their own responses and stay bespoke below. `local_only` routes
-(`/api/ant/login`, `/api/capture/*`) are deliberately skipped: they need a single-process model
-(an in-process `Driver`, a machine-global credential) a horizontally-scaled deployment can't offer.
+(`/api/ant/login`, `/api/capture/*`) need a single-process model (an in-process `Driver`, a
+machine-global credential) that a horizontally scaled deployment can't offer, so a hosted
+deployment skips them. A deployment that is not hosted, such as the local start (BE-0449), sits at
+the device and registers them, so authoring keeps capture and the live step picker.
 
 The transport-specific parts mirror the stdlib handler one-to-one: the auth gate (BE-0051), the
 unconditional CSRF Origin check and Host allowlist (BE-0121), the session cookie, and the hardening
@@ -23,16 +25,27 @@ response headers.
 
 from __future__ import annotations
 
+import errno
 import json
 import logging
+import os
+import stat
 from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 from fastapi import FastAPI, Request, Response
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+    StreamingResponse,
+)
 from starlette.requests import ClientDisconnect
+from starlette.types import Receive, Scope, Send
 
+from bajutsu.common.run_meta.object_store import content_type_for
 from bajutsu.serve import gate, oplog
 from bajutsu.serve import operations as ops
 from bajutsu.serve.handler import (
@@ -48,7 +61,8 @@ from bajutsu.serve.helpers import (
     range_reply,
     valid_run_id,
 )
-from bajutsu.serve.routes import ROUTES, Handle, Route
+from bajutsu.serve.routes import ROUTES, Handle, Route, json_body_cap
+from bajutsu.serve.server.file_object_store import FileObjectStore, PendingPut
 from bajutsu.serve.sessions import MACHINE
 from bajutsu.serve.state import ServeState
 from bajutsu.serve.upload_artifacts import ArtifactKind
@@ -57,6 +71,7 @@ from bajutsu.serve.uploads import (
     MAX_UPLOAD_BYTES,
     BoundedZipReceiver,
     UploadTooLarge,
+    bounded_zip_receiver,
 )
 
 # How long an idle SSE stream waits before sending a `:keepalive` comment (and rechecking for a
@@ -98,15 +113,18 @@ class _FastapiCtx:
         self,
         request: Request,
         body: dict[str, Any],
+        *,
         actor: Callable[[], str | None],
         session: Callable[[], str | None],
         machine_org: Callable[[], str | None],
+        ci_job: Callable[[], dict[str, str] | None],
     ) -> None:
         self._request = request
         self._body = body
         self._actor = actor
         self._session = session
         self._machine_org = machine_org
+        self._ci_job = ci_job
 
     def path_param(self, name: str) -> str:
         return str(self._request.path_params[name])
@@ -125,6 +143,9 @@ class _FastapiCtx:
 
     def machine_org(self) -> str | None:
         return self._machine_org()
+
+    def ci_job(self) -> dict[str, str] | None:
+        return self._ci_job()
 
 
 def _serve_artifact(art: Any, request: Request, *, filename: str | None = None) -> Response:
@@ -147,6 +168,160 @@ def _serve_artifact(art: Any, request: Request, *, filename: str | None = None) 
     if filename is not None:
         headers = {**headers, "Content-Disposition": f'attachment; filename="{filename}"'}
     return Response(chunk, status_code=status, media_type=art.content_type, headers=headers)
+
+
+def _store_signature_ok(
+    store: FileObjectStore, method: str, key: str, content_type: str, request: Request
+) -> bool:
+    """Whether the request's ``expires`` / ``sig`` query parameters authorize *method* on *key*."""
+    try:
+        expires = int(request.query_params.get("expires", ""))
+    except ValueError:
+        return False
+    return store.signer.verify(
+        method, key, content_type, expires, request.query_params.get("sig", "")
+    )
+
+
+async def _json_body(request: Request, cap: int) -> dict[str, Any] | Response:
+    """A POST's JSON object, read at most *cap* bytes deep, or the error response to send instead.
+
+    Parsed the way the stdlib handler parses it (empty -> {}, malformed or non-object -> 400), so
+    both backends reject the same input the same way. The cap is checked against Content-Length
+    first and again while reading, so a chunked or lying body is cut off at *cap* rather than
+    buffered whole (413).
+    """
+    too_large = _result(({"error": f"request body over {cap} bytes"}, 413))
+    declared = request.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > cap:
+        return too_large
+    chunks: list[bytes] = []
+    received = 0
+    async for chunk in request.stream():
+        received += len(chunk)
+        if received > cap:
+            return too_large
+        chunks.append(chunk)
+    try:
+        parsed = json.loads(b"".join(chunks) or b"{}")
+    except json.JSONDecodeError:
+        return _result(({"error": "bad json"}, 400))
+    if not isinstance(parsed, dict):
+        return _result(({"error": "expected a JSON object"}, 400))
+    return parsed
+
+
+def _store_put_cap() -> int:
+    # Read live, like `BoundedZipReceiver`, so a test can shrink the cap with a monkeypatch.
+    return bounded_zip_receiver.MAX_UPLOAD_BYTES
+
+
+async def _receive_store_body(
+    request: Request, pending: PendingPut, cap: int
+) -> tuple[dict[str, str], int] | None:
+    """Stream the request body into *pending* and commit it, or abort it and return the error."""
+    received = 0
+    try:
+        async for chunk in request.stream():
+            received += len(chunk)
+            # Counted while reading too, so a lying or absent Content-Length can't overrun it.
+            if received > cap:
+                await run_in_threadpool(pending.abort)
+                return {"error": f"upload too large (max {cap} bytes)"}, 413
+            await run_in_threadpool(pending.write, chunk)
+        await run_in_threadpool(pending.commit)
+    except ClientDisconnect:
+        await run_in_threadpool(pending.abort)
+        return {"error": "upload interrupted"}, 400
+    except OSError:
+        # The server's own fault (a full disk on write or fsync), not the uploader's: a 5xx lets a
+        # worker tell the two apart.
+        await run_in_threadpool(pending.abort)
+        return {"error": "upload could not be stored"}, 500
+    except BaseException:
+        # A cancelled request must not leave its staging file behind in the store.
+        pending.abort()
+        raise
+    return None
+
+
+class _StoreFileResponse(FileResponse):
+    """A `FileResponse` that answers 404, not a 500, when the object vanished after the route found
+    it (a concurrent purge). The stat it takes here is the one Starlette would take, so range
+    support is unchanged; a delete landing after the headers are sent still ends that read."""
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if self.stat_result is None:
+            try:
+                st = await run_in_threadpool(os.stat, self.path)
+            except FileNotFoundError:
+                st = None
+            if st is None or not stat.S_ISREG(st.st_mode):
+                await _result(({"error": "not found"}, 404))(scope, receive, send)
+                return
+            self.stat_result = st
+            self.set_stat_headers(st)
+        await super().__call__(scope, receive, send)
+
+
+def _begin_put_error(e: OSError) -> tuple[dict[str, Any], int]:
+    # A key component that is an existing file, or a name too long for the filesystem: the key
+    # conflicts with what the store holds. No path in the message.
+    if e.errno in (errno.EEXIST, errno.ENOTDIR, errno.ENAMETOOLONG):
+        return {"error": "object key conflicts with the store"}, 409
+    # Anything else (a full disk, a permission loss) is ours, like `_receive_store_body`'s 500.
+    return {"error": "upload could not be stored"}, 500
+
+
+def _register_store_routes(app: FastAPI, store: FileObjectStore) -> None:
+    """Serve the `FileObjectStore`'s signed GET and PUT URLs (BE-0449). The signature is the only
+    authorization, so each route verifies it before touching the disk, and accepts nothing else."""
+
+    @app.get(gate.SIGNED_STORE_PREFIX + "{key:path}")
+    async def store_get(key: str, request: Request) -> Response:
+        if not _store_signature_ok(store, "GET", key, "", request):
+            return _result(({"error": "invalid or expired signature"}, 403))
+        try:
+            path = store.path_for(key)
+            found = await run_in_threadpool(path.is_file)
+        except (ValueError, OSError):  # an escaping key, or a name the filesystem rejects
+            found = False
+        if not found:
+            return _result(({"error": "not found"}, 404))
+        return _StoreFileResponse(
+            path,
+            media_type=content_type_for(key),
+            headers={
+                "Cache-Control": SIGNED_REDIRECT_CACHE_CONTROL,
+                # Worker-written HTML or SVG is served from this origin; a sandbox without
+                # allow-same-origin keeps it from acting as the UI (cookies, same-origin API calls).
+                "Content-Security-Policy": "sandbox",
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
+
+    @app.put(gate.SIGNED_STORE_PREFIX + "{key:path}")
+    async def store_put(key: str, request: Request) -> Response:
+        content_type = request.query_params.get("ct", "")
+        if not _store_signature_ok(store, "PUT", key, content_type, request):
+            return _result(({"error": "invalid or expired signature"}, 403))
+        # The signature binds the content type, so a body sent under another one is refused the
+        # way S3 refuses it (a signature mismatch), not stored under the wrong type.
+        if (request.headers.get("content-type") or "") != content_type:
+            return _result(({"error": "content type does not match the signed URL"}, 403))
+        cap = _store_put_cap()
+        if int(request.headers.get("content-length") or 0) > cap:
+            return _result(({"error": f"upload too large (max {cap} bytes)"}, 413))
+        try:
+            pending = await run_in_threadpool(store.begin_put, key)
+        except ValueError:
+            return _result(({"error": "invalid object key"}, 400))
+        except OSError as e:
+            return _result(_begin_put_error(e))
+        error = await _receive_store_body(request, pending, cap)
+        if error is not None:
+            return _result(error)
+        return Response(status_code=200)
 
 
 # C901 and PLR0915 fold each nested function's count into the function enclosing it, so this score
@@ -185,6 +360,12 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
         org = getattr(request.state, "machine_org", None)
         return org if isinstance(org, str) else None
 
+    def _ci_job(request: Request) -> dict[str, str] | None:
+        """The CI job a machine principal's session was minted for, stashed by `_security_gate`
+        beside `machine_org` from the same principal read."""
+        job = getattr(request.state, "ci_job", None)
+        return job if isinstance(job, dict) else None
+
     def _session(request: Request) -> str | None:
         """This request's login-session id, or None for a shared-token caller (BE-0393 unit 2) — the
         hosted twin of the stdlib handler's `_session_value`. A cookie naming a session the store no
@@ -199,6 +380,9 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
             return None
         sid = request.cookies.get(_SESSION_COOKIE)
         return sid if sid is not None and state.auth.valid_session(sid) else None
+
+    # The `file://` store's routes exist only when this server is that store (BE-0449).
+    file_store = state.object_store if isinstance(state.object_store, FileObjectStore) else None
 
     @app.middleware("http")
     async def _security_gate(request: Request, call_next: Any) -> Response:
@@ -228,8 +412,11 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
         # what stops the two backends disagreeing about whether a caller holding a machine cookie
         # may still load the index or re-exchange its token — a divergence on a security branch is
         # the failure BE-0253 put this policy in `gate.py` to prevent.
-        if state.auth.token is not None and not gate.is_open(
-            method, path, oidc=state.auth.oidc is not None
+        signed_store_route = file_store is not None and gate.is_signed_store_route(method, path)
+        if (
+            state.auth.token is not None
+            and not signed_store_route
+            and not gate.is_open(method, path, oidc=state.auth.oidc is not None)
         ):
             if not _authorized(request):
                 return _hardened(JSONResponse({"error": "unauthorized"}, status_code=401))
@@ -250,6 +437,7 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
                 request.state.gate_actor = principal.identity
             if is_machine and principal is not None:
                 request.state.machine_org = principal.org
+                request.state.ci_job = principal.ci_job
             # Enforce the user's role on mutating endpoints for an OAuth session (an identity)
             # when a database is wired (BE-0015 7c-2); token/Bearer has no identity and stays
             # full-access. A machine principal never reaches that gate — the allowlist above is
@@ -310,6 +498,17 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
             return _result(({"error": "not found"}, 404))
         return Response(_asset(asset), media_type="text/javascript; charset=utf-8")
 
+    # The capture screenshot (off_loop, `local_only`): registered only where the local-only routes
+    # are, below. Mirrors the stdlib handler's `_serve_capture_screenshot`.
+    async def capture_screenshot(request: Request) -> Response:
+        session = state.capture
+        if session is None or not session.screenshot_path.exists():
+            return _result(({"error": "no active capture session"}, 404))
+        if session.actor is not None and _actor(request) != session.actor:
+            return _result(({"error": "capture session belongs to another user"}, 403))
+        data = await run_in_threadpool(session.screenshot_path.read_bytes)
+        return Response(data, media_type="image/png", headers={"Cache-Control": "no-cache"})
+
     @app.get("/runs/{run_id}/archive.zip")
     async def run_archive(run_id: str, request: Request) -> Response:
         # A one-file download of the whole run (BE-0060), through the same org-scoped store as the
@@ -363,7 +562,10 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
     # --- login + OAuth round-trip (off_loop, set cookies) ---
 
     @app.post(_LOGIN_PATH)
-    async def login(body: dict[str, Any]) -> JSONResponse:
+    async def login(request: Request) -> Response:
+        body = await _json_body(request, json_body_cap(ROUTES, _LOGIN_PATH))
+        if isinstance(body, Response):
+            return body
         payload, status, sid = ops.login(state, str(body.get("token", "") or ""))
         resp = JSONResponse(payload, status_code=status)
         if sid is not None:
@@ -371,7 +573,10 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
         return resp
 
     @app.post(gate.OIDC_EXCHANGE_PATH)
-    async def oidc_exchange(body: dict[str, Any]) -> JSONResponse:
+    async def oidc_exchange(request: Request) -> Response:
+        body = await _json_body(request, json_body_cap(ROUTES, gate.OIDC_EXCHANGE_PATH))
+        if isinstance(body, Response):
+            return body
         # Mirror of the stdlib handler's `_post_oidc_exchange` (BE-0414 unit 1): a CI job presents
         # its OIDC token and gets a machine session cookie, so every later call in the pipeline is
         # an ordinary session request both backends already handle identically.
@@ -517,6 +722,7 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
                     sha256=received.digest(),
                     actor=_actor(request),
                     machine_org=_machine_org(request),
+                    ci_job=_ci_job(request),
                 )
             )
         finally:
@@ -564,6 +770,12 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
         finally:
             received.cleanup()
 
+    # --- the `file://` store's signed-URL routes (off_loop, BE-0449) ---
+    # Registered here and not in the shared registry: the stdlib local handler never serves them,
+    # because the local start that uses this store runs on this app (BE-0449 unit 1).
+    if file_store is not None:
+        _register_store_routes(app, file_store)
+
     # --- uniform (JSON / text) routes, generated from the shared registry (BE-0253 Part 3) ---
 
     def _register(route: Route) -> None:
@@ -581,19 +793,17 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
                 # non-object -> 400) rather than via a typed `dict` param, so a bodyless POST (cancel,
                 # activate, restore) isn't forced to 422 and the two backends reject malformed input
                 # identically.
-                try:
-                    parsed = json.loads(await request.body() or b"{}")
-                except json.JSONDecodeError:
-                    return _result(({"error": "bad json"}, 400))
-                if not isinstance(parsed, dict):
-                    return _result(({"error": "expected a JSON object"}, 400))
+                parsed = await _json_body(request, route.max_body)
+                if isinstance(parsed, Response):
+                    return parsed
                 body = parsed
             ctx = _FastapiCtx(
                 request,
                 body,
-                lambda: _actor(request),
-                lambda: _session(request),
-                lambda: _machine_org(request),
+                actor=lambda: _actor(request),
+                session=lambda: _session(request),
+                machine_org=lambda: _machine_org(request),
+                ci_job=lambda: _ci_job(request),
             )
             # The `ops` call blocks (disk / network / subprocess), so run it off the event loop —
             # uniformly, so a route like the from-Git config bind or compose stays non-blocking
@@ -608,12 +818,15 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
 
         app.add_api_route(route.path, endpoint, methods=[route.method])
 
-    # Declare the omission on the state the app will serve, so the boot read can report it and the
-    # UI disables Capture instead of offering a mode whose first call 404s (issue 1721). Set here,
-    # beside the loop that causes it, so the two cannot drift.
-    state.serves_local_routes = False
+    # A hosted deployment skips the `local_only` routes; one that is not hosted (the local start,
+    # `serve --asgi`) sits at the device and serves them (BE-0449). Declared on the state the app
+    # serves, so the boot read reports it and the UI disables Capture only where its first call
+    # would 404 (issue 1721). Set here, beside the loop it governs, so the two cannot drift.
+    state.serves_local_routes = not state.hosted
+    if state.serves_local_routes:
+        app.add_api_route("/api/capture/screenshot", capture_screenshot, methods=["GET"])
     for route in ROUTES:
-        if route.handle is not None and not route.local_only:
+        if route.handle is not None and (state.serves_local_routes or not route.local_only):
             _register(route)
 
     return app

@@ -8,7 +8,7 @@ that each rebuild an already-validated `Scenario` in a way Pydantic never re-val
 `expand_components` (a `${params.*}` substitution can reveal a collision the as-loaded tree never
 showed), `apply_setups` (a prepended setup's own steps, read as a bare `list[Step]` that may never
 have passed through a full `Scenario.model_validate`), and `with_lifecycle_phases`
-(`bajutsu/common/runner/pipeline.py`; a target config's `before`/`after` hooks, read the same
+(`bajutsu/common/runner/pipeline.py`; a target config's `hooks.setup`/`cleanup`, read the same
 unvalidated way). `expand_data`'s per-row `${row.*}` substitution needs no such re-call:
 `_instantiate_rows` re-validates each row through `Scenario.model_validate`, which re-fires every
 `model_validator` including this one.
@@ -26,6 +26,8 @@ from __future__ import annotations
 from collections.abc import Iterator
 from typing import TYPE_CHECKING
 
+from ._functions import _iter_steps, _scenario_step_phases
+
 if TYPE_CHECKING:
     from bajutsu.common.scenario.models.actions import HttpRequest
     from bajutsu.common.scenario.models.steps import Step
@@ -35,31 +37,14 @@ if TYPE_CHECKING:
 
 def _walk_http_requests(steps: list[Step]) -> Iterator[HttpRequest]:
     """Every `http` action reachable from *steps*, recursing into every nested step list."""
-    for step in steps:
+    for step in _iter_steps(steps):
         if step.http is not None:
             yield step.http
-        if step.if_ is not None:
-            yield from _walk_http_requests(step.if_.then)
-            if step.if_.else_ is not None:
-                yield from _walk_http_requests(step.if_.else_)
-        elif step.for_each is not None:
-            yield from _walk_http_requests(step.for_each.steps)
-        elif step.web is not None:
-            yield from _walk_http_requests(step.web.steps)
-        elif step.app is not None:
-            yield from _walk_http_requests(step.app.steps)
-        elif step.group is not None:
-            yield from _walk_http_requests(step.group.steps)
-        elif step.steps is not None:
-            yield from _walk_http_requests(step.steps)
 
 
 def _check_http_extract_vars(scenario: Scenario) -> None:
     """Raise on the first `extractBody`/`saveBody` `var` collision anywhere in *scenario*'s steps."""
-    phases = [scenario.steps, scenario.before]
-    phases.extend(rule.steps for rule in scenario.after)
-    phases.extend(entry.steps for entry in scenario.interrupts)
-    for steps in phases:
+    for steps in _scenario_step_phases(scenario):
         for http in _walk_http_requests(steps):
             dup = http.duplicate_extract_var()
             if dup is not None:

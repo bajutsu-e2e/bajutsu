@@ -54,8 +54,22 @@ final class APIHandler: APIProtocol {
     /// `DispatchQueue.main.sync`, which serializes whether or not this queue does.
     let operations = DispatchQueue(label: "bajutsu.runner.operations", qos: .userInitiated)
 
-    init(provider: ElementProviding) {
+    /// The interruption policy and its records. Injectable so a test can drive the pacing on its
+    /// own clock; the runner uses the process-wide store the interruption monitor also reads.
+    private let policyStore: InterruptionPolicyStore
+
+    /// The touch-synthesis markers (BE-0462). Injectable so a test can read the ids a request reports
+    /// against the ones its fake provider marked; the runner uses the process-wide ledger its
+    /// interruption monitor also marks into.
+    private let ledger: SynthesisLedger
+
+    init(
+        provider: ElementProviding, policyStore: InterruptionPolicyStore = .shared,
+        ledger: SynthesisLedger = .shared
+    ) {
         self.provider = provider
+        self.policyStore = policyStore
+        self.ledger = ledger
     }
 
     // MARK: - Interruption policy
@@ -72,11 +86,24 @@ final class APIHandler: APIProtocol {
                 .init(body: .json(.init(status: .error, message: "expected a JSON body")))
             )
         }
-        InterruptionPolicyStore.shared.setPolicy(
+        let defaults = AlertPacing()
+        policyStore.setPolicy(
             InterruptionPolicy(
-                rules: body.rules.map { InterruptionRule(identify: $0.identify, tap: $0.tap) },
-                governs: body.governs
-            )
+                rules: body.rules.map {
+                    InterruptionRule(
+                        identify: $0.identify, tap: $0.tap, exclude: $0.exclude ?? [],
+                        surface: $0.surface.map(alertSurface) ?? .native
+                    )
+                },
+                governs: body.governs,
+                pacing: AlertPacing(
+                    pollInterval: body.pollIntervalSeconds ?? defaults.pollInterval,
+                    retapDelay: body.retapDelaySeconds ?? defaults.retapDelay,
+                    maxTaps: body.maxTapsPerShowing ?? defaults.maxTaps,
+                    giveUp: body.giveUpSeconds ?? defaults.giveUp
+                )
+            ),
+            scenarioStart: body.scenarioStart ?? false
         )
         return .ok(.init(body: .json(.init(status: .ok))))
     }
@@ -88,9 +115,15 @@ final class APIHandler: APIProtocol {
     func drainInterruptions(
         _ input: Operations.drainInterruptions.Input
     ) async throws -> Operations.drainInterruptions.Output {
-        let drained = InterruptionPolicyStore.shared.drain()
+        let drained = policyStore.drain()
         let reply = Components.Schemas.InterruptionsReply(
-            labels: drained.tapped, unmatched: drained.declined, banners: drained.banners
+            labels: drained.tapped, unmatched: drained.declined, banners: drained.banners,
+            tappedAlerts: drained.tappedAlerts,
+            tappedSynthesisIds: drained.tappedSynthesisIds,
+            bannerSynthesisIds: drained.bannerSynthesisIds,
+            tappedSurfaces: drained.tappedSurfaces.map(surfacePayload),
+            unidentified: drained.unidentified,
+            gaveUp: drained.gaveUp.map(gaveUpPayload)
         )
         return .ok(.init(body: .json(reply)))
     }
@@ -109,8 +142,36 @@ final class APIHandler: APIProtocol {
         // A raised snapshot failure (UI in flux) maps to an empty screen, the same as the provider's
         // `try? app.snapshot()` handles a *thrown* one (BE-0105): the run fails loudly downstream
         // when nothing resolves, and the runner keeps serving rather than aborting on the raise.
-        let elements = await caught([]) { self.provider.queryElements() }
-        return .ok(.init(body: .json(elementsReply(store: store, elements: elements))))
+        let mode: AlertResolutionMode
+        switch input.query.resolveAlerts {
+        case nil, ._false:
+            let elements = await caught([]) { self.provider.queryElements() }
+            return .ok(.init(body: .json(elementsReply(store: store, elements: elements))))
+        case ._true: mode = .full
+        case .inTree: mode = .inTree
+        }
+        let force = input.query.forceCheck ?? false
+        let resolver = AlertResolver(provider: provider, store: policyStore, ledger: ledger)
+        let outcome = await caught(AlertResolutionOutcome(elements: [])) {
+            resolver.run(mode: mode, forceCheck: force)
+        }
+        // The whole store drains into this reply, so the driver can treat it as current the way it
+        // treats a `/tap` reply (BE-0407 Unit 6). The record fields are always present, empty
+        // included: their absence is how the driver tells a runner predating BE-0461.
+        var reply = elementsReply(store: store, elements: outcome.elements)
+        let drained = policyStore.drain()
+        reply.labels = drained.tapped
+        reply.unmatched = drained.declined
+        reply.banners = drained.banners
+        reply.tappedAlerts = drained.tappedAlerts
+        reply.tappedSurfaces = drained.tappedSurfaces.map(surfacePayload)
+        reply.unidentified = drained.unidentified
+        reply.gaveUp = drained.gaveUp.map(gaveUpPayload)
+        reply.tappedSynthesisIds = drained.tappedSynthesisIds
+        reply.bannerSynthesisIds = drained.bannerSynthesisIds
+        reply.springboardChecked = outcome.springboardChecked
+        reply.withheld = outcome.withheld
+        return .ok(.init(body: .json(reply)))
     }
 
     func screen(_ input: Operations.screen.Input) async throws -> Operations.screen.Output {
@@ -137,15 +198,15 @@ final class APIHandler: APIProtocol {
         // `point` wins over `handle`, matching the hand-rolled router: a coordinate tap is the one
         // actuation path with no element handle.
         if let point = request.point, point.count == 2 {
-            let result = await caughtActuation { self.provider.tapPoint(x: point[0], y: point[1]) }
-            return .ok(.init(body: .json(withDrain(actuationReply(result)))))
+            let reply = await touchActuation { self.provider.tapPoint(x: point[0], y: point[1]) }
+            return .ok(.init(body: .json(withDrain(reply))))
         }
         guard let handle = request.handle else {
             return .badRequest(.init(body: .json(.init(status: .error, message: "missing handle or point"))))
         }
         let taps = max(request.taps ?? 1, 1)
         let duration = max(request.duration ?? 0, 0)
-        let reply = await actOnHandle(store, handle) { snapshot in
+        let reply = await actOnHandle(store, handle, rearms: true) { snapshot in
             self.provider.tap(backingElement: snapshot.backingElement, taps: taps, duration: duration)
         }
         return .ok(.init(body: .json(withDrain(reply))))
@@ -170,7 +231,7 @@ final class APIHandler: APIProtocol {
         let scale = request.scale ?? 1.0
         let radians = request.radians ?? 0.0
         let kind = request.kind.rawValue
-        return .ok(.init(body: .json(await actOnHandle(store, request.handle) { snapshot in
+        return .ok(.init(body: .json(await actOnHandle(store, request.handle, rearms: true) { snapshot in
             self.provider.gesture(
                 backingElement: snapshot.backingElement, kind: kind, scale: scale, radians: radians
             )
@@ -185,13 +246,13 @@ final class APIHandler: APIProtocol {
                 .init(body: .json(.init(status: .error, message: "missing or invalid from/to coordinates")))
             )
         }
-        let result = await caughtActuation {
+        let reply = await touchActuation {
             self.provider.swipe(
                 fromX: request.from[0], fromY: request.from[1],
                 toX: request.to[0], toY: request.to[1]
             )
         }
-        return .ok(.init(body: .json(actuationReply(result))))
+        return .ok(.init(body: .json(reply)))
     }
 
     func scroll(_ input: Operations.scroll.Input) async throws -> Operations.scroll.Output {
@@ -202,13 +263,13 @@ final class APIHandler: APIProtocol {
                 .init(body: .json(.init(status: .error, message: "missing or invalid from/to coordinates")))
             )
         }
-        let result = await caughtActuation {
+        let reply = await touchActuation {
             self.provider.scroll(
                 fromX: request.from[0], fromY: request.from[1],
                 toX: request.to[0], toY: request.to[1]
             )
         }
-        return .ok(.init(body: .json(actuationReply(result))))
+        return .ok(.init(body: .json(reply)))
     }
 
     // MARK: - Text editing
@@ -217,7 +278,7 @@ final class APIHandler: APIProtocol {
         let request: Components.Schemas.TypeRequest
         switch input.body { case .json(let body): request = body }
         let text = request.text
-        let result = await caughtActuation { self.provider.typeText(text) }
+        let result = await appActuation { self.provider.typeText(text) }
         return .ok(.init(body: .json(actuationReply(result))))
     }
 
@@ -232,19 +293,19 @@ final class APIHandler: APIProtocol {
                 .init(body: .json(.init(status: .error, message: "missing or non-positive count")))
             )
         }
-        let result = await caughtActuation { self.provider.deleteText(count: count) }
+        let result = await appActuation { self.provider.deleteText(count: count) }
         return .ok(.init(body: .json(actuationReply(result))))
     }
 
     func selectAll(_ input: Operations.selectAll.Input) async throws -> Operations.selectAll.Output {
-        let result = await caughtActuation(self.provider.selectAll)
+        let result = await appActuation(self.provider.selectAll)
         return .ok(.init(body: .json(actuationReply(result))))
     }
 
     func copySelection(
         _ input: Operations.copySelection.Input
     ) async throws -> Operations.copySelection.Output {
-        let result = await caughtActuation(self.provider.copySelection)
+        let result = await appActuation(self.provider.copySelection)
         return .ok(.init(body: .json(actuationReply(result))))
     }
 
@@ -256,7 +317,7 @@ final class APIHandler: APIProtocol {
         let request: Components.Schemas.PickerValueRequest
         switch input.body { case .json(let body): request = body }
         let value = request.value
-        return .ok(.init(body: .json(await actOnHandle(store, request.handle) { snapshot in
+        return .ok(.init(body: .json(await actOnHandle(store, request.handle, rearms: true) { snapshot in
             self.provider.setPickerValue(backingElement: snapshot.backingElement, value: value)
         })))
     }
@@ -303,6 +364,35 @@ final class APIHandler: APIProtocol {
         return .ok(.init(body: .json(await actOnHandle(alertStore, request.handle) { snapshot in
             self.provider.tapSystemAlertButton(backingElement: snapshot.backingElement)
         })))
+    }
+
+    /// Applies the pushed policy to the SpringBoard alert a `handleSystemAlert` step judged not to be
+    /// its own, while it still offers the labels the step read (BE-0461 Unit 3).
+    ///
+    /// A raised handler reports `pending`, never `answered`: the step must not read a failed call as
+    /// a press. The store drains into the reply either way, so whatever the call recorded before it
+    /// raised still reaches the driver.
+    func resolveSystemAlert(
+        _ input: Operations.resolveSystemAlert.Input
+    ) async throws -> Operations.resolveSystemAlert.Output {
+        let request: Components.Schemas.SystemAlertResolveRequest
+        switch input.body { case .json(let body): request = body }
+        let resolver = AlertResolver(provider: provider, store: policyStore, ledger: ledger)
+        let status = await caught(SystemAlertResolution.pending) {
+            resolver.resolveSystemAlert(expecting: request.labels)
+        }
+        let drained = policyStore.drain()
+        let reply = Components.Schemas.SystemAlertResolveReply(
+            status: resolvePayload(status),
+            labels: drained.tapped, unmatched: drained.declined, banners: drained.banners,
+            tappedAlerts: drained.tappedAlerts,
+            tappedSynthesisIds: drained.tappedSynthesisIds,
+            bannerSynthesisIds: drained.bannerSynthesisIds,
+            tappedSurfaces: drained.tappedSurfaces.map(surfacePayload),
+            unidentified: drained.unidentified,
+            gaveUp: drained.gaveUp.map(gaveUpPayload)
+        )
+        return .ok(.init(body: .json(reply)))
     }
 
     // MARK: - Cross-app control
@@ -391,6 +481,12 @@ final class APIHandler: APIProtocol {
         }
     }
 
+    private func actuationReply(_ outcome: Synthesized) -> Components.Schemas.ActuationReply {
+        var reply = actuationReply(outcome.result)
+        reply.synthesisId = outcome.synthesisId
+        return reply
+    }
+
     private func appActivationReply(_ result: AppActivationResult) -> Components.Schemas.ActuationReply {
         switch result {
         case .ok: return .init(status: .ok)
@@ -417,23 +513,37 @@ final class APIHandler: APIProtocol {
     private func withDrain(
         _ reply: Components.Schemas.ActuationReply
     ) -> Components.Schemas.ActuationReply {
-        let drained = InterruptionPolicyStore.shared.drain()
+        let drained = policyStore.drain()
         var reply = reply
         reply.labels = drained.tapped
         reply.unmatched = drained.declined
         reply.banners = drained.banners
+        reply.tappedAlerts = drained.tappedAlerts
+        reply.tappedSurfaces = drained.tappedSurfaces.map(surfacePayload)
+        reply.unidentified = drained.unidentified
+        reply.gaveUp = drained.gaveUp.map(gaveUpPayload)
+        reply.tappedSynthesisIds = drained.tappedSynthesisIds
+        reply.bannerSynthesisIds = drained.bannerSynthesisIds
         return reply
     }
 
     /// Resolve *handle* against *store* and, only on a live match, run *work* against its element.
     /// A stale or unknown handle is reported without touching XCUITest at all, exactly as before.
+    ///
+    /// *rearms* marks an actuation XCUITest synthesizes on the application (see `appActuation`).
     private func actOnHandle(
-        _ store: SnapshotStore, _ handle: String,
+        _ store: SnapshotStore, _ handle: String, rearms: Bool = false,
         _ work: @escaping @Sendable (ElementSnapshot) -> TapResult
     ) async -> Components.Schemas.ActuationReply {
         switch store.lookup(handle: handle) {
         case .found(let snapshot):
-            return actuationReply(await caughtActuation { work(snapshot) })
+            let policyStore = policyStore
+            let ledger = ledger
+            return actuationReply(await caught(Synthesized(result: .stale, synthesisId: nil)) {
+                let (result, synthesisId) = ledger.collect { work(snapshot) }
+                if rearms { policyStore.actuationCompleted(result) }
+                return Synthesized(result: result, synthesisId: synthesisId)
+            })
         case .stale:
             return .init(status: .stale)
         case .notFound:
@@ -469,11 +579,14 @@ final class APIHandler: APIProtocol {
     private func caught<T: Sendable>(
         _ fallback: T, _ work: @escaping @Sendable () -> T
     ) async -> T {
-        await serialized {
+        let ledger = ledger
+        return await serialized {
             var result = fallback
             do {
                 try ObjCExceptionCatcher.catchException { result = work() }
             } catch {
+                // A touch the raise cut short left its marker window open (BE-0462).
+                ledger.abandonOpenWindows()
                 FileHandle.standardError.write(
                     Data("bajutsu runner: handler raised, reporting fallback: \(error.localizedDescription)\n".utf8)
                 )
@@ -493,4 +606,75 @@ final class APIHandler: APIProtocol {
     private func caughtActuation(_ work: @escaping @Sendable () -> TapResult) async -> TapResult {
         await caught(.stale, work)
     }
+
+    /// A caught actuation XCUITest synthesizes on the application, which re-arms the native
+    /// showings pressed before it once it completes (`InterruptionPolicyStore.actuationCompleted`).
+    /// A press on a SpringBoard alert's own button and a pure query never come here.
+    ///
+    /// The re-arm runs inside the serialized operation, so no resolving read can slip in between the
+    /// actuation and it and have its fresh key wiped.
+    private func appActuation(_ work: @escaping @Sendable () -> TapResult) async -> TapResult {
+        let policyStore = policyStore
+        return await caughtActuation {
+            let result = work()
+            policyStore.actuationCompleted(result)
+            return result
+        }
+    }
+
+    /// `appActuation` for a coordinate touch, whose reply names the touch it synthesized (BE-0462).
+    ///
+    /// A raised interaction reports `.stale` with no id, the same fallback `caughtActuation` gives:
+    /// whatever the provider marked before the raise, the reply does not claim a completed touch.
+    private func touchActuation(
+        _ work: @escaping @Sendable () -> TapResult
+    ) async -> Components.Schemas.ActuationReply {
+        let policyStore = policyStore
+        let ledger = ledger
+        return actuationReply(await caught(Synthesized(result: .stale, synthesisId: nil)) {
+            let (result, synthesisId) = ledger.collect(work)
+            policyStore.actuationCompleted(result)
+            return Synthesized(result: result, synthesisId: synthesisId)
+        })
+    }
+
+    // MARK: - Alert payloads
+
+    private func alertSurface(_ payload: Components.Schemas.AlertSurface) -> AlertSurface {
+        switch payload {
+        case .native: return .native
+        case .inTree: return .inTree
+        }
+    }
+
+    private func surfacePayload(_ surface: AlertSurface) -> Components.Schemas.AlertSurface {
+        switch surface {
+        case .native: return .native
+        case .inTree: return .inTree
+        }
+    }
+
+    private func resolvePayload(
+        _ status: SystemAlertResolution
+    ) -> Components.Schemas.SystemAlertResolveReply.statusPayload {
+        switch status {
+        case .answered: return .answered
+        case .changed: return .changed
+        case .absent: return .absent
+        case .unidentified: return .unidentified
+        case .pending: return .pending
+        }
+    }
+
+    private func gaveUpPayload(_ record: GaveUpRecord) -> Components.Schemas.GaveUpRecord {
+        .init(identify: record.identify, surface: surfacePayload(record.surface), tap: record.tap)
+    }
+}
+
+/// A caught actuation's outcome and the id of the touch it synthesized, if it synthesized one
+/// (BE-0462). One value rather than a pair, so the id crosses `caught`'s fallback together with the
+/// result it belongs to.
+private struct Synthesized: Sendable {
+    let result: TapResult
+    let synthesisId: String?
 }

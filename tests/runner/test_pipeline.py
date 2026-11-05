@@ -5,10 +5,11 @@ from __future__ import annotations
 import json
 import subprocess
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
-from _runner import _eff, _el, _failing_lease, _fake_driver, _ios_eff, _lease
+from _runner import _eff, _el, _failing_lease, _fake_driver, _ios_eff, _lease, _web_eff
 from conftest import AlertingDriver, guard_rule
 
 from bajutsu.common.backend_cli import simctl
@@ -18,10 +19,16 @@ from bajutsu.common.drivers import base, tracing
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.evidence import NullSink
 from bajutsu.common.evidence.network import NetworkExchange, ScreenTransition
-from bajutsu.common.orchestrator import RunResult, sanitize_source_stem, scenario_slug
+from bajutsu.common.orchestrator import (
+    IgnoredSetting,
+    RunResult,
+    sanitize_source_stem,
+    scenario_slug,
+)
 from bajutsu.common.orchestrator.types._functions import _MAX_SLUG_CHARS
 from bajutsu.common.report.format import video_seconds
 from bajutsu.common.runner import Lease, run_all, run_and_report, run_matrix_and_report
+from bajutsu.common.runner.types import TargetPool
 from bajutsu.common.scenario import Scenario
 
 
@@ -161,7 +168,7 @@ def test_run_all_fails_a_scenario_that_crashes_every_attempt() -> None:
                 # Video is opt-in per scenario (BE-0028); a rule is enough to request it for the
                 # whole scenario regardless of whether its own "on" condition ever fires — this test
                 # is about the disclosure a *requested* recording gets when it is lost to a crash.
-                "capturePolicy": [{"on": {"result": "error"}, "capture": ["video"]}],
+                "capturePolicy": [{"on": {"result": "failure"}, "capture": ["video"]}],
                 "steps": [{"tap": {"id": "ok"}}],
             }
         )
@@ -241,7 +248,7 @@ def test_run_all_shows_the_video_recovered_from_a_scenario_that_crashes_every_at
                 "name": "a",
                 # Video is opt-in per scenario (BE-0028); a rule is enough to request it for the
                 # whole scenario regardless of whether its own "on" condition ever fires.
-                "capturePolicy": [{"on": {"result": "error"}, "capture": ["video"]}],
+                "capturePolicy": [{"on": {"result": "failure"}, "capture": ["video"]}],
                 "steps": [{"tap": {"id": "ok"}}],
             }
         )
@@ -295,7 +302,7 @@ def test_run_all_keeps_an_earlier_attempts_recovered_video_past_a_later_bring_up
         Scenario.model_validate(
             {
                 "name": "a",
-                "capturePolicy": [{"on": {"result": "error"}, "capture": ["video"]}],
+                "capturePolicy": [{"on": {"result": "failure"}, "capture": ["video"]}],
                 "steps": [{"tap": {"id": "ok"}}],
             }
         )
@@ -365,15 +372,15 @@ def test_run_all_honors_the_crash_retries_environment_override(
 
 def test_run_all_forces_erase_on_a_crash_triggered_retry() -> None:
     # A crash-triggered retry now forces the same `erase` precondition a scenario already gets by
-    # declaring `erase: true`, instead of a bare in-place respawn onto the very device that just
+    # declaring `subject.reinstall: erase`, instead of a bare in-place respawn onto the very device that just
     # crashed it — the first (crashing) attempt sees the scenario's own precondition unmodified, the
     # second (retried) attempt sees `erase` forced on.
     state = {"n": 0}
-    erase_seen: list[bool | None] = []
+    erase_seen: list[str | None] = []
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         state["n"] += 1
-        erase_seen.append(scenario.preconditions.erase)
+        erase_seen.append(scenario.preconditions.subject.reinstall)
         if state["n"] == 1:
             raise base.BackendCrashError("runner crashed during the readiness gate (test)")
         return Lease(
@@ -388,22 +395,22 @@ def test_run_all_forces_erase_on_a_crash_triggered_retry() -> None:
     scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
     results = run_all(_eff(), scenarios, lease)
     assert results[0].ok
-    assert erase_seen == [None, True]  # attempt 1 unmodified, attempt 2 forces erase
+    assert erase_seen == [None, "erase"]  # attempt 1 unmodified, attempt 2 forces erase
 
 
 def test_run_all_forces_erase_on_a_crash_triggered_retry_against_an_xcuitest_simulator() -> None:
     # The production route this unit was written for: XCUITest against a Simulator (no
-    # `xcuitest.deviceType: device`, no live WebDriver udid spec). The test above passes
+    # `runsOn.ios.kind: device`, no live WebDriver udid spec). The test above passes
     # `actuator=None`, which short-circuits `erase_precondition_supported` at its very first branch
     # (`actuator != "xcuitest" -> True`) without ever exercising `xcuitest_targets_real_device` /
     # `is_webdriver_endpoint` — so it proves nothing about the iOS lane specifically. This pins the
     # positive half of that guard on the one route the whole item exists for.
     state = {"n": 0}
-    erase_seen: list[bool | None] = []
+    erase_seen: list[str | None] = []
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         state["n"] += 1
-        erase_seen.append(scenario.preconditions.erase)
+        erase_seen.append(scenario.preconditions.subject.reinstall)
         if state["n"] == 1:
             raise base.BackendCrashError("runner crashed during the readiness gate (test)")
         return Lease(
@@ -418,7 +425,7 @@ def test_run_all_forces_erase_on_a_crash_triggered_retry_against_an_xcuitest_sim
     scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
     results = run_all(_ios_eff(), scenarios, lease, actuator="xcuitest")
     assert results[0].ok
-    assert erase_seen == [None, True]  # attempt 1 unmodified, attempt 2 forces erase
+    assert erase_seen == [None, "erase"]  # attempt 1 unmodified, attempt 2 forces erase
 
 
 def test_run_all_degrades_to_a_bare_respawn_when_the_forced_erase_lease_itself_fails() -> None:
@@ -429,17 +436,19 @@ def test_run_all_degrades_to_a_bare_respawn_when_the_forced_erase_lease_itself_f
     # the bare in-place respawn this forced retry replaces. It must instead degrade to that bare
     # respawn, exactly like a scenario that never forced erase at all.
     state = {"n": 0}
-    erase_seen: list[bool | None] = []
+    erase_seen: list[str | None] = []
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         state["n"] += 1
-        erase_seen.append(scenario.preconditions.erase)
+        erase_seen.append(scenario.preconditions.subject.reinstall)
         if state["n"] == 1:
             raise base.BackendCrashError("runner crashed during the readiness gate (test)")
         if state["n"] == 2:
-            assert scenario.preconditions.erase is True  # the forced-erase attempt
+            assert scenario.preconditions.subject.reinstall == "erase"  # the forced-erase attempt
             raise simctl.DeviceError("simctl erase failed (test)")
-        assert scenario.preconditions.erase is None  # degraded to a bare respawn, erase not forced
+        assert (
+            scenario.preconditions.subject.reinstall is None
+        )  # degraded to a bare respawn, erase not forced
         return Lease(
             driver=_fake_driver(),
             sink=NullSink(),
@@ -452,7 +461,7 @@ def test_run_all_degrades_to_a_bare_respawn_when_the_forced_erase_lease_itself_f
     scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
     results = run_all(_ios_eff(), scenarios, lease, actuator="xcuitest", crash_retries=2)
     assert results[0].ok
-    assert erase_seen == [None, True, None]
+    assert erase_seen == [None, "erase", None]
     assert state["n"] == 3
 
 
@@ -471,20 +480,20 @@ def _replaceable_eff() -> Effective:
 
 def _escalating_lease(
     *, crashes: int, stalled: bool = False
-) -> tuple[Callable[[Effective, Scenario], Lease], list[bool | None], list[int]]:
+) -> tuple[Callable[[Effective, Scenario], Lease], list[str | None], list[int]]:
     """A lease factory whose first `crashes` attempts crash mid-scenario, recording what each asked for.
 
     Returns the factory, the `preconditions.erase` each attempt was leased with, and the attempt
     numbers that asked their environment for a replacement device.
     """
     state = {"n": 0}
-    erase_seen: list[bool | None] = []
+    erase_seen: list[str | None] = []
     replacements: list[int] = []
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         state["n"] += 1
         n = state["n"]
-        erase_seen.append(scenario.preconditions.erase)
+        erase_seen.append(scenario.preconditions.subject.reinstall)
         return Lease(
             driver=_crashing_driver() if n <= crashes else _fake_driver(),
             sink=NullSink(),
@@ -508,7 +517,7 @@ def test_a_forced_erase_retry_that_crashes_again_escalates_to_a_replacement_devi
     scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
     results = run_all(_replaceable_eff(), scenarios, lease, actuator="xcuitest", crash_retries=2)
     assert results[0].ok
-    assert erase_seen == [None, True, True]
+    assert erase_seen == [None, "erase", "erase"]
     assert replacements == [2]  # only the forced-erase attempt's crash escalated
 
 
@@ -544,7 +553,7 @@ def test_a_scenario_keeping_its_app_data_is_never_moved_to_a_blank_device() -> N
         Scenario.model_validate(
             {
                 "name": "a",
-                "preconditions": {"reinstall": "overwrite"},
+                "preconditions": {"subject": {"reinstall": "overwrite"}},
                 "steps": [{"tap": {"id": "ok"}}],
             }
         )
@@ -552,7 +561,10 @@ def test_a_scenario_keeping_its_app_data_is_never_moved_to_a_blank_device() -> N
     results = run_all(_replaceable_eff(), scenarios, lease, actuator="xcuitest")
     assert results[0].ok
     assert replacements == []
-    assert erase_seen == [None, None]  # a bare respawn, exactly as before this rung existed
+    assert erase_seen == [
+        "overwrite",
+        "overwrite",
+    ]  # a bare respawn, exactly as before this rung existed
 
 
 def test_no_erase_also_opts_out_of_the_replacement_rung() -> None:
@@ -577,18 +589,18 @@ def test_a_target_with_no_app_path_keeps_the_erase_rung() -> None:
     results = run_all(_ios_eff(app_path=None), scenarios, lease, actuator="xcuitest")
     assert results[0].ok
     assert replacements == []
-    assert erase_seen == [None, True]
+    assert erase_seen == [None, "erase"]
 
 
 def test_a_lease_time_crash_keeps_the_erase_rung() -> None:
     # A crash during bring-up leaves no lease to reach the environment through, so there is nothing to
     # ask — the retry keeps the forced erase rather than silently dropping it for a request nobody got.
     state = {"n": 0}
-    erase_seen: list[bool | None] = []
+    erase_seen: list[str | None] = []
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         state["n"] += 1
-        erase_seen.append(scenario.preconditions.erase)
+        erase_seen.append(scenario.preconditions.subject.reinstall)
         if state["n"] < 3:
             raise base.BackendCrashError("runner crashed during the readiness gate (test)")
         return _lease(eff, scenario)
@@ -596,7 +608,7 @@ def test_a_lease_time_crash_keeps_the_erase_rung() -> None:
     scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
     results = run_all(_ios_eff(), scenarios, lease, actuator="xcuitest", crash_retries=2)
     assert results[0].ok
-    assert erase_seen == [None, True, True]
+    assert erase_seen == [None, "erase", "erase"]
 
 
 def test_a_pinned_run_keeps_the_erase_rung_rather_than_replacing_the_named_device() -> None:
@@ -609,7 +621,7 @@ def test_a_pinned_run_keeps_the_erase_rung_rather_than_replacing_the_named_devic
     )
     assert results[0].ok
     assert replacements == []
-    assert erase_seen == [None, True]  # the strongest rung this route keeps
+    assert erase_seen == [None, "erase"]  # the strongest rung this route keeps
 
 
 def test_a_non_ios_run_never_requests_a_replacement() -> None:
@@ -620,7 +632,7 @@ def test_a_non_ios_run_never_requests_a_replacement() -> None:
     results = run_all(_eff(), scenarios, lease)
     assert results[0].ok
     assert replacements == []
-    assert erase_seen == [None, True]
+    assert erase_seen == [None, "erase"]
 
 
 def test_run_all_still_propagates_a_device_error_from_a_bare_lease() -> None:
@@ -628,7 +640,7 @@ def test_run_all_still_propagates_a_device_error_from_a_bare_lease() -> None:
     # above once *it* also fails) is unrelated to this item's forced-erase retry, so it keeps its
     # pre-existing behavior: it is not swallowed, it propagates out of run_all.
     def lease(eff: Effective, scenario: Scenario) -> Lease:
-        raise simctl.DeviceError("appPath not found (test)")
+        raise simctl.DeviceError("subject.path not found (test)")
 
     scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
     with pytest.raises(simctl.DeviceError):
@@ -666,13 +678,13 @@ def test_a_timed_out_forced_erase_prep_fails_the_scenario_instead_of_degrading()
     # catches (the run aborts, every earned verdict lost), or a verdict published from a host that had
     # just failed to answer `shutdown`. No third lease may be attempted.
     state = {"n": 0}
-    erase_seen: list[bool | None] = []
+    erase_seen: list[str | None] = []
     messages: list[str] = []
     crash = base.BackendCrashError("runner crashed during the readiness gate (test)")
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         state["n"] += 1
-        erase_seen.append(scenario.preconditions.erase)
+        erase_seen.append(scenario.preconditions.subject.reinstall)
         if state["n"] == 1:
             raise crash
         raise simctl.DeviceTimeout(
@@ -685,7 +697,7 @@ def test_a_timed_out_forced_erase_prep_fails_the_scenario_instead_of_degrading()
         _ios_eff(), scenarios, lease, actuator="xcuitest", crash_retries=2, progress=messages.append
     )
     assert not results[0].ok
-    assert erase_seen == [None, True]  # the degraded bare respawn was never leased
+    assert erase_seen == [None, "erase"]  # the degraded bare respawn was never leased
     failure = results[0].failure or ""
     assert "timed out" in failure
     assert "xcrun simctl shutdown ABC" in failure  # the command and deadline reach the operator
@@ -699,11 +711,11 @@ def test_an_ordinary_device_fault_still_degrades_after_the_timeout_split() -> No
     # keeps the bare respawn the degradation was written for. Nothing about the refusal case changed,
     # so a split that swept it up too would be a regression this item never argued for.
     state = {"n": 0}
-    erase_seen: list[bool | None] = []
+    erase_seen: list[str | None] = []
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         state["n"] += 1
-        erase_seen.append(scenario.preconditions.erase)
+        erase_seen.append(scenario.preconditions.subject.reinstall)
         if state["n"] == 1:
             raise base.BackendCrashError("runner crashed during the readiness gate (test)")
         if state["n"] == 2:
@@ -713,7 +725,7 @@ def test_an_ordinary_device_fault_still_degrades_after_the_timeout_split() -> No
     scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
     results = run_all(_ios_eff(), scenarios, lease, actuator="xcuitest", crash_retries=2)
     assert results[0].ok
-    assert erase_seen == [None, True, None]  # degraded to the bare respawn, exactly as before
+    assert erase_seen == [None, "erase", None]  # degraded to the bare respawn, exactly as before
 
 
 def test_a_timed_out_replacement_device_lease_fails_the_scenario_too() -> None:
@@ -723,13 +735,13 @@ def test_a_timed_out_replacement_device_lease_fails_the_scenario_too() -> None:
     # from the forced-erase case generalising. A second scenario asserts the third of the item's three
     # things at once for this rung too: the run-level latch, not just the scenario's own failure.
     state = {"n": 0}
-    erase_seen: list[bool | None] = []
+    erase_seen: list[str | None] = []
     replacements: list[int] = []
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         state["n"] += 1
         n = state["n"]
-        erase_seen.append(scenario.preconditions.erase)
+        erase_seen.append(scenario.preconditions.subject.reinstall)
         if n == 3:  # the attempt after the escalation was requested
             raise simctl.DeviceTimeout("device operation timed out after 120s: xcrun simctl clone")
         if n > 3:  # scenario "b" must never be leased at all
@@ -752,7 +764,7 @@ def test_a_timed_out_replacement_device_lease_fails_the_scenario_too() -> None:
     results = run_all(_replaceable_eff(), scenarios, lease, actuator="xcuitest", crash_retries=3)
     assert replacements == [2]  # the forced-erase retry crashed again and escalated
     assert not results[0].ok and not results[1].ok
-    assert erase_seen == [None, True, True]  # no fourth, degraded lease
+    assert erase_seen == [None, "erase", "erase"]  # no fourth, degraded lease
     assert "timed out" in (results[0].failure or "")
     assert "never leased" in (results[1].failure or "")  # the escalated timeout latches the run too
 
@@ -796,11 +808,11 @@ def test_run_all_skips_forced_erase_when_scenario_declares_reinstall_overwrite()
     # container preserved across a lease. Forcing `erase` on a retry would silently wipe exactly the
     # state such a scenario was written to keep, so the retry keeps today's bare in-place respawn.
     state = {"n": 0}
-    erase_seen: list[bool | None] = []
+    erase_seen: list[str | None] = []
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         state["n"] += 1
-        erase_seen.append(scenario.preconditions.erase)
+        erase_seen.append(scenario.preconditions.subject.reinstall)
         if state["n"] == 1:
             raise base.BackendCrashError("runner crashed during the readiness gate (test)")
         return Lease(
@@ -816,32 +828,25 @@ def test_run_all_skips_forced_erase_when_scenario_declares_reinstall_overwrite()
         Scenario.model_validate(
             {
                 "name": "a",
-                "preconditions": {"reinstall": "overwrite"},
+                "preconditions": {"subject": {"reinstall": "overwrite"}},
                 "steps": [{"tap": {"id": "ok"}}],
             }
         )
     ]
     results = run_all(_eff(), scenarios, lease)
     assert results[0].ok
-    assert erase_seen == [None, None]  # never forced, on either attempt
+    assert erase_seen == ["overwrite", "overwrite"]  # never forced, on either attempt
 
 
-def test_run_all_forces_erase_even_when_preconditions_erase_is_already_false() -> None:
-    # A scenario reaching here with `preconditions.erase is False` is indistinguishable from "the CLI
-    # already resolved an unset scenario to the target's default" — `_filter_scenarios`
-    # (`bajutsu/cli/commands/run.py`) always leaves every scenario with a concrete bool before
-    # `run_all` ever sees it, and that default is `False` unless a target config opts in. That is the
-    # *common* production case, not an edge case, so a guard on `erase is False` would silently
-    # disable this whole unit on the one path it was written for. Only `reinstall: overwrite` skips
-    # the forced erase — it alone actually protects app data, since `reinstall`'s own default
-    # `"clean"` wipes it regardless of `erase`, so a bare `erase: false` never protected anything a
-    # forced retry needs to respect.
+def test_run_all_forces_erase_even_when_the_scenario_reinstalls_clean() -> None:
+    # Only `reinstall: overwrite` skips the forced erase — it alone protects app data. A `clean`
+    # keeps none, so a scenario that writes it is still forced to the `erase` rung on a retry.
     state = {"n": 0}
-    erase_seen: list[bool | None] = []
+    erase_seen: list[str | None] = []
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         state["n"] += 1
-        erase_seen.append(scenario.preconditions.erase)
+        erase_seen.append(scenario.preconditions.subject.reinstall)
         if state["n"] == 1:
             raise base.BackendCrashError("runner crashed during the readiness gate (test)")
         return Lease(
@@ -855,27 +860,33 @@ def test_run_all_forces_erase_even_when_preconditions_erase_is_already_false() -
 
     scenarios = [
         Scenario.model_validate(
-            {"name": "a", "preconditions": {"erase": False}, "steps": [{"tap": {"id": "ok"}}]}
+            {
+                "name": "a",
+                "preconditions": {"subject": {"reinstall": "clean"}},
+                "steps": [{"tap": {"id": "ok"}}],
+            }
         )
     ]
     results = run_all(_eff(), scenarios, lease)
     assert results[0].ok
-    assert erase_seen == [False, True]  # attempt 1 unmodified, attempt 2 forces erase regardless
+    assert erase_seen == [
+        "clean",
+        "erase",
+    ]  # attempt 1 unmodified, attempt 2 forces erase regardless
 
 
 def test_run_all_honors_an_explicit_no_erase_override_on_a_crash_triggered_retry() -> None:
     # `force_erase_on_retry=False` is what `bajutsu run --no-erase` passes (bajutsu/cli/commands/run.py):
-    # the operator's explicit opt-out, captured ahead of `_filter_scenarios` resolving every scenario's
-    # `preconditions.erase` to a concrete bool. Unlike a bare `erase: false` on the scenario itself
-    # (which the test above shows does NOT skip the forced retry, since it is indistinguishable from
-    # "nobody asked"), this flag must still be honored — an operator who explicitly asked to keep the
-    # device as-is should not have it silently erased mid-run.
+    # the operator's explicit opt-out. `_filter_scenarios` moves only a scenario that erases, so a
+    # scenario's `reinstall: clean` reads the same with the flag or without it (the test above shows
+    # that alone does NOT skip the forced retry). This flag must still be honored — an operator who
+    # explicitly asked to keep the device as-is should not have it silently erased mid-run.
     state = {"n": 0}
-    erase_seen: list[bool | None] = []
+    erase_seen: list[str | None] = []
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         state["n"] += 1
-        erase_seen.append(scenario.preconditions.erase)
+        erase_seen.append(scenario.preconditions.subject.reinstall)
         if state["n"] == 1:
             raise base.BackendCrashError("runner crashed during the readiness gate (test)")
         return Lease(
@@ -889,25 +900,29 @@ def test_run_all_honors_an_explicit_no_erase_override_on_a_crash_triggered_retry
 
     scenarios = [
         Scenario.model_validate(
-            {"name": "a", "preconditions": {"erase": False}, "steps": [{"tap": {"id": "ok"}}]}
+            {
+                "name": "a",
+                "preconditions": {"subject": {"reinstall": "clean"}},
+                "steps": [{"tap": {"id": "ok"}}],
+            }
         )
     ]
     results = run_all(_eff(), scenarios, lease, force_erase_on_retry=False)
     assert results[0].ok
-    assert erase_seen == [False, False]  # never forced — the operator opted out
+    assert erase_seen == ["clean", "clean"]  # never forced — the operator opted out
 
 
 def test_run_all_skips_forced_erase_on_a_real_device() -> None:
-    # A real device (`xcuitest.deviceType: device`) raises loudly on any `erase` precondition
+    # A real device (`runsOn.ios.kind: device`) raises loudly on any `erase` precondition
     # (`XcuitestEnvironment.start`) instead of honoring it — simctl cannot reach a physical device.
     # Forcing `erase` on a crash-triggered retry there would raise past this loop's own
     # `except BackendCrashError` and abort the whole run, not just fail the one scenario.
     state = {"n": 0}
-    erase_seen: list[bool | None] = []
+    erase_seen: list[str | None] = []
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         state["n"] += 1
-        erase_seen.append(scenario.preconditions.erase)
+        erase_seen.append(scenario.preconditions.subject.reinstall)
         if state["n"] == 1:
             raise base.BackendCrashError("runner crashed during the readiness gate (test)")
         return Lease(
@@ -926,15 +941,46 @@ def test_run_all_skips_forced_erase_on_a_real_device() -> None:
     assert erase_seen == [None, None]  # never forced on a real device
 
 
+def test_run_all_skips_forced_erase_when_a_routed_target_is_a_real_device() -> None:
+    # BE-0467: the forced erase reaches every routed target, and a real-device secondary refuses it
+    # through the settings table, so the retry must not force it at all.
+    state = {"n": 0}
+    erase_seen: list[str | None] = []
+
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        state["n"] += 1
+        erase_seen.append(scenario.preconditions.subject.reinstall)
+        if state["n"] == 1:
+            raise base.BackendCrashError("runner crashed during the readiness gate (test)")
+        return _lease(eff, scenario)
+
+    sim = _ios_eff(xcuitest=XcuitestConfig(testRunner="Runner.xctestrun", deviceType="simulator"))
+    dev = _ios_eff(xcuitest=XcuitestConfig(testRunner="Runner.xctestrun", deviceType="device"))
+    targets = {"sim": TargetPool(sim, lease, "xcuitest"), "dev": TargetPool(dev, lease, "xcuitest")}
+    scenario = Scenario.model_validate(
+        {
+            "name": "pair",
+            "targets": ["sim", "dev"],
+            "steps": [
+                {"target": "sim", "tap": {"id": "ok"}},
+                {"target": "dev", "tap": {"id": "ok"}},
+            ],
+        }
+    )
+    results = run_all(sim, [scenario], lease, actuator="xcuitest", targets=targets)
+    assert results[0].ok, results[0].failure
+    assert "erase" not in erase_seen
+
+
 def test_run_all_skips_forced_erase_on_the_live_webdriver_route() -> None:
     # The live WebDriver endpoint (an http(s):// udid spec) also raises loudly on any `erase`
     # precondition (`XcuitestLiveEnvironment.start`) — same reasoning as the real-device case above.
     state = {"n": 0}
-    erase_seen: list[bool | None] = []
+    erase_seen: list[str | None] = []
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         state["n"] += 1
-        erase_seen.append(scenario.preconditions.erase)
+        erase_seen.append(scenario.preconditions.subject.reinstall)
         if state["n"] == 1:
             raise base.BackendCrashError("runner crashed during the readiness gate (test)")
         return Lease(
@@ -1196,7 +1242,7 @@ def test_run_all_run_crash_recovery_budget_latch_skips_every_remaining_scenario(
                 "name": "c",
                 # Video is opt-in per scenario (BE-0028); requesting it here is what makes the
                 # "never leased, so it's disclosed" assertion below meaningful (BE-0020).
-                "capturePolicy": [{"on": {"result": "error"}, "capture": ["video"]}],
+                "capturePolicy": [{"on": {"result": "failure"}, "capture": ["video"]}],
                 "steps": [{"tap": {"id": "ok"}}],
             }
         ),
@@ -1594,6 +1640,199 @@ def test_simulator_still_leases_a_device_control_scenario_on_xcuitest() -> None:
     assert "deviceControl.setLocation" not in (results[0].failure or "")
 
 
+def test_a_setting_the_route_cannot_apply_fails_before_any_lease() -> None:
+    # BE-0467: a real device cannot erase, so the settings check fails the scenario up front.
+    scenarios = [
+        Scenario.model_validate(
+            {"name": "e", "preconditions": {"subject": {"reinstall": "erase"}}, "steps": []}
+        )
+    ]
+
+    def lease_must_not_run(eff: Effective, s: Scenario) -> Lease:
+        raise AssertionError("lease must not be called when the settings check rejects")
+
+    device = _ios_eff(xcuitest=XcuitestConfig(testRunner="Runner.xctestrun", deviceType="device"))
+    results = run_all(device, scenarios, lease_must_not_run, actuator="xcuitest")
+    assert not results[0].ok
+    assert "subject.reinstall: erase" in (results[0].failure or "")
+    assert "ignoredSettings" in (results[0].failure or "")
+
+
+def test_a_declared_setting_passes_the_preflight() -> None:
+    scenarios = [
+        Scenario.model_validate(
+            {"name": "e", "preconditions": {"subject": {"reinstall": "erase"}}, "steps": []}
+        )
+    ]
+    leased: list[str] = []
+
+    def lease(eff: Effective, s: Scenario) -> Lease:
+        leased.append(s.name)
+        return _lease(eff, s)
+
+    device = _ios_eff(xcuitest=XcuitestConfig(testRunner="Runner.xctestrun", deviceType="device"))
+    device = replace(
+        device,
+        run_defaults=replace(device.run_defaults, ignored_settings={"erase": "keeps app data"}),
+    )
+    results = run_all(device, scenarios, lease, actuator="xcuitest")
+    assert leased == ["e"]
+    assert "unsupported on backend" not in (results[0].failure or "")
+    # The report names what the run went without (BE-0467 unit 4); the verdict does not read it.
+    assert results[0].ignored_settings == [
+        IgnoredSetting(target=device.target, key="erase", reason="keeps app data")
+    ]
+
+
+def _device_ignoring_erase() -> Effective:
+    device = _ios_eff(xcuitest=XcuitestConfig(testRunner="Runner.xctestrun", deviceType="device"))
+    return replace(
+        device, run_defaults=replace(device.run_defaults, ignored_settings={"erase": "x"})
+    )
+
+
+def _erasing_scenario() -> Scenario:
+    return Scenario.model_validate(
+        {
+            "name": "e",
+            "preconditions": {"subject": {"reinstall": "erase"}},
+            "steps": [{"tap": {"id": "ok"}}],
+        }
+    )
+
+
+def test_a_per_scenario_actuator_judges_the_ignored_settings() -> None:
+    # BE-0240's resolver picks the scenario's actuator, and that route decides what was ignored.
+    device = _device_ignoring_erase()
+    results = run_all(device, [_erasing_scenario()], _lease, resolve_actuator=lambda s: "xcuitest")
+    assert results[0].ignored_settings == [
+        IgnoredSetting(target=device.target, key="erase", reason="x")
+    ]
+
+
+def test_a_scenario_that_crashes_every_attempt_still_lists_its_ignored_settings() -> None:
+    # Each attempt launched without the declared setting, so the failed result must say so.
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        return Lease(
+            driver=_crashing_driver(),
+            sink=NullSink(),
+            relaunch=None,
+            control=None,
+            collector=None,
+            release=lambda: None,
+        )
+
+    device = _device_ignoring_erase()
+    results = run_all(device, [_erasing_scenario()], lease, actuator="xcuitest", crash_retries=1)
+    assert not results[0].ok
+    assert results[0].ignored_settings == [
+        IgnoredSetting(target=device.target, key="erase", reason="x")
+    ]
+
+
+def test_a_scenario_whose_every_lease_bring_up_crashes_still_lists_its_ignored_settings() -> None:
+    # Each environment drops an ignored setting before any launch work that can crash (BE-0467).
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        raise base.BackendCrashError("runner crashed during launch (test)")
+
+    device = _device_ignoring_erase()
+    results = run_all(device, [_erasing_scenario()], lease, actuator="xcuitest", crash_retries=1)
+    assert not results[0].ok
+    assert results[0].ignored_settings == [
+        IgnoredSetting(target=device.target, key="erase", reason="x")
+    ]
+
+
+def test_a_scenario_refused_before_any_lease_records_no_ignored_setting() -> None:
+    # A declared `erase` is ignored only by a launch; a scenario the preflight refuses never launched.
+    scenarios = [
+        Scenario.model_validate(
+            {
+                "name": "e",
+                "preconditions": {"subject": {"reinstall": "erase"}},
+                "steps": [{"selectOption": {"sel": {"id": "m"}, "option": "x"}}],
+            }
+        )
+    ]
+    results = run_all(_device_ignoring_erase(), scenarios, _lease, actuator="xcuitest")
+    assert not results[0].ok
+    assert results[0].ignored_settings == []
+
+
+def _routed_pair() -> dict[str, TargetPool]:
+    return {
+        "app": TargetPool(_eff(), _lease, "fake"),
+        "site": TargetPool(_web_eff(), _lease, "playwright"),
+    }
+
+
+def _two_targets(**extra: object) -> Scenario:
+    return Scenario.model_validate(
+        {
+            "name": "pair",
+            "targets": ["app", "site"],
+            "steps": [{"target": "site", "tap": {"id": "ok"}}],
+            **extra,
+        }
+    )
+
+
+def test_a_routed_target_that_cannot_apply_a_setting_fails_before_any_lease() -> None:
+    # BE-0467: each declared target is judged against its own route; a browser grants no permission.
+    def lease_must_not_run(eff: Effective, s: Scenario) -> Lease:
+        raise AssertionError("lease must not be called when the settings check rejects")
+
+    results = run_all(
+        _eff(),
+        [_two_targets(permissions={"camera": "grant"})],
+        lease_must_not_run,
+        targets=_routed_pair(),
+    )
+    assert not results[0].ok
+    assert "(target 'site')" in (results[0].failure or "")
+    assert "permissions.camera" in (results[0].failure or "")
+
+
+def test_a_scenario_deeplink_is_not_in_effect_on_a_web_target() -> None:
+    # The web `subject` has no `launch.deeplink`, so the scenario's deeplink is meant for the iOS target.
+    results = run_all(
+        _eff(),
+        [_two_targets(preconditions={"subject": {"launch": {"deeplink": "app://x"}}})],
+        _lease,
+        targets=_routed_pair(),
+    )
+    assert "unsupported on backend" not in (results[0].failure or "")
+
+
+def test_a_scenario_launch_env_fails_a_web_target_unless_it_is_ignored() -> None:
+    # A web `subject` has `launch.env`, yet the browser never reads it, so the run must not pass silently.
+    scenario = _two_targets(preconditions={"subject": {"launch": {"env": {"A": "1"}}}})
+    failed = run_all(_eff(), [scenario], _lease, targets=_routed_pair())[0]
+    assert "(target 'site')" in (failed.failure or "")
+    site = _web_eff()
+    site = replace(
+        site, run_defaults=replace(site.run_defaults, ignored_settings={"launchEnv": "x"})
+    )
+    pair = {**_routed_pair(), "site": TargetPool(site, _lease, "playwright")}
+    passed = run_all(_eff(), [scenario], _lease, targets=pair)[0]
+    assert "unsupported on backend" not in (passed.failure or "")
+    # Recorded against the target that declared it, not the primary.
+    assert passed.ignored_settings == [IgnoredSetting(target="site", key="launchEnv", reason="x")]
+
+
+def test_a_stale_declaration_fails_every_scenario_on_its_target() -> None:
+    # The Simulator erases, so declaring `erase` ignored there hides nothing and must be removed.
+    scenarios = [Scenario.model_validate({"name": "plain", "steps": []})]
+
+    def lease_must_not_run(eff: Effective, s: Scenario) -> Lease:
+        raise AssertionError("lease must not be called when the declaration is stale")
+
+    sim = _ios_eff(xcuitest=XcuitestConfig(testRunner="Runner.xctestrun", deviceType="simulator"))
+    sim = replace(sim, run_defaults=replace(sim.run_defaults, ignored_settings={"erase": "x"}))
+    results = run_all(sim, scenarios, lease_must_not_run, actuator="xcuitest")
+    assert "remove the declaration" in (results[0].failure or "")
+
+
 def test_resolve_actuator_preflights_per_scenario_and_fails_fast() -> None:
     # BE-0240: with a per-scenario resolver, the scenario's own actuator decides the capability set.
     # A selectOption resolved to xcuitest fails the preflight up front (xcuitest lacks it) — no lease.
@@ -1812,22 +2051,28 @@ def test_run_all_hands_the_target_s_launch_env_to_run_scenario(
 
 
 def test_run_all_alert_guard_for_selects_per_scenario() -> None:
-    # The factory picks each scenario's guard from its systemAlertHandling: the guarded scenario
-    # recovers from a blocked tap and passes; the one that disabled it fails.
+    # The factory picks each scenario's guard per scenario: the guarded scenario recovers from a
+    # blocked tap and passes; the one handed no guard fails.
     from bajutsu.common.orchestrator import AlertGuardConfig
 
     scenarios = [
         Scenario.model_validate(
-            {"name": "guarded", "systemAlertHandling": True, "steps": [{"tap": {"id": "later"}}]}
+            {
+                "name": "guarded",
+                "steps": [{"tap": {"id": "later"}}],
+            }
         ),
         Scenario.model_validate(
-            {"name": "bare", "systemAlertHandling": False, "steps": [{"tap": {"id": "later"}}]}
+            {
+                "name": "bare",
+                "steps": [{"tap": {"id": "later"}}],
+            }
         ),
     ]
 
     def alert_guard_for(s: Scenario) -> AlertGuardConfig | None:
-        # `false` is the whole off form since BE-0401; a mapping (or an absent key) means on.
-        return None if s.system_alert_handling is False else AlertGuardConfig(rules=[guard_rule()])
+        # One surface only: the scenario-start push refuses a rule claiming both (BE-0461).
+        return None if s.name == "bare" else AlertGuardConfig(rules=[guard_rule(in_tree=False)])
 
     # Answering the prompt reveals the tap's target, so the guarded scenario recovers and passes.
     def lease(eff: Effective, scenario: Scenario) -> Lease:
@@ -1846,8 +2091,37 @@ def test_run_all_alert_guard_for_selects_per_scenario() -> None:
     assert [r.ok for r in results] == [True, False]
 
 
+def test_run_all_marks_the_scenario_start_policy_push() -> None:
+    # The resident runner forgets every showing a previous scenario answered only on the push marked
+    # as the scenario's start (BE-0461), so a relaunched app's prompt is answered afresh; that push
+    # also carries the in-tree rules and the guard's pacing.
+    from bajutsu.common.orchestrator import AlertGuardConfig
+
+    scenario = Scenario.model_validate({"name": "s", "steps": [{"tap": {"id": "go"}}]})
+    in_tree = guard_rule("Not Now", identifying=("Save", "Not Now"), native=False)
+    drivers: list[FakeDriver] = []
+
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        driver = FakeDriver([_el("go", "Go", ["button"])])
+        drivers.append(driver)
+        return Lease(
+            driver=driver,
+            sink=NullSink(),
+            relaunch=None,
+            control=None,
+            collector=None,
+            release=lambda: None,
+        )
+
+    run_all(_eff(), [scenario], lease, alert_guard_for=lambda s: AlertGuardConfig(rules=[in_tree]))
+    (driver,) = drivers
+    assert driver.interruption_scenario_start is True
+    assert driver.interruption_in_tree_rules == [({"Save", "Not Now"}, "Not Now", set())]
+    assert driver.interruption_pacing is not None
+
+
 def test_run_all_alert_guard_for_uncovered_locale_fails_the_scenario_not_the_run() -> None:
-    # A `systemAlertHandling.rules` entry naming a prompt this scenario's locale has no known labels
+    # A `systemAlert` interrupts entry naming a prompt this scenario's locale has no known labels
     # for raises while the guard is still under construction (before any lease is even taken) — the
     # run must turn that into one clean failed RunResult per scenario, not an uncaught exception that
     # would abort every remaining scenario too.
@@ -2322,7 +2596,7 @@ def test_network_json_anchors_to_the_video_corrected_start(tmp_path: Path) -> No
     scn = Scenario.model_validate(
         {
             "name": "net",
-            "capturePolicy": [{"on": {"result": "error"}, "capture": ["video"]}],
+            "capturePolicy": [{"on": {"result": "failure"}, "capture": ["video"]}],
             "steps": [{"assert": [{"request": {"method": "GET", "path": "/items"}}]}],
         }
     )
@@ -2454,7 +2728,7 @@ def test_the_run_resolves_a_system_alert_prompt_against_the_scenario_locale() ->
     scenario = Scenario.model_validate(
         {
             "name": "grant",
-            "preconditions": {"locale": "ja_JP"},  # overrides `_eff()`'s en_US
+            "preconditions": {"device": {"ios": {"locale": "ja_JP"}}},  # overrides `_eff()`'s en_US
             "steps": [
                 {"handleSystemAlert": {"prompt": "notifications", "choice": "grant", "timeout": 5}}
             ],

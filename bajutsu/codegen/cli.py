@@ -47,10 +47,10 @@ def codegen(
     except CodegenError as exc:
         # The CLI keeps its own target hints, which name the config key to set.
         if emit == "playwright":
-            typer.echo(f"--emit playwright needs targets.{target_name}.baseUrl (a web target)")
+            typer.echo(f"--emit playwright needs targets.{target_name}.subject.url (a web target)")
         elif emit == "uiautomator":
             typer.echo(
-                f"--emit uiautomator needs targets.{target_name}.package (an Android target)"
+                f"--emit uiautomator needs targets.{target_name}.subject.id (an Android target)"
             )
         else:
             typer.echo(str(exc))

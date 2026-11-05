@@ -32,7 +32,17 @@ class RedisLogBus:
         return value.decode() if isinstance(value, bytes) else str(value)
 
     def publish(self, job_id: str, line: str) -> None:
-        self._redis.rpush(_LINES + job_id, line)
+        self.publish_many(job_id, [line])
+
+    def publish_many(self, job_id: str, lines: list[str]) -> None:
+        if not lines:
+            return
+        key = _LINES + job_id
+        self._redis.rpush(key, *lines)
+        # Bound the list from its latest write too: a job whose close never comes (its worker died,
+        # its lease was failed at the attempt cap) would otherwise leave its lines in Redis forever.
+        # `close` sets the same lifetime again from completion.
+        self._redis.expire(key, self._ttl)
 
     def close(self, job_id: str, final: str | None = None) -> None:
         # The done key's presence ends the stream; its value carries the terminal status payload

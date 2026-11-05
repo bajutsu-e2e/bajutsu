@@ -22,6 +22,7 @@ from typing import Any
 from bajutsu.serve import oplog
 from bajutsu.serve.authz import _record_audit, role_allows
 from bajutsu.serve.helpers import valid_run_id
+from bajutsu.serve.jobs import index_run_trees
 from bajutsu.serve.state import ServeState
 
 _logger = logging.getLogger("bajutsu.serve.operations")
@@ -125,6 +126,29 @@ def bulk_delete_runs(
         )
         (deleted if acted else not_found).append(run_id)
     return {"deleted": deleted, "notFound": not_found, "purged": purge}, 200
+
+
+def rescan_runs(state: ServeState, *, actor: str | None = None) -> tuple[Any, int]:
+    """Index the run trees under ``runs/`` that the run history does not hold yet (BE-0449).
+
+    The on-demand twin of the index a server start runs, for a run that ``bajutsu run`` wrote from
+    the command line while the server was up. Admin-gated in `required_role`; indexing writes under
+    the default org, which only an operator should decide. Returns ``{"indexed": <count>}``, which is
+    0 without a repository, where the history is the tree itself. A 409 on a deployment whose
+    artifacts do not live in the runs tree, since there is nothing of its own there to index.
+    Records an audit entry and an oplog event, like every other acting run mutation here.
+    """
+    if not state.local_file_store:
+        return {
+            "error": "rescan needs the local file store: this server's runs live elsewhere"
+        }, 409
+    indexed = index_run_trees(state)
+    org = state.org_of(actor)
+    _record_audit(state, actor, org, "runs.rescan", "", {"indexed": indexed})
+    oplog.log_event(
+        _logger, "runs.rescanned", "run trees rescanned", org=org, actor=actor, indexed=indexed
+    )
+    return {"indexed": indexed}, 200
 
 
 def sweep_expired_trash(

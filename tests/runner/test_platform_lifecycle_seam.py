@@ -7,6 +7,8 @@ single-fork refactor folded behind the Protocol.
 
 from __future__ import annotations
 
+import base64
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -14,16 +16,18 @@ import pytest
 from _runner import _eff, _ios_eff, _web_eff
 
 from bajutsu.common.backend_cli import simctl
+from bajutsu.common.config import AndroidConfig, Effective, ResolvedPreconditions
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.platform_lifecycle import (
     AndroidEnvironment,
+    CollectorHost,
     FakeEnvironment,
     WebEnvironment,
     XcuitestEnvironment,
     environment_for,
 )
-from bajutsu.common.scenario import Preconditions, Relaunch, Scenario
+from bajutsu.common.scenario import Relaunch, Scenario
 
 
 def _capture_group_signals(monkeypatch: pytest.MonkeyPatch) -> list[tuple[int, int]]:
@@ -93,8 +97,8 @@ def test_resolve_device_routes_through_the_platform_resolver(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Each platform resolves a device handle its own way behind the seam (BE-0256): the iOS family
-    # via simctl, Android via adb, web (no device) as a passthrough — no actuator string at the call
-    # site.
+    # via simctl, Android via adb, web and fake (no device) as a passthrough — no actuator string at
+    # the call site.
     monkeypatch.setattr(simctl, "resolve_udid", lambda udid, run=None: f"simctl:{udid}")
     from bajutsu.common.backend_cli import adb
 
@@ -104,12 +108,15 @@ def test_resolve_device_routes_through_the_platform_resolver(
     assert environment_for("xcuitest", "UDID").resolve_device("booted") == "simctl:booted"
     assert environment_for("adb", "UDID").resolve_device("emulator-5554") == "adb:emulator-5554"
     assert environment_for("playwright", "UDID").resolve_device("anything") == "anything"
+    # The fake backend never probes simctl, so a fake run is independent of the host's Simulators
+    # (issue #2158).
+    assert environment_for("fake", "UDID").resolve_device("booted") == "booted"
 
 
 def test_web_environment_requires_base_url() -> None:
     eff = _web_eff(base_url=None)
     with pytest.raises(simctl.DeviceError, match="baseUrl"):
-        WebEnvironment("playwright").start(eff, Preconditions())
+        WebEnvironment("playwright").start(eff, ResolvedPreconditions())
 
 
 def test_web_environment_navigates_then_returns_the_driver(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -129,7 +136,7 @@ def test_web_environment_navigates_then_returns_the_driver(monkeypatch: pytest.M
     web = _WebDriver()
     monkeypatch.setattr("bajutsu.common.backends.make_driver", lambda *a, **k: web)
     eff = _web_eff(base_url="https://app.test")
-    driver = WebEnvironment("playwright").start(eff, Preconditions())
+    driver = WebEnvironment("playwright").start(eff, ResolvedPreconditions())
     assert driver is web
     assert web.navigated is True  # the web "launch" is navigate()
 
@@ -166,8 +173,33 @@ def test_web_relaunch_forwards_id_namespaces_to_await_ready(
 
 def test_fake_environment_runs_no_lifecycle() -> None:
     # No device lifecycle (no env_run, no simctl): it just yields the fake driver.
-    driver = FakeEnvironment("fake", "UDID").start(_eff(), Preconditions())
+    driver = FakeEnvironment("fake", "UDID").start(_eff(), ResolvedPreconditions())
     assert driver.query() == []  # the real fake driver, constructed without any device step
+
+
+def _android_eff() -> Effective:
+    return replace(_eff(), platform_config=AndroidConfig(package="com.example.demo"))
+
+
+@pytest.mark.parametrize("eff", [_eff(), _android_eff(), _web_eff()], ids=["ios", "android", "web"])
+def test_fake_environment_leases_on_any_platform_without_a_device(eff: Effective) -> None:
+    # Issue #2208: the fake backend is device-free and platform-neutral, so every hook a lease calls
+    # must answer on any target without narrowing it to iOS or shelling out to simctl.
+    def no_simctl(args: list[str], extra_env: object = None) -> str:
+        raise AssertionError(f"the fake backend must not run simctl: {args}")
+
+    env = FakeEnvironment("fake", "UDID", env_run=no_simctl)
+    driver = env.start(eff, ResolvedPreconditions())
+    relaunch = env.relauncher(eff, Scenario(name="s", steps=[]), driver)
+    assert env.controller(eff) is None
+    reset = env.crawl_reset(eff)
+    env.teardown(driver, eff)
+    env.end_lease(driver, eff)
+    # A scenario that actually relaunches, or a crawl that resets, is refused loudly.
+    with pytest.raises(base.UnsupportedAction, match="relaunch"):
+        relaunch(Relaunch())
+    with pytest.raises(base.UnsupportedAction, match="crawl reset"):
+        reset(driver)
 
 
 def test_fake_environment_rejects_permissions() -> None:
@@ -176,14 +208,16 @@ def test_fake_environment_rejects_permissions() -> None:
     # this is the runtime backstop, the same shape as an unsupported gesture.
     with pytest.raises(base.UnsupportedAction):
         FakeEnvironment("fake", "UDID").start(
-            _eff(), Preconditions(), permissions={"camera": "grant"}
+            _eff(), ResolvedPreconditions(), permissions={"camera": "grant"}
         )
 
 
 def test_web_environment_rejects_permissions() -> None:
     eff = _web_eff(base_url="https://app.test")
     with pytest.raises(base.UnsupportedAction):
-        WebEnvironment("playwright").start(eff, Preconditions(), permissions={"camera": "grant"})
+        WebEnvironment("playwright").start(
+            eff, ResolvedPreconditions(), permissions={"camera": "grant"}
+        )
 
 
 def test_ios_environment_surfaces_a_failing_step_as_device_error() -> None:
@@ -196,7 +230,7 @@ def test_ios_environment_surfaces_a_failing_step_as_device_error() -> None:
 
     with pytest.raises(simctl.DeviceError):
         XcuitestEnvironment("xcuitest", "UDID", env_run=fake_run).start(
-            _eff(), Preconditions(erase=True)
+            _eff(), ResolvedPreconditions(reinstall="erase")
         )
 
 
@@ -462,7 +496,7 @@ def test_xcuitest_environment_requires_test_runner_in_config(
     )
     xe = XcuitestEnvironment("xcuitest", "UDID", env_run=lambda a, extra_env: "")
     with pytest.raises(simctl.DeviceError, match="testRunner"):
-        xe.start(_eff(), Preconditions())
+        xe.start(_eff(), ResolvedPreconditions())
 
 
 def test_xcuitest_environment_start_launches_runner_and_creates_driver(
@@ -532,7 +566,7 @@ def test_xcuitest_environment_start_launches_runner_and_creates_driver(
         f.flush()
         eff = _ios_eff(xcuitest=XcuitestConfig(testRunner=f.name), app_path=None)
         xe = XcuitestEnvironment("xcuitest", "UDID-1", env_run=fake_run)
-        driver = xe.start(eff, Preconditions())
+        driver = xe.start(eff, ResolvedPreconditions())
 
     assert driver is fake_driver
     assert fake_driver.ready_called
@@ -599,7 +633,7 @@ def test_xcuitest_environment_applies_permissions_before_the_runner_launches(
         f.flush()
         eff = _ios_eff(xcuitest=XcuitestConfig(testRunner=f.name), app_path=None)
         xe = XcuitestEnvironment("xcuitest", "UDID-1", env_run=fake_run)
-        xe.start(eff, Preconditions(), permissions={"camera": "grant"})
+        xe.start(eff, ResolvedPreconditions(), permissions={"camera": "grant"})
 
     assert popen_started_after_privacy == [True]
     assert any(c[:3] == ["xcrun", "simctl", "privacy"] and c[4] == "grant" for c in simctl_calls)
@@ -825,7 +859,7 @@ def test_spawn_cold_discards_a_never_ready_runner(
         eff = _ios_eff(xcuitest=XcuitestConfig(testRunner=f.name), app_path=None)
         xe = XcuitestEnvironment("xcuitest", "UDID-1", env_run=lambda _a, _e: "")
         with pytest.raises(XcuitestChannelError, match="did not come up"):
-            xe.start(eff, Preconditions())
+            xe.start(eff, ResolvedPreconditions())
 
     # One attempt's live runner was discarded, not orphaned: its group took SIGTERM then the sweep.
     assert signalled == [(4242, signal.SIGTERM), (4242, signal.SIGKILL)]
@@ -891,9 +925,9 @@ def test_xcuitest_environment_forwards_preconditions_to_runner_env(
             launch_args=["-verbose"],
             locale="ja_JP",
         )
-        pre = Preconditions(
-            launchEnv={"SCENARIO_KEY": "val"},
-            launchArgs=["-reset"],
+        pre = ResolvedPreconditions(
+            launch_env={"SCENARIO_KEY": "val"},
+            launch_args=["-reset"],
             locale="fr_FR",
             deeplink="myapp://home",
         )
@@ -918,7 +952,29 @@ def test_xcuitest_environment_forwards_preconditions_to_runner_env(
     args = json.loads(target_env["BAJUTSU_LAUNCH_ARGS"])
     assert "-verbose" in args and "-reset" in args
     assert "-AppleLocale" in args and "fr_FR" in args
+    # The same env and args, base64url-encoded JSON: what a current runner reads, since
+    # `xcodebuild` collapses the `//` of a URL in a plain value and base64url has no `/`.
+    encoded_env = json.loads(base64.urlsafe_b64decode(target_env["BAJUTSU_ENCODED_LAUNCH_ENV"]))
+    assert encoded_env["BAJUTSU_COLLECTOR"] == "http://127.0.0.1:9999"
+    assert encoded_env["SCENARIO_KEY"] == "val"
+    assert "/" not in target_env["BAJUTSU_ENCODED_LAUNCH_ENV"]
+    encoded_args = json.loads(base64.urlsafe_b64decode(target_env["BAJUTSU_ENCODED_LAUNCH_ARGS"]))
+    assert encoded_args == args
     # deeplink
     assert target_env["BAJUTSU_DEEPLINK"] == "myapp://home"
     # bundle id of the app under test (so one generic runner drives any app)
     assert target_env["BAJUTSU_BUNDLE_ID"] == "com.example.demo"
+
+
+def test_every_platform_that_shares_a_loopback_declines_the_real_device_hooks() -> None:
+    # The two hooks a real iOS device answers differently (BE: real-device host channels) decline
+    # with the loopback and the port itself everywhere else — a no-op, never a raise.
+    for env, eff in (
+        (FakeEnvironment("fake", "UDID"), _eff()),
+        (WebEnvironment("playwright"), _web_eff(base_url="http://x/")),
+        (AndroidEnvironment("adb", "SER"), _eff()),
+    ):
+        assert env.collector_host(eff) == CollectorHost()
+        port, close = env.reach_device_port(eff, 4100)
+        assert port == 4100
+        close()  # a callable no-op

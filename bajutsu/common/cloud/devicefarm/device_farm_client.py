@@ -41,3 +41,7 @@ class DeviceFarmClient(Protocol):
     def list_artifacts(self, *, arn: str, type: str) -> dict[str, Any]:
         """List a run's artifacts of the given type; boto3 returns ``{"artifacts": [...]}``."""
         raise NotImplementedError
+
+    def stop_run(self, *, arn: str) -> dict[str, Any]:
+        """Ask Device Farm to stop a scheduled run; boto3 returns ``{"run": {...}}``."""
+        raise NotImplementedError

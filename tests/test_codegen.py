@@ -25,7 +25,7 @@ def test_header_and_helpers() -> None:
 
 def test_launch_env_merges_app_and_scenario() -> None:
     code = _gen(
-        "- name: x\n  preconditions:\n    launchEnv: { B: '2' }\n  steps:\n    - tap: { id: a }\n",
+        "- name: x\n  preconditions:\n    subject: { launch: { env: { B: '2' } } }\n  steps:\n    - tap: { id: a }\n",
         env={"A": "1"},
     )
     assert 'app.launchEnvironment["A"] = "1"' in code
@@ -315,6 +315,18 @@ def test_interrupts_field_emits_a_labeled_todo_per_entry() -> None:
     assert "checks this opportunistically at run time" in code
 
 
+def test_interrupts_field_names_a_system_alert_and_a_tip_kit_entry_whole() -> None:
+    # A `systemAlert` or `tipKit` entry (BE-0473) has no condition; its TODO names the declaration.
+    code = _gen(
+        "- name: x\n  interrupts:\n"
+        "    - { systemAlert: notifications, choice: grant }\n"
+        "    - { tipKit: dismiss }\n"
+        "  steps:\n    - tap: { id: a }\n"
+    )
+    assert "// TODO: interrupts[0]" in code and "notifications" in code
+    assert "// TODO: interrupts[1]" in code and "dismiss" in code
+
+
 def test_request_assertion_emits_labeled_todo() -> None:
     # XCUITest has no network interception, so a `request` assertion stays a TODO — but a labeled one
     # naming the endpoint and why, like the device-control steps, not a bare "unsupported" (BE-0026).
@@ -506,3 +518,22 @@ def test_handle_system_alert_prompt_form_is_todo() -> None:
         "    - handleSystemAlert: { prompt: notifications, choice: grant, timeout: 5 }\n"
     )
     assert "// TODO: handleSystemAlert — prompt: notifications" in code
+
+
+def test_navigate_is_a_labeled_web_only_todo() -> None:
+    # BE-0464: `navigate` is web-only, so the mobile generators name it instead of dropping it.
+    code = _gen("- name: x\n  steps:\n    - navigate: /settings\n")
+    assert '// TODO: navigate(url: "/settings") — web-only; not generated' in code
+    assert "unsupported step" not in code
+
+
+def test_attribute_is_a_labeled_web_only_todo() -> None:
+    # BE-0466: an HTML attribute has no XCUITest counterpart, so it is named rather than dropped.
+    code = _gen(
+        "- name: x\n  steps:\n    - assert:\n"
+        "      - attribute: { sel: { id: a }, name: href, equals: /docs }\n"
+        "      - attribute: { sel: { id: a }, name: aria-busy, absent: true }\n"
+    )
+    assert '// TODO: attribute(name: "href", equals: "/docs") — web-only; not generated' in code
+    assert '// TODO: attribute(name: "aria-busy", absent: true) — web-only; not generated' in code
+    assert "unsupported assertion" not in code

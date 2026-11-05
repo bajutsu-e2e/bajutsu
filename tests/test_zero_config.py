@@ -19,6 +19,7 @@ from pathlib import Path
 
 import pytest
 import typer
+from run_cli import invoke
 from typer.testing import CliRunner
 
 from bajutsu.cli import app
@@ -95,9 +96,14 @@ def _fake_config(tmp_path: Path) -> tuple[Path, Path]:
     scn.write_text("- name: demo\n  steps:\n    - tap: { id: home.title }\n", encoding="utf-8")
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [fake] }\n"
-        "targets:\n"
-        "  demo: { bundleId: com.example.demo, idNamespaces: [home] }\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    subject:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [home]\n"
+        ),
         encoding="utf-8",
     )
     return cfg, scn
@@ -128,7 +134,8 @@ def test_run_alert_guard_needs_no_credential_at_all(
     monkeypatch.setattr("bajutsu.run.cli.run_and_report", _reached_execution)
 
     cfg, scn = _fake_config(tmp_path)
-    result = runner.invoke(
+    result = invoke(
+        runner,
         app,
         [
             "run",

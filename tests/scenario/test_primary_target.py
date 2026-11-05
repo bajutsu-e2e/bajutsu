@@ -4,8 +4,7 @@ Covers the `primaryTarget` constraint (unset, or equal to `targets[0]`), the omi
 escape it opens under two or more declared targets on every step shape and on a top-level `expect`
 entry, the zero/one-target shapes it leaves unchanged, the `web:` / `app:` rules it leaves
 in force, `interrupts`' own independence from it (BE-0438), the round-trip guarantee (the resolved
-name never reaches `model_dump()`), and `apply_setups` cloning its cached steps so scenarios
-sharing a setup resolve independently.
+name never reaches `model_dump()`).
 """
 
 from __future__ import annotations
@@ -13,7 +12,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from bajutsu.common.scenario import Scenario, Step, apply_setups, scenario_dict
+from bajutsu.common.scenario import Scenario, scenario_dict
 
 _TWO = {"targets": ["app", "web"], "primaryTarget": "app"}
 
@@ -69,12 +68,12 @@ def test_omitted_step_target_resolves_to_the_primary() -> None:
 def test_before_and_after_steps_resolve_the_same_way() -> None:
     s = _scenario(
         **_TWO,
-        before=[_step()],
+        setup=[_step()],
         steps=[_step(target="web")],
-        after=[{"on": "always", "steps": [_step()]}],
+        cleanup=[{"on": "always", "steps": [_step()]}],
     )
-    assert s.before[0].resolved_target == "app"
-    assert s.after[0].steps[0].resolved_target == "app"
+    assert s.setup[0].resolved_target == "app"
+    assert s.cleanup[0].steps[0].resolved_target == "app"
 
 
 def test_nested_if_and_for_each_steps_resolve_to_the_primary_not_their_wrapper() -> None:
@@ -193,7 +192,7 @@ def test_an_interrupts_entry_still_works_with_a_primary_set() -> None:
         steps=[_step()],
         interrupts=[{"condition": {"exists": {"id": "popup"}}, "steps": [_step()]}],
     )
-    assert s.interrupts[0].target is None
+    assert s.screens[0].target is None
 
 
 def test_a_recovery_step_omitting_target_never_resolves_through_the_primary() -> None:
@@ -205,7 +204,7 @@ def test_a_recovery_step_omitting_target_never_resolves_through_the_primary() ->
         steps=[_step(target="app")],
         interrupts=[{"condition": {"exists": {"id": "popup"}}, "steps": [_step()]}],
     )
-    assert s.interrupts[0].steps[0].resolved_target is None
+    assert s.screens[0].steps[0].resolved_target is None
 
 
 # --- round trip: the resolution never reaches a dump ------------------------------------------
@@ -226,37 +225,3 @@ def test_copies_keep_the_resolution() -> None:
     step = _scenario(**_TWO, steps=[_step()]).steps[0]
     assert step.model_copy().resolved_target == "app"
     assert step.model_copy(deep=True).resolved_target == "app"
-
-
-# --- apply_setups: a shared setup's steps are cloned per scenario ------------------------------
-
-
-def test_scenarios_sharing_a_setup_resolve_their_own_primary() -> None:
-    # Without the per-scenario clone, both scenarios would hold the same cached `Step` objects,
-    # and the second scenario's re-check would overwrite the first one's resolution.
-    scns = [
-        _scenario(targets=["app", "web"], primaryTarget="app", steps=[_step()]),
-        _scenario(targets=["web", "app"], primaryTarget="web", steps=[_step()]),
-    ]
-    calls = 0
-
-    def resolve(ref: str) -> list[Step]:
-        nonlocal calls
-        calls += 1
-        return [Step.model_validate({"tap": {"id": "login"}})]
-
-    apply_setups(scns, default_setup="common.yaml", resolve=resolve)
-    assert calls == 1  # still resolved once and cached
-    assert scns[0].steps[0] is not scns[1].steps[0]
-    assert scns[0].steps[0].resolved_target == "app"
-    assert scns[1].steps[0].resolved_target == "web"
-
-
-def test_a_spliced_prelude_drops_a_resolution_from_another_scenario() -> None:
-    # The prelude steps were already resolved to 'a' under their own scenario; the re-check under a
-    # one-target scenario must clear that, not keep the stale name its copy carried over.
-    prelude = _scenario(targets=["a", "b"], primaryTarget="a", steps=[_step()]).steps
-    assert prelude[0].resolved_target == "a"
-    scns = [_scenario(targets=["c"], steps=[_step()])]
-    apply_setups(scns, default_setup="p", resolve=lambda _: prelude)
-    assert scns[0].steps[0].resolved_target is None

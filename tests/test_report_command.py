@@ -78,7 +78,7 @@ def test_report_all_rebakes_every_run(tmp_path: Path) -> None:
     )
 
 
-# `after: { on: always, steps: [{ back: {} }] }`, as in demos/showcase/scenarios/before_after.yaml.
+# `cleanup: { on: always, steps: [{ back: {} }] }`, as in demos/showcase/scenarios/setup_cleanup.yaml.
 # `back` takes no arguments, so it dumps to `{}` — a scenario.yaml baked with this step must still
 # reload for `bajutsu report` to re-render it offline (regression for the bug this was found from,
 # where the pruning in `scenario_dict`/`dump_scenarios` dropped the `back` key along with its empty
@@ -89,7 +89,7 @@ FIELDLESS_ACTION_SCENARIO = (
     "    - tap: { id: home.start }\n"
     "  expect:\n"
     "    - exists: { id: home.title }\n"
-    "  after:\n"
+    "  cleanup:\n"
     "    - on: always\n"
     "      steps: [{ back: {} }]\n"
 )

@@ -1,6 +1,6 @@
 """`bajutsu worker` — lease queued runs from the control plane and execute them (BE-0106).
 
-The hosted control plane (`serve --backend=server`) inserts a job row per run; this command polls
+The control plane (`bajutsu serve`) inserts a job row per run; this command polls
 the `/api/worker/lease` endpoint over HTTP, executes the unchanged `run_job`, uploads the run tree
 (including `console.log`), and posts the result back to `/api/worker/result`. No Redis or RQ, and
 **no cloud credentials** (BE-0160): every object-store touch — downloading baselines before a run,
@@ -10,6 +10,7 @@ the control plane signs, so the worker needs only an HTTP client.
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 import logging
@@ -20,8 +21,9 @@ import subprocess
 import tempfile
 import threading
 import time
+from collections.abc import Callable, Iterable
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -29,15 +31,46 @@ import typer
 
 from bajutsu.common.backend_cli import simctl
 from bajutsu.common.backends import PLATFORMS
-from bajutsu.common.evidence.redaction import Redactor
+from bajutsu.common.capability.worker_capability import (
+    APPIUM,
+    DEVICEFARM_HOST,
+    LOCAL,
+    RESERVED_ROUTING_REASON,
+    WorkerCapability,
+)
+from bajutsu.common.cloud.devicefarm import RunInterrupted
+from bajutsu.common.evidence.redaction import LineCredentialMasker, Redactor
 from bajutsu.common.evidence.sink import RunArtifactWriter
+from bajutsu.common.handoff import REQUEST_LINE_PREFIX
 from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR
 from bajutsu.common.run_meta.object_store import content_type_for
 from bajutsu.serve import InMemoryLogBus
-from bajutsu.serve.capabilities import WORKER_CAPABILITIES_ENV, worker_capabilities
-from bajutsu.serve.helpers import valid_sha256
+from bajutsu.serve.capabilities import (
+    MACHINE_ID_ENV,
+    WORKER_CAPABILITIES_ENV,
+    devicectl_capabilities,
+    environment_capability,
+    host_capability,
+    machine_capability,
+    parse_capabilities,
+    platform_capability,
+    reserved_tokens,
+    worker_capabilities,
+)
+from bajutsu.serve.cli.worker_relay import ArtifactStreamer, HandoffRelay
+from bajutsu.serve.helpers import unsafe_env_name, valid_sha256, warn_unsafe_env_name
+from bajutsu.serve.jobs import _runs_dir_of
 from bajutsu.serve.operations.composition import materialize_composition, place_overrides
+from bajutsu.serve.operations.worker import (
+    WORKER_LOG_BATCH_BYTES,
+    WORKER_LOG_MAX_LINE_CHARS,
+    WORKER_LOG_MAX_LINES,
+)
+from bajutsu.serve.server.db import cancelled_job_result
+from bajutsu.serve.server.one_shot import environment_refusal
+from bajutsu.serve.server.worker_job import CancelRelay as _CancelRelay
 from bajutsu.serve.server.worker_job import WorkerIO, _materialize, execute_job_spec
+from bajutsu.serve.state import Job
 from bajutsu.serve.upload_artifacts import ARTIFACT_KINDS, OVERRIDE_KINDS, ArtifactOverrides
 from bajutsu.serve.uploads import find_bundle_config, materialize_bundle, validate_bundle_config
 
@@ -46,6 +79,26 @@ _logger = logging.getLogger("bajutsu.worker")
 # Heartbeat well under the control plane's default lease timeout (DEFAULT_LEASE_TIMEOUT_SECONDS) so
 # a legitimately long run is never mistaken for a dead worker and reclaimed (BE-0016).
 DEFAULT_HEARTBEAT_INTERVAL = 30.0
+
+# How often a leased job's new log lines are posted to the control plane (BE-0449): short enough
+# that the browser's console reads as live, long enough that a chatty run sends a batch, not a
+# request per line.
+DEFAULT_LOG_FLUSH_INTERVAL = 1.0
+
+# Per-request timeout for one log batch, so a stalled control plane delays the live console and
+# never the job; the final flush before the result post waits at most this long per batch.
+_LOG_POST_TIMEOUT = 10.0
+
+# The most time the last flush after a job may spend, so a slow control plane delays the result
+# post by seconds rather than by one timeout per pending batch.
+_LOG_FINAL_FLUSH_BUDGET = 5.0
+
+# Lines that may wait to post before the oldest are dropped, so a run that prints faster than the
+# control plane accepts cannot grow the worker's memory without bound. Twenty full batches.
+_LOG_MAX_PENDING = 10_000
+
+# Statuses that mean the control plane predates the log route, so no later post can succeed.
+_LOG_ROUTE_ABSENT = frozenset({401, 404, 405})
 
 # Per-request timeout for the presigned upload/download paths (BE-0110/BE-0160), so a stalled
 # connection can't hang the worker on a single file (evidence upload runs after heartbeats stop).
@@ -63,6 +116,20 @@ _BUNDLE_CACHE_DIR = ".bundles"
 # Where a job carrying per-job artifact overrides (BE-0431) gets a tree of its own, beside the bundle
 # cache rather than inside it, so a bundle's tree is still fetched once whatever overrides reuse it.
 _OVERRIDE_CACHE_DIR = ".overrides"
+# Where a cloud-batch job that ships no bundle gets a workspace of its own (BE-0448): the provider
+# packages that directory, so it must hold this job's config and scenarios and no other job's, nor
+# the bundle cache beside it. Removed once the job's evidence is uploaded.
+_BATCH_JOBS_DIR = ".batch"
+# How long `_LeaseCheckpoint` waits between attempts to store a run's ARN, doubling up to the cap:
+# the run is already holding a device, so the first retries come quickly (BE-0448).
+_CHECKPOINT_RETRY_INITIAL = 1.0
+_CHECKPOINT_RETRY_MAX = 30.0
+# How long `_LeaseCheckpoint` keeps retrying before it gives the run up: three of the server's
+# default lease timeouts (120 seconds, `DEFAULT_LEASE_TIMEOUT_SECONDS`). Past that, the lease has
+# lapsed anyway, and an unrecorded run that keeps polling would only hold a device nobody can resume.
+_CHECKPOINT_DEADLINE = 360.0
+# A job id the worker turns into a directory name: one plain path segment.
+_SAFE_SEGMENT = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 
 # The parts a lease may sign for one bundle: the whole tree as a zip (a single-zip bind, BE-0073), or
 # one object per artifact kind (a composed triple, BE-0268). A name outside this set is a broken or
@@ -125,29 +192,223 @@ def _post_json(
             return e.code, raw.decode(errors="replace")
 
 
-def _advertised_capabilities(platform: str, capabilities: str) -> list[str]:
+def _advertised_capabilities(
+    platform: str,
+    capabilities: str,
+    worker_capability: WorkerCapability | None = None,
+    host: str | None = None,
+) -> list[str]:
     """The sorted capability set this worker advertises (BE-0166).
 
-    Combines its ``--platform`` axes, the operator override (``--capabilities`` or
-    `WORKER_CAPABILITIES_ENV`), and, for an iOS worker, the installed Simulator inventory. The
-    Simulator probe is gated on ``ios`` so a web-only worker (the Linux container) never shells out
-    to an absent ``xcrun``.
+    Combines its ``--platform`` axes, ``host:<os>`` for the machine it runs on (BE-0450), the
+    deprecated operator override (``--capabilities`` or `WORKER_CAPABILITIES_ENV`), and, for an iOS
+    worker, the installed Simulator inventory. The Simulator probe is gated on ``ios`` so a web-only
+    worker (the Linux container) never shells out to an absent ``xcrun``.
+
+    A worker whose environment is a device cloud (BE-0448) drives no device of its own: it
+    advertises ``environment:<name>`` in place of any ``platform:*`` token, and refuses an explicit
+    ``--platform``. An empty *platform* means ``ios`` for a local worker, which refuses a platform
+    whose driver its worker.yaml omits or its host cannot run, rather than advertising a platform it
+    cannot serve (BE-0450). The worker fills the ``environment:`` and ``host:`` prefixes itself, so the
+    override may not carry them.
+
+    Args:
+        platform: The ``--platform`` value, a comma list.
+        capabilities: The ``--capabilities`` value; `WORKER_CAPABILITIES_ENV` when empty.
+        worker_capability: The worker.yaml in force; the shipped default when None.
+        host: The host operating system; `backends.current_host_os()` when None (for tests).
+
+    Raises:
+        typer.BadParameter: The override carries a reserved token, or ``--platform`` names a
+            platform this worker cannot serve.
     """
-    platforms = [p.strip() for p in platform.split(",") if p.strip()]
+    from bajutsu.common.backends import current_host_os
+    from bajutsu.common.capability.capability_preflight import filter_actuators
+    from bajutsu.common.capability.route_tokens import advertised_route_tokens, worker_routes
+    from bajutsu.common.capability.worker_capability import load_worker_capability
+    from bajutsu.common.deprecations import warn_worker_capabilities
+
+    cap = load_worker_capability() if worker_capability is None else worker_capability
+    machine = current_host_os() if host is None else host
+    if capabilities:
+        warn_worker_capabilities("--capabilities")
+        override: str | None = capabilities
+    else:
+        override = os.environ.get(WORKER_CAPABILITIES_ENV)
+        if override:
+            warn_worker_capabilities(f"${WORKER_CAPABILITIES_ENV}")
+    if reserved := reserved_tokens(parse_capabilities(override)):
+        raise typer.BadParameter(
+            f"{', '.join(reserved)}: {RESERVED_ROUTING_REASON}",
+            param_hint="--capabilities",
+        )
+    host_token = host_capability(machine)
+    if cap.environment == APPIUM:
+        if platform:
+            raise typer.BadParameter(
+                "an appium worker takes no --platform: its grid's platform is in worker.yaml",
+                param_hint="--platform",
+            )
+        # The grid owns the device and its host, so a job routed here requires the environment
+        # alone (BE-0452); advertising more would only let a stray local job match. What the live
+        # route can run and apply rides along (BE-0467), and only a grid job ever names that route.
+        return sorted(
+            {
+                environment_capability(APPIUM),
+                *advertised_route_tokens(worker_routes((), appium=True)),
+            }
+        )
+    if not cap.is_local:
+        if platform:
+            raise typer.BadParameter(
+                f"a worker whose environment is '{cap.environment}' drives no device of its own, so "
+                "it takes no --platform; the phone belongs to the provider's host",
+                param_hint="--platform",
+            )
+        return sorted(
+            {environment_capability(cap.environment), host_token, *parse_capabilities(override)}
+        )
+    platforms = [p.strip() for p in (platform or "ios").split(",") if p.strip()]
     # Fail loudly on a typo'd platform (e.g. `--platform iso`) rather than silently advertising a
     # `platform:iso` token that matches no job — the worker would otherwise poll forever leasing
-    # nothing (BE-0166, "determinism first"). Same known set config's `_check_platform` validates.
+    # nothing (BE-0166, "determinism first"). The same known set the config schema registry validates.
     if unknown := [p for p in platforms if p not in PLATFORMS]:
         raise typer.BadParameter(
             f"invalid --platform {', '.join(unknown)}: use one of {', '.join(PLATFORMS)}"
         )
+    # The same rule as `run`'s actuator selection: a Linux machine started with the default `ios`
+    # stops here with the reason, rather than idling on jobs it could never start (BE-0450).
+    for p in platforms:
+        kept, reasons = filter_actuators(PLATFORMS[p], cap, machine)
+        if not kept:
+            raise typer.BadParameter(f"{p}: {'; '.join(reasons)}", param_hint="--platform")
+    # Every driver the file and host allow, not --platform's alone: a scenario's other targets run
+    # on this machine too (an iOS-and-web scenario on a Mac), so their routes are this worker's.
+    drivable = _drivable(cap, machine)
     return sorted(
         worker_capabilities(
             platforms,
-            override=capabilities or os.environ.get(WORKER_CAPABILITIES_ENV),
+            override=override,
             run=simctl.real_run if "ios" in platforms else None,
+            # One token set per route the kept drivers drive (BE-0467), the real-device route too
+            # when worker.yaml says this Mac drives attached iPhones.
+            routes=worker_routes(drivable, real_devices=cap.real_devices),
         )
+        | {host_token}
     )
+
+
+def _device_reader(
+    caps: Iterable[str], worker_capability: WorkerCapability
+) -> Callable[[], set[str]] | None:
+    """What reads this worker's real-device tokens before each lease, or None when it has none.
+
+    Only a local worker that advertises ``platform:ios`` connects a real device of its own; a
+    device-cloud or `appium` worker's devices belong to its provider, and a web or Android worker
+    has no `devicectl` to read (BE-0468).
+    """
+    if not worker_capability.is_local or platform_capability("ios") not in caps:
+        return None
+    return _DeviceTokens()
+
+
+class _DeviceRead(Protocol):
+    """A real-device token reader that reports a failed read through *on_error*."""
+
+    def __call__(self, *, on_error: Callable[[str], None]) -> set[str]:
+        """The tokens read now; a failed read reports through *on_error* and returns none."""
+
+
+# How often a worker re-reads its real devices; a device plugged in or out routes within this long.
+_DEVICE_REREAD_S = 15.0
+
+
+class _DeviceTokens:
+    """Reads the worker's real-device tokens, and logs each change in what it reads.
+
+    The tokens are asked for before every lease, so a failure that starts mid-session would
+    otherwise only show as family jobs that stop routing here. One line per change keeps a hot-plug
+    trail without repeating itself on every poll (BE-0468). devicectl is re-read at most once per
+    *interval*, so an idle worker polling every few seconds does not spawn it on each poll.
+    """
+
+    def __init__(
+        self,
+        read: _DeviceRead | None = None,
+        *,
+        interval: float = _DEVICE_REREAD_S,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self._read = read or devicectl_capabilities
+        self._interval = interval
+        self._clock = clock
+        self._last: tuple[frozenset[str], str | None] | None = None
+        self._read_at: float | None = None
+
+    def __call__(self) -> set[str]:
+        now = self._clock()
+        fresh = self._read_at is not None and now - self._read_at < self._interval
+        if self._last is not None and fresh:
+            return set(self._last[0])
+        self._read_at = now
+        errors: list[str] = []
+        tokens = self._read(on_error=errors.append)
+        state = (frozenset(tokens), errors[0] if errors else None)
+        if state != self._last:
+            if state[1] is not None:
+                _logger.warning("real-device read failed: %s; advertising no real device", state[1])
+            elif self._last is not None:
+                _logger.info("real devices now: %s", ", ".join(sorted(tokens)) or "(none)")
+        self._last = state
+        return tokens
+
+
+def _advertised(caps: list[str], devices: Callable[[], set[str]] | None) -> list[str]:
+    """The set a lease advertises: the startup set plus the real devices connected right now.
+
+    Real devices come and go, so they are read on every lease rather than once at startup; a device
+    unplugged since the last lease stops pulling family jobs onto this worker (BE-0468).
+    """
+    return sorted({*caps, *devices()}) if devices is not None else caps
+
+
+def _machine_token(
+    machine_id: str, server_state_dir: Path | None, capability: WorkerCapability
+) -> str | None:
+    """The ``machine:<id>`` token this worker advertises, or None when it names no server machine.
+
+    The identity comes from ``--machine-id``, or is read from the server's state directory; never
+    both, so the two cannot disagree. `MACHINE_ID_ENV` stands in for the flag when neither is given. A device-cloud worker takes neither: it
+    serves only its environment's jobs (`can_serve`), so the token could route it nothing.
+
+    Raises:
+        typer.BadParameter: both sources are given, the identity is malformed or unreadable, or the
+            worker's environment is a device cloud.
+    """
+    from bajutsu.serve.server.local_keys import read_machine_id
+
+    if machine_id and server_state_dir is not None:
+        raise typer.BadParameter(
+            "give the machine id or the state directory to read it from, not both",
+            param_hint="--machine-id",
+        )
+    # The variable is a fallback for `--machine-id` alone, so an exported one never fights the
+    # `--server-state-dir` that `make serve` passes.
+    given = machine_id or (
+        "" if server_state_dir is not None else os.environ.get(MACHINE_ID_ENV, "")
+    )
+    if not given and server_state_dir is None:
+        return None
+    if not capability.is_local:
+        raise typer.BadParameter(
+            f"a worker whose environment is '{capability.environment}' runs no job off the "
+            "server's files, so it takes no machine id",
+            param_hint="--machine-id",
+        )
+    try:
+        return machine_capability(given or read_machine_id(server_state_dir or Path()))
+    except ValueError as e:
+        raise typer.BadParameter(str(e), param_hint="--machine-id") from None
 
 
 def worker(
@@ -167,24 +428,77 @@ def worker(
     ),
     worker_id: str = typer.Option("", "--worker-id", help="Worker identifier"),
     platform: str = typer.Option(
-        "ios",
+        "",
         "--platform",
         help="Comma-list of platforms this worker can drive (ios / web / android) — the backend "
-        "axis it advertises for capability routing (BE-0166). A Mac iOS worker is 'ios'; the "
-        "Playwright container is 'web'.",
+        "axis it advertises for capability routing (BE-0166). A Mac iOS worker is 'ios' (the "
+        "default); the Playwright container is 'web'. A local worker refuses a platform whose "
+        "driver its worker.yaml omits or its host cannot run (BE-0450). A worker whose worker.yaml "
+        "environment is a device cloud takes none (BE-0448).",
     ),
     capabilities: str = typer.Option(
         "",
         "--capabilities",
-        help="Extra capability tokens to advertise beyond the platform + Simulator inventory "
-        "(comma/space separated, e.g. 'ios18,ipad'); also read from $BAJUTSU_WORKER_CAPABILITIES.",
+        help="Deprecated (BE-0450): extra capability tokens to advertise beyond the platform + "
+        "Simulator inventory (comma/space separated, e.g. 'ios18,ipad'); also read from "
+        "$BAJUTSU_WORKER_CAPABILITIES. Still honored, with a notice, for this release.",
     ),
+    worker_config: Annotated[
+        Path | None,
+        typer.Option(
+            "--worker-config",
+            help="The worker capability file (worker.yaml) this worker runs under, used in place "
+            "of the shipped default (BE-0450) and handed to every `run` it executes.",
+        ),
+    ] = None,
+    workdir: Annotated[
+        Path | None,
+        typer.Option(
+            "--workdir",
+            help="The directory leased jobs run in: their materials, fetched bundles, and run "
+            "trees before upload. Default: a fresh temporary directory, removed when the worker "
+            "stops, so a worker started in a project never writes into it (BE-0449).",
+        ),
+    ] = None,
+    machine_id: Annotated[
+        str,
+        typer.Option(
+            "--machine-id",
+            help="The server machine's identity (its .bajutsu/machine-id), advertised as "
+            "machine:<id> so this worker takes the jobs that name files by their paths on that "
+            "machine — a local start's run, triage, record, and crawl (BE-0449). Give it only to a "
+            "worker that sees those paths. Also read from $BAJUTSU_WORKER_MACHINE_ID.",
+        ),
+    ] = "",
+    server_state_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--server-state-dir",
+            help="The server's state directory (.bajutsu beside its runs directory) to read "
+            "--machine-id from, for a worker on the server's own machine; `make serve` passes it.",
+        ),
+    ] = None,
+    once: Annotated[
+        Path | None,
+        typer.Option(
+            "--once",
+            help="Execute the one job spec in this JSON file on this machine, with no server, and "
+            "exit with the job's exit code (BE-0449). The run tree stays local; a spec that names "
+            "an uploaded bundle or artifact overrides is refused, since those arrive by signed URL. "
+            "The server options are ignored.",
+        ),
+    ] = None,
 ) -> None:
     """Run a worker that leases queued `bajutsu run` jobs from the control plane over HTTP.
 
     Polls POST /api/worker/lease; on a job, runs execute_job_spec, uploads the run tree, and
-    posts the result to POST /api/worker/result.
+    posts the result to POST /api/worker/result. With `--once`, executes one job spec from a file
+    instead and exits with its exit code.
     """
+    worker_file, capability = _worker_file_or_exit(worker_config)
+    if once is not None:
+        _register_environment_or_exit(capability.environment)
+        raise typer.Exit(_run_once(once, worker_file, capability.environment))
     # Both drive sleeps/timeouts; a non-positive value would spin the poll or heartbeat loop hot.
     if poll_interval <= 0:
         raise typer.BadParameter("--poll-interval must be positive")
@@ -194,35 +508,103 @@ def worker(
     url = server_url or os.environ.get("BAJUTSU_SERVER_URL") or "http://localhost:8765"
     auth_token = token or os.environ.get("BAJUTSU_TOKEN") or None
     wid = worker_id or f"worker-{os.getpid()}"
-    work = Path.cwd()
+    work, temporary = _workspace(workdir)
     # The capability set this worker advertises on every lease (BE-0166), computed once at startup
-    # (the pool is assumed stable per worker).
-    caps = _advertised_capabilities(platform, capabilities)
+    # (the Simulator pool is assumed stable per worker); its real devices are re-read per lease.
+    caps = _advertised_capabilities(platform, capabilities, capability)
+    if machine := _machine_token(machine_id, server_state_dir, capability):
+        caps = sorted({*caps, machine})
+    devices = _device_reader(caps, capability)
+    # After the flags are checked, so a typo'd flag is reported before any AWS client is built.
+    _register_environment_or_exit(capability.environment)
 
     typer.echo(f"bajutsu worker → polling {url}  (Ctrl-C to stop)")
-    typer.echo(f"  advertising capabilities: {', '.join(caps) or '(none)'}")
-    while True:
+    advertised = _advertised(caps, devices)
+    typer.echo(f"  advertising capabilities: {', '.join(advertised) or '(none)'}")
+    typer.echo(f"  workspace: {work}")
+    from bajutsu.serve.server.one_shot import cancel_on_signals
+
+    # `WorkerCapability` already refuses a local file above one, so only a device cloud gets here.
+    if capability.max_job_concurrency > 1:
+        typer.echo(f"  job slots: {capability.max_job_concurrency} (maxJobConcurrency)")
+        shutdown = _SlotShutdown()
         try:
-            code, body = _post_json(
-                f"{url}/api/worker/lease",
-                {"worker_id": wid, "capabilities": caps},
-                token=auth_token,
+            with cancel_on_signals(shutdown) as signalled:
+                _serve_slots(
+                    url=url,
+                    auth_token=auth_token,
+                    wid=wid,
+                    caps=caps,
+                    work=work,
+                    poll_interval=poll_interval,
+                    heartbeat_interval=heartbeat_interval,
+                    worker_file=worker_file,
+                    slots=capability.max_job_concurrency,
+                    shutdown=shutdown,
+                    stopped=lambda: signalled() is not None,
+                    environment=capability.environment,
+                )
+                signum = signalled()
+        finally:
+            if temporary:
+                shutil.rmtree(work, ignore_errors=True)
+        if signum is not None:
+            typer.echo("  stopped; in-flight leases left to lapse")
+            raise typer.Exit(128 + signum)
+        return
+
+    current = _CurrentJob(pgid_file=work / JOB_PGID_FILE)
+    try:
+        # A stop signal cancels the leased job the way the control plane's cancel does: gracefully
+        # for a run, whose cancelled result is then posted, so the queue records it cancelled
+        # rather than reclaiming the lease and running it again (BE-0449). The loop then ends; a
+        # second SIGINT ends the job's group at once, as for `--once`.
+        with cancel_on_signals(current) as signalled:
+            _serve_leases(
+                url=url,
+                auth_token=auth_token,
+                wid=wid,
+                caps=caps,
+                work=work,
+                poll_interval=poll_interval,
+                heartbeat_interval=heartbeat_interval,
+                worker_file=worker_file,
+                current=current,
+                stopped=lambda: signalled() is not None,
+                environment=capability.environment,
+                devices=devices,
             )
-        except (URLError, OSError) as e:
-            _logger.warning("lease request failed: %s", e)
-            time.sleep(poll_interval)
-            continue
+            signum = signalled()
+    finally:
+        if temporary:
+            shutil.rmtree(work, ignore_errors=True)
+    if signum is not None:
+        typer.echo("  stopped")
+        raise typer.Exit(128 + signum)
 
-        # Say why a lease was refused instead of polling on in silence: a rejected credential or a
-        # proxy blocking the request looks exactly like an empty queue otherwise.
-        if code >= 400:
-            # Truncated: a refusal never self-resolves, so this repeats every poll, and a WAF's
-            # error page is kilobytes of HTML — one refusal must stay one readable line.
-            _logger.warning("lease refused with HTTP %s: %.200s", code, body)
-            time.sleep(poll_interval)
-            continue
 
-        if code == 204 or not body.get("spec"):
+def _serve_leases(
+    *,
+    url: str,
+    auth_token: str | None,
+    wid: str,
+    caps: list[str],
+    work: Path,
+    poll_interval: float,
+    heartbeat_interval: float,
+    worker_file: Path | None,
+    current: _CurrentJob,
+    stopped: Callable[[], bool],
+    environment: str = LOCAL,
+    devices: Callable[[], set[str]] | None = None,
+) -> None:
+    """Lease and run jobs until *stopped* answers True; the worker's poll loop.
+
+    *devices* reads the real-device tokens added to *caps* before each lease (`_device_reader`).
+    """
+    while not stopped():
+        body = _lease(url, auth_token, wid, _advertised(caps, devices))
+        if body is None:
             time.sleep(poll_interval)
             continue
 
@@ -240,58 +622,895 @@ def worker(
             worker_id=wid,
             baseline_urls=body.get("baseline_urls"),
         )
-        bus = InMemoryLogBus()
-        result, abandoned, job_work = _run_with_heartbeat(
-            spec,
-            job_id=job_id,
-            work=work,
-            bundle_urls=body.get("bundle_urls"),
-            override_urls=_override_urls(body),
-            bus=bus,
-            url=url,
-            wid=wid,
-            auth_token=auth_token,
-            heartbeat_interval=heartbeat_interval,
-            io=io,
-        )
-        if abandoned:
-            # The control plane reclaimed and likely re-leased this job to another worker; posting a
-            # result would race that worker, so drop it (the re-run is the source of truth).
-            typer.echo(f"  lease lost for job {job_id}; abandoning")
-            continue
-        if result is None:
-            # The bundle fetch hit a transient failure (a reset connection, an expired signature) —
-            # logged already, inside `_run_with_heartbeat`. Posting a failure here would turn one
-            # network blip into a red run for a scenario that never executed; leaving the lease to
-            # lapse instead gives the queue's own reclaim-and-retry a chance to hand the job to
-            # another attempt (directive 2: keep worker-side flakiness out of the verdict).
-            typer.echo(
-                f"  bundle fetch failed transiently for job {job_id}; leaving it to be re-leased"
+        streamer = _LogStreamer(functools.partial(_post_log, url, wid, job_id, auth_token))
+        bus = _TeeLogBus(streamer.add)
+        relay = _CancelRelay()
+        current.attach(relay)
+        try:
+            result, abandoned, job_work = _run_with_heartbeat(
+                spec,
+                job_id=job_id,
+                work=work,
+                bundle_urls=body.get("bundle_urls"),
+                override_urls=_override_urls(body),
+                batch_run_arn=body.get("batch_run_arn"),
+                app_url=body.get("app_url"),
+                bus=bus,
+                url=url,
+                wid=wid,
+                auth_token=auth_token,
+                heartbeat_interval=heartbeat_interval,
+                io=io,
+                worker_config=worker_file,
+                claim_check=functools.partial(
+                    _claim_refusal, body.get("capabilities"), worker_file
+                ),
+                streamer=streamer,
+                secret_env=_lease_secret_env(body),
+                cancel=relay,
+                environment=environment,
             )
-            continue
-
-        run_id = result.get("runId")
-        if run_id:
-            _write_console_log(job_work, run_id, bus, job_id)
-
-        _post_result(url, job_id, wid, result, auth_token)
-
-        # Upload the run's evidence via presigned URLs the control plane signs (BE-0110): the worker
-        # holds no cloud credentials of its own. Runs *after* the result is posted — heartbeats stop
-        # once the run returns, so a slow upload must not delay the post and risk the lease being
-        # reclaimed. Best-effort and time-bounded: a failure or stall warns and never affects the run.
-        if run_id:
-            _upload_evidence(
-                job_work,
-                run_id,
+        finally:
+            current.detach()
+        try:
+            _finish_job(
                 url=url,
                 auth_token=auth_token,
-                evidence_prefix=str(spec.get("evidence_prefix") or ""),
+                wid=wid,
+                job_id=job_id,
+                spec=spec,
+                outcome=(result, abandoned, job_work),
             )
+        finally:
+            _discard_batch_workspace(work, job_work)
 
-        # Say which way it went: a run that died on its first line ("No module named bajutsu")
-        # otherwise looked exactly like a pass from this console.
-        typer.echo(f"  completed job {job_id} ({'ok' if result.get('ok') else 'FAILED'})")
+
+def _lease(url: str, auth_token: str | None, wid: str, caps: list[str]) -> dict[str, Any] | None:
+    """Ask the control plane for one job; the lease body, or None when there is nothing to run."""
+    try:
+        code, body = _post_json(
+            f"{url}/api/worker/lease",
+            {"worker_id": wid, "capabilities": caps},
+            token=auth_token,
+        )
+    except (URLError, OSError) as e:
+        _logger.warning("lease request failed: %s", e)
+        return None
+
+    # Say why a lease was refused instead of polling on in silence: a rejected credential or a
+    # proxy blocking the request looks exactly like an empty queue otherwise.
+    if code >= 400:
+        # Truncated: a refusal never self-resolves, so this repeats every poll, and a WAF's
+        # error page is kilobytes of HTML — one refusal must stay one readable line.
+        _logger.warning("lease refused with HTTP %s: %.200s", code, body)
+        return None
+
+    if code == 204 or not body.get("spec"):
+        return None
+    return dict(body)
+
+
+def _serve_slots(
+    *,
+    url: str,
+    auth_token: str | None,
+    wid: str,
+    caps: list[str],
+    work: Path,
+    poll_interval: float,
+    heartbeat_interval: float,
+    worker_file: Path | None,
+    slots: int,
+    shutdown: _SlotShutdown,
+    stopped: Callable[[], bool],
+    environment: str,
+) -> None:
+    """Lease jobs into at most *slots* concurrent slots until stopped; the slot model (BE-0448).
+
+    A job counts against *slots* from its lease until its result is posted, so a slot that is only
+    uploading evidence frees its place, and no lease request goes out while every place is taken. The
+    slot's own heartbeat keeps the worker live meanwhile, so its advertised set never changes. Each
+    slot runs on a thread of its own, in a workspace no other running or uploading job shares.
+
+    Once *stopped* answers True or *shutdown* is requested, the loop leases nothing more and lets
+    every in-flight lease lapse (`_SlotShutdown`). It then waits for the slots to end: those uploading
+    finish, and the others leave their runs. A second SIGINT ends the wait at once.
+    """
+    places = threading.Condition()
+    busy = 0
+    dirs = _SlotDirs(work)
+    threads: list[threading.Thread] = []
+
+    def free() -> None:
+        nonlocal busy
+        with places:
+            busy -= 1
+            places.notify_all()
+
+    try:
+        while not (stopped() or shutdown.stopping):
+            with places:
+                if busy >= slots:
+                    places.wait(timeout=poll_interval)
+                    continue
+            body = _lease(url, auth_token, wid, caps)
+            if body is None:
+                time.sleep(poll_interval)
+                continue
+            with places:
+                busy += 1
+            thread = threading.Thread(
+                target=_run_slot,
+                kwargs={
+                    "body": body,
+                    "dirs": dirs,
+                    "free": free,
+                    "shutdown": shutdown,
+                    "url": url,
+                    "auth_token": auth_token,
+                    "wid": wid,
+                    "heartbeat_interval": heartbeat_interval,
+                    "worker_file": worker_file,
+                    "environment": environment,
+                },
+                daemon=True,
+            )
+            try:
+                thread.start()
+            except BaseException:
+                free()  # no slot ever owned the place, so give it back here
+                raise
+            threads = [t for t in threads if t.is_alive()] + [thread]
+    finally:
+        # Whatever ends the loop, an exception included, the leases in flight lapse as on a stop.
+        shutdown.request()
+        for thread in threads:
+            while thread.is_alive() and not shutdown.now:
+                thread.join(timeout=0.2)
+
+
+def _run_slot(
+    *,
+    body: dict[str, Any],
+    dirs: _SlotDirs,
+    free: Callable[[], None],
+    shutdown: _SlotShutdown,
+    url: str,
+    auth_token: str | None,
+    wid: str,
+    heartbeat_interval: float,
+    worker_file: Path | None,
+    environment: str,
+) -> None:
+    """Run one leased job in a slot of its own, and give its place back once its result is posted.
+
+    The slot owns everything the job touches: its workspace directory, log bus, live-log streamer,
+    heartbeat, and cancel relay. Its *lost* flag is the one `_SlotShutdown` sets to let the lease
+    lapse. The place is freed exactly once, after the result post or, when nothing is posted, at the
+    end.
+    """
+    freed = False
+
+    def post_done() -> None:
+        nonlocal freed
+        if not freed:
+            freed = True
+            free()
+
+    # Read inside the try, so a malformed lease body still gives the place back.
+    job_id = str(body.get("job_id"))
+    slot_work: Path | None = None
+    lost = threading.Event()
+    try:
+        spec = body["spec"]
+        typer.echo(f"  leased job {job_id}")
+        slot_work = dirs.acquire()
+        io = PresignedWorkerIO(
+            url=url,
+            auth_token=auth_token,
+            job_id=job_id,
+            worker_id=wid,
+            baseline_urls=body.get("baseline_urls"),
+        )
+        streamer = _LogStreamer(functools.partial(_post_log, url, wid, job_id, auth_token))
+        shutdown.attach(lost)
+        try:
+            result, abandoned, job_work = _run_with_heartbeat(
+                spec,
+                job_id=job_id,
+                work=slot_work,
+                bundle_urls=body.get("bundle_urls"),
+                override_urls=_override_urls(body),
+                batch_run_arn=body.get("batch_run_arn"),
+                app_url=body.get("app_url"),
+                bus=_TeeLogBus(streamer.add),
+                url=url,
+                wid=wid,
+                auth_token=auth_token,
+                heartbeat_interval=heartbeat_interval,
+                io=io,
+                worker_config=worker_file,
+                streamer=streamer,
+                secret_env=_lease_secret_env(body),
+                environment=environment,
+                lost=lost,
+                claim_check=functools.partial(
+                    _claim_refusal, body.get("capabilities"), worker_file
+                ),
+            )
+        finally:
+            shutdown.detach(lost)
+        _finish_job(
+            url=url,
+            auth_token=auth_token,
+            wid=wid,
+            job_id=job_id,
+            spec=spec,
+            outcome=(result, abandoned, job_work),
+            on_posted=post_done,
+        )
+    except Exception:  # one slot's failure never takes the worker, or its other slots, down
+        _logger.exception("slot for job %s failed", job_id)
+    finally:
+        post_done()
+        if slot_work is not None:
+            # The slot held this one job, so every cloud-batch tree under it is this job's: removed
+            # on every exit, a failed run included, before the directory goes back to the pool.
+            shutil.rmtree(slot_work / _BATCH_JOBS_DIR, ignore_errors=True)
+            dirs.release(slot_work)
+
+
+# Where a slot worker keeps one workspace per slot under its own working directory (BE-0448). The
+# numbered directories are reused, so a slot's bundle cache outlives the job that filled it.
+_SLOTS_DIR = ".slots"
+
+
+class _SlotDirs:
+    """The workspace directories of a slot worker: each job gets one no other live job holds.
+
+    A directory goes back to the pool only after its job has uploaded its evidence, so a job still
+    uploading never shares its tree with the next lease, even though it no longer counts as in flight.
+    """
+
+    def __init__(self, work: Path) -> None:
+        self._root = work / _SLOTS_DIR
+        self._lock = threading.Lock()
+        self._free: set[int] = set()
+        self._next = 0
+
+    def acquire(self) -> Path:
+        """The lowest-numbered free directory, created when it is new."""
+        with self._lock:
+            if self._free:
+                index = min(self._free)
+                self._free.discard(index)
+            else:
+                index = self._next
+                self._next += 1
+        path = self._root / str(index)
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def release(self, path: Path) -> None:
+        """Give *path* back to the pool once its job is entirely done."""
+        with self._lock:
+            self._free.add(int(path.name))
+
+
+class _SlotShutdown:
+    """What a stop signal does to a slot worker: stop leasing, and let in-flight leases lapse (BE-0448).
+
+    Unlike `_CurrentJob`, it cancels nothing. Each in-flight slot's lease is treated as lost: the
+    slot stops its heartbeat and posts nothing, so the lease lapses and the job is re-leased. A run
+    whose ARN the server holds keeps running, and a restart or another worker resumes it; a run whose
+    ARN the server does not hold yet is stopped, since nobody could resume it. A second SIGINT ends
+    the wait for the slots at once (`kill`). It serves `cancel_on_signals` as the child.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._slots: set[threading.Event] = set()
+        self._stopping = threading.Event()
+        self._now = threading.Event()
+
+    @property
+    def stopping(self) -> bool:
+        """Whether a stop was requested: the worker leases nothing more."""
+        return self._stopping.is_set()
+
+    @property
+    def now(self) -> bool:
+        """Whether a second SIGINT asked the worker not to wait for its slots."""
+        return self._now.is_set()
+
+    def attach(self, lost: threading.Event) -> None:
+        """Track a slot's *lost* flag, setting it at once when a stop came first."""
+        with self._lock:
+            self._slots.add(lost)
+            stopping = self.stopping
+        if stopping:
+            lost.set()
+
+    def detach(self, lost: threading.Event) -> None:
+        """Stop tracking a slot whose job has ended."""
+        with self._lock:
+            self._slots.discard(lost)
+
+    def request(self) -> None:
+        """Stop leasing, and let the lease of every in-flight slot lapse."""
+        with self._lock:
+            self._stopping.set()
+            slots = list(self._slots)
+        for lost in slots:
+            lost.set()
+
+    def pgid(self) -> int | None:
+        """No process group: a slot submits to a device cloud and spawns no run of its own."""
+        return None
+
+    def kill(self) -> None:
+        """Stop waiting for the slots."""
+        self._now.set()
+
+
+def _finish_job(
+    *,
+    url: str,
+    auth_token: str | None,
+    wid: str,
+    job_id: str,
+    spec: dict[str, Any],
+    outcome: tuple[dict[str, Any] | None, bool, Path],
+    on_posted: Callable[[], None] | None = None,
+) -> None:
+    """Post a run job's result and upload its evidence, or say why neither happens.
+
+    *on_posted* runs right after the result post, before the evidence upload: a slot worker frees
+    the job's place there (BE-0448).
+    """
+    result, abandoned, job_work = outcome
+    if abandoned:
+        # The control plane reclaimed and likely re-leased this job to another worker; posting a
+        # result would race that worker, so drop it (the re-run is the source of truth).
+        typer.echo(f"  lease lost for job {job_id}; abandoning")
+        return
+    if result is None:
+        # The bundle fetch hit a transient failure (a reset connection, an expired signature) —
+        # logged already, inside `_run_with_heartbeat`. Posting a failure here would turn one
+        # network blip into a red run for a scenario that never executed; leaving the lease to
+        # lapse instead gives the queue's own reclaim-and-retry a chance to hand the job to
+        # another attempt (directive 2: keep worker-side flakiness out of the verdict).
+        typer.echo(
+            f"  bundle fetch failed transiently for job {job_id}; leaving it to be re-leased"
+        )
+        return
+
+    run_id = result.get("runId")
+    _post_result(url, job_id, wid, result, auth_token)
+    if on_posted is not None:
+        on_posted()
+
+    # Upload the run's evidence via presigned URLs the control plane signs (BE-0110): the worker
+    # holds no cloud credentials of its own. Runs *after* the result is posted — heartbeats stop
+    # once the run returns, so a slow upload must not delay the post and risk the lease being
+    # reclaimed. Best-effort and time-bounded: a failure or stall warns and never affects the run.
+    if run_id:
+        _upload_evidence(
+            job_work,
+            run_id,
+            url=url,
+            auth_token=auth_token,
+            evidence_prefix=str(spec.get("evidence_prefix") or ""),
+        )
+
+    # Say which way it went: a run that died on its first line ("No module named bajutsu")
+    # otherwise looked exactly like a pass from this console.
+    ending = "cancelled" if result.get("cancelled") else "ok" if result.get("ok") else "FAILED"
+    typer.echo(f"  completed job {job_id} ({ending})")
+
+
+# The prefix of a temporary workspace, and the file in it naming the process that owns it: a
+# workspace whose owner is gone is left over from a worker killed outright, and the next worker
+# removes it (BE-0449). `scripts/serve.sh` writes the same file into the workspace it hands over.
+WORKSPACE_PREFIX = "bajutsu-worker-"
+OWNER_PID_FILE = ".owner-pid"
+# The file in the workspace naming the process group of the job running now, so a supervisor that
+# must kill this worker outright (`scripts/serve.sh` past its wait) can end the run as well; the
+# run lives in a session of its own and would otherwise outlive the worker.
+JOB_PGID_FILE = ".job-pgid"
+
+
+def _workspace(workdir: Path | None) -> tuple[Path, bool]:
+    """The directory leased jobs run in, and whether it is a temporary one to remove at exit.
+
+    Not the current directory: a worker started in a project would otherwise extract bundles into
+    it, and upload a run tree it wrote there onto the same files (BE-0449). A temporary one records
+    this process as its owner, after workspaces whose owners are gone are swept.
+    """
+    if workdir is not None:
+        workdir.mkdir(parents=True, exist_ok=True)
+        return workdir.resolve(), False
+    root = Path(tempfile.gettempdir())
+    _sweep_stale_workspaces(root)
+    work = Path(tempfile.mkdtemp(prefix=WORKSPACE_PREFIX, dir=root))
+    (work / OWNER_PID_FILE).write_text(f"{os.getpid()}\n", encoding="utf-8")
+    return work, True
+
+
+def _sweep_stale_workspaces(root: Path) -> None:
+    """Remove the temporary workspaces under *root* whose owning process has exited.
+
+    Only a real directory of this account, named with `WORKSPACE_PREFIX`, whose owner file names
+    one or more processes (one per line) that have all exited, is removed. Anything else is left
+    alone, a workspace with no owner file included, since nothing says it is abandoned. Skipped on
+    Windows, where `os.kill(pid, 0)` sends a console control event rather than probing.
+    """
+    if os.name == "nt":
+        return
+    uid = os.getuid()
+    for path in root.glob(f"{WORKSPACE_PREFIX}*"):
+        try:
+            if path.is_symlink() or not path.is_dir() or path.stat().st_uid != uid:
+                continue
+            text = (path / OWNER_PID_FILE).read_text(encoding="utf-8")
+            pids = [int(line) for line in text.split() if line]
+        except (OSError, ValueError):
+            continue
+        if pids and not any(_process_alive(pid) for pid in pids):
+            shutil.rmtree(path, ignore_errors=True)
+
+
+def _group_alive(pgid: int) -> bool:
+    """Whether the process group *pgid* still has a member (POSIX; assumed alive elsewhere)."""
+    if os.name == "nt":
+        return True
+    try:
+        os.killpg(pgid, 0)
+    except ProcessLookupError:
+        return False
+    except OSError:
+        return True
+    return True
+
+
+def _process_alive(pid: int) -> bool:
+    """Whether a process with *pid* exists (one of another account counts as alive)."""
+    if pid <= 0:
+        return True
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except OSError:
+        return True
+    return True
+
+
+class _CurrentJob:
+    """The job a stop signal cancels: the one leased now, or the next one the moment it is leased.
+
+    The signal handlers of `cancel_on_signals` call into it from their helper threads, while the
+    poll loop attaches and detaches each job's relay, so a lock orders the two.
+    """
+
+    def __init__(self, pgid_file: Path | None = None) -> None:
+        self._lock = threading.Lock()
+        self._relay: _CancelRelay | None = None
+        self._stopping = False
+        self._pgid_file = pgid_file
+
+    def attach(self, relay: _CancelRelay) -> None:
+        """Make *relay* the job a signal cancels, cancelling it at once when a stop came first.
+
+        With a *pgid_file*, a helper thread records the job's process group there once its child
+        exists, and keeps it current while the job runs.
+        """
+        with self._lock:
+            self._relay = relay
+            stopping = self._stopping
+        if self._pgid_file is not None:
+            threading.Thread(target=self._record_pgid, args=(relay,), daemon=True).start()
+        if stopping:
+            relay.request()
+
+    def detach(self) -> None:
+        """Forget the finished job's relay, and its recorded process group."""
+        with self._lock:
+            self._relay = None
+            if self._pgid_file is not None:
+                self._pgid_file.unlink(missing_ok=True)
+
+    def _record_pgid(self, relay: _CancelRelay) -> None:
+        recorded: int | None = None
+        while True:
+            pgid = relay.pgid()
+            with self._lock:
+                if self._relay is not relay:
+                    return
+                # The child has gone; drop its group once nothing is left in it, so a supervisor
+                # never kills a group number the system may hand to another.
+                if (
+                    pgid is None
+                    and recorded is not None
+                    and self._pgid_file is not None
+                    and not _group_alive(recorded)
+                ):
+                    self._pgid_file.unlink(missing_ok=True)
+                    recorded = None
+                if pgid is not None and pgid != recorded and self._pgid_file is not None:
+                    staging = self._pgid_file.with_suffix(".tmp")
+                    staging.write_text(f"{pgid}\n", encoding="utf-8")
+                    staging.replace(self._pgid_file)
+                    recorded = pgid
+            time.sleep(0.2)
+
+    def request(self) -> None:
+        """Cancel the current job gracefully, and every job leased after it."""
+        with self._lock:
+            self._stopping = True
+            relay = self._relay
+        if relay is not None:
+            relay.request()
+
+    def pgid(self) -> int | None:
+        """The current job's process group, for job control."""
+        with self._lock:
+            relay = self._relay
+        return None if relay is None else relay.pgid()
+
+    def kill(self) -> None:
+        """End the current job's group at once."""
+        with self._lock:
+            relay = self._relay
+        if relay is not None:
+            relay.kill()
+
+
+def _claim_refusal(required: Any, worker_file: Path | None) -> str | None:
+    """Why this worker must not run a job it just leased, judged on its routes now (BE-0467)."""
+    from bajutsu.common.capability.worker_capability import WorkerCapabilityError
+    from bajutsu.serve.capabilities import claim_refusal
+
+    if not isinstance(required, list):
+        return None  # a server from before BE-0467 hands over no routing set
+    try:
+        current = _route_tokens_now(worker_file)
+    except WorkerCapabilityError as e:
+        return f"this worker's worker.yaml can no longer be read, so it runs no job: {e}"
+    return claim_refusal([str(t) for t in required], current)
+
+
+def _route_tokens_now(worker_file: Path | None) -> set[str] | None:
+    """The route tokens this worker's environment offers now, re-read from its worker.yaml.
+
+    A changed file, or a driver its host can no longer start, narrows the routes. None for a
+    cloud-batch worker, which drives no route itself.
+
+    Raises:
+        WorkerCapabilityError: The worker.yaml can no longer be read.
+    """
+    from bajutsu.common.backends import current_host_os
+    from bajutsu.common.capability.route_tokens import advertised_route_tokens, worker_routes
+    from bajutsu.common.capability.worker_capability import load_worker_capability
+
+    cap = load_worker_capability(worker_file)
+    if cap.environment == APPIUM:
+        return advertised_route_tokens(worker_routes((), appium=True))
+    if not cap.is_local:
+        return None
+    return advertised_route_tokens(
+        worker_routes(_drivable(cap, current_host_os()), real_devices=cap.real_devices)
+    )
+
+
+def _drivable(cap: WorkerCapability, host: str) -> list[str]:
+    """Every actuator *cap*'s file offers that *host* can start, across every platform."""
+    from bajutsu.common.backends import PLATFORMS
+    from bajutsu.common.capability.capability_preflight import filter_actuators
+
+    return [
+        a for actuators in PLATFORMS.values() for a in filter_actuators(actuators, cap, host)[0]
+    ]
+
+
+def _worker_file_or_exit(path: Path | None) -> tuple[Path | None, WorkerCapability]:
+    """Validate the worker capability file at startup; its absolute path and contents (BE-0450).
+
+    A bad file stops the worker before it leases anything, rather than failing every job it takes.
+    The path is what each spawned `run` reads, so it is resolved once here, independent of the
+    per-job working directory the run starts in. None (no flag) leaves every run on the default.
+    """
+    from bajutsu.common.capability.worker_capability import (
+        WorkerCapabilityError,
+        load_worker_capability,
+    )
+
+    try:
+        cap = load_worker_capability(path)
+    except WorkerCapabilityError as e:
+        raise typer.BadParameter(str(e), param_hint="--worker-config") from None
+    return (None if path is None else path.resolve()), cap
+
+
+def _register_environment_or_exit(environment: str) -> None:
+    """Register the batch provider a device-cloud worker's environment names, or stop (BE-0448).
+
+    The provider and its lifecycle hooks (BE-0435) live in the worker that submits, so the AWS role
+    is held here and never by the server. A worker that cannot register it would lease jobs only to
+    fail each one, so it exits at startup instead, with the reason. A `local` worker registers none,
+    and neither does an `appium` one, whose grid submits nothing (BE-0452).
+    """
+    if environment in (LOCAL, APPIUM):
+        return
+    if environment == DEVICEFARM_HOST:
+        raise typer.BadParameter(
+            f"environment '{DEVICEFARM_HOST}' is the run inside a Device Farm package, not a worker; "
+            "a worker that submits to Device Farm takes `environment: devicefarm`",
+            param_hint="--worker-config",
+        )
+    from bajutsu.serve.batch_bootstrap import register_batch_providers
+
+    try:
+        kinds = register_batch_providers()
+    except Exception as e:  # a missing extra, a bad hook path, a client that cannot be built
+        raise typer.BadParameter(
+            f"environment '{environment}': cannot register its provider: {e}",
+            param_hint="--worker-config",
+        ) from None
+    if environment not in kinds:
+        raise typer.BadParameter(
+            f"environment '{environment}' registered no provider: set DEVICEFARM_PROJECT_ARN "
+            "(and the AWS credentials) in this worker's environment",
+            param_hint="--worker-config",
+        )
+    typer.echo(f"  provider registered: {environment}")
+
+
+def _run_once(path: Path, worker_file: Path | None, environment: str = LOCAL) -> int:
+    """Execute the one job spec in *path* without a server; the exit code for the caller (BE-0449).
+
+    A spec that cannot run without a server is refused before anything runs, with exit 2 like any
+    other usage error, and so is any spec on Windows (see the body). Under a device-cloud
+    *environment* the spec must be that provider's batch, submitted with no ARN stored (BE-0448).
+    """
+    from bajutsu.serve.server import one_shot
+
+    if os.name == "nt":
+        # The one-shot path relays signals to its child's process group and watches it through an
+        # inherited pipe, neither of which Windows offers; refusing beats a run nothing can cancel.
+        raise typer.BadParameter(
+            "`bajutsu worker --once` needs a POSIX host (macOS or Linux) for now; "
+            "on Windows, run `bajutsu run` directly",
+            param_hint="--once",
+        )
+    try:
+        spec = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as e:
+        raise typer.BadParameter(f"cannot read the job spec: {e}", param_hint="--once") from None
+    if (reason := one_shot.refusal(spec, Path.cwd(), environment=environment)) is not None:
+        raise typer.BadParameter(reason, param_hint="--once")
+    try:
+        return one_shot.run_spec_once(spec, worker_config=worker_file, environment=environment)
+    except (
+        ValueError
+    ) as e:  # a spec the run could still not take, e.g. a run argv with no flag slot
+        raise typer.BadParameter(str(e), param_hint="--once") from None
+
+
+class _LogStreamer:
+    """Posts a leased job's log lines to the control plane in batches while it runs (BE-0449).
+
+    Best-effort by design: the uploaded ``console.log`` is the durable copy, so a batch that fails
+    to post is logged and dropped, never retried into a growing backlog, and nothing here can fail
+    or hold up the job. A 409 means the lease is gone, as on the heartbeat: `lost` turns True and
+    no further line is sent. A control plane older than the log route (404 / 405, or 401 from a
+    gate that does not know it) turns the streamer off for the rest of the job. *post* sends one
+    batch and returns the HTTP status, or None when the request did not complete. *clock* bounds
+    the final flush and is injectable for tests.
+    """
+
+    def __init__(
+        self,
+        post: Callable[[list[str]], int | None],
+        *,
+        clock: Callable[[], float] = time.monotonic,
+        max_pending: int = _LOG_MAX_PENDING,
+    ) -> None:
+        self._post = post
+        self._clock = clock
+        self._max_pending = max_pending
+        # One masker for the whole job, so a private key block spanning two lines (or two batches)
+        # stays masked to its END line.
+        self._masker = LineCredentialMasker()
+        self._lock = threading.Lock()  # guards `_pending`, `_dropped`, and the masker
+        # Held for a whole flush, so the timed flusher and the final flush never interleave
+        # batches and the server receives lines in the order the run printed them.
+        self._flushing = threading.Lock()
+        self._pending: list[str] = []
+        self._dropped = 0  # lines discarded because the control plane fell behind
+        self._lost = threading.Event()
+        self._disabled = threading.Event()
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    @property
+    def lost(self) -> bool:
+        """Whether the log route answered 409: the lease is no longer this worker's."""
+        return self._lost.is_set()
+
+    @property
+    def dropped(self) -> int:
+        """How many lines were discarded because more than the pending cap waited to post."""
+        with self._lock:
+            return self._dropped
+
+    def add(self, line: str) -> None:
+        """Queue one line for the next flush, masked and cut to the server's line length."""
+        if self._lost.is_set() or self._disabled.is_set():
+            return
+        with self._lock:
+            self._pending.append(self._masker.mask(line)[:WORKER_LOG_MAX_LINE_CHARS])
+            overflow = len(self._pending) - self._max_pending
+            if overflow > 0:
+                # Keep the newest lines: a live console is about what the run does now.
+                del self._pending[:overflow]
+                self._dropped += overflow
+
+    def flush(self, *, deadline: float | None = None) -> None:
+        """Post every queued line, in batches the server accepts, until *deadline* on the clock."""
+        with self._flushing:
+            with self._lock:
+                batch, self._pending = self._pending, []
+            start = 0
+            while start < len(batch):
+                if self._lost.is_set() or self._disabled.is_set():
+                    return
+                if deadline is None and self._stop.is_set():
+                    # A background flush yields to `stop`: the rest goes back to the front of the
+                    # queue for the final flush, which posts it within its own budget, so `stop`
+                    # never waits on a long backlog here.
+                    with self._lock:
+                        self._pending[:0] = batch[start:]
+                    return
+                if deadline is not None and self._clock() >= deadline:
+                    _logger.warning(
+                        "log flush ran out of time; dropping %d lines", len(batch) - start
+                    )
+                    return
+                end = _post_end(batch, start)
+                code = self._post(batch[start:end])
+                start = end
+                if code == 409:
+                    self._lost.set()
+                    return
+                if code in _LOG_ROUTE_ABSENT:
+                    _logger.warning(
+                        "the control plane has no worker log route (HTTP %s); "
+                        "streaming the live log is off for this job",
+                        code,
+                    )
+                    self._disabled.set()
+                    return
+                if code is None:
+                    return  # the control plane is unreachable; drop the rest of this batch
+
+    def start(self, interval: float) -> None:
+        """Flush every *interval* seconds on a background thread until `stop`."""
+        self._thread = threading.Thread(target=self._run, args=(interval,), daemon=True)
+        self._thread.start()
+
+    def stop(self, *, flush: bool, budget: float = _LOG_FINAL_FLUSH_BUDGET) -> None:
+        """End the background flushes, then post what is still queued when *flush* is True,
+        spending at most *budget* seconds on it."""
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join()
+        if flush:
+            self.flush(deadline=self._clock() + budget)
+        if self.dropped:
+            _logger.warning("the live log dropped %d lines it could not post in time", self.dropped)
+
+    def _run(self, interval: float) -> None:
+        while not self._stop.wait(interval):
+            self.flush()
+
+
+def _post_end(batch: list[str], start: int) -> int:
+    """Where the post beginning at *start* ends: within the server's line count and body size.
+
+    Sized the way `_post_json` encodes the lines, so a batch heavy in escaped characters is split
+    before the server would refuse its body. A post always carries at least one line, and one line
+    cut to `WORKER_LOG_MAX_LINE_CHARS` always fits.
+    """
+    end = min(len(batch), start + WORKER_LOG_MAX_LINES)
+    size = 0
+    for i in range(start, end):
+        size += len(json.dumps(batch[i])) + 2  # the quoted line and its ", " separator
+        if size > WORKER_LOG_BATCH_BYTES and i > start:
+            return i
+    return end
+
+
+class _TeeLogBus(InMemoryLogBus):
+    """The worker's log buffer, which also hands each line to the live stream (BE-0449).
+
+    The buffer still becomes ``console.log`` after the run, unchanged. A handoff request line
+    (BE-0179) stays out of the live log: it goes to *on_request* instead, the handoff relay that
+    carries it to the page on a route of its own and brings the person's answer back (unit 8).
+    """
+
+    def __init__(self, on_line: Callable[[str], None]) -> None:
+        super().__init__()
+        self._on_line = on_line
+        # Set by `_run_with_heartbeat` once the job's handoff relay exists; until then, and for a
+        # job with no relay, a request line is dropped.
+        self.on_request: Callable[[str], None] | None = None
+
+    def publish(self, job_id: str, line: str) -> None:
+        super().publish(job_id, line)
+        self._tee([line])
+
+    def publish_many(self, job_id: str, lines: list[str]) -> None:
+        super().publish_many(job_id, lines)
+        self._tee(lines)
+
+    def _tee(self, lines: list[str]) -> None:
+        for line in lines:
+            if not line.startswith(REQUEST_LINE_PREFIX):
+                self._on_line(line)
+            elif self.on_request is not None:
+                self.on_request(line)
+
+
+def _post_relay(
+    url: str,
+    wid: str,
+    job_id: str,
+    auth_token: str | None,
+    path: str,
+    body: dict[str, Any],
+    *,
+    timeout: float = _LOG_POST_TIMEOUT,
+) -> tuple[int | None, Any]:
+    """Post one relay request for the job (BE-0449 unit 8); ``(None, None)`` when it failed.
+
+    The relays are best effort, like the live log: a failure is logged and never reaches the job.
+    """
+    try:
+        return _post_json(
+            f"{url}{path}",
+            {"worker_id": wid, "job_id": job_id, **body},
+            token=auth_token,
+            timeout=timeout,
+        )
+    except Exception as e:  # a relay post must never reach the job, whatever went wrong
+        _logger.warning("relay post %s failed for job %s: %s", path, job_id, e)
+        return None, None
+
+
+def _post_log(
+    url: str,
+    wid: str,
+    job_id: str,
+    auth_token: str | None,
+    lines: list[str],
+    *,
+    timeout: float = _LOG_POST_TIMEOUT,
+) -> int | None:
+    """Post one batch of log lines; the HTTP status, or None when the post failed (logged)."""
+    try:
+        code, _body = _post_json(
+            f"{url}/api/worker/log",
+            {"worker_id": wid, "job_id": job_id, "lines": lines},
+            token=auth_token,
+            timeout=timeout,
+        )
+    except Exception as e:  # a live-log post must never reach the job, whatever went wrong
+        _logger.warning("log post failed for job %s; dropping %d lines: %s", job_id, len(lines), e)
+        return None
+    if code not in (200, 409):
+        _logger.warning("log post for job %s answered HTTP %s; dropping it", job_id, code)
+    return code
 
 
 def _run_with_heartbeat(
@@ -307,6 +1526,16 @@ def _run_with_heartbeat(
     heartbeat_interval: float,
     io: WorkerIO | None = None,
     override_urls: dict[str, str] | None = None,
+    worker_config: Path | None = None,
+    streamer: _LogStreamer | None = None,
+    log_flush_interval: float = DEFAULT_LOG_FLUSH_INTERVAL,
+    secret_env: dict[str, str] | None = None,
+    cancel: _CancelRelay | None = None,
+    environment: str = LOCAL,
+    batch_run_arn: Any = None,
+    app_url: Any = None,
+    lost: threading.Event | None = None,
+    claim_check: Callable[[], str | None] | None = None,
 ) -> tuple[dict[str, Any] | None, bool, Path]:
     """Run the job on a background thread while heart-beating its lease from this one.
 
@@ -330,13 +1559,66 @@ def _run_with_heartbeat(
     fetch into `execute_job_spec` — installing the app and driving the device beside whichever worker
     won the re-lease — and only discard the result afterward. The fetch is the one point past which
     nothing has touched the device yet, so returning early there costs nothing.
+
+    With a *streamer*, a flusher thread posts the job's log lines every *log_flush_interval*
+    seconds, and one last flush runs after the job, before this returns, so every line is on the
+    server ahead of the result. A 409 on the log route abandons the job like a 409 on the heartbeat.
+
+    *secret_env* is the org's stored secrets from the lease (BE-0449); it reaches the job's child
+    environment alone and is never logged. *cancel* is the relay a stop signal cancels the job
+    through, as the heartbeat's cancel does; a fresh one when the caller has none. A job that does
+    not belong to this worker's *environment* (BE-0448) fails before anything is fetched.
+
+    A cloud-batch job stores its run's ARN through the server (`_LeaseCheckpoint`), resumes the run
+    *batch_run_arn* names when the lease carries one, and has its application fetched from *app_url*
+    when the job names a stored one (BE-0448). The same *lost* flag that keeps a run from starting
+    tells its poll to leave the run to the worker that holds the job now. A slot worker passes its
+    own *lost*, which its shutdown sets to let the lease lapse; a fresh one when the caller has none.
+
+    *claim_check* re-checks the job's route tokens against this worker's environment now (BE-0467);
+    a job it refuses fails before anything is fetched or any device leased.
     """
     holder: dict[str, Any] = {"work": work}
-    lost = threading.Event()
+    lost = lost if lost is not None else threading.Event()
+    cancel = cancel if cancel is not None else _CancelRelay()
+    # The live relays of `record` and `crawl` (BE-0449 unit 8). Both are bound to the job once it
+    # exists and stay idle for every other kind.
+    relay_post = functools.partial(_post_relay, url, wid, job_id, auth_token)
+    handoff = HandoffRelay(relay_post, cancel=cancel)
+    artifacts = ArtifactStreamer(relay_post)
+    if isinstance(bus, _TeeLogBus):
+        bus.on_request = handoff.offer
+
+    def on_job(job: Job) -> None:
+        cancel.bind(job)
+        handoff.bind(job)
+        artifacts.bind(job, holder["work"])
+
+    checkpoint = (
+        _LeaseCheckpoint(
+            url=url,
+            auth_token=auth_token,
+            wid=wid,
+            job_id=job_id,
+            stored=batch_run_arn if isinstance(batch_run_arn, str) and batch_run_arn else None,
+            lost=lost,
+            cancelled=lambda: cancel.requested,
+        )
+        if spec.get("batch") is not None
+        else None
+    )
 
     def _run() -> None:
+        reason = environment_refusal(spec, environment)
+        if reason is None and claim_check is not None:
+            reason = claim_check()
+        if reason is not None:
+            holder["result"] = {"ok": False, "error": reason}
+            return
         try:
-            job_work, failure = _workspace_or_failure(work, spec, bundle_urls, override_urls)
+            job_work, failure = _workspace_or_failure(
+                work, spec, bundle_urls, override_urls, app_url=app_url
+            )
         except _TransientFetch as e:
             _logger.warning(
                 "bundle fetch failed for job %s; leaving the lease to lapse: %s", job_id, e
@@ -349,6 +1631,9 @@ def _run_with_heartbeat(
             return
         if lost.is_set():  # the lease is already gone — never start the run
             return
+        if cancel.requested:  # cancelled during the fetch — nothing has touched the device yet
+            holder["result"] = cancelled_job_result(job_id)
+            return
         try:
             job = execute_job_spec(
                 spec,
@@ -357,6 +1642,14 @@ def _run_with_heartbeat(
                 cwd=job_work,
                 bus=bus,
                 io=io,
+                worker_config=worker_config,
+                on_job=on_job,
+                secret_env=secret_env,
+                batch_checkpoint=checkpoint,
+                lease_lost=lost,
+                # Written before the run tree uploads, so console.log travels with it and is the
+                # durable copy the server's log stream falls back to (BE-0449).
+                before_upload=functools.partial(_write_job_console_log, job_work, bus),
             )
             result = job.view()
             result.pop("lines", None)
@@ -367,29 +1660,20 @@ def _run_with_heartbeat(
 
     runner = threading.Thread(target=_run, daemon=True)
     runner.start()
-    abandoned = False
-    while runner.is_alive():
-        runner.join(timeout=heartbeat_interval)
-        if not runner.is_alive():
-            break
-        try:
-            code, _ = _post_json(
-                f"{url}/api/worker/heartbeat",
-                {"worker_id": wid, "job_id": job_id},
-                token=auth_token,
-                # Bounded by one interval: without a timeout a stalled connection blocks this loop
-                # indefinitely and the lease lapses anyway — the failure this function exists to
-                # prevent, arriving through the renewal path itself.
-                timeout=heartbeat_interval,
-            )
-        except (URLError, OSError) as e:
-            _logger.warning("heartbeat failed for job %s: %s", job_id, e)
-            continue
-        if code == 409:
-            abandoned = True
-            lost.set()  # seen in time, this stops _run before it ever calls execute_job_spec
-            runner.join()  # wait it out so this worker never runs two jobs at once
-            break
+    artifacts.start(log_flush_interval)
+    try:
+        abandoned = _beat_and_stream(
+            runner,
+            beat=lambda: _heartbeat(url, wid, job_id, auth_token, heartbeat_interval, cancel),
+            interval=heartbeat_interval,
+            lost=lost,
+            streamer=streamer,
+            log_flush_interval=log_flush_interval,
+        )
+    finally:
+        handoff.stop()
+        # The last snapshot goes out ahead of the result, which closes the job's event stream.
+        artifacts.stop(final=not lost.is_set())
 
     if holder.get("transient"):
         return None, abandoned, holder["work"]
@@ -397,21 +1681,124 @@ def _run_with_heartbeat(
     return result, abandoned, holder["work"]
 
 
+def _beat_and_stream(
+    runner: threading.Thread,
+    *,
+    beat: Callable[[], int | None],
+    interval: float,
+    lost: threading.Event,
+    streamer: _LogStreamer | None,
+    log_flush_interval: float,
+) -> bool:
+    """`_beat_until_done`, with the live log flushed alongside; True when the lease was lost.
+
+    The streamer is stopped whatever happens, so its thread never outlives the job. Its tail is
+    posted here, before the caller posts the result, so the result route closes a stream that
+    already holds every line; a heartbeat loop that raised or lost the lease posts no tail.
+    """
+    if streamer is None:
+        return _beat_until_done(runner, beat=beat, interval=interval, lost=lost, streamer=None)
+    abandoned: bool | None = None
+    streamer.start(log_flush_interval)
+    try:
+        abandoned = _beat_until_done(
+            runner, beat=beat, interval=interval, lost=lost, streamer=streamer
+        )
+    finally:
+        streamer.stop(flush=abandoned is False)
+    return abandoned or streamer.lost
+
+
+def _beat_until_done(
+    runner: threading.Thread,
+    *,
+    beat: Callable[[], int | None],
+    interval: float,
+    lost: threading.Event,
+    streamer: _LogStreamer | None,
+) -> bool:
+    """Heartbeat every *interval* until *runner* ends; True when the lease was lost on the way.
+
+    A 409 from the heartbeat or from the log route both mean another worker may now own the job.
+    So does *lost* set from outside, by a slot worker's shutdown: the lease is left to lapse.
+    """
+    while runner.is_alive():
+        runner.join(timeout=interval)
+        if not runner.is_alive():
+            return lost.is_set()
+        if lost.is_set() or beat() == 409 or (streamer is not None and streamer.lost):
+            lost.set()  # seen in time, this stops _run before it ever calls execute_job_spec
+            runner.join()  # wait it out so this worker never runs two jobs at once
+            return True
+    # Reached when *runner* had already ended at the first check: a shutdown that set *lost* first
+    # still leaves the lease to lapse, the same answer as the exit inside the loop.
+    return lost.is_set()
+
+
+def _heartbeat(
+    url: str,
+    wid: str,
+    job_id: str,
+    auth_token: str | None,
+    interval: float,
+    cancel: _CancelRelay,
+) -> int | None:
+    """Renew the lease once and relay a cancel it carries; the HTTP status, or None on a transport
+    failure (logged), which the loop rides out until the next beat."""
+    try:
+        code, beat = _post_json(
+            f"{url}/api/worker/heartbeat",
+            {"worker_id": wid, "job_id": job_id},
+            token=auth_token,
+            # Bounded by one interval: without a timeout a stalled connection blocks the loop
+            # indefinitely and the lease lapses anyway — the failure the loop exists to prevent,
+            # arriving through the renewal path itself.
+            timeout=interval,
+        )
+    except (URLError, OSError) as e:
+        _logger.warning("heartbeat failed for job %s: %s", job_id, e)
+        return None
+    if code == 200 and isinstance(beat, dict) and beat.get("cancel") is True:
+        # The loop keeps heart-beating afterwards: the row stays leased while a `run` winds down
+        # gracefully, and only this worker's cancelled result finishes it (BE-0449).
+        cancel.request()
+    return code
+
+
+def _write_job_console_log(work: Path, bus: InMemoryLogBus, job: Job) -> None:
+    """`_write_console_log` for a finished job, when it produced a run.
+
+    The file goes into the runs directory the run wrote, which is the workspace's for a job that
+    shipped its files, and the server's own for a local start's run that names it by path (BE-0449),
+    where the server reads it without an upload.
+    """
+    if job.run_id:
+        runs = _runs_dir_of(job.cmd, job.cwd or work)
+        _write_run_console_log(runs / job.run_id, bus, job.id)
+
+
 def _write_console_log(work: Path, run_id: str, bus: InMemoryLogBus, job_id: str) -> None:
-    """Write the job's buffered log to runs/<run_id>/console.log for upload.
+    """Write the job's buffered log to runs/<run_id>/console.log under *work* for upload."""
+    _write_run_console_log(work / DEFAULT_RUNS_DIR / run_id, bus, job_id)
+
+
+def _write_run_console_log(run_dir: Path, bus: InMemoryLogBus, job_id: str) -> None:
+    """Write the job's buffered log to *run_dir*/console.log.
 
     The log is whatever the run printed, so it goes through the sink like every other run artifact
-    (BE-0331). A worker holds no secret values of its own, so the redactor is inert and only the
-    sink's pattern backstop — which needs no configuration — reaches this text.
+    (BE-0331). The redactor is inert here and only the sink's pattern backstop, which needs no
+    configuration, reaches this text; the run masks its own `${secrets.X}` values as it prints them.
     """
-    run_dir = work / DEFAULT_RUNS_DIR / run_id
     if not run_dir.is_dir():
         return
     lines = list(bus.stream(job_id, timeout=0.0))
     if not lines:
         return
     RunArtifactWriter(run_dir, Redactor(None)).write_text(
-        "console.log", "".join(line for line in lines if line is not None)
+        "console.log",
+        # The bus carries lines without their newline (`jobs.py` strips it), and a viewer that
+        # missed the live stream replays this file line by line.
+        "".join(line if line.endswith("\n") else f"{line}\n" for line in lines if line is not None),
     )
 
 
@@ -559,6 +1946,29 @@ def _safe_org(org: Any) -> str:
     return f"{cleaned[:51] or 'org'}-{digest[:12]}"
 
 
+def _lease_secret_env(lease: dict[str, Any]) -> dict[str, str]:
+    """The environment variables the lease relayed from the org's stored secrets (BE-0449).
+
+    Only string names and values are kept, so a malformed lease cannot put anything but text into
+    the child's environment. An older control plane sends none, and the job then runs with the
+    worker's own environment alone, as before.
+    """
+    raw = lease.get("secret_env")
+    if not isinstance(raw, dict):
+        return {}
+    # A control plane is trusted to send values, never to rewrite how this worker's own processes
+    # load and run, so a variable on the deny list is dropped whoever sent it.
+    kept: dict[str, str] = {}
+    for k, v in raw.items():
+        if not (isinstance(k, str) and k and isinstance(v, str)):
+            continue
+        if unsafe_env_name(k):
+            warn_unsafe_env_name(k, "the lease's secret_env")
+            continue
+        kept[k] = v
+    return kept
+
+
 def _override_urls(lease: dict[str, Any]) -> dict[str, str]:
     """The lease's signed override GETs (``binary_url`` / ``scenarios_url``), keyed by kind."""
     return {
@@ -571,6 +1981,8 @@ def _workspace_or_failure(
     spec: dict[str, Any],
     bundle_urls: Any,
     override_urls: dict[str, str] | None = None,
+    *,
+    app_url: Any = None,
 ) -> tuple[Path, dict[str, Any] | None]:
     """The workspace to run this job from, or the failed result to post when none can be prepared.
 
@@ -588,6 +2000,7 @@ def _workspace_or_failure(
     """
     try:
         base = _bundle_workspace(work, spec, bundle_urls)
+        _place_batch_app(base, spec, app_url)
     except _TransientFetch:
         raise
     except Exception as e:
@@ -713,12 +2126,14 @@ def _bundle_workspace(work: Path, spec: dict[str, Any], bundle_urls: Any) -> Pat
     console log inside it — the worker already shares one working directory across jobs, and this
     keeps that property rather than paying a copy of an app binary per job.
 
+    A cloud-batch job that ships no bundle gets a fresh tree of its own instead (BE-0448).
+
     Raises rather than falling back to *work*: a run started against a missing binary fails opaquely
     at install time, far from this cause (directive 2).
     """
     bundle = spec.get("bundle")
     if not isinstance(bundle, dict):
-        return work
+        return _batch_workspace(work, spec) if spec.get("batch") else work
     bundle_id = bundle.get("id")
     if not valid_sha256(bundle_id):
         # Server-authored, so this is purely defensive — but the id becomes a directory name below,
@@ -741,6 +2156,182 @@ def _bundle_workspace(work: Path, spec: dict[str, Any], bundle_urls: Any) -> Pat
     if config is None:
         raise RuntimeError(f"bundle {bundle_id} holds no bajutsu.config.yaml")
     return config.parent
+
+
+def _batch_workspace(work: Path, spec: dict[str, Any]) -> Path:
+    """A fresh directory of this cloud-batch job's own under *work* (see `_BATCH_JOBS_DIR`)."""
+    job_id = str(spec.get("job_id") or "")
+    if not _SAFE_SEGMENT.fullmatch(job_id):
+        raise RuntimeError(f"job carries an id that cannot name a directory: {job_id!r}")
+    tree = work / _BATCH_JOBS_DIR / job_id
+    # A re-leased job may find the tree of its earlier attempt; a stale material would ride along.
+    shutil.rmtree(tree, ignore_errors=True)
+    tree.mkdir(parents=True)
+    return tree
+
+
+def _place_batch_app(tree: Path, spec: dict[str, Any], app_url: Any) -> None:
+    """Fetch the stored application a cloud-batch job names into *tree*, at its `appPath` (BE-0448).
+
+    The job ships its config and scenario as materials and no bundle, so the lease's signed URL is
+    the only way its binary reaches this worker. The `appPath` comes from a leased spec, so it must
+    name a place strictly inside *tree*; the bytes must hash to the sha the job names, as a bundle
+    part must. A job naming no stored application, or carrying a bundle, is left alone, so *tree* is
+    always the job's own fresh workspace (`_batch_workspace`).
+
+    Raises:
+        RuntimeError: The job names an invalid sha or an `appPath` outside *tree*, or the lease
+            signed no URL for it; no worker can get past any of these.
+        _TransientFetch: The download failed or arrived corrupted; another attempt may succeed.
+    """
+    sha = spec.get("batch_app")
+    # A bundle's tree is shared with every later job off it, so nothing is placed into one.
+    if sha is None or spec.get("bundle") is not None:
+        return
+    if not valid_sha256(sha):
+        raise RuntimeError(f"job carries an invalid application sha: {sha!r}")
+    batch = spec.get("batch")
+    rel = batch.get("app_path") if isinstance(batch, dict) else None
+    if not isinstance(rel, str) or not rel:
+        raise RuntimeError("job names a stored application but no batch.app_path to place it at")
+    dest = tree / rel
+    if Path(rel).is_absolute() or tree.resolve() not in dest.resolve().parents:
+        raise RuntimeError(f"application path {rel!r} is outside this job's workspace")
+    if not isinstance(app_url, str) or not app_url:
+        raise RuntimeError(f"job needs application {sha}, but the lease signed no url for it")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    _fetch_part(app_url, dest, sha)
+
+
+class _CheckpointLostError(RuntimeError):
+    """The server answered 409 (or the heartbeat saw it): this worker no longer holds the lease."""
+
+
+class _CheckpointRefusedError(RuntimeError):
+    """The server refused the ARN with a 4xx other than 409: a server or configuration error."""
+
+
+class _CheckpointTimeoutError(RuntimeError):
+    """The server could not be reached to store the ARN before `_CHECKPOINT_DEADLINE` ran out."""
+
+
+class _LeaseCheckpoint:
+    """A leased cloud-batch job's `BatchCheckpoint`, kept by the server (BE-0448).
+
+    `load` answers the ARN the lease carried, so a re-leased job resumes the run an earlier attempt
+    scheduled. `save` posts the new ARN to the lease-owner-checked route and retries until the
+    server stores it, refuses it, or the retry deadline runs out; the worker never holds a database
+    connection for it. Every way `save` gives up raises, and the provider then stops the run: a run
+    whose ARN the server does not hold cannot be resumed by anyone, so it must not keep a device.
+    """
+
+    def __init__(
+        self,
+        *,
+        url: str,
+        auth_token: str | None,
+        wid: str,
+        job_id: str,
+        stored: str | None,
+        lost: threading.Event,
+        cancelled: Callable[[], bool] = lambda: False,
+        sleep: Callable[[float], None] = time.sleep,
+        clock: Callable[[], float] = time.monotonic,
+        deadline: float = _CHECKPOINT_DEADLINE,
+    ) -> None:
+        self._url = url
+        self._auth_token = auth_token
+        self._wid = wid
+        self._job_id = job_id
+        self._stored = stored
+        self._lost = lost
+        self._cancelled = cancelled
+        self._sleep = sleep
+        self._clock = clock
+        self._deadline = deadline
+
+    def load(self) -> str | None:
+        """The run ARN the lease carried, or the one this attempt stored."""
+        return self._stored
+
+    def save(self, run_arn: str) -> None:
+        """Store *run_arn* on the server, retrying a transport failure or a server error.
+
+        Raises:
+            RunInterrupted: The job was cancelled while the save was retrying.
+            _CheckpointLostError: The lease is gone, by the route's 409 or by the heartbeat's.
+            _CheckpointRefusedError: The route answered another 4xx, which no retry changes.
+            _CheckpointTimeoutError: The deadline ran out before the server answered.
+        """
+        give_up_at = self._clock() + self._deadline
+        delay = _CHECKPOINT_RETRY_INITIAL
+        while True:
+            # Checked on every attempt, so a cancel never waits out the backoff.
+            if self._cancelled():
+                raise RunInterrupted("stop", run_arn)
+            # A lost lease still asks once more: the route answers 200 for an ARN it already holds,
+            # so a save whose answer was lost before a reclaim must not stop a run the next
+            # holder's lease already carries (`worker_batch_run`). The 409 or the check below the
+            # refusals then ends it without waiting out the backoff.
+            code, body = self._post(run_arn)
+            if code == 200:
+                self._stored = run_arn
+                return
+            if code == 409:
+                raise _CheckpointLostError(
+                    f"lease on job {self._job_id} lost before run {run_arn} was stored"
+                )
+            if code is not None and 400 <= code < 500:
+                # Not a lease question: the route is missing, the token is refused, or the request
+                # is malformed. Durability cannot be had, so the run stops and the job fails loudly.
+                _logger.error(
+                    "server refused to store run %s for job %s (HTTP %s): a server or "
+                    "configuration error, not a lost lease: %.200s",
+                    run_arn,
+                    self._job_id,
+                    code,
+                    body,
+                )
+                raise _CheckpointRefusedError(
+                    f"server or configuration error storing run {run_arn} for job "
+                    f"{self._job_id}: HTTP {code}: {body!s:.200}"
+                )
+            if self._lost.is_set():
+                raise _CheckpointLostError(
+                    f"lease on job {self._job_id} lost before run {run_arn} was stored"
+                )
+            if self._clock() + delay > give_up_at:
+                raise _CheckpointTimeoutError(
+                    f"could not store run {run_arn} for job {self._job_id} within "
+                    f"{self._deadline:.0f}s (last: {code if code is not None else body})"
+                )
+            _logger.warning(
+                "storing run %s for job %s failed (%s); retrying in %.0fs",
+                run_arn,
+                self._job_id,
+                code if code is not None else body,
+                delay,
+            )
+            self._sleep(delay)
+            delay = min(delay * 2, _CHECKPOINT_RETRY_MAX)
+
+    def _post(self, run_arn: str) -> tuple[int | None, Any]:
+        """One attempt at the route: its status and body, or None and the transport error."""
+        try:
+            return _post_json(
+                f"{self._url}/api/worker/batch-run",
+                {"worker_id": self._wid, "job_id": self._job_id, "run_arn": run_arn},
+                token=self._auth_token,
+                timeout=_UPLOAD_HTTP_TIMEOUT,
+            )
+        except (URLError, OSError) as e:
+            return None, str(e)
+
+
+def _discard_batch_workspace(work: Path, job_work: Path) -> None:
+    """Remove a cloud-batch job's own directory once its result and evidence are posted."""
+    if job_work.parent == work / _BATCH_JOBS_DIR:
+        shutil.rmtree(job_work, ignore_errors=True)
 
 
 def _expected_digest(bundle: dict[str, Any], name: str) -> str | None:

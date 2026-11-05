@@ -16,11 +16,11 @@ from contextlib import contextmanager
 
 from bajutsu.common.backend_cli import simctl
 from bajutsu.common.config import Effective
+from bajutsu.common.config.preconditions import ResolvedPreconditions
 from bajutsu.common.drivers import base
 from bajutsu.common.platform_lifecycle.environments.xcuitest_live import is_webdriver_endpoint
 from bajutsu.common.platform_lifecycle.factories import environment_for
 from bajutsu.common.platform_lifecycle.protocols import RunEnvironment
-from bajutsu.common.scenario import Preconditions
 
 
 def open_ios_read_driver(
@@ -40,7 +40,7 @@ def open_ios_read_driver(
     # simctl-resolved; every other handle resolves through simctl to a concrete Simulator udid.
     resolved = udid if is_webdriver_endpoint(udid) else simctl.resolve_udid(udid, env_run)
     env = environment_for("xcuitest", resolved, env_run)
-    driver = env.start(eff, Preconditions())
+    driver = env.start(eff, ResolvedPreconditions())
     return driver, env
 
 

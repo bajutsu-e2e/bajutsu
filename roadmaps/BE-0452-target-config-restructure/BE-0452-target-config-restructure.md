@@ -7,9 +7,9 @@
 |---|---|
 | Proposal | [BE-0452](BE-0452-target-config-restructure.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0452") |
-| Implementing PR | — |
+| Implementing PR | [#2191](https://github.com/bajutsu-e2e/bajutsu/pull/2191) (Units 1–3), [#2193](https://github.com/bajutsu-e2e/bajutsu/pull/2193) (Unit 4), [#2194](https://github.com/bajutsu-e2e/bajutsu/pull/2194) (Unit 5), [#2195](https://github.com/bajutsu-e2e/bajutsu/pull/2195) (Units 6–7), [#2196](https://github.com/bajutsu-e2e/bajutsu/pull/2196) (Units 8–9), [#2200](https://github.com/bajutsu-e2e/bajutsu/pull/2200) (Units 10–12), [#2201](https://github.com/bajutsu-e2e/bajutsu/pull/2201) (Unit 13) |
 | Topic | Driver & backend architecture |
 | Related | [BE-0126](../BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config.md), [BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact.md), [BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation.md), [BE-0076](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md), [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks.md), [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md), [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md), [BE-0447](../BE-0447-install-app-step/BE-0447-install-app-step.md), [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md) |
 <!-- /BE-METADATA -->
@@ -167,7 +167,7 @@ for that target, as today.
 | `app` | `id`, `path`, `build`, `reinstall`, `launch.env`, `launch.args`, `launch.deeplink` | `id`, `path`, `build`, `reinstall`, `launch.env`, `launch.deeplink`, `grantPermissions` | `url`, `launch.env` |
 | `app`, iOS, Android, and web | `startWhen`, `idNamespaces` | same | same |
 | `runsOn` | `model`, `os`, `kind`, `locale`, `seedPhotos` | `avd`, `apiLevel` | `browser.engine`, `browser.version`, `emulate` |
-| `driver` | `runner.testRunner`, `runner.build` | `nativeZ` | `headless` |
+| `driver` | `runner.testRunner`, `runner.build`, `runner.hostAddress` | `nativeZ` | `headless` |
 | `run`, extra fields | `tipKitHandling` | — | — |
 
 Every placement follows a reader found in today's code. Android reads `launchEnv` as intent extras
@@ -243,11 +243,12 @@ the scenario's value replaces the target's. Both keys go away:
   combination goes away.
 - Each prelude file is rewritten once as a component file, since the two formats differ. A prelude
   that uses `group:`, `setMocks`, or data-row placeholders cannot become a target-hook component;
-  each scenario that needs it calls it with `use:` in its own `setup`. Unit 2 finds these preludes.
+  each scenario that needs it calls it with `use:` in its own `setup`. Unit 2 found no prelude
+  outside the test fixtures. The log names those fixtures.
 - The prelude's reference base changes. Today a target's `setup:` resolves against each scenario
   file's directory, so one reference can name different preludes in different directories; the
-  component path resolves against the config file. Unit 2 finds such targets, and each affected
-  scenario calls its own prelude with `use:` instead.
+  component path resolves against the config file. Each scenario of such a target calls its own
+  prelude with `use:` instead. Unit 2 found no such target in the tree.
 - The prelude's place in the order changes. Today it splices onto `steps`, so it runs after the
   scenario's `before`. As a component appended last to the target's `setup`, after the target's
   former `before` steps, it runs before the scenario's `setup`. A scenario's own prelude, converted
@@ -402,7 +403,7 @@ matches an `avd`.
 | iOS `runsOn.os` | the Simulator's runtime label, parsed by `DeviceOS` | version range |
 | iOS `runsOn.model` | the simctl device-type name of the udid | exact |
 | Android `runsOn.apiLevel` | `ro.build.version.sdk` | version range on an integer |
-| Android `runsOn.avd` | the emulator's Android Virtual Device (AVD) name | exact; a physical device never matches |
+| Android `runsOn.avd` | the emulator's Android Virtual Device (AVD) name, from `ro.boot.qemu.avd_name`, else `ro.kernel.qemu.avd_name` | exact; a physical device never matches |
 | Web `runsOn.browser.version` | Playwright's `browser.version` | version range |
 
 Matching covers devices the invocation drives on its own host. A target whose `runsOn.kind` is
@@ -642,7 +643,7 @@ OS a matched run sees. A replacement that cannot keep the type and runtime fails
 | `device` | `runsOn.model`; the meaning changes from a hint for a replacement Simulator to a condition every run must meet |
 | `locale`, `xcuitest.deviceType` | `runsOn.locale`, `runsOn.kind` |
 | `browser`, `deviceMode` | `runsOn.browser.engine`, `runsOn.emulate` (omitted means desktop) |
-| `headless`, `nativeZ`, `xcuitest.testRunner`, `xcuitest.build` | `driver.headless`, `driver.nativeZ`, `driver.runner.*` |
+| `headless`, `nativeZ`, `xcuitest.testRunner`, `xcuitest.build`, `xcuitest.hostAddress` | `driver.headless`, `driver.nativeZ`, `driver.runner.*` |
 | `launchServer`, `mockServer`, `mailbox` | `services.server`, `services.mockServer`, `services.mailbox` |
 | `deviceProvider`, `cloudBatch`, `cloudBatchBudget`, `requires` | removed from the target (see *Where a run happens*) |
 | `erase`, `network`, `visualCompare`, `secrets`, `systemAlertHandling`, `iosTipKitHandling` | `run.*` (the last as `run.tipKitHandling`) |
@@ -792,7 +793,8 @@ batch provider that packages `launchEnv`, `common/report/rows.py`, `templates/se
    `launchEnv`, the `analysis/impact` deeplink reads, and code generation.
 8. **Reading devices.** Read the model and OS (iOS), the API level and AVD name (Android), and the
    browser version (web) from each available device, and reject conditions for `kind: device` and
-   remote environments.
+   remote environments. Before relying on the AVD name, verify the read on a real emulator at each
+   supported API level. Unit 2 could not, so this check stays open.
 9. **Runs and outcomes.** Form runs from lists and ranges, combine them across a multi-target
    scenario's targets and device groups, and assign each run from its eligible set. Fail a run with
    no device, record not applicable for an open range, and exit 1 when no run executed. Store each
@@ -857,23 +859,304 @@ batch provider that packages `launchEnv`, `common/report/rows.py`, `templates/se
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1: `VersionSpec`
-- [ ] Unit 2: confirm the open facts
-- [ ] Unit 3: platform registry and models
-- [ ] Unit 4: schema switch-over, fixtures, and `demos/` configs
-- [ ] Unit 5: setup and cleanup
-- [ ] Unit 6: command-line flags
-- [ ] Unit 7: scenario preconditions
-- [ ] Unit 8: reading devices
-- [ ] Unit 9: runs and outcomes
-- [ ] Unit 10: reporting
-- [ ] Unit 11: `doctor`
-- [ ] Unit 12: `bajutsu config schema`
-- [ ] Unit 13: docs
+- [x] Unit 1: `VersionSpec`
+- [x] Unit 2: confirm the open facts
+- [x] Unit 3: platform registry and models
+- [x] Unit 4: schema switch-over, fixtures, and `demos/` configs
+- [x] Unit 5: setup and cleanup
+- [x] Unit 6: command-line flags
+- [x] Unit 7: scenario preconditions
+- [x] Unit 8: reading devices
+- [x] Unit 9: runs and outcomes
+- [x] Unit 10: reporting
+- [x] Unit 11: `doctor`
+- [x] Unit 12: `bajutsu config schema`
+- [x] Unit 13: docs
 
 ### Log
 
-- No entries yet.
+- [#2191](https://github.com/bajutsu-e2e/bajutsu/pull/2191) (Units 1–3) — the
+  first three units land. No existing config changes behavior.
+  - `VersionSpec` in `bajutsu/common/devices/version.py` implements npm's range grammar in-house.
+    Adopting a package would have added a dependency for one small parser. Its tests pin the
+    desugaring examples of the node-semver README. npm ignores build metadata, and so does
+    `VersionSpec`; a prerelease tag fails at load. `majors()` lists the majors that the bounded sides
+    of a union cover. An open side adds none, because the pool decides its majors.
+  - The registry sits in `bajutsu/common/config/schema/platform/`, one module per platform.
+    `validate_group` checks one group against its platform's model. On an unknown key, its message
+    lists the fields the block accepts, for a nested block too. The loader does not call it yet;
+    unit 4 wires it into `TargetConfig`. A test pins the registry's keys to `backends.PLATFORMS`.
+  - Unit 2 found no prelude in the tree outside the tests. No config or scenario sets one.
+    Test fixtures in eight files use one: `tests/test_config.py`, `tests/test_run_lanes.py`,
+    `tests/test_inline_components.py`, `tests/test_components.py`, and `tests/test_impact.py`,
+    plus `test_loading.py`, `test_primary_target.py`, and `test_target_groups.py` under
+    `tests/scenario/`. `DESIGN.md`, `docs/configuration.md`, and `docs/dsl-grammar.md` describe the
+    prelude. Since no tracked config sets a target's `setup:`, no reference resolves to different
+    files from different scenario directories.
+  - Unit 2 also checked the AVD name. Nothing in the repository reads it yet, and Android CI boots
+    API level 34 alone. This unit had no emulator to read. The emulator passes the name on its
+    kernel command line. Images from API level 31 expose it as `ro.boot.qemu.avd_name`. Older
+    images expose it as `ro.kernel.qemu.avd_name`. That split rests on known emulator
+    behavior, not a device read. Our confidence in the split is medium. Unit 8 should read both
+    properties, and fail when an emulator reports neither. An `avd` condition then never misses
+    without a message. The read stays an open item. Unit 8 must verify it on a real emulator at each
+    supported API level.
+    For a local emulator, `adb emu avd name` asks the emulator console as a
+    further fallback.
+  - Two departures from the design text. The design predates `xcuitest.hostAddress`. That key
+    moves to `driver.runner.hostAddress` with the rest of the runner block. Both tables now list it.
+    The web engine list `WEB_ENGINES` moves beside the web model. Today's loader imports it from
+    there.
+- [#2193](https://github.com/bajutsu-e2e/bajutsu/pull/2193) (Unit 4) — the schema switch-over lands. The loader reads the eleven grouped
+  keys alone, and every config, demo, and test fixture moved with it.
+  - `Config` merges `defaults` into each raw target before validation. `TargetConfig` then
+    validates `app`, `runsOn`, and `driver` through `validate_group`. A target's `run` uses one
+    model per platform: the shared `RunPolicy` joined to the platform's fields. An unknown run key
+    lists both sets. Ranges stay strings. `resolve` applies the iOS `en_US` default.
+  - The loader takes the config's path and suite root:
+    `load_config(text, path=, root=)` and `load_config_file(path, root=)`. A `--config` naming a
+    Git source passes its checkout as the root. Every other caller passes the file alone, and the
+    root is then the config's own directory.
+  - A target may not write `null` on `run.secrets`, an `evidence.redact` list, or a block that
+    holds one. The load fails and names the path, so a target never wipes the team's masking.
+  - Behaviour change: a config's `evidence.redact.unmaskSecureFields` and
+    `unmaskCredentialNames` now take effect. The old resolver dropped both, so masking stayed on.
+    A value in `defaults` reaches every target.
+  - Serve checks a request's `backend` against the target for run, record, and crawl, and
+    answers a mismatch with a 400. Routing never widens such a pair to any worker. An
+    `environment: appium` run of a scenario that mixes a grid target with a local one gets a 400 at
+    dispatch, as the design asks.
+  - A run with no `--target` takes its primary target from the first file's first declared name.
+    `--tag` or `--exclude` can drop every scenario on that target. `run` then infers the primary
+    again, from the first scenario left. The showcase's Android device-group lane needs this fix: its
+    files list the iOS scenario first. The stale iOS primary was still acquired, and the stricter
+    `--backend android` check then exited 2. The check itself keeps its rule.
+  - This unit removes `deviceProvider`, `cloudBatch`, `cloudBatchBudget`, `requires`, and the
+    server's budget machinery. `run-set` requires a batch-provider `environment`. A request that
+    still names `deviceBudget` gets a 400. The plain run request accepts
+    `environment: appium`. Every device-driving command takes `--worker-config` with an `appium`
+    environment, and `triage --rerun` forwards it. `--udid` no longer accepts a URL.
+  - Not yet supported: `_select_actuator_or_exit` refuses a target with a `runsOn` condition for
+    `run`, `record`, `crawl`, `repl`, and `audit`. The MCP doctor tool and `doctor`'s screen probe
+    refuse it too. `--backend fake` skips the check with one notice. `Effective.conditions` carries
+    the declared fields for unit 9.
+  - This unit removes `preconditions.setup` and `apply_setups`, and adds
+    `preconditions.run.inheritSetup`.
+    No prelude existed outside the eight test files unit 2 named. Those tests now cover component
+    resolution instead. Target hooks resolve `use:` at load through the new `expand_steps`.
+    `hooks.cleanup` still takes `on: error`.
+  - A replacement Simulator keeps the captured device type and runtime, or fails the run.
+    `simctl.create_device` no longer retries unpinned. Neither the configured device nor the
+    newest iPhone stands in any more.
+  - Ten departures from the design text, each recorded here:
+    - `worker.yaml` names the grid in an `appium:` block beside `environment: appium`, because
+      `environment` is a scalar today. The block holds `endpoint` and `platform`.
+    - A serve request's `backend` is one token. Capture, enrich, and doctor check it in process.
+      Run, record, and crawl leave the check to the spawned command. Routing reads the checked
+      value. A `backend: fake` job thus needs no macOS host, like a former `backend: [fake]`.
+    - The cost-ordered selection in `backends.py` stays, with `doctor`'s actuator-resolution
+      disclosure. With one token per backend, both take the hard-pin path. Removing them changes
+      no behavior, so a later cleanup can do it.
+    - The `fake` platform's `app` also accepts `startWhen` and `idNamespaces`. The fake driver
+      reads the id contract for readiness and for `doctor`'s score.
+    - The readiness signal stays `readyWhen` in the run manifest, so older manifests read the same.
+    - Doctor's config gate (`preflight.config_checks`) stays as a defensive check. The schema now
+      keeps the command line from reaching it. Its remedies name `app.id` and `app.url`.
+    - The full docs pass stays with unit 13. This unit rewrote `docs/configuration.md` and
+      updated the other pages that still described a removed key as current.
+    - Serve's config views take the config's own directory as the suite root, not the upload's
+      bundle root or the binding's directory. The run that serve spawns reads the config as a local
+      file, so both sides then accept the same hook components.
+    - A component file's path refs resolve against the calling scenario's directory, as for any
+      component. A prelude rewritten as a component therefore loses its own directory as a base.
+      Unit 2 found no prelude outside the tests, so no config changes.
+    - `serve --backend` keeps its meaning; BE-0449 already deprecated it.
+- [#2194](https://github.com/bajutsu-e2e/bajutsu/pull/2194) (Unit 5) — a scenario's phases take the words a target's hooks use: `setup` and
+  `cleanup`. The failed outcome is `failure` everywhere.
+  - The scenario's `before` and `after` became `setup` and `cleanup`. A cleanup rule's `on` and a
+    `capturePolicy` trigger's `result` take `failure` in place of `error`. The loader reads no old
+    name, as *Out of scope* says. A scenario that writes `before` or `after`, and a rule or trigger
+    that writes `error`, fail at load with a message that names the replacement.
+  - The code names follow: `CleanupRule` replaces `AfterRule`, and `RunDefaults` holds `setup` and
+    `cleanup`. The showcase fixture moved to `demos/showcase/scenarios/setup_cleanup.yaml`.
+  - The report labels the two phases `setup` and `cleanup`: the HTML blocks and their
+    `data-phase`, the failure prefix (`setup: …`, `cleanup: …`), and the JUnit body. The evidence
+    directory of a hook step takes the same prefix, and `codegen` writes a `// setup` divider.
+  - `RunResult.after_verdict` stores `failure` in place of `error`. `report/load.py` reads `error`
+    from an older manifest as `failure`. A fixture run from before the rename pins that read.
+  - Three departures from the design text:
+    - The stored keys `before_outcomes`, `after_outcomes`, and `after_verdict` keep their names.
+      The design renames the stored value alone. Keeping the keys lets an older reader still parse
+      the manifest; its offline re-render falls back to the baked report.
+    - `report/load.py` also rewrites a stored `scenario.yaml` that uses `before`, `after`, or
+      `error`. The scenario model now rejects those names, so without this rewrite an earlier run
+      would fail to load in spite of its manifest.
+    - The CTRF record's `extra` names the phases `setup` and `cleanup`, so a CTRF consumer that read
+      `extra.before` or `extra.after` must switch to the new keys.
+  - This unit updated the pages that describe these names. The full docs pass stays with unit 13.
+- [#2195](https://github.com/bajutsu-e2e/bajutsu/pull/2195) (Units 6–7) — the command-line flags read the regrouped fields, and a scenario's
+  `preconditions` takes the target's group names.
+  - Unit 6: `parse_engine_flag` reads `--browser` and each `--browsers` entry. It uses the model
+    of `runsOn.browser.engine`. A `--browser` replaces that field, and so does a `--browsers`
+    matrix. A listed engine then stops counting as a condition. Each flag's help text names the field the flag overrides. That holds
+    for `run`, `record`, `crawl`, and `repl`. The `triage --rerun` and MCP run docstrings name it
+    too. The flags still act through the unchanged `Effective` names.
+  - Behaviour change: `record` and `crawl` default `--system-alert-handling` to the target's
+    `run.systemAlertHandling`. A target that writes `false` thus turns the guard off there too.
+    Their `--erase`, and that of `repl`, keep their own default. The help says `run.erase` does not
+    apply.
+  - Unit 7: `preconditions` holds `app`, `runsOn`, and `run`. The top-level `systemAlertHandling`
+    moved to `run.systemAlertHandling`. The top-level `iosTipKitHandling` moved to
+    `run.tipKitHandling`. An old key fails at load, and the message names its new home. A
+    scenario's `app.reinstall` is unset by default.
+  - Behaviour change: the crash-retry recovery reads the merged `reinstall`. A target that writes
+    `app.reinstall: overwrite` thus turns off the forced erase on a retry for its scenarios. The
+    same holds for the device replacement that follows that erase. A scenario that writes its own
+    `reinstall: clean` keeps both. The target field is the default for its scenarios, and
+    `overwrite` declares that the app data must survive a lease.
+  - The target gains `app.reinstall` and `app.launch.deeplink` on iOS and Android. It gains
+    `runsOn.seedPhotos` on iOS. They resolve onto `Effective.reinstall`, `.deeplink`, and
+    `.seed_photos`. The seeded photos rebase against the config file.
+  - `resolve_preconditions` merges a scenario over one target. The result is a
+    `ResolvedPreconditions`, which the platform environments read in place of the scenario model.
+    `record`, `crawl`, and `repl` build theirs from the target and their own `--erase`.
+  - `run` and `audit` check each selected scenario against the targets it drives. The check comes
+    before any device work, and before the command fills in run defaults. Four cases fail:
+    - an `app` field no driven platform has;
+    - an iOS field of `run` with no iOS target driven;
+    - a malformed `runsOn` block;
+    - a merged `seedPhotos` without an effective `run.erase`.
+  - A condition in a scenario's `runsOn` meets the refusal of unit 4, "not yet supported". The
+    `--backend fake` flag skips the refusal with one notice.
+  - `load_stored_scenario_file` also regroups the flat keys of a stored plan. It moves the
+    top-level run fields too, so earlier runs still load.
+  - Four readers moved to the new groups: the Device Farm `launchEnv` collision check, the
+    `analysis/impact` deeplink read, code generation, and the report's preconditions table. Every
+    scenario under `demos/` moved, as did every test fixture.
+  - Five departures from the design text:
+    - The scenario model keeps each `runsOn` block as written. The import contract keeps the
+      scenario schema off the config. A malformed block thus fails at `run`, `audit`, and
+      `bajutsu lint` (and the serve editor's lint), not when the scenario loads.
+    - `Effective` gains `declared_platform` and the `schema_platform` property. A `fake` target
+      resolves to the iOS-shaped sub-config. Its `platform` thus cannot pick the models to check.
+    - `ResolvedPreconditions` keeps the scenario's launch environment and arguments apart. The
+      environments merge and append them over the target's as before. No launch path changed.
+    - `_filter_scenarios` writes `run.tipKitHandling` when the guard ends on or a flag names it.
+      A scenario that drives no iOS target never gains the iOS field in its stored plan.
+    - Unit 6 changes no `--scenarios` flag. `run` takes `--scenario` files. `serve` alone has
+      `--scenarios`, which names no target field. `crawl` has no `--browser`.
+  - Two further refusals keep a seeded photo from going ignored. A non-primary target of a
+    multi-target scenario with a merged `seedPhotos` fails, because the run stamps `run.erase` and
+    seeds for the primary alone. `record`, `crawl`, and `repl` exit 2 on `--no-erase` against a
+    target that seeds photos. A `fake` target keeps reading the scenario's iOS locale, as the flat
+    `locale` let it.
+  - This unit updated the pages that describe these names. The full docs pass stays with unit 13.
+- [#2196](https://github.com/bajutsu-e2e/bajutsu/pull/2196) (Units 8–9) — `run` reads each available device and forms its runs.
+  Every command except `doctor` drops the "not yet supported" refusal.
+  - Unit 8: `bajutsu/common/devices/facts.py` reads each device through the simctl and adb layers.
+    On iOS it reads the device-type name from `simctl list devicetypes` and the runtime version. A
+    device's own name is free-form, so the read never compares it. On Android it reads
+    `ro.build.version.sdk` and, for an emulator, the AVD name. On the web it reads the version of a
+    brief headless Playwright launch. A device the read cannot answer for fails the run with exit
+    code 2.
+  - The AVD name reads `ro.boot.qemu.avd_name`, then `ro.kernel.qemu.avd_name`, then
+    `adb emu avd name`. An emulator that reports none fails. The tests use fake adb output alone.
+    The read on a real emulator at each supported API level is still unverified, so it stays open.
+  - A target an `appium` grid serves fails on any effective condition. A physical iPhone does too.
+    The check covers each target alone and runs before any device work. The Device Farm provider
+    refuses a job whose target or scenario declares a condition. It refuses before any upload.
+  - Unit 9: `bajutsu/common/devices/runs.py` forms a target's runs and combines them. It picks
+    each run's eligible set too. `bajutsu/run/device_matrix.py` merges each scenario's block over
+    its targets. It reads each pool once, then groups the runs that take the same devices into
+    cells. `run` keeps today's path when no scenario runs under a condition.
+  - Each run's result carries `coordinates` and `run_coordinates`. JUnit and CTRF names append the
+    coordinates. The manifest, schema version 14, lists not-applicable records under
+    `notApplicable`. An invocation where every record is not applicable exits with code 1 and
+    prints `no run executed`. A line before the verdict counts passes, failures, and not-applicable
+    records.
+  - The hosted runs table gains `run_coordinates` (migration `0024`). The flakiness history keys an
+    invocation by its target and coordinates beside its OS.
+  - `record`, `crawl`, and `repl` take the first run's device. `audit --repeat` forms runs as `run`
+    does, and an MCP run is a `bajutsu run`. The MCP doctor tool and `doctor`'s screen probe keep
+    the refusal until unit 11.
+  - Seven departures from the design text:
+    - Cells run one after another, each on pools narrowed to its eligible sets. `--workers` spreads
+      a cell's runs over its identical devices.
+    - Participants on one pool never share a device. The conditioned sets take their devices
+      first, in declared order. An unconditioned target on the same pool takes the devices left.
+    - Existing histories continue rather than start fresh. A null row reads as the empty key. An
+      older manifest without coordinates does too. No run before this unit could carry a
+      condition. An unconditioned scenario thus keeps one history across the upgrade.
+    - An invocation's hosted row holds the coordinates all its results share. A row whose results
+      ran on two or more coordinates holds the distinct key `*`. It never merges with an
+      unconditioned history. A history per run needs a row per run, which unit 10 can add.
+    - A scenario's single `browser.engine` replaces the target's engine for its runs. `--browsers`
+      beside any remaining condition exits 2, `browser.version` or another.
+    - `--step` exits 2 when the conditions form more than one run.
+    - `audit --repeat` reports every run it can, then exits 1 when a run had no device.
+  - This unit updated the pages that describe these behaviors. The full docs pass stays with unit
+    13.
+- [#2200](https://github.com/bajutsu-e2e/bajutsu/pull/2200) (Units 10–12) — the reports show the run matrix and the not-applicable records.
+  `doctor` lists each scenario's runs, and `bajutsu config schema` prints the config's
+  JSON Schema.
+  - Unit 10: the manifest, schema version 15, gains `runMatrix`. That grid keys each cell by
+    scenario and coordinates. A cell holds a run or a not-applicable record. The HTML report renders
+    the grid and counts the records in a header chip. It lists each reason apart, and each scenario
+    card names its coordinates.
+  - JUnit lists each not-applicable record as a `<skipped>` case, and CTRF as a `skipped` test. CTRF
+    carries a run's coordinates under `extra.coordinates`. The webhook payload counts the records
+    and names the coordinates of a run in error. The serve run history shows the count as `N n/a`.
+  - A run that no condition formed keeps the shape of every output. A test pins each output for
+    that case.
+  - Unit 11: `doctor` prints a `runs:` section when a condition applies. It reads the `--udid` pool
+    as `run` does and forms the same runs. Each run lists its eligible devices, or the reason it
+    has none.
+  - With no pool to read, `doctor` lists the declared runs alone. An open range then reads as "one
+    run per available major version". A grid target, a physical device, and an unreadable pool all
+    take this path.
+  - The screen probe of `doctor` and the MCP doctor tool score the device of the first run. That
+    device is the one `record` takes. No command refuses a condition as "not yet supported" now.
+  - Unit 12: `bajutsu config schema` prints a JSON Schema built from the config models. The
+    registry supplies each platform's groups. Each target is a `oneOf` keyed by `platform`.
+    `defaults.platforms` lists every platform's groups with each field optional. `bajutsu schema`
+    now states a scenario's `preconditions.runsOn` per platform from the registry.
+  - The `exists` assertion now states its inline form in both schemas, as files write it. The model
+    stores the selector under `sel`, which no file writes.
+  - A test pins both schemas to the models, and validates every config the repository ships.
+  - Two departures from the design text:
+    - The `runs:` section is informational. A run with no device does not change the exit code of
+      `doctor`.
+    - The hosted runs table keeps one row per invocation. Unit 9's note left a row per run to this
+      unit. The design does not ask for one, so the row stays as unit 9 made it.
+  - This change updated `docs/cli.md` and `docs/reporting.md` in both languages. The full docs pass
+    stays with unit 13.
+- [#2201](https://github.com/bajutsu-e2e/bajutsu/pull/2201) (Unit 13) — the docs pass. Every page unit 13 lists now matches the code, in both
+  languages. This unit completes the item.
+  - Units 4–12 had already rewritten the old keys and scenario fields on the pages they touched. This
+    unit checked every listed page for the keys of *Where each old key goes*. It loaded each config
+    and scenario example in them through the loader. Two examples did not load, and
+    this unit fixed both. The `interrupts` target in `docs/scenarios.md` lacked `platform` and
+    `app.id`. The physical-device target in `docs/ios-device-cloud.md` lacked `app.id`.
+  - The pages now describe the behavior units 8–12 added:
+    - `docs/configuration.md`: a run-matrix example, the outputs that list a not-applicable record,
+      `doctor`'s `runs:` section, and `bajutsu config schema`.
+    - `docs/scenarios.md`: a scenario's own device conditions.
+    - `docs/run-loop.md`: how `device_matrix.py` plans cells, and the new `RunResult` fields.
+    - `docs/cli.md`: the not-applicable exit code, and coordinates in the flakiness key.
+    - `docs/recording.md`: the device `record` takes.
+    - `docs/codegen.md`: a generated test carries no condition.
+    - `docs/devicefarm.md`: a Device Farm job refuses a condition.
+    - `docs/web-ui.md`: the `N n/a` count.
+    - `docs/drivers.md`: the notice under `--backend fake`.
+    - `docs/glossary.md`: matching, in the `device` entry.
+    - `docs/architecture.md`: the `config` command, and the `preconditions` and `json_schema`
+      modules.
+    - `DESIGN.md` §3.3: the run matrix and its determinism. `README.md` and `README.ja.md` list device conditions.
+  - Two statements units 4 and 9 left behind were stale. `doctor`'s screen probe no longer refuses
+    a condition, as unit 11 changed. The glossary no longer says that conditions go unmatched.
+  - One example stays illustrative. The `DESIGN.md` §8 config names a hook component,
+    `./scenarios/showcase/_setup.yaml`. The tree holds no such file, so that example loads only
+    once someone adds one.
 
 ## References
 

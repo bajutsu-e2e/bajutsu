@@ -41,7 +41,7 @@ class Selector(_Model):
         if not self.model_dump(exclude_none=True, by_alias=True):
             raise ValueError("selector requires at least one condition (§5)")
         # Reject a malformed candidate list (empty / blank / non-canonical-first) the same way a
-        # config `readyWhen` is checked — shared in `base` so the rule holds wherever a selector is
+        # config `startWhen` is checked — shared in `base` so the rule holds wherever a selector is
         # authored (BE-0221). See `base.validate_id_candidates` for why the order is enforced.
         base.validate_id_candidates("id", self.id)
         base.validate_id_candidates("idMatches", self.id_matches)

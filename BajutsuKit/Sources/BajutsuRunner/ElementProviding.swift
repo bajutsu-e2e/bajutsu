@@ -41,7 +41,7 @@ public enum AppActivationResult {
 }
 
 /// The result of a tap attempt, or of an `isHittable` query reusing the same resolution outcomes.
-public enum TapResult {
+public enum TapResult: Sendable {
     case ok
     case stale
     case notFound

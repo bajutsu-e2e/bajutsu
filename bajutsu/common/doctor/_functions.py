@@ -55,6 +55,9 @@ def score(
         fail_coverage: id coverage < this drops to "Blocked" (configurable via
             ``defaults.doctor.idCoverageFail``, BE-0024).
     """
+    # An embedded third-party widget (a cross-origin iframe) is not the app's to instrument, so its
+    # controls neither lower the id coverage nor count as duplicate ids.
+    elements = base.without_cross_origin_frames(elements)
     actionable = [e for e in elements if _is_actionable(e)]
     with_id = sum(1 for e in actionable if e["identifier"])
     id_coverage = with_id / len(actionable) if actionable else 1.0
@@ -170,7 +173,7 @@ def probe_screen(
         # practice the caller's config gate already caught it; this is the defensive backstop.
         base_url = web_base_url(eff)
         if not base_url:
-            raise DoctorProbeError("web target needs baseUrl (set targets.<name>.baseUrl)")
+            raise DoctorProbeError("web target needs baseUrl (set targets.<name>.subject.url)")
         web = require_web(eff)
         # Lazy import keeps Playwright (a heavy optional dep) off the default path.
         from bajutsu.common.drivers.playwright import PlaywrightDriver, _playwright_error_types

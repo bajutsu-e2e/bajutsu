@@ -15,9 +15,9 @@ from bajutsu.common.backend_cli import simctl as _simctl
 from bajutsu.common.run_meta.object_store import EvidenceTarget, ObjectStore
 from bajutsu.serve.artifacts import ArtifactStore, LocalArtifactStore
 from bajutsu.serve.baselines import BaselineStore, LocalBaselineStore
-from bajutsu.serve.executor import LocalExecutor, RunExecutor
+from bajutsu.serve.executor import RunExecutor, UnqueuedExecutor
 from bajutsu.serve.helpers import load_serve_config_file
-from bajutsu.serve.logbus import InMemoryLogBus, LogBus
+from bajutsu.serve.logbus import InMemoryLogBus, LiveLineBudget, LogBus
 from bajutsu.serve.oidc import JwksCache
 from bajutsu.serve.orgs import targets_for_org
 from bajutsu.serve.scenarios import LocalScenarioStore, ScenarioStore
@@ -35,6 +35,8 @@ from .session_manager import SessionManager
 from .store_bundle import StoreBundle
 
 if TYPE_CHECKING:
+    from cryptography.fernet import Fernet
+
     from bajutsu.serve.server.db import Repository
 
 Popen = Callable[..., Any]
@@ -45,6 +47,10 @@ Popen = Callable[..., Any]
 # members on one process — far past what a serve deployment fans out to — while still bounding a
 # process that never sees those sessions end.
 MAX_SESSION_BINDINGS = 2048
+
+# One job's handoff requests together: a few dozen prompts with full-screen screenshots, far past a
+# real recording session's needs (BE-0449 unit 8).
+_HANDOFF_BYTES_PER_JOB = 64 * 1024 * 1024
 
 
 @dataclass
@@ -100,13 +106,6 @@ class ServeState:
     # repoint the binding's `cwd`. Runs off a Git/upload bind still land their tree here
     # (BE-0063/BE-0073).
     base_cwd: Path = field(init=False)
-    # Root the cloud-batch (Device Farm) test package is built from. Device Farm's
-    # APPIUM_PYTHON_TEST_PACKAGE validation needs Bajutsu's own `tests/` and `pyproject.toml` at the
-    # package root, and its test spec `pip install`s that root — so the package must be rooted at the
-    # Bajutsu source tree, not the config's own directory (`cwd`, which BE-0242 points at the config).
-    # serve() sets it to the source root when serving from a checkout; None falls back to `cwd` (the
-    # in-process test model, where the config, scenarios, and source all sit in one tmp tree).
-    devicefarm_package_root: Path | None = None
     # Policy for an uploaded bundle's launchServer command (and the latent mockServer.cmd, once it is
     # wired) (BE-0090): deny | reuse | sandbox. Default `sandbox` runs it in a throwaway container,
     # never on the serve host; it applies only to upload-sourced configs (a local/Git config is
@@ -120,25 +119,42 @@ class ServeState:
     # Opt-in to run an API-bound Git config's `build:` command on the host (BE-0121). Off by default;
     # serve() sets it from --allow-remote-build / BAJUTSU_ALLOW_REMOTE_BUILD.
     allow_remote_build: bool = False
-    # Whether this is a hosted deployment (the server backend), the single source of truth for
-    # deployment-aware config sourcing (BE-0108). The server backend sets it True where it wires its
-    # hosted seams; the local backend (stdlib serve, including a self-hosted single Mac) never does,
-    # so the file browser stays offered locally and is removed — UI and server-side — when hosted.
+    # Whether this is a hosted deployment, the single source of truth for deployment-aware config
+    # sourcing (BE-0108). A deployment setting, not implied by a repository (BE-0449): the server
+    # backend reads it from `BAJUTSU_HOSTED`, defaulting to True only when `BAJUTSU_SERVER_STORE`
+    # names a bucket; the local backend never sets it. The file browser stays offered locally and is
+    # removed — UI and server-side — when hosted.
     hosted: bool = False
     # Whether this deployment's transport serves the `local_only` routes (`serve.routes`) — the
     # `/api/capture/*` family among them. The stdlib server registers every route, so the default
-    # holds there; `make_app` clears it, since the FastAPI transport skips them. Distinct from
-    # `hosted`, which the local `serve --asgi` leaves False while still going through `make_app`:
-    # that deployment keeps the file browser and its host paths but serves no capture route, so the
-    # boot read's `capture` capability is keyed to this field rather than to `hosted` (issue 1721).
+    # holds there; `make_app` sets it to `not hosted`, since the FastAPI transport skips them only on
+    # a hosted deployment (BE-0449). The boot read's `capture` capability reads it (issue 1721).
     serves_local_routes: bool = True
     popen: Popen = subprocess.Popen
-    # How a created job gets executed. Defaults to in-process threads (LocalExecutor); a server
-    # backend swaps in a queue-based executor without touching the handler or run_job (BE-0015).
-    executor: RunExecutor = field(default_factory=LocalExecutor)
-    # Live-log delivery. In-memory buffer by default; a server backend swaps in `PostCompletionLogBus`
-    # (BE-0106), which serves any replica any job's `/events` from the jobs table + object storage.
+    # How a created job gets executed. `bajutsu serve` always queues it for a worker
+    # (`DbQueueExecutor`); the server never runs a job itself (BE-0449), so a state built without a
+    # queue fails each job rather than spawning it here.
+    executor: RunExecutor = field(default_factory=UnqueuedExecutor)
+    # Live-log delivery. In-memory buffer by default; a server backend with a queue swaps in
+    # `QueueLogBus` (BE-0449), which relays the lines workers post and falls back to the jobs table +
+    # the uploaded console.log.
     logbus: LogBus = field(default_factory=InMemoryLogBus)
+    # How many live lines each queued job has posted through `/api/worker/log` (BE-0449), so one
+    # job cannot fill the bus without bound.
+    live_log_budget: LiveLineBudget = field(default_factory=LiveLineBudget)
+    # The same bound for the live artifact snapshots a crawl's worker posts through
+    # `/api/worker/artifact` (BE-0449 unit 8), counted apart so a growing screen map never eats
+    # the console's budget, or the console the screen map's.
+    live_artifact_budget: LiveLineBudget = field(default_factory=LiveLineBudget)
+    # The bound for a paused `record`'s handoff requests, screenshots included (BE-0449 unit 8),
+    # so a worker that keeps asking cannot grow the bus without end. Kept apart from the two above.
+    live_handoff_budget: LiveLineBudget = field(
+        default_factory=lambda: LiveLineBudget(bytes_per_job=_HANDOFF_BYTES_PER_JOB)
+    )
+    # Encrypts a person's handoff answer while it waits in the jobs table for the worker of a paused
+    # `record` (BE-0449 unit 8): the secrets key, which every deployment with a queue holds. None
+    # without a queue, where the answer goes straight to the job's own standard input.
+    handoff_cipher: Fernet | None = None
     # Run-artifact reads. Filesystem-confined by default; a server backend swaps in an
     # object-storage store (set after construction) that may serve signed-URL redirects (BE-0015).
     artifacts: ArtifactStore = field(init=False)
@@ -224,6 +240,11 @@ class ServeState:
     # server backend sets both where it wires its per-org object stores.
     object_store: ObjectStore | None = None
     object_store_prefix: str = ""
+    # Whether `object_store` is a local start's `FileObjectStore` (BE-0449): the runs tree mounted at
+    # the default org's `artifacts/` prefix, every other object under `.bajutsu/objects/`. Only then
+    # are the run trees under `runs_dir` this deployment's own artifacts, so only then does the server
+    # index them into the run history.
+    local_file_store: bool = False
     # Days a soft-deleted run stays in the trash before the lazy sweep purges it (BE-0239). The
     # retention window that makes soft-delete non-instantly-destructive. <= 0 disables the automatic
     # purge (trash is kept until a manual purge). serve() sets it from BAJUTSU_RUN_RETENTION_DAYS.
@@ -285,7 +306,7 @@ class ServeState:
         self.baselines = LocalBaselineStore(self.baselines_dir)
         # The local secret store holds the value in this process's env; the name->env-var mapping is
         # resolved lazily so a config bound later (its `ai.keyEnv`, BE-0097) is reflected.
-        self.secrets = EnvSecretStore(self._env_var_for_secret)
+        self.secrets = EnvSecretStore(self.env_var_for_secret)
         # `logbus` is resolved by now (a plain field), so the registry can capture it: it is never
         # reassigned after construction, so the registry's reference stays the live bus.
         self.job_registry = JobRegistry(logbus=self.logbus, finished_ids=self._finished_job_ids)
@@ -337,8 +358,9 @@ class ServeState:
             return {org.id: "admin" for org in repository.list_orgs()}
         return repository.list_user_orgs(actor)
 
-    def _env_var_for_secret(self, name: str) -> str:
-        """The env var the local secret store reads/writes for logical secret *name* (BE-0136).
+    def env_var_for_secret(self, name: str) -> str:
+        """The env var the local secret store reads/writes for logical secret *name* (BE-0136), and
+        the one a job receives the value under from any store, through its lease (BE-0449).
 
         The Claude API key honors the bound config's ``ai.keyEnv`` (BE-0097); the `claude-code`
         provider's OAuth token maps to its fixed CLI variable (BE-0215) — the `claude` CLI names it,
@@ -513,17 +535,14 @@ class ServeState:
         """Assign *job* its id + live-log bus and store it. Delegates to the registry (BE-0198)."""
         return self.job_registry.register(self._freeze_binding(job))
 
-    def try_register(self, job: Job, *, device_budget: int = 0) -> Job | None:
+    def try_register(self, job: Job) -> Job | None:
         """Register *job* only if under the concurrency caps, forwarding this state's configured caps
-        to the registry, which counts and inserts atomically under one lock (BE-0051). *device_budget*
-        is the per-target cloud-batch device cap (BE-0336 Unit 4); unlike the state-wide caps it is
-        per-target, so the dispatcher resolves it from the request's config and passes it per call."""
+        to the registry, which counts and inserts atomically under one lock (BE-0051)."""
         return self.job_registry.try_register(
             self._freeze_binding(job),
             max_concurrent=self.max_concurrent,
             max_concurrent_per_user=self.max_concurrent_per_user,
             max_concurrent_per_org=self.max_concurrent_per_org,
-            max_concurrent_batch=device_budget,
         )
 
     def _finished_job_ids(self, job_ids: list[str]) -> set[str]:
@@ -533,8 +552,8 @@ class ServeState:
         A deployment that dispatches to remote workers (`DbQueueExecutor`) never learns a job's end
         in process, so the jobs table is the only place its terminal status exists. Reads
         `self.repository` per call rather than closing over it, so a repository wired after
-        construction is still consulted. None finished without one: local serve runs every job
-        in-process and observes each one finish, and an id with no row is a job registered but not
+        construction is still consulted. None finished without one: a state with no queue fails each
+        job at dispatch, which `status` already records, and an id with no row is a job registered but not
         yet enqueued (`_register_and_dispatch` registers first), which is still running.
         """
         repository = self.repository

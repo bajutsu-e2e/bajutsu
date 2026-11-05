@@ -12,6 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from run_cli import invoke
 from typer.testing import CliRunner
 
 from bajutsu.cli import app
@@ -27,14 +28,12 @@ def _eff(*, device_provider: DeviceProvider | None = None) -> Effective:
         target="app",
         platform_config=AndroidConfig(package="com.example.app"),
         backend=["android"],
-        device="booted",
         locale="en_US",
         launch_env={},
         launch_args=[],
         id_namespaces=[],
         reserved_namespaces=[],
         mock_server=None,
-        setup=None,
         capture=[],
         redact=Redact(),
         device_provider=device_provider,
@@ -55,6 +54,16 @@ def test_explicit_local_kind_resolves_the_same_provider() -> None:
     lease = dp.acquire_device(_eff(device_provider=DeviceProvider(kind="local")), "booted")
     assert lease.udid_spec == "booted"
     assert lease.provision == ProvisionProfile()
+
+
+def test_devicefarm_host_provider_reports_the_device_ready_with_its_app() -> None:
+    # On a Device Farm host the reserved device is booted and Device Farm installed the uploaded app,
+    # so the run skips both; the udid (`booted`, or the reserved iPhone's id) passes through (BE-0465).
+    eff = _eff(device_provider=DeviceProvider(kind="devicefarm-host"))
+    lease = dp.acquire_device(eff, "booted")
+    assert lease.udid_spec == "booted"
+    assert lease.provision == ProvisionProfile(boot_ready=True, app_preinstalled=True)
+    lease.release()  # nothing was reserved by this run
 
 
 def test_unknown_provider_kind_fails_closed() -> None:
@@ -181,17 +190,11 @@ def test_run_warns_and_keeps_its_verdict_when_release_raises(
                 udid_spec=requested_udid, provision=ProvisionProfile(), release=_boom
             )
 
-    dp.register("raising", _RaisingReleaseProvider())
+    # The config names no provider (BE-0452), so the raising one stands in for the built-in local.
+    dp._ensure_builtins()
+    builtin_local = dp._PROVIDERS["local"]
+    dp.register("local", _RaisingReleaseProvider())
     try:
-        # Lane resolution runs `environment_for(actuator, ...).resolve_device`, which the fake
-        # backend inherits from the device environment — it shells to `xcrun simctl`. That binary is
-        # absent on the Linux gate, so an unstubbed call raises FileNotFoundError and the run would
-        # exit 1 for the wrong reason. Stub it (as the zero-config run test does) so no simctl/adb
-        # touches the gate; the release path — the code under test — is untouched.
-        monkeypatch.setattr(
-            "bajutsu.common.backend_cli.simctl.resolve_udid", lambda _udid, run=None: "FAKE-UDID"
-        )
-
         # Dispatch returns one passing scenario so `_finish` emits PASS and exits 0 before the
         # `finally` invokes the raising release — no device is touched.
         from bajutsu.common.orchestrator.types import RunResult
@@ -200,7 +203,7 @@ def test_run_warns_and_keeps_its_verdict_when_release_raises(
         manifest.parent.mkdir(parents=True, exist_ok=True)
         manifest.write_text("{}", encoding="utf-8")
         result_row = RunResult(scenario="demo", ok=True, steps=[])
-        monkeypatch.setattr(run_cmd, "_dispatch", lambda plan: ([result_row], manifest))
+        monkeypatch.setattr(run_cmd, "_dispatch", lambda plan: ([result_row], manifest, []))
         # No CI annotations off a fake manifest (patch the name run.py's `_finish` actually calls).
         monkeypatch.setattr(github_actions, "emit", lambda *a, **k: None)
 
@@ -208,16 +211,19 @@ def test_run_warns_and_keeps_its_verdict_when_release_raises(
         scn.write_text("- name: demo\n  steps:\n    - tap: { id: home.title }\n", encoding="utf-8")
         cfg = tmp_path / "bajutsu.config.yaml"
         cfg.write_text(
-            "defaults: { backend: [fake] }\n"
-            "targets:\n"
-            "  demo:\n"
-            "    bundleId: com.example.demo\n"
-            "    idNamespaces: [home]\n"
-            "    deviceProvider: { kind: raising }\n",
+            (
+                "targets:\n"
+                "  demo:\n"
+                "    platform: ios\n"
+                "    subject:\n"
+                "      id: com.example.demo\n"
+                "      idNamespaces: [home]\n"
+            ),
             encoding="utf-8",
         )
 
-        result = CliRunner().invoke(
+        result = invoke(
+            CliRunner(),
             app,
             [
                 "run",
@@ -234,7 +240,7 @@ def test_run_warns_and_keeps_its_verdict_when_release_raises(
             ],
         )
     finally:
-        dp._PROVIDERS.pop("raising", None)
+        dp.register("local", builtin_local)
 
     assert result.exit_code == 0, result.output  # PASS verdict survives the release failure
     assert "PASS" in result.output

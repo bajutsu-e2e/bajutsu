@@ -48,9 +48,13 @@ class FakeDriver:
         # What `push_interruption_policy` last handed this backend, and what the runner-side
         # interruption monitor should report having tapped and declined — both inert here, so a
         # test can drive the orchestrator side of that exchange without a Simulator.
-        self.interruption_policy: tuple[list[tuple[set[str], str]], bool] | None = None
+        self.interruption_policy: (
+            tuple[list[tuple[set[str], str] | tuple[set[str], str, set[str]]], bool] | None
+        ) = None
         self.interruptions_to_drain: list[str] = []
         self.interruptions_declined_to_drain: list[list[str]] = []
+        # Per seeded tapped label, what the monitor matched its alert by (buttons and title marker).
+        self.interruption_alerts_to_drain: list[list[str]] = []
         # Notification banners the runner-side monitor should report having swiped away (BE-0416),
         # seeded the same way and just as inert.
         self.banners_to_drain: list[str] = []
@@ -64,6 +68,9 @@ class FakeDriver:
         # are told apart by `within` / `traits` / `index` — so an identifier key could not separate
         # them. Seeded after construction, like `system_alert_buttons`.
         self.picker_wheel_options: dict[int, list[str]] = {}
+        # The HTML attributes `read_attributes` returns (BE-0466), keyed by `id()` of the `Element`
+        # in `screen` for the same reason as `picker_wheel_options`. Seeded after construction.
+        self.attributes: dict[int, dict[str, str]] = {}
         # Identifiers of the two nodes `dismiss_blocking_tip` looks for in `screen`: the dismiss
         # region it taps, and the tip container it requires alongside it so an app's own popover —
         # which installs the same region — is left alone. Both are needed for a dismiss, exactly as
@@ -195,6 +202,12 @@ class FakeDriver:
         self._actuations.record(Actuation(gesture="back", via="key", unit=_UNIT))
         self._record("back", None)
 
+    def goto(self, url: str) -> None:
+        # The URL is author data, so it reaches `actions` (the test's view) but never the
+        # actuation record, which carries no author-written string (`actuation` rule 3).
+        self._actuations.record(Actuation(gesture="navigate", via="url", unit=_UNIT))
+        self._record("goto", url)
+
     def pinch(self, sel: base.Selector, scale: float) -> None:
         self._log_target("pinch", base.resolve_unique(self.screen, sel), scale=scale)
         self._record("pinch", (sel, scale))
@@ -225,6 +238,21 @@ class FakeDriver:
         # `option` never reaches the record (it can hold a resolved secret).
         self._log_target("selectOption", base.resolve_unique(self.screen, sel))
         self._record("select_option", (sel, option))
+
+    def read_attributes(
+        self, reads: Sequence[tuple[base.Selector, str]]
+    ) -> list[str | None | base.SelectorError]:
+        # Resolved like an action (zero / ambiguous fail), then the seeded attributes decide; an
+        # element nobody seeded simply has none. Not recorded: a read is no actuation.
+        out: list[str | None | base.SelectorError] = []
+        for sel, name in reads:
+            try:
+                el = base.resolve_unique(self.screen, sel)
+            except base.SelectorError as e:
+                out.append(e)
+                continue
+            out.append(self.attributes.get(id(el), {}).get(name))
+        return out
 
     def set_picker_value(self, sel: base.Selector, value: str) -> None:
         # Same resolution discipline as every other action: zero -> ElementNotFound, ambiguous ->
@@ -289,10 +317,33 @@ class FakeDriver:
         return self.notification_banner
 
     def set_interruption_policy(
-        self, rules: Sequence[tuple[frozenset[str], str]], governs: bool
+        self,
+        rules: Sequence[tuple[frozenset[str], str, frozenset[str]]],
+        governs: bool,
+        *,
+        in_tree_rules: Sequence[tuple[frozenset[str], str, frozenset[str]]] = (),
+        pacing: base.AlertPacing | None = None,
+        scenario_start: bool = False,
     ) -> None:
-        """Record the policy the orchestrator pushed, so a test can assert what the backend was told."""
-        self.interruption_policy = ([(set(identify), tap) for identify, tap in rules], governs)
+        """Record the policy the orchestrator pushed, so a test can assert what the backend was told.
+
+        A rule with no exclusions is recorded as its identifying labels and tap alone, the shape
+        nearly every assertion compares against; one with exclusions carries them third.
+        """
+        self.interruption_policy = (
+            [
+                (set(identify), tap, set(exclude)) if exclude else (set(identify), tap)
+                for identify, tap, exclude in rules
+            ],
+            governs,
+        )
+        # Kept apart from `interruption_policy`, whose shape nearly every assertion compares
+        # against, so only a test about the in-tree push (BE-0461) reads these.
+        self.interruption_in_tree_rules = [
+            (set(identify), tap, set(exclude)) for identify, tap, exclude in in_tree_rules
+        ]
+        self.interruption_pacing = pacing
+        self.interruption_scenario_start = scenario_start
 
     def drain_interruptions(self) -> base.DrainedInterruptions:
         """Hand back (and clear) whatever the three `*_to_drain` lists were seeded with."""
@@ -302,7 +353,13 @@ class FakeDriver:
             [],
         )
         banners, self.banners_to_drain = list(self.banners_to_drain), []
-        return base.DrainedInterruptions(tapped=tapped, declined=declined, banners=banners)
+        tapped_alerts, self.interruption_alerts_to_drain = (
+            list(self.interruption_alerts_to_drain),
+            [],
+        )
+        return base.DrainedInterruptions(
+            tapped=tapped, declined=declined, banners=banners, tapped_alerts=tapped_alerts
+        )
 
     def dismiss_blocking_tip(self, tree: list[base.Element] | None = None) -> bool:
         # Mirrors the real driver: a tip is the region *and* the container together, absence is
@@ -342,6 +399,9 @@ class FakeDriver:
     def screenshot(self, path: str) -> None:
         self.actions.append(("screenshot", path))
 
+    # Runs anywhere Bajutsu runs (BE-0450): None means no host restriction.
+    HOST_OS: frozenset[str] | None = None
+
     # A deliberately rich set (semanticTap / conditionWait / multiTouch / selectOption) so tests
     # can exercise those paths. Class constant so the preflight (BE-0082) reads it without
     # constructing a driver.
@@ -354,6 +414,8 @@ class FakeDriver:
             base.Capability.ELEMENTS,
             base.Capability.MULTI_TOUCH,
             base.Capability.SELECT_OPTION,
+            base.Capability.URL_NAVIGATION,
+            base.Capability.ELEMENT_ATTRIBUTE,
             base.Capability.TEXT_SELECTION,
             base.Capability.HANDLE_SYSTEM_ALERT,
             base.Capability.PICKER_WHEEL,

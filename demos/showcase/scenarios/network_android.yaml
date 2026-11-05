@@ -16,14 +16,16 @@
 - name: refresh issues an observed catalog request (android)
   tags: [network, android]
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_API_URL: "http://10.0.2.2:8770" }
+    subject:
+      launch:
+        env: { SHOWCASE_UITEST: "1", SHOWCASE_API_URL: "http://10.0.2.2:8770" }
   steps:
-    - wait: { for: { id: [stable.refresh, stable_refresh] }, timeout: 10 }
+    - wait: { for: { id: stable.refresh }, timeout: 10 }
       capture: [network, deviceLog]
-    - tap: { id: [stable.refresh, stable_refresh] }
+    - tap: { id: stable.refresh }
     # The status mirror settles to `done` on any response; wait on it, then confirm the exchange the
     # interceptor reported (fire-and-forget, so `until: request` polls the collector until it arrives).
-    - wait: { for: { id: [stable.status, stable_status], value: "done" }, timeout: 10 }
+    - wait: { for: { id: stable.status, value: "done" }, timeout: 10 }
     - wait: { until: { request: { method: GET, pathMatches: "/horses$" } }, timeout: 10 }
   expect:
     - request: { method: GET, pathMatches: "/horses$" }

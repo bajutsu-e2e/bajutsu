@@ -212,7 +212,7 @@ def _step_run_row(
     """
     at_text = f"{at:.1f}s"
     # The step's own end instant — its `before`/`after` moment in the recording, not the
-    # scenario-level `before`/`after` phases this table sits beside. A second jump target only
+    # scenario-level `setup`/`cleanup` phases this table sits beside. A second jump target only
     # when it reads differently from the start: a near-instant tap would otherwise show two
     # identical-looking buttons. Computed once: the button's visible text and its seek target
     # must agree, and a second copy of this arithmetic could drift from this one silently.
@@ -259,6 +259,7 @@ def _step_run_row(
             if out.system_alert is not None
             else None
         ),
+        "warnings": list(out.warnings),
         "group": group,
         "group_id": group_id,
     }
@@ -588,7 +589,7 @@ def _phase_rows(
     r: RunResult,
     run_dir: Path | None,
 ) -> list[dict[str, Any]]:
-    """A `before` / `after` phase's step rows (BE-0392), in the order the phase ran them.
+    """A `setup` / `cleanup` phase's step rows (BE-0392), in the order the phase ran them.
 
     A plain list, not `_merged_rows`: the network exchanges are interleaved into the scenario's own
     timeline once, and repeating them beside setup and teardown would double-count them. Rows pair
@@ -629,12 +630,12 @@ def _phase_rows(
     return _fold_groups(rows)
 
 
-def _after_rows(
+def _cleanup_rows(
     r: RunResult,
     rules: list[dict[str, Any]],
     run_dir: Path | None,
 ) -> list[dict[str, Any]]:
-    """The `after` phase's step rows (BE-0392), each lined up with the rule that declared it.
+    """The `cleanup` phase's step rows (BE-0392), each lined up with the rule that declared it.
 
     Only the rules the run dispatched contribute — `r.after_verdict` says which, since the failure
     string can no longer say once a cleanup step's own reason has been folded into it. Within a
@@ -691,20 +692,28 @@ def _after_rows(
     return _fold_groups(rows)
 
 
+def _mapping(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
 def _preconditions_rows(definition: dict[str, Any] | None) -> list[tuple[str, str]]:
-    pre = (definition or {}).get("preconditions") or {}
+    # The grouped shape BE-0452, BE-0469, and BE-0470 introduced; a stored plan from before is upgraded on load.
+    pre = _mapping((definition or {}).get("preconditions"))
+    subject = _mapping(pre.get("subject"))
+    launch = _mapping(subject.get("launch"))
     rows: list[tuple[str, str]] = []
-    if "erase" in pre:
-        rows.append(("erase", "true" if pre["erase"] else "false"))
-    if pre.get("deeplink"):
-        rows.append(("deeplink", str(pre["deeplink"])))
-    if pre.get("locale"):
-        rows.append(("locale", str(pre["locale"])))
-    if pre.get("setup"):
-        rows.append(("setup", str(pre["setup"])))
-    rows += [(str(k), str(v)) for k, v in (pre.get("launchEnv") or {}).items()]
-    if pre.get("launchArgs"):
-        rows.append(("launchArgs", " ".join(pre["launchArgs"])))
+    if subject.get("reinstall"):
+        rows.append(("reinstall", str(subject["reinstall"])))
+    if launch.get("deeplink"):
+        rows.append(("deeplink", str(launch["deeplink"])))
+    rows.extend(
+        ("locale", str(block["locale"]))
+        for block in _mapping(pre.get("device")).values()
+        if _mapping(block).get("locale")
+    )
+    rows += [(str(k), str(v)) for k, v in _mapping(launch.get("env")).items()]
+    if launch.get("args"):
+        rows.append(("launch args", " ".join(launch["args"])))
     return rows
 
 

@@ -16,8 +16,16 @@ from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR
 if TYPE_CHECKING:
     from fastmcp import FastMCP
 
+    from bajutsu.common.capability.worker_capability import WorkerCapability
 
-def create_server(config_path: Path, runs_dir: Path = Path(DEFAULT_RUNS_DIR)) -> FastMCP:
+
+def create_server(
+    config_path: Path,
+    runs_dir: Path = Path(DEFAULT_RUNS_DIR),
+    *,
+    worker_config: Path | None = None,
+    worker: WorkerCapability | None = None,
+) -> FastMCP:
     """Build a configured MCP server with all tools and resources registered.
 
     Args:
@@ -25,6 +33,10 @@ def create_server(config_path: Path, runs_dir: Path = Path(DEFAULT_RUNS_DIR)) ->
         runs_dir: Root directory for run evidence. Resource endpoints read from here;
             should match the CLI's default ``runs/`` (relative to cwd) so the
             ``bajutsu_run`` tool and the resource URIs resolve to the same location.
+        worker_config: The `--worker-config` file the server started with, passed on to each
+            `bajutsu_run`; None runs under the shipped default.
+        worker: That file, already loaded; its `appium` environment, if any, gives
+            `bajutsu_doctor` the grid to probe (BE-0452). None means the shipped default.
 
     Returns:
         A ``FastMCP`` instance with ``bajutsu_doctor``, ``bajutsu_run``, and all
@@ -40,6 +52,6 @@ def create_server(config_path: Path, runs_dir: Path = Path(DEFAULT_RUNS_DIR)) ->
     from bajutsu.mcp.tools import register_tools
 
     mcp = FastMCP("bajutsu")
-    register_tools(mcp, config_path)
+    register_tools(mcp, config_path, worker_config=worker_config, worker=worker)
     register_resources(mcp, runs_dir)
     return mcp

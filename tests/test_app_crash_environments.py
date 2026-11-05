@@ -19,7 +19,7 @@ import pytest
 from conftest import el as _el
 
 from bajutsu.common.backend_cli import simctl
-from bajutsu.common.config import AndroidConfig, Effective, IosConfig
+from bajutsu.common.config import AndroidConfig, Effective, IosConfig, ResolvedPreconditions
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.platform_lifecycle import AndroidEnvironment
 from bajutsu.common.platform_lifecycle.environments import ios as ios_environment
@@ -30,7 +30,7 @@ from bajutsu.common.platform_lifecycle.environments.xcuitest._functions import (
     _read_report,
     _reports_device,
 )
-from bajutsu.common.scenario import Preconditions, Redact
+from bajutsu.common.scenario import Redact
 
 _UDID = "11111111-2222-3333-4444-555555555555"
 _OTHER_UDID = "99999999-8888-7777-6666-555555555555"
@@ -41,14 +41,12 @@ def _ios_eff(app_path: str | None) -> Effective:
         target="demo",
         platform_config=IosConfig(bundle_id="com.example.Showcase", app_path=app_path),
         backend=["xcuitest"],
-        device="iPhone 15",
         locale="en_US",
         launch_env={},
         launch_args=[],
         id_namespaces=[],
         reserved_namespaces=[],
         mock_server=None,
-        setup=None,
         capture=[],
         redact=Redact(),
     )
@@ -59,14 +57,12 @@ def _android_eff() -> Effective:
         target="demo",
         platform_config=AndroidConfig(package="com.example.app"),
         backend=["adb"],
-        device="emulator-5554",
         locale="en_US",
         launch_env={},
         launch_args=[],
         id_namespaces=[],
         reserved_namespaces=[],
         mock_server=None,
-        setup=None,
         capture=[],
         redact=Redact(),
     )
@@ -522,10 +518,61 @@ def test_a_cold_spawn_stamps_the_launch_marker_before_spawning_the_runner(
 
     monkeypatch.setattr(xcuitest_environment, "_spawn_cold_with_retry", fake_spawn_with_retry)
 
-    env._spawn_cold(_ios_eff(None), Preconditions(), "simulator", None, None)
+    env._spawn_cold(_ios_eff(None), ResolvedPreconditions(), "simulator", None, None)
 
     assert seen == [env._app_launched_at]
     assert seen[0] is not None
+
+
+def test_a_cold_spawn_builds_the_runner_from_the_rebased_config_dir(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # #2277: the runner's `build` must run where the config's paths were rebased, not the shell's
+    # directory — dropping `build_cwd` at this call site would silently undo the fix.
+    env = xcuitest_environment.XcuitestEnvironment("xcuitest", _UDID)
+    env._prepare_simulator = lambda *a, **kw: None  # type: ignore[method-assign]
+    env._launch_params = lambda *a, **kw: ({}, [])  # type: ignore[method-assign]
+    seen: list[object] = []
+
+    def fake_resolve(*a: object, **kw: object) -> Path:
+        seen.append(kw.get("build_cwd"))
+        raise RuntimeError("stop before spawning")
+
+    monkeypatch.setattr(xcuitest_environment, "_resolve_runner", fake_resolve)
+
+    with pytest.raises(RuntimeError, match="stop before spawning"):
+        env._spawn_cold(
+            _ios_eff(None).rebased(tmp_path), ResolvedPreconditions(), "simulator", None, None
+        )
+
+    assert seen == [tmp_path]
+
+
+def test_an_attach_builds_the_runner_from_the_rebased_config_dir(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The attach twin of the cold-spawn test above: both call sites forward `build_cwd` (#2277).
+    env = xcuitest_environment.XcuitestEnvironment("xcuitest", _UDID)
+    monkeypatch.setattr(simctl, "device_booted", lambda *a, **kw: True)
+    monkeypatch.setattr(
+        simctl,
+        "Env",
+        lambda *a, **kw: SimpleNamespace(is_app_running=lambda bundle_id: True),
+    )
+    seen: list[object] = []
+
+    def fake_resolve(*a: object, **kw: object) -> Path:
+        seen.append(kw.get("build_cwd"))
+        raise RuntimeError("stop before spawning")
+
+    monkeypatch.setattr(xcuitest_environment, "_resolve_runner", fake_resolve)
+
+    with pytest.raises(RuntimeError, match="stop before spawning"):
+        env._start_attached(
+            _ios_eff(None).rebased(tmp_path), ResolvedPreconditions(), "simulator", None, None
+        )
+
+    assert seen == [tmp_path]
 
 
 def test_resume_warm_stamps_the_launch_marker_before_launching_the_app(
@@ -552,7 +599,7 @@ def test_resume_warm_stamps_the_launch_marker_before_launching_the_app(
 
     monkeypatch.setattr(simctl.Env, "launch", fake_launch)
 
-    env._resume_warm(_ios_eff(None), Preconditions(), None, None, FakeDriver([]))
+    env._resume_warm(_ios_eff(None), ResolvedPreconditions(), None, None, FakeDriver([]))
 
     assert seen == [env._app_launched_at]
     assert seen[0] is not None and seen[0] > 1000.0
@@ -585,7 +632,7 @@ def test_start_stamps_the_launch_marker_before_launching_the_app() -> None:
 
     calls: list[list[str]] = []
     env = AndroidEnvironment("adb", "emulator-5554", adb_run=_resolve_activity_run(calls))
-    env.start(_eff(), Preconditions())
+    env.start(_eff(), ResolvedPreconditions())
 
     joined = [" ".join(c) for c in calls]
     date_index = next(

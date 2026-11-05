@@ -43,13 +43,10 @@ def _stub_bin(tmp_path: Path) -> Path:
     return bin_dir
 
 
-@pytest.mark.parametrize(
-    ("target", "dd", "extra"),
-    [
-        ("runner-build", "dd", []),
-        ("runner-build-device", "dd-device", ["DEVELOPMENT_TEAM=ABCDE12345"]),
-    ],
-)
+# The device runner is built by `bajutsu runner build --device` since BE-0456, whose build checks
+# for exactly one `.xctestrun` in a fresh derived-data directory (tests/test_device_runner_build.py),
+# so only the Simulator recipe still stages its own products here.
+@pytest.mark.parametrize(("target", "dd", "extra"), [("runner-build", "dd", [])])
 def test_runner_build_ignores_a_previous_sdks_xctestrun(
     tmp_path: Path, target: str, dd: str, extra: list[str]
 ) -> None:
@@ -71,3 +68,26 @@ def test_runner_build_ignores_a_previous_sdks_xctestrun(
     assert result.returncode == 0, result.stderr
     assert (products / "BajutsuRunner.xctestrun").read_text(encoding="utf-8") == "new\n"
     assert not stale.exists()
+
+
+@pytest.mark.parametrize(
+    ("extra", "expected"),
+    [
+        ([], "bajutsu runner build --device --out "),
+        (["SIGNING=/tmp/s.yaml"], "--signing /tmp/s.yaml"),
+    ],
+)
+def test_runner_build_device_delegates_to_the_signing_build(
+    tmp_path: Path, extra: list[str], expected: str
+) -> None:
+    # BE-0456: the recipe hands signing to the per-user signing file; `-n` prints without running.
+    runner = tmp_path / "Runner"
+    result = subprocess.run(
+        ["make", "-n", "-C", str(SHOWCASE), "runner-build-device", f"RUNNER={runner}", *extra],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert expected in result.stdout
+    assert f"--out {runner}/build/dd-device/Build/Products" in result.stdout

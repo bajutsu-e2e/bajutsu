@@ -7,6 +7,7 @@ and the `Assertion` aggregator that selects exactly one kind.
 from ._endpoint_match import _EndpointMatch as _EndpointMatch
 from .assertion import _ASSERTION_KINDS as _ASSERTION_KINDS
 from .assertion import Assertion
+from .attribute_match import AttributeMatch
 from .clipboard_match import ClipboardMatch
 from .count_match import CountMatch
 from .count_op import CountOp
@@ -25,6 +26,7 @@ from .wait_request import WaitRequest
 
 __all__ = [
     "Assertion",
+    "AttributeMatch",
     "ClipboardMatch",
     "CountMatch",
     "CountOp",

@@ -1,4 +1,4 @@
-# The reactive `systemAlertHandling.rules` guard (BE-0315 / BE-0406), on every SpringBoard prompt the
+# The reactive system-alert guard, declared by `systemAlert` interrupts entries (BE-0315 / BE-0406 / BE-0473), on every SpringBoard prompt the
 # label table covers. Each scenario raises one prompt and then only waits: no `handleSystemAlert`
 # step, so the declared rule is the one thing that can answer the prompt. The guard's native poll sees
 # the prompt during the `wait` and taps the button the rule's `choice` names, by an accessibility
@@ -29,11 +29,14 @@
 # iOS (XCUITest) only, and kept off every other lane the way paste_system_alert.yaml is: Android's
 # `smoke (adb)` job runs a fixed list that never names this file, and the `systemalert` tag keeps it
 # out of the local bulk run-swiftui / run-uikit runs, which do not reset per-scenario device state.
-- name: deny the notification prompt through systemAlertHandling rules
+- name: deny the notification prompt through a systemAlert interrupts entry
   tags: [systemalert]
-  systemAlertHandling: { rules: [{ prompt: notifications, choice: deny }] }
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    subject:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
+  interrupts:
+    - { systemAlert: notifications, choice: deny }
   steps:
     - tap: { label: "Permissions", traits: [button] }
     - wait: { for: { id: perm.requestNotif }, timeout: 10 }
@@ -44,11 +47,14 @@
   expect:
     - value: { sel: { id: perm.notif.value }, equals: "denied" }
 
-- name: grant the tracking prompt through systemAlertHandling rules
+- name: grant the tracking prompt through a systemAlert interrupts entry
   tags: [systemalert]
-  systemAlertHandling: { rules: [{ prompt: tracking, choice: grant }] }
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    subject:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
+  interrupts:
+    - { systemAlert: tracking, choice: grant }
   steps:
     - tap: { label: "Permissions", traits: [button] }
     # The tab transition is asynchronous, so wait for the tab's first control before scrolling.
@@ -62,11 +68,14 @@
   expect:
     - value: { sel: { id: perm.tracking.value }, equals: "authorized" }
 
-- name: deny the tracking prompt through systemAlertHandling rules
+- name: deny the tracking prompt through a systemAlert interrupts entry
   tags: [systemalert]
-  systemAlertHandling: { rules: [{ prompt: tracking, choice: deny }] }
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    subject:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
+  interrupts:
+    - { systemAlert: tracking, choice: deny }
   steps:
     - tap: { label: "Permissions", traits: [button] }
     - wait: { for: { id: perm.requestNotif }, timeout: 10 }
@@ -78,33 +87,39 @@
   expect:
     - value: { sel: { id: perm.tracking.value }, equals: "denied" }
 
-- name: grant the paste-consent prompt through systemAlertHandling rules
+- name: grant the paste-consent prompt through a systemAlert interrupts entry
   tags: [systemalert]
-  systemAlertHandling: { rules: [{ prompt: paste, choice: grant }] }
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    subject:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
+  interrupts:
+    - { systemAlert: paste, choice: grant }
   steps:
     # Written from outside the app, so the app's own read raises the cross-process consent prompt.
     - setClipboard: { text: "bajutsu-cross-clip" }
     - tap: { label: "Permissions", traits: [button] }
-    - wait: { for: { id: [perm.requestNotif, perm_requestNotif] }, timeout: 10 }
-    - scroll: { to: { id: [sys.paste.value, sys_paste_value] }, direction: down }
-    - tap: { id: [sys.paste, sys_paste] }
-    - wait: { for: { id: [sys.paste.value, sys_paste_value], value: "bajutsu-cross-clip" }, timeout: 10 }
+    - wait: { for: { id: perm.requestNotif }, timeout: 10 }
+    - scroll: { to: { id: sys.paste.value }, direction: down }
+    - tap: { id: sys.paste }
+    - wait: { for: { id: sys.paste.value, value: "bajutsu-cross-clip" }, timeout: 10 }
   expect:
-    - value: { sel: { id: [sys.paste.value, sys_paste_value] }, equals: "bajutsu-cross-clip" }
+    - value: { sel: { id: sys.paste.value }, equals: "bajutsu-cross-clip" }
 
-- name: deny the paste-consent prompt through systemAlertHandling rules
+- name: deny the paste-consent prompt through a systemAlert interrupts entry
   tags: [systemalert]
-  systemAlertHandling: { rules: [{ prompt: paste, choice: deny }] }
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    subject:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
+  interrupts:
+    - { systemAlert: paste, choice: deny }
   steps:
     - setClipboard: { text: "bajutsu-cross-clip" }
     - tap: { label: "Permissions", traits: [button] }
-    - wait: { for: { id: [perm.requestNotif, perm_requestNotif] }, timeout: 10 }
-    - scroll: { to: { id: [sys.paste.value, sys_paste_value] }, direction: down }
-    - tap: { id: [sys.paste, sys_paste] }
-    - wait: { for: { id: [sys.paste.value, sys_paste_value], value: "(none)" }, timeout: 10 }
+    - wait: { for: { id: perm.requestNotif }, timeout: 10 }
+    - scroll: { to: { id: sys.paste.value }, direction: down }
+    - tap: { id: sys.paste }
+    - wait: { for: { id: sys.paste.value, value: "(none)" }, timeout: 10 }
   expect:
-    - value: { sel: { id: [sys.paste.value, sys_paste_value] }, equals: "(none)" }
+    - value: { sel: { id: sys.paste.value }, equals: "(none)" }

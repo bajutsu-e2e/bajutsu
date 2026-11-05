@@ -8,9 +8,13 @@ broad `request` matcher from stealing the only exchange a more specific one need
 
 from __future__ import annotations
 
+import json
+
 from bajutsu.common.assertions._common import AssertionResult, _compile
+from bajutsu.common.assertions.dict_match import dict_mismatch
 from bajutsu.common.evidence.network import NetworkExchange
 from bajutsu.common.scenario import RequestMatch
+from bajutsu.common.scenario.models.assertions import _EndpointMatch
 
 
 def match_request(ex: NetworkExchange, req: RequestMatch) -> bool:
@@ -28,6 +32,7 @@ def match_request(ex: NetworkExchange, req: RequestMatch) -> bool:
     """
     # Straight-line early returns, kept allocation-free on purpose: this runs in `until: {request}`
     # polling and per-exchange matching loops, so it must stay lightweight (no per-call closures).
+    # Only a set `query` / `body` reaches `dict_mismatch`, which formats text on a mismatch alone.
     if req.method is not None and ex.method.upper() != req.method.upper():
         return False
     if req.url is not None and ex.url != req.url:
@@ -40,10 +45,44 @@ def match_request(ex: NetworkExchange, req: RequestMatch) -> bool:
         return False
     if req.status is not None and ex.status != req.status:
         return False
-    return not (
-        req.body_matches is not None
-        and (ex.request_body is None or _compile(req.body_matches).search(ex.request_body) is None)
+    if req.body_matches is not None and (
+        ex.request_body is None or _compile(req.body_matches).search(ex.request_body) is None
+    ):
+        return False
+    return (req.query is None and req.body is None) or dict_mismatch(
+        ex, req.query, req.body
+    ) is None
+
+
+def dictionary_hint(exchanges: list[NetworkExchange], m: _EndpointMatch) -> str | None:
+    """The mismatched `query` / `body` key behind a failed match, when one candidate pins it.
+
+    Only when exactly one exchange satisfies the endpoint and method criteria: with several, a
+    guess at which one the author meant would mislead more than the plain count does (BE-0463).
+
+    Returns:
+        The first failing key (e.g. ``query.page: expected "2", got "3"``), or None when there is
+        no dictionary, no single candidate, or the dictionaries all hold on it (the failure then
+        lies in another criterion).
+    """
+    if m.query is None and m.body is None:
+        return None
+    endpoint = RequestMatch.model_construct(
+        method=m.method,
+        url=m.url,
+        url_matches=m.url_matches,
+        path=m.path,
+        path_matches=m.path_matches,
     )
+    candidates = [ex for ex in exchanges if match_request(ex, endpoint)]
+    if len(candidates) != 1:
+        return None
+    return dict_mismatch(candidates[0], m.query, m.body)
+
+
+def dict_label(name: str, matcher: dict[str, object]) -> str:
+    """One dictionary criterion as compact JSON (``query={"page":"2"}``), for labels and reports."""
+    return f"{name}={json.dumps(matcher, separators=(',', ':'), ensure_ascii=False)}"
 
 
 def count_matching(exchanges: list[NetworkExchange], req: RequestMatch) -> int:
@@ -77,6 +116,10 @@ def request_label(req: RequestMatch, *, with_count: bool = True) -> str:
         parts.append(req.path)
     if req.path_matches is not None:
         parts.append(f"~{req.path_matches}")
+    if req.query is not None:
+        parts.append(dict_label("query", req.query))
+    if req.body is not None:
+        parts.append(dict_label("body", req.body))
     if req.status is not None:
         parts.append(f"status={req.status}")
     if req.body_matches is not None:
@@ -125,9 +168,12 @@ def _request_assignment_result(
     detail = f"request {request_label(req)}"
     if assigned_ex != -1:
         return AssertionResult(True, "request", detail)
-    reason = (
-        "matching exchange already taken by another request (request ↔ exchange is one-to-one)"
-        if matched_any
-        else f"no matching exchange (observed {len(exchanges)})"
-    )
+    if matched_any:
+        reason = (
+            "matching exchange already taken by another request (request ↔ exchange is one-to-one)"
+        )
+    else:
+        reason = (
+            dictionary_hint(exchanges, req) or f"no matching exchange (observed {len(exchanges)})"
+        )
     return AssertionResult(False, "request", detail, reason)

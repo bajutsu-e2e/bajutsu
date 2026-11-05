@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0450](BE-0450-worker-capability.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0450") |
+| Implementing PR | [#2166](https://github.com/bajutsu-e2e/bajutsu/pull/2166) (Units 1–4), [#2190](https://github.com/bajutsu-e2e/bajutsu/pull/2190) (Units 5–6) |
 | Topic | Driver & backend architecture |
 <!-- /BE-METADATA -->
 
@@ -222,12 +223,53 @@ The item is a decision about *runnability*, not about capability of a step, so t
 > *Detailed design* (one entry per unit of work), and the log records what changed and when, oldest
 > first, each with a link to its PR.
 
-- [ ] Worker file and loader
-- [ ] Driver host requirement
-- [ ] Requirement derivation
-- [ ] The check
-- [ ] Advertising and routing
-- [ ] Documentation and Japanese mirrors
+- [x] Worker file and loader
+- [x] Driver host requirement
+- [x] Requirement derivation
+- [x] The check
+- [x] Advertising and routing
+- [x] Documentation and Japanese mirrors
+
+Log:
+
+- [#2166](https://github.com/bajutsu-e2e/bajutsu/pull/2166) (Units 1–4) — added `worker.yaml` with its schema and loader
+  (`bajutsu/common/capability/worker_capability.py`, default file beside it), a `HOST_OS` constant
+  on each driver read through `backends.host_os_for` and `backends.current_host_os`, and
+  `worker_capability_unsupported()` with the `worker-capability-unsupported:` prefix. `bajutsu run
+  --worker-config` drops the actuators the host or the file rules out in the shared actuator
+  selection, checks each scenario before its targets are resolved, reports a failed scenario
+  through the pipeline without leasing a device for it, and selects every target's actuator before
+  the first device is acquired. `bajutsu worker --worker-config` validates the file at startup and
+  hands its absolute path to every leased `run`. Two parts of unit 4 wait on other items: the
+  `bajutsu worker --once` path and the internal run entry point do not exist yet (BE-0449), and
+  the check before a cloud request is submitted waits for the worker-side Device Farm dispatch
+  (BE-0448), so `bajutsu worker` refuses a non-`local` environment until then. The documentation
+  for the shipped behavior lands here; unit 6 stays open for unit 5's pages.
+- BE-0449 unit 3 ([#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173)) added `bajutsu worker --once` and the internal run entry point.
+  `--once` passes the resolved `--worker-config` path to the run it spawns, which closes the first
+  of the two waits recorded above. This change leaves the units here as they were.
+- [#2190](https://github.com/bajutsu-e2e/bajutsu/pull/2190) (Units 5–6) — every worker now advertises `host:<os>` for its machine. A job requires
+  `host:<os>` when every actuator its target's `backend` resolves to runs on one host alone, so an
+  `xcuitest` target requires `host:darwin`. The host token comes from `eff.backend`, the list `run`
+  selects from, rather than the platform: a `[fake]` backend or an `[ios, web]` fallback requires
+  no host. The lease, the unroutable count, and the no-worker notice all read `can_serve`, so they
+  agree without a change of their own. A `local` worker refuses a `--platform` whose driver its
+  `worker.yaml` omits or its host cannot run, with the reason `run` gives. `make serve` leaves such
+  a platform out of the worker it starts, so on Linux the worker serves `web` and `android` while an
+  iOS run waits with the no-worker notice. `--capabilities`, `$BAJUTSU_WORKER_CAPABILITIES`, and
+  `requires` log a one-time notice and are still honored. A config whose `requires` carries an
+  `environment:` token now fails at load, as the worker's override already did since BE-0448. The
+  required set is the target's, not each scenario's: a multi-target scenario whose other target
+  needs another host still reaches a worker by its job's target, and the worker's own check fails
+  it. Deriving the set from every declared target would need dispatch to load the scenarios. The
+  documentation describes the worker capability file, the check, the routing tokens, and the
+  deprecations, and `deploy/self-host/README.md` no longer points at `requires` to pin runtimes.
+  The worker's override and `requires` now refuse the `host:` prefix as they refuse `environment:`,
+  since the worker fills it itself. Two consequences follow from deriving the host from `backend`
+  while checking `--platform` against the platform's drivers. An iOS target on the `fake` backend
+  requires no host, yet no worker off macOS may advertise `platform:ios`, so the job still needs a
+  Mac. A request-level `backend` override does not change routing either. The platform axis already
+  ignored it, and the host follows the same rule; a follow-up may route on the override.
 
 ## References
 

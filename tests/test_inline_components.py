@@ -16,11 +16,9 @@ from typing import Any
 import pytest
 import typer
 
-from bajutsu.common.config import Effective, WebConfig
 from bajutsu.common.scenario import (
     Component,
     ComponentResolver,
-    Redact,
     Scenario,
     load_expanded_scenarios,
     load_scenarios_dir,
@@ -32,24 +30,6 @@ def _write(path: Path, text: str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
     return path
-
-
-def _eff(setup: str | None = None) -> Effective:
-    return Effective(
-        target="web",
-        platform_config=WebConfig(base_url=None),
-        backend=["playwright"],
-        device="",
-        locale="en_US",
-        launch_env={},
-        launch_args=[],
-        id_namespaces=[],
-        reserved_namespaces=[],
-        mock_server=None,
-        setup=setup,
-        capture=[],
-        redact=Redact(),
-    )
 
 
 def _dump(scenarios: list[Scenario]) -> list[dict[str, Any]]:
@@ -185,7 +165,7 @@ def test_run_and_the_device_free_loader_expand_identically(tmp_path: Path) -> No
     # The two loaders built separate resolvers before BE-0422; the shared one is what keeps the
     # deterministic `run` gate and every device-free reader seeing the same expanded steps.
     scenario = _write(tmp_path / "s.yaml", INLINE)
-    from_run, _desc, _plans = _expand_file(scenario, _eff(), root=tmp_path)
+    from_run, _desc, _plans = _expand_file(scenario, root=tmp_path)
     assert _dump(from_run) == _dump(load_expanded_scenarios(scenario, root=tmp_path))
 
 
@@ -304,54 +284,15 @@ def test_a_component_file_scope_refuses_to_carry_names(tmp_path: Path) -> None:
         )
 
 
-def test_a_setup_ref_escaping_the_suite_root_is_rejected(tmp_path: Path) -> None:
-    # `setup` gets no exemption from BE-0174: a scenario file is untrusted input under `serve`, and
-    # every other ref this function resolves (component, dataFile, and now a prelude's own refs) is
-    # already confined to the suite root.
-    secret = _write(tmp_path / "secret.yaml", "steps:\n  - tap: { id: TOPSECRET }\n")
-    scenario = _write(
-        tmp_path / "suite" / "s.yaml",
-        "- name: s\n  preconditions: { setup: ../secret.yaml }\n  steps:\n    - tap: { id: own }\n",
-    )
-    with pytest.raises(typer.Exit):
-        _expand_file(scenario, _eff(), root=scenario.parent)
-    assert secret.exists()
-
-
-def test_a_prelude_resolves_bare_names_against_its_own_components(tmp_path: Path) -> None:
-    # A prelude's `use` steps are expanded at the call site, in the prelude's own scope, before
-    # being spliced — so a same-named entry in the calling file's map cannot capture them.
-    _write(
-        tmp_path / "prelude.yaml",
-        """\
-components:
-  greet:
-    steps:
-      - tap: { id: prelude.greet }
-
-scenarios:
-  - name: login
-    steps:
-      - use: { component: greet }
-""",
-    )
+def test_a_scenario_setup_prelude_is_rejected(tmp_path: Path) -> None:
+    # BE-0452 removed `preconditions.setup`: a prelude is a component called with `use:` from the
+    # scenario's own setup phase, so the old key fails to load rather than being silently ignored.
     scenario = _write(
         tmp_path / "s.yaml",
-        """\
-components:
-  greet:
-    steps:
-      - tap: { id: caller.greet }
-
-scenarios:
-  - name: s
-    preconditions: { setup: prelude.yaml }
-    steps:
-      - use: { component: greet }
-""",
+        "- name: s\n  preconditions: { setup: prelude.yaml }\n  steps:\n    - tap: { id: own }\n",
     )
-    scenarios, _desc, _plans = _expand_file(scenario, _eff(), root=tmp_path)
-    assert _tap_ids(scenarios[0]) == ["prelude.greet", "caller.greet"]
+    with pytest.raises(ValueError, match="setup"):
+        load_expanded_scenarios(scenario)
 
 
 def test_a_path_shaped_components_key_is_rejected_at_load(tmp_path: Path) -> None:
@@ -376,39 +317,6 @@ scenarios:
         load_expanded_scenarios(scenario)
 
 
-def test_a_prelude_resolves_path_refs_against_its_own_directory(tmp_path: Path) -> None:
-    # The same filename sits beside the prelude and beside the scenario, so only a prelude-relative
-    # base picks the right one. Before BE-0422 the prelude's steps were spliced unexpanded and
-    # resolved against the caller's directory instead.
-    _write(tmp_path / "helper.yaml", "steps:\n  - tap: { id: beside.caller }\n")
-    _write(tmp_path / "sub" / "helper.yaml", "steps:\n  - tap: { id: beside.prelude }\n")
-    _write(
-        tmp_path / "sub" / "prelude.yaml",
-        "- name: p\n  steps:\n    - use: { component: helper.yaml }\n",
-    )
-    scenario = _write(
-        tmp_path / "s.yaml",
-        "- name: s\n  preconditions: { setup: sub/prelude.yaml }\n  steps:\n    - tap: { id: own }\n",
-    )
-    scenarios, _desc, _plans = _expand_file(scenario, _eff(), root=tmp_path)
-    assert _tap_ids(scenarios[0]) == ["beside.prelude", "own"]
-
-
-def test_run_reports_a_malformed_setup_prelude_cleanly(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    # A prelude is loaded through the same normalization as a component file, so a YAML syntax
-    # error there exits 2 naming the file instead of escaping `run` as a PyYAML traceback (BE-0150).
-    _write(tmp_path / "prelude.yaml", "- name: p\n  steps:\n    - tap: { id: x\n")
-    scenario = _write(
-        tmp_path / "s.yaml",
-        "- name: s\n  preconditions: { setup: prelude.yaml }\n  steps:\n    - tap: { id: y }\n",
-    )
-    with pytest.raises(typer.Exit):
-        _expand_file(scenario, _eff(), root=tmp_path)
-    assert "invalid YAML in" in capsys.readouterr().out
-
-
 def test_run_reports_a_malformed_component_file_the_same_way(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -422,5 +330,5 @@ def test_run_reports_a_malformed_component_file_the_same_way(
     with pytest.raises(ValueError, match=r"invalid YAML in .*broken\.yaml"):
         load_expanded_scenarios(scenario, root=tmp_path)
     with pytest.raises(typer.Exit):
-        _expand_file(scenario, _eff(), root=tmp_path)
+        _expand_file(scenario, root=tmp_path)
     assert "invalid YAML in" in capsys.readouterr().out

@@ -59,4 +59,47 @@ final class InterruptionPolicyTests: XCTestCase {
         )
         XCTAssertEqual(policy.label(for: ["Allow", "Don't Allow"]), "Don't Allow")
     }
+
+    // MARK: - Local Network and notifications: same buttons, told apart by the title marker
+
+    private static let localNetworkMarker = "title: Allow “%@” to find devices on local networks?"
+
+    func testTheTitleReducesToApplesTemplate() {
+        XCTAssertEqual(
+            alertTitleMarker("Allow “Showcase SwiftUI” to find devices on local networks?"),
+            Self.localNetworkMarker)
+        XCTAssertEqual(alertTitleMarker("No quotes"), "title: No quotes")
+    }
+
+    func testAnExcludedLabelRulesARuleOut() {
+        let policy = InterruptionPolicy(
+            rules: [
+                InterruptionRule(
+                    identify: ["Allow", "Don’t Allow"], tap: "Allow",
+                    exclude: [Self.localNetworkMarker]),
+                InterruptionRule(
+                    identify: ["Allow", "Don’t Allow", Self.localNetworkMarker], tap: "Don’t Allow"),
+            ],
+            governs: true
+        )
+        // The Local Network prompt skips the notification rule and meets its own.
+        XCTAssertEqual(
+            policy.label(for: ["Don’t Allow", "Allow", Self.localNetworkMarker]), "Don’t Allow")
+        // A notification prompt (another title) meets the notification rule.
+        XCTAssertEqual(
+            policy.label(
+                for: ["Don’t Allow", "Allow", "title: “%@” Would Like to Send You Notifications"]),
+            "Allow")
+    }
+
+    func testDrainReportsTheAlertEachTapAnswered() {
+        // The label alone cannot tell Local Network from notifications; the matched alert can.
+        let store = InterruptionPolicyStore()
+        store.record("Allow", alert: ["Don’t Allow", "Allow", Self.localNetworkMarker])
+        store.record("Not Now")
+        let drained = store.drain()
+        XCTAssertEqual(drained.tapped, ["Allow", "Not Now"])
+        XCTAssertEqual(drained.tappedAlerts, [["Don’t Allow", "Allow", Self.localNetworkMarker], []])
+        XCTAssertTrue(store.drain().tappedAlerts.isEmpty)
+    }
 }

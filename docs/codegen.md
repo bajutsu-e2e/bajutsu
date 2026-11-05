@@ -23,10 +23,15 @@ bajutsu codegen <scenario.yaml> --target <name> [--emit xcuitest | playwright | 
 
 `--emit` is `xcuitest` (default), `playwright`, or `uiautomator`. `-o -` (default) writes to stdout;
 a file path writes to the file. `--emit playwright` requires the app to be a web target
-(`targets.<name>.baseUrl` set) and `--emit uiautomator` an Android target
-(`targets.<name>.package` set); without the matching target the command exits with code 2. Config's
-`launchEnv` is carried into the generated test ([cli](cli.md#codegen)) — `app.launchEnvironment` for
+(`platform: web` with `targets.<name>.subject.url` set) and `--emit uiautomator` an Android target
+(`platform: android` with `targets.<name>.subject.id` set); without the matching target the command
+exits with code 2. Config's `subject.launch.env` is carried into the generated test ([cli](cli.md#codegen)) — `app.launchEnvironment` for
 XCUITest, seeded `localStorage` for Playwright, and forwarded as intent extras for UI Automator.
+
+The generated test carries no device condition
+([configuration](configuration.md#device-conditions-runson)). In `bajutsu run`, a condition in
+`runsOn` selects the devices a scenario runs on. A generated test runs on whatever device or browser
+launches it.
 
 ## XCUITest output shape
 
@@ -61,7 +66,7 @@ final class ComponentsUITests: XCTestCase {
 - The helpers `el(id)` / `byLabel(label)` / `matchingId(glob)` bridge the three single-field
   selector forms (id / label / idMatches) to an XCUIElement.
 - Each method sets `launchEnvironment` then `app.launch()` at the top. The env is the merge of
-  **config's `launchEnv` < the scenario's `preconditions.launchEnv`** (the test side wins).
+  **config's `subject.launch.env` < the scenario's `preconditions.subject.launch.env`** (the test side wins).
 
 ### Selector mapping (XCUITest)
 
@@ -103,6 +108,7 @@ the selector at `el("UNSUPPORTED_SELECTOR")` — an honest gap, not a wrong gues
 | `select` | `.tap()` + select-all (BE-0265) |
 | `copy` | `app.typeKey("c", modifierFlags: .command)` |
 | `back` | taps the OS navigation back button — the same element (and shared constant) the XCUITest driver taps at run time (BE-0210) |
+| `navigate` | `// TODO: navigate(url: …) — web-only; not generated` (BE-0464) |
 | `sleep` | `// fixed pause: <reason>` + `Thread.sleep(forTimeInterval: <seconds>)` |
 | `swipe { on, direction }` | `.swipeUp/Down/Left/Right()` |
 | `swipe { from, to }` | `coord(x1, y1).press(forDuration: 0.1, thenDragTo: coord(x2, y2))` — an `XCUICoordinate` drag (BE-0025) |
@@ -127,6 +133,7 @@ the selector at `el("UNSUPPORTED_SELECTOR")` — an honest gap, not a wrong gues
 | `enabled` / `disabled` | `XCTAssertTrue/False(...isEnabled)` |
 | `selected` | `XCTAssertTrue(...isSelected)` |
 | `count` (equals/atLeast/atMost) | `matchingId(glob).count` (a bare id uses `exists ? 1 : 0`) with `XCTAssertEqual/GreaterThanOrEqual/LessThanOrEqual` |
+| `attribute` | `// TODO: attribute(name: "href", equals: "/docs") — web-only; not generated` (BE-0466) |
 
 ## Unsupported constructs fall back to TODO comments
 
@@ -181,8 +188,8 @@ test.describe('Components', () => {
 });
 ```
 
-- Each test navigates to `BASE_URL` (the app's `baseUrl`, the web `launch` equivalent of
-  `page.goto`). Config's `launchEnv` < the scenario's `preconditions.launchEnv` is seeded via
+- Each test navigates to `BASE_URL` (the app's `subject.url`, the web `launch` equivalent of
+  `page.goto`). Config's `subject.launch.env` < the scenario's `preconditions.subject.launch.env` is seeded via
   `page.addInitScript(() => localStorage.setItem(...))`; an app expecting another channel (query
   params / cookies) gets a `// TODO`.
 - All *waiting* uses Playwright's native auto-wait. The only fixed timing emitted is `longPress`'s
@@ -217,6 +224,7 @@ test.describe('Components', () => {
 | `select` | `await loc.selectText()` — the web peer of select-all (BE-0265) |
 | `copy` | `await page.keyboard.press('Control+c')` |
 | `back` | `await page.goBack()` — browser history, the same primitive the driver's `back()` uses (BE-0210) |
+| `navigate` | `await page.goto(new URL('<value>', BASE_URL).toString())` — resolves the value against `BASE_URL` exactly as the driver resolves it against `baseUrl`; a value with a `${...}` token becomes a `// TODO`, since the generated test has no binding to substitute (BE-0464) |
 | `sleep` | `// fixed pause: <reason>` + `await page.waitForTimeout(<milliseconds>)` |
 | `swipe { on, direction }` | a `page.mouse.wheel` scroll from the element center in the direction (BE-0227) |
 | `swipe { from, to }` | `// TODO` (coordinate swipes are not generated) |
@@ -239,6 +247,7 @@ test.describe('Components', () => {
 | `enabled` / `disabled` | `.toBeEnabled()` / `.toBeDisabled()` |
 | `selected` | `.toBeChecked()` |
 | `count` (equals/atLeast/atMost) | `.toHaveCount(n)`; atLeast/atMost compare `await loc.count()` |
+| `attribute` (equals/contains/matches/absent) | `await expect(loc).toHaveAttribute('name', '…')`; `contains` passes an escaped regex and `matches` the regex itself; `absent` emits `await expect(loc).not.toHaveAttribute('name')` (BE-0466) |
 
 Unlike XCUITest and UI Automator, the web backend intercepts network traffic, so a `request` /
 `requestSequence` assertion (or an `until: { request }` wait) is not a TODO here. The emitted test
@@ -455,8 +464,8 @@ class ComponentsUITest {
   package and the attempt budget instead. `findObject` alone would instead throw a bare
   `NullPointerException` that names neither. A read-only assertion still calls `device.findObject` /
   `device.findObjects` directly, unwaited. That matches the driver's own assertions.
-- Each method builds an `extras` map (config's `launchEnv` < the scenario's
-  `preconditions.launchEnv`) and calls `launch(extras)`, which forwards the env as intent extras —
+- Each method builds an `extras` map (config's `subject.launch.env` < the scenario's
+  `preconditions.subject.launch.env`) and calls `launch(extras)`, which forwards the env as intent extras —
   the reverse of the adb backend's `am start --es`.
 - `launch` waits for the app's first window, then for that window to settle
   (`device.waitForIdle`). The window wait proves some window from the package exists. It does
@@ -476,7 +485,7 @@ class ComponentsUITest {
   a sequence of such restarts could starve a launch a single long wait would have completed. Only a
   window absent for the whole timeout counts as stuck rather than slow. After `LAUNCH_ATTEMPTS`
   attempts `launch` fails, naming the windows it did see. The intent is rebuilt per attempt, which
-  also keeps `launchEnv` arriving through `onCreate`; resuming the existing task instead would route
+  also keeps the launch environment (`subject.launch.env`) arriving through `onCreate`; resuming the existing task instead would route
   the extras to `onNewIntent`.
 - **A `wait` spends its budget across several reads, dropping the accessibility cache between
   them.** `hasObject`, `findObject`, and every `Until` condition built on them resolve through the
@@ -644,6 +653,7 @@ same limit the XCUITest emitter hits for NSPredicate `MATCHES`), so it stays a `
 | `select` | `.click()` + `device.pressKeyCode(KeyEvent.KEYCODE_A, KeyEvent.META_CTRL_ON)` (BE-0265) |
 | `copy` | `device.pressKeyCode(KeyEvent.KEYCODE_C, KeyEvent.META_CTRL_ON)` |
 | `back` | `device.pressBack()` — UI Automator's native system back, the peer of the adb driver's `keyevent 4` (BE-0210) |
+| `navigate` | `// TODO: navigate(url: …) — web-only; not generated` (BE-0464) |
 | `sleep` | `// fixed pause: <reason>` + `Thread.sleep(<milliseconds>)` |
 | `swipe { on, direction }` | `.swipe(Direction.<UP/DOWN/LEFT/RIGHT>, 0.75f)` |
 | `swipe { from, to }` | `// TODO` (coordinate swipes are not generated) |
@@ -667,6 +677,7 @@ same limit the XCUITest emitter hits for NSPredicate `MATCHES`), so it stays a `
 | `enabled` / `disabled` | `assertTrue/False(device.findObject(<by>).isEnabled)` |
 | `selected` | `assertTrue(device.findObject(<by>).isSelected)` |
 | `count` (equals/atLeast/atMost) | `device.findObjects(<by>).size` with `assertEquals` / `assertTrue(size >= n)` / `assertTrue(size <= n)` |
+| `attribute` | `// TODO: attribute(name: "href", equals: "/docs") — web-only; not generated` (BE-0466) |
 
 The adb backend has no network-interception surface, so every network assertion (`request` /
 `requestSequence` / `responseSchema`) and the device-control family (`setLocation` / `push` /

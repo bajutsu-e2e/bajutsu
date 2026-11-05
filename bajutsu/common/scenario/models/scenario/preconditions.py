@@ -1,56 +1,213 @@
-"""The per-test environment setup a scenario declares."""
+"""A scenario's preconditions: the target's `subject` overridden, and the device state.
+
+`subject` takes the target's name (BE-0452, BE-0470), so a field has one spelling at both levels. Where
+a run happens belongs to the target alone (BE-0469): a scenario names a target that declares the
+`runsOn` it needs, and sets only the device state it applies under `device`.
+"""
 
 from __future__ import annotations
 
-from typing import Literal, Self
+from collections.abc import Callable
+from typing import Any, Literal
 
 from pydantic import Field, model_validator
 
 from bajutsu.common.scenario.models._base import _Model
 
+# Where each flat key of the pre-BE-0452 `preconditions` went; the loader reads none of them, and a
+# stored run's plan is rewritten by `load_stored_scenario_file` instead.
+FLAT_PRECONDITION_KEYS: dict[str, str] = {
+    "erase": "preconditions.subject.reinstall: erase",
+    "reinstall": "preconditions.subject.reinstall",
+    "launchEnv": "preconditions.subject.launch.env",
+    "launchArgs": "preconditions.subject.launch.args",
+    "deeplink": "preconditions.subject.launch.deeplink",
+    "locale": "preconditions.device.ios.locale",
+    "seedPhotos": "preconditions.device.ios.seedPhotos",
+}
+
+# Where each field of the removed `preconditions.run` went (BE-0473). The loader reads none of them,
+# and a stored run's plan is rewritten by `load_stored_scenario_file` instead.
+PRECONDITION_RUN_KEYS: dict[str, str] = {
+    "erase": "preconditions.subject.reinstall: write `erase` for true, and `clean` or `overwrite` "
+    "for false",
+    "systemAlertHandling": "the scenario's own `interrupts`: one `- systemAlert: <prompt>` entry "
+    "with its `choice` per rule, and `choice: leave` for a prompt the scenario answers itself",
+    "tipKitHandling": "the scenario's own `interrupts`: `- tipKit: dismiss` for true, "
+    "`- tipKit: leave` for false",
+    "inheritSetup": "preconditions.inheritSetup",
+}
+
+# The device state BE-0469 moved from `preconditions.runsOn.<platform>` to `preconditions.device.ios`.
+_DEVICE_STATE = ("locale", "seedPhotos")
+
+
+def _runs_on_moves(runs_on: Any) -> list[str]:
+    """Where each field of a scenario's former `preconditions.runsOn` went (BE-0469).
+
+    Device state moved to `preconditions.device.ios`; a condition has no scenario-level home, so its
+    message points at the target's `runsOn` path instead.
+    """
+    if not isinstance(runs_on, dict):
+        return ["preconditions.runsOn was removed: name a target whose runsOn declares the device"]
+    moves: list[str] = []
+    for platform, block in runs_on.items():
+        for key in block if isinstance(block, dict) else ():
+            old = f"preconditions.runsOn.{platform}.{key}"
+            if key in _DEVICE_STATE and platform == "ios":
+                moves.append(f"{old} moved to preconditions.device.ios.{key}")
+            elif key in _DEVICE_STATE:
+                # Only iOS ever read a scenario's device state, so another platform's has no home.
+                moves.append(
+                    f"{old} was removed: platform {platform!r} takes no scenario device state"
+                )
+            else:
+                # The web block already sits at its destination (`browser`). This mirrors
+                # `condition_path` in `common/devices/runs.py`, which the portable scenario schema
+                # may not import.
+                where = f"runsOn.{key}" if platform == "web" else f"runsOn.{platform}.{key}"
+                moves.append(
+                    f"{old} was removed: a scenario no longer declares where it runs; "
+                    f"name a target whose {where} declares it"
+                )
+    return moves or ["preconditions.runsOn was removed: name a target that declares its runsOn"]
+
+
+# A `false` that switched the guard off for one scenario has no whole-scenario form left.
+_GUARD_OFF = (
+    "preconditions.run.systemAlertHandling: false has no scenario form (BE-0473): write "
+    "`- systemAlert: <prompt>` with `choice: leave` in the scenario's own `interrupts` for each "
+    "prompt it answers itself, including each one the target answers, or pass "
+    "--no-system-alert-handling for the whole run"
+)
+
+
+def _run_moves(run: Any) -> list[str]:
+    """Where each field of a scenario's former `preconditions.run` went (BE-0473)."""
+    if not isinstance(run, dict):
+        return ["preconditions.run was removed (BE-0473)"]
+    return [
+        _GUARD_OFF
+        if key == "systemAlertHandling" and run[key] is False
+        else f"preconditions.run.{key} moved to {PRECONDITION_RUN_KEYS[key]} (BE-0473)"
+        for key in run
+        if key in PRECONDITION_RUN_KEYS
+    ] or ["preconditions.run was removed (BE-0473)"]
+
+
+class PreconditionsLaunch(_Model):
+    """`preconditions.subject.launch`: what the scenario adds to the target's launch.
+
+    `env` merges over the target's key by key, `args` append after the target's, and `deeplink`
+    replaces the target's.
+    """
+
+    env: dict[str, str] = Field(default_factory=dict)
+    args: list[str] = Field(default_factory=list)
+    deeplink: str | None = None
+
+
+class PreconditionsApp(_Model):
+    """`preconditions.subject`: the scenario's override of the target's launch and install fields.
+
+    A scenario cannot set a field that identifies or builds the app (`id`, `path`, `build`,
+    `startWhen`, `idNamespaces`); the target owns those, so they fail as unknown here.
+    """
+
+    # How much state the run wipes before launch, weakest first (BE-0473): `overwrite` installs over
+    # the existing app and keeps its data container, `clean` uninstalls first, `erase` wipes the whole
+    # device (on Android, the same as `clean`). Unset inherits the target's `subject.reinstall`, then the
+    # built-in `clean` (BE-0452).
+    reinstall: Literal["overwrite", "clean", "erase"] | None = None
+    launch: PreconditionsLaunch = Field(default_factory=PreconditionsLaunch)
+
+
+class PreconditionsIosDevice(_Model):
+    """`preconditions.device.ios`: the iOS device state a scenario applies over its target's (BE-0469).
+
+    Each field replaces the target's `runsOn.ios` value of the same name when set.
+    """
+
+    # The app's and the Simulator's language; a value that differs from the target's forces a cold
+    # respawn (BE-0320).
+    # An empty value would silently fall back to the target's locale, so it fails instead.
+    locale: str | None = Field(default=None, min_length=1)
+    # Images seeded into the photo library on the erase path, in order. Paths resolve against the
+    # scenario file when it loads; None keeps the target's list, and the merged list needs an
+    # effective `subject.reinstall: erase`.
+    seed_photos: list[str] | None = Field(default=None, alias="seedPhotos")
+
+
+class PreconditionsDevice(_Model):
+    """`preconditions.device`: device state keyed by destination; only iOS has any (BE-0469).
+
+    A block for a platform the run does not drive has no effect.
+    """
+
+    ios: PreconditionsIosDevice = Field(default_factory=PreconditionsIosDevice)
+
 
 class Preconditions(_Model):
-    """Per-test environment setup."""
+    """Per-test environment setup: the target's `subject` overridden, and the device state."""
 
-    # Wipe the whole simulator (simctl erase) before the test — apps, data, settings. The app is
-    # reinstalled fresh each run (see `reinstall`), so a full wipe is only needed when a test wants a
-    # pristine device (no other apps / default settings). None (unset) inherits the target config's
-    # `erase` and then the built-in off (BE-0177); an explicit true/false pins it for this scenario.
-    # `run` resolves this to a concrete bool before dispatch, so `None` behaves as off downstream.
-    erase: bool | None = None
-    # How the app is (re)installed before each run, when the app config gives an `appPath`:
-    #   clean     — uninstall then install (fresh app + data; the default)
-    #   overwrite — install over the existing app (keeps its data container)
-    reinstall: Literal["clean", "overwrite"] = "clean"
-    launch_args: list[str] = Field(default_factory=list, alias="launchArgs")
-    launch_env: dict[str, str] = Field(default_factory=dict, alias="launchEnv")
-    deeplink: str | None = None
-    locale: str | None = None
-    setup: str | None = None
-    # Image files to seed into the iOS Simulator's photo library before `selectPhotos` addresses it
-    # by ordinal position (`Env.add_media`, one `simctl addmedia` call per path, in order). Paths are
-    # scenario-file-relative, resolved the same way `dataFile` is (`contained_ref`). Lives here,
-    # beside `erase`/`reinstall`, rather than on `Scenario` — the field the seeding gate below already
-    # reads, with no separate plumbing through `launch_driver` / `RunEnvironment.start` needed.
-    seed_photos: list[str] = Field(default_factory=list, alias="seedPhotos")
+    subject: PreconditionsApp = Field(default_factory=PreconditionsApp)
+    device: PreconditionsDevice = Field(default_factory=PreconditionsDevice)
+    # False skips the `hooks.setup` of every target the scenario declares (the target it runs
+    # against, when it declares none). The targets' cleanup still runs, since cleanup runs on every
+    # path out of a scenario.
+    inherit_setup: bool = Field(default=True, alias="inheritSetup")
 
-    @model_validator(mode="after")
-    def _seed_photos_needs_erase(self) -> Self:
-        # `_prepare_simulator` only seeds on the cold-and-erase path — the same wipe that already
-        # guarantees a known-empty library. Without this check, `seedPhotos` set alongside `erase:
-        # false` (or unset) would silently seed nothing, leaving `selectPhotos: { indices: [...] }`
-        # to address whatever the Simulator's ambient library happens to contain — non-reproducible
-        # by omission rather than by the design the seeding exists to replace (prime directive 2).
-        if self.seed_photos and not self.erase:
-            raise ValueError("preconditions.seedPhotos requires preconditions.erase: true")
-        return self
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_flat_keys(cls, data: Any) -> Any:
+        # BE-0452 regrouped the flat keys and reads none of them, so name each one's new home rather
+        # than leaving Pydantic's generic extra-field error.
+        if isinstance(data, dict):
+            for old, new in FLAT_PRECONDITION_KEYS.items():
+                if old in data:
+                    raise ValueError(f"scenario field 'preconditions.{old}' moved to '{new}'")
+            if "app" in data:
+                raise ValueError(
+                    "scenario field 'preconditions.app' moved to 'preconditions.subject' (BE-0470)"
+                )
+            if "runsOn" in data:
+                raise ValueError("; ".join(_runs_on_moves(data["runsOn"])))
+            if "run" in data:
+                raise ValueError("; ".join(_run_moves(data["run"])))
+        return data
 
-    def resolved_locale(self, target_locale: str) -> str:
-        """The locale this scenario runs under: its own override, else the target config's `locale`.
+    def _ios_device(self, platform: str) -> PreconditionsIosDevice | None:
+        # The device block that applies to a target driven as *platform*; only iOS has one.
+        return self.device.ios if platform == "ios" else None
+
+    def resolved_locale(self, target_locale: str, platform: str = "ios") -> str:
+        """The locale this scenario runs under: its own `device` value, else the target's locale.
 
         The one place the precedence lives, so everything that acts on it agrees — the app's launch
         arguments, the Simulator's own system language, and the system-alert label lookup that
         predicts what SpringBoard renders (BE-0320). Takes the target's value rather than the whole
         config, keeping the scenario schema a portable inner contract.
+
+        Args:
+            target_locale: The target's resolved `runsOn.ios.locale`.
+            platform: The platform the target is driven as; only an iOS one reads the scenario's
+                `device.ios.locale`.
         """
-        return self.locale or target_locale
+        device = self._ios_device(platform)
+        locale = device.locale if device is not None else None
+        return locale or target_locale
+
+    def resolve_seed_photos(self, resolve: Callable[[str], str]) -> None:
+        """Rewrite `device.ios.seedPhotos` through *resolve*, in place.
+
+        A file loader passes the scenario-file-relative resolution `dataFile` uses (`contained_ref`),
+        so a path never escapes the suite root and no later reader depends on the working directory.
+        """
+        photos = self.device.ios.seed_photos
+        if photos is not None:
+            self.device.ios.seed_photos = [resolve(ref) for ref in photos]
+
+    def seed_photos_for(self, platform: str) -> list[str] | None:
+        """The scenario's `seedPhotos` for *platform*, or None when the scenario does not set them."""
+        device = self._ios_device(platform)
+        return list(device.seed_photos) if device and device.seed_photos is not None else None

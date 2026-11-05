@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal, Self
+from typing import Any, Self
 
 from pydantic import (
-    AliasChoices,
-    BeforeValidator,
     Field,
     PrivateAttr,
     field_validator,
@@ -19,30 +17,27 @@ from bajutsu.common.scenario.models._base import _Model
 from bajutsu.common.scenario.models.assertions import Assertion
 from bajutsu.common.scenario.models.evidence import CaptureRule, Network, Redact
 from bajutsu.common.scenario.models.mocks import Mock
-from bajutsu.common.scenario.models.steps import AfterRule, Interrupt, Step
+from bajutsu.common.scenario.models.steps import (
+    CleanupRule,
+    Interrupt,
+    InterruptEntry,
+    Step,
+    check_interrupt_entries,
+    screen_entries,
+    system_alert_entries,
+    tip_kit_entry,
+)
 
-from ._functions import _coerce_system_alert_handling
 from ._group_nesting import _check_no_nested_group
 from ._http_extract import _check_http_extract_vars
+from ._navigate_urls import _check_navigate_urls
 from ._targets import _check_target_requirements, _expand_target_groups
 from .preconditions import Preconditions
-from .system_alert_handling import SystemAlertHandling
 
 # The grant/revoke actions a `permissions` entry may take (BE-0276); the service side of the
 # vocabulary (`PERMISSION_SERVICES`) lives in `drivers.base` since every backend's capability
 # advertisement already depends on it — reused here rather than duplicated.
 _PERMISSION_ACTIONS = ("grant", "revoke")
-
-
-# The on-disk type of a `systemAlertHandling` field, shared by the scenario and the target config so
-# the two layers accept exactly the same forms. The boolean carries on and off (BE-0401): `false`
-# disables the guard, a mapping is on and holds the policy, and `None` (the key absent) inherits the
-# layer above. `{ enabled: false, rules: [...] }` — a policy the runtime discarded without a word —
-# is not representable.
-SystemAlertHandlingField = Annotated[
-    Literal[False] | SystemAlertHandling | None,
-    BeforeValidator(_coerce_system_alert_handling),
-]
 
 
 class Scenario(_Model):
@@ -77,59 +72,39 @@ class Scenario(_Model):
     installs: list[str] = Field(default_factory=list)
     # Per-scenario OS permission state (BE-0276), applied before the app process starts: grant or
     # revoke a permission up front so the runtime prompt never appears (iOS `simctl privacy`,
-    # Android `pm grant`/`pm revoke`). Deterministic and AI-free, unlike the vision
-    # systemAlertHandling guard below, which reacts to a prompt only after it appears. Kept as a
+    # Android `pm grant`/`pm revoke`). Deterministic and ahead of the prompt, unlike a `systemAlert`
+    # entry in `interrupts` below, which reacts to a prompt only after it appears. Kept as a
     # plain `dict[str, str]` (validated below against the vocabulary) rather than a `Literal`-keyed
     # dict, so it stays assignable to the `Mapping[str, str]` the platform-lifecycle `start()` seam
     # expects.
     permissions: dict[str, str] = Field(default_factory=dict)
-    # Handlers for interstitial screens that surface at an unpredictable point (BE-0314): each entry
-    # names a `condition` (the assertion DSL `if` uses) and the `steps` that clear it. The runner
-    # checks each opportunistically against trees it has already fetched, wherever the screen appears
-    # — so an author need not predict the one spot to place an `if`. Appended to the target config's
-    # own `interrupts` (config entries first), mirroring how `systemAlertHandling` layers config
-    # under scenario. Empty (the default) means no scenario-level handler, so it prunes from a dump.
-    interrupts: list[Interrupt] = Field(default_factory=list)
+    # What the run clears on its own when it surfaces mid-scenario (BE-0314, BE-0473): a screen in
+    # the app's tree (`condition` + `steps`), checked opportunistically against trees the runner has
+    # already fetched; an OS prompt (`systemAlert` + `choice`) for the reactive guard; or Apple's
+    # TipKit popover (`tipKit`). Layered over the target's `hooks.interrupts`: screens concatenate
+    # (target entries first), a prompt's entry here replaces the target's for that prompt, and a
+    # `tipKit` entry here replaces the target's. Empty (the default) prunes from a dump.
+    interrupts: list[InterruptEntry] = Field(default_factory=list)
     data: list[dict[str, str]] | None = None
     data_file: str | None = Field(default=None, alias="dataFile")
     preconditions: Preconditions = Field(default_factory=Preconditions)
-    # Setup that runs as its own phase before `steps` (BE-0392), not spliced into it the way a
-    # `preconditions.setup` prelude is: it gets its own report section, and its failure aborts the
-    # scenario before `steps` runs rather than surfacing as an ordinary step failure. Prepended to
-    # the target config's own `before`, the config-then-scenario order `interrupts` follows. Empty
-    # (the default) means no scenario-level prelude, so it prunes from a dump.
-    before: list[Step] = Field(default_factory=list)
+    # Setup that runs as its own phase before `steps` (BE-0392): it gets its own report section, and
+    # its failure aborts the scenario before `steps` runs rather than surfacing as an ordinary step
+    # failure. Runs after the target config's own `hooks.setup`, the config-then-scenario order
+    # `interrupts` follows. Named `before` until BE-0452, which gave the target and the scenario one
+    # pair of words for the phases. Empty (the default) prunes from a dump.
+    setup: list[Step] = Field(default_factory=list)
     steps: list[Step]
     expect: list[Assertion] = Field(default_factory=list)
     # Teardown rules keyed to the run's own verdict (BE-0392), run after `steps`/`expect` on every
     # path out of them — including the one a failing step took, which trailing `steps` never reach.
-    # Merged scenario-then-config, the reverse of `before`: this scenario's own cleanup releases what
-    # it created before the app-wide one tears down around it.
-    after: list[AfterRule] = Field(default_factory=list)
+    # Merged scenario-then-config, the reverse of `setup`: this scenario's own cleanup releases what
+    # it created before the app-wide one tears down around it. Named `after` until BE-0452.
+    cleanup: list[CleanupRule] = Field(default_factory=list)
     capture_policy: list[CaptureRule] = Field(default_factory=list, alias="capturePolicy")
     network: Network | None = None
     mocks: list[Mock] = Field(default_factory=list)
     redact: Redact | None = None
-    # The alert guard runs on by default; unset means "on, tap the prompt's default button" (see
-    # SystemAlertHandling). Kept None when unset so a dumped scenario stays clean. The former
-    # `alertHandling` / `dismissAlerts` spellings were deleted with no alias (BE-0401); the
-    # validator below names the replacement.
-    system_alert_handling: SystemAlertHandlingField = Field(
-        default=None,
-        validation_alias=AliasChoices("systemAlertHandling"),
-        serialization_alias="systemAlertHandling",
-    )
-    # Dismiss a blocking TipKit tip when one is in the way. Off unless asked for, unlike the alert
-    # guard above: a tip is sometimes the very thing a scenario asserts on, and dismissing it by
-    # default would silently break that scenario. None keeps a dumped scenario clean. The `ios`
-    # prefix is load-bearing: TipKit is an Apple framework, so unlike `systemAlertHandling` — whose
-    # OS-prompt idea every platform has some form of — this key is inert on Android and web, and the
-    # name says so at the call site rather than leaving an author to find out from a no-op.
-    ios_tip_kit_handling: bool | None = Field(
-        default=None,
-        validation_alias=AliasChoices("iosTipKitHandling"),
-        serialization_alias="iosTipKitHandling",
-    )
     # Load-time provenance (BE-0417), set by a file loader after parsing. A `PrivateAttr` rather
     # than an ordinary field so it never leaks into `model_dump()` as part of the authored schema.
     _source_stem: str | None = PrivateAttr(default=None)
@@ -174,6 +149,21 @@ class Scenario(_Model):
         self._final_primary = name
 
     @property
+    def screens(self) -> list[Interrupt]:
+        """The screen entries of `interrupts` (`condition` + `steps`), in order."""
+        return screen_entries(self.interrupts)
+
+    @property
+    def dismisses_tips(self) -> bool:
+        """Whether the scenario's `interrupts` carries `- tipKit: dismiss` (BE-0473).
+
+        The run writes the target's and the flag's choice onto this entry before the scenario runs,
+        so it is the one value the loop reads.
+        """
+        entry = tip_kit_entry(self.interrupts)
+        return entry is not None and entry.tip_kit == "dismiss"
+
+    @property
     def source_stem(self) -> str | None:
         """The stem of the file this scenario was loaded from, or `None` outside a file loader."""
         return self._source_stem
@@ -186,10 +176,24 @@ class Scenario(_Model):
     @classmethod
     def _reject_renamed_alert_keys(cls, data: Any) -> Any:
         # `systemAlertHandling` renamed `alertHandling`, which had itself renamed `dismissAlerts`
-        # (BE-0317 / BE-0327). Both aliases were deleted rather than carried a third time (BE-0401),
-        # so name the canonical key here instead of leaving Pydantic's generic extra-field error.
-        for old in ("alertHandling", "dismissAlerts"):
-            reject_renamed_key(data, surface="scenario", old=old, new="systemAlertHandling")
+        # (BE-0317 / BE-0327), and BE-0473 turned the declaration into `interrupts` entries; name the
+        # destination here instead of leaving Pydantic's generic extra-field error.
+        moved = {
+            "alertHandling": "a `- systemAlert: <prompt>` entry with its `choice`",
+            "dismissAlerts": "a `- systemAlert: <prompt>` entry with its `choice`",
+            "systemAlertHandling": "a `- systemAlert: <prompt>` entry with its `choice`",
+            "iosTipKitHandling": "a `- tipKit: dismiss` entry",
+        }
+        if isinstance(data, dict):
+            for old, new in moved.items():
+                if old in data:
+                    raise ValueError(
+                        f"scenario field '{old}' was removed; write {new} in the scenario's "
+                        "`interrupts` (BE-0473)"
+                    )
+        # The lifecycle phases took the target's words (BE-0452), and old keys are not read.
+        reject_renamed_key(data, surface="scenario", old="before", new="setup")
+        reject_renamed_key(data, surface="scenario", old="after", new="cleanup")
         return data
 
     @field_validator("permissions")
@@ -201,6 +205,20 @@ class Scenario(_Model):
             if action not in _PERMISSION_ACTIONS:
                 raise ValueError(f"unknown permission action: {action!r} (expected grant|revoke)")
         return v
+
+    @model_validator(mode="after")
+    def _one_entry_per_prompt(self) -> Self:
+        check_interrupt_entries(self.interrupts, "interrupts")
+        # A scenario entry that answers nothing has no bound to tune, and no layer below it inherits
+        # from the scenario, so the value would be read by nothing. A target's `leave` entry may
+        # carry one, since a scenario entry for the same prompt inherits it.
+        for entry in system_alert_entries(self.interrupts):
+            if entry.choice == "leave" and entry.frozen_screen_timeout is not None:
+                raise ValueError(
+                    f"interrupts: the {entry.system_alert} entry leaves its prompt, so its "
+                    "frozenScreenTimeout would tune nothing; drop it, or answer the prompt"
+                )
+        return self
 
     @model_validator(mode="after")
     def _one_data_source(self) -> Self:
@@ -227,4 +245,9 @@ class Scenario(_Model):
     @model_validator(mode="after")
     def _http_extract_vars(self) -> Self:
         _check_http_extract_vars(self)
+        return self
+
+    @model_validator(mode="after")
+    def _navigate_urls(self) -> Self:
+        _check_navigate_urls(self)
         return self

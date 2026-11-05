@@ -39,10 +39,20 @@
 スキーマが強制します。例外は **制御フローのステップ**（`if` / `forEach`）で、こちらは capture や
 extract の修飾子を持ちません。定義は `bajutsu/scenario/models/steps.py` の `Step` です。
 
-**precondition（前提条件）**：run の前に適用する、シナリオ単位の環境準備です。`erase`、`reinstall`、
-`launchArgs`、`launchEnv`、`deeplink`、`locale`、`setup` があります。実行時の関心事（`mocks` /
-`network`）とも、config 側の `defaults` / `targets` とも別物です。定義は
-`bajutsu/scenario/models/scenario.py` の `Preconditions` です。
+**precondition（前提条件）**：run の前に適用する、シナリオ単位の環境準備です。
+シナリオが動かす各ターゲットの値に重ねます。
+フィールドは次のとおりです。
+
+- `subject.reinstall`（`overwrite`、`clean`、デバイス全体を wipe する `erase` のいずれか）と `subject.launch.env` / `.args` / `.deeplink` です。
+- `device.ios.locale` / `.seedPhotos` です。iOS のデバイスの状態で、ターゲットの `runsOn.ios` の値を置き換えます。
+- `inheritSetup` です。ターゲットの `hooks.setup` をシナリオの前に走らせるかどうかを決めます。
+
+システムアラートと TipKit への対処は、ここではなくシナリオ自身の `interrupts` に書きます（BE-0473）。
+
+precondition はデバイスの条件を宣言しません。条件はターゲットの `runsOn` が持ちます。
+
+実行時の関心事（`mocks` / `network`）とも、config 側の `defaults` / `targets` とも別物です。定義は
+`bajutsu/common/scenario/models/scenario/preconditions.py` の `Preconditions` です。
 
 **expect / assertion（アサーション）**：**assertion（アサーション）** は機械チェック可能な検査ひとつ
 （`exists` / `value` / `label` / `count` / `enabled` / `disabled` / `selected` / `request` /
@@ -88,12 +98,12 @@ AND で結合されるフィールドの集合（`id`、`idMatches`、`label`、
 | 語 | 意味 |
 |---|---|
 | **driver** | 抽象的な `Driver` インターフェース（`bajutsu/common/drivers/base.py` の `Protocol`）です。唯一のプラットフォーム依存の継ぎ目で、どの actuator もこれを実装します。 |
-| **backend** | `--backend` と config の `backend:` が受け付けるユーザー向けのトークンです。platform の別名（`ios`）か、actuator の名前そのもの（`xcuitest`）のどちらかです。「backend」は入力トークンの総称で、解決されて actuator になります。 |
+| **backend** | `--backend` と serve のリクエストの `backend` が受け付けるユーザー向けのトークンです。ターゲットの platform の別名（`ios`）、その platform の actuator の名前そのもの（`xcuitest`）、`fake` のいずれかです。それ以外は終了コード 2 になります。このトークンは複数の候補から選ぶのではなく、ターゲットの `platform` と合っているかを検査するためです（[BE-0452](../../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)）。「backend」は入力トークンの総称で、解決されて actuator になります。 |
 | **actuator** | 実際に操作（tap / type / swipe / query）を担う具体的なエンジンで、driver が実装するものです。backend のトークンは一つの actuator に解決され、run の開始時に確定して以後は固定されます。 |
-| **platform** | 対象の種類を表す粗いトークン（`ios` / `android` / `web` / `fake`）で、安定度順（最も安定するものが先）の actuator のリストに展開されます。 |
+| **platform** | 対象の種類を表す粗いトークン（`ios` / `android` / `web` / `fake`）で、安定度順（最も安定するものが先）の actuator のリストに展開されます。どのターゲットも、必須の `platform` キーで1つを宣言します。 |
 
-`backend:` のリストは安定度順で書きます。選択は各トークンを actuator に展開し、既知でこのマシンで利用で
-きる最初の一つを選びます。現在コードに組み込まれている platform から actuator への対応は次のとおりです
+選択はターゲットの `platform` を actuator に展開し、既知でこのマシンで利用できる最初の一つを
+選びます。現在コードに組み込まれている platform から actuator への対応は次のとおりです
 （四つの actuator はすべて `IMPLEMENTED` に含まれます）。
 
 | platform | actuator（安定度順） | 利用可否の条件 |
@@ -118,12 +128,21 @@ AND で結合されるフィールドの集合（`id`、`idMatches`、`label`、
 
 | 語 | 意味 |
 |---|---|
-| **target（ターゲット）** | `targets.<name>` の下にある、テスト対象のアプリを記述する config エントリ一つです。プラットフォームごとの識別子（iOS の `bundleId`、web の `baseUrl`、Android の `package`）に加え、`backend`・`device`・`appPath` などを持ちます。config の単位です。定義は `bajutsu/common/config/schema.py` の `TargetConfig` です。 |
+| **target（ターゲット）** | `targets.<name>` の下にある、テスト対象のアプリを記述する config エントリ一つです。必須の `platform`、プラットフォームごとの識別子（iOS と Android の `subject.id`、web の `subject.url`）に加え、`subject.path`、`runsOn`、`driver` などを持ちます。config の単位です。定義は `bajutsu/common/config/schema/target_config.py` の `TargetConfig` です。 |
 | **app（アプリ）** | テスト対象のアプリケーションそのものです。target が指し示し、device にインストールされるソフトウェアです。 |
-| **device（デバイス）** | target を駆動する具体的な実行時インスタンスです。Simulator、emulator、ブラウザコンテキストで、`device`（たとえば `iPhone 15`）で名付け、実行時には `udid` で指します。 |
+| **device（デバイス）** | target を駆動する具体的な実行時インスタンスです。Simulator、emulator、ブラウザコンテキストで、実行時には `udid` で指します。target の `runsOn` グループが、宛先ごとのブロック（`runsOn.ios`、`runsOn.android`、`runsOn.browser`）でデバイスを記述します。デバイス条件（`runsOn.ios.model`、`runsOn.ios.os` など）は、run の前に、利用できる各デバイスと照合します。リストや範囲を書くと、シナリオは値ごと、またはメジャーバージョンごとの run に分かれます。片側が開いた範囲に合うデバイスがないときは、失敗ではなく「対象外」（not applicable）の記録が残ります（[configuration](configuration.md#デバイスの条件runson)）。 |
 
 つまり、config の **target** が、ソフトウェアである **app** を指し、それを実行時インスタンスである
 **device** の上で駆動します。
+
+### subject
+
+target は、テスト対象を **subject** グループに書きます。iOS と Android ではアプリの `id`、`path`、
+`launch` を、web ではサイトの `url` を持ちます。シナリオは、同じフィールドを `preconditions.subject` の下で
+上書きします。このグループは `app` という名前でしたが、web のターゲットがテストするのはアプリではなくサイトなので、
+[BE-0470](../../roadmaps/BE-0470-subject-group-rename/BE-0470-subject-group-rename-ja.md) で
+`subject` に改めました。シナリオの `email.match.subject` は別の語で、受信したメールの件名（Subject
+ヘッダ）を照合します。2 つが同じパスに現れることはありません。
 
 ## label
 

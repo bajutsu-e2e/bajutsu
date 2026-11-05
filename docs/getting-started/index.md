@@ -49,7 +49,10 @@ with `uv run` (e.g. `uv run bajutsu …`) so they use that environment.
 > **Installing from PyPI?** The base package is AI-free: `pip install bajutsu` gets the
 > deterministic authoring / running paths with no AI SDK, and `pip install bajutsu[ai]` (or
 > `bajutsu[bedrock]`) adds the SDK for the Claude paths. The split is detailed in
-> [What uses Claude](../ai-boundary.md#installing-the-claude-paths).
+> [What uses Claude](../ai-boundary.md#installing-the-claude-paths). The base package also carries
+> the server stack (FastAPI, uvicorn, SQLAlchemy, Alembic, `cryptography`), so `bajutsu serve`
+> starts on one machine with no extra. The `server` and `db` extras add only the
+> clients for a hosted deployment: boto3 for an S3 bucket and psycopg for PostgreSQL.
 
 Confirm the CLI (command-line interface) is wired up:
 
@@ -93,7 +96,9 @@ fixed catalog of rows renders on launch:
 ```yaml
 - name: stable catalog smoke
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }     # disable animations -> tight condition waits
+    subject:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }     # disable animations -> tight condition waits
   steps:
     - wait: { for: { id: [stable.row.1, stable_row_1] }, timeout: 10 }
   expect:

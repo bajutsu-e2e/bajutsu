@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import io
 import json
+import logging
+import posixpath
 import shlex
 import stat
 import time
@@ -15,10 +17,14 @@ from typing import Any, Literal
 import yaml
 
 from ._platform_run import _PlatformRun
+from ._spec_layout import _SpecLayout
 from .device_farm_client import DeviceFarmClient
 from .device_farm_error import DeviceFarmError
+from .run_interrupted import Interrupt, RunInterrupted
 from .transfer import Transfer
 from .verdict import Verdict
+
+_logger = logging.getLogger(__name__)
 
 # Device Farm caps one custom-environment execution at 150 minutes; poll no longer than that before
 # giving up rather than blocking a CI job indefinitely.
@@ -32,13 +38,19 @@ _POLL_INTERVAL_SECONDS = 30
 
 Platform = Literal["android", "ios"]
 
-# boto3 Device Farm upload types. The test package and spec use the Appium-Python
-# custom-environment types on both platforms; only the app artifact differs — an Android APK
-# (`.aab` is not accepted) or an iOS `.ipa`. Keying by `Platform` lets `mypy --strict` catch a
-# missing or misspelt platform key here rather than silently widening to `dict[str, str]`.
+# boto3 Device Farm upload types. The app artifact differs per platform — an Android APK (`.aab` is
+# not accepted) or an iOS `.ipa`. Keying by `Platform` lets `mypy --strict` catch a missing or
+# misspelt platform key here rather than silently widening to `dict[str, str]`.
 APP_UPLOAD_TYPE: dict[Platform, str] = {"android": "ANDROID_APP", "ios": "IOS_APP"}
-_UPLOAD_TEST_PACKAGE = "APPIUM_PYTHON_TEST_PACKAGE"
-_UPLOAD_TEST_SPEC = "APPIUM_PYTHON_TEST_SPEC"
+
+# The run's test type, which picks the test package and spec upload types. Both run the custom test
+# spec; XCTEST_UI is the one whose package Device Farm re-signs, so an iOS runner installs on whichever
+# device the run reserves (BE-0465).
+TestType = Literal["APPIUM_PYTHON", "XCTEST_UI"]
+_TEST_UPLOAD_TYPES: dict[TestType, tuple[str, str]] = {
+    "APPIUM_PYTHON": ("APPIUM_PYTHON_TEST_PACKAGE", "APPIUM_PYTHON_TEST_SPEC"),
+    "XCTEST_UI": ("XCTEST_UI_TEST_PACKAGE", "XCTEST_UI_TEST_SPEC"),
+}
 
 # Device Farm's DeviceFilter PLATFORM values (uppercase), keyed by Bajutsu's platform. Used to build
 # the deviceSelectionConfiguration the serve fan-out path schedules with (see `device_selection_for`).
@@ -55,6 +67,16 @@ _PLATFORM_RUN: dict[Platform, _PlatformRun] = {
         backend="xcuitest", udid='"$DEVICEFARM_DEVICE_UDID"', probe="xcrun xctrace list devices"
     ),
 }
+
+
+def host_backend(platform: Platform) -> str:
+    """The ``--backend`` every `bajutsu run` on the Device Farm host passes for *platform*.
+
+    It overrides each target's own `backend`, so a worker judging a scenario before it submits
+    (BE-0448) asks about this driver, not the one the config names.
+    """
+    return _PLATFORM_RUN[platform].backend
+
 
 # Noise directories to keep out of the upload. `--package .=.` walks the whole checked-out
 # repo root, which already holds `.git/` and the `uv`-created `.venv/` plus build/test caches and
@@ -73,6 +95,19 @@ _PACKAGE_EXCLUDES = frozenset(
         "runs",
         "tmp",
         ".DS_Store",
+        # A Bajutsu process's own state, which a bundle directory may hold when it is a project or a
+        # worker's workspace: the local start's keys and queue (`.bajutsu`), the worker's bundle,
+        # override, batch, and slot directories, and its owner and process-group files (BE-0448).
+        ".bajutsu",
+        ".bundles",
+        ".overrides",
+        ".batch",
+        ".slots",
+        ".owner-pid",
+        ".job-pgid",
+        # A source checkout's Simulator runner build (BE-0292), useless on Device Farm's real devices,
+        # and its .app directories make an XCTEST_UI package fail Device Farm's single-.app check.
+        "_xcuitest_runner",
     }
 )
 
@@ -99,13 +134,21 @@ _UV = "$HOME/.local/bin/uv"  # where `pip install --user uv` lands on the Device
 _VENV = "$HOME/bajutsu-venv"
 _BAJUTSU = f"{_VENV}/bin/bajutsu"
 
+# An XCTEST_UI package carries the runner `.app` at its root and Bajutsu under this directory. Device
+# Farm unpacks it somewhere of its own beside `$DEVICEFARM_XCTEST_BUILD_DIRECTORY`, so the spec finds
+# the directory by name and copies it to a fixed work directory the run starts in (BE-0465).
+XCTEST_PACKAGE_DIR = "bajutsu-package"
+_WORK = "$HOME/bajutsu-work"
+# An APPIUM_PYTHON run installs and runs from the unpacked test package itself.
+_APPIUM_LAYOUT = _SpecLayout()
+
 
 def _next_poll_delay(previous: float) -> float:
     """The next status-poll wait: double the previous one, capped at ``_POLL_INTERVAL_SECONDS``."""
     return min(previous * 2, _POLL_INTERVAL_SECONDS)
 
 
-def _is_excluded(rel_parts: tuple[str, ...]) -> bool:
+def is_package_excluded(rel_parts: tuple[str, ...]) -> bool:
     """Return True if *rel_parts* names a path that must not enter the package.
 
     A component matches `_PACKAGE_EXCLUDES` exactly (e.g. `.git`) or starts with one of
@@ -117,7 +160,9 @@ def _is_excluded(rel_parts: tuple[str, ...]) -> bool:
     )
 
 
-def _python_bootstrap_commands(python_version: str) -> list[str]:
+def _python_bootstrap_commands(
+    python_version: str, layout: _SpecLayout = _APPIUM_LAYOUT
+) -> list[str]:
     """Install-phase commands that provision `python_version` with uv and install Bajutsu under it.
 
     Temporary workaround for Device Farm having no Python >= 3.13 (see the block comment above):
@@ -131,10 +176,38 @@ def _python_bootstrap_commands(python_version: str) -> list[str]:
         "python -m pip install --user --upgrade uv",
         f"{_UV} python install {shlex.quote(python_version)}",
         f"{_UV} venv --python {shlex.quote(python_version)} {_VENV}",
-        # The test package unpacks into $DEVICEFARM_TEST_PACKAGE_PATH; install Bajutsu from it into
-        # the 3.13 venv. The adb backend is pure subprocess, so the base install (no extras) suffices.
-        f'{_UV} pip install --python {_VENV} "$DEVICEFARM_TEST_PACKAGE_PATH"',
+        *layout.stage,
+        # Install Bajutsu from the test package into the 3.13 venv. The adb backend is pure
+        # subprocess, so the base install (no extras) suffices.
+        f"{_UV} pip install --python {_VENV} {layout.package}",
     ]
+
+
+def _xctest_layout(xctest_runner: str) -> _SpecLayout:
+    """The layout of an XCTEST_UI run, whose package Device Farm unpacks beside its runner build.
+
+    Device Farm does not unpack Bajutsu into $DEVICEFARM_TEST_PACKAGE_PATH for this test type, so
+    the spec copies `XCTEST_PACKAGE_DIR` to a fixed work directory and runs from there.
+    """
+    # Device Farm writes the re-signed runner beside its own .xctestrun; both land where the
+    # config's testRunner points, so the run needs no config of its own.
+    products = posixpath.join(posixpath.dirname(xctest_runner), "Debug-iphoneos")
+    return _SpecLayout(
+        package=f'"{_WORK}"',
+        stage=(
+            f'PKG="$(find "$DEVICEFARM_XCTEST_BUILD_DIRECTORY"'
+            f' "$(dirname "$DEVICEFARM_XCTEST_BUILD_DIRECTORY")" -maxdepth 3 -type d'
+            f' -name {XCTEST_PACKAGE_DIR} | head -n 1)" && test -n "$PKG"'
+            f' && rm -rf "{_WORK}" && cp -R "$PKG" "{_WORK}"',
+        ),
+        runner_setup=(
+            f'ditto "$(dirname "$DEVICEFARM_XCUITESTRUN_FILE")/Debug-iphoneos"'
+            f' "{_WORK}"/{shlex.quote(products)}',
+            f'cp "$DEVICEFARM_XCUITESTRUN_FILE" "{_WORK}"/{shlex.quote(xctest_runner)}',
+        ),
+        cd=f'cd "{_WORK}" && ',
+        runs=f'"{_WORK}/runs"',
+    )
 
 
 def render_test_spec(
@@ -145,6 +218,8 @@ def render_test_spec(
     platform: Platform = "android",
     python_version: str = "3.13",
     pre_test_commands: Sequence[str] = (),
+    worker_config: str | None = None,
+    xctest_runner: str | None = None,
 ) -> str:
     """Render a Device Farm custom-environment test spec that runs the given scenarios.
 
@@ -175,9 +250,18 @@ def render_test_spec(
             to it, so no client-supplied value reaches a shell on the host holding the run's AWS role.
             A bare `str` is rejected (see Raises): `Sequence[str]` matches one, but a single command
             passed as a string would splice one `pre_test` command per character.
+        worker_config: A `worker.yaml` path inside the unpacked test package, passed to every run as
+            `--worker-config`. The serve fan-out names a `devicefarm-host` file there, so the run
+            launches the app Device Farm installed instead of installing `subject.path` (BE-0465). None
+            keeps the run's default worker file.
+        xctest_runner: For an XCTEST_UI run, the `.xctestrun` path inside `XCTEST_PACKAGE_DIR` that
+            the config's `driver.runner.testRunner` names. The spec installs Bajutsu from that
+            directory, and puts Device Farm's re-signed runner there before the run (BE-0465). None
+            renders the APPIUM_PYTHON spec, which runs from the unpacked package itself.
 
     Raises:
-        ValueError: If `scenarios` is empty — a spec that runs nothing would silently "pass".
+        ValueError: If `scenarios` is empty — a spec that runs nothing would silently "pass" — or if
+            `xctest_runner` is given for a platform other than iOS.
         TypeError: If `scenarios` or `pre_test_commands` is a bare `str`, which `Sequence[str]`
             matches but would splice one command per character.
     """
@@ -191,36 +275,37 @@ def render_test_spec(
         raise TypeError("pre_test_commands must be a sequence of commands, not a single string")
     if not scenarios:
         raise ValueError("cannot render a test spec with no scenario to run")
+    if xctest_runner is not None and platform != "ios":
+        raise ValueError("an XCTEST_UI runner applies to iOS alone")
     run = _PLATFORM_RUN[platform]
     # `target`, `config`, and each scenario path trace back to workflow_dispatch text inputs, so
     # quote every splice: an unescaped space or shell metacharacter would otherwise break argument
     # parsing or inject a command onto the Device Farm host running under the OIDC-minted AWS role.
     # `run.backend` / `run.udid` are fixed, code-controlled tokens (not user input), so they are not
     # quoted — the iOS `udid` intentionally carries the shell reference the host must expand.
+    layout = _xctest_layout(xctest_runner) if xctest_runner is not None else _APPIUM_LAYOUT
+    worker_arg = f" --worker-config {shlex.quote(worker_config)}" if worker_config else ""
     run_cmds = [
-        f"{_BAJUTSU} run"
+        f"{layout.cd}{_BAJUTSU} run"
         f" --scenario {shlex.quote(s)} --target {shlex.quote(target)}"
-        f" --config {shlex.quote(config)} --backend {run.backend} --udid {run.udid}"
+        f" --config {shlex.quote(config)} --backend {run.backend} --udid {run.udid}{worker_arg}"
         for s in scenarios
     ]
     spec: dict[str, Any] = {
         "version": 0.1,
         "phases": {
-            "install": {"commands": _python_bootstrap_commands(python_version)},
+            "install": {"commands": _python_bootstrap_commands(python_version, layout)},
             "pre_test": {
                 "commands": [
                     # Prove the reserved device is visible before running (the serial-resolution PoC).
                     run.probe,
+                    *layout.runner_setup,
                     # Caller-supplied device-side setup runs after the probe (BE-0432); empty by default.
                     *pre_test_commands,
                 ]
             },
             "test": {"commands": run_cmds},
-            "post_test": {
-                "commands": [
-                    'cp -r runs "$DEVICEFARM_LOG_DIR"/ || true',
-                ]
-            },
+            "post_test": {"commands": [f'cp -r {layout.runs} "$DEVICEFARM_LOG_DIR"/ || true']},
         },
         "artifacts": ["$DEVICEFARM_LOG_DIR"],
     }
@@ -274,7 +359,7 @@ def build_package(
                     # Skip noise dirs, credential files (`.env`, `.aws`), and symlinks — so
                     # `--package .=.` on the checkout root neither bloats the upload nor leaks a
                     # secret to the shared Device Farm host (mirrors `archive_run_dir`).
-                    if _is_excluded(rel.parts):
+                    if is_package_excluded(rel.parts):
                         continue
                     if path.resolve() == out_resolved:
                         continue
@@ -363,22 +448,56 @@ def _wait_run(
     run_arn: str,
     *,
     sleep: Callable[[float], None],
+    interrupt: Callable[[], Interrupt | None] | None = None,
 ) -> None:
     """Poll the scheduled run until Device Farm reports it COMPLETED.
 
     Device Farm's own ``result`` (PASSED/FAILED) is deliberately ignored — the verdict is Bajutsu's,
     read from the downloaded manifest. This only waits for the batch execution to finish.
+    *interrupt* is asked before every poll, so a cancel or a lost lease ends the wait within one
+    poll interval (BE-0448).
 
     Raises:
         DeviceFarmError: If the run does not complete within the 150-minute hard cap.
+        RunInterrupted: *interrupt* answered; a ``stop`` has already asked Device Farm to stop it.
     """
     deadline = time.monotonic() + _HARD_CAP_SECONDS
     delay: float = _POLL_INITIAL_SECONDS
-    while client.get_run(arn=run_arn)["run"]["status"] != "COMPLETED":
+    while True:
+        _check_interrupt(client, interrupt, run_arn)
+        if client.get_run(arn=run_arn)["run"]["status"] == "COMPLETED":
+            return
         if time.monotonic() >= deadline:
             raise DeviceFarmError("run did not complete within the 150-minute cap")
         sleep(delay)
         delay = _next_poll_delay(delay)
+
+
+def _check_interrupt(
+    client: DeviceFarmClient,
+    interrupt: Callable[[], Interrupt | None] | None,
+    run_arn: str | None,
+) -> None:
+    """Raise `RunInterrupted` when *interrupt* answers, stopping *run_arn* first on a ``stop``."""
+    asked = interrupt() if interrupt is not None else None
+    if asked is None:
+        return
+    if asked == "stop" and run_arn is not None:
+        stop_run(client, run_arn)
+    raise RunInterrupted(asked, run_arn)
+
+
+def stop_run(client: DeviceFarmClient, run_arn: str) -> None:
+    """Ask Device Farm to stop *run_arn*, logging rather than raising when it refuses.
+
+    Best effort: the caller is already giving the run up, and a refusal (a run that completed a
+    moment ago, a throttled call) must not hide why it did. The run's name is its job id, so an
+    operator can still find and stop one this call could not.
+    """
+    try:
+        client.stop_run(arn=run_arn)
+    except Exception:  # boto3 raises its own ClientError family; any failure is logged alike
+        _logger.warning("could not stop Device Farm run %s", run_arn, exc_info=True)
 
 
 def device_selection_for(platform: Platform, *, max_devices: int = 1) -> dict[str, Any]:
@@ -411,9 +530,11 @@ def submit_and_collect(
     spec_yaml: Path,
     dest: Path,
     app_upload_type: str = APP_UPLOAD_TYPE["android"],
+    test_type: TestType = "APPIUM_PYTHON",
     run_name: str = "bajutsu",
     sleep: Callable[[float], None] = time.sleep,
     on_scheduled: Callable[[str], None] | None = None,
+    interrupt: Callable[[], Interrupt | None] | None = None,
 ) -> Verdict:
     """Upload the payload, schedule the run, wait for it, download artifacts, and return the verdict.
 
@@ -430,18 +551,28 @@ def submit_and_collect(
     Args:
         app_upload_type: The Device Farm upload type for the app artifact (``ANDROID_APP`` for an
             `.apk`, ``IOS_APP`` for an `.ipa`) — Device Farm rejects a mismatched artifact.
+        test_type: The run's test type, which also picks the package and spec upload types.
+            ``XCTEST_UI`` has Device Farm re-sign the package's runner for the reserved iPhone.
         on_scheduled: Called with the run ARN the moment the run is scheduled, before the long poll —
             serve persists it so a worker that re-leases the job after a restart resumes that run
-            through `collect_run` instead of resubmitting (BE-0336 Unit 5).
+            through `collect_run` instead of resubmitting (BE-0336 Unit 5). When it raises, the run
+            has no record anyone could resume it from, so it is stopped before the error propagates
+            (BE-0448).
+        run_name: The run's name on Device Farm; the serve fan-out passes the job id, so an operator
+            can find the run of a job (BE-0448).
+        interrupt: Asked before scheduling and before every poll; an answer raises `RunInterrupted`,
+            and a ``stop`` once the run is scheduled stops it first (BE-0448).
 
     Raises:
         DeviceFarmError: If neither or both of `device_pool_arn` / `device_selection` are given, if any
             upload fails, or if the run does not complete within the hard cap.
+        RunInterrupted: *interrupt* answered before the verdict was collected.
     """
     if (device_pool_arn is None) == (device_selection is None):
         raise DeviceFarmError(
             "schedule a run with exactly one of device_pool_arn or device_selection"
         )
+    package_type, spec_type = _TEST_UPLOAD_TYPES[test_type]
     app_arn = _upload_one(
         client,
         transfer,
@@ -456,7 +587,7 @@ def submit_and_collect(
         transfer,
         project_arn=project_arn,
         name=package_zip.name,
-        upload_type=_UPLOAD_TEST_PACKAGE,
+        upload_type=package_type,
         path=package_zip,
         sleep=sleep,
     )
@@ -465,10 +596,13 @@ def submit_and_collect(
         transfer,
         project_arn=project_arn,
         name=spec_yaml.name,
-        upload_type=_UPLOAD_TEST_SPEC,
+        upload_type=spec_type,
         path=spec_yaml,
         sleep=sleep,
     )
+    # Checked once more after the uploads: they can take minutes, and a run scheduled now would hold a
+    # device for a caller that already gave it up.
+    _check_interrupt(client, interrupt, None)
     # ScheduleRun accepts the static pool or the selection, never both (validated above).
     where = (
         {"devicePoolArn": device_pool_arn}
@@ -479,15 +613,21 @@ def submit_and_collect(
         projectArn=project_arn,
         appArn=app_arn,
         name=run_name,
-        test={"type": "APPIUM_PYTHON", "testPackageArn": package_arn, "testSpecArn": spec_arn},
+        test={"type": test_type, "testPackageArn": package_arn, "testSpecArn": spec_arn},
         **where,
     )
     run_arn = scheduled["run"]["arn"]
     # Persist the run ARN before the long poll, so a restart mid-poll resumes this run rather than
     # orphaning it and scheduling a new one (BE-0336 Unit 5).
     if on_scheduled is not None:
-        on_scheduled(run_arn)
-    return collect_run(client, transfer, run_arn=run_arn, dest=dest, sleep=sleep)
+        try:
+            on_scheduled(run_arn)
+        except BaseException:
+            stop_run(client, run_arn)
+            raise
+    return collect_run(
+        client, transfer, run_arn=run_arn, dest=dest, sleep=sleep, interrupt=interrupt
+    )
 
 
 def collect_run(
@@ -497,17 +637,20 @@ def collect_run(
     run_arn: str,
     dest: Path,
     sleep: Callable[[float], None] = time.sleep,
+    interrupt: Callable[[], Interrupt | None] | None = None,
 ) -> Verdict:
     """Wait for an already-scheduled run, download its artifacts under `dest`, and return the verdict.
 
     Split from `submit_and_collect` so a resumed cloud-batch job (BE-0336 Unit 5) polls and collects a
     run scheduled before a restart — reached from the persisted run ARN — without re-uploading or
     rescheduling. The verdict is Bajutsu's own, read from the downloaded ``manifest.json`` tree.
+    *interrupt* is asked before every poll, as `submit_and_collect` describes.
 
     Raises:
         DeviceFarmError: If the run does not complete within the 150-minute hard cap.
+        RunInterrupted: *interrupt* answered before the run completed.
     """
-    _wait_run(client, run_arn, sleep=sleep)
+    _wait_run(client, run_arn, sleep=sleep, interrupt=interrupt)
     dest.mkdir(parents=True, exist_ok=True)
     for index, artifact in enumerate(client.list_artifacts(arn=run_arn, type="FILE")["artifacts"]):
         _store_artifact(artifact, transfer.download(artifact["url"]), dest, index=index)

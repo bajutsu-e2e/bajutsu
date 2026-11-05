@@ -44,11 +44,33 @@ make serve ARGS="--config demos/showcase/showcase.config.yaml --port 8766"   # t
 The showcase app needs the showcase config, since the repository has no root
 `bajutsu.config.yaml`.
 
+The server does not drive a device for a run. It queues each run for a `bajutsu worker`. The worker
+leases the run and drives the device or browser. For that reason `make serve` starts one worker
+beside the server. The worker runs on the same machine, with the same token. It stops when the
+server stops. It advertises the platforms of the startup config's targets. A target of another
+platform, bound later, needs its own worker; the no-worker notice says so. Set `SERVE_WORKER=0` to
+start the server alone, for example to attach your own workers:
+
+```bash
+SERVE_WORKER=0 make serve
+```
+
+A queued run says why it waits. The Replay status line shows a notice that no worker is
+available. `GET /api/jobs/<id>` carries the same text as `notice`. The notice
+clears once a worker that can serve the run polls the server. Triage, record, and crawl jobs go
+through the same worker. The server runs no job in its own process (BE-0449). A deployment with a
+bucket must name a database for its queue, or the server refuses to start. While a crawl runs, the Crawl
+tab draws its graph from the screen map the worker relays. A record that pauses for a person shows
+its request as before. The answer then travels back to the worker.
+
 Under the hood `make serve` runs `python -m bajutsu serve` — the `bajutsu serve` command the
 [CLI reference](cli.md#serve) documents. If you installed Bajutsu outside a checkout (so there is no
 `make`), run `bajutsu serve` (or `python -m bajutsu serve`) directly; you are then responsible for
 the backend's dependencies yourself — the XCUITest runner (and Xcode) for an iOS target (a web /
-Playwright target does not need them). Either way the server does not open a browser for you: it
+Playwright target does not need them).
+Start the worker yourself, too, in a second terminal: `bajutsu worker`.
+A web target needs `--platform web` on that worker.
+Either way the server does not open a browser for you: it
 binds `127.0.0.1`, so once it is running, open the printed URL yourself (`http://127.0.0.1:8765` by
 default, or the `--port` you passed). These flags — `--port`, `--config`, `--root`,
 `--runs`, `--baselines`, `--themes`, `--host`, `--token`, `--max-concurrent-runs`,
@@ -150,7 +172,7 @@ three sources:
   branch); the whole subtree is fetched, so the config's scenarios and built app come with it.
 - **Upload a bundle (.zip).** Click **Choose a .zip…** (or drop a file on the box) to bring your own
   suite to a hosted server with no file-system access. The zip is a working local checkout — a
-  `bajutsu.config.yaml`, its `scenarios` tree, and the built app binary the config's `appPath` names.
+  `bajutsu.config.yaml`, its `paths.scenarios` tree, and the built app binary the config's `subject.path` names.
   It carries no secrets; `${secrets.*}` resolve from the server's environment.
 - **or browse the server.** A file browser, confined to the server's `--root`, for picking a local
   `.yml`/`.yaml` config. A hosted deployment hides this source, since a remote user has no
@@ -272,7 +294,7 @@ and **Output language** ([BE-0188](../roadmaps/BE-0188-configurable-ai-output-la
 fixes the language the AI writes its generated prose in — `record`'s `from:` provenance and
 `crawl`'s streamed reasoning. Its default *auto* keeps today's behavior (record follows the goal,
 crawl stays English); it never affects the deterministic `run` verdict, and it is separate from a
-target's device `locale`.
+target's device locale (`runsOn.ios.locale`).
 
 **Claude API key** (shown when the Anthropic API provider is selected) is **write-once**: enter a
 key and **Save**, and it is shown only masked and never
@@ -284,15 +306,15 @@ its alert guard is the native path alone (BE-0315), which clears the common prom
 consults none.
 
 **Scenario secrets** ([BE-0274](../roadmaps/BE-0274-serve-scenario-secrets/BE-0274-serve-scenario-secrets.md))
-lists the secrets the *bound config* declares — the environment-variable names under its `secrets:`
+lists the secrets the *bound config* declares — the environment-variable names under its `evidence.secrets`
 list that a scenario references as `${secrets.X}`
-([Secrets](configuration.md#secrets-secrets), [BE-0032](../roadmaps/BE-0032-secret-variables/BE-0032-secret-variables.md)). The panel shows
+([Secrets](configuration.md#secrets-evidencesecrets), [BE-0032](../roadmaps/BE-0032-secret-variables/BE-0032-secret-variables.md)). The panel shows
 one **write-once** field per declared name (masked, never displayed again, just like the API key), so
 you can provision a scenario's credentials from the Web UI instead of `export`ing them or hand-editing
 a `.env` before launching `serve`. A value set here materializes under its own declared name, and a
 spawned **Replay** / **Record** / **Crawl** inherits it so `${secrets.X}` resolves in the run. The
 panel always shows, with an empty-state message explaining the feature when the bound config
-declares no secrets, and it refreshes when you switch to a config with a different `secrets:` list —
+declares no secrets, and it refreshes when you switch to a config with a different `evidence.secrets` list —
 only names the config itself declares are settable, never an arbitrary environment variable. Setting
 one is an **admin** action on a role-gated deployment.
 
@@ -304,7 +326,7 @@ version. Its sharpest row is the **iOS test runner**: whether this build ships t
 Simulator runner
 ([BE-0292](../roadmaps/BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner.md)), the
 Xcode and Simulator SDK versions it was built against when it does, and whether the bound config
-overrides it with an explicit `xcuitest.testRunner` — the one fact that decides whether an iOS
+overrides it with an explicit `driver.runner.testRunner` — the one fact that decides whether an iOS
 Simulator run can start at all. A hosted deployment withholds the host paths (the config path, the
 runs and baselines directories); every other row shows either way. The tab takes no input: it reports
 what the launch command and environment already resolved, and never writes anything back.
@@ -373,6 +395,38 @@ boots or the app builds — still stops outright and leaves no report, having re
 preserve. **Stop** on the Record and Crawl tabs is unchanged for the same reason: neither reaches a
 verdict of its own.
 
+**Run in a device cloud.** The **Environment** selector lists `local` plus each batch environment.
+A batch environment, such as an AWS Device Farm provider, appears once a live worker advertises
+it. Each entry shows its live worker count. Workers come and
+go, so the tab reads the list again each time it opens. The refresh button reads it on demand
+([BE-0465](../roadmaps/BE-0465-serve-ui-device-farm-fan-out/BE-0465-serve-ui-device-farm-fan-out.md)).
+
+A web target cannot use a device cloud. A fan-out installs the app on a cloud device, and a browser
+target has none. The selector then stays on `local` and states the reason.
+
+With a device-cloud environment chosen, the form dispatches a fan-out instead of one run:
+
+1. Pick scenarios in the multi-select, or check **All scenarios**.
+   Either way the form sends every chosen name explicitly, so a file saved between the listing
+   and the dispatch cannot move a row onto the wrong scenario.
+2. The fields a cloud device ignores disappear. They are the device picker, **Workers**,
+   **erase device first**, **show browser (headed)**, **disable alert-dismiss**, **Readiness**,
+   and the single scenario's select, View, and grade.
+3. **Run** posts to `POST /api/run-set`. The route needs the editor role, like a single **Run**.
+   A refusal shows in the status line.
+   The codes are 400 for a bad request, 403 for a missing role, and 429 for a full queue.
+
+A **run-set panel** then lists one row per dispatched job, in request order. Each row polls its job
+about every two seconds until the job finishes, fails, or errors. A row shows its state and a
+**report** link once the run exists. It also shows the notice when no worker can take the job.
+A row also ends as unknown when the server no longer tracks the job (after a restart), and
+**Stop all** still sends its cancel.
+
+Expanding a row streams that job's log. One log streams at a time, so a large fan-out never holds
+a stream per row. **Stop all** cancels every unfinished row.
+
+A fan-out that the concurrency cap cuts short reports its undispatched scenarios in the panel.
+
 Under the log panel, a **Generate code** bar exports the selected scenario as a native test — the
 same codegen as on the [Author](#author--capture-edit-and-enrich-one-scenario) tab, placed where a
 scenario has just run.
@@ -383,7 +437,10 @@ run compares against it — the review step of the run → review → approve �
 report section shows: [reporting](reporting.md).
 
 **History.** The sub-tab lists past runs, newest first, each with a pass/fail dot and a scenario
-summary. Click one to reopen its report. Use the refresh button to re-list.
+summary. The summary counts passed runs against the total. A device condition can leave a run
+with no matching device ([configuration](configuration.md#device-conditions-runson)). The summary
+then adds the count of not-applicable records as `N n/a`. Click a row to reopen its report. Use
+the refresh button to re-list.
 
 **Delete a run** ([BE-0239](../roadmaps/BE-0239-deletable-runs-serve/BE-0239-deletable-runs-serve.md)).
 Each row carries a trash button that moves that run — its report, screenshots, video, and network
@@ -599,7 +656,7 @@ is involved.
 ## Coverage — the E2E coverage map
 
 **What it does.** Renders the E2E coverage map for a target — the `coverage` command in the browser.
-It measures the scenario suite's stable-id references against the app's declared `idNamespaces`,
+It measures the scenario suite's stable-id references against the app's declared `subject.idNamespaces`,
 showing per-namespace coverage, the gap list (declared namespaces no scenario touches), and
 off-namespace ids. A selector the run binds later — a `${vars.*}` placeholder carrying a `totp` or
 `email` step's output — names no element, so the map leaves the placeholder out instead of counting
@@ -632,7 +689,7 @@ dimension.
 By default `make serve` binds `127.0.0.1` with no authentication — safe only on the loopback
 interface. To expose it beyond your own machine you need a token (`--token`), which turns on
 authentication and CSRF protection; binding a non-loopback `--host` requires one. Team hosting on a
-single Mac (`--emit-launchagent`) or the full control-plane backend (`--backend server`), together
+single Mac (`--emit-launchagent`) or the full hosted control plane (a bucket and a database), together
 with `--max-concurrent-runs` and `--evidence-store`, are covered in the
 [CLI reference](cli.md#serve) and [self-hosting](self-hosting.md).
 

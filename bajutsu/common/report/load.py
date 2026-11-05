@@ -14,18 +14,20 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any, cast
 
 import yaml
 
 from bajutsu.common.assertions import AssertionResult, VisualEvidence
+from bajutsu.common.capability.route_tokens import report_notices
 from bajutsu.common.drivers.actuation import Actuation
 from bajutsu.common.drivers.base import Frame, Point
 from bajutsu.common.evidence import Artifact
 from bajutsu.common.orchestrator import (
     AlertEvent,
+    IgnoredSetting,
     RunResult,
     SkippedCapture,
     StepOutcome,
@@ -33,7 +35,7 @@ from bajutsu.common.orchestrator import (
     TargetDeviceInfo,
 )
 from bajutsu.common.report.html import html_report, scenario_render_inputs, write_html_and_junit
-from bajutsu.common.scenario import load_scenario_file
+from bajutsu.common.scenario import Scenario, load_stored_scenario_file, renamed_outcome
 
 _logger = logging.getLogger("bajutsu.common.report.load")
 
@@ -191,6 +193,8 @@ def _step(d: dict[str, Any]) -> StepOutcome:
             "artifacts": [Artifact(**_kw(Artifact, a)) for a in d.get("artifacts") or []],
             "alerts": [AlertEvent(**_kw(AlertEvent, a)) for a in d.get("alerts") or []],
             "system_alert": _system_alert(d.get("system_alert")),
+            # JSON has no tuple, and a run before schemaVersion 16 has no field at all (BE-0474).
+            "warnings": tuple(w for w in d.get("warnings") or () if isinstance(w, str)),
             "actuations": actuations,
             # `dropped` is the loader's own casualty, on top of whatever the run itself already
             # disclosed (a driver-side truncation) in the same field — a run that also loads with a
@@ -206,9 +210,12 @@ def _result(d: dict[str, Any]) -> RunResult:
     return RunResult(
         **{
             **kw,
+            # BE-0452 renamed the failed outcome `error` to `failure`; a run stored before it still
+            # names the cleanup rules it dispatched, so the report pairs them with their outcomes.
+            "after_verdict": renamed_outcome(kw.get("after_verdict", "")),
             "steps": [_step(s) for s in d.get("steps") or []],
             # The lifecycle phases' own outcomes (BE-0392), reconstructed through the same `_step`
-            # as the scenario's own — a report re-rendered offline shows the Before / After blocks
+            # as the scenario's own — a report re-rendered offline shows the setup / cleanup blocks
             # a live run showed.
             "before_outcomes": [_step(s) for s in d.get("before_outcomes") or []],
             "after_outcomes": [_step(s) for s in d.get("after_outcomes") or []],
@@ -225,6 +232,9 @@ def _result(d: dict[str, Any]) -> RunResult:
             ),
             "skipped_captures": [
                 SkippedCapture(**_kw(SkippedCapture, c)) for c in d.get("skipped_captures") or []
+            ],
+            "ignored_settings": [
+                IgnoredSetting(**_kw(IgnoredSetting, c)) for c in d.get("ignored_settings") or []
             ],
             "target_devices": _target_devices(d.get("target_devices")),
         }
@@ -274,6 +284,47 @@ class RenderModel:
     # The manifest's run-identity stamp (BE-0049), replayed into the regenerated CTRF export
     # (BE-0161) so a re-render preserves the original run's tool version / commit; None if absent.
     provenance: dict[str, object] | None
+    # The runs no available device fell in an open `runsOn` range for (BE-0452); empty on a run
+    # stored before them, whose scenarios each ran once.
+    not_applicable: list[dict[str, str]] = field(default_factory=list)
+
+
+def _not_applicable(raw: object) -> list[dict[str, str]]:
+    # Each stored record is a flat mapping of strings; anything else is dropped rather than crash
+    # the load, as a malformed `target_devices` row is.
+    if not isinstance(raw, list):
+        return []
+    return [
+        {str(k): str(v) for k, v in record.items()} for record in raw if isinstance(record, dict)
+    ]
+
+
+def _aligned(results: list[RunResult], scenarios: list[Scenario], seq: list[Any]) -> list[Any]:
+    """*seq*, one entry per scenario, re-paired with *results* when conditions formed the runs.
+
+    A scenario whose `runsOn` conditions formed several runs contributes one result per run
+    (BE-0452), so the positional pairing the report otherwise uses would drift. A result finds its
+    plan by its scenario name instead. One scenario runs each set of coordinates at most once, so
+    the Nth result of one name and one set of coordinates belongs to the Nth scenario of that name,
+    which keeps two same-named scenarios of a multi-file run apart. Runs no condition formed keep
+    the positional pairing.
+    """
+    if not any(r.coordinates for r in results):
+        return seq
+    by_name: dict[str, list[int]] = {}
+    for i, s in enumerate(scenarios):
+        by_name.setdefault(s.name, []).append(i)
+    seen: dict[tuple[str, str], int] = {}
+    out: list[Any] = []
+    for r in results:
+        plans = by_name.get(r.scenario)
+        if not plans:
+            out.append(None)
+            continue
+        nth = seen.get((r.scenario, r.coordinates), 0)
+        seen[(r.scenario, r.coordinates)] = nth + 1
+        out.append(seq[plans[min(nth, len(plans) - 1)]])
+    return out
 
 
 def load_run(run_dir: Path) -> RenderModel:
@@ -290,16 +341,18 @@ def load_run(run_dir: Path) -> RenderModel:
     scenario_text = (run_dir / "scenario.yaml").read_text(encoding="utf-8")
     try:
         manifest = json.loads(manifest_text)
-        scenario_file = load_scenario_file(scenario_text)
+        scenario_file = load_stored_scenario_file(scenario_text)
         definitions, sources = scenario_render_inputs(scenario_file.scenarios)
+        results = results_from_manifest(manifest)
         return RenderModel(
             run_id=str(manifest.get("runId") or run_dir.name),
-            results=results_from_manifest(manifest),
-            definitions=definitions,
-            sources=sources,
+            results=results,
+            definitions=_aligned(results, scenario_file.scenarios, definitions),
+            sources=_aligned(results, scenario_file.scenarios, sources),
             source_name=manifest.get("sourceName"),
             description=scenario_file.description,
             provenance=manifest.get("provenance"),
+            not_applicable=_not_applicable(manifest.get("notApplicable")),
         )
     except (yaml.YAMLError, TypeError, KeyError, AttributeError) as e:
         # json.JSONDecodeError and pydantic's ValidationError are already ValueErrors; normalize the
@@ -312,7 +365,15 @@ def rerender_html(run_dir: Path) -> str:
     """Re-render a finished run's `report.html` from its stored model, with the current template."""
     m = load_run(run_dir)
     return html_report(
-        m.run_id, m.results, run_dir, m.definitions, m.sources, m.source_name, m.description
+        m.run_id,
+        m.results,
+        run_dir,
+        m.definitions,
+        m.sources,
+        m.source_name,
+        m.description,
+        not_applicable=m.not_applicable,
+        notices=report_notices(m.provenance),
     )
 
 
@@ -331,4 +392,5 @@ def rebake(run_dir: Path) -> None:
         m.source_name,
         m.description,
         m.provenance,
+        not_applicable=m.not_applicable,
     )

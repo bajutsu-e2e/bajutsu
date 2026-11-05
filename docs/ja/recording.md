@@ -88,6 +88,8 @@ class Agent(Protocol):
 
 出力は `dump_scenarios` を通して YAML 化されます（[scenarios](scenarios.md#ラウンドトリップ読込--書出)）。
 
+**`record` が操作するデバイス。** `record`、`crawl`、`repl` は run を増やしません。ターゲットが `runsOn` にデバイスの条件を宣言しているときは、最初の run を使います。最初に並べた値と、範囲内で `--udid` のプールが持ついちばん新しいメジャーバージョンです。合うデバイスがなければ、終了コード 2 で終わります（[configuration](configuration.md#デバイスの条件runson)）。記録したシナリオはこれらの条件を持たず、`bajutsu run` がターゲット自身の条件を適用します。
+
 ### human-in-the-loop ハンドオフ（BE-0179）
 
 一部の flow は、AI が供給できない何か（ワンタイムパスワード、CAPTCHA、生体認証のプロンプト）で
@@ -101,7 +103,9 @@ class Agent(Protocol):
 入力プロンプトから応答を読み取ります。`serve` から駆動する場合は、要求を record の server-sent
 events ストリーム上の `human-request` イベントとしてシリアライズ配信し（一時停止したジョブは、目に
 見える再開可能な「人待ち」状態に入ります）、ブラウザが応答を `/api/jobs/<id>/respond-human` へ
-POST すると、`serve` がそれを spawn した `record` プロセスの標準入力へ書き込みます。どちらの経路でも
+POST します。`record` は `bajutsu worker` が実行します（BE-0449）。worker は要求を `serve` へ中継し、
+応答を受け取って `record` プロセスの標準入力へ書き込みます。中継の仕組みは
+[self-hosting](self-hosting.md#1台のマシンで動かすサーバ-backendbe-0449) を参照してください。どちらの経路でも
 待機は上限つきで中断可能なので、席を外した人を相手にどのインターフェースもハングしません。応答者が
 まったく居ない非対話的な実行や CI では、「人が必要」のターンは明確でラベル付きの非ゼロ終了になり、
 ハングにも AI の推測にもなりません。この土台は仕組みと境界を担い、「人が必要」を立ち上げる
@@ -185,8 +189,10 @@ bind は健全な代理になりません——SSH フォワードを見落と�
 `capture: [video]` を付与します。これにより、リプレイ時にシナリオ全体の画面動画を記録します。
 `requested_intervals` は 1 つのステップの inline `capture` を見てシナリオ全体のインターバルを
 開始するため、1 つのアクションの区間だけでなくリプレイ全体が録画されます。この録画は `simctl`
-インターバル（BE-0028）なので iOS バックエンド固有です。web ターゲットは別の手段で動画を取得し、
-記録シナリオに `capture` は付きません。
+インターバル（BE-0028）なので、ローカルで操作する iOS シミュレータ固有です。web ターゲットは
+別の手段で動画を取得します。実機の iOS デバイス（`runsOn.ios.kind: device`）と、ライブの WebDriver
+エンドポイント経由で操作するデバイスには `simctl` が届きません。そのため、この 3 つの記録シナリオには
+`capture` は付きません。
 
 ### ターンのペイロードの軽量化とコストの制御（BE-0194）
 
@@ -340,16 +346,18 @@ class SystemAlertGuard:
   （[run-loop](run-loop.md#run_scenario1-シナリオの実行)）。`wait` ステップ
   （`for`/`gone`/`settled`/`screenChanged`）では、ネイティブ経路はさらに独自の間隔（既定 1 秒。wait 自体の
   条件ポーリングとは切り離しています）でポーリングされるため、wait 自体のタイムアウトを待たず、末尾の
-  再試行より前に回復できます（BE-0269）。シナリオ側では `systemAlertHandling: false` で無効化、
-  `{ rules: [{ prompt: notifications, choice: grant }] }` でガードが答えるプロンプトとその選択を
-  指定できます。`rules` がガードの宣言のすべてです
-  （[BE-0406](../../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md)）。
-  `{ visionInstruction: … }` は `run` ではどの経路にも届かないため、どのシナリオも実行する前に拒否されます。
-  `--system-alert-handling`/`--no-system-alert-handling` は全シナリオを上書きし、
-  `--alert-poll-interval` はそのキーをその 1 回の run に与えます。`rules` に専用のフラグはありません。
+  再試行より前に回復できます（BE-0269）。ガードが答えるのは、シナリオの `interrupts` かターゲットの
+  `hooks.interrupts` にある `systemAlert` エントリが名指ししたプロンプトだけです。
+  `- systemAlert: notifications` と `choice: grant` の組で、プロンプトとガードの答えを指定します
+  （[BE-0406](../../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md)、
+  [BE-0473](../../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts-ja.md)）。
+  プロンプトを自分で処理するシナリオは、そのプロンプトのエントリに `choice: leave` と書きます。
+  シナリオがガード全体を無効にする手段はありません。`run` はモデルに届かないため、エントリは視覚向けの指示を持ちません。
+  `--no-system-alert-handling` は全シナリオでガードを無効にし、`--alert-poll-interval` は
+  その 1 回の run のポーリング間隔を決めます。エントリそのものに専用のフラグはありません。
 - `record --system-alert-handling`: 既定で ON です（オーサリング時はまだシナリオが無いため）。割り込むプロンプトを片付け、
   エージェントに常にクリーンな画面を見せます。**dismissal は環境操作であって記録ステップではありません**
-  （リプレイ側は各シナリオの `systemAlertHandling` で対処します）。
+  （リプレイ側は `systemAlert` の interrupts エントリで対処します）。
 
 > 視覚ガードは `ANTHROPIC_API_KEY` が必要です（[cli の .env](cli.md#環境変数env)）。無くても
 > **ベストエフォート**で単に no-op し、run を失敗させません。これが当てはまるのはネイティブ経路を持たない

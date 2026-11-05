@@ -12,7 +12,7 @@ import json
 import time
 from pathlib import Path
 
-from _shared import _get, _get_json, _post, _serve, project
+from _shared import WorkerStandIn, _get, _get_json, _post, _serve, project
 
 from bajutsu.serve.state import ServeState
 
@@ -80,7 +80,9 @@ def test_http_triage_diagnoses_and_serves_the_result(tmp_path: Path) -> None:
     run = _write_failed_run(runs, "20260101-000000")
 
     server, port = _serve(
-        ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+        ServeState(
+            executor=WorkerStandIn(), scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path
+        )
     )
     try:
         status, resp = _post(

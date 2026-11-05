@@ -2,7 +2,7 @@
         lock-check lint-sh lint-actions lint-js lint-roadmap lint-pr lint-secrets skills lint-skills \
         lint-coverage-floors coverage-floors \
         check new-roadmap-item \
-        roadmap-status ja-register-check roadmap-dashboard docs docs-serve docs-diagrams runner-bundle
+        roadmap-status ja-register-check roadmap-dashboard docs docs-serve docs-diagrams runner-bundle runner-source
 
 # One-command bootstrap for a fresh clone (cross-platform; the dev gate needs no
 # Simulator). Installs the Python toolchain, wires the tracked git hooks, and best-effort
@@ -97,7 +97,7 @@ preflight:
 
 # Shell scripts the gate lints. pre-push/pre-commit/prepare-commit-msg have no .sh suffix, so
 # they're listed explicitly.
-SHELL_SCRIPTS := .githooks/pre-push .githooks/commit-msg .githooks/pre-commit .githooks/prepare-commit-msg scripts/serve.sh scripts/install.sh scripts/worktree.sh scripts/preflight.sh scripts/worktree_cleanup.sh scripts/check_worktree_config.sh scripts/merge-uv-lock.sh scripts/merge-apm-generated.sh scripts/install-no-verify-guard.sh scripts/collect_android_diagnostics.sh scripts/android_pool_e2e.sh .claude/hooks/session-start.sh demos/tour/demo.sh
+SHELL_SCRIPTS := .githooks/pre-push .githooks/commit-msg .githooks/pre-commit .githooks/prepare-commit-msg scripts/serve.sh scripts/install.sh scripts/worktree.sh scripts/preflight.sh scripts/worktree_cleanup.sh scripts/check_worktree_config.sh scripts/merge-uv-lock.sh scripts/merge-apm-generated.sh scripts/install-no-verify-guard.sh scripts/collect_android_diagnostics.sh scripts/android_pool_e2e.sh scripts/repl_attach_e2e.sh .claude/hooks/session-start.sh demos/tour/demo.sh
 
 # Modules whose public surface has migrated to the Google-style docstring standard (BE-0065),
 # enforced by `lint-docstrings`. This list GROWS module-by-module as more migrate; keep it the
@@ -423,6 +423,15 @@ runner-bundle:
 		"$$(xcodebuild -version -sdk iphonesimulator SDKVersion 2>/dev/null | tr -d '[:space:]')" \
 		"$$(uv run python -c 'from bajutsu.common.platform_lifecycle.environments._bundled_runner import source_hash; print(source_hash())')" \
 		> bajutsu/_xcuitest_runner/build-info.json
+
+# Copy the XCUITest runner's sources into the package (BE-0456), so a wheel built after this can run
+# `bajutsu runner build --device` without a checkout. The copied set is the one `source_hash` covers
+# (`HASH_SOURCE_PATHS`), which keeps the shipped tree and the device cache key in step. Pure file
+# copying, any host; run at release time beside `runner-bundle`. Gitignored, force-included via
+# pyproject `artifacts`.
+runner-source:
+	rm -rf bajutsu/_runner_source
+	uv run python -c 'from pathlib import Path; from bajutsu.common.platform_lifecycle.environments.device_runner.staging import WHEEL_SOURCE_DIR, copy_runner_sources; copy_runner_sources(Path.cwd(), WHEEL_SOURCE_DIR)'
 
 # Showcase build / on-device targets live with the fixture (demos/showcase/, the single iOS app):
 #   make -C demos/showcase swiftui-build|uikit-build|run-swiftui|doctor|record|ui-test|vrt

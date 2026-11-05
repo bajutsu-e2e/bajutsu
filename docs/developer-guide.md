@@ -291,10 +291,10 @@ classDiagram
         <<pydantic, authoring>>
         +str name
         +Preconditions preconditions
-        +list~Step~ before
+        +list~Step~ setup
         +list~Step~ steps
         +list~Assertion~ expect
-        +list~AfterRule~ after
+        +list~CleanupRule~ cleanup
         +list~CaptureRule~ capture_policy
     }
     class Step {
@@ -310,7 +310,7 @@ classDiagram
         +Exists exists
         +TextMatch value
         +RequestMatch request
-        +14 kinds in all
+        +15 kinds in all
     }
     class Driver {
         <<Protocol, runtime>>
@@ -360,7 +360,7 @@ classDiagram
 
 **`Scenario`** ([`common/scenario/models/`](https://github.com/bajutsu-e2e/bajutsu/tree/main/bajutsu/common/scenario/models))
 is the authoring model, built on pydantic with `extra="forbid"`, so an unknown key fails the load
-rather than passing unnoticed. A `Step` carries one of 39 action fields, an `Assertion` one of 14
+rather than passing unnoticed. A `Step` carries one of 39 action fields, an `Assertion` one of 15
 kinds. The strictness matters because the scenario is the single artifact that outlives a session.
 
 **`Driver`** ([`common/drivers/base.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/common/drivers/base.py))
@@ -465,16 +465,16 @@ step loop polls directly; the rest dispatch through the action registry (section
 
 | Group | Fields | What they do |
 |---|---|---|
-| Gestures | `tap`, `tapPoint`, `doubleTap`, `longPress`, `swipe`, `drag`, `scroll`, `pinch`, `rotate`, `back` | Touch and navigation input. |
+| Gestures | `tap`, `tapPoint`, `doubleTap`, `longPress`, `swipe`, `drag`, `scroll`, `pinch`, `rotate`, `back`, `navigate` | Touch and navigation input. |
 | Text and selection | `type`, `select`, `clear`, `delete`, `copy`, `selectOption`, `setPickerValue` | Enter, select, and copy text — `copy` requires a prior `select` (section 7.5). |
 | Conditions | `wait`, `assert` | Poll a condition or an assertion block; never a fixed sleep. |
 | App and device lifecycle | `relaunch`, `setLocation`, `push`, `clearKeychain`, `clearClipboard`, `setClipboard`, `background`, `foreground`, `overrideStatusBar`, `clearStatusBar`, `handleSystemAlert` | Drive the app's lifecycle and the simulated device around it. |
 | Data and values | `http`, `totp`, `generate`, `email` | Produce or fetch a value: an HTTP call, a time-based one-time password (TOTP) code, a random value, a mailbox lookup. |
 | Composition and control flow | `use`, `web`, `manual`, `if`, `forEach` | Expand a component, scope a block to a WebView, mark a human takeover, or branch and loop. |
 
-### 4.4 The 14 assertion kinds
+### 4.4 The 15 assertion kinds
 
-Every `Assertion` (`common/scenario/models/assertions.py`) carries one of 14 fields, evaluated by
+Every `Assertion` (`common/scenario/models/assertions.py`) carries one of 15 fields, evaluated by
 `assertions/evaluate.py` (section 7.6) — a total function that returns a failing result rather than
 raising.
 
@@ -484,6 +484,7 @@ raising.
 | Network | `request`, `event`, `requestSequence`, `responseSchema` | Observed HTTP traffic — one exchange, an ordered sequence, or a response body against a schema. |
 | Screen comparison | `visual`, `golden` | A screenshot against a baseline image, or an element tree against a recorded one. |
 | Clipboard | `clipboard` | The device clipboard's current text. |
+| Element attribute | `attribute` | One HTML attribute of an element, read on demand (web only; BE-0466). |
 
 ### 4.5 Control flow, composition, and data
 
@@ -494,7 +495,7 @@ raising.
 | Component | `use` step, plus a separate component file | Expands a named, parameterized step list at compile time, resolved before the run ever starts (`expand.py`, section 7.1) — the step loop never sees a `use` step. |
 | WebView scope | `web` step (`within`, `steps`) | Scopes a nested step list to a WebView reached through the `Selector` in `within`. |
 | Interrupt handler | `interrupts:` (scenario-level) | Clears an interstitial screen — a permission dialog, an app-update prompt — that can appear at an unpredictable point mid-run, sharing the enclosing scenario's `vars.*`. |
-| Setup / teardown phase | `before:` / `after:` (scenario-level) | Steps run ahead of `steps` and after the verdict exists, reported apart from the main step list. |
+| Setup / teardown phase | `setup:` / `cleanup:` (scenario-level) | Steps run ahead of `steps` and after the verdict exists, reported apart from the main step list. |
 | Data-driven rows | `data:` / `dataFile:` | Instantiates one scenario per row of an inline list or a CSV file, substituting `${row.*}`. |
 
 ### 4.6 Interpolation: `${namespace.key}`
@@ -514,7 +515,7 @@ flat `bindings` map the caller supplies.
 A scenario's `capturePolicy` (`common/scenario/models/evidence.py`) names rules the step loop fires
 repeatedly, rather than a one-shot instruction, so a second run collects the same evidence with no
 AI involved. Each rule's `on` trigger is exactly one of `action` (an id-matched step just ran),
-`event: screenChanged`, or `result: error`; its `capture` list names the artifact kinds to collect
+`event: screenChanged`, or `result: failure`; its `capture` list names the artifact kinds to collect
 when the trigger fires. [Evidence](evidence.md) covers the full mechanism, including the baseline
 `capture` guarantee every step gets regardless of `capturePolicy`.
 
@@ -663,8 +664,8 @@ the authoring schema in `models/` and the pipeline that turns text into runnable
 | File | Classes and functions | Job |
 |---|---|---|
 | `models/scenario.py` | `Scenario`, `Component`, `ScenarioFile`, `Preconditions`, `SystemAlertHandling` | The top-level document and the per-scenario setup. |
-| `models/steps.py` | `Step`, `If`, `ForEach`, `Use`, `Web`, `Interrupt`, `AfterRule`, `Extract` | One step, plus the control-flow and lifecycle wrappers. |
-| `models/assertions.py` | `Assertion`, `Exists`, `TextMatch`, `CountMatch`, `RequestMatch`, `VisualMatch`, `GoldenMatch` | The 14 assertion kinds. |
+| `models/steps.py` | `Step`, `If`, `ForEach`, `Use`, `Web`, `Interrupt`, `CleanupRule`, `Extract` | One step, plus the control-flow and lifecycle wrappers. |
+| `models/assertions.py` | `Assertion`, `Exists`, `TextMatch`, `CountMatch`, `RequestMatch`, `VisualMatch`, `GoldenMatch` | The 15 assertion kinds. |
 | `models/actions.py` | `TypeText`, `Swipe`, `Scroll`, `HttpRequest`, `Generate`, `Email`, `Totp`, and more | One model per action's arguments. |
 | `models/selector.py` | `Selector` | The authoring selector, converted to the runtime one by `as_selector()`. |
 | `load.py` · `load_expanded.py` | `load_scenario_file`, `load_scenarios` | Parse YAML, check the schema version. |
@@ -764,6 +765,40 @@ weakening it: candidates reporting identical content collapse to one, since noth
 them for an author to disambiguate on, and a generic `other`-trait wrapper drops out when a
 classified sibling shares its label.
 
+![Flowchart of selector resolution. One query snapshot enters find_all. A within clause keeps the spatially nested candidates. No candidate raises ElementNotFound. Content-identical candidates collapse to one first. Two or more content-distinct candidates raise AmbiguousSelector, unless the author gave an index. One candidate alone leaves resolve_unique. The backend then checks whether anything covers the element's own point. A cover raises ElementNotTappable, and an uncovered element is acted on.](assets/diagrams/developer-guide-selector-resolution.svg)
+
+<details>
+<summary>Mermaid source</summary>
+
+<!-- mermaid-svg: assets/diagrams/developer-guide-selector-resolution.svg -->
+```mermaid
+flowchart TB
+    q["query() — one screen snapshot"] --> fa["find_all(elements, sel)"]
+    fa --> w{"within given?"}
+    w -->|yes| ct["contains() — keep the nested candidates"]
+    w -->|no| n
+    ct --> n{"how many candidates?"}
+    n -->|none| e1["ElementNotFound"]
+    n -->|one| ok["the resolved element"]
+    n -->|two or more| dup["collapse content-identical candidates"]
+    dup --> ix{"still several?"}
+    ix -->|no| ok
+    ix -->|index given| ok
+    ix -->|no index| e2["AmbiguousSelector"]
+    ok --> cov{"the backend's cover check"}
+    cov -->|yes| e3["ElementNotTappable"]
+    cov -->|no| act["the backend performs the action"]
+```
+
+</details>
+
+The cover check sits outside `resolve_unique`, in the backend, and takes one of two forms. A
+backend with no native hit-test calls `base.raise_if_covered` on the resolved element.
+`AdbDriver`, `XcuitestLiveDriver`, and `FakeDriver` share that document-order proxy.
+`PlaywrightDriver` asks the browser instead, through `document.elementFromPoint`. Separating the
+check from resolution keeps resolution a pure function of one snapshot. That leaves "something is
+over it" a backend's answer, not a selector's.
+
 **Narrow optional protocols** carry the capability differences between platforms. Rather than one
 fat interface every backend must stub out, `base.py` declares small protocols — `EvidenceProvider`,
 `ViewportProvider`, `ReadLagProvider`, `ReadOrderProvider`, `SettledReadProvider`,
@@ -824,7 +859,7 @@ holds the step loop. `loop.py` is the largest file in the core, and its structur
 
 | Class or function | Role |
 |---|---|
-| `run_scenario()` | The entry point. Starts the requested evidence intervals, runs the `before`, main, and `after` phases, evaluates the trailing `expect`, and assembles the `RunResult`. |
+| `run_scenario()` | The entry point. Starts the requested evidence intervals, runs the `setup`, main, and `cleanup` phases, evaluates the trailing `expect`, and assembles the `RunResult`. |
 | `StepLoopState` | The mutable state one phase carries: the accumulated variable bindings, the previous step's element tree, and the read counters. |
 | `_LoopConfig` | The frozen half: the driver, sink, clock, alert guard, and scenario. |
 | `_StepRunner` | The dispatcher. `exec_steps` walks the list; `_handle_if`, `_handle_for_each`, `_handle_web`, and `_handle_action` handle each step shape. |
@@ -836,6 +871,33 @@ holds the step loop. `loop.py` is the largest file in the core, and its structur
 `SelectionState`, and the `Clock` protocol that lets tests run without real sleeps. `waits.py` holds
 the polling machinery and `WaitTrace`, which records a wait's poll timeline so a timeout stays
 diagnosable from the artifacts alone.
+
+![Flowchart of one condition wait. Each turn reads the screen, or the observed traffic, and checks the condition first. A satisfied condition returns to the step at once. An unsatisfied one reaches the alert guard, which clears a blocking system prompt, and then the scenario's interrupts, which clear an interstitial screen. The deadline is checked last, which is why the first read always happens. Past the deadline the wait fails, and wait_diagnostic writes the WaitTrace beside the tree. Within it, _adaptive_sleep sleeps the remainder of the fixed poll period and the next turn begins.](assets/diagrams/developer-guide-wait-loop.svg)
+
+<details>
+<summary>Mermaid source</summary>
+
+<!-- mermaid-svg: assets/diagrams/developer-guide-wait-loop.svg -->
+```mermaid
+flowchart LR
+    s(["wait starts"]) --> rd["read the screen, or the observed traffic"]
+    rd --> m{"condition met?"}
+    m -->|yes| ok(["the step continues"])
+    m -->|no| ag["alert guard — clear a system prompt"]
+    ag --> ig["interrupts — clear an interstitial screen"]
+    ig --> d{"past the deadline?"}
+    d -->|yes| to["fail — wait_diagnostic writes the WaitTrace"]
+    d -->|no| bo["_adaptive_sleep — the rest of the poll period"]
+    bo --> rd
+```
+
+</details>
+
+Three details of that loop invite the opposite reading. The loop checks the condition **before**
+the guards, so a satisfied wait never actuates anything. It checks the deadline **last**, which is
+why the first read always happens. And `_adaptive_sleep` is no backoff: it sleeps out the rest of
+a fixed poll interval. A `query()` backed by a device dump has often spent that interval already. Every
+exit decides on the condition or the deadline, never on a fixed pause.
 
 **Action dispatch is a registry, not a conditional chain.**
 [`actions/_registry.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/common/orchestrator/actions/_registry.py)
@@ -891,6 +953,40 @@ writes the CTRF JSON; `html.py`, `rows.py`, `panels.py`, and `richtext.py` build
 page; `archive.py` and `load.py` export a finished run as a `.zip` and reload it offline for
 re-rendering. `manifest.json` is the single source of truth, and CI reads it rather than parsing the
 HTML.
+
+![Flowchart of the evidence write path. Three producers feed one sink: the driver supplies screenshots, element trees, and raw dumps; the in-app collectors supply NetworkExchange records; Interval supplies video and the device log. The sink hands everything to RunArtifactWriter, the single write path, which applies the Redactor before anything reaches the run directory. Separately, write_report renders the in-memory RunResult list four ways into the same directory: manifest.json, junit.xml, ctrf.json, and report.html. CI reads the manifest. The shareable zip packs the finished directory, and the offline re-render reads the manifest back into the HTML report.](assets/diagrams/developer-guide-evidence-path.svg)
+
+<details>
+<summary>Mermaid source</summary>
+
+<!-- mermaid-svg: assets/diagrams/developer-guide-evidence-path.svg -->
+```mermaid
+flowchart LR
+    drv["Driver — screenshot · element tree · raw dump"] --> sink["EvidenceSink"]
+    net["in-app collectors — NetworkExchange"] --> sink
+    iv["Interval — video · device log"] --> sink
+    sink --> w["RunArtifactWriter — one write path, applies the Redactor"]
+    rr["the RunResult list"] --> wr["write_report — renders all four"]
+    subgraph dir["the run directory"]
+        art["per-step evidence"]
+        man["manifest.json — what CI reads"]
+        o1["junit.xml · ctrf.json · report.html"]
+    end
+    w --> art
+    wr --> man
+    wr --> o1
+    dir --> z["run .zip — archive_run_dir packs the directory"]
+    man -.->|"offline re-render"| o1
+```
+
+</details>
+
+The shape closes two readings the prose invites. The four report files are **siblings**, not a
+chain. `write_report` renders all four from the same in-memory `RunResult` list. CI reads the
+manifest; the other three do not derive from it. The offline re-render alone reads it back. The two
+writers also differ in reach. The per-step sink applies the scenario's `redact` rules. The report's
+own writer carries secret literals alone. `manifest.json` lands without those rules, as
+[evidence](evidence.md) states.
 
 ---
 
@@ -964,6 +1060,26 @@ loop uses, and appends the step to the growing scenario. Reusing the dispatcher 
 recorded step replayable. `capture.py` covers the proxy-actuation path, where a human drives the app
 and the recorder captures the resulting steps.
 
+![Flowchart of the record loop. The loop reads the screen into an Observation and asks the Agent for the next action. A Proposal carrying a Step goes to the same _do_action dispatcher the deterministic run uses, and the executed step is appended to the growing scenario before the next observation. A Proposal that needs a person goes to handoff and returns to the loop afterwards. A Proposal that reports the goal reached emits the finished scenario.](assets/diagrams/developer-guide-record-loop.svg)
+
+<details>
+<summary>Mermaid source</summary>
+
+<!-- mermaid-svg: assets/diagrams/developer-guide-record-loop.svg -->
+```mermaid
+flowchart LR
+    obs["read the screen — Observation"] --> ask["Agent.next_action"]
+    ask --> prop{"Proposal"}
+    prop -->|a Step| exec["_do_action — the deterministic dispatcher"]
+    prop -->|needs a person| hand["handoff"]
+    prop -->|goal reached| emit(["emit the scenario"])
+    exec --> app["append the step"]
+    app --> obs
+    hand --> obs
+```
+
+</details>
+
 **`crawl/`** explores an app breadth-first and emits a screen map.
 [`core.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/crawl/core.py) holds the graph
 types — `Fingerprint`, `Node`, `Edge`, `Action`, `ScreenMap` — and the `_Coordinator` that walks
@@ -999,10 +1115,11 @@ emitting wrong code without a word.
 **`serve/`** is the browser application. `state.py` holds `ServeState`, the process-wide state
 bundling the job registry, the session manager, the scenario store, and the provider settings.
 `routes.py` declares the routes as data, so both the standard-library handler (`handler.py`) and the
-FastAPI application (`server/app.py`) serve the same route table. `executor.py` declares the
-`RunExecutor` seam where local and hosted deployment diverge: `LocalExecutor` runs each job on a
-daemon thread, while `DbQueueExecutor` enqueues it for a remote `bajutsu worker`. The execution body
-in `jobs.py` stays identical on both sides.
+FastAPI application (`server/app.py`) serve the same route table. The `executor/` package declares
+the `RunExecutor` seam, which hands a created job to whatever runs it. The server never runs a job
+itself (BE-0449). `bajutsu serve` wires `DbQueueExecutor`, which enqueues every job for a
+`bajutsu worker`. The worker runs the job through the body in `jobs.py`. A state built without a
+queue gets `UnqueuedExecutor`. That executor fails each job at dispatch.
 
 **`mcp/`** exposes `run` and `doctor` as Model Context Protocol (MCP) tools and a run's evidence as
 MCP resources, so an editor-side agent reaches the deterministic paths without a shell.

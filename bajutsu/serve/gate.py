@@ -80,10 +80,11 @@ def _is_machine_job_route(path: str) -> bool:
 def _is_worker_route(path: str) -> bool:
     """Whether *path* is a control-plane route a worker authenticates to with the shared token
     (BE-0313). Once OAuth is configured the token authorizes only these — never a human session or
-    another endpoint. Beyond the `/api/worker/*` routes (lease / heartbeat / result / artifact-urls /
-    scenario-url), a worker also requests evidence upload URLs at `POST /api/runs/{id}/upload-urls`
-    (BE-0257), which sits outside that prefix — so it is matched by shape here, the same way
-    `required_role` already treats it as worker traffic with no role gate."""
+    another endpoint. Beyond the `/api/worker/*` routes (lease / heartbeat / log / result /
+    artifact-urls / scenario-url), a worker also requests evidence upload URLs at
+    `POST /api/runs/{id}/upload-urls` (BE-0257), which sits outside that prefix — so it is matched
+    by shape here, the same way `required_role` already treats it as worker traffic with no role
+    gate."""
     return path.startswith(_WORKER_PREFIX) or (
         path.startswith("/api/runs/") and path.endswith("/upload-urls")
     )
@@ -149,6 +150,19 @@ def is_open(method: str, path: str, *, oidc: bool = False) -> bool:
         or (method == "POST" and path == _LOGIN_PATH)
         or (oidc and method == "POST" and path == OIDC_EXCHANGE_PATH)
     )
+
+
+# The `file://` store's object routes (BE-0449). Its signed URL is their whole authorization, so a
+# worker or browser holding one needs no serve credential. Served only by the FastAPI backend, and
+# only when its object store is a `FileObjectStore` — the caller says whether that holds.
+SIGNED_STORE_PREFIX = "/api/store/objects/"
+
+
+def is_signed_store_route(method: str, path: str) -> bool:
+    """Whether this request targets the ``file://`` store's signed-URL routes (BE-0449), which skip
+    the credential gate because each verifies its own HMAC signature instead. The caller combines it
+    with whether the deployment serves those routes at all, so the policy stays closed elsewhere."""
+    return method in ("GET", "PUT") and path.startswith(SIGNED_STORE_PREFIX)
 
 
 def is_authorized(

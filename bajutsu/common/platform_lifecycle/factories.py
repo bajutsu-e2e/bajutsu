@@ -27,7 +27,8 @@ def environment_for(
     `provision` carries a device provider's readiness report (BE-0236): a cloud device handed over
     already booted / with the app installed lets the environment skip that setup. None (the default,
     the local provider's inert profile) runs the full bring-up, so an omitted argument is unchanged.
-    Only the Android environment consults it today; the others accept the run's default and ignore it.
+    The Android environment and the XCUITest real-device route consult it; the others accept the
+    run's default and ignore it.
 
     `respawn` marks a mid-run *re-*bring-up: the pool has already cold-spawned this device once this
     run and a crash evicted its warm resident, so the Simulator is booted and the app installed. Only

@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from typing import Any, get_args
+
 from bajutsu.common import _yaml
 from bajutsu.common.scenario.models import Component, Scenario, ScenarioFile
 from bajutsu.common.scenario.models.scenario import SCHEMA_VERSION
+from bajutsu.common.scenario.system_alerts import SystemAlertPrompt, alert_surfaces
 
 
 def _as_schema_int(value: object) -> int | None:
@@ -71,3 +74,191 @@ def load_scenarios(text: str) -> list[Scenario]:
 def load_component(text: str) -> Component:
     """Parse a YAML string (a single component mapping) into a validated Component."""
     return Component.model_validate(_yaml.safe_load(text))
+
+
+def renamed_outcome(value: Any) -> Any:
+    """*value* with the failed-outcome word BE-0452 renamed (`error`) read as `failure`."""
+    return "failure" if value == "error" else value
+
+
+# The lifecycle phase keys BE-0452 renamed, read from a scenario plan stored before it.
+_PHASE_RENAMES = {"before": "setup", "after": "cleanup"}
+
+
+# A flat `preconditions` key BE-0452 regrouped, and the path it moved to inside `preconditions`; the
+# group BE-0452 named `app` is `subject` since BE-0470.
+_PRECONDITION_MOVES: dict[str, tuple[str, ...]] = {
+    "reinstall": ("subject", "reinstall"),
+    "launchEnv": ("subject", "launch", "env"),
+    "launchArgs": ("subject", "launch", "args"),
+    "deeplink": ("subject", "launch", "deeplink"),
+    # Only iOS read a scenario's locale and seeded photos before the regrouping.
+    "locale": ("device", "ios", "locale"),
+    "seedPhotos": ("device", "ios", "seedPhotos"),
+}
+
+# Every prompt name, so a stored plan's unknown one is left for the model to reject rather than raising
+# a KeyError from the surface table.
+SYSTEM_ALERT_PROMPTS: frozenset[str] = frozenset(get_args(SystemAlertPrompt))
+
+# The top-level run-policy keys BE-0452 moved under `preconditions.run`, which BE-0473 then removed.
+_RUN_MOVES = {"systemAlertHandling": "systemAlertHandling", "iosTipKitHandling": "tipKitHandling"}
+
+
+def _place(tree: dict[str, Any], path: tuple[str, ...], value: Any) -> None:
+    """Set *value* at *path* in *tree*, creating each missing mapping on the way."""
+    *parents, leaf = path
+    for part in parents:
+        child = tree.get(part)
+        if not isinstance(child, dict):
+            child = tree[part] = {}
+        tree = child
+    tree.setdefault(leaf, value)
+
+
+def _upgrade_erase(pre: dict[str, Any]) -> None:
+    """Fold a stored `erase` (flat, or under `run`) into `subject.reinstall` (BE-0473).
+
+    A plan the run stored carries the concrete bool it resolved. True wipes the device whatever
+    `reinstall` said, so it becomes `erase`; false left the reinstall mode alone, so it is dropped.
+    """
+    run = pre.get("run")
+    erased = [pre.pop("erase", False)]
+    if isinstance(run, dict):
+        erased.append(run.pop("erase", False))
+        if not run:
+            del pre["run"]
+    if any(erased):
+        subject = pre.get("subject")
+        if not isinstance(subject, dict):
+            subject = pre["subject"] = {}
+        subject["reinstall"] = "erase"
+
+
+def _alert_entries(policy: Any) -> list[dict[str, Any]]:
+    """A stored `systemAlertHandling` as `systemAlert` interrupts entries (BE-0473).
+
+    `false` was the guard switched off, which only the run-wide flag says now; the stored run already
+    ran with it, so it reads as no entry. A guard-wide `pollInterval` rides on the first entry, and a
+    `frozenScreenTimeout` on each entry whose prompt can carry it; with no such entry, the value has
+    nothing left to tune and is dropped. `visionInstruction` reached no `run` (BE-0402).
+    """
+    if not isinstance(policy, dict):
+        return []
+    entries: list[dict[str, Any]] = [
+        {"systemAlert": rule["prompt"], "choice": rule["choice"]}
+        for rule in policy.get("rules") or []
+        if isinstance(rule, dict) and "prompt" in rule and "choice" in rule
+    ]
+    if entries and (poll := policy.get("pollInterval")) is not None:
+        entries[0]["pollInterval"] = poll
+    if (frozen := policy.get("frozenScreenTimeout")) is not None:
+        for entry in entries:
+            prompt = entry["systemAlert"]
+            if prompt in SYSTEM_ALERT_PROMPTS and alert_surfaces(prompt)["in_tree"]:
+                entry["frozenScreenTimeout"] = frozen
+    return entries
+
+
+def _upgrade_run(raw: dict[str, Any], pre: dict[str, Any]) -> None:
+    """Move a stored `preconditions.run` (and its pre-BE-0452 top-level keys) to today's (BE-0473).
+
+    The alert guard and TipKit become entries of the scenario's own `interrupts`, and `inheritSetup`
+    moves up to `preconditions`. `erase` is left for `_upgrade_erase`.
+    """
+    stored = pre.get("run")
+    run: dict[str, Any] = stored if isinstance(stored, dict) else {}
+    for old, new in _RUN_MOVES.items():
+        if old in raw:
+            run.setdefault(new, raw.pop(old))
+    entries = _alert_entries(run.pop("systemAlertHandling", None))
+    tip_kit = run.pop("tipKitHandling", None)
+    if tip_kit is not None:
+        entries.append({"tipKit": "dismiss" if tip_kit else "leave"})
+    if entries:
+        interrupts = raw.get("interrupts")
+        raw["interrupts"] = [*(interrupts if isinstance(interrupts, list) else []), *entries]
+    if "inheritSetup" in run:
+        pre.setdefault("inheritSetup", run.pop("inheritSetup"))
+    if run:
+        pre["run"] = run
+    else:
+        pre.pop("run", None)
+
+
+def _upgrade_preconditions(raw: dict[str, Any]) -> None:
+    """Regroup one stored scenario's `preconditions` and top-level run policy (BE-0452/0469/0470)."""
+    pre = raw.get("preconditions")
+    if not isinstance(pre, dict):
+        pre = {}
+    # A plan stored between BE-0452 and BE-0470 holds the group as `app`; a flat key below then merges
+    # into the same `subject` group.
+    if isinstance(app := pre.pop("app", None), dict):
+        subject = pre.setdefault("subject", {})
+        if isinstance(subject, dict):
+            for key, value in app.items():
+                subject.setdefault(key, value)
+    for old, path in _PRECONDITION_MOVES.items():
+        if old in pre:
+            _place(pre, path, pre.pop(old))
+    _upgrade_run(raw, pre)
+    _upgrade_erase(pre)
+    # BE-0469 removed the scenario's `runsOn`: its iOS device state moved to `device.ios`, and its
+    # conditions are dropped, since they already chose the devices this stored run ran on.
+    runs_on = pre.pop("runsOn", None)
+    ios = runs_on.get("ios") if isinstance(runs_on, dict) else None
+    for key in ("locale", "seedPhotos"):
+        if isinstance(ios, dict) and key in ios:
+            _place(pre, ("device", "ios", key), ios[key])
+    if pre:
+        raw["preconditions"] = pre
+
+
+def _upgrade_scenario(raw: Any) -> None:
+    """Rewrite one stored scenario's pre-BE-0452 spellings in place, so an earlier run still loads.
+
+    The scenario model rejects the old keys (BE-0452 reads none of them), but a run directory keeps
+    the plan it ran, so only this offline reader translates them: `before` / `after` become `setup`
+    / `cleanup`, the outcome word `error` in a cleanup rule's `on` and a `capturePolicy` trigger's
+    `result` becomes `failure`, and the flat `preconditions` keys and the top-level
+    `systemAlertHandling` / `iosTipKitHandling` move into the `subject` and `device` groups and the
+    scenario's own `interrupts` (BE-0473).
+    The `app` group becomes `subject` (BE-0470). A `preconditions.runsOn` keeps its device state
+    under `device.ios` and drops its conditions (BE-0469).
+    """
+    if not isinstance(raw, dict):
+        return
+    _upgrade_preconditions(raw)
+    for old, new in _PHASE_RENAMES.items():
+        if old in raw and new not in raw:
+            raw[new] = raw.pop(old)
+    for rule in raw.get("cleanup") or []:
+        if isinstance(rule, dict):
+            rule["on"] = renamed_outcome(rule.get("on"))
+    for rule in raw.get("capturePolicy") or []:
+        trigger = rule.get("on") if isinstance(rule, dict) else None
+        if isinstance(trigger, dict) and "result" in trigger:
+            trigger["result"] = renamed_outcome(trigger["result"])
+
+
+def _upgraded_scenario_text(text: str) -> str:
+    """*text* re-dumped with every scenario's pre-BE-0452 spellings rewritten."""
+    data = _yaml.safe_load(text)
+    scenarios = data.get("scenarios") if isinstance(data, dict) else data
+    if not isinstance(scenarios, list):
+        return text  # not a shape this reader upgrades; `load_scenario_file` reports it
+    for raw in scenarios:
+        _upgrade_scenario(raw)
+    return _yaml.safe_dump(data)
+
+
+def load_stored_scenario_file(text: str) -> ScenarioFile:
+    """Parse the `scenario.yaml` a finished run stored, reading pre-BE-0452 spellings as today's.
+
+    The offline readers of a run directory (the report re-render, `trace`, `triage`) use this rather
+    than `load_scenario_file`, which rejects the old names an author must rewrite.
+
+    Raises:
+        ValueError: As `load_scenario_file`.
+    """
+    return load_scenario_file(_upgraded_scenario_text(text))

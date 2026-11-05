@@ -40,7 +40,7 @@ def test_test_per_scenario_uses_sanitized_name_and_launch() -> None:
 
 def test_launch_env_merges_config_and_scenario_as_intent_extras() -> None:
     code = _gen(
-        "- name: x\n  preconditions:\n    launchEnv: { SHOWCASE_TAB: log }\n"
+        "- name: x\n  preconditions:\n    subject: { launch: { env: { SHOWCASE_TAB: log } } }\n"
         "  steps:\n    - tap: { id: a }\n",
         env={"SHOWCASE_UITEST": "1"},
     )
@@ -813,7 +813,12 @@ def test_uiautomator_is_a_registered_emit_target() -> None:
 
 
 def test_generate_test_on_android_target_returns_kt_file() -> None:
-    eff = resolve(load_config("targets:\n  droid:\n    package: com.example.app\n"), "droid")
+    eff = resolve(
+        load_config(
+            "targets:\n  droid:\n    platform: android\n    subject: {id: com.example.app}\n"
+        ),
+        "droid",
+    )
     code, filename = generate_test(
         "uiautomator", load_scenarios("- name: x\n  steps:\n    - tap: { id: a }\n"), "login", eff
     )
@@ -822,7 +827,12 @@ def test_generate_test_on_android_target_returns_kt_file() -> None:
 
 
 def test_generate_test_uiautomator_on_non_android_target_fails() -> None:
-    eff = resolve(load_config("targets:\n  web:\n    baseUrl: http://localhost:3000\n"), "web")
+    eff = resolve(
+        load_config(
+            "targets:\n  web:\n    platform: web\n    subject: {url: 'http://localhost:3000'}\n"
+        ),
+        "web",
+    )
     with pytest.raises(CodegenError, match="Android target"):
         generate_test(
             "uiautomator", load_scenarios("- name: x\n  steps:\n    - tap: { id: a }\n"), "x", eff
@@ -833,9 +843,19 @@ def _cli_setup(tmp_path: Path) -> tuple[Path, Path]:
     """A config with one Android app (package) and one web app (baseUrl), plus a scenario file."""
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "targets:\n"
-        "  droid: { package: com.example.app, idNamespaces: [home] }\n"
-        "  web: { baseUrl: 'http://localhost:3000', idNamespaces: [home] }\n",
+        (
+            "targets:\n"
+            "  droid:\n"
+            "    platform: android\n"
+            "    subject:\n"
+            "      id: com.example.app\n"
+            "      idNamespaces: [home]\n"
+            "  web:\n"
+            "    platform: web\n"
+            "    subject:\n"
+            "      url: http://localhost:3000\n"
+            "      idNamespaces: [home]\n"
+        ),
         encoding="utf-8",
     )
     scn = tmp_path / "s.yaml"
@@ -867,13 +887,13 @@ def test_cli_emit_uiautomator_writes_kt(tmp_path: Path) -> None:
     assert 'act(byId("home.title")).click()' in code
 
 
-def test_cli_emit_uiautomator_without_package_exits(tmp_path: Path) -> None:
+def test_cli_emit_uiautomator_without_app_id_exits(tmp_path: Path) -> None:
     cfg, scn = _cli_setup(tmp_path)
     r = runner.invoke(
         app, ["codegen", str(scn), "--target", "web", "--emit", "uiautomator", "--config", str(cfg)]
     )
     assert r.exit_code == 2
-    assert "package" in r.output
+    assert "targets.web.subject.id (an Android target)" in r.output
 
 
 def test_manual_step_is_a_labeled_todo() -> None:
@@ -949,3 +969,34 @@ def test_handle_system_alert_is_todo() -> None:
     assert "// TODO: handleSystemAlert" in code
     assert "iOS-only" in code
     assert "unsupported step" not in code
+
+
+def test_navigate_is_a_labeled_web_only_todo() -> None:
+    # BE-0464: `navigate` is web-only, so the mobile generators name it instead of dropping it.
+    code = _gen("- name: x\n  steps:\n    - navigate: /settings\n")
+    assert '// TODO: navigate(url: "/settings") — web-only; not generated' in code
+    assert "unsupported step" not in code
+
+
+def test_attribute_is_a_labeled_web_only_todo() -> None:
+    # BE-0466: an HTML attribute has no UI Automator counterpart, so it is named rather than dropped.
+    code = _gen(
+        "- name: x\n  steps:\n    - assert:\n"
+        "      - attribute: { sel: { id: a }, name: data-state, matches: '^ok$' }\n"
+    )
+    # Kotlin string escaping turns the regex's `$` into `\$`.
+    assert (
+        '// TODO: attribute(name: "data-state", matches: "^ok\\$") — web-only; not generated'
+        in code
+    )
+    assert "unsupported assertion" not in code
+
+
+def test_attribute_todo_names_each_operator() -> None:
+    code = _gen(
+        "- name: x\n  steps:\n    - assert:\n"
+        "      - attribute: { sel: { id: a }, name: alt, contains: logo }\n"
+        "      - attribute: { sel: { id: a }, name: aria-busy, absent: true }\n"
+    )
+    assert '// TODO: attribute(name: "alt", contains: "logo") — web-only; not generated' in code
+    assert '// TODO: attribute(name: "aria-busy", absent: true) — web-only; not generated' in code

@@ -90,10 +90,12 @@ which a `uiautomator dump` does not expose). Three Android-only carve-outs from 
 
 Because Compose testTags reproduce the dotted ids verbatim, the shared [`scenarios/`](scenarios)
 set drives `showcase-compose` unchanged. The Views ids are underscore-mapped (an `android:id`
-name allows neither `.` nor `-`); the shared set drives `showcase-views` unchanged too because each
-selector lists **both** id forms — `id: [stable.refresh, stable_refresh]` matches whichever the tree
-renders, an OR resolved by the deterministic core, keeping the id convention explicit in the scenario
-rather than a driver-side `.` ↔ `_` rewrite (BE-0221). Networking goes through **OkHttp** with
+name allows neither `.` nor `-`); the shared scenarios a Views lane runs drive `showcase-views`
+unchanged too because each of their selectors lists **both** id forms — `id: [stable.refresh,
+stable_refresh]` matches whichever the tree renders, an OR resolved by the deterministic core, keeping
+the id convention explicit in the scenario rather than a driver-side `.` ↔ `_` rewrite (BE-0221). A
+scenario no Views lane runs carries the dotted id alone, since no lane would ever resolve its underscore
+form ([cross-platform ids](../../docs/scenarios.md#cross-platform-ids-a-candidate-list-be-0221)). Networking goes through **OkHttp** with
 `BajutsuAndroid`'s interceptor, so `network` evidence works on Android too (BE-0283, §6); `mocks`
 stay a follow-up. Everything else below holds for all four Android products, except the native alert
 carve-out above.
@@ -302,7 +304,7 @@ control ever shown, so it exercises that method's no-op path instead. Both back 
 one iOS-only DSL action gated on `Capability.SELECT_PHOTOS` (iOS XCUITest only).
 [`select_photos.yaml`](scenarios/select_photos.yaml) and
 [`select_photo_single.yaml`](scenarios/select_photo_single.yaml) each seed the photo library with
-`preconditions.seedPhotos` (`erase: true` required alongside it) before opening their picker.
+`preconditions.device.ios.seedPhotos` (an effective `subject.reinstall: erase` required alongside it) before opening their picker.
 - `perm.openPhotoPicker` — button that presents the unlimited-selection picker
 - `perm.openPhotoPickerSingle` — button that presents the picker with `selectionLimit = 1`
 - `perm.photos.value` — the picked count, mirrored back once the picker dismisses (0 until then)
@@ -373,7 +375,7 @@ Uses the standard in-app collector integration (iOS: BajutsuKit; Android: Bajuts
   startup — only on explicit taps inside the **Permissions** tab (§5.4).
 - **The deliberate alerts** live only on the **Permissions** tab: the notification prompt and the
   location prompt. Both are SpringBoard (out-of-process) — invisible to any in-app accessibility query —
-  so they are the canonical fixture for the run's **vision alert guard** / `systemAlertHandling`
+  so they are the canonical fixture for the run's **reactive alert guard** / its `systemAlert` interrupts entries
   ([`permission.yaml`](scenarios/permission.yaml) is this fixture's scenario). Reading a pasteboard
   seeded by another process raises a third on that same tab — the paste-consent prompt, answered
   natively by [`paste_system_alert.yaml`](scenarios/paste_system_alert.yaml)'s `handleSystemAlert`

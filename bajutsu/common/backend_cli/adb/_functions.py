@@ -142,6 +142,11 @@ def get_prop_cmd(serial: str, prop: str) -> list[str]:
     return _adb(serial, "shell", "getprop", prop)
 
 
+def emu_avd_name_cmd(serial: str) -> list[str]:
+    """Ask a local emulator's console for its AVD name; the reply's last line is `OK` (BE-0452)."""
+    return _adb(serial, "emu", "avd", "name")
+
+
 def dump_cmd(serial: str) -> list[str]:
     """Stream the current window's UI Automator hierarchy XML to stdout (no on-device temp file)."""
     return _adb(serial, "exec-out", "uiautomator", "dump", "/dev/tty")
@@ -709,8 +714,24 @@ def text_script(text: str) -> str:
     Fed on stdin — not as an `adb` argv token — so a secret / OTP typed by a scenario never appears
     in the host process's command line where `ps` could read it (BE-0155). Spaces become `input`'s `%s`
     escape (it splits its argument on spaces), and the result is single-quoted for the device shell.
+
+    `input` has no escape for its own escape, so a literal `%s` is split between its two characters
+    into separate calls, where neither call sees the pair. `&&` stops at the first call that fails.
     """
-    return f"input text {shlex.quote(text.replace(' ', '%s'))}"
+    parts = text.split("%s")
+    last = len(parts) - 1
+    pieces = [("s" if i else "") + part + ("%" if i < last else "") for i, part in enumerate(parts)]
+    return " && ".join(f"input text {shlex.quote(p.replace(' ', '%s'))}" for p in pieces)
+
+
+def input_text_can_type(text: str) -> bool:
+    """Whether `input text` can enter `text`.
+
+    `input` turns each character into key events through the virtual keyboard's character map, which
+    has no key for a non-ASCII character: the command dies with a NullPointerException instead, so
+    that text has to take the resident server's `/type`.
+    """
+    return text.isascii()
 
 
 def pm_clear_cmd(serial: str, package: str) -> list[str]:

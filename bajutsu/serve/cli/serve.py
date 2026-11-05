@@ -10,6 +10,15 @@ import typer
 
 from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR
 
+# The notice a passed `--backend` prints (BE-0449). It names what replaced the flag, so an operator
+# knows to drop it and to start a worker rather than wait for a removal to break their command.
+BACKEND_DEPRECATION = (
+    "warning: --backend is deprecated and ignored, and the next release removes it: `bajutsu "
+    "serve` always queues every job for a `bajutsu worker` (start one beside the server; "
+    "`make serve` does), with the queue and artifact store from BAJUTSU_DATABASE_URL and "
+    "BAJUTSU_SERVER_STORE, or local defaults under .bajutsu/ when they are unset"
+)
+
 
 def _is_loopback(host: str) -> bool:
     """Whether binding `host` keeps the server private to this machine.
@@ -98,12 +107,14 @@ def serve(
     asgi: bool = typer.Option(
         False,
         "--asgi",
-        help="serve the FastAPI app over uvicorn instead of the stdlib server (needs bajutsu[server])",
+        help="serve the FastAPI app over uvicorn instead of the stdlib server",
     ),
     backend: str = typer.Option(
-        "local",
+        "",
         "--backend",
-        help="which serve seams to assemble (only 'local' available; hosted backends land later)",
+        help="deprecated and ignored (BE-0449): the server always queues every job for a "
+        "`bajutsu worker`; the queue, keys, and artifact store come from the environment, or from "
+        "local defaults under .bajutsu/. Removed in the next release",
     ),
     upload_exec: str = typer.Option(
         "",
@@ -137,10 +148,16 @@ def serve(
     non-loopback `--host` requires one so the server is never exposed unauthenticated.
     With `--emit-launchagent`, print a LaunchAgent plist matching these flags (for self-hosting)
     and exit without starting the server. With `--asgi`, serve the same UI/API as a FastAPI app
-    over uvicorn (the transport the hosted backend will use); `--backend` selects which seams to
-    assemble (only `local` for now).
+    over uvicorn. The server runs no job itself: every job is queued for a `bajutsu worker`
+    (`make serve` starts one beside the server). The FastAPI transport is used whenever the
+    artifacts stay on this machine.
     """
-    from bajutsu.serve import SERVE_BACKENDS, MissingServerExtra, launchagent_plist
+    from bajutsu.serve import (
+        SERVE_BACKENDS,
+        MissingServerExtra,
+        ServeStartupError,
+        launchagent_plist,
+    )
     from bajutsu.serve import serve as _serve
 
     resolved_token = token or os.environ.get("BAJUTSU_SERVE_TOKEN") or ""
@@ -151,9 +168,13 @@ def serve(
         )
         raise typer.Exit(2)
 
-    if backend not in SERVE_BACKENDS:
-        typer.echo(f"unknown --backend {backend!r} (available: {', '.join(SERVE_BACKENDS)})")
-        raise typer.Exit(2)
+    if backend:
+        # Deprecated for one release (BE-0449): a typo still fails loudly, and a known value only
+        # warns, since both values now build the same server.
+        if backend not in SERVE_BACKENDS:
+            typer.echo(f"unknown --backend {backend!r} (available: {', '.join(SERVE_BACKENDS)})")
+            raise typer.Exit(2)
+        typer.echo(BACKEND_DEPRECATION, err=True)
 
     # The flag wins, then the env mirror (for the hosted backend), then the safe-yes default.
     resolved_upload_exec = upload_exec or os.environ.get("BAJUTSU_UPLOAD_EXEC") or "sandbox"
@@ -172,18 +193,6 @@ def serve(
             evidence = evidence_target_from_uri(evidence_store)
         except (ValueError, ImportError) as e:
             typer.echo(f"--evidence-store {evidence_store}: {e}")
-            raise typer.Exit(2) from None
-
-    # `--asgi` needs the optional `server` extra (FastAPI + uvicorn); fail with an install hint
-    # rather than a raw ImportError traceback, mirroring `bajutsu worker`.
-    if asgi:
-        try:
-            import uvicorn  # noqa: F401
-        except ImportError:
-            typer.echo(
-                "the `server` extra is required for --asgi — "
-                "install with: pip install 'bajutsu[server]'"
-            )
             raise typer.Exit(2) from None
 
     if emit_launchagent:
@@ -221,12 +230,16 @@ def serve(
             evidence=evidence,
             allow_remote_build=allow_remote_build,
             asgi=asgi,
-            backend=backend,
             cwd=cwd,
             config_provenance=config_provenance,
             themes_dir=Path(themes) if themes else None,
             default_theme=default_theme,
         )
+    except ServeStartupError as e:
+        # A startup check refused the settings (a `--port 0` for a local start, a malformed key):
+        # say which, rather than a traceback.
+        typer.echo(f"bajutsu serve: {e}")
+        raise typer.Exit(2) from None
     except MissingServerExtra as e:
         # The server backend was selected without its optional extras: show the install hint and
         # exit cleanly rather than dumping a traceback (mirrors worker). Only this specific error is

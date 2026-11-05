@@ -43,3 +43,20 @@ def reject_renamed_key(data: object, *, surface: str, old: str, new: str) -> Non
     """
     if isinstance(data, dict) and old in data:
         raise ValueError(f"{surface} field '{old}' was removed; rename it to '{new}'")
+
+
+# The worker's hand-written routing-token override, deprecated once the worker capability supplies
+# what it was for (BE-0450), and removed in the next release.
+WORKER_CAPABILITIES_REPLACEMENT = (
+    "the runtime and device-class tokens now come from the worker's Simulator inventory, and its "
+    "environment and target limit from worker.yaml (--worker-config); it is still honored for this "
+    "release and will be removed in the next"
+)
+
+
+def warn_worker_capabilities(surface: str) -> None:
+    """Warn once that *surface*, a worker's hand-written capability override, is deprecated (BE-0450)."""
+    warn_once(
+        f"workerCapabilities.{surface}",
+        f"{surface} is deprecated (BE-0450): {WORKER_CAPABILITIES_REPLACEMENT}",
+    )

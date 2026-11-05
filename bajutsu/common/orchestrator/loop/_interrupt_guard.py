@@ -5,12 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from bajutsu.common import assertions
+from bajutsu.common.assertions import EvalContext
 from bajutsu.common.drivers import base
 from bajutsu.common.orchestrator.substitution import _interp_asserts
 from bajutsu.common.orchestrator.types import NetworkSource
 from bajutsu.common.scenario import Assertion, Interrupt
 
-from ._shared import _ExecSteps
+from ._shared import _ExecSteps, _with_attributes
 
 # Consecutive fires of the *same* interrupt entry allowed within one step's resolution (BE-0314). A
 # mis-set entry — a condition its own `steps` never clear — must not hang the run, so after this many
@@ -63,7 +64,9 @@ class _InterruptGuard:
                 return fired
             if self._fires.get(i, 0) >= _INTERRUPT_MAX_FIRES:
                 continue
-            if not assertions.passed(assertions.evaluate(elements, [condition], net)):
+            # An `attribute` condition reads its element beside this tree, so it repeats each tick.
+            ctx = _with_attributes(EvalContext(), self.driver, [condition])
+            if not assertions.passed(assertions.evaluate(elements, [condition], net, ctx=ctx)):
                 self._fires[i] = 0
                 continue
             self._fires[i] = self._fires.get(i, 0) + 1

@@ -218,7 +218,7 @@ jobs:
     # falling back to one retry and an unbounded per-scenario budget. These two numbers were sized
     # against a *bare* in-place respawn and, unlike ios-e2e.yml's own knobs (re-derived in 2115b10),
     # were not re-measured once a crash-triggered retry (attempt > 1) started forcing the same `erase`
-    # precondition `erase: true` already gets. The reason they still hold on this lane: `pre.erase` on
+    # precondition `reinstall: erase` already gets. The reason they still hold on this lane: `pre.erase` on
     # adb (`bajutsu/platform_lifecycle/environments/android.py`) is an app-level clean state —
     # `uninstall` + `install` + `pm clear` on an emulator that stays booted throughout — not the
     # `simctl shutdown → erase → boot` device restart iOS pays, so the erase-carrying attempt costs low
@@ -230,7 +230,7 @@ jobs:
     # BAJUTSU_RUN_CRASH_RECOVERY_BUDGET (_default_run_crash_recovery_budget) is the run-scoped
     # counterpart: it caps crash-recovery time across every scenario in one `bajutsu run` process, not
     # per scenario. On this lane that scope is narrower than it sounds: `make -C
-    # demos/showcase/android e2e` shells one `bajutsu run --scenario …` per file, 28 separate
+    # demos/showcase/android e2e` shells one `bajutsu run --scenario …` per file, 29 separate
     # invocations (E2E_SCENARIOS + E2E_VIEWS_SCENARIOS), each getting its own fresh 480s budget — not
     # the single job-wide budget ios-e2e.yml's `run`/`actuation` jobs get by folding many scenarios into
     # one invocation. Most of those files hold one scenario, and a scenario can never observe its own
@@ -255,7 +255,7 @@ jobs:
         run: uv sync --no-dev
 
       # Build both a11y APKs outside the emulator session so the AVD is only alive during the run
-      # itself; bajutsu's launch installs each from the config's appPath. Views joins Compose
+      # itself; bajutsu's launch installs each from the config's subject.path. Views joins Compose
       # (BE-0221): the Stable-tab subset drives both toolkits, whose ids differ only in `.`/`-` vs
       # `_` — each scenario's selectors list both forms.
       - name: Build the Compose + Views showcase APKs
@@ -512,7 +512,7 @@ jobs:
       - name: Install the base package (no dev)
         run: uv sync --no-dev
 
-      # The scenario drives the Compose a11y twin; bajutsu's launch installs it from the config's appPath.
+      # The scenario drives the Compose a11y twin; bajutsu's launch installs it from the config's subject.path.
       - name: Build the Compose showcase APK
         run: make -C demos/showcase/android compose-build
 
@@ -606,7 +606,7 @@ jobs:
       - name: Install the package with the dev group
         run: uv sync
 
-      # `launch_driver` installs the a11y APK from the config's appPath and boots into ConformanceScreen.
+      # `launch_driver` installs the a11y APK from the config's subject.path and boots into ConformanceScreen.
       - name: Build the Compose showcase APK
         run: make -C demos/showcase/android compose-build
 
@@ -713,7 +713,7 @@ jobs:
       - name: Install the package with the dev group
         run: uv sync
 
-      # `launch_driver` installs the a11y APK from the config's appPath and launches it.
+      # `launch_driver` installs the a11y APK from the config's subject.path and launches it.
       - name: Build the Compose showcase APK
         run: make -C demos/showcase/android compose-build
 

@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0449](BE-0449-server-runs-no-jobs.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0449") |
+| Implementing PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167) (Unit 1, part 1 of 3), [#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168) (Unit 1, part 2 of 3), [#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170) (Unit 1, part 3 of 3), [#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171) (Unit 2), [#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172) (Unit 4), [#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173) (Unit 3), [#2182](https://github.com/bajutsu-e2e/bajutsu/pull/2182) (Unit 5, part 1 of 2: a lossless local start), [#2183](https://github.com/bajutsu-e2e/bajutsu/pull/2183) (Unit 5, part 2 of 2: `run` on a worker), [#2184](https://github.com/bajutsu-e2e/bajutsu/pull/2184), [#2185](https://github.com/bajutsu-e2e/bajutsu/pull/2185), [#2186](https://github.com/bajutsu-e2e/bajutsu/pull/2186) (Unit 6, through BE-0448), [#2187](https://github.com/bajutsu-e2e/bajutsu/pull/2187) (Unit 7), [#2188](https://github.com/bajutsu-e2e/bajutsu/pull/2188) (Unit 8), [#2189](https://github.com/bajutsu-e2e/bajutsu/pull/2189) (Unit 9), and [#2192](https://github.com/bajutsu-e2e/bajutsu/pull/2192) (same-machine routing follow-up) |
 | Topic | Hosting the web UI |
 <!-- /BE-METADATA -->
 
@@ -20,7 +21,7 @@ Today the server has two ways to run a job. The local backend runs it inside the
 
 ## Motivation
 
-The local backend takes `LocalExecutor` by default ([`serve_state.py:138`](../../bajutsu/serve/state/serve_state.py)). The server backend picks `DbQueueExecutor` when `BAJUTSU_DATABASE_URL` is set and falls back to `LocalExecutor` otherwise ([`serve/__init__.py:582`](../../bajutsu/serve/__init__.py)). The local executor starts a thread per job, and `run_job` spawns `python -m bajutsu run` (or `record`, `crawl`, and so on) as a subprocess ([`local_executor.py`](../../bajutsu/serve/executor/local_executor.py), [`jobs.py`](../../bajutsu/serve/jobs.py)). The worker path reaches the same `run_job` through `execute_job_spec` ([`worker_job.py`](../../bajutsu/serve/server/worker_job.py)), but around it sits a second set of mechanisms: leases, heartbeats, presigned uploads, and a job spec that must round-trip through the database.
+The local backend takes `LocalExecutor` by default ([`serve_state.py:138`](../../bajutsu/serve/state/serve_state.py)). The server backend picks `DbQueueExecutor` when `BAJUTSU_DATABASE_URL` is set and falls back to `LocalExecutor` otherwise ([`serve/__init__.py:582`](../../bajutsu/serve/__init__.py)). The local executor starts a thread per job, and `run_job` spawns `python -m bajutsu run` (or `record`, `crawl`, and so on) as a subprocess (`local_executor.py`, [`jobs.py`](../../bajutsu/serve/jobs.py)). The worker path reaches the same `run_job` through `execute_job_spec` ([`worker_job.py`](../../bajutsu/serve/server/worker_job.py)), but around it sits a second set of mechanisms: leases, heartbeats, presigned uploads, and a job spec that must round-trip through the database.
 
 Keeping both paths makes every feature a two-path feature, and the second path lags. Three cases show it.
 
@@ -56,7 +57,7 @@ The hosted deployment already needs a queue, sessions, and a place for artifacts
 - **Migrations** run automatically on the default SQLite, since the server never runs Alembic today.
 - **The secrets key**, `BAJUTSU_SECRETS_KEY`, is mandatory for a database-backed start today. A local start generates one and persists it beside the runs directory. The file is created atomically with owner-only permissions (`0600`), as a regular file that is not a symlink, and the start fails on an existing path that is unsafe, in the way `bajutsu/common/run_meta/artifact_perms.py` treats secret-bearing files. A world-readable key on a shared host would undo BE-0136.
 - **`hosted`** stays a deployment setting. A repository must not imply it, or the file browser of BE-0108 disappears and the device takeover of `record` (BE-0185) is refused for an author who sits at the device.
-- **Run history** comes from the database window once a repository exists, so runs that `bajutsu run` wrote from the command line, and runs already under `runs/`, would vanish from the local UI. The server indexes the run trees under `runs/`, both the existing ones and those that `bajutsu run` writes from the command line, into the runs table at start and on a rescan. The file store is rooted at the runs tree, so their artifacts resolve. Targets are org-scoped once a repository exists, and a local start uses one default org.
+- **Run history** comes from the database window once a repository exists, so runs that `bajutsu run` wrote from the command line, and runs already under `runs/`, would vanish from the local UI. The server indexes the run trees under `runs/`, both the existing ones and those that `bajutsu run` writes from the command line, into the runs table at start and on a rescan. The file store mounts the runs tree at the default org's `artifacts/` prefix, so their artifacts resolve. Targets are org-scoped once a repository exists, and a local start uses one default org.
 - **The artifact store** gets a filesystem implementation. The object store accepts only `s3://` and `gs://` today ([`object_store.py`](../../bajutsu/serve/server/object_store.py)). A `file://` store lets the worker write a run tree and the server read it. The worker still reaches it through the signed-URL interface of [BE-0160](../BE-0160-worker-credential-free-uploads/BE-0160-worker-credential-free-uploads.md), and the server serves those URLs for this store. Each URL is signed with an HMAC key that the server generates and persists under the same rules as the secrets key (atomic `0600` creation, regular file, unsafe existing path rejected), expires, binds the object key and content type into the signature, and is confined to the store root by the existing key validation. The routes accept nothing else.
 
 The local backend and the server backend then differ in these defaults and nothing else. The `--backend` flag loses its meaning and is deprecated in one release and removed in the next.
@@ -67,7 +68,6 @@ Cancelling a job reaches only the server's in-memory `Job` today, and for a queu
 
 - Cancelling a queued job marks its row cancelled, and the lease skips it. The cancel finds the job in the repository, so a job queued before a restart can still be cancelled.
 - Cancelling a leased job keeps the row leased and sets a cancel-requested flag, which the heartbeat response returns with a 200. The worker then cancels its own `Job`: gracefully for `run`, and by a process-group kill for the other kinds. The result route accepts a cancelled outcome from the lease holder, and only that moves the row to cancelled.
-- `worker --once` maps SIGINT and SIGTERM to the same cancel.
 
 ### Live output across the split
 
@@ -77,7 +77,7 @@ The hosted model delivers a worker's console log after the job completes ([BE-01
 
 ### The one-shot worker
 
-`bajutsu worker --once <spec>` executes one job spec without a server and exits with the job's exit code. The spec has the shape the queue already stores (`job_spec` in `worker_job.py`). The worker reads its `worker.yaml` through `--worker-config`, runs the worker capability check, executes the job through `execute_job_spec` with local input and output in place of HTTP and signed URLs, and, in one-shot mode, spawns the child with inherited standard input, output, and error in place of the piped, merged capture a leased job uses. It takes the run id from the run tree the child wrote and not from the PASS line, and it passes its resolved `--worker-config` path to the internal run entry point it spawns. A spec that names an uploaded bundle or artifact overrides is rejected with a clear message, because those arrive by signed URL and a one-shot run has none. The same command serves tests, investigations, and the wrapper below.
+`bajutsu worker --once <spec>` executes one job spec without a server and exits with the job's exit code. The spec has the shape the queue already stores (`job_spec` in `worker_job.py`). The worker reads its `worker.yaml` through `--worker-config`, runs the worker capability check, executes the job through `execute_job_spec` with local input and output in place of HTTP and signed URLs, and, in one-shot mode, spawns the child with inherited standard input, output, and error in place of the piped, merged capture a leased job uses. It takes the run id from the run tree the child wrote and not from the PASS line, and it passes its resolved `--worker-config` path to the internal run entry point it spawns. A spec that names an uploaded bundle or artifact overrides is rejected with a clear message, because those arrive by signed URL and a one-shot run has none. `worker --once` maps SIGINT and SIGTERM to the same cancel a leased job receives from its heartbeat. The same command serves tests, investigations, and the wrapper below.
 
 ### `bajutsu run` as a thin wrapper
 
@@ -146,15 +146,298 @@ This item does not change what a job does, how a verdict is decided, or the run 
 > *Detailed design* (one entry per unit of work), and the log records what changed and when, oldest
 > first, each with a link to its PR.
 
-- [ ] Local defaults
-- [ ] Cancellation across the split
-- [ ] One-shot worker and wrapper
-- [ ] Live log stream and the routing executor
-- [ ] Move `run`
-- [ ] Move `run-set` (the Device Farm batch)
-- [ ] Move `triage`
-- [ ] Move `record` and `crawl`
-- [ ] Remove the local executor
+- [x] Local defaults
+- [x] Cancellation across the split
+- [x] One-shot worker and wrapper
+- [x] Live log stream and the routing executor
+- [x] Move `run`
+- [x] Move `run-set` (the Device Farm batch)
+- [x] Move `triage` (on a local start; hosted triage and same-machine affinity are follow-ups, see the log)
+- [x] Move `record` and `crawl`
+- [x] Remove the local executor
+
+Log:
+
+- [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167) (Unit 1, part 1 of 3: the queue store) — every job transition in `SqlRepository`
+  (lease, heartbeat, result, reclaim) is now one conditional `UPDATE` whose row count decides the
+  race, on SQLite and PostgreSQL alike, in place of a select-then-write that skipped its row lock on
+  SQLite. A file-backed SQLite engine sets write-ahead logging and a busy timeout, and
+  `repository_from_env(default_url=…)` migrates the default database to the latest revision before
+  use, while a configured `BAJUTSU_DATABASE_URL` is still never migrated by the server. Tests lease
+  concurrently on a file-backed SQLite and race a heartbeat against a reclaim. The rest of unit 1
+  (the generated secrets key, the `file://` artifact store with signed URLs, and the local start
+  wiring) follows.
+- [#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168) (Unit 1, part 2 of 3: keys and the file store) — `local_keys` generates the secrets
+  key and the URL-signing key on first use and keeps them in `.bajutsu/` beside the runs directory.
+  Each key file is written to an `O_EXCL | O_NOFOLLOW` staging file with mode `0600`, synced, and
+  hard-linked into place, so a concurrent start reads the winner's key, and an existing path that is
+  a symlink, not a regular file, owned by another account, or open to group or other is refused.
+  `fernet_from_env_or_local` prefers `BAJUTSU_SECRETS_KEY` and falls back to the local key.
+  `FileObjectStore` implements `ObjectStore` on a directory, confines every key to the root
+  (including through symlinks), and writes atomically with owner-only modes. Its signed URLs point at
+  new `GET` and `PUT /api/store/objects/{key}` routes on the FastAPI app, which the signature alone
+  authorizes: an HMAC-SHA256 over the method, the key, the content type, and the expiry. The routes
+  exist only when the object store is a `FileObjectStore`, and the default start is unchanged until
+  part 3 wires it.
+- [#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170) (Unit 1, part 3 of 3: the local start) — `bajutsu serve --backend server` now
+  starts with no cloud service. With neither `BAJUTSU_SERVER_STORE` nor `BAJUTSU_DATABASE_URL`
+  set, the server keeps a migrated SQLite queue at `.bajutsu/queue.db`. The secrets key is
+  `BAJUTSU_SECRETS_KEY` when set, else generated into `.bajutsu/secrets.key`. A configured database
+  without `BAJUTSU_SECRETS_KEY` still fails to start. A deployment with a bucket and no database
+  keeps its in-process shape, since a SQLite file per replica would split the queue. With no
+  bucket, the artifact store is a `FileObjectStore` that keeps the bucket's key layout under
+  `.bajutsu/objects/` and mounts the runs tree at the default org's `artifacts/` prefix. Runs that
+  `bajutsu run` wrote resolve without moving, and the default org's store cannot name another
+  org's runs or a store folder. The store signs with the local key and addresses the server's
+  loopback URL, so a local start refuses `--port 0` and switches itself to the FastAPI transport,
+  which serves the signed-URL routes. `hosted` now reads `BAJUTSU_HOSTED` and, when unset, follows
+  whether the deployment names a bucket, so a local start keeps the file browser and the device
+  takeover. At startup the server indexes every run tree under `runs/` into the runs table under
+  the default org, through a new insert-only `record_run_if_absent`, so a completing job's row is
+  never overwritten. An admin's `POST /api/runs/rescan` does the same on demand and answers `409`
+  without the local layout. Unit 1 is complete.
+- [#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171) (Unit 2) — a cancel now reaches a job wherever the split put it. The cancel route
+  looks the job up in the jobs table first, so it still reaches a job queued before a restart. A job
+  with no row stops in process, as before. A queued job becomes `cancelled`
+  through a conditional `UPDATE` on `status = 'queued'`, so no lease returns it. A leased job keeps
+  its lease and gets a new `cancel_requested` column (migration `0022`). The heartbeat then answers
+  `{"ok": true, "cancel": true}`, and the worker cancels its own `Job` through `jobs.cancel_job`:
+  gracefully for `run`, and by a process-group kill for the other kinds. `execute_job_spec` hands
+  the rebuilt `Job` to the heartbeat loop before the run starts, and a cancel during the bundle
+  fetch skips the run. The result route records `"cancelled": true` from the lease holder alone,
+  by a conditional `UPDATE` on `status = 'leased' AND leased_by = :worker`. A cancel after the job
+  finished changes nothing and reports the terminal status. A reclaimed lease that carries a cancel
+  ends `cancelled` rather than re-queued, even at the attempt cap. `cancelled` joins the terminal
+  statuses that release a job's concurrency slot and end its log stream, and the `0022` downgrade
+  folds it into `failed`. A cancel that lands between a job's registration and its enqueue reaches
+  the row either way: `DbQueueExecutor.dispatch` cancels the row of a job already cancelled in
+  memory, and the cancel route re-reads the jobs table after its in-process cancel. A signed-in
+  caller may cancel a job, in process or in the jobs table, only if the job's org is the caller's
+  active org or one of the caller's memberships. The route answers `404` for any other job, and the
+  job view stays unscoped for people. The route also scopes a machine principal to its org, as the
+  job read does, but the gate does not admit a machine to the cancel route, so that check is
+  defensive. A leased-job cancel needs workers at this version, since
+  an older worker ignores the heartbeat's `cancel`. The SIGINT and SIGTERM mapping for
+  `worker --once` arrives with unit 3.
+- [#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172) (Unit 4) — a queued job's console is live again. The worker posts its log lines
+  to a new `POST /api/worker/log` about once a second. It posts the tail before its result, within
+  five seconds. A stateful line masker hides credential shapes. It keeps a private key block masked
+  from BEGIN to END, across lines and batches. The server runs the per-line backstop again on each
+  posted line. Handoff request lines stay out of the live stream. A new read-only
+  `Repository.holds_lease` lets the route accept a batch from the lease holder alone. Any other
+  worker gets `409` and drops the job, as on a heartbeat `409`. One post carries at most 500 lines.
+  The server cuts a line past 8 KiB. Past 50,000 live lines or 16 MiB for one job, the server
+  publishes one truncation notice and drops the rest. Each server process keeps its own count. The worker drops a
+  batch it cannot post, and caps its queue of unsent lines. It stops streaming on a `401`, `404`,
+  or `405` from an older control plane. With a repository, the server swaps the post-completion bus
+  for a new `QueueLogBus`, on the local start too. `QueueLogBus` publishes the posted lines to an
+  in-memory bus. The new `BAJUTSU_REDIS_URL` switches that bus to `RedisLogBus`. `RedisLogBus` now
+  pushes a batch in one command. It also bounds the list's lifetime on every write. The in-memory
+  bus drops a finished job's channel once 256 later jobs have finished. The result route still
+  closes the stream. An idle stream also polls the jobs table. A job that ends with no close
+  reaching the bus thus still ends its stream. A viewer who opens a finished job reads the uploaded
+  `console.log`, as does a live viewer who received no line. A failing live bus falls back to that
+  post-completion read. `Job.kind` derives the job kind from `batch`, or from the subcommand that
+  `cmd` spawns. `RoutingExecutor` sends a kind in `queued_kinds` to `DbQueueExecutor`. A job of
+  unknown kind goes there too. Any other job goes to `LocalExecutor`. The server queues every kind,
+  which keeps today's behavior. The per-job artifact override refusal now asks where a `run` job
+  routes, not what type the executor has. The bucket-only shape and `--backend local` keep their
+  behavior. The worker now writes `console.log` into the run tree before
+  that tree uploads, through a new `before_upload` callback on `execute_job_spec`. The worker used
+  to write the file after the upload, so `console.log` never reached the artifact store. The live artifact stream for
+  `crawl` arrives with unit 8.
+- [#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173) (Unit 3) — `bajutsu run` is now a thin wrapper over the one-shot worker path. The
+  body of the command moved behind an internal entry point, `python -m bajutsu.run.internal`, a
+  module of its own rather than a hidden subcommand. The module stays out of `bajutsu --help` and
+  the BE-0101 command list, and its process imports the run body alone. `run_command`, the `triage
+  --rerun` command, and the MCP `run` tool emit it. `Job.kind` and `_with_worker_config` recognise
+  the module and still accept the `-m bajutsu run` that a spec queued before the change names.
+  `_local_interpreter` rewrites that legacy form to the internal module, so such a spec runs in one
+  process, as it did when it was queued. The wrapper shares the body's signature, so the two have
+  one flag surface, and it passes on every flag the caller typed, whatever its value. A default or
+  an environment value is left for the run to resolve. The parser now checks `--label`, so the
+  wrapper refuses an over-long label in the caller's words. `bajutsu worker --once <spec.json>` runs
+  one spec through `execute_job_spec` with a no-op `LocalWorkerIO` and no repository. A new
+  `inherit_stdio` mode of `run_job` spawns the child on the caller's standard streams, in a session
+  of its own (the public `bajutsu run` alone also keeps the caller's `PATH`), and reads the run id from the new run tree. The caller holds a liveness pipe
+  open while it waits. When the pipe reaches end of file, the internal run sends itself SIGTERM, so
+  a wrapper killed by SIGKILL does not leave a run driving the device. `--once` refuses a bundle,
+  artifact overrides, a Device Farm batch, a non-`local` worker file (naming BE-0448), mistyped
+  `udids` or `materials`, and materials that would overwrite a different file in the current
+  directory. SIGINT, SIGTERM, and SIGHUP become the unit 2 cancel. A second SIGINT kills the child's
+  group at once. SIGTSTP stops the child's group and then the wrapper, and SIGCONT continues both. A
+  signal the caller already ignores stays ignored. The exit code is the child's, or 128 plus the
+  signal number. A `--step` prompt now polls the run's cancel source while it waits on the terminal,
+  so a Ctrl-C at the prompt still ends the run with its report written. A Ctrl-C or a SIGTERM on
+  `bajutsu run` now exits 130 or 143 where the single process exited 1. Ctrl-C no longer reaches the
+  run's driver children directly, and a background `--step` run no longer stops on terminal input.
+  Subprocess parity tests cover a pass, a fail, a usage error, both signals, a SIGKILLed wrapper, a
+  second Ctrl-C, Ctrl-Z, the `--step` prompt on a pseudo-terminal, and a pre-change spec under
+  `--once`. A round-trip test renders every `run` option and parses it back with the internal entry
+  point. The in-process CLI tests now invoke the internal entry point. Workers must be upgraded
+  before or with the control plane: a worker built before this change does not map the queued
+  `-m bajutsu.run.internal` onto its own interpreter, so it fails every `run` it leases.
+- [#2182](https://github.com/bajutsu-e2e/bajutsu/pull/2182) (Unit 5, part 1 of 2: a lossless local start) — a local start now keeps the
+  features a `--backend local` user has, so the local backend can become this shape in part 2. One
+  gap stays open until part 2: a local start queues every job kind, and a queued job does not get
+  the stored secrets until the lease relays them. The
+  FastAPI app serves the `local_only` routes on any deployment that is not hosted: capture mode,
+  the live step picker, and `/api/ant/login`. It adds a screenshot handler that mirrors the stdlib
+  one, and the boot read reports capture as available. A hosted deployment still refuses those
+  routes. `SecretStore` gains `values_for_job`, the one plaintext read. `DbSecretStore` decrypts the
+  org's rows, and a row the current key cannot decrypt is skipped with a warning. `EnvSecretStore`
+  names the secrets it wrote, under a lock. The in-process job thread (`jobs.run_job_in_process`)
+  reads the values into a new `Job.secret_env` through `jobs.job_secret_env`, and a store error
+  fails that one job with a line saying why. `_spawn_env` merges that field under the
+  provider overlay. The field stays out of the job spec and out of `repr`. The Git credential stays
+  out of it too, since a job never fetches. A test flags any direct call of `values_for_job` or
+  `job_secret_env` outside `serve.jobs`, so an HTTP handler that reached for a value would fail it. Part 2 relays the
+  same read in the lease response. For the default org, a local start keeps scenarios in the bound
+  config's tree and baselines in the `--baselines` directory, so a saved scenario lists back and an
+  approved baseline is the one a run reads. `FileObjectStore` gains further mounts, and the local
+  start mounts the `--baselines` directory at `baselines/`, so a worker's signed download reads
+  the baselines an approve wrote. The start refuses a `--baselines` directory that holds the runs
+  or state directory, and no org may take a slug the default org's layout uses (`artifacts`,
+  `baselines`, `scenarios`, `uploads`), through the API or `orgs:` alike. It also keeps the provider settings in
+  `provider-settings.json`, so both backends share one copy instead of a database copy that drifts.
+  Other orgs keep the bucket layout. FastAPI, uvicorn, SQLAlchemy, Alembic, and `cryptography`
+  move into the base dependencies. The `server` extra keeps boto3, and the `db` extra keeps psycopg.
+  An install command that names either extra still resolves. The CLI still imports none of the
+  server stack. The `--asgi` install check is gone, and the server backend's install hint now names
+  only the cloud clients. The local backend's executor and defaults are unchanged.
+- [#2183](https://github.com/bajutsu-e2e/bajutsu/pull/2183) (Unit 5, part 2 of 2: `run` on a worker) — the local backend is now the local start. Both
+  backends build the server shape, and they differ in the kinds they queue. `local` queues `run`
+  with its build phase (`LOCAL_QUEUED_KINDS`) and runs every other kind in the server's process.
+  `server` queues every kind. The flag stays, and its removal is still unit 9's. A local start now
+  also keeps the startup config's directory, its Git provenance, and the theme settings. The lease
+  response carries `secret_env`. That field holds the leased job's org's stored secrets, under the
+  variables a job reads them from. The server reads them at lease time through
+  `jobs.lease_secret_env` and never stores them in the spec. A lease taken by a browser or machine
+  login gets none. A store the server cannot read fails the job rather than run it without them.
+  The worker lays the values over the run's environment, never its argv. A job that ships no files
+  now names its config directory in the spec's `cwd`. A worker on the same machine builds and runs
+  it from there. It writes `console.log` into the runs directory the run wrote. A Git credential
+  set in the UI now reaches the server's own private-repository fetch through
+  `jobs.stored_git_credential`, even from the database store. It ranks after a GitHub App and ahead
+  of an ambient token. A queued job with no live worker able to serve it carries a notice.
+  `Repository.lacks_live_worker` decides it from the lease timeout and the capabilities alone. The
+  job view returns it as `notice`, and the live stream sends a `notice` event each time it
+  changes. The Replay and Record status lines show it. `make serve` starts a local worker beside the
+  server, from a scratch workspace, with the same token. The worker stops when serve exits.
+  `SERVE_WORKER=0` turns it off. A SIGINT or SIGTERM to the leasing worker now cancels its job,
+  posts the cancelled result, and exits, so the queue does not re-run an orphaned job. `serve.sh`
+  stops the worker first and waits out the grace window. The worker runs jobs in a temporary
+  directory of its own unless `--workdir` names one, and no longer in its current directory. It
+  records the directory's owner, and a later worker removes a directory whose owner has exited. It
+  also records the running job's process group there, so `serve.sh` can end the run when it must
+  stop the worker outright. A job that names its files by path fails with a clear message on a
+  worker that lacks them. Neither a stored secret nor a lease may set a loader, interpreter, shell, or
+  `BAJUTSU_*` variable; the server and the worker log a dropped name without its value.
+  `bajutsu serve --port 0` exits 2 with the reason. A known gap stays for a follow-up: such a job
+  carries no capability that the server's machine alone advertises, so a remote worker may lease
+  it and then fail it.
+  An end-to-end test runs a queued `run` through the real worker loop on the fake backend.
+- [#2184](https://github.com/bajutsu-e2e/bajutsu/pull/2184), [#2185](https://github.com/bajutsu-e2e/bajutsu/pull/2185),
+  and [#2186](https://github.com/bajutsu-e2e/bajutsu/pull/2186) (Unit 6) —
+  [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch.md) delivers this
+  unit. The server no longer runs the Device Farm fan-out. It registers no batch provider and holds no
+  AWS credential. Every `run-set` job waits in the queue for a Device Farm worker. Such a worker's
+  `worker.yaml` names `environment: devicefarm`. That worker submits the run and stores its Amazon
+  Resource Name (ARN) through the server over HTTP. It then polls the run and posts the verdict. The
+  worker's `maxJobConcurrency` caps the number of such jobs it holds at once. Four server-side budget
+  settings remain for one release as deprecated. The two an operator writes log a notice that names
+  `maxJobConcurrency`, once per server process. Until
+  their removal, they still cap the fan-out.
+- [#2187](https://github.com/bajutsu-e2e/bajutsu/pull/2187) (Unit 7) — a local start now queues `triage` too (`LOCAL_QUEUED_KINDS`). A
+  worker runs it, and the server spawns no triage process. The job names the run directory by its
+  absolute path on the server's disk. It names the bound config and the scenario source the same
+  way. A worker on the same machine runs the job from the config's directory. It writes
+  `triage.json` into the server's run directory, and the UI reads the file from there. A worker on
+  another machine fails the job with the unit 5 message. The job no longer carries an uploaded
+  bundle, since it reads none of it. An `--ai` triage gets the AI key from the lease, like every
+  queued job. The server's credential check now counts a key the org stored in the UI. It reads the
+  masked description alone, and it counts the key when the key travels under the variable the
+  target reads. Before, a local start refused `--ai` triage without the key in its own environment.
+  A triage job no longer takes a run path in its output as its own run id. Otherwise its tail would
+  record the run it read once more. On a worker, it would also write over that run's `console.log`.
+  The triage panel shows the no-worker notice while the job waits. No change touches the verdict
+  path. A new import guard checks the run entry point and the worker loop. Neither loads the triage
+  module, a Claude agent, or the Anthropic client library. An end-to-end test runs a queued
+  triage through the real worker loop. A stub agent stands in for the model on the `--ai` path.
+  Two follow-ups remain open. First, a hosted deployment still refuses triage. Its scenario ships
+  as `materials`, and its runs live in object storage. The worker must first download the run tree
+  and upload `triage.json` back. Second, a job that names server paths (`run` and `triage`) carries
+  no capability that ties it to the server's machine. A worker on another machine may lease such a job
+  and then fail it.
+- [#2188](https://github.com/bajutsu-e2e/bajutsu/pull/2188) (Unit 8) — a local start now queues `record` and `crawl` too, so
+  `LOCAL_QUEUED_KINDS` holds every kind. With a queue, the server runs no job in its own process.
+  `LocalExecutor` still serves a deployment with a bucket and no database, which unit 9 removes. A
+  crawl's worker watches the screen map in the crawl's `--out` directory. It posts each changed
+  snapshot that parses as JSON to a new `POST /api/worker/artifact`. The route takes the
+  `screenmap.json` name alone, a JSON object of at most 2 MiB, from the lease holder. The server
+  publishes the snapshot on the job's log bus under its own line prefix. The event stream sends it
+  as an `artifact` event. A separate live budget of 16 MiB per job bounds the snapshots. Past it,
+  the server publishes one `truncated` snapshot and tells the worker to stop. The Crawl tab draws
+  the graph from those events and reads `screenmap.json` once the job ends. Past the budget, it
+  reads the file on each log line as before. A paused record's worker posts the request line to
+  `POST /api/worker/handoff`. The route takes a `record` job alone, one request at a time, within a
+  separate live budget of 64 MiB per job. A `record` alone opens a handoff in the server's own
+  process too. The server marks the row `handoff_pending` (migration `0023`) and publishes the
+  request as a `human-request` event. `respond-human` encrypts the answer under the secrets key into
+  `handoff_response`. It stores the answer while the job holds a lease, waits on a person, and has
+  no cancel pending, and at no other time. The worker polls `POST /api/worker/handoff-response` once
+  a second while the record waits. A conditional update hands the answer to one poll. The worker
+  writes it to the record's standard input. The server drops an answer older than the record's
+  five-minute wait. The poll also carries a cancel, so a cancel reaches a waiting record at once
+  rather than on the 30-second heartbeat. A result, a reclaim, or a cancel clears both columns. The
+  design names the heartbeat response as the carrier. The relay polls on its own instead, because a
+  30-second beat keeps a person at the page waiting far too long. The three relay routes answer
+  `409` to any worker but the lease holder, and `403` to a caller on a browser or machine session.
+  `respond-human` now checks the job's org the way the cancel route does, and answers `404` outside
+  the caller's orgs. The log route and the server's own process drop a log line shaped like a
+  handoff request or a snapshot, so a run cannot forge either. The job view reads `awaitingHuman`
+  from the row, so every replica agrees. A page that reconnects no longer gets a request the job
+  stopped waiting on. It still gets every earlier snapshot of the screen map, and replaying the
+  latest one alone is a follow-up. Outputs land as before. A crawl writes into the server's runs
+  directory, and a record writes into the target's scenarios directory. A worker on the same machine
+  runs both. The AI key reaches the agent through the lease alone. An end-to-end test runs a crawl
+  and a record through the real worker loop. A stub child stands in for each, so the test reaches no
+  model and no device. The test checks the snapshots on an event-stream client, the request on the
+  page, the answer at the record, and a cancel while the record waits. Hosted deployments keep two
+  gaps. A crawl there names server paths, as the unit 7 follow-up describes. The device takeover
+  stays refused on a hosted start (BE-0185).
+- [#2189](https://github.com/bajutsu-e2e/bajutsu/pull/2189) (Unit 9) — the server runs no job in its own process, on any shape it starts
+  in. This unit deletes the in-process executor, `LocalExecutor`, with its thread body
+  `run_job_in_process`. The routing that kept kinds in process went with it: `RoutingExecutor`,
+  `runs_in_process`, and `LOCAL_QUEUED_KINDS`. `bajutsu serve` wires `DbQueueExecutor` alone. The last
+  in-process shape was a deployment with a bucket and no database. That shape now refuses to start,
+  and the message names `BAJUTSU_DATABASE_URL`. It gets no local default, since a SQLite file per
+  replica would split its queue. Every start thus has a database. The server always uses the SQL
+  session store, the database secret store, and the queue log bus. The `oidc_without_database`
+  startup warning went with the shape it described. `ServeState` now defaults to a new
+  `UnqueuedExecutor`, which fails each job at dispatch with a line that says why. The job's tail
+  still runs, so its stream closes and its slot frees. A worker's own state, which never
+  dispatches, gets that default, as does a test that wires no executor. `run-set` and the
+  artifact overrides refuse a state with no queue. Unlike the end state's "one implementation",
+  `UnqueuedExecutor` stays as a fail-closed default that those two alone reach, and the narrowed
+  refusal branch stays for the same reason. We deprecate the `--backend` flag. A passed
+  `local` or `server` prints a warning that names what replaced the flag, and the server ignores
+  the value. An unknown value still exits 2, and the next release removes the flag.
+  `_build_state` and `serve` no longer take a backend. The self-hosting image and compose file
+  drop `--backend=server`. `make serve` keeps working, because `serve.sh` starts the worker and
+  never passed the flag. A guard test builds three shapes: a local start, a database with no
+  bucket, and a bucket with a database. On each, it dispatches one job of every kind with
+  `subprocess.Popen` patched to fail, and checks that every job lands queued. Tests of what a
+  request makes a job do now wire a test executor. That executor runs `run_job` on a thread, the
+  body a worker runs. This unit removes the tests that pinned the in-process thread and the routing
+  executor. Every unit is now done. Four follow-ups stay open outside this item:
+  - Hosted triage, whose run lives in object storage (unit 7).
+  - A capability that ties a job naming server paths to the server's machine (units 5 and 7).
+    [#2192](https://github.com/bajutsu-e2e/bajutsu/pull/2192) adds it. A local start stamps such a job
+    with `machine:<id>`, from an identity it keeps in `.bajutsu/machine-id`, and the worker that
+    `make serve` starts advertises the token.
+  - A crawl on a hosted start, which names server paths too (unit 8).
+  - Replaying the latest screen-map snapshot alone to a page that reconnects (unit 8).
 
 ## References
 

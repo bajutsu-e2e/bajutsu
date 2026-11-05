@@ -58,6 +58,10 @@ def _step_label(step: Step, kind: str) -> str:
         # "sleep 2s — the server throttles retries"), after the step's own `name` when it has one.
         pause = f"sleep {step.sleep.seconds:g}s — {step.sleep.reason}"
         return f"{step.name} ({pause})" if step.name else pause
+    if step.totp is not None and step.totp.min_remaining is not None:
+        # The window wait can pause the step for up to 30s, so the live log says why (BE-0474).
+        need = f"≥{step.totp.min_remaining}s left"
+        return f"{step.name} (totp {need})" if step.name else f"totp ({need})"
     if step.name:
         return step.name
     hint = _selector_hint(getattr(step, kind))

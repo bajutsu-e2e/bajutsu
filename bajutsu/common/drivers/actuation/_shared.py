@@ -22,6 +22,7 @@ GESTURES: tuple[str, ...] = (
     "setPickerValue",
     "systemAlert",
     "back",
+    "navigate",
 )
 
 # How a gesture reached its target. `coordinate` is the only value that implies `points`.
@@ -33,6 +34,7 @@ CHANNELS: tuple[str, ...] = (
     "focused",  # a text primitive on whatever field holds focus, addressing no element
     "key",  # a key event (Android's system back), no coordinate at all
     "history",  # browser history navigation
+    "url",  # a page load by URL (`navigate`); the URL itself stays out of the record
 )
 
 # Why the element actuated is not the one the driver's default rule would have named. Absent on the

@@ -23,7 +23,7 @@ from bajutsu.common.report.format import (
     video_seconds,
 )
 from bajutsu.common.report.rows import (
-    _after_rows,
+    _cleanup_rows,
     _expects_data,
     _merged_rows,
     _phase_rows,
@@ -129,11 +129,11 @@ def _result_panel(
         # The lifecycle phases render as their own blocks (BE-0392), never folded into the numbered
         # steps: a reviewer can tell setup and teardown from the scenario under test at a glance,
         # which a `preconditions.setup` prelude spliced into `steps` gives no way to do.
-        "beforerows": _phase_rows(
-            r.before_outcomes, (definition or {}).get("before") or [], r, run_dir
+        "setuprows": _phase_rows(
+            r.before_outcomes, (definition or {}).get("setup") or [], r, run_dir
         ),
         "steprows": _merged_rows(r, plan, exchanges, run_dir, step_lines),
-        "afterrows": _after_rows(r, (definition or {}).get("after") or [], run_dir),
+        "cleanuprows": _cleanup_rows(r, (definition or {}).get("cleanup") or [], run_dir),
         "expects": _expects_data(r, definition),
     }
 
@@ -180,7 +180,17 @@ def _environment_panel(r: RunResult) -> dict[str, Any]:
         rows = _device_rows(r.backend, r.device_name, r.device_runtime, r.device)
         sim = [{"name": "", "rows": rows}] if rows else []
     skips = [{"kind": sc.kind, "reason": sc.reason} for sc in r.skipped_captures]
-    return {"kind": "env", "key": "env", "label": "Environment", "sim": sim, "skips": skips}
+    ignored = [
+        {"target": ig.target, "key": ig.key, "reason": ig.reason} for ig in r.ignored_settings
+    ]
+    return {
+        "kind": "env",
+        "key": "env",
+        "label": "Environment",
+        "sim": sim,
+        "skips": skips,
+        "ignored": ignored,
+    }
 
 
 def _network_item(d: dict[str, Any], video_anchor_s: float) -> dict[str, Any]:
@@ -335,6 +345,9 @@ def _scenario_data(
         panels.append(_trace_panel(run_dir, trace))
     return {
         "name": r.scenario,
+        # The run's coordinates when `runsOn` conditions formed it (BE-0452), shown beside the name
+        # so one scenario's runs read apart; empty for a run no condition formed.
+        "coordinates": r.coordinates,
         "ok": r.ok,
         # A multi-target scenario's chips name every declared target's backend and device rather
         # than one of them (BE-0428); the singular fields are empty there.

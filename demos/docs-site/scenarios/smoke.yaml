@@ -13,10 +13,11 @@ scenarios:
     description: Wait for the "Get started" hero, then assert both hero buttons and a populated page.
     steps:
       # Condition wait (never a fixed sleep): poll until the hero button is on the page.
-      - wait: { for: { label: "Get started" }, timeout: 15 }
+      - wait: { for: { label: "Get started", traits: [link] }, timeout: 15 }
     expect:
-      # The hero <a>Get started</a> — home-only, so the exact label resolves to one element.
-      - exists: { label: "Get started" }
+      # The hero <a>Get started</a>. `traits: [link]` keeps prose that reads "Get started" (returned
+      # as `staticText`) from standing in for the button.
+      - exists: { label: "Get started", traits: [link] }
       # "GitHub" appears twice (header repo link + hero button); `exists` uses find_all (>= 1),
       # so duplicates are fine here — only single-element assertions require uniqueness.
       - exists: { labelMatches: "GitHub" }

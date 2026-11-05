@@ -354,8 +354,8 @@
     // A COMPANION_CLASSES row (alertrow/actrow/genrow) belongs to the srow it immediately
     // follows — clone it alongside, in the same order, or the clone loses that context.
     var COMPANION_CLASSES = ['alertrow', 'actrow', 'genrow'];
-    // `rich()` (report.html.j2) renders up to three `.steps-sec` blocks per scenario — `before`,
-    // the scenario's own steps, `after` — each its own `.deflbl` heading and its own `.sttbl`
+    // `rich()` (report.html.j2) renders up to three `.steps-sec` blocks per scenario — `setup`,
+    // the scenario's own steps, `cleanup` — each its own `.deflbl` heading and its own `.sttbl`
     // whose row numbers restart at 0. Flattening all three into one table would run those numbers
     // together (two different steps both "0") and drop which phase is which; cloning one
     // `.vz-sttbl` per section, carrying its own `.deflbl` text, keeps that structure.
@@ -668,16 +668,16 @@
       });
     }
     function bands(){
-      // The `before` band runs from the recording's start to the first main step (or, lacking
-      // one, its own last step); the `after` band runs from its first step to the recording's
+      // The `setup` band runs from the recording's start to the first main step (or, lacking
+      // one, its own last step); the `cleanup` band runs from its first step to the recording's
       // end — an approximation (steps mark starts, not phase boundaries) good enough to show
       // roughly where setup/teardown sit relative to the scenario's own steps.
       if(!segs || !scn || !isFinite(v.duration) || v.duration <= 0) return;
-      var before = [], main = [], after = [];
+      var setup = [], main = [], cleanup = [];
       myRows().forEach(function(r){
         var t = parseFloat(r.getAttribute('data-t')); if(isNaN(t)) return;
         var phase = r.getAttribute('data-phase');
-        (phase === 'before' ? before : phase === 'after' ? after : main).push(t);
+        (phase === 'setup' ? setup : phase === 'cleanup' ? cleanup : main).push(t);
       });
       var html = '';
       // Decorative only (pointer-events:none, see report.css) — no title, since a band is never
@@ -688,8 +688,8 @@
         var w = Math.max(0, Math.min(100 - l, (to - from) / v.duration * 100));
         html += '<span class="vseg ' + cls + '" style="left:' + l.toFixed(3) + '%;width:' + w.toFixed(3) + '%"></span>';
       }
-      if(before.length) band('vseg-before', 0, main.length ? main[0] : before[before.length - 1]);
-      if(after.length) band('vseg-after', after[0], v.duration);
+      if(setup.length) band('vseg-setup', 0, main.length ? main[0] : setup[setup.length - 1]);
+      if(cleanup.length) band('vseg-cleanup', cleanup[0], v.duration);
       segs.innerHTML = html;
     }
     function ticks(){

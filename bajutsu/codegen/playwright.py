@@ -19,11 +19,15 @@ output is always reviewable; a runtime-only construct the shared walk cannot tra
 
 from __future__ import annotations
 
+import json
 import re
+from typing import Any
 
+from bajutsu.codegen._playwright_dict_match import DICT_MATCH_JS
 from bajutsu.codegen.common import (
-    AfterEmission,
+    CleanupEmission,
     device_group_todo,
+    eval_todo,
     indent_lines,
     interrupts_setup_lines,
     manual_todo,
@@ -35,8 +39,14 @@ from bajutsu.codegen.common import (
 )
 from bajutsu.common.assertions import request_label
 from bajutsu.common.drivers import base
-from bajutsu.common.scenario import AfterRule, Assertion, Gone, RequestMatch, Scenario, Step
-from bajutsu.common.scenario.models.assertions import CountMatch, TextMatch, Wait, WaitRequest
+from bajutsu.common.scenario import Assertion, CleanupRule, Gone, RequestMatch, Scenario, Step
+from bajutsu.common.scenario.models.assertions import (
+    AttributeMatch,
+    CountMatch,
+    TextMatch,
+    Wait,
+    WaitRequest,
+)
 
 # Wheel-scroll distance (px) a directional swipe emits — intrinsic to the gesture (BE-0227). The
 # delta is the physical scroll direction: an `up` swipe pushes the surface up, so the page scrolls
@@ -128,7 +138,8 @@ def _request_predicate(req: RequestMatch) -> str:
     `e` carries `method` / `url` / `status` / `body`. Only set matcher fields are emitted, AND-ed,
     mirroring `match_request`. `body_matches` guards `e.body !== null` first: the runner fails a body
     matcher when the request has no body, so without the guard a pattern like `.*` would match a
-    body-less request and pass incorrectly.
+    body-less request and pass incorrectly. `query` / `body` call the `bajutsuDict` helper the setup
+    emits (BE-0463).
     """
     pathname = "new URL(e.url).pathname"  # `path` is path-only in the runner, so drop the query
     clauses: list[str] = []
@@ -146,7 +157,20 @@ def _request_predicate(req: RequestMatch) -> str:
         clauses.append(f"e.status === {req.status}")
     if req.body_matches is not None:
         clauses.append(f"e.body !== null && {_re_test_js(req.body_matches, 'e.body')}")
+    if req.query is not None or req.body is not None:
+        clauses.append(f"bajutsuDict(e, {_json_js(req.query)}, {_json_js(req.body)})")
     return " && ".join(clauses) if clauses else "true"
+
+
+def _json_js(matcher: dict[str, Any] | None) -> str:
+    """A dictionary matcher as a JS value, or `null` when unset.
+
+    Parsed from a string rather than written as an object literal, where a `__proto__` key would set
+    the prototype instead of naming a field.
+    """
+    if matcher is None:
+        return "null"
+    return f"JSON.parse({_ts(json.dumps(matcher, separators=(',', ':'), ensure_ascii=False))})"
 
 
 def _emit_request_assertion(req: RequestMatch) -> list[str]:
@@ -198,18 +222,25 @@ def _emit_request_sequence(seq: list[RequestMatch]) -> list[str]:
     ]
 
 
-def _scenario_uses_network(scenario: Scenario) -> bool:
-    """Whether any step or `expect` reads the network (request / requestSequence / until request)."""
+def _network_matchers(scenario: Scenario) -> list[RequestMatch]:
+    """Every request matcher a step or `expect` reads (request / requestSequence / until request)."""
 
-    def asserts_network(assertions: list[Assertion]) -> bool:
-        return any(a.request is not None or a.request_sequence is not None for a in assertions)
+    def from_assertions(assertions: list[Assertion]) -> list[RequestMatch]:
+        out: list[RequestMatch] = []
+        for a in assertions:
+            if a.request is not None:
+                out.append(a.request)
+            if a.request_sequence is not None:
+                out.extend(a.request_sequence)
+        return out
 
+    matchers: list[RequestMatch] = []
     for step in scenario.steps:
         if step.wait is not None and isinstance(step.wait.until, WaitRequest):
-            return True
-        if step.assert_ is not None and asserts_network(step.assert_):
-            return True
-    return asserts_network(scenario.expect)
+            matchers.append(step.wait.until.request)
+        if step.assert_ is not None:
+            matchers.extend(from_assertions(step.assert_))
+    return matchers + from_assertions(scenario.expect)
 
 
 def _glob_to_css(glob: str) -> str | None:
@@ -353,6 +384,13 @@ def _emit_step(step: Step) -> list[str]:  # noqa: C901, PLR0911, PLR0912
         # The web's `back` is browser history — the same primitive the driver's `back()` uses
         # (`page.go_back()`), so codegen emits it faithfully rather than an unlabeled TODO (BE-0210).
         return ["await page.goBack();"]
+    if step.navigate is not None:
+        url = step.navigate.url
+        if "${" in url:
+            # Substituted by the runner at run time; the generated test has no binding to read it from.
+            return [f"// TODO: navigate({_ts(url)}) — runtime-substituted URL; not generated"]
+        # `new URL(ref, base)` resolves a reference exactly as the driver's `urljoin` does (BE-0464).
+        return [f"await page.goto(new URL({_ts(url)}, BASE_URL).toString());"]
     if step.long_press is not None:
         return _act(
             step.long_press.sel.as_selector(),
@@ -431,6 +469,8 @@ def _emit_step(step: Step) -> list[str]:  # noqa: C901, PLR0911, PLR0912
         return [f"// TODO: manual step — {manual_todo(step.manual.label, step.manual.bypass)}"]
     if (todo := device_group_todo(step)) is not None:
         return [todo]
+    if (todo := eval_todo(step)) is not None:
+        return [todo]
     return ["// TODO: unsupported step"]
 
 
@@ -470,6 +510,8 @@ def _emit_assertion(a: Assertion) -> list[str]:  # noqa: C901, PLR0911
         return _emit_text_match(a.value, "toHaveValue", "toHaveValue")
     if a.label is not None:
         return _emit_text_match(a.label, "toHaveText", "toContainText")
+    if a.attribute is not None:
+        return _emit_attribute(a.attribute)
     if a.enabled is not None:
         return _expect(a.enabled.as_selector(), "toBeEnabled()")
     if a.disabled is not None:
@@ -516,6 +558,23 @@ def _emit_text_match(m: TextMatch, equals_matcher: str, contains_matcher: str) -
     return [f"await expect({loc}).{equals_matcher}({_re_raw(m.matches or '')});"]
 
 
+def _emit_attribute(m: AttributeMatch) -> list[str]:
+    sel = m.sel.as_selector()
+    loc = _locator(sel)
+    if loc is None:
+        return [_unsupported_selector_todo(sel)]
+    name = _ts(m.name)
+    if m.absent:
+        return [f"await expect({loc}).not.toHaveAttribute({name});"]
+    if m.equals is not None:
+        want = _ts(m.equals)
+    elif m.contains is not None:
+        want = _re_contains(m.contains)
+    else:
+        want = _re_raw(m.matches or "")
+    return [f"await expect({loc}).toHaveAttribute({name}, {want});"]
+
+
 def _emit_count(c: CountMatch) -> list[str]:
     sel = c.sel.as_selector()
     loc = _locator(sel)
@@ -548,14 +607,14 @@ class _PlaywrightGen:
     def scenario_open(self, name: str) -> str:
         return f"  test({_ts(name)}, async ({{ page }}) => {{"
 
-    def after_lines(self, after: list[AfterRule]) -> AfterEmission:
+    def cleanup_lines(self, cleanup: list[CleanupRule]) -> CleanupEmission:
         # Playwright registers `afterEach` on a describe block, not on one `test`, so a per-scenario
         # teardown is the language construct instead: `expect` throws, so a `catch` sees the very
         # failure the run's verdict would have been, and `finally` runs the cleanup on both paths —
         # the case a trailing step could never cover.
-        if not after:
-            return AfterEmission()
-        branching = any(rule.on != "always" for rule in after)
+        if not cleanup:
+            return CleanupEmission()
+        branching = any(rule.on != "always" for rule in cleanup)
         prologue = (["let bajutsuFailed = false;"] if branching else []) + ["try {"]
         epilogue = (
             [
@@ -566,7 +625,7 @@ class _PlaywrightGen:
             if branching
             else ["} finally {"]
         )
-        for rule in after:
+        for rule in cleanup:
             lines = [line for step in rule.steps for line in _emit_step(step)]
             if rule.on == "always":
                 epilogue.extend(indent_lines(lines))
@@ -576,14 +635,17 @@ class _PlaywrightGen:
                 epilogue.extend(indent_lines(lines, 2))
                 epilogue.extend(indent_lines(["}"]))
         epilogue.append("}")
-        return AfterEmission(prologue, epilogue, 1)
+        return CleanupEmission(prologue, epilogue, 1)
 
     def setup_lines(self, scenario: Scenario) -> list[str]:
         # Install the network-exchange recorder before navigation, but only when the scenario asserts
         # over the network — otherwise the scaffold stays free of unused plumbing. `permissions`
         # (BE-0276) has no browser equivalent (no TCC/pm-style OS permission model), so it is always
         # a TODO when present, regardless of the target this scenario also runs on.
-        lines = list(_RECORDER_SETUP) if _scenario_uses_network(scenario) else []
+        matchers = _network_matchers(scenario)
+        lines = list(_RECORDER_SETUP) if matchers else []
+        if any(m.query is not None or m.body is not None for m in matchers):
+            lines += DICT_MATCH_JS.splitlines()
         return lines + permissions_setup_lines(scenario) + interrupts_setup_lines(scenario)
 
     def launch_env_line(self, key: str, value: str) -> str:

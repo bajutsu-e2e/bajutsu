@@ -26,6 +26,8 @@ EVENTS: frozenset[str] = frozenset(
         "run.soft_deleted",
         "run.restored",
         "run.purged",
+        # An admin indexed the run trees under `runs/` into the history (BE-0449).
+        "runs.rescanned",
         "oauth.login",
         "oauth.denied",
         # The OIDC exchange (BE-0414): a CI job traded its token for a machine session, or was
@@ -34,6 +36,10 @@ EVENTS: frozenset[str] = frozenset(
         # run of them is how an operator sees a misconfigured `aud` or an unlisted repository.
         "oidc.exchange",
         "oidc.denied",
+        # The exchange minted its session but could not write its own audit entry. Logged at ERROR
+        # because the entry is lost: the audit table is the durable, tenant-visible record of the
+        # exchange, and only this line tells an operator it is missing.
+        "oidc.audit_failed",
         # An admin ended an org's machine sessions (BE-0414 unit 3). Recorded whether or not it
         # matched: zero is a legitimate answer, but it is also what a mistyped repository returns,
         # and an operator reaching for that endpoint is acting on a name that has just changed.

@@ -13,11 +13,18 @@ determinism-first contract by construction: no LLM, and writing it can't move th
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 
 from bajutsu import __version__
 from bajutsu.common.orchestrator import RunResult, StepOutcome
-from bajutsu.common.report.manifest import _details, _matrix
+from bajutsu.common.report.manifest import (
+    _details,
+    _matrix,
+    not_applicable_name,
+    result_test_name,
+    run_matrix,
+)
 from bajutsu.common.run_meta.id import parse_run_id_timestamp
 from bajutsu.common.run_meta.object_store import content_type_for
 
@@ -61,13 +68,17 @@ def _ms(seconds: float) -> int:
 
 
 def _status(ok: bool) -> str:
-    """The only two states Bajutsu emits; CTRF's other states stay at zero."""
+    """The two states an executed run takes; only a not-applicable record is `skipped` (BE-0452)."""
     return "passed" if ok else "failed"
 
 
 def _test_name(r: RunResult) -> str:
-    """The scenario name, suffixed with the engine on a cross-browser cell (BE-0076)."""
-    return f"{r.scenario} [{r.engine}]" if r.engine else r.scenario
+    """The scenario name, suffixed with the engine on a cross-browser cell (BE-0076).
+
+    A run formed by `runsOn` conditions appends its coordinates too, so one scenario's runs keep
+    unique test names (BE-0452).
+    """
+    return result_test_name(r)
 
 
 def _device_label(device_name: str, device_runtime: str) -> str:
@@ -140,13 +151,16 @@ def _test_extra(r: RunResult) -> dict[str, object]:
         }
     if r.sid:
         extra["sid"] = r.sid
+    if r.run_coordinates:
+        # The run's coordinates per target (BE-0452), so an importer can group one scenario's runs.
+        extra["coordinates"] = r.run_coordinates
     # The lifecycle phases (BE-0392) sit beside `steps` rather than inside it, so a consumer reading
     # only `steps` would miss a run whose sole failure was in setup or teardown. CTRF has one `steps`
     # array per test and no phase concept, so they ride `extra` the way `expect` already does.
     if r.before_outcomes:
-        extra["before"] = [_step(s) for s in r.before_outcomes]
+        extra["setup"] = [_step(s) for s in r.before_outcomes]
     if r.after_outcomes:
-        extra["after"] = [_step(s) for s in r.after_outcomes]
+        extra["cleanup"] = [_step(s) for s in r.after_outcomes]
     if r.expect_results:
         extra["expect"] = [
             {"ok": a.ok, "kind": a.kind, "detail": a.detail, "reason": a.reason}
@@ -157,6 +171,10 @@ def _test_extra(r: RunResult) -> dict[str, object]:
     if r.skipped_captures:
         extra["skippedCaptures"] = [
             {"kind": c.kind, "reason": c.reason} for c in r.skipped_captures
+        ]
+    if r.ignored_settings:
+        extra["ignoredSettings"] = [
+            {"target": g.target, "key": g.key, "reason": g.reason} for g in r.ignored_settings
         ]
     return extra
 
@@ -181,6 +199,17 @@ def _test(r: RunResult) -> dict[str, object]:
     return test
 
 
+def _not_applicable_test(record: Mapping[str, str]) -> dict[str, object]:
+    """A not-applicable record as a CTRF `skipped` test, CTRF's state for neither pass nor fail."""
+    return {
+        "name": not_applicable_name(record),
+        "status": "skipped",
+        "duration": 0,
+        "message": f"not applicable: {record.get('reason', '')}",
+        "extra": {"notApplicable": True, "target": record.get("target", "")},
+    }
+
+
 def _environment(provenance: dict[str, object] | None) -> dict[str, object] | None:
     """The run environment, drawn only from stored data so the export stays reproducible.
 
@@ -193,17 +222,17 @@ def _environment(provenance: dict[str, object] | None) -> dict[str, object] | No
     return None
 
 
-def _summary(started: datetime | None, results: list[RunResult]) -> dict[str, object]:
+def _summary(started: datetime | None, results: list[RunResult], skipped: int) -> dict[str, object]:
     passed = sum(1 for r in results if r.ok)
     # Convert the summed seconds to ms once (not per-scenario), so the total isn't undercounted by
     # the per-scenario truncation each `tests[].duration` incurs.
     duration = _ms(sum(r.duration_s for r in results))
     start = int(started.timestamp() * 1000) if started else 0
     return {
-        "tests": len(results),
+        "tests": len(results) + skipped,
         "passed": passed,
         "failed": len(results) - passed,
-        "skipped": 0,
+        "skipped": skipped,
         "pending": 0,
         "other": 0,
         "start": start,
@@ -217,6 +246,7 @@ def ctrf_json(
     results: list[RunResult],
     *,
     provenance: dict[str, object] | None = None,
+    not_applicable: Sequence[Mapping[str, str]] = (),
 ) -> dict[str, object]:
     """Project the run's result model into a CTRF document (BE-0161).
 
@@ -231,6 +261,7 @@ def ctrf_json(
         results: One `RunResult` per scenario — or per engine x scenario cell on a matrix run,
             each becoming a CTRF test with the engine in its name and `browser`.
         provenance: The manifest provenance block, or None.
+        not_applicable: The manifest's not-applicable records (BE-0452), each a `skipped` test.
 
     Returns:
         The CTRF document as a plain dict, ready to serialize beside `manifest.json`.
@@ -240,16 +271,23 @@ def ctrf_json(
     tool["version"] = (provenance or {}).get("toolVersion") or __version__
     inner: dict[str, object] = {
         "tool": tool,
-        "summary": _summary(started, results),
-        "tests": [_test(r) for r in results],
+        "summary": _summary(started, results, len(not_applicable)),
+        "tests": [_test(r) for r in results]
+        + [_not_applicable_test(record) for record in not_applicable],
     }
     # Environment is optional; include it only when there is stored data to record (a commit).
     if (environment := _environment(provenance)) is not None:
         inner["environment"] = environment
     # The engine x scenario matrix (BE-0076) has no first-class CTRF home; carry the aggregate under
     # `results.extra`, omitted for a single-engine / iOS run (which keeps the plain shape).
+    extra: dict[str, object] = {}
     if (matrix := _matrix(results)) is not None:
-        inner["extra"] = {"matrix": matrix}
+        extra["matrix"] = matrix
+    # Likewise the scenario x coordinates grid of the runs `runsOn` conditions formed (BE-0452).
+    if (grid := run_matrix(results, not_applicable)) is not None:
+        extra["runMatrix"] = grid
+    if extra:
+        inner["extra"] = extra
     doc: dict[str, object] = {
         "reportFormat": "CTRF",
         "specVersion": SPEC_VERSION,

@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Protocol, runtime_checkable
 
 from ._shared import Frame, Point
 from .element import Element
 from .selector import Selector
+from .selector_error import SelectorError
 
 
 @runtime_checkable
@@ -55,6 +57,12 @@ class Driver(Protocol):
     # Navigate back one level, each backend using its platform-correct primitive (BE-0210):
     # Android's system back key, iOS's on-screen OS back button, the browser's history.
     def back(self) -> None: ...
+    # Load `url` in the current page (BE-0464). `url` is a reference the backend resolves against its
+    # own base (the target's `baseUrl`), so an absolute URL passes through unchanged. The caller has
+    # already applied the scheme rule (`navigate_url_problem`), as the `navigate` handler does. Only
+    # a backend advertising URL_NAVIGATION supports it; the rest raise UnsupportedAction. Named
+    # `goto` because `BackendLifecycle.navigate()` already means "open baseUrl".
+    def goto(self, url: str) -> None: ...
     # Two-finger gestures. scale > 1 zooms in, < 1 zooms out; radians > 0 rotates
     # clockwise. Only backends advertising MULTI_TOUCH support these.
     def pinch(self, sel: Selector, scale: float) -> None: ...
@@ -73,6 +81,15 @@ class Driver(Protocol):
     # a `<select>` has no native counterpart on iOS / Android, so those backends raise
     # UnsupportedAction (BE-0191).
     def select_option(self, sel: Selector, option: str) -> None: ...
+    # For each `(sel, name)`, the value of HTML attribute `name` on the element `sel` resolves to
+    # (via `resolve_unique`), None when the element has no such attribute, or the SelectorError
+    # resolving `sel` raised — returned, not raised, so one bad selector leaves the other reads
+    # intact. Every pair comes from one snapshot, so a block's attribute assertions are judged
+    # against one instant rather than one read apiece (BE-0466). Web-only: a backend without
+    # ELEMENT_ATTRIBUTE raises UnsupportedAction.
+    def read_attributes(
+        self, reads: Sequence[tuple[Selector, str]]
+    ) -> list[str | None | SelectorError]: ...
     # Move the picker wheel resolved by `sel` to the row whose value is `value` (BE-0356). iOS-only:
     # a wheel exposes no addressable row, so only XCUITest's `adjust(toPickerWheelValue:)` can land
     # on one deterministically; a backend without the PICKER_WHEEL capability raises
@@ -91,7 +108,7 @@ class Driver(Protocol):
     # rejects the scenario before any device work, so this raise is only the mid-run backstop.
     def handle_system_alert(self, sel: Selector, timeout: float) -> None: ...
     # A single, non-blocking read of the SpringBoard alert's button labels — [] when no alert is up
-    # (BE-0315). The reactive `systemAlertHandling` guard polls this to learn whether a prompt is showing
+    # (BE-0315). The reactive system-alert guard polls this to learn whether a prompt is showing
     # and which buttons it offers, then taps a policy-named one via `handle_system_alert`. It shares
     # the HANDLE_SYSTEM_ALERT capability (a backend without it returns []), so it never adds a route
     # of its own — the query is BE-0316's `/systemAlert/query`, read here without the tap.

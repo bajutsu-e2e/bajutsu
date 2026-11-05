@@ -5,23 +5,31 @@ from __future__ import annotations
 import atexit
 import os
 from pathlib import Path
+from typing import Annotated
 
 import typer
 
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
+    WORKER_CONFIG_HELP,
     _ai_redactor,
     _build_alert_guard,
+    _command_preconditions_or_exit,
+    _device_udid_or_exit,
+    _first_run_or_exit,
     _install_usage_ledger,
+    _load_device_worker_or_exit,
     _load_effective_with_source,
     _refuse_out_in_checkout,
     _require_ai_credential,
     _resolve_browser,
+    _resolve_kind,
     _resolve_language,
     _select_actuator_or_exit,
     _start_launch_server_or_exit,
     _warn_onscreen_secrets,
     _with_headed,
+    _with_worker_device,
     resolve_system_alert_handling_flag,
 )
 from bajutsu.cli.handoff import make_handoff
@@ -29,14 +37,28 @@ from bajutsu.common.agents.claude import MODEL as _RECORD_MODEL
 from bajutsu.common.agents.factory import make_agent
 from bajutsu.common.ai import announce_ai
 from bajutsu.common.analytics import usage as _usage
-from bajutsu.common.backend_cli import simctl as _simctl
-from bajutsu.common.config import WEB_ENGINES, Effective
+from bajutsu.common.backends import capabilities_for_run
+from bajutsu.common.config import Effective
 from bajutsu.common.devices import errors as device_errors
+from bajutsu.common.devices.browsers import BROWSER_KINDS
+from bajutsu.common.drivers import base
 from bajutsu.common.handoff import HumanHandoffUnavailable
 from bajutsu.common.platform_lifecycle import environment_for
 from bajutsu.common.runner import launch_driver
-from bajutsu.common.scenario import Preconditions, dump_scenarios
+from bajutsu.common.scenario import dump_scenarios
 from bajutsu.record.loop import record as record_loop
+
+
+def _authoring_captures_video(actuator: str, eff: Effective, udid: str) -> bool:
+    """Whether `record` tags the authored scenario for a scenario-wide video (BE-0256).
+
+    The Environment seam answers whether the platform records video while authoring at all, but it
+    cannot see the target's route: a real iOS device (`runsOn.ios.kind: device`) has no simctl
+    video, and `capabilities_for_run` already drops `video` there (BE-0467). Requiring both keeps
+    `record` from requesting a capture every replay would then skip (issue #2258).
+    """
+    seam_records = environment_for(actuator, udid).captures_video()
+    return seam_records and base.Capability.VIDEO in capabilities_for_run(actuator, eff, udid)
 
 
 def _secret_tokens(eff: Effective) -> list[tuple[str, str]]:
@@ -110,12 +132,16 @@ def record(
     udid: str = typer.Option("booted"),
     backend: str = typer.Option(""),
     erase: bool = typer.Option(
-        True, "--erase/--no-erase", help="erase the device before launching (app must be installed)"
+        True,
+        "--erase/--no-erase",
+        help="erase the device before launching (app must be installed); the target's "
+        "subject.reinstall: erase "
+        "does not apply here (default: erase)",
     ),
     system_alert_handling: bool | None = typer.Option(
         None,
         "--system-alert-handling/--no-system-alert-handling",
-        help="handle unexpected OS prompts while authoring (on by default; uses the same API key)",
+        help="handle unexpected OS prompts while authoring (default: on; uses the same API key)",
     ),
     max_steps: int = typer.Option(
         30,
@@ -138,13 +164,19 @@ def record(
         None,
         "--headed/--no-headed",
         help="web backend: author against a visible (headed, slow-motion) browser instead of "
-        "headless; default leaves the target's `headless` config",
+        "headless; overrides the target's driver.headless",
     ),
     browser: str = typer.Option(
         "",
         "--browser",
-        help=f"web backend: rendering engine to author against — {' / '.join(WEB_ENGINES)}; "
-        "default leaves the target's `browser` config (chromium)",
+        help=f"web backend: browser to author against — {' / '.join(BROWSER_KINDS)}; "
+        "overrides the target's runsOn.browser.kind (default: chromium)",
+    ),
+    kind: str = typer.Option(
+        "",
+        "--kind",
+        help="iOS: the one of the target's runsOn.ios.kind to author on — simulator / device; "
+        "a kind the target does not declare exits 2 (default: the first listed kind)",
     ),
     language: str = typer.Option(
         "",
@@ -166,6 +198,9 @@ def record(
         help="human-in-the-loop handoff responder (BE-0179): auto (interactive when stdin is a TTY, "
         "else none) | prompt | stream (serve sets this) | off",
     ),
+    worker_config: Annotated[
+        Path | None, typer.Option("--worker-config", help=WORKER_CONFIG_HELP)
+    ] = None,
     config: str = typer.Option(DEFAULT_CONFIG),
 ) -> None:
     """Explore the app with AI toward a goal and write the recorded scenario.
@@ -174,9 +209,11 @@ def record(
     `scenarios` dir — or, for a read-only Git `--config`, under the current directory (BE-0063).
     """
     eff, _source, checkout_root = _load_effective_with_source(config, target_name)
-    # --headed/--no-headed overrides the target's `headless` config (web backend only; iOS ignores it).
+    # --headed/--no-headed overrides the target's `driver.headless` (web only; iOS ignores it).
     eff = _with_headed(eff, headed)
-    # --browser overrides the target's `browser` config (web backend only; flag > config > chromium).
+    # --kind picks one of the target's `runsOn.ios.kind` (iOS only; BE-0468).
+    eff = _resolve_kind(eff, kind, single=True)
+    # --browser overrides the target's `runsOn.browser.kind` (web only; flag > config > chromium).
     eff = _resolve_browser(eff, browser)
     # --language overrides the target's `ai.language` (flag > config > auto), BE-0188.
     eff = _resolve_language(eff, language)
@@ -197,15 +234,22 @@ def record(
     # process; the screenshot is sent as-is — images cannot be pixel-masked (BE-0047).
     redactor = _ai_redactor(eff)
     authoring_agent = make_agent(ai=eff.ai, redactor=redactor)
-    actuator, _ = _select_actuator_or_exit(backend, eff, [])
+    worker = _load_device_worker_or_exit(worker_config)
+    eff = _with_worker_device(eff, worker)
+    actuator, _ = _select_actuator_or_exit(backend, eff, [], worker)
+    # The device comes through the target's provider, as in `run`: the `--udid` pool, or the grid
+    # an `appium` environment names (BE-0452).
+    udid = _device_udid_or_exit(eff, udid)
+    # Under `runsOn` conditions the command takes the first run's device, never several (BE-0452).
+    eff, udid = _first_run_or_exit(eff, actuator, udid)
     alert_guard = None
-    # On by default while authoring (there is no scenario yet to carry its own setting).
+    # The guard is on unless the flag turns it off: a config can answer or leave a prompt by name,
+    # but carries no switch for the whole guard (BE-0473).
     if resolve_system_alert_handling_flag(system_alert_handling, default=True):
         alert_guard = _build_alert_guard(eff, redactor, alert_vision_instruction)
-    # Web has no simctl udid (launch_driver ignores it for playwright); resolving "booted" would
-    # shell out to simctl and crash off-macOS, so skip it for the web backend.
-    if actuator != "playwright":
-        udid = _simctl.resolve_udid(udid)
+    # Resolve through the selected environment's own device lookup, as `repl` does: simctl for the
+    # local iOS route, the endpoint as is for an `appium` grid, and no device at all for the web.
+    udid = environment_for(actuator, udid).resolve_device(udid)
 
     # Bring up the app's target server (the web baseUrl host) if it declares launchServer — reused
     # if already serving, started otherwise. Stopped when this command exits (atexit).
@@ -226,12 +270,13 @@ def record(
     except ValueError as e:
         typer.echo(str(e), err=True)
         raise typer.Exit(2) from None
+    preconditions = _command_preconditions_or_exit(eff, erase=erase)
     say(
         f"⚙️  preparing the simulator — installing and launching {target_name} (this can take a moment) …"
     )
     try:
-        driver, _readiness = launch_driver(udid, eff, actuator, Preconditions(erase=erase))
-    except device_errors.DeviceError as e:
+        driver, _readiness = launch_driver(udid, eff, actuator, preconditions)
+    except (device_errors.DeviceError, base.UnsupportedAction) as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
     say(f"✅ app is up — authoring toward the goal: {goal!r}")
@@ -246,11 +291,11 @@ def record(
             alert_guard=alert_guard,
             secret_tokens=_secret_tokens(eff),
             # Whether to record a scenario-wide screen video while authoring is the platform's to
-            # answer, behind the Environment seam (BE-0256): the simctl-backed device (xcuitest)
+            # answer, behind the Environment seam (BE-0256): the simctl-backed Simulator (xcuitest)
             # records via a simctl interval, web captures by other means during replay, and the fake
             # actuator has no device. Asking the seam is what fixes xcuitest, which a per-actuator
-            # name test historically skipped silently.
-            capture_video=environment_for(actuator, udid).captures_video(),
+            # name test historically skipped silently; the run's capabilities narrow it per route.
+            capture_video=_authoring_captures_video(actuator, eff, udid),
             report=say,
             # A "needs human" turn hands off to this responder; with no responder (CI, non-interactive)
             # the loop raises below rather than hanging or guessing (BE-0179).

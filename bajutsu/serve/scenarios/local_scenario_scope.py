@@ -25,6 +25,9 @@ class LocalScenarioScope:
     def list(self) -> list[dict[str, Any]]:
         return list_scenarios(self._dir)
 
+    def directory(self) -> Path | None:
+        return self._dir
+
     def runnable(self, scenario: str) -> Runnable | None:
         name = Path(scenario).name  # honour only the basename, then match the trusted dir listing
         base = self._dir.resolve()

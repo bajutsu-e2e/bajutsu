@@ -15,7 +15,7 @@ from bajutsu.common.provisioning.requirements import Brew, Extra, Playwright, To
 
 def test_plan_ios_target_needs_xcodebuild_and_no_extra() -> None:
     # iOS is XCUITest-only (BE-0290): it needs Xcode's `xcodebuild` and no pip extra.
-    cfg = load_config("targets:\n  demo:\n    bundleId: com.example.demo\n    backend: [ios]\n")
+    cfg = load_config("targets:\n  demo:\n    platform: ios\n    subject: {id: com.example.demo}\n")
     p = provision.plan(cfg)
     assert p.extras == ()
     assert any(t.exe == "xcodebuild" for t in p.tools)
@@ -23,24 +23,48 @@ def test_plan_ios_target_needs_xcodebuild_and_no_extra() -> None:
 
 def test_plan_web_target_includes_the_configured_engine_browser() -> None:
     cfg = load_config(
-        "targets:\n  site:\n    baseUrl: http://x/index.html\n"
-        "    backend: [web]\n    browser: firefox\n"
+        "targets:\n"
+        "  site:\n"
+        "    platform: web\n"
+        "    subject: {url: 'http://x/index.html'}\n"
+        "    runsOn:\n"
+        "      browser: {kind: firefox}\n"
     )
     p = provision.plan(cfg)
     assert p.extras == ("web",)
     assert Tool("firefox", Playwright("firefox")) in p.tools
 
 
+@pytest.mark.parametrize(
+    ("kind", "name"), [("chrome", "Google Chrome"), ("edge", "Microsoft Edge")]
+)
+def test_plan_leaves_a_channel_browser_to_the_host(kind: str, name: str) -> None:
+    # BE-0468: Chrome and Edge are the host's own installs, which `doctor` checks by launching them.
+    cfg = load_config(
+        "targets:\n  site:\n    platform: web\n    subject: {url: 'http://x/'}\n"
+        f"    runsOn: {{browser: {{kind: {kind}}}}}\n"
+    )
+    assert not [t for t in provision.plan(cfg).tools if t.exe == kind]
+    # `doctor` still names the host install when the channel is missing.
+    install = requirements.playwright_browser(kind).install
+    assert isinstance(install, requirements.Manual)
+    assert name in install.hint
+
+
 def test_plan_fake_target_installs_nothing() -> None:
-    cfg = load_config("targets:\n  t:\n    bundleId: com.example.t\n    backend: [fake]\n")
+    cfg = load_config("targets:\n  t:\n    platform: fake\n    subject: {id: com.example.t}\n")
     assert provision.plan(cfg).is_empty
 
 
 def test_plan_dedupes_across_targets() -> None:
     cfg = load_config(
         "targets:\n"
-        "  a:\n    bundleId: com.example.a\n    backend: [ios]\n"
-        "  b:\n    bundleId: com.example.b\n    backend: [ios]\n"
+        "  a:\n"
+        "    platform: ios\n"
+        "    subject: {id: com.example.a}\n"
+        "  b:\n"
+        "    platform: ios\n"
+        "    subject: {id: com.example.b}\n"
     )
     p = provision.plan(cfg)
     assert [t.exe for t in p.tools].count("xcodebuild") == 1  # shared tool listed once
@@ -48,14 +72,18 @@ def test_plan_dedupes_across_targets() -> None:
 
 def test_plan_detects_a_configured_ai_provider() -> None:
     cfg = load_config(
-        "defaults:\n  ai:\n    provider: api-key\n"
-        "targets:\n  demo:\n    bundleId: com.example.demo\n    backend: [ios]\n"
+        "defaults:\n"
+        "  ai: {provider: api-key}\n"
+        "targets:\n"
+        "  demo:\n"
+        "    platform: ios\n"
+        "    subject: {id: com.example.demo}\n"
     )
     assert "ai" in provision.plan(cfg).extras
 
 
 def test_plan_without_ai_config_omits_the_ai_extra() -> None:
-    cfg = load_config("targets:\n  demo:\n    bundleId: com.example.demo\n    backend: [ios]\n")
+    cfg = load_config("targets:\n  demo:\n    platform: ios\n    subject: {id: com.example.demo}\n")
     assert "ai" not in provision.plan(cfg).extras
 
 
@@ -65,7 +93,7 @@ def test_plan_with_no_targets_installs_no_backend() -> None:
     from bajutsu.common.config import Config
 
     assert provision.plan(Config()).is_empty
-    assert provision.plan(load_config("defaults:\n  backend: [web]\n")).is_empty
+    assert provision.plan(load_config("{}\n")).is_empty
 
 
 def test_plan_no_targets_still_detects_a_defaults_ai_provider() -> None:
@@ -189,14 +217,18 @@ def test_load_missing_explicit_config_exits(tmp_path: Path) -> None:
 
 def test_load_reads_an_existing_config(tmp_path: Path) -> None:
     cfg_path = tmp_path / "bajutsu.config.yaml"
-    cfg_path.write_text("targets:\n  demo:\n    bundleId: com.example.demo\n    backend: [ios]\n")
+    cfg_path.write_text(
+        "targets:\n  demo:\n    platform: ios\n    subject: {id: com.example.demo}\n"
+    )
     cfg = provision._load(str(cfg_path))
     assert "demo" in cfg.targets
 
 
 def test_main_dry_run_prints_the_plan_without_installing(tmp_path: Path) -> None:
     cfg_path = tmp_path / "bajutsu.config.yaml"
-    cfg_path.write_text("targets:\n  demo:\n    bundleId: com.example.demo\n    backend: [ios]\n")
+    cfg_path.write_text(
+        "targets:\n  demo:\n    platform: ios\n    subject: {id: com.example.demo}\n"
+    )
     assert provision.main(["--config", str(cfg_path), "--dry-run"]) == 0
 
 
@@ -206,5 +238,5 @@ def test_main_forced_backend_dry_run(tmp_path: Path) -> None:
 
 def test_main_empty_config_installs_nothing(tmp_path: Path) -> None:
     cfg_path = tmp_path / "bajutsu.config.yaml"
-    cfg_path.write_text("targets:\n  t:\n    bundleId: com.example.t\n    backend: [fake]\n")
+    cfg_path.write_text("targets:\n  t:\n    platform: fake\n    subject: {id: com.example.t}\n")
     assert provision.main(["--config", str(cfg_path)]) == 0

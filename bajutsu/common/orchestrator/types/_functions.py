@@ -3,13 +3,21 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.actuation import ActuationReporter, Drained
 from bajutsu.common.evidence.network import NetworkExchange
+from bajutsu.common.scenario.system_alerts import (
+    TITLE_MARKER,
+    SystemAlertChoice,
+    SystemAlertPrompt,
+    alert_title_marker,
+    labels_cover,
+    system_alert_shapes,
+)
 
 from .alert_event import AlertEvent
 from .drained_interruption_events import DrainedInterruptionEvents
@@ -37,32 +45,10 @@ def _no_network() -> list[NetworkExchange]:
 def alert_block_note(buttons: Sequence[str]) -> str:
     """What the guard saw blocking the screen, for a failure reason to name (BE-0402).
 
-    *buttons* are the labels blocking the screen that this call has not already answered —
-    `probe_native`'s `"unhandled"` answer, or the leftover buttons a `"dismissed"`,
-    `already_dismissed`, `"unhandled"`, or raced-`"absent"` round (`subtract_labels`) finds beyond
-    the shapes that round accounted for (`AlertGuardConfig.__call__`, BE-0418) — a fresh dismissal
-    computes it too, since the alert it just tapped is never the only thing `buttons` enumerates.
-    All four credit per *read* — every rule `identified_alert_rules` resolves on it, not only the
-    shapes this call has tapped — so a second, *declared* prompt co-present on the same read is
-    subtracted too rather than named as one no rule identifies. `already_dismissed` needs this too,
-    not only the other three: a wider declared sibling nesting with an already-dismissed narrower
-    shape (`_resolve_alert_rule`'s own reverse-containment test) reaches `already_dismissed` with
-    its own extra label still on `buttons`, and crediting only the tapped shapes there would report
-    that label as one no rule identifies, when a rule does identify it (BE-0418 review finding).
-    `_AlertGuardGate._observe_native`'s `"unhandled"` and raced-`"absent"` branches
-    (`waits/_alert_guard_gate.py`) pass a leftover credited that same per-read way.
-    Not-yet-answered is weaker than "no rule accounts for it": a label two rules both name can
-    collide (the built-in `notifications` and `tracking` both grant `"Allow"`) and land here
-    un-subtracted even though a rule does identify it, once a per-label collision keeps
-    `matching_alert_rule` from resolving either
-    (`test_the_end_of_step_guard_filters_the_unhandled_note_when_the_collision_never_resolves`).
-    Empty means the
-    block was inferred from the collapsed-tree proxy rather than enumerated — a surface
-    `springboard.alerts` cannot see, or a backend with no native query at all — so the note hedges
-    rather than naming buttons nobody read. A prompt the policy *did* name and a tap that did not
-    take is a different story, and gets `uncleared_prompt_note` below instead — the in-tree
-    dismiss's own `NotTappable`, or `__call__` spending its whole round bound with the shape it
-    most recently tapped, native or in-tree, still reading back on the final round (BE-0418).
+    *buttons* are a SpringBoard alert's buttons that no rule identifies — the *unidentified* record
+    a resolving read returns (BE-0461). Empty means the block was inferred from the collapsed-tree
+    proxy rather than enumerated, so the note hedges rather than naming buttons nobody read. A
+    prompt a rule *did* name, whose press did not clear it, gets `uncleared_prompt_note` instead.
     """
     if buttons:
         return f"{_UNHANDLED_ALERT_NOTE} (buttons: {', '.join(buttons)})"
@@ -70,17 +56,17 @@ def alert_block_note(buttons: Sequence[str]) -> str:
 
 
 def collapsed_tree_note(seconds: float) -> str:
-    """A screen the guard has positively ruled a SpringBoard alert out of, yet whose tree still fails
+    """A screen a read has positively ruled a SpringBoard alert out of, yet whose tree still fails
     `shows_app_ui` after *seconds* — no element other than the application itself carries a label or
     an identifier — for a wait to stop on rather than spend its whole timeout.
 
     Distinct from `alert_block_note`'s hedged form, which reads a collapsed tree as *possibly* an
-    alert: here a native probe has just reported none, so what holds the screen is something outside
-    the tree no answer path reaches. Measured on an iOS 26.5 Simulator, iOS's Save Password alert can
-    be left mid-presentation this way when a notification request lands at the same moment — never
-    drawn, absent from every process's accessibility tree, yet modal over the app — and neither
-    backgrounding the app, a hardware Escape, nor a tap on a control that is still enumerable cleared
-    it.
+    alert: here the read's own SpringBoard check just found none, so what holds the screen is
+    something outside the tree no answer path reaches. Measured on an iOS 26.5 Simulator, iOS's Save
+    Password alert can be left mid-presentation this way when a notification request lands at the
+    same moment — never drawn, absent from every process's accessibility tree, yet modal over the app
+    — and neither backgrounding the app, a hardware Escape, nor a tap on a control that is still
+    enumerable cleared it.
     """
     return (
         f"no element below the application has carried a label or identifier for {seconds:.0f}s "
@@ -90,21 +76,12 @@ def collapsed_tree_note(seconds: float) -> str:
 
 
 def uncleared_prompt_note(label: str) -> str:
-    """A give-up on a prompt a rule named but could not clear (BE-0402): the in-tree dismiss's own
-    `NotTappable`, `AlertGuardConfig.__call__` spending its whole round bound with the shape it
-    most recently tapped — native or in-tree — still reading back on the final round, a native tap
-    `_AlertGuardGate._observe_native` resolved and then found the label twice (`AmbiguousSelector`,
-    which `probe_native` reports as `"unhandled"`), or a second, declared prompt the `"dismissed"`
-    branch's own fallback (`_fresh_dismiss_leftover_note`) resolves fresh against the final round's
-    own read, queued behind the one that round actually tapped and never reached within the bound
-    (BE-0418 review finding) — BE-0418.
+    """A give-up on a prompt a rule named but could not clear (BE-0402): the *gave up* record the
+    backend returns once a showing reaches its press ceiling, or stays unhittable past its bound
+    (BE-0461).
 
     Deliberately not `alert_block_note`: "unhandled" would tell the author no rule identified the
-    alert, when their rule did identify it. "Could not clear" covers every producer above without
-    claiming which one happened — a tap that did not take or never became deliverable, *and* a
-    prompt this call never attempted a tap on at all because the round bound ran out first (BE-0418
-    review finding) — either way, telling the author to write a rule they already have instead of
-    to the stuck prompt is the one wrong answer this note exists to avoid.
+    alert, when their rule did identify it — and send them to write a rule they already have.
     """
     return f"{_UNCLEARED_PROMPT_NOTE} (button: {label})"
 
@@ -161,145 +138,119 @@ def selector_names_button(sel: base.Selector, buttons: Sequence[str]) -> bool:
     return any(base.matches(_alert_button(label), sel) for label in buttons)
 
 
-def subtract_labels(buttons: Sequence[str], shapes: Iterable[frozenset[str]]) -> list[str]:
-    """The buttons left over once every one of *shapes*' own labels has been accounted for.
+def observed_alert_labels(driver: base.Driver) -> list[str]:
+    """What a `handleSystemAlert` step's title check reads: the alert's buttons, then its title's marker.
 
-    Shared by `AlertGuardConfig.__call__`'s `_leftover_note` (`alert_guard_config.py`) and both
-    `_AlertGuardGate._observe_native` branches that credit a whole read — its `"unhandled"` one and
-    its race one (`waits/_alert_guard_gate.py`, BE-0418) — so none of the three carries an
-    independent copy of the same subtraction: the one-shot call's `dismissed` shapes and the
-    mid-wait gate's own `identified_alert_rules` result are all, after all, "shapes whose labels
-    this read should not still name".
-
-    Subtracted with multiplicity, not as a set: `answered = {label for labels in shapes for label
-    in labels}` followed by `[b for b in buttons if b not in answered]` would treat one shape as
-    consuming *every* occurrence of its labels at once, so a second, genuinely live alert rendering
-    the identical label pair — two permission prompts both offering "Allow" / "Don't Allow", say —
-    would vanish from the leftover along with the one already accounted for. Removing one
-    occurrence per label instead leaves that second alert's own copy behind to name, while two
-    shapes sharing a label (BE-0418's own `notifications` / `tracking` pair, both granting "Allow")
-    still cancel out to nothing between them.
-
-    Subtracts each shape's own `identifying_labels`, deliberately not the *whole* `buttons` a round
-    actually read: `buttons` is `system_alert_labels()`'s enumeration of every alert SpringBoard
-    currently holds, not one alert's own button set, so a second, different, unidentified alert
-    already up alongside one already accounted for — the ordinary shape of a stacked pair queued by
-    one action, not a corner case, per
-    `test_the_end_of_step_guard_still_names_a_co_present_alert_no_rule_identifies`
-    (`tests/orchestrator/test_native_alert_guard.py`) — would have its own buttons permanently
-    credited to the other alert and never surfaced (review finding: recording the whole read this
-    way was tried and reverted). The trade-off this leaves stands the other way: a rule whose
-    `identifying_labels` deliberately names only *some* of its alert's buttons
-    (`ResolvedAlertRule`'s own docstring — "not a demand that the shape's labels be the alert's
-    whole button set") leaves the rest stranded here, reported as if a second, different, unhandled
-    alert had joined the one already accounted for. No currently declared native shape does this
-    (every entry in `_LABELS` names its prompt's whole button set), and the two failure directions
-    are irreconcilable from a flat button list alone — nothing here can tell "this alert's own
-    unlisted button" apart from "a different alert's button that happens to be enumerable at the
-    same moment" — so this side stays the accepted gap rather than the swallowed-stranger one,
-    which a passing scenario hits today.
+    The title joins as one more label (`system_alerts.alert_title_marker`), so a prompt whose
+    buttons another prompt shares — Local Network and notifications both offer "Allow" / "Don't
+    Allow" — is identified by naming that marker, or ruled out by excluding it. A backend with no titles to report (`system_alert_titles` absent) contributes
+    its buttons alone, as before.
     """
-    leftover = list(buttons)
-    for shape in shapes:
-        for label in shape:
-            if label in leftover:
-                leftover.remove(label)
-    return leftover
+    buttons = driver.system_alert_labels()
+    titles = getattr(driver, "system_alert_titles", None)
+    if not buttons or not callable(titles):
+        return buttons
+    return [*buttons, *(alert_title_marker(title) for title in titles())]
 
 
-def identified_alert_rules(
-    rules: Sequence[ResolvedAlertRule], buttons: Sequence[str]
-) -> list[ResolvedAlertRule]:
-    """Every rule whose shape is uniquely identified on `buttons`: no excluded label present, and
-    each identifying label present exactly once.
+AlertTitleCheck = Callable[[Sequence[str]], bool]
 
-    The shared accept test behind `matching_alert_rule` below (its first element), so a caller
-    crediting a whole read against every rule that could act on it — the mid-wait gate's own race
-    branch, subtracting every declared prompt's own labels from a leftover (`waits/_alert_guard_gate.py`,
-    BE-0418) — cannot drift from what a probe itself would actually resolve. A hand-rolled copy of
-    this predicate elsewhere would credit, or refuse, a shape this function disagrees with the
-    moment either changes, and the caller would find out only as a `wait` blocked by an alert
-    nothing clears, or one a rule does identify silently going unreported.
+
+def prompt_title_check(
+    prompt: SystemAlertPrompt, choice: SystemAlertChoice, locale: str | None
+) -> AlertTitleCheck | None:
+    """Whether a read (`observed_alert_labels`) can be the prompt a `handleSystemAlert` step names.
+
+    The step taps by one button label, which Local Network and notifications share; the title tells
+    them apart. A read passes when some shape of the prompt has every title marker it identifies by
+    and no label it excludes. Buttons are left to the step's own selector, so a backend reporting no
+    titles passes every prompt but `localNetwork`, whose shape names its title. None where the
+    label table does not cover `locale`, since then the step has no shape to check.
     """
-    present = list(buttons)
-    return [
-        rule
-        for rule in rules
-        if not any(label in present for label in rule.excluded_labels)
-        and all(present.count(label) == 1 for label in rule.identifying_labels)
-    ]
+    if locale is None or not labels_cover(prompt, locale):
+        return None
+    shapes = system_alert_shapes(prompt, choice, locale)
+
+    def check(observed: Sequence[str]) -> bool:
+        present = set(observed)
+        return any(
+            not (shape.excluded_labels & present)
+            and all(
+                label in present
+                for label in shape.identifying_labels
+                if label.startswith(TITLE_MARKER)
+            )
+            for shape in shapes
+        )
+
+    return check
 
 
-def matching_alert_rule(
-    rules: Sequence[ResolvedAlertRule], buttons: Sequence[str]
-) -> ResolvedAlertRule | None:
-    """The first rule whose shape is uniquely identified on `buttons`.
-
-    A rule matches when each of its identifying labels is present exactly once — the full set, not
-    only the label it taps, since a single shared label cannot by itself distinguish one covered
-    prompt from another — and no excluded label is present at all. None means no rule's prompt is
-    identified, so the caller leaves the alert alone and reports it (BE-0406).
-
-    Returns the rule itself, not just its tap label: a caller that keyed on the label alone could
-    not tell two rules sharing one alert's shape under different choices apart (a scenario's
-    `choice` overriding a target's for the same prompt, BE-0177), and one such rule's exclusion
-    would then promote its sibling to tap the opposite button on an alert it never actually
-    matched. `AlertGuardConfig.__call__`'s native dedup (BE-0418) keys on a matched rule's own
-    `identifying_labels` rather than the raw `buttons` read for the identical reason: `buttons`
-    enumerates every alert SpringBoard currently holds and changes whenever a *different* alert
-    joins or leaves the surface, while the rule that answers one already-dismissed alert does not.
-    """
-    identified = identified_alert_rules(rules, buttons)
-    return identified[0] if identified else None
-
-
-def push_interruption_policy(driver: base.Driver, guard: AlertGuardConfig | None) -> None:
+def push_interruption_policy(
+    driver: base.Driver, guard: AlertGuardConfig | None, *, scenario_start: bool = False
+) -> None:
     """Hand the backend the buttons it may press on an alert that interrupts its own interactions.
 
     XCUITest resolves such an alert *before* it synthesizes the interaction, and with nothing
     installed answers with the alert's own default button — granting a permission the scenario may
     have refused, with nothing in the report. Pushing the guard's already-resolved labels keeps that
     decision here: the backend applies `rules`, and an alert none of them identifies is declined and
-    reported rather than guessed at — a fallback `probe_native` itself no longer has either
-    (BE-0406).
+    reported rather than guessed at (BE-0406).
 
     A rule the monitor can never meet is dropped rather than pushed: this surface exists for an
     alert in another process interrupting an XCUITest interaction, and one raised into the
-    application's own process never reaches it. Dropping it is not merely tidy — the Swift side
-    matches a rule by subset, so pushing an in-tree-only shape would re-open there the collision an
-    `excluded_labels` set closes here (BE-0406).
+    application's own process never reaches it. Each rule carries its `excluded_labels` too, so the
+    monitor's accept test is this side's: `notifications` excludes the Local Network title's marker,
+    and without the exclusion the monitor would answer that prompt by the notification rule.
 
     `governs` is true for any scenario whose guard is on, independent of whether any rule survived
     the drop above: a real declaration filtered down to nothing this surface can act on is not the
     same as no declaration at all, and only the latter should still leave a declined alert
-    unreported. An absent guard (`systemAlertHandling: false`) pushes an empty, non-governing policy
+    unreported. An absent guard (`--no-system-alert-handling`) pushes an empty, non-governing policy
     rather than skipping the call, so a scenario that switched the guard off does not inherit the
     previous scenario's policy from the resident runner. A backend that does not implement
     `InterruptionPolicyTarget` is simply never asked.
 
+    The in-tree rules travel separately, in `tree_dedup_rules` order, together with the guard's
+    pacing, for a backend that answers an application-owned prompt inside a request (BE-0461 Unit 2).
+    *scenario_start* marks the push at scenario start, which also makes the backend forget every
+    showing a previous scenario answered.
+
     Raises:
-        ValueError: a rule this surface *can* meet carries an exclusion set. No such shape exists
-            today — by construction, since every excluded shape is in-tree-only and dropped above —
-            and one added later must fail loudly here rather than reach the monitor with its
-            exclusion silently discarded, which is the subset-match collision this drop avoids.
+        ValueError: A rule claims both surfaces. No declared prompt does, and pushing it on one
+            surface only would silently drop the other.
     """
     if not isinstance(driver, base.InterruptionPolicyTarget):
         return
-    rules: list[tuple[frozenset[str], str]] = []
+    rules: list[tuple[frozenset[str], str, frozenset[str]]] = []
+    in_tree_rules: list[tuple[frozenset[str], str, frozenset[str]]] = []
+    pacing: base.AlertPacing | None = None
     if guard is not None:
-        reachable = [rule for rule in guard.rules if rule.native]
-        excluding = [rule.tap_label for rule in reachable if rule.excluded_labels]
-        if excluding:
-            raise ValueError(
-                "interruption policy cannot carry an exclusion set; rules tapping "
-                f"{', '.join(sorted(excluding))} would be matched by subset on the runner"
-            )
-        rules = [(rule.identifying_labels, rule.tap_label) for rule in reachable]
-    driver.set_interruption_policy(rules, guard is not None)
+        for rule in guard.rules:
+            if rule.native and rule.in_tree:
+                raise ValueError(
+                    f"alert rule {sorted(rule.identifying_labels)} claims both the native and the "
+                    "in-tree surface; a declared prompt shows on one"
+                )
+        rules = [_policy_rule(rule) for rule in guard.rules if rule.native]
+        in_tree_rules = [_policy_rule(rule) for rule in guard.tree_dedup_rules]
+        pacing = guard.pacing
+    driver.set_interruption_policy(
+        rules,
+        guard is not None,
+        in_tree_rules=in_tree_rules,
+        pacing=pacing,
+        scenario_start=scenario_start,
+    )
+
+
+def _policy_rule(rule: ResolvedAlertRule) -> tuple[frozenset[str], str, frozenset[str]]:
+    """A resolved rule in the shape `set_interruption_policy` takes."""
+    return (rule.identifying_labels, rule.tap_label, rule.excluded_labels)
 
 
 def drain_interruptions(driver: base.Driver) -> DrainedInterruptionEvents:
-    """The prompts the backend answered, declined and swiped away at interruption time since the last drain.
+    """The prompts the backend answered, declined and cleared at interruption time since the last drain.
 
     A tapped label is reported as an ordinary `AlertEvent` so a dismissal that happened inside the
     backend's own interruption handling is not missing from the run's report. A declined alert is
@@ -307,11 +258,13 @@ def drain_interruptions(driver: base.Driver) -> DrainedInterruptionEvents:
     so it is not a dismissal, but its buttons are what lets a caller fail by name rather than let the
     interruption pass in silence (BE-0406 Unit 2b). A backend without the opt-in contributes nothing.
 
-    A swiped-away notification banner is a dismissal like the first, so it joins `alerts` rather than
+    A cleared notification banner is a dismissal like the first, so it joins `alerts` rather than
     `undeclared` — under its own kind, since nothing was tapped and the label is the notification's
-    text (BE-0416). It is deliberately *not* an undeclared interruption: no scenario could have
-    declared it, because a banner offers no button for a rule to identify, so failing the step over
-    one would fail every run a notification happened to land in.
+    text (BE-0416). Cleared, not necessarily swiped away: the XCUITest runner also reports a banner
+    that went by its own auto-dismissal, and logs which path cleared it to its own output. It is
+    deliberately *not* an undeclared interruption: no scenario could have declared it, because a
+    banner offers no button for a rule to identify, so failing the step over one would fail every
+    run a notification happened to land in.
     """
     if not isinstance(driver, base.InterruptionPolicyTarget):
         return DrainedInterruptionEvents(alerts=[], undeclared=[])

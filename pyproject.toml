@@ -6,11 +6,21 @@ readme = "DESIGN.md"
 requires-python = ">=3.13"
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
+# The server stack (FastAPI + uvicorn, SQLAlchemy + Alembic, and `cryptography` for the
+# encrypted secret store) is a base dependency since BE-0449: `bajutsu serve` keeps its queue in a
+# local SQLite file with no cloud service, and that shape is where the local backend is heading.
+# Every one of them is still imported lazily, only on the `serve` paths that use it, so the CLI
+# (`bajutsu run` and the rest) starts without loading them (tests/serve/test_import_guard.py).
 dependencies = [
+    "alembic>=1.13",
+    "cryptography>=50.0.0",
+    "fastapi>=0.110",
     "jinja2>=3.1",
     "pydantic>=2.7",
     "pyyaml>=6.0",
+    "sqlalchemy>=2.0",
     "typer>=0.12",
+    "uvicorn>=0.27",
 ]
 
 [project.optional-dependencies]
@@ -24,7 +34,9 @@ ai = ["anthropic>=0.50"]
 # Chromium binary is a separate `playwright install chromium` (see demos/web), not a pip dep.
 web = ["playwright>=1.49"]
 visual = ["pillow>=10.0"]
-mcp = ["fastmcp>=2.0.0"]
+# Capped below 4: fastmcp 4 (and mcp 2 behind it) is a breaking API move for bajutsu/mcp, so a
+# lock refresh or a grouped Dependabot bump must not take it implicitly.
+mcp = ["fastmcp>=2.0.0,<4"]
 # Amazon Bedrock provider for the AI paths (BAJUTSU_AI_PROVIDER=bedrock); pulls in boto3 for SigV4.
 # Layers the Bedrock variant onto the `ai` extra, which is the single source of the `anthropic`
 # version pin — so the Bedrock line only adds the `[bedrock]` extra, never a second version (BE-0111).
@@ -43,27 +55,28 @@ worker-web = ["bajutsu[web,visual,schema]"]
 # closure is just the run-reached `visual` / `schema` extras (idb + its `fb-idb` client retired,
 # BE-0290).
 worker-ios = ["bajutsu[visual,schema]"]
-# The hosted-backend control plane (`serve --backend=server`): the FastAPI app that serves the
-# same SPA + API over the swap-in seams. Imported only when the server backend is selected, never
-# on the default path (the import guard in tests/serve/test_import_guard.py locks this).
-server = ["fastapi>=0.110", "uvicorn>=0.27", "boto3>=1.34"]
-# The hosted-backend system of record (`serve --backend=server` with BAJUTSU_DATABASE_URL): the
-# SQLAlchemy `Repository` seam + Alembic migrations + the Postgres driver (BE-0015 7a), plus
-# `cryptography` for the encrypted-at-rest operator secret store (BE-0136). Imported only when a
-# database is wired, never on the default path (the import guard locks this).
-db = ["sqlalchemy>=2.0", "alembic>=1.13", "psycopg[binary]>=3.1", "cryptography>=50.0.0"]
+# The hosted control plane (`bajutsu serve` with a bucket). FastAPI and uvicorn moved to the base
+# dependencies (BE-0449), so this extra now adds only boto3 for an `s3://` BAJUTSU_SERVER_STORE. Kept
+# so an existing `pip install 'bajutsu[server]'` still resolves and still installs what it did.
+server = ["boto3>=1.34"]
+# The PostgreSQL driver for a hosted system of record (BAJUTSU_DATABASE_URL, BE-0015 7a).
+# SQLAlchemy, Alembic, and `cryptography` moved to the base dependencies (BE-0449), because a local
+# start keeps its queue in SQLite, which Python ships with. Only PostgreSQL needs a driver, so it
+# stays opt-in here.
+db = ["psycopg[binary]>=3.1"]
 # GitHub OAuth login for the hosted control plane (BE-0015 7b-2). Imported only when OAuth is
 # configured (BAJUTSU_OAUTH_GITHUB_*), never on the default path (the import guard locks this).
-# `joserfc` is declared directly, not leaned on through Authlib: Authlib only began depending on
-# it in 1.7.0, so the `authlib>=1.3` floor does not guarantee it and today's lock carries it only
-# because that lock happens to pin 1.7.2. It verifies a CI job's OIDC token (BE-0414).
-oauth = ["authlib>=1.3", "httpx>=0.27", "joserfc>=1.7"]
+# The `authlib>=1.9.1` floor excludes releases with known security advisories (all fixed by 1.9.1).
+# `joserfc` is declared directly, not leaned on through Authlib: Bajutsu imports it itself to verify
+# a CI job's OIDC token (BE-0414), and Authlib depending on it is Authlib's detail, not a contract.
+oauth = ["authlib>=1.9.1", "httpx>=0.27", "joserfc>=1.7"]
 # JSON Schema validation for the `responseSchema` assertion (BE-0048). Imported lazily, only when a
 # responseSchema assertion is evaluated — never on the default path.
 schema = ["jsonschema>=4.0"]
 # GitHub App installation-token auth for the private-repo config source (BE-0224): `cryptography`
 # signs the RS256 App JWT. Imported lazily (`bajutsu.common.github.app`), only when App credentials are
-# configured — a personal-access-token deployment never loads it, never on the default path.
+# configured — a personal-access-token deployment never loads it, never on the default path. Now a
+# base dependency too (BE-0449); the extra stays so `bajutsu[githubapp]` still resolves.
 githubapp = ["cryptography>=50.0.0"]
 # Evidence upload to object storage via a single URI (BE-0110). The SDK is imported lazily, only
 # when `run --evidence-store` (or serve) actually uploads — never on the default path. `s3` covers
@@ -96,8 +109,8 @@ dev = [
     # The optional extras the gate imports and tests — referenced by name so each one's version is
     # declared once, in [project.optional-dependencies], and never duplicated here. The gate runs
     # with all of them installed: ai (the anthropic SDK for the AI paths, BE-0111), bedrock (its
-    # Bedrock variant + boto3), server (FastAPI/uvicorn/boto3), worker (empty since BE-0106),
-    # db (SQLAlchemy/Alembic/psycopg), oauth (Authlib), mcp, visual (Pillow), schema (jsonschema),
+    # Bedrock variant + boto3), server (boto3), worker (empty since BE-0106),
+    # db (psycopg), oauth (Authlib), mcp, visual (Pillow), schema (jsonschema),
     # cloud (boto3 + google-cloud-storage for BE-0110), and githubapp (cryptography for the BE-0224
     # App JWT). Keeping `ai` here means `make check`
     # still imports and tests the AI paths; the AI-free guarantee is scoped to the *base* install.
@@ -138,7 +151,9 @@ packages = ["bajutsu"]
 # step (`make runner-bundle`) and is gitignored, so force-include it as an artifact — otherwise
 # hatchling would honor .gitignore and drop it. The glob no-ops when the directory is absent (a
 # source checkout / Linux wheel), so the base wheel stays pure-Python. (BE-0292)
-artifacts = ["bajutsu/_xcuitest_runner/**"]
+# bajutsu/_runner_source/ is the same idea for the runner's sources (`make runner-source`, BE-0456),
+# copied path by path rather than force-including BajutsuKit/, which would drag its build output in.
+artifacts = ["bajutsu/_xcuitest_runner/**", "bajutsu/_runner_source/**"]
 
 [tool.ruff]
 line-length = 100
@@ -315,6 +330,13 @@ ignore_missing_imports = true
 module = ["sudachipy", "sudachipy.*"]
 ignore_missing_imports = true
 
+# BE-0449: redis-py is imported only when BAJUTSU_REDIS_URL names a Redis for the live worker log,
+# and the operator installs it then; the gate never does. The `RedisLike` seam around it is typed
+# and tested against a fake.
+[[tool.mypy.overrides]]
+module = ["redis", "redis.*"]
+ignore_missing_imports = true
+
 # BE-0112: the core / contract / periphery layer model as an executable contract. `make lint-imports`
 # (part of `make check`) fails when a deterministic-core module imports the periphery, keeping the
 # verdict/evidence path free of the serve, AI and codegen stacks. Static analysis on the import
@@ -344,8 +366,12 @@ source_modules = [
     "bajutsu.common.capability.preflight",
     "bajutsu.common.capability.capability_preflight",
     "bajutsu.common.capability.capabilities",
+    "bajutsu.common.capability.worker_capability",
+    "bajutsu.common.capability.settings_support",
+    "bajutsu.common.capability.route_tokens",
     "bajutsu.common.doctor",
     "bajutsu.common.lint",
+    "bajutsu.common.target_lint",
 ]
 forbidden_modules = [
     "bajutsu.serve",

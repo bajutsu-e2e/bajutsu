@@ -26,10 +26,15 @@ from bajutsu.serve.operations.upload import artifact_presence
 from bajutsu.serve.upload_artifacts import ArtifactOverrides, artifact_store_key
 
 _CONFIG = (
-    "defaults: { backend: [ios] }\n"
     "targets:\n"
-    "  demo: { bundleId: com.example.demo, scenarios: ./scenarios, appPath: ./build/Demo.app }\n"
-    "  web: { platform: web, baseUrl: 'http://localhost', scenarios: ./web-scenarios }\n"
+    "  demo:\n"
+    "    platform: ios\n"
+    "    subject: {id: com.example.demo, path: ./build/Demo.app}\n"
+    "    paths: {scenarios: ./scenarios}\n"
+    "  web:\n"
+    "    platform: web\n"
+    "    subject: {url: 'http://localhost'}\n"
+    "    paths: {scenarios: ./web-scenarios}\n"
 )
 _SCENARIO = "- name: a\n  steps: []\n"
 
@@ -157,14 +162,14 @@ def test_a_request_naming_neither_field_dispatches_exactly_as_before(tmp_path: P
     assert str(tmp_path / "scenarios" / "bound.yaml") in job.cmd
 
 
-def test_a_single_process_serve_refuses_either_field(tmp_path: Path) -> None:
-    # A LocalExecutor runs the job in the operator's own project directory, which no override may
-    # overwrite; the refusal leaves their appPath and scenarios untouched.
+def test_a_state_without_a_queue_refuses_either_field(tmp_path: Path) -> None:
+    # Nothing would run the job (BE-0449), so the override is refused before any job exists, and
+    # the operator's appPath and scenarios stay untouched.
     state, store = _hosted(tmp_path, local=True)
     sha = _store(store, "binary", b"bin")
     resp, code = _run(state, binaryArtifact=sha)
     assert code == 400
-    assert "hosted" in resp["error"]
+    assert "no queue" in resp["error"]
     assert not state.jobs
     resp, code = _run(state, scenariosArtifact=sha)
     assert code == 400
@@ -177,7 +182,7 @@ def test_an_executor_without_the_lease_worker_refuses_either_field(tmp_path: Pat
     state.repository = None
     resp, code = _run(state, binaryArtifact=_store(store, "binary", b"bin"))
     assert code == 400
-    assert "hosted" in resp["error"]
+    assert "no queue" in resp["error"]
     assert not state.executor.jobs  # type: ignore[attr-defined]
 
 
@@ -231,7 +236,7 @@ def test_a_binary_override_on_a_target_with_no_app_path_is_refused(tmp_path: Pat
     sha = _store(store, "binary", b"bin")
     resp, code = _run(state, target="web", binaryArtifact=sha)
     assert code == 400
-    assert "appPath" in resp["error"]
+    assert "subject.path" in resp["error"]
 
 
 def test_a_binary_override_on_an_android_target_is_accepted(tmp_path: Path) -> None:
@@ -334,7 +339,9 @@ def test_the_override_fields_stay_at_the_editor_role() -> None:
 def test_run_set_refuses_either_override_field(tmp_path: Path) -> None:
     state, _ = _hosted(tmp_path)
     for field in ("binaryArtifact", "scenariosArtifact"):
-        resp, code = ops.start_run_set(state, {"target": "demo", field: "b" * 64})
+        resp, code = ops.start_run_set(
+            state, {"target": "demo", "environment": "devicefarm", field: "b" * 64}
+        )
         assert code == 400
         assert field in resp["error"]
 
@@ -343,10 +350,14 @@ def test_run_set_refuses_either_override_field(tmp_path: Path) -> None:
 
 _MIXED_CONFIG = (
     "targets:\n"
-    "  ios: { platform: ios, bundleId: com.example.demo, scenarios: ./scenarios,"
-    " appPath: ./build/Demo.app }\n"
-    "  android: { platform: android, package: com.example.demo, scenarios: ./scenarios,"
-    " appPath: ./build/demo.apk }\n"
+    "  ios:\n"
+    "    platform: ios\n"
+    "    subject: {id: com.example.demo, path: ./build/Demo.app}\n"
+    "    paths: {scenarios: ./scenarios}\n"
+    "  android:\n"
+    "    platform: android\n"
+    "    subject: {id: com.example.demo, path: ./build/demo.apk}\n"
+    "    paths: {scenarios: ./scenarios}\n"
 )
 
 
@@ -495,7 +506,7 @@ def test_overrides_naming_no_leg_are_not_a_valid_value() -> None:
 
 def test_placement_refuses_to_delete_baselines_sharing_the_scenarios_dir(tmp_path: Path) -> None:
     config = _CONFIG.replace(
-        "scenarios: ./scenarios,", "scenarios: ./scenarios, baselines: ./scenarios,"
+        "paths: {scenarios: ./scenarios}", "paths: {scenarios: ./scenarios, baselines: ./scenarios}"
     )
     root = _tree(tmp_path / "tree", config)
     scenarios = _file(tmp_path, "scenarios", _zip({"scenarios/added.yaml": _SCENARIO.encode()}))

@@ -20,7 +20,7 @@ import pytest
 from bajutsu.common.ai.base import MessageRequest, MessageResponse, ToolUseBlock
 from bajutsu.common.analytics import ledger as usage_ledger
 from bajutsu.common.drivers import base
-from bajutsu.common.drivers.fake import FakeDriver
+from bajutsu.common.drivers.fake import FakeDriver, ResolvingFakeDriver
 from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.common.orchestrator.types import ResolvedAlertRule
 from scripts.build_roadmap_index import tracking_issue_url
@@ -81,6 +81,9 @@ def _fresh_clone_resident_gate(monkeypatch: pytest.MonkeyPatch) -> None:
 
     built = adb_resident.server_apks_built
     monkeypatch.delenv("BAJUTSU_ADB_RESIDENT", raising=False)
+    # A developer's own Redis URL would switch every queue-backed state to the Redis log bus, which
+    # needs the redis package the gate does not install (BE-0449).
+    monkeypatch.delenv("BAJUTSU_REDIS_URL", raising=False)
     # Only the gate's ambient, argument-less call is answered "not built"; an explicit-path call (the
     # function's own test) keeps the real logic, since the paths it asks about are its own fixtures.
     # Positional and keyword paths both forward, so naming them cannot silently land in the stub.
@@ -153,14 +156,14 @@ def guard_rule(
     )
 
 
-class AlertingDriver(FakeDriver):
-    """A FakeDriver showing one SpringBoard prompt the alert guard's native path can tap.
+class AlertingDriver(ResolvingFakeDriver):
+    """A fake showing one SpringBoard prompt the backend answers inside its next resolving read.
 
-    The way a test makes the reactive guard actually *clear* something since BE-0402 removed the
-    AI-vision fallback: the one path left is BE-0316's SpringBoard query and tap, so the prompt is
-    seeded where that query reads it (`system_alert_buttons`) rather than injected as a callable.
-    Answering it runs `on_dismiss`, which is where a test scripts what the screen does next — the
-    role the old vision stub's body played.
+    The way a test makes the reactive guard actually *clear* something: since BE-0461 the backend
+    answers the alert where a request reads the screen, so the prompt is seeded where that read finds
+    it (`system_alert_buttons`). It is answered whatever policy was pushed — the tests driving
+    `run_scenario` directly push none — and answering it runs `on_dismiss`, which is where a test
+    scripts what the screen does next. A `handleSystemAlert` step's own tap answers it the same way.
     """
 
     def __init__(
@@ -172,6 +175,7 @@ class AlertingDriver(FakeDriver):
     ) -> None:
         super().__init__(screen if screen is not None else [])
         self._on_dismiss = on_dismiss
+        self._label = label
         self.dismissals = 0
         self.system_alert_buttons = [
             {
@@ -186,8 +190,19 @@ class AlertingDriver(FakeDriver):
 
     def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
         super().handle_system_alert(sel, timeout)
+        self._dismiss()
+
+    def _resolve_springboard(self) -> tuple[base.DrainedInterruptions, bool]:
+        labels = self.system_alert_labels()
+        if not labels:
+            return base.DrainedInterruptions.empty(), True
+        self._record("resolve_press", self._label)
+        self._dismiss()
+        return self._answered(self._label, labels, "native"), False
+
+    def _dismiss(self) -> None:
         self.dismissals += 1
-        self.system_alert_buttons = []  # answered, so the next probe reports no alert
+        self.system_alert_buttons = []  # answered, so the next read finds no alert
         if self._on_dismiss is not None:
             self._on_dismiss(self)
 
@@ -611,3 +626,18 @@ class StubArtifactStore:
 
     def list_trashed_runs(self) -> list[dict[str, Any]]:
         return []
+
+
+@pytest.fixture(autouse=True)
+def _release_state_dir_locks() -> Iterator[None]:
+    """Release the state-directory locks a test's server start took (issue #2264).
+
+    `claim_state_dir` keeps each lock's descriptor open for the life of the process, as a real
+    server needs, so without this every test that builds a local server would leak one.
+    """
+    yield
+    from bajutsu.serve.server import local_keys
+
+    for fd in local_keys._held_locks.values():
+        os.close(fd)
+    local_keys._held_locks.clear()

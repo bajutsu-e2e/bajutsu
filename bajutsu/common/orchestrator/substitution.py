@@ -34,7 +34,14 @@ def _interp_step(step: Step, bindings: Mapping[str, str]) -> Step:
     http = dumped.get("http")
     if http is not None:
         http.pop("extractBody", None)
-    result = Step.model_validate(interp.interpolate(dumped, bindings))
+    interpolated = interp.interpolate(dumped, bindings)
+    # `eval` substitutes its own tokens (BE-0472): a substituted argument is re-checked by the
+    # handler, which fails the step with a message that quotes no value, where re-validating it here
+    # would raise a ValidationError carrying the substituted (possibly secret) text. The step runner
+    # also reads the written form to decide whether the result derives from a secret.
+    if "eval" in dumped:
+        interpolated["eval"] = dumped["eval"]
+    result = Step.model_validate(interpolated)
     if step.http is not None and step.http.extract_body is not None:
         assert result.http is not None  # the "http" key above was left in place, only trimmed
         result = result.model_copy(

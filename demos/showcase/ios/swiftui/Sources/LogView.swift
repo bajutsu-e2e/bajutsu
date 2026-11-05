@@ -12,6 +12,9 @@ struct LogView: View {
     @State private var segment = "one"
     @State private var status = "idle"
     @State private var rows: [Int] = []
+    // The `note` an echo server (httpbin, postman-echo) sent back from the Submit POST, or nil when
+    // the response carried no echo — a mock, or a live server that was not an echo.
+    @State private var echoedNote: String?
 
     // The segmented control's choices, in display order.
     private let segments = ["one", "two", "three"]
@@ -67,6 +70,15 @@ struct LogView: View {
                         .foregroundStyle(.secondary)
                         .accessibilityID("log.status")
                         .accessibilityStateValue(status)
+                    // Shown only once an echo arrives, so screens that never submit to an echo server
+                    // are unchanged. network_echo.yaml asserts on it: a body lost on the way through
+                    // BajutsuURLProtocol comes back without the note.
+                    if let echoedNote {
+                        Text("Echo: \(echoedNote)")
+                            .foregroundStyle(.secondary)
+                            .accessibilityID("log.echo")
+                            .accessibilityStateValue(echoedNote)
+                    }
                 }
 
                 Section("Modals") {
@@ -251,8 +263,10 @@ struct LogView: View {
             "note": note, "count": count, "intense": intense, "password": "hunter2",
         ]
         req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
-        URLSession.shared.dataTask(with: req) { _, response, error in
+        URLSession.shared.dataTask(with: req) { data, response, error in
+            let echoed = Self.echoedNote(in: data)
             Task { @MainActor in
+                echoedNote = echoed
                 if let http = response as? HTTPURLResponse, (200 ..< 400).contains(http.statusCode) {
                     status = "done"
                     appendRow()
@@ -264,6 +278,15 @@ struct LogView: View {
                 }
             }
         }.resume()
+    }
+
+    // httpbin and postman-echo both return the parsed JSON request body under `json`.
+    private static func echoedNote(in data: Data?) -> String? {
+        guard let data,
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let json = object["json"] as? [String: Any]
+        else { return nil }
+        return json["note"] as? String ?? ""
     }
 
     private func appendRow() {

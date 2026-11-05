@@ -9,6 +9,7 @@ step rather than tapping something guessed.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -57,12 +58,17 @@ def test_the_step_reserves_its_own_prompt_on_the_interruption_policy_while_it_wa
     class _RecordingDriver(FakeDriver):
         def __init__(self, screen: list[object]) -> None:
             super().__init__(screen)  # type: ignore[arg-type]
-            self.policy_pushes: list[tuple[list[tuple[set[str], str]], bool]] = []
+            self.policy_pushes: list[
+                tuple[list[tuple[set[str], str] | tuple[set[str], str, set[str]]], bool]
+            ] = []
 
         def set_interruption_policy(
-            self, rules: Sequence[tuple[frozenset[str], str]], governs: bool
+            self,
+            rules: Sequence[tuple[frozenset[str], str, frozenset[str]]],
+            governs: bool,
+            **kwargs: Any,
         ) -> None:
-            super().set_interruption_policy(rules, governs)
+            super().set_interruption_policy(rules, governs, **kwargs)
             assert self.interruption_policy is not None
             self.policy_pushes.append(self.interruption_policy)
 
@@ -81,9 +87,7 @@ def test_the_step_reserves_its_own_prompt_on_the_interruption_policy_while_it_wa
     assert len(driver.policy_pushes) == 2
     reserved_rules, reserved_governs = driver.policy_pushes[0]
     assert reserved_governs is True
-    assert (set({"Allow", "Don’t Allow"}), "Allow") in [
-        (set(labels), tap) for labels, tap in reserved_rules
-    ]
+    assert ({"Allow", "Don’t Allow"}, "Allow") in [(set(r[0]), r[1]) for r in reserved_rules]
     restored_rules, restored_governs = driver.policy_pushes[1]
     assert restored_governs is True
     assert restored_rules == []  # the scenario's own guard carried no rules of its own
@@ -96,12 +100,17 @@ def test_the_reservation_is_restored_even_when_the_step_times_out() -> None:
     class _RecordingDriver(FakeDriver):
         def __init__(self, screen: list[object]) -> None:
             super().__init__(screen)  # type: ignore[arg-type]
-            self.policy_pushes: list[tuple[list[tuple[set[str], str]], bool]] = []
+            self.policy_pushes: list[
+                tuple[list[tuple[set[str], str] | tuple[set[str], str, set[str]]], bool]
+            ] = []
 
         def set_interruption_policy(
-            self, rules: Sequence[tuple[frozenset[str], str]], governs: bool
+            self,
+            rules: Sequence[tuple[frozenset[str], str, frozenset[str]]],
+            governs: bool,
+            **kwargs: Any,
         ) -> None:
-            super().set_interruption_policy(rules, governs)
+            super().set_interruption_policy(rules, governs, **kwargs)
             assert self.interruption_policy is not None
             self.policy_pushes.append(self.interruption_policy)
 
@@ -158,12 +167,9 @@ def test_a_tap_recorded_before_the_reservation_push_is_folded_in_without_failing
     assert result.steps[0].alerts == [AlertEvent(label="Not Now")]
 
 
-def test_an_excluded_shape_is_never_reserved() -> None:
-    # `push_interruption_policy` refuses a native-reachable rule that carries an exclusion set
-    # outright (the wire format has no room for one) — unreachable today because no step-capable
-    # prompt's shape carries one, but `_reserve_declared_alert` must never be the thing that finds
-    # out the hard way, by raising past this step's own try/finally and aborting the whole run
-    # (BE-0406 Unit 2b review finding). Patched in rather than a real prompt, since none exists.
+def test_an_excluded_shape_is_reserved_with_its_exclusion() -> None:
+    # The monitor applies exclusions now, so a shape needing one is reserved with it rather than
+    # skipped: `notifications` must keep out the Local Network prompt that shares its buttons.
     driver = _fake_with_alert("Allow")
 
     with patch(
@@ -185,7 +191,8 @@ def test_an_excluded_shape_is_never_reserved() -> None:
         )
 
     assert result.ok, result.failure
-    assert driver.interruption_policy is None  # never touched: no reservation was pushed
+    # The last push restores the scenario's own (empty) policy; the reservation came before it.
+    assert driver.interruption_policy == ([], True)
 
 
 def test_the_same_scenario_taps_the_english_label_under_en_us() -> None:
@@ -538,28 +545,3 @@ def test_a_tap_the_monitor_made_for_the_step_still_reports_it() -> None:
     tap = result.steps[0].system_alert
     assert tap is not None
     assert (tap.label, tap.rule) == ("Allow", "sel")
-
-
-def test_a_failed_position_rule_step_still_gets_the_end_of_step_guards_note() -> None:
-    # The rule's wait runs without the guard's gate, so the end-of-step guard is what names a screen
-    # the step could not see past — the note a label-path step gets from its own wait.
-    class _SpyGuard(AlertGuardConfig):
-        calls = 0
-
-        def __call__(self, *args: object, **kwargs: object) -> bool:
-            type(self).calls += 1
-            return False
-
-    driver = _fake_with_alert("Einmal erlauben", "Beim Verwenden erlauben", "Nicht erlauben")
-    result = run_scenario(
-        driver, _grant_scenario(), clock=FakeClock(), locale="de_DE", alert_guard=_SpyGuard()
-    )
-    assert not result.ok
-    assert _SpyGuard.calls == 1
-
-    _SpyGuard.calls = 0
-    driver = _fake_with_alert("Allow Once", "Allow While Using", "Don’t Allow")
-    run_scenario(
-        driver, _grant_scenario(), clock=FakeClock(), locale="en_US", alert_guard=_SpyGuard()
-    )
-    assert _SpyGuard.calls == 0  # the label path's own wait already drove the guard

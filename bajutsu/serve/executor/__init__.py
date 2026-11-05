@@ -1,13 +1,12 @@
-"""The RunExecutor seam: how a created job gets executed (BE-0015 local/server parity).
+"""The RunExecutor seam: how a created job gets executed (BE-0015, BE-0449).
 
-`dispatch` is the single point where local and server hosting diverge. Locally each job runs
-in-process on a daemon thread (`LocalExecutor`); the server backend instead enqueues the job for a
-remote ``bajutsu worker`` (`DbQueueExecutor`, BE-0106). The execution body itself — boot, build,
-run, stream — lives in `run_job` and is identical on both sides (locally the worker is just a
-thread), so it stays put.
+`dispatch` hands a created job to whatever executes it. The server never executes a job itself
+(BE-0449): `bajutsu serve` enqueues every job for a ``bajutsu worker`` (`DbQueueExecutor`,
+BE-0106), and the worker runs it through `run_job`. A state with no queue fails each job instead
+(`UnqueuedExecutor`), so no path spawns a job child in the server's process.
 """
 
-from .local_executor import LocalExecutor
 from .run_executor import RunExecutor
+from .unqueued_executor import UNQUEUED_LINE, UnqueuedExecutor
 
-__all__ = ["LocalExecutor", "RunExecutor"]
+__all__ = ["UNQUEUED_LINE", "RunExecutor", "UnqueuedExecutor"]

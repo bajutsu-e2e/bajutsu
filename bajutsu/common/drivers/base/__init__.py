@@ -28,6 +28,7 @@ from ._functions import (
     topmost_at_point,
     validate_id_candidates,
     wait_until,
+    without_cross_origin_frames,
 )
 from ._functions import _collapse_identical_duplicates as _collapse_identical_duplicates
 from ._functions import _compile as _compile
@@ -39,9 +40,12 @@ from ._shared import (
     MAX_REDIRECT_CANDIDATES,
     OS_BACK_BUTTON,
     PERMISSION_SERVICES,
+    SIMCTL_EVIDENCE_CAPABILITIES,
     Frame,
     Point,
 )
+from .alert_pacing import AlertPacing
+from .alert_resolving_target import AlertResolvingTarget
 from .ambiguous_selector import AmbiguousSelector
 from .app_crash_poll_resettable import AppCrashPollResettable
 from .app_crash_signal import AppCrashSignal
@@ -57,6 +61,7 @@ from .element import Element
 from .element_not_found import ElementNotFound
 from .element_not_tappable import ElementNotTappable
 from .evidence_provider import EvidenceProvider
+from .gave_up_alert import GaveUpAlert
 from .interruption_policy_target import InterruptionPolicyTarget
 from .manual_step_required import ManualStepRequired
 from .queryable import Queryable
@@ -64,6 +69,12 @@ from .raw_source import RawSource
 from .raw_source_provider import RawSourceProvider
 from .read_lag_provider import ReadLagProvider
 from .read_order_provider import ReadOrderProvider
+from .resolving_read import (
+    ResolveMode,
+    ResolvingRead,
+    SystemAlertResolution,
+    SystemAlertResolutionStatus,
+)
 from .selector import Selector
 from .selector_error import SelectorError
 from .settled_cache_invalidator import SettledCacheInvalidator
@@ -81,6 +92,9 @@ __all__ = [
     "MAX_REDIRECT_CANDIDATES",
     "OS_BACK_BUTTON",
     "PERMISSION_SERVICES",
+    "SIMCTL_EVIDENCE_CAPABILITIES",
+    "AlertPacing",
+    "AlertResolvingTarget",
     "AmbiguousSelector",
     "AppCrashPollResettable",
     "AppCrashSignal",
@@ -97,6 +111,7 @@ __all__ = [
     "ElementNotTappable",
     "EvidenceProvider",
     "Frame",
+    "GaveUpAlert",
     "InterruptionPolicyTarget",
     "ManualStepRequired",
     "Point",
@@ -105,10 +120,14 @@ __all__ = [
     "RawSourceProvider",
     "ReadLagProvider",
     "ReadOrderProvider",
+    "ResolveMode",
+    "ResolvingRead",
     "Selector",
     "SelectorError",
     "SettledCacheInvalidator",
     "SettledReadProvider",
+    "SystemAlertResolution",
+    "SystemAlertResolutionStatus",
     "Trait",
     "UnsupportedAction",
     "ViewportProvider",
@@ -129,4 +148,5 @@ __all__ = [
     "topmost_at_point",
     "validate_id_candidates",
     "wait_until",
+    "without_cross_origin_frames",
 ]

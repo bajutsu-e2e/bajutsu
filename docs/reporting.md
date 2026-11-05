@@ -149,6 +149,17 @@ means the same thing after the run that produced it exits
   a language the label table does not cover still shows what was tapped and why
   ([BE-0445](../roadmaps/BE-0445-system-alert-locale-agnostic-answer/BE-0445-system-alert-locale-agnostic-answer.md)).
   Absent on every other action, and on every run recorded before `schemaVersion` 12.
+- `steps[].warnings`: non-fatal notes about how the step ran, shown on the step's report row. Today
+  the only source is a `totp` step whose `minRemaining` window wait saw the wall clock jump
+  ([BE-0474](../roadmaps/BE-0474-totp-window-alignment/BE-0474-totp-window-alignment.md)). A warning
+  never changes `ok` or `reason`. Empty on a step that has none, and absent on every run recorded
+  before `schemaVersion` 16, which a reader treats as no warnings.
+- `ignored_settings`: each setting the scenario put in effect that a target's route could not apply
+  and the target declared under `runsOn.ignoredSettings`, as `{target, key, reason}`
+  ([BE-0467](../roadmaps/BE-0467-environment-specific-settings/BE-0467-environment-specific-settings.md),
+  [configuration](configuration.md#environment-specific-settings-runsonignoredsettings-be-0467)). It
+  never changes `ok`. Empty on a scenario that ignored nothing or that the preflight refused before any launch, and absent on
+  every run recorded before `schemaVersion` 17, which a reader treats as none ignored.
 - `network.json`'s `startedAt` (one file per scenario, not shown in the manifest above): each
   observed exchange's absolute start, on the same footing as `steps[].started_at` and derived
   through the same scenario anchor, so a viewer subtracts `video_anchor_s` from both — see
@@ -161,7 +172,7 @@ means the same thing after the run that produced it exits
   `configSource` (`{ host, owner, repo, ref, sha }`, the exact commit a branch-based run executed).
   It groups accumulated runs by identity, so a verdict that flips while the fingerprint is
   unchanged is **true flakiness** rather than an edited scenario. Pure metadata — it never enters
-  `ok`. (`schemaVersion` is `3` or higher once this block can appear — it is `13` today.)
+  `ok`. (`schemaVersion` is `3` or higher once this block can appear — it is `17` today.)
 - `target` (top, optional): the target the run ran, so "the Android target passes while the iOS
   target fails" is computable from stored data ([BE-0404](../roadmaps/BE-0404-collapse-project-layer/BE-0404-collapse-project-layer.md)).
   One run resolves one target, so it sits beside `backend` rather than on each scenario. `serve`
@@ -189,7 +200,11 @@ means the same thing after the run that produced it exits
 For CI integration. **one scenario = one `<testcase>`.** A failing scenario gets a `<failure>`, whose
 `text` lists each step / expect's ok/FAIL and reason. On a `--browsers` matrix run the engine is
 keyed into the case (`classname="bajutsu.<engine>"`), so CI sees `chromium.login` and `webkit.login`
-as distinct cases (BE-0076); a single-engine run keeps `classname="bajutsu"`.
+as distinct cases (BE-0076); a single-engine run keeps `classname="bajutsu"`. A scenario that ran
+without a setting its target declared under `runsOn.ignoredSettings` carries a `<properties>` block
+with one `bajutsu.ignoredSettings` property, whose value is a JSON array of `{target, key, reason}`
+([BE-0467](../roadmaps/BE-0467-environment-specific-settings/BE-0467-environment-specific-settings.md));
+the verdict does not change.
 
 ```xml
 <testsuite name="bajutsu" tests="2" failures="1">
@@ -240,7 +255,8 @@ The document is `{ reportFormat: "CTRF", specVersion, generatedBy, timestamp, re
   duration`. Absolute per-test start/stop are deferred (they need an absolute per-scenario epoch, an
   optional follow-up) so they are omitted rather than approximated. The export carries no live host
   state, so `bajutsu report` regenerates the same run's `ctrf.json` byte-for-byte.
-- `tests[].status` is `passed` / `failed` — the only two states a Bajutsu run emits; the other CTRF
+- `tests[].status` is `passed` / `failed` for every run that ran. A not-applicable record is
+  `skipped` ([Runs that device conditions form](#runs-that-device-conditions-form)). The other CTRF
   counts stay `0`.
 - A CTRF `step` allows only `{ name, status, extra }`, so a step's richer data (duration, reason,
   per-step assertions, artifacts) lands in `step.extra` — a consumer that renders just name/status
@@ -254,7 +270,8 @@ The document is `{ reportFormat: "CTRF", specVersion, generatedBy, timestamp, re
 - On a `--browsers` matrix run each engine × scenario cell is one CTRF test — the engine in the test
   `name` and the `browser` field (mirroring JUnit's `classname`) — and the engine × scenario grid is
   carried under `results.extra.matrix`. Bajutsu's other surplus (`sid`, `expect` results, alerts,
-  `skipped_captures`) lives under the per-test `extra`.
+  `skipped_captures`, and the settings the run went without as `ignoredSettings`) lives under the
+  per-test `extra`.
 - Since CTRF is projected from the already-redacted manifest, it inherits the same secret scrubbing
   ([BE-0047](../roadmaps/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)); no raw secret reaches it.
 
@@ -289,7 +306,7 @@ Bajutsu merges the scenario definition and its execution into one **Steps tab**.
 column) / `action` (a colored badge) / `detail` (the target description) / `at` / `view` (screenshot +
 an **in-report element-tree viewer**: the captured elements open in an in-page overlay, no new tab) /
 `reason`. The `#` column also carries the step's own line number in the scenario file when
-available. For example, it can read `2:15`. A `setup`/component expansion that changed the step
+available. For example, it can read `2:15`. A component expansion that changed the step
 list's shape drops it instead. A wrong line would mislead more than none. The `at` cell also shows
 the step's own elapsed time in parentheses, at the cell's end. For example, `3.2s (1.1s)`. That
 parenthetical shows whenever the duration rounds to something other than 0.0s. A slow `wait` or a
@@ -326,7 +343,7 @@ tokens. A **Rich / YAML toggle** switches the same tab between this structured v
 scenario YAML. For a freshly baked `bajutsu run` report, that YAML is the scenario's own text, as
 authored. Comments and formatting stay intact: the report slices this text straight from the
 source file. It never re-serializes the parsed model. A literal `totp.secret` still gets masked in
-place. A scenario whose `setup`/component expansion changed its step count keeps this verbatim
+place. A scenario whose component expansion changed its step count keeps this verbatim
 text — still accurate as authored — but loses the `#` column's line numbers, which the expansion
 would leave pointing at the wrong steps. A `data`/`dataFile`-driven scenario always shows the
 structured re-dump instead. It never shows the verbatim text. Every row shares one authored
@@ -394,6 +411,30 @@ in sync, in its ordinary compact form. A backdrop click, the close button, or Es
 modal and return the recording to its own player.
 
 Device Log / App Trace remain separate tabs.
+## Runs that device conditions form
+
+A target may declare device conditions under `runsOn`
+([configuration](configuration.md)). A list of models is one such condition. An OS version range is a condition too. The conditions split
+one scenario into *runs*, one per set of coordinates. `iPhone SE (3rd generation) / iOS 17` names
+one such set. An open range with no device in it leaves a *not-applicable* record instead of a run.
+A not-applicable record neither passes nor fails. Every report output shows both, as follows.
+
+| Output | Runs | Not-applicable records |
+|---|---|---|
+| `manifest.json` | each scenario entry carries `coordinates` (the label) and `run_coordinates` (per target and condition field) | `notApplicable`: `{ scenario, target, coordinates, reason }` per record |
+| `manifest.json` `runMatrix` | `{ columns, scenarios, cells: { "<scenario>": { "<coordinates>": { status, sid, failure } } } }`, with `status` `passed` or `failed` | a cell with `status: "not-applicable"` and its `reason` |
+| `report.html` | a **run matrix** table of scenarios against coordinates, and each scenario card names its coordinates | an `N/A` cell, a count chip in the header, and a list of each record's reason |
+| `junit.xml` | each case named `<scenario> [<coordinates>]` | a `<skipped>` case, counted in the suite's `skipped` attribute |
+| `ctrf.json` | the coordinates in the test name and in `extra.coordinates`; the grid under `results.extra.runMatrix` | a `skipped` test with `extra.notApplicable: true`, counted in `summary.skipped` |
+| webhook payload | a failure names its coordinates | the result line counts the records |
+| `serve` run history | each scenario named once, with every run counted in `passed` / `total` | a `notApplicable` count shown as `N n/a` |
+
+A run whose every record is not applicable ran nothing. Its manifest and report read `FAIL`. The
+invocation exits with code 1 and prints `no run executed`. The run matrix puts a scenario with no
+condition in the `any device` column. A run that no condition formed carries none of these fields.
+Its outputs keep the shape the sections above describe. `runMatrix` appears from `schemaVersion`
+15, and the other fields from 14.
+
 ## Write API
 
 ```python

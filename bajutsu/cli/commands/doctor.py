@@ -4,11 +4,23 @@ from __future__ import annotations
 
 import re
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
+from typing import Annotated
 
 import typer
 
-from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective
+from bajutsu.cli._shared import (
+    DEFAULT_CONFIG,
+    WORKER_CONFIG_HELP,
+    _backends,
+    _device_udid_or_exit,
+    _first_run_or_exit,
+    _load_device_worker_or_exit,
+    _load_effective,
+    _with_worker_device,
+    _worker_backends,
+)
 from bajutsu.common.agents import availability as ai_availability
 from bajutsu.common.ai import credential_gap
 from bajutsu.common.backend_cli import adb as _adb
@@ -20,6 +32,7 @@ from bajutsu.common.backends import (
     select_actuator_for_scenario,
 )
 from bajutsu.common.capability import capability_preflight, preflight
+from bajutsu.common.capability.settings_support import check_settings
 from bajutsu.common.config import (
     Effective,
     android_package,
@@ -28,25 +41,52 @@ from bajutsu.common.config import (
     web_base_url,
     web_engine,
 )
+from bajutsu.common.config.preconditions import (
+    effective_conditions,
+    remote_condition_problems,
+    resolve_preconditions,
+)
 from bajutsu.common.devices import errors as device_errors
+from bajutsu.common.devices.facts import DeviceFacts
 from bajutsu.common.doctor import DoctorProbeError, probe_screen, render, score
 from bajutsu.common.drivers import base
 from bajutsu.common.platform_lifecycle.environments.xcuitest import (
+    HOST_ADDRESS_ENV,
+    HostAddressError,
+    HostCandidates,
     bundled_runner_staleness_note,
     bundled_runner_toolchain_note,
     effective_device_type,
+    host_candidates,
+    real_device_check,
     runner_source,
 )
 from bajutsu.common.scenario import load_scenario_file
+from bajutsu.run.device_matrix import FAKE_ACTUATOR, ListedRun, list_runs, target_pool
+
+# How each outcome marks a listed run: the same marks the environment checklist uses.
+_RUN_MARKS = {"run": "✓", "failed": "✘", "not-applicable": "–", "declared": "•"}
 
 
-def check_scenarios(scenario_path: Path, capabilities: frozenset[str]) -> list[str]:
+def check_scenarios(
+    scenario_path: Path,
+    capabilities: frozenset[str],
+    *,
+    route: tuple[str, Effective, str] | None = None,
+) -> list[str]:
     """Check every scenario in *scenario_path* against a backend capability set.
 
     Returns one reason per unsupported construct, prefixed with the scenario name. Pure: no device
     needed. The caller passes the *run-narrowed* set (`capabilities_for_run`), so `doctor` reports the
     same verdict `run` would — a real iOS device drops the simctl-backed capabilities rather than
     reporting a `setLocation` scenario as supported (BE-0238).
+
+    Args:
+        scenario_path: The scenario file to check.
+        capabilities: The run-narrowed capability set.
+        route: The actuator, target, and udid spec the run would use. When given, each scenario's
+            settings are also judged by the route's settings table (BE-0467), the check that took
+            `permissions` over from the capability set, so `doctor` keeps reporting them.
 
     Note:
         This is a best-effort pre-check on the raw scenario tree. ``use`` components and
@@ -65,6 +105,16 @@ def check_scenarios(scenario_path: Path, capabilities: frozenset[str]) -> list[s
         reasons.extend(
             f"[{sc.name}] {r}" for r in capability_preflight.unsupported(sc, capabilities)
         )
+        if route is not None:
+            actuator, eff, udid_spec = route
+            check = check_settings(
+                actuator,
+                eff,
+                resolve_preconditions(eff, sc.preconditions),
+                sc.permissions,
+                udid_spec,
+            )
+            reasons.extend(f"[{sc.name}] {r}" for r in check.problems())
     return reasons
 
 
@@ -162,8 +212,45 @@ def xcuitest_runner_summary(eff: Effective, actuator: str) -> list[str]:
     return lines
 
 
+def real_device_host_addresses(
+    eff: Effective,
+    actuator: str,
+    *,
+    candidates: Callable[[str | None], HostCandidates] = host_candidates,
+) -> list[str]:
+    """The host addresses a real-device run would offer the app for the network collector.
+
+    The other route, usbmuxd to the device, is a runnability check (`real_device_check`), since a
+    device it cannot reach runs nothing. These addresses only matter to a scenario that records
+    network exchanges, so a missing one is reported here and does not change doctor's exit status.
+    Empty for the Simulator and other actuators.
+    """
+    if actuator != "xcuitest":
+        return []
+    xcfg = require_ios(eff).xcuitest
+    if effective_device_type(xcfg) != "device":
+        return []
+    try:
+        found = candidates(xcfg.host_address if xcfg is not None else None)
+    except HostAddressError as exc:
+        return [f"  ✘ {exc}"]
+    if found.addresses:
+        return [f"collector host addresses ({found.source}): {', '.join(found.addresses)}"]
+    return [
+        f"  ✘ no collector host address ({found.source}); set driver.runner.hostAddress or "
+        f"{HOST_ADDRESS_ENV} for a scenario that records network exchanges"
+    ]
+
+
+def _real_device_check(eff: Effective, actuator: str, udid: str) -> preflight.Check | None:
+    """The usbmuxd reachability check for a real-device iOS target, None for every other target."""
+    if actuator != "xcuitest":
+        return None
+    return real_device_check(require_ios(eff).xcuitest, actuator, udid)
+
+
 def _capability_preflight(scenario: str, actuator: str, eff: Effective, udid: str) -> bool:
-    """Print the scenario's capability preflight and report whether it failed; exit 2 if missing.
+    """Print the scenario's capability preflight and report whether it failed.
 
     When a scenario file is provided, check whether it uses constructs the chosen backend can't
     perform — pure, no device needed (BE-0024). The live-route narrowing (BE-0238) keys on the raw
@@ -173,11 +260,9 @@ def _capability_preflight(scenario: str, actuator: str, eff: Effective, udid: st
     """
     if not scenario:
         return False
-    scenario_path = Path(scenario)
-    if not scenario_path.is_file():
-        typer.echo(f"scenario not found: {scenario}")
-        raise typer.Exit(2)
-    cap_reasons = check_scenarios(scenario_path, capabilities_for_run(actuator, eff, udid))
+    cap_reasons = check_scenarios(
+        Path(scenario), capabilities_for_run(actuator, eff, udid), route=(actuator, eff, udid)
+    )
     if not cap_reasons:
         return False
     typer.echo("capability preflight:")
@@ -187,8 +272,14 @@ def _capability_preflight(scenario: str, actuator: str, eff: Effective, udid: st
     return True
 
 
-def _print_disclosures(eff: Effective, backends: list[str], udid: str, actuator: str) -> None:
-    """Print doctor's informational, device-free, non-gating disclosures."""
+def _print_disclosures(
+    eff: Effective, backends: list[str], udid: str, actuator: str, scenario: str = ""
+) -> None:
+    """Print doctor's informational, non-gating disclosures.
+
+    Every one is device-free except the runs `runsOn` conditions form, which read the pool's device
+    facts when a condition applies (BE-0452).
+    """
     # Per-scenario actuator resolution disclosure (BE-0240): when the ladder has more than one iOS
     # actuator, show how the target's scenarios split across them.
     summary = actuator_resolution_summary(eff, backends, udid)
@@ -203,6 +294,116 @@ def _print_disclosures(eff: Effective, backends: list[str], udid: str, actuator:
             typer.echo(line)
         typer.echo("")
 
+    # The host addresses a real device would be offered for the collector; the usbmuxd route is a
+    # runnability check below, since without it nothing runs.
+    if addresses := real_device_host_addresses(eff, actuator):
+        for line in addresses:
+            typer.echo(line)
+        typer.echo("")
+
+    if runs := runs_summary(eff, actuator, udid, scenario):
+        for line in runs:
+            typer.echo(line)
+        typer.echo("")
+
+
+def _subjects(eff: Effective, scenario: str) -> list[tuple[str, dict[str, str | list[str]]]]:
+    """What `doctor` lists runs for: each scenario of *scenario*, or else the target itself.
+
+    A scenario runs under its target's `runsOn` conditions, since a scenario declares none (BE-0469).
+    """
+    if not scenario:
+        return [(f"target '{eff.target}'", dict(eff.conditions))]
+    return [
+        (s.name, effective_conditions(eff, engine_flag=False))
+        for s in load_scenario_file(Path(scenario).read_text(encoding="utf-8")).scenarios
+    ]
+
+
+def _engines(eff: Effective, subjects: list[tuple[str, dict[str, str | list[str]]]]) -> list[str]:
+    """The engines whose launched version a `browser.version` range compares, in first-seen order."""
+    engines: dict[str, None] = {}
+    for _name, conditions in subjects:
+        if "browser.version" not in conditions:
+            continue
+        listed = conditions.get("browser.kind") or web_engine(eff)
+        engines.update(dict.fromkeys(listed if isinstance(listed, list) else [listed]))
+    return list(engines)
+
+
+def _listed_line(run: ListedRun) -> str:
+    label = run.label or "one run"
+    named = [
+        f"{name}: {value}" for name, value in (("kind", run.kind), ("family", run.family)) if value
+    ]
+    if named:
+        label += f" [{', '.join(named)}]"
+    if run.outcome == "run":
+        return f"    {_RUN_MARKS['run']} {label}: {', '.join(run.devices) or 'any device'}"
+    if run.outcome == "declared":
+        return f"    {_RUN_MARKS['declared']} {label}"
+    word = "fails" if run.outcome == "failed" else "not applicable"
+    return f"    {_RUN_MARKS[run.outcome]} {label}: {word}: {run.reason}"
+
+
+def runs_summary(
+    eff: Effective,
+    actuator: str,
+    udid: str,
+    scenario: str,
+    read_pool: Callable[[Effective, str, str, list[str]], list[DeviceFacts]] | None = None,
+) -> list[str]:
+    """Each scenario's runs under its `runsOn` conditions and the devices that fit each (BE-0452).
+
+    Informational and never gating: it forms the runs `run` would form against the same pool, so a
+    misspelled model or a pool missing an OS version shows before a run. Each iOS run also names its
+    kind, and the family it took under a `family` condition, when its label leaves them out
+    (BE-0468). With no pool to read (a target an `appium` grid serves, a physical device under a
+    condition other than `kind` or `family`, or a pool whose devices cannot be read), it lists the
+    declared runs alone. Empty when no condition applies, and under the fake actuator, which
+    evaluates none.
+
+    Args:
+        eff: The target's effective configuration.
+        actuator: The selected actuator, which resolves each udid of the pool.
+        udid: The udid spec the device provider handed back.
+        scenario: The `--scenario` file, or empty to list the target's own runs.
+        read_pool: Reads the pool's device facts, given the engines to launch; injectable for tests.
+    """
+    if actuator == FAKE_ACTUATOR:
+        return []
+    subjects = _subjects(eff, scenario)
+    if not any(conditions for _name, conditions in subjects):
+        return []
+    devices: list[DeviceFacts] | None = None
+    note = ""
+    problems = [p for _name, c in subjects for p in remote_condition_problems(eff, c)]
+    if problems:
+        note = problems[0]
+    else:
+        reader = read_pool or (lambda e, a, u, engines: target_pool(e, a, u, engines=engines))
+        try:
+            devices = reader(eff, actuator, udid, _engines(eff, subjects))
+        except (
+            device_errors.DeviceError,
+            OSError,
+            LookupError,
+            ValueError,
+            subprocess.SubprocessError,
+            # `facts.read_web` imports Playwright, an optional extra, so a base install raises
+            # ModuleNotFoundError here rather than a DeviceError.
+            ImportError,
+        ) as e:
+            note = f"could not read the device pool: {e}"
+    lines = ["runs:"]
+    if devices is None:
+        lines.append(f"  declared runs only — {note}")
+    for name, conditions in subjects:
+        # Every condition is the target's, whose ranges the loader already parsed (BE-0469).
+        lines.append(f"  {name}:")
+        lines += [_listed_line(run) for run in list_runs(eff, conditions, devices)]
+    return lines
+
 
 def doctor(
     target_name: str = typer.Option(..., "--target"),
@@ -211,6 +412,9 @@ def doctor(
     config: str = typer.Option(DEFAULT_CONFIG),
     scenario: str = typer.Option("", "--scenario"),
     environment_only: bool = typer.Option(False, "--environment-only"),
+    worker_config: Annotated[
+        Path | None, typer.Option("--worker-config", help=WORKER_CONFIG_HELP)
+    ] = None,
 ) -> None:
     """Check the environment is runnable, then score the app's current screen.
 
@@ -220,8 +424,19 @@ def doctor(
     *environment* gate against a real host (BE-0304) skips that cost and its unrelated failure modes —
     the runner's own startup flakiness included.
     """
+    # Argument validation first: a `--scenario` that names no file is the caller's own input error,
+    # reported before the worker capability check could refuse the target on this host.
+    if scenario and not Path(scenario).is_file():
+        typer.echo(f"scenario not found: {scenario}")
+        raise typer.Exit(2)
     eff = _load_effective(config, target_name)
-    backends = _backends(backend, eff.backend)
+    worker = _load_device_worker_or_exit(worker_config)
+    eff = _with_worker_device(eff, worker)
+    # The same capability check `run` makes against the worker's drivers and host (BE-0450).
+    backends = _worker_backends(_backends(backend, eff.backend), worker)
+    # The device comes through the target's provider, as in `run`: the `--udid` pool, or the grid
+    # an `appium` environment names (BE-0452).
+    udid = _device_udid_or_exit(eff, udid)
     try:
         actuator = select_actuator(backends)
     except RuntimeError as e:
@@ -230,8 +445,8 @@ def doctor(
     # Config gate first: a target missing the field its backend needs (iOS bundleId / web baseUrl)
     # is a usage/config error — fixable without any tool or device — so it exits 2 (distinct from a
     # genuine environment/tool failure, which exits 1) and is surfaced before any doomed probe
-    # (BE-0024). `_need_target` rejects a target with neither field at parse time; this catches the
-    # wrong field for the selected backend.
+    # (BE-0024). The platform's `subject` model requires its own identifier at parse time; this catches
+    # a `--backend` override whose actuator needs another platform's field.
     cfg_checks = preflight.config_checks(
         actuator,
         target=target_name,
@@ -245,7 +460,7 @@ def doctor(
         raise typer.Exit(2)
 
     cap_failed = _capability_preflight(scenario, actuator, eff, udid)
-    _print_disclosures(eff, backends, udid, actuator)
+    _print_disclosures(eff, backends, udid, actuator, scenario)
 
     # Runnability gate: the CLIs (+ a booted Simulator) the actuator needs. Fail fast here
     # with a fixable checklist instead of crashing later on a missing tool / no device. The
@@ -261,6 +476,7 @@ def doctor(
         actuator,
         booted_count=booted_count,
         web_engine=web_engine(eff),
+        real_device=_real_device_check(eff, actuator, udid),
     )
     checks = cfg_checks + env_checks
     if checks:
@@ -286,9 +502,11 @@ def doctor(
     # whose app server is down still faults on navigate (ERR_CONNECTION_REFUSED). Report it as a
     # fixable error and exit non-zero rather than surfacing a stack trace — doctor diagnoses, it
     # does not crash.
+    # The probe scores the screen of the target's first run, as `record` takes it (BE-0452).
+    eff, udid = _first_run_or_exit(eff, actuator, udid)
     try:
         elements = _current_screen(actuator, udid, eff)
-    except device_errors.DeviceError as e:
+    except (device_errors.DeviceError, base.UnsupportedAction) as e:
         typer.echo(f"could not read the screen to score: {e}")
         raise typer.Exit(1) from None
     result = score(

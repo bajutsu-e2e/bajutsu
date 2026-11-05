@@ -75,7 +75,7 @@ SERIAL ?= booted
 # up-front grant). This is the *same* permission.yaml the iOS lane runs: the grant mechanism is in
 # config, not the scenario, so one file serves both. showcase-compose grants POST_NOTIFICATIONS up
 # front (`grantPermissions` → `pm grant`), so the RequestPermission contract short-circuits to granted
-# with no dialog; the scenario's `systemAlertHandling` guard therefore never fires here — no LLM, no fixed
+# with no dialog; the scenario's `systemAlert` interrupts entry therefore never fires here — no LLM, no fixed
 # sleep on the CI lane (on iOS, where notifications can't be pre-granted, that guard taps "Allow"
 # instead). Verified on a local arm64 emulator.
 #
@@ -110,7 +110,8 @@ SERIAL ?= booted
 # Observed network capture lands in its own `e2e-network` target below (BE-0283); mocked network
 # (deterministic stub responses) stays a follow-up.
 E2E_SCENARIOS := smoke firstlook navigation search data_driven relaunch system components modals \
-	controls notices gestures gestures_multitouch permission device extract foreach interrupts
+	controls notices gestures gestures_multitouch permission device extract foreach interrupts \
+	text_entry_android
 
 # Raise the condition-wait ceiling for this lane only: the CI x86_64 software-rendered emulator
 # presents sheets/covers slower than the shared scenarios' 5s waits allow. A wait returns as soon as
@@ -132,8 +133,12 @@ E2E_ENV = BAJUTSU_MIN_WAIT_TIMEOUT=$(E2E_WAIT_FLOOR) BAJUTSU_LOG_LEVEL=$(E2E_LOG
 # true for one toolkit into a guarantee checked for both, on every push/PR. Views runs the subset
 # whose selectors carry both id forms and that is verified on the Views tree; `components` / `modals`
 # stay Compose-only until their id forms and modal timing are confirmed on Views (a BE-0221 follow-up).
+# The underscore form belongs only in a scenario some Views lane runs — this list, or a lane that
+# drives `showcase-views` directly (`e2e-device-group`, whose scenarios declare the target
+# themselves). Anywhere else no lane resolves it, so a typo in it could never fail (issue #2233).
+# `device.yaml` carries the underscore form, so it joins (verified on a local arm64 emulator).
 E2E_VIEWS_SCENARIOS := smoke firstlook navigation search data_driven relaunch system extract foreach \
-	interrupts
+	interrupts device text_entry_android
 
 # The wrapper jar IS committed (like any standard Android repo), so a fresh clone builds with no
 # extra step. Only run this to bump the pinned Gradle version — never as part of a build, since it
@@ -146,7 +151,7 @@ wrapper:
 build-all: compose-build compose-noax-build views-build views-noax-build
 
 # Each build lands at <module>/build/outputs/apk/<flavor>/debug/<module>-<flavor>-debug.apk,
-# exactly where showcase.config.yaml's android targets point their appPath.
+# exactly where showcase.config.yaml's android targets point their subject.path.
 compose-build:
 	cd $(HERE) && $(GRADLEW) :compose:assembleA11yDebug
 compose-noax-build:
@@ -160,7 +165,7 @@ views-noax-build:
 	cd $(HERE) && $(GRADLEW) :views:assembleNoaxDebug
 
 # On-device e2e for both a11y twins over the adb backend (BE-0007 / BE-0221). Builds each APK —
-# bajutsu's launch installs it from the config's appPath — then runs each passing scenario with a
+# bajutsu's launch installs it from the config's subject.path — then runs each passing scenario with a
 # clean state (the default erase = `pm clear`): Compose over the full set, Views over the id-form-
 # verified subset. Not part of `make check`: it needs a booted AVD, so it is driven by
 # .github/workflows/android-e2e.yml (Linux + KVM), the Android twin of the iOS and web e2e lanes.

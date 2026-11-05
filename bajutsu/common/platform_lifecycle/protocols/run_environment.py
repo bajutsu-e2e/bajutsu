@@ -7,11 +7,14 @@ from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from bajutsu.common.config import Effective
+from bajutsu.common.config.preconditions import ResolvedPreconditions
 from bajutsu.common.drivers import base
 from bajutsu.common.evidence import intervals
 from bajutsu.common.evidence.network import Collector
 from bajutsu.common.orchestrator import DeviceControl, RelaunchFn
-from bajutsu.common.scenario import Preconditions, Scenario
+from bajutsu.common.scenario import Scenario
+
+from .collector_host import CollectorHost
 
 
 @runtime_checkable
@@ -35,7 +38,7 @@ class RunEnvironment(Protocol):
     def start(
         self,
         eff: Effective,
-        pre: Preconditions,
+        pre: ResolvedPreconditions,
         *,
         extra_env: Mapping[str, str] | None = None,
         record_video_dir: Path | None = None,
@@ -45,7 +48,7 @@ class RunEnvironment(Protocol):
     def start_member(
         self,
         eff: Effective,
-        pre: Preconditions,
+        pre: ResolvedPreconditions,
         *,
         extra_env: Mapping[str, str] | None = None,
         permissions: Mapping[str, str] | None = None,
@@ -141,7 +144,8 @@ class RunEnvironment(Protocol):
 
         Gated raise: the runner calls this *only when* `observes_network_via_driver()` is `True`, so a
         platform that returns `False` there may leave this raising `NotImplementedError` — the check
-        makes the raise unreachable. This is the only Protocol method permitted to raise.
+        makes the raise unreachable. This is the only Protocol method permitted to raise to decline; a
+        real failure elsewhere (`collector_host`, `reach_device_port`) raises `DeviceError`.
         """
 
     def bridge_collector(self, port: int) -> Callable[[], None]:
@@ -155,6 +159,28 @@ class RunEnvironment(Protocol):
         iOS Simulator shares the Mac's loopback, so most platforms need nothing and return a no-op; the
         Android emulator's loopback is its own, so `AndroidEnvironment` tunnels the port back with
         `adb reverse` (BE-0283). Returns the teardown thunk (removes the tunnel), never `None`.
+        """
+
+    def collector_host(self, eff: Effective) -> CollectorHost:
+        """Where this lease's network collector binds, and the addresses the app is offered for it.
+
+        The loopback, on every platform whose app shares the host's loopback or reaches it through a
+        tunnel. A real iOS device has neither, so it binds every interface and offers the host's
+        routable addresses.
+
+        Raises:
+            DeviceError: the target needs an address offered and none can be resolved, before any
+                device work.
+        """
+
+    def reach_device_port(self, eff: Effective, port: int) -> tuple[int, Callable[[], None]]:
+        """The host port that reaches `port` on the leased device, and the teardown that closes it.
+
+        No-op implementation: `port` itself and a no-op thunk, wherever the host already reaches the
+        device's loopback (the Simulator). A real iOS device bridges it over usbmuxd.
+
+        Raises:
+            DeviceError: the bridge cannot open (usbmuxd unreachable, or the device unlisted).
         """
 
     def mirrors_collector_port_on_device(self) -> bool:
@@ -257,7 +283,7 @@ class RunEnvironment(Protocol):
         The app-side counterpart to `take_crash_snapshot` above, and plainer in two ways. It returns
         the bytes rather than a thunk: the step loop calls it synchronously the moment a driver
         confirms the crash, so nothing is deferred past a point the environment's launch marker could
-        move — which a teardown `relaunch` in the same scenario's own `after` phase would otherwise
+        move — which a teardown `relaunch` in the same scenario's own `cleanup` phase would otherwise
         do, widening the sweep past the crash it is meant to attribute. And it needs no ownership
         move, because that call site is strictly inside the scenario the evidence belongs to.
 
@@ -276,7 +302,7 @@ class RunEnvironment(Protocol):
         Split out of `app_crash_artifacts` above because Android alone needs two call sites with
         different timing constraints. The pull needs `adb root`, which restarts `adbd` and kills the
         resident server's `am instrument -w` session outright — so firing it mid-scenario would make
-        every wrapping outcome, `expect`, and `after` rule still to come raise `BackendCrashError`
+        every wrapping outcome, `expect`, and `cleanup` rule still to come raise `BackendCrashError`
         against a dead channel, discarding the very `RunResult` this item exists to produce. Called
         only from `pipeline.py`'s post-return scan, where the scenario is genuinely over. Reading the
         launch marker that late is safe here in a way it is not for the other layer: a teardown only

@@ -16,11 +16,11 @@ import XCTest
 /// operations at once, because the second operation's `DispatchQueue.main.sync` cannot be drained
 /// while the first's main block is executing. That suite's docstring carries the measurement.
 final class LegacyBackedTransportTests: XCTestCase {
-    /// Registration is one generated call covering all twenty-two operations, so an operation
+    /// Registration is one generated call covering all twenty-four operations, so an operation
     /// dropped from `openapi.yaml` — or a path renamed in it — would leave the driver with a 404
     /// discovered only on a device. Pinning the table against the contract's own paths catches it
-    /// here. `/app/enter` and `/app/leave` are new to the generated path, with no legacy
-    /// `Router` twin — see `AppActivationTests`'s own doc comment for why.
+    /// here. `/app/enter`, `/app/leave`, and `/systemAlert/resolve` (BE-0461) are new to the
+    /// generated path, with no legacy `Router` twin — see `AppActivationTests`'s own doc comment for why.
     func testEveryContractOperationRegisters() throws {
         let transport = LegacyBackedTransport()
         try APIHandler(provider: FakeElementProvider()).registerHandlers(on: transport)
@@ -32,7 +32,7 @@ final class LegacyBackedTransportTests: XCTestCase {
                 "POST /tap", "POST /isHittable", "POST /gesture", "POST /swipe", "POST /scroll",
                 "POST /setPickerValue",
                 "POST /type", "POST /deleteText", "POST /selectAll", "POST /copy",
-                "POST /systemAlert/query", "POST /systemAlert/tap",
+                "POST /systemAlert/query", "POST /systemAlert/tap", "POST /systemAlert/resolve",
                 "POST /notificationBanner/query",
                 "POST /interruptionPolicy", "POST /interruptionPolicy/drain",
                 "POST /app/state",
@@ -69,6 +69,33 @@ final class LegacyBackedTransportTests: XCTestCase {
             box.priority, .userInitiated,
             "the reply task must declare its priority, not inherit the caller's (BE-0362)"
         )
+    }
+
+    /// A query string is the operation's input, not part of its route (BE-0461): matching the full
+    /// path left `GET /elements?resolveAlerts=true` a 404 on a live runner, which the handler-level
+    /// tests could not see.
+    func testAQueryStringReachesTheOperationOverTheWire() throws {
+        let provider = FakeElementProvider()
+        // The public server reads the process-wide store; a scenario-start push leaves it clean.
+        InterruptionPolicyStore.shared.setPolicy(InterruptionPolicy(), scenarioStart: true)
+        let server = RunnerServer(provider: provider)
+        let port = try server.start()
+        defer { server.stop() }
+
+        // Off the main thread, which has to spin for the operation's `DispatchQueue.main.sync`.
+        let replied = XCTestExpectation(description: "the resolving read answered")
+        var reply: (status: Int?, data: Data?) = (nil, nil)
+        DispatchQueue.global().async {
+            reply = HTTPTestClient.get(port: port, path: "/elements?resolveAlerts=true&forceCheck=true")
+            replied.fulfill()
+        }
+        wait(for: [replied], timeout: 10)
+        XCTAssertEqual(reply.status, 200)
+        let body = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: XCTUnwrap(reply.data)) as? [String: Any]
+        )
+        XCTAssertNotNil(body["labels"], "the resolving read must carry its records")
+        XCTAssertEqual(provider.systemAlertQueryCalls, 1)
     }
 
     /// BE-0287's invariant, restated on the stack Unit 4 builds: `/health` reports whether the

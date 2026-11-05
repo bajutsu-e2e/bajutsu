@@ -101,35 +101,36 @@ The `bajutsu/` package (Python 3.13+, pydantic v2 / typer / anthropic / pyyaml /
 | `common/scenario/interp.py` | `${ns.key}` interpolation primitive (`params.` / `row.` / `secrets.` / `vars.`) | [scenarios](scenarios.md) |
 | `common/mailbox.py` | Pure, network-free matching/extraction logic for the `email` step (BE-0046): normalize a mailbox provider's messages, match on `to`/`subject`/`subjectMatches`, select only a message that arrived after the step started, and extract a value by regex into `${vars.*}` | [scenarios](scenarios.md) |
 | `common/totp.py` | RFC 6238 time-based one-time password (TOTP) for the `totp` step (BE-0046): a pure, deterministic function of the shared secret and the time, so a code is derivable with no network and no device | [scenarios](scenarios.md) |
-| `common/config/` | Team defaults × per-target resolution (`Effective`) (package: `schema` / `effective` / `resolve` / `accessors`) | [configuration](configuration.md) |
+| `common/config/` | Team defaults × per-target resolution (`Effective`) (package: `schema` / `effective` / `resolve` / `accessors` / `preconditions` / `json_schema`). `schema` holds one model per target group (`services`, `hooks`, `evidence`, `paths`), the `_merge` step that folds `defaults` into each target before validation, the `_templates` step that expands a target's `extends` into the ordered layers `_merge` folds onto `defaults` ([BE-0471](../roadmaps/BE-0471-target-templates/BE-0471-target-templates.md)), and the `platform/` registry that supplies each platform's `subject` / `runsOn` / `driver` models, with `runsOn` holding one block per destination the platform allows ([BE-0469](../roadmaps/BE-0469-runson-destination-blocks/BE-0469-runson-destination-blocks.md)); `load_config(text, path=, root=)` / `load_config_file(path, root=)` take the config's own path and the suite root so a `use:` component under `hooks` resolves at load; `preconditions` merges a scenario's `preconditions` (`subject` and the `device` state) over each target it drives, and `json_schema` builds the config's JSON Schema from the models and the registry for `bajutsu config schema` ([BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)) | [configuration](configuration.md) |
 | `common/config_source/` | Acquire a config (and its scenario tree) from a Git source at an immutable commit SHA into a content-addressed cache (BE-0063) — where a config comes from, distinct from `common/config/`'s schema and resolution | [configuration](configuration.md) |
 | `common/backends.py` | Backend availability check · actuator selection (platform-aware registry: `ios` / `android` / `web` / `fake`) · driver construction | [drivers](drivers.md#backend-selection-and-the-actuator) |
-| `common/devices/` | Device-identity helpers shared across backends (package): `os.py` (the parsed device OS — platform/major/minor — read from the `device_runtime` label, BE-0358), `id.py` (the device-id validator every backend's `--udid`/config path shares, guarding against argv option injection), `errors.py` (the platform-neutral `DeviceError` base `simctl`/`adb` subclass, BE-0260, plus the `DeviceTimeout` beneath it that every backend raises when a device operation exceeded its deadline rather than failing, BE-0374) | [drivers](drivers.md) |
+| `common/devices/` | Device-identity helpers shared across backends (package): `os.py` (the parsed device OS — platform/major/minor — read from the `device_runtime` label, BE-0358), `id.py` (the device-id validator every backend's `--udid`/config path shares, guarding against argv option injection), `errors.py` (the platform-neutral `DeviceError` base `simctl`/`adb` subclass, BE-0260, plus the `DeviceTimeout` beneath it that every backend raises when a device operation exceeded its deadline rather than failing, BE-0374), `version.py` (`VersionSpec`, npm's range grammar for `runsOn` version ranges), `facts.py` (reads what `runsOn` conditions compare from each available device: the Simulator's device-type name, family, and runtime, a real iOS device's family over `devicectl`, and a pool that mixes the two (BE-0468), an Android device's API level and Android Virtual Device (AVD) name, a browser's version), `runs.py` (forms a scenario's runs from lists and ranges — one per listed `kind` too — resolves each run's `family` priority list, combines the runs across targets, and picks each run's eligible devices; BE-0452, BE-0468), and `browsers.py` (the browser kinds `runsOn.browser.kind` names, and the Playwright engine and channel each launches as; BE-0468) | [drivers](drivers.md) |
 | `common/backend_cli/` | Backend command-line wrappers (package): `simctl.py` (`simctl` wrapper — erase/boot/launch/openurl/io), `adb.py` (the adb command-builder half of the Android backend — clean-state/launch/deeplink/input/screencap, the twin of `simctl`), `adb_resident.py` (the resident UI Automator server channel's Python side, BE-0245) | [drivers](drivers.md#environment-management-simctl) |
-| `common/platform_lifecycle/` | The `Environment` seam (BE-0009): one `RunEnvironment`/`CrawlEnvironment` Protocol per platform for per-run app bring-up, readiness, relaunch, device control, and teardown, so `common/runner/` and `crawl/cli.py` drive iOS/Android/web through one interface instead of branching on the actuator name (package: `protocols` / `factories` / `readiness` / `relaunchers` / `device_control` / `read_session`, plus `environments/` — `ios` / `xcuitest` / `xcuitest_live` / `android` / `web` / `fake`) | — |
-| `common/capability/preflight.py` · `common/capability/capability_preflight.py` · `common/capability/capabilities.py` | Runnability gate, per backend (iOS: required CLIs + a booted Simulator; web: Playwright + its Chromium browser), plus a scenario step's declared-capability preflight and the capability set each backend actually supports | [configuration](configuration.md) |
+| `common/platform_lifecycle/` | The `Environment` seam (BE-0009): one `RunEnvironment`/`CrawlEnvironment` Protocol per platform for per-run app bring-up, readiness, relaunch, device control, and teardown, so `common/runner/` and `crawl/cli.py` drive iOS/Android/web through one interface instead of branching on the actuator name (package: `protocols` / `factories` / `readiness` / `relaunchers` / `device_control` / `read_session`, plus `environments/` — `ios` / `xcuitest` / `xcuitest_live` / `android` / `web` / `fake`, and `device_runner/`, the per-user signed device build of the XCUITest runner, BE-0456) | — |
+| `common/capability/preflight.py` · `common/capability/capability_preflight.py` · `common/capability/capabilities.py` · `common/capability/worker_capability.py` | Runnability gate, per backend (iOS: required CLIs + a booted Simulator; web: Playwright + its Chromium browser), plus a scenario step's declared-capability preflight and the capability set each backend actually supports; `worker_capability.py` loads and validates the worker capability file (`worker.yaml`, with the shipped default beside it), and `capability_preflight` judges each scenario against it and the host operating system before any device is acquired (BE-0450) | [configuration](configuration.md) · [drivers](drivers.md#worker-capability-check-be-0450) |
 | `common/provisioning/requirements` | One declarative mapping: backend/capability → pip extra + external-tool probe + install method (BE-0164), shared by `preflight` and `provision` | — |
 | `common/provisioning/provision` | Config-aware environment installer (BE-0164): resolve a config's backends + AI provider, install only their extras/tools idempotently (`make install`, `python -m bajutsu.common.provisioning.provision`) | — |
-| `common/runner/` | config + scenarios → report; device pool + launch sequence; `device_provider` seam resolves where the run's devices come from — the built-in `local` pass-through, plus an `appium` provider driving a reserved iOS device end to end behind a live Appium/WebDriver endpoint (BE-0238); a further cloud-vendor kind (e.g. Firebase Device Streaming) stays a future addition; `recovery` holds the backend-crash retry-count/wall-clock-budget decision shared with the on-device driver conformance suite (BE-0334), plus the two predicates that classify a failure for it — `recovers_by_respawn` decides a retry, `is_host_fault` diagnoses a failure the host caused, and a wedged device answers the two differently (BE-0378) — the latter naming the platform-neutral `DeviceTimeout` so every backend that adopts it is covered (BE-0374); `recovery` also holds the run-level latch that stops later scenarios, carrying *why* recovery was abandoned (a spent budget or a wedged host), and the guarded-teardown policy that the pool's teardown sites, `launch_driver`, and the on-device suites' lease discard all share (BE-0342); `mailbox` resolves the `email` step's transport by a registry keyed on `kind` (the shipped `http` JSON adapter; BE-0186), mirroring `common/ai/registry.py`'s shape (package: `pipeline` / `pool` / `launch` / `device_provider` / `recovery` / `mailbox`) | [run-loop](run-loop.md#runner-the-run-pipeline) |
+| `common/runner/` | config + scenarios → report; device pool + launch sequence; `device_provider` seam resolves where the run's devices come from — the built-in `local` pass-through, plus an `appium` provider driving a reserved iOS device end to end behind a live Appium/WebDriver endpoint (BE-0238), selected by an `appium` environment in `worker.yaml` rather than a target key (BE-0452); a further cloud-vendor kind (e.g. Firebase Device Streaming) stays a future addition; `recovery` holds the backend-crash retry-count/wall-clock-budget decision shared with the on-device driver conformance suite (BE-0334), plus the two predicates that classify a failure for it — `recovers_by_respawn` decides a retry, `is_host_fault` diagnoses a failure the host caused, and a wedged device answers the two differently (BE-0378) — the latter naming the platform-neutral `DeviceTimeout` so every backend that adopts it is covered (BE-0374); `recovery` also holds the run-level latch that stops later scenarios, carrying *why* recovery was abandoned (a spent budget or a wedged host), and the guarded-teardown policy that the pool's teardown sites, `launch_driver`, and the on-device suites' lease discard all share (BE-0342); `mailbox` resolves the `email` step's transport by a registry keyed on `kind` (the shipped `http` JSON adapter; BE-0186), mirroring `common/ai/registry.py`'s shape (package: `pipeline` / `pool` / `launch` / `device_provider` / `recovery` / `mailbox`) | [run-loop](run-loop.md#runner-the-run-pipeline) |
 | `common/run_meta/` | Run-metadata helpers shared across features (package): `files.py` (the runs-root name + path-free reads of a run directory — listing, manifests), `id.py` (run id generation/parsing), `root.py` (the run directory's write provider, BE-0331 — see the import contract below), `artifact_perms.py` (owner-only `0700`/`0600` permissions for a run's artifacts, BE-0131), `object_store.py` (a backend-agnostic `ObjectStore` — local/S3/GCS — for evidence upload and server storage, BE-0110/BE-0204) | [configuration](configuration.md) |
 | `run/notify` | Run-completion notifications (e.g. Slack), sent after `bajutsu run` finishes | — |
 | `common/doctor/` | Convention score (id coverage, etc.) | [configuration](configuration.md#doctor-the-convention-score) |
 | `common/agents/` | AI / authoring-agent periphery (BE-0257), moved under `common/` (reorg successor to BE-0257): `protocols` + `factory` (the `Observation`/`Proposal`/`Agent` abstraction + construction of the one SDK-backed agent), `claude` (the authoring agent), `claude_backed` (shared base, BE-0246), `claude_enrich`, `claude_triage`, `ai_config` (provider/model/effort/language resolution), `anthropic_client` (SDK client construction), `availability` (credential-gap messaging), `enrich` (the enrichment loop), `alerts` (system-alert guard) | [recording](recording.md) |
 | `common/ai/` | Vendor-neutral AI backend seam (BE-0104), moved under `common/` (reorg successor to BE-0257): `AiBackend` protocol + normalized request/response types (`base`), provider registry (`registry`) covering the Anthropic API and Amazon Bedrock via the reference adapter over `common.agents.anthropic_client` (`anthropic`), the Anthropic CLI `ant` (also via the `anthropic` adapter, BE-0163), the Claude Code CLI (`claude_code`, BE-0176), and the `none` switch whose factory raises so no AI path can construct a backend (`disabled`, BE-0394) | [configuration](configuration.md#ai-provider-ai-be-0047) |
-| `run/` | `bajutsu run`'s CLI command (`cli.py`): target/backend resolution, device leasing, plan construction, and the deterministic run/report dispatch | [cli](cli.md) |
+| `run/` | `bajutsu run`'s CLI command (`cli.py`): target/backend resolution, device leasing, plan construction, and the deterministic run/report dispatch. The public command is a thin wrapper that runs that body in a child process, `python -m bajutsu.run.internal` (`internal.py`), through the one-shot worker path that `bajutsu worker --once` also uses; the serve spec builders emit the same module (BE-0449). `device_matrix.py` plans an invocation's runs from the `runsOn` conditions of the targets each scenario runs against and groups the runs that take the same devices into cells, each run as one pass (BE-0452) | [cli](cli.md) |
 | `record/` | The record loop (observe → propose → execute → emit) (package: `loop.py`, plus `capture.py` — proxy-actuation capture of tap/type/swipe into a scenario step — and `cli.py`, its CLI command) | [recording](recording.md#the-record-loop) |
 | `crawl/` | Autonomous breadth-first crawl → screen map: `core` engine + `serialize`, with `guide` / `tabs` / `report` / `repro` / `flows`, plus its CLI command (`cli.py`) | [recording](recording.md) |
-| `repl/` | The AI-free manual shell (BE-0423): `render.py` prints an element tree, `session.py` is the command set (`tree` / `find` / `tap` / `type` / `back` / `screenshot`), `loop.py` the `bajutsu>` prompt loop, `cli.py` its CLI command | [cli](cli.md#repl) |
+| `repl/` | The AI-free manual shell (BE-0423): `render.py` prints an element tree, `session.py` is the command set (`tree` / `find` / `tap` / `type` / `scroll` / `back` / `screenshot` / `step`, plus the `--sel` full-selector escape hatch), `tui.py` the ncurses-style shell an interactive terminal gets by default, `loop.py` the plain `bajutsu>` prompt-loop fallback otherwise (BE-0429), `cli.py` its CLI command, including `--attach` (BE-0455), which drives the app already running on a booted Simulator without relaunching it | [cli](cli.md#repl) |
 | `codegen/` | Scenario → native test generation: XCUITest (Swift), Playwright (TypeScript), UI Automator (Kotlin), plus its CLI command (`cli.py`) | [codegen](codegen.md) |
 | `triage/` | M4 self-heal: rule-based `HeuristicTriageAgent` + structured fixes (`renameId`/`addIndex`/`raiseTimeout`), `--apply`/`--write`/`--rerun` (package: `heuristic.py`, plus `cli.py` — its CLI command) | [cli](cli.md) |
 | `common/github/` | GitHub helpers: `actions` (CI, continuous integration, annotations + job summary), `app` (App installation token for the private-repo config source), `errors` (the shared access error) | [ci](ci.md) |
 | `common/analytics/` | Token/cost accounting, split by role (BE-0257): `usage` (process-global, in-memory, best-effort) / `ledger` (attributed, persistent AI usage/cost ledger, BE-0196) / `stats` (aggregates the ledger for the serve usage dashboard, BE-0195) | [web-ui](web-ui.md#usage--the-ai-token-usage-and-cost-dashboard) |
 | `common/cloud/` | Cloud device backends reached as batch submitters, off the deterministic `run`/CI verdict path (`devicefarm.py`, the first concrete provider) | [devicefarm](devicefarm.md) |
-| `serve/` | Local web UI (the `serve` command): author / run / reports / triage a failed run; its `serve`/`worker`/`approve` CLI commands live in `cli/` (one file each, feature-colocated) | [cli](cli.md) |
+| `serve/` | Local web UI (the `serve` command): author / run / reports / triage a failed run, each queued as a job for a `bajutsu worker`, since the server runs no job itself (BE-0449); its `serve`/`worker`/`approve` CLI commands live in `cli/` (one file each, feature-colocated); `capabilities.py` routes a queued job to a worker that advertises every token the job requires — its platform, and `host:<os>` when its driver runs on one host operating system alone, which the worker advertises for its own machine, and the device-family tokens of the target's `runsOn.ios.family`, one any-of group per family priority list, which the worker advertises from its Simulator inventory and, as `device:<family>`, from the real devices connected to it (BE-0166, BE-0450, BE-0468), and the `cap:` / `setting:` tokens of each environment route its steps and settings need (`common/capability/route_tokens.py`, BE-0467) | [cli](cli.md) · [self-hosting](self-hosting.md#capability-routed-queues-be-0166) |
 | `mcp/` | MCP server: exposes `run`/`doctor` as tools + run evidence as resources, plus its CLI command (`cli.py`) | [cli](cli.md) |
 | `common/lint.py` | Scenario linter + JSON Schema generation (`lint` / `schema` commands) | [cli](cli.md) |
+| `common/target_lint.py` | `lint --config --target`: the run's step, settings, and precondition checks per target, without a device (BE-0467) | [cli](cli.md) |
 | `analysis/` | Read-only advisory analysis (BE-0257), no device/AI, never gates CI: `audit` (determinism/flakiness audit, BE-0049), `coverage` (scenario id-namespace coverage, BE-0050), `impact` (test impact analysis — affected steps from a diff, BE-0321), `stats` (the aggregate run-stats dashboard, BE-0102), cross-run flakiness ranking (`flakiness`, BE-0220), and the `trace` timeline (`trace.py`, the `bajutsu trace` command's core) — each with its own Typer command in `cli/` (one file per command, feature-colocated) | [cli](cli.md) |
-| `cli/` | Typer app assembly: mounts each feature's own CLI (`run`/`crawl`/`record`/`triage`/`mcp`/`codegen`/`serve`/`analysis`) plus the feature-less `commands/` (`doctor`/`lint`/`schema`/`report`) and the `.env` loader (`dotenv.py`) | [cli](cli.md) |
+| `cli/` | Typer app assembly: mounts each feature's own CLI (`run`/`crawl`/`record`/`repl`/`triage`/`mcp`/`codegen`/`serve`/`analysis`) plus the feature-less `commands/` (`doctor`/`lint`/`schema`/`config`/`report`/`runner`) and the `.env` loader (`dotenv.py`) | [cli](cli.md) |
 | `common/screenshots.py` | Screenshot capture + pixel-coordinate helpers shared across the AI paths (`screenshot_bytes`, `png_size`, `fraction`, BE-0246) | [recording](recording.md) |
 | `common/handoff/` | The human-in-the-loop handoff contract (Tier 1, BE-0179): the transport-neutral request/response `record` (terminal stdin) and `serve` (SSE) implement the same way | [recording](recording.md) |
 | `common/deprecations.py` | One-time deprecation notices (`warn_once`) and hard rejections for removed authoring/CLI spellings (`reject_renamed_key`) | — |
@@ -229,7 +230,7 @@ declared:
 1. **Deterministic core** — the path that derives a verdict and evidence with no model and no
    periphery stack: `common/orchestrator/`, `common/runner/`, `common/drivers/base`, `assertions/`, `evidence/`,
    `report/`, `config/`, `scenario/`, `preflight.py` / `capability_preflight.py` /
-   `capabilities.py`, `common/doctor/`, `common/lint.py`. It carries the prime directives.
+   `capabilities.py` / `worker_capability.py`, `common/doctor/`, `common/lint.py` / `common/target_lint.py`. It carries the prime directives.
 2. **Contract** — the stable surfaces a consumer depends on: the scenario schema (`scenario/`) and
    the `Driver` Protocol (`common/drivers/base`).
 3. **Periphery** — the consumers of the contract, each removable behind an optional extra:
@@ -293,7 +294,9 @@ The contract (`tests/driver_conformance.py`) is the "done" definition a new back
 - `capabilities()` matches observed behavior — the `QUERY` / `ELEMENTS` baseline is declared,
   multi-touch gestures work exactly when `MULTI_TOUCH` is declared, select-all / clipboard copy
   work exactly when `TEXT_SELECTION` is declared, and setting a native `<select>` by value works
-  exactly when `SELECT_OPTION` is declared (else each raises `UnsupportedAction`, BE-0280);
+  exactly when `SELECT_OPTION` is declared, and loading a URL works exactly when `URL_NAVIGATION` is
+  declared, and `read_attributes` resolves each selector like a tap exactly when `ELEMENT_ATTRIBUTE`
+  is declared (else each raises `UnsupportedAction`, BE-0280, BE-0464, BE-0466);
 - text editing round-trips on the focused field (typing then deleting reduces its reported length),
   and `tap_point` — a raw coordinate tap, the alert-dismissal path — focuses the field when aimed at
   its center, the same observable effect as a semantic tap (BE-0280);
@@ -330,7 +333,7 @@ relaunch or deeplink, because `simctl openurl` raises iOS's "Open in app?" dialo
 per screen crashes the resident XCUITest runner after a handful of `app.launch()` cycles. The adb
 harness instead re-launches the app's `singleTask` activity with a new `SHOWCASE_CONFORMANCE` intent
 extra, delivered via `onNewIntent` — `adb push` cannot reach the app sandbox, and the intent reuses
-the `launchEnv`→intent-extras convention (BE-0007); it is scoped to the Compose toolkit, the one that
+the convention that delivers `subject.launch.env` as intent extras (BE-0007); it is scoped to the Compose toolkit, the one that
 can render a spec-driven arbitrary-id screen (`testTag` takes any runtime string, while a Views
 `resource-id` must be a compile-time `R` entry). The suite carries an `ondevice` pytest marker
 (deselected by the gate's default) so it never runs in `make check`, and runs serially on a single
@@ -441,10 +444,10 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
 #### Drivers and backend selection
 
 - Selector resolution and ambiguity detection (the determinism core)
-- Platform-aware backend registry: `--backend` / `backend:` accept `ios` / `android` / `web` /
-  `fake` tokens, each expanding to its actuators (`common/backends.py`) — `ios` expands to `xcuitest`, the
-  sole iOS actuator since BE-0290 retired idb (`--backend ios` and `--backend xcuitest` are
-  equivalent). A platform with more than one actuator would resolve **per scenario** in cost order
+- Platform-aware backend registry (`common/backends.py`): a target's required `platform` decides
+  its actuator. `ios` resolves to `xcuitest`, the sole iOS actuator since BE-0290 retired idb, and
+  `android` / `web` / `fake` each resolve to their own. `--backend` is a check, not a fallback list: it accepts the
+  target's platform, that platform's actuator, or `fake`, and exits 2 on anything else (BE-0452). A platform with more than one actuator would resolve **per scenario** in cost order
   (BE-0240); with iOS now single-actuator, no platform's cost order differs from its stability order
 - The **XCUITest backend** (`common/drivers/xcuitest`): the sole iOS actuator (BE-0290) — a resident
   on-device runner (`BajutsuKit`) driven over a loopback HTTP channel, providing semantic
@@ -452,11 +455,26 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   gestures, and reading the XCTest automation snapshot (which descends into group containers, so it
   renders a fully-expanded element tree). The generic runner (`XCUIApplication(bundleIdentifier:)`)
   drives an arbitrary app by bundle id with no app-side integration; it needs Xcode's `xcodebuild`
-  (BE-0019). A Simulator target needs no runner config at all: when neither `xcuitest.testRunner` nor
-  `xcuitest.build` is named, the environment resolves to the Simulator runner bundled in the wheel as
+  (BE-0019). A Simulator target needs no runner config at all: when neither `driver.runner.testRunner` nor
+  `driver.runner.build` is named, the environment resolves to the Simulator runner bundled in the wheel as
   package data, materialized into a content-hash-keyed writable cache on first use — an explicit
-  `testRunner`/`build` still overrides it, and `deviceType: device` still requires an explicit signed
-  runner (BE-0292). In a checkout that ships `BajutsuKit/`'s own source, that bundle rebuilds itself
+  `testRunner`/`build` still overrides it (BE-0292). A real device (`runsOn.ios.kind: device`) with no
+  `testRunner` resolves instead to the per-user signed build that `bajutsu runner build --device`
+  cached (`environments/device_runner/`, BE-0456), and fails with the build command when none
+  exists; a run never builds a signed runner itself. A real device does not share the host's
+  loopback, so the runner, `nativeZ`, and WebView ports are bridged through usbmuxd
+  (`environments/xcuitest/_usbmux.py`, reached through the environment's `reach_device_port`): a
+  host `127.0.0.1` listener tunnels each connection to the port on the device, the iOS counterpart
+  of the Android resident channel's `adb forward`. The network collector runs the other way, so on a
+  real device it binds every interface and the app is offered the host's addresses
+  (`collector_host`, `environments/xcuitest/_host_address.py`), keeping the first that answers a
+  signed `GET /ping` with the collector's own signature. Beyond the loopback the token never
+  travels: the app signs every request with a Keyed-Hash Message Authentication Code (HMAC) over
+  its method, path, nonce, and body, the collector refuses a reused nonce (409) and any bearer
+  header (401), and it signs each answer against the request's nonce
+  (`common/evidence/network/_hmac_auth.py`, BE-0459). The pool announces the signed method with
+  `BAJUTSU_COLLECTOR_AUTH=hmac`; a loopback collector still accepts a bearer header, for Android
+  and for an app built against an older BajutsuKit. In a checkout that ships `BajutsuKit/`'s own source, that bundle rebuilds itself
   whenever the source has moved past it — `bajutsu run`, pytest, and `make serve` alike resolve the
   runner through the same rebuild-if-stale function
   (`docs/specs/xcuitest-bundled-runner-auto-refresh.md`)
@@ -472,9 +490,20 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   on the Linux gate (`demos/web`), raised to the rich end of the capability model (BE-0054) — native
   `network` observation + stubbing (`page.route()`), `video` and `deviceLog`-equivalent console /
   page-error interval evidence through the shared `driver_interval` seam, emulated `multiTouch`
-  (pinch / rotate), parallel runs across N `BrowserContext` lanes, and a target-level `deviceMode`
+  (pinch / rotate), parallel runs across N `BrowserContext` lanes, and a target-level `runsOn.browser.emulate`
   (desktop default, or a Playwright device preset for mobile emulation; BE-0228); `appTrace` stays
-  iOS-only (`os_log`/simctl-based)
+  iOS-only (`os_log`/simctl-based). `query()` fills `value` from each tag's own source — `href` for
+  `<a>`, `src` for `<img>`, `datetime` for `<time>` — while a form control, a `<meter>`, and a
+  `<progress>` carrying a `value` attribute report their live `value` even under a `role`; any
+  other `role`'d element reports `aria-valuetext` or `aria-valuenow` when either is present and its
+  own `value` property otherwise, while an indeterminate `<progress>` (one carrying no `value`
+  attribute) reports only `aria-valuetext` or `aria-valuenow`; an element that holds its own text but matches no other rule is read too, labeled
+  with the `staticText` trait iOS uses for a label. The same walk descends into every iframe
+  (nested and cross-origin included, offset into main-page CSS pixels), except one sitting under a
+  non-translation CSS transform, which is left unread so a tap cannot silently miss; a cross-origin
+  iframe's elements carry `crossOriginFrame: true` and stay selectable, but `doctor`'s score and the
+  crawl's screen model leave them out, since the app cannot instrument or explore an embedded
+  third-party page
 - The **Android adb backend** (`common/drivers/adb` + `common/backend_cli/adb`): `tap`/`long_press`/`double_tap` send
   the resolved element's identity to the resident server's `POST /act`, which re-resolves and
   injects device-side so the gesture lands on the bounds the device holds at inject time, falling
@@ -522,7 +551,7 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   candidates for cross-platform id forms (BE-0221)
 - Evaluation of the assertion kinds (`exists` / `value` / `label` / `count` / `enabled` / `disabled` /
   `selected` / `request` / `requestSequence` / `event` / `responseSchema` / `visual` / `clipboard` /
-  `golden`)
+  `golden` / `attribute`)
 - The Tier 2 run loop (act → wait → verify), verified with `FakeDriver`
 - **Multi-target scenario execution** (BE-0428): a scenario's top-level `targets: list[str]` plus a
   per-step `target: str` interleave steps across more than one declared target — an iOS target and a
@@ -548,9 +577,9 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   repeating `target:` on each of them. A load-time pass (`_expand_target_groups`) replaces every
   group with its own stamped, flat children before the per-step `target` rule validates them, so
   nothing that executes a step learns the new shape: `bajutsu run` never observes a target group,
-  only the same per-step `target` form BE-0428 already runs. The pass runs at the same four points
-  `_check_target_requirements` does — `Scenario`'s own validator, plus `apply_setups`,
-  `expand_components`, and the pipeline's config-level `before`/`after` folding, none of which
+  only the same per-step `target` form BE-0428 already runs. The pass runs at the same three points
+  `_check_target_requirements` does — `Scenario`'s own validator, plus `expand_components` and the
+  pipeline's folding of a target's `hooks.setup` / `hooks.cleanup`, neither of which
   Pydantic re-validates — and `bajutsu run`'s CLI matches its step-line count against the raw
   YAML's one-entry-per-item count rather than a snapshot of its own, since a group is expanded
   inside `Scenario`'s validator, before the CLI could take one
@@ -602,15 +631,16 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   scenario on a freshly respawned one, bounded by a retry count (`crash_retries`, default 1) and an
   optional wall-clock ceiling on total respawn time (`crash_recovery_budget`, unset by default) so a
   scenario that keeps crashing — or a runner that never comes back — still fails loudly rather than
-  being retried into a silent pass or a hung job. A retry forces the same `erase` precondition a
-  scenario already gets by declaring `erase: true` — a Simulator restart (`simctl shutdown → erase →
+  being retried into a silent pass or a hung job. A retry forces `preconditions.subject.reinstall: erase`,
+  the same device reset a scenario already gets by declaring that value — a Simulator restart (`simctl shutdown → erase →
   boot`) on the XCUITest backend, an app-level clean state on adb — instead of a bare in-place
-  respawn onto the very device that just crashed it. Skipped when the scenario declares `reinstall:
-  overwrite` to keep its app's data across the lease (a plain `erase: false` is not enough to skip
-  it: the CLI resolves every scenario's `erase` to a concrete bool, most commonly `false`, before the
-  pipeline ever sees it, so a guard on that value would disable the forced retry on the very path it
-  was written for), and on the two XCUITest routes that reject any `erase` precondition outright (a
-  real device, `xcuitest.deviceType: device`; the live WebDriver endpoint) — forcing it there would
+  respawn onto the very device that just crashed it. Skipped when the merged reinstall is `overwrite`,
+  which keeps the app's data across the lease (a merged `clean`, the built-in default, does not skip
+  it: `clean` keeps no data either, so a guard on that value would disable the forced retry on the
+  very path it was written for), when the run has `--no-erase`
+  ([BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md)),
+  and on the two XCUITest routes that reject any `erase` precondition outright (a
+  real device, `runsOn.ios.kind: device`; the live WebDriver endpoint) — forcing it there would
   abort the run instead of retrying the one scenario. If the forced-erase lease itself fails with a
   device-level fault (`simctl.DeviceError`/`adb.DeviceError`, a sibling type to
   `BackendCrashError`, not a subclass of it), the retry degrades to that same bare in-place respawn
@@ -641,7 +671,7 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   recording never confirmed it started writing escalates from its *first* crash, since that symptom
   identifies the degradation class the erase does not clear. The replacement attempt drops the forced
   erase (a device about to be created has nothing to erase), and the rung is scoped to an unpinned
-  run with an `appPath` to install, so `--udid` keeps the erase-level retry on the device the
+  run with a `subject.path` to install, so `--udid` keeps the erase-level retry on the device the
   operator named. Because a replacement resets strictly more than an erase does, it also honors the
   two opt-outs the erase rung honors: `reinstall: overwrite` and `bajutsu run --no-erase`
 - **Per-scenario iOS crash-report capture** (BE-0421): a scenario that fails on an exhausted
@@ -667,7 +697,8 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
 #### DSL authoring, control flow, and data
 
 - DSL: the `within` selector (geometric scoping), the `relaunch` step (validated on-device),
-  reusable `setup` preludes, `locale` applied at launch, and parallel runs (`--workers`) over a
+  a target's `hooks.setup` (which calls a former prelude as a `use:` component; BE-0452), `locale`
+  applied at launch, and parallel runs (`--workers`) over a
   device pool
 - DSL authoring reuse: reusable parameterized components (`use` / `${params.*}`, resolved by a ref
   holding a `/` or ending in `.yaml` / `.yml` as a cross-file component file (BE-0030), or by a
@@ -682,7 +713,10 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   into `${vars.*}`)
 - DSL `totp` and `email` steps (BE-0046): `totp` generates an RFC 6238 one-time password from a
   shared secret (commonly `${secrets.*}`) into `${vars.*}`, local and deterministic — no network, no
-  model; `email` polls a mailbox (config `targets.<name>.mailbox`, a registry-based transport —
+  model. Its optional `minRemaining` (BE-0474) makes the run loop wait, before the handler runs, for
+  the next 30-second window when the current one has fewer seconds left; the wait ends on the
+  boundary, is bounded by one window plus one cancellation slice, and records a non-fatal
+  `StepOutcome.warnings` note when the wall clock jumped. `email` polls a mailbox (config `targets.<name>.services.mailbox`, a registry-based transport —
   `http` is the shipped adapter, BE-0186) until a message matching `to` / `subject` /
   `subjectMatches` arrives after the step started, then extracts a value via a `bodyMatches` regex
   into `${vars.*}` — a condition wait bounded by `timeout`, never a fixed sleep
@@ -693,6 +727,21 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   An unrenderable `format` or an unknown `timezone` is rejected when the scenario loads, so an
   accepted step always executes and always succeeds; the produced value is recorded on the step's
   manifest entry and shown in the report, and every codegen target emits a labeled `// TODO`
+- DSL `eval` step (BE-0472): ops drawn from a fixed vocabulary of string/list operations (`split`,
+  `join`, `filter`, `pick`, `count`, `sort`, `unique`, `reverse`, `json`, `regex`, `replace`,
+  `substring`, `trim`, `case`) run as an ordered pipeline over a `from` value, storing the result
+  into `${vars.*}` — `into: { var }` for one variable, or `into: { vars: [...] }` to spread a list
+  result over several variables in order. The loader type-checks the pipeline (string in, string or
+  list at each step) before the run starts, rejecting an operation applied to the wrong type; a
+  list result is stored as compact JSON array text, the same `json_text` rendering `extractBody`
+  uses. When any input traces back to `${secrets.*}` or a variable an earlier step marked secret,
+  the result is registered as a new secret value before the step is recorded, so a derived value is
+  masked in every later artifact (`count`'s result is exempt, since it carries no character of the
+  input); the masking is scenario-scoped, so a value derived in one scenario does not mask matching
+  text in another's evidence under `--workers > 1`. `eval` has no XCUITest/Playwright/UI Automator
+  equivalent, so every codegen target emits a labeled `// TODO`. Despite the name it runs no code:
+  `ops` draws only from the vocabulary above, which a scenario cannot extend, so the step stays
+  local and deterministic — no model, no network
 - DSL `sleep` step (BE-0451): the one sanctioned exception to condition waits only — a fixed pause
   for a wait no condition on the screen, the tree, or the network log can observe (a server-side
   throttle, an animation that outlives `until: settled`). `seconds` (strict, `0 < seconds ≤ 30`) and
@@ -701,11 +750,11 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   quarter-second slices so a cancelled run leaves promptly and a fake-clock test advances time with
   no wall-clock wait; it touches no driver and needs no capability token. The exception stays
   countable: the progress label and `report.html` show `sleep Ns — reason`, the determinism audit
-  (BE-0049) lists every one as a `fixed-sleep` finding (walking `before`/`after`/`interrupts`/`web`/
+  (BE-0049) lists every one as a `fixed-sleep` finding (walking `setup`/`cleanup`/`interrupts`/`web`/
   `app` too) and grades a scenario Moderate past ten seconds of total fixed pause, `triage`'s laxer
   guard warns on a fix that adds one, every codegen emitter translates it with the reason as a
   comment, and `record`/`crawl` never offer it to the authoring model
-- DSL `interrupts` (BE-0314): a config-level (app-wide default) and scenario-level (appended) list
+- DSL `interrupts` (BE-0314): a config-level (`hooks.interrupts`, app-wide default) and scenario-level (appended) list
   of `{ condition, steps }` entries, checked opportunistically — reusing the assertion-DSL
   `condition` shape `if` already uses — for a screen that can surface at an unpredictable point (an
   onboarding step, a permission prompt the accessibility tree can see) rather than one known spot in
@@ -719,14 +768,16 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   ordinary `Step`'s `target`, it stays optional even then, defaulting to the primary target; a
   recovery step in the entry's own `steps` is optional the same way, and an omitted one runs on the
   entry's target rather than the primary (BE-0438)
-- DSL `before` / `after` (BE-0392): a scenario's setup and teardown as their own phases, tracked
-  apart from `steps` rather than spliced into it. `before` is an ordered step list that runs first
-  and aborts the scenario when it fails; `after` is a list of `{ on, steps }` rules keyed to the
-  run's own machine-checked verdict (`always` / `success` / `error`), reached on every path out of
+- DSL `setup` / `cleanup` (BE-0392, named `before` / `after` until BE-0452): a scenario's setup and
+  teardown as their own phases, tracked apart from `steps` rather than spliced into it. `setup` is an
+  ordered step list that runs first and aborts the scenario when it fails; `cleanup` is a list of
+  `{ on, steps }` rules keyed to the run's own machine-checked verdict (`always` / `success` /
+  `failure`), reached on every path out of
   `steps` — including the failing one a trailing cleanup step could never reach, and a cancelled one,
   where the phase runs under a slice of the cancellation grace window instead of the latched cancel
-  source. Both fields also exist on the target config, merging config-then-scenario for `before` and
-  scenario-then-config for `after`; both phases report as their own blocks and reach every export
+  source. The target config carries the same two phases as `hooks.setup` and `hooks.cleanup` (BE-0452),
+  merging config-then-scenario for `setup` and scenario-then-config for `cleanup`; a scenario's
+  `preconditions.inheritSetup: false` skips its targets' `hooks.setup`; both phases report as their own blocks and reach every export
 
 #### DSL gestures, text entry, and device actions
 
@@ -806,6 +857,23 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   context raises for `clear`/`delete` too. A cross-step `SelectionState` enforces the
   copy-requires-a-prior-select precondition, verified only through the existing `clipboard`
   read-back since no backend exposes selection as queryable state
+- DSL `navigate` step (BE-0464, web only): load a URL mid-scenario, for a page no control links to
+  (an email link, a shared-item URL), a deep page a UI walk would otherwise have to reach, or a
+  redirect to exercise. The value is a plain string resolved against the target's `baseUrl` the way
+  a browser resolves a link (`urljoin`); any scheme other than `http`/`https` is rejected, at load
+  time for a literal value and at run time for one carrying a `${...}` token. The step returns once
+  the page's `load` event fires without reading the response status, so cookies and storage persist
+  across it. Rides on a new `Driver.goto(url)` method gated on the `urlNavigation` capability, which
+  only the Playwright backend declares, so preflight rejects the step on iOS or Android before any
+  device work — including a `navigate` nested inside a `web:` block
+- DSL `attribute` assertion (BE-0466, web only): checks one HTML attribute of one element (`href`,
+  `alt`, a `data-*` or `aria-*` state) with `equals` / `contains` / `matches` or `absent: true`. The
+  runner reads it on demand through `Driver.read_attributes(reads)` right after each query the
+  block is evaluated against, one call for the whole block so its assertions are judged against one
+  instant. A step's `assert` re-reads it on every tick of the condition wait, and only an attribute
+  an assertion names reaches a report. Gated on the `elementAttribute`
+  capability, which only the Playwright backend declares, so preflight rejects it on iOS or Android
+  (the iOS WebView context included) before any device work
 - DSL device & system actions (iOS): `background`, `clearKeychain`, `clearClipboard`,
   `overrideStatusBar` / `clearStatusBar` (deterministic status bar), and the `http` action for
   test-data setup / webhooks — `saveBody` stores the whole response body, and `extractBody`
@@ -830,7 +898,8 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   tap on the same cell is measured to fail (`element vanished`/`ElementNotTappable`) against this
   recycled collection view. A `seedPhotos` precondition (`Preconditions.seed_photos`) seeds the
   Simulator's photo library with fixture images via `simctl addmedia` so the grid's content is
-  reproducible — requiring `erase: true` on the same preconditions, checked at load time, since a
+  reproducible — requiring an effective `subject.reinstall: erase` (the scenario's, else the target's, then
+  moved by `--erase` / `--no-erase`), checked at load time, since a
   reused library would otherwise seed nothing silently. Gated on the `SELECT_PHOTOS` capability,
   which only the XCUITest backend declares; Android and web reject at preflight
 
@@ -854,168 +923,85 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   deadline, reading the step's target first and then driving the reactive guard below on the same
   poll. Keeping the wait here is what lets the guard clear an interruption while the step waits —
   inside the driver's own loop nothing else could act, so a declared prompt held the screen for the
-  step's whole timeout. The guard is given the step's selector and declines an alert it names, so
-  the two never answer the same prompt
-- DSL `systemAlertHandling` (BE-0315), the reactive counterpart: an alert guard that fires only
-  when a step or `wait` is blocked, polling `handleSystemAlert`'s SpringBoard query on its own
-  interval (default 1s, decoupled from the wait's poll cadence) and answering the prompts the
-  scenario's own `rules` name — no model call, reusing BE-0316's plumbing rather than a parallel
-  API. Since BE-0402 the guard is deterministic throughout: where nothing deterministic can act (a
-  backend lacking the capability, an alert no rule identifies, or a non-enumerable blocking surface
-  no rule identifies either — the ones a rule does identify, an in-tree tap takes on) it does
-  nothing, and what it saw rides the failure: a guarded `wait` always carries the note (its gate
-  watches the tree every poll), while a step outside a wait carries it only where the native query
-  enumerated the alert. The note names what the guard saw in its own timeout — `… — an unhandled
-  system alert is blocking the screen (buttons: Allow, Don't Allow)`, or a hedged form where no
-  query enumerated the surface. Before BE-0402 that case fell back to an AI-vision guard reading a
-  screenshot, and `visionInstruction` steered that fallback alone, so `run` now rejects it before
-  any scenario starts rather than ignoring it — the silent inversion BE-0401 split the old single
-  `instruction` key to expose. BE-0406 then made `rules` the guard's whole declaration and removed
-  `labels`: a button label named a button, never the alert it sat on, so it licensed a tap on a
-  screen no scenario had described. `rules` composes across two layers (scenario, then target) by
-  concatenation, innermost-first, and each of the two scalars, `pollInterval` and
-  `frozenScreenTimeout`, takes the innermost layer that supplies one; no flag carries a prompt paired with a choice legibly, so the
-  command line supplies `pollInterval` alone. A prompt's entry records which of the three answer
-  surfaces it reaches — the `handleSystemAlert` step, the native SpringBoard probe, and the in-tree
-  dismissal — so `savePassword`, which iOS raises inside the application's own process, is
-  declarable as a rule and answered by the in-tree dismissal alone, and the step rejects it at
-  parse time rather than polling an empty button list to its deadline. Both one-shot dismiss sites
-  — the end-of-step dismiss and the `expect` retry — then wait for the screen to stop changing
-  before the retry reads it, bounded at one second and best-effort: a prompt that has been tapped
-  is not yet a prompt that is gone, and without that settle the retry judged a tree mid-animation
-  and could fail for that reason alone. Like the `handleSystemAlert` wait the bullet above moved to
-  the orchestrator, the settle is a condition wait rather than a fixed sleep, and reaching its
-  bound simply proceeds — it never decides a verdict. Since BE-0418 each one-shot call itself
-  loops, up to three rounds, rather than stopping at its first dismissal: a SpringBoard-owned alert
-  queued in front of an app-owned sheet no longer ends the call before the sheet is even read, and
-  a tap a still-animating scrim keeps from landing gets the same bounded retry the mid-wait gate
-  already carries for that race. The settle above runs after every round that acted on a live alert
-  or found one it could not yet resolve — one that dismissed something; one that found a button not
-  yet tappable; one that declined a still-fading alert this call had already dismissed; one
-  that read a shared-label collision no rule could uniquely match; one whose own tap raced away
-  over a non-empty read; and one whose tree read matched nothing while an earlier round's own
-  in-tree tap was still stuck behind a scrim that had not yet lifted — the round that exhausts the
-  bound included, so a caller reading the screen the instant the call returns never reads one still
-  animating. A round that finds nothing left to act on ends the call — unless the only thing it
-  matched was a shape this call already cleared, still lingering, in which case it settles and gives a sheet
-  stacked behind that fade another round rather than ending the call on a lingering fade this loop
-  exists to see past — the same holds when an earlier round's own in-tree tap is still stuck behind
-  a scrim that has not yet lifted: an ambiguous read that matches nothing is not itself proof the
-  scrim lifted, so the round settles and retries rather than ending the call there. A round that
-  meets an alert no rule identifies settles and tries again too, rather than ending the call
-  outright, but only when continuing could still change what a later round reads. That
-  holds once this call has already dismissed a native alert, or once a native rule's own shape is
-  already present in the read — though not uniquely, and with none of that rule's own excluded
-  labels present. Two rules can share a tapped label
-  (`notifications` and `tracking` both grant `"Allow"`), so a round reading one's still-fading
-  buttons alongside the other's now-live ones fails the per-label uniqueness check for either. That
-  collision can be this call's own first round, before any native alert has been dismissed, since
-  both alerts can already be on the screen. Settling is what buys a later read that no longer holds
-  both at once, whether by an already-answered alert's fade draining or by the other alert leaving
-  the surface, so the live one reads uniquely and resolves on a round of its own. The note such a
-  round reports filters out one
-  occurrence per label this call has already answered, so the alert already cleared is not re-named
-  while a second, still-live alert's own copy of a shared label is. With no native alert dismissed
-  and no native rule's shape present in the read, there is no fade of this call's own making to
-  drain and no live collision to wait out, so the round ends the call instead — unless an earlier
-  round's own in-tree tap is still stuck behind a scrim, which is itself something this call can
-  still act on, so the round settles and retries rather than ending there. A later round could
-  only re-read the same surface or find the alert gone on its own, and continuing risks losing this
-  round's own diagnosis to that second case. A native alert whose fade outlasts that settle still
-  reads back, unchanged, on a later round.
-  Where a later round's read matches a shape a previous round already dismissed, or any shape that
-  nests with one — narrower *or* wider, since the same alert can render a label it had not yet
-  drawn when a narrower reading of it was dismissed; two of a `savePassword` policy's three rules
-  nest that way, though only on the
-  in-tree surface that prompt ever reaches, and both tap the same button — the round declines to
-  tap it at all: the same alert still fading, not a distinct one, so a repeat tap never reaches the
-  device and never risks landing on nothing or on whatever the closing alert has by then revealed
-  underneath it, on either path. Both are keyed on a rule's own shape rather than the buttons a
-  probe reads, since that read enumerates every alert the surface currently holds and so changes
-  the moment a different alert joins or leaves it — something the alert this call already dismissed
-  has not itself done. Both key on shape rather than a rule's own tap label, too: two rules can
-  share one alert's shape under different choices, a scenario's `choice` overriding a target's for
-  the same prompt, and keying on the label alone would let one such rule's exclusion promote its
-  sibling to tap the opposite button on the alert this call already answered. A later alert
-  resolving to a shape that is neither a match nor a nested rendering (narrower or wider) of one
-  already dismissed still taps as usual once it is no longer read alongside the one already
-  dismissed — an alert sharing only the tapped label included, as the built-in `notifications` and
-  `tracking` prompts both grant `"Allow"`. Two such alerts read together instead share that
-  label's count, so neither uniquely matches and the round reports the surface as unhandled. A
-  match landing back on an already-answered shape does not by itself end the round on either path:
-  a real, not-yet-answered alert can be enumerable right alongside that fade, so the search retries
-  among the shapes not yet dismissed before declining. A
-  round that declines a repeat native tap still checks the buttons the probe read against every
-  shape answered so far: a queued second alert no rule identifies can sit right alongside the one
-  this call already dismissed, and the decline alone does not mean the rest of the surface is
-  clear. A button that never becomes reachable within the bound carries its own note, distinct from
-  the one an alert no rule identifies carries, rather than reading as a bare missing element. A
-  native alert the call did tap carries that same note once the bound is spent with nothing left on
-  the surface that this call has not already answered, its own earlier fades included. The evidence
-  is the call's own last read still showing a live, policy-named alert — not a streak across every
-  round since the tap, which a round of any other kind in between would break. A round whose own
-  tap raced away instead of landing carries the identical note when the matched rule's shape is
-  still enumerable on the final round *and* an earlier round of the same call raced that same shape
-  away, even though this call never confirmed a tap landed at all — resolved fresh against that
-  round's own read rather than a stale record of an earlier, already-tapped shape. The second race
-  is what makes the evidence real: on a race round the shape is in the read by construction, since
-  that is the very read the rule matched against before the tap raced, so one race alone proves
-  nothing and the round stays silent unless an earlier tap of its own is what reads back. A call
-  whose every round races the same alert away therefore still names it instead of falling silent,
-  and one that raced away only after cleanly tapping a *different* alert names the
-  rule that actually raced, not the unrelated one it already tapped. An
-  in-tree sheet an *earlier* round tapped carries it too, once the bound is spent with the sheet
-  still enumerable — on the
-  shape's own labels alone, not the rest of the tree's own identity: a sheet that accepts a tap
-  without closing can re-present itself with a validation error, which changes the tree by
-  construction, so requiring the tree to read back unchanged would rule out exactly that case. That
-  check ranges over every shape this call has tapped from the tree, not only the most recently
-  tapped one: an earlier sheet that never closed would otherwise go unreported the moment a later,
-  different sheet is tapped and genuinely clears, since only the latter's own shape was ever
-  compared. A sheet tapped on the very round that spends the bound is exempt: one best-effort
-  settle is not enough to tell a still-fading animation from a sheet that never closes, the bar
-  every earlier round's own tap already clears by having a full round and a settle pass before this
-  check ever runs against it, so an ordinary dismissal whose fade merely outlasts that one settle
-  earns the same benefit of the doubt rather than losing the caller's retry over it. An
-  app screen the closing sheet revealed can coincidentally carry the same button labels and get
-  misnamed as the sheet that never closed, but `exclude` already keeps this call from tapping either
-  one again regardless of which read it takes, so the misreport never costs a second tap. It does
-  cost more than an imprecise note, though: the same containment check withdraws the `AlertEvent`
-  that tap genuinely earned, so a sheet that really did close is reported as never dismissed — and
-  when it was the call's only dismissal, the caller's own one-shot retry is skipped against a
-  screen that had in fact moved on. The tree
-  note survives a later round that finds nothing to match, or one that goes on to dismiss an
-  unrelated alert on either surface — native or
-  in-tree — rather than either round erasing a real, still-open diagnosis. The one round it does not
-  survive is one that finds a live, undeclared alert no rule identifies: the tree is read at all
-  only when the native surface answers genuinely empty, so such a round can never itself confirm
-  the tree diagnosis is still open, and the fresher, confirmable native finding reports instead. A
-  native leftover note is
-  not so durable, and for two different reasons depending on what that later round did: dismissing
-  an unrelated native alert recomputes the note fresh against that round's own buttons rather than
-  preserving whatever it held before, while a round whose own probe proves the surface absent clears
-  it outright — a deterministic fact the diagnosis cannot outlive. A dismissal either diagnosis
-  later names as never having landed has its own `AlertEvent` withdrawn from the caller's report at
-  that point, rather than left standing beside a note that says the opposite: a tap is recorded the
-  moment it lands, which is the only moment it can be, since nothing then distinguishes a tap that
-  lands from one the app never acts on, and reaching the round bound with the same shape still
-  reading back is where that becomes knowable. Leaving the record in place would ship two
-  contradictory facts about one prompt — a dismissal the report counts and a note saying that same
-  prompt was never cleared — and spend the caller's own one-shot retry against a screen this call
-  already concluded is still blocked by the very prompt it would otherwise report as dismissed.
-  What the call returns is computed from the report's own net change rather than tracked as the
-  rounds go, so an earlier, genuinely cleared dismissal this call never revisits still counts even
-  when a later one on the same or the other surface is the one taken back. XCUITest itself intervenes on an
-  alert that interrupts an in-flight interaction *before* this guard ever polls, and left alone
+  step's whole timeout. Since BE-0461 the step's own tree reads resolve in-tree alone, so its
+  SpringBoard alert stays the step's. An alert the step judges not its own goes to
+  `POST /systemAlert/resolve`, which answers while that alert still offers the buttons the step
+  read, and not otherwise, so the two never answer the same prompt
+- DSL `systemAlert` interrupts entries (BE-0315), the reactive counterpart: an alert guard. Until
+  BE-0473 they were a `systemAlertHandling` key. The guard answers each prompt a `systemAlert`
+  entry names, in the scenario or its target. It makes no model
+  call. Each entry is one rule. Since BE-0461 the XCUITest backend
+  answers them inside the requests that read the screen, not from a watcher in Python. Under a
+  governing guard, a wait's polls and an action's target reads send
+  `GET /elements?resolveAlerts=true`. The runner then works in three steps:
+  1. It presses the SpringBoard alert a native rule names. It checks SpringBoard at most once per
+     `pollInterval` (default 1s, decoupled from the wait's own poll cadence).
+  2. It takes the snapshot.
+  3. It taps the in-app prompt an in-tree rule names, once a fresh check finds no SpringBoard alert.
+
+  The reply carries the tree and a record of each answer. The records reach the report through the
+  drain that consumes them, so the report counts each answer once. Every path that presses shares
+  one per-showing memo in the runner. The memo waits a re-tap delay before a re-press. After three
+  presses it stops, and the runner records *gave up*. Assertions (`assert`, `expect`, `extract`,
+  `if`) and evidence keep the plain read, so a check never changes the screen it is checking and a
+  screenshot shows the real screen. Every other backend keeps a Python-side collapsed-tree proxy
+  alone.
+
+  Since BE-0402 the guard is deterministic throughout. Where nothing can act, it does nothing, and
+  what it saw rides the step's own reason as a note. The note takes one of three forms:
+  - a SpringBoard alert no rule identifies, by its buttons:
+    `… — an unhandled system alert is blocking the screen (buttons: Allow, Don't Allow)`;
+  - a press that did not clear its prompt, by the button the rule chose;
+  - a collapsed tree no record explains, in a hedged form.
+
+   Before BE-0402 that last case fell back to an AI-vision guard
+  reading a screenshot, and `visionInstruction` steered that fallback alone, so `run` now rejects
+  it before any scenario starts rather than ignoring it — the silent inversion BE-0401 split the old
+  single `instruction` key to expose. BE-0406 then made `rules` the guard's whole declaration and
+  removed `labels`: a button label named a button, never the alert it sat on, so it licensed a tap
+  on a screen no scenario had described. `rules` composes across two layers (scenario, then target)
+  by concatenation, innermost-first, and each of the two scalars, `pollInterval` and
+  `frozenScreenTimeout`, takes the innermost layer that supplies one; no flag carries a prompt
+  paired with a choice legibly, so the command line supplies `pollInterval` alone. On the XCUITest
+  backend, `frozenScreenTimeout` (default 10s, `0` disables it) also bounds a second stop: a `for`
+  or `screenChanged` wait gives up early when a resolving read's own SpringBoard check finds no
+  alert, yet no element below the application has carried a label or an identifier for that long.
+  A scenario opts in by declaring an in-tree prompt such as `savePassword` in `rules`, and a
+  `gone`/`settled` wait never stops this way, since a frozen tree already satisfies it. A prompt's
+  entry records which of the three answer surfaces it reaches: the `handleSystemAlert` step, the
+  runner's SpringBoard check, and its in-tree pass. `savePassword`, which iOS raises inside the
+  application's own process, is thus declarable as a rule and answered by the in-tree pass
+  alone, and the step rejects it at parse time rather than polling an empty button list to its
+  deadline.
+
+  A step makes at most one alert retry. Four kinds of step failure take it: a refused actuation, a
+  target the step's selector read could not find, a failed `assert`, and a failed `handleSystemAlert`
+  step that answers by position (BE-0445), which waits without the gate. A failed `expect` takes it
+  as well. The retry sends one forced resolving read (`forceCheck=true`), which skips the
+  SpringBoard rate limit. Three outcomes license a second run: an answer, a press the memo withheld,
+  and an answer the step's own reads made. On one of them the screen settles, and the step (or the
+  `expect`) runs once more. The settle is a condition wait on the tree
+  holding still, bounded at one second and best-effort: a prompt that has been tapped is not yet a
+  prompt that is gone. A `wait` takes no such retry, since its polls already resolved throughout.
+  A `handleSystemAlert` step's own tree reads resolve in-tree alone, so its own SpringBoard alert
+  stays the step's. An alert the step reads and judges not its own goes to
+  `POST /systemAlert/resolve` at the guard's cadence. The runner answers it while it still offers
+  the same labels the step read, and not otherwise. The policy thus never answers the step's own
+  prompt arriving in its place.
+
+  XCUITest itself intervenes on an
+  alert that interrupts an in-flight interaction *before* any read resolves it, and left alone
   answers with the alert's own default button — silently overriding a scenario's policy with
   nothing in the report. The runner therefore installs
   an interruption monitor that presses the same rule-named button the reactive guard would, and
   records what it pressed as an ordinary `AlertEvent`; the orchestrator resolves each rule's labels
   and pushes them, alongside whether the guard governs the scenario at all, once per scenario over
-  `POST /interruptionPolicy`, dropping a rule this surface can never meet (an in-process prompt
-  never interrupts another process's interaction). A `handleSystemAlert` step's own prompt/choice
+  `POST /interruptionPolicy`. Each rule carries its surface, and the monitor matches only the native
+  ones (an in-process prompt never interrupts another process's interaction); the in-tree rules
+  travel with the guard's pacing, so the runner can answer such a prompt inside the request that
+  reads the screen (BE-0461). A `handleSystemAlert` step's own prompt/choice
   form is not necessarily among those rules — the step exists precisely for a prompt an author
-  chooses not to declare in `systemAlertHandling` — so while that one step waits the orchestrator
+  chooses not to declare as a `systemAlert` entry — so while that one step waits the orchestrator
   pushes one more rule for the step's own target alongside the scenario's, and restores the
   scenario's own policy once the step returns, fails, or the wait raises. Without it, an earlier
   action's own interruption could meet that same prompt first, find no matching rule, and fail a
@@ -1025,59 +1011,17 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   step or `expect` that met the interruption fails, naming them, rather than the run continuing as
   if nothing had answered on the scenario's behalf. A foreground notification banner reaches that same monitor but takes a branch of
   its own, ahead of the policy (BE-0416): a banner carries no button a rule could identify — its one
-  tappable region opens the notification's app — so the monitor swipes it upward by its own measured
-  frame, confirms the clearance before claiming the interruption, and records it as an `AlertEvent`
+  tappable region opens the notification's app — so the monitor waits for the banner to settle on
+  screen, swipes it upward by its own measured frame, confirms the clearance before claiming the
+  interruption — waiting out the banner's own auto-dismissal when the swipe misses, since on
+  iOS 26.5 XCUITest's own handler ignores the banner and its lookup errors stop the runner — and
+  records it as an `AlertEvent`
   under a `notificationBanner` kind, since the text beside it is the notification's rather than a
   button's. The branch sits ahead of the `governs` check because neither alert outcome fits a
   banner: a governing policy recorded it as an undeclared interruption and failed an otherwise
   passing step, while an ungoverned one left XCUITest to wait the banner out, measured at ~9s per
-  interrupted interaction against ~0.6s undisturbed. `systemAlertHandling` itself is on by default,
-  and `false` disables it per scenario — the banner branch above runs either way.
-  The mid-wait gate's own reach changed alongside the one-shot call above (BE-0418). Its
-  `probed_absent` narrowed from `state == "absent"` alone to `state == "absent" and not buttons`:
-  that state now also answers the time-of-check/time-of-use race — a matched rule's own tap racing
-  away over a *non-empty* read — so a poll catching that race no longer licenses the in-tree dismiss
-  the way a genuinely empty enumeration does, and a declared app-owned sheet stacked behind the race
-  is no longer tapped immediately: it goes untapped until a probe reads the surface genuinely empty.
-  That costs one `poll_interval` when the race resolves on the next probe, and the wait's whole
-  remaining timeout when it does not, since nothing re-licenses the tap in between. A sheet already
-  mid-retry when such a race begins is not charged for the gap: the in-tree give-up's own
-  not-tappable horizon is pushed forward by exactly however long that licence was withheld — by the
-  race, a dismissal, an alert no rule identifies, or the step's own reserved alert alike — so it
-  counts only the licensed time the tap actually got to spend, neither penalized for the gap nor
-  forgiven what it had already spent before it. A scrim that lifts while one of those polls is
-  holding the licence back is therefore still met once the licence returns, rather than the sheet
-  being given up on for wall-clock time the tap was never allowed to spend, while a permanently
-  obstructed sheet whose polls interleave with a recurring gap still reaches its give-up instead of
-  having the clock wiped each time. The
-  same poll stopped clearing `blocked_note` unconditionally on that race too, and can now report its
-  own note naming whichever buttons no declared rule accounts for on the read — a note this path
-  never produced on a bare `"absent"` answer before. Its `"unhandled"` note changed three ways too:
-  an alert a rule *did* identify, whose tap then found the label twice, is now named as a prompt the
-  guard could not clear rather than as one no rule identifies; a co-present button no rule
-  identifies on that same read is named the way the `raced` branch names one, rather than the
-  ambiguous rule's own diagnosis crowding it out and leaving that button unreported for a whole
-  `poll_interval`; and the note is left alone while an in-tree give-up is still standing only when
-  this poll's own tree read positively confirms the given-up sheet is still there — `shows_app_ui`
-  true and the sheet's own shape still matching, not merely `_tree_gave_up` being set. A poll where
-  a SpringBoard alert collapses the tree cannot confirm that either way, so on exactly that poll the
-  deferral steps aside and a `wait` blocked by an undeclared SpringBoard alert sitting on top of a
-  sheet the tree path gave up on reports the alert, the fresher and more certain of the two
-  diagnoses, rather than the give-up's own stale note. The give-up itself still retires — clearing
-  the latch outright, not merely stepping its note aside for one poll — the moment a *later*, tree-
-  readable poll confirms the sheet is gone, rather than waiting for a native probe to report the
-  surface empty: that probe is what a live, undeclared alert keeps from reporting empty at all, so
-  before this the given-up sheet's note stood for the rest of the wait even once the sheet had
-  closed, and the alert actually holding the screen was never named while the alert itself was up
-  either. Retirement takes the showing's whole per-showing bookkeeping with it —
-  the pending label, the tap count, the recorded signature, its reference to the already-recorded
-  `AlertEvent`, and the not-tappable horizon — so
-  a fresh showing of the same sheet is tapped afresh rather than inheriting an already-spent tap
-  budget and being given up on without ever being tapped. And `_dismiss_from_tree` resolves over the same
-  widest-first `tree_dedup_rules` this change gives the one-shot dismiss, rather than plain
-  declaration order, so two nested in-tree shapes match the wider one first regardless of how a
-  scenario declared them — the two are declared twins over the same screen, so which button a
-  scenario gets must not depend on whether a `wait` happened to be running when the sheet appeared
+  interrupted interaction against ~0.6s undisturbed. The guard itself is on by default, and
+  `--no-system-alert-handling` disables it for every scenario — the banner branch above runs either way.
 - A banner reaches that monitor only on an *interaction* — a plain query never invokes it, so a
   banner sitting on screen with nothing tapping through it is never cleared there (BE-0416 Units
   2/3/8). A second, proactive path covers that gap: `Driver.notification_banner_frame()`
@@ -1096,7 +1040,7 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   differ by one round trip, landing the swipe on whatever the app now shows at that point instead.
   The swipe is re-confirmed gone by a bounded poll immediately after, the same discipline the
   interruption monitor's own
-  confirm-before-claiming applies. The query is rate-limited to `systemAlertHandling`'s
+  confirm-before-claiming applies. The query is rate-limited to the guard's
   own resolved `pollInterval` (BE-0315's default when the guard is off), so a passing scenario pays
   it once per interval rather than once per step.
   The `expect`-phase visual capture gets the same unconditional check immediately before it,
@@ -1105,7 +1049,7 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   above runs only after the step body finishes, too late for a capture taken inside it. No scenario
   or CLI toggle: a scenario cannot observe a banner, so none can be broken by clearing it — the same
   "no known use for a toggle" the interruption path above already established
-- DSL `iosTipKitHandling` (BE-0389), an opt-in guard for a blocking Apple TipKit tip: TipKit's
+- DSL `- tipKit: dismiss` interrupts entry (BE-0389; a top-level `iosTipKitHandling` until BE-0452, then `tipKitHandling` until BE-0473), an opt-in guard for a blocking Apple TipKit tip: TipKit's
   presentation marks the content it covers accessibility-hidden rather than merely occluding it, so a
   blocked tap can fail as `ElementNotFound`, not only `ElementNotTappable`. The XCUITest backend alone
   declares `Capability.HANDLE_TIPKIT_TIP` and implements `Driver.dismiss_blocking_tip()` by resolving
@@ -1115,10 +1059,11 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   in the same accessibility tree every wait poll and tap resolution already fetches. The step loop
   retries a step once when the dismiss actually found and cleared a tip, beside the alert guard's own
   end-of-step branch, and the dismiss also composes onto BE-0314's `on_interrupt_poll` hook so a tip
-  does not hold a wait to its full timeout either. Defaults off (unlike `systemAlertHandling`) because a
-  scenario sometimes asserts on the tip itself; `--ios-tipkit-handling`/`--no-ios-tipkit-handling`
-  follows the same flag > scenario > target > default precedence as `systemAlertHandling`'s own
-  on/off bit (BE-0177); `systemAlertHandling`'s policy keys compose by type instead (BE-0401)
+  does not hold a wait to its full timeout either. Defaults off (unlike the alert guard) because a
+  scenario sometimes asserts on the tip itself. Such a scenario writes `- tipKit: leave` to turn off
+  its target's `dismiss`. The resolution order is flag, scenario, target, then off (BE-0177).
+  `--ios-tipkit-handling` / `--no-ios-tipkit-handling` set every scenario's entry to `dismiss` /
+  `leave`. The `systemAlert` entries compose per prompt instead (BE-0401, BE-0473)
 
 #### DSL cross-app control
 
@@ -1153,17 +1098,23 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   hidden for the one capture a `visual` assertion compares, over the in-app control channel
   (BE-0365)
 - Network observation + **deterministic mocks** (scenario `mocks` → in-protocol stubs, validated
-  on-device): `request` assertions, `wait: { until: request }`, and offline stubbed responses; on
-  iOS, a `setMocks` step replaces the app's stub table mid-scenario over the in-app control channel
-  (BE-0365)
+  on-device): `request` assertions, `wait: { until: request }`, and offline stubbed responses; a
+  `request`/`event` match's `query` and `body` fields take a key/value dictionary instead of a
+  regex — order-independent for query parameters and JSON object keys, with `$matches`/`$exists`
+  operators and, for `body`, nested maps plus lists (matched element by element, same length
+  required) — shared by `requestSequence` and `responseSchema.request` too; `mocks` refuse both
+  fields and keep their existing `match` grammar: exact `method`/`url`/`path` plus the
+  `urlMatches`/`pathMatches`/`bodyMatches` regexes (BE-0463); on iOS, a `setMocks` step replaces
+  the app's stub table
+  mid-scenario over the in-app control channel (BE-0365)
 - The **screen-transition signal** (BE-0310, iOS): an opt-in `BajutsuScreen` in `BajutsuKit`
   swizzles `UIViewController.viewDidAppear(_:)` and reports each completed view-controller
   appearance to the collector's `/transitions` endpoint (UIKit and SwiftUI alike, since
   every `NavigationStack` push, sheet presentation, and tab switch is `UIHostingController`-backed),
   independent of the network-exchange store it shares a process with. The
   post-launch readiness gate (`await_ready`) consults it as a new rung above the BE-0218
-  namespace/count heuristics (an explicit `readyWhen` still outranks it, so a base-screen transition
-  never preempts the modal `readyWhen` waits for), and the `settled` wait consults it as a
+  namespace/count heuristics (an explicit `subject.startWhen` still outranks it, so a base-screen transition
+  never preempts the modal `subject.startWhen` waits for), and the `settled` wait consults it as a
   quiescence-window debounce, in place of tree-diff polling; a target that doesn't link the observer
   (or hasn't yet transitioned) gets the unchanged tree-diff behavior on both. Fast-gate tested with a fake signal source; on-device confirmation
   across UIKit and SwiftUI is this item's own gate, tracked in
@@ -1187,7 +1138,7 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   midway still keeps the verdicts of the scenarios it completed. A failed write warns and the run
   continues; `manifest.json` stays the single source of truth.
 - Reporting (`manifest.json` / `junit.xml` / `ctrf.json` / `report.html`)
-- Config resolution (defaults × targets, redact merge) and actuator selection
+- Config resolution (defaults × templates × targets, redact merge) and actuator selection
 - The `simctl` command layer · the XCUITest automation-snapshot parser · the `doctor` score + per-backend runnability
   gate (`preflight.py`: iOS needs the required CLIs + a booted Simulator; web needs Playwright + its
   Chromium browser)
@@ -1199,7 +1150,7 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
 
 #### The CLI, `serve`, and codegen
 
-- The CLI: `run` / `doctor` / `audit` / `coverage` / `impact` / `stats` / `flakiness` / `export` / `trace` / `report` / `triage` / `record` / `crawl` / `repl` / `codegen` / `approve` / `serve` / `mcp` / `worker` / `lint` / `schema` — with `record` + `crawl` as the Tier 1 AI authoring paths and the alert guard, and `repl` as the AI-free manual shell beside them (BE-0423)
+- The CLI: `run` / `doctor` / `audit` / `coverage` / `impact` / `stats` / `flakiness` / `export` / `trace` / `report` / `triage` / `record` / `crawl` / `repl` / `codegen` / `approve` / `serve` / `mcp` / `worker` / `lint` / `schema` / `config` / `runner` — with `record` + `crawl` as the Tier 1 AI authoring paths and the alert guard, and `repl` as the AI-free manual shell beside them (BE-0423)
 - The **parsed device OS** (`common/devices/os.py`, BE-0358): the device's operating-system (OS) version as a small parsed fact — platform, major, minor — read from the `device_runtime` label a run already records per scenario. An absent or unrecognized label parses to "unknown" rather than to a guessed version. Both flakiness surfaces carry the parsed OS in their grouping key, so a scenario's verdict history is per OS version, and a reproducible cross-version difference no longer scores as flakiness. The XCUITest driver receives it as a `make_driver` keyword — not a `Driver` member, which every backend and every test double would then have to declare — so a driver-level report can name the OS it ran on. **Reading the OS is not a licence to branch on it**: this repository fixes a behavioural OS difference version-agnostically, and a per-OS branch must earn its place in its own roadmap item against that alternative
 - Read-only advisory analysis commands (no device, no AI, never gate CI — only a missing/unreadable input exits non-zero): a determinism/flakiness **audit** with static, repeat-and-diff, and longitudinal modes (`audit`, BE-0049); a scenario id-namespace **coverage** map (`coverage`, BE-0050); **test impact analysis** — the affected scenario steps a `git` diff selects, by inverting the coverage index (`impact`, BE-0321); the aggregate run-stats dashboard as CLI/HTML output (`stats`, BE-0102); cross-run **flakiness** ranking, from a runs directory or the `serve` database (`flakiness`, BE-0220); a finished run's **export** as a portable `.zip` (`export`, BE-0060); and **report** re-rendering (`report.html`/`junit.xml`/`ctrf.json`) from stored run data with no re-run (`report`, BE-0068)
 - The **run-history label and the target stamp** (BE-0404): a run records the config it ran (`runs.label`, from the config's own name or an explicit `run --label`) and the target it ran (`runs.target`, mirrored from the manifest), so restarting `serve` against a second config yields two readable histories instead of one interleaved list, and a per-target comparison is computable from stored data. The org row holds the one config source it last bound, which is how a hosted replica recovers an uploaded bundle it never received; a replica that still holds the extracted bundle resolves that cache before any object store is required, so it rebinds without a fetch ([BE-0393](../roadmaps/BE-0393-per-org-config-memory/BE-0393-per-org-config-memory.md) unit 5 — groundwork, since every deployment that keeps a config memory today also has a store). This replaced BE-0225's named **project** registry, whose table, endpoints, CLI commands, and web surfaces are gone
@@ -1235,17 +1186,21 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   ([BE-0431](../roadmaps/BE-0431-job-scoped-artifact-override/BE-0431-job-scoped-artifact-override.md)):
   on a hosted deployment, `POST /api/run` accepts `binaryArtifact` and `scenariosArtifact`, each the
   sha256 of an already-stored artifact (BE-0268). A named leg resolves against that artifact alone —
-  the binary placed at the job's own target `appPath`, a `scenarios` zip replacing that target's
+  the binary placed at the job's own target `subject.path`, a `scenarios` zip replacing that target's
   scenarios directory — while an unnamed leg keeps resolving through the org's active config binding
   untouched, so two concurrent CI dispatches against one deployment no longer contend for the
   deployment's fallback binding or write the org's remembered configuration. The worker keys the
   job's workspace by override identity so a later job on the same worker is never contaminated by it,
-  and reuses the cached bundle tree rather than re-fetching it. Refused on a single-process `serve`
-  (`LocalExecutor`, which owns no workspace to isolate the placement into) and on the cloud-batch
-  `run-set` fan-out, which does not run on the split worker topology this item targets; each
+  and reuses the cached bundle tree rather than re-fetching it. Refused with no job queue
+  (`UnqueuedExecutor`, BE-0449) and on the cloud-batch
+  `run-set` fan-out, whose Device Farm worker (BE-0448) maps no override onto its request; each
   overridden sha256 is recorded on the run's manifest provenance
 - The **cross-target comparison dashboard** (BE-0226, repointed to the target axis by BE-0404): a `serve` **Comparison** tab that ranks the bound config's targets side by side — pass-rate, flaky-rate, and p50/p95 run duration, plus a per-target trend sparkline — reusing BE-0102's per-config aggregation computed once per target (`GET /api/metrics/targets`); read-only and advisory, like BE-0102. A row opens that target's run history read-only, by pointer or by keyboard. The view writes nothing: a target is not a binding, so there is nothing on it to activate
 - AI **crawl** (`crawl/`): autonomous breadth-first exploration of an app → a screen map (`screenmap.json`)
+- **The server runs no job itself** (BE-0449). `serve` queues every job for a `bajutsu worker`:
+  `run`, `run-set`, `triage`, `record`, and `crawl`. One machine keeps the queue in SQLite under
+  `.bajutsu/`. A deployment with a bucket must set `BAJUTSU_DATABASE_URL`, or the server refuses
+  to start. The server ignores the deprecated `--backend` flag.
 - The `serve` local web UI (Tier 1): author (`record` / `crawl`), edit, and run scenarios; **open a `.zip` bundle** of config + scenarios + the built app binary as the active config the tabs run from (BE-0073) — the server also accepts those same three pieces as independent content-addressed artifacts and composes them into that tree at bind time (`POST /api/artifacts/{config,scenarios,binary}`, BE-0268), with a **Compose & load** panel in the UI — a drop zone per artifact, each hashed in the browser and uploaded only on a content miss, composed into a bound config on demand, reopening the panel pre-fills each zone from the active composition (with a per-zone **Clear**) so only the legs that changed need re-uploading, while `POST /api/compose` stays a pure function of its request body (`GET /api/compose/current`, BE-0325); browse reports and evidence; a per-row or bulk **delete** on the Replay or Crawl history list moves a run to a shared **Trash**, restorable within a retention window before permanent removal (BE-0239); a past crawl's screen map can also be **resumed live** — continuing its remaining frontier with the same budget and worker controls, or re-exploring one pruned branch with the same budget (BE-0181); a read-only aggregate **run-stats dashboard** across the run history (BE-0102), with every axis — date, backend, scenario, and step/assertion hotspot — now a deep link into the matching runs in the history list (BE-0241); a ranked **Flaky** tab surfacing the cross-run flakiness ranking, linking each row to its representative passing and failing run evidence (BE-0220); a read-only **Usage** dashboard over the attributed AI usage/cost ledger — token and dollar totals by provider, model, command, and scenario (BE-0195, BE-0196); a per-target **Coverage** map — id-namespace coverage against declared `idNamespaces`, the gap list, and off-namespace ids, folding in the endpoint/observed-id dimensions with a selected run set and the screens-visited dimension when a crawl is selected alongside those runs (BE-0146); each of Stats, Flaky, Usage, and Coverage also opens as its own linkable page (`GET /stats`, `/flakiness`, `/usage`, and — since the map needs a target the other three don't — `/coverage?target=<name>`); a pre-run **readiness panel** (`doctor`: environment runnability + the current screen's convention score) in the Record and Replay forms (BE-0148); a read-only **scenario viewer** in the Replay form that shows the selected scenario's raw YAML and its runner-parsed structured steps before a run — the scenario-level mirror of the config viewer, non-gating and AI-free (BE-0273); an **upload scenario** control in the same form that adds a local `.yaml` file (via the existing `POST /api/scenario`) or a `.zip` of more than one (`POST /api/scenarios/upload`) straight into the bound config's target scope with no config rebind — reporting a same-named file as overwritten rather than replacing it silently, and parsing every zip entry before writing any of them, so one bad entry aborts the whole upload rather than leaving a partial batch behind (BE-0340); a **scenario secrets** panel that provisions the bound config's declared `${secrets.X}` names as write-once values from the browser, inherited by a spawned Record / Replay / Crawl run (BE-0274); a read-only **Server** settings tab reporting the running server's resolved configuration (deployment mode, bound config provenance, backends, run-storage/retention/concurrency settings) plus whether this build ships the bundled iOS XCUITest Simulator runner and what toolchain it was built against (`GET /api/server`, BE-0318); a **pluggable theme system** — drop-in visual tokens + swappable transitions, a header picker, and an in-UI editor with live preview and local-draft/server-upload persistence (BE-0191); a header **version badge** reporting which build of bajutsu is serving the page — the version string always, plus a short commit SHA / branch / dirty flag when serve runs from a Git checkout, or a build-time-embedded commit (`BAJUTSU_BUILD_COMMIT`, surfaced with `source: "build-arg"`) for a self-hosted Docker image shipping no `.git` (the checkout detail admin-gated, since a branch name can encode an in-progress topic; `GET /api/version` open, `GET /api/version/checkout` admin, read fresh per request via `git` plumbing with an environment-variable fallback — no LLM; BE-0272, BE-0277); approve visual baselines; live job streaming — from a browser (not for CI)
 - **MCP server** (`bajutsu mcp`): `bajutsu_run` and `bajutsu_doctor` as MCP tools + run evidence as resources, for Claude Desktop / Code integration (optional dependency `fastmcp`)
 - **Scenario linter** (`bajutsu lint` / `bajutsu schema`): validate scenarios without running them; JSON Schema output for editor integration
@@ -1282,7 +1237,11 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   asserts the persisted `network.json` (`demos/showcase/network/assert_network_evidence.py`): the mocked
   exchange marked `mocked` with its `Authorization` header and `password` body field masked and no
   raw secret anywhere in the file, and the unstubbed exchange carrying `mocked` false, so an
-  over-broad mock matcher cannot claim traffic nothing stubbed. On iOS, whether a *really captured*
+  over-broad mock matcher cannot claim traffic nothing stubbed. The same job then runs
+  `network_echo.yaml` into its own `echo/` evidence subdirectory, kept separate so it does not add a
+  second `/post` exchange to the redaction check above: it POSTs a secret-bearing body to a live echo
+  server and asserts the app renders the echoed value — the check that `BajutsuURLProtocol` forwards
+  an intercepted request's body intact rather than empty. On iOS, whether a *really captured*
   credential is masked in shipped evidence is observed only here — every pure redaction test feeds
   the algorithm a hand-built exchange. Non-gating: new on-device coverage lands as
   a signal first, the path the web twin below took before joining `E2E (web)`.
@@ -1340,7 +1299,7 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
 
 | Feature | Status | Location |
 |---|---|---|
-| `mockServer` (external mock command) | config schema only; the `cmd`/`port` external server is **not implemented** — superseded by scenario `mocks` (declarative in-protocol stubs, implemented) | `common/config/schema/mock_server.py` `MockServer` |
+| `services.mockServer` (external mock command) | config schema only; the `cmd`/`port` external server is **not implemented** — superseded by scenario `mocks` (declarative in-protocol stubs, implemented) | `common/config/schema/mock_server.py` `MockServer` |
 | `appTrace` interval evidence on the **web** backend | `appTrace` is `os_log`/simctl-based (iOS only); the Playwright backend implements the `video` and `deviceLog`-equivalent (console / page-error) interval kinds instead (BE-0054), but has no `appTrace` analogue | `common/evidence/intervals` · `common/drivers/playwright` |
 | `nativeZ` on a **SwiftUI** or **Jetpack Compose** screen | Both reporting paths are shipped (BE-0355), but each declarative toolkit generates its own accessibility elements and exposes no underlying one to measure: SwiftUI materializes its elements only for an assistive technology attached to the process, so the app's own view tree carries no identifiers, and Compose forwards no app-declared extra-data key through its node generation. UIKit and Android `View` screens in an opted-in app report a position; SwiftUI and Compose screens read `None`. Diagnostic only — no selector or occlusion check reads it | `BajutsuKit/Sources/BajutsuKit/BajutsuZOrder.swift` · `BajutsuAndroid/…/BajutsuZOrder.kt` |
 

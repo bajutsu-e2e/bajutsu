@@ -9,8 +9,15 @@ API is re-exported here, so `from bajutsu.common.runner import ...` is unchanged
 
 from __future__ import annotations
 
+from bajutsu.common.evidence.sink import prepare_run_dir
 from bajutsu.common.runner.launch import ReadinessResult, await_ready, launch_driver
-from bajutsu.common.runner.pipeline import run_all, run_and_report, run_matrix_and_report
+from bajutsu.common.runner.pipeline import (
+    report_run_matrix,
+    reroot_evidence,
+    run_all,
+    run_and_report,
+    run_matrix_and_report,
+)
 from bajutsu.common.runner.pool import device_control, device_pool, device_relauncher
 from bajutsu.common.runner.types import AlertGuardFor, Lease, LeaseFn, RelaunchFactory
 
@@ -25,6 +32,9 @@ __all__ = [
     "device_pool",
     "device_relauncher",
     "launch_driver",
+    "prepare_run_dir",
+    "report_run_matrix",
+    "reroot_evidence",
     "run_all",
     "run_and_report",
     "run_matrix_and_report",

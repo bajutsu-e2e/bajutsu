@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0449](BE-0449-server-runs-no-jobs-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **承認済み** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0449") |
+| 実装 PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167)（単位 1 の 3 分割のうち 1）、[#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168)（単位 1 の 3 分割のうち 2）、[#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170)（単位 1 の 3 分割のうち 3）、[#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171)（単位 2）、[#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172)（単位 4）、[#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173)（単位 3）、[#2182](https://github.com/bajutsu-e2e/bajutsu/pull/2182)（単位 5 の 2 分割のうち 1：機能を失わないローカル起動）、[#2183](https://github.com/bajutsu-e2e/bajutsu/pull/2183)（単位 5 の 2 分割のうち 2：worker で動く `run`）、[#2184](https://github.com/bajutsu-e2e/bajutsu/pull/2184)、[#2185](https://github.com/bajutsu-e2e/bajutsu/pull/2185)、[#2186](https://github.com/bajutsu-e2e/bajutsu/pull/2186)（単位 6。BE-0448 が実装）、[#2187](https://github.com/bajutsu-e2e/bajutsu/pull/2187)（単位 7）、[#2188](https://github.com/bajutsu-e2e/bajutsu/pull/2188)（単位 8）、[#2189](https://github.com/bajutsu-e2e/bajutsu/pull/2189)（単位 9） |
 | トピック | Hosting the web UI |
 <!-- /BE-METADATA -->
 
@@ -20,7 +21,7 @@ server は、制御を担うだけの存在になります。リクエストを�
 
 ## 動機
 
-local バックエンドは、既定で `LocalExecutor` を使います（[`serve_state.py:138`](../../bajutsu/serve/state/serve_state.py)）。server バックエンドは、`BAJUTSU_DATABASE_URL` が設定されていれば `DbQueueExecutor` を選び、なければ `LocalExecutor` に戻ります（[`serve/__init__.py:582`](../../bajutsu/serve/__init__.py)）。local の executor は、ジョブごとにスレッドを起こし、`run_job` が `python -m bajutsu run`（または `record`、`crawl` など）をサブプロセスとして起動します（[`local_executor.py`](../../bajutsu/serve/executor/local_executor.py)、[`jobs.py`](../../bajutsu/serve/jobs.py)）。worker の経路は、`execute_job_spec` を通じて同じ `run_job` に届きます（[`worker_job.py`](../../bajutsu/serve/server/worker_job.py)）。ただしその周りには、lease、ハートビート、署名付きアップロード、データベースを往復しなければならないジョブ仕様という、もう 1 組の仕組みがあります。
+local バックエンドは、既定で `LocalExecutor` を使います（[`serve_state.py:138`](../../bajutsu/serve/state/serve_state.py)）。server バックエンドは、`BAJUTSU_DATABASE_URL` が設定されていれば `DbQueueExecutor` を選び、なければ `LocalExecutor` に戻ります（[`serve/__init__.py:582`](../../bajutsu/serve/__init__.py)）。local の executor は、ジョブごとにスレッドを起こし、`run_job` が `python -m bajutsu run`（または `record`、`crawl` など）をサブプロセスとして起動します（`local_executor.py`、[`jobs.py`](../../bajutsu/serve/jobs.py)）。worker の経路は、`execute_job_spec` を通じて同じ `run_job` に届きます（[`worker_job.py`](../../bajutsu/serve/server/worker_job.py)）。ただしその周りには、lease、ハートビート、署名付きアップロード、データベースを往復しなければならないジョブ仕様という、もう 1 組の仕組みがあります。
 
 2 つの経路を持ち続けると、どの機能も 2 つの経路にまたがる機能になり、2 つ目の経路が遅れます。3 つの例があります。
 
@@ -56,7 +57,7 @@ local バックエンドは、既定で `LocalExecutor` を使います（[`serv
 - **マイグレーション**は、既定の SQLite では自動で実行します。現在の server は Alembic を実行しないからです。
 - **secrets の鍵** `BAJUTSU_SECRETS_KEY` は、現在、データベースを使う起動で必須です。ローカルの起動は、鍵を生成して runs のディレクトリの隣に保存します。ファイルは、所有者だけが読める権限（`0600`）の通常ファイル（symlink ではないもの）として原子的に作成し、安全でない既存のパスがあれば起動に失敗します。秘密を含むファイルの扱いは、`bajutsu/common/run_meta/artifact_perms.py` に合わせます。共有ホストで誰でも読める鍵は、BE-0136 の保護を無効にするからです。
 - **`hosted`** は、デプロイの設定のままにします。リポジトリがそれを含意すると、BE-0108 のファイルブラウザが消え、デバイスの前にいる作者に対して `record` のデバイスの引き継ぎ（BE-0185）が拒否されます。
-- **実行の履歴**は、リポジトリがあるとデータベースの窓から取るので、コマンドラインの `bajutsu run` が書いた実行や、`runs/` にすでにある実行が、ローカルの UI から消えます。server は、`runs/` の下の実行のツリー（すでにあるものも、コマンドラインの `bajutsu run` が書いたものも）を、起動時と再走査のときに runs テーブルへ索引します。ファイルのストアは runs のツリーに置くので、それらのアーティファクトも解決できます。target は、リポジトリがあると組織ごとに分かれるので、ローカルの起動は 1 つの既定の組織を使います。
+- **実行の履歴**は、リポジトリがあるとデータベースの窓から取るので、コマンドラインの `bajutsu run` が書いた実行や、`runs/` にすでにある実行が、ローカルの UI から消えます。server は、`runs/` の下の実行のツリー（すでにあるものも、コマンドラインの `bajutsu run` が書いたものも）を、起動時と再走査のときに runs テーブルへ索引します。ファイルのストアは default org の `artifacts/` プレフィックスに runs のツリーをマウントするので、それらのアーティファクトも解決できます。target は、リポジトリがあると組織ごとに分かれるので、ローカルの起動は 1 つの既定の組織を使います。
 - **アーティファクトの保存先**には、ファイルシステムの実装を加えます。オブジェクトストアが受け付けるのは、現在 `s3://` と `gs://` だけです（[`object_store.py`](../../bajutsu/serve/server/object_store.py)）。`file://` のストアがあれば、worker が実行のツリーを書き、server が読めます。worker はこのストアにも、[BE-0160](../BE-0160-worker-credential-free-uploads/BE-0160-worker-credential-free-uploads-ja.md) の署名付き URL のインターフェースで話しかけ、このストアの URL は server が提供します。各 URL は、server が生成して保存する HMAC の鍵（secrets の鍵と同じ規則で保存します。原子的な `0600` での作成、通常ファイル、安全でない既存のパスの拒否）で署名し、有効期限を持ち、オブジェクトのキーと content type を署名に結び付け、既存のキーの検証でストアのルートに閉じ込めます。経路は、それ以外を受け付けません。
 
 local バックエンドと server バックエンドの違いは、これらの既定値だけになります。`--backend` フラグは意味を失うので、1 リリース非推奨にして、次のリリースで削除します。
@@ -67,7 +68,6 @@ local バックエンドと server バックエンドの違いは、これらの
 
 - キュー中のジョブのキャンセルは、行をキャンセル済みにし、lease はそれを飛ばします。キャンセルはリポジトリからジョブを見つけるので、再起動の前にキューに入ったジョブもキャンセルできます。
 - lease 済みのジョブのキャンセルは、行を leased のまま、キャンセル要求のフラグを立てます。フラグは、ハートビートの応答が 200 で返します。worker は、自分の `Job` をキャンセルします。`run` は穏やかに、他の種類はプロセスグループの終了で行います。結果の経路は、lease の持ち主からのキャンセル済みの結果を受け付け、それだけが行をキャンセル済みに移します。
-- `worker --once` は、SIGINT と SIGTERM を同じキャンセルに対応づけます。
 
 ### 分割をまたぐライブの出力
 
@@ -77,7 +77,7 @@ local バックエンドと server バックエンドの違いは、これらの
 
 ### 1 回実行の worker
 
-`bajutsu worker --once <spec>` は、server なしで 1 つのジョブ仕様を実行し、ジョブの終了コードで終了します。仕様は、キューがすでに保存している形（`worker_job.py` の `job_spec`）です。worker は、`--worker-config` で `worker.yaml` を読み、worker capability の検査を実行し、HTTP と署名付き URL の代わりにローカルの入出力で `execute_job_spec` を通してジョブを実行し、1 回実行のモードでは、リースしたジョブが使う、パイプでつないで統合した取得の代わりに、標準入力、標準出力、標準エラーを継承した子プロセスを起動します。実行の ID は、PASS の行ではなく、子が書いた実行のツリーから取り、起動する内部の run の入口には、解決した `--worker-config` のパスを渡します。アップロード済みのバンドルやアーティファクトの上書きを名指しする仕様は、明確なメッセージで拒否します。それらは署名付き URL で届き、1 回実行の worker にはそれがないからです。同じコマンドが、テスト、調査、次のラッパーに使われます。
+`bajutsu worker --once <spec>` は、server なしで 1 つのジョブ仕様を実行し、ジョブの終了コードで終了します。仕様は、キューがすでに保存している形（`worker_job.py` の `job_spec`）です。worker は、`--worker-config` で `worker.yaml` を読み、worker capability の検査を実行し、HTTP と署名付き URL の代わりにローカルの入出力で `execute_job_spec` を通してジョブを実行し、1 回実行のモードでは、リースしたジョブが使う、パイプでつないで統合した取得の代わりに、標準入力、標準出力、標準エラーを継承した子プロセスを起動します。実行の ID は、PASS の行ではなく、子が書いた実行のツリーから取り、起動する内部の run の入口には、解決した `--worker-config` のパスを渡します。アップロード済みのバンドルやアーティファクトの上書きを名指しする仕様は、明確なメッセージで拒否します。それらは署名付き URL で届き、1 回実行の worker にはそれがないからです。`worker --once` は、SIGINT と SIGTERM を、リース済みのジョブがハートビートで受け取るのと同じキャンセルに対応づけます。同じコマンドが、テスト、調査、次のラッパーに使われます。
 
 ### 薄いラッパーとしての `bajutsu run`
 
@@ -146,15 +146,297 @@ local バックエンドと server バックエンドの違いは、これらの
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] ローカルの既定値
-- [ ] 分割をまたぐキャンセル
-- [ ] 1 回実行の worker とラッパー
-- [ ] ライブのログのストリームとルーティング用の executor
-- [ ] `run` の移行
-- [ ] `run-set`（Device Farm の batch）の移行
-- [ ] `triage` の移行
-- [ ] `record` と `crawl` の移行
-- [ ] local の executor の削除
+- [x] ローカルの既定値
+- [x] 分割をまたぐキャンセル
+- [x] 1 回実行の worker とラッパー
+- [x] ライブのログのストリームとルーティング用の executor
+- [x] `run` の移行
+- [x] `run-set`（Device Farm の batch）の移行
+- [x] `triage` の移行（ローカル起動。ホスト型の triage と同じホストへの割り当ては後続の作業。ログを参照）
+- [x] `record` と `crawl` の移行
+- [x] local の executor の削除
+
+ログ：
+
+- [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167)（単位 1 の 3 分割のうち 1：キューのストア）— `SqlRepository` のジョブの状態遷移
+  （リース、heartbeat、結果、reclaim）を、それぞれ 1 つの条件付き `UPDATE` にしました。競合の勝ち負けは
+  更新した行数で決まり、SQLite でも PostgreSQL でも同じです。これまでは読み取りのあとに書き込んでいて、
+  SQLite では行ロックを取っていませんでした。ファイルに置いた SQLite のエンジンには、ログ先行書き込み
+  （WAL）と busy timeout を設定します。`repository_from_env(default_url=…)` は、既定のデータベースを
+  使う前に最新のリビジョンへマイグレーションします。一方、運用者が設定した `BAJUTSU_DATABASE_URL` は、
+  これまでどおりサーバーがマイグレーションしません。ファイルに置いた SQLite で並行してリースする
+  テストと、heartbeat と reclaim を競わせるテストを加えました。単位 1 の残り（秘密鍵の生成、署名付き
+  URL を使う `file://` の成果物ストア、ローカル起動の配線）は後続の PR で入れます。
+- [#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168)（単位 1 の 3 分割のうち 2：鍵とファイルストア）— `local_keys` が秘密鍵と URL の
+  署名鍵を初回に生成します。保存先は、runs のディレクトリの隣の `.bajutsu/` です。鍵のファイルは、
+  `O_EXCL | O_NOFOLLOW` で開いたモード `0600` の一時ファイルに書いて同期し、ハードリンクで所定の名前に
+  置きます。このため、同時に起動したプロセスは先に置かれた鍵を読みます。既存のパスがシンボリックリンク、
+  通常のファイル以外、他のアカウントの所有、グループや他者に開いた権限のいずれかに当たるときは、
+  使わずに拒否します。`fernet_from_env_or_local` は `BAJUTSU_SECRETS_KEY` を優先し、未設定のときは
+  ローカルの鍵を使います。`FileObjectStore` はディレクトリの上に `ObjectStore` を実装し、どのキーも
+  シンボリックリンクを経由する場合を含めてルートの内側に閉じ込め、所有者だけの権限で不可分に書き込みます。
+  署名付き URL の宛先は、FastAPI のアプリに加えた `GET` と `PUT` の `/api/store/objects/{key}` です。
+  この経路を認可するのは署名だけで、署名はメソッド、キー、コンテンツタイプ、有効期限に対する
+  HMAC-SHA256 です。経路はオブジェクトストアが `FileObjectStore` のときだけ存在し、デフォルトの起動は、
+  3 番目の PR で配線するまで変わりません。
+- [#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170)（単位 1 の 3 分割のうち 3：ローカル起動）— `bajutsu serve --backend server` が、
+  クラウドのサービスや環境変数がなくても起動するようになりました。`BAJUTSU_SERVER_STORE` と
+  `BAJUTSU_DATABASE_URL` がどちらも未設定なら、サーバーは `.bajutsu/queue.db` にマイグレーション済みの
+  SQLite のキューを持ちます。シークレットを暗号化するキーは、`BAJUTSU_SECRETS_KEY` が未設定なら
+  `.bajutsu/secrets.key` に生成します。設定したデータベースに `BAJUTSU_SECRETS_KEY` がない場合は、
+  これまでどおり起動に失敗します。バケットを指定してデータベースを指定しないデプロイは、これまでどおり
+  プロセス内で実行します。レプリカごとに SQLite のファイルを持つとキューが分かれるためです。バケットが
+  なければ、成果物ストアは `FileObjectStore` です。バケットと同じキーの配置で `.bajutsu/objects/` に
+  置き、default org の `artifacts/` プレフィックスにだけ runs のツリーをマウントします。このため、
+  `bajutsu run` が書いた run も動かさずに読め、default org のストアから他の org の run やストアの
+  フォルダを指すこともできません。ストアはローカルの鍵で署名し、宛先はサーバーのループバックの URL です。
+  そのためローカル起動は `--port 0` を拒否し、署名付き URL の経路を配信する FastAPI のトランスポートへ
+  自動で切り替えます。`hosted` は `BAJUTSU_HOSTED` から読むようにしました。未設定のときはバケットを
+  指定したかどうかに従うので、ローカル起動ではファイルブラウザとデバイスの引き継ぎが残ります。
+  サーバーは起動時に、`runs/` の下の run のツリーをすべて、既定の org の runs テーブルへ登録します。
+  登録には新しい追加専用の `record_run_if_absent` を使うので、完了した job の行を上書きしません。
+  admin の `POST /api/runs/rescan` は同じ登録を必要なときに行い、ローカルの配置がなければ `409` を
+  返します。これで単位 1 が完了しました。
+- [#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171)（単位 2）— キャンセルが、分割のどちら側にある job にも届くようになりました。
+  キャンセルの経路はまず jobs テーブルから job を探すので、再起動の前にキューへ入った job もキャンセル
+  できます。行のない job は、これまでどおりプロセス内でキャンセルします。キュー中の job は
+  `status = 'queued'` を条件とする `UPDATE` で `cancelled` になり、リースが返すことはありません。
+  リース済みの job はリースを保ったまま、新しい `cancel_requested` 列（マイグレーション `0022`）に
+  印を付けます。ハートビートは `{"ok": true, "cancel": true}` を返し、worker は `jobs.cancel_job` で
+  自分の `Job` をキャンセルします。`run` は穏当に止め、それ以外の種類はプロセスグループごと終了します。
+  `execute_job_spec` は run の開始前に、組み立てた `Job` をハートビートのループへ渡します。バンドルの
+  取得中に届いたキャンセルでは、run を始めません。結果の経路は `"cancelled": true` をリースの持ち主から
+  だけ受け付け、`status = 'leased' AND leased_by = :worker` を条件とする `UPDATE` で記録します。job が
+  終わったあとのキャンセルは何も変えず、終了時の状態を返します。キャンセルの印が付いたままリースが
+  回収された job は、試行回数の上限に達していても、キューへ戻さず `cancelled` で終えます。`cancelled` は
+  終了状態に加わり、job の同時実行枠を解放し、ログのストリームを閉じます。`0022` のダウングレードは
+  `cancelled` を `failed` に戻します。job の登録からキュー投入までのあいだに届いたキャンセルも、どちらの
+  順序でも行に届きます。`DbQueueExecutor.dispatch` はメモリ上でキャンセル済みの job の行をキャンセルし、
+  キャンセルの経路はプロセス内のキャンセルのあとで jobs テーブルを読み直します。サインインした呼び出し元は、
+  プロセス内の job も jobs テーブルの job も、その org が自分のアクティブな org か所属する org のときに
+  限りキャンセルできます。それ以外の job には `404` を返します。job のビューは、人に対しては org で
+  絞り込まないままです。経路は machine principal も job の読み出しと同じく自分の
+  org に限りますが、ゲートが machine をキャンセルの経路に通さないので、この検査は防御のためのものです。
+  リース済みの job のキャンセルには、この版以降の worker が要ります。古い worker はハートビートの
+  `cancel` を無視するからです。`worker --once` での SIGINT と SIGTERM の対応付けは単位 3 で入ります。
+- [#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172)（単位 4）— キューに入った job のコンソールが、再びライブで表示されるようになりました。
+  worker はログの行を、新しい `POST /api/worker/log` へおよそ 1 秒ごとに送り、結果の送信の前にも
+  5 秒の持ち時間でもう 1 度送ります。状態を持つ行単位の伏せ字処理が資格情報の形を隠し、秘密鍵の
+  ブロックは BEGIN の行から END の行まで、行と送信をまたいで伏せ字にします。server も、届いた各行に
+  行単位の伏せ字処理をもう 1 度かけます。ハンドオフの要求の行はライブのストリームに流しません。経路は、
+  新しい読み取り専用の `Repository.holds_lease` でリースを持つ worker の送信だけを受け付け、それ以外には
+  `409` を返します。worker はその `409` を、ハートビートの `409` と同じくリースの喪失として扱います。
+  1 回の送信は 500 行までで、8 KiB を超える行は server が切り詰めます。1 つの job のライブの行が
+  50,000 行か 16 MiB を超えると、server は打ち切りの通知を 1 行だけ流して残りを捨てます。この行数は server の
+  プロセスごとに数えます。worker は送れなかった行をログに記録して捨て、未送信の行の待ち行列に上限を
+  設け、古い control plane から `401`、`404`、`405` が返ると送信をやめます。server 側では、リポジトリが
+  あるとき（ローカルの起動を含みます）、完了後のログのバスに代えて新しい `QueueLogBus` を使います。
+  `QueueLogBus` は届いた行をメモリ上のバスへ流し、新しい `BAJUTSU_REDIS_URL` があれば `RedisLogBus` へ
+  流します。`RedisLogBus` は送信の 1 回分を 1 つのコマンドで積み、書き込みのたびにリストの寿命を
+  設定するようになりました。メモリ上のバスは、終わった job のチャネルを、後から 256 個の job が
+  終わった時点で捨てます。ストリームを閉じるのは、これまでどおり結果の経路です。ストリームは待機中に
+  jobs テーブルも確認するので、閉じる操作がこのバスに届かずに終わった job でも、ストリームは終わります。
+  終わった job を開いた閲覧者と、1 行も受け取らなかったライブの閲覧者は、アップロードされた
+  `console.log` を読みます。ライブのバスが失敗した場合も、その完了後の読み出しに戻ります。`Job.kind` は、
+  `batch` か、`cmd` が起動するサブコマンドからジョブの種類を導きます。`RoutingExecutor` は、
+  `queued_kinds` に含まれる種類と種類の不明な job を `DbQueueExecutor` へ、それ以外を `LocalExecutor` へ
+  送ります。server はすべての種類をキューに送る設定で組むので、振る舞いは変わりません。ジョブ単位の
+  アーティファクトの上書きを拒む分岐は、executor の型ではなく、`run` の job の行き先で判断するように
+  なりました。バケットだけの構成と `--backend local` は変わりません。worker は、`execute_job_spec` の新しい
+  `before_upload` のフックを通じて、run ツリーのアップロードの前に `console.log` をそのツリーへ書くように
+  なりました。これまではアップロードのあとに書いていたため、`console.log` はアーティファクトストアに
+  届いていませんでした。`crawl` のためのライブのアーティファクトのストリームは、単位 8 で入ります。
+- [#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173)（単位 3）— `bajutsu run` は、1 回実行の worker 経路を通る薄いラッパーへ変わりました。
+  コマンドの本体は内部の入口 `python -m bajutsu.run.internal` に移しました。隠しサブコマンドではなく
+  独立したモジュールにしたので、`bajutsu --help` にも BE-0101 のコマンド一覧にも現れず、そのプロセスは
+  run の本体だけを読み込みます。`run_command`、`triage --rerun` のコマンド、MCP の `run` ツールは
+  このモジュールを出力します。`Job.kind` と `_with_worker_config` はこのモジュールを認識し、変更前に
+  キューに入った仕様の `-m bajutsu run` も引き続き受け付けます。`_local_interpreter` はその古い形を
+  内部のモジュールに書き換えるので、そうした仕様はキューに入れたときと同じく 1 プロセスで動きます。
+  ラッパーは本体と同じシグネチャを持つので、フラグの集合は 1 つです。ラッパーは、呼び出し側が
+  入力したフラグを値にかかわらずすべて引き渡します。既定値と環境変数の値は run 自身に解決させます。
+  `--label` はコマンドラインの解析時に検査するので、長すぎるラベルはラッパーが呼び出し側の言葉で
+  拒否します。`bajutsu worker --once <spec.json>` は、何もしない `LocalWorkerIO` を使い、リポジトリを
+  持たずに、`execute_job_spec` で仕様を 1 つ実行します。`run_job` の新しい `inherit_stdio` モードは、
+  呼び出し側の標準ストリームのまま（公開の `bajutsu run` だけは呼び出し側の `PATH` も保ちます）、独自のセッションで子プロセスを起動し、新しい run ツリー
+  から run ID を読みます。呼び出し側は待つあいだ生存確認のパイプを開いたままにします。パイプが終端に
+  達すると内部の run は自分に SIGTERM を送るので、SIGKILL で終了したラッパーがデバイスを動かし続ける
+  run を残すことはありません。`--once` は、バンドル、アーティファクトの上書き、Device Farm のバッチ、
+  `local` 以外の worker ファイル（BE-0448 を案内します）、型の誤った `udids` と `materials`、
+  カレントディレクトリの別の内容のファイルを上書きする materials を拒否します。SIGINT、SIGTERM、
+  SIGHUP は単位 2 のキャンセルになります。2 回目の SIGINT は子プロセスのグループをすぐに終了させます。
+  SIGTSTP は子プロセスのグループを停止してからラッパーを停止し、SIGCONT は両方を再開します。
+  呼び出し側がすでに無視しているシグナルは無視したままにします。終了コードは子プロセスの終了コードか、
+  128 にシグナル番号を足した値です。`--step` のプロンプトは端末の入力を待つあいだ run のキャンセルを
+  確認するようになったので、プロンプトでの Ctrl-C でも run はレポートを書いて終わります。
+  `bajutsu run` への Ctrl-C と SIGTERM の終了コードは、1 プロセスのときの 1 から 130 と 143 に
+  変わりました。Ctrl-C は run のドライバーの子プロセスに直接は届かなくなり、バックグラウンドの
+  `--step` の run は端末の入力で停止しなくなりました。サブプロセスでの同等性テストは、成功、失敗、
+  使い方の誤り、2 つのシグナル、SIGKILL されたラッパー、2 回目の Ctrl-C、Ctrl-Z、疑似端末での `--step`
+  のプロンプト、`--once` での変更前の仕様を確かめます。往復のテストは、`run` のすべてのオプションを
+  描画して内部の入口で解析し直します。プロセス内の CLI テストは内部の入口を呼びます。
+  worker はコントロールプレーンより先に、または同時に更新する必要があります。この変更より前のビルドの
+  worker は、キューに入った `-m bajutsu.run.internal` を自分のインタプリタに置き換えないので、リースした
+  `run` がすべて失敗します。
+- [#2182](https://github.com/bajutsu-e2e/bajutsu/pull/2182)（単位 5 の 2 分割のうち 1：機能を失わないローカル起動）— ローカル起動は、
+  `--backend local` の利用者が使える機能を残すようになりました。これで、2 分割のうち 2 で
+  ローカル backend をこの形へ移せます。ただし 1 点は 2 分割のうち 2 まで残ります。ローカル起動は
+  すべての種類の job をキューに積み、キューに入った job は、リースが中継するまで保存した secret を
+  受け取りません。hosted でないデプロイでは、FastAPI のアプリが `local_only` の
+  ルートを配信します。キャプチャモード、ライブなステップ選択、`/api/ant/login` がこれにあたります。
+  stdlib のハンドラと同じ動きをするスクリーンショットのハンドラを加え、起動時の読み取りはキャプチャを
+  利用可能と報告します。hosted のデプロイは、これらのルートを引き続き拒否します。`SecretStore` に、
+  平文を読む唯一の口として `values_for_job` を加えました。`DbSecretStore` はその org の行を復号し、
+  今のキーで復号できない行は警告を出して飛ばします。`EnvSecretStore` は、自分が書いた secret の名前を
+  ロックを取って返します。プロセス内の job のスレッド（`jobs.run_job_in_process`）が、
+  `jobs.job_secret_env` を通じて値を新しい `Job.secret_env` に入れます。ストアのエラーは、理由を
+  示す行を残してその job だけを失敗させます。`_spawn_env` はこのフィールドを、プロバイダの上書きより下に重ねます。
+  このフィールドは job の仕様にも `repr` にも入りません。job は config を取得しないので、Git の
+  認証情報も入れません。`serve.jobs` の外で `values_for_job` や `job_secret_env` を直接呼ぶと
+  テストが失敗するので、値に手を伸ばす HTTP のハンドラはこのテストで見つかります。
+  2 分割のうち 2 では、同じ読み出しをリースの応答で中継します。default org について、ローカル起動は
+  シナリオを割り当てた config のツリーに、ベースラインを `--baselines` のディレクトリに置きます。
+  そのため、保存したシナリオは一覧に戻り、承認したベースラインは run が読むものと一致します。
+  `FileObjectStore` は複数の割り当てを持てるようになり、ローカル起動は `--baselines` のディレクトリを
+  `baselines/` に割り当てます。worker の署名付きダウンロードも、承認したベースラインを読みます。
+  runs ディレクトリや state ディレクトリを含む `--baselines` は起動時に拒否します。default org の配置が
+  使う名前（`artifacts`、`baselines`、`scenarios`、`uploads`）は、API でも `orgs:` でも org の slug に
+  使えません。
+  プロバイダの設定も `provider-settings.json` に残します。2 つの backend が 1 つの写しを共有するので、
+  データベースの写しがずれることはありません。他の org はバケットと同じ配置のままです。FastAPI、
+  uvicorn、SQLAlchemy、Alembic、`cryptography` は基本の依存に移りました。`server` の extra には boto3 が、
+  `db` の extra には psycopg が残ります。どちらかの extra を指定したインストールのコマンドも、
+  そのまま解決します。CLI は引き続きサーバの依存を 1 つも import しません。`--asgi` のインストール確認は
+  なくなり、サーバ backend のインストールの案内はクラウドのクライアントだけを挙げます。ローカル backend の
+  executor と既定値は変えていません。
+- [#2183](https://github.com/bajutsu-e2e/bajutsu/pull/2183)（単位 5 の 2 分割のうち 2：worker で動く `run`）— `--backend local` は、ローカル起動になりました。
+  どちらの backend もサーバの形を組み立て、違いはキューに積む種類だけです。`local` はビルド段階を含む
+  `run` を積み（`LOCAL_QUEUED_KINDS`）、他の種類はサーバのプロセスで実行します。`server` はすべての種類を
+  積みます。フラグは残し、その削除は引き続き単位 9 で行います。ローカル起動は、起動時の config の
+  ディレクトリ、Git の由来、テーマの設定も保ちます。lease の応答は `secret_env` を持ちます。この
+  フィールドは、lease した job の org に保存された secret を、job が読む環境変数の名前で持ちます。
+  サーバは lease の時点で `jobs.lease_secret_env` を通じて値を読み、仕様には保存しません。ブラウザや
+  マシンのログインで取った lease は値を受け取りません。ストアを読めないときは、値なしで実行せずに job を
+  失敗にします。worker は値を run の環境変数に重ね、引数には載せません。ファイルを送らない job は、
+  仕様の `cwd` で config のディレクトリを示します。同じマシンの worker は、そこで job をビルドして実行し、
+  run が書いた runs ディレクトリに `console.log` を書きます。UI で設定した Git の資格情報は、
+  データベースのストアからでも `jobs.stored_git_credential` を通じてサーバ自身の非公開リポジトリの取得に
+  届きます。その優先順位は GitHub App の次で、環境のトークンより前です。キューに入った job は、扱える
+  稼働中の worker がないと通知を持ちます。`Repository.lacks_live_worker` が、lease のタイムアウトと
+  能力だけからこれを判定します。job の表示はこれを `notice` として返し、ライブストリームは通知の出現と
+  解消のたびに `notice` イベントを送ります。Replay と Record のステータス行がこれを表示します。
+  `make serve` は、作業用のディレクトリで同じトークンを使うローカルの worker をサーバの横で起動し、
+  serve の終了とともに止めます。`SERVE_WORKER=0` で無効にできます。lease する worker は、SIGINT や
+  SIGTERM を受けると job をキャンセルし、キャンセルした結果を送ってから終わります。そのため、キューが
+  取り残された job を再び実行することはありません。`serve.sh` は worker を先に止め、猶予時間のあいだ
+  待ちます。worker は、`--workdir` の指定がなければ、現在のディレクトリではなく専用の一時ディレクトリで
+  job を実行します。そのディレクトリには持ち主を記録し、持ち主が終了したディレクトリは後の worker が
+  削除します。実行中の job のプロセスグループもそこに記録するので、worker を強制終了する場合に
+  `serve.sh` は run も終わらせられます。パスを指定する job のディレクトリを持たない worker は、理由を
+  明示して job を失敗にします。保存した secret も lease も、ローダ、インタプリタ、シェル、`BAJUTSU_*` の
+  変数は設定できず、捨てた名前は値を含めずにログに残します。既知の課題として、パスを指定する job は、
+  サーバのマシンの worker だけが宣言する能力を持たないので、別のマシンの worker が lease してから失敗に
+  することがあります。`bajutsu serve --port 0` は
+  理由を示して終了コード 2 で終わります。端から端までのテストは、キューに入った `run` を、fake backend の
+  上で本物の worker のループに通します。
+- [#2184](https://github.com/bajutsu-e2e/bajutsu/pull/2184)、[#2185](https://github.com/bajutsu-e2e/bajutsu/pull/2185)、
+  [#2186](https://github.com/bajutsu-e2e/bajutsu/pull/2186)（単位 6）— この単位は
+  [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch-ja.md) が実装しました。
+  サーバは Device Farm への fan-out を実行しなくなりました。バッチのプロバイダーを登録せず、AWS の
+  認証情報も持ちません。`run-set` の job はどれも、`worker.yaml` に `environment: devicefarm` を書いた
+  worker をキューで待ちます。その worker が実行を投入し、実行の Amazon Resource Name（ARN）を HTTP で
+  サーバに保存します。そのあと実行をポーリングし、判定を送ります。worker が同時に持つ job の数は、その
+  worker の `maxJobConcurrency` が決めます。サーバ側の予算を決めていた 4 つの設定は、1 リリースの間、
+  非推奨として残ります。`cloudBatchBudget` と `deviceBudget` は、設定ファイルとリクエストの項目です。
+  残る 2 つは、ジョブレジストリの `max_concurrent_batch` と `try_register(device_budget=…)` です。
+  取り除くまでは引き続き fan-out の上限として効きます。設定ファイルとリクエストの 2 つは、`maxJobConcurrency` を案内する通知をサーバのプロセスごとに一度だけ出します。
+- [#2187](https://github.com/bajutsu-e2e/bajutsu/pull/2187)（単位 7）— ローカル起動は、`triage` もキューへ積みます（`LOCAL_QUEUED_KINDS`）。
+  triage は worker が実行し、サーバは triage のプロセスを起動しません。job は、run ディレクトリを
+  サーバのディスク上の絶対パスで指定します。バインドした設定とシナリオのソースも同じく絶対パスで
+  指定します。同じマシンの worker は、設定のディレクトリから job を実行します。結果の `triage.json` は
+  サーバの run ディレクトリへ書き、UI はそのファイルを読みます。別のマシンの worker は、単位 5 と同じ
+  メッセージで job を失敗させます。triage はアップロードしたバンドルを読まないので、job はバンドルを
+  運ばなくなりました。`--ai` の triage は、キューのほかの job と同じく AI キーを lease から受け取ります。
+  サーバの認証情報の確認は、org が UI で保存したキーも数えるようになりました。確認が読むのはマスクした
+  説明だけです。キーを数えるのは、ターゲットが読む変数でキーが届く場合に限ります。これまでのローカル
+  起動は、サーバ自身の環境にキーがなければ `--ai` の triage を拒んでいました。triage の job は、出力に
+  現れた run のパスを自分の run ID とみなさなくなりました。みなすと、job の後処理が、triage が読んだ run を
+  もう一度記録してしまいます。worker では、その run の `console.log` も上書きします。triage のパネルは、job が
+  待っているあいだ worker がないという通知を表示します。判定の経路は変わりません。新しい import の
+  ガードは、run の入口と worker のループを調べます。どちらも、triage のモジュール、Claude の
+  エージェント、Anthropic のクライアントライブラリを読み込みません。端から端までのテストは、キューに入った
+  triage を本物の worker のループに通します。`--ai` の経路では、モデルの代わりにスタブのエージェントを
+  使います。後続の作業が2つ残ります。1つ目として、ホスト型のデプロイは引き続き triage を拒否します。
+  そのデプロイではシナリオを `materials` として送り、run をオブジェクトストレージに置きます。worker が
+  run のツリーをダウンロードし、`triage.json` をアップロードして戻す仕組みが先に要ります。2つ目として、
+  サーバのパスを指定する job（`run` と `triage`）は、サーバのホストに結び付く能力を持ちません。別の
+  マシンの worker がその job を lease してから失敗させることがあります。
+- [#2188](https://github.com/bajutsu-e2e/bajutsu/pull/2188)（単位 8）— ローカル起動は `record` と `crawl` もキューへ積むので、
+  `LOCAL_QUEUED_KINDS` はすべての種類を含みます。キューがあれば、サーバは自分のプロセスで job を実行しません。
+  バケットがあってデータベースがないデプロイは引き続き `LocalExecutor` を使い、単位 9 でこれを取り除きます。
+  crawl の worker は、crawl の `--out` ディレクトリにある画面マップを監視します。変化したスナップショットが
+  JSON として読めれば、新しい `POST /api/worker/artifact` に送ります。このルートが受け付けるのは、lease を
+  持つ worker からの、`screenmap.json` という名前の 2 MiB 以下の JSON オブジェクトだけです。サーバは
+  スナップショットを専用の行プレフィックスで job のログバスに流し、イベントストリームはそれを `artifact`
+  イベントとして送ります。スナップショットには、job ごとに 16 MiB の別のライブ予算があります。予算を超えると、
+  サーバは `truncated` のスナップショットを一度だけ流し、worker に送信をやめさせます。Crawl タブはこれらの
+  イベントからグラフを描き、job の終了時に `screenmap.json` を読みます。予算を超えたあとは、従来どおり
+  ログの行ごとにファイルを読みます。一時停止した record の worker は、要求の行を `POST /api/worker/handoff`
+  に送ります。このルートは `record` の job だけを受け付け、要求は一度に1つで、job ごとに 64 MiB の別のライブ予算に
+  収めます。サーバ自身のプロセスでも、handoff を開けるのは `record` だけです。サーバは行に `handoff_pending` を立て（マイグレーション `0023`）、要求を `human-request`
+  イベントとして流します。`respond-human` は回答をシークレットのキーで暗号化し、`handoff_response` に
+  置きます。置くのは、job が lease 中で、人を待っていて、取り消しを受けていないときだけです。record が
+  待つあいだ、worker は毎秒 `POST /api/worker/handoff-response` に問い合わせます。条件付きの更新が、
+  回答を1回の問い合わせだけに渡します。worker は回答を record の標準入力に書き込みます。サーバは、
+  record の待ち時間（5 分）より古い回答を捨てます。問い合わせは取り消しも運ぶので、待っている record には
+  30 秒のハートビートを待たずに取り消しが届きます。結果、回収、取り消しのいずれでも、2つの列は空に戻ります。
+  設計はハートビートの応答で回答を運ぶとしていましたが、中継は独自の問い合わせを使います。
+  30 秒の間隔では、ページの前の人を待たせすぎるからです。3つの中継の
+  ルートは、lease を持たない worker に `409` を返し、ブラウザやマシンのセッションで来た呼び出しに `403` を
+  返します。`respond-human` は、取り消しのルートと同じ方法で job の org を確かめるようになり、呼び出し元の
+  org の外の job には `404` を返します。handoff の要求やスナップショットの形をしたログの行は、ログのルートでも
+  サーバ自身のプロセスでも捨てるので、run はどちらも偽造できません。job のビューは `awaitingHuman` を行から読むので、どのレプリカでも一致します。再接続したページには、
+  job がもう待っていない要求を送りません。画面マップのスナップショットは引き続きすべて再送するので、最新の
+  1つだけを送る変更は後続の作業です。出力の行き先は従来と
+  同じです。crawl はサーバの runs ディレクトリに、record はターゲットのシナリオディレクトリに書きます。
+  どちらも同じマシンの worker が実行します。AI キーは lease だけを通ってエージェントに届きます。
+  端から端までのテストは、crawl と record を本物の worker のループに通します。それぞれの子プロセスには
+  スタブを使うので、モデルにもデバイスにも触れません。テストは、イベントストリームのクライアントに届く
+  スナップショット、ページに届く要求、record に届く回答、record が待つあいだの取り消しを確かめます。
+  ホスト型のデプロイには2つの課題が残ります。そこでの crawl は、単位 7 の後続の作業と同じくサーバの
+  パスを指定します。また、ホスト型の起動ではデバイスの引き継ぎ（BE-0185）を引き続き拒否します。
+- [#2189](https://github.com/bajutsu-e2e/bajutsu/pull/2189)（単位 9）— サーバは、どの形で起動しても自分のプロセスで job を実行しません。
+  `LocalExecutor`、`RoutingExecutor`、`runs_in_process`、`run_job_in_process`、`LOCAL_QUEUED_KINDS`
+  を取り除き、`bajutsu serve` は `DbQueueExecutor` だけを配線します。プロセス内で実行する最後の形は、
+  バケットを指定してデータベースを指定しないデプロイでした。この形は起動を拒否するようになり、
+  そのメッセージは `BAJUTSU_DATABASE_URL` を挙げます。レプリカごとに SQLite のファイルを持つと
+  キューが分かれるので、この形にはローカルのデフォルト値を用意しません。そのため、どの起動もデータベースを
+  持ちます。サーバは常に SQL のセッションストア、データベースのシークレットストア、キューのログバスを
+  使います。起動時の警告 `oidc_without_database` は、対象の形とともに取り除きました。`ServeState` の
+  デフォルト値は新しい `UnqueuedExecutor` になりました。`UnqueuedExecutor` は、各 job を dispatch の時点で
+  失敗させ、理由を1行で示します。job の後処理は引き続き走るので、ストリームは閉じ、枠も空きます。
+  このデフォルト値を受け取るのは、dispatch しない worker 自身の状態と、executor を配線しないテストです。
+  `run-set` と成果物の差し替えは、キューのない状態を拒否します。終着点の「1つの実装」とは異なり、
+  `UnqueuedExecutor` は、この2つだけが到達する fail-closed なデフォルトの executor として残ります。
+  狭めた拒否の分岐も、同じ理由で残ります。`--backend` フラグは非推奨です。
+  `local` か `server` を渡すと、フラグに代わるものを示す警告を表示し、サーバはその値を無視します。
+  未知の値ではこれまでどおり終了コード 2 で終わり、次のリリースでフラグを取り除きます。`_build_state`
+  と `serve` は backend を受け取らなくなりました。セルフホスティングのイメージと compose ファイルからは
+  `--backend=server` を外しました。`make serve` は変わりません。`serve.sh` は worker を起動し、
+  もともとフラグを渡していないからです。ガードのテストは3つの形を組み立てます。ローカル起動、
+  バケットのないデータベース、データベースを指定したバケットです。それぞれで、失敗するように差し替えた
+  `subprocess.Popen` のもとで各種類の job を1つずつ dispatch し、どの job もキューに入ることを
+  確かめます。リクエストが job に何をさせるかを確かめるテストは、テスト用の executor を配線します。
+  その executor は、worker が実行するのと同じ本体である `run_job` をスレッドで走らせます。プロセス内の
+  スレッドとルーティング用の executor を固定していたテストは取り除きました。これですべての単位が
+  終わりました。本項目の外に、後続の作業が4つ残ります。
+  - ホスト型の triage です。その run はオブジェクトストレージにあります（単位 7）。
+  - サーバのパスを指定する job を、サーバのマシンに結び付ける capability です（単位 5 と 7）。
+    [#2192](https://github.com/bajutsu-e2e/bajutsu/pull/2192) で追加します。ローカルで起動したサーバは、
+    `.bajutsu/machine-id` に保存する識別子から `machine:<id>` を作り、そのような job に付けます。
+    `make serve` が起動する worker は、このトークンを広告します。
+  - ホスト型の起動での crawl です。こちらもサーバのパスを指定します（単位 8）。
+  - 再接続したページへ、画面マップの最新のスナップショットだけを送り直す変更です（単位 8）。
 
 ## 参考
 

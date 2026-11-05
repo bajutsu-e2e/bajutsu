@@ -1,0 +1,214 @@
+"""`bajutsu config schema` and the scenario schema stay in step with the models (BE-0452, BE-0469).
+
+Both are generated from the config models and the platform registry, never written by hand, so these
+tests pin the generated shape to the models: each registered platform is one branch keyed by
+`platform`, each group lists exactly the fields its model accepts, and configs the loader accepts
+validate against it while a key from another platform fails in both.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+
+import pytest
+import yaml
+from jsonschema import Draft202012Validator, ValidationError
+from typer.testing import CliRunner
+
+from bajutsu.cli import app
+from bajutsu.common.backends import PLATFORMS
+from bajutsu.common.config import load_config
+from bajutsu.common.config.json_schema import config_json_schema
+from bajutsu.common.config.schema.defaults import DEFAULTS_KEYS
+from bajutsu.common.config.schema.platform.registry import (
+    GROUPS,
+    PLATFORM_SCHEMAS,
+    allowed_fields,
+)
+from bajutsu.common.config.schema.target_config import TARGET_KEYS
+from bajutsu.common.lint import scenario_json_schema
+
+_REPO = Path(__file__).resolve().parent.parent
+_SCHEMA = config_json_schema()
+_DEFS: dict[str, Any] = _SCHEMA["$defs"]
+
+
+def _resolve(ref: dict[str, Any]) -> dict[str, Any]:
+    target = next(s for s in ref.get("anyOf", [ref]) if "$ref" in s)
+    resolved: dict[str, Any] = _DEFS[target["$ref"].rsplit("/", 1)[-1]]
+    return resolved
+
+
+def _branch(platform: str) -> dict[str, Any]:
+    targets = _SCHEMA["properties"]["targets"]["additionalProperties"]
+    mapping = targets["discriminator"]["mapping"]
+    branch: dict[str, Any] = _DEFS[mapping[platform].rsplit("/", 1)[-1]]
+    return branch
+
+
+def test_each_registered_platform_is_one_branch_keyed_by_platform() -> None:
+    targets = _SCHEMA["properties"]["targets"]["additionalProperties"]
+    assert targets["discriminator"]["propertyName"] == "platform"
+    assert set(targets["discriminator"]["mapping"]) == set(PLATFORM_SCHEMAS) == set(PLATFORMS)
+    assert len(targets["oneOf"]) == len(PLATFORM_SCHEMAS)
+    for platform in PLATFORM_SCHEMAS:
+        branch = _branch(platform)
+        assert branch["properties"]["platform"]["const"] == platform
+        assert tuple(branch["properties"]) == (*TARGET_KEYS, "extends")
+        assert branch["additionalProperties"] is False
+
+
+def test_every_platform_names_the_group_subject() -> None:
+    # BE-0470: one name for the thing under test, whatever the platform.
+    for platform in PLATFORM_SCHEMAS:
+        props = _branch(platform)["properties"]
+        assert "subject" in props
+        assert "app" not in props
+
+
+@pytest.mark.parametrize("platform", list(PLATFORM_SCHEMAS))
+def test_each_group_lists_exactly_the_fields_its_model_accepts(platform: str) -> None:
+    schema = PLATFORM_SCHEMAS[platform]
+    props = _branch(platform)["properties"]
+    for group in GROUPS:
+        model = schema.model(group)
+        assert set(_resolve(props[group]).get("properties", {})) == set(allowed_fields(model))
+
+
+def test_defaults_name_every_platform_with_every_field_optional() -> None:
+    defaults = _DEFS["Defaults"]
+    assert set(defaults["properties"]) == set(DEFAULTS_KEYS)
+    platforms = defaults["properties"]["platforms"]["properties"]
+    assert set(platforms) == set(PLATFORM_SCHEMAS)
+    assert set(platforms["ios"]["properties"]) == set(GROUPS)
+    assert "required" not in platforms["ios"]["properties"]["subject"]
+    assert "id" in platforms["ios"]["properties"]["subject"]["properties"]
+
+
+_EXAMPLE = """
+defaults:
+  platforms:
+    ios:
+      subject: { reinstall: erase, launch: { env: { UITEST: "1" } } }
+      runsOn: {ios: {os: ">=17"}}
+targets:
+  phone:
+    platform: ios
+    subject: { id: com.example.app }
+    runsOn: {ios: {model: ["iPhone 16", "iPad Pro 13-inch (M4)"]}}
+  emulator:
+    platform: android
+    subject: { id: com.example.app }
+    runsOn: {android: {avd: Pixel_8, apiLevel: 34}}
+  site:
+    platform: web
+    subject: { url: "http://localhost:3000/" }
+    runsOn: { browser: { kind: [chromium, webkit] } }
+"""
+
+
+def test_a_config_the_loader_accepts_validates() -> None:
+    load_config(_EXAMPLE)
+    Draft202012Validator(_SCHEMA).validate(yaml.safe_load(_EXAMPLE))
+
+
+def test_an_x_anchor_host_validates_and_any_other_unknown_key_fails() -> None:
+    # The loader drops a top-level `x-` key (BE-0473), so the schema admits it too, and only it.
+    anchored = "x-app: &app { idNamespaces: [stable] }\n" + _EXAMPLE
+    load_config(anchored)
+    Draft202012Validator(_SCHEMA).validate(yaml.safe_load(anchored))
+    with pytest.raises(ValidationError):
+        Draft202012Validator(_SCHEMA).validate({"xapp": {}, "targets": {}})
+
+
+# Every config the repository ships: the root one and each demo's (`tmp/` and worktrees are not).
+_REPO_CONFIGS = sorted(
+    p.relative_to(_REPO).as_posix()
+    for p in [*_REPO.glob("*.config.yaml"), *(_REPO / "demos").rglob("*.config.yaml")]
+)
+
+
+@pytest.mark.parametrize("path", _REPO_CONFIGS)
+def test_the_repository_configs_validate(path: str) -> None:
+    data = yaml.safe_load((_REPO / path).read_text(encoding="utf-8"))
+    Draft202012Validator(_SCHEMA).validate(data)
+
+
+def test_every_shipped_config_is_checked() -> None:
+    assert len(_REPO_CONFIGS) >= 10
+    assert "demos/showcase/showcase.config.yaml" in _REPO_CONFIGS
+
+
+def test_exists_is_stated_in_its_inline_form() -> None:
+    hook = {"exists": {"id": ["aerr_wait"], "negate": True}}
+    text = (
+        "targets:\n  t:\n    platform: ios\n    subject:\n      id: com.x\n"
+        "      startWhen: { exists: { id: home.title } }\n"
+        f"    hooks: {{ interrupts: [{{ condition: {json.dumps(hook)}, steps: [] }}] }}\n"
+    )
+    load_config(text)
+    Draft202012Validator(_SCHEMA).validate(yaml.safe_load(text))
+    scenario = json.loads(scenario_json_schema())
+    good = [{"name": "a", "steps": [], "expect": [{"exists": {"id": "x", "negate": True}}]}]
+    assert not list(Draft202012Validator(scenario).iter_errors(good))
+
+
+@pytest.mark.parametrize(
+    "target",
+    [
+        # A key another platform takes: the loader names it unknown, the schema rejects it.
+        "{ platform: ios, subject: { id: com.x }, runsOn: {ios: {avd: Pixel_8}} }",
+        # A destination the platform does not run on, and a flat key from before BE-0469.
+        "{ platform: ios, subject: { id: com.x }, runsOn: {android: {avd: Pixel_8}} }",
+        "{ platform: ios, subject: { id: com.x }, runsOn: {model: iPhone 16} }",
+        "{ platform: web, subject: { url: 'http://x/' }, runsOn: {emulate: iPhone 13} }",
+        "{ platform: web, subject: { url: 'http://x/' }, driver: { nativeZ: true } }",
+        "{ platform: flutter, subject: { id: com.x } }",
+    ],
+)
+def test_a_key_from_another_platform_fails_in_both(target: str) -> None:
+    text = f"targets:\n  t: {target}\n"
+    with pytest.raises(ValueError):  # noqa: PT011 - the loader's own message is pinned elsewhere
+        load_config(text)
+    assert list(Draft202012Validator(_SCHEMA).iter_errors(yaml.safe_load(text)))
+
+
+def test_the_command_prints_the_schema() -> None:
+    result = CliRunner().invoke(app, ["config", "schema"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output) == _SCHEMA
+
+
+@pytest.mark.parametrize(
+    ("platform", "destination", "fields"),
+    [
+        ("ios", "ios", {"model", "os", "kind", "family", "locale", "seedPhotos"}),
+        ("android", "android", {"avd", "apiLevel"}),
+        ("web", "browser", {"kind", "version", "emulate"}),
+    ],
+)
+def test_runs_on_is_one_block_per_destination(
+    platform: str, destination: str, fields: set[str]
+) -> None:
+    # `ignoredSettings` sits beside the destination, describing the same environment (BE-0473).
+    runs_on = _resolve(_branch(platform)["properties"]["runsOn"])
+    assert set(runs_on["properties"]) == {destination, "ignoredSettings"}
+    assert runs_on["additionalProperties"] is False
+    assert set(_resolve(runs_on["properties"][destination])["properties"]) == fields
+    assert set(_resolve(_branch("fake")["properties"]["runsOn"]).get("properties", {})) == {
+        "ignoredSettings"
+    }
+
+
+def test_the_scenario_schema_states_device_and_no_runs_on() -> None:
+    schema = json.loads(scenario_json_schema())
+    pre = schema["$defs"]["Preconditions"]["properties"]
+    assert "runsOn" not in pre
+    assert "device" in pre
+    validator = Draft202012Validator(schema)
+    good = [{"name": "a", "steps": [], "preconditions": {"device": {"ios": {"locale": "ja_JP"}}}}]
+    assert not list(validator.iter_errors(good))
+    old = [{"name": "a", "steps": [], "preconditions": {"runsOn": {"ios": {"os": ">=18"}}}}]
+    assert list(validator.iter_errors(old))

@@ -20,13 +20,13 @@ import pytest
 
 from bajutsu.common import backends
 from bajutsu.common.backend_cli import simctl
-from bajutsu.common.config import Effective, IosConfig, XcuitestConfig
+from bajutsu.common.config import Effective, IosConfig, ResolvedPreconditions, XcuitestConfig
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.xcuitest import RunnerTarget, XcuitestDriver
 from bajutsu.common.drivers.xcuitest._reply import _Reply
 from bajutsu.common.platform_lifecycle.environments.xcuitest import XcuitestEnvironment
 from bajutsu.common.platform_lifecycle.protocols import ReadinessResult
-from bajutsu.common.scenario import Preconditions, Redact
+from bajutsu.common.scenario import Redact
 
 _UDID = "UDID-1"
 _APP = "com.example.app"
@@ -42,14 +42,12 @@ def _eff(bundle: str, app_path: str | None = None, **xcuitest: Any) -> Effective
             xcuitest=XcuitestConfig(**xcuitest) if xcuitest else None,
         ),
         backend=["xcuitest"],
-        device="iPhone 15",
         locale="en_US",
         launch_env={"FROM_CONFIG": "1"},
         launch_args=[],
         id_namespaces=[],
         reserved_namespaces=[],
         mock_server=None,
-        setup=None,
         capture=[],
         redact=Redact(),
     )
@@ -182,7 +180,7 @@ def _started(run: _Simctl, runner: _Runner, monkeypatch: pytest.MonkeyPatch) -> 
     env = XcuitestEnvironment("xcuitest", _UDID, run)
     env._bundle_id = _APP
     env._lease_driver = XcuitestDriver(transport=runner.transport)
-    env._launch_inputs = (Preconditions(), {"BAJUTSU_COLLECTOR": "http://x"})
+    env._launch_inputs = (ResolvedPreconditions(), {"BAJUTSU_COLLECTOR": "http://x"})
     monkeypatch.setattr(
         backends, "make_driver", lambda *a, **k: XcuitestDriver(transport=runner.transport)
     )
@@ -196,7 +194,7 @@ def test_a_starting_member_installs_launches_and_joins_the_group(
     app.mkdir()
     run, runner = _Simctl(), _Runner(front=_AUTH)
     env = _started(run, runner, monkeypatch)
-    member = env.start_member(_eff(_AUTH, str(app)), Preconditions(reinstall="overwrite"))
+    member = env.start_member(_eff(_AUTH, str(app)), ResolvedPreconditions(reinstall="overwrite"))
     assert run.ran("install", str(app))
     assert not run.ran("uninstall", _AUTH)
     assert run.ran("launch", _AUTH, "SIMCTL_CHILD_FROM_CONFIG=1")
@@ -215,9 +213,29 @@ def test_a_clean_member_reinstalls_and_resets_its_permissions(
     app.mkdir()
     run = _Simctl()
     env = _started(run, _Runner(), monkeypatch)
-    env.start_member(_eff(_AUTH, str(app)), Preconditions(reinstall="clean"))
+    env.start_member(_eff(_AUTH, str(app)), ResolvedPreconditions(reinstall="clean"))
     assert run.ran("uninstall", _AUTH)
     assert run.ran("privacy", _AUTH)
+
+
+@pytest.mark.parametrize("lead_erases", [True, False])
+def test_an_erasing_member_needs_a_lead_that_erased(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, lead_erases: bool
+) -> None:
+    # Each target merges its own `subject.reinstall` (BE-0473), so the lead and a member can disagree.
+    app = tmp_path / "Auth.app"
+    app.mkdir()
+    run = _Simctl()
+    env = _started(run, _Runner(), monkeypatch)
+    env._lead_erases = lead_erases
+    pre = ResolvedPreconditions(reinstall="erase")
+    if lead_erases:
+        env.start_member(_eff(_AUTH, str(app)), pre)
+        assert run.ran("uninstall", _AUTH)  # the device is already wiped; the member resets its app
+    else:
+        with pytest.raises(simctl.DeviceError, match="does not erase it"):
+            env.start_member(_eff(_AUTH, str(app)), pre)
+        assert not run.ran("install", str(app))
 
 
 def test_a_later_member_starts_launch_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -225,14 +243,16 @@ def test_a_later_member_starts_launch_only(tmp_path: Path, monkeypatch: pytest.M
     app.mkdir()
     run = _Simctl()
     env = _started(run, _Runner(), monkeypatch)
-    env.start_member(_eff(_AUTH, str(app)), Preconditions(), install=False)
+    env.start_member(_eff(_AUTH, str(app)), ResolvedPreconditions(), install=False)
     assert not run.ran("install", str(app))
     assert run.ran("launch", _AUTH)
 
 
 def test_a_member_needs_a_simulator_this_environment_started() -> None:
     with pytest.raises(base.UnsupportedAction, match="need a Simulator"):
-        XcuitestEnvironment("xcuitest", _UDID, _Simctl()).start_member(_eff(_AUTH), Preconditions())
+        XcuitestEnvironment("xcuitest", _UDID, _Simctl()).start_member(
+            _eff(_AUTH), ResolvedPreconditions()
+        )
 
 
 def test_install_app_terminates_installs_over_and_resets_the_digest(tmp_path: Path) -> None:
@@ -254,14 +274,14 @@ def test_install_app_refuses_a_missing_build(tmp_path: Path) -> None:
     from bajutsu.common.backend_cli import simctl
 
     env = XcuitestEnvironment("xcuitest", _UDID, _Simctl())
-    with pytest.raises(simctl.DeviceError, match="appPath not found"):
+    with pytest.raises(simctl.DeviceError, match=r"subject\.path not found"):
         env.install_member(_eff(_APP, str(tmp_path / "Gone.app")), keep_data=True)
 
 
 def test_ending_a_member_keeps_a_namesakes_driver(monkeypatch: pytest.MonkeyPatch) -> None:
     run, runner = _Simctl(), _Runner()
     env = _started(run, runner, monkeypatch)
-    member = env.start_member(_eff(_AUTH), Preconditions(), install=False)
+    member = env.start_member(_eff(_AUTH), ResolvedPreconditions(), install=False)
     env.end_member(env._lease_driver, _eff(_AUTH))  # type: ignore[arg-type]
     assert env._member_drivers[_AUTH] is member
     env.end_member(member, _eff(_AUTH))
@@ -284,7 +304,7 @@ def test_foreground_resumes_a_running_member_and_waits_for_it(
 ) -> None:
     run, runner = _Simctl(), _Runner(front=_AUTH)
     env = _started(run, runner, monkeypatch)
-    env.start_member(_eff(_AUTH), Preconditions(), install=False)
+    env.start_member(_eff(_AUTH), ResolvedPreconditions(), install=False)
     run.calls.clear()
     _ready(monkeypatch, True)
     control = env.controller(_eff(_AUTH))
@@ -299,7 +319,7 @@ def test_foreground_launches_a_member_that_is_not_running_with_its_launch_env(
 ) -> None:
     run, runner = _Simctl(), _Runner(front=_AUTH)
     env = _started(run, runner, monkeypatch)
-    env.start_member(_eff(_AUTH), Preconditions(), install=False)
+    env.start_member(_eff(_AUTH), ResolvedPreconditions(), install=False)
     runner.running.discard(_AUTH)
     run.calls.clear()
     _ready(monkeypatch, True)
@@ -317,7 +337,7 @@ def test_foreground_waits_for_ready_when_only_after_a_launch(
     # for the launch screen there would time out on an app that is already in front.
     run, runner = _Simctl(), _Runner(front=_AUTH)
     env = _started(run, runner, monkeypatch)
-    env.start_member(_eff(_AUTH), Preconditions(), install=False)
+    env.start_member(_eff(_AUTH), ResolvedPreconditions(), install=False)
     if not running:
         runner.running.discard(_AUTH)
     seen: list[object] = []
@@ -327,7 +347,7 @@ def test_foreground_waits_for_ready_when_only_after_a_launch(
         return ReadinessResult(True, "count", 0.0)
 
     monkeypatch.setattr("bajutsu.common.platform_lifecycle.readiness.await_ready", await_ready)
-    control = env.controller(replace(_eff(_AUTH), ready_when={"id": "home"}))
+    control = env.controller(replace(_eff(_AUTH), start_when={"id": "home"}))
     assert control is not None
     control.foreground()
     assert seen == [expected]
@@ -338,7 +358,7 @@ def test_a_foreground_that_never_reaches_the_front_fails_its_step(
 ) -> None:
     run, runner = _Simctl(), _Runner()
     env = _started(run, runner, monkeypatch)
-    env.start_member(_eff(_AUTH), Preconditions(), install=False)
+    env.start_member(_eff(_AUTH), ResolvedPreconditions(), install=False)
     _ready(monkeypatch, False)
     control = env.controller(_eff(_AUTH))
     assert control is not None
@@ -362,13 +382,13 @@ def test_a_warm_runner_a_group_retargeted_points_back_at_the_next_lease(
 ) -> None:
     runner = _Runner()
     env = _started(_Simctl(), runner, monkeypatch)
-    env.start_member(_eff(_AUTH), Preconditions(), install=False)
+    env.start_member(_eff(_AUTH), ResolvedPreconditions(), install=False)
     runner.front = _AUTH
     env._member_drivers[_AUTH].query()  # the runner now addresses the member
     assert runner.base == _AUTH
     fresh = XcuitestDriver(transport=runner.transport)
     monkeypatch.setattr(env, "_start", lambda *a, **k: fresh)
-    env.start(_eff(_APP), Preconditions())
+    env.start(_eff(_APP), ResolvedPreconditions())
     assert runner.base == _APP
     assert env._member_drivers == {}  # the previous lease's group is gone
 
@@ -381,7 +401,7 @@ def test_a_warm_lease_on_another_app_seeds_its_group_with_that_app(
     # earlier app skips its retarget and reads the companion's state as its own.
     runner = _Runner()
     env = _started(_Simctl(), runner, monkeypatch)
-    env.start_member(_eff(_AUTH), Preconditions(), install=False)
+    env.start_member(_eff(_AUTH), ResolvedPreconditions(), install=False)
     env._lease_driver.query()  # type: ignore[union-attr]  # the previous lease's group ends on _APP
     fresh = XcuitestDriver(transport=runner.transport)
     monkeypatch.setattr(
@@ -389,10 +409,10 @@ def test_a_warm_lease_on_another_app_seeds_its_group_with_that_app(
     )
     app = tmp_path / "Auth.app"
     app.mkdir()
-    env.start(_eff(_AUTH, str(app)), Preconditions())
+    env.start(_eff(_AUTH, str(app)), ResolvedPreconditions())
     assert runner.base == _AUTH
     assert env._app_path == str(app)  # the crash sweep matches this lease's executable
-    member = env.start_member(_eff(_APP), Preconditions(), install=False)
+    member = env.start_member(_eff(_APP), ResolvedPreconditions(), install=False)
     runner.front = _APP
     member.query()
     assert runner.base == _APP
@@ -418,22 +438,24 @@ class _FailingSimctl(_Simctl):
 def test_a_member_gets_its_own_permissions(monkeypatch: pytest.MonkeyPatch) -> None:
     run = _Simctl()
     env = _started(run, _Runner(), monkeypatch)
-    env.start_member(_eff(_AUTH), Preconditions(), permissions={"camera": "grant"}, install=False)
+    env.start_member(
+        _eff(_AUTH), ResolvedPreconditions(), permissions={"camera": "grant"}, install=False
+    )
     assert run.ran("privacy", "grant", "camera", _AUTH)
 
 
 def test_a_failed_member_launch_is_a_device_error(monkeypatch: pytest.MonkeyPatch) -> None:
     env = _started(_FailingSimctl("launch"), _Runner(), monkeypatch)
     with pytest.raises(simctl.DeviceError):
-        env.start_member(_eff(_AUTH), Preconditions(), install=False)
+        env.start_member(_eff(_AUTH), ResolvedPreconditions(), install=False)
 
 
 def test_a_member_with_a_missing_build_is_refused(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     env = _started(_Simctl(), _Runner(), monkeypatch)
-    with pytest.raises(simctl.DeviceError, match="appPath not found"):
-        env.start_member(_eff(_AUTH, str(tmp_path / "Gone.app")), Preconditions())
+    with pytest.raises(simctl.DeviceError, match=r"subject\.path not found"):
+        env.start_member(_eff(_AUTH, str(tmp_path / "Gone.app")), ResolvedPreconditions())
 
 
 def test_a_member_with_no_build_configured_installs_nothing(
@@ -441,7 +463,7 @@ def test_a_member_with_no_build_configured_installs_nothing(
 ) -> None:
     run = _Simctl()
     env = _started(run, _Runner(), monkeypatch)
-    env.start_member(_eff(_AUTH), Preconditions())
+    env.start_member(_eff(_AUTH), ResolvedPreconditions())
     assert not run.ran("install")
 
 
@@ -456,9 +478,9 @@ def test_a_failed_install_is_a_device_error(tmp_path: Path) -> None:
 def test_a_third_member_joins_the_same_group(monkeypatch: pytest.MonkeyPatch) -> None:
     runner = _Runner()
     env = _started(_Simctl(), runner, monkeypatch)
-    env.start_member(_eff(_AUTH), Preconditions(), install=False)
+    env.start_member(_eff(_AUTH), ResolvedPreconditions(), install=False)
     group = env._group
-    env.start_member(_eff("com.example.third"), Preconditions(), install=False)
+    env.start_member(_eff("com.example.third"), ResolvedPreconditions(), install=False)
     assert env._group is group
 
 
@@ -523,7 +545,7 @@ def test_the_live_route_refuses_device_groups() -> None:
 
     env = XcuitestLiveEnvironment("xcuitest", "https://appium.example/wd/hub")
     with pytest.raises(base.UnsupportedAction, match="device groups"):
-        env.start_member(_eff(_AUTH), Preconditions())
+        env.start_member(_eff(_AUTH), ResolvedPreconditions())
     with pytest.raises(base.UnsupportedAction, match="installApp"):
         env.install_member(_eff(_AUTH), keep_data=True)
 

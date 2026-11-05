@@ -19,6 +19,9 @@ The map gates only the **true hard requirements** the capability set cleanly dec
 - `selectOption` needs `selectOption` (BE-0191): a web-only action that sets a native `<select>`;
   iOS / Android backends raise `UnsupportedAction`, so a scenario with this step is rejected before
   any device work on those platforms.
+- an `attribute` assertion needs `elementAttribute` (BE-0466): only the web backend reads an HTML
+  attribute, so the assertion — in `expect`, a step's `assert`, an `if` or `interrupts` condition,
+  or inside a `web:` / `app:` block — is rejected before any device work everywhere else.
 - `setPickerValue` needs `pickerWheel` (BE-0356): a picker wheel is an iOS control, and only the
   resident-runner XCUITest backend can land on a named row deterministically, so a scenario setting
   a wheel's value is rejected up front on every other backend.
@@ -39,10 +42,9 @@ The map gates only the **true hard requirements** the capability set cleanly dec
   emulator: setLocation + clipboard) thus passes preflight for what it supports and fails fast for
   the rest, each unsupported step named individually. `relaunch` is not here: it is gated by the
   injected relauncher, not `DeviceControl`.
-- a `permissions` entry needs the capability token for its own *service* (BE-0276), not one token
-  for the field: `deviceControl.permissions.<service>`. Backends honor different subsets of the
-  shared vocabulary (iOS has no TCC service for `notifications`), so each named service is gated —
-  and, if unsupported, reported — individually, the same per-occurrence shape as device control.
+- a `permissions` entry is not gated here: it is a setting applied before the steps, not a step, so
+  the BE-0467 settings check (`settings_support.py`) judges each service against the same BE-0276
+  token, and honours a target's `runsOn.ignoredSettings` declaration in one place.
 - every run needs `query` + `elements` (the baseline read path).
 
 Deliberately **not** gated (an audit of what each construct actually depends on, BE-0082):
@@ -58,11 +60,15 @@ Deliberately **not** gated (an audit of what each construct actually depends on,
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator, Set
+from collections.abc import Callable, Iterator, Sequence, Set
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from bajutsu.common.drivers import base
-from bajutsu.common.scenario import Assertion, Scenario, Step
+from bajutsu.common.scenario import Assertion, Interrupt, Scenario, Step
+
+if TYPE_CHECKING:
+    from bajutsu.common.capability.worker_capability import WorkerCapability
 
 
 # A construct the capability set can gate: the capability it needs, a human label, and a
@@ -96,7 +102,8 @@ def _walk_steps(steps: list[Step], prefix: str = "") -> Iterator[tuple[str, Step
         # capability neither backend today declares only alongside WEBVIEW/APP_CONTEXT does not
         # currently exist, so this is a real but so-far harmless gap, not fixed here (this item
         # keeps it rather than fixing `web:`'s pre-existing one as a drive-by, which is out of its
-        # lane).
+        # lane). `navigate` (BE-0464) is now such a construct; `_navigate_locations` follows `web:`
+        # / `app:` blocks for it alone.
 
 
 def _walk_scenario(sc: Scenario) -> Iterator[tuple[str, Step]]:
@@ -104,14 +111,14 @@ def _walk_scenario(sc: Scenario) -> Iterator[tuple[str, Step]]:
 
     The lifecycle phases take the full step grammar, so a construct in one needs the same capability
     gate as one in `steps`. Missed here, an unsupported teardown step passes the preflight, a device
-    is leased, the whole scenario is driven, and only then does the step fail — and a failing `after`
+    is leased, the whole scenario is driven, and only then does the step fail — and a failing `cleanup`
     rule on an otherwise-passing run *becomes* that run's failure. Late failure after full device
     work is exactly what this module exists to prevent.
     """
-    yield from _walk_steps(sc.before, "before ")
+    yield from _walk_steps(sc.setup, "setup ")
     yield from _walk_steps(sc.steps)
-    for i, rule in enumerate(sc.after):
-        yield from _walk_steps(rule.steps, f"after[{i}] ")
+    for i, rule in enumerate(sc.cleanup):
+        yield from _walk_steps(rule.steps, f"cleanup[{i}] ")
 
 
 def _assertions_with_path(scenario: Scenario) -> Iterator[tuple[str, Assertion]]:
@@ -143,6 +150,62 @@ def _select_option_locations(sc: Scenario) -> list[str]:
     return [path for path, step in _walk_scenario(sc) if step.select_option is not None]
 
 
+def _navigate_locations(sc: Scenario) -> list[str]:
+    """The paths where a navigate step appears, inside a `web:` / `app:` block included (BE-0464).
+
+    `_walk_steps` skips those blocks on purpose, but no backend that runs one (the iOS WebView
+    context, the cross-app context) can open a URL, so a `navigate` nested there would otherwise reach
+    a leased device before failing. Recursing for this one construct closes that gap without moving
+    every other construct's failure from run time to preflight.
+    """
+
+    def found(pairs: Iterator[tuple[str, Step]]) -> Iterator[str]:
+        for path, step in pairs:
+            if step.navigate is not None:
+                yield path
+            for name, block in (("web", step.web), ("app", step.app)):
+                if block is not None:
+                    yield from found(_walk_steps(block.steps, f"{path} > {name}"))
+
+    paths = list(found(_walk_scenario(sc)))
+    # `_walk_scenario` stops at setup / steps / cleanup; an interrupt's recovery steps run on the
+    # leased device too, so a `navigate` there has to be caught before the lease as well.
+    for i, entry in enumerate(sc.interrupts):
+        if isinstance(entry, Interrupt):
+            paths.extend(found(_walk_steps(entry.steps, f"interrupts[{i}] ")))
+    return paths
+
+
+def _attribute_locations(sc: Scenario) -> list[str]:
+    """The paths where an `attribute` assertion appears (BE-0466).
+
+    Wider than `_assertions_with_path`, for the reason `_navigate_locations` gives: it follows `web:`
+    / `app:` blocks, whose backends (the iOS WebView context, the cross-app context) cannot read an
+    attribute either, and `interrupts`, whose conditions and recovery steps poll the leased device too.
+    """
+
+    def found(pairs: Iterator[tuple[str, Step]]) -> Iterator[str]:
+        for path, step in pairs:
+            for j, a in enumerate(step.assert_ or []):
+                if a.attribute is not None:
+                    yield f"{path} > assert[{j}]"
+            if step.if_ is not None and step.if_.condition.attribute is not None:
+                yield f"{path} > if > condition"
+            for name, block in (("web", step.web), ("app", step.app)):
+                if block is not None:
+                    yield from found(_walk_steps(block.steps, f"{path} > {name}"))
+
+    paths = [f"expect[{i}]" for i, a in enumerate(sc.expect or []) if a.attribute is not None]
+    paths.extend(found(_walk_scenario(sc)))
+    for i, entry in enumerate(sc.interrupts):
+        if not isinstance(entry, Interrupt):
+            continue
+        if entry.condition.attribute is not None:
+            paths.append(f"interrupts[{i}] > condition")
+        paths.extend(found(_walk_steps(entry.steps, f"interrupts[{i}] ")))
+    return paths
+
+
 def _text_selection_locations(sc: Scenario) -> list[str]:
     """The paths where a `select` or `copy` step appears (BE-0280).
 
@@ -159,11 +222,6 @@ def _text_selection_locations(sc: Scenario) -> list[str]:
 def _visual_locations(sc: Scenario) -> list[str]:
     """The paths where a visual assertion appears."""
     return [path for path, a in _assertions_with_path(sc) if a.visual is not None]
-
-
-def _permission_service_locations(service: str) -> Callable[[Scenario], list[str]]:
-    """One location (`scenario.permissions`) when `service` is named in the scenario's field."""
-    return lambda sc: ["scenario.permissions"] if service in sc.permissions else []
 
 
 # Each device-control operation, paired with the per-operation capability token it needs (BE-0212)
@@ -211,6 +269,16 @@ _REQUIREMENTS = (
         _select_option_locations,
     ),
     _Requirement(
+        base.Capability.URL_NAVIGATION,
+        "navigate (open a URL; web only, not supported on iOS / Android)",
+        _navigate_locations,
+    ),
+    _Requirement(
+        base.Capability.ELEMENT_ATTRIBUTE,
+        "attribute (read an HTML attribute; web only, not supported on iOS / Android)",
+        _attribute_locations,
+    ),
+    _Requirement(
         base.Capability.PICKER_WHEEL,
         "setPickerValue (iOS picker-wheel value; iOS XCUITest only)",
         _step_locations(lambda s: s.set_picker_value is not None),
@@ -244,20 +312,53 @@ _REQUIREMENTS = (
         _Requirement(token, f"{label} (device control)", _step_locations(matches))
         for token, label, matches in _DEVICE_CONTROL_OPS
     ),
-    # One requirement per vocabulary service (BE-0276), not per operation: `permissions` is gated
-    # per service because backends honor different subsets of the shared vocabulary (iOS has no TCC
-    # service for `notifications`), so an unsupported service is named individually rather than the
-    # field as a whole. Built from the fixed vocabulary (`base.PERMISSION_SERVICES`), not the
-    # scenario, exactly like every other requirement here — `locations` does the per-scenario work.
-    *(
-        _Requirement(
-            base.permission_capability(service),
-            f"permissions.{service} (device control)",
-            _permission_service_locations(service),
-        )
-        for service in base.PERMISSION_SERVICES
-    ),
 )
+
+
+def steps_for_target(s: Scenario, target: str) -> Scenario:
+    """*s* narrowed to the steps and `expect` entries routed to *target* (BE-0428).
+
+    Only what the capability preflight reads is narrowed — a nested `if` / `forEach` body keeps
+    whatever it holds, since a nested step carries its own `target` and the preflight walks into it
+    anyway; a top-level step naming another target is what has to go, so one backend is never asked
+    to justify a construct it will never be handed.
+
+    `None` too: a scenario declaring exactly one target may omit the name on every step and
+    `expect` entry, and those still ran against that target — filtering them out would hand the
+    preflight an empty scenario and skip BE-0082 for the whole single-declared-target shape.
+
+    A step or `expect` entry omitting `target` under a declared `primaryTarget` belongs to the
+    primary alone (BE-0436), so it reads its resolved target rather than falling into `None` and
+    being judged against every declared backend.
+
+    `interrupts` is narrowed to the entries *target*'s runner can poll (BE-0466), since the preflight
+    now reads their conditions and recovery steps.
+    """
+    routed = {target, None}
+    # An `interrupts` entry omitting `target` follows the primary in force (BE-0447), so it reaches
+    # *target* when *target* is the initial primary or any `setPrimaryTarget` destination; an entry
+    # naming another target never does, and a web-only condition there must not fail this one.
+    primaries = {s.primary_target or (s.target_names[0] if s.target_names else None)}
+    primaries.update(st.set_primary_target.target for st in s.steps if st.set_primary_target)
+    return s.model_copy(
+        update={
+            "setup": [st for st in s.setup if st.resolved_target in routed],
+            "steps": [st for st in s.steps if st.resolved_target in routed],
+            "cleanup": [
+                rule.model_copy(
+                    update={"steps": [st for st in rule.steps if st.resolved_target in routed]}
+                )
+                for rule in s.cleanup
+            ],
+            # The primary in force after the last step, which a `setPrimaryTarget` may have moved.
+            "expect": [a for a in s.expect if (a.target or s.final_primary) in routed],
+            "interrupts": [
+                e
+                for e in s.screens
+                if e.target == target or (e.target is None and target in primaries)
+            ],
+        }
+    )
 
 
 def unsupported(scenario: Scenario, capabilities: Set[str]) -> list[str]:
@@ -274,3 +375,152 @@ def unsupported(scenario: Scenario, capabilities: Set[str]) -> list[str]:
                 f"{path}: {req.label} needs '{req.capability}'" for path in req.locations(scenario)
             )
     return reasons
+
+
+def requirements(scenario: Scenario) -> dict[str, list[str]]:
+    """Every capability `scenario` needs, mapped to the constructs that need it (BE-0467).
+
+    The positive form of `unsupported`: the same baseline and requirement table, read as "what a
+    backend must advertise" rather than "what this backend lacks", so serve's dispatch routes a job by
+    exactly the set the run preflight will judge. A baseline capability maps to "running".
+    """
+    needs: dict[str, list[str]] = {cap: ["running"] for cap in _BASELINE}
+    for req in _REQUIREMENTS:
+        if locations := req.locations(scenario):
+            needs.setdefault(req.capability, []).extend(
+                f"{path}: {req.label}" for path in locations
+            )
+    return needs
+
+
+# --- The worker capability check (BE-0450) -------------------------------------------------------
+#
+# `unsupported()` answers "can this driver perform this step?"; the functions below answer "can this
+# worker run this driver at all, and with how many targets?" from the worker's `worker.yaml`, the
+# driver's host requirement, and the machine's host. They stay pure — no device, no clock — so the
+# check sits on the deterministic path (prime directive 1) and needs no Simulator to test.
+
+WORKER_CAPABILITY_PREFIX = "worker-capability-unsupported:"
+
+_HOST_NAMES = {"darwin": "macOS", "linux": "Linux", "windows": "Windows"}
+
+
+def actuator_unavailable_reason(
+    actuator: str,
+    worker: WorkerCapability,
+    host: str,
+    host_os_for: Callable[[str], frozenset[str] | None] | None = None,
+) -> str | None:
+    """Why *worker* on *host* cannot run *actuator*'s driver, or None when it can (rules 1 and 2).
+
+    Rule 1, the host requirement, applies only to a driver that runs on this host: on a device cloud
+    the driver runs on the provider's host, and on an `appium` grid its platform's driver runs on the
+    grid's (BE-0452).
+
+    Args:
+        actuator: The actuator (driver) name.
+        worker: The worker capability in force.
+        host: The machine's host operating system (`backends.current_host_os()`).
+        host_os_for: The driver host-requirement lookup; `backends.host_os_for` when None.
+    """
+    if worker.drives_on_host(actuator):
+        if host_os_for is None:
+            from bajutsu.common.backends import host_os_for as default_host_os_for
+
+            host_os_for = default_host_os_for
+        hosts = host_os_for(actuator)
+        if hosts is not None and host not in hosts:
+            names = " or ".join(_HOST_NAMES.get(h, h) for h in sorted(hosts))
+            return f"{actuator} runs only on {names}; this worker runs on {host}"
+    if actuator not in worker.drivers:
+        return (
+            f"{actuator} is not among this worker's drivers ({', '.join(worker.drivers) or 'none'})"
+        )
+    return None
+
+
+def filter_actuators(
+    actuators: Sequence[str],
+    worker: WorkerCapability,
+    host: str,
+    host_os_for: Callable[[str], frozenset[str] | None] | None = None,
+) -> tuple[list[str], list[str]]:
+    """Split *actuators* into the ones *worker* can run and the reasons for the ones it cannot.
+
+    An actuator with no driver yet is kept untouched: the worker file cannot name it, and
+    `select_actuator` already reports it as planned rather than available.
+
+    Returns:
+        The runnable actuators in their original order, and one reason per dropped actuator.
+    """
+    from bajutsu.common.backends import IMPLEMENTED
+
+    kept: list[str] = []
+    reasons: list[str] = []
+    for actuator in actuators:
+        reason = (
+            actuator_unavailable_reason(actuator, worker, host, host_os_for)
+            if actuator in IMPLEMENTED
+            else None
+        )
+        if reason is None:
+            kept.append(actuator)
+        else:
+            reasons.append(reason)
+    return kept, reasons
+
+
+def scenario_target_count(scenario: Scenario) -> int:
+    """How many targets — and so devices — *scenario* holds at once, summed over every pool."""
+    return len(scenario.target_names) or 1
+
+
+def worker_capability_unsupported(
+    scenario: Scenario,
+    backends_for: Callable[[str | None], Sequence[str]],
+    worker: WorkerCapability,
+    host: str,
+    host_os_for: Callable[[str], frozenset[str] | None] | None = None,
+) -> list[str]:
+    """The reasons *worker* on *host* cannot run *scenario*, empty when it can (BE-0450).
+
+    Rules 1 and 2 run once per target the scenario needs: a target fails when none of its
+    requested actuators survives the host and `drivers` filter, so a fallback list such as
+    `[ios, web]` still passes on Linux. Rule 3 runs once per scenario against `maxTargetsPerJob`.
+
+    Args:
+        scenario: The scenario to judge.
+        backends_for: The requested backend list (platform tokens or actuator names) for one of
+            the scenario's declared targets, or for the run's single resolved target when called
+            with None — the effective target configuration with any `--backend` override applied.
+        worker: The worker capability in force.
+        host: The machine's host operating system.
+        host_os_for: The driver host-requirement lookup; `backends.host_os_for` when None.
+
+    Returns:
+        One reason per unmet requirement, each naming the driver or the limit; format them for a
+        report with `worker_capability_failure`.
+    """
+    from bajutsu.common.backends import resolve_actuators
+
+    reasons: list[str] = []
+    targets: list[str | None] = [*scenario.target_names] or [None]
+    for target in targets:
+        kept, dropped = filter_actuators(
+            resolve_actuators(list(backends_for(target))), worker, host, host_os_for
+        )
+        if not kept and dropped:
+            where = f"target '{target}': " if target is not None else ""
+            reasons.append(where + "; ".join(dropped))
+    count = scenario_target_count(scenario)
+    if worker.max_targets_per_job is not None and count > worker.max_targets_per_job:
+        reasons.append(
+            f"the scenario declares {count} targets; this worker allows at most "
+            f"{worker.max_targets_per_job} per job (maxTargetsPerJob)"
+        )
+    return reasons
+
+
+def worker_capability_failure(reasons: Sequence[str]) -> str:
+    """The one-line preflight failure for *reasons*, under the fixed prefix tests and readers key on."""
+    return f"{WORKER_CAPABILITY_PREFIX} {'; '.join(reasons)}"

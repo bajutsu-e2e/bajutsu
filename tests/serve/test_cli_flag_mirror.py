@@ -40,6 +40,12 @@ def test_run_flag_surface_is_fully_classified() -> None:
         "step",
         "break_at",
         "break_on_fail",
+        # The server is not a worker (BE-0450): the worker appends its own `--worker-config` to the
+        # leased command, so the server never sets it.
+        "worker_config",
+        # --kind (BE-0468) narrows a target's iOS kinds on the command line; serve's run request has
+        # no field for it yet, so a hosted run covers every kind the target lists.
+        "kind",
     }
     pass_through = {
         "backend",
@@ -94,6 +100,11 @@ def test_record_flag_surface_is_fully_classified() -> None:
         "language",
         "max_steps",
         "screenshot",
+        # Only the run request reaches an appium grid through serve (BE-0452); a hosted record
+        # stays local, so serve passes no worker file.
+        "worker_config",
+        # --kind (BE-0468): a hosted record takes the target's first kind, as `--kind` is unset.
+        "kind",
     }
     pass_through = {"backend", "udid", "erase", "system_alert_handling", "headed", "upload_exec"}
     # serve forces --handoff to `stream` (a human at the browser answers over SSE), never a knob (BE-0179).
@@ -104,7 +115,16 @@ def test_record_flag_surface_is_fully_classified() -> None:
 def test_crawl_flag_surface_is_fully_classified() -> None:
     base_handled = {"target_name", "out", "config", "max_screens", "max_steps"}
     # language (BE-0188) is env-driven for serve (BAJUTSU_AI_LANGUAGE), like effort — see record above.
-    not_serve_exposed = {"prune_global", "alert_vision_instruction", "language"}
+    # Only the run request reaches an appium grid through serve (BE-0452); a hosted crawl stays
+    # local, so serve passes no worker file.
+    # --kind (BE-0468): a hosted crawl takes the target's first kind, as `--kind` is unset.
+    not_serve_exposed = {
+        "prune_global",
+        "alert_vision_instruction",
+        "language",
+        "worker_config",
+        "kind",
+    }
     pass_through = {
         "backend",
         "udid",
@@ -137,6 +157,7 @@ def test_triage_flag_surface_is_fully_classified() -> None:
         "scenario",
         "flaky",
         "history",
+        "worker_config",  # forwarded to --rerun's run, which serve never asks for (BE-0452)
     }
     pass_through = {"target_name", "ai", "apply", "json_out"}
     assert base_handled | not_serve_exposed | pass_through == _option_names("triage")
@@ -173,3 +194,14 @@ def test_render_value_option_omits_empty() -> None:
     assert cf.flag_args("run", {"tag": "smoke"}) == ["--tag", "smoke"]
     assert cf.flag_args("run", {"tag": ""}) == []  # serve's "unset" sentinel
     assert cf.flag_args("run", {"tag": None}) == []
+
+
+def test_the_internal_run_module_takes_exactly_runs_flags() -> None:
+    # The spec builders emit `python -m bajutsu.run.internal` (BE-0449), so the classification above
+    # covers it only while its flag surface is `run`'s own.
+    from typer.main import get_command
+
+    from bajutsu.run.internal import build_app
+
+    params = get_command(build_app()).params
+    assert {p.name for p in params} == _option_names("run")

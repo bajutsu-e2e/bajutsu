@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 from pathlib import Path
+from typing import Literal
 
 from bajutsu.common.config.schema import (
     DeviceProvider,
@@ -11,7 +12,6 @@ from bajutsu.common.config.schema import (
     Mailbox,
     MockServer,
     NotifyEndpoint,
-    XcuitestConfig,
 )
 from bajutsu.common.drivers import base
 from bajutsu.common.scenario import Redact
@@ -37,54 +37,63 @@ class Effective:
     target: str
     # The platform-specific knobs (BE-0126); its concrete type is the platform discriminator.
     platform_config: PlatformConfig
+    # Derived from `platform` as a one-entry list (BE-0452), so the actuator selection keeps its shape.
     backend: list[str]
-    device: str
     locale: str
     launch_env: dict[str, str]
     launch_args: list[str]
     id_namespaces: list[str]
     reserved_namespaces: list[str]
     mock_server: MockServer | None
-    setup: str | None
     capture: list[str]
     redact: Redact
     secrets: list[str] = field(default_factory=list)
+    # The target's `subject.reinstall` (BE-0452): how the app is reinstalled when the scenario sets no
+    # mode of its own. None leaves the built-in `clean`.
+    reinstall: Literal["overwrite", "clean", "erase"] | None = None
+    # The target's `subject.launch.deeplink` (BE-0452), opened after launch unless the scenario sets one.
+    deeplink: str | None = None
+    # The target's `runsOn.ios.seedPhotos` (BE-0452), rebased against the config file; a scenario's own
+    # list replaces it.
+    seed_photos: list[str] = field(default_factory=list)
+    # The target's own `platform` key (BE-0452), which `schema_platform` reads. None for an
+    # `Effective` built by hand, which then reads its platform from the sub-config.
+    declared_platform: str | None = None
     # Resolved AI provider/model/endpoint/key (BE-0047), passed to the AI factory. None = env-only.
     ai: AiConfig | None = None
-    # Generic HTTP mailbox the `email` step polls (`targets.<name>.mailbox`, BE-0046). None = no
+    # Generic HTTP mailbox the `email` step polls (`services.mailbox`, BE-0046). None = no
     # mailbox configured, so an `email` step fails cleanly.
     mailbox: Mailbox | None = None
     # Where this target's devices come from (BE-0236). None = the built-in local provider (today's
-    # locally-attached `--udid` path); a device-cloud `kind` reserves a device off-host. Resolved by
-    # `acquire_device` against the provider registry — off the deterministic verdict path.
+    # locally-attached `--udid` path). The config no longer names it (BE-0452): an `appium`
+    # environment of the `--worker-config` in force fills it for the targets of the grid's platform.
+    # Resolved by `acquire_device` against the provider registry — off the deterministic verdict path.
     device_provider: DeviceProvider | None = None
-    # Which registered batch provider serve's per-scenario fan-out submits this target's cloud runs
-    # to (BE-0336 Unit 3). None = local devices; a value (e.g. "devicefarm") names a registry kind.
-    cloud_batch: str | None = None
-    # The device budget K for cloud-batch fan-out dispatched from this target (BE-0336 Unit 4). None =
-    # no cap from config. When set, serve keys the job registry's concurrency cap on the batch
-    # *provider* (the shared Device Farm device pool) — the count spans all targets and orgs sharing
-    # the same provider, so K caps total in-flight device reservations, not just this target's slice.
-    cloud_batch_budget: int | None = None
     # Evidence directory overrides — scenarios / baselines / schemas / goldens (BE-0252).
     evidence_dirs: EvidenceDirs = field(default_factory=EvidenceDirs)
     # How to bring up baseUrl's host for the run (start/probe/teardown). None = assume it's running.
     launch_server: LaunchServer | None = None
-    # Selector the launch waits for before a run starts (BE: smoke flake). None = the default
-    # element-count readiness heuristic.
-    ready_when: base.Selector | None = None
+    # The selector under `subject.startWhen.exists` (BE-0452): the run waits for it before the first
+    # step and after a relaunch, by polling. None keeps the default readiness chain.
+    start_when: base.Selector | None = None
+    # The device conditions the target's `runsOn` declares, keyed by field (`model`, `os`, `avd`,
+    # `apiLevel`, `family`, `browser.version`, or a listed `kind` or `browser.kind`); ranges are their text as written.
+    # A run forms its runs from them and matches devices against them (BE-0452); `doctor`'s device
+    # path still refuses a target that declares any, until unit 11.
+    conditions: dict[str, str | list[str]] = field(default_factory=dict)
     # Configurable doctor id-coverage thresholds (BE-0024 / BE-0252).
     doctor_thresholds: DoctorThresholds = field(default_factory=DoctorThresholds)
     # Webhook notification sinks (BE-0099). Empty when no `notify:` is configured.
     notify: list[NotifyEndpoint] = field(default_factory=list)
     visual_compare: str = "exact"
-    # Capability tokens the worker running this target must advertise (BE-0166): the union of
-    # `defaults.requires` and the target's own `requires`. Empty when neither is set (only the
-    # platform axis routes). Consumed by the hosted job router, not the deterministic run.
-    requires: list[str] = field(default_factory=list)
     # Per-app run-behavior defaults (BE-0177 / BE-0252): the layer the run consults when neither a
     # CLI flag nor the scenario sets the value.
     run_defaults: RunDefaults = field(default_factory=RunDefaults)
+    # The directory `rebased` resolved the relative path fields against — the config file's own
+    # directory, a Git checkout root, or an uploaded bundle's root. The runner's build command
+    # (`driver.runner.build`) runs here, so it lands where a relative `testRunner` already points
+    # (#2277). None until rebased; that build then inherits the process's working directory.
+    base_dir: Path | None = None
 
     @property
     def platform(self) -> str:
@@ -94,6 +103,17 @@ class Effective:
         if isinstance(self.platform_config, WebConfig):
             return "web"
         return "android"
+
+    @property
+    def schema_platform(self) -> str:
+        """The platform the target declares, whose registered models shape its groups (BE-0452).
+
+        Unlike `platform`, which reads a `fake` target as iOS because it resolves to the iOS-shaped
+        sub-config, this keeps `fake`, so a scenario field is checked against the models the target
+        was validated with. A `--backend fake` override leaves it alone: the target still declares
+        its own platform.
+        """
+        return self.declared_platform or self.platform
 
     @property
     def app_identifier(self) -> str | None:
@@ -113,12 +133,14 @@ class Effective:
     ) -> Effective:
         """A copy with the relative path fields resolved against `root`.
 
-        The common path fields — `scenarios` / `baselines` / `schemas` / `goldens` — and the iOS or
-        Android sub-config's `app_path` are rebased; a future path field is rebased by adding it here. `build`
-        (a shell command) and `setup` (resolved relative to the scenario, not the cwd) are
-        intentionally absent. Called for a Git checkout (BE-0063), for an uploaded bundle, and — `root`
-        the config file's own directory — for a local config (BE-0242), so the caller's working
-        directory no longer decides where a config's paths point.
+        The common path fields — `scenarios` / `baselines` / `schemas` / `goldens` — the iOS or
+        Android sub-config's `app_path`, and an iOS target's `seed_photos` are rebased; a future
+        path field is rebased by adding it here. `build` (a shell command) is intentionally absent —
+        it is not rewritten but run from `root`, recorded as `base_dir` — and a component the
+        target's hooks call was already resolved against the config file when it loaded. Called
+        for a Git checkout (BE-0063), for an uploaded bundle, and — `root` the config file's own
+        directory — for a local config (BE-0242), so the caller's working directory no longer
+        decides where a config's paths point.
 
         `confine` gates the escape check: when true, an absolute or `../` value that would leave the
         confinement boundary raises ValueError, mirroring the serve-hardening path confinement
@@ -165,12 +187,13 @@ class Effective:
 
         common = replace(
             self,
+            base_dir=root,
             evidence_dirs=replace(
                 self.evidence_dirs,
-                scenarios=at("scenarios", self.evidence_dirs.scenarios),
-                baselines=at("baselines", self.evidence_dirs.baselines),
-                schemas=at("schemas", self.evidence_dirs.schemas),
-                goldens=at("goldens", self.evidence_dirs.goldens),
+                scenarios=at("paths.scenarios", self.evidence_dirs.scenarios),
+                baselines=at("paths.baselines", self.evidence_dirs.baselines),
+                schemas=at("paths.schemas", self.evidence_dirs.schemas),
+                goldens=at("paths.goldens", self.evidence_dirs.goldens),
             ),
         )
         if isinstance(self.platform_config, AndroidConfig):
@@ -178,24 +201,25 @@ class Effective:
             android = self.platform_config
             return replace(
                 common,
-                platform_config=replace(android, app_path=at("appPath", android.app_path)),
+                platform_config=replace(android, app_path=at("subject.path", android.app_path)),
             )
         if not isinstance(self.platform_config, IosConfig):
             return common  # only the iOS / Android sub-configs carry rebasable path fields
+        # Seeded photos resolve against the file that declares them, as `subject.path` does (BE-0452).
+        common = replace(
+            common,
+            seed_photos=[at("runsOn.ios.seedPhotos", photo) or photo for photo in self.seed_photos],
+        )
 
         ios = self.platform_config
         rebased_xcuitest = ios.xcuitest
         if rebased_xcuitest is not None and rebased_xcuitest.test_runner is not None:
-            rebased_xcuitest = XcuitestConfig.model_validate(
-                {
-                    "testRunner": at("xcuitest.testRunner", rebased_xcuitest.test_runner),
-                    "build": rebased_xcuitest.build,
-                    "deviceType": rebased_xcuitest.device_type,
-                }
+            rebased_xcuitest = rebased_xcuitest.model_copy(
+                update={"test_runner": at("driver.runner.testRunner", rebased_xcuitest.test_runner)}
             )
         return replace(
             common,
             platform_config=replace(
-                ios, app_path=at("appPath", ios.app_path), xcuitest=rebased_xcuitest
+                ios, app_path=at("subject.path", ios.app_path), xcuitest=rebased_xcuitest
             ),
         )

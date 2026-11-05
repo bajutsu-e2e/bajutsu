@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+from bajutsu.common.backends import backend_override
 from bajutsu.common.config import Effective, resolve
 from bajutsu.common.config.schema import Config
 from bajutsu.common.drivers import base as driver_base
@@ -13,7 +14,7 @@ from bajutsu.serve.helpers import (
     valid_backend,
     valid_udid,
 )
-from bajutsu.serve.state import ServeState
+from bajutsu.serve.state import Job, ServeState
 
 # A live capture/enrich driver paired with the teardown that releases whatever backs it. Some
 # backends leave nothing to release once the driver is dropped (idb was such a backend); XCUITest
@@ -33,6 +34,24 @@ def _device_args(body: dict[str, Any]) -> tuple[str, str, tuple[Any, int] | None
     if udid and not valid_udid(udid):
         return backend, udid, ({"error": "invalid udid"}, 400)
     return backend, udid, None
+
+
+def _session_device(
+    body: dict[str, Any], platform: str
+) -> tuple[list[str], str, tuple[Any, int] | None]:
+    """The backends and udid an in-process session (capture, enrich) drives: ``(backends, udid, error)``.
+
+    The body's `backend` is checked like `--backend` (BE-0452): the target's platform, its actuator,
+    or `fake`; omitted, the target's own platform drives it. An omitted `udid` is the booted device.
+    """
+    backend, udid, err = _device_args(body)
+    if err:
+        return [], udid, err
+    try:
+        backends = backend_override(backend, [platform])
+    except ValueError as e:
+        return [], udid, ({"error": str(e)}, 400)
+    return backends, udid or "booted", None
 
 
 def _resolve_org_or_forbid(
@@ -91,3 +110,38 @@ def _default_driver_factory(eff: Effective, backends_list: list[str], udid: str)
         return driver, lambda: env.teardown(driver, eff)
     driver = backends.make_driver(actuator, udid)
     return driver, lambda: _close_quietly(driver)
+
+
+# What a queued job says while no worker can take it (BE-0449): the server executes no queued job
+# itself, so without this an operator who forgot the worker would wait in silence. The wording names
+# no platform, since some kinds (`triage`) require none.
+NO_WORKER_NOTICE = (
+    "no worker is available to run this job: it stays queued until a worker that can serve it "
+    "starts (`bajutsu worker`, with the platform and capabilities the job requires, if any; "
+    "`make serve` starts one for you)"
+)
+
+
+def no_worker_notice(state: ServeState, job: Job) -> str | None:
+    """`NO_WORKER_NOTICE` while *job* waits in the queue with no live worker to serve it, else None.
+
+    Decided by the queue's own lease and liveness data (`Repository.lacks_live_worker`), with no
+    timer of its own, so the answer is the same on every read.
+    """
+    if state.repository is None or job.status == "done" or job.kind is None:
+        return None
+    return NO_WORKER_NOTICE if state.repository.lacks_live_worker(job.id) else None
+
+
+def awaiting_human(state: ServeState, job: Job) -> bool:
+    """Whether *job* is paused for a person's handoff answer (BE-0179).
+
+    A job in the jobs table runs on a worker, and its row's flag is the one every replica reads
+    (BE-0449): the replica that took the worker's request need not be the one a page asks. A job
+    with no row reads the flag on its own `Job`: on a worker, `run_job` sets it there.
+    """
+    row = state.repository.get_job(job.id) if state.repository is not None else None
+    if row is not None:
+        return bool(row.get("awaiting_human"))
+    with job.lock:
+        return job.awaiting_human

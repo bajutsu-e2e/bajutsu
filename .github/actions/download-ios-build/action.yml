@@ -1,0 +1,48 @@
+name: Download the iOS build
+description: >-
+  Download the `ios-build` artifact the `build` job uploads, retrying on a transient failure. A
+  single network error toward the artifact service (an `ECONNRESET` on `ListArtifacts`, seen on run
+  41020047260) otherwise fails a consumer job before any scenario runs and takes the required
+  `E2E (iOS)` check with it, leaving a manual rerun after the whole macOS-queued lane finishes as the
+  only remedy (issue #2266). Three attempts with a short backoff between them; the last one is not
+  continue-on-error, so an artifact that is really missing still fails the job.
+
+runs:
+  using: composite
+  steps:
+    - name: Download the prebuilt products (attempt 1)
+      id: first
+      continue-on-error: true
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+      with:
+        name: ios-build
+
+    # The backoff is CI plumbing outside any run loop — it waits on GitHub's artifact service, not
+    # on the app — so the run loop's ban on fixed sleeps does not reach it.
+    - name: Back off before retrying
+      if: steps.first.outcome == 'failure'
+      shell: bash
+      run: |
+        echo "::warning::ios-build download failed; retrying in 15s"
+        sleep 15
+
+    - name: Download the prebuilt products (attempt 2)
+      id: second
+      if: steps.first.outcome == 'failure'
+      continue-on-error: true
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+      with:
+        name: ios-build
+
+    - name: Back off before the last attempt
+      if: steps.second.outcome == 'failure'
+      shell: bash
+      run: |
+        echo "::warning::ios-build download failed again; last attempt in 30s"
+        sleep 30
+
+    - name: Download the prebuilt products (attempt 3)
+      if: steps.second.outcome == 'failure'
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+      with:
+        name: ios-build

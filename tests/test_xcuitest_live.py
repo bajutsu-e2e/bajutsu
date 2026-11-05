@@ -14,11 +14,12 @@ from __future__ import annotations
 import base64
 import re
 from collections.abc import Mapping
+from dataclasses import replace
 from typing import Any
 
 import pytest
 
-from bajutsu.common.config import load_config, resolve
+from bajutsu.common.config import ResolvedPreconditions, load_config, resolve
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.xcuitest_live import (
     BACKSPACE_KEY,
@@ -33,7 +34,7 @@ from bajutsu.common.platform_lifecycle.environments.xcuitest_live import (
     is_webdriver_endpoint,
 )
 from bajutsu.common.platform_lifecycle.factories import environment_for
-from bajutsu.common.scenario import Preconditions, Relaunch
+from bajutsu.common.scenario import Relaunch
 from bajutsu.common.scenario.models.scenario import Scenario
 
 _ENDPOINT = "http://grid.local:4723"
@@ -613,8 +614,7 @@ def test_environment_for_keeps_a_udid_on_the_simulator_path() -> None:
 def _live_eff() -> Any:
     return resolve(
         load_config(
-            "targets:\n  s:\n    bundleId: com.x\n    xcuitest:\n      deviceType: device\n"
-            "    deviceProvider:\n      kind: appium\n      endpoint: http://grid.local:4723\n"
+            "targets:\n  s:\n    platform: ios\n    subject: {id: com.x}\n    runsOn: {ios: {kind: device}}\n"
         ),
         "s",
     )
@@ -632,9 +632,12 @@ def _live_eff_with(**kwargs: str) -> Any:
         extra += f"    launchEnv:\n      {k}: {v}\n"
     return resolve(
         load_config(
-            "targets:\n  s:\n    bundleId: com.x\n    xcuitest:\n      deviceType: device\n"
-            f"{extra}"
-            "    deviceProvider:\n      kind: appium\n      endpoint: http://grid.local:4723\n"
+            "targets:\n"
+            "  s:\n"
+            "    platform: ios\n"
+            f"    subject: {{id: com.x}}\n"
+            f"    runsOn: {{ios: {{kind: device}}}}\n"
+            f"{extra}    deviceProvider: {{kind: appium, endpoint: 'http://grid.local:4723'}}\n"
         ),
         "s",
     )
@@ -643,7 +646,7 @@ def _live_eff_with(**kwargs: str) -> Any:
 def test_live_environment_start_opens_a_session_and_returns_a_live_driver() -> None:
     grid = _FakeGrid([])
     env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _endpoint: grid)
-    driver = env.start(_live_eff(), Preconditions())
+    driver = env.start(_live_eff(), ResolvedPreconditions())
     assert isinstance(driver, XcuitestLiveDriver)
     assert grid.session == "sess-1"  # a WebDriver session was opened, no simctl / xcodebuild
     env.teardown(driver, _live_eff())
@@ -665,7 +668,7 @@ def test_live_environment_teardown_suppresses_a_session_delete_failure() -> None
     env = XcuitestLiveEnvironment(
         "xcuitest", _ENDPOINT, transport_factory=lambda _endpoint: flaky_transport
     )
-    driver = env.start(_live_eff(), Preconditions())
+    driver = env.start(_live_eff(), ResolvedPreconditions())
     env.teardown(driver, _live_eff())  # must not raise despite delete_session() failing
     env.teardown(driver, _live_eff())  # a second call is a no-op, not a retry of the same failure
 
@@ -683,7 +686,7 @@ def test_live_environment_passes_the_bundle_id_in_the_session_capabilities() -> 
 
     cap_grid = _CapturingGrid([])
     env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: cap_grid)
-    env.start(_live_eff(), Preconditions())
+    env.start(_live_eff(), ResolvedPreconditions())
     always = captured["body"]["capabilities"]["alwaysMatch"]
     assert always["appium:bundleId"] == "com.x"
 
@@ -693,19 +696,35 @@ def test_live_environment_start_raises_on_erase() -> None:
     # silently no-op'ing (determinism first — the scenario author must know erase had no effect).
     env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
     with pytest.raises(base.UnsupportedAction):
-        env.start(_live_eff(), Preconditions(erase=True))
+        env.start(_live_eff(), ResolvedPreconditions(reinstall="erase"))
 
 
 def test_live_environment_start_raises_on_permissions() -> None:
     env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
     with pytest.raises(base.UnsupportedAction):
-        env.start(_live_eff(), Preconditions(), permissions={"photos": "allow"})
+        env.start(_live_eff(), ResolvedPreconditions(), permissions={"photos": "allow"})
+
+
+def test_live_environment_runs_without_an_ignored_erase() -> None:
+    # BE-0467: the target accepts that the live route cannot erase, so the session opens anyway.
+    eff = _live_eff()
+    eff = replace(eff, run_defaults=replace(eff.run_defaults, ignored_settings={"erase": "x"}))
+    env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
+    assert env.start(eff, ResolvedPreconditions(reinstall="erase")) is not None
+
+
+def test_live_environment_start_raises_on_a_target_locale() -> None:
+    # A target-level value reaches the table too, not only the scenario's own.
+    eff = replace(_live_eff(), locale="ja_JP")
+    env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
+    with pytest.raises(base.UnsupportedAction, match=r"runsOn\.ios\.locale"):
+        env.start(eff, ResolvedPreconditions())
 
 
 def test_live_environment_start_raises_on_extra_env() -> None:
     env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
     with pytest.raises(base.UnsupportedAction):
-        env.start(_live_eff(), Preconditions(), extra_env={"FOO": "bar"})
+        env.start(_live_eff(), ResolvedPreconditions(), extra_env={"FOO": "bar"})
 
 
 def test_live_environment_crawl_reset_raises_unsupported_action() -> None:
@@ -790,19 +809,19 @@ def test_live_environment_start_raises_on_deeplink() -> None:
     # `deeplink` is not wired on the live route; the run must fail loudly rather than silently no-op.
     env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
     with pytest.raises(base.UnsupportedAction):
-        env.start(_live_eff(), Preconditions(deeplink="myapp://home"))
+        env.start(_live_eff(), ResolvedPreconditions(deeplink="myapp://home"))
 
 
 def test_live_environment_start_raises_on_launch_args() -> None:
     env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
     with pytest.raises(base.UnsupportedAction):
-        env.start(_live_eff(), Preconditions(launchArgs=["--reset"]))
+        env.start(_live_eff(), ResolvedPreconditions(launch_args=["--reset"]))
 
 
 def test_live_environment_start_raises_on_launch_env() -> None:
     env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
     with pytest.raises(base.UnsupportedAction):
-        env.start(_live_eff(), Preconditions(launchEnv={"MODE": "test"}))
+        env.start(_live_eff(), ResolvedPreconditions(launch_env={"MODE": "test"}))
 
 
 def test_live_environment_start_raises_on_eff_launch_args() -> None:
@@ -810,29 +829,39 @@ def test_live_environment_start_raises_on_eff_launch_args() -> None:
     # loud-fail rule that pre.launch_args already applies, extended to the target-level counterpart.
     eff = resolve(
         load_config(
-            "targets:\n  s:\n    bundleId: com.x\n    xcuitest:\n      deviceType: device\n"
-            '    launchArgs: ["--test-mode"]\n'
-            "    deviceProvider:\n      kind: appium\n      endpoint: http://grid.local:4723\n"
+            "targets:\n"
+            "  s:\n"
+            "    platform: ios\n"
+            "    subject:\n"
+            "      id: com.x\n"
+            "      launch:\n"
+            "        args: [--test-mode]\n"
+            "    runsOn: {ios: {kind: device}}\n"
         ),
         "s",
     )
     env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
     with pytest.raises(base.UnsupportedAction):
-        env.start(eff, Preconditions())
+        env.start(eff, ResolvedPreconditions())
 
 
 def test_live_environment_start_raises_on_eff_launch_env() -> None:
     eff = resolve(
         load_config(
-            "targets:\n  s:\n    bundleId: com.x\n    xcuitest:\n      deviceType: device\n"
-            "    launchEnv:\n      MODE: test\n"
-            "    deviceProvider:\n      kind: appium\n      endpoint: http://grid.local:4723\n"
+            "targets:\n"
+            "  s:\n"
+            "    platform: ios\n"
+            "    subject:\n"
+            "      id: com.x\n"
+            "      launch:\n"
+            "        env: {MODE: test}\n"
+            "    runsOn: {ios: {kind: device}}\n"
         ),
         "s",
     )
     env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
     with pytest.raises(base.UnsupportedAction):
-        env.start(eff, Preconditions())
+        env.start(eff, ResolvedPreconditions())
 
 
 def test_live_environment_start_raises_on_locale() -> None:
@@ -840,7 +869,7 @@ def test_live_environment_start_raises_on_locale() -> None:
     # loudly rather than silently no-op'ing (determinism first — the same guard as erase/deeplink/etc.)
     env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
     with pytest.raises(base.UnsupportedAction):
-        env.start(_live_eff(), Preconditions(locale="ja_JP"))
+        env.start(_live_eff(), ResolvedPreconditions(locale="ja_JP"))
 
 
 def test_live_environment_start_closes_session_on_await_ready_failure() -> None:
@@ -858,7 +887,7 @@ def test_live_environment_start_closes_session_on_await_ready_failure() -> None:
     grid = _FailReadyGrid([])
     env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: grid)
     with pytest.raises(WebDriverError):
-        env.start(_live_eff(), Preconditions())
+        env.start(_live_eff(), ResolvedPreconditions())
     assert grid.deleted is True  # session must be released even on await_ready failure
 
 
@@ -892,3 +921,18 @@ def test_query_raises_webdriver_error_on_null_rect_coordinate() -> None:
     client.new_session({})
     with pytest.raises(WebDriverError):
         XcuitestLiveDriver(client).query()
+
+
+def test_live_environment_has_no_device_catalog_and_no_device_control() -> None:
+    # A remote grid has no simctl catalog to read and no simctl device control to hand the runner.
+    env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
+    assert env.device_catalog() == {}
+    assert env.controller(_live_eff()) is None
+
+
+def test_live_environment_still_refuses_bajutsus_own_launch_keys() -> None:
+    # `BAJUTSU_MOCKS` is not a setting, but the live route cannot pass it to the app, so the mocks a
+    # scenario relies on must not be dropped silently.
+    env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
+    with pytest.raises(base.UnsupportedAction):
+        env.start(_live_eff(), ResolvedPreconditions(launch_env={"BAJUTSU_MOCKS": "[]"}))

@@ -62,7 +62,7 @@ The structure of the code enforces Bajutsu's "deterministic" behavior.
    cutting off contamination from the previous test. State is injected via launch env / deeplink
    ([drivers](drivers.md#environment-management-simctl)).
 4. **Pass/fail is machine-checkable only.** There is no "looks like it passed" judgment. The
-   machine assertions are `exists`/`value`/`label`/`count`/`enabled`/`disabled`/`selected`/`request`/`event`/`requestSequence`/`responseSchema`/`visual`/`clipboard`/`golden`
+   machine assertions are `exists`/`value`/`label`/`count`/`enabled`/`disabled`/`selected`/`request`/`event`/`requestSequence`/`responseSchema`/`visual`/`clipboard`/`golden`/`attribute`
    ([selectors](selectors.md#assertion-evaluation)).
 
 > The scope is narrow: stable identifiers only stabilize the **determinism of selection**.

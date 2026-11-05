@@ -5,7 +5,7 @@
 > One `Driver` interface, behind which sit the [backends](glossary.md#driver-backend-actuator-platform) — `xcuitest` (iOS Simulator), `adb` (Android
 > emulator), `playwright` (web browser), plus the in-memory `fake` for tests — with capability
 > differences absorbed on the abstraction side. A platform-aware registry picks the actuator from
-> the `backend` list; on iOS, launching the app (boot/launch) is handled by a `simctl` wrapper, and
+> the target's `platform`; on iOS, launching the app (boot/launch) is handled by a `simctl` wrapper, and
 > on Android by the twin `adb` wrapper.
 >
 > Implementation: `bajutsu/common/drivers/` (`base.py` / `xcuitest.py` / `adb.py` / `playwright.py` / `fake.py`) ·
@@ -54,9 +54,14 @@ resolution, and the **preflight capability check** (below).
 | `semanticTap` | tap directly by id/label (no coordinates) | ✅ | — | ✅ | ✅ |
 | `conditionWait` | native condition waiting | ✅ | — | ✅ | ✅ |
 | `network` | native network monitoring | — | — | ✅ | — |
+| `video` | whole-scenario video recording (BE-0467; Simulator only on iOS) | ✅ | ✅ | ✅ | — |
+| `deviceLog` | whole-scenario device log or browser console stream (BE-0467; Simulator only on iOS) | ✅ | ✅ | ✅ | — |
+| `appTrace` | whole-scenario app `os_log` trace (BE-0467; iOS Simulator only) | ✅ | — | — | — |
 | `multiTouch` | two-finger gestures (pinch / rotate) | ✅ | ✅ | ✅ | ✅ |
 | `textSelection` | select-all + clipboard copy on the focused field | ✅ | ✅ | ✅ | ✅ |
 | `selectOption` | set a native `<select>` by value (web only) | — | — | ✅ | ✅ |
+| `urlNavigation` | open a URL mid-scenario with `navigate` (web only; BE-0464) | — | — | ✅ | ✅ |
+| `elementAttribute` | read one HTML attribute of an element for the `attribute` assertion (web only; BE-0466) | — | — | ✅ | ✅ |
 | `handleSystemAlert` | tap an iOS SpringBoard permission-prompt button natively | ✅ | — | — | ✅ |
 | `pickerWheel` | set a wheel-style picker to a named row (iOS only) | ✅ | — | — | ✅ |
 | `handleTipkitTip` | dismiss a blocking Apple TipKit tip (iOS only) | ✅ | — | — | ✅ |
@@ -83,14 +88,16 @@ resolution, and the **preflight capability check** (below).
 > performs `pinch` / `rotate` natively. adb advertises `query` / `elements` / `screenshot`,
 > `multiTouch` (a rooted-device `sendevent` two-finger sweep; BE-0232), plus the emulator-backed
 > device-control subset `deviceControl.setLocation` + `deviceControl.clipboard` (BE-0211) +
-> `deviceControl.foreground`, and `deviceGroup` (BE-0447); the rest of the device-control family has
+> `deviceControl.foreground`, `deviceGroup` (BE-0447), and the `video` / `deviceLog` evidence kinds
+> (`screenrecord`, `logcat`; BE-0467); the rest of the device-control family has
 > no faithful emulator equivalent and stays unadvertised. The
 > `fake` driver advertises a richer capability set (semanticTap / conditionWait / multiTouch) purely
 > to exercise those code paths in tests. The `playwright` (web) driver advertises `semanticTap` /
 > `conditionWait` (Playwright has both natively), `network` — the **first backend with native
 > network**, observing and stubbing traffic in-process with no app-side cooperation — and
 > `multiTouch`, synthesizing pinch / rotate via the Chromium DevTools protocol's
-> `Input.dispatchTouchEvent` (BE-0054).
+> `Input.dispatchTouchEvent` (BE-0054). It also advertises the `video` and `deviceLog` evidence
+> kinds (the browser context's recording and console; BE-0467).
 
 ### Preflight capability check (BE-0082)
 
@@ -104,7 +111,13 @@ set) — no device, no clock — and per-scenario: only the offending scenarios 
 
 The check gates only the **hard** requirements the capability set cleanly decides: `pinch` /
 `rotate` need `multiTouch`, `selectOption` needs the `selectOption` token (a web-only `<select>`
-switch; iOS / Android are rejected before any device work), `select` / `copy` need `textSelection`
+switch; iOS / Android are rejected before any device work), `navigate` needs `urlNavigation` (web
+only, and caught even inside a `web:` or `app:` block — `navigate` and `attribute` are the two
+constructs this check follows into those blocks), an `attribute` assertion needs `elementAttribute`
+(web only; BE-0466 — found anywhere: `expect`, a step's `assert`, an `if` or `interrupts` condition,
+inside a `web:` or `app:` block, and in `interrupts` recovery steps, so the iOS WebView context is
+rejected too),
+`select` / `copy` need `textSelection`
 (select-all + clipboard copy; the web context is coordinate-only for these and refuses both —
 `delete` / `clear` stay ungated, as every backend backs `delete_text`), a `visual` assertion needs
 `screenshot`, `handleSystemAlert` needs the `handleSystemAlert` token (only xcuitest declares it),
@@ -125,6 +138,123 @@ as the equivalent for device-control steps — catching the case where the speci
 per-operation, a backend that supports only part of the family (the Android emulator: `setLocation`,
 `clipboard`, and `foreground`) passes preflight for what it advertises and fails fast for the rest, each unsupported
 step named individually — rather than the family being all-or-nothing.
+
+### Worker capability check (BE-0450)
+
+The capability preflight above asks whether an actuator supports a scenario's steps. A second check
+([BE-0450](../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability.md)) settles two more
+points:
+
+- whether this machine can run the [driver](glossary.md#driver-backend-actuator-platform) at all.
+- the number of [targets](glossary.md#target-app-device) one scenario may hold at once.
+
+A **worker** is the machine that runs scenarios. A laptop that runs `bajutsu run` is a worker.
+A `bajutsu worker` that leases jobs from a server is one too.
+
+**Host requirement.** Each driver runs on a fixed set of host operating systems. Each driver class
+declares that set in a `HOST_OS` constant beside `CAPABILITIES`. The worker reads its own operating
+system from the machine.
+
+| Driver | Runs on |
+|---|---|
+| `xcuitest` | macOS only |
+| `adb` | any host |
+| `playwright` | any host |
+| `fake` | any host |
+
+**The worker capability file.** `worker.yaml` describes one worker. It stays apart from
+`bajutsu.config.yaml`. An application team writes that config, but an operator knows what a machine
+can host. The loader validates the file against version 1 of the schema. It refuses an unknown key, driver,
+or environment, and any number below one.
+
+| Key | Meaning |
+|---|---|
+| `version` | The schema version. It must be `1`. |
+| `environment` | Where the worker runs jobs: `local` (the default), `appium` (a live Appium grid), `devicefarm-host` (the run inside a Device Farm package, whose device Device Farm booted and installed the app on), or a device-cloud provider kind. `devicefarm` is the one provider kind known today. |
+| `appium` | Required with `environment: appium`, refused otherwise: the grid's `endpoint` URL and the one `platform` it serves (`ios` today). |
+| `maxJobConcurrency` | How many jobs the worker may run at once, a positive integer. Omitted means one, and a `local` worker accepts one alone. |
+| `maxTargetsPerJob` | How many targets one scenario may declare, a positive integer. The count spans every driver and device group, so a Simulator target and a browser target count two. Omitted means unbounded. |
+| `drivers` | The drivers the worker offers, from `xcuitest`, `adb`, `playwright`, and `fake`. A driver the list omits is unavailable. |
+| `realDevices` | Whether a `local` worker that offers `xcuitest` also drives attached real iPhones, so serve routes real-device jobs to it ([capability routing](self-hosting.md#capability-routed-queues-be-0166), BE-0467). Omitted counts as `true`, as such a worker served real-device jobs before. Set `false` to keep a Simulator-only Mac off them. |
+
+The package ships a default at `bajutsu/common/capability/worker.yaml`. The default describes a
+local worker that offers every driver and sets no target limit:
+
+```yaml
+version: 1
+environment: local
+drivers: [xcuitest, adb, playwright, fake]
+```
+
+An `appium` environment replaces the target-level `deviceProvider` that
+[BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md) removed.
+The file names the grid and the one platform it serves:
+
+```yaml
+version: 1
+environment: appium
+appium:
+  endpoint: https://grid.example.com/wd/hub
+  platform: ios          # the one value today
+drivers: [xcuitest, adb, playwright, fake]
+```
+
+Targets of the grid's platform take the endpoint as their device, and the scenario's other targets
+stay on this host. Bajutsu refuses a scenario with two grid targets.
+
+`bajutsu worker` accepts `--worker-config <path>`, and so does each command that drives a device
+(`run` / `record` / `crawl` / `repl` / `audit` / `doctor` / `bajutsu mcp`). The file it names replaces the default whole, and the two files never
+merge. A device-driving command refuses a file that names a device-cloud provider. `--udid` no
+longer accepts a URL; an `appium` environment names the grid instead. No environment variable or working-directory lookup
+picks a file. The file in force is always the one on the command line. The host rule applies
+to a `local` worker alone. A device-cloud worker runs the driver on the provider's host.
+
+**The check.** `bajutsu/common/capability/worker_capability.py` loads and validates the file.
+Then `capability_preflight.worker_capability_unsupported()` judges a scenario against the file
+and the host. That function needs no device and no clock, so it stays on the deterministic path. Two places
+apply the check:
+
+- **Actuator selection.** Five commands share one selection step: `run`, `record`, `crawl`, `audit`,
+  and `repl`.
+  The target's `platform` names one actuator. The step refuses it when the host cannot run it or the
+  worker file omits it. The command then exits 2 with a named reason. The old generic reason was
+  `no available actuator`. The new one reads
+  `worker-capability-unsupported: xcuitest runs only on macOS; this worker runs on linux`. A command
+  started without `--worker-config` uses the default file.
+- **Per scenario.** Before `run` resolves any target, it checks each scenario's own declared
+  targets. A scenario fails when it declares more targets than `maxTargetsPerJob`. It also fails
+  when it needs a driver the worker cannot run. Its reason starts with `worker-capability-unsupported:`. `run` acquires no
+  device for that scenario and runs the rest. `run` also selects and checks every target's actuator
+  before it acquires the first device. An unsupported target thus leaves nothing reserved.
+
+**Advertising and routing.** A server worker turns the same facts into routing tokens
+([self-hosting](self-hosting.md#capability-routed-queues-be-0166)). The worker advertises
+`host:<os>` for the operating system it runs on. Some jobs need one host operating system: every
+driver their target can resolve to runs there alone. Such a job requires that host. An `xcuitest`
+job thus requires `host:darwin` and reaches a Mac worker alone.
+
+At startup, a `local` worker checks each `--platform` against the file and the host. When either
+rules the platform out, the worker exits with the driver's reason. A Linux worker started with
+`--platform ios` thus stops. Its reason reads `xcuitest runs only on macOS; this worker runs on
+linux`. The check judges the platform's drivers, not a request's `backend`. No worker off macOS
+advertises `platform:ios`. An iOS target run on the `fake` backend thus still needs a Mac worker. A
+worker whose environment is a device cloud advertises `environment:<name>` and no `platform:*` token.
+An `appium` worker advertises `environment:appium` alone. A serve run request reaches it by naming
+`environment: appium`.
+
+The file declares no routing token itself. The runtime and device-class tokens (`ios18`, `ipad`)
+come from the Simulator inventory. The real-device tokens (`device:ipad`) come from `devicectl`
+([BE-0468](../roadmaps/BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of.md)). A
+declaration could promise a runtime or a device the machine lacks.
+
+Two hand-written inputs now log a deprecation notice. Each still works for this release:
+
+- the worker's `--capabilities` flag
+- the `$BAJUTSU_WORKER_CAPABILITIES` environment variable
+
+Neither input may carry the reserved `environment:` or `host:` prefix. The worker fills both
+itself. BE-0452 removed a third input, a target's `requires` list: a hosted job now requires its
+platform and its driver's host alone.
 
 ## XCUITest (iOS)
 
@@ -178,10 +308,10 @@ than resolving through frame-center coordinates. Needs Xcode's `xcodebuild`.
 
 > The generic runner uses `XCUIApplication(bundleIdentifier:)`, so it drives any installed app with
 > no app-side cooperation. A Simulator run needs no runner config at all: when a target names neither
-> `xcuitest.testRunner` nor `xcuitest.build`, it resolves to the Simulator runner bundled in the wheel
+> `driver.runner.testRunner` nor `driver.runner.build`, it resolves to the Simulator runner bundled in the wheel
 > as package data (BE-0292) — an explicit `testRunner` or `build` still overrides that default, and
-> `deviceType: device` still requires an explicit signed runner, since Bajutsu cannot ship one signed
-> for the operator's team. The backend is **validated on-device** (iPhone 17 Pro, recent iOS) via
+> `runsOn.ios.kind: device` resolves to the runner the user built and signed with `bajutsu runner build
+> --device` (BE-0456), since Bajutsu cannot ship one signed for the operator's team. The backend is **validated on-device** (iPhone 17 Pro, recent iOS) via
 > `make -C demos/showcase run-swiftui` + the `ios-e2e.yml` CI workflow. The XCUITest backend needs no
 > pip extra — Xcode supplies `xcodebuild`.
 
@@ -235,7 +365,14 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   declaring a fixed interval between them instead of leaving the gap to a round trip's incidental
   timing; see **On-device actuation fidelity** below for its coordinate fallback. `swipe` adds a
   finite duration so it is a real drag; `type_text` is `input text` (spaces sent as its `%s`
-  escape).
+  escape) for ASCII text. A literal `%s` splits between its two characters into separate calls, because
+  `input text` has no escape for its own escape. Non-ASCII text has no key in the command's character
+  map and crashes it, so that text goes to the resident server's `POST /type` instead, as a base64
+  body. The server
+  builds the new value from the focused field's text and selection, then applies it with
+  `ACTION_SET_TEXT`, so this route exercises no input method editor (IME). On that route, a password field,
+  a field without the action, no focused field, or no resident server fails the step and names the
+  reason. ASCII text reaches a password field through `input text` as usual.
 
 ### Waiting for the tree to catch up with a pan
 
@@ -400,7 +537,7 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   (`am start -a android.intent.action.VIEW`). The run manifest records `backend: "adb"` so the
   selected actuator is disclosed.
 - **Runtime permissions** (BE-0210): the permissions listed in the target's config
-  `grantPermissions` are granted up front with `adb shell pm grant <package> <permission>` at lease
+  `subject.grantPermissions` are granted up front with `adb shell pm grant <package> <permission>` at lease
   time — after `pm clear` (which resets grants) and before launch — so a runtime permission prompt
   never blocks a scenario. Granting deterministically up front, rather than tapping the dialog when
   it appears, keeps timing off the run path; the list is app-specific, so it lives in config, not the
@@ -500,7 +637,7 @@ Out of scope (see the roadmap item for the reasoning):
   rooted emulator on adb (as for the native Android apps), and `text_editing` / the `push` half of
   `device` are iOS-only in the native suite too.
 - **Deeplink-to-tab routing.** The Flutter targets register the per-flavor scheme (the Android
-  `VIEW` intent-filter, the iOS `CFBundleURLTypes`, each target's `deeplinkScheme`), but — unlike the
+  `VIEW` intent-filter, the iOS `CFBundleURLTypes`), but — unlike the
   native twins, which route the URI to a tab (select it, pop to root, dismiss any modal) — the
   Flutter app does not yet handle the incoming URI. The scheme is registered so the BE-0007
   deeplink-actuation follow-up can drive `am start -a VIEW -d <scheme>://<tab>` / `simctl openurl`;
@@ -519,22 +656,73 @@ Headless Chromium via Playwright (Python). Runs on Linux with **no Mac and no Si
 fits the same toolchain as `make check`. Implementation: `common/drivers/playwright.py` (roadmap
 [BE-0041](../roadmaps/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)).
 
-- `query()`: one `page.evaluate()` walks the visible / interactive / a11y-relevant DOM nodes and a
-  pure parser (`parse_dom`) maps each to an `Element`. The id convention is the web equivalent of
+- `query()`: one `evaluate()` per document walks the visible / interactive / a11y-relevant DOM
+  nodes, the main page first and then each iframe. A pure parser (`parse_dom`) maps each node to an
+  `Element`. The id convention is the web equivalent of
   iOS accessibilityIdentifier: `data-testid` → `Selector.id`, ARIA `role` (or tag) → `traits`,
-  accessible name / `aria-label` / text → `label`, input `value` → `value`.
+  accessible name / `aria-label` / text → `label`. `value` comes from each tag's own source:
+  `href` for `<a>`, `src` for `<img>`, and `datetime` for `<time>`. `<input>`, `<select>`,
+  `<textarea>`, `<meter>`, and a `<progress>` that carries a `value` attribute report their live
+  `value` property even when they also carry a `role`, because their `aria-valuenow` can lag it.
+  A `<progress>` with no `value` attribute, and any other element with an explicit `role` such as
+  `role="slider"`, report `aria-valuetext` — or `aria-valuenow` when `aria-valuetext` is absent or
+  empty.
+- **Plain text**: `query()` also returns an element that holds its own text yet matches no rule
+  above. A heading, a paragraph, and a `<span>` are typical. Its label is the element's text. Its
+  one trait is `staticText`, the trait iOS reports for a label, so a selector such as
+  `{ label: Welcome, traits: [staticText] }` reads the same on both platforms. The iOS WebView
+  bridge runs the same script, so a hybrid app's WebView reads plain text this way too. Two kinds
+  of text stay out. Each would make a once-unique selector match twice:
+  - Text inside an interactive control (a button, a link, or an input). The control's label
+    already carries it.
+  - Text that repeats the label of its nearest ancestor with a `data-testid` or a `role`.
+
+  Text elsewhere on the page still counts. Take a page with a heading and a button that both read
+  "Sign in". There `tap: { label: Sign in }` matches both and fails as ambiguous, as on iOS.
+  A text element's label also includes the text of the controls inside it. Take a paragraph that
+  holds a "Terms" link. Both the paragraph and the link match `labelMatches: Terms`. A `count`
+  over that pattern grows by one.
+  Add `traits: [button]`, `within`, or `index` to name the one you mean. Text elements count toward
+  `index` too, in document order. A `{ label: Settings, index: 1 }` that used to skip a "Settings"
+  heading now lands on that heading, without an error. Pair `index` with `traits`.
+- **Iframes**: `query()` also reads every iframe's document, nested ones included. Those
+  elements join the same snapshot. The parent page's `contentDocument` stops at a cross-origin
+  iframe. Playwright's frame tree reaches one, so the driver walks that tree. The driver offsets
+  each element by its iframe's content-box origin. Every frame then reads in main-page CSS pixels.
+  An element scrolled outside its iframe's visible box is off screen and stays out.
+  Some iframes are not read at all: those under any CSS transform but a pure translation. A zoomed
+  device preview and a mirrored frame are examples. Their inner coordinates would not match the
+  screen, so a tap would miss without an error. An element from a cross-origin iframe carries
+  `crossOriginFrame: true`. Selectors and assertions treat it like any other element, but `doctor`'s
+  score and the crawl's screen model leave it out, since the app cannot instrument or explore an
+  embedded third-party page.
+  - A selector resolves over the whole snapshot. When two iframes share a `data-testid`, that
+    selector matches twice; `index` picks one. An embedded third-party service counts too. A
+    video player's "Share" button can make an app's `{ label: Share }` ambiguous, and `within` or
+    `traits` narrows it back to the app.
+  - `tap` and `selectOption` hit-test with `elementFromPoint` inside the element's own document.
+    First, the driver checks that the point lands on each enclosing `<iframe>`. An overlay above
+    the iframe raises `ElementNotTappable`, naming the overlay.
 - `tap(sel)`: like the adb backend, it resolves a **unique** element through the shared
   `resolve_unique`/`find_all` against a `query()` snapshot and clicks the **frame center** by
   coordinate (`page.mouse.click`). It deliberately does **not** use Playwright's own
   `get_by_test_id().click()`, so selector semantics stay byte-identical to every other backend.
+- `read_attributes(reads)` (BE-0466) backs the `attribute` assertion. It takes every
+  `(sel, name)` pair of an assertion block at once. One `page.evaluate` runs the same walk as
+  `QUERY_JS`, with each record also carrying `getAttribute` for every requested name, so the whole
+  block reads from one instant. Each `sel` resolves with the same `resolve_unique` a tap uses. A pair
+  gets its value, `None` for a missing attribute, or the `SelectorError` its selector raised, which
+  is returned rather than raised so the other pairs keep their reads. Iframe,
+  covered, and off-viewport elements read like any other listed element. The other backends
+  (XCUITest, adb, and the iOS WebView context) raise `UnsupportedAction`.
 - `type_text` types via `page.keyboard` (the orchestrator taps `into` first, focusing the field);
   `screenshot` is `page.screenshot`; `wait_for` is single-shot via `find_all` (like every backend —
   the shared `base.wait_until` supplies the deadline poll).
 - Lifecycle is owned by the driver: a fresh `BrowserContext` is the `erase` equivalent, `navigate()`
-  (`page.goto(baseUrl)`) is the `launch`, and `close()` tears the browser down. There is no simctl
+  (`page.goto(subject.url)`) is the `launch`, and `close()` tears the browser down. There is no simctl
   device, so the run uses a dummy lease and no device control.
-- **Device mode** (BE-0228): a web target's `deviceMode` config selects how each `BrowserContext` is
-  created — `desktop` (the default, a plain desktop context, unchanged from before) or a Playwright
+- **Device mode** (BE-0228): a web target's `runsOn.browser.emulate` config selects how each `BrowserContext` is
+  created — `desktop` (the default when omitted, a plain desktop context, unchanged from before) or a Playwright
   device preset name (e.g. `iPhone 13`). A preset is resolved against `playwright.devices` and its
   descriptor (viewport / `device_scale_factor` / `is_mobile` / `has_touch` / `user_agent`) is merged
   into `new_context(**kwargs)` alongside `reduced_motion="reduce"`, so the target is driven as that
@@ -547,10 +735,10 @@ fits the same toolchain as `make check`. Implementation: `common/drivers/playwri
   real device or a device cloud; for a real mobile OS the Android backend is the path.
 - **Directional `swipe` scrolls** (BE-0227): the directional form `swipe: { on, direction }` means
   "scroll", and a mouse drag does not scroll a web page, so the web backend dispatches the input
-  primitive that actually scrolls, keyed on the context's input mode (the `deviceMode` above). On a
+  primitive that actually scrolls, keyed on the context's input mode (the `runsOn.browser.emulate` above). On a
   **desktop** (pointer) context it emits a `page.mouse.wheel(...)` over the gesture's start — the
   wheel is the reverse of the travel, so an `up` swipe scrolls the page **down**, exactly as a
-  trackpad or wheel would. On a **touch** context (a mobile `deviceMode`) it uses a real
+  trackpad or wheel would. On a **touch** context (a mobile `runsOn.browser.emulate`) it uses a real
   single-finger touch drag over CDP (the same path `pinch` / `rotate` take), so the page's touch and
   scroll listeners fire. The **coordinate** form `swipe: { from, to }` is unchanged — it stays a
   literal `page.mouse` drag, the raw-drag last resort for a canvas / map pan / drag handle. `codegen`
@@ -626,10 +814,17 @@ def select_actuator_for_scenario(backends, scenario, available, caps) -> str:  #
 def make_driver(actuator, udid, *, base_url=None, runner_port=None) -> Driver:  # "xcuitest"→XcuitestDriver, "playwright"→PlaywrightDriver, "fake"→FakeDriver
 ```
 
-- A **backend token** is either a **platform** (`ios` / `android` / `web` / `fake`) or a concrete
-  **actuator** (e.g. `xcuitest`). Each platform today resolves to a single actuator — `ios` to
-  `xcuitest` (BE-0290 retired idb, so `--backend ios` and `--backend xcuitest` are equivalent),
-  `android` to `adb`, `web` to `playwright`. The machinery for a **multi-actuator** platform
+- A target's required `platform` (`ios` / `android` / `web` / `fake`) decides its actuator. The
+  `backend:` config key no longer exists
+  ([BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)).
+  Each platform today resolves to a single actuator — `ios` to `xcuitest` (BE-0290 retired idb),
+  `android` to `adb`, `web` to `playwright`. `--backend` (and a serve request body's `backend`) is a
+  check, not an ordered fallback list: it accepts the target's platform, that platform's actuator
+  name, or `fake`, so `--backend ios` and `--backend xcuitest` mean the same. Anything else, or a
+  comma list, exits 2. `--backend fake` runs any target on the fake driver, which has no device to
+  read, so it evaluates no `runsOn` condition and forms no runs; the invocation prints one notice
+  saying so ([configuration](configuration.md#device-conditions-runson)). `serve --backend` and
+  `provision --backend` keep their own meaning. The machinery for a **multi-actuator** platform
   (per-scenario resolution in cost order; BE-0240) stays in place for a future platform, but no
   platform exercises it today.
 - Two orderings answer two questions. **Stability order** (`PLATFORMS`, most-capable-first;
@@ -648,8 +843,7 @@ def make_driver(actuator, udid, *, base_url=None, runner_port=None) -> Driver:  
   platform single-actuator today, is always the case. If none is available, `RuntimeError` (the CLI
   exits with code 2).
 - `web` resolves to `playwright` and `android` resolves to `adb`, both **implemented**
-  ([vision → reach](vision.md#1-reach--more-platforms-and-surfaces)). Truly unknown tokens are
-  skipped (forward-compat: an older build can run a config that lists a future backend).
+  ([vision → reach](vision.md#1-reach--more-platforms-and-surfaces)).
 - The availability check `available` is injectable (swappable in tests). The default is `shutil.which`
   for PATH-backed actuators; `playwright` is gated on whether its Python package is importable, and
   `fake` is always available.
@@ -664,8 +858,11 @@ a same-platform backend whose `capabilities()` advertises a kind the actuator la
 `Capability.NETWORK`) is resolved as the provider for that kind, accessed only through the narrow
 `EvidenceProvider` Protocol (no tap/type/swipe — a type-level guarantee). When no backend can fill a
 gap, the kind is skipped with a recorded reason (`SkippedCapture`) — graceful degradation, never a
-run failure. See [evidence — provider](evidence.md#artifact-provenance-provider) for provenance
-details.
+run failure. Only `network` can be filled this way. The interval kinds (`video`, `deviceLog`,
+`appTrace`, each a capability of its own since
+[BE-0467](../roadmaps/BE-0467-environment-specific-settings/BE-0467-environment-specific-settings.md))
+are judged against the actuator's route alone, and skip where it cannot record them. See
+[evidence — provider](evidence.md#artifact-provenance-provider) for provenance details.
 
 ## Environment management (simctl)
 

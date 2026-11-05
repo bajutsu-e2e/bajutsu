@@ -70,11 +70,11 @@ def test_a_nested_body_resolves_to_the_primary_in_force_at_its_wrapper() -> None
 def test_before_and_after_resolve_to_the_declared_primary() -> None:
     s = _update(
         [_INSTALL, _MOVE],
-        before=[{"tap": {"id": "a"}}],
-        after=[{"on": "always", "steps": [{"tap": {"id": "b"}}]}],
+        setup=[{"tap": {"id": "a"}}],
+        cleanup=[{"on": "always", "steps": [{"tap": {"id": "b"}}]}],
     )
-    assert s.before[0].resolved_target == "old"
-    assert s.after[0].steps[0].resolved_target == "old"
+    assert s.setup[0].resolved_target == "old"
+    assert s.cleanup[0].steps[0].resolved_target == "old"
 
 
 def test_set_primary_target_must_name_a_declared_target() -> None:
@@ -96,11 +96,11 @@ def test_set_primary_target_is_refused_off_the_top_level(steps: list[dict[str, o
         _update(steps)
 
 
-def test_set_primary_target_is_refused_in_before_after_and_interrupts() -> None:
+def test_set_primary_target_is_refused_in_setup_cleanup_and_interrupts() -> None:
     with pytest.raises(ValidationError, match="only among a scenario's top-level steps"):
-        _update([{"tap": {"id": "a"}}], before=[_MOVE])
+        _update([{"tap": {"id": "a"}}], setup=[_MOVE])
     with pytest.raises(ValidationError, match="only among a scenario's top-level steps"):
-        _update([{"tap": {"id": "a"}}], after=[{"on": "always", "steps": [_MOVE]}])
+        _update([{"tap": {"id": "a"}}], cleanup=[{"on": "always", "steps": [_MOVE]}])
     with pytest.raises(ValidationError, match="only among a scenario's top-level steps"):
         _update(
             [{"tap": {"id": "a"}}],

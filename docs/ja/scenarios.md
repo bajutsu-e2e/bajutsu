@@ -60,24 +60,24 @@ scenarios:
 | `primaryTarget` | str | なし | `target` を省略したステップやトップレベルの `expect` エントリが動くターゲット。`targets` の最初の名前（最初のグループの最初のメンバー）と一致する必要があります（[下記](#targets--target複数ターゲットシナリオbe-0428)） |
 | `installs` | list[str] | `[]` | プライマリと並んで開始時にインストールして起動するデバイスグループのメンバー。2つ以上のメンバーを持つグループのそれ以外のメンバーは、後から `installApp` ステップでインストールします（[デバイスグループ](#デバイスグループ1台のデバイスで複数のアプリを動かすbe-0447)） |
 | `data` / `dataFile` | list / str | なし | データ駆動の行。インライン `data` か `dataFile`（CSV パス）で指定する。1 行 1 run に展開し `${row.col}` を置換する。両者は排他（[再利用とデータ駆動とタグ](#再利用とデータ駆動とタグ)） |
-| `preconditions` | object | `{}` | テスト前の環境準備（下記） |
-| `before` | list | `[]` | `steps` の前に**独立したフェーズ**として走るセットアップのステップ列。ここで失敗するとシナリオを打ち切る（[下記](#before--afterセットアップとティアダウンのフェーズ)） |
+| `preconditions` | object | `{}` | テスト前の環境準備です。ターゲットと同じグループ名の `subject` をターゲットの値に重ね、デバイスの状態を `device` に、ターゲットのセットアップを引き継ぐかを `inheritSetup` に書きます（[下記](#preconditions環境準備)） |
+| `setup` | list | `[]` | `steps` の前に**独立したフェーズ**として走るセットアップのステップ列。ここで失敗するとシナリオを打ち切る（[下記](#setup--cleanupセットアップとティアダウンのフェーズ)） |
 | `steps` | list | 必須 | アクションの並び（下記） |
 | `expect` | list | `[]` | 全ステップ成功後の最終アサーション（[selectors](selectors.md#アサーション評価)） |
-| `after` | list | `[]` | ティアダウンのルール。各エントリは `{ on: always \| success \| error, steps }` で、判定が出たあと `steps` を抜けるすべての経路で走る（[下記](#before--afterセットアップとティアダウンのフェーズ)） |
+| `cleanup` | list | `[]` | ティアダウンのルール。各エントリは `{ on: always \| success \| failure, steps }` で、判定が出たあと `steps` を抜けるすべての経路で走る（[下記](#setup--cleanupセットアップとティアダウンのフェーズ)） |
 | `capturePolicy` | list | `[]` | 繰り返し発火する証跡ルール（[evidence](evidence.md#a-capturepolicyルール方式)） |
 | `network` | object | なし | `{ filter: { domains: [...] } }`。`filter.domains` は、レポートの Steps タイムラインに差し込む通信を URL ホストで絞る（親ドメインはサブドメインに一致）。未指定なら全件を表示する。Network タブは常に全件を表示する（[reporting](reporting.md#reporthtml)） |
 | `mocks` | list | `[]` | 決定的なネットワークスタブ。一致する送信リクエストには、ネットワークへ行かず定型レスポンスを返す（[ネットワークモック](#ネットワークモック決定的スタブ)） |
 | `redact` | object | なし | 証跡を書き出す前に適用するマスク（[evidence](evidence.md#マスキングredact)） |
-| `systemAlertHandling` | bool / object | なし（ON） | リアクティブな **アラートガード**。iOS バックエンドから見えない OS プロンプトを、XCUITest ではネイティブに片付ける（モデルなし、BE-0316 を再利用）。名指しできないプロンプトには手を触れず、報告する。既定は ON。`false` で無効化し、`{ rules: [{ prompt: notifications, choice: grant }] }` なら ON のまま名指ししたプロンプトに答え、`{ pollInterval: 2 }` でネイティブのポーリング間隔を変える。CLI の `--system-alert-handling`/`--no-system-alert-handling` が上書きする（[下記](#systemalerthandlingシステムアラートガード)） |
-| `iosTipKitHandling` | bool | なし（オフ） | 操作をブロックしている Apple **TipKit** の tip を閉じます。フレームワークが所有する popover であり、同じ回避策をシナリオごとに手で書かずに済ませるためのガードです。ガードは tip を、閉じるための scrim（`PopoverDismissRegion`）とその tip 自身のコンテナ（`TipView`）の両方で判定します。ごく普通の `confirmationDialog` が同一の scrim を設置するため、そちらには手を触れないようにする必要があるからです。同じ理由で、tip 向けの `interrupts` エントリを手で書く場合は `TipView` を手がかりにします（`TipView` は TipKit 自身のコンテナであり、SwiftUI と UIKit のどちらの表示でも存在を計測で確認済みです）。iOS 専用（他の環境では何もしません）で、既定は**オフ**です。tip 自体がシナリオの検証対象になる場合があるからです。CLI の `--ios-tipkit-handling`/`--no-ios-tipkit-handling` が優先します |
 | `permissions` | dict | `{}` | 宣言的な OS 権限の状態（`{ <service>: grant \| revoke }`）。**アプリの起動前**に適用する（[下記](#permissions起動前の権限状態)） |
-| `interrupts` | list | `[]` | **予測できない時点**で現れる差し込み画面のハンドラ。各エントリは `{ condition, steps }` で、画面が現れた場所を問わず随時判定する（[下記](#interrupts予測できない差し込み画面への対処)） |
+| `interrupts` | list | `[]` | **予測できない時点**で現れたときに run が自動で片付けるもの。ターゲットの `hooks.interrupts` の上に重なる。各エントリは書いたキーで 3 つの形のどれかに決まる。差し込み画面（`{ condition, steps }`、[下記](#interrupts予測できない差し込み画面への対処)）、OS のプロンプト（`{ systemAlert, choice }`、[下記](#systemalertシステムアラートガード)）、Apple の TipKit のポップオーバー（`{ tipKit }`、[下記](#tipkit操作をブロックする-tipkit-の-tip)）のいずれかである |
 
 ```yaml
 - name: filter narrows the catalog
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    subject:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Search", traits: [button] }
     - wait: { for: { id: search.field }, timeout: 10 }
@@ -92,120 +92,265 @@ scenarios:
 
 ## preconditions（環境準備）
 
-実装: `scenario/models/scenario.py` の `Preconditions`。runner の `launch_driver` がこれを読んで起動手順を組み立てます（[run-loop](run-loop.md#runner実行パイプライン)）。
+実装は `scenario/models/scenario/preconditions.py` の `Preconditions` です。各ターゲットへの重ね合わせは
+`bajutsu/common/config/preconditions.py` が行います。runner の `launch_driver` は重ね合わせた結果を読んで、
+起動手順を組み立てます（[run-loop](run-loop.md#runner実行パイプライン)）。
 
-| キー | 型 | 既定 | 説明 | 配線 |
-|---|---|---|---|---|
-| `erase` | bool | 未設定（継承。config が無ければオフ） | 各テスト前にシミュレータ全体を wipe する（`simctl erase`。アプリ、データ、設定を消去する）。既定はオフ。`reinstall` が全 wipe なしでアプリを新規状態に保つので、まっさらなデバイスが必要なテストだけ `true` にする | ✅ |
-| `reinstall` | `clean` \| `overwrite` | `clean` | config が `appPath` を指定したとき、各 run の前にアプリをどう再インストールするか。`clean` は uninstall してから install する（アプリとデータを fresh にする）。`overwrite` は既存アプリに上書き install する（データコンテナは保持する） | ✅ |
-| `launchArgs` | list[str] | `[]` | 起動引数（config の `launchArgs` に追記する） | ✅ |
-| `launchEnv` | dict | `{}` | 起動 env（`SIMCTL_CHILD_*` で注入する。config の `launchEnv` にマージする） | ✅ |
-| `deeplink` | str | なし | 起動後に `simctl openurl` で開く | ✅ |
-| `locale` | str | なし | 起動時に locale/言語を強制する（`-AppleLocale`/`-AppleLanguages`）。app/config の既定を上書きする | ✅ |
-| `setup` | str | なし | 再利用する前段シナリオファイル（このシナリオからの相対で解決）。その steps を本編の前に実行する | ✅ |
+シナリオの `preconditions` は 2 つのグループと 1 つのフラグを持ちます。`subject` はターゲットと同じグループ名を
+使うので、1 つのフィールドは config でもシナリオでも同じ綴りになります
+（[BE-0452](../../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)）。
+`device` は、シナリオが適用するデバイスの状態を宛先ごとに持ちます。宛先は `device.ios` だけです
+（[BE-0469](../../roadmaps/BE-0469-runson-destination-blocks/BE-0469-runson-destination-blocks-ja.md)）。
+`inheritSetup` は、このシナリオの前にターゲットの `hooks.setup` を実行するかを決めます。
+シナリオに書いたフィールドは、ターゲットの [config](configuration.md) の同じフィールドを上書きします。
+例外は次の 2 つです。
 
-> `launchEnv` の解決順は **config の `launchEnv` < preconditions の `launchEnv`** です（テストに近い方が優先）。`launch_driver` は `{**eff.launch_env, **pre.launch_env}` でマージします。
+- `subject.launch.env` はキーごとにマージします。
+- `subject.launch.args` はターゲットの引数の後ろに追記します。
 
-> `erase` の解決順は **CLI の `--erase`/`--no-erase` > このシナリオ自身の `erase` > target config の
-> `run_defaults.erase` > 組み込みのオフ**です
-> （[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)、
-> [configuration](configuration.md#設定の階層defaults--targets)）。未設定のシナリオ（多くの場合はこれ）は
-> target config の既定を継承し、config 側も指定がなければオフになります。`_filter_scenarios`
-> （`cli/commands/run.py`）が run の開始前にこれを解決します。
+システムアラートや TipKit の tip のように、run が自動で答えるものは前提条件ではありません。シナリオは
+それらを自身のトップレベルの `interrupts` のエントリとして宣言し、そのエントリがターゲットの
+`hooks.interrupts` の上に重なります（[下記](#層の重ね方1-つのキーは-3-か所から届く)）。
+
+```yaml
+preconditions:
+  subject:
+    reinstall: erase
+    launch: { env: { FEATURE_X: "1" }, args: ["-debug"], deeplink: "showcase://cart" }
+  device:
+    ios: { locale: ja_JP, seedPhotos: [photos/cat.jpg] }
+  inheritSetup: false
+```
+
+| キー | 型 | 既定 | 説明 |
+|---|---|---|---|
+| `subject.reinstall` | `overwrite` \| `clean` \| `erase` | 未設定（ターゲットの `subject.reinstall`、次に `clean`） | 各 run の前にどこまで状態を戻すかを、弱い順に決めます。`overwrite` は既存アプリに上書き install します（データを保持します）。`clean` は uninstall してから install します（アプリとデータを fresh にします）。`erase` はデバイス全体を wipe してから install します（`simctl erase`。アプリ、データ、設定を消去します）。install にはターゲットの config の `subject.path` が必要です。デバイス全体の wipe がない Android では、`erase` は `clean` と同じに動きます。iOS と Android で使えます。web のターゲットが受け付けるのは `erase` だけで、新しいブラウザコンテキストがすでにこの値を満たします（[BE-0473](../../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts-ja.md)） |
+| `subject.launch.env` | dict | `{}` | 起動時の環境変数です。ターゲットの `subject.launch.env` にキーごとにマージします。iOS は `SIMCTL_CHILD_*` で、Android は intent extra で注入します。Web では Playwright のコード生成が読みます |
+| `subject.launch.args` | list[str] | `[]` | 起動引数です。ターゲットの `subject.launch.args` の後ろに追記します。iOS 専用です |
+| `subject.launch.deeplink` | str | 未設定（ターゲットの `subject.launch.deeplink`） | 起動後にアプリが開く URL です（iOS は `simctl openurl`、Android は intent） |
+| `device.ios.locale` | str | 未設定（ターゲットの `runsOn.ios.locale`） | 起動時の locale と言語を強制し（`-AppleLocale` / `-AppleLanguages`）、Simulator のシステム言語も固定します。ターゲットと異なる値は cold respawn を強制します |
+| `device.ios.seedPhotos` | list[str] | 未設定（ターゲットの `runsOn.ios.seedPhotos`） | erase の経路で、Simulator の写真ライブラリに順に投入する画像です。パスはシナリオファイルを基準に解決します。シナリオのリストはターゲットのリストを置き換えます |
+| `inheritSetup` | bool | `true` | `false` にすると、このシナリオが宣言する全ターゲットの `hooks.setup` を省きます。各ターゲットの `hooks.cleanup` は走ります（[後述](#setup--cleanupセットアップとティアダウンのフェーズ)） |
+
+シナリオは、アプリを識別したりビルドしたりするフィールド（`id`、`path`、`build`、`startWhen`、
+`idNamespaces`）を設定できません。これらはターゲットが持ちます。`evidence.secrets` はターゲット側の和集合の
+ままなので、シナリオからは設定できません。
+
+> **各フィールドは、デバイスを操作する前に、シナリオが動かすターゲットと照合します。** 動かすどの
+> ターゲットのプラットフォームにもない `subject` のフィールドは、無視せずにフィールド名を示して run を
+> 失敗させます。Web だけのシナリオの `subject.launch.args` が該当します。シナリオの `interrupts` にある
+> `tipKit` のエントリも、動かすターゲットに iOS がなければ同じように失敗します。各ターゲットは自分のプラットフォームが持つ
+> `subject` のフィールドだけを適用します。そのため、iOS と Web をまたぐシナリオは、iOS 側のために
+> `subject.launch.args` を書けます。単一プラットフォームの複数のターゲットが `paths.scenarios` から同じ
+> シナリオファイルを読む場合、そのファイルは `targets` を宣言するか、該当するターゲットだけが読む
+> ディレクトリに置きます。`device` のブロックは宛先をキーにするので、iOS のターゲットを動かさない
+> シナリオの `device.ios` は効果を持たず、エラーにもなりません。
+
+**シナリオはデバイスの条件を宣言しません。** run を動かす場所はターゲットが決めるので、モデルや OS の
+範囲といった条件はターゲットの [`runsOn`](configuration.md#デバイスの条件runson) に書きます。iPad に
+しかない画面のシナリオは、iPad で動くターゲットを指定します。
+
+```yaml
+# bajutsu.config.yaml
+targets:
+  app-ipad:
+    platform: ios
+    subject: { id: com.example.app }
+    runsOn:
+      ios: { model: "iPad Pro 13-inch (M4)", os: ">=18" }
+```
+
+```yaml
+# シナリオ
+targets: [app-ipad]
+```
+
+そのターゲットにリストや範囲を書くと、ターゲットの各シナリオは複数の run に分かれます。規則は
+[configuration](configuration.md#デバイスの条件runson) にあります。
+
+> **以前のリリースは `preconditions.runsOn` を受け付けていました。** ローダーは現在これを拒否します。
+> `preconditions.runsOn.ios.locale` や `seedPhotos` は失敗し、`preconditions.device.ios.<フィールド>` を
+> 示します。`preconditions.runsOn.ios.model` のような条件は失敗し、代わりにそれを宣言するターゲットの
+> パス `runsOn.ios.model` を示します。
+
+> `subject.reinstall` の解決順は **このシナリオ自身の `subject.reinstall` > ターゲットの `subject.reinstall` >
+> 組み込みの `clean`** で、その結果を CLI のフラグが動かします
+> （[BE-0473](../../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts-ja.md)、
+> [configuration](configuration.md#設定の階層defaults--targets)）。`--erase` は値を `erase` にし、
+> `--no-erase` は `erase` を `clean` に下げ、`overwrite` と `clean` はそのままにします。
+> 未設定のシナリオ（多くの場合はこれ）は、ターゲットの config の値を継承します。
+> `_filter_scenarios`（`run/cli.py`）が run の開始前にフラグを反映します。そのため、`erase` を指定した
+> ターゲットは `--no-erase` でアプリをアンインストールします。アプリのデータを残したいシナリオは
+> `overwrite` と書きます。廃止した `preconditions.run` はロード時に失敗し、エラーメッセージが
+> 各フィールドの移動先を示します（[下記](#旧来のキーからの移行)）。
+
+> **写真の投入には wipe したデバイスが必要です。** 重ね合わせたあとの `seedPhotos` が空でなければ、
+> 実効の `subject.reinstall`（シナリオの値、なければターゲットの値に、フラグを反映したもの）が `erase` である
+> 必要があります。写真ライブラリへの投入は erase の経路でだけ行うからです。ターゲットの
+> `subject.reinstall: erase` でも条件を満たします。
+> 複数のターゲットを動かすシナリオでは、写真を投入するのはプライマリだけです。重ね合わせたあとの
+> `seedPhotos` を持つプライマリ以外のターゲットは、run を失敗させます。`record`、`crawl`、`repl` は、
+> 写真を投入するターゲットに対する `--no-erase` を拒否します。どちらの拒否も、デバイスを操作する前に
+> 終了コード 2 で終わります。
 
 > `reinstall: clean` は権限状態（`permissions`。後述）も同時にリセットします。iOS では `simctl privacy
 > reset all`、Android では `pm clear` を使います。`overwrite` はどちらもリセットしません。`overwrite` は
 > シナリオ間でデータを保持するために存在し、権限の許可状態もその保持対象に含まれるため、`overwrite`
 > では前のシナリオが許可した権限がそのまま見え続けます。
 
-## systemAlertHandling（システムアラートガード）
+> **BE-0452、BE-0469、BE-0473 より前に保存した run も読み込めます。** シナリオのローダーは、古い平坦なキーを
+> 拒否します。対象は `erase`、`reinstall`、`launchEnv`、`launchArgs`、`deeplink`、`locale`、`seedPhotos`
+> です。トップレベルの `systemAlertHandling` と `iosTipKitHandling`、`preconditions.runsOn`、`preconditions.run` も拒否します。
+> どのメッセージも、キーの移動先を示します。run ディレクトリをオフラインで読む処理は、保存された
+> `scenario.yaml` のほうを読み替えます。該当するのは、レポートの再描画、`trace`、`triage` です。保存された
+> `preconditions.runsOn` は、iOS の `locale` と `seedPhotos` を `device.ios` に移し、条件を捨てます。
+> 条件は、その run が使うデバイスをすでに選び終えているからです。保存された `preconditions.erase` や
+> `preconditions.run.erase: true` は `subject.reinstall: erase` になり、保存された `false` は捨てます。
+> 保存された `preconditions.run.systemAlertHandling` は、ルールごとにシナリオの `interrupts` の
+> `systemAlert` のエントリになります。保存された `tipKitHandling` は `tipKit` のエントリになり、
+> 保存された `inheritSetup` は `preconditions.inheritSetup` に移ります。
 
-iOS バックエンドは **SpringBoard レベルのプロンプト**（通知や App Tracking Transparency のリクエスト、"Allow Paste" など）を見ることも tap することもできません。これらのプロンプトはアプリを覆って要素ツリーを潰し、ステップを静かにブロックします。**アラートガード**がこれをリアクティブに片付けます。iOS の XCUITest バックエンドでは**決定論的なネイティブ経路**をとります（BE-0315）。BE-0316 の SpringBoard 照会を再利用してアラートが提示するボタンを把握し、規則が名指しするボタンを押します。スクリーンショットもモデルへの往復も使わないため、頻出するプロンプトを 0.1 秒を大きく下回る時間で片付け、`ANTHROPIC_API_KEY` が**なくても**動作します。決定論的な経路がどれも対処できない場合（capability を持たないバックエンド、どの規則も同定しないアラート、SpringBoard の照会が列挙できず、しかもどの規則も同定しない画面。規則が同定するものは、後述のツリー内の経路が片付けます）、**ガードは何もしません**（[BE-0402](../../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md)）。ブロックされたステップまたは `wait` は、ガードを設定していないときとまったく同じように自身のタイムアウトまで進み、そのタイムアウトが**ガードの見たものを名指しします**。`wait timeout: for {'id': 'submit'} (10.0s) — an unhandled system alert is blocking the screen (buttons: Allow, Don't Allow)` の形、何も列挙できなかった場合は `… — the screen appears blocked, possibly by a system alert or another overlay outside the app's view` という曖昧な形です。BE-0402 より前は、この場合にスクリーンショットを読む AI 視覚ガードへフォールバックしていました。`run` はもうそれをしないため、**どのフラグを付けてもモデルに到達しません**。（`record` と `crawl` はオーサリング向けにそのガードを保持します。[詳細](recording.md#システムアラートの自動対処)）`wait` ステップ（`for`/`gone`/`settled`/`screenChanged`）では、ガードは **wait の途中でも**発火します。ネイティブ経路が独自の間隔（既定は 1 秒）で SpringBoard をポーリングするため、wait 自体のタイムアウトを待たず、ステップが失敗する前に回復できます（BE-0269）。
+どの環境でも、すべての前提条件を適用できるわけではありません。実機の iPhone では `simctl erase` を実行できず、
+ブラウザには `subject.launch.env` を渡すアプリの起動がありません。ターゲットの環境が前提条件を適用できないとき、
+シナリオはデバイスを使う前に失敗します。ターゲットは、その前提条件の無視を宣言できます
+（[設定](configuration.md#環境ごとの設定runsonignoredsettingsbe-0467)）。`bajutsu lint --config <file> --target <name>` は、
+同じ指摘をデバイスなしで報告します（[cli](cli.md#lint)）。
 
-XCUITest バックエンドでは、画面が止まったときに `for` と `screenChanged` の wait を早めに打ち切ります。止まった画面とは、ガードの SpringBoard 照会が直前の確認でアラートなしと答えているのに、アプリケーション自身を除くどの要素も、ラベルと識別子のどちらも 10 秒間持たない状態です。iOS 26.5 の Simulator で、この状態を計測しました。iOS が Save Password アラートを提示する瞬間に通知の許諾リクエストが重なると、このアラートが提示の途中で止まることがあります。止まったアラートは描画されず、どのプロセスのアクセシビリティツリーにも現れませんが、アプリの上でモーダルのまま残ります。ガードが届く手段ではこのアラートを閉じられないため、wait は自身のタイムアウトまで待たずに、次の理由で失敗します。
+## tipKit（操作をブロックする TipKit の tip）
+
+シナリオの `interrupts` に `- tipKit: dismiss` と書くと、操作をブロックしている Apple **TipKit** の tip を閉じます。
+tip はフレームワークが所有する popover です。このガードがあれば、同じ回避策をシナリオごとに手で書かずに
+済みます。ガードは tip を、閉じるための scrim（`PopoverDismissRegion`）とその tip 自身のコンテナ
+（`TipView`）の両方で判定します。ごく普通の `confirmationDialog` も同一の scrim を設置するので、
+そちらには手を触れないようにする必要があるからです。同じ理由で、tip 向けの `interrupts` エントリを
+手で書く場合は `TipView` を手がかりにします。`TipView` は TipKit 自身のコンテナです。SwiftUI と
+UIKit のどちらの表示でも、存在を計測で確認済みです。このガードは iOS 専用で、既定は**オフ**です。
+tip 自体がシナリオの検証対象になる場合があるからです。
+
+```yaml
+- name: open the catalog past a blocking tip
+  interrupts:
+    - tipKit: dismiss
+  steps:
+    - tap: { id: catalog.open }
+```
+
+ターゲットの `hooks.interrupts` に同じエントリを書くと、そのターゲットのすべてのシナリオでガードが
+オンになります。シナリオがエントリを書いた場合は、ターゲットのエントリよりシナリオのものが優先します。
+tip を検証するシナリオは `- tipKit: leave` と書いて、ターゲットの `dismiss` をオフにします。どちらにも
+エントリがなければ、ガードはオフのままです。CLI の `--ios-tipkit-handling` /
+`--no-ios-tipkit-handling` は、すべてのシナリオのエントリを `dismiss` または `leave` に設定します。
+
+## systemAlert（システムアラートガード）
+
+`interrupts` のリストに書く `systemAlert` のエントリは、OS のプロンプトと、run がそれに返す答えを名指しします。このエントリは、シナリオ自身のトップレベルの `interrupts` にも、ターゲットの `hooks.interrupts` にも書けます（[設定](configuration.md#システムアラートと-tipkithooksinterrupts)）。
+
+iOS バックエンドは **SpringBoard レベルのプロンプト**（通知や App Tracking Transparency のリクエスト、"Allow Paste" など）を見ることも tap することもできません。これらのプロンプトはアプリを覆って要素ツリーを潰し、ステップを静かにブロックします。**アラートガード**がこれをリアクティブに片付けます。iOS の XCUITest バックエンドでは**決定論的なネイティブ経路**をとります（BE-0315）。BE-0316 の SpringBoard 照会を再利用してアラートが提示するボタンを把握し、`systemAlert` のエントリが名指しするボタンを押します。スクリーンショットもモデルへの往復も使わないため、頻出するプロンプトを 0.1 秒を大きく下回る時間で片付け、`ANTHROPIC_API_KEY` が**なくても**動作します。決定論的な経路がどれも対処できない場合（capability を持たないバックエンド、どのエントリも同定しないアラート、SpringBoard の照会が列挙できず、しかもどのエントリも同定しない画面。エントリが同定するものは、後述のツリー内の経路が片付けます）、**ガードは何もしません**（[BE-0402](../../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md)）。ブロックされたステップまたは `wait` は、ガードを設定していないときとまったく同じように自身のタイムアウトまで進み、そのタイムアウトが**ガードの見たものを名指しします**。`wait timeout: for {'id': 'submit'} (10.0s) — an unhandled system alert is blocking the screen (buttons: Allow, Don't Allow)` の形、何も列挙できなかった場合は `… — the screen appears blocked, possibly by a system alert or another overlay outside the app's view` という曖昧な形です。BE-0402 より前は、この場合にスクリーンショットを読む AI 視覚ガードへフォールバックしていました。`run` はもうそれをしないため、**どのフラグを付けてもモデルに到達しません**。（`record` と `crawl` はオーサリング向けにそのガードを保持します。[詳細](recording.md#システムアラートの自動対処)）`wait` ステップ（`for`/`gone`/`settled`/`screenChanged`）では、ガードは **wait の途中でも**働きます。XCUITest では wait 自身のツリー読み取りのたびに、ツリーを返す前にエントリが名指しするプロンプトへ答えます。SpringBoard の確認は `pollInterval`（既定は 1 秒）につき 1 回までです（[BE-0461](../../roadmaps/BE-0461-request-boundary-alert-resolution/BE-0461-request-boundary-alert-resolution-ja.md)）。そのため wait 自体のタイムアウトを待たず、ステップが失敗する前に回復できます（BE-0269）。
+
+XCUITest バックエンドでは、画面が止まったときに `for` と `screenChanged` の wait を早めに打ち切ります。止まった画面とは、読み取り自身の SpringBoard 確認がアラートなしと答えているのに、アプリケーション自身を除くどの要素も、ラベルと識別子のどちらも 10 秒間持たない状態です。iOS 26.5 の Simulator で、この状態を計測しました。iOS が Save Password アラートを提示する瞬間に通知の許諾リクエストが重なると、このアラートが提示の途中で止まることがあります。止まったアラートは描画されず、どのプロセスのアクセシビリティツリーにも現れませんが、アプリの上でモーダルのまま残ります。ガードが届く手段ではこのアラートを閉じられないため、wait は自身のタイムアウトまで待たずに、次の理由で失敗します。
 
 ```text
 wait stopped: for {'id': 'Close'} after 10.4s — no element below the application has carried a label or identifier for 10s while no system alert is up — …
 ```
 
-この打ち切りは、`rules` に `savePassword` のようなアプリ内のプロンプトを宣言したシナリオに限ります。それ以外のシナリオでは、長く空のツリーがアプリ自身のラベルのない読み込み画面である可能性があるため、wait は従来どおり自身のタイムアウトまで待ちます。ラベルのない読み込み画面が 10 秒を超えうるアプリでは、`frozenScreenTimeout` で上限を延ばせます。`0` を指定すると打ち切りは無効になります。`gone` と `settled` の wait は、止まったツリーで条件を満たしてしまうため、この打ち切りの対象外です。`handleSystemAlert` ステップも対象外です。このステップは SpringBoard を待っており、プロンプトがあとから出る可能性があるためです。
+この打ち切りは、`savePassword` のようなアプリ内のプロンプトを `systemAlert` のエントリで宣言したシナリオに限ります。それ以外のシナリオでは、長く空のツリーがアプリ自身のラベルのない読み込み画面である可能性があるため、wait は従来どおり自身のタイムアウトまで待ちます。ラベルのない読み込み画面が 10 秒を超えうるアプリでは、そのエントリの `frozenScreenTimeout` で上限を延ばせます。`0` を指定すると打ち切りは無効になります。`gone` と `settled` の wait は、止まったツリーで条件を満たしてしまうため、この打ち切りの対象外です。`handleSystemAlert` ステップも対象外です。このステップは SpringBoard を待っており、プロンプトがあとから出る可能性があるためです。
 
-これは **既定で ON** で、**ステップ（または `expect`）がブロックされたとき、あるいはガード対象の `wait` でネイティブのポーリングがアラートを見つけたとき**に発火します。そのため、成功するシナリオは余計な処理をしません。`ANTHROPIC_API_KEY` は**不要**で、参照もしません。シナリオごとに動作を変えるには `systemAlertHandling` を使います。
+これは **既定で ON** です。XCUITest ではステップがすでに行う読み取りに相乗りし、成功するステップは再試行を受けません。そのため、成功するシナリオが払うのは `pollInterval` あたり最大 1 回の SpringBoard 確認だけです。`ANTHROPIC_API_KEY` は**不要**で、参照もしません。ガードをオフにするシナリオやターゲットのキーはありません。run 全体でオフにするには `bajutsu run --no-system-alert-handling` を使います。シナリオは、ガードに答えさせるプロンプトを、自身のトップレベルの `interrupts` に `systemAlert` のエントリとして宣言します。このエントリはターゲットの `hooks.interrupts` の上に重なります（[後述](#層の重ね方1-つのキーは-3-か所から届く)）。
 
-**`rules` がガードの宣言のすべてです**（[BE-0406](../../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md)）。シナリオは、現れると見込むプロンプトと、それぞれに返す選択を書きます。どの応答経路も、その宣言だけを見て一致を判定します。BE-0401 が導入した順序付きの `labels` は BE-0406 で削除しました。ボタンのラベルが名指しするのはボタンであって、そのボタンが載っているアラートではありません。「Cancel」も「Close」もアプリの通常の語彙ですから、ラベルはシナリオが記述していない画面へのタップまで許してしまっていたのです。`visionInstruction` は vision フォールバックを方向づけていましたが、いまはどのコマンドにも届きません。**`run` はこれを拒否し**（後述）、`record` と `crawl` は自由記述を自身の `--alert-vision-instruction` フラグからだけ読み、シナリオからは読みません。ON と OFF は真偽値が担うので、マッピングを書けば常に ON です。
+**`systemAlert` のエントリがガードの宣言のすべてです**（[BE-0406](../../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md)、[BE-0473](../../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts-ja.md)）。シナリオは、現れると見込むプロンプトと、それぞれに返す選択を書きます。どの応答経路も、その宣言だけを見て一致を判定します。BE-0401 が導入した順序付きの `labels` は BE-0406 で削除しました。ボタンのラベルが名指しするのはボタンであって、そのボタンが載っているアラートではありません。「Cancel」も「Close」もアプリの通常の語彙ですから、ラベルはシナリオが記述していない画面へのタップまで許してしまっていたのです。`record` と `crawl` はオーサリング向けに自由記述の視覚の指示を残していますが、それを読むのは自身の `--alert-vision-instruction` フラグからだけで、シナリオや config からは読みません。
 
-| 形 | 意味 |
+エントリは、プロンプトを表す `systemAlert` と、答えを表す `choice` を持ちます。任意のキーが 2 つあり、ガードを調整します。次の表の各行は、シナリオのトップレベルの `interrupts` に書く 1 つのエントリです。
+
+| エントリ | 意味 |
 |---|---|
-| （省略） | ON。ただしガードは自分からはどのプロンプトにも答えず、出会ったアラートをブロックされたステップの失敗理由に書き出す |
-| `systemAlertHandling: false` | このシナリオでは無効 |
-| `systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] }` | ON。**名指しした対応済みプロンプト**に、他のプロンプトとどのラベルを共有していても、その規則自身の選択で答える |
-| `systemAlertHandling: { visionInstruction: "tap Allow" }` | **どのコマンドにも届きません。** `run` は黙って無視せず、**どのシナリオも実行する前に失敗します**（[BE-0402](../../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md)）。`record` と `crawl` はシナリオのこのキーを読みません。スキーマが残しているのは、書いてしまったファイルにこのメッセージを返すためだけです |
-| `systemAlertHandling: { pollInterval: 2 }` | ON。ネイティブの presence 照会を既定の 1 秒ではなく 2 秒間隔でポーリングする |
-| `systemAlertHandling: { frozenScreenTimeout: 30 }` | ON。ガード対象の wait が止まった画面で打ち切るまでの時間を、デフォルトの 10 秒ではなく 30 秒にする（`0` で打ち切りを無効にする） |
+| （`systemAlert` のエントリなし） | シナリオ自身はどのプロンプトにも答えない。ターゲットのエントリは引き続き有効で、どのエントリも名指ししないアラートは、ブロックされたステップの失敗理由に書き出す |
+| `{ systemAlert: notifications, choice: grant }` | **名指しした対応済みプロンプト**に、他のプロンプトとどのラベルを共有していても、そのエントリ自身の選択で答える |
+| `{ systemAlert: notifications, choice: leave }` | そのプロンプトには、ターゲットのエントリが答える場合でも何も答えない |
+| `{ systemAlert: notifications, choice: grant, pollInterval: 2 }` | さらに、SpringBoard の確認を既定の 1 秒ではなく最大 2 秒に 1 回にする |
+| `{ systemAlert: savePassword, choice: deny, frozenScreenTimeout: 30 }` | さらに、ガード対象の wait が止まった画面で打ち切るまでの時間を、デフォルトの 10 秒ではなく 30 秒にする（`0` で打ち切りを無効にする）。`savePassword` のように、アプリ自身の要素ツリーに出るプロンプトにだけ書ける |
 
 ```yaml
 - name: grant notification permission
-  systemAlertHandling:
-    rules:
-      - prompt: notifications
-        choice: grant       # accept the prompt instead of leaving it alone
+  interrupts:
+    - systemAlert: notifications
+      choice: grant       # accept the prompt instead of leaving it alone
   steps:
     - tap:  { id: sys.requestNotif }
     - wait: { for: { id: sys.notif.authorized }, timeout: 4 }   # the guard taps Allow, then this passes
 ```
 
-許可は規則で書いてください。`visionInstruction` はシナリオからどのコマンドにも届かないため、`run` の下では実行できない答えを名指しすることになります。プロンプトをそのまま残してファイルが許可と書いた相手を**拒否**するのではなく、`run` はどのシナリオも実行する前に呼び出し全体を拒否します。BE-0401 が単一の `instruction` キーを分割してこの反転を可視化し、BE-0402 が反転に到達する最後の道筋を取り除きました。
+`choice: leave` は、シナリオ自身の `handleSystemAlert` ステップが答えていることを示すために使います。このエントリはそのプロンプト 1 つについてだけターゲットの答えをオフにし、ターゲットが答える他のプロンプトはそのシナリオでも引き続き有効です。
 
-ツリー内のタップで届くプロンプトに規則を書くと、iOS ではもう 1 つ、ツリー内の経路も有効になります。相手は SpringBoard のアラートではありません。いま対応しているのは `savePassword` の 1 つだけです。iOS はこの「パスワードを保存」アラートを**アプリ自身の**プロセスに出すので、そのボタンはラベルを持ち識別子を持たない形で要素ツリーに現れ、SpringBoard の照会には決して映りません。つまりツリー内のタップだけが、これを片付けられます。
+ツリー内のタップで届くプロンプトにエントリを書くと、iOS ではもう 1 つ、ツリー内の経路も有効になります。相手は SpringBoard のアラートではありません。いま対応しているのは `savePassword` の 1 つだけです。iOS はこの「パスワードを保存」アラートを**アプリ自身の**プロセスに出すので、そのボタンはラベルを持ち識別子を持たない形で要素ツリーに現れ、SpringBoard の照会には決して映りません。つまりツリー内のタップだけが、これを片付けられます。
 
-そのタップは同じ `pollInterval` で間隔を空け、しかも直前の SpringBoard 照会が空だったポーリングでのみ撃ちます。XCUITest は要素への操作を合成する前に、割り込んでいるプロセス外のアラートを解決してしまい、アプリのツリーからはそのアラートが見えないからです。したがって 2 つのプロンプトが同時に出ているときは、まず SpringBoard のアラートに答え、そのあとでアプリ側のアラートをツリーから片付けます。
+runner はこのタップを読み取りの中で行い、しかも同じ読み取りでの新たな SpringBoard 確認が空だったときに限ります。XCUITest は要素への操作を合成する前に、割り込んでいるプロセス外のアラートを解決してしまい、アプリのツリーからはそのアラートが見えないからです。したがって 2 つのプロンプトが同時に出ているときは、まず SpringBoard のアラートに答え、そのあとでアプリ側のアラートをツリーから片付けます。
 
-割り込んできたアラートがどのボタンを受け取るかも、利用者の方針が決めます。XCUITest は割り込まれた操作より先にそのアラートを解決し、放っておけばアラート自身の**デフォルト**ボタンで答えます。`rules` が拒否したはずの権限を許可し、しかも実行結果には何も残りません。そこで runner は、`rules` が名指ししたボタンを押す割り込み監視を入れます。判定の作法はネイティブ経路と同じで、押した結果は通常のアラートイベントとして報告されます。この監視が決して出会えない規則は、送らずに落とします。`savePassword` は別プロセスの操作に割り込むことがないからです。どの規則も同定しないアラートは、従来どおり XCUITest 自身の既定ハンドラに委ねられ、この tap 自体は変えられません。変わるのは沈黙のほうです。その割り込みに遭遇したステップや `expect` は、あなたに代わって何かが答えたかのように続けるのではなく、アラートが差し出したボタン名を添えて失敗します。
+割り込んできたアラートがどのボタンを受け取るかも、利用者の方針が決めます。XCUITest は割り込まれた操作より先にそのアラートを解決し、放っておけばアラート自身の**デフォルト**ボタンで答えます。エントリが拒否したはずの権限を許可し、しかも実行結果には何も残りません。そこで runner は、エントリが名指ししたボタンを押す割り込み監視を入れます。判定の作法はネイティブ経路と同じで、押した結果は通常のアラートイベントとして報告されます。この監視が決して出会えないエントリは、送らずに落とします。`savePassword` は別プロセスの操作に割り込むことがないからです。どのエントリも同定しないアラートは、従来どおり XCUITest 自身の既定ハンドラに委ねられ、この tap 自体は変えられません。変わるのは沈黙のほうです。その割り込みに遭遇したステップや `expect` は、あなたに代わって何かが答えたかのように続けるのではなく、アラートが差し出したボタン名を添えて失敗します。
 （[`demos/showcase/scenarios/save_password_browser.yaml`](../../demos/showcase/scenarios/save_password_browser.yaml) 実物）
 
-規則が名指しするのはプロンプトです。ガードは、そのプロンプトを画面上で同定できたときにだけ押します。同定に使うラベルがすべて、それぞれちょうど 1 つずつ揃っている必要があります。どの規則も同定しなかったアラートには手を触れず、ブロックされたステップ自身の失敗理由に書き出します。当て推量のボタンを押すことはありません。
+エントリが名指しするのはプロンプトです。ガードは、そのプロンプトを画面上で同定できたときにだけ押します。同定に使うラベルがすべて、それぞれちょうど 1 つずつ揃っている必要があります。どのエントリも同定しなかったアラートには手を触れず、ブロックされたステップ自身の失敗理由に書き出します。当て推量のボタンを押すことはありません。
 
-CLI の `--system-alert-handling` / `--no-system-alert-handling` フラグは**全シナリオを上書き**します。無指定ならシナリオごとの既定が使われます。その run にだけキーを与えるフラグは `--alert-poll-interval` の 1 つだけです。入る位置はシナリオとターゲット config の中間です（後述の[層の重ね方](#層の重ね方1-つのキーは-3-か所から届く)を参照）。
+CLI の `--no-system-alert-handling` フラグは**全シナリオでガードをオフに**し、`--system-alert-handling` はオンのままにします。`--alert-poll-interval` は、その run にだけ `pollInterval` を与えます。入る位置はシナリオとターゲット config の中間です（後述の[層の重ね方](#層の重ね方1-つのキーは-3-か所から届く)を参照）。
 （[`demos/showcase/scenarios/permission.yaml`](../../demos/showcase/scenarios/permission.yaml) 実物）
+
+### プロンプトに答える代わりに出さないようにする
+
+アプリが出さないプロンプトには、答える必要がありません。テスト中にアプリが自分のプロンプトを省くための方法として、ターゲットの config（`targets.<name>`）の起動引数または環境変数（`subject.launch.args` と `subject.launch.env`）を用意しています。アプリは起動時にそれを読みます。
+
+```yaml
+targets:
+  my-app:
+    platform: ios
+    subject:
+      id: com.example.myapp
+      launch: { env: { UITEST_SKIP_ONBOARDING_PROMPTS: "1" } }   # the app checks this and asks nothing
+```
+
+出さないようにすればガードの出番は減りますが、ガードの代わりにはなりません。次の 3 つのプロンプトは、引き続きリアクティブに答えます。
+
+- **通知**は、`xcrun simctl privacy` が許可できるプライバシーサービスではありません（[BE-0276](../../roadmaps/BE-0276-scenario-permission-state/BE-0276-scenario-permission-state-ja.md)）。
+- **App Tracking Transparency（ATT）**も、`simctl privacy` のサービスにはありません。このコマンド自身のサービス一覧に載っていないことを確認しています。
+- **パスワードの保存**は、Simulator の「パスワードを自動入力」の設定に左右されます。実行前にこの設定を切る、サポートされた方法は見つかりませんでした。そのためシナリオは `savePassword` のエントリで答えます（[BE-0461](../../roadmaps/BE-0461-request-boundary-alert-resolution/BE-0461-request-boundary-alert-resolution-ja.md)）。
 
 ### 通知バナーはタップせずスワイプで消す
 
-フォアグラウンドの**通知バナー**は、システムアラートと同じようにステップへ割り込みます。答えるのも同じ割り込み監視です。ただし `rules` が答えることはありません（[BE-0416](../../roadmaps/BE-0416-ios-notification-banner-swipe-dismiss/BE-0416-ios-notification-banner-swipe-dismiss.md)）。
+フォアグラウンドの**通知バナー**は、システムアラートと同じようにステップへ割り込みます。答えるのも同じ割り込み監視です。ただし `systemAlert` のエントリが答えることはありません（[BE-0416](../../roadmaps/BE-0416-ios-notification-banner-swipe-dismiss/BE-0416-ios-notification-banner-swipe-dismiss.md)）。
 
-バナーはアラートではありません。規則が名指しできるボタンを 1 つも持ちません。タップできる領域は 1 つだけで、そこに載っているのは通知本文です。その領域を押すと通知元のアプリが開き、実行中のシナリオから離れてしまいます。
+バナーはアラートではありません。エントリが名指しできるボタンを 1 つも持ちません。タップできる領域は 1 つだけで、そこに載っているのは通知本文です。その領域を押すと通知元のアプリが開き、実行中のシナリオから離れてしまいます。
 
-そこで runner は、バナー自身の実測フレームを起点に上方向へスワイプします。割り込みを引き受けたと宣言する前に、バナーが消えたことを確認します。確認が取れなかったスワイプは、割り込みを XCUITest に返します。XCUITest 自身のハンドラもバナーを片付けるので、どちらの経路でもステップの操作はシナリオが名指しした要素に着弾します。
+そこで runner は、バナー自身の実測フレームを起点に上方向へスワイプします。runner がそのフレームを読むのは、バナーが静止してからです。滑り込んでいる途中のバナーはフレームが画面より上にあり、そこを起点にしたスワイプは下向きに動いてしまうからです。そのうえで、割り込みを引き受けたと宣言する前に、バナーが消えたことを確認します。バナーが消えれば、ステップの操作はシナリオが名指しした要素に着弾します。
+
+スワイプでバナーが消えなかった場合、runner はバナーが自動的に消えるのを最大 10 秒待ちます。割り込みを XCUITest に返すのは最後の手段です。iOS 26.5 では、XCUITest 自身のハンドラはバナーを無視します。XCUITest がバナーを探すたびに失敗が記録され、その失敗が runner のセッションを終わらせます。
 
 **消えたことを確認できた**場合に限り、割り込まれたステップの記録として実行結果に残ります。種別はアラートとは別に立てます。押したボタンが存在しないので、並んで記録される文字列は通知本文そのものです。この種別があることで、読み手はその文字列をガードが選んだボタンだと読み違えずに済みます。
 
-確認が取れなかったスワイプは、この記録を残しません。runner 自身の出力にログを書くだけです。実行結果に現れるのは、割り込まれたステップがいつもより時間を要したという事実だけです。
+10 秒待ってもまだ表示されているバナーは、この記録を残しません。runner 自身の出力にログを書き、バナーを XCUITest に返します。一時的な形式のバナーは、たいていこの待機のうちに消えます。一方、常駐する形式のバナーは自動では消えないため、XCUITest への引き渡しに至ることがあります。iOS 26.5 では、返すことで runner が止まる場合もあります。
 
-バナーについて宣言できることは何もありません。この経路は `systemAlertHandling` の有無にかかわらず動きます。BE-0416 より前は、ガードが有効な実行でバナーがアラート経路に入っていました。どの規則にも一致せず、ステップは失敗しました。その理由には、期待したボタンとして通知本文が並びました。
+バナーについて宣言できることは何もありません。この経路は、システムアラートガードがオンかどうかにかかわらず動きます。BE-0416 より前は、ガードが有効な実行でバナーがアラート経路に入っていました。どのエントリにも一致せず、ステップは失敗しました。その理由には、期待したボタンとして通知本文が並びました。
 
 この割り込み監視が答えるのは、何かに割り込んでいるバナーだけです。ただの問い合わせでは監視は起動しないため、何もタップしていない画面に居座るバナーは消えません。放置すると、`after.png` と、そこから作るビジュアルリグレッションの比較画像がそのまま壊れます。
 
-この隙間を塞ぐのが、もう 1 つの能動的な掃除です。runner はバナーがないかを確認し、あればスクリーンショットを撮る直前にスワイプで消します。確認するのは 3 か所です。1 ステップにつき 1 回のそのスクリーンショット、`visual` アサーションが読む `expect` フェーズの撮影、そしてステップ自身の `assert` が持つ `visual` エントリ自身の撮影です（後述）。1 ステップにつき 1 回の照会は `systemAlertHandling` 自身が解決したポーリング間隔でレート制限しているため、通るシナリオが払うコストはステップごとではなく間隔ごとに 1 回です。`expect` フェーズとステップレベルの撮影は、それぞれステップよりずっと少ない頻度でしか動かないため、無条件に照会します。上記の割り込み経路と同じく、この 3 か所とも、シナリオや CLI 側のトグルは持たず、iOS の XCUITest バックエンドだけで動きます。
+この隙間を塞ぐのが、もう 1 つの能動的な掃除です。runner はバナーがないかを確認し、あればスクリーンショットを撮る直前にスワイプで消します。確認するのは 3 か所です。1 ステップにつき 1 回のそのスクリーンショット、`visual` アサーションが読む `expect` フェーズの撮影、そしてステップ自身の `assert` が持つ `visual` エントリ自身の撮影です（後述）。1 ステップにつき 1 回の照会は システムアラートガード自身が解決したポーリング間隔でレート制限しているため、通るシナリオが払うコストはステップごとではなく間隔ごとに 1 回です。`expect` フェーズとステップレベルの撮影は、それぞれステップよりずっと少ない頻度でしか動かないため、無条件に照会します。上記の割り込み経路と同じく、この 3 か所とも、シナリオや CLI 側のトグルは持たず、iOS の XCUITest バックエンドだけで動きます。
 
-### 複数のプロンプトに違う答えを返す: `rules`
+### 複数のプロンプトに違う答えを返す
 
-1 つのオンボーディングの流れが複数のプロンプトに出会い、それぞれに違う答えを返したい場面はよくあります。1 つの規則は、対応済みのプロンプト 1 つと選択 1 つを組にします。語彙は `handleSystemAlert` 自身の `prompt` / `choice` をそのまま再利用します。こうして、ファイルには「押されても構わない語」ではなく「現れると見込むプロンプト」が書かれます。
+1 つのオンボーディングの流れが複数のプロンプトに出会い、それぞれに違う答えを返したい場面はよくあります。1 つの `systemAlert` のエントリは、対応済みのプロンプト 1 つと選択 1 つを組にします。語彙は `handleSystemAlert` 自身の `prompt` / `choice` をそのまま再利用します。こうして、ファイルには「押されても構わない語」ではなく「現れると見込むプロンプト」が書かれます。
 
 ```yaml
 - name: onboarding — accept notifications, refuse tracking
-  systemAlertHandling:
-    rules:
-      - prompt: notifications
-        choice: grant
-      - prompt: tracking
-        choice: deny
+  interrupts:
+    - systemAlert: notifications
+      choice: grant
+    - systemAlert: tracking
+      choice: deny
   steps:
     - tap:  { id: onboarding.start }
     - wait: { for: { id: home.title }, timeout: 10 }
 ```
 
-ガードは、規則の順序ではなく、その規則のプロンプトから画面上のどのアラートかを同定します。そのプロンプトを同定するラベルが、実行時のロケールで解決した形でアラート上に揃っていなければなりません。同じプロンプトを指定する規則が2つあると解析時に失敗します。文脈や iOS のバージョンで見え方が変わるプロンプトは、その見え方の数だけ照合用の形を持ちます。ですから 1 つの規則のままで、そのプロンプトのどの見え方にも答えます。
+ガードは、エントリの順序ではなく、そのエントリのプロンプトから画面上のどのアラートかを同定します。そのプロンプトを同定するラベルが、実行時のロケールで解決した形でアラート上に揃っていなければなりません。1 つのリストに同じプロンプトを指定するエントリが 2 つあると、読み込み時に失敗します。文脈や iOS のバージョンで見え方が変わるプロンプトは、その見え方の数だけ照合用の形を持ちます。ですから 1 つのエントリのままで、そのプロンプトのどの見え方にも答えます。
 
-どの規則も同定しなかったアラート、つまりラベル表の外にあるものや、どちらの応答経路も持たないバックエンド上のあらゆるアラートには手を触れず、ブロックされたステップ自身の失敗理由に書き出します。この沈黙こそが狙いです。ガードが答えるのは、シナリオが記述した画面だけになります。
+どのエントリも同定しなかったアラート、つまりラベル表の外にあるものや、どちらの応答経路も持たないバックエンド上のあらゆるアラートには手を触れず、ブロックされたステップ自身の失敗理由に書き出します。この沈黙こそが狙いです。ガードが答えるのは、シナリオが記述した画面だけになります。
 
 **すべてのプロンプトがすべての経路に届くわけではありません。** ラベル表は、プロンプトごとに、3 つの面のうちどれで宣言し応答できるかを記録しています。
 
@@ -215,10 +360,22 @@ CLI の `--system-alert-handling` / `--no-system-alert-handling` フラグは**�
 | `tracking` | ✅ | ✅ | — |
 | `paste` | ✅ | ✅ | — |
 | `savePassword` | — | — | ✅ |
+| `localNetwork` | ✅ | ✅ | — |
 
-はじめの 3 つは SpringBoard が持ち主なので、ステップとネイティブ照会の両方が届き、ツリーには現れません。`savePassword` はちょうど裏返しです。iOS がアプリ自身のプロセスに出すため `springboard.alerts` は決して列挙できず、ツリー内のタップだけが片付けられます。したがって `savePassword` を名指しした `handleSystemAlert` ステップは解析時に拒否されます。このステップは SpringBoard の照会しか読まないので、空のボタン一覧を締め切りまでポーリングするしかないからです（[BE-0406](../../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md)）。
+`savePassword` 以外は SpringBoard が持ち主なので、ステップとネイティブ照会の両方が届き、ツリーには現れません。`savePassword` はちょうど裏返しです。iOS がアプリ自身のプロセスに出すため `springboard.alerts` は決して列挙できず、ツリー内のタップだけが片付けられます。したがって `savePassword` を名指しした `handleSystemAlert` ステップは解析時に拒否されます。このステップは SpringBoard の照会しか読まないので、空のボタン一覧を締め切りまでポーリングするしかないからです（[BE-0406](../../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md)）。
 
-他の 3 つのプロンプトが 1 通りの見え方しか持たないのに対し、`savePassword` は 3 通りの見え方を持ちます。
+`localNetwork` は、iOS のローカルネットワークの許可を求めるプロンプトです。実機では、アプリが初めてホストへ報告するときに、Bajutsu 自身のネットワークの collector がこのプロンプトを出させます（[iOS を実機とデバイスクラウドで動かす](ios-device-cloud.md)を参照してください）。ボタンは通知のプロンプトと同じなので、ボタンだけでは 2 つを区別できません。そこでガードはアラートのタイトルも読みます。タイトルは、アプリ名を `%@` に置き換えた Apple の雛形にそろえます。`localNetwork` のエントリはこの雛形を識別に使い、`notifications` のエントリはこの雛形を除外します。したがって、`notifications` のエントリがローカルネットワークのプロンプトに答えることはなく、逆も同じです。ネットワークのやり取りを記録する実機のターゲットは、ほかのプロンプトと同じように宣言します。
+
+```yaml
+interrupts:
+  - { systemAlert: localNetwork, choice: grant }
+```
+
+アプリはこのプロンプトを起動中に、つまりシナリオの最初の手順より前に出します。ガードが最初に確認するのは本来、保留中の待機の中なので、最初の `tap` がプロンプトに当たることがあります。そこでガードは、最初の手順の前に SpringBoard の照会を 1 回だけ読み、すでに出ている宣言済みのプロンプトに答えます。この確認はネイティブの経路だけを使います。アプリ自身のボタンはタップせず、宣言されていないアラートにも手を出しません。最初の手順が `handleSystemAlert` のときは、その手順のプロンプトを手順自身に残します。手順はエントリとは逆の選択をすることもあるからです。手順は `prompt` でプロンプトを名指しするので、見た目の似たプロンプトはタイトルで区別できます。そのため、`notifications` の手順より前に出たローカルネットワークのプロンプトには、これまでどおりエントリが答えます。`sel` で書いた手順はプロンプトを名指ししないので、この確認を省きます。
+
+`handleSystemAlert` の手順も、同じようにタイトルを確かめます。`notifications` を名指しした手順は、ボタンが同じでも、ローカルネットワークのプロンプトを押しません。
+
+他の 4 つのプロンプトが 1 通りの見え方しか持たないのに対し、`savePassword` は 3 通りの見え方を持ちます。
 
 | 見え方 | 英語 | 日本語 |
 |---|---|---|
@@ -226,46 +383,54 @@ CLI の `--system-alert-handling` / `--no-system-alert-handling` フラグは**�
 | アプリ自身の入力欄、iOS 18.6 | Save Password / Not Now | パスワードを保存 / 今はしない |
 | アプリ自身の入力欄、iOS 26.5 | Save / Not Now | 保存 / 今はしない |
 
-それでも 1 つの規則で 3 通りすべてを覆えます。`choice: grant` は動く許可側のボタンに追随し、`choice: deny` は拒否側のボタンを押します。拒否側はどの見え方でも「今はしない」です。対応している言語は、他のプロンプトと同じく英語と日本語です。
+それでも 1 つのエントリで 3 通りすべてを覆えます。`choice: grant` は動く許可側のボタンに追随し、`choice: deny` は拒否側のボタンを押します。拒否側はどの見え方でも「今はしない」です。対応している言語は、他のプロンプトと同じく英語と日本語です。
 
 ### 層の重ね方：1 つのキーは 3 か所から届く
 
-1 つの設定は、シナリオ、コマンドライン、ターゲット config（[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)）の 3 か所から run に届きます。キーがリストとスカラーのどちらかによって、2 つの規則がすべてを覆います。
+宣言は、シナリオ、コマンドライン、ターゲット config の 3 か所から run に届きます（[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)、[BE-0473](../../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts-ja.md)）。シナリオ自身の `interrupts` とターゲットの `hooks.interrupts` は同じ 3 つの形を受け付け、形ごとに合わさり方が決まっています。
 
-| キー | 型 | 層の合わせ方 |
-|---|---|---|
-| `rules` | リスト | 内側の層から順に連結：シナリオ、次にターゲット |
-| `pollInterval` | スカラー | 値を持つもっとも内側の層が勝つ：シナリオ、無ければコマンドライン、無ければターゲット |
-| `frozenScreenTimeout` | スカラー | 値を持つもっとも内側の層が勝つ：シナリオ、無ければターゲット |
-| ON / OFF | スカラー | `--system-alert-handling` / `--no-system-alert-handling`、無ければシナリオ、無ければターゲット、無ければ ON |
+| エントリの形 | ターゲットとシナリオのエントリの合わさり方 |
+|---|---|
+| 画面 | 連結する。ターゲットのエントリが先 |
+| システムアラート | プロンプトごとに決まる。シナリオのエントリはそのプロンプトについてターゲットの `choice` を置き換え、省略した `frozenScreenTimeout` はターゲットのエントリから引き継ぐ。それ以外のプロンプトは両方のものが有効 |
+| TipKit | シナリオのエントリ（`dismiss` か `leave`）、なければターゲットのエントリ。どちらにもなければオフ |
 
-リストを連結にするのは、両方の層のエントリが残るからです。シナリオの答えを先に試し、シナリオが答えなかったものにはターゲットの答えが届きます。スカラーは値を 1 つしか持てないので、もっとも内側の層が勝ちます。どの層の宣言も他の層に消されません。BE-0401 が確立しようとした性質はここにあります。`rules` が 2 層しか使えないのは、プロンプトと選択の組をフラグの値 1 つで読みやすく運べないからです。
+2 つの調整値は別の規則で決まります。ガードはシナリオごとにそれぞれ 1 つの値しか持たないからです。
 
-**宣言が来た層ではなく、限定の度合いが衝突を決めます**。ターゲット config の tracking プロンプト向けの規則は、シナリオが notifications にしか規則を書いていなくても tracking に答えます。どの規則も、名指しした 1 つのプロンプトにだけ届くからです。両方の宣言が有効なままです。ターゲットの規則を上書きするには、シナリオ側に同じプロンプトの規則を書きます。上書きが及ぶ範囲は、名指しした 1 つのプロンプトだけです。自前の規則を持つシナリオにターゲットの規則が実際に答えるとき、ガードは構築時にその旨を通知します。通知は、影響を受けたシナリオとプロンプトの組ごとに 1 回だけ出ます。
+| 値 | 層の合わせ方 |
+|---|---|
+| `pollInterval` | 値を持つ最初の層が勝つ。順序はシナリオ、`--alert-poll-interval`、ターゲット。1 つの層の中では最小の値が勝つ。短い間隔は、より長い間隔を求めたエントリの要求も満たすからである。ビルトイン既定は 1 秒 |
+| `frozenScreenTimeout` | プロンプトに答えるエントリのうち、もっとも寛容な値。つまり最大の値で、`0`（停止オフ）はどの値よりも優先する。より厳しい上限は、別のエントリのアプリがそれだけ長く保つと宣言した画面で wait を止めてしまう。ビルトイン既定は 10 秒 |
+| ON / OFF | `--no-system-alert-handling` が全シナリオでガードをオフにする。シナリオやターゲットのキーではオフにできない。`--ios-tipkit-handling` / `--no-ios-tipkit-handling` は、全シナリオの `tipKit` のエントリを `dismiss` または `leave` にする |
+
+**宣言が来た層ではなく、限定の度合いが衝突を決めます**。ターゲット config の tracking プロンプト向けのエントリは、シナリオが notifications のエントリしか書いていなくても tracking に答えます。どのエントリも、名指しした 1 つのプロンプトにだけ届くからです。両方の宣言が有効なままです。ターゲットのエントリを上書きするには、シナリオ側に同じプロンプトのエントリを書きます。上書きが及ぶ範囲は、名指しした 1 つのプロンプトだけです。何も答えずに上書きしたいときは `choice: leave` を使います。廃止された `systemAlertHandling: false` と違い、このエントリは答えないプロンプトを名指しします。そのため、ターゲットがあとから追加したプロンプトは、そのシナリオにも引き続き適用されます。自前の `systemAlert` のエントリを持つシナリオにターゲットのエントリが実際に答えるとき、`run` はそのプロンプトを名指しする通知を出します。通知は、影響を受けたシナリオとプロンプトの組ごとに 1 回だけ出ます。
 
 ### 旧来のキーからの移行
 
-BE-0401 と BE-0406 は下記のキーをエイリアスなしで削除しました。書いた内容と違う挙動に解釈されるのではなく、置き換え先を名指しするエラーで読み込みに失敗します。
+BE-0401、BE-0406、BE-0473 は下記のキーをエイリアスなしで削除しました。書いた内容と違う挙動に解釈されるのではなく、置き換え先を名指しするエラーで読み込みに失敗します。変更前に保存した run ディレクトリは、オフラインで読む処理（レポートの再描画、`trace`、`triage`）が `scenario.yaml` を新しいキーに読み替えるので、引き続き読み込めます。
 
 | 削除されたもの | 代わりに書くもの |
 |---|---|
-| `labels: ["Allow"]` | `rules: [{ prompt: notifications, choice: grant }]` — ラベルはどのプロンプトも名指ししていなかったので、現れると見込むプロンプトを書く（BE-0406） |
-| `instruction: ["Allow"]` | 同じ規則の形。BE-0401 がこのキーを `labels` に改名し、BE-0406 がその `labels` を削除した |
-| `instruction: "tap Allow"` | 同じ規則の形。BE-0401 の改名先は `visionInstruction` だが、BE-0402 でどのコマンドにも届かなくなった |
-| `enabled: false` | `systemAlertHandling: false` |
-| `enabled: true` | マッピング（または `systemAlertHandling: true`）。マッピングは常に ON |
-| `alertHandling:` / `dismissAlerts:` | `systemAlertHandling:` |
-| `--alert-labels "Allow,OK"` / `--alert-instruction "Allow,OK"` | シナリオまたはターゲット config の `rules` エントリ。プロンプトと選択の組をフラグの値 1 つで読みやすく運べないため、フラグは無い。serve の HTTP API に `alertLabels` を載せた `run` リクエストは、`systemAlertHandling.rules` を名指しする 400 で拒否される |
+| `preconditions.run.systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] }` | シナリオの `interrupts` の `- { systemAlert: notifications, choice: grant }`（BE-0473） |
+| `preconditions.run.systemAlertHandling: false` | シナリオ自身が答えるプロンプトごとの `choice: leave`。run 全体なら `--no-system-alert-handling`（BE-0473） |
+| `systemAlertHandling.pollInterval` / `.frozenScreenTimeout` | 同じキーを、その値が属する `systemAlert` のエントリに書く（BE-0473） |
+| `preconditions.run.tipKitHandling: true` / `false` | シナリオの `interrupts` の `- tipKit: dismiss` / `- tipKit: leave`（BE-0473） |
+| `preconditions.run.inheritSetup` | `preconditions.inheritSetup`（BE-0473） |
+| `visionInstruction` | なし。`run` はモデルに到達せず（BE-0402）、`record` / `crawl` は `--alert-vision-instruction` を使う |
+| `labels: ["Allow"]` | `- { systemAlert: notifications, choice: grant }` — ラベルはどのプロンプトも名指ししていなかったので、現れると見込むプロンプトを書く（BE-0406） |
+| `instruction: ["Allow"]` | 同じエントリの形。BE-0401 がこのキーを `labels` に改名し、BE-0406 がその `labels` を削除した |
+| `instruction: "tap Allow"` | 同じエントリの形。BE-0401 の改名先は `visionInstruction` だが、BE-0402 でどのコマンドにも届かなくなった |
+| シナリオのトップレベルの `systemAlertHandling:` / `alertHandling:` / `dismissAlerts:` | シナリオの `interrupts` の `systemAlert` のエントリ |
+| シナリオのトップレベルの `iosTipKitHandling:` | シナリオの `interrupts` の `- tipKit: dismiss` |
+| `--alert-labels "Allow,OK"` / `--alert-instruction "Allow,OK"` | シナリオまたはターゲット config の `systemAlert` のエントリ。プロンプトと選択の組をフラグの値 1 つで読みやすく運べないため、フラグは無い。serve の HTTP API に `alertLabels` を載せた `run` リクエストは 400 で拒否される |
 | `--alert-instruction "tap Allow"` | `--alert-vision-instruction "tap Allow"`（`record` / `crawl` 専用。`run` は BE-0402 で廃止） |
 | `--alert-handling` / `--dismiss-alerts` | `--system-alert-handling` |
-
-空の `visionInstruction` もエラーになります。以前は黙って正規化され、既定の無害な方針へ落ちていました。打ち間違いがファイルの記述と正反対の答えを返していたわけです。
 
 このリアクティブなガードと、下記のプロアクティブな `handleSystemAlert` ステップは、SpringBoard が持つプロンプトについては**同じ**ネイティブ機構（BE-0316 の照会と tap）を共有します。違うのは*いつ*発火するかです。ガードはプロンプトが現れた場所で自動的に、ステップは作者が置いた 1 か所で発火します。
 
 ## handleSystemAlert（決定的なシステムアラートステップ）
 
-上記の `systemAlertHandling` は**リアクティブなガード**です。プロンプトが現れた場所で自動的に発火します。`handleSystemAlert` はそのプロアクティブな対の一方です。プロンプトが現れると見込んだ地点に作者が明示的に置く**決定的なステップ**で、プロンプトのボタンをネイティブなアクセシビリティ照会で tap します。**スクリーンショットもモデル呼び出しもありません**（[BE-0316](../../roadmaps/BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step-ja.md)）。リクエストと許可の流れ自体をテストしたいときに使います。OS の権限リクエストを発火させ、続いて現れるプロンプトを決定的に許可または拒否します。
+上記の `systemAlert` のガードは**リアクティブ**です。プロンプトが現れた場所で自動的に発火します。`handleSystemAlert` はそのプロアクティブな対の一方です。プロンプトが現れると見込んだ地点に作者が明示的に置く**決定的なステップ**で、プロンプトのボタンをネイティブなアクセシビリティ照会で tap します。**スクリーンショットもモデル呼び出しもありません**（[BE-0316](../../roadmaps/BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step-ja.md)）。リクエストと許可の流れ自体をテストしたいときに使います。OS の権限リクエストを発火させ、続いて現れるプロンプトを決定的に許可または拒否します。
 
 ```yaml
 - name: grant the notification prompt mid-flow
@@ -278,9 +443,9 @@ BE-0401 と BE-0406 は下記のキーをエイリアスなしで削除しまし
 許可ではなく拒否するには、拒否側のボタンを指定します（`handleSystemAlert: { sel: { label: "Don't Allow" }, timeout: 5 }`）。
 
 - **`sel` は label 系のみです。** SpringBoard のアラートボタンは、アプリが割り当てた identifier も trait も value も持たず、見えているテキストしか持ちません。そのため `sel` は `label` / `labelMatches` / `index` を受け付け、`id` / `idMatches` / `traits` / `value` / `within` はパース時に拒否します。
-- **run が一致させるべき label は、ターゲットの [`locale`](configuration.md#設定の階層defaults--targets) が描画するものです。** プロンプトを所有しているのは SpringBoard なので、以前は Simulator がたまたま持っていたシステム言語で描画されていました。つまり `label: "Allow"` が通るのは英語の環境だけで、日本語の環境では失敗しました。現在は、アプリを起動する前に Simulator 自身のシステム言語をその `locale` に固定するため、CI でも、同僚の Mac でも、コントリビューターの Simulator でも、`label` / `labelMatches` は同じように解決します（[BE-0320](../../roadmaps/BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md)）。
+- **run が一致させるべき label は、ターゲットの [`runsOn.ios.locale`](configuration.md#設定の階層defaults--targets) が描画するものです。** プロンプトを所有しているのは SpringBoard なので、以前は Simulator がたまたま持っていたシステム言語で描画されていました。つまり `label: "Allow"` が通るのは英語の環境だけで、日本語の環境では失敗しました。現在は、アプリを起動する前に Simulator 自身のシステム言語をその `locale` に固定するため、CI でも、同僚の Mac でも、コントリビューターの Simulator でも、`label` / `labelMatches` は同じように解決します（[BE-0320](../../roadmaps/BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md)）。
 - **`timeout` は必須です。** `wait` とまったく同じで、プロンプトを待つ条件待機には明示的な上限が要ります。ステップはプロンプトを待ち込んでから tap します。固定の sleep はありません。
-- **待っているあいだもリアクティブなガードが動きます**（[BE-0406](../../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md)）。この待機を持っているのはバックエンドではなくランナー自身です。そのため `systemAlertHandling` は、ステップがタイムアウトして失敗したあとではなく、ステップの最中に割り込みを片付けます。これが効くのは、別のプロンプトが先に画面を取ってしまった場面です。iOS のパスワード保存アラートはアプリ自身のプロセスから出るので SpringBoard の照会からは見えず、画面を覆ったまま、このステップが待っているプロンプトを iOS に出させません。ここでガードが動かなければ、ステップは `timeout` を使い切り、一度も見ていない権限プロンプトを名指しして失敗します。ガードはこのステップ自身のプロンプトには手を触れないので、シナリオが同じプロンプトに反対の `choice` を持つ `rules` を書いていても、決めるのはステップのほうです。
+- **待っているあいだもリアクティブなガードが動きます**（[BE-0406](../../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md)）。この待機を持っているのはバックエンドではなくランナー自身です。そのためシステムアラートガードは、ステップがタイムアウトして失敗したあとではなく、ステップの最中に割り込みを片付けます。これが効くのは、別のプロンプトが先に画面を取ってしまった場面です。iOS のパスワード保存アラートはアプリ自身のプロセスから出るので SpringBoard の照会からは見えず、画面を覆ったまま、このステップが待っているプロンプトを iOS に出させません。ここでガードが動かなければ、ステップは `timeout` を使い切り、一度も見ていない権限プロンプトを名指しして失敗します。ガードはこのステップ自身のプロンプトには手を触れないので、シナリオが同じプロンプトに反対の `choice` を持つ `systemAlert` のエントリを書いていても、決めるのはステップのほうです。
 - **0 件のときと複数件のときは、どちらも失敗します。** `timeout` 以内にプロンプトが現れなければステップは失敗します。label に一致するボタンを複数見つけたときは曖昧と見なし、`index` で n 番目を選んだ場合を除いてタップしません。あらゆる[セレクタ](selectors.md)が従う規則を、アラートのボタンに当てはめたものです。曖昧さは即座の失敗にはせず、期限までポーリングします。再描画で解消することがあるからです。期限の時点でも重複が残っていれば、ステップはその旨を述べて失敗します。タイムアウトは**ステップが実際に見たもの**を名指しします。何も出ていなかったのか、セレクタの名指ししないアラートだったのか、label を 2 つ持つアラートだったのかを、次のように書き分けます。
 
   ```text
@@ -298,7 +463,7 @@ BE-0401 と BE-0406 は下記のキーをエイリアスなしで削除しまし
 |---|---|---|---|
 | `permissions` | そもそも避けられる OS 権限プロンプト | 起動前、アプリが動き出す前 | 決定的なデバイス操作 |
 | `handleSystemAlert` | **既知の**、途中で tap するつもりのプロンプト | 作者が置いた明示的なステップ | 決定的（ネイティブなアクセシビリティ tap） |
-| `systemAlertHandling` | **想定外**のプロンプト。プロセス外のものと、プロセス内のパスワード保存シート | ステップや wait がブロックされたときに反応 | XCUITest ではネイティブの SpringBoard 照会（モデルなし、BE-0316 を再利用）と、その照会に映らないシートへのツリー内タップ。どの規則も同定しないプロンプトは失敗理由に書き出す |
+| `interrupts` の `systemAlert` のエントリ | **想定外**のプロンプト。プロセス外のものと、プロセス内のパスワード保存シート | ステップや wait がブロックされたときに反応 | XCUITest ではネイティブの SpringBoard 照会（モデルなし、BE-0316 を再利用）と、その照会に映らないシートへのツリー内タップ。どのエントリも同定しないプロンプトは失敗理由に書き出す |
 
 ### テキストではなく意図で指定する
 
@@ -308,22 +473,22 @@ BE-0401 と BE-0406 は下記のキーをエイリアスなしで削除しまし
 - handleSystemAlert: { prompt: notifications, choice: grant, timeout: 5 }
 ```
 
-`prompt` は `notifications`、`tracking`、`paste` のいずれかで、`choice` は `grant` か `deny` です。ガード自身の `rules` は、このステップが取れない 4 つ目のプロンプト `savePassword` も取ります。ステップのほうは解析時にこれを拒否します（上記の[面の一覧](#複数のプロンプトに違う答えを返す-rules)を参照）。ボタンを意味で指定するため、同じファイルが `en_US` でも `ja_JP` でもプロンプトを許可します。どちらの言語のテキストも作者が書き写す必要はありません。これは英語だけを使う場合にも役立ちます。英語の拒否ボタンのアポストロフィは、手で打った label が持つ ASCII 文字ではなく、活字体のアポストロフィ（`Don’t Allow`、`Don’t Allow Paste`）だからです。
+`prompt` は `notifications`、`tracking`、`paste`、`localNetwork` のいずれかで、`choice` は `grant` か `deny` です。ボタンを押さないステップには意味がないので、ステップは `choice: leave` を読み込むときに拒否します。`leave` は `systemAlert` のエントリだけが取る値です。ガード自身の `systemAlert` のエントリは、このステップが取れないプロンプト `savePassword` も取ります。ステップのほうは解析時にこれを拒否します（上記の[面の一覧](#複数のプロンプトに違う答えを返す)を参照）。ボタンを意味で指定するため、同じファイルが `en_US` でも `ja_JP` でもプロンプトを許可します。どちらの言語のテキストも作者が書き写す必要はありません。これは英語だけを使う場合にも役立ちます。英語の拒否ボタンのアポストロフィは、手で打った label が持つ ASCII 文字ではなく、活字体のアポストロフィ（`Don’t Allow`、`Don’t Allow Paste`）だからです。
 
 label の対応表が扱う言語は英語と日本語です。それ以外の言語では、ステップはボタンの位置で答えます（[BE-0445](../../roadmaps/BE-0445-system-alert-locale-agnostic-answer/BE-0445-system-alert-locale-agnostic-answer-ja.md)）。3 つのプロンプトのどれでも、SpringBoard は拒否側のボタンを 1 番目に、許可側のボタンを 2 番目に並べます。この並びは、英語と日本語では iOS 18.6 と 26.5 で、アラビア語では 26.5 で、各ボタンを実際に押してアプリに残る許可状態を読み取って確かめたものです。ここでいう並びは SpringBoard が報告する順序で、画面上の左右ではありません。アラビア語では通知プロンプトの拒否側のボタンが右側に描かれますが、報告される順序ではやはり 1 番目です。したがって `choice: grant` は 2 つのうち 2 番目のボタンを、`choice: deny` は 1 番目のボタンを押します。ボタンの数が 2 つでないアラートには、この規則は何も指しません。その場合ステップはタイムアウトまで待ち、見えたボタンを挙げて失敗します。規則を測っていないアラートで、位置だけを頼りに押すわけにはいかないからです。この規則が指すのはボタンで、プロンプトではありません。SpringBoard のタイトルとメッセージも言語ごとに訳されるので、言語が変わっても 2 ボタンのプロンプト同士を見分けられる手がかりはありません。ステップが待っているあいだに出た 2 ボタンの SpringBoard アラートは、どれも位置で答えられます。ステップは、プロンプトを出す操作の直後に置いてください。locale を持たない呼び出し（`record` の再生）も同じ規則で答えます。ステップのレポート行には、押したボタンと、それを選んだ規則（`sel`、`label table: <locale>`、`position: button 2 of 2` のいずれか）が出ます。ほかのアラートは、これまでどおり `sel` でボタンを指定します。
 
-位置の規則を使うのはこのステップだけです。`systemAlertHandling.rules` の規則は、宣言したどのプロンプトが画面に出ているかを先に見分ける必要があり、位置からはそれを見分けられません。そのため対応表にない言語では、ガードの規則はこれまでどおり、デバイスを操作する前に扱える言語を名指ししてシナリオを失敗させます。
+位置の規則を使うのはこのステップだけです。`systemAlert` のエントリは、宣言したどのプロンプトが画面に出ているかを先に見分ける必要があり、位置からはそれを見分けられません。そのため対応表にない言語では、ガードのエントリはこれまでどおり、デバイスを操作する前に扱える言語を名指ししてシナリオを失敗させます。
 
 使う前に知っておきたい制限が 2 つあります。
 
-- **Simulator 専用です。** 言語の固定は `simctl` の操作なので、`xcuitest.deviceType: device` の target は実機が持つシステム言語のまま動きます。この形では、画面に出ている保証のない label を解決してしまいます。実機ではボタンを `sel.label` で指定してください。
-- **割り込み監視も英語を前提としていません。** `rules` の 1 エントリは、監視に届く前に固定した言語向けラベルへ解決されており、その背後にはもう組み込みのフォールバック一覧がありません。どの規則も同定しないアラートは、どの `locale` でも常に辞退されます。その割り込みに遭遇したステップや `expect` は、ボタンを推測する代わりに、差し出されたボタン名を添えて失敗します。run 自身に決めさせたいプロンプトには、規則を書いてください。
+- **Simulator 専用です。** 言語の固定は `simctl` の操作なので、`runsOn.ios.kind: device` の target は実機が持つシステム言語のまま動きます。この形では、画面に出ている保証のない label を解決してしまいます。実機ではボタンを `sel.label` で指定してください。
+- **割り込み監視も英語を前提としていません。** `systemAlert` のエントリは、監視に届く前に固定した言語向けラベルへ解決されており、その背後にはもう組み込みのフォールバック一覧がありません。どのエントリも同定しないアラートは、どの `locale` でも常に辞退されます。その割り込みに遭遇したステップや `expect` は、ボタンを推測する代わりに、差し出されたボタン名を添えて失敗します。run 自身に決めさせたいプロンプトには、エントリを書いてください。
 
 （実物は [`demos/showcase/scenarios/permission_system_alert.yaml`](../../demos/showcase/scenarios/permission_system_alert.yaml) と [`demos/showcase/scenarios/paste_system_alert.yaml`](../../demos/showcase/scenarios/paste_system_alert.yaml)）
 
 ## permissions（起動前の権限状態）
 
-`systemAlertHandling` は権限プロンプトが**現れた後**にしか反応せず、できるのは tap だけです。権限を**取り消す**ことも、アプリが既知の状態から起動することを保証することもできません。権限があらかじめわかっている場合、`permissions` を使えば**アプリのプロセスが起動する前**にその状態を設定できるため、プロンプトはそもそも現れません。モデルを一切呼ばない、決定的でマシンチェック可能なデバイス操作です（[BE-0276](../../roadmaps/BE-0276-scenario-permission-state/BE-0276-scenario-permission-state-ja.md)）。
+システムアラートガードは権限プロンプトが**現れた後**にしか反応せず、できるのは tap だけです。権限を**取り消す**ことも、アプリが既知の状態から起動することを保証することもできません。権限があらかじめわかっている場合、`permissions` を使えば**アプリのプロセスが起動する前**にその状態を設定できるため、プロンプトはそもそも現れません。モデルを一切呼ばない、決定的でマシンチェック可能なデバイス操作です（[BE-0276](../../roadmaps/BE-0276-scenario-permission-state/BE-0276-scenario-permission-state-ja.md)）。
 
 ```yaml
 - name: profile — camera already granted
@@ -338,9 +503,9 @@ label の対応表が扱う言語は英語と日本語です。それ以外の�
 各エントリは `<service>: grant | revoke` の形を取ります。`<service>` はバックエンドに依存しない小さな語彙で、`location`、`camera`、`microphone`、`contacts`、`photos`、`calendar`、`notifications` のいずれかです。各バックエンドは、この語彙をそれぞれのネイティブな仕組みにマップします。
 
 - **iOS** は `simctl privacy <udid> <grant|revoke> <tcc-service> <bundle>` を実行します。SpringBoard の権限プロンプトが参照するのと同じ TCC（Transparency, Consent, and Control）データベースです。
-- **Android** は `pm grant` / `pm revoke` を実行し、config レベルの `grantPermissions` リスト（[drivers](drivers.md)）を支える仕組みを再利用します。シナリオの `permissions` は、この config レベルの既定の上に重なり、config が許可した権限を取り消すこともできます。
+- **Android** は `pm grant` / `pm revoke` を実行し、config レベルの `subject.grantPermissions` リスト（[drivers](drivers.md)）を支える仕組みを再利用します。シナリオの `permissions` は、この config レベルの既定の上に重なり、config が許可した権限を取り消すこともできます。
 
-**iOS には `notifications` に対応する TCC サービスがありません**（iOS の通知許可は TCC の管轄外です）。そのため、iOS をターゲットにしたシナリオが `notifications` を指定すると、デバイスを一切操作する前の **preflight** が対応していない権限として個別に名指しして失敗します。そのプロンプト自体への対処は、引き続き `systemAlertHandling` が担います。Android の `POST_NOTIFICATIONS` は実行時権限です（API 33 以降）。そのため Android は語彙のすべてに対応します。選んだバックエンドが対応しないサービスの組み合わせも、同じように preflight が個別に名指しして失敗させます。
+**iOS には `notifications` に対応する TCC サービスがありません**（iOS の通知許可は TCC の管轄外です）。そのため、iOS をターゲットにしたシナリオが `notifications` を指定すると、デバイスを一切操作する前の **preflight** が対応していない権限として個別に名指しして失敗します。そのプロンプト自体への対処は、引き続き `systemAlert` のエントリが担います。Android の `POST_NOTIFICATIONS` は実行時権限です（API 33 以降）。そのため Android は語彙のすべてに対応します。選んだバックエンドが対応しないサービスの組み合わせも、同じように preflight が個別に名指しして失敗させます。
 
 `permissions` に対応する XCUITest / Espresso 側のコードはないため、`codegen` はコードを生成する代わりに、サービスごとにラベル付きの `// TODO` を出力します。フィールド自体は、生成したテストの起動処理より前に bajutsu 自身が適用します。
 
@@ -348,16 +513,21 @@ label の対応表が扱う言語は英語と日本語です。それ以外の�
 
 `if` ステップ（[下記](#条件分岐-if)）は、ステップ列の**1 か所**で条件を判定します。分岐したい画面の直前にどのステップが来るかがわかっているときは、これが適切な道具です。画面の出現がどの単一ステップにも結び付かないときは、`if` は向きません。オンボーディングの重ね表示、チュートリアル、アクセシビリティツリーに見える権限プロンプトを考えます。いずれも、アカウントの状態やネットワークの間合い、A/B の振り分け次第で、想定より数ステップ早く、あるいは遅く現れます。まったく現れないこともあります。`if` を 1 つ置いても、その置いた位置にちょうど画面が現れたときしか捕まえられません。それ以外のタイミングはすり抜け、想定していない画面に対して残りのシナリオが失敗します。
 
-このタイミングの読めない画面を扱うのが `interrupts` です。各エントリは `condition`（`if` が使うのと同じアサーション DSL）と、画面を片付ける `steps` を指定します。ランナーは各エントリを**随時**判定し、画面がステップ列のどこに現れても評価して、条件が一致すればエントリの `steps` を実行します。この判定が追加コストなしで済むのは、そのステップのために読んだばかりのツリーに乗れる場合だけです。`wait` のポーリングの各回と、持ち越したツリーがないときに `screenChanged` ポリシー付きステップが読む `before` が、これにあたります。残りの `wait` 以外のステップは、判定のために `driver.query()` を 1 回余分に呼びます。前のステップから持ち越したツリー（BE-0234）を `before` に使う `screenChanged` ポリシー付きステップも同じです。ガードはそれを古い可能性があるものとして読み直すため、同じ 1 回を払います。ハンドラの実行後は、中断されたステップが元の位置から再開します。`wait` は元のタイムアウトに向けてポーリングを続け、操作ステップは自分の操作を試みます。そのため、`if` を置く 1 か所を作者があらかじめ言い当てる必要はありません。
+このタイミングの読めない画面を扱うのが `interrupts` です。このリストは 3 つの形のエントリを持ち、エントリが書くキーで形が決まります。この節では画面の形を説明します。残りの 2 つの形は、OS のプロンプトを扱う [`systemAlert`](#systemalertシステムアラートガード) と、Apple の TipKit のポップオーバーを扱う [`tipKit`](#tipkit操作をブロックする-tipkit-の-tip) です。2 つの形のキーを混ぜたエントリは読み込みに失敗し、エラーは両方の形を示します。
+
+画面のエントリは `condition`（`if` が使うのと同じアサーション DSL）と、画面を片付ける `steps` を指定します。ランナーは各エントリを**随時**判定し、画面がステップ列のどこに現れても評価して、条件が一致すればエントリの `steps` を実行します。この判定が追加コストなしで済むのは、そのステップのために読んだばかりのツリーに乗れる場合だけです。`wait` のポーリングの各回と、持ち越したツリーがないときに `screenChanged` ポリシー付きステップが読む `before` が、これにあたります。残りの `wait` 以外のステップは、判定のために `driver.query()` を 1 回余分に呼びます。前のステップから持ち越したツリー（BE-0234）を `before` に使う `screenChanged` ポリシー付きステップも同じです。ガードはそれを古い可能性があるものとして読み直すため、同じ 1 回を払います。ハンドラの実行後は、中断されたステップが元の位置から再開します。`wait` は元のタイムアウトに向けてポーリングを続け、操作ステップは自分の操作を試みます。そのため、`if` を置く 1 か所を作者があらかじめ言い当てる必要はありません。
 
 ```yaml
 # config.yaml — アプリ全体の既定。このアプリのオンボーディング画面を全シナリオで扱う
 targets:
   myapp:
-    interrupts:
-      - condition: { exists: { id: onboarding.skip } }
-        steps:
-          - tap: { id: onboarding.skip }
+    platform: ios
+    subject: { id: com.example.myapp }
+    hooks:
+      interrupts:
+        - condition: { exists: { id: onboarding.skip } }
+          steps:
+            - tap: { id: onboarding.skip }
 ```
 
 ```yaml
@@ -372,7 +542,7 @@ targets:
     - wait: { for: { id: home.title }, timeout: 10 }   # 途中で差し込み画面が出ても片付けてから、この wait が通る
 ```
 
-**config** レベル（`targets.<name>.interrupts`）に置いた `interrupts` リストはアプリ全体の既定です。シナリオ独自の `interrupts` はその後ろに**連結**され、config のエントリを先に判定します。`systemAlertHandling` が従うのと同じ、config が先でシナリオが後という重ね方です。エントリの `steps` は、`if` の分岐とまったく同じように、囲んでいるシナリオの `vars.*` バインディングを共有します。シナリオ側のハンドラの `steps` では、ほかのステップと同じように[コンポーネント](#再利用とデータ駆動とタグ)を `use` で呼び出せます。展開は run の前に済みます。config レベルのエントリでは `use` を使えません。ターゲットの config はコンポーネント展開を通らないため、`targets.<name>.interrupts` の下に置いた `use` は config の読み込み時に拒否されます。ステップを直接書くか、ハンドラをシナリオ側へ移してください。ハンドラ自身の `steps` が `condition` を解消しないとき（セレクタの誤りや、同じ内容で再描画され続ける画面）は、エントリはステップごとに小さな上限回数までしか発火しません。そのあとはステップが本来の結末（成功、失敗、タイムアウト）へ戻ります。設定を誤ったエントリは、実行をハングさせずに、ステップをきれいに失敗させます。
+**config** レベル（`targets.<name>.hooks.interrupts`）に置いた `interrupts` リストはアプリ全体の既定です。シナリオ独自の `interrupts` はその後ろに**連結**され、config のエントリを先に判定します。どの形のエントリも従う、config が先でシナリオが後という重ね方です（[層の重ね方](#層の重ね方1-つのキーは-3-か所から届く)）。エントリの `steps` は、`if` の分岐とまったく同じように、囲んでいるシナリオの `vars.*` バインディングを共有します。シナリオ側のハンドラの `steps` では、ほかのステップと同じように[コンポーネント](#再利用とデータ駆動とタグ)を `use` で呼び出せます。展開は run の前に済みます。config レベルのエントリでも `use` を使えます。`targets.<name>.hooks.interrupts` の下に置いた `use` は、config の読み込み時に config ファイルのディレクトリを基準に解決します（[再利用](#再利用とデータ駆動とタグ)）。ハンドラ自身の `steps` が `condition` を解消しないとき（セレクタの誤りや、同じ内容で再描画され続ける画面）は、エントリはステップごとに小さな上限回数までしか発火しません。そのあとはステップが本来の結末（成功、失敗、タイムアウト）へ戻ります。設定を誤ったエントリは、実行をハングさせずに、ステップをきれいに失敗させます。
 
 シナリオが2つ以上の[ターゲット](#targets--target複数ターゲットシナリオbe-0428)を宣言すると、`interrupts` の各エントリはそのうち1つを監視します。
 エントリは自身の `target` フィールドで監視先を指定します。`target` を省略したエントリは、プライマリターゲットを監視します。
@@ -404,60 +574,62 @@ config レベルのエントリには `target` を書きません。
 エントリはそれを宣言した `targets.<name>` ブロックにすでに属しているため、`target` を書いてもその名前の繰り返しか矛盾にしかならないからです。
 config の読み込みは、そうしたエントリと、その `steps` にあるステップのどちらに書かれた `target` も拒否します。
 
-判定に使うのは決定的なアサーション DSL であり、モデル呼び出しではありません。そのため `interrupts` は `run` の判定に AI を持ち込みません。BE-0402 以降は `systemAlertHandling` も同じです。両者の違いは届く先です。アラートガードは、アクセシビリティツリーに**見えない**プロセス外のシステムプロンプトを SpringBoard の照会で扱います。一方 `interrupts` は、ツリーに**見える**画面を、マシンチェック可能な条件で扱います。どちらを選ぶかの目安を次に示します。
+判定に使うのは決定的なアサーション DSL であり、モデル呼び出しではありません。そのため `interrupts` は `run` の判定に AI を持ち込みません。BE-0402 以降は `systemAlert` のエントリも同じです。両者の違いは届く先です。アラートガードは、アクセシビリティツリーに**見えない**プロセス外のシステムプロンプトを SpringBoard の照会で扱います。一方 `interrupts` は、ツリーに**見える**画面を、マシンチェック可能な条件で扱います。どちらを選ぶかの目安を次に示します。
 
 | フィールド | 対象 | タイミング | 仕組み |
 |---|---|---|---|
 | `if` | ステップ列の**わかっている**位置に出る画面 | 台本どおりの 1 回の判定 | 決定的（アサーション DSL） |
 | `interrupts` | **予測できない**位置に出る、ツリーに見える画面 | 全体を通して随時判定 | 決定的（アサーション DSL） |
 | `handleSystemAlert` | 途中で tap するつもりの**既知の**プロセス外プロンプト | 作者が置いた明示的なステップ | 決定的（ネイティブなアクセシビリティ tap） |
-| `systemAlertHandling` | **想定外**のプロンプト。プロセス外のものと、プロセス内のパスワード保存シート | ステップや wait がブロックされたときに反応 | XCUITest ではネイティブの SpringBoard 照会（モデルなし、BE-0316 を再利用）と、その照会に映らないシートへのツリー内タップ。どの規則も同定しないプロンプトは失敗理由に書き出す |
+| `interrupts` の `systemAlert` のエントリ | **想定外**のプロンプト。プロセス外のものと、プロセス内のパスワード保存シート | ステップや wait がブロックされたときに反応 | XCUITest ではネイティブの SpringBoard 照会（モデルなし、BE-0316 を再利用）と、その照会に映らないシートへのツリー内タップ。どのエントリも同定しないプロンプトは失敗理由に書き出す |
 | `permissions` | そもそも避けられる OS 権限プロンプト | 起動前、アプリが動き出す前 | 決定的なデバイス操作 |
 
 「この条件をテスト全体を通して随時判定する」に対応するネイティブな XCUITest / Espresso / Playwright の構文はありません。そのため `codegen` はコードを生成する代わりに、フィールドと設定された各条件を名指ししたラベル付きの `// TODO` を出力します。`bajutsu run` が忠実に実行する経路です。
 
-## `before` / `after`（セットアップとティアダウンのフェーズ）
+## `setup` / `cleanup`（セットアップとティアダウンのフェーズ）
 
-`preconditions.setup`（[上記](#preconditions環境準備)）は前置きのシナリオファイルを指名し、ランナーはその前置きのステップを、run が始まる前にこのシナリオ自身の `steps` の先頭へ連結します。連結された前置きのステップは、シナリオ自身のステップと見分けが付きません。レポートは 1 つの連番の並びとして表示し、前置きの失敗も、セットアップ由来であるという印のない、ふつうのステップ失敗として現れます。ティアダウンにいたっては仕組みそのものがありません。後片付けを置ける場所は `steps` の末尾だけです。しかしステップループは最初の失敗で打ち切られる（[run ループ](run-loop.md)）ため、末尾の後片付けのステップが走るのは、それより前のステップがすべて成功した run に限られます。つまり、後片付けをもっとも必要としなかった run でしか走らないのです。テストユーザーを作ってから 3 ステップ先の壊れたボタンで失敗したシナリオは、そのユーザーを残したままになります。
+`steps` の先頭に書いたセットアップは、シナリオ自身のステップと見分けが付きません。レポートは 1 つの連番の並びとして表示し、セットアップの失敗も、セットアップ由来であるという印のない、ふつうのステップ失敗として現れます。ティアダウンにいたっては仕組みそのものがありません。後片付けを置ける場所は `steps` の末尾だけです。しかしステップループは最初の失敗で打ち切られる（[run ループ](run-loop.md)）ため、末尾の後片付けのステップが走るのは、それより前のステップがすべて成功した run に限られます。つまり、後片付けをもっとも必要としなかった run でしか走らないのです。テストユーザーを作ってから 3 ステップ先の壊れたボタンで失敗したシナリオは、そのユーザーを残したままになります。
 
-`before` と `after` は、この 2 つの穴を塞ぎます。`before` は最初に走る順序付きのステップ列で、レポートでは独立したセクションになり、ここで失敗すると `steps` と `expect` をまったく実行せずにシナリオを打ち切ります。`after` はルールのリストで、各ルールは結末（`always`、`success`、`error`）と、その結末のときに走らせる `steps` を組にします。ランナーはシナリオの判定が出てからルールを評価し、失敗した経路も含め、`steps` を抜けるすべての経路でこのフェーズに到達します。どちらのフィールドも通常のステップ文法とアサーション DSL をそのまま使うので、フックのステップはシナリオ自身のステップと同じだけマシンチェック可能です。また、どちらも run の `${vars.*}` バインディングを共有します（[実行時変数](#実行時変数vars)）。
+`setup` と `cleanup` は、この 2 つの穴を塞ぎます。`setup` は最初に走る順序付きのステップ列で、レポートでは独立したセクションになり、ここで失敗すると `steps` と `expect` をまったく実行せずにシナリオを打ち切ります。`cleanup` はルールのリストで、各ルールは結末（`always`、`success`、`failure`）と、その結末のときに走らせる `steps` を組にします。ランナーはシナリオの判定が出てからルールを評価し、失敗した経路も含め、`steps` を抜けるすべての経路でこのフェーズに到達します。どちらのフィールドも通常のステップ文法とアサーション DSL をそのまま使うので、フックのステップはシナリオ自身のステップと同じだけマシンチェック可能です。また、どちらも run の `${vars.*}` バインディングを共有します（[実行時変数](#実行時変数vars)）。
 
 ```yaml
 - name: sign up, then release the account
-  before:
+  setup:
     # シードのエンドポイントは、作成したユーザーの id だけをレスポンスボディで返す
     - http: { method: POST, url: "https://api.test/users", saveBody: userId }
   steps:
     - tap:  { id: login.button }
     - type: { text: "${vars.userId}", into: { id: login.username } }
-  after:
+  cleanup:
     - on: always
       steps:
         - tap: { id: session.logout }
     - on: success
       steps:
         - http: { method: DELETE, url: "https://api.test/users/${vars.userId}" }
-    - on: error
+    - on: failure
       steps:
         - http: { method: POST, url: "https://api.test/diagnostics", body: '{"failed":true}' }
 ```
 
-（[`demos/showcase/scenarios/before_after.yaml`](../../demos/showcase/scenarios/before_after.yaml) 実物）
+（[`demos/showcase/scenarios/setup_cleanup.yaml`](../../demos/showcase/scenarios/setup_cleanup.yaml) 実物）
 
-同じ `on` の値を持つルールは複数書けます。同じ結末を共有するルールは宣言順に走ります。1 つの `capturePolicy` トリガーを 2 つのルールが共有できるのと同じ扱いです。あるルールの `steps` が失敗しても、フェーズは止まりません。残りのルールもそのまま走ります。後片付けの残りを飛ばすことこそ、ティアダウンが避けようとしている結末だからです。その失敗が run の判定に与える影響は、run がそれまでどうなっていたかで変わります。成功していた run では、失敗したルールがそのまま run の failure（`after: step 0 (tap): …`）になります。すでに失敗していた run なら、失敗したルールは元の failure を置き換えず、その後ろへ追記されます。読み手が最初に目にする理由を、後片付けの失敗という症状ではなく元の原因のままとするためです。
+2 つのフィールドは、[BE-0452](../../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md) までは `before` と `after` という名前で、結末の語 `failure` も `error` でした。BE-0452 は、ターゲットのフックとシナリオのフェーズを 1 組の語で呼ぶように揃えました。ローダーは古い名前を読みません。古い名前を書いたシナリオは読み込みに失敗し、エラーが新しい名前を示します。
 
-キャンセルされた run（`SIGTERM`、`serve` Web UI のキャンセルボタン）もこのフェーズに到達し、`after` は `error` の結末として振り分けられます。後片付けのルールには、キャンセルの猶予時間のうち一定の割合が与えられます。その持ち時間を使い切ると残りのルールは打ち切られます。レポートを書き出すシャットダウンの後始末を、猶予時間のうちに収めるためです。
+同じ `on` の値を持つルールは複数書けます。同じ結末を共有するルールは宣言順に走ります。1 つの `capturePolicy` トリガーを 2 つのルールが共有できるのと同じ扱いです。あるルールの `steps` が失敗しても、フェーズは止まりません。残りのルールもそのまま走ります。後片付けの残りを飛ばすことこそ、ティアダウンが避けようとしている結末だからです。その失敗が run の判定に与える影響は、run がそれまでどうなっていたかで変わります。成功していた run では、失敗したルールがそのまま run の failure（`cleanup: step 0 (tap): …`）になります。すでに失敗していた run なら、失敗したルールは元の failure を置き換えず、その後ろへ追記されます。読み手が最初に目にする理由を、後片付けの失敗という症状ではなく元の原因のままとするためです。
 
-### ターゲット設定にも同じ 2 つのフィールドがある
+キャンセルされた run（`SIGTERM`、`serve` Web UI のキャンセルボタン）もこのフェーズに到達し、`cleanup` は `failure` の結末として振り分けられます。後片付けのルールには、キャンセルの猶予時間のうち一定の割合が与えられます。その持ち時間を使い切ると残りのルールは打ち切られます。レポートを書き出すシャットダウンの後始末を、猶予時間のうちに収めるためです。
 
-`targets.<name>.before` と `targets.<name>.after` はシナリオと同じ形を取り、アプリ全体の既定になります。2 つの重ね方は逆向きです。
+### ターゲットのフック：`hooks.setup` と `hooks.cleanup`
+
+`targets.<name>.hooks.setup` はシナリオの `setup` と、`targets.<name>.hooks.cleanup` はシナリオの `cleanup` と同じ形を取り、アプリ全体の既定になります。シナリオ自身のフィールドとの重ね方は、2 つで逆向きです。
 
 | フィールド | 重ね方 | 理由 |
 |---|---|---|
-| `before` | config が先、シナリオが後 | アプリ全体の前置きが用意した状態の上に、このシナリオ自身のセットアップが積み上がる。`interrupts` が従うのと同じ、config が先でシナリオが後という重ね方 |
-| `after` | シナリオが先、config が後 | このシナリオが作ったものを解放してから、アプリ全体のティアダウンがその外側を閉じる。フィクスチャ方式のテストフレームワークのセットアップとティアダウンの対が与える、後から確保したものを先に解放する順序 |
+| `setup` | config（`hooks.setup`）が先、シナリオが後 | アプリ全体のセットアップが用意した状態の上に、このシナリオ自身のセットアップが積み上がる。`interrupts` が従うのと同じ、config が先でシナリオが後という重ね方 |
+| `cleanup` | シナリオが先、config（`hooks.cleanup`）が後 | このシナリオが作ったものを解放してから、アプリ全体のティアダウンがその外側を閉じる。フィクスチャ方式のテストフレームワークのセットアップとティアダウンの対が与える、後から確保したものを先に解放する順序 |
 
-`targets.<name>.before` は `targets.<name>.setup` を置き換えるものではありません。独立したレポートのフェーズになるのは `before` だけであり、`before` フェーズは `setup` が `steps` へ連結する前置きよりも先に走ります。したがって `before` のステップは、前置きが到達する画面に依存させてはいけません。
+フックのステップは `use:` で[コンポーネント](#再利用とデータ駆動とタグ)を呼び出せます。ターゲットの全シナリオで共有するログイン手順は、この形で 1 度だけ記述します。`setup` プレリュードファイルは、ターゲットレベルと `preconditions.setup` の両方で廃止しました（[BE-0452](../../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)）。ターゲットのセットアップを走らせたくないシナリオは、`preconditions.inheritSetup: false` を指定します。その場合も `hooks.cleanup` は走ります。後片付けは、シナリオを抜けるすべての経路で走るからです。
 
 ### どれを選ぶか
 
@@ -465,15 +637,15 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
 
 | フィールド | 走る位置 | レポートでの扱い | 対象 |
 |---|---|---|---|
-| `before` / `after` | 独立したフェーズとして、`steps` の前と判定の後 | 独立した Before / After のブロック | 検証対象のシナリオと読み手が区別できる必要のあるセットアップとティアダウン |
-| `preconditions.setup` | `steps` の先頭へ連結 | 連番のステップの一部 | 複数のシナリオで共有する再利用可能な前置きで、区別が要らない場合 |
+| `setup` / `cleanup` | 独立したフェーズとして、`steps` の前と判定の後 | 独立した setup / cleanup のブロック | 検証対象のシナリオと読み手が区別できる必要のあるセットアップとティアダウン |
+| `use`（コンポーネント） | 呼び出したステップの位置で展開 | 連番のステップの一部 | 複数のシナリオで共有する再利用可能な手順で、区別が要らない場合 |
 | `capturePolicy` | ステップループ全体を通してステップごとに | ステップに紐づく証跡 | ステップが失敗したときに追加の証跡を取ること。ステップを走らせることではない |
 
-`capturePolicy` の `on: { result: error }` トリガーと `after` ルールの `on: error` は、同じ考え方に同じ語を当てたもので、粒度だけが違います。`capturePolicy` のトリガーは、run のどこで起きたかを問わず 1 つのステップの失敗ごとに発火します。`after` のルールはシナリオ全体の判定に対して一度だけ発火します。
+`capturePolicy` の `on: { result: failure }` トリガーと `cleanup` ルールの `on: failure` は、同じ考え方に同じ語を当てたもので、粒度だけが違います。`capturePolicy` のトリガーは、run のどこで起きたかを問わず 1 つのステップの失敗ごとに発火します。`cleanup` のルールはシナリオ全体の判定に対して一度だけ発火します。
 
 ### `codegen` が出力するもの
 
-`before` にはフレームワークの構文が要りません。`codegen` はそのステップを、生成したテスト本体の先頭に `// before` の区切りコメントとともにそのまま展開します。最初に走り、失敗すれば後続を打ち切るという、フェーズの意味そのままだからです。`after` には構文が要り、ターゲットごとに手段が違います。Playwright と UI Automator では、テスト本体を `try` / `catch` / `finally` で包みます。どちらのターゲットもアサーションが例外を投げるので、`catch` は判定の元になったはずの失敗をそのまま捕まえられるからです。XCUITest では代わりに `addTeardownBlock` を 1 つだけ登録します。`XCTAssert` は例外を投げずに失敗を記録するだけなので、結末は `testRun?.hasSucceeded` から読みます（[codegen](codegen.md)）。
+`setup` にはフレームワークの構文が要りません。`codegen` はそのステップを、生成したテスト本体の先頭に `// setup` の区切りコメントとともにそのまま展開します。最初に走り、失敗すれば後続を打ち切るという、フェーズの意味そのままだからです。`cleanup` には構文が要り、ターゲットごとに手段が違います。Playwright と UI Automator では、テスト本体を `try` / `catch` / `finally` で包みます。どちらのターゲットもアサーションが例外を投げるので、`catch` は判定の元になったはずの失敗をそのまま捕まえられるからです。XCUITest では代わりに `addTeardownBlock` を 1 つだけ登録します。`XCTAssert` は例外を投げずに失敗を記録するだけなので、結末は `testRun?.hasSucceeded` から読みます（[codegen](codegen.md)）。
 
 ## セレクタ（要素の指定）
 
@@ -511,6 +683,8 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
 
 ドット形は iOS と Android Compose（どちらもそのまま再現します）に、アンダースコア形は Android Views に一致します。あるアプリの画面に現れる形は常に一方だけなので、決定的なままです。仮に両方の形が同時に画面にあれば、そのセレクタは曖昧として即座に失敗します。OR が 2 件以上の一致を暗黙に 1 つへ絞ることはありません。これにより id 規約はシナリオに**明示的に**残り、別々の id を取り違えかねないドライバ側の暗黙の `.`↔`_` 書き換えに頼りません。showcase の共有シナリオはこれを使い、`showcase-swiftui` / `showcase-compose` / `showcase-views` が同じファイルで走ります。
 
+アンダースコア形は、Views ターゲットが実際に実行するシナリオにだけ書きます。対象は [`demos/showcase/android/Makefile`](../../demos/showcase/android/Makefile) の `E2E_VIEWS_SCENARIOS` と、`showcase-views` を直接駆動するレーンです。それ以外のシナリオでは、どのレーンもアンダースコア形の候補を解決しません。候補にタイポがあってもテストは失敗せず、読み手には必要な候補と使われない候補の区別がつきません。そうしたシナリオにはドット形の id だけを書きます。
+
 ## ステップ文法（`steps`）
 
 各ステップは **ちょうど 1 アクション** と、任意の修飾子（`capture:` / `name:`）からなります。1 ステップに 2 アクション以上を書くと検証エラーになります（`scenario/models/steps.py` の `_one_action`）。
@@ -532,6 +706,7 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
 | `drag` | `drag: { on: <Selector>, direction: up\|down\|left\|right, amount?: <frac> }` | 要素そのものを**ドラッグ**する（ハンドル／仕切り／スライダー）。スクロールではない |
 | `scroll` | `scroll: { to: <Selector>, direction?: up\|down\|left\|right, within?: <Selector>, amount?: <frac>, maxScrolls?: <int> }` | `to` が画面に入るまで（慣性なしに）スクロールし、上限に達したら失敗する。`direction` は**スクロール**方向（既定 `down`）で、`swipe` とは逆向き |
 | `back` | `back: {}` | 1 階層戻ります。各バックエンドがプラットフォームに合った手段（Android のシステム戻るキー、iOS の OS 提供の戻るボタン、web の履歴）を使います（[BE-0210](../../roadmaps/BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity-ja.md)） |
+| `navigate` | `navigate: "<url>"` | 現在のページで URL を開きます。値はターゲットの `baseUrl` を基準に解決します（[後述](#navigate)）。web 専用です（iOS / Android は preflight で失敗します） |
 | `pinch` | `pinch: { sel: <Selector>, scale: <num> }` | 2 本指の拡縮。`scale > 0`（`>1` で拡大, `<1` で縮小） |
 | `rotate` | `rotate: { sel: <Selector>, radians: <num> }` | 2 本指の回転。`>0` で時計回り |
 | `handleSystemAlert` | `handleSystemAlert: { sel: <Selector>, timeout: <sec> }` | iOS SpringBoard の権限プロンプトのボタンを決定的に tap する（[下記](#handlesystemalert決定的なシステムアラートステップ)）。iOS（XCUITest）専用。`sel` は `label` / `labelMatches` / `index` のみ受け付け、run が Simulator を固定するシステム言語に対して解決する。`sel` の代わりに `prompt: notifications\|tracking\|paste` と `choice: grant\|deny` を指定すると、ボタンを意味で指定でき、run がその label を解決する（BE-0320）。label の対応表にない言語では、ボタンの位置で解決する（BE-0445） |
@@ -545,6 +720,7 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
 | `totp` | `totp: { secret, into: { var } }` | RFC 6238 の時刻ベースワンタイムパスワード（2FA）をローカルで生成し `${vars.<var>}` に入れる |
 | `email` | `email: { match: { to?, subject?, subjectMatches? }, extract: { var, bodyMatches }, timeout }` | 設定したメールボックスを一致するメッセージが届くまでポーリングし、コードを `${vars.<var>}` に取り出す |
 | `generate` | `generate: { random\|datetime: {...}, into: { var } }` | 乱数または現在日時の値を実行時に計算し、`${vars.<var>}` に保存する（[後述](#generate実行時に計算する値)） |
+| `eval` | `eval: { from, ops: [...], into: { var } \| { vars: [...] } }` | シナリオがすでに持つ値を分割、結合、絞り込みなどで変換し、`${vars.*}` に保存する（[後述](#eval変数に入った値の変換)） |
 | `manual` | `manual: { label: "...", bypass?: "..." }` | `record` 中に記録される人による操作の引き取り（BE-0185）。決定的な実行時の等価物がないため、`run` 時に**明示的に失敗する**——合格を偽装しない |
 | `background` | `background: {}` | アプリをバックグラウンドへ送る（Home ボタン） |
 | `foreground` | `foreground: {}` | ステップのターゲットのアプリを、終了させずに前面へ出す。動いていないアプリは、終了を除いて `relaunch` と同じように起動し、準備が整うまで待つ。iOS と Android |
@@ -591,6 +767,33 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
 
 ネイティブの HTML `<select>` は、ドロップダウンがページの要素ツリーに含まれないため、座標タップでは値を決定的に切り替えられません。`selectOption` は、ほかのアクションと同じ一意解決のコアで `<select>` を解決したうえで、表示ラベルではなく option の **value** を指定して値を設定し、`change` イベントを発火します。これにより、ユーザーが選んだときと同じようにページが反応します。指定する value は `value` アサーションが `<select>` から読み取る値と一致するので、選択結果はそのまま検証できます。これは web 専用のアクションです。`<select>` は iOS や Android にネイティブの対応物がないため、これらのバックエンドは何もせずに済ませるのではなく、「サポート外のアクション」という明確な理由でステップを失敗させます。
 
+### `navigate`
+
+```yaml
+- navigate: /settings                       # ターゲットの baseUrl を基準に解決する
+- navigate: https://idp.example.com/login   # 絶対 URL は書いたとおりに使う
+- navigate: "/items/${vars.itemId}"         # ${...} トークンはほかのステップのフィールドと同じく展開される
+```
+
+`navigate` は、シナリオの途中で URL を開くステップです（[BE-0464](../../roadmaps/BE-0464-web-navigate-step/BE-0464-web-navigate-step-ja.md)）。
+どのコントロールからもリンクされていないページ（メールのリンク、共有アイテムの URL など）を開くときに使います。
+UI をたどらないと届かない深いページへ直接移るときや、リダイレクトを検証するときにも使います。
+値はマッピングではなく、ただの文字列です。
+値はブラウザがリンクを解決するのと同じ規則（`urljoin`）で、ターゲットの `baseUrl` を基準に解決します。
+`/settings` は `baseUrl` のパスを置き換え、`settings` はそのパスを基準に解決します。
+`http` / `https` の絶対 URL は、別のオリジンであっても書いたとおりに使います。
+それ以外のスキーム（`javascript:`、`file:`、`data:`）は拒否します。
+リテラルの値はシナリオの読み込み時に拒否します。
+`${...}` トークンを含む値は、実行時に展開した後で検査し、規則に反すればステップを失敗させます。
+
+ステップは、ページの `load` イベントが発火した時点で戻ります。
+レスポンスのステータスは読まないので、404 のページでも読み込めればステップは成功し、判定は次の `assert` や `wait` が下します。
+Cookie とストレージは保たれるので、`navigate` はセッションを初期化せずに続けます。
+存在しないホストやタイムアウトのように、URL そのものが原因の失敗は、ブラウザのメッセージを付けてステップを失敗させます。
+`navigate` には `urlNavigation` ケーパビリティが必要で、これを公開するのは web バックエンドだけです。
+そのため iOS や Android で `navigate` を使うシナリオは、デバイスを確保する前の preflight で失敗します。
+`web:` ブロックの中に置いた `navigate` も同じく preflight で失敗します。
+
 ### `setPickerValue`
 
 ```yaml
@@ -632,7 +835,7 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
       - wait: { for: { id: pay.confirmation }, timeout: 10 }
 ```
 
-`web` は `within` をネイティブに解決し、ちょうど 1 つの `WKWebView` ホストを指します。入れ子の `steps` は、アプリのネイティブなアクセシビリティツリーではなく、その WebView の正規化された DOM（`data-testid` → `Element.identifier`）を対象にします。web コンテンツをネイティブアプリに埋め込んだハイブリッド画面向けの構造です（[BE-0037](../../roadmaps/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support-ja.md)）。ブロックの `steps` を終えると、制御はネイティブドライバーに戻ります。入れ子の `steps` は、`if` や `forEach` の分岐と同じく、囲むシナリオの `vars.*` を共有します。`capture` / `extract` 修飾子は `web` ステップ自体には使えません。WebView bridge の設定（`BAJUTSU_WEBVIEW_PORT`）が必要で、未設定のときは何もせず済ませるのではなくステップを明確に失敗させます。この最初の実装は、ブロック内の `tap` / `tapPoint` / `doubleTap` / `type` / `wait` / `assert` に対応しています。`longPress` / `swipe` / `drag` / `clear` / `delete` / `select` / `copy` / `selectOption` / `scroll` / `back` / `pinch` / `rotate` / `handleSystemAlert` / `setPickerValue` はそこに届かず、いずれも「web コンテキストは非対応」という明確な理由で失敗します。
+`web` は `within` をネイティブに解決し、ちょうど 1 つの `WKWebView` ホストを指します。入れ子の `steps` は、アプリのネイティブなアクセシビリティツリーではなく、その WebView の正規化された DOM（`data-testid` → `Element.identifier`）を対象にします。web コンテンツをネイティブアプリに埋め込んだハイブリッド画面向けの構造です（[BE-0037](../../roadmaps/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support-ja.md)）。ブロックの `steps` を終えると、制御はネイティブドライバーに戻ります。入れ子の `steps` は、`if` や `forEach` の分岐と同じく、囲むシナリオの `vars.*` を共有します。`capture` / `extract` 修飾子は `web` ステップ自体には使えません。WebView bridge の設定（`BAJUTSU_WEBVIEW_PORT`）が必要で、未設定のときは何もせず済ませるのではなくステップを明確に失敗させます。この最初の実装は、ブロック内の `tap` / `tapPoint` / `doubleTap` / `type` / `wait` / `assert` に対応しています。`longPress` / `swipe` / `drag` / `clear` / `delete` / `select` / `copy` / `selectOption` / `scroll` / `back` / `navigate` / `pinch` / `rotate` / `handleSystemAlert` / `setPickerValue` はそこに届かず、いずれも「web コンテキストは非対応」という明確な理由で失敗します。
 
 ### `app`（別アプリのUIを操作する。iOS限定）
 
@@ -680,8 +883,8 @@ assertするまで、新しいステップもランナーの変更も要りま�
 シナリオが所有しないOSの画面を扱うので、次の制約があります。
 
 - **実測したのはiOS Simulatorだけです。** iOS 26.5で確かめました。実機とほかのランタイムは確かめていません。
-- **`erase: true`でレイアウトを固定します。** 長押しはアイコングリッドの中心に当たるので、グリッドの中心は空いた壁紙でなければなりません。eraseと再インストールのあと、SpringBoardはテスト用アプリをインストールしたページを開きます。このページは下半分が空いています。eraseは前の実行が追加したウィジェットも消すので、新しいウィジェットへのassertが一意に保たれます。
-- **`preconditions.locale`で言語を固定します。** ラベルはすべてSpringBoard自身の文言です。アイコンの`identifier`でさえローカライズ済みの名前になります（英語では`Calendar`、日本語では`カレンダー`）。
+- **`preconditions.subject.reinstall: erase`でレイアウトを固定します。** 長押しはアイコングリッドの中心に当たるので、グリッドの中心は空いた壁紙でなければなりません。eraseと再インストールのあと、SpringBoardはテスト用アプリをインストールしたページを開きます。このページは下半分が空いています。eraseは前の実行が追加したウィジェットも消すので、新しいウィジェットへのassertが一意に保たれます。
+- **`preconditions.device.ios.locale`で言語を固定します。** ラベルはすべてSpringBoard自身の文言です。アイコンの`identifier`でさえローカライズ済みの名前になります（英語では`Calendar`、日本語では`カレンダー`）。
 - **検索結果の行はツリーに現れません。** ギャラリーの検索欄に文字が入ると、SpringBoardのスナップショットは結果の一覧を空のコンテナとして返します。行は画面に表示されています。検索欄の下の決まった位置にある先頭の行を、`tapPoint`でタップします（iPhone 17 Proでは`{ x: 0.5, y: 0.29 }`）。
 - **サイズの選択には`swipe`ではなく`drag`を使います。** サイズのカルーセルは、弾くように動かしたときだけページが切り替わります。`swipe`は慣性のないスクロールなので、元のページへ戻ってしまいます。
 - **ホストアプリの初回起動でプロンプトが出ることがあります。** Calendarは位置情報と通知の許可を求めます。順序は一定でなく、2つが同時に出ることもあります。その場合、押すべきボタンが1つに決まりません。`widget.yaml`はプロンプトを残したままにし、次の実行の`erase`で消します。
@@ -695,7 +898,7 @@ assertするまで、新しいステップもランナーの変更も要りま�
 
 `{on,direction}` と `{from,to}` は、**どちらか一方だけ**でなければなりません（混在や片側の欠落は検証エラーになります）。
 
-**方向指定**形式の意味は「スクロール」であり、各バックエンドは実際にスクロールを起こすプリミティブで実現します。iOS や Android では OS の本物のドラッグで、web ではマウスドラッグがページをスクロールしないため wheel イベント（デスクトップ）かタッチドラッグ（モバイルの [`deviceMode`](drivers.md#playwrightweb)）で実現します（BE-0227）。**座標**形式は、それ自体を目的とする素のポインタドラッグ（canvas やマップのパン、ドラッグハンドル）であり、どのバックエンドでも素のドラッグの最終手段です。
+**方向指定**形式の意味は「スクロール」であり、各バックエンドは実際にスクロールを起こすプリミティブで実現します。iOS や Android では OS の本物のドラッグで、web ではマウスドラッグがページをスクロールしないため wheel イベント（デスクトップ）かタッチドラッグ（モバイルの [`runsOn.browser.emulate`](drivers.md#playwrightweb)）で実現します（BE-0227）。**座標**形式は、それ自体を目的とする素のポインタドラッグ（canvas やマップのパン、ドラッグハンドル）であり、どのバックエンドでも素のドラッグの最終手段です。
 
 ### `drag`
 
@@ -841,6 +1044,18 @@ assertするまで、新しいステップもランナーの変更も要りま�
 
 `totp` は [RFC 6238](https://datatracker.ietf.org/doc/html/rfc6238) の時刻ベースワンタイムパスワードを、共有 `secret`（base32。YAML に直書きせず `${secrets.*}` に置く）と現在時刻からローカルで計算し、現在のコードを `${vars.<var>}` に保存します。後続の `type` / `assert` で使えます。スクリプトのエスケープハッチも LLM も使わずに 2FA サインインを自動化でき、値は secret と時刻の決定的な関数です（[BE-0046](../../roadmaps/BE-0046-otp-email-steps/BE-0046-otp-email-steps-ja.md)）。
 
+コードが有効なのは、時刻を 30 秒ごとに区切った1つのウィンドウの間だけです。ウィンドウの終わり際に `totp` を実行すると、後続の `type` と `tap` で送信する前にコードが期限切れになることがあります。この失敗を防ぐには、`minRemaining` に後続のステップが必要とする秒数を指定します。
+
+```yaml
+- totp: { secret: "${secrets.TOTP_SEED}", into: { var: code }, minRemaining: 10 }
+```
+
+現在のウィンドウの残りが `minRemaining` 秒より少ないとき、ステップは次のウィンドウが始まるまで待ってからコードを生成します（[BE-0474](../../roadmaps/BE-0474-totp-window-alignment/BE-0474-totp-window-alignment-ja.md)）。値は 1 から 30 までの整数で、省略すると待ちません。
+
+待機は、作成者が決めた長さで止まるのではなく、時計が決めるウィンドウの境界で終わります。そのため待ち時間は1ウィンドウ以内に収まり、決定性監査も `fixed-sleep` として挙げません。実行中のログはこのステップを `totp (≥10s left)` と表示し、待った時間はレポートのステップの所要時間に現れます。
+
+待機の途中で壁時計が飛んだ場合（Network Time Protocol（NTP）による補正など）も、ステップは成功として扱われます。その代わり、レポートのステップ行に警告が残り、飛んだ秒数と残り秒数を示します。後のサインインが期限切れのコードで失敗したとき、この警告が原因の手がかりになります。
+
 ### `email`（メールで届くコードをメールボックスから取得）
 
 ```yaml
@@ -851,7 +1066,7 @@ assertするまで、新しいステップもランナーの変更も要りま�
 - type: { text: "${vars.code}", into: { id: auth.otp } }
 ```
 
-`email` はメールで届く 2FA / 検証コードを待ちます。汎用 HTTP メールボックス（`targets.<name>.mailbox` で設定。[configuration](configuration.md#mailboxemail-ステップ) 参照）をポーリングし、**ステップ開始後に届いた**メッセージのうち `match` を満たすものが現れるまで待って、その本文から `bodyMatches` の正規表現（最初のキャプチャグループ、無ければマッチ全体）で値を `${vars.<var>}` に取り出します。待機は **`timeout` 必須の条件待機**です（固定 sleep なし）。タイムアウト、本文に正規表現が当たらない一致メッセージ、到達不能 / 2xx 以外のメールボックスは、いずれもクリーンなステップ失敗で、黙って誤った値を返すことはありません。対象はステップ開始より新しいメールだけ（メッセージ id で判定するので、以前の run の古いコードには一致しません）で、新着の一致が複数あれば最新を採ります。決定的で LLM 非依存、エンドポイントと認証情報は config 参照の `${secrets.*}` に置くのでシナリオはアプリ非依存のままです（[BE-0046](../../roadmaps/BE-0046-otp-email-steps/BE-0046-otp-email-steps-ja.md)）。
+`email` はメールで届く 2FA / 検証コードを待ちます。汎用 HTTP メールボックス（`targets.<name>.services.mailbox` で設定。[configuration](configuration.md#mailboxemail-ステップ) 参照）をポーリングし、**ステップ開始後に届いた**メッセージのうち `match` を満たすものが現れるまで待って、その本文から `bodyMatches` の正規表現（最初のキャプチャグループ、無ければマッチ全体）で値を `${vars.<var>}` に取り出します。待機は **`timeout` 必須の条件待機**です（固定 sleep なし）。タイムアウト、本文に正規表現が当たらない一致メッセージ、到達不能 / 2xx 以外のメールボックスは、いずれもクリーンなステップ失敗で、黙って誤った値を返すことはありません。対象はステップ開始より新しいメールだけ（メッセージ id で判定するので、以前の run の古いコードには一致しません）で、新着の一致が複数あれば最新を採ります。決定的で LLM 非依存、エンドポイントと認証情報は config 参照の `${secrets.*}` に置くのでシナリオはアプリ非依存のままです（[BE-0046](../../roadmaps/BE-0046-otp-email-steps/BE-0046-otp-email-steps-ja.md)）。
 
 ### `generate`（実行時に計算する値）
 
@@ -899,6 +1114,97 @@ run ごとに違うのは生成された値だけで、これは `totp` の時�
 `generate` はアプリではなくランナーで動くため、どの codegen ターゲットもラベル付きの `// TODO` として
 描画します。
 
+### `eval`（変数に入った値の変換）
+
+```yaml
+- tap: { id: cart.open }
+  extract:
+    items: { sel: { id: cart.summary }, prop: label }   # "Apple, banana ,Cherry"
+
+- eval:
+    from: "${vars.items}"
+    ops:
+      - split: { by: "\\s*,\\s*", regex: true }
+      - filter: { notEmpty: true }
+      - sort
+    into: { var: sortedItems }                           # ["Apple","Cherry","banana"]
+
+- eval: { from: "${vars.sortedItems}", ops: [json, { pick: first }], into: { var: firstItem } }
+
+- eval:
+    from: "Taro Yamada"
+    ops: [{ split: " " }]
+    into: { vars: [givenName, familyName] }              # givenName=Taro, familyName=Yamada
+
+- eval:
+    from: "${secrets.API_TOKEN}"
+    ops: [{ substring: { start: 0, end: 8 } }]
+    into: { var: tokenPrefix }                           # 以後のすべての成果物でマスクされる
+```
+
+`eval` は、シナリオがすでに持っている値を変換し、結果を `${vars.*}` に保存します。ターゲットが表示する値と、
+後のステップが必要とする値は一致しないことがよくあります。たとえばカートのラベルを並べ替えた品目にしたい場合や、
+`Order #A-1042 confirmed` というバナーから `A-1042` だけを取り出したい場合です。`eval` がなければ、
+作者は文字列全体を検証するか、変換をシナリオ外のスクリプトへ移すしかありません
+（[BE-0472](../../roadmaps/BE-0472-eval-step-value-operations/BE-0472-eval-step-value-operations-ja.md)）。
+
+名前に反して、このステップは任意のコードを実行しません。`ops` は固定の語彙から選び、シナリオが操作を追加することは
+できません。`from` は通常の `${...}` 展開が効く文字列なので、2つの変数をつなぐだけなら操作は要りません
+（`from: "${vars.a}-${vars.b}"`）。`ops` の各要素は、1つ前の要素の結果に対して順に適用されます。
+引数のない操作は名前だけで書き、それ以外の操作はキーを1つだけ持つマッピングで書きます。
+
+| 操作 | 書き方 | 入力 → 出力 | 動作 |
+|---|---|---|---|
+| `split` | `split: ","` または `split: { by, regex? }` | 文字列 → リスト | 区切り文字で分割する。`regex` が true なら正規表現で分割し、パターンのキャプチャグループは結果に含めない |
+| `join` | `join: "-"` | リスト → 文字列 | 要素を区切り文字でつなぐ。空の区切り文字も使える |
+| `filter` | `filter: { matches \| equals \| contains \| notEmpty, not? }` | リスト → リスト | ちょうど1つの条件を満たす要素を残す。`not: true` なら満たさない要素を残す |
+| `pick` | `pick: first`、`last`、または添字 | リスト → 文字列 | 要素を1つ取り出す。添字は 0 から数える |
+| `count` | `count` | リスト → 文字列 | 要素数を10進数の文字列で返す |
+| `sort` | `sort`、`sort: desc`、または `sort: { order, numeric? }` | リスト → リスト | Unicode のコードポイント順に並べる。`numeric: true` なら数値順に並べる。`desc` は `sort` の後に `reverse` を適用した結果と同じ |
+| `unique` | `unique` | リスト → リスト | 重複を除き、最初に現れた要素を残す |
+| `reverse` | `reverse` | リスト → リスト | 順序を逆にする |
+| `json` | `json` | 文字列 → リスト | JSON 配列を解析する。文字列でない要素はコンパクトな JSON テキストにする |
+| `regex` | `regex: { pattern, group? }` | 文字列 → 文字列 | 最初の一致のうち、キャプチャグループ `group` を返す。`group` を省略すると 0（一致全体）になる |
+| `replace` | `replace: { find, with, regex? }` | 文字列 → 文字列 | 一致する箇所をすべて置き換える |
+| `substring` | `substring: { start, end? }` | 文字列 → 文字列 | `start` から `end` の手前までの文字を返す。どちらも 0 から数える |
+| `trim` | `trim` | 文字列 → 文字列 | 前後の空白を取り除く |
+| `case` | `case: lower` または `upper` | 文字列 → 文字列 | 大文字と小文字を変換する |
+
+結果は `into` に保存します。
+
+- **`into: { var }`**：値を1つ保存します。文字列はそのまま保存します。リストは `["a","b"]` のような
+  コンパクトな JSON 配列テキストとして保存し、後の `eval` で `json` を使うとリストに戻せます。
+- **`into: { vars: [...] }`**：リストの結果を、先頭から順に複数の変数へ振り分けます。最初の要素は最初の名前に、
+  2番目の要素は2番目の名前に入ります。リストが `vars` より長ければ、余った要素は使いません。リストが短ければ
+  ステップを失敗させます。値の入らない変数を残すと、後のステップで無関係な不一致として表面化するからです。
+
+ローダは、実行の前にステップを検査します。`from` から最後まで、値が文字列かリストかを追跡し、型の合わない操作が
+あればロード時のエラーにして、その操作を名指しします。ほかにも、空の `ops`、空の `split` 区切り文字、条件が
+0個または複数の `filter`、負の添字、未知の `sort` の順序を拒否します。文字列の結果に対する `into.vars` と、
+不正な正規表現も同じく拒否します。自由文と添字の引数には `${vars.*}` や `${secrets.*}` のトークンを書けます。トークンを含む
+引数はロード時に判定できないので、実行時に置換してから同じ検査を適用します。決まった値から選ぶ引数
+（`sort` の `order` と `case`）と、フラグの `regex`、`not`、`numeric` にはリテラルだけを書けます。
+
+次の場合、ステップは実行時に失敗し、代わりの値を使いません。
+
+- `regex` が一致しない、または指定した `group` がない
+- 添字や `substring` の範囲が値の外にある
+- `json` が JSON 配列でないテキストを読んだ
+- `numeric` の並べ替えで数値でない要素に出会った
+- `${...}` のトークンに値が束縛されていない
+- 値が 1,048,576 文字または 10,000 要素を超えた
+
+失敗メッセージは操作の位置と名前を示し、値そのものは引用しません。失敗したステップは変数に何も書き込みません。
+生成した値は、`generate` と同じくマニフェストとレポートに記録します。
+
+secret から導いた結果は、それ自体も secret として扱います。入力が secret とみなされるのは、`from` か引数に
+`${secrets.*}` が含まれるときです。以前の `eval` が secret とした `${vars.*}` が含まれるときも同じです。
+このとき run は、その結果をシナリオのそれ以降の証拠でマスクする値に加えます。あわせて、保存先の変数を
+secret として記録します。マスクはそのステップ自身のレポート行にも
+及びます。例外は `count` だけです。要素数には入力の文字が1文字も含まれないからです。ステップより前に書いた
+証拠は書き換えません。失敗理由と生成した値もマスクするので、マニフェスト、レポート、CI の注記にその値は現れません。どの codegen ターゲットも `eval` を
+ラベル付きの `// TODO` として出力します。このステップはアプリではなくランナーの中で動くからです。
+
 ### `manual`
 
 `record` 中に記録される人による操作の引き取りです。
@@ -929,7 +1235,7 @@ iOS では、これらのステップは `setLocation` / `push` と同じく `si
 - iOS でデバイスグループに入っていない場合、動いているアプリはまったく待たずに復帰します。必要なら直後に具体的な要素を待ってください。
 - `installApp` の直後のように動いていないアプリは、`relaunch` と同じように起動します。`foreground` はその後、アプリの準備が整うまで条件待ちをします。
 - Android と、デバイスグループ内の iOS では、動いているアプリにも条件待ちをします。アプリが前面に来なければ、ステップは `AppNotInFront` で失敗します。
-  この待ちは、ターゲットの `readyWhen` ではなく、そのアプリ自身の画面が出るのを待ちます。`readyWhen` は
+  この待ちは、ターゲットの `subject.startWhen` ではなく、そのアプリ自身の画面が出るのを待ちます。`subject.startWhen` は
   起動直後の画面を指しますが、再開したアプリは離れたときの画面に戻るからです。
 
 `setClipboard` はペースト操作のためペーストボードに値を投入します（[BE-0052](../../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)）。
@@ -1013,6 +1319,14 @@ run を止めます。ファイルが外したターゲットを選ぶことは�
 
 宣言済みターゲットが1つだけのとき、ステップは `target` を省略できます。そのターゲットを直接名指し
 してもかまいません。どちらの書き方でも挙動は同じです。
+
+シナリオは、自分を実行するマシンへの要件を宣言しません。Bajutsu がシナリオから要件を算出します。要件は、
+宣言した各ターゲットが解決するドライバと、宣言したターゲットの数です。数はすべてのドライバをまたいで
+合計するので、Simulator のターゲットとブラウザのターゲットは合わせて2つと数えます。`bajutsu run` は
+デバイスを操作する前に、この要件をマシンの [worker 能力ファイル](drivers.md#worker-の能力検査be-0450)と
+ホストの OS に照らします（[BE-0450](../../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability-ja.md)）。このマシンで実行できないシナリオは、
+`worker-capability-unsupported:` で始まり、ドライバか上限を名指しする理由で失敗します。残りのシナリオは
+実行します。
 
 `${vars.*}` は、1回の run の中で宣言済みのすべてのターゲットをまたいで持ち越されます。これは
 [runtime variables](#ランタイム変数-vars) が指すのと同じ、`extract` が生成する変数です。あるターゲット
@@ -1104,17 +1418,17 @@ run を止めます。ファイルが外したターゲットを選ぶことは�
 
 | そのターゲット自身の config を読むもの | 理由 |
 |---|---|
-| `before` / `after` のライフサイクルステップ | 各ターゲット自身のものが宣言順に畳み込まれ、そのターゲット名が刻まれます。アプリ側のティアダウンと web 側のティアダウンが、それぞれ正しいドライバに対して走ります |
-| `mailbox` | `email` や `totp` のステップは、自分のターゲットが設定した受信箱をポーリングします |
-| `locale`、`launchEnv`、`capture`、`interrupts` | どれも run ではなく、テスト対象アプリの性質です |
-| `baselines` / `schemas` / `goldens` | `visual` や `golden` のアサーションは、そのターゲットが自分でディレクトリを設定していればそちらと、していなければ run のものと比較します |
+| `hooks.setup` / `hooks.cleanup` のライフサイクルステップ | 各ターゲット自身のものが宣言順に畳み込まれ、そのターゲット名が刻まれます。アプリ側のティアダウンと web 側のティアダウンが、それぞれ正しいドライバに対して走ります |
+| `services.mailbox` | `email` や `totp` のステップは、自分のターゲットが設定した受信箱をポーリングします |
+| `runsOn.ios.locale`、`subject.launch.env`、`evidence.capture`、`hooks.interrupts` | どれも run ではなく、テスト対象アプリの性質です |
+| `paths.baselines` / `paths.schemas` / `paths.goldens` | `visual` や `golden` のアサーションは、そのターゲットが自分でディレクトリを設定していればそちらと、していなければ run のものと比較します |
 | バックエンドの capability | 各ターゲットのステップは、デバイスを1つも確保する前に、そのターゲット自身のバックエンドに対して検査されます。片方のプラットフォームだけが対応する構文は、正しいほうを落とします |
 
 フック自身の `if` や `forEach` のステップが `target` を省略すると、そのフック自身のターゲットに
 解決されます。シナリオの `primaryTarget` には解決されません。上で述べた、入れ子の深さによらない
 省略時の解決は、シナリオ自身のステップにだけ働きます。
 
-run 全体で共有されるものが2つあります。`redact` の秘密情報の集合は、宣言済みの各ターゲット自身の秘密情報
+run 全体で共有されるものが2つあります。`redact` の秘密情報の集合は、宣言済みの各ターゲット自身の秘密情報（`evidence.secrets`）
 の和集合を取ります。その和集合が、すべてのターゲットの証跡をマスクします。広くマスクしすぎるほうが安全な
 誤りだからです。run ディレクトリは run 単位の成果物で、もともとターゲットごとではありません。
 
@@ -1136,19 +1450,17 @@ run へ広げるのは、別の作業です。
 エントリのことで、そのメンバーは1台のデバイスを共有します。
 
 config は変わりません。1つのアプリの2つのビルドは、2つのターゲットになります。2つのターゲットは
-バンドル識別子（Android ではパッケージ）を共有し、それぞれ自分の `appPath` を持ちます。コンパニオン
+`subject.id`（バンドル識別子。Android ではパッケージ）を共有し、それぞれ自分の `subject.path` を持ちます。コンパニオン
 アプリは、独立した1つのターゲットです。
 
 ```yaml
 targets:
   showcase-previous:                      # シナリオの開始時に動かす旧ビルド
-    backend: xcuitest
-    bundleId: com.example.showcase
-    appPath: build/Showcase-1.app
+    platform: ios
+    subject: { id: com.example.showcase, path: build/Showcase-1.app }
   showcase:                               # 現行ビルド
-    backend: xcuitest
-    bundleId: com.example.showcase
-    appPath: build/Showcase-2.app
+    platform: ios
+    subject: { id: com.example.showcase, path: build/Showcase-2.app }
 ```
 
 `targets` に書いた素の名前は、メンバーが1つだけのグループとして扱われます。配列を書かないシナリオは、
@@ -1166,7 +1478,7 @@ targets:
 
 | メンバー | 開始時の扱い |
 |---|---|
-| プライマリ（最初のグループの最初のメンバー） | `appPath` をインストールして起動します。`installs` への記載は任意です |
+| プライマリ（最初のグループの最初のメンバー） | `subject.path` をインストールして起動します。`installs` への記載は任意です |
 | メンバーが1つのグループ（素の名前） | 複数ターゲットシナリオと同じく、インストールして起動します |
 | `installs` に書いたメンバー | インストールして起動します |
 | 2つ以上のメンバーを持つグループの、それ以外のメンバー | **後から入るメンバー**です。`installApp` ステップと `foreground` ステップが立ち上げるまで、インストールも起動もしません |
@@ -1210,7 +1522,7 @@ targets:
 `expect` エントリも同じです。
 
 このステップが変えるのはルーティングだけです。デバイスの確保、証跡のディレクトリ、クラッシュからの
-復旧は、宣言したプライマリのままです。`before` と `after` のフェーズでも、省略した `target` は宣言した
+復旧は、宣言したプライマリのままです。`setup` と `cleanup` のフェーズでも、省略した `target` は宣言した
 プライマリに解決します。後片付けは run がどこで止まっても走る必要があるためです。
 
 `setPrimaryTarget` を書けるのは、シナリオのトップレベルの `steps` だけです。ローダーは、次の構文の
@@ -1219,7 +1531,7 @@ targets:
 - `if` や `forEach`
 - ターゲットグループ、`web:`、`app:`
 - `interrupts` エントリ
-- `before` や `after`
+- `setup` や `cleanup`
 
 この配置の制限があるので、ローダーはステップを順にたどって現在のプライマリを追えます。コンポーネントの
 中の `setPrimaryTarget` は、そのコンポーネントを呼ぶ `use:` や `group:` がトップレベルにあれば有効です。
@@ -1257,11 +1569,11 @@ targets:
 `run` は終了コード 2 で終わります。拒むのは次の場合です。
 
 - 1つのグループのメンバーの間で、プラットフォーム、バックエンド、デバイスの経路、実効 `locale` の
-  いずれかが異なります。デバイスの経路とは `deviceProvider`、`device`、`xcuitest.deviceType` のことです。
+  いずれかが異なります。デバイスの経路とは、デバイスプロバイダ（`--worker-config` で指定する `appium` 環境）と `runsOn.ios.kind` のことです。
 - 2つ以上のメンバーを持つグループに web ターゲットがあります。ブラウザには共有するデバイスがないためです。
 - 1つのグループで開始時に動かす2つのメンバーが、識別子を共有しています。2つ目のインストールが
   1つ目を置き換えてしまいます。
-- `installApp.from` のターゲットに `appPath` がないか、その `appPath` が存在しません。Git から
+- `installApp.from` のターゲットに `subject.path` がないか、その `subject.path` が存在しません。Git から
   取得する config では、プライマリと同じく必要なときにバイナリをビルドします。
 - `setPrimaryTarget` が、先行する `installApp` で退いたメンバーを指しています。
 
@@ -1372,6 +1684,7 @@ showcase のデモは、この 2 つの流れを iOS と Android の両方で実
 | `responseSchema` | 捕捉したレスポンスボディが JSON Schema に適合するか検証（`--network` が必要） | `responseSchema: { request: { urlMatches: "/api/items" }, schema: items.json }` |
 | `visual` | 画面が baseline 画像に一致する（ビジュアルリグレッション） | `visual: { baseline: home.png, threshold: 0.02 }` |
 | `clipboard` | デバイスのペーストボードが一致する（`simctl pbpaste` で読み戻す） | `clipboard: { equals: "COUPON123" }` / `clipboard: { matches: "\\d{6}" }` |
+| `attribute` | 要素の HTML 属性が一致する、または属性がない（web のみ） | `attribute: { sel: { id: docs.link }, name: href, equals: /docs }` / `attribute: { sel: { id: panel }, name: aria-busy, absent: true }` |
 
 - `exists` はセレクタを **インラインで**書きます（`{ id: ... }` を直書き）。`negate` は任意です。
 - `value` / `label` は `sel:` と、`equals` / `contains` / `matches` の **いずれか 1 つ**を指定します。
@@ -1383,8 +1696,9 @@ showcase のデモは、この 2 つの流れを iOS と Android の両方で実
 - `responseSchema` は捕捉した **レスポンスボディが JSON Schema に適合する**かを検証します（[下記](#responseschemaレスポンスの-json-schema)）。`--network` 実行フラグが必要です。
 - `visual` はスクリーンショットを baseline 画像とピクセル比較します（[下記](#visualビジュアルリグレッション)）。
 - `clipboard` はデバイスのペーストボードを `simctl pbpaste` で読み戻し、`equals` / `matches`（正規表現）の **いずれか 1 つ**を検証します。`setClipboard` の読み戻し側で、「コピー」操作の検証に使います。デバイスごとの制御チャネルが必要なため、fake ドライバや並列実行では利用できず、その場合はクリーンに失敗します（[BE-0052](../../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)）。
+- `attribute` は `sel:` と `name:` に加えて、`equals` / `contains` / `matches` / `absent: true` の **いずれか 1 つ**を取ります。詳細は[後述](#attribute要素の-html-属性)と [BE-0466](../../roadmaps/BE-0466-web-attribute-assertion/BE-0466-web-attribute-assertion-ja.md) を参照してください。属性は web（Playwright）バックエンドから必要なときに読み取ります。ほかのバックエンドでは、デバイスの確保前に失敗します。
 
-> **ロケール注意**: `label`/`value` の文字列比較や、可視テキストを見るアサーションは翻訳で壊れます。これらは config の固定 locale を前提に書き、セレクタ自体は `id` で書いてください。
+> **ロケール注意**: `label`/`value` の文字列比較や、可視テキストを見るアサーションは翻訳で壊れます。これらはターゲットの固定 `runsOn.ios.locale` を前提に書き、セレクタ自体は `id` で書いてください。
 
 ### `request`（ネットワークアサーション）
 
@@ -1394,11 +1708,13 @@ showcase のデモは、この 2 つの流れを iOS と Android の両方で実
 |---|---|---|
 | `method` | str | HTTP メソッド（`GET`, `POST`, …） |
 | `url` | str | 完全一致の URL（エンドポイント） |
-| `urlMatches` | str | URL への正規表現 / 部分一致（クエリ文字列はここに含める） |
+| `urlMatches` | str | URL 全体への正規表現 / 部分一致 |
 | `path` | str | 完全一致のパス（クエリは無視） |
 | `pathMatches` | str | パスへの正規表現 |
+| `query` | map | URL のクエリパラメータに対するキーと値の辞書（下記「キーと値の辞書」を参照） |
+| `body` | map | JSON の**リクエストボディ**に対するキーと値の辞書（下記「キーと値の辞書」を参照） |
 | `status` | int | レスポンスのステータスコード |
-| `bodyMatches` | str | **リクエストボディ**への正規表現 / 部分一致 |
+| `bodyMatches` | str | 生の**リクエストボディ**への正規表現 / 部分一致 |
 | `count` | int | 一致した通信数。アサーションでは **厳密**、`wait` では **下限** |
 
 ```yaml
@@ -1408,21 +1724,79 @@ showcase のデモは、この 2 つの流れを iOS と Android の両方で実
 ```
 
 > `count` はマッチフィールド **ではありません**。`method` / `url` / `urlMatches` / `path` /
-> `pathMatches` / `status` / `bodyMatches` の少なくとも 1 つが必要です。
+> `pathMatches` / `query` / `body` / `status` / `bodyMatches` の少なくとも 1 つが必要です。
 > （[`demos/showcase/scenarios/network_mock.yaml`](../../demos/showcase/scenarios/network_mock.yaml) 実物）
+
+#### キーと値の辞書（`query` と `body`）
+
+URL やボディに対する正規表現は、意味の変わらない変更でも壊れます。`urlMatches: "page=2&sort=asc"` は、
+アプリがパラメータの順序を入れ替えると失敗します。`bodyMatches: '"id":\s*42'` は、JSON が整形されると
+失敗します。`query` と `body` の辞書は、正規表現の代わりにキーを名指しします
+（[BE-0463](../../roadmaps/BE-0463-network-expect-dict-matchers/BE-0463-network-expect-dict-matchers-ja.md)）。
+そのため、順序や整形の違いに左右されません。
+
+```yaml
+expect:
+  - request:
+      method: POST
+      path: /api/orders
+      query: { page: "2", sort: { $matches: "^(asc|desc)$" } }
+      body:
+        user: { id: "42", email: { $exists: true } }
+        items: [ { sku: A-1, qty: "1" } ]
+        coupon: { $exists: false }
+```
+
+- **`query`**：URL のクエリ文字列を検査します。キーと値は URL デコードしてから比較します（`+` は空白として
+  読みます）。値が空または欠けたキー（`?debug`、`?page=`）は、値 `""` を持つものとして扱います。同じキーが
+  繰り返し現れる場合は、どれか 1 つが値を満たせば一致します。
+- **`body`**：JSON として解析したリクエストボディを検査し、入れ子の map とリストまで再帰的にたどります。
+  JSON でない、オブジェクトでない、あるいは存在しないボディは、どの `body` 条件にも一致しません。
+
+各値は、次の 4 つの形のどれかで書きます。
+
+| 形 | 例 | 一致する条件 |
+|---|---|---|
+| スカラー | `id: "42"` | JSON 値のテキスト形式が文字列と等しいこと（`"42"` は数値 `42` に一致します。真偽値と null は `true` / `false` / `null` として読みます） |
+| 演算子 map | `id: { $matches: "^4" }` | すべての演算子が成り立つこと。`$matches` はテキスト形式を正規表現で検索し、`$exists: true` / `false` はキーの有無を要求します |
+| 通常の map | `user: { id: "42" }` | JSON 値がオブジェクトで、列挙したキーがそれぞれ成り立つこと。列挙していないキーは無視します |
+| リスト | `tags: [a, b]` | JSON 値が同じ長さの配列で、各要素が同じ位置のマッチャを満たすこと |
+
+クエリ文字列には入れ子がないため、`query` に書けるのはスカラーと演算子 map だけです。
+
+辞書が文法に反するとき、シナリオの読み込みは失敗します。
+
+- **引用符のないスカラー**：`qty: 1`、`ok: true`、`note: null` のような値は拒否します。書き間違えた値が
+  黙って一致しなくなるのを防ぐためです。`qty: "1"` のように引用符で囲んでください。
+- **空の辞書**：`query: {}` や `body: {}` は、すべての通信に一致してしまいます。
+- **混在した演算子 map と未知の演算子**：`$` で始まるキーと通常のキーを混ぜた map は拒否します。
+  `$matches` と `$exists` 以外の演算子も拒否します。
+- **最上位の演算子**：`query` と `body` の最上位のキーは、常にフィールド名を表します。
+
+名前自体が `$` で始まるフィールドは、`$` を重ねて書きます。たとえば `$$ref` はフィールド `$ref` を検査します。
+
+アサーションが成り立たず、エンドポイントとメソッドの条件を満たす通信がちょうど 1 件だったとします。この
+場合、メッセージは成り立たなかった最初のキーを示します（例：`query.page: expected "2", got "3"`）。候補が 0 件または複数件のとき、あるいは
+`count` を指定したときは、従来どおり件数のメッセージを出します。
+
+`query` と `body` は、このマッチャを使うすべての場所で使えます。対象は `request`、`event`、
+`requestSequence`、`responseSchema.request`、`until: { request }` です。値には `${vars.*}` /
+`${secrets.*}` トークンを書けます。`mocks` では、どちらのフィールドもいまのところ拒否します。アプリ内の
+マッチャがこれらのフィールドを無視し、シナリオの記述より多くの通信をスタブしてしまうためです。
 
 ### `event`（イベントアサーション）
 
 `event` は、画面には現れない振る舞い、すなわちアプリが**送った**分析 / テレメトリイベントを表明します
 （[BE-0048](../../roadmaps/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions-ja.md)）。
 `request` が読むのと同じ観測済み通信に対する純粋な検査なので（`--network` 実行フラグが必要）、判定は機械のみで LLM は介在しません。
-イベントの**エンドポイント**（`request` と同じ `method` / `url` / `urlMatches` / `path` / `pathMatches` マッチャ）でタイムラインを絞り、
-続けて構造化した**リクエストボディのフィールド**で絞り、残った通信数を count 演算子と突き合わせます。
+まず、イベントの**エンドポイント**（`request` と同じ `method` / `url` / `urlMatches` / `path` / `pathMatches` マッチャ）でタイムラインを絞ります。
+続けて `query` / `body` の辞書で絞り、残った通信数を count 演算子と突き合わせます。
 
 | フィールド | 型 | 説明 |
 |---|---|---|
 | `method` / `url` / `urlMatches` / `path` / `pathMatches` | str | エンドポイントのマッチャ（AND）。意味は `request` と同じ |
-| `body` | map | 各 `key: value` が JSON リクエストボディに存在し、その値と等しいこと。テキストとして比較する（`amount: "300"` は JSON の数値 `300` に一致。JSON の真偽値 / null は `"true"` / `"false"` / `"null"` に一致） |
+| `query` | map | URL のクエリパラメータに対するキーと値の辞書。文法は `request` と同じ（上記「キーと値の辞書」を参照） |
+| `body` | map | JSON リクエストボディに対するキーと値の辞書。文法は `request` と同じ。平坦な形は最上位のフィールドをテキストとして比較します（`amount: "300"` は JSON の数値 `300` に一致）。入れ子の map、リスト、`$matches`、`$exists` も使えます |
 | `count` | object | 期待する多重度。`equals` / `atLeast` / `atMost` の **いずれか 1 つ**。省略時は **1 件以上** |
 
 ```yaml
@@ -1434,9 +1808,10 @@ expect:
       count: { equals: 1 }
 ```
 
-> エンドポイントのフィールドか `body` の少なくとも一方が必須で、イベントは必ず何かを特定します。JSON でない、
-> オブジェクトでない、あるいは存在しないリクエストボディは `body` 条件に一致しません（推測せず失敗します）。
-> ボディの値は DSL の他の箇所と同じく `${vars.*}` / `${secrets.*}` トークンを使えます。
+> エンドポイントのフィールド、`query`、`body` の少なくとも 1 つが必須で、イベントは必ず何かを特定します。
+> JSON でない、オブジェクトでない、あるいは存在しないリクエストボディは `body` 条件に一致しません（推測せず
+> 失敗します）。辞書の値は DSL の他の箇所と同じく `${vars.*}` / `${secrets.*}` トークンを使えます。単独の
+> `$` は演算子を表すため、`$` で始まる最上位の `body` キーは `$$` と書きます。
 
 ### `requestSequence`（順序付きリクエスト）
 
@@ -1465,7 +1840,7 @@ expect:
 表現できない契約の検査です（[BE-0048](../../roadmaps/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions-ja.md)）。
 観測済みタイムラインと保存済みのスキーマファイルに対する純粋で決定的な検査なので（`--network` 実行フラグが
 必要）、判定は機械のみです。`request`（同じマッチャフィールド）で検証対象の交信を選び、`schema` はターゲットの
-**スキーマディレクトリ**（`--schemas` フラグ、config の `targets.<name>.schemas`、またはシナリオ脇の
+**スキーマディレクトリ**（`--schemas` フラグ、config の `targets.<name>.paths.schemas`、またはシナリオ脇の
 `schemas/`）内で解決するファイルパスです。検証には `jsonschema` ライブラリを使うので、`schema` extra を
 インストールしてください（`pip install bajutsu[schema]`）。
 
@@ -1499,13 +1874,35 @@ expect:
 | `exact` | ピクセル完全一致。いずれかのチャネルが異なればそのピクセルは「差分」として計上されます。 | はい（後方互換） |
 | `pixelmatch` | 知覚的 YIQ 色差 + アンチエイリアシング検出。サブピクセルレンダリングノイズや 1 ピクセルのエッジシフトを許容します。 | いいえ |
 
-`compare` を省略すると、ターゲットの `visualCompare` 設定（`defaults:` または `targets.<name>` で指定）にフォールバックし、さらに未設定なら `exact` になります。
+`compare` を省略すると、ターゲットの `evidence.visualCompare` 設定（`defaults.evidence` または `targets.<name>.evidence` で指定）にフォールバックし、さらに未設定なら `exact` になります。
 
 `threshold` は許容する差分ピクセルの割合（既定 `0.0` = 完全一致）で、すべてのエンジン共通です。`colorTolerance`（0–1、既定 `0.1`）は `pixelmatch` のピクセル単位の知覚的色差許容値、`antialiasing`（既定 `true`）はアンチエイリアスされたピクセルを差分から除外します。`exclude` は比較前にマスクする領域のリストで、ステータスバーや時計などに使います。各要素は、スクリーンショットのピクセル座標で表す矩形（`{ x, y, w, h }`）か、マスク対象の要素を指す `{ selector: <Selector> }`（BE-0171）のどちらかです。後者は評価時に要素のフレームへ解決されます。baseline は `approve` コマンド（[cli](cli.md#approve)）か `serve` UI で作成・更新します。baseline が無いとアサーションは失敗します。`overrideStatusBar` と併用すると時計やバッテリーを固定できます。差分は `report.html` に表示されます。`pixelmatch` では、除外されなかった（非 AA）ピクセルのみが差分画像に表示されます。`approve` とレポートの差分ストリップが読むのは、シナリオ末尾の `expect` の結果だけです。ステップ自身の `assert` に含めた `visual` エントリは、最初の baseline を手動で用意してください（上記の[`assert`](#assert中間検証)を参照）。
 
 **要素スコープ比較（BE-0171）。** `visual` は既定で画面全体を比較するため、無関係な変化（バナー、行が増えたリストなど）があるたびにアサーションが失敗し、baseline が揺れます。`element: <Selector>` を指定すると、**その要素だけ**を比較します。スクリーンショットは要素のフレームにクロップされ、baseline はそのクロップ画像になるので、フレームの外側の変化は無視されます。セレクタは通常の一意解決規則で解決し、**曖昧なセレクタは最初の一致をクロップせず即座に失敗します**。何にも一致しないセレクタも失敗します。`approve` は要素スコープの baseline も画面全体の baseline と同じ手順で昇格します（baseline は単に小さい画像になるだけです）。
 
 **セレクタによるマスク（BE-0171）。** `exclude` のピクセル矩形は、レイアウトが変わったりデバイスの解像度が変わったりした瞬間にずれます。代わりに要素を指定すると（`{ selector: { label: "last updated" } }`）、そうした変化に強くなります。要素をフレームへ解決し、矩形と同じ方法でマスクするからです。何にも一致しないマスクセレクタは何もしません（画面上に隠すものが無いため）。曖昧なセレクタは、決定論の原則どおり失敗します。セレクタと矩形は一つの `exclude` リストに混在でき、どちらも要素スコープ比較と併用できます（クロップした要素の内側のマスクは、クロップの座標系へ変換されます）。
+
+### `attribute`（要素の HTML 属性）
+
+```yaml
+- assert:
+    - attribute: { sel: { id: docs.link }, name: href, equals: /docs }
+    - attribute: { sel: { id: hero.image }, name: alt, contains: Bajutsu }
+    - attribute: { sel: { id: panel }, name: data-state, matches: "^(ready|idle)$" }
+    - attribute: { sel: { id: panel }, name: aria-busy, absent: true }
+```
+
+`attribute` は、web（Playwright）バックエンドで 1 つの要素の HTML 属性を 1 つ検証します（[BE-0466](../../roadmaps/BE-0466-web-attribute-assertion/BE-0466-web-attribute-assertion-ja.md)）。リンクの `href`、画像の `alt`、状態を表す `data-*` や `aria-*` 属性のように、要素ツリーに含まれない値を確かめるために使います。
+
+- **`sel`** は `value` と同じ方法で解決します。一致する要素がなければ失敗し、2 つ以上あれば曖昧として失敗します。対象は web のクエリが列挙する要素に限られます。`data-testid`、`role`、インタラクティブなタグのいずれかを持つ要素か、`label` で指定するテキストの要素です。素の `<img>` はテキストを持たないので、検証するには `data-testid` が必要です。内容がまったく同じ要素が 2 つあり、属性の値が食い違う場合も、ほかに見分ける手がかりがないので曖昧として失敗します。
+- **`name`** は正しい HTML 属性名でなければなりません。空文字列や、空白、引用符、`>`、`/`、`=`、制御文字を含む名前は受け付けません。Bajutsu は属性名を小文字に変換しません。書いたとおりの名前が DOM の `getAttribute` に渡ります。そのため、HTML 要素では大文字と小文字を区別せずに一致します。SVG と MathML の要素では、大文字と小文字まで完全に一致する必要があります。
+- **演算子**は 4 つのうち 1 つだけを指定します。`equals`、`contains`、`matches`（正規表現）は `value` や `label` と同じ規則に従います。`absent: true` は、要素がその名前の属性を持たないときに成功します。`absent: false` はシナリオの読み込み時に拒否します。
+- **属性がないことと値が空であることは区別します。** 値が空の属性は `""` として読むので、`equals: ""` は成功し、`absent: true` は失敗します。属性がない場合、`equals`、`contains`、`matches` は失敗し、理由で属性の欠如を示します（`expected equals='x' but attribute 'href' is absent`）。値が一致しない場合は、実際の値を理由に含めます（`expected equals='/docs' but actual='/about'`）。この理由も、ほかの理由と同じくアーティファクトの秘匿化境界を通ります。
+- 期待する文字列の **`${...}` トークン**は、ほかのアサーションのフィールドと同じく展開します。
+
+`attribute` は、ステップの `assert`、`expect`、`if` の条件、`interrupts` の条件で使えます。`wait` の条件には使えません。runner は、ブロックを評価するクエリの直後に、そのつど属性を読み取ります。そのため、ステップの `assert` では条件待機の各ティックで読み取りを繰り返します。繰り返しは、属性が一致するか、レーンの待機下限（`BAJUTSU_MIN_WAIT_TIMEOUT`）が尽きるまで続きます。要素のスナップショット、golden、クロールの出力、レポートにはフィールドが増えません。レポートに載る属性は、アサーションが名前を挙げたものだけです。
+
+このアサーションには `elementAttribute` capability が必要です。この capability を宣言するのは web バックエンドだけです。ほかのバックエンドでシナリオのどこかに `attribute` があれば、capability preflight がデバイスを確保する前に拒否します。`web:` ブロックの iOS WebView コンテキストも拒否の対象です。また、web 以外のターゲットの `hooks.interrupts` に `attribute` があれば、設定の検証が設定の読み込み時に拒否します。`attribute` が読むのは属性であって、DOM のプロパティではありません。フォーム部品の現在の値は、引き続き `value` アサーションで検証します。
 
 ## ネットワークモック（決定的スタブ）
 
@@ -1622,7 +2019,7 @@ scenarios:
 
 `components:` にない素の名前は、ref を名指ししたエラーになります。代わりにファイルを開こうとするフォールバックは起きません。`components:` の有効範囲は**1ファイル**です。ファイルごとに読み、スイートディレクトリをまたいで統合しません。あるファイルで宣言した名前は、隣のファイルからは見えません。ファイルをまたぐ再利用はコンポーネントファイルの役目のままです。コンポーネントファイルへ入ると `components:` は完全に外れます。コンポーネントファイルは `components:` を持たないため、その中の素の `use` は常に未定義です。参照元のファイルが何を宣言していても変わりません。一方、ファイルスコープのコンポーネント自身の steps は宣言元ファイルのスコープで展開されます。別のファイルスコープのコンポーネントを素の名前で `use` できますし、パスでファイルも `use` できます。
 
-`setup` プレリュードもシナリオファイルと同じ形をした文書なので、自分の `components:` を持てます。プレリュードの `use` ステップは、steps が前置される前に、プレリュード自身のスコープで展開されます。呼び出す側のシナリオファイルに同じ名前のエントリがあっても、そちらへ横取りされません。プレリュードの中のパス参照も、呼び出す側ではなくプレリュード自身のディレクトリを基準に解決します。
+ターゲットの `hooks` もコンポーネントを呼び出せます（[上記](#ターゲットのフックhookssetup-と-hookscleanup)）。この `use` は config のロード時に、config ファイルのディレクトリを基準に、スイートのルートの内側で解決します。config は `components:` マップを持たないので、フックの `use` はコンポーネントファイルをパスで指定します。`with` の値はロード時に置換され、`${secrets.*}` と `${vars.*}` はステップの実行時に解決します。フックでは、直接でもコンポーネント経由でも、`group:` と `setMocks` を使えません。
 
 #### 複数ターゲットシナリオでのコンポーネント
 
@@ -1722,7 +2119,7 @@ report内で複数の折りたたみに分かれることがあります。そ�
 
 ### データ駆動シナリオ（`data` / `dataFile`）
 
-`data`（インライン行）か `dataFile`（CSV パス。両者は **排他**）を持つシナリオは、`${row.<column>}` を置換して **1 行 1 シナリオ**に展開されます（`expand_data`, `scenario/expand.py`）。派生シナリオは `"<name> [row N: col=val, …]"` に改名され、元の preconditions を保ちます。そのため各行ともアプリを fresh に再インストールし、テンプレートの `erase` / `reinstall` を継承します。
+`data`（インライン行）か `dataFile`（CSV パス。両者は **排他**）を持つシナリオは、`${row.<column>}` を置換して **1 行 1 シナリオ**に展開されます（`expand_data`, `scenario/expand.py`）。派生シナリオは `"<name> [row N: col=val, …]"` に改名され、元の preconditions を保ちます。そのため各行ともアプリを fresh に再インストールし、テンプレートの `subject.reinstall` を継承します。
 
 ```yaml
 - name: search returns a result
@@ -1765,10 +2162,10 @@ uv run bajutsu run --target showcase-swiftui --tag smoke --exclude wip   # run @
 
 ### シークレット（`${secrets.X}`）
 
-シークレットの環境変数名を config で宣言します（`secrets: [API_TOKEN, ...]`）。宣言した各名 `X` は環境から解決され、**アクション時**に実行ステップへ `${secrets.X}` として置換されます。シナリオファイルは **トークン**を保持し、実値は持ちません。さらにリテラル値は証跡で **自動マスク**されるため、シークレットはコミットしてもレビューしても安全です。`${params.*}` / `${row.*}`（ロード時の展開）と異なり、この名前空間は run ループが解決します。
+シークレットの環境変数名を config で宣言します（`evidence: { secrets: [API_TOKEN, ...] }`）。宣言した各名 `X` は環境から解決され、**アクション時**に実行ステップへ `${secrets.X}` として置換されます。シナリオファイルは **トークン**を保持し、実値は持ちません。さらにリテラル値は証跡で **自動マスク**されるため、シークレットはコミットしてもレビューしても安全です。`${params.*}` / `${row.*}`（ロード時の展開）と異なり、この名前空間は run ループが解決します。
 
 ```yaml
-# config が宣言: secrets: [API_TOKEN]
+# config が宣言: evidence: { secrets: [API_TOKEN] }
 steps:
   - type: { text: "${secrets.API_TOKEN}", into: { id: auth.token } }   # real value typed; token kept in the report
 ```

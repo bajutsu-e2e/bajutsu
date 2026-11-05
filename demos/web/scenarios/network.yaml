@@ -9,7 +9,9 @@
 # status 201 proves the mock — not the network — served it. The persisted network.json is then
 # checked for masking by demos/web/network/assert_redaction.py (the redaction gap the run grammar
 # can't assert). No model is consulted anywhere — the verdict is the deterministic `request`
-# assertion plus that check.
+# assertion plus that check. The `request` also exercises the key/value dictionaries (BE-0463): query
+# parameters by name, a nested body field, a list, a regex, and presence / absence. One `request` covers
+# both, since each `request` claims a distinct exchange and the run makes one POST.
 description: >-
   Web network — sign in, reach home, and Sync the account. A mocked POST /api/sync is intercepted
   and captured (status 201 proves the mock served it), carrying a secret in a header and body so
@@ -34,5 +36,15 @@ scenarios:
       - wait: { until: { request: { method: POST, pathMatches: "/api/sync$", status: 201 } }, timeout: 6 }
       - wait: { until: settled, timeout: 3 }
     expect:
-      - request: { method: POST, pathMatches: "/api/sync$", status: 201 }
+      - request:
+          method: POST
+          pathMatches: "/api/sync$"
+          status: 201
+          query: { v: "2", source: { $matches: "^(home|settings)$" } }
+          body:
+            account: a@b.com
+            client: { platform: web, build: "7" }
+            tags: [sync, { $matches: "^man" }]
+            password: { $exists: true }
+            token: { $exists: false }
       - value: { sel: { id: sync.status }, equals: "synced" }

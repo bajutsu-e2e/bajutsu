@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import inspect
 import os
+import select
 import sys
-from collections.abc import Callable, Iterable, Iterator, Mapping
+import typing
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any
@@ -13,31 +16,57 @@ if TYPE_CHECKING:
     from bajutsu.common.doctor import Score
 
 import typer
-from pydantic import ValidationError
 
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
+    WORKER_CONFIG_HELP,
     LoadedConfig,
+    _backends,
     _effective_for,
     _load_config_with_source,
+    _load_device_worker_or_exit,
     _log_subsystem_default,
+    _precondition_checks,
+    _refuse_bad_preconditions,
+    _reject_url_udid,
     _resolve_browser,
+    _resolve_kind,
     _select_actuator_or_exit,
     _start_launch_server_or_exit,
+    _with_erase_flag,
     _with_headed,
+    _with_worker_device,
+    _without_engine_condition,
+    check_listed_browsers,
+    parse_engine_flag,
     resolve_system_alert_handling_flag,
 )
 from bajutsu.common.assertions import GoldenContext
 from bajutsu.common.backends import (
     capabilities_for_run,
+    current_host_os,
     default_available,
+    ensure_web_runtime,
     select_actuator,
     select_actuator_for_scenario,
 )
-from bajutsu.common.cancellation import CancelSource, graceful_sigterm
-from bajutsu.common.config import WEB_ENGINES, AndroidConfig, Effective, IosConfig
+from bajutsu.common.cancellation import (
+    CANCELLED_FAILURE,
+    CancelSource,
+    graceful_sigterm,
+    not_cancelled,
+)
+from bajutsu.common.capability import capability_preflight
+from bajutsu.common.capability.worker_capability import WorkerCapability
+from bajutsu.common.config import (
+    AndroidConfig,
+    Effective,
+    IosConfig,
+)
 from bajutsu.common.deprecations import warn_once
 from bajutsu.common.devices import errors as device_errors
+from bajutsu.common.devices import facts as device_facts
+from bajutsu.common.devices.browsers import BROWSER_KINDS
 from bajutsu.common.drivers import base
 from bajutsu.common.github import actions as github_actions
 from bajutsu.common.orchestrator import (
@@ -53,7 +82,15 @@ from bajutsu.common.report.archive import archive_run_dir
 from bajutsu.common.report.manifest import MAX_LABEL_LENGTH, _run_backend
 from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR
 from bajutsu.common.run_meta.id import new_run_id
-from bajutsu.common.runner import device_pool, run_all, run_and_report, run_matrix_and_report
+from bajutsu.common.runner import (
+    device_pool,
+    prepare_run_dir,
+    report_run_matrix,
+    reroot_evidence,
+    run_all,
+    run_and_report,
+    run_matrix_and_report,
+)
 from bajutsu.common.runner.build import BuildError, build_if_missing
 from bajutsu.common.runner.device_provider import DeviceLease, acquire_device
 from bajutsu.common.runner.pipeline import with_lifecycle_phases
@@ -63,21 +100,21 @@ from bajutsu.common.scenario import (
     RawScenario,
     Scenario,
     Step,
-    SystemAlertHandling,
-    SystemAlertHandlingField,
+    SystemAlertInterrupt,
     SystemAlertRule,
+    TipKitInterrupt,
     _scenarios_declaring_targets,
-    apply_setups,
     contained_ref,
     declared_name,
     dump_mocks,
     expand_components,
     expand_data,
     load_scenario_file,
-    parse_yaml_named,
     read_csv,
     scenario_sources,
     select_scenarios,
+    system_alert_entries,
+    tip_kit_entry,
 )
 from bajutsu.common.scenario.system_alerts import (
     UncoveredSystemAlertLocale,
@@ -85,25 +122,38 @@ from bajutsu.common.scenario.system_alerts import (
     covered_languages,
     system_alert_shapes,
 )
+from bajutsu.run.device_matrix import (
+    Cell,
+    DeviceMatrix,
+    TargetLanes,
+    any_conditions,
+    apply_kind,
+    condition_problems,
+    installed_browser,
+    not_applicable_record,
+    participants_of,
+    read_pool_facts,
+    render_not_applicable,
+)
+from bajutsu.run.device_matrix import plan as plan_device_matrix
 from bajutsu.run.step_gate import PromptStepGate
 
 
 def _parse_browsers(browsers: str) -> list[str]:
-    """Parse `--browsers` into an ordered, de-duplicated engine list, validated against WEB_ENGINES.
+    """Parse `--browsers` into an ordered, de-duplicated list of `runsOn.browser.kind` values.
 
     The cross-browser matrix axis (BE-0076): a comma list (`chromium,firefox,webkit`) trimmed of
     blanks and de-duped while keeping order. Empty means no matrix (the run uses the single-engine
-    path); `--browsers chromium` is exactly `--browser chromium`. An unknown engine exits 2 — before
-    it reaches Playwright — exactly as `--browser` does.
+    path); `--browsers chromium` is exactly `--browser chromium`. Each entry is read as the target's
+    own field reads it, so an unknown engine exits 2 before it reaches Playwright, as `--browser`
+    does.
 
     Raises:
         typer.Exit: an entry isn't one of the known engines (exit code 2).
     """
     engines = list(dict.fromkeys(b.strip() for b in browsers.split(",") if b.strip()))
     for engine in engines:
-        if engine not in WEB_ENGINES:
-            typer.echo(f"unknown --browsers engine {engine!r}: use any of {', '.join(WEB_ENGINES)}")
-            raise typer.Exit(2)
+        parse_engine_flag("--browsers", engine)
     return engines
 
 
@@ -195,19 +245,24 @@ def _resolve_primary_target(target_name: str, scenario: list[str]) -> str:
     return primary
 
 
-def _reject_self_declaring_in_dir(files: list[Path], target_name: str) -> None:
+def _reject_self_declaring_in_dir(scenarios: list[Scenario], target_name: str) -> None:
     """Refuse a self-declaring scenario reached through the target's scenarios dir (BE-0428).
 
     The directory glob is `run`'s only whole-suite shorthand and it belongs to one target, so a
     file declaring its own `targets` can only ever run through an explicit `--scenario`. Rejecting
-    at discovery keeps the two bad outcomes off the table regardless of where the file sits: a
-    mismatching name would fail every other scenario in the batch alongside it, and a matching one
-    would silently launch every other target that file declares.
+    it keeps the two bad outcomes off the table regardless of where the file sits: a mismatching
+    name would fail every other scenario in the batch alongside it, and a matching one would
+    silently launch every other target that file declares. It runs over the scenarios left after
+    `--tag`/`--exclude`, so a suite that selects such a file away runs the rest unchanged — the
+    showcase's own `--exclude multi-target` lanes depend on that. The file is named from the
+    scenario's load-time source stem (BE-0417) rather than its name, which a data row renames and
+    two files can share; the directory glob reads only `*.yaml`, so the stem fixes the file.
     """
-    for path in files:
-        if _declared_targets_in(path):
+    for s in scenarios:
+        if s.target_names:
+            where = f"{s.source_stem}.yaml" if s.source_stem else s.name
             typer.echo(
-                f"{path} declares its own targets, so it cannot run through target "
+                f"{where} declares its own targets, so it cannot run through target "
                 f"'{target_name}'s scenarios dir — name it with --scenario instead"
             )
             raise typer.Exit(2)
@@ -244,21 +299,20 @@ def _scenario_files(
     if not files:
         typer.echo(f"no scenarios found in {eff.evidence_dirs.scenarios}")
         raise typer.Exit(2)
-    _reject_self_declaring_in_dir(files, target_name)
     return files, False
 
 
 def _expand_file(
-    path: Path, eff: Effective, root: Path
+    path: Path, root: Path
 ) -> tuple[list[Scenario], str | None, dict[str, ScenarioPlanSource]]:
-    """Load one scenario file and expand its setup/component/data refs.
+    """Load one scenario file and expand its component and data refs.
 
     Each ref is resolved relative to THIS file's directory, so a multi-file dir run keeps every
     file's refs local. Component and data refs are confined to *root* (the suite dir, or the file's
     own dir for a single-file run), so a scenario cannot read outside its suite (BE-0174). Returns
     the expanded scenarios, the file-level description, and — keyed by each *expanded* scenario's
     declared name — its report plan source: the scenario's own verbatim YAML as authored
-    in *path*, and its steps' original line numbers there. A scenario whose setup/component
+    in *path*, and its steps' original line numbers there. A scenario whose component
     expansion changed its step count keeps the verbatim text but drops its line numbers, since a
     wrong line would be worse than none. A data-driven scenario (`data`/`dataFile`) drops the
     verbatim text entirely: `expand_data` substitutes `${row.*}` per row without changing the step
@@ -278,37 +332,9 @@ def _expand_file(
     plan_by_name = {
         s.name: _plan_source(s, raw) for s, raw in zip(scenarios, raw_sources, strict=True)
     }
-    # Refs (setup/use/data) resolve relative to this scenario file's own directory.
+    # Refs (use/data) resolve relative to this scenario file's own directory.
     base_dir = path.parent
 
-    def _setup_steps(ref: str) -> list[Step]:
-        """The prelude's own steps, its `use` steps already expanded in the prelude's own scope.
-
-        A prelude is a scenario-file-shaped document and carries a `components:` map of its own, so
-        its bare refs must resolve there — never against whichever scenario file happened to name it
-        as `setup` (BE-0422). Expanding before `apply_setups` splices is what guarantees that: no
-        unexpanded `use` ever crosses from a prelude into the scenario including it.
-
-        The prelude path itself stays inside the suite root (BE-0174), the same as every other ref
-        this function resolves — a scenario file is untrusted input under `serve`, so `setup` gets no
-        exemption from the containment every `use`/`dataFile` ref already has.
-        """
-        prelude = contained_ref(root, base_dir, ref)
-        prelude_file = parse_yaml_named(prelude, load_scenario_file)
-        scenario = prelude_file.scenarios[0]
-        expand_components(
-            [scenario],
-            ComponentResolver(
-                prelude_file.components, root=root, base=prelude.parent, source=prelude
-            ),
-        )
-        return scenario.steps
-
-    try:
-        apply_setups(scenarios, eff.setup, _setup_steps)
-    except (OSError, ValueError, IndexError) as e:
-        typer.echo(f"setup の読み込みに失敗: {e}")
-        raise typer.Exit(2) from None
     try:
         expand_components(
             scenarios,
@@ -328,10 +354,7 @@ def _expand_file(
     plan_sources: dict[str, ScenarioPlanSource] = {}
     for s in scenarios:
         s.set_source_stem(path.stem)
-        if s.preconditions.seed_photos:
-            s.preconditions.seed_photos = [
-                str(contained_ref(root, base_dir, ref)) for ref in s.preconditions.seed_photos
-            ]
+        s.preconditions.resolve_seed_photos(lambda ref: str(contained_ref(root, base_dir, ref)))
         base_name = declared_name(s.name)
         plan = plan_by_name.get(base_name)
         if plan is None:
@@ -340,7 +363,7 @@ def _expand_file(
             # strips to a name `plan_by_name` never had. That is a valid scenario file, not a bug
             # here, so this scenario simply gets no recovered plan rather than crashing the run.
             continue
-        # A target group (BE-0437), and `apply_setups`/`expand_components`, can each change the
+        # A target group (BE-0437), and `expand_components`, can each change the
         # step count against `plan.step_lines`'s raw, one-entry-per-YAML-item count (captured
         # before any of that ran) — when they do, this scenario's line numbers no longer line up
         # with its executed steps (data-row expansion never changes the count, so a row keeps
@@ -360,11 +383,13 @@ def _resolve_config_and_engines(
     headed: bool | None,
     browser: str,
     browsers: str,
+    kind: str = "",
 ) -> tuple[LoadedConfig, Effective, dict[str, str] | None, list[str]]:
     """Resolve the effective config (building a Git-sourced app on demand) and the engine list.
 
-    Applies `--headed` and `--browser`, then parses `--browsers` into the cross-browser matrix axis
-    (BE-0076). Returns the loaded config itself — so a multi-target scenario resolves every other
+    Applies `--headed`, `--kind`, and `--browser`, then parses `--browsers` into the cross-browser
+    matrix axis (BE-0076). Each flag picks among the kinds or browsers the target lists (BE-0468).
+    Returns the loaded config itself — so a multi-target scenario resolves every other
     name it declares against the same materialized file (BE-0428) — the resolved config for
     *target_name*, its Git source provenance (None for a local config), and
     the requested engines exactly as `--browsers` gave them: empty when `--browsers` is absent, a
@@ -386,16 +411,22 @@ def _resolve_config_and_engines(
         except BuildError as e:
             typer.echo(str(e))
             raise typer.Exit(2) from None
-    # --headed/--no-headed overrides the target's `headless` config (web backend only; iOS ignores it).
+    # --headed/--no-headed overrides the target's `driver.headless` (web only; iOS ignores it).
     eff = _with_headed(eff, headed)
-    # --browser overrides the target's `browser` config (web backend only; flag > config > chromium).
-    eff = _resolve_browser(eff, browser)
+    # --kind narrows the target's `runsOn.ios.kind` to the kinds it names (iOS only; BE-0468).
+    eff = _resolve_kind(eff, kind)
     # --browsers is the multi-engine spelling of the same axis: a comma list fans the run out across
     # engines into a matrix. One engine collapses to the single-engine path (set as --browser would);
-    # >1 takes the matrix branch. Validated up front (unknown → 2).
+    # >1 takes the matrix branch. Validated up front (unknown → 2), and against the target's own list
+    # before --browser replaces that list.
     engines = _parse_browsers(browsers)
+    check_listed_browsers(eff, "--browsers", engines)
+    # --browser overrides the target's `runsOn.browser.kind` (web only; flag > config > chromium).
+    eff = _resolve_browser(eff, browser)
     if len(engines) == 1:
         eff = _resolve_browser(eff, engines[0])
+    elif engines:
+        eff = _without_engine_condition(eff)  # each matrix pass sets its own engine (`run_pass`)
     return loaded, eff, config_source, engines
 
 
@@ -442,7 +473,7 @@ def _load_scenarios(
     # rather than let one file's source silently attach to the other file's scenario.
     ambiguous: set[str] = set()
     for path in files:
-        expanded, file_desc, file_plan_sources = _expand_file(path, eff, root)
+        expanded, file_desc, file_plan_sources = _expand_file(path, root)
         scenarios.extend(expanded)
         ambiguous.update(file_plan_sources.keys() & plan_sources.keys())
         plan_sources.update(file_plan_sources)
@@ -500,6 +531,43 @@ def _reject_legacy_without_target(
         raise typer.Exit(2)
 
 
+def _uses_target(scenarios: list[Scenario], target: str) -> bool:
+    """Whether any scenario runs on *target*: it declares it, or declares none and so runs on it."""
+    return any(not s.target_names or target in s.target_names for s in scenarios)
+
+
+def _worker_capability_failures(
+    loaded: LoadedConfig,
+    scenarios: list[Scenario],
+    primary_eff: Effective,
+    backend: str,
+    worker: WorkerCapability,
+) -> dict[int, str]:
+    """The scenarios this worker cannot run, keyed by index, each with its prefixed reason (BE-0450).
+
+    Judged before any target is resolved for the run or any device acquired, so a failed scenario's
+    targets never reserve a device and never count toward a pool's demand. Each scenario is judged
+    on its own declared targets, read from the configuration, so a later file in an inferred-target
+    batch is not judged on the first file's targets.
+    """
+    per_target: dict[str, list[str]] = {}
+
+    def backends_for(target: str | None) -> list[str]:
+        if target is None:
+            return _backends(backend, primary_eff.backend)
+        if target not in per_target:
+            per_target[target] = _backends(backend, _effective_for(loaded, target).backend)
+        return per_target[target]
+
+    host = current_host_os()
+    failures: dict[int, str] = {}
+    for i, s in enumerate(scenarios):
+        reasons = capability_preflight.worker_capability_unsupported(s, backends_for, worker, host)
+        if reasons:
+            failures[i] = capability_preflight.worker_capability_failure(reasons)
+    return failures
+
+
 def _resolve_target_effs(
     loaded: LoadedConfig,
     scenarios: list[Scenario],
@@ -530,6 +598,49 @@ def _resolve_target_effs(
     return effs
 
 
+def _reject_two_grid_targets(
+    scenarios: list[Scenario], target_effs: Mapping[str, Effective], primary: str
+) -> None:
+    """Refuse a scenario that sends two targets to one Appium grid, which counts as one device.
+
+    How many sessions one endpoint holds is left to a later item (BE-0452), so a second grid target
+    would share the first one's device without saying so.
+
+    Raises:
+        typer.Exit: A scenario declares more than one target the grid serves (exit code 2).
+    """
+    for s in scenarios:
+        names = s.target_names or [primary]
+        grid = [
+            n
+            for n in names
+            if (provider := target_effs[n].device_provider) is not None
+            and provider.kind == "appium"
+        ]
+        if len(grid) > 1:
+            typer.echo(
+                f"scenario '{s.name}' sends targets {', '.join(grid)} to one appium grid, whose "
+                "endpoint counts as one device; split the scenario"
+            )
+            raise typer.Exit(2)
+
+
+def _reject_kind_across_targets(target_effs: Mapping[str, Effective], *, kind: str) -> None:
+    """Refuse `--kind` when the run declares more than one iOS target (BE-0468).
+
+    The flag narrows the command's own target, so with a second iOS target it would leave that
+    target's kinds as they are without a word; which target it means has no answer, as for the web
+    flags (`_reject_web_flags_across_targets`).
+    """
+    ios = sorted(name for name, eff in target_effs.items() if eff.platform == "ios")
+    if kind and len(ios) > 1:
+        typer.echo(
+            f"--kind applies to a run's single iOS target, but this run declares {len(ios)}: "
+            f"{', '.join(ios)} — set each target's own runsOn.ios.kind instead"
+        )
+        raise typer.Exit(2)
+
+
 def _reject_web_flags_across_targets(
     target_effs: Mapping[str, Effective], *, headed: bool | None, browser: str, browsers: str
 ) -> None:
@@ -551,13 +662,58 @@ def _reject_web_flags_across_targets(
         raise typer.Exit(2)
 
 
-def _read_step_line(prompt: str) -> str:
-    """One line for the `--step` prompt, written to stderr so stdout stays the PASS/FAIL line."""
+# How often a `--step` prompt waiting on the terminal checks whether the run was cancelled.
+_STEP_CANCEL_POLL_SECONDS = 0.2
+
+# Bytes read from standard input past the last `--step` answer, kept for the next prompt. The prompt
+# reads the descriptor itself rather than through `sys.stdin`: `select` sees only the descriptor, so
+# an answer held in `sys.stdin`'s own buffer would be invisible to it and the prompt would wait on
+# input already read.
+_STEP_INPUT = bytearray()
+
+
+class _LateCancel:
+    """A `CancelSource` the run binds once its SIGTERM handler is up, after the step gate is built."""
+
+    def __init__(self) -> None:
+        self.source: CancelSource = not_cancelled
+
+    def __call__(self) -> bool:
+        return self.source()
+
+
+def _read_step_line(prompt: str, cancelled: CancelSource = not_cancelled) -> str:
+    """One line for the `--step` prompt, written to stderr so stdout stays the PASS/FAIL line.
+
+    A cancel ends the wait as end of input does, which the prompt reads as `quit`. The run behind
+    the public wrapper sits in a session of its own and learns of a Ctrl-C as a SIGTERM (BE-0449),
+    whose handler only sets a flag: a read blocked on the terminal would otherwise hold the run past
+    its grace window. The terminal is checked in short slices for that reason.
+    """
     typer.echo(prompt, nl=False, err=True)
-    line = sys.stdin.readline()
-    if not line:
+    if os.name == "nt":
+        # `select` takes only sockets on Windows, where the run is never behind the wrapper anyway.
+        line = sys.stdin.readline()
+        if not line:
+            raise EOFError
+        return line
+    fd = sys.stdin.fileno()
+    while b"\n" not in _STEP_INPUT:
+        if not select.select([fd], [], [], _STEP_CANCEL_POLL_SECONDS)[0]:
+            if cancelled():
+                raise EOFError
+            continue
+        chunk = os.read(fd, 4096)
+        if not chunk:
+            break
+        _STEP_INPUT.extend(chunk)
+    if not _STEP_INPUT:
         raise EOFError
-    return line
+    end = _STEP_INPUT.find(b"\n")
+    cut = len(_STEP_INPUT) if end < 0 else end + 1
+    line_bytes = bytes(_STEP_INPUT[:cut])
+    del _STEP_INPUT[:cut]
+    return line_bytes.decode(sys.stdin.encoding or "utf-8", errors="replace")
 
 
 def _build_step_gate(
@@ -568,6 +724,7 @@ def _build_step_gate(
     scenarios: list[Scenario],
     engines: list[str],
     workers: int,
+    cancelled: CancelSource = not_cancelled,
 ) -> PromptStepGate | None:
     """The prompt `--step` / `--break` / `--break-on-fail` ask for, or `None` when none was given.
 
@@ -593,7 +750,7 @@ def _build_step_gate(
         pause_first=step,
         breaks=break_at,
         break_on_fail=break_on_fail,
-        read_line=_read_step_line,
+        read_line=lambda prompt: _read_step_line(prompt, cancelled),
         say=lambda line: typer.echo(line, err=True),
     )
 
@@ -718,18 +875,17 @@ def _sharing_problems(
             # nothing counted.
             tuple(eff.backend),
             eff.device_provider,
-            eff.device,
             xcuitest.device_type if xcuitest is not None else None,
         )
 
     def locale(eff: Effective) -> str:
-        return s.preconditions.resolved_locale(eff.locale)
+        return s.preconditions.resolved_locale(eff.locale, eff.platform)
 
     for member in rest:
         if route(effs[member]) != route(effs[first]):
             yield (
                 f"device group [{', '.join(group)}]: {member!r} differs from {first!r} in platform, "
-                "backend, or device route (deviceProvider, device, xcuitest.deviceType), so they "
+                "backend, or device route (device provider, runsOn.ios.kind), so they "
                 "cannot share a device"
             )
         if locale(effs[member]) != locale(effs[first]):
@@ -768,8 +924,8 @@ def _retired_primary_problems(s: Scenario, effs: Mapping[str, Effective]) -> Ite
     # this to run time; walked here in step order, it is refused before any device is leased.
     installed = {m for m in s.target_names if m not in set(s.later_targets)}
     retired: set[str] = set()
-    # `before` runs ahead of `steps`, so an install there retires a member just the same.
-    for step in [*s.before, *s.steps]:
+    # `setup` runs ahead of `steps`, so an install there retires a member just the same.
+    for step in [*s.setup, *s.steps]:
         if step.install_app is not None:
             member = step.install_app.from_
             identifier = effs[member].app_identifier
@@ -805,10 +961,10 @@ def _install_steps(s: Scenario) -> Iterator[Step]:
                 yield from walk(step.for_each.steps)
 
     yield from walk(s.steps)
-    yield from walk(s.before)
-    for rule in s.after:
+    yield from walk(s.setup)
+    for rule in s.cleanup:
         yield from walk(rule.steps)
-    for entry in s.interrupts:
+    for entry in s.screens:
         yield from walk(entry.steps)
 
 
@@ -819,7 +975,7 @@ def _reject_bad_target_config_hooks(
 
     `with_lifecycle_phases` re-validates its own folded result already — but only `run_all` calls
     it, deep inside a path this command's own `try` doesn't catch (its `finally` only releases the
-    device lease). A `targets.<name>.before`/`after` hook step carrying a `target` that disagrees
+    device lease). A `targets.<name>.hooks.setup`/`cleanup` hook step carrying a `target` that disagrees
     with the scenario it folds into would otherwise reach the operator as a raw traceback instead
     of the clean exit 2 every other scenario-loading error gets. Calling it here again, and
     discarding the result, is redundant with `run_all`'s own call on the same inputs — cheap, and
@@ -832,22 +988,110 @@ def _reject_bad_target_config_hooks(
         raise typer.Exit(2) from None
 
 
+def _reject_unmatchable_conditions(
+    scenarios: list[Scenario],
+    target_effs: Mapping[str, Effective],
+    primary: str,
+    engines: list[str],
+    *,
+    engine_flag: bool,
+) -> None:
+    """Refuse, before any device work, a condition no device of the run can be matched against.
+
+    A physical iPhone and a target an `appium` grid serves have no pool to read, and the members of
+    a device group must agree on their conditions (`condition_problems`). A `--browsers` engine list
+    beside any remaining condition is refused too: engines number their versions differently, so
+    the pair a target cannot write at load is not formed at run time either (BE-0452).
+
+    Raises:
+        typer.Exit: Any scenario has such a condition (exit code 2).
+    """
+    problems = condition_problems(scenarios, target_effs, primary, engine_flag=engine_flag)
+    if len(engines) > 1:
+        lanes = {n: TargetLanes(n, e, "", ()) for n, e in target_effs.items()}
+        if any_conditions(scenarios, lanes, primary, engine_flag=True):
+            problems.append(
+                "--browsers forms an engine list, which cannot be combined with a runsOn condition "
+                "such as browser.version: each engine numbers its versions differently"
+            )
+    if problems:
+        for problem in problems:
+            typer.echo(problem)
+        raise typer.Exit(2)
+
+
+def _web_backends(setups: Mapping[str, _TargetSetup]) -> list[str]:
+    """The backend list of the run's web target, which provisions an engine before it launches."""
+    return next((s.backends for s in setups.values() if s.actuator == "playwright"), ["web"])
+
+
+def _plan_device_runs(
+    scenarios: list[Scenario],
+    setups: Mapping[str, _TargetSetup],
+    primary: str,
+    *,
+    engine_flag: bool,
+    skip: Mapping[int, str],
+    step_gate: StepGate | None,
+    read_facts: Callable[[TargetLanes], list[device_facts.DeviceFacts]] = read_pool_facts,
+    read_browser: Callable[[str], device_facts.DeviceFacts] | None = None,
+) -> DeviceMatrix | None:
+    """The runs the scenarios' `runsOn` conditions form, or None when no scenario declares one.
+
+    None keeps today's single-engine and `--browsers` paths unchanged for a run without conditions.
+
+    Raises:
+        typer.Exit: A pool's devices could not be read, or `--step` meets more than one run
+            (exit code 2).
+    """
+    lanes = {
+        name: TargetLanes(name, setup.eff, setup.actuator, tuple(setup.udids))
+        for name, setup in setups.items()
+    }
+    runnable = [s for i, s in enumerate(scenarios) if i not in skip]
+    if not any_conditions(runnable, lanes, primary, engine_flag=engine_flag):
+        return None
+    try:
+        matrix = plan_device_matrix(
+            scenarios,
+            lanes,
+            primary,
+            engine_flag=engine_flag,
+            read_facts=read_facts,
+            read_browser=read_browser or installed_browser(_web_backends(setups)),
+            skip=skip,
+        )
+    except device_errors.DeviceError as e:
+        typer.echo(str(e))
+        raise typer.Exit(2) from None
+    if step_gate is not None and len(matrix.records) > 1:
+        typer.echo(
+            "--step needs exactly one run, but the scenario's runsOn conditions form several"
+        )
+        raise typer.Exit(2)
+    return matrix
+
+
 def _filter_scenarios(
     scenarios: list[Scenario],
     tag: str,
     exclude: str,
     erase: bool | None,
-    target_erase: bool,
     ios_tipkit_handling: bool | None = None,
     target_ios_tipkit_handling: bool = False,
+    check: Callable[[list[Scenario]], None] | None = None,
 ) -> list[Scenario]:
-    """Apply `--tag`/`--exclude` selection and resolve each scenario's `preconditions.erase`.
+    """Apply `--tag`/`--exclude` selection and apply `--erase` / `--no-erase` to each scenario.
 
-    Selection runs over the combined set; an empty result is a usage error (exit 2). Erase resolves
-    most-specific-wins (BE-0177): `--erase` / `--no-erase` overrides every scenario, else a scenario's
-    own explicit value, else *target_erase* (the target config default, already the built-in off when
-    unset). Leaves every scenario with a concrete bool, so downstream never sees the unset `None`.
-    `iosTipKitHandling` resolves by the same precedence, and likewise lands as a concrete bool.
+    Selection runs over the combined set; an empty result is a usage error (exit 2). *check* then
+    sees the selected scenarios as written, before any run default is filled in, so a field the
+    scenario never wrote cannot trip it (BE-0452). The flag moves `preconditions.subject.reinstall` along
+    its ladder (BE-0473): `--erase` makes it `erase`, and `--no-erase` lowers the scenario's own
+    `erase` to `clean`. A target's own `erase` is lowered on its `Effective` instead
+    (`_with_erase_flag`), since each target a scenario drives merges its own `subject.reinstall`.
+    The scenario's `tipKit` interrupt entry resolves by the same precedence — the flag, then the
+    scenario's own entry, then the target's `dismiss` — and is written only when it ends on or the
+    flag names it, so a scenario that drives no iOS target never gains the iOS-only entry.
     """
     include = [t.strip() for t in tag.split(",") if t.strip()]
     excluded = [t.strip() for t in exclude.split(",") if t.strip()]
@@ -856,19 +1100,51 @@ def _filter_scenarios(
         if not scenarios:
             typer.echo("no scenarios match --tag/--exclude")
             raise typer.Exit(2)
+    if check is not None:
+        check(scenarios)
     for s in scenarios:
-        if erase is not None:
-            s.preconditions.erase = erase  # CLI flag overrides every scenario
-        elif s.preconditions.erase is None:
-            s.preconditions.erase = target_erase  # unset scenario inherits the target default
+        subject = s.preconditions.subject
+        if erase:
+            subject.reinstall = "erase"
+        elif erase is False and subject.reinstall == "erase":
+            subject.reinstall = "clean"
         if ios_tipkit_handling is not None:
-            s.ios_tip_kit_handling = ios_tipkit_handling
-        elif s.ios_tip_kit_handling is None:
-            s.ios_tip_kit_handling = target_ios_tipkit_handling
+            _set_tip_kit(s, "dismiss" if ios_tipkit_handling else "leave")
+        elif tip_kit_entry(s.interrupts) is None and target_ios_tipkit_handling:
+            _set_tip_kit(s, "dismiss")
     return scenarios
 
 
-def _select_actuator(backend: str, eff: Effective, engines: list[str]) -> tuple[str, list[str]]:
+def _set_tip_kit(s: Scenario, value: str) -> None:
+    """Make *value* the scenario's one `tipKit` entry, replacing any it wrote."""
+    others = [e for e in s.interrupts if not isinstance(e, TipKitInterrupt)]
+    s.interrupts = [*others, TipKitInterrupt.model_validate({"tipKit": value})]
+
+
+def _check_preconditions_or_exit(
+    loaded: LoadedConfig,
+    scenarios: list[Scenario],
+    target_name: str,
+    eff: Effective,
+    *,
+    erase: bool | None,
+) -> None:
+    """Refuse a scenario whose preconditions no driven target can honor, before any device work.
+
+    Each scenario is checked against every target it drives: its declared `targets`, else the run's
+    own (`_precondition_checks`; `_refuse_bad_preconditions` says what is checked).
+
+    Raises:
+        typer.Exit: Any scenario has a problem (exit code 2).
+    """
+    _refuse_bad_preconditions(
+        _precondition_checks(loaded, scenarios, target_name, eff), erase=erase
+    )
+
+
+def _select_actuator(
+    backend: str, eff: Effective, engines: list[str], worker: WorkerCapability | None = None
+) -> tuple[str, list[str]]:
     """Select the actuator for the requested backends, provisioning any web runtime, then validate.
 
     Validates the backend before touching the Simulator CLIs, so an unknown/unavailable actuator
@@ -877,36 +1153,13 @@ def _select_actuator(backend: str, eff: Effective, engines: list[str]) -> tuple[
     `--browsers` matrix on a non-web actuator is a user error caught up front. Returns the resolved
     actuator and the ordered backend list.
     """
-    actuator, backends = _select_actuator_or_exit(backend, eff, engines)
+    actuator, backends = _select_actuator_or_exit(backend, eff, engines, worker)
     # --browsers is a web-only axis: a multi-engine matrix on a non-web actuator is a user error,
     # caught up front rather than after building an iOS pool that ignores the engine list.
     if len(engines) > 1 and actuator != "playwright":
         typer.echo(f"--browsers is web-only; backend '{actuator}' has a single engine")
         raise typer.Exit(2)
     return actuator, backends
-
-
-def _apply_system_alert_handling(
-    scenarios: list[Scenario], system_alert_handling: bool | None
-) -> None:
-    """Apply the `--system-alert-handling` / `--no-system-alert-handling` override to every scenario.
-
-    Turning the guard on preserves whatever policy the scenario already declared and re-enables one
-    that had switched itself off; turning it off replaces the whole field with `False`, which is what
-    off *is* now the boolean carries on and off (BE-0401) — an off guard reads no policy. A no-op
-    when the flag is unset (each scenario's own `systemAlertHandling`, default on, decides). Mirrors
-    the `--erase` override.
-    """
-    if system_alert_handling is None:
-        return
-    for s in scenarios:
-        if not system_alert_handling:
-            s.system_alert_handling = False
-            continue
-        prev = s.system_alert_handling
-        s.system_alert_handling = (
-            prev if isinstance(prev, SystemAlertHandling) else (SystemAlertHandling())
-        )
 
 
 def _resolve_rules(rules: list[SystemAlertRule], locale: str) -> list[ResolvedAlertRule]:
@@ -934,7 +1187,7 @@ def _resolve_rules(rules: list[SystemAlertRule], locale: str) -> list[ResolvedAl
             # actually failed.
             covered = ", ".join(covered_languages(rule.prompt))
             raise UncoveredSystemAlertLocale(
-                f"systemAlertHandling.rules prompt: {rule.prompt} has no known button labels for "
+                f"interrupts systemAlert: {rule.prompt} has no known button labels for "
                 f"locale {locale!r}; covered: {covered}. Answer that prompt with a "
                 "handleSystemAlert step instead, which falls back to the button's position "
                 "(BE-0445), add the language to bajutsu/common/scenario/system_alerts.py, or pin a "
@@ -954,202 +1207,166 @@ def _resolve_rules(rules: list[SystemAlertRule], locale: str) -> list[ResolvedAl
     return resolved
 
 
-def _flag_alert_policy(poll_interval: float | None) -> SystemAlertHandling | None:
-    """The command-line layer of `systemAlertHandling`, or None when no flag declares one.
-
-    Only `pollInterval` has a flag. `rules` has none: an entry pairs a prompt with a choice, which
-    one flag value cannot carry legibly, so a per-prompt declaration stays a scenario-file and
-    target-config one (BE-0401). `--alert-labels` went with `labels` itself (BE-0406), and
-    `visionInstruction` has had none since BE-0402 removed `run`'s vision fallback.
+def _check_flag_poll_interval(poll_interval: float | None) -> None:
+    """Refuse a non-positive `--alert-poll-interval`, as a CLI error rather than a traceback.
 
     Raises:
-        typer.Exit: a flag's value does not satisfy the schema, reported as a CLI error rather than a
-            validation traceback.
+        typer.Exit: The value is zero or negative.
     """
-    fields: dict[str, Any] = {}
-    if poll_interval is not None:
-        fields["pollInterval"] = poll_interval
-    if not fields:
-        return None
-    try:
-        return SystemAlertHandling.model_validate(fields)
-    except ValidationError as exc:
-        typer.echo(f"invalid alert-guard flag: {exc}")
-        raise typer.Exit(2) from exc
+    if poll_interval is not None and poll_interval <= 0:
+        typer.echo("invalid --alert-poll-interval: it must be positive")
+        raise typer.Exit(2)
 
 
 def _warn_target_rules_reach(
     s: Scenario,
-    scenario_rules: list[SystemAlertRule],
-    target_rules: list[SystemAlertRule],
+    scenario_entries: list[SystemAlertInterrupt],
+    target_entries: list[SystemAlertInterrupt],
 ) -> None:
-    """Notice each target rule that will answer a prompt inside a scenario answering for itself.
+    """Notice each target entry that will answer a prompt inside a scenario answering for itself.
 
     Composition restores a case BE-0382 removed on purpose. The behavior is correct under the
-    specificity ladder — the layers concatenate, innermost first — but BE-0382's objection was that
-    it is *silent*: a project-wide edit changes a scenario that already declares for itself. The
-    notice keeps the composition and removes the silence. Only a rule the scenario does not already
-    rule on is named, since its own rule shadows the target's for that prompt.
-
-    "Answering for itself" reads the scenario's own rules and nothing else: `rules` is the only
-    declaration left (BE-0406) and no flag can carry one, so the scenario is the only layer inside
-    the target's that a declaration can come from.
+    specificity ladder — a scenario's entry replaces the target's for its own prompt, and the
+    target's answer every other — but BE-0382's objection was that it is *silent*: a project-wide
+    edit changes a scenario that already declares for itself. The notice keeps the composition and
+    removes the silence. Only a prompt the scenario does not already name is reported, and a target
+    entry that leaves its prompt answers nothing, so it is not reported either.
 
     Keyed on the scenario *and* the prompt, not the prompt alone: `warn_once` dedupes for the whole
     process, so a prompt-only code would warn for the first affected scenario of a run and pass over
     the rest in the very silence this removes.
     """
-    if not target_rules or not scenario_rules:
+    if not target_entries or not scenario_entries:
         return
-    ruled = {r.prompt for r in scenario_rules}
-    for rule in target_rules:
-        if rule.prompt in ruled:
+    named = {e.system_alert for e in scenario_entries}
+    for entry in target_entries:
+        if entry.system_alert in named or entry.choice == "leave":
             continue
         warn_once(
-            f"systemAlertHandling.targetRule.{s.name}.{rule.prompt}",
-            f"scenario {s.name!r} declares its own system-alert rules, and the target config's "
-            f"rule for the {rule.prompt} prompt still answers it ({rule.choice}); "
-            "write the scenario's own rule for that prompt to override it.",
+            f"interrupts.targetSystemAlert.{s.name}.{entry.system_alert}",
+            f"scenario {s.name!r} declares its own systemAlert entries, and the target config's "
+            f"entry for the {entry.system_alert} prompt still answers it ({entry.choice}); "
+            "write the scenario's own entry for that prompt (`choice: leave` to answer nothing) "
+            "to override it.",
         )
 
 
-def _policy_of(value: SystemAlertHandlingField) -> SystemAlertHandling | None:
-    """The policy a layer declares, or None when it declares none (absent) or switches the guard off.
+def _merged_system_alerts(
+    scenario_entries: list[SystemAlertInterrupt], target_entries: list[SystemAlertInterrupt]
+) -> list[SystemAlertInterrupt]:
+    """The `systemAlert` entries in effect: the scenario's per prompt, then the target's (BE-0473).
 
-    `False` and an absent key are both "no policy here" to every caller that reads declarations; only
-    the enabled check below distinguishes them.
+    A scenario entry replaces the target's `choice` for the same prompt and inherits an omitted
+    `frozenScreenTimeout` from it, since that value describes the app rather than the scenario. The
+    scenario's entries come first: matching returns on the first rule whose prompt it identifies, and
+    `_widest_first` keeps that order for two layers' copies of one shape.
     """
-    return value if isinstance(value, SystemAlertHandling) else None
+    by_prompt = {e.system_alert: e for e in target_entries}
+    merged: list[SystemAlertInterrupt] = []
+    for entry in scenario_entries:
+        target = by_prompt.pop(entry.system_alert, None)
+        inherit = entry.frozen_screen_timeout is None and target is not None
+        merged.append(
+            entry.model_copy(update={"frozen_screen_timeout": target.frozen_screen_timeout})
+            if inherit and target is not None
+            else entry
+        )
+    return [*merged, *by_prompt.values()]
 
 
-def _reject_vision_instruction(
-    scenarios: list[Scenario], target_policy: SystemAlertHandling | None
-) -> None:
-    """Stop the whole run when a layer supplies a `visionInstruction` (BE-0402).
+def _layer_poll_interval(entries: list[SystemAlertInterrupt]) -> float | None:
+    """One layer's `pollInterval`: the smallest its entries set, or None when none sets one.
 
-    The key steers only the AI-vision fallback, which `run` no longer has, so acting on it is
-    impossible and ignoring it is worse than failing: a scenario that wrote `visionInstruction: "tap
-    Allow"` to *grant* a permission would silently fall through to the built-in dismissive labels and
-    deny it instead — the silent wrong answer BE-0382 spent its Motivation ruling out for the same
-    field. The key itself now reaches no command: `run` refuses it here, and `record` / `crawl` read
-    the free-text form only from their own `--alert-vision-instruction` flag, never from a scenario or
-    a target config. It stays in the schema so a file carrying it gets this message rather than
-    Pydantic's generic "extra fields not permitted" — the same reason BE-0401 kept `instruction`
-    reachable long enough to name its replacement. Two layers can carry it — a scenario and the
-    target config's `run_defaults`; the command line cannot, since `run` retired the flag that set it.
-
-    Checked eagerly over every scenario, before the per-scenario closure is ever returned. That
-    closure runs inside the run loop, in a worker, so a check placed there would fire on scenario N
-    with scenarios 1…N-1 already executed — partway through a run. This deliberately differs from
-    `resolved_locale`, which does raise from inside the closure and is caught as one scenario's
-    failure: an uncovered locale is a condition of the run, an unusable `visionInstruction` is an
-    authoring mistake in the file and is detectable without a device, so a suite is rejected or
-    accepted whole.
-
-    Raises:
-        typer.Exit: any layer supplies the key, reported as a CLI error naming where it came from.
+    A shorter interval satisfies every entry that asked for a longer one, so the smallest never
+    weakens another entry's request (BE-0473).
     """
-    named = [
-        f"scenario {s.name!r}"
-        for s in scenarios
-        if (policy := _policy_of(s.system_alert_handling)) is not None and policy.vision_instruction
-    ]
-    if target_policy is not None and target_policy.vision_instruction:
-        named.append("the target config's run_defaults")
-    if not named:
-        return
-    typer.echo(
-        f"systemAlertHandling.visionInstruction is not supported by `run` ({', '.join(named)}): "
-        "it steers only the AI-vision fallback, which `run` no longer has (BE-0402). Answer the "
-        "prompt you expect with `rules: [{ prompt: ..., choice: ... }]` instead. "
-        "`record` and `crawl` still read it."
-    )
-    raise typer.Exit(2)
+    return min((e.poll_interval for e in entries if e.poll_interval is not None), default=None)
+
+
+def _frozen_screen_timeout(answered: list[SystemAlertInterrupt]) -> float:
+    """The guard-wide frozen-screen bound from the entries that answer a prompt.
+
+    The guard has one bound, so the most tolerant entry wins: the largest value, and 0 (the stop
+    turned off) over any value. A stricter bound would stop the wait on the screen another entry's
+    app was declared to hold that long.
+    """
+    values = [e.frozen_screen_timeout for e in answered if e.frozen_screen_timeout is not None]
+    if not values:
+        return DEFAULT_FROZEN_SCREEN_TIMEOUT
+    return 0.0 if 0 in values else max(values)
 
 
 def _alert_guard_factory(
-    scenarios: list[Scenario], eff: Effective, flag_policy: SystemAlertHandling | None
+    eff: Effective, *, enabled: bool | None, flag_poll_interval: float | None
 ) -> AlertGuardFor | None:
-    """Build a per-scenario alert-guard factory, or None when no scenario wants a guard.
+    """Build a per-scenario alert-guard factory, or None when `--no-system-alert-handling` is passed.
 
     Each scenario gets its own `AlertGuardConfig`, which since BE-0402 is deterministic throughout:
     the native path (BE-0315, reusing BE-0316's `handle_system_alert`) and the in-tree dismiss, and
     nothing else. `run` reaches no model here under any flag, so no AI credential is consulted and
     none is needed.
 
-    A setting reaches the run from three layers — the scenario, *flag_policy* (the command line), and
-    the target config (BE-0177) — composed by the key's type (BE-0401): `rules` concatenates
-    innermost layer first, so both layers' entries stay reachable, and `pollInterval` takes the
-    innermost layer that supplies one. `rules` reaches only two of the three, since no flag can carry
-    a prompt paired with a choice legibly.
+    The guard is on unless the flag turns it off. Its answers come from the `systemAlert` entries of
+    the scenario's `interrupts` layered over the target's `hooks.interrupts` (BE-0473,
+    `_merged_system_alerts`); an entry whose `choice` is `leave` answers nothing. `pollInterval`
+    resolves layer by layer, the scenario, then *flag_poll_interval*, then the target, and within a
+    layer takes the smallest value (`_layer_poll_interval`).
 
     Raises:
-        typer.Exit: a layer supplies a `visionInstruction`, which `run` can no longer act on.
+        typer.Exit: *flag_poll_interval* is not positive.
     """
-
-    # A scenario's guard is on when its own `systemAlertHandling` says so, else the target config's,
-    # else the built-in on (BE-0177). The `--system-alert-handling` flag is already baked onto the
-    # scenario by `_apply_system_alert_handling`, so it needs no separate check here.
-    def _enabled(s: Scenario) -> bool:
-        if s.system_alert_handling is not None:
-            return s.system_alert_handling is not False
-        if eff.run_defaults.system_alert_handling is not None:
-            return eff.run_defaults.system_alert_handling is not False
-        return True
-
-    if not any(_enabled(s) for s in scenarios):
+    _check_flag_poll_interval(flag_poll_interval)
+    if enabled is False:
         return None
-
-    target_policy = _policy_of(eff.run_defaults.system_alert_handling)
-    _reject_vision_instruction(scenarios, target_policy)
+    target_entries = eff.run_defaults.system_alerts
 
     def _guard_for(s: Scenario) -> AlertGuardConfig | None:
-        if not _enabled(s):
-            return None
-        # Innermost layer first, so a scalar's precedence and a list's concatenation are the same
-        # walk over the same sequence.
-        scenario_policy = _policy_of(s.system_alert_handling)
-        layers = [p for p in (scenario_policy, flag_policy, target_policy) if p is not None]
+        scenario_entries = system_alert_entries(s.interrupts)
         poll_interval = next(
-            (layer.poll_interval for layer in layers if layer.poll_interval is not None),
+            (
+                v
+                for v in (
+                    _layer_poll_interval(scenario_entries),
+                    flag_poll_interval,
+                    _layer_poll_interval(target_entries),
+                )
+                if v is not None
+            ),
             DEFAULT_ALERT_POLL_INTERVAL,
         )
-
-        # The scenario's own rules ahead of the target's: matching returns on the first rule whose
-        # prompt it identifies, so a rule for the same prompt in both layers is an override, not the
-        # parse-time error a duplicate within one list is. Both layers stay in effect — the target's
-        # rules answer every prompt the scenario ruled on none of — which is the suppression BE-0382
-        # defined and BE-0401 reversed, under the notice below. Resolved against this scenario's own
-        # locale — the same value the run pins the Simulator's system language to — so a rule's labels
-        # are the ones actually on screen; an uncovered language raises here, before this scenario's
-        # device work (caught by the runner as a scenario failure).
-        scenario_rules = scenario_policy.rules if scenario_policy else []
-        target_rules = target_policy.rules if target_policy else []
-        # The notice reads the scenario's own declaration, not the concatenation below: that carries
-        # the target's *own* rules, which would make a scenario that declares nothing look like one
+        # The notice reads the scenario's own entries, not the merge below: that carries the
+        # target's *own* entries, which would make a scenario that declares nothing look like one
         # answering for itself.
-        _warn_target_rules_reach(s, scenario_rules, target_rules)
-        locale = s.preconditions.resolved_locale(eff.locale)
-        rules = _resolve_rules([*scenario_rules, *target_rules], locale)
-
-        frozen_screen_timeout = next(
-            (
-                layer.frozen_screen_timeout
-                for layer in layers
-                if layer.frozen_screen_timeout is not None
-            ),
-            DEFAULT_FROZEN_SCREEN_TIMEOUT,
+        _warn_target_rules_reach(s, scenario_entries, target_entries)
+        answered = [
+            e
+            for e in _merged_system_alerts(scenario_entries, target_entries)
+            if e.choice != "leave"
+        ]
+        # Resolved against this scenario's own locale — the same value the run pins the Simulator's
+        # system language to — so a rule's labels are the ones actually on screen; an uncovered
+        # language raises here, before this scenario's device work (caught by the runner as a
+        # scenario failure).
+        locale = s.preconditions.resolved_locale(eff.locale, eff.platform)
+        rules = _resolve_rules(
+            [
+                SystemAlertRule(prompt=e.system_alert, choice=e.choice)
+                for e in answered
+                if e.choice != "leave"
+            ],
+            locale,
         )
-
         return AlertGuardConfig(
-            rules=rules, poll_interval=poll_interval, frozen_screen_timeout=frozen_screen_timeout
+            rules=rules,
+            poll_interval=poll_interval,
+            frozen_screen_timeout=_frozen_screen_timeout(answered),
         )
 
     return _guard_for
 
 
 def _resolve_network(network: bool | None, target_network: bool) -> bool:
-    """Resolve network collection: `--network/--no-network` flag > target `network` config > on (BE-0177)."""
+    """Resolve network collection: `--network/--no-network` > `evidence.collectNetwork` > on."""
     return network if network is not None else target_network
 
 
@@ -1164,7 +1381,7 @@ def _apply_mocks(scenarios: list[Scenario], network: bool) -> None:
         return
     for s in scenarios:
         if s.mocks:
-            s.preconditions.launch_env.setdefault("BAJUTSU_MOCKS", dump_mocks(s.mocks))
+            s.preconditions.subject.launch.env.setdefault("BAJUTSU_MOCKS", dump_mocks(s.mocks))
 
 
 def _walk_visual_steps(steps: list[Step]) -> Iterator[Step]:
@@ -1194,7 +1411,7 @@ def _visual_asserting_scenarios(scenarios: list[Scenario]) -> set[int]:
     multi-file run (`_load_scenarios` just concatenates each file's own scenarios), and a
     name-keyed set would conflate two same-named scenarios that need different answers below.
 
-    Walks every lifecycle phase (`before`, `steps`, each `after` rule), every `interrupts` entry's
+    Walks every lifecycle phase (`setup`, `steps`, each `cleanup` rule), every `interrupts` entry's
     own recovery `steps`, and the full step tree within each — not only the scenario's own top-level
     `steps` — since a step-level `visual` assertion can sit anywhere in that tree. An interrupt's
     recovery steps run through the same `exec_steps` machinery as any other step (`_run_recovery`),
@@ -1203,10 +1420,10 @@ def _visual_asserting_scenarios(scenarios: list[Scenario]) -> set[int]:
     visual = set()
     for s in scenarios:
         all_steps = [
-            *s.before,
+            *s.setup,
             *s.steps,
-            *(step for rule in s.after for step in rule.steps),
-            *(step for entry in s.interrupts for step in entry.steps),
+            *(step for rule in s.cleanup for step in rule.steps),
+            *(step for entry in s.screens for step in entry.steps),
         ]
         step_assertions = [a for step in _walk_visual_steps(all_steps) for a in step.assert_ or []]
         if any(a.visual is not None for a in [*s.expect, *step_assertions]):
@@ -1252,7 +1469,7 @@ def _apply_touch_markers(
     scenario's own, the same merge `_hides_touch_markers` performs and the same order the launch
     itself merges them in — so a target that pins the marker key for every scenario is decided for
     here exactly as the app that launches sees it, not as if every scenario had pinned nothing.
-    `target_launch_env` is the target's own `launchEnv` (`Effective.launch_env`); a caller that
+    `target_launch_env` is the target's own `subject.launch.env` (`Effective.launch_env`); a caller that
     omits it sees only each scenario's own launch env, as before.
 
     Every internal decision here is keyed by scenario object identity, never by `.name`: nothing
@@ -1283,7 +1500,7 @@ def _apply_touch_markers(
     def _env(s: Scenario) -> Mapping[str, str]:
         # Same merge and order the launch itself performs, so a target-level pin reads here
         # exactly as the app that launches sees it, not as a scenario that pinned nothing.
-        return {**target_env, **s.preconditions.launch_env}
+        return {**target_env, **s.preconditions.subject.launch.env}
 
     visual_scenarios = _visual_asserting_scenarios(scenarios)
     # A scenario (or its target) that pinned the marker value to "0" draws no markers at all, so it
@@ -1433,9 +1650,9 @@ def _write_touch_marker_env(scenarios: list[Scenario], skip: set[int], *, armed:
     for s in scenarios:
         if id(s) in skip:
             continue
-        s.preconditions.launch_env.setdefault("BAJUTSU_TOUCH_MARKERS", "1")
+        s.preconditions.subject.launch.env.setdefault("BAJUTSU_TOUCH_MARKERS", "1")
         if id(s) in armed:
-            s.preconditions.launch_env.setdefault("BAJUTSU_CONTROL_CHANNEL", "1")
+            s.preconditions.subject.launch.env.setdefault("BAJUTSU_CONTROL_CHANNEL", "1")
 
 
 # One `setMocks` step, the `web:` / `app:` block it sits in (if any), and the target it runs on.
@@ -1470,9 +1687,9 @@ def _mock_swaps(
 def _scenario_mock_swaps(s: Scenario) -> list[_MockSwap]:
     """`_mock_swaps` over every phase of *s*, `interrupts` recovery steps included."""
     swaps = list(
-        _mock_swaps([*s.before, *s.steps, *(step for rule in s.after for step in rule.steps)])
+        _mock_swaps([*s.setup, *s.steps, *(step for rule in s.cleanup for step in rule.steps)])
     )
-    for entry in s.interrupts:
+    for entry in s.screens:
         swaps.extend(_mock_swaps(entry.steps, target=entry.target))
     return swaps
 
@@ -1532,18 +1749,20 @@ def _arm_mock_swaps(
         if problem := _mock_swap_problem(s, swaps):
             misplaced.append(f"{s.name} ({problem})")
             continue
-        pinned = {**target_env, **s.preconditions.launch_env}.get("BAJUTSU_CONTROL_CHANNEL", "1")
+        pinned = {**target_env, **s.preconditions.subject.launch.env}.get(
+            "BAJUTSU_CONTROL_CHANNEL", "1"
+        )
         if pinned != "1":
             refused.append(f"{s.name} (BAJUTSU_CONTROL_CHANNEL is pinned to {pinned!r})")
         elif not channel_available(s):
             refused.append(s.name)
         else:
-            s.preconditions.launch_env.setdefault("BAJUTSU_CONTROL_CHANNEL", "1")
+            s.preconditions.subject.launch.env.setdefault("BAJUTSU_CONTROL_CHANNEL", "1")
             # The key is also half of the pair `_hides_touch_markers` reads, so a scenario that
             # pinned BAJUTSU_TOUCH_MARKERS itself and compares a screenshot now has its markers
             # hidden for that capture. The channel is armed anyway, so hiding them is correct;
             # it is announced because the author asked for neither.
-            merged = {**target_env, **s.preconditions.launch_env}
+            merged = {**target_env, **s.preconditions.subject.launch.env}
             if id(s) in visual and merged.get("BAJUTSU_TOUCH_MARKERS") == "1":
                 marker_pair.append(s.name)
     if marker_pair:
@@ -1674,6 +1893,7 @@ def _reject_unshareable_groups(
     backend: str,
     engines: list[str],
     udid: str,
+    worker: WorkerCapability | None = None,
 ) -> None:
     """Refuse a device group on a backend that cannot share a device, before any device work.
 
@@ -1683,7 +1903,7 @@ def _reject_unshareable_groups(
     """
     grouped = {name for s in scenarios for g in s.device_groups if len(g) >= 2 for name in g}
     for name in sorted(grouped):
-        actuator, _ = _select_actuator(backend, target_effs[name], engines)
+        actuator, _ = _select_actuator(backend, target_effs[name], engines, worker)
         # The run-aware set: a real iPhone and a WebDriver endpoint drop `deviceGroup` there.
         if base.Capability.DEVICE_GROUP not in capabilities_for_run(
             actuator, target_effs[name], udid
@@ -1701,17 +1921,25 @@ def _acquire_targets(
     engines: list[str],
     udid: str,
     workers: int,
+    worker: WorkerCapability | None = None,
 ) -> dict[str, _TargetSetup]:
     """Select an actuator and acquire a device for every declared target, or release what we took.
 
     `acquire_device` reads the target's own `deviceProvider` (BE-0236), so it runs once per target
     rather than once per run: two targets can be served by two different providers, and a cloud
     device reserved for one of them must be handed back even if a later target's acquisition fails.
+
+    Every target's actuator is selected — and checked against the worker capability (BE-0450) —
+    before the first device is acquired, so a target the worker cannot run exits 2 with nothing
+    reserved yet.
     """
+    selected = {
+        name: _select_actuator(backend, eff, engines, worker) for name, eff in target_effs.items()
+    }
     setups: dict[str, _TargetSetup] = {}
     try:
         for name, eff in target_effs.items():
-            actuator, backends = _select_actuator(backend, eff, engines)
+            actuator, backends = selected[name]
             device = acquire_device(eff, udid)
             udids, lanes = _resolve_lanes(
                 actuator,
@@ -1883,17 +2111,23 @@ class _RunPlan:
     # each scenario, step, and condition-wait boundary and fails whatever it did not finish, so a
     # cancelled run still writes its manifest and report instead of vanishing from the history.
     cancelled: CancelSource
-    # Whether a backend-crash-triggered retry may force `preconditions.erase=True`
+    # Scenarios the worker capability check failed before any device work (BE-0450), keyed by their
+    # index in `scenarios`: reported with the prefixed reason and never leased.
+    worker_failures: Mapping[int, str]
+    # Whether a backend-crash-triggered retry may force `preconditions.subject.reinstall: erase`
     # (`bajutsu/common/runner/pipeline.py`'s forced-erase retry). `erase is not False` — True for the default
-    # (unset) and explicit `--erase`, False only for an explicit `--no-erase` — captured here, ahead of
-    # `_filter_scenarios` resolving every scenario's `preconditions.erase` to a concrete bool, since
-    # that resolved value can no longer distinguish an explicit opt-out from "nobody asked".
+    # (unset) and explicit `--erase`, False only for an explicit `--no-erase` — captured here, since
+    # `_filter_scenarios` moves only a scenario that erases, so no scenario's value says whether the
+    # operator opted out.
     force_erase_on_retry: bool
     # `--trace-driver` (BE-0415): one `<sid>/driver_trace.json` per scenario, recording every
     # Python<->driver call. Diagnostic only, off by default, never on the verdict path.
     trace_driver: bool
     # `--step` / `--break` / `--break-on-fail`: the prompt that holds the step loop at a boundary.
     step_gate: StepGate | None = None
+    # The runs `runsOn` conditions formed (BE-0452), indexed into `scenarios`; None when no scenario
+    # runs any target under a condition, which keeps the single-engine and `--browsers` paths.
+    matrix: DeviceMatrix | None = None
 
 
 def _print_score(score: Score) -> None:
@@ -1909,12 +2143,12 @@ def _print_score(score: Score) -> None:
     typer.echo(render(score), err=True)
 
 
-def _dispatch(plan: _RunPlan) -> tuple[list[RunResult], Path]:
-    """Bring up the launch server and execute the run — single-engine or cross-browser matrix.
+def _dispatch(plan: _RunPlan) -> tuple[list[RunResult], Path, list[dict[str, str]]]:
+    """Bring up the launch server and execute the run — single-engine, cross-browser, or device runs.
 
     The launch server (if the target declares one) is brought up before the pool leases and torn
     down in the finally; one server serves every engine in a matrix run. Returns the per-scenario
-    results and the report manifest path.
+    results, the report manifest path, and the not-applicable records (BE-0452).
     """
     # --progress streams scenario/step lines to stderr (the web UI merges them into its run log);
     # stdout stays the machine-readable final PASS/FAIL line.
@@ -1940,9 +2174,11 @@ def _dispatch(plan: _RunPlan) -> tuple[list[RunResult], Path]:
         plan.eff, upload_exec=plan.upload_exec or None
     )
     try:
+        if plan.matrix is not None:
+            return _dispatch_runs(plan, plan.matrix, progress_fn, exec_decision)
         if len(plan.engines) > 1:
-            return _dispatch_matrix(plan, progress_fn, exec_decision)
-        return _dispatch_single(plan, progress_fn, exec_decision)
+            return (*_dispatch_matrix(plan, progress_fn, exec_decision), [])
+        return (*_dispatch_single(plan, progress_fn, exec_decision), [])
     except device_errors.DeviceError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
@@ -2061,6 +2297,7 @@ def _dispatch_single(
             # collapses to that one actuator; a multi-actuator platform escalates only the scenarios
             # that need it (iOS is single-actuator since BE-0290, so `[ios]` collapses too).
             resolve_actuator=lambda s: select_actuator_for_scenario(plan.backends, s),
+            worker_failures=plan.worker_failures,
             config_source=plan.config_source,
             exec_provenance=exec_decision,
             label=plan.label or None,
@@ -2119,6 +2356,7 @@ def _dispatch_matrix(
                 baselines_dir=plan.baselines_dir,
                 schemas_dir=plan.schemas_dir,
                 actuator=plan.actuator,
+                worker_failures=plan.worker_failures,
                 golden_context=plan.golden_context,
                 # Each engine pass scores its own entry screen once (`--score`); off by default.
                 on_score=_print_score if plan.score else None,
@@ -2144,7 +2382,196 @@ def _dispatch_matrix(
         config_source=plan.config_source,
         exec_provenance=exec_decision,
         cancelled=plan.cancelled,
+        worker_failures=plan.worker_failures,
     )
+
+
+def _dispatch_runs(
+    plan: _RunPlan,
+    matrix: DeviceMatrix,
+    progress_fn: Callable[[str], None] | None,
+    exec_decision: dict[str, str | None] | None,
+) -> tuple[list[RunResult], Path, list[dict[str, str]]]:
+    """The runs `runsOn` conditions formed (BE-0452): one pass per cell, then ONE report.
+
+    Each cell runs against pools narrowed to its eligible sets, so a run never takes a device
+    outside its set; its evidence lands under `run_dir/run-NN/`, as an engine pass of `--browsers`
+    does under `run_dir/<engine>/`. A run no device fits fails without a lease, and a run an open
+    range left without a device is a not-applicable record, which the manifest lists apart.
+    """
+    # Owner-only up front (BE-0131): the sink creating run_dir/run-NN/ would otherwise materialize
+    # the run directory above it at the ambient umask for the whole run.
+    prepare_run_dir(plan.runs_dir, plan.run_id)
+    executed: dict[int, RunResult] = {}  # keyed by id() of the record that ran
+    for number, cell in enumerate(matrix.cells, start=1):
+        prefix = f"run-{number:02d}"
+        if plan.cancelled():
+            # Every run left is failed as cancelled, never dropped, as the `--browsers` matrix does.
+            for record in cell.runs:
+                executed[id(record)] = RunResult(
+                    scenario=plan.scenarios[record.scenario].name,
+                    ok=False,
+                    steps=[],
+                    failure=CANCELLED_FAILURE,
+                    coordinates=record.combination.label,
+                    run_coordinates=record.combination.coordinates,
+                )
+            continue
+        if progress_fn is not None:
+            labels = dict.fromkeys(r.combination.label for r in cell.runs if r.combination.label)
+            progress_fn(f"━ {prefix} {'; '.join(labels)}".rstrip())
+        passed = _run_cell(plan, cell, prefix, progress_fn, first=number == 1)
+        for record, result in zip(cell.runs, passed, strict=True):
+            result.coordinates = record.combination.label
+            result.run_coordinates = record.combination.coordinates
+            reroot_evidence(result, prefix)
+            executed[id(record)] = result
+    results: list[RunResult] = []
+    plan_order: list[int] = []
+    for index, s in enumerate(plan.scenarios):
+        if index in plan.worker_failures:
+            results.append(
+                RunResult(scenario=s.name, ok=False, steps=[], failure=plan.worker_failures[index])
+            )
+            plan_order.append(index)
+    not_applicable: list[dict[str, str]] = []
+    for record in matrix.records:
+        s = plan.scenarios[record.scenario]
+        combo = record.combination
+        if combo.outcome == "not-applicable":
+            not_applicable.append(not_applicable_record(s, plan.target_name, combo))
+            continue
+        result = executed.get(id(record)) or RunResult(
+            scenario=s.name,
+            ok=False,
+            steps=[],
+            failure=f"no device fits this run: {combo.reason}",
+            coordinates=combo.label,
+            run_coordinates=combo.coordinates,
+        )
+        results.append(result)
+        plan_order.append(record.scenario)
+    manifest = report_run_matrix(
+        plan.eff,
+        plan.scenarios,
+        results,
+        plan_order,
+        plan.runs_dir,
+        plan.run_id,
+        target_effs={name: setup.eff for name, setup in plan.targets.items()},
+        not_applicable=not_applicable,
+        source_name=plan.source_name,
+        description=plan.description,
+        plan_sources=plan.plan_sources,
+        secret_values=plan.secret_values,
+        config_source=plan.config_source,
+        exec_provenance=exec_decision,
+        label=plan.label or None,
+        worker_failures=plan.worker_failures,
+    )
+    return results, manifest, not_applicable
+
+
+def _run_cell(
+    plan: _RunPlan,
+    cell: Cell,
+    prefix: str,
+    progress_fn: Callable[[str], None] | None,
+    *,
+    first: bool,
+) -> list[RunResult]:
+    """Run one cell's scenarios against pools narrowed to its devices, one result per run."""
+    scenarios = [plan.scenarios[record.scenario] for record in cell.runs]
+    names = list(
+        dict.fromkeys(
+            name
+            for s in scenarios
+            for group in participants_of(s, plan.target_name)
+            for name in group
+        )
+    )
+    effs: dict[str, Effective] = {}
+    keys: dict[str, tuple[str, tuple[str, ...], str]] = {}
+    for name in names:
+        setup = plan.targets[name]
+        eff = setup.eff
+        engine = cell.engines.get(name, "")
+        if engine:
+            try:
+                # A listed engine may not be installed yet; the web backend installs it on demand.
+                ensure_web_runtime(setup.backends, engine)
+            except RuntimeError as e:
+                typer.echo(str(e))
+                raise typer.Exit(2) from None
+            eff = _resolve_browser(eff, engine)
+        kind = cell.kinds.get(name, "")
+        if kind:
+            eff = apply_kind(eff, kind)
+        effs[name] = eff
+        # A target carries a browser kind or an iOS kind, never both, so one slot tells pools apart.
+        keys[name] = (setup.actuator, cell.devices.get(name, tuple(setup.udids)), engine or kind)
+    run_dir = plan.runs_dir / plan.run_id / prefix
+    pools: dict[tuple[str, tuple[str, ...], str], tuple[LeaseFn, Callable[[], None]]] = {}
+    try:
+        for name in names:
+            if keys[name] in pools:
+                continue
+            setup = plan.targets[name]
+            pools[keys[name]] = device_pool(
+                list(keys[name][1]),
+                setup.backends,
+                effs[name],
+                run_dir,
+                network=plan.network,
+                log_predicate=plan.log_predicate or None,
+                log_subsystem=plan.log_subsystem or _log_subsystem_default(effs[name]),
+                secret_values=plan.secret_values,
+                provision=setup.device.provision,
+            )
+        # Each worker holds one device per participant on a pool for the scenario's whole length.
+        demand: dict[tuple[str, tuple[str, ...], str], int] = {}
+        for s in scenarios:
+            per_pool: dict[tuple[str, tuple[str, ...], str], int] = {}
+            for group in participants_of(s, plan.target_name):
+                per_pool[keys[group[0]]] = per_pool.get(keys[group[0]], 0) + 1
+            for key, n in per_pool.items():
+                demand[key] = max(demand.get(key, 0), n)
+        workers = max(1, min([plan.workers, *(len(k[1]) // n for k, n in demand.items())]))
+        lead = plan.target_name if plan.target_name in names else names[0]
+        return run_all(
+            effs[lead],
+            scenarios,
+            pools[keys[lead]][0],
+            targets={
+                name: TargetPool(
+                    eff=effs[name],
+                    lease=pools[keys[name]][0],
+                    actuator=plan.targets[name].actuator,
+                    udid_spec=plan.targets[name].device.udid_spec,
+                )
+                for name in names
+            },
+            alert_guard_for=plan.alert_guard_for,
+            workers=workers,
+            run_dir=run_dir,
+            bindings=plan.secret_bindings,
+            secret_values=plan.secret_values,
+            progress=progress_fn,
+            baselines_dir=plan.baselines_dir,
+            schemas_dir=plan.schemas_dir,
+            resolve_actuator=lambda s: select_actuator_for_scenario(plan.backends, s),
+            golden_context=plan.golden_context,
+            lease_udid_spec=plan.udid_spec,
+            on_score=_print_score if plan.score and first else None,
+            trace_driver=plan.trace_driver,
+            force_erase_on_retry=plan.force_erase_on_retry,
+            cancelled=plan.cancelled,
+            step_gate=plan.step_gate,
+        )
+    finally:
+        # The engine stays in the label: two web pools can differ only by it, and a shared label
+        # would drop one pool's shutdown.
+        _close_pools({f"{k[0]} {','.join(k[1])} {k[2]}".rstrip(): v for k, v in pools.items()})
 
 
 def _write_zip(manifest: Path) -> None:
@@ -2192,14 +2619,30 @@ def _upload_evidence(manifest: Path, evidence_store: str) -> None:
             typer.echo(f"  warning: upload failed for {key}: {reason}", err=True)
 
 
-def _finish(plan: _RunPlan, results: list[RunResult], manifest: Path) -> None:
+def _finish(
+    plan: _RunPlan,
+    results: list[RunResult],
+    manifest: Path,
+    not_applicable: Sequence[Mapping[str, str]] = (),
+) -> None:
     """Emit the verdict and every post-verdict step, then exit with the machine-only code.
 
     Order is load-bearing: the PASS/FAIL verdict and exit code are decided first (machine-only, no
     LLM); `--zip` and `--evidence-store` run strictly after and can only warn, never flip the verdict
-    (BE-0060/BE-0110).
+    (BE-0060/BE-0110). Not-applicable records (BE-0452) are listed apart; an invocation where every
+    record is not applicable executed nothing, so it fails with "no run executed" rather than report
+    green.
     """
-    ok = all(r.ok for r in results)
+    for record in not_applicable:
+        typer.echo(render_not_applicable(record))
+    ok = all(r.ok for r in results) and bool(results or not not_applicable)
+    if plan.matrix is not None:
+        passed = sum(1 for r in results if r.ok)
+        typer.echo(
+            f"{passed} passed, {len(results) - passed} failed, {len(not_applicable)} not applicable"
+        )
+        if not results:
+            typer.echo("no run executed: every run was not applicable")
     github_actions.emit(results, manifest.parent / "report.html")  # annotations + summary in CI
     # Webhook: post-verdict notification (BE-0099).
     if plan.eff.notify:
@@ -2219,6 +2662,7 @@ def _finish(plan: _RunPlan, results: list[RunResult], manifest: Path) -> None:
             endpoints=plan.eff.notify,
             bindings=plan.secret_bindings,
             runs_dir=plan.runs_dir,
+            not_applicable=not_applicable,
         )
     typer.echo(f"{'PASS' if ok else 'FAIL'}  {manifest}")
     if plan.zip_run:
@@ -2228,7 +2672,21 @@ def _finish(plan: _RunPlan, results: list[RunResult], manifest: Path) -> None:
     raise typer.Exit(0 if ok else 1)
 
 
-def run(
+def _check_label(value: str) -> str:
+    """Refuse an over-long `--label` while the command line is parsed (BE-0404 unit 2).
+
+    Rejected, never truncated: an operator learns the label was refused instead of finding a
+    silently shortened one in the history. Checked at parse time rather than in the body, so the
+    public wrapper refuses it before it spawns the internal run (BE-0449).
+    """
+    if len(value) > MAX_LABEL_LENGTH:
+        raise typer.BadParameter(
+            f"a label must be at most {MAX_LABEL_LENGTH} characters", param_hint="--label"
+        )
+    return value
+
+
+def run_body(
     # --- Target & scenario selection ---
     target_name: str = typer.Option(
         "",
@@ -2251,6 +2709,13 @@ def run(
         "",
         help="comma list of platforms (ios/android/web/fake) or actuators (idb); first available wins",
     ),
+    worker_config: Annotated[
+        Path | None,
+        typer.Option(
+            "--worker-config",
+            help=WORKER_CONFIG_HELP,
+        ),
+    ] = None,
     tag: str = typer.Option(
         "", "--tag", help="comma list; run only scenarios with any of these tags"
     ),
@@ -2263,24 +2728,29 @@ def run(
     erase: bool | None = typer.Option(
         None,
         "--erase/--no-erase",
-        help="override every scenario's preconditions.erase (default: per-scenario)",
+        help="--erase makes every scenario's subject.reinstall `erase`; --no-erase lowers an `erase` to "
+        "`clean` and leaves `overwrite` alone (default: the scenario's, then the target's, then "
+        "`clean`)",
     ),
     ios_tipkit_handling: bool | None = typer.Option(
         None,
         "--ios-tipkit-handling/--no-ios-tipkit-handling",
-        help="dismiss a blocking iOS TipKit tip (default: per-scenario, off)",
+        help="dismiss a blocking iOS TipKit tip, or keep it; sets every scenario's `tipKit` "
+        "interrupts entry, over the scenario's own and the target's (default: off)",
     ),
     # --- Alerts, capture & logging ---
     system_alert_handling: bool | None = typer.Option(
         None,
         "--system-alert-handling/--no-system-alert-handling",
-        help="override every scenario's systemAlertHandling (default: per-scenario, on; the guard "
-        "is fully deterministic and makes no model call)",
+        help="turn the system-alert guard on or off for every scenario; on, it answers the "
+        "`systemAlert` interrupts entries of the scenario and the target (default: on; the guard is "
+        "fully deterministic and makes no model call)",
     ),
     alert_poll_interval: float | None = typer.Option(
         None,
         "--alert-poll-interval",
-        help="seconds between the native system-alert presence queries (a scenario's own wins)",
+        help="seconds between the native system-alert presence queries (a scenario's own "
+        "`systemAlert` entry wins; this wins over the target's)",
     ),
     log_predicate: str = typer.Option(
         "", "--log-predicate", help="NSPredicate narrowing the deviceLog stream (e.g. subsystem)"
@@ -2292,8 +2762,8 @@ def run(
         None,
         "--network/--no-network",
         help="collect the app's network exchanges (for `request` assertions); iOS needs BajutsuKit "
-        "in the app, web (Playwright) observes natively. Default: the target's `network` config, "
-        "then on",
+        "in the app, web (Playwright) observes natively. Default: the target's "
+        "`evidence.collectNetwork`, then on",
     ),
     progress: bool = typer.Option(
         False,
@@ -2351,40 +2821,48 @@ def run(
     baselines: str = typer.Option(
         "",
         "--baselines",
-        help="directory of baseline images for `visual` assertions "
-        "(default: config baselines, then baselines/ beside the scenario)",
+        help="directory of baseline images for `visual` assertions; overrides the target's "
+        "paths.baselines (default: paths.baselines, then baselines/ beside the scenario)",
     ),
     schemas: str = typer.Option(
         "",
         "--schemas",
-        help="directory of JSON Schema files for `responseSchema` assertions "
-        "(default: config schemas, then schemas/ beside the scenario)",
+        help="directory of JSON Schema files for `responseSchema` assertions; overrides the "
+        "target's paths.schemas (default: paths.schemas, then schemas/ beside the scenario)",
     ),
     goldens: str = typer.Option(
         "",
         "--goldens",
-        help="directory of golden JSON files for `golden` assertions (BE-0006) "
-        "(default: goldens/ beside the scenario)",
+        help="directory of golden JSON files for `golden` assertions (BE-0006); overrides the "
+        "target's paths.goldens (default: paths.goldens, then goldens/ beside the scenario)",
     ),
     # --- Browser & engine selection ---
     headed: bool | None = typer.Option(
         None,
         "--headed/--no-headed",
-        help="web backend: show the browser (headed, slow-motion) instead of headless; "
-        "default leaves the target's `headless` config (headless)",
+        help="web backend: show the browser (headed, slow-motion) instead of headless; overrides "
+        "the target's driver.headless (default: headless)",
     ),
     browser: str = typer.Option(
         "",
         "--browser",
-        help=f"web backend: rendering engine to drive — {' / '.join(WEB_ENGINES)}; "
-        "default leaves the target's `browser` config (chromium)",
+        help=f"web backend: browser to drive — {' / '.join(BROWSER_KINDS)}; "
+        "overrides the target's runsOn.browser.kind (default: chromium)",
     ),
     browsers: str = typer.Option(
         "",
         "--browsers",
         help=f"web backend: run the cross-browser matrix — a comma list of engines "
-        f"({','.join(WEB_ENGINES)}); each scenario runs once per engine and the run is green only "
-        "if every engine passes (all-must-pass). A single engine equals --browser",
+        f"({','.join(BROWSER_KINDS)}) that overrides the target's runsOn.browser.kind; each "
+        "scenario runs once per engine and the run is green only if every engine passes "
+        "(all-must-pass). A single engine equals --browser",
+    ),
+    kind: str = typer.Option(
+        "",
+        "--kind",
+        help="iOS: run only these of the target's runsOn.ios.kind — simulator / device, or a comma "
+        "list; one run per named kind. A kind the target does not declare exits 2 (default: every "
+        "listed kind)",
     ),
     # --- Reporting & output ---
     zip_run: bool = typer.Option(
@@ -2421,6 +2899,7 @@ def run(
     label: str = typer.Option(
         "",
         "--label",
+        callback=_check_label,
         help="tag this run's history entry with a short free-text label, so runs of two configs "
         "stay readable apart (BE-0404). Opaque to the tool — never parsed or matched against "
         "config; defaults to the config's own name",
@@ -2438,15 +2917,10 @@ def run(
 ) -> None:
     """Run a scenario deterministically.
 
-    Pass/fail is machine-only; the sole AI is the alert guard (on by default per scenario), which
-    only fires to clear an OS prompt that blocked a step — see each scenario's `systemAlertHandling`.
+    Pass/fail is machine-only, and `run` reaches no model: the alert guard (on unless
+    `--no-system-alert-handling`) only clears an OS prompt that blocked a step, answering the
+    scenario's and the target's `systemAlert` interrupts entries.
     """
-    if len(label) > MAX_LABEL_LENGTH:
-        # Rejected, never truncated (BE-0404 unit 2): an operator learns the label was refused
-        # instead of finding a silently shortened one in the history.
-        raise typer.BadParameter(
-            f"a label must be at most {MAX_LABEL_LENGTH} characters", param_hint="--label"
-        )
     # Resolve the run's inputs from the flags — each step is an independently testable helper — then
     # assemble the plan and hand it to dispatch/finish. `run` itself stays a thin sequence.
     #
@@ -2454,28 +2928,90 @@ def run(
     # the primary target is resolved first, from the flag or from the `--scenario` files themselves;
     # everything below — the config load, the pool, the evidence dirs — is unchanged once it has one.
     explicit_target = bool(target_name)
+    worker = _load_device_worker_or_exit(worker_config)
+    _reject_url_udid(udid)
     target_name = _resolve_primary_target(target_name, scenario or [])
-    loaded, eff, config_source, engines = _resolve_config_and_engines(
-        config,
-        target_name,
-        offline=config_offline,
-        require_pinned=require_pinned_config,
-        headed=headed,
-        browser=browser,
-        browsers=browsers,
-    )
-    scenarios, description, source_name, files, plan_sources = _load_scenarios(
-        eff, scenario or [], target_name
-    )
-    scenarios = _filter_scenarios(
+
+    def load_under(
+        primary: str,
+    ) -> tuple[
+        LoadedConfig,
+        Effective,
+        dict[str, str] | None,
+        list[str],
+        list[Scenario],
+        str | None,
+        str,
+        list[Path],
+        dict[str, ScenarioPlanSource],
+    ]:
+        # The config and the filtered scenarios as *primary* resolves them: its setup runs at load
+        # and its run defaults feed the filter, so a changed primary reloads both.
+        loaded, eff, config_source, engines = _resolve_config_and_engines(
+            config,
+            primary,
+            offline=config_offline,
+            require_pinned=require_pinned_config,
+            headed=headed,
+            browser=browser,
+            browsers=browsers,
+            kind=kind,
+        )
+        scenarios, description, source_name, files, plan_sources = _load_scenarios(
+            eff, scenario or [], primary
+        )
+        scenarios = _filter_scenarios(
+            scenarios,
+            tag,
+            exclude,
+            erase,
+            ios_tipkit_handling,
+            eff.run_defaults.ios_tip_kit_handling,
+            check=lambda selected: _check_preconditions_or_exit(
+                loaded, selected, primary, eff, erase=erase
+            ),
+        )
+        return (
+            loaded,
+            eff,
+            config_source,
+            engines,
+            scenarios,
+            description,
+            source_name,
+            files,
+            plan_sources,
+        )
+
+    (
+        loaded,
+        eff,
+        config_source,
+        engines,
         scenarios,
-        tag,
-        exclude,
-        erase,
-        eff.run_defaults.erase,
-        ios_tipkit_handling,
-        eff.run_defaults.ios_tip_kit_handling,
-    )
+        description,
+        source_name,
+        files,
+        plan_sources,
+    ) = load_under(target_name)
+    if not explicit_target and scenarios and not _uses_target(scenarios, target_name):
+        # The primary inferred from the first file's first target belongs to a scenario `--tag` /
+        # `--exclude` just selected away, so no scenario left drives it: re-infer it from the first
+        # one left, the same rule over the scenarios this run attempts. Kept, it would be resolved
+        # and acquired anyway, and `--backend` checked against a platform the run never drives.
+        target_name = scenarios[0].target_names[0]
+        (
+            loaded,
+            eff,
+            config_source,
+            engines,
+            scenarios,
+            description,
+            source_name,
+            files,
+            plan_sources,
+        ) = load_under(target_name)
+    step_cancel = _LateCancel()
     step_gate = _build_step_gate(
         step=step,
         break_at=break_at or [],
@@ -2483,20 +3019,65 @@ def run(
         scenarios=scenarios,
         engines=engines,
         workers=workers,
+        cancelled=step_cancel,
     )
     # After filtering, so `--tag`/`--exclude` selecting away a self-declaring scenario in a suite
     # leaves the rest of the suite resolving exactly as it did before that file was added (BE-0428)
     # — these checks speak about the scenarios this run will actually attempt.
+    if not scenario:
+        _reject_self_declaring_in_dir(scenarios, target_name)
     _check_target_membership(scenarios, target_name, explicit=explicit_target)
     _reject_legacy_without_target(scenarios, target_name, explicit=explicit_target)
-    target_effs = _resolve_target_effs(
-        loaded, scenarios, target_name, eff, headed=headed, browser=browser
-    )
+    # The run keeps every scenario so each failed one is still reported, in declaration order; the
+    # checks and device acquisition below see only the runnable ones (BE-0450).
+    all_scenarios = scenarios
+    worker_failures = _worker_capability_failures(loaded, scenarios, eff, backend, worker)
+    if worker_failures and len(worker_failures) == len(scenarios):
+        for i, reason in sorted(worker_failures.items()):
+            typer.echo(f"{scenarios[i].name}: {reason}")
+        raise typer.Exit(2)
+    scenarios = [s for i, s in enumerate(scenarios) if i not in worker_failures]
+    if worker_failures and not _uses_target(scenarios, target_name):
+        # The primary was inferred from (or named for) scenarios that just failed, and no runnable
+        # one uses it: acquiring it would exit 2 on the very target the worker already ruled out,
+        # taking the runnable rest down with it. Every remaining scenario declares its own targets
+        # here, so the first one's first name is the primary they share with the inferred path.
+        target_name = scenarios[0].target_names[0]
+        # Reload under the new primary: the first load applied the old primary's setup and the
+        # filter baked in its run defaults. Every scenario here declares its own targets, which
+        # alone decide the worker check, so the recomputed failures are the same set.
+        (
+            loaded,
+            eff,
+            config_source,
+            engines,
+            scenarios,
+            description,
+            source_name,
+            files,
+            plan_sources,
+        ) = load_under(target_name)
+        all_scenarios = scenarios
+        worker_failures = _worker_capability_failures(loaded, scenarios, eff, backend, worker)
+        scenarios = [s for i, s in enumerate(scenarios) if i not in worker_failures]
+    # An `appium` environment hands its grid to the targets of its platform (BE-0452), before any
+    # check below reads which route a target's device takes.
+    target_effs = {
+        name: _with_worker_device(_with_erase_flag(target_eff, erase), worker)
+        for name, target_eff in _resolve_target_effs(
+            loaded, scenarios, target_name, eff, headed=headed, browser=browser
+        ).items()
+    }
+    eff = target_effs.get(target_name, eff)
+    _reject_two_grid_targets(scenarios, target_effs, target_name)
     # Every declared target's own `secrets` names, not only the primary's — a `${secrets.X}` a step
     # routed elsewhere uses may be declared only on that target's own config (BE-0428).
     secret_bindings, secret_values = _resolve_secrets(target_effs.values())
     _reject_web_flags_across_targets(target_effs, headed=headed, browser=browser, browsers=browsers)
-    _reject_cross_browser_matrix_with_targets(scenarios, engines)
+    _reject_kind_across_targets(target_effs, kind=kind)
+    # Every scenario, not only the runnable ones: the matrix still carries the failed ones to the
+    # pipeline, whose own guard would otherwise raise mid-run instead of this clean exit 2.
+    _reject_cross_browser_matrix_with_targets(all_scenarios, engines)
     _reject_bad_target_config_hooks(target_effs, scenarios, target_name)
     _reject_bad_device_groups(scenarios, target_effs, checkout_root=loaded.root)
     # Where this target's devices come from is a seam (BE-0236): the provider `acquire` returns the
@@ -2510,8 +3091,14 @@ def run(
     # idb, `--udid` is a concrete comma list capped to the pool size. (The "booted" default is
     # unused on web.) How a device handle resolves is the platform's, behind the Environment seam
     # (BE-0256): Android via adb, the iOS family via simctl — no `actuator == "adb"` branch here.
-    _reject_unshareable_groups(scenarios, target_effs, backend, engines, udid)
-    setups = _acquire_targets(target_effs, backend, engines, udid, workers)
+    fake = [b.strip() for b in backend.split(",") if b.strip()] == ["fake"]
+    engine_flag = bool(browser or engines)
+    if not fake:
+        _reject_unmatchable_conditions(
+            scenarios, target_effs, target_name, engines, engine_flag=engine_flag
+        )
+    _reject_unshareable_groups(scenarios, target_effs, backend, engines, udid, worker)
+    setups = _acquire_targets(target_effs, backend, engines, udid, workers, worker)
     primary = setups[target_name]
     actuator, backends = primary.actuator, primary.backends
     udids = primary.udids
@@ -2522,18 +3109,25 @@ def run(
         # scenario's own target count (BE-0428).
         _reject_incompatible_actuator_sharing(setups)
         _reject_preinstalled_group_builds(scenarios, setups)
+        # Decided per target from its resolved actuator, so a target the fake driver runs reads no
+        # device whichever way it came to the fake actuator.
+        matrix = _plan_device_runs(
+            all_scenarios,
+            setups,
+            target_name,
+            engine_flag=engine_flag,
+            skip=worker_failures,
+            step_gate=step_gate,
+        )
         workers = _resolve_multi_target_workers(scenarios, setups, primary.workers)
-        _apply_system_alert_handling(
-            scenarios, resolve_system_alert_handling_flag(system_alert_handling)
-        )
         alert_guard_for = _alert_guard_factory(
-            scenarios,
             eff,
-            _flag_alert_policy(alert_poll_interval),
+            enabled=resolve_system_alert_handling_flag(system_alert_handling),
+            flag_poll_interval=alert_poll_interval,
         )
-        # Network collection resolves `--network/--no-network` over the target's `network` config,
-        # then on (BE-0177); the resolved bool baked into mocks and the plan drives collection and
-        # `request` waits.
+        # Network collection resolves `--network/--no-network` over the target's
+        # `evidence.collectNetwork`, then on (BE-0177); the resolved bool baked into mocks and the plan
+        # drives collection and `request` waits.
         network = _resolve_network(network, eff.run_defaults.network)
         _apply_mocks(scenarios, network)
         # `backends`, never the run-level `actuator` resolved above: the predicate has to ask the
@@ -2557,12 +3151,13 @@ def run(
         # covers `_finish` too: the `FAIL <manifest>` line it prints is what `serve` reads this run's
         # id from, so a hard kill between the report and that line would still lose the run.
         with graceful_sigterm() as cancelled:
+            step_cancel.source = cancelled
             plan = _RunPlan(
                 eff=eff,
                 config_source=config_source,
                 target_name=target_name,
                 targets=setups,
-                scenarios=scenarios,
+                scenarios=all_scenarios,
                 description=description,
                 source_name=source_name,
                 plan_sources=plan_sources,
@@ -2596,20 +3191,83 @@ def run(
                 # mean "no operator opt-out", only `--no-erase` (False) does.
                 force_erase_on_retry=erase is not False,
                 cancelled=cancelled,
+                worker_failures=worker_failures,
+                matrix=matrix,
             )
             # No usage ledger and no token accounting here: since BE-0402 removed the alert guard's
             # vision fallback, nothing in `run` can reach a model, so there is nothing to attribute.
-            results, manifest = _dispatch(plan)
+            results, manifest, not_applicable = _dispatch(plan)
             if step_gate is not None:
                 for unreached in step_gate.unreached_breaks():
                     typer.echo(f"breakpoint never reached: {unreached}", err=True)
-            _finish(plan, results, manifest)
+            _finish(plan, results, manifest, not_applicable)
     finally:
         # Hand every target's device back to its provider (a no-op for the local one), even on
         # failure so a reserved cloud device is never leaked (BE-0236).
         _release_devices(setups)
 
 
+def run(ctx: typer.Context, **params: Any) -> None:
+    """The public `bajutsu run`: execute the run body as a one-shot job (BE-0449).
+
+    Takes exactly the body's flags (`_share_signature`), and passes on every one the caller gave on
+    the command line to the internal run module, which the one-shot worker path spawns with this
+    process's standard streams. A default, or a value read from an environment variable, is left for
+    the internal run to resolve the same way from the environment it inherits. The PASS or FAIL
+    line, the progress on standard error, and an interactive `--step` prompt therefore behave as
+    they did in one process. The body keeps every check of its own, the refusal of a device-cloud
+    `--worker-config` among them, so each stays in one place. A SIGINT, SIGTERM, or SIGHUP cancels
+    the run as a served cancel does; the exit code is the run's, or 128 plus the signal number.
+    On Windows the body runs in this process instead, with no wrapper.
+    """
+    if os.name == "nt":
+        # The wrapper's process-group relay, Ctrl-Z handling, and liveness pipe are POSIX-only, so
+        # on Windows (where the web backend runs) the body runs in this process, as before BE-0449.
+        run_body(**params)
+        return
+    from bajutsu.serve._cli_flags import option_args
+    from bajutsu.serve.server.one_shot import local_run_spec, run_spec_once
+
+    given = {name: value for name, value in params.items() if _from_command_line(ctx, name)}
+    spec = local_run_spec(option_args("run", given))
+    raise typer.Exit(
+        run_spec_once(spec, worker_config=None, apply_worker_config=False, keep_caller_path=True)
+    )
+
+
+def _from_command_line(ctx: typer.Context, name: str) -> bool:
+    """Whether the caller typed option *name*, rather than leaving its default or environment value.
+
+    Compared by name: Typer vendors its own Click, whose `ParameterSource` enum is not public API,
+    while `Context.get_parameter_source` is.
+    """
+    source = ctx.get_parameter_source(name)
+    return source is not None and source.name == "COMMANDLINE"
+
+
+def _share_signature(wrapper: Callable[..., None], body: Callable[..., None]) -> None:
+    """Give *wrapper* the signature of *body*, led by a `typer.Context`, so both share one flag set.
+
+    Typer reads a command's options from its signature and their types from its annotations, so
+    copying both makes the wrapper's flag surface the body's by definition. The context lets the
+    wrapper ask which options the caller typed.
+    """
+    body_sig = inspect.signature(body, eval_str=True)
+    hints = typing.get_type_hints(body, include_extras=True)
+    hints.pop("return", None)
+    ctx_param = inspect.Parameter(
+        "ctx", inspect.Parameter.POSITIONAL_OR_KEYWORD, annotation=typer.Context
+    )
+    wrapper.__signature__ = body_sig.replace(  # type: ignore[attr-defined]
+        parameters=[ctx_param, *body_sig.parameters.values()]
+    )
+    wrapper.__annotations__ = {"ctx": typer.Context, **hints, "return": None}
+
+
+_share_signature(run, run_body)
+
+
 def register(app: typer.Typer) -> None:
     """Register this command on the Typer app."""
-    app.command()(run)
+    # The body's docstring is the command's help, so `bajutsu run --help` reads as it always has.
+    app.command(help=inspect.getdoc(run_body))(run)

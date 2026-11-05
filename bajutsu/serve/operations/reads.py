@@ -14,7 +14,8 @@ from bajutsu.analysis import stats as _stats
 from bajutsu.common import handoff
 from bajutsu.common.analytics import ledger as _usage_ledger
 from bajutsu.common.analytics import stats as _usage_stats
-from bajutsu.common.config import Config, load_config, resolve
+from bajutsu.common.capability.worker_capability import APPIUM, BATCH_PROVIDERS
+from bajutsu.common.config import Config, load_config_file, resolve, unknown_target
 from bajutsu.common.devices import os as device_os
 from bajutsu.common.drivers import base as driver_base
 from bajutsu.common.evidence import StepView, step_view
@@ -22,7 +23,7 @@ from bajutsu.common.scenario import declared_name, load_scenario_file
 from bajutsu.common.scenario.models import STEP_ACTIONS, Scenario, Step
 from bajutsu.serve import jobs
 from bajutsu.serve.artifacts import Artifact, ArtifactStore
-from bajutsu.serve.authz import _record_audit, _target_forbidden
+from bajutsu.serve.authz import _record_audit, _target_forbidden, role_allows
 from bajutsu.serve.helpers import (
     list_fs,
     list_simulators,
@@ -31,10 +32,15 @@ from bajutsu.serve.helpers import (
     valid_run_id,
     valid_scenario_ref,
 )
-from bajutsu.serve.operations._common import _resolve_org_or_forbid
+from bajutsu.serve.operations._common import (
+    _resolve_org_or_forbid,
+    awaiting_human,
+    no_worker_notice,
+)
 from bajutsu.serve.operations.config import FS_DISABLED_ERROR, launch_label
 from bajutsu.serve.operations.runs import sweep_expired_trash
-from bajutsu.serve.server.db import RunRecord
+from bajutsu.serve.orgs import DEFAULT_ORG
+from bajutsu.serve.server.db import RunRecord, cancelled_job_result
 from bajutsu.serve.state import ServeState
 
 _REPORT_SUFFIX = "/report.html"
@@ -73,12 +79,9 @@ def list_scenarios(
 
 
 def _primary_backend(config: Config, name: str) -> str:
-    """The target's first (effective) backend token, so the Web UI can tell web from iOS apps."""
+    """The target's platform, so the Web UI can tell web from iOS apps (BE-0452: one per target)."""
     target = config.targets.get(name)
-    if target is None:
-        return ""
-    backends = target.backend or config.defaults.backend
-    return backends[0] if backends else ""
+    return target.platform if target is not None else ""
 
 
 def list_targets_payload(
@@ -884,30 +887,62 @@ def _valid_step_id(step_id: str) -> bool:
     return ".." not in parts
 
 
-def job_view(state: ServeState, job_id: str, *, machine_org: str | None = None) -> tuple[Any, int]:
+def list_environments(state: ServeState) -> tuple[Any, int]:
+    """The environments a live worker advertises, for the Replay tab's Environment selector (BE-0465).
+
+    Returns only names, kinds and live-worker counts, never a provider ARN or credential. `local`
+    is never listed: it needs no worker. A name that is neither a batch provider nor the Appium
+    grid is skipped, since a worker may advertise any token but the run-set endpoint could not
+    dispatch to it. Without a repository there is no queue and so no worker: an empty list.
+    """
+    live = state.repository.live_environments() if state.repository is not None else {}
+    environments = [
+        {"name": name, "kind": kind, "liveWorkers": count}
+        for name, count in sorted(live.items())
+        if (kind := "batch" if name in BATCH_PROVIDERS else "grid" if name == APPIUM else None)
+    ]
+    return {"environments": environments}, 200
+
+
+def job_view(
+    state: ServeState,
+    job_id: str,
+    *,
+    machine_org: str | None = None,
+    include_lines: bool = True,
+) -> tuple[Any, int]:
     """One job's live view — its status, and the log buffer while it is still running.
+
+    `include_lines=False` omits the log buffer, for a poller that only needs the status (the
+    run-set panel polls many jobs and reads each log from its own stream).
 
     A **machine** principal reads only its own org's jobs (BE-0414 unit 3), and one belonging to
     another org is answered **404, not 403**: a job id is opaque, so "forbidden" would confirm that
     this particular id exists, the one thing the refusal is there to withhold.
 
     The check is deliberately narrowed to a machine rather than applied to every caller. A person's
-    org is read from their user row, which `set_active_org` rewrites, while a job's org is frozen at
-    dispatch — so scoping a human here would 404 a member on a run they started seconds earlier,
-    merely because they switched org while it was in flight. The job routes are uniformly unscoped
-    for people today; narrowing that is its own change, tracked separately.
+    active org is read from their user row, which `set_active_org` rewrites, while a job's org is
+    frozen at dispatch — so scoping a human by active org here would 404 a member on a run they
+    started seconds earlier, merely because they switched org while it was in flight. The view stays
+    unscoped for people. `cancel_job` scopes them by membership instead (`org_of` plus
+    `eligible_orgs`, BE-0449), because a cancel reaches jobs this process never registered.
     """
     job = state.jobs.get(job_id)
     if job is None or (machine_org is not None and job.org != machine_org):
         return {"error": "no such job"}, 404
-    view = job.view()
-    # Locally the job ran in-process, so its own view (with the log buffer) is authoritative. On the
-    # server backend it ran on a worker and the control-plane Job stays "running"; fall back to the
+    view = job.view(include_lines=include_lines)
+    # A job that ended on this process's own `Job` (one failed at dispatch) has an authoritative
+    # view. A job that ran on a worker leaves the control-plane Job "running"; fall back to the
     # bus's terminal status then (BE-0015 W2).
     if view["status"] != "done":
         final = state.logbus.final(job_id)
         if final is not None:
             return json.loads(final), 200
+        # A queued job with no live worker says so, rather than looking merely slow (BE-0449).
+        if (notice := no_worker_notice(state, job)) is not None:
+            view["notice"] = notice
+        # A paused `record` on a worker is waiting by its row, which every replica reads (BE-0449).
+        view["awaitingHuman"] = awaiting_human(state, job)
     return view, 200
 
 
@@ -987,27 +1022,136 @@ def approve_baseline(
     return {"ok": True, "baseline": baseline}, 200
 
 
-def cancel_job(state: ServeState, job_id: str) -> tuple[Any, int]:
-    job = state.jobs.get(job_id)
-    if job is None:
-        return {"error": "no such job"}, 404
-    return {"cancelled": jobs.cancel_job(job)}, 200
+def cancel_job(
+    state: ServeState,
+    job_id: str,
+    *,
+    actor: str | None = None,
+    machine_org: str | None = None,
+) -> tuple[Any, int]:
+    """Cancel a job, whether it waits for or runs on a worker.
 
+    A job in the jobs table is cancelled there (BE-0449), so a job queued before a restart can still
+    be cancelled: a queued job is marked ``cancelled`` and never leased, and a leased job is flagged
+    for its worker, which stops the run on its next heartbeat and reports the cancel. A job with no
+    row is stopped through its own `Job`, which holds no process on the server. A cancel that arrives
+    after the job finished changes nothing and reports the job's terminal status.
 
-def respond_human(state: ServeState, job_id: str, body: dict[str, Any]) -> tuple[Any, int]:
-    """Deliver a human's handoff response to a paused `record` job, resuming it (BE-0179).
+    The cancel reaches jobs this process never registered (queued before a restart, or by another
+    replica), and job ids are sequential, so a signed-in caller may cancel a job only in their active
+    org or an org they belong to; any other job is answered 404, which does not confirm the id
+    exists. A machine principal is scoped to its own org the way `job_view` scopes it. A deployment
+    with no signed-in caller keeps today's unscoped cancel.
 
-    The response is written to the job's stdin as the transport-neutral JSON the record loop reads
-    (the same contract the terminal uses). `resumed` is False when the job has no live stdin — it
-    already finished or was never handoff-capable.
+    Args:
+        state: The server state holding the in-process jobs and the repository.
+        job_id: The job to cancel.
+        actor: The signed-in caller, or None for a shared-token or anonymous caller.
+        machine_org: The org a machine principal acts as, or None for every other caller.
 
-    One response never reaches stdin: a device-operation takeover (`acted`, no values) on a hosted
-    serve is refused with a 409 and `resumed=False` (BE-0185 box 3) — the author is not in front of
-    the worker's device there, so the browser cannot drive it. Value handoffs and cancels still pass
-    through.
+    Returns:
+        ``{"cancelled": bool}`` and 200, plus ``status`` (the row's status after the cancel) for a
+        job in the jobs table; 404 for an unknown job or one outside the caller's orgs.
     """
     job = state.jobs.get(job_id)
-    if job is None:
+    row = state.repository.get_job(job_id) if state.repository is not None else None
+    in_process: bool | None = None
+    if row is None:
+        if job is None or not _may_act_on_job(state, job.org, actor=actor, machine_org=machine_org):
+            return {"error": "no such job"}, 404
+        in_process = jobs.cancel_job(job)
+        # The job may be between registration and enqueue: its row can appear while this cancel
+        # runs, after the dispatcher already checked `job.cancelled`. Re-reading closes that gap,
+        # and the dispatcher's own check covers the other order.
+        if state.repository is not None:
+            row = state.repository.get_job(job_id)
+        if row is None:
+            return {"cancelled": in_process}, 200
+    elif not _may_act_on_job(state, row["org_id"], actor=actor, machine_org=machine_org):
+        return {"error": "no such job"}, 404
+    assert state.repository is not None  # a row was read from it just above
+    outcome = state.repository.cancel_job(job_id)
+    if outcome is None:
+        return {"error": "no such job"}, 404
+    status, applied = outcome
+    if applied and job is not None:
+        # The control plane's own `Job` holds no process on this path; this marks it cancelled and
+        # puts the "cancelled" line on its log stream, as a cancel always has.
+        jobs.cancel_job(job)
+    if applied and status == "cancelled":
+        # No worker will ever post a result for a job cancelled while queued, so the server writes
+        # the terminal view itself, or the job would read as running forever.
+        state.logbus.close(job_id, json.dumps(cancelled_job_result(job_id)))
+    # This request stopped the in-memory job even when the dispatcher, seeing that, moved the row
+    # first, so it reports the cancel it caused rather than the row's "already finished".
+    return {"cancelled": applied or bool(in_process), "status": status}, 200
+
+
+def _may_act_on_job(
+    state: ServeState, org: str | None, *, actor: str | None, machine_org: str | None
+) -> bool:
+    """Whether the caller may cancel, or answer the handoff of, a job of *org*.
+
+    Both are editor actions (`required_role`), and the route's gate checked only the role in the
+    caller's active org, so a stored membership of the job's org must itself grant editor: an
+    editor in one org who is a viewer in another must not cancel or answer the other's jobs. With no stored
+    membership of *org*, the caller's active org still counts, so a single-tenant deployment, whose
+    users hold none, cancels its own `default` jobs under the role the gate already checked.
+    """
+    org = org or DEFAULT_ORG
+    if machine_org is not None:
+        return org == machine_org
+    if not actor:
+        return True
+    memberships = state.eligible_orgs(actor)
+    if org in memberships:
+        return role_allows(memberships[org], "editor")
+    return org == state.org_of(actor)
+
+
+def respond_human(
+    state: ServeState,
+    job_id: str,
+    body: dict[str, Any],
+    *,
+    actor: str | None = None,
+    machine_org: str | None = None,
+) -> tuple[Any, int]:
+    """Deliver a person's handoff response to a paused `record` job, resuming it (BE-0179).
+
+    The response is the transport-neutral JSON the record loop reads (the same contract the
+    terminal uses). A job in the jobs table runs on a worker (BE-0449): the response waits there,
+    encrypted under the secrets key, until the worker that holds the job takes it and writes it to
+    the `record`'s standard input. A job with no row runs in this process, and the response goes
+    to its standard input here. `resumed` is False when the job is not waiting on a person: it
+    already finished, its handoff closed, or it was never handoff-capable.
+
+    Answering is an editor action that the gate checked in the caller's active org alone, so the
+    job's own org is checked the way `cancel_job` checks it, and a job outside the caller's orgs
+    is answered 404.
+
+    One response never reaches the `record`: a device-operation takeover (`acted`, no values) on a
+    hosted serve is refused with a 409 and `resumed=False` (BE-0185 box 3) — the author is not in
+    front of the worker's device there, so the browser cannot drive it. Value handoffs and cancels
+    still pass through.
+
+    Args:
+        state: The server state holding the in-process jobs and the repository.
+        job_id: The job to answer.
+        body: The person's response (`values`, `acted`, `cancelled`).
+        actor: The signed-in caller, or None for a shared-token or anonymous caller.
+        machine_org: The org a machine principal acts as, or None for every other caller.
+
+    Returns:
+        ``{"resumed": bool}`` and 200; 404 for an unknown job or one outside the caller's orgs;
+        409 for a takeover a hosted deployment refuses; 503 when the response cannot be stored.
+    """
+    job = state.jobs.get(job_id)
+    row = state.repository.get_job(job_id) if state.repository is not None else None
+    org = row["org_id"] if row is not None else (job.org if job is not None else None)
+    if (row is None and job is None) or not _may_act_on_job(
+        state, org, actor=actor, machine_org=machine_org
+    ):
         return {"error": "no such job"}, 404
     response = handoff.HandoffResponse.from_dict(body)
     if state.hosted and response.kind == "acted" and response.acted:
@@ -1030,8 +1174,15 @@ def respond_human(state: ServeState, job_id: str, body: dict[str, Any]) -> tuple
             ),
             "resumed": False,
         }, 409
-    resumed = jobs.send_response(job, handoff.response_to_json(response))
-    return {"resumed": resumed}, 200
+    line = handoff.response_to_json(response)
+    if row is None:
+        assert job is not None  # the 404 above covers a job in neither place
+        return {"resumed": jobs.send_response(job, line)}, 200
+    assert state.repository is not None  # a row was read from it just above
+    if state.handoff_cipher is None:
+        return {"error": "this server cannot hold a handoff response"}, 503
+    token = state.handoff_cipher.encrypt(line.encode("utf-8")).decode("ascii")
+    return {"resumed": state.repository.answer_handoff(job_id, token)}, 200
 
 
 # Each return is a distinct HTTP status from a validation guard — the early-return shape RET505
@@ -1070,11 +1221,10 @@ def resolve_scenario_pick(  # noqa: C901, PLR0911
     if forbidden:
         return forbidden
 
-    config = load_config(cfg.read_text(encoding="utf-8"))
-    target_cfg = config.targets.get(target)
-    if target_cfg is None:
-        return {"error": f"unknown target: {target}"}, 400
-    namespaces: list[str] = list(target_cfg.id_namespaces)
+    config = load_config_file(cfg)
+    if target not in config.targets:
+        return {"error": unknown_target(config, target, list_targets=False)}, 400
+    namespaces: list[str] = list(resolve(config, target).id_namespaces)
 
     try:
         raw_elements = state.for_org(_org).artifacts.open_bytes(f"{run_id}/{step_id}/elements.json")

@@ -39,6 +39,7 @@ _TRACED_METHODS = frozenset(
         "swipe",
         "scroll",
         "back",
+        "goto",
         "pinch",
         "rotate",
         "type_text",
@@ -46,6 +47,7 @@ _TRACED_METHODS = frozenset(
         "select_all",
         "copy_selection",
         "select_option",
+        "read_attributes",
         "select_photos",
         "set_picker_value",
         "handle_system_alert",
@@ -70,6 +72,7 @@ _TRACED_METHODS = frozenset(
 # `tests/test_driver_tracing.py` walks the package to confirm this tuple never misses one.
 _PROTOCOLS: tuple[type, ...] = (
     base.Driver,
+    base.AlertResolvingTarget,
     base.AppCrashPollResettable,
     base.AppCrashSignal,
     base.Queryable,

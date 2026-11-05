@@ -34,18 +34,13 @@ public enum BajutsuScreen {
     private static var installed = false
     private static var seq = 0
 
-    /// One JSON line per transition is POSTed to the collector's `/transitions` endpoint. A
-    /// separate ephemeral session, like `BajutsuNet.reportSession`, so the report POST is
-    /// never itself observed.
-    static let reportSession = URLSession(configuration: .ephemeral)
-
     /// Install the appearance hook if `BAJUTSU_COLLECTOR` is set. Called from
     /// `BajutsuNet.startIfEnabled()`, after it has parsed the collector URL/token — reads those
     /// directly rather than re-parsing the launch environment itself.
     static func startIfEnabled() {
         #if canImport(UIKit)
         guard !installed else { return }  // idempotent — a relaunch in-process calls this once
-        guard BajutsuNet.collectorURL != nil else { return }
+        guard BajutsuNet.resolution.isExpected else { return }
         installed = true
         UIViewController.bajutsu_installAppearanceHook()
         #endif
@@ -53,7 +48,7 @@ public enum BajutsuScreen {
 
     #if canImport(UIKit)
     static func report() {
-        guard let collectorURL = BajutsuNet.collectorURL else { return }
+        guard BajutsuNet.resolution.isExpected else { return }
         seq += 1
         // Surface the transition to the host app's UI (same data POSTed below). `kind` stays
         // "screenChanged" — the semantic event, and the wire contract the Python collector reads —
@@ -66,12 +61,9 @@ public enum BajutsuScreen {
             "kind": "screenChanged",
             "timestamp": ProcessInfo.processInfo.systemUptime,
         ]
-        BajutsuNet.postJSON(
-            payload,
-            to: collectorURL.appendingPathComponent("transitions"),
-            token: BajutsuNet.collectorToken,
-            session: reportSession
-        )
+        // Through the resolution, so a transition made before a real device's collector is found
+        // waits with the exchanges instead of being lost.
+        BajutsuNet.resolution.send(payload, path: "transitions")
     }
     #endif
 }

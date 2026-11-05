@@ -92,8 +92,8 @@ def test_two_outcomes_carrying_app_crashed_is_reported() -> None:
 
 
 def test_the_crashed_outcome_is_found_in_before_or_after_outcomes(tmp_path: Path) -> None:
-    # The crashed outcome is not always in `steps`: a `before` step's failure leaves `steps` empty
-    # outright, and an `after` rule dispatched on the failure records into its own list.
+    # The crashed outcome is not always in `steps`: a `setup` step's failure leaves `steps` empty
+    # outright, and a `cleanup` rule dispatched on the failure records into its own list.
     crash_dir = _crash_dir(tmp_path)
     (crash_dir / "crash.ips").write_text("...")
     scenario = _scenario(steps=[], before_outcomes=[_outcome(app_crashed=True)])

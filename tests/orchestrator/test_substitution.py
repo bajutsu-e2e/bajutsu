@@ -59,3 +59,24 @@ def test_interp_asserts_substitutes_when_tokens_present() -> None:
     result = _interp_asserts(asserts, bindings)
     assert result is not asserts
     assert result[0].value is not None and result[0].value.equals == "hello"
+
+
+def test_interp_step_leaves_eval_as_written_for_its_handler() -> None:
+    # The `eval` handler substitutes its own tokens and re-checks them (BE-0472); re-validating a
+    # substituted step here would raise a validation error quoting the substituted text.
+    from bajutsu.common.orchestrator import _interp_step
+    from bajutsu.common.scenario import Step
+
+    step = Step.model_validate(
+        {
+            "eval": {
+                "from": "${secrets.T}",
+                "ops": [{"split": "${vars.sep}"}],
+                "into": {"var": "v"},
+            },
+            "name": "${vars.label}",
+        }
+    )
+    result = _interp_step(step, {"secrets.T": "a,b", "vars.sep": "", "vars.label": "split it"})
+    assert result.eval_ == step.eval_
+    assert result.name == "split it"  # every other field is still substituted

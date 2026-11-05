@@ -12,47 +12,428 @@ Related: [app-agnostic in concepts](concepts.md#6-app-agnostic-push-differences-
 
 ## Config layering (defaults × targets)
 
-`bajutsu.config.yaml` has two layers. The resolution order is **defaults < target < scenario** (the
-one closer to the test wins).
+`bajutsu.config.yaml` has three layers. The resolution order is **defaults < templates < target <
+scenario** (the one closer to the test wins). A template is optional. It joins the chain when a
+target names one ([below](#templates-templates-be-0471)).
+
+A target accepts nine keys. Each key groups the settings for one purpose
+([BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)).
+Every target must name its `platform`. The loader fails on a key outside these nine and lists the
+keys a target accepts. It never reads the flat keys of earlier releases, such as `bundleId` or
+`appPath`.
+
+[BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md)
+removed the `run` group. A target, `defaults`, and `defaults.platforms.<platform>` all refuse it.
+Each of its fields moved to the group that already answers the same question. A config that still
+writes `run` fails to load. The error names the new location of each field it carries:
+
+| Old key | New location |
+|---|---|
+| `run.erase: true` | `subject.reinstall: erase` |
+| `run.network`, `run.visualCompare`, `run.secrets` | `evidence.collectNetwork`, `evidence.visualCompare`, `evidence.secrets` |
+| `run.systemAlertHandling` | one `- systemAlert: <prompt>` entry with its `choice` per rule, in `hooks.interrupts` ([below](#system-alerts-and-tipkit-in-hooksinterrupts)) |
+| `run.tipKitHandling: true` | `- tipKit: dismiss` in `hooks.interrupts` |
+| `run.ignoredSettings` | `runsOn.ignoredSettings` ([below](#environment-specific-settings-runsonignoredsettings-be-0467)) |
+
+The [`subject`](glossary.md#subject) group was named `app` until
+[BE-0470](../roadmaps/BE-0470-subject-group-rename/BE-0470-subject-group-rename.md). A config that
+still writes `app`, in a target, a template, or `defaults.platforms.<platform>`, fails to load, and
+the error names `subject`. The fields inside the group keep their names, so renaming the key is
+the whole edit.
+
+| Key | Purpose | Shape depends on `platform` |
+|---|---|---|
+| `platform` | Which backend drives the target: `ios`, `android`, `web`, or `fake` | — |
+| `subject` | What is under test (an app or a site): its identifier, how to build and launch it, readiness, and the id contract | Yes |
+| `runsOn` | Where the target runs: one block per destination, holding device conditions and device state | Yes |
+| `driver` | How Bajutsu drives the target | Yes |
+| `services` | The services a run depends on: the ones it starts and the ones it reaches | No |
+| `hooks` | Steps that wrap every scenario, and what the run clears on its own when it surfaces | No |
+| `evidence` | What a run keeps, how it compares, and what it masks | No |
+| `paths` | Where files live | No |
+| `ai` | Which provider backs the AI paths | No |
+
+`bajutsu config schema` prints the JavaScript Object Notation (JSON) Schema of this file
+([cli](cli.md#config-schema)). Each target in the schema is a `oneOf` keyed by `platform`. An
+editor thus completes the keys of the platform a target names.
 
 ```yaml
-defaults:                       # shared across all targets
-  platform: ios                 # team-wide default platform (ios/android/web); omit to derive it from each target's backend
-  backend: [ios]                # ordered list of platforms (ios/android/web/fake) or actuators (xcuitest); a single string is also OK
-  device:  "iPhone 15"
-  locale:  en_US
-  capture: [screenshot.after, elements, actionLog]
-  redact:  { headers: [Authorization, Cookie], fields: [token, password] }
-  secrets: [LOGIN_PASSWORD]         # env var names usable as ${secrets.X} (values masked in evidence)
+defaults:                         # shared across all targets
+  evidence:
+    capture: [screenshot.after, elements, actionLog]
+    redact:  { headers: [Authorization, Cookie], fields: [token, password] }
+    secrets: [LOGIN_PASSWORD]     # env var names usable as ${secrets.X} (values masked in evidence)
   ai:      { provider: api-key, keyEnv: ANTHROPIC_API_KEY }   # the AI paths' provider/model/endpoint/key (below)
-  reservedNamespaces: [auth, nav]   # the id contract for shared flows / components (informational)
+  platforms:                      # the platform-shaped groups, per platform
+    ios:
+      runsOn: { ios: { locale: en_US } }
+reservedNamespaces: [auth, nav]   # team-wide: the id contract for shared flows / components (informational)
 
 targets:
-  showcase-swiftui:             # ← selected by --target showcase-swiftui
-    bundleId:       com.bajutsu.showcase.ios.swiftui     # iOS target (required unless baseUrl is set for web)
-    deeplinkScheme: showcaseswiftui
-    idNamespaces:   [stable, horse, search, log, notice, perm, sys, net]
-    launchEnv:      { SHOWCASE_UITEST: "1" }
-    scenarios:      demos/showcase/scenarios   # this target's scenarios dir (run reads it; record writes here)
-    systemAlertHandling:  { rules: [{ prompt: notifications, choice: grant }] }   # app default for the alert guard (below); --system-alert-handling overrides per run
-    iosTipKitHandling:    true                       # app default for the TipKit tip guard (iOS only, built-in off)
-    # optional: erase / network / backend / device / locale / launchArgs / setup / redact / secrets / mockServer / appPath / build
+  showcase-swiftui:               # ← selected by --target showcase-swiftui
+    platform: ios
+    subject:
+      id: com.bajutsu.showcase.ios.swiftui
+      path: ios/swiftui/build/Showcase.app     # installed before each scenario when present
+      build: make swiftui-build                # builds `path` on demand
+      launch: { env: { SHOWCASE_UITEST: "1" } }
+      startWhen: { exists: { id: [stable.row.1, stable_row_1] } }
+      idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
+    driver:
+      runner: { testRunner: ../../BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun }
+    hooks:
+      interrupts:
+        - systemAlert: notifications           # answer the notification prompt; --no-system-alert-handling turns the guard off
+          choice: grant
+        - tipKit: dismiss                      # iOS only: dismiss a blocking TipKit tip (built-in off)
+    paths: { scenarios: scenarios }            # this target's scenarios dir (run reads it; record writes here)
 
-  web:                          # a web target (Playwright backend) is identified by URL
-    platform:  web                                  # optional: usually derived from backend/baseUrl, but explicit is clearest
-    baseUrl:   "http://127.0.0.1:8787/index.html"   # required for web (instead of bundleId)
-    backend:   [web]
-    headless:  true                                 # web only: false = a visible (headed) browser; --headed overrides per run
-    browser:   chromium                             # web only: rendering engine — chromium / firefox / webkit; --browser overrides per run
-    deviceMode: desktop                             # web only: "desktop" (default) or a Playwright device preset (e.g. "iPhone 13") to drive the target as a mobile device
-    scenarios: demos/web/scenarios
+  web:                            # a web target (Playwright backend) is identified by URL
+    platform: web
+    subject: { url: "http://127.0.0.1:8787/index.html" }
+    runsOn:
+      browser:
+        kind: chromium                         # chromium / chrome / edge / firefox / webkit; --browser overrides per run
+        emulate: iPhone 13                     # omitted = a desktop context; else a Playwright device preset
+    driver: { headless: true }                 # false = a visible (headed) browser; --headed overrides per run
+    services:
+      server: { cmd: "python -m http.server 8787", readyUrl: "http://127.0.0.1:8787/" }
+    paths: { scenarios: demos/web/scenarios }
 ```
 
-Each platform identifies its target by its own handle: **iOS** by `bundleId`, **web** by `baseUrl`,
-**Android** by `package`. A target's `platform` selects which handle is required; it is **optional** and
-defaults to the platform its `backend` implies (so a config written before this field is unchanged) —
-set it explicitly to be unambiguous. A target carrying the wrong handle for its platform (or none at
-all) is rejected at load. See [drivers → Playwright](drivers.md#playwright-web) and `demos/web`.
+The shape of four groups depends on the platform. Each platform registers its own models for them,
+so a key another platform takes fails as unknown on this one, with the accepted fields listed:
+
+| Group | iOS | Android | Web |
+|---|---|---|---|
+| `subject` | `id`, `path`, `build`, `reinstall`, `launch.env`, `launch.args`, `launch.deeplink`, `startWhen`, `idNamespaces` | `id`, `path`, `build`, `reinstall`, `launch.env`, `launch.deeplink`, `grantPermissions`, `startWhen`, `idNamespaces` | `url`, `launch.env`, `startWhen`, `idNamespaces` |
+| `runsOn` | `ios.model`, `ios.os`, `ios.kind`, `ios.family`, `ios.locale`, `ios.seedPhotos` | `android.avd`, `android.apiLevel` | `browser.kind`, `browser.version`, `browser.emulate` |
+| `driver` | `runner.testRunner`, `runner.build`, `runner.hostAddress` | `nativeZ` | `headless` |
+
+`runsOn` also takes `ignoredSettings` on every platform. That key names no destination. It lists
+the settings the target's environment cannot apply
+([below](#environment-specific-settings-runsonignoredsettings-be-0467)).
+
+The test-only `fake` platform takes an optional `subject.id`, `subject.startWhen`, and `subject.idNamespaces`,
+and nothing in `runsOn` or `driver`. A `fake` target resolves to the iOS-shaped sub-config.
+
+The shared groups hold the same fields on every platform:
+
+| Group | Fields |
+|---|---|
+| `services` | `server` (bring up the app's own host for the run, below), `mockServer`, `mailbox` (an external inbox the run polls and never starts, [below](#mailbox-the-email-step)) |
+| `hooks` | `setup`, `cleanup`, `interrupts` (screens, system alerts, and TipKit, [below](#system-alerts-and-tipkit-in-hooksinterrupts)) |
+| `evidence` | `capture`, `redact`, `collectNetwork`, `visualCompare`, `secrets` |
+| `paths` | `scenarios`, `baselines`, `schemas`, `goldens` |
+
+### Defaults
+
+`defaults` holds the shared groups directly. The platform-shaped groups sit under
+`defaults.platforms.<platform>`, and apply to that platform's targets alone. One file can hold
+defaults for each platform at once. The loader merges `defaults` into a target before it validates
+the target. A field the platform requires, such as `subject.id`, may therefore come from the defaults.
+The merge follows five rules:
+
+- A dictionary merges key by key, and the target's value wins.
+- A target clears an inherited value by writing `null`.
+- A list replaces the inherited one, except `evidence.secrets` and each `evidence.redact` list,
+  which union. Replacing them would let a target that adds one secret stop masking every team-wide
+  one. `hooks.interrupts` merges form by form, since one list holds three forms: the screen entries
+  replace the inherited ones when the target writes any, a `systemAlert` entry replaces the
+  inherited entry for the same prompt, and a `tipKit` entry replaces the inherited one. A target
+  that adds one screen handler therefore keeps the prompts `defaults` answers. An empty
+  `hooks.interrupts: []` still clears every inherited entry.
+- A target may not write `null` on those union lists, nor on `evidence` or `evidence.redact`. The load fails and names the path, so a target never wipes the team's masking.
+- `ai` merges field by field, as described [below](#ai-provider-ai-be-0047).
+
+`reservedNamespaces` and `doctor` apply to the whole team, so they sit at the top level of the file.
+`notify` stays at the top level too. A target has no `notify` of its own, so the top-level list
+alone says where results go ([below](#webhook-notifications-notify-be-0099)).
+
+### Sharing a block between targets (`x-` keys)
+
+`defaults` covers a value every target, or every target of one platform, shares. Two variants of one
+app often share more than that, such as most of their `subject` block. A YAML anchor covers that case.
+The loader ignores any top-level key whose name starts with `x-`, so such a key can host the anchor,
+and a target merges it with YAML's `<<` key:
+
+```yaml
+x-swiftui-app: &swiftui-app
+  launch: { env: { SHOWCASE_UITEST: "1" } }
+  idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
+
+targets:
+  showcase-swiftui-noax:
+    platform: ios
+    subject:
+      <<: *swiftui-app
+      id: com.bajutsu.showcase.ios.swiftui.noax
+      idNamespaces: []                  # a key written here wins over the anchor's
+```
+
+The `<<` key merges one level deep. A nested block written in the target, such as `launch`,
+replaces the anchor's whole `launch` block rather than merging into it. Place the anchor at the
+level of the block that differs, here `subject`, not at the level of the whole target. The `x-` prefix
+follows the extension-field convention of Docker Compose files. Every other unknown top-level key
+still fails to load.
+
+### Templates (`templates:`, BE-0471)
+
+A template is a named, partial target block. A target pulls one in with `extends`. A setting that
+targets would otherwise repeat then sits in one place. `defaults` applies to every target, and
+`defaults.platforms.<platform>` to every target of one platform. A template fills the gap between
+those two layers and a single target. It covers, for example, the targets that build one app in
+different ways.
+
+```yaml
+templates:
+  showcase-ios:                    # any target key, none required
+    platform: ios
+    subject:
+      launch: { env: { SHOWCASE_UITEST: "1" } }
+  masked-password:
+    evidence: { redact: { fields: [password] } }
+
+targets:
+  showcase-swiftui:
+    extends: [showcase-ios, masked-password]     # later entries win over earlier ones
+    subject: { id: com.bajutsu.showcase.ios.swiftui }
+  showcase-uikit:
+    extends: ./templates/uikit.template.yaml     # a template kept in its own file
+    subject: { id: com.bajutsu.showcase.ios.uikit }
+```
+
+A template lives under its own top-level key `templates:`, never under `targets:`. `--target` and
+every server endpoint refuse a template's name. `--target` and most endpoints say the name is a
+template. Four endpoints refuse it earlier in their scenarios check: `run`, `run_set`, `record`,
+and `triage`. Their error reads `target '<name>' has no scenarios dir`. The CLI also lists the
+targets. A server error leaves the list out, because one config can hold the targets of other orgs.
+A template and a target may share a name, since `extends` looks up templates alone.
+
+The layers fold from the weakest to the strongest:
+
+1. `defaults`
+2. `defaults.platforms.<platform>`
+3. each `extends` entry, in listed order
+4. the target itself
+
+A template may extend other templates. The base folds first, so the extending template wins over
+it. A template that two entries both reach, such as a shared base, folds once, at its first position.
+A base thus stays weaker than every template that extends it.
+
+Each layer merges under the five rules of [Defaults](#defaults). A template can clear a value
+`defaults` supplies with `null`. `evidence.secrets` and the `evidence.redact` lists union across every
+layer. A template's `ai` folds into the target's `ai` first. The result then merges with
+`defaults.ai` field by field.
+
+`platform` may come from a template, so a target can omit the key. Every layer that declares
+`platform` must agree, the target included. The target cannot override a template's platform.
+`platform` decides the shape of `subject`, `runsOn`, and `driver`. A web target must never receive a
+template's iOS-shaped blocks. The load fails and names both layers when two of them differ.
+
+An `extends` entry that contains `/` or ends in `.yaml` or `.yml` names a file. Any other entry
+names a template under `templates:`. A component's `use` step tells a name from a path the same way
+([Scenarios](scenarios.md)). A template file holds one template block, and its rules follow those of
+a component file:
+
+- The path resolves against the directory of the file that holds the `extends`.
+- The file must stay inside the suite root.
+- A relative value inside the file resolves against the file's own directory. The value can be a
+  nested `extends` entry, a path field, or a component its `hooks` call with `use`. The path fields
+  are `subject.path`, `runsOn.ios.seedPhotos`, `driver.runner.testRunner`, and `paths.*`.
+- A build command (`subject.build`, `driver.runner.build`) is not rewritten. It runs in the config
+  file's directory, as a target's own does. Keep a build command and the path it produces in the
+  same place. Split across files, the build writes to one directory and the path points at another.
+- The file's `extends` names other files alone, since the file has no `templates:` of its own.
+
+A config read from a document with no file may name inline templates alone.
+
+The load fails on an unknown template name, and lists the known ones. It fails on a cycle too, and
+prints the cycle's path (`a → b → a`). A key outside the eleven target keys and `extends` also fails, on any template, extended or not.
+The loader checks a template's nested fields through the targets that extend it. A template that no
+target extends keeps its nested fields unchecked. `bajutsu config schema` narrows that gap for an
+editor. It states each template as a partial target of the template's own platform. A template
+that omits `platform` gets any platform's partial shape.
+
+### Device conditions (`runsOn`)
+
+A target's `runsOn` says where the target runs. Its fields sit in one block named for the
+destination: `runsOn.ios`, `runsOn.android`, or `runsOn.browser`
+([BE-0469](../roadmaps/BE-0469-runson-destination-blocks/BE-0469-runson-destination-blocks.md)).
+Each field thus names what it limits, so `runsOn.ios.os` reads as an iOS version.
+
+| Platform | Destination block | Fields |
+|---|---|---|
+| iOS | `runsOn.ios` | `model`, `os`, `kind`, `family`, `locale`, `seedPhotos` |
+| Android | `runsOn.android` | `avd`, `apiLevel` |
+| Web | `runsOn.browser` | `kind`, `version`, `emulate` |
+| fake | none | none |
+
+`platform` and `runsOn` are separate settings. `platform` names the kind of app under test, which
+decides the shape of `subject` and `driver`. `runsOn` limits where that app runs. The loader checks
+that the pair is one the table allows, rather than that the two names match. A
+`platform: ios` target with `runsOn.browser` fails and names the destinations iOS allows. A `fake`
+target has no destination, so any key under its `runsOn` fails. Team defaults hold the same block
+under `defaults.platforms.<platform>.runsOn`.
+
+```yaml
+targets:
+  app-sim:                     # a Simulator
+    platform: ios
+    subject: { id: com.example.app }
+    runsOn:
+      ios: { model: "iPhone 16", os: "18" }
+
+  app-device:                  # a real device, taken from --udid
+    platform: ios
+    subject: { id: com.example.app }
+    runsOn:
+      ios: { kind: device }
+
+  site:                        # a browser
+    platform: web
+    subject: { url: https://example.com }
+    runsOn:
+      browser: { kind: firefox, emulate: "iPhone 15" }
+```
+
+Earlier releases wrote these fields flat under `runsOn`. The loader reads no flat spelling. A flat
+key fails the load and names the path it moved to:
+
+| Old key | New key |
+|---|---|
+| `runsOn.model`, `os`, `kind`, `locale`, `seedPhotos` | `runsOn.ios.<same field>` |
+| `runsOn.avd`, `apiLevel` | `runsOn.android.<same field>` |
+| `runsOn.emulate` | `runsOn.browser.emulate` |
+
+`runsOn.browser.engine` gave way to `runsOn.browser.kind`
+([BE-0468](../roadmaps/BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of.md)). An
+`engine` key fails the load and names `kind`. Renaming the field keeps every run: a `kind` list runs
+once per listed browser, as an `engine` list did.
+
+Some `runsOn` fields are device conditions:
+
+| Platform | Conditions |
+|---|---|
+| iOS | `ios.model`, `ios.os`, `ios.family`, and a list on `ios.kind` |
+| Android | `android.avd`, `android.apiLevel` |
+| Web | `browser.version`, and a list on `browser.kind` |
+
+A list on `model` or `avd` counts as a condition too. A version range uses npm's
+[node-semver range grammar](https://github.com/npm/node-semver#ranges), such as `">=17 <19"`.
+The loader refuses a malformed range. Quote a decimal version: YAML reads `18.10` as `18.1`.
+
+Bajutsu reads each available device before the run and matches it against these conditions. See
+[BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md).
+What it reads depends on the platform:
+
+| Condition | Read from | Comparison |
+|---|---|---|
+| iOS `model` | the simctl device-type name of the udid | exact |
+| iOS `os` | the Simulator's runtime version | version range |
+| iOS `family` | the `productFamily` of a Simulator's device type, or the `deviceType` that `devicectl` reports for a real device | `iphone` or `ipad`; the first listed family the run's devices have |
+| Android `avd` | the emulator's Android Virtual Device (AVD) name, from `ro.boot.qemu.avd_name`, then `ro.kernel.qemu.avd_name`, then `adb emu avd name` | exact; a physical device never matches |
+| Android `apiLevel` | `ro.build.version.sdk` | version range on an integer |
+| Web `browser.version` | the version of the browser Playwright launches | version range |
+
+The pool is every udid of `--udid`. An emulator that reports no AVD name fails the run. An `avd`
+condition thus never misses a device without a message.
+
+A run is one scenario on one set of coordinates. Two kinds of condition multiply runs:
+
+| Field | Runs | When no available device fits |
+|---|---|---|
+| a list on `kind`, `model`, `avd`, or `browser.kind` | one per listed value | the run fails, naming the value |
+| a range bounded on both sides, such as `">=17 <19"`, `"18"`, or `"33 - 35"` | one per major version the range covers | the run fails, naming the major version |
+| a range open on a side, such as `">=18"` | one per major version the available devices have in the range | one record is **not applicable** |
+| a single `model` or `avd` | no extra run | the run fails |
+| `family`, a single value or a list | no extra run | the run fails, naming the families |
+
+On Android each API level counts as one major version. A `browser.version` range never multiplies
+runs: it narrows the launched browser instead. A not-applicable record carries no verdict of its
+own. Every output lists it apart from the passes and failures ([reporting](reporting.md)):
+
+- the console and the manifest
+- the HTML report's run matrix
+- JUnit and Common Test Report Format (CTRF), as a skipped test
+- the webhook payload
+
+An invocation where every record is not applicable exits with code 1 and prints `no run executed`.
+A multi-target scenario runs every combination of its targets' runs.
+
+The target below lists two models over a range bounded on both sides. Each of its scenarios makes
+four runs, one for each model on iOS 17 and on iOS 18:
+
+```yaml
+targets:
+  app:
+    platform: ios
+    subject: { id: com.example.app }
+    runsOn:
+      ios:
+        model: ["iPhone SE (3rd generation)", "iPad Pro 13-inch (M4)"]
+        os: ">=17 <19"
+```
+
+A scenario declares no condition of its own. A scenario that needs an iPad names a target that runs
+on one, such as `targets: [app-ipad]` ([scenarios](scenarios.md#preconditions-environment-setup)).
+A range on a target thus multiplies every scenario of the target. Take a pool with iOS 17 and iOS 18:
+`os: ">=17"` then runs every scenario twice. For one run per scenario, a target names one major
+version, such as `os: "18"`. It may also leave `os` out.
+
+Each run takes a device from its eligible set. The set keeps the devices that meet the run's
+conditions. When the run fixes no model, the set then keeps the first model in pool order with
+enough devices at one release. Within that model, it keeps the newest release that has enough. Every member shares one
+model and one release, so `--workers` spreads runs over identical devices.
+
+A target can name a device family instead of a model. Apple renames device types with each Xcode
+release. An exact `model` then stops matching on a host whose Xcode lacks that type. `family` takes
+`iphone`, `ipad`, or a priority list of both, and a list never multiplies runs. Each run takes the
+first listed family that its devices have. The order in the list alone decides the winner. The same
+pool thus always resolves the same way. The eligible set then narrows to the winning family. A
+winner with too few devices fails the run, which never falls back to the next family. A list of two
+or more families adds the winner to the run's coordinates (`family=ipad`). The run label, the
+manifest, and the flakiness history then keep the runs on each family apart. `family` and `model`
+both name the device a run takes, so declaring both fails the load.
+
+A list on `kind` runs each scenario once per listed kind. `kind: [simulator, device]` runs it on a
+Simulator and on a real device. Each run adds its kind to the coordinates (`kind=device`). The run
+then drives the XCUITest destination of that kind. The pool must hold both kinds. Bajutsu reads each
+udid of `--udid` through the listing that shows it:
+
+- `simctl` for a Simulator
+- `devicectl` for a real device
+
+A udid that neither listing shows fails the read. A listed kind that the pool lacks fails its run.
+The message names the kind, so no run goes missing without a word.
+
+```yaml
+targets:
+  app:
+    platform: ios
+    subject: { id: com.example.app }
+    runsOn:
+      ios:
+        kind: [simulator, device]   # one run on each
+        family: [ipad, iphone]      # each run takes an iPad when its pool has one
+```
+
+`record`, `crawl`, and `repl` never multiply runs. Each takes the first listed value, the first
+listed family a fitting device has, and the newest major version the pool has within the range. Each
+exits 2 when no device fits. `doctor` lists the
+target's own runs, and each scenario's runs when `--scenario` names a file, with the devices that
+fit each one ([doctor output](#output)). Its screen probe
+scores the device of the first run. `--backend fake` matches no condition, and says so once. A
+target whose `runsOn.ios.kind` includes `device` may not declare `model` or `os`. Bajutsu does not
+compare a real device's model or release. A real device does report its family, so
+`family` stays allowed there. A target an `appium` grid serves has no pool to read, and neither does
+a Device Farm job. A condition there fails before any device work and names the field.
+
+Three `runsOn.ios` fields are device state rather than conditions. A single `kind` (`simulator` or
+`device`) selects the XCUITest destination. `locale` pins the language a run applies. iOS keeps the built-in
+`en_US` when `locale` is unset. `seedPhotos` lists the images seeded into the photo library. A
+scenario may replace `locale` and `seedPhotos` under `preconditions.device.ios`. The web block's
+`emulate` likewise selects a device mode rather than matching a device.
 
 ### Resolution (`resolve` → `Effective`)
 
@@ -60,7 +441,7 @@ all) is rejected at load. See [drivers → Playwright](drivers.md#playwright-web
 An undefined target raises `KeyError` (the CLI exits with code 2). The platform-specific knobs below
 — each platform's own identifier plus the web-only `headless` / `browser` / `device_mode` — are not
 flat `Effective` attributes: `Effective.platform_config` narrows to one of three mutually exclusive
-sub-configs (`IosConfig` / `WebConfig` / `AndroidConfig`) keyed by the resolved `platform`
+sub-configs (`IosConfig` / `WebConfig` / `AndroidConfig`) keyed by the target's `platform`
 ([BE-0126](../roadmaps/BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config.md)).
 Read them through `bajutsu/common/config/accessors.py`'s narrowing helpers — `require_ios` / `require_web` /
 `require_android` for code already committed to one platform, or the "soft" `ios_bundle_id` /
@@ -69,51 +450,254 @@ platforms — rather than `effective.bundle_id` directly, which does not exist.
 
 | `Effective` field | Source | Notes |
 |---|---|---|
-| `platform` | app < defaults < derived | the target's platform (`ios`/`android`/`web`): explicit `platform` wins, else the target's `backend` implies it, else the identifier present, else `ios`. Selects which identifier is required ([BE-0009](../roadmaps/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md)) |
-| `platform_config.bundle_id` (`IosConfig`) | app | iOS target identifier; required when the platform is `ios` |
-| `platform_config.base_url` (`WebConfig`) | app | web target URL (Playwright backend); required when the platform is `web` |
-| `platform_config.package` (`AndroidConfig`) | app | Android target identifier; required when the platform is `android` |
-| `platform_config.native_z` (`AndroidConfig`) | app | Android only: `nativeZ: true` asks the device for each opted-in view's own `View.getZ()`, which `elements.json` reports as the diagnostic `nativeZ` field ([BE-0355](../roadmaps/BE-0355-native-z-position/BE-0355-native-z-position.md)). Off by default, because the node walk that answers it runs on every screen read — 20-100 ms — and reports nothing at all unless the app under test links `BajutsuAndroid` and opts views in. A target that turns it on also gives up the round trip a confirmed gesture's own reply would otherwise have saved: that reply cannot carry a `nativeZ` reading, so such a target asks the device not to build the tree at all rather than take one whose positions would all read absent ([BE-0407](../roadmaps/BE-0407-step-latency-driver-internal-tuning/BE-0407-step-latency-driver-internal-tuning.md) units 18-19). iOS needs no such flag: its responder answers only for an app that linked BajutsuKit |
-| `platform_config.headless` (`WebConfig`) | app | web backend only: `true` (default) runs headless; `false` shows a visible (headed) browser, in slow-motion. `bajutsu run --headed / --no-headed` and the Web UI's "show browser" toggle override per run; iOS ignores it |
-| `platform_config.browser` (`WebConfig`) | app | web backend only: the Playwright rendering engine to drive — `chromium` (default), `firefox`, or `webkit`. All three run headless on Linux. `bajutsu run/record --browser <engine>` overrides per run (flag > config > default), and `bajutsu run --browsers <list>` runs the cross-browser matrix (below); a missing engine binary is installed on demand. An unknown value is rejected at config load. iOS ignores it ([BE-0076](../roadmaps/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md)) |
-| `platform_config.device_mode` (`WebConfig`) | app | web backend only: the device mode a browser context is created with — `deviceMode: desktop` (the default, unchanged from today) or a Playwright device preset name (e.g. `iPhone 13`) that emulates its viewport / touch / device scale / user agent, driving the web target as that mobile device. It is desktop-browser emulation (Chrome DevTools' device toolbar), not a real device ([drivers → Playwright](drivers.md#playwright-web)). Resolved **lazily** against `playwright.devices` in the driver, so config load never imports Playwright; an unknown preset fails loudly at driver start, not at config load. Distinct from the top-level `device` (the iOS Simulator name), which a web target ignores. iOS / Android ignore this ([BE-0228](../roadmaps/BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation.md)) |
-| `device_provider` | app | where this target's devices come from — `deviceProvider: { kind: local }` (the default, today's locally-attached `--udid` path) or another `kind` that a device-cloud adapter registers to reserve a device off-host and hand the run its serial / endpoint. The `kind` is resolved against the device-provider registry **at run time, not config load**, so the deterministic core never imports a cloud SDK; an unknown `kind` fails loudly when the run resolves the provider. Only `bajutsu run` resolves it today — `record`, `crawl`, and `audit --repeat` still resolve devices the old way and silently ignore this field. The seam sits upstream of the device pool and entirely off the run/CI verdict path (a provider only acquires and releases a device). Two built-in providers ship today: **`local`** (the default — the locally-attached `--udid` path, no extra fields) and **`appium`** (the live path to a reserved iOS device behind a self-hosted Appium / WebDriver grid — requires `endpoint: <url>`; Bajutsu drives that endpoint end to end over a live W3C WebDriver transport, resolving selectors Python-side the same way the local XCUITest backend does; see [iOS device cloud](ios-device-cloud.md#live--an-appium-endpoint-provider)). Concrete cloud adapters ship as separate optional packages ([BE-0236](../roadmaps/BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md), [BE-0238](../roadmaps/BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md)) |
-| `launch_server` | app | optional `launchServer: {cmd, readyUrl, readyTimeout, cwd, env}` — bring up `baseUrl`'s host for the run, then tear it down: probe `readyUrl` (default `baseUrl`), reuse it if already serving, else run `cmd` and wait until ready (a condition wait, never a fixed sleep). The web analogue of `build` ([BE-0059](../roadmaps/BE-0059-launch-target-server/BE-0059-launch-target-server.md)). For an **uploaded** bundle in `serve`, the host never runs `cmd` directly — `serve --upload-exec` governs it (see [self-hosting](self-hosting.md#uploaded-config-command-execution-be-0090)); a `sandbox` run needs the extra fields `dockerImage` (a Docker image reference, e.g. `node:20-slim`) **or** `dockerfile` (a bundle-relative path built with `docker build`) — exactly one — plus `port` (the in-container listen port, published to a loopback host port) ([BE-0090](../roadmaps/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md)) |
-| `run_defaults.system_alert_handling` / `.erase` / `.network` / `.ios_tip_kit_handling` | app | per-app defaults for run-behavior settings otherwise set per scenario or on a CLI flag ([BE-0177](../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md)). `systemAlertHandling` takes the scenario form (`false`, or `{ rules, visionInstruction, pollInterval }`) and defaults the alert guard; `erase` defaults `preconditions.erase`; `network` defaults collecting the app's network exchanges. `erase` and `network` resolve **flag > scenario > this > built-in** (erase off, network on), mirroring `--headed`/`headless`. Inside `systemAlertHandling`, the on/off bit resolves that way too (`--system-alert-handling`/`--no-system-alert-handling` > scenario > this > on), but each policy key composes by its own type ([BE-0401](../roadmaps/BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation.md)): the list `rules` is **concatenated** innermost layer first, so a scenario's answers are tried before this default's and neither layer deletes the other; the scalar `pollInterval` takes the innermost layer that supplies one (scenario, else `--alert-poll-interval`, else this). `visionInstruction` reaches `run` from no layer at all: [BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md) removed the fallback it steered, so a scenario or a target config carrying it is rejected before the run starts. A rule here answers its prompt even inside a scenario that rules on other prompts — the guard prints a notice when it does, and the scenario overrides it by writing its own rule for that prompt. `labels` was removed by [BE-0406](../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts.md): a button label named a button, never the alert it sat on, so a target config could license a tap on a screen no scenario had described. See [`systemAlertHandling` layering](scenarios.md#layering-a-key-reaches-a-run-from-three-places). `iosTipKitHandling` defaults the TipKit tip guard (iOS only, built-in **off**) and rides the same precedence via `--ios-tipkit-handling`/`--no-ios-tipkit-handling` |
-| `deeplink_scheme` | app | the scheme used by the preconditions' deeplink |
-| `backend` | app ?? defaults | stability-ordered list of platforms (`ios`/`android`/`web`/`fake`) or actuators (`xcuitest`); a single string is listified ([drivers](drivers.md#backend-selection-and-the-actuator)) |
-| `device` / `locale` | app ?? defaults | `locale` is applied at launch (`simctl` launch args). On the iOS XCUITest backend it also pins the **Simulator's own system language** on every cold spawn — written to the device's global preference domain, then rebooted so SpringBoard renders it — so an out-of-process permission prompt's button text is the one this `locale` predicts rather than whatever language the Simulator happened to carry; a scenario whose `preconditions.locale` differs from the pinned one forces a cold respawn rather than reusing a warm runner ([BE-0320](../roadmaps/BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md)). A `handleSystemAlert` step under a language outside the label table (English and Japanese) answers by the button's position instead; a `systemAlertHandling.rules` entry under such a language still fails the scenario before any device work ([BE-0445](../roadmaps/BE-0445-system-alert-locale-agnostic-answer/BE-0445-system-alert-locale-agnostic-answer.md)) |
-| `launch_env` / `launch_args` | app | merged/appended by preconditions at run time |
-| `ready_when` | app | optional `readyWhen: { id: … }` — a selector the launch waits for before the run starts, instead of the default "the app rendered any 2+ elements". Use it for an app whose first interactive screen is a modal over always-present chrome (the element-count heuristic can return before the modal presents). Its `id` / `idMatches` accept an OR candidate list like a scenario selector (`readyWhen: { id: [stable.row.1, stable_row_1] }`, BE-0221), so one `readyWhen` covers a target whose native id syntax differs. A condition wait, never a fixed sleep. Set it only when **every** scenario for the target starts on that same screen; when first screens vary per scenario, lead each scenario with a `wait` step instead. `readyWhen` stays the strongest readiness signal: on iOS, a target linking `BajutsuKit`'s screen-transition observer (BE-0310) gets a reported-screen-change rung above the namespace/count heuristics for free, but an explicit `readyWhen` still outranks it — an earlier base-screen transition never preempts the modal `readyWhen` waits for. The observer signal governs only when no `readyWhen` is set |
-| `id_namespaces` | app | referenced by doctor |
-| `reserved_namespaces` | defaults | informational (doctor scores against the app's `idNamespaces` only) |
-| `mock_server` | app | ⚠️ schema only · not wired |
-| `setup` | app | default reusable prelude (a scenario whose steps run before each scenario's own) |
-| `evidence_dirs.scenarios` | app | this app's scenarios dir — `run --target` loads every `*.yaml` here; `record` writes new ones here. Relative to the config file's own directory (like `appPath` and the sibling `evidence_dirs.baselines` / `.schemas` / `.goldens`), so the config behaves the same wherever `bajutsu` runs from (BE-0242). `run --scenario` / `record --out` override it |
-| `capture` | defaults | the default evidence ([the note in evidence](evidence.md#three-ways-to-request-evidence)) |
-| `redact` | defaults ∪ app | merged (below) |
-| `secrets` | defaults ∪ app | env var names declaring `${secrets.X}`; values are masked in evidence ([evidence](evidence.md#masking-redact)) |
-| `requires` | defaults ∪ app | capability tokens a worker must advertise to run this target on the hosted backend ([self-hosting](self-hosting.md#capability-routed-queues-be-0166), [BE-0166](../roadmaps/BE-0166-capability-routed-queues/BE-0166-capability-routed-queues.md)), e.g. `[ios18, ipad]`. The platform axis is added automatically; add tokens here only to pin a runtime or device class. Ignored by a local single-worker run |
-| `ai` | defaults < app (field by field) | the AI paths' provider/model/endpoint/key ([below](#ai-provider-ai-be-0047)); `None` (omitted) = the environment alone decides |
-| `defaults.doctor.idCoverageOk` / `defaults.doctor.idCoverageFail` | defaults | id-coverage thresholds for doctor grading ([below](#configurable-thresholds-defaultsdoctor-be-0024)); default 0.9 / 0.7 |
-
-The `backend` field validator `_norm` normalizes "a single string → a one-element list" (on both
-defaults / app).
+| `platform` | `platform` | the target's platform (`ios`/`android`/`web`); a `fake` target reads as `ios`, since it resolves to the iOS-shaped sub-config |
+| `backend` | `platform` | the target's platform as a one-entry list, from which the actuator is selected ([drivers](drivers.md#backend-selection-and-the-actuator)); `--backend` may replace it, but only with the same platform, its actuator, or `fake` |
+| `platform_config.bundle_id` (`IosConfig`) | `subject.id` | iOS target identifier |
+| `platform_config.base_url` (`WebConfig`) | `subject.url` | web target URL (Playwright backend) |
+| `platform_config.package` (`AndroidConfig`) | `subject.id` | Android target identifier |
+| `platform_config.app_path` / `.build` (`IosConfig`, `AndroidConfig`) | `subject.path` / `subject.build` | the built app a run installs before each scenario (if missing), and the shell command that builds it on demand |
+| `platform_config.xcuitest` (`IosConfig`) | `driver.runner` + `runsOn.ios.kind` | the XCUITest runner: `testRunner` (a prebuilt `.xctestrun`), `build` (the command that builds it), `hostAddress` ([below](#real-device-host-address-driverrunnerhostaddress)), and the destination `kind` |
+| `platform_config.grant_permissions` (`AndroidConfig`) | `subject.grantPermissions` | Android only: runtime permissions granted before launch (`pm grant`), so a permission prompt never blocks a scenario |
+| `platform_config.native_z` (`AndroidConfig`) | `driver.nativeZ` | Android only: `nativeZ: true` asks the device for each opted-in view's own `View.getZ()`, which `elements.json` reports as the diagnostic `nativeZ` field ([BE-0355](../roadmaps/BE-0355-native-z-position/BE-0355-native-z-position.md)). Off by default, because the node walk that answers it runs on every screen read — 20-100 ms — and reports nothing at all unless the app under test links `BajutsuAndroid` and opts views in. A target that turns it on also gives up the round trip a confirmed gesture's own reply would otherwise have saved: that reply cannot carry a `nativeZ` reading, so such a target asks the device not to build the tree at all rather than take one whose positions would all read absent ([BE-0407](../roadmaps/BE-0407-step-latency-driver-internal-tuning/BE-0407-step-latency-driver-internal-tuning.md) units 18-19). iOS needs no such flag: its responder answers only for an app that linked BajutsuKit |
+| `platform_config.headless` (`WebConfig`) | `driver.headless` | web only: `true` (default) runs headless; `false` shows a visible (headed) browser, in slow-motion. `bajutsu run --headed / --no-headed` and the Web UI's "show browser" toggle override per run |
+| `platform_config.browser` (`WebConfig`) | `runsOn.browser.kind` | web only: the browser to drive — `chromium` (default), `chrome`, `edge`, `firefox`, or `webkit`. `chrome` and `edge` launch the Google Chrome or Microsoft Edge installed on the host, through Playwright's `chromium` engine on a channel; `webkit` stands in for Safari, which Playwright cannot drive. `bajutsu run/record --browser <kind>` overrides per run (flag > config > default), and `bajutsu run --browsers <list>` runs the cross-browser matrix (below). A missing Playwright engine is installed on demand; a missing Chrome or Edge fails the run, because installing one would change the host's own browser. An unknown value is rejected at config load ([BE-0468](../roadmaps/BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of.md)) ([BE-0076](../roadmaps/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md)) |
+| `platform_config.device_mode` (`WebConfig`) | `runsOn.browser.emulate` | web only: the device mode a browser context is created with — omitted for a desktop context, or a Playwright device preset name (e.g. `iPhone 13`) that emulates its viewport / touch / device scale / user agent, driving the web target as that mobile device. It is desktop-browser emulation (Chrome DevTools' device toolbar), not a real device ([drivers → Playwright](drivers.md#playwright-web)). Resolved **lazily** against `playwright.devices` in the driver, so config load never imports Playwright; an unknown preset fails loudly at driver start, not at config load ([BE-0228](../roadmaps/BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation.md)) |
+| `conditions` | `runsOn` | the device conditions the target declares ([above](#device-conditions-runson)), ranges as written; `run` forms its runs from them, and `doctor` lists those runs |
+| `device_provider` | `--worker-config` | where this target's devices come from. The config no longer names it: an `appium` environment in the `worker.yaml` the command runs under hands the grid's endpoint to the targets of the grid's platform ([what a machine can run](#what-a-machine-can-run-outside-the-config-be-0450)), and every other target takes the built-in `local` provider (the `--udid` path). Bajutsu drives that endpoint end to end over a live W3C WebDriver transport ([iOS device cloud](ios-device-cloud.md#live--an-appium-endpoint-provider), [BE-0236](../roadmaps/BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md), [BE-0238](../roadmaps/BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md)) |
+| `launch_server` | `services.server` | optional `{cmd, readyUrl, readyTimeout, cwd, env}` — bring up the app's host for the run, then tear it down: probe `readyUrl` (default `subject.url`), reuse it if already serving, else run `cmd` and wait until ready (a condition wait, never a fixed sleep). The web analogue of `subject.build` ([BE-0059](../roadmaps/BE-0059-launch-target-server/BE-0059-launch-target-server.md)). For an **uploaded** bundle in `serve`, the host never runs `cmd` directly — `serve --upload-exec` governs it (see [self-hosting](self-hosting.md#uploaded-config-command-execution-be-0090)); a `sandbox` run needs the extra fields `dockerImage` (a Docker image reference, e.g. `node:20-slim`) **or** `dockerfile` (a bundle-relative path built with `docker build`) — exactly one — plus `port` (the in-container listen port, published to a loopback host port) ([BE-0090](../roadmaps/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md)) |
+| `run_defaults.system_alerts` / `.ios_tip_kit_handling` | the `systemAlert` and `tipKit` entries of `hooks.interrupts` | per-app defaults for the system-alert guard and the TipKit guard, which a scenario's own `interrupts` layers over ([BE-0177](../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md), [BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md)). A `systemAlert` entry answers its prompt even inside a scenario that declares entries for other prompts; the run prints a notice when it does, and the scenario overrides it with its own entry for that prompt. The layering rules are [below](#system-alerts-and-tipkit-in-hooksinterrupts) and in [scenarios](scenarios.md#layering-a-key-reaches-a-run-from-three-places). `tipKit: dismiss` defaults the TipKit guard (iOS only, built-in **off**); `--ios-tipkit-handling`/`--no-ios-tipkit-handling` override it for every scenario |
+| `run_defaults.setup` / `.cleanup` / `.interrupts` | `hooks.setup` / `hooks.cleanup` / `hooks.interrupts` | steps that wrap every scenario of the target: `setup` runs ahead of a scenario's own `setup`, `cleanup` behind its own `cleanup` (a rule takes `on: always`, `success`, or `failure`, the words a scenario's `cleanup` rule uses), and `interrupts` are checked before the scenario's. A hook step may call a component with `use: { component: <file>, with: … }`: the loader resolves it when the config loads, against the config file's directory, and refuses a reference that leaves the suite root ([BE-0174](../roadmaps/BE-0174-scenario-ref-path-containment/BE-0174-scenario-ref-path-containment.md)). `group:` and `setMocks` stay rejected there. A scenario skips every declared target's `hooks.setup` with `preconditions.inheritSetup: false`; the cleanup still runs. The `systemAlert` and `tipKit` entries of `hooks.interrupts` resolve into the two fields of the row above, so `.interrupts` holds the screen entries alone |
+| `locale` | `runsOn.ios.locale` | iOS: applied at launch (`simctl` launch args), built-in `en_US`. On the XCUITest backend it also pins the **Simulator's own system language** on every cold spawn — written to the device's global preference domain, then rebooted so SpringBoard renders it — so an out-of-process permission prompt's button text is the one this `locale` predicts rather than whatever language the Simulator happened to carry; a scenario whose `preconditions.device.ios.locale` differs from the pinned one forces a cold respawn rather than reusing a warm runner ([BE-0320](../roadmaps/BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md)). A `handleSystemAlert` step under a language outside the label table (English and Japanese) answers by the button's position instead; a `systemAlert` entry in `interrupts` under such a language still fails the scenario before any device work ([BE-0445](../roadmaps/BE-0445-system-alert-locale-agnostic-answer/BE-0445-system-alert-locale-agnostic-answer.md)) |
+| `launch_env` / `launch_args` | `subject.launch.env` / `subject.launch.args` | a scenario's `preconditions.subject.launch.env` merges over the environment key by key, and its `.args` append after the arguments; `launch.args` is iOS only |
+| `reinstall` | `subject.reinstall` | iOS and Android: how much state is reset before each scenario, as one ladder from weakest to strongest. `overwrite` installs over the app and keeps its data; `clean` uninstalls, then installs; `erase` wipes the whole device, then installs (on Android, which has no device-wide wipe, the same as `clean`). The install itself needs `subject.path`. A scenario's `preconditions.subject.reinstall` wins; unset on both, the built-in `clean` applies ([BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)). `bajutsu run --erase` raises every scenario to `erase`, and `--no-erase` lowers an `erase` to `clean`. `erase` replaces the removed `run.erase: true`, which now fails at load naming this key; in `defaults`, which has no `subject` group, write it as `defaults.platforms.<platform>.subject.reinstall: erase` ([BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md)) |
+| `deeplink` | `subject.launch.deeplink` | iOS and Android: a URL the app opens once it has launched; a scenario's `preconditions.subject.launch.deeplink` replaces it |
+| `seed_photos` | `runsOn.ios.seedPhotos` | iOS: images seeded into the Simulator's photo library, in order, on the erase path, so `selectPhotos` addresses a known library. Paths resolve against the config file. A scenario's `preconditions.device.ios.seedPhotos` replaces the list, and after merging a non-empty list needs an effective `subject.reinstall: erase` (the scenario's, else the target's, then moved by `--erase` / `--no-erase`), or the run exits 2 before any device work |
+| `start_when` | `subject.startWhen` | optional `startWhen: { exists: { id: … } }` — a selector the launch waits for before the run starts, instead of the default "the app rendered any 2+ elements". It takes the form an `interrupts` entry uses for its `condition`, without `negate`. Use it for an app whose first interactive screen is a modal over always-present chrome (the element-count heuristic can return before the modal presents). Its `id` / `idMatches` accept an OR candidate list like a scenario selector (`startWhen: { exists: { id: [stable.row.1, stable_row_1] } }`, BE-0221), so one `startWhen` covers a target whose native id syntax differs. A condition wait, never a fixed sleep. Set it only when **every** scenario for the target starts on that same screen; when first screens vary per scenario, lead each scenario with a `wait` step instead. `startWhen` stays the strongest readiness signal: on iOS, a target linking `BajutsuKit`'s screen-transition observer (BE-0310) gets a reported-screen-change rung above the namespace/count heuristics for free, but an explicit `startWhen` still outranks it. The observer signal governs only when no `startWhen` is set |
+| `id_namespaces` | `subject.idNamespaces` | referenced by doctor |
+| `reserved_namespaces` | top-level `reservedNamespaces` | informational (doctor scores against the app's `idNamespaces` only) |
+| `mock_server` | `services.mockServer` | ⚠️ schema only · not wired |
+| `evidence_dirs.scenarios` | `paths.scenarios` | this target's scenarios dir — `run --target` loads every `*.yaml` here; `record` writes new ones here. Relative to the config file's own directory (like `subject.path` and the sibling `paths.baselines` / `.schemas` / `.goldens`), so the config behaves the same wherever `bajutsu` runs from (BE-0242). `run --scenario` / `record --out` override it |
+| `capture` | `evidence.capture` | the default evidence ([the note in evidence](evidence.md#three-ways-to-request-evidence)) |
+| `redact` | `evidence.redact` (defaults ∪ target) | merged (below) |
+| `run_defaults.network` | `evidence.collectNetwork` | whether the run collects the app's network exchanges for `request` assertions; resolves **`--network`/`--no-network` > this > built-in on** |
+| `visual_compare` | `evidence.visualCompare` | how a `visual` assertion compares when it names no `compare` of its own, `exact` or `pixelmatch`; built-in `exact` |
+| `secrets` | `evidence.secrets` (defaults ∪ target) | env var names declaring `${secrets.X}`; values are masked in evidence ([evidence](evidence.md#masking-redact)) |
+| `ai` | `ai` (defaults < target, field by field) | the AI paths' provider/model/endpoint/key ([below](#ai-provider-ai-be-0047)); `None` (omitted) = the environment alone decides |
+| `doctor_thresholds` | top-level `doctor.idCoverageOk` / `doctor.idCoverageFail` | id-coverage thresholds for doctor grading ([below](#configurable-thresholds-doctor-be-0024)); default 0.9 / 0.7 |
 
 ### Merging redact
 
-Config's `defaults.redact` and `targets.<name>.redact` are **union**ed (`_merge_redact`, unioning
-`labels`/`headers`/`fields` individually). The scenario's `redact`
+`defaults.evidence.redact` and `targets.<name>.evidence.redact` are **union**ed list by list
+(`labels`, `headers`, `fields`, and `unmaskHeaders` each). The scenario's `redact`
 ([evidence](evidence.md#masking-redact)) layers on top.
 
-### Secrets (`secrets:`)
+### Secrets (`evidence.secrets`)
 
-`secrets:` (a list of **environment-variable names**, declared in `defaults` and/or `targets.<name>`,
-unioned by `resolve`) is the declaration site for the `${secrets.X}` variables a scenario can input.
+`evidence.secrets` (a list of **environment-variable names**, declared in `defaults.evidence` and/or
+`targets.<name>.evidence`, unioned when the loader merges them) is the declaration site for the
+`${secrets.X}` variables a scenario can input.
 At run time `bajutsu run` resolves each declared name from the environment, interpolates its value
 into the action (`${secrets.X}`), and **masks the literal value everywhere it would appear in
 evidence** ([evidence](evidence.md#masking-redact)). The scenario source keeps the `${secrets.X}`
 token, never the value.
+
+### System alerts and TipKit in `hooks.interrupts`
+
+`hooks.interrupts` lists what a run clears on its own when it surfaces mid-scenario. One list holds
+three forms of entry
+([BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md)).
+The key an entry writes decides its form, so a reader never infers the form from a value's type:
+
+| Form | Required keys | Optional keys | What it clears |
+|---|---|---|---|
+| Screen | `condition` | `steps` | An interstitial screen in the app's own tree ([scenarios](scenarios.md#interrupts-handling-unpredictable-interstitial-screens)) |
+| System alert | `systemAlert`, `choice` | `pollInterval`, `frozenScreenTimeout` | An operating-system prompt, answered by the system-alert guard ([scenarios](scenarios.md#systemalert-the-system-alert-guard)) |
+| TipKit | `tipKit` | none | Apple's TipKit popover, on an iOS target alone ([scenarios](scenarios.md#tipkit-a-blocking-tipkit-tip)) |
+
+```yaml
+targets:
+  showcase-swiftui:
+    platform: ios
+    subject: { id: com.bajutsu.showcase.ios.swiftui }
+    hooks:
+      interrupts:
+        - condition: { exists: { id: [aerr_wait] } }   # an in-app screen
+          steps:
+            - tap: { id: [aerr_close] }
+        - systemAlert: notifications                   # an OS prompt
+          choice: grant
+        - systemAlert: savePassword
+          choice: deny
+          frozenScreenTimeout: 20                      # tuning that belongs to this prompt alone
+        - tipKit: dismiss                              # Apple's TipKit popover
+```
+
+The values each form takes:
+
+- `systemAlert` names one of five prompts: `notifications`, `tracking`, `paste`, `savePassword`,
+  or `localNetwork`.
+- `choice` is `grant`, `deny`, or `leave`. `leave` answers nothing for that prompt.
+- `pollInterval` sets how often, in seconds, the guard checks SpringBoard while a wait is pending.
+  The built-in value is one second.
+- `frozenScreenTimeout` sets how long, in seconds, a guarded wait tolerates a frozen screen before
+  it stops. `0` turns the stop off, and the built-in value is 10 seconds. The loader accepts the key
+  on a prompt raised into the app's own tree alone, which today means `savePassword`. On any other
+  prompt the load fails, because nothing would read the value.
+- `tipKit` is `dismiss` or `leave`. A `tipKit` entry on a target whose platform is not iOS fails at
+  load.
+
+The loader refuses three mistakes, each with an error that names it. An entry that mixes keys of
+two forms fails and names both forms. Two entries for the same prompt fail, and so do two `tipKit`
+entries, in one list. A target-level entry may not set `target`, and its steps may not use `group`
+or `setMocks`.
+
+The guard itself has no on/off key in the config. The guard runs unless `bajutsu run` gets
+`--no-system-alert-handling`. A target that used to write `systemAlertHandling: false` now writes
+`choice: leave` on each prompt it leaves. The config no longer takes `visionInstruction` either.
+`run` never reads a model, and `record` and `crawl` take `--alert-vision-instruction` instead.
+
+A scenario's own `interrupts` takes the same three forms and layers over the target's entries:
+
+| Form | How the target's and the scenario's entries combine |
+|---|---|
+| Screen | Concatenated, the target's entries first |
+| System alert | Per prompt: the scenario's entry replaces the target's `choice` and inherits an omitted `frozenScreenTimeout` from the target's entry for that prompt; the other prompts from both apply |
+| TipKit | The scenario's entry, else the target's; absent from both means off |
+
+`pollInterval` resolves by layer instead: the scenario, then `--alert-poll-interval`, then the
+target. Within one layer, the smallest value wins. A shorter interval satisfies every entry that
+asked for a longer one. The guard has one frozen-screen bound. That bound is the most tolerant
+value among the entries that answer a prompt: the largest, with `0` (the stop off) over any value.
+[Scenarios](scenarios.md#layering-a-key-reaches-a-run-from-three-places) walks through each rule.
+
+### Environment-specific settings (`runsOn.ignoredSettings`, BE-0467)
+
+Some settings reach the device before the first step, and not every environment can apply them. The
+iOS Simulator wipes a device with `simctl erase`, which a real iPhone or a WebDriver endpoint cannot
+run; a browser has no app launch to pass `subject.launch.env` to. One table per environment route (the
+iOS Simulator, an iOS real device, a live WebDriver endpoint, Android, and the web) decides how each
+setting is handled:
+
+| Support | Meaning | Run behavior |
+|---|---|---|
+| `supported` | The route applies the setting | Apply it |
+| `satisfied` | The route already guarantees what the setting asks for (a web run's fresh browser context is already erased) | Do nothing |
+| `unsupported` | The route cannot apply the setting | Fail before any device work, unless the target declares it ignored |
+
+The settings, each with the field it comes from:
+
+- `erase`: `subject.reinstall: erase`
+- `install`: the `subject.path` install (`subject.reinstall` is its mode)
+- `permissions.<service>`: each service in the scenario's `permissions`
+- `seedPhotos`: `runsOn.ios.seedPhotos`
+- `locale`: `runsOn.ios.locale`
+- `launchEnv`, `launchArgs`, `deeplink`: `subject.launch.env`, `subject.launch.args`, `subject.launch.deeplink`
+
+A setting the route cannot apply fails the scenario in the
+run preflight, which names the setting, the target, and the declaration that would ignore it. Each
+environment refuses an unsupported setting again as it launches, so a lease driven directly, as
+`record` or `crawl` takes one, cannot apply it either.
+
+The one opt-out is the target's `runsOn.ignoredSettings`: the setting key, and the reason the run goes
+without it. The map sits in `runsOn` beside the destination blocks, because it describes the same
+environment. The key was `run.ignoredSettings` until
+[BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md)
+removed the `run` group.
+
+```yaml
+targets:
+  iphone-device:
+    platform: ios
+    subject: { id: com.example.app }
+    runsOn:
+      ios: { kind: device }
+      ignoredSettings:
+        erase: "A real device keeps app data; this lane accepts state from earlier runs"
+```
+
+An ignored setting is not applied. The run's reports list it with its target and reason, beside the
+verdict and never part of it: `ignored_settings` in each scenario of `manifest.json`, an "ignored
+settings" table in the HTML report's Environment panel, a `bajutsu.ignoredSettings` property on the
+JUnit testcase, and `ignoredSettings` in the CTRF test's `extra` ([reporting](reporting.md)). The
+launch also logs a warning naming it — the only trace for a lease that writes no report, such as
+`record` or `crawl`. The map is checked when the config loads: an unknown key or a
+blank reason fails, and `defaults.platforms.<platform>.runsOn` may not carry it, because an ignored
+setting belongs to one environment. A declaration for a setting the target's route supports or satisfies fails the run
+preflight, so a stale declaration cannot hide a regression once the route gains the setting. A
+scenario never declares a setting ignored; it stays one definition of the test for every environment.
+
+The same table answers in two more places, both before any device work. With `--config` and
+`--target`, `bajutsu lint` runs the settings check beside the step check, with no device
+([cli](cli.md#lint)). serve routes each job by the settings it puts in effect. A job thus reaches a
+worker whose route can apply them, and no other
+([self-hosting](self-hosting.md#capability-routed-queues-be-0166)).
+
+### Device runner signing (outside the config, BE-0456)
+
+A real iOS device needs an XCUITest runner signed by the user's own Apple Developer team. The target
+config carries none of that signing by design. The config travels with the repository, so a team ID
+written there would reach every other user. A per-user signing file holds those settings instead,
+outside the repository.
+
+`bajutsu runner build --device` reads that file. A target with `runsOn.ios.kind: device` and no
+`driver.runner.testRunner` then resolves to the build.
+[iOS on a real device](ios-device-cloud.md#the-signing-file) gives the file format and its lookup
+order.
+
+### What a machine can run (outside the config, BE-0450)
+
+The config describes targets, and an application team writes it. What one machine can run is a
+different fact, which the machine's operator knows. A separate file, `worker.yaml`, states that
+fact. The file names the worker's environment and the drivers it offers. It also caps the targets
+one scenario may hold. The config never carries those keys. A server worker reads the config after
+it leases a job. That point comes too late to decide what the worker advertises. `bajutsu run` and
+`bajutsu worker` both name the file with `--worker-config <path>`. Without the flag, the shipped
+default applies.
+[What this machine can run](drivers.md#worker-capability-check-be-0450) gives the file format and
+the check.
+
+Where a run happens is that same kind of fact, so it moved out of the target too
+([BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)). An
+Appium grid that serves one platform's devices is an `appium` environment in `worker.yaml`:
+
+```yaml
+version: 1
+environment: appium
+appium:
+  endpoint: https://grid.example.com/wd/hub   # the grid's Appium / WebDriver address
+  platform: ios                               # the one value today
+drivers: [xcuitest, adb, playwright, fake]
+```
+
+Each command that drives a device takes `--worker-config` with such a file: `run`, `record`,
+`crawl`, `repl`, `audit`, `doctor`, and `bajutsu mcp`. The targets of the grid's platform take the
+endpoint as their device. The other targets of the same scenario stay on this machine. The endpoint
+counts as one device, so the run refuses a scenario with two grid targets. `--udid` no longer
+accepts a URL. A Device Farm fan-out names its batch provider as the `environment` of the serve
+request, in place of the target's former `cloudBatch` ([Device Farm](devicefarm.md)).
+
+### Real-device host address (`driver.runner.hostAddress`)
+
+A real iOS device does not share the host's loopback. An app on one reaches the network collector on
+a host address instead. By default, each run offers the app every routable address of the host's
+active interfaces. The app keeps the first one that answers. Some host interfaces can be out of the
+device's reach. `driver.runner.hostAddress` narrows the list to the addresses it names,
+comma-separated:
+
+```yaml
+targets:
+  my-app:
+    platform: ios
+    subject: { id: com.example.app }
+    runsOn: { ios: { kind: device } }
+    driver:
+      runner: { hostAddress: 192.168.1.20 }
+```
+
+The `BAJUTSU_HOST_ADDRESS` environment variable overrides the key. A host whose address changes with
+each job can set it per run, without editing the config. The key has no effect on the Simulator.
+[iOS on a real device](ios-device-cloud.md#device-to-host-an-exchanged-host-address) describes the
+exchange.
 
 ### AI provider (`ai:`, BE-0047)
 
@@ -285,20 +869,23 @@ defaults:
 
 ### Mailbox (the `email` step)
 
-`targets.<name>.mailbox` configures the generic HTTP mailbox the [`email`](scenarios.md#email-poll-a-mailbox-for-a-received-code)
+`targets.<name>.services.mailbox` configures the generic HTTP mailbox the [`email`](scenarios.md#email-poll-a-mailbox-for-a-received-code)
 step polls for a 2FA / verification code, so the endpoint and credentials live in config (not the
 scenario):
 
 ```yaml
 targets:
   myapp:
-    mailbox:
-      kind: http                                          # transport adapter; defaults to http when omitted
-      url: "${secrets.MAILBOX_URL}"                       # inbox endpoint (GET); ${secrets.*} resolved at run time
-      headers: { Authorization: "Bearer ${secrets.MAILBOX_TOKEN}" }
-      # Optional response mapping, to read any provider's JSON without per-provider code:
-      messages: "items"                                   # dotted path to the message array (default: the response is the array)
-      fields: { to: to, subject: subject, body: text, receivedAt: receivedAt, id: id }
+    platform: ios
+    subject: { id: com.example.myapp }
+    services:
+      mailbox:
+        kind: http                                        # transport adapter; defaults to http when omitted
+        url: "${secrets.MAILBOX_URL}"                     # inbox endpoint (GET); ${secrets.*} resolved at run time
+        headers: { Authorization: "Bearer ${secrets.MAILBOX_TOKEN}" }
+        # Optional response mapping, to read any provider's JSON without per-provider code:
+        messages: "items"                                 # dotted path to the message array (default: the response is the array)
+        fields: { to: to, subject: subject, body: text, receivedAt: receivedAt, id: id }
 ```
 
 The defaults match the common shape (an array of messages with `to` / `subject` / `body` /
@@ -337,8 +924,10 @@ notify:
   `[start]` alone fires only there, never post-verdict).
 - `targets` (unrelated to the top-level config `targets.<name>` map) narrows the notification to
   scenarios whose name is in the list; empty (the default) covers every scenario in the run.
-- `targets.<name>.notify` overrides the top-level list **wholesale** for that target (never merged);
-  omitting it inherits the top-level `notify:` unchanged.
+- A target accepts no `notify` of its own
+  ([BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md)).
+  Every target's run posts to the top-level list; a `targets.<name>.notify` fails to load and names
+  that list.
 - Delivery is best-effort: a bounded timeout, a couple of retries, and a failure only logs a warning
   — it can never flip the verdict or exit code, the same after-the-verdict discipline `--zip` and
   `--evidence-store` follow. Only `format: slack` renders today (a Block Kit message, listing up to
@@ -445,8 +1034,11 @@ with no database keeps reading every field from this file, none of the above app
 ## Selecting from the CLI
 
 Every command in the CLI (command-line interface) selects one app with `--target <name>` and points at
-config with `--config` (default `bajutsu.config.yaml`). `--backend ios` (or a comma list of
-platforms/actuators) overrides the resolved order ([cli](cli.md)).
+config with `--config` (default `bajutsu.config.yaml`). `--backend` checks rather than overrides
+the target's platform: it accepts that platform, its actuator (such as `xcuitest`), or `fake`, and
+any other value, or a comma list, exits with code 2 ([cli](cli.md)).
+[BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)
+removed the ordered fallback list, because a target now names one platform.
 
 ### Cross-browser matrix (`--browsers`, BE-0076)
 
@@ -490,15 +1082,15 @@ git+https://<host>/<owner>/<repo>.git[@<ref>][#<path>]          # general form (
   scheme is a **local path**, exactly as before.
 - Bajutsu resolves the ref to an immutable commit SHA, materializes that subtree into a
   content-addressed cache (`~/.cache/bajutsu/gitsrc/<host>/<owner>/<repo>/<sha>/`), and loads the
-  config from it. The config's relative `scenarios` / `baselines` / `schemas` / `appPath` resolve
+  config from it. The config's relative `paths.scenarios` / `paths.baselines` / `paths.schemas` / `subject.path` resolve
   **against the checkout root** — the same "relative to where the config lives" rule a local config
   follows against its own directory, except the anchor is the fetched tree's root — so the whole tree
   comes along, not just the YAML. A fetched config is untrusted, so its paths are also **confined** to
   the checkout: an absolute or `../`-escaping value is refused. A local file, being operator-trusted,
   resolves against the config file's own directory and is *not* confined (it may point at a sibling).
 - A fresh checkout holds **no built binary**, and there is no local "first" in which to build one, so a
-  Git-sourced `run` **builds the app on demand**: when `appPath` is set but missing, it runs the
-  config's `build` command from the **checkout root** (where `build`'s relative parts, e.g.
+  Git-sourced `run` **builds the app on demand**: when `subject.path` is set but missing, it runs the
+  config's `subject.build` command from the **checkout root** (where the command's relative parts, e.g.
   `make -C demos/showcase swiftui-build`, are rooted), then proceeds. A failed build exits cleanly.
   A local-path `run` is unchanged (it never builds; a missing binary still errors).
 - A **pinned commit SHA** (`@<sha>`) is reproducible and runs offline after the first fetch; a branch
@@ -538,10 +1130,11 @@ To add a new app, add **app-side preparation and one config entry**. The tool it
 
 1. **Apply the implementation convention** — `accessibilityIdentifier` on key elements (in the
    app's namespace), expose state in label / traits / value, launch hooks, disable animations.
-2. **Add `targets.<name>`** — `bundleId` (required) / `deeplinkScheme` / default `launchEnv` /
-   `idNamespaces`, etc.
-3. **(Optional) a reusable prelude** — factor login etc. into a `setup:` scenario whose steps run
-   before each scenario's own (set per app or per scenario).
+2. **Add `targets.<name>`** — `platform` and `subject.id` (both required; `subject.url` for a web target),
+   plus `subject.launch.env`, `subject.idNamespaces`, and the rest as needed.
+3. **(Optional) a shared setup** — factor login etc. into a component file and call it from the
+   target's `hooks.setup` with `use: { component: <file> }`, so it runs before every scenario's own
+   steps; a scenario opts out with `preconditions.inheritSetup: false`.
 4. **Verify with `bajutsu doctor --target <name>`** — look at the convention score (below).
 5. **Place scenarios** — write identifiers in the app's namespace.
 
@@ -575,7 +1168,7 @@ Implementation: `bajutsu/common/doctor.py`. **AI-independent and deterministic.*
 > the chosen backend needs: the iOS (XCUITest) backend needs `xcodebuild` / `xcrun`
 > plus a booted Simulator; the web (Playwright) backend needs the Playwright package and its Chromium
 > browser (`uv sync --extra web` + `playwright install chromium`). It then scores the current screen:
-> for a web target it navigates a fresh browser to the target's `baseUrl` and scores that page; for
+> for a web target it navigates a fresh browser to the target's `subject.url` and scores that page; for
 > iOS it scores the screen on the booted Simulator. The score still covers only the currently
 > displayed screen (entry / current screen, not all screens).
 
@@ -583,6 +1176,10 @@ Implementation: `bajutsu/common/doctor.py`. **AI-independent and deterministic.*
 
 Measured over actionable elements (trait ∈ `ACTIONABLE_TRAITS` = button / link / textField /
 searchField / textView / switch / slider / tab / cell).
+
+On the web backend, `doctor` skips elements read from a cross-origin iframe. The app's developer
+cannot give ids to an embedded video player or chat. Those controls neither lower `idCoverage` nor
+count as duplicate ids. Same-origin iframes belong to the app, and `doctor` scores them.
 
 | Metric | Definition | Threshold (default) |
 |---|---|---|
@@ -597,17 +1194,17 @@ searchField / textView / switch / slider / tab / cell).
 - **Ready**: `idCoverage` ≥ `idCoverageOk` (default 0.9) **and** `namespaceConformance` == 1.0.
 - **Partial**: otherwise (runnable, but a forecast of coordinate fallback / flakiness).
 
-### Configurable thresholds (`defaults.doctor`, BE-0024)
+### Configurable thresholds (`doctor`, BE-0024)
 
-The id-coverage thresholds that determine the grade are configurable in `defaults.doctor`. Teams
+The id-coverage thresholds that determine the grade are configurable in the top-level `doctor`
+block. Teams
 with many decorative elements that legitimately lack test IDs can tune the thresholds for leniency
 (typically lowering `idCoverageOk` and/or `idCoverageFail`) without changing the tool:
 
 ```yaml
-defaults:
-  doctor:
-    idCoverageOk:   0.85   # default 0.9 — coverage >= this is eligible for "Ready"
-    idCoverageFail: 0.6    # default 0.7 — coverage < this drops to "Blocked"
+doctor:
+  idCoverageOk:   0.85   # default 0.9 — coverage >= this is eligible for "Ready"
+  idCoverageFail: 0.6    # default 0.7 — coverage < this drops to "Blocked"
 ```
 
 Both values must be in [0, 1] and `idCoverageOk` must be >= `idCoverageFail`; an invalid value is
@@ -628,3 +1225,10 @@ duplicateIds: 0
 ```
 
 The CLI's `doctor` exits with code 1 when the grade is Blocked ([cli](cli.md#doctor)).
+
+A [device condition](#device-conditions-runson) adds a `runs:` section to the CLI's output. The
+section reads the `--udid` pool the way `run` does, and forms the same runs. Without `--scenario`
+it lists the target's own runs; with a scenario file, each scenario's. It lists the devices that fit
+each run. A target with no pool to read lists its declared runs alone. A physical device
+and a grid target both lack a pool. The section is informational and never changes the exit code.
+The score itself covers the device of the target's first run, the one `record` takes.

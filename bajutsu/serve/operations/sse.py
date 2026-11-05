@@ -6,14 +6,19 @@ import json
 from collections.abc import Generator, Iterator
 
 from bajutsu.common.handoff import REQUEST_LINE_PREFIX
+from bajutsu.serve.logbus import ARTIFACT_LINE_PREFIX
+from bajutsu.serve.operations._common import awaiting_human, no_worker_notice
 from bajutsu.serve.state import Job, ServeState
 
 
 def _classify(line: str) -> tuple[str, str]:
     """A bus line as an ``(event, data)`` pair: a handoff request (BE-0179) becomes a
-    ``human-request`` event carrying just its JSON payload; every other line is a ``log``."""
+    ``human-request`` event carrying just its JSON payload, a live artifact snapshot (BE-0449) an
+    ``artifact`` event carrying ``{"name", "data"}``; every other line is a ``log``."""
     if line.startswith(REQUEST_LINE_PREFIX):
         return ("human-request", line[len(REQUEST_LINE_PREFIX) :])
+    if line.startswith(ARTIFACT_LINE_PREFIX):
+        return ("artifact", line[len(ARTIFACT_LINE_PREFIX) :])
     return ("log", line)
 
 
@@ -39,7 +44,8 @@ def job_log_events(state: ServeState, job_id: str) -> Iterator[tuple[str, str]] 
 
 def _job_event_pairs(state: ServeState, job: Job, job_id: str) -> Iterator[tuple[str, str]]:
     for line in state.logbus.stream(job_id):
-        if line is not None:  # no timeout passed, so no heartbeats — guard only satisfies the type
+        # No timeout passed, so no heartbeats; the None guard only satisfies the type.
+        if line is not None and not _stale_request(state, job, line):
             yield _classify(line)
     yield ("done", _terminal_payload(state, job, job_id))
 
@@ -57,6 +63,7 @@ def job_sse(state: ServeState, job_id: str, *, keepalive: float) -> Generator[st
     """The job's log as ready-to-send SSE strings — `log` frames, a terminal `done` frame, and a
     ``:keepalive`` comment whenever the stream is idle for *keepalive* seconds (so a reverse proxy
     won't drop the connection during a quiet stretch) — or None if the job is unknown (BE-0015).
+    A `notice` frame says when a queued job has no live worker, and again when that ends (BE-0449).
     A generator so the caller can ``close()`` it to stop the underlying stream on a disconnect."""
     job = state.jobs.get(job_id)
     if job is None:
@@ -65,6 +72,39 @@ def job_sse(state: ServeState, job_id: str, *, keepalive: float) -> Generator[st
 
 
 def _job_sse_frames(state: ServeState, job: Job, job_id: str, keepalive: float) -> Generator[str]:
+    # The no-worker notice (BE-0449) is sent when the stream opens and re-read on every idle beat,
+    # and a `notice` event carries each change, so the page shows it while the job waits and drops
+    # it once a worker takes the job. A line arriving means a worker is running it, so it clears too.
+    notice = no_worker_notice(state, job)
+    if notice is not None:
+        yield _notice_frame(notice)
     for line in state.logbus.stream(job_id, timeout=keepalive):
-        yield ":keepalive\n\n" if line is None else format_sse(*_classify(line))
+        if line is None:
+            current = no_worker_notice(state, job)
+            if current != notice:
+                notice = current
+                yield _notice_frame(notice)
+            yield ":keepalive\n\n"
+            continue
+        if notice is not None:
+            notice = None
+            yield _notice_frame(None)
+        if _stale_request(state, job, line):
+            continue
+        yield format_sse(*_classify(line))
     yield format_sse("done", _terminal_payload(state, job, job_id))
+
+
+def _stale_request(state: ServeState, job: Job, line: str) -> bool:
+    """Whether *line* is a handoff request the job no longer waits on (BE-0449).
+
+    The bus replays a job's whole backlog to a page that connects late or reconnects, and a request
+    already answered, or one whose `record` stopped waiting, must not open the handoff pane again.
+    A request is published after the job is marked waiting, so a live one always passes.
+    """
+    return line.startswith(REQUEST_LINE_PREFIX) and not awaiting_human(state, job)
+
+
+def _notice_frame(notice: str | None) -> str:
+    """A ``notice`` event: the job's current notice, or null once it no longer applies."""
+    return format_sse("notice", json.dumps({"notice": notice}))

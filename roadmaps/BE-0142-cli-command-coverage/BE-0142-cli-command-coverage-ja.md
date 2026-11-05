@@ -15,62 +15,81 @@
 
 ## はじめに
 
-CLI コマンド層はすべてのユーザーが最初に触れる入口ですが、その 3 コマンドはコードベースの中でも
-カバレッジが低い部類に入ります。本項目では `doctor` / `record` / `run` に高速な（Simulator 不要
-の）ユニットテストを追加し、ユーザーが実際に触れる層での回帰を出荷前に検出できるようにします。
+CLI コマンド層は、すべてのユーザーが最初に触れる入口です。しかし、その 3 コマンドは、
+コードベースの中でもカバレッジが低い部類に入ります。本項目では、`doctor`、`record`、`run` に
+高速な（Simulator 不要の）ユニットテストを追加します。ユーザーが実際に触れる層での回帰を、
+出荷前に検出できるようになります。
 
 ## 動機
 
-コマンド層のカバレッジは他のコードより低く、`bajutsu/cli/commands/doctor.py` は 42.7%、
-`bajutsu/cli/commands/record.py` は 56.4%、`bajutsu/cli/commands/run.py` は 66.1% にとどまって
-います。3 モジュールとも引数解析を超えたロジックを抱えています。`doctor.py` は actuator の準備
-状態解決と現在画面の走査を行い（`_claude_readiness`、`_current_screen`、`check_scenarios` は
-それぞれ `bajutsu/cli/commands/doctor.py:135`、`:150`、`:20`）、`record.py` は出力パスを組み立て
-（`_record_out_path` は `bajutsu/cli/commands/record.py:31`）、`run.py` はレーン・baseline・
-schema・golden・シナリオファイルの解決と `--browsers` マトリクスの解析を行います
-（`_resolve_lanes`、`_resolve_baselines_dir`、`_resolve_schemas_dir`、`_resolve_goldens_dir`、
-`_scenario_files`、`_parse_browsers` はそれぞれ `bajutsu/cli/commands/run.py:68`、`:87`、`:98`、
-`:108`、`:118`、`:49`）。これらはいずれも Simulator を必要としません。パス解決とオプション解析、
-`Effective` 設定に対する分岐であり、既存の高速（非 E2E）スイートが他の箇所ですでに対象としている
-種類のロジックと変わりません。この層を手薄なまま残すと、すべてのユーザーの呼び出しが通る層が、
-回帰から最も守られていない層になってしまいます。規模は M で、3 モジュールそれぞれにすでに切り出
-された補助関数がいくつもあり、まずそれらを直接の対象にできます。
+コマンド層のカバレッジは、他のコードより低い水準にとどまっています。
+
+- `bajutsu/cli/commands/doctor.py` は 42.7% です。
+- `bajutsu/cli/commands/record.py` は 56.4% です。
+- `bajutsu/cli/commands/run.py` は 66.1% です。
+
+3 つのモジュールはいずれも、引数解析を超えたロジックを抱えています。
+
+- **`doctor.py`** は、actuator の準備状態の解決と、現在画面の走査を行います。補助関数は
+  `_claude_readiness`、`_current_screen`、`check_scenarios` で、位置はそれぞれ
+  `bajutsu/cli/commands/doctor.py:135`、`:150`、`:20` です。
+- **`record.py`** は、出力パスを組み立てます。`_record_out_path` が
+  `bajutsu/cli/commands/record.py:31` にあります。
+- **`run.py`** は、レーン、baseline、schema、golden、シナリオファイルを解決し、`--browsers`
+  マトリクスを解析します。補助関数は `_resolve_lanes`、`_resolve_baselines_dir`、
+  `_resolve_schemas_dir`、`_resolve_goldens_dir`、`_scenario_files`、`_parse_browsers` で、
+  位置はそれぞれ `bajutsu/cli/commands/run.py:68`、`:87`、`:98`、`:108`、`:118`、`:49` です。
+
+これらはいずれも Simulator を必要としません。ロジックの中身は、パス解決とオプション解析、
+`Effective` 設定に対する分岐です。既存の高速（非 E2E）スイートが他の箇所ですでに対象としている
+種類のロジックと変わりません。
+
+この層を手薄なまま残すと、代償が生じます。すべてのユーザーの呼び出しが通る層が、回帰から
+最も守られていない層になってしまうのです。
+
+規模は M です。対象は 3 モジュールで、それぞれにすでに切り出された補助関数がいくつもあり、
+まずそれらを直接の対象にできます。そのまわりに、薄い `typer` のエントリポイントがあります。
 
 ## 詳細設計
 
-この作業は追加のみで、プロダクションの挙動は変更しません。テスト自体が後続作業（とりわけ
-run コマンドの分解）の安全網になります。作業はモジュールごとに分解します。
+この作業は追加のみで、プロダクションの挙動は変更しません。テスト自体が、後続作業の安全網に
+なります。主な例は run コマンドの分解で、本項目が着地した後に続けるのが望ましい作業です。
+作業はモジュールごとに分解します。
 
-- **`doctor.py`**: `check_scenarios`（シナリオディレクトリの検証）、`_claude_readiness`
-  （`Effective` の形ごとの準備状態文字列）、`_current_screen`（要素ツリーの走査）を fake の
-  actuator/driver に対してユニットテストし、加えて `doctor` コマンド本体の分岐（設定ファイル
-  なし、シナリオディレクトリなし、actuator 利用不可）を `CliRunner` 経由でテストします。
-- **`record.py`**: `_record_out_path` を命名・衝突の各分岐にわたってユニットテストし、
-  `record` コマンドのオプション処理（ターゲット解決、出力パス選択）を fake driver に対して
-  テストすることで Simulator を不要にします。
-- **`run.py`**: コマンド本体からすでに切り出されている補助関数 —
-  `_parse_browsers`、`_resolve_lanes`、`_resolve_baselines_dir`、`_resolve_schemas_dir`、
-  `_resolve_goldens_dir`、`_scenario_files`、`_expand_file` — を `run` 関数本体とは独立に
-  ユニットテストし、続けてオプション解析の面（target/scenario/backend/tag/exclude の解決）を
-  `fake` バックエンドを使った `CliRunner` レベルのテストで押さえ、コマンド本体のディスパッチ
-  ロジックを実際の actuator なしで検証します。
-- 各モジュールの新規テストは、スイートの他の箇所ですでに使われている `fake` driver/backend の
-  フィクスチャを再利用し、新しいテストインフラを追加せずにプロジェクトの高速テストの慣例と
-  一貫させます。
+- **`doctor.py`**：fake の actuator と driver に対して、3 つの補助関数をユニットテストします。
+  - `check_scenarios`（シナリオディレクトリの検証）
+  - `_claude_readiness`（`Effective` の形ごとの準備状態文字列）
+  - `_current_screen`（要素ツリーの走査）
+
+  加えて、`doctor` コマンド本体の分岐（設定ファイルなし、シナリオディレクトリなし、actuator
+  利用不可）を `CliRunner` 経由でテストします。
+- **`record.py`**：`_record_out_path` を、命名と衝突の各分岐にわたってユニットテストします。
+  `record` コマンドのオプション処理（ターゲット解決、出力パス選択）は、fake driver に対して
+  テストします。これで Simulator が不要になります。
+- **`run.py`**：コマンド本体からすでに切り出されている補助関数を、`run` 関数本体とは独立に
+  ユニットテストします。対象は `_parse_browsers`、`_resolve_lanes`、`_resolve_baselines_dir`、
+  `_resolve_schemas_dir`、`_resolve_goldens_dir`、`_scenario_files`、`_expand_file` です。
+  続けて、オプション解析の面（target、scenario、backend、tag、exclude の解決）を、`CliRunner`
+  レベルのテストで押さえます。このテストは `fake` バックエンドを使うので、コマンド本体の
+  ディスパッチロジックを、実際の actuator なしで検証できます。
+- **3 モジュール共通**：各モジュールの新規テストは、スイートの他の箇所ですでに使われている
+  `fake` driver と backend のフィクスチャを再利用します。新しいテストインフラは要らず、
+  プロジェクトの高速テストの慣例とも一貫します。
 
 ## 検討した代替案
 
 - **カバレッジを現状のまま残し、E2E（Simulator）テストでの検出に頼る。** 却下します。
-  on-device スイート（`make -C demos/features e2e`）は高速ゲートに含まれない別枠の重い経路で
+  on-device スイート（`make -C demos/features e2e`）は、高速ゲートに含まれない別枠の重い経路で
   あり、すべての変更で実行されるわけではありません。コマンド層のバグは、Simulator 前提のスイート
   を実行できないコントリビュータ（Linux など）にとって発見が遅れる、あるいは発見されないままに
   なります。
   急ごしらえで価値の低いテストを書かせることになります。フロアの引き上げは後続の別項目（仮:
   coverage-floor-ratchet、TBD）として、実際のカバレッジ向上が積み上がった後に続く順序で進めます。
-- **テストを書く前に、コマンド層をより薄く（ロジックをすべて `cli/commands/` の外へ）書き直す。**
-  直近の一手としては却下します。テスト網がない状態で先に面を作り変えると、挙動を気づかないうちに
-  変えてしまうおそれがあります。まずカバレッジを固め、その後の作り直し（`run.py` に固有の
-  run コマンドの分解項目を参照）が回帰の安全網に頼れるようにします。
+- **テストを書く前に、コマンド層をより薄く書き直す。** 書き直しでは、ロジックをすべて
+  `cli/commands/` の外へ出します。直近の一手としては却下します。テスト網がない状態で先に面を
+  作り変えると、挙動を気づかないうちに変えてしまうおそれがあります。まずカバレッジを固めます。
+  そうすれば、その後の作り直しが回帰の安全網に頼れます（`run.py` に固有の run コマンドの分解項目を
+  参照）。
 
 ## 進捗
 

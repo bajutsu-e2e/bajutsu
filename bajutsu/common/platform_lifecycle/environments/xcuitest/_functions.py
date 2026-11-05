@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import contextlib
 import json
 import os
@@ -19,13 +20,22 @@ from typing import TYPE_CHECKING, Literal
 
 from bajutsu.common.backend_cli import simctl
 from bajutsu.common.config import XcuitestConfig
-from bajutsu.common.drivers.zorder import ZOrderResponder, ZOrderSource
+from bajutsu.common.drivers.zorder import ZOrderResponder
 from bajutsu.common.platform_lifecycle.environments._bundled_runner import (
     bundled_products_dir,
     bundled_runner_build_info,
     bundled_runner_is_stale,
     ensure_bundled_runner_fresh,
     materialize,
+)
+from bajutsu.common.platform_lifecycle.environments.device_runner.build import (
+    BUILD_COMMAND,
+    resolve_device_runner,
+)
+from bajutsu.common.platform_lifecycle.environments.device_runner.errors import DeviceRunnerError
+from bajutsu.common.platform_lifecycle.environments.device_runner.signing import (
+    describe_lookup,
+    find_signing_file,
 )
 
 from ._attempt_failure import _AttemptFailure
@@ -176,7 +186,7 @@ def _terminate_process_group(proc: subprocess.Popen[bytes]) -> None:
         proc.wait(timeout=5)
 
 
-def _zorder_client(extra_env: Mapping[str, str] | None) -> ZOrderSource | None:
+def _zorder_client(extra_env: Mapping[str, str] | None) -> ZOrderResponder | None:
     """The `nativeZ` responder client for a launch, or None when this run allocated no port.
 
     The port and token come from the same launch env the app reads (BE-0355), so host and app agree
@@ -619,7 +629,7 @@ def _destination(device_type: str, udid: str) -> str:
 
 
 def effective_device_type(xcfg: XcuitestConfig | None) -> str:
-    """The target's `xcuitest.deviceType`, defaulting to `"simulator"` when unconfigured.
+    """The target's `runsOn.ios.kind`, defaulting to `"simulator"` when unconfigured.
 
     The one place this default lives, so `XcuitestEnvironment.start` and `runner_source`'s caller
     (BE-0292's doctor disclosure) read the same value instead of each re-deriving it.
@@ -651,28 +661,41 @@ def _classify_runner(
     return "bundled", None, None
 
 
-def _resolve_runner(xcfg: XcuitestConfig | None, device_type: str) -> Path:
+def _resolve_runner(
+    xcfg: XcuitestConfig | None, device_type: str, *, build_cwd: Path | None = None
+) -> Path:
     """Resolve the `.xctestrun` to run: an explicit testRunner, else its build, else the bundle.
 
     Precedence keeps explicit config above the default. A configured `testRunner` is used, built on
-    demand via `build` when the file is missing. With neither configured, a Simulator run falls back
-    to the wheel-bundled generic runner (BE-0292), materialized into a writable cache; a real device
-    instead fails loudly, since its runner must be signed (BE-0288) and is not bundled. In a dev
-    checkout, `ensure_bundled_runner_fresh` rebuilds that fallback first when BajutsuKit's own source
-    has moved past it, so this tier never silently serves a stale bundle.
+    demand via `build` when the file is missing; the build runs from `build_cwd`, the directory the
+    target's paths were rebased against, so a relative `testRunner` and its build agree. With
+    neither configured, a Simulator run falls back to the wheel-bundled generic runner (BE-0292),
+    materialized into a writable cache; a real device instead takes the per-user signed build
+    `bajutsu runner build --device` cached (BE-0456), and fails loudly — never building mid-run —
+    when there is none. In a dev checkout, `ensure_bundled_runner_fresh` rebuilds that fallback
+    first when BajutsuKit's own source has moved past it, so this tier never silently serves a
+    stale bundle.
     """
     tier, test_runner, build = _classify_runner(xcfg, device_type)
 
     if tier == "misconfigured":
         # Fail loudly rather than silently ignoring the configured build.
-        raise simctl.DeviceError("xcuitest.build requires xcuitest.testRunner (the path it builds)")
+        raise simctl.DeviceError(
+            "driver.runner.build requires driver.runner.testRunner (the path it builds)"
+        )
 
     if tier == "explicit":
         assert test_runner is not None  # guaranteed by _classify_runner's "explicit" tier
         runner_path = Path(test_runner)
         if not runner_path.exists() and build:
             try:
-                subprocess.run(shlex.split(build), check=True)
+                argv = shlex.split(build)  # a mis-quoted build string is a clean failure
+            except ValueError as exc:
+                raise simctl.DeviceError(
+                    f"xcuitest build command is not valid shell syntax: {build!r} ({exc})"
+                ) from exc
+            try:
+                subprocess.run(argv, cwd=build_cwd, check=True)
             except (subprocess.CalledProcessError, OSError) as exc:
                 raise simctl.DeviceError(f"xcuitest build command failed: {build}") from exc
         if not runner_path.exists():
@@ -680,15 +703,15 @@ def _resolve_runner(xcfg: XcuitestConfig | None, device_type: str) -> Path:
         return runner_path
 
     if tier == "device":
-        raise simctl.DeviceError(
-            "xcuitest.deviceType: device requires an explicit xcuitest.testRunner "
-            "(a real-device runner must be signed and is not bundled; see BE-0288)"
-        )
+        try:
+            return resolve_device_runner()
+        except DeviceRunnerError as exc:
+            raise simctl.DeviceError(str(exc)) from exc
     ensure_bundled_runner_fresh()
     products = bundled_products_dir()
     if products is None:
         raise simctl.DeviceError(
-            "xcuitest backend requires xcuitest.testRunner in the target config "
+            "xcuitest backend requires driver.runner.testRunner in the target config "
             "(no bundled runner is present in this build)"
         )
     try:
@@ -709,7 +732,7 @@ def runner_source(xcfg: XcuitestConfig | None, device_type: str) -> str:
     tier, test_runner, build = _classify_runner(xcfg, device_type)
 
     if tier == "misconfigured":
-        return "misconfigured: xcuitest.build requires xcuitest.testRunner"
+        return "misconfigured: driver.runner.build requires driver.runner.testRunner"
     if tier == "explicit":
         assert test_runner is not None  # guaranteed by _classify_runner's "explicit" tier
         if Path(test_runner).exists():
@@ -718,9 +741,23 @@ def runner_source(xcfg: XcuitestConfig | None, device_type: str) -> str:
             return f"testRunner: {test_runner} (missing, built on demand via: {build})"
         return f"testRunner: {test_runner} (missing, no build configured)"
     if tier == "device":
-        return "none: xcuitest.deviceType: device requires an explicit testRunner"
+        # Names the signing file only: keying the cached build would run `xcodebuild -version` and,
+        # for manual signing, `security`, which a disclosure has no business doing.
+        try:
+            signing_path = find_signing_file()
+        except DeviceRunnerError as exc:
+            return f"none: {exc}"
+        if signing_path is None:
+            return (
+                "none: runsOn.ios.kind: device needs driver.runner.testRunner or a signing file "
+                f"({describe_lookup()})"
+            )
+        return (
+            f"device build: would use the signed runner `{BUILD_COMMAND}` caches "
+            f"(signing file {signing_path}; not validated here)"
+        )
     if bundled_products_dir() is None:
-        return "none: no bundled runner in this build (set xcuitest.testRunner)"
+        return "none: no bundled runner in this build (set driver.runner.testRunner)"
     return "bundled (wheel-shipped Simulator runner)"
 
 
@@ -764,7 +801,7 @@ def bundled_runner_toolchain_warning(
     return (
         "bundled runner toolchain mismatch: "
         + "; ".join(mismatches)
-        + " — if it fails to launch, set xcuitest.testRunner or xcuitest.build to build a "
+        + " — if it fails to launch, set driver.runner.testRunner or driver.runner.build to build a "
         "matching runner"
     )
 
@@ -809,7 +846,7 @@ def _runner_host_bundle_ids(runner_path: Path) -> tuple[str, ...]:
 
     Each target names its own runner app as `TestHostBundleIdentifier` (the built test bundle's id
     with `.xctrunner` appended), so reading it here covers the bundled runner and an explicit
-    `xcuitest.testRunner` alike — neither path has to know the other's id. Duplicates are dropped,
+    `driver.runner.testRunner` alike — neither path has to know the other's id. Duplicates are dropped,
     since several targets in one file can share a runner app. Best-effort: a plist that cannot be
     read yields nothing rather than failing the spawn that asked, the same posture as the terminate
     this feeds (in practice `_patch_xctestrun_env` has already parsed the same file by then).
@@ -827,6 +864,26 @@ def _runner_host_bundle_ids(runner_path: Path) -> tuple[str, ...]:
         if isinstance(host_id, str) and host_id and host_id not in ids:
             ids.append(host_id)
     return tuple(ids)
+
+
+def _forwarded_launch(launch_env: Mapping[str, str], launch_args: list[str]) -> dict[str, str]:
+    """The runner env vars that carry the app's launch environment and arguments.
+
+    Each is sent twice. The encoded pair is what a current runner reads: `xcodebuild`
+    path-normalizes `.xctestrun` `TestingEnvironmentVariables`, collapsing the `//` of any URL in a
+    value (`https://host` arrives as `https:/host`), and base64url has no `/` to collapse. The plain
+    `BAJUTSU_LAUNCH_ENV_*` / `BAJUTSU_LAUNCH_ARGS` form stays for a runner built before the encoded
+    one existed (an explicit `driver.runner.testRunner`), which would otherwise lose the launch
+    environment outright rather than only its URLs' `//`.
+    """
+    env_json = json.dumps(dict(launch_env))
+    args_json = json.dumps(launch_args)
+    return {
+        **{f"BAJUTSU_LAUNCH_ENV_{k}": v for k, v in launch_env.items()},
+        "BAJUTSU_LAUNCH_ARGS": args_json,
+        "BAJUTSU_ENCODED_LAUNCH_ENV": base64.urlsafe_b64encode(env_json.encode()).decode(),
+        "BAJUTSU_ENCODED_LAUNCH_ARGS": base64.urlsafe_b64encode(args_json.encode()).decode(),
+    }
 
 
 def _patch_xctestrun_env(runner_path: Path, forwarded: Mapping[str, str]) -> Path:

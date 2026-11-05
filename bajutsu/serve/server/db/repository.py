@@ -20,6 +20,13 @@ class Repository(Protocol):
     def record_run(self, run: RunRecord) -> None:
         """Insert *run*, or update it in place when its id already exists (e.g. a status change)."""
 
+    def record_run_if_absent(self, run: RunRecord) -> bool:
+        """Insert *run* when no row has its id yet; True when it was inserted.
+
+        Never updates an existing row, so indexing a run tree from disk (BE-0449) cannot overwrite
+        the row a completing job wrote with its actor and label, whichever of the two lands first.
+        """
+
     def get_run(self, run_id: str) -> RunRecord | None:
         """The run with *run_id*, or None if there is none."""
 
@@ -246,12 +253,72 @@ class Repository(Protocol):
         worker has no registry row yet (it registers on its first lease before any heartbeat).
         """
 
+    def live_worker_capabilities(self) -> list[list[str]]:
+        """The advertised capability set of every live worker (BE-0467, the submission refusal).
+
+        Live means seen within the lease timeout, as for `lacks_live_worker`.
+        """
+
+    def live_environments(self) -> dict[str, int]:
+        """Live workers per advertised `environment:<name>` capability (BE-0465).
+
+        Live means seen within the lease timeout, the same window `lacks_live_worker` uses, and a
+        worker counts once per name it advertises. The UI lists these so an operator picks only an
+        environment a worker could actually serve.
+        """
+
+    def lacks_live_worker(self, job_id: str) -> bool:
+        """Whether *job_id* is queued and no live worker can serve it (BE-0449, the no-worker notice).
+
+        Live means seen within the lease timeout, the window `metrics_snapshot` counts unroutable
+        jobs by, and a worker can serve the job when it advertises every capability the job
+        requires (`can_serve`, the lease's own test). False for a job that is leased, finished, or
+        not in the table, so the notice clears as soon as a worker takes the job.
+        """
+
     def heartbeat_job(self, job_id: str, worker_id: str) -> bool:
         """Renew a lease's timer, returning False when *worker_id* no longer owns the live lease.
 
         The worker calls this on an interval during a run so a legitimately long run is not
         reclaimed; a False answer tells the worker its lease was reclaimed (or the job finished) and
         it should stop.
+        """
+
+    def holds_lease(self, job_id: str, worker_id: str) -> bool:
+        """Whether *worker_id* holds the live lease on *job_id*, without renewing it (BE-0449).
+
+        The same owner test as `heartbeat_job`, as a read: the worker log route asks it on every
+        batch, and a write per batch would contend for SQLite's single writer for no gain, since the
+        heartbeat already renews the lease.
+        """
+
+    def cancel_requested(self, job_id: str, worker_id: str) -> bool:
+        """Whether a cancel has reached the job *worker_id* holds the lease on (BE-0449).
+
+        The heartbeat reads this after renewing the lease, so the worker learns of a cancel on its
+        next beat. False once the worker no longer holds the lease.
+        """
+
+    def open_handoff(self, job_id: str, worker_id: str) -> bool:
+        """Mark the job *worker_id* holds as waiting on a person, dropping any earlier answer.
+
+        The worker calls this when its `record` asks for a person (BE-0449 unit 8). False once the
+        worker no longer holds the lease, so a stale worker cannot open a handoff on the job's next
+        attempt, and while an earlier request still waits on a person.
+        """
+
+    def answer_handoff(self, job_id: str, token: str) -> bool:
+        """Store a person's answer, as an encrypted *token*, for the worker to take.
+
+        Accepted only while the job is leased, waits on a person, and has no cancel pending, so an
+        answer never lands on a finished job or one whose handoff already closed. Clears the wait.
+        """
+
+    def take_handoff_response(self, job_id: str, worker_id: str) -> str | None:
+        """The stored answer of the job *worker_id* holds, removed as it is read; None when none.
+
+        One conditional update decides the read, so the answer reaches one poll alone, and only
+        the lease holder takes it.
         """
 
     def reclaim_expired_leases(
@@ -261,7 +328,8 @@ class Repository(Protocol):
 
         Returns the ids re-queued (available again). A worker that dies mid-run stops heart-beating,
         so its lease ages past the timeout and returns to ``queued`` for another worker — but a
-        poison job that keeps killing its worker is failed once it hits the attempt cap.
+        poison job that keeps killing its worker is failed once it hits the attempt cap, and one a
+        cancel already reached is marked ``cancelled`` rather than run again.
         """
 
     def complete_job(
@@ -277,9 +345,32 @@ class Repository(Protocol):
         """Mark a still-leased job ``failed`` with *error*; False if it is no longer leasable (see
         `complete_job`)."""
 
+    def cancel_job(self, job_id: str) -> tuple[str, bool] | None:
+        """Cancel a job wherever it is in the queue, returning its status afterwards (BE-0449).
+
+        A ``queued`` job becomes ``cancelled`` with `cancelled_job_result` as its terminal payload,
+        so no worker ever leases it. A ``leased`` job stays leased and gets its cancel-requested flag
+        set, which the heartbeat hands to the worker; the worker's cancelled result then finishes it.
+        A job already ``done``, ``failed``, or ``cancelled`` is left alone, and its status returned.
+
+        Returns:
+            The job's status after the call and whether this call cancelled it, or None when no
+            such job exists. ``("cancelled", True)`` is a queued job cancelled now, ``("leased",
+            True)`` a job whose worker now has a cancel to honor, and ``(<terminal status>,
+            False)`` a job that had already finished.
+        """
+
+    def cancel_leased_job(self, job_id: str, result: dict[str, Any], *, worker_id: str) -> bool:
+        """Mark a job ``cancelled`` with the result its lease holder posted; False if it may not.
+
+        Only *worker_id*, while it still holds the lease, may record the cancelled outcome, so a
+        stale worker cannot turn a re-leased job's run into a cancel (see `complete_job`).
+        """
+
     def get_job(self, job_id: str) -> dict[str, Any] | None:
-        """Return the job's status, result, org_id, current lease holder (``leased_by``), and
-        ``spec``, or None if it does not exist.
+        """Return the job's status, result, org_id, current lease holder (``leased_by``), ``spec``,
+        and ``awaiting_human`` (whether a leased `record` waits on a person), or None if it does not
+        exist.
 
         The spec rides along because a worker's result carries no `actor` / `label` of its own:
         `worker_result` records the finished run under the identity and run-history partition the
@@ -287,7 +378,7 @@ class Repository(Protocol):
         copy — unlike a per-id `get_job` in a loop, which `finished_job_ids` exists to avoid."""
 
     def finished_job_ids(self, job_ids: Iterable[str]) -> set[str]:
-        """Which of *job_ids* have reached a terminal state (``done`` / ``failed``).
+        """Which of *job_ids* have reached a terminal state (``done`` / ``failed`` / ``cancelled``).
 
         The control plane asks this on every dispatch and every metrics scrape to release the
         concurrency-cap slots of jobs that finished on a worker, so it is one narrow read for the
@@ -299,12 +390,13 @@ class Repository(Protocol):
     def metrics_snapshot(self) -> JobMetrics:
         """A one-pass aggregate of the jobs table for the ``/metrics`` endpoint (BE-0169)."""
 
-    def save_batch_run_arn(self, job_id: str, run_arn: str) -> None:
-        """Persist the scheduled Device Farm run ARN for *job_id* (BE-0336 Unit 5).
+    def save_batch_run_arn(self, job_id: str, run_arn: str, *, worker_id: str) -> bool:
+        """Persist the scheduled Device Farm run ARN for *job_id*, if *worker_id* holds its lease.
 
-        A worker records the ARN the moment the cloud-batch run is scheduled, so a worker that
-        re-leases the job after a restart resumes polling that run rather than resubmitting. A no-op
-        if the job row is gone.
+        A worker records the ARN the moment the cloud-batch run is scheduled (BE-0336 Unit 5), so a
+        worker that re-leases the job after a restart resumes polling that run rather than
+        resubmitting. Checked against the lease owner in the same statement, as the heartbeat is
+        (BE-0448): False when the job is not leased to *worker_id*, or gone, and nothing is written.
         """
 
     def load_batch_run_arn(self, job_id: str) -> str | None:

@@ -50,7 +50,11 @@ uv sync --group dev                        # .venv（Python 3.13）+ 依存 + �
 > **PyPI からインストールする場合**：基本パッケージは AI-free です。`pip install bajutsu` は
 > 決定論的なオーサリングと実行の経路を AI SDK なしで導入し、`pip install bajutsu[ai]`（または
 > `bajutsu[bedrock]`）が Claude の経路のための SDK を追加します。分離の詳細は
-> [What uses Claude](../ai-boundary.md#claude-の経路をインストールする)にあります。
+> [What uses Claude](../ai-boundary.md#claude-の経路をインストールする)にあります。基本パッケージには
+> サーバの依存（FastAPI、uvicorn、SQLAlchemy、Alembic、`cryptography`）も入っているので、
+> `bajutsu serve` は追加の extra なしに1台のマシンで起動します。`server` と `db` の
+> extra が追加するのは、hosted のデプロイが使うクライアントだけです。S3 のバケット向けの boto3 と、
+> PostgreSQL 向けの psycopg がこれにあたります。
 
 CLI（コマンドラインインターフェース）が配線されているかを確認します。
 
@@ -93,7 +97,9 @@ smoke テスト [`demos/showcase/scenarios/smoke.yaml`](../../../demos/showcase/
 ```yaml
 - name: stable catalog smoke
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }     # アニメ無効 -> 条件待ちをタイトに
+    subject:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }     # アニメ無効 -> 条件待ちをタイトに
   steps:
     - wait: { for: { id: [stable.row.1, stable_row_1] }, timeout: 10 }
   expect:

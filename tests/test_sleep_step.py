@@ -116,7 +116,7 @@ def _queries(step: dict[str, object], *, guarded: bool) -> int:
     )
     driver = CountingDriver([el("x", "X")])
     # `runner.pipeline` passes the scenario's interrupts explicitly; `run_scenario` does not read them.
-    result = run_scenario(driver, scenario, clock=FakeClock(), interrupts=scenario.interrupts)
+    result = run_scenario(driver, scenario, clock=FakeClock(), interrupts=scenario.screens)
     assert result.ok, result.failure
     return driver.queries
 
@@ -205,7 +205,7 @@ def test_fixed_sleep_past_ten_seconds_grades_moderate() -> None:
 def test_every_written_sleep_is_found_wherever_it_sits() -> None:
     grade, kinds = _audit(
         "- name: x\n"
-        "  before: [{ sleep: { seconds: 4, reason: seed } }]\n"
+        "  setup: [{ sleep: { seconds: 4, reason: seed } }]\n"
         "  interrupts:\n"
         "    - condition: { exists: { id: promo } }\n"
         "      steps: [{ sleep: { seconds: 1, reason: fade } }]\n"
@@ -218,7 +218,7 @@ def test_every_written_sleep_is_found_wherever_it_sits() -> None:
         "    - forEach:\n"
         "        sel: { idMatches: 'row.*' }\n        as: row\n"
         "        steps: [{ sleep: { seconds: 1, reason: row } }]\n"
-        "  after:\n"
+        "  cleanup:\n"
         "    - on: always\n"
         "      steps: [{ sleep: { seconds: 1, reason: teardown } }]\n"
     )

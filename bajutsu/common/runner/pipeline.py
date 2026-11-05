@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -29,7 +29,9 @@ from bajutsu.common.backends import (
 )
 from bajutsu.common.cancellation import CANCELLED_FAILURE, CancelSource, not_cancelled
 from bajutsu.common.capability import capability_preflight
-from bajutsu.common.config import Effective, web_engine
+from bajutsu.common.capability.capability_preflight import steps_for_target
+from bajutsu.common.capability.settings_support import check_settings
+from bajutsu.common.config import Effective, resolve_preconditions, web_engine
 from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.drivers import base, tracing
 from bajutsu.common.drivers.base import BackendCrashError
@@ -54,7 +56,14 @@ from bajutsu.common.orchestrator import (
     scenario_slug,
 )
 from bajutsu.common.orchestrator.evidence_rules import requested_intervals
-from bajutsu.common.orchestrator.types import StepGate, StepOutcome, _no_network
+from bajutsu.common.orchestrator.types import (
+    DerivedSecrets,
+    IgnoredSetting,
+    StepGate,
+    StepOutcome,
+    _no_network,
+    mask_derived_text,
+)
 from bajutsu.common.platform_lifecycle.protocols import ReadinessResult
 from bajutsu.common.report import (
     ScenarioPlanSource,
@@ -75,7 +84,7 @@ from bajutsu.common.runner.recovery import (
 )
 from bajutsu.common.runner.types import AlertGuardFor, Lease, LeaseFn, TargetPool
 from bajutsu.common.scenario import (
-    AfterRule,
+    CleanupRule,
     Interrupt,
     Redact,
     Scenario,
@@ -118,7 +127,7 @@ def _launch_unconfirmed(readiness: ReadinessResult | None) -> bool:
     `count` is the gate's weakest rung — a bare `len(elements) >= 2`, which a slow cold boot's
     SpringBoard icons satisfy before the app itself foregrounds — so a `ready` answer there is no
     evidence the app rendered. It is also the *ordinary* rung rather than a rare one: `launch_driver`
-    passes no `id_namespaces`, so every target declaring no `readyWhen` lands on it at every launch.
+    passes no `id_namespaces`, so every target declaring no `startWhen` lands on it at every launch.
 
     This is the first consumer to decide behavior from a `ReadinessResult` rather than word a
     diagnostic message, which is why `ReadinessResult`'s own docstring now names the use. It stays
@@ -228,6 +237,9 @@ class _ScenarioRunner:
     # the actuator preflighted here is the one the lease builds. None keeps the fixed-`actuator` path
     # (the cross-browser matrix, tests driving a lease directly).
     resolve_actuator: Callable[[Scenario], str] | None = None
+    # Scenarios the worker capability check (BE-0450) already failed, keyed by their index in the
+    # run: each is reported with its reason and never leased, so no device is acquired for it.
+    worker_failures: Mapping[int, str] = field(default_factory=dict)
     # Emit the app's entry-screen convention score once per run (the first scenario's freshly launched
     # driver), folding `doctor`'s Ready/Partial/Blocked tell into the run so CI needs no separate
     # `doctor` invocation that would cold-spawn a second XCUITest runner. Purely diagnostic and off the
@@ -260,16 +272,12 @@ class _ScenarioRunner:
     run_crash_budget: RunCrashRecoveryBudget = field(
         default_factory=lambda: RunCrashRecoveryBudget(None)
     )
-    # Whether a crash-triggered retry (attempt > 1) may force `preconditions.erase=True`. True (the
-    # default) matches every existing caller. `bajutsu run`'s `--no-erase` (an operator override of
-    # every scenario's `preconditions.erase`, applied by `_filter_scenarios` in
-    # `bajutsu/cli/commands/run.py` before a scenario ever reaches here) is the one signal this
-    # forced retry must still honor: by the time a scenario reaches `run_one`, `_filter_scenarios` has
-    # already resolved `preconditions.erase` to a concrete bool for every scenario (most commonly
-    # `False`, the built-in default nobody asked for), so a guard reading that field can no longer
-    # distinguish "the operator explicitly asked to keep the device as-is" from "nobody said
-    # anything" — this flag carries the pre-resolution CLI signal (`erase is not False`) instead, so
-    # `--no-erase` still means what it says even on a crash-triggered retry.
+    # Whether a crash-triggered retry (attempt > 1) may force `preconditions.subject.reinstall: erase`.
+    # True (the default) matches every existing caller. `bajutsu run`'s `--no-erase` is the one signal
+    # this forced retry must still honor, and no scenario's own value carries it: `_filter_scenarios`
+    # moves only a scenario that erases, so a scenario that never erased looks the same with the flag
+    # or without it. This flag carries the CLI signal (`erase is not False`) instead, so `--no-erase`
+    # still means what it says even on a crash-triggered retry.
     force_erase_on_retry: bool = True
     # Whether this run has been asked to stop (BE-0370). Read once per scenario below, before the
     # first lease is attempted, and handed down to `run_scenario` so the step loop and its condition
@@ -353,9 +361,63 @@ class _ScenarioRunner:
                     f"unsupported on backend '{pool.actuator}' (target '{name}'): a device group "
                     "(this backend cannot share a device between two apps yet)"
                 )
-            if reasons := capability_preflight.unsupported(_steps_for_target(s, name), caps):
+            if reasons := capability_preflight.unsupported(steps_for_target(s, name), caps):
                 return f"unsupported on backend '{pool.actuator}' (target '{name}'): {'; '.join(reasons)}"
+            if problems := _settings_problems(pool.actuator, pool.eff, s, pool.udid_spec):
+                return f"unsupported on backend '{pool.actuator}' (target '{name}'): {problems}"
+        return self._group_erase_problem(s)
+
+    def _group_erase_problem(self, s: Scenario) -> str | None:
+        """A Simulator group member that erases while the member preparing the device does not.
+
+        Each target merges its own `subject.reinstall` (BE-0473), so two targets on one Simulator can
+        disagree. The device is wiped once, by the group's last starting member (`_lease_targets`),
+        so a member asking for `erase` on an anchor that does not erase is refused here, before any
+        lease. Android has no device-wide wipe, so its members never conflict.
+        """
+        later = set(s.later_targets)
+        for group in s.device_groups:
+            starting = [n for n in group if n not in later and n in self.targets]
+            if len(group) < 2 or not starting:
+                continue
+            anchor = starting[-1]
+
+            def erases(name: str) -> bool:
+                eff = self.targets[name].eff
+                return eff.platform == "ios" and resolve_preconditions(eff, s.preconditions).erase
+
+            if erases(anchor):
+                continue
+            if conflict := next((n for n in group if n in self.targets and erases(n)), None):
+                return (
+                    f"target '{conflict}' sets subject.reinstall: erase, but it shares a Simulator with "
+                    f"'{anchor}', which prepares the device without erasing it; give every target "
+                    "in the device group the same reinstall"
+                )
         return None
+
+    def _ignored_settings(self, s: Scenario, actuator: str | None) -> list[IgnoredSetting]:
+        """Every setting *s* puts in effect that a target's route cannot apply and it ignores (BE-0467).
+
+        Judged by the same `check_settings` the preflight ran, so the report names exactly what each
+        launch dropped. Each declared target is judged on its own route; a single-target run on the
+        run's own *actuator* and config.
+        """
+        judged: list[tuple[str, str | None, Effective, str]] = []
+        for name in self._routed(s):
+            pool = self.targets[name]
+            judged.append((name, pool.actuator, pool.eff, pool.udid_spec))
+        if not judged:
+            judged.append((self.eff.target, actuator, self.eff, self.udid_spec))
+        ignored: list[IgnoredSetting] = []
+        for name, target_actuator, eff, udid_spec in judged:
+            pre = resolve_preconditions(eff, s.preconditions)
+            check = check_settings(target_actuator, eff, pre, s.permissions, udid_spec)
+            ignored += [
+                IgnoredSetting(target=name, key=key, reason=reason)
+                for key, reason in check.ignored.items()
+            ]
+        return ignored
 
     def _lease_targets(self, s: Scenario, launch_scenario: Scenario) -> dict[str, Lease]:
         """One live lease per target *s* declares, brought up before its first step runs.
@@ -368,8 +430,9 @@ class _ScenarioRunner:
         anything already held is released if the acquisition fails rather than held indefinitely.
 
         The same `launch_scenario` — the crash-retry loop's possibly erase-forced copy — goes to
-        every target, since `preconditions` and `permissions` are scenario-level and each backend
-        already interprets only the parts that apply to it.
+        every target, since `preconditions` and `permissions` are scenario-level. Each target's share
+        is judged by its own route's settings table (BE-0467): a value its route cannot apply fails
+        the preflight unless that target declares it under `runsOn.ignoredSettings`.
 
         A device group takes one lease, for its last starting member, which prepares the device once;
         the group's other starting members then join it in reverse declared order, so the group's
@@ -394,9 +457,15 @@ class _ScenarioRunner:
             raise
         return held
 
-    def _artifacts(self) -> RunArtifactWriter | None:
-        """The run's artifact sink, or None when this run keeps no run directory at all."""
-        return None if self.run_dir is None else RunArtifactWriter(self.run_dir, self.redactor)
+    def _artifacts(self, derived: Sequence[str] = ()) -> RunArtifactWriter | None:
+        """The run's artifact sink, or None when this run keeps no run directory at all.
+
+        *derived* names the secret values one scenario's `eval` steps produced (BE-0472); a writer
+        for that scenario's evidence masks them too, without widening the shared run redactor.
+        """
+        if self.run_dir is None:
+            return None
+        return RunArtifactWriter(self.run_dir, self.redactor.with_values(derived))
 
     def _now(self) -> float:
         """Monotonic seconds from the injected clock, or the real clock when none is wired.
@@ -414,13 +483,22 @@ class _ScenarioRunner:
             s: The scenario to run.
         """
         sid = _evidence_sid(i, s)
+        # What this scenario's `eval` steps derive from a secret (BE-0472). Created here, once per
+        # scenario rather than per attempt, so a crash retry and every writer after a raise still
+        # mask what an earlier attempt derived; never stored on the shared runner.
+        derived = DerivedSecrets()
         if self.trace_driver:
-            return self._run_one_traced(i, s, sid)
-        return self._run_one_recorded(i, s, sid)
+            return self._run_one_traced(i, s, sid, derived)
+        return self._run_one_recorded(i, s, sid, derived)
 
-    def _run_one_recorded(self, i: int, s: Scenario, sid: str) -> RunResult:
+    def _run_one_recorded(
+        self, i: int, s: Scenario, sid: str, derived: DerivedSecrets
+    ) -> RunResult:
         """`_run_one_impl`, then its verdict persisted to `<sid>/result.json` straight away."""
-        result = self._run_one_impl(i, s, sid)
+        result = self._run_one_impl(i, s, sid, derived)
+        # Every consumer from here on — result.json, the manifest and reports, CI annotations, a
+        # webhook — reads these fields, so masking them once here covers each (BE-0472).
+        mask_derived_text(result, Redactor(None).with_values(derived.values))
         self._write_result(s, sid, result)
         return result
 
@@ -443,7 +521,7 @@ class _ScenarioRunner:
             # fails loudly when `manifest.json` is written, but must not abort the suite here.
             _logger.warning("scenario %s: writing result.json failed (%s)", s.name, exc)
 
-    def _run_one_traced(self, i: int, s: Scenario, sid: str) -> RunResult:
+    def _run_one_traced(self, i: int, s: Scenario, sid: str, derived: DerivedSecrets) -> RunResult:
         """`_run_one_impl` under an open driver trace, flushed to `<sid>/driver_trace.json`."""
         # BE-0415: opened *before* `_run_one_impl` leases a device, so the driver it constructs
         # (`self.lease(...)` -> `launch_driver` -> `backends.make_driver`) sees a trace already open
@@ -455,9 +533,10 @@ class _ScenarioRunner:
         # while serializing the (diagnostic) trace still leaves the finished scenario's result.
         with tracing.open_trace() as trace_ctx:
             try:
-                return self._run_one_recorded(i, s, sid)
+                result = self._run_one_recorded(i, s, sid, derived)
             finally:
-                writer = self._artifacts()
+                # Masks what the scenario derived from a secret, even when it raised (BE-0472).
+                writer = self._artifacts(derived.values)
                 if writer is not None:
                     try:
                         writer.write_json(
@@ -471,18 +550,28 @@ class _ScenarioRunner:
                         _logger.warning(
                             "scenario %s: writing driver_trace.json failed (%s)", s.name, exc
                         )
+        return result
 
     # Genuinely long: the per-scenario run on the deterministic run path. Splitting it carries real
     # behavioral risk, so it waits for a refactor of its own rather than riding a lint ceiling
     # (BE-0386).
     def _run_one_impl(  # noqa: C901, PLR0912, PLR0915
-        self, i: int, s: Scenario, sid: str
+        self, i: int, s: Scenario, sid: str, derived: DerivedSecrets
     ) -> RunResult:
         """`run_one`'s actual body.
 
         Runs once per crash-recovery attempt, inside — or, when `--trace-driver` is off, without —
         the open trace `run_one` wraps it in.
         """
+        # Checked ahead of a cancel: this scenario would never have run, so its reason is the truer one.
+        if (worker_failure := self.worker_failures.get(i)) is not None:
+            if self.progress is not None:
+                self.progress(
+                    f"✘ scenario {i + 1}/{self.total}: {s.name} (unsupported on this worker)"
+                )
+            return RunResult(
+                scenario=s.name, ok=False, steps=[], backend="", sid=sid, failure=worker_failure
+            )
         # A cancel that landed before this scenario started (BE-0370). It is failed rather than
         # dropped, so `run_all` still returns exactly one result per scenario in declaration order
         # and nothing downstream needs to know cancellation happened at all — an operator who
@@ -536,7 +625,12 @@ class _ScenarioRunner:
                     scenario=s.name, ok=False, steps=[], backend="", sid=sid, failure=str(exc)
                 )
             caps = capabilities_for_run(actuator, self.eff, self.udid_spec)
-        if caps is not None and (reasons := capability_preflight.unsupported(s, caps)):
+        reasons = capability_preflight.unsupported(s, caps) if caps is not None else []
+        # The settings check (BE-0467) needs only the route, so it runs even where no capability set
+        # was resolved; the routed path above already ran it per target.
+        if not routed and (problems := _settings_problems(actuator, self.eff, s, self.udid_spec)):
+            reasons.append(problems)
+        if reasons:
             if self.progress is not None:
                 self.progress(
                     f"✘ scenario {i + 1}/{self.total}: {s.name} (unsupported on {actuator})"
@@ -607,7 +701,7 @@ class _ScenarioRunner:
                 self.alert_guard_for(s) if self.alert_guard_for is not None else self.alert_guard
             )
         except UncoveredSystemAlertLocale as exc:
-            # A `systemAlertHandling.rules` entry names a prompt this scenario's locale has no known
+            # A `systemAlert` interrupts entry names a prompt this scenario's locale has no known
             # labels for — the same fail-loudly-before-any-device-work choice `handleSystemAlert`'s
             # own `prompt`/`choice` resolution makes, surfaced here as a clean per-scenario failure
             # rather than an uncaught exception that would abort the whole run.
@@ -669,12 +763,13 @@ class _ScenarioRunner:
         # escalation condition below, because a replacement resets strictly *more* than an erase
         # does — a blank device carries no app data at all. Reading them only where `forced_erase` is
         # computed would leave the stall signal free to swap the device out from under a scenario
-        # that declared `reinstall: overwrite` to keep its data, or from under an operator who asked
-        # for `--no-erase`, which is the opposite of what either opt-out means. A `forced_erase`
-        # attempt already implies both, so folding them in loses nothing on that path.
+        # whose merged `reinstall` is `overwrite` to keep its data — its own, or its target's
+        # `subject.reinstall` default (BE-0452) — or from under an operator who asked for `--no-erase`,
+        # which is the opposite of what either opt-out means. A `forced_erase` attempt already
+        # implies both, so folding them in loses nothing on that path.
         can_replace = (
             self.force_erase_on_retry
-            and s.preconditions.reinstall != "overwrite"
+            and resolve_preconditions(self.eff, s.preconditions).reinstall != "overwrite"
             and device_replacement_supported(actuator, self.eff, self.udid_spec)
         )
         replaced = False
@@ -695,23 +790,36 @@ class _ScenarioRunner:
                 # single-target run. Reset per attempt alongside `lz` for the same reason: a retry
                 # relaunches the whole set, so the previous attempt's drivers are already gone.
                 others: dict[str, Lease] = {}
-                # A retry forces the device recovery `erase: true` would give: respawning onto the
-                # device that just wedged reproduces the crash. Skipped on `reinstall: overwrite`
-                # (the scenario needs its app data preserved), on `not self.force_erase_on_retry`
-                # (the operator's `--no-erase`), and wherever forcing `erase` would itself raise
-                # (`erase_precondition_supported`, which would abort the whole run). `erase: false`
-                # is NOT a skip signal: the CLI has already collapsed it to a concrete bool by here.
+                # A retry forces the device recovery `reinstall: erase` would give: respawning onto the
+                # device that just wedged reproduces the crash. Skipped on a merged `reinstall:
+                # overwrite`, from the scenario or its target's default (the app data must survive),
+                # on `not self.force_erase_on_retry` (the operator's `--no-erase`), and wherever
+                # forcing `erase` would itself raise (`erase_precondition_supported`, which would
+                # abort the whole run). A merged `clean` is NOT a skip signal: it keeps no data.
                 # An escalated attempt keeps this forced erase; the environment serving a replacement
                 # drops it. Every one of these choices is argued in BE-0353.
                 retry_scenario = s
                 if (
                     attempt > 1
                     and self.force_erase_on_retry
-                    and s.preconditions.reinstall != "overwrite"
+                    and resolve_preconditions(self.eff, s.preconditions).reinstall != "overwrite"
                     and erase_precondition_supported(actuator, self.eff, self.udid_spec)
+                    # The forced erase reaches every routed target too, so each one's route must
+                    # erase; a real-device secondary would otherwise refuse it and end the run.
+                    and all(
+                        erase_precondition_supported(p.actuator, p.eff, p.udid_spec)
+                        for p in (self.targets[n] for n in self._routed(s))
+                    )
                 ):
+                    pre = s.preconditions
                     retry_scenario = s.model_copy(
-                        update={"preconditions": s.preconditions.model_copy(update={"erase": True})}
+                        update={
+                            "preconditions": pre.model_copy(
+                                update={
+                                    "subject": pre.subject.model_copy(update={"reinstall": "erase"})
+                                }
+                            )
+                        }
                     )
                 forced_erase = retry_scenario is not s
                 # Lease *inside* the try so a crash during bring-up — the launch/readiness gate, not only a
@@ -798,7 +906,7 @@ class _ScenarioRunner:
                         # work, not recovery. A mid-step crash below re-arms the clock.
                         self.run_crash_budget.add_recovery_time(self._now() - recovery_started)
                         recovery_started = None
-                    return self._run_on_lease(lz, others, handler, i, s, sid)
+                    return self._run_on_lease(lz, others, handler, i, s, sid, derived, actuator)
                 except BackendCrashError as crash:
                     # Nothing is released here: `_lease_set` already rolls back its own partial
                     # bring-up, and `_run_on_lease` owns the whole set's release in its `finally`
@@ -949,7 +1057,7 @@ class _ScenarioRunner:
         # the type-checker cannot see from here.
         assert last_crash is not None
         if crashed_lz is not None:
-            failure += self._write_crash_artifacts(crashed_lz, s, sid)
+            failure += self._write_crash_artifacts(crashed_lz, s, sid, derived.values)
         # `partial_artifacts` names the newest attempt that actually finalized a recording before
         # crashing (not necessarily the last attempt — a later one can crash during lease bring-up,
         # before `run_scenario`'s own finalize ever runs). Only the video is attached: it is what the
@@ -970,6 +1078,7 @@ class _ScenarioRunner:
             sid=sid,
             failure=failure,
             artifacts=[recovered] if recovered is not None else [],
+            derived_secrets=list(derived.values),
             # Disclose the gap only when video was requested and no recording survived the crash —
             # otherwise either the video attached above already answers "where is the recording", or
             # this scenario was never going to have one, and a skip entry would falsely claim it was.
@@ -978,9 +1087,14 @@ class _ScenarioRunner:
                 if wanted_video and recovered is None
                 else []
             ),
+            # Every path here follows at least one crash, and that attempt's launch had already
+            # dropped them: `enforce_settings` runs before any launch work (BE-0467).
+            ignored_settings=self._ignored_settings(s, actuator),
         )
 
-    def _write_crash_artifacts(self, lz: Lease, s: Scenario, sid: str) -> str:
+    def _write_crash_artifacts(
+        self, lz: Lease, s: Scenario, sid: str, derived: Sequence[str] = ()
+    ) -> str:
         """Copy the crashed backend's own evidence into this scenario's directory (BE-0421).
 
         Called once, where the retry loop has already given up: a scenario that recovered passes, and a
@@ -993,7 +1107,7 @@ class _ScenarioRunner:
         logged and nothing more: a diagnostic artifact must never turn an already-decided failure into
         a different, unrelated one.
         """
-        writer = self._artifacts()
+        writer = self._artifacts(derived)
         if writer is None:
             return ""
         directory: Path | None = None
@@ -1015,7 +1129,7 @@ class _ScenarioRunner:
         return f"; the backend's own crash evidence is in {directory}"
 
     def _write_app_crash_artifacts(
-        self, lz: Lease, outcome: StepOutcome, s: Scenario, sid: str
+        self, lz: Lease, outcome: StepOutcome, s: Scenario, sid: str, derived: Sequence[str] = ()
     ) -> str:
         """Copy the crashed *app's* own platform report into this scenario's directory (BE-0424).
 
@@ -1031,7 +1145,7 @@ class _ScenarioRunner:
         through `write_text`, not `write_bytes`: a crash report is text a crashing app can echo a
         secret into, so it still crosses the free-text scrub (BE-0331).
         """
-        writer = self._artifacts()
+        writer = self._artifacts(derived)
         if writer is None:
             return ""
         try:
@@ -1205,7 +1319,7 @@ class _ScenarioRunner:
 
         return TargetRoster(
             primary=primary_target,
-            entries=list(s.interrupts),
+            entries=s.screens,
             status=dict.fromkeys(later, MemberStatus.NOT_INSTALLED),
             activate=activate if later else None,
             install=install if later else None,
@@ -1259,7 +1373,7 @@ class _ScenarioRunner:
             # run's `TargetRoster`, since an entry omitting `target` follows the current primary,
             # which a `setPrimaryTarget` step can move mid-run (BE-0447).
             interrupts=list(pool.eff.run_defaults.interrupts),
-            locale=s.preconditions.resolved_locale(pool.eff.locale),
+            locale=s.preconditions.resolved_locale(pool.eff.locale, pool.eff.platform),
             capture=list(pool.eff.capture),
             channel=collector,
             caps=capabilities_for_run(pool.actuator, pool.eff, pool.udid_spec),
@@ -1276,7 +1390,7 @@ class _ScenarioRunner:
             None,
         )
         if crashed is not None:
-            trailer = self._write_app_crash_artifacts(lz, crashed, s, sid)
+            trailer = self._write_app_crash_artifacts(lz, crashed, s, sid, result.derived_secrets)
             # `result.ok` is already fixed by `run_scenario` (`ok=failure is None`) before this
             # scan ever runs, so an empty trailer here cannot flip it — but `result.failure` would
             # still silently become `""` instead of staying `None`, a stale non-`None`-yet-empty
@@ -1295,6 +1409,8 @@ class _ScenarioRunner:
         i: int,
         s: Scenario,
         sid: str,
+        derived: DerivedSecrets,
+        actuator: str | None,
     ) -> RunResult:
         """Run one scenario on an already-leased device and return its result.
 
@@ -1306,10 +1422,12 @@ class _ScenarioRunner:
             # Hand the backend this scenario's own answer for a prompt that interrupts one of its
             # interactions, before any of them run. The resident runner outlives a scenario, so this
             # is set per scenario rather than per lease — including to *empty* when the scenario
-            # disables the guard, so it never inherits the previous scenario's policy.
-            push_interruption_policy(lz.driver, handler)
+            # disables the guard, so it never inherits the previous scenario's policy. The
+            # scenario-start mark also makes it forget every showing the previous scenario answered
+            # (BE-0461), so a relaunched app's prompt is answered afresh.
+            push_interruption_policy(lz.driver, handler, scenario_start=True)
             for extra in others.values():
-                push_interruption_policy(extra.driver, handler)
+                push_interruption_policy(extra.driver, handler, scenario_start=True)
             # Score the entry screen before the scenario mutates it — the app is freshly launched here,
             # exactly what a standalone `doctor` probe would see, but on the lease this run already holds.
             self._maybe_emit_score(i, lz.driver)
@@ -1318,7 +1436,12 @@ class _ScenarioRunner:
             for extra in others.values():
                 if extra.collector is not None:
                     extra.collector.clear()
-            writer = self._artifacts()
+            writer = self._artifacts(derived.values)
+            # Built before the run, and read by `expect`'s visual / golden captures during it, so it
+            # learns each value the scenario's `eval` steps derive from a secret as it is derived
+            # (BE-0472). This attempt's writer serves this scenario alone.
+            if writer is not None:
+                derived.listeners.append(writer.add_secret_values)
             # The primary's own evidence nests under its own name once a second target is declared,
             # matching every other declared target's own `f"{sid}/{name}"` convention rather than
             # leaving the primary's evidence bare at `sid`. `others` is empty for a zero/one-
@@ -1383,7 +1506,7 @@ class _ScenarioRunner:
                 ),
                 # Config-level interrupts first, then the scenario's own (BE-0314): an app-wide
                 # interstitial handler composes with a per-scenario addition, the config-then-scenario
-                # order the systemAlertHandling default already follows. The scenario's own are
+                # order a `systemAlert` entry's layering already follows. The scenario's own are
                 # narrowed to the entries the primary watches (BE-0438).
                 interrupts=(
                     # A self-declaring scenario's own entries reach the step loop through its
@@ -1398,7 +1521,7 @@ class _ScenarioRunner:
                 # The locale this scenario runs under — the same value the lease pinned the
                 # Simulator's system language to, so a `handleSystemAlert` naming a prompt and a
                 # choice resolves to the label SpringBoard is actually rendering (BE-0320).
-                locale=s.preconditions.resolved_locale(self.eff.locale),
+                locale=s.preconditions.resolved_locale(self.eff.locale, self.eff.platform),
                 # The config's baseline capture guarantee (`defaults.capture`), applied on top of
                 # every step alongside capturePolicy rules and inline `capture:` tokens.
                 capture=self.eff.capture,
@@ -1410,7 +1533,7 @@ class _ScenarioRunner:
                 # the one direction that runs *into* the app, so it has no snapshot to hand over.
                 # A collector that carries no channel is caught at the command, not skipped here.
                 channel=lz.collector,
-                # The target's own `launchEnv`, merged underneath the scenario's own the same way
+                # The target's own `subject.launch.env`, merged underneath the scenario's own the same way
                 # the launch itself merges them, so a target-level touch-marker pin is seen here
                 # exactly as the app that launched sees it, not read as if the scenario pinned
                 # nothing (BE-0365 unit 3).
@@ -1422,13 +1545,14 @@ class _ScenarioRunner:
                 ),
                 primary_target=primary_target,
                 # Called from inside the step loop, not here, so the sweep runs at the moment the
-                # crash is confirmed — strictly before a teardown step in this scenario's own `after`
+                # crash is confirmed — strictly before a teardown step in this scenario's own `cleanup`
                 # phase can re-stamp the launch marker it matches against (BE-0424).
                 capture_app_crash=lz.app_crash_artifacts,
                 app_launch_unconfirmed=_launch_unconfirmed(lz.readiness),
                 roster=self._roster_for(
                     s, lz, others, handler, writer, sid, primary_ctx, primary_target
                 ),
+                derived_secrets=derived,
             )
             result.sid = sid  # the evidence-dir slug, so the matrix links to the real dir (BE-0076)
             if multi:
@@ -1469,6 +1593,9 @@ class _ScenarioRunner:
             _record_target_evidence(
                 result, {primary_target: lz, **others}, writer, sid, multi=multi
             )
+            # Only a scenario that reached a lease went without them; one the preflight refused
+            # ignored nothing.
+            result.ignored_settings = self._ignored_settings(s, actuator)
             # Still holding the lease this scenario ran on, before the `finally` below releases it —
             # and genuinely after `run_scenario`, so the tombstone layer's `adb root` can no longer
             # break a channel a later step needs. A plain post-return check, not a new `except`
@@ -1519,37 +1646,16 @@ def _golden_with_screen(gc: GoldenContext, driver: base.Driver) -> GoldenContext
     return GoldenContext(goldens_dir=gc.goldens_dir, screen=(0.0, 0.0, sw, sh))
 
 
-def _steps_for_target(s: Scenario, target: str) -> Scenario:
-    """*s* narrowed to the steps and `expect` entries routed to *target* (BE-0428).
+def _settings_problems(actuator: str | None, eff: Effective, s: Scenario, udid_spec: str) -> str:
+    """Why *eff*'s route cannot apply the settings *s* puts in effect, or "" (BE-0467).
 
-    Only what the capability preflight reads is narrowed — a nested `if` / `forEach` body keeps
-    whatever it holds, since a nested step carries its own `target` and the preflight walks into it
-    anyway; a top-level step naming another target is what has to go, so one backend is never asked
-    to justify a construct it will never be handed.
-
-    `None` too: a scenario declaring exactly one target may omit the name on every step and
-    `expect` entry, and those still ran against that target — filtering them out would hand the
-    preflight an empty scenario and skip BE-0082 for the whole single-declared-target shape.
-
-    A step or `expect` entry omitting `target` under a declared `primaryTarget` belongs to the
-    primary alone (BE-0436), so it reads its resolved target rather than falling into `None` and
-    being judged against every declared backend.
+    Judged before any device work, beside BE-0082's step check: a setting the route cannot apply
+    fails the scenario unless the target declares it under `runsOn.ignoredSettings`.
     """
-    routed = {target, None}
-    return s.model_copy(
-        update={
-            "before": [st for st in s.before if st.resolved_target in routed],
-            "steps": [st for st in s.steps if st.resolved_target in routed],
-            "after": [
-                rule.model_copy(
-                    update={"steps": [st for st in rule.steps if st.resolved_target in routed]}
-                )
-                for rule in s.after
-            ],
-            # The primary in force after the last step, which a `setPrimaryTarget` may have moved.
-            "expect": [a for a in s.expect if (a.target or s.final_primary) in routed],
-        }
+    check = check_settings(
+        actuator, eff, resolve_preconditions(eff, s.preconditions), s.permissions, udid_spec
     )
+    return "; ".join(check.problems())
 
 
 def _scenario_interrupts_for(s: Scenario, name: str, primary_target: str) -> list[Interrupt]:
@@ -1561,8 +1667,8 @@ def _scenario_interrupts_for(s: Scenario, name: str, primary_target: str) -> lis
     would instead drop an entry naming that target and silence it.
     """
     if not primary_target:
-        return list(s.interrupts)
-    return [e for e in s.interrupts if (e.target or primary_target) == name]
+        return s.screens
+    return [e for e in s.screens if (e.target or primary_target) == name]
 
 
 def _device_leases(s: Scenario, held: Mapping[str, Lease]) -> list[tuple[str, Lease]]:
@@ -1687,29 +1793,34 @@ def _effs_of(targets: Mapping[str, TargetPool] | None) -> dict[str, Effective]:
 
 def _hooks_for(
     s: Scenario, eff: Effective, target_effs: Mapping[str, Effective] | None
-) -> tuple[list[Step], list[AfterRule]]:
-    """This scenario's folded-in config hooks: `(before, after)`, already target-stamped.
+) -> tuple[list[Step], list[CleanupRule]]:
+    """This scenario's folded-in config hooks: `(setup, cleanup)`, already target-stamped.
 
     A scenario with no `targets` of its own reads the run's single `eff`, exactly as before
-    BE-0428. A self-declaring one reads each declared target's own `targets.<name>.before`/`after`
-    instead, since a hook is config on the target it acts on: `before` folds every target's hooks in
-    declared order ahead of the scenario's own steps, and `after` mirrors it in reverse, behind
-    them. Each folded step is stamped with its own target's name — for an `after` entry, every step
+    BE-0428. A self-declaring one reads each declared target's own `hooks.setup`/`cleanup`
+    instead, since a hook is config on the target it acts on: `setup` folds every target's hooks in
+    declared order ahead of the scenario's own steps, and `cleanup` mirrors it in reverse, behind
+    them. Each folded step is stamped with its own target's name — for a `cleanup` entry, every step
     inside the rule rather than the rule itself, which carries no target of its own — so a hook is
     exactly as unambiguous about which target it acts on as an author-written step already has to be.
+
+    A scenario with `preconditions.inheritSetup: false` folds in no target's setup (BE-0452); the
+    targets' cleanup still runs, since cleanup runs on every path out of a scenario.
     """
+    inherit = s.preconditions.inherit_setup
     if not s.targets:
-        return list(eff.run_defaults.before), list(eff.run_defaults.after)
-    before: list[Step] = []
-    after: list[AfterRule] = []
+        return list(eff.run_defaults.setup) if inherit else [], list(eff.run_defaults.cleanup)
+    setup: list[Step] = []
+    cleanup: list[CleanupRule] = []
     for name in s.target_names:
         target_eff = (target_effs or {}).get(name, eff)
-        before += [_stamped(h, name) for h in target_eff.run_defaults.before]
-        after += [
+        if inherit:
+            setup += [_stamped(h, name) for h in target_eff.run_defaults.setup]
+        cleanup += [
             rule.model_copy(update={"steps": [_stamped(h, name) for h in rule.steps]})
-            for rule in target_eff.run_defaults.after
+            for rule in target_eff.run_defaults.cleanup
         ]
-    return before, after
+    return setup, cleanup
 
 
 def _stamped(step: Step, target: str) -> Step:
@@ -1741,35 +1852,44 @@ def _fill_target(step: Step, target: str) -> None:
 
 
 def with_lifecycle_phases(
-    eff: Effective, scenarios: list[Scenario], target_effs: Mapping[str, Effective] | None = None
+    eff: Effective,
+    scenarios: list[Scenario],
+    target_effs: Mapping[str, Effective] | None = None,
+    *,
+    skip: Collection[int] = (),
 ) -> list[Scenario]:
-    """Fold the target config's `before` / `after` into each scenario's own (BE-0392).
+    """Fold the target config's `hooks.setup` / `hooks.cleanup` into each scenario's own (BE-0392).
 
-    The two merge in opposite orders. `before` is config-then-scenario, like `interrupts`: the
-    app-wide prelude seeds the state this scenario's own setup then builds on. `after` is
+    The two merge in opposite orders. `setup` is config-then-scenario, like `interrupts`: the
+    app-wide prelude seeds the state this scenario's own setup then builds on. `cleanup` is
     scenario-then-config, so this scenario releases the record it created before the app-wide
     teardown closes around it — the last-acquired-first-released order a fixture-based teardown pair
     gives.
 
     Applied to the scenario itself rather than passed beside it, so the scenario the runner executes
-    and the scenario whose Before / After blocks the report renders are one object. Handing the
+    and the scenario whose setup / cleanup blocks the report renders are one object. Handing the
     merged lists to the runner separately would leave the report pairing an app-wide step's outcome
-    with the scenario's own step definition, and drop an app-wide `after` rule's outcomes entirely.
+    with the scenario's own step definition, and drop an app-wide `cleanup` rule's outcomes entirely.
 
     Args:
         eff: The run's primary target config — the only one a scenario declaring no `targets` reads.
         scenarios: The scenarios to fold into; returned unchanged when nothing folds in.
         target_effs: Every declared target's own config, keyed by name (BE-0428). A self-declaring
             scenario folds each of these in instead of `eff`; None keeps the single-target path.
+        skip: Indices of scenarios that never run — the ones the worker capability check failed
+            (BE-0450). Their targets were never resolved, so folding would read the primary's hooks
+            under another target's name; they keep their own phases only.
     """
-    hooks = [_hooks_for(s, eff, target_effs) for s in scenarios]
-    if not any(before or after for before, after in hooks):
+    hooks = [
+        ([], []) if i in skip else _hooks_for(s, eff, target_effs) for i, s in enumerate(scenarios)
+    ]
+    if not any(setup or cleanup for setup, cleanup in hooks):
         return scenarios  # nothing app-wide to fold in; keep the caller's own objects
     folded = [
-        s.model_copy(update={"before": [*before, *s.before], "after": [*s.after, *after]})
-        for s, (before, after) in zip(scenarios, hooks, strict=True)
+        s.model_copy(update={"setup": [*setup, *s.setup], "cleanup": [*s.cleanup, *cleanup]})
+        for s, (setup, cleanup) in zip(scenarios, hooks, strict=True)
     ]
-    # `model_copy(update=...)` never re-runs a `model_validator` — so a config-level `before`/`after`
+    # `model_copy(update=...)` never re-runs a `model_validator` — so a config-level `setup`/`cleanup`
     # hook would otherwise splice in steps the load-time pass never saw, each free to omit the
     # `target` its scenario requires (BE-0428), or a target group it never expanded (BE-0437; see
     # `scenario/models/scenario/_targets.py`). `_hooks_for` reads these hooks as a bare `list[Step]`
@@ -1800,6 +1920,7 @@ def run_all(
     schemas_dir: Path | None = None,
     actuator: str | None = None,
     resolve_actuator: Callable[[Scenario], str] | None = None,
+    worker_failures: Mapping[int, str] | None = None,
     golden_context: GoldenContext | None = None,
     lease_udid_spec: str = "booted",
     on_score: Callable[[Score], None] | None = None,
@@ -1831,7 +1952,7 @@ def run_all(
         clock: Injectable time source for condition waits, so tests need no real sleeps. None uses
             the real clock.
         alert_guard: A single alert-guard handler, used by tests.
-        alert_guard_for: Picks each scenario's alert-guard handler (honoring its `systemAlertHandling`);
+        alert_guard_for: Picks each scenario's alert-guard handler (honoring its `systemAlert` interrupts entries);
             takes precedence over `alert_guard`.
         run_dir: Where per-scenario artifacts (network.json, visual diffs) are written. None skips
             writing them.
@@ -1852,6 +1973,8 @@ def run_all(
             scenario's own steps (cheapest sufficient), instead of the one fixed `actuator`. Mutually
             exclusive with `actuator` (passing both raises): the CLI's single-engine path and `audit`
             pass this, the cross-browser matrix passes `actuator`.
+        worker_failures: Scenarios the worker capability check (BE-0450) already failed, keyed by
+            index into *scenarios*, each with its prefixed reason; they are reported, never leased.
         golden_context: Goldens directory for `golden` assertions (BE-0006). None disables them.
         lease_udid_spec: The run's resolved udid spec (the provider's `udid_spec`). A WebDriver URL
             routes the run to the live XCUITest environment, so the preflight narrows to that
@@ -1885,13 +2008,13 @@ def run_all(
             run is never blocked, the same never-block-the-first-respawn rule
             `crash_recovery_budget` already follows per scenario.
         force_erase_on_retry: Whether a crash-triggered retry (attempt > 1) may force
-            `preconditions.erase=True`, the same recovery a scenario already gets by declaring
-            `erase: true` (see `_ScenarioRunner.run_one`). True (the default) preserves every
+            `preconditions.subject.reinstall: erase`, the same recovery a scenario already gets by
+            declaring it (see `_ScenarioRunner.run_one`). True (the default) preserves every
             existing caller's behavior. `bajutsu run --no-erase` passes False here, carrying the
-            operator's explicit opt-out past `_filter_scenarios`'s per-scenario resolution — the CLI
-            resolves every scenario's `preconditions.erase` to a concrete bool before `run_all` ever
-            sees it, so that field alone cannot distinguish "the operator asked to keep the device"
-            from "nobody said anything" by the time a retry decides whether to force it.
+            operator's explicit opt-out past `_filter_scenarios` — a scenario that never erased
+            reads the same with `--no-erase` or without it, so its `preconditions.subject.reinstall`
+            alone cannot distinguish "the operator asked to keep the device" from "nobody said
+            anything" by the time a retry decides whether to force it.
         cancelled: Reports whether this run has been asked to stop (BE-0370). A scenario the request
             reaches — at a step boundary, inside a condition wait's poll, or before it was leased at
             all — comes back as `RunResult(ok=False, failure="cancelled")`, so the caller still
@@ -1932,7 +2055,7 @@ def run_all(
     # `run_matrix_and_report` apply the same helper to what they hand the report, so the run and the
     # report read one effective scenario rather than two lists that could drift.
     target_effs = _effs_of(targets)
-    scenarios = with_lifecycle_phases(eff, scenarios, target_effs)
+    scenarios = with_lifecycle_phases(eff, scenarios, target_effs, skip=worker_failures or {})
     # `redact` unions every declared target's own config (BE-0428): a value one target's config
     # marks secret is scrubbed everywhere, not only from that one target's own capture. Widening the
     # redaction set is the safer error, unlike a field with only one right answer (`caps`, `mailbox`).
@@ -1977,6 +2100,7 @@ def run_all(
         schemas_dir=schemas_dir,
         actuator=actuator,
         resolve_actuator=resolve_actuator,
+        worker_failures=dict(worker_failures or {}),
         golden_context=golden_context,
         udid_spec=lease_udid_spec,
         on_score=on_score,
@@ -2026,6 +2150,7 @@ def run_and_report(
     schemas_dir: Path | None = None,
     actuator: str | None = None,
     resolve_actuator: Callable[[Scenario], str] | None = None,
+    worker_failures: Mapping[int, str] | None = None,
     config_source: dict[str, str] | None = None,
     exec_provenance: dict[str, str | None] | None = None,
     label: str | None = None,
@@ -2073,6 +2198,7 @@ def run_and_report(
         schemas_dir=schemas_dir,
         actuator=actuator,
         resolve_actuator=resolve_actuator,
+        worker_failures=worker_failures,
         golden_context=golden_context,
         lease_udid_spec=lease_udid_spec,
         on_score=on_score,
@@ -2084,9 +2210,9 @@ def run_and_report(
     manifest = _assemble_report(
         # The same fold `run_all` already applied, over the same per-target config, so the report
         # pairs each outcome with the step definition that actually produced it — a config-level
-        # hook folded from one target's own `before`/`after` here and the primary's there would
+        # hook folded from one target's own `setup`/`cleanup` here and the primary's there would
         # otherwise mislabel or drop outcomes for every other declared target (BE-0428).
-        with_lifecycle_phases(eff, scenarios, _effs_of(targets)),
+        with_lifecycle_phases(eff, scenarios, _effs_of(targets), skip=worker_failures or {}),
         results,
         run_dir,
         run_id,
@@ -2118,6 +2244,7 @@ def run_matrix_and_report(
     exec_provenance: dict[str, str | None] | None = None,
     label: str | None = None,
     cancelled: CancelSource = not_cancelled,
+    worker_failures: Mapping[int, str] | None = None,
 ) -> tuple[list[RunResult], Path]:
     """Run the scenarios once per engine, then assemble ONE report at `runs_dir/run_id` (BE-0076).
 
@@ -2159,7 +2286,7 @@ def run_matrix_and_report(
                 ", ".join(engines[index:]),
             )
             for skipped in engines[index:]:
-                results.extend(_cancelled_pass(scenarios, skipped))
+                results.extend(_cancelled_pass(scenarios, skipped, worker_failures))
             break
         passed = run_pass(engine, run_dir / engine)
         for r in passed:
@@ -2167,7 +2294,7 @@ def run_matrix_and_report(
             _reroot_evidence(r, engine)  # its evidence lives under <engine>/ in the one report
         results.extend(passed)
     manifest = _assemble_report(
-        with_lifecycle_phases(eff, scenarios),
+        with_lifecycle_phases(eff, scenarios, skip=worker_failures or {}),
         results,
         run_dir,
         run_id,
@@ -2183,12 +2310,73 @@ def run_matrix_and_report(
     return results, manifest
 
 
-def _cancelled_pass(scenarios: list[Scenario], engine: str) -> list[RunResult]:
+def report_run_matrix(
+    eff: Effective,
+    scenarios: list[Scenario],
+    results: list[RunResult],
+    plan_order: Sequence[int],
+    runs_dir: Path,
+    run_id: str,
+    *,
+    target_effs: Mapping[str, Effective] | None = None,
+    not_applicable: list[dict[str, str]] | None = None,
+    source_name: str | None = None,
+    description: str | None = None,
+    plan_sources: Mapping[str, ScenarioPlanSource] | None = None,
+    secret_values: list[str] | None = None,
+    config_source: dict[str, str] | None = None,
+    exec_provenance: dict[str, str | None] | None = None,
+    label: str | None = None,
+    worker_failures: Mapping[int, str] | None = None,
+) -> Path:
+    """Write ONE report for the runs `runsOn` conditions formed across *scenarios* (BE-0452).
+
+    The caller has already run each run against its own eligible devices and tagged every result
+    with its coordinates; this only assembles the report. *plan_order* names the scenario each result
+    ran, since a scenario contributes one result per run. *not_applicable* records the runs no
+    available device fell in an open range for, which the manifest lists apart from the results.
+
+    Returns:
+        The path to the written `manifest.json`.
+    """
+    run_dir = runs_dir / run_id
+    prepare_run_dir(runs_dir, run_id)
+    return _assemble_report(
+        with_lifecycle_phases(eff, scenarios, dict(target_effs or {}), skip=worker_failures or {}),
+        results,
+        run_dir,
+        run_id,
+        description=description,
+        source_name=source_name,
+        plan_sources=plan_sources,
+        secret_values=secret_values,
+        config_source=config_source,
+        exec_provenance=exec_provenance,
+        target=eff.target,
+        label=label,
+        plan_order=plan_order,
+        not_applicable=not_applicable,
+    )
+
+
+def reroot_evidence(r: RunResult, prefix: str) -> None:
+    """Prefix *r*'s run-dir-relative evidence paths with `<prefix>/`, as a matrix pass writes them.
+
+    A run formed by `runsOn` conditions writes its evidence under its own subdirectory of the run
+    dir, as an engine pass of `--browsers` does (BE-0076, BE-0452).
+    """
+    _reroot_evidence(r, prefix)
+
+
+def _cancelled_pass(
+    scenarios: list[Scenario], engine: str, worker_failures: Mapping[int, str] | None = None
+) -> list[RunResult]:
     """One cancelled result per scenario for an engine pass a cancel stopped from ever starting.
 
     The same shape `_ScenarioRunner.run_one` gives a scenario the cancel reached before its first
     lease (BE-0370), so the report needs no notion of an engine that was skipped: it sees one verdict
-    per requested engine x scenario, as it does for a run that finished.
+    per requested engine x scenario, as it does for a run that finished. A scenario the worker
+    capability check already failed (BE-0450) keeps that reason: it would never have run anyway.
     """
     return [
         RunResult(
@@ -2198,7 +2386,7 @@ def _cancelled_pass(scenarios: list[Scenario], engine: str) -> list[RunResult]:
             backend="",
             engine=engine,
             sid=_evidence_sid(i, s),
-            failure=CANCELLED_FAILURE,
+            failure=(worker_failures or {}).get(i, CANCELLED_FAILURE),
         )
         for i, s in enumerate(scenarios)
     ]
@@ -2251,6 +2439,8 @@ def _assemble_report(
     exec_provenance: dict[str, str | None] | None = None,
     target: str | None = None,
     label: str | None = None,
+    plan_order: Sequence[int] | None = None,
+    not_applicable: list[dict[str, str]] | None = None,
 ) -> Path:
     """Write the run's report artifacts under `run_dir` from its (possibly engine-tagged) results.
 
@@ -2264,6 +2454,11 @@ def _assemble_report(
     YAML tab from each scenario's own on-disk text instead of a re-dump — the sink's own
     scrub (above) still runs over it like every other artifact, on top of the structural TOTP-secret
     masking `scenario_sources` already applied when it read the file.
+
+    `plan_order` names, for each result, the index of the scenario it ran, when a scenario's runs
+    make more than one result (BE-0452); the report's per-result plan inputs follow it. None keeps
+    the positional pairing the single-engine and `--browsers` paths use. `not_applicable` holds the
+    records of runs no available device fell in an open range for.
     """
     # Snapshot for evidence with literal `totp.secret` seeds masked (BE-0152) — a `${secrets.*}`
     # reference is kept and its resolved value is masked by the sink below.
@@ -2273,6 +2468,11 @@ def _assemble_report(
     # whenever `plan_sources` is unavailable there too (an older run, or one BE-cli didn't produce).
     definitions, sources = scenario_render_inputs(snapshot, plan_sources)
     source_files, step_lines = scenario_source_meta(snapshot, plan_sources)
+    if plan_order is not None:
+        definitions = [definitions[i] for i in plan_order]
+        sources = [sources[i] for i in plan_order]
+        source_files = [source_files[i] for i in plan_order]
+        step_lines = [step_lines[i] for i in plan_order]
     writer = RunArtifactWriter(run_dir, Redactor(None, values=secret_values))
     # Keep the executed scenario alongside its results (re-runnable / reviewable).
     scenario_yaml = dump_scenario_file(snapshot, description)
@@ -2301,4 +2501,5 @@ def _assemble_report(
         label=label,
         source_files=source_files,
         step_lines=step_lines,
+        not_applicable=not_applicable,
     )

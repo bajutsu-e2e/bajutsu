@@ -104,6 +104,12 @@ deterministic comparison, never an LLM judgment.
 The output is serialized to YAML via `dump_scenarios`
 ([scenarios](scenarios.md#round-trip-load--dump)).
 
+**Which device `record` drives.** `record`, `crawl`, and `repl` never multiply runs. When the
+target declares a device condition in `runsOn`, they take the first run. That run takes the first
+listed value. Under a range, it takes the newest major version the `--udid` pool has. They exit
+with code 2 when no device fits ([configuration](configuration.md#device-conditions-runson)). The
+recorded scenario carries none of those conditions; `bajutsu run` applies the target's own.
+
 ### Human-in-the-loop handoff (BE-0179)
 
 Some flows are gated by something the AI cannot supply — a one-time password, a CAPTCHA, a biometric
@@ -117,9 +123,11 @@ with no human on the deterministic `run` path.
 The same contract has two surfaces. From the terminal, `record` reads the response from an
 interactive, bounded stdin prompt. Driven from `serve`, the request is serialized onto the record's
 server-sent-event stream as a `human-request` event (the paused job enters a visible, resumable
-"awaiting human" state), and the browser posts the response to `/api/jobs/<id>/respond-human`, which
-`serve` writes to the spawned `record` process's stdin. Either way the wait is bounded and
-cancelable, so no surface hangs on a human who walked away. With no responder at all — a
+"awaiting human" state), and the browser posts the response to `/api/jobs/<id>/respond-human`.
+A `bajutsu worker` runs the `record` (BE-0449). The worker relays the request to `serve`, takes
+the response back, and writes it to the `record` process's stdin.
+[Self-hosting](self-hosting.md#the-server-backend-on-one-machine-be-0449) describes the relay.
+Either way the wait is bounded and cancelable, so no surface hangs on a human who walked away. With no responder at all — a
 non-interactive or CI invocation — a needs-human turn is a clean, labeled non-zero exit, never a hang
 and never an AI guess. This substrate owns the mechanism and the boundary; the heuristics that raise
 "needs human" and the shape of what a handoff records are the child items' concern.
@@ -192,8 +200,9 @@ For a mobile (iOS-simulator) target, `record` tags the recorded scenario's first
 `capture: [video]`, so replaying it records a scenario-wide screen video. A single step's inline
 `capture` is what `requested_intervals` uses to start the run-wide interval, so the whole replay is
 recorded, not just one action's window. The recording is a `simctl` interval (BE-0028), so this is
-specific to the iOS backend — a web target captures video by other means, and the recorded scenario
-carries no `capture` for it.
+specific to a locally driven iOS Simulator. The recorded scenario carries no `capture` for a web
+target (which captures video by other means), for a real iOS device (`runsOn.ios.kind: device`), or
+for a device driven through a live WebDriver endpoint — `simctl` reaches neither of the latter two.
 
 ### Leaning the turn payload and bounding its cost (BE-0194)
 
@@ -358,16 +367,19 @@ class SystemAlertGuard:
   ([run-loop](run-loop.md#run_scenario-running-one-scenario)). For a `wait` step
   (`for`/`gone`/`settled`/`screenChanged`), the native path is additionally polled on its own
   interval (default 1s, decoupled from the wait's own condition poll), so a blocked wait can recover
-  before its own timeout elapses instead of only at the end-of-step retry (BE-0269). A scenario sets
-  `systemAlertHandling: false` to opt out, or `{ rules: [{ prompt: notifications, choice: grant }] }`
-  to name a prompt the guard answers by its own choice — `rules` is the guard's whole declaration
-  ([BE-0406](../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts.md));
-  `{ visionInstruction: … }` reaches no path under `run` and is refused before any scenario starts.
-  `--system-alert-handling`/`--no-system-alert-handling` overrides every scenario, and
-  `--alert-poll-interval` supplies that one key for a single run. `rules` has no flag of its own.
+  before its own timeout elapses instead of only at the end-of-step retry (BE-0269). The guard answers
+  only the prompts that a `systemAlert` entry names, in the scenario's `interrupts` or the target's
+  `hooks.interrupts`: `- systemAlert: notifications` with `choice: grant` names a prompt and the
+  guard's answer to it
+  ([BE-0406](../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts.md),
+  [BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md)).
+  A scenario that handles a prompt itself writes `choice: leave` on that prompt's entry; no scenario
+  switches the whole guard off. An entry carries no vision instruction, since `run` reaches no model.
+  `--no-system-alert-handling` turns the guard off for every scenario, and `--alert-poll-interval`
+  sets the poll cadence for a single run. The entries have no flag of their own.
 - `record --system-alert-handling`: on by default (authoring has no scenario yet). Clears prompts
   that interrupt authoring so the agent always sees a clean screen. **A dismissal is an environment
-  operation, not a recorded step** (replay handles it via each scenario's `systemAlertHandling`).
+  operation, not a recorded step** (replay handles it via the `systemAlert` interrupts entries).
 
 > The vision guard needs `ANTHROPIC_API_KEY` ([.env in cli](cli.md#environment-variables-env));
 > without one it is **best-effort** and simply no-ops, never failing a run. That applies to

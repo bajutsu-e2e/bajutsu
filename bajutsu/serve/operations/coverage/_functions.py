@@ -9,7 +9,7 @@ from collections.abc import Iterable, Iterator
 from typing import Any
 
 from bajutsu.analysis import coverage as _coverage
-from bajutsu.common.config import load_config, resolve
+from bajutsu.common.config import load_config_file, resolve, unknown_target
 from bajutsu.common.evidence.network import NetworkExchange
 from bajutsu.common.scenario import load_scenarios_dir
 from bajutsu.serve.artifacts import ArtifactStore
@@ -169,9 +169,9 @@ def _aggregate(
     if not target:
         raise _CoverageError("target is required")
 
-    config = load_config(binding.config.read_text(encoding="utf-8"))
+    config = load_config_file(binding.config)
     if target not in config.targets:
-        raise _CoverageError(f"unknown target: {target}")
+        raise _CoverageError(unknown_target(config, target, list_targets=False))
 
     # The static dimension reads the target's suite straight off the checkout, which is not org-scoped
     # — so without this guard an actor of one org could read another org's declared namespaces, its

@@ -15,55 +15,71 @@
 
 ## Introduction
 
-Surface the determinism / flakiness audit ([BE-0049](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md))
-in the `serve` Web UI: show a scenario's static stability score — selectors graded on the stability
-ladder, waits gated on an over-loose `until` (no concrete condition, e.g. `settled`), raw-coordinate
-gestures — where the scenario is authored and viewed. Read-only, AI-free, never a gate.
+This item surfaces the determinism / flakiness audit
+([BE-0049](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md)) in the
+`serve` Web UI. The UI shows a scenario's static stability score where the scenario is authored and
+viewed. The score covers three things:
+
+- selectors graded on the stability ladder
+- waits gated on an over-loose `until` (no concrete condition, for example `settled`)
+- raw-coordinate gestures
+
+The feature is read-only and AI-free, and it is never a gate.
 
 ## Motivation
 
-[BE-0049](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md)
-ships `bajutsu audit`: a read-only static score that grades each selector against the stability
-ladder (a uniquely resolving `id` beats `label` / `traits`, which beat `index` / raw coordinates),
-flags `wait` steps gated on an over-loose `until` (no concrete element/condition), and flags
-coordinate gestures a stable `id` could replace
-(`bajutsu/audit.py`). It makes Bajutsu's "deterministic by contract" claim tangible — but only on
-the CLI. The Web UI's scenario editor gives no determinism feedback at all, so an author who just
-generated or hand-edited a scenario cannot see whether they picked a stable selector or a fragile
-one until much later, if ever. The browser is where scenarios are written and read, so it is where
-the stability signal is most useful — the same reason the GUI editor
-([BE-0013](../BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md)) wants the
-`doctor` score inline.
+[BE-0049](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md) ships
+`bajutsu audit` (`bajutsu/audit.py`). The command is a read-only static score with three parts:
+
+- It grades each selector against the stability ladder. A uniquely resolving `id` beats `label` /
+  `traits`, and those beat `index` / raw coordinates.
+- It flags `wait` steps gated on an over-loose `until` (no concrete element or condition).
+- It flags coordinate gestures that a stable `id` could replace.
+
+The audit makes Bajutsu's "deterministic by contract" claim tangible, but on the CLI alone. The Web
+UI's scenario editor gives no determinism feedback at all. An author who just generated or
+hand-edited a scenario cannot see whether the selectors are stable or fragile. The author learns
+that much later, if ever.
+
+The browser is where scenarios are written and read, so the stability signal is most useful there.
+The GUI editor ([BE-0013](../BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md)) wants the
+`doctor` score inline for the same reason.
 
 ## Detailed design
 
-Tier-1, read-only; the UI only shells out to the existing audit.
+The feature is Tier-1 and read-only. The UI shells out to the existing audit.
 
 - **An "Audit" panel / badge** on a scenario, in the editor and the Replay view, posting to
-  `POST /api/audit`. The editor sends its live, possibly-unsaved `yaml` (so the score reflects what
-  is being written); the Replay view sends `{target, path}` and the server reads the saved file. It
-  runs the static audit and returns the per-scenario determinism score with the per-selector grades
-  and the findings (over-loose `until` waits, raw-coordinate gestures, off-ladder selectors).
-- **Read-only, deterministic, AI-free.** The audit is static analysis over the scenario; it never
-  runs a device, never calls a model, and never gates — it is informational, exactly like the CLI.
-- **The static score first.** This surfaces BE-0049's static half — the cheapest figure, whose
-  inputs are fully on disk. BE-0049's dynamic repeat-and-diff half is a heavier, device-bound job;
-  if surfaced later it reuses the run job / stream machinery, but the static score stands alone and
-  ships first.
-- **App-agnostic.** The scenario and its target resolve from config (`targets.<name>`); the
-  stability ladder is the tool's, not per-app.
+  `POST /api/audit`.
+  - The editor sends its live, possibly-unsaved `yaml`, so the score reflects what the author is
+    writing.
+  - The Replay view sends `{target, path}`, and the server reads the saved file.
+
+  The endpoint runs the static audit. It returns the per-scenario determinism score with the
+  per-selector grades and the findings (over-loose `until` waits, raw-coordinate gestures,
+  off-ladder selectors).
+- **Read-only, deterministic, AI-free.** The audit is static analysis over the scenario. It never
+  runs a device, never calls a model, and never gates. Exactly like the CLI, it is informational.
+- **The static score first.** This item surfaces the static half of BE-0049, the cheapest figure,
+  whose inputs are all on disk. BE-0049's dynamic repeat-and-diff half is a heavier, device-bound
+  job. If the dynamic half is surfaced later, it reuses the run job and stream machinery. The static
+  score stands alone and ships first.
+- **App-agnostic.** The scenario and its target resolve from config (`targets.<name>`). The
+  stability ladder belongs to the tool, not to any app.
 
 ## Alternatives considered
 
-* **Leave audit CLI-only.** Rejected: a determinism score the author never sees cannot shape the
-  scenario as it is written; inline is where it changes behavior.
+* **Leave audit CLI-only.** Rejected. The author never sees a determinism score that stays on the
+  CLI, so the score cannot shape the scenario as the author writes it. Showing the score inline is
+  what changes behavior.
 * **Fold this into the GUI editor
-  ([BE-0013](../BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md)).** BE-0013
-  integrates the `doctor` convention score into structured editing; the audit score is a sibling
-  signal that could land there, but it is a separable read-only panel that works on the current
-  textarea today, so it stands as its own item and complements BE-0013.
-* **Surface the dynamic repeat-and-diff audit first.** Rejected for the first cut: it needs a device
-  and `K` runs; the static score is instant and on-disk, so it is the right first slice.
+  ([BE-0013](../BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md)).** BE-0013 integrates
+  the `doctor` convention score into structured editing. The audit score is a sibling signal that
+  could land there. But it is a separable read-only panel that works on the current textarea today,
+  so it stands as its own item and complements BE-0013.
+* **Surface the dynamic repeat-and-diff audit first.** Rejected for the first cut. The dynamic audit
+  needs a device and `K` runs. The static score is instant and on disk, so it is the right first
+  slice.
 
 ## Progress
 
@@ -77,22 +93,23 @@ Tier-1, read-only; the UI only shells out to the existing audit.
       grade, the id-based selector ratio, and the findings
 - [x] Ship the static score first; the dynamic repeat-and-diff half stays a later, device-bound slice
 
-- [#700](https://github.com/bajutsu-e2e/bajutsu/pull/700) — `POST /api/audit` (inline `yaml` for the live editor content, `{target, path}` for the
-  Replay view's saved file) wrapping the static audit `bajutsu/audit.py`, plus the grade badge and
-  findings panel in the Author editor and the Replay scenario picker; docs updated in both languages.
+- [#700](https://github.com/bajutsu-e2e/bajutsu/pull/700) — added `POST /api/audit`, which wraps the
+  static audit `bajutsu/audit.py`. It takes inline `yaml` for the live editor content and
+  `{target, path}` for the Replay view's saved file. The PR also added the grade badge and findings
+  panel in the Author editor and the Replay scenario picker, and updated the docs in both languages.
 
 ## References
 
-* `bajutsu/audit.py`, `bajutsu/cli/commands/audit.py` — the audit this surfaces.
+* `bajutsu/audit.py`, `bajutsu/cli/commands/audit.py` — the audit this item surfaces.
 * [BE-0049 — Determinism / flakiness audit](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md)
-  — the feature this is the Web UI surface of;
+  — the feature that this item surfaces in the Web UI.
   [BE-0013 — Scenario GUI editor](../BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md)
-  — the sibling inline-feedback surface (the `doctor` score);
+  — the sibling inline-feedback surface (the `doctor` score).
   [BE-0050 — E2E coverage map](../BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md)
   — reuses the audit's selector walk, and has its own Web UI surface alongside this one.
 * [BE-0011 — Local web UI (`bajutsu serve`)](../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md),
   [BE-0072 — Responsive serve Web UI](../BE-0072-responsive-web-ui/BE-0072-responsive-web-ui.md)
-  — the UI this extends and the small-screen layout it inherits.
-* [selectors.md](../../docs/selectors.md) — the stability ladder the audit grades against;
-  [CLAUDE.md](../../CLAUDE.md), [DESIGN §2](../../DESIGN.md) — the audit is read-only and
-  AI-free, never a verdict.
+  — the UI this item extends and the small-screen layout it inherits.
+* [selectors.md](../../docs/selectors.md) — the stability ladder the audit grades against.
+  [CLAUDE.md](../../CLAUDE.md), [DESIGN §2](../../DESIGN.md) — the audit is read-only and AI-free,
+  never a verdict.

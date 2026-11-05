@@ -62,6 +62,8 @@ def _assertion_selectors(a: Assertion) -> Iterator[tuple[str, base.Selector]]:
         yield "expect: value", a.value.sel.as_selector()
     if a.label is not None:
         yield "expect: label", a.label.sel.as_selector()
+    if a.attribute is not None:
+        yield "expect: attribute", a.attribute.sel.as_selector()
     if a.count is not None:
         yield "expect: count", a.count.sel.as_selector()
     if a.enabled is not None:
@@ -243,7 +245,7 @@ def _step_findings(step: Step) -> Iterator[Finding]:
 def _sleeps(node: object) -> Iterator[Sleep]:
     """Every `sleep` written anywhere in a scenario, nested blocks included.
 
-    Covers `before`, `steps`, `after`, `interrupts`, and the insides of `if` / `forEach` / `group` /
+    Covers `setup`, `steps`, `cleanup`, `interrupts`, and the insides of `if` / `forEach` / `group` /
     `web` / `app`, by walking the model tree rather than naming each container, so a new nesting
     construct cannot hide a fixed pause from the audit.
     """

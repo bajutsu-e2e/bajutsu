@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0450](BE-0450-worker-capability-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **承認済み** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0450") |
+| 実装 PR | [#2166](https://github.com/bajutsu-e2e/bajutsu/pull/2166)（単位 1〜4）、[#2190](https://github.com/bajutsu-e2e/bajutsu/pull/2190)（単位 5〜6） |
 | トピック | Driver & backend architecture |
 <!-- /BE-METADATA -->
 
@@ -189,12 +190,54 @@ server は、ルーティングにとどまります。単一のホスト OS だ
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] worker のファイルとローダー
-- [ ] ドライバーのホスト要件
-- [ ] 要求の導出
-- [ ] 検査
-- [ ] 広告とルーティング
-- [ ] ドキュメントと日本語ミラー
+- [x] worker のファイルとローダー
+- [x] ドライバーのホスト要件
+- [x] 要求の導出
+- [x] 検査
+- [x] 広告とルーティング
+- [x] ドキュメントと日本語ミラー
+
+ログ：
+
+- [#2166](https://github.com/bajutsu-e2e/bajutsu/pull/2166)（単位 1〜4）：`worker.yaml` のスキーマとローダー
+  （`bajutsu/common/capability/worker_capability.py` と、その隣に置く既定ファイル）を追加しました。
+  各ドライバーには `HOST_OS` 定数を置き、`backends.host_os_for` と `backends.current_host_os` で
+  読みます。判定関数 `worker_capability_unsupported()` は、`worker-capability-unsupported:` で始まる
+  理由を返します。`bajutsu run --worker-config` は、共通の actuator 選択でホストやファイルが除外する
+  actuator を外します。シナリオごとの判定はターゲットを解決する前に行い、失敗したシナリオは
+  デバイスを確保せずにパイプラインから報告します。すべてのターゲットの actuator は、最初の
+  デバイスを確保する前に選びます。`bajutsu worker --worker-config` は起動時にファイルを検証し、
+  リースした `run` のそれぞれに絶対パスを渡します。単位 4 のうち 2 つは、ほかの項目を待っています。
+  `bajutsu worker --once` と内部の run エントリポイントはまだありません（BE-0449）。クラウドへの
+  要求を投入する前の判定は、ワーカー側の Device Farm ディスパッチ（BE-0448）を待ちます。それまで
+  `bajutsu worker` は `local` 以外の環境を拒否します。出荷した振る舞いのドキュメントはこの変更に
+  含めますが、単位 6 は単位 5 で触れるページのために未完了のまま残します。
+- BE-0449 の単位 3（[#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173)）が、`bajutsu worker --once` と内部の run エントリポイントを
+  加えました。`--once` は解決済みの `--worker-config` のパスを起動する run に渡すので、上に記録した
+  2 つの待ちのうち 1 つ目が解消しました。この項目の単位は変えていません。
+- [#2190](https://github.com/bajutsu-e2e/bajutsu/pull/2190)（単位 5〜6）：どのワーカーも、自分のマシンを表す `host:<os>` を広告するようになりました。
+  ターゲットの `backend` が解決するすべての actuator が 1 つのホストでしか動かない場合、ジョブは
+  `host:<os>` を必要とします。そのため、`xcuitest` のターゲットは `host:darwin` を必要とします。この要件は
+  プラットフォームではなく、`run` が選ぶリストである `eff.backend` から導きます。`[fake]` の backend や
+  `[ios, web]` のフォールバックは、ホストを必要としません。リース、ルーティング不能の数、ワーカー不在の
+  通知はどれも `can_serve` を読むので、それぞれを変えなくても判定が一致します。`local` のワーカーは、
+  `worker.yaml` が含まないドライバや、ホストで動かせないドライバの `--platform` を、`run` と同じ理由で
+  拒否します。`make serve` は、起動するワーカーからそのようなプラットフォームを外します。そのため Linux
+  では、ワーカーは `web` と `android` を扱い、iOS の run はワーカー不在の通知とともに待ちます。
+  `--capabilities`、`$BAJUTSU_WORKER_CAPABILITIES`、`requires` は 1 回だけ通知を記録し、引き続き効きます。
+  `requires` に `environment:` のトークンを含む設定ファイルは、読み込み時にエラーになるようになりました。
+  ワーカー側の上書きは、BE-0448 からすでに同じトークンを拒否しています。必要集合はシナリオごとではなく、
+  ジョブのターゲットから導きます。別のターゲットが別のホストを必要とする複数ターゲットのシナリオは、
+  ジョブのターゲットに従ってワーカーに届き、ワーカー自身の検査で失敗します。宣言したすべてのターゲットから
+  集合を導くには、ディスパッチの時点でシナリオを読み込む必要があるからです。ドキュメントには、worker
+  能力ファイル、検査、ルーティング用のトークン、非推奨の入力を記述しました。`deploy/self-host/README.md`
+  は、ランタイムの固定先として `requires` を案内しなくなりました。接頭辞 `host:` も `environment:` と
+  同じく、ワーカー側の上書きと `requires` の両方で予約しました。ワーカーが自分で埋めるからです。ホストを
+  `backend` から導き、`--platform` をプラットフォームのドライバで検査することから、2 つの帰結が生じます。
+  `fake` の backend で動く iOS のターゲットはホストを必要としません。しかし macOS 以外のワーカーは
+  `platform:ios` を広告できないので、そのジョブは引き続き Mac を必要とします。また、リクエストで指定した
+  `backend` の上書きは、ルーティングを変えません。プラットフォーム軸は以前から上書きを無視しており、
+  ホストも同じ規則に従います。上書きに基づくルーティングは、後続の作業とします。
 
 ## 参考
 

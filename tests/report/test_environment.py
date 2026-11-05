@@ -7,6 +7,7 @@ from _report import _passing, _scenarios
 from bajutsu.common.drivers.actuation import Actuation
 from bajutsu.common.orchestrator import (
     AlertEvent,
+    IgnoredSetting,
     RunResult,
     SkippedCapture,
     StepOutcome,
@@ -40,7 +41,10 @@ def test_html_preconditions_render_in_result_tab() -> None:
     definition = {
         "name": "s1",
         "steps": [{"tap": {"id": "a"}}],
-        "preconditions": {"locale": "ja_JP", "launchEnv": {"SAMPLE_SEED": "5"}},
+        "preconditions": {
+            "device": {"ios": {"locale": "ja_JP"}},
+            "subject": {"launch": {"env": {"SAMPLE_SEED": "5"}}},
+        },
     }
     out = html_report("run9", [_passing()], definitions=[definition])
     assert '<details class="pre"' in out
@@ -311,6 +315,23 @@ def test_html_environment_no_sim_with_skips_omits_muted_message() -> None:
     assert "skipped evidence" in out
 
 
+def test_html_environment_lists_ignored_settings() -> None:
+    # BE-0467: a setting the target ran without sits beside the environment, with its reason.
+    r = _passing()
+    r.ignored_settings = [IgnoredSetting(target="device", key="erase", reason="keeps app data")]
+    out = html_report("run1", [r])
+    assert "ignored settings" in out
+    assert "keeps app data" in out
+    assert "ignored settings" not in html_report("run1", [_passing()])
+
+
+def test_html_environment_no_sim_with_ignored_settings_omits_muted_message() -> None:
+    r = _passing()
+    r.device = r.device_name = r.device_runtime = r.backend = ""
+    r.ignored_settings = [IgnoredSetting(target="site", key="launchEnv", reason="x")]
+    assert "no environment details captured" not in html_report("run1", [r])
+
+
 def test_html_shows_backend() -> None:
     # The actuator is shown both as a header chip and a per-scenario badge.
     out = html_report("run9", [_passing()])
@@ -398,3 +419,20 @@ def test_html_scenario_chips_skip_a_target_whose_device_never_resolved() -> None
     out = html_report("run1", [r])
     assert "SIM-1"[-6:] in out
     assert "xcuitest, " not in out  # no trailing separator for the target that named nothing
+
+
+def test_html_shows_a_step_warning_and_omits_the_row_without_one() -> None:
+    # BE-0474: a `totp` window wait's wall-clock jump note sits on its step's row, beside the passing
+    # verdict it never changed.
+    note = "totp: wall clock jumped +62s during window wait; 3s left"
+    r = RunResult(
+        scenario="s1",
+        ok=True,
+        steps=[StepOutcome(index=0, action="totp", ok=True, started_at=0.0, warnings=(note,))],
+        expect_results=[],
+        artifacts=[],
+    )
+    definition = {"name": "s1", "steps": [{"totp": {"secret": "S", "into": {"var": "c"}}}]}
+    out = html_report("run1", [r], definitions=[definition])
+    assert ">warning</span> " + note in out
+    assert ">warning</span>" not in html_report("run2", [_passing()])

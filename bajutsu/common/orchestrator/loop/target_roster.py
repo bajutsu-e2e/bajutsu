@@ -34,7 +34,7 @@ class TargetRoster:
     """The scenario-wide record of which targets can take a step, and which one is the primary.
 
     Scenario-scoped like `AppCrashLatches`: `run_scenario` hands every phase the same object, so a
-    member `foreground` started in `steps` is still running for an `after` rule. The pipeline builds
+    member `foreground` started in `steps` is still running for a `cleanup` rule. The pipeline builds
     it, since only the pipeline holds the leases a later member joins.
 
     `primary` starts as the first member of the first group and moves when a `setPrimaryTarget` step
@@ -46,7 +46,7 @@ class TargetRoster:
     `activate` brings a later member up on its group's device at its first `foreground`, returning
     the runtime its runner is built over. `None` where no later member exists. `runtimes` keeps every
     runtime `activate` returned, since each phase builds its runners afresh from the runtimes the
-    run started with: a member brought up in `steps` must still be routable from `after` and
+    run started with: a member brought up in `steps` must still be routable from `cleanup` and
     `expect`.
     """
 

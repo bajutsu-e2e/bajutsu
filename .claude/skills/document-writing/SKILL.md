@@ -17,6 +17,14 @@ must be able to follow. This skill is the authoritative norm for that prose, in 
 Invoke it **before** you write or revise, not after — it shapes the draft, it is not a proofreading
 pass.
 
+**Load every file under [`references/`](references/) before drafting, together with this file.**
+Apply this norm in full, not step by step: a session that loads references on demand could apply a
+subset and still believe it followed the norm.
+
+- [`references/structure.md`](references/structure.md): the layout of a whole document — the title
+  and opening, heading order, the units of a procedure step, how terms relate, the main path versus
+  the extras, and visual versus semantic breaks.
+
 - **Scope.** Every BE roadmap item (`roadmaps/BE-*/*.md` and its `*-ja.md` mirror) and every
   document under `docs/` (and the `docs/ja/` mirror), in both languages. It does **not** govern
   code docstrings, which keep their own standard ([BE-0065](../../../roadmaps/BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference.md)).
@@ -158,7 +166,12 @@ where it is first used?
 Reread a fourth time against anaphora: does every pronoun or demonstrative resolve to a single,
 nearby, unambiguous antecedent, with the noun repeated everywhere it does not?
 
-Then run the same four rereads under the layer for your language:
+Reread a fifth time against document structure
+([`references/structure.md`](references/structure.md)): could a reader find the order to read and
+work in, how the terms relate, the exact operation and input, and the sign of success, without
+guessing any of them?
+
+Then run the same rereads under the layer for your language:
 [`english-document-writing`](../../../.apm/skills/english-document-writing/SKILL.md) for English,
 [`japanese-document-writing`](../../../.apm/skills/japanese-document-writing/SKILL.md) for Japanese.
 
@@ -257,6 +270,8 @@ dodge a finding on prose you have written; per the priority above, fix the prose
 - Jeffrey Scott Vitter, *Structure + Style = Communication* (The University of Kansas, 2011) — the
   source of the language-agnostic principles above (and of the English mechanics now in
   `english-document-writing`).
+- nakamura001, "Codexの作成する技術ドキュメントを読みやすくする" (2026-10-09) — the source of the
+  document-structure rules in [`references/structure.md`](references/structure.md).
 - [`english-document-writing`](../../../.apm/skills/english-document-writing/SKILL.md) — the English layer beneath
   this norm.
 - [`japanese-document-writing`](../../../.apm/skills/japanese-document-writing/SKILL.md) — the Japanese layer beneath this

@@ -24,6 +24,7 @@ from ._functions import _await_cold_runner as _await_cold_runner
 from ._functions import _classify_runner as _classify_runner
 from ._functions import _destination as _destination
 from ._functions import _diagnostic_reports_dir as _diagnostic_reports_dir
+from ._functions import _forwarded_launch as _forwarded_launch
 from ._functions import _major as _major
 from ._functions import _max_warm_reuses as _max_warm_reuses
 from ._functions import _never_ended as _never_ended
@@ -48,9 +49,11 @@ from ._functions import (
     effective_device_type,
     runner_source,
 )
+from ._host_address import HOST_ADDRESS_ENV, HostAddressError, HostCandidates, host_candidates
 from ._recovery import _Recovery as _Recovery
 from ._shared import _logger as _logger
 from ._spawned import _Spawned as _Spawned
+from ._usbmux import UsbmuxError, device_connection, device_reachability, real_device_check
 from .xcuitest_environment import _DEFAULT_RUNNER_LOG_DIR as _DEFAULT_RUNNER_LOG_DIR
 from .xcuitest_environment import _RESULT_BUNDLE_ENV as _RESULT_BUNDLE_ENV
 from .xcuitest_environment import _RUNNER_LOG_ENV as _RUNNER_LOG_ENV
@@ -59,10 +62,18 @@ from .xcuitest_environment import _WARM_HEALTH_TIMEOUT as _WARM_HEALTH_TIMEOUT
 from .xcuitest_environment import XcuitestEnvironment
 
 __all__ = [
+    "HOST_ADDRESS_ENV",
+    "HostAddressError",
+    "HostCandidates",
+    "UsbmuxError",
     "XcuitestEnvironment",
     "bundled_runner_staleness_note",
     "bundled_runner_toolchain_note",
     "bundled_runner_toolchain_warning",
+    "device_connection",
+    "device_reachability",
     "effective_device_type",
+    "host_candidates",
+    "real_device_check",
     "runner_source",
 ]

@@ -7,14 +7,14 @@ import pytest
 from bajutsu.common.scenario import (
     Scenario,
     Step,
-    apply_setups,
     dump_scenario_file,
     dump_scenarios,
     load_scenario_file,
     load_scenarios,
     redact_totp_secrets,
+    system_alert_entries,
 )
-from bajutsu.common.scenario.models.scenario import SCHEMA_VERSION, SystemAlertHandling
+from bajutsu.common.scenario.models.scenario import SCHEMA_VERSION
 
 # A valid base32 TOTP seed used across the redaction tests below.
 _TOTP_SEED = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
@@ -23,10 +23,11 @@ _TOTP_SEED = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
 SCENARIO_YAML = """
 - name: open settings and reindex
   preconditions:
-    erase: true
-    launchEnv: { SAMPLE_SCREEN: "settings" }
-    deeplink: "bajutsusample://settings"
-    locale: "ja_JP"
+    subject:
+      reinstall: erase
+      launch: { env: { SAMPLE_SCREEN: "settings" }, deeplink: "bajutsusample://settings" }
+    device:
+      ios: { locale: "ja_JP" }
   steps:
     - tap: { id: settings.open }
     - tap: { id: settings.reindex }
@@ -146,8 +147,8 @@ def test_load_scenario_example() -> None:
     assert len(scenarios) == 1
     s = scenarios[0]
     assert s.name == "open settings and reindex"
-    assert s.preconditions.erase is True
-    assert s.preconditions.launch_env == {"SAMPLE_SCREEN": "settings"}
+    assert s.preconditions.subject.reinstall == "erase"
+    assert s.preconditions.subject.launch.env == {"SAMPLE_SCREEN": "settings"}
     assert len(s.steps) == 2
     assert s.steps[1].capture == ["screenshot.after", "deviceLog"]
     assert s.expect[0].exists is not None
@@ -186,7 +187,7 @@ def test_dump_round_trip() -> None:
     text = """
 - name: round trip
   preconditions:
-    launchEnv: { K: "1" }
+    subject: { launch: { env: { K: "1" } } }
   steps:
     - tap: { id: home.go }
     - type: { text: "hi", into: { id: home.field } }
@@ -274,66 +275,6 @@ def _step(sid: str) -> Step:
     return Step.model_validate({"tap": {"id": sid}})
 
 
-def test_apply_setups_prepends_prelude_steps() -> None:
-    scns = [
-        Scenario.model_validate(
-            {"name": "a", "preconditions": {"setup": "login.yaml"}, "steps": [{"tap": {"id": "x"}}]}
-        ),
-        Scenario.model_validate({"name": "b", "steps": [{"tap": {"id": "y"}}]}),  # no setup
-    ]
-    seen: list[str] = []
-
-    def resolve(ref: str) -> list[Step]:
-        seen.append(ref)
-        return [_step("auth.email"), _step("auth.submit")]
-
-    apply_setups(scns, default_setup=None, resolve=resolve)
-    assert [s.tap.id for s in scns[0].steps if s.tap] == ["auth.email", "auth.submit", "x"]
-    assert [s.tap.id for s in scns[1].steps if s.tap] == ["y"]  # untouched
-    assert seen == ["login.yaml"]
-
-
-def test_apply_setups_default_is_shared_and_resolved_once() -> None:
-    scns = [
-        Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "x"}}]}),
-        Scenario.model_validate({"name": "b", "steps": [{"tap": {"id": "y"}}]}),
-    ]
-    count = 0
-
-    def resolve(ref: str) -> list[Step]:
-        nonlocal count
-        count += 1
-        return [_step("prelude")]
-
-    apply_setups(scns, default_setup="common.yaml", resolve=resolve)
-    assert scns[0].steps[0].tap and scns[0].steps[0].tap.id == "prelude"
-    assert scns[1].steps[0].tap and scns[1].steps[0].tap.id == "prelude"
-    assert count == 1  # the shared default is resolved once and cached
-
-
-def test_apply_setups_re_checks_target_requirements() -> None:
-    # BE-0428: at load time, the scenario's own `steps` sets `target` correctly, so the initial
-    # validator never sees the prelude's own steps. Once `apply_setups` splices them in, the
-    # re-check must catch what the load-time pass could not — here, a prelude step whose own
-    # `target` doesn't match the scenario's one declared target.
-    scns = [
-        Scenario.model_validate(
-            {
-                "name": "a",
-                "targets": ["app"],
-                "preconditions": {"setup": "login.yaml"},
-                "steps": [{"target": "app", "tap": {"id": "x"}}],
-            }
-        )
-    ]
-
-    def resolve(ref: str) -> list[Step]:
-        return [Step.model_validate({"target": "other", "tap": {"id": "auth.submit"}})]
-
-    with pytest.raises(ValueError, match="does not match"):
-        apply_setups(scns, default_setup=None, resolve=resolve)
-
-
 def test_redact_totp_secrets_masks_a_literal_seed() -> None:
     # A literal base32 seed written straight into the scenario must not survive into an
     # evidence snapshot: it is masked with the fixed placeholder (BE-0152).
@@ -383,42 +324,42 @@ def test_redact_totp_secrets_reaches_nested_steps() -> None:
 
 
 @pytest.mark.parametrize(
-    "policy",
+    "entries",
     [
-        {"rules": [{"prompt": "notifications", "choice": "grant"}]},
-        {"pollInterval": 2},
-        {"visionInstruction": "tap Allow"},
-        {},
+        [{"systemAlert": "notifications", "choice": "grant"}],
+        [{"systemAlert": "notifications", "choice": "leave", "pollInterval": 2}],
+        [{"systemAlert": "savePassword", "choice": "deny", "frozenScreenTimeout": 0}],
+        [{"tipKit": "dismiss"}],
+        [],
     ],
-    ids=["rules-only", "pollInterval-only", "visionInstruction-only", "empty"],
+    ids=["grant", "leave-with-poll", "frozen-zero", "tipKit", "empty"],
 )
-def test_redact_totp_secrets_round_trips_every_policy_shape(
-    policy: dict[str, object],
+def test_redact_totp_secrets_round_trips_every_interrupt_shape(
+    entries: list[dict[str, object]],
 ) -> None:
     # Re-validating a model's own dump must not be able to fail. A field whose validator rejects its
-    # own default is how that used to happen — `systemAlertHandling.labels` rejected `[]` while `[]`
+    # own default is how that used to happen — the alert guard's `labels` rejected `[]` while `[]`
     # was also its default (BE-0401), so a policy steering the guard by anything else died here, on
-    # the `run` path, after the steps had passed. `labels` is gone (BE-0406); the invariant is not.
-    scn = Scenario.model_validate({"name": "a", "steps": [], "systemAlertHandling": policy})
+    # the `run` path, after the steps had passed. The invariant outlives that field.
+    scn = Scenario.model_validate({"name": "a", "steps": [], "interrupts": entries})
     assert redact_totp_secrets(scn).model_dump() == scn.model_dump()
 
 
-def test_redact_totp_secrets_preserves_an_explicit_system_alert_policy() -> None:
+def test_redact_totp_secrets_preserves_an_explicit_system_alert_entry() -> None:
     # Dropping default-valued fields on the way out must not drop a declared one on the way back.
     scn = Scenario.model_validate(
         {
             "name": "a",
             "steps": [{"totp": {"secret": _TOTP_SEED, "into": {"var": "code"}}}],
-            "systemAlertHandling": {
-                "rules": [{"prompt": "notifications", "choice": "grant"}],
-                "pollInterval": 0.5,
-            },
+            "interrupts": [
+                {"systemAlert": "notifications", "choice": "grant", "pollInterval": 0.5}
+            ],
         }
     )
-    policy = redact_totp_secrets(scn).system_alert_handling
-    assert isinstance(policy, SystemAlertHandling)
-    assert [(r.prompt, r.choice) for r in policy.rules] == [("notifications", "grant")]
-    assert policy.poll_interval == 0.5
+    entries = system_alert_entries(redact_totp_secrets(scn).interrupts)
+    assert [(e.system_alert, e.choice, e.poll_interval) for e in entries] == [
+        ("notifications", "grant", 0.5)
+    ]
 
 
 def test_dump_scenario_file_round_trips_an_exact_visual_assertion() -> None:

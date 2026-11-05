@@ -37,6 +37,9 @@ from bajutsu.serve.cli.worker import (
     _write_console_log,
     worker,
 )
+from bajutsu.serve.server import worker_job
+from bajutsu.serve.server.db import cancelled_job_result
+from bajutsu.serve.state import Job
 
 
 def _port(server: socketserver.BaseServer) -> int:
@@ -52,9 +55,10 @@ def _port(server: socketserver.BaseServer) -> int:
 @pytest.fixture(autouse=True)
 def _stub_advertised_capabilities(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep the worker's startup capability derivation hermetic (BE-0166): stub it to a fixed set so
-    no test shells out to real `simctl`. The derivation itself is covered by test_capabilities.py; a
-    test that cares about flag wiring overrides this with its own recorder."""
+    no test shells out to real `simctl` or `devicectl` (BE-0468). The derivation itself is covered by
+    test_capabilities.py; a test that cares about flag wiring overrides this with its own recorder."""
     monkeypatch.setattr(worker_mod, "_advertised_capabilities", lambda *a, **k: ["platform:ios"])
+    monkeypatch.setattr(worker_mod, "devicectl_capabilities", lambda **k: set())
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -194,6 +198,20 @@ def test_write_console_log_writes_joined_lines(tmp_path: Path) -> None:
     assert (run_dir / "console.log").read_text(encoding="utf-8") == "first\nsecond\n"
 
 
+def test_write_console_log_restores_the_newline_the_bus_strips(tmp_path: Path) -> None:
+    # `jobs.py` publishes each stdout line with its newline stripped; the replay of console.log
+    # splits on newlines, so a joined file with none would come back as one line.
+    run_dir = tmp_path / "runs" / "run1"
+    run_dir.mkdir(parents=True)
+    bus = InMemoryLogBus()
+    bus.publish("j1", "step ok")
+    bus.publish("j1", "PASS  runs/run1/manifest.json")
+    bus.close("j1")
+    _write_console_log(tmp_path, "run1", bus, "j1")
+    text = (run_dir / "console.log").read_text(encoding="utf-8")
+    assert text == "step ok\nPASS  runs/run1/manifest.json\n"
+
+
 # --- worker() polling loop ----------------------------------------------------------------------
 
 
@@ -280,8 +298,11 @@ def test_worker_runs_a_bundle_job_from_the_bundles_own_tree(
 
     monkeypatch.setattr(worker_mod, "_post_json", fake_post)
     monkeypatch.setattr(worker_mod, "_bundle_workspace", lambda *_a, **_k: tree)
+    # The console log lands in the runs dir the run wrote: the bundle tree's own (BE-0449).
     monkeypatch.setattr(
-        worker_mod, "_write_console_log", lambda work, *_a: seen.setdefault("log", work)
+        worker_mod,
+        "_write_run_console_log",
+        lambda run_dir, *_a: seen.setdefault("log", run_dir.parent.parent),
     )
     monkeypatch.setattr(
         worker_mod, "_upload_evidence", lambda work, *_a, **_k: seen.setdefault("evidence", work)
@@ -289,6 +310,7 @@ def test_worker_runs_a_bundle_job_from_the_bundles_own_tree(
 
     def fake_execute(spec: dict[str, Any], **kwargs: Any) -> _FakeJob:
         seen["run"] = kwargs["cwd"]
+        kwargs["before_upload"](Job(id="j1", run_id="r1"))  # the console log, ahead of the upload
         return _FakeJob()
 
     monkeypatch.setattr(worker_mod, "execute_job_spec", fake_execute)
@@ -306,16 +328,18 @@ def test_advertised_capabilities_splits_platforms_and_falls_back_to_env(
     # override from the env. worker_capabilities is patched so the test never shells out to simctl.
     seen: dict[str, Any] = {}
 
-    def record(platforms: Any, *, override: Any = None, run: Any = None) -> set[str]:
+    def record(
+        platforms: Any, *, override: Any = None, run: Any = None, routes: Any = ()
+    ) -> set[str]:
         seen["platforms"] = list(platforms)
         seen["override"] = override
         return {"platform:ios", "platform:web"}
 
     monkeypatch.setattr(worker_mod, "worker_capabilities", record)
     monkeypatch.setenv(WORKER_CAPABILITIES_ENV, "ios18")
-    caps = _advertised_capabilities("ios, web", "")  # empty flag → env override applies
+    caps = _advertised_capabilities("ios, web", "", None, "darwin")  # empty flag → env applies
     assert seen == {"platforms": ["ios", "web"], "override": "ios18"}
-    assert caps == ["platform:ios", "platform:web"]  # sorted
+    assert caps == ["host:darwin", "platform:ios", "platform:web"]  # sorted, host added (BE-0450)
 
 
 def test_advertised_capabilities_rejects_an_unknown_platform() -> None:
@@ -333,7 +357,7 @@ def test_worker_advertises_capabilities_on_every_lease(
     monkeypatch.chdir(tmp_path)
     seen: dict[str, Any] = {}
 
-    def record_caps(platform: str, capabilities: str) -> list[str]:
+    def record_caps(platform: str, capabilities: str, _environment: str) -> list[str]:
         seen["platform"] = platform
         seen["capabilities"] = capabilities
         return ["beta", "platform:web"]
@@ -677,6 +701,99 @@ def test_run_with_heartbeat_never_starts_the_run_once_the_lease_is_lost_mid_fetc
     )
     assert abandoned is True
     assert not started.is_set()
+
+
+def test_run_with_heartbeat_cancels_the_job_on_a_heartbeat_cancel(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A heartbeat answering ``cancel: true`` makes the worker cancel its own `Job` (BE-0449).
+
+    The flag repeats on every beat while the row stays leased, so the cancel must be delivered once:
+    a second graceful stop would restart the run's grace window.
+    """
+    job = Job(id="j1", cmd=["bajutsu", "run"])
+    cancelled: list[Job] = []
+    # Set on the second beat: by then the first beat's cancel has been relayed, and a repeat of the
+    # flag has reached the worker while the run is still going.
+    repeated = threading.Event()
+
+    def fake_cancel(target: Job) -> bool:
+        cancelled.append(target)
+        target.cancelled = True
+        return True
+
+    def running_execute(spec: dict[str, Any], **kwargs: Any) -> Job:
+        kwargs["on_job"](job)  # hand the job over before it runs, as execute_job_spec does
+        assert repeated.wait(2.0)  # stay alive until the flag has come back more than once
+        job.status = "done"
+        return job
+
+    beats = 0
+
+    def hb_cancel(
+        url: str, body: dict[str, Any], *, token: str | None = None, timeout: float | None = None
+    ) -> tuple[int, Any]:
+        nonlocal beats
+        beats += 1
+        if beats == 2:
+            repeated.set()
+        return 200, {"ok": True, "cancel": True}
+
+    monkeypatch.setattr(worker_job, "cancel_job", fake_cancel)
+    monkeypatch.setattr(worker_mod, "execute_job_spec", running_execute)
+    monkeypatch.setattr(worker_mod, "_post_json", hb_cancel)
+    result, abandoned, _job_work = _run_hb(tmp_path)
+    assert abandoned is False
+    assert repeated.is_set()
+    assert cancelled == [job]
+    assert result is not None and result["cancelled"] is True and result["ok"] is False
+
+
+def test_run_with_heartbeat_skips_the_run_when_cancelled_during_the_fetch(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A cancel that lands while the bundle downloads stops the run before it touches the device,
+    # and the worker reports the same cancelled result the server records for a queued cancel.
+    started = threading.Event()
+    relayed = threading.Event()
+    beats = 0
+
+    def slow_workspace(work: Path, spec: dict[str, Any], urls: Any) -> Path:
+        assert relayed.wait(2.0)  # the fetch outlasts the beat that carried the cancel
+        return work
+
+    def recording_execute(spec: dict[str, Any], **kwargs: Any) -> _FakeJob:
+        started.set()
+        return _FakeJob()
+
+    def hb_cancel(
+        url: str, body: dict[str, Any], *, token: str | None = None, timeout: float | None = None
+    ) -> tuple[int, Any]:
+        nonlocal beats
+        beats += 1
+        if beats == 2:  # the first beat's cancel has been relayed by the time a second is sent
+            relayed.set()
+        return 200, {"ok": True, "cancel": True}
+
+    monkeypatch.setattr(worker_mod, "_bundle_workspace", slow_workspace)
+    monkeypatch.setattr(worker_mod, "execute_job_spec", recording_execute)
+    monkeypatch.setattr(worker_mod, "_post_json", hb_cancel)
+    result, abandoned, _job_work = _run_hb(
+        tmp_path, bundle_urls={"bundle": "https://signed/bundle"}, spec={"bundle": {"id": "a" * 64}}
+    )
+    assert abandoned is False
+    assert result == cancelled_job_result("j1")
+    assert not started.is_set()
+
+
+def test_cancel_relay_delivers_a_cancel_that_arrived_before_the_job() -> None:
+    relay = worker_job.CancelRelay()
+    relay.request()
+    relay.request()  # repeated beats are idempotent
+    job = Job(id="j1", cmd=["bajutsu", "run"])
+    relay.bind(job)
+    assert job.cancelled is True
+    assert job.lines == ["cancelled"]
 
 
 def test_run_with_heartbeat_leaves_a_transient_fetch_failure_to_lapse(

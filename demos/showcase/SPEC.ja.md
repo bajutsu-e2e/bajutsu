@@ -89,10 +89,12 @@ Android では、どちらのツールキットも状態の値を `content-desc`
 
 Compose の testTag はドット区切り id をそのまま再現するので、共有の [`scenarios/`](scenarios)
 一式が `showcase-compose` に無改変で通ります。Views の id はアンダースコアへの対応づけです
-（`android:id` の名前には `.` も `-` も使えません）が、共有一式は `showcase-views` にも無改変で
-通ります。各セレクタが id を**両方の形**で持ち（`id: [stable.refresh, stable_refresh]`）、画面に
-現れたほうにマッチする OR として決定論的コアが解決するからです。id 規約はドライバー側の
-`.` と `_` の書き換えではなく、シナリオに明示的に残します（BE-0221）。ネットワークは **OkHttp** を通し、
+（`android:id` の名前は `.` と `-` を使えません）。共有シナリオのうち Views のレーンが実行するものは、
+`showcase-views` でも無改変で通ります。そうしたシナリオのセレクタは id を**両方の形**で持ち
+（`id: [stable.refresh, stable_refresh]`）、決定論的コアが画面に現れたほうとの OR として解決します。
+id 規約はドライバー側の `.` と `_` の書き換えではなく、シナリオに明示的に残します（BE-0221）。
+Views のレーンが実行しないシナリオは、ドット形の id だけを持ちます。アンダースコア形を解決するレーンがないためです
+（[プラットフォームをまたぐ id](../../docs/ja/scenarios.md#プラットフォームをまたぐ-id候補のリストbe-0221)）。ネットワークは **OkHttp** を通し、
 `BajutsuAndroid` のインターセプタを使うので、`network` の証跡は Android でも効きます（BE-0283、§6）。
 `mocks` は追随の課題です。それ以外の以下の記述は、上記のネイティブアラートの例外を除き、Android の
 4 プロダクトすべてに当てはまります。
@@ -297,7 +299,7 @@ associated domain の仕掛けも要ります。無ければ iOS は何も申し
 有効なのは XCUITest バックエンドのみです。シナリオは
 [`select_photos.yaml`](scenarios/select_photos.yaml) と
 [`select_photo_single.yaml`](scenarios/select_photo_single.yaml) です。どちらもピッカーを開く前に
-`preconditions.seedPhotos` で写真ライブラリをシードします。併記する `erase: true` が必須です。
+`preconditions.device.ios.seedPhotos` で写真ライブラリをシードします。実効の `subject.reinstall: erase` が必須です。
 - `perm.openPhotoPicker` — 無制限選択のピッカーを提示するボタン
 - `perm.openPhotoPickerSingle` — `selectionLimit = 1` のピッカーを提示するボタン
 - `perm.photos.value` — 選択した枚数。ピッカーが閉じた時点でミラーされる（それまでは 0）
@@ -364,8 +366,8 @@ associated domain の仕掛けも要ります。無ければ iOS は何も申し
 - **起動時プロンプトなし。** 起動時に通知/位置情報の許可を要求せず、**Permissions** タブ（§5.4）の明示
   タップでのみ要求する。
 - **意図的なアラート**は **Permissions** タブにのみ存在：通知プロンプトと位置情報プロンプト。どちらも
-  SpringBoard（プロセス外）で、アプリ内のどのアクセシビリティ照会にも見えないので、run の **vision alert guard**
-  / `systemAlertHandling` の典型フィクスチャになります（このフィクスチャのシナリオは
+  SpringBoard（プロセス外）で、アプリ内のどのアクセシビリティ照会にも見えないので、run の**反応型アラートガード**
+  / その `systemAlert` interrupts エントリの典型フィクスチャになります（このフィクスチャのシナリオは
   [`permission.yaml`](scenarios/permission.yaml)）。別プロセスが仕込んだペーストボードを読むと、同じタブに
   3 つ目のプロンプトが上がります。ペースト同意のプロンプトで、
   [`paste_system_alert.yaml`](scenarios/paste_system_alert.yaml) の `handleSystemAlert` がネイティブに

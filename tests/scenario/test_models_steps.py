@@ -361,7 +361,7 @@ def test_handle_system_alert_rejects_a_prompt_this_step_can_never_see() -> None:
     # the save-password prompt inside the application's own process — so a step naming it would poll
     # an empty button list until its deadline and then report a prompt that never appeared. Rejected
     # at parse time instead, naming the declaration that does reach it.
-    with pytest.raises(ValidationError, match="systemAlertHandling"):
+    with pytest.raises(ValidationError, match="interrupts: \\[\\{ systemAlert: savePassword"):
         Step.model_validate(
             {"handleSystemAlert": {"prompt": "savePassword", "choice": "deny", "timeout": 5}}
         )

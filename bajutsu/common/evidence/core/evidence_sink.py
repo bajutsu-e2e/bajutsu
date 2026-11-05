@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Protocol
 
 from bajutsu.common.drivers import base
@@ -51,3 +52,10 @@ class EvidenceSink(Protocol):
     def finish_scenario_intervals(
         self, scenario_id: str, started: list[intervals.Interval]
     ) -> list[Artifact]: ...
+
+    def add_secret_values(self, values: Sequence[str]) -> None:
+        """Mask *values*, derived from a secret mid-scenario, in every artifact written next (BE-0472).
+
+        Part of the protocol rather than an opt-in, so a new sink that forgets it fails the type
+        check instead of silently writing the value in plain text.
+        """

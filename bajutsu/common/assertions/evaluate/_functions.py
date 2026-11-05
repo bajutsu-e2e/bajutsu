@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
-import json
 import re
 from collections.abc import Callable
 
 from bajutsu.common.assertions._common import AssertionResult, _compile, _resolve_one, sel_str
+from bajutsu.common.assertions.dict_match import dict_mismatch
 from bajutsu.common.assertions.network import (
     _assign_requests,
     _request_assignment_result,
     count_matching,
+    dict_label,
+    dictionary_hint,
     match_request,
     request_label,
 )
@@ -21,6 +23,7 @@ from bajutsu.common.evidence.network import NetworkExchange
 from bajutsu.common.scenario import (
     ASSERTION_KINDS,
     Assertion,
+    AttributeMatch,
     ClipboardMatch,
     CountMatch,
     CountOp,
@@ -32,7 +35,7 @@ from bajutsu.common.scenario import (
     TextMatch,
 )
 
-from .eval_context import EvalContext
+from .eval_context import AttributeRead, EvalContext, attribute_key
 from .golden_context import GoldenContext
 
 # Assertion evaluators keyed by kind (the `Assertion` field name), each a thin adapter over the
@@ -68,7 +71,7 @@ def _eval_text(elements: list[base.Element], kind: str, a: TextMatch) -> Asserti
     return AssertionResult(ok, kind, f"{kind} {op}={expected!r}: {sel_str(a.sel)}", reason)
 
 
-def _text_op(a: TextMatch) -> tuple[str, str]:
+def _text_op(a: TextMatch | AttributeMatch) -> tuple[str, str]:
     if a.equals is not None:
         return "equals", a.equals
     if a.contains is not None:
@@ -85,6 +88,36 @@ def _text_cmp(actual: str | None, op: str, expected: str) -> bool:
     if op == "contains":
         return expected in actual
     return _compile(expected).search(actual) is not None
+
+
+def _eval_attribute(read: AttributeRead | None, a: AttributeMatch) -> AssertionResult:
+    detail_base = f"attribute {a.name}: {sel_str(a.sel)}"
+    if read is None:
+        return AssertionResult(
+            False,
+            "attribute",
+            detail_base,
+            "attribute not read: the caller supplied no EvalContext.attributes",
+        )
+    if read.error is not None:
+        return AssertionResult(False, "attribute", detail_base, read.error)
+    actual = read.value
+    if a.absent:
+        ok = actual is None
+        reason = "" if ok else f"expected attribute {a.name!r} absent but actual={actual!r}"
+        return AssertionResult(
+            ok, "attribute", f"attribute {a.name} absent: {sel_str(a.sel)}", reason
+        )
+    op, expected = _text_op(a)
+    ok = _text_cmp(actual, op, expected)
+    if ok:
+        reason = ""
+    elif actual is None:
+        reason = f"expected {op}={expected!r} but attribute {a.name!r} is absent"
+    else:
+        reason = f"expected {op}={expected!r} but actual={actual!r}"
+    detail = f"attribute {a.name} {op}={expected!r}: {sel_str(a.sel)}"
+    return AssertionResult(ok, "attribute", detail, reason)
 
 
 def _eval_count(elements: list[base.Element], a: CountMatch) -> AssertionResult:
@@ -126,11 +159,13 @@ def _eval_request(exchanges: list[NetworkExchange], req: RequestMatch) -> Assert
     detail = f"request {request_label(req)}"
     if ok:
         return AssertionResult(True, "request", detail)
-    reason = (
-        f"expected count={req.count} but matched {n}"
-        if req.count is not None
-        else f"no matching exchange (observed {len(exchanges)})"
-    )
+    if req.count is not None:
+        # No single key explains a count shortfall, so a count keeps the plain message (BE-0463).
+        reason = f"expected count={req.count} but matched {n}"
+    else:
+        reason = (
+            dictionary_hint(exchanges, req) or f"no matching exchange (observed {len(exchanges)})"
+        )
     return AssertionResult(False, "request", detail, reason)
 
 
@@ -153,40 +188,6 @@ def _count_satisfied(n: int, c: CountOp | None) -> bool:
     return c.at_most is not None and n <= c.at_most
 
 
-def _json_text(value: object) -> str:
-    """Canonical text form of a JSON value for comparing an event body field.
-
-    Booleans and null render JSON-style (`true` / `false` / `null`), and a nested array / object
-    renders as compact JSON, so a YAML matcher reads the way the captured body does, not as a Python
-    `repr` (`True` / `None` / single-quoted dicts). Numbers / strings keep their plain form.
-    """
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if value is None:
-        return "null"
-    if isinstance(value, (dict, list)):
-        return json.dumps(value, separators=(",", ":"), ensure_ascii=False)
-    return str(value)
-
-
-def _event_body_matches(ex: NetworkExchange, body: dict[str, str]) -> bool:
-    """Whether the exchange's JSON request body carries every given field, each equal (as text).
-
-    A non-JSON / non-object / absent body matches no body criterion.
-    """
-    if not body:
-        return True
-    if ex.request_body is None:
-        return False
-    try:
-        parsed = json.loads(ex.request_body)
-    except (ValueError, TypeError):
-        return False
-    if not isinstance(parsed, dict):
-        return False
-    return all(key in parsed and _json_text(parsed[key]) == want for key, want in body.items())
-
-
 def _event_label(m: EventMatch) -> str:
     """Compact human description of an event matcher (endpoint + body + count)."""
     parts: list[str] = []
@@ -200,8 +201,10 @@ def _event_label(m: EventMatch) -> str:
         parts.append(m.path)
     if m.path_matches is not None:
         parts.append(f"~{m.path_matches}")
-    if m.body:
-        parts.append(f"body={m.body}")
+    if m.query is not None:
+        parts.append(dict_label("query", m.query))
+    if m.body is not None:
+        parts.append(dict_label("body", m.body))
     if m.count is not None:
         parts.append(f"count{_count_op_label(m.count)}")
     return " ".join(parts)
@@ -210,9 +213,9 @@ def _event_label(m: EventMatch) -> str:
 def _eval_event(exchanges: list[NetworkExchange], m: EventMatch) -> AssertionResult:
     """Assert an analytics/telemetry event the app sent (BE-0048).
 
-    Filter the timeline by the event's endpoint (reusing the request matcher), then by its
-    structured request-body fields, and check the surviving count against the operator. Pure over
-    the captured exchanges.
+    Filter the timeline by the event's endpoint (reusing the request matcher), then by its `query` /
+    `body` dictionaries, and check the surviving count against the operator. Pure over the captured
+    exchanges.
     """
     endpoint = (m.method, m.url, m.url_matches, m.path, m.path_matches)
     if any(v is not None for v in endpoint):
@@ -226,16 +229,19 @@ def _eval_event(exchanges: list[NetworkExchange], m: EventMatch) -> AssertionRes
         candidates = [ex for ex in exchanges if match_request(ex, req)]
     else:
         candidates = exchanges
-    n = sum(1 for ex in candidates if _event_body_matches(ex, m.body))
+    if m.query is not None or m.body is not None:
+        candidates = [ex for ex in candidates if dict_mismatch(ex, m.query, m.body) is None]
+    n = len(candidates)
     detail = f"event {_event_label(m)}"
     if _count_satisfied(n, m.count):
         return AssertionResult(True, "event", detail)
     want = f"count{_count_op_label(m.count)}" if m.count is not None else "at least one"
+    hint = dictionary_hint(exchanges, m) if m.count is None else None
     return AssertionResult(
         False,
         "event",
         detail,
-        f"expected {want}, matched {n} (observed {len(exchanges)} exchanges)",
+        hint or f"expected {want}, matched {n} (observed {len(exchanges)} exchanges)",
     )
 
 
@@ -429,6 +435,15 @@ def _do_clipboard(
 ) -> AssertionResult:
     assert a.clipboard is not None
     return _eval_clipboard(ctx.clipboard, a.clipboard)
+
+
+@_evaluator("attribute")
+def _do_attribute(
+    a: Assertion, _el: list[base.Element], _e: list[NetworkExchange], ctx: EvalContext
+) -> AssertionResult:
+    assert a.attribute is not None
+    reads = ctx.attributes or {}
+    return _eval_attribute(reads.get(attribute_key(a.attribute)), a.attribute)
 
 
 @_evaluator("golden")

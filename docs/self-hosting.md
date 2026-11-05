@@ -10,8 +10,8 @@
 > [BE-0051](../roadmaps/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)'s
 > auth + input validation:
 >
-> - **Tier A — a single Mac.** One `bajutsu serve` process, token-authenticated, on one Mac. The
->   rest of this page up to *Tier B* covers it.
+> - **Tier A — a single Mac.** A token-authenticated `bajutsu serve` and a local `bajutsu worker`
+>   that runs its jobs, both on one Mac. The rest of this page up to *Tier B* covers it.
 > - **Tier B — a self-hosted server backend.** BE-0015's control plane (FastAPI + Postgres +
 >   S3-compatible storage + GitHub OAuth + RBAC + quotas) on a Linux node, with Mac workers. It runs
 >   single-tenant by default and supports **multiple orgs** when you declare them in config (see
@@ -43,7 +43,7 @@ backend runs a headless browser and needs none of them — it can serve from any
 > (BE-0173): for the web (Playwright) backend, `uv sync --extra worker-web && playwright install
 > chromium`; for the iOS Simulator (XCUITest) backend, `uv sync --extra worker-ios` (the XCUITest
 > backend needs no backend pip extra — Xcode supplies `xcodebuild`, and the target supplies its
-> prebuilt `xcuitest.testRunner` — so `worker-ios` is just the `visual` + `schema` assertion deps).
+> prebuilt `driver.runner.testRunner` — so `worker-ios` is just the `visual` + `schema` assertion deps).
 > Installing a bare backend extra (e.g. `web`) under-installs — such a run fails lazily at assertion
 > time — and skipping the closure entirely makes runs fail at dispatch with `no available actuator`.
 
@@ -82,6 +82,21 @@ PLIST=~/Library/LaunchAgents/com.bajutsu.serve.plist
 /usr/libexec/PlistBuddy -c "Add :EnvironmentVariables:ANTHROPIC_API_KEY string sk-ant-…" "$PLIST"
 /usr/libexec/PlistBuddy -c "Add :EnvironmentVariables:PATH string $(brew --prefix)/bin:/usr/bin:/bin:/usr/sbin:/sbin:$(pwd)/.venv/bin" "$PLIST"
 ```
+
+The agent starts the server alone. The server queues every job for a `bajutsu worker` and runs none
+itself (BE-0449). Run a worker beside it as a second LaunchAgent:
+
+1. Copy the plist under another label.
+2. Change its `ProgramArguments` to `python -m bajutsu worker --platform ios`. Append
+   `--server-state-dir <project>/.bajutsu`, where `<project>` holds the server's runs directory.
+   `--server-state-dir` lets the worker take the jobs that name files on this machine. See
+   [the server backend on one machine](#the-server-backend-on-one-machine-be-0449). Add
+   `--server-url http://127.0.0.1:<port>` when the server listens on a port other than 8765.
+3. Put the same token in its `EnvironmentVariables`, as `BAJUTSU_TOKEN`.
+4. Leave the working directory unchanged. The worker runs each job in a temporary directory.
+   Pass `--workdir <dir>` to keep that workspace in one fixed place.
+
+Until a worker polls, every job stays queued, and the UI says that no worker is available.
 
 serve stays bound to `127.0.0.1`; the next step is what makes it reachable.
 
@@ -132,8 +147,8 @@ enumerated, disables the `Host` check and leaves CSRF as the cross-origin guard.
 
 ## Uploaded-config command execution (BE-0090)
 
-An uploaded `.zip` bundle can carry a config whose `launchServer.cmd` (and, once wired,
-`mockServer.cmd`) names a shell command to bring up the app under test. That command is **untrusted
+An uploaded `.zip` bundle can carry a config whose `services.server.cmd` (and, once wired,
+`services.mockServer.cmd`) names a shell command to bring up the app under test. That command is **untrusted
 input**, so `serve` never runs it on the bare host. The `--upload-exec` option (or the
 `BAJUTSU_UPLOAD_EXEC` environment variable, for the hosted backend) chooses what happens when an
 *uploaded* bundle's run needs that command — it applies only to upload-sourced configs; a local or
@@ -147,22 +162,22 @@ Git-sourced config is operator-trusted and unaffected:
   scratch, a non-root user, CPU/memory/pid caps, and only its one port published to a **loopback**
   host port — and torn down after the run. Docker must be installed on the `serve` host.
 - **`reuse`** — never run the uploaded command; only probe an operator-provisioned server already
-  answering at `baseUrl`. If nothing answers, the run fails loud rather than starting anything.
+  answering at `subject.url`. If nothing answers, the run fails loud rather than starting anything.
 - **`deny`** — refuse the uploaded command outright; like `reuse`, an externally-answering server is
   accepted, otherwise the run fails loud.
 
 No mode ever runs an uploaded command on the bare host, and none silently falls back to doing so — a
-blocked or misconfigured `launchServer` fails with a clear error, never a flaky-looking run. The
+blocked or misconfigured `services.server` fails with a clear error, never a flaky-looking run. The
 decision (denied / reused / sandboxed, and the image when sandboxed) is recorded in the run's
 `manifest.json` provenance, so "what did this run execute, and what was suppressed?" stays answerable.
 
 ## Remote-config command execution (BE-0121)
 
 A config bound at startup with `--config` (a local path or a `github:` spec you typed yourself) is
-**operator-trusted**: `serve` runs its `build:` command normally. A Git config bound **later,
+**operator-trusted**: `serve` runs its `subject.build` command normally. A Git config bound **later,
 through the UI's "from Git" picker** (`POST /api/config` with a `git` spec), is a different trust
 level — a cross-origin request could have bound it — so it is treated like an uploaded bundle: its
-`build:` command is **never run on the host by default**. Pass `--allow-remote-build` (or set
+`subject.build` command is **never run on the host by default**. Pass `--allow-remote-build` (or set
 `BAJUTSU_ALLOW_REMOTE_BUILD=1`) to opt in when you deliberately drive runs off a UI-bound Git config
 whose build you trust. Without the opt-in the run proceeds with the build suppressed, exactly as an
 uploaded bundle's build is suppressed — no silent host-side command execution from a config that
@@ -225,24 +240,25 @@ store as the [Claude API key](#operator-secrets-the-claude-api-key): masked, nev
 **local** serve it is held for the lifetime of the process in a bajutsu-owned variable
 (`BAJUTSU_GIT_CONFIG_TOKEN`) that the fetch reads ahead of an ambient `GITHUB_TOKEN` — deliberately
 *not* `GITHUB_TOKEN` itself, so entering or clearing a UI credential never disturbs a token you
-exported at launch. On the **hosted** backend it is encrypted at rest and scoped **per organization**,
-so each tenant's stored credential is its own; wiring that per-organization value into the hosted
-control plane's in-process bind is a follow-up, so a hosted private bind resolves through the
-process-global App / env credential today. When a bind fails for
+exported at launch. A server with a database encrypts it at rest and scopes it **per
+organization**. Each tenant's stored credential is its own. A local start and the **hosted**
+backend both have such a database. The bind hands the organization's stored value to its own fetch
+(BE-0449). That value ranks after a configured GitHub App and ahead of an ambient token. It
+reaches the fetch and never a response. When a bind fails for
 lack of access, the dialog shows the diagnostic inline — the message names the real cause (a rate
 limit, an organization single sign-on (SSO) authorization gap, a rejected token, or "provide a
 credential with Contents: read for `<owner>/<repo>`") rather than a bare 404.
 
 ## Tier B — self-hosting the server backend
 
-Tier A is one process on one Mac. **Tier B** runs BE-0015's **server backend** — the FastAPI control
+Tier A is a server and its local worker on one Mac. **Tier B** runs BE-0015's **server backend** — the FastAPI control
 plane with Postgres, S3-compatible storage (MinIO), GitHub OAuth, RBAC, and a per-user quota — on a
 Linux node, with one or more Macs as workers. It runs **single-tenant** by default (every
 user in one default org) and supports **multiple orgs** once you declare them in config — see
 *[Multiple orgs](#multiple-orgs)* below. The ready-to-run stack is in
 [`deploy/self-host/`](../deploy/self-host/) (compose + Dockerfile + `.env.example`).
 
-![Tier B topology diagram: team laptops reach the Linux control-plane node (bajutsu serve --asgi --backend=server, Postgres, MinIO) over HTTPS via Tailscale or Caddy; the control plane dispatches jobs over HTTP to a pool of bare-metal Mac iOS (XCUITest) workers and, over the same Tailscale tailnet, to containerized Linux web (Playwright/Chromium) workers, both returning results to the control plane.](assets/diagrams/self-hosting-tier-b-topology.svg)
+![Tier B topology diagram: team laptops reach the Linux control-plane node (bajutsu serve --asgi, Postgres, MinIO) over HTTPS via Tailscale or Caddy; the control plane dispatches jobs over HTTP to a pool of bare-metal Mac iOS (XCUITest) workers and, over the same Tailscale tailnet, to containerized Linux web (Playwright/Chromium) workers, both returning results to the control plane.](assets/diagrams/self-hosting-tier-b-topology.svg)
 
 <details>
 <summary>Mermaid source</summary>
@@ -251,7 +267,7 @@ user in one default org) and supports **multiple orgs** once you declare them in
 ```mermaid
 flowchart TB
     laptops(["team laptops"])
-    control["Linux node — docker compose<br/>bajutsu serve --asgi --backend=server<br/>postgres · minio<br/>[+ Linux web worker container(s)]"]
+    control["Linux node — docker compose<br/>bajutsu serve --asgi<br/>postgres · minio<br/>[+ Linux web worker container(s)]"]
     macWorker["Mac worker × N (bare)<br/>bajutsu worker (iOS · XCUITest)<br/>bajutsu run · Simulator"]
     webWorker["Linux web worker (web)<br/>bajutsu worker · Chromium"]
 
@@ -279,33 +295,36 @@ over the serve host's `--root`**. On the server backend (this tier) the file bro
 both hidden in the UI and refused server-side (`/api/fs` and the path branch of `POST /api/config`
 return `403`) — leaving only Git and upload. A hosted user has no filesystem relationship to the
 shared worker, so browsing the operator's `--root` could bind nothing they own; removing it also
-avoids handing every logged-in user a directory listing of that tree. The local backend (Tier A, a
+avoids handing every logged-in user a directory listing of that tree. A local start (Tier A, a
 self-hosted single Mac) keeps all three: there the filesystem is the operator's own.
 
 ### Local vs. hosted, across config, scenario, and the app binary
 
 The walkthrough above is organized by *how you deploy*; this box collects *what changes for each kind
 of state `serve` manages*, so the tier-by-tier detail is easier to place. "Local" below covers both
-Tier A and a bare `make serve` on a laptop — both run with `hosted: false`; only Tier B's server
-backend sets `hosted: true`.
+Tier A and a bare `make serve` on a laptop. Both run with `hosted: false`. Tier B's server backend
+names a bucket in `BAJUTSU_SERVER_STORE`, which makes it `hosted: true`. A server backend on one
+machine with no bucket stays `hosted: false`. The section *The server backend on one machine*,
+below, covers that case.
 
 | State | Local (`hosted: false` — Tier A, or a bare `make serve`) | Hosted (`hosted: true` — Tier B server backend) |
 |---|---|---|
 | **Config** | File browser + Git + upload; own filesystem, paths unconfined | Git + upload only; file browser disabled, 403 (BE-0108) |
-| **Scenario and run artifacts** | `scenarios/` and `runs/` on disk; soft-delete moves to `runs/.trash/` | Object store (S3/GCS) + Postgres; soft-delete sets `deleted_at` (BE-0239) |
-| **App binary** | `appPath` on disk; build only when missing — never for an uploaded bundle, which ships its binary prebuilt | An uploaded bundle's binary ships to the worker via presigned URLs, no build runs (BE-0413); a Git-sourced config still has the worker build from the checkout, remote build gated (BE-0121) |
+| **Scenario and run artifacts** | `scenarios/` and `runs/` on disk, with the queue and the run history in `.bajutsu/queue.db`; soft-delete leaves a `.deleted` marker in the run tree | Object store (S3/GCS) + Postgres; soft-delete sets `deleted_at` (BE-0239) |
+| **App binary** | `subject.path` on disk; build only when missing — never for an uploaded bundle, which ships its binary prebuilt | An uploaded bundle's binary ships to the worker via presigned URLs, no build runs (BE-0413); a Git-sourced config still has the worker build from the checkout, remote build gated (BE-0121) |
 | **Authoring against a live screen** | Capture mode and Edit's live picker both hold a driver open in the `serve` process | Neither is offered: both controls are disabled, each carrying the reason (#1721) |
 
 - **Config.** Both sides bind from up to three sources, but the file browser disappears the moment
   `hosted` is true (just above). Path confinement follows the *source*, not the tier: a local-file
   config resolves against its own directory and is unconfined (it may point at a sibling), while a Git-
-  or upload-sourced config is untrusted and its `scenarios` / `baselines` / `appPath` are confined to
+  or upload-sourced config is untrusted and its `paths.scenarios` / `paths.baselines` / `subject.path` are confined to
   the checkout or bundle root regardless of which tier bound it
   ([configuration.md → Config from a Git repository](configuration.md#config-from-a-git-repository-be-0063)).
   Hosted mode never offers the local-file source, so every hosted config ends up confined — a side
   effect of dropping the file browser, not a separate rule.
 - **Scenario and run artifacts.** Locally, the scenario store and the run history read and write a
-  plain directory tree (`scenarios/`, `runs/`); a soft-deleted run moves to `runs/.trash/`. Hosted, both
+  plain directory tree (`scenarios/`, `runs/`); a soft-deleted run keeps its tree and gains a
+  `.deleted` marker. Hosted, both
   live in the control plane's object store (`BAJUTSU_SERVER_STORE`, S3-compatible or GCS) plus a
   Postgres row per run, so a soft-delete sets `deleted_at` instead of moving bytes on disk (see
   *Deleting runs, and how long the trash is kept*, below).
@@ -316,25 +335,230 @@ backend sets `hosted: true`.
   `/api/capture/*` route is local-only and a hosted deployment answers `404`. The boot read
   (`GET /api/config`) reports the absence as a capability flag. A hosted Author tab then
   disables both controls — each showing the server's own reason — and opens in Edit mode, rather
-  than offering a mode whose first call fails (#1721). A local `bajutsu serve --asgi` runs the same
-  transport, so it serves no capture route either; there the flag's reason names the transport
-  rather than the deployment, since the devices are on the machine after all. The Record tab keeps
+  than offering a mode whose first call fails (#1721). A deployment that is not hosted serves the
+  capture routes on either transport: a local `bajutsu serve --asgi` and a local start of the
+  server backend both keep Capture, since the devices are on the machine (BE-0449). The Record tab keeps
   working: `POST /api/record` dispatches a job the way a run does, so a recording made through the
   AI path still runs hosted.
-- **App binary.** An uploaded bundle already carries a prebuilt binary, so its `build:` never runs
+- **App binary.** An uploaded bundle already carries a prebuilt binary, so its `subject.build` never runs
   regardless of tier (`_governed_build`, DESIGN §1 "Bajutsu does not build the app"). Hosted, the
   worker still needs the bytes: the job lease response's `bundle_urls` field carries one presigned
   GET URL per stored object the bundle is made of, and the worker fetches them over plain HTTP and
   reassembles its own workspace before the run starts (BE-0413) — no shared filesystem, and no
-  build. A Git-sourced (or, locally, file-browser-sourced) config instead resolves `appPath` from
-  the bound config and, if it's missing, runs the config's `build:` command; hosted, a Mac worker
+  build. A Git-sourced (or, locally, file-browser-sourced) config instead resolves `subject.path` from
+  the bound config and, if it's missing, runs the config's `subject.build` command; hosted, a Mac worker
   builds from the same checkout materials the control plane resolved for the job, exchanging bytes
   over presigned URLs rather than a shared filesystem (BE-0160, above). The remote-build gate is
-  orthogonal to the tier: any config bound later through the UI's "from Git" picker has its `build:`
+  orthogonal to the tier: any config bound later through the UI's "from Git" picker has its `subject.build`
   suppressed by default, whether the UI sits on a laptop's Tier A or Tier B's control plane — only a
   config supplied at startup is operator-trusted (see *Remote-config command execution*, above). The
   web (Playwright) backend has no binary concept on either side; the browser engine installs on demand
   instead.
+
+### The server backend on one machine (BE-0449)
+
+`bajutsu serve` starts on one machine with no cloud service and needs no environment variables
+there. The server runs no job itself. It queues each kind of job for a worker:
+
+- a `run`, with its build phase
+- a `run-set`, the Device Farm fan-out
+- a `triage`, a `record`, or a `crawl`
+
+A `bajutsu worker` on the same machine leases each job and runs it. `make serve` starts that
+worker for you. Without a worker, a job stays queued, and the UI says that no worker is available.
+
+A job that names its files by paths on the server's disk goes to a worker on that machine alone. A local start keeps a random machine identity in `.bajutsu/machine-id`, beside the
+runs directory. A `run`, `triage`, `record`, or `crawl` can name its config and runs directory by
+those paths. Such a job requires the capability token `machine:<id>`. A worker advertises the token
+when it starts with `--machine-id <id>`. It can read the identity instead, with
+`--server-state-dir <dir>`. `make serve` passes `--server-state-dir` to the worker it starts. A
+worker on another machine never leases such a job, nor does a Device Farm worker. The UI keeps
+saying that no worker is available until a worker on the server's machine polls. A job that ships
+its files, such as a run off an uploaded bundle, requires no machine token and goes to any worker. A
+worker that holds the identity but lacks the server's files still fails the job. The worker reports
+that the job needs a worker on the server's machine.
+
+We deprecate the `--backend` flag. The flag once chose between two backends. The `local` backend
+ran jobs inside the server process, and the `server` backend queued them. Both values now start
+the same server, so the flag changes nothing. `bajutsu serve` still accepts either value and
+prints a warning. The next release removes the flag. Drop it from a command line, a LaunchAgent,
+or a container command. An unknown value still stops the start.
+
+A `triage` job reads the run it diagnoses from the server's runs directory. Its command line names
+the run directory by its absolute path on the server's disk. The bound config and the scenario
+source get absolute paths too. The job writes `triage.json` into the run directory, and the UI
+reads the file from there. A worker on the same machine runs the job from the config's directory,
+as it runs a local `run`. Like a `run`, the job goes to a worker on the server's machine alone. A
+triage with `--ai` reads the AI key from the lease, like every
+queued job. A key set in the UI thus reaches the investigator and never enters the job spec.
+
+A `crawl` or `record` job also needs a worker on the server's machine. A crawl writes its screen
+map into the server's runs directory. A record writes its scenario into the target's scenarios directory.
+While a crawl runs, its worker posts each new screen map to `POST /api/worker/artifact`. The
+server relays each snapshot to the Crawl tab as an `artifact` event on the job's event stream. The
+graph thus grows as the worker explores. The file stays the durable copy, and the page reads it
+once the job ends. The worker skips a snapshot over 2 MiB. A job has a live budget of 16 MiB. Past
+it, the stream says so once, and the page reads the file instead. A worker on another machine leaves
+no file on the server's disk while the crawl runs. There, the graph updates once the job ends.
+
+A record can pause and ask the person at the browser for help, such as a one-time password. Its
+worker posts the request to `POST /api/worker/handoff`, and the page shows it as before. The
+server encrypts the answer under the secrets key and keeps it in the jobs table. While the record
+waits, its worker polls `POST /api/worker/handoff-response` once a second. The worker takes the
+answer from there and writes it to the record's standard input. The answer leaves the table when
+the worker reads it, or when the job ends. The server drops an answer older than the record's
+five-minute wait. A cancel reaches a waiting record through the same poll, before any heartbeat.
+
+Three rules guard the relay routes:
+
+- Each route accepts a post from the lease holder alone. Any other worker gets `409`. The handoff
+  route also takes a `record` job alone, and one request at a time. A job's requests stay within
+  64 MiB.
+- A caller on a browser or machine login gets `403`. The shared token a worker holds is the one
+  credential these routes accept.
+- An answer to a handoff is an editor action in the job's own org, checked like a cancel.
+
+For each setting left
+unset, the server supplies a local default. Every default lives in a `.bajutsu/` directory beside
+the runs directory. The server creates that directory owner-only (`0700`), and Git ignores it.
+These defaults apply when `BAJUTSU_SERVER_STORE` is unset. A deployment with a bucket gets no
+default database. A SQLite file per replica would split the queue across the replicas. Such a
+deployment must set `BAJUTSU_DATABASE_URL`, or the server refuses to start. The server runs no job
+itself, so a server with no queue could run nothing.
+
+A plain `pip install bajutsu` is enough for this shape. The base dependencies carry the server
+stack, such as FastAPI, SQLAlchemy, and `cryptography`. SQLite ships with Python.
+The `server` extra adds boto3
+for an S3 bucket, and the `db` extra adds psycopg for PostgreSQL. A hosted deployment still
+installs those extras, as the Tier B image does.
+
+| Setting left unset | Local default |
+|---|---|
+| `BAJUTSU_DATABASE_URL` | A SQLite file, `.bajutsu/queue.db`. The server migrates it to the latest schema at every start, because no operator runs Alembic for it. |
+| `BAJUTSU_SECRETS_KEY` | A Fernet key generated once into `.bajutsu/secrets.key`, an owner-only (`0600`) regular file. Applies to the default SQLite alone. A configured `BAJUTSU_SECRETS_KEY` takes precedence. |
+| `BAJUTSU_SERVER_STORE` | A `file://` store, served by the server's own `/api/store/objects/` routes. The default org's runs stay in the runs tree; every other object lives in `.bajutsu/objects/`. |
+| `BAJUTSU_HOSTED` | `false`. With a bucket named, `true`. |
+
+A configured database keeps the earlier rule. With `BAJUTSU_DATABASE_URL` set and no
+`BAJUTSU_SECRETS_KEY`, the server refuses to start. The server never generates a key for an
+operator's own database. Startup also refuses an unsafe key file that already exists. A symlink, a
+file another account owns, or a file open to group or other counts as unsafe. On a shared host, a
+key that another local account can read would expose every stored secret.
+
+One `.bajutsu/` serves one server at a time. The server holds a lock on `.bajutsu/serve.lock` while
+it runs. A second `bajutsu serve` on the same directory refuses to start and names the directory.
+Two servers there would share one queue: each would hand out job ids the other already used, and a
+worker of either would take the other's jobs. To run two servers from one checkout, point each
+one's `--runs` at a directory under its own parent, since `.bajutsu/` sits beside the runs
+directory. Or give each its own `BAJUTSU_DATABASE_URL` and `BAJUTSU_SECRETS_KEY`. The lock ends with the process, so a server
+that crashed leaves nothing to remove.
+
+The file store uses the bucket's key layout, with one difference. The default org's run artifacts
+have keys under `artifacts/<run id>/`. They stay where `bajutsu run` writes them, at
+`runs/<run id>/`. A run from the command line resolves through the store without moving a file. The
+same holds for a run already under `runs/`. Every other object lives in `.bajutsu/objects/` under
+its bucket key. Uploaded bundles and every other org's runs, scenarios, and baselines go there. The
+default org's scenarios and baselines stay on the local tree, as the next subsection describes.
+Keeping the other objects out of `runs/` keeps tenants apart. A default-org request for a run named `acme` or `scenarios`
+finds nothing. It can neither read nor delete another org's runs or a store folder.
+
+The server leaves the runs directory itself as it is. It creates `runs/` when it is missing, but
+never changes its mode. A symlinked `runs/`, such as one moved to a larger disk, is followed. Every
+key is confined to the resolved directory, so none reaches outside it. Only `.bajutsu/objects/`,
+which the server owns, is made owner-only (`0700`), and a symlink there is refused.
+
+The server and the command line share the runs tree. A run deleted through the server stays at
+`runs/<run id>/` with a `.deleted` marker. Both `bajutsu flakiness --history` and
+`bajutsu triage --flaky` skip a tree that holds the marker. The run thus stays deleted for the command
+line as well.
+
+The browser and the worker reach a stored file through a signed URL. The server signs each URL with
+an HMAC key. That key lives in `.bajutsu/store-signing.key`, under the same `0600` rules. Each URL
+names the `--host` the server was given, or `127.0.0.1` for a wildcard bind. The FastAPI transport alone
+serves these routes. A server without a bucket switches itself to `--asgi` and says so at
+startup. The URLs carry the port fixed at startup, and such a server refuses `--port 0`.
+
+The run history comes from the runs table and not from the directory listing. At
+startup the server indexes every run tree under `runs/` into the runs table, under the `default`
+org. The index skips a tree with no readable `manifest.json`. It also skips a run that a job is
+still writing. The index never updates a row. A run the table already holds keeps the row its job
+wrote. A run that `bajutsu run` writes while the server is up needs a rescan. An admin calls
+`POST /api/runs/rescan`, which indexes the new trees and returns `{"indexed": <count>}`. A
+deployment with a bucket answers the rescan with `409`, since its runs do not live under `runs/`.
+
+`hosted` is a deployment setting of its own, read from `BAJUTSU_HOSTED`. The variable accepts
+`true`, `false`, `1`, or `0`. Any other value stops the start with an error. When the variable is
+unset, `hosted` follows the store. A bucket in `BAJUTSU_SERVER_STORE` makes it `true`, so an
+existing Tier B deployment behaves as before. Otherwise `hosted` is `false`. A database does not
+imply `hosted`. A local start with a queue keeps the file browser (BE-0108). It also keeps the
+device takeover of `record` (BE-0185), since the author sits at the device.
+
+#### What a local start keeps from the earlier local backend
+
+A local start keeps the features of the earlier local backend. That backend ran jobs inside the
+server process. Each item applies to the default org of a local start. That org is the one whose
+runs already live in the runs tree.
+
+| Feature | Where a local start keeps it |
+|---|---|
+| Capture mode and the live step picker of the editor | The FastAPI app serves `/api/capture/*` and `/api/ant/login` on any deployment that is not hosted. The UI offers Capture as on the local backend. |
+| Secrets set in the UI | The database keeps them encrypted. A job receives them in the worker's lease, so it gets the AI key and every `${secrets.X}` value in its environment. |
+| Scenarios | Saved to the scenarios directory of the bound config, the same directory the scenario list reads. |
+| Visual baselines | Approved into the `--baselines` directory, the one a run is pointed at. The file store mounts that directory at `baselines/`, so a worker downloads the same files. The start refuses a `--baselines` directory that holds the runs directory or `.bajutsu/`. |
+| AI provider settings | Read from and written to `provider-settings.json` beside the runs directory, the file the earlier local backend used (BE-0184). |
+| A run's files | A run names the bound config, its scenario, the runs directory, and the `--baselines` directory by their paths on this machine. The worker on the same machine builds and runs it from the config's directory, and writes the run tree straight into `runs/`. |
+
+The server reads a stored secret in plaintext on two paths. No HTTP response carries the value
+(BE-0136).
+
+| Path | What the value is for |
+|---|---|
+| A worker leases a job | The lease response, which the worker receives |
+| The server binds a config from a private Git repository | That fetch's credential |
+
+The lease relays the secrets of the leased job's org and no other. A caller that authenticates with
+the shared token receives them. On a loopback start with no token, any caller does. A browser or
+machine login that reaches the lease route gets none. The values never enter the job spec. The
+queue's database thus keeps them in their encrypted rows alone. A worker lays them over the job's
+environment, never its argv. The job's environment leaves out the Git credential, because a job
+never fetches a config.
+
+A secret may not set a variable that changes how a job's processes load or run. The server and the
+worker both drop such a name and log it, without its value:
+
+| Denied | Names |
+|---|---|
+| Shell and system variables | `PATH`, `HOME`, `USER`, `SHELL`, `LANG`, `TERM`, `PWD`, `OLDPWD`, `LOGNAME`, `TMPDIR`, `DISPLAY`, `IFS`, `ENV`, `BASH_ENV`, `PS4`, `PROMPT_COMMAND` |
+| Interpreter options | `NODE_OPTIONS`, `NODE_PATH`, `RUBYOPT`, `RUBYLIB`, `PERL5OPT`, `PERL5LIB`, `JAVA_TOOL_OPTIONS`, `_JAVA_OPTIONS` |
+| Name prefixes | `LD_`, `DYLD_`, `PYTHON`, `BAJUTSU_` |
+
+On macOS and Linux the deny list matches a name in its exact case; on Windows, case does not matter. The same rule
+applies to a config's `ai.keyEnv` and its `evidence.secrets` names. A denied `ai.keyEnv` makes the server
+read `ANTHROPIC_API_KEY` and log a warning.
+
+A run that waits for a worker says why. The wait ends once a live worker advertises every
+capability the run requires. Until then, three places show a notice that no worker is available:
+
+- the `notice` field of the job view, `GET /api/jobs/<id>`;
+- a `notice` event on the job's live stream, `/api/jobs/<id>/events`;
+- the run's status line in the UI.
+
+A worker counts as live when it polled or sent a heartbeat within the lease timeout. The
+`bajutsu_unroutable_jobs` metric uses the same window. The notice clears as soon as such a worker
+polls, or a worker leases the run.
+
+The provider settings stay in the file rather than moving into the database. A local start then
+reads and writes the copy the earlier local backend wrote. A user who upgrades sees the same choice.
+
+Another org on a local start keeps the bucket layout under `.bajutsu/objects/`. Its scenarios and
+baselines reach the worker the way they do on a hosted deployment. No tenant writes into the
+default org's tree. To keep that true, no org may take the name of a folder in the default org's
+layout. `POST /api/orgs` and an `orgs:` entry both refuse these four slugs:
+
+- `artifacts`
+- `baselines`
+- `scenarios`
+- `uploads`
 
 ### Per-job artifact overrides for a CI run (BE-0431)
 
@@ -349,7 +573,7 @@ caller's org must already hold that artifact.
 
 | Field | What the job gets |
 |---|---|
-| `binaryArtifact` | a `binary` artifact, placed at the requested target's `appPath` alone |
+| `binaryArtifact` | a `binary` artifact, placed at the requested target's `subject.path` alone |
 | `scenariosArtifact` | a `scenarios` artifact (a zip), replacing that target's scenarios directory |
 
 A leg the request leaves out keeps resolving through the org's binding. Nothing writes the binding
@@ -376,11 +600,11 @@ The control plane checks the request before any job exists:
   override cannot overwrite the bound binary or baselines.
 - `serve` refuses a single YAML Ain't Markup Language (YAML) file. A digest carries no file name
   to match `scenario` against.
-- `binaryArtifact` on a target with no `appPath`, such as a web target, returns `400`.
+- `binaryArtifact` on a target with no `subject.path`, such as a web target, returns `400`.
 - A single-process `serve` refuses both fields. It runs the job in the operator's own project
   directory, which no override may overwrite.
-- `POST /api/run-set` refuses both fields. Its cloud-batch fan-out does not run on the split
-  serve-and-worker topology yet.
+- `POST /api/run-set` refuses both fields. Its cloud-batch fan-out runs on a Device Farm worker,
+  and mapping an override onto a Device Farm request is separate work.
 
 The lease signs one presigned HTTP GET URL per named override: `binary_url` and `scenarios_url`.
 It signs each under the leased job's org. The worker checks each download against its sha256. It
@@ -589,10 +813,12 @@ deliberately no default: leaving it unset switches the caller shape off rather t
 
 **The exchange needs a database, and the `oauth` extra.** Each token's `jti` is spent in the
 shared system of record, so single-use holds across control-plane replicas rather than only within
-one process — with no `BAJUTSU_DATABASE_URL` the exchange refuses every request. The token
-signature is verified with `joserfc`, which ships in the `oauth` extra (`uv sync --extra oauth`),
-the same extra GitHub OAuth needs. `serve` warns about either at boot rather than letting a
-pipeline discover it one failed run at a time.
+one process. Every server has that database, and a deployment with a bucket must name one. A
+server on one machine with no bucket keeps a default SQLite. Its exchange then works within that
+single process (see *The server backend on one machine*, above). The token signature is verified
+with `joserfc`, which ships in the `oauth` extra (`uv sync --extra oauth`), the same extra GitHub
+OAuth needs. `serve` warns at boot when the extra is missing. A pipeline then need not discover
+the gap one failed run at a time.
 
 Then list the repositories each org admits, under `allowedRepositories`:
 
@@ -662,6 +888,34 @@ entry's detail payload. A synthetic user filling that column would join the rost
 discloses. `serve` audits the probe beside the uploads, so a pipeline that finds its build already
 stored still leaves a trace.
 
+**An audit entry names the job, too.** One repository runs many jobs, so the repository alone cannot
+tell a rerun from the run it retried. The exchange keeps the job's claims from the token on the
+session, and every entry that session writes carries them under `actor` in the detail payload. The
+exchange itself writes an `oidc.exchange` entry with the same record. If that one write fails, the
+exchange still returns the session and logs the failure at ERROR as `oidc.audit_failed`, because the
+token is already spent and a 500 would leave the job unable to retry.
+
+```json
+{
+  "repository": "acme/app",
+  "actor": {
+    "runId": "123",
+    "runAttempt": "1",
+    "checkRunId": "456",
+    "ref": "refs/heads/main",
+    "workflowRef": "acme/app/.github/workflows/e2e.yml@refs/heads/main",
+    "sha": "…",
+    "triggeredBy": "octocat"
+  }
+}
+```
+
+`runId` and `checkRunId` together name one job, and `runAttempt` tells a rerun from the run it
+retried. On github.com the job's page is
+`https://github.com/<repository>/actions/runs/<runId>/job/<checkRunId>`; a GitHub Enterprise Server
+serves the same path on its own host. `serve` stores the parts rather than that link, because the host
+is not in the token. A claim the token lacks is left out of the record rather than written as null.
+
 **Ending a machine session.** A GitHub-issued token runs until it expires, whatever you do. A
 machine session is one `serve` minted, and `serve` can revoke it:
 
@@ -706,8 +960,9 @@ export BAJUTSU_SECRETS_KEY=…
 ```
 
 A database-backed control plane **requires** `BAJUTSU_SECRETS_KEY` and refuses to start without one,
-rather than silently degrading to holding the secret only in process memory. Without a database,
-secrets stay in the serve process's environment (the local-backend shape) and no key is needed. Treat
+rather than silently degrading to holding the secret only in process memory. A server on one
+machine with no bucket keeps its secrets in its default SQLite. It encrypts them under a key it
+generates into `.bajutsu/secrets.key`. Treat
 the key like the database password: losing it makes the stored secrets unrecoverable, and a rotated
 key cannot decrypt values written under the old one, so re-enter each secret after rotating.
 
@@ -719,17 +974,16 @@ It is stored, masked, and rotated exactly like the API key above.
 
 The same store also holds a scenario's **own** declared secrets
 ([BE-0274](../roadmaps/BE-0274-serve-scenario-secrets/BE-0274-serve-scenario-secrets.md)) — the
-`secrets:` names a config lists for `${secrets.X}`. Previously the only way to supply these was the
+`evidence.secrets` names a config lists for `${secrets.X}`. Previously the only way to supply these was the
 `.env` the process inherited; now an admin sets each one from the settings panel's **Scenario
 secrets** section, and on the hosted control plane it lands in the same per-org encrypted `secrets`
 table (reusing `BAJUTSU_SECRETS_KEY`, already required above — no new key), write-once and masked
-like the operator credentials. What is **not yet wired** on a self-hosted deployment is *consuming* a
-stored scenario secret: a run executes on a remote Mac worker, not in the control-plane process, so
-threading the stored value into the worker's spawned `bajutsu run` (and the trust-boundary decision
-of whether the plaintext rides the job queue or the worker decrypts it itself) is a tracked
-follow-up — the same gap [BE-0224](../roadmaps/BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth.md)
-leaves for the Git config-source token. Storing works on both backends today; on a **local** `serve`
-the value is held in the process environment and a spawned run inherits it directly.
+like the operator credentials. A run reads every stored secret on the worker that leases it
+(BE-0449). The control plane decrypts the org's secrets at lease time. It hands them over in the
+lease response, so the plaintext never rides the job queue. The worker lays the values over the
+spawned run's environment. The API key, the Claude Code token, and each `${secrets.X}` then
+resolve there. A lease taken with the shared token receives the values, and a browser login does
+not. The stored Git config-source token reaches the control plane's own fetch, never a job.
 
 ### 3. Run a Mac worker
 
@@ -757,7 +1011,7 @@ composed `(config, scenarios, binary)` triple. It keeps that tree on its own dis
 worker's reach. The lease carries one signed read URL per stored object the bundle holds.
 
 The worker rebuilds the tree under `.bundles/<org>/<id>/` in its working directory. It runs the job from
-the tree's root. The config's relative `appPath`, `scenarios`, and `baselines` then resolve as
+the tree's root. The config's relative `subject.path`, `paths.scenarios`, and `paths.baselines` then resolve as
 written. The bundle's content digest keys that tree, so a second run off it downloads nothing. The
 digest also keeps two builds apart. Two bundles whose binaries share a path but differ in bytes
 never share a workspace.
@@ -773,11 +1027,75 @@ Two notes for operating it:
   own. If you approve baselines through serve and also upload bundles, put the approved images in
   the bundle.
 
+To declare what one machine can run, pass a worker capability file with
+`bajutsu worker --worker-config <worker.yaml>`
+([BE-0450](../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability.md)). The file lists the
+drivers the machine offers. Its `maxTargetsPerJob` caps the targets one scenario may hold at once.
+Without the flag, the worker uses the shipped default. The default offers every driver and sets no
+target limit. The worker validates the file at startup, before it leases any job. It hands the file's
+absolute path to every `bajutsu run` it spawns. Each leased run checks its scenarios against the file.
+A scenario that needs a driver this machine cannot run fails with a
+`worker-capability-unsupported:` reason. The control plane never reads
+the file. [Drivers](drivers.md#worker-capability-check-be-0450) describes the file format and the
+check.
+
+A worker whose file sets `environment: devicefarm` also reads its job budget there (BE-0448). The
+file's top-level `maxJobConcurrency` caps the jobs that worker holds at once. While every slot holds
+a job, the worker sends no lease request. Above one, the worker runs each job on its own thread and
+in its own `.slots/<n>/` workspace. A stop signal to such a worker lets its leases lapse instead of
+cancelling the jobs. A restarted worker then resumes the runs.
+[Running on AWS Device Farm](devicefarm.md#the-job-budget) covers the budget and the check before
+each submission.
+
 Wrap it in a `LaunchAgent` (as in Tier A) so it survives reboots. The worker polls the control
 plane's `/api/worker/lease` endpoint over HTTP (no Redis needed), runs each job on a fresh
 Simulator, uploads the `runs/<id>/` tree (including `console.log`), and posts the result back to
 `/api/worker/result`. The control plane records the finished run into Postgres — the worker needs no
 database access.
+
+The browser shows a queued job's console live (BE-0449). While a job runs, the worker posts its new
+log lines to `/api/worker/log` about once a second. The worker masks credential shapes first. A
+private key block stays masked up to its END line. The control plane accepts a batch
+from the lease holder alone. Any other worker gets `409` and drops the job, as on a heartbeat `409`.
+One post carries at most 500 lines and 4 MiB; the worker splits a larger batch, and the control plane
+refuses a larger body with `413` before reading it. The control plane cuts a line longer than 8 KiB. A job may
+publish 50,000 live lines or 16 MiB. Past that, a single truncation notice replaces the rest. Each line goes
+to the job's Server-Sent Events (SSE) stream. The worker's result closes the stream. The worker
+logs and drops a batch it cannot post. A lost batch never stops or delays the job.
+
+The live lines serve a viewer who watches the job while it runs. The uploaded `console.log` stays
+the durable copy of the log:
+
+- A viewer who opens a finished job gets `console.log` when it exists.
+- A viewer who watched live gets `console.log` at the end when no live line reached that viewer.
+- A viewer who received some live lines does not get them again from `console.log`.
+
+Live logs on more than one control-plane replica need `BAJUTSU_REDIS_URL`. One process keeps the
+live lines in memory. Replicas behind a load balancer need a shared store instead:
+
+- Set `BAJUTSU_REDIS_URL` on every replica, for example `redis://cache:6379/0`.
+- Install the `redis` package beside the server extras (`pip install redis`).
+
+A worker's post and a browser's stream then meet in Redis, whatever replica each one reaches.
+Without Redis, a browser misses the lines a worker posted to another replica. Each replica applies
+the cap to its own tally.
+
+A cancel reaches a job whether the job waits in the queue or runs on a worker. The control plane
+finds the job in the jobs table. A cancel thus reaches a job queued before a restart too.
+
+- **A queued job:** the control plane marks the job `cancelled`, and no worker leases it.
+- **A leased job:** the job keeps its lease, and the control plane flags it. The next worker
+  heartbeat answers `{"ok": true, "cancel": true}`, and the worker stops its own run. A `run` job
+  winds down and still writes its report. Any other kind of job stops with its whole process group.
+  The worker renews the lease until the run ends. It then posts a cancelled result. The control
+  plane accepts that result from the lease holder alone, and marks the job `cancelled`.
+- **A finished job:** the cancel changes nothing and reports the job's final status.
+
+A worker can go offline while it stops a cancelled job. Once the lease expires, the control plane
+ends the job `cancelled`. Another worker never runs it.
+
+A leased-job cancel needs workers at this version or later. Upgrade the workers together with the
+control plane.
 
 ### 4. Expose it
 
@@ -830,7 +1148,7 @@ queues](#capability-routed-queues-be-0166) below).
 
 A real Mac pool is rarely uniform: machines carry different iOS runtimes, some are set up for iPad
 and others for iPhone, and a web worker runs a different backend entirely. With one undifferentiated
-queue any worker could lease any job, so a job needing iOS 18 could land on an iOS-17 worker and fail
+queue any worker could lease any job, so an iOS job could land on a Linux web worker and fail
 — not for a real defect, but because it was routed to the wrong machine. **Capability routing** stops
 that: a job is only ever leased by a worker that can actually run it.
 
@@ -839,16 +1157,98 @@ set it **requires**; the control plane leases a job to a worker only when the wo
 token the job requires. Routing decides *which* idle worker picks a job up — it never changes the
 deterministic `run` verdict.
 
-- **A worker's advertised set** comes from its `--platform` (the backend axis: `platform:ios` for a
-  Mac iOS worker, `platform:web` for the Playwright container), plus — for an iOS worker — the
-  installed Simulator inventory (an `iosNN` token per runtime, and `iphone` / `ipad` device classes).
-  Pin extra tokens with `--capabilities` or `$BAJUTSU_WORKER_CAPABILITIES` (comma/space separated),
-  e.g. `bajutsu worker --platform ios --capabilities ios18,ipad`. The web-worker container bakes in
-  `--platform web`, so it advertises `web` and needs no flag.
-- **A job's required set** is the target's resolved platform axis plus its `requires:` config list
-  ([configuration](configuration.md)) — set `targets.<name>.requires: [ios18, ipad]` (or team-wide
-  `defaults.requires`) to pin a runtime or device class. A target with no `requires` routes on its
-  platform axis alone.
+- **A worker's advertised set** comes from its `--platform` and from the machine itself. The
+  `--platform` value gives the backend axis: `platform:ios` for a Mac iOS worker, `platform:web`
+  for the Playwright container. Every
+  worker advertises `host:<os>` for the operating system it runs on, such as `host:darwin` on a
+  Mac ([BE-0450](../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability.md)). An iOS
+  worker also advertises its installed Simulator inventory. That inventory gives an `iosNN` token
+  per runtime, and the `iphone` and `ipad` device classes. An iOS worker also advertises
+  `device:iphone` and `device:ipad` for the families of the real devices connected to it, read
+  over `devicectl`. Real devices come and go, so the worker reads them again on its lease
+  polls, at most once every 15 seconds, and logs each change in what it reads ([BE-0468](../roadmaps/BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of.md)).
+  A worker on a local start's machine
+  also advertises `machine:<id>`, the server's identity, which routes the jobs that name files on
+  that machine ([the server backend on one machine](#the-server-backend-on-one-machine-be-0449)). The web-worker container bakes in `--platform web`, so it advertises
+  `web` and needs no flag.
+- **A local worker refuses a platform it cannot serve.** At startup, the worker checks each
+  `--platform` against its [worker capability file](drivers.md#worker-capability-check-be-0450) and
+  its host. When the file omits the platform's driver, or the host cannot run that driver, the
+  worker exits with a message that names the driver. A Linux machine started with the default
+  `--platform ios` thus stops with `xcuitest runs only on macOS; this worker runs on linux`. It
+  does not idle on jobs it could never start. The check reads the platform's drivers, so an iOS
+  target on the `fake` backend still waits for a Mac worker.
+- **A job's required set** is the target's platform axis and its driver's operating system. The
+  target's `platform` decides its driver. When that driver runs on one operating system alone, the
+  set also holds `host:<os>`. An iOS target on the `xcuitest` driver thus requires `host:darwin`. A
+  web or Android target adds no `host:` token. A worker on the matching machine leases the job. The
+  worker's own check still judges each scenario before any device work. A target declares no extra
+  tokens, since `requires:` and `defaults.requires` are gone
+  ([BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)).
+  Routing derives no `ios18` token from `runsOn.ios.os`, so no job routes on an iOS runtime.
+- **A job's required set also holds the target's `runsOn.ios.family`.** A serve job runs every kind
+  the target's `runsOn.ios.kind` lists. One worker thus needs a fitting device for each. A Simulator
+  run requires the inventory's `iphone` or `ipad` token. A real-device run requires the `device:`
+  one. A single family requires its token, so `kind: device` with `family: ipad` requires
+  `device:ipad`. A family priority list accepts any one family, which a subset test cannot express.
+  The job instead stores an any-of group, `anyof:device:ipad|device:iphone`, which a worker meets
+  by advertising any one member. The leasing worker still resolves the list over its own pool, so
+  routing picks the worker and the list picks the device. A target that names no family adds no
+  token. A request that sends the target to the `fake` driver adds none either, because that
+  driver drives no device
+  ([BE-0468](../roadmaps/BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of.md)).
+- **A paired device reads as connected.** `devicectl` lists every paired real device, plugged in or
+  not. Its tunnel state reads `disconnected` until a run opens the tunnel. An idle device and an
+  unplugged one look alike there. A worker keeps advertising an unplugged device's family. A job
+  routed to that worker fails when its run drives the device. The job does not stay queued.
+- **A run job also requires what its steps and settings need on its route
+  ([BE-0467](../roadmaps/BE-0467-environment-specific-settings/BE-0467-environment-specific-settings.md)).** Each target resolves to an environment route: `ios-simulator`,
+  `ios-device`, `ios-live` (a WebDriver endpoint), `android`, or `web`. A platform alone is not
+  enough, since the three iOS routes support different settings. The job requires two kinds of
+  token:
+  - `cap:<route>:<capability>` for each capability the steps routed to that target need;
+  - `setting:<route>:<key>` for each setting it puts in effect that the target does not declare
+    under `runsOn.ignoredSettings`.
+
+  A run on an Appium grid puts its iOS targets on `ios-live`.
+- **A worker advertises one token set per route its drivers drive.** `xcuitest` drives the
+  Simulator route, `adb` drives `android`, and `playwright` drives `web`. The drivers are every one
+  its [worker capability file](drivers.md#worker-capability-check-be-0450) offers and its host can
+  start, whatever its `--platform`, since a scenario's other targets run on the same machine. An
+  `xcuitest` worker adds the `ios-device` route unless its file sets `realDevices: false`, and an
+  `appium` worker advertises `ios-live`. The route set is as accurate as the file, so list the drivers
+  the machine has installed, and no others. Every such worker also advertises `cap:routing`, which marks it
+  as computing route tokens; no job requires that token. The sets are never
+  intersected. A Mac serving the Simulator and an attached iPhone thus never takes an `erase` job
+  on the device route, and still takes every Simulator job.
+- **A mismatch fails at submission, and an unserved route waits.** The control plane refuses a job
+  when three conditions hold together:
+  - a live worker already drives the job's route;
+  - no live worker advertises every token the job needs;
+  - no live worker can serve the job at all. A worker from before this item matches on its other
+    tokens, so while one still serves the job, a mixed fleet accepts it.
+
+  `POST /api/run` then returns `400`. The error lists each missing token with the
+  steps or settings that need it. While no live worker drives the route, the job stays queued and
+  counts toward `bajutsu_unroutable_jobs`. A cold start or a worker restart is such a case.
+- **A worker re-checks a job when it claims it.** The lease hands the worker the tokens the server
+  routed the job by. Before the worker fetches anything or leases a device, it recomputes its route tokens
+  from its `worker.yaml` and the drivers its host can start. A job needing a token the worker no
+  longer offers fails with that token's name.
+- **A run on an Appium grid routes by environment.** The plain run request (`POST /api/run`) takes
+  an optional `environment`. Its one accepted value is `appium`; any other value returns `400`. Such
+  a job requires `environment:appium` alone, since the grid owns the device. An `appium` worker sets
+  `environment: appium` and the grid's `endpoint` in its `worker.yaml`. It advertises that token
+  alone and takes no `--platform`. It runs a local `bajutsu run` with its `--worker-config`
+  ([iOS on a real device](ios-device-cloud.md#live--an-appium-endpoint-provider)). A Device Farm
+  fan-out takes its own `environment` on `POST /api/run-set`
+  ([Running on AWS Device Farm](devicefarm.md#fanning-a-target-out)).
+- **A hand-written worker input now logs a deprecation notice.** A worker's `--capabilities` and
+  `$BAJUTSU_WORKER_CAPABILITIES` add tokens verbatim. Both still work for this release, with a
+  one-time notice, and go away in the next release. The inventory and the worker capability file
+  now supply what the override was for. An override can also claim a runtime the machine lacks.
+  Neither may carry the reserved `environment:`, `host:`, `machine:`, `device:`, `cap:`, or
+  `setting:` prefix, which the worker fills itself. A worker rejects such a token at startup.
 - **An unroutable job** — one whose required capabilities no live worker advertises — stays queued
   rather than being leased to an incompatible worker or dropped, and is surfaced by the
   `bajutsu_unroutable_jobs` metric (below) so the operator knows to add a worker with the missing
@@ -858,10 +1258,21 @@ deterministic `run` verdict.
 > [!NOTE]
 > **Upgrade the workers alongside or before the control plane.** Every dispatched job now carries at
 > least its `platform:*` requirement, and a worker on a pre-capability-routing build sends no
-> advertised set — so it advertises nothing and can lease no real job. It fails safe (it never
+> advertised set — so it advertises nothing and can lease no real job. The same holds for BE-0450:
+> an iOS job on `xcuitest` now requires `host:darwin`, which a worker built before that change never
+> advertises. It fails safe (it never
 > mis-routes), but an old worker left running against an upgraded control plane silently stops
 > leasing, showing up only as a rising `bajutsu_unroutable_jobs`. Roll the worker binaries first (or
-> together), not after.
+> together), not after. The same order holds for BE-0449: the control plane now queues a `run` as
+> `python -m bajutsu.run.internal`, which a worker built before that change cannot map onto its own
+> interpreter, so such a worker fails every `run` it leases.
+>
+> BE-0467 goes the other way. A worker built before it advertises no `cap:` or `setting:` token, and
+> the control plane matches such a worker on the other tokens alone, so an upgrade never strands a
+> queue. The lease records `workerRouting: unchecked` on each such job's provenance, which reaches
+> the run's `manifest.json`. A report rendered on view, as a local serve renders it, lists that record
+> under *notices*. The report baked at run time does not, since the old worker baked it before the
+> record arrived. Roll the workers to stop the record.
 
 ### Evidence upload to object storage (optional, BE-0110)
 
@@ -1097,8 +1508,8 @@ state it already tracks (the jobs table and lease/heartbeat records) — so it a
 `/metrics` is **not** a public surface: it sits behind the same auth gate as the rest of serve
 (BE-0051), so with a token configured a scraper must send `Authorization: Bearer <token>`. The
 output carries only counts, ages, and org / worker identifiers — never a job spec, a result, or the
-token — so a scrape cannot leak a secret. On local serve (no database) only the in-flight and
-capacity series appear; the queue / lease / worker series are added when a database is wired.
+token — so a scrape cannot leak a secret. Every server keeps its queue in a database. Every server
+thus reports the queue, lease, and worker series too.
 
 The compose stack ships an **optional** Prometheus + Grafana profile (like `caddy`):
 

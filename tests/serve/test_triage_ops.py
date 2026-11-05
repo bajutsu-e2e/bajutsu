@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from _shared import FakeProc, project
+from _shared import FakeProc, WorkerStandIn, project
 
 from bajutsu.serve import operations as ops
 from bajutsu.serve.state import ServeState
@@ -22,7 +22,14 @@ from bajutsu.serve.state import ServeState
 def _state(tmp_path: Path, popen: Any = None) -> ServeState:
     scn_dir, cfg, runs = project(tmp_path)
     kw = {"popen": popen} if popen is not None else {}
-    return ServeState(runs_dir=runs, config=cfg, scenarios_dir=scn_dir, cwd=tmp_path, **kw)
+    return ServeState(
+        executor=WorkerStandIn(),
+        runs_dir=runs,
+        config=cfg,
+        scenarios_dir=scn_dir,
+        cwd=tmp_path,
+        **kw,
+    )
 
 
 def _write_run(state: ServeState, run_id: str) -> str:
@@ -42,7 +49,7 @@ def _await_done(state: ServeState, job_id: str) -> None:
 
 
 def test_start_triage_requires_config(tmp_path: Path) -> None:
-    state = ServeState(runs_dir=tmp_path / "runs", config=None)
+    state = ServeState(executor=WorkerStandIn(), runs_dir=tmp_path / "runs", config=None)
     payload, status = ops.start_triage(
         state, {"runId": "r", "target": "demo", "scenario": "smoke.yaml"}
     )
@@ -91,6 +98,9 @@ def test_start_triage_ai_requires_a_credential(tmp_path: Path, monkeypatch: Any)
     import bajutsu.common.ai as ai
 
     monkeypatch.setattr(ai, "credential_gap", lambda _ai: "anthropic-key")
+    # The environment store reads a stored key from the process environment, where another test on
+    # this worker process may have left one, and a key there would rightly admit the job.
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     state = _state(tmp_path)
     run_id = _write_run(state, "20260101-000000")
     payload, status = ops.start_triage(
@@ -111,13 +121,21 @@ def test_start_triage_ai_refuses_under_provider_none(tmp_path: Path, monkeypatch
     )
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [ios], ai: { provider: none } }\n"
-        f"targets:\n  demo: {{ bundleId: com.example.demo, scenarios: {scn_dir} }}\n",
+        (
+            "defaults:\n"
+            f"  ai: {{provider: none}}\n"
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            f"    subject: {{id: com.example.demo}}\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     runs = tmp_path / "runs"
     runs.mkdir()
     state = ServeState(
+        executor=WorkerStandIn(),
         runs_dir=runs,
         config=cfg,
         scenarios_dir=scn_dir,

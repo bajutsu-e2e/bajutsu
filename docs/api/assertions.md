@@ -1,5 +1,5 @@
 # Assertions
 
-The machine-checkable assertions evaluated by the deterministic runner (no AI is involved).
+The deterministic runner evaluates the machine-checkable assertions on this page. No AI is involved.
 
 ::: bajutsu.common.assertions

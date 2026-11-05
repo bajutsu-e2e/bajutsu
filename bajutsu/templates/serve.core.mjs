@@ -10,6 +10,7 @@
 // time. serve.author.mjs is the entry module the page loads.
 import {loadHistory, loadStats, loadFlaky, loadUsage, coverageInit, showInfo, replayAudit, onSimChange, loadTrash, seedComposeFromCurrent} from './serve.panels.mjs';
 import {loadMetrics} from './serve.metrics.mjs';
+import {syncCloudForm} from './serve.runset.mjs';
 import {loadOrgs} from './serve.orgs.mjs';
 import {onCrawlSimChange} from './serve.crawl.mjs';
 import {applyCaptureCapability, authorInit, authorRefresh, syncPlatform, replayCodegen} from './serve.author.mjs';
@@ -68,9 +69,15 @@ async function cancelJob(id,stop){
 }
 // Live-stream a job's log over SSE (BE-0015): a `log` event per line, then one `done` event with
 // the job's final view. Returns the EventSource so a restart can close it. Replaces 1s polling.
-function streamJob(id,onLog,onDone,onHuman){
+// onNotice receives a queued job's no-worker notice (BE-0449): its text while no worker can take
+// the job, then null once one does. onArtifact receives a live artifact snapshot the job's worker
+// posted ({name, data}, or {name, truncated} once the job's live budget is spent) — crawl's
+// growing screen map (BE-0449 unit 8).
+function streamJob(id,onLog,onDone,onHuman,onNotice,onArtifact){
   const es=new EventSource('/api/jobs/'+id+'/events');
   es.addEventListener('log',e=>onLog(e.data));
+  es.addEventListener('notice',e=>{if(onNotice)onNotice(JSON.parse(e.data).notice)});
+  es.addEventListener('artifact',e=>{if(onArtifact)onArtifact(JSON.parse(e.data))});
   // A "needs human" turn (BE-0179): the paused record's serialized request. Only record wires
   // onHuman; run/crawl never emit it.
   es.addEventListener('human-request',e=>{if(onHuman)onHuman(JSON.parse(e.data))});
@@ -220,7 +227,7 @@ function wireHistoryList(o){
 // button stuck spinning, since it now fronts all three start buttons). On success it runs
 // onStart(data) (so the caller can stash its jobId/runId/path) and returns the EventSource for the
 // caller to hold for a later restart/cancel.
-//   o: {prev, btn, stop, busyLabel, status, url, body, onStart, onLog, onDone, onHuman}
+//   o: {prev, btn, stop, busyLabel, status, url, body, onStart, onLog, onDone, onHuman, onArtifact}
 async function startJob(o){
   if(o.prev)o.prev.close();
   setBusy(o.btn,o.stop,true,o.busyLabel);
@@ -234,7 +241,7 @@ async function startJob(o){
   if(data.error)return fail(data.error);
   if(!data.jobId)return fail('no job started');  // a non-2xx without an {error} field still can't stream
   if(o.onStart)o.onStart(data);
-  return streamJob(data.jobId,o.onLog,o.onDone,o.onHuman);
+  return streamJob(data.jobId,o.onLog,o.onDone,o.onHuman,n=>setStatus(o.status,n||'',n?'ng':'run'),o.onArtifact);
 }
 
 // ---- determinism audit badge (BE-0145): shared by the Author editor and the Replay views ----
@@ -1107,7 +1114,7 @@ async function loadScenarios(){
   const target=$('#target').value;
   scnFiles=target?await getJSON('/api/scenarios?target='+encodeURIComponent(target),[]):[];
   $('#scn').innerHTML=scnFiles.map(s=>`<option value="${esc(s.path)}">${esc(s.file)}</option>`).join('');
-  showInfo();replayAudit();
+  showInfo();replayAudit();syncCloudForm();
 }
 $('#target').addEventListener('change',()=>{loadScenarios();replayCodegen.sync();replayCodegen.reset();});
 async function loadSims(){

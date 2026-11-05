@@ -80,12 +80,12 @@ enum BajutsuControlChannel {
     /// idle channel is not a busy loop inside the app whose timing a test is measuring.
     static let pollInterval: TimeInterval = 0.15
 
-    /// The two endpoints and the token that reaches them — resolved once at start, then carried
-    /// through the poll round as a value so no shared mutable state is read off `queue`.
+    /// The two endpoints and the credential that reaches them — resolved once at start, then
+    /// carried through the poll round as a value so no shared mutable state is read off `queue`.
     struct Endpoint {
         let commands: URL
         let acknowledge: URL
-        let token: String
+        let credential: CollectorCredential
     }
 
     /// Serial, and every mutation below happens on it. The poll round hops between this queue, a
@@ -103,10 +103,11 @@ enum BajutsuControlChannel {
     static var isRunning: Bool { queue.sync { endpoint != nil } }
 
     /// The endpoints a collector root serves, split out so the paths are checkable without a run.
-    static func endpoints(collector: URL, token: String) -> Endpoint {
+    static func endpoints(collector: URL, credential: CollectorCredential) -> Endpoint {
         let commands = collector.appendingPathComponent("commands")
         return Endpoint(
-            commands: commands, acknowledge: commands.appendingPathComponent("ack"), token: token
+            commands: commands, acknowledge: commands.appendingPathComponent("ack"),
+            credential: credential
         )
     }
 
@@ -116,16 +117,16 @@ enum BajutsuControlChannel {
     /// direction only: this type never reaches into the observation half it is unrelated to.
     ///
     /// Args are the app's launch environment, the collector root `BajutsuNet` resolved, and the
-    /// per-run token; a nil collector or an empty token leaves the channel inert, because a command
+    /// per-run credential; a nil collector or credential leaves the channel inert, because a command
     /// nobody can acknowledge is worse than no channel at all.
     static func startIfEnabled(
         environment: [String: String] = ProcessInfo.processInfo.environment,
         collector: URL?,
-        token: String?
+        credential: CollectorCredential?
     ) {
         guard environment[activationKey] == "1" else { return }
-        guard let collector, let token, !token.isEmpty else { return }
-        let resolved = endpoints(collector: collector, token: token)
+        guard let collector, let credential else { return }
+        let resolved = endpoints(collector: collector, credential: credential)
         queue.async {
             guard endpoint == nil else { return }  // idempotent, like every other startIfEnabled
             endpoint = resolved
@@ -148,6 +149,9 @@ enum BajutsuControlChannel {
     /// weather: retrying either cannot turn it into a working channel, and unit 1 answers 404 on an
     /// unknown `GET` precisely so a version-skewed poll is legible rather than a silent hang.
     /// Everything else — a transport error, a 5xx — keeps polling, since a collector can be busy.
+    /// So does a 409 (BE-0459): a copy of this poll reached the collector first, which says nothing
+    /// about the next one, and ending the channel on it would let one forwarded poll silence every
+    /// later scenario.
     static func isTerminal(status: Int?) -> Bool {
         status == 401 || status == 404
     }
@@ -162,9 +166,10 @@ enum BajutsuControlChannel {
         // CFNetwork's heuristics: a cached empty drain is a channel that silently never delivers,
         // which the acknowledgement wait can report only as a blind timeout.
         request.cachePolicy = .reloadIgnoringLocalCacheData
-        request.setValue("Bearer \(channel.token)", forHTTPHeaderField: "Authorization")
+        let nonce = channel.credential.authorize(&request)
         BajutsuNet.reportSession.dataTask(with: request) { data, response, _ in
-            let status = (response as? HTTPURLResponse)?.statusCode
+            let http = response as? HTTPURLResponse
+            let status = http?.statusCode
             // Every step below runs on `queue`, applying included: a drain still in flight when
             // `stop()` lands must not reach the app or acknowledge against the stopped run's
             // endpoint, which is what `stop()` promises its caller.
@@ -188,6 +193,12 @@ enum BajutsuControlChannel {
                     poll(channel, generation: generation)
                 }
                 guard let data, status == 200 else { return }
+                // Before anything is decoded: an answer rewritten on the route must apply nothing.
+                // bajutsu's acknowledgement wait then times out naming the command (BE-0459).
+                guard channel.credential.accepts(http, body: data, nonce: nonce) else {
+                    NSLog("BajutsuKit: discarded a /commands answer whose signature did not verify")
+                    return
+                }
                 let drained = commands(from: data)
                 // An empty drain is the overwhelmingly common case, and it stops here: an idle
                 // channel never schedules main-thread work, so it cannot perturb the app's own
@@ -269,7 +280,7 @@ enum BajutsuControlChannel {
         BajutsuNet.postJSON(
             report(for: command, outcome: outcome),
             to: channel.acknowledge,
-            token: channel.token,
+            credential: channel.credential,
             session: BajutsuNet.reportSession
         )
     }

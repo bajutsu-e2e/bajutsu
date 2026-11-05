@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bajutsu Web Demo — Help</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 28rem; }
+      h1 { font-size: 1.4rem; }
+    </style>
+  </head>
+  <body>
+    <!--
+      A page no control in index.html links to, so a scenario reaches it only by URL — the entry
+      point the `navigate` step exists for (BE-0464, scenarios/navigate.yaml).
+    -->
+    <h1 data-testid="help.title">Help</h1>
+    <p data-testid="help.body">Open this page by its address; nothing in the app links here.</p>
+  </body>
+</html>

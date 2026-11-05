@@ -18,3 +18,4 @@ class _PromptSurfaces(TypedDict):
     tracking: AlertSurfaces
     paste: AlertSurfaces
     savePassword: AlertSurfaces
+    localNetwork: AlertSurfaces

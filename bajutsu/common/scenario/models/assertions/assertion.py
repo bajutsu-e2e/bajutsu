@@ -9,6 +9,7 @@ from pydantic import Field, model_validator
 from bajutsu.common.scenario.models._base import _exactly_one, _Model
 from bajutsu.common.scenario.models.selector import Selector
 
+from .attribute_match import AttributeMatch
 from .clipboard_match import ClipboardMatch
 from .count_match import CountMatch
 from .event_match import EventMatch
@@ -38,6 +39,8 @@ class Assertion(_Model):
     response_schema: ResponseSchemaMatch | None = Field(default=None, alias="responseSchema")
     visual: VisualMatch | None = None
     clipboard: ClipboardMatch | None = None
+    # Web only (BE-0466): read on demand through `Driver.read_attributes`, gated by `elementAttribute`.
+    attribute: AttributeMatch | None = None
     golden: GoldenMatch | None = None
     # Provenance (BE-0044): the natural-language phrase this check was normalized from. Not one of
     # the assertion kinds (`_ASSERTION_KINDS`), so it doesn't disturb the one-kind rule; `run`

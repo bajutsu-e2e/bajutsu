@@ -1,29 +1,37 @@
 """The top-level shapes a scenario file is made of.
 
-Preconditions, the alert-guard control, the scenario and its reusable component, and the
+Preconditions, the scenario and its reusable component, and the
 scenario-file wrapper that ties them together.
 """
 
-from ._functions import _coerce_system_alert_handling as _coerce_system_alert_handling
 from ._http_extract import _check_http_extract_vars as _check_http_extract_vars
 from ._targets import _check_target_requirements as _check_target_requirements
 from ._targets import _expand_target_groups as _expand_target_groups
 from ._targets import _scenarios_declaring_targets as _scenarios_declaring_targets
 from .component import Component
-from .preconditions import Preconditions
+from .preconditions import (
+    FLAT_PRECONDITION_KEYS,
+    Preconditions,
+    PreconditionsApp,
+    PreconditionsDevice,
+    PreconditionsIosDevice,
+    PreconditionsLaunch,
+)
 from .scenario import _PERMISSION_ACTIONS as _PERMISSION_ACTIONS
-from .scenario import Scenario, SystemAlertHandlingField
+from .scenario import Scenario
 from .scenario_file import SCHEMA_VERSION, ScenarioFile
-from .system_alert_handling import SystemAlertHandling
 from .system_alert_rule import SystemAlertRule
 
 __all__ = [
+    "FLAT_PRECONDITION_KEYS",
     "SCHEMA_VERSION",
     "Component",
     "Preconditions",
+    "PreconditionsApp",
+    "PreconditionsDevice",
+    "PreconditionsIosDevice",
+    "PreconditionsLaunch",
     "Scenario",
     "ScenarioFile",
-    "SystemAlertHandling",
-    "SystemAlertHandlingField",
     "SystemAlertRule",
 ]

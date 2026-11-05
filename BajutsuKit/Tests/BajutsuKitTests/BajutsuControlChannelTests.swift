@@ -180,7 +180,7 @@ final class BajutsuControlChannelTests: XCTestCase {
 
     func testTheEndpointsSitUnderTheCollectorRoot() {
         let endpoint = BajutsuControlChannel.endpoints(
-            collector: URL(string: "http://127.0.0.1:6801")!, token: "t"
+            collector: URL(string: "http://127.0.0.1:6801")!, credential: .bearer("t")
         )
         XCTAssertEqual(endpoint.commands.absoluteString, "http://127.0.0.1:6801/commands")
         XCTAssertEqual(endpoint.acknowledge.absoluteString, "http://127.0.0.1:6801/commands/ack")
@@ -192,24 +192,26 @@ final class BajutsuControlChannelTests: XCTestCase {
 
     func testTheChannelIsInertWithoutItsLaunchEnvKey() {
         BajutsuControlChannel.startIfEnabled(
-            environment: [:], collector: Self.collector, token: "t"
+            environment: [:], collector: Self.collector, credential: .bearer("t")
         )
         XCTAssertFalse(BajutsuControlChannel.isRunning)
 
         BajutsuControlChannel.startIfEnabled(
             environment: [BajutsuControlChannel.activationKey: "0"],
-            collector: Self.collector, token: "t"
+            collector: Self.collector, credential: .bearer("t")
         )
         XCTAssertFalse(BajutsuControlChannel.isRunning)
     }
 
     func testTheChannelIsInertWithoutACollectorToPoll() {
         let enabled = [BajutsuControlChannel.activationKey: "1"]
-        BajutsuControlChannel.startIfEnabled(environment: enabled, collector: nil, token: "t")
+        BajutsuControlChannel.startIfEnabled(
+            environment: enabled, collector: nil, credential: .bearer("t")
+        )
         XCTAssertFalse(BajutsuControlChannel.isRunning)
 
         BajutsuControlChannel.startIfEnabled(
-            environment: enabled, collector: Self.collector, token: ""
+            environment: enabled, collector: Self.collector, credential: nil
         )
         XCTAssertFalse(BajutsuControlChannel.isRunning)
     }
@@ -221,6 +223,8 @@ final class BajutsuControlChannelTests: XCTestCase {
         XCTAssertTrue(BajutsuControlChannel.isTerminal(status: 404))
         // A busy or restarting collector is weather, not misconfiguration, so polling continues.
         XCTAssertFalse(BajutsuControlChannel.isTerminal(status: 200))
+        // A copy of the poll that arrived first (BE-0459) says nothing about the next one.
+        XCTAssertFalse(BajutsuControlChannel.isTerminal(status: 409))
         XCTAssertFalse(BajutsuControlChannel.isTerminal(status: 503))
         XCTAssertFalse(BajutsuControlChannel.isTerminal(status: nil))
     }
@@ -228,7 +232,7 @@ final class BajutsuControlChannelTests: XCTestCase {
     func testTheChannelStartsWhenBothGuardsAreSatisfiedAndStopsOnRequest() {
         BajutsuControlChannel.startIfEnabled(
             environment: [BajutsuControlChannel.activationKey: "1"],
-            collector: Self.collector, token: "t"
+            collector: Self.collector, credential: .bearer("t")
         )
         XCTAssertTrue(BajutsuControlChannel.isRunning)
 
@@ -240,7 +244,8 @@ final class BajutsuControlChannelTests: XCTestCase {
 
     func testAQueuedCommandIsDrainedAppliedAndAcknowledgedOverTheWire() throws {
         // The pure pieces above check the shapes; this checks that the poll round actually sends
-        // them — the method, path, and bearer token of the drain, and the report that follows it.
+        // them — the method, path, and bearer token of the drain, and the report that follows it —
+        // for a host that announced no signed scheme (BE-0459's bearer fallback).
         let collector = LoopbackCollectorStub()
         let acknowledged = expectation(description: "the app reported on the command")
         // Both set before the listener exists, so the serving thread never races the test's own.
@@ -252,7 +257,7 @@ final class BajutsuControlChannelTests: XCTestCase {
         BajutsuControlChannel.startIfEnabled(
             environment: [BajutsuControlChannel.activationKey: "1"],
             collector: URL(string: "http://127.0.0.1:\(port)")!,
-            token: "run-token"
+            credential: .bearer("run-token")
         )
         wait(for: [acknowledged], timeout: 10)
 
@@ -285,7 +290,7 @@ final class BajutsuControlChannelTests: XCTestCase {
             // The stub 404s every path but `/commands`, the same way unit 1's `do_GET` does, so a
             // root carrying an extra segment stands in for a version-skewed poll.
             collector: URL(string: "http://127.0.0.1:\(port)/skewed")!,
-            token: "run-token"
+            credential: .bearer("run-token")
         )
 
         // A condition wait, not a duration: nothing else clears `endpoint`, so the loop going quiet
@@ -302,6 +307,126 @@ final class BajutsuControlChannelTests: XCTestCase {
         // thread resumes would make it flaky. A recorded drain is what rules out the loop having
         // never started, which is the other way the wait above could be satisfied.
         XCTAssertEqual(collector.requests.map(\.path), ["/skewed/commands"])
+    }
+
+    // --- the signed scheme (BE-0459) ---
+
+    private static let signed = CollectorCredential(token: "run-token", signs: true)
+
+    /// Start the channel against `collector` with the signed credential, on its bare root.
+    private func startSigned(_ collector: LoopbackCollectorStub) throws {
+        let port = try collector.start()
+        BajutsuControlChannel.startIfEnabled(
+            environment: [BajutsuControlChannel.activationKey: "1"],
+            collector: URL(string: "http://127.0.0.1:\(port)")!,
+            credential: Self.signed
+        )
+    }
+
+    /// Wait until the stub has recorded `count` drains — the loop's own progress, not a duration.
+    private func waitForDrains(_ collector: LoopbackCollectorStub, _ count: Int) {
+        wait(
+            for: [
+                XCTNSPredicateExpectation(
+                    predicate: NSPredicate { _, _ in
+                        collector.requests.filter { $0.path == "/commands" }.count >= count
+                    },
+                    object: nil
+                )
+            ],
+            timeout: 10
+        )
+    }
+
+    func testASignedDrainAndItsAcknowledgementCarryVerifiableSignatures() throws {
+        let collector = LoopbackCollectorStub()
+        let acknowledged = expectation(description: "the app reported on the command")
+        collector.onAcknowledge = { acknowledged.fulfill() }
+        collector.signingToken = "run-token"
+        collector.enqueue(#"[{"id": "c8", "capability": "touch_visualization", "enabled": false}]"#)
+        try startSigned(collector)
+        defer { collector.stop() }
+        wait(for: [acknowledged], timeout: 10)
+
+        for request in collector.requests {
+            let nonce = try XCTUnwrap(LoopbackCollectorStub.nonce(in: request.authorization))
+            XCTAssertEqual(
+                request.authorization,
+                CollectorSigning.authorization(
+                    token: "run-token", method: request.method, path: request.path, nonce: nonce,
+                    body: request.body
+                )
+            )
+            XCTAssertFalse(request.authorization.contains("run-token"), "the token stays off the wire")
+        }
+        let nonces = collector.requests.compactMap { LoopbackCollectorStub.nonce(in: $0.authorization) }
+        XCTAssertEqual(Set(nonces).count, nonces.count, "every request carries a fresh nonce")
+        XCTAssertFalse(BajutsuTouch.markersVisible)
+    }
+
+    func testADrainWhoseAnswerFailsVerificationAppliesNothing() throws {
+        // Signed with a token other than the app's: an answer rewritten on the route.
+        let collector = LoopbackCollectorStub()
+        collector.signingToken = "not-the-run-token"
+        try assertNothingApplied(by: collector)
+    }
+
+    func testAnUnsignedDrainAnswerAppliesNothing() throws {
+        try assertNothingApplied(by: LoopbackCollectorStub())
+    }
+
+    func testADrainAnswerSignedForAnEarlierPollAppliesNothing() throws {
+        // Genuinely the collector's signature, over another request's nonce: a replayed answer.
+        let collector = LoopbackCollectorStub()
+        collector.signingToken = "run-token"
+        collector.staleNonce = CollectorSigning.newNonce()
+        try assertNothingApplied(by: collector)
+    }
+
+    /// Serve one queued command through `collector`, and check the app neither applied nor
+    /// acknowledged it while polling on.
+    private func assertNothingApplied(by collector: LoopbackCollectorStub) throws {
+        collector.enqueue(#"[{"id": "c9", "capability": "touch_visualization", "enabled": false}]"#)
+        try startSigned(collector)
+        defer { collector.stop() }
+
+        // Two drains: the forged answer was handled, and polling went on rather than ending.
+        waitForDrains(collector, 2)
+        XCTAssertTrue(BajutsuTouch.markersVisible, "a forged answer must not be applied")
+        XCTAssertFalse(collector.requests.contains { $0.path == "/commands/ack" })
+        XCTAssertTrue(BajutsuControlChannel.isRunning)
+    }
+
+    func testTheChannelKeepsPollingAfterA409() throws {
+        let collector = LoopbackCollectorStub()
+        let acknowledged = expectation(description: "the app reported on the command")
+        collector.onAcknowledge = { acknowledged.fulfill() }
+        collector.signingToken = "run-token"
+        collector.drainStatuses = [409, 409]
+        collector.enqueue(#"[{"id": "c10", "capability": "touch_visualization", "enabled": false}]"#)
+        try startSigned(collector)
+        defer { collector.stop() }
+
+        wait(for: [acknowledged], timeout: 10)
+        XCTAssertGreaterThanOrEqual(collector.requests.filter { $0.path == "/commands" }.count, 3)
+        XCTAssertTrue(BajutsuControlChannel.isRunning)
+    }
+
+    func testTheChannelStopsAfterA401() throws {
+        let collector = LoopbackCollectorStub()
+        collector.drainStatuses = [401]
+        try startSigned(collector)
+        defer { collector.stop() }
+
+        wait(
+            for: [
+                XCTNSPredicateExpectation(
+                    predicate: NSPredicate { _, _ in !BajutsuControlChannel.isRunning }, object: nil
+                )
+            ],
+            timeout: 10
+        )
+        XCTAssertEqual(collector.requests.map(\.path), ["/commands"])
     }
 }
 

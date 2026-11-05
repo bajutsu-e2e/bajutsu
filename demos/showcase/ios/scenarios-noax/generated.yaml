@@ -5,8 +5,8 @@
     - on: { action: tap }
       capture: [screenshot.after, video]
   preconditions:
-    erase: false
-    reinstall: clean
+    subject:
+      reinstall: clean
   steps:
   - tapPoint:
       x: 0.5

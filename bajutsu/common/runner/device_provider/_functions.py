@@ -5,6 +5,7 @@ from __future__ import annotations
 from bajutsu.common.config import Effective
 
 from ._appium_provider import _AppiumProvider
+from ._devicefarm_host_provider import _DevicefarmHostProvider
 from ._local_provider import _LocalProvider
 from .device_lease import DeviceLease
 from .device_provider import DeviceProvider
@@ -21,6 +22,7 @@ def _ensure_builtins() -> None:
     """Register the built-in providers on first use (`setdefault` leaves a test override intact)."""
     _PROVIDERS.setdefault("local", _LocalProvider())
     _PROVIDERS.setdefault("appium", _AppiumProvider())
+    _PROVIDERS.setdefault("devicefarm-host", _DevicefarmHostProvider())
 
 
 def acquire_device(eff: Effective, requested_udid: str) -> DeviceLease:

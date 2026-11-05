@@ -3,12 +3,24 @@
 from __future__ import annotations
 
 from bajutsu.serve import operations as ops
+from bajutsu.serve.operations.worker import (
+    WORKER_ARTIFACT_MAX_BODY_BYTES,
+    WORKER_HANDOFF_MAX_BODY_BYTES,
+    WORKER_LOG_MAX_BODY_BYTES,
+)
 
+from .request_ctx import RequestCtx
 from .route import Route
 
 # Content type for the HTML dashboard routes (/stats, /flakiness, /usage, /coverage); /metrics uses the
 # Prometheus type. Both drive `_text` instead of the JSON writer.
 _HTML = "text/html; charset=utf-8"
+
+
+def _worker_caller(ctx: RequestCtx) -> bool:
+    """Whether the request came in on the shared token (or an ungated loopback start), the way a
+    worker authenticates, rather than on a browser or machine session (BE-0449)."""
+    return ctx.session() is None and ctx.machine_org() is None
 
 
 # The route table. Order is load-bearing for the greedy `/runs/{rel:path}`, which must come after
@@ -130,6 +142,7 @@ ROUTES: tuple[Route, ...] = (
             ctx.query("sha256"),
             actor=ctx.actor(),
             machine_org=ctx.machine_org(),
+            ci_job=ctx.ci_job(),
         ),
     ),
     Route(
@@ -156,9 +169,13 @@ ROUTES: tuple[Route, ...] = (
         "GET",
         "/api/jobs/{job_id}",
         lambda state, ctx: ops.job_view(
-            state, ctx.path_param("job_id"), machine_org=ctx.machine_org()
+            state,
+            ctx.path_param("job_id"),
+            machine_org=ctx.machine_org(),
+            include_lines=ctx.query("lines") != "0",
         ),
     ),
+    Route("GET", "/api/environments", lambda state, _ctx: ops.list_environments(state)),
     # --- GET: text responses (content_type) ---
     Route(
         "GET",
@@ -294,6 +311,7 @@ ROUTES: tuple[Route, ...] = (
             actor=ctx.actor(),
             session=ctx.session(),
             machine_org=ctx.machine_org(),
+            ci_job=ctx.ci_job(),
         ),
     ),
     Route(
@@ -377,7 +395,13 @@ ROUTES: tuple[Route, ...] = (
             state, ctx.body(), actor=ctx.actor(), session=ctx.session()
         ),
     ),
-    Route("POST", "/api/lint", lambda _state, ctx: ops.lint_scenario(ctx.body())),
+    Route(
+        "POST",
+        "/api/lint",
+        lambda state, ctx: ops.lint_scenario(
+            state, ctx.body(), actor=ctx.actor(), session=ctx.session()
+        ),
+    ),
     Route(
         "POST",
         "/api/scenario/apply-selector",
@@ -472,8 +496,13 @@ ROUTES: tuple[Route, ...] = (
     Route(
         "POST",
         "/api/worker/lease",
+        # The stored secrets ride only on a lease taken with the shared token (or with no gate at
+        # all on a loopback start): a browser or machine session never receives them (BE-0449).
         lambda state, ctx: ops.worker_lease(
-            state, ctx.body().get("worker_id", ""), ctx.body().get("capabilities")
+            state,
+            ctx.body().get("worker_id", ""),
+            ctx.body().get("capabilities"),
+            relay_secrets=_worker_caller(ctx),
         ),
     ),
     Route(
@@ -482,6 +511,39 @@ ROUTES: tuple[Route, ...] = (
         lambda state, ctx: ops.worker_heartbeat(
             state, ctx.body().get("worker_id", ""), ctx.body().get("job_id", "")
         ),
+    ),
+    Route(
+        "POST",
+        "/api/worker/log",
+        lambda state, ctx: ops.worker_log(state, ctx.body()),
+        max_body=WORKER_LOG_MAX_BODY_BYTES,
+    ),
+    # The relay of a crawl's live screen map and a paused record's handoff (BE-0449 unit 8). Each
+    # carries the page's live view or a person's answer, so only a worker reaches it: a caller on a
+    # browser or machine session gets 403, as the lease withholds the secrets from one.
+    Route(
+        "POST",
+        "/api/worker/artifact",
+        lambda state, ctx: ops.worker_artifact(state, ctx.body(), from_worker=_worker_caller(ctx)),
+        max_body=WORKER_ARTIFACT_MAX_BODY_BYTES,
+    ),
+    Route(
+        "POST",
+        "/api/worker/handoff",
+        lambda state, ctx: ops.worker_handoff(state, ctx.body(), from_worker=_worker_caller(ctx)),
+        max_body=WORKER_HANDOFF_MAX_BODY_BYTES,
+    ),
+    Route(
+        "POST",
+        "/api/worker/handoff-response",
+        lambda state, ctx: ops.worker_handoff_response(
+            state, ctx.body(), from_worker=_worker_caller(ctx)
+        ),
+    ),
+    Route(
+        "POST",
+        "/api/worker/batch-run",
+        lambda state, ctx: ops.worker_batch_run(state, ctx.body()),
     ),
     Route("POST", "/api/worker/result", lambda state, ctx: ops.worker_result(state, ctx.body())),
     Route(
@@ -497,12 +559,20 @@ ROUTES: tuple[Route, ...] = (
     Route(
         "POST",
         "/api/jobs/{job_id}/cancel",
-        lambda state, ctx: ops.cancel_job(state, ctx.path_param("job_id")),
+        lambda state, ctx: ops.cancel_job(
+            state, ctx.path_param("job_id"), actor=ctx.actor(), machine_org=ctx.machine_org()
+        ),
     ),
     Route(
         "POST",
         "/api/jobs/{job_id}/respond-human",
-        lambda state, ctx: ops.respond_human(state, ctx.path_param("job_id"), ctx.body()),
+        lambda state, ctx: ops.respond_human(
+            state,
+            ctx.path_param("job_id"),
+            ctx.body(),
+            actor=ctx.actor(),
+            machine_org=ctx.machine_org(),
+        ),
     ),
     Route(
         "POST",
@@ -517,6 +587,8 @@ ROUTES: tuple[Route, ...] = (
         "/api/runs/bulk-delete",
         lambda state, ctx: ops.bulk_delete_runs(state, ctx.body(), actor=ctx.actor()),
     ),
+    # Index run trees written outside the server into the history (BE-0449); admin-gated.
+    Route("POST", "/api/runs/rescan", lambda state, ctx: ops.rescan_runs(state, actor=ctx.actor())),
     Route(
         "POST",
         "/api/runs/{run_id}/restore",

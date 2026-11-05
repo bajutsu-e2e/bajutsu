@@ -10,9 +10,14 @@ name: Auto-merge (bypass App)
 # fires it. So when the bypass App is configured we enable auto-merge with its installation token
 # (an App token is not GITHUB_TOKEN, so its merge push does fire push workflows); otherwise we fall
 # back to GITHUB_TOKEN — harmless, because without the App `roadmap-id` is dormant anyway.
+#
+# Stacked PRs: GitHub refuses auto-merge for a PR based on another PR's branch (or one that other
+# PRs are stacked on). That refusal is expected, not a failure, so it becomes a notice. `edited` with
+# a base change onto the default branch retries once the stack below has merged and the PR has been
+# retargeted, so nobody has to close and reopen it.
 on:
   pull_request:
-    types: [opened, reopened, ready_for_review]
+    types: [opened, reopened, ready_for_review, edited]
 
 permissions:
   contents: write
@@ -22,7 +27,12 @@ jobs:
   enable-auto-merge:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    if: github.event.pull_request.draft == false
+    # `edited` fires on every title/body edit too; only a retarget onto the default branch counts.
+    if: >-
+      github.event.pull_request.draft == false &&
+      (github.event.action != 'edited' ||
+        (github.event.changes.base &&
+          github.event.pull_request.base.ref == github.event.repository.default_branch))
     steps:
       - name: Decide which identity enables auto-merge
         id: gate
@@ -51,4 +61,15 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.gate.outputs.use_app == 'true' && steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
           PR_URL: ${{ github.event.pull_request.html_url }}
-        run: gh pr merge --auto --merge "$PR_URL"
+        run: |
+          if out=$(gh pr merge --auto --merge "$PR_URL" 2>&1); then
+            echo "$out"
+            exit 0
+          fi
+          echo "$out"
+          # Only GitHub's stacked-PR refusal is tolerated; every other error still fails the job.
+          if grep -q "Auto-merge is not supported for stacked pull requests" <<<"$out"; then
+            echo "::notice::Auto-merge is not available while this PR is stacked. It is enabled once the PRs below it merge and this PR is retargeted onto the default branch."
+            exit 0
+          fi
+          exit 1

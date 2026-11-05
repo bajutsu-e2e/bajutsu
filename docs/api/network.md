@@ -1,5 +1,5 @@
 # Network
 
-The observed-request model the `request` / `event` / `requestSequence` assertions match against.
+The `request`, `event`, and `requestSequence` assertions match against the observed-request model, `NetworkExchange`.
 
 ::: bajutsu.common.evidence.network

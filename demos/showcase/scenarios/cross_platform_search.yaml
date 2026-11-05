@@ -14,26 +14,28 @@
   tags: [multi-target]
   targets: [showcase-swiftui, showcase-compose]
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    subject:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - target: showcase-swiftui
       tap: { label: "Search", traits: [button] }
     - target: showcase-swiftui
-      wait: { for: { id: [search.field, search_field] }, timeout: 10 }
+      wait: { for: { id: search.field }, timeout: 10 }
     - target: showcase-swiftui
-      type: { text: "Horse 3", into: { id: [search.field, search_field] } }
+      type: { text: "Horse 3", into: { id: search.field } }
     - target: showcase-swiftui
-      wait: { for: { id: [search.row.3, search_row_3] }, timeout: 5 }
+      wait: { for: { id: search.row.3 }, timeout: 5 }
       extract:
-        iosCount: { sel: { id: [search.count, search_count] } }
+        iosCount: { sel: { id: search.count } }
     - target: showcase-compose
       tap: { label: "Search", traits: [button] }
     - target: showcase-compose
-      wait: { for: { id: [search.field, search_field] }, timeout: 10 }
+      wait: { for: { id: search.field }, timeout: 10 }
     - target: showcase-compose
-      type: { text: "Horse 3", into: { id: [search.field, search_field] } }
+      type: { text: "Horse 3", into: { id: search.field } }
     - target: showcase-compose
-      wait: { for: { id: [search.row.3, search_row_3] }, timeout: 5 }
+      wait: { for: { id: search.row.3 }, timeout: 5 }
   expect:
     - target: showcase-compose
-      value: { sel: { id: [search.count, search_count] }, equals: "${vars.iosCount}" }
+      value: { sel: { id: search.count }, equals: "${vars.iosCount}" }

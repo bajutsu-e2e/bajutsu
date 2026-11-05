@@ -1,7 +1,7 @@
 """Tests for the queue-based RunExecutor + worker entrypoint (BE-0015 server phase).
 
-`QueueExecutor` is a server implementation of the `RunExecutor` seam: instead of running `run_job`
-in-process (like `LocalExecutor`), it serializes the job and enqueues it; a remote `bajutsu worker`
+`QueueExecutor` is a server implementation of the `RunExecutor` seam: rather than running `run_job`
+itself, it serializes the job and enqueues it; a remote `bajutsu worker`
 later reconstructs the job and runs the *unchanged* `run_job`. These tests drive both ends with a
 fake queue and an injected Popen, so the Linux gate needs neither Redis nor RQ installed. The two
 worker-side cases that record into a repository run against in-memory SQLite in the gate and, behind
@@ -74,9 +74,13 @@ def test_dispatch_enqueues_a_serializable_job_spec(tmp_path: Path) -> None:
         "label": None,  # no config bound for this locally-built job to derive one from (BE-0404)
         "env_overlay": {},  # no AI provider selected for this org, so no overlay (BE-0229)
         "batch": None,  # not a cloud-batch job (BE-0336 Unit 5)
+        "batch_app": None,  # no stored application to fetch (BE-0448)
         "overrides": None,  # no per-job artifact override named (BE-0431)
         "provenance": None,  # nothing uploaded or overridden to record into the manifest
+        # It ships no files, so a worker on this machine starts it where the config lives (BE-0449).
+        "cwd": str(job.cwd),
     }
+    assert job.cwd is not None
     json.dumps(spec)  # must carry no live objects (locks/Popen/bus) — JSON round-trips
 
 
@@ -161,16 +165,21 @@ def test_start_run_carries_a_valid_evidence_prefix_end_to_end(tmp_path: Path) ->
 
 
 def test_start_run_derives_the_jobs_required_capabilities(tmp_path: Path) -> None:
-    # BE-0166: the dispatched job carries the target's required capabilities (its platform axis plus
-    # any `requires:`), so the DB router leases it only to a capable worker. `demo` is an iOS
-    # target and declares `requires: [ios18]`.
+    # BE-0166: the dispatched job carries the target's required capabilities (its platform axis and
+    # its driver's host), so the DB router leases it only to a capable worker. `demo` is an iOS
+    # target; the hand-written `requires` is gone (BE-0452).
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
     (scn_dir / "smoke.yaml").write_text(SCENARIO, encoding="utf-8")
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [ios] }\ntargets:\n"
-        f"  demo: {{ bundleId: com.example.demo, scenarios: {scn_dir}, requires: [ios18] }}\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            f"    subject: {{id: com.example.demo}}\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     runs = tmp_path / "runs"
@@ -191,7 +200,54 @@ def test_start_run_derives_the_jobs_required_capabilities(tmp_path: Path) -> Non
     )
     _, code = ops.start_run(state, {"scenario": "smoke.yaml", "target": "demo"})
     assert code == 200
-    assert dispatched[0].capabilities == ["ios18", "platform:ios"]
+    # xcuitest runs only on macOS, so the job requires the host too (BE-0450), and what its steps
+    # need on the Simulator route (BE-0467).
+    assert dispatched[0].capabilities == [
+        "cap:ios-simulator:elements",
+        "cap:ios-simulator:query",
+        "host:darwin",
+        "platform:ios",
+    ]
+
+
+def test_start_run_routes_an_appium_environment_to_its_grid(tmp_path: Path) -> None:
+    # BE-0452: a run request naming `environment: appium` requires that environment alone — the
+    # grid owns the device and its host — and any other environment is a 400.
+    scn_dir = tmp_path / "scenarios"
+    scn_dir.mkdir()
+    (scn_dir / "smoke.yaml").write_text(SCENARIO, encoding="utf-8")
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        f"targets:\n  demo: {{ platform: ios, subject: {{ id: com.x }}, paths: {{ scenarios: {scn_dir} }} }}\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "runs").mkdir()
+    dispatched: list[Any] = []
+
+    class _CapturingExecutor:
+        def dispatch(self, state: Any, job: Any) -> None:
+            dispatched.append(job)
+
+    state = srv.ServeState(
+        scenarios_dir=scn_dir,
+        config=cfg,
+        runs_dir=tmp_path / "runs",
+        cwd=tmp_path,
+        executor=_CapturingExecutor(),
+    )
+    body = {"scenario": "smoke.yaml", "target": "demo"}
+    _, code = ops.start_run(state, {**body, "environment": "appium"})
+    assert code == 200
+    # Its iOS target is on the live route, whose tokens only an appium worker advertises (BE-0467).
+    assert dispatched[0].capabilities == [
+        "cap:ios-live:elements",
+        "cap:ios-live:query",
+        "environment:appium",
+    ]
+    for bad in ("devicefarm", "local"):
+        payload, code = ops.start_run(state, {**body, "environment": bad})
+        assert code == 400
+        assert "environment must be 'appium'" in payload["error"]
 
 
 def test_execute_job_spec_records_the_run_into_an_injected_repository(
@@ -246,6 +302,31 @@ def test_execute_job_spec_rebuilds_and_runs_run_job(tmp_path: Path) -> None:
     v = job.view()
     assert v["status"] == "done" and v["ok"] is True and v["runId"] == "20260610-1"
     assert "step 0 ok" in v["lines"]
+
+
+def test_execute_job_spec_hands_the_job_over_before_it_runs(tmp_path: Path) -> None:
+    # The worker's heartbeat loop needs the rebuilt Job to cancel it (BE-0449); a cancel delivered
+    # through the hand-over stops the run before its process is allowed to stream.
+    from bajutsu.serve.jobs import cancel_job
+
+    project(tmp_path)
+    spec = {"job_id": "7", "cmd": ["bajutsu", "run"], "udids": [], "app_path": None, "build": None}
+    seen: list[str] = []
+
+    def on_job(job: srv.Job) -> None:
+        seen.append(job.id)
+        cancel_job(job)
+
+    job = execute_job_spec(
+        spec,
+        popen=fake_popen(["PASS  runs/20260610-1/manifest.json\n"]),
+        cwd=tmp_path,
+        bus=srv.InMemoryLogBus(),
+        on_job=on_job,
+    )
+    assert seen == ["7"]
+    v = job.view()
+    assert v["cancelled"] is True and v["ok"] is False
 
 
 def test_job_spec_carries_the_overrides_and_their_provenance(tmp_path: Path) -> None:
@@ -371,7 +452,7 @@ def test_execute_job_spec_materializes_files_into_the_workspace(tmp_path: Path) 
         "build": None,
         "materials": {
             "scenarios/smoke.yaml": "- name: a\n  steps: []\n",
-            "bajutsu.config.yaml": "targets: {demo: {bundleId: x}}\n",
+            "bajutsu.config.yaml": ("targets:\n  demo:\n    platform: ios\n    subject: {id: x}\n"),
             "../escape.yaml": "nope",  # must not be written outside the workspace
             "": "root",  # resolves to the workspace root — must be ignored, not write_text a dir
             "scenarios/..": "root2",  # also the workspace root via traversal — ignored
@@ -679,6 +760,7 @@ def test_execute_job_spec_reconstructs_the_batch_request(tmp_path: Path) -> None
             dest: Path,
             checkpoint: Any = None,
             job_id: str = "",
+            interrupt: Any = None,
         ) -> Any:
             captured["request"] = request
             run_dir = dest / "runs" / "20260101-1"

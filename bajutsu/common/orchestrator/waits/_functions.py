@@ -12,18 +12,22 @@ from bajutsu.common.evidence.network import TransitionSource, _no_transitions
 from bajutsu.common.orchestrator.types import (
     AlertEvent,
     AlertGuardConfig,
+    AlertTitleCheck,
     Clock,
     NetworkSource,
     UndeclaredInterruption,
     _no_network,
+    observed_alert_labels,
     selector_names_button,
     undeclared_interruption_note,
 )
 from bajutsu.common.scenario import Gone, SystemAlertRole, Wait, WaitRequest
+from bajutsu.common.scenario.system_alerts import TITLE_MARKER
 
 from ._alert_guard_gate import _AlertGuardGate
 from ._heartbeat import _Heartbeat
 from ._shared import WaitTick, _logger
+from .resolving_reads import ResolvingReads
 from .wait_trace import WaitTrace
 
 _POLL = 0.05
@@ -34,23 +38,6 @@ _SETTLE_POLLS = 2  # consecutive unchanged polls that count as "settled" (tree-d
 # over a chained transition posting more than one report in quick succession, not a whole
 # animation's duration.
 _TRANSITION_QUIESCENCE = 0.3
-# Seconds of consecutive `ElementNotTappable` declines `_dismiss_from_tree` tolerates for one
-# showing of a label before it stops attempting the tap: unlike `ElementNotFound` (the button left
-# the tree, so the next poll can't re-match it) and `AmbiguousSelector` (guarded by the uniqueness
-# pre-check above it), a genuinely stuck obstruction — a scrim that never lifts, an `elevation`
-# false positive — has neither property, so without its own bound this decline would re-issue a real
-# actuation attempt for the rest of the wait. Clock-based, for the reason `_TREE_RETAP_DELAY` records
-# for itself: what is being waited out is a presentation animation measured in seconds (a UIKit sheet
-# ~0.35-0.5s, an Android dialog enter ~0.25s+). A poll count cannot express that here anyway, because
-# `_dismiss_from_tree` is paced by `guard.poll_interval` rather than `_POLL` (see `_observe_native`)
-# and that interval is configurable per scenario, target, and flag (BE-0177). Twice the default
-# `poll_interval` rather than the animation's own horizon, because the give-up is checked *before*
-# the tap: at one interval the very first attempt would exhaust the budget, leaving a transient scrim
-# no retry at all. That is also why the horizon is *derived* from the interval rather than fixed. A
-# scenario may tune `pollInterval` upwards (the save-password one sets 5), and a fixed 2s would
-# then put the second pass past the horizon before it ever ran — reinstating the zero-retry case
-# this value exists to avoid. The floor keeps the animation horizon intact at short intervals.
-_TREE_DISMISS_DECLINE_GIVEUP_FLOOR = 2.0
 
 
 # A lane may raise the floor under a wait's ceiling: a condition wait returns the instant it is
@@ -99,15 +86,6 @@ def describe_wait(w: Wait) -> str:
     if isinstance(w.until, WaitRequest):
         return f"until request {assertions.request_label(w.until.request)}"
     return f"until {w.until}"  # "settled" | "screenChanged"
-
-
-def _decline_giveup(poll_interval: float) -> float:
-    """Seconds `_dismiss_from_tree` tolerates `ElementNotTappable` on one showing of a label.
-
-    Twice the cadence the path is paced at, floored at the animation horizon: the bound is
-    checked before the tap, so anything under two intervals spends itself on the first attempt.
-    """
-    return max(_TREE_DISMISS_DECLINE_GIVEUP_FLOOR, 2 * poll_interval)
 
 
 def _timeout_floor() -> float:
@@ -171,7 +149,9 @@ def wait_for_system_alert(  # noqa: C901  # the step's one wait state machine (B
     alert_guard: AlertGuardConfig | None = None,
     alerts: list[AlertEvent] | None = None,
     tapped: list[str] | None = None,
+    title_check: AlertTitleCheck | None = None,
     cancelled: CancelSource = not_cancelled,
+    resolving: ResolvingReads | None = None,
 ) -> tuple[bool, str]:
     """Wait for the system alert `sel` names and tap it, clearing declared interruptions meanwhile.
 
@@ -182,10 +162,11 @@ def wait_for_system_alert(  # noqa: C901  # the step's one wait state machine (B
     held the screen for the step's whole timeout, and the step failed naming the permission prompt
     it never saw rather than the alert that was actually up.
 
-    Each poll reads the step's own target first and only then hands the tree to the guard. That
-    order is what keeps the two from answering the same prompt when a scenario holds a `rules` entry
-    for it with the opposite choice; the gate closes the rest of that window itself, since it is
-    given `sel` and declines an alert `sel` names (`probe_native`'s `"reserved"`).
+    Each poll reads the step's own target first and only then reads the tree. That order is what
+    keeps the step and the guard from answering the same prompt when a scenario holds a `rules`
+    entry for it with the opposite choice. On a backend answering alerts inside its reads, the
+    step's tree reads resolve in-tree only, so its own SpringBoard alert stays its own, and an alert
+    it judges not its own is answered through `resolve_system_alert` (BE-0461 Unit 3).
 
     Args:
         target: The button to tap — a selector, or a position rule (BE-0445) that each read turns
@@ -196,12 +177,20 @@ def wait_for_system_alert(  # noqa: C901  # the step's one wait state machine (B
             knows a prompt is up pays no poll.
         alert_guard: The scenario's reactive guard, when the run has one. Without it this is a plain
             condition wait — the shape `record`'s replay gets.
-        alerts: The step's outcome list, which the guard appends each prompt it dismissed to.
+        alerts: The step's outcome list, which receives what the policy answered meanwhile.
         tapped: Receives the label of the button the step itself tapped, for the report.
+        title_check: The step's `prompt_title_check`, when it names a prompt. A read whose title
+            rules out that prompt is not tapped, even when it offers the step's button: Local
+            Network and notifications share theirs. The gate then stays free to answer it.
         cancelled: Consulted once per poll, right where the deadline is, so a cancelled run is
             noticed within one tick instead of actuating the device for the rest of the timeout
             (BE-0370). It raises rather than returning a verdict: the prompt neither appeared nor
             timed out, and the scenario is over either way.
+        resolving: The step's resolving reads, on a backend that answers alerts inside its own
+            reads (BE-0461 Unit 3). The guard's per-poll tree read then resolves in-tree only, so
+            the step's own SpringBoard alert stays the step's, and an alert the step reads and
+            judges not its own is answered through `resolve_system_alert`, at most once per
+            `poll_interval`, with the labels the step saw.
 
     Raises:
         base.UnsupportedAction: the backend does not advertise `HANDLE_SYSTEM_ALERT`.
@@ -227,18 +216,18 @@ def wait_for_system_alert(  # noqa: C901  # the step's one wait state machine (B
     _require_system_alert_capability(driver, sel)
     wanted = role.describe() if role is not None else repr(sel)
     deadline = clock.now() + timeout
-    gate = (
-        _AlertGuardGate(
-            driver=driver,
-            clock=clock,
-            guard=alert_guard,
-            alerts=alerts if alerts is not None else [],
-            reserved=sel,
-        )
-        if alert_guard is not None and role is None
-        else None
-    )
+    gate: _AlertGuardGate | None = None
+    # The tree the gate reads each poll: in-tree resolution only on a resolving backend, so the step's
+    # own SpringBoard alert stays the step's.
+    tree_driver = driver
+    if alert_guard is not None and role is None:
+        gate = _AlertGuardGate(clock=clock, guard=alert_guard, reads=resolving)
+        if resolving is not None:
+            tree_driver = resolving.view(driver, "inTree")
     last_read: float | None = None
+    # When this step last asked the backend to answer an alert it judged not its own, so it asks at
+    # the guard's own cadence: each call queries SpringBoard (BE-0315).
+    last_resolve: float | None = None
     # The buttons the step's *latest* read saw, for the timeout to name — reassigned on every read,
     # including an empty one. Keeping the last non-empty list instead would report an alert the
     # guard has since cleared as still on screen, turning "no alert appeared at all" into "an alert
@@ -249,11 +238,18 @@ def wait_for_system_alert(  # noqa: C901  # the step's one wait state machine (B
     # button the alert really offers, twice — and because the wait polls on rather than failing at
     # once, so nothing else would ever say so (determinism first: never tap whichever matched first).
     ambiguous = False
+    # Whether the latest read offered `sel`'s button under another prompt's title (`title_check`).
+    other_prompt = False
     while True:
         t0 = clock.now()
         if last_read is None or t0 - last_read >= _SYSTEM_ALERT_POLL:
             last_read = t0
-            seen = driver.system_alert_labels()
+            observed = (
+                observed_alert_labels(driver)
+                if title_check is not None
+                else driver.system_alert_labels()
+            )
+            seen = [label for label in observed if not label.startswith(TITLE_MARKER)]
             ambiguous = False
             picked: str | None = None
             if role is not None:
@@ -262,13 +258,18 @@ def wait_for_system_alert(  # noqa: C901  # the step's one wait state machine (B
             # Decided from the labels already in hand: `handle_system_alert` issues its own
             # cross-process query, so tapping speculatively would double this step's query rate for
             # the whole time an interruption the step is not waiting for holds the screen.
-            if sel is not None and selector_names_button(sel, seen):
+            named = sel is not None and selector_names_button(sel, seen)
+            # The button is there, but the title says the alert is another prompt sharing it.
+            other_prompt = named and title_check is not None and not title_check(observed)
+            if gate is not None:
+                gate.note_step_read(seen, own=named and not other_prompt)
+            if sel is not None and named and not other_prompt:
                 try:
                     driver.handle_system_alert(sel, _STEP_TAP_TIMEOUT)
                 except base.ElementNotFound:
                     # The alert closed itself between this read and the tap. Not the step's verdict:
                     # keep polling to the deadline, so a benign race costs one poll rather than the
-                    # step (`probe_native`'s own treatment of the same window).
+                    # step.
                     pass
                 except base.AmbiguousSelector:
                     # The other half of that race: the alert is still up and now offers `sel`'s
@@ -293,16 +294,32 @@ def wait_for_system_alert(  # noqa: C901  # the step's one wait state machine (B
                 # end, reintroduced by the mechanism meant to close it. A backend without the
                 # opt-in, or one nothing has pushed a policy to, drains nothing and falls through
                 # unchanged.
-                answered = _policy_answered_alert(driver, sel, alerts, tapped)
+                if (
+                    gate is not None
+                    and resolving is not None
+                    and alert_guard is not None
+                    and seen
+                    and (last_resolve is None or t0 - last_resolve >= alert_guard.poll_interval)
+                ):
+                    # Not the step's alert, so the policy answers it — but only while it still
+                    # offers what the step just read, so the step's own alert arriving in its place
+                    # is never answered by policy. The answer itself is reported by the drain below.
+                    last_resolve = t0
+                    resolution = resolving.target.resolve_system_alert(seen)
+                    gate.note_records(resolution.drained)
+                answered = _policy_answered_alert(driver, sel, alerts, tapped, title_check)
                 if answered is not None:
                     return answered
         if gate is not None:
-            gate.observe(driver.query())
+            gate.observe(tree_driver.query())
         if cancelled():
             raise RunCancelled
         if clock.now() >= deadline:
             return False, _with_block_note(
-                _alert_timeout_reason(wanted, timeout, seen, ambiguous, role=role), gate
+                _alert_timeout_reason(
+                    wanted, timeout, seen, ambiguous, role=role, other_prompt=other_prompt
+                ),
+                gate,
             )
         _adaptive_sleep(clock, t0)
 
@@ -326,20 +343,32 @@ def _policy_answered_alert(
     sel: base.Selector | None,
     alerts: list[AlertEvent] | None,
     tapped: list[str] | None = None,
+    title_check: AlertTitleCheck | None = None,
 ) -> tuple[bool, str] | None:
     """Drain what a governing policy's monitor answered between polls; the verdict it settles, if any.
 
     Split out of `wait_for_system_alert` (BE-0386); the reasoning for draining here at all lives at
-    its one call site.
+    its one call site. A tap counts as the step's own only when it pressed `sel`'s button on an
+    alert `title_check` accepts: a rule answering a look-alike prompt with the same button (Local
+    Network under a notifications step) is that rule's dismissal, not the step's verdict. A tap whose
+    alert the runner did not report keeps the label-only match an older runner allows.
     """
     drained = driver.drain_interruptions()
-    # A position rule with no alert read yet names no label, and nothing reserved one for the
-    # monitor either, so no label it tapped can be the step's own.
-    matched = (
-        []
-        if sel is None
-        else [label for label in drained.tapped if selector_names_button(sel, [label])]
-    )
+
+    def is_own(index: int, label: str) -> bool:
+        # A position rule with no alert read yet names no label, and nothing reserved one for the
+        # monitor either, so no label it tapped can be the step's own.
+        if sel is None or not selector_names_button(sel, [label]):
+            return False
+        # An application-owned button sharing the step's label is never the step's SpringBoard
+        # alert (BE-0461 Unit 3).
+        if drained.surface_of(index) != "native":
+            return False
+        alert = drained.alert_of(index)
+        return title_check is None or not alert or title_check(alert)
+
+    own = [is_own(index, label) for index, label in enumerate(drained.tapped)]
+    matched = [label for label, mine in zip(drained.tapped, own, strict=True) if mine]
     if alerts is not None:
         # A tapped label that is not `sel`'s own is some other declared rule's alert,
         # resolved by the monitor while this step happened to be polling — draining it
@@ -348,7 +377,7 @@ def _policy_answered_alert(
         # notification banner swiped away during the same poll is drained here too, for
         # the identical reason: it can never be `sel`'s own alert (BE-0416), so it always
         # belongs in `unrelated`'s company rather than the matched-alert branch below.
-        unrelated = [label for label in drained.tapped if label not in matched]
+        unrelated = [label for label, mine in zip(drained.tapped, own, strict=True) if not mine]
         alerts.extend(AlertEvent(label=label) for label in unrelated)
         alerts.extend(AlertEvent(label=text, kind="notificationBanner") for text in drained.banners)
     if matched:
@@ -375,6 +404,7 @@ def _alert_timeout_reason(
     ambiguous: bool,
     *,
     role: SystemAlertRole | None = None,
+    other_prompt: bool = False,
 ) -> str:
     """What the `handleSystemAlert` step saw, for the timeout it is about to report (BE-0406).
 
@@ -391,6 +421,11 @@ def _alert_timeout_reason(
             f"position rule {wanted} names no button on an alert offering {len(seen)} "
             f"({offered}) within {timeout}s; this run's language is outside the label table, so "
             "name the button with sel.label instead"
+        )
+    if other_prompt:
+        return (
+            f"a system alert offering {wanted} stayed up for {timeout}s, but its title is not the "
+            f"step's prompt (the alert on screen offered: {offered}); declare a rule for that prompt"
         )
     if ambiguous:
         fix = " — add index to pick one" if role is None else ""
@@ -436,11 +471,11 @@ def _wait(  # noqa: C901, PLR0911, PLR0912
     *,
     trace: WaitTrace | None = None,
     alert_guard: AlertGuardConfig | None = None,
-    alerts: list[AlertEvent] | None = None,
     on_tick: WaitTick | None = None,
     transitions: TransitionSource = _no_transitions,
     on_interrupt_poll: Callable[[list[base.Element]], bool] | None = None,
     cancelled: CancelSource = not_cancelled,
+    resolving: ResolvingReads | None = None,
 ) -> tuple[bool, str, list[base.Element] | None]:
     """Condition wait. Polls query() (or the observed network) until satisfied instead
     of a fixed sleep.
@@ -448,22 +483,15 @@ def _wait(  # noqa: C901, PLR0911, PLR0912
     When `trace` is given (a `for` wait only), each poll is recorded into it so a timeout can be
     diagnosed from artifacts (BE-0231 Unit 1); it never changes the wait's outcome.
 
-    When `alert_guard` is given, the branches a system alert can *stall* — `for`, `settled`, and
-    `screenChanged` (where a collapsed tree keeps the condition unmet and would otherwise burn the
-    whole timeout) — drive the guard mid-wait, then resume polling against the *same* `deadline`. On
-    an iOS backend the guard queries SpringBoard natively on its own interval (BE-0315, reusing
-    BE-0316's primitive); elsewhere it watches the already-fetched tree for the collapsed-tree
-    signature of a blocking prompt (BE-0269). The condition check still decides pass/fail; the guard
-    only accelerates recovery, and dismissed alerts are appended to `alerts` (the step's outcome
-    list) for the report. A block it cannot clear is not acted on at all (BE-0402) — it is appended
-    to the timeout this returns, so the failure names the alert instead of only the element that
-    never appeared. `gone` is guarded
-    too. It was not, on the reasoning that a collapsed tree already satisfies "gone" and returns at
-    once — true of a SpringBoard prompt, which covers the app and empties its tree, but only of
-    those. A prompt drawn *inside* the app's own process collapses nothing and instead **adds** its
-    buttons to the tree, so a `gone` wait on one of them sits unsatisfied for its whole timeout with
-    nothing to clear it. iOS's "Save Password" alert is exactly that shape, which is how the gap
-    surfaced. `request` polls the network, not the screen, so it is still not guarded.
+    When `alert_guard` is given, every screen-reading branch (`for`, `gone`, `settled`,
+    `screenChanged`) hands each poll's tree to the guard's gate, which keeps the note a timeout
+    appends (BE-0402) and never acts. On a backend answering alerts inside its own reads, the polls
+    themselves clear what the policy names (`resolving`, below); elsewhere the gate watches the tree
+    for the collapsed signature of a blocking prompt (BE-0269). The condition check alone decides
+    pass/fail. `gone` is guarded too: a prompt drawn *inside* the app's own process (iOS's "Save
+    Password" alert) collapses nothing and instead adds its buttons to the tree, so a `gone` wait on
+    one of them would otherwise sit unsatisfied for its whole timeout. `request` polls the network,
+    not the screen, so it is not guarded.
 
     When `on_interrupt_poll` is given, it is called with each poll's already-fetched tree — after
     the wait's own condition is checked, so it fires only while the wait is still blocked — so a
@@ -484,6 +512,11 @@ def _wait(  # noqa: C901, PLR0911, PLR0912
     default reports none, so `settled` keeps its unchanged tree-diff behavior unless a caller passes
     a real source.
 
+    `resolving` (BE-0461 Unit 4) is the step's resolving reads, on a backend that answers alerts
+    inside its own reads. Every poll then reads through it, and the gate reads the records each read
+    returned. It applies with or without `alert_guard`: a retry's re-run keeps resolving, with no
+    gate to read the records.
+
     `cancelled` (BE-0370) is consulted once per poll, right where the deadline is, so a wait blocked
     on a condition notices a cancelled run within one polling tick instead of burning the rest of
     its timeout. It raises `RunCancelled` rather than returning a verdict: the condition is neither
@@ -498,19 +531,7 @@ def _wait(  # noqa: C901, PLR0911, PLR0912
     timeout = _effective_timeout(w)
     start = clock.now()
     deadline = start + timeout
-    # Give the gate a real list to record into even when the caller passed none (e.g. a direct
-    # _wait() unit test), so the record-the-event path has no None branch. `is not None`, not
-    # `or []`: an empty list the caller *did* pass is falsy but must still be the one appended to.
-    gate = (
-        _AlertGuardGate(
-            driver=driver,
-            clock=clock,
-            guard=alert_guard,
-            alerts=alerts if alerts is not None else [],
-        )
-        if alert_guard is not None
-        else None
-    )
+    driver, gate = _wait_gate(driver, clock, alert_guard, resolving)
     hb = _Heartbeat(on_tick, deadline) if on_tick is not None else None
     if hb is not None:
         # Fire once up front so the awaited condition is shown even for a wait that resolves on its
@@ -618,6 +639,22 @@ def _wait(  # noqa: C901, PLR0911, PLR0912
         if hb is not None:
             hb.tick(clock.now())
         _adaptive_sleep(clock, t0)
+
+
+def _wait_gate(
+    driver: base.Driver,
+    clock: Clock,
+    alert_guard: AlertGuardConfig | None,
+    resolving: ResolvingReads | None,
+) -> tuple[base.Driver, _AlertGuardGate | None]:
+    """The driver a wait polls through, and the gate that reads each poll (see `_wait`)."""
+    if resolving is not None:
+        # With no gate to take them, the reads need not be kept: a re-run's wait can poll for its
+        # whole timeout.
+        driver = resolving.view(driver, "true", keep=alert_guard is not None)
+    if alert_guard is None:
+        return driver, None
+    return driver, _AlertGuardGate(clock=clock, guard=alert_guard, reads=resolving)
 
 
 def _wait_settled(
@@ -785,11 +822,11 @@ def settle_after_alert_dismiss(
 ) -> None:
     """Let the screen the guard just uncovered stop moving before the caller acts on it.
 
-    The alert guard's two one-shot call sites — the end-of-step dismiss and the `expect` retry —
-    re-run the step body (or re-evaluate the assertions) the moment a dismissal comes back, and a
-    prompt that has been *tapped* is not yet a prompt that is *gone*: iOS is still animating the
-    sheet away, and the screen it covered is still rendering. The retry then reads a tree in motion
-    and can fail for that reason alone, which reads as the step failing on its own merits.
+    The narrowed retry's call sites — the end-of-step recovery and the `expect` recovery (BE-0461)
+    — re-run the step body (or re-evaluate the assertions) once a resolving read answered a prompt,
+    and a prompt that has been *tapped* is not yet a prompt that is *gone*: iOS is still animating
+    the sheet away, and the screen it covered is still rendering. The retry then reads a tree in
+    motion and can fail for that reason alone, which reads as the step failing on its own merits.
 
     Best-effort throughout, so it never turns into a verdict of its own: it is a condition wait on
     the tree holding still (never a fixed sleep), and reaching `_DISMISS_SETTLE_TIMEOUT` simply

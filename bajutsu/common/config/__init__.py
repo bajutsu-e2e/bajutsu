@@ -31,9 +31,20 @@ from bajutsu.common.config.effective import (
     RunDefaults,
     WebConfig,
 )
-from bajutsu.common.config.resolve import load_config, parse_config_dict, resolve
+from bajutsu.common.config.preconditions import (
+    ResolvedPreconditions,
+    check_preconditions,
+    command_preconditions,
+    resolve_preconditions,
+)
+from bajutsu.common.config.resolve import (
+    load_config,
+    load_config_file,
+    parse_config_dict,
+    resolve,
+    unknown_target,
+)
 from bajutsu.common.config.schema import (
-    WEB_ENGINES,
     AiSettings,
     Config,
     Defaults,
@@ -52,7 +63,6 @@ from bajutsu.common.config.schema import (
 )
 
 __all__ = [
-    "WEB_ENGINES",
     "AiConfig",
     "AiSettings",
     "AndroidConfig",
@@ -70,18 +80,24 @@ __all__ = [
     "NotifyEndpoint",
     "PlatformConfig",
     "PricingEntry",
+    "ResolvedPreconditions",
     "RunDefaults",
     "TargetConfig",
     "WebConfig",
     "XcuitestConfig",
     "android_package",
+    "check_preconditions",
+    "command_preconditions",
     "ios_bundle_id",
     "load_config",
+    "load_config_file",
     "parse_config_dict",
     "require_android",
     "require_ios",
     "require_web",
     "resolve",
+    "resolve_preconditions",
+    "unknown_target",
     "web_base_url",
     "web_engine",
     "xcuitest_pins_runner",

@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 from _runner import _eff, _el, _web_eff
 
-from bajutsu.common.config import Effective, IosConfig, require_ios
+from bajutsu.common.config import Effective, IosConfig, ResolvedPreconditions, require_ios
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.evidence import NullSink
@@ -26,7 +26,7 @@ from bajutsu.common.platform_lifecycle.environments.web import WebEnvironment
 from bajutsu.common.platform_lifecycle.environments.xcuitest import XcuitestEnvironment
 from bajutsu.common.runner import Lease, device_pool, run_all
 from bajutsu.common.runner.types import LeaseFn, TargetPool
-from bajutsu.common.scenario import Preconditions, Scenario
+from bajutsu.common.scenario import Scenario
 
 _SCREEN = [_el("ok", "OK", ["button"]), _el("other", "Other", ["button"])]
 _EXCHANGE = NetworkExchange(method="GET", path="/a")
@@ -192,6 +192,33 @@ def test_preflight_refuses_a_group_on_a_backend_that_cannot_share_a_device() -> 
     assert device.log == []  # refused before any device was leased
 
 
+@pytest.mark.parametrize(("erasing", "refused"), [("app", True), ("auth", False)])
+def test_preflight_refuses_a_member_that_erases_on_an_anchor_that_does_not(
+    erasing: str, refused: bool
+) -> None:
+    # Each target merges its own `subject.reinstall` (BE-0473); `auth`, the last starting member, is the
+    # anchor that prepares the shared Simulator, so only its erase reaches the device.
+    device = _Device()
+    s = _scenario(
+        {
+            "targets": [["app", "auth"]],
+            "primaryTarget": "app",
+            "installs": ["auth"],
+            "steps": [{"tap": {"id": "ok"}}],
+        }
+    )
+    targets = _pools(device, "app", "auth")
+    pool = targets[erasing]
+    targets[erasing] = replace(pool, eff=replace(pool.eff, reinstall="erase"))
+    results = run_all(_eff(), [s], device.pool("unused"), targets=targets)
+    if refused:
+        assert not results[0].ok
+        assert "target 'app' sets subject.reinstall: erase" in (results[0].failure or "")
+        assert device.log == []  # refused before any device was leased
+    else:
+        assert results[0].ok, results[0].failure
+
+
 # --- the pool's own join ---------------------------------------------------------------------
 
 
@@ -226,6 +253,37 @@ def test_the_pool_joins_a_member_on_the_same_device(monkeypatch: pytest.MonkeyPa
         # The device went back to the pool through the anchor alone, so it can be leased again.
         again = lease(_app_eff("com.example.app"), scn)
         again.release()
+    finally:
+        shutdown()
+
+
+def test_a_member_discloses_only_the_gaps_the_primary_did_not(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The fake records no interval evidence. The primary asks for video and discloses that gap; the
+    # member asks for video too and for a deviceLog the primary did not, so it discloses only the
+    # deviceLog — one entry per gap for the whole group (BE-0467).
+    monkeypatch.setattr(
+        "bajutsu.common.backends.make_driver",
+        lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),
+    )
+    lease, shutdown = device_pool(
+        ["UDID-A"], ["fake"], _eff(), Path("runs"), available=lambda b: True
+    )
+    primary = _scenario({"steps": [{"tap": {"id": "ok"}, "capture": ["video"]}]})
+    joined = _scenario({"steps": [{"tap": {"id": "ok"}, "capture": ["video", "deviceLog"]}]})
+    try:
+        anchor = lease(_app_eff("com.example.app"), primary)
+        assert anchor.join is not None
+        member = anchor.join(_app_eff("com.example.auth"), joined, True)
+        assert [c.kind for c in anchor.skipped_captures] == ["video"]
+        assert [c.kind for c in member.skipped_captures] == ["deviceLog"]
+        # A third member asking for the same kinds repeats neither the anchor's gap nor its sibling's.
+        third = anchor.join(_app_eff("com.example.pay"), joined, True)
+        assert third.skipped_captures == []
+        third.release()
+        member.release()
+        anchor.release()
     finally:
         shutdown()
 
@@ -304,7 +362,7 @@ def test_the_simctl_family_refuses_a_member_and_stops_one_by_bundle() -> None:
     env = XcuitestEnvironment("xcuitest", "UDID-1", run)
     # A Simulator this environment never started holds no runner a member could share.
     with pytest.raises(base.UnsupportedAction, match="need a Simulator this environment started"):
-        env.start_member(_eff(), Preconditions())
+        env.start_member(_eff(), ResolvedPreconditions())
     env.end_member(FakeDriver([]), _app_eff("com.example.auth"))
     assert ["xcrun", "simctl", "terminate", "UDID-1", "com.example.auth"] in calls
 
@@ -312,7 +370,7 @@ def test_the_simctl_family_refuses_a_member_and_stops_one_by_bundle() -> None:
 def test_the_web_environment_refuses_a_member() -> None:
     env = WebEnvironment("playwright")
     with pytest.raises(base.UnsupportedAction, match="cannot share a device"):
-        env.start_member(_web_eff(), Preconditions())
+        env.start_member(_web_eff(), ResolvedPreconditions())
     env.end_member(FakeDriver([]), _web_eff())  # no member ever started, so nothing to stop
 
 

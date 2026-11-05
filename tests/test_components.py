@@ -8,8 +8,6 @@ import pytest
 
 from bajutsu.common.scenario import (
     Component,
-    Step,
-    apply_setups,
     expand_components,
     load_component,
     load_scenarios,
@@ -108,28 +106,6 @@ def test_use_expansion_re_checks_extract_body_var_collision() -> None:
         expand_components(scns, _resolver({"extract.yaml": EXTRACT_DUP_PARAMS}))
 
 
-def test_apply_setups_re_checks_extract_body_var_collision() -> None:
-    # BE-0440: a `resolve` that hands back bare `Step`s never validated through a full
-    # `Scenario.model_validate` — unlike the CLI's own `_setup_steps`, which always loads a
-    # prelude as a scenario file first — is exactly what `apply_setups`'s own re-check defends
-    # against: its single `http` step already carries the collision, so this stands in for a
-    # prelude source that skipped validation.
-    steps = [
-        Step.model_validate(
-            {
-                "http": {
-                    "url": "https://api.test/data",
-                    "saveBody": "token",
-                    "extractBody": [{"var": "token", "path": "a"}],
-                }
-            }
-        )
-    ]
-    scns = load_scenarios("- name: s\n  steps:\n    - tap: { id: home.tab }\n")
-    with pytest.raises(ValueError, match="token"):
-        apply_setups(scns, "setup.yaml", lambda ref: steps)
-
-
 def test_nested_components_expand() -> None:
     table = {
         "inner.yaml": load_component('params: [x]\nsteps:\n  - tap: { id: "${params.x}" }\n'),
@@ -210,7 +186,7 @@ def test_use_expands_inside_an_interrupt_handler() -> None:
 """
     )
     expand_components(scns, _resolver({"login.yaml": LOGIN}))
-    steps = scns[0].interrupts[0].steps
+    steps = scns[0].screens[0].steps
     assert len(steps) == 4  # 3 component steps + the handler's own tap
     assert steps[0].type is not None and steps[0].type.text == "alice"
     assert steps[1].type is not None and steps[1].type.text == "hunter2"

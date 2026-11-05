@@ -291,10 +291,10 @@ classDiagram
         <<pydantic · 作成時>>
         +str name
         +Preconditions preconditions
-        +list~Step~ before
+        +list~Step~ setup
         +list~Step~ steps
         +list~Assertion~ expect
-        +list~AfterRule~ after
+        +list~CleanupRule~ cleanup
         +list~CaptureRule~ capture_policy
     }
     class Step {
@@ -310,7 +310,7 @@ classDiagram
         +Exists exists
         +TextMatch value
         +RequestMatch request
-        +全 14 種
+        +全 15 種
     }
     class Driver {
         <<Protocol · 実行時>>
@@ -360,7 +360,7 @@ classDiagram
 
 **`Scenario`**（[`common/scenario/models/`](https://github.com/bajutsu-e2e/bajutsu/tree/main/bajutsu/common/scenario/models)）は
 作成時のモデルです。pydantic の `extra="forbid"` で組んであるので、未知のキーは黙って通らず読み込みで
-失敗します。`Step` は 39 のアクション欄のうち 1 つを、`Assertion` は 14 種のうち 1 種を持ちます。
+失敗します。`Step` は 39 のアクション欄のうち 1 つを、`Assertion` は 15 種のうち 1 種を持ちます。
 この厳しさが効くのは、シナリオがセッションをまたいで残る唯一の成果物だからです。
 
 **`Driver`**（[`common/drivers/base.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/common/drivers/base.py)）は
@@ -467,16 +467,16 @@ scenarios:
 
 | 分類 | 欄 | すること |
 |---|---|---|
-| ジェスチャー | `tap`、`tapPoint`、`doubleTap`、`longPress`、`swipe`、`drag`、`scroll`、`pinch`、`rotate`、`back` | タッチとナビゲーションの入力です。 |
+| ジェスチャー | `tap`、`tapPoint`、`doubleTap`、`longPress`、`swipe`、`drag`、`scroll`、`pinch`、`rotate`、`back`、`navigate` | タッチとナビゲーションの入力です。 |
 | テキストと選択 | `type`、`select`、`clear`、`delete`、`copy`、`selectOption`、`setPickerValue` | テキストの入力・選択・コピーです。`copy` は事前の `select` を必要とします（第 7.5 節）。 |
 | 条件 | `wait`、`assert` | 条件やアサーションブロックをポーリングします。固定時間の sleep は使いません。 |
 | アプリとデバイスのライフサイクル | `relaunch`、`setLocation`、`push`、`clearKeychain`、`clearClipboard`、`setClipboard`、`background`、`foreground`、`overrideStatusBar`、`clearStatusBar`、`handleSystemAlert` | アプリのライフサイクルと、その周りのシミュレートされたデバイスを操作します。 |
 | データと値 | `http`、`totp`、`generate`、`email` | 値を作るか取得します。HTTP 呼び出し、時刻ベースのワンタイムパスワード（TOTP）コード、乱数、メールボックスの検索です。 |
 | 合成と制御構文 | `use`、`web`、`manual`、`if`、`forEach` | コンポーネントを展開する、ブロックを WebView に絞る、人手の引き継ぎを記録する、分岐・繰り返しをします。 |
 
-### 4.4 14 種のアサーション
+### 4.4 15 種のアサーション
 
-`Assertion`（`common/scenario/models/assertions.py`）は必ず 14 の欄のうち 1 つを持ち、
+`Assertion`（`common/scenario/models/assertions.py`）は必ず 15 の欄のうち 1 つを持ち、
 `assertions/evaluate.py`（第 7.6 節）が評価します。例外を投げずに失敗した結果を返す全域関数です。
 
 | 分類 | 欄 | 検査すること |
@@ -485,6 +485,7 @@ scenarios:
 | ネットワーク | `request`、`event`、`requestSequence`、`responseSchema` | 観測した HTTP 通信です。単一の通信、順序つきの並び、スキーマに対する応答本文のいずれかです。 |
 | 画面の比較 | `visual`、`golden` | スクリーンショットを基準画像と、要素ツリーを記録済みのツリーと比較します。 |
 | クリップボード | `clipboard` | デバイスのクリップボードの現在のテキストです。 |
+| 要素の属性 | `attribute` | 要素の HTML 属性 1 つを、必要なときに読み取った値です（web のみ。BE-0466）。 |
 
 ### 4.5 制御構文・合成・データ
 
@@ -495,7 +496,7 @@ scenarios:
 | コンポーネント | `use` ステップ、別立てのコンポーネントファイル | 名前付きでパラメータ化されたステップの並びをコンパイル時に展開します。run が始まる前に解決済みです（`expand.py`、第 7.1 節）。ステップループが `use` ステップを目にすることはありません。 |
 | WebView のスコープ | `web` ステップ（`within`、`steps`） | `within` の `Selector` で届く WebView に、入れ子のステップの並びを絞ります。 |
 | 割り込みハンドラ | シナリオ直下の `interrupts:` | 許可ダイアログやアプリ更新のプロンプトのような、run の途中で予測できない位置に現れうる割り込み画面を片付けます。囲むシナリオの `vars.*` を共有します。 |
-| セットアップ・ティアダウンのフェーズ | シナリオ直下の `before:` / `after:` | `steps` の前と、判定が出たあとに走るステップです。本体のステップの並びとは別に報告されます。 |
+| セットアップ・ティアダウンのフェーズ | シナリオ直下の `setup:` / `cleanup:` | `steps` の前と、判定が出たあとに走るステップです。本体のステップの並びとは別に報告されます。 |
 | データ駆動の行 | `data:` / `dataFile:` | インラインの並びまたは CSV ファイルの行ごとに 1 つのシナリオを実体化し、`${row.*}` に代入します。 |
 
 ### 4.6 補間：`${namespace.key}`
@@ -515,7 +516,7 @@ scenarios:
 シナリオの `capturePolicy`（`common/scenario/models/evidence.py`）は、単発の指示ではなく、
 ステップループが繰り返し発火する規則を挙げます。だから 2 回目の run でも、AI を挟まずに同じ
 証跡が集まります。各規則の `on` トリガーは `action`（id が一致するステップが実行された）・
-`event: screenChanged`・`result: error` のうちちょうど 1 つです。`capture` の並びは、トリガーが
+`event: screenChanged`・`result: failure` のうちちょうど 1 つです。`capture` の並びは、トリガーが
 発火したときに採取する成果物の種類を挙げます。仕組みの全体は[証跡](evidence.md)にあります。
 `capturePolicy` の有無にかかわらずどのステップにも付く、基準の `capture` 保証も含みます。
 
@@ -665,8 +666,8 @@ flowchart TB
 | ファイル | クラスと関数 | 役割 |
 |---|---|---|
 | `models/scenario.py` | `Scenario`、`Component`、`ScenarioFile`、`Preconditions`、`SystemAlertHandling` | 文書の最上位と、シナリオごとの前提設定です。 |
-| `models/steps.py` | `Step`、`If`、`ForEach`、`Use`、`Web`、`Interrupt`、`AfterRule`、`Extract` | 1 ステップと、制御構文やライフサイクルの包みです。 |
-| `models/assertions.py` | `Assertion`、`Exists`、`TextMatch`、`CountMatch`、`RequestMatch`、`VisualMatch`、`GoldenMatch` | 14 種のアサーションです。 |
+| `models/steps.py` | `Step`、`If`、`ForEach`、`Use`、`Web`、`Interrupt`、`CleanupRule`、`Extract` | 1 ステップと、制御構文やライフサイクルの包みです。 |
+| `models/assertions.py` | `Assertion`、`Exists`、`TextMatch`、`CountMatch`、`RequestMatch`、`VisualMatch`、`GoldenMatch` | 15 種のアサーションです。 |
 | `models/actions.py` | `TypeText`、`Swipe`、`Scroll`、`HttpRequest`、`Generate`、`Email`、`Totp` ほか | アクションごとの引数モデルです。 |
 | `models/selector.py` | `Selector` | 作成時のセレクタです。`as_selector()` で実行時の形に変えます。 |
 | `load.py` · `load_expanded.py` | `load_scenario_file`、`load_scenarios` | YAML を解析し、スキーマ版数を確かめます。 |
@@ -765,6 +766,40 @@ classDiagram
 2 つあります。報告内容がまったく同じ候補は 1 つにまとめます。作成者が区別できる材料がないためです。
 また、分類済みの兄弟要素と同じラベルを持つ汎用の `other` 特性の包みは、候補から落とします。
 
+![セレクタ解決のフロー図。query() の 1 スナップショットが find_all に入ります。within があれば、空間的に内側の候補だけを残します。候補が 0 件なら ElementNotFound を送出します。内容がまったく同じ候補は、先に 1 つへまとめます。内容の異なる候補が 2 件以上残り、index の指定もなければ AmbiguousSelector を送出します。resolve_unique を出るのは 1 件だけです。そのあと backend が、要素自身の点が覆われていないかを調べます。覆いがあれば ElementNotTappable を送出し、なければその要素を操作します。](assets/diagrams/developer-guide-selector-resolution-ja.svg)
+
+<details>
+<summary>Mermaid のソース</summary>
+
+<!-- mermaid-svg: assets/diagrams/developer-guide-selector-resolution-ja.svg -->
+```mermaid
+flowchart TB
+    q["query() — 画面の 1 スナップショット"] --> fa["find_all(elements, sel)"]
+    fa --> w{"within の指定は"}
+    w -->|あり| ct["contains() — 内側の候補を残す"]
+    w -->|なし| n
+    ct --> n{"候補の数は"}
+    n -->|0 件| e1["ElementNotFound"]
+    n -->|1 件| ok["解決した要素"]
+    n -->|2 件以上| dup["内容が同じ候補をまとめる"]
+    dup --> ix{"まだ複数か"}
+    ix -->|いいえ| ok
+    ix -->|index あり| ok
+    ix -->|index なし| e2["AmbiguousSelector"]
+    ok --> cov{"backend の覆い検査"}
+    cov -->|はい| e3["ElementNotTappable"]
+    cov -->|いいえ| act["backend が操作を行う"]
+```
+
+</details>
+
+覆いの検査は `resolve_unique` の外、backend の側にあり、形は 2 通りです。ネイティブなヒットテストを
+持たない backend は、解決済みの要素に対して `base.raise_if_covered` を呼びます。`AdbDriver`、
+`XcuitestLiveDriver`、`FakeDriver` が、この文書順の近似を共有します。`PlaywrightDriver` は
+`document.elementFromPoint` でブラウザ自身に尋ねます。検査を解決から分けておくと、解決は 1 つの
+スナップショットだけに依る純粋な関数のままです。「要素はあるが何かが上に乗っている」という答えは、
+セレクタではなく backend の持ち物になります。
+
 **狭い任意プロトコル**が、プラットフォーム間の能力差を引き受けます。すべての backend が空実装を
 並べる巨大なインターフェースを置く代わりに、`base.py` は小さなプロトコルを宣言します。
 `EvidenceProvider`、`ViewportProvider`、`ReadLagProvider`、`ReadOrderProvider`、
@@ -827,7 +862,7 @@ Android と web を 1 つのインターフェースで動かせます。
 
 | クラスまたは関数 | 役割 |
 |---|---|
-| `run_scenario()` | 入口です。要求された区間証跡を開始し、`before`、本体、`after` の各フェーズを走らせ、末尾の `expect` を評価し、`RunResult` を組み立てます。 |
+| `run_scenario()` | 入口です。要求された区間証跡を開始し、`setup`、本体、`cleanup` の各フェーズを走らせ、末尾の `expect` を評価し、`RunResult` を組み立てます。 |
 | `StepLoopState` | 1 フェーズが持ち回る可変の状態です。蓄積した変数バインディング、直前のステップの要素ツリー、読み取り回数が入ります。 |
 | `_LoopConfig` | 不変の側です。ドライバ、シンク、時計、alert guard、シナリオが入ります。 |
 | `_StepRunner` | 振り分け役です。`exec_steps` が並びを歩き、`_handle_if`、`_handle_for_each`、`_handle_web`、`_handle_action` が各ステップ形状を処理します。 |
@@ -839,6 +874,33 @@ Android と web を 1 つのインターフェースで動かせます。
 `SelectionState`、そしてテストが実時間の sleep なしで走るための `Clock` プロトコルです。`waits.py` は
 ポーリングの仕組みと `WaitTrace` を持ちます。`WaitTrace` は待機のポーリング履歴を記録するので、
 タイムアウトの原因を成果物だけから追えます。
+
+![条件待機 1 回のフロー図。各巡回は画面か観測した通信を読み、まず条件を判定します。条件を満たせば、その場でステップへ戻ります。満たさなければ alert guard が画面を塞ぐシステムダイアログを消し、続いてシナリオの interrupts が割り込みの画面を片付けます。期限の判定は最後で、だからこそ最初の読み取りは必ず走ります。期限を過ぎていれば失敗し、wait_diagnostic が WaitTrace をツリーと並べて書き出します。期限内なら _adaptive_sleep が固定のポーリング周期の残りだけ待ち、次の巡回に入ります。](assets/diagrams/developer-guide-wait-loop-ja.svg)
+
+<details>
+<summary>Mermaid のソース</summary>
+
+<!-- mermaid-svg: assets/diagrams/developer-guide-wait-loop-ja.svg -->
+```mermaid
+flowchart LR
+    s(["待機の開始"]) --> rd["画面、または観測した通信を読む"]
+    rd --> m{"条件を満たしたか"}
+    m -->|はい| ok(["ステップが続く"])
+    m -->|いいえ| ag["alert guard — システムダイアログを消す"]
+    ag --> ig["interrupts — 割り込み画面を片付ける"]
+    ig --> d{"期限を過ぎたか"}
+    d -->|はい| to["失敗 — wait_diagnostic が WaitTrace を書く"]
+    d -->|いいえ| bo["_adaptive_sleep — ポーリング周期の残り"]
+    bo --> rd
+```
+
+</details>
+
+このループには、取り違えやすい点が 3 つあります。条件の判定は guard より**先**にあるので、
+すでに条件を満たした待機が何かを操作することはありません。期限の判定は**最後**です。だからこそ、
+最初の読み取りは必ず走ります。そして `_adaptive_sleep` はバックオフではありません。固定の
+ポーリング周期の残りだけ待つ実装で、端末のダンプを伴う `query()` はその周期を使い切っていること
+が多いからです。出口はどれも条件か期限についての判断であり、固定の停止ではありません。
 
 **アクションの振り分けは条件分岐の連なりではなくレジストリです。**
 [`actions/_registry.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/common/orchestrator/actions/_registry.py)
@@ -894,6 +956,40 @@ run が何を残すのかに答えます。
 HTML ページを組み立てます。`archive.py` と `load.py` は、終わった run を `.zip` に書き出し、
 オフラインで読み直して再描画します。`manifest.json` が唯一の正本であり、CI は HTML を解析せずに
 manifest を読みます。
+
+![証跡の書き込み経路のフロー図。3 つの供給元が 1 つのシンクへ入ります。ドライバはスクリーンショット、要素ツリー、生ダンプを供給します。アプリ内のコレクタは NetworkExchange の記録を供給します。Interval は動画と端末ログを供給します。シンクはすべてを RunArtifactWriter へ渡します。RunArtifactWriter は唯一の書き込み口で、run ディレクトリへ届く前に Redactor を適用します。これとは別に write_report が、メモリ上の RunResult の一覧を 4 通りに描画して同じディレクトリへ書きます。manifest.json、junit.xml、ctrf.json、report.html です。CI は manifest を読みます。共有用の zip は仕上がったディレクトリを詰めたもので、オフラインの再描画だけが manifest を読み戻して HTML レポートを作ります。](assets/diagrams/developer-guide-evidence-path-ja.svg)
+
+<details>
+<summary>Mermaid のソース</summary>
+
+<!-- mermaid-svg: assets/diagrams/developer-guide-evidence-path-ja.svg -->
+```mermaid
+flowchart LR
+    drv["Driver — 画面 · 要素ツリー · 生ダンプ"] --> sink["EvidenceSink"]
+    net["アプリ内のコレクタ — NetworkExchange"] --> sink
+    iv["Interval — 動画 · 端末ログ"] --> sink
+    sink --> w["RunArtifactWriter — 唯一の書き込み口、Redactor を適用"]
+    rr["RunResult の一覧"] --> wr["write_report — 4 つすべてを描画"]
+    subgraph dir["run ディレクトリ"]
+        art["ステップごとの証跡"]
+        man["manifest.json — CI が読む"]
+        o1["junit.xml · ctrf.json · report.html"]
+    end
+    w --> art
+    wr --> man
+    wr --> o1
+    dir --> z["run の .zip — archive_run_dir がディレクトリを詰める"]
+    man -.->|"オフラインの再描画"| o1
+```
+
+</details>
+
+この形は、文章が招きやすい読み違いを 2 つ閉じます。レポートの 4 ファイルは**兄弟**であり、
+連鎖ではありません。`write_report` が同じメモリ上の `RunResult` の一覧から 4 つとも描画します。
+manifest は CI が読むファイルであって、他の 3 つが派生するもとではありません。読み戻すのは
+オフラインの再描画だけです。そして 2 つの書き手は届く範囲が違います。ステップごとのシンクは
+シナリオの `redact` 規則を適用しますが、レポート側の書き手が持つのは secret のリテラルだけです。
+つまり `manifest.json` はその規則を通さずに書かれます（[evidence](evidence.md)）。
 
 ---
 
@@ -967,6 +1063,26 @@ observe、propose、execute、emit の順で回ります。画面を読んで `O
 `capture.py` は代理操作による記録の経路です。人間がアプリを操作し、記録側がそこからステップを
 起こします。
 
+![record ループのフロー図。ループは画面を読んで Observation にし、Agent に次の操作を尋ねます。Step を運ぶ Proposal は、決定的な run と同じ _do_action の振り分け役へ渡ります。実行したステップは、次の観察へ移る前に、育ちつつあるシナリオへ追記されます。人手を必要とする Proposal は handoff へ向かい、そのあとループに戻ります。ゴール到達を報せる Proposal は、仕上がったシナリオを書き出します。](assets/diagrams/developer-guide-record-loop-ja.svg)
+
+<details>
+<summary>Mermaid のソース</summary>
+
+<!-- mermaid-svg: assets/diagrams/developer-guide-record-loop-ja.svg -->
+```mermaid
+flowchart LR
+    obs["画面を読む — Observation"] --> ask["Agent.next_action"]
+    ask --> prop{"Proposal"}
+    prop -->|Step| exec["_do_action — 決定的な振り分け役"]
+    prop -->|人手が必要| hand["handoff"]
+    prop -->|ゴール到達| emit(["シナリオを書き出す"])
+    exec --> app["ステップを追記する"]
+    app --> obs
+    hand --> obs
+```
+
+</details>
+
 **`crawl/`** はアプリを幅優先で探索し、画面地図を出力します。
 [`core.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/crawl/core.py) がグラフの型
 （`Fingerprint`、`Node`、`Edge`、`Action`、`ScreenMap`）と、それらを歩く `_Coordinator` を持ちます。
@@ -1002,10 +1118,11 @@ Bedrock を、`claude_code.py` が Claude Code のコマンドラインインタ
 **`serve/`** はブラウザ用のアプリケーションです。`state.py` の `ServeState` がプロセス全体の状態を
 束ねます。ジョブレジストリ、セッション管理、シナリオストア、プロバイダ設定が入ります。`routes.py` は
 経路をデータとして宣言します。そのため標準ライブラリのハンドラ（`handler.py`）と FastAPI の
-アプリケーション（`server/app.py`）が同じ経路表を配れます。`executor.py` は `RunExecutor` という
-接続面を宣言します。ローカル配置とホスティング配置が分かれるのはここだけです。`LocalExecutor` は
-各ジョブをデーモンスレッドで走らせ、`DbQueueExecutor` は遠隔の `bajutsu worker` 向けに積みます。
-実行の本体である `jobs.py` は、どちらの側でも同じです。
+アプリケーション（`server/app.py`）が同じ経路表を配れます。`executor/` パッケージは `RunExecutor` という
+接続面を宣言します。作成したジョブを、それを実行するものへ渡す接続面です。サーバ自身はジョブを実行しません
+（BE-0449）。`bajutsu serve` が配線する `DbQueueExecutor` は、すべてのジョブを `bajutsu worker` 向けに
+積みます。worker は `jobs.py` の実行本体でジョブを走らせます。キューを持たずに組み立てた状態には
+`UnqueuedExecutor` が入り、各ジョブを起動せずに dispatch の時点で失敗させます。
 
 **`mcp/`** は `run` と `doctor` を Model Context Protocol（MCP）のツールとして、run の証跡を MCP の
 リソースとして公開します。エディタ側のエージェントが、シェルを介さず決定的な経路に届きます。

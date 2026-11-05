@@ -58,6 +58,7 @@ import pytest
 from bajutsu.common.drivers import base
 from bajutsu.common.orchestrator.actions.handlers.scroll import (
     _AXIS,
+    _CHANGE_POLL_S,
     _MIN_STEP_FRACTION,
     _STEP_FRACTION,
     _center_in_viewport,
@@ -229,18 +230,42 @@ def _measure_one_step(harness: ConformanceHarness, fraction: float) -> tuple[flo
     frm, dest = _step_endpoints(elements, "down", None, viewport, fraction)
     driver.scroll(frm, dest)
     # Through the loop's own catch-up, as the overlap check does, so a backend whose tree lags its
-    # gesture is measured on the settled screen rather than failed for having been read early. Its
-    # return is that settled read, so the travel comes off the very tree the catch-up judged.
-    after = row_offsets(_region_after_step(driver, before_view, None, viewport, axis), bounds, axis)
-    shared = before.keys() & after.keys()
-    assert shared, f"a step of {fraction} left no row in common, so its travel cannot be measured"
-    # Any shared row gives the travel, the list being rigid; the median keeps one mis-reported frame
-    # from deciding the case.
-    return (
-        abs(dest[axis] - frm[axis]),
-        statistics.median_high(before[i] - after[i] for i in shared),
-        viewport[axis],
+    # gesture is measured on the settled screen rather than failed for having been read early.
+    travel = _row_travel(
+        before,
+        row_offsets(_region_after_step(driver, before_view, None, viewport, axis), bounds, axis),
     )
+    # The catch-up stops at the first read showing *any* motion, and rows entering or leaving the
+    # tree count as motion. On a starved Android emulator such a read can still carry the shared
+    # rows' pre-gesture bounds, so a step the failure video shows landing measured 0.0 travel
+    # (#2197). Keep reading, for up to another `read_lag()` budget, until the rows themselves show
+    # travel and two reads agree on it. A backend that truly moved nothing still reads 0 when that
+    # budget is spent, and the caller's tolerance rejects it, so the wait cannot hide the defect this
+    # case exists to catch.
+    lag = driver.read_lag() if isinstance(driver, base.ReadLagProvider) else 0.0
+    deadline = time.monotonic() + lag
+    previous: float | None = None
+    while (not travel or travel != previous) and time.monotonic() < deadline:
+        time.sleep(_CHANGE_POLL_S)
+        reread = _row_travel(before, row_offsets(driver.query(), bounds, axis))
+        if reread is not None:
+            previous, travel = travel, reread
+    assert travel is not None, (
+        f"a step of {fraction} left no row in common, so its travel cannot be measured"
+    )
+    return abs(dest[axis] - frm[axis]), travel, viewport[axis]
+
+
+def _row_travel(before: dict[str, float], after: dict[str, float]) -> float | None:
+    """How far the rows two reads share moved between them, or None when they share none.
+
+    Any shared row gives the travel, the list being rigid; the median keeps one mis-reported frame
+    from deciding the case.
+    """
+    shared = before.keys() & after.keys()
+    if not shared:
+        return None
+    return statistics.median_high(before[i] - after[i] for i in shared)
 
 
 def element(
@@ -513,6 +538,32 @@ class DriverConformanceContract:
         else:
             with pytest.raises(base.UnsupportedAction):
                 driver.select_option({"id": "sel"}, "opt")
+
+    def test_url_navigation_capability_matches_behavior(self, harness: ConformanceHarness) -> None:
+        # capabilities() is a promise (BE-0464): a URL_NAVIGATION backend loads the URL; one without
+        # it refuses with UnsupportedAction rather than silently staying put. `about:blank` is
+        # absolute, so it needs no base URL, and the web harness's own base is `about:blank` anyway.
+        driver = harness.with_screen([element(identifier="a")])
+        if base.Capability.URL_NAVIGATION in driver.capabilities():
+            driver.goto("about:blank")
+        else:
+            with pytest.raises(base.UnsupportedAction):
+                driver.goto("about:blank")
+
+    def test_element_attribute_capability_matches_behavior(
+        self, harness: ConformanceHarness
+    ) -> None:
+        # capabilities() is a promise (BE-0466): an ELEMENT_ATTRIBUTE backend reads through the same
+        # `resolve_unique` a tap uses — a value or None for the resolved element, ElementNotFound
+        # for no match — and one without it refuses with UnsupportedAction rather than reading None.
+        driver = harness.with_screen([element(identifier="a")])
+        if base.Capability.ELEMENT_ATTRIBUTE in driver.capabilities():
+            assert _one(driver, {"id": "a"}, "data-bajutsu-unset") is None
+            with pytest.raises(base.ElementNotFound):
+                _one(driver, {"id": "missing"}, "data-bajutsu-unset")
+        else:
+            with pytest.raises(base.UnsupportedAction):
+                _one(driver, {"id": "a"}, "data-bajutsu-unset")
 
     def test_picker_wheel_capability_matches_behavior(self, harness: ConformanceHarness) -> None:
         # capabilities() is a promise (BE-0356): a PICKER_WHEEL backend must not raise
@@ -832,3 +883,11 @@ class DriverConformanceContract:
         with pytest.raises(base.ElementNotTappable):
             driver.tap({"id": OBSTRUCTION_TARGET_ID})
         driver.tap({"id": OBSTRUCTION_CLEAR_ID})  # unobstructed — must not raise
+
+
+def _one(driver: base.Driver, sel: base.Selector, name: str) -> str | None:
+    # One pair through the batch read; a selector failure comes back as a value, so re-raise it.
+    (result,) = driver.read_attributes([(sel, name)])
+    if isinstance(result, base.SelectorError):
+        raise result
+    return result

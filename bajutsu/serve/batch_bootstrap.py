@@ -1,15 +1,15 @@
 """Fill the batch-provider registry with the real AWS-backed concrete from the environment (BE-0336).
 
-serve's fan-out resolves a cloud-batch job's provider by kind (`batch_provider.resolve`), but the
-registry only holds a concrete once something registers one. This module is that step: at serve
-startup it registers the real `DeviceFarmBatchProvider` — its boto3 client and presigned-URL transfer
-wired to live AWS — when, and only when, the environment names a Device Farm project. With no project
-named, `devicefarm` stays unregistered, so a mis-dispatched cloud-batch job fails loud at `resolve()`
-rather than silently vanishing (fail-closed).
+A cloud-batch job resolves its provider by kind (`batch_provider.resolve`), but the registry only
+holds a concrete once something registers one. This module is that step. A worker whose `worker.yaml`
+names a device cloud as its `environment` runs it at startup (BE-0448), and it registers the real
+`DeviceFarmBatchProvider` — its boto3 client and presigned-URL transfer wired to live AWS — when, and
+only when, the environment names a Device Farm project. The server never calls it, so the process
+that faces users holds no AWS role. With no project named, `devicefarm` stays unregistered, so a
+mis-dispatched cloud-batch job fails loud at `resolve()` rather than silently vanishing (fail-closed).
 
-boto3 and urllib are reached only inside the factories below, so importing this module (and the
-default `serve` path that imports it) stays SDK-free — the import guard that keeps `make serve`
-single-process and the base install lean (test_import_guard.py).
+boto3 and urllib are reached only inside the factories below, so importing this module stays
+SDK-free — the import guard that keeps the base install lean (test_import_guard.py).
 """
 
 from __future__ import annotations
@@ -47,13 +47,13 @@ def _make_devicefarm_client(region: str) -> DeviceFarmClient:
 
 def bajutsu_source_root() -> Path | None:
     """The Bajutsu source tree's root — the directory holding `pyproject.toml`, `tests/`, and the
-    `bajutsu/` package — when serve runs from a checkout, else None.
+    `bajutsu/` package — when Bajutsu runs from a checkout, else None.
 
-    The cloud-batch (Device Farm) package must be rooted here, not at the config's own directory:
-    Device Farm's APPIUM_PYTHON_TEST_PACKAGE validation needs `tests/` at the package root and its
-    test spec `pip install`s that root, both of which the config directory lacks. Returns None from an
-    installed (non-checkout) Bajutsu — the tree carries no `pyproject.toml` there — so the caller
-    falls back rather than packaging a source-less directory.
+    The cloud-batch (Device Farm) package is composed from this tree, not from the config's own
+    directory: Device Farm's APPIUM_PYTHON_TEST_PACKAGE validation needs `tests/` at the package root
+    and its test spec `pip install`s that root, both of which the config directory lacks. Returns
+    None from an installed (non-checkout) Bajutsu — the tree carries no `pyproject.toml` there — so
+    registration refuses rather than packaging a source-less directory.
     """
     root = Path(__file__).resolve().parent.parent.parent
     if (
@@ -92,22 +92,39 @@ def _load_hooks(env: Mapping[str, str]) -> list[BatchLifecycleHook]:
     return hooks
 
 
-def register_batch_providers(env: Mapping[str, str] | None = None) -> list[str]:
+def register_batch_providers(
+    env: Mapping[str, str] | None = None, *, source_root: Path | None = None
+) -> list[str]:
     """Register concrete batch providers named by the environment; return the kinds registered.
 
-    Device Farm registers only when `DEVICEFARM_PROJECT_ARN` is set, so a serve without AWS configured
-    leaves the registry empty and a cloud-batch job dispatched by mistake fails loud at `resolve()`.
+    Device Farm registers only when `DEVICEFARM_PROJECT_ARN` is set, so a process without AWS
+    configured leaves the registry empty and a cloud-batch job dispatched by mistake fails loud at
+    `resolve()`.
 
     Args:
         env: The environment to read (defaults to ``os.environ``); injected in tests.
+        source_root: The Bajutsu source tree each job's package is composed from; the checkout this
+            module runs from (`bajutsu_source_root`) when None.
 
     Returns:
         The provider kinds registered, in registration order — empty when none is configured.
+
+    Raises:
+        DeviceFarmError: A Device Farm project is named, but Bajutsu does not run from a source
+            checkout, so no package could be composed; or the client cannot be built.
     """
     resolved = os.environ if env is None else env
     project_arn = resolved.get(_PROJECT_ARN_ENV)
     if not project_arn:
         return []
+    root = source_root or bajutsu_source_root()
+    if root is None:
+        # An installed Bajutsu has no pyproject.toml or tests/ to ship, so every job would fail
+        # Device Farm's package validation; refusing here says so once, before any job is leased.
+        raise DeviceFarmError(
+            "Device Farm dispatch needs Bajutsu run from a source checkout (pyproject.toml, tests/, "
+            "and bajutsu/); an installed Bajutsu cannot compose the test package"
+        )
     region = resolved.get(_REGION_ENV) or _DEFAULT_REGION
     hooks = _load_hooks(resolved)
     provider = batch_provider.DeviceFarmBatchProvider(
@@ -115,6 +132,7 @@ def register_batch_providers(env: Mapping[str, str] | None = None) -> list[str]:
         transfer=HttpTransfer(),
         project_arn=project_arn,
         hooks=hooks,
+        source_root=root,
     )
     batch_provider.register("devicefarm", provider)
     return ["devicefarm"]

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from bajutsu.common.devices.browsers import browser_launch
+
 from ._shared import InstallMethod
 from .brew import Brew
 from .extra import Extra
@@ -27,9 +29,18 @@ def remedy(method: InstallMethod) -> str:
 
 
 def playwright_browser(engine: str) -> Tool:
-    """The browser tool for a Playwright engine, built on demand rather than baked in.
+    """The browser tool for a `runsOn.browser.kind`, built on demand rather than baked in.
 
-    The engine is chosen per run, so it is not a static entry in the web backend's tool list — a
-    `firefox` run needs `firefox`, not `chromium`.
+    The browser is chosen per run, so it is not a static entry in the web backend's tool list — a
+    `firefox` run needs `firefox`, not `chromium`. Chrome and Edge are the host's own installs that
+    Playwright launches on a channel (BE-0468): installing one would change a system browser, so
+    they are left to the user rather than to `playwright install`.
     """
+    _engine, channel = browser_launch(engine)
+    if channel is not None:
+        name = _CHANNEL_BROWSERS.get(engine, engine)
+        return Tool(engine, Manual(f"install {name} on this host; Playwright launches it as is"))
     return Tool(engine, Playwright(engine))
+
+
+_CHANNEL_BROWSERS = {"chrome": "Google Chrome", "edge": "Microsoft Edge"}

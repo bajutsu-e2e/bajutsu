@@ -20,6 +20,7 @@ class SessionStore(Protocol):
         expires_at: datetime | None = None,
         org: str | None = None,
         kind: PrincipalKind = HUMAN,
+        ci_job: dict[str, str] | None = None,
     ) -> str:
         """Mint and remember a new opaque session id, optionally bound to *identity*.
 
@@ -27,7 +28,8 @@ class SessionStore(Protocol):
         (`BAJUTSU_SESSION_TTL`). A machine session needs it because its lifetime is capped by the
         presented token's own `exp` (BE-0414 unit 1): the exchange only improves on reusing that
         token if what it mints is shorter-lived. *org* and *kind* record what the gate then reads
-        per request without re-deriving it.
+        per request without re-deriving it, and *ci_job* the job a machine session acts for, which
+        only the exchange's token ever names.
 
         *expires_at* must be timezone-aware, and passing one already at or behind now mints no
         usable session: the id comes back, but it never validates — whether because no store held

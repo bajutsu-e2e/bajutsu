@@ -72,7 +72,7 @@ def test_event_parses_endpoint_body_and_count() -> None:
     )
     assert a.event is not None
     assert a.event.url == "https://t.example.com/track"
-    assert a.event.body["name"] == "purchase_completed"
+    assert a.event.body is not None and a.event.body["name"] == "purchase_completed"
     assert a.event.count is not None and a.event.count.equals == 1
 
 

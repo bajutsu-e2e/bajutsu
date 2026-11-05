@@ -48,6 +48,9 @@ def _baseline_calls(*extra: str, step_id: str = "x/step0") -> list[tuple[str, li
 
 
 class RecordingSink:
+    def add_secret_values(self, values: object) -> None:  # EvidenceSink shape
+        return None  # these doubles write no artifact, so there is nothing to mask
+
     def __init__(self) -> None:
         self.calls: list[tuple[str, list[str]]] = []  # instant capture calls
         self.scenario_intervals: list[tuple[str, list[str]]] = []
@@ -132,7 +135,7 @@ def test_requested_intervals_from_capture_policy_in_canonical_order() -> None:
         {
             "name": "x",
             "capturePolicy": [
-                {"on": {"result": "error"}, "capture": ["appTrace", "deviceLog", "video"]}
+                {"on": {"result": "failure"}, "capture": ["appTrace", "deviceLog", "video"]}
             ],
             "steps": [{"tap": {"id": "a"}}],
         }
@@ -275,7 +278,7 @@ def test_error_trigger_is_the_safety_net() -> None:
             {
                 "name": "x",
                 "steps": [{"tap": {"id": "missing"}}],
-                "capturePolicy": [{"on": {"result": "error"}, "capture": ["actionLog"]}],
+                "capturePolicy": [{"on": {"result": "failure"}, "capture": ["actionLog"]}],
             }
         ),
         sink=sink,
@@ -391,6 +394,9 @@ def test_multiple_inline_interval_tokens_are_recorded_scenario_wide() -> None:
 class IntervalSink:
     """Records scenario-level interval recordings and returns artifacts for them."""
 
+    def add_secret_values(self, values: object) -> None:  # EvidenceSink shape
+        return None  # these doubles write no artifact, so there is nothing to mask
+
     def __init__(self) -> None:
         self.started: list[tuple[str, list[str]]] = []
         self.finished: list[str] = []
@@ -461,7 +467,7 @@ def test_requested_interval_recorded_even_when_a_step_fails() -> None:
         _scn(
             {
                 "name": "x",
-                "capturePolicy": [{"on": {"result": "error"}, "capture": ["video"]}],
+                "capturePolicy": [{"on": {"result": "failure"}, "capture": ["video"]}],
                 "steps": [{"tap": {"id": "missing"}}],
             }
         ),

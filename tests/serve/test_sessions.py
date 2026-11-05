@@ -271,6 +271,36 @@ def test_every_store_records_a_machine_principal_and_its_org(
         assert not store.valid(sid), type(store)
 
 
+def test_every_store_carries_the_ci_job_a_machine_session_was_minted_for(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    expires = datetime.now(UTC) + timedelta(minutes=15)
+    job = {"runId": "123", "runAttempt": "1", "checkRunId": "456"}
+    for store in _stores(serve_engine):
+        sid = store.issue("repo:acme/app", expires_at=expires, org="acme", kind=MACHINE, ci_job=job)
+        principal = store.principal(sid)
+        assert principal is not None and principal.ci_job == job, type(store)
+        human = store.principal(store.issue("dana"))
+        assert human is not None and human.ci_job is None, type(store)
+
+
+@pytest.mark.parametrize(
+    "stored", [None, "123", ["123"], {"runAttempt": 1}, {1: "123"}, {}], ids=repr
+)
+def test_a_stored_ci_job_that_is_not_a_string_mapping_reads_as_absent(stored: object) -> None:
+    principal = Principal.from_stored("repo:acme/app", "acme", MACHINE, stored)
+    assert principal.ci_job is None
+
+
+def test_a_machine_principal_with_a_ci_job_stays_hashable() -> None:
+    """`Principal` is a frozen dataclass, whose generated `__hash__` covers every field. The job
+    record is a dict, so without excluding it a principal would hash for a person and raise only
+    for a pipeline — the one shape that carries a job — while equality still tells two jobs apart."""
+    a = Principal("repo:acme/app", "acme", MACHINE, {"runId": "1"})
+    b = Principal("repo:acme/app", "acme", MACHINE, {"runId": "2"})
+    assert len({a, b}) == 2
+
+
 def test_every_store_enforces_a_per_session_expiry(
     serve_engine: Callable[..., Engine],
 ) -> None:
@@ -356,6 +386,24 @@ def test_redis_reads_a_pre_be_0414_bare_identity_value(serve_engine: Callable[..
     assert store.principal("legacy") == Principal(identity="dana", org=None, kind=HUMAN)
     assert store.principal("legacy-anon") == Principal(identity=None, org=None, kind=HUMAN)
     assert store.revoke_identities(["dana"]) == 1
+
+
+def test_a_machine_session_written_before_the_ci_job_existed_still_reads_as_its_machine(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    """A session minted before the job record existed keeps its org and kind, so an upgrade
+    neither signs a running pipeline out nor widens what it may reach."""
+    redis = FakeRedis()
+    redis.setex(
+        "bajutsu:session:old",
+        60,
+        json.dumps({"identity": "repo:acme/app", "org": "acme", "kind": MACHINE}),
+    )
+    machine = Principal(identity="repo:acme/app", org="acme", kind=MACHINE)
+    assert RedisSessionStore(redis).principal("old") == machine
+
+    sql = _sql_store(serve_engine)  # a NULL `ci_job`, as migration 0021 leaves an existing row
+    assert sql.principal(sql.issue("repo:acme/app", org="acme", kind=MACHINE)) == machine
 
 
 def test_a_corrupted_redis_record_is_refused_as_a_machine_not_read_as_a_human() -> None:

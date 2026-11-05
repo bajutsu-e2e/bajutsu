@@ -11,10 +11,12 @@ from __future__ import annotations
 
 import base64
 import binascii
+import copy
 import html
 import json
 import re
 import urllib.parse
+from collections.abc import Sequence
 from typing import Any
 
 from bajutsu.common.drivers import base
@@ -127,6 +129,43 @@ def mask_credential_shapes(text: str) -> tuple[str, list[str]]:
     return text, matched
 
 
+_PEM_BEGIN = re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")
+_PEM_END = re.compile(r"-----END [A-Z ]*PRIVATE KEY-----")
+# How many lines a private key block may run before an END that never came is given up on. An RSA
+# 4096 key is about 50 lines of base64, so a longer block is not a key, and masking every later
+# line of a log would hide far more than any key.
+PEM_MAX_LINES = 200
+
+
+class LineCredentialMasker:
+    """`mask_credential_shapes` for text that arrives one line at a time (BE-0449).
+
+    The pattern backstop masks a whole private key block when it sees the BEGIN and END lines in
+    one text. A live log arrives line by line, so a per-line pass would mask the header and let the
+    key body through. This masker remembers that a block is open: every line up to the END line is
+    replaced whole, and a block with no END stops being masked after `PEM_MAX_LINES` lines.
+    """
+
+    def __init__(self) -> None:
+        self._in_pem = 0  # lines masked in the open block; 0 when no block is open
+
+    def mask(self, line: str) -> str:
+        """*line* with every credential shape masked, given the lines seen before it."""
+        if self._in_pem:
+            self._in_pem += 1
+            end = _PEM_END.search(line)
+            if end is not None:
+                self._in_pem = 0
+                return PLACEHOLDER + mask_credential_shapes(line[end.end() :])[0]
+            if self._in_pem <= PEM_MAX_LINES:
+                return PLACEHOLDER + ("\n" if line.endswith("\n") else "")
+            self._in_pem = 0  # no END within the bound: not a key, stop hiding the log
+        begin = _PEM_BEGIN.search(line)
+        if begin is not None and _PEM_END.search(line, begin.end()) is None:
+            self._in_pem = 1
+        return mask_credential_shapes(line)[0]
+
+
 def _as_str(value: Any) -> str | None:
     """A JSON field as text, or None when it is absent or another type."""
     return value if isinstance(value, str) else None
@@ -169,6 +208,16 @@ def _patterns(keys: list[str]) -> list[re.Pattern[str]]:
     return pats
 
 
+def _search_terms(raw_values: list[str]) -> list[str]:
+    """Each value plus its common encodings (BE-0153), longest first.
+
+    Longest first so a term that is a substring of another never leaves a partial leak.
+    """
+    raw = set(raw_values)
+    terms = raw | {enc for v in raw for enc in _encoded_variants(v)}
+    return sorted(terms, key=len, reverse=True)
+
+
 class Redactor:
     """Applies a `Redact` config to evidence. A no-op when nothing is configured.
 
@@ -196,15 +245,31 @@ class Redactor:
         self._mask_credential_names = not redact.unmask_credential_names
         self._patterns = _patterns(self._keys)
         self._raw_values: list[str] = [v for v in (values or []) if v]
-        raw = set(self._raw_values)
-        # Search terms are each raw value plus its common encodings (BE-0153). Longest
-        # first so a term that is a substring of another never leaves a partial leak.
-        terms = raw | {enc for v in raw for enc in _encoded_variants(v)}
-        self._values: list[str] = sorted(terms, key=len, reverse=True)
+        self._values = _search_terms(self._raw_values)
+        # Values an `eval` step derived from a secret mid-scenario (BE-0472), kept apart from the
+        # configured ones: a derived value can be a single character, so it masks free text and a
+        # structure's string leaves but never the pass over a serialized document, where replacing
+        # "1" would turn `1.5` into `[REDACTED].5` and the artifact would stop parsing.
+        self._derived: list[str] = []
+        self._derived_terms: list[str] = []
+
+    def with_values(self, extra: Sequence[str]) -> Redactor:
+        """A new redactor that also masks *extra*, values derived mid-scenario (BE-0472).
+
+        The original is left as it was: a run shares its redactors across worker threads, and a value
+        an `eval` step derives from a secret belongs to that scenario alone.
+        """
+        new = [v for v in dict.fromkeys(extra) if v and v not in self._derived]
+        if not new:
+            return self
+        clone = copy.copy(self)
+        clone._derived = [*self._derived, *new]  # noqa: SLF001  # this class's own copy
+        clone._derived_terms = _search_terms(clone._derived)  # noqa: SLF001
+        return clone
 
     @property
     def active(self) -> bool:
-        return bool(self._keys or self._labels or self._values)
+        return bool(self._keys or self._labels or self._values or self._derived_terms)
 
     @property
     def has_label_rules(self) -> bool:
@@ -225,7 +290,16 @@ class Redactor:
         """
         for pattern in self._patterns:
             text = pattern.sub(_masked, text)
-        return self.redact_values(text)
+        return self.redact_derived(self.redact_values(text))
+
+    def redact_derived(self, text: str) -> str:
+        """Mask the values derived mid-scenario (BE-0472) in free text or one string value.
+
+        Never run over a serialized document; see `__init__` for why.
+        """
+        for value in self._derived_terms:
+            text = text.replace(value, PLACEHOLDER)
+        return text
 
     def redact_values(self, text: str) -> str:
         """Mask only the literal secret values (and a Basic-auth token carrying one) in text.

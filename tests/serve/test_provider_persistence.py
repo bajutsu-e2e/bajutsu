@@ -566,7 +566,10 @@ def test_local_build_state_wires_the_store(tmp_path: Path) -> None:
         token=None,
         cwd=tmp_path,
     )
-    assert isinstance(state.providers.store, LocalProviderSettingsStore)
+    # The default org reads the same file on the server shape the local backend became (BE-0449).
+    store = state.for_org(DEFAULT_ORG).provider_settings
+    assert isinstance(store, LocalProviderSettingsStore)
+    assert store.load() is not None
     # Construction wires the store but does not eagerly load it — the in-memory entry is still absent
     # (a pure read that does not lazy-load), so nothing has been resolved from disk yet.
     assert state.providers.org_provider_settings(DEFAULT_ORG) is None

@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 from _shared import (
     FakeProc,
+    WorkerStandIn,
     _get,
     _get_json,
     _post,
@@ -49,7 +50,14 @@ def test_http_crawl_explores_and_streams_the_map(tmp_path: Path) -> None:
         return FakeProc(["crawl → " + out + "/screenmap.json\n", "crawled 2 screens\n"])
 
     server, port = _serve(
-        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path, popen=popen)
+        srv.ServeState(
+            executor=WorkerStandIn(),
+            scenarios_dir=scn_dir,
+            config=cfg,
+            runs_dir=runs,
+            cwd=tmp_path,
+            popen=popen,
+        )
     )
     try:
         body = json.dumps({"target": "demo", "maxScreens": 10, "maxSteps": 30}).encode()
@@ -99,6 +107,7 @@ def test_http_crawl_boots_pool_and_passes_workers(tmp_path: Path) -> None:
 
     server, port = _serve(
         srv.ServeState(
+            executor=WorkerStandIn(),
             scenarios_dir=scn_dir,
             config=cfg,
             runs_dir=runs,
@@ -126,7 +135,9 @@ def test_http_crawl_boots_pool_and_passes_workers(tmp_path: Path) -> None:
 def test_http_crawl_requires_app(tmp_path: Path) -> None:
     scn_dir, cfg, runs = project(tmp_path)
     server, port = _serve(
-        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+        srv.ServeState(
+            executor=WorkerStandIn(), scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path
+        )
     )
     try:
         body = json.dumps({"maxScreens": 5}).encode()  # missing app
@@ -146,6 +157,7 @@ def _crawl_server(tmp_path: Path) -> tuple[ThreadingHTTPServer, int]:
     scn_dir, cfg, runs = project(tmp_path)
     return _serve(
         srv.ServeState(
+            executor=WorkerStandIn(),
             scenarios_dir=scn_dir,
             config=cfg,
             runs_dir=runs,
@@ -166,6 +178,37 @@ def test_http_crawl_rejects_unknown_backend(tmp_path: Path) -> None:
         server.server_close()
 
 
+def test_http_crawl_rejects_unknown_target_without_listing_targets(tmp_path: Path) -> None:
+    # The CLI's unknown-target error lists every target, and a crawl job's log reaches the caller, so
+    # the endpoint refuses first with the server's unlisted wording and spawns nothing (BE-0471).
+    scn_dir, cfg, runs = project(tmp_path)
+    spawned: list[list[str]] = []
+
+    def popen(cmd: list[str], **_kw: Any) -> FakeProc:
+        spawned.append(cmd)
+        return FakeProc(["done\n"])
+
+    server, port = _serve(
+        srv.ServeState(
+            executor=WorkerStandIn(),
+            scenarios_dir=scn_dir,
+            config=cfg,
+            runs_dir=runs,
+            cwd=tmp_path,
+            popen=popen,
+        )
+    )
+    try:
+        status, resp = _post(port, "/api/crawl", {"target": "ghost"})
+        assert status == 400
+        assert resp["error"] == "unknown target: 'ghost' (define targets.ghost in config)"
+        assert "demo" not in resp["error"]
+        assert spawned == []
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_http_crawl_rejects_invalid_udid(tmp_path: Path) -> None:
     server, port = _crawl_server(tmp_path)
     try:
@@ -180,6 +223,7 @@ def test_http_crawl_rejected_at_concurrency_cap(tmp_path: Path) -> None:
     # Crawl is a long, device-heavy job, so it honours the same cap as run/record (BE-0051 slice 5).
     scn_dir, cfg, runs = project(tmp_path)
     state = srv.ServeState(
+        executor=WorkerStandIn(),
         scenarios_dir=scn_dir,
         config=cfg,
         runs_dir=runs,
@@ -247,7 +291,14 @@ def test_http_crawl_continue_reuses_run_and_passes_continue_flag(tmp_path: Path)
         return FakeProc(["continuing crawl\n"])
 
     server, port = _serve(
-        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path, popen=popen)
+        srv.ServeState(
+            executor=WorkerStandIn(),
+            scenarios_dir=scn_dir,
+            config=cfg,
+            runs_dir=runs,
+            cwd=tmp_path,
+            popen=popen,
+        )
     )
     try:
         status, resp = _post(
@@ -288,7 +339,14 @@ def test_http_crawl_continue_is_a_strict_boolean(tmp_path: Path) -> None:
         return FakeProc(["crawl\n"])
 
     server, port = _serve(
-        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path, popen=popen)
+        srv.ServeState(
+            executor=WorkerStandIn(),
+            scenarios_dir=scn_dir,
+            config=cfg,
+            runs_dir=runs,
+            cwd=tmp_path,
+            popen=popen,
+        )
     )
     try:
         status, resp = _post(

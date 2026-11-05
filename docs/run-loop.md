@@ -49,8 +49,8 @@ What each target's own bundle carries:
 | `network` / `transitions` / `channel` | that target's own collector |
 | `webview_bridge` | that target's WebView bridge, so a `web:` block opens the right app |
 | `control` / `relaunch` | that target's device |
-| `mailbox` / `locale` / `capture` / `interrupts` | that target's own config |
-| `ctx` | that target's baselines / schemas / goldens directories |
+| `mailbox` / `locale` / `capture` / `interrupts` | that target's own config (`services.mailbox`, `runsOn.ios.locale`, `evidence.capture`, `hooks.interrupts`) |
+| `ctx` | that target's `paths.baselines` / `paths.schemas` / `paths.goldens` directories |
 
 Three consequences follow from the shared loop state:
 
@@ -70,19 +70,19 @@ scenario's declared order, so a reader sees the block as authored.
 
 ### The lifecycle phases around the step loop
 
-A scenario's `before` / `after` fields ([scenarios](scenarios.md#before--after-setup-and-teardown-phases))
+A scenario's `setup` / `cleanup` fields ([scenarios](scenarios.md#setup--cleanup-setup-and-teardown-phases))
 wrap the step loop in two more phases, both driven by the same step runner, so a hook's steps are
 exactly as capable as any other step and share the run's `vars.*` bindings:
 
-1. **`before` runs first.** A failure there sets `failure = "before: …"` and skips `steps` and
-   `expect` entirely — `before` is a precondition for the scenario, not a step within it.
+1. **`setup` runs first.** A failure there sets `failure = "setup: …"` and skips `steps` and
+   `expect` entirely — `setup` is a precondition for the scenario, not a step within it.
 2. **`steps` and `expect` run unchanged**, computing the verdict exactly as they did before.
-3. **`after` runs once a verdict exists**, on every path out of `steps` — the passing one, the
+3. **`cleanup` runs once a verdict exists**, on every path out of `steps` — the passing one, the
    failing one, and the cancelled one. Each rule whose `on` matches `always` or that verdict runs, in
    declaration order. A rule's own failure becomes the run's failure when the run was passing, and is
    appended behind the existing failure otherwise.
 
-A cancelled run cannot bound the `after` phase with the cancel source: that source is a latched
+A cancelled run cannot bound the `cleanup` phase with the cancel source: that source is a latched
 `threading.Event.is_set`, so its first read inside the phase would raise `RunCancelled` again and no
 cleanup step would run at all. The phase runs under its own deadline instead — a tenth of
 `grace_seconds()` — abandoning the remaining rules once the deadline passes, so cleanup gets a
@@ -90,7 +90,9 @@ bounded chance to run without pushing the shutdown tail past the window `serve` 
 unconditional kill.
 
 Each phase numbers its steps from zero and records them in its own `RunResult` list, so the report
-shows Before and After as blocks distinct from the scenario's numbered steps.
+shows the setup and cleanup blocks apart from the scenario's numbered steps. `RunResult.after_verdict`
+records the verdict the cleanup phase dispatched on. A run stored before BE-0452 holds `error` there,
+and the report loader reads it as `failure`, so an earlier run still renders its cleanup block.
 
 ### The flow of one step
 
@@ -157,7 +159,7 @@ Decides whether each `capturePolicy` rule fires for this step ([evidence](eviden
   screenChanged` / `on.result == error`. The action name is mapped to the DSL name
   (`long_press`→`longPress`, `assert_`→`assert`).
 - `_collect_captures`: leads with `elements`, then gathers the inline `step.capture` + the fired
-  rules' captures + the config's `defaults.capture` baseline (applied unconditionally, unlike the
+  rules' captures + the target's `evidence.capture` baseline (applied unconditionally, unlike the
   other two) and dedupes. Leading with `elements` is what gives every step the post-action tree
   whatever the three sources asked for; the pre-step baseline writes no tree of its own (BE-0407),
   so this read is the step's only one, into `elements.json`'s single filename.
@@ -197,10 +199,12 @@ class RunResult:
     steps: list[StepOutcome]
     expect_results: list[AssertionResult]  # evaluation of the final expect
     failure: str | None          # e.g. "step 3 (tap): no match: {...}"
-    before_outcomes: list[StepOutcome]  # the `before` phase's own steps
-    after_outcomes: list[StepOutcome]   # the `after` phase's own steps
-    after_verdict: str           # "success" / "error" — which `after` rules ran; "" when none
+    before_outcomes: list[StepOutcome]  # the `setup` phase's own steps
+    after_outcomes: list[StepOutcome]   # the `cleanup` phase's own steps
+    after_verdict: str           # "success" / "failure" — which `cleanup` rules ran; "" when none
     target_devices: dict[str, TargetDeviceInfo]  # one row per declared target (multi-target only)
+    coordinates: str             # e.g. "iPhone SE (3rd generation) / iOS 17"; "" when no condition applies
+    run_coordinates: dict[str, dict[str, str]]  # the same coordinates per target and condition field
 ```
 
 `RunResult`'s singular `backend` / `device` / `device_name` / `device_runtime` each describe one
@@ -224,16 +228,16 @@ to the report.
 Builds the environment with `simctl` per the `preconditions`:
 
 ```
-erase (if pre.erase: shutdown → erase) → boot → bootstatus -b (wait out the boot)
+erase (if pre.subject.reinstall is erase: shutdown → erase) → boot → bootstatus -b (wait out the boot)
   → terminate(bundle) (for a clean launch state)
-  → launch(bundle, [launchArgs, *locale_args(locale)], {**config.launchEnv, **pre.launchEnv})
+  → launch(bundle, [subject.launch.args, *locale_args(locale)], {**subject.launch.env, **preconditions.subject.launch.env})
   → openurl(deeplink) (if any) → make_driver(actuator, udid)
   → await_ready (poll until query() returns 2+ elements, up to 10s)
 ```
 
-> `await_ready` polls for the strongest readiness signal available, in order: an explicit `readyWhen`
-> selector, then an app-reported screen-transition event ([BE-0310](../roadmaps/BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness.md), opt-in via `BajutsuKit`), then any
-> element whose id belongs to a declared `idNamespaces`, falling back to "the app has rendered a UI
+> `await_ready` polls for the strongest readiness signal available, in order: an explicit `subject.startWhen`
+> condition, then an app-reported screen-transition event ([BE-0310](../roadmaps/BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness.md), opt-in via `BajutsuKit`), then any
+> element whose id belongs to a declared `subject.idNamespaces`, falling back to "the app has rendered a UI
 > (more than the root element)" — up to 10s ([configuration](configuration.md) documents each rung in
 > full). Whichever rung fires, the gate then waits for the screen to **stop moving**: it returns once
 > two consecutive queries report the same element identifiers, labels, and frames. Every rung answers
@@ -244,7 +248,7 @@ erase (if pre.erase: shutdown → erase) → boot → bootstatus -b (wait out th
 > the `screenChanged` rung, which has none of its own; it is capped at three, after which the gate
 > returns ready anyway and records `settled: false` in the first-wait diagnostic rather than holding
 > a screen that never holds still. It never turns a ready app into a timeout. `locale` **is**
-> applied at launch (the scenario's `preconditions.locale` overrides the config default, passed as
+> applied at launch (the scenario's `preconditions.device.ios.locale` overrides the target's `runsOn.ios.locale`, passed as
 > launch args via `env.locale_args`). `simctl boot` returns as soon as the boot has been *requested*,
 > so every step that follows it waits the boot out with `bootstatus` first — including the extra boot
 > cycle the system-locale pin runs ([BE-0359](../roadmaps/BE-0359-xcuitest-boot-completion-wait/BE-0359-xcuitest-boot-completion-wait.md)).
@@ -279,6 +283,21 @@ propagating. The scenario's own end releases the whole set.
   returns `(results, manifest_path)`.
 
 The CLI's `run` calls this `run_and_report` ([cli](cli.md#run)).
+
+**Runs formed by device conditions (BE-0452).** The `runsOn` of a target a scenario runs against
+may declare a condition. `bajutsu/run/device_matrix.py` then plans the invocation before any scenario
+runs:
+
+1. It reads each pool once, through `common/devices/facts.py`.
+2. It forms each scenario's runs and picks each run's eligible devices, through
+   `common/devices/runs.py`.
+3. It groups the runs that take the same devices into a cell.
+
+The cells run one after another. Each goes through `run_and_report` on a pool narrowed to its
+eligible devices. `--workers` thus spreads a cell's runs over identical devices. A run that no
+device fits fails. Under an open range, it becomes a not-applicable record instead
+([configuration](configuration.md#device-conditions-runson)). Such a record never reaches a
+driver. An invocation whose targets declare no condition keeps the path above unchanged.
 
 > **Warm XCUITest runner (BE-0291).** Each scenario still gets a freshly launched app and a fresh
 > driver (clean isolation), but the XCUITest backend's resident `xcodebuild` runner — whose cold
@@ -332,19 +351,20 @@ The CLI's `run` calls this `run_and_report` ([cli](cli.md#run)).
 > already under way, so that recovery's own bound (`BAJUTSU_XCUITEST_RECOVERY_TIMEOUT`, plus its
 > unbounded device re-prep) is what limits it instead.
 >
-> The retry also forces the same `erase` precondition a scenario already gets by declaring
-> `erase: true` — a Simulator restart on XCUITest, an app-level clean state on adb — instead of a bare
-> in-place respawn onto the very device that just crashed it, unless the scenario declares
-> `reinstall: overwrite` to keep its app's data across the lease, or the route itself rejects any
-> `erase` precondition outright (a real device, `xcuitest.deviceType: device`, or the live WebDriver
-> endpoint). A plain `erase: false` does *not* skip the forced retry: the CLI (`_filter_scenarios` in
-> `bajutsu/cli/commands/run.py`) resolves every scenario's `erase` to a concrete bool, most commonly
-> `false`, before the pipeline ever sees it, so a guard on that value alone would disable the forced
-> retry on the very production path it exists for — only `reinstall: overwrite` genuinely protects a
-> scenario's data, since `reinstall`'s own default (`clean`) wipes it regardless of `erase` anyway. An
-> explicit `bajutsu run --no-erase`, by contrast, *is* honored: the CLI carries that flag's
-> pre-resolution value (`erase is not False`) into the run as `force_erase_on_retry`, so an operator's
-> deliberate opt-out still skips the forced retry even though a scenario's own `erase: false` cannot.
+> The retry also forces `preconditions.subject.reinstall: erase`, the same device reset a scenario
+> already gets by declaring that value — a Simulator restart on XCUITest, an app-level clean state on
+> adb — instead of a bare in-place respawn onto the very device that just crashed it. Three cases skip
+> the forced erase. The first is a merged reinstall of `overwrite`, from the scenario or else its
+> target, which keeps the app's data across the lease. The second is a route that rejects any
+> `erase` precondition outright: a real device (`runsOn.ios.kind: device`) or the live route to an
+> `appium` grid. The third is an explicit `bajutsu run --no-erase`: the CLI carries that flag into
+> the run as `force_erase_on_retry`, so an operator's deliberate opt-out still skips the forced
+> retry. A merged `clean`, the built-in default, does *not* skip it: `clean` wipes the app's data
+> anyway, so a guard on it would disable the forced retry on the very production path it exists
+> for. The CLI
+> no longer stamps a concrete erase value onto every scenario; `_filter_scenarios` moves a scenario's
+> reinstall only when a flag changes it
+> ([BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md)).
 > If the forced-erase lease itself fails with a device-level fault (`simctl.DeviceError`/
 > `adb.DeviceError`, a sibling type to `BackendCrashError` rather than a subclass of it), the retry
 > degrades to the bare in-place respawn instead of letting that fault escape this loop and abort the
@@ -373,13 +393,15 @@ The CLI's `run` calls this `run_and_report` ([cli](cli.md#run)).
 > and the retry reproducing the first attempt exactly. So a retry that already ran with a forced erase
 > and crashed again asks its lease's environment for a device that has never run anything, created
 > through the same path a vanished device's replacement uses; the degraded device is shut down and
-> never handed out again. The attempt's own video evidence can select that rung directly: when the
+> never handed out again. That path gives the new device the old device's own device type and
+> runtime, or fails the run; it never falls back to a configured model or to the newest iPhone
+> ([BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)). The attempt's own video evidence can select that rung directly: when the
 > recording never confirms it started writing — the wedge's earliest symptom — the *first* crash
 > escalates, skipping the erase whose remedy that signal has already ruled out. A replacement attempt
 > drops the forced erase, since a device about to be created has nothing to erase. The rung is scoped
 > to an unpinned run (`--udid` names a device the operator meant, and a replacement would silently
 > move the run off it — and an unpinned run is a pool of one device served by one worker, so the
-> escalated retry necessarily leases back the device that asked for the swap) with an `appPath` (a
+> escalated retry necessarily leases back the device that asked for the swap) with a `subject.path` (a
 > blank device has nothing to install), and it honors both
 > opt-outs the erase rung honors — `reinstall: overwrite` and `bajutsu run --no-erase` — because a
 > replacement resets strictly more than an erase does. Every other route ignores the request and

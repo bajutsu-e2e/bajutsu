@@ -5,15 +5,40 @@ from __future__ import annotations
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, get_args
 
+from bajutsu.run import INTERNAL_MODULE as INTERNAL_RUN_MODULE
 from bajutsu.serve.logbus import LogBus
 
 from ._shared import _DEFAULT_ORG
 
 if TYPE_CHECKING:
-    from bajutsu.serve.batch_provider import BatchRequest
+    from bajutsu.common.capability.worker_capability import WorkerCapability
+    from bajutsu.serve.batch_provider import BatchCheckpoint, BatchRequest
     from bajutsu.serve.upload_artifacts import ArtifactOverrides
+
+
+# What a job does: the subcommand a worker runs, which the queue matches against a worker's
+# capabilities and the server reads to tell a job's handling apart (BE-0449).
+JobKind = Literal["run", "run-set", "record", "crawl", "triage"]
+JOB_KINDS: frozenset[JobKind] = frozenset(get_args(JobKind))
+
+
+def _cmd_kind(cmd: list[str]) -> JobKind | None:
+    """The `bajutsu` subcommand *cmd* spawns, when it is one of the job kinds.
+
+    The internal run module (`-m bajutsu.run.internal`, BE-0449) is a `run`, as is the
+    `-m bajutsu run` a spec queued before it still names.
+    """
+    for i in range(len(cmd) - 1):
+        if cmd[i] != "-m":
+            continue
+        if cmd[i + 1] == INTERNAL_RUN_MODULE:
+            return "run"
+        if cmd[i + 1] == "bajutsu" and i + 2 < len(cmd):
+            sub = cmd[i + 2]
+            return next((k for k in JOB_KINDS if k == sub), None)
+    return None
 
 
 @dataclass
@@ -30,8 +55,8 @@ class Job:
     # that ran on a remote worker keeps `status == "running"` on the control plane by design
     # (BE-0015 W2) — its terminal state lives in the jobs table, and `job_view` falls back to the
     # bus for it — so without a second signal the cap counts a finished job until serve restarts.
-    # Set by `JobRegistry._release_finished` from the jobs table; an in-process job's `status`
-    # already answers this, so nothing sets it on the local path.
+    # Set by `JobRegistry._release_finished` from the jobs table; a job that ends on this process's
+    # own `Job` (a worker's, or one failed at dispatch) answers through `status` instead.
     released: bool = False
     exit_code: int | None = None
     run_id: str | None = None  # the runs/<id> a `run` job produced, parsed from its output
@@ -54,6 +79,14 @@ class Job:
     # Written and cleared with `proc` at every site that touches it, so `proc is None` always implies
     # False here rather than a stale value the reader has to reason is harmless.
     proc_graceful: bool = False
+    # Whether the spawn keeps the caller's own `PATH` instead of putting this interpreter's bin dir
+    # first (BE-0449). Only the public `bajutsu run` sets it: that run lives in the caller's shell, as
+    # it always has. A leased job and `worker --once` leave it False, so both resolve `idb` alike.
+    keep_caller_path: bool = False
+    # A hard kill asked for while no subprocess was registered (BE-0449): a second Ctrl-C that lands
+    # before the spawn. Latched here so registration ends the spawn at once instead of sending the
+    # SIGTERM a child may ignore.
+    kill_requested: bool = False
     lines: list[str] = field(default_factory=list)
     lock: threading.Lock = field(default_factory=threading.Lock)
     bus: LogBus | None = None  # live-log channel; set from state.logbus at creation (BE-0015)
@@ -111,11 +144,46 @@ class Job:
     # so a remote worker needs no settings of its own. Empty when no provider is selected (the
     # zero-config path, BE-0101, then falls back to the job's inherited env unchanged).
     env_overlay: dict[str, str] = field(default_factory=dict)
+    # The requesting org's stored secrets as environment variables (BE-0449): the worker fills it
+    # from the secrets its lease relayed, and `_spawn_env` merges it onto the child env. Never part of the job spec the queue stores, and
+    # kept out of `repr` so a logged `Job` cannot print a value.
+    secret_env: dict[str, str] = field(default_factory=dict, repr=False)
     # A cloud-batch run request (BE-0336): when set, this job runs one scenario on a batch device
     # cloud (its `provider` names the concrete backend) instead of spawning `cmd` locally. `run_job`
     # branches on it; None is the ordinary local/worker run. The verdict still comes from the run's
     # own manifest, so the batch path stays off the `run`/CI verdict path.
     batch: BatchRequest | None = None
+    # The sha256 of the application a cloud-batch job's `appPath` names, stored as a binary artifact
+    # for a job whose files travel as materials with no uploaded bundle (BE-0448): the lease signs a
+    # GET for it, and the worker places it at that `appPath` in the job's workspace. None when the
+    # bundle, or the config's own directory, already holds the binary.
+    batch_app: str | None = None
+    # Worker-side only, never serialized. Where a leased cloud-batch job stores its scheduled run's
+    # ARN, over the server's lease-owner-checked route (BE-0448); None runs without one (`--once`).
+    batch_checkpoint: BatchCheckpoint | None = None
+    # Worker-side only: set once the job's lease is lost, so a cloud-batch poll leaves its run to the
+    # worker that holds the job now instead of waiting it out (BE-0448).
+    lease_lost: threading.Event | None = None
+    # Worker-side only: the device-cloud worker's `worker.yaml`, which a cloud-batch job's scenario
+    # must fit before anything is submitted (BE-0450's check, run on the worker by BE-0448). None
+    # submits unchecked, as a worker started without `--worker-config` runs no cloud job anyway.
+    worker_capability: WorkerCapability | None = None
+    # Why a job failed before producing a verdict of its own (a cloud-batch submission that failed),
+    # posted as the result's `error` so the jobs row names the cause rather than "unknown".
+    error: str | None = None
+
+    @property
+    def kind(self) -> JobKind | None:
+        """What this job does: ``run-set`` for a cloud-batch request, else the subcommand its
+        command line spawns, or None for a command that is none of the job kinds.
+
+        Derived rather than stored (BE-0449): every dispatcher already fixes the kind in `cmd` or
+        `batch`, so a stored field would be a second copy each dispatcher, the job spec, and the
+        worker's rebuilt `Job` would all have to keep in step.
+        """
+        if self.batch is not None:
+            return "run-set"
+        return _cmd_kind(self.cmd)
 
     def view(self, *, include_lines: bool = True) -> dict[str, Any]:
         """The job's state for the UI. `include_lines=False` omits the log buffer — used for the
@@ -134,6 +202,8 @@ class Job:
                 else None,
                 "awaitingHuman": self.awaiting_human,
             }
+            if self.error is not None:
+                v["error"] = self.error
             if include_lines:
                 v["lines"] = list(self.lines)
             return v

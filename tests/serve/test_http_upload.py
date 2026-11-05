@@ -18,16 +18,18 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-from _shared import FakeObjectStore, FakeProc, _get_json, _post, _serve, fake_popen
+from _shared import FakeObjectStore, FakeProc, WorkerStandIn, _get_json, _post, _serve, fake_popen
 
 from bajutsu import serve as srv
 from bajutsu.serve import handler as handler_mod
 from bajutsu.serve.state import SessionManager
 
 _CONFIG = (
-    "defaults: { backend: [ios] }\n"
     "targets:\n"
-    "  demo: { bundleId: com.example.demo, scenarios: ./scenarios }\n"
+    "  demo:\n"
+    "    platform: ios\n"
+    "    subject: {id: com.example.demo}\n"
+    "    paths: {scenarios: ./scenarios}\n"
 )
 _SCENARIO = "- name: alpha\n  steps:\n    - tap: { id: home.title }\n"
 
@@ -96,6 +98,7 @@ def _state(
     runs = tmp_path / "runs"
     runs.mkdir(exist_ok=True)
     return srv.ServeState(
+        executor=WorkerStandIn(),
         runs_dir=runs,
         cwd=tmp_path,
         root=tmp_path,
@@ -217,13 +220,11 @@ def test_run_off_bundle_never_builds_from_uploaded_config(tmp_path: Path) -> Non
     # An uploaded config that declares a `build` must never have it executed on the host (DESIGN §1):
     # the bundle ships a prebuilt binary, so only one process — the run — is ever spawned.
     cfg = (
-        "defaults: { backend: [ios] }\n"
         "targets:\n"
         "  demo:\n"
-        "    bundleId: com.example.demo\n"
-        "    scenarios: ./scenarios\n"
-        "    appPath: ./Missing.app\n"
-        "    build: touch /tmp/bajutsu-pwned\n"
+        "    platform: ios\n"
+        "    subject: {id: com.example.demo, path: ./Missing.app, build: touch /tmp/bajutsu-pwned}\n"
+        "    paths: {scenarios: ./scenarios}\n"
     )
     spawned: list[list[str]] = []
 
@@ -237,7 +238,7 @@ def test_run_off_bundle_never_builds_from_uploaded_config(tmp_path: Path) -> Non
         _, resp = _post(port, "/api/run", {"target": "demo", "scenario": "smoke.yaml"})
         _wait_done(port, resp["jobId"])
         # Exactly one spawn — the run — and it is `bajutsu run`, never the config's `build` command.
-        assert len(spawned) == 1 and "run" in spawned[0]
+        assert len(spawned) == 1 and srv.Job(cmd=spawned[0]).kind == "run"
         # The build (`touch …`) must not have been spawned. Match on each spawned command's
         # executable, not a substring of its args: the run's interpreter path can legitimately
         # contain "touch" (e.g. a checkout under a "multitouch" directory), which a substring
@@ -368,8 +369,19 @@ def test_upload_rejects_config_path_outside_bundle(tmp_path: Path) -> None:
     server, port = _serve(_state(tmp_path))
     try:
         for cfg in (
-            "targets:\n  demo: { bundleId: com.example.demo, scenarios: /etc }\n",
-            "targets:\n  demo: { bundleId: com.example.demo, appPath: ../../../etc/passwd }\n",
+            (
+                "targets:\n"
+                "  demo:\n"
+                "    platform: ios\n"
+                "    subject: {id: com.example.demo}\n"
+                "    paths: {scenarios: /etc}\n"
+            ),
+            (
+                "targets:\n"
+                "  demo:\n"
+                "    platform: ios\n"
+                "    subject: {id: com.example.demo, path: ../../../etc/passwd}\n"
+            ),
         ):
             status, resp = _post_bytes(
                 port,

@@ -66,7 +66,7 @@ class JobRegistry:
     def _release_finished(self) -> None:
         """Release the cap slot of every job `finished_ids` reports as finished elsewhere.
 
-        The registry observes only an in-process job's end (`run_job` sets its `status`). A job
+        The registry observes only an end written to its own `Job` (a job failed at dispatch). A job
         dispatched to a remote worker finishes in the jobs table instead — on the worker's result,
         or on a lease reclaim that no worker ever reports — and nothing writes that back to the
         control plane's `Job` (BE-0015 W2), so its slot would be held until serve restarts.
@@ -101,16 +101,13 @@ class JobRegistry:
         max_concurrent: int = 0,
         max_concurrent_per_user: int = 0,
         max_concurrent_per_org: int = 0,
-        max_concurrent_batch: int = 0,
     ) -> Job | None:
         """Register *job* only if under the concurrency caps, counting and inserting atomically under
         the lock so two concurrent dispatches can't both slip past a cap (BE-0051). Returns None at
-        the global cap, at the per-user cap for an identified ``job.actor`` (BE-0015 7c-3), at the
-        per-org cap for ``job.org`` (BE-0016 Tier B pool fairness), or — for a cloud-batch job — at
-        the device budget for its batch *provider* pool, keyed on ``job.batch.provider`` (BE-0336
-        Unit 4): the count spans all targets and orgs sharing that provider (the contended resource),
-        so the cap bounds total in-flight device reservations on the provider, not a single target's
-        slice. Each cap ``<= 0`` is unlimited; the batch cap applies only when ``job.batch`` is set."""
+        the global cap, at the per-user cap for an identified ``job.actor`` (BE-0015 7c-3), or at the
+        per-org cap for ``job.org`` (BE-0016 Tier B pool fairness). Each cap ``<= 0`` is unlimited.
+        A Device Farm batch has no cap of its own here: the worker that reserves the device bounds
+        its jobs in flight with its ``maxJobConcurrency`` (BE-0448)."""
         self._release_finished()
         with self._lock:
             running = self._running()
@@ -123,14 +120,6 @@ class JobRegistry:
             if max_concurrent_per_org > 0:
                 same_org = sum(1 for j in running if j.org == job.org)
                 if same_org >= max_concurrent_per_org:
-                    return None
-            if job.batch is not None and max_concurrent_batch > 0:
-                same_pool = sum(
-                    1
-                    for j in running
-                    if j.batch is not None and j.batch.provider == job.batch.provider
-                )
-                if same_pool >= max_concurrent_batch:
                     return None
             return self._register(job)
 

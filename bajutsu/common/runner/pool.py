@@ -15,25 +15,28 @@ from pathlib import Path
 
 from bajutsu.common.backend_cli import simctl
 from bajutsu.common.backends import (
+    capabilities_for_run,
     default_available,
     resolve_evidence_providers,
     select_actuator,
     select_actuator_for_scenario,
 )
 from bajutsu.common.backends import make_driver as _make_driver
-from bajutsu.common.config import Effective
+from bajutsu.common.config import Effective, resolve_preconditions
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.webview import WebViewBridge
 from bajutsu.common.evidence import FileSink
 from bajutsu.common.evidence.network import Collector, NetworkCollector, _no_transitions
 from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.evidence.sink import RunArtifactWriter
-from bajutsu.common.orchestrator import DeviceControl, RelaunchFn
+from bajutsu.common.orchestrator import DeviceControl, RelaunchFn, SkippedCapture
 from bajutsu.common.orchestrator.evidence_rules import requested_intervals
 
 # `device_control` / `device_relauncher` live with the platform lifecycle now; re-exported so
 # `from bajutsu.common.runner import device_control, device_relauncher` keeps its import unchanged.
 from bajutsu.common.platform_lifecycle import (
+    LOOPBACK,
+    CollectorHost,
     ProvisionProfile,
     RunEnvironment,
     device_control,
@@ -52,20 +55,39 @@ _logger = logging.getLogger(__name__)
 
 
 def _alloc_webview_bridge(
-    lease_env: object,
-) -> tuple[WebViewBridge | None, int | None]:
+    lease_env: RunEnvironment, eff: Effective
+) -> tuple[WebViewBridge | None, int | None, Callable[[], None]]:
     """Allocate a WebView bridge for platforms that need one (iOS, not web).
 
-    Returns (bridge, port) or (None, None) when the platform doesn't use the bridge.
+    Returns the host-side client, the port the app binds on the device, and the teardown of whatever
+    joins the two (a usbmuxd bridge on a real device, nothing where the host shares the device's
+    loopback); `(None, None, no-op)` when the platform doesn't use the bridge.
     """
-    if getattr(lease_env, "observes_network_via_driver", lambda: False)():
-        return None, None
+    if lease_env.observes_network_via_driver():
+        return None, None, _no_release
     import socket
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]
-    return WebViewBridge(port=port), port
+    host_port, release = lease_env.reach_device_port(eff, port)
+    return WebViewBridge(port=host_port), port, release
+
+
+def _no_release() -> None:
+    pass
+
+
+def _chain(first: Callable[[], None], then: Callable[[], None]) -> Callable[[], None]:
+    """One teardown that runs `first` and then `then`, even when `first` raises."""
+
+    def _both() -> None:
+        try:
+            first()
+        finally:
+            then()
+
+    return _both
 
 
 def _alloc_zorder(lease_env: object) -> tuple[int, str] | None:
@@ -104,7 +126,8 @@ def device_pool(  # noqa: C901, PLR0915
     env_run: simctl.RunFn = simctl.real_run,
     make_driver: Callable[..., base.Driver] = _make_driver,
     evidence_providers: Callable[
-        [list[str], str, Callable[[str], bool]], tuple[dict[str, str], dict[str, str]]
+        [list[str], str, Callable[[str], bool], frozenset[str]],
+        tuple[dict[str, str], dict[str, str]],
     ] = resolve_evidence_providers,
 ) -> tuple[LeaseFn, Callable[[], None]]:
     """A pool of N≥1 devices for (parallel) runs.
@@ -172,6 +195,13 @@ def device_pool(  # noqa: C901, PLR0915
     # decide whether BE-0365's control channel can be armed for a scenario, so a change to which
     # runs pre-start a collector has to be reflected there too.
     collectors: dict[str, NetworkCollector] = {}
+    # Resolved once, before any collector starts or any device is touched: a real iOS device that no
+    # host address can be offered to fails here, naming the setting that fixes it.
+    collector_host = (
+        pool_env.collector_host(eff)
+        if network and not pool_env.observes_network_via_driver()
+        else CollectorHost()
+    )
     if network and not pool_env.observes_network_via_driver():
         try:
             for udid in udids:
@@ -181,8 +211,10 @@ def device_pool(  # noqa: C901, PLR0915
                 # platform sharing the host's loopback keeps the OS-chosen port it always had.
                 if pool_env.mirrors_collector_port_on_device():
                     collector.start_bridgeable()
-                else:
+                elif collector_host.bind == LOOPBACK:
                     collector.start()
+                else:
+                    collector.start(host=collector_host.bind)
                 collectors[udid] = collector
         except Exception:
             # A socket already stopped for one device must not stop the rollback of the rest, or
@@ -292,8 +324,24 @@ def device_pool(  # noqa: C901, PLR0915
         # (BE-0020), resolved per scenario now that the actuator is. Today `network` is covered by web
         # (native) and both iOS actuators (the app-side `BAJUTSU_COLLECTOR`), so this resolves to
         # nothing in production; it activates when a platform gains a network-native actuator.
-        providers, _skipped = evidence_providers(backends, actuator, available)
+        # Judged against the route's own capabilities, so a real iOS device names the simctl
+        # evidence it cannot record (BE-0467).
+        providers, skipped = evidence_providers(
+            backends, actuator, available, capabilities_for_run(actuator, eff, udid)
+        )
         network_provider = providers.get("network") if network else None
+        # Only a kind this scenario asked for is a gap worth disclosing. `network` never is: a run
+        # that collects it gets it natively or from the app-side collector the pool started above,
+        # which supplies it without the actuator advertising the capability.
+        wanted = set(requested_intervals(scenario, eff.capture))
+        # Grows as each lease in this device group claims a gap, so a later member repeats neither
+        # the anchor's disclosure nor a sibling's.
+        disclosed = set(wanted)
+        skipped_captures = [
+            SkippedCapture(kind=kind, reason=reason)
+            for kind, reason in skipped.items()
+            if kind in wanted
+        ]
         # The collector to stop on release (the web page hook, or a BE-0020 fallback) — not the
         # pre-started HTTP receivers, which are reused and stopped in shutdown(). Released on a setup
         # failure too, so one launch failure neither leaks a socket nor starves later leases.
@@ -399,12 +447,18 @@ def device_pool(  # noqa: C901, PLR0915
                 collector = None  # resolved after launch from the live page
             extra_env: dict[str, str] = {}
             if isinstance(collector, NetworkCollector):
-                extra_env["BAJUTSU_COLLECTOR"] = f"http://127.0.0.1:{collector.port}"
+                extra_env["BAJUTSU_COLLECTOR"] = collector_host.collector_env(collector.port)
                 extra_env["BAJUTSU_COLLECTOR_TOKEN"] = collector.token
+                # Announce the signed scheme on every route (BE-0459): BajutsuKit signs only when
+                # told to, so a newer kit still talks bearer to an older Bajutsu that names nothing.
+                # It travels beside the token, so nothing on the network route can strip it.
+                extra_env["BAJUTSU_COLLECTOR_AUTH"] = "hmac"
                 # Make the host collector reachable from the leased device before launch (Android
                 # tunnels the port with `adb reverse`; iOS shares the loopback and no-ops) — BE-0283.
                 release_bridge = lease_env.bridge_collector(collector.port)
-            webview_bridge, webview_port = _alloc_webview_bridge(lease_env)
+            webview_bridge, webview_port, release_webview = _alloc_webview_bridge(lease_env, eff)
+            # Joined to the collector's teardown, so every path that releases one releases both.
+            release_bridge = _chain(release_bridge, release_webview)
             if webview_port is not None:
                 extra_env["BAJUTSU_WEBVIEW_PORT"] = str(webview_port)
             zorder = _alloc_zorder(lease_env)
@@ -415,7 +469,7 @@ def device_pool(  # noqa: C901, PLR0915
                 udid,
                 eff,
                 actuator,
-                scenario.preconditions,
+                resolve_preconditions(eff, scenario.preconditions),
                 env_run,
                 extra_env,
                 record_video_dir,
@@ -453,6 +507,7 @@ def device_pool(  # noqa: C901, PLR0915
                 log_subsystem=log_subsystem,
                 redact=eff.redact,
                 secrets=secret_values,
+                unavailable=frozenset(skipped),
                 # A web or Android lane supplies its own interval evidence (Playwright console / page
                 # errors; adb logcat — Android's video now takes the prestart/adopt path below); the
                 # iOS backend has no such method, so this is None there and the simctl path is used.
@@ -581,7 +636,7 @@ def device_pool(  # noqa: C901, PLR0915
                 """
                 member_driver = lease_env.start_member(
                     member_eff,
-                    member.preconditions,
+                    resolve_preconditions(member_eff, member.preconditions),
                     extra_env=extra_env,
                     permissions=member.permissions,
                     install=fresh,
@@ -596,11 +651,11 @@ def device_pool(  # noqa: C901, PLR0915
 
                 try:
                     # The member's own namespaces and the device's transition signal, as the lease's
-                    # own readiness gate reads them: without them a member with no `readyWhen`
+                    # own readiness gate reads them: without them a member with no `startWhen`
                     # could pass on the tree of the app that was in front before it.
                     member_readiness = await_ready(
                         member_driver,
-                        ready_sel=member_eff.ready_when,
+                        ready_sel=member_eff.start_when,
                         id_namespaces=member_eff.id_namespaces,
                         transitions=(
                             collector.transitions_snapshot_timed
@@ -615,6 +670,8 @@ def device_pool(  # noqa: C901, PLR0915
                         log_subsystem=log_subsystem,
                         redact=member_eff.redact,
                         secrets=secret_values,
+                        # The member shares the primary's device and driver, so the same route gaps.
+                        unavailable=frozenset(skipped),
                         driver_interval=getattr(member_driver, "driver_interval", None),
                         video_extension=getattr(member_driver, "video_extension", "mp4"),
                         readiness=member_readiness,
@@ -624,6 +681,8 @@ def device_pool(  # noqa: C901, PLR0915
                         # The device's one stall flag, which the member lease also forwards.
                         on_video_start_stall=note_video_start_stall,
                     )
+                    member_gaps = set(requested_intervals(member, member_eff.capture)) - disclosed
+                    disclosed.update(member_gaps)
                     return Lease(
                         driver=member_driver,
                         sink=member_sink,
@@ -638,6 +697,13 @@ def device_pool(  # noqa: C901, PLR0915
                         device_runtime=catalog.get(udid, {}).get("runtime", ""),
                         collector_provider=collector_provider,
                         readiness=member_readiness,
+                        # Only the kinds no lease on this device has disclosed yet: the rest share
+                        # this device's gap, which an earlier lease already names once.
+                        skipped_captures=[
+                            SkippedCapture(kind=kind, reason=reason)
+                            for kind, reason in skipped.items()
+                            if kind in member_gaps
+                        ],
                         # Device-scoped, so a member reads its group's device the way the lease that
                         # holds it does: a crash retry judged on a member (the group's primary is
                         # one whenever another member starts with it) must still escalate to a
@@ -666,6 +732,8 @@ def device_pool(  # noqa: C901, PLR0915
                 device_name=meta.get("name", ""),
                 device_runtime=meta.get("runtime", ""),
                 collector_provider=collector_provider,
+                # A member lease repeats none of these: it shares this device (`join` above).
+                skipped_captures=skipped_captures,
                 webview_bridge=webview_bridge,
                 # Both are read by the crash retry after this lease has already been released: the
                 # request lands on the environment the pool keeps warm for this device, so the *next*

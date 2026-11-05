@@ -106,3 +106,16 @@ def test_device_group_steps_are_labeled_todos_on_every_generator(module: str) ->
 
 def test_device_group_todo_is_none_for_every_other_step() -> None:
     assert device_group_todo(Step.model_validate({"tap": {"id": "a"}})) is None
+
+
+@pytest.mark.parametrize("module", ["xcuitest", "uiautomator", "playwright"])
+def test_eval_is_a_labeled_todo_on_every_generator(module: str) -> None:
+    # `eval` transforms a variable inside the bajutsu runner (BE-0472); no generated test has that
+    # runner, so each emitter names the variables it would have written rather than skipping it.
+    emit = importlib.import_module(f"bajutsu.codegen.{module}")._emit_step
+    one = Step.model_validate({"eval": {"from": "x", "ops": ["trim"], "into": {"var": "v"}}})
+    spread = Step.model_validate(
+        {"eval": {"from": "a b", "ops": [{"split": " "}], "into": {"vars": ["a", "b"]}}}
+    )
+    assert emit(one) == ["// TODO: eval(into: v) — runner-computed value; not generated"]
+    assert emit(spread) == ["// TODO: eval(into: a, b) — runner-computed value; not generated"]

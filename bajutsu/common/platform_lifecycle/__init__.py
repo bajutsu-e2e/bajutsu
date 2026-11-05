@@ -17,6 +17,8 @@ from bajutsu.common.platform_lifecycle.environments.web import WebEnvironment
 from bajutsu.common.platform_lifecycle.environments.xcuitest import XcuitestEnvironment
 from bajutsu.common.platform_lifecycle.factories import environment_for
 from bajutsu.common.platform_lifecycle.protocols import (
+    LOOPBACK,
+    CollectorHost,
     CrawlEnvironment,
     Environment,
     ProvisionProfile,
@@ -32,7 +34,9 @@ from bajutsu.common.platform_lifecycle.readiness import await_ready
 from bajutsu.common.platform_lifecycle.relaunchers import device_relauncher
 
 __all__ = [
+    "LOOPBACK",
     "AndroidEnvironment",
+    "CollectorHost",
     "CrawlEnvironment",
     "Environment",
     "FakeEnvironment",

@@ -66,14 +66,18 @@ class SessionManager:
         expires_at: datetime | None = None,
         org: str | None = None,
         kind: PrincipalKind = HUMAN,
+        ci_job: dict[str, str] | None = None,
     ) -> str:
         """Mint and remember a new opaque session id (returned to set as a cookie at login),
         optionally bound to *identity* (the GitHub login from an OAuth login).
 
         The OIDC exchange mints its machine session through this same call (BE-0414), passing the
-        cap its token's `exp` imposes plus the org and kind the gate reads back per request.
+        cap its token's `exp` imposes plus the org and kind the gate reads back per request, and the
+        CI job the audit trail records for it.
         """
-        return self.sessions.issue(identity, expires_at=expires_at, org=org, kind=kind)
+        return self.sessions.issue(
+            identity, expires_at=expires_at, org=org, kind=kind, ci_job=ci_job
+        )
 
     def valid_session(self, sid: str) -> bool:
         """Whether *sid* is a known, live session id."""

@@ -13,7 +13,12 @@ from ._functions import _positive_env as _positive_env
 from ._functions import _to_org as _to_org
 from ._functions import _to_record as _to_record
 from ._functions import engine_from_url, repository_from_env
-from ._shared import DEFAULT_LEASE_MAX_ATTEMPTS, DEFAULT_RUN_LIMIT
+from ._shared import (
+    DEFAULT_LEASE_MAX_ATTEMPTS,
+    DEFAULT_RUN_LIMIT,
+    TERMINAL_JOB_STATUSES,
+    cancelled_job_result,
+)
 from .job_metrics import JobMetrics
 from .leased_job import LeasedJob
 from .org_record import OrgRecord
@@ -25,12 +30,14 @@ __all__ = [
     "DEFAULT_LEASE_MAX_ATTEMPTS",
     "DEFAULT_LEASE_TIMEOUT_SECONDS",
     "DEFAULT_RUN_LIMIT",
+    "TERMINAL_JOB_STATUSES",
     "JobMetrics",
     "LeasedJob",
     "OrgRecord",
     "Repository",
     "RunRecord",
     "SqlRepository",
+    "cancelled_job_result",
     "engine_from_url",
     "repository_from_env",
 ]

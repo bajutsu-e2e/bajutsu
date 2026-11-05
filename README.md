@@ -89,15 +89,16 @@ breakdown is in [`docs/`](docs/README.md).
 Implemented and covered by tests (run without a Simulator):
 
 - Driver abstraction and **selector resolution** (the determinism core)
-- **Platform-aware backend registry** — `--backend` / `backend:` accept `ios` / `android` / `web` /
-  `fake`, each expanding to its actuator in stability order (`ios` expands to `xcuitest`, the sole
-  iOS actuator since idb was retired)
+- **Platform-aware backend registry** — a target's required `platform:` decides its actuator:
+  `ios` resolves to `xcuitest` (the sole iOS actuator since BE-0290 retired idb), and `android` /
+  `web` / `fake` each to their own. `--backend` checks the target's platform, that platform's
+  actuator, or `fake`
 - **Scenario schema**: steps — tap / type / swipe / drag / scroll / double-tap / pinch / rotate /
   `web` for WebView content / device control / `http` / `totp` / `email` / `generate` / `manual` —
   waits, mid-step `assert`, reusable components (`use`), control flow (`if` / `forEach`), variables
   (`extract` → `${vars.*}`), parametrization (`data` / `dataFile`), `preconditions`, `permissions`,
-  `interrupts`, `systemAlertHandling`, network `mocks`, a `network` filter, `capturePolicy` evidence
-  rules, and `redact` — with strict validation, YAML round-trip, and a generated JSON Schema
+  `interrupts` (in-app screens, system alerts, and TipKit tips), network `mocks`, a `network`
+  filter, `capturePolicy` evidence rules, and `redact` — with strict validation, YAML round-trip, and a generated JSON Schema
 - **Assertion evaluation** (exists / value / label / count / enabled / disabled / selected /
   request / requestSequence / event / responseSchema / clipboard / golden / **visual**)
 - **Tier 2 run loop** (act → wait → verify), tested via an in-memory fake driver
@@ -106,8 +107,12 @@ Implemented and covered by tests (run without a Simulator):
   (baselines + `approve`), a golden element-tree comparison, `capturePolicy` trigger rules, and
   secret **redaction**
 - **Reporting** (`manifest.json` + JUnit XML + CTRF JSON + self-contained interactive HTML)
-- **Config resolution** (team defaults × per-target; iOS `bundleId` or web `baseUrl`) and
-  **backend selection** (stability order)
+- **Config resolution** (team defaults × per-target; iOS or Android `subject.id`, web `subject.url`) and
+  **backend selection** (the target's `platform`), with a per-platform JSON Schema from
+  `bajutsu config schema`
+- **Device conditions** (`runsOn`). A model list or an OS range splits a scenario into runs, one
+  per model or major version. Each run takes a device that meets its conditions. An open range that
+  no device meets yields a not-applicable record, not a failed run
 - The **backend command layer** (simctl for iOS, adb for Android), the **XCUITest channel** (the
   resident runner's element snapshot), the **Playwright web driver**, the **adb driver**
   (a resident UI Automator server, with a `uiautomator dump` fallback), and the **doctor**
@@ -125,17 +130,17 @@ Implemented and covered by tests (run without a Simulator):
   agent — root cause + minimal-fix suggestions; advisory, off the CI path
 - The wired CLI: `run` / `doctor` / `audit` / `coverage` / `impact` / `stats` / `flakiness` /
   `export` / `trace` / `report` / `triage` / `record` / `crawl` / `repl` / `codegen` / `approve` /
-  `serve` / `mcp` / `worker` / `lint` / `schema`
+  `serve` / `mcp` / `worker` / `lint` / `schema` / `runner`
 - **MCP server** (`bajutsu mcp`): exposes `run` and `doctor` as MCP tools and run evidence
   (manifest / report / JUnit / artifacts) as resources, for Claude Desktop / Code integration
 - **Web UI** (`bajutsu serve`): author (`record` / `crawl`), edit, and run scenarios; browse
   reports and every evidence type; approve visual baselines; live job streaming over SSE; usage,
   flakiness, and coverage dashboards. How to drive each tab:
   [docs/web-ui.md](docs/web-ui.md)
-- **Hosted server backend** (`serve --backend server`, `bajutsu worker`): a self-hostable control
-  plane — FastAPI, Postgres, S3-compatible object storage, GitHub OAuth login, RBAC
-  (role-based access control), and quotas — that Mac and Linux workers poll over plain HTTP for
-  queued runs, carrying only the control-plane URL and a token (no cloud SDK or object-store
+- **Hosted server backend** (`bajutsu serve` with a bucket and a database, plus `bajutsu worker`):
+  a self-hostable control plane — FastAPI, Postgres, S3-compatible object storage, GitHub OAuth
+  login, RBAC (role-based access control), and quotas — that Mac and Linux workers poll over plain
+  HTTP for queued jobs, carrying only the control-plane URL and a token (no cloud SDK or object-store
   secrets), so a team can share one `serve` instead of running it per machine.
   Guide: [`docs/self-hosting.md`](docs/self-hosting.md)
 
@@ -169,7 +174,7 @@ Validated against a real Postgres (Linux, no Mac):
   [`serve-db.yml`](.github/workflows/serve-db.yml) — a **required check**, promoted from signal
   once it proved stable.
 
-Not yet wired: the external `mockServer` command (superseded by in-scenario `mocks`); `appTrace`
+Not yet wired: the external `services.mockServer` command (superseded by in-scenario `mocks`); `appTrace`
 interval evidence on the web backend (iOS-only; the web backend has its own `video` /
 `deviceLog`-equivalent captures instead); `nativeZ` z-order reporting on SwiftUI/Compose screens
 (a declarative-toolkit limitation, not a Bajutsu gap). See [`docs/architecture.md`](docs/architecture.md#implementation-status)
@@ -210,7 +215,9 @@ so the two never drift.
 Installing from PyPI instead? The base package is AI-free: `pip install bajutsu` gets the
 deterministic authoring / running paths with no AI SDK, and `pip install bajutsu[ai]` (or
 `bajutsu[bedrock]`) adds the SDK for the Claude paths — see
-[What uses Claude](docs/ai-boundary.md#installing-the-claude-paths).
+[What uses Claude](docs/ai-boundary.md#installing-the-claude-paths). The base package also carries
+the server stack. With it, `bajutsu serve` runs on one machine with no extra. For a
+hosted deployment, the `server` extra adds boto3 and the `db` extra adds psycopg.
 
 ## Usage
 
@@ -237,31 +244,37 @@ backend) round out this walkthrough. The CLI also wires `audit` / `coverage` / `
 > `make serve` (or `scripts/serve.sh`) wraps `bajutsu serve` and installs the configured
 > backend's dependencies on demand, so a fresh checkout will not hit
 > `no available actuator among ['xcuitest']`. Pass flags via `make serve ARGS="--port 8766"`.
+> The server queues each run for a `bajutsu worker`, so `make serve` also starts one worker beside
+> it and stops that worker with the server. `SERVE_WORKER=0 make serve` starts the server alone.
 
 Per-app (and per-platform) settings live in a config file you pass with `--config`; the demos
 ship ready-to-run ones (e.g. [`demos/showcase/showcase.config.yaml`](demos/showcase/showcase.config.yaml),
-[`demos/web/demo.config.yaml`](demos/web/demo.config.yaml)). An app targets iOS by `bundleId` or
-the web by `baseUrl`:
+[`demos/web/demo.config.yaml`](demos/web/demo.config.yaml)). Each target names its `platform`,
+which picks the actuator. `subject.id` names an iOS app, and `subject.url` names a web app:
 
 ```yaml
 defaults:
-  backend: [ios]            # stability order; first available backend is the actuator
-  device: "iPhone 17 Pro"
-  locale: en_US
+  platforms:
+    ios:
+      runsOn: { ios: { locale: en_US } }
 
 targets:
   showcase-swiftui:         # iOS app — driven on the Simulator via XCUITest
-    bundleId: com.bajutsu.showcase.ios.swiftui
-    deeplinkScheme: showcaseswiftui
-    launchEnv: { SHOWCASE_UITEST: "1" }
-    idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
-    scenarios: demos/showcase/scenarios
+    platform: ios
+    subject:
+      id: com.bajutsu.showcase.ios.swiftui
+      launch: { env: { SHOWCASE_UITEST: "1" } }
+      idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
+    paths: { scenarios: demos/showcase/scenarios }
 
   web:                      # web app — driven in a browser via Playwright
-    baseUrl: "http://127.0.0.1:8787/index.html"
-    backend: [web]
-    scenarios: demos/web/scenarios
+    platform: web
+    subject: { url: "http://127.0.0.1:8787/index.html" }
+    paths: { scenarios: demos/web/scenarios }
 ```
+
+[BE-0452](roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md) explains
+the target keys and their grouping.
 
 ## Demos
 
@@ -334,8 +347,8 @@ bajutsu/
 ├── analysis/             # read-only advisory analysis, never gates CI: audit / coverage /
 │                         #   flakiness / impact / stats / trace
 ├── serve/                # local web UI (author + run + reports; Tier 1) and, in server/, the
-│                         #   hosted control plane (FastAPI + Postgres + OAuth) behind
-│                         #   `serve --backend server`
+│                         #   hosted control plane (FastAPI + Postgres + OAuth); every job
+│                         #   runs on a `bajutsu worker`
 ├── mcp/                  # MCP server (tools + resources for agent integration)
 ├── templates/            # Jinja report/dashboard templates + the web UI's own JS/CSS
 ├── cli/                  # CLI (typer) — one file per command

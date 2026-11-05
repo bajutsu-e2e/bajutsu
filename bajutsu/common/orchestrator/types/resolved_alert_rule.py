@@ -1,4 +1,4 @@
-"""One `systemAlertHandling.rules` entry, resolved for a locale."""
+"""One `systemAlert` interrupts entry, resolved for a locale."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class ResolvedAlertRule:
-    """One shape of one `systemAlertHandling.rules` entry, resolved for a locale.
+    """One shape of one `systemAlert` interrupts entry, resolved for a locale.
 
     `identifying_labels` are the labels that together name this shape, resolved from
     `bajutsu.common.scenario.system_alerts` for the run's locale — matching requires all of them,
@@ -23,12 +23,12 @@ class ResolvedAlertRule:
     there is no button set there to compare against.
 
     `native` and `in_tree` carry the prompt's `AlertSurfaces` record, and each gates a different
-    matching site: `in_tree` arms the two in-tree dismissals, and `native` gates both `probe_native`'s
-    own match and whether the rule may be pushed to the runner's interruption monitor. Filtering
-    `probe_native` on it is not merely tidy — an in-tree-only shape's identifying labels are ordinary
-    vocabulary a real SpringBoard alert could coincidentally offer (the 26.5 save sheet's shape is
-    just "Save" / "Not Now"), so without the filter a SpringBoard alert satisfying that pair would be
-    answered through `handle_system_alert` for a prompt that surface can never actually reach.
+    matching site in the XCUITest runner (BE-0461): `in_tree` arms its in-tree pass, and `native`
+    its SpringBoard check and interruption monitor. Keeping them apart is not merely tidy — an
+    in-tree-only shape's identifying labels are ordinary vocabulary a real SpringBoard alert could
+    coincidentally offer (the 26.5 save sheet's shape is just "Save" / "Not Now"), so without the
+    split a SpringBoard alert satisfying that pair would be answered for a prompt that surface can
+    never actually reach.
     """
 
     identifying_labels: frozenset[str]
