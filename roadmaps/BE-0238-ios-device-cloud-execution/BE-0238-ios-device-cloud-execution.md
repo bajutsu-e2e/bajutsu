@@ -15,148 +15,176 @@
 
 ## Introduction
 
-Device clouds run iOS on **real devices**. Bajutsu's current iOS actuators cannot reach them:
-`simctl` targets the Simulator only (no real device exists in a real-device cloud), and `idb` needs
-a Mac-resident `idb_companion` daemon that the managed macOS hosts do not expose. What the clouds
-*do* speak on iOS is **XCTest** and, on AWS Device Farm, **Appium's XCUITest driver**. This item
-adds an iOS execution path that produces those artifacts, built on the already-shipped **XCUITest
-backend (BE-0019)** — unlocking iOS real-device automation both in the cloud and, as a side effect,
-locally.
+Device clouds run iOS on **real devices**. Bajutsu's current iOS actuators cannot reach those
+devices.
+
+- `simctl` targets the Simulator only, and a real-device cloud has no Simulator.
+- `idb` needs a Mac-resident `idb_companion` daemon. The managed macOS hosts do not expose one.
+
+On iOS, the clouds *do* speak **XCTest**. AWS Device Farm also speaks **Appium's XCUITest driver**.
+
+This item adds an iOS execution path that produces those artifacts. The path builds on the
+already-shipped **XCUITest backend (BE-0019)**. It unlocks iOS real-device automation in the cloud
+and, as a side effect, locally.
 
 ## Motivation
 
-iOS is the one platform where the cloud story needs real new code, because the existing iOS
-actuators are structurally cloud-incompatible — not a config gap. Confirming the constraint so it is
-not misdiagnosed later:
+iOS is the one platform where the cloud story needs real new code. The existing iOS actuators are
+structurally cloud-incompatible, and a config change cannot close the gap. The constraint is
+confirmed here, so that nobody misdiagnoses it later:
 
-- **`simctl`** drives the Simulator; a real-device cloud has no simulator to target.
-- **`idb`** requires `idb_companion` running on the Mac host; managed cloud macOS hosts provide a
+- **`simctl`** drives the Simulator. A real-device cloud has no Simulator to target.
+- **`idb`** requires `idb_companion` running on the Mac host. Managed cloud macOS hosts provide a
   limited shell and do not host arbitrary daemons.
 
-Both AWS Device Farm and Firebase run iOS tests on physical devices via XCTest (Device Farm also via
-Appium's XCUITest driver); neither documents `idb`/`simctl`. So the path forward is to speak XCTest /
-Appium-XCUITest, reusing the **BE-0019 XCUITest backend** as the driving layer rather than inventing
-a new one. This also has standalone value: it is the same work that lets Bajutsu drive a **local
-iOS real device** (via `xcodebuild` against a device target), which today is effectively
-Simulator-only.
+AWS Device Farm and Firebase both run iOS tests on physical devices via XCTest. Device Farm also
+supports Appium's XCUITest driver. Neither documents `idb` or `simctl`.
 
-This is the heaviest of the device-cloud items and is intentionally independent: the Android
-providers reuse the adb backend almost verbatim, whereas iOS needs a real-device-capable driving
-path and cloud packaging. It is sequenced after the foundation seam so the *live* iOS route (e.g. an
-Appium endpoint provider) can reuse *device-cloud-provider-abstraction*, while the *batch* route
-(Device Farm XCTest/Appium package) reuses the *aws-device-farm-submitter* packaging.
+The path forward is therefore to speak XCTest and Appium-XCUITest. The **BE-0019 XCUITest backend**
+serves as the driving layer, so no new driving layer is needed.
+
+The work also has standalone value. It is the same work that lets Bajutsu drive a **local iOS real
+device** via `xcodebuild` against a device target. Today that path is effectively Simulator-only.
+
+This is the heaviest of the device-cloud items, and it is intentionally independent. The Android
+providers reuse the adb backend almost verbatim. iOS needs a real-device-capable driving path and
+cloud packaging.
+
+The item is sequenced after the foundation seam, for two reasons:
+
+- The *live* iOS route (e.g. an Appium endpoint provider) can reuse
+  *device-cloud-provider-abstraction*.
+- The *batch* route (a Device Farm XCTest/Appium package) can reuse the *aws-device-farm-submitter*
+  packaging.
 
 ## Detailed design
 
-Two routes, sharing the XCUITest driving layer:
+Two routes share the XCUITest driving layer:
 
 - **Batch (AWS Device Farm).** Package the app plus an XCTest/Appium-XCUITest bundle that carries the
-  Bajutsu scenario execution, submit via the *aws-device-farm-submitter* machinery, and collect
-  artifacts. Must account for Device Farm's iOS constraints: apps are **re-signed** for the device
-  (stripping some entitlements such as App Groups / Push), device builds of the `.ipa` are required
-  (no simulator build), and XCTest is *not* customisable in the same way the Appium path is.
-- **Live (remote device, later).** Where a cloud exposes an Appium/WebDriver endpoint for a reserved
-  iOS device, model it as a `DeviceProvider` on the live seam (yielding an endpoint instead of an adb
-  serial), and drive it through an Appium-XCUITest path. This reuses the foundation seam directly.
+  Bajutsu scenario execution. Submit it via the *aws-device-farm-submitter* machinery, and collect
+  artifacts. The route must account for Device Farm's iOS constraints:
+  - Apps are **re-signed** for the device. The re-sign strips some entitlements, such as App Groups
+    and Push.
+  - Device builds of the `.ipa` are required (no simulator build).
+  - XCTest is *not* customisable in the same way as the Appium path.
+- **Live (remote device, later).** A cloud may expose an Appium/WebDriver endpoint for a reserved iOS
+  device. In that case, model the cloud as a `DeviceProvider` on the live seam, which yields an
+  endpoint instead of an adb serial. Drive the endpoint through an Appium-XCUITest path. This route
+  reuses the foundation seam directly.
 
-The unifying work is making the **XCUITest backend (BE-0019) real-device-capable**: today it targets
-the Simulator through `xcodebuild`; this item generalises target selection to a real device
-(local first, then cloud-packaged), which is the reusable core of both routes.
+The unifying work makes the **XCUITest backend (BE-0019) real-device-capable**. Today the backend
+targets the Simulator through `xcodebuild`. This item generalises target selection to a real device,
+local first and then cloud-packaged. That generalisation is the reusable core of both routes.
 
 ### Work breakdown (MECE)
 
-1. **XCUITest real-device targeting** — generalise the BE-0019 backend to drive a real iOS device
-   (local `xcodebuild` device target), the shared foundation for both routes.
-2. **Batch packaging (Device Farm)** — build the XCTest/Appium-XCUITest package carrying scenario
-   execution; integrate with the *aws-device-farm-submitter* upload/collect flow.
-3. **Re-signing / entitlement handling** — document and handle the Device Farm re-sign (which
-   entitlements drop, and how scenarios that depend on them degrade or are skipped via preflight).
-4. **Live route (Appium endpoint provider)** — a `DeviceProvider` yielding an Appium endpoint for a
-   reserved iOS device, driven through the XCUITest/Appium path (may land as a follow-on slice).
-5. **Tests** — real-device targeting resolution and packaging assembly, faked at the
-   `xcodebuild`/toolchain boundary; no live cloud in the gate.
-6. **Docs** — an iOS device-cloud how-to (both languages): why `idb`/`simctl` do not apply, the
-   XCTest/Appium routes, and the re-signing caveats.
+1. **XCUITest real-device targeting.** Generalise the BE-0019 backend to drive a real iOS device
+   (a local `xcodebuild` device target). It is the shared foundation for both routes.
+2. **Batch packaging (Device Farm).** Build the XCTest/Appium-XCUITest package that carries scenario
+   execution. Integrate it with the *aws-device-farm-submitter* upload/collect flow.
+3. **Re-signing / entitlement handling.** Document and handle the Device Farm re-sign: which
+   entitlements drop, and how scenarios that depend on them degrade or get skipped via preflight.
+4. **Live route (Appium endpoint provider).** Add a `DeviceProvider` that yields an Appium endpoint
+   for a reserved iOS device. Drive it through the XCUITest/Appium path. It may land as a follow-on
+   slice.
+5. **Tests.** Cover real-device targeting resolution and packaging assembly. Fake the
+   `xcodebuild`/toolchain boundary. No live cloud enters the gate.
+6. **Docs.** Add an iOS device-cloud how-to (both languages). It explains why `idb`/`simctl` do not
+   apply, the XCTest/Appium routes, and the re-signing caveats.
 
 ### Live route transport (follow-on slices)
 
-Unit 4 landed the `appium` `DeviceProvider` — the live seam — which hands a run the fixed Appium /
-WebDriver endpoint of a reserved iOS device as its udid spec. Driving that endpoint is a separate
-transport, still unbuilt, and it cannot merely layer a WebDriver client onto today's path: the udid
-spec flows unchanged into `XcuitestEnvironment`, whose `_destination()` runs it through
-`simctl.validated_udid`, and the shared `device_id` charset excludes the `/` in a URL — so a real
-`http(s)://` endpoint raises `DeviceError: invalid udid` today. The design below closes that gap.
+Unit 4 landed the `appium` `DeviceProvider`, which is the live seam. It hands a run the fixed Appium /
+WebDriver endpoint of a reserved iOS device as its udid spec. Driving that endpoint needs a separate
+transport, which is still unbuilt.
+
+The transport cannot merely layer a WebDriver client onto today's path. The udid spec flows unchanged
+into `XcuitestEnvironment`, whose `_destination()` runs it through `simctl.validated_udid`. The shared
+`device_id` charset excludes the `/` in a URL. A real `http(s)://` endpoint therefore raises
+`DeviceError: invalid udid` today. The design below closes that gap.
 
 **Speak W3C WebDriver from Python, not the runner channel.** The local XCUITest path drives a
-resident BajutsuKit runner over a bespoke loopback HTTP channel; an Appium grid exposes no such
-runner, only a World Wide Web Consortium (W3C) WebDriver endpoint (Appium's XCUITest driver). So the
-live transport speaks W3C WebDriver to the remote endpoint directly from Python, rather than
-tunnelling the runner channel to a port the grid does not serve.
+resident BajutsuKit runner over a bespoke loopback HTTP channel. An Appium grid exposes no such
+runner. It exposes only a World Wide Web Consortium (W3C) WebDriver endpoint (Appium's XCUITest
+driver). The live transport therefore speaks W3C WebDriver to the remote endpoint directly from
+Python. It does not tunnel the runner channel to a port that the grid does not serve.
 
-**Keep element resolution on the Python side.** WebDriver resolves a locator on the server, but
-determinism first (prime directive 2) requires Bajutsu to resolve a selector Python-side so an
-ambiguous selector fails immediately rather than acting on whichever element matched first. The live
-driver therefore reuses the shape of the existing `XcuitestDriver`: query the whole screen with one
-broad locator (`findElements` over `//*` or an iOS class chain), build the `base.Element` list,
-resolve the selector against that list with `resolve_unique`, and act on the chosen element by the
-WebDriver element id the query returned — the same query-resolve-act-by-handle flow the runner
-channel already follows, with the WebDriver element id standing in for the runner's per-snapshot
-handle.
+**Keep element resolution on the Python side.** WebDriver resolves a locator on the server.
+Determinism first (prime directive 2) requires Bajutsu to resolve a selector Python-side instead. An
+ambiguous selector then fails immediately, rather than acting on whichever element matched first.
+
+The live driver therefore reuses the shape of the existing `XcuitestDriver`:
+
+- Query the whole screen with one broad locator (`findElements` over `//*` or an iOS class chain).
+- Build the `base.Element` list.
+- Resolve the selector against that list with `resolve_unique`.
+- Act on the chosen element by the WebDriver element id that the query returned.
+
+This is the query-resolve-act-by-handle flow that the runner channel already follows. The WebDriver
+element id stands in for the runner's per-snapshot handle.
 
 **Reuse the injectable-transport seam, with a minimal in-house client.** `XcuitestDriver` already
-takes its wire protocol as an injectable transport — `(method, path, body)` in, a decoded reply out —
-so its request and response logic runs against a fake with no Simulator on the gate. The live driver
-takes a minimal in-house W3C WebDriver client built on the standard library's `http.client`, injected
-the same way. The in-house client matches the runner channel's own stdlib client, keeps the gate free
-of a third-party WebDriver dependency, and lets the gate exercise the WebDriver mapping against a fake
-endpoint at the network boundary.
+takes its wire protocol as an injectable transport: `(method, path, body)` in, a decoded reply out.
+Its request and response logic therefore runs against a fake, with no Simulator on the gate.
+
+The live driver takes a minimal in-house W3C WebDriver client built on the standard library's
+`http.client`. The client is injected the same way. It matches the runner channel's own stdlib
+client. It keeps the gate free of a third-party WebDriver dependency. It also lets the gate exercise
+the WebDriver mapping against a fake endpoint at the network boundary.
 
 **Route the endpoint around the simctl and xcodebuild machinery.** `environment_for` selects the
-environment for a run; when the xcuitest actuator's udid spec is an `http(s)://` endpoint, the run
-takes a live path that skips simctl bring-up and the `xcodebuild test-without-building` subprocess
-entirely, opening a WebDriver session against the endpoint, driving it through the live driver, and
-closing the session on teardown. The URL scheme is the routing signal: it is exactly the value
-`validated_udid` rejects, so recognizing the scheme up front both selects the live path and replaces
-the misleading `invalid udid` error. The endpoint therefore never reaches the udid machinery, which
-structurally cannot carry a URL. The BE-0236 `ProvisionProfile` already reports the reserved device
-booted with its build installed, so the live path honours no simctl bring-up flags — the real-device
-path (Unit 1) already skips them.
+environment for a run. When the xcuitest actuator's udid spec is an `http(s)://` endpoint, the run
+takes a live path. The live path skips simctl bring-up and the `xcodebuild test-without-building`
+subprocess entirely. It opens a WebDriver session against the endpoint, drives it through the live
+driver, and closes the session on teardown.
 
-The follow-on lands in three slices, each faked at the WebDriver boundary:
+The URL scheme is the routing signal. It is exactly the value that `validated_udid` rejects. Recognizing
+the scheme up front both selects the live path and replaces the misleading `invalid udid` error. The
+endpoint never reaches the udid machinery, which structurally cannot carry a URL.
 
-- **Slice A — session and a minimal driver.** The in-house W3C client (create and delete session),
-  the live driver's `query`, `tap`, `screenshot`, and readiness wait, and the `environment_for`
-  routing that opens the session and skips `xcodebuild`. This slice makes a live run that taps and
-  asserts end to end.
-- **Slice B — input and gestures.** Map `swipe`, `scroll`, `type_text`, `delete_text`, `select_all`,
+The BE-0236 `ProvisionProfile` already reports the reserved device as booted, with its build
+installed. The live path therefore honours no simctl bring-up flags. The real-device path (Unit 1)
+already skips them.
+
+The follow-on lands in three slices. Each slice is faked at the WebDriver boundary.
+
+- **Slice A: session and a minimal driver.** This slice adds four pieces:
+  - the in-house W3C client (create and delete session);
+  - the live driver's `query`, `tap`, `screenshot`, and readiness wait;
+  - the `environment_for` routing that opens the session;
+  - the skip of `xcodebuild`.
+
+  With the slice, a live run taps and asserts end to end.
+- **Slice B: input and gestures.** Map `swipe`, `scroll`, `type_text`, `delete_text`, `select_all`,
   `copy_selection`, `double_tap`, `long_press`, `tap_point`, `pinch`, and `rotate` onto WebDriver
-  actions — the W3C Actions application programming interface (API) or Appium's `mobile:` commands.
-  `double_tap` and `long_press` share the same `/tap` runner endpoint as plain `tap` today (via
-  extra params), so their WebDriver mapping is a similar-sized piece of work to the other gestures;
-  `tap_point` (the handle-less coordinate tap used for system alerts) maps to the same Actions path.
-- **Slice C — capabilities, config, and docs.** Narrow the live route's run-time capability set to
-  what Appium-XCUITest reaches (through `capabilities_for_run`, the Unit 3 mechanism), add a showcase
-  target for a live grid, and extend the how-to with the live route.
+  actions. The actions are the W3C Actions application programming interface (API) or Appium's
+  `mobile:` commands. Today `double_tap` and `long_press` share the same `/tap` runner endpoint as
+  plain `tap` (via extra params). Their WebDriver mapping is therefore a piece of work similar in
+  size to the other gestures. `tap_point` is the handle-less coordinate tap used for system alerts.
+  It maps to the same Actions path.
+- **Slice C: capabilities, config, and docs.** Narrow the live route's run-time capability set to
+  what Appium-XCUITest reaches, through `capabilities_for_run` (the Unit 3 mechanism). Add a showcase
+  target for a live grid. Extend the how-to with the live route.
 
 ### Prime-directive compliance
 
-- **AI out of the gate.** Real-device iOS execution is deterministic XCTest/XCUITest; no model on the
-  verdict path.
-- **Determinism first.** No fixed sleeps introduced; readiness stays condition-based as in the
+- **AI out of the gate.** Real-device iOS execution is deterministic XCTest/XCUITest. No model sits
+  on the verdict path.
+- **Determinism first.** No fixed sleeps are introduced. Readiness stays condition-based, as in the
   existing backends.
-- **App-agnostic.** iOS cloud specifics live in target config and (for batch) the CI-side submitter;
-  the runner and scenario format are unchanged.
+- **App-agnostic.** iOS cloud specifics live in target config and, for batch, in the CI-side
+  submitter. The runner and scenario format are unchanged.
 
 ## Alternatives considered
 
-- **Port `idb`/`simctl` to the cloud.** Not possible: no simulator on a real-device cloud, and no
-  daemon hosting on managed macOS hosts. Rejected as structurally infeasible; hence the XCTest/Appium
-  route.
-- **A brand-new iOS cloud backend from scratch.** Duplicates the BE-0019 XCUITest backend. Rejected —
-  generalise BE-0019 to real devices instead.
-- **Do iOS at the same time as Android.** Android reuses the adb backend almost verbatim; iOS needs
-  real new driving/packaging code. Kept separate so the Android path can ship first without waiting
-  on the heavier iOS work.
+- **Port `idb`/`simctl` to the cloud.** Rejected as structurally infeasible. A real-device cloud has
+  no simulator, and managed macOS hosts cannot host daemons. Hence the XCTest/Appium route.
+- **A brand-new iOS cloud backend from scratch.** Rejected. It duplicates the BE-0019 XCUITest
+  backend. The BE-0019 backend is generalised to real devices instead.
+- **Do iOS at the same time as Android.** Rejected. Android reuses the adb backend almost verbatim,
+  while iOS needs real new driving and packaging code. The two stay separate, so that the Android
+  path can ship first without waiting on the heavier iOS work.
 
 ## Progress
 
