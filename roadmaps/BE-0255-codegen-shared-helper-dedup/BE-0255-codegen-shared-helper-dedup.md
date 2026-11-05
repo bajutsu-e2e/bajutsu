@@ -16,115 +16,131 @@
 ## Introduction
 
 [BE-0083](../BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification.md) gave the
-codegen family a shared scenario walk: `codegen_common.py` holds the `CodeGenerator` protocol plus
-`render_test_file`/`_scenario_lines`, and `codegen_emit.py` is the single dispatcher every caller
-goes through. That seam covers *how a scenario is traversed*. It does not cover the small
-language-agnostic helpers each target still defines for itself, below that seam, by copy-paste:
-turning a scenario name into an identifier, deriving a class name, converting seconds to
-milliseconds, and recognizing whether a string is a plain substring or a real regex. This item
-extends the existing `codegen_common.py` seam to those helpers, so a third or fourth target
-inherits them instead of re-copying them.
+codegen family a shared scenario walk. `codegen_common.py` holds the `CodeGenerator` protocol plus
+`render_test_file` and `_scenario_lines`. `codegen_emit.py` is the single dispatcher every caller
+goes through. That seam covers *how a scenario is traversed*.
 
-This is a **behavior-preserving** internal refactor of an internal, deterministic, AI-free path
-(codegen is Tier-1 authoring output, never on the deterministic `run`/CI verdict path): moving code
-without changing what it emits, except where duplication has already let the targets drift (see
-Motivation) — those spots are reconciled onto the more correct behavior, matching the existing
-"unify, do not just relocate" spirit of BE-0083.
+Below that seam, each target still defines its own small language-agnostic helpers by copy-paste:
+
+- turning a scenario name into an identifier;
+- deriving a class name;
+- converting seconds to milliseconds;
+- recognizing whether a string is a plain substring or a real regex.
+
+This item extends the existing `codegen_common.py` seam to those helpers. A third or fourth target
+then inherits them instead of re-copying them.
+
+The change is a **behavior-preserving** internal refactor of an internal, deterministic, AI-free
+path. Codegen is Tier-1 authoring output and never sits on the deterministic `run`/CI verdict path.
+The refactor moves code without changing what it emits. The exception is where duplication has
+already let the targets drift (see Motivation). The refactor reconciles those spots onto the more correct
+behavior, in the "unify, do not just relocate" spirit of BE-0083.
 
 ## Motivation
 
-Concretely, the following are copy-pasted across the per-target codegen modules today:
+The following helpers are copy-pasted across the per-target codegen modules today.
 
-- **`_ident` is byte-identical** between `bajutsu/codegen.py:50-57` (XCUITest) and
-  `bajutsu/codegen_uiautomator.py:75-82` (uiautomator/Kotlin). Both sanitize a scenario name into
-  a `test_`-prefixed method identifier with the same regex and the same digit-prefix guard.
-- **`_class_name` is near-identical** between `bajutsu/codegen.py:60-64` and
-  `bajutsu/codegen_uiautomator.py:85-92` — there are two deltas, not one. First, the class-name
-  suffix differs: `codegen.py:64` returns `f"{cleaned}UITests"` (plural) while
-  `codegen_uiautomator.py:92` returns `f"{cleaned}UITest"` (singular), so the shared helper must
-  keep the suffix a per-target parameter. Second, the digit-prefix guard at
-  `codegen_uiautomator.py:89-91` (`"A Kotlin class name cannot start with a digit"`). XCUITest's
-  version has no such guard, even though a Swift `class` name has the identical restriction —
-  today a scenario name that starts with a digit produces an invalid Swift class name that only
-  the uiautomator target guards against. This is exactly the kind of drift that copy-pasted
-  helpers invite: a fix applied to one copy and forgotten in the other.
-- **`_ms` is identical** between `bajutsu/codegen_playwright.py:289-290` and
-  `bajutsu/codegen_uiautomator.py:163-164` — both convert a `float` seconds duration into an `int`
-  milliseconds count for a generated timeout/delay call.
+- **`_ident` is byte-identical** in `bajutsu/codegen.py:50-57` (XCUITest) and
+  `bajutsu/codegen_uiautomator.py:75-82` (uiautomator/Kotlin). Both sanitize a scenario name into a
+  `test_`-prefixed method identifier. Both use the same regex and the same digit-prefix guard.
+- **`_class_name` is near-identical** in `bajutsu/codegen.py:60-64` and
+  `bajutsu/codegen_uiautomator.py:85-92`. The two copies differ in two places, not one.
+  - The class-name suffix differs. `codegen.py:64` returns `f"{cleaned}UITests"` (plural), and
+    `codegen_uiautomator.py:92` returns `f"{cleaned}UITest"` (singular). The shared helper must
+    keep the suffix a per-target parameter.
+  - The digit-prefix guard at `codegen_uiautomator.py:89-91` (`"A Kotlin class name cannot start
+    with a digit"`) has no XCUITest counterpart, although a Swift `class` name has the identical
+    restriction. Today a scenario name that starts with a digit produces an invalid Swift class
+    name, and only the uiautomator target guards against it.
+
+  This is the kind of drift that copy-pasted helpers invite: a fix applied to one copy and
+  forgotten in the other.
+- **`_ms` is identical** in `bajutsu/codegen_playwright.py:289-290` and
+  `bajutsu/codegen_uiautomator.py:163-164`. Both convert a `float` seconds duration into an `int`
+  milliseconds count for a generated timeout or delay call.
 - **`_RE_METACHARS` is an identical frozenset with near-identical comments** in
-  `bajutsu/codegen.py:73` and `bajutsu/codegen_uiautomator.py:55` — both use it to decide whether a
-  `labelMatches` pattern is a metacharacter-free plain substring (translatable to a native
-  `CONTAINS`/`contains` call) or a real regex (which stays a `// TODO`, since neither NSPredicate
-  nor UiAutomator2 has a faithful arbitrary-regex form matching Python's `re.search`).
-- **The `_NO_NETWORK` constant and its network-assertion `// TODO` block are duplicated** between
-  `bajutsu/codegen.py` and `bajutsu/codegen_uiautomator.py` — both black-box, on-device targets
-  have no network-interception surface, so both emit the same shaped `// TODO: wait until
-  request (...)` / `// TODO: request assertion (...)` lines, differing only in the constant's
-  wording (`"XCUITest has no network interception..."` vs. `"the adb backend has no network
+  `bajutsu/codegen.py:73` and `bajutsu/codegen_uiautomator.py:55`. Both targets use it to classify
+  a `labelMatches` pattern.
+  - A metacharacter-free plain substring translates to a native `CONTAINS`/`contains` call.
+  - A real regex stays a `// TODO`. Neither NSPredicate nor UiAutomator2 has a faithful
+    arbitrary-regex form matching Python's `re.search`.
+- **The `_NO_NETWORK` constant and its network-assertion `// TODO` block are duplicated** in
+  `bajutsu/codegen.py` and `bajutsu/codegen_uiautomator.py`. Both black-box, on-device targets have
+  no network-interception surface. Both emit the same shaped `// TODO: wait until request (...)`
+  and `// TODO: request assertion (...)` lines. Only the constant's wording differs
+  (`"XCUITest has no network interception..."` versus `"the adb backend has no network
   interception..."`).
 
-None of this is a bug in the current, tested output — but every one of these helpers is
-language-agnostic (a Swift, Kotlin, or hypothetical fourth-target identifier all sanitize a
-scenario name the same way), so keeping them as independent copies is pure duplication cost with
-no compensating benefit, and it has already let one target's fix (the digit-prefix guard) diverge
-from the others. Centralizing them in `codegen_common.py` — the module BE-0083 already established
-as the shared, target-agnostic home for codegen logic — removes the drift risk and shrinks the
-per-target modules to the parts that are genuinely target-specific: the line syntax.
+None of this is a bug in the current, tested output. Every one of these helpers is
+language-agnostic, though. A Swift identifier, a Kotlin identifier, and the identifier of a
+hypothetical fourth target all sanitize a scenario name the same way. Independent copies are pure
+duplication cost with no compensating benefit. They have already let one target's fix (the
+digit-prefix guard) diverge from the others.
+
+BE-0083 already established `codegen_common.py` as the shared, target-agnostic home for codegen
+logic. Centralizing the helpers there removes the drift risk. The per-target modules shrink to the
+genuinely target-specific part, the line syntax.
 
 ## Detailed design
 
-The work breaks down MECE by helper, plus one explicitly-scoped item for the network-TODO
-duplication and one explicit non-goal:
+The work breaks down MECE by helper. One explicitly scoped item covers the network-TODO
+duplication, and one explicit non-goal closes the list.
 
-1. **Move `_ident` into `codegen_common.py`.** Byte-identical today in `codegen.py` and
-   `codegen_uiautomator.py`; the Playwright target is JS/TS's `test(...)` call and does not need a
-   Swift/Kotlin-style bare identifier, so it opts in only if that changes. Both current callers
-   import the shared function and drop their local copy.
+1. **Move `_ident` into `codegen_common.py`.** The helper is byte-identical today in `codegen.py`
+   and `codegen_uiautomator.py`. Both callers import the shared function and drop their local copy.
+   The Playwright target emits JS/TS's `test(...)` call and needs no Swift/Kotlin-style bare
+   identifier. It opts in if that changes.
 2. **Move `_class_name` into `codegen_common.py`, taking the suffix as a parameter and applying
-   the digit-prefix guard uniformly.** The two targets differ in the class-name suffix
-   (`"UITests"` for XCUITest vs. `"UITest"` for uiautomator), so the shared helper keeps that a
-   per-target argument. Separately, the digit-prefix guard currently only in
-   `codegen_uiautomator.py` (`cleaned[0].isdigit()` → prefix `_`) applies with equal force to
-   XCUITest's Swift `class` name, which has the identical restriction and is silently unguarded
-   today. Moving the helper is also the moment to close that gap, rather than moving a copy of the
-   bug alongside the fix.
-3. **Move `_ms` into `codegen_common.py`.** Identical in `codegen_playwright.py` and
-   `codegen_uiautomator.py`; XCUITest's `codegen.py` does not currently need a milliseconds
-   conversion, so it gains access to the shared helper without being forced to use it.
-4. **Add a shared `is_plain_substring(pattern)` (backed by the existing `_RE_METACHARS`) to
-   `codegen_common.py`**, and have `codegen.py` and `codegen_uiautomator.py` call it instead of
-   each inlining the `set(pattern) & _RE_METACHARS` check. The frozenset itself moves alongside it
-   as a common-module constant, with one comment instead of two near-identical ones.
-5. **Consider a shared `NetworkUnsupported`-style helper** for the two black-box mobile targets'
-   `_NO_NETWORK` TODO block (the wait-until-request and request/requestSequence-assertion lines).
-   This one is scoped as "consider" rather than "do," because the two constants' wording is
-   target-specific prose (naming the actual backend — XCUITest vs. the adb backend) that a shared
-   helper would need to parameterize; if that parameterization reads more awkwardly than the two
-   short constants it replaces, keeping the constants separate and only sharing the surrounding
-   `// TODO` line-shape (already largely identical) is an acceptable outcome. Playwright has its
-   own, already-different network story (it can intercept requests, so it isn't part of this
-   duplication) and stays untouched.
-6. **Leave the per-target `_emit_step` dispatch shape alone.** Each target's chain of `if`
-   branches mapping a `Step` variant to its target-specific lines is inherent to per-target code
-   emission (BE-0083 already unified everything above that layer), and collapsing it further is
-   out of scope here — see Alternatives considered.
+   the digit-prefix guard uniformly.**
+   - The two targets differ in the class-name suffix (`"UITests"` for XCUITest, `"UITest"` for
+     uiautomator). The shared helper keeps the suffix a per-target argument.
+   - The digit-prefix guard exists only in `codegen_uiautomator.py` today
+     (`cleaned[0].isdigit()` → prefix `_`). It applies with equal force to XCUITest's Swift
+     `class` name, which has the identical restriction and is unguarded.
 
-Each step is independently landable and behavior-preserving except where called out (item 2's
-digit-guard fix, which is a narrowly-scoped correctness fix that piggybacks on the move rather than
-a separate proposal, since duplicating a known bug into the shared module would defeat the point of
-centralizing it).
+   Moving the helper is the moment to close that gap, instead of moving a copy of the bug
+   alongside the fix.
+3. **Move `_ms` into `codegen_common.py`.** The helper is identical in `codegen_playwright.py`
+   and `codegen_uiautomator.py`. XCUITest's `codegen.py` does not need a milliseconds conversion
+   today. It gains access to the shared helper without being forced to use it.
+4. **Add a shared `is_plain_substring(pattern)` to `codegen_common.py`, backed by the existing
+   `_RE_METACHARS`.** `codegen.py` and `codegen_uiautomator.py` call it instead of each inlining
+   the `set(pattern) & _RE_METACHARS` check. The frozenset moves alongside it as a common-module
+   constant, with one comment instead of two near-identical ones.
+5. **Consider a shared `NetworkUnsupported`-style helper** for the `_NO_NETWORK` TODO block of the
+   two black-box mobile targets (the wait-until-request and request/requestSequence-assertion
+   lines).
+   - This step is scoped as "consider" rather than "do". The two constants' wording is
+     target-specific prose that names the actual backend (XCUITest or the adb backend), and a
+     shared helper would need to parameterize it.
+   - If the parameterization reads more awkwardly than the two short constants it replaces, an
+     acceptable outcome is to keep the constants separate. The targets then share only the
+     surrounding `// TODO` line shape, which is already largely identical.
+   - Playwright has its own, already-different network story. It can intercept requests, so it is
+     not part of this duplication, and it stays untouched.
+6. **Leave the per-target `_emit_step` dispatch shape alone.** Each target has a chain of `if`
+   branches that maps a `Step` variant to its target-specific lines. That chain is inherent to
+   per-target code emission, since BE-0083 already unified everything above that layer. Collapsing
+   the chain further is out of scope here (see Alternatives considered).
+
+Each step is independently landable and behavior-preserving, except where called out. The one
+exception is the digit-guard fix in step 2. This is a narrowly scoped correctness fix that
+piggybacks on the move instead of getting a separate proposal. Duplicating a known bug into the
+shared module would defeat the point of centralizing.
 
 ## Alternatives considered
 
-**A shared iterator that calls per-target hooks to collapse the three `_emit_step` if-chains
-directly**, rather than stopping at the small helpers above. This was considered and deferred: the
-three `_emit_step` implementations differ enough in their per-step-kind line generation (Swift vs.
-Kotlin vs. TypeScript syntax, plus each target's own selector/predicate builders) that forcing them
-through one generic dispatch would need a wider hook surface than the current `CodeGenerator`
-protocol, for a payoff that only shows up once a fourth target exists. It is lower effort and
-higher reward to land the concrete, already-duplicated helpers now and revisit the dispatch shape
-if and when an Android (or other) target actually lands, rather than design an abstraction ahead
-of its second concrete need.
+**A shared iterator that calls per-target extension points to collapse the three `_emit_step` if-chains
+directly**, rather than stopping at the small helpers above. We considered and deferred it.
+
+The three `_emit_step` implementations differ enough in their per-step-kind line generation
+(Swift, Kotlin, and TypeScript syntax, plus each target's own selector and predicate builders).
+Forcing them through one generic dispatch would need a wider extension surface than the current
+`CodeGenerator` protocol. The payoff would appear once a fourth target exists.
+
+Landing the concrete, already-duplicated helpers now is lower effort and higher reward. The
+dispatch shape can be revisited when an Android (or other) target lands. That is better
+than designing an abstraction ahead of its second concrete need.
 
 ## Progress
 

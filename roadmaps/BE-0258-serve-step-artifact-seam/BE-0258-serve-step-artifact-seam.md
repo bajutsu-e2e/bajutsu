@@ -15,163 +15,202 @@
 
 ## Introduction
 
-`ServeState.artifacts` (`bajutsu/serve/state.py:346-348`) is the seam BE-0015 built so run
-artifacts can be read back the same way from either backend: `LocalArtifactStore`
-(`bajutsu/serve/artifacts.py`) reads files confined to `runs_dir`, and
-`ObjectStorageArtifactStore` (`bajutsu/serve/server/artifacts.py`) fetches the same run-relative
-paths from S3-compatible object storage instead, handing back a signed-URL redirect rather than
-inlining bytes. `_persist_run`/`_read_manifest` (`bajutsu/serve/jobs.py:338-343`) and
-`_run_manifests`/`run_set_manifests` (`bajutsu/serve/operations/reads.py:183-227`) already go
-through it correctly — `_read_manifest` reads a run's `manifest.json` via
-`state.artifacts.open_bytes(...)`, not a `runs_dir` path.
+`ServeState.artifacts` (`bajutsu/serve/state.py:346-348`) is the seam that BE-0015 built. It lets
+run artifacts be read back the same way from either backend:
 
-Several other read paths in the same module bypass the seam and reach straight into the local
-filesystem instead:
+- `LocalArtifactStore` (`bajutsu/serve/artifacts.py`) reads files confined to `runs_dir`.
+- `ObjectStorageArtifactStore` (`bajutsu/serve/server/artifacts.py`) fetches the same run-relative
+  paths from S3-compatible object storage. It hands back a signed-URL redirect and does not inline
+  bytes.
 
-- `_step_artifacts` (`bajutsu/serve/operations/reads.py:289-342`), which builds the per-step
-  artifact list the scenario editor's `/api/scenario?runId=...` response embeds, reads
-  `state.runs_dir / run_id / "manifest.json"` (`reads.py:301`) and probes
+`_persist_run` and `_read_manifest` (`bajutsu/serve/jobs.py:338-343`) already go through the seam
+correctly. So do `_run_manifests` and `run_set_manifests` (`bajutsu/serve/operations/reads.py:183-227`).
+`_read_manifest` reads the `manifest.json` of a run via `state.artifacts.open_bytes(...)`, not via a
+`runs_dir` path.
+
+Several other read paths in the same package bypass the seam and reach straight into the local
+filesystem:
+
+- `_step_artifacts` (`bajutsu/serve/operations/reads.py:289-342`) builds the per-step artifact list
+  that the `/api/scenario?runId=...` response of the scenario editor embeds. It reads
+  `state.runs_dir / run_id / "manifest.json"` (`reads.py:301`) directly. It also probes
   `state.runs_dir / run_id / step_id / "after.png"` for existence (`reads.py:327`) directly.
-- `resolve_scenario_pick` (`bajutsu/serve/operations/reads.py:461-520`), backing
-  `POST /api/scenario/resolve` (the "pick an element from a stored screenshot" flow used when
-  editing a scenario without a live driver), reads
+- `resolve_scenario_pick` (`bajutsu/serve/operations/reads.py:461-520`) backs
+  `POST /api/scenario/resolve`. That endpoint serves the "pick an element from a stored screenshot"
+  flow, used when editing a scenario without a live driver. The function reads
   `state.runs_dir / run_id / step_id / "elements.json"` directly (`reads.py:497`).
 - `coverage_view` (`bajutsu/serve/operations/coverage.py:66-72`) passes `state.runs_dir` straight
-  into `bajutsu.coverage.read_exchanges`/`read_observed_ids`, which glob `network.json` and
-  `elements.json` files under it (`bajutsu/coverage.py:341-380`).
-- `start_capture` (`bajutsu/serve/operations/capture.py:62-65`) writes (and a later read in
-  `bajutsu/serve/handler.py:605-611` reads back) a capture session's live screenshot under
-  `state.runs_dir / "_capture"`.
+  into `bajutsu.coverage.read_exchanges` and `read_observed_ids`. Those functions glob
+  `network.json` and `elements.json` files under it (`bajutsu/coverage.py:341-380`).
+- `start_capture` (`bajutsu/serve/operations/capture.py:62-65`) writes the live screenshot of a
+  capture session under `state.runs_dir / "_capture"`. A later read in
+  `bajutsu/serve/handler.py:605-611` reads it back.
 
-`read_scenario` (`reads.py:265-286`, which calls `_step_artifacts`) is wired to `/api/scenario` at
-`app.py:222-240`, and `resolve_scenario_pick` is wired to `/api/scenario/resolve` at
-`app.py:438-440` — both reachable from the hosted `server` backend
-(`bajutsu/serve/server/app.py`), where `state.hosted` is `True` and `state.artifacts` is an
-`ObjectStorageArtifactStore` with no local `runs_dir` tree to read from at all. This proposal
-routes those reads through the seam the same way `_read_manifest` already does, so the abstraction
-BE-0015 built holds for every step-artifact read path, not only for the ones added since.
+Two of these reads are reachable from the hosted `server` backend (`bajutsu/serve/server/app.py`):
+
+- `read_scenario` (`reads.py:265-286`, which calls `_step_artifacts`) is wired to `/api/scenario` at
+  `app.py:222-240`.
+- `resolve_scenario_pick` is wired to `/api/scenario/resolve` at `app.py:438-440`.
+
+On the hosted backend, `state.hosted` is `True`. `state.artifacts` is an `ObjectStorageArtifactStore`,
+and no local `runs_dir` tree exists to read from.
+
+This proposal routes those reads through the seam, the way `_read_manifest` already does. The
+abstraction that BE-0015 built then holds for every step-artifact read path, including the paths
+added since.
 
 ## Motivation
 
-On a hosted deployment whose artifacts live in object storage, `_step_artifacts` and
-`resolve_scenario_pick` reading `state.runs_dir` directly do not raise — they silently read past an
-empty or non-existent local directory. `_step_artifacts` returns an empty step list (the editor
-shows no per-step artifact handles for a run that in fact has them), and
-`resolve_scenario_pick`'s `elements_path.is_file()` check is always `False`, so every element-pick
-request returns `{"error": "elements.json not found for this step"}, 404` even when the run's
-`elements.json` is sitting in object storage. Both failures look like missing data rather than a
-wiring bug, which makes them slow to diagnose from the outside. This is exactly the drift the
-`ArtifactStore` seam exists to prevent — a hosted backend silently falling back to empty results
-instead of erroring loudly or working correctly — and the fact that `_persist_run`/`_run_manifests`
-already go through `state.artifacts` in the very same package shows the inconsistency is internal
-to this one module, not a limitation of the seam itself.
+Take a hosted deployment whose artifacts live in object storage. There, `_step_artifacts` and
+`resolve_scenario_pick` read `state.runs_dir` directly. They do not raise. They silently read past
+an empty or non-existent local directory.
 
-`coverage_view`'s direct `runs_dir` reads and `start_capture`'s scratch screenshot share the same
-`runs_dir`-bypassing shape, so fixing only the two most visibly broken endpoints would leave the
-module inconsistent in a way the next contributor is likely to copy from.
+- `_step_artifacts` returns an empty step list. The editor shows no per-step artifact handles for a
+  run that in fact has them.
+- The `elements_path.is_file()` check in `resolve_scenario_pick` is always `False`. Every
+  element-pick request returns `{"error": "elements.json not found for this step"}, 404`, even when
+  the `elements.json` of the run sits in object storage.
+
+Both failures look like missing data, not like a wiring bug. That makes them slow to diagnose from
+the outside.
+
+This is the drift that the `ArtifactStore` seam exists to prevent: a hosted backend silently
+falling back to empty results, instead of erroring loudly or working correctly. `_persist_run` and
+`_run_manifests` already go through `state.artifacts` in the same package. So the inconsistency is
+internal to this one module and is not a limitation of the seam itself.
+
+`coverage_view` reads `runs_dir` directly, and the scratch screenshot of `start_capture` shares the
+same `runs_dir`-bypassing shape. Fixing only the two most visibly broken endpoints would leave the
+module inconsistent. The next contributor is likely to copy from that inconsistency.
 
 ## Detailed design
 
-The work is MECE across four units, ordered by how directly each is reachable from the hosted
-backend today.
+The work is MECE across four units. They are ordered by how directly the hosted backend reaches
+each one today.
 
 ### 1. Route `_step_artifacts` through `state.for_org(org).artifacts`
 
-`_step_artifacts` (`reads.py:289-342`) already has a `ServeState` in scope; its manifest read
-becomes `state.for_org(org).artifacts.open_bytes(f"{run_id}/manifest.json")` (parsed the same way
-`_read_manifest` already parses that same content — a `json.JSONDecodeError`/`OSError`-guarded
-`json.loads`), replacing the direct `manifest_path.is_file()` + `.read_text()` pair. `read_scenario`
-(`reads.py:265-286`), `_step_artifacts`'s only caller, already resolves `org` via `state.org_of(actor)`
-a few lines above where it calls `_step_artifacts`, so threading `org` through costs one added
-parameter, not a new lookup.
+`_step_artifacts` (`reads.py:289-342`) already has a `ServeState` in scope. Its manifest read
+becomes `state.for_org(org).artifacts.open_bytes(f"{run_id}/manifest.json")`. The content is parsed
+the way `_read_manifest` already parses it, with a `json.JSONDecodeError`/`OSError`-guarded
+`json.loads`. This replaces the direct `manifest_path.is_file()` and `.read_text()` pair.
 
-The per-step existence probes (`elements_file.is_file()`, `screenshot_file.is_file()` at
-`reads.py:326-339`) need a lightweight existence method on the seam — `get()` is not it. On the
-local backend `LocalArtifactStore.get` (`bajutsu/serve/artifacts.py:125-130`) builds
-`Artifact(body=target.read_bytes())`, i.e. it reads the whole file, so
-`store.get(...) is not None` as an existence probe would pull each `after.png` body into memory
-just to decide whether to emit a URL — strictly more expensive than the `is_file()` it replaces.
-(The two `get` implementations even diverge here: `ObjectStorageArtifactStore.get`,
-`server/artifacts.py:56-61`, is a cheap `exists` + presigned redirect, so keying off `get()` would
-be free on one backend and a full read on the other — exactly the kind of hidden asymmetry the seam
-should not bake in.) The fix therefore adds an `exists(rel) -> bool` (HEAD-style) method to the
-`ArtifactStore` protocol, implemented as `Path.is_file` locally and an object `exists` remotely, and
-routes the probes through `state.for_org(org).artifacts.exists(...)`. `elementsUrl`/`screenshotUrl`
-keep pointing at the `/runs/<run_id>/<step_id>/...` HTTP path (`handler.py`'s own `GET /runs/...`
-route already serves through `state.artifacts.get`), so only the existence probe that decides
-whether to emit that URL changes, not the URL shape itself.
+`read_scenario` (`reads.py:265-286`) is the only caller of `_step_artifacts`. It already resolves
+`org` via `state.org_of(actor)` a few lines above the call. Threading `org` through therefore costs
+one added parameter and no new lookup.
+
+The per-step existence probes (`elements_file.is_file()` and `screenshot_file.is_file()` at
+`reads.py:326-339`) need a lightweight existence method on the seam. `get()` is not that method.
+
+- On the local backend, `LocalArtifactStore.get` (`bajutsu/serve/artifacts.py:125-130`) builds
+  `Artifact(body=target.read_bytes())`. It reads the whole file.
+- Using `store.get(...) is not None` as an existence probe would pull each `after.png` body into
+  memory just to decide whether to emit a URL. That costs strictly more than the `is_file()` it
+  replaces.
+- The two `get` implementations also diverge. `ObjectStorageArtifactStore.get`
+  (`server/artifacts.py:56-61`) is a cheap `exists` plus a presigned redirect. Keying off `get()`
+  would be free on one backend and a full read on the other. The seam should not bake in that kind
+  of hidden asymmetry.
+
+The fix therefore adds an `exists(rel) -> bool` method (HEAD-style) to the `ArtifactStore`
+protocol. The local store implements it as `Path.is_file`. The object store implements it as an
+object `exists`. The probes route through `state.for_org(org).artifacts.exists(...)`.
+
+`elementsUrl` and `screenshotUrl` keep pointing at the `/runs/<run_id>/<step_id>/...` HTTP path.
+The `GET /runs/...` route of `handler.py` already serves through `state.artifacts.get`. Only the
+existence probe that decides whether to emit the URL changes. The URL shape stays.
 
 ### 2. Route `resolve_scenario_pick` through the same seam
 
 `resolve_scenario_pick` (`reads.py:461-520`) already resolves `_org` via `_resolve_org_or_forbid`
-before it reads `elements.json` (`reads.py:487-499`); the fix reuses that `_org` for
+before it reads `elements.json` (`reads.py:487-499`). The fix reuses that `_org`. It calls
 `state.for_org(_org).artifacts.open_bytes(f"{run_id}/{step_id}/elements.json")` in place of the
-direct `elements_path.is_file()` + `.read_text()` pair, with the existing `json.loads` /
-`isinstance(raw, list)` validation unchanged.
+direct `elements_path.is_file()` and `.read_text()` pair. The existing `json.loads` and
+`isinstance(raw, list)` validation stays unchanged.
 
 ### 3. Route the coverage evidence reads through the seam
 
-`coverage_view` (`operations/coverage.py:66-72`) passes `state.runs_dir` into
-`read_exchanges`/`read_observed_ids` (`bajutsu/coverage.py:341-380`), both of which glob
-(`runs_dir.glob(f"*/{name}")` via the shared `_evidence_files` at `coverage.py:330-338`) for
-`network.json`/`elements.json` under an explicit run-id set. `ArtifactStore` has no glob or
-directory-listing primitive today — only `open_bytes(rel)` for one known path and `list_runs()` for
-run summaries — so this unit is the one place a new capability is actually needed, not a reuse of
-an existing method. Rather than adding a generic glob to the protocol (which would let a store leak
-its internal layout across the seam), this unit derives the step ids to probe from data the module
-already has: `run_set_manifests` (`reads.py:202-227`, already seam-routed) gives each run's manifest,
-whose `scenarios[].sid` plus each scenario's step names give exactly the `sid/step` paths
-`_evidence_files` was globbing for. `read_exchanges`/`read_observed_ids` gain an
-`ArtifactStore`-based variant (or an overload) that takes that explicit step-id list and calls
-`open_bytes` per path instead of globbing `runs_dir`, keeping the existing glob-based signature for
-any caller (a CLI command, a test) that legitimately owns a local `runs_dir` outside `ServeState`.
+`coverage_view` (`operations/coverage.py:66-72`) passes `state.runs_dir` into `read_exchanges` and
+`read_observed_ids` (`bajutsu/coverage.py:341-380`). Both functions glob for `network.json` and
+`elements.json` under an explicit run-id set. The glob is `runs_dir.glob(f"*/{name}")`, issued
+through the shared `_evidence_files` at `coverage.py:330-338`.
+
+`ArtifactStore` has no glob or directory-listing primitive today. It has only `open_bytes(rel)` for
+one known path and `list_runs()` for run summaries. This unit is therefore the one place that needs
+a new capability, and cannot reuse an existing method.
+
+The unit does not add a generic glob to the protocol, because a glob would let a store leak its
+internal layout across the seam. It derives the step ids to probe from data the module already has.
+
+- `run_set_manifests` (`reads.py:202-227`, already seam-routed) gives the manifest of each run.
+- The `scenarios[].sid` entries of the manifest, plus the step names of each scenario, give exactly
+  the `sid/step` paths that `_evidence_files` was globbing for.
+- `read_exchanges` and `read_observed_ids` gain an `ArtifactStore`-based variant (or an overload).
+  The variant takes that explicit step-id list and calls `open_bytes` per path. It does not glob
+  `runs_dir`.
+- The existing glob-based signature stays for any caller outside `ServeState` that legitimately owns
+  a local `runs_dir` (a CLI command, a test).
 
 ### 4. Capture's session-scoped scratch screenshot
 
-`start_capture`'s `shot_dir = state.runs_dir / "_capture"` (`operations/capture.py:62-65`) and
-`handler.py`'s later `session.screenshot_path.read_bytes()` (`handler.py:605-611`) share the same
-`runs_dir`-relative shape as the other three, but they are not a stored *run* artifact at all: a
-capture session is a live, in-process object (`state.capture: CaptureSession | None`) whose driver
-and HTTP handler run in the same process for the lifetime of the session, unlike a `run`/`record`
-job, which BE-0015 already lets execute on a separate worker. Routing this path through
-`state.artifacts` would require either keying capture scratch files by a synthetic run id under the
-same store (widening what the seam means by "a run") or adding a second, session-scoped store — both
-larger changes than this proposal's scope. This unit's job is narrower: keep the `_capture` scratch
-directory under a path that stays writable when hosted (already true — `state.runs_dir` is a local,
-writable directory on whichever host/worker holds the live driver), and note in a comment at
-`capture.py:62` why this path deliberately stays outside the `ArtifactStore` seam, so a future reader
-does not read its `runs_dir` use as the same oversight as units 1–3.
+`start_capture` sets `shot_dir = state.runs_dir / "_capture"` (`operations/capture.py:62-65`). Later,
+`handler.py` calls `session.screenshot_path.read_bytes()` (`handler.py:605-611`). Both share the
+`runs_dir`-relative shape of the other three units.
+
+This path is not a stored *run* artifact at all. A capture session is a live, in-process object
+(`state.capture: CaptureSession | None`). Its driver and HTTP handler run in the same process for
+the lifetime of the session. A `run` or `record` job differs: BE-0015 already lets such a job
+execute on a separate worker.
+
+Routing this path through `state.artifacts` would need one of two larger changes:
+
+- keying capture scratch files by a synthetic run id under the same store, which widens what the
+  seam means by "a run";
+- adding a second, session-scoped store.
+
+Both exceed the scope of this proposal. The job of this unit is narrower, and has two parts:
+
+- Keep the `_capture` scratch directory under a path that stays writable when hosted. That already
+  holds: `state.runs_dir` is a local, writable directory on whichever host or worker holds the live
+  driver.
+- Add a comment at `capture.py:62` that says why this path deliberately stays outside the
+  `ArtifactStore` seam. A future reader then does not mistake its `runs_dir` use for the oversight
+  that units 1-3 fix.
 
 ### Path-safety checks move alongside the seam calls
 
-`valid_run_id` and `_valid_step_id` (`reads.py:358-363`) keep gating every `run_id`/`step_id` before
-it becomes part of an `open_bytes`/`get` key — the same containment discipline
-`ArtifactStore`'s own implementations independently re-apply at their boundary
-(`LocalArtifactStore._resolve`, `ObjectStorageArtifactStore._key`). Two independent checks of the
-same shape is intentional defense in depth, not redundancy to be removed: the caller-side check is
-what turns a crafted id into a `400`/`404` before a request even reaches the store, and the
-store-side check is what keeps every other seam consumer safe even if a future caller forgets to
-check.
+`valid_run_id` and `_valid_step_id` (`reads.py:358-363`) keep gating every `run_id` and `step_id`
+before it becomes part of an `open_bytes` or `get` key. The implementations of `ArtifactStore`
+independently re-apply the same containment discipline at their own boundary
+(`LocalArtifactStore._resolve`, `ObjectStorageArtifactStore._key`).
+
+Two independent checks of the same shape are intentional defense in depth, and the proposal should
+not remove either as redundancy.
+
+- The caller-side check turns a crafted id into a `400`/`404` before a request reaches the store.
+- The store-side check keeps every other seam consumer safe, even if a future caller forgets to
+  check.
 
 ## Alternatives considered
 
-- **Keep the direct `runs_dir` reads and document them as local-only.** Rejected: `_step_artifacts`
+- **Keep the direct `runs_dir` reads and document them as local-only.** Rejected. `_step_artifacts`
   and `resolve_scenario_pick` are both wired into the hosted `server` backend today
-  (`app.py:222-240`, `app.py:438-440`) with no gate that disables them when `state.hosted` is
-  `True`. Documenting a code path as "local-only" while it stays reachable and silently wrong on the
-  backend that documentation warns about is a correctness bug wearing a disclaimer, not a scoping
-  decision.
-- **Add a generic `list_files(prefix) -> list[str]` (or glob) method to `ArtifactStore`.** Considered
-  for unit 3. Rejected in favor of deriving step ids from the manifest already read by
-  `run_set_manifests`: a glob-shaped method would work for the local store by construction but would
-  force `ObjectStorageArtifactStore` to implement key-prefix listing with the same traversal
-  semantics as `Path.glob`, a wider and leakier surface than the seam otherwise commits to (every
-  other method reads one caller-named path, never enumerates what exists under one).
+  (`app.py:222-240`, `app.py:438-440`). No gate disables them when `state.hosted` is `True`. Such
+  documentation would call a code path "local-only" while the path stays reachable, and silently
+  wrong, on the backend the documentation warns about. That is a correctness bug wearing a
+  disclaimer, and it is not a scoping decision.
+- **Add a generic `list_files(prefix) -> list[str]` (or glob) method to `ArtifactStore`.**
+  Considered for unit 3, and rejected in favor of deriving step ids from the manifest that
+  `run_set_manifests` already reads. A glob-shaped method would work for the local store by
+  construction. It would force `ObjectStorageArtifactStore` to implement key-prefix listing with
+  the same traversal semantics as `Path.glob`. That surface is wider and leakier than the seam
+  otherwise commits to. Every other method reads one caller-named path and never enumerates what
+  exists under one.
 - **Fold capture's scratch screenshot into the `ArtifactStore` seam as a fourth unit shipped with
-  units 1-3.** Rejected for this proposal's scope: a capture session is not a stored run and its
-  driver and handler always share a process, so the hosted-correctness argument that motivates units
-  1-3 does not apply to it the same way. Left as a documented, deliberate exception rather than
-  silently folded in or silently left unexplained.
+  units 1-3.** Rejected for the scope of this proposal. A capture session is not a stored run, and
+  its driver and handler always share a process. The hosted-correctness argument that motivates
+  units 1-3 does not apply to it the same way. It stays a documented, deliberate exception, instead
+  of being silently folded in or left silently unexplained.
 
 ## Progress
 

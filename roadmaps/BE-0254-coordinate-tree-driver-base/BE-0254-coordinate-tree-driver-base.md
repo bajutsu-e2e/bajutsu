@@ -16,93 +16,105 @@
 ## Introduction
 
 `IdbDriver` (`bajutsu/drivers/idb.py`) and `AdbDriver` (`bajutsu/drivers/adb.py`) are the two
-coordinate-based device backends: both dump an accessibility tree from the device, normalize it
-into `Element`s, and act by tapping a resolved frame's center. Their determinism-sensitive read
-path — the transient-empty retry, the settle loop, the stable-key projection, and the not-found
-resolve loop — is close to byte-for-byte identical between the two files. This item proposes
-extracting that shared logic into one base class, `CoordinateTreeDriver`, so each backend supplies
-only its own tree source and its own actuators.
+coordinate-based device backends. Both dump an accessibility tree from the device and normalize it
+into `Element`s. Both act by tapping the center of a resolved frame.
+
+The two files also share a determinism-sensitive read path, and the shared code is close to
+byte-for-byte identical. It covers the transient-empty retry, the settle loop, the stable-key
+projection, and the not-found resolve loop.
+
+This item extracts that shared logic into one base class, `CoordinateTreeDriver`. Each backend then
+supplies only its own tree source and its own actuators.
 
 ## Motivation
 
-The two backends carry roughly 90 lines of near-verbatim duplication in exactly the part of the
-driver layer where determinism matters most — the logic that decides whether a freshly read tree
-is a real screen or a transient artifact of the device mid-transition:
+The two backends carry roughly 90 lines of near-verbatim duplication. The duplicated code sits in
+the part of the driver layer where determinism matters most. It decides whether a freshly read tree
+is a real screen or a transient artifact of the device mid-transition.
 
-- Five of the six tuning constants — `_READY_MIN` / `_EMPTY_RETRIES` / `_EMPTY_BACKOFF_S` /
-  `_EMPTY_BACKOFF_MAX_S` / `_SETTLE_MAX_POLLS` — share values and comments
-  (`bajutsu/drivers/idb.py:213-218`, `bajutsu/drivers/adb.py:202-215`); `_SETTLE_POLL_S` has since
-  diverged (idb `0.05`, adb `0.0` — BE-0234 tuned adb's poll to 0 since its ~2.4s read itself paces
-  the loop), so the shared base keeps that one constant a per-backend value.
-- The `_StableKey` type alias (`bajutsu/drivers/idb.py:24`, `bajutsu/drivers/adb.py:64`).
-- The `query()` retry loop, byte-for-byte identical apart from the describe call it wraps
+- Five of the six tuning constants share values and comments: `_READY_MIN`, `_EMPTY_RETRIES`,
+  `_EMPTY_BACKOFF_S`, `_EMPTY_BACKOFF_MAX_S`, and `_SETTLE_MAX_POLLS`
+  (`bajutsu/drivers/idb.py:213-218`, `bajutsu/drivers/adb.py:202-215`).
+  The sixth, `_SETTLE_POLL_S`, has since diverged: idb uses `0.05` and adb uses `0.0`. BE-0234
+  tuned adb's poll to 0 because adb's read of about 2.4 seconds already paces the loop. The shared
+  base therefore keeps that one constant as a per-backend value.
+- The `_StableKey` type alias is identical (`bajutsu/drivers/idb.py:24`,
+  `bajutsu/drivers/adb.py:64`).
+- The `query()` retry loop is byte-for-byte identical, apart from the describe call it wraps
   (`bajutsu/drivers/idb.py:229-246`, `bajutsu/drivers/adb.py:248-263`).
-- `_is_transient_empty`, `_empty_backoff`, `_settle`, `_stable_key`, and `_resolve` — all identical
-  logic. `AdbDriver._settle`'s own docstring even says "idb's logic"
-  (`bajutsu/drivers/adb.py:292-311`), which is the duplication naming itself.
+- `_is_transient_empty`, `_empty_backoff`, `_settle`, `_stable_key`, and `_resolve` carry identical
+  logic. The docstring of `AdbDriver._settle` even says "idb's logic"
+  (`bajutsu/drivers/adb.py:292-311`), so the duplication names itself.
 
-Because this logic is duplicated rather than shared, a fix to the transient-empty heuristic — for
-example, tightening the backoff cap, or changing `_READY_MIN` after a new flake is diagnosed — has
-to be made twice, in two files, by whoever happens to be touching either backend. Nothing forces
-the second edit; the two read paths can silently drift apart, and a scenario that behaves
-differently on iOS than on Android for no app-level reason becomes possible. This is the largest
-and most correctness-sensitive duplication anywhere in the driver layer: hoisting it into one place
-turns "remember to fix it twice" into "fix it once, both backends inherit it."
+Because the logic is duplicated, a fix to the transient-empty heuristic must be made twice. An
+example is tightening the backoff cap, or changing `_READY_MIN` after a new flake is diagnosed.
+The fix lands in two files, made by whoever happens to touch either backend. Nothing forces the
+second edit. The two read paths can silently drift apart. A scenario could then behave differently
+on iOS than on Android for no app-level reason.
+
+This is the largest and most correctness-sensitive duplication in the driver layer. Hoisting it
+into one place turns "remember to fix it twice" into "fix it once, and both backends inherit it."
 
 ## Detailed design
 
-The work is a pure hoist — no behavior changes — split into independent units:
+The work is a pure hoist with no behavior change. It splits into independent units.
 
-1. **Introduce `CoordinateTreeDriver` in `bajutsu/drivers/`** (its own module, e.g.
-   `coordinate_tree.py`, alongside `base.py`) holding everything that is identical today: the five
-   shared tuning constants (with `_SETTLE_POLL_S` left a per-backend value), the `_StableKey` alias,
-   `query()`, `_settle`, `_stable_key`,
-   `_is_transient_empty`, `_empty_backoff`, and `_resolve`. These carry the constructor-managed
-   state (`_max_seen`, `_last_stable_key`) they close over today, so the base class owns that state
-   too.
-2. **Give the base class one abstract hook, `_describe()`.** Everything in (1) calls `_describe()`
-   already (`idb.py:285-286`, `adb.py:265-266`); making it an abstract method (or a
-   `NotImplementedError` stub) is the entire seam between shared logic and backend-specific
-   argv/parse. Each subclass implements only its own describe: idb's `ui describe-all` + JSON parse
-   (`parse_describe_all`), adb's `uiautomator dump` + XML parse (`parse_hierarchy`).
-3. **Reparent `IdbDriver` and `AdbDriver` onto the base class**, deleting the now-shared members
-   from each and keeping only what is genuinely backend-specific: idb's tap/swipe/text argv
-   builders and the gRPC-companion text path; adb's scroll-into-view retry
-   (`_scroll_into_view`/`_scroll_toward`, which idb has no equivalent of), the sendevent
-   double-tap path, and its own actuators. `_resolve` stays shared even though adb's
-   `_resolve_frame_and_screen` layers scroll-into-view on top of it — that layering is adb-specific
-   and composes with the shared `_resolve` rather than duplicating it.
-4. **Leave `XcuitestDriver` and `PlaywrightDriver` untouched.** Both have their own read models —
-   XCUITest's native condition-wait capability and Playwright's DOM query — with no equivalent
-   transient-empty/settle heuristic, so they are out of scope for this hoist and should not be
-   forced onto the new base class.
-5. **Add tests asserting the shared behavior is identical on both backends** — the transient-empty
-   retry (a degenerate tree followed by a richer one), the exponential backoff schedule, and the
-   settle loop's cache-hit/cache-miss paths — parametrized (or otherwise shared) across
-   `IdbDriver` and `AdbDriver` fakes so a future change to the base class is verified against both
-   subclasses at once, rather than against each driver's own copy of the test.
+1. **Introduce `CoordinateTreeDriver` in `bajutsu/drivers/`.** It lives in its own module, for
+   example `coordinate_tree.py`, alongside `base.py`. It holds everything that is identical today:
+   - the five shared tuning constants (`_SETTLE_POLL_S` stays a per-backend value);
+   - the `_StableKey` alias;
+   - `query()`, `_settle`, `_stable_key`, `_is_transient_empty`, `_empty_backoff`, and `_resolve`.
 
-Determinism note: `_resolve`'s semantics — a unique match required, an ambiguous match (2+) fails
-fast via `AmbiguousSelector` — are unchanged by this hoist; this item moves code, it does not
-change what "found" or "ambiguous" means. Every existing test for either backend's read path should
-pass unmodified against the new base class, which is itself evidence the hoist is
-behavior-preserving.
+   These members close over constructor-managed state today (`_max_seen`, `_last_stable_key`).
+   The base class therefore owns that state too.
+2. **Give the base class one abstract hook, `_describe()`.** Everything in step 1 already calls
+   `_describe()` (`idb.py:285-286`, `adb.py:265-266`). Making it an abstract method (or a
+   `NotImplementedError` stub) is the entire seam between the shared logic and the backend-specific
+   argv and parse. Each subclass implements only its own describe:
+   - idb: `ui describe-all` plus a JSON parse (`parse_describe_all`).
+   - adb: `uiautomator dump` plus an XML parse (`parse_hierarchy`).
+3. **Reparent `IdbDriver` and `AdbDriver` onto the base class.** Each driver deletes the
+   now-shared members and keeps only what is genuinely backend-specific:
+   - idb: the tap, swipe, and text argv builders, and the gRPC-companion text path.
+   - adb: the scroll-into-view retry (`_scroll_into_view` and `_scroll_toward`, which idb has no
+     equivalent of), the sendevent double-tap path, and its own actuators.
+
+   `_resolve` stays shared. adb's `_resolve_frame_and_screen` layers scroll-into-view on top of
+   `_resolve`. That layer is adb-specific, and it composes with the shared `_resolve` instead of
+   duplicating it.
+4. **Leave `XcuitestDriver` and `PlaywrightDriver` untouched.** Each has its own read model:
+   XCUITest's native condition-wait capability, and Playwright's DOM query. Neither has an
+   equivalent transient-empty or settle heuristic. Both are out of scope for this hoist and should
+   not be forced onto the new base class.
+5. **Add tests asserting that the shared behavior is identical on both backends.** The tests cover:
+   - the transient-empty retry (a degenerate tree followed by a richer one);
+   - the exponential backoff schedule;
+   - the settle loop's cache-hit and cache-miss paths.
+
+   The tests are parametrized (or otherwise shared) across `IdbDriver` and `AdbDriver` fakes. A
+   future change to the base class is then verified against both subclasses at once, rather than
+   against each driver's own copy of the test.
+
+Determinism note: this hoist leaves the semantics of `_resolve` unchanged. A unique match is
+required, and an ambiguous match (2 or more) fails fast via `AmbiguousSelector`. This item moves
+code and does not change what "found" or "ambiguous" means. Every existing test for either
+backend's read path should pass unmodified against the new base class. That result is itself
+evidence that the hoist preserves behavior.
 
 ## Alternatives considered
 
-- **A mixin instead of a base class.** Either shape can carry the shared state and methods; a
-  mixin would let `IdbDriver`/`AdbDriver` combine it with some other base if one were ever needed.
-  This item picks a plain base class because the abstract `_describe()` hook reads more naturally
-  as "a template method a subclass completes" than as a mixin contract, but a mixin is a reasonable
+- **A mixin instead of a base class.** Either shape can carry the shared state and methods. A mixin
+  would let `IdbDriver` and `AdbDriver` combine it with another base if one were ever needed. This
+  item picks a plain base class because the abstract `_describe()` hook reads more naturally as a
+  template method that a subclass completes than as a mixin contract. A mixin remains a reasonable
   alternative if a future need for multiple inheritance makes it clearly better.
-- **Fix duplication drift by convention (a comment pointing each file at its twin).** Rejected: this
-  is exactly the status quo — `AdbDriver._settle`'s docstring already says "idb's logic" as a
-  comment-level pointer, and the drift risk this item is written against is precisely that a
-  convention doesn't force the second edit the way a shared base class does.
-- **Leave the duplication and only add cross-backend tests.** Rejected: tests can catch a drift
-  after the fact, but they don't remove the duplicate-edit burden that causes the drift in the
-  first place; the hoist and the tests are complementary, not substitutes (see design step 5, which
-  keeps the tests as part of this item rather than dropping them).
+- **Fix duplication drift by convention (a comment pointing each file at its twin).** Rejected.
+  This is exactly the status quo: the docstring of `AdbDriver._settle` already says "idb's logic"
+  as a comment-level pointer. The drift risk this item targets is that a convention does not force
+  the second edit the way a shared base class does.
+- **Leave the duplication and only add cross-backend tests.** Rejected. Tests can catch a drift
+  after the fact, but they do not remove the duplicate-edit burden that causes the drift. The hoist
+  and the tests complement each other. Design step 5 keeps the tests in this item for that reason.
 
 ## Progress
 
@@ -124,16 +136,18 @@ behavior-preserving.
 
 ### Detailed design divergence (found during implementation)
 
-The proposal's Motivation section, written 2026-07, described `_settle` as byte-for-byte identical
-between the two drivers. By the time this item was implemented, adb's `_settle` had already been
-changed to a wall-clock deadline (`_SETTLE_DEADLINE_S`) while idb kept a fixed poll count
-(`_SETTLE_MAX_POLLS`) — a real behavioral difference, not just diverged tuning constants. Hoisting
-`_settle` as originally proposed would have forced one backend onto the other's strategy, violating
-the "pure hoist, no behavior changes" mandate, so `_settle` was left per-backend; everything else in
-the Detailed design (the four remaining shared constants, `_StableKey`, `query()`,
-`_stable_key`, `_is_transient_empty`, `_empty_backoff`, `_resolve`) hoisted as planned, plus
-`wait_for`, which turned out to be byte-identical too and was hoisted in the same pass. Every
-pre-existing test for either backend's read path passes unmodified against the new base class.
+The Motivation section, written in 2026-07, described `_settle` as byte-for-byte identical between
+the two drivers. By implementation time, adb's `_settle` had changed to a wall-clock deadline
+(`_SETTLE_DEADLINE_S`), while idb kept a fixed poll count (`_SETTLE_MAX_POLLS`). That is a real
+behavioral difference, not merely diverged tuning constants.
+
+Hoisting `_settle` as proposed would have forced one backend onto the other's strategy. That would
+violate the "pure hoist, no behavior changes" mandate, so `_settle` stays per-backend.
+
+The rest of the Detailed design hoisted as planned: the four remaining shared constants,
+`_StableKey`, `query()`, `_stable_key`, `_is_transient_empty`, `_empty_backoff`, and `_resolve`.
+`wait_for` also turned out to be byte-identical, so the same pass hoisted it. Every pre-existing
+test for either backend's read path passes unmodified against the new base class.
 
 ## References
 
