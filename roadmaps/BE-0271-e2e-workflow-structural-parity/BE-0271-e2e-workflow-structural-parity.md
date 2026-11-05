@@ -14,114 +14,130 @@
 
 ## Introduction
 
-Bajutsu has three per-platform, on-device E2E workflows — [`android-e2e.yml`](../../.github/workflows/android-e2e.yml),
-[`ios-e2e.yml`](../../.github/workflows/ios-e2e.yml), and [`web-e2e.yml`](../../.github/workflows/web-e2e.yml).
-A first step toward parity already landed: the former standalone `e2e.yml` (which carried iOS's
-functional jobs and the required `E2E` gate) was merged into `ios-e2e.yml`, so the iOS lane is now
-one self-sufficient file with `smoke (idb)`, `xcuitest (codegen)`, `xcuitest (multi-touch)`,
-`conformance (idb + xcuitest)`, `visual (idb)`, and the required `E2E` aggregator. Two structural
-asymmetries remain across the three files:
+Bajutsu has three per-platform, on-device end-to-end (E2E) workflows:
+[`android-e2e.yml`](../../.github/workflows/android-e2e.yml),
+[`ios-e2e.yml`](../../.github/workflows/ios-e2e.yml), and
+[`web-e2e.yml`](../../.github/workflows/web-e2e.yml).
 
-- `android-e2e.yml` still runs **one job**, `smoke + golden + visual + fallback (adb)`, that
-  bundles a functional scenario run, the element-tree golden, the pixel visual-regression test
-  (VRT), and the resident/fallback-channel check together — where `ios-e2e.yml` and `web-e2e.yml`
-  each split their work across named jobs.
-- iOS has **no per-PR element-tree golden**: `ios-e2e.yml` runs smoke/codegen/gestures/conformance
-  /visual, but the idb golden runs only weekly in [`idb-monitor.yml`](../../.github/workflows/idb-monitor.yml),
-  while `android-e2e.yml` runs its golden on every relevant PR.
+A first step toward parity has already landed. The former standalone `e2e.yml` carried iOS's
+functional jobs and the required `E2E` gate. It was merged into `ios-e2e.yml`. The iOS lane is now
+one self-sufficient file with these jobs:
 
-The functional heart the three lanes share — "does bajutsu actually drive this platform?" — is the
-**smoke** job: a real `bajutsu run` over the showcase scenarios on the real backend, asserting
-deterministic pass/fail. This item finishes making that job, and the checks around it, structurally
-parallel across all three platforms.
+- `smoke (idb)`
+- `xcuitest (codegen)`
+- `xcuitest (multi-touch)`
+- `conformance (idb + xcuitest)`
+- `visual (idb)`
+- the required `E2E` aggregator
+
+Two structural asymmetries remain across the three files:
+
+- `android-e2e.yml` still runs **one job**, `smoke + golden + visual + fallback (adb)`. That job
+  bundles four checks: a functional scenario run, the element-tree golden, the pixel
+  visual-regression test (VRT), and the resident/fallback-channel check. `ios-e2e.yml` and
+  `web-e2e.yml` each split their work across named jobs.
+- iOS has **no per-PR element-tree golden**. `ios-e2e.yml` runs smoke, codegen, gestures,
+  conformance, and visual. The idb golden runs weekly in
+  [`idb-monitor.yml`](../../.github/workflows/idb-monitor.yml). `android-e2e.yml` runs its golden
+  on every relevant PR.
+
+The three lanes share one functional core. It answers the question "does bajutsu actually drive
+this platform?". That core is the **smoke** job: a real `bajutsu run` over the showcase scenarios
+on the real backend, with deterministic pass/fail assertions. This item makes that job, and the
+checks around it, structurally parallel across all three platforms.
 
 ## Motivation
 
-- **A platform's E2E workflow should show, job by job, which capability broke.** `android-e2e.yml`'s
-  single job reports one pass/fail for four different checks (smoke, golden, visual, fallback); a
-  red check tells a reviewer nothing about which of the four broke without opening the run log.
-  [BE-0122](../BE-0122-workflow-name-legibility/BE-0122-workflow-name-legibility.md) already
-  established that the checks list, not the YAML, is what gets read first — the same argument
-  applies one level down, to job granularity within a workflow, not just workflow names.
-  `ios-e2e.yml`'s and `web-e2e.yml`'s multi-job splits already show the target shape; Android is the
-  last lane still bundled.
+- **A platform's E2E workflow should show, job by job, which capability broke.** The single job
+  in `android-e2e.yml` reports one pass/fail for four checks: smoke, golden, visual, and fallback.
+  A red check does not tell a reviewer which of the four broke. The reviewer must open the run log.
+  [BE-0122](../BE-0122-workflow-name-legibility/BE-0122-workflow-name-legibility.md) established
+  that the checks list, not the YAML, is what a reader sees first. The same argument applies one
+  level down, to job granularity within a workflow. The multi-job splits in `ios-e2e.yml` and
+  `web-e2e.yml` already show the target shape. Android is the last lane that remains bundled.
 - **Functional coverage should be symmetric where the platforms genuinely support it.** iOS and
-  Android both have an element-tree golden (BE-0006) that pins the normalized accessibility tree;
-  Android runs it per PR, iOS only weekly. The weekly-only iOS cadence had a real reason —
-  decoupling `idb_companion` upstream-drift monitoring from PR activity (`idb-monitor.yml`'s
-  header) — but that argument covers the *monitor*, not the *regression check*: nothing stops the
-  deterministic, host-independent tree golden from also guarding each PR, the way Android's does.
-- **Undocumented asymmetries read as bugs.** That the iOS golden ran only weekly was invisible from
-  `ios-e2e.yml` or `android-e2e.yml`; this item's own investigation first read it as an unexplained
-  inconsistency rather than a deliberate choice. Writing the per-platform job-set down (unit 3)
-  stops the next reader from re-deriving it.
+  Android both have an element-tree golden (BE-0006) that pins the normalized accessibility tree.
+  Android runs it per PR, and iOS runs it weekly. The weekly iOS cadence had a real reason. It
+  decouples monitoring of upstream `idb_companion` drift from PR activity (see the header of
+  `idb-monitor.yml`). That reason covers the *monitor*, not the *regression check*. Nothing stops
+  the deterministic, host-independent tree golden from guarding each PR, as Android's does.
+- **Undocumented asymmetries read as bugs.** The weekly cadence of the iOS golden was invisible
+  from `ios-e2e.yml` and `android-e2e.yml`. The investigation behind this item first read the
+  cadence as an unexplained inconsistency, not a deliberate choice. Writing the per-platform job
+  set down (unit 3) spares the next reader from re-deriving it.
 
 ## Detailed design
 
-The work is CI-workflow restructuring only — no product code changes, and nothing here puts an
-LLM on the `run`/CI verdict path (prime directive 1 is untouched; this only reorganizes existing
-deterministic checks). The iOS-file consolidation the *Introduction* describes already landed
-separately; the three units below are what remains.
+The work restructures CI workflows and nothing else. No product code changes. Nothing here puts
+an LLM on the `run`/CI verdict path, so prime directive 1 is untouched. The work reorganizes
+existing deterministic checks. The iOS-file consolidation from the *Introduction* already landed
+separately, so three units remain.
 
-1. **Split `android-e2e.yml`'s single job into per-concern jobs** — `smoke`, `golden`, `visual` —
-   mirroring `ios-e2e.yml`'s and `web-e2e.yml`'s job splits. Each maps to an already-passing
-   Android `make` target:
-   - `smoke (adb)` → `make -C demos/showcase/android e2e` (Compose over the full scenario set,
-     Views over the id-verified subset — the functional heart).
-   - `golden (adb)` → `make e2e-golden && make e2e-fallback`: the element-tree golden over the
-     resident channel, then re-run with `BAJUTSU_ADB_RESIDENT=0` to exercise the `uiautomator dump`
-     fallback and prove both channels yield the same tree (BE-0245). `fallback` stays a step inside
-     this job rather than a fourth job because it is the *same* golden re-run on the other channel —
-     splitting it out would re-run identical setup for no added attribution.
-   - `visual (adb)` → `make e2e-visual` (pixel VRT; non-required, host-specific baseline).
+1. **Split `android-e2e.yml`'s single job into per-concern jobs.** The jobs are `smoke`, `golden`,
+   and `visual`, which mirrors the splits in `ios-e2e.yml` and `web-e2e.yml`. Each job maps to an
+   already-passing Android `make` target:
+   - `smoke (adb)` runs `make -C demos/showcase/android e2e`. Compose runs over the full scenario
+     set, and Views over the id-verified subset. This is the functional core.
+   - `golden (adb)` runs `make e2e-golden && make e2e-fallback`. The element-tree golden runs over
+     the resident channel first. It then re-runs with `BAJUTSU_ADB_RESIDENT=0` to exercise the
+     `uiautomator dump` fallback. That re-run proves that both channels yield the same tree
+     (BE-0245). `fallback` stays a step inside this job. It is the *same* golden re-run on the
+     other channel. A fourth job would repeat identical setup with no gain in attribution.
+   - `visual (adb)` runs `make e2e-visual`, the pixel VRT. This job is non-required and uses a
+     host-specific baseline.
 
-   Each job boots its own AVD. Unlike iOS's metered macOS runners (10x billing), Android runs on
-   standard-priced Linux under KVM, so per-job emulator boots are an acceptable cost for the
-   attribution win. Setup (uv, JDK, Gradle, KVM, AVD cache) is duplicated per job, matching how
-   `ios-e2e.yml` already duplicates its own per-job setup rather than introducing a composite
-   action (this item adds no new CI machinery). Android is non-required (not in the branch-
-   protection ruleset), so the split needs no aggregator job — three independent jobs, as
-   `web-e2e.yml` has.
+   Each job boots its own Android Virtual Device (AVD). iOS runs on metered macOS runners (10x
+   billing). Android runs on standard-priced Linux under KVM. Per-job emulator boots are an
+   acceptable cost for the gain in attribution.
 
-2. **Add a per-PR `golden (idb)` job to `ios-e2e.yml`**, running `golden.yaml` over idb via the
-   `bajutsu-e2e` action (the same scenario/baseline `idb-monitor.yml` runs weekly). It is gated by
-   the existing `changes` job but **deliberately excluded from the `E2E` gate's `needs:`**, exactly
-   as `visual` is: the tree golden is deterministic and host-independent, but `idb_companion` is an
-   upstream dependency whose drift could redden it independently of any Bajutsu change, so a golden
-   drift should surface per PR as a signal without blocking merges. This gives iOS golden the same
-   effective status as Android's (which runs per PR on a non-required lane). The weekly
-   `idb-monitor.yml` golden stays — its purpose is forward-looking (running against the *latest*
-   `idb_companion`), which the per-PR job does not replace.
+   The setup (uv, JDK, Gradle, KVM, AVD cache) is duplicated per job. `ios-e2e.yml` already
+   duplicates its own per-job setup the same way. The item adds no new CI machinery, such as a
+   composite action. Android is non-required, so it is not in the branch-protection ruleset. The
+   split needs no aggregator job. It yields three independent jobs, as in `web-e2e.yml`.
 
-3. **Write down the per-platform E2E job-set convention** — which of smoke / golden / visual /
-   conformance / codegen / gestures / fallback each platform's on-device workflow carries, and why
-   a platform omits one (e.g. Web has no golden/visual; Android has no conformance yet, unit 4) —
-   in [`docs/ai-development.md`](../../docs/ai-development.md) (English and the `docs/ja/` mirror).
-   A future backend (Flutter is the planned fourth, per `CLAUDE.md`) then has a written shape to
-   match instead of three files to reverse-engineer.
+2. **Add a per-PR `golden (idb)` job to `ios-e2e.yml`.** The job runs `golden.yaml` over idb
+   through the `bajutsu-e2e` action. It uses the same scenario and baseline that `idb-monitor.yml`
+   runs weekly. The existing `changes` job gates it. The job is **deliberately excluded from the
+   `E2E` gate's `needs:`**, exactly as `visual` is.
 
-4. **Out of scope, flagged for a follow-up item**: Android has no on-device driver-conformance job
-   (`test_driver_conformance_ondevice.py` / `test_driver_conformance_web.py` have no adb
-   counterpart) — a real coverage gap, but writing a new conformance suite is test-authoring work,
-   not workflow restructuring, so it does not belong in this item's scope.
+   The tree golden is deterministic and host-independent. However, `idb_companion` is an upstream
+   dependency. Its drift could turn the golden red independently of any Bajutsu change. A golden
+   drift should surface per PR as a signal, without blocking merges. The iOS golden then has the
+   same effective status as Android's, which runs per PR on a non-required lane.
+
+   The weekly golden in `idb-monitor.yml` stays. Its purpose is forward-looking, because it runs
+   against the *latest* `idb_companion`. The per-PR job does not replace that purpose.
+
+3. **Write down the per-platform E2E job-set convention.** The convention records which of smoke,
+   golden, visual, conformance, codegen, gestures, and fallback each platform's on-device workflow
+   carries. It also records why a platform omits one. For example, Web has no golden or visual
+   job, and Android has no conformance job yet (unit 4). The convention lives in
+   [`docs/ai-development.md`](../../docs/ai-development.md), in English and in the `docs/ja/`
+   mirror. A future backend (Flutter is the planned fourth, per `CLAUDE.md`) then has a written
+   shape to match. It no longer has three files to reverse-engineer.
+
+4. **Out of scope, flagged for a follow-up item.** Android has no on-device driver-conformance
+   job. `test_driver_conformance_ondevice.py` and `test_driver_conformance_web.py` have no adb
+   counterpart. This is a real coverage gap. Writing a new conformance suite is test-authoring
+   work, not workflow restructuring, so it does not belong in this item.
 
 ## Alternatives considered
 
-- **Split Android's golden and fallback into two separate jobs.** Rejected: `fallback` is the same
-  `golden.yaml` re-run with the resident channel forced off, so a separate job would duplicate the
-  APK build and AVD boot to assert the same tree over a different read path. Keeping it a second
-  step in the `golden` job gives the channel-parity coverage without the redundant setup.
-- **Make the iOS per-PR golden a required gate member (add it to `E2E`'s `needs:`).** Rejected: an
-  `idb_companion` upstream release could then redden the golden and block *all* merges until the
-  baseline is re-recorded — the very coupling the weekly `idb-monitor.yml` was created to keep off
-  the PR path. Excluding it from `needs:` (like `visual`) keeps the per-PR signal without the
-  merge-blocking risk.
-- **Consolidate all three platforms' E2E workflows into one parameterized/reusable workflow.**
-  Would maximize structural parity in one stroke, but changes the blast radius of any future edit
-  from one platform to three, and the required-check branch-protection config would need to move to
-  whatever job names the consolidated workflow produces — more risk than the win justifies here.
-  Deferred; the per-file job-set convention from unit 3 gets most of the legibility benefit without
-  the shared-workflow risk.
+- **Split Android's golden and fallback into two separate jobs.** Rejected. `fallback` is the same
+  `golden.yaml` re-run with the resident channel forced off. A separate job would duplicate the APK
+  build and AVD boot to assert the same tree over a different read path. A second step in the
+  `golden` job gives the channel-parity coverage without the redundant setup.
+- **Make the iOS per-PR golden a required gate member, by adding it to `E2E`'s `needs:`.**
+  Rejected. An `idb_companion` upstream release could turn the golden red. It could then block
+  *all* merges until the baseline is re-recorded. The weekly `idb-monitor.yml` was created to keep
+  exactly this coupling off the PR path. Excluding the job from `needs:`, as with `visual`, keeps
+  the per-PR signal without the merge-blocking risk.
+- **Consolidate the E2E workflows of all three platforms into one parameterized, reusable
+  workflow.** This would maximize structural parity in one stroke. It also widens the blast radius
+  of any future edit from one platform to three. The required-check branch-protection config would
+  need to move to whatever job names the consolidated workflow produces. That is more risk than the
+  gain justifies here, so the idea is deferred. The per-file job-set convention from unit 3
+  delivers most of the legibility benefit without the shared-workflow risk.
 
 ## Progress
 
@@ -134,7 +150,7 @@ separately; the three units below are what remains.
 - [x] Add a per-PR `golden (idb)` job to `ios-e2e.yml`, excluded from the `E2E` gate's `needs:`.
 - [x] Document the per-platform E2E job-set convention in `docs/ai-development.md` (+ ja mirror).
 
-Log:
+### Log
 
 - Proposal + implementation authored together and landed in one PR (BE-creation, so the human
   opens it; `roadmap-id` allocates the real BE id on merge, and the `Implementing PR` row is filled

@@ -16,161 +16,91 @@
 
 ## Introduction
 
-A scenario declares the secrets it needs under a config's `secrets:` list — a list of environment
-variable names `${secrets.X}` resolves at run time (BE-0032). Today the only way to supply those
-values is the process environment the `bajutsu` CLI (or `serve`) happens to run in — there is no
-`serve` Web UI affordance to see which names a bound config declares, or to set their values. This
-proposal extends `serve`'s existing write-once `SecretStore` (BE-0136) to cover this case: a
-**Secrets** panel lists every name the active config declares, each with a masked, write-once field,
-so an operator can provision a scenario's secrets from the Web UI instead of exporting environment
-variables (or hand-editing `.env`) before starting `serve`.
+A scenario declares the secrets it needs under a config's `secrets:` list. The list holds environment
+variable names. `${secrets.X}` resolves them at run time (BE-0032). Today the only source of those
+values is the process environment of the `bajutsu` CLI (or `serve`). The `serve` Web UI cannot show
+which names a bound config declares. It cannot set their values either.
+
+This proposal extends the write-once `SecretStore` of `serve` (BE-0136) to this case. A **Secrets**
+panel lists every name that the active config declares. Each name gets a masked, write-once field.
+An operator provisions a scenario's secrets from the Web UI. No environment variable has to be
+exported, and no `.env` edited by hand, before `serve` starts.
 
 ## Motivation
 
-`bajutsu/config/schema.py:234`'s `Defaults.secrets` (overridable per target, merged in `resolve` at
-`bajutsu/config/resolve.py:165`) is a list of environment-variable names. `_resolve_secrets`
-(`bajutsu/cli/commands/run.py:231`) resolves each declared name from `os.environ` into a `secrets.X`
-binding at the start of a run; the scenario file only ever holds the token, never the value
-(BE-0032's Motivation). That design keeps the value out
-of version control and evidence, but it says nothing about *how the value gets into the environment
-in the first place* — and for `serve`, the answer today is "not through the tool at all":
+`Defaults.secrets` (`bajutsu/config/schema.py:234`) is a list of environment-variable names. A target can override it. `resolve` merges the two at `bajutsu/config/resolve.py:165`.
 
-- **Local `serve`** ([BE-0011](../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md)) inherits
-  whatever the shell that launched `make serve` exported. An operator who wants to run a scenario
-  needing `${secrets.LOGIN_PASSWORD}` has to `export` it (or put it in a `.env` sourced before
-  launch) — a step entirely outside the Web UI the rest of the workflow (Record / Replay / Crawl)
-  happens in.
-- **Self-hosting** ([BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)) marks
-  its Secrets row as "Shipped today: `.env`" — the same gap, called out as unmanaged.
-- `serve` already solved exactly this shape of problem for three *operator* credentials — the Claude
-  API key ([BE-0136](../BE-0136-serve-write-once-secrets/BE-0136-serve-write-once-secrets.md)), the
-  `claude-code` OAuth token ([BE-0215](../BE-0215-claude-code-oauth-token-credential/BE-0215-claude-code-oauth-token-credential.md)),
-  and the Git config-source token ([BE-0224](../BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth.md))
-  — each settable (write-once, masked, never read back) through the Web UI
-  (`bajutsu/serve/operations/config.py:41-56`). A *scenario's own* declared secrets are the one
-  category of credential BE-0136's generalized store was built to cover (its Detailed design item 5:
-  "Generalize beyond the one named secret") but never actually extended to.
+At the start of a run, `_resolve_secrets` (`bajutsu/cli/commands/run.py:231`) resolves each declared name from `os.environ`. The result is a `secrets.X` binding. The scenario file holds only the token, never the value (BE-0032's Motivation).
 
-Closing this makes `serve` self-sufficient for a scenario's full credential surface — no step
-outside the tool, and the same non-disclosure guarantee (write-once, masked, never revealed) BE-0136
-already established for operator credentials.
+This design keeps the value out of version control and evidence. It does not say how the value reaches the environment. For `serve`, the answer today is "not through the tool at all":
+
+- **Local `serve`** ([BE-0011](../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md)) inherits what the launching shell exported. Take a scenario that needs `${secrets.LOGIN_PASSWORD}`. The operator must `export` the value, or source a `.env` before launch. That step sits outside the Web UI, where Record, Replay, and Crawl happen.
+- **Self-hosting** ([BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)) marks its Secrets row as "Shipped today: `.env`". The row calls the same gap unmanaged.
+- **Operator credentials.** `serve` already solved this problem for three *operator* credentials. They are the Claude API key ([BE-0136](../BE-0136-serve-write-once-secrets/BE-0136-serve-write-once-secrets.md)), the `claude-code` OAuth token ([BE-0215](../BE-0215-claude-code-oauth-token-credential/BE-0215-claude-code-oauth-token-credential.md)), and the Git config-source token ([BE-0224](../BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth.md)). The Web UI sets each one write-once. Each is masked and never read back (`bajutsu/serve/operations/config.py:41-56`).
+- **Scenario credentials.** A *scenario's own* declared secrets are the one category left. BE-0136's generalized store was built to cover them. Item 5 of its Detailed design says "Generalize beyond the one named secret". The store was never extended.
+
+Closing the gap makes `serve` self-sufficient for a scenario's full credential surface. No step remains outside the tool. The non-disclosure guarantee of BE-0136 (write-once, masked, never revealed) then covers scenario secrets too.
 
 ## Detailed design
 
-No `run`/CI path is touched — this is entirely inside `serve`'s Tier‑1 operator-configuration
-surface, same as BE-0136 and BE-0187.
+No `run`/CI path is touched. The work sits inside `serve`'s Tier-1 operator-configuration surface, like BE-0136 and BE-0187.
 
-**1. Resolve the declared names from the bound config.** Reuse `resolve()`
-(`bajutsu/config/resolve.py:141`) against the active config to get each target's effective `secrets:` list, and
-union them (a scenario can run against any target) into the set of names the panel should offer. No
-config bound, or a config with an empty `secrets:`, yields an empty list — the panel then shows
-nothing to configure, same as the settings panel today for a provider that isn't selected.
+**1. Resolve the declared names from the bound config.** Call `resolve()` (`bajutsu/config/resolve.py:141`) against the active config. It yields each target's effective `secrets:` list. A scenario can run against any target, so the panel takes the union of the lists. With no bound config, or an empty `secrets:`, the list is empty. The panel then shows nothing to configure. The settings panel behaves the same way today for an unselected provider.
 
-**2. A read operation + `GET /api/secrets`.** Returns `[{"name": str, "set": bool, "masked":
-str | None}, ...]`, one entry per declared name, each `masked` sourced from
-`state.for_org(org).secrets.describe(name)` — never a plaintext `value`, matching `api_key_info`'s
-shape (`bajutsu/serve/operations/config.py:183`). Like `GET /api/apikey`, this is **not** role-gated
-(`bajutsu/serve/authz.py:169`'s `required_role` already treats a describe-only response as safe for
-any authenticated role) — it discloses which names exist and whether they're set, never a value.
+**2. A read operation and `GET /api/secrets`.** The endpoint returns `[{"name": str, "set": bool, "masked": str | None}, ...]`. It returns one entry per declared name. Each `masked` value comes from `state.for_org(org).secrets.describe(name)`. The response never carries a plaintext `value`. The shape matches `api_key_info` (`bajutsu/serve/operations/config.py:183`).
 
-**3. A write operation + `POST /api/secrets`.** Body `{"name": str, "value": str}`. Rejects any
-`name` not currently in the resolved declared set (400) — this keeps the endpoint from becoming an
-arbitrary-environment-variable-write primitive; only names the bound config itself asks for are
-settable. Valid names are set/cleared through the existing `SecretStore.set` (an empty `value`
-clears, same contract as the three existing named secrets). Gated to the `admin` role, added to
-`bajutsu/serve/authz.py:122`'s `_ADMIN_PATHS` alongside `/api/apikey` / `/api/claudecodetoken` /
-`/api/gitcredential` — setting a credential is exactly that tier of action.
+Like `GET /api/apikey`, this endpoint is **not** role-gated. `required_role` in `bajutsu/serve/authz.py:169` already treats a describe-only response as safe for any authenticated role. The endpoint discloses which names exist and whether each is set. It never discloses a value.
 
-**4. Extend the name→env-var mapping.** `ServeState._env_var_for_secret` (`bajutsu/serve/state.py:585`)
-today maps only the three fixed logical names and falls through to `active_key_env(self)` for
-anything else — silently wrong for a scenario secret name, which would overwrite the AI key's env var
-instead of its own. Add an explicit case: when `name` is in the resolved declared set, the env var
-*is* `name` itself (BE-0032's `secrets:` entries already are environment-variable names, unlike the
-three fixed logical names which map to a differently-named var). Validate with the existing
-`_valid_key_env_name` (`bajutsu/serve/operations/config.py:77`) guard against non-identifier or
-unsafe system variable names (`_UNSAFE_ENV_VARS`) before ever calling `os.environ[name] = value`.
+**3. A write operation and `POST /api/secrets`.** The body is `{"name": str, "value": str}`.
 
-**5. UI: a "Scenario secrets" section.** Alongside the existing Claude API key / claude-code token /
-Git credential blocks in `bajutsu/templates/serve.core.mjs`, a new section renders one masked,
-write-once field per name `GET /api/secrets` returns (empty section, or hidden entirely, when the
-list is empty) — same interaction shape as the existing three (a `renderX`/`applyX` pair per BE-0136
-convention), generalized to a loop over the declared list instead of one hand-written block per
-name. Re-fetches the declared list whenever the bound config changes (the same event the header's
-config name already reacts to), so switching to a config with a different `secrets:` list refreshes
-the panel.
+- A `name` outside the resolved declared set gets a 400. The endpoint therefore cannot write arbitrary environment variables. Only names that the bound config asks for are settable.
+- A valid name is set or cleared through the existing `SecretStore.set`. An empty `value` clears, as for the three existing named secrets.
+- The endpoint is gated to the `admin` role. It joins `_ADMIN_PATHS` (`bajutsu/serve/authz.py:122`) next to `/api/apikey`, `/api/claudecodetoken`, and `/api/gitcredential`. Setting a credential belongs to that tier of action.
 
-**6. Storing works on both backends now; only hosted *consumption* is the follow-up.** The seam does
-the backend split for free, so the two endpoints above land working on **both** deployments the
-moment this item ships:
+**4. Extend the name-to-env-var mapping.** `ServeState._env_var_for_secret` (`bajutsu/serve/state.py:585`) maps only the three fixed logical names today. Any other name falls through to `active_key_env(self)`. For a scenario secret name, that is silently wrong. The value would overwrite the AI key's env var instead of its own.
 
-- **Local `serve`.** The `EnvSecretStore` writes into the local `serve` process's `os.environ`
-  (item 4's name→env-var mapping), inherited by the spawned `record`/`run`/`crawl` subprocess through
-  `jobs._spawn_env` (`bajutsu/serve/jobs.py:36`), so a value set through the UI is *both* stored and
-  consumed with no further wiring — `${secrets.X}` resolves in the run.
-- **Self-hosted (`server` backend).** `state.for_org(org).secrets` already returns the hosted
-  `DbSecretStore` (`bajutsu/serve/server/secrets.py`), which stores any named secret encrypted at
-  rest per org (Fernet, keyed by `BAJUTSU_SECRETS_KEY`) — BE-0136 §3, built to generalize to exactly
-  this. So `GET`/`POST /api/secrets` **set and describe a scenario secret per org on a self-hosted
-  deployment with no new storage code**: the same encrypted `secrets` table, the same write-once
-  guarantee. What is *not* yet wired is **consumption**: the run executes on a remote worker
-  (`bajutsu/serve/server/worker_job.py`), not in the control-plane process, so the stored value has
-  to reach that worker's spawned `bajutsu run` for `${secrets.X}` to resolve there.
+The fix adds an explicit case. When `name` is in the resolved declared set, the env var *is* `name`. BE-0032's `secrets:` entries already are environment-variable names. The three fixed logical names, in contrast, map to differently named variables. The existing `_valid_key_env_name` guard (`bajutsu/serve/operations/config.py:77`) runs before `os.environ[name] = value`. It rejects non-identifier names and unsafe system variables (`_UNSAFE_ENV_VARS`).
 
-**7. The self-hosted consumption path (described; scoped as the one follow-up).** There is a direct
-precedent to follow, so this is a well-specified follow-up rather than an open question. BE-0229
-already resolves an org's AI-provider settings on the control plane at enqueue
-(`dispatch.py:83`'s `resolve_provider_env`) into `job.env_overlay`, ships it in the job spec, and the
-worker merges it onto the spawn env via `_spawn_env` (`jobs.py:49`) so the run uses that org's
-selection without the worker holding any settings of its own. A scenario secret would ride the same
-rail: at enqueue, the control plane resolves the org's declared secrets from `DbSecretStore` and
-threads them to the worker, whose `_spawn_env` puts each under its declared env-var name so the
-`bajutsu run` subprocess resolves `${secrets.X}`. The reason it is a *separate* item and not folded
-in here is the security question the provider overlay does not raise: a scenario secret's plaintext
-would then travel in the job spec over the queue, so the follow-up must decide between (a) a
-dedicated secret overlay that `oplog`/redaction treat as sensitive and the queue payload never logs,
-or (b) giving the worker the `BAJUTSU_SECRETS_KEY` so it fetches and decrypts the org's secret
-itself and no plaintext ever rides the queue. That is a control-plane/worker trust-boundary decision
-([BE-0167](../BE-0167-control-plane-scale-out/BE-0167-control-plane-scale-out.md) territory) that
-deserves its own review — exactly the boundary BE-0224 drew for its own hosted-injection follow-up.
+**5. UI: a "Scenario secrets" section.** The section sits next to the Claude API key, `claude-code` token, and Git credential blocks in `bajutsu/templates/serve.core.mjs`. It renders one masked, write-once field per name that `GET /api/secrets` returns. An empty list leaves the section empty or hidden.
 
-**8. Tests.** Extend the serve HTTP harness: `GET /api/secrets` reflects the bound config's declared
-names (and updates when the config changes) and never carries a `value`; `POST /api/secrets` rejects
-a name absent from the declared set (400); a set-then-describe round trip for a valid name returns
-only the masked preview; a spawned local run's subprocess environment carries the value under the
-declared name after it is set through the endpoint. The hosted store already has BE-0136's
-per-org-ciphertext contract test; extend it to assert a scenario-declared name round-trips through
-`DbSecretStore` (set → describe returns the mask, the `ciphertext` column never holds the plaintext),
-so the self-hosted *storage* path is covered even though consumption is deferred.
+The interaction matches the existing three blocks: a `renderX` / `applyX` pair, per the BE-0136 convention. The section loops over the declared list. It does not hand-write one block per name. It re-fetches the list whenever the bound config changes, the same event that the header's config name already follows. Switching to a config with a different `secrets:` list refreshes the panel.
 
-**9. Docs.** Update `docs/web-ui.md` / `docs/ja/web-ui.md` (the new Secrets panel) and
-`docs/self-hosting.md` / `docs/ja/self-hosting.md`. The self-hosting Secrets row moves from "Shipped
-today: `.env`" for scenario secrets to: settable per org from the Web UI and encrypted at rest today
-(reusing `BAJUTSU_SECRETS_KEY`, already provisioned for the operator credentials), with the note that
-a self-hosted run consuming a stored scenario secret on the remote worker is the tracked follow-up
-(item 7).
+**6. Storing works on both backends now; only hosted *consumption* is the follow-up.** The seam splits the backends at no extra cost. Both endpoints work on **both** deployments the moment this item ships:
+
+- **Local `serve`.** The `EnvSecretStore` writes into the `os.environ` of the local `serve` process, through the mapping of item 4. The spawned `record`, `run`, or `crawl` subprocess inherits the value through `jobs._spawn_env` (`bajutsu/serve/jobs.py:36`). A value set through the UI is stored and consumed with no further wiring. `${secrets.X}` resolves in the run.
+- **Self-hosted (`server` backend).** `state.for_org(org).secrets` already returns the hosted `DbSecretStore` (`bajutsu/serve/server/secrets.py`). It encrypts any named secret at rest per org (Fernet, keyed by `BAJUTSU_SECRETS_KEY`). BE-0136 §3 built it to generalize to this case. `GET` and `POST /api/secrets` therefore **set and describe a scenario secret per org with no new storage code**. The encrypted `secrets` table and the write-once guarantee are the same.
+
+**Consumption** is not yet wired. A self-hosted run executes on a remote worker (`bajutsu/serve/server/worker_job.py`), not in the control-plane process. The stored value has to reach that worker's spawned `bajutsu run`. Only then can `${secrets.X}` resolve there.
+
+**7. The self-hosted consumption path (described, and scoped as the one follow-up).** A direct precedent exists, so the follow-up is well specified and not an open question. BE-0229 resolves an org's AI-provider settings on the control plane at enqueue (`resolve_provider_env`, `dispatch.py:83`). The result becomes `job.env_overlay` in the job spec. The worker merges it onto the spawn env through `_spawn_env` (`jobs.py:49`). The run uses that org's selection, and the worker holds no settings of its own.
+
+A scenario secret would ride the same rail. At enqueue, the control plane resolves the org's declared secrets from `DbSecretStore`. It threads them to the worker. The worker's `_spawn_env` sets each one under its declared env-var name. The `bajutsu run` subprocess then resolves `${secrets.X}`.
+
+This item does not fold the follow-up in, because of a security question that the provider overlay does not raise. A scenario secret's plaintext would travel in the job spec over the queue. The follow-up must choose between two designs:
+
+- (a) A dedicated secret overlay that `oplog` and redaction treat as sensitive, and that the queue payload never logs.
+- (b) Giving the worker the `BAJUTSU_SECRETS_KEY`. The worker then fetches and decrypts the org's secret itself, and no plaintext ever rides the queue.
+
+The choice is a control-plane/worker trust-boundary decision ([BE-0167](../BE-0167-control-plane-scale-out/BE-0167-control-plane-scale-out.md) territory). It deserves its own review. BE-0224 drew the same boundary for its own hosted-injection follow-up.
+
+**8. Tests.** The serve HTTP harness gains four assertions:
+
+- `GET /api/secrets` reflects the bound config's declared names and updates when the config changes. It never carries a `value`.
+- `POST /api/secrets` rejects a name absent from the declared set with a 400.
+- A set-then-describe round trip for a valid name returns only the masked preview.
+- A spawned local run's subprocess environment carries the value under the declared name after the endpoint sets it.
+
+The hosted store already has BE-0136's per-org-ciphertext contract test. The test is extended to cover a scenario-declared name. Set, then describe, returns the mask. The `ciphertext` column never holds the plaintext. The self-hosted *storage* path is then covered, although consumption is deferred.
+
+**9. Docs.** `docs/web-ui.md` and `docs/ja/web-ui.md` describe the new Secrets panel. `docs/self-hosting.md` and `docs/ja/self-hosting.md` change too. For scenario secrets, the self-hosting Secrets row moves from "Shipped today: `.env`" to the following statement. A scenario secret is settable per org from the Web UI. It is encrypted at rest today, reusing `BAJUTSU_SECRETS_KEY`, which is already provisioned for the operator credentials. A note adds that consumption of a stored scenario secret by a self-hosted run on the remote worker is the tracked follow-up (item 7).
 
 ## Alternatives considered
 
-- **A generic secret manager where the operator types arbitrary names, not tied to a config's
-  `secrets:` declaration.** Closer to a GitHub-Actions-style free-form secrets store. Rejected for
-  this item: it decouples the panel from what a scenario actually needs, reintroduces an
-  arbitrary-environment-variable-write surface, and gives no feedback when a declared name is
-  misspelled or a stale secret is never cleaned up. Tying the panel to the resolved `secrets:` list
-  keeps declaration and provisioning in sync; a free-form store can always be layered in later behind
-  the same `SecretStore` seam if a real need for undeclared ad-hoc secrets shows up.
-- **Wire the self-hosted worker's secret *consumption* into this same item.** Rejected as out of
-  scope, mirroring BE-0224's own deferral — but note the boundary is narrower than it looks:
-  *storing* a scenario secret per org already works self-hosted through `DbSecretStore` (Detailed
-  design 6), so only the "inject the stored value into the remote worker's spawned run" leg is
-  deferred. Bundling it here would fold a control-plane/worker trust-boundary decision — does the
-  decrypted secret travel in the job spec, or does the worker hold `BAJUTSU_SECRETS_KEY` and decrypt
-  it itself? (Detailed design 7) — into a Web UI affordance, and that decision
-  ([BE-0167](../BE-0167-control-plane-scale-out/BE-0167-control-plane-scale-out.md) territory)
-  deserves its own review.
-- **Let `POST /api/secrets` set any environment-variable name, gated to `admin` only.** Rejected: an
-  `admin` role in `serve` is still a Web UI operator, not a shell — an unbounded write primitive into
-  `os.environ` (even admin-gated) is a materially larger blast radius than "only names this config
-  already declared it needs," and buys no functionality a scenario actually uses.
+- **A generic secret manager where the operator types arbitrary names, not tied to a config's `secrets:` declaration.** This is closer to a GitHub-Actions-style free-form secrets store. Rejected for this item, for three reasons. It decouples the panel from what a scenario actually needs. It reintroduces an arbitrary-environment-variable-write surface. It gives no feedback when a declared name is misspelled or a stale secret is never cleaned up. Tying the panel to the resolved `secrets:` list keeps declaration and provisioning in sync. A free-form store can always be layered in later, behind the same `SecretStore` seam, if a real need for undeclared ad-hoc secrets shows up.
+- **Wire the self-hosted worker's secret *consumption* into this same item.** Rejected as out of scope, mirroring BE-0224's own deferral. The boundary is narrower than it looks. *Storing* a scenario secret per org already works self-hosted through `DbSecretStore` (Detailed design 6), so only one leg is deferred: injecting the stored value into the remote worker's spawned run.
+
+  Bundling that leg here would fold a control-plane/worker trust-boundary decision into a Web UI feature. The decision is whether the decrypted secret travels in the job spec, or whether the worker holds `BAJUTSU_SECRETS_KEY` and decrypts it itself (Detailed design 7). That decision ([BE-0167](../BE-0167-control-plane-scale-out/BE-0167-control-plane-scale-out.md) territory) deserves its own review.
+- **Let `POST /api/secrets` set any environment-variable name, gated to `admin` only.** Rejected. An `admin` role in `serve` is still a Web UI operator, not a shell. An unbounded write primitive into `os.environ`, even when gated to admin, has a materially larger blast radius than "only names this config already declared it needs". It also buys no functionality that a scenario actually uses.
 
 ## Progress
 
@@ -189,7 +119,7 @@ a self-hosted run consuming a stored scenario secret on the remote worker is the
       local-run env inheritance, hosted `DbSecretStore` per-org round trip (ciphertext never plaintext)
 - [x] Docs updated (`docs/web-ui.md`, `docs/self-hosting.md`, both languages)
 
-**Log**
+### Log
 
 - Implemented all checklist items in one change: `GET`/`POST /api/secrets` + `declared_secret_names`
   in `operations/config.py`, the `_env_var_for_secret` identity mapping for declared names in

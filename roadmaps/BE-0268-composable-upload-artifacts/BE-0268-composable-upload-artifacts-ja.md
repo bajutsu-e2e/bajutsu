@@ -16,25 +16,29 @@
 
 ## はじめに
 
-いまのホスト型 `bajutsu serve` は、実行可能なテスト一式を **1 本の合体 `.zip`** として取得します。`bajutsu.config.yaml` とそのシナリオツリー、ビルド済みアプリバイナリを一緒にまとめ、単一の `POST /api/upload` でアップロードし、ひとまとまりとして展開する形です（[BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md)）。この 1 つの成果物は、変更頻度がまったく異なる 3 つのものを結合しています。**バイナリ**は大きく（数十から数百 MB）ビルドのたびに変わり、**シナリオツリー**はテキストで小さくオーサリングの編集のたびに変わり、**config** はテキストで小さくほとんど変わりません。
+ホスト型の `bajutsu serve` は、実行可能なテスト一式を 1 本の合体 `.zip` として取得します。`bajutsu.config.yaml`、そのシナリオツリー、ビルド済みアプリバイナリを一緒にまとめます。単一の `POST /api/upload` でアップロードし、ひとまとまりとして展開する形です（[BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md)）。この 1 つの成果物は、変更頻度がまったく異なる 3 つのものを結合しています。バイナリは大きく（数十から数百 MB）、ビルドのたびに変わります。シナリオツリーは小さなテキストで、オーサリングの編集のたびに変わります。config も小さなテキストで、ほとんど変わりません。
 
-本提案は、この単一のアップロードを **個別にアップロードできる 3 つの content-addressed な成果物**（`config`・`scenarios`・`binary`）に分解し、run が選んだ三つ組を、決定論的なランナーがすでに消費しているとおりの一貫したツリーへ **合成** するようにします。各成果物は、[BE-0243](../BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage-ja.md) がすでに追加したオブジェクトストアに sha256 で格納します。そのため、変わっていない成果物の再アップロードは no-op になり（変わったものだけをアップロードすればよい）、`(config, scenarios, binary)` の任意の組み合わせを新規アップロードなしで組み立てられます。これはあくまで config とシナリオとバイナリのツリーを **取得** する手段にとどまり、シナリオスキーマ、ランナー、ドライバ、決定論ゲートには一切手を触れず、LLM もどこにも足しません。
+本提案は、この単一のアップロードを、個別にアップロードできる 3 つの content-addressed な成果物（`config`、`scenarios`、`binary`）に分解します。run は、選ばれた三つ組を一貫したツリーへ合成します。このツリーは、決定論的なランナーがすでに消費している形そのものです。各成果物は、[BE-0243](../BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage-ja.md) がすでに追加したオブジェクトストアに sha256 で格納します。そのため、変わっていない成果物の再アップロードは no-op になります（クライアントは変わったものだけをアップロードします）。さらに、`(config, scenarios, binary)` の任意の組み合わせを新規アップロードなしで組み立てられます。変わるのは、config とシナリオとバイナリのツリーの取得方法だけです。シナリオスキーマ、ランナー、ドライバ、決定論ゲートには手を触れず、LLM もどこにも足しません。
 
-本項目は、実装済みの 3 項目を素直に延長したものです。[BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md) の合体バンドルを分解し、[BE-0243](../BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage-ja.md) の content-addressed なオブジェクトストアを成果物ごとの格納先として再利用し、[BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub-ja.md) の `upload` 種別の config-source レコードを「1 本の zip」から「合成された三つ組」へ広げます。
+本項目は、実装済みの 3 項目を延長します。[BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md) の合体バンドルを分解します。[BE-0243](../BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage-ja.md) の content-addressed なオブジェクトストアを、成果物ごとの格納先として再利用します。[BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub-ja.md) の `upload` 種別の config-source レコードを「1 本の zip」から「合成された三つ組」へ広げます。
 
 ## 動機
 
-合体バンドルは正しい *下限* です。実行できる最小のものになっています。しかし、チームの規模とともに大きくなる 2 つのコストを強います。
+合体バンドルは、実行できる最小のものであり、正しい下限です。ただし、チームの規模とともに大きくなる 2 つのコストを強います。
 
-1. **変更のたびにバイナリごとバンドル全体を送り直す。** いまは 1 つのシナリオ YAML を 1 行直すにも、変わっていない大きなビルド済みバイナリを含め、一式を再 zip して再アップロードします。実ネットワーク越しのホスト型 serve では、このアップロードをバイナリが支配します。テキストだけの編集にこれを再び払うのは純粋な無駄です。3 つはそれぞれ独立したライフサイクルを持つので、個別にアップロードできるべきです。クライアントは実際に変わったものだけを送り、変わっていないバイナリ（同じ sha256）はそもそも回線に載せるべきではありません。
+1. **変更のたびにバイナリごとバンドル全体を送り直します。** 1 つのシナリオ YAML を 1 行直すにも、変わっていない大きなビルド済みバイナリを含め、一式を再 zip して再アップロードします。実ネットワーク越しのホスト型 serve では、アップロードの大半をバイナリが占めます。テキストだけの編集のたびにこれを払うのは、純粋な無駄です。3 つはそれぞれ独立したライフサイクルを持つので、個別にアップロードできるべきです。クライアントは実際に変わったものだけを送り、変わっていないバイナリ（同じ sha256）はそもそも回線に載せないようにします。
 
-2. **再アップロードなしに組み合わせられない。** テストでよくある要求に **組み合わせマトリクス** があります。同じ回帰シナリオを 2 つのバイナリビルド（A/B、あるいは last-known-good とリリース候補）に対して走らせたり、複数のシナリオセットを 1 つのバイナリに対して走らせたりする形です。不透明な 1 本の zip では、多くのマスがバイナリやシナリオセットを共有しているのに、マトリクスのマスごとに個別のフルアップロードになります。成果物が content-addressed で run 時に合成されるなら、新しいマスはすでに格納済みの成果物に対する新しい *三つ組* にすぎず、アップロードは発生しません。
+2. **再アップロードなしには組み合わせられません。** テストでは、組み合わせマトリクスがよく必要になります。同じ回帰シナリオを 2 つのバイナリビルド（A/B、あるいは last-known-good とリリース候補）に対して走らせたり、複数のシナリオセットを 1 つのバイナリに対して走らせたりする形です。不透明な 1 本の zip では、多くのマスがバイナリやシナリオセットを共有しているのに、マスごとにフルアップロードが必要になります。成果物が content-addressed で run 時に合成されるなら、新しいマスはすでに格納済みの成果物に対する新しい三つ組にすぎず、アップロードは発生しません。
 
-この 2 つが可能にする、3 つ目の組織上の利点があります。3 つのアップロードは **誰が何を持つか** にきれいに対応します。CI ジョブはビルドしたばかりのバイナリを push し、テスト作成者は自分のブランチからシナリオツリーを push し、運用者は config を固定します。アップロードを分離すると、各担当がそれぞれのタイミングで、それぞれの資格情報を通じて、一枚岩の再 zip を協調させずに push できます。
+この 2 つの利点は、組織上の 3 つ目の利点も可能にします。3 つのアップロードは、誰が何を持つかにきれいに対応します。CI ジョブはビルドしたばかりのバイナリを push し、テスト作成者は自分のブランチからシナリオツリーを push し、運用者は config を固定します。アップロードを分離すると、各担当がそれぞれのタイミングで、それぞれの資格情報を通じて、一枚岩の再 zip を協調させずに push できます。
 
-[BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md) の *検討した代替案* は、「config の YAML だけをアップロードしツリーは上げない」を正しく却下しています。`scenarios` と `appPath` が **相対パス** であり、ツリーもバイナリも伴わない config は実行できないからです。本提案はこの却下を蒸し返しません。むしろ *解決* します。3 つの部分は run 時にはやはりすべて存在しており、ただ **別々に到着して別々に格納され、run の前に 1 つのツリーへ合成し戻される** だけです。BE-0073 が守る相対パスの不変条件は、弱めるのではなく合成のステップで保たれます（*詳細設計* を参照）。
+[BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md) の「検討した代替案」は、「config の YAML だけをアップロードしツリーは上げない」案を正しく却下しています。`scenarios` と `appPath` は相対パスであり、ツリーもバイナリも伴わない config は実行できないからです。本提案はこの却下を蒸し返さず、解決します。3 つの部分は run 時にはすべて存在します。別々に到着して別々に格納され、run の前に 1 つのツリーへ合成し戻されるだけです。BE-0073 が守る相対パスの不変条件は、合成のステップが保ちます（「詳細設計」を参照）。
 
-これは prime directive の内側にとどまります。合成は決定論的な配管です。content-addressed な 3 成果物を confined なツリーへ材料化し、config の相対パスをそのツリーに対して解決するだけで、合否は機械的なアサーションだけが計算し、`run`/CI の経路のどこにも LLM は入りません（directive 1）。一貫したツリーを組めない合成（どのバイナリ成果物も埋めない `appPath` を持つ config など）は、推測せずに **決定論的に失敗** します（directive 2）。そして仕組みは app-agnostic です。config が各成果物の配置先の唯一の真実なので、合成のステップはアプリごとに分岐しません（directive 3）。
+本提案は prime directive の内側にとどまります。
+
+- **directive 1。** 合成は決定論的な配管です。content-addressed な 3 成果物を confined なツリーへ材料化し、config の相対パスをそのツリーに対して解決します。合否は機械的なアサーションだけが計算し、`run`/CI の経路のどこにも LLM は入りません。
+- **directive 2。** 一貫したツリーを組めない合成（どのバイナリ成果物も埋めない `appPath` を持つ config など）は、推測せずに決定論的に失敗します。
+- **directive 3。** 仕組みは app-agnostic です。config が各成果物の配置先の唯一の真実なので、合成のステップはアプリごとに分岐しません。
 
 ## 詳細設計
 
@@ -42,67 +46,85 @@
 
 ### 1. content-addressed な 3 つの成果物の種別
 
-**成果物** は 3 つの種別のいずれかで、それぞれ自身のバイトの sha256 で、[BE-0243](../BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage-ja.md) が導入したオブジェクトストア（`bajutsu/object_store.py`）に格納します。格納先は、あらゆる兄弟ストアがすでに使っている org ごとの prefix 方式（`bajutsu/serve/server/object_store.py` の `org_prefix` / `upload_prefix`）の下に、3 つが衝突しないよう種別ごとのサブ prefix を足したものです。
+**成果物**は 3 つの種別のいずれかです。各種別は、自身のバイト列の sha256 をキーにして、[BE-0243](../BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage-ja.md) が導入したオブジェクトストア（`bajutsu/object_store.py`）に格納します。キーは、兄弟のストアがすでに共有している org ごとの prefix 方式（`bajutsu/serve/server/object_store.py` の `org_prefix` / `upload_prefix`）に従います。3 つの種別が衝突しないように、種別ごとのサブ prefix を足します。
 
-- **`config`**：単一の `bajutsu.config.yaml`（そのバイト。小さい）。
+- **`config`**：単一の `bajutsu.config.yaml`（そのバイト列。小さい）。
 - **`scenarios`**：シナリオのサブツリー。YAML ツリー（`scenarios/…`、config が参照する場合は `baselines/` や `setup/` も）を `.zip` として運びます（テキストで小さい）。
-- **`binary`**：ビルド済みアプリ成果物（`.app.zip` / `.ipa`。大きい）。BE-0073 のバンドルが運んでいたものそのもので、いまはそれ単体で格納します。
+- **`binary`**：ビルド済みアプリ成果物（`.app.zip` または `.ipa`。大きい）。BE-0073 のバンドルが運んでいたものそのもので、今回は単体で格納します。
 
-content-addressing により、「変わったものだけをアップロードする」と「変わっていないバイナリでは no-op」の性質がそのまま得られます。ストアはすでにキーで重複排除しており、`ObjectStore.exists(key)` でクライアント（や UI）が「この sha はもう格納済みか」を確かめ、格納済みならアップロードを省けます。これは BE-0243 と worker アップロード経路（`bajutsu/serve/operations/worker_uploads.py`、`presign.py`）がすでに頼っている `exists` / `put_bytes` / `presigned_put_url` の seam と同じものです。
+content-addressing により、「変わったものだけをアップロードする」ことと「変わっていないバイナリでは no-op」であることが、追加の仕組みなしに得られます。ストアはすでにキーで重複排除しています。`ObjectStore.exists(key)` で、クライアント（や UI）は sha が格納済みかどうかを確かめ、格納済みならアップロードを省けます。BE-0243 と worker アップロード経路（`bajutsu/serve/operations/worker_uploads.py`、`presign.py`）も、同じ `exists` / `put_bytes` / `presigned_put_url` の seam にすでに頼っています。
 
-### 2. 合成：3 成果物を 1 つのツリーへ材料化する（BE-0073 の不変条件を保つ）
+### 2. 3 つの成果物を 1 つのツリーへ合成する
 
-BE-0073 と [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source-ja.md) がともに守る要点は変わりません。ランナーは、config の相対パス `scenarios` / `appPath` / `baselines` / `setup` が解決される **単一の自己完結したツリー** を必要とします（`bajutsu/serve/operations/upload.py` の `_validate_bundle_config` と `Effective.rebased`）。そこで **合成** は成果物 sha の三つ組 `(config_sha, scenarios_sha, binary_sha)` とし、新しい `materialize_composition` ステップがそれらを、fresh で serve 所有の confined なディレクトリへ組み立てます。BE-0073 の `materialize_bundle` の兄弟にあたります。
+[BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md) と [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source-ja.md) は、どちらも同じ不変条件を守っており、本項目もそれを保ちます。ランナーには **単一の自己完結したツリー** が必要で、config の相対パス `scenarios`、`appPath`、`baselines`、`setup` はそのツリーに対して解決されます（`bajutsu/serve/operations/upload.py` の `_validate_bundle_config` と `Effective.rebased`）。
 
-1. `config` 成果物のバイトを、ツリーのルートに `bajutsu.config.yaml` として書き出す。**config がレイアウトの唯一の真実** であり、自身の相対的な `scenarios` と `appPath` フィールドによって、他の 2 成果物がどこに置かれるべきかをちょうど名指しします。
-2. `scenarios` の zip を、config の `scenarios` パスが解決されるように展開する（例：`./scenarios`）。BE-0073 が展開に課すのと同じ zip-slip / zip-bomb の上限を課します。
-3. `binary` 成果物を config の `appPath` に置く（`.app.zip` からの `.app` ディレクトリ、または `.ipa` をそのまま）。「バイナリはどこか」にすでに答えている唯一のフィールドです。
+そこで **合成** は、成果物 sha の三つ組 `(config_sha, scenarios_sha, binary_sha)` とします。新しい `materialize_composition` ステップが、この三つ組を fresh で serve 所有の confined なディレクトリへ組み立てます。BE-0073 の `materialize_bundle` の兄弟にあたり、次の 3 段階で進みます。
 
-そのうえで、組み立てたルートに対して BE-0073 の既存の `_validate_bundle_config` を走らせます。各ターゲットのパスフィールドはツリー内に confined でなければならず、さらに本設計が加える新しい整合性チェックとして、config の `appPath` と `scenarios` が **供給された成果物によって実際に埋まっている** ことを確かめます。どのバイナリ成果物も埋めない `appPath`、あるいはどのシナリオ成果物も埋めない `scenarios` を名指す config を持つ三つ組は、bind 時に具体的なエラーで拒否し、半分だけ材料化されたツリーに対して走らせることはしません（directive 2）。下流のすべて（`resolve()`、ランナー、ドライバ、アサーション評価器、レポート）は、BE-0073 のバンドルやローカルの `--config` run が通るのとバイト単位で同じ経路です。新しいのは *組み立て* だけです。
+1. `config` 成果物のバイト列を、ツリーのルートに `bajutsu.config.yaml` として書き出します。config がレイアウトの唯一の真実です。config 自身の相対的な `scenarios` と `appPath` が、他の 2 成果物の置き場所を名指しします。
+2. `scenarios` の zip を、config の `scenarios` パスが解決されるように展開します（例：`./scenarios`）。展開には、BE-0073 が課すのと同じ zip-slip と zip-bomb の上限を課します。
+3. `binary` 成果物を config の `appPath` に置きます（`.app.zip` からの `.app` ディレクトリ、または `.ipa` をそのまま）。`appPath` は、「バイナリはどこか」にすでに答えている唯一のフィールドです。
 
-**来歴（provenance）。** run の `manifest.json` には **3 つの sha の三つ組**（と各成果物の表示用ファイル名）を記録し、BE-0073 の単一 zip sha の来歴を拡張します。「この run は何を実行したか」が 3 つの部分それぞれのバイトまで答えられるようになり、合体 zip が与えたものより強い保証であり、組み合わせマトリクスの監査の起点になります。
+そのうえで、組み立てたルートに対して BE-0073 の既存の `_validate_bundle_config` を走らせます。各ターゲットのパスフィールドは、ツリー内に confined でなければなりません。本設計はここに整合性チェックを 1 つ加えます。config の `appPath` と `scenarios` が、**供給された成果物によって実際に埋まっている** ことです。config が名指す `appPath` をどのバイナリ成果物も埋めない場合、あるいは `scenarios` をどのシナリオ成果物も埋めない場合、その三つ組は bind 時に具体的なエラーで拒否します。半分だけ材料化されたツリーに対して run を始めることはありません（directive 2）。
 
-### 3. アップロード API（種別ごと、追加的。合体 zip は糖衣として残す）
+組み立てより下流は変わりません。`resolve()`、ランナー、ドライバ、アサーション評価器、レポートは、すべて従来のままです。合成された run は、BE-0073 のバンドルやローカルの `--config` run とバイト単位で同じ経路を通ります。
 
-認証付きの 3 つのアップロード経路です。それぞれ生のボディをメモリ上限付きで一時ファイルへストリームし（BE-0073 のパターン）、格納した **sha256** を返します。
+**来歴（provenance）。** run の `manifest.json` には、3 つの sha の三つ組と、各成果物の表示用ファイル名を記録します。BE-0073 の単一 zip sha の来歴を拡張するものです。「この run は何を実行したか」に、3 つの部分それぞれのバイト列まで答えられるようになります。合体 zip が与えた保証より強く、組み合わせマトリクスを監査するときの起点になります。
 
-- `POST /api/artifacts/config`：ボディは YAML のバイト。
-- `POST /api/artifacts/scenarios`：ボディはシナリオツリーの zip。
-- `POST /api/artifacts/binary`：ボディは `.app.zip` / `.ipa`。
+### 3. 種別ごとの追加的なアップロード API と、糖衣として残す合体 zip
 
-それぞれ [BE-0051](../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md) のトークン認証の背後にある admin か editor のアクションで、upload をすでに統べているのと同じ [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction-ja.md) のホスト型ソース許可リストで審査します。付随する `HEAD`/exists チェック（あるいは worker アップロード経路がするように `presigned_put_url`）により、クライアントは格納済みのバイトの再送を省けます。これが「変わっていないバイナリを再アップロードしない」の裏づけです。既存の合体 `POST /api/upload` は **残し**、糖衣として読み替えます。サーバ側で zip を同じ 3 つの content-addressed な成果物へ分解して合成を組むので、1 回のドロップのフローはそのまま動き、合体でも分割でもすべてのアップロードが 1 つの内部表現に着地します。
+認証付きの 3 つのアップロード経路が、生のボディをメモリ上限付きで一時ファイルへストリームし（BE-0073 のパターン）、格納した **sha256** を返します。
 
-### 4. プロジェクトの束ね方（BE-0225 の `upload` ソースレコードを広げる）
+- `POST /api/artifacts/config`：ボディは YAML のバイト列です。
+- `POST /api/artifacts/scenarios`：ボディはシナリオツリーの zip です。
+- `POST /api/artifacts/binary`：ボディは `.app.zip` または `.ipa` です。
 
-[BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub-ja.md) はプロジェクトを、判別可能な config-source レコード（`kind` とロケータ）に束ねます。その `upload` 種別は今日、単一のバンドル sha を指しています（`activate_uploaded_project` がその 1 本の zip を fetch して展開する。`bajutsu/serve/operations/upload.py`）。本項目は `upload` のロケータを、単一 sha から **三つ組** `(config_sha, scenarios_sha, binary_sha)` へ広げます。すると `activate`/`run` は `materialize_bundle` の代わりに `materialize_composition` を呼びます。後方互換は形の判定です。従来の単一 sha の `upload` レコードは引き続き `materialize_bundle` を通って解決し、三つ組は新しいステップを通ります。束ねたプロジェクトの一脚だけ（新しいバイナリ sha、同じシナリオと config）の更新はレコードの編集であってアップロードではありません。組み合わせマトリクスと差分更新の利点がプロジェクトの水準で立ち現れるのはここです。
+各経路は、[BE-0051](../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md) のトークン認証の背後にある admin か editor のアクションです。upload をすでに統べている [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction-ja.md) のホスト型ソース許可リストも、各経路を審査します。
+
+付随する `HEAD`/exists チェックや、worker アップロード経路が使う `presigned_put_url` により、クライアントは格納済みのバイト列の再送を省けます。これが、「変わっていないバイナリを再アップロードしない」ことの裏づけです。
+
+既存の合体 `POST /api/upload` は **残し**、糖衣として読み替えます。サーバ側で zip を同じ 3 つの content-addressed な成果物へ分解し、合成を組みます。1 回のドロップのフローはそのまま動き、合体でも分割でも、すべてのアップロードが 1 つの内部表現に着地します。
+
+### 4. BE-0225 の `upload` ソースレコードを広げるプロジェクトの束ね方
+
+[BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub-ja.md) は、プロジェクトを判別可能な config-source レコード（`kind` とロケータ）に束ねます。`upload` 種別は今日、単一のバンドル sha を指しています。`activate_uploaded_project` が、その 1 本の zip を fetch して展開します（`bajutsu/serve/operations/upload.py`）。
+
+本項目は、`upload` のロケータを単一 sha から三つ組 `(config_sha, scenarios_sha, binary_sha)` へ広げます。`activate` と `run` は、`materialize_bundle` の代わりに `materialize_composition` を呼びます。後方互換は形の判定で保ちます。従来の単一 sha の `upload` レコードは `materialize_bundle` を通って解決し、三つ組は新しいステップを通ります。
+
+束ねたプロジェクトの一脚だけ（新しいバイナリ sha、同じシナリオと config）を更新するのは、レコードの編集であり、アップロードではありません。組み合わせマトリクスと差分更新の利点は、プロジェクトの水準ではここに現れます。
 
 ### 5. UI
 
-**Open config → Upload** の面に **3 つのドロップゾーン**（Config・Scenarios・Binary）を足します。それぞれ、いま選ばれている成果物（ファイル名と短い sha）を **前回のを再利用** の導線とともに表示するので、ユーザは変わったものだけを再ドロップし、sha がすでに格納済みのゾーンについてはクライアントがアップロードを省きます。小さな **合成ピッカー** で、すでにアップロード済みの成果物から三つ組を組み立て（config vX、scenarios vY、binary vZ を選ぶ）て実行できます。組み合わせマトリクスを N 回のフルアップロードではなく数クリックにする面です。run は引き続き同じジョブ機構（`bajutsu/serve/jobs.py`）を流れて History に出て、[BE-0060](../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md) のエクスポートが往復をそのまま閉じます。
+**Open config → Upload** の面に、3 つのドロップゾーン（Config、Scenarios、Binary）を足します。各ゾーンは、いま選ばれている成果物（ファイル名と短い sha）を、**前回のを再利用** の導線とともに表示します。ユーザは変わったものだけを再ドロップし、sha がすでに格納済みのゾーンについては、クライアントがアップロードを省きます。
 
-### 決定論・ゲート・app-agnostic
+小さな **合成ピッカー** では、すでにアップロード済みの成果物から三つ組を組み立て（config vX、scenarios vY、binary vZ を選ぶ）、実行できます。組み合わせマトリクスが、N 回のフルアップロードではなく数クリックになります。
 
-- **LLM なし、合否に影響なし。** 合成は決定論的な `run` の前の取得と組み立てで、合否は機械のみのままです。directive 1 と 2 は構成上成り立ちます。
-- **Linux でテスト可能。** 成果物ごとの格納、exists による重複排除チェック、シナリオとバイナリの成果物への zip-slip / zip-bomb の上限、合成の組み立て、整合性の検証は、すべて純粋なパッケージングと配管であり、fixture の成果物に対して既存の Linux ゲートで単体テストできます。Simulator は不要です。実際のアプリの *インストールと実行* だけが Mac を要し、これは任意の iOS run と同じです。
-- **app-agnostic。** config がレイアウトの唯一の権威です。合成ステップは config から `appPath` / `scenarios` を読み、アプリごとに分岐しません。アプリごとの違いは合成された config の `targets.<name>` にとどまります。
+run は引き続き同じジョブ機構（`bajutsu/serve/jobs.py`）を流れて History に出ます。[BE-0060](../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md) のエクスポートが、往復をそのまま閉じます。
 
-### バックエンドのスコープ（iOS を先行、web は注記）
+### 決定論、ゲート、アプリ非依存性
 
-主役は **iOS** です。`binary` 成果物は config の `appPath` に置かれ Simulator にインストールされる `.app.zip` / `.ipa` で、BE-0073 とちょうど同じです。web（Playwright）バックエンドには「アプリバイナリ」がありません。その対応物は [BE-0059](../BE-0059-launch-target-server/BE-0059-launch-target-server-ja.md) 経由で配信する束ねた **静的サイト** で、BE-0073 がすでに先送りしたのと同じ後続です。3 成果物への分割は形として backend-neutral であり（依然として「部分に分けて届ける config ツリー」です）、仕組みは iOS を決め打ちしません。web の変種（`binary` の代わりに `site` 成果物）は後のスライスです。
+- **LLM なし、合否に影響なし。** 合成は、決定論的な `run` の前に行う取得と組み立てです。合否は機械のみのままなので、directive 1 と 2 は構成上成り立ちます。
+- **Linux でテスト可能。** 成果物ごとの格納、exists による重複排除チェック、シナリオとバイナリの成果物への zip-slip と zip-bomb の上限、合成の組み立て、整合性の検証は、すべて純粋なパッケージングと配管です。fixture の成果物に対して既存の Linux ゲートで単体テストでき、Simulator は不要です。Mac が要るのは、実際のアプリのインストールと実行だけで、これは任意の iOS run と同じです。
+- **アプリ非依存。** config がレイアウトの唯一の権威です。合成ステップは config から `appPath` と `scenarios` を読み、アプリごとに分岐しません。アプリごとの違いは、合成された config の `targets.<name>` にとどまります。
+
+### バックエンドのスコープ
+
+主役は **iOS** です。`binary` 成果物は `.app.zip` または `.ipa` で、run が config の `appPath` に置き、Simulator にインストールします。BE-0073 とちょうど同じです。
+
+web（Playwright）バックエンドには、アプリバイナリがありません。その対応物は、[BE-0059](../BE-0059-launch-target-server/BE-0059-launch-target-server-ja.md) 経由で配信する、束ねた静的サイトです。BE-0073 がすでに先送りした後続と同じものです。3 成果物への分割は、形としてバックエンド中立です。「部分に分けて届ける config ツリー」であることに変わりはないからです。したがって、仕組みは iOS を決め打ちしません。web の変種（`binary` の代わりに `site` 成果物）は、後のスライスです。
 
 ### スコープ外
 
-- **ソースからのアプリのビルド。** BE-0073 と [DESIGN §1](../../DESIGN.md) のとおり、Bajutsu はビルド済み成果物を受け取ります。`binary` 成果物はビルドの成果物を運ぶのであって、ビルドはしません。
-- **成果物のバージョン管理ライブラリや保持ポリシー。** content-addressed な格納は自然に重複排除して再利用を可能にしますが、名前つき成果物バージョンの *カタログ化* とその保持は、Git ソース（[BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）と [BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub-ja.md) の領分です。本項目は成果物を格納し三つ組を合成するのであって、閲覧できるバージョンレジストリは足しません。
+- **ソースからのアプリのビルド。** BE-0073 と [DESIGN §1](../../DESIGN.md) のとおり、Bajutsu はビルド済み成果物を受け取ります。`binary` 成果物はビルドの成果物を運ぶだけで、ビルドはしません。
+- **成果物のバージョン管理ライブラリや保持ポリシー。** content-addressed な格納は、重複排除と再利用を可能にします。名前つき成果物バージョンのカタログ化とその保持は、Git ソース（[BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）と [BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub-ja.md) の領分です。本項目は成果物を格納して三つ組を合成するだけで、閲覧できるバージョンレジストリは足しません。
 - **マルチテナントの実行分離。** テナントごとの Simulator や egress 制御は、引き続き [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) と [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md) の領分です。
 
 ## 検討した代替案
 
-- **単一の合体 zip を維持する（現状、[BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md)）。** *唯一の* 選択肢としては却下します。変更頻度がまったく異なる 3 成果物を 1 回のアップロードへ結合し、1 行のシナリオ編集に大きなバイナリの再送を強い、バイナリ×シナリオの組み合わせマトリクスのマスごとに個別のフルアップロードにしてしまいます。合体 zip は、3 成果物へ分解する糖衣として残しますが、もはや唯一の形ではありません。
-- **バンドル zip のクライアント側差分/パッチ。** 前回のバンドルに対する差分をアップロードする案。却下します。バイナリの差分は壊れやすく形式依存で、独立したライフサイクルを持つ 3 つではなく依然 1 つの不透明な成果物をモデル化し、組み合わせマトリクスへのきれいな道もありません（差分は 1 つのベースに対する相対で、三つ組の自由な選択ではありません）。content-addressed な成果物まるごとのほうが単純で、しかも重複排除がただで効きます。
-- **config だけをアップロードしツリーは上げない**（BE-0073 の元の却下）。蒸し返しません。本設計は 3 つの部分を run 時にすべて存在させて合成するので、BE-0073 の相対パスの異論は退けるのではなく満たします。
-- **レイアウトを記述する独自のマルチパート manifest 形式。** BE-0073 が独自形式を却下したのと同じ理由で却下します。config が *そのまま* レイアウトの記述です。自身の `scenarios` / `appPath` がすでに各成果物の配置先を言っています。config を合成の権威として、[BE-0243](../BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage-ja.md) のオブジェクトストアの上で再利用すれば、新しい形式は何も要りません。
-- **BE-0073 か BE-0243 に畳み込む。** 却下します。BE-0073 は合体バンドルの取得で、BE-0243 はそのバンドルの durable な格納で、どちらも実装済みで安定しています。分解と run 時合成は、独自の API、プロジェクトレコードの形、UI を持つ別個の機能であり、閉じた項目の後追い編集ではなく `関連` として素直につなぐのが妥当です。
+- **単一の合体 zip を維持する（現状、[BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md)）。** 唯一の選択肢としては却下します。変更頻度がまったく異なる 3 成果物を 1 回のアップロードへ結合し、1 行のシナリオ編集に大きなバイナリの再送を強い、バイナリとシナリオの組み合わせマトリクスのマスごとに個別のフルアップロードを要求します。合体 zip は、3 成果物へ分解する糖衣として残しますが、唯一の形ではなくなります。
+- **バンドル zip のクライアント側差分やパッチ。** 前回のバンドルに対する差分をアップロードする案です。却下します。理由は 3 つあります。バイナリの差分は壊れやすく、形式に依存します。差分は、独立したライフサイクルを持つ 3 つではなく、依然 1 つの不透明な成果物をモデル化します。差分は 1 つのベースに対する相対なので、三つ組の自由な選択に至るきれいな道がありません。content-addressed な成果物まるごとのほうが単純で、重複排除も追加の仕組みなしで効きます。
+- **config だけをアップロードし、ツリーは上げない**（BE-0073 の元の却下）。蒸し返しません。本設計は、3 つの部分を run 時にすべて存在させて合成します。BE-0073 の相対パスの異論は、退けるのではなく満たします。
+- **レイアウトを記述する独自のマルチパート manifest 形式。** BE-0073 が独自形式を却下したのと同じ理由で却下します。config がそのままレイアウトの記述です。`scenarios` と `appPath` が、すでに各成果物の配置先を言っています。config を合成の権威とし、[BE-0243](../BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage-ja.md) のオブジェクトストアの上で再利用すれば、新しい形式は要りません。
+- **BE-0073 か BE-0243 に畳み込む。** 却下します。BE-0073 は合体バンドルの取得で、BE-0243 はそのバンドルの durable な格納です。どちらも実装済みで安定しています。分解と run 時合成は、独自の API、プロジェクトレコードの形、UI を持つ別個の機能です。閉じた項目の後追い編集にはせず、`関連` として両項目とつなぎます。
 
 ## 進捗
 
@@ -118,7 +140,7 @@ BE-0073 と [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source-ja.
 
 ### ログ
 
-- 2026-07-14 — 単位 1、2、4、および単位 3 の追加部分（バックエンドの中核）を実装しました。単位 5 の
+- 2026-07-14：単位 1、2、4、および単位 3 の追加部分（バックエンドの中核）を実装しました。単位 5 の
   UI と単位 3 の残り部分は、上のチェックリストのとおり後続PRへ先送りしています。本文書の *詳細設計*
   から外れた点が 2 つあります。1 点目は、`scenarios` 成果物を config の `scenarios` フィールドごとに
   個別展開するのではなく、合成のルート直下へそのまま展開する点です。これは、従来の合体バンドルが
@@ -132,7 +154,7 @@ BE-0073 と [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source-ja.
   scenarios の展開より後に行うよう順序を入れ替えました。また `GET /api/artifacts/exists` の管理者
   権限ゲートが、GET リクエストには効かない実装になっていたため、`GET /api/config/content` と同じ
   早期リターンの形で正しくゲートされるようにしました。
-- 2026-07-15 — 単位 5（UI）と、合成ピッカーが必要とする `POST /api/compose`（`bind_composition`）
+- 2026-07-15：単位 5（UI）と、合成ピッカーが必要とする `POST /api/compose`（`bind_composition`）
   エンドポイントを実装しました。合成 UI は「Open config」に 4 つめのソースを足します。3 つの
   content-addressed なドロップゾーン（ブラウザでの sha256 と `GET /api/artifacts/exists` による
   重複排除省略つき）と **Compose & load** ピッカーです。`bind_composition` は格納済みの三つ組を解決し
@@ -145,7 +167,7 @@ BE-0073 と [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source-ja.
   `POST /api/upload` を 3 分解の糖衣として読み替える部分は別の follow-up のままです。サーバ側での
   再 zip 化は非決定的で、その糖衣が可能にするはずの重複排除を掘り崩すうえ、リリース済みの主要な
   アップロード経路に触れるためです。
-- 2026-07-15 — フィードバックを受けて、合成のドロップゾーンが受け付ける形式を広げました。`scenarios`
+- 2026-07-15：フィードバックを受けて、合成のドロップゾーンが受け付ける形式を広げました。`scenarios`
   成果物は `.zip` に加えて単一の `.yaml` ファイルも受け付けます。`materialize_composition` が内容で
   判別し（`zipfile.is_zipfile`）、単一ファイルは config の `scenarios` ディレクトリへ、拡張子を `.yaml`
   に正規化して書き出します（runner の一覧は `*.yaml` をグロブするためです）。ドロップされた名前は
@@ -158,11 +180,11 @@ BE-0073 と [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source-ja.
 ## 参考
 
 - [CLAUDE.md](../../CLAUDE.md)、[DESIGN §1](../../DESIGN.md)（Bajutsu はビルド済みアプリを受け取り、ビルドはしない）、[DESIGN §2](../../DESIGN.md)（AI は判定しない。決定論優先。テストごとにクリーンな環境）。
-- [BE-0073 — config・シナリオ・アプリバイナリを zip でまとめてアップロード](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md)：本項目が分解する合体バンドル。再利用する相対パスの不変条件と展開・検証のガード。
-- [BE-0243 — アップロードした zip の config バンドルをオブジェクトストレージへ永続化](../BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage-ja.md)：各成果物を格納する content-addressed な `ObjectStore`（`bajutsu/object_store.py`）。
-- [BE-0225 — serve の config プロジェクトハブ](../BE-0225-config-project-hub/BE-0225-config-project-hub-ja.md)：`upload` 種別の config-source レコードを 1 本の zip sha から三つ組へ広げる。
-- [BE-0063 — Git リポジトリと ref から config（とそのシナリオツリー）を読み込む](../BE-0063-git-config-source/BE-0063-git-config-source-ja.md)：「ツリーを材料化し config をそのルートに対して解決する」兄弟の seam。
-- [BE-0051 — ホスティングのための serve ハードニング](../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md)、[BE-0108 — ホスト型 config ソースの制限](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction-ja.md)：すべてのアップロード経路が背後に置くトークン認証とソース許可リスト。
-- [BE-0060 — run レポートを zip でダウンロード/エクスポート](../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md)：往復を閉じるエクスポート側。
+- [BE-0073：config、シナリオ、アプリバイナリを zip でまとめてアップロード](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md)：本項目が分解する合体バンドル。再利用する相対パスの不変条件と展開・検証のガード。
+- [BE-0243：アップロードした zip の config バンドルをオブジェクトストレージへ永続化](../BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage-ja.md)：各成果物を格納する content-addressed な `ObjectStore`（`bajutsu/object_store.py`）。
+- [BE-0225：serve の config プロジェクトハブ](../BE-0225-config-project-hub/BE-0225-config-project-hub-ja.md)：`upload` 種別の config-source レコードを 1 本の zip sha から三つ組へ広げる。
+- [BE-0063：Git リポジトリと ref から config（とそのシナリオツリー）を読み込む](../BE-0063-git-config-source/BE-0063-git-config-source-ja.md)：「ツリーを材料化し config をそのルートに対して解決する」兄弟の seam。
+- [BE-0051：ホスティングのための serve ハードニング](../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md)、[BE-0108：ホスト型 config ソースの制限](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction-ja.md)：すべてのアップロード経路が背後に置くトークン認証とソース許可リスト。
+- [BE-0060：run レポートを zip でダウンロード/エクスポート](../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md)：往復を閉じるエクスポート側。
 - `bajutsu/object_store.py`（content-addressed なストア）、`bajutsu/serve/operations/upload.py`（`bind_upload_config` / `materialize_bundle` / `_validate_bundle_config` / `activate_uploaded_project`。合成ステップはこれらを結ぶ）、`bajutsu/serve/uploads.py`（`materialize_bundle` / `find_bundle_config`）、`bajutsu/serve/server/object_store.py`（`org_prefix` / `upload_prefix`）、`bajutsu/serve/operations/worker_uploads.py` と `presign.py`（`presigned_put_url` のアップロード seam）、`bajutsu/config.py`（`AppConfig.appPath` / `scenarios`）：本項目が触れる面。
 - [docs/ja/configuration.md](../../docs/ja/configuration.md)、[docs/ja/cli.md](../../docs/ja/cli.md#serve)、[docs/ja/architecture.md](../../docs/ja/architecture.md)。
