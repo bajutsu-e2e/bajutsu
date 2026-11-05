@@ -10,6 +10,7 @@ import android.util.Xml
 import android.view.InputDevice
 import android.view.MotionEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.Configurator
@@ -460,22 +461,31 @@ class ResidentServerTest {
             val node = automation.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
             node?.refresh()
             if (node?.isEditable == true) return node
-            focusInFocusedWindow(automation)?.let { return it }
-            if (SystemClock.uptimeMillis() >= deadline) return node
+            focusInTopApplicationWindow(automation)?.let { return it }
+            if (SystemClock.uptimeMillis() >= deadline) {
+                val windows = automation.windows.joinToString {
+                    "${it.root?.packageName}(type=${it.type} active=${it.isActive} focused=${it.isFocused})"
+                }
+                Log.w(TAG, "no editable node held input focus; windows, front to back: $windows")
+                return node
+            }
             SystemClock.sleep(FOCUS_POLL_MS)
         }
     }
 
     /**
-     * The editable node holding input focus in the window the platform says has input focus.
+     * The editable node holding input focus in the frontmost application window.
      *
-     * `UiAutomation.findFocus` searches the *active* window, and that can differ from the focused one
-     * while the soft keyboard comes up: CI saw a `FrameLayout` answer for seconds after the keyboard
-     * had opened on the field. Only the focused window is asked, so a field left focused beneath a
-     * dialog is never typed into.
+     * `UiAutomation.findFocus` searches the *active* window, and while the soft keyboard comes up that
+     * can be the keyboard's own: CI saw a `FrameLayout` in `com.google.android.inputmethod.latin`
+     * answer for seconds after the keyboard had opened on the field. Asking the frontmost application
+     * window skips the keyboard, and a dialog is an application window too, so a field left focused
+     * beneath one is never typed into.
      */
-    private fun focusInFocusedWindow(automation: UiAutomation): AccessibilityNodeInfo? {
-        val window = automation.windows.firstOrNull { it.isFocused } ?: return null
+    private fun focusInTopApplicationWindow(automation: UiAutomation): AccessibilityNodeInfo? {
+        val window = automation.windows.firstOrNull {
+            it.type == AccessibilityWindowInfo.TYPE_APPLICATION
+        } ?: return null
         val node = window.root?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return null
         node.refresh()
         return node.takeIf { it.isEditable }
