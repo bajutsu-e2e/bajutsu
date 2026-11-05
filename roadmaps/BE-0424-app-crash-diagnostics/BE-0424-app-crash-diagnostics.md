@@ -513,7 +513,7 @@ displayed the result on a wait-timeout diagnostic. This item makes it the first 
 behavior from the result rather than wording a message. The same change that adds `Lease.readiness`
 also updates that docstring to name this new use, before the invariant goes stale.
 
-A `notRunning` answer anywhere else means that the app is not running now, though it was a moment ago. On such a host, nothing else could cause that.
+A `notRunning` answer anywhere else means that the app is not running now, though it was a moment ago. On the Simulator, nothing else could cause that.
 
 A new route joins
 [`BajutsuKit/Sources/BajutsuRunner/openapi.yaml`](../../BajutsuKit/Sources/BajutsuRunner/openapi.yaml).
@@ -1064,7 +1064,7 @@ wrapped, so that a failure in one never drops the other:
    same gate between its own `adb root` and its `adb pull`. Without the gate, everything below races
    `adbd`'s restart.
 
-   The pull then takes the most recent `/data/tombstones/tombstone_NN` The file must be modified at or after the launch marker above. The comparison uses device-relative timestamps, so no clock
+   The pull then takes the most recent `/data/tombstones/tombstone_NN`. The file must be modified at or after the launch marker above. The comparison uses device-relative timestamps, so no clock
    reconciliation is needed here either.
 
    Reading the marker this late carries none of the mis-attribution risk that a teardown `relaunch` raises elsewhere in this item for iOS `.ips` and `logcat` (*iOS: matching the `.ips` report*). A teardown
