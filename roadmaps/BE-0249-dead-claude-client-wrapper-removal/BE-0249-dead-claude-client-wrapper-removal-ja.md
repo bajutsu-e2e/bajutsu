@@ -17,83 +17,70 @@
 ## はじめに
 
 `bajutsu/anthropic_client.py` には、いまも `ensure_client` と `CachesClient` プロトコル
-（216〜233 行目付近）が定義されています。どちらも使われていません。もはやこれらを呼び出す
-プロダクションコードのパスは残っていないのです。本項目ではこの 2 つと、それを覆っている
-テストを削除し、モジュールの公開面を「AI による作成・調査の各クラスが実際に使っている経路」
-に一致させます。
+（216〜233 行目付近）が定義されています。どちらも、呼び出すプロダクションコードのパスが残っていません。
+本項目では、この 2 つと、それを対象にしたテストを削除します。これにより、モジュールの公開面は、AI による作成・調査の各クラスが実際に使っている経路と一致します。
 
 ## 動機
 
-`ensure_client` は BE-0140 が「AI クラスが共有する、遅延生成してキャッシュするラッパー」として
-追加したものです。当時は 6 つの `Claude*` クラスがそれぞれ `self._ensure_client()` を呼び、
-それがモジュールレベルの `ensure_client(agent)` に処理を委ね、`make_client` 経由で SDK
-クライアントを生成して `agent._client` にキャッシュしていました。その後 BE-0104 がベンダー
-中立な `AiBackend` の seam（`bajutsu/ai/registry.create_backend`）を導入し、これらのクラスは
-すべてそちらへ移行しました。いまでは各クラスが自前の `_ensure_backend` メソッドを持ち、
-`create_backend(ai=self._ai)` を呼んで結果を `self._backend` にキャッシュしています。たとえば
-`bajutsu/claude_agent.py:632`、`bajutsu/claude_triage.py:253` と `:473`、
-`bajutsu/claude_enrich_agent.py:190`、`bajutsu/alerts.py:178`、`bajutsu/crawl_guide.py:360`、
-`bajutsu/crawl_tabs.py:192` がそれにあたります（実装は全部で 7 つで、`claude_triage.py` は
-`ClaudeTriageAgent` と `ClaudeCrossRunTriageAgent` の 2 つを定義しています）。`create_backend` の背後で Anthropic
-プロバイダを担う `bajutsu/ai/anthropic.py` の `AnthropicBackend` も、`make_client` を直接
-呼ぶ private な `_ensure_client` メソッド（`bajutsu/ai/anthropic.py:64`）で自前のクライアントを
-構築しており、こちらも `anthropic_client.py` のモジュールレベル `ensure_client` は呼んで
-いません。
+BE-0140 は、`ensure_client` を「AI クラスが共有する、遅延生成してキャッシュするラッパー」として追加しました。
+当時は 6 つの `Claude*` クラスが、それぞれ `self._ensure_client()` を呼んでいました。このメソッドは、モジュールレベルの `ensure_client(agent)` に処理を委ねます。委ねられた側は、`make_client` 経由で SDK クライアントを生成し、`agent._client` にキャッシュしていました。
 
-つまり `ensure_client` と `CachesClient` には、もうプロダクション側の呼び出し元が一つも
-残っていません。しかも `ensure_client` 自身の docstring は、いまや事実と異なります。
-「AI による作成・調査の各クラスが共有するラッパー（BE-0140）」だといまだに書いていますが、
-どのクラスも共有していないのです。すべて `create_backend` を共有しています。すでに使われて
-いない仕組みの名前を、今の実装が採用していない docstring とともに残しておくことは、単に
-無害な放置ではありません。`Claude*` の各クラスがどうやってモデルにたどり着くのかを grep で
-調べた読み手は、この関数を見つけて信じ込み、間違った seam を出発点にしてしまいます。これが
-生き残っている唯一の理由は、`tests/test_anthropic_client.py`（289〜313 行目付近）がいまだに
-これを実行しているからです。守るべきコードが先になくなったのに、テストだけが残った形です。
+その後、BE-0104 がベンダー中立な `AiBackend` の seam（`bajutsu/ai/registry.create_backend`）を導入しました。これらのクラスはすべて、その seam へ移行しています。
+いまでは各クラスが、自前の `_ensure_backend` メソッドを持ちます。このメソッドは `create_backend(ai=self._ai)` を呼び、結果を `self._backend` にキャッシュします。
+呼び出し箇所は次のとおりです。
 
-この修正は挙動を変えません。範囲も AI による作成・調査のパス（`record`、`enrich`、`triage`、
-アラート閉じ、crawl）の内側に閉じています。決定的な `run` / CI のジャッジ経路にはいっさい
-触れないため、prime directive 1（AI は作成者であり失敗調査者であって、決してジャッジ役には
-ならない）はどちらの意味でも影響を受けません。
+- `bajutsu/claude_agent.py:632`
+- `bajutsu/claude_triage.py:253` と `:473`
+- `bajutsu/claude_enrich_agent.py:190`
+- `bajutsu/alerts.py:178`
+- `bajutsu/crawl_guide.py:360`
+- `bajutsu/crawl_tabs.py:192`
+
+実装は全部で 7 つです。`claude_triage.py` が `ClaudeTriageAgent` と `ClaudeCrossRunTriageAgent` の 2 つを定義しているためです。
+
+`bajutsu/ai/anthropic.py` の `AnthropicBackend` は、`create_backend` の背後で Anthropic プロバイダを担うアダプターです。
+このアダプターは、`make_client` を直接呼ぶ private な `_ensure_client` メソッド（`bajutsu/ai/anthropic.py:64`）で、自前のクライアントを構築します。`anthropic_client.py` のモジュールレベル `ensure_client` も、呼んでいません。
+
+つまり、`ensure_client` と `CachesClient` には、プロダクション側の呼び出し元が残っていません。
+`ensure_client` の docstring も、いまや事実と異なります。この docstring は、いまも「AI による作成・調査の各クラスが共有するラッパー（BE-0140）」と書いています。しかし、どのクラスも共有していません。すべてのクラスが共有しているのは `create_backend` です。
+
+使われていない仕組みの名前を、現在の実装が採用していない docstring とともに残すのは、単なる無害な放置ではありません。
+`Claude*` の各クラスがどうやってモデルにたどり着くのかを grep で調べた読み手は、この関数を見つけて信じ込みます。そして、間違った seam を出発点にしてしまいます。
+この関数が生き残っている理由は 1 つだけです。`tests/test_anthropic_client.py`（289〜313 行目付近）が、いまもこの関数を実行しています。守るべきコードが先になくなったのに、テストだけが残りました。
+
+この修正は挙動を変えません。範囲も、AI による作成・調査のパス（`record`、`enrich`、`triage`、アラート閉じ、crawl）の内側に閉じています。
+決定的な `run` / CI のジャッジ経路には触れません。したがって、prime directive 1（AI は作成者であり失敗調査者であって、決してジャッジ役にはならない）は、どちらの意味でも影響を受けません。
 
 ## 詳細設計
 
-作業は単純な削除であり、他に依存箇所が残っていないことを確認する検証ステップを一つ添えます。
+作業は単純な削除です。以下のファイルの外に、ラッパーへの依存が残っていないことを確認する検証ステップを、1 つ添えます。
 
 1. **`ensure_client` を `bajutsu/anthropic_client.py` から削除する**（223〜233 行目付近）。
 2. **`CachesClient` プロトコルを `bajutsu/anthropic_client.py` から削除する**（216〜220 行目
-   付近）。これは `ensure_client` の `agent` 引数の型付けのためだけに存在しています。
+   付近）。このプロトコルは、`ensure_client` の `agent` 引数の型付けのためだけに存在しています。
 3. **`tests/test_anthropic_client.py` の該当テストを削除する**（289〜313 行目付近）。
-   スタンドインクラス `_CacheHolder`、「ensure_client is the lazy-build-then-cache wrapper…」
-   というコメント、`test_ensure_client_returns_injected_client_without_building`、
-   `test_ensure_client_builds_once_and_reuses` が対象です。
-4. **削除前にリポジトリ全体を grep して、呼び出し元が残っていないことを確認する。** 上記
-   3 つの削除のあとで `rg -n "ensure_client|CachesClient"` を実行すると、この提案自体の記述を
-   除いて一致がないはずです（`bajutsu/ai/anthropic.py` の無関係な `_ensure_client` メソッドと、
-   `Claude*` の各クラスの `_ensure_backend` メソッドは別名であり、どちらも変更しません）。
+   削除の対象は次のとおりです。
+   - スタンドインクラス `_CacheHolder`
+   - 「ensure_client is the lazy-build-then-cache wrapper…」というコメント
+   - `test_ensure_client_returns_injected_client_without_building`
+   - `test_ensure_client_builds_once_and_reuses`
+4. **削除前にリポジトリ全体を grep して、呼び出し元が残っていないことを確認する。**
+   上記 3 つの削除のあとで `rg -n "ensure_client|CachesClient"` を実行すると、この提案自体の記述を除いて一致がないはずです。
+   名前が似ていても別物で、変更しないものが 2 つあります。`bajutsu/ai/anthropic.py` の無関係な `_ensure_client` メソッドと、`Claude*` の各クラスの `_ensure_backend` メソッドです。
 
-`ensure_client` や `CachesClient` を import しているファイルは他にないため、
-`bajutsu/claude_agent.py`、`bajutsu/claude_triage.py`、`bajutsu/claude_enrich_agent.py`、
-`bajutsu/alerts.py`、`bajutsu/crawl_guide.py`、`bajutsu/crawl_tabs.py`、
-`bajutsu/ai/anthropic.py` への追加の変更は必要ありません。これらはすでに `create_backend` /
-自前の `_ensure_backend` を通じて、あるいは（`AnthropicBackend` の場合は）`make_client` を
-直接呼ぶ形で、もっぱらモデルに到達しています。
+`ensure_client` や `CachesClient` を import しているファイルは、他にありません。したがって、削除に伴う追加の変更は、`bajutsu/claude_agent.py`、`bajutsu/claude_triage.py`、`bajutsu/claude_enrich_agent.py`、`bajutsu/alerts.py`、`bajutsu/crawl_guide.py`、`bajutsu/crawl_tabs.py`、`bajutsu/ai/anthropic.py` のいずれにも必要ありません。
+前の 6 ファイルは、すでに `create_backend` と自前の `_ensure_backend` だけを通じてモデルに到達しています。`AnthropicBackend` は、`make_client` を直接呼んで到達しています。
 
 ## 検討した代替案
 
-- **「念のため」残しておく。** 将来 AI クラスが `AiBackend` の seam ではなく生の SDK
-  クライアントを欲しがるかもしれない、という理由です。却下します。docstring が誤った
-  アーキテクチャを主張している死んだコードは、コードが何もないより悪い状態です。見つけた
-  コントリビュータは、それを信頼していいのか無視していいのか、独力で「使われていない」こと
-  を突き止めなければなりません。生のクライアントをキャッシュするヘルパーが将来必要になった
-  としても、そのときに存在する seam に対して小さく正しく docstring を書いたものを新しく
-  用意するほうが、すでにいまのアーキテクチャについて嘘をついている docstring を持つものを
-  抱え続けるより安く済みます。
-- **`ensure_client` を、`Claude*` クラス向けの新しい共有基底クラスに作り替える**
-  （仮に `ClaudeBackedAgent` 基底クラスと呼べるもので、ここでは名前だけを挙げます。本提案は
-  それに番号を振ったり、スコープを定めたりするものではありません）。本項目では却下します。
-  それは、基底クラスが何を持つか、`Claude*` の各クラスのコンストラクタの違い（`max_tokens` の有無
-  など）をどう吸収するかという、独立した設計の検討に値する仕事です。ここに含めてしまうと、
-  即日で済むはずの削除が、それをブロックする設計論議に化けてしまいます。
+- **「念のため」残しておく。** 将来 AI クラスが、`AiBackend` の seam ではなく生の SDK クライアントを欲しがるかもしれない、という理由です。
+  却下します。docstring が誤ったアーキテクチャを主張している死んだコードは、コードが何もないより悪い状態です。
+  見つけたコントリビュータは、まず「使われていない」ことを独力で突き止めなければなりません。それができて初めて、信頼するか無視するかを決められます。
+  生のクライアントをキャッシュするヘルパーが将来必要になったとします。そのときに存在する seam に対して、小さく正しい docstring を付けたものを新しく用意するほうが、安く済みます。いまのアーキテクチャについてすでに嘘をついている docstring を抱え続けるより、コストが低いのです。
+- **`ensure_client` を、`Claude*` クラス向けの新しい共有基底クラスに作り替える。**
+  仮に `ClaudeBackedAgent` 基底クラスと呼べるものです。ここでは名前だけを挙げ、本提案はこの項目に番号を振らず、スコープも定めません。
+  本項目では却下します。基底クラスが何を持つか、`Claude*` の各クラスのコンストラクタの違い（`max_tokens` の有無など）をどう吸収するか、という独立した設計の検討が必要になるからです。
+  この検討には、固有の提案が値します。ここに含めてしまうと、即日で済むはずの削除が、削除をブロックする設計論議に化けてしまいます。
 
 ## 進捗
 
