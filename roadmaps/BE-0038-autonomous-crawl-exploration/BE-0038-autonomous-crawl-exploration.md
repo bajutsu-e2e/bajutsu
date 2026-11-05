@@ -74,7 +74,7 @@ Between actions, the crawl waits on a condition (`screenChanged` / target elemen
 
 ### Crash and stuck-state detection
 
-After each action, the crawl deterministically checks that the app is still healthy. The signals are deterministic. These are the three classifications:
+After each action, the crawl deterministically checks that the app is still healthy, classifying what it finds in one of three ways:
 
 - **Crash:** the app process is no longer foreground or alive. The check uses a `simctl` / env pid check. It also covers the a11y tree collapsing to a bare window with no app content. The crawl reuses `_shows_app_ui` from [`record.py`](../../bajutsu/record.py) to tell that case from a system alert, which the existing alert guard clears instead. On a crash, the crawl captures the full evidence set through the existing `result:error` safety net ([DESIGN §9](../../DESIGN.md)). It then emits the replayed path as a **minimal repro scenario**.
 - **Stuck / dead end:** a state with no actionable elements, or a state where no candidate action produces a screen change within the condition-wait budget.

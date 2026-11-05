@@ -20,9 +20,9 @@ Both companies auto-correct selectors during a run. Bajutsu stays with the self-
 
 ## Motivation
 
-Competitive research raised an obvious question. MagicPod and Autify both auto-correct selectors while a test runs, so should Bajutsu do the same? The appeal is real: cosmetic UI churn causes fewer red runs. In-run auto-correction, however, means that a test can quietly change what it targets without anyone reviewing the change. That is precisely the "making tests laxer" risk that Bajutsu treats as unacceptable (DESIGN §11).
+Competitive research raised an obvious question. MagicPod and Autify both auto-correct selectors while a test runs, so should Bajutsu do the same? The appeal is real: fewer red runs caused by cosmetic UI churn. In-run auto-correction, however, means that a test can quietly change what it targets without anyone reviewing the change. That is precisely the "making tests laxer" risk that Bajutsu treats as unacceptable (DESIGN §11).
 
-This item records a deliberate decision. Bajutsu adopts self-healing but bounds it to *propose + opt-in apply*. The value, a suggested minimal fix, is kept. The cost, silent in-run drift, is refused.
+This item records a deliberate decision. Bajutsu adopts self-healing but bounds it to *propose + opt-in apply*, so the value (a suggested minimal fix) is kept and the cost (silent in-run drift) is refused.
 
 ## Detailed design
 
@@ -37,7 +37,7 @@ The contrast with MagicPod and Autify is the whole point. They optimize for neve
 ## Alternatives considered
 
 * **Implicit in-run selector correction (the MagicPod/Autify approach).** Rejected. It removes the human from the loop, and it can relax a test's target without review, which undermines the deterministic gate.
-* **Auto-apply the proposed fix after the run.** This is less dangerous than in-run correction. It still writes to the committed scenario without a reviewer, so a wrong or laxer fix could land unnoticed. The opt-in `--write` keeps the human as the gate.
+* **Auto-apply the proposed fix after the run.** Auto-applying after the run is less dangerous than in-run correction. It still writes to the committed scenario without a reviewer, so a wrong or laxer fix could land unnoticed. The opt-in `--write` keeps the human as the gate.
 * **No self-healing at all.** This is safe, but it throws away the genuine value of the competitors' feature: a concrete minimal fix for cosmetic breakage. Propose + opt-in apply keeps that value and refuses the cost of silent drift.
 
 ## Progress

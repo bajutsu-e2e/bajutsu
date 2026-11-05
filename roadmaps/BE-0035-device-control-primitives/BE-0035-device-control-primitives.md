@@ -46,18 +46,18 @@ Mapping to the backend:
 - **`background`** presses Home to send the app to the background (`simctl ui home`, through the injected device control's `home()`). It takes no fields, because it is the backgrounding action alone. Resuming the app, and a bounded backgrounded interval, are future work in the split-out proposal.
 - **`overrideStatusBar`** overrides only the fields the step provides: `time`, `batteryLevel`, `batteryState`, `cellularBars`, and `wifiBars`. It maps to `simctl status_bar override`. Any field left out keeps its live value.
 - **`clearStatusBar`** removes any override (`simctl status_bar clear`) and restores the live bar.
-- Like `setLocation` / `push`, these steps need a per-device control channel. They are therefore **unavailable on the fake driver and in parallel runs**, and they fail cleanly there instead of crashing. This is the contract already documented for device-control steps.
+- Like `setLocation` / `push`, these steps need a per-device control channel, so they are **unavailable on the fake driver and in parallel runs**. They fail cleanly there instead of crashing, which is the contract already documented for device-control steps.
 
 Prime directives preserved:
 
 - **Determinism.** Each step is a deterministic device mutation with a machine-checkable result. There is no `sleep`-to-settle and no LLM, so the run/CI gate stays AI-free.
 - **App-agnostic.** There is no per-app code. An app-specific value (a status-bar time) lives in the scenario, or in `apps.<name>` config when shared. The tool, drivers, and runner are unchanged across apps.
-- **Codegen.** These steps have no app-level XCUITest equivalent, because they work at the `simctl` level. Codegen therefore emits a labeled `// TODO` that names the command, consistent with [BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md).
+- **Codegen.** These steps have no app-level XCUITest equivalent (they are `simctl`-level), so codegen emits a labeled `// TODO` that names the command, consistent with [BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md).
 
 ## Alternatives considered
 
 - **Approximate each effect from inside the app through deeplinks or launch env.** This works per app, but it pushes the burden onto every target app and breaks app-agnosticism. The tool would behave differently depending on which hooks an app happens to expose. Rejected as the primary mechanism. Launch env remains available for genuinely app-specific setup.
-- **Drive the system through the alert-guard vision path (screenshot plus tap).** That path exists for SpringBoard prompts that idb cannot see. It is an AI fallback and must never enter the deterministic run gate. Rejected, because it would put an LLM on the run path.
+- **Drive the system through the alert-guard vision path (screenshot plus tap).** That path exists for SpringBoard prompts that idb cannot see, but it is an AI fallback and must never enter the deterministic run gate. Rejected, because it would put an LLM on the run path.
 
 ## Progress
 

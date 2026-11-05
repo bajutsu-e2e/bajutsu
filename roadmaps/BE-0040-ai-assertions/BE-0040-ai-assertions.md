@@ -27,13 +27,13 @@ The difficulty is the reason this item is deferred. The obvious implementation p
 
 This is a proposal at design altitude. The tension with prime directive #1 is the central question.
 
-**Why it is deferred.** Prime directive #1 says the `run`/CI gate is fully deterministic. Pass/fail comes only from machine-checkable assertions, never from an LLM. An AI assertion in its literal form is an LLM deciding pass/fail, which is exactly what the gate forbids. The same model on the same screen can answer differently across runs and across model versions. A suite built on AI assertions would have a non-reproducible verdict and could drift silently. That is disqualifying for the Tier-2 gate, so the literal feature cannot be adopted as-is.
+**Why it is deferred.** Prime directive #1 says the `run`/CI gate is fully deterministic. Pass/fail comes only from machine-checkable assertions, never from an LLM. An AI assertion in its literal form is an LLM deciding pass/fail, which is exactly what the gate forbids. The same model on the same screen can answer differently across runs and across model versions, so a suite built on AI assertions would have a non-reproducible verdict and could drift silently. That is disqualifying for the Tier-2 gate, so the literal feature cannot be adopted as-is.
 
 **The only shape that could fit: an authoring aid that lowers to a deterministic check.** The path that respects the boundary keeps the natural-language expectation strictly on the *author* side (record / triage) and never in `run`. There, a model would read the expectation against the captured screen and the accessibility element tree. It would then *propose* a concrete deterministic assertion: an `expect` over element existence, a trait, or a value (the same DSL that §6.4 already runs deterministically).
 
 The human reviews that proposed assertion as a diff, exactly like any other AI-authored step (DESIGN §3.1, §6.5: "AI output is always a proposed diff"). What is committed, and what `run` evaluates, is the lowered, machine-checkable assertion, never the natural-language sentence and never a live model call. The natural-language text can be kept as a provenance comment (`# from:`) for readability.
 
-Lowering may not be possible for a given expectation. The screen genuinely cannot be pinned to an identifier, trait, or value. Then there is no deterministic assertion to commit. The right answer is to surface that to the author, not to fall back to a live LLM judgement. The feature, if taken up, is an authoring assist and not a new kind of runtime check.
+Lowering may not be possible for a given expectation, when the screen genuinely cannot be pinned to an identifier, trait, or value. In that case there is no deterministic assertion to commit, and the right answer is to surface that to the author, not to fall back to a live LLM judgement. The feature, if taken up, is an authoring assist and not a new kind of runtime check.
 
 ## Alternatives considered
 
