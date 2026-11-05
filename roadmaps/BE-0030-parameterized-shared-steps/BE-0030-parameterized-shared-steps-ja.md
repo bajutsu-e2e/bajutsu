@@ -28,7 +28,7 @@
 
 ## 詳細設計
 
-[*コンポーネント*](../../docs/ja/glossary.md#scenario-authoring)は、再利用可能でパラメータ化されたステップ列で、単一のマッピングとして独立したファイルに定義します。マッピングは、呼び出し側が渡すべき引数名を並べた `params` リストと、それらを `${params.<name>}` として参照する `steps` から成ります（`bajutsu/scenario/` の `Component`）。シナリオは `use` ステップ（`use: { component: <file>, with: { <name>: <value>, … } }`）で呼び出し、宣言された各 param に `with` で値を渡します。
+[*コンポーネント*](../../docs/ja/glossary.md#シナリオのオーサリング)は、再利用可能でパラメータ化されたステップ列で、単一のマッピングとして独立したファイルに定義します。マッピングは、呼び出し側が渡すべき引数名を並べた `params` リストと、それらを `${params.<name>}` として参照する `steps` から成ります（`bajutsu/scenario/` の `Component`）。シナリオは `use` ステップ（`use: { component: <file>, with: { <name>: <value>, … } }`）で呼び出し、宣言された各 param に `with` で値を渡します。
 
 展開は、ランタイムのアクションではなく、純粋なコンパイル時マクロです。run の前に `expand_components` が全シナリオを走査し、各 `use` ステップをその場で、参照先コンポーネントの steps に置き換えます。`with` の値は、共通の `${...}` 補間プリミティブ（`interp.interpolate`、キーは `params.<name>`）で置換します。
 

@@ -25,7 +25,7 @@
 
 シナリオ文法のうち構造的にマッピングできる範囲が広いほど、成功したシナリオはチームの自前 Xcode CI へそのまま引き継がれます。それこそが codegen の目的です。現状の残りの欠落は、次の 2 種類です。
 
-- **未知のセレクタ形式。** `_element` のフォールバックに到達した[セレクタ](../../docs/ja/glossary.md#scenario-authoring)は、`el("UNSUPPORTED_SELECTOR")` を出力します。
+- **未知のセレクタ形式。** `_element` のフォールバックに到達した[セレクタ](../../docs/ja/glossary.md#シナリオのオーサリング)は、`el("UNSUPPORTED_SELECTOR")` を出力します。
 - **まっすぐ `// TODO: unsupported step` に落ちるステップ種別。** `setLocation`、`push`、既存の settle コメントを超える `gone` 以外の `until` 待機、`request` アサーションが該当します。
 
 フォールバック集合に残る構文の 1 つひとつが、codegen で完全には再現できないフローです。

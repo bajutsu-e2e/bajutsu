@@ -16,7 +16,7 @@
 
 ## Introduction
 
-Repeat one scenario over multiple rows via `data` (inline) or `dataFile` (CSV). The runner substitutes `${row.*}` per row (`expand_data`). The feature suits multilingual and boundary-value testing.
+Repeat one scenario over multiple rows via `data` (inline) or `dataFile` (CSV). Load-time expansion substitutes `${row.*}` per row (`expand_data`). The feature suits multilingual and boundary-value testing.
 
 ## Motivation
 

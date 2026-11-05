@@ -19,7 +19,7 @@
 
 ## 動機
 
-[`capturePolicy`](../../docs/ja/glossary.md#evidence-capturepolicy-trace-triage) のルールは、そのトリガーがマッチする「たびに」発火します（DESIGN §9 A、`docs/evidence.md`）。反復可能で決定的な証跡を得るというのがまさにその狙いです。しかし同時に、広すぎるルールが、run の終了まで見えない形で高コストになります。
+[`capturePolicy`](../../docs/ja/glossary.md#証跡-capturepolicy-trace-triage) のルールは、そのトリガーがマッチする「たびに」発火します（DESIGN §9 A、`docs/evidence.md`）。反復可能で決定的な証跡を得るというのがまさにその狙いです。しかし同時に、広すぎるルールが、run の終了まで見えない形で高コストになります。
 
 `{ action: tap, idMatches: "*.submit" }` のようなトリガーは「送信ボタン」と読めます。ところが、緩い glob は、著者の意図よりはるかに多くのステップにマッチしえます。忙しいフローでの `event: screenChanged` ルールも同様です。そうしたルールに重い取得（`video`、`network`）を付けると、run は静かに数ギガバイトの成果物を生み、遅くなります。§9 が警告する観測者効果のリスクも招きます。
 
