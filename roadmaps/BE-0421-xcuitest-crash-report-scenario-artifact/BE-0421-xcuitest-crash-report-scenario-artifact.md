@@ -141,7 +141,7 @@ this scenario. That moment is **`end_lease`**, not the discard.
 pool shutdown, and the cleanup of a failed lease all release through `teardown` instead.
 
 Both sites share one predicate, `_runner_crashed()`. It asks exactly the two signals on which
-`_runner_alive` declares a mid-run crash:
+`_runner_alive` declares a mid-run crash, and either one alone is enough:
 
 - the `xcodebuild` leader exited
 - the capture of the leader carries the marker saying that the XCTest run ended while the process
@@ -217,8 +217,8 @@ runner that keeps crash-looping cannot make the evidence write of one scenario u
 
 Both entries stay best-effort throughout. `_result_bundle_path` and `_capture_stall` take the same
 posture for their own captures. A missing log resolves to that entry being skipped, and never to a
-raise. So does an unreadable `DiagnosticReports` directory, which any platform but macOS or a
-sandboxed CI runner with no read permission produces. So does a report that never showed up in time.
+raise. So does an unreadable `DiagnosticReports` directory, the case on any platform but macOS, and
+on a sandboxed CI runner with no read permission. So does a report that never showed up in time.
 
 This ordering is what a released, then re-leased, environment cannot undo. The snapshot is already
 taken and cached before `free.put(udid)` runs. The state changes of a later respawn never touch it.
@@ -260,7 +260,7 @@ The loop therefore keeps the crashed lease in a variable of its own, `crashed_lz
 `except BackendCrashError` handler assigns it.
 
 `Lease` ([`bajutsu/common/runner/types.py`](../../bajutsu/common/runner/types.py)) gains one more
-field. The field has a module-level no-op default, the way its `relaunch` and `control` neighbors
+field. The field gets a module-level no-op default, the way its `relaunch` and `control` neighbors
 already do:
 
 ```python
