@@ -1,14 +1,14 @@
-[English](BE-XXXX-adb-resident-read-timeout-recovery.md) · **日本語**
+[English](BE-0477-adb-resident-read-timeout-recovery.md) · **日本語**
 
-# BE-XXXX — 読み取りの時間切れで Android の常駐サーバーを手放さない
+# BE-0477 — 読み取りの時間切れで Android の常駐サーバーを手放さない
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-adb-resident-read-timeout-recovery-ja.md) |
+| 提案 | [BE-0477](BE-0477-adb-resident-read-timeout-recovery-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0477") |
 | 実装 PR | [#2349](https://github.com/bajutsu-e2e/bajutsu/pull/2349) |
 | トピック | プラットフォーム対応 |
 <!-- /BE-METADATA -->

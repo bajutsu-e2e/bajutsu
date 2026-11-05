@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-adb-resident-read-timeout-recovery-ja.md)
+**English** · [日本語](BE-0477-adb-resident-read-timeout-recovery-ja.md)
 
-# BE-XXXX — Keep the Android resident server through a read timeout
+# BE-0477 — Keep the Android resident server through a read timeout
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-adb-resident-read-timeout-recovery.md) |
+| Proposal | [BE-0477](BE-0477-adb-resident-read-timeout-recovery.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0477") |
 | Implementing PR | [#2349](https://github.com/bajutsu-e2e/bajutsu/pull/2349) |
 | Topic | Platform support |
 <!-- /BE-METADATA -->
