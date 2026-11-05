@@ -16,55 +16,61 @@
 
 ## はじめに
 
-Bajutsu はシナリオを 2 つのターゲットのネイティブテストにトランスパイルします。iOS 向けの
-XCUITest と、web 向けの Playwright です（`bajutsu/codegen_emit.py` の
-`EMIT_TARGETS = ("xcuitest", "playwright")`）。Android バックエンド
+Bajutsu はシナリオを、2 つのターゲットのネイティブテストにトランスパイルします。ターゲットは、
+iOS 向けの XCUITest と web 向けの Playwright です。
+`bajutsu/codegen_emit.py` の `EMIT_TARGETS = ("xcuitest", "playwright")` がこれを定めます。Android バックエンド
 （[BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md)）には codegen ターゲットが
-なく、シナリオをネイティブの Android テストとして出力できません。本項目は 3 つ目のターゲットと
-して Android エミッタ（Kotlin、Espresso または UI Automator）を追加し、iOS と Android の同等性の
-ギャップのうち codegen 側を埋めます。
+ありません。そのため、シナリオをネイティブの Android テストとして出力できません。
+
+本項目は、3 つ目のターゲットとして Android エミッタ（Kotlin、Espresso または UI Automator）を
+追加します。iOS と Android の同等性のギャップのうち、codegen 側を埋めます。
 
 ## 動機
 
 [BE-0083](../BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification-ja.md) は、
-新しいエミッタが自身のターゲット固有の行構文だけを供給すればよいように、共通のシナリオ walk を
-すでに抽出しています。そしてその動機となる 3 つ目のエミッタとして「Android codegen ターゲットの
-追加」を名指ししていました。統合の作業は済んでいるので、本項目は小さく構造的な残りです。新しい
-走査ではなく、既存の walk の上に載る行単位のエミッタです。codegen は決定論的で LLM を使わない経路
-（シナリオからソースへの構造的なマッピング）なので、`run`/CI ゲートの外にとどまり、prime
-directive の枠内に収まります。
+共通のシナリオ walk をすでに抽出しています。新しいエミッタは、ターゲット固有の行構文だけを供給
+すれば済みます。BE-0083 は、動機となる 3 つ目のエミッタとして「Android codegen ターゲットの追加」
+を名指ししていました。統合の作業は済んでいます。本項目は、小さく構造的な残りです。新しい走査では
+なく、既存の walk の上に載る行単位のエミッタを作ります。
+
+codegen は決定論的で LLM を使わない経路で、シナリオからソースへの構造的なマッピングです。
+`run`/CI ゲートの外にとどまり、prime directive の枠内に収まります。
 
 ## 詳細設計
 
 ### ターゲットの方言
 
 Espresso（`onView(withId(...)).perform(...)`）と UI Automator
-（`device.findObject(By.res(...)).click()`）がどちらも候補です。UI Automator は adb ドライバの
-座標／id モデルと、アプリをプロセス外からブラックボックスとして見る視点に、より直接的に対応する
-ので、バックエンドが実際に行っていることの近い双子です。Espresso は、既知のアプリに対する
-インストルメンテーションテストとしてはより自然に読めます。方言の選択がここでの唯一の設計判断で
-あり、エミッタを実装する時点で決めます。
+（`device.findObject(By.res(...)).click()`）がどちらも候補です。
+
+UI Automator は、adb ドライバの座標／id モデルに、より直接的に対応します。アプリをプロセス外から
+ブラックボックスとして見る視点も、ドライバと共通です。バックエンドが実際に行っていることの
+近い双子です。Espresso は、既知のアプリに対するインストルメンテーションテストとして、より自然に
+読めます。
+
+方言の選択が、ここでの唯一の設計判断です。エミッタを実装する時点で決めます。
 
 ### 作業分解（MECE）
 
 1. **方言を選ぶ**（UI Automator か Espresso か）。根拠を記録します。
 2. **行単位のエミッタ**（`bajutsu/codegen_espresso.py`、あるいは UI Automator にちなんだ名前の
-   モジュール）を BE-0083 の共通 walk の上に作ります。起動行、各ステップ（`tap`／`type`／`swipe`／
-   system back／deeplink）、`expect` ブロックを、選んだ Kotlin の方言で出力します。
-3. **セレクタのマッピング**を `resource-id`／`text`／`content-desc` に対応させ、adb ドライバ自身の
-   マッピングをなぞることで、生成されたテストがドライバと同じ方法で要素を解決するようにします。
+   モジュール）を、BE-0083 の共通 walk の上に作ります。起動行、各ステップ（`tap`／`type`／
+   `swipe`／system back／deeplink）、`expect` ブロックを、選んだ Kotlin の方言で出力します。
+3. **セレクタのマッピング**を、`resource-id`／`text`／`content-desc` に対応させます。adb ドライバ
+   自身のマッピングをなぞるので、生成されたテストはドライバと同じ方法で要素を解決します。
 4. **ターゲットを登録する**。`EMIT_TARGETS` と `codegen_emit` のディスパッチに登録し、Android
-   ターゲットに限定します（Playwright ターゲットが web ターゲットに限定されているのと同じです）。
-5. **検証**。シナリオ fixture に対する golden 出力テストを byte-for-byte で行います。XCUITest と
+   ターゲットに限定します。Playwright ターゲットが web ターゲットに限定されているのと同じです。
+5. **検証**。シナリオ fixture に対する golden 出力テストを、byte-for-byte で行います。XCUITest と
    Playwright のエミッタと同じく、実機のいらない純粋な fast ゲートのチェックです。
 
 ## 検討した代替案
 
-- **Espresso か UI Automator か**。上記のとおり方言の判断として扱い、別項目としては切り出しません。
-- **Appium クライアントの codegen ターゲット（Python／Java）**。先送りします。これは BE-0007 が
-  同じく先送りしている Appium アクチュエータの代替案と対になります。最初の Android エミッタは
-  出荷済みの adb バックエンドのモデルに合わせるので、UI Automator／Espresso が自然な最初の
-  ターゲットです。
+- **Espresso か UI Automator か**は、上記のとおり方言の判断として扱い、別項目としては切り出し
+  ません。
+- **Appium クライアントの codegen ターゲット（Python／Java）**は、先送りします。BE-0007 が同じく
+  先送りしている Appium アクチュエータの代替案と、対になるからです。
+  最初の Android エミッタは、出荷済みの adb バックエンドのモデルに合わせます。
+  そのため、UI Automator／Espresso が自然な最初のターゲットです。
 
 ## 進捗
 
