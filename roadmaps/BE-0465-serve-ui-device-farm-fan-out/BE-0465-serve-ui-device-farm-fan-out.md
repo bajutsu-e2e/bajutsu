@@ -19,10 +19,12 @@ This item gives the serve web UI an entry point for a Device Farm fan-out. Today
 fan a target out to AWS Device Farm, one run per scenario, through a hand-written call to
 `POST /api/run-set` alone
 ([BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out.md)).
+
 The Replay tab gains an execution-environment choice. With a device-cloud environment chosen, the
 operator picks several scenarios, and one press of Run dispatches the fan-out. A run-set panel then
-follows every scenario's job in one list. The choice offers a device-cloud environment while a live
-worker advertises it, and hides it otherwise, so an operator no longer dispatches into an
+follows every scenario's job in one list.
+
+The choice offers a device-cloud environment while a live worker advertises it, and hides it otherwise. An operator no longer dispatches into an
 environment that was never served. A worker that stops after the list was fetched still leaves its
 jobs queued, and the panel's no-worker notice names that case.
 
@@ -54,8 +56,8 @@ The hand-written request hides three facts the server already holds:
 
 Once this item ships, an operator dispatches a Device Farm fan-out from the Replay tab without
 writing a request body, and follows every scenario's job in one list. A later reader can check the
-result in two places. The environment choice lists `devicefarm` exactly when a live Device Farm worker
-exists. The run-set panel reports the number of scenarios that the server did not dispatch, instead
+result in two places. The environment choice lists `devicefarm` when a live Device Farm worker
+exists, and omits it otherwise. The run-set panel reports the number of scenarios that the server did not dispatch, instead
 of showing a shorter list without comment.
 
 ## Detailed design
@@ -90,17 +92,17 @@ A new read route, `GET /api/environments`, returns every environment that a live
 The server derives the list from the workers table that capability routing already keeps. A new
 repository method reads the `environment:<name>` tokens of every worker seen within the lease
 timeout. The no-worker notice judges liveness by the same window (`lacks_live_worker`). The method
-reads the capability column, never a job's spec. Each entry carries the environment's kind:
-`batch` for a provider in `BATCH_PROVIDERS`, and `grid` for the `appium` grid that `POST /api/run`
+reads the capability column, never a job's spec.
+
+Each entry carries the environment's kind: `batch` for a provider in `BATCH_PROVIDERS`, and `grid` for the `appium` grid that `POST /api/run`
 already accepts
 ([BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)). The route
 filters nothing by kind. Each caller picks the kinds it can dispatch, so a later entry point for the
 grid reads the same route without changing what the route means. A server without a queue has no
-workers table, so the route
-returns an empty list there. That answer matches the `run-set` refusal on a server without a queue.
+workers table, so the route returns an empty list there. That answer matches the `run-set` refusal on a server without a queue.
 
 The list carries environment names, kinds, and worker counts. It never carries an Amazon Resource Name (ARN) or a
-credential: those values live in each worker's own environment and never reach the server. The route
+credential. Those values live in each worker's own environment and never reach the server. The route
 sits behind the same authentication as the other read routes. The response leaves `local` out. The
 web UI always offers `local`, since the plain `POST /api/run` path serves it.
 
@@ -115,24 +117,26 @@ Choosing a device-cloud environment changes the form in three ways:
 
 1. **Scenarios.** The single-scenario select becomes a multi-select over the target's scenarios,
    with an *All scenarios* option. *All scenarios* sends every name the scenario list showed, so the
-   request names exactly the files the panel labels its rows with. Omitting `scenarios` would let the
-   server list the directory again at dispatch, and a scenario saved from the Editor tab in between
-   would shift every later row onto the wrong file. The server resolves every name before
-   dispatching any job, as it does today. It then dispatches the jobs in the request's order and
-   stops at the first one the concurrency cap rejects, so `jobIds` always pairs, position by
+   request names the files that the panel labels its rows with. Omitting `scenarios` would let the
+   server list the directory again at dispatch. A scenario saved from the Editor tab in between
+   would then shift every later row onto the wrong file.
+   The server resolves every name before dispatching any job, as it does today. It then dispatches the jobs in the request's order and
+   stops at the first one the concurrency cap rejects. As a result, `jobIds` always pairs, position by
    position, with the leading names of `scenarios`.
 2. **Fields the fan-out ignores.** The form hides the device picker and the Workers count, since the
    device-cloud worker reserves the device. It also hides the per-run options `erase`, `headed`,
    and `systemAlertHandling`. `run-set` reads none of them, so a value set there would be dropped
    without notice. The form also hides the Readiness panel, whose checks probe the serve host rather
    than the device cloud. View scenario, the grade badge, and codegen stay bound to the
-   single-scenario select, which the form restores when the operator switches back to `local`.
+   single-scenario select. The form restores that select when the operator switches back to `local`.
 3. **The request.** Run posts `{ target, environment, scenarios? }` to `POST /api/run-set`.
 
 `GET /api/targets` already marks a web target by its backend, so the form turns the device-cloud
 environments off for one and names the reason next to the selector. The form makes no check of its own
 for `app.path`: the server refuses a target without one before dispatching any job, and the form
-shows that refusal like any other. The server stays the authority: its own error response for any
+shows that refusal like any other.
+
+The server stays the authority. Its own error response for any
 other refusal (a 400, or a 429 when the concurrency cap rejects the first job) appears in the form's
 status line unchanged.
 
@@ -141,17 +145,23 @@ status line unchanged.
 A successful dispatch opens a run-set panel in place of the single-run log. The panel holds one row
 per scenario. Each row shows the scenario's file name and its job's status as `GET /api/jobs/{id}`
 reports it: running from dispatch until the run ends, then done with a verdict. A row with a finished
-run links to its report. A job still queued with no live worker shows the no-worker notice that the
-same route already returns, so a row stuck without a worker reads differently from one in flight.
+run links to its report.
+
+A job still queued with no live worker shows the no-worker notice that the
+same route already returns. A row stuck without a worker thus reads differently from one in flight.
 
 The panel polls `GET /api/jobs/{id}` for each row at an interval, and stops polling a row once its
 job is done. The poll reads the status without the log buffer. `GET /api/jobs/{id}` answers with
 the job's whole log today, so one poll per row would re-send every row's log on every tick. Unit 1
 adds a query parameter that leaves the log out (`Job.view(include_lines=False)`, the shape the
-terminal-status payload already stores). When the operator expands a row to read its log, the panel
-opens that job's event stream, the one the single-run view uses, which replays the log from its
-first line. The number of open connections thus stays independent of the number of scenarios. A **Stop all** button cancels every job still queued or running through the existing cancel route.
-For a scheduled Device Farm run, the worker then stops the run, exactly as a single cancel does.
+terminal-status payload already stores).
+
+When the operator expands a row to read its log, the panel opens that job's event stream. This is the stream
+that the single-run view uses, and it replays the log from its first line. The number of open connections thus
+stays independent of the number of scenarios.
+
+A **Stop all** button cancels every job still queued or running through the existing cancel route.
+For a scheduled Device Farm run, the worker then stops the run, as a single cancel does.
 
 The panel compares the number of job ids in the response with the number of scenarios the operator
 chose. When the server dispatched fewer, the panel states how many scenarios it did not dispatch,
@@ -168,8 +178,8 @@ reason.
 - **No change to dispatch, with one exception.** The worker and the Device Farm client stay as they
   are. `POST /api/run-set` keeps its request body. Its jobs needed one fix, found while verifying
   this item, and the Log records it. A job off a config on the server's disk named its files by
-  their paths there. That pinned the job to the server's machine. A Device Farm worker never takes
-  such a pin. The fan-out this item's UI starts thus never ran. The server now ships the config's
+  their paths there. That pinned the job to the server's machine, and a Device Farm worker never takes
+  such a pin. The fan-out that this item's UI starts thus never ran. The server now ships the config's
   directory as a bundle. It refuses a config the bundle cannot carry.
 - **No device filters.** The fan-out keeps reserving one device per run by platform. Choosing a
   model or an operating system version stays out of scope.
@@ -191,13 +201,15 @@ reason.
 ### Work breakdown (MECE)
 
 1. **Environment listing.** Add the repository method that reads live `environment:` tokens, and
-   the `GET /api/environments` route that returns them with their kinds. Cover a live worker, an
-   expired worker, an `appium` worker listed as `grid`, and a server without a queue in tests. Add
+   the `GET /api/environments` route that returns them with their kinds. Tests cover a live worker, an
+   expired worker, an `appium` worker listed as `grid`, and a server without a queue. Add
    the query parameter on `GET /api/jobs/{id}` that leaves the log buffer out.
-2. **Replay form.** Add the Environment selector, limited to the `batch` entries, and its refresh button, the multi-select with
-   *All scenarios*, the hidden fields and the hidden Readiness panel, the turned-off state for a web target, and the
+2. **Replay form.** Add these parts:
+   the Environment selector (limited to the `batch` entries) and its refresh button, the multi-select with
+   *All scenarios*, the hidden fields, the hidden Readiness panel, the turned-off state for a web target, and the
    `POST /api/run-set` request.
-3. **Run-set panel.** Add the per-scenario rows, the per-row polling, the event stream for an expanded row, the report links, the
+3. **Run-set panel.** Add these parts:
+   the per-scenario rows, the per-row polling, the event stream for an expanded row, the report links, the
    no-worker notice, **Stop all**, and the partial-dispatch message.
 4. **Tests and documentation.** Extend the serve-UI dogfood scenarios under `demos/serve-ui/` to
    cover the device-cloud form against a faked worker. Update `docs/web-ui.md` and
@@ -238,7 +250,7 @@ reason.
 Log:
 
 - [#2215](https://github.com/bajutsu-e2e/bajutsu/pull/2215) (Units 1–4) — `GET /api/environments` lists the batch and grid environments.
-  A live worker must advertise one for it to appear. The response gives each a live worker count and carries no ARN or credential.
+  A live worker must advertise an environment for it to appear. The response gives each a live worker count and carries no ARN or credential.
   `GET /api/jobs/{id}?lines=0` omits the log buffer. The Replay tab gains the Environment selector
   and the device-cloud form, and Run posts the chosen scenarios to `POST /api/run-set`.
   The run-set panel tracks one row per job.
@@ -248,30 +260,31 @@ Log:
   languages.
 - [#2215](https://github.com/bajutsu-e2e/bajutsu/pull/2215) (dispatch fix) — A manual run against a
   local `make serve` left every fan-out job queued. Such a job named the config's directory on the
-  server's disk. The queue thus pinned the job with `machine:<id>` (BE-0449). A Device Farm worker
-  refuses that pin. The server now zips that directory into its object store. The archive leaves
-  out what a Device Farm package leaves out. Each job carries the archive as its bundle. The bundle
-  holds the config as `bajutsu.config.yaml`. A scenario's fixtures, components, and binary travel
+  server's disk. The queue therefore pinned the job with `machine:<id>` (BE-0449), and a Device Farm worker
+  refuses that pin.
+  The server now zips that directory into its object store. The archive leaves
+  out what a Device Farm package leaves out. Each job carries the archive as its bundle.
+  The bundle holds the config as `bajutsu.config.yaml`. A scenario's fixtures, components, and binary travel
   with it. `POST /api/run-set` refuses the request when the server has no object store. It also refuses
   a config path the archive cannot carry.
 - [#2215](https://github.com/bajutsu-e2e/bajutsu/pull/2215) (packaging fix) — A worker-built package
-  ran on real Device Farm devices for the first time. Bajutsu did not install there. The package took `pyproject.toml`,
-  `tests/`, and `bajutsu/` from the source tree (BE-0448). Hatchling refuses to build without the
-  readme and license files `pyproject.toml` names. The package now carries `DESIGN.md`, `LICENSE`,
-  and `NOTICE` too.
+  ran on real Device Farm devices for the first time, and Bajutsu did not install there.
+  The package took `pyproject.toml`, `tests/`, and `bajutsu/` from the source tree (BE-0448).
+  Hatchling refuses to build without the readme and license files `pyproject.toml` names.
+  The package now carries `DESIGN.md`, `LICENSE`, and `NOTICE` too.
 - [#2215](https://github.com/bajutsu-e2e/bajutsu/pull/2215) (application fix) — With Bajutsu
   installed, the on-device run stopped at `app.path not found`. The run installs the binary that
-  `app.path` names, as a local run does. The worker had left that binary out of the package, since it
-  also goes up as the app upload (BE-0448). Device Farm installs that upload before the run starts,
-  so the package now carries a `devicefarm-host` worker file, and every run takes it as
-  `--worker-config`. Its device provider reports the device booted with the app installed. The run
-  launches that build and installs nothing, on Android and iOS alike. An iOS real device refused an
-  `app.path` outright, so this also lets an iOS target fan out.
+  `app.path` names, as a local run does. The worker had left that binary out of the package, since the binary
+  also goes up as the app upload (BE-0448).
+  Device Farm installs that upload before the run starts, so the package now carries a `devicefarm-host` worker file.
+  Every run takes the file as `--worker-config`. Its device provider reports the device booted with the app installed.
+  The run launches that build and installs nothing, on Android and iOS alike.
+  An iOS real device refused an `app.path` outright, so the change also lets an iOS target fan out.
 - [#2215](https://github.com/bajutsu-e2e/bajutsu/pull/2215) (iOS runner fix) — The first iOS run on
-  a real Device Farm iPhone stopped before Bajutsu started: the iPhone refused the runner
+  a real Device Farm iPhone stopped before Bajutsu started. The iPhone refused the runner
   (`0xe8008012`), whose profile did not list it. An `APPIUM_PYTHON` run delivers the runner with the
-  signature it was built with, and the run reserves whichever iPhone is free. The worker now submits
-  an iOS job as an `XCTEST_UI` run, whose test package Device Farm re-signs for the reserved device.
+  signature it was built with, and the run reserves whichever iPhone is free.
+  The worker now submits an iOS job as an `XCTEST_UI` run, whose test package Device Farm re-signs for the reserved device.
   The package carries the runner app at its root and Bajutsu under `bajutsu-package/`. The test spec
   copies the re-signed runner to the path `driver.runner.testRunner` names. Android keeps
   `APPIUM_PYTHON`.

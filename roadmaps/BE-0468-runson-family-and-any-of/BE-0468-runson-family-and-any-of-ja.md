@@ -31,38 +31,21 @@
 
 ## 動機
 
-現状の config は「どの iPad でもよい」と書けません。デバイスタイプを 1 つ名指しする必要があり、
-Apple は Xcode のリリースごとにデバイスタイプを改名・入れ替えします。`"iPad Pro 13-inch (M4)"` を
-固定したターゲットは、その型を持たない Xcode のホストで一致しなくなります。シナリオが必要としたのは
-タブレット程度の画面だけなのに、run は `model` の条件不一致で失敗します。モデルを書かないターゲットなら
-失敗は避けられますが、意図も失われます。run はプール順で最初のモデルを使うので、ホストによって
-iPhone になることも iPad になることもあります。`model` のリストも役に立ちません。リストは値ごとに
-1 回ずつ実行する意味なので、`model: [iPhone …, iPad …]` と書くと、どちらか一方でよい場合でも run が
-倍になります。
+現状の config は「どの iPad でもよい」と書けません。デバイスタイプを 1 つ名指しする必要があり、Apple は Xcode のリリースごとにデバイスタイプを改名したり入れ替えたりします。`"iPad Pro 13-inch (M4)"` を固定したターゲットは、その型を持たない Xcode のホストで一致しなくなります。シナリオが必要としたのはタブレット程度の画面だけなのに、run は `model` の条件不一致で失敗します。
 
-ターゲットはまた、デバイスの種類を 1 つしか宣言できません。Simulator でも実機でも同じように動くアプリは
-多いのに、両方を対象にするには、ほかの設定が同じターゲットを 2 つ作る必要があります。ターゲットを
-名指しするシナリオはそのどちらかを選ばなければならず、両方を名指しすると、2 台を同時に使う
-複数ターゲットのシナリオになってしまいます。
+モデルを書かないターゲットなら失敗は避けられますが、意図も失われます。run はプール順で最初のモデルを使うので、ホストによって iPhone になることも iPad になることもあります。`model` のリストも役に立ちません。リストは値ごとに 1 回ずつ実行する意味なので、`model: [iPhone …, iPad …]` と書くと、どちらか一方でよい場合でも run が倍になります。
 
-ブラウザにも同じ隙間があります。`engine` が指定するのは Playwright のレンダリングエンジン（`chromium`、
-`firefox`、`webkit`）で、利用者が使うブラウザではなく実装の詳細です。config は、Playwright が
-`chromium` エンジンにチャネルを添えて起動する Chrome や Edge を指定できません。1 つの選択に名前が
-2 つ並んでもいます。config では `engine`、コマンドラインでは `--browser` です。
+ターゲットはまた、デバイスの種類を 1 つしか宣言できません。Simulator でも実機でも同じように動くアプリは多いのに、両方を対象にするには、ほかの設定が同じターゲットを 2 つ作る必要があります。ターゲットを名指しするシナリオはそのどちらかを選ばなければなりません。両方を名指しすると、2 台を同時に使う複数ターゲットのシナリオになってしまいます。
 
-出荷後に確かめられる結果は具体的です。`runsOn.ios.family: [iphone, ipad]` と書いた config は、Xcode の
-更新ですべてのデバイスタイプが改名されても、config を直さずに解決し続けます。`kind: [simulator, device]`
-を持つターゲット 1 つで、各シナリオを両方で実行でき、`--kind device` なら実機だけで実行します。各 run の
-ラベル、マニフェスト、`doctor` の一覧には、その run が使った種類、ファミリー、モデルが表示されます。
+ブラウザにも同じ隙間があります。`engine` が指定するのは Playwright のレンダリングエンジン（`chromium`、`firefox`、`webkit`）です。これは利用者が使うブラウザではなく、実装の詳細です。config は、Playwright が `chromium` エンジンにチャネルを添えて起動する Chrome や Edge を指定できません。1 つの選択に名前が 2 つ並んでもいます。config では `engine`、コマンドラインでは `--browser` です。
+
+出荷後に確かめられる結果は具体的です。`runsOn.ios.family: [iphone, ipad]` と書いた config は、Xcode の更新ですべてのデバイスタイプが改名されても、config を直さずに解決し続けます。`kind: [simulator, device]` を持つターゲット 1 つで、各シナリオを両方で実行できます。`--kind device` なら実機だけで実行します。各 run のラベル、マニフェスト、`doctor` の一覧には、その run が使った種類、ファミリー、モデルが表示されます。
 
 ### 対象範囲
 
-本項目は、対になる提案「runsOn を実行先ごとにまとめ、シナリオの runsOn を廃止する」の上に載り、
-その提案が先に入ります。対になる提案は、すべてのフィールドを `runsOn.ios`、`runsOn.android`、
-`runsOn.browser` の下へ移し、シナリオの `runsOn` を取り除きます。本項目はそのフィールドの一部の意味を
-変えるだけで、フィールドは移しません。Android には `family` も `kind` も加えません。`avd` を省略した
-Android ターゲットはすでに任意のエミュレーターを受け入れ、Android のフォームファクター（スマートフォンか
-タブレットか）には別のデバイスの読み取りが要るので、どちらも本項目の外に置きます。
+本項目は、対になる提案「runsOn を実行先ごとにまとめ、シナリオの runsOn を廃止する」の上に載り、その提案が先に入ります。対になる提案は、すべてのフィールドを `runsOn.ios`、`runsOn.android`、`runsOn.browser` の下へ移し、シナリオの `runsOn` を取り除きます。本項目はそのフィールドの一部の意味を変えるだけで、フィールドは移しません。
+
+Android には `family` も `kind` も加えません。`avd` を省略した Android ターゲットは、すでに任意のエミュレーターを受け入れます。Android のフォームファクター（スマートフォンかタブレットか）には別のデバイスの読み取りが要ります。そのため、どちらも本項目の外に置きます。
 
 ## 詳細設計
 
@@ -77,11 +60,9 @@ Android ターゲットはすでに任意のエミュレーターを受け入れ
 | `runsOn.ios.family` | プールにある最初のファミリーで 1 回実行 | なし |
 | `runsOn.ios.model`、`runsOn.android.avd` | 従来どおり、挙げた値ごとに 1 回ずつ実行 | なし |
 
-`kind` のリストは、ターゲットが対応する実行環境を宣言します。そのため run はそれぞれを対象にし、現在の
-[BE-0076](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md) のクロスブラウザの
-マトリックスと同じように動きます。`family` のリストは、どのデバイスなら足りるかを述べます。そのため、
-合う最初のものを 1 回だけ使います。`family` のリストでは記載順が結果を決め、同じプールからは常に同じ
-結果になります。
+`kind` のリストは、ターゲットが対応する実行環境を宣言します。そのため run はそれぞれを対象にし、現在の [BE-0076](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md) のクロスブラウザのマトリックスと同じように動きます。
+
+`family` のリストは、どのデバイスなら足りるかを述べます。そのため、合う最初のものを 1 回だけ使います。`family` のリストでは記載順が結果を決め、同じプールからは常に同じ結果になります。
 
 ### iOS の `kind`
 
@@ -99,9 +80,7 @@ targets:
         family: ipad
 ```
 
-`bajutsu run --target app` は、各シナリオを 2 回実行します。iPad の Simulator で 1 回、接続した iPad で
-1 回です。`bajutsu run --target app --kind device` は、接続した iPad で 1 回だけ実行します。`app` を
-名指しするシナリオは 1 ファイルのままで、config も両方の種類に対してターゲット 1 つで済みます。
+`bajutsu run --target app` は、各シナリオを 2 回実行します。iPad の Simulator で 1 回、接続した iPad で 1 回です。`bajutsu run --target app --kind device` は、接続した iPad で 1 回だけ実行します。`app` を名指しするシナリオは 1 ファイルのままです。config も、両方の種類に対してターゲット 1 つで済みます。
 
 `--kind` は種類を 1 つ、またはカンマ区切りのリストで取ります。指定する種類は、ターゲットが挙げたもので
 なければなりません。挙げていない種類を指定すると終了コード 2 で終わり、ターゲットの種類を示します。
@@ -133,10 +112,9 @@ targets:
         kind: [chrome, edge, firefox]   # --browser で選ばなければ、それぞれで 1 回ずつ
 ```
 
-`--browser <kind>` はブラウザ 1 つで、`--browsers <kind>,<kind>` は一部のブラウザで、それぞれ 1 回ずつ
-実行します。フラグは `kind` の値を取るので、`--browser chrome` と書けます。種類を挙げたターゲットでは、
-指定する種類は挙げたものでなければならず、そうでなければ終了コード 2 で終わります。`kind` を書かない
-ターゲットでは、現在の `--browser` が任意のエンジンを取れるのと同じく、任意の種類を指定できます。
+`--browser <kind>` はブラウザ 1 つで、`--browsers <kind>,<kind>` は一部のブラウザで、それぞれ 1 回ずつ実行します。フラグは `kind` の値を取るので、`--browser chrome` と書けます。
+
+種類を挙げたターゲットでは、指定する種類は挙げたものでなければならず、そうでなければ終了コード 2 で終わります。`kind` を書かないターゲットでは、現在の `--browser` が任意のエンジンを取れるのと同じく、任意の種類を指定できます。
 
 ### iOS の `family`
 
@@ -146,28 +124,18 @@ targets:
 | `family: [iphone, ipad]` | プールにある、最初に挙げたファミリーのデバイス 1 台 |
 | `family` を省略 | 従来どおりプールの任意のデバイス |
 
-`family` が取る値は `iphone` と `ipad` です。どちらも小文字で、大文字と小文字を区別します。
-Simulator のファミリーは、`simctl list devicetypes` がデバイスタイプごとに報告する `productFamily`
-（`iPhone`、`iPad`）です。ほかのファミリー（Apple TV、Apple Watch）のデバイスタイプは読み取れますが、
-一致することはありません。Simulator も実機もファミリーを報告するので、`family` はどの `kind` とも
-組み合わせられます。
+`family` が取る値は `iphone` と `ipad` です。どちらも小文字で、大文字と小文字を区別します。Simulator のファミリーは、`simctl list devicetypes` がデバイスタイプごとに報告する `productFamily`（`iPhone`、`iPad`）です。ほかのファミリー（Apple TV、Apple Watch）のデバイスタイプは読み取れますが、一致することはありません。Simulator も実機もファミリーを報告するので、`family` はどの `kind` とも組み合わせられます。
 
 ### ローダーが強制する規則
 
 どの規則も、チームのデフォルト値を畳み込んだ後の config ブロックで判定します。
 
-- `family` と `model` を併記すると、読み込みが失敗し、両方のフィールド名を示します。継承された側は
-  ターゲットが `null` で解除します。
-- `kind` に `device` が含まれるとき、`model` と `os` を書くと読み込みが失敗します。実機ではこれらを
-  確かめられないからです。Simulator だけのターゲットは、従来どおり両方を書けます。
-- `appium` のグリッドや Device Farm のジョブが担うターゲットには読み取るプールがないので、現在の
-  すべての条件と同じく、`family` もデバイスの作業の前に失敗します。
-- ブラウザの種類のリストと `runsOn.browser.version` の併記は、現在のエンジンのリストと同じ理由で
-  読み込みが失敗します。ブラウザごとにバージョンの付け方が違うからです。
+- `family` と `model` を併記すると、読み込みが失敗し、両方のフィールド名を示します。継承された側はターゲットが `null` で解除します。
+- `kind` に `device` が含まれるとき、`model` と `os` を書くと読み込みが失敗します。実機ではこれらを確かめられないからです。Simulator だけのターゲットは、従来どおり両方を書けます。
+- `appium` のグリッドや Device Farm のジョブが担うターゲットには、読み取るプールがありません。現在のすべての条件と同じく、`family` もデバイスの作業の前に失敗します。
+- ブラウザの種類のリストと `runsOn.browser.version` の併記は、読み込みが失敗します。理由は、現在のエンジンのリストと同じです。ブラウザごとにバージョンの付け方が違うからです。
 - 空のリスト、重複した項目、未知の種類やファミリーは、読み込みが失敗し、許される値を示します。
-- `runsOn.browser.engine` は読み込みが失敗し、`kind` を示します。メッセージには、`kind` のリストも
-  `engine` のリストと同じく挙げたブラウザごとに 1 回ずつ実行するので、書き換えても run は減らないことを
-  書きます。
+- `runsOn.browser.engine` は読み込みが失敗し、`kind` を示します。メッセージには、`kind` のリストも `engine` のリストと同じく挙げたブラウザごとに 1 回ずつ実行すると書きます。書き換えても run は減りません。
 
 `family` は、Simulator では `os` と組み合わせられます。バージョン範囲は従来どおり run を倍増させます。
 メジャーバージョンごとの run は、そのバージョンのデバイスの中から自分のファミリーを選びます。
@@ -185,57 +153,33 @@ Simulator のファミリーは、`simctl list devicetypes` がデバイスタ�
 4. 挙げたファミリーのどれにもデバイスがなければ、run は失敗します。理由には、種類、挙げたファミリー、
    利用可能なデバイスを書きます。現在の `model` 欠落と同じ扱いです。
 
-`eligible_set` は、勝ったファミリーに絞ってから既存の規則を適用します。規則は、プール順で最初のモデル、
-その中で台数が足りる最新のリリースです。必要台数が勝ったファミリーのデバイス数を超えても、規則は
-勝者の外を探しません。その run は失敗し、ファミリー名を示します。ここでは、収まる最大の組み合わせより
-決定的な選択を優先します。
+`eligible_set` は、勝ったファミリーに絞ってから既存の規則を適用します。規則は、プール順で最初のモデル、その中で台数が足りる最新のリリースです。必要台数が勝ったファミリーのデバイス数を超えても、規則は勝者の外を探しません。その run は失敗し、ファミリー名を示します。ここでは、収まる最大の組み合わせより決定的な選択を優先します。
 
-2 つ以上のファミリーから 1 つを選んだ run には、座標 `family=ipad` が加わります。座標は run のラベル、
-マニフェストの `run_coordinates`、flakiness のキー（デバイス OS の隣）に表示されます。座標がないと、
-勝者の違うホストにまたがって同じシナリオが 1 本の履歴に入り、iPhone と iPad のレイアウト差が
-flakiness に見えてしまいます
-（[BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact-ja.md)）。
-`family: ipad` の単独指定は、単独の `model` と同じく座標を加えません。
+2 つ以上のファミリーから 1 つを選んだ run には、座標 `family=ipad` が加わります。座標は run のラベル、マニフェストの `run_coordinates`、flakiness のキー（デバイス OS の隣）に表示されます。
 
-両方の種類を挙げたターゲットには、両方を含むプールが要ります。プールは `--udid` で渡したすべての udid で、
-各 udid はそれを示す一覧の種類に属します。Simulator なら `simctl`、実機なら `devicectl` です。どちらの
-一覧にも出ない udid は `DeviceReadError` にします。各 run の種類が、その run の XCUITest の実行先を
-決めます。現在は `kind` がターゲット全体の実行先を決めています。リストに `device` を含むターゲットには、
-`kind: device` のターゲットと同じく、署名した実機用の runner が要ります。
+座標がないと、勝者の違うホストにまたがって同じシナリオが 1 本の履歴に入ります。iPhone と iPad のレイアウト差が flakiness に見えてしまいます（[BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact-ja.md)）。`family: ipad` の単独指定は、単独の `model` と同じく座標を加えません。
 
-web では、各 run のブラウザの種類が `TargetRun` の既存のエンジンの欄に入り、チャネルがその隣に並びます。
-`bajutsu/run/device_matrix.py` の `target_pool` は、`read_web` でブラウザごとに `DeviceFacts` を 1 つ
-読みます。この読み取りはブラウザをヘッドレスで起動し、起動できなければ `DeviceReadError` を送出します。
-そのため、ホストにない Chrome や Edge は、その run が確実に失敗として現れます。ドライバーはチャネルを
-Playwright の `launch` に渡します。
+両方の種類を挙げたターゲットには、両方を含むプールが要ります。プールは `--udid` で渡したすべての udid で、各 udid はそれを示す一覧の種類に属します。Simulator なら `simctl`、実機なら `devicectl` です。どちらの一覧にも出ない udid は `DeviceReadError` にします。
 
-`record`、`crawl`、`repl` は run を倍増させません。`--kind` や `--browser` が種類を指定しなければ最初に
-挙げた種類を使い、最初に解決できるファミリーを使い、何も合わなければ終了コード 2 で終わります。
+各 run の種類が、その run の XCUITest の実行先を決めます。現在は `kind` がターゲット全体の実行先を決めています。リストに `device` を含むターゲットには、`kind: device` のターゲットと同じく、署名した実機用の runner が要ります。
+
+web では、各 run のブラウザの種類が `TargetRun` の既存のエンジンの欄に入り、チャネルがその隣に並びます。`bajutsu/run/device_matrix.py` の `target_pool` は、`read_web` でブラウザごとに `DeviceFacts` を 1 つ読みます。`read_web` はブラウザをヘッドレスで起動し、起動できなければ `DeviceReadError` を送出します。そのため、ホストにない Chrome や Edge は、その run が確実に失敗として現れます。ドライバーはチャネルを Playwright の `launch` に渡します。
+
+`record`、`crawl`、`repl` は run を倍増させません。`--kind` や `--browser` が種類を指定しなければ、最初に挙げた種類を使います。ファミリーは最初に解決できるものを使い、何も合わなければ終了コード 2 で終わります。
 
 ### ファミリーの読み取り
 
-`bajutsu/common/devices/facts.py` の `DeviceFacts` に `family: str | None` を加えます。`read_ios` は、
-すでに名前を引くために探しているデバイスタイプの `productFamily` から読み取ります。`productFamily` の
-ないデバイスタイプは `DeviceReadError` にします。読み取りは推測せず、確実に失敗する方針だからです。
-Android と web のデバイスは `None` を持ちます。
+`bajutsu/common/devices/facts.py` の `DeviceFacts` に `family: str | None` を加えます。`read_ios` は、すでに名前を引くために探しているデバイスタイプの `productFamily` から読み取ります。`productFamily` のないデバイスタイプは `DeviceReadError` にします。読み取りは推測せず、確実に失敗する方針だからです。Android と web のデバイスは `None` を持ちます。
 
-実機には専用の読み取り `read_ios_device` を加えます。プールの各 udid を
-`xcrun devicectl list devices` の JSON 出力から読み、`hardwareProperties.deviceType`（`iPhone`、
-`iPad`）をファミリーとします。一覧に出ない udid や、デバイスタイプを報告しない udid は
-`DeviceReadError` にします。読み取るのはファミリーだけです。実機のモデルとリリースも読めますが、
-`model` の条件が比べる相手は、Simulator のデバイスタイプ名ではなく `iPad13,8` のような製品識別子に
-なります。この識別子での照合には別の設計が要るので、実機では `model` と `os` を引き続き拒否します。
-読み取りはデバイスの作業の前に行い、Simulator 向けに `read_ios` が担うプールの読み取りと同じ段階で
-動きます。
+実機には専用の読み取り `read_ios_device` を加えます。プールの各 udid を `xcrun devicectl list devices` の JSON 出力から読み、`hardwareProperties.deviceType`（`iPhone`、`iPad`）をファミリーとします。一覧に出ない udid や、デバイスタイプを報告しない udid は `DeviceReadError` にします。
+
+読み取るのはファミリーだけです。実機のモデルとリリースも読めますが、`model` の条件が比べる相手は、Simulator のデバイスタイプ名ではなく `iPad13,8` のような製品識別子になります。この識別子での照合には別の設計が要るので、実機では `model` と `os` を引き続き拒否します。読み取りはデバイスの作業の前に行い、Simulator 向けに `read_ios` が担うプールの読み取りと同じ段階で動きます。
 
 ### worker での検査
 
-サーバーの worker は、自分が動かせる実機をすでに知っています。そこで、実機の `family` は worker が
-ジョブを引き受ける前に検査します。この検査は
-[BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues-ja.md) の capability
-ルーティングを使います。このルーティングでは、ジョブが必要なトークンを持ち、worker はそのすべてを
-広告しているときに限りジョブを借ります（`bajutsu/serve/capabilities.py` の `can_serve`）。worker は
-すでに、Simulator の一覧から `iphone` と `ipad` を広告しています（`simctl_capabilities`）。
+サーバーの worker は、自分が動かせる実機をすでに知っています。そこで、実機の `family` は worker がジョブを引き受ける前に検査します。この検査は [BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues-ja.md) の capability ルーティングを使います。
+
+このルーティングでは、ジョブが必要なトークンを持ちます。worker は、そのすべてを広告しているときに限りジョブを借ります（`bajutsu/serve/capabilities.py` の `can_serve`）。worker はすでに、Simulator の一覧から `iphone` と `ipad` を広告しています（`simctl_capabilities`）。
 
 - **worker が広告するもの。** worker は、接続している実機について `device:iphone` と `device:ipad` の
   トークンを加えます。読み取りには `read_ios_device` と同じ `devicectl` の読み取りを使います。実機は
@@ -253,10 +197,9 @@ Android と web のデバイスは `None` を持ちます。
   デバイスで実行するかはファミリーのリストが決めます。勝者は run の座標に入るので、flakiness のキーは
   異なるファミリーを使った run を区別します。
 
-どの worker も受け入れられないジョブは、現在の満たされないトークンを持つジョブと同じく、キューに
-残ります。ジョブを借りてから run までのあいだに実機が外れた場合、worker がプールを読む時点で run は
-失敗します。読み取りはデバイスを読み飛ばさず、`DeviceReadError` を送出するからです。ルーティングは
-判定に関わりません。ジョブをどこで実行するかを決めるだけで、run 自体は決定的なままです。
+どの worker も受け入れられないジョブは、現在の満たされないトークンを持つジョブと同じく、キューに残ります。ジョブを借りてから run までのあいだに実機が外れた場合、worker がプールを読む時点で run は失敗します。読み取りはデバイスを読み飛ばさず、`DeviceReadError` を送出するからです。
+
+ルーティングは判定に関わりません。ジョブをどこで実行するかを決めるだけで、run 自体は決定的なままです。
 
 ### スキーマ、レポート、ドキュメント
 
@@ -274,10 +217,7 @@ Android と web のデバイスは `None` を持ちます。
 
 ### 原則との整合
 
-run に LLM は入りません。解決は config、引数、プールだけの純粋関数で、同じ入力からは同じ run が
-できます。曖昧な指定のとき、最初に一致したものを黙って使うことはありません。`family` のリストは順序を
-先に固定し、`kind` のリストはすべての run を名指しし、どの項目にも合わないプールでは run が失敗します。
-差異はすべて config に置きます。
+run に LLM は入りません。解決は config、引数、プールだけの純粋関数で、同じ入力からは同じ run ができます。曖昧な指定のとき、最初に一致したものを黙って使うことはありません。`family` のリストは順序を先に固定します。`kind` のリストはすべての run を名指しします。どの項目にも合わないプールでは、run が失敗します。差異はすべて config に置きます。
 
 ### 対象外
 
@@ -379,7 +319,7 @@ run に LLM は入りません。解決は config、引数、プールだけの�
   - 設計からのずれ：any-of のグループは、専用のフィールドではなく、ジョブの既存の capability のリストに `anyof:<token>|<token>` という 1 つのトークンとして保存します。lease、振り分け先のないジョブの数え上げ、worker 不在の通知は、どれもこの 1 つのリストを `can_serve` で判定します。そのため、スキーマのマイグレーションなしで、3 つの判定がグループについて一致します。
   - もう 1 つのずれ：serve のジョブは、種類のリストの 1 つの run ではなく、ターゲットの `run` 全体です。そのため、ジョブはターゲットが並べるすべての種類について合うデバイスを必要とし、各 run のファミリーは、lease した worker が自分のプールで解決します。
   - 単位 1 がこの単位に残した、抜かれたデバイスの検査は未解決のままです。devicectl は、ペアリング済みのデバイスを、差さっているかどうかにかかわらず一覧に出し、トンネルの状態でも両者を区別できません。そのため、worker は抜かれたデバイスのファミリーも広告し続け、そこへ振り分けられたジョブは、run がデバイスを操作する時点で失敗します。このホストでは、ローカルネットワーク上のペアリング済みの iPhone 14 Pro が `device:iphone` と読めました。iPad も抜いたケーブルも手元になく、それ以上は確かめていません。
-  - ドキュメント：`docs/self-hosting.md` の capability ルーティングの節、`docs/cli.md` の worker の `--capabilities` の行、`docs/drivers.md` の worker 能力の記述、`docs/architecture.md` の `serve/` の行を、それぞれ日本語版とともに更新しました。設定のページには、これまでの単位で `runsOn` の表と例がすでに入っていました。
+  - ドキュメント：次の 4 か所を、それぞれ日本語版とともに更新しました。`docs/self-hosting.md` の capability ルーティングの節、`docs/cli.md` の worker の `--capabilities` の行、`docs/drivers.md` の worker 能力の記述、`docs/architecture.md` の `serve/` の行です。設定のページには、これまでの単位で `runsOn` の表と例がすでに入っていました。
   - デモ：正確な `model` や `engine` を指定するデモがなかったので、書き換える対象はありませんでした。web のデモには `kind: chromium` を加えました。`showcase-swiftui` のターゲットに `family: iphone` を加えることも試しましたが、取りやめました。このターゲットは、デバイスグループのシナリオで `showcase-swiftui-previous` と `showcase-uikit` と 1 台のデバイスを共有するので、3 つとも同じ条件にする必要があります。また、各 run が `simctl list devicetypes` を読むことになり、負荷の高い CI のランナーではこの読み取りが 60 秒で時間切れになりました。そのため、showcase のターゲットは条件のない run のままにしています。手元では、iPhone 17 Pro の Simulator で、`family: iphone` を付けたターゲットが `family=iphone` の 1 つの run に解決しました。
 
 ## 参考

@@ -15,17 +15,17 @@
 
 ## Introduction
 
-This item lets the `request` assertion and the `event` assertion check a query string or a body through key/value dictionaries, such as `query: { page: "2" }` and `body: { user: { id: "42" } }`. Authors write a nested field as a nested YAML map, so the matcher mirrors the shape of the JSON it checks. Each leaf value is either a literal (exact text match) or a small operator map (`$matches` for a regex, `$exists` for presence). One shared matcher serves both assertions. The change covers the assertion side alone: `mocks` keep their current grammar.
+This item lets the `request` assertion and the `event` assertion check a query string or a body through key/value dictionaries, such as `query: { page: "2" }` and `body: { user: { id: "42" } }`. Authors write a nested field as a nested YAML map, so the matcher mirrors the shape of the JSON it checks. Each leaf value is either a literal (exact text match) or a small operator map. The `$matches` operator checks a regex, and `$exists` checks presence. One shared matcher serves both assertions. The change covers the assertion side alone: `mocks` keep their current grammar.
 
 ## Motivation
 
 Today the `request` assertion inspects a query string or a body through a regular expression alone. `urlMatches: "page=2&sort=asc"` breaks when the app reorders its parameters. `bodyMatches: '"id":\s*42'` breaks when the JSON is pretty-printed or its keys move. A scenario author has to think about serialization, though the intent is "the request carried `page=2`".
 
-The `event` assertion already shows the better shape. Its `body: { name: purchase_completed, amount: "300" }` parses the JSON request body and compares each key as text, whatever the key order or spacing. That dictionary has three limits: top-level keys of a JSON body, equality comparison, and the `event` assertion alone. Query strings have no dictionary form at all.
+The `event` assertion already shows the better shape. Its `body: { name: purchase_completed, amount: "300" }` parses the JSON request body and compares each key as text, whatever the key order or spacing. That dictionary has three limits. It covers top-level keys of a JSON body only, it compares for equality only, and it exists only in the `event` assertion. Query strings have no dictionary form at all.
 
-The change gives `request` and `event` one common dictionary grammar for query parameters and body fields. Authors write a nested field as a nested YAML map, and a value may be a regex or an existence check when exact equality is too strict.
+The change gives `request` and `event` one common dictionary grammar for query parameters and body fields. Authors write a nested field as a nested YAML map. A value may be a regex or an existence check when exact equality is too strict.
 
-The observable result is a scenario that survives a harmless change in parameter order or JSON formatting. A check that needed `bodyMatches` with an escaped regex becomes `body: { user: { id: "42" } }`. When one candidate request reached the endpoint, the failure message names the mismatched key, such as `query.page: expected "2", got "3"`. A regex that did not match tells the author far less.
+The observable result is a scenario that survives a harmless change in parameter order or JSON formatting. A check that needed `bodyMatches` with an escaped regex becomes `body: { user: { id: "42" } }`. Suppose exactly one candidate request reached the endpoint. Then the failure message names the mismatched key, such as `query.page: expected "2", got "3"`. A regex that did not match tells the author far less.
 
 ## Detailed design
 
@@ -43,7 +43,7 @@ expect:
         coupon: { $exists: false }
 ```
 
-The example uses YAML flow style (`{ ... }` and `[ ... ]`) to stay compact. Block style, which nests by indentation, loads into the same data, so the matcher sees no difference. Authors may write either style and may mix them inside one matcher. The same scenario in block style reads as follows.
+The example uses YAML flow style (`{ ... }` and `[ ... ]`) to stay compact. Block style nests by indentation and loads into the same data, so the matcher sees no difference. Authors may write either style and may mix them inside one matcher. The same scenario in block style reads as follows.
 
 ```yaml
 expect:
@@ -73,11 +73,15 @@ expect:
 | `query` | `request`, `event` | Each `key: value` must hold for the URL's query string. Both key and value are URL-decoded (`+` reads as a space, as in `urllib.parse.parse_qs`). A key with an empty or missing value (`?debug`, `?page=`) is present with the value `""`, as `URLSearchParams` reads it (`parse_qs(..., keep_blank_values=True)`). A repeated key matches if any occurrence satisfies the value. |
 | `body` | `request` (new), `event` (extended) | Each `key: value` must hold for the parsed JSON request body, recursing into nested maps and lists. |
 
-All criteria stay AND-ed with the existing fields. `bodyMatches` and `urlMatches` keep working unchanged. A matcher that sets only a non-empty `query` or `body` counts as having a criterion, so the "at least one criterion" validators accept it. An empty `query: {}` or `body: {}` is a validation error. An empty dictionary holds for every exchange, so `request: { body: {} }` would match any traffic. The `event` assertion already refuses an empty `body` as its only criterion for the same reason. Because `requestSequence`, `responseSchema.request`, and `until: { request }` reuse the same `RequestMatch` model and `match_request`, they gain `query` and `body` too. The tests and documentation cover them as well.
+All criteria stay AND-ed with the existing fields. `bodyMatches` and `urlMatches` keep working unchanged. A matcher whose sole criterion is a non-empty `query` or `body` counts as having a criterion, so the "at least one criterion" validators accept it.
+
+An empty `query: {}` or `body: {}` is a validation error. An empty dictionary holds for every exchange, so `request: { body: {} }` would match any traffic. The `event` assertion already refuses an empty `body` as its sole criterion for the same reason.
+
+The `requestSequence`, `responseSchema.request`, and `until: { request }` forms reuse the same `RequestMatch` model and `match_request`, so they gain `query` and `body` too. The tests and documentation cover them as well.
 
 ### Value grammar
 
-A matcher value is one of four forms. The JSON value it is compared with is the field at the same position in the captured body.
+A matcher value is one of four forms. The matcher compares it with the field at the same position in the captured body.
 
 | Form | Example | Holds when |
 |---|---|---|
@@ -86,26 +90,44 @@ A matcher value is one of four forms. The JSON value it is compared with is the 
 | Plain map | `user: { id: "42" }` | The JSON value is an object, and each listed key holds recursively. Unlisted keys are ignored. |
 | List | `tags: [a, b]` | The JSON value is an array of the same length, and each element holds against the matcher at the same index. |
 
-The scalar comparison is the one `event.body` uses today. `amount: "300"` matches the JSON number `300`, and booleans and null read as `true`, `false`, and `null`. A matcher scalar must be a YAML string, as in `event.body` today. An unquoted number, boolean, or null (`qty: 1`) is a load-time validation error, so authors quote it (`qty: "1"`). The rule keeps a mistyped scalar from silently never matching. The `$exists` operator is the one place a boolean appears.
+The scalar comparison is the one `event.body` uses today. `amount: "300"` matches the JSON number `300`, and booleans and null read as `true`, `false`, and `null`. A matcher scalar must be a YAML string, as in `event.body` today. An unquoted number, boolean, or null (`qty: 1`) is a load-time validation error, so authors quote it (`qty: "1"`). Without the rule, a mistyped scalar would simply never match, and nothing would say why. The `$exists` operator is the one place a boolean appears.
 
 The two operators are:
 
-- **`$matches: <regex>`.** The text form of the JSON value must contain a match for the regex, like `urlMatches`.
+- **`$matches: <regex>`.** The text form of the JSON value must contain a match for the regex, as with `urlMatches`.
 - **`$exists: <bool>`.** `true` requires the key to be present, whatever its value. `false` requires the key to be absent.
 
-A non-empty map whose keys all start with a single `$` is an operator map, and any other map is a plain map. A key starting with `$$` counts as a plain key. The `$` prefix keeps the two apart. Without the prefix, `{ matches: "x" }` could mean the operator or a JSON field named `matches`. A JSON field whose own name starts with `$` is written with a doubled prefix (`$$ref` checks the field `$ref`). An unknown operator, or a map that mixes `$` keys with plain keys, is a scenario validation error. Validation runs at load time, as for every other matcher. The top-level `query` and `body` maps are always key dictionaries, never operator maps. A top-level field named `$x` is written `$$x` there as well. A single-`$` key directly under `query` or `body` is a validation error.
+A non-empty map whose keys all start with a single `$` is an operator map. Any other map is a plain map. A key starting with `$$` counts as a plain key.
+
+The `$` prefix keeps the two apart. Without the prefix, `{ matches: "x" }` could mean the operator or a JSON field named `matches`. To check a JSON field whose own name starts with `$`, double the prefix: `$$ref` checks the field `$ref`.
+
+Two cases are scenario validation errors: an unknown operator, and a map that mixes `$` keys with plain keys. Validation runs at load time, as for every other matcher.
+
+The top-level `query` and `body` maps are always key dictionaries, never operator maps. A top-level field named `$x` takes the `$$x` spelling there as well. A single-`$` key directly under `query` or `body` is a validation error.
 
 A `query` value accepts a scalar or an operator map. A plain map or a list under `query` is a validation error, because a query string has no nesting.
 
 ### Nested maps and lists
 
-A plain map describes a subset of the JSON object: every listed key must hold, and the matcher ignores keys it does not mention. A list is the exception and matches element by element, so `[a, b]` does not match `[a, b, c]`. An author who wants to check one element of a longer array writes `$matches` on the array's text form, or asks for an index form in a later item.
+A plain map describes a subset of the JSON object. Every listed key must hold, and the matcher ignores keys it does not mention. A list is the exception and matches element by element, so `[a, b]` does not match `[a, b, c]`. An author who wants to check one element of a longer array has two options. One is `$matches` on the array's text form. The other is to ask for an index form in a later item.
 
-The current `event.body` grammar is the flat case of this grammar, so every existing `event` scenario keeps its meaning. The exception is a top-level body key starting with `$`, which must now be written `$$`. A non-JSON, non-object, or absent body fails every `body` criterion, as it does for `event` today. A `body` criterion on form-encoded bodies is out of scope.
+The current `event.body` grammar is the flat case of this grammar, so every existing `event` scenario keeps its meaning. The exception is a top-level body key starting with `$`, which now takes the `$$` spelling. A non-JSON, non-object, or absent body fails every `body` criterion, as it does for `event` today. A `body` criterion on form-encoded bodies is out of scope.
 
 ### Shared matcher and reporting
 
-One pure function evaluates a dictionary criterion against an exchange, and `match_request` and the `event` counting path both call it. `match_request` runs for every matcher and exchange pair in `_assign_requests`, and on every `until: { request }` poll. Its own comment records that it stays allocation-free for that reason. The runner therefore parses each exchange's request body once and reuses the parsed value, instead of parsing it again inside each `match_request` call. The assertion label and the HTML report's matcher rendering (`richtext.py`) show the new fields. The failure detail names a mismatched key under one condition: exactly one exchange satisfies the endpoint and method criteria. The detail then gives the first key that did not match and the observed value. When every dictionary key holds on that candidate, the runner keeps today's count message. The failure then lies in `status`, `bodyMatches`, or the one-to-one assignment. With zero or several candidates, the runner keeps today's count message. A guess at which candidate the author meant would mislead more than it helps. When the matcher sets `count`, the runner keeps today's message, since no single key explains a count shortfall. Values accept `${vars.*}` and `${secrets.*}` tokens, as `event.body` values do today. The validated matcher keeps the author's grammar as written, and evaluation alone removes the `$$` escapes. The substitution of `${...}` tokens dumps and re-validates each assertion (`orchestrator/substitution.py`), and that round trip returns the same matcher. A test covers the round trip.
+One pure function evaluates a dictionary criterion against an exchange. Both `match_request` and the `event` counting path call it.
+
+`match_request` runs for every matcher and exchange pair in `_assign_requests`, and on every `until: { request }` poll. Its own comment records that it stays allocation-free for that reason. The runner parses each exchange's request body once and reuses the parsed value, instead of parsing it again inside each `match_request` call.
+
+The assertion label and the HTML report's matcher rendering (`richtext.py`) show the new fields.
+
+The failure detail names a mismatched key under one condition: exactly one exchange satisfies the endpoint and method criteria. The detail then gives the first key that did not match and the observed value. Three cases keep today's count message:
+
+- Every dictionary key holds on the single candidate. The cause then lies in `status`, `bodyMatches`, or the one-to-one assignment.
+- No candidate or several candidates exist. A guess at which candidate the author meant would mislead more than it helps.
+- The matcher sets `count`. No single key explains a count shortfall.
+
+Values accept `${vars.*}` and `${secrets.*}` tokens, as `event.body` values do today. The validated matcher keeps the author's grammar as written, and evaluation alone removes the `$$` escapes. The substitution of `${...}` tokens dumps and re-validates each assertion (`orchestrator/substitution.py`). That round trip returns the same matcher, and a test covers it.
 
 ### Mocks and backends
 
