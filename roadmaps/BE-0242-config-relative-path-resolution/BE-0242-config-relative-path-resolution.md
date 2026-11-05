@@ -15,134 +15,160 @@
 
 ## Introduction
 
-A local config's path-shaped fields — `scenarios`, `baselines`, `schemas`, `goldens`, the iOS/Android
-`appPath`, and `xcuitest.testRunner` — resolve today against the invoking process's working directory,
-not against the config file that declares them. This item anchors them to the config file's own
-directory instead, so the same file resolves the same way no matter where `bajutsu` is invoked from.
-A local config is operator-trusted, so its paths are **not** confined to a subtree: they may point at a
-sibling directory outside the config's folder — which the repo's own configs need (the showcase's
-`xcuitest.testRunner` lives under the repo-root `BajutsuKit/`, a sibling of `demos/`). This is the
-distinction from BE-0063's Git-source rebase, which stays confined because a fetched config is not
-trusted.
+A local config has six path-shaped fields: `scenarios`, `baselines`, `schemas`, `goldens`, the
+iOS and Android `appPath`, and `xcuitest.testRunner`. Today they resolve against the invoking
+process's working directory, not against the config file that declares them.
+
+This item anchors them to the config file's own directory instead. The same file then resolves the
+same way no matter where `bajutsu` is invoked from.
+
+A local config is operator-trusted. Its paths are **not** confined to a subtree. They may
+point at a sibling directory outside the config's folder, and the repo's own configs need that. The
+showcase's `xcuitest.testRunner` lives under the repo-root `BajutsuKit/`, a sibling of `demos/`.
+
+This is the distinction from BE-0063's Git-source rebase, which stays confined because a fetched
+config is not trusted.
 
 ## Motivation
 
-`_load_effective_with_source` (`bajutsu/cli/_shared.py:174-235`) already rebases a config's path fields
-against a stable root instead of the caller's cwd — but only when the config comes from a Git source: it
-calls `eff.rebased(root)` with `root` set to the materialized checkout (BE-0063). When the config is
-local (`spec is None`), it short-circuits and returns `eff` untouched (`_shared.py:229-230`), so the
-YAML's relative paths stay interpreted against whatever directory `bajutsu` happened to be invoked from.
+`_load_effective_with_source` (`bajutsu/cli/_shared.py:174-235`) already rebases a config's path
+fields against a stable root instead of the caller's cwd. It does so when the config comes from
+a Git source alone: it calls `eff.rebased(root)` with `root` set to the materialized checkout (BE-0063).
+When the config is local (`spec is None`), the function short-circuits and returns `eff` untouched
+(`_shared.py:229-230`). The YAML's relative paths then stay interpreted against whatever directory
+`bajutsu` happened to be invoked from.
 
-That makes the same config file behave differently depending on where it's run from. A scenario suite
-that resolves cleanly from the repo root can point at nothing — or, worse, silently resolve to an
-unrelated file that happens to exist — when run from a subdirectory, a sibling worktree, or a CI job
-whose working-directory convention differs from a contributor's shell. `make worktree` (BE-0069) makes
-running the same config from a different checkout path routine, which is exactly the situation this
-footgun lives in: a config that "just worked" in one checkout isn't guaranteed to behave the same when
-the cwd convention it was invoked under doesn't carry over.
+That makes the same config file behave differently depending on where it runs. A scenario suite that
+resolves cleanly from the repo root can point at nothing when run from a subdirectory, a sibling
+worktree, or a CI job whose working-directory convention differs from a contributor's shell. Worse,
+it can resolve, with no warning, to an unrelated file that happens to exist.
 
-The scenario side already closed this same gap — `use:` / `dataFile` (BE-0174) and `setup` resolve
+`make worktree` (BE-0069) makes running the same config from a different checkout path routine. That
+is the situation this footgun lives in. A config that worked in one checkout may behave differently
+when the cwd convention of the earlier invocation does not carry over.
+
+The scenario side already closed this same gap. `use:` / `dataFile` (BE-0174) and `setup` resolve
 relative to the referring scenario file. Config-side path fields are the one part of the system still
 anchored to the cwd instead of the declaring file.
 
-One premise needs stating precisely, because it shapes the design. BE-0063 does **not** anchor at the
-config file's own directory; it anchors at the **checkout root** — the top of the fetched tree, which is
-typically an ancestor of the config (a config at `e2e/bajutsu.config.yaml` resolves `e2e/scenarios`, a
-path written from the checkout root, not `scenarios`). A local config has no checkout, so the natural
-stable anchor is instead the config file's own directory. These are related but distinct anchors, and
-the difference is why the repo's own configs — authored to run from the repo root with repo-root-relative
-paths — all need rewriting to be config-directory-relative (see *Detailed design*).
+One premise shapes the design, so it needs stating precisely. BE-0063 does **not** anchor at the
+config file's own directory. It anchors at the **checkout root**, the top of the fetched tree. That
+root is typically an ancestor of the config. A config at `e2e/bajutsu.config.yaml` resolves
+`e2e/scenarios`, a path written from the checkout root, not `scenarios`.
 
-Confinement, likewise, is not a property of "being a Git source" but of **trust**. The repo already draws
-this line: a fetched Git-API config and an uploaded bundle are untrusted and rebased *with* confinement
-(`bajutsu/serve/operations/config.py:471`, `bajutsu/serve/operations/upload.py`), while a local file
-config is marked operator-trusted and is not (`bajutsu/serve/operations/config.py:435`, "a local file config is operator-trusted
-(BE-0121)"). Applying confinement to a local config would reject the showcase's
-`xcuitest.testRunner: BajutsuKit/Runner/...` — a repo-root sibling of `demos/` that cannot be reached
-from `demos/showcase/` without a `../` escape — so this item leaves local paths unconfined, consistent
-with that existing trust boundary.
+A local config has no checkout. The natural stable anchor is instead the config file's own
+directory. The two anchors differ, though they are related. That difference is why the repo's own configs
+must all be rewritten to be config-directory-relative. They were authored to run from the repo root
+with repo-root-relative paths (see *Detailed design*).
+
+Confinement, likewise, is not a property of "being a Git source". It follows from **trust**. The
+repo already draws this line.
+
+- A fetched Git-API config and an uploaded bundle are untrusted. They are rebased *with* confinement
+  (`bajutsu/serve/operations/config.py:471`, `bajutsu/serve/operations/upload.py`).
+- A local file config is marked operator-trusted and is not confined
+  (`bajutsu/serve/operations/config.py:435`, "a local file config is operator-trusted (BE-0121)").
+
+Confinement would reject the showcase's `xcuitest.testRunner: BajutsuKit/Runner/...`.
+That path is a repo-root sibling of `demos/`. Reaching it from `demos/showcase/` needs a `../` escape. This item leaves local paths unconfined, consistent with the existing trust boundary.
 
 ## Detailed design
 
-1. **Give `Effective.rebased()` a `confine` switch.** `rebased(root, *, confine=True)`
-   (`bajutsu/config.py:580-634`) already joins every field in scope against `root` — `scenarios`,
-   `baselines`, `schemas`, `goldens`, the iOS/Android sub-config's `app_path`, and
-   `xcuitest.test_runner`. Its escape check (an absolute or `../`-escaping value raises `ValueError`,
-   mirroring the serve-hardening confinement, BE-0051) becomes conditional on `confine`. Existing
-   callers (the Git-source and uploaded-bundle paths) keep `confine=True` unchanged; a local config
-   passes `confine=False`. Update the docstring, since "only a Git source calls this" (`config.py:587`)
-   stops being true.
-2. **Rebase local configs at the call site — without repurposing `checkout_root`.** In
-   `_load_effective_with_source` (`bajutsu/cli/_shared.py:196-235`), when `spec is None` (a local
-   config), rebase against a *local* anchor (`cfg_path.resolve().parent`) via
-   `eff.rebased(local_root, confine=False)`, but keep returning `None` for the function's third tuple
-   element (`checkout_root`) — don't reuse the `root` variable for both. `checkout_root` is not just a
-   rebase anchor; other call sites read it as a Git-vs-local signal: `run.py`'s on-demand
-   `build_if_missing` fires only `if checkout_root is not None`, and `record`/`crawl`'s
-   `_refuse_out_in_checkout` treats a non-`None` value as "this is a read-only Git checkout, refuse
-   writing output inside it." Returning the config's own directory there too would silently switch on
-   both Git-only behaviors for every local config. `source` (Git provenance) stays `None` either way;
-   the returned `Effective` carries absolute path fields rooted at the config's directory, so every
-   downstream consumer that reads *those fields* is cwd-independent for free.
-3. **Fields intentionally out of scope**, carried over from `rebased()`'s existing exclusions plus two
-   new ones:
-   - `build` (a shell command, e.g. `make -C demos/showcase`) — not a path field.
-   - `setup` — already resolved relative to the scenario file that references it (BE-0174), not to the
-     config.
-   - `launchServer.cwd` — the working directory handed to a launched subprocess
-     (`bajutsu/runner/launch_server.py:123`), not a reference to a file the config points at. Changing
-     its default anchor is a distinct semantic decision (what a dev server's cwd defaults to), left for
-     a separate item if it turns out to be a similar footgun.
-   - `sandbox.dockerfile` — already anchored to a `bundle_root` concept (BE-0090,
-     `bajutsu/runner/sandbox.py:130-206`), a third anchor distinct from both cwd and "declaring file";
-     out of scope here.
-4. **Fix serve's local-config binds to match.** serve never calls `_load_effective_with_source`; it
-   resolves a config's path fields against `state.cwd` (`bajutsu/serve/state.py`, `serve/operations/jobs.py`),
-   and its Git/upload binds already set `state.cwd` to the config's tree. Only the **local** binds are
-   left anchored at serve's launch directory — startup with a non-Git `--config`
-   (`bajutsu/cli/commands/serve.py`) and the fs file-browser bind (`serve/operations/config.py:433`). Set
-   `state.cwd = config_path.parent` in those two local binds, mirroring the Git/upload pattern, so
-   serve's spawned runs and its in-process scenario/app-path reads resolve from the config's directory
-   too. The individual serve operations that call `load_config`/`resolve` only read metadata (backend,
-   `id_namespaces`, `ai`, `bundleId`), so they need no change.
-5. **This is a deliberate breaking change, not a compatibility shim.** Every local config's path fields
-   switch from cwd-relative to config-directory-relative in one cutover; no fallback or opt-out flag.
-   The repo's own configs are all authored repo-root-relative and run from the repo root, so they must be
-   rewritten to config-directory-relative in the same change: `demos/demo.config.yaml`,
-   `demos/showcase/showcase.config.yaml` (including `testRunner: ../../BajutsuKit/Runner/...`),
-   `demos/docs-site/docs-site.config.yaml`, `demos/serve-ui/dogfood.config.yaml`, and
-   `demos/web/demo.config.yaml`. The on-device conformance test builds its `Effective` via a raw
-   `resolve()` that bypasses the loader (`tests/test_driver_conformance_ondevice.py:119`), so it must
-   apply the same `rebased(config_dir, confine=False)`. Call the migration out plainly in the PR body and
-   in `docs/configuration.md`.
-6. **Update docs.** `docs/configuration.md:81` ("Relative to the run's cwd") and the BE-0063 section
-   (`docs/configuration.md:330-369`, framed today as a Git-only rebase) need to describe the rule as it
-   now stands: config-directory-relative for every source, confined only for untrusted (Git-API /
-   uploaded) configs, unconfined for operator-trusted local files. Mirror in `docs/ja/configuration.md`.
-7. **Tests.** Add coverage that a local config's path fields resolve against the config's directory
-   independent of cwd (chdir elsewhere, assert unchanged), that a local config may point outside its own
-   directory (no `ValueError`), and a `rebased(..., confine=False)` unit test alongside the existing
-   confinement one. The on-device conformance lane and the demo-config rewrite are exercised only by the
-   heavier CI lanes (`smoke (idb)` / `E2E` / `xcuitest` / `conformance`), not the Linux gate — flag that
-   in the PR.
+1. **Give `Effective.rebased()` a `confine` switch.**
+   - `rebased(root, *, confine=True)` (`bajutsu/config.py:580-634`) already joins every field in scope
+     against `root`. The fields are `scenarios`, `baselines`, `schemas`, `goldens`, the iOS/Android
+     sub-config's `app_path`, and `xcuitest.test_runner`.
+   - Its escape check becomes conditional on `confine`. The check raises `ValueError` for an absolute
+     or `../`-escaping value, mirroring the serve-hardening confinement (BE-0051).
+   - Existing callers (the Git-source and uploaded-bundle paths) keep `confine=True` unchanged. A
+     local config passes `confine=False`.
+   - Update the docstring, since "only a Git source calls this" (`config.py:587`) stops being true.
+2. **Rebase local configs at the call site, without repurposing `checkout_root`.**
+   - In `_load_effective_with_source` (`bajutsu/cli/_shared.py:196-235`), when `spec is None` (a local
+     config), rebase against a *local* anchor (`cfg_path.resolve().parent`) via
+     `eff.rebased(local_root, confine=False)`.
+   - Keep returning `None` for the function's third tuple element (`checkout_root`). Do not reuse the
+     `root` variable for both.
+   - `checkout_root` is not just a rebase anchor. Other call sites read it as a Git-vs-local signal.
+     `run.py`'s on-demand `build_if_missing` fires `if checkout_root is not None` and nowhere else. The
+     `_refuse_out_in_checkout` check in `record` / `crawl` treats a non-`None` value as "this is a
+     read-only Git checkout, refuse writing output inside it". Returning the config's own directory
+     there too would switch on both Git-only behaviors for every local config.
+   - `source` (Git provenance) stays `None` either way. The returned `Effective` carries absolute path
+     fields rooted at the config's directory. Every downstream consumer that reads *those fields* is
+     cwd-independent for free.
+3. **Fields intentionally out of scope.** They carry over from `rebased()`'s existing exclusions, plus
+   two new ones.
+   - `build` is a shell command, for example `make -C demos/showcase`. This is not a path field.
+   - `setup` is already resolved relative to the scenario file that references it (BE-0174), not to
+     the config.
+   - `launchServer.cwd` is the working directory handed to a launched subprocess
+     (`bajutsu/runner/launch_server.py:123`). It does not reference a file the config points at.
+     Changing its default anchor is a distinct semantic decision: what a dev server's cwd defaults to.
+     A separate item can take it up if it turns out to be a similar footgun.
+   - `sandbox.dockerfile` is already anchored to a `bundle_root` concept (BE-0090,
+     `bajutsu/runner/sandbox.py:130-206`). That is a third anchor, distinct from both cwd and
+     "declaring file", and out of scope here.
+4. **Fix serve's local-config binds to match.**
+   - serve never calls `_load_effective_with_source`. It resolves a config's path fields against
+     `state.cwd` (`bajutsu/serve/state.py`, `serve/operations/jobs.py`). Its Git and upload binds
+     already set `state.cwd` to the config's tree.
+   - The **local** binds alone are left anchored at serve's launch directory. They are startup with a
+     non-Git `--config` (`bajutsu/cli/commands/serve.py`) and the fs file-browser bind
+     (`serve/operations/config.py:433`).
+   - Set `state.cwd = config_path.parent` in those two local binds, mirroring the Git and upload
+     pattern. Serve's spawned runs and its in-process scenario and app-path reads then resolve from
+     the config's directory too.
+   - The individual serve operations that call `load_config` / `resolve` read metadata alone
+     (backend, `id_namespaces`, `ai`, `bundleId`). They need no change.
+5. **This is a deliberate breaking change, not a compatibility shim.**
+   - Every local config's path fields switch from cwd-relative to config-directory-relative in one
+     cutover. There is no fallback and no opt-out flag.
+   - The repo's own configs are all authored repo-root-relative and run from the repo root. They must
+     be rewritten to config-directory-relative in the same change: `demos/demo.config.yaml`,
+     `demos/showcase/showcase.config.yaml` (including `testRunner: ../../BajutsuKit/Runner/...`),
+     `demos/docs-site/docs-site.config.yaml`, `demos/serve-ui/dogfood.config.yaml`, and
+     `demos/web/demo.config.yaml`.
+   - The on-device conformance test builds its `Effective` via a raw `resolve()` that bypasses the
+     loader (`tests/test_driver_conformance_ondevice.py:119`). It must apply the same
+     `rebased(config_dir, confine=False)`.
+   - Call the migration out plainly in the PR body and in `docs/configuration.md`.
+6. **Update docs.**
+   - `docs/configuration.md:81` ("Relative to the run's cwd") and the BE-0063 section
+     (`docs/configuration.md:330-369`, framed today as a Git-only rebase) must describe the rule as
+     it now stands.
+   - The rule: config-directory-relative for every source, confined only for untrusted (Git-API and
+     uploaded) configs, unconfined for operator-trusted local files.
+   - Mirror the change in `docs/ja/configuration.md`.
+7. **Tests.** Add three kinds of coverage.
+   - A local config's path fields resolve against the config's directory independent of cwd: chdir
+     elsewhere, then assert the result is unchanged.
+   - A local config may point outside its own directory, with no `ValueError`.
+   - A `rebased(..., confine=False)` unit test sits alongside the existing confinement one.
+
+   The on-device conformance lane and the demo-config rewrite are exercised by the heavier CI
+   lanes alone (`smoke (idb)` / `E2E` / `xcuitest` / `conformance`), not by the Linux gate. Flag that in the
+   PR.
 
 ## Alternatives considered
 
-- **Config-directory-relative *with* confinement (exact parity with BE-0063)**: this was the first shape
-  considered. Rejected once it met the repo's own layout — the showcase's
-  `xcuitest.testRunner: BajutsuKit/Runner/...` points at a repo-root sibling of `demos/`, which cannot be
-  expressed from `demos/showcase/` without a `../` escape that confinement rejects. More fundamentally,
-  confinement exists to contain an *untrusted* fetched config (BE-0051); a local file is already treated
-  as operator-trusted (BE-0121), so confining it would add friction without a matching threat.
-- **A per-field or per-config opt-in flag** to enable file-relative resolution: rejected — the safer
+- **Config-directory-relative *with* confinement (exact parity with BE-0063).** This was the first
+  shape considered. Rejected once it met the repo's own layout.
+  - The showcase's `xcuitest.testRunner: BajutsuKit/Runner/...` points at a repo-root sibling of
+    `demos/`. It cannot be expressed from `demos/showcase/` without a `../` escape, which confinement
+    rejects.
+  - More fundamentally, confinement exists to contain an *untrusted* fetched config (BE-0051). A local
+    file is already treated as operator-trusted (BE-0121). Confining it would add friction without a
+    matching threat.
+- **A per-field or per-config opt-in flag** to enable file-relative resolution. Rejected. The safer
   interpretation should be the default, not something a config author has to discover and turn on. An
-  opt-in leaves the footgun in place for everyone who doesn't set it.
-- **Keep cwd-relative as the default; add a flag or config key to switch to file-relative**: rejected for
-  the same reason, and it permanently doubles the resolution semantics a reader has to hold in mind
-  instead of retiring the old one.
-- **Also rebase `launchServer.cwd` to default to the config's directory**: deferred rather than folded
-  in here — it's a different kind of field (a subprocess's working directory, not a reference to a file
-  the config points at), and conflating the two would blur what this item is actually fixing. Revisit as
+  opt-in leaves the footgun in place for everyone who does not set it.
+- **Keep cwd-relative as the default, and add a flag or config key to switch to file-relative.**
+  Rejected for the same reason. It would also permanently double the resolution semantics a reader
+  has to hold in mind, instead of retiring the old one.
+- **Also rebase `launchServer.cwd` to default to the config's directory.** Deferred rather than
+  folded in here. The field is of a different kind: a subprocess's working directory, not a reference
+  to a file the config points at. Conflating the two would blur what this item is fixing. Revisit as
   its own item if it proves to be a similar footgun in practice.
 
 ## Progress

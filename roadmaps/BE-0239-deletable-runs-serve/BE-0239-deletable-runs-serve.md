@@ -15,152 +15,177 @@
 
 ## Introduction
 
-Let a user delete a run (and its report) individually from the `serve` Web UI, on both the local
-(stdlib handler, filesystem-backed) and hosted (FastAPI, DB + object-storage-backed, BE-0015)
-paths, with a soft-delete/trash window so the action is not instantly destructive, plus an
-audit-logged permanent purge for when a run really needs to be gone. Crawl runs (BE-0190) get the
-same per-item deletion. Today `serve` has **no deletion surface for runs at all**: the only
-`DELETE` route in the API is deregistering a project
-([BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub.md)), and the only way to
-remove a run's `runs/<id>/` tree (`report.html`, `manifest.json`, screenshots, video, network
-capture) is to shell into the host and `rm -rf` it — impossible on the hosted backend, where runs
-live in object storage and a DB row (`bajutsu/serve/server/db.py`), not on a filesystem a user can
+This item lets a user delete a run, and its report, individually from the `serve` Web UI. It covers
+both paths: the local one (stdlib handler, filesystem-backed) and the hosted one (FastAPI, database
+and object-storage-backed, BE-0015).
+
+A soft-delete and trash window keeps the action from being instantly destructive. An audit-logged
+permanent purge covers the case where a run really must be gone. Crawl runs (BE-0190) get the same
+per-item deletion.
+
+Today `serve` has **no deletion surface for runs at all**. The only `DELETE` route in the API
+deregisters a project
+([BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub.md)). The only way to remove a
+run's `runs/<id>/` tree (`report.html`, `manifest.json`, screenshots, video, network capture) is to
+shell into the host and `rm -rf` it. That is impossible on the hosted backend, where runs live in
+object storage and a database row (`bajutsu/serve/server/db.py`), not on a filesystem a user can
 reach.
 
 ## Motivation
 
-Runs accumulate forever today; nothing in `serve` ever shrinks the `runs/` tree or a hosted org's
-object-storage prefix. That is fine for a demo project, but it bites in the cases this repo
-already cares about:
+Runs accumulate forever today. Nothing in `serve` ever shrinks the `runs/` tree or a hosted
+organization's object-storage prefix. That is fine for a demo project, but it hurts in four cases
+this repo already cares about:
 
-1. **Nothing to do about a bad or sensitive run.** A run recorded against the wrong target, a
-   flaky one-off, or a run whose evidence turns out to capture something it shouldn't (screen
-   recording, a `BE-0151`/`BE-0152`-adjacent leak caught after the fact) has no removal path short
-   of an operator with filesystem/bucket access. A viewer or editor in the Web UI — the person who
-   actually knows the run is junk — cannot act on it.
-2. **Unbounded growth on the hosted backend has a real cost.** BE-0110's evidence-to-object-storage
-   move and BE-0204's GCS support exist because run evidence (video, screenshots, network capture)
-   is not small; every run kept forever is bytes billed forever, with no lever in the product to
-   bring that down.
-3. **The list views get noisier with every run, forever.** `GET /api/runs` / `/api/crawl/runs`
-   (`bajutsu/serve/server/app.py`) already page through history for flakiness detection
-   (BE-0220) and metrics (`project_metrics_view`); a project that has run CI for a year accumulates
-   thousands of entries with no way to prune the ones nobody needs, only ways to view more of them.
-4. **Deletion is exactly the kind of action this project is careful about, and that carefulness
-   has nowhere to attach today.** The RBAC ladder (`bajutsu/serve/authz.py`, `viewer < editor <
-   admin`) and the audit log (`state.repository.record_audit`, wired for OAuth login and other
-   mutations) already exist for this — a delete/purge feature is the natural next consumer, not a
-   new subsystem.
+1. **Nothing can be done about a bad or sensitive run.** Examples are a run recorded against the
+   wrong target, a flaky one-off, and a run whose evidence turns out to capture something it should
+   not (a screen recording, or a leak caught after the fact, adjacent to BE-0151 and BE-0152). Only
+   an operator with filesystem or bucket access can remove such a run. A viewer or editor in the Web
+   UI knows the run is junk but cannot act on it.
+2. **Unbounded growth on the hosted backend has a real cost.** BE-0110 moved evidence to object
+   storage, and BE-0204 added Google Cloud Storage (GCS) support, because run evidence (video,
+   screenshots, network capture) is not small. Every run kept forever is billed forever, and the
+   product has no lever to bring that down.
+3. **The list views get noisier with every run.** `GET /api/runs` and `/api/crawl/runs`
+   (`bajutsu/serve/server/app.py`) already page through history for flakiness detection (BE-0220)
+   and metrics (`project_metrics_view`). A project that has run continuous integration (CI) for a
+   year accumulates thousands of entries. It can view more of them but cannot prune the ones nobody
+   needs.
+4. **Deletion is the kind of action this project handles carefully, and that care has nowhere to
+   attach today.** The role-based access control (RBAC) ladder (`bajutsu/serve/authz.py`,
+   `viewer < editor < admin`) and the audit log (`state.repository.record_audit`, wired for OAuth
+   login and other mutations) already exist. A delete and purge feature is their natural next
+   consumer, not a new subsystem.
 
-This is purely a *lifecycle* feature over already-recorded data: it does not touch how a run is
-executed, what `assertions`/`network` decide, or the report's data contract from
+The feature is purely a *lifecycle* feature over already-recorded data. It does not touch how a run
+executes, what `assertions` or `network` decide, or the report's data contract from
 [BE-0068](../BE-0068-regenerable-reports/BE-0068-regenerable-reports.md). No LLM is involved
-anywhere in the delete/restore/purge path, so it sits outside the Tier-2 run/CI gate entirely
-(prime directive 1) — this is pure serve-mode plumbing, deterministic by construction.
+anywhere in the delete, restore, and purge path, so the path sits outside the Tier-2 run/CI gate
+entirely (prime directive 1). It is pure serve-mode plumbing, deterministic by construction.
 
 ## Detailed design
 
-The work breaks into six independent-ish units; the trash/retention piece (3) depends on unit 1's
-seam existing, and the Web UI piece (5) depends on the API existing, but each backend's store
-implementation (1), and the CLI companion (out of this item's scope), can each land as a separate
-PR.
+The work breaks into six fairly independent units.
+
+- The trash and retention piece (3) depends on unit 1's seam existing.
+- The Web UI piece (5) depends on the API existing.
+- Each backend's store implementation (1) can land as a separate PR.
+- The command-line companion is outside this item's scope.
 
 1. **A `delete_run` seam on `ArtifactStore` (`bajutsu/serve/artifacts.py`), soft by default.**
    The protocol gains `soft_delete_run(run_id) -> bool`, `restore_run(run_id) -> bool`, and
-   `purge_run(run_id) -> bool`, mirroring the existing `get`/`list_runs`/`archive` split between
-   `LocalArtifactStore` and `ObjectStorageArtifactStore`
-   (`bajutsu/serve/server/artifacts.py`) — the two backends necessarily implement soft-delete
-   differently because only the hosted backend has a database (`ServeState.repository` is `None`
-   on the local/loopback path, per `bajutsu/serve/state.py`):
-   - `LocalArtifactStore`: soft-delete moves `runs/<id>/` under `runs/.trash/<id>/` (still confined
-     to `runs_dir`, so the existing path-containment guarantee in `_resolve`/`_confined` covers it
-     unchanged); `list_runs`/`list_crawl_runs` simply never look under `.trash/`. Purge is
-     `shutil.rmtree` on the trashed directory. Restore moves it back.
-   - `ObjectStorageArtifactStore`: soft-delete writes a tombstone object (`<run_id>/.deleted`,
-     alongside the existing `manifest.json`/`screenmap.json` keys `list_runs` already reads);
-     `list_runs`/`list_crawl_runs` skip any `run_id` whose tombstone key is present. Purge deletes
-     every key under the run's prefix (the same key set `archive` already collects). Restore
-     deletes the tombstone key.
-2. **DB-backed run rows get a soft-delete column (hosted only).** `Repository.list_runs`
-   (`bajutsu/serve/server/db.py`) filters out rows with `deleted_at` set (the hosted backend's
-   list is DB-driven, unlike the filesystem/object-store scan the two `ArtifactStore`s do for
-   their own listings — see `db.py:108` and `:297`); deleting a run sets `deleted_at`/`deleted_by`,
-   restoring clears it, purge deletes the row (or converts it to a tombstone row if audit history
-   should survive the run's bytes — see *Alternatives considered*).
-3. **A retention window and a purge sweep.** A soft-deleted run is eligible for permanent purge
-   after a configurable retention period (default e.g. 30 days; a `serve` config knob alongside the
-   other hosting settings). There is no periodic-job runner in `serve` today, and this item does
-   not introduce a new daemon: purge runs as a **lazy sweep** — checked opportunistically on the
-   next `list_runs`/`login` call, matching the precedent of `SqlSessionStore`'s expiry-on-read
-   check in `bajutsu/serve/server/sessions.py` (its `valid`/`identity` compare `expires_at` against
-   now; "Expiry is enforced on read") — rather than a fixed-interval background thread.
+   `purge_run(run_id) -> bool`. They mirror the existing `get` / `list_runs` / `archive` split
+   between `LocalArtifactStore` and `ObjectStorageArtifactStore`
+   (`bajutsu/serve/server/artifacts.py`). The two backends necessarily implement soft-delete
+   differently, because only the hosted backend has a database (`ServeState.repository` is `None` on
+   the local/loopback path, per `bajutsu/serve/state.py`).
+   - `LocalArtifactStore`: soft-delete moves `runs/<id>/` under `runs/.trash/<id>/`. The move stays
+     confined to `runs_dir`, so the existing path-containment guarantee in `_resolve` / `_confined`
+     covers it unchanged. `list_runs` and `list_crawl_runs` never look under `.trash/`. Purge is
+     `shutil.rmtree` on the trashed directory. Restore moves the directory back.
+   - `ObjectStorageArtifactStore`: soft-delete writes a tombstone object (`<run_id>/.deleted`),
+     alongside the existing `manifest.json` and `screenmap.json` keys that `list_runs` already
+     reads. `list_runs` and `list_crawl_runs` skip any `run_id` whose tombstone key is present.
+     Purge deletes every key under the run's prefix, the same key set `archive` already collects.
+     Restore deletes the tombstone key.
+2. **DB-backed run rows get a soft-delete column (hosted only).**
+   - `Repository.list_runs` (`bajutsu/serve/server/db.py`) filters out rows with `deleted_at` set.
+     The hosted backend's list is database-driven, unlike the filesystem or object-store scan that
+     the two `ArtifactStore`s do for their own listings (see `db.py:108` and `:297`).
+   - Deleting a run sets `deleted_at` and `deleted_by`. Restoring clears them.
+   - Purge deletes the row, or converts it to a tombstone row if the audit history should survive
+     the run's bytes (see *Alternatives considered*).
+3. **A retention window and a purge sweep.**
+   - A soft-deleted run becomes eligible for permanent purge after a configurable retention period.
+     The default is for example 30 days, set by a `serve` config knob alongside the other hosting
+     settings.
+   - `serve` has no periodic-job runner today, and this item introduces no new daemon. Purge runs as
+     a **lazy sweep**, checked opportunistically on the next `list_runs` or `login` call. It follows
+     the precedent of `SqlSessionStore`'s expiry-on-read check in
+     `bajutsu/serve/server/sessions.py`: `valid` and `identity` compare `expires_at` against now, and
+     "Expiry is enforced on read". A fixed-interval background thread is not used.
 4. **API surface**, alongside the existing `DELETE /api/projects/{name}`
-   (`bajutsu/serve/server/app.py:418`) and its stdlib-handler counterpart (`handler.py:426`
+   (`bajutsu/serve/server/app.py:418`) and its stdlib-handler counterpart (`handler.py:426`,
    `do_DELETE`):
-   - `DELETE /api/runs/{run_id}` / `DELETE /api/crawl/runs/{run_id}` — soft-delete, org-scoped via
-     the same `state.for_org(state.org_of(_actor(request)))` pattern the `/runs/{rel:path}` reader
-     already uses, so a run in another org's prefix 404s exactly like a read does (BE-0015
-     multi-tenancy holds for delete too).
-   - `POST /api/runs/{run_id}/restore` (and crawl-run counterpart) — undo within the retention
-     window.
-   - `DELETE /api/runs/{run_id}?purge=true` (admin-only) — skip the trash window and purge
+   - `DELETE /api/runs/{run_id}` and `DELETE /api/crawl/runs/{run_id}` soft-delete a run. Both are
+     org-scoped through the same `state.for_org(state.org_of(_actor(request)))` pattern that the
+     `/runs/{rel:path}` reader already uses. A run in another organization's prefix therefore returns
+     404 exactly as a read does, so BE-0015 multi-tenancy holds for delete too.
+   - `POST /api/runs/{run_id}/restore` (and the crawl-run counterpart) undoes a soft-delete within
+     the retention window.
+   - `DELETE /api/runs/{run_id}?purge=true` (admin-only) skips the trash window and purges
      immediately.
-   - A bulk form, `POST /api/runs/bulk-delete` with a list of ids, for clearing many runs at once
-     (the "一括削除" case) rather than only one-at-a-time.
-   - Every one of these routes goes through the unconditional CSRF Origin check + Host allowlist
-     already applied to `POST`/`DELETE` (`app.py`'s `request.method in ("POST", "DELETE")` gate,
-     BE-0121) — a delete is exactly as CSRF-sensitive as the project-deregister DELETE it sits next
-     to.
-   - RBAC (`bajutsu/serve/authz.py`'s `required_role`): soft-delete and restore are **editor**
-     actions (like triggering a run); permanent purge is an **admin** action, matching how
-     deregistering a project is gated admin because it is similarly irreversible.
-5. **Web UI**: a delete affordance per row in the run-history and crawl-history lists
-   (`bajutsu/templates/serve.*.js`), a multi-select toolbar action for bulk delete, and a
-   confirmation dialog that states plainly what happens (moved to trash, restorable for N days) —
-   distinct from the separate, admin-only "delete forever" action, which gets its own,
-   more emphatic confirmation. A "Trash" view (or a filter toggle on the existing history list)
-   shows soft-deleted runs with **Restore** and **Delete forever** actions.
-6. **Audit + observability.** Every soft-delete/restore/purge goes through the same
-   `record_audit`/`_record_audit` path already wired for other mutations
-   (`bajutsu/serve/authz.py:100`, `bajutsu/serve/server/db.py:148`) — who did what, to which run,
-   when — and emits a structured `oplog` event (`bajutsu/serve/oplog.py`'s `EVENTS`, e.g.
-   `run.soft_deleted` / `run.restored` / `run.purged`) so an SRE can grep/alert on an irreversible
-   purge the way BE-0055 already lets them grep other operational events.
+   - A bulk form, `POST /api/runs/bulk-delete` with a list of ids, clears many runs at once (the
+     "一括削除" case) instead of one at a time.
+   - Every one of these routes goes through the unconditional CSRF Origin check and Host allowlist
+     already applied to `POST` and `DELETE` (the `request.method in ("POST", "DELETE")` gate in
+     `app.py`, BE-0121). A delete is exactly as CSRF-sensitive as the project-deregister `DELETE`
+     next to it.
+   - RBAC (`required_role` in `bajutsu/serve/authz.py`) gates the actions. Soft-delete and restore
+     are **editor** actions, like triggering a run. Permanent purge is an **admin** action, matching
+     how deregistering a project is gated to admin because it is similarly irreversible.
+5. **Web UI.** The Web UI (`bajutsu/templates/serve.*.js`) gains four things.
+   - A delete affordance per row in the run-history and crawl-history lists.
+   - A multi-select toolbar action for bulk delete.
+   - A confirmation dialog that states plainly what happens: the run moves to trash and is
+     restorable for N days.
+   - A separate, admin-only "delete forever" action with its own, more emphatic confirmation.
+
+   A "Trash" view, or a filter toggle on the existing history list, shows soft-deleted runs with
+   **Restore** and **Delete forever** actions.
+6. **Audit and observability.**
+   - Every soft-delete, restore, and purge goes through the same `record_audit` / `_record_audit`
+     path already wired for other mutations (`bajutsu/serve/authz.py:100`,
+     `bajutsu/serve/server/db.py:148`). The entry records who did what, to which run, and when.
+   - Each also emits a structured `oplog` event (`EVENTS` in `bajutsu/serve/oplog.py`), for example
+     `run.soft_deleted`, `run.restored`, and `run.purged`.
+   - A site reliability engineer (SRE) can then grep or alert on an irreversible purge, the way
+     BE-0055 already lets them grep other operational events.
 
 ## Alternatives considered
 
-- **Hard delete only, no trash.** Simpler (one code path, no retention config, no restore
-  endpoint), but a delete button with no undo on evidence that may represent hours of CI history
-  is exactly the kind of irreversible action the *Explicit permission required* discipline this
-  project's own tooling follows (and the project-deregister precedent, BE-0225) argues against.
-  Rejected in favor of soft-delete-by-default with an explicit, separately-gated permanent purge.
-- **A uniform DB-tombstone for both backends** (skip the filesystem `.trash/` move; track
-  soft-deletes only in a database row, even for the local/loopback path). Rejected: the local
-  stdlib path has no database at all (`ServeState.repository` is `None` off the hosted path) — the
-  local `serve` mode is deliberately a lighter-weight, filesystem-only mode
-  ([BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)), and adding a
-  database dependency purely to support run deletion would be a much bigger footprint change than
-  this feature warrants. The filesystem-native `.trash/` directory keeps local `serve` DB-free,
-  consistent with how `get`/`list_runs` already diverge in implementation (not in contract)
-  between `LocalArtifactStore` and `ObjectStorageArtifactStore`.
-- **Time/count-based automatic retention only, no per-run delete button.** Handles the "runs pile
-  up forever" motivation but not the "I want to remove *this specific* run right now" case the
-  user asked for — the two are complementary, not substitutes, so both are in scope (the automatic
-  sweep in unit 3 acts only on runs a human already soft-deleted, it does not auto-select runs to
-  delete on its own; a fully automatic age/count-based prune of *never-deleted* runs is a
-  plausible follow-up but is left out of this item's scope to keep it to what was asked for).
-- **On permanent purge, delete the hosted DB run row vs. convert it to a tombstone row.** Deleting
-  the row outright is simplest and reclaims the row, but it also erases the run from the audit
-  trail's referential reach — a later "who deleted run X, when" query has no row to join against.
-  Keeping a minimal tombstone row (id + `deleted_at`/`deleted_by`, evidence bytes gone) preserves
-  that history at the cost of a never-shrinking row count. The proposal leans toward the tombstone
-  row for hosted deployments (where audit history is the point of having a DB at all) and outright
-  deletion where no audit consumer exists, but this is a knob to settle at implementation time, not
-  a fixed decision here — hence unit 2 flags it rather than mandating one.
-- **A CLI companion (`bajutsu run rm <id>`) in the same item.** The user's ask was specifically
-  "from the Web UI"; a CLI-side deletion command would reuse the same `ArtifactStore.purge_run`
-  seam this item introduces, so it is a natural, low-cost follow-up once the seam exists, but is
-  left out here to keep this item's surface to the Web UI + its API.
+- **Hard delete only, no trash.**
+  - This is simpler: one code path, no retention config, and no restore endpoint.
+  - But a delete button with no undo, on evidence that may represent hours of CI history, is the
+    irreversible action that the *Explicit permission required* discipline of this project's own
+    tooling argues against. So does the project-deregister precedent (BE-0225).
+  - Rejected in favor of soft-delete by default, with an explicit, separately gated permanent purge.
+- **A uniform DB tombstone for both backends.** This would skip the filesystem `.trash/` move and
+  track soft-deletes only in a database row, even on the local/loopback path. Rejected, for three
+  reasons.
+  - The local stdlib path has no database at all (`ServeState.repository` is `None` off the hosted
+    path).
+  - The local `serve` mode is deliberately a lighter-weight, filesystem-only mode
+    ([BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)).
+  - Adding a database dependency purely to support run deletion would be a much bigger footprint
+    change than this feature warrants.
+
+  The filesystem-native `.trash/` directory keeps local `serve` DB-free. It is consistent with how
+  `get` and `list_runs` already diverge in implementation, but not in contract, between
+  `LocalArtifactStore` and `ObjectStorageArtifactStore`.
+- **Time-based or count-based automatic retention only, with no per-run delete button.**
+  - It handles the "runs pile up forever" motivation.
+  - It does not handle the "I want to remove *this specific* run right now" case that the user asked
+    for.
+  - The two are complementary, not substitutes, so both are in scope. The automatic sweep in unit 3
+    acts only on runs a human already soft-deleted. It does not select runs to delete on its own.
+  - A fully automatic age-based or count-based prune of *never-deleted* runs is a plausible
+    follow-up. It stays out of scope here to keep the item to what was asked for.
+- **On permanent purge, delete the hosted DB run row or convert it to a tombstone row.**
+  - Deleting the row outright is simplest and reclaims the row. But it also erases the run from the
+    audit trail's referential reach, so a later "who deleted run X, when" query has no row to join
+    against.
+  - Keeping a minimal tombstone row (id plus `deleted_at` and `deleted_by`, evidence bytes gone)
+    preserves that history at the cost of a never-shrinking row count.
+  - The proposal leans toward the tombstone row for hosted deployments, where audit history is the
+    point of having a database at all. It leans toward outright deletion where no audit consumer
+    exists.
+  - This is a knob to settle at implementation time, not a fixed decision here. Unit 2 therefore
+    flags it rather than mandating one.
+- **A command-line companion (`bajutsu run rm <id>`) in the same item.** The user's ask was
+  specifically "from the Web UI". A CLI-side deletion command would reuse the same
+  `ArtifactStore.purge_run` seam this item introduces, so it is a natural, low-cost follow-up once
+  the seam exists. It stays out of this item to keep the surface to the Web UI and its API.
 
 ## Progress
 
