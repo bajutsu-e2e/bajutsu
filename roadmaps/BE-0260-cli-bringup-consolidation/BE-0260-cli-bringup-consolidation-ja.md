@@ -15,121 +15,70 @@
 
 ## はじめに
 
-run、crawl、record、audit の各コマンドは、実行の前に同じ 4 種類のデバイス／バックエンド起動処理を
-行っています。アクチュエータの選択、対象アプリの起動サーバーの立ち上げ、UDID の解決、そして
-該当する場合はアラートガードの構築です。各コマンドはこれらの処理を、同じ
-`try: … except RuntimeError → typer.Exit(2)`（または `except DeviceError`）という定型コードとともに
-個別に実装しています。本項目では、この 4 種類の複製をそれぞれ `bajutsu/cli/_shared.py` の共有
-ヘルパーへ統合し、あわせて `adb.DeviceError` にプラットフォーム中立な基底クラスを与えることで、
-汎用的なハンドラが例外の名前を得るためだけに iOS 側の `simctl` モジュールを import する必要を
-なくします。
+`run`、`crawl`、`record`、`audit` の各コマンドは、自分の処理へ入る前に、同じ 4 種類のデバイスとバックエンドの起動処理を行っています。
+
+- [アクチュエータ](../../docs/ja/glossary.md#driver-backend-actuator-platform)の選択
+- 対象アプリの起動サーバーの立ち上げ
+- UDID の解決
+- アラートガードの構築（該当する場合）
+
+各コマンドは、同じ `try: … except RuntimeError → typer.Exit(2)`（または `except DeviceError`）という定型コードで、これらを個別に包んでいます。
+
+本項目は、4 種類の複製をそれぞれ `bajutsu/cli/_shared.py` の共有ヘルパーへ統合します。あわせて `adb.DeviceError` にプラットフォーム中立な基底クラスを与えます。これにより、汎用的なハンドラが、捕捉する例外の名前を得るためだけに iOS 側の `simctl` モジュールを import する必要はなくなります。
 
 ## 動機
 
 同じ起動処理のロジックが、コマンドごとに手書きで 4 重に複製されています。
 
-- **アクチュエータの選択**（`run.py:303-312`、`crawl.py:501-507`、`record.py:196-202`、
-  `audit.py:146-151`）：`try: ensure_web_runtime(...); actuator = select_actuator(...) except
-  RuntimeError → typer.Exit(2)` という同一の形です。どの複製も web ランタイムを準備してから
-  アクチュエータを解決し、同じ `RuntimeError` で終了コード 2 を返します。呼び出し元の周辺だけが
-  異なっています。
-- **起動サーバーの立ち上げ**（`run.py:504-510`、`crawl.py:286-292`、`record.py:216-220`、
-  `audit.py:163-170`）：`try: start_launch_server(eff, upload_exec=...) except RuntimeError →
-  typer.Exit(2)` です。呼び出し、例外、終了コードのすべてが同じものが 4 回現れています。
-- **UDID の解決**（`run.py:515`、`record.py:211-212`、`audit.py:152-156`、`crawl.py:322`）：
-  `_simctl.resolve_udid(...)` を `except _simctl.DeviceError → typer.Exit(2)` で包んでいます。
-- **アラートガードの構築**（`run.py:375` と `392`、`crawl.py:231-232`、`record.py:207-208`）：
-  `ClaudeAlertLocator(ai=eff.ai, redactor=redactor)` を作り、続けて
-  `SystemAlertGuard(locator, instruction).dismiss` を得る処理です。なおこの 3 つはバイト単位で同一
-  ではありません。`run.py` の `_alert_guard_factory`（`run.py:363-376`）は先に
-  `credential_gap(eff.ai)` を確認し、資格情報が欠けている場合は locator の構築を省いて `None` に
-  フォールバックします（利用者向けの警告つき）が、`crawl.py`／`record.py` は無条件に構築します。
-  したがって共有ヘルパーは 3 つを丸ごと振る舞いを保って持ち上げるものではありません（解決方法は
-  詳細設計の項目 3 を参照）。
+- **アクチュエータの選択**は、`run.py:303-312`、`crawl.py:501-507`、`record.py:196-202`、`audit.py:146-151` にあります。どの複製も `try: ensure_web_runtime(...); actuator = select_actuator(...) except RuntimeError → typer.Exit(2)` という同一の形です。web ランタイムを準備してからアクチュエータを解決し、同じ `RuntimeError` で終了コード 2 を返します。異なるのは呼び出し元の周辺だけです。
+- **起動サーバーの立ち上げ**は、`run.py:504-510`、`crawl.py:286-292`、`record.py:216-220`、`audit.py:163-170` にあります。形は `try: start_launch_server(eff, upload_exec=...) except RuntimeError → typer.Exit(2)` です。呼び出し、例外、終了コードは、4 つとも同じです。
+- **UDID の解決**は、`run.py:515`、`record.py:211-212`、`audit.py:152-156`、`crawl.py:322` にあります。どの複製も `_simctl.resolve_udid(...)` を `except _simctl.DeviceError → typer.Exit(2)` で包んでいます。
+- **アラートガードの構築**は、`run.py:375` と `392`、`crawl.py:231-232`、`record.py:207-208` にあります。どの複製も `ClaudeAlertLocator(ai=eff.ai, redactor=redactor)` を作り、続けて `SystemAlertGuard(locator, instruction).dismiss` を得ます。ただし、この 3 つはバイト単位で同一ではありません。`run.py` の `_alert_guard_factory`（`run.py:363-376`）は、先に `credential_gap(eff.ai)` を確認します。資格情報が欠けている場合は、locator の構築を省いて `None` にフォールバックし、利用者向けの警告を出します。`crawl.py` と `record.py` は、無条件に構築します。そのため、共有ヘルパーは 3 つの複製を丸ごと、振る舞いを保って持ち上げるものにはなりません。解決方法は、詳細設計の項目 3 に書きます。
 
-これらのいずれかの挙動（終了コード、終了前のログ出力、捕捉する例外の種類）を変えるには、
-すべての複製を手作業で追随させる必要があります。追随し忘れた複製は、テストの失敗としてではなく、
-コマンド間の静かな不整合として残ります。各複製はそれぞれ自コマンドのテストだけを個別に
-通過してしまうためです。
+これらのいずれかの挙動を変えるには、すべての複製を手作業で追随させる必要があります。たとえば、終了コードの変更、終了前のログ出力の追加、捕捉する例外の追加です。追随し忘れた複製は、テストの失敗としてではなく、コマンド間の静かな不整合として残ります。各複製は、それぞれ自分のコマンドのテストだけを個別に通過するためです。
 
-これとは別に、`adb.DeviceError` は `simctl.DeviceError` を継承しています（`bajutsu/adb.py:32`）。
-そのため、iOS 固有ではなく単に何らかのデバイスエラーを捕捉したいだけの呼び出し側、10 箇所が、
-例外の名前を得るためだけに `bajutsu.simctl` を import しています。該当箇所は `crawl.py:1016`、
-`cli/commands/crawl.py:189,322,365`、`cli/commands/run.py:516`、`cli/commands/audit.py:158,193`、
-`cli/commands/record.py:242`、`cli/commands/doctor.py:181`、`serve/operations/doctor.py:130` です。これは、
-本ツールがプラットフォームに依存しない（プラットフォームは単一インターフェースの背後にある
-バックエンドの一つにすぎない）という prime directive が期待する依存の向きを逆転させています。
-汎用的な `except DeviceError` を書きたいだけなのに、iOS バックエンドのモジュールに手を伸ばさざるを
-得ない状態です。
+もう 1 つの問題は、例外の継承関係です。`adb.DeviceError` は `simctl.DeviceError` を継承しています（`bajutsu/adb.py:32`）。iOS 固有ではなく、何らかのデバイスエラーを捕捉したいだけの呼び出し側が 10 箇所あります。それでも、例外の名前を得るために `bajutsu.simctl` を import しています。
+
+- `crawl.py:1016`
+- `cli/commands/crawl.py:189,322,365`
+- `cli/commands/run.py:516`
+- `cli/commands/audit.py:158,193`
+- `cli/commands/record.py:242`
+- `cli/commands/doctor.py:181`
+- `serve/operations/doctor.py:130`
+
+この状態は、プライムディレクティブが期待する依存の向きを逆転させています。`bajutsu` は、プラットフォームを単一インターフェースの背後にあるバックエンドの 1 つとして扱い、バックエンドに依存しないことを目指しています。しかし現状では、汎用的な `except DeviceError` を書こうとすると、iOS バックエンドのモジュールに手を伸ばさざるを得ません。
 
 ## 詳細設計
 
-上で挙げた 2 つの独立した問題、すなわち起動処理の重複と例外階層の逆転にもとづいて MECE に
-分解します。前者はさらに複製されている 4 つの部分に分かれます。
+設計は、上で挙げた 2 つの独立した問題、つまり起動処理の重複と例外階層の逆転について、MECE に分かれます。前者は、さらに複製されている 4 つの部分に分かれます。
 
-1. **`_select_actuator_or_exit(backend, eff, engines)`**（`bajutsu/cli/_shared.py`）：
-   `ensure_web_runtime` のループ、`select_actuator` の呼び出し、`except RuntimeError →
-   typer.Exit(2)` の境界を 1 つのヘルパーにまとめ、`(actuator, backends)` を返します。
-   `run.py`、`crawl.py`、`record.py`、`audit.py` の 4 箇所の複製をこれに置き換えます。
-2. **`_start_launch_server_or_exit(eff, *, upload_exec)`**（`bajutsu/cli/_shared.py`）：
-   `start_launch_server` の呼び出しと `except RuntimeError → typer.Exit(2)` の境界を 1 つの
-   ヘルパーにまとめ、`(stop_server, exec_decision)` を返します。4 箇所の複製をこれに置き換えます。
-   呼び出し側ごとの違い（crawl の `atexit.register(stop_server)` と run の
-   `finally: stop_server()` など）は呼び出し側に残します。ヘルパーが担うのは、4 箇所に共通する
-   「立ち上げてだめなら終了する」部分だけです。1 つだけ明示的な判断が要る違いがあります。`audit.py`
-   の `except RuntimeError` ブロック（`audit.py:171-173`）は、`typer.Exit(2)` の前に `shutdown()` を
-   呼んで、すでに確保済みのデバイスプールのリースを片付けます。他の 3 つにはこの呼び出しがありません。
-   そこでヘルパーは任意の `on_error: Callable[[], None] | None`（終了前に実行するクリーンアップフック）
-   を受け取り、`audit` は `shutdown` を渡してこの片付けを保ちます。他の 3 つは何も渡さず、今日と
-   まったく同じ挙動になります。
-3. **`_build_alert_guard(eff, redactor, instruction)`**（`bajutsu/cli/_shared.py`）：
-   `ClaudeAlertLocator` の生成と `SystemAlertGuard(...).dismiss` の取得を 1 つのヘルパーに
-   まとめ、束縛済みの `dismiss` 呼び出し可能オブジェクトを返します。`run.py`、`crawl.py`、
-   `record.py` の 3 箇所の複製をこれに置き換えます。ヘルパーは `run.py` の `credential_gap(eff.ai)`
-   分岐（`run.py:363-376`）を取り込みます。資格情報が欠けている場合は同じ警告を出し、何もしないガードを
-   返します。これは 3 箇所のうち 2 箇所については、純粋に振る舞いを保つ変更ではありません。`crawl.py`
-   と `record.py` は今日は無条件に locator を構築しているため、取り込むと、資格情報が欠けているときに
-   `run` と同じく穏当に何もしない挙動を得ることになります。この揃えは意図的なもので（AI オーサリング
-   系の 3 コマンドは同じように振る舞いを弱めるべきです）、偶発的ではなく決定された振る舞いの変更で
-   あることを明示するためにここに記します。
+1. **`_select_actuator_or_exit(backend, eff, engines)`**（`bajutsu/cli/_shared.py`）は、`ensure_web_runtime` のループ、`select_actuator` の呼び出し、`except RuntimeError → typer.Exit(2)` の境界を 1 つのヘルパーにまとめます。ヘルパーは `(actuator, backends)` を返し、`run.py`、`crawl.py`、`record.py`、`audit.py` にある 4 箇所の複製を置き換えます。
+2. **`_start_launch_server_or_exit(eff, *, upload_exec)`**（`bajutsu/cli/_shared.py`）は、`start_launch_server` の呼び出しと `except RuntimeError → typer.Exit(2)` の境界を 1 つのヘルパーにまとめます。ヘルパーは `(stop_server, exec_decision)` を返し、4 箇所の複製を置き換えます。
+   - 呼び出し側ごとの違いは、呼び出し側に残します。たとえば、crawl は `atexit.register(stop_server)` を使い、run は `finally: stop_server()` を使います。ヘルパーが担うのは、4 箇所に共通する「立ち上げて、だめなら終了する」部分だけです。
+   - 1 つだけ、明示的な判断を要する違いがあります。`audit.py` の `except RuntimeError` ブロック（`audit.py:171-173`）は、`typer.Exit(2)` の前に `shutdown()` も呼びます。`shutdown()` は、すでに確保済みのデバイスプールのリースを片付けます。他の 3 つのコマンドには、この呼び出しがありません。
+   - そこでヘルパーは、任意の `on_error: Callable[[], None] | None`（終了前に実行するクリーンアップフック）を受け取ります。`audit` は `shutdown` を渡して、この片付けを保ちます。他の 3 つは何も渡さず、今日とまったく同じ挙動になります。
+3. **`_build_alert_guard(eff, redactor, instruction)`**（`bajutsu/cli/_shared.py`）は、`ClaudeAlertLocator` の生成と `SystemAlertGuard(...).dismiss` の取得を 1 つのヘルパーにまとめます。ヘルパーは、束縛済みの `dismiss` 呼び出し可能オブジェクトを返し、`run.py`、`crawl.py`、`record.py` にある 3 箇所の複製を置き換えます。
+   - ヘルパーは、`run.py` の `credential_gap(eff.ai)` 分岐（`run.py:363-376`）を取り込みます。資格情報が欠けている場合は、同じ警告を出し、何もしないガードを返します。
+   - 3 箇所のうち 2 箇所については、この変更は、純粋に振る舞いを保つものではありません。`crawl.py` と `record.py` は、今日は無条件に locator を構築しています。取り込むと、両コマンドは、資格情報が欠けているときに先へ進まず、`run` と同じく穏当に何もしない挙動を得ます。
+   - この揃えは意図的です。AI オーサリング系の 3 コマンドは、同じように振る舞いを弱めるべきだからです。本項目は、これが偶発的な変更ではなく、決定された振る舞いの変更であることを明示するために、ここに記します。
 4. **UDID の解決は、共有ヘルパーを新設せず、呼び出し側ごとの薄いラッパーのままとします。**
-   各呼び出し側の `_simctl.resolve_udid(...)` は UDID 以外の引数がすでに異なっており、
-   共通しているのは `except DeviceError → typer.Exit(2)` の境界だけです。この部分は、手順 5 が
-   実現すれば `except device_errors.DeviceError` という 1 行に収まり、別建てのヘルパーは
-   不要になります。
-5. **`bajutsu/device_errors.py`** を新設します。既存の `simctl.DeviceError` と同じ形
-   （メッセージを保持する）の、プラットフォーム中立な `DeviceError` を定義するモジュールです。
-   `simctl.DeviceError` と `adb.DeviceError` はどちらもこれを継承する形に変え（それぞれ
-   プラットフォーム固有の詳細を持つ独自クラスは維持し、互いを継承する関係はなくします）、
-   動機で挙げた汎用的な `except _simctl.DeviceError` ／ `except simctl.DeviceError` の
-   10 箇所は `except device_errors.DeviceError` に切り替えて `bajutsu.simctl` の import を
-   落とします。iOS 固有の `simctl.DeviceError` を本当に必要とする呼び出し側があれば、そこだけは
-   引き続き直接 import します。
+   - 各呼び出し側の `_simctl.resolve_udid(...)` は、UDID 以外の引数がすでに異なっています。
+   - 共通しているのは、`except DeviceError → typer.Exit(2)` の境界だけです。手順 5 が実現すれば、この境界は `except device_errors.DeviceError` という 1 行に収まるため、別建てのヘルパーは不要になります。
+5. **`bajutsu/device_errors.py`** は、プラットフォーム中立な `DeviceError` を定義する新しいモジュールです。既存の `simctl.DeviceError` と同じ形で、メッセージを保持します。
+   - `simctl.DeviceError` と `adb.DeviceError` は、どちらもこれを継承する形に変えます。それぞれ、プラットフォーム固有の詳細を持つ独自クラスは維持し、互いを継承する関係はなくします。
+   - 動機で挙げた、汎用的な `except _simctl.DeviceError` と `except simctl.DeviceError` の 10 箇所は、`except device_errors.DeviceError` に切り替え、`bajutsu.simctl` の import を落とします。
+   - iOS 固有の `simctl.DeviceError` を本当に必要とする呼び出し側があれば、そこだけは引き続き直接 import します。
 
-`_shared.py` に加える新しいヘルパーは、いずれも挙動を変えません。捕捉する例外、表示する
-メッセージ、`typer.Exit(2)`、戻り値の形はすべて置き換え前のコードと同じであり、本項目は
-定型コードを移すだけで終了コードの契約は変えません。`_shared.py` 自身のモジュール docstring も
-すでに「本当にコマンドをまたぐ部分だけをここに置く」と述べており、この 4 つはどのコマンド
-ファイルにもまったく同じ形で存在しているという点で、その基準に当てはまります。
+`_shared.py` に加える新しいヘルパーは、いずれも挙動を変えません。捕捉する例外、表示するメッセージ、`typer.Exit(2)`、戻り値の形は、置き換え前のコードと同じです。本項目は、定型コードを移すだけで、終了コードの契約は変えません。
+
+`_shared.py` のモジュール docstring は、すでにこのファイルの範囲を「本当にコマンドをまたぐ部分」に限っています。4 つの部分は、どのコマンドファイルにもまったく同じ形で存在しているため、この基準に当てはまります。
 
 ## 検討した代替案
 
-- **各コマンドのエントリポイントをデコレータで包む案。** 検討したうえで採用しません。4 つの
-  処理はコマンドごとに異なる箇所で立ち上がります。アクチュエータの選択は設定解決が終わる前に、
-  起動サーバーの立ち上げはプランの構築後に、アラートガードは `--dismiss-alerts` が指定された
-  場合に限って構築されます。単一のデコレータにしても、結局は素朴なヘルパーと同じだけの引数が
-  必要になり、しかも Typer のコマンドシグネチャや、どの時点で終了しうるかが呼び出し箇所からは
-  読み取りにくくなります。
-- **`adb.DeviceError` が `simctl.DeviceError` を継承する現状を維持する案。** 採用しません。
-  これがまさに、汎用ハンドラが `bajutsu.simctl` を import する原因そのものであり、3 つ目の
-  プラットフォームバックエンド（Android はすでに実装済みで、さらに増える可能性があります）は、
-  `simctl.DeviceError` をさらに継承して逆転を重ねるか、独自の場当たり的な基底クラスを用意するかを
-  迫られることになります。
-- **4 つのヘルパーを `bajutsu/orchestrator.py` やドライバ側のモジュールに置く案。** 採用しません。
-  4 つはいずれも CLI コマンドの起動処理に関する関心事（設定、Typer の終了コード、`typer.echo`）
-  であり、決定的なドライバ／オーケストレータのコアには何の役割も持ちません。`_shared.py` は、
-  既存のコマンド間で重複していたヘルパー（設定の読み込みやシークレットの redaction など）が
-  すでに置かれている場所であり、理由も同じです。
+- **各コマンドのエントリポイントをデコレータで包む案。** 検討したうえで採用しません。4 つの処理は、コマンドごとに異なる箇所で立ち上がります。アクチュエータの選択は設定解決が終わる前、起動サーバーの立ち上げはプランの構築後、アラートガードは `--dismiss-alerts` が指定された場合に限って行われます。単一のデコレータにしても、素朴なヘルパーと同じだけの引数が必要です。しかも、Typer のコマンドシグネチャと、どの時点で終了しうるかが、明示的な関数呼び出しより読み取りにくくなります。
+- **`adb.DeviceError` が `simctl.DeviceError` を継承する現状を維持する案。** 採用しません。この継承関係が、汎用ハンドラごとに `bajutsu.simctl` を import させる直接の原因です。3 つ目のプラットフォームバックエンド（Android はすでに実装済みで、さらに増える可能性があります）は、次のどちらかを迫られます。`simctl.DeviceError` をさらに継承して逆転を重ねるか、独自の場当たり的な基底クラスを用意するかです。
+- **4 つのヘルパーを `cli/_shared.py` の代わりに `bajutsu/orchestrator.py` やドライバ側のモジュールに置く案。** 採用しません。4 つはいずれも CLI コマンドの起動処理に関する関心事（設定、Typer の終了コード、`typer.echo`）で、決定的なドライバとオーケストレータのコアには役割がありません。`_shared.py` には、設定の読み込みやシークレットの redaction など、コマンドごとに重複していた他のヘルパーが、同じ理由ですでに置かれています。
 
 ## 進捗
 

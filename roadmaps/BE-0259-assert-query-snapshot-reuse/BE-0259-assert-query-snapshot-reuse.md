@@ -17,96 +17,105 @@
 ## Introduction
 
 The step loop (`bajutsu/orchestrator/loop.py`) can fetch the accessibility tree with
-`driver.query()` more times than a single non-mutating step needs. BE-0234 (Implemented, #987)
-already closed most of this gap: the loop's post-step read is now lazy — taken only when a
-`screenChanged` capture, an attached `extract`, or a wait-timeout diagnostic actually needs the
-tree — and it reuses the previous step's `after` as the next step's `before` (the `BE-0234 Unit 2`
-comment in `loop.py`). So a plain `assert` with none of those attached no longer double-queries at
-all. The residual gap this item targets is narrower: when a non-mutating step (an `assert`, or an
-`extract` attached to one) *does* trigger that post-step read, `_run_step_body` has already resolved
-and queried the tree to evaluate the step, and nothing mutated the screen in between — yet the
-post-step read still fetches it again. This item threads that already-settled snapshot through
-instead of re-fetching it, and does the analogous thing one layer down, where a single `tap` stacks
-its own redundant fetches underneath the step loop's.
+`driver.query()` more often than a single non-mutating [step](../../docs/glossary.md#scenario-authoring) needs.
+
+BE-0234 (Implemented, #987) already closed most of that gap. The loop's post-step read is now lazy:
+it runs only when a `screenChanged` capture, an attached `extract`, or a wait-timeout diagnostic
+needs the tree. The loop also reuses the previous step's `after` as the next step's `before` (the
+`BE-0234 Unit 2` comment in `loop.py`). A plain `assert` with none of those attached no longer
+queries twice.
+
+The remaining gap is narrower. A non-mutating step (an `assert`, or an `extract` attached to one)
+can still trigger the post-step read. By then `_run_step_body` has already resolved and queried the
+tree to evaluate the step, and nothing has changed the screen since. The post-step read fetches the
+tree a second time anyway.
+
+This item passes the already-settled snapshot along instead of fetching it again. It applies the
+same idea one layer down, where a single `tap` stacks redundant fetches beneath the step loop's own.
 
 ## Motivation
 
-`bajutsu/orchestrator/waits.py:64` documents why this matters on a real backend: idb's
-`describe-all` (the query the idb driver's `query()` shells out to) costs roughly 100–300ms per
-call, because it is a subprocess round-trip through the Simulator, not an in-process lookup. A
-scenario that leans on `assert` steps to check state — the normal shape for a test that reads
-before it acts — pays that cost twice for no additional information whenever the post-step read
-still fires (a `screenChanged` capture or an `extract` on the assert): `_run_step_body` already
-holds the resolved element list at the moment `assertions.evaluate` runs, and nothing mutates the
-screen between that call and the loop's own post-step `query()`.
+`bajutsu/orchestrator/waits.py:64` documents the cost on a real backend. The idb `describe-all`
+command (the query that the idb driver's `query()` shells out to) takes roughly 100–300ms per call.
+Each call is a subprocess round-trip through the Simulator, not an in-process lookup.
 
-The same shape compounds underneath a single `tap`. On the idb driver
-(`bajutsu/drivers/idb.py:397`), `_center` calls `_settle()` (one `query()`, more if the tree's
-identifier-frame projection hasn't stabilized) and then `_resolve` (`idb.py:376`), which runs its
-own bounded, polling re-query loop up to a 3-second deadline if the selector isn't found on the
-first try. `tap` is frequently invoked underneath `base.wait_until` (`base.py:359`), which is
-itself a deadline/poll loop — so a single flaky tap can have two independent deadline managers
-each re-querying on their own schedule, stacked on top of each other. On the adb driver,
-`_scroll_into_view` (`bajutsu/drivers/adb.py:369`) adds one more `_settle()` per scroll attempt
-(`adb.py:379`), so a tap that needs to scroll into view can fire on the order of a dozen
-full-tree subprocess calls for what is conceptually one action. None of this changes what a
-scenario asserts — it is pure, avoidable latency on every `assert`-heavy run and every tap that
-isn't already on screen.
+A scenario that leans on `assert` steps, the normal shape for a test that reads before it acts,
+pays that cost twice for no extra information whenever the post-step read still fires. That happens
+when the `assert` carries a `screenChanged` capture or an `extract`. `_run_step_body` already holds
+the resolved element list when `assertions.evaluate` runs. Nothing changes the screen between that
+call and the loop's own post-step `query()`.
+
+The same pattern compounds beneath a single `tap`:
+
+- On the idb [driver](../../docs/glossary.md#driver-backend-actuator-platform) (`bajutsu/drivers/idb.py:397`), `_center` calls `_settle()`. That costs one
+  `query()`, and more if the tree's identifier-frame projection has not stabilized.
+- `_center` then calls `_resolve` (`idb.py:376`). If the selector is not found on the first try,
+  `_resolve` runs its own bounded, polling re-query loop with a 3-second deadline.
+- `tap` often runs beneath `base.wait_until` (`base.py:359`), which is itself a deadline and poll
+  loop. A single flaky tap can therefore have two independent deadline managers, each re-querying on
+  its own schedule.
+- On the adb driver, `_scroll_into_view` (`bajutsu/drivers/adb.py:369`) adds one more `_settle()` per
+  scroll attempt (`adb.py:379`). A tap that must scroll into view can fire on the order of a dozen
+  full-tree subprocess calls for what is conceptually one action.
+
+None of this changes what a scenario asserts. The cost is avoidable latency on every `assert`-heavy
+run and on every tap whose target is not already on screen.
 
 ## Detailed design
 
-This is a **behavior-preserving** refactor: the elements a step's assertions and extractions see
-are the *same* elements, fetched fewer times. No change to selector resolution, assertion
-semantics, wait/poll conditions, or driver interfaces is proposed. The work is MECE across three
-independent units:
+This is a **behavior-preserving** refactor. The elements that a step's assertions and extractions
+see are the same elements, fetched fewer times. The item proposes no change to selector resolution,
+assertion semantics, wait and poll conditions, or driver interfaces. The work is MECE across three
+independent units.
 
 - **Reuse `_run_step_body`'s query result as the loop's `after` snapshot for non-mutating steps.**
-  Change `_run_step_body` (`bajutsu/orchestrator/loop.py`, `_run_step_body` at line 141, the
-  `assert_` query at 172) to return the element list it queried for `assert_` (and, if it queries
-  one, `wait`) alongside its existing `(ok, reason, assertion_results)` tuple. In `exec_steps`, when
-  the step kind is one that cannot mutate the screen, use that returned snapshot as `after` instead
-  of letting the (post-BE-0234, now-lazy) post-step read call `query()` again. Action steps (`tap`,
-  `type`, `swipe`, …) still query fresh
-  after they run, because the screen may genuinely have changed — this unit only removes the
-  redundant *second* query for steps where "before" and "after" are provably the same query. The
-  `extract` modifier (`bajutsu/scenario/models/steps.py:134`) rides along for free: when it
-  decorates a non-mutating step it reads the same reused snapshot; when it decorates a mutating
-  step it continues to read the fresh post-action query, unchanged from today.
+  - Change `_run_step_body` (`bajutsu/orchestrator/loop.py`; the function starts at line 141 and the
+    `assert_` query is at line 172). It returns the element list it queried for `assert_`, and for
+    `wait` if it queries one, alongside its existing `(ok, reason, assertion_results)` tuple.
+  - In `exec_steps`, when the step kind cannot mutate the screen, use the returned snapshot as
+    `after`. The post-step read (lazy since BE-0234) then skips a second `query()`.
+  - Action steps (`tap`, `type`, `swipe`, …) still query fresh after they run, because the screen
+    may genuinely have changed. This unit removes only the redundant second query, for steps whose
+    "before" and "after" are provably the same query.
+  - The `extract` modifier (`bajutsu/scenario/models/steps.py:134`) benefits without further work.
+    On a non-mutating step it reads the reused snapshot. On a mutating step it keeps reading the
+    fresh post-action query, as it does today.
 
-- **Thread one settled snapshot through tap actuation instead of re-querying at each layer.** In
-  the idb and adb drivers, `_center` (`idb.py:397`) calls `_settle()` and then `_resolve`
-  (`idb.py:376`), and `_resolve` re-queries internally on a cache miss. Change `_resolve` to accept
-  and prefer the tree `_settle()` already produced (it already has an `initial_tree` parameter for
-  the first attempt — `idb.py:376`) and change `_center` to pass the settled tree through to every
-  first not-found. The outer `base.wait_until` deadline loop (`base.py:359`) is untouched: this unit
-  only removes a query that a lower layer was performing again immediately after a sibling layer
-  already had the same data in hand.
+- **Thread one settled snapshot through tap actuation instead of re-querying at each layer.**
+  - In the idb and adb drivers, `_center` (`idb.py:397`) calls `_settle()` and then `_resolve`
+    (`idb.py:376`). On a cache miss, `_resolve` re-queries internally.
+  - Change `_resolve` to accept and prefer the tree that `_settle()` already produced. It already
+    has an `initial_tree` parameter for the first attempt (`idb.py:376`).
+  - Change `_center` to pass the settled tree through to `_resolve` at every first not-found.
+  - Leave the outer `base.wait_until` deadline loop (`base.py:359`) untouched. This unit removes
+    only a query that a lower layer ran again right after a sibling layer already held the same data.
 
-- **Add a regression test asserting the query-count reduction.** Using `FakeDriver` (or an
-  instrumented driver wrapper that counts `query()` calls), assert that a scenario consisting of a
-  single `assert` step calls `query()` exactly once end to end, down from two today. A second test
-  covers a `tap` step to confirm action steps are unaffected — their `after` query still fires, since
-  the screen may have changed.
+- **Add a regression test that asserts the query-count reduction.**
+  - Use `FakeDriver`, or an instrumented driver wrapper that counts `query()` calls.
+  - Assert that a scenario of a single `assert` step calls `query()` exactly once end to end, down
+    from two today.
+  - Add a second test on a `tap` step to confirm that action steps are unaffected. Their `after`
+    query still fires, because the screen may have changed.
 
 ## Alternatives considered
 
-- **Cache `query()` results across poll iterations by wall-clock time (e.g. a short TTL).**
-  Rejected: a time-based cache can return a stale snapshot after the screen has actually changed,
-  which would let a `wait` or `assert` step read data that no longer reflects the device — silently
-  weakening the very determinism prime directive 2 protects. This proposal's reuse is narrower and
-  safe by construction: it only ever substitutes one query result for the *provably identical*
-  query the same step already ran, scoped to a single step's lifetime, never across polls or across
+- **Cache `query()` results across poll iterations by wall-clock time (for example, a short time-to-live, or TTL).**
+  Rejected. A time-based cache can return a stale snapshot after the screen has changed. A `wait`
+  or `assert` step could then read data that no longer reflects the device, which silently weakens
+  the determinism that prime directive 2 protects. The reuse proposed here is narrower and safe by
+  construction. It substitutes one query result for the provably identical query that the same step
+  already ran. The substitution is scoped to a single step's lifetime and never crosses polls or
   steps.
-- **Leave the loop as-is and rely on `waits.py:64`'s documented cost as an accepted tradeoff.**
-  Rejected: the cost is well understood but avoidable without touching semantics, and it compounds
-  visibly on `assert`-heavy scenarios and on any tap that scrolls — exactly the CI/local run-time
-  cost this repository otherwise works to keep low (`docs/ai-development.md`'s right-sizing
-  guidance applies the same principle to compute; this applies it to wall-clock run time).
+- **Leave the loop as it is and accept the cost documented at `waits.py:64`.**
+  Rejected. The cost is well understood and avoidable without touching semantics. It compounds on
+  `assert`-heavy scenarios and on any tap that scrolls. This repository otherwise works to keep that
+  CI and local run-time cost low. `docs/ai-development.md`'s right-sizing guidance applies the same
+  principle to compute, and this item applies it to wall-clock run time.
 - **Redesign the driver query interface around a persistent, invalidation-tracked tree cache.**
-  Rejected as out of scope: that is a much larger change to the `Driver` interface across every
-  backend (idb, adb, Playwright), with its own invalidation-correctness risk, for a win this
-  narrower, purely-additive reuse already captures for the common cases. If a future proposal wants
-  a general cache, it should build on the query-count regression test this item adds.
+  Rejected as out of scope. That change would touch the `Driver` interface across every backend
+  (idb, adb, Playwright) and carries its own invalidation-correctness risk. The narrower, purely
+  additive reuse already captures the win for the common cases. A future proposal for a general
+  cache should build on the query-count regression test that this item adds.
 
 ## Progress
 
@@ -124,23 +133,24 @@ independent units:
 ### Log
 
 - **Unit 1 — done.** `_run_step_body` now returns the settled tree it queried for a non-mutating
-  step (`assert_`, and `wait` via `_wait`/`_wait_settled` returning their last-polled tree); the step
-  loop seeds `_ScreenRead` with it, so the `screenChanged`/`extract`/wait-diagnostic/capture
-  consumers reuse that snapshot instead of issuing a second identical `query()`. Mutating and
-  tree-less steps (`tap`/`type`/…, `email`, `wait until: request`) return `None`, so their post-step
-  read stays a fresh query — behavior-preserving. (`bajutsu/orchestrator/loop.py`,
-  `bajutsu/orchestrator/waits.py`.)
-- **Unit 2 — already satisfied, no change needed.** The redundant tap-time query this unit targeted
-  no longer exists: `_center` (idb) and `_resolve_frame_and_screen` (adb) already thread the tree
-  `_settle()` produced into `_resolve(..., initial_tree=tree)`, so a tap resolves on the settled tree
-  with no second query on the happy path. idb has done this since BE-0087 (`settle before actuation`);
-  adb's equivalent landed with BE-0210. The remaining per-scroll `_settle()` in
-  `adb._scroll_into_view` is a genuine re-read after the screen has moved, not a redundant one, so it
-  is correctly left in place.
-- **Unit 3 — done.** `tests/orchestrator/test_read_count.py` gains BE-0259 cases: an `assert`+extract
-  step issues exactly one `query()` (down from two), an `assert` under a `screenChanged` policy costs
-  two (down from three), a `wait for`+extract step reuses its settled tree, and an action step still
-  reads a fresh `after` (a correctness check that mutating steps are never seeded).
+  step. That covers `assert_`, and `wait` through `_wait` and `_wait_settled`, which return their
+  last-polled tree. The step loop seeds `_ScreenRead` with the tree. The `screenChanged`, `extract`,
+  wait-diagnostic, and capture consumers reuse that snapshot instead of issuing a second identical
+  `query()`. Mutating and tree-less steps (`tap`/`type`/…, `email`, `wait until: request`) return
+  `None`, so their post-step read stays a fresh query. Behavior is preserved.
+  (`bajutsu/orchestrator/loop.py`, `bajutsu/orchestrator/waits.py`.)
+- **Unit 2 — already satisfied, no change needed.** The redundant tap-time query that this unit
+  targeted no longer exists. `_center` (idb) and `_resolve_frame_and_screen` (adb) already pass the
+  tree that `_settle()` produced into `_resolve(..., initial_tree=tree)`. A tap resolves on the
+  settled tree, with no second query on the happy path. idb has done this since BE-0087
+  (`settle before actuation`), and adb's equivalent landed with BE-0210. The per-scroll `_settle()`
+  that remains in `adb._scroll_into_view` is a genuine re-read after the screen has moved, not a
+  redundant one, so it stays.
+- **Unit 3 — done.** `tests/orchestrator/test_read_count.py` gains BE-0259 cases:
+  - An `assert`+extract step issues exactly one `query()` (down from two).
+  - An `assert` under a `screenChanged` policy costs two (down from three).
+  - A `wait for`+extract step reuses its settled tree.
+  - An action step still reads a fresh `after`, which checks that mutating steps are never seeded.
 
 ## References
 
