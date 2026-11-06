@@ -17,169 +17,202 @@
 ## Introduction
 
 [BE-0423](../BE-0423-cli-repl-inspect-actuate/BE-0423-cli-repl-inspect-actuate.md) shipped
-`bajutsu repl` as a plain, line-at-a-time `bajutsu>` prompt whose `tap`/`type` addressed an element
-by `id` alone — a deliberate v1 scope cut, named in that item's own *Detailed design* and
-*Alternatives considered* as a natural follow-up once the shell itself had landed. This item is
-that follow-up, on three fronts: `tap`/`type` reach the rest of the `Selector` vocabulary the shell
-already resolves against under the hood, through both a terse shortcut grammar (`label`, `index`)
-and a `--sel <yaml>` escape hatch reusing the scenario `Selector` model directly for the fields the
-shortcuts cannot reach (`idMatches`, `labelMatches`, `traits`, `value`, `within`); a raw coordinate
-`tap` bypasses selector resolution entirely; and the shell itself renders as an ncurses-style
-screen — the command line pinned at the top, every answer accumulating in a scrollable, greppable
-pane below it — when both ends of the terminal support it.
+`bajutsu repl` as a plain, line-at-a-time `bajutsu>` prompt. Its `tap`/`type` addressed an element by
+`id` alone. That was a deliberate v1 scope cut, which BE-0423's own *Detailed design* and
+*Alternatives considered* named as a natural follow-up once the shell had landed. This item is that
+follow-up, on three fronts.
+
+- **Richer targets.** `tap`/`type` reach the rest of the `Selector` vocabulary the shell already
+  resolves against under the hood. A terse shortcut grammar covers `label` and `index`. A
+  `--sel <yaml>` escape hatch reuses the scenario `Selector` model directly for the fields the
+  shortcuts cannot reach (`idMatches`, `labelMatches`, `traits`, `value`, `within`).
+- **Raw coordinates.** A coordinate `tap` bypasses selector resolution entirely.
+- **A screen.** When both ends of the terminal support it, the shell renders as an ncurses-style
+  screen. The command line is pinned at the top, and every answer accumulates in a scrollable,
+  greppable pane below it.
 
 ## Motivation
 
-Two gaps surfaced from actually using the v1 shell:
+Using the v1 shell surfaced two gaps.
 
-An element with no `id` — only a `label` — was simply unreachable from `repl`, even though `tree`
-already prints its `label` in full. The operator could read the row and had no command that would
-act on it. Two elements sharing one `id` or `label` (a duplicated row, a repeated list item) were
-equally unreachable: `tap` would report `AmbiguousSelector` and stop, with no way to say which one.
-Both fields — `label` and `index` — already exist end to end in `Selector`
-(`bajutsu/common/drivers/base/selector.py`) and are already honored by `resolve_unique`
-(`bajutsu/common/drivers/base/_functions.py`); only the REPL's own command-line grammar for naming
-a target was missing. A raw coordinate tap closes a third, narrower gap: confirming exactly where a
-covering element's edge sits, or reaching a control the tree misreports, without writing a scenario
-step to do it. `Driver.tap_point` already exists on every backend for this; `repl` had no command
+An element with no `id`, only a `label`, was unreachable from `repl`,
+even though `tree` already prints its `label` in full. The operator could read the row but had no
+command that would act on it. Two elements sharing one `id` or `label` (a duplicated row, a repeated
+list item) were equally unreachable. `tap` would report `AmbiguousSelector` and stop, with no way to
+say which one was meant.
+
+Both fields, `label` and `index`, already exist end to end in `Selector`
+(`bajutsu/common/drivers/base/selector.py`). `resolve_unique`
+(`bajutsu/common/drivers/base/_functions.py`) already honors them. Only the REPL's own command-line
+grammar for naming a target was missing.
+
+A raw coordinate tap closes a third, narrower gap. It lets an operator confirm precisely where a
+covering element's edge sits, or reach a control the tree misreports, without writing a scenario
+step. `Driver.tap_point` already exists on every backend for this purpose. `repl` had no command
 that called it.
 
-A shortcut grammar covering `id`, `label`, and `index` still leaves a real gap: `idMatches`,
-`labelMatches`, `traits`, `value`, and `within` have no shortcut spelling at all, and inventing one
-for each — a glob flag, a regex flag, a trait list, a nested-selector syntax — would grow the
-command-line grammar well past what a shortcut should carry. A scenario author already has a
-vocabulary for exactly this: the `Selector` YAML a step authors against. Reusing it as a REPL escape
-hatch closes the gap with no new vocabulary to design or learn.
+A shortcut grammar covering `id`, `label`, and `index` still leaves a real gap. `idMatches`,
+`labelMatches`, `traits`, `value`, and `within` have no shortcut spelling at all. Inventing one for
+each (a glob flag, a regex flag, a trait list, a nested-selector syntax) would grow the command-line
+grammar well past what a shortcut should carry. A scenario author already has a vocabulary for
+precisely this: the `Selector` YAML a step authors against. Reusing it as a REPL escape hatch closes
+the gap with no new vocabulary to design or learn.
 
-Separately, the plain prompt loop makes reading back a long `tree` or hunting for one earlier
-`tap`'s result mean scrolling the terminal's own history — the shell has no memory of what it
-printed, and no way to search it. An operator debugging a flaky selector often wants exactly that:
-type a few commands, then scroll back and grep the transcript for the one line that explains what
-changed. A classic ncurses-style split — input pinned at the top, output scrollable below, one key
-to move between them — is a well-understood answer to that need, and Python's own standard library
-already ships `curses` (BE-0423 targets macOS/Linux only, matching this project's existing
-Simulator-only platform reach — no new dependency).
+Separately, the plain prompt loop forces an operator to scroll the terminal's own
+history to read back a long `tree` or to find an earlier `tap`'s result. The shell has no memory of
+what it printed and no way to search it. An operator debugging a flaky selector often wants precisely
+that: type a few commands, then scroll back and grep the transcript for the one line that explains
+what changed.
+
+A classic ncurses-style split answers that need and is well understood. Input is pinned at the top,
+output scrolls below, and one key moves between them. Python's own standard library already ships
+`curses`, so the split adds no dependency. BE-0423 targets macOS and Linux only, matching this
+project's Simulator-only platform reach.
 
 ## Detailed design
 
 ### Target syntax for `tap`/`type`
 
-`bajutsu/repl/session.py` gains `_parse_target(token) -> Selector | Point | None`, reusing the
-existing `Selector` fields and `Driver.tap_point` rather than inventing new resolution semantics —
-only the token grammar itself is new:
+`bajutsu/repl/session.py` gains `_parse_target(token) -> Selector | Point | None`. It reuses the
+existing `Selector` fields and `Driver.tap_point` rather than inventing new resolution semantics.
+Only the token grammar is new.
 
 | Form | Resolves to |
 |---|---|
 | `<id>` | `{"id": token}` — unchanged default; `tap`'s whole remainder is still the id verbatim, including an embedded space |
-| `<id>#<index>` | `{"id": id, "index": index}` — `index` is 0-based, negative-from-end, exactly `resolve_unique`'s existing semantics |
-| `label:<text>` | `{"label": text}` — the only way to reach a label-only element; confirmed there is no id→label fallback anywhere in `matches()` |
+| `<id>#<index>` | `{"id": id, "index": index}` — `index` is 0-based, negative-from-end, precisely `resolve_unique`'s existing semantics |
+| `label:<text>` | `{"label": text}` — the sole way to reach a label-only element; confirmed there is no id→label fallback anywhere in `matches()` |
 | `label:<text>#<index>` | `{"label": text, "index": index}` |
 | `@<x>,<y>` | a raw `Point`, `tap`-only — `driver.tap_point((x, y))` directly, bypassing `resolve_unique` entirely |
 
 A trailing `#<index>` is stripped before the `label:` prefix check, so it composes with both forms.
 An id or label that itself ends in a literal `#<digits>`, or starts with `@`/`label:`, cannot be
-reached this way — a narrow, documented gap (`help`), not a silent misread; `tree`/`find` remain
-the way to check.
+reached this way. This gap is narrow and documented (`help`), and the shell never misreads such a
+target silently. `tree`/`find` remain the way to check.
 
-`_tap(rest)` parses `rest` as a whole (unchanged framing: `tap` takes one argument, the target, and
-nothing follows it, so a label with an embedded space needs no quoting). `_type(rest)` needs to
-split the target from the text that follows it, so it gains a small quote-aware splitter — not
-`shlex`, since free-typed text must never require quoting or choke on a stray quote character: a
-line starting with `"` reads up to the matching `"` as the target (letting `type "label:Sign in"
-hello` name a spaced label), otherwise the first whitespace-delimited token is the target, exactly
-today's behavior. `type` rejects an `@<x>,<y>` target outright — there is no "type at a point"
-concept the way there is a "tap at a point" one.
+`_tap(rest)` parses `rest` as a whole. The framing is unchanged: `tap` takes one argument, the
+target, and nothing follows it, so a label with an embedded space needs no quoting.
+
+`_type(rest)` must split the target from the text after it, so it gains a small quote-aware
+splitter. The splitter is not `shlex`, because free-typed text must never require quoting or choke on
+a stray quote character. The rule has two cases:
+
+- A line starting with `"` reads up to the matching `"` as the target. This lets `type "label:Sign
+  in" hello` name a spaced label.
+- Otherwise the first whitespace-delimited token is the target, precisely today's behavior.
+
+`type` rejects an `@<x>,<y>` target outright. There is a "tap at a point" concept, but no "type at a
+point" one.
 
 ### Full-selector escape hatch (`--sel`)
 
-`tap --sel <yaml>` and `type --sel <yaml> <text>` accept one flow-style `{...}` YAML mapping —
-block style needs newlines a single typed line cannot hold, so flow style is the only shape this
-input can take, and its closing `}` doubles as `type`'s target/text boundary, the same role a quote
-plays for `"<target with a space>"`. The mapping is parsed with `yaml.safe_load` and validated
-through the *same* `bajutsu.common.scenario.Selector` pydantic model a scenario step authors
-against (`Selector.model_validate(data).as_selector()`), not a hand-rolled schema — so every field
-a scenario can use (`id`, `idMatches`, `label`, `labelMatches`, `traits`, `value`, `within`,
-`index`, both the snake_case field names and their camelCase aliases) is available here with zero
-vocabulary drift between the two surfaces, including `within`'s nested-selector shape, which no
-shortcut spelling could express. A YAML syntax error or a `Selector` validation failure (an unknown
-field, an empty selector, a malformed `id` OR-candidate list) reports the underlying error
-(`yaml.YAMLError` or `pydantic.ValidationError`) as the command's answer rather than a generic usage
-line, since those messages are already specific enough to act on. The shortcut forms above stay the
-default rather than being replaced by `--sel`, because `tap <id>` is shorter to type than
-`--sel {id: ...}` for the common single-id case — see *Alternatives considered*.
+`tap --sel <yaml>` and `type --sel <yaml> <text>` accept one flow-style `{...}` YAML mapping. Block
+style needs newlines that a single typed line cannot hold, so flow style is the only shape this input
+can take. Its closing `}` also marks `type`'s target/text boundary, the role a quote plays for
+`"<target with a space>"`.
+
+The mapping is parsed with `yaml.safe_load`. It is then validated through the *same*
+`bajutsu.common.scenario.Selector` pydantic model that a scenario step authors against
+(`Selector.model_validate(data).as_selector()`), not a hand-rolled schema. Every field a scenario can
+use is thus available here: `id`, `idMatches`, `label`, `labelMatches`, `traits`, `value`,
+`within`, and `index`, under both the snake_case field names and their camelCase aliases. The two
+surfaces share one vocabulary with no drift, including `within`'s nested-selector shape, which no
+shortcut spelling could express.
+
+A YAML syntax error or a `Selector` validation failure reports the underlying error as the
+answer. Examples of such a failure are an unknown field, an empty selector, and a malformed `id`
+OR-candidate list. The error is a `yaml.YAMLError` or a `pydantic.ValidationError`. It replaces a
+generic usage line because those messages are already specific enough to act on.
+
+The shortcut forms above stay the default rather than being replaced by `--sel`. `tap <id>` is
+shorter to type than `--sel {id: ...}` for the common single-id case (see *Alternatives considered*).
 
 ### An ncurses-style screen
 
-New `bajutsu/repl/tui.py`, kept alongside the existing plain loop (`loop.py`) rather than replacing
-it — `bajutsu/repl/cli.py` picks between them by `sys.stdin.isatty() and sys.stdout.isatty()`, so a
-piped `repl` (a script, a test harness) keeps the plain line-at-a-time shell, matching how most
-terminal tools degrade, and the existing CLI-wiring tests (driven through `CliRunner`, which never
-provides a real tty) keep exercising the plain loop unmodified.
+A new `bajutsu/repl/tui.py` sits alongside the existing plain loop (`loop.py`) rather than replacing
+it. `bajutsu/repl/cli.py` picks between them by `sys.stdin.isatty() and sys.stdout.isatty()`. This
+choice has two effects:
 
-`tui.py` follows the same dependency-injection shape `loop.py` already uses for its own
-testability (`read_line`/`say` there, a small `Screen` Protocol here — `getmaxyx`/`get_wch`/
-`erase`/`addnstr`/`move`/`refresh`, the exact subset of curses' own window object a real
-`curses.wrapper` `stdscr` already implements, so no adapter class is needed in production). A pure
-`TuiState` dataclass (mode, input buffer and cursor, history, the output transcript, scroll offset,
-filter query) and a pure `handle_key(state, key, pane_height)` hold all the behavior; `run_tui`
-draws, reads one key, and runs a submitted line through `session.dispatch` exactly the way
-`repl_loop` does (same `COMMAND_ERRORS`/`FATAL_ERRORS`/`ReplExit` handling). Tests drive `handle_key`
-directly and `run_tui` against a `FakeScreen` double that scripts `get_wch()` and records draws — no
-real terminal needed, mirroring how `test_repl.py` already tests the plain loop.
+- A piped `repl` (a script, a test harness) keeps the plain line-at-a-time shell, matching how most
+  terminal tools degrade.
+- The existing CLI-wiring tests drive `repl` through `CliRunner`, which never provides a real tty.
+  They keep exercising the plain loop unmodified.
 
-Keys, matching the one-shortcut-key request this item answers:
+`tui.py` follows the dependency-injection shape that `loop.py` already uses for testability. `loop.py`
+injects `read_line` and `say`. `tui.py` injects a small `Screen` Protocol with `getmaxyx`, `get_wch`,
+`erase`, `addnstr`, `move`, and `refresh`. These are the exact subset of curses' own window object that
+a real `curses.wrapper` `stdscr` already implements, so production needs no adapter class.
 
-- **`"input"` mode** (the default): printable characters (`get_wch` decodes one full Unicode
-  character per call, so a Japanese `type`/`tap label:` argument round-trips correctly — a raw
-  `getch` would instead hand back one UTF-8 byte at a time) insert at the cursor;
-  Backspace/Left/Right/Home/End edit the line; Enter submits; Up/Down recall history, classic-shell
-  style; **Tab** switches to `"scroll"`.
-- **`"scroll"` mode**: Up/Down scroll the output pane one line, PageUp/PageDown a full pane, clamped
-  to the current (possibly filtered) content; new output arriving while pinned to the bottom
-  (`scroll_offset == 0`) stays pinned, while scrolled up it keeps the same content in view instead
-  of yanking the operator back down mid-read; `/` opens a filter prompt (reusing the same line
-  editing); **Tab** switches back to `"input"`.
-- **`"filter"` mode** (entered via `/`): Enter sets a case-insensitive substring filter over the
-  whole transcript (an empty pattern clears it), Esc abandons the edit without changing whatever
-  filter was active.
+All behavior lives in two pure pieces:
+
+- A `TuiState` dataclass holds the mode, the input buffer and cursor, the history, the output
+  transcript, the scroll offset, and the filter query.
+- A `handle_key(state, key, pane_height)` function applies one key to that state.
+
+`run_tui` draws, reads one key, and runs a submitted line through `session.dispatch` precisely the way
+`repl_loop` does, with the same `COMMAND_ERRORS`/`FATAL_ERRORS`/`ReplExit` handling. Tests drive
+`handle_key` directly. They drive `run_tui` against a `FakeScreen` double that scripts `get_wch()` and
+records draws. No real terminal is needed, mirroring how `test_repl.py` already tests the plain loop.
+
+The keys follow the one-shortcut-key request this item answers.
+
+- **`"input"` mode** (the default):
+  - Printable characters insert at the cursor. `get_wch` decodes one full Unicode character per call,
+    so a Japanese `type`/`tap label:` argument round-trips correctly. A raw `getch` would instead hand
+    back one UTF-8 byte at a time.
+  - Backspace, Left, Right, Home, and End edit the line, and Enter submits.
+  - Up and Down recall history, classic-shell style.
+  - **Tab** switches to `"scroll"`.
+- **`"scroll"` mode**:
+  - Up and Down scroll the output pane one line. PageUp and PageDown scroll a full pane. Scrolling is
+    clamped to the current, possibly filtered, content.
+  - New output arriving while the pane is pinned to the bottom (`scroll_offset == 0`) stays pinned.
+    While the pane is scrolled up, it keeps the same content in view instead of yanking the operator
+    back down mid-read.
+  - `/` opens a filter prompt that reuses the same line editing.
+  - **Tab** switches back to `"input"`.
+- **`"filter"` mode** (entered via `/`):
+  - Enter sets a case-insensitive substring filter over the whole transcript. An empty pattern clears
+    it.
+  - Esc abandons the edit without changing whatever filter was active.
 
 Ctrl-C abandons the half-typed line (or filter query), the same intent as the plain loop's. Unlike
-`input()`, curses gives no Ctrl-D/EOF signal in cbreak mode, so `exit`/`quit`, typed and submitted,
-is the TUI's only way out — documented as the one behavioral difference from the plain fallback.
+`input()`, curses gives no Ctrl-D/EOF signal in cbreak mode. Typing and submitting `exit`/`quit` is
+thus the TUI's only way out. This is the one documented behavioral difference from the plain
+fallback.
 
 ### Coverage
 
 `bajutsu/repl/session.py` and `bajutsu/repl/tui.py` both clear their per-file coverage floor
-(`coverage-floors.json`) from this item's own PR, the same standard BE-0423 set for the package.
+(`coverage-floors.json`) from this item's own PR. BE-0423 set the same standard for the package.
 
 ## Alternatives considered
 
-- **A third-party TUI library** (`prompt_toolkit`, `textual`). Rejected: `curses` is already in the
-  standard library on every platform this project targets (macOS/Linux; no Windows CI), so it adds
-  no dependency, and this item's needs — a fixed input line, a scrollable pane, a handful of
-  keybindings — do not need a framework's widget system.
-- **Always render the TUI, with no plain-loop fallback.** Rejected: a piped `repl` (a script, a test
+- **A third-party TUI library** (`prompt_toolkit`, `textual`). Rejected. `curses` is already in the
+  standard library on every platform this project targets (macOS and Linux; there is no Windows CI),
+  so it adds no dependency. This item needs a fixed input line, a scrollable pane, and a handful of
+  keybindings, which do not call for a framework's widget system.
+- **Always render the TUI, with no plain-loop fallback.** Rejected. A piped `repl` (a script, a test
   harness) has no real terminal for curses to draw into. Keeping `repl_loop` as the non-tty fallback
-  costs nothing extra (it already existed) and keeps every existing CLI-wiring test — which drives
-  `repl` through `CliRunner`, never a real tty — exercising real, unmodified code instead of needing
-  a curses stand-in.
+  costs nothing extra, because it already existed. It also keeps every existing CLI-wiring test, which
+  drives `repl` through `CliRunner` and never a real tty, exercising real, unmodified code instead of
+  needing a curses stand-in.
 - **Normalized (0..1) coordinates for `tap @<x>,<y>`, matching the YAML `tapPoint` action.**
-  Rejected: the REPL's own `tree`/`find` already report frames in raw device points, so a raw-pixel
-  `tap_point` call is the more REPL-native fit; the YAML action's normalization exists for
-  resolution-portability across runs, a concern that does not apply to one interactive session
-  against one already-booted device.
+  Rejected. The REPL's own `tree`/`find` already report frames in raw device points, so a raw-pixel
+  `tap_point` call is the more REPL-native fit. The YAML action normalizes for resolution-portability
+  across runs. That concern does not apply to one interactive session against one already-booted
+  device.
 - **`Esc` as a second shortcut, toggling `"scroll"`/`"input"` like `Tab` does.** Rejected for this
-  item: a lone `Esc` keypress is only reliably distinguished from the start of an escape sequence
-  (an arrow key, a function key) by a short curses-internal timeout, which would add latency to the
-  one shortcut key this item's request actually asked for (a single key, which `Tab` already is).
-  `Esc` is used narrowly instead, only to abandon an in-progress filter edit, where a small delay is
-  unnoticeable.
+  item. A short curses-internal timeout is the sole reliable way to tell a lone `Esc` keypress from
+  the start of an escape sequence (an arrow key, a function key). That timeout would add latency to
+  the one shortcut key this item's request asked for, and `Tab` already is a single key. `Esc` is used
+  narrowly instead, only to abandon an in-progress filter edit, where a small delay is unnoticeable.
 - **Replace the shortcut target grammar with YAML entirely, rather than adding `--sel` beside it.**
-  Rejected: a bare `tap <id>` is the overwhelmingly common case, and `tap {id: stable.save}` is
-  strictly more to type for it with no benefit — the shortcuts' whole reason to exist is that they
-  are faster than the full selector syntax for what an operator reaches for first. An explicit
-  `--sel` flag (over sniffing a leading `{`) keeps the two grammars unambiguous to both the parser
-  and the reader, and matches this shell's existing flag style (`tree --json`).
+  Rejected. A bare `tap <id>` is the overwhelmingly common case. `tap {id: stable.save}` is strictly
+  more to type for it, with no benefit. The shortcuts exist because they are faster than the full
+  selector syntax for what an operator reaches for first. An explicit `--sel` flag, rather than
+  sniffing a leading `{`, keeps the two grammars unambiguous to both the parser and the reader. It
+  also matches this shell's existing flag style (`tree --json`).
 
 ## Progress
 
@@ -210,8 +243,8 @@ Log:
 ## References
 
 - [BE-0423 — Interactive REPL for element-tree inspection and id-based actuation](../BE-0423-cli-repl-inspect-actuate/BE-0423-cli-repl-inspect-actuate.md) —
-  the item this one extends; see its *Detailed design* and *Alternatives considered* for the
-  original id-only scope cut this item closes.
+  the item this one extends. Its *Detailed design* and *Alternatives considered* describe the
+  original id-only scope cut that this item closes.
 - [`Selector`](../../docs/glossary.md#scenario-authoring) — `bajutsu/common/drivers/base/selector.py`,
   `bajutsu/common/drivers/base/_functions.py` (`resolve_unique`, `matches`)
 - The scenario `Selector` pydantic model — `bajutsu/common/scenario/models/selector.py`, the
