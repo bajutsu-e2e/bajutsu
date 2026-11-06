@@ -15,84 +15,43 @@
 
 ## Introduction
 
-`Driver.wait_for` is intended to poll until `timeout` elapses (as idb does today), but the
-Playwright backend implements it as a single, immediate check that silently ignores `timeout`.
-This is a determinism bug — a caller that asks to wait raises a false `TimeoutError` on Web the
-instant the element isn't present yet. This proposal unifies the contract so every backend behaves the same way.
+The Playwright backend implements `Driver.wait_for` as one check that returns at once, and it ignores `timeout`. The idb backend polls until `timeout` elapses, which is the intended behavior. The mismatch is a determinism bug. On Web, a caller that asks to wait raises a false `TimeoutError` as soon as the element is absent. This proposal unifies the contract so that every backend behaves the same way.
 
 ## Motivation
 
-`bajutsu/drivers/base.py:114` declares `def wait_for(self, sel: Selector, timeout: float) -> bool: ...`
-on the shared `Driver` Protocol, with no docstring on the Protocol itself, but the idb implementation
-establishes the intended contract in practice: `bajutsu/drivers/idb.py:306-319` polls in a loop
-against a monotonic deadline built from `timeout`, sleeping `poll` seconds between checks, and its
-docstring is explicit — "Polls until at least one element matches `sel`, or `timeout` elapses" —
-specifically because "the element may render slightly after the call."
+The shared `Driver` Protocol declares `def wait_for(self, sel: Selector, timeout: float) -> bool: ...` at `bajutsu/drivers/base.py:114`. The Protocol itself carries no docstring, but the idb implementation establishes the intended contract in practice. `bajutsu/drivers/idb.py:306-319` polls in a loop against a monotonic deadline built from `timeout`. It sleeps `poll` seconds between checks. Its docstring is explicit: "Polls until at least one element matches `sel`, or `timeout` elapses". The reason it gives is that "the element may render slightly after the call."
 
-The Playwright backend does not honor that contract. `bajutsu/drivers/playwright.py:546-547` is:
+The Playwright backend does not honor that contract. `bajutsu/drivers/playwright.py:546-547` reads:
 
 ```python
 def wait_for(self, sel: base.Selector, timeout: float) -> bool:
     return len(base.find_all(self.query(), sel)) >= 1
 ```
 
-This checks once and returns immediately — `timeout` is an unused parameter. `bajutsu/golden.py:190`
-calls `driver.wait_for(anchor, timeout)` directly (`golden_assert`'s "drive-wait-query-compare" flow)
-and raises `TimeoutError(f"anchor {anchor!r} did not appear within {timeout}s")` when it returns
-`False`. On idb this waits out the full timeout before failing; on Playwright it fails on the very
-first check, so a `golden` assertion racing a page that hasn't finished rendering yet reports a false
-timeout on Web that would have passed on iOS given the same real-world delay.
+This code checks once and returns at once, so `timeout` is an unused parameter. Meanwhile `bajutsu/golden.py:190` calls `driver.wait_for(anchor, timeout)` directly, in `golden_assert`'s "drive-wait-query-compare" flow.
 
-Severity: High, and a genuine bug rather than a design gap — it directly undermines prime directive
-2 ("determinism first"): a flaky false failure is exactly the class of problem determinism-first is
-meant to prevent, and it is backend-specific, so it erodes trust in the "platform is a backend"
-premise (the same scenario behaves differently for reasons unrelated to the app under test).
+When the call returns `False`, `golden.py` raises `TimeoutError(f"anchor {anchor!r} did not appear within {timeout}s")`. On idb, the call waits out the full timeout before failing. On Playwright, it fails on the first check. A `golden` assertion that races a page still rendering thus reports a false timeout on Web. The same real-world delay would have passed on iOS.
+
+The severity is High, and this is a genuine bug rather than a design gap. It directly undermines prime directive 2 ("determinism first"). A flaky false failure is the class of problem that determinism-first exists to prevent. The bug is also backend-specific, so it erodes trust in the "platform is a backend" premise. The same scenario behaves differently for reasons unrelated to the app under test.
 
 ## Detailed design
 
-The fix is to stop asking every backend to implement its own deadline loop and instead make
-`wait_for` a single-shot primitive by contract, with one shared helper doing the polling:
+No backend should implement its own deadline loop. The contract makes `wait_for` a single-shot primitive, and one shared helper does the polling.
 
-1. **Redefine the `Driver.wait_for` contract as single-shot.** Change the docstring/contract at
-   `bajutsu/drivers/base.py:114` to state plainly that `wait_for` checks *once* and returns
-   immediately; `timeout` is removed from the signature (or, if kept for interface stability, is
-   explicitly documented as unused and reserved). This makes today's Playwright behavior the
-   correct implementation of the (new) contract instead of a bug.
-2. **Add a shared polling helper.** Introduce a small function (e.g. `wait_until` in
-   `bajutsu/drivers/base.py`, alongside `find_all`) that takes a `Driver`, a `Selector`, a
-   `timeout`, and a `poll` interval, and polls `driver.wait_for(sel, ...)` (or `driver.query()`
-   directly, mirroring `orchestrator/waits.py`'s existing `_wait` pattern) against a monotonic
-   deadline — the same loop idb's current `wait_for` already implements, lifted out of the driver.
-3. **Move the idb polling loop into the shared helper.** Simplify `bajutsu/drivers/idb.py:306-319`
-   to a single-shot check (matching the new contract) and delete its bespoke deadline loop, since
-   the shared helper now provides it for every backend uniformly.
-4. **Point every direct caller at the shared helper.** Update `bajutsu/golden.py:190` (the only
-   direct external caller of `driver.wait_for`, per this audit) to call the new shared helper
-   instead of `driver.wait_for` directly, so `golden_assert`'s timeout is honored identically on
-   idb and Playwright.
-5. **Add a regression test.** A fake/stub driver whose `wait_for` starts by returning `False` and
-   later `True` (simulating an element that renders late) exercises the shared helper and would have
-   caught this bug; add it alongside the existing driver/golden tests.
+1. **Redefine the `Driver.wait_for` contract as single-shot.** Change the docstring and contract at `bajutsu/drivers/base.py:114` to state plainly that `wait_for` checks *once* and returns at once. Remove `timeout` from the signature. If `timeout` stays for interface stability, document it as unused and reserved. Under the new contract, today's Playwright behavior is the correct implementation rather than a bug.
+2. **Add a shared polling helper.** Introduce a small function, for example `wait_until` in `bajutsu/drivers/base.py` next to `find_all`. The function takes a `Driver`, a `Selector`, a `timeout`, and a `poll` interval. It polls `driver.wait_for(sel, ...)` against a monotonic deadline.
+   It may poll `driver.query()` directly instead, mirroring the existing `_wait` pattern in `orchestrator/waits.py`. Either way, the loop is the one that idb's current `wait_for` implements, lifted out of the driver.
+3. **Move the idb polling loop into the shared helper.** Simplify `bajutsu/drivers/idb.py:306-319` to a single-shot check that matches the new contract. Delete its bespoke deadline loop. The shared helper now provides that loop for every backend.
+4. **Point every direct caller at the shared helper.** The audit found one direct external caller of `driver.wait_for`: `bajutsu/golden.py:190`. Update it to call the new shared helper. Then `golden_assert` honors its timeout identically on idb and Playwright.
+5. **Add a regression test.** Use a fake or stub driver whose `wait_for` first returns `False` and later returns `True`. That sequence simulates an element that renders late. The test exercises the shared helper and would have caught this bug. Add it alongside the existing driver and golden tests.
 
-This keeps `run`/CI fully deterministic (directive 1 is untouched — no AI enters this path) and
-directly serves directive 2: after the fix, a `timeout` given to a wait means the same number of
-real seconds regardless of which backend is driving.
+This change leaves prime directive 1 alone: `run` and CI stay fully deterministic, and no AI enters this path. The change serves prime directive 2 directly. After the fix, a `timeout` given to a wait means the same number of real seconds on every backend.
 
 ## Alternatives considered
 
-- **Make Playwright's `wait_for` poll internally instead of introducing a shared helper.** Fixes the
-  immediate bug but leaves every future backend (Android) to reimplement the same deadline loop
-  idb already has, reintroducing the same class of bug the day someone forgets the loop. A shared
-  helper removes the duplication permanently.
-- **Use Playwright's native auto-waiting (`page.wait_for_selector`) instead of polling.** Attractive
-  for the Playwright backend specifically, but `wait_for` is a cross-backend contract; keeping the
-  polling model uniform across backends is simpler to reason about and to test than special-casing
-  one backend's implementation strategy, even though Playwright could still use native waiting
-  *underneath* the single-shot check if a future optimization wants it.
-- **Leave `timeout` on `wait_for`'s signature but do nothing about the contract mismatch.** Rejected
-  — the whole point is that "single-shot but a `timeout` parameter is present and ignored" is the
-  exact shape of the current bug; the signature must either honor `timeout` (poll) or drop it
-  (single-shot with polling elsewhere), not silently ignore it.
+- **Make Playwright's `wait_for` poll internally instead of introducing a shared helper.** This fixes the immediate bug. Every future backend (Android, for example) would still have to reimplement the deadline loop that idb has. The same class of bug returns the day someone forgets the loop. A shared helper removes the duplication permanently.
+- **Use Playwright's native auto-waiting (`page.wait_for_selector`) instead of polling.** Native waiting is attractive for the Playwright backend alone. But `wait_for` is a cross-backend contract. A uniform polling model is simpler to reason about and to test than special-casing one backend's strategy. Playwright could still use native waiting *underneath* the single-shot check if a future optimization wants it.
+- **Leave `timeout` on `wait_for`'s signature but do nothing about the contract mismatch.** Rejected. The current bug has this shape: a single-shot check with a `timeout` parameter that is present and ignored. The signature must either honor `timeout` (poll) or drop it (single-shot, with polling elsewhere). It must not ignore `timeout`.
 
 ## Progress
 
