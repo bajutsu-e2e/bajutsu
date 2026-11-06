@@ -16,103 +16,120 @@
 
 ## Introduction
 
-Reading the screen on the Android adb backend is an order of magnitude slower than on iOS, and the
-whole gap is a per-invocation startup cost: every `AdbDriver.query()` shells out to
-`adb exec-out uiautomator dump`, which spins up a fresh instrumentation, connects a `UiAutomation`
-session, waits for idle, dumps, and tears the session down — ≈ 2.4 s each time, against ≈ 0.1–0.3 s
-for the same read on idb. This item removes that startup cost by keeping a **resident UI Automator
-instrumentation** alive for the duration of a run and querying the hierarchy over a local
-socket / HTTP, the approach Appium's UiAutomator2 driver takes. It is the fourth (and final,
-architectural) unit carved out of [BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance.md),
-kept separate because it needs a device to verify and a packaged instrumentation, so it does not fit
-that item's fast-gate change. Nothing here touches the determinism contract: reads stay
-condition-driven, ambiguous selectors still fail fast, and no LLM enters the `run` path.
+Reading the screen on the Android adb backend is an order of magnitude slower than on iOS. The whole
+gap is a per-invocation startup cost. Every `AdbDriver.query()` shells out to
+`adb exec-out uiautomator dump`. Each call spins up a fresh instrumentation, connects a `UiAutomation`
+session, waits for idle, dumps, and tears the session down. Each call costs ≈ 2.4 s, against
+≈ 0.1–0.3 s for the same read on idb.
+
+This item removes the startup cost. It keeps a **resident UI Automator instrumentation** alive for
+the duration of a run and queries the hierarchy over a local socket / HTTP. Appium's UiAutomator2
+driver takes the same approach.
+
+The item is the fourth (and final, architectural) unit carved out of
+[BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance.md). It stays separate because
+it needs a device to verify and a packaged instrumentation, so it does not fit the fast-gate change
+of BE-0234.
+
+Nothing here touches the determinism contract. Reads stay condition-driven, ambiguous selectors
+still fail fast, and no LLM enters the `run` path.
 
 ## Motivation
 
 [BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance.md) pinned the Android run's
-slowness to the screen read and shipped the two low-risk reductions (making the runner's end-of-step
-read lazy and reusing the previous step's tree as the next step's `before`) plus the adb `_settle`
-retune. Those cut how *often* the runner reads, but they cannot lower the floor: the ≈ 2.4 s
-*per-invocation* cost of `uiautomator dump` itself. BE-0234's own measurements show this cost is
-independent of tree size, compression, and output sink — it is the instrumentation startup, not the
-XML transfer or traversal — so no amount of reading-less crosses it. A read-bound backend where each
-necessary read still costs ≈ 2.4 s keeps Android authoring heavy even after BE-0234's reductions.
+slowness to the screen read. It shipped a retune of the adb `_settle`, plus two low-risk reductions:
 
-A resident session pays that startup **once** for the whole run, then answers each subsequent read
-over an already-open channel. That is exactly what closes the 10–20× gap with iOS: the expected
-result is a read that drops from ≈ 2.4 s to ≈ 0.1–0.3 s. The cost is real (a packaged instrumentation
-and its lifecycle), which is why it is its own item rather than a knob — but the payoff is the one
-change that makes the Android read as cheap as the iOS one.
+- making the runner's end-of-step read lazy
+- reusing the previous step's tree as the next step's `before`
 
-The resident server is a **uniform, app-independent** component: it drives whatever app is under
-test, exactly as the on-device SDKs
+Those reductions cut how *often* the runner reads. They cannot lower the floor, which is the ≈ 2.4 s
+*per-invocation* cost of `uiautomator dump` itself. BE-0234's own measurements show that this cost
+is independent of tree size, compression, and output sink. It is the instrumentation startup, not
+the XML transfer or traversal. No amount of reading less crosses that floor. A read-bound backend
+where each necessary read still costs ≈ 2.4 s keeps Android authoring heavy, even after BE-0234's
+reductions.
+
+A resident session pays the startup cost **once** for the whole run. It then answers each later read
+over an already-open channel. The resident session closes the 10–20× gap with iOS. The expected result is a read
+that drops from ≈ 2.4 s to ≈ 0.1–0.3 s. The cost is real (a packaged instrumentation and its
+lifecycle), so the change is its own item rather than a knob. The payoff is that the Android read
+becomes as cheap as the iOS read.
+
+The resident server is a **uniform, app-independent** component. It drives whatever app is under
+test, exactly as the on-device SDKs do
 ([BE-0233](../BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity.md), BajutsuKit /
-BajutsuAndroid) do. A uniform library that every target uses identically is not a per-app carve-out,
-so this fits prime directive 3 (app-agnostic) the same way those SDKs do: the tool, drivers, and
-runner stay unchanged across targets, and no scenario changes.
+BajutsuAndroid). A uniform library that every target uses identically is not a per-app carve-out.
+The server therefore fits prime directive 3 (app-agnostic) the same way those SDKs do. The tool,
+drivers, and runner stay unchanged across targets, and no scenario changes.
 
 ## Detailed design
 
 The change is confined to how the adb driver *obtains* a hierarchy dump. It swaps the internals of
-`AdbDriver._describe()` ([`bajutsu/drivers/adb.py`](../../bajutsu/drivers/adb.py)) only — the
-parsing (`parse_hierarchy`), the normalization to Elements, the transient-empty retry, `_settle`,
-and the whole selector / resolve contract stay exactly as they are, so every existing adb test and
-the driver conformance suite ([BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md))
-keep passing unchanged. The existing `uiautomator dump` path is retained as a fallback, so a device
-where the resident server cannot start is never left worse off than today.
+`AdbDriver._describe()` ([`bajutsu/drivers/adb.py`](../../bajutsu/drivers/adb.py)) alone. These parts
+stay exactly as they are:
+
+- the parsing (`parse_hierarchy`)
+- the normalization to Elements
+- the transient-empty retry
+- `_settle`
+- the whole selector / resolve contract
+
+Every existing adb test and the driver conformance suite
+([BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md)) therefore keep
+passing unchanged. The existing `uiautomator dump` path stays as a fallback. A device where the
+resident server cannot start is never left worse off than today.
 
 ### Work breakdown (MECE)
 
-1. **Package and launch the resident instrumentation.** Bundle a UI Automator instrumentation
-   (an `androidx.test` UiAutomator server, in the shape Appium's UiAutomator2 server uses) and
-   install / start it on the target device at the start of a run. This is the app-independent
-   component; decide its distribution (a checked-in prebuilt APK vs. built on demand) and where it
+1. **Package and launch the resident instrumentation.** Bundle a UI Automator instrumentation (an
+   `androidx.test` UiAutomator server, in the shape Appium's UiAutomator2 server uses). Install and
+   start it on the target device at the start of a run. The instrumentation is the app-independent
+   component. Decide its distribution (a checked-in prebuilt APK, or built on demand). Decide where it
    lives in the repo, mirroring how the on-device SDKs are packaged
    ([BE-0233](../BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity.md)).
 
 2. **A hierarchy-query channel.** Expose the accessibility hierarchy over a local socket / HTTP
-   (`adb forward` to the resident server) and define the request/response for "dump the current
-   hierarchy". The response must carry the same information the current `uiautomator dump` XML does,
-   so `parse_hierarchy` (or a thin adapter to it) still produces identical Elements. No new selector
-   semantics — this unit changes transport, not meaning.
+   (`adb forward` to the resident server). Define the request/response for "dump the current
+   hierarchy". The response must carry the same information as the current `uiautomator dump` XML.
+   Then `parse_hierarchy` (or a thin adapter to it) still produces identical Elements. This unit adds
+   no selector semantics. It changes transport, not meaning.
 
 3. **Swap `AdbDriver._describe()` to the resident channel, with the dump path as fallback.** Route
-   `_describe()` through the resident server when it is available; on any startup / channel failure,
-   fall back to `adb exec-out uiautomator dump` (today's path) so the backend degrades to the
-   current behavior rather than failing. Everything above `_describe()` — `query()`'s
-   transient-empty retry, `_settle`, `_resolve`, actuation — is untouched.
+   `_describe()` through the resident server when the server is available. On any startup or channel
+   failure, fall back to `adb exec-out uiautomator dump` (today's path). The backend then degrades to
+   the current behavior rather than failing. Everything above `_describe()` is untouched:
+   `query()`'s transient-empty retry, `_settle`, `_resolve`, and actuation.
 
-4. **Server lifecycle tied to the run.** Start the resident server once per device lease and stop it
-   when the run ends (including on failure / interrupt), so no instrumentation is left running on the
+4. **Server lifecycle tied to the run.** Start the resident server once per device lease. Stop it
+   when the run ends, including on failure or interrupt, so no instrumentation is left running on the
    device. Fold this into the existing device-pool / lease lifecycle rather than a bespoke path.
 
 5. **Verify on device and guard against regression.** Record the before/after per-step read
-   wall-clock on a real emulator (the BE-0234 read-count yardstick is already in place), confirm the
-   read drops to ≈ 0.1–0.3 s, and extend the Android e2e lane
-   ([BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md)) so the resident
-   path and the dump fallback are both exercised. A hard CI *timing* gate stays out of scope
-   (wall-clock is environment-dependent and would be flaky), consistent with BE-0234.
+   wall-clock on a real emulator (the BE-0234 read-count yardstick is already in place). Confirm the
+   read drops to ≈ 0.1–0.3 s. Extend the Android e2e lane
+   ([BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md)) so it exercises
+   both the resident path and the dump fallback. A hard CI *timing* gate stays out of scope, because
+   wall-clock is environment-dependent and would be flaky. That choice is consistent with BE-0234.
 
 ## Alternatives considered
 
 - **Keep per-invocation `uiautomator dump` and only read less (BE-0234's units 1-3).** Already
-  shipped, and worthwhile, but it cannot cross the ≈ 2.4 s per-read floor — that floor is precisely
-  what this item removes. The two are complementary: fewer reads *and* a cheap read.
+  shipped, and worthwhile. It cannot cross the ≈ 2.4 s per-read floor, and this item removes that
+  floor. The two are complementary: fewer reads *and* a cheap read.
 
-- **`uiautomator dump --compressed` / dump to a device file then `cat`.** Both measured by BE-0234 at
-  ≈ 2.0–2.5 s — no improvement, because the cost is the instrumentation startup, not the XML size or
-  the output sink. Rejected there; they do not address the bottleneck here either.
+- **`uiautomator dump --compressed`, or dump to a device file then `cat`.** BE-0234 measured both at
+  ≈ 2.0–2.5 s, with no improvement. The cost is the instrumentation startup, not the XML size or the
+  output sink. BE-0234 rejected both, and neither addresses the bottleneck here.
 
 - **Adopt Appium's UiAutomator2 server wholesale as a dependency.** Tempting, but it brings a large
-  surface (a full Appium server, its command set, its versioning) for what bajutsu needs, which is
-  just a resident hierarchy dump. The design leans on Appium's *approach* (a resident instrumentation
-  queried over a socket) without taking on the whole server; the exact reuse-vs-minimal boundary is
-  an open question for the implementation.
+  surface for what bajutsu needs: a full Appium server, its command set, and its versioning.
+  Bajutsu needs just a resident hierarchy dump. The design leans on Appium's *approach* (a resident
+  instrumentation queried over a socket) without taking on the whole server. The exact boundary
+  between reuse and a minimal server is an open question for the implementation.
 
-- **A persistent `uiautomator` shell process reused across reads.** Does not help: each
-  `uiautomator dump` invocation starts its own instrumentation regardless of how the shell is kept
-  open, so the startup cost is paid per dump, not per shell.
+- **A persistent `uiautomator` shell process reused across reads.** Does not help. Each
+  `uiautomator dump` invocation starts its own instrumentation, however the shell is kept open. The
+  startup cost is paid per dump, not per shell.
 
 ## Progress
 
@@ -203,7 +220,7 @@ Log:
   waited it out, so the fast read caught the pre-update value. Its budget is the lane's existing
   wait floor (`BAJUTSU_MIN_WAIT_TIMEOUT`), so it is a single read (today's behavior) off the Android
   lane and re-reads only the UI tree, ending the moment nothing a tree re-read could fix is still
-  failing. This completes the item.
+  failing. With that, the item is complete.
 - The wall-clock settle above closes one of two ways a tap after a scroll reaches a stale coordinate,
   not both. A wall-clock deadline catches a tree the reads show *moving*, because two consecutive reads
   then disagree and the poll continues. A tree that has not published the gesture at all shows nothing

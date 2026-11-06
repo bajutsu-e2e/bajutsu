@@ -15,50 +15,64 @@
 
 ## Introduction
 
-The code that decides "how do we reach a model" is split across three overlapping layers —
-credential-gap checks, provider resolution, and provider-agnostic config resolution — plus a
-handful of naming choices that mislead about what a module actually holds. None of this is
-wrong; each layer works, and the docstrings explain the split carefully. But the fact that the
-split *needs* a paragraph of docstring to justify is itself the symptom this item targets: a
-reader has to hold three modules' relationships in their head to answer a one-sentence
-question. This item proposes a taxonomy cleanup — renames, one merge, and de-duplication of
-boilerplate that has grown up around the confusion — with no behavior change.
+The code that decides "how do we reach a model" is split across three overlapping layers:
+credential-gap checks, provider resolution, and provider-agnostic config resolution. A handful of
+naming choices also mislead about what a module actually holds.
+
+None of this is wrong. Each layer works, and the docstrings explain the split carefully. But the
+split *needs* a paragraph of docstring to justify it, and that need is the symptom this item
+targets. A reader has to hold the relationships of three modules in mind to answer a one-sentence
+question.
+
+This item proposes a taxonomy cleanup, with no behavior change. It consists of renames, one merge,
+and the de-duplication of boilerplate that has grown up around the confusion.
 
 ## Motivation
 
-**Three layers answer "how do we reach a model," and two of them aren't independent.**
-`bajutsu/anthropic_client.py:309` defines `credential_gap`, `bajutsu/ai/registry.py:148`
-defines a second `credential_gap`, and `bajutsu/ai_availability.py:20` wraps both in a third,
-`availability`. The registry's version does not duplicate the check; it dispatches
-(`_adapter(ai).credential_gap(ai)`) to `anthropic_client`'s function for the `api-key`,
-`bedrock`, and `ant` providers, and to `ai/claude_code.py`'s own `credential_gap` for the
-`claude-code` provider. Similarly there are two provider resolvers: `provider` in
-`anthropic_client.py:140`, and `_provider_name` / `resolved_provider` in
-`ai/registry.py:105` and `:126`. Because the registry's checks mostly delegate rather than
-duplicate, the three-layer split is not redundant — but a reader can only tell that by reading
-all three files, and the fact that a reader needs that explanation is itself the problem: a
-resolver, a dispatcher, and a convenience wrapper for the same question should read as one
-obvious shape, not three files a contributor has to reconcile by hand.
+**Three layers answer "how do we reach a model," and two of them are not independent.**
+`bajutsu/anthropic_client.py:309` defines `credential_gap`. `bajutsu/ai/registry.py:148` defines a
+second `credential_gap`. `bajutsu/ai_availability.py:20` wraps both in a third, `availability`.
 
-**`anthropic_client.py` is misnamed.** Despite the vendor name, it holds provider-agnostic
-config resolution used by every backend, including `claude-code`: `resolve_model` (line 236),
-`resolve_effort` (254), `resolve_language` (273), and `language_instruction` (291), plus a
-re-export of `AiConfig` (line 42). `ai/claude_code.py:38` and `ai/registry.py:22` both import
-from it — i.e. the module that exists to let Bajutsu talk to *any* provider is named after one
-specific vendor's SDK. A contributor skimming imports for "where does model/effort/language
-resolution live" has no reason to look in a file named `anthropic_client`.
+The registry's version does not duplicate the check. It dispatches (`_adapter(ai).credential_gap(ai)`)
+to `anthropic_client`'s function for the `api-key`, `bedrock`, and `ant` providers. For the
+`claude-code` provider, it dispatches to `ai/claude_code.py`'s own `credential_gap`. Provider
+resolution has the same shape. `provider` in `anthropic_client.py:140` is one resolver, and
+`_provider_name` / `resolved_provider` in `ai/registry.py:105` and `:126` are another.
 
-**`agent.py` vs. `agents.py` is a singular/plural readability trap.** `agent.py` holds the
-`Agent` / `EnrichmentAgent` protocols and DTOs (`Observation`, `Proposal`); `agents.py` is a
-44-line factory (`make_agent`, `make_enrichment_agent`). The names differ by one letter and
-sort adjacently in every file listing, so the distinction is invisible until you open both.
+Because the registry's checks mostly delegate, the three-layer split is not redundant. But a reader
+can only tell that by reading all three files, and that need for an explanation is itself the
+problem. A resolver, a dispatcher, and a convenience wrapper for the same question should read as
+one obvious shape. They should not be three files that a contributor has to reconcile by hand.
 
-**Seven `Claude*` classes reimplement the same backend-and-usage boilerplate.** Each of
-`ClaudeAgent` (`bajutsu/claude_agent.py:632`), `ClaudeTriageAgent` and
-`ClaudeCrossRunTriageAgent` (`bajutsu/claude_triage.py:253` and `:473`),
-`ClaudeEnrichmentAgent` (`bajutsu/claude_enrich_agent.py:190`), `ClaudeActionProposer`
-(`bajutsu/crawl_guide.py:360`), `ClaudeTabLocator` (`bajutsu/crawl_tabs.py:192`), and
-`ClaudeAlertLocator` (`bajutsu/alerts.py:178`) carries a byte-identical `_ensure_backend`:
+**`anthropic_client.py` is misnamed.** Despite the vendor name, the module holds provider-agnostic
+config resolution that every backend uses, including `claude-code`:
+
+- `resolve_model` (line 236)
+- `resolve_effort` (254)
+- `resolve_language` (273)
+- `language_instruction` (291)
+- a re-export of `AiConfig` (line 42)
+
+`ai/claude_code.py:38` and `ai/registry.py:22` both import from the module. So the module that lets
+Bajutsu talk to *any* provider is named after one vendor's software development kit (SDK). A
+contributor skimming imports for "where does model/effort/language resolution live" has no reason to
+look in a file named `anthropic_client`.
+
+**`agent.py` vs. `agents.py` is a singular/plural readability trap.** `agent.py` holds the `Agent` /
+`EnrichmentAgent` protocols and the data transfer objects (DTOs) `Observation` and `Proposal`.
+`agents.py` is a 44-line factory (`make_agent`, `make_enrichment_agent`). The names differ by one
+letter and sort adjacently in every file listing. The distinction stays invisible until a reader
+opens both files.
+
+**Seven `Claude*` classes reimplement the same backend-and-usage boilerplate.** These classes each
+carry a byte-identical `_ensure_backend`:
+
+- `ClaudeAgent` (`bajutsu/claude_agent.py:632`)
+- `ClaudeTriageAgent` and `ClaudeCrossRunTriageAgent` (`bajutsu/claude_triage.py:253` and `:473`)
+- `ClaudeEnrichmentAgent` (`bajutsu/claude_enrich_agent.py:190`)
+- `ClaudeActionProposer` (`bajutsu/crawl_guide.py:360`)
+- `ClaudeTabLocator` (`bajutsu/crawl_tabs.py:192`)
+- `ClaudeAlertLocator` (`bajutsu/alerts.py:178`)
 
 ```python
 def _ensure_backend(self) -> AiBackend:
@@ -67,125 +81,137 @@ def _ensure_backend(self) -> AiBackend:
     return self._backend
 ```
 
-— plus a near-identical `__init__` (`self._backend`, `self._ai`, `self._redactor`, `self._model`
-via `resolve_model`) and a near-identical `usage.record(response.usage, provider=...,
-model=...)` call after every model turn. This is the same shape BE-0140 already deduplicated
-once, as `ensure_client`; BE-0104's later move from a raw SDK client to the `AiBackend`
-abstraction obsoleted that helper; each class quietly grew its own `_ensure_backend` copy
-instead of a shared replacement being introduced, and `ensure_client` itself is now dead code
-in `anthropic_client.py` with zero call sites remaining. A dedicated proposal removes the dead
-wrapper; this item is about giving the seven classes a shared base to call instead, so the
-next class doesn't copy the pattern by hand a third time.
+Each class also carries a near-identical `__init__` (`self._backend`, `self._ai`, `self._redactor`,
+`self._model` via `resolve_model`). After every model turn, each class makes a near-identical
+`usage.record(response.usage, provider=..., model=...)` call.
 
-**Prompt construction is scattered.** Eight inline system prompts exist across the same files.
-The prime-directive boundary line — a sentence reminding the model it only proposes, never
-judges pass/fail — is hand-copied in four places across three files: `claude_triage.py:52` and
-`:289` ("You are advisory only — you never decide pass/fail, you diagnose and suggest."),
-`crawl_guide.py:186` ("You only choose what to TRY. You never decide pass/fail and never judge
-results."), and `crawl_tabs.py:131` ("You only report where the tabs are. You never decide
-pass/fail."). Each copy is worded slightly differently, which is exactly the drift risk of
-hand-copying a boundary statement that exists to keep the AI paths honest about prime
-directive 1. Separately, the element-tree-to-text renderer that turns a UI snapshot into
-model-readable text is reimplemented five times with subtly different formats: inline in
-`claude_agent.py:416`, `_render_elements` in `claude_enrich_agent.py:132`, `_render` and
-`_render_evidence` in `claude_triage.py:159` and `:391`, and `_render_elements` in
-`crawl_guide.py:251` — differing in field order, quoting, and which traits get omitted. The
-codebase already has a precedent for centralizing exactly this kind of shared fragment: the
-`_TARGET_PROPS` tool-schema fragment in `claude_agent.py:173` is imported directly by
-`claude_enrich_agent.py:31` rather than redefined.
+BE-0140 already deduplicated this shape once, as `ensure_client`. BE-0104's later move from a raw SDK
+client to the `AiBackend` abstraction obsoleted that helper. No shared replacement was introduced,
+so each class quietly grew its own `_ensure_backend` copy. `ensure_client` itself is now dead code in
+`anthropic_client.py`, with zero call sites remaining. A dedicated proposal removes the dead wrapper.
+This item gives the seven classes a shared base to call instead, so the next class does not copy the
+pattern by hand a third time.
 
-**`record.py`'s private helpers are de-facto shared API.** `_describe_step`,
-`_screenshot_bytes`, `_settle_step`, `_execute`, and `_clear_blocking` are all
-underscore-prefixed in `record.py`, signaling "module-private" — yet `_screenshot_bytes` is
-imported by `alerts.py`, `crawl_guide.py`, and `enrich.py`; `_describe_step` and
-`_settle_step` are imported by `claude_enrich_agent.py`; and `_clear_blocking` / `_execute`
-are imported by `enrich.py`. The same pattern repeats one module over: `alerts.py`'s
-`_png_size` and `_fraction` are imported by `crawl_tabs.py:36`. A leading underscore is
-supposed to mean "don't import this from outside," but in practice every one of these
-functions has at least one cross-module consumer — the naming actively misrepresents the
-module's real public surface.
+**Prompt construction is scattered.** Eight inline system prompts exist across the same files. The
+prime-directive boundary line reminds the model that it only proposes and never judges pass/fail.
+Four places across three files copy that line by hand:
+
+- `claude_triage.py:52` and `:289`: "You are advisory only — you never decide pass/fail, you diagnose and suggest."
+- `crawl_guide.py:186`: "You only choose what to TRY. You never decide pass/fail and never judge results."
+- `crawl_tabs.py:131`: "You only report where the tabs are. You never decide pass/fail."
+
+Each copy is worded slightly differently. That drift is the risk of hand-copying a boundary
+statement, and the statement exists to keep the AI paths honest about prime directive 1.
+
+Separately, five places reimplement the renderer that turns an element-tree UI snapshot into
+model-readable text, each in a subtly different format:
+
+- inline in `claude_agent.py:416`
+- `_render_elements` in `claude_enrich_agent.py:132`
+- `_render` and `_render_evidence` in `claude_triage.py:159` and `:391`
+- `_render_elements` in `crawl_guide.py:251`
+
+The five differ in field order, quoting, and which traits they omit. The codebase already has a
+precedent for centralizing a shared fragment of this kind. `claude_enrich_agent.py:31` imports the
+`_TARGET_PROPS` tool-schema fragment from `claude_agent.py:173` instead of redefining it.
+
+**`record.py`'s private helpers are de-facto shared API.** `_describe_step`, `_screenshot_bytes`,
+`_settle_step`, `_execute`, and `_clear_blocking` all carry an underscore prefix in `record.py`,
+which signals "module-private". Yet other modules import them:
+
+- `alerts.py`, `crawl_guide.py`, and `enrich.py` import `_screenshot_bytes`.
+- `claude_enrich_agent.py` imports `_describe_step` and `_settle_step`.
+- `enrich.py` imports `_clear_blocking` and `_execute`.
+
+The pattern repeats one module over: `crawl_tabs.py:36` imports `alerts.py`'s `_png_size` and
+`_fraction`. A leading underscore is supposed to mean "don't import this from outside". In practice,
+every one of these functions has at least one cross-module consumer. The naming misrepresents the
+real public surface of the module.
 
 **None of this touches the deterministic gate.** Every symbol above lives on the AI
-authoring/investigation paths — `record`, `enrich`, `triage`, alert dismissal, crawl guidance
-and tab location. None of the seven `Claude*` classes, the prompt fragments, or the element
-renderer is reachable from `run` or the CI verdict path, so this item does not risk prime
-directive 1: it is a pure internal-taxonomy cleanup, not a change to what gets judged
-pass/fail or how.
+authoring/investigation paths: `record`, `enrich`, `triage`, alert dismissal, crawl guidance, and tab
+location. The `run` and CI verdict paths reach none of the seven `Claude*` classes, the prompt
+fragments, or the element renderer. This item therefore does not risk prime directive 1. It is a
+pure internal-taxonomy cleanup, and it changes neither what gets judged pass/fail nor how.
 
 ## Detailed design
 
-The work is behavior-preserving throughout — renames, one merge, and hoisting duplicated code
-to a shared home, with no change to CLI behavior, scenario schema, or `run`/CI outcomes.
-Six independent units of work, MECE by the surface each touches:
+The work preserves behavior throughout. It consists of renames, one merge, and hoisting duplicated
+code to a shared home. CLI behavior, the scenario schema, and `run`/CI outcomes do not change. The
+work splits into six independent units, MECE by the surface each touches:
 
-1. **Rename `anthropic_client.py` to reflect what it holds.** Move the provider-agnostic
-   config resolution (`resolve_model`, `resolve_effort`, `resolve_language`,
-   `language_instruction`, the `AiConfig` re-export) to a name that doesn't imply a single
-   vendor — e.g. `ai_config.py`, or folded directly into the `bajutsu/ai/` package alongside
-   `registry.py` and `claude_code.py`, whichever the implementer finds reads better once the
-   import graph is in front of them. Whatever is genuinely Anthropic-SDK-specific (client
-   construction such as `make_client`, and the `ant` CLI subprocess path) stays behind in a
-   module that keeps the vendor name, since that part of the split is accurate.
+1. **Rename `anthropic_client.py` to reflect what it holds.** Move the provider-agnostic config
+   resolution (`resolve_model`, `resolve_effort`, `resolve_language`, `language_instruction`, the
+   `AiConfig` re-export) to a name that does not imply a single vendor. Examples are `ai_config.py`,
+   or folding it directly into the `bajutsu/ai/` package alongside `registry.py` and `claude_code.py`.
+   The implementer picks whichever reads better with the import graph in view. The
+   Anthropic-SDK-specific code stays behind in a module that keeps the vendor name, because that part
+   of the split is accurate. That code is the client construction such as `make_client`, and the `ant`
+   command-line interface (CLI) subprocess path.
 2. **Collapse the two `credential_gap` / provider-resolver pairs onto one resolver in
    `bajutsu/ai/`.** Fold `anthropic_client.provider` and `ai/registry._provider_name` /
-   `resolved_provider` into a single provider-resolution function, and likewise fold
-   `anthropic_client.credential_gap` and `ai/registry.credential_gap` (and the
-   `ai_availability.availability` wrapper, if it no longer earns its keep once the other two
-   collapse) into one credential-gap check that dispatches per-provider internally. The
-   dispatch behavior for `claude-code` (delegating to `ai/claude_code.py`) is preserved; only
-   the number of public entry points shrinks.
-3. **Introduce a shared `ClaudeBackedAgent` base** holding the common `_ai` / `_redactor` /
+   `resolved_provider` into a single provider-resolution function. Likewise fold
+   `anthropic_client.credential_gap` and `ai/registry.credential_gap` into one credential-gap check
+   that dispatches per provider internally. The `ai_availability.availability` wrapper folds in too,
+   if it no longer earns its keep once the other two collapse. The dispatch behavior for `claude-code`
+   (delegating to `ai/claude_code.py`) is preserved. Only the number of public entry points shrinks.
+3. **Introduce a shared `ClaudeBackedAgent` base.** The base holds the common `_ai` / `_redactor` /
    `_backend` / `_model` / `_lang` attributes, a shared `_ensure_backend()`, and a
-   `_record_usage(response)` helper, and have the seven classes (`ClaudeAgent`,
-   `ClaudeTriageAgent`, `ClaudeCrossRunTriageAgent`, `ClaudeEnrichmentAgent`,
-   `ClaudeActionProposer`, `ClaudeTabLocator`, `ClaudeAlertLocator`) inherit from it instead of
-   each reimplementing the same three-line `_ensure_backend` and repeated `usage.record(...)`
-   call. This is the shared home the now-dead `ensure_client` in `anthropic_client.py` was
-   meant to be before BE-0104 changed the shape it needed to wrap; a separate proposal removes
-   the dead wrapper itself, so this unit starts from a clean base rather than migrating
-   `ensure_client` in place.
-4. **Rename `agent.py` / `agents.py` to remove the singular/plural trap.** Either rename to
-   names that read apart at a glance — e.g. `agent_protocols.py` for the `Protocol` / DTO
-   definitions and `agent_factory.py` for the 44-line construction factory — or merge the
-   factory directly into `agent.py` given its size, whichever the implementer finds leaves a
-   cleaner import story once the call sites are in view.
-5. **Create `bajutsu/ai/prompts.py`** centralizing the shared instruction fragments currently
-   hand-copied across system prompts: an `ADDRESSING_RULES`-style constant for shared
-   phrasing, and a single `NEVER_JUDGE_BOUNDARY` constant for the prime-directive boundary
-   sentence, composed into each of the eight system prompts instead of retyped. Add one
-   `render_elements(elements, *, compact)` function used by all five current call sites
-   (`claude_agent.py`, `claude_enrich_agent.py`, `claude_triage.py` ×2, `crawl_guide.py`),
-   parameterized for the format differences (compact vs. verbose) that are actually
-   load-bearing today, with the incidental differences (quoting, field order) unified. The
-   `_TARGET_PROPS` fragment already centralized in `claude_agent.py:173` and imported by
-   `claude_enrich_agent.py` is the existing precedent this generalizes.
-6. **Promote the genuinely cross-module `record.py` / `alerts.py` private helpers to a public
-   module** — e.g. `screenshots.py` or `ai/vision.py` for `_screenshot_bytes`, `_png_size`, and
-   `_fraction` — dropping the leading underscore for the functions that already have external
-   callers (`_screenshot_bytes`, `_describe_step`, `_settle_step`, `_clear_blocking`,
-   `_execute`, `_png_size`, `_fraction`), and updating every cross-module import
-   (`alerts.py`, `crawl_guide.py`, `enrich.py`, `claude_enrich_agent.py`, `crawl_tabs.py`) to
-   the new home. Any helper that turns out, on inspection, to have no caller outside its own
-   module stays private and is left out of the move.
+   `_record_usage(response)` helper. The seven classes (`ClaudeAgent`, `ClaudeTriageAgent`,
+   `ClaudeCrossRunTriageAgent`, `ClaudeEnrichmentAgent`, `ClaudeActionProposer`, `ClaudeTabLocator`,
+   `ClaudeAlertLocator`) inherit from it. Each class then stops reimplementing the same three-line
+   `_ensure_backend` and the repeated `usage.record(...)` call. This base is the shared home that
+   the now-dead `ensure_client` in `anthropic_client.py` was meant to be, before BE-0104 changed the
+   shape it needed to wrap. A separate proposal removes the dead wrapper itself. This unit therefore
+   starts from a clean base and does not migrate `ensure_client` in place.
+4. **Rename `agent.py` / `agents.py` to remove the singular/plural trap.** One option is to rename
+   them to names that read apart at a glance: `agent_protocols.py` for the `Protocol` / DTO
+   definitions and `agent_factory.py` for the 44-line construction factory. The other option is to
+   merge the factory directly into `agent.py`, given its size. The implementer picks whichever leaves
+   a cleaner import story once the call sites are in view.
+5. **Create `bajutsu/ai/prompts.py`.** The module centralizes the shared instruction fragments that
+   the system prompts currently copy by hand:
+   - an `ADDRESSING_RULES`-style constant for shared phrasing
+   - a single `NEVER_JUDGE_BOUNDARY` constant for the prime-directive boundary sentence
 
-Each unit is independently shippable and independently testable: the existing test suite for
-each touched class (`tests/test_claude_agent.py`, `tests/test_claude_triage.py`,
-`tests/test_claude_enrich_agent.py`, `tests/test_crawl_guide.py`, `tests/test_crawl_tabs.py`,
-`tests/test_alerts.py`, `tests/test_record.py`) is the regression net that confirms each rename
-or hoist is behavior-preserving, since nothing here changes what a class does — only where its
-code lives and what it's called.
+   Each of the eight system prompts composes these constants instead of retyping them. Add one
+   `render_elements(elements, *, compact)` function for all five current call sites
+   (`claude_agent.py`, `claude_enrich_agent.py`, `claude_triage.py` ×2, `crawl_guide.py`). The
+   function takes a parameter for the format differences (compact vs. verbose) that are load-bearing
+   today. It unifies the incidental differences (quoting, field order). The `_TARGET_PROPS` fragment
+   is the existing precedent that this generalizes. It is already centralized in `claude_agent.py:173`
+   and imported by `claude_enrich_agent.py`.
+6. **Promote the genuinely cross-module `record.py` / `alerts.py` private helpers to a public
+   module.** Examples are `screenshots.py` or `ai/vision.py` for `_screenshot_bytes`, `_png_size`,
+   and `_fraction`. Drop the leading underscore from the functions that already have external callers
+   (`_screenshot_bytes`, `_describe_step`, `_settle_step`, `_clear_blocking`, `_execute`,
+   `_png_size`, `_fraction`). Update every cross-module import (`alerts.py`, `crawl_guide.py`,
+   `enrich.py`, `claude_enrich_agent.py`, `crawl_tabs.py`) to the new home. A helper with no caller
+   outside its own module, on inspection, stays private and is left out of the move.
+
+Each unit is independently shippable and independently testable. The existing test suite for each
+touched class is the regression net that confirms each rename or hoist preserves behavior:
+
+- `tests/test_claude_agent.py`
+- `tests/test_claude_triage.py`
+- `tests/test_claude_enrich_agent.py`
+- `tests/test_crawl_guide.py`
+- `tests/test_crawl_tabs.py`
+- `tests/test_alerts.py`
+- `tests/test_record.py`
+
+Nothing here changes what a class does. Only where its code lives and what it is called change.
 
 ## Alternatives considered
 
-- **Leave the resolvers where they are and just document the layering more thoroughly.**
-  Rejected: the current docstrings already work hard to justify why `credential_gap` and
-  provider resolution are split three ways, and that effort is itself the signal that the
-  split is confusing rather than self-evident. A better comment is not a substitute for a
-  name and location that don't need explaining.
-- **Leave `anthropic_client.py` named as-is and rely on module-level docstrings to clarify
-  that it's the shared config hub.** Rejected for the same reason: a vendor name on a
-  provider-agnostic module misleads on first contact, before a reader has read any docstring
-  at all — the fix is a name or a move, not more prose.
+- **Leave the resolvers where they are and just document the layering more thoroughly.** Rejected.
+  The current docstrings already work hard to justify why `credential_gap` and provider resolution
+  are split three ways. That effort is itself the signal that the split is confusing rather than
+  self-evident. A better comment is not a substitute for a name and location that need no explaining.
+- **Leave `anthropic_client.py` named as-is and rely on module-level docstrings to clarify that it
+  is the shared config hub.** Rejected for the same reason. A vendor name on a provider-agnostic
+  module misleads on first contact, before a reader has read any docstring at all. The fix is a name
+  or a move, not more prose.
 
 ## Progress
 
