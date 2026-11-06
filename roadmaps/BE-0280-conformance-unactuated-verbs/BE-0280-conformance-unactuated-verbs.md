@@ -18,85 +18,97 @@
 
 The **driver conformance contract**
 ([BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md)) is the set of
-behaviors that every backend must satisfy alike, written as one test body
-(`tests/driver_conformance.py`). The suite does not test each backend separately. The one body runs
-against every backend, so uniform behavior is verified and not assumed. It runs against `FakeDriver`
-on the Linux gate, and against idb, XCUITest, adb, and Playwright on-device
-([BE-0270](../BE-0270-android-adb-driver-conformance/BE-0270-android-adb-driver-conformance.md)
-added the adb lane).
+behaviors that every [backend](../../docs/glossary.md#driver-backend-actuator-platform) must satisfy
+alike. The contract is written as one test body (`tests/driver_conformance.py`). The suite does not
+test each backend separately. The one body runs against every backend, so uniform behavior is
+verified and not assumed.
 
-The contract today pins tap, label-and-trait resolution, the multi-touch and `selectOption`
-capability promises, and the condition-wait semantics. Several `Driver` Protocol operations sit
-outside the contract, and no real backend actuates them in any lane: the text-editing family
-(`delete_text`, `select_all`, `copy_selection`) and `tap_point`. This item extends the contract to
-cover those operations, so the one test body proves them on every backend at once.
+The body runs against `FakeDriver` on the Linux gate. It also runs on-device against idb, XCUITest,
+adb, and Playwright. [BE-0270](../BE-0270-android-adb-driver-conformance/BE-0270-android-adb-driver-conformance.md)
+added the adb lane.
+
+The contract today pins these behaviors:
+
+- tap
+- label-and-trait resolution
+- the multi-touch and `selectOption` capability promises
+- the condition-wait semantics
+
+Several `Driver` Protocol operations sit outside the contract, and no real backend actuates them in
+any lane. They are the text-editing family (`delete_text`, `select_all`, `copy_selection`) and
+`tap_point`. This item extends the contract to cover those operations. The one test body then proves
+them on every backend at once.
 
 ## Motivation
 
 The text-editing steps ([BE-0265](../BE-0265-text-editing-steps/BE-0265-text-editing-steps.md))
-shipped, and each backend's command construction is unit-tested with a mocked subprocess. No lane
-actuates `delete_text` / `select_all` / `copy_selection` against a real device or browser, so the
+shipped. Each backend's command construction is unit-tested with a mocked subprocess. No lane
+actuates `delete_text` / `select_all` / `copy_selection` against a real device or browser. The
 round-trip from a step to an observed field change is never exercised.
 
-`tap_point` is in the same position. A real command test exists only on XCUITest and Playwright, and
-no lane actuates the operation at all. `tap_point` is also the foundation of the alert-dismissal
+`tap_point` is in the same position. A real command test exists only on XCUITest and Playwright.
+No lane actuates the operation at all. `tap_point` is also the foundation of the alert-dismissal
 path, the vision-located coordinate tap that
 [BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention.md)
 relies on. Leaving it unobserved on-device is a real risk.
 
-The contract is the cheapest place to close this gap. One spec runs against five backends, so a
-single test body adds coverage everywhere at once, where a separate showcase scenario per backend
-would not. The capability model already gives the contract its shape: a backend that declares the
-capability must actuate, and a backend that does not must raise `UnsupportedAction` loudly and never
-silently no-op. The text-editing operations and `tap_point` extend that same pattern.
+The contract is the cheapest place to close this gap. One spec runs against five backends. A single
+test body adds coverage everywhere at once, where a separate showcase scenario per backend would
+not.
+
+The capability model already gives the contract its shape. A backend that declares the capability
+must actuate. A backend that does not must raise `UnsupportedAction` loudly and never silently
+no-op. The text-editing operations and `tap_point` extend that same pattern.
 
 One constraint shapes the work. The on-device conformance harnesses realize a requested screen as a
-list of identifier-bearing buttons. That suffices for tap and resolution tests but not for text
-editing, because exercising `delete_text` or `select_all` needs a real editable text field on the
-screen. The contract addition therefore comes with a small extension to each platform's conformance
-screen (the iOS `ConformanceView`, the Compose `ConformanceScreen`, and the web harness's rendered
-document) to present an editable field and a known-frame element.
+list of identifier-bearing buttons. That suffices for tap and resolution tests. It does not suffice
+for text editing, because `delete_text` and `select_all` need a real editable text field on the
+screen.
+
+The contract addition therefore comes with a small extension to each platform's conformance screen.
+The screens are the iOS `ConformanceView`, the Compose `ConformanceScreen`, and the web harness's
+rendered document. Each screen gains an editable field and a known-frame element.
 
 ## Detailed design
 
-This section works at proposal altitude. The work divides into the units below, which are mutually
+This section works at proposal altitude. The work divides into the units below. They are mutually
 exclusive and collectively exhaustive (MECE).
 
 - **Enumerate the operation contract.** State the invariants that the new operations must satisfy,
   grounded in the `Driver` Protocol.
   - *Text editing.* A backend that actuates the operations completes `type_text`, then
-    `select_all`, then `copy_selection` without `UnsupportedAction`, and `delete_text` reduces the
-    field's reported length. A backend that does not actuate them raises `UnsupportedAction`. Today
-    that backend is idb, which raises `select_all` / `copy_selection` unconditionally.
-  - *Open sub-decision.* Unlike `MULTI_TOUCH` and `SELECT_OPTION`, no `Capability` token exists yet
-    for text-editing select and copy. The first sub-decision is whether the contract asserts the
-    actuate-versus-raise behavior directly, or introduces a new capability (added to each backend's
-    `CAPABILITIES`) that gates the behavior the same way. Today adb, Playwright, and XCUITest
-    actuate select and copy, while idb raises.
-  - *`tap_point`.* A coordinate tap on an element of known frame has the same observable effect as a
-    semantic tap on that element.
-- **Extend the three conformance screens.** Add an editable text field and a known-frame element to
-  the iOS `ConformanceView`, the Compose `ConformanceScreen`, and the web harness document, keeping
-  the readiness marker contract intact.
-- **Add the contract test bodies.** Write the new invariants once in `tests/driver_conformance.py`,
-  so that pytest collects them against every backend subclass.
+    `select_all`, then `copy_selection` without `UnsupportedAction`. `delete_text` reduces the
+    field's reported length. A backend that does not actuate them raises `UnsupportedAction`.
+    Today that backend is idb, which raises `select_all` / `copy_selection` unconditionally.
+  - *Open sub-decision.* Unlike `MULTI_TOUCH` and `SELECT_OPTION`, no `Capability` token exists
+    yet for text-editing select and copy. The first sub-decision has two options. The contract can
+    assert the actuate-versus-raise behavior directly. Alternatively, a new capability can gate the
+    behavior the same way, added to each backend's `CAPABILITIES`. Today adb, Playwright, and
+    XCUITest actuate select and copy, while idb raises.
+  - *`tap_point`.* A coordinate tap on an element of known frame has the same observable effect as
+    a semantic tap on that element.
+- **Extend the three conformance screens.** Add an editable text field and a known-frame element.
+  The screens are the iOS `ConformanceView`, the Compose `ConformanceScreen`, and the web harness
+  document. The readiness marker contract stays intact.
+- **Add the contract test bodies.** Write the new invariants once in `tests/driver_conformance.py`.
+  Pytest then collects them against every backend subclass.
 - **Wire realization into the on-device harnesses.** Extend each harness's screen-realization
-  channel (the iOS spec-file write, the Android intent reseed, the web `set_content`), so the field
-  and the known-frame element are present before the contract body runs.
-- **Confirm capability declarations match behavior.** Check that each backend's declared
-  capabilities agree with the operations it actuates and the operations it refuses, so the contract's
-  promise-versus-behavior check stays honest.
+  channel: the iOS spec-file write, the Android intent reseed, and the web `set_content`. The field
+  and the known-frame element are then present before the contract body runs.
+- **Confirm capability declarations match behavior.** Check each backend's declared capabilities
+  against the operations it actuates and the operations it refuses. The contract's
+  promise-versus-behavior check then stays honest.
 
 ## Alternatives considered
 
 - **Per-backend actuation scenarios in the showcase instead of the contract.** Authoring a
-  text-editing and `tap_point` scenario per backend would duplicate the same intent four times and
-  invite per-backend drift, which is exactly what the conformance suite exists to prevent. The
+  text-editing and `tap_point` scenario per backend would duplicate the same intent four times. It
+  would also invite per-backend drift, which is what the conformance suite exists to prevent. The
   contract is the point: one spec, every backend.
-- **Leave the text-editing operations at command-construction unit tests alone.** The
-  mocked-subprocess tests prove the argv, HTTP request, or key combination that a backend builds,
-  but never that the real device performs the edit. A capability that the tool advertises and no
-  lane observes is a promise without a check.
+- **Keep the text-editing operations at command-construction unit tests.** The
+  mocked-subprocess tests prove the argv, HTTP request, or key combination that a backend builds.
+  They never prove that the real device performs the edit. A capability that the tool advertises and
+  no lane observes is a promise without a check.
 
 ## Progress
 

@@ -1,6 +1,6 @@
 **English** · [日本語](BE-0275-serve-projects-management-page-ja.md)
 
-# BE-0275 — A projects management page as a top-level view in serve
+# BE-0275 — A projects management page in serve (a top-level view, not a modal)
 
 <!-- BE-METADATA -->
 | Field | Value |
@@ -82,8 +82,8 @@ them.
 
 ### 1. The Projects top-level view
 
-A new top-level view in the serve shell becomes the hub's home. It is a `data-view="projects"` tab in
-the header nav, rendered into its own main region like the other views. The view lists each
+A new top-level view in the serve shell becomes the hub's home. The view is a `data-view="projects"` tab in
+the header nav. It renders into its own main region, like the other views. The view lists each
 registered project with the information needed to reason about it:
 
 - name
@@ -91,13 +91,13 @@ registered project with the information needed to reason about it:
 - whether the project is active
 - its latest run verdict
 
-The BE-0225 header **switcher** stays, because it is a legitimate quick-switch control, like a
+The BE-0225 header **switcher** stays. It is a legitimate quick-switch control, like a
 context selector. The **Projects modal is retired**: its list, its per-row Run, and its switching now
 live on the page. Activating a project rebinds the live config through the existing
 `POST /api/projects/<name>/activate`, exactly as the modal did. Every other view then operates
 against the switched-to project with no restart.
 
-The Metrics view (BE-0226) and the header switcher appear only for a real hub, meaning more than one
+The Metrics view (BE-0226) and the header switcher appear only for a real hub. A real hub means more than one
 project. The Projects tab differs: it shows for **any** project count, single-config `serve`
 included. Unit 4 records this as a deliberate reveal decision. The Add form is how a single-config
 `serve` grows *into* a hub, so the page must be reachable before the second project exists, and the
@@ -120,7 +120,7 @@ Submitting sends `{name, sourceSpec}` to `POST /api/projects`. The server normal
 the stored `{kind, locator}` record through the one canonical `source_from_config` parser. The
 browser never re-implements Git-spec parsing, and the same `_validate_source` allowlist screening
 runs whether the source arrives as a string or a record. The endpoint, its route, and the registry
-schema are unchanged. `sourceSpec` is an additive request field, mirroring how `/api/config` already
+schema are unchanged. `sourceSpec` is an additive request field. It mirrors how `/api/config` already
 accepts a `git` spec string.
 
 `POST /api/projects` is idempotent by `(org, name)` (BE-0225 units 1 and 3). Re-submitting an
@@ -141,8 +141,8 @@ upload as a first-class project is left to a follow-up if a real need appears.
 
 Each row gains a **Remove** control. Activating the control asks for confirmation, because
 deregistration is destructive to the *binding* and not to history. The page then `DELETE`s
-`/api/projects/<name>` and refreshes the list. The page states the BE-0225 contract plainly: **run
-history is retained** and only the binding is removed. Removing the active project follows whatever
+`/api/projects/<name>` and refreshes the list. The page states the BE-0225 contract plainly. **Run
+history is retained**, and the page removes the binding alone. Removing the active project follows whatever
 the endpoint already does for that case, and the page reflects the post-delete `GET /api/projects`
 state instead of guessing.
 
@@ -199,7 +199,7 @@ relocation (modal to page), the two lifecycle controls, their small client state
   shared or leave the other admin surfaces inconsistent. The server RBAC gate already enforces. The
   client role signal, and the read-only rendering it enables across all admin surfaces, is deferred
   to its own BE item.
-- **Fold the projects page into the Metrics view (BE-0226).** Rejected, because the two serve
+- **Fold the projects page into the Metrics view (BE-0226).** Rejected, because the two views address
   distinct concerns. Metrics *ranks* projects (read-only, advisory), while the projects page
   *manages* their lifecycle (register, switch, run, remove). They are `Related` siblings over the
   same project list, not one view.

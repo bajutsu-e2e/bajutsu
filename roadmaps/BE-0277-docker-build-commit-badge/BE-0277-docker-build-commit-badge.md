@@ -47,7 +47,7 @@ supported contract, for two independent reasons:
 
 An explicit build argument is a contract that this repository can define and document once. *Any*
 deployment pipeline, whether this repo's own compose stack or an external one, can satisfy the
-contract the same way: pass the commit being built at the moment it builds, instead of hoping the
+contract the same way: pass the commit under build at the moment of the build, instead of hoping the
 image carries a usable `.git`.
 
 ## Detailed design

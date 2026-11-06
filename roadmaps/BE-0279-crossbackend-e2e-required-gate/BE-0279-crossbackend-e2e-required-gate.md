@@ -30,8 +30,8 @@ and sit outside branch protection. A break in the broadest functional lane, Andr
 scenarios, or in the web conformance contract therefore does not block a merge.
 
 The sibling items add network, iOS functional-parity, push, WebView, and text-editing jobs across
-all three lanes. Deciding gate membership job by job as the jobs land would leave the policy implicit
-and inconsistent. A single rule settles the question: a check gates when it is both deterministic and
+all three lanes. Deciding gate membership job by job as jobs land would leave the policy implicit
+and inconsistent. A single rule settles it: a check gates when it is both deterministic and
 host-independent. A check that depends on the host or on an upstream dependency stays a signal.
 
 The rule is the existing design, written down. The iOS lane already excludes the pixel VRT (the
@@ -65,7 +65,7 @@ exhaustive (MECE) around the aggregators and the ruleset.
 * **Make every job required, including VRT and golden.** Rejected. Pixel baselines are host-specific
   and `idb_companion` drift is an upstream event, so gating on them would redden PRs for reasons
   unrelated to the change. The iOS lane already documents this rationale.
-* **One aggregator across all backends.** Rejected. Per-backend aggregators preserve attribution, so
+* **One aggregator across all [backends](../../docs/glossary.md#driver-backend-actuator-platform).** Rejected. Per-backend aggregators preserve attribution, so
   a red check names the backend that broke. Per-backend aggregators also match the repository's
   one-concern-per-job structure.
 

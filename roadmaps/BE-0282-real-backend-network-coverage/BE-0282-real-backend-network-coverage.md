@@ -18,7 +18,7 @@
 
 The network path covers capture, request and response mocking, and the request, event, sequence, and
 response-schema assertions. The path is fully modeled and unit-tested as pure logic, and its runtime
-is wired for two backends:
+is wired for two [backends](../../docs/glossary.md#driver-backend-actuator-platform):
 
 - iOS captures out-of-process: the app POSTs each exchange to the `NetworkCollector` on loopback.
 - Web captures in-process: the Playwright driver hooks `requestfinished` and fulfils mocks through
@@ -41,7 +41,7 @@ No test observes the real boundary:
 - the `requestfinished` timing relative to a step
 - the `mocked` provenance flag as recorded from a real stub, and not from a model default
 
-Redaction of real network evidence is the sharpest instance. The redaction algorithms are thoroughly
+Redaction of real network [evidence](../../docs/glossary.md#evidence-capturepolicy-trace-triage) is the sharpest instance. The redaction algorithms are thoroughly
 unit-tested, but every input is a hand-built exchange dict or a hand-written log file. Nothing
 proves that a secret in a *really captured* header or body is masked in the persisted evidence,
 because no lane produces such evidence. A regression that leaked a captured credential would pass
@@ -58,7 +58,7 @@ it silently.
 
 ## Detailed design
 
-This section works at proposal altitude. The work divides into the units below, which are mutually
+This section works at proposal altitude. The work divides into the units below. They are mutually
 exclusive and collectively exhaustive (MECE).
 
 - **Web network smoke.** Author (or adapt) a `demos/web` scenario with a request mock and a request

@@ -1,6 +1,6 @@
 [English](BE-0276-scenario-permission-state.md) · **日本語**
 
-# BE-0276 — シナリオ単位で宣言する権限状態
+# BE-0276 — シナリオ単位で宣言する権限状態（simctl privacy / pm grant）
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
@@ -17,7 +17,7 @@
 
 ## はじめに
 
-OS の権限状態を、アプリの起動前にシナリオ単位で宣言的に設定する仕組みです。あらかじめ権限を許可
+OS の権限状態を、アプリの起動前に[シナリオ](../../docs/ja/glossary.md#シナリオのオーサリング)単位で宣言的に設定する仕組みです。あらかじめ権限を許可
 または拒否しておけば、実行時のプロンプトそのものが出ません。iOS では `simctl privacy` を、Android では
 `pm grant` / `pm revoke` を駆動します。既存の視覚ベースの**アラートガード**（[`dismissAlerts`](../../docs/ja/scenarios.md)）
 に対して、決定論的で AI を使わない補完手段になります。事前に分かっている権限を設定しておけば、消すべき
@@ -46,7 +46,7 @@ OS の権限状態を、アプリの起動前にシナリオ単位で宣言的�
 [BE-0052](../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)
 は device-state ファミリの残りを出荷する際、これを table-stakes のギャップとしてすでに記していました。
 本項目はそのギャップを埋めます。差別化はその実現方法にあります。単一の宣言的なクロスプラットフォームの
-フィールドを、各 backend が自分のネイティブな機構へマッピングし、決定論性とアプリ非依存性を保ちます。
+フィールドを、各 [backend](../../docs/ja/glossary.md#driver-backend-actuator-platform) が自分のネイティブな機構へマッピングし、決定論性とアプリ非依存性を保ちます。
 
 **クロスプラットフォームの土台。** Android は lease 時に適用する config レベルの
 `grantPermissions` リストで、実行時権限を事前付与しています

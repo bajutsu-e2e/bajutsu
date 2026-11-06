@@ -16,9 +16,9 @@
 
 ## はじめに
 
-本項目は、adb バックエンドに `request` / `requestSequence` によるネットワークキャプチャアサーションを
+本項目は、adb [バックエンド](../../docs/ja/glossary.md#driver-backend-actuator-platform)に `request` / `requestSequence` によるネットワークキャプチャアサーションを
 移植します。変更は 2 つです。1 つ目は、`BajutsuAndroid`（`BajutsuKit` の Android 版で、現状はクリップボード
-のみに対応しています）に OkHttp の interceptor を追加し、各通信を、iOS 向けにランナーがすでに起動している
+のみに対応しています）に OkHttp の interceptor を追加し、各通信を iOS 向けにランナーがすでに起動している
 インプロセスの collector へ報告させることです。2 つ目は、エミュレータの隔離されたループバックを
 `adb reverse` でその collector へ橋渡しすることです。
 
