@@ -15,141 +15,173 @@
 
 ## はじめに
 
-デバイスクラウドは iOS を**実機**で走らせます。Bajutsu の現在の iOS actuator はそこに届きません。
-`simctl` は Simulator だけを対象とし（実機のクラウドに simulator は存在しません）、`idb` は Mac に常駐する
-`idb_companion` のデーモンを要しますが、マネージドの macOS ホストはそれを露出しません。iOS でクラウドが
-*話せる*のは **XCTest** と、AWS Device Farm では **Appium の XCUITest ドライバ**です。この項目は、それらの
-成果物を生む iOS の実行経路を、すでに出荷済みの **XCUITest backend（BE-0019）**の上に足します。これにより、
-クラウドで、そして副産物としてローカルでも、iOS 実機の自動化が可能になります。
+デバイスクラウドは、iOS を**実機**で走らせます。Bajutsu の現在の iOS actuator は、その実機に届きません。
+
+- `simctl` は Simulator だけを対象とします。実機のクラウドに simulator はありません。
+- `idb` は、Mac に常駐する `idb_companion` のデーモンを要します。マネージドの macOS ホストは、それを
+  露出しません。
+
+iOS でクラウドが*話せる*のは、**XCTest** です。AWS Device Farm は、**Appium の XCUITest ドライバ**も
+話します。
+
+この項目は、それらの成果物を生む iOS の実行経路を足します。経路は、すでに出荷済みの **XCUITest backend
+（BE-0019）**の上に築きます。クラウドで、そして副産物としてローカルでも、iOS 実機の自動化が可能になります。
 
 ## 動機
 
-iOS は、クラウド対応に実際の新規コードが要る唯一のプラットフォームです。既存の iOS actuator は config の
-不足ではなく、構造としてクラウドと相容れないからです。後で誤診しないよう、制約を確認します。
+iOS は、クラウド対応に実際の新規コードが要る唯一のプラットフォームです。既存の iOS actuator は、構造と
+してクラウドと相容れません。config を直しても、この隔たりは埋まりません。後で誤診しないよう、制約を
+ここで確認します。
 
-- **`simctl`** は Simulator を駆動します。実機のクラウドには対象となる simulator がありません。
-- **`idb`** は Mac ホスト上で動く `idb_companion` を要します。マネージドのクラウド macOS ホストは限られた
-  シェルしか提供せず、任意のデーモンを常駐させません。
+- **`simctl`** は Simulator を駆動します。実機のクラウドには、対象となる simulator がありません。
+- **`idb`** は、Mac ホスト上で動く `idb_companion` を要します。マネージドのクラウド macOS ホストは、
+  限られたシェルしか提供せず、任意のデーモンを常駐させません。
 
-AWS Device Farm も Firebase も、iOS のテストを物理デバイス上で XCTest により走らせ（Device Farm は Appium の
-XCUITest ドライバでも走らせ）ます。どちらも `idb` / `simctl` を記載していません。したがって前進の経路は、
-XCTest と Appium-XCUITest を話すことで、駆動の層としては新しく作るのではなく **BE-0019 の XCUITest backend**
-を再利用します。これには単体での価値もあります。同じ作業が、Bajutsu に**ローカルの iOS 実機**を（デバイス
-target に対する `xcodebuild` を通じて）駆動させます。これは今のところ事実上 Simulator 専用です。
+AWS Device Farm も Firebase も、iOS のテストを物理デバイス上で XCTest により走らせます。Device Farm は、
+Appium の XCUITest ドライバでも走らせます。AWS Device Farm も Firebase も、`idb` や `simctl` を記載していません。
 
-これはデバイスクラウドの項目のうち最も重く、意図的に独立させています。Android の provider は adb backend を
-ほぼそのまま再利用しますが、iOS は実機を駆動できる経路とクラウドの package 化を要します。foundation の
-継ぎ目の後に順序づけ、iOS の *live* な経路（たとえば Appium endpoint の provider）が
-*device-cloud-provider-abstraction* を再利用でき、*batch* の経路（Device Farm の XCTest / Appium の package）
-が *aws-device-farm-submitter* の package 化を再利用できるようにします。
+前進の経路は、XCTest と Appium-XCUITest を話すことです。駆動の層は新しく作らず、**BE-0019 の XCUITest
+backend** を再利用します。
+
+この作業には、単体での価値もあります。同じ作業が、Bajutsu に**ローカルの iOS 実機**を、デバイス target に
+対する `xcodebuild` を通じて駆動させます。今日、この経路は事実上 Simulator 専用です。
+
+これはデバイスクラウドの項目のうち最も重く、意図的に独立させています。Android の provider は adb backend
+をほぼそのまま再利用します。iOS は、実機を駆動できる経路と、クラウドの package 化を要します。
+
+項目は foundation の継ぎ目の後に順序づけます。理由は 2 つあります。
+
+- iOS の *live* な経路（たとえば Appium endpoint の provider）が、*device-cloud-provider-abstraction* を
+  再利用できます。
+- *batch* の経路（Device Farm の XCTest / Appium の package）が、*aws-device-farm-submitter* の
+  package 化を再利用できます。
 
 ## 詳細設計
 
-XCUITest の駆動層を共有する 2 つの経路があります。
+2 つの経路が、XCUITest の駆動層を共有します。
 
-- **batch（AWS Device Farm）。** アプリと、Bajutsu のシナリオ実行を担う XCTest / Appium-XCUITest の bundle を
-  package 化し、*aws-device-farm-submitter* の仕掛けで提出し、artifact を回収します。Device Farm の iOS の
-  制約を織り込む必要があります。アプリはデバイス向けに**再署名**され（App Groups や Push などの一部の
-  entitlement が剥がれます）、`.ipa` はデバイス向けビルドが要り（simulator ビルドは不可）、XCTest は Appium の
-  経路と同じようにはカスタマイズできません。
-- **live（遠隔デバイス、後続）。** クラウドが予約済みの iOS デバイスに Appium / WebDriver の endpoint を
-  露出する場合、それを live の継ぎ目上の `DeviceProvider` としてモデル化し（adb の serial の代わりに endpoint
-  を渡す）、Appium-XCUITest の経路で駆動します。これは foundation の継ぎ目をそのまま再利用します。
+- **batch（AWS Device Farm）。** アプリと、Bajutsu のシナリオ実行を担う XCTest / Appium-XCUITest の
+  bundle を package 化します。*aws-device-farm-submitter* の仕掛けで提出し、artifact を回収します。
+  経路は、Device Farm の iOS の制約を織り込む必要があります。
+  - アプリは、デバイス向けに**再署名**されます。再署名で、App Groups や Push などの一部の entitlement が
+    剥がれます。
+  - `.ipa` は、デバイス向けビルドが要ります（simulator ビルドは不可）。
+  - XCTest は、Appium の経路と同じようにはカスタマイズできません。
+- **live（遠隔デバイス、後続）。** クラウドが、予約済みの iOS デバイスに Appium / WebDriver の endpoint を
+  露出する場合があります。その場合、クラウドを live の継ぎ目上の `DeviceProvider` としてモデル化します。
+  provider は、adb の serial の代わりに endpoint を渡します。その endpoint を、Appium-XCUITest の経路で
+  駆動します。この経路は、foundation の継ぎ目をそのまま再利用します。
 
-まとめとなる作業は、**XCUITest backend（BE-0019）を実機対応にする**ことです。今日それは `xcodebuild` を
-通じて Simulator を対象にします。この項目は target の選択を実機へ一般化し（まずローカル、次にクラウドの
-package 化）、それが両経路の再利用可能な核になります。
+まとめとなる作業は、**XCUITest backend（BE-0019）を実機対応にする**ことです。今日の backend は、
+`xcodebuild` を通じて Simulator を対象にします。この項目は、target の選択を実機へ一般化します。まず
+ローカル、次にクラウドの package 化です。この一般化が、両経路の再利用可能な核になります。
 
 ### 作業分解（MECE）
 
-1. **XCUITest の実機ターゲティング** — BE-0019 の backend を一般化して iOS の実機を駆動する（ローカルの
-   `xcodebuild` のデバイス target）。両経路の共有の土台。
-2. **batch の package 化（Device Farm）** — シナリオ実行を担う XCTest / Appium-XCUITest の package を作り、
-   *aws-device-farm-submitter* のアップロードと回収の流れに統合する。
-3. **再署名と entitlement の扱い** — Device Farm の再署名を記述して扱う（どの entitlement が落ちるか、
-   それに依存するシナリオを preflight でどう縮退または skip するか）。
-4. **live の経路（Appium endpoint の provider）** — 予約済みの iOS デバイスに Appium の endpoint を渡す
-   `DeviceProvider` を作り、XCUITest / Appium の経路で駆動する（後続の slice として着地しうる）。
-5. **テスト** — 実機ターゲティングの解決と package の組み立てを、`xcodebuild` とツールチェインの境界で fake に
-   して検証する。ゲートに live のクラウドは持ち込まない。
-6. **ドキュメント** — iOS のデバイスクラウドの手順（両言語）を置く。`idb` / `simctl` が使えない理由、XCTest と
-   Appium の経路、再署名の注意を記す。
+1. **XCUITest の実機ターゲティング。** BE-0019 の backend を一般化し、iOS の実機を駆動します（ローカルの
+   `xcodebuild` のデバイス target）。両経路の共有の土台です。
+2. **batch の package 化（Device Farm）。** シナリオ実行を担う XCTest / Appium-XCUITest の package を
+   作ります。*aws-device-farm-submitter* のアップロードと回収の流れに統合します。
+3. **再署名と entitlement の扱い。** Device Farm の再署名を記述して扱います。どの entitlement が落ちるか、
+   それに依存するシナリオを preflight でどう縮退または skip するかを定めます。
+4. **live の経路（Appium endpoint の provider）。** 予約済みの iOS デバイスに Appium の endpoint を渡す
+   `DeviceProvider` を作ります。XCUITest / Appium の経路で駆動します。後続の slice として着地しうる
+   作業です。
+5. **テスト。** 実機ターゲティングの解決と package の組み立てを検証します。`xcodebuild` とツールチェインの
+   境界を fake にします。ゲートに live のクラウドは持ち込みません。
+6. **ドキュメント。** iOS のデバイスクラウドの手順（両言語）を置きます。`idb` / `simctl` が使えない理由、
+   XCTest と Appium の経路、再署名の注意を記します。
 
 ### live 経路の transport（後続の slice）
 
-ユニット 4 は `appium` の `DeviceProvider`（live の継ぎ目）を着地させ、予約済みの iOS デバイスの固定の
-Appium / WebDriver endpoint を、実行の udid spec として渡します。その endpoint を駆動する transport は
-まだ作られておらず、今日の経路に WebDriver クライアントをかぶせるだけでは実現できません。udid spec は
-そのまま `XcuitestEnvironment` へ流れ、その `_destination()` は値を `simctl.validated_udid` に通し、共有の
-`device_id` の文字集合は URL の `/` を許しません。そのため実在の `http(s)://` endpoint は今日
-`DeviceError: invalid udid` を送出します。以下の設計はこの隙間を塞ぎます。
+ユニット 4 は、`appium` の `DeviceProvider`（live の継ぎ目）を着地させました。provider は、予約済みの
+iOS デバイスの固定の Appium / WebDriver endpoint を、実行の udid spec として渡します。その endpoint を
+駆動するには、別の transport が要ります。transport は、まだ作られていません。
+
+transport は、今日の経路に WebDriver クライアントをかぶせるだけでは実現できません。udid spec は、そのまま
+`XcuitestEnvironment` へ流れます。その `_destination()` は、値を `simctl.validated_udid` に通します。共有の
+`device_id` の文字集合は、URL の `/` を許しません。そのため、実在の `http(s)://` endpoint は、今日
+`DeviceError: invalid udid` を送出します。以下の設計は、この隙間を塞ぎます。
 
 **WebDriver は runner チャネルではなく Python から話します。** ローカルの XCUITest 経路は、常駐する
-BajutsuKit の runner を独自の loopback HTTP チャネルで駆動します。Appium のグリッドはその runner を
-露出せず、W3C（World Wide Web Consortium）WebDriver の endpoint（Appium の XCUITest driver）だけを
-露出します。そこで live の transport は、グリッドが提供しないポートへ runner チャネルをトンネルするのでは
-なく、遠隔の endpoint へ W3C WebDriver を Python から直接話します。
+BajutsuKit の runner を、独自の loopback HTTP チャネルで駆動します。Appium のグリッドは、その runner を
+露出しません。露出するのは、W3C（World Wide Web Consortium）WebDriver の endpoint（Appium の XCUITest
+driver）だけです。そこで live の transport は、遠隔の endpoint へ W3C WebDriver を Python から直接話します。
+グリッドが提供しないポートへ、runner チャネルをトンネルすることはしません。
 
-**要素の解決は Python 側に保ちます。** WebDriver は locator をサーバ側で解決しますが、決定性優先
-（prime directive 2）は、曖昧なセレクタが最初に一致した要素を操作せず即座に失敗するよう、Bajutsu が
-セレクタを Python 側で解決することを求めます。そこで live の driver は既存の `XcuitestDriver` の形を
-そのまま再利用します。画面全体を1 つの広い locator（`//*` または iOS の class chain に対する
-`findElements`）で query し、`base.Element` のリストを組み立て、そのリストに対して `resolve_unique` で
-セレクタを解決し、query が返した WebDriver の element id で選ばれた要素を操作します。runner チャネルが
-すでに踏襲している「query して解決し handle で操作する」流れと同じで、runner の per-snapshot handle の
-位置に WebDriver の element id が入ります。
+**要素の解決は Python 側に保ちます。** WebDriver は、locator をサーバ側で解決します。決定性優先
+（prime directive 2）は、Bajutsu がセレクタを Python 側で解決することを求めます。そうすれば、曖昧な
+セレクタは、最初に一致した要素を操作せず、即座に失敗します。
 
-**注入可能な transport の継ぎ目を、最小の自前クライアントで再利用します。** `XcuitestDriver` はすでに
-ワイヤプロトコルを注入可能な transport（`(method, path, body)` を入力に、復号した応答を出力に）として
-受け取り、その要求と応答のロジックはゲート上に Simulator を持たずに fake に対して動きます。live の driver
-は、標準ライブラリの `http.client` の上に組んだ最小の自前 W3C WebDriver クライアントを、同じやり方で
-注入して受け取ります。自前のクライアントは runner チャネル自身の stdlib クライアントと揃い、第三者の
-WebDriver 依存をゲートに持ち込まず、ネットワーク境界の fake の endpoint に対して WebDriver の写像を
-ゲートで動かせます。
+そこで live の driver は、既存の `XcuitestDriver` の形をそのまま再利用します。
 
-**endpoint を simctl と xcodebuild の仕掛けの外へ回します。** `environment_for` は実行の environment を
-選びます。xcuitest actuator の udid spec が `http(s)://` の endpoint のとき、実行は live の経路を採り、
-simctl の bring-up と `xcodebuild test-without-building` のサブプロセスを丸ごと飛ばし、endpoint に対して
-WebDriver のセッションを開き、live の driver でそれを駆動し、teardown でセッションを閉じます。URL の
-スキームがルーティングのシグナルです。URL のスキームはまさに `validated_udid` が弾く値なので、スキームを
-先に認識することが、live の経路の選択と、誤解を招く `invalid udid` エラーの置き換えの両方を担います。
-したがって endpoint は udid の仕掛けに触れません。udid の仕掛けは構造として URL を運べないからです。
-BE-0236 の `ProvisionProfile` はすでに、予約済みのデバイスがビルドを入れて起動済みだと報告するので、
-live の経路は simctl の bring-up のフラグを何も honor しません。実機の経路（ユニット 1）はすでにそれらを
-飛ばします。
+- 画面全体を 1 つの広い locator で query します（`//*` または iOS の class chain に対する
+  `findElements`）。
+- `base.Element` のリストを組み立てます。
+- そのリストに対して、`resolve_unique` でセレクタを解決します。
+- query が返した WebDriver の element id で、選ばれた要素を操作します。
 
-後続は3 つの slice に分けて着地し、いずれも WebDriver の境界で fake にします。
+これは、runner チャネルがすでに踏襲している「query して解決し handle で操作する」流れです。runner の
+per-snapshot handle の位置に、WebDriver の element id が入ります。
 
-- **slice A — セッションと最小の driver。** 自前の W3C クライアント（セッションの作成と削除）、live の
-  driver の `query`、`tap`、`screenshot`、準備完了待ち、そして `environment_for` のルーティング（セッションを
-  開き `xcodebuild` を飛ばす）を置きます。この slice で、tap して assert する live の実行が端から端まで通ります。
-- **slice B — 入力とジェスチャ。** `swipe`、`scroll`、`type_text`、`delete_text`、`select_all`、
-  `copy_selection`、`double_tap`、`long_press`、`tap_point`、`pinch`、`rotate` を WebDriver の
-  アクション（W3C の Actions の API（application programming interface）、または Appium の `mobile:`
-  コマンド）へ写像します。`double_tap` と `long_press` は今日 `tap` と同じ `/tap` runner endpoint を
-  extra param で使うので、WebDriver への写像の規模は他のジェスチャと同程度です。`tap_point`（システム
-  アラートなどに使うハンドルなし座標タップ）も同じ Actions の経路に写像されます。
-- **slice C — capability・config・ドキュメント。** live 経路の実行時の capability の集合を、Appium-XCUITest
-  が届く範囲へ縮退させ（`capabilities_for_run`、ユニット 3 の仕組み）、live のグリッド向けの showcase target を
-  足し、手順に live 経路を加えます。
+**注入可能な transport の継ぎ目を、最小の自前クライアントで再利用します。** `XcuitestDriver` は、すでに
+ワイヤプロトコルを注入可能な transport として受け取ります。入力は `(method, path, body)`、出力は復号した
+応答です。要求と応答のロジックは、ゲート上に Simulator を持たずに fake に対して動きます。
+
+live の driver は、標準ライブラリの `http.client` の上に組んだ最小の自前 W3C WebDriver クライアントを、
+同じやり方で注入して受け取ります。自前のクライアントは、runner チャネル自身の stdlib クライアントと
+揃います。第三者の WebDriver 依存を、ゲートに持ち込みません。ネットワーク境界の fake の endpoint に対して、
+WebDriver の写像をゲートで動かせます。
+
+**endpoint を simctl と xcodebuild の仕掛けの外へ回します。** `environment_for` は、実行の environment を
+選びます。xcuitest actuator の udid spec が `http(s)://` の endpoint のとき、実行は live の経路を採ります。
+live の経路は、simctl の bring-up と `xcodebuild test-without-building` のサブプロセスを、丸ごと飛ばします。
+endpoint に対して WebDriver のセッションを開き、live の driver で駆動し、teardown でセッションを閉じます。
+
+URL のスキームが、ルーティングのシグナルです。スキームはまさに `validated_udid` が弾く値です。スキームを
+先に認識すれば、live の経路を選べます。誤解を招く `invalid udid` エラーも置き換えられます。endpoint は
+udid の仕掛けに触れません。udid の仕掛けは、構造として URL を運べないからです。
+
+BE-0236 の `ProvisionProfile` は、予約済みのデバイスを、ビルドを入れて起動済みだと報告します。そのため
+live の経路は、simctl の bring-up のフラグを何も honor しません。実機の経路（ユニット 1）は、すでに
+それらを飛ばします。
+
+後続は 3 つの slice に分けて着地します。いずれも WebDriver の境界で fake にします。
+
+- **slice A：セッションと最小の driver。** この slice は、次の 3 つを置きます。
+  - 自前の W3C クライアント（セッションの作成と削除）
+  - live の driver の `query`、`tap`、`screenshot`、準備完了待ち
+  - `environment_for` のルーティング（セッションを開き、`xcodebuild` を飛ばす）
+
+  この slice で、tap して assert する live の実行が、端から端まで通ります。
+- **slice B：入力とジェスチャ。** `swipe`、`scroll`、`type_text`、`delete_text`、`select_all`、
+  `copy_selection`、`double_tap`、`long_press`、`tap_point`、`pinch`、`rotate` を、WebDriver のアクション
+  へ写像します。アクションは、W3C の Actions の API（application programming interface）か、Appium の
+  `mobile:` コマンドです。`double_tap` と `long_press` は、今日 `tap` と同じ `/tap` runner endpoint を
+  extra param で使います。WebDriver への写像の規模は、他のジェスチャと同程度です。`tap_point` は、
+  システムアラートなどに使うハンドルなし座標タップです。同じ Actions の経路に写像されます。
+- **slice C：capability・config・ドキュメント。** live 経路の実行時の capability の集合を、
+  Appium-XCUITest が届く範囲へ縮退させます（`capabilities_for_run`、ユニット 3 の仕組み）。live の
+  グリッド向けの showcase target を足します。手順に live 経路を加えます。
 
 ### prime directive への適合
 
-- **AI をゲートに入れない。** 実機の iOS 実行は決定的な XCTest / XCUITest で、合否判定の経路にモデルは
-  ありません。
-- **決定性優先。** 固定 sleep は導入せず、準備完了は既存 backend と同じく条件に基づいたままです。
-- **app 非依存。** iOS のクラウド固有の事柄は target の config と（batch では）CI 側の submitter に置き、
-  ランナーとシナリオ形式は変わりません。
+- **AI をゲートに入れない。** 実機の iOS 実行は、決定的な XCTest / XCUITest です。合否判定の経路に
+  モデルはありません。
+- **決定性優先。** 固定 sleep は導入しません。準備完了は、既存 backend と同じく条件に基づいたままです。
+- **app 非依存。** iOS のクラウド固有の事柄は、target の config と、batch では CI 側の submitter に
+  置きます。ランナーとシナリオ形式は変わりません。
 
 ## 検討した代替案
 
-- **`idb` / `simctl` をクラウドへ移植する。** 不可能です。実機のクラウドに simulator はなく、マネージドの
-  macOS ホストはデーモンを常駐できません。構造として実現不能なので却下し、XCTest / Appium の経路を採ります。
-- **iOS 用のクラウド backend を一から新設する。** BE-0019 の XCUITest backend を重複させます。却下し、代わりに
-  BE-0019 を実機へ一般化します。
-- **iOS を Android と同時に行う。** Android は adb backend をほぼそのまま再利用しますが、iOS は駆動と
-  package 化の実際の新規コードを要します。分けておき、Android の経路が重い iOS の作業を待たずに先に出荷
-  できるようにします。
+- **`idb` / `simctl` をクラウドへ移植する。** 構造として実現不能なので却下します。実機のクラウドに
+  simulator はなく、マネージドの macOS ホストはデーモンを常駐できません。そこで XCTest / Appium の経路を
+  採ります。
+- **iOS 用のクラウド backend を一から新設する。** 却下します。BE-0019 の XCUITest backend を重複させる
+  ためです。代わりに、BE-0019 を実機へ一般化します。
+- **iOS を Android と同時に行う。** 却下します。Android は adb backend をほぼそのまま再利用しますが、
+  iOS は駆動と package 化の実際の新規コードを要します。2 つを分けておけば、Android の経路は、重い iOS の
+  作業を待たずに先に出荷できます。
 
 ## 進捗
 

@@ -15,87 +15,104 @@
 
 ## Introduction
 
-This item runs Bajutsu Android scenarios on **AWS Device Farm** using its **custom test
-environment**. Unlike the live-device providers of the *device-cloud-provider-abstraction* seam,
-Device Farm is a **batch** service: it does not lend you a device to drive over the network — it
-runs *your commands on its host*, which already has `adb` connected to the reserved device. So the
-deliverable here is not a runtime provider but a **CI-side submitter**: package Bajutsu plus the
-scenarios, upload with a test-spec YAML that runs `bajutsu run --backend adb`, and collect the
-artifacts. The submitter is intentionally decoupled from the deterministic core.
+This item runs Bajutsu Android scenarios on **AWS Device Farm**, using its **custom test
+environment**.
+
+The *device-cloud-provider-abstraction* seam covers live-device providers. Device Farm is not one of
+them. It is a **batch** service. It does not lend a device to drive over the network. It runs *your
+commands on its host*, and that host already has `adb` connected to the reserved device.
+
+The deliverable is therefore not a runtime provider. It is a **CI-side submitter**. The submitter
+packages Bajutsu and the scenarios, and uploads them with a test-spec YAML that runs
+`bajutsu run --backend adb`. It then collects the artifacts. The submitter is intentionally decoupled
+from the deterministic core.
 
 ## Motivation
 
-AWS Device Farm is a common corporate device cloud, and its custom test environment is close to
-tailor-made for Bajutsu's Android backend: the spec's phases run arbitrary shell commands on the
-device host, can `pip install` dependencies and select a Python runtime, and expose `adb` against
-the reserved device. The Android backend "just needs a host with `adb` connected to a device" —
-which is exactly what a Device Farm custom-environment run provides. So Android scenarios should be
-runnable there with little or no core change; the work is the packaging and submission glue.
+AWS Device Farm is a common corporate device cloud. Its custom test environment is close to
+tailor-made for Bajutsu's Android backend. The spec's phases run arbitrary shell commands on the
+device host. They can `pip install` dependencies and select a Python runtime. They also expose `adb`
+against the reserved device.
 
-This is a distinct topology from the live providers, and forcing it into the runtime provider seam
-would be leaky (there is no network device to acquire — Bajutsu is the uploaded payload). Keeping it
-as a separate submitter, decoupled from the core, is deliberate:
+The Android backend "just needs a host with `adb` connected to a device", and a Device Farm
+custom-environment run provides exactly that. Android scenarios should therefore run there with
+little or no core change. The work is the packaging and submission glue.
 
-- The submission machinery (the AWS SDK / CLI, credentials, upload, polling, artifact download) is
-  non-deterministic and provider-coupled; it must not enter the `run`/CI verdict path.
-- Bajutsu runs *inside* Device Farm exactly as it does anywhere — the same deterministic core, the
-  same pass/fail from machine-checkable assertions. The submitter only ferries it there and back.
+This topology differs from the live providers. Forcing it into the runtime provider seam would leak,
+because there is no network device to acquire. Bajutsu is the uploaded payload. Keeping the submitter
+separate, and decoupled from the core, is deliberate for two reasons:
+
+- The submission machinery is non-deterministic and provider-coupled. It consists of the AWS SDK or
+  CLI, credentials, upload, polling, and artifact download. It must not enter the `run`/CI verdict
+  path.
+- Bajutsu runs *inside* Device Farm exactly as it does anywhere else. The deterministic core is the
+  same, and pass/fail comes from the same machine-checkable assertions. The submitter merely ferries
+  Bajutsu there and back.
 
 ## Detailed design
 
-The submitter is a CI-side tool (a script/workflow plus a Device Farm test-spec YAML), shipped
-under an optional extra (e.g. `bajutsu[aws]`) or as CI glue in `.github/`, not wired into `run`:
+The submitter is a CI-side tool: a script or workflow plus a Device Farm test-spec YAML. It ships
+under an optional extra (e.g. `bajutsu[aws]`) or as CI glue in `.github/`. It is not wired into
+`run`. It has four parts:
 
-1. **Package** — bundle the Bajutsu source/wheel, the target config, and the scenarios into a
+1. **Package.** Bundle the Bajutsu source or wheel, the target config, and the scenarios into a
    Device Farm test package.
-2. **Test spec** — a spec YAML whose phases install dependencies (`devicefarm-cli use python …`,
-   `pip install`), then run `bajutsu run --backend adb <scenarios>` in the `test` phase, and copy
-   `runs/` into `$DEVICEFARM_LOG_DIR` in `post_test` for artifact retrieval.
-3. **Serial resolution PoC** — confirm that `adb.resolve_serial()` picks up the Device Farm host's
-   connected device (the reserved device should already appear in `adb devices`). This is the one
-   empirical unknown and is validated **before** any polishing.
-4. **Submit + collect** — upload via the AWS SDK/CLI, poll the run, and download artifacts/report;
-   surface pass/fail from Bajutsu's own manifest, not from Device Farm's classification.
+2. **Test spec.** Write a spec YAML that does three things:
+   - Its phases install dependencies (`devicefarm-cli use python …`, `pip install`).
+   - The `test` phase runs `bajutsu run --backend adb <scenarios>`.
+   - The `post_test` phase copies `runs/` into `$DEVICEFARM_LOG_DIR` for artifact retrieval.
+3. **Serial resolution PoC.** Confirm that `adb.resolve_serial()` picks up the device connected to the
+   Device Farm host. The reserved device should already appear in `adb devices`. This is the one
+   empirical unknown. It is validated **before** any polishing.
+4. **Submit + collect.** Upload via the AWS SDK or CLI, poll the run, and download the artifacts and
+   report. Pass/fail comes from Bajutsu's own manifest, not from Device Farm's classification.
 
-Batch-topology traits to document and handle: the run has a **150-minute hard cap** per execution
-and a per-Appium-command timeout that does not apply to the raw-adb path; `.aab` is not accepted
-(APK only); iOS custom-mode has extra constraints (covered by the *ios-device-cloud-execution*
-sibling, not here). Raw-adb access on Device Farm is a by-product of the host toolchain rather than
-a first-class guarantee (the first-class path is Appium); the submitter documents this so a future
-Device Farm change does not silently break it.
+The batch topology has traits to document and handle:
+
+- Each execution has a **150-minute hard cap**.
+- A per-Appium-command timeout exists, and it does not apply to the raw-adb path.
+- `.aab` is not accepted (APK only).
+- iOS custom mode has extra constraints. The *ios-device-cloud-execution* sibling covers them, not
+  this item.
+
+Raw-adb access on Device Farm is a by-product of the host toolchain. It is not a first-class
+guarantee, since the first-class path is Appium. The submitter documents this, so that a future
+Device Farm change does not silently break the path.
 
 ### Work breakdown (MECE)
 
-1. **Serial-resolution PoC** — a minimal spec that runs one showcase Android scenario and proves
-   `resolve_serial` finds the reserved device on the host. Gate everything else on this.
-2. **Package builder** — assemble the Bajutsu payload (source/wheel + config + scenarios) for
+1. **Serial-resolution PoC.** Write a minimal spec that runs one showcase Android scenario. It proves
+   that `resolve_serial` finds the reserved device on the host. Everything else is gated on this.
+2. **Package builder.** Assemble the Bajutsu payload (source or wheel, config, and scenarios) for
    upload.
-3. **Test-spec template** — the install/pre_test/test/post_test spec that installs deps and runs
-   `bajutsu run --backend adb`, capturing artifacts into `$DEVICEFARM_LOG_DIR`.
-4. **Submit/collect tooling** — SDK/CLI wrapper to upload, poll, download, and report Bajutsu's
-   verdict; decoupled from `run`, behind `bajutsu[aws]` / CI glue.
-5. **Docs** — an AWS how-to in `docs/` (both languages): batch model, the raw-adb caveat, the
-   150-minute cap, APK-only.
+3. **Test-spec template.** Write the install/pre_test/test/post_test spec. It installs the
+   dependencies and runs `bajutsu run --backend adb`. It captures artifacts into
+   `$DEVICEFARM_LOG_DIR`.
+4. **Submit/collect tooling.** Wrap the SDK or CLI to upload, poll, download, and report Bajutsu's
+   verdict. The tooling is decoupled from `run` and sits behind `bajutsu[aws]` or CI glue.
+5. **Docs.** Add an AWS how-to in `docs/` (both languages). It covers the batch model, the raw-adb
+   caveat, the 150-minute cap, and APK-only.
 
 ### Prime-directive compliance
 
-- **AI out of the gate.** Bajutsu runs unchanged inside Device Farm; verdicts come from its
+- **AI out of the gate.** Bajutsu runs unchanged inside Device Farm, and verdicts come from its
   assertions. The submitter adds no model anywhere.
-- **Determinism first.** The submitter is orchestration outside the deterministic core; the run it
-  triggers is the same deterministic run as locally.
-- **App-agnostic.** Scenarios and target config are unchanged; only the delivery mechanism differs,
-  and it lives outside the core.
+- **Determinism first.** The submitter is orchestration outside the deterministic core. The run it
+  triggers is the same deterministic run as a local one.
+- **App-agnostic.** Scenarios and target config are unchanged. Only the delivery mechanism differs,
+  and the mechanism lives outside the core.
 
 ## Alternatives considered
 
-- **Model Device Farm as a runtime `DeviceProvider` (live seam).** There is no network device to
-  acquire; Bajutsu is the payload that runs on the host. Rejected — batch belongs in a CI-side
-  submitter, not the runtime seam.
-- **Use Device Farm's built-in Appium instead of raw adb.** Possible, but it would require an
-  Appium-speaking backend and abandon the near-zero-change reuse of the existing adb backend.
-  Rejected for the Android path; the Appium route is relevant to the iOS sibling item.
-- **Bake submission into `bajutsu run`.** Drags the AWS SDK/credentials/polling into the core.
-  Rejected — keep it a decoupled CI-side tool behind an optional extra.
+- **Model Device Farm as a runtime `DeviceProvider` (live seam).** Rejected. There is no network
+  device to acquire, because Bajutsu is the payload that runs on the host. Batch belongs in a
+  CI-side submitter, not in the runtime seam.
+- **Use Device Farm's built-in Appium instead of raw adb.** Rejected for the Android path. It is
+  possible, but it would require an Appium-speaking backend. It would also abandon the
+  near-zero-change reuse of the existing adb backend. The Appium route is relevant to the iOS
+  sibling item.
+- **Bake submission into `bajutsu run`.** Rejected. It drags the AWS SDK, credentials, and polling
+  into the core. The submitter stays a decoupled CI-side tool behind an optional extra.
 
 ## Progress
 

@@ -15,85 +15,101 @@
 ## Introduction
 
 This item adds the first concrete **device provider** on top of the *device-cloud-provider-
-abstraction* seam: running a Bajutsu Android scenario against a Google-hosted real device through
-**Firebase's Android Device Streaming**, which exposes a reserved device as "adb over SSL." Because
-the Android backend already drives any reachable `adb` serial — including an `IP:port`
-`adb connect` target — the adapter's job is narrow: reserve the device, establish the adb-over-SSL
-connection, hand the runner a serial, and release the reservation afterwards.
+abstraction* seam. It runs a Bajutsu Android scenario against a Google-hosted real device through
+**Firebase's Android Device Streaming**. Device Streaming exposes a reserved device as "adb over
+SSL".
+
+The Android backend already drives any reachable `adb` serial, including an `IP:port` `adb connect`
+target. The adapter's job is therefore narrow:
+
+- Reserve the device.
+- Establish the adb-over-SSL connection.
+- Hand the runner a serial.
+- Release the reservation afterwards.
 
 ## Motivation
 
-Firebase is a natural first target: many teams already use it, and Device Streaming provides
-exactly the shape the live-topology seam wants — a reserved real device reachable over adb. Landing
+Firebase is a natural first target. Many teams already use it, and Device Streaming provides exactly
+the shape that the live-topology seam wants: a reserved real device reachable over adb. Landing
 Firebase first also **validates the provider seam against a real service** before the abstraction is
-frozen (the PoC-first sequencing the foundation item calls for).
+frozen. This is the PoC-first sequencing that the foundation item calls for.
 
-A key finding from investigation, worth recording so the scope is not misread: **Firebase Test Lab
-proper cannot host Bajutsu's driver.** Test Lab accepts only fixed test types — Instrumentation
-(Espresso / UI Automator), Robo, and Game Loop — uploaded as APK/AAB via
-`gcloud firebase test android run`. There is no path to upload an arbitrary Python driver and have
-it drive the device out-of-band. Test Lab is a closed test runner, not an open execution sandbox.
-The viable route to a live adb device on Google's cloud is therefore the **separate** Android Device
-Streaming product (Android Studio's device reservation), which explicitly grants an "adb over SSL"
-connection usable by "any tool that uses adb." This item targets Device Streaming, and documents the
-Test Lab limitation rather than pretending to wrap it.
+The investigation produced a key finding. It is recorded here so that the scope is not misread:
+**Firebase Test Lab proper cannot host Bajutsu's driver.**
+
+- Test Lab accepts only fixed test types: Instrumentation (Espresso / UI Automator), Robo, and Game
+  Loop. They are uploaded as APK/AAB via `gcloud firebase test android run`.
+- No path exists to upload an arbitrary Python driver and have it drive the device out-of-band.
+- Test Lab is a closed test runner, not an open execution sandbox.
+
+The viable route to a live adb device on Google's cloud is the **separate** Android Device Streaming
+product (Android Studio's device reservation). It explicitly grants an "adb over SSL" connection
+usable by "any tool that uses adb". This item targets Device Streaming. It documents the Test Lab
+limitation, and it does not pretend to wrap Test Lab.
 
 ## Detailed design
 
 Implement a `DeviceProvider` (kind `firebase-streaming`) as an **optional extra** (e.g.
-`pip install "bajutsu[firebase]"`) that wraps the Firebase / Android Device Streaming CLI:
+`pip install "bajutsu[firebase]"`). The extra wraps the Firebase / Android Device Streaming CLI. The
+provider has two operations:
 
-- **acquire(target)** — reserve a device (device model / API level / project from the target's
-  `deviceProvider` config), establish the adb-over-SSL tunnel, wait until the streamed device shows
-  ready in `adb devices`, and return a `DeviceLease` whose serial is the streamed `IP:port` target.
-- **release()** — tear down the tunnel and end the reservation (stopping billing).
+- **acquire(target).** Reserve a device, taking the device model, API level, and project from the
+  target's `deviceProvider` config. Establish the adb-over-SSL tunnel. Wait until the streamed
+  device shows ready in `adb devices`. Return a `DeviceLease` whose serial is the streamed `IP:port`
+  target.
+- **release().** Tear down the tunnel and end the reservation, which stops billing.
 
-Everything downstream is unchanged: `make_driver("adb", serial)` drives the streamed device exactly
-as it drives a local emulator, because the serial is the only thing the driver needs. The
-cloud-difference hooks defined by the foundation item apply here: the device is already booted (skip
-boot-wait), app install runs through the normal `adb install` over the tunnel (Device Streaming does
-not pre-install), and emulator-only device-control primitives that the streamed device lacks are
-declared unsupported so preflight cuts them loudly.
+Everything downstream is unchanged. `make_driver("adb", serial)` drives the streamed device exactly
+as it drives a local emulator, because the serial is the only thing the driver needs.
+
+The cloud-difference hooks defined by the foundation item apply here:
+
+- The device is already booted, so the boot-wait is skipped.
+- App install runs through the normal `adb install` over the tunnel, because Device Streaming does
+  not pre-install.
+- The streamed device lacks some emulator-only device-control primitives. The provider declares them
+  unsupported, so that preflight cuts them loudly.
 
 ### Work breakdown (MECE)
 
-1. **Adapter skeleton** — `firebase-streaming` provider registered under the seam's registry,
-   shipped behind the `bajutsu[firebase]` extra; import of the extra is lazy so the gate stays
+1. **Adapter skeleton.** Register the `firebase-streaming` provider in the seam's registry, and ship
+   it behind the `bajutsu[firebase]` extra. The import of the extra is lazy, so the gate stays
    cloud-free.
-2. **Reservation + adb-over-SSL** — reserve via the Device Streaming CLI, establish the tunnel,
-   resolve the streamed serial, and confirm readiness through `adb devices` (a condition wait, no
-   fixed sleep).
-3. **Lease lifecycle** — reliable `release()` on success, failure, and interruption, so a
-   reservation is never leaked (billing safety).
-4. **Cloud-difference hooks** — wire boot-wait skip, normal `adb install`, and device-control
+2. **Reservation + adb-over-SSL.** Reserve via the Device Streaming CLI and establish the tunnel.
+   Resolve the streamed serial. Confirm readiness through `adb devices`, as a condition wait with no
+   fixed sleep.
+3. **Lease lifecycle.** Make `release()` reliable on success, on failure, and on interruption, so
+   that a reservation is never leaked (billing safety).
+4. **Cloud-difference hooks.** Wire the boot-wait skip, the normal `adb install`, and device-control
    capability degradation through the foundation's `RunEnvironment` hooks.
-5. **Config** — provider-specific fields (project, device model, API level) validated by the
-   adapter; unknown/missing → loud error.
-6. **Tests** — fake the CLI/tunnel boundary (external process/network is the sanctioned mock point)
-   and assert acquire→serial→release, readiness-as-condition, and lease cleanup on failure. No live
-   Firebase in the gate.
-7. **Docs** — a Firebase how-to in `docs/` (both languages) that states plainly: Device Streaming is
-   the supported path; Test Lab proper is not wrappable.
+5. **Config.** The adapter validates the provider-specific fields (project, device model, API
+   level). An unknown or missing field raises a loud error.
+6. **Tests.** Fake the CLI/tunnel boundary, since an external process or network is the sanctioned
+   mock point. Assert acquire→serial→release, readiness as a condition, and lease cleanup on failure.
+   No live Firebase enters the gate.
+7. **Docs.** Add a Firebase how-to in `docs/` (both languages). It states plainly that Device
+   Streaming is the supported path and that Test Lab proper cannot be wrapped.
 
 ### Prime-directive compliance
 
-- **AI out of the gate.** The adapter only reserves/connects/releases; no model, no effect on the
-  deterministic verdict.
-- **Determinism first.** Readiness is a condition on `adb devices`, not a sleep; driving the streamed
-  device is as reproducible as a local one.
+- **AI out of the gate.** The adapter reserves, connects, and releases. It adds no model and has no
+  effect on the deterministic verdict.
+- **Determinism first.** Readiness is a condition on `adb devices`, not a sleep. Driving the streamed
+  device is as reproducible as driving a local one.
 - **App-agnostic.** All Firebase specifics live in the target's `deviceProvider` config and the
-  optional adapter; the driver and runner are untouched.
+  optional adapter. The driver and runner are untouched.
 
 ## Alternatives considered
 
-- **Wrap Firebase Test Lab proper (Instrumentation/Robo/Game Loop).** Would require packaging the
-  Bajutsu run inside an Instrumentation test APK and giving up the out-of-band driver model — at odds
-  with the deterministic-core design and the natural-language scenario hub. Rejected; documented as a
-  limitation instead.
-- **Keep the adapter in core rather than an optional extra.** Pulls the Google Cloud SDK/CLI into the
-  deterministic dependency closure. Rejected — ship behind `bajutsu[firebase]`.
-- **Model Device Streaming as batch (like AWS Device Farm).** It is a *live* remote device, not a
-  remote executor; modelling it as batch would discard the seam that already fits. Kept it live.
+- **Wrap Firebase Test Lab proper (Instrumentation/Robo/Game Loop).** Rejected, and documented as a
+  limitation instead. Wrapping would require packaging the Bajutsu run inside an Instrumentation test
+  APK. It would give up the out-of-band driver model, which is at odds with the deterministic-core
+  design and the natural-language scenario hub.
+- **Keep the adapter in core rather than an optional extra.** Rejected. It pulls the Google Cloud
+  SDK/CLI into the deterministic dependency closure. The adapter ships behind `bajutsu[firebase]`.
+- **Model Device Streaming as batch (like AWS Device Farm).** Rejected. Device Streaming is a *live*
+  remote device, not a remote executor. Modelling it as batch would discard the seam that already
+  fits. It stays live.
 
 ## Progress
 
