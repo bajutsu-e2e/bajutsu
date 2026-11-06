@@ -60,9 +60,9 @@ Android は **idb の構造的双子**です。どちらも subprocess 駆動で
 
 Android は **idb の構造的双子**です。どちらも subprocess 駆動で、座標 actuation を行います。さらに、画面遷移中の一過性に空なツリーを返す点も同じです。この共通の形ゆえに、Android は idb の *retry 付き解決、曖昧は即失敗* パターンをそのまま再利用します（[drivers](../../docs/ja/drivers.md) を参照）。パターンは 3 つの規則からなります。
 
-- ツリーをポーリングする。
-- 一過性に空な結果なら retry する。
-- セレクタが 2 件以上に解決したら、「最初に一致したものを tap する」のではなく即座に失敗する。
+- ツリーをポーリングします。
+- 一過性に空な結果なら retry します。
+- セレクタが 2 件以上に解決したら、「最初に一致したものを tap する」のではなく即座に失敗します。
 
 Android バックエンドは、iOS 固有の部分が 3 つの継ぎ目に閉じていたことを裏づけます。システムの残りは、ほぼ新しい形を要しません。
 
@@ -104,11 +104,11 @@ idb と Android は、座標 actuation とモックネットワークを持つ�
 ### 作業分解（MECE）
 
 1. **レジストリ配線**（`bajutsu/backends.py`）。`PLATFORMS["android"] = ("adb",)` と `_EXECUTABLE["adb"]` は、すでにあります。残りの編集で、計画済みトークンを有効にします。
-   - `adb` を `IMPLEMENTED` に加える。
-   - `AdbDriver.CAPABILITIES` を返す `capabilities_for("adb")` 分岐を追加する。これはデバイス不要で読めるクラス定数で、BE-0082 の preflight 用である。
-   - `make_driver("adb", serial)` 分岐を追加する。
+   - `adb` を `IMPLEMENTED` に加えます。
+   - `AdbDriver.CAPABILITIES` を返す `capabilities_for("adb")` 分岐を追加します。これはデバイス不要で読めるクラス定数で、BE-0082 の preflight 用です。
+   - `make_driver("adb", serial)` 分岐を追加します。
 2. **`AdbDriver` actuator**（`bajutsu/drivers/adb.py`）。driver は次の 5 つを実装します。
-   - `uiautomator dump` の XML を、正規化された `Element` に解析する（上記のセレクタ対応）。
+   - `uiautomator dump` の XML を、正規化された `Element` に解析します（上記のセレクタ対応）。
    - `input tap/swipe/text` による座標操作
    - `screencap` による `screenshot`
    - 一過性に空なツリーの retry

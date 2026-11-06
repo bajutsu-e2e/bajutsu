@@ -36,10 +36,10 @@ The idb version becomes an explicit, recorded input to a run, not an ambient fac
 - **Record the version in the manifest.** Each run captures the `idb_companion` version and the `idb` client version. It writes both into `manifest.json`, next to the existing run metadata, so any artifact set states which idb produced it. The version is provenance, not a gate. It never affects pass/fail, so the Tier-2 run/CI gate stays deterministic and free of LLMs.
 - **Declare an expected version per environment.** A known-good version range lives in config, so a team can pin the version it validates against. The range is environment-level, not app-level. It therefore sits next to the other backend settings, not under `apps.<name>`. The pin is the same whichever app a scenario targets, which preserves the app-agnostic rule.
 
-`doctor` reads the range and compares the installed version with it. The existing pre-flight surface then gains a clear line such as "idb_companion 1.2.3 installed, expected >= 1.2.x", in place of a downstream failure.
+  `doctor` reads the range and compares the installed version with it. The existing pre-flight surface then gains a clear line such as "idb_companion 1.2.3 installed, expected >= 1.2.x", in place of a downstream failure.
 - **A dedicated monitoring job in CI.** A scheduled job runs the on-device smoke path against the latest available `idb_companion` and the current Simulator runtimes. The job fails loudly if the schema or the behavior drifts. It is separate from the per-PR gate, which must stay fast and Simulator-free.
 
-The job automates the manual re-check that `docs/drivers.md` describes. A needed version bump surfaces as a CI signal, on a cadence we control, instead of as an ad-hoc discovery.
+  The job automates the manual re-check that `docs/drivers.md` describes. A needed version bump surfaces as a CI signal, on a cadence we control, instead of as an ad-hoc discovery.
 - **Schema assertions, not just a version string.** The smoke path asserts that `describe-all` still yields the fields that the `Element` normalization needs. An upgrade that keeps version compatibility but reshapes the JSON is therefore still caught. The guarantee covers behavior, not merely a number.
 
 Nothing here introduces fixed sleeps or non-deterministic selection. The monitoring job reuses the existing condition-waited smoke scenarios, and the version pin is a static comparison.
