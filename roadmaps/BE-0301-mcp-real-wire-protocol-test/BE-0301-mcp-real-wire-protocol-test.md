@@ -16,52 +16,58 @@
 
 ## Introduction
 
-`bajutsu mcp` exposes `bajutsu_run`/`bajutsu_doctor` as MCP tools and run evidence as resources, for
-Claude Desktop/Code integration. Most tests in `tests/test_mcp.py` call `mcp.call_tool(...)` /
-`mcp.read_resource(...)` directly on an in-process `FastMCP` instance; `test_cli_mcp_starts_server`
-monkeypatches `create_server` so `.run()` never starts a real server, only records which transport
-string was requested. Nothing in the suite ever serializes a tool call over stdio or SSE and
-deserializes it back. This item adds a real wire-protocol round-trip test.
+`bajutsu mcp` exposes `bajutsu_run` and `bajutsu_doctor` as Model Context Protocol (MCP) tools, and
+run evidence as resources, for Claude Desktop and Claude Code integration.
+
+Most tests in `tests/test_mcp.py` call `mcp.call_tool(...)` and `mcp.read_resource(...)` directly on an
+in-process `FastMCP` instance. `test_cli_mcp_starts_server` monkeypatches `create_server`, so `.run()`
+never starts a real server and merely records which transport string was requested. Nothing in the
+suite serializes a tool call over stdio or Server-Sent Events (SSE) and deserializes it back. This item
+adds a real wire-protocol round-trip test.
 
 ## Motivation
 
-Calling `mcp.call_tool(...)` in-process exercises FastMCP's Python-level dispatch — the tool
-function actually runs, and its return value is exactly what the test sees. It does not exercise the
-JSON-RPC framing, tool-schema advertisement, or resource-URI encoding that only happen when a real
-client and server talk over an actual transport. A schema Claude Desktop/Code cannot parse, a
-resource URI that doesn't round-trip through real serialization, or a stdio framing bug would all
-pass every test in the current suite, because the suite never puts anything on the wire.
+Calling `mcp.call_tool(...)` in-process exercises FastMCP's Python-level dispatch. The tool function
+runs, and its return value is exactly what the test sees. The call does not exercise the JSON-RPC
+framing, the tool-schema advertisement, or the resource-URI encoding. Those happen only when a real
+client and server talk over an actual transport.
+
+Three defects would pass every test in the current suite, because the suite never puts anything on the
+wire:
+
+- A schema that Claude Desktop or Claude Code cannot parse.
+- A resource URI that does not round-trip through real serialization.
+- A stdio framing bug.
 
 ## Detailed design
 
 Proposal altitude. The work is MECE along the units below.
 
-- **Spin up a real server process.** Start `bajutsu mcp` as an actual subprocess (or in-process
-  server bound to a real transport) rather than monkeypatching `create_server`. The client waits on
-  a condition — the server's readiness signal, or its first request actually completing — rather
-  than a fixed `sleep`, before it starts talking to the process (prime directive 2).
-- **Connect with a real MCP client.** Use the `mcp` SDK's client to list tools, call
-  `bajutsu_run`/`bajutsu_doctor`, and read a resource over the real transport (stdio to start, since
-  it needs no network), asserting the round-trip produces the same result the in-process tests
+- **Spin up a real server process.** Start `bajutsu mcp` as an actual subprocess (or as an in-process
+  server bound to a real transport) instead of monkeypatching `create_server`. The client waits on a
+  condition before it talks to the process: the server's readiness signal, or its first request
+  completing. It never waits on a fixed `sleep` (prime directive 2).
+- **Connect with a real MCP client.** Use the `mcp` SDK's client over a real transport. Start with
+  stdio, which needs no network. The client lists tools, calls `bajutsu_run` and `bajutsu_doctor`, and
+  reads a resource. The test asserts that the round-trip produces the same result the in-process tests
   already assert for the tool logic itself.
-- **Keep the in-process tests as they are.** They remain the right tool for testing the tool
-  functions' own logic; this item adds the wire-level layer underneath them rather than replacing
-  them.
+- **Keep the in-process tests as they are.** They remain the right tool for testing the tool functions'
+  own logic. This item adds the wire-level layer underneath them and does not replace them.
 - **Non-gating first.** Spawning a real subprocess and doing IPC over stdio carries more
-  timing-sensitive surface than the current in-process calls — process-spawn latency and pipe
-  buffering under CI resource contention — even with a readiness condition wait instead of a fixed
-  `sleep`. Land it as CI signal, following the precedent in
-  [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md),
-  and promote it once stable.
+  timing-sensitive surface than the current in-process calls. Process-spawn latency and pipe buffering
+  under CI resource contention both matter, even with a readiness condition wait instead of a fixed
+  `sleep`. Land the test as CI signal, following the precedent in
+  [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md), and
+  promote it once it is stable.
 
 ## Alternatives considered
 
 - **Trust the in-process tests, since FastMCP is a well-tested library.** FastMCP's own tests cover
-  FastMCP; they say nothing about whether Bajutsu's specific tool schemas and resource URIs actually
-  survive real serialization, which is what a real client round-trip is for.
+  FastMCP. They say nothing about whether Bajutsu's specific tool schemas and resource URIs survive real
+  serialization, and a real client round-trip exists to answer exactly that.
 - **Manually verify the MCP integration once against Claude Desktop and call it done.** A one-time
-  manual check catches today's state but not a future regression; a CI-run round-trip test is the
-  only form that keeps observing it.
+  manual check catches today's state and misses a future regression. Only a CI-run round-trip test
+  keeps observing the integration.
 
 ## Progress
 
@@ -79,28 +85,35 @@ Proposal altitude. The work is MECE along the units below.
 
 - `tests/test_mcp_wire.py` starts `bajutsu mcp --transport stdio` as a real subprocess and drives it
   with the `mcp` SDK's `fastmcp.Client` over stdio. The client's `initialize` handshake is the
-  readiness condition (no fixed `sleep`). Over the wire it lists tools (asserting both
-  `bajutsu_doctor`/`bajutsu_run` are advertised with their input schemas), round-trips a
-  `bajutsu_doctor` and a `bajutsu_run` call, and reads a `bajutsu://runs/{run_id}/manifest.json`
-  resource. It also round-trips the wildcard-template resource (`artifact/{path*}`, the URI most
-  exposed to encoding quirks), asserts the non-string tool params serialize with their JSON-schema
-  types (`erase` boolean, `workers` integer), and covers the error path — a missing resource and a
-  tool call missing its required argument, each asserted to come back as a JSON-RPC error frame
-  carrying the server's message, a serialization path distinct from a successful call. The
-  subprocess uses the `fake` backend, so `bajutsu_doctor` runs a real, device-free driver query in
-  the server process; `bajutsu_run` spawns a real `bajutsu run` subprocess whose verdict depends on
-  the target environment — the fake actuator itself needs no device, but the run reaches it only
-  after its udid/device-resolution step, and `fake` is one of the simctl family (`fake` and
-  `xcuitest`), whose environment resolves the udid through `simctl.resolve_udid`, which shells out
-  to `xcrun` for the default `booted` udid and so raises on the Linux host, where `xcrun` is absent
-  (`playwright` short-circuits before udid resolution and `adb` resolves via `adb.resolve_serial`,
-  not `xcrun`) — so the run round-trip asserts the verdict
-  *line* survives the transport in well-formed shape — the wire property under test — not the run's
-  own pass/fail. The in-process `tests/test_mcp.py` is
-  unchanged. Scope is the `stdio`
-  transport; the `sse` transport's distinct framing is a deliberate follow-up. The suite is marked
-  `mcp_wire` (pyproject `addopts` deselects it from the fast gate) and runs in the non-gating
-  `mcp-wire.yml` lane, to be promoted to required once stable — the precedent BE-0282 set.
+  readiness condition, so there is no fixed `sleep`.
+- Over the wire, the suite covers the following.
+  - It lists tools, asserting that `bajutsu_doctor` and `bajutsu_run` are both advertised with their
+    input schemas.
+  - It round-trips a `bajutsu_doctor` call and a `bajutsu_run` call.
+  - It reads a `bajutsu://runs/{run_id}/manifest.json` resource.
+  - It round-trips the wildcard-template resource (`artifact/{path*}`), the URI most exposed to
+    encoding quirks.
+  - It asserts that the non-string tool params serialize with their JSON-schema types (`erase` as
+    boolean, `workers` as integer).
+  - It covers the error path: a missing resource, and a tool call missing its required argument. Each
+    is asserted to come back as a JSON-RPC error frame carrying the server's message. That
+    serialization path is distinct from a successful call.
+- The subprocess uses the `fake` backend, so `bajutsu_doctor` runs a real, device-free driver query in
+  the server process. `bajutsu_run` spawns a real `bajutsu run` subprocess, whose verdict depends on
+  the target environment.
+  - The fake actuator itself needs no device. But the run reaches it only after its
+    udid/device-resolution step.
+  - `fake` is one of the simctl family (`fake` and `xcuitest`). That family's environment resolves the
+    udid through `simctl.resolve_udid`, which shells out to `xcrun` for the default `booted` udid.
+  - On the Linux host, where `xcrun` is absent, the resolution raises. `playwright` short-circuits
+    before udid resolution, and `adb` resolves via `adb.resolve_serial`, not `xcrun`.
+  - The run round-trip therefore asserts that the verdict *line* survives the transport in well-formed
+    shape. That is the wire property under test. It does not assert the run's own pass/fail.
+- The in-process `tests/test_mcp.py` is unchanged. The scope is the `stdio` transport. The `sse`
+  transport's distinct framing is a deliberate follow-up.
+- The suite is marked `mcp_wire`, and pyproject `addopts` deselects it from the fast gate. It runs in
+  the non-gating `mcp-wire.yml` lane, to be promoted to required once stable, which is the precedent
+  BE-0282 set.
 
 ## References
 
