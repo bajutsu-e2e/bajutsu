@@ -16,13 +16,16 @@
 
 ## Introduction
 
-Move the `anthropic` SDK out of the base `dependencies` and into an `ai` extra, so that the
-default install — the one an operator uses to run the deterministic `run` / CI gate — carries no AI
-SDK. The deterministic path never calls a model, yet `anthropic` currently sits at the head of the
-five base dependencies, so every install pulls the SDK and its transitive dependencies whether or
-not any AI feature is ever used. This item is the **packaging** counterpart to
-[BE-0101](../BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config.md), which
-already split the *runtime* into Claude-using and Claude-free paths.
+The `anthropic` SDK moves out of the base `dependencies` and into an `ai` extra. The default
+install, which an operator uses to run the deterministic `run` / CI gate, then carries no AI SDK.
+
+The deterministic path never calls a model. Yet `anthropic` currently heads the five base
+dependencies, so every install pulls the SDK and its transitive dependencies, whether or not any AI
+feature is ever used.
+
+This item is the **packaging** counterpart to
+[BE-0101](../BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config.md). BE-0101 already split the
+*runtime* into Claude-using and Claude-free paths.
 
 ## Motivation
 
@@ -40,87 +43,96 @@ dependencies = [
 
 Every other optional subsystem already lives behind an extra: `idb`, `web`, `visual`, `mcp`,
 `bedrock`, `worker`, `server`, `db`, `oauth`, `schema`, `docs`. The AI SDK is the lone exception
-that rides in the base set. That is a discipline gap, and it has two concrete costs. First,
-supply chain: a deterministic install carries an SDK and its transitive dependencies that the
-`run` / CI gate never exercises, widening the attack and audit surface for no functional gain.
-Second, it contradicts the promise the runtime already keeps. BE-0101 made the default path
-Claude-free at runtime; leaving the SDK in the base install means the *package* still says "AI is
-mandatory" even though the *code* no longer does.
+that rides in the base set. This discipline gap has two concrete costs.
 
-The point is narrow and separable from any interface redesign. BE-0104 (vendor-neutral AI backend)
-abstracts *which model family* the AI paths speak to; this item only moves *where the SDK is
-declared*. The base package becomes AI-free, and the AI authoring / investigation features declare
-their SDK dependency explicitly through the `ai` extra. The two items compose — once BE-0104 lands,
-`anthropic` is one adapter's dependency rather than the whole package's — but neither blocks the
-other, and the base-install cleanup is worth doing on its own.
+The first cost is supply chain. A deterministic install carries an SDK and its transitive
+dependencies that the `run` / CI gate never exercises. That widens the attack and audit surface for
+no functional gain.
+
+The second cost is a contradiction of the promise the runtime already keeps. BE-0101 made the
+default path Claude-free at runtime. With the SDK still in the base install, the *package* says "AI
+is mandatory" even though the *code* no longer does.
+
+The change is narrow and separable from any interface redesign. BE-0104 (vendor-neutral AI backend)
+abstracts *which model family* the AI paths speak to. This item only moves *where the SDK is
+declared*. The base package becomes AI-free, and the AI authoring and investigation features
+declare their SDK dependency explicitly through the `ai` extra.
+
+The two items compose: once BE-0104 lands, `anthropic` is one adapter's dependency rather than the
+whole package's. Neither blocks the other, and the base-install cleanup is worth doing on its own.
 
 ## Detailed design
 
-The work is MECE along the five pieces below.
+The work divides into the five pieces below, with no overlap and no gap.
 
 ### 1. Introduce the `ai` extra; drop `anthropic` from the base set
 
-Remove `anthropic>=0.50` from `[project].dependencies` and add `ai = ["anthropic>=0.50"]` under
+Remove `anthropic>=0.50` from `[project].dependencies`. Add `ai = ["anthropic>=0.50"]` under
 `[project.optional-dependencies]`. The base package then depends only on `jinja2`, `pydantic`,
-`pyyaml`, and `typer` — none of which reach a model.
+`pyyaml`, and `typer`, none of which reach a model.
 
 ### 2. Recompose the `bedrock` extra on top of `ai`
 
-`bedrock` is today `["anthropic[bedrock]>=0.50"]`. Keep a single version source: express `bedrock`
-so it layers the Bedrock variant onto the same `anthropic` pin the `ai` extra declares (e.g.
-`bedrock = ["bajutsu[ai]", "anthropic[bedrock]>=0.50"]` or by having `bedrock` extend `ai`), so the
-version is declared once and `ai` / `bedrock` never disagree.
+The `bedrock` extra is today `["anthropic[bedrock]>=0.50"]`. Keep a single version source. Express
+`bedrock` so that it layers the Bedrock variant onto the same `anthropic` pin that the `ai` extra
+declares. Two forms work: `bedrock = ["bajutsu[ai]", "anthropic[bedrock]>=0.50"]`, or having
+`bedrock` extend `ai`. The version is then declared once, and `ai` and `bedrock` never disagree.
 
 ### 3. Lock "no `anthropic` on the default path" with an import guard
 
 The default path must import cleanly on a base (AI-free) install. Extend the existing import-guard
-tests (the pattern in `tests/serve/test_import_guard.py`) with a check that importing `bajutsu` and
-walking the deterministic `run` path never imports `anthropic`. This makes the AI-free base a
-tested guarantee, not an accident of current import order.
+tests (the pattern in `tests/serve/test_import_guard.py`) with a check. The check imports `bajutsu`
+and walks the deterministic `run` path, and it asserts that `anthropic` is never imported. The
+AI-free base then becomes a tested guarantee, not an accident of the current import order.
 
 ### 4. Keep the gate's AI-path test coverage via the dev group
 
-The AI modules remain part of the codebase and need regression coverage, so the `dev` dependency
-group keeps installing the AI extra (add `ai` to the `bajutsu[bedrock,server,worker,db,oauth,mcp,
-visual,schema]` list). `make check` therefore still imports and tests the AI paths. The new
-guarantee is about the *base* install being AI-free, not about dropping AI test coverage — add an
-explicit check (in CI or a test) that a base install with no `ai` / `bedrock` extra can import
-`bajutsu` and run the deterministic subset with `anthropic` absent from the environment.
+The AI modules remain part of the codebase and need regression coverage. The `dev` dependency group
+therefore keeps installing the AI extra: add `ai` to the
+`bajutsu[bedrock,server,worker,db,oauth,mcp,visual,schema]` list. `make check` still imports and
+tests the AI paths.
+
+The new guarantee concerns the *base* install being AI-free. It does not drop AI test coverage.
+Add an explicit check, in CI or in a test. The check confirms that a base install with no `ai` or
+`bedrock` extra can import `bajutsu` and run the deterministic subset with `anthropic` absent from
+the environment.
 
 ### 5. Document the install split
 
-Update the install instructions (README and `docs/` + `docs/ja/` mirror) so the two audiences are
-explicit: `pip install bajutsu` for deterministic authoring / running, `pip install bajutsu[ai]`
-(or `[bedrock]`) for the AI-assisted `record` / `triage` / crawl-guide / alert-dismissal paths.
+Update the install instructions (README, plus `docs/` and the `docs/ja/` mirror) so that the two
+audiences are explicit:
+
+- `pip install bajutsu` serves deterministic authoring and running.
+- `pip install bajutsu[ai]` (or `[bedrock]`) serves the AI-assisted `record`, `triage`,
+  crawl-guide, and alert-dismissal paths.
 
 ### Machine-checkable outcome
 
-A virtual environment built from the base package (no `ai` / `bedrock` extra) can import `bajutsu`
-and run the deterministic tests with `anthropic` not installed; the import-guard test fails if any
-default-path module imports `anthropic`. All checks are static / deterministic — no LLM is involved
+A virtual environment built from the base package (no `ai` or `bedrock` extra) can import `bajutsu`
+and run the deterministic tests with `anthropic` not installed. The import-guard test fails if any
+default-path module imports `anthropic`. All checks are static and deterministic. No LLM is involved
 in verifying any of this.
 
 ### Prime-directive compliance
 
-This reinforces directive #1: the deterministic gate is model-free at runtime (BE-0101) and now
-SDK-free at the base install too. No LLM call is added anywhere; AI stays on the Tier-1 authoring /
-investigation paths, now gated behind an explicit extra. Determinism and app-agnostic behavior are
-untouched — this is a packaging change only.
+This item reinforces directive #1. The deterministic gate is model-free at runtime (BE-0101), and
+it now becomes SDK-free at the base install too. The item adds no LLM call anywhere. AI stays on
+the Tier-1 authoring and investigation paths, now gated behind an explicit extra. Determinism and
+app-agnostic behavior are untouched, because the change is purely a packaging change.
 
 ## Alternatives considered
 
-- **Keep `anthropic` in the base set (status quo).** Rejected: it carries an unused SDK and its
-  transitive dependencies into every deterministic install, and it is the only optional subsystem
-  not behind an extra — an inconsistency with the project's own extras discipline.
-- **Fold this into BE-0104.** The review that surfaced this suggested augmenting BE-0104. Kept as
-  its own item by choice: BE-0104 redesigns the *provider interface* (a behavior-preserving refactor
-  of every AI call site), whereas this is a self-contained packaging move that can land
+- **Keep `anthropic` in the base set (status quo).** Rejected. It carries an unused SDK and its
+  transitive dependencies into every deterministic install. It is also the only optional subsystem
+  not behind an extra, which contradicts the project's own extras discipline.
+- **Fold this into BE-0104.** The review that surfaced this item suggested augmenting BE-0104. The
+  item stays separate by choice. BE-0104 redesigns the *provider interface*, a behavior-preserving
+  refactor of every AI call site. This item is a self-contained packaging move. It can land
   independently and deliver the AI-free base install even before the neutral seam exists. The two
-  are linked (`Related`) and compose cleanly.
-- **Make the gate install no AI at all and drop the AI-path tests.** Rejected: the AI modules are
-  part of the codebase and must keep their regression net. The `dev` group keeps the `ai` extra so
-  `make check` still tests them; the guarantee is scoped to the *base* install, not to test
-  coverage.
+  items are linked (`Related`) and compose cleanly.
+- **Make the gate install no AI at all and drop the AI-path tests.** Rejected. The AI modules are
+  part of the codebase and must keep their regression net. The `dev` group keeps the `ai` extra, so
+  `make check` still tests them. The guarantee covers the *base* install, not test coverage.
 
 ## Progress
 
