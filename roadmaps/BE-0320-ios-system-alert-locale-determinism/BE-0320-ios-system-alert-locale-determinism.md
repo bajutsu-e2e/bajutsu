@@ -17,127 +17,158 @@
 ## Introduction
 
 `handleSystemAlert` ([BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md))
-taps a button on an iOS SpringBoard permission prompt — the "Allow Notifications" dialog, for
-instance — by its visible label, and that label is deterministic only on a Simulator whose system
-language happens to be English. Bajutsu already pins one process's language for exactly this
-reason: the `locale` config field (`bajutsu/config/schema.py`, default `en_US`) passes
-`-AppleLocale`/`-AppleLanguages` as the target app's own launch arguments, so the app's own strings
-resolve to a known value regardless of the host machine's ambient settings
-(`bajutsu/simctl.py`'s `locale_args`). SpringBoard is a separate process that Bajutsu never
-launches, so those launch arguments never reach it, and its alert buttons render in whichever
-language the Simulator's own system setting happens to be. A scenario naming `label: "Allow"`
-therefore works only by accident, on whichever Simulators happen to carry an English system
-language, and fails outright the moment it runs on one that does not — which is not a
-hypothetical: a Simulator's system language is whatever it happens to be set to on the machine
-that created it, and nothing rules out that being Japanese on a Japanese-speaking contributor's own
-Mac.
+taps a button on an iOS SpringBoard permission prompt by the button's visible label. The "Allow
+Notifications" dialog is one example. The label is deterministic only on a Simulator whose system
+language happens to be English.
 
-This item closes that gap two ways. The primary contribution extends the determinism `locale`
-already gives the app to SpringBoard itself: force the Simulator's system language to a known value
-on every cold spawn, so `label`/`labelMatches` resolve exactly as `locale` predicts on every machine
-that runs the scenario, and the app and SpringBoard never disagree on which language is showing. The
-supporting contribution adds a small, locale-keyed label lookup for the two prompts this item scopes
-to first — notification authorization and App Tracking Transparency (ATT), the two prompts
-[BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md)'s
-permission-state presets cannot reach — so an author who only means "grant" or "deny" never has to
-hand-type the localized text a pinned locale renders.
+Bajutsu already pins the language of one process for exactly this reason. The `locale` config field
+(`bajutsu/config/schema.py`, default `en_US`) passes `-AppleLocale` and `-AppleLanguages` as the
+target app's own launch arguments (`locale_args` in `bajutsu/simctl.py`). The app's own strings then
+resolve to a known value, regardless of the ambient settings of the host machine.
+
+SpringBoard is a separate process that Bajutsu never launches, so those launch arguments never reach
+SpringBoard. Its alert buttons render in whichever language the Simulator's own system setting
+carries. A scenario that names `label: "Allow"` therefore works by accident, on whichever Simulators
+carry an English system language. The scenario fails outright on a Simulator that does not.
+
+The failure is not hypothetical. A Simulator's system language is whatever the machine that created
+the Simulator had set. Nothing rules out Japanese on the Mac of a Japanese-speaking contributor.
+
+This item closes the gap in two ways.
+
+- **Primary contribution.** The item extends the determinism that `locale` already gives the app to
+  SpringBoard itself. The item forces the Simulator's system language to a known value on every cold
+  spawn. Then `label` and `labelMatches` resolve exactly as `locale` predicts on every machine that
+  runs the scenario. The app and SpringBoard never disagree on which language is showing.
+- **Supporting contribution.** The item adds a small, locale-keyed label lookup. The lookup covers
+  the two prompts that the item scopes to first: notification authorization and App Tracking
+  Transparency (ATT). The permission-state presets of
+  [BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md) cannot reach
+  those two prompts. An author who means "grant" or "deny" then never has to hand-type the localized
+  text that a pinned locale renders.
 
 ## Motivation
 
-The system-alert guard's vision path (`bajutsu/agents/alerts.py`) tolerates a localized button
-because it reads the screenshot's meaning rather than its exact text, but `handleSystemAlert` is
-built the opposite way on purpose: [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md)
-resolves the button through a native accessibility query specifically to keep the model off the
-step's outcome, in service of prime directive 1 (AI investigates, never judges). That
-determinism is only as good as its input. `bajutsu/scenario/models/actions.py`'s
-`HandleSystemAlert` accepts exactly the label-based `Selector` fields — `label`, `labelMatches`,
-`index` — because a SpringBoard alert button carries no app-assigned identifier, trait, or value,
-only its visible text; there is no locale-independent handle to fall back on once the literal label
-stops matching.
+The vision path of the system-alert guard (`bajutsu/agents/alerts.py`) tolerates a localized button.
+The path reads the meaning of the screenshot instead of the exact text. `handleSystemAlert` is built
+the opposite way on purpose.
+[BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md) resolves the
+button through a native accessibility query, to keep the model off the outcome of the step. The
+design serves prime directive 1 (AI investigates, never judges).
 
-The one shipped example already carries this fragility. `demos/showcase/scenarios/permission_system_alert.yaml`
-grants the notification prompt with `handleSystemAlert: { sel: { label: "Allow" }, timeout: 10 }`,
-and that literal string is the only thing standing between the step and an
-`AmbiguousSelector`-style failure on a Simulator whose system language is not English. Nothing in
-the runner today reports which language rendered the alert, so the failure a contributor sees is an
-unqualified "no button matched", with no signal pointing at the Simulator's language as the cause.
+That determinism is only as good as the input. `HandleSystemAlert` in
+`bajutsu/scenario/models/actions.py` accepts the label-based `Selector` fields: `label`,
+`labelMatches`, and `index`. A SpringBoard alert button carries no app-assigned identifier, trait, or
+value. The button carries its visible text. Once the literal label stops matching, no
+locale-independent handle remains to fall back on.
+
+The one shipped example already carries this fragility.
+`demos/showcase/scenarios/permission_system_alert.yaml` grants the notification prompt with
+`handleSystemAlert: { sel: { label: "Allow" }, timeout: 10 }`. That literal string is the one thing
+standing between the step and an `AmbiguousSelector`-style failure on a Simulator whose system
+language is not English.
+
+The runner today does not report which language rendered the alert. A contributor therefore sees an
+unqualified "no button matched". Nothing points at the Simulator's language as the cause.
 
 [BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md) pre-sets
-permission state through `simctl privacy` for the prompts backed by the Transparency, Consent, and
-Control (TCC) database, but notification authorization is not a TCC service and ATT has no `simctl`
-toggle at all — both were the concrete motivation
+permission state through `simctl privacy`. That covers the prompts backed by the Transparency,
+Consent, and Control (TCC) database. Notification authorization is not a TCC service, and ATT has
+no `simctl` toggle at all. Both prompts were the concrete motivation that
 [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md)
-gives for a reactive dismisser, and both are exactly the prompts this item's label lookup targets
-first. Today, `dismissAlerts.instruction` is free text the vision locator interprets, so it already
-tolerates a localized button the way the rest of the vision path does. But
-[BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md)
-itself proposes evolving that same field into a deterministic ordered list of candidate labels an
-author supplies — and once that ships, the list carries the identical assumption that the labels
-named are the ones SpringBoard renders, inheriting this item's gap rather than solving it. A fix at
-the SpringBoard-language layer therefore serves `handleSystemAlert` today and BE-0315's proposed
-native path once it lands, without either needing to solve the same problem twice.
+gives for a reactive dismisser. Both are the prompts that this item's label lookup targets first.
+
+Today, `dismissAlerts.instruction` is free text that the vision locator interprets. The field
+already tolerates a localized button, as the rest of the vision path does. BE-0315 itself, however,
+proposes evolving that same field into a deterministic ordered list of candidate labels that an
+author supplies. Once that ships, the list carries the identical assumption that the named labels
+are the ones SpringBoard renders. The list inherits the gap of this item instead of solving it.
+
+A fix at the SpringBoard-language layer serves `handleSystemAlert` today. The fix also serves the
+native path that BE-0315 proposes, once the path lands. Neither feature needs to solve the same
+problem twice.
 
 ## Detailed design
 
-The work divides into pinning the Simulator's system language, documenting the resulting contract,
-adding the locale-keyed convenience lookup, and verifying both on a real Simulator.
+The work divides into four parts: pinning the Simulator's system language, documenting the resulting
+contract, adding the locale-keyed convenience lookup, and verifying both on a real Simulator.
 
 1. **Resolve the Simulator's system language deterministically on every cold spawn, and gate warm
-   reuse on it matching.** `XcuitestEnvironment.start` already forces a cold respawn instead of
-   reusing a warm runner when a scenario needs `erase`
-   (`bajutsu/platform_lifecycle/environments/xcuitest.py`); extend that same condition so a resolved
-   locale that differs from the one already pinned on a warm runner forces a cold respawn too, rather
-   than being served by a runner whose SpringBoard is still rendering a previous locale. The value to
-   compare and pin follows the same precedence `_launch_params` already resolves for the app's own
-   launch arguments: `pre.locale or eff.locale`, the per-scenario `Preconditions.locale` override
-   falling back to the target's `locale` config field. On a cold spawn, extend `_prepare_simulator` to
-   write the Simulator's system-wide language and region after `boot`, using the same technique
-   `xcodebuild`-based screenshot tools already rely on: `xcrun simctl spawn <udid> defaults write
-   -globalDomain AppleLanguages -array <language>` and the matching `AppleLocale` write. A `simctl
-   spawn` command needs an already-booted device to run at all, so this write only reaches the
-   Simulator once SpringBoard is already up and rendering whichever language it booted with, and an
-   already-running process does not pick up a `-globalDomain` write live — so the sequence must shut
-   the Simulator down and boot it once more, letting the second boot's SpringBoard start fresh against
-   the newly written value before the existing install/permission steps proceed. This adds one extra
-   boot cycle to a cold spawn or a locale-triggered respawn: a bounded, known cost paid once per spawn,
-   not on every polling tick, so it still costs nothing on the runner's per-tick budget that
-   [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md)'s
-   detailed design is careful to protect. The reboot is the part unit 4 must confirm actually renders
-   SpringBoard in the new language on a real Simulator, since nothing here is observable
-   off-Simulator.
-2. **Document the resulting contract.** Once unit 1 lands, `label`/`labelMatches` resolve
-   identically on every machine that runs the same `locale` — a scenario author who writes
+   reuse on it matching.**
+
+   `XcuitestEnvironment.start` already forces a cold respawn, instead of reusing a warm runner, when
+   a scenario needs `erase` (`bajutsu/platform_lifecycle/environments/xcuitest.py`). Extend that
+   condition. A resolved locale that differs from the locale already pinned on a warm runner also
+   forces a cold respawn. A runner whose SpringBoard still renders a previous locale must not serve
+   the scenario.
+
+   The value to compare and pin follows the precedence that `_launch_params` already resolves for the
+   app's own launch arguments: `pre.locale or eff.locale`. The per-scenario `Preconditions.locale`
+   override falls back to the target's `locale` config field.
+
+   On a cold spawn, extend `_prepare_simulator` to write the Simulator's system-wide language and
+   region after `boot`. The write uses the technique that `xcodebuild`-based screenshot tools already
+   rely on: `xcrun simctl spawn <udid> defaults write -globalDomain AppleLanguages -array <language>`
+   and the matching `AppleLocale` write.
+
+   A `simctl spawn` command needs an already-booted device. The write therefore reaches the Simulator
+   once SpringBoard is already up and rendering whichever language it booted with. An already-running
+   process does not pick up a `-globalDomain` write live. The sequence must shut the Simulator down
+   and boot it once more. The second boot lets SpringBoard start fresh against the newly written
+   value, before the existing install and permission steps proceed.
+
+   The reboot adds one boot cycle to a cold spawn or a locale-triggered respawn. The cost is bounded
+   and known, and each spawn pays the cost once, not on every polling tick. The cost therefore takes
+   nothing from the runner's per-tick budget, which the detailed design of
+   [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md)
+   is careful to protect.
+
+   Unit 4 must confirm that the reboot actually renders SpringBoard in the new language on a real
+   Simulator, since nothing here is observable off-Simulator.
+2. **Document the resulting contract.** Once unit 1 lands, `label` and `labelMatches` resolve
+   identically on every machine that runs the same `locale`. A scenario author who writes
    `label: "Allow"` under `locale: en_US` gets that exact behavior on CI, on a teammate's Mac, and on
-   a Japanese-speaking contributor's own Simulator alike, because SpringBoard's language is no longer
-   a fact of the host machine. State this explicitly in `docs/configuration.md`'s description of
-   `locale` and in `handleSystemAlert`'s own documentation, so an author who was previously guessing
-   at label text now has a stated guarantee to write scenarios against, rather than a happy accident
-   to discover by reading this item.
+   the Simulator of a Japanese-speaking contributor alike. SpringBoard's language is no longer a fact
+   of the host machine.
+
+   State the contract explicitly in the description of `locale` in `docs/configuration.md` and in the
+   documentation of `handleSystemAlert`. An author who previously guessed at label text then has a
+   stated guarantee to write scenarios against, instead of a happy accident to discover by reading
+   this item.
 3. **Add a locale-keyed label lookup for the two prompts BE-0276 cannot reach, additive to the
-   existing selector fields.** For notification authorization and ATT — the two prompts this item
-   scopes unit 3 to, because they are exactly the ones
-   [BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md)'s
-   TCC-backed presets cannot prevent — add a lookup keyed by `locale` that resolves the pair of
-   button labels ("grant" and "deny") SpringBoard renders for that prompt under that locale, so
-   `handleSystemAlert`'s existing `label`/`labelMatches`/`index` fields keep working exactly as they
-   do today for every other alert, while a scenario about one of these two prompts can express intent
-   ("grant", "deny") instead of transcribing whichever locale's text happens to render. This is
-   deliberately narrow: the table only ever needs to cover these two prompts, so it never grows into
-   an open-ended translation of arbitrary SpringBoard text, and its correctness is independently
-   checkable by booting the pinned `locale` once and reading what SpringBoard shows, rather than
-   trusted on faith. A locale or prompt the table does not cover keeps working the way it does
-   today — the literal `label`/`labelMatches` a scenario supplies, unlocalized.
-4. **Verify on a real Simulator.** Boot two Simulators pinned to different `locale` values (for
-   example `en_US` and `ja_JP`), run the same `handleSystemAlert` scenario against each, and confirm
-   both dismiss the prompt deterministically after the reboot unit 1 performs — proving the write and
-   the extra boot actually change what SpringBoard renders, not just what a preference file holds —
-   and that unit 3's lookup resolves the label it predicts. Then, within one runner, run a scenario at
-   one locale, immediately run a second scenario overriding `Preconditions.locale` to a different
-   value, and confirm the mismatch forces a cold respawn rather than reusing the first scenario's warm
-   runner with its stale language, proving unit 1's warm-reuse gate and not only its cold-spawn write.
-   A Simulator's rendered alert text cannot be proven by the off-Simulator gate, so this unit is what
-   turns units 1–3 from a plausible design into a demonstrated one, mirroring the on-device
-   verification unit both
+   existing selector fields.**
+
+   Unit 3 scopes the lookup to notification authorization and ATT. The TCC-backed presets of
+   [BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md) cannot
+   prevent those two prompts. The lookup is keyed by `locale`. The lookup resolves the pair of button
+   labels ("grant" and "deny") that SpringBoard renders for the prompt under that locale.
+
+   The existing `label`, `labelMatches`, and `index` fields of `handleSystemAlert` keep working
+   exactly as they do today for every other alert. A scenario about one of the two prompts can
+   express intent ("grant", "deny") instead of transcribing whichever locale's text happens to
+   render.
+
+   The scope is deliberately narrow. The table only ever needs to cover these two prompts, so the
+   table never grows into an open-ended translation of arbitrary SpringBoard text. An author can check
+   the correctness of the table independently, by booting the pinned `locale` once and reading what
+   SpringBoard shows, instead of trusting the table on faith.
+
+   A locale or prompt that the table does not cover keeps working the way it does today: the literal
+   `label` or `labelMatches` that a scenario supplies, unlocalized.
+4. **Verify on a real Simulator.** The verification has three parts.
+   - Boot two Simulators pinned to different `locale` values (for example `en_US` and `ja_JP`). Run
+     the same `handleSystemAlert` scenario against each. Confirm that both dismiss the prompt
+     deterministically after the reboot of unit 1. The result proves that the write and the extra
+     boot change what SpringBoard renders, not merely what a preference file holds.
+   - Confirm that the lookup of unit 3 resolves the label it predicts.
+   - Within one runner, run a scenario at one locale. Immediately run a second scenario that
+     overrides `Preconditions.locale` to a different value. Confirm that the mismatch forces a cold
+     respawn instead of reusing the warm runner of the first scenario with its stale language. The
+     check proves the warm-reuse gate of unit 1, not merely the cold-spawn write.
+
+   The off-Simulator gate cannot prove the rendered alert text of a Simulator. This unit turns
+   units 1–3 from a plausible design into a demonstrated one. The unit mirrors the on-device
+   verification unit that both
    [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md) and
    [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md)
    already carry for their own native-tap surfaces.
@@ -145,29 +176,31 @@ adding the locale-keyed convenience lookup, and verifying both on a real Simulat
 ## Alternatives considered
 
 - **A locale-keyed label dictionary alone, without pinning the Simulator's system language.**
-  Rejected as the sole mechanism: it would need to track Apple's exact operating-system-supplied
-  button text across every locale Bajutsu might run under and every iOS version Apple ships,
-  indefinitely, for a problem this item can instead make disappear at the source by controlling the
-  Simulator's language the same way `locale` already controls the app's. Kept as the narrow,
-  additive unit 3 once unit 1 removes the open-ended part of the maintenance burden.
-- **Position-based (`index`) selection as the sole locale-agnostic mechanism.** Rejected: it rests
-  on the unverified assumption that SpringBoard orders a prompt's buttons identically across every
-  locale, including right-to-left languages, and an index carries no readable meaning at the
-  scenario level — `index: 1` does not say "the destructive button" the way `"Don't Allow"` does.
-  `index` keeps its existing role as `handleSystemAlert`'s last-resort disambiguator
-  ([BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md)) rather than
-  taking on a second one.
-- **Route every non-English-locale run through the AI vision guard.** Rejected: the vision guard
-  exists precisely so a screenshot's meaning survives localization, but routing every localized run
-  through it would reintroduce the latency and credential dependence
+  Rejected as the sole mechanism. The dictionary would need to track the exact button text that
+  Apple's operating system supplies, across every locale Bajutsu might run under and every iOS
+  version Apple ships, indefinitely. This item can instead make the problem disappear at the source,
+  by controlling the Simulator's language the same way `locale` already controls the language of the
+  app. The dictionary stays as the narrow, additive unit 3, once unit 1 removes the open-ended part
+  of the maintenance burden.
+- **Position-based (`index`) selection as the sole locale-agnostic mechanism.** Rejected. The
+  approach rests on an unverified assumption: that SpringBoard orders the buttons of a prompt
+  identically across every locale, including right-to-left languages. An index also carries no
+  readable meaning at the scenario level. The setting `index: 1` does not say "the destructive
+  button" the way `"Don't Allow"` does. `index` keeps its existing role as the last-resort
+  disambiguator of `handleSystemAlert`
+  ([BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md)) and takes on
+  no second role.
+- **Route every non-English-locale run through the AI vision guard.** Rejected. The vision guard
+  exists so that the meaning of a screenshot survives localization. Routing every localized run
+  through the guard would reintroduce the latency and the credential dependence that
   [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md)
-  exists to remove from the common path, and prime directive 1 keeps a model call off any signal
+  exists to remove from the common path. Prime directive 1 also keeps a model call off any signal
   that decides whether a step passed.
-- **Leave `locale` app-scoped only and require an author to hand-write each target's localized
-  label.** This is today's status quo, and it is exactly the gap this item exists to close: two
-  teams running the identical open-source demo scenario against Simulators with different ambient
-  system languages get silently different results today, driven by developer-machine state Bajutsu
-  never surfaces anywhere.
+- **Leave `locale` app-scoped and require an author to hand-write each target's localized label.**
+  This is today's status quo, and the status quo is the gap this item exists to close. Two teams that
+  run the identical open-source demo scenario against Simulators with different ambient system
+  languages get silently different results today. Developer-machine state that Bajutsu never
+  surfaces anywhere drives the difference.
 
 ## Progress
 
@@ -192,62 +225,66 @@ adding the locale-keyed convenience lookup, and verifying both on a real Simulat
 
 Verified on a real Simulator (iOS 26.5, Xcode 26):
 
-- The write plus reboot changes what SpringBoard *renders*, not merely what a preference file holds:
-  pinning `ja_JP` and rebooting turns the home screen Japanese (`マップ` / `設定` / `検索`), and
-  pinning `en_US` turns it back. Re-pinning the same locale writes nothing and skips the extra boot.
-- `demos/showcase/scenarios/permission_system_alert.yaml`, now naming `prompt: notifications` +
-  `choice: grant`, passes at `en_US` (tapping `Allow`) and at `ja_JP` (tapping `許可`).
-- The warm-reuse gate holds: two scenarios at one locale in a single run leave **one** cold-spawn
-  runner log, while the same pair at two locales leaves **two** — the locale change forced the cold
-  respawn rather than serving the second scenario from the first's SpringBoard language.
+- The write plus reboot changes what SpringBoard *renders*, not merely what a preference file holds.
+  Pinning `ja_JP` and rebooting turns the home screen Japanese (`マップ` / `設定` / `検索`), and
+  pinning `en_US` turns the home screen back. Re-pinning the same locale writes nothing and skips the
+  extra boot.
+- `demos/showcase/scenarios/permission_system_alert.yaml` now names `prompt: notifications` and
+  `choice: grant`. The scenario passes at `en_US` (tapping `Allow`) and at `ja_JP` (tapping `許可`).
+- The warm-reuse gate holds. Two scenarios at one locale in a single run leave **one** cold-spawn
+  runner log. The same pair at two locales leaves **two** logs. The locale change forced the cold
+  respawn, so the second scenario did not run on the SpringBoard language of the first.
 - Unrelated to this item, iOS suppresses a repeat notification-authorization prompt for the same
-  bundle id shortly after one is answered, so back-to-back runs of that scenario can find no prompt.
-  A control run at a single locale reproduced it on the *first* scenario, so it is an OS behavior,
-  not a locale effect.
-- The lookup's values are Apple's own, read from the Simulator runtime's shipped strings
-  (`UserNotificationsServer.framework`'s `PERMISSION_ALERT_ALLOW` / `PERMISSION_ALERT_DENY` and
-  `TCC.framework`'s `REQUEST_ACCESS_{ALLOW,DENY}_kTCCServiceUserTracking`), which is how a future
-  runtime's values can be re-checked rather than trusted.
+  bundle id shortly after the first prompt is answered. Back-to-back runs of that scenario can
+  therefore find no prompt. A control run at a single locale reproduced the suppression on the
+  *first* scenario, so the cause is an OS behavior, not a locale effect.
+- The values of the lookup are Apple's own, read from the strings that the Simulator runtime ships.
+  For notifications, the strings are `PERMISSION_ALERT_ALLOW` and `PERMISSION_ALERT_DENY` in
+  `UserNotificationsServer.framework`. For ATT, the strings are
+  `REQUEST_ACCESS_{ALLOW,DENY}_kTCCServiceUserTracking` in `TCC.framework`. A reader can re-check the
+  values of a future runtime the same way, instead of trusting them.
 
-Two limits this item leaves open, both documented in
-[`docs/scenarios.md`](../../docs/scenarios.md#naming-the-intent-instead-of-the-text) and worth a
-follow-up item rather than a widening of this one:
+This item leaves two limits open. Both limits are documented in
+[`docs/scenarios.md`](../../docs/scenarios.md#naming-the-intent-instead-of-the-text). Both are worth
+a follow-up item, not a widening of this one:
 
-- **The pin is Simulator-only.** `simctl` cannot write a physical device's preferences, so a target
+- **The pin is Simulator-only.** `simctl` cannot write the preferences of a physical device. A target
   on `xcuitest.deviceType: device` (BE-0238) gets no pin, and the `prompt` / `choice` form would
-  resolve a label nothing guarantees is on screen. Closing it properly means teaching the runner
-  which environments pin, so it can withhold the locale and let the step fail with that reason —
-  a change across the platform-lifecycle protocol, wider than this item's lane.
-- **`systemAlertHandling`'s default dismissive labels are English literals.** Pinning a non-English
-  `locale` now makes `DEFAULT_DISMISSIVE_LABELS` stop matching, so the reactive guard's native path
-  reports `unhandled` and falls back to the vision guard where it used to tap natively. Routing
-  those defaults through this item's locale-keyed table is the natural fix, and belongs with
-  [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md)'s
-  surface rather than here.
+  resolve a label that nothing guarantees is on screen. Closing the limit properly means teaching the
+  runner which environments pin. The runner could then withhold the locale and let the step fail
+  with that reason. The change crosses the platform-lifecycle protocol and is wider than the lane of
+  this item.
+- **The default dismissive labels of `systemAlertHandling` are English literals.** Pinning a
+  non-English `locale` now makes `DEFAULT_DISMISSIVE_LABELS` stop matching. The native path of the
+  reactive guard reports `unhandled` and falls back to the vision guard, where the path used to tap
+  natively. Routing those defaults through the locale-keyed table of this item is the natural fix.
+  The fix belongs with the surface of
+  [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md),
+  not here.
 
 ## References
 
-- [`bajutsu/scenario/models/actions.py`](../../bajutsu/scenario/models/actions.py) —
-  `HandleSystemAlert`, whose `sel` accepts only the label-based `Selector` fields this item's gap
+- [`bajutsu/scenario/models/actions.py`](../../bajutsu/scenario/models/actions.py): `HandleSystemAlert`,
+  whose `sel` accepts the label-based `Selector` fields alone, which are the fields this item's gap
   affects.
-- [`bajutsu/simctl.py`](../../bajutsu/simctl.py) — `locale_args`, the app-scoped launch-argument
-  mechanism this item extends to the Simulator's system language.
-- [`bajutsu/scenario/models/scenario.py`](../../bajutsu/scenario/models/scenario.py) —
-  `Preconditions.locale`, the per-scenario override unit 1 must resolve against
-  `bajutsu/config/schema.py`'s target-level `locale` field, matching the `pre.locale or eff.locale`
-  precedence `_launch_params` already follows.
-- [`bajutsu/platform_lifecycle/environments/xcuitest.py`](../../bajutsu/platform_lifecycle/environments/xcuitest.py)
-  — `XcuitestEnvironment.start`'s existing `pre.erase` cold-respawn condition, which unit 1's
-  locale-mismatch gate mirrors; `_prepare_simulator`, the device-prep sequence unit 1 extends with the
-  write-and-reboot; and `_launch_params`, the precedence unit 1 reuses.
-- [`demos/showcase/scenarios/permission_system_alert.yaml`](../../demos/showcase/scenarios/permission_system_alert.yaml)
-  — the shipped scenario whose literal `label: "Allow"` already carries the fragility this item
+- [`bajutsu/simctl.py`](../../bajutsu/simctl.py): `locale_args`, the app-scoped launch-argument
+  mechanism that this item extends to the Simulator's system language.
+- [`bajutsu/scenario/models/scenario.py`](../../bajutsu/scenario/models/scenario.py):
+  `Preconditions.locale`, the per-scenario override that unit 1 must resolve against the
+  target-level `locale` field in `bajutsu/config/schema.py`. The resolution matches the
+  `pre.locale or eff.locale` precedence that `_launch_params` already follows.
+- [`bajutsu/platform_lifecycle/environments/xcuitest.py`](../../bajutsu/platform_lifecycle/environments/xcuitest.py):
+  the existing `pre.erase` cold-respawn condition in `XcuitestEnvironment.start`, which the
+  locale-mismatch gate of unit 1 mirrors. Also `_prepare_simulator`, the device-prep sequence that
+  unit 1 extends with the write-and-reboot, and `_launch_params`, the precedence that unit 1 reuses.
+- [`demos/showcase/scenarios/permission_system_alert.yaml`](../../demos/showcase/scenarios/permission_system_alert.yaml):
+  the shipped scenario whose literal `label: "Allow"` already carries the fragility that this item
   closes.
-- [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md) —
+- [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md):
   `handleSystemAlert`, the step whose selector this item makes locale-safe.
-- [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md)
-  — the native reactive guard whose proposed `instruction` candidate-label list will inherit this
-  item's fix once it ships.
-- [BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md) — the
-  preset-permission-state item this item's label lookup complements for the two prompts TCC cannot
-  reach.
+- [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md):
+  the native reactive guard whose proposed `instruction` candidate-label list will inherit the fix of
+  this item once the list ships.
+- [BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md): the
+  preset-permission-state item that the label lookup of this item complements for the two prompts TCC
+  cannot reach.
