@@ -16,293 +16,367 @@
 
 ## Introduction
 
-[BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md) lets a browser
-user upload a `.zip` (config + scenarios + prebuilt app binary) and bind it as `serve`'s active
-config, producing an `upload`-kind config-source record — `{kind: "upload", filename, sha256,
-size}` (`bind_upload_config`, `bajutsu/serve/operations/upload.py`).
+[BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md) lets a browser user
+upload a `.zip` (config, scenarios, and a prebuilt app binary) and bind it as `serve`'s active config.
+The upload produces an `upload`-kind config-source record, `{kind: "upload", filename, sha256, size}`
+(`bind_upload_config`, `bajutsu/serve/operations/upload.py`).
+
 [BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub.md) (**Implemented**) builds
-directly on that record: a registered *project* can bind to an `upload`-kind source exactly as it
-binds to `git` or `file`, and durably persists the `{kind, filename, sha256, size}` record itself
-(a `projects` DB row when hosted, a local JSON store otherwise).
+directly on that record. A registered *project* can bind to an `upload`-kind source exactly as it
+binds to `git` or `file`. BE-0225 durably persists the `{kind, filename, sha256, size}` record itself,
+in a `projects` database row when hosted and in a local JSON store otherwise.
 
-What neither item persists is the *bytes* the `sha256` names. `POST /api/upload` extracts the zip
-only into a serve-owned directory under `state.uploads_dir` — an ephemeral, per-process, local-disk
-location — and BE-0073's own *Out of scope* section says so explicitly: "uploads are ephemeral;
-persisting and versioning them is the Git source's job, not this one." BE-0225 already runs into
-the resulting wall in shipped code: `activate_project` (`bajutsu/serve/operations/projects.py`)
-refuses, with a `409` ("cannot switch to the uploaded-bundle project ...; re-upload its config to
-bind it"), to reactivate an `upload`-kind project, because there is nothing left to re-extract once
-the replica that received the upload is gone.
+Neither item persists the *bytes* that the `sha256` names. `POST /api/upload` extracts the zip only
+into a serve-owned directory under `state.uploads_dir`. That location is ephemeral, per-process, and on
+local disk. BE-0073's own *Out of scope* section says so explicitly: "uploads are ephemeral;
+persisting and versioning them is the Git source's job, not this one."
 
-That gap doesn't matter for the single-Mac Tier-A `serve` BE-0073 targets — one process, one local
-disk, no restart mid-session. It matters on the hosted, multi-tenant `server` backend
-([BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)), which is explicitly
-built to run as **stateless, autoscaled replicas** behind a load balancer — BE-0015 moved sessions
-and jobs to Postgres for exactly this reason ("sessions survive restarts and span replicas"). An
-uploaded bundle's *content*, however, still lives only on whichever replica's local disk happened
-to handle the upload. This item closes that gap: it makes the bytes behind an `upload`-kind
-source's `sha256` durable and fetchable from any replica, the same way BE-0063's Git source's
-content is durable and fetchable by commit SHA, so a BE-0225 project bound to an upload survives a
-replica recycling instead of hitting the `409`.
+BE-0225 already runs into the resulting wall in shipped code. `activate_project`
+(`bajutsu/serve/operations/projects.py`) refuses to reactivate an `upload`-kind project. It returns a
+`409` ("cannot switch to the uploaded-bundle project ...; re-upload its config to bind it"). Nothing is
+left to re-extract once the replica that received the upload is gone.
+
+The gap does not matter for the single-Mac Tier-A `serve` that BE-0073 targets: one process, one local
+disk, and no restart mid-session. It matters on the hosted, multi-tenant `server` backend
+([BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)). That backend is
+explicitly built to run as **stateless, autoscaled replicas** behind a load balancer. BE-0015 moved
+sessions and jobs to Postgres for this reason ("sessions survive restarts and span replicas"). An
+uploaded bundle's *content*, however, still lives only on the local disk of whichever replica handled
+the upload.
+
+This item closes that gap. It makes the bytes behind an `upload`-kind source's `sha256` durable and
+fetchable from any replica. BE-0063's Git source content is already durable and fetchable by commit
+SHA in the same way. A BE-0225 project bound to an upload then survives a replica recycling, instead of hitting
+the `409`.
 
 ## Motivation
 
-Two deployment facts push on BE-0073's "ephemeral by design" choice from different angles:
+Two deployment facts push on BE-0073's "ephemeral by design" choice from different angles.
 
-1. **Autoscaling and pod recreation.** On the `server` backend, a replica can be recycled (a
-   redeploy, a crash, a scale-down) or a request can land on a different replica than the one that
-   served the upload (BE-0015's whole point in moving sessions/jobs to the database). Today, the
-   extracted bundle exists only under `state.uploads_dir` on the replica that extracted it — a
-   `ServeState` field, in-process, on local disk. A run request that reaches a different replica, or
-   the same replica after a restart, finds nothing to materialize from.
-2. **BE-0225 already hits this wall in shipped code.** BE-0225's `ProjectRegistry`
-   (`bajutsu/serve/project_registry.py`) durably persists a project's config-source record — for an
-   `upload`-kind project, `{kind: "upload", filename, sha256, size}` — in a `projects` DB row
-   (hosted) or a local JSON store (no database). Reopening a Git-bound project later re-clones from
-   its stored commit SHA on whatever replica needs it; reopening an upload-bound project has nothing
-   to re-materialize from, so `activate_project` refuses it outright: `kind == "upload"` always
-   returns a `409`. The `sha256` BE-0225 already stores durably is exactly the right
-   content-addressed key for retrieving the bytes it names — nothing about the record needs to
-   change — but nothing today writes those bytes anywhere durable for that key to resolve against.
+1. **Autoscaling and pod recreation.**
+   - On the `server` backend, a replica can be recycled by a redeploy, a crash, or a scale-down.
+     A request can also land on a different replica than the one that served the upload. That is the
+     whole point of BE-0015 moving sessions and jobs to the database.
+   - Today, the extracted bundle exists only under `state.uploads_dir` on the replica that extracted
+     it. That directory is a `ServeState` field, in-process, on local disk.
+   - A run request that reaches a different replica, or the same replica after a restart, finds
+     nothing to materialize from.
+2. **BE-0225 already hits this wall in shipped code.**
+   - BE-0225's `ProjectRegistry` (`bajutsu/serve/project_registry.py`) durably persists a project's
+     config-source record. For an `upload`-kind project, that is `{kind: "upload", filename, sha256,
+     size}`, held in a `projects` database row (hosted) or a local JSON store (no database).
+   - Reopening a Git-bound project later re-clones from its stored commit SHA on whatever replica
+     needs it. Reopening an upload-bound project has nothing to re-materialize from. So
+     `activate_project` refuses it outright: `kind == "upload"` always returns a `409`.
+   - The `sha256` that BE-0225 already stores durably is the right content-addressed key for
+     retrieving the bytes it names. Nothing about the record needs to change. But nothing today writes
+     those bytes anywhere durable for that key to resolve against.
 
-A related operational note now bears on this item directly, not just on BE-0063: the Git source's
-own cache-root resolution (`_default_cache_root()` in `bajutsu/config_source.py`) resolves under
-`XDG_CACHE_HOME`, falling back to `Path.home() / ".cache"` — which raises at runtime in a container
-that runs under an externally supplied UID with no matching `/etc/passwd` entry and no `HOME` set.
-Setting `HOME` to any writable path avoids this entirely — the cache directory tree is created on
-demand (`mkdir(parents=True, exist_ok=True)`), so it need not already exist. A hosted deployment
-that enables the Git source already has to set `HOME` explicitly for this reason. Unit 2, below,
-moves this item's own local materialization directory onto that same cache root — a sibling of
-BE-0063's `gitsrc` cache under `.../bajutsu/` — instead of leaving it the `--runs`-relative
-`state.uploads_dir` default BE-0073 shipped, so it now inherits this same precondition rather than
-avoiding it. That is a deliberate trade, not an oversight: a hosted `server` deployment commonly
-runs with a small, explicitly allow-listed set of writable paths for security reasons, so
-consolidating every piece of local materialization — Git checkouts and now upload extracts alike —
-under the one cache root an operator already provisions for the Git source keeps that allow-list as
-small as possible, rather than adding a second, `--runs`-relative writable directory with its own
-permission story.
+An operational note now bears on this item directly, not just on BE-0063. The Git source's cache-root
+resolution (`_default_cache_root()` in `bajutsu/config_source.py`) resolves under `XDG_CACHE_HOME`.
+It falls back to `Path.home() / ".cache"`. That fallback raises at runtime in a container that runs
+under an externally supplied user ID (UID) with no matching `/etc/passwd` entry and no `HOME` set.
+Setting `HOME` to any writable path avoids the problem entirely. The cache directory tree is created
+on demand (`mkdir(parents=True, exist_ok=True)`), so it need not already exist. A hosted deployment
+that enables the Git source already has to set `HOME` explicitly for this reason.
 
-The fix follows the shape the codebase already uses twice over, so it adds no new mechanism:
+Unit 2, below, moves this item's own local materialization directory onto that same cache root. The
+new directory is a sibling of BE-0063's `gitsrc` cache under `.../bajutsu/`. Today it is the
+`--runs`-relative `state.uploads_dir` default that BE-0073 shipped. The move means the upload cache now
+inherits the same precondition rather than avoiding it.
 
-- **Content addressing.** BE-0073 already computes the zip's sha256 for provenance (recorded into
-  `manifest.json`), and BE-0225 already persists it as part of the `upload`-kind source record.
-  That hash is already the right durable, collision-resistant key — the exact role a resolved
-  commit SHA plays for the Git source.
-- **The object-store seam.** [BE-0204](../BE-0204-server-storage-gcs-support/BE-0204-server-storage-gcs-support.md)
-  already gives the server backend a credentialed `ObjectStore` (`BAJUTSU_SERVER_STORE`,
-  `s3://`/`gs://`) for exactly this shape of "must outlive a replica and be readable from any of
-  them" data — today used for run artifacts, scenarios, and visual baselines. Uploaded bundle
-  content is the same shape of data and belongs behind the same seam, not a fourth bespoke store.
+That is a deliberate trade, not an oversight. A hosted `server` deployment commonly runs with a small,
+explicitly allow-listed set of writable paths for security reasons. The operator already provisions
+one cache root for the Git source. Consolidating all local materialization under it, Git checkouts
+and upload extracts alike, keeps the allow-list as small as possible. The alternative is a second,
+`--runs`-relative writable directory with its own permission story.
 
-None of this touches pass/fail, the runner, the drivers, or the scenario schema — it is acquisition
-plumbing ahead of the deterministic `run`, so prime directives 1–3 ([CLAUDE.md](../../CLAUDE.md))
-hold unchanged. It also does not touch AI provider/model settings persistence, a separate, already
-tracked gap ([BE-0184](../BE-0184-persist-serve-ai-provider-settings/BE-0184-persist-serve-ai-provider-settings.md)'s
-deferred hosted, DB-backed box).
+The fix follows a shape the codebase already uses twice, so it adds no new mechanism.
+
+- **Content addressing.** BE-0073 already computes the zip's sha256 for provenance, recorded into
+  `manifest.json`. BE-0225 already persists it as part of the `upload`-kind source record. The hash is
+  already the right durable, collision-resistant key. It plays the role that a resolved commit SHA
+  plays for the Git source.
+- **The object-store seam.**
+  [BE-0204](../BE-0204-server-storage-gcs-support/BE-0204-server-storage-gcs-support.md) already gives
+  the server backend a credentialed `ObjectStore` (`BAJUTSU_SERVER_STORE`, `s3://` / `gs://`). That
+  store exists for data of exactly this shape: data that must outlive a replica and be readable from
+  any of them. Today it holds run artifacts, scenarios, and visual baselines. Uploaded bundle content
+  has the same shape and belongs behind the same seam, not in a fourth bespoke store.
+
+None of this touches pass/fail, the runner, the drivers, or the scenario schema. It is acquisition
+plumbing ahead of the deterministic `run`, so prime directives 1–3 ([CLAUDE.md](../../CLAUDE.md)) hold
+unchanged.
+
+The item also leaves AI provider and model settings persistence alone. That is a separate, already
+tracked gap
+([BE-0184](../BE-0184-persist-serve-ai-provider-settings/BE-0184-persist-serve-ai-provider-settings.md)'s
+deferred hosted, database-backed box).
 
 ## Detailed design
 
-The work is MECE across three units: durable persistence at upload time, an on-demand
-fetch-and-extract fallback that replaces `activate_project`'s unconditional `409` for
-`upload`-kind projects, and graceful degradation with no object store configured. No new
-config-source shape is needed: BE-0225 already stores `{kind: "upload", filename, sha256, size}`
-durably; this item only makes the bytes behind that `sha256` resolvable.
+The work is MECE across three units:
+
+1. Durable persistence at upload time.
+2. An on-demand fetch-and-extract fallback that replaces `activate_project`'s unconditional `409` for
+   `upload`-kind projects.
+3. Graceful degradation with no object store configured.
+
+No new config-source shape is needed. BE-0225 already stores `{kind: "upload", filename, sha256, size}`
+durably. This item only makes the bytes behind that `sha256` resolvable.
 
 ### 1. Persist the raw zip at upload time, content-addressed and org-scoped
 
-`bind_upload_config`'s handling of `POST /api/upload` (`bajutsu/serve/operations/upload.py`) keeps
-its current validation and extraction unchanged — stream to a temp file, validate, extract into a
-fresh directory under `state.uploads_dir` — and, **when a `BAJUTSU_SERVER_STORE` is configured**,
-inserts one new step *before* `state.bind_upload(upload)` flips `serve`'s active config: it writes
-the raw (still-compressed) zip bytes to that store under a key derived from the sha256 it already
-computes. The key nests under the same per-org prefix every
-other object this seam stores already uses: `artifact_prefix`, `scenario_prefix`, and
-`baseline_prefix` are each composed as `xxx_prefix(org_prefix(base, org))`
-(`bajutsu/serve/server/object_store.py`, wired in `_build_server_state`), so an analogous
-`upload_prefix` follows the same shape — the key becomes
-`upload_prefix(org_prefix(base, org)) + f"{sha256}.zip"`. Nesting under `org_prefix` keeps
-deduplication (and resolution) scoped to one tenant, matching the isolation boundary every sibling
-store already enforces; a shared, org-agnostic namespace would let one org's upload dedupe
-against, and potentially be resolved by, another org's identical-content upload. Writing the raw
-zip, not the extracted tree, keeps the object small, keeps zip-slip/zip-bomb validation as a step a
-replica actually runs at least once for any `sha256` it has never seen locally (unit 2, below)
-rather than something trusted once, by whichever replica happened to extract it, and reused
-verbatim everywhere else, and mirrors the shape BE-0060's export already treats a run bundle as (a
-single zip artifact). Content addressing makes a repeat upload of an identical bundle a no-op at
-both layers: the object-store write is skipped because the key already exists, and — because unit
-2 also keys the local extraction by `sha256` — the local extraction is skipped for the same reason,
-whether the repeat comes as a second `POST /api/upload` or as `activate_project`'s fallback.
+`bind_upload_config` handles `POST /api/upload` (`bajutsu/serve/operations/upload.py`). Its current
+validation and extraction stay unchanged: stream to a temp file, validate, and extract into a fresh
+directory under `state.uploads_dir`.
 
-The object-store write is synchronous and blocking, and — this is the reason it goes *before* the
-bind, not after — `bind_upload_config` never calls `state.bind_upload(upload)` until it succeeds.
-If the write fails (a network error, an unreachable bucket, a permission denial), the function
-removes the freshly-extracted local directory exactly as its existing validation-failure paths
-already do and returns an error, having touched no shared state: `serve`'s active config is still
-whatever it was before the request, so there is nothing to roll back. Sequencing the write before
-the bind, rather than binding first and rolling back on a later failure, is what keeps this
-failure path simple — a client either gets a bound config backed by durably-persisted bytes, or an
-error and no state change at all, never the two disjoint from each other. This is deliberately
-unlike the post-run evidence upload's best-effort failure handling (`bajutsu/object_store.py`'s
-`upload_tree`, where a finished run's already-final verdict must not depend on an artifact upload
-succeeding): here nothing is final yet, and a best-effort write would let a caller register a
-BE-0225 project whose already-durable `{kind: "upload", sha256, ...}` record points at a key
-nothing ever wrote — silently reintroducing, for that one bundle, exactly the cross-replica gap
-this item exists to close. A clear upload failure is safer than a durable project record that lies
-about durability, or an active config that outruns one.
+**When a `BAJUTSU_SERVER_STORE` is configured**, it inserts one new step *before*
+`state.bind_upload(upload)` flips `serve`'s active config. The step writes the raw, still-compressed
+zip bytes to that store. The key derives from the sha256 that the function already computes.
+
+The key nests under the same per-org prefix that every other object in this seam already uses.
+`artifact_prefix`, `scenario_prefix`, and `baseline_prefix` are each composed as
+`xxx_prefix(org_prefix(base, org))` (`bajutsu/serve/server/object_store.py`, wired in
+`_build_server_state`). An analogous `upload_prefix` follows the same shape. The key becomes
+`upload_prefix(org_prefix(base, org)) + f"{sha256}.zip"`.
+
+Nesting under `org_prefix` keeps deduplication and resolution scoped to one tenant. That matches the
+isolation boundary every sibling store already enforces. A shared, org-agnostic namespace would let one
+org's upload dedupe against another org's identical-content upload, and possibly be resolved by it.
+
+Writing the raw zip, not the extracted tree, has three benefits.
+
+- The object stays small.
+- The zip-slip and zip-bomb validation stays a step that a replica runs at least once for any `sha256`
+  it has never seen locally (unit 2, below). It is not something trusted once, by whichever replica
+  happened to extract the bundle, and reused verbatim everywhere else.
+- It mirrors the shape that BE-0060's export already gives a run bundle: a single zip artifact.
+
+Content addressing makes a repeat upload of an identical bundle a no-op at both layers.
+
+- The object-store write is skipped, because the key already exists.
+- The local extraction is skipped for the same reason, because unit 2 also keys the local extraction by
+  `sha256`.
+
+This holds whether the repeat comes as a second `POST /api/upload` or as `activate_project`'s fallback.
+
+The object-store write is synchronous and blocking. It goes *before* the bind, not after:
+`bind_upload_config` never calls `state.bind_upload(upload)` until the write succeeds.
+
+The write can fail: a network error, an unreachable bucket, or a permission denial. Then the function
+removes the freshly extracted local directory and returns an error. Its existing validation-failure
+paths already remove the directory the same way. The function has touched no shared state. `serve`'s active
+config is still whatever it was before the request, so there is nothing to roll back.
+
+Sequencing the write before the bind keeps the failure path simple. The alternative is to bind first
+and roll back on a later failure. With the chosen order, a client gets one of two outcomes. Either it
+gets a bound config backed by durably persisted bytes, or it gets an error and no state change at all.
+The two never come apart.
+
+This is deliberately unlike the best-effort failure handling of the post-run evidence upload
+(`upload_tree` in `bajutsu/object_store.py`). There, a finished run's already-final verdict must not
+depend on an artifact upload succeeding. Here nothing is final yet. A best-effort write would let a
+caller register a BE-0225 project. The project's already-durable `{kind: "upload", sha256, ...}`
+record would point at a key that nothing ever wrote. That would reintroduce, for that one bundle, the cross-replica gap
+this item exists to close, with no warning. A clear upload failure is safer than a durable project
+record that lies about durability, or an active config that outruns one.
 
 ### 2. Replace `activate_project`'s upload-kind `409` with a content-addressed fetch-and-extract fallback
 
-This unit also relocates where the local materialization cache lives. `state.uploads_dir`
-(`bajutsu/serve/state.py`) defaults today to a `--runs`-relative sibling directory
-(`runs_dir.parent / "uploads"` for the `local` backend; an accidental bare `Path("uploads")` for
-`server`, since `_build_server_state` never overrides it). This item changes that default to a
-sibling of BE-0063's Git checkout cache under the same `bajutsu` cache namespace —
-`<XDG_CACHE_HOME or ~/.cache>/bajutsu/uploads/`. `_default_cache_root()`
-(`bajutsu/config_source.py`) does not expose that resolution as a reusable piece today: it returns
-`Path(...) / "bajutsu" / "gitsrc"` directly, with the `gitsrc` leaf baked into the function itself,
-so calling it unmodified for uploads would resolve to `.../bajutsu/gitsrc/uploads/` — nested under
-the Git cache, not a sibling of it. The fix factors the shared `XDG_CACHE_HOME`/`Path.home()`
-prefix out into its own helper (a `_bajutsu_cache_root() -> Path` returning `.../bajutsu/`), with
-`_default_cache_root()` becoming `_bajutsu_cache_root() / "gitsrc"` and the new upload-cache
-default `_bajutsu_cache_root() / "uploads"` — one shared fallback rule with two siblings built on
-it, instead of `_default_cache_root()` reused unmodified (wrong path) or duplicated wholesale (two
-rules that could drift). `state.uploads_dir` keeps its name and its role — a serve-owned
-directory distinct from `--root`, BE-0051's confinement boundary — only its default location moves;
-nothing about that boundary depends on which writable path it happens to be.
+This unit also relocates the local materialization cache.
+
+`state.uploads_dir` (`bajutsu/serve/state.py`) defaults today to a `--runs`-relative sibling directory.
+For the `local` backend, the default is `runs_dir.parent / "uploads"`. For `server`, it is an
+accidental bare `Path("uploads")`, since `_build_server_state` never overrides it.
+
+This item changes that default to a sibling of BE-0063's Git checkout cache. Both sit under the same
+`bajutsu` cache namespace: `<XDG_CACHE_HOME or ~/.cache>/bajutsu/uploads/`.
+
+`_default_cache_root()` (`bajutsu/config_source.py`) does not expose that resolution as a reusable
+piece today. It returns `Path(...) / "bajutsu" / "gitsrc"` directly, with the `gitsrc` leaf baked into
+the function. Calling it unmodified for uploads would resolve to `.../bajutsu/gitsrc/uploads/`. That
+path is nested under the Git cache, not a sibling of it.
+
+The fix factors the shared `XDG_CACHE_HOME` / `Path.home()` prefix out into its own helper,
+`_bajutsu_cache_root() -> Path`, which returns `.../bajutsu/`. Then:
+
+- `_default_cache_root()` becomes `_bajutsu_cache_root() / "gitsrc"`.
+- The new upload-cache default is `_bajutsu_cache_root() / "uploads"`.
+
+The result is one shared fallback rule with two siblings built on it. The alternatives are worse.
+Reusing `_default_cache_root()` unmodified gives the wrong path. Duplicating it wholesale gives two
+rules that could drift.
+
+`state.uploads_dir` keeps its name and its role: a serve-owned directory distinct from `--root`,
+BE-0051's confinement boundary. Only its default location moves. Nothing about that boundary depends on
+which writable path the directory happens to occupy.
 
 `activate_project` (`bajutsu/serve/operations/projects.py`) gains a second resolution path for
-`kind == "upload"`, tried before it gives up. Both this path and unit 1's own local extraction
-resolve to a fixed, sha256-keyed directory under `state.uploads_dir` (`state.uploads_dir /
-sha256`), mirroring the `<cache>/<host>/<owner>/<repo>/<sha>` shape `materialize()`
-(`bajutsu/config_source.py`) already uses for the Git source's checkout cache: if that directory
-already exists, extraction is skipped entirely and the existing tree is reused, exactly as
-`materialize()`'s `if not root.exists(): _extract_into(...)` reuses a cached Git checkout instead of
-re-cloning. Only on a cache miss does `activate_project`'s fallback fetch the zip bytes from the
-object store by the source record's `sha256` (scoped to the project's org), extract into that
-path, and run the same zip-slip/zip-bomb/path-confinement checks `bind_upload_config` already
-applies — once per unique `sha256` per replica, not once per activation — then bind the result the
-same way `bind_upload_config` does today. Only when no object store is configured, or the key is
-absent from it, does today's `409` stand.
+`kind == "upload"`. It tries that path before it gives up.
 
-The exists-check alone is not enough to make this safe under concurrent access: two callers that
-both miss the same `sha256` at the same moment (two simultaneous `activate_project` calls, or one
-racing `bind_upload_config`'s own extraction once it is keyed by `sha256` too) would otherwise both
-extract straight into `state.uploads_dir / sha256`, each seeing the other's partially-written tree.
-`materialize()` avoids exactly this race for the Git source's cache by extracting into a sibling
-temp directory and renaming into place (`_extract_into` in `bajutsu/config_source.py`): the rename
-is atomic, so a losing caller either finds `root` already present before it starts, or has its own
-`rename` fail because the winner's already landed, and in that case discards its own copy rather
-than treating the failure as an error — safe because both extractions are byte-identical for the
-same content-addressed key. Both extraction sites this unit introduces (`bind_upload_config`'s own
-extraction and `activate_project`'s fallback) need that same temp-dir-then-rename pattern, not a
-direct extract into the keyed path, to get the same guarantee.
+Both this path and unit 1's own local extraction resolve to a fixed, sha256-keyed directory under
+`state.uploads_dir` (`state.uploads_dir / sha256`). This mirrors the `<cache>/<host>/<owner>/<repo>/<sha>`
+shape that `materialize()` (`bajutsu/config_source.py`) already uses for the Git source's checkout
+cache. If that directory already exists, extraction is skipped entirely and the existing tree is
+reused. `materialize()` does the same with `if not root.exists(): _extract_into(...)`: it reuses a
+cached Git checkout instead of re-cloning.
 
-Keying the local path by `sha256` is what makes `uploads_dir` an actual cache in front of the
-durable object store, the same relationship
+Only on a cache miss does `activate_project`'s fallback do the following.
+
+1. Fetch the zip bytes from the object store by the source record's `sha256`, scoped to the project's
+   org.
+2. Extract into that path.
+3. Run the same zip-slip, zip-bomb, and path-confinement checks that `bind_upload_config` already
+   applies. These run once per unique `sha256` per replica, not once per activation.
+4. Bind the result the same way `bind_upload_config` does today.
+
+Only when no object store is configured, or the key is absent from it, does today's `409` stand.
+
+The exists-check alone is not enough to make this safe under concurrent access. Two callers might both
+miss the same `sha256` at the same moment. They could be two simultaneous `activate_project` calls.
+Or one call could race `bind_upload_config`'s own extraction, once that extraction is keyed by
+`sha256` too.
+Each would extract straight into `state.uploads_dir / sha256`, and each would see the other's
+partially written tree.
+
+`materialize()` avoids exactly this race for the Git source's cache. `_extract_into` in
+`bajutsu/config_source.py` extracts into a sibling temp directory and renames it into place. The rename
+is atomic. A losing caller either finds `root` already present before it starts, or has its own
+`rename` fail because the winner's tree already landed. In the second case, the loser discards its own
+copy and does not treat the failure as an error. That is safe, because both extractions are
+byte-identical for the same content-addressed key.
+
+Both extraction sites that this unit introduces need the same temp-dir-then-rename pattern. They are
+`bind_upload_config`'s own extraction and `activate_project`'s fallback. A direct extract into the
+keyed path would not give the same guarantee.
+
+Keying the local path by `sha256` is what makes `uploads_dir` an actual cache in front of the durable
+object store. The same relationship holds between
 [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md)'s local, content-addressed Git
-checkout cache (`~/.cache/bajutsu/gitsrc/...`) already has to its remote origin — a resolved SHA
-(there) or a sha256 (here) is what's durable; the checked-out or extracted tree on local disk is
-always disposable and reproducible from it. Extracting into a fresh, unkeyed directory on every
-materialization — as a first draft of this unit did — would not give `uploads_dir` that property:
-every activation of a project bound to a `sha256` this same replica already extracted moments
-earlier would still round-trip the object store and re-run validation for content already sitting
-on local disk, unlike the Git cache's cache-hit path. A `sha256`-keyed cache hit does not weaken
-the check unit 1's *Alternatives considered* argues for (re-extracting from the raw zip on every
-materialization rather than trusting a pre-extracted tree): that argument concerns one replica
-trusting a tree a *different* replica extracted and validated, not a replica reusing a tree it
-validated itself for the exact same content-addressed key — the same trust boundary `materialize()`
-already relies on for a cached Git checkout.
+checkout cache (`~/.cache/bajutsu/gitsrc/...`) and its remote origin. What is durable is a resolved SHA
+(there) or a sha256 (here). The checked-out or extracted tree on local disk is always disposable and
+reproducible from it.
 
-**Consequence for `release_upload`.** `ServeState.release_upload()`
-(`bajutsu/serve/state.py`) unconditionally `shutil.rmtree`s the bound upload's directory
-whenever any new config is bound — the right behavior for today's one-disposable-sandbox-per-bind
-design, but it would delete the `sha256`-keyed cache on every switch-away, defeating the reuse this
-unit introduces: switching to a different project and back would force a full re-fetch-and-extract
-of the same bundle even though nothing changed. `release_upload` needs to stop deleting the
-extracted tree; it keeps clearing `state.upload`/`state.cwd` (which bundle is currently bound),
-while the on-disk cache's lifetime becomes independent of any single bind — swept, if at all, by
-whatever retention policy governs the local cache (see *Retention*, below), the same way nothing
-binding or unbinding a config ever sweeps the Git source's `~/.cache/bajutsu/gitsrc/...` checkout
-cache.
+A first draft of this unit extracted into a fresh, unkeyed directory on every materialization. That
+would not give `uploads_dir` the cache property. Every activation of a project bound to a `sha256`
+that the same replica extracted moments earlier would still round-trip the object store. It would also
+re-run validation for content already sitting on local disk, unlike the Git cache's cache-hit path.
 
-**Consequence for the startup sweep.** `serve()` (`bajutsu/serve/__init__.py`) currently
-`shutil.rmtree`s the entire `uploads_dir` tree unconditionally on every launch, reasoning (per its
-own comment) that nothing is bound at startup, so any tempdir left over from a prior process is
-dead weight. That reasoning fit a directory of anonymous `tempfile.mkdtemp` names with no meaning
-once their bind was gone; it stops fitting once every entry is instead named by its content's
-`sha256` (this unit). A directory left over from a prior process is not orphaned garbage — it is
-exactly as valid a cache entry as one extracted moments ago, the same trust boundary a Git checkout
-cache entry already has across `serve` restarts. Wiping it at every launch would force a
-same-replica restart to re-fetch and re-extract a `sha256` it already had on disk, reintroducing on
-a smaller scale the very problem (losing local state to a restart) this item exists to close. This
-sweep is dropped, matching the Git source's own cache, which nothing sweeps at `serve` startup
-either.
+A `sha256`-keyed cache hit does not weaken the check that unit 1's *Alternatives considered* argues
+for. That argument is to re-extract from the raw zip on every materialization, rather than trust a
+pre-extracted tree. It concerns one replica trusting a tree that a *different* replica extracted and
+validated. It does not concern a replica reusing a tree it validated itself for the exact same
+content-addressed key. That reuse relies on the same trust boundary that `materialize()` already relies
+on for a cached Git checkout.
 
-This is what lets `activate_project` succeed on a fresh or different replica for a bundle it never
-itself received, and lets a replica that already has a `sha256` on disk — whether from an earlier
-activation or from before its own last restart — skip the object store entirely on a repeat
-activation.
+**Consequence for `release_upload`.** `ServeState.release_upload()` (`bajutsu/serve/state.py`)
+unconditionally runs `shutil.rmtree` on the bound upload's directory whenever any new config is bound.
+That is the right behavior for today's one-disposable-sandbox-per-bind design. With the `sha256`-keyed
+cache, the same call would delete the cache on every switch-away. That defeats the reuse this unit
+introduces.
+Switching to a different project and back would force a full re-fetch-and-extract of the same bundle,
+even though nothing changed.
+
+So `release_upload` must stop deleting the extracted tree. It keeps clearing `state.upload` and
+`state.cwd`, which record the bundle currently bound. The on-disk cache's lifetime becomes independent
+of any single bind. Whatever retention policy governs the local cache sweeps it, if anything does (see
+*Retention*, below). Binding or unbinding a config never sweeps the Git source's
+`~/.cache/bajutsu/gitsrc/...` checkout cache either.
+
+**Consequence for the startup sweep.** `serve()` (`bajutsu/serve/__init__.py`) currently runs
+`shutil.rmtree` on the entire `uploads_dir` tree on every launch, unconditionally. Its own comment
+gives the reasoning: nothing is bound at startup, so any tempdir left over from a prior process is dead
+weight.
+
+That reasoning fit a directory of anonymous `tempfile.mkdtemp` names, which had no meaning once their
+bind was gone. It stops fitting once every entry is named by its content's `sha256` (this unit). A
+directory left over from a prior process is not orphaned garbage. It is as valid a cache entry as one
+extracted moments ago, with the same trust boundary that a Git checkout cache entry has across `serve`
+restarts.
+
+Wiping it at every launch would force a same-replica restart to re-fetch and re-extract a `sha256` it
+already had on disk. That would reintroduce, on a smaller scale, the problem this item exists to close:
+losing local state to a restart. The sweep is therefore dropped. This matches the Git source's own
+cache, which nothing sweeps at `serve` startup either.
+
+This unit is what lets `activate_project` succeed on a fresh or different replica for a bundle that
+replica never received. A replica that already has a `sha256` on disk can also skip the object store
+entirely on a repeat activation. The copy on disk may come from an earlier activation or from before
+the replica's own last restart.
 
 ### 3. Graceful degradation with no object store configured
 
-A local `serve` with no `BAJUTSU_SERVER_STORE` (the default, and every non-hosted Tier-A/self-hosted
-deployment) sees no functional behavior change: uploads stay exactly as ephemeral as BE-0073 and
-BE-0225 ship them today, and `activate_project` keeps refusing an `upload`-kind project with the
-same `409` — matching the zero-config precedent already established for optional stores
+A local `serve` with no `BAJUTSU_SERVER_STORE` sees no functional behavior change. That setup is the
+default, and it covers every non-hosted Tier-A and self-hosted deployment.
+
+- Uploads stay exactly as ephemeral as BE-0073 and BE-0225 ship them today.
+- `activate_project` keeps refusing an `upload`-kind project with the same `409`.
+
+This matches the zero-config precedent already established for optional stores
 ([BE-0204](../BE-0204-server-storage-gcs-support/BE-0204-server-storage-gcs-support.md)) and settings
 ([BE-0184](../BE-0184-persist-serve-ai-provider-settings/BE-0184-persist-serve-ai-provider-settings.md)).
-Durable, cross-replica resolution is additive and only engages when the operator has already opted
-into the object-store seam for artifacts/scenarios/baselines. Unit 2's relocation of
-`state.uploads_dir`'s default onto the shared `.../bajutsu/` cache root is the one exception: it is
-unconditional, since it is about which writable path an ephemeral sandbox lives under, not about
-durability — a zero-config `serve` gets the smaller-allow-list benefit too, with no other change in
-behavior.
+Durable, cross-replica resolution is additive. It engages only when the operator has already opted into
+the object-store seam for artifacts, scenarios, and baselines.
+
+Unit 2's relocation of `state.uploads_dir`'s default onto the shared `.../bajutsu/` cache root is the
+one exception. It is unconditional, because it concerns which writable path an ephemeral sandbox lives
+under, not durability. A zero-config `serve` gets the smaller-allow-list benefit too, with no other
+change in behavior.
 
 ### Retention
 
-Content addressing gives natural deduplication within an org (re-uploading the same bytes is a
-no-op write); actual deletion is left to the bucket's own lifecycle policy, the same retention
-mechanism `bajutsu/object_store.py`'s module docstring already documents as governing every
-URI-addressed store this seam backs. The local, `sha256`-keyed cache under `state.uploads_dir`
-(unit 2) is left ungoverned the same way — nothing sweeps it, matching the precedent the Git
-source's own local checkout cache already sets (`~/.cache/bajutsu/gitsrc/...` has no eviction
-either). No new retention or garbage-collection code is introduced, locally or in the object
-store.
+Content addressing gives natural deduplication within an org: re-uploading the same bytes is a no-op
+write. Actual deletion is left to the bucket's own lifecycle policy. The module docstring of
+`bajutsu/object_store.py` already documents that policy as the retention mechanism for every
+URI-addressed store this seam backs.
+
+The local, `sha256`-keyed cache under `state.uploads_dir` (unit 2) is left ungoverned the same way.
+Nothing sweeps it. This matches the precedent that the Git source's own local checkout cache sets:
+`~/.cache/bajutsu/gitsrc/...` has no eviction either.
+
+No new retention or garbage-collection code is introduced, locally or in the object store.
 
 ## Alternatives considered
 
-- **Store the zip (or its extracted tree) as a BLOB in Postgres.** Rejected: BE-0015's schema
-  already keeps large binary payloads out of the database (artifacts, scenarios, and baselines all
-  went to the object store under BE-0204, not to a table), and a multi-megabyte app binary is exactly
-  the payload shape Postgres is the wrong tool for. Consistency with the existing storage seam matters
-  more than avoiding a second infrastructure dependency the deployment already has.
+- **Store the zip, or its extracted tree, as a BLOB in Postgres.** Rejected.
+  - BE-0015's schema already keeps large binary payloads out of the database. Artifacts, scenarios, and
+    baselines all went to the object store under BE-0204, not to a table.
+  - A multi-megabyte app binary is the payload shape Postgres is the wrong tool for.
+  - Consistency with the existing storage seam matters more than avoiding a second infrastructure
+    dependency that the deployment already has.
 - **Keep the local upload cache `--runs`-relative, matching BE-0073's shipped `state.uploads_dir`
-  default.** Rejected: a hosted `server` deployment commonly runs with a small, explicitly
-  allow-listed set of writable paths for security reasons. The Git source already needs one such
-  writable root (`HOME`/`XDG_CACHE_HOME`, for `~/.cache/bajutsu/gitsrc/...`); keeping uploads on a
-  second, `--runs`-relative root would widen that set for no benefit once uploads are
-  content-addressed under the same `.../bajutsu/` cache namespace as Git's checkouts (unit 2). One
-  shared cache root an operator provisions once, not two independently-provisioned ones, is the
-  smaller surface to allow-list.
-- **Persist the extracted tree instead of the raw zip.** Rejected: it is a larger object (many small
-  keys instead of one), and it would let a future materialization skip the zip-slip/zip-bomb checks
-  that only run at extraction time — re-extracting from the raw zip on every materialization keeps
-  that validation live rather than trusted-once.
+  default.** Rejected.
+  - A hosted `server` deployment commonly runs with a small, explicitly allow-listed set of writable
+    paths for security reasons.
+  - The Git source already needs one such writable root (`HOME` / `XDG_CACHE_HOME`, for
+    `~/.cache/bajutsu/gitsrc/...`).
+  - Keeping uploads on a second, `--runs`-relative root would widen that set for no benefit once
+    uploads are content-addressed under the same `.../bajutsu/` cache namespace as Git's checkouts
+    (unit 2).
+  - One shared cache root, provisioned once by the operator, is a smaller surface to allow-list than
+    two independently provisioned roots.
+- **Persist the extracted tree instead of the raw zip.** Rejected. The tree is a larger object: many
+  small keys instead of one. It would also let a future materialization skip the zip-slip and zip-bomb
+  checks, which run only at extraction time. Re-extracting from the raw zip on every materialization
+  keeps that validation live rather than trusted once.
 - **Route persistent scenario storage exclusively through the Git source, as BE-0073 originally
-  intended.** This remains the right answer for a team that wants a *reusable, versioned* suite —
-  nothing here changes that recommendation. It does not, however, help the case BE-0225 already
-  registers: a project bound to a one-off uploaded bundle (no Git repository behind it) that still
-  needs to survive a replica restart. The two sources solve different problems and stay complementary.
+  intended.**
+  - This remains the right answer for a team that wants a *reusable, versioned* suite. Nothing here
+    changes that recommendation.
+  - It does not help the case that BE-0225 already registers: a project bound to a one-off uploaded
+    bundle, with no Git repository behind it, that still needs to survive a replica restart.
+  - The two sources solve different problems and stay complementary.
 - **Introduce a separate `zip` config-source kind, distinct from the shipped `upload` kind.**
-  Rejected: BE-0225's `_KIND_TO_SOURCE` and the frontend (`serve.core.js`, `source.kind ===
-  'upload'`) already treat `upload` as the sole discriminator for this shape of source, wired
-  end to end through the allowlist, the UI, and the registry. Forking a second name for the same
-  shape of data would fragment that one already-wired path for no benefit.
+  Rejected. BE-0225's `_KIND_TO_SOURCE` and the frontend (`serve.core.js`, `source.kind === 'upload'`)
+  already treat `upload` as the sole discriminator for this shape of source. It is wired end to end
+  through the allowlist, the UI, and the registry. Forking a second name for the same shape of data
+  would fragment that one already-wired path for no benefit.
 - **Make this item responsible for BE-0225's project-registry persistence too.** Rejected as scope
-  creep: BE-0225 already owns *which project points at which source record* and *where that record is
-  stored* (DB row vs. local JSON); this item's job is narrower — making the bytes behind an
+  creep. BE-0225 already owns *which project points at which source record* and *where that record is
+  stored* (database row vs. local JSON). This item's job is narrower: making the bytes behind an
   already-durable `sha256` resolvable from any replica. Bundling the two would couple an
-  object-storage concern to a registry concern BE-0225 already implements independently.
+  object-storage concern to a registry concern that BE-0225 already implements independently.
 
 ## Progress
 

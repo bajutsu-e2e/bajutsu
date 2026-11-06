@@ -15,147 +15,83 @@
 
 ## はじめに
 
-ローカル config のパス系フィールド（`scenarios`、`baselines`、`schemas`、`goldens`、iOS/Android の
-`appPath`、`xcuitest.testRunner`）は現在、実行プロセスの作業ディレクトリを基準に解決されており、
-それらを宣言している config ファイル自身を基準にはしていません。本提案は、これらのフィールドを
-config ファイル自身のディレクトリを基準に解決するようにし、`bajutsu` をどこから実行しても同じ
-ファイルが同じように解決されるようにします。ローカル config は operator が信頼できるものなので、
-パスは特定の部分木の中に閉じ込めません。config のフォルダの外にある兄弟ディレクトリを指してよい
-ようにします。これはリポジトリ自身の config が必要としている挙動です（showcase の
-`xcuitest.testRunner` は、`demos/` の兄弟であるリポジトリルート直下の `BajutsuKit/` の下にあります）。
-ここが BE-0063 の Git ソース向け rebase との違いです。取得してきた config は信頼できないため、
-そちらは閉じ込めたままにします。
+ローカル config には、パス系のフィールドが 6 つあります。`scenarios`、`baselines`、`schemas`、`goldens`、iOS／Android の `appPath`、`xcuitest.testRunner` です。これらは現在、実行プロセスの作業ディレクトリを基準に解決されます。宣言している config ファイル自身は、基準になっていません。
+
+本提案は、これらのフィールドを config ファイル自身のディレクトリを基準に解決します。`bajutsu` をどこから実行しても、同じファイルが同じように解決されます。
+
+ローカル config は、operator が信頼できるものです。そのため、パスを特定の部分木の中に閉じ込めません。config のフォルダの外にある兄弟ディレクトリを指してよいことにします。リポジトリ自身の config が、この挙動を必要としています。showcase の `xcuitest.testRunner` は、`demos/` の兄弟であるリポジトリルート直下の `BajutsuKit/` の下にあります。
+
+ここが、BE-0063 の Git ソース向け rebase との違いです。取得してきた config は信頼できないため、そちらは閉じ込めたままにします。
 
 ## 動機
 
-`_load_effective_with_source`（`bajutsu/cli/_shared.py:174-235`）は、config のパス系フィールドを
-呼び出し側の作業ディレクトリではなく安定した基準点に対して rebase する仕組みをすでに持っています。
-ただし呼び出すのは config が Git ソースのときだけで、実体化したチェックアウトを `root` として
-`eff.rebased(root)` を呼び出します（BE-0063）。config がローカルの場合（`spec is None`）は早期
-リターンし、`eff` をそのまま返すため（`_shared.py:229-230`）、YAML に書かれた相対パスは `bajutsu`
-がたまたま実行されたディレクトリを基準にしたまま解決されます。
+`_load_effective_with_source`（`bajutsu/cli/_shared.py:174-235`）は、config のパス系フィールドを、呼び出し側の作業ディレクトリではなく、安定した基準点に対して rebase する仕組みをすでに持っています。ただし、この rebase を行うのは、config が Git ソースのときだけです。実体化したチェックアウトを `root` として、`eff.rebased(root)` を呼びます（BE-0063）。
 
-このため、同じ config ファイルでも実行するディレクトリによって挙動が変わります。リポジトリの
-ルートから実行すれば問題なく解決するシナリオスイートが、サブディレクトリや別の worktree、あるいは
-シェルの作業ディレクトリの慣習が異なる CI ジョブから実行すると、参照先を失う、あるいはもっと悪い
-ことに、たまたま存在する無関係なファイルへ静かに解決されてしまいます。`make worktree`（BE-0069）
-によって、同じ config を別のチェックアウトパスから実行することは日常的な操作になっており、この
-落とし穴はまさにその状況で踏みやすいものです。あるチェックアウトで「動いていた」config が、別の
-チェックアウトへそのまま持ち込んだときに同じ作業ディレクトリの慣習が引き継がれるとは限らないから
-です。
+config がローカルの場合（`spec is None`）は、関数が早期リターンし、`eff` をそのまま返します（`_shared.py:229-230`）。YAML に書かれた相対パスは、`bajutsu` がたまたま実行されたディレクトリを基準にしたまま解決されます。
 
-シナリオ側の参照はすでにこの種のずれを解消済みです。`use:` や `dataFile`（BE-0174）、`setup` は、
-参照元のシナリオファイルを基準に解決されます。config 側のパス系フィールドは、宣言元のファイルでは
-なく作業ディレクトリを基準にしたまま残っている、唯一の箇所です。
+このため、同じ config ファイルでも、実行するディレクトリによって挙動が変わります。リポジトリのルートから実行すれば問題なく解決するシナリオスイートが、別の場所から実行すると、参照先を失います。別の場所とは、サブディレクトリ、別の worktree、シェルの作業ディレクトリの慣習が異なる CI ジョブです。もっと悪い場合は、たまたま存在する無関係なファイルへ、気づかないうちに解決されます。
 
-設計を左右するので、前提を一点だけ正確に述べておきます。BE-0063 が基準にするのは config ファイル
-自身のディレクトリ**ではなく**、**チェックアウトルート**、すなわち取得したツリーの最上位です。これは
-通常 config の親にあたります（`e2e/bajutsu.config.yaml` にある config は、`scenarios` ではなく、
-チェックアウトルートから書いた `e2e/scenarios` を解決します）。ローカル config にはチェックアウトが
-ないため、代わりの安定した基準点は config ファイル自身のディレクトリになります。両者は関連しますが
-別のアンカーであり、この違いこそが、リポジトリルートから実行する前提でリポジトリルート基準のパスを
-書いてきたリポジトリ自身の config を、すべて config ディレクトリ基準へ書き直す必要がある理由です
-（*詳細設計* を参照）。
+`make worktree`（BE-0069）によって、同じ config を別のチェックアウトパスから実行することは、日常的な操作になっています。この落とし穴は、まさにその状況で踏みやすいものです。あるチェックアウトで動いていた config が、別のチェックアウトで同じように動くとは限りません。作業ディレクトリの慣習が、引き継がれないことがあるからです。
 
-閉じ込めについても、「Git ソースであること」ではなく **信頼できるかどうか**で決まる性質です。
-リポジトリはすでにこの線引きをしています。取得してきた Git-API config とアップロードされたバンドルは
-信頼できないので confinement 付きで rebase され（`bajutsu/serve/operations/config.py:471`、
-`bajutsu/serve/operations/upload.py`）、一方でローカルファイルの config は operator が信頼できるものと
-して扱われ、confinement は付きません（`bajutsu/serve/operations/config.py:435`、「a local file config is operator-trusted
-(BE-0121)」）。ローカル config に confinement を適用すると、showcase の
-`xcuitest.testRunner: BajutsuKit/Runner/...` を拒否してしまいます。これは `demos/` の兄弟である
-リポジトリルート直下のパスで、`demos/showcase/` からは `../` の逸脱なしには到達できません。そこで
-本提案は、この既存の信頼境界に合わせ、ローカルのパスは閉じ込めないままにします。
+シナリオ側の参照は、すでにこの種のずれを解消済みです。`use:` や `dataFile`（BE-0174）、`setup` は、参照元のシナリオファイルを基準に解決されます。config 側のパス系フィールドだけが、宣言元のファイルではなく、作業ディレクトリを基準にしたまま残っています。
+
+設計を左右する前提を、一点だけ正確に述べておきます。BE-0063 が基準にするのは、config ファイル自身のディレクトリ**ではありません**。**チェックアウトルート**、すなわち取得したツリーの最上位です。これは通常、config の祖先にあたります。`e2e/bajutsu.config.yaml` にある config は、`scenarios` ではなく、チェックアウトルートから書いた `e2e/scenarios` を解決します。
+
+ローカル config には、チェックアウトがありません。代わりの安定した基準点は、config ファイル自身のディレクトリになります。2 つの基準点は、関連はしますが別のものです。この違いこそが、リポジトリ自身の config をすべて config ディレクトリ基準へ書き直す必要がある理由です。これらの config は、リポジトリルートから実行する前提で、リポジトリルート基準のパスを書いてきました（*詳細設計* を参照）。
+
+閉じ込めについても、決め手は「Git ソースであること」ではなく、**信頼できるかどうか**です。リポジトリは、すでにこの線引きをしています。
+
+- 取得してきた Git-API config とアップロードされたバンドルは、信頼できません。confinement 付きで rebase されます（`bajutsu/serve/operations/config.py:471`、`bajutsu/serve/operations/upload.py`）。
+- ローカルファイルの config は、operator が信頼できるものとして扱われ、confinement は付きません（`bajutsu/serve/operations/config.py:435`、「a local file config is operator-trusted (BE-0121)」）。
+
+ローカル config に confinement を適用すると、showcase の `xcuitest.testRunner: BajutsuKit/Runner/...` を拒否します。このパスは `demos/` の兄弟であるリポジトリルート直下を指し、`demos/showcase/` からは `../` の逸脱なしに到達できません。そこで本提案は、この既存の信頼境界に合わせ、ローカルのパスを閉じ込めないままにします。
 
 ## 詳細設計
 
-1. **`Effective.rebased()` に `confine` スイッチを追加します。** `rebased(root, *, confine=True)`
-   （`bajutsu/config.py:580-634`）は、対象のフィールド（`scenarios`、`baselines`、`schemas`、
-   `goldens`、iOS/Android サブ config の `app_path`、`xcuitest.test_runner`）を `root` に対して
-   結合する処理をすでに持っています。その逸脱チェック（絶対パスや `../` による逸脱を `ValueError`
-   にする、BE-0051 の serve 堅牢化と同じ考え方）を、`confine` によって条件付きにします。既存の
-   呼び出し側（Git ソースとアップロードバンドルの経路）は `confine=True` のまま変わりません。
-   ローカル config は `confine=False` を渡します。「Git ソースからしか呼ばれない」（`config.py:587`）
-   という前提が崩れるので、docstring も更新します。
+1. **`Effective.rebased()` に `confine` スイッチを追加します。**
+   - `rebased(root, *, confine=True)`（`bajutsu/config.py:580-634`）は、対象のフィールドを `root` に対して結合する処理を、すでに持っています。対象は、`scenarios`、`baselines`、`schemas`、`goldens`、iOS／Android サブ config の `app_path`、`xcuitest.test_runner` です。
+   - 逸脱チェックを、`confine` によって条件付きにします。このチェックは、絶対パスや `../` による逸脱を `ValueError` にします。BE-0051 の serve 堅牢化と同じ考え方です。
+   - 既存の呼び出し側（Git ソースとアップロードバンドルの経路）は、`confine=True` のまま変わりません。ローカル config は `confine=False` を渡します。
+   - 「Git ソースからしか呼ばれない」（`config.py:587`）という前提が崩れるので、docstring も更新します。
 2. **呼び出し側でローカル config を rebase しますが、`checkout_root` は流用しません。**
-   `_load_effective_with_source`（`bajutsu/cli/_shared.py:196-235`）で、`spec is None`（ローカル
-   config）のときは、ローカル専用の基準点（`cfg_path.resolve().parent`）に対して
-   `eff.rebased(local_root, confine=False)` を呼んで rebase します。ただし、関数の戻り値の 3 番目の
-   要素（`checkout_root`）は `None` のまま返し、`root` を両方の用途に使い回しません。
-   `checkout_root` は rebase の基準点であると同時に、他の呼び出し側にとっては「Git ソースか
-   ローカルか」を示す信号でもあるからです。`run.py` のオンデマンドビルド（`checkout_root is not
-   None` で発火する `build_if_missing`）や、`record`／`crawl` の `_refuse_out_in_checkout`
-   （読み取り専用チェックアウトへの書き込みを拒むガード）は、いずれもこの値を根拠に判定して
-   います。ここでローカル config のディレクトリを `checkout_root` としてそのまま返すと、あらゆる
-   ローカル config で Git 専用の挙動が意図せず有効になってしまいます。`source`（Git の来歴情報）は
-   どちらにしても `None` のままで、返る `Effective` は config ディレクトリを基準とする絶対パスの
-   フィールドを持つようになるので、それらを読む下流の consumer はすべて自動的に作業ディレクトリ
-   非依存になります。
-3. **意図的に対象外とするフィールド**は、`rebased()` が現状すでに除外しているものに、2 つ加える
-   形になります。
-   - `build`（`make -C demos/showcase` のようなシェルコマンド）はパス系フィールドではありません。
-   - `setup` は、参照元のシナリオファイルを基準にすでに解決されており（BE-0174）、config を基準
-     にはしません。
-   - `launchServer.cwd` は、起動するサブプロセスに渡す作業ディレクトリであり
-     （`bajutsu/runner/launch_server.py:123`）、config が指し示すファイルへの参照ではありません。
-     この既定の基準点を変えるかどうかは別の判断（開発サーバーの作業ディレクトリの既定値をどう
-     するか）であり、同種の落とし穴だと分かった場合に別項目として扱います。
-   - `sandbox.dockerfile` は、すでに `bundle_root` という概念を基準にしており（BE-0090、
-     `bajutsu/runner/sandbox.py:130-206`）、作業ディレクトリとも「宣言元のファイル」とも異なる
-     第三の基準点なので、本提案の対象外です。
-4. **serve のローカル config バインドも合わせて直します。** serve は `_load_effective_with_source`
-   を呼ばず、config のパス系フィールドを `state.cwd` を基準に解決します
-   （`bajutsu/serve/state.py`、`serve/operations/jobs.py`）。Git・アップロードのバインドはすでに
-   `state.cwd` を config のツリーに設定しています。取り残されているのは**ローカル**のバインドだけで、
-   これは serve の起動ディレクトリを基準にしています。非 Git の `--config` での起動
-   （`bajutsu/cli/commands/serve.py`）と、ファイルブラウザ経由のバインド
-   （`serve/operations/config.py:433`）の 2 箇所で `state.cwd = config_path.parent` に設定し、
-   Git・アップロードと同じパターンに揃えます。これで serve が起動する run も、in-process の
-   scenario／app-path の読み取りも、config ディレクトリを基準に解決されます。`load_config`／
-   `resolve` を呼ぶ個々の serve operation はメタデータ（backend、`id_namespaces`、`ai`、`bundleId`）
-   しか読まないため、変更は不要です。
-5. **これは互換性のための緩衝を設けない、意図的な破壊的変更です。** すべてのローカル config の
-   パス系フィールドが、作業ディレクトリ基準から config ディレクトリ基準へ一度の切り替えで変わります。
-   フォールバックやオプトアウトのフラグは設けません。リポジトリ自身の config はすべてリポジトリ
-   ルート基準で書かれ、リポジトリルートから実行する前提なので、同じ変更の中で config ディレクトリ
-   基準へ書き直します。対象は `demos/demo.config.yaml`、`demos/showcase/showcase.config.yaml`
-   （`testRunner: ../../BajutsuKit/Runner/...` を含む）、`demos/docs-site/docs-site.config.yaml`、
-   `demos/serve-ui/dogfood.config.yaml`、`demos/web/demo.config.yaml` です。on-device の conformance
-   テストは、ローダを迂回する生の `resolve()` で `Effective` を組み立てているため
-   （`tests/test_driver_conformance_ondevice.py:119`）、同じ `rebased(config_dir, confine=False)` を
-   適用します。移行については PR 本文と `docs/configuration.md` で明示します。
-6. **ドキュメントを更新します。** `docs/configuration.md:81`（「run の作業ディレクトリ基準」という
-   記述）と、現状は Git 限定の rebase として書かれている BE-0063 の節
-   （`docs/configuration.md:330-369`）を、いまのルールに沿って書き直します。すなわち、取得元に
-   よらず config ディレクトリ基準で解決し、信頼できない（Git-API・アップロード）config だけを
-   閉じ込め、operator が信頼できるローカルファイルは閉じ込めない、という形です。
-   `docs/ja/configuration.md` も同様に更新します。
-7. **テストを追加します。** ローカル config のパス系フィールドが、作業ディレクトリに関わらず config
-   ディレクトリを基準に解決されること（別のディレクトリへ chdir して結果が変わらないことを確認）、
-   ローカル config が自身のディレクトリの外を指せること（`ValueError` にならない）、そして既存の
-   confinement テストと並ぶ `rebased(..., confine=False)` の単体テストを追加します。on-device の
-   conformance レーンと demo config の書き換えは、Linux ゲートではなく重い CI レーン（`smoke (idb)`
-   ／`E2E`／`xcuitest`／`conformance`）でのみ検証される点を、PR で明示します。
+   - `_load_effective_with_source`（`bajutsu/cli/_shared.py:196-235`）で、`spec is None`（ローカル config）のときは、ローカル専用の基準点（`cfg_path.resolve().parent`）に対して `eff.rebased(local_root, confine=False)` を呼びます。
+   - 関数の戻り値の 3 番目の要素（`checkout_root`）は、`None` のまま返します。`root` を両方の用途に使い回しません。
+   - `checkout_root` は、rebase の基準点であるだけではありません。他の呼び出し側にとっては、「Git ソースかローカルか」を示す信号でもあります。`run.py` のオンデマンドビルド（`checkout_root is not None` で発火する `build_if_missing`）と、`record`／`crawl` の `_refuse_out_in_checkout`（読み取り専用チェックアウトへの書き込みを拒むガード）は、この値を根拠に判定しています。ここでローカル config のディレクトリを返すと、あらゆるローカル config で、Git 専用の 2 つの挙動が意図せず有効になります。
+   - `source`（Git の来歴情報）は、どちらにしても `None` のままです。返る `Effective` は、config ディレクトリを基準とする絶対パスのフィールドを持ちます。それらを読む下流の consumer は、すべて自動的に作業ディレクトリ非依存になります。
+3. **意図的に対象外とするフィールド。** `rebased()` が現状すでに除外しているものに、2 つ加えます。
+   - `build` は、`make -C demos/showcase` のようなシェルコマンドです。パス系フィールドではありません。
+   - `setup` は、参照元のシナリオファイルを基準に、すでに解決されています（BE-0174）。config は基準になりません。
+   - `launchServer.cwd` は、起動するサブプロセスに渡す作業ディレクトリです（`bajutsu/runner/launch_server.py:123`）。config が指し示すファイルへの参照ではありません。この既定の基準点を変えるかどうかは、開発サーバーの作業ディレクトリの既定値をどうするか、という別の判断です。同種の落とし穴だと分かった場合に、別項目として扱います。
+   - `sandbox.dockerfile` は、すでに `bundle_root` という概念を基準にしています（BE-0090、`bajutsu/runner/sandbox.py:130-206`）。作業ディレクトリとも「宣言元のファイル」とも異なる、第三の基準点です。本提案の対象外とします。
+4. **serve のローカル config バインドも合わせて直します。**
+   - serve は `_load_effective_with_source` を呼びません。config のパス系フィールドを、`state.cwd` を基準に解決します（`bajutsu/serve/state.py`、`serve/operations/jobs.py`）。Git とアップロードのバインドは、すでに `state.cwd` を config のツリーに設定しています。
+   - 取り残されているのは**ローカル**のバインドだけで、serve の起動ディレクトリを基準にしています。該当するのは、非 Git の `--config` での起動（`bajutsu/cli/commands/serve.py`）と、ファイルブラウザ経由のバインド（`serve/operations/config.py:433`）です。
+   - この 2 箇所で `state.cwd = config_path.parent` に設定し、Git・アップロードと同じパターンに揃えます。serve が起動する run も、in-process の scenario／app-path の読み取りも、config ディレクトリを基準に解決されます。
+   - `load_config`／`resolve` を呼ぶ個々の serve operation は、メタデータ（backend、`id_namespaces`、`ai`、`bundleId`）しか読みません。変更は不要です。
+5. **これは互換性のための緩衝を設けない、意図的な破壊的変更です。**
+   - すべてのローカル config のパス系フィールドが、作業ディレクトリ基準から config ディレクトリ基準へ、一度の切り替えで変わります。フォールバックやオプトアウトのフラグは設けません。
+   - リポジトリ自身の config は、すべてリポジトリルート基準で書かれ、リポジトリルートから実行する前提です。同じ変更の中で、config ディレクトリ基準へ書き直します。対象は `demos/demo.config.yaml`、`demos/showcase/showcase.config.yaml`（`testRunner: ../../BajutsuKit/Runner/...` を含む）、`demos/docs-site/docs-site.config.yaml`、`demos/serve-ui/dogfood.config.yaml`、`demos/web/demo.config.yaml` です。
+   - on-device の conformance テストは、ローダを迂回する生の `resolve()` で `Effective` を組み立てています（`tests/test_driver_conformance_ondevice.py:119`）。同じ `rebased(config_dir, confine=False)` を適用します。
+   - 移行については、PR 本文と `docs/configuration.md` で明示します。
+6. **ドキュメントを更新します。**
+   - `docs/configuration.md:81`（「run の作業ディレクトリ基準」という記述）と、現状は Git 限定の rebase として書かれている BE-0063 の節（`docs/configuration.md:330-369`）を、いまのルールに沿って書き直します。
+   - ルールは次のとおりです。取得元によらず、config ディレクトリ基準で解決します。信頼できない（Git-API・アップロード）config だけを閉じ込めます。operator が信頼できるローカルファイルは、閉じ込めません。
+   - `docs/ja/configuration.md` も、同様に更新します。
+7. **テストを追加します。** 3 種類のカバレッジを足します。
+   - ローカル config のパス系フィールドが、作業ディレクトリに関わらず config ディレクトリを基準に解決されること。別のディレクトリへ chdir して、結果が変わらないことを確認します。
+   - ローカル config が、自身のディレクトリの外を指せること。`ValueError` になりません。
+   - 既存の confinement テストと並ぶ、`rebased(..., confine=False)` の単体テスト。
+
+   on-device の conformance レーンと demo config の書き換えは、Linux ゲートではなく、重い CI レーン（`smoke (idb)`／`E2E`／`xcuitest`／`conformance`）でのみ検証されます。この点を、PR で明示します。
 
 ## 検討した代替案
 
-- **config ディレクトリ基準にしつつ confinement も適用する（BE-0063 と完全に同じ挙動）案**：最初に
-  検討した形です。リポジトリ自身のレイアウトに突き当たって不採用にしました。showcase の
-  `xcuitest.testRunner: BajutsuKit/Runner/...` は `demos/` の兄弟であるリポジトリルート直下を指し、
-  `demos/showcase/` からは confinement が拒否する `../` の逸脱なしには表現できません。より根本的には、
-  confinement は**信頼できない**取得済み config を閉じ込めるためのもの（BE-0051）であり、ローカル
-  ファイルはすでに operator が信頼できるものとして扱われている（BE-0121）ため、これを閉じ込めても
-  対応する脅威がないまま摩擦だけが増えます。
-- **フィールド単位・config 単位のオプトインフラグでファイル基準の解決を有効にする案**：不採用と
-  します。安全な解釈のほうを既定にすべきであり、config の作者が見つけて有効化しなければならない
-  ものにすべきではありません。オプトインにすると、設定しない人にはこの落とし穴がそのまま残ります。
-- **既定は作業ディレクトリ基準のままにし、ファイル基準へ切り替えるフラグや config キーを追加する
-  案**：同じ理由で不採用です。加えて、読み手が保持しなければならない解決ルールが 2 つに増えたまま
-  になり、古いほうを退役させられません。
-- **`launchServer.cwd` の既定値も config のディレクトリを基準にする案**：ここに含めず見送りとし
-  ます。これはサブプロセスの作業ディレクトリという別種のフィールドであり、config が指し示す
-  ファイルへの参照ではないため、一緒に扱うと本提案が実際に直そうとしている対象がぼやけます。
-  同種の落とし穴だと分かれば、別項目として改めて扱います。
+- **config ディレクトリ基準にしつつ confinement も適用する案（BE-0063 と完全に同じ挙動）。** 最初に検討した形です。リポジトリ自身のレイアウトに突き当たって、不採用にしました。
+  - showcase の `xcuitest.testRunner: BajutsuKit/Runner/...` は、`demos/` の兄弟であるリポジトリルート直下を指します。`demos/showcase/` からは、confinement が拒否する `../` の逸脱なしには表現できません。
+  - より根本的には、confinement は**信頼できない**取得済み config を閉じ込めるためのものです（BE-0051）。ローカルファイルは、すでに operator が信頼できるものとして扱われています（BE-0121）。これを閉じ込めても、対応する脅威がないまま、摩擦だけが増えます。
+- **フィールド単位・config 単位のオプトインフラグで、ファイル基準の解決を有効にする案。** 不採用とします。安全な解釈のほうを既定にすべきです。config の作者が見つけて有効化しなければならないものにすべきではありません。オプトインにすると、設定しない人には、この落とし穴がそのまま残ります。
+- **既定は作業ディレクトリ基準のままにし、ファイル基準へ切り替えるフラグや config キーを追加する案。** 同じ理由で不採用です。加えて、読み手が保持しなければならない解決ルールが 2 つに増えたままになります。古いほうを退役させられません。
+- **`launchServer.cwd` の既定値も、config のディレクトリを基準にする案。** ここに含めず、見送りとします。これは、サブプロセスの作業ディレクトリという別種のフィールドです。config が指し示すファイルへの参照ではありません。一緒に扱うと、本提案が実際に直そうとしている対象がぼやけます。同種の落とし穴だと分かれば、別項目として改めて扱います。
 
 ## 進捗
 
