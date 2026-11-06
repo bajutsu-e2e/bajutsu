@@ -170,50 +170,50 @@ scheme は変種ごと（§2）、host 文法は共通です。deeplink は**タ
 > `search.field`、Permissions なら `perm.requestNotif`）。詳細画面の `horse.title` / `notice.detail.title`
 > は残ります。これらはナビタイトルではなく、本文に表示される実体の名前（実コンテンツ）だからです。
 
-- `stable.refresh` — カタログを再取得するツールバー/ボタン（GET `SHOWCASE_API_URL` + `/horses`）。`stable.status` の value を `loading` → `done`/`error` にする
-- `stable.status` — テキスト。`accessibilityValue` = `idle`/`loading`/`done`/`error`
-- `stable.row.<horseId>` — カタログ行ごとに 1 つ。`<horseId>` はデータ由来（例 `stable.row.3`）。タップで Horse Detail を push。集合アサーションは `idMatches: "stable.row.*"` + `count` を使う
-- `stable.empty` — カタログが空のときのみ表示。カタログは固定で空になりません（BE-0079）ので、これは防御的なマークアップで、showcase では到達しない状態です
+- `stable.refresh`：カタログを再取得するツールバー/ボタン（GET `SHOWCASE_API_URL` + `/horses`）。`stable.status` の value を `loading` → `done`/`error` にする
+- `stable.status`：テキスト。`accessibilityValue` = `idle`/`loading`/`done`/`error`
+- `stable.row.<horseId>`：カタログ行ごとに 1 つ。`<horseId>` はデータ由来（例 `stable.row.3`）。タップで Horse Detail を push。集合アサーションは `idMatches: "stable.row.*"` + `count` を使う
+- `stable.empty`：カタログが空のときのみ表示。カタログは固定で空になりません（BE-0079）ので、これは防御的なマークアップで、showcase では到達しない状態です
 
 **Horse Detail**（Stable の行をタップして push）：
-- `horse.title` — 馬の名前
-- `horse.id.value` — id、value にミラー
-- `horse.fetch` — ボタン：詳細 GET（`/horses/<id>`）。`horse.status` value `loading`→`done`/`error`
-- `horse.status` — 上記の value
-- `horse.favorite` — トグル。`selected` trait が状態を反映。`horse.favorite.value`（`on`/`off`）にミラー
-- **戻る** — 標準のシステム戻るボタン（ナビゲーションスタックが用意します）。バックエンドは OS 由来の id `BackButton` で引きます。アプリ定義の戻る id はありません。
+- `horse.title`：馬の名前
+- `horse.id.value`：id、value にミラー
+- `horse.fetch`：ボタン：詳細 GET（`/horses/<id>`）。`horse.status` value `loading`→`done`/`error`
+- `horse.status`：上記の value
+- `horse.favorite`：トグル。`selected` trait が状態を反映。`horse.favorite.value`（`on`/`off`）にミラー
+- **戻る**：標準のシステム戻るボタン（ナビゲーションスタックが用意します）。バックエンドは OS 由来の id `BackButton` で引きます。アプリ定義の戻る id はありません。
 
 ### 5.2 タブ：Search（`search` 名前空間）
 
-- `search.field` — 検索フィールド。同じカタログを name で大小無視フィルタ
-- `search.row.<horseId>` — フィルタ後の行（Stable 行と同じ id 方式だが `search.` 名前空間）
-- `search.count` — テキスト。`accessibilityValue` = マッチ数
-- `search.empty` — `search.results-empty`。クエリが何にも一致しないとき表示
-- `search.clear` — フィールドをクリア
+- `search.field`：検索フィールド。同じカタログを name で大小無視フィルタ
+- `search.row.<horseId>`：フィルタ後の行（Stable 行と同じ id 方式だが `search.` 名前空間）
+- `search.count`：テキスト。`accessibilityValue` = マッチ数
+- `search.empty`：`search.results-empty`。クエリが何にも一致しないとき表示
+- `search.clear`：フィールドをクリア
 
 ### 5.3 タブ：Log（`log` 名前空間、フォーム＋モーダル）
 
 入力コントロールとモーダル各様式をすべて行使するトレーニングログ作成画面。
 
-- `log.note` — 複数行テキストフィールド
-- `log.count` — 数値ステッパー。初期値は 1（共有の `extract.yaml` が絶対値をアサートするため、どのターゲットもここから始めます）。`log.count.value` が数値をミラー
-- `log.intense` — ボタン式トグル「Intense」（廃止済みの idb バックエンドは iOS 26 では素の Toggle/UISwitch を切り替えられませんでした、BE-0290）。`log.intense.value` = `on`/`off`
-- `log.segment.<one|two|three>` — ボタン式のセグメントコントロール（廃止済みの idb バックエンドは iOS 26 では native の `Picker(.segmented)` / `UISegmentedControl` を切り替えられませんでした、BE-0290）。選択中のボタンが `selected` トレイトを持ち、選択内容は `log.segment.value`（`one`/`two`/`three`、既定は `one`）にミラーされます
-- `log.submit` — ボタン：note/count を JSON にして `SHOWCASE_HTTP_BASE` + `/post` へ POST。成功で `log.toast` を表示（約 3 秒で自動消滅。ステップの境目をまたいでも出現と消滅をシナリオが観測できる長さ → `wait until gone` を行使）し、行を追加
-- `log.status` — value `idle`/`loading`/`done`/`error`
-- `log.row.<n>` — 投入済みエントリ
+- `log.note`：複数行テキストフィールド
+- `log.count`：数値ステッパー。初期値は 1（共有の `extract.yaml` が絶対値をアサートするため、どのターゲットもここから始めます）。`log.count.value` が数値をミラー
+- `log.intense`：ボタン式トグル「Intense」（廃止済みの idb バックエンドは iOS 26 では素の Toggle/UISwitch を切り替えられませんでした、BE-0290）。`log.intense.value` = `on`/`off`
+- `log.segment.<one|two|three>`：ボタン式のセグメントコントロール（廃止済みの idb バックエンドは iOS 26 では native の `Picker(.segmented)` / `UISegmentedControl` を切り替えられませんでした、BE-0290）。選択中のボタンが `selected` トレイトを持ち、選択内容は `log.segment.value`（`one`/`two`/`three`、既定は `one`）にミラーされます
+- `log.submit`：ボタン：note/count を JSON にして `SHOWCASE_HTTP_BASE` + `/post` へ POST。成功で `log.toast` を表示（約 3 秒で自動消滅。ステップの境目をまたいでも出現と消滅をシナリオが観測できる長さ → `wait until gone` を行使）し、行を追加
+- `log.status`：value `idle`/`loading`/`done`/`error`
+- `log.row.<n>`：投入済みエントリ
 
 専用のジェスチャ標的（長押しとダブルタップ。結果をミラーするので、ジェスチャが届いたことをシナリオが
 アサートできます。どちらもフォームの折り返しより下にあるので、実行時はまず画面内へスクロールします）：
-- `log.longpress` — 長押し標的。`log.longpress.value` = `idle`/`pressed`
-- `log.doubletap` — ダブルタップ標的。`log.doubletap.value` がタップ回数をミラー（`0`、`1`、…）
+- `log.longpress`：長押し標的。`log.longpress.value` = `idle`/`pressed`
+- `log.doubletap`：ダブルタップ標的。`log.doubletap.value` がタップ回数をミラー（`0`、`1`、…）
 
 Log から到達するモーダル（5 つの提示様式）：
 - `log.openFilter` → detent 付き **sheet**：`log.sheet.title`、`log.sheet.apply`、`log.sheet.close`
 - `log.openGallery` → **fullScreenCover**：`log.cover.title`、`log.cover.close`
 - `log.openDelete` → **アクションシート**（confirmationDialog / UIAlertController ではなく、素のボタンによる自前のオーバーレイ。廃止済みの idb バックエンドは iOS 26 ではアラートのアクションを駆動できませんでした、BE-0290）：選択肢 `log.dialog.archive`、`log.dialog.delete`（破壊的）、`log.dialog.cancel`。結果は `log.dialog.value`（`none`/`archive`/`delete`）にミラー
 - `log.openAlert` → **ネイティブアラート**（SwiftUI の `.alert` / UIKit の `UIAlertController` style `.alert`）：アクションは `log.alert.cancel`（「Cancel」）と `log.alert.ok`（「OK」）の 2 つ。上記のアクションシートと異なり、iOS 26 の XCUITest バックエンドで駆動できる本物のネイティブアラートです。結果は `log.alert.value`（`none`/`cancel`/`ok`）にミラー。UIKit では `UIAlertAction` がビューではないため、識別子の付与だけは専用のヘルパを通します（§8）。SwiftUI のアラートのボタンは通常のヘルパのままです。識別子をまったく持たない `-noax` の対では、いずれのボタンも `label` と `traits` で引くほかありません。**現時点では iOS 限定**：Compose / Views / Flutter の Log 画面にはネイティブアラートに相当するものがなく、そのためシナリオも `scenarios/alert.yaml` に独立させています
-- `log.toast` — 上記の一過性トースト
+- `log.toast`：上記の一過性トースト
 
 ### 5.4 タブ：Permissions（`perm` / `sys` 名前空間、**OS 連携画面**）
 
@@ -221,15 +221,15 @@ Log から到達するモーダル（5 つの提示様式）：
 画面**（§7）です。alert-guard のフローへ直接到達できるよう、トップレベルのタブに昇格しました。加えて、
 ペーストボードの往復を行う System セクションを持ちます。
 
-- `perm.requestNotif` — ボタン → `UNUserNotificationCenter.requestAuthorization`。**SpringBoard の通知プロンプト**を上げる（プロセス外で、アプリ内のアクセシビリティ照会には見えず、run の vision alert guard が消すか、`systemAlertHandling` で「Allow」を叩く）。
-- `perm.notif.value` — `notDetermined`/`authorized`/`denied`
-- `perm.notif.authorized` — 許可後にのみ表示される要素（run が待てる肯定条件を与える）
-- `perm.requestLocation` — ボタン → `CLLocationManager.requestWhenInUseAuthorization`。**システムの位置情報プロンプト**を上げる（同じく SpringBoard）。
-- `perm.location.value` — `notDetermined`/`authorizedWhenInUse`/`denied`
-- `perm.requestTracking` — ボタン → `ATTrackingManager.requestTrackingAuthorization`。フォームの最後の行に置く。**App Tracking Transparency のプロンプト**（SpringBoard）を上げる。BE-0445 のプローブは、このプロンプトを通知とペーストのプロンプトと並べて測る。
-- `perm.tracking.value` — `notDetermined`/`authorized`/`denied`
+- `perm.requestNotif`：ボタン → `UNUserNotificationCenter.requestAuthorization`。**SpringBoard の通知プロンプト**を上げる（プロセス外で、アプリ内のアクセシビリティ照会には見えず、run の vision alert guard が消すか、`systemAlertHandling` で「Allow」を叩く）。
+- `perm.notif.value`：`notDetermined`/`authorized`/`denied`
+- `perm.notif.authorized`：許可後にのみ表示される要素（run が待てる肯定条件を与える）
+- `perm.requestLocation`：ボタン → `CLLocationManager.requestWhenInUseAuthorization`。**システムの位置情報プロンプト**を上げる（同じく SpringBoard）。
+- `perm.location.value`：`notDetermined`/`authorizedWhenInUse`/`denied`
+- `perm.requestTracking`：ボタン → `ATTrackingManager.requestTrackingAuthorization`。フォームの最後の行に置く。**App Tracking Transparency のプロンプト**（SpringBoard）を上げる。BE-0445 のプローブは、このプロンプトを通知とペーストのプロンプトと並べて測る。
+- `perm.tracking.value`：`notDetermined`/`authorized`/`denied`
 
-**Password AutoFill** — iOS 本物の「パスワードを保存」アラートの上に、通知の要求が重なった組です。
+**Password AutoFill**：iOS 本物の「パスワードを保存」アラートの上に、通知の要求が重なった組です。
 反応的なガードが答える順序を問われる場面で、ここに模造品はありません。アプリ内ブラウザが読み込む
 ページ（`browser/login.html`）にサインインすると iOS が資格情報の保存を申し出ます。associated domain
 も entitlement も HTTPS も不要です。iOS は Safari と同じく、web フォームのオリジンに対して申し出る
@@ -238,7 +238,7 @@ Log から到達するモーダル（5 つの提示様式）：
 出る通知の要求は別プロセスの SpringBoard のアラートで、ネイティブ経路でしか答えられません。
 `save_password_browser.yaml` と `save_password_interrupts_step.yaml` が駆動します。`make -C
 demos/showcase e2e-savepassword` は 2 本を順に、それぞれ消去した直後の端末に対して走らせます。
-- `SHOWCASE_NOTIF_AFTER_BROWSER` — アプリ内ブラウザが開いてから通知の要求を上げるまでの秒数です。
+- `SHOWCASE_NOTIF_AFTER_BROWSER`：アプリ内ブラウザが開いてから通知の要求を上げるまでの秒数です。
   タップなしで 2 つ目のプロンプトを到達させます。設定するのはこの 2 本だけです。システムアラートが
   出ている最中の要素タップは割り込み監視が先に答えるので、シナリオがタップでどちらの順序へも持ち込む
   ことはできないからです
@@ -249,7 +249,7 @@ demos/showcase e2e-savepassword` は 2 本を順に、それぞれ消去した�
   `wait` ステップを置かない `handleSystemAlert` ステップが、ガードが保存アラートを片付けたあとで
   iOS が上げるプロンプトに答えます（BE-0406）
 
-**Sign In**（`SHOWCASE_SIGNIN`、SwiftUI のみ） — iOS が同じアラートを出すもう 1 つの経路です。ブラウザ
+**Sign In**（`SHOWCASE_SIGNIN`、SwiftUI のみ）：iOS が同じアラートを出すもう 1 つの経路です。ブラウザ
 のページではなく、アプリ自身の `.username` / `.password` のフィールドから出します。`SHOWCASE_GESTURES`
 と同じく起動環境変数で画面ごと差し替えるので、他のシナリオのタブバーは動きません。実測で分かった
 要点が 2 つあります。フィールドは素のビューコントローラに置いた素の `UITextField` であること
@@ -258,24 +258,24 @@ demos/showcase e2e-savepassword` は 2 本を順に、それぞれ消去した�
 合図にするのはこれです）。この経路には `make -C demos/showcase e2e-savepassword-native` が用意する
 associated domain の仕掛けも要ります。無ければ iOS は何も申し出ないので、他のレーンは単なるサインイン
 画面を見るだけです。`save_password_native.yaml` が駆動します。
-- `signin.username` / `signin.password` — content type を付けたフィールド
-- `signin.submit` — サインイン後の画面を push します
-- `signin.value` — `idle` / `signedIn`
-- `signin.signedIn` — push された画面にのみ表示される要素（待てる肯定条件）
+- `signin.username` / `signin.password`：content type を付けたフィールド
+- `signin.submit`：サインイン後の画面を push します
+- `signin.value`：`idle` / `signedIn`
+- `signin.signedIn`：push された画面にのみ表示される要素（待てる肯定条件）
 
-**System** — ペーストボードの往復で、バックエンドのアプリ内クエリでは本来観測できない状態をミラーします。
+**System**：ペーストボードの往復で、バックエンドのアプリ内クエリでは本来観測できない状態をミラーします。
 このアプリ自身が書いた値は黙って読み戻せます。別プロセスが仕込んだペーストボードを読むと iOS のペースト同意
 プロンプトが出ます。このプロンプトには `paste_system_alert.yaml` が `handleSystemAlert` で応答します（BE-0369）。iOS の 2 つの
 アプリは、ペーストボードを**メインスレッド外で**読みます。この読み取りはプロンプトが出ているあいだ呼び出し元を
 ブロックするため、メインスレッドが止まると、読み取りを起こした tap そのものが返らなくなるからです。
-- `sys.copy` — 既知の文字列（`bajutsu-clip`）をペーストボードへ書くボタン
-- `sys.paste` — ペーストボードを読み戻して `sys.paste.value` に入れるボタン
-- `sys.paste.value` — ペーストされたテキスト。シナリオは `sys.copy` に続けて `sys.paste` を叩き、値を待ってから
+- `sys.copy`：既知の文字列（`bajutsu-clip`）をペーストボードへ書くボタン
+- `sys.paste`：ペーストボードを読み戻して `sys.paste.value` に入れるボタン
+- `sys.paste.value`：ペーストされたテキスト。シナリオは `sys.copy` に続けて `sys.paste` を叩き、値を待ってから
   アサートします。読み取りが文字列を返さなかったとき、つまりペーストの同意を拒否したときやペーストボードが
   空のときは、`(none)` を公開します。プロンプトに `choice: deny` で応答するシナリオが、一度も読んでいない
   フィールドと見分けのつかない状態ではなく、待って確かめられる値を得るためです
 
-**アプリ内ブラウザ** — 同じ System セクションから、`SHOWCASE_BROWSER_URL` が指すページを
+**アプリ内ブラウザ**：同じ System セクションから、`SHOWCASE_BROWSER_URL` が指すページを
 `SFSafariViewController` で開きます。ブラウザは画面を別プロセス（`com.apple.SafariViewService`）で
 描きます。そのためブラウザが出ているあいだ、バックエンドが読むのはアプリ自身のツリーではありません。
 ブラウザのクロームも描画済みのページも、その別プロセスのアプリケーションハンドルから、アプリと同じ
@@ -283,8 +283,8 @@ associated domain の仕掛けも要ります。無ければ iOS は何も申し
 フィクスチャであるのと同じ意味で、このセクションはシナリオが操作するプロセス外 UI のフィクスチャです。
 シナリオは [`browser.yaml`](scenarios/browser.yaml)、専用のレーンは
 `make -C demos/showcase e2e-browser` です。このレーンがブラウザの読み込むページを配信します。
-- `sys.openBrowser` — `SHOWCASE_BROWSER_URL` をブラウザで開くボタン
-- `sys.browser.value` — `idle`/`loaded`/`loadFailed`。`SHOWCASE_BROWSER_URL` を URL として解釈できない
+- `sys.openBrowser`：`SHOWCASE_BROWSER_URL` をブラウザで開くボタン
+- `sys.browser.value`：`idle`/`loaded`/`loadFailed`。`SHOWCASE_BROWSER_URL` を URL として解釈できない
   ときはブラウザを開かず、`badURL` を公開する。アプリ自身がブラウザについて観測できる唯一の事実、
   つまりページの読み込みが完了したかどうかを `SFSafariViewControllerDelegate` の通知でミラーした値。
   ブラウザを開くたびに `idle` へ戻すので、前回の結果で `loaded` の待機が満たされることはない。
@@ -300,9 +300,9 @@ associated domain の仕掛けも要ります。無ければ iOS は何も申し
 [`select_photos.yaml`](scenarios/select_photos.yaml) と
 [`select_photo_single.yaml`](scenarios/select_photo_single.yaml) です。どちらもピッカーを開く前に
 `preconditions.device.ios.seedPhotos` で写真ライブラリをシードします。実効の `subject.reinstall: erase` が必須です。
-- `perm.openPhotoPicker` — 無制限選択のピッカーを提示するボタン
-- `perm.openPhotoPickerSingle` — `selectionLimit = 1` のピッカーを提示するボタン
-- `perm.photos.value` — 選択した枚数。ピッカーが閉じた時点でミラーされる（それまでは 0）
+- `perm.openPhotoPicker`：無制限選択のピッカーを提示するボタン
+- `perm.openPhotoPickerSingle`：`selectionLimit = 1` のピッカーを提示するボタン
+- `perm.photos.value`：選択した枚数。ピッカーが閉じた時点でミラーされる（それまでは 0）
 
 ### 5.5 タブ：Notices（`notice` 名前空間。長いリスト → 詳細、スクロール先の要素）
 
@@ -314,12 +314,12 @@ associated domain の仕掛けも要ります。無ければ iOS は何も申し
 画面に対する割合分スクロール、§6.2）して対象行が現れるまでスクロールし、それから `tap` します。データロードを伴う Stable
 カタログとは別の、素朴なリスト → 詳細フローで、ナビゲーションやスクロール、crawl のきれいな対象です。
 
-- `notice.row.<id>` — *表示中*の notice ごとに 1 つ（`notice.row.1` …。画面外の末尾はスクロール後にのみ現れる）。`<id>` はデータ由来。タップで Notice Detail を push。（`notice.row.*` に対する固定 `count` はアサートしないこと。ツリーにあるのは画面内の行だけで、端末依存です。）
+- `notice.row.<id>`：*表示中*の notice ごとに 1 つ（`notice.row.1` …。画面外の末尾はスクロール後にのみ現れる）。`<id>` はデータ由来。タップで Notice Detail を push。（`notice.row.*` に対する固定 `count` はアサートしないこと。ツリーにあるのは画面内の行だけで、端末依存です。）
 
 **Notice Detail**（Notices の行をタップして push）：
-- `notice.detail.title` — notice のタイトル（画面の識別要素。ナビタイトルには id を付けない）
-- `notice.detail.body` — notice の本文
-- **戻る** — 標準のシステム戻るボタン。バックエンドは OS 由来の id `BackButton` で引きます（§5.1 参照）。
+- `notice.detail.title`：notice のタイトル（画面の識別要素。ナビタイトルには id を付けない）
+- `notice.detail.body`：notice の本文
+- **戻る**：標準のシステム戻るボタン。バックエンドは OS 由来の id `BackButton` で引きます（§5.1 参照）。
 
 ### 5.6 保存メモ（`saved` 名前空間。`SHOWCASE_SAVED_NOTE`、SwiftUI と Compose のみ）
 
@@ -337,20 +337,20 @@ associated domain の仕掛けも要ります。無ければ iOS は何も申し
 [`device_group_update.yaml`](scenarios/device_group_update.yaml) は旧ビルドで起動してメモを保存し、
 現行ビルドを上書きインストールしてから、メモを読み戻します。
 
-- `saved.build` — 動作中のビルド。`previous` または `current` をミラーします
-- `saved.field` — メモの入力欄
-- `saved.save` — 入力欄の文字列を保存するボタン
-- `saved.value` — 保存済みのメモをミラーします（保存するまでは `none`）
+- `saved.build`：動作中のビルド。`previous` または `current` をミラーします
+- `saved.field`：メモの入力欄
+- `saved.save`：入力欄の文字列を保存するボタン
+- `saved.value`：保存済みのメモをミラーします（保存するまでは `none`）
 
 ## 6. 通信
 
 アプリ内コレクタ連携を用います（iOS は BajutsuKit、Android は BajutsuAndroid）。
 
-- **iOS** — アプリは **BajutsuKit** をリンクし、起動時に `BajutsuNet.startIfEnabled()` を呼ぶ
+- **iOS**：アプリは **BajutsuKit** をリンクし、起動時に `BajutsuNet.startIfEnabled()` を呼ぶ
   （BajutsuKit の起動環境キーがどれも注入されない限り no-op。ネットワーク捕捉は `BAJUTSU_COLLECTOR`、
   スタブは `BAJUTSU_MOCKS`、タッチの可視化は `BAJUTSU_TOUCH_MARKERS`）。以後すべてのリクエストはインターセプタを通るので、
   `network` 証跡と `mocks` がアプリ無改変で効く（[DESIGN §3.2](../../DESIGN.md)）。
-- **Android** — アプリは **BajutsuAndroid** をリンクし、起動時に `BajutsuNet.configure(launchEnv)` を
+- **Android**：アプリは **BajutsuAndroid** をリンクし、起動時に `BajutsuNet.configure(launchEnv)` を
   呼び、OkHttp クライアントに `BajutsuNet.interceptor()` を足す（BE-0283）。`network` 証跡は同じように
   効く。`mocks` は追随の課題で、捕捉は OkHttp 由来に限られる（`URLSession` 限定という制約の Android 版）。
 - エンドポイント：カタログ GET `SHOWCASE_API_URL`（既定 `https://example.com`）、詳細 GET
@@ -381,7 +381,7 @@ Swift のアクティブコンパイル条件 `ACCESSIBLE` ただ 1 つを、`-a
 それらをシャドウしません：`accessibilityID(_:)` が識別子を付け、`accessibilityStateValue(_:)` が状態を
 `accessibilityValue` にミラーします。
 
-**SwiftUI** — a11y ビルドでのみ識別子／値を付ける `View` ヘルパ：
+**SwiftUI**：a11y ビルドでのみ識別子／値を付ける `View` ヘルパ：
 
 ```swift
 extension View {
@@ -405,7 +405,7 @@ extension View {
 }
 ```
 
-**UIKit** — `UIAccessibilityIdentification`（`UIView`/`UIBarItem` が準拠）の拡張と、
+**UIKit**：`UIAccessibilityIdentification`（`UIView`/`UIBarItem` が準拠）の拡張と、
 `UIView`/`UIBarItem` への `accessibilityStateValue(_:)`：
 
 ```swift
