@@ -15,18 +15,20 @@
 
 ## Introduction
 
-Many parallel sessions and contributors work this repository at once (see
-[ai-development.md](../../docs/ai-development.md)), and pull requests conflict far more often than the
-work is actually semantically overlapping. This item proposes treating *a merge conflict as a
-design defect* and reshaping the file flow so that independent changes touch disjoint files: turn
-hand-edited shared ledgers into generated artifacts, split monolith modules and test files so new
-work adds files rather than editing shared ones, and add the minimal git-side defenses
-(`rerere`, a lockfile merge driver) that the repo currently lacks.
+Many parallel sessions and contributors work in this repository at once (see [ai-development.md](../../docs/ai-development.md)).
+Pull requests conflict far more often than the work semantically overlaps.
+
+This item proposes treating *a merge conflict as a design defect*.
+It reshapes the file flow so that independent changes touch disjoint files, in three steps:
+
+- Turn hand-edited shared ledgers into generated artifacts.
+- Split monolith modules and test files, so that new work adds files instead of editing shared ones.
+- Add the minimal git-side defenses that the repo currently lacks: `rerere` and a lockfile merge driver.
 
 ## Motivation
 
-A scan of the last 200 commits shows the conflict hot spots are structural, not accidental — the
-same few shared files are edited by nearly every PR:
+A scan of the last 200 commits shows that the conflict hot spots are structural, not accidental.
+Nearly every PR edits the same few shared files.
 
 | Kind | Files (change frequency) | Why it conflicts |
 |---|---|---|
@@ -35,58 +37,73 @@ same few shared files are edited by nearly every PR:
 | Single-file test suites | `test_serve.py` (16), `test_scenario.py`, `test_orchestrator.py` | Multiple PRs append to the same test file |
 | EN/JA mirroring + deps | `README.md` / `README.ja.md`, `docs/*` ↔ `docs/ja/*`, `uv.lock` (59) / `pyproject.toml` | One change always touches two files; the conflict surface doubles |
 
-The repo also carries **no git-side defenses**: no `.gitattributes` (no merge drivers), `rerere`
-disabled (not wired into `make setup`), and the history is full of `Merge branch 'main' into
-<branch>` commits — long-lived branches drift and integrate late, so conflicts surface large.
+The repo also carries **no git-side defenses**:
 
-The BE-ID allocation race is already solved (the `BE-0043` placeholder + `scripts/allocate_roadmap_ids.py`
-run by the [`roadmap-id`](../../.github/workflows/roadmap-id.yml) workflow), but the **index
-tables that carry those IDs are still hand-edited**, so they remain the single largest conflict
-source. This proposal closes that gap and generalizes the lesson.
+- There is no `.gitattributes`, so no merge drivers exist.
+- `rerere` is disabled and not wired into `make setup`.
+- The history is full of `Merge branch 'main' into <branch>` commits.
+
+Long-lived branches drift and integrate late, so conflicts surface large.
+
+The BE-ID allocation race is already solved.
+The `BE-0043` placeholder and `scripts/allocate_roadmap_ids.py` do the work, run by the [`roadmap-id`](../../.github/workflows/roadmap-id.yml) workflow.
+The **index tables that carry those IDs are still hand-edited**, so they remain the single largest conflict source.
+This proposal closes that gap and generalizes the lesson.
 
 ## Detailed design
 
-Four mechanisms, in order of leverage:
+Four mechanisms follow, in order of leverage.
 
-1. **Turn shared ledgers into generated artifacts.** Each `BE-NNNN/*.md` file already carries the
-   metadata an index row needs (`Status`, `Track`, `Topic`). A `scripts/build_roadmap_index.py`
-   would read those metadata blocks and regenerate the tables in `README.md` / `README-ja.md`;
-   `make check` (and CI) would verify the committed index is up to date and fail on drift. A
-   roadmap PR then touches only its own directory, so the index never conflicts — and if a
-   generated file ever does conflict, "regenerate and overwrite" resolves it mechanically (and
-   `rerere` replays it). The same fragment pattern (towncrier-style `changes/<id>.md`) removes the
-   classic single-`CHANGELOG` conflict if a changelog is later introduced.
+1. **Turn shared ledgers into generated artifacts.**
+   Each `BE-NNNN/*.md` file already carries the metadata that an index row needs (`Status`, `Track`, `Topic`).
+   A `scripts/build_roadmap_index.py` would read those metadata blocks and regenerate the tables in `README.md` / `README-ja.md`.
+   `make check` (and CI) would verify that the committed index is up to date, and would fail on drift.
 
-2. **Break up monoliths so new work adds files.** CLI commands are already independent
-   `@app.command()` functions; move them to `bajutsu/commands/<name>.py` and register the Typer
-   sub-apps by directory discovery, so a new command is a **new file**. Split single-file test
-   suites into `tests/<area>/test_<feature>.py`. Deeper splits of `orchestrator.py` / `runner.py`
-   are out of scope here — the CLI and tests are the high-value, low-risk wins.
+   A roadmap PR then touches only its own directory, so the index never conflicts.
+   If a generated file ever does conflict, "regenerate and overwrite" resolves it mechanically, and `rerere` replays the resolution.
 
-3. **Add the minimal git-side defenses.** A `.gitattributes` entry plus a `make setup` step that
-   registers a custom merge driver which **regenerates `uv.lock` (`uv lock`) on conflict** instead
-   of merging it line by line; enable `rerere` (`git config rerere.enabled true`) in `make setup`
-   so a once-resolved conflict auto-replays; restrict `merge=union` to genuinely append-only,
-   line-independent generated lists only (misuse breaks semantics).
+   The same fragment pattern (towncrier-style `changes/<id>.md`) removes the classic single-`CHANGELOG` conflict, if a changelog is later introduced.
 
-4. **Process / flow.** Keep PRs small and short-lived and rebase rather than merge (CLAUDE.md
-   already says rebase, but the history shows merge commits — make squash/rebase the policy);
-   optionally enable a GitHub **merge queue** so PRs are tested against the post-merge state
-   serially, stopping drift-induced conflicts at the door.
+2. **Break up monoliths so that new work adds files.**
+   CLI commands are already independent `@app.command()` functions.
+   Move them to `bajutsu/commands/<name>.py`, and register the Typer sub-apps by directory discovery.
+   A new command is then a **new file**.
 
-Mechanisms 1 and 3 alone cover most of the measured top conflict sources (roadmap index + lockfile
-+ re-resolution) at low cost; 2 and 4 are reinforcement.
+   Split single-file test suites into `tests/<area>/test_<feature>.py`.
+
+   Deeper splits of `orchestrator.py` and `runner.py` are out of scope here.
+   The CLI and the tests are the high-value, low-risk wins.
+
+3. **Add the minimal git-side defenses.**
+   - Add a `.gitattributes` entry, plus a `make setup` step that registers a custom merge driver.
+     The driver **regenerates `uv.lock` (`uv lock`) on conflict**, instead of merging the file line by line.
+   - Enable `rerere` (`git config rerere.enabled true`) in `make setup`, so that a once-resolved conflict replays automatically.
+   - Restrict `merge=union` to genuinely append-only, line-independent generated lists, because misuse breaks semantics.
+
+4. **Process and flow.**
+   Keep PRs small and short-lived, and rebase rather than merge.
+   CLAUDE.md already says to rebase, but the history shows merge commits, so make squash or rebase the policy.
+
+   Optionally, enable a GitHub **merge queue**.
+   The queue tests PRs against the post-merge state, serially, and so stops drift-induced conflicts at the door.
+
+Mechanisms 1 and 3 alone cover most of the measured top conflict sources at low cost.
+Those sources are the roadmap index, the lockfile, and re-resolution.
+Mechanisms 2 and 4 are reinforcement.
 
 ## Alternatives considered
 
-- **`merge=union` on the index tables.** Cheapest, but union concatenates both sides' lines,
-  producing duplicate/misordered rows and silently broken tables — wrong for a structured,
-  sorted index. Generation is the correct fix.
-- **Drop the committed index entirely (build-only artifact).** Loses GitHub's rendered, browseable
-  roadmap. Generating *and committing* (with a CI freshness check) keeps the browseable file while
-  removing the hand-edit conflict.
-- **Do nothing / rely on manual rebasing.** The status quo; the history shows it does not scale to
-  the number of concurrent sessions.
+- **`merge=union` on the index tables.**
+  `merge=union` is the cheapest option.
+  But union concatenates both sides' lines, which produces duplicate or misordered rows and silently broken tables.
+  Union is wrong for a structured, sorted index, and generation is the correct fix.
+- **Drop the committed index entirely (build-only artifact).**
+  Dropping the index loses GitHub's rendered, browseable roadmap.
+  Generating *and committing* the index (with a CI freshness check) keeps the browseable file.
+  It also removes the hand-edit conflict.
+- **Do nothing and rely on manual rebasing.**
+  Manual rebasing is the status quo.
+  The history shows that it does not scale to the number of concurrent sessions.
 
 ## Progress
 
