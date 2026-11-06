@@ -15,19 +15,21 @@
 
 ## Introduction
 
-Expose Bajutsu commands as MCP (Model Context Protocol) tools so that AI agents (Claude Desktop / Code) can invoke them directly. This integrates with Tier 1 (AI authoring and investigation) — the deterministic gate stays unchanged.
+Bajutsu commands become Model Context Protocol (MCP) tools that AI agents such as Claude Desktop and Claude Code call directly. This serves [Tier 1](../../docs/glossary.md#the-two-tiers), where AI authors scenarios and investigates failures. The deterministic gate stays unchanged.
 
 ## Motivation
 
-Bajutsu already treats an AI agent as a first-class Tier-1 user: it authors and investigates scenarios. But an agent reaching Bajutsu through the shell has to construct CLI invocations, capture stdout, and parse free-form output to learn what happened. Exposing the commands as MCP tools gives the agent a typed surface it can call directly, and exposing each run's manifest and report as MCP resources lets it read structured results instead of scraping logs. The pass/fail judgement still comes only from the deterministic runner, so the gate is unchanged; MCP only makes the AI-facing paths (authoring, investigation) reachable without a shell.
+Bajutsu already treats an AI agent as a first-class Tier 1 user that authors and investigates scenarios. An agent that reaches Bajutsu through the shell must build CLI invocations, capture stdout, and parse free-form output to learn what happened.
+
+MCP tools give the agent a typed surface to call directly. MCP resources expose each run's manifest and report, so the agent reads structured results instead of scraping logs. Only the deterministic runner judges pass or fail, so the gate is unchanged. MCP makes the AI-facing paths (authoring and investigation) reachable without a shell.
 
 ## Detailed design
 
-The MCP server lives in `bajutsu/mcp/` (optional dependency `fastmcp>=2.0.0`).
+The MCP server lives in `bajutsu/mcp/`. It needs the optional dependency `fastmcp>=2.0.0`.
 
 **Tools:**
-- `bajutsu_doctor(app, udid)` — score the current screen's accessibility readiness (in-process)
-- `bajutsu_run(app, scenario, ...)` — execute scenarios deterministically (subprocess)
+- `bajutsu_doctor(app, udid)` — scores the current screen's accessibility readiness (in-process)
+- `bajutsu_run(app, scenario, ...)` — executes scenarios deterministically (subprocess)
 
 **Resources:**
 - `bajutsu://runs/{run_id}/manifest.json` — structured run result
@@ -40,8 +42,8 @@ Install: `uv pip install bajutsu[mcp]`
 
 ## Alternatives considered
 
-- In-process execution for `run` (rejected: device pool management is complex; subprocess is simpler and matches the `serve` pattern)
-- HTTP transport as default (rejected: stdio is the standard for Claude Desktop / Code integration)
+- **In-process execution for `run`.** Rejected: device pool management is complex. A subprocess is simpler and matches the `serve` pattern.
+- **HTTP transport as the default.** Rejected: stdio is the standard transport for Claude Desktop and Claude Code integration.
 
 ## Progress
 

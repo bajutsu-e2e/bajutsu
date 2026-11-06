@@ -15,28 +15,36 @@
 
 ## Introduction
 
-This proposal addresses the risk that self-healing could weaken pass/fail criteria. A fix is **always reviewed by a human as a diff and explicitly applied with `--write`** (never auto-applied); a fragment mismatch is a safe no-op.
+This proposal addresses the risk that self-healing could weaken pass/fail criteria. A human **always reviews a fix as a diff and applies it explicitly with `--write`**. A fix is never auto-applied. A fragment mismatch is a safe no-op.
 
 ## Motivation
 
-Self-healing has a well-known failure mode: in trying to keep tests green it quietly makes them weaker. A renamed id gets "fixed" to whatever is on screen, a timeout creeps up until a real slowness is masked, an assertion is loosened until it always passes. Each step looks harmless; together they hollow out the suite so it no longer catches regressions. Because Bajutsu's whole premise is that the deterministic gate is trustworthy, an unguarded fix mechanism would undermine the one thing the tool exists to protect. This proposal is the set of guards that lets self-healing propose fixes without ever being able to silently relax what a test checks.
+Self-healing has a well-known failure mode: while keeping tests green, it quietly makes them weaker. Three examples show the pattern:
+
+- A renamed id gets "fixed" to whatever is on screen.
+- A timeout creeps up until a real slowness is masked.
+- An assertion is loosened until it always passes.
+
+Each step looks harmless. Together they hollow out the suite, and it no longer catches regressions.
+
+Bajutsu's whole premise is that the deterministic gate is trustworthy. An unguarded fix mechanism would undermine the one thing the tool exists to protect. This proposal is the set of guards that lets self-healing propose fixes without ever silently relaxing what a test checks.
 
 ## Detailed design
 
 The guards are structural, not advisory:
 
-* **No auto-apply, ever.** A fix is always surfaced first as a unified diff a human reads. Writing the file requires an explicit `--write`; the default is a dry run that changes nothing. Verification is the deterministic `run` (`--rerun`), not the model's say-so.
-* **Constrained fix kinds.** A fix is one of `renameId` / `addIndex` / `raiseTimeout`, expressed as `find` -> `replace` over the scenario source. The model cannot emit an arbitrary rewrite; it can only rename a token, disambiguate a selector, or lengthen a wait — and `find` must be an exact substring of the source.
-* **Fragment mismatch is a safe no-op.** If the `find` fragment no longer matches the source (the file moved on, or the fix was stale), `apply_fix` returns a replacement count of 0 and leaves the text untouched. The CLI reports the no-op; nothing is silently half-applied.
-* **AI stays on the investigator side.** The model proposes; it never decides pass/fail. The verdict comes only from `expect` assertions in a deterministic `run`. No guard here ever loosens an assertion, because triage does not emit assertion-relaxing fixes in the first place — `raiseTimeout` lengthens a wait but does not change what is asserted, and there is no "weaken expectation" fix kind.
+* **No auto-apply, ever.** A fix is first surfaced as a unified diff that a human reads. Writing the file requires an explicit `--write`. The default is a dry run that changes nothing. The deterministic `run` (`--rerun`) provides the verification, not the model's say-so.
+* **Constrained fix kinds.** A fix is one of `renameId`, `addIndex`, or `raiseTimeout`, expressed as `find` -> `replace` over the scenario source. The model cannot emit an arbitrary rewrite. It can only rename a token, disambiguate a selector, or lengthen a wait. In addition, `find` must be an exact substring of the source.
+* **Fragment mismatch is a safe no-op.** Suppose the `find` fragment no longer matches the source, because the file moved on or the fix went stale. `apply_fix` then returns a replacement count of 0 and leaves the text untouched. The CLI reports the no-op, so nothing is silently half-applied.
+* **AI stays on the investigator side.** The model proposes and never decides pass or fail. The verdict comes only from `expect` assertions in a deterministic `run`. No guard here ever loosens an assertion, because triage does not emit assertion-relaxing fixes in the first place. `raiseTimeout` lengthens a wait but does not change what is asserted, and no fix kind weakens an expectation.
 
-Together these mean the worst a fix can do is be reviewed and rejected. It cannot reach the committed YAML without a human reading the diff and opting in.
+Together these guards limit the worst outcome of a fix: a reviewer reads it and rejects it. A fix cannot reach the committed YAML unless a human reads the diff and opts in.
 
 ## Alternatives considered
 
-* **Auto-apply with a confidence threshold.** Tempting, but any automatic write — however confident — can relax a constraint without review, which is exactly the failure mode this proposal exists to prevent. The human-in-the-loop diff is the guard; a threshold only moves the line, it does not hold it.
-* **Allow assertion-weakening fixes behind a stronger warning.** Rejected. Loosening an expectation is the most direct way to make a test laxer, so no fix kind produces one; assertion failures get suggestions for a human, never an applicable fix.
-* **Trust review alone, drop the no-op safety.** Without the fragment-mismatch no-op, a stale fix could partially apply or corrupt the file in surprising ways. Making mismatch a visible no-op keeps even a rejected or outdated fix from doing damage.
+* **Auto-apply with a confidence threshold.** Tempting, but any automatic write, however confident, can relax a constraint without review. That is exactly the failure mode this proposal exists to prevent. The human-in-the-loop diff is the guard. A threshold only moves the line and does not hold it.
+* **Allow assertion-weakening fixes behind a stronger warning.** Rejected. Loosening an expectation is the most direct way to make a test laxer, so no fix kind produces one. An assertion failure gets suggestions for a human, never an applicable fix.
+* **Trust review alone and drop the no-op safety.** Without the fragment-mismatch no-op, a stale fix could partially apply or corrupt the file in surprising ways. A visible no-op on mismatch keeps even a rejected or outdated fix from doing damage.
 
 ## Progress
 
