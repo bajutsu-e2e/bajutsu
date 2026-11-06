@@ -254,7 +254,7 @@ closure. `run_scenario` already shares `live_bindings` across phases the same wa
 `_LoopConfig` is `@dataclass(frozen=True)`. It is documented as "the run-invariant inputs the step
 loop reads but never mutates". `mailbox` and `progress` are callables that the loop only invokes, never state it writes through. They set no precedent for the latch. `StepLoopState` already is
 that precedent. `_run_steps` builds a fresh one per phase, but hands each the same `bindings` object
-that `run_scenario` created once. That is exactly the scenario-scoped sharing this latch needs. It
+that `run_scenario` created once. That is the scenario-scoped sharing this latch needs. It
 costs one more parameter alongside `bindings`, rather than a new field on a class documented never
 to hold one.
 
@@ -1340,7 +1340,7 @@ Left unswallowed here, the error would take this path:
 3. It reaches `cli.py`'s bare `_execute(...)` then `_finish(...)`, with no `try` / `finally` between
    them.
 
-`_finish` would never run. `write_repros` would never walk `screen_map.crashes`. That discards every repro and every artifact that this item buffered for the *entire* walk. It does so on exactly the failure that this item exists to capture evidence for.
+`_finish` would never run. `write_repros` would never walk `screen_map.crashes`. That discards every repro and every artifact that this item buffered for the *entire* walk. It does so on the failure that this item exists to capture evidence for.
 
 Capturing here matters for concurrency, not only correctness. `record_crash` holds the coordinator's
 `self._cond` for its whole body. That same lock also serializes `on_event` (`_coordinator.py`'s
