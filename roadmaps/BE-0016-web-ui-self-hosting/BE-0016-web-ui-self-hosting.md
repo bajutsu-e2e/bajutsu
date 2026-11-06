@@ -161,7 +161,7 @@ backend ships six pieces:
   ([#507](https://github.com/bajutsu-e2e/bajutsu/pull/507)).
 
 The mapping below is the menu for the remaining managed services. The **Shipped today** column marks
-what `deploy/self-host/` already uses, and what is still a suggested choice for scale-out.
+what `deploy/self-host/` already uses, as opposed to what is still a suggested choice for scale-out.
 
 | Cloud-hosting selection | Self-hosted replacement | Shipped today |
 |---|---|---|

@@ -16,7 +16,7 @@
 
 ## Introduction
 
-This item is the **design and the enabling software** for a publicly hosted web UI. That software has **fully landed**. A server backend now ships beyond local/server parity. The backend provides auth, persistence, role-based access control (RBAC), audit, quotas, and **multi-tenancy**. See *Migration*, *Persistence and identity*, and *§8 — multi-tenancy* below.
+This item is the **design and the enabling software** for a publicly hosted web UI. That software has **fully landed**. Beyond local/server parity, a server backend now ships. The backend provides auth, persistence, role-based access control (RBAC), audit, quotas, and **multi-tenancy**. See *Migration*, *Persistence and identity*, and *§8 — multi-tenancy* below.
 
 What remains is the **operational deployment** onto real infrastructure:
 
