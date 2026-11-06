@@ -73,13 +73,13 @@ three `TRY` rules are a small, precise set:
 
 Adopting the rest of Pylint's rule set through ruff's `PL` prefix is a separate question that this
 item does not take up. A full `PL` run measures 526 findings, and `PLC0415` (import outside top
-level) accounts for 258 of them. That result is false-positive-heavy here, because this codebase's
+level) alone accounts for 258 of them. That result is false-positive-heavy here, because this codebase's
 own convention is to import an optional or heavy dependency lazily inside the function that needs it.
 The mypy overrides for `boto3`, `playwright`, and the rest already document that pattern.
 
 `PLE` (Pylint's error tier, the rules closest to a real bug) reports zero findings. This item
 selects it alongside `W` on the same "free to turn on" grounds: no migration cost now, and every
-future `PLE` error gated from here on. Examples are a misplaced bare `raise` (`PLE0704`), an `await`
+future `PLE` error is gated from here on. Examples are a misplaced bare `raise` (`PLE0704`), an `await`
 outside an `async` function (`PLE1142`), and a bad `strip` argument (`PLE1310`).
 
 This item's `PLW` slice is the useful remainder once `PLC0415`'s noise is set aside:

@@ -24,7 +24,7 @@ The shared procedure lives in one workflow document, so the skill works two ways
 invoke it directly as a standalone skill. Another skill (for example `pr-followup`) can call it as a
 sub-step when that skill notices something worth flagging that lies outside the current change's
 scope. A judge-only skill such as [`claude-review`](../../.apm/skills/claude-review/SKILL.md) never
-calls it, because that skill edits and files nothing. Its findings reach `record-issue` through
+calls it, because that skill edits and files nothing. Its findings reach `record-issue` only through
 whatever invoked it.
 
 ## Motivation
@@ -57,7 +57,7 @@ already treats open GitHub Issues as one of its two candidate sources alongside 
 `record-issue` is the durable, repository-level counterpart. It files a persistent, team-visible
 issue that `task-select` can surface to anyone, in a later session, on a different machine.
 
-`record-issue` files an issue and never ships a fix.
+`record-issue` only files an issue and never ships a fix.
 [`fix-issue`](../BE-0380-fix-issue-skill/BE-0380-fix-issue-skill.md) is the consuming counterpart
 that ships an implementation for an already-filed issue, typically after `task-select` surfaces it
 as a candidate. The two items never overlap in scope.
@@ -187,7 +187,7 @@ considered*.
 When the invoker instead chose in step 2 to comment on an open match, draft that comment body
 separately: the finding, its evidence, and where it was noticed. `gh issue comment` carries no title
 or label of its own. Note the chosen label as a `gh issue edit --add-label` addition for step 5
-merely when the target issue carries neither `bug` nor `enhancement`. Step 2 shows each candidate's
+solely when the target issue carries neither `bug` nor `enhancement`. Step 2 shows each candidate's
 labels alongside its number, title, and state, so commenting never re-classifies an issue someone
 else filed.
 

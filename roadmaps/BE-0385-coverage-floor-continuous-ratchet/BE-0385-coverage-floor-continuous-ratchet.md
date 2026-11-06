@@ -106,7 +106,7 @@ adds a second coverage collection pass.
 - **Make the per-file floor a hard ceiling as well as a hard floor** (fail if a file's coverage
   rises and the same PR leaves the snapshot unchanged) — rejected. That would fail a
   contributor's PR for the unrelated reason of having improved coverage, which punishes the very
-  behavior this item wants to encourage. The floor blocks a drop and never blocks a rise.
+  behavior this item wants to encourage. The floor only blocks a drop and never blocks a rise.
 - **Set every file's initial per-file floor to today's global 89%** — rejected. That would fail
   `make check` at once for every file already under 89% (`doctor.py` and the rest listed in
   *Motivation*). The landing PR of this item would then carry an unrelated obligation to fix every
