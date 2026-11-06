@@ -15,61 +15,70 @@
 
 ## Introduction
 
-`serve/server/oauth.py`'s `GitHubOAuthClient` wraps Authlib's `OAuth2Client` to drive `serve`'s
-GitHub login. No test in `tests/serve/test_oauth.py` ever instantiates or drives the real class —
-every test substitutes `FakeOAuthClient`, `_RaisingOAuthClient`, or a hand-written `_PagingClient`
-standing in for `httpx`. This item captures one real handshake against a throwaway GitHub OAuth App
-and replays it through the real client code.
+`GitHubOAuthClient` in `serve/server/oauth.py` wraps Authlib's `OAuth2Client` to drive `serve`'s GitHub
+login. No test in `tests/serve/test_oauth.py` instantiates or drives the real class. Every test
+substitutes `FakeOAuthClient`, `_RaisingOAuthClient`, or a hand-written `_PagingClient` that stands in
+for `httpx`.
+
+This item captures one real handshake against a throwaway GitHub OAuth App. It then replays the
+captured handshake through the real client code.
 
 ## Motivation
 
-The fakes prove `serve`'s login flow correctly calls whatever `GitHubOAuthClient` returns; they
-prove nothing about whether the real class, wrapping the real Authlib `OAuth2Client` over real
-`httpx`, actually completes a token exchange against GitHub, or whether `_fetch_orgs` parses GitHub's
-real org-list response shape at all, as opposed to the hand-built `_PagingClient`'s stand-in for it.
-A version bump in Authlib changing its token-exchange call signature or a change in GitHub's OAuth
-response shape would both be invisible to this suite, because none of it ever leaves the process —
-the exact failure mode a mocked-client test suite cannot catch by construction.
+The fakes prove that `serve`'s login flow correctly calls whatever `GitHubOAuthClient` returns. They
+leave two questions open:
+
+- Whether the real class, which wraps the real Authlib `OAuth2Client` over real `httpx`, completes a
+  token exchange against GitHub.
+- Whether `_fetch_orgs` parses GitHub's real org-list response shape at all, as opposed to the shape
+  that the hand-built `_PagingClient` stands in for.
+
+Two changes would be invisible to this suite: a version bump in Authlib that changes its
+token-exchange call signature, and a change in GitHub's OAuth response shape. None of the suite ever
+leaves the process. A mocked-client test suite cannot catch this failure mode by construction.
 
 ## Detailed design
 
 Proposal altitude. The work is MECE along the units below.
 
-- **A throwaway GitHub OAuth App, captured once.** Register a minimal test-only OAuth App (its
-  client ID/secret used only for a one-time manual capture, never stored in CI). A maintainer
-  manually completes one real authorization-code exchange against it and saves the raw HTTP
-  responses — the token exchange, the user-identity lookup, and a representative org-list page —
-  with the real access token and every real identifying field in the responses (login, org
-  identifiers, numeric user id, email, name, avatar URL, and any other PII GitHub returns)
-  replaced by fixture values before the responses are committed.
-- **Replay the captured responses through the real code, not a live CI login.** Getting the initial
-  authorization `code` requires a human completing GitHub's hosted login-and-consent page —
-  scripting that from a CI runner means logging into a live account programmatically, risking
-  GitHub's 2FA, device-verification, and CAPTCHA challenges firing unpredictably on CI IPs — exactly the
-  kind of flakiness this item exists to avoid, and a far more sensitive secret to risk than the
-  OAuth client secret. Instead, intercept at the `httpx` transport boundary (`respx` or a custom
-  `httpx.MockTransport`) and replay the captured real responses back through the real
-  `GitHubOAuthClient`/`OAuth2Client`/`_fetch_orgs`, so an Authlib call-signature break against that
-  known-real shape is still caught with no live network call or credential needed in CI — though a
-  *future* GitHub response-shape change stays invisible until the fixture is recaptured.
+- **A throwaway GitHub OAuth App, captured once.** Register a minimal test-only OAuth App. Its client
+  ID and secret serve only a one-time manual capture and are never stored in CI.
+  - A maintainer manually completes one real authorization-code exchange against the App. The
+    maintainer saves the raw HTTP responses: the token exchange, the user-identity lookup, and a
+    representative org-list page.
+  - Before the responses are committed, fixture values replace the real access token and every real
+    identifying field. Those fields are the login, org identifiers, numeric user id, email, name,
+    avatar URL, and any other PII GitHub returns.
+- **Replay the captured responses through the real code, not a live CI login.** The initial
+  authorization `code` requires a human to complete GitHub's hosted login-and-consent page.
+  - Scripting that from a CI runner means logging into a live account programmatically. GitHub's 2FA,
+    device-verification, and CAPTCHA challenges could then fire unpredictably on CI IPs.
+  - That is exactly the kind of flakiness this item exists to avoid. It also risks a far more
+    sensitive secret than the OAuth client secret.
+  - Instead, intercept at the `httpx` transport boundary (`respx` or a custom `httpx.MockTransport`).
+    Replay the captured real responses through the real `GitHubOAuthClient`, `OAuth2Client`, and
+    `_fetch_orgs`.
+  - An Authlib call-signature break against that known-real shape is then still caught, with no live
+    network call or credential needed in CI. A *future* GitHub response-shape change stays invisible
+    until the fixture is recaptured.
 - **Keep the mocked-client tests as they are.** `FakeOAuthClient`, `_RaisingOAuthClient`, and
-  `_PagingClient` already cover the login flow's own logic and its error paths; this item adds a
-  captured-real-response fixture alongside them rather than replacing them.
+  `_PagingClient` already cover the login flow's own logic and its error paths. This item adds a
+  captured-real-response fixture alongside them and does not replace them.
 
 ## Alternatives considered
 
-- **Drive a real, scripted headless browser login in CI.** This alternative was the first design
-  considered here, but the initial authorization `code` can only come from a human completing GitHub's hosted
-  login-and-consent page — scripting that from CI means holding and driving a live account's credentials, with
-  GitHub's anti-automation defenses (2FA, device verification, CAPTCHA) able to fire unpredictably.
-  That approach carries a worse flakiness and secret-handling problem than the one this item sets
-  out to solve.
+- **Drive a real, scripted headless browser login in CI.** This was the first design considered here.
+  The initial authorization `code` can only come from a human completing GitHub's hosted
+  login-and-consent page. Scripting that from CI means holding and driving a live account's
+  credentials, with GitHub's anti-automation defenses (2FA, device verification, CAPTCHA) able to fire
+  unpredictably. That approach carries a worse flakiness and secret-handling problem than the one this
+  item sets out to solve.
 - **Trust the mocked-client tests, since the login flow's own logic is unit-tested.** The flow logic
-  being correct for a canned client response says nothing about whether the real Authlib/`httpx`
-  stack actually parses what GitHub's real API returns, which is the property this item verifies.
-- **Rely on Authlib's own test suite for the OAuth2Client contract.** Authlib's tests cover Authlib;
-  they say nothing about whether `serve`'s own `GitHubOAuthClient` wrapper and `_fetch_orgs` pagination
-  logic correctly handle a real GitHub response.
+  can be correct for a canned client response. That says nothing about whether the real Authlib and
+  `httpx` stack parses what GitHub's real API returns, and this item verifies that property.
+- **Rely on Authlib's own test suite for the OAuth2Client contract.** Authlib's tests cover Authlib.
+  They say nothing about whether `serve`'s own `GitHubOAuthClient` wrapper and `_fetch_orgs`
+  pagination logic handle a real GitHub response correctly.
 
 ## Progress
 
