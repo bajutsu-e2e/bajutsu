@@ -9,11 +9,16 @@
 
 ---
 
-## 全体像（データフロー）
+## データフローの全体像
 
-[シナリオ](glossary.md#シナリオのオーサリング)（AI または人手で作成）が共有の成果物です。`run` は、それをゲートとして AI なしで決定的にリプレイします。`codegen` と `triage` もシナリオを入力として使います。
-Tier 1（AI、図では黄）はオーサリングと調査のみを担い、Tier 2（決定的、図では青）は機械アサーションのみで合否を決めます。
-この決定的な中核全体はプラットフォーム非依存で、プラットフォーム固有の継ぎ目は orchestrator が駆動する backend（iOS は XCUITest、Android は adb、web は playwright、… いずれも 1 つの `Driver` インターフェースの背後）だけです。新しいプラットフォームは新しい backend であって、コアの fork ではありません。
+[シナリオ](glossary.md#シナリオのオーサリング)は、AI または人手で作成する共有の成果物です。`run` はシナリオを、ゲートに AI を置かずに決定的にリプレイします。`codegen` と `triage` もシナリオを入力として使います。
+
+作業は 2 つの Tier に分かれます。
+
+- Tier 1（AI、図では黄）は、シナリオのオーサリングと失敗の調査を担います。
+- Tier 2（決定的、図では青）は、機械アサーションだけで合否を決めます。
+
+決定的な中核全体はプラットフォーム非依存です。プラットフォーム固有の継ぎ目は、orchestrator が駆動する **backend** だけです。iOS は XCUITest、Android は adb、web は playwright といった実体が、いずれも 1 つの `Driver` インターフェースの背後にあります。したがって、新しいプラットフォームは新しい backend であって、コアの fork ではありません。
 
 ![データフロー図。自然言語のゴールまたは人手編集がシナリオ YAML を生成し、Tier 2 の Orchestrator が backend 非依存の Driver API を通じて XCUITest・adb・Playwright のいずれかに対して決定的に実行します。合否は Reporter に渡り、失敗時は triage がシナリオへの修正案を提案します。](assets/diagrams/architecture-data-flow-ja.svg)
 
@@ -68,7 +73,7 @@ flowchart TB
 
 </details>
 
-下の[依存レイヤ図](#依存関係レイヤ)は、同じシステムをデータフローではなくモジュール層として見たものです。
+下の[依存レイヤ図](#依存関係とレイヤ)は、同じシステムをデータフローではなくモジュール層として示します。
 
 ---
 
@@ -137,9 +142,9 @@ flowchart TB
 | `common/stall_diagnostics.py` | バックエンドが stall した瞬間の、範囲を限定したベストエフォートな状態取得（BE-0361/BE-0367） | — |
 | `common/_yaml.py` | `on`/`off`/`yes`/`no` を文字列のまま読む YAML ローダ | [scenarios](scenarios.md#yaml-の注意点) |
 
-## 依存関係（レイヤ）
+## 依存関係とレイヤ
 
-下層ほど安定で、上層が下層に依存します。中核は `common/drivers/base`（セレクタ解決）で、すべての実行系がここに依存します。
+下層ほど安定していて、上層が下層に依存します。中核は `common/drivers/base`（セレクタ解決）で、すべての実行系が中核に依存します。
 
 ![依存レイヤ図。cli/ がユーザ接点であり、その下に runner/、record.py/crawl/、codegen/、trace.py、triage.py が直接ぶら下がります（codegen/ と trace.py には、これ以上の依存関係が描かれていません）。runner/ は orchestrator/ に、record.py/crawl/ は AI エージェント関連のヘルパーに、triage.py は serve・CI 関連のヘルパーに、それぞれ依存します。orchestrator/ とエージェント関連のヘルパーは assertions/ と evidence/ に依存し、orchestrator/ はさらに config.py、backends.py、simctl.py にも依存します。assertions/ は scenario/ に、evidence/ は report/ に依存し、scenario/、report/、config.py、backends.py、simctl.py はいずれも決定性の核である drivers/base.py に収束します。そこから drivers/fake、iOS・Android 系ドライバ（xcuitest、adb）、Playwright ドライバへ分岐します。](assets/diagrams/architecture-dependency-layers-ja.svg)
 
@@ -215,27 +220,41 @@ flowchart TB
 
 ### 強制されるレイヤ境界（BE-0112）
 
-上のレイヤ分けは規約にとどまりません。ゲートで**実行可能な契約**として強制します。`make lint-imports`（`make check` の一部であり、CI のステップでもあります）が [import-linter](https://import-linter.readthedocs.io/) を宣言したレイヤに対して実行するので、禁止された import は誰かが気付くまで残らず、その場でゲートを落とします。設定は `pyproject.toml` の `[tool.importlinter]` にあります。3 つのレイヤを宣言します。
+上のレイヤ分けは規約にとどまらず、ゲートで**実行可能な契約**として強制します。`make lint-imports`（`make check` の一部であり、CI のステップでもあります）は、宣言したレイヤに対して [import-linter](https://import-linter.readthedocs.io/) を実行します。禁止された import は、誰かが気付くまで残らず、その場でゲートを落とします。設定は `pyproject.toml` の `[tool.importlinter]` にあり、3 つのレイヤを宣言します。
 
-1. **決定性コア**：モデルにも periphery のスタックにも触れずに判定と証跡を導く経路です。`common/orchestrator/`、`common/runner/`、`common/drivers/base`、`assertions/`、`evidence/`、`report/`、`config/`、`scenario/`、`preflight.py` / `capability_preflight.py` / `capabilities.py` / `worker_capability.py`、`common/doctor/`、`common/lint.py` / `common/target_lint.py` が含まれます。prime directive を担います。
-2. **契約（contract）**：利用者が依存する安定した界面です。シナリオスキーマ（`scenario/`）と `Driver` Protocol（`common/drivers/base`）です。
-3. **periphery**：契約の利用側で、いずれもオプションの extra の背後に切り離せます。`serve/`、`mcp/`、codegen のエミッタ、AI / エージェント経路（`agents/` 以下の `protocols`、`ai_config`、`anthropic_client`、`enrich`、`alerts` など、加えて `record/`、`triage/`、`crawl/guide` など）、`github/actions.py` / `run/notify` のヘルパです（`github/` の残り、`app` と `errors` は決定的コアからも参照できるので、`config_source` は periphery を巻き込まずに利用します）。
+1. **決定性コア**：モデルにも periphery のスタックにも触れずに、判定と証跡を導く経路です。`common/orchestrator/`、`common/runner/`、`common/drivers/base`、`assertions/`、`evidence/`、`report/`、`config/`、`scenario/`、`preflight.py` / `capability_preflight.py` / `capabilities.py` / `worker_capability.py`、`common/doctor/`、`common/lint.py` / `common/target_lint.py` が含まれます。コアは prime directive を担います。
+2. **契約（contract）**：利用者が依存する安定した界面です。シナリオスキーマ（`scenario/`）と `Driver` Protocol（`common/drivers/base`）が当たります。
+3. **periphery**：契約の利用側で、いずれもオプションの extra の背後に切り離せます。
+   - `serve/`、`mcp/`、codegen のエミッタ。
+   - AI / エージェント経路：`agents/` 以下の `protocols`、`ai_config`、`anthropic_client`、`enrich`、`alerts` など、加えて `record/`、`triage/`、`crawl/guide`。
+   - `github/actions.py` と `run/notify` のヘルパ。`github/` の残り（`app` と `errors`）は決定的コアからも参照できるので、`config_source` は periphery を巻き込まずに利用します。
 
 強制する契約は 3 つです。
 
-- **決定性コアは periphery を import してはいけません。** これはprime directive 1 と 3 を静的な契約にしたものです。判定と証跡の経路を serve / AI / codegen のスタックから切り離したまま保ち、それらへの依存が黙って増えることを防ぎます。コアのモジュールが必要とする純粋な要素ツリーのヘルパ（`screen_size_from_elements`、`shows_app_ui` など）は、`record/` のような periphery のモジュールではなくコア（`bajutsu/common/drivers/elements.py`）に置きます。同様に、解決済みの `ai` ブロック（`AiConfig`）は `config/` に置き、コアは AI クライアントを import せずにそれを読みます。
-- **コアはホスト非依存に保ちます（BE-0129）。** マルチテナントなホスティングの関心事（組織、ロール、テナンシー）と、`db`（SQLAlchemy、Alembic、psycopg、cryptography）や `oauth`（Authlib、joserfc）の extra は、`bajutsu/serve/` だけが持ちます。組織モデル（`OrgConfig`、`org_for_*`、`targets_for_org`、`load_serve_config`）は `config/` ではなく `bajutsu/serve/orgs.py` にあります。`Config` は `orgs` フィールドを持たず、コアのローダーは検証の前にトップレベルの `orgs:` を取り除くので、組織情報を含む config を読むホスト型構成の run はそのまま動きつつ、コアは組織を一切モデル化しません。同じ仕組みがトップレベルの `ui:` キー（BE-0191）も除去します。serve UI のプレゼンテーション設定（`ui.default_theme`）は serve の関心事であり、`bajutsu/serve/themes/` で読み取られます。`Config` はモデル化しません。import-linter の forbidden 契約が `config/`・`common/drivers/`・`common/runner/`・`scenario/` をこれらの extra から遠ざけます（`include_external_packages` により外部 import も検出します）。これは、それらを `bajutsu.serve` から遠ざける periphery 契約の上に重ねたものです。
-- **シナリオスキーマと `Driver` Protocol は可搬なインナー契約に保ちます。** periphery だけでなく runtime のコア（`common/orchestrator/`、`common/runner/`、`config/` など）からも独立させます。これにより契約は、利用者が runtime を引き込まずに依存できる安定したレイヤになり、バージョンをまたいだスキーマの読み取り（BE-0119）や、将来 periphery をコアから分離する余地を下支えします。
+- **決定性コアは periphery を import してはいけません。** この契約は、prime directive 1 と 3 を静的に強制します。判定と証跡の経路は serve / AI / codegen のスタックから切り離されたままで、それらへの依存が黙って増えることはありません。
+  - コアのモジュールが必要とする純粋な要素ツリーのヘルパ（`screen_size_from_elements`、`shows_app_ui` など）は、`record/` のような periphery のモジュールではなく、コア（`bajutsu/common/drivers/elements.py`）に置きます。
+  - 同様に、解決済みの `ai` ブロック（`AiConfig`）は `config/` に置きます。コアは AI クライアントを import せずに、このブロックを読みます。
+- **コアはホスト非依存に保ちます（BE-0129）。** マルチテナントなホスティングの関心事は、`bajutsu/serve/` だけが持ちます。関心事とは、組織、ロール、テナンシーと、`db`（SQLAlchemy、Alembic、psycopg、cryptography）や `oauth`（Authlib、joserfc）の extra です。
+  - 組織モデル（`OrgConfig`、`org_for_*`、`targets_for_org`、`load_serve_config`）は、`config/` ではなく `bajutsu/serve/orgs.py` にあります。
+  - `Config` は `orgs` フィールドを持ちません。コアのローダーは検証の前にトップレベルの `orgs:` を取り除きます。そのため、組織情報を含む config を読むホスト型構成の run はそのまま動き、コアは組織を一切モデル化しません。
+  - 同じ仕組みが、トップレベルの `ui:` キー（BE-0191）も除去します。serve UI のプレゼンテーション設定（`ui.default_theme`）は serve の関心事です。この設定は `bajutsu/serve/themes/` で読み取られ、`Config` ではモデル化しません。
+  - import-linter の forbidden 契約が、`config/`、`common/drivers/`、`common/runner/`、`scenario/` をこれらの extra から遠ざけます。`include_external_packages` により、外部 import も検出します。この契約は、同じパッケージを `bajutsu.serve` から遠ざける periphery 契約の上に重ねたものです。
+- **シナリオスキーマと `Driver` Protocol は、可搬なインナー契約に保ちます。** periphery だけでなく、runtime のコア（`common/orchestrator/`、`common/runner/`、`config/` など）からも独立させます。この独立により、契約は、利用者が runtime を引き込まずに依存できる安定したレイヤになります。バージョンをまたいだスキーマの読み取り（BE-0119）と、将来 periphery をコアから分離する余地も、この独立が下支えします。
 
-このチェックは import グラフに対する静的解析です。モデルは介在せず、決定的な合否以上のものは `run` / CI の判定経路に載りません。新しいモジュールを追加するときは、そのレイヤが置き場所を決めます。判定と証跡の経路上にあるならコアであり、periphery に到達してはいけません。契約を利用するなら periphery であり、extra の背後に置きます。
+このチェックは import グラフに対する静的解析です。モデルは介在せず、決定的な合否以上のものは `run` / CI の判定経路に載りません。新しいモジュールを追加するときは、そのレイヤが置き場所を決めます。
+
+- 判定と証跡の経路上にあるモジュールはコアであり、periphery に到達してはいけません。
+- 契約を利用するモジュールは periphery であり、extra の背後に置きます。
 
 ## テスト構成
 
-`tests/` に **ユニットテスト一式**（`uv run pytest -q`）があります。すべて実機 Simulator を必要としません。コマンドビルダは純関数として、実行系は `FakeDriver` / 注入ランナー（`RunFn`、`Spawn`、`Clock`）で検証します。showcase アプリに対する実機 E2E は `make -C demos/showcase run-swiftui` / `make -C demos/showcase ui-test` です（[showcase](showcase.md)）。
+`tests/` に **ユニットテスト一式**（`uv run pytest -q`）があります。どのテストも実機 Simulator を必要としません。コマンドビルダは純関数として検証し、実行系は `FakeDriver` と注入ランナー（`RunFn`、`Spawn`、`Clock`）で検証します。showcase アプリに対する実機 E2E は、`make -C demos/showcase run-swiftui` または `make -C demos/showcase ui-test` で実行します（[showcase](showcase.md)）。
 
 ### driver conformance suite（BE-0114）
 
-prime directive 3 は、どの backend も 1 つの `Driver` 界面の背後に置くことを求めます。ですから決定性の中核となる不変条件は、すべての backend で同一に成り立たなければなりません。backend ごとのテストだけでは、これを保証できません。曖昧なセレクタで最初の一致を tap する backend や、0 件の query に成功を返す backend があっても、自身のテストは通り、落とす共通テストがないからです。**driver conformance suite** はこの隙間を埋めます。1 つの実行可能な契約（technology compatibility kit（TCK）に相当します）が、同じテスト本体をすべての backend に対して走らせ、共通の base だけでなく実際のドライバのインスタンス（`common/drivers/base` を迂回するコードを含みます）を駆動します。
+prime directive 3 は、どの backend も 1 つの `Driver` 界面の背後に置くことを求めます。したがって、決定性の中核となる不変条件は、すべての backend で同一に成り立たなければなりません。backend ごとのテストだけでは、これを保証できません。曖昧なセレクタで最初の一致を tap する backend や、0 件の query に成功を返す backend があっても、自身のテストは通ります。落とす共通テストがないからです。
+
+**driver conformance suite** は、この隙間を埋めます。1 つの実行可能な契約（technology compatibility kit（TCK）に相当します）が、同じテスト本体をすべての backend に対して走らせます。このスイートは、共通の base だけでなく、実際のドライバのインスタンス（`common/drivers/base` を迂回するコードを含みます）を駆動します。
 
 契約（`tests/driver_conformance.py`）は、新しい backend が満たすべき「完了」の定義です。
 
@@ -243,49 +262,110 @@ prime directive 3 は、どの backend も 1 つの `Driver` 界面の背後に�
 - 0 件のセレクタは、成功を報告せず失敗します。
 - セレクタの失敗は 1 つのエラー型（`SelectorError`）を共有し、backend をまたいで一様です。
 - 一意の一致はエラーなく作用し、`query()` は画面上の要素を報告します。
-- `capabilities()` が観測される挙動と一致します。`QUERY` / `ELEMENTS` の baseline を申告し、multi-touch のジェスチャは `MULTI_TOUCH` を申告したときに限り、全選択とクリップボードへのコピーは `TEXT_SELECTION` を申告したときに限り、ネイティブな `<select>` を値で設定する操作は `SELECT_OPTION` を申告したときに限り動作します（そうでなければそれぞれ `UnsupportedAction` を送出します。BE-0280）。`navigate` によるページの読み込みも同じで、`URL_NAVIGATION` を申告したときに限り動作します（BE-0464）。`read_attributes` も同じで、`ELEMENT_ATTRIBUTE` を申告したときに限り、タップと同じ規則で各セレクタを解決して属性を読みます（BE-0466）。
-- フォーカス中のフィールドでテキスト編集が往復します（入力してから削除すると、報告される文字数が減ります）。また `tap_point`（生の座標タップ。アラート消去の経路）は、フィールドの中心を狙うとそのフィールドをフォーカスし、semantic tap と同じ観測可能な効果を持ちます（BE-0280）。
-- `wait_for` は現在の画面を 1 回だけ判定し、共有の `wait_until` ループがそれを固定 sleep なしの条件待ちに変えます。
-- `scroll` の 1 ステップは、連続するビューポートを重ねたまま残します。ステップの前後の読み取りが、領域の枠に切り取られていない要素を少なくとも 1 つ共有する、という形です。各 backend が非慣性と文書化しているジェスチャを、ツリーが示せる唯一の言葉に言い直したものであり、`scroll` ループの正しさがこの重なりに乗っているため `Driver` 契約の一部です。勢いを残すジェスチャは何も共有しません。実行時に対象がループの 2 回の query のあいだを読まれないまま通り過ぎるより前に、スイートで落ちます（BE-0329）。
-- `scroll` の 1 ステップは、その終点が求めた距離だけ進みます。既定の歩幅、ループのリカバリが取る最小の歩幅、そして書き手が `amount` で要求できるその下限より小さい歩幅の 3 つで、定めた許容差の内側に収まることを確かめます。重なりが残ることは、この距離を意味しません。ビューポートが重なったまま、求めた距離よりはるかに先まで進むステップがありうるからです。BE-0400 まで、iOS のジェスチャは重なりを残したまま求めた距離の先へ進んでいました。どのドラッグも同じ速さで走査していたため、指を離した後もコンテンツが終点の先へ運ばれ、求めた距離の最大 6 倍まで進みました。しかも、どれだけ小さく求めても、画面のおよそ 3 分の 1 より短くは動きませんでした。この下限があるために、`scroll` アクションで書き手が選ぶ `amount` と、BE-0329 の半減の両方が、どのジェスチャでも実現できない歩幅を名指すことになります。1 つのバックエンドのテストではなく `Driver` 契約に属するのは、そのためです。
+- `capabilities()` は観測される挙動と一致します（そうでなければ、該当の呼び出しはそれぞれ `UnsupportedAction` を送出します。BE-0280、BE-0464、BE-0466）。
+  - `QUERY` / `ELEMENTS` の baseline を申告します。
+  - multi-touch のジェスチャは、`MULTI_TOUCH` を申告したときに限り動作します。
+  - 全選択とクリップボードへのコピーは、`TEXT_SELECTION` を申告したときに限り動作します。
+  - ネイティブな `<select>` を値で設定する操作は、`SELECT_OPTION` を申告したときに限り動作します。
+  - URL の読み込みは、`URL_NAVIGATION` を申告したときに限り動作します。
+  - `read_attributes` は、`ELEMENT_ATTRIBUTE` を申告したときに限り、タップと同じ規則で各セレクタを解決して属性を読みます。
+- フォーカス中のフィールドで、テキスト編集が往復します。入力してから削除すると、報告される文字数が減ります。`tap_point` は生の座標タップで、アラート消去の経路です。フィールドの中心を狙うと、そのフィールドをフォーカスし、semantic tap と同じ観測可能な効果を持ちます（BE-0280）。
+- `wait_for` は現在の画面を 1 回だけ判定します。共有の `wait_until` ループが、それを固定 sleep なしの条件待ちに変えます。
+- `scroll` の 1 ステップは、連続するビューポートを重ねたまま残します。ステップの前後の読み取りが、領域の枠に切り取られていない要素を少なくとも 1 つ共有する、という形です（BE-0329）。
+  - この契約は、各 backend が非慣性と文書化しているジェスチャを、ツリーが示せる唯一の言葉に言い直したものです。
+  - `scroll` ループの正しさがこの重なりに乗っているため、契約は `Driver` 契約の一部です。
+  - 勢いを残すジェスチャは何も共有しないので、スイートで落ちます。そうでなければ、実行時に対象が、ループの 2 回の query のあいだを読まれないまま通り過ぎます。
+- `scroll` の 1 ステップは、その終点が求めた距離だけ進みます。許容差の内側に収まることを、3 つの歩幅で確かめます。既定の歩幅、ループのリカバリが取る最小の歩幅、そして書き手が `amount` で要求できる、その下限より小さい歩幅です。
+  - 重なりが残ることは、この距離を意味しません。ビューポートが重なったまま、求めた距離よりはるかに先まで進むステップがありうるからです。
+  - BE-0400 まで、iOS のジェスチャがそうでした。どのドラッグも同じ速さで走査していたため、指を離した後もコンテンツが終点の先へ運ばれ、求めた距離の最大 6 倍まで進みました。どれだけ小さく求めても、画面のおよそ 3 分の 1 より短くは動きませんでした。
+  - この下限があるために、`scroll` アクションで書き手が選ぶ `amount` と、BE-0329 の半減の両方が、どのジェスチャでも実現できない歩幅を名指すことになります。この性質が 1 つのバックエンドのテストではなく `Driver` 契約に属するのは、そのためです。
 
-backend をこのスイートに加えるには、`ConformanceHarness`（画面を渡すと、それを表示するドライバを返すもの）を実装し、`DriverConformanceContract` を継承します。すると pytest が、継承した契約をその backend に対して走らせます。`FakeDriver` は高速な Linux ゲート（`make check`）で、Playwright は web CI ジョブで、XCUITest は iOS のオンデバイス E2E 経路（`ios-e2e.yml`）で、**adb backend** は起動済みの Android エミュレータ（`android-e2e.yml` の `conformance (adb)` ジョブ、BE-0270）で走ります。契約は同じで、第 2 の仕様はありません。
+backend をこのスイートに加えるには、`ConformanceHarness`（画面を渡すと、それを表示するドライバを返すもの）を実装し、`DriverConformanceContract` を継承します。すると pytest が、継承した契約をその backend に対して走らせます。契約は同じで、第 2 の仕様はありません。
 
-各 harness は画面をそれぞれの方法で実体化します。`FakeDriver` は要素をそのまま受け取り、Playwright は HTML として描画します。オンデバイスの harness は `SHOWCASE_CONFORMANCE` で showcase アプリを一度だけ conformance モードで起動し、以降は画面ごとに再シードします。これにより、共有の base だけでなく、実際の backend の query と操作のコードを駆動します。
+- `FakeDriver` は、高速な Linux ゲート（`make check`）で走ります。
+- Playwright は、web CI ジョブで走ります。
+- XCUITest は、iOS のオンデバイス E2E 経路（`ios-e2e.yml`）で走ります。
+- **adb backend** は、起動済みの Android エミュレータ（`android-e2e.yml` の `conformance (adb)` ジョブ、BE-0270）で走ります。
 
-iOS の harness は、アプリがポーリングする spec ファイル（Documents ディレクトリの `conformance-spec.txt`）を書き換えて再シードします。画面ごとの再起動や deeplink ではなくファイル書き込みにするのは、`simctl openurl` が iOS の「アプリで開きますか?」ダイアログを出し、画面ごとの再起動は数回の `app.launch()` で常駐 XCUITest ランナーをクラッシュさせるためです。
+各 harness は、画面をそれぞれの方法で実体化します。
 
-adb の harness はその代わりに、新しい `SHOWCASE_CONFORMANCE` の intent extra を載せてアプリの `singleTask` Activity を起動し直し、`onNewIntent` で届けます。`adb push` はアプリのサンドボックスに届きません。インテントなら、`subject.launch.env` を intent extras として渡す規約（BE-0007）に乗れます。これは Compose ツールキットに限定します。spec 駆動で任意の id を描く画面を表現できるのは Compose だけです（`testTag` は実行時の任意の文字列を受け取りますが、Views の `resource-id` はコンパイル時の `R` エントリでなければなりません）。
+- `FakeDriver` は、要素をそのまま受け取ります。
+- Playwright は、要素を HTML として描画します。
+- オンデバイスの harness は、`SHOWCASE_CONFORMANCE` で showcase アプリを一度だけ conformance モードで起動し、以降は画面ごとに再シードします。これにより、共有の base だけでなく、実際の backend の query と操作のコードを駆動します。
+  - iOS の harness は、アプリがポーリングする spec ファイル（Documents ディレクトリの `conformance-spec.txt`）を書き換えて再シードします。画面ごとの再起動や deeplink ではなくファイル書き込みにするのは、`simctl openurl` が iOS の「アプリで開きますか?」ダイアログを出し、画面ごとの再起動は数回の `app.launch()` で常駐 XCUITest ランナーをクラッシュさせるためです。
+  - adb の harness は、その代わりに、新しい `SHOWCASE_CONFORMANCE` の intent extra を載せてアプリの `singleTask` Activity を起動し直し、`onNewIntent` で届けます。`adb push` はアプリのサンドボックスに届きません。インテントなら、`subject.launch.env` を intent extras として渡す規約（BE-0007）に乗れます。
+  - adb の harness は、Compose ツールキットに限定します。spec 駆動で任意の id を描く画面を表現できるのは Compose だけです。`testTag` は実行時の任意の文字列を受け取りますが、Views の `resource-id` はコンパイル時の `R` エントリでなければなりません。
 
-このスイートには `ondevice` の pytest マーカーが付いており（ゲートの既定で除外されます）、`make check` では決して走りません。共有する 1 台のデバイスを 1 つのチャネルで再シードするため、並列ワーカーどうしが衝突しないよう直列で実行します。
+このスイートには `ondevice` の pytest マーカーが付いています。ゲートの既定ではこのマーカーを除外するので、スイートは `make check` では決して走りません。共有する 1 台のデバイスを 1 つのチャネルで再シードするため、並列ワーカーどうしが衝突しないよう、直列で実行します。
 
 ### 障害注入レーン（BE-0305）
 
-ドライバには、実際のデバイス障害のためだけに存在する機構が 2 つあります。そしてここまでのスイートは、そのどちらの条件にも出会いません。conformance スイートは読み取りの前に必ず画面の準備完了を待ち、ランナーを意図的に壊すジョブもないからです。`CoordinateTreeDriver` の transient-empty リトライ（BE-0254）は、デバイスが遷移途中に返すほぼ空の要素ツリーを乗り越えるために存在します。XCUITest チャネルの一過性リトライ（BE-0207）と crash-recovery（BE-0287）は、応答しなくなったランナーを乗り越えるために存在します。高速スイートのテストは、要素数を組み立て、合成した例外を送出します。これは制御フローに対する実質的なカバレッジですが、実際の条件がそこに到達するかどうかの証拠にはなりません。実際のデバイスは Python の例外を送出しませんし、要素数を見る検出ヒューリスティクスは、組み立てた要素数なら通るまま壊れうるからです。
+ドライバには、実際のデバイス障害のためだけに存在する機構が 2 つあります。ここまでのスイートは、そのどちらの条件にも出会いません。conformance スイートは読み取りの前に必ず画面の準備完了を待ち、ランナーを意図的に壊すジョブもないからです。
 
-**障害注入レーン**は、代わりに実際の条件を注入します。`fault-injection (adb)`（`android-e2e.yml`）はエミュレータのディスプレイをスリープさせます。すると実際の読み取り元（常駐 UI Automator チャネルと、その背後の `uiautomator dump` フォールバック）が本当に空のツリーを返します。リトライがそこを、誤った「要素が見つからない」を出さずに乗り越えることを検証します。2 つ目のケースはディスプレイを落としたまま保ってリトライ予算を使い切らせ、その結末が静かな失敗ではなく明示的な `ElementNotFound` になることを固定します。`fault-injection (xcuitest)`（`ios-e2e.yml`）はランナー自身のホストプロセスにシグナルを送ります。`SIGSTOP` はソケットを accept できる状態に保ったまま応答を止めます。ホストから見れば、まさに固まったランナーの姿です。そのため短い凍結は一過性リトライが吸収し、リトライ予算を超える凍結は crash-recovery が乗り越えます。`SIGKILL` では、無関係なタイムアウトではなく実行中のランナー障害を名指しするクラッシュ診断で実行が終わらなければなりません。
+- `CoordinateTreeDriver` の transient-empty リトライ（BE-0254）は、デバイスが遷移途中に返すほぼ空の要素ツリーを乗り越えるために存在します。
+- XCUITest チャネルの一過性リトライ（BE-0207）と crash-recovery（BE-0287）は、応答しなくなったランナーを乗り越えるために存在します。
 
-どちらのレーンも、障害をどれだけ保つかを推測しません。各ケースは、検証対象の層に到達したというドライバ自身のログ記録（`tests/fault_injection.py`）を合図に障害を解除します。したがって、あるケースがどの機構を駆動したかは、sleep の長さではなく観測された挙動が決めます。
+これらの機構に対する高速スイートのテストは、要素数を組み立て、合成した例外を送出します。制御フローに対する実質的なカバレッジにはなりますが、実際の条件がそこに到達するかどうかの証拠にはなりません。実際のデバイスは Python の例外を送出しません。要素数を見る検出ヒューリスティクスは、組み立てた要素数なら通るまま壊れうるからです。
 
-両レーンは現在、それぞれのレーンの必須集約チェックに入っています。着地した時点では外してありました。BE-0282 が確立した「まずシグナル、のちに必須」の道筋に乗せたためで、意図的にデバイスを壊すレーンは、健全なデバイスを駆動するレーンより本質的にフレーキーになるリスクが高いからです。その慎重さには根拠がありました。最初の 10 日間で `fault-injection (xcuitest)` は、52 回の成功に対して 78 回失敗しています。
+**障害注入レーン**は、代わりに実際の条件を注入します。
 
-慎重さを解いたのは、失敗の率が下がったことではなく、原因が判明したことです。78 回の失敗はすべて、ある修正より前に起きています。その修正は、応答を待たずに去った相手へ返信すると SIGPIPE で XCTest のホストプロセスが落ちるという、runner の HTTP サーバの欠陥を直したものです。このレーンは runner を `SIGSTOP` で止めたまま保ちます。相手が去った接続は、まさにそこから生まれます。したがってこのレーンは、健全な runner を駆動するどのスイートよりも高い頻度でその欠陥を踏んでいました。レーンが runner チャネルの実際の不具合を見つけていたわけで、それこそがレーンの存在理由です。この修正の後、レーンは 64 回実行して 1 回も失敗していません。同じ期間の `conformance (xcuitest)` は 58 回成功して 2 回失敗しています。`fault-injection (adb)` は同じ期間に 73 回実行して失敗は 1 回で、その 1 回はレーンが検証している内容ではなく、エミュレータが起動しなかったことによるものです。同じ期間の `conformance (adb)` は 67 回中 4 回失敗しています。両レーンはいま、ずっとゲートに乗っているスイートと同等か、それよりよい水準にあります。
+- `fault-injection (adb)`（`android-e2e.yml`）は、エミュレータのディスプレイをスリープさせます。すると、実際の読み取り元（常駐 UI Automator チャネルと、その背後の `uiautomator dump` フォールバック）が本当に空のツリーを返します。レーンは、リトライがそこを、誤った「要素が見つからない」を出さずに乗り越えることを検証します。2 つ目のケースはディスプレイを落としたまま保ってリトライ予算を使い切らせ、その結末が静かな失敗ではなく明示的な `ElementNotFound` になることを固定します。
+- `fault-injection (xcuitest)`（`ios-e2e.yml`）は、ランナー自身のホストプロセスにシグナルを送ります。
+  - `SIGSTOP` は、ソケットを accept できる状態に保ったまま応答を止めます。ホストから見れば、まさに固まったランナーの姿です。短い凍結は一過性リトライが吸収し、リトライ予算を超える凍結は crash-recovery が乗り越えます。
+  - `SIGKILL` では、無関係なタイムアウトではなく、実行中のランナー障害を名指しするクラッシュ診断で、実行が終わらなければなりません。
 
-`_is_transient_empty` の閾値やクラッシュ分類器のマッチングに回帰が入れば、それは両レーンが捕まえるために存在する失敗そのものです。そしてシグナルであれば、マージはそれを無視できてしまいます。したがって必須化こそが、このカバレッジに意味を持たせます。必須化は `tests/test_e2e_gate_needs.py` が高速スイートで、3 つの層に分けて固定します。各ゲートがどのジョブに依存するか、そのすべてについて結果が読まれているか、そして verdict のスクリプト自体を実行して、それぞれの結果が本当にチェックを赤にするかです。これらがなければ、ゲートを狭めることも、永久に green のまま放置することも、どのテストにも気付かれずにできてしまいます。
+どちらのレーンも、障害をどれだけ保つかを推測しません。各ケースは、検証対象の層に到達したというドライバ自身のログ記録（`tests/fault_injection.py`）を合図に、障害を解除します。したがって、あるケースがどの機構を駆動したかは、sleep の長さではなく、観測された挙動が決めます。
+
+両レーンは現在、それぞれのレーンの必須集約チェックに入っています。着地した時点では、必須チェックの外に置いてありました。BE-0282 が確立した「まずシグナル、のちに必須」の道筋に乗せたためです。意図的にデバイスを壊すレーンは、健全なデバイスを駆動するレーンより、本質的にフレーキーになるリスクが高いからです。その慎重さには根拠がありました。最初の 10 日間で `fault-injection (xcuitest)` は、52 回の成功に対して 78 回失敗しています。
+
+慎重さを解いたのは、失敗の率が下がったことではなく、原因が判明したことです。
+
+- 78 回の失敗はすべて、ある修正より前に起きています。その修正は、応答を待たずに去った相手へ返信すると SIGPIPE で XCTest のホストプロセスが落ちるという、runner の HTTP サーバの欠陥を直したものです。
+- このレーンは runner を `SIGSTOP` で止めたまま保ちます。相手が去った接続は、まさにそこから生まれます。したがってレーンは、健全な runner を駆動するどのスイートよりも高い頻度で、その欠陥を踏んでいました。レーンが runner チャネルの実際の不具合を見つけていたわけで、それこそがレーンの存在理由です。
+- この修正の後、レーンは 64 回実行して 1 回も失敗していません。同じ期間の `conformance (xcuitest)` は、58 回成功して 2 回失敗しています。
+- `fault-injection (adb)` は、同じ期間に 73 回実行して失敗は 1 回です。その 1 回は、レーンが検証している内容ではなく、エミュレータが起動しなかったことによるものです。同じ期間の `conformance (adb)` は、67 回中 4 回失敗しています。
+- 両レーンはいま、ずっとゲートに乗っているスイートと同等か、それよりよい水準にあります。
+
+`_is_transient_empty` の閾値やクラッシュ分類器のマッチングに回帰が入れば、それは両レーンが捕まえるために存在する失敗そのものです。シグナルであれば、マージはそれを無視できてしまいます。したがって、必須化こそがこのカバレッジに意味を持たせます。`tests/test_e2e_gate_needs.py` が、高速スイートで必須化を 3 つの層に分けて固定します。
+
+- 各ゲートがどのジョブに依存するか。
+- そのすべてのジョブについて、結果が読まれているか。
+- verdict のスクリプト自体を実行して、それぞれの結果が本当にチェックを赤にするか。
+
+これらがなければ、ゲートを狭めることも、永久に green のまま放置することも、どのテストにも気付かれずにできてしまいます。
 
 ### 並行デバイスレーン（BE-0298）
 
-ここまでのジョブはどれもデバイスを 1 台しか起動しません。そのため、`common/runner/pool.py` の `device_pool` が並列実行に対して主張する保証を、どのジョブも観測できません。その保証とは、`--workers N` のもとで各ワーカーが固有のデバイスを借り受けることです。さらに各ワーカーは、共有された 1 つの run ディレクトリの下にある固有の `run_dir/<sid>` サブディレクトリにだけ証跡を書きます。モックのポートや索引も、ほかのワーカーのシナリオとは共有しません。[`DESIGN.md`](../../DESIGN.md) §3.3 が述べる「状態を共有しない」不変条件です。
+ここまでのジョブはどれもデバイスを 1 台しか起動しません。そのため、`common/runner/pool.py` の `device_pool` が並列実行に対して主張する保証を、どのジョブも観測できません。その保証とは、`--workers N` のもとで各ワーカーが固有のデバイスを借り受けることです。さらに各ワーカーは、共有された 1 つの run ディレクトリの下にある固有の `run_dir/<sid>` サブディレクトリにだけ、証跡を書きます。モックのポートや索引も、ほかのワーカーのシナリオとは共有しません。[`DESIGN.md`](../../DESIGN.md) §3.3 が述べる「状態を共有しない」不変条件です。
 
-高速スイートが証明できるのは、プール自身の記帳についてだけです。`tests/runner/test_pool.py` は `make_driver` を monkeypatch します。そして `FakeDriver` インスタンスに `"UDID-A"` のような架空の udid を渡します。これで示せるのは、**プールが管理するデータ構造のなかで**ワーカー A のリソースがワーカー B のものと分離されていることまでです。そのデータ構造の外側にある OS とサブプロセスのレベルの競合については、何も語りません。起動ロックで競合する 2 つの実際の `simctl` や `adb` の呼び出し、デバイスごとに確保されるホストポート、ワーカーのサブディレクトリが存在する前に計算される成果物パスが、その競合にあたります。
+高速スイートが証明できるのは、プール自身の記帳についてだけです。`tests/runner/test_pool.py` は `make_driver` を monkeypatch し、`FakeDriver` インスタンスに `"UDID-A"` のような架空の udid を渡します。これで示せるのは、**プールが管理するデータ構造のなかで**ワーカー A のリソースがワーカー B のものと分離されていることまでです。そのデータ構造の外側にある、OS とサブプロセスのレベルの競合については、何も語りません。そうした競合には、次のものがあります。
 
-**並行デバイスレーン**は、代わりに実際のデバイスを 2 台起動します。`pool (adb)`（`android-e2e.yml`）はエミュレータを 2 台起動します。状態に依存しない showcase のシナリオファイル 4 本を、1 回の `bajutsu run --workers 2` で走らせます。プールは作業を 2 台へ振り分け、両方のワーカーを同時にビジーに保たなければなりません。
+- 起動ロックで競合する、2 つの実際の `simctl` や `adb` の呼び出し。
+- デバイスごとに確保されるホストポート。
+- ワーカーのサブディレクトリが存在する前に計算される成果物パス。
 
-結果を判定に変えるのは `scripts/assert_pool_isolation.py` です。終了した run の `manifest.json` と、run ディレクトリのサブディレクトリ一覧を読みます。ほかのワーカーの slug の下に記録された成果物、1 つの slug を共有する 2 つの結果、どの結果にも属さないサブディレクトリ、結果が記録したのに run が書いていない証跡ディレクトリのいずれかを見つけたら失敗します。片方のデバイスが黙ってすべてのシナリオを引き受けた場合、異なるデバイス上の 2 本のシナリオが実時間で重ならなかった場合も失敗します。この検査はファイルの読み取りと集合の比較にすぎません。`bajutsu run` が自身の判定を返した後に走るので、run の成果物を観測するだけで、どのシナリオの合否にも入力されません。
+**並行デバイスレーン**は、代わりに実際のデバイスを 2 台起動します。`pool (adb)`（`android-e2e.yml`）はエミュレータを 2 台起動し、状態に依存しない showcase のシナリオファイル 4 本を、1 回の `bajutsu run --workers 2` で走らせます。プールは作業を 2 台へ振り分け、両方のワーカーを同時にビジーに保たなければなりません。
 
-このジョブは、専用の変更フィルタ（`scripts/e2e_changes.py` の `touches_pool`）で発火します。ほかのすべてのジョブが読む、レーン全体を対象としたシグナルより狭いフィルタです。Android レーンのほかのジョブの 2 倍のデバイスを起動するからです。このジョブは PR ごとのシグナルであり、Android レーンの必須集約チェックからは外してあります。BE-0282 の「まずシグナル、のちに必須」の道筋に乗せる理由は、障害注入レーンと同じです。1 つの runner でエミュレータを 2 台動かす作業は、このレーンでもっともホストの資源に左右されます。
+結果を判定に変えるのは `scripts/assert_pool_isolation.py` です。このスクリプトは、終了した run の `manifest.json` と、run ディレクトリのサブディレクトリ一覧を読みます。次のいずれかを見つけたら、失敗します。
 
-iOS 側の対になるジョブ `pool (xcuitest)` は、Simulator を 2 台起動して macOS レーンで走っていましたが、BE-0298 で取り下げました。このジョブが分離の判定を返せたのは 5 回のうち 1 回だけです。残る 4 回は、プールの検査ではなくホストで崩れました。`SimRenderServer` は自身のディスパッチキューでクラッシュしました。`simctl uninstall` は固まった CoreSimulator に対してタイムアウトし、runner のチャネルは run の途中で到達不能になりました。しかも赤くなるたびに、10 倍課金の runner を 30 分ほど使いました。BE-0361 は、その runner を 3 コア・7 GiB と実測しています。Simulator を **1 台**起動しただけでゲストプロセスが 257 個立ち上がり、物理メモリの未使用分は 189 MB しか残りません。2 台目の Simulator は、すでに飽和した天井に対してゲストの数を倍にします。動画記録、タッチマーカー、シナリオの半分を削っても、崩れる位置が早まっただけで、崩れること自体は変わりませんでした。そのため、実際の並行デバイスに対する分離の検証は Android レーンだけが担い、iOS 側は高速スイートによる記帳の証明だけが残ります。
+- ほかのワーカーの slug の下に記録された成果物。
+- 1 つの slug を共有する 2 つの結果。
+- どの結果にも属さないサブディレクトリ。
+- 結果が記録したのに、run が書いていない証跡ディレクトリ。
+- 片方のデバイスが、黙ってすべてのシナリオを引き受けたこと。
+- 異なるデバイス上の 2 本のシナリオが、実時間で重ならなかったこと。
+
+この検査はファイルの読み取りと集合の比較にすぎません。`bajutsu run` が自身の判定を返した後に走るので、run の成果物を観測するだけで、どのシナリオの合否にも入力されません。
+
+このジョブは、専用の変更フィルタ（`scripts/e2e_changes.py` の `touches_pool`）で発火します。ほかのすべてのジョブが読む、レーン全体を対象としたシグナルより狭いフィルタです。Android レーンのほかのジョブの 2 倍のデバイスを起動するからです。このジョブは PR ごとのシグナルであり、Android レーンの必須集約チェックからは外してあります。BE-0282 の「まずシグナル、のちに必須」の道筋に乗せる点は、障害注入レーンと同じです。外してある理由は、このジョブ固有のものです。1 つの runner でエミュレータを 2 台動かす作業は、このレーンでもっともホストの資源に左右されるからです。
+
+iOS 側の対になるジョブ `pool (xcuitest)` は、Simulator を 2 台起動して macOS レーンで走っていましたが、BE-0298 で取り下げました。このジョブが分離の判定を返せたのは 5 回のうち 1 回だけです。残る 4 回は、プールの検査ではなくホストで崩れました。
+
+- `SimRenderServer` が、自身のディスパッチキューでクラッシュしました。
+- `simctl uninstall` が、固まった CoreSimulator に対してタイムアウトしました。
+- runner のチャネルが、run の途中で到達不能になりました。
+
+しかも赤くなるたびに、10 倍課金の runner を 30 分ほど使いました。BE-0361 は、その runner を 3 コア・7 GiB と実測しています。Simulator を **1 台**起動しただけでゲストプロセスが 257 個立ち上がり、物理メモリの未使用分は 189 MB しか残りません。2 台目の Simulator は、すでに飽和した天井に対してゲストの数を倍にします。動画記録、タッチマーカー、シナリオの半分を削っても、崩れる位置が早まっただけで、崩れること自体は変わりませんでした。そのため、実際の並行デバイスに対する分離の検証は Android レーンだけが担い、iOS 側は高速スイートによる記帳の証明だけが残ります。
 
 ---
 

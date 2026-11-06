@@ -11,9 +11,14 @@ Related: [concepts](concepts.md) · [developer guide](developer-guide.md) (the c
 
 ## Overview (data flow)
 
-A [scenario](glossary.md#scenario-authoring) (authored by AI or by hand) is the shared artifact. `run` replays it deterministically with no AI in the gate. `codegen` and `triage` also consume the scenario.
-Tier 1 (AI — yellow) authors and investigates only; Tier 2 (deterministic — blue) decides pass/fail from machine assertions alone.
-The whole spine is platform-neutral; the only platform-specific seam is the **backend** the orchestrator drives (XCUITest for iOS, adb for Android, playwright for web, … behind one `Driver` interface), so a new platform is a new backend, not a fork of the core.
+A [scenario](glossary.md#scenario-authoring), authored by AI or by hand, is the shared artifact. `run` replays the scenario deterministically with no AI in the gate. `codegen` and `triage` also consume the scenario.
+
+Two tiers divide the work:
+
+- Tier 1 (AI, yellow in the diagram) authors scenarios and investigates failures.
+- Tier 2 (deterministic, blue in the diagram) decides pass/fail from machine assertions alone.
+
+The whole spine is platform-neutral. The one platform-specific seam is the **backend** that the orchestrator drives: XCUITest for iOS, adb for Android, playwright for web, and so on, all behind one `Driver` interface. A new platform is thus a new backend, not a fork of the core.
 
 ![Data-flow diagram: a natural-language goal or hand edit produces a Scenario YAML; Tier 2's Orchestrator runs it deterministically through the backend-agnostic Driver API against XCUITest, adb, or Playwright; the verdict feeds the Reporter and, on failure, triage, which may suggest scenario edits.](assets/diagrams/architecture-data-flow.svg)
 
@@ -68,8 +73,7 @@ flowchart TB
 
 </details>
 
-The [dependency-layer view](#dependencies-layers) below is the same system seen as module layers
-rather than data flow.
+The [dependency-layer view](#dependencies-layers) below shows the same system as module layers rather than as data flow.
 
 ---
 
@@ -140,8 +144,7 @@ The `bajutsu/` package (Python 3.13+, pydantic v2 / typer / anthropic / pyyaml /
 
 ## Dependencies (layers)
 
-Lower layers are more stable; upper layers depend on lower ones. The core is `common/drivers/base`
-(selector resolution), which every execution path depends on.
+Lower layers are more stable, and upper layers depend on lower ones. The core is `common/drivers/base` (selector resolution), and every execution path depends on the core.
 
 ![Dependency-layer diagram: cli/ is the user entry point, from which runner/, record.py/crawl/, codegen/, trace.py, and triage.py descend directly (codegen/ and trace.py have no further dependencies drawn). runner/ depends on orchestrator/; record.py/crawl/ depends on the AI agent helpers; triage.py depends on the serve/CI helpers. orchestrator/ and the agent helpers depend on assertions/ and evidence/, and orchestrator/ additionally depends on config.py, backends.py, and simctl.py. assertions/ depends on scenario/ and evidence/ depends on report/; scenario/, report/, config.py, backends.py, and simctl.py all converge on drivers/base.py, the determinism core, from which drivers/fake, the iOS and Android drivers (xcuitest, adb), and the Playwright driver all derive.](assets/diagrams/architecture-dependency-layers.svg)
 
@@ -211,226 +214,172 @@ flowchart TB
 
 </details>
 
-- `common/orchestrator/` depends only on `base.Driver` and **is not coupled to any concrete driver**.
-  That is why it can be tested with `FakeDriver` without a device, while in production the same
-  loop drives XCUITest (iOS) or playwright (web).
-- `common/runner/` provides the factory that launches the app and returns a ready driver,
-  decoupling the loop from a real device.
-- `scenario/` (the pydantic authoring model) and `common/drivers/base` (the runtime TypedDict)
-  are different things. `Selector.as_selector()` converts the former to the latter.
+- `common/orchestrator/` depends on `base.Driver` alone and **is not coupled to any concrete driver**. Tests can run the loop with `FakeDriver` and no device, while in production the same loop drives XCUITest (iOS) or playwright (web).
+- `common/runner/` provides the factory that launches the app and returns a ready driver. The factory decouples the loop from a real device.
+- `scenario/` (the pydantic authoring model) and `common/drivers/base` (the runtime TypedDict) are different things. `Selector.as_selector()` converts the former to the latter.
 
 ### Enforced layer boundaries (BE-0112)
 
-The layering above is not only a convention — it is an **executable contract in the gate**.
-`make lint-imports` (part of `make check`, and a CI step) runs [import-linter](https://import-linter.readthedocs.io/)
-against the declared layers, so a forbidden import fails the gate instead of surviving until someone
-notices. The configuration lives in `[tool.importlinter]` in `pyproject.toml`. Three layers are
-declared:
+The layering above is more than a convention: it is an **executable contract in the gate**. `make lint-imports` (part of `make check`, and a CI step) runs [import-linter](https://import-linter.readthedocs.io/) against the declared layers. A forbidden import fails the gate instead of surviving until someone notices. The configuration lives in `[tool.importlinter]` in `pyproject.toml`, and it declares three layers:
 
-1. **Deterministic core** — the path that derives a verdict and evidence with no model and no
-   periphery stack: `common/orchestrator/`, `common/runner/`, `common/drivers/base`, `assertions/`, `evidence/`,
+1. **Deterministic core**: the path that derives a verdict and evidence with no model and no
+   periphery stack. It comprises `common/orchestrator/`, `common/runner/`, `common/drivers/base`, `assertions/`, `evidence/`,
    `report/`, `config/`, `scenario/`, `preflight.py` / `capability_preflight.py` /
-   `capabilities.py` / `worker_capability.py`, `common/doctor/`, `common/lint.py` / `common/target_lint.py`. It carries the prime directives.
-2. **Contract** — the stable surfaces a consumer depends on: the scenario schema (`scenario/`) and
+   `capabilities.py` / `worker_capability.py`, `common/doctor/`, and `common/lint.py` / `common/target_lint.py`. The core carries the prime directives.
+2. **Contract**: the stable surfaces a consumer depends on. These are the scenario schema (`scenario/`) and
    the `Driver` Protocol (`common/drivers/base`).
-3. **Periphery** — the consumers of the contract, each removable behind an optional extra:
-   `serve/`, `mcp/`, the codegen emitters, the AI / agent paths (`agents/` — `protocols`, `ai_config`,
-   `anthropic_client`, `enrich`, `alerts`, … — plus `record/`, `triage/`, `crawl/guide`, …),
-   and the `github/actions.py` / `run/notify` helpers (the rest of `github/` — `app` / `errors` — is
-   core-safe, so `config_source` reaches it without pulling the periphery in).
+3. **Periphery**: the consumers of the contract, each removable behind an optional extra.
+   - `serve/`, `mcp/`, and the codegen emitters.
+   - The AI / agent paths: `agents/` (`protocols`, `ai_config`, `anthropic_client`, `enrich`, `alerts`, and more) plus `record/`, `triage/`, and `crawl/guide`.
+   - The `github/actions.py` and `run/notify` helpers. The rest of `github/` (`app` and `errors`) is core-safe, so `config_source` reaches it without pulling the periphery in.
 
 Three contracts are enforced:
 
-- **The deterministic core must not import the periphery.** This contract enforces prime directives
-  #1 and #3 statically: the verdict/evidence path stays free of the serve, AI, and codegen stacks, and
-  cannot silently grow a dependency on them. A pure element-tree helper a core module needs (e.g.
-  `screen_size_from_elements`, `shows_app_ui`) lives in the core (`bajutsu/common/drivers/elements.py`), not in a
-  periphery module such as `record/`; likewise the resolved `ai` block (`AiConfig`) lives in
-  `config/`, so the core reads it without importing the AI client.
-- **The core must stay host-agnostic (BE-0129).** Multi-tenant hosting concerns — organizations,
-  roles, tenancy — and the `db` (SQLAlchemy/Alembic/psycopg/cryptography) and `oauth` (Authlib, joserfc)
-  extras belong to `bajutsu/serve/` alone. The org model (`OrgConfig`, `org_for_*`,
-  `targets_for_org`, `load_serve_config`) lives in `bajutsu/serve/orgs.py`, not `config/`; `Config`
-  carries no `orgs` field, and the core loader drops a top-level `orgs:` before validation so a run
-  in the hosted topology (which reads an org-bearing config) keeps working while the core never
-  models orgs. The same mechanism also drops a top-level `ui:` key (BE-0191) — the serve UI's
-  presentation settings (`ui.default_theme`) are a serve concern and are parsed in
-  `bajutsu/serve/themes/`, not modeled in `Config`. A forbidden import-linter contract keeps `config/`, `common/drivers/`, `common/runner/`, and
-  `scenario/` off those extras (`include_external_packages` lets it see the external import), on top
-  of the periphery contract that already keeps them off `bajutsu.serve`.
-- **The scenario schema and `Driver` Protocol stay a portable inner contract** — independent of the
-  runtime core (`common/orchestrator/`, `common/runner/`, `config/`, …) as well as the periphery. This independence
-  keeps the contract a stable layer a consumer can depend on without pulling the runtime, underpinning
-  cross-version schema reads (BE-0119) and any future split of the periphery from the core.
+- **The deterministic core must not import the periphery.** This contract enforces prime directives #1 and #3 statically. The verdict/evidence path stays free of the serve, AI, and codegen stacks and cannot silently grow a dependency on them.
+  - A core module may need a pure element-tree helper, such as `screen_size_from_elements` or `shows_app_ui`.
+  - The helper lives in the core (`bajutsu/common/drivers/elements.py`).
+  - It does not live in a periphery module such as `record/`.
+  - Likewise the resolved `ai` block (`AiConfig`) lives in `config/`, so the core reads it without importing the AI client.
+- **The core must stay host-agnostic (BE-0129).** Multi-tenant hosting concerns belong to `bajutsu/serve/` alone. These concerns are organizations, roles, and tenancy, plus the `db` (SQLAlchemy/Alembic/psycopg/cryptography) and `oauth` (Authlib, joserfc) extras.
+  - The org model (`OrgConfig`, `org_for_*`, `targets_for_org`, `load_serve_config`) lives in `bajutsu/serve/orgs.py`, not `config/`.
+  - `Config` carries no `orgs` field. The core loader drops a top-level `orgs:` before validation.
+  - A run in the hosted topology (which reads an org-bearing config) therefore keeps working.
+  - The core never models orgs.
+  - The same mechanism drops a top-level `ui:` key (BE-0191). The serve UI's presentation settings (`ui.default_theme`) are a serve concern, parsed in `bajutsu/serve/themes/` and not modeled in `Config`.
+  - A forbidden import-linter contract keeps `config/`, `common/drivers/`, `common/runner/`, and `scenario/` off those extras. `include_external_packages` lets the contract see the external import. It sits on top of the periphery contract that already keeps those packages off `bajutsu.serve`.
+- **The scenario schema and `Driver` Protocol stay a portable inner contract.**
+  - They are independent of the runtime core (`common/orchestrator/`, `common/runner/`, `config/`, and more) as well as the periphery.
+  - The independence keeps the contract a stable layer. A consumer can depend on it without pulling in the runtime.
+  - It underpins cross-version schema reads (BE-0119) and any future split of the periphery from the core.
 
-The check is static analysis on the import graph — no model, nothing on the `run` / CI verdict path
-beyond a deterministic pass/fail. When a new module is added, its layer decides where it belongs: if
-it is on the verdict/evidence path it is core and must not reach the periphery; if it consumes the
-contract it is periphery and belongs behind an extra.
+The check is static analysis on the import graph. It uses no model, and nothing on the `run` / CI verdict path changes beyond a deterministic pass/fail. A new module's layer decides where the module belongs:
+
+- A module on the verdict/evidence path is core and must not reach the periphery.
+- A module that consumes the contract is periphery and belongs behind an extra.
 
 ## Test layout
 
-`tests/` holds the **unit-test suite** (`uv run pytest -q`). None require a real Simulator: command
-builders are verified as pure functions, and execution paths are tested with `FakeDriver` /
-injected runners (`RunFn` · `Spawn` · `Clock`). Real-device E2E against the showcase app is
-`make -C demos/showcase run-swiftui` / `make -C demos/showcase ui-test` ([showcase](showcase.md)).
+`tests/` holds the **unit-test suite** (`uv run pytest -q`). No test requires a real Simulator. Tests verify command builders as pure functions. They exercise execution paths with `FakeDriver` and injected runners (`RunFn` · `Spawn` · `Clock`).
+
+Real-device E2E against the showcase app runs with `make -C demos/showcase run-swiftui` or `make -C demos/showcase ui-test` ([showcase](showcase.md)).
 
 ### Driver conformance suite (BE-0114)
 
-Prime directive #3 says every backend sits behind one `Driver` interface, so the determinism-core
-invariants must hold identically on all of them. Per-backend tests alone cannot guarantee that: a
-backend that tapped the first match on an ambiguous selector, or returned success on a zero-match,
-would pass its own tests and fail no shared one. The **driver conformance suite** closes that gap —
-one executable contract (a TCK, a technology compatibility kit) that runs the *same* test body
-against every backend, driving the real driver instance (including code that bypasses
-`common/drivers/base`), not the shared base alone.
+Prime directive #3 puts every backend behind one `Driver` interface, so the determinism-core invariants must hold identically on all of them. Per-backend tests alone cannot guarantee that. A backend could tap the first match on an ambiguous selector, or return success on a zero-match, and it would pass its own tests while failing no shared one.
 
-The contract (`tests/driver_conformance.py`) is the "done" definition a new backend meets:
+The **driver conformance suite** closes that gap. It is one executable contract (a technology compatibility kit, TCK) that runs the *same* test body against every backend. The suite drives the real driver instance, including code that bypasses `common/drivers/base`, and not the shared base alone.
 
-- an ambiguous selector (two or more matches) fails rather than acting on the first match;
-- a zero-match selector fails rather than reporting success;
-- selector failures share one error type (`SelectorError`), uniform across backends;
-- a unique match acts without error, and `query()` reports the on-screen elements;
-- `capabilities()` matches observed behavior — the `QUERY` / `ELEMENTS` baseline is declared,
-  multi-touch gestures work exactly when `MULTI_TOUCH` is declared, select-all / clipboard copy
-  work exactly when `TEXT_SELECTION` is declared, and setting a native `<select>` by value works
-  exactly when `SELECT_OPTION` is declared, and loading a URL works exactly when `URL_NAVIGATION` is
-  declared, and `read_attributes` resolves each selector like a tap exactly when `ELEMENT_ATTRIBUTE`
-  is declared (else each raises `UnsupportedAction`, BE-0280, BE-0464, BE-0466);
-- text editing round-trips on the focused field (typing then deleting reduces its reported length),
-  and `tap_point` — a raw coordinate tap, the alert-dismissal path — focuses the field when aimed at
-  its center, the same observable effect as a semantic tap (BE-0280);
-- `wait_for` is a single-shot check of the current screen, with the shared `wait_until` loop
-  turning it into a condition wait with no fixed sleep.
-- one `scroll` step leaves consecutive viewports overlapping — the reads before and after it share
-  at least one element the region's bounds do not clip. That states the non-inertial contract each
-  backend already documents in the only terms a tree can show it, and it belongs to the `Driver`
-  contract because the `scroll` loop's correctness rests on it: a gesture that flings shares
-  nothing, so it fails the suite here rather than carrying a target past the viewport unqueried
-  during a run (BE-0329).
-- one `scroll` step travels the distance its endpoints asked for, within a stated tolerance, at the
-  default step size, at the smallest the loop's own recovery will take, and at a step below that
-  floor, which an author's `amount` can request. Overlap alone does not imply that
-  distance: a step can leave the viewports overlapping and still travel far further than it asked
-  for, which the iOS gesture did until BE-0400 — it traversed every drag at one fixed speed, so the
-  content flung on past the endpoints by up to six times the requested distance and no step travelled
-  less than about a third of a screen however little it asked for. That floor is why the property
-  belongs to the `Driver` contract rather than to one backend's tests: below it, the `scroll` action's
-  author-chosen `amount` and BE-0329's halving recovery both name step sizes no gesture could
-  deliver.
+The contract (`tests/driver_conformance.py`) is the "done" definition that a new backend meets:
 
-To add a backend to the suite, implement a `ConformanceHarness` (given a screen, return a driver
-showing it) and subclass `DriverConformanceContract`; pytest then runs the inherited contract
-against it. `FakeDriver` runs on the fast Linux gate (`make check`); Playwright runs in the web CI
-job, XCUITest under the iOS on-device E2E path (`ios-e2e.yml`), and the **adb backend** on a
-booted Android emulator (`android-e2e.yml`'s `conformance (adb)` job, BE-0270) — the same contract,
-no second spec. Each harness realizes a screen its own way: `FakeDriver` takes the elements directly,
-Playwright renders them as HTML, and the on-device harnesses launch the showcase app into conformance
-mode once (`SHOWCASE_CONFORMANCE`) and then reseed each screen — so the real backend query and act
-code is exercised, not the shared base alone. The iOS harness reseeds by writing a spec file the app
-polls (`conformance-spec.txt` in its Documents directory): a file write rather than a per-screen
-relaunch or deeplink, because `simctl openurl` raises iOS's "Open in app?" dialog and relaunching
-per screen crashes the resident XCUITest runner after a handful of `app.launch()` cycles. The adb
-harness instead re-launches the app's `singleTask` activity with a new `SHOWCASE_CONFORMANCE` intent
-extra, delivered via `onNewIntent` — `adb push` cannot reach the app sandbox, and the intent reuses
-the convention that delivers `subject.launch.env` as intent extras (BE-0007); it is scoped to the Compose toolkit, the one that
-can render a spec-driven arbitrary-id screen (`testTag` takes any runtime string, while a Views
-`resource-id` must be a compile-time `R` entry). The suite carries an `ondevice` pytest marker
-(deselected by the gate's default) so it never runs in `make check`, and runs serially on a single
-device (the shared device is reseeded via one channel, so parallel workers would collide).
+- An ambiguous selector (two or more matches) fails rather than acting on the first match.
+- A zero-match selector fails rather than reporting success.
+- Selector failures share one error type (`SelectorError`), uniform across backends.
+- A unique match acts without error, and `query()` reports the on-screen elements.
+- `capabilities()` matches observed behavior (else each affected call raises `UnsupportedAction`; BE-0280, BE-0464, BE-0466):
+  - The `QUERY` / `ELEMENTS` baseline is declared.
+  - Multi-touch gestures work exactly when `MULTI_TOUCH` is declared.
+  - Select-all and clipboard copy work exactly when `TEXT_SELECTION` is declared.
+  - Setting a native `<select>` by value works exactly when `SELECT_OPTION` is declared.
+  - Loading a URL works exactly when `URL_NAVIGATION` is declared.
+  - `read_attributes` resolves each selector like a tap exactly when `ELEMENT_ATTRIBUTE` is declared.
+- Text editing round-trips on the focused field: typing, then deleting, reduces the reported length. `tap_point` is a raw coordinate tap and the alert-dismissal path. Aimed at the field's center, it focuses the field, the same observable effect as a semantic tap (BE-0280).
+- `wait_for` is a single-shot check of the current screen. The shared `wait_until` loop turns it into a condition wait with no fixed sleep.
+- One `scroll` step leaves consecutive viewports overlapping (BE-0329). The reads before and after the step share at least one element that the region's bounds do not clip.
+  - This states the non-inertial contract that each backend already documents, in the one form a tree can show.
+  - It belongs to the `Driver` contract because the `scroll` loop's correctness rests on it.
+  - A gesture that flings shares nothing, so it fails the suite here. Otherwise it would carry a target past the viewport unqueried during a run.
+- One `scroll` step travels the distance its endpoints asked for, within a stated tolerance. The suite checks three step sizes: the default, the smallest that the loop's own recovery takes, and a step below that floor, which an author's `amount` can request.
+  - Overlap alone does not imply that distance. A step can leave the viewports overlapping and still travel far further than it asked for.
+  - The iOS gesture did exactly that until BE-0400. It traversed every drag at one fixed speed, so the content flung on past the endpoints by up to six times the requested distance. No step travelled less than about a third of a screen, however little it asked for.
+  - That floor is why the property belongs to the `Driver` contract and not to one backend's tests. Below the floor, the `scroll` action's author-chosen `amount` and BE-0329's halving recovery both name step sizes that no gesture could deliver.
+
+To add a backend to the suite, implement a `ConformanceHarness` (given a screen, return a driver showing it) and subclass `DriverConformanceContract`. Pytest then runs the inherited contract against the backend. Each backend runs the same contract with no second spec:
+
+- `FakeDriver` runs on the fast Linux gate (`make check`).
+- Playwright runs in the web CI job.
+- XCUITest runs under the iOS on-device E2E path (`ios-e2e.yml`).
+- The **adb backend** runs on a booted Android emulator (`android-e2e.yml`'s `conformance (adb)` job, BE-0270).
+
+Each harness realizes a screen its own way:
+
+- `FakeDriver` takes the elements directly.
+- Playwright renders the elements as HTML.
+- The on-device harnesses launch the showcase app into conformance mode once (`SHOWCASE_CONFORMANCE`) and then reseed each screen. The real backend query and act code is thus exercised, not the shared base alone.
+  - The iOS harness reseeds by writing a spec file that the app polls (`conformance-spec.txt` in its Documents directory). It writes a file instead of relaunching or using a deeplink per screen.
+  - `simctl openurl` raises iOS's "Open in app?" dialog. Relaunching per screen crashes the resident XCUITest runner after a handful of `app.launch()` cycles.
+  - The adb harness instead re-launches the app's `singleTask` activity with a new `SHOWCASE_CONFORMANCE` intent extra, delivered through `onNewIntent`. `adb push` cannot reach the app sandbox, and the intent reuses the convention that delivers `subject.launch.env` as intent extras (BE-0007).
+  - The adb harness is scoped to the Compose toolkit, the one that can render a spec-driven arbitrary-id screen. `testTag` takes any runtime string, while a Views `resource-id` must be a compile-time `R` entry.
+
+The suite carries an `ondevice` pytest marker, which the gate's default deselects, so the suite never runs in `make check`. It runs serially on a single device, because the shared device is reseeded through one channel and parallel workers would collide.
 
 ### Fault-injection lanes (BE-0305)
 
-Two mechanisms in the drivers exist only for a real device fault, and the suites above never meet
-one: the conformance suite waits every screen ready before it reads, and no job breaks the runner on
-purpose. `CoordinateTreeDriver`'s transient-empty retry (BE-0254) rides over the degenerate
-accessibility tree a device serves mid-transition; the XCUITest channel's transient retry (BE-0207)
-and crash recovery (BE-0287) ride out a runner that stops answering. Their fast-suite tests feed a
-fabricated element count and raise a synthetic exception — real coverage of the control flow, and no
-evidence that the real condition reaches it, since a real device does not raise a Python exception
-and a detection heuristic keyed on an element count can be broken while a fabricated count still
-trips it.
+Two mechanisms in the drivers exist for a real device fault alone, and the suites above never meet one. The conformance suite waits for every screen to be ready before it reads, and no job breaks the runner on purpose.
 
-The **fault-injection lanes** inject the real condition instead. `fault-injection (adb)`
-(`android-e2e.yml`) puts the emulator's display to sleep, which makes the real read source — the
-resident UI Automator channel, and the `uiautomator dump` fallback behind it — serve a genuinely
-empty tree, and checks the retry rides over it rather than raising a false "element not found"; a
-second case holds the display down so the retry budget runs out, and pins that outcome as a loud
-`ElementNotFound` rather than a silent one. `fault-injection (xcuitest)` (`ios-e2e.yml`) signals the
-runner's own host process: `SIGSTOP` leaves its socket accepting while nothing answers — what a
-wedged runner looks like from the host — so a short freeze is absorbed by the transient retry and a
-freeze past the retry budget is ridden out by crash recovery, while `SIGKILL` must end the run on a
-crash diagnosis that names a mid-run runner fault, never an unrelated timeout.
+- `CoordinateTreeDriver`'s transient-empty retry (BE-0254) rides over the degenerate accessibility tree that a device serves mid-transition.
+- The XCUITest channel's transient retry (BE-0207) and crash recovery (BE-0287) ride out a runner that stops answering.
 
-Neither lane guesses how long to hold a fault: each lifts it on the driver's *own* log record that it
-reached the layer under test (`tests/fault_injection.py`), so which mechanism a case exercises is
-decided by observed behavior rather than by the length of a sleep.
+The fast-suite tests of these mechanisms feed a fabricated element count and raise a synthetic exception. They cover the control flow for real, but they give no evidence that the real condition reaches it. A real device does not raise a Python exception, and a detection heuristic keyed on an element count can be broken while a fabricated count still trips it.
 
-Both lanes now feed their lane's required aggregate check. They landed outside it — the
-signal-then-required path BE-0282 established, applied to lanes that break the device on purpose and
-so carry more inherent flakiness risk than the ones driving a healthy one — and that caution was
-earned. Over its first ten days `fault-injection (xcuitest)` failed 78 times against 52 passes.
+The **fault-injection lanes** inject the real condition instead:
 
-What retired the caution was not the rate falling but the cause being found. Every one of those 78
-failures precedes the commit that fixed the runner's HTTP server against replying to a peer that had
-gone away, which killed the XCTest host with SIGPIPE. The lane holds the runner under `SIGSTOP`,
-which is how a connection comes to be abandoned in the first place, so it was tripping that defect
-far more often than any suite driving a healthy runner — the lane finding a real runner-channel bug,
-which is what it exists to do. Since that fix it has run 64 times without a failure, against
-`conformance (xcuitest)`'s 58-and-2 over the same span; `fault-injection (adb)` ran 73 times for one
-failure there, and that one was the emulator never coming up rather than anything the lane asserts,
-against `conformance (adb)`'s four in 67. Both lanes now sit at or better than a suite that has been
-on the gate throughout.
+- `fault-injection (adb)` (`android-e2e.yml`) puts the emulator's display to sleep. The real read source (the resident UI Automator channel, and the `uiautomator dump` fallback behind it) then serves a genuinely empty tree. The lane checks that the retry rides over it rather than raising a false "element not found". A second case holds the display down so the retry budget runs out, and pins that outcome as a loud `ElementNotFound` and not a silent one.
+- `fault-injection (xcuitest)` (`ios-e2e.yml`) signals the runner's own host process.
+  - `SIGSTOP` leaves the socket accepting while nothing answers, which is what a wedged runner looks like from the host. A short freeze is absorbed by the transient retry, and a freeze past the retry budget is ridden out by crash recovery.
+  - `SIGKILL` must end the run on a crash diagnosis that names a mid-run runner fault, never an unrelated timeout.
 
-A regression in `_is_transient_empty`'s threshold or in the crash classifier's matching is the
-precise failure these lanes exist to catch, and a signal is something a merge can ignore — so the
-promotion is what makes the coverage mean anything. `tests/test_e2e_gate_needs.py` pins it on the fast
-suite in three layers: which jobs each gate depends on, that every one of them has its result read,
-and — by running the verdict script itself — that each of those results actually reddens the check. A
-gate can otherwise be narrowed, or left permanently green, without a single test noticing.
+Neither lane guesses how long to hold a fault. Each lane lifts the fault on the driver's *own* log record that it reached the layer under test (`tests/fault_injection.py`). Observed behavior, not the length of a sleep, decides which mechanism a case exercises.
+
+Both lanes now feed their lane's required aggregate check. They landed outside it, on the signal-then-required path that BE-0282 established. That caution was earned: these lanes break the device on purpose and so carry more inherent flakiness risk than lanes that drive a healthy one. Over its first ten days `fault-injection (xcuitest)` failed 78 times against 52 passes.
+
+The cause being found retired the caution, not the failure rate falling.
+
+- Every one of those 78 failures precedes the commit that fixed the runner's HTTP server against replying to a peer that had gone away. That reply killed the XCTest host with SIGPIPE.
+- The lane holds the runner under `SIGSTOP`, which is how a connection comes to be abandoned in the first place. The lane therefore tripped that defect far more often than any suite driving a healthy runner. It found a real runner-channel bug, which is what the lane exists to do.
+- Since that fix the lane has run 64 times without a failure, against 58 passes and 2 failures for `conformance (xcuitest)` over the same span.
+- `fault-injection (adb)` ran 73 times for one failure, and that failure was the emulator never coming up, not anything the lane asserts. `conformance (adb)` had four failures in 67 runs.
+- Both lanes now sit at or better than a suite that has been on the gate throughout.
+
+A regression in `_is_transient_empty`'s threshold or in the crash classifier's matching is the precise failure these lanes exist to catch. A signal is something a merge can ignore, so the promotion is what makes the coverage mean anything. `tests/test_e2e_gate_needs.py` pins the promotion on the fast suite in three layers:
+
+- Which jobs each gate depends on.
+- That every one of those jobs has its result read.
+- That each of those results actually reddens the check, shown by running the verdict script itself.
+
+Without these tests, a gate can be narrowed, or left permanently green, without a single test noticing.
 
 ### The concurrent-device lane (BE-0298)
 
-Every job described above boots exactly one device, so none of them can observe what
-`common/runner/pool.py`'s `device_pool` claims for a parallel run: that under `--workers N` each worker
-leases its own device and writes evidence only under its own `run_dir/<sid>` subdirectory of the one
-shared run directory, sharing no mock port or index with any other worker's scenario (the
-no-shared-state invariant [`DESIGN.md`](../DESIGN.md) §3.3 states). The fast suite proves that claim
-of the pool's own bookkeeping alone: `tests/runner/test_pool.py` monkeypatches `make_driver` to hand
-`FakeDriver` instances fabricated udids like `"UDID-A"`, which shows worker A's resources really are
-separate from worker B's *in the data structures the pool manages* and says nothing about contention
-at the OS and subprocess level outside them — two real `simctl` or `adb` invocations racing on a boot
-lock, a host port allocated per device, an artifact path computed before a worker's subdirectory
-exists.
+Every job described above boots exactly one device. None of them can observe what `common/runner/pool.py`'s `device_pool` claims for a parallel run. The claim is that under `--workers N` each worker leases its own device and writes evidence only under its own `run_dir/<sid>` subdirectory of the one shared run directory. No worker shares a mock port or index with any other worker's scenario (the no-shared-state invariant that [`DESIGN.md`](../DESIGN.md) §3.3 states).
 
-The **concurrent-device lane** boots two real devices instead. `pool (adb)` (`android-e2e.yml`)
-boots two emulators and runs four state-neutral showcase scenario files through one
-`bajutsu run --workers 2`, so the pool has to share the work out and keep both workers busy at once.
+The fast suite proves that claim of the pool's own bookkeeping alone. `tests/runner/test_pool.py` monkeypatches `make_driver` to hand `FakeDriver` instances fabricated udids like `"UDID-A"`. That shows worker A's resources really are separate from worker B's *in the data structures the pool manages*. It says nothing about contention at the OS and subprocess level outside those structures:
 
-`scripts/assert_pool_isolation.py` is what turns the outcome into a verdict, read from the finished
-run's `manifest.json` and the run directory's own subdirectory listing: it fails on an artifact
-recorded under another worker's slug, two results sharing one slug, a subdirectory no result claims, a
-recorded evidence directory the run never wrote, one device having quietly taken every scenario, or no
-two scenarios on different devices having overlapped in wall-clock. The check is a file read and a set
-comparison, and it runs after `bajutsu run` has returned its own verdict, so it observes
-the run's artifacts and never feeds any scenario's pass/fail.
+- Two real `simctl` or `adb` invocations racing on a boot lock.
+- A host port allocated per device.
+- An artifact path computed before a worker's subdirectory exists.
 
-The job takes a change filter of its own — `touches_pool` in `scripts/e2e_changes.py`, narrower
-than the lane-wide signal every other job reads — because it boots twice what the Android lane's
-other jobs boot. It stays a per-PR signal outside that lane's required aggregate check, on
-BE-0282's signal-then-required path that the fault-injection lanes above also take, for a reason of its own:
-two emulators against one runner is the most resource-sensitive work the lane carries.
+The **concurrent-device lane** boots two real devices instead. `pool (adb)` (`android-e2e.yml`) boots two emulators and runs four state-neutral showcase scenario files through one `bajutsu run --workers 2`. The pool has to share the work out and keep both workers busy at once.
 
-An iOS twin, `pool (xcuitest)`, booted two Simulators on the macOS lane until BE-0298 withdrew it.
-That job returned one isolation verdict in five runs. The other four collapsed on the host rather
-than on any pool check. `SimRenderServer` crashed on its own dispatch queue; `simctl uninstall` timed
-out against a wedged CoreSimulator; the runner channel became unreachable mid-run. Each red run
-spent about half an hour of a runner billed at 10x. BE-0361 measured that runner as 3 cores
-and 7 GiB, with a *single* booted Simulator bringing up 257 guest processes and leaving 189 MB of
-physical memory unused, so a second Simulator doubles the guest population against an already
-saturated ceiling. Dropping the video recording, the touch markers, and half the scenarios moved the
-collapse earlier without removing it. So the isolation claim now rests on real concurrent devices on
-Android; on iOS it rests on the fast suite's bookkeeping proof alone.
+`scripts/assert_pool_isolation.py` turns the outcome into a verdict. The script reads the finished run's `manifest.json` and the run directory's own subdirectory listing. It fails on any of these:
+
+- An artifact recorded under another worker's slug.
+- Two results sharing one slug.
+- A subdirectory that no result claims.
+- A recorded evidence directory that the run never wrote.
+- One device having quietly taken every scenario.
+- No two scenarios on different devices having overlapped in wall-clock time.
+
+The check is a file read and a set comparison. It runs after `bajutsu run` has returned its own verdict, so it observes the run's artifacts and never feeds any scenario's pass/fail.
+
+The job takes a change filter of its own, `touches_pool` in `scripts/e2e_changes.py`. The filter is narrower than the lane-wide signal that every other job reads, because the job boots twice what the Android lane's other jobs boot. The job stays a per-PR signal outside that lane's required aggregate check, on the signal-then-required path of BE-0282 that the fault-injection lanes above also take. Its reason is its own: two emulators against one runner is the most resource-sensitive work the lane carries.
+
+An iOS twin, `pool (xcuitest)`, booted two Simulators on the macOS lane until BE-0298 withdrew it. That job returned one isolation verdict in five runs. The other four collapsed on the host rather than on any pool check:
+
+- `SimRenderServer` crashed on its own dispatch queue.
+- `simctl uninstall` timed out against a wedged CoreSimulator.
+- The runner channel became unreachable mid-run.
+
+Each red run spent about half an hour of a runner billed at 10x. BE-0361 measured that runner as 3 cores and 7 GiB. A *single* booted Simulator brought up 257 guest processes and left 189 MB of physical memory unused, so a second Simulator doubles the guest population against an already saturated ceiling. Dropping the video recording, the touch markers, and half the scenarios moved the collapse earlier without removing it. The isolation claim therefore rests on real concurrent devices on Android. On iOS it rests on the fast suite's bookkeeping proof alone.
 
 ---
 
