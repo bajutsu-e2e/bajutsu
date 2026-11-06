@@ -17,80 +17,93 @@
 ## Introduction
 
 `bajutsu/anthropic_client.py` still defines `ensure_client` and the `CachesClient` protocol
-(around lines 216–233). Both are dead: no production code path calls them anymore. This item
-removes them and their covering test, so the module's public surface matches what the AI
-authoring/investigation classes actually use today.
+(around lines 216–233). No production code path calls either one anymore. This item removes both
+and the test that covers them. The module's public surface then matches what the AI
+authoring and investigation classes use today.
 
 ## Motivation
 
-`ensure_client` was added by BE-0140 as "the lazy-build-then-cache wrapper the AI classes
-share" — at the time, six `Claude*` classes each called `self._ensure_client()`, which
-delegated to this module-level `ensure_client(agent)` to build (via `make_client`) and cache
-an SDK client on `agent._client`. BE-0104 then introduced the vendor-neutral `AiBackend` seam
-(`bajutsu/ai/registry.create_backend`), and every one of those classes moved onto it: each now
-carries its own `_ensure_backend` method that calls `create_backend(ai=self._ai)` and caches
-the result on `self._backend` — for example `bajutsu/claude_agent.py:632`,
-`bajutsu/claude_triage.py:253` and `:473`, `bajutsu/claude_enrich_agent.py:190`,
-`bajutsu/alerts.py:178`, `bajutsu/crawl_guide.py:360`, and `bajutsu/crawl_tabs.py:192`
-(seven implementers in all — `claude_triage.py` defines two, `ClaudeTriageAgent` and
-`ClaudeCrossRunTriageAgent`). `bajutsu/ai/anthropic.py`'s
-`AnthropicBackend` — the adapter that now sits behind `create_backend` for the Anthropic
-provider — builds its own client with a private `_ensure_client` method
-(`bajutsu/ai/anthropic.py:64`) that calls `make_client` directly; it does not call the
+BE-0140 added `ensure_client` as "the lazy-build-then-cache wrapper the AI classes share". At the
+time, six `Claude*` classes each called `self._ensure_client()`. That method delegated to the
+module-level `ensure_client(agent)`, which built an SDK client (via `make_client`) and cached it on
+`agent._client`.
+
+BE-0104 then introduced the vendor-neutral `AiBackend` seam (`bajutsu/ai/registry.create_backend`),
+and every one of those classes moved onto it. Each class now carries its own `_ensure_backend`
+method. That method calls `create_backend(ai=self._ai)` and caches the result on `self._backend`.
+The call sites are:
+
+- `bajutsu/claude_agent.py:632`
+- `bajutsu/claude_triage.py:253` and `:473`
+- `bajutsu/claude_enrich_agent.py:190`
+- `bajutsu/alerts.py:178`
+- `bajutsu/crawl_guide.py:360`
+- `bajutsu/crawl_tabs.py:192`
+
+That makes seven implementers in all, because `claude_triage.py` defines two: `ClaudeTriageAgent`
+and `ClaudeCrossRunTriageAgent`.
+
+`AnthropicBackend` in `bajutsu/ai/anthropic.py` is the adapter behind `create_backend` for the
+Anthropic provider. It builds its own client with a private `_ensure_client` method
+(`bajutsu/ai/anthropic.py:64`), which calls `make_client` directly. It does not call the
 module-level `ensure_client` from `anthropic_client.py` either.
 
-So `ensure_client` and `CachesClient` have no production caller left. Worse, `ensure_client`'s
-own docstring is now false: it still claims to be "the lazy-build-then-cache wrapper the AI
-authoring/investigation classes share (BE-0140)", but none of them do — they all share
-`create_backend` instead. A stale abstraction with a docstring that names a mechanism the
-codebase no longer uses is actively misleading: a reader who greps for how the `Claude*`
-classes reach a model finds this function, believes it, and starts from the wrong seam. The
-only reason it still exists is that `tests/test_anthropic_client.py` (around lines 289–313)
-still exercises it — the test outlived the code it was written to protect.
+So `ensure_client` and `CachesClient` have no production caller left. The docstring of
+`ensure_client` is also false now. It still calls the function "the lazy-build-then-cache wrapper
+the AI authoring/investigation classes share (BE-0140)", but none of those classes share it. They
+all share `create_backend` instead.
 
-This is a behavior-preserving cleanup confined to the AI authoring/investigation paths
-(`record`, `enrich`, `triage`, alert dismissal, crawl). It never touches the deterministic
-`run`/CI verdict path, so prime directive 1 (AI is the author and the failure investigator,
-never the judge) is unaffected either way.
+A stale abstraction whose docstring names a mechanism the codebase no longer uses is actively
+misleading. A reader who greps for how the `Claude*` classes reach a model finds this function,
+believes it, and starts from the wrong seam. The function survives for one reason:
+`tests/test_anthropic_client.py` (around lines 289–313) still exercises it. The test outlived the
+code it was written to protect.
+
+The cleanup preserves behavior and stays within the AI authoring and investigation paths
+(`record`, `enrich`, `triage`, alert dismissal, and crawl). It never touches the deterministic
+`run` / CI verdict path, so prime directive 1 (AI is the author and the failure investigator, never
+the judge) holds either way.
 
 ## Detailed design
 
-The work is a straight removal, with a verification step to make sure nothing outside the
-files below still depends on the wrapper:
+The work is a straight removal. A verification step confirms that nothing outside the files below
+still depends on the wrapper.
 
 1. **Delete `ensure_client`** from `bajutsu/anthropic_client.py` (around lines 223–233).
 2. **Delete the `CachesClient` protocol** from `bajutsu/anthropic_client.py` (around lines
-   216–220), which exists solely to type `ensure_client`'s `agent` parameter.
-3. **Delete the covering test** in `tests/test_anthropic_client.py` (around lines 289–313):
-   the `_CacheHolder` stand-in class, the "ensure_client is the lazy-build-then-cache wrapper…"
-   comment, `test_ensure_client_returns_injected_client_without_building`, and
-   `test_ensure_client_builds_once_and_reuses`.
-4. **Grep the repo to confirm no remaining caller before removal** —
-   `rg -n "ensure_client|CachesClient"` should, after the three deletions above, return no
-   matches outside this proposal itself (`bajutsu/ai/anthropic.py`'s unrelated
-   `_ensure_client` method and the `Claude*` classes' `_ensure_backend` methods are different names
-   and are left untouched).
+   216–220). It exists solely to type the `agent` parameter of `ensure_client`.
+3. **Delete the covering test** in `tests/test_anthropic_client.py` (around lines 289–313). The
+   deleted items are:
+   - the `_CacheHolder` stand-in class
+   - the "ensure_client is the lazy-build-then-cache wrapper…" comment
+   - `test_ensure_client_returns_injected_client_without_building`
+   - `test_ensure_client_builds_once_and_reuses`
+4. **Grep the repo to confirm no remaining caller before removal.** After the three deletions
+   above, `rg -n "ensure_client|CachesClient"` should return no matches outside this proposal
+   itself. Two groups of names look similar but are different and stay untouched: the unrelated
+   `_ensure_client` method in `bajutsu/ai/anthropic.py`, and the `_ensure_backend` methods of the
+   `Claude*` classes.
 
-No other file imports `ensure_client` or `CachesClient`, so this needs no follow-on changes to
-`bajutsu/claude_agent.py`, `bajutsu/claude_triage.py`, `bajutsu/claude_enrich_agent.py`,
-`bajutsu/alerts.py`, `bajutsu/crawl_guide.py`, `bajutsu/crawl_tabs.py`, or `bajutsu/ai/anthropic.py`
-— those already reach a model exclusively through `create_backend` / their own
-`_ensure_backend`, or (for `AnthropicBackend`) through `make_client` directly.
+No other file imports `ensure_client` or `CachesClient`. The removal therefore needs no follow-on
+change to `bajutsu/claude_agent.py`, `bajutsu/claude_triage.py`, `bajutsu/claude_enrich_agent.py`,
+`bajutsu/alerts.py`, `bajutsu/crawl_guide.py`, `bajutsu/crawl_tabs.py`, or `bajutsu/ai/anthropic.py`.
+The first six already reach a model exclusively through `create_backend` and their own
+`_ensure_backend`. `AnthropicBackend` reaches one through `make_client` directly.
 
 ## Alternatives considered
 
-- **Keep it "just in case" a future AI class wants a raw SDK client instead of the
-  `AiBackend` seam.** Rejected: dead code with a misleading docstring is worse than no code at
-  all — a contributor who finds it has to independently discover it is unused before trusting
-  or ignoring it. If a future need for a raw client-caching helper appears, it is cheaper to
-  write a small, correctly-documented one against the seam that exists then than to keep
-  carrying one whose docstring already lies about the current architecture.
-- **Repurpose `ensure_client` into a new shared base class for the `Claude*` classes** (a
-  hypothetical `ClaudeBackedAgent` base, referred to here by name only — this proposal does
-  not number or scope that item). Rejected for this item: that would be a genuine new design
-  exercise (what the base owns, which of the `Claude*` classes' constructor differences it
-  accommodates) and deserves its own proposal: bundling it here would turn a same-day deletion
-  into a design discussion that blocks it.
+- **Keep it "just in case" a future AI class wants a raw SDK client instead of the `AiBackend`
+  seam.** Rejected. Dead code with a misleading docstring is worse than no code. A contributor who
+  finds it must first discover on their own that it is unused, and only then can trust or ignore it.
+  Suppose a raw client-caching helper becomes necessary later. Writing a small, correctly
+  documented one against the seam that exists then costs less than carrying one whose docstring
+  already lies about the current architecture.
+- **Repurpose `ensure_client` into a new shared base class for the `Claude*` classes.** The
+  hypothetical base would be a `ClaudeBackedAgent`, named here only; this proposal neither numbers
+  nor scopes that item. Rejected for this item. The base class would be a genuine new design
+  exercise: what the base owns, and which of the constructor differences among the `Claude*`
+  classes it accommodates. That deserves its own proposal. Bundling it here would turn a same-day
+  deletion into a design discussion that blocks the deletion.
 
 ## Progress
 

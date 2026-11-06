@@ -16,126 +16,143 @@
 
 ## Introduction
 
-`bajutsu/assertions.py` is 970 lines mixing five responsibilities that only share a home because
-they all end up in an `AssertionResult`: the `evaluate`/`evaluate_one` dispatcher, the per-kind UI
-evaluators, network-timeline matching shared with the web mock router and `until: {request}` waits,
-a self-contained image-preprocessing subsystem for `visual` assertions, and JSON-Schema loading and
-validation for `responseSchema`. This item is a behavior-preserving refactor that splits the module
-into a package along those seams and replaces the five-layer threading of per-kind contexts
-(`visual_context`, `schema_context`, `golden_context`, `clipboard`) with a single `EvalContext`
-value, so a new context-bearing assertion kind stops requiring a five-file edit.
+`bajutsu/assertions.py` is 970 lines long. It mixes five responsibilities that share a file
+because each ends up in an `AssertionResult`:
+
+- the `evaluate` / `evaluate_one` dispatcher
+- the per-kind UI evaluators
+- network-timeline matching, shared with the web mock router and `until: {request}` waits
+- a self-contained image-preprocessing subsystem for `visual` assertions
+- JSON-Schema loading and validation for `responseSchema`
+
+This item is a behavior-preserving refactor with two parts. First, it splits the module into a
+package along those seams. Second, it replaces the per-kind contexts (`visual_context`,
+`schema_context`, `golden_context`, `clipboard`), which five layers pass along today,
+with a single `EvalContext` value. After the change, a new context-bearing assertion kind no longer
+requires a five-file edit.
 
 ## Motivation
 
-One module today performs selector resolution, network-timeline matching, image geometry and pixel
-I/O, JSON-Schema file loading with path-traversal containment, and top-level dispatch — five
-concerns with little to do with each other, at odds with the single-responsibility spirit the rest
-of the codebase already follows (`bajutsu/orchestrator/actions/` splits action handlers by group;
-`bajutsu/visual.py` already owns the pixel-compare engine). Concretely:
+One module today performs five concerns that have little to do with each other: selector
+resolution, network-timeline matching, image geometry and pixel I/O, JSON-Schema file loading with
+path-traversal containment, and top-level dispatch. This contradicts the single-responsibility
+spirit the rest of the codebase follows. `bajutsu/orchestrator/actions/` splits action handlers by
+group, and `bajutsu/visual.py` already owns the pixel-compare engine. Concretely, the module holds
+these pieces:
 
-- **The dispatcher.** `evaluate`/`evaluate_one` (847–970) — the `if a.X is not None: return
-  _eval_X(...)` chain plus the one-to-one `request` assignment.
-- **Per-kind UI evaluators.** `_eval_exists`/`_eval_text`/`_eval_count`/`_eval_state` (133–202) and
-  `_eval_request`/`_eval_event`/`_eval_request_sequence` (278–418) — small, pure checks against a
-  `query()` snapshot or the network timeline.
-- **Network matching**, shared with the web mock router and `until: {request}` waits, not just
-  assertions: `match_request`/`count_matching`/`request_label` (205–275) plus the bipartite
-  `_assign_requests` (497–519, Kuhn's augmenting paths, so a broad `request` matcher never steals the
-  only exchange a more specific one needs).
-- **A ~240-line visual image-preprocessing subsystem** doing coordinate math, cropping, masking, and
-  Pillow file I/O: `_visual_scale`/`_frame_to_px`/`_resolve_mask`/`_prepare_visual_comparison`/
-  `_resolve_masks`/`_resolve_baselines`/`_eval_visual` (537–780), importing `shutil` and `PIL.Image`
-  directly into what is otherwise a UI/network assertion module.
-- **JSON-Schema file loading, path-containment checks, and validation**: `_load_schema`/
-  `_validate_instance` (421–494).
+- **The dispatcher.** `evaluate` / `evaluate_one` (847–970) hold the `if a.X is not None: return
+  _eval_X(...)` chain and the one-to-one `request` assignment.
+- **Per-kind UI evaluators.** `_eval_exists`, `_eval_text`, `_eval_count`, and `_eval_state`
+  (133–202), plus `_eval_request`, `_eval_event`, and `_eval_request_sequence` (278–418). Each is
+  a small, pure check against a `query()` snapshot or the network timeline.
+- **Network matching.** The web mock router and `until: {request}` waits share this code, so it
+  serves more than assertions. It comprises `match_request`, `count_matching`, and `request_label`
+  (205–275), plus the bipartite `_assign_requests` (497–519). The latter uses Kuhn's augmenting
+  paths, so a broad `request` matcher never steals the only exchange that a more specific matcher
+  needs.
+- **A visual image-preprocessing subsystem of about 240 lines.** It does coordinate math,
+  cropping, masking, and Pillow file I/O: `_visual_scale`, `_frame_to_px`, `_resolve_mask`,
+  `_prepare_visual_comparison`, `_resolve_masks`, `_resolve_baselines`, and `_eval_visual`
+  (537–780). It imports `shutil` and `PIL.Image` directly into a module that otherwise handles UI
+  and network assertions.
+- **JSON-Schema file loading, path-containment checks, and validation.** `_load_schema` and
+  `_validate_instance` (421–494) implement this.
 
-Separately, adding a new assertion kind that needs a per-run context is shotgun surgery today,
-because each context is threaded as its own loose parameter through five layers: `evaluate`
-(914–923) and `evaluate_one` (847–856) both carry `visual_context`, `schema_context`, `clipboard`,
-and `golden_context` as four separate keyword-only parameters; `bajutsu/orchestrator/loop.py`'s
-`run_scenario` (164–168) and `_run_step_body` (107–118) carry the same four (plus `mailbox`) as
-separate signature parameters; and `bajutsu/runner/pipeline.py` constructs the three context objects
-individually (100–105, 138–162) before passing them all down. A new context-bearing assertion kind
-therefore touches the `Assertion` model, `_ASSERTION_KINDS`
-(`bajutsu/scenario/models/_base.py:30`), a new `_eval_X` function, a new branch in the 14-way `if`
-chain, and a new parameter threaded through all five of those signatures — for one new field.
+Adding a new assertion kind that needs a per-run context is also shotgun surgery today. Each
+context travels as its own loose parameter through five layers:
 
-Neither the assertion verdicts nor any observable run behavior changes here: assertions decide
-pass/fail on the deterministic Tier-2 gate (prime directive 1), so this proposal is purely
-structural, verified by parity tests that prove identical `AssertionResult`s before and after the
-split.
+- `evaluate` (914–923) and `evaluate_one` (847–856) each carry `visual_context`, `schema_context`,
+  `clipboard`, and `golden_context` as four separate keyword-only parameters.
+- `run_scenario` (164–168) and `_run_step_body` (107–118) in `bajutsu/orchestrator/loop.py` carry
+  the same four, plus `mailbox`, as separate signature parameters.
+- `bajutsu/runner/pipeline.py` constructs the three context objects individually (100–105,
+  138–162) and passes them all down.
+
+A new context-bearing assertion kind touches five places: the `Assertion` model,
+`_ASSERTION_KINDS` (`bajutsu/scenario/models/_base.py:30`), a new `_eval_X` function, a new branch
+in the 14-way `if` chain, and a new parameter in all five of those signatures. The whole edit serves
+one new field.
+
+Neither the assertion verdicts nor any observable run behavior changes. Assertions decide pass/fail
+on the deterministic Tier-2 gate (prime directive 1), so this proposal is purely structural.
+Parity tests verify it by proving identical `AssertionResult`s before and after the split.
 
 ## Detailed design
 
-The work is MECE across four independent units, each behavior-preserving and independently
-landable:
+The work is MECE across four independent units. Each unit preserves behavior and can land on its
+own.
 
 - **Split `bajutsu/assertions.py` into an `assertions/` package.**
-  - `assertions/network.py` — `match_request`, `count_matching`, `request_label`,
-    `_assign_requests`, `_request_assignment_result` (`assertions.py:522`, called alongside
-    `_assign_requests` in `evaluate_one` and building its result from `request_label`). This is a shared matcher (the web mock router and `until: {request}` already
-    depend on `match_request`/`count_matching`), so it is arguably better co-located with
-    `bajutsu/network.py`'s `NetworkExchange`; either placement is fine as long as the import cycle
-    stays acyclic — call this out explicitly in the implementation PR.
-  - `assertions/visual.py` — `_visual_scale`, `_frame_to_px`, `_resolve_mask`, `_shift`, `_Prepared`,
-    `_prepare_visual_comparison`, `_resolve_masks`, `_resolve_baselines`, `_eval_visual`,
-    `VisualContext`, `VisualEvidence`. Next to `bajutsu/visual.py` (the pixel-compare engine) in
-    spirit, so the two together own everything visual-assertion related.
-  - `assertions/schema.py` — `SchemaContext`, `_load_schema`, `_validate_instance`,
+  - `assertions/network.py` holds `match_request`, `count_matching`, `request_label`,
+    `_assign_requests`, and `_request_assignment_result`. `evaluate_one` calls the last
+    (`assertions.py:522`) alongside `_assign_requests`, and that function builds its result from
+    `request_label`.
+    The web mock router and `until: {request}` already depend on `match_request` and
+    `count_matching`, so the matcher is shared. It arguably belongs next to
+    `NetworkExchange` in `bajutsu/network.py`. Either placement is fine while the import graph
+    stays acyclic. The implementation PR calls this out explicitly.
+  - `assertions/visual.py` holds `_visual_scale`, `_frame_to_px`, `_resolve_mask`, `_shift`,
+    `_Prepared`, `_prepare_visual_comparison`, `_resolve_masks`, `_resolve_baselines`,
+    `_eval_visual`, `VisualContext`, and `VisualEvidence`. It sits next to `bajutsu/visual.py`, the
+    pixel-compare engine, in spirit. Together the two own everything related to visual assertions.
+  - `assertions/schema.py` holds `SchemaContext`, `_load_schema`, `_validate_instance`, and
     `_eval_response_schema`.
-  - `assertions/evaluate.py` — the thin dispatcher (`evaluate`, `evaluate_one`, `passed`) and the
-    small UI-kind evaluators (`_eval_exists`, `_eval_text`, `_eval_count`, `_eval_state`,
-    `_eval_request`, `_eval_event`, `_eval_request_sequence`, `_eval_clipboard`, `_eval_golden`) that
-    don't warrant their own module. `GoldenContext` (`assertions.py:105`) lives here too, next to
-    its only evaluator `_eval_golden` (which already imports the compare logic from
-    `bajutsu/golden.py`), rather than in its own module.
-  - `bajutsu/assertions.py` (or `assertions/__init__.py`) re-exports the public surface so existing
-    `from bajutsu import assertions` / `bajutsu.assertions.evaluate(...)` call sites are unaffected —
-    this is a pure module reorganization, not a public-API change.
+  - `assertions/evaluate.py` holds the thin dispatcher (`evaluate`, `evaluate_one`, `passed`). It
+    also holds the small UI-kind evaluators that do not justify their own module: `_eval_exists`,
+    `_eval_text`, `_eval_count`, `_eval_state`, `_eval_request`, `_eval_event`,
+    `_eval_request_sequence`, `_eval_clipboard`, and `_eval_golden`. `GoldenContext`
+    (`assertions.py:105`) lives here too. It sits next to its only evaluator, `_eval_golden`, which
+    already imports the compare logic from `bajutsu/golden.py`. It gets no module of its own.
+  - `bajutsu/assertions.py` (or `assertions/__init__.py`) re-exports the public surface. Existing
+    `from bajutsu import assertions` and `bajutsu.assertions.evaluate(...)` call sites keep
+    working. This is a pure module reorganization, not a public-API change.
 
-- **Bundle the per-run contexts into one `EvalContext`.** Introduce a frozen
-  `EvalContext(visual: VisualContext | None, schema: SchemaContext | None, golden: GoldenContext |
-  None, clipboard_reader: Callable[[], str | None] | None)` (exact field shape TBD at
-  implementation time — `clipboard` is read lazily today, gated on whether the block actually has a
-  `clipboard` assertion, via `_clipboard_for`; the replacement must preserve that laziness, not force
-  a read on every step) and thread *one* `EvalContext` parameter end-to-end through `evaluate` →
-  `evaluate_one` → `run_scenario` → `_run_step_body` → `pipeline.py`'s construction, removing the
+- **Bundle the per-run contexts into one `EvalContext`.** Introduce a frozen `EvalContext` with
+  four fields: `visual: VisualContext | None`, `schema: SchemaContext | None`,
+  `golden: GoldenContext | None`, and `clipboard_reader: Callable[[], str | None] | None`. The implementation decides the exact
+  field shape. Today `_clipboard_for` reads `clipboard` on demand, gated on whether the block has a `clipboard` assertion. The replacement must
+  preserve that laziness and must not force a read on every step.
+
+  One `EvalContext` parameter then threads end-to-end through `evaluate`, `evaluate_one`,
+  `run_scenario`, `_run_step_body`, and the construction in `pipeline.py`. This removes the
   four-separate-parameter duplication at each of those five layers.
 
 - **Replace the 14-way `if` chain in `evaluate_one` with a data-driven registry.** Introduce a
-  `{field_name: eval_fn}` mapping keyed off `_ASSERTION_KINDS`, mirroring the `_HANDLERS: dict[str,
+  `{field_name: eval_fn}` mapping keyed off `_ASSERTION_KINDS`. It mirrors the `_HANDLERS: dict[str,
   ActionHandler]` registry that `bajutsu/orchestrator/actions/_registry.py` already uses for step
-  actions (self-registering handlers via `@_handler(kind)`, dispatched by `_do_action`). Dispatch
-  becomes a lookup instead of a chain of `is not None` checks, and adding a kind means registering a
-  function rather than editing the chain.
+  actions: handlers self-register via `@_handler(kind)`, and `_do_action` dispatches them. Dispatch
+  becomes a lookup instead of a chain of `is not None` checks. Adding a kind means registering a
+  function, not editing the chain.
 
-- **Derive `_ASSERTION_KINDS` from the `Assertion` model** instead of hand-maintaining the tuple in
-  `bajutsu/scenario/models/_base.py`: `tuple(f for f in Assertion.model_fields if f != "from_")`,
-  mirroring the existing precedent for `_RUNTIME_ACTIONS` in
-  `bajutsu/orchestrator/actions/_registry.py` (`tuple(a for a in STEP_ACTIONS if a != "use")`),
-  which is itself derived from the `Step` model. A new assertion kind then only needs a new field on
-  `Assertion` plus a registry entry, not also a hand-edited tuple.
+- **Derive `_ASSERTION_KINDS` from the `Assertion` model.** Today the tuple lives, hand-maintained,
+  in `bajutsu/scenario/models/_base.py`. The replacement is
+  `tuple(f for f in Assertion.model_fields if f != "from_")`. It mirrors the existing precedent
+  for `_RUNTIME_ACTIONS` in `bajutsu/orchestrator/actions/_registry.py`
+  (`tuple(a for a in STEP_ACTIONS if a != "use")`), which is itself derived from the `Step` model.
+  A new assertion kind then needs a new field on `Assertion` and a registry entry. It no longer
+  needs a hand-edited tuple.
 
-Each unit keeps `make check` green on its own and adds parity tests (same `AssertionResult` output
-before and after) rather than changing any assertion's observable behavior.
+Each unit keeps `make check` green on its own. Each adds parity tests (same `AssertionResult`
+output before and after) and changes no assertion's observable behavior.
 
 ## Alternatives considered
 
-- **Introduce `EvalContext` but keep the flat module.** A partial win — it removes the five-layer
-  parameter threading — but leaves the god-module problem: one file still does selector resolution,
-  network-timeline matching, image geometry/pixel I/O, and schema file I/O. The package split is
-  what actually separates those concerns so each can be read, tested, and changed independently;
-  bundling only the contexts without splitting the module solves the shallower of the two problems.
+- **Introduce `EvalContext` but keep the flat module.** This is a partial win. It removes the
+  five-layer parameter threading, but the god-module problem remains: one file still does selector
+  resolution, network-timeline matching, image geometry and pixel I/O, and schema file I/O. The
+  package split is what separates those concerns, so that each can be read, tested, and changed
+  independently. Bundling only the contexts solves the shallower of the two problems.
 
-- **Split the module but leave the contexts as loose parameters.** Rejected for the mirror reason:
-  the package split makes each file's job clear, but a new context-bearing assertion kind would
-  still mean editing five signatures. Both units are worth doing together, and each is independently
-  small enough to land as its own PR within this item.
+- **Split the module but leave the contexts as loose parameters.** Rejected for the mirror reason.
+  The package split makes each file's job clear. A new context-bearing assertion kind would still
+  mean editing five signatures. Both units are worth doing together. Each is small enough to land
+  as its own PR within this item.
 
-- **Redesign assertion evaluation around a plugin/protocol interface instead of a registry dict.**
-  Rejected as heavier than the problem calls for: the `_HANDLERS` dict pattern already proven for
-  step actions is simpler, has no new abstraction to learn, and keeps evaluation as plain functions
-  rather than requiring every assertion kind to implement a class interface.
+- **Redesign assertion evaluation around a plugin or protocol interface instead of a registry
+  dict.** Rejected as heavier than the problem calls for. The `_HANDLERS` dict pattern is already
+  proven for step actions. It is simpler and introduces no new abstraction to learn. It keeps
+  evaluation as plain functions, whereas an interface would require every assertion kind to
+  implement a class.
 
 ## Progress
 

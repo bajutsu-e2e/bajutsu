@@ -15,21 +15,31 @@
 
 ## Introduction
 
-`serve` runs two HTTP backends behind one API surface: a stdlib `http.server` handler
-(`bajutsu/serve/handler.py`) and, alongside it, a FastAPI app (`bajutsu/serve/server/app.py`). Every
-endpoint is declared twice — once as a `match path` case in the stdlib handler's `do_GET`/`do_POST`
-(`handler.py:186-444`) and once as an `@app.get`/`@app.post`/`@app.delete` route in `app.py:122-490`
-— with both branches dispatching to the same `bajutsu.serve.operations` (`ops`) function. The
-request-level auth gate, CSRF `Origin` check, `Host` allowlist, and hardening response headers are
-*also* reimplemented independently in both backends (`handler.py:61-69,121-170,273-290` vs.
-`app.py:69-118`). This item replaces the two hand-maintained route tables — and the duplicated
-security enforcement around them — with one declarative registry that both backends consume.
+`serve` runs two HTTP backends behind one API surface. One is a stdlib `http.server` handler
+(`bajutsu/serve/handler.py`). The other is a FastAPI app (`bajutsu/serve/server/app.py`). Each
+endpoint has two declarations:
+
+- as a `match path` case in the stdlib handler's `do_GET` / `do_POST` (`handler.py:186-444`)
+- as an `@app.get` / `@app.post` / `@app.delete` route in `app.py:122-490`
+
+Both declarations dispatch to the same `bajutsu.serve.operations` (`ops`) function.
+
+Both backends also reimplement the following independently (`handler.py:61-69,121-170,273-290`
+versus `app.py:69-118`):
+
+- the request-level auth gate
+- the cross-site request forgery (CSRF) `Origin` check
+- the `Host` allowlist
+- the hardening response headers
+
+This item replaces the two hand-maintained route tables, and the duplicated security enforcement
+around them, with one declarative registry that both backends consume.
 
 ## Motivation
 
-The two route tables have already drifted, silently. The following endpoint groups exist in the
-stdlib handler but have no counterpart in the FastAPI app, so a deployment that serves the FastAPI
-backend 404s on them with no code anywhere declaring that this is intentional:
+The two route tables have already drifted without anyone noticing. The stdlib handler serves the endpoints below,
+and the FastAPI app has no counterpart for them. A deployment that serves the FastAPI backend
+answers 404 on each of them. No code anywhere declares that this is intentional.
 
 - `GET /flakiness` (`handler.py:237`)
 - `GET /api/ant/login` and `POST /api/ant/login` (`handler.py:214,352`)
@@ -38,75 +48,95 @@ backend 404s on them with no code anywhere declaring that this is intentional:
 - `POST /api/capture/start`, `POST /api/capture/mark`, `POST /api/capture/finish`, and
   `GET /api/capture/screenshot` (`handler.py:388-393,266`)
 - `POST /api/jobs/{id}/respond-human` (`handler.py:414`)
-- `GET /runs/{id}/archive.zip` (`handler.py:264`) — the FastAPI app's `GET /runs/{rel:path}`
-  (`app.py:128`) serves a run's static artifacts by path, but does not special-case `archive.zip`
-  the way the stdlib handler's `_serve_run_archive` does, so a request for it falls through to
-  `ops.run_file` looking for a literal file named `archive.zip` instead of generating the zip.
+- `GET /runs/{id}/archive.zip` (`handler.py:264`)
 
-Some of these are plausibly local-only by design — `/api/capture/*` holds an in-process `Driver`
-instance across the start/mark/finish sequence, which the stdlib handler's single-process model
-supports but a horizontally-scaled FastAPI deployment may not; `/api/ant/login` shells out to a
-local CLI. But nothing in the code *says* which endpoints are intentionally local-only versus
-accidentally missing — the gap was found by manually diffing the two `match`/route lists against
-each other, not by reading a declaration anywhere. A future endpoint added to one backend and
-forgotten in the other fails the same way: silently, discoverable only by manually diffing two
-~300-line files. The duplicated auth/CSRF/Host/header enforcement carries a sharper risk: the two
-copies must be kept byte-compatible by hand for the security posture to actually match between
-backends, and nothing checks that they do — a latent path to a security-relevant divergence, not
-just a missing feature. Both problems have the same root cause (one behavior, two independent
-implementations to keep in sync) and the same fix (make the one source of truth executable instead
-of duplicated).
+The last endpoint needs a closer look. The FastAPI app's `GET /runs/{rel:path}` (`app.py:128`)
+serves a run's static artifacts by path. It does not special-case `archive.zip` the way the stdlib
+handler's `_serve_run_archive` does. A request for the archive falls through to
+`ops.run_file`, which looks for a literal file named `archive.zip` instead of generating the zip.
+
+Some of these endpoints are plausibly local-only by design. `/api/capture/*` holds an in-process
+`Driver` instance across the start, mark, and finish sequence. The stdlib handler's single-process
+model supports that, but a horizontally scaled FastAPI deployment may not. `/api/ant/login` shells
+out to a local CLI.
+
+Nothing in the code says which endpoints are intentionally local-only and which are missing by
+oversight. A manual diff of the two `match` and route lists found the gap. No declaration exposed it.
+
+A future endpoint added to one backend and forgotten in the other fails the same way. The failure
+is silent. A reader can find it solely by diffing two files of about 300 lines each by hand.
+
+The duplicated auth, CSRF, Host, and header enforcement carries a sharper risk. The two copies must
+stay byte-compatible by hand for the security posture to match between the backends. Nothing
+checks that they do. That is a latent path to a security-relevant divergence, beyond a missing
+feature.
+
+Both problems have the same root cause: one behavior with two independent implementations to keep
+in sync. They also have the same fix, which makes the one source of truth executable instead of
+duplicated.
 
 ## Detailed design
 
-The work is behavior-preserving for every route both backends already serve today; it only changes
-where each route table's data lives, and makes today's silent drift an explicit, greppable
-declaration. Five MECE parts:
+The work preserves behavior for every route that both backends already serve today. It changes only
+where each route table's data lives. It also turns today's unnoticed drift into an explicit, greppable
+declaration. The work has five MECE parts.
 
-1. **A single declarative route registry.** Introduce one table — a list of entries, each carrying
-   the HTTP method, the path pattern (including the two backends' differing conventions for
-   variable path segments, e.g. `/api/jobs/{job_id}` vs. `handler.py`'s manual
-   `path.startswith(...)/endswith(...)` matching), the `ops.*` callable to dispatch to, and a small
-   set of per-route flags: `needs_actor` (whether the handler must resolve and pass the requesting
-   identity), `off_loop` (routes like SSE streaming or file serving that bypass the uniform
-   JSON-response helper), and `local_only` (see point 4). This registry is the single source of
-   truth both backends iterate; it does not itself execute a request.
-2. **The stdlib handler dispatches from the registry.** `do_GET`/`do_POST`/`do_DELETE`
-   (`handler.py:181-429,431-`) iterate the registry instead of a hand-written `match path`,
-   resolving path parameters and calling the paired `ops` function the same way the current cases
-   do. The per-route flags (`needs_actor`, `off_loop`) drive the same conditional logic
-   (`self._actor()`, streaming vs. `self._json(...)`) that today is written out per case.
-3. **`make_app` generates FastAPI routes from the registry.** `bajutsu/serve/server/app.py`'s route
-   declarations (`app.py:122-490`) are replaced with a loop over the same registry that registers
-   each entry as an `app.get`/`app.post`/`app.delete` (skipping `local_only` entries, see point 4),
-   removing the hand-written `@app.<method>` decorator per endpoint.
-4. **`local_only` turns silent drift into a declaration.** Every endpoint identified in *Motivation*
-   as missing from the FastAPI app is triaged: an endpoint that is genuinely local-only by design
-   (e.g. `/api/capture/*` and its in-process `Driver` lifetime, `/api/ant/login`'s local-CLI shell-out)
-   is marked `local_only=True` in the registry, so the FastAPI generator in point 3 skips it
-   deliberately and a reader can grep the registry to see the full list and why. An endpoint that
-   turns out to have no such reason (this item does not presume in advance which of the list falls
-   into which bucket — that triage is part of the work) is instead backfilled as a normal FastAPI
-   route, closing the gap outright.
-5. **Collapse the duplicated auth/CSRF/Host/header enforcement into one shared gate helper.** The
-   logic in `handler.py:61-69` (hardening headers), `handler.py:121-170` (`_gate`, the auth check),
-   and `handler.py:273-290` (`_csrf_ok`/`_host_ok`) is functionally identical to `app.py:69-118`'s
-   `gate` middleware and `_hardened` helper. Extract one implementation of this policy — parameterized
-   over how each backend reads a request's headers/cookies/method/path and writes a response — that
-   both `handler.py` and `app.py` call, so the security posture is defined once instead of twice.
+1. **A single declarative route registry.** Introduce one table, a list of entries. Each entry
+   carries the HTTP method, the path pattern, the `ops.*` callable to dispatch to, and a small set of
+   per-route flags.
+   - The path pattern covers the two backends' differing conventions for variable path segments.
+     For example, FastAPI writes `/api/jobs/{job_id}`, whereas `handler.py` matches by hand with
+     `path.startswith(...)` and `endswith(...)`.
+   - `needs_actor` says whether the handler must resolve and pass the requesting identity.
+   - `off_loop` marks routes, such as SSE streaming or file serving, that bypass the uniform
+     JSON-response helper.
+   - `local_only` is described in part 4.
+
+   The registry is the single source of truth that both backends iterate. It does not execute a
+   request itself.
+2. **The stdlib handler dispatches from the registry.** `do_GET`, `do_POST`, and `do_DELETE`
+   (`handler.py:181-429,431-`) iterate the registry instead of a hand-written `match path`. They
+   resolve path parameters and call the paired `ops` function the same way the current cases do. The
+   per-route flags (`needs_actor`, `off_loop`) drive the same conditional logic that is written out
+   per case today: `self._actor()`, and streaming versus `self._json(...)`.
+3. **`make_app` generates FastAPI routes from the registry.** The route declarations in
+   `bajutsu/serve/server/app.py` (`app.py:122-490`) are replaced with a loop over the same registry.
+   The loop registers each entry as an `app.get`, `app.post`, or `app.delete`, and skips `local_only`
+   entries (see part 4). The hand-written `@app.<method>` decorator per endpoint disappears.
+4. **`local_only` turns silent drift into a declaration.** Every endpoint that *Motivation* lists as
+   missing from the FastAPI app is triaged. This item does not presume in advance which endpoint
+   falls into which bucket, so the triage is part of the work.
+   - An endpoint that is genuinely local-only by design is marked `local_only=True` in the registry.
+     Examples include `/api/capture/*`, with its in-process `Driver` lifetime, and `/api/ant/login`,
+     with its local-CLI shell-out. The FastAPI generator in part 3 then skips the endpoint
+     deliberately, and a reader can grep the registry for the full list and the reasons.
+   - An endpoint with no such reason is backfilled as a normal FastAPI route, which closes the gap
+     outright.
+5. **Collapse the duplicated auth, CSRF, Host, and header enforcement into one shared gate
+   helper.** Three pieces of `handler.py` are functionally identical to the `gate` middleware and
+   `_hardened` helper in `app.py:69-118`:
+   - the hardening headers (`handler.py:61-69`)
+   - `_gate`, the auth check (`handler.py:121-170`)
+   - `_csrf_ok` and `_host_ok` (`handler.py:273-290`)
+
+   Extract one implementation of this policy. It is parameterized over how each backend reads a
+   request's headers, cookies, method, and path, and how it writes a response. Both `handler.py` and
+   `app.py` call the shared implementation, so the security posture is defined once instead of
+   twice.
 
 ## Alternatives considered
 
 - **Keep the two route tables and two security-enforcement copies as hand-maintained lists, and add
-  a test that fails when they drift from each other.** Rejected as the primary fix: a test catches
-  drift after the fact (and only if someone remembers to run it before the drift ships — this item's
-  own motivating gap already shipped undetected), but it polices the duplication rather than removing
-  it. A single registry makes the two backends structurally unable to drift, because there is only
-  one list left to drift from.
-- **Fix only the currently-missing endpoints (backfill them into `app.py` by hand) without building a
-  registry.** Rejected: this closes today's known gap but leaves the same hand-duplication in place
-  for the next endpoint anyone adds, so the same class of drift recurs. It also leaves the duplicated
-  auth/CSRF/Host/header logic untouched, which is the sharper risk described in *Motivation*.
+  a test that fails when they drift from each other.** Rejected as the primary fix. A test catches
+  drift after the fact, and only if someone remembers to run it before the drift ships. The gap that
+  motivates this item already shipped undetected. A test also polices the duplication instead of
+  removing it. A single registry makes the two backends structurally unable to drift, because only
+  one list is left to drift from.
+- **Fix only the currently missing endpoints, backfilling them into `app.py` by hand, without
+  building a registry.** Rejected. This closes today's known gap. It leaves the same hand
+  duplication in place for the next endpoint anyone adds, so the same class of drift recurs. It also
+  leaves the duplicated auth, CSRF, Host, and header logic untouched, which is the sharper risk
+  described in *Motivation*.
 
 ## Progress
 
