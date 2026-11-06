@@ -367,7 +367,7 @@ into `_drain_carry`, so the drain that consumes it reports the answer once. That
 
 `_policy_answered_alert` stays in that branch and runs after `resolve_system_alert`. An alert of the step's own that the monitor answered between polls therefore still lets the step proceed (BE-0406 Unit 2b).
 
-Its selector match counts native answers alone. An in-tree *answered* record carries its surface through the drain. An application-owned button that shares the step's label is therefore reported as an unrelated alert, and it never passes the step.
+The step's selector match counts native answers alone. An in-tree *answered* record carries its surface through the drain. An application-owned button that shares the step's label is therefore reported as an unrelated alert, and it never passes the step.
 
 The step keeps its own `/systemAlert/query` polls, which never resolve anything. Under a governing
 guard, a step that names its button by label also makes its tree reads through

@@ -69,10 +69,10 @@ The field keeps GitHub's name `check_run_id` rather than a neutral `job_id`. `PO
 with serve's own `jobId`, so an audit key of that name would invite joining the two.
 
 Each field stays optional. A provider that emits no such claim, or a GitHub token minted before a
-claim existed, maps it to `None`. The exchange never refuses a token for lacking one. These
-fields describe the job and grant no access. The three ids also accept a number as well as a
-string, because GitHub documents no type for them. Dropping a number would drop the job from the
-record without any signal.
+claim existed, maps it to `None`. The exchange never refuses a token for lacking one, because these
+fields describe the job and grant no access. For the same reason, the three ids accept a number as
+well as a string: GitHub documents no type for them, and dropping a number would drop the job from
+the record without any signal.
 
 `OidcProvider` names each claim, the same way it already names `repository_claim`.
 

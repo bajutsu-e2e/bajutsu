@@ -94,7 +94,7 @@ conditional follow-up.
 The design also leaves availability out. A party on the route can drop or delay any request. A party
 that reads a request can deliver a copy to the collector ahead of the app's own. Either way, the step
 that depends on the request fails loudly on its existing timeout, and no forged exchange or command
-reaches the verdict. The *Stolen commands* threat thus shrinks to that loud failure, and does not
+reaches the verdict. The *Stolen commands* threat thus shrinks to that loud failure, but does not
 vanish.
 
 The design also leaves the token's delivery alone. The token reaches the app in the launch
