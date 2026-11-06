@@ -16,53 +16,61 @@
 
 ## Introduction
 
-`runner/pool.py`'s `device_pool` claims a specific isolation guarantee for `--workers N` runs: each
-worker leases its own `udid` and writes evidence under its own `run_dir/<scenario_id>` subdirectory
-of the one shared run directory (`run_dir = runs_dir / run_id` in `runner/pipeline.py`), sharing no
-mock port or index with any other worker's scenario — the no-shared-state invariant `DESIGN.md` §3.3
-states, even though that section's own `runs/<runId>`-per-worker wording predates today's shared
-`run_dir` layout. Every test of this guarantee — `tests/runner/test_pool.py` —
-monkeypatches `bajutsu.backends.make_driver` to return `FakeDriver` instances against fabricated
-udids like `"UDID-A"`/`"UDID-B"`. No CI lane ever boots two real Simulators or two real emulators
-concurrently; every job in `ios-e2e.yml`/`android-e2e.yml` boots exactly one device. This item adds
-a real concurrent-device lane.
+`device_pool` in `runner/pool.py` claims a specific isolation guarantee for `--workers N` runs. Each
+worker leases its own `udid`. It writes evidence under its own `run_dir/<scenario_id>` subdirectory of
+the one shared run directory (`run_dir = runs_dir / run_id` in `runner/pipeline.py`). It shares no mock
+port or index with the scenario of any other worker.
+
+This is the no-shared-state invariant that `DESIGN.md` §3.3 states. The wording of that section, with
+its `runs/<runId>` per worker, predates today's shared `run_dir` layout.
+
+Every test of this guarantee lives in `tests/runner/test_pool.py`. The tests monkeypatch
+`bajutsu.backends.make_driver` to return `FakeDriver` instances against fabricated udids like
+`"UDID-A"` and `"UDID-B"`. No CI lane boots two real Simulators or two real emulators concurrently.
+Every job in `ios-e2e.yml` and `android-e2e.yml` boots exactly one device. This item adds a real
+concurrent-device lane.
 
 ## Motivation
 
-Fabricated udids and `FakeDriver` prove the pool's bookkeeping logic is internally consistent —
-worker A's resources really are kept separate from worker B's *in the data structures the pool
-manages*. They cannot prove the guarantee holds against real OS-level device and process contention:
-whether two real `simctl`/`adb` invocations targeting different devices ever race on a shared
-resource idb/adb touches outside the pool's own bookkeeping (a shared boot lock, a port collision, an
-artifact path computed before a worker's `run_dir/<scenario_id>` subdirectory is fully established),
-or whether two real
-devices' [evidence](../../docs/glossary.md#evidence-capturepolicy-trace-triage) capture ever
-cross-writes under real timing pressure that a synthetic, sequential fake test cannot produce.
+Fabricated udids and `FakeDriver` prove that the bookkeeping logic of the pool is internally
+consistent. Worker A's resources are kept separate from worker B's *in the data structures that the
+pool manages*. They cannot prove that the guarantee holds against real OS-level device and process
+contention.
+
+Two questions remain open. First, can two real `simctl` or `adb` invocations that target different
+devices race on a shared resource that idb or adb touches outside the bookkeeping of the pool? Such a
+resource could be a shared boot lock, a port collision, or an artifact path computed before the
+`run_dir/<scenario_id>` subdirectory of a worker is fully established.
+
+Second, can the [evidence](../../docs/glossary.md#evidence-capturepolicy-trace-triage) capture of two
+real devices cross-write under real timing pressure? A synthetic, sequential fake test cannot produce
+that pressure.
 
 ## Detailed design
 
 Proposal altitude. The work is MECE along the units below.
 
 - **Boot two real devices concurrently in an existing E2E lane.** Extend `ios-e2e.yml` (two booted
-  Simulators) and, separately, `android-e2e.yml` (two booted emulators, resource permitting), running
-  `--workers 2` against a scenario set large enough to keep both workers busy simultaneously.
-- **Assert real isolation, not just completion.** Confirm each worker's `udid` and its
-  `run_dir/<scenario_id>` subdirectory are cleanly separated and that no artifact from one worker's
-  scenario appears under another's — the concrete, checkable form of the isolation claim.
-- **Land as non-gating signal first.** A concurrent-device lane is more resource-intensive and
-  potentially more environment-sensitive than the existing single-device jobs; follow the precedent
-  in [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md)
-  and promote once stable.
+  Simulators) and, separately, `android-e2e.yml` (two booted emulators, resource permitting). Run
+  `--workers 2` against a scenario set large enough to keep both workers busy at the same time.
+- **Assert real isolation, not just completion.** Confirm that the `udid` and the
+  `run_dir/<scenario_id>` subdirectory of each worker are cleanly separated. Confirm that no artifact
+  from the scenario of one worker appears under that of another. This is the concrete, checkable form
+  of the isolation claim.
+- **Land as non-gating signal first.** A concurrent-device lane is more resource-intensive than the
+  existing single-device jobs, and potentially more sensitive to its environment. Follow the precedent
+  in [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md),
+  and promote the lane once it is stable.
 
 ## Alternatives considered
 
 - **Trust the fake-driver pool tests, since the bookkeeping logic is unit-tested.** Correct
-  bookkeeping in the pool's own data structures says nothing about contention at the OS/subprocess
-  level outside those structures, which is precisely what concurrent real devices can surface and a
-  sequential fake cannot.
+  bookkeeping in the data structures of the pool says nothing about contention at the OS and
+  subprocess level outside those structures. Concurrent real devices can surface that contention, and
+  a sequential fake cannot.
 - **Simulate contention with a synthetic stress harness instead of real devices.** A bespoke harness
-  would not exercise the actual `simctl`/`adb` subprocess layer where a real race would occur; two
-  real concurrently-booted devices are the more faithful (if more expensive) test.
+  would not exercise the actual `simctl` and `adb` subprocess layer, where a real race would occur.
+  Two real devices booted concurrently make the more faithful test, even if a more expensive one.
 
 ## Progress
 
