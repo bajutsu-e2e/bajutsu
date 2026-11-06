@@ -64,8 +64,8 @@ correct primitive differs by mode:
 
 - **Desktop / pointer mode** — `page.mouse.wheel(delta_x, delta_y)`. Wheel events drive the browser's
   real scroll containers (verified above), which matches how a user scrolls with a wheel or
-  trackpad. The `swipe` direction maps to a wheel delta. An `up` swipe means content travels up, so
-  the user pushes the surface up. That scrolls the page **down** (positive `delta_y`), mirroring the
+  trackpad. The `swipe` direction maps to a wheel delta. An `up` swipe is one where the user pushes
+  the surface up, so content travels up. That scrolls the page **down** (positive `delta_y`), mirroring the
   physical gesture. The `amount` fraction sets the magnitude from the same screen-relative distance
   the gesture math already computes.
 - **Touch / mobile mode** — a Chrome DevTools Protocol (CDP) touch drag, the exact path `pinch` and

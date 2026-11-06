@@ -22,7 +22,7 @@ Git source, or an uploaded zip bundle. Every tab (run, record, crawl, and the ru
 operates against that single binding. Switching to another config means restarting `serve` with a
 different `--config`.
 
-That is fine for driving one app. It makes `serve` a poor **hub** for a team that maintains several
+That is fine for driving one app, but it makes `serve` a poor **hub** for a team that maintains several
 configs, whether for several apps or for several targets of one app. Such a team wants to see the
 configs side by side, pick one, run it, and come back to its history.
 

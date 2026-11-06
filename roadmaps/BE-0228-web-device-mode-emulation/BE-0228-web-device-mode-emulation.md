@@ -27,7 +27,7 @@ built-in device emulation.
 
 ## Motivation
 
-Responsive web apps behave differently on a phone. They show a different layout, a hamburger menu
+Responsive web apps behave differently on a phone. They have a different layout, a hamburger menu
 instead of a top nav, touch scrolling and touch-only gestures, and a mobile user agent. Bajutsu can
 drive the web today, but only its desktop face. There is no way to say "test this target as an
 iPhone". The mobile experience, often the primary one, stays outside the tool's reach on a backend

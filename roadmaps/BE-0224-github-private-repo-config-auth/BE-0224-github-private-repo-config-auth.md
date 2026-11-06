@@ -127,14 +127,11 @@ behavior becomes predictable, and an unattended daemon gets a clear way in.
 A credential can be **bound to a config source** (a given owner/repo, or an org) rather than only to
 the one process-global token. A multi-org self-host then does not share one identity across tenants.
 
-This piece reconciles the config source with BE-0016's multi-org isolation. Two existing items bound
-its surface in a *hosted* deployment:
-
-- [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md)
-  decides which config sources a hosted UI even offers.
-- The auth already in
-  [BE-0051](../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md) bounds the
-  surface as well.
+This piece reconciles the config source with BE-0016's multi-org isolation. In a *hosted*
+deployment its surface is bounded by
+[BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md),
+which decides which config sources a hosted UI even offers, and by the auth already in
+[BE-0051](../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md).
 
 The main open design choice to settle here is where the binding is expressed: in config, in the
 environment, or through serve's authenticated API. Any credential stays out of logs and joins
@@ -155,9 +152,9 @@ This piece is independently shippable.
   - a **403 with `X-RateLimit-Remaining: 0`** (or a `Retry-After` header) → a rate-limit or abuse
     message (wait, or authenticate to raise the limit), *not* an access message. More repository
     permission does not fix a rate limit.
-  - a **403 carrying an `X-GitHub-SSO` response header** (the org requires security assertion markup
-    language (SAML) single sign-on (SSO) authorization) → "authorize this credential for the org's
-    SSO". This is again distinct from granting more repository access.
+  - a **403 carrying an `X-GitHub-SSO` response header** meaning the org requires Security
+    Assertion Markup Language (SAML) single sign-on (SSO) authorization → "authorize this
+    credential for the org's SSO". This is again distinct from granting more repository access.
   - **401** → "the supplied token was rejected".
   - **404**, or any other **403** → "repository not found *or* access not granted: provide a
     credential with Contents: read for `<owner>/<repo>`". Naming the most-likely-missing grant is
@@ -176,7 +173,7 @@ one.
 - **A credential affordance on the "From a Git repository" dialog.** When binding a private Git
   source, the operator can **pick an already-stored credential** or **enter a new one**: a
   fine-grained PAT, or the App credential from piece 1. The browser holds the value only until
-  submit and never echoes it back. The dialog shows a masked preview, matching how serve already
+  submit, and nothing echoes the stored credential back. The dialog shows a masked preview, matching how serve already
   treats secrets.
 - **Stored through the existing `SecretStore` seam, not a new store.** serve already has a fitting
   seam: `EnvSecretStore` for a local single-user serve, and the per-org, encrypted-at-rest

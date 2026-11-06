@@ -41,9 +41,9 @@ The whole point of the config project hub, however, is that a team holds *severa
 A per-project dashboard alone forces a serial, one-at-a-time reading. To find the worst-behaving
 project, you would switch to each in turn, read its numbers, and hold the comparison in your head.
 
-A comparison view removes that burden. The hub records runs with a `project_id`, because the config
-project hub item wires the foreign key that BE-0015 left dangling. The run history then becomes
-partitionable *by project*. The aggregations BE-0102 already computes can run once per project and be
+A comparison view removes that burden. The config project hub item wires the foreign key that
+BE-0015 left dangling, so the hub will record runs with a `project_id`. The run history then becomes
+partitionable *by project*, and the aggregations BE-0102 already computes can run once per project and be
 laid out together.
 
 The value is the ranking and the trend lines across projects. Two examples: "project *checkout*

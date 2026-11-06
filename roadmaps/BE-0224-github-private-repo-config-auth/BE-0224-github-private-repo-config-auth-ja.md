@@ -129,12 +129,11 @@ PAT だけを使う構成が、余分なものを引き込むことはありま�
 共有せずに済みます。
 
 この節は、config の取得元を BE-0016 のマルチ org 分離と整合させる部分です。*ホスト*されたデプロイでの
-表出は、既存の 2 つの項目で境界づけられます。
-
-- [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction-ja.md)
-  は、ホストされた UI がそもそもどの config 取得元を提供するかを決めます。
-- [BE-0051](../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md)
-  の既存の認証も、表出を境界づけます。
+表出は、
+[BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction-ja.md)
+（ホストされた UI がそもそもどの config 取得元を提供するかを決めます）と、
+[BE-0051](../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md)
+の既存の認証で境界づけられます。
 
 ここで詰めるべき主要な設計上の選択は、束ねを表す場所です。config で表すか、環境で表すか、serve の認証済み
 API を通すかを決めます。認証情報はログに出さず、BE-0063 がすでに求めるとおり、秘匿化のデフォルト対象に加えます。
@@ -152,9 +151,9 @@ API を通すかを決めます。認証情報はログに出さず、BE-0063 �
   - **`X-RateLimit-Remaining: 0`（または `Retry-After` ヘッダ）を伴う 403** → レート制限または濫用検知の
     メッセージです（待つか、認証して上限を上げます）。アクセスのメッセージ*ではありません*。リポジトリ権限を
     増やしても、レート制限は解消しません。
-  - **`X-GitHub-SSO` レスポンスヘッダを伴う 403**→「この認証情報を org の SSO に対して認可して
-    ください」。org は、security assertion markup language (SAML) のシングルサインオン (SSO) による
-    認可を求めています。これも、リポジトリ権限の付与とは別です。
+  - **`X-GitHub-SSO` レスポンスヘッダを伴う 403**→ org は Security Assertion Markup Language
+    (SAML) のシングルサインオン (SSO) による認可を求めているので、「この認証情報を org の SSO に対して
+    認可してください」と伝えます。これも、リポジトリ権限の付与とは別です。
   - **401** →「渡されたトークンが拒否されました」。
   - **404**、またはその他の **403** →「リポジトリが見つからない、*または*アクセス権限が付与されて
     いません。`<owner>/<repo>` に Contents: read を持つ認証情報を渡してください」。最も不足していそうな
@@ -170,7 +169,7 @@ API を通すかを決めます。認証情報はログに出さず、BE-0063 �
 
 - **ダイアログの認証情報の受け口。** 「From a Git repository」ダイアログで private な Git ソースを
   バインドするとき、運用者は**保存済みの認証情報を選ぶ**か、**新しい認証情報を入力**できます。入力するのは
-  fine-grained PAT か、1 つ目の節の App 認証情報です。ブラウザは値を送信まで保持し、読み返しません。
+  fine-grained PAT か、1 つ目の節の App 認証情報です。ブラウザは値を送信まで保持し、保存された認証情報が読み返されることはありません。
   serve がすでに秘密情報を扱うのと同じく、ダイアログはマスク済みのプレビューを表示します。
 - **新しいストアではなく既存の `SecretStore` の継ぎ目に保存する。** serve には、これに合う継ぎ目がすでに
   あります。local の単一利用者向けの `EnvSecretStore` と、hosted バックエンド向けの、org 単位で保存時暗号化
