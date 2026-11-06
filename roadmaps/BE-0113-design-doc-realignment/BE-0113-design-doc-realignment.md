@@ -17,7 +17,7 @@
 ## Introduction
 
 `DESIGN.md` opens by calling itself the finalized design ("設計確定版"). Several of its statements
-have fallen behind the implementation. This item makes four changes:
+have fallen behind the implementation. This item makes three changes:
 
 - It repositions the opening as a *record of design decisions and their rationale*, and points the
   reader to `docs/architecture.md` for current implementation status.
