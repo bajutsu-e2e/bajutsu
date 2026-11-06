@@ -21,7 +21,7 @@ Claude API key. Unlike a GitHub Actions secret, the value can currently be read 
 authenticated caller once it is set.
 
 This proposal makes operator secrets in `serve` **write-once**. An admin can set or replace a secret.
-No endpoint, for any role, ever returns the plaintext again, and a masked preview is all it returns. On
+No endpoint, for any role, ever returns the plaintext again; every response carries a masked preview instead. On
 the hosted `server` backend, the value is also encrypted at rest instead of living in process memory
 alone.
 
@@ -32,7 +32,7 @@ back the "Claude API key" field in `serve`'s settings panel. The two sides of th
 in a way a secrets manager should never be:
 
 - **Setting** the key (`POST /api/apikey`) requires the `admin` role, because `/api/apikey` is one of
-  `_ADMIN_PATHS` (`authz.py:122`). The gate applies purely to an OAuth session with a database-backed
+  `_ADMIN_PATHS` (`authz.py:122`). The gate applies only to an OAuth session with a database-backed
   `Repository` wired (`forbidden_for_role`, `authz.py:164`). A Bearer-token request has no identity and
   stays full-access by design, since it is the operator credential. With no database wired at all
   (local `serve`), the role gate is a no-op.
