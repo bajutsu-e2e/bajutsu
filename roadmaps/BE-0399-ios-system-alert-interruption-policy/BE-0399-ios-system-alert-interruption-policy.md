@@ -20,7 +20,7 @@ Bajutsu's reactive system-alert guard clears an operating-system prompt that the
 
 On iOS, two such prompts can be on screen at once: the "Save Password" alert iOS raises after a sign-in, and the notification authorization request. We measured on iOS 18.6, 26.3, 26.4, and 26.5 Simulators. When both prompts appear together, the guard stops being deterministic, and the cause is not in Bajutsu's own policy at all. XCUITest resolves an alert that interrupts one of its interactions *before* it synthesizes that interaction. With nothing installed, it answers using the alert's own default button.
 
-This proposal takes that decision back. The runner installs an interruption monitor that presses the button the scenario's own `systemAlertHandling` names. The orchestrator resolves the labels and pushes them to the runner, so the policy stays in one place and the runner applies it. The runner also reports what it pressed, so such a dismissal reaches the run's report instead of happening in silence.
+This proposal takes that decision back. The runner installs an interruption monitor that presses the button the scenario's own `systemAlertHandling` names. The orchestrator resolves the labels and pushes them to the runner, so the policy stays in one place and the runner only applies it. The runner also reports what it pressed, so such a dismissal reaches the run's report instead of happening in silence.
 
 Alongside the monitor, the mid-wait gate stops issuing its in-tree dismissal tap on any poll that has not just confirmed no system alert is showing. That fixes the order in which the two prompts are answered: the system-owned alert first, by the scenario's policy, and only then the application-owned save-password alert.
 
@@ -66,7 +66,7 @@ A later reader can tell whether the change arrived by running a scenario that an
 
 The runner installs one user-interface interruption monitor. The monitor reads the alert's button labels and picks one by `InterruptionPolicy`: a rule whose identifying labels are each present exactly once, else the first candidate present exactly once. It presses the picked button, records the label, and returns `true`.
 
-The matching discipline is a small port of `match_alert_rule` and `pick_alert_label`. The orchestrator resolves every label in it from the scenario's `systemAlertHandling` and pushes the labels over a new `POST /interruptionPolicy`. The decision therefore has one home, and the runner applies it.
+The matching discipline is a small port of `match_alert_rule` and `pick_alert_label`. The orchestrator resolves every label in it from the scenario's `systemAlertHandling` and pushes the labels over a new `POST /interruptionPolicy`. The decision therefore has one home, and the runner only applies it.
 
 The orchestrator pushes the policy once per scenario, not once per lease, because the resident runner outlives a scenario. A scenario that disables the guard pushes an *empty* policy instead of skipping the call, so it never inherits the previous scenario's answer.
 
@@ -106,7 +106,7 @@ The showcase's in-app browser loads a sign-in page served beside the existing br
 
 We measured the application's own login screen, the other route from which iOS raises this alert. It needs all three. That route is left to a follow-up and is not made a standing prerequisite of this lane.
 
-The application arms the notification request on a delay once the browser opens (`SHOWCASE_NOTIF_AFTER_BROWSER`). A scenario cannot tap its way into the stacked state, because the monitor answers first an element tap made while a system alert is showing.
+The application arms the notification request on a delay once the browser opens (`SHOWCASE_NOTIF_AFTER_BROWSER`). A scenario cannot tap its way into the stacked state, because the monitor answers first any element tap made while a system alert is showing.
 
 The scenario then waits on outcomes, not on an order, because the order moves between versions. We measured the following:
 
