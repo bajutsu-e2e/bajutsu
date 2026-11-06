@@ -115,7 +115,7 @@ half alone. *Progress* below records the measurement behind dropping its `elemen
    not read twice. See [`evidence/core.py:170`](../../bajutsu/common/evidence/core.py).
 5. **Stop polling during the BE-0310 transition-signal settle window.** Once the screen-change signal
    ([BE-0310](../BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness.md))
-   fires, the 0.3-second post-transition quiet period keeps reading when a guard or an interrupt
+   fires, the 0.3-second post-transition quiet period only keeps reading when a guard or an interrupt
    handler is registered for the step. Otherwise the signal alone is the condition. See
    [`waits.py:1042-1061`](../../bajutsu/common/orchestrator/waits.py).
 6. **Fold `drain_interruptions` into the `/tap` or `/elements` response instead of its own round
@@ -144,7 +144,7 @@ half alone. *Progress* below records the measurement behind dropping its `elemen
    [`XcuitestElementProvider.swift:50`](../../BajutsuKit/Runner/Sources/XcuitestElementProvider.swift).
    Expected saving: 5–50 milliseconds per query. [#2117](https://github.com/bajutsu-e2e/bajutsu/pull/2117) reverts this unit. On iOS 26 the
    boundary node reaches the service's snapshot alone, never the app's. The gate never opens there.
-10. **Make the `/zorder` second round trip lazy.** Fetch z-order when a selector is actually
+10. **Make the `/zorder` second round trip lazy.** Fetch z-order only when a selector is actually
     ambiguous and needs it resolved. See [`xcuitest.py:744-768`](../../bajutsu/common/drivers/xcuitest.py).
     Expected saving: 5–30 milliseconds per query it currently runs unconditionally for.
 11. **Enable HyperText Transfer Protocol (HTTP) keep-alive on both ends of the XCUITest channel.**
@@ -158,7 +158,7 @@ half alone. *Progress* below records the measurement behind dropping its `elemen
     is why the sleeps exist. The re-query is itself a wait, so removing the sleep does not weaken the
     retry's determinism.
 13. **Check `alerts.firstMatch.exists` before enumerating SpringBoard alert buttons.** The current
-    probe lists every button on every check. Test existence first, and list the buttons when an alert is
+    probe lists every button on every check. Test existence first, and list the buttons only when an alert is
     actually present. See
     [`XcuitestElementProvider.swift:302-320`](../../BajutsuKit/Runner/Sources/XcuitestElementProvider.swift).
     Expected saving: 100–400 milliseconds per probe.
