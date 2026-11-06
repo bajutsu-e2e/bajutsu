@@ -40,7 +40,7 @@ Bajutsu's multi-tenant `serve` grew one axis at a time. BE-0015 introduced the o
 
 Overlap is not a corner case in the deployment shape those items describe. A consultancy runs one Bajutsu deployment for several client tenants and staffs an engineer on two of them. A platform team keeps an org of its own alongside the product org whose GitHub organization it also belongs to. In both cases the person is a legitimate member of two orgs, yet can work only in the one that sorts first.
 
-BE-0375 says so in its own text and names the blocker: a login that belongs to several orgs must be able to choose between them, which needs `users.org_id` to stop being a single column.
+BE-0375 says so in its own text and names the blocker: the real answer is to let a login that belongs to several orgs choose between them, which needs `users.org_id` to stop being a single column.
 
 The silence around the restriction is worse than the restriction. The header badge shows one org and gives no hint that a second exists. A user whose runs land in the wrong tenant cannot tell a misconfigured deployment from a tie-break that chose a different tenant. The two look identical from the browser, and the second is not a defect at all.
 
@@ -64,7 +64,7 @@ Once this ships, a user who belongs to two orgs signs in, opens the header selec
 2. an intersection with an org's `githubOrgs`
 3. direct membership in one of the org's admitting Teams
 
-We keep that ranking and change what the function returns. A new `orgs_for_identity` returns every matching org in the same ranked order. `org_for_identity` becomes its first element, and `identity_matches_org` becomes a test that the result is non-empty. No caller's behavior changes, because the head of the ranked list is the org the old function already returned.
+We keep that ranking and change only what the function returns. A new `orgs_for_identity` returns every matching org in the same ranked order. `org_for_identity` becomes its first element, and `identity_matches_org` becomes a test that the result is non-empty. No caller's behavior changes, because the head of the ranked list is the org the old function already returned.
 
 The set must outlive the OAuth callback. That callback is the only place where a login's GitHub organization and Team memberships are known, and Bajutsu keeps no GitHub token afterward. Nothing later in the session can recompute them.
 
@@ -76,7 +76,7 @@ Every sign-in replaces that user's rows wholesale. Recomputing instead of mergin
 
 `users.org_id` stays one column and keeps its meaning at every reader: the active org. What changes is who writes it.
 
-Today `oauth_callback` overwrites the column on every sign-in with the first match. From now on it overwrites the column when the recorded value is no longer eligible. A user removed from the selected org lands on the head of the new eligible list. Otherwise the recorded choice stays.
+Today `oauth_callback` overwrites the column on every sign-in with the first match. From now on it overwrites the column only when the recorded value is no longer eligible. A user removed from the selected org lands on the head of the new eligible list. Otherwise the recorded choice stays.
 
 Either way, sign-in writes `users.role` from the active org's own `editorTeams`, not from the first match's. A user active in one tenant therefore never carries a role that another tenant's `editorTeams` granted.
 
@@ -107,7 +107,7 @@ The switch is still recorded like every other operationally significant act in `
 
 A later reader of the audit log needs to know which tenant an actor was in when the actor acted, and the sign-in record alone no longer answers that.
 
-The boot read `GET /api/config` gains an `orgs` field alongside the `actor` and `org` it already returns. The field lists the eligible slugs, sorted by slug. The ranking decides where a login starts, so it does not enter the stored set, and the selector's order is stable.
+The boot read `GET /api/config` gains an `orgs` field alongside the `actor` and `org` it already returns. The field lists the eligible slugs, sorted by slug. The ranking decides only where a login starts, so it does not enter the stored set, and the selector's order is stable.
 
 Disclosing the slugs to the actor whose memberships produced them reveals nothing the actor could not learn by switching. The same reasoning already lets that endpoint return the actor's own login and active org, while the full org roster stays behind the admin-only `GET /api/orgs`.
 

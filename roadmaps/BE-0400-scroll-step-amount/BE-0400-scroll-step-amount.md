@@ -36,7 +36,7 @@ BE-0326 states the contract that the fraction is meant to honor: each step "adva
 
 We measured realized travel against requested travel on an iPhone 17 Pro running iOS 26.5. The screen was the driver conformance scrollable screen, with a viewport of 402 by 874 points. Each row is ten repeats with the list reset to the top before each. We ran the same five fractions again as `swipe` for the comparison below, for a hundred measurements in all.
 
-We read travel from the element tree. The driver call returns after the gesture has settled, so the read after it describes a screen at rest. Rows carry unique identifiers, so a row present in both reads gives its own displacement directly.
+We read travel from the element tree. The driver call returns only after the gesture has settled, so the read after it describes a screen at rest. Rows carry unique identifiers, so a row present in both reads gives its own displacement directly.
 
 | Requested fraction | Requested (pt) | Realized mean (pt) | sd (pt) | Ratio | Excess (pt) |
 |---|---|---|---|---|---|
