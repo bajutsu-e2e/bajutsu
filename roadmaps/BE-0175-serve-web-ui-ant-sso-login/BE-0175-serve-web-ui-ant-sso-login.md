@@ -16,57 +16,36 @@
 
 ## Introduction
 
-BE-0163 registered `ant` — the official Anthropic CLI's browser-based OAuth/SSO credential — as a
-third AI provider, so every AI path can bill a Claude Pro/Max/Console seat with no API key. The
-serve Web UI's **Settings** panel lets an operator select the `ant` provider, but signing in was
-left out of band: the panel only told the operator to run `ant auth login` in the terminal that
-launched `serve`. This item adds a **Sign in with SSO** button to that panel so the sign-in can be
-started from the Web UI, and the provider gate flips to reachable the moment the credential lands.
+BE-0163 registered `ant` as a third AI provider. `ant` is the official Anthropic CLI's browser-based OAuth/SSO credential. With it, every AI path can bill a Claude Pro/Max/Console seat with no API key.
+
+The serve Web UI's **Settings** panel lets an operator select the `ant` provider, but the sign-in itself stayed out of band. The panel told the operator to run `ant auth login` in the terminal that launched `serve`.
+
+This item adds a **Sign in with SSO** button to that panel, so the Web UI can start the sign-in. The provider gate flips to reachable the moment the credential lands.
 
 ## Motivation
 
-Selecting `ant` in Settings and then dropping to a terminal to run `ant auth login` is an awkward
-seam: the operator is already in the Web UI, the credential the CLI writes is exactly what the
-selected provider needs, and the reachability the Record/Crawl gate reads (`GET /api/provider`)
-already reflects the CLI's sign-in state. The only missing piece is a way to *start* the sign-in
-from the same panel. `ant auth login` in its default mode opens a browser on the host and binds its
-own loopback callback, so for a local `make serve` — the documented way to run the Web UI — serve
-only needs to spawn the CLI and let the operator complete the browser flow, then poll for
-completion. No token ever passes through serve; the CLI writes the machine credential itself.
+Selecting `ant` in Settings and then dropping to a terminal to run `ant auth login` is an awkward seam. The operator is already in the Web UI. The credential the CLI writes is exactly what the selected provider needs. The reachability that the Record/Crawl gate reads (`GET /api/provider`) already reflects the CLI's sign-in state. The missing piece is a way to *start* the sign-in from the same panel.
+
+In its default mode, `ant auth login` opens a browser on the host and binds its own loopback callback. For a local `make serve`, the documented way to run the Web UI, serve needs to do three things: spawn the CLI, let the operator complete the browser flow, and poll for completion. No token passes through serve, because the CLI writes the machine credential itself.
 
 ## Detailed design
 
 - **`ant_login` / `ant_login_status` operations** (`bajutsu/serve/operations/config.py`).
-  `ant_login` refuses a hosted/multi-tenant deployment (403 — the sign-in writes a machine-global
-  credential the whole server would share), refuses when the `ant` binary is absent (400, reusing
-  the availability hint), and otherwise spawns `ant auth login` through the injectable
-  `ServeState.popen` seam with `stdin` closed (so only the browser+loopback path drives it),
-  returning 202. A second click while one is in flight **supersedes** it — the stale process is
-  terminated and a fresh one started (never two concurrently), so an abandoned browser flow can be
-  retried at once instead of wedging the button until the CLI's own timeout. `ant_login_status`
-  polls the held process: `idle` / `running` / `ok` / `error` (with the CLI's last output line as
-  the detail).
-- **Routing + RBAC** (`bajutsu/serve/handler.py`, `bajutsu/serve/authz.py`). `POST /api/ant/login`
-  and `GET /api/ant/login` route to the two operations; the path joins `_ADMIN_PATHS`, so it is an
-  admin action like `/api/provider`.
-- **`ServeState` handle** (`bajutsu/serve/jobs.py`). A single `ant_login_proc` field holds the
-  in-flight subprocess between the POST that starts it and the GET that polls it.
-- **Settings UI** (`bajutsu/templates/serve.html.j2`, `bajutsu/templates/serve.js`). The `ant`
-  section gains a **Sign in with SSO** button and a status line; the button's label/enabled state
-  derives from `GET /api/provider` (so "Signed in ✓" and the gate never disagree), and its click
-  starts the login, polls to completion, aligns the active provider to `ant`, and refreshes the
-  Record/Crawl gate live.
-- **Docs** (`docs/web-ui.md`, `docs/ja/web-ui.md`). The Settings section, which still described the
-  removed Claude Code provider, is corrected to the three current providers and the new SSO button.
+
+  `ant_login` refuses a hosted/multi-tenant deployment (403), because the sign-in writes a machine-global credential that the whole server would share. It refuses when the `ant` binary is absent (400, reusing the availability hint). Otherwise it spawns `ant auth login` through the injectable `ServeState.popen` seam with `stdin` closed, so only the browser+loopback path drives it, and returns 202.
+
+  A second click while one login is in flight **supersedes** it. Serve terminates the stale process and starts a fresh one, never two concurrently. An abandoned browser flow can then be retried at once, instead of wedging the button until the CLI's own timeout.
+
+  `ant_login_status` polls the held process and returns `idle` / `running` / `ok` / `error`, with the CLI's last output line as the detail for `error`.
+- **Routing + RBAC** (`bajutsu/serve/handler.py`, `bajutsu/serve/authz.py`). `POST /api/ant/login` and `GET /api/ant/login` route to the two operations. The path joins `_ADMIN_PATHS`, so it is an admin action like `/api/provider`.
+- **`ServeState` handle** (`bajutsu/serve/jobs.py`). A single `ant_login_proc` field holds the in-flight subprocess between the POST that starts it and the GET that polls it.
+- **Settings UI** (`bajutsu/templates/serve.html.j2`, `bajutsu/templates/serve.js`). The `ant` section gains a **Sign in with SSO** button and a status line. The button's label and enabled state derive from `GET /api/provider`, so "Signed in ✓" and the gate never disagree. A click starts the login and polls to completion. It then aligns the active provider to `ant` and refreshes the Record/Crawl gate live.
+- **Docs** (`docs/web-ui.md`, `docs/ja/web-ui.md`). The Settings section still described the removed Claude Code provider. It is corrected to the three current providers and the new SSO button.
 
 ## Alternatives considered
 
-- **Headless sign-in for remote serve** (`ant auth login --no-browser`: print the authorize URL,
-  paste the code back). Deferred — it requires keeping the subprocess alive across two requests and
-  feeding it stdin, and remote serve is out of scope here. The button is gated to local serve; a
-  hosted deployment signs the host in out of band, unchanged from BE-0163.
-- **Leave sign-in to the terminal** (the BE-0163 status quo). Rejected: the panel already selects
-  the provider, so starting the sign-in from the same place removes the only manual, out-of-UI step.
+- **Headless sign-in for remote serve** (`ant auth login --no-browser`: print the authorize URL, paste the code back). Deferred. It requires keeping the subprocess alive across two requests and feeding it stdin, and remote serve is out of scope here. The button is gated to local serve. A hosted deployment signs the host in out of band, unchanged from BE-0163.
+- **Leave sign-in to the terminal** (the BE-0163 status quo). Rejected. The panel already selects the provider, so starting the sign-in from the same place removes the one manual, out-of-UI step.
 
 ## Progress
 

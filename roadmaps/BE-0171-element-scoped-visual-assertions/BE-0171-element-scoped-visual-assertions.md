@@ -16,38 +16,23 @@
 
 ## Introduction
 
-Extend the `visual` assertion (BE-0029) so a comparison can be **scoped to a single element**
-instead of the whole screen, and so **exclude regions can reference a selector** instead of a raw
-pixel rectangle. Both stay fully deterministic — the comparison is still a pixel diff against a
-stored baseline, with no model in the loop.
+This item extends the `visual` assertion (BE-0029) in two ways. A comparison can be **scoped to a single element** instead of the whole screen. **Exclude regions can reference a selector** instead of a raw pixel rectangle.
+
+Both stay fully deterministic. The comparison is still a pixel diff against a stored baseline, with no model in the loop.
 
 ## Motivation
 
-BE-0029 shipped a deterministic `visual` assertion, but it compares the **entire screen** and masks
-dynamic content only with hardcoded pixel rectangles (`{ x, y, w, h }`). Two limitations follow, and
-both are exactly what the element-level visual testing in MagicPod and mabl exists to solve:
+BE-0029 shipped a deterministic `visual` assertion. It compares the **entire screen**, and it masks dynamic content only with hardcoded pixel rectangles (`{ x, y, w, h }`). Two limitations follow. Both are what the element-level visual testing in MagicPod and mabl exists to solve:
 
-1. **Whole-screen comparison is brittle and imprecise.** A test that only cares about one
-   component — a chart, a button, an avatar — fails whenever *anything else* on the screen changes
-   (an unrelated banner, a list that grew a row). The author cannot say "regression-test *this*
-   card and ignore the rest", so the baseline churns and the signal is noisy. Competitors offer
-   element-level screenshot comparison precisely because most visual regressions are local.
+1. **Whole-screen comparison is brittle and imprecise.** A test that cares about one component (a chart, a button, an avatar) fails whenever *anything else* on the screen changes, such as an unrelated banner or a list that grew a row. The author cannot say "regression-test *this* card and ignore the rest". The baseline churns, and the signal is noisy. Competitors offer element-level screenshot comparison because most visual regressions are local.
 
-2. **Pixel-rectangle masks are fragile across devices and layouts.** An `exclude` region is written
-   as absolute coordinates, so it silently drifts the moment the layout reflows, the device
-   resolution changes, or a locale widens a label. The thing an author actually wants to ignore is
-   usually *an element* (the clock, a "last updated" timestamp, a randomized ad slot) — not a fixed
-   box. Addressing it by selector is stable across the same conditions that break coordinates.
+2. **Pixel-rectangle masks are fragile across devices and layouts.** An `exclude` region is written as absolute coordinates. It silently drifts when the layout reflows, the device resolution changes, or a locale widens a label. The author usually wants to ignore *an element* (the clock, a "last updated" timestamp, a randomized ad slot), not a fixed box. A selector stays stable under the same conditions that break coordinates.
 
-Both fit Bajutsu's prime directives without strain: resolving an element to its bounding box and
-cropping/masking before a pixel diff is a pure, deterministic machine operation. No AI enters the
-`run`/CI gate; the same screen produces the same verdict every time. This is the same reasoning
-that let BE-0029 be accepted rather than shelved as "too fuzzy".
+Both additions fit Bajutsu's prime directives without strain. Resolving an element to its bounding box, then cropping or masking before a pixel diff, is a pure, deterministic machine operation. No AI enters the `run`/CI gate, and the same screen produces the same verdict every time. The same reasoning let BE-0029 be accepted rather than shelved as "too fuzzy".
 
 ## Detailed design
 
-Two additions to the `VisualMatch` schema (`bajutsu/scenario/models/assertions.py`), both optional
-and backward-compatible — an existing `visual:` block keeps its current whole-screen behavior.
+The `VisualMatch` schema (`bajutsu/scenario/models/assertions.py`) gains two additions. Both are optional and backward-compatible: an existing `visual:` block keeps its current whole-screen behavior.
 
 **1. `element:` — scope the comparison to one element's bounding box.**
 
@@ -59,11 +44,7 @@ expect:
       threshold: 0.1
 ```
 
-The selector is resolved with the existing unique-resolution rules ([DESIGN §5](../../DESIGN.md)) —
-**an ambiguous selector fails immediately** (prime directive 2), never "crop whatever matched first". The element's frame is read
-from the driver's element tree, the captured screenshot is cropped to that frame, and the crop is
-diffed against the baseline. The baseline is therefore the *element*, not the screen, which is what
-makes it robust to unrelated changes.
+The selector is resolved with the existing unique-resolution rules ([DESIGN §5](../../DESIGN.md)). **An ambiguous selector fails immediately** (prime directive 2), and the assertion never crops whatever matched first. The element's frame is read from the driver's element tree. The captured screenshot is cropped to that frame, and the crop is diffed against the baseline. The baseline is therefore the *element*, not the screen, which makes it robust to unrelated changes.
 
 **2. Selector-based masking — let an `exclude` entry name a selector instead of a rectangle.**
 
@@ -76,52 +57,24 @@ expect:
         - { x: 0, y: 0, w: 390, h: 54 }              # raw rectangle still allowed
 ```
 
-`ExcludeRegion` becomes a union: the current `{ x, y, w, h }` rectangle **or** `{ selector: <Selector> }`.
-A selector mask is resolved to the element's frame at evaluation time and masked exactly as a
-rectangle is today. A selector that matches nothing is a masking no-op (there is nothing on screen to
-hide); an ambiguous one fails, consistent with directive 2.
+`ExcludeRegion` becomes a union: the current `{ x, y, w, h }` rectangle **or** `{ selector: <Selector> }`. A selector mask is resolved to the element's frame at evaluation time. It is then masked exactly as a rectangle is today. A selector that matches nothing is a masking no-op, because nothing on screen needs hiding. An ambiguous selector fails, consistent with directive 2.
 
 ### Work breakdown (MECE)
 
-- **Schema** — add `element: Selector | None` to `VisualMatch`; turn `ExcludeRegion` into a union of
-  the pixel rectangle and a `{ selector: Selector }` form. Keep both optional so BE-0029 scenarios
-  are unchanged.
-- **Frame resolution** — a small helper that resolves a `Selector` to a screenshot-pixel frame via
-  the driver's element tree, reusing the existing unique-resolution path (ambiguous → fail). Element
-  frames are in points; the screenshot is in device pixels, so the helper scales by the
-  screenshot/point ratio (screenshot size over the point-space screen extent).
-- **Comparison engine** (`bajutsu/visual.py`) — unchanged. Because the baseline is the *element*
-  crop (below), the actual is cropped to the element frame in the evaluation step and the existing
-  engine compares the two element-sized images; resolved selector masks are just more
-  `ExcludeRegion` rectangles passed to the existing mask path. The pixel-diff core is untouched.
-- **Evaluation** (`bajutsu/assertions.py`, `_eval_visual` / `VisualContext`) — resolve `element` and
-  selector masks to pixel frames, crop the actual to the element (writing the crop as the evidence
-  `actual`), translate masks into the crop's local coordinates, and compare against the
-  element-sized baseline.
-- **Evidence & report** — the `visual` evidence records whether the comparison was element-scoped
-  (`element_scoped`) and which selector(s) masked (`masked_selectors`); the HTML report's
-  baseline/actual/diff strip renders the cropped images (they *are* the recorded paths) plus badges
-  for the provenance, so the reviewer sees exactly what was compared.
-- **Approve workflow** — `bajutsu approve` promotes element-scoped baselines the same way it does
-  whole-screen ones: it copies whatever the evidence `actual` points at, which for an element-scoped
-  check is the crop, so no special-casing is needed (confirmed).
-- **Docs & schema reference** — document `element` and selector masks in the scenario schema and
-  `docs/` / `docs/ja/`; add an example to the showcase visual scenario.
-- **Tests** — element-scoped pass/fail, ambiguous-selector failure, selector mask hiding a dynamic
-  element, and backward-compatibility of an unchanged whole-screen `visual:` block.
+- **Schema** — add `element: Selector | None` to `VisualMatch`. Turn `ExcludeRegion` into a union of the pixel rectangle and a `{ selector: Selector }` form. Keep both optional so BE-0029 scenarios are unchanged.
+- **Frame resolution** — add a small helper that resolves a `Selector` to a screenshot-pixel frame via the driver's element tree. The helper reuses the existing unique-resolution path (ambiguous → fail). Element frames are in points and the screenshot is in device pixels, so the helper scales by the screenshot/point ratio (screenshot size over the point-space screen extent).
+- **Comparison engine** (`bajutsu/visual.py`) — unchanged. The baseline is the *element* crop (below), so the evaluation step crops the actual to the element frame. The existing engine then compares the two element-sized images. Resolved selector masks are just more `ExcludeRegion` rectangles passed to the existing mask path. The pixel-diff core is untouched.
+- **Evaluation** (`bajutsu/assertions.py`, `_eval_visual` / `VisualContext`) — resolve `element` and selector masks to pixel frames. Crop the actual to the element, writing the crop as the evidence `actual`. Translate masks into the crop's local coordinates, and compare against the element-sized baseline.
+- **Evidence & report** — the `visual` evidence records whether the comparison was element-scoped (`element_scoped`) and which selectors masked (`masked_selectors`). The HTML report's baseline/actual/diff strip renders the cropped images, which are the recorded paths, plus badges for the provenance. The reviewer sees exactly what was compared.
+- **Approve workflow** — `bajutsu approve` promotes element-scoped baselines the same way it promotes whole-screen ones. It copies whatever the evidence `actual` points at, which for an element-scoped check is the crop, so no special-casing is needed (confirmed).
+- **Docs & schema reference** — document `element` and selector masks in the scenario schema and in `docs/` and `docs/ja/`. Add an example to the showcase visual scenario.
+- **Tests** — cover element-scoped pass and fail, ambiguous-selector failure, a selector mask hiding a dynamic element, and backward compatibility of an unchanged whole-screen `visual:` block.
 
 ## Alternatives considered
 
-- **A separate `visualElement` assertion kind.** Rejected — it would duplicate `baseline` /
-  `threshold` / `exclude` and fragment the schema. An optional `element` field on the existing
-  `visual` keeps one concept.
-- **Auto-detecting the region of interest.** Rejected here — inferring "the interesting part" is a
-  judgement call that trends toward an LLM, which cannot enter the gate (directive 1). The author
-  names the element explicitly; determinism is preserved.
-- **Only selector masks, not element scoping (or vice versa).** They share the same frame-resolution
-  helper and address the same brittleness from opposite ends (what to *compare* vs what to
-  *ignore*), so shipping them together is cheaper than either alone and gives authors the full
-  element-level story competitors offer.
+- **A separate `visualElement` assertion kind.** Rejected. It would duplicate `baseline`, `threshold`, and `exclude`, and fragment the schema. An optional `element` field on the existing `visual` keeps one concept.
+- **Auto-detecting the region of interest.** Rejected here. Inferring "the interesting part" is a judgement call that trends toward an LLM, and an LLM cannot enter the gate (directive 1). The author names the element explicitly, so determinism is preserved.
+- **Only selector masks, not element scoping (or vice versa).** Rejected. The two share the same frame-resolution helper. They address the same brittleness from opposite ends (what to *compare* versus what to *ignore*). Shipping them together is cheaper than either alone, and it gives authors the full element-level story that competitors offer.
 
 ## Progress
 
