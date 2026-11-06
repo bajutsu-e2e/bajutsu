@@ -1,12 +1,12 @@
 [English](../codegen.md) · **日本語**
 
-# コード生成（codegen）
+# コード生成
 
-> 通過したシナリオから、出力先フレームワークの流儀に沿った **ネイティブテスト** を生成できます。これにより
-> チームは、既存の CI（継続的インテグレーション）で同じフローを実行できます。テスト時に bajutsu ランタイムも
-> AI も不要です。出力先は 3 つで、iOS backend 向けの **XCUITest（Swift）**、web backend 向けの
-> **Playwright（TypeScript）**、Android backend 向けの **UI Automator（Kotlin）** です。マッピングは
-> 純粋に構造的（AI 非依存）です。
+> コード生成（codegen）は、通過したシナリオから、出力先フレームワークの流儀に沿った **ネイティブテスト** を
+> 生成します。チームは、既存の CI（継続的インテグレーション）で同じフローを実行できます。テスト時に
+> bajutsu ランタイムも AI も不要です。出力先は 3 つで、iOS backend 向けの **XCUITest（Swift）**、
+> web backend 向けの **Playwright（TypeScript）**、Android backend 向けの **UI Automator（Kotlin）** です。
+> マッピングは純粋に構造的で、AI には依存しません。
 >
 > 実装: `bajutsu/codegen/xcuitest.py`（XCUITest）、`bajutsu/codegen/playwright.py`（Playwright）、
 > `bajutsu/codegen/uiautomator.py`（UI Automator）。
@@ -22,11 +22,15 @@ bajutsu codegen <scenario.yaml> --target <name> [--emit xcuitest | playwright | 
 ```
 
 `--emit` は `xcuitest`（既定）、`playwright`、`uiautomator` のいずれかです。`-o -`（既定）なら標準出力に、
-ファイルパスならそのファイルに書き出します。`--emit playwright` は web ターゲット（`platform: web` と `targets.<name>.subject.url` の設定）を、
-`--emit uiautomator` は Android ターゲット（`platform: android` と `targets.<name>.subject.id` の設定）を要求します。
-対応するターゲットでなければ終了コード 2 で終わります。config の
-`subject.launch.env` は生成テストに引き継がれます（[cli](cli.md#codegen)）。XCUITest では `app.launchEnvironment` に、
-Playwright では `localStorage` のシードに反映され、UI Automator では intent extra として渡されます。
+ファイルパスならそのファイルに書き出します。
+
+`--emit playwright` は web ターゲット（`platform: web` と `targets.<name>.subject.url` の設定）を要求します。
+`--emit uiautomator` は Android ターゲット（`platform: android` と `targets.<name>.subject.id` の設定）を
+要求します。対応するターゲットでなければ、終了コード 2 で終わります。
+
+config の `subject.launch.env` は、生成テストに引き継がれます（[cli](cli.md#codegen)）。XCUITest では
+`app.launchEnvironment` に、Playwright では `localStorage` のシードに反映されます。UI Automator では
+intent extra として渡されます。
 
 生成したテストは、デバイスの条件を持ちません（[configuration](configuration.md#デバイスの条件runson)）。
 `bajutsu run` では、`runsOn` の条件がシナリオを動かすデバイスを選びます。生成したテストは、それを
@@ -67,7 +71,7 @@ final class ComponentsUITests: XCTestCase {
 - 各メソッドは冒頭で `launchEnvironment` を設定してから `app.launch()` を呼びます。env は **config の `subject.launch.env` <
   シナリオの `preconditions.subject.launch.env`** のマージで、テスト側が勝ちます。
 
-### セレクタのマッピング（XCUITest）
+### XCUITest のセレクタのマッピング
 
 単一の `id` / `label` / `idMatches` は上記のヘルパをそのまま使います。**複合**セレクタ
 （`value`、`traits`、`index`、または複数フィールドの組み合わせ）は、`// TODO` に落とさず 1 つの
@@ -144,15 +148,15 @@ Playwright 出力先での座標スワイプ）は、失敗させずに `// TODO
 ネットワークの `request` / `requestSequence` アサーションも、XCUITest と UI Automator では同じ
 `// TODO` の規則に従います。どちらの backend もネットワーク傍受の面を持たないためです。Playwright は
 例外です。web backend はネットワーク通信を実際に傍受するため、生成テストは `// TODO` に落とさず、
-本物のアサーションとして出力します（詳細は[後述](#playwrightwebの出力)）。
+本物のアサーションとして出力します（詳細は[後述](#web-向け-playwright-の出力)）。
 
-ただし `if` / `forEach` / `extract` の 3 つは例外です。いずれも実行時の UI ツリーに対して
-評価します — 現在の状態による分岐、その時点のマッチ集合に対するループ、解決した要素のプロパティの
-キャプチャであり、静的に生成したテストにはそれを再現するランタイムがありません。そこで黙って no-op
+ただし `if` / `forEach` / `extract` の 3 つは例外です。いずれも実行時の UI ツリーに対して評価します。
+現在の状態による分岐、その時点のマッチ集合に対するループ、解決した要素のプロパティのキャプチャがそれです。
+静的に生成したテストには、これらを再現するランタイムがありません。そこで黙って no-op
 スタブを出す代わりに、3 つの出力先すべてが生成時に `CodegenError` を送出し、その構文を使うシナリオには
 `bajutsu run` を本来の実行経路として示します（BE-0297）。
 
-## Playwright（web）の出力
+## web 向け Playwright の出力
 
 `--emit playwright` は、シナリオを **TypeScript の Playwright テスト**（`@playwright/test`）として描き出します。
 これが web（Playwright）backend（[drivers](drivers.md)）の引き渡し成果物です。シナリオ群を 1 つの
@@ -161,8 +165,10 @@ Playwright 出力先での座標スワイプ）は、失敗させずに `// TODO
 `run` 用のドライバは DOM をたどって解決した要素の中心を座標クリックし、照合を iOS とバイト単位で一致させます。
 生成テストはこれと反対に、Playwright の意味的ロケータ（`getByTestId` / `getByRole`）と web-first アサーション
 （`expect(...).toBeVisible()`）を使います。これは意図したものです。出力先フレームワーク自身がランタイムである
-以上、テストは Playwright の流儀で書く必要があり、引き渡し成果物の決定性は Playwright の自動待機が担います
-（web-first アサーションはテストのタイムアウトまで再試行します）。一方 iOS 側にはこうした切り分けがありません。BE-0290 で idb を撤去して以来、XCUITest backend は
+以上、テストは Playwright の流儀で書く必要があります。引き渡し成果物の決定性は、Playwright の自動待機が担います
+（web-first アサーションはテストのタイムアウトまで再試行します）。
+
+一方 iOS 側には、こうした切り分けがありません。BE-0290 で idb を撤去して以来、XCUITest backend は
 実行時点ですでにアクセシビリティ識別子で直接 tap しており、生成された `el(id).tap()` や
 `waitForExistence` と同じ流儀です。
 
@@ -193,7 +199,7 @@ test.describe('Components', () => {
   `swipe` にはこの固定の時間はありません。要素をドラッグするのではなく、その中心から wheel イベントで
   ページをスクロールするからです（web ドライバ自身のスクロールと合わせています。BE-0227）。
 
-### セレクタのマッピング（Playwright）
+### Playwright のセレクタのマッピング
 
 | `Selector` フィールド | Playwright ロケータ |
 |---|---|
@@ -206,7 +212,7 @@ test.describe('Components', () => {
 | `index` | `.nth(<index>)` でロケータを絞る |
 | `value` / `within` | AND 制約としては未対応で `// TODO` |
 
-### アクションのマッピング（Playwright）
+### Playwright のアクションのマッピング
 
 | シナリオ要素 | Playwright |
 |---|---|
@@ -233,7 +239,9 @@ test.describe('Components', () => {
 | `pinch` / `rotate` | `// TODO`（マルチタッチ。web backend は駆動しない） |
 | `handleSystemAlert` | `// TODO`（iOS 専用。web に OS レベルのプロンプトは無い） |
 
-### アサーションのマッピング（Playwright、web-first `expect`）
+### Playwright のアサーションのマッピング
+
+アサーションは、web-first の `expect` に対応づけます。
 
 | アサーション | Playwright |
 |---|---|
@@ -256,7 +264,7 @@ JSON Schema の検証に生成テストへ持ち込むライブラリが必要�
 `test(...)` のタイトルはシナリオ名をそのまま使います（TypeScript のテストタイトルは単なる文字列なので、識別子用の
 正規化は要りません）。
 
-## UI Automator（Android）の出力
+## Android 向け UI Automator の出力
 
 `--emit uiautomator` は、シナリオを **Kotlin の UI Automator テスト**（`androidx.test.uiautomator` と JUnit）と
 して描き出します。これが Android（adb）backend（[drivers](drivers.md)）の引き渡し成果物です。シナリオ群を 1 つの
@@ -450,12 +458,13 @@ class ComponentsUITest {
 - ヘルパ `act` は、要素を返す前にその出現を待ちます。`findObject` 単体は暗黙の待機を持たない単発クエリです。
   `launch()` の直後や画面遷移の直後に操作すると、描画に先行してしまう恐れがあります。下表の生成アクションのうち、要素を
   対象とするものはすべてこのヘルパを経由します。`wait` の各ステップは、操作対象の要素ではなく条件を対象とするので、
-  代わりに `awaitPresent` と `awaitGone` を経由します（`relaunch` は直接呼びます）。待機がタイムアウトすると、
-  `act` と 2 つの `await…` ヘルパは、素の `NullPointerException` や無記名の `AssertionError` ではなく、
-  セレクタとタイムアウト値を名指しした `AssertionError` を送出します。`relaunch` が生成する `launch(extras)`
-  は、セレクタではなくパッケージと試行回数の上限を名指しして失敗します。
-  読み取り専用のアサーションは、従来どおり `device.findObject` /
-  `device.findObjects` を直接呼び、待機しません。これはドライバ自身のアサーションと同じ挙動です。
+  代わりに `awaitPresent` と `awaitGone` を経由します（`relaunch` は直接呼びます）。
+
+  待機がタイムアウトすると、`act` と 2 つの `await…` ヘルパは、素の `NullPointerException` や無記名の
+  `AssertionError` ではなく、セレクタとタイムアウト値を名指しした `AssertionError` を送出します。
+  `relaunch` が生成する `launch(extras)` は、セレクタではなくパッケージと試行回数の上限を名指しして
+  失敗します。読み取り専用のアサーションは、従来どおり `device.findObject` / `device.findObjects` を
+  直接呼び、待機しません。これはドライバ自身のアサーションと同じ挙動です。
 - 各メソッドは `extras` マップ（config の `subject.launch.env` < シナリオの `preconditions.subject.launch.env`）を組み立て、
   `launch(extras)` を呼びます。この関数は env を intent extra として渡します。adb backend の `am start --es` の
   逆向きです。
@@ -484,6 +493,7 @@ class ComponentsUITest {
   読み取りは遅れるのではなく固定されます。1回の `device.wait` は、何度ポーリングしても同じ古い
   ツリーを読み直します。そして、待機が始まる前に変わっていた画面に対してタイムアウトします。自力では
   変わらない読み取りは、待機時間を延ばしても回復しません。上のウィンドウ一覧が詰まる場合と同じ形です。
+
   そこで `waitSliced` は 1 回の `device.wait` を `CACHE_REREAD_SLICE_MS` で区切り、区切りの合間に
   `clearAccessibilityCache` を呼びます。区切りは呼び出し側の待機時間を分け合うだけで、延長はしません。
   各区切りは、期限を見る前にまず読みます。`timeout: 0` のステップでも木を 1 回は読むためです。
@@ -511,16 +521,18 @@ class ComponentsUITest {
   到達できません。そこで `kickWindowTracking` が HOME キーを押し、そのうえで intent が再送されます。
   HOME はアクセシビリティ機構ではなく入力の経路で配送されるので、一覧が今どうなっていようと届き、
   フォーカスを握っているものを片付けます。キー入力自体が、それによって発生するイベントを待つので、
-  この回復に sleep は要りません。このウィンドウ変更の回数は `LAUNCH_ATTEMPTS` より1つ少ない値までで、
-  生成される値の2なら1度です。ただし、1回の起動で起こすウィンドウ変更はこれだけではありません。次の
-  箇条書きにある起動前の確認が、試行ごとに `TRACKING_KICK_ATTEMPTS` の予算を別に持つので、`launch`
-  1回あたりの最悪値は `LAUNCH_ATTEMPTS × TRACKING_KICK_ATTEMPTS + (LAUNCH_ATTEMPTS - 1)` 回、
-  生成される値では7回です。ただしこの回数に届くのは、起動前の確認のたびに一覧が空だった端末だけです。
-  起動前の確認は、予算を使い切っても次の箇条書きにあるとおり記録するだけなので、試行ごとに3回まで
-  押しうるからです。下の実行例のように一覧が生きている端末なら、押すのは1回にとどまります。
+  この回復に sleep は要りません。
+
+  このウィンドウ変更の回数は `LAUNCH_ATTEMPTS` より1つ少ない値までで、生成される値の2なら1度です。
+  ただし、1回の起動で起こすウィンドウ変更はこれだけではありません。次の箇条書きにある起動前の確認が、
+  試行ごとに `TRACKING_KICK_ATTEMPTS` の予算を別に持つからです。そのため `launch` 1回あたりの最悪値は
+  `LAUNCH_ATTEMPTS × TRACKING_KICK_ATTEMPTS + (LAUNCH_ATTEMPTS - 1)` 回、生成される値では7回です。
+  ただしこの回数に届くのは、起動前の確認のたびに一覧が空だった端末だけです。起動前の確認は、予算を
+  使い切っても次の箇条書きにあるとおり記録するだけなので、試行ごとに3回まで押しうるからです。
+  下の実行例のように一覧が生きている端末なら、押すのは1回にとどまります。
+
   なお `pressHome` は、イベントが届かなかったことを例外ではなく false の返り値で報告するので、
-  どちらの結果も記録されます。
-  この処理は `UiAutomation.executeAndWaitForEvent` の外に置きます。`pressHome` がすでに同じ呼び出しで
+  どちらの結果も記録されます。この処理は `UiAutomation.executeAndWaitForEvent` の外に置きます。`pressHome` がすでに同じ呼び出しで
   待機しており、入れ子にすると外側の待機が見ているイベントキューを内側が空にしてしまうためです。
 - **ウィンドウが現れない道筋は2つあり、どちらも CI で観測されていて、対処は共通です。** 1つめは一覧に
   何も入っていない場合で、各試行の前に一覧を読む `ensureWindowTracking` が捉えます。ある実行では
@@ -566,8 +578,9 @@ class ComponentsUITest {
   この事実は、それ以前の証跡も説明します。以前の証跡は、経路そのものが報告をやめたことを示唆して
   いました。実行 30899952762 では、同じジョブの CI 再実行が3回とも失敗しました（`launch` 自身の
   2回の試行とは別です）。いずれも Activity は `RESUMED` と `Displayed` の両方に達していながら、
-  20秒ほどで153回、168回、171回の照合を重ねています。また7回の実行を通して、
-  通った実行はいずれも起動中の一時的な null ルート（`Active window root not found` と
+  20秒ほどで153回、168回、171回の照合を重ねています。
+
+  また7回の実行を通して、通った実行はいずれも起動中の一時的な null ルート（`Active window root not found` と
   `Skipping null root node for window`）を10〜24回の照合のうち2〜7回記録し、失敗した実行は1回も
   記録しませんでした。アプリのウィンドウが載っていないという事実だけで、経路の凍結を持ち出さずに
   この相関を説明できます。アプリのウィンドウが一覧に加わらないのであれば、UiDevice が観測できる起動の
@@ -604,7 +617,7 @@ class ComponentsUITest {
 [`android-e2e.yml`](../../.github/workflows/android-e2e.yml) の `uiautomator (codegen)` ジョブが、
 Gradle 自身のレポートとあわせて回収済みのディレクトリをアップロードします。
 
-### セレクタのマッピング（UI Automator）
+### UI Automator のセレクタのマッピング
 
 **単一フィールド** のセレクタだけが `BySelector` に対応します。複合セレクタ（`traits`、`within`、`index`、または
 複数フィールドの組み合わせ）は、忠実な単一セレクタの形が無いため、制約を落とした広すぎる一致にせず `// TODO` の
@@ -624,7 +637,7 @@ Gradle 自身のレポートとあわせて回収済みのディレクトリを�
 （`By.textContains` 経由）、実正規表現には忠実な単一セレクタの形がありません（XCUITest エミッタが NSPredicate
 の `MATCHES` で突き当たるのと同じ限界）。この場合は `// TODO` にとどめます。
 
-### アクションのマッピング（UI Automator）
+### UI Automator のアクションのマッピング
 
 | シナリオ要素 | UI Automator |
 |---|---|
@@ -651,7 +664,7 @@ Gradle 自身のレポートとあわせて回収済みのディレクトリを�
 | `doubleTap` / `rotate` | `// TODO`（対応する UI Automator ジェスチャが無い） |
 | `handleSystemAlert` | `// TODO`（iOS 専用。Android ではシステムダイアログを直接 tap する） |
 
-### アサーションのマッピング（UI Automator）
+### UI Automator のアサーションのマッピング
 
 | アサーション | UI Automator |
 |---|---|

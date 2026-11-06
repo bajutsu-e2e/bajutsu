@@ -2,11 +2,11 @@
 
 # Code generation (codegen)
 
-> A passing scenario generates a **native test** in a destination framework's own
-> idiom, letting a team run the same flow in their existing CI (continuous integration) — with no
+> Codegen turns a passing scenario into a **native test** in the destination framework's own
+> idiom. A team can then run the same flow in its existing continuous integration (CI), with no
 > bajutsu runtime and no AI at test time. bajutsu supports three targets: **XCUITest (Swift)** for the
 > iOS backend, **Playwright (TypeScript)** for the web backend, and **UI Automator (Kotlin)** for
-> the Android backend. The mapping is **purely structural** (AI-independent).
+> the Android backend. The mapping is **purely structural**, so it does not depend on AI.
 >
 > Implementation: `bajutsu/codegen/xcuitest.py` (XCUITest), `bajutsu/codegen/playwright.py`
 > (Playwright), `bajutsu/codegen/uiautomator.py` (UI Automator).
@@ -22,11 +22,16 @@ bajutsu codegen <scenario.yaml> --target <name> [--emit xcuitest | playwright | 
 ```
 
 `--emit` is `xcuitest` (default), `playwright`, or `uiautomator`. `-o -` (default) writes to stdout;
-a file path writes to the file. `--emit playwright` requires the app to be a web target
-(`platform: web` with `targets.<name>.subject.url` set) and `--emit uiautomator` an Android target
-(`platform: android` with `targets.<name>.subject.id` set); without the matching target the command
-exits with code 2. Config's `subject.launch.env` is carried into the generated test ([cli](cli.md#codegen)) — `app.launchEnvironment` for
-XCUITest, seeded `localStorage` for Playwright, and forwarded as intent extras for UI Automator.
+a file path writes to the file.
+
+`--emit playwright` requires the app to be a web target (`platform: web` with
+`targets.<name>.subject.url` set). `--emit uiautomator` requires an Android target
+(`platform: android` with `targets.<name>.subject.id` set). Without the matching target, the command
+exits with code 2.
+
+Config's `subject.launch.env` is carried into the generated test ([cli](cli.md#codegen)). It becomes
+`app.launchEnvironment` for XCUITest, seeded `localStorage` for Playwright, and intent extras for
+UI Automator.
 
 The generated test carries no device condition
 ([configuration](configuration.md#device-conditions-runson)). In `bajutsu run`, a condition in
@@ -84,8 +89,8 @@ A single `id` / `label` / `idMatches` keeps its readable helper above. Any **com
 | `traits: [notEnabled]` / `[selected]` | `enabled == NO` / `selected == YES` |
 | `index: n` | `.element(boundBy: n)` (a negative `n` counts from the end: `.element(boundBy: query.count - k)`; else `.firstMatch`) |
 
-All set fields are **AND**-ed into the predicate. A field with no *faithful* structural form keeps
-the selector at `el("UNSUPPORTED_SELECTOR")` — an honest gap, not a wrong guess:
+All set fields are **AND**-ed into the predicate. A field with no *faithful* structural form leaves
+the selector at `el("UNSUPPORTED_SELECTOR")`, an honest gap rather than a wrong guess. Three cases have no such form:
 
 - **`labelMatches` with regex metacharacters** — it is a Python `re.search` pattern; only a
   metacharacter-free one is a plain substring (`CONTAINS`). A real regex (e.g. `^Item `) has no
@@ -148,11 +153,11 @@ Automator. Neither backend has a network-interception surface. Playwright is the
 web backend intercepts network traffic, so the emitted test asserts against it for real, never
 falling back to a TODO (see [below](#playwright-web-target)).
 
-One family of constructs is the exception: `if`, `forEach`, and `extract` each evaluate against a
-live UI tree at run time — a branch on the current state, a loop over the live match set, a capture
-of a resolved element's property — which a static generated test has no runtime to reproduce.
-Rather than a silent no-op stub, all three targets raise a `CodegenError` at generation time and
-name `bajutsu run` as the faithful path for a scenario that uses them (BE-0297).
+One family of constructs is the exception: `if`, `forEach`, and `extract`. Each evaluates against a
+live UI tree at run time: a branch on the current state, a loop over the live match set, or a
+capture of a resolved element's property. A static generated test has no runtime to reproduce any of
+them. Rather than emit a silent no-op stub, all three targets raise a `CodegenError` at generation
+time and name `bajutsu run` as the faithful path for a scenario that uses them (BE-0297).
 
 ## Playwright (web) target
 
@@ -160,14 +165,16 @@ name `bajutsu run` as the faithful path for a scenario that uses them (BE-0297).
 the handoff artifact for the web (Playwright) backend ([drivers](drivers.md)). A group of scenarios
 becomes one `test.describe` block; **1 scenario = 1 `test(...)`** (the parallel of one test method).
 
-Unlike the `run` driver — which walks the DOM and coordinate-clicks the resolved frame center so
-matching is byte-for-byte identical to iOS — the emitted test uses Playwright's **semantic locators**
-(`getByTestId` / `getByRole`) and **web-first assertions** (`expect(...).toBeVisible()`). That is
-deliberate: the destination framework *is* the runtime, so the test must speak Playwright's idiom,
-and Playwright's auto-waiting owns determinism in the handoff artifact (web-first assertions
-retry until the test timeout). iOS carries no such split: since BE-0290 retired idb, the XCUITest
-backend already actuates by accessibility identifier at run time, the same idiom the emitted
-`el(id).tap()` / `waitForExistence` speaks.
+The `run` driver walks the DOM and coordinate-clicks the resolved frame center, so matching is
+byte-for-byte identical to iOS. The emitted test differs: it uses Playwright's **semantic locators**
+(`getByTestId` / `getByRole`) and **web-first assertions** (`expect(...).toBeVisible()`). The
+difference is deliberate. The destination framework *is* the runtime, so the test must speak
+Playwright's idiom, and Playwright's auto-waiting owns determinism in the handoff artifact
+(web-first assertions retry until the test timeout).
+
+iOS carries no such split. Since BE-0290 retired idb, the XCUITest backend already actuates by
+accessibility identifier at run time, the same idiom the emitted `el(id).tap()` /
+`waitForExistence` speaks.
 
 ```ts
 // Generated by bajutsu — do not edit by hand. Re-generate with `bajutsu codegen`.
@@ -189,11 +196,11 @@ test.describe('Components', () => {
 ```
 
 - Each test navigates to `BASE_URL` (the app's `subject.url`, the web `launch` equivalent of
-  `page.goto`). Config's `subject.launch.env` < the scenario's `preconditions.subject.launch.env` is seeded via
-  `page.addInitScript(() => localStorage.setItem(...))`; an app expecting another channel (query
-  params / cookies) gets a `// TODO`.
+  `page.goto`). Config's `subject.launch.env` < the scenario's `preconditions.subject.launch.env` is
+  seeded via `page.addInitScript(() => localStorage.setItem(...))`. An app expecting another channel
+  (query params or cookies) gets a `// TODO`.
 - All *waiting* uses Playwright's native auto-wait. The only fixed timing emitted is `longPress`'s
-  `delay` — intrinsic to the gesture, the same honesty the iOS path applies to
+  `delay`, which is intrinsic to the gesture, the same honesty the iOS path applies to
   `press(forDuration:)`. A directional `swipe` carries no such timing: it wheels the page from the
   element's center instead of dragging it, matching the web driver's own scroll (BE-0227).
 
@@ -252,8 +259,8 @@ test.describe('Components', () => {
 Unlike XCUITest and UI Automator, the web backend intercepts network traffic, so a `request` /
 `requestSequence` assertion (or an `until: { request }` wait) is not a TODO here. The emitted test
 installs a `page.on('requestfinished', ...)` recorder before navigation. It then checks the
-exchanges observed so far — a point-in-time check that mirrors the runner's own collector rather
-than a `waitForResponse` that could stall on future traffic. A `responseSchema` assertion still
+exchanges observed so far. This point-in-time check mirrors the runner's own collector, rather
+than using a `waitForResponse` that could stall on future traffic. A `responseSchema` assertion still
 falls back to a `// TODO`: validating a JSON Schema needs a schema library the generated test
 should not assume.
 
@@ -269,18 +276,18 @@ scenarios becomes one instrumented test class; **1 scenario = 1 `@Test` method**
 XCUITest method).
 
 UI Automator is the closer twin of the adb backend: both take a cross-process, black-box view of the
-app through `resource-id` / `text` / `content-desc`, so the emitted test is the **faithful reverse of
-the driver's own read of the tree** — it drives `UiDevice` / `UiObject2` and asserts with JUnit,
-mirroring what the driver does at run time rather than an Espresso view-matcher idiom (which would
-need `R.id` references the string-keyed scenario does not carry). Waiting uses `device.wait(Until.…)`
-rather than a fixed sleep, the same determinism split the iOS and web targets make.
+app through `resource-id` / `text` / `content-desc`. The emitted test is thus the **faithful
+reverse of the driver's own read of the tree**. It drives `UiDevice` / `UiObject2` and asserts with
+JUnit, mirroring what the driver does at run time rather than an Espresso view-matcher idiom, which
+would need `R.id` references the string-keyed scenario does not carry. Waiting uses
+`device.wait(Until.…)` rather than a fixed sleep, the same determinism split the iOS and web
+targets make.
 
-The listing below is a skeleton, not a transcript: the emitted file carries a paragraph of rationale
-above each helper, abridged here to a short inline comment where one is worth keeping, and several
-helpers are left out entirely — which is why `uiAutomation()`, `accessibilityWindows()`, and
+The listing below is a skeleton, not a transcript. The emitted file carries a paragraph of rationale
+above each helper, abridged here to a short inline comment where one is worth keeping. Some
+helpers are left out entirely. That is why `uiAutomation()`, `accessibilityWindows()`, and
 `windowSummary()` are called below but defined nowhere in it, and why the `gone` halves of the
-sliced wait, `waitGone()` and `awaitGone()`, appear neither called nor defined. Read the
-checked-in
+sliced wait, `waitGone()` and `awaitGone()`, appear neither called nor defined. Read the checked-in
 [`CodegenAndroidUITest.kt`](../demos/showcase/android/compose/src/androidTest/java/CodegenAndroidUITest.kt)
 for the emitter's actual output.
 
@@ -456,23 +463,25 @@ class ComponentsUITest {
   `android:id` and a Compose `testTag` (surfaced via `testTagsAsResourceId`, which carries no prefix)
   both resolve.
 - The `act` helper waits for the element before returning it. `findObject` alone is a single-shot
-  query with no implicit wait. Acting right after `launch()` or a UI transition could otherwise race
-  the render. An element-targeting action routes through `act`; a `wait` step routes through
+  query with no implicit wait, so acting right after `launch()` or a UI transition could race the
+  render. An element-targeting action routes through `act`. A `wait` step routes through
   `awaitPresent` / `awaitGone` instead, since it targets a condition rather than an element to act
-  on; `relaunch` stays direct. Both `act` and the two `await…` helpers throw an `AssertionError`
-  naming the selector and the timeout; `relaunch` emits `launch(extras)`, whose failure names the
-  package and the attempt budget instead. `findObject` alone would instead throw a bare
-  `NullPointerException` that names neither. A read-only assertion still calls `device.findObject` /
-  `device.findObjects` directly, unwaited. That matches the driver's own assertions.
+  on. `relaunch` stays direct.
+
+  Both `act` and the two `await…` helpers throw an `AssertionError` naming the selector and the
+  timeout. `relaunch` emits `launch(extras)`, whose failure names the package and the attempt budget
+  instead. `findObject` alone would throw a bare `NullPointerException` that names neither. A
+  read-only assertion still calls `device.findObject` / `device.findObjects` directly, unwaited,
+  which matches the driver's own assertions.
 - Each method builds an `extras` map (config's `subject.launch.env` < the scenario's
-  `preconditions.subject.launch.env`) and calls `launch(extras)`, which forwards the env as intent extras —
-  the reverse of the adb backend's `am start --es`.
+  `preconditions.subject.launch.env`) and calls `launch(extras)`, which forwards the env as intent
+  extras. This is the reverse of the adb backend's `am start --es`.
 - `launch` waits for the app's first window, then for that window to settle
-  (`device.waitForIdle`). The window wait proves some window from the package exists. It does
-  not prove that window has finished drawing its first frame. On a loaded CI runner, the next
+  (`device.waitForIdle`). The window wait proves that some window from the package exists. It does
+  not prove that the window has finished drawing its first frame. On a loaded CI runner, the next
   `act()` can otherwise race a screen still mid-layout. `waitForIdle` closes that gap before the
-  test's own per-action waits start their clock. The settle sits on the success path: running it
-  after a wait that found no window settles nothing.
+  test's own per-action waits start their clock. The settle sits on the success path, because
+  running it after a wait that found no window settles nothing.
 - **`launch` checks its window wait and re-issues the intent on a miss.** Selectors are matched
   against the accessibility tree, and the wait proves the app's window reached it. A window that
   never arrives there is not a slow first frame, so waiting longer on the same launch cannot recover
@@ -490,15 +499,18 @@ class ComponentsUITest {
 - **A `wait` spends its budget across several reads, dropping the accessibility cache between
   them.** `hasObject`, `findObject`, and every `Until` condition built on them resolve through the
   platform's per-connection `AccessibilityNodeInfo` cache, and only an accessibility event
-  invalidates it. A dropped event therefore does not merely delay a read — it pins it, so every poll
-  inside one `device.wait` re-reads the same stale tree and the timeout expires against a screen
-  that changed before the wait began. Raising the timeout cannot recover a read that will not change
-  on its own, the same shape as the wedged window list above. `waitSliced` therefore caps each
-  `device.wait` at `CACHE_REREAD_SLICE_MS` and calls `clearAccessibilityCache` between slices. The
-  slices share the caller's single timeout rather than extending it, and a slice returns the instant
-  its condition holds — and each slice polls before testing the deadline, so a `timeout: 0` step
-  still reads the tree once, as `device.wait(condition, 0)` does on its own, so a healthy wait finishes exactly when it did before and pays only a couple
-  of cache drops per second — this stays a condition wait, never a fixed sleep.
+  invalidates that cache. A dropped event therefore does not merely delay a read; it pins the read.
+  Every poll inside one `device.wait` re-reads the same stale tree, and the timeout expires against
+  a screen that changed before the wait began. Raising the timeout cannot recover a read that will
+  not change on its own, the same shape as the wedged window list above.
+
+  `waitSliced` therefore caps each `device.wait` at `CACHE_REREAD_SLICE_MS` and calls
+  `clearAccessibilityCache` between slices. The slices share the caller's single timeout rather
+  than extending it. A slice returns the instant its condition holds, so a healthy wait finishes
+  exactly when it did before and pays only a couple of cache drops per second. Each slice also polls
+  before testing the deadline, so a `timeout: 0` step still reads the tree once, as
+  `device.wait(condition, 0)` does on its own. The wait stays a condition wait, never a fixed
+  sleep.
 
   The cache drop is confined to API 34 and up, because that is where the lever exists.
   `androidx.test.uiautomator` 2.3.0 reaches `AccessibilityInteractionClient#clearCache()` by
@@ -520,17 +532,20 @@ class ComponentsUITest {
   wait runs. `kickWindowTracking` presses HOME and the intent is re-issued. HOME is dispatched through
   the input pipeline rather than the accessibility one, so it lands no matter what the accessibility
   view currently says, and it dismisses whatever holds focus. The key press waits for the events it
-  produces, so the recovery adds no sleep. `LAUNCH_ATTEMPTS` bounds this kick to one fewer than the
-  number of attempts, so once at the emitted value of 2. It is not the only kick a launch can make,
-  though: the pre-launch check in the next bullet carries its own `TRACKING_KICK_ATTEMPTS` budget
-  per attempt, putting the worst case for one `launch` at `LAUNCH_ATTEMPTS × TRACKING_KICK_ATTEMPTS
-  + (LAUNCH_ATTEMPTS - 1)` presses — seven as emitted, but only on a device whose list reads empty
-  at every pre-launch check, since that check does not give up early when its own budget runs out
-  (see the next bullet). On a device whose list is live — the run below — it presses once.
-  `pressHome` reports a window event that never arrived by returning false
-  rather than by throwing, so both outcomes are logged. The kick stays outside
-  `UiAutomation.executeAndWaitForEvent`, because `pressHome` already waits through that same call
-  and a nested one would clear the event queue the outer wait is watching.
+  produces, so the recovery adds no sleep.
+
+  `LAUNCH_ATTEMPTS` bounds this kick to one fewer than the number of attempts, so once at the
+  emitted value of 2. It is not the only kick a launch can make, though. The pre-launch check in the
+  next bullet carries its own `TRACKING_KICK_ATTEMPTS` budget per attempt. The worst case for one
+  `launch` is `LAUNCH_ATTEMPTS × TRACKING_KICK_ATTEMPTS + (LAUNCH_ATTEMPTS - 1)` presses,
+  seven as emitted. That worst case arises only on a device whose list reads empty at every
+  pre-launch check, since the check does not give up early when its own budget runs out (see the
+  next bullet). On a device whose list is live, as in the run below, it presses once.
+
+  `pressHome` reports a window event that never arrived by returning false rather than by throwing,
+  so both outcomes are logged. The kick stays outside `UiAutomation.executeAndWaitForEvent`, because
+  `pressHome` already waits through that same call and a nested one would clear the event queue the
+  outer wait is watching.
 - **Two ways the window fails to arrive, both observed in CI, and one remedy.** `ensureWindowTracking`
   reads the list before each attempt and catches the first: a list holding nothing at all, which one
   run logged as `no accessibility windows reported` before the window change recovered it.
@@ -540,20 +555,18 @@ class ComponentsUITest {
   instead of a whole launch timeout.
 
   A list that is still empty once the pre-launch budget is spent is logged rather than raised as a
-  failure: HOME before the app has started only reaches the launcher — the weakest stimulus this
-  file has — while starting
-  the activity adds a window outright. Throwing there would spend the whole kick budget on the weak
-  stimulus and abort before `startActivity` ever runs — on the one device that most needs the strong
-  one. `launch`'s own retry loop already reports the failure, naming the window list, if starting the
-  activity does not help either.
+  failure. HOME before the app has started only reaches the launcher, the weakest stimulus this
+  file has, while starting the activity adds a window outright. Throwing there would spend the whole
+  kick budget on the weak stimulus and abort before `startActivity` ever runs, on the one device
+  that most needs the strong stimulus. If starting the activity does not help either, `launch`'s own
+  retry loop already reports the failure, naming the window list.
 - **Every accessibility read goes through one `Configurator`-flagged accessor.** `windowSummary`,
   `reportsWindows`, and `clearAccessibilityCache` reach the connection through the flags `UiDevice`
-  itself uses, taken from
-  `Configurator.getInstance()`, rather than through the flag-less
-  `Instrumentation.getUiAutomation()` overload — which, on a target that sets non-default flags,
-  tears down and reconnects the same `UiAutomation` on every read, turning a read into the very
-  connection churn the evidence below exists to diagnose. The flagged overload only exists from API
-  24, so the accessor falls back to the flag-less read below that, exactly as `UiDevice` does.
+  itself uses, taken from `Configurator.getInstance()`. They avoid the flag-less
+  `Instrumentation.getUiAutomation()` overload. On a target that sets non-default flags, that
+  overload tears down and reconnects the same `UiAutomation` on every read, turning a read into the
+  very connection churn the evidence below exists to diagnose. The flagged overload only exists from
+  API 24, so the accessor falls back to the flag-less read below that, exactly as `UiDevice` does.
 - **The last attempt does not kick once its wait fails**, because after it there is no intent left to
   re-issue and HOME would overwrite every piece of evidence the failure is about to collect. (The
   pre-launch check `ensureWindowTracking` still presses HOME on that attempt, but before the relaunch, so
@@ -581,14 +594,16 @@ class ComponentsUITest {
 
   That also explains the earlier evidence, which had suggested a channel that had stopped reporting
   altogether. Run 30899952762 failed three separate CI attempts of that job (reruns, not `launch`'s
-  own two), polling 153, 168, and 171 times across some 20 seconds with the activity both `RESUMED`
-  and `Displayed`; and across seven runs, every passing run logged UiDevice's transient null roots
-  during launch (`Active window root not found`, `Skipping null root node for window`) 2 to 7 times
-  within 10 to 24 polls while every failing run logged none. A missing app window accounts for that
-  correlation without a frozen channel: with the app's window never joining the list, there is no
-  launch transition for UiDevice to observe, so none of the churn a live launch produces appears.
-  Raising the wait from 5 to 15 and then to 20 seconds changed nothing, and could not: a list the
-  app's window never joins does not gain it by being waited on.
+  own two). They polled 153, 168, and 171 times across some 20 seconds, with the activity both
+  `RESUMED` and `Displayed`.
+
+  Across seven runs, every passing run logged UiDevice's transient null roots during launch
+  (`Active window root not found`, `Skipping null root node for window`) 2 to 7 times within 10 to
+  24 polls, while every failing run logged none. A missing app window accounts for that correlation
+  without a frozen channel. With the app's window never joining the list, there is no launch
+  transition for UiDevice to observe, so none of the churn a live launch produces appears. Raising
+  the wait from 5 to 15 and then to 20 seconds changed nothing, and could not: a list the app's
+  window never joins does not gain it by being waited on.
 
 #### Failure evidence
 
@@ -710,5 +725,6 @@ with a checked-in fixture that CI regenerates, compiles, and runs against a real
   signal first, promoted to the gate once stable. Because it regenerates the checked-in `.kt` before
   building, a stale check-in cannot mask an emitter or `androidx.test.uiautomator` API drift.
 
-Both run with no bajutsu runtime, no driver of ours, and no AI at test time — the codegen output path
-exactly as a downstream team would run it. See [showcase](showcase.md) for the live runs.
+Both run with no bajutsu runtime, no driver of ours, and no AI at test time, which is the
+codegen output path exactly as a downstream team would run it. See [showcase](showcase.md) for the
+live runs.
