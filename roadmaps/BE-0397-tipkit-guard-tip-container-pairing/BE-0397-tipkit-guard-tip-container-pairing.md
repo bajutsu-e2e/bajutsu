@@ -37,7 +37,7 @@ Measurement, not inference, establishes the collision. A Simulator run against t
 | SwiftUI `confirmationDialog` | present, same label, same full-screen frame | absent |
 | Native long-press edit menu | absent | absent |
 
-Two facts in the table matter beyond the collision itself. First, the scrim that a confirmation dialog installs matches the tip's scrim in label and frame. No property of the scrim node distinguishes the two cases, so only a second node can.
+Two facts in the table matter beyond the collision itself. First, the scrim that a confirmation dialog installs matches the tip's scrim exactly in label and frame. No property of the scrim node distinguishes the two cases, so only a second node can.
 
 Second, the native long-press edit menu (Paste / Select / Select All / AutoFill) installs no such scrim at all. Its nodes carry neither an identifier nor a label. An edit menu never triggers the guard, so it never needed to be told apart from a tip.
 
@@ -103,7 +103,7 @@ The work divides into four parts: the driver-side narrowing, an on-device fixtur
 
 - **Drop the guard instead of narrowing it, since a hand-written `interrupts` entry does the same job.** Out of scope here, and worth stating plainly because the case is stronger than it looks.
 
-  BE-0389's own spike records that a plain `tap: { id: "PopoverDismissRegion" }` step, with no new code at all, dismissed the tip. An `interrupts` entry is evaluated on every act step's pre-action read, not after a step has already failed. It clears the tip *before* the act instead of paying one failure first, at the cost of one extra query per bare act.
+  BE-0389's own spike records that a plain `tap: { id: "PopoverDismissRegion" }` step, with no new code at all, dismissed the tip. An `interrupts` entry is evaluated on every act step's pre-action read, not only after a step has already failed. It clears the tip *before* the act instead of paying one failure first, at the cost of one extra query per bare act.
 
   What the guard still buys is a single home for TipKit's internal names. When Apple renames a node, two lines in one driver cover every scenario, where hand-written entries would each need editing. This item's measurement cuts both ways on that trade: the same central place that would absorb a rename is where the wrong dismiss came from. Retiring the guard in favor of documented `interrupts` entries is therefore a coherent position.
 
