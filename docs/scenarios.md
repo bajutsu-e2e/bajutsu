@@ -2152,7 +2152,7 @@ are in [selectors](selectors.md#assertion-evaluation).
 - `requestSequence` checks a list of request matchers were **observed in order** ([details below](#requestsequence-ordered-requests)); needs the `--network` run flag.
 - `responseSchema` validates a captured **response body against a JSON Schema** ([details below](#responseschema-json-schema-of-a-response)); needs the `--network` run flag.
 - `visual` pixel-compares a screenshot against a baseline image ([details below](#visual-visual-regression)).
-- `clipboard` reads the device pasteboard (`simctl pbpaste`) and checks **exactly one** of `equals` / `matches` (regex) — the read-back half of `setClipboard`, for verifying a "copy" action. It needs the per-device control channel, so it is unavailable on the fake driver / in parallel runs and fails cleanly there ([BE-0052](../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)).
+- `clipboard` reads the device pasteboard (`simctl pbpaste`) and checks **exactly one** of `equals` / `matches` (regex). It is the read-back half of `setClipboard`, for verifying a "copy" action. The assertion needs the per-device control channel, so it is unavailable on the fake driver and in parallel runs, and fails cleanly there ([BE-0052](../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)).
 - `attribute` takes `sel:` + `name:` + **exactly one** of `equals` / `contains` / `matches` / `absent: true`. See [details below](#attribute-html-attribute-of-an-element) and [BE-0466](../roadmaps/BE-0466-web-attribute-assertion/BE-0466-web-attribute-assertion.md). The web (Playwright) backend reads the attribute on demand. Any other backend fails it before the device lease.
 
 > **Locale caveat**: string comparisons on `label`/`value` and assertions that look at visible
@@ -2250,8 +2250,8 @@ stub more traffic than the scenario says.
 
 `event` asserts on a behavior the screen never shows: an analytics / telemetry event the app **sent**
 ([BE-0048](../roadmaps/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md)).
-It is a pure check over the same observed exchanges `request` reads (needs the `--network` run flag),
-so the verdict stays machine-only — no LLM. It filters the timeline by the event's **endpoint** (the
+The check is pure, over the same observed exchanges `request` reads (needs the `--network` run flag),
+so the verdict stays machine-only, with no LLM. The assertion filters the timeline by the event's **endpoint** (the
 same `method` / `url` / `urlMatches` / `path` / `pathMatches` matcher as `request`), then by its
 `query` / `body` dictionaries, and checks how many exchanges survive against a count operator.
 
@@ -2279,10 +2279,10 @@ expect:
 
 ### `requestSequence` (ordered requests)
 
-`requestSequence` asserts that several requests happened **in a given order** — e.g. a token refresh
+`requestSequence` asserts that several requests happened **in a given order**, for example a token refresh
 *before* the protected call ([BE-0048](../roadmaps/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md)).
-It is a pure check over the observed timeline (needs the `--network` run flag), so the verdict stays
-machine-only. It takes a non-empty list of [`request` matchers](#request-network-assertion) (the same
+The check is pure, over the observed timeline (needs the `--network` run flag), so the verdict stays
+machine-only. The assertion takes a non-empty list of [`request` matchers](#request-network-assertion) (the same
 fields) and matches them as an **ordered subsequence**: each matcher must match a distinct exchange at
 a strictly later position than the previous one. Unrelated traffic **may interleave** between them, so
 the check is robust to noise; listing the same matcher twice requires two occurrences in order.
@@ -2301,8 +2301,8 @@ expect:
 ### `responseSchema` (JSON Schema of a response)
 
 `responseSchema` asserts that a captured **response body conforms to a JSON Schema** — a contract
-check the screen can't express ([BE-0048](../roadmaps/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md)).
-It is a pure, deterministic check over the observed timeline plus a stored schema file (needs the
+check the screen cannot express ([BE-0048](../roadmaps/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md)).
+The check is pure and deterministic, over the observed timeline plus a stored schema file (needs the
 `--network` run flag), so the verdict stays machine-only. `request` selects the exchange (the same
 matcher fields) whose response is validated; `schema` is a file path resolved within the target's
 **schemas directory** (`--schemas` flag, config `targets.<name>.paths.schemas`, or `schemas/` beside the
@@ -2316,9 +2316,9 @@ expect:
       schema: items.json        # resolved within the schemas dir
 ```
 
-> It validates the **first** matching exchange's response. It fails (rather than guessing) when no
-> exchange matches, the schema file is missing, the response has no body or isn't JSON, or the body
-> doesn't conform. The schemas dir resolves like `--baselines` for `visual`.
+> The assertion validates the **first** matching exchange's response. It fails (rather than guessing) when no
+> exchange matches, the schema file is missing, the response has no body or is not JSON, or the body
+> does not conform. The schemas dir resolves like `--baselines` for `visual`.
 
 ### `visual` (visual regression)
 
@@ -2346,7 +2346,7 @@ When `compare` is omitted, the engine falls back to the target's `evidence.visua
 `threshold` is the allowed percentage of differing pixels (default `0.0` = exact match), shared
 by all engines. `colorTolerance` (0–1, default `0.1`) sets the per-pixel perceptual color
 tolerance for `pixelmatch`; `antialiasing` (default `true`) discounts anti-aliased pixels from
-the diff. `exclude` masks regions before comparing, e.g. a status bar or a clock. Each entry is
+the diff. `exclude` masks regions before comparing, such as a status bar or a clock. Each entry is
 either a rectangle in screenshot pixels (`{ x, y, w, h }`) **or** a `{ selector: <Selector> }`
 that names an element to mask (BE-0171); the element is resolved to its frame at evaluation time.
 A baseline is created or updated with the `approve` command
@@ -2410,8 +2410,8 @@ covers what the element tree does not carry. Examples are a link's `href`, an im
 
 `attribute` works in a step's `assert`, in `expect`, in an `if` condition, and in an `interrupts`
 condition. A `wait` step cannot use it. The runner reads the attribute on demand, right after each
-query that feeds the block. A step's `assert` re-reads it on every tick of the condition wait. The poll stops once the attribute matches or the lane's wait floor runs out. The floor comes
-from `BAJUTSU_MIN_WAIT_TIMEOUT`. Element snapshots, goldens, crawl output, and reports gain no
+query that feeds the block. A step's `assert` re-reads it on every tick of the condition wait. The poll stops once the attribute matches or the lane's wait floor runs out.
+The floor comes from `BAJUTSU_MIN_WAIT_TIMEOUT`. Element snapshots, goldens, crawl output, and reports gain no
 field. A report shows merely the attributes an assertion names.
 
 The assertion needs the `elementAttribute` capability, and the web backend alone declares it. On
@@ -2494,7 +2494,9 @@ A small templating and macro layer wraps the core grammar. It runs **at load tim
 
 ### Components (`use` → reusable steps)
 
-A **component** is a list of `params` and a list of `steps` that reference them as `${params.<name>}`. A `use` step invokes it, binding params via `with`. `use` is a **compile-time macro**: `expand_components` (`scenario/expand.py`) replaces it with the component's substituted steps before the run. Expansion is recursive — a component may itself `use` another, up to depth 25. It raises an error on a missing or unknown param, a residual `${params.*}` referencing something undeclared, or a reference cycle. No `use` step survives into the run, so determinism is unaffected. Expansion reaches a scenario's own `steps` and the recovery `steps` of each [`interrupts`](#interrupts-handling-unpredictable-interstitial-screens) entry. It also reaches every `if` / `else` branch and `forEach` body inside them. It reaches every `web:` / `app:` block too. A `use` in any of these bodies expands at load time. A broken `use` in a branch the run never takes still fails the load.
+A **component** is a list of `params` and a list of `steps` that reference them as `${params.<name>}`. A `use` step invokes it, binding params via `with`. `use` is a **compile-time macro**: `expand_components` (`scenario/expand.py`) replaces it with the component's substituted steps before the run. Expansion is recursive: a component may itself `use` another, up to depth 25. Expansion raises an error on a missing or unknown param, a residual `${params.*}` referencing something undeclared, or a reference cycle. No `use` step survives into the run, so determinism is unaffected.
+
+Expansion reaches a scenario's own `steps` and the recovery `steps` of each [`interrupts`](#interrupts-handling-unpredictable-interstitial-screens) entry. It also reaches every `if` / `else` branch and `forEach` body inside them. It reaches every `web:` / `app:` block too. A `use` in any of these bodies expands at load time. A broken `use` in a branch the run never takes still fails the load.
 
 A `use` step takes one modifier alone: `target`. The loader refuses a `use` step that also sets any of `capture` / `extract` / `name` / `from`. Expansion replaces the whole step, so it would otherwise drop those fields with no warning. Expansion carries `target` forward instead, as [the multi-target rule below](#components-in-a-multi-target-scenario) describes.
 
@@ -2631,8 +2633,8 @@ steps:
   - tap: { id: home.tab }
 ```
 
-Unlike `use:`, `group:` takes no `params` and names no separate file. This is a purely local,
-one-off label for organizing one scenario's own `steps:`. It is not a mechanism for reuse across
+Unlike `use:`, `group:` takes no `params` and names no separate file. The group is a purely local,
+one-off label for organizing one scenario's own `steps:`. It does not reuse steps across
 scenarios. A named `use:` / `components:` call is the right tool once the same run of steps is
 called from more than one place.
 
