@@ -15,7 +15,7 @@
 
 ## Introduction
 
-The `xcuitest (multi-touch)` on-device end-to-end (E2E) job flakes. The XCUITest runner becomes unreachable while a two-finger gesture is being actuated, and the driver cannot tell a mid-run runner crash apart from a lost actuation.
+The `xcuitest (multi-touch)` on-device end-to-end (E2E) job flakes. The XCUITest runner becomes unreachable while the runner actuates a two-finger gesture, and the driver cannot tell a mid-run runner crash apart from a lost actuation.
 
 This item proposes to make the runner channel resilient to a crash that happens mid-run:
 
@@ -25,7 +25,7 @@ This item proposes to make the runner channel resilient to a crash that happens 
 
 Without this change, a lost pinch or rotate masquerades as an assertion mismatch.
 
-The change stays inside the xcuitest backend. It touches only the runner, the retry seam, and the deterministic verdict. A follow-on unit closes a second, distinct source of stale elements, which the on-device conformance suite surfaced later: the tap-time attribute re-check in the runner read a still-settling layout as a vanished element.
+The change stays inside the xcuitest backend. It touches the runner, the retry seam, and the deterministic verdict, and nothing else. A follow-on unit closes a second, distinct source of stale elements, which the on-device conformance suite surfaced later: the tap-time attribute re-check in the runner read a still-settling layout as a vanished element.
 
 ## Motivation
 
@@ -34,19 +34,19 @@ A single re-run of the iOS E2E workflow of one pull request showed the flake dir
 The two failures share one cause but present differently:
 
 - **A runner crash.** A `GET /screenshot` call raised `XcuitestChannelError: runner channel GET /screenshot failed: [Errno 61] Connection refused`. The loopback server that the runner hosts had stopped accepting connections.
-- **A runner that stopped answering.** The runner did not answer `GET /health` for roughly thirty seconds, which showed up as a burst of `runner channel GET /health failed ... Connection refused` retries. By the time the runner recovered, the pinch had never landed on the app. The final assertion therefore read `expect: expected equals='pinched' but actual='idle'`.
+- **A runner that stopped answering.** The runner did not answer `GET /health` for about thirty seconds, which showed up as a burst of `runner channel GET /health failed ... Connection refused` retries. By the time the runner recovered, the pinch had never landed on the app. The final assertion therefore read `expect: expected equals='pinched' but actual='idle'`.
 
-The two-finger actuation destabilizes the runner. Timing decides whether the disturbance surfaces as a hard channel error or as a silently dropped gesture.
+The two-finger actuation destabilizes the runner. Timing decides whether the disturbance surfaces as a hard channel error or as a dropped gesture that nobody reports.
 
 The flake is expensive in three ways:
 
 - A required aggregator check (`E2E (iOS)`) that fails at random erodes trust in the gate. A maintainer cannot distinguish the failure from a real regression, so the failure invites either a reflexive re-run or a wasted investigation.
 - Every re-run burns metered macOS-runner minutes. The job builds the app and boots a Simulator before it even reaches the gesture.
-- The `actual='idle'` message actively misleads. It reads as though the pinch verb is broken, while the real event is that the runner dropped the gesture. An investigator looks in the wrong place.
+- The `actual='idle'` message actively misleads. It suggests that the pinch verb broke, while the real event is that the runner dropped the gesture. An investigator looks in the wrong place.
 
 The existing retry seam ([BE-0207](../BE-0207-xcuitest-channel-transient-retry/BE-0207-xcuitest-channel-transient-retry.md)) does not cover this case, and it was never meant to. The seam absorbs a *transient* blip within a single channel call. It attempts an eligible request up to three times in total, with a half-second exponential backoff between attempts. The whole budget is therefore spent in about one and a half seconds. A runner that is gone for thirty seconds outlives that budget many times over.
 
-The seam is also deliberately conservative about writes. It refuses to re-issue a delivered, side-effecting request, because re-sending a pinch that may already have applied could double-actuate. Even with a larger budget, the seam could not paper over a lost gesture on its own. Recovering from a mid-run crash is a different problem from smoothing a sub-second blip, and it needs its own mechanism.
+The seam is also conservative about writes by design. It refuses to re-issue a delivered, side-effecting request, because re-sending a pinch that may already have applied could double-actuate. Even with a larger budget, the seam could not paper over a lost gesture on its own. Recovering from a mid-run crash is a different problem from smoothing a sub-second blip, and it needs its own mechanism.
 
 ## Detailed design
 
@@ -56,7 +56,7 @@ The work splits into five units:
 - Unit 3 and Unit 4 harden the Python driver channel. Tests can cover them against a simulated transport.
 - Unit 5 closes a distinct stale source that the on-device conformance suite surfaced later.
 
-The units are ordered by dependency, but they can land as separate pull requests.
+The units follow dependency order, but they can land as separate pull requests.
 
 **Unit 1 — Characterize the runner crash under two-finger actuation.** Identify the root cause deterministically. Either analyze the runner source statically, or reproduce the failure on a Simulator and capture the runner-side diagnostic. The open question has three candidates:
 
@@ -71,13 +71,13 @@ In practice, the source often answers the question directly. The serial accept l
 **Unit 3 — Detect a mid-run crash and surface it deterministically.** Suppose the channel stays unreachable past the retry budget of a single call. The driver must then decide deterministically between two outcomes, instead of letting the run drift into a misleading assertion.
 
 - For an idempotent read (a `GET`, or a write that never reached the runner), the driver waits for the runner to come back, reusing the existing `await_ready` health poll, and continues. Re-issuing a read is safe.
-- For a side-effecting write that may already have been delivered, the driver does not silently retry. It fails with a distinct runner-crash diagnostic that names the crash. The run then stops on an honest "the runner died mid-gesture" message, not on `actual='idle'`.
+- For a side-effecting write that may already have been delivered, the driver does not retry in the background. It fails with a distinct runner-crash diagnostic that names the crash. The run then stops on an honest "the runner died mid-gesture" message, not on `actual='idle'`.
 
-The distinction is exactly the `delivered` split that the retry seam already draws. This unit therefore extends the seam instead of inventing a parallel one.
+The distinction is the `delivered` split that the retry seam already draws. This unit extends the seam instead of inventing a parallel one.
 
 **Unit 4 — Keep every recovery visible in the record.** Prime directive 2 of [`CLAUDE.md`](../../CLAUDE.md) puts determinism first. It forbids smoothing a genuine failure into a pass, so a recovery must never pass silently. Every recovery logs the crash as visibly as the retry seam logs a retried blip. A run that crashed and recovered is then never indistinguishable from a run that never crashed. A recovered run stays reproducible and auditable. A crash that cannot be recovered idempotently stays the loud failure that Unit 3 raises.
 
-Not re-applying a delivered write is the job of Unit 3. Unit 4 adds only the observability guarantee.
+Not re-applying a delivered write is the job of Unit 3. Unit 4 adds the observability guarantee and nothing more.
 
 **Unit 5 — Stop a still-settling layout from being read as a vanished element.** The on-device conformance suite surfaced a second stale source, distinct from the multi-touch crash above. The opening `tap` of `test_text_selection` intermittently failed with `element vanished (stale handle)`.
 
@@ -87,7 +87,7 @@ A snapshot, however, is taken while the UI may still be settling. Moving between
 
 The fix drops the frame from the identity match. The position path together with identifier, label, and traits already distinguishes a genuinely different element. The frame legitimately changes as a layout settles, so matching on the frame only turned a valid element into a false stale.
 
-Two other suspects were ruled out first: the generation-based handle scheme and the concurrency of the HTTP server. The store's own stale path never fired, and every stale came from the attribute re-check. This unit therefore touches only `attributesMatch`, not the transport of the runner.
+Two other suspects were ruled out first: the generation-based handle scheme and the concurrency of the HTTP server. The store's own stale path never fired, and every stale came from the attribute re-check. This unit touches `attributesMatch` alone, not the transport of the runner.
 
 ## Alternatives considered
 
@@ -135,7 +135,7 @@ Log:
 - [#1200](https://github.com/bajutsu-e2e/bajutsu/pull/1200) — Units 3 & 4: add `XcuitestRunnerCrashError` and a `_with_crash_recovery` seam over the BE-0207 retry.
   - A mid-run crash now waits out the runner. It then re-issues an idempotent read, or a write that never reached the runner.
   - A delivered write fails loudly with a distinct crash diagnostic.
-  - Every crash and recovery is logged.
+  - The driver logs every crash and recovery.
   - Units 1 & 2 (the on-device diagnosis and the `BajutsuKit` root-cause fix) remain open.
 - [#1202](https://github.com/bajutsu-e2e/bajutsu/pull/1202) — Units 1 & 2: diagnose the flake as a wedged loopback server, not a dead process or `idb_companion`, and fix it in `BajutsuKit/`.
   - `HTTPServer` served connections one at a time over a `listen` backlog of 1. A `pinch` or `rotate` that blocked the accept loop on the main thread starved concurrent `/health` and `/screenshot` polls until the kernel refused them. That starvation was the source of both the `Connection refused` crash and the ~30 s health outage.
