@@ -41,7 +41,7 @@ private func coord(_ x: CGFloat, _ y: CGFloat) -> XCUICoordinate {
 The design stays within the prime directives:
 
 - **Determinism.** Coordinates in the scenario are fixed numbers, so the generated drag is reproducible. The mapping remains purely structural. No AI is consulted at generation time, and the run/CI gate is unaffected.
-- **Portability.** Coordinates anchor to the app window's top-left through `withNormalizedOffset`. Bajutsu already uses the same origin convention, so the generated test reads the numbers the way `run` does. The coordinate form stays the documented last resort ([scenarios](../../docs/scenarios.md#swipe)). The selector form remains preferred because it survives layout changes.
+- **Portability.** Coordinates anchor to the app window's top-left through `withNormalizedOffset`. Bajutsu already uses that origin convention, so the generated test reads the numbers the way `run` does. The coordinate form stays the documented last resort ([scenarios](../../docs/scenarios.md#swipe)). The selector form remains preferred because it survives layout changes.
 - **App-agnostic.** No per-app configuration is introduced. The emitted helper is identical across apps, like the existing `el`, `byLabel`, and `matchingId` helpers.
 
 The `// TODO` fallback path itself stays. It still catches genuinely unsupported constructs (see [BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md)). This proposal removes only coordinate swipes from that set.

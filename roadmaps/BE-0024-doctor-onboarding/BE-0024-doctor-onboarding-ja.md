@@ -27,7 +27,7 @@ Bajutsu の成否をまず左右するのは、*セットアップ*が健全か�
 - Simulator が起動している。
 - 画面に十分なアクセシビリティ id があり、要素を指し示せる。
 
-Bajutsu は、この問いの両面にすでに答えています。
+Bajutsu は、この 3 つの条件にすでに答えています。
 
 - `preflight.runnability` は、環境（Xcode の `xcrun`、バックエンドのツール、起動済みの Simulator）をチェックします。
 - `doctor.score` は、画面の規約準備度（id カバレッジ、名前空間の準拠、id の重複）を Ready、Partial、Blocked に採点します。

@@ -27,7 +27,7 @@ Whether someone succeeds with Bajutsu depends first on whether their *setup* is 
 - A Simulator has booted.
 - The app's screens carry enough accessibility ids to be addressable.
 
-Bajutsu already answers both halves of that question:
+Bajutsu already answers all three conditions:
 
 - `preflight.runnability` checks the environment: Xcode's `xcrun`, the backend's tools, and a booted Simulator.
 - `doctor.score` grades a screen's convention readiness (id coverage, namespace conformance, duplicate ids) as Ready, Partial, or Blocked.

@@ -182,7 +182,7 @@ runner も LLM も、`run` ／ CI ゲートには載せません。
 
 実機では、ライフサイクルの穴も見つかりました。`xcodebuild` は、自身のプロセス環境を Simulator のテストランナーへ渡しません。そこで `XcuitestEnvironment` は、run の `BAJUTSU_*` 変数を、`.xctestrun` の各ターゲットの `TestingEnvironmentVariables` に書き込んだ私的なコピーを作って起動します。コピーはビルド成果物の隣に置くので、`__TESTROOT__` は引き続き解決できます。
 
-**クエリ性能の解決（2026-07-05）。** [BE-0105](../BE-0105-xcuitest-single-snapshot-query/BE-0105-xcuitest-single-snapshot-query-ja.md)（[#670](https://github.com/bajutsu-e2e/bajutsu/pull/670)）が、プロパティごとの `/elements` 読み取りを、1 回の `app.snapshot()` 走査に置き換えました。これで、このボックスに残っていた最後の障害がなくなりました。BE-0105 は、BE-0019 のスナップショットハンドルによるアドレッシングを、そのまま保ちます。
+**クエリ性能の解決（2026-07-05）。** [BE-0105](../BE-0105-xcuitest-single-snapshot-query/BE-0105-xcuitest-single-snapshot-query-ja.md)（[#670](https://github.com/bajutsu-e2e/bajutsu/pull/670)）が、プロパティごとの `/elements` 読み取りを、1 回の `app.snapshot()` 走査に置き換えました。これで、このボックスに残っていた最後の障害がなくなりました。BE-0105 は、BE-0019 のスナップショットハンドルによるアドレッシングを、次のとおりそのまま保ちます。
 
 - Python が、一意の要素を解決します。
 - ランナーは、まさにそのハンドルの要素を操作します。
