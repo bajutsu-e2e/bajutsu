@@ -1,6 +1,6 @@
 **English** · [日本語](BE-0276-scenario-permission-state-ja.md)
 
-# BE-0276 — Declarative per-scenario permission state
+# BE-0276 — Declarative per-scenario permission state (simctl privacy / pm grant)
 
 <!-- BE-METADATA -->
 | Field | Value |
@@ -17,7 +17,7 @@
 
 ## Introduction
 
-This item adds a scenario-level, declarative way to set OS permission state **before the app
+This item adds a [scenario](../../docs/glossary.md#scenario-authoring)-level, declarative way to set OS permission state **before the app
 launches**. A scenario grants or revokes a permission up front, so the runtime prompt never appears.
 On iOS the field drives `simctl privacy`, and on Android it drives `pm grant` / `pm revoke`. The
 field is a deterministic, AI-free complement to the existing vision **alert guard**
@@ -43,14 +43,14 @@ reasons:
   guarantee that the app starts from a known permission state. Pre-setting can do both.
 - **It is per-scenario.** One scenario tests the request and grant flow itself, with the permission
   left unset so the alert guard or a real tap grants it. A sibling scenario wants the permission
-  already granted so it reaches the feature under test directly. That distinction is a property of
+  already granted. That scenario then reaches the feature under test directly. That distinction is a property of
   the scenario, so it belongs in the scenario file.
 
 **Competitive context (Maestro).** Maestro ships `setPermissions` out of the box.
 [BE-0052](../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)
 already flagged the missing field as a table-stakes parity gap while shipping the rest of the
 device-state family. This item closes the gap, and the differentiator is *how*: a single
-cross-platform declarative field that each backend maps to its native mechanism, staying
+cross-platform declarative field that each [backend](../../docs/glossary.md#driver-backend-actuator-platform) maps to its native mechanism, staying
 deterministic and app-agnostic.
 
 **Cross-platform footing.** Android already pre-grants runtime permissions through a **config-level**
@@ -98,7 +98,7 @@ cleanly** (see below) and never fails at runtime.
 
 `simctl privacy` has **no notifications service**. iOS notification authorization is not part of
 Transparency, Consent, and Control (TCC), the database that backs iOS's privacy permissions. The iOS
-backend therefore declares `notifications` **unsupported**. A scenario that lists `notifications`
+backend declares `notifications` **unsupported** for that reason. A scenario that lists `notifications`
 fails preflight with a clear message that points to `dismissAlerts` as the path for the notification
 prompt. Android's `POST_NOTIFICATIONS` *is* a runtime permission (`pm grant`, API 33+), so Android
 supports the service. The shared vocabulary states this asymmetry openly and does not pretend to a
@@ -131,11 +131,11 @@ The eight units are mutually exclusive and collectively exhaustive (MECE).
    `// TODO` naming the field, consistent with
    [BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md) and BE-0052.
 7. **Docs + fixture.** Document the field in [`docs/scenarios.md`](../../docs/scenarios.md), its
-   Japanese mirror, and the DSL grammar. Add a showcase scenario that pre-grants a permission the
+   Japanese mirror, and the DSL grammar. Add a showcase scenario. It pre-grants a permission the
    Permissions tab would otherwise prompt for.
 8. **Tests.** Cover schema parse and validate; preflight over a backend that advertises a subset
    (a supported service passes, an unsupported one is named and fails fast); command builders
-   verified against a fake `RunFn`; and a clean failure on an unknown service.
+   verified against a fake `RunFn`; and an unknown service that fails cleanly.
 
 ### Prime directives preserved
 
@@ -145,8 +145,8 @@ The eight units are mutually exclusive and collectively exhaustive (MECE).
 - **App-agnostic.** No per-app code is involved. The service vocabulary and mapping live in the
   tool and backends. The per-scenario choice of which permission to set lives in the scenario, never
   in app code.
-- **Fail fast.** Preflight catches an unsupported service, so the failure never arrives part-way
-  through a run.
+- **Fail fast.** Preflight catches an unsupported service, so no unsupported service is first
+  discovered part-way through a run.
 
 ## Alternatives considered
 

@@ -1,6 +1,6 @@
 [English](BE-0275-serve-projects-management-page.md) · **日本語**
 
-# BE-0275 — serve のトップレベルビューとしてのプロジェクト管理ページ
+# BE-0275 — serve にプロジェクト管理ページを設ける（モーダルではなくトップレベルのビュー）
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
