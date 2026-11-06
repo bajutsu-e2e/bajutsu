@@ -47,10 +47,10 @@ make -C demos/web e2e-network
 
 シナリオの `request` アサーションが、決定論的な介入・キャプチャの確認です。続いて [`network/assert_redaction.py`](network/assert_redaction.py) が永続化された `network.json` を読み、次の条件が一つでも欠ければ失敗します。
 
-- exchange が `mocked` である
-- status が `201` である
-- 両方の秘密情報がマスクされている
-- リクエストの秘密でない `account` フィールドが、値ごと残っている
+- exchange が `mocked` です
+- status が `201` です
+- 両方の秘密情報がマスクされています
+- リクエストの秘密でない `account` フィールドが、値ごと残っています
 
 最後の条件がないと、ボディ全体を置き換えたり、値をすべてマスクしたりする redactor も通ってしまいます。どこにも LLM はありません。合否はそのアサーションとチェックだけで決まります。
 
@@ -66,7 +66,7 @@ make -C demos/web codegen-e2e
 
 このゲートは、[`scenarios/smoke.yaml`](scenarios/smoke.yaml) から [`codegen/smoke.spec.ts`](codegen/smoke.spec.ts) を再生成し、その出力を実際の `@playwright/test` ランナーで実 Chromium に対して実行します。ランナーは TypeScript をトランスパイルして実行するので、この確認は `tsc --noEmit` の構文チェックではなく、コンパイル*かつ*実行です。最後に、出力が**チェックイン済みのフィクスチャからドリフトしていれば失敗させます**（エミッタとフィクスチャが黙って乖離しないようにします）。必要なのは Node/npm だけで（ランナーは我々の Python backend ではなく行き先のフレームワークです）、Simulator も macOS も要りません。
 
-このゲートは、iOS 側の `codegen (xcuitest)` ゲート（`demos/showcase` の `ui-test`。生成した `ComponentsUITests.swift` を `xcodebuild test` でビルドして実行します）の web 版です。CI では `web-e2e.yml` の `codegen (playwright)` ジョブになります。このジョブはまず**シグナル**として着地させ（マージはブロックせず報告のみ）、`network (playwright)` がそうだったように、安定を確認してから必須の `E2E (web)` ゲートへ昇格させます（[BE-0293](../../roadmaps/BE-0293-codegen-playwright-real-compile/BE-0293-codegen-playwright-real-compile-ja.md)）。
+このゲートは、iOS 側の `codegen (xcuitest)` ゲート（`demos/showcase` の `ui-test`。生成した `ComponentsUITests.swift` を `xcodebuild test` でビルドして実行します）の web 版です。CI では `web-e2e.yml` の `codegen (playwright)` ジョブになります。まず**シグナル**として着地させ（マージはブロックせず報告のみ）、`network (playwright)` がそうだったように、安定を確認してから必須の `E2E (web)` ゲートへ昇格させます（[BE-0293](../../roadmaps/BE-0293-codegen-playwright-real-compile/BE-0293-codegen-playwright-real-compile-ja.md)）。
 
 ## 記録（record）
 

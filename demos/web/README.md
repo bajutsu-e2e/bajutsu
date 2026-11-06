@@ -106,7 +106,7 @@ with no Simulator and no macOS.
 The gate is the web twin of the iOS `codegen (xcuitest)` gate (`demos/showcase`'s `ui-test`, which
 builds and runs a generated `ComponentsUITests.swift` with `xcodebuild test`). In CI it is the
 `codegen (playwright)` job in `web-e2e.yml`. The job lands as **signal** first, reporting but not
-blocking a merge, and will be promoted into the required `E2E (web)` gate once stable, exactly as
+blocking a merge, to be promoted into the required `E2E (web)` gate once stable, exactly as
 `network (playwright)` was ([BE-0293](../../roadmaps/BE-0293-codegen-playwright-real-compile/BE-0293-codegen-playwright-real-compile.md)).
 
 ## Record it
