@@ -16,52 +16,63 @@
 
 ## Introduction
 
-`agents/alerts.py`'s system-alert guard exists to stop a live AI operation from acting
-blindly into an unexpected system dialog (a permission prompt, a crash sheet) on a real device —
-it backs not only `record` and `crawl` — which share one `_build_alert_guard`
-(`bajutsu/cli/_shared.py`) — but also the deterministic `run --dismiss-alerts` path (`bajutsu/cli/commands/run.py`).
-Every test that exercises it supplies a hand-built `AlertDecision` or a canned `FakeBlock` tool-use
-response with coordinates the test author typed in — never a real screenshot judged by a real model.
-This item adds a real-model check of the guard's actual job: given a genuine alert on a genuine
-screen, does Claude locate the dismiss control correctly.
+The system-alert guard in `agents/alerts.py` stops a live AI operation from acting blindly into an
+unexpected system dialog on a real device, such as a permission prompt or a crash sheet. Two callers
+use it:
+
+- `record` and `crawl`, which share one `_build_alert_guard` (`bajutsu/cli/_shared.py`).
+- The deterministic `run --dismiss-alerts` path (`bajutsu/cli/commands/run.py`).
+
+Every test that exercises the guard supplies a hand-built `AlertDecision`, or a canned `FakeBlock`
+tool-use response with coordinates the test author typed in. No test uses a real screenshot judged by
+a real model.
+
+This item adds a real-model check of the guard's actual job. Given a genuine alert on a genuine screen,
+does Claude locate the dismiss control correctly?
 
 ## Motivation
 
-`tests/test_alerts.py`'s `StubLocator` and `FakeBackend(FakeBlock("resolve_alert", ...))` prove the
-guard's code correctly plumbs whatever `AlertDecision` it receives through to an action — a real and
-useful check of the wiring. It proves nothing about the guard's actual safety claim: that a real
-vision-capable call, looking at a real alert dialog captured from a real device, reliably lands on
-the correct dismiss coordinates rather than, say, the coordinates of a destructive "Delete" button
-next to it. A wrong real answer here is not a cosmetic bug; it is the guard failing at the one thing
-it exists to prevent, and no test in the current suite would catch it, because none ever asks a real
-model to look at a real alert.
+`StubLocator` and `FakeBackend(FakeBlock("resolve_alert", ...))` in `tests/test_alerts.py` prove that
+the guard's code plumbs whatever `AlertDecision` it receives through to an action. That is a real and
+useful check of the wiring.
+
+The wiring check proves nothing about the guard's actual safety claim. The claim is that a real
+vision-capable call, looking at a real alert dialog captured from a real device, reliably lands on the
+correct dismiss coordinates. The alternative is the coordinates of a destructive "Delete" button next
+to the dismiss control.
+
+A wrong real answer here is not a cosmetic bug. The guard would fail at the one thing it exists to
+prevent. No test in the current suite would catch the failure, because none asks a real model to look
+at a real alert.
 
 ## Detailed design
 
 Proposal altitude. The work is MECE along the units below.
 
-- **A real-alert fixture set.** Capture screenshots of real system alerts on the showcase app
-  (a permission prompt at minimum; a crash/error sheet if reproducible), covering at least one
-  dialog with a nearby destructive control, so the fixture set can distinguish "found *a* button"
-  from "found the *correct* button."
+- **A real-alert fixture set.** Capture screenshots of real system alerts on the showcase app. A
+  permission prompt is the minimum, and a crash or error sheet is welcome if reproducible. Include at
+  least one dialog with a nearby destructive control. The fixture set can then distinguish "found *a*
+  button" from "found the *correct* button."
 - **A key-gated live verification test.** For each fixture, call the guard's real vision path with a
-  real credential and assert the returned coordinates land inside the correct dismiss control's
-  frame — not merely that a decision was returned.
+  real credential. Assert that the returned coordinates land inside the correct dismiss control's
+  frame. Returning a decision is not enough.
 - **Land as a non-gating signal first.** Following the precedent in
-  [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md),
-  wire the live test into a CI lane touching the guard's callers as signal before considering it a required
-  check. This item verifies the guard's real accuracy only; it does not change where the guard sits
-  (Tier 1, live AI operation) or put it anywhere near the deterministic `run` verdict
-  (prime directive 1).
+  [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md), wire
+  the live test into a CI lane that touches the guard's callers. Run it as signal before considering it
+  a required check.
+  - This item verifies the guard's real accuracy and nothing else.
+  - It does not change where the guard sits (Tier 1, live AI operation).
+  - It does not put the guard anywhere near the deterministic `run` verdict (prime directive 1).
 
 ## Alternatives considered
 
-- **Trust the unit tests, since the guard's plumbing is correct.** Correct plumbing guarantees the
-  guard acts on whatever `AlertDecision` it is handed; it says nothing about whether a real model
-  reliably produces the *correct* decision when looking at a real alert, which is the actual safety
-  property at stake.
-- **Treat the safety gap as already covered by `record`'s general live-usage testing.** No such testing exists today —
-  `record` itself has no real-model CI coverage — so there is no existing net this item could ride on.
+- **Trust the unit tests, since the guard's plumbing is correct.** Correct plumbing guarantees that the
+  guard acts on whatever `AlertDecision` it is handed. It says nothing about whether a real model
+  reliably produces the *correct* decision when it looks at a real alert, and that is the actual
+  safety property at stake.
+- **Treat the safety gap as already covered by `record`'s general live-usage testing.** No such testing
+  exists today. `record` itself has no real-model CI coverage, so this item has no existing net to ride
+  on.
 
 ## Progress
 
@@ -75,58 +86,70 @@ Proposal altitude. The work is MECE along the units below.
 
 **Log**
 
-- Captured all four fixtures from the showcase SwiftUI app on a booted iPhone 17 Simulator (iOS 26.5)
-  and committed them under `tests/fixtures/be0308/`: the notification prompt, the location prompt
-  (three stacked choices, only the bottom one refusing), iOS's cross-process paste consent, and the
-  app's own delete confirmation, whose red `Delete` sits between `Archive` and `Cancel`. That last
-  one is the destructive-control case, and it is the sharper form of the requirement: the guard must
-  report no prompt at all, because the button it would reach for deletes. `tests/test_alert_fixtures_ondevice.py`
-  captures them, reading each button's frame from the device rather than measuring pixels by eye:
-  the three OS prompts from the same accessibility query `handleSystemAlert` resolves against
-  (BE-0316), the app-owned dialog from the app's own element tree. It also refuses to write a
-  fixture whose expected button the device did not report, so an OS or locale change fails the
-  capture instead of quietly relabelling the ground truth. It is a manual, local step that no CI
-  job runs.
-- Added the key-gated live test (`tests/test_real_model_alerts.py`) and wired it into
+- Captured all four fixtures from the showcase SwiftUI app on a booted iPhone 17 Simulator (iOS 26.5).
+  They are committed under `tests/fixtures/be0308/`.
+  - The notification prompt.
+  - The location prompt, with three stacked choices where only the bottom one refuses.
+  - iOS's cross-process paste consent.
+  - The app's own delete confirmation, whose red `Delete` sits between `Archive` and `Cancel`.
+- The delete confirmation is the destructive-control case, and it is the sharper form of the
+  requirement. The guard must report no prompt at all, because the button it would reach for deletes.
+- `tests/test_alert_fixtures_ondevice.py` captures the fixtures. It reads each button's frame from the
+  device rather than measuring pixels by eye.
+  - The three OS prompts come from the same accessibility query that `handleSystemAlert` resolves
+    against (BE-0316).
+  - The app-owned dialog comes from the app's own element tree.
+  - The capture refuses to write a fixture whose expected button the device did not report. An OS or
+    locale change then fails the capture instead of quietly relabelling the ground truth.
+  - The capture is a manual, local step that no CI job runs.
+- Added the key-gated live test (`tests/test_real_model_alerts.py`). It is wired into
   [`ai-smoke.yml`](../../.github/workflows/ai-smoke.yml) as a second non-gating job, `accuracy
-  (system-alert guard)` — the BE-0282 precedent, and the same `workflow_dispatch`-only,
-  `ai-smoke`-Environment boundary the existing job draws, so a fork-triggered run never sees the
-  credential. The live test needs no Simulator: the dialogs are committed captures, so only the
-  model call is live. Three deterministic layers keep it honest on every gate, with no credential.
-  Over synthetic dialogs, stub locators prove the assertion accepts an answer on a dismiss control
-  and rejects one on the granting button beside it, on the destructive button of a dialog the app
-  owns, and on nothing at all. Over each committed capture, an answer on every recorded *wrong*
-  button must be rejected — aiming at the recorded dismiss control instead would prove nothing,
-  since a frame always contains its own centre. And one test pins the fixture's own
-  normalized-to-point mapping against `SystemAlertGuard.dismiss`'s own arithmetic, so the
-  verification measures the product rather than itself. What no credential-free layer can catch is a
-  capture whose recorded dismiss control names the wrong button: only looking at the screenshot
-  settles that, which is the live layer's job.
-- Ran the live layer against a real model through the `claude-code` provider (BE-0176), and the
-  locator answered every capture correctly. On the notification prompt it returned (126.6, 517.8)
-  against a `Don’t Allow` centre of (127, 518) — inside half a point. On the location prompt it
-  returned (200.7, 574.1), the bottom one of three stacked choices, which is the case that separates
-  finding *a* button from finding the *correct* one. On the paste consent it returned (200.7, 481.0),
-  inside `Don’t Allow Paste`. And on the app's own delete confirmation it reported no prompt at all,
-  so it never reached for the red `Delete`. The guard's vision is therefore sound on these dialogs;
-  what is not sound is the actuation path below it, recorded next.
-- Scoped the assertion to the locator's answer, not to the guard's on-device tap. Two defects
-  surfaced while capturing, both in the guard's *actuation* path rather than its vision, and both
-  outside this item's subject; each is recorded here and left for its own item rather than fixed
-  under this one. First, `SystemAlertGuard.dismiss` maps the model's normalized answer through
-  `screen_size_from_elements(driver.query())`, which BE-0326 already established overshoots the
-  screen whenever a lazy list keeps buffered off-screen rows in the tree: measured against the
-  showcase app it reports (418, 2456) where the real screen is (402, 874), which moves a perfectly
-  correct answer for the notification prompt's `Don’t Allow` button from (127, 518) to (132, 1456),
-  off the bottom of the screen. `Driver.viewport()` is the source BE-0326 introduced for exactly
-  this, and the guard does not use it. Second, and independently, an app-scoped XCUITest coordinate
-  tap cannot press a SpringBoard prompt's button at all: a tap at (5, 5), nowhere near either
-  button, cleared the notification prompt and left the app reporting `authorized` — the prompt's
-  granting default — while an untouched prompt stayed up through fifteen polls, so the interaction
-  itself, not the coordinate, resolves the prompt. Whenever the vision guard fires against a
-  SpringBoard prompt on this toolchain the outcome is therefore the prompt's default button, the
-  opposite of the guard's documented least-destructive default, and the report still records the
-  button the model chose. The deterministic native path (BE-0315 / BE-0316) is unaffected.
+  (system-alert guard)`, following the BE-0282 precedent.
+  - The job draws the same boundary as the existing job: `workflow_dispatch` only, and the
+    `ai-smoke` Environment. A fork-triggered run therefore never sees the credential.
+  - The live test needs no Simulator. The dialogs are committed captures, so only the model call is
+    live.
+- Three deterministic layers keep the live test honest on every gate, with no credential.
+  - Over synthetic dialogs, stub locators prove that the assertion accepts an answer on a dismiss
+    control. They also prove that it rejects an answer on the granting button beside it, on the
+    destructive button of a dialog the app owns, and on nothing at all.
+  - Over each committed capture, an answer on every recorded *wrong* button must be rejected. Aiming
+    at the recorded dismiss control instead would prove nothing, since a frame always contains its own
+    centre.
+  - One test pins the fixture's own normalized-to-point mapping against `SystemAlertGuard.dismiss`'s
+    own arithmetic. The verification then measures the product rather than itself.
+  - No credential-free layer can catch a capture whose recorded dismiss control names the wrong button.
+    Only looking at the screenshot settles that, which is the live layer's job.
+- Ran the live layer against a real model through the `claude-code` provider (BE-0176). The locator
+  answered every capture correctly.
+  - Notification prompt: it returned (126.6, 517.8) against a `Don’t Allow` centre of (127, 518),
+    inside half a point.
+  - Location prompt: it returned (200.7, 574.1), the bottom one of three stacked choices. This case
+    separates finding *a* button from finding the *correct* one.
+  - Paste consent: it returned (200.7, 481.0), inside `Don’t Allow Paste`.
+  - The app's own delete confirmation: it reported no prompt at all, so it never reached for the red
+    `Delete`.
+  - The guard's vision is therefore sound on these dialogs. What is not sound is the actuation path
+    below it, recorded next.
+- Scoped the assertion to the locator's answer, not to the guard's on-device tap. Two defects surfaced
+  while capturing. Both sit in the guard's *actuation* path rather than its vision, and both are
+  outside this item's subject. Each is recorded here and left for its own item rather than fixed under
+  this one.
+  - **Screen-size mapping.** `SystemAlertGuard.dismiss` maps the model's normalized answer through
+    `screen_size_from_elements(driver.query())`. BE-0326 already established that this overshoots the
+    screen whenever a lazy list keeps buffered off-screen rows in the tree. Measured against the
+    showcase app, it reports (418, 2456) where the real screen is (402, 874). A perfectly correct
+    answer for the notification prompt's `Don’t Allow` button then moves from (127, 518) to
+    (132, 1456), off the bottom of the screen. `Driver.viewport()` is the source BE-0326 introduced for
+    exactly this, and the guard does not use it.
+  - **SpringBoard tap.** Independently, an app-scoped XCUITest coordinate tap cannot press a SpringBoard
+    prompt's button at all. A tap at (5, 5), nowhere near either button, cleared the notification
+    prompt and left the app reporting `authorized`, the prompt's granting default. An untouched prompt
+    stayed up through fifteen polls. The interaction itself, not the coordinate, resolves the prompt.
+  - Whenever the vision guard fires against a SpringBoard prompt on this toolchain, the outcome is
+    therefore the prompt's default button. That is the opposite of the guard's documented
+    least-destructive default, and the report still records the button the model chose. The
+    deterministic native path (BE-0315 / BE-0316) is unaffected.
 
 ## References
 
