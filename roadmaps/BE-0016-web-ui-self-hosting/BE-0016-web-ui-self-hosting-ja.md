@@ -141,7 +141,7 @@ Tailscale tailnet 越しにジョブを lease する Mac ワーカーのプー�
   行を挿入します。`bajutsu worker` は `POST /api/worker/lease` を HTTP でポーリングして、その行を lease します。
   worker は、**使い捨ての Simulator**（`--erase`）でジョブを実行し、`runs/<id>/` ツリー（`console.log` 含む）を
   MinIO にアップロードし、結果を `POST /api/worker/result` に返します。Redis も RQ も使いません。worker に必要
-  なのは、HTTP と、任意のオブジェクトストレージクライアントです
+  なのは HTTP だけで、オブジェクトストレージクライアントは任意です
   （[BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model-ja.md)）。
 - **クォータ**：3 つの同時実行上限が、1 人の呼び出し元や 1 つの org による、希少なデバイスの独占を防ぎます。
   **グローバル**な上限（`--max-concurrent-runs`、既定 4）、**ユーザ単位**の上限（`max_concurrent_per_user`）、

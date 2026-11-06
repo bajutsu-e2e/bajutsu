@@ -96,7 +96,7 @@ internet. A tailnet gives identity-based access and automatic TLS, with no publi
 tailscale serve --bg 8765    # → https://<machine>.<tailnet>.ts.net (reachable only inside the tailnet)
 ```
 
-If you need a real internal hostname, front `serve` with **Caddy** for TLS and basic auth
+Only if you need a real internal hostname, front `serve` with **Caddy** for TLS and basic auth
 (`reverse_proxy 127.0.0.1:8765` behind `basic_auth`). Keep that setup off the open internet.
 
 A team can use Tier A **today**.
@@ -280,7 +280,7 @@ observability, and each part is a separate roadmap item that names this one as i
   Simulator will not run without one. The per-user `LaunchAgent` (plus auto-login and caffeinate)
   is mandatory, not a preference.
 - **Binding `0.0.0.0` to the public internet.** Rejected. Even with BE-0051's token auth, a public
-  bind widens the attack surface needlessly. Use a private tailnet (Tailscale). For an internal
+  bind widens the attack surface needlessly. Use a private tailnet (Tailscale). Only for an internal
   hostname, use Caddy + basic auth. `serve` already refuses a non-loopback `--host` without a
   token.
 - **Embedding the plist as a template file (or a shell snippet in docs) instead of
