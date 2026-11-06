@@ -77,7 +77,7 @@ comparison, 73 findings). They stay out of this item's scope; see *Alternatives 
 Add `C901`, `PLR0911`, `PLR0912`, and `PLR0915` to `[tool.ruff.lint]`'s `select` list. Set every
 threshold explicitly rather than leaving it at its default:
 
-1. **Set `[tool.ruff.lint.mccabe] max-complexity = 25`.** At that ceiling, the 10 highest-complexity
+1. **Set `[tool.ruff.lint.mccabe] max-complexity = 25`.** At that ceiling, only the 10 highest-complexity
    functions measured today violate it, a small, reviewable list. Each one is triaged during
    implementation. A function whose complexity reflects genuine branching is refactored. A function
    whose complexity does not gets a targeted `# noqa: C901` that names the reason. The
@@ -101,7 +101,7 @@ threshold explicitly rather than leaving it at its default:
    raise the floor" sequencing of
    [BE-0117](../BE-0117-coverage-floor-ratchet/BE-0117-coverage-floor-ratchet.md). Ruff's own default
    of 10 is a reasonable stopping point rather than a target to continue past automatically. Revisit
-   it when a later baseline measurement still finds the ceiling loose relative to the codebase's
+   it only when a later baseline measurement still finds the ceiling loose relative to the codebase's
    actual functions.
 
 ### What the counts measure for a function that nests other functions

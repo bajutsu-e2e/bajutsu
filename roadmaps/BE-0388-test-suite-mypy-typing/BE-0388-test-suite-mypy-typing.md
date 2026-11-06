@@ -69,7 +69,7 @@ mid-migration.
 The flag `--allow-untyped-defs` keeps a bare `def test_x():` valid. Annotating every test's return
 type as `-> None` adds no safety, since pytest never inspects it.
 
-The flag `--no-warn-unused-ignores` stays in place until the existing `# type: ignore` comments are
+The flag `--no-warn-unused-ignores` stays in place only until the existing `# type: ignore` comments are
 swept. The pass that finds a comment either removes it or replaces it with a narrowed
 `# type: ignore[<code>]` that names the reason. Nothing waits for later.
 

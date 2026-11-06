@@ -49,7 +49,7 @@ team chooses to give it. That is the case `interrupts` was built for.
 
 A TipKit tip is not the app's view. Its title and message differ per `Tip` instance across an app.
 The built-in close control that TipKit adds by default carries no accessibility identifier the app
-sets, because the app supplies the tip's content and not its container or dismiss control. An author
+sets, because the app supplies only the tip's content, not its container or dismiss control. An author
 has no stable, app-authored selector to put in a `condition` at all.
 
 `interrupts` cannot express "dismiss whichever TipKit tip is showing" unless the app team
@@ -119,8 +119,8 @@ The work divides into six units:
    installs the same scrim. An attempt to reproduce that on-device could not get such a popover to
    present, so the question remains unverified rather than disproved.
 
-   The opt-in default bounds the consequence. The guard runs on a scenario that asked for it, and
-   after a step already failed. An author whose app presents its own popovers, and who wants them
+   The opt-in default bounds the consequence. The guard runs only on a scenario that asked for it, and
+   only after a step already failed. An author whose app presents its own popovers, and who wants them
    untouched, leaves `iosTipKitHandling` off. Narrowing the match (pairing the region with
    `TipView`'s presence) is the follow-up if a real collision turns up.
 
@@ -151,7 +151,7 @@ The work divides into six units:
    orchestrator sees a boolean, not an identifier, so the deterministic core stays backend-agnostic
    (prime directive 3).
 
-   The method resolves the region to one match. It returns `False` on no match. On several matches
+   The method resolves the region to exactly one match. It returns `False` on no match. On several matches
    it fails loudly rather than guessing, which is the `resolve_unique` / `AmbiguousSelector` contract
    (prime directive 2). The method reports a fact without deciding pass/fail, so it stays clear of
    prime directive 1.
@@ -199,7 +199,7 @@ The work divides into six units:
    that callback means "a recovery failed, end the wait". Reporting `True` would abort a wait that the
    dismiss freed to succeed.
 
-   The gate activates when the backend advertises `HANDLE_TIPKIT_TIP` and the opt-in setting below is
+   The gate activates only when the backend advertises `HANDLE_TIPKIT_TIP` and the opt-in setting below is
    enabled. It composes transparently with a scenario that also declares `interrupts` and with one
    that does not.
 
