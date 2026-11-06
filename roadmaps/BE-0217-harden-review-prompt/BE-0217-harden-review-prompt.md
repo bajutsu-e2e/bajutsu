@@ -33,10 +33,8 @@ guessed:
 
 1. The pattern of what **GitHub Copilot** has actually flagged across the recent pull requests of this
    repository. This project runs Copilot in parallel with Claude Code during the migration of BE-0203.
-2. Established, citable code-review standards.
-   They are Google's Engineering Practices and the Python PEPs.
-   They are also Bandit's rule catalogue and OWASP's secure-code-review guidance.
-   The last is the Conventional Comments specification.
+2. Established, citable code-review standards: Google's Engineering Practices, the Python PEPs, Bandit's rule
+   catalogue, OWASP's secure-code-review guidance, and the Conventional Comments specification.
 
 The item changes only the review *contract* (`.github/claude-review-prompt.md`). Where the comment
 format changes, it also changes the identification prefix of the workflow. It does not touch the

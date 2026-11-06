@@ -44,28 +44,28 @@
 - **このリポジトリ自身のレビュー履歴が、すでに欠けている観点を示しています。** 最近マージされた PR に
   対する Copilot のインラインコメントを読むと、同じパターンが繰り返し現れます。現在のプロンプトは、
   そのどれも名指ししていません。
-  **コメントや docstring と実装のずれ（コメント腐敗）。**
-    [#825](https://github.com/bajutsu-e2e/bajutsu/pull/825) では、`state.py` の docstring が、
+  - **コメントや docstring と実装のずれ（コメント腐敗）。**
+    - [#825](https://github.com/bajutsu-e2e/bajutsu/pull/825) では、`state.py` の docstring が、
       ストレージの seam が 4 つに増えたあとも古い数のままでした。
-    [#816](https://github.com/bajutsu-e2e/bajutsu/pull/816) では、`platform_lifecycle.py` の
+    - [#816](https://github.com/bajutsu-e2e/bajutsu/pull/816) では、`platform_lifecycle.py` の
       docstring が、すでに参照済みのプラットフォームを「将来対応」と書いていました。run predicate の
       数も、実際と合っていませんでした。
-    [#813](https://github.com/bajutsu-e2e/bajutsu/pull/813) では、`record.py` の docstring が、
+    - [#813](https://github.com/bajutsu-e2e/bajutsu/pull/813) では、`record.py` の docstring が、
       実装の実際の戻り値の挙動と食い違っていました。
-  **docstring だけを本体に持つ `Protocol` メソッド。**
+  - **docstring だけを本体に持つ `Protocol` メソッド。**
     [#816](https://github.com/bajutsu-e2e/bajutsu/pull/816) では、`RunEnvironment` や
     `CrawlEnvironment` の複数のメソッドが、本体に docstring しか持たず、`...` や
     `raise NotImplementedError` を欠いていました。このようなメソッドは、戻り値の型注釈が `None` で
     ないにもかかわらず、暗黙に `None` を返す具象メソッドになります。`mypy --strict` では検出できません。
-  **構造化データを組み立てる際の未エスケープな文字列補間。**
+  - **構造化データを組み立てる際の未エスケープな文字列補間。**
     [#811](https://github.com/bajutsu-e2e/bajutsu/pull/811) では、`bajutsu/templates/serve.author.js`
     内の三つの関数が、セレクター ID を YAML の flow mapping にエスケープなしで埋め込んでいました。
     `:` を含む ID を与えると、不正な YAML になります。
-  **脆いテストとフレーキーなテスト。** 同じく [#811](https://github.com/bajutsu-e2e/bajutsu/pull/811)
+  - **脆いテストとフレーキーなテスト。** 同じく [#811](https://github.com/bajutsu-e2e/bajutsu/pull/811)
     では、あるテストが引用符のスタイルを厳密な部分文字列一致で検証していました。挙動に関係のない
     フォーマット変更だけで壊れます。[#808](https://github.com/bajutsu-e2e/bajutsu/pull/808) では、
     テストのアサーションが壁時計時刻に依存しており、CI が遅いときにフレーキーになりえました。
-  **PR やロードマップの文章に残る陳腐化した記述。**
+  - **PR やロードマップの文章に残る陳腐化した記述。**
     [#811](https://github.com/bajutsu-e2e/bajutsu/pull/811) のロードマップファイルは、PR がすでに
     `Implementing PR` をリンクしたあとも、その欄を「pending」のままにしていました。
 
@@ -78,10 +78,10 @@
   （Bandit 相当）のルール群を選択しています。Python 側のゲートは、ハードコードされた秘密情報、安全でない
   `yaml.load`、`subprocess(shell=True)`、弱い乱数、リクエストのタイムアウト欠落、証明書検証の無効化を、
   すでにブロックしています。
-  これらをプロンプトで再び指摘すると、すでに PR をブロックしているチェックと重複します。
-  `assert` の使用や、`subprocess` への生の argv 呼び出しを指摘すると、このリポジトリの `S101` と
+  - これらをプロンプトで再び指摘すると、すでに PR をブロックしているチェックと重複します。
+  - `assert` の使用や、`subprocess` への生の argv 呼び出しを指摘すると、このリポジトリの `S101` と
     `S603` の ignore と矛盾します。この ignore には、`pyproject.toml` に理由が記録されています。
-  レビュアー独自の価値は、ゲートが構造的に見えない領域にあります。ファイルをまたぐ意味的なずれと、
+  - レビュアー独自の価値は、ゲートが構造的に見えない領域にあります。ファイルをまたぐ意味的なずれと、
     型検査は通るのに誤っている `Protocol` の本体です。上記 `#811` の例のとおり、
     `bajutsu/templates/serve.*.js` のようなインジェクション性の不具合も、具体的な例です。
     `make lint-js` は、このファイル群を `node --check` による構文チェックにしかかけていません。
@@ -120,9 +120,9 @@
 1. **「ゲートが見えないものをレビューする」という先頭原則を追加します。**
    `.github/claude-review-prompt.md` の観点の節より前に、短い段落を追加します。段落は二つの規則を
    述べます。
-   `make check` がすでにゲートしているものを、レビュアーは再指摘しません。対象は、`ruff` が選択して
+   - `make check` がすでにゲートしているものを、レビュアーは再指摘しません。対象は、`ruff` が選択して
      いる `S`（Bandit）系を含むルール、`mypy --strict`、docstring linter、カバレッジの下限です。
-   `pyproject.toml` に記録された、理由のあるファイル単位の ruff ignore（`S101`、`S603` など）を、
+   - `pyproject.toml` に記録された、理由のあるファイル単位の ruff ignore（`S101`、`S603` など）を、
      レビュアーは蒸し返しません。段落は、そこにすでに記録された理由を引用します。
 
    これは、この項目が追加する観点すべてに共通する、組み立ての原則です。以下の各観点は、決定論的な
@@ -160,9 +160,9 @@
    設計上、助言にとどまるからです（prime directive 1）。どのラベルも、マージを妨げません。
 8. **文言と用語の一貫性を見る観点を追加します。** 既存の house convention の節を拡張し、diff が触れた
    ファイルについて、次の三つを指摘します。
-   同じ概念が、別々の言い方をされている。
-   頭字語が、初出で展開されていない。
-   PR 本文やロードマップの `Progress` の記述が、説明している diff と食い違っている。
+   - 同じ概念が、別々の言い方をされています。
+   - 頭字語が、初出で展開されていません。
+   - PR 本文やロードマップの `Progress` の記述が、説明している diff と食い違っています。
 
    この観点は、[Google の開発者向けドキュメントスタイルガイド](https://developers.google.com/style) と
    [ドキュメントのベストプラクティス](https://google.github.io/styleguide/docguide/best_practices.html)
@@ -171,10 +171,10 @@
    だけです。そのため、ワークフローの YAML に変更が不要なことを、`actionlint`（すでに `make check`
    に含まれる）が検証します。レビューの挙動そのものは、実際の PR がないと確認できません。したがって、
    検証は手動で行います。新しい観点それぞれの実例を、一つずつ含むテスト用 PR を作成します。
-   陳腐化した docstring の主張
-   docstring だけの `Protocol` メソッド
-   `serve.*.js` テンプレート内の、未エスケープな YAML 補間
-   壁時計時刻に依存する、テストのアサーション
+   - 陳腐化した docstring の主張です。
+   - docstring だけの `Protocol` メソッドです。
+   - `serve.*.js` テンプレート内の、未エスケープな YAML 補間です。
+   - 壁時計時刻に依存する、テストのアサーションです。
 
    そのうえで、二つを確認します。レビュアーのインラインコメントが、それぞれを新しい Conventional
    Comments のラベル付きで捉えること。要約とすべてのインラインコメントが、非ブロッキングのままで
