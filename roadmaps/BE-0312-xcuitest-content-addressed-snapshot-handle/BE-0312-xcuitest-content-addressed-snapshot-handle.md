@@ -17,204 +17,258 @@
 ## Introduction
 
 The XCUITest backend still fails a tap with `element vanished (stale handle)` on a screen whose
-elements have not moved at all — a failure class the stale-handle re-resolution retry of
+elements have not moved at all. The stale-handle re-resolution retry of
 [BE-0289](../BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve.md)
-does not close. The cause is the on-device runner's handle scheme, not the app or the scenario. The
-runner mints a fresh handle for every element on every accessibility-tree snapshot and invalidates
-every prior handle unconditionally, because a handle encodes the *snapshot generation* in which the
-element was seen rather than the *identity* of the element itself. One redundant `GET /elements` —
-which the transport-retry seam re-sends whenever a read looks like it blipped — is therefore enough
-to advance the generation and strand a handle the client is about to use, even though nothing on the
-screen changed between the resolve and the actuation. This item proposes to derive the handle
-deterministically from the element's stable identity (its identifier, label, and traits)
-instead of from a per-call counter, so an element that is still on screen keeps the same handle
-across snapshots and the handle stays valid no matter how many extra snapshots the runner takes. The
-behavioral change is confined to the runner's `SnapshotStore`; the Python channel and the runner's
-HTTP router keep their logic (only their doc comments realign, BE-0113), because a handle stays an
-opaque string to every consumer.
+does not close this failure class.
+
+The cause is the handle scheme of the on-device runner, not the app or the scenario. The runner mints
+a fresh handle for every element on every accessibility-tree snapshot. The runner also invalidates
+every prior handle unconditionally. A handle encodes the *snapshot generation* in which the element
+was seen, not the *identity* of the element itself.
+
+One redundant `GET /elements` is therefore enough to advance the generation and strand a handle that
+the client is about to use. The transport-retry seam re-sends the read whenever a read looks like it
+blipped. Nothing on the screen changed between the resolve and the actuation.
+
+This item proposes to derive the handle deterministically from the stable identity of the element:
+its identifier, label, and traits. A per-call counter no longer takes part. An element that is still
+on screen keeps the same handle across snapshots. The handle stays valid no matter how many extra
+snapshots the runner takes.
+
+The behavioral change is confined to the `SnapshotStore` of the runner. The Python channel and the
+HTTP router of the runner keep their logic, because a handle stays an opaque string to every
+consumer. Only their doc comments realign (BE-0113).
 
 ## Motivation
 
-The flake reproduces on the handle-based actuation path even after BE-0289 shipped. A `tap` by
-`id` fails with `element vanished (stale handle)` immediately after a large screen transition — a
-full-screen modal presenting, for instance — while the target element is present the whole time. Four
-observations locate the cause on the runner side rather than in a screen change:
+The flake reproduces on the handle-based actuation path even after BE-0289 shipped. A `tap` by `id`
+fails with `element vanished (stale handle)` immediately after a large screen transition, such as a
+full-screen modal presenting. The target element is present the whole time. Four observations locate
+the cause on the runner side and not in a screen change:
 
-- The evidence snapshot captured the moment a `wait` for the element succeeded, and the evidence
-  snapshot captured when the following `tap` failed as `stale`, agree on the target element's frame
-  to the pixel (`[16.0, 784.0, 370.0, 40.0]` in both). The element did not move, resize, or leave the
+- The evidence snapshot captured when a `wait` for the element succeeded and the evidence snapshot
+  captured when the following `tap` failed as `stale` agree on the target element's frame to the
+  pixel (`[16.0, 784.0, 370.0, 40.0]` in both). The element did not move, resize, or leave the
   screen.
 - Setting `dismissAlerts: false` does not stop the flake, so no artificial-intelligence path and no
   vision path is involved.
-- A `tapPoint` — a raw coordinate tap that carries no handle — never reproduces the flake, which
-  places the cause on the handle, not on the tap itself.
-- Other `tap` steps in the same scenario, the ones that do not follow a large screen transition,
-  succeed. The flake tracks runner busyness, not the selector.
+- A `tapPoint`, a raw coordinate tap that carries no handle, never reproduces the flake. The cause
+  therefore sits on the handle and not on the tap itself.
+- Other `tap` steps in the same scenario succeed when they do not follow a large screen transition.
+  The flake tracks runner busyness, not the selector.
 
 The handle scheme turns a redundant read into a stale handle. `refreshSnapshot` in
 [`BajutsuKit/Sources/BajutsuRunner/SnapshotStore.swift`](../../BajutsuKit/Sources/BajutsuRunner/SnapshotStore.swift)
 advances a monotonic `generation` counter on every call, clears `currentElements`, and mints
-`h-<generation>-<index>` for each element, so a handle from one snapshot is invalidated by the very
-next snapshot regardless of whether the screen changed. The only trigger for a new snapshot is a
-`GET /elements`, and the backend issues one `GET /elements` (through `_resolve_handle`) followed by
-one `POST /tap` (through `_actuate`) per handle-based step, so under normal timing the generation
-does not move between the resolve and the actuation. A redundant `GET /elements` is what moves it.
+`h-<generation>-<index>` for each element. The very next snapshot invalidates a handle from one
+snapshot, whether or not the screen changed.
+
+The only trigger for a new snapshot is a `GET /elements`. For each handle-based step, the backend
+issues one `GET /elements` (through `_resolve_handle`) followed by one `POST /tap` (through
+`_actuate`). Under normal timing, the generation does not move between the resolve and the
+actuation. A redundant `GET /elements` moves it.
 
 The redundant read comes from the transport-retry seam. `_is_retry_eligible` in
 [`bajutsu/drivers/xcuitest.py`](../../bajutsu/drivers/xcuitest.py) returns true for every `GET`
-(`return not delivered or method == "GET"`), because a read is idempotent and BE-0207 added the seam
-precisely to smooth a sub-second transport blip. When a `GET /elements` looks like it timed out on
-the client, `_with_retry` re-sends it. Right after a large screen transition the runner's main
-thread is busy re-snapshotting the settling screen, which is exactly when a read is slow enough to
-look blipped. The two effects compound into the stale handle:
+(`return not delivered or method == "GET"`). A read is idempotent, and BE-0207 added the seam to
+smooth a sub-second transport blip. When a `GET /elements` looks like it timed out on the client,
+`_with_retry` re-sends it.
 
-1. The first `GET /elements` is judged a transport failure on the client and `_with_retry` re-sends
-   it.
-2. The client resolves the selector against the re-sent read's response (generation N+1) and issues
-   `POST /tap` with the handle the runner minted in generation N+1.
-3. The first read was in fact still running on the busy runner, and it completes and runs
-   `refreshSnapshot` *after* the re-send — advancing the generation to N+2 and replacing
-   `currentElements` wholesale.
-4. The generation-N+1 handle the client sent is no longer a key in `currentElements`, so the runner
-   returns `stale`, and the backend raises the vanished-element error — for a button that never left
+Right after a large screen transition, the main thread of the runner is busy re-snapshotting the
+settling screen. A read is then slow enough to look blipped. The two effects compound into the stale
+handle:
+
+1. The client judges the first `GET /elements` a transport failure, and `_with_retry` re-sends it.
+2. The client resolves the selector against the response of the re-sent read (generation N+1). The
+   client then issues `POST /tap` with the handle that the runner minted in generation N+1.
+3. The first read was in fact still running on the busy runner. The first read completes and runs
+   `refreshSnapshot` *after* the re-send. The generation advances to N+2, and `currentElements` is
+   replaced wholesale.
+4. The generation-N+1 handle that the client sent is no longer a key in `currentElements`. The runner
+   returns `stale`, and the backend raises the vanished-element error for a button that never left
    the screen.
 
-BE-0289's re-resolution retry cannot recover this case, and the reason motivates a different fix.
-That retry re-queries and re-actuates while the selector still resolves uniquely,
-which assumes the stale handle was caused by a screen change that a fresh query will reflect. Here
-the screen did not change; the runner is simply busy, and every re-query the retry issues is itself
-a `GET /elements` exposed to the same re-send-and-interleave race. While the runner stays busy — the
-window right after a transition — all three of BE-0289's bounded attempts can stale for the same
-non-reason, and the step fails. The two items address different layers: BE-0289 tolerates a genuine
-snapshot-version race on the client, whereas this item removes the version from the handle so an
-unchanged element is never assigned a new handle in the first place.
+The re-resolution retry of BE-0289 cannot recover this case, and the reason motivates a different
+fix. The retry re-queries and re-actuates while the selector still resolves uniquely. That approach
+assumes that a screen change caused the stale handle and that a fresh query will reflect the change.
 
-The flake is expensive in the same three ways BE-0289 documents. A required on-device gate that
-fails at random erodes trust in the gate and invites either a reflexive re-run or a wasted
-investigation; every re-run burns metered macOS-runner minutes on a job that builds the app and
-boots a Simulator; and the `element vanished` message actively misleads, because it reads as though
-the element is missing when the element is present the whole time.
+Here the screen did not change. The runner is merely busy, and every re-query that the retry issues
+is itself a `GET /elements`, exposed to the same re-send-and-interleave race. While the runner stays
+busy, in the window right after a transition, all three bounded attempts of BE-0289 can stale for the
+same non-reason. The step then fails.
+
+The two items address different layers. BE-0289 tolerates a genuine snapshot-version race on the
+client. This item removes the version from the handle, so an unchanged element never receives a new
+handle in the first place.
+
+The flake is expensive in the same three ways that BE-0289 documents:
+
+- A required on-device gate that fails at random erodes trust in the gate. It invites either a
+  reflexive re-run or a wasted investigation.
+- Every re-run burns metered macOS-runner minutes on a job that builds the app and boots a
+  Simulator.
+- The `element vanished` message misleads. It reads as though the element is missing, when the
+  element is present the whole time.
 
 ## Detailed design
 
-The work splits into four units. Unit 1 changes how a handle is derived; Unit 2 preserves the
-`stale`-versus-`notFound` distinction that BE-0289's retry depends on; Unit 3 proves the change
-off-device; Unit 4 keeps the documentation in step. The units are ordered by dependency but can land
+The work splits into four units. Unit 1 changes how a handle is derived. Unit 2 preserves the
+`stale`-versus-`notFound` distinction on which the retry of BE-0289 depends. Unit 3 proves the change
+off-device. Unit 4 keeps the documentation in step. The units are ordered by dependency and can land
 as separate pull requests.
 
 **Unit 1 — Derive the handle from stable element identity, not from a generation counter.** In
 `SnapshotStore`, replace the `h-<generation>-<index>` scheme with a handle derived deterministically
-from the element's stable identity — its `identifier`, `label`, and `traits`. The handle keeps its
-`h-` prefix as an opaque-handle namespace, so only the part after the prefix changes — from a
-generation and index to an identity encoding (e.g. `h-<identity-hash>`); the prefix is deliberately
-preserved so nothing downstream that keys off it (a test, a log filter) breaks. Three fields the
-snapshot also carries are deliberately excluded from the derivation. The `backingElement` is excluded
-because every `queryElements` call returns a fresh object reference for the same on-screen element, so
-including the reference would make the handle change on every snapshot — the very defect this item
-removes. The `value` and the `frame` are both excluded because both change while a screen settles,
-which is exactly when the runner re-snapshots: a `frame` shifts by a sub-pixel as a transition
-animates, and a `value` ticks as a loading label resolves, a countdown counts, or a spinner spins.
-Including either would give one unchanged element a new handle on each of two interleaved reads and
-reopen the race in the window this item targets, and neither buys actuation precision, because a
-handle resolves to a `backingElement` and the runner acts through that reference, never through the
-stored `value` or `frame`. The choice is not new to the package: `attributesMatch` in
-[`BajutsuKit/Sources/BajutsuRunner/PositionPath.swift`](../../BajutsuKit/Sources/BajutsuRunner/PositionPath.swift)
-already defines element identity as `identifier` / `label` / `traits`, excluding `value` and `frame`
-for the same settling reason ([BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience.md)),
-so the handle reuses the package's existing identity notion rather than inventing a second
-one. `refreshSnapshot` still clears and rebuilds `currentElements` on every call, so the stored
-`backingElement` a handle resolves to is always the latest query's reference; the only change is that
-the *key* is now the identity handle, so an element with unchanged identity maps to the same handle
-string across snapshots. A redundant `GET /elements` therefore re-issues the identical handle for an
-unchanged element, and the interleaving in *Motivation* can no longer strand it: whichever snapshot
-the client's handle came from, the handle is still a live key so long as the element is on screen. Two
-on-screen elements can share identical identity (two buttons both labeled `Delete` with no
-identifier, say); to keep their handles distinct, append an occurrence index to collisions *within a
-single snapshot* in query order, so the first occurrence keeps the bare identity handle and later
-occurrences take a suffixed variant.
+from the stable identity of the element: its `identifier`, `label`, and `traits`.
 
-**Unit 2 — Preserve the `stale`-versus-`notFound` distinction.** BE-0289's retry branches on the
-runner's reply: a `stale` reply triggers a re-resolution, whereas a `not-found` reply fails
-immediately, so the two must stay distinguishable after the handle scheme changes. The generation
-counter is what tells them apart today — `lookup` parses the handle, and a well-formed handle whose
-generation is not current reads as `stale` while an unparseable handle reads as `notFound`.
-Identity-derived handles carry no generation to parse, so `SnapshotStore` records the set of handles it has ever
-issued and `lookup` returns `.found` when the handle is a live key, `.stale` when the handle was
-issued before but is not a live key (the element it named has left the screen or changed identity),
-and `.notFound` when the handle was never issued (a malformed or fabricated string). The runner's
-HTTP router keeps its existing three-way branch over the result, and BE-0289's driver-side retry
-keeps working unchanged: a real disappearance now maps a once-issued handle to `.stale` exactly as
-before, so the retry re-resolves, finds the selector no longer resolves, and fails loudly.
+The handle keeps its `h-` prefix as an opaque-handle namespace. Only the part after the prefix
+changes, from a generation and index to an identity encoding (for example `h-<identity-hash>`). The
+prefix is deliberately preserved, so nothing downstream that keys off the prefix (a test, a log
+filter) breaks.
+
+The snapshot also carries three fields that the derivation deliberately excludes:
+
+- The `backingElement` is excluded. Every `queryElements` call returns a fresh object reference for
+  the same on-screen element. Including the reference would change the handle on every snapshot, the
+  very defect that this item removes.
+- The `value` and the `frame` are both excluded, because both change while a screen settles. The
+  runner re-snapshots at exactly that time. A `frame` shifts by a sub-pixel as a transition animates.
+  A `value` ticks as a loading label resolves, a countdown counts, or a spinner spins.
+
+Including either field would give one unchanged element a new handle on each of two interleaved
+reads. The race would reopen in the window that this item targets. Neither field buys actuation
+precision either. A handle resolves to a `backingElement`, and the runner acts through that
+reference, never through the stored `value` or `frame`.
+
+The choice is not new to the package. `attributesMatch` in
+[`BajutsuKit/Sources/BajutsuRunner/PositionPath.swift`](../../BajutsuKit/Sources/BajutsuRunner/PositionPath.swift)
+already defines element identity as `identifier` / `label` / `traits`. It excludes `value` and
+`frame` for the same settling reason
+([BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience.md)).
+The handle reuses the existing identity notion of the package and invents no second one.
+
+`refreshSnapshot` still clears and rebuilds `currentElements` on every call. The stored
+`backingElement` that a handle resolves to is always the reference of the latest query. The only
+change is that the *key* is now the identity handle. An element with unchanged identity maps to the
+same handle string across snapshots.
+
+A redundant `GET /elements` therefore re-issues the identical handle for an unchanged element. The
+interleaving in *Motivation* can no longer strand the handle. Whichever snapshot the handle of the
+client came from, the handle is still a live key as long as the element is on screen.
+
+Two on-screen elements can share an identical identity, for example two buttons both labeled
+`Delete` with no identifier. To keep their handles distinct, append an occurrence index to collisions
+*within a single snapshot* in query order. The first occurrence keeps the bare identity handle, and
+later occurrences take a suffixed variant.
+
+**Unit 2 — Preserve the `stale`-versus-`notFound` distinction.** The retry of BE-0289 branches on the
+reply of the runner. A `stale` reply triggers a re-resolution. A `not-found` reply fails immediately.
+The two replies must stay distinguishable after the handle scheme changes.
+
+Today the generation counter tells them apart. `lookup` parses the handle. A well-formed handle whose
+generation is not current reads as `stale`, and an unparseable handle reads as `notFound`.
+
+Identity-derived handles carry no generation to parse. `SnapshotStore` therefore records the set of
+handles that it has ever issued, and `lookup` returns one of three results:
+
+- `.found`, when the handle is a live key.
+- `.stale`, when the handle was issued before but is not a live key. The element it named has left the
+  screen or changed identity.
+- `.notFound`, when the handle was never issued, such as a malformed or fabricated string.
+
+The HTTP router of the runner keeps its existing three-way branch over the result. The driver-side
+retry of BE-0289 keeps working unchanged. A real disappearance maps a once-issued handle to `.stale`
+as before. The retry re-resolves, finds that the selector no longer resolves, and fails loudly.
 
 **Unit 3 — Prove the change off-device.** Cover `SnapshotStore` with Swift unit tests in
-[`BajutsuKit/Tests/BajutsuRunnerTests/SnapshotStoreTests.swift`](../../BajutsuKit/Tests/BajutsuRunnerTests/SnapshotStoreTests.swift),
-which run in the runner's off-device test suite with no Simulator. The central addition is the
-regression this item exists to prevent: refreshing the same unchanged snapshot two or more times,
-then resolving the *first* refresh's handle to `.found` — the case the old generation scheme fails,
-because the old scheme stales that handle on the second refresh. A companion test pins the in-snapshot
-tiebreak, resolving two identity-identical elements in one snapshot to distinct handles. The existing
-tests keep their current form and keep passing under the new scheme, and the suite depends on that: a
-refresh with a *different* element still stales the first element's handle (a genuine disappearance,
-`.stale`), a never-issued handle still reads `.notFound`, an issued handle still carries the `h-`
-prefix, and the concurrency test still passes — so the identity derivation neither breaks the
-`.stale` / `.notFound` contract Unit 2 preserves nor reintroduces a data race.
+[`BajutsuKit/Tests/BajutsuRunnerTests/SnapshotStoreTests.swift`](../../BajutsuKit/Tests/BajutsuRunnerTests/SnapshotStoreTests.swift).
+The tests run in the off-device test suite of the runner, with no Simulator.
+
+The central addition is the regression that this item exists to prevent. The test refreshes the same
+unchanged snapshot two or more times, then resolves the handle of the *first* refresh to `.found`.
+The old generation scheme fails this case, because it stales that handle on the second refresh. A
+companion test pins the in-snapshot tiebreak: two identity-identical elements in one snapshot resolve
+to distinct handles.
+
+The existing tests keep their current form and keep passing under the new scheme. The suite depends
+on them:
+
+- A refresh with a *different* element still stales the handle of the first element (a genuine
+  disappearance, `.stale`).
+- A never-issued handle still reads `.notFound`.
+- An issued handle still carries the `h-` prefix.
+- The concurrency test still passes.
+
+The identity derivation therefore neither breaks the `.stale` / `.notFound` contract that Unit 2
+preserves nor reintroduces a data race.
 
 **Unit 4 — Keep the documentation in step (BE-0113).** The `SnapshotStore` class comment states
-today that "Each `refreshSnapshot` replaces the previous snapshot: all prior handles become stale",
-which is the exact behavior this item changes; rewrite the comment to describe identity-derived
-handles and the condition under which a handle is still stale (its element left the screen or changed
-identity). The Python side of the same channel narrates the old model too and must move with the code
-(cross-file drift is what BE-0113 forbids): the [`bajutsu/drivers/xcuitest.py`](../../bajutsu/drivers/xcuitest.py)
-module docstring calls the handle a "per-snapshot handle" that "can go stale when the screen
-re-snapshots between resolve and actuate", and [`bajutsu/drivers/xcuitest_live.py`](../../bajutsu/drivers/xcuitest_live.py)
-twice calls the WebDriver element id the runner's "per-snapshot handle"; realign all three to the
-identity-derived model (stable across a re-snapshot of an unchanged screen). Update
-[`DESIGN.md`](../../DESIGN.md) and [`docs/architecture.md`](../../docs/architecture.md) if either
-describes the runner's handle staleness semantics, so the prose account matches the behavior.
+today that "Each `refreshSnapshot` replaces the previous snapshot: all prior handles become stale".
+This item changes exactly that behavior. Rewrite the comment to describe identity-derived handles and
+the condition under which a handle is still stale: its element left the screen or changed identity.
 
-Two follow-ups are known and deliberately left out of scope. The set of ever-issued handles grows
-for the life of the runner process, so a very long run accumulates handle strings monotonically; the
-growth is small (one short string per distinct element ever seen) and a run is process-scoped, but a
-bound — retaining only the handles from the last few snapshots — can be added later if a measurement
-shows it matters. The occurrence-index tiebreak for identity-identical elements assumes the query
-order of identical elements is stable across snapshots; a screen that reorders visually identical
-elements between snapshots could still reassign their handles, but such a screen is rare and its
-elements are indistinguishable to a selector anyway, so closing that gap is deferred until a real
-scenario needs it.
+The Python side of the same channel narrates the old model too, and it must move with the code.
+Cross-file drift is what BE-0113 forbids:
+
+- The module docstring of [`bajutsu/drivers/xcuitest.py`](../../bajutsu/drivers/xcuitest.py) calls
+  the handle a "per-snapshot handle" that "can go stale when the screen re-snapshots between resolve
+  and actuate".
+- [`bajutsu/drivers/xcuitest_live.py`](../../bajutsu/drivers/xcuitest_live.py) twice calls the
+  WebDriver element id the "per-snapshot handle" of the runner.
+
+Realign all three to the identity-derived model, which is stable across a re-snapshot of an unchanged
+screen. Update [`DESIGN.md`](../../DESIGN.md) and [`docs/architecture.md`](../../docs/architecture.md)
+if either describes the handle staleness semantics of the runner, so the prose account matches the
+behavior.
+
+Two follow-ups are known, and the item deliberately leaves them out of scope:
+
+- The set of ever-issued handles grows for the life of the runner process. A very long run
+  accumulates handle strings monotonically. The growth is small (one short string per distinct
+  element ever seen), and a run is process-scoped. A bound can be added later if a measurement shows
+  that it matters, for example retaining the handles from the last few snapshots only.
+- The occurrence-index tiebreak for identity-identical elements assumes that the query order of
+  identical elements is stable across snapshots. A screen that reorders visually identical elements
+  between snapshots could still reassign their handles. Such a screen is rare, and its elements are
+  indistinguishable to a selector anyway. The item defers closing the gap until a real scenario needs
+  it.
 
 ## Alternatives considered
 
-**Make `GET /elements` non-retry-eligible so no redundant read is sent.** Removing the read from
-BE-0207's transport-retry seam would delete the specific trigger in *Motivation*, but at the cost of
-re-opening the transient-blip flake BE-0207 shipped to close: a genuine sub-second transport blip on
-a read would once again fail the step outright. The retry is also not the only conceivable source of
-an extra snapshot — any future runner behavior that re-snapshots would reintroduce the flake — so
-removing the retry treats one symptom rather than the cause. Identity-derived handles make a
-redundant snapshot harmless regardless of where the snapshot comes from.
+**Make `GET /elements` non-retry-eligible so no redundant read is sent.** Removing the read from the
+transport-retry seam of BE-0207 would delete the specific trigger in *Motivation*. But it would
+reopen the transient-blip flake that BE-0207 shipped to close: a genuine sub-second transport blip on
+a read would again fail the step outright.
+
+The retry is also not the only conceivable source of an extra snapshot. Any future runner behavior
+that re-snapshots would reintroduce the flake. Removing the retry treats one symptom and not the
+cause. Identity-derived handles make a redundant snapshot harmless, wherever the snapshot comes from.
 
 **Rely on BE-0289's re-resolution retry alone.** *Motivation* shows why the retry cannot recover this
-case: it presumes a screen change a fresh query will reflect, whereas here the screen is unchanged and
-every re-query is itself exposed to the same re-send race, so all bounded attempts can stale for the
-same non-reason. The two items are complementary, not substitutes — BE-0289 tolerates a real race on
-the client, and this item removes the manufactured race at the source.
+case. The retry presumes a screen change that a fresh query will reflect. Here the screen is
+unchanged, and every re-query is itself exposed to the same re-send race, so all bounded attempts can
+stale for the same non-reason. The two items are complementary and not substitutes. BE-0289
+tolerates a real race on the client, and this item removes the manufactured race at the source.
 
-**Keep a bounded window of recent generations valid instead of just the latest.** Treating handles
-from the last few generations as live would paper over the interleaving without changing the scheme,
-but it only widens an arbitrary window rather than fixing the mismatch: a handle should be valid
-exactly while its element is on screen, which is a statement about identity, not about how many
-snapshots have elapsed. Deriving the handle from identity states that invariant directly, and it needs no tuning
-parameter that a slower runner could outrun.
+**Keep a bounded window of recent generations valid instead of the latest generation alone.**
+Treating handles from the last few generations as live would paper over the interleaving without
+changing the scheme. But the approach widens an arbitrary window and does not fix the mismatch. A
+handle should be valid exactly while its element is on screen, which is a statement about identity
+and not about how many snapshots have elapsed. Deriving the handle from identity states that
+invariant directly. The derivation needs no tuning parameter that a slower runner could outrun.
 
 **Include the element's `frame` or `value` in the handle key.** Keying on position or on the live
 value as well would let two identity-identical elements take distinct handles without an occurrence
-index, but it reopens the exact race this item closes: a screen settling after a transition
-re-snapshots repeatedly, and either a `frame` that shifts or a `value` that ticks (a loading label, a
-countdown, a spinner) between two interleaved reads gives one unchanged element two handles, so the
-redundant read strands the handle again in the very window the item targets. The occurrence-index
-tiebreak already distinguishes identity-identical elements within a snapshot, and neither field buys
-actuation precision because the runner acts through the `backingElement`, not the stored `value` or
-`frame`; both earn nothing the design needs at the cost the design exists to avoid. The package's
-`attributesMatch` (BE-0287) already excludes both for the same reason.
+index. But it reopens the race that this item closes. A screen that settles after a transition
+re-snapshots repeatedly. Either a `frame` that shifts or a `value` that ticks (a loading label, a
+countdown, a spinner) between two interleaved reads gives one unchanged element two handles. The
+redundant read then strands the handle again, in the window that the item targets.
+
+The occurrence-index tiebreak already distinguishes identity-identical elements within a snapshot.
+Neither field buys actuation precision, because the runner acts through the `backingElement` and not
+through the stored `value` or `frame`. Both fields earn nothing that the design needs, at the cost
+that the design exists to avoid. The `attributesMatch` of the package (BE-0287) already excludes both
+for the same reason.
 
 ## Progress
 
