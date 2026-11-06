@@ -2,9 +2,10 @@
 
 # Developer guide: code structure, the scenario DSL, and the development routine
 
-> A guide to the source tree and how to work in it: where each file sits, which classes live in it,
-> how the scenario DSL (domain-specific language) and its `Selector` fields work, what happens
-> inside each class while a scenario runs, and the routine for developing and verifying a change.
+> A guide to the source tree and how to work in it. It covers where each file sits and which classes
+> live in it. It explains how the scenario domain-specific language (DSL) and its `Selector` fields
+> work, and what happens inside each class while a scenario runs. It ends with the routine for
+> developing and verifying a change.
 
 Related: [architecture](architecture.md) · [concepts](concepts.md) · [run loop](run-loop.md) ·
 [drivers](drivers.md) · [glossary](glossary.md)
@@ -13,10 +14,10 @@ Related: [architecture](architecture.md) · [concepts](concepts.md) · [run loop
 
 ## How to read this page
 
-The page runs in one direction, from the outside in. It opens with a picture of the whole system,
-then locates every file, then names the handful of types that carry the rest of the code. After
-that it follows a single command through the code and describes each class in turn. A
-reader who starts at the top and stops anywhere still ends with a complete, if coarser, picture.
+The page runs in one direction, from the outside in. It opens with a picture of the whole system
+and locates every file. It then names the handful of types that carry the rest of the code. After
+that, it follows a single command through the code and describes each class in turn. A reader who
+starts at the top and stops anywhere still ends with a complete, if coarser, picture.
 
 Three companion pages carry the depth this reading guide leaves out.
 [Architecture](architecture.md) holds the module table and the dependency-layer contract.
@@ -24,20 +25,22 @@ Three companion pages carry the depth this reading guide leaves out.
 explains each backend's platform seam. The [glossary](glossary.md) defines the domain vocabulary
 term by term.
 
-Two vocabulary notes make the rest readable. A **[scenario](glossary.md#scenario-authoring)** is one
-YAML file describing a user flow as a list of steps. A
-**[backend](glossary.md#driver-backend-actuator-platform)** is one platform's implementation of the driver
-interface — XCUITest for the iOS Simulator, adb for Android, Playwright for a web browser.
+Two vocabulary notes make the rest readable. A **[scenario](glossary.md#scenario-authoring)** is
+one YAML (YAML Ain't Markup Language) file that describes a user flow as a list of steps. A
+**[backend](glossary.md#driver-backend-actuator-platform)** is one platform's implementation of the
+driver interface. Examples are XCUITest for the iOS Simulator, adb for Android, and Playwright for
+a web browser.
 
 ---
 
 ## 1. The shape of the system
 
-Bajutsu splits into two tiers that never mix. Tier 1 uses a large language model (LLM) to *author* a
-scenario and to *investigate* a failure. Tier 2 replays that scenario deterministically and derives
-the verdict from machine-checkable assertions, with no model anywhere on the path. The scenario file
-is the hub between the two: Tier 1 writes it, humans own and edit it afterwards, and Tier 2 consumes
-it.
+Bajutsu splits into two tiers that never mix. [Tier 1](glossary.md#the-two-tiers) uses a large
+language model (LLM) to *author* a scenario and to *investigate* a failure.
+[Tier 2](glossary.md#the-two-tiers) replays the scenario deterministically. It derives the verdict
+from machine-checkable assertions, with no model anywhere on the path. The scenario file is the hub
+between the two tiers. Tier 1 writes the file, humans own and edit it afterwards, and Tier 2
+consumes it.
 
 ![Conceptual diagram. A natural-language goal enters Tier 1, where the record and crawl commands drive an agent that writes a scenario YAML file. Humans edit that file directly. Tier 2 reads the same file: the runner leases a device, the orchestrator executes each step through one Driver interface, the assertion evaluator produces the verdict, and the reporter writes the run artifacts. The Driver interface is the single platform seam, behind which sit the XCUITest, adb, Playwright, and fake backends. On failure the triage command reads the run artifacts and proposes edits back to the scenario.](assets/diagrams/developer-guide-concept.svg)
 
@@ -89,10 +92,10 @@ flowchart TB
 Three properties of the picture explain most of the code's shape.
 
 - **The verdict path holds no model.** Prime directive 1 forbids an LLM anywhere in `run` or in the
-  continuous integration (CI) gate, so the whole Tier 2 column stays free of the AI packages.
-- **One seam, many platforms.** Every platform difference hides behind the `Driver` interface, so a
+  continuous integration (CI) gate. The whole Tier 2 column stays free of the AI packages.
+- **One seam, many platforms.** Every platform difference hides behind the `Driver` interface. A
   new platform means a new backend rather than a fork of the core.
-- **The scenario is the durable artifact.** Nothing else persists between sessions, so the scenario
+- **The scenario is the durable artifact.** Nothing else persists between sessions. The scenario
   schema doubles as the contract every feature reads.
 
 ---
@@ -177,16 +180,23 @@ flowchart TB
 
 </details>
 
-`common/` holds a further set of single-purpose helpers: `capability/` (what a backend supports),
-`run_meta/` (run identity and artifact storage), `analytics/` (token and cost accounting),
-`evidence/`, `devices/`, `provisioning/`, `github/`, and `cloud/`. The
-[module table in architecture.md](architecture.md#module-list-and-roles) describes each in one row.
+`common/` holds a further set of single-purpose helpers:
+
+- `capability/`: what a backend supports.
+- `run_meta/`: run identity and artifact storage.
+- `analytics/`: token and cost accounting.
+- `evidence/`, `devices/`, and `provisioning/`.
+- `github/` and `cloud/`.
+
+The [module table in architecture.md](architecture.md#module-list-and-roles) describes each in one
+row.
 
 ### 2.3 Every package, in one table
 
-The diagram above groups directories by role; the tables below list every one of them, with the
-file and line counts `make repo-map ARGS="--code"` reports and the modules each holds — a fuller
-inventory than the diagram's boxes have room for, grouped the same way.
+The diagram above groups directories by role. The tables below list every directory in the same
+groups. Each row gives the file and line counts that `make repo-map ARGS="--code"` reports, and the
+modules the directory holds. The tables form a fuller inventory than the diagram's boxes have room
+for.
 
 **Commands** — one directory per user-facing feature, plus its own `cli.py`.
 
@@ -359,23 +369,24 @@ classDiagram
 </details>
 
 **`Scenario`** ([`common/scenario/models/`](https://github.com/bajutsu-e2e/bajutsu/tree/main/bajutsu/common/scenario/models))
-is the authoring model, built on pydantic with `extra="forbid"`, so an unknown key fails the load
-rather than passing unnoticed. A `Step` carries one of 39 action fields, an `Assertion` one of 15
-kinds. The strictness matters because the scenario is the single artifact that outlives a session.
+is the authoring model. It builds on pydantic with `extra="forbid"`, so an unknown key fails the
+load rather than passing unnoticed. A `Step` carries one of 39 action fields. An `Assertion` carries
+one of 15 kinds. The strictness matters because the scenario is the single artifact that outlives
+a session.
 
 **`Driver`** ([`common/drivers/base.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/common/drivers/base.py))
-is the runtime contract: a `Protocol` of 23 methods that every backend satisfies. Beside it
-sit the runtime `Element` and `Selector`, both `TypedDict` rather than pydantic models, because the
-step loop touches them thousands of times per run. The authoring `Selector` converts to the runtime
-one through `as_selector()`.
+is the runtime contract: a `Protocol` of 23 methods that every backend satisfies. The runtime
+`Element` and `Selector` sit beside it. Both are `TypedDict` rather than pydantic models, because
+the step loop touches them thousands of times per run. The authoring `Selector` converts to the
+runtime one through `as_selector()`.
 
 **`Effective`** ([`common/config/effective.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/common/config/effective.py))
-is one target's fully resolved configuration: the team defaults overlaid by that target's own block,
-frozen so nothing downstream rewrites it. The platform-specific knobs narrow behind a single
-`platform_config: PlatformConfig` field — a discriminated union of `IosConfig | WebConfig |
-AndroidConfig` — rather than one optional field per platform, so a new platform adds a union member
-instead of a new sibling field every reader must learn to ignore. Every app-specific difference
-lives here, which keeps the tool itself app-agnostic.
+is one target's fully resolved configuration: the team defaults overlaid by that target's own
+block. Freezing the configuration keeps anything downstream from rewriting it. The platform-specific knobs
+narrow behind a single `platform_config: PlatformConfig` field, a discriminated union of
+`IosConfig | WebConfig | AndroidConfig`. One optional field per platform would leave a new sibling
+field that every reader must learn to ignore. With the union, a new platform adds a member
+instead. Every app-specific difference lives here, which keeps the tool itself app-agnostic.
 
 **`RunResult`** ([`common/orchestrator/types.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/common/orchestrator/types.py))
 is one scenario's outcome: the verdict, one `StepOutcome` per step, the trailing assertion results,
@@ -385,11 +396,11 @@ and every artifact captured along the way. The reporter renders a list of them a
 
 ## 4. The scenario DSL: what a scenario file looks like
 
-A scenario is plain YAML, validated against the `Scenario` / `Step` / `Assertion` models from
-section 3 with `extra="forbid"`, so a typo in a key fails the load rather than passing unnoticed.
-This section reads one real scenario end to end, then tables the vocabulary it draws from. The full,
-normative grammar lives in [DSL grammar](dsl-grammar.md); the authoring guide with worked recipes is
-[scenarios](scenarios.md) and [cookbook](cookbook.md).
+A scenario is plain YAML. The `Scenario`, `Step`, and `Assertion` models from section 3 check it
+with `extra="forbid"`, so a typo in a key fails the load rather than passing unnoticed. This
+section reads one real scenario end to end, then tables the vocabulary the scenario draws from. The
+full, normative grammar lives in [DSL grammar](dsl-grammar.md). The authoring guides with worked
+recipes are [scenarios](scenarios.md) and [cookbook](cookbook.md).
 
 ### 4.1 One scenario, read end to end
 
@@ -411,24 +422,27 @@ scenarios:
       - count: { sel: { traits: [link] }, atLeast: 5 }
 ```
 
-Three parts recur in every scenario. `steps` is the ordered list the step loop (section 6) executes
-— here, one `wait` step polls for the hero button instead of sleeping a fixed duration (prime
-directive 2). `expect` is the scenario-level assertion block, checked once after the last step —
-here, three independent checks, every one of which must pass. A `{ label: … }` /
-`{ labelMatches: … }` / `{ traits: […] }` object is a `Selector` (section 3), the same shape a
-`tap` or `type` step's target takes.
+Three parts recur in every scenario.
+
+- **`steps`** is the ordered list that the step loop (section 6) executes. Here, one `wait` step
+  polls for the hero button instead of sleeping a fixed duration (prime directive 2).
+- **`expect`** is the scenario-level assertion block, checked once after the last step. Here, three
+  independent checks must all pass.
+- **A `{ label: … }`, `{ labelMatches: … }`, or `{ traits: […] }` object** is a `Selector`
+  (section 3), the same shape that a `tap` or `type` step's target takes.
 
 ### 4.2 Selecting the element: the `Selector`
 
-Almost every step and assertion targets one element on screen, and every target is a `Selector` —
-the same type introduced as one of the four contracts in section 3. This subsection is the
-authoring view: which fields exist, and which to reach for first. The runtime side — how a
-`Selector` narrows a `query()` snapshot to exactly one element, and what happens when it doesn't —
-is section 7.2's `resolve_unique`; the full reference is [selectors](selectors.md).
+Almost every step and assertion targets one element on screen. Every target is a `Selector`, the
+type introduced as one of the four contracts in section 3. This subsection is the authoring view:
+which fields exist, and which to reach for first. The runtime side is section 7.2's
+`resolve_unique`. That section covers how a `Selector` narrows a `query()` snapshot to exactly one
+element, and what happens when the narrowing fails. The full reference is
+[selectors](selectors.md).
 
-Every provided field combines with AND, with two exceptions: `within` is a separate, spatial
-filter applied after the rest, and `index` is a last resort applied only once every other field has
-narrowed the candidates as far as it can.
+Every provided field combines with a logical AND, with two exceptions. `within` is a separate,
+spatial filter applied after the rest. `index` is a last resort, applied after every other field
+has narrowed the candidates as far as it can.
 
 | Field | Matches | Role |
 |---|---|---|
@@ -453,15 +467,15 @@ class):
 | `other` | A generic, unclassified element; the resolution algorithm treats it specially (section 7.2). |
 | `secureTextField` | The platform itself marks the field secret, so redaction masks its value with no configuration. |
 
-An author who reaches for `index` before `id`, `label`, or `traits` has the ordering backwards:
-`id` survives a redesign that only moves the element on screen, while `index` breaks the moment the
+An author who reaches for `index` before `id`, `label`, or `traits` has the ordering backwards.
+`id` survives a redesign that merely moves the element on screen. `index` breaks the moment the
 screen gains or loses a sibling.
 
 ### 4.3 The 39 step kinds
 
-Every `Step` carries exactly one of 39 action fields (`common/scenario/models/steps.py`), enforced
-by pydantic validation, not by convention. Two of them — `wait` and `assert` — are conditions the
-step loop polls directly; the rest dispatch through the action registry (section 7.5).
+Every `Step` carries exactly one of 39 action fields (`common/scenario/models/steps.py`). Pydantic
+validation enforces this, not convention. Two of the fields, `wait` and `assert`, are conditions
+that the step loop polls directly. The rest dispatch through the action registry (section 7.5).
 
 | Group | Fields | What they do |
 |---|---|---|
@@ -474,9 +488,9 @@ step loop polls directly; the rest dispatch through the action registry (section
 
 ### 4.4 The 15 assertion kinds
 
-Every `Assertion` (`common/scenario/models/assertions.py`) carries one of 15 fields, evaluated by
-`assertions/evaluate.py` (section 7.6) — a total function that returns a failing result rather than
-raising.
+Every `Assertion` (`common/scenario/models/assertions.py`) carries one of 15 fields.
+`assertions/evaluate.py` (section 7.6) evaluates each field. The evaluator is a total function
+that returns a failing result rather than raising.
 
 | Group | Fields | Checks |
 |---|---|---|
@@ -500,8 +514,8 @@ raising.
 
 ### 4.6 Interpolation: `${namespace.key}`
 
-One primitive (`common/scenario/interp.py`) backs every substitution a scenario can make, keyed by a
-flat `bindings` map the caller supplies.
+One primitive (`common/scenario/interp.py`) backs every substitution that a scenario can make. A
+flat `bindings` map, which the caller supplies, keys the lookups.
 
 | Namespace | Source | Resolved |
 |---|---|---|
@@ -512,12 +526,13 @@ flat `bindings` map the caller supplies.
 
 ### 4.7 Evidence capture: `capturePolicy`
 
-A scenario's `capturePolicy` (`common/scenario/models/evidence.py`) names rules the step loop fires
-repeatedly, rather than a one-shot instruction, so a second run collects the same evidence with no
-AI involved. Each rule's `on` trigger is exactly one of `action` (an id-matched step just ran),
-`event: screenChanged`, or `result: failure`; its `capture` list names the artifact kinds to collect
-when the trigger fires. [Evidence](evidence.md) covers the full mechanism, including the baseline
-`capture` guarantee every step gets regardless of `capturePolicy`.
+A scenario's `capturePolicy` (`common/scenario/models/evidence.py`) names rules that the step loop
+fires repeatedly, rather than a one-shot instruction. As a result, a second run collects the same
+evidence with no AI involved. Each rule's `on` trigger is exactly one of three values: `action` (an
+id-matched step just ran), `event: screenChanged`, or `result: failure`. The rule's `capture` list
+names the artifact kinds to collect when the trigger fires. [Evidence](evidence.md) covers the full
+mechanism, including the baseline `capture` guarantee that every step gets regardless of
+`capturePolicy`.
 
 ---
 
@@ -534,9 +549,10 @@ so a forbidden import fails `make check` rather than surviving until someone not
 | **Periphery** | `serve/`, `mcp/`, `codegen/`, `agents/`, `ai/`, `record/`, `crawl/`, `triage/` | Each removable behind an optional install extra. |
 
 The core-must-not-import-periphery rule enforces prime directive 1 statically. A pure element-tree
-helper that a core module needs lives in the core rather than in `record/`, and the resolved AI
+helper that a core module needs lives in the core rather than in `record/`. The resolved AI
 settings live in `config/` as a plain `AiConfig`, so the core reads them without importing an AI
 client. [Architecture](architecture.md#enforced-layer-boundaries-be-0112) records the full contract
+set.
 set.
 
 ---
@@ -595,18 +611,19 @@ The numbered walk below names the file behind each arrow.
    into their component's steps, and a data-driven scenario becomes one instance per data row.
 3. **Select the backend.** `common/backends.py` picks the actuator. Given several candidates it
    picks the cheapest one whose capability set covers the scenario's needs.
-4. **Lease a device.** `common/runner/pool.py` bounds concurrency and hands out a `Lease`, which
-   bundles the live driver with that device's evidence sink, relaunch function, device control, and
-   network collector. `common/platform_lifecycle/` performs the platform-specific bring-up behind
-   one `RunEnvironment` protocol, so the pool never branches on the backend name.
+4. **Lease a device.** `common/runner/pool.py` bounds concurrency and hands out a `Lease`. The
+   `Lease` bundles the live driver with that device's evidence sink, relaunch function, device
+   control, and network collector. `common/platform_lifecycle/` performs the platform-specific
+   bring-up behind one `RunEnvironment` protocol. The pool never branches on the backend name.
 5. **Run the scenario.** `common/orchestrator/loop.py` executes the step list. Section 6.1 covers
    one step in detail.
 6. **Decide the verdict.** `common/assertions/evaluate.py` evaluates every assertion. The function
    is total: it returns a failing `AssertionResult` rather than raising, so one bad assertion never
    aborts the run.
-7. **Write the report.** `common/report/` renders the `RunResult` list into `manifest.json`, JUnit
-   XML, Common Test Report Format (CTRF) JSON, and a self-contained HTML page. The manifest is the single source of truth the
-   other three derive from.
+7. **Write the report.** `common/report/` renders the `RunResult` list into four files:
+   `manifest.json`, a JUnit XML file, a Common Test Report Format (CTRF) JSON file, and a
+   self-contained HTML page. The manifest is the single source of truth the other three derive
+   from.
 
 ### 6.1 One step, from the inside
 
@@ -648,9 +665,9 @@ flowchart TB
 
 </details>
 
-Two rules of the loop follow directly from prime directive 2, determinism first. A wait never sleeps
-for a fixed duration; it polls a condition until the condition holds or the budget expires. An
-ambiguous selector fails immediately rather than acting on whichever element matched first.
+Two rules of the loop follow directly from prime directive 2, determinism first. A wait never
+sleeps for a fixed duration. It polls a condition until the condition holds or the budget expires.
+An ambiguous selector fails immediately rather than acting on whichever element matched first.
 
 ---
 
@@ -673,15 +690,15 @@ the authoring schema in `models/` and the pipeline that turns text into runnable
 | `interp.py` | `interpolate` | Substitute `${params.x}`, `${row.x}`, `${secrets.x}`, and `${vars.x}`. |
 | `select.py` · `edit.py` · `serialize.py` | filtering, programmatic edits, YAML output | Support `--only`, triage's fixes, and the authoring paths. |
 
-The split between compile time and run time matters. `expand.py` runs once, before any device is
-touched, so the step list the orchestrator sees holds no macros. The run loop therefore never needs
-to resolve a component mid-scenario.
+The split between compile time and run time matters. `expand.py` runs once, before the run touches
+any device, so the step list the orchestrator sees holds no macros. The run loop never needs to
+resolve a component mid-scenario.
 
 ### 7.2 The driver layer
 
 [`common/drivers/base.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/common/drivers/base.py)
-is the determinism core, and it is the one file worth reading in full. Beyond the `Driver` protocol
-it holds the resolution functions every backend shares.
+is the determinism core and the one file worth reading in full. Beyond the `Driver` protocol, it
+holds the resolution functions that every backend shares.
 
 ![Class diagram of the driver layer. The Driver protocol declares query, tap, type_text, swipe, wait_for, screenshot, and capabilities. XcuitestDriver, AdbDriver, PlaywrightDriver, XcuitestLiveDriver, and FakeDriver all satisfy it. AdbDriver additionally inherits the shared CoordinateTreeDriver base, which supplies retry, settle, and resolve behavior for coordinate backends. Alongside the main protocol sit narrow optional protocols such as EvidenceProvider and ViewportProvider, each satisfied structurally by the backends that support the behavior. BackendLifecycle is drawn separately: it is a typing umbrella over five lifecycle hooks split disjointly across backends, reached through an explicit cast rather than an isinstance check, so PlaywrightDriver and XcuitestDriver each implement only their own subset of its hooks.](assets/diagrams/developer-guide-driver-classes.svg)
 
@@ -756,14 +773,15 @@ classDiagram
 </details>
 
 **`resolve_unique(elements, sel)`** carries prime directive 2 on its own. It narrows one `query()`
-snapshot to exactly one element. Nothing matched raises `ElementNotFound`; two content-distinct
-matches raise `AmbiguousSelector`. The function never picks a winner by position *on its own*,
-because acting on whichever element matched first is the flakiness the whole design exists to
-prevent; only an author's explicit `index` selects the nth of several content-distinct candidates,
-the documented last resort ([selectors](selectors.md)). Two refinements soften the rule without
-weakening it: candidates reporting identical content collapse to one, since nothing distinguishes
-them for an author to disambiguate on, and a generic `other`-trait wrapper drops out when a
-classified sibling shares its label.
+snapshot to exactly one element. No match raises `ElementNotFound`. Two content-distinct matches
+raise `AmbiguousSelector`. The function never picks a winner by position *on its own*, because
+acting on whichever element matched first is the flakiness the whole design exists to prevent. Only
+an author's explicit `index` selects the nth of several content-distinct candidates, the documented
+last resort ([selectors](selectors.md)).
+
+Two refinements soften the rule without weakening it. Candidates reporting identical content
+collapse to one, since nothing distinguishes them for an author to disambiguate on. A generic
+`other`-trait wrapper drops out when a classified sibling shares its label.
 
 ![Flowchart of selector resolution. One query snapshot enters find_all. A within clause keeps the spatially nested candidates. No candidate raises ElementNotFound. Content-identical candidates collapse to one first. Two or more content-distinct candidates raise AmbiguousSelector, unless the author gave an index. One candidate alone leaves resolve_unique. The backend then checks whether anything covers the element's own point. A cover raises ElementNotTappable, and an uncovered element is acted on.](assets/diagrams/developer-guide-selector-resolution.svg)
 
@@ -799,16 +817,19 @@ backend with no native hit-test calls `base.raise_if_covered` on the resolved el
 check from resolution keeps resolution a pure function of one snapshot. That leaves "something is
 over it" a backend's answer, not a selector's.
 
-**Narrow optional protocols** carry the capability differences between platforms. Rather than one
-fat interface every backend must stub out, `base.py` declares small protocols — `EvidenceProvider`,
-`ViewportProvider`, `ReadLagProvider`, `ReadOrderProvider`, `SettledReadProvider`,
-`RawSourceProvider`, `SettledCacheInvalidator` — and a caller checks membership at runtime. A
-backend implements a narrow protocol purely when its platform genuinely supports the behavior.
-`BackendLifecycle` is the deliberate exception: the concrete drivers own disjoint subsets of its
-five hooks (`PlaywrightDriver` implements `navigate`/`close`/`reset_context`; `XcuitestDriver`
-implements `await_ready`/`health_ready`), so none of them satisfies a structural `isinstance`. The
-`platform_lifecycle` environments reach each hook through `cast(BackendLifecycle, driver)` instead
-— a typing umbrella over the call sites, not a conformance target.
+**Narrow optional protocols** carry the capability differences between platforms. A fat interface
+would force every backend to stub out methods it cannot support. Instead, `base.py` declares small
+protocols such as `EvidenceProvider`, `ViewportProvider`, and `ReadLagProvider`. Four more follow:
+`ReadOrderProvider`, `SettledReadProvider`, `RawSourceProvider`, and `SettledCacheInvalidator`. A
+caller checks membership at runtime. A backend implements a narrow protocol purely when its
+platform genuinely supports the behavior.
+
+`BackendLifecycle` is the deliberate exception. The concrete drivers own disjoint subsets of its
+five hooks. `PlaywrightDriver` implements `navigate`/`close`/`reset_context`. `XcuitestDriver`
+implements `await_ready`/`health_ready`. Because the subsets are disjoint, none of the drivers
+satisfies a structural `isinstance`. The `platform_lifecycle` environments reach each hook through
+`cast(BackendLifecycle, driver)` instead. The protocol is a typing umbrella over the call sites,
+not a conformance target.
 
 **`FakeDriver`** deserves its own note. The in-memory backend lets the entire orchestrator run
 without a device, which is why the deterministic gate runs on Linux in seconds and needs no
@@ -821,11 +842,15 @@ answers a question the driver deliberately does not: how does the app get onto a
 ready? `protocols.py` declares `RunEnvironment` and `CrawlEnvironment`, and `environments/` supplies
 one implementation per platform — `ios`, `xcuitest`, `xcuitest_live`, `android`, `web`, and `fake`.
 
-The protocol covers bring-up (`start`), readiness, relaunch, device control, teardown, and the
-per-platform answers to questions the runner needs — whether the platform records video up front,
-whether it observes network traffic through the driver, and whether its resident runner survives
-between scenarios. Because the answers live behind the protocol, `runner/pool.py` and `crawl/cli.py`
-drive iOS, Android, and web through one interface rather than branching on the actuator name.
+The protocol covers bring-up (`start`), readiness, relaunch, device control, and teardown. It also
+holds the per-platform answers to three questions that the runner needs:
+
+- Whether the platform records video up front.
+- Whether the platform observes network traffic through the driver.
+- Whether the platform's resident runner survives between scenarios.
+
+Because the answers live behind the protocol, `runner/pool.py` and `crawl/cli.py` drive iOS,
+Android, and web through one interface rather than branching on the actuator name.
 
 ### 7.4 The runner
 
@@ -842,15 +867,15 @@ config plus a scenario list into a report.
 | `launch.py` · `launch_server.py` | `launch_driver` | Build the driver and bring the app up. |
 | `mailbox.py` | transport registry | Resolve the `email` step's transport by kind. |
 
-**`_ScenarioRunner`** is a frozen dataclass holding one run's shared context: the resolved config,
-the lease factory, the redactor, the capability set, and the output knobs. Freezing it, and keeping
-every per-scenario value local to `run_one`, is what lets two or more `ThreadPoolExecutor` workers share
-one instance safely when `workers > 1`.
+**`_ScenarioRunner`** is a frozen dataclass that holds one run's shared context. The context covers
+the resolved config, the lease factory, the redactor, the capability set, and the output knobs.
+Freezing the dataclass and keeping every per-scenario value local to `run_one` lets
+`ThreadPoolExecutor` workers share one instance safely when `workers > 1`.
 
 **Crash recovery sits beside the verdict, never inside it.** A backend crash is infrastructure, not
-a test result, so `recovery.py` retries the scenario on a freshly leased device up to a bounded count
-and a bounded wall-clock budget. Once the budget runs out the scenario fails loudly, which keeps a
-genuinely crash-inducing scenario visible.
+a test result. `recovery.py` retries the scenario on a freshly leased device, up to a bounded count
+and a bounded wall-clock budget. Once the budget runs out, the scenario fails loudly. The loud
+failure keeps a genuinely crash-inducing scenario visible.
 
 ### 7.5 The orchestrator
 
@@ -867,10 +892,10 @@ holds the step loop. `loop.py` is the largest file in the core, and its structur
 | `_InterruptGuard` | Fires a scenario's `interrupts` handlers when an interstitial screen appears mid-run. |
 | `_ScreenRead` | A lazily cached element-tree read, so one step never queries the same screen twice. |
 
-`types.py` holds the loop's vocabulary: `StepOutcome`, `RunResult`, `AlertEvent`, `AlertGuardConfig`,
-`SelectionState`, and the `Clock` protocol that lets tests run without real sleeps. `waits.py` holds
-the polling machinery and `WaitTrace`, which records a wait's poll timeline so a timeout stays
-diagnosable from the artifacts alone.
+`types.py` holds the loop's vocabulary. Its types are `StepOutcome`, `RunResult`, and `AlertEvent`.
+It also holds `AlertGuardConfig`, `SelectionState`, and the `Clock` protocol, which lets tests run
+without real sleeps. `waits.py` holds the polling machinery and `WaitTrace`. `WaitTrace` records a
+wait's poll timeline, so a timeout stays diagnosable from the artifacts alone.
 
 ![Flowchart of one condition wait. Each turn reads the screen, or the observed traffic, and checks the condition first. A satisfied condition returns to the step at once. An unsatisfied one reaches the alert guard, which clears a blocking system prompt, and then the scenario's interrupts, which clear an interstitial screen. The deadline is checked last, which is why the first read always happens. Past the deadline the wait fails, and wait_diagnostic writes the WaitTrace beside the tree. Within it, _adaptive_sleep sleeps the remainder of the fixed poll period and the next turn begins.](assets/diagrams/developer-guide-wait-loop.svg)
 
@@ -902,26 +927,29 @@ exit decides on the condition or the deadline, never on a fixed pause.
 **Action dispatch is a registry, not a conditional chain.**
 [`actions/_registry.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/common/orchestrator/actions/_registry.py)
 derives the runtime action list from the `Step` model itself, so declaring a field on `Step` makes
-the action visible automatically. Handlers live in `actions/handlers/` grouped by theme — `gestures`,
-`scroll`, `device`, `navigation`, `http`, `generate`, `totp`, and `manual` — and register themselves
-with an `@_handler(kind)` decorator. The dispatcher also owns the text-selection contract in one
-place: `copy` requires an active selection, `select` establishes one, and every other action
-invalidates it, which keeps the handlers stateless across backends.
+the action visible automatically. Handlers live in `actions/handlers/`, grouped by theme, and
+register themselves with an `@_handler(kind)` decorator. The themes are `gestures`, `scroll`,
+`device`, `navigation`, `http`, `generate`, `totp`, and `manual`. The dispatcher also owns the
+text-selection contract in one place. `copy` requires an active selection, `select` establishes
+one, and every other action invalidates it. The contract keeps the handlers stateless across
+backends.
 
 ### 7.6 Assertion evaluation
 
 [`common/assertions/`](https://github.com/bajutsu-e2e/bajutsu/tree/main/bajutsu/common/assertions)
 holds the verdict, and holds nothing else. `evaluate.py` keeps one evaluator per kind behind an
 `@_evaluator("kind")` decorator, mirroring the action registry. `network.py` matches `request`,
-`event`, and `requestSequence` against observed traffic; `visual.py` compares images; `schema.py`
-validates a response body; `_common.py` defines the shared `AssertionResult`.
+`event`, and `requestSequence` against observed traffic. `visual.py` compares images. `schema.py`
+validates a response body. `_common.py` defines the shared `AssertionResult`.
 
-Two properties matter more than the individual evaluators. **Evaluation is total** — it returns a
-failing result rather than raising, so a malformed assertion fails its own check without aborting the
-run. And **`EvalContext` bundles the ambient inputs** an evaluator may need: the baseline directory
-for a visual comparison, the schema directory, the golden directory, and the clipboard. A step-level
-`assert` deliberately receives a narrowed context, since no fresh screenshot exists mid-step for a
-visual comparison to read.
+Two properties matter more than the individual evaluators.
+
+- **Evaluation is total.** It returns a failing result rather than raising, so a malformed
+  assertion fails its own check without aborting the run.
+- **`EvalContext` bundles the ambient inputs** that an evaluator may need: the baseline directory
+  for a visual comparison, the schema directory, the golden directory, and the clipboard. A
+  step-level `assert` deliberately receives a narrowed context, since no fresh screenshot exists
+  mid-step for a visual comparison to read.
 
 ### 7.7 Evidence
 
@@ -941,18 +969,22 @@ answers what a run leaves behind.
 - **`visual.py`** and **`golden.py`** compare a screenshot against a baseline image and an element
   tree against a recorded tree.
 
-Evidence capture is expressed as a rule that fires repeatedly, not as a one-shot instruction. A
-scenario's `capturePolicy` names triggers, and the loop fires the matching rules at every step, so a
-second run collects the same evidence with no AI involved.
+A scenario expresses evidence capture as a rule that fires repeatedly, not as a one-shot
+instruction. Its `capturePolicy` names triggers, and the loop fires the matching rules at every
+step, so a second run collects the same evidence with no AI involved.
 
 ### 7.8 Reporting
 
 [`common/report/`](https://github.com/bajutsu-e2e/bajutsu/tree/main/bajutsu/common/report) renders
-the `RunResult` list four ways. `manifest.py` writes `manifest.json` and the JUnit XML; `ctrf.py`
-writes the CTRF JSON; `html.py`, `rows.py`, `panels.py`, and `richtext.py` build the interactive HTML
-page; `archive.py` and `load.py` export a finished run as a `.zip` and reload it offline for
-re-rendering. `manifest.json` is the single source of truth, and CI reads it rather than parsing the
-HTML.
+the `RunResult` list four ways.
+
+- `manifest.py` writes `manifest.json` and the JUnit XML.
+- `ctrf.py` writes the CTRF JSON.
+- `html.py`, `rows.py`, `panels.py`, and `richtext.py` build the interactive HTML page.
+
+`archive.py` and `load.py` export a finished run as a `.zip` and reload it offline for
+re-rendering. `manifest.json` is the single source of truth, and CI reads it rather than parsing
+the HTML.
 
 ![Flowchart of the evidence write path. Three producers feed one sink: the driver supplies screenshots, element trees, and raw dumps; the in-app collectors supply NetworkExchange records; Interval supplies video and the device log. The sink hands everything to RunArtifactWriter, the single write path, which applies the Redactor before anything reaches the run directory. Separately, write_report renders the in-memory RunResult list four ways into the same directory: manifest.json, junit.xml, ctrf.json, and report.html. CI reads the manifest. The shareable zip packs the finished directory, and the offline re-render reads the manifest back into the HTML report.](assets/diagrams/developer-guide-evidence-path.svg)
 
@@ -983,7 +1015,7 @@ flowchart LR
 
 The shape closes two readings the prose invites. The four report files are **siblings**, not a
 chain. `write_report` renders all four from the same in-memory `RunResult` list. CI reads the
-manifest; the other three do not derive from it. The offline re-render alone reads it back. The two
+manifest. The other three do not derive from it. The offline re-render alone reads it back. The two
 writers also differ in reach. The per-step sink applies the scenario's `redact` rules. The report's
 own writer carries secret literals alone. `manifest.json` lands without those rules, as
 [evidence](evidence.md) states.
@@ -1054,11 +1086,16 @@ classDiagram
 
 **`record/`** authors a scenario from a natural-language goal.
 [`loop.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/record/loop.py) runs observe →
-propose → execute → emit: it reads the screen into an `Observation`, asks the `Agent` for a
-`Proposal`, executes the proposed `Step` through the same `_do_action` dispatcher the deterministic
-loop uses, and appends the step to the growing scenario. Reusing the dispatcher is what makes a
-recorded step replayable. `capture.py` covers the proxy-actuation path, where a human drives the app
-and the recorder captures the resulting steps.
+propose → execute → emit:
+
+1. It reads the screen into an `Observation`.
+2. It asks the `Agent` for a `Proposal`.
+3. It executes the proposed `Step` through the same `_do_action` dispatcher that the deterministic
+   loop uses.
+4. It appends the step to the growing scenario.
+
+Reusing the dispatcher is what makes a recorded step replayable. `capture.py` covers the
+proxy-actuation path, where a human drives the app and the recorder captures the resulting steps.
 
 ![Flowchart of the record loop. The loop reads the screen into an Observation and asks the Agent for the next action. A Proposal carrying a Step goes to the same _do_action dispatcher the deterministic run uses, and the executed step is appended to the growing scenario before the next observation. A Proposal that needs a person goes to handoff and returns to the loop afterwards. A Proposal that reports the goal reached emits the finished scenario.](assets/diagrams/developer-guide-record-loop.svg)
 
@@ -1082,23 +1119,26 @@ flowchart LR
 
 **`crawl/`** explores an app breadth-first and emits a screen map.
 [`core.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/crawl/core.py) holds the graph
-types — `Fingerprint`, `Node`, `Edge`, `Action`, `ScreenMap` — and the `_Coordinator` that walks
-them. A screen's `Fingerprint` decides whether the crawl has been there before, so the walk
-terminates. `guide.py` declares `ActionProposer` with a deterministic implementation beside the
-model-backed `ClaudeActionProposer`, which keeps a crawl runnable with no credentials at all.
+types `Fingerprint`, `Node`, `Edge`, `Action`, and `ScreenMap`, plus the `_Coordinator` that walks
+them. A screen's `Fingerprint` decides whether the crawl has visited the screen before, so the walk
+terminates. `guide.py` declares `ActionProposer`. It ships a deterministic implementation beside
+the model-backed `ClaudeActionProposer`, which keeps a crawl runnable with no credentials at all.
 
 **`triage/`** investigates a failed run.
 [`heuristic.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/triage/heuristic.py)
 assembles a `TriageContext` from the run directory, and `HeuristicTriageAgent` derives a `Triage`
-from rules alone. Each `Fix` carries structure rather than prose — `renameId`, `addIndex`, `raiseTimeout`
-— so `--apply` can rewrite the scenario and `--rerun` can check the rewrite. `triage --ai` swaps in
-`ClaudeTriageAgent` behind the same protocol. Triage is advisory in both forms: it proposes an edit
-and never changes a verdict.
+from rules alone. Each `Fix` carries structure rather than prose, as in `renameId`, `addIndex`, and
+`raiseTimeout`. The structure lets `--apply` rewrite the scenario and `--rerun` check the rewrite.
+`triage --ai` swaps in `ClaudeTriageAgent` behind the same protocol. Triage is advisory in both
+forms: it proposes an edit and never changes a verdict.
 
 **`common/ai/`** keeps the vendor behind one seam. `AiBackend` normalizes the request and response
-types, and `registry.py` maps a provider name onto an adapter: the Anthropic API and Amazon Bedrock
-through `anthropic.py`, the Claude Code command-line interface through `claude_code.py`, and a
-`disabled` provider whose factory raises so no AI path can construct a backend by accident.
+types. `registry.py` maps a provider name onto an adapter:
+
+- `anthropic.py` serves the Anthropic API and Amazon Bedrock.
+- `claude_code.py` serves the Claude Code command-line interface.
+- The `disabled` provider has a factory that raises, so no AI path can construct a backend by
+  accident.
 
 ---
 
@@ -1106,11 +1146,11 @@ through `anthropic.py`, the Claude Code command-line interface through `claude_c
 
 **`codegen/`** turns a passing scenario into a native test.
 [`common.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/codegen/common.py) declares
-the `CodeGenerator` protocol — `file_preamble`, `scenario_open`, `step_lines`, `assertion_lines`,
-`scenario_close`, `file_footer` — and `render_test_file` walks the scenario once, calling the
-protocol. Three emitters implement it: `xcuitest.py` for Swift, `playwright.py` for TypeScript, and
-`uiautomator.py` for Kotlin. A step whose behavior exists purely at run time raises rather than
-emitting wrong code without a word.
+the `CodeGenerator` protocol: `file_preamble`, `scenario_open`, `step_lines`, `assertion_lines`,
+`scenario_close`, and `file_footer`. `render_test_file` walks the scenario once and calls the
+protocol. Three emitters implement the protocol: `xcuitest.py` for Swift, `playwright.py` for
+TypeScript, and `uiautomator.py` for Kotlin. A step whose behavior exists purely at run time raises
+rather than emitting wrong code without a word.
 
 **`serve/`** is the browser application. `state.py` holds `ServeState`, the process-wide state
 bundling the job registry, the session manager, the scenario store, and the provider settings.
@@ -1124,10 +1164,14 @@ queue gets `UnqueuedExecutor`. That executor fails each job at dispatch.
 **`mcp/`** exposes `run` and `doctor` as Model Context Protocol (MCP) tools and a run's evidence as
 MCP resources, so an editor-side agent reaches the deterministic paths without a shell.
 
-**`analysis/`** holds the read-only advisory reports, none of which gates CI: `audit` (a determinism
-and flakiness audit), `coverage` (identifier-namespace coverage), `impact` (which steps a diff
-affects), `stats` (run statistics in aggregate), `flakiness` (cross-run ranking), and `trace` (one run's
-timeline).
+**`analysis/`** holds the read-only advisory reports. None of them gates CI.
+
+- `audit`: a determinism and flakiness audit.
+- `coverage`: identifier-namespace coverage.
+- `impact`: which steps a diff affects.
+- `stats`: run statistics in aggregate.
+- `flakiness`: cross-run ranking.
+- `trace`: one run's timeline.
 
 ---
 
@@ -1189,35 +1233,36 @@ flowchart LR
 </details>
 
 1. **Isolate the session.** Branch off `main` as `claude/<topic>` (a human contributor:
-   `<user>/<topic>`); `make worktree TOPIC=<topic>` builds the branch and its worktree in one
+   `<user>/<topic>`). `make worktree TOPIC=<topic>` builds the branch and its worktree in one
    step, so two sessions never share a checkout. Claude Code keeps its own worktrees under
    `.claude/worktrees/`.
-2. **Implement the change**, staying inside the layer section 5's table points to — a change that
-   reaches across the boundary (the deterministic core importing the periphery, say) fails
-   `make lint-imports` immediately rather than merging unnoticed.
-3. **Add or update a test alongside it.** The deterministic suite (`tests/`) is the regression net;
-   a change with no test that would fail without it is not yet done.
+2. **Implement the change**, staying inside the layer that section 5's table points to. A change
+   that reaches across the boundary fails `make lint-imports` immediately rather than merging
+   unnoticed. The deterministic core importing the periphery is one example.
+3. **Add or update a test alongside it.** The deterministic suite (`tests/`) is the regression net.
+   A change with no test that would fail without it is not yet done.
    [`tests/driver_conformance.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/tests/driver_conformance.py)
-   is the one spec every backend's tests share — a technology compatibility kit (TCK) for the
-   `Driver` protocol — so a new backend implements `ConformanceHarness` once and inherits the whole
+   is the one spec that every backend's tests share, a technology compatibility kit (TCK) for the
+   `Driver` protocol. A new backend implements `ConformanceHarness` once and inherits the whole
    suite rather than writing its own.
-4. **Run the fast checks while iterating**, rather than the full gate on every save: `make format`,
+4. **Run the fast checks while iterating**, rather than the full gate on every save. `make format`,
    `make lint`, `make typecheck`, and `make test` each check one thing and finish quickly.
    `make check` runs all of them plus the slower structural checks (import layering, docstrings,
-   the roadmap, secret scanning) in the same order CI does — "green locally" is meant to predict
-   "green in CI".
+   the roadmap, secret scanning) in the same order that CI does. "Green locally" is meant to
+   predict "green in CI".
 5. **Verify manually beyond the test suite** for anything that touches a driver, a backend, or a
-   diagram — section 10.3 below says which command, by what changed.
+   diagram. Section 10.3 below says which command to run, by what changed.
 6. **Rebase before pushing.** `make preflight` fetches `origin/main`, rebases onto it, runs the
-   gate, and prints a "definition of done" reminder — the do-it-early version of what the pre-push
-   hook enforces anyway, so a conflict or a red check surfaces before it costs a round trip.
+   gate, and prints a "definition of done" reminder. The command is the do-it-early version of
+   what the pre-push hook enforces anyway. A conflict or a red check surfaces before it costs a
+   round trip.
 7. **Push, then open a pull request (PR).** The tracked pre-push hook runs `make check` before
-   every push and refuses a red one; `git push --no-verify` is forbidden, without exception, since
-   it only moves the same red result onto the shared PR instead of catching it locally. Whether the
-   session or a human opens the PR, and whether it opens Draft or Ready for review, depends on the
-   kind of work — see [`CLAUDE.md`](../CLAUDE.md)'s "Who opens the PR depends on the work" and "PRs
-   created by Claude Code always start as Draft". The full parallel-development picture (rebase
-   discipline, git defenses, worktree isolation) is [AI development](ai-development.md).
+   every push and refuses a red one. `git push --no-verify` is forbidden, without exception, since
+   it merely moves the same red result onto the shared PR instead of catching it locally. The kind
+   of work decides whether the session or a human opens the PR, and whether the PR opens Draft or
+   Ready for review. See [`CLAUDE.md`](../CLAUDE.md)'s "Who opens the PR depends on the work" and
+   "PRs created by Claude Code always start as Draft". The full parallel-development picture
+   (rebase discipline, git defenses, worktree isolation) is [AI development](ai-development.md).
 
 ### 10.3 Verification, by what you touched
 
@@ -1229,10 +1274,10 @@ flowchart LR
 | A CLI command | `make test` | Run the command by hand against a fixture config; `capability/capabilities.py`'s own test asserts every registered command is classified. |
 | Documentation, including a diagram | `make lint-roadmap`, textlint (`tools/textlint/`) | `make docs` (`mkdocs build --strict`); a changed mermaid fence needs `make docs-diagrams` to re-render its checked-in SVG, the convention this page's own diagrams follow. |
 
-Coverage ratchets alongside the change, not after it: `make lint-pr` flags when measured coverage
-drifts more than two points above the total floor, and `make coverage-floors` raises the per-file
-snapshot (`coverage-floors.json`) once a file's coverage has genuinely risen — the deliberate,
-reviewable way to record a gain, never a way to paper over a drop.
+Coverage ratchets alongside the change, not after it. `make lint-pr` flags when measured coverage
+drifts more than two points above the total floor. `make coverage-floors` raises the per-file
+snapshot (`coverage-floors.json`) once a file's coverage has genuinely risen. The command is the
+deliberate, reviewable way to record a gain, never a way to paper over a drop.
 
 ---
 
