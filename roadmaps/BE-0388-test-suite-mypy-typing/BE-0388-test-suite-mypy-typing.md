@@ -15,115 +15,136 @@
 
 ## Introduction
 
-`make check`'s `typecheck` step runs mypy in strict mode over `bajutsu`, `demos`, and `scripts`
-([BE-0067](../BE-0067-code-quality-gate-hardening/BE-0067-code-quality-gate-hardening.md)), but
-`tests/` — 361 files, the largest source tree in the repository — carries none of it. This item
-brings `tests/` under mypy through a phased, per-directory rollout with settings relaxed for the
-patterns a pytest suite conventionally uses, closing the gap BE-0067 left open when it deferred
-`tests/` as needing "a focused follow-up with relaxed per-module settings."
+The `typecheck` step of `make check` runs mypy in strict mode over `bajutsu`, `demos`, and `scripts`
+([BE-0067](../BE-0067-code-quality-gate-hardening/BE-0067-code-quality-gate-hardening.md)).
+`tests/` carries none of that checking, although its 361 files make it the largest source tree in
+the repository. This item brings `tests/` under mypy through a phased, per-directory rollout, with
+settings relaxed for the patterns a pytest suite conventionally uses. It closes the gap BE-0067 left
+open when it deferred `tests/` as needing "a focused follow-up with relaxed per-module settings."
 
 ## Motivation
 
 A baseline run of `mypy tests` (informational only; not yet part of the gate) reports 1,361 errors
-across 159 of 361 files. Four error codes account for most of that count: 522 `arg-type` (a value's
-type does not match the parameter it is passed to), 269 `attr-defined` (an attribute mypy cannot
-see — most from a test reaching into an already-imported module to patch or read an internal, for
-example `bajutsu.drivers.base.time.sleep`, which strict mode's implicit-reexport check treats as
-private to that module), 139 `no-untyped-def` (a `def test_...():` with no return annotation, the
-convention this repo's own tests already follow throughout), and 60 `unused-ignore` (a `# type:
-ignore` comment that no longer suppresses anything). None of these four codes reports a defect in
-the code under test; each reports a mismatch between strict mode's defaults and how a pytest suite
-is conventionally written — mocks, monkeypatching, and untyped test functions.
+across 159 of 361 files. Four error codes account for most of that count:
+
+The first is `arg-type` (522): a value's type does not match the parameter that receives it.
+
+The second is `attr-defined` (269): an attribute mypy cannot see. Most come from a test that reaches
+into an already-imported module to patch or read an internal, for example
+`bajutsu.drivers.base.time.sleep`. Strict mode's implicit-reexport check treats that name as private
+to the module.
+
+The third is `no-untyped-def` (139): a `def test_...():` with no return annotation, the convention
+this repo's own tests already follow throughout.
+
+The fourth is `unused-ignore` (60): a `# type: ignore` comment that no longer suppresses anything.
+
+None of these four codes reports a defect in the code under test. Each reports a mismatch.
+Strict mode's defaults pull one way, and a pytest suite is conventionally written another way, with
+mocks, monkeypatching, and untyped test functions.
 
 Enabling mypy's pydantic plugin (`plugins = ["pydantic.mypy"]`, not configured today) shows both the
-promise and the risk of a single global setting change. It resolves 46 of the 1,361 `tests/` errors:
-calls such as `XcuitestConfig(test_runner=..., device_type=...)` construct a config by its Python
-field name rather than its `testRunner` / `deviceType` alias, which the model's
-`populate_by_name=True` accepts at runtime but which mypy, without the plugin, rejects. The same
-change also introduces 9 new errors in `bajutsu/` itself, where production code constructs the same
-kind of model by its alias instead (`OrgConfig(editorTeams=...)`,
-`RequestMatch(urlMatches=..., pathMatches=...)`, `SystemAlertHandling(pollInterval=...)`), and the
-plugin's synthesized constructor no longer accepts that form. A single configuration change trades
-one class of false positive for another; landing it needs an audit of every affected call site, not
-a drive-by edit to `pyproject.toml`.
+promise and the risk of a single global setting change. The plugin resolves 46 of the 1,361 `tests/`
+errors. Calls such as `XcuitestConfig(test_runner=..., device_type=...)` construct a config by its
+Python field name rather than its `testRunner` / `deviceType` alias. The model's
+`populate_by_name=True` accepts that form at runtime, but mypy rejects it without the plugin.
+
+The same change also introduces 9 new errors in `bajutsu/` itself. There, production code constructs
+the same kind of model by its alias instead. Examples are `OrgConfig(editorTeams=...)`,
+`RequestMatch(urlMatches=..., pathMatches=...)`, and `SystemAlertHandling(pollInterval=...)`. The
+plugin's synthesized constructor no longer accepts that form.
+
+A single configuration change trades one class of false positive for another. Landing it needs an
+audit of every affected call site. A drive-by edit to `pyproject.toml` will not do.
 
 ## Detailed design
 
 Roll `tests/` into `typecheck` in three steps, each its own PR so the gate never turns red
-mid-migration:
+mid-migration.
 
-1. **Add a `typecheck-tests` Makefile target that runs the relaxed check, outside `make check`
-   (`tests` joins the gate in the final step).** The target runs
-   `mypy --allow-untyped-defs --no-warn-unused-ignores tests`. `--allow-untyped-defs` keeps a bare
-   `def test_x():` valid — annotating every test's return type as `-> None` adds no safety, since
-   pytest never inspects it. `--no-warn-unused-ignores` stays in place only until the existing
-   `# type: ignore` comments are swept; each one is removed or replaced with a narrowed
-   `# type: ignore[<code>]` naming the reason, in the same pass that finds it, not left for later.
-2. **Clear the `attr-defined` findings that come from patching a module's own import**, module by
-   module. Each count below is that directory's *total* mypy error count under the relaxed run,
-   not its `attr-defined` subset, because a directory is cleared outright before the next one
-   starts. Start with the smallest directories — `tests/scenario/` at 7 errors and `tests/report/`
-   at 14 — before the largest: `tests/serve/` at 196, and the flat files directly under `tests/` at
-   880, led by `test_crawl.py` at 200 and `test_record.py` at 75. Every count in this section and
-   in *Progress* below was re-measured under the relaxed run when the work started, which is why
-   each differs from the corresponding figure in *Motivation* — those count the unrelaxed run, over
-   the suite as it stood when the author wrote the proposal.
+**Step 1: add a `typecheck-tests` Makefile target that runs the relaxed check, outside `make check`
+(`tests` joins the gate in the final step).** The target runs
+`mypy --allow-untyped-defs --no-warn-unused-ignores tests`.
 
-   Each fix patches the call the test actually cares about instead of reaching into the target
-   module's private import — `patch.object(module, "sleep")` on a name the module already exposes,
-   or patching the higher-level method that calls `time.sleep` rather than the standard-library call
-   underneath it.
-3. **Triage the remaining `arg-type` / `call-arg` findings as real signal, not noise.** A test that
-   passes a `dict[str, str]` where the call site's signature expects `dict[str, str | None] | None`
-   is either exercising a case the current signature no longer allows, or the signature is stricter
-   than the code actually needs — each instance gets a test fix or a production-code type widening,
-   never a blanket `# type: ignore`.
+The flag `--allow-untyped-defs` keeps a bare `def test_x():` valid. Annotating every test's return
+type as `-> None` adds no safety, since pytest never inspects it.
+
+The flag `--no-warn-unused-ignores` stays in place until the existing `# type: ignore` comments are
+swept. The pass that finds a comment either removes it or replaces it with a narrowed
+`# type: ignore[<code>]` that names the reason. Nothing waits for later.
+
+**Step 2: clear the `attr-defined` findings that come from patching a module's own import**, module
+by module. Each count below is that directory's *total* mypy error count under the relaxed run, not
+its `attr-defined` subset. We clear each directory outright before the next one starts.
+
+Start with the smallest directories: `tests/scenario/` at 7 errors and `tests/report/` at 14. Clear
+the largest last: `tests/serve/` at 196, and the flat files directly under `tests/` at 880, led by
+`test_crawl.py` at 200 and `test_record.py` at 75.
+
+We re-measured every count in this section and in *Progress* below under the relaxed run when the
+work started. That is why each differs from the corresponding figure in *Motivation*. *Motivation*
+counts the unrelaxed run over the suite as it stood when the author wrote the proposal.
+
+Each fix patches the call the test actually cares about instead of reaching into the target module's
+private import. One option is `patch.object(module, "sleep")` on a name the module already exposes.
+The other is patching the higher-level method that calls `time.sleep`, rather than the
+standard-library call underneath it.
+
+**Step 3: triage the remaining `arg-type` / `call-arg` findings as real signal, not noise.** Suppose
+a test passes a `dict[str, str]` where the call site's signature expects
+`dict[str, str | None] | None`. Either the test exercises a case the current signature no longer
+allows, or the signature is stricter than the code needs. Each instance gets a test fix or a
+production-code type widening, never a blanket `# type: ignore`.
 
 Step 1 gives the two relaxations as command-line flags rather than as a `[[tool.mypy.overrides]]`
-block scoped to `tests.*`, because no per-module pattern can select the test suite. `tests/` carries
-no `__init__.py` — the suite imports its helper modules by bare name, the way pytest's prepend
-import mode puts `tests/` on `sys.path` — so mypy names every module under `tests/` by basename
-alone, and the pattern `tests.*` matches nothing. mypy refuses the pattern `test_*` outright,
-because `*` must stand for a whole dotted component. Relaxing the two settings globally and
-re-tightening them for the gate's existing targets fails for the same reason: mypy names the modules
-under `demos/` and `scripts/` by basename too, so re-tightening would have to list every one.
+block scoped to `tests.*`, because no per-module pattern can select the test suite.
 
-Basename naming carries a second consequence, recorded here because it becomes a hard failure once
-`tests` joins the gate: no two files under `tests/` may share a name. mypy aborts a run with
-`Duplicate module named …` and reports no errors at all, so an ordinary new test file could turn
+`tests/` carries no `__init__.py`. The suite imports its helper modules by bare name, the way
+pytest's prepend import mode puts `tests/` on `sys.path`. mypy therefore names every module under
+`tests/` by basename alone, and the pattern `tests.*` matches nothing. mypy refuses the pattern
+`test_*` outright, because `*` must stand for a whole dotted component.
+
+Relaxing the two settings globally and re-tightening them for the gate's existing targets fails for
+the same reason. mypy names the modules under `demos/` and `scripts/` by basename too, so
+re-tightening would have to list every one.
+
+Basename naming carries a second consequence. It becomes a hard failure once `tests` joins the gate,
+so we record it here: no two files under `tests/` may share a name. mypy aborts a run with
+`Duplicate module named …` and reports no errors at all. An ordinary new test file could turn
 `make check` red with a message that points nowhere near its cause. No collision exists today, and
 nothing but this note keeps it that way.
 
 The second invocation gets its own `--cache-dir`. Both relaxed settings are per-module, and mypy
-records the options in every module's cache metadata, so two runs sharing one directory each abandon
-the other's metadata — "options differ" — and re-analyse from source. That covers all of `bajutsu/`
-as well, which `tests` imports, so a shared cache would make the pair pay two cold analyses and the
-next strict run a third. With separate directories both stay incremental. The two runs differ in
-their flags and their cache alone; the strict `[tool.mypy]` configuration is the one the gate
-already applies to `bajutsu demos scripts`.
+records the options in every module's cache metadata. Two runs that share one directory each abandon
+the other's metadata ("options differ") and re-analyse from source. That covers the whole
+`bajutsu/` package too, which `tests` imports. A shared cache would make the pair pay two cold analyses and the next
+strict run a third. With separate directories, both stay incremental.
+
+The two runs differ in their flags and their cache alone. The strict `[tool.mypy]` configuration is
+the one the gate already applies to `bajutsu demos scripts`.
 
 Once every directory in `tests/` is clean, fold `typecheck-tests` into the `typecheck` target with
-`--no-warn-unused-ignores` dropped, so the relaxed run joins the gate alongside
+`--no-warn-unused-ignores` dropped. The relaxed run then joins the gate alongside
 `mypy bajutsu demos scripts` from then on. The continuous integration (CI) workflow needs no edit of
-its own: its type step already calls `make typecheck`.
+its own, because its type step already calls `make typecheck`.
 
 The pydantic-plugin question stays out of this item's scope; see *Alternatives considered*.
 
 ## Alternatives considered
 
-- **Turn on strict mode over all of `tests/` in one PR** — rejected: 1,361 errors landing at once is
-  not reviewable, and fixes made under that pressure would be rushed rather than triaged.
-- **Enable the pydantic mypy plugin as part of this item** — rejected for now: measured, it nets
-  negative outside `tests/` (9 new `bajutsu/` errors for 46 `tests/` fixes) without an audit of every
-  aliased-model call site across the codebase. Worth a follow-up item once that audit exists; this
-  item does not depend on it.
-- **Exclude the noisiest files from mypy permanently** — rejected: a per-file exclusion decays
+- **Turn on strict mode across the whole of `tests/` in one PR** — rejected. 1,361 errors landing at
+  once cannot be reviewed, and fixes made under that pressure would come out rushed, not triaged.
+- **Enable the pydantic mypy plugin as part of this item** — rejected for now. Measured, the plugin
+  nets negative outside `tests/` (9 new `bajutsu/` errors for 46 `tests/` fixes) without an audit of
+  every aliased-model call site across the codebase. The plugin merits a follow-up item once that
+  audit exists; this item does not depend on it.
+- **Exclude the noisiest files from mypy permanently** — rejected. A per-file exclusion decays
   silently, since a new test added to an excluded file inherits the exclusion without anyone
   deciding that. The per-directory rollout in *Detailed design*, tracked by the *Progress* checklist
   below, stays visible instead.
-- **Leave `tests/` untyped and rely on code review** — the status quo; rejected because it was already
-  the status quo BE-0067 flagged as a gap, and review alone did not catch the `attr-defined` /
-  `arg-type` classes of drift this baseline run surfaced.
+- **Leave `tests/` untyped and rely on code review** — the status quo, rejected. BE-0067 already
+  flagged it as a gap, and review alone did not catch the `attr-defined` / `arg-type` classes of
+  drift that this baseline run surfaced.
 
 ## Progress
 
