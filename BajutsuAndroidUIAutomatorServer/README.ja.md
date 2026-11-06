@@ -55,3 +55,58 @@ make -C BajutsuAndroidUIAutomatorServer build   # ホスト APK と インスト
 これは `make check`（Python のゲート）には含まれません。ゲートは Kotlin をビルドしないからです。ビルド
 は追跡下の `./gradlew` を通るので、新しいクローンにシステム側の Gradle は要りません。必要なのは Android
 SDK だけです。
+
+## 遅い読み取りの測定
+
+次の手順では、idle にならない画面で 1 回の `GET /source` を測り、時間の内訳を確かめます。最も時間が
+かかるのは、500 ミリ秒より短い間隔でアクセシビリティイベントを出し続ける画面です。このとき
+`UiDevice.waitForIdle()` は上限いっぱいまで待ちます。待ちの予算を導入する前は、この画面の読み取りに
+API 34 のエミュレータで 120.9 秒かかりました。
+
+ビルド済みのサーバー、インストール済みの 2 つの APK、起動済みのエミュレータまたは端末が必要です。Bajutsu
+は実行時に APK を自分でインストールするので、Android の実行のあとならインストールは不要です。
+
+1. 時計アプリのストップウォッチのタブを開き、ストップウォッチを開始します。表示は 1 秒に約 10 回更新されます。
+
+2. サーバーを起動します。このコマンドは終了しないので、専用の端末で実行します。
+
+   ```bash
+   adb shell am instrument -w -e class dev.bajutsu.android.server.ResidentServerTest#serve dev.bajutsu.android.server.test/androidx.test.runner.AndroidJUnitRunner
+   ```
+
+3. サーバーのポートを転送します。
+
+   ```bash
+   adb forward tcp:6790 tcp:6790
+   ```
+
+4. 1 回の読み取りを測ります。約 3.6 秒で `200` が返れば、ホストの読み取りの待ち時間 5 秒に予算が収まっています。
+
+   ```bash
+   curl -s -o /dev/null -w '%{http_code} %{time_total}s\n' 'http://127.0.0.1:6790/source?budgetMs=3500'
+   ```
+
+5. 時間の内訳を読みます。`source waits` の行に各段階が並びます。
+
+   ```bash
+   adb logcat -d -s BajutsuResidentServer:D
+   ```
+
+   ```text
+   source waits: idle=1074ms dump=2140ms idle=330ms dump=25ms total=3570ms budget=3500ms
+   ```
+
+6. 後片付けをします。
+
+   ```bash
+   adb forward --remove tcp:6790
+   ```
+
+   ```bash
+   adb shell am force-stop dev.bajutsu.android.server
+   ```
+
+`tests/test_adb_resident_budgets.py` は、端末なしで `make check` のたびに、これらの待ちがホストの待ち時間に
+収まることを確かめます。数値そのものは
+[`bajutsu/common/backend_cli/adb_resident/budgets.py`](../bajutsu/common/backend_cli/adb_resident/budgets.py)
+にあります。

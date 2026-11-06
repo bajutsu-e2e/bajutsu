@@ -21,12 +21,14 @@ from bajutsu.common.drivers.adb import (
     AdbActUncertain,
     AdbActUnsupported,
     AdbResidentError,
+    AdbResidentTimeout,
     HierarchyRead,
     slice_hierarchy_root,
 )
 
 from ._process import _Process
 from ._shared import _SERVER_APK, _TEST_APK, logger
+from .budgets import ACTION_TIMEOUT_S, READ_TIMEOUT_S, WAIT_BUDGET_MS
 
 if TYPE_CHECKING:
     from .keepalive import Keepalive
@@ -156,6 +158,9 @@ def _channel(
         return
     try:
         conn = keepalive.connection(host_port, timeout)
+    except TimeoutError as exc:
+        keepalive.discard()
+        raise AdbResidentTimeout(f"resident channel timed out on port {host_port}: {exc}") from exc
     except (OSError, http.client.HTTPException) as exc:
         keepalive.discard()
         raise AdbResidentError(f"resident channel unreachable on port {host_port}: {exc}") from exc
@@ -171,7 +176,7 @@ def fetch_source(
     host_port: int,
     since: float | None = None,
     *,
-    timeout: float = 5.0,
+    timeout: float = READ_TIMEOUT_S,
     native_z: bool = False,
     keepalive: Keepalive | None = None,
 ) -> HierarchyRead:
@@ -194,13 +199,16 @@ def fetch_source(
         keepalive: The lease's reused connection, when there is one.
 
     Raises:
+        AdbResidentTimeout: no answer inside `timeout`; the server may still be working on the request.
         AdbResidentError: the channel could not be reached or did not answer 200 — an infrastructure
             failure the driver catches to fall back to `uiautomator dump`, never a test outcome.
     """
-    query = {} if since is None else {"since": since}
+    query: dict[str, float] = {"budgetMs": WAIT_BUDGET_MS}
+    if since is not None:
+        query["since"] = since
     if native_z:
         query["nativeZ"] = 1
-    path = "/source" + (f"?{urllib.parse.urlencode(query)}" if query else "")
+    path = f"/source?{urllib.parse.urlencode(query)}"
     try:
         with _channel(host_port, keepalive, timeout) as conn:
             conn.request("GET", path)
@@ -217,6 +225,8 @@ def fetch_source(
             # UnicodeDecodeError (garbled bytes) or an http.client.HTTPException (IncompleteRead from
             # a short body, BadStatusLine/UnknownProtocol from a malformed status line).
             return HierarchyRead(body.decode("utf-8"), mark, native_z=measured_z)
+    except TimeoutError as exc:
+        raise AdbResidentTimeout(f"resident channel timed out on port {host_port}: {exc}") from exc
     except (OSError, UnicodeDecodeError, http.client.HTTPException) as exc:
         raise AdbResidentError(f"resident channel unreachable on port {host_port}: {exc}") from exc
 
@@ -225,7 +235,7 @@ def act(
     host_port: int,
     request: ActRequest,
     *,
-    timeout: float = 10.0,
+    timeout: float = ACTION_TIMEOUT_S,
     keepalive: Keepalive | None = None,
     want_tree: bool = True,
 ) -> ActOutcome:
@@ -252,6 +262,7 @@ def act(
             actuators, so a device that cannot serve this is never worse off than before.
     """
     fields = {
+        "budgetMs": str(WAIT_BUDGET_MS),
         "tree": "1" if want_tree else "0",
         "kind": request.kind,
         "index": str(request.index),
@@ -263,6 +274,8 @@ def act(
     }
     if request.duration_ms is not None:
         fields["durationMs"] = str(request.duration_ms)
+        # The server holds the press before it can answer, so the hold is not part of its budget.
+        timeout += request.duration_ms / 1000
     if request.since is not None:
         fields["since"] = str(request.since)
     # A longer timeout than a read: the server honors the `since` mark and settles before it injects,
@@ -308,7 +321,7 @@ def type_text(
     text: str,
     since: float | None = None,
     *,
-    timeout: float = 10.0,
+    timeout: float = ACTION_TIMEOUT_S,
     keepalive: Keepalive | None = None,
 ) -> None:
     """Ask the resident server to enter `text` into the field that holds input focus.
@@ -327,7 +340,10 @@ def type_text(
             which never quotes the text.
     """
     body = base64.b64encode(text.encode("utf-8"))
-    path = "/type" if since is None else "/type?" + urllib.parse.urlencode({"since": since})
+    query: dict[str, float] = {"budgetMs": WAIT_BUDGET_MS}
+    if since is not None:
+        query["since"] = since
+    path = "/type?" + urllib.parse.urlencode(query)
     with _channel(host_port, keepalive, timeout) as conn:
         try:
             conn.request("POST", path, body=body)
@@ -428,7 +444,7 @@ def _parse_native_z(raw: str | None) -> dict[str, float]:
 
 
 def fetch_clock(
-    host_port: int, *, timeout: float = 5.0, keepalive: Keepalive | None = None
+    host_port: int, *, timeout: float = READ_TIMEOUT_S, keepalive: Keepalive | None = None
 ) -> float | None:
     """GET the resident server's current device clock (`SystemClock.uptimeMillis`), or None.
 

@@ -84,6 +84,12 @@ class RunResult:
     # A damaged `expect_actuations` record the report loader had to drop — `dropped_actuations`'
     # scenario-level counterpart, since this list has no step of its own to carry the disclosure.
     dropped_expect_actuations: int = 0
+    # What the driver's read channel did that the steps' own `warnings` could not carry: anything that
+    # happened after the last step drained. Evidence only, like those.
+    channel_notes: list[str] = field(default_factory=list)
+    # Why the read channel was degraded when the scenario ended, empty when it was healthy, so a run
+    # that passed on the fallback path can be told from one that did not (Android only today).
+    channel_degraded: str = ""
     # Evidence kinds the run couldn't supply (no eligible backend) — disclosed, not silent (BE-0020).
     skipped_captures: list[SkippedCapture] = field(default_factory=list)
     # Settings a target's route could not apply and the target declared ignored (BE-0467), so the
