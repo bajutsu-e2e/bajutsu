@@ -17,46 +17,53 @@
 ## Introduction
 
 Hosted `bajutsu serve` (the server backend, [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md))
-extracts a bound config's scenario tree onto local disk. It does this before it serves a single
-request. Three bind paths do this today: a Git source
-([BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md)), an uploaded zip
-([BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md)), and a composed
-artifact triple ([BE-0268](../BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts.md)).
-Each places the config and its `scenarios` directory into the same content-addressed cache
-directory. The config file itself comes from that same directory. Yet the control plane's scenario
-listing, scenario reading, and run-time scenario lookup never touch it. All three go through
-`ObjectScenarioStorage`, a store backed by the object-storage bucket the server also uses for run
-artifacts and baselines. This proposal has those three read operations resolve a scenario from the
-config's already-extracted local directory instead. The bucket then stops holding a second,
-independent copy of scenario content a Git or zip source already put on disk.
+extracts a bound config's scenario tree onto local disk before it serves a single request. Three bind
+paths do this today:
+
+- a Git source ([BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md))
+- an uploaded zip ([BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md))
+- a composed artifact triple ([BE-0268](../BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts.md))
+
+Each path places the config and its `scenarios` directory into the same content-addressed cache
+directory. The config file itself comes from that directory.
+
+Yet the control plane's scenario listing, scenario reading, and run-time scenario lookup never touch
+that directory. All three go through `ObjectScenarioStorage`. That store is backed by the
+object-storage bucket the server also uses for run artifacts and baselines.
+
+This proposal makes those three read operations resolve a scenario from the config's
+already-extracted local directory. The bucket then stops holding a second, independent copy of
+scenario content that a Git or zip source already put on disk.
 
 ## Motivation
 
-The duplication is not an architectural blemish alone; it leaves a functional gap.
-`ObjectScenarioStorage` gains an entry in two cases: someone saves a scenario through the hosted
-web editor, or a `record` job authors one
-(`bajutsu/serve/server/scenarios.py`, `bajutsu/serve/operations/worker_uploads.py`). Neither
-`bind_git_config` nor the zip and composition bind paths write anything into that bucket
-(`bajutsu/serve/operations/config.py`, `bajutsu/serve/operations/upload.py`). Take a scenario
-shipped inside a Git repository or an uploaded bundle. It stays invisible to the hosted UI's
-scenario list. It stays invisible to a direct read and to a run, too. Nothing changes until someone
-re-authors that same scenario by hand through the web editor. The scenario tree sits on the control
-plane's own disk the whole time. Nothing ever reads it.
+The duplication is more than an architectural blemish. It leaves a functional gap.
 
-The local (non-hosted) backend carries no such gap. `ServeState` wires its scenario store to
+`ObjectScenarioStorage` gains an entry in two cases. Someone saves a scenario through the hosted web
+editor, or a `record` job authors one (`bajutsu/serve/server/scenarios.py`,
+`bajutsu/serve/operations/worker_uploads.py`). Neither `bind_git_config` nor the zip and composition
+bind paths write anything into that bucket (`bajutsu/serve/operations/config.py`,
+`bajutsu/serve/operations/upload.py`).
+
+Take a scenario shipped inside a Git repository or an uploaded bundle. The hosted UI's scenario list
+never shows it. A direct read and a run never find it either. Nothing changes until someone
+re-authors the same scenario by hand through the web editor. The scenario tree sits on the control
+plane's own disk the whole time, and nothing ever reads it.
+
+The local (non-hosted) backend has no such gap. `ServeState` wires its scenario store to
 `LocalScenarioStore(lambda target: _scenarios_dir_for(self, target))` (`bajutsu/serve/state.py`).
-`_scenarios_dir_for` resolves each target's scenario directory against `state.cwd`. For a
-Git-sourced config, that directory is the checkout root; otherwise it sits beside the config file.
-The server backend's `_build_server_state` (`bajutsu/serve/__init__.py`) never reuses this
-resolver. It wires every org's scenario store to `StorageScenarioStore(ObjectScenarioStorage(...))`
-without exception, no matter where the active config came from. This proposal gives the server
-backend the same locally-resolved read path the local backend already has.
+`_scenarios_dir_for` resolves each target's scenario directory against `state.cwd`. For a Git-sourced
+config, that directory is the checkout root. Otherwise the directory sits beside the config file.
 
-One real difference between the two backends shapes the design. A hosted run happens on a
-separate worker process (`bajutsu/serve/server/db_executor.py`,
-`bajutsu/serve/server/worker_job.py`). That worker shares no filesystem with the control plane. A
-scenario handed to a run must still travel as text in the job's `materials`; a bare local path
-would not reach the worker at all.
+The server backend's `_build_server_state` (`bajutsu/serve/__init__.py`) never reuses this resolver.
+It wires every org's scenario store to `StorageScenarioStore(ObjectScenarioStorage(...))` without
+exception, no matter where the active config came from. This proposal gives the server backend the
+same locally-resolved read path that the local backend already has.
+
+One real difference between the two backends shapes the design. A hosted run happens on a separate
+worker process (`bajutsu/serve/server/db_executor.py`, `bajutsu/serve/server/worker_job.py`). That
+worker shares no filesystem with the control plane. A scenario handed to a run must still travel as
+text in the job's `materials`, because a bare local path would not reach the worker at all.
 
 ## Detailed design
 
@@ -64,91 +71,104 @@ would not reach the worker at all.
 
 Add a `ScenarioStorage` implementation named `LocalTreeScenarioStorage`, beside
 `ObjectScenarioStorage` (`bajutsu/serve/server/scenarios.py`). Construct it with the live
-`ServeState` and the `ObjectScenarioStorage` instance itself; it answers `has_app` by delegating to
-that instance (the same *apps* lookup, no second copy of it). For `list` and `read`, it delegates to
-the local backend's own machinery instead of an object-store call, so a Git- or zip-sourced scenario
-appears in the hosted UI's list, not only on a direct read or a run. For an org's target, it calls
-`_scenarios_dir_for(state, target)` (`bajutsu/serve/state.py`) to get that target's scenario
-directory. It then hands the result to a `LocalScenarioScope` (`bajutsu/serve/scenarios.py`) and
-calls its `list` or `read`. This reuses `LocalScenarioScope` directly, rather than re-deriving the
-same directory-resolution and path-containment logic inside `bajutsu/serve/server/scenarios.py`.
-That keeps the BE-0051 path-containment guard in the one place that already implements and tests
-it, instead of a second copy that could drift out of sync with it.
+`ServeState` and the `ObjectScenarioStorage` instance itself. The new class answers `has_app` by
+delegating to that instance (the same *apps* lookup, with no second copy of it).
+
+For `list` and `read`, the new class delegates to the local backend's own machinery instead of an
+object-store call. A Git- or zip-sourced scenario then appears in the hosted UI's list, and not
+merely on a direct read or a run.
+
+For an org's target, the class calls `_scenarios_dir_for(state, target)` (`bajutsu/serve/state.py`)
+to get that target's scenario directory. It hands the result to a `LocalScenarioScope`
+(`bajutsu/serve/scenarios.py`) and calls the scope's `list` or `read`.
+
+This reuses `LocalScenarioScope` directly. It does not re-derive the same directory-resolution and
+path-containment logic inside `bajutsu/serve/server/scenarios.py`. The BE-0051 path-containment guard
+stays in the one place that already implements and tests it. A second copy could drift out of sync.
 
 `_build_server_state` resolves `cwd` from whichever config the operator has bound at that moment: a
 Git checkout root, a zip extraction root, or a composition root. The new reader needs no branch on
-config-source kind for this reason. Every bind path the server backend supports already extracts
-its tree to the same place. One implementation covers a Git source, a zip source, and a
-composed-artifact source alike.
+config-source kind for this reason. Every bind path the server backend supports already extracts its
+tree to the same place. One implementation covers a Git source, a zip source, and a composed-artifact
+source alike.
 
 `LocalTreeScenarioStorage` still needs a `save` method. The `ScenarioStorage` protocol
-(`bajutsu/serve/server/scenarios.py`) requires one, since `StorageScenarioStore` and
-`StorageScenarioScope` each hold a single injected `ScenarioStorage` and call `save` on that same
-object. `LocalTreeScenarioStorage` takes that same `ObjectScenarioStorage` instance as a constructor
-argument, reused from §1's `has_app` delegation. Its `save` method delegates to that instance,
-unchanged. `list` and `read` never touch that delegate; `has_app` and `save` alone do. One object
-answers the whole `ScenarioStorage` protocol this way: it reads from the local tree and writes
-through `ObjectScenarioStorage`, with no new protocol and no second object for `StorageScenarioScope`
-to hold.
+(`bajutsu/serve/server/scenarios.py`) requires one. `StorageScenarioStore` and `StorageScenarioScope`
+each hold a single injected `ScenarioStorage` and call `save` on that object.
+
+`LocalTreeScenarioStorage` takes the `ObjectScenarioStorage` instance as a constructor argument, the
+same instance that the `has_app` delegation above uses. Its `save` method delegates to that instance
+unchanged. `list` and `read` never touch that delegate. Only `has_app` and `save` do.
+
+One object thus answers the whole `ScenarioStorage` protocol. It reads from the local tree and writes
+through `ObjectScenarioStorage`. No new protocol is needed, and `StorageScenarioScope` holds no
+second object.
 
 ### 2. `runnable()` keeps shipping materials; only their source changes
 
 `StorageScenarioScope.runnable()` (`bajutsu/serve/server/scenarios.py`) still returns a
 `materials`-based `Runnable`. The new reader supplies the scenario's text by reading it off local
-disk, replacing an object-store `get_bytes` call. That text still travels to the worker as a
-`materials` entry, the same way it does today.
-`bajutsu/serve/server/worker_job.py`'s `_materialize` writes that text into the worker's own
-workspace before the run starts. The worker-side contract stays the same; the control plane's read
-source is what changes.
+disk, in place of an object-store `get_bytes` call.
+
+That text still travels to the worker as a `materials` entry, the same way it does today.
+`_materialize` in `bajutsu/serve/server/worker_job.py` writes the text into the worker's own
+workspace before the run starts. The worker-side contract stays the same. Only the control plane's
+read source changes.
 
 ### 3. `save` and `authored` stay out of scope
 
 This proposal changes the read path alone: `list`, `read`, and the text `runnable()` ships as
-materials. Authoring a scenario through the hosted web editor, or through a `record` job, still
-saves it through `ObjectScenarioStorage`, unchanged. This split matches how the reporting user's
-own workflow runs today. Someone authors a scenario on a local machine, then brings it to the
-control plane by re-uploading the bundle or by pushing to the Git source; nobody edits it in place
-on the server. The write side has no local-tree counterpart to move to yet, for that reason.
+materials. Authoring a scenario through the hosted web editor, or through a `record` job, still saves
+it through `ObjectScenarioStorage`, unchanged.
+
+This split matches how the reporting user's own workflow runs today. Someone authors a scenario on a
+local machine. Then the author brings it to the control plane by re-uploading the bundle or by
+pushing to the Git source. Nobody edits it in place on the server. For that reason, the write side
+has no local-tree counterpart to move to yet.
+
 Reconciling `save` and `authored` with a local-tree scenario source is a separate question. That
-question also has to settle what happens when the control plane runs as more than one replica with
-no shared disk between them. This proposal leaves both questions to a follow-up item, once the
-deployment shape settles, rather than design against an untested premise now.
+question also has to settle what happens when the control plane runs as more than one replica with no
+shared disk between them. This proposal leaves both questions to a follow-up item, once the
+deployment shape settles. It does not design against an untested premise now.
 
 ### 4. Wiring
 
 `_build_server_state` (`bajutsu/serve/__init__.py`) changes what the per-org `StorageScenarioStore`
-builds. Today it constructs `StorageScenarioStore(ObjectScenarioStorage(...))` directly; this
-proposal has it construct the `ObjectScenarioStorage` instance first, same as today, then wrap it
-in `LocalTreeScenarioStorage` and pass that to `StorageScenarioStore` instead. `save` and
-`authored` still reach the same `ObjectScenarioStorage` object, one call deeper.
+builds. Today it constructs `StorageScenarioStore(ObjectScenarioStorage(...))` directly.
+
+With this proposal, it constructs the `ObjectScenarioStorage` instance first, as today. Then it wraps
+the instance in `LocalTreeScenarioStorage` and passes the wrapper to `StorageScenarioStore`. `save`
+and `authored` still reach the same `ObjectScenarioStorage` object, one call deeper.
 
 ### Determinism, the gate, and app-agnosticism
 
 This item changes one thing: how the control plane locates and reads a scenario's bytes. It adds no
 LLM call anywhere, and it leaves what a run asserts unchanged. Pass/fail stays as machine-checked as
-before (directive 1). The item also removes a hidden failure mode instead of adding one. Without
-it, `StorageScenarioScope.read`/`runnable` return "no such scenario" for a Git- or zip-sourced
-scenario that does exist in the bound tree, a confusing result an operator has to debug by hand;
-this item makes that same scenario resolve deterministically instead (directive 2). The new reader
-adds no app-specific branch: it resolves the same `scenarios` directory field every target's config
-already names (directive 3).
+before (directive 1).
+
+The item also removes a hidden failure mode and adds none. Without the item,
+`StorageScenarioScope.read` and `runnable` return "no such scenario" for a Git- or zip-sourced
+scenario that does exist in the bound tree. That confusing result forces an operator to debug by
+hand. With the item, the same scenario resolves deterministically (directive 2).
+
+The new reader adds no app-specific branch. It resolves the same `scenarios` directory field that
+every target's config already names (directive 3).
 
 ## Alternatives considered
 
-- **Keep the status quo.** Rejected: this is the gap the item exists to close. A Git- or
-  zip-sourced scenario stays unreachable through the hosted UI's list, read, and run operations
-  until someone re-authors it by hand into the object-storage bucket.
+- **Keep the status quo.** Rejected: this is the gap the item exists to close. A Git- or zip-sourced
+  scenario stays unreachable through the hosted UI's list, read, and run operations until someone
+  re-authors it by hand into the object-storage bucket.
 - **Copy the extracted tree into `ObjectScenarioStorage` at bind time, and leave every read path
-  unchanged.** Rejected: this recreates the duplication the item removes, and the copy would not
-  stay in sync. A composition's local directory is content-addressed, and extraction makes it
-  immutable (`materialize_composition`, `bajutsu/serve/operations/composition.py`). Nothing would
-  re-trigger the copy if a later `save` edited that same directory. The bucket and the disk would
-  then drift apart.
-- **Move `save` and `authored` onto the local tree in this same item.** Rejected for now: this
-  requires settling how a scenario edit stays durable and visible when the control plane runs as
-  more than one replica. The reporting user has not decided that deployment question yet. Scoping
-  this item to the read path ships the clear, low-risk half now, and the write side waits for a
-  follow-up once that question has an answer.
+  unchanged.** Rejected: this recreates the duplication the item removes, and the copy would not stay
+  in sync. A composition's local directory is content-addressed, and extraction makes it immutable
+  (`materialize_composition`, `bajutsu/serve/operations/composition.py`). Nothing would re-trigger the
+  copy if a later `save` edited that directory. The bucket and the disk would drift apart.
+- **Move `save` and `authored` onto the local tree in this same item.** Rejected for now. The move
+  requires settling how a scenario edit stays durable and visible when the control plane runs as more
+  than one replica. The reporting user has not decided that deployment question yet. Scoping this item
+  to the read path ships the clear, low-risk half now. The write side waits for a follow-up once the
+  question has an answer.
 
 ## Progress
 
