@@ -43,7 +43,7 @@ more backends land, because every backend added afterward is then born against t
 
 ## Detailed design
 
-The work divides MECE into the five pieces below.
+The work is MECE along the five pieces below.
 
 ### 1. Enumerate the backend-agnostic contract
 

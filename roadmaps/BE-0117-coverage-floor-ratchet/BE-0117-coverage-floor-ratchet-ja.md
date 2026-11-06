@@ -90,8 +90,8 @@ CLI コマンド層は全ユーザーの入口ですが、カバレッジには�
   `--repeat` の併用、`--history` と位置引数 `scenario` の併用、`scenario` も `--history` も指定しない場合
   です。さらに、`_history_audit` の `provenance.scenarioHash` によるグルーピングと、フラキー判定ロジックに
   対するユニットテストを、小さな合成 runs ディレクトリに対して追加します。
-- **`Makefile` の `--cov-fail-under` を引き上げる。** 上記が着地したら `make test` を実行します。姉妹提案の
-  `cli-command-coverage` とあわせて、どちらが後にマージされても同じです。pytest-cov のサマリから、実際の
+- **`Makefile` の `--cov-fail-under` を引き上げる。** 上記が姉妹提案の
+  `cli-command-coverage` とあわせて着地したら（どちらが後にマージされても）、`make test` を実行します。pytest-cov のサマリから、実際の
   ブランチカバレッジの割合を読み取ります。実測値を切り下げた値を、新しいフロアとして設定します。実行ごとの
   通常のばらつきでゲートが落ちないようにするためです。`Makefile:69` の `--cov-fail-under=87` の行を、
   それに応じて更新します。そのあとで改めて `make check` を実行し、新しいフロアが正確かつ安定している

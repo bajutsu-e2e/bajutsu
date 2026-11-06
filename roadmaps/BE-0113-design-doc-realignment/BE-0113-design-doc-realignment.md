@@ -54,7 +54,7 @@ done. The fix includes a norm against recurrence, not just the one-time correcti
 
 ## Detailed design
 
-The work divides MECE into the six work items below. The "Machine-checkable outcome" and
+The work is MECE along the six work items below. The "Machine-checkable outcome" and
 "Prime-directive compliance" subsections record acceptance criteria, not additional work items.
 `DESIGN.md` is written in Japanese, so all edits follow the
 [`japanese-tech-writing`](../../.claude/skills/japanese-tech-writing/SKILL.md) skill.

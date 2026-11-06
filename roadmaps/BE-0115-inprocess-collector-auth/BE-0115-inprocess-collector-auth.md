@@ -29,8 +29,8 @@ exchanges into a running scenario. The pipeline treats those exchanges as observ
 for `request`/`response` assertions and for the `network.json` evidence artifact
 (`bajutsu/scenario/models/assertions.py:76`, `bajutsu/runner/pipeline.py:189`).
 
-Severity is Low. The collector is loopback-only (`127.0.0.1`, never `0.0.0.0`), so the exposure
-reaches merely another process already running on the same machine as the Simulator. That attack
+Severity is Low. The collector is loopback-only (`127.0.0.1`, never `0.0.0.0`), so the exposure is
+limited to another process already running on the same machine as the Simulator. That attack
 surface is meaningfully smaller than a network-reachable endpoint. It is also consistent with the
 Simulator's own trust model: by design, the app and the collector already share the same host
 loopback, per the module docstring of `bajutsu/network.py`.
