@@ -184,7 +184,7 @@ fan-out は、Device Farm のホストへシークレットを運びません。
 
 ### ターゲットの fan-out
 
-Replay タブは、ブラウザから fan-out を投入できます（[Web UI](web-ui.md#replay--シナリオを実行してレポートを読む)）。
+Replay タブは、ブラウザから fan-out を投入できます（[Web UI](web-ui.md#replay-でシナリオを実行してレポートを読む)）。
 デバイスクラウドの環境を選び、シナリオを選んで Run を押します。タブは、稼働中の worker が広告している batch 環境だけを
 `GET /api/environments` から読み込んで並べます。`appium` の grid には、通常の run リクエストから届きます（BE-0452）。レスポンスは環境ごとに `name`、`kind`（`batch` または `grid`）、
 `liveWorkers` の数を返し、ARN や認証情報は含みません。
