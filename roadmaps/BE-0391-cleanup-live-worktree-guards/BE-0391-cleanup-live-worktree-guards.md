@@ -73,7 +73,7 @@ human reading a confirmation prompt sees the work that is actually at stake.
 
 ### The guards
 
-A worktree is removable when every guard below passes. Each guard fails closed: an answer the script
+A worktree is removable only when every guard below passes. Each guard fails closed: an answer the script
 cannot obtain counts as a refusal, never as a pass.
 
 1. The worktree is neither the main checkout nor the worktree the cleanup itself is running in.
@@ -100,7 +100,7 @@ alone, because a squashed branch's commits never appear on `origin/main`. This r
 fast-forwards, so guard 7 remains strict.
 
 The script never passes `--force` to `git worktree remove` and never passes `-D` to `git branch`.
-Both refusals are the last line of defence behind the guards above. Both flags exist to switch that
+Both refusals are the last line of defence behind the guards above. Both flags exist only to switch that
 refusal off.
 
 ### The skill
@@ -129,7 +129,7 @@ session's working tree is clean whenever the session is between edits, so the re
 here does not track whether anyone is using the checkout.
 
 **Lock every session's worktree and check the lock alone.** Adopted in part, as guard 2, but not
-relied on alone. A lock helps with hosts that write one, and the guard must hold for a worktree
+relied on alone. A lock helps only with hosts that write one, and the guard must hold for a worktree
 created by any host or by hand.
 
 ## Progress
