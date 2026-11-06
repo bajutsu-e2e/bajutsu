@@ -2,18 +2,18 @@
 
 # Showcase — Android (Compose + Views)
 
-The Android half of the Bajutsu showcase dogfood suite, built ahead of the
+This is the Android half of the Bajutsu showcase dogfood suite. The suite exists ahead of the
 [BE-0007 Android backend](../../../roadmaps/BE-0007-android-backend/BE-0007-android-backend.md)
-as the fixture that backend will drive. The behavior, element inventory, launch-env hooks,
-deeplinks, and OS-alert placement are defined once in [`../SPEC.md`](../SPEC.md) and implemented
-here element-for-element, mirroring the iOS pair: **Jetpack Compose** is the SwiftUI twin,
-**Android Views** the UIKit twin, and each ships in two accessibility flavors.
+as the fixture that backend will drive. [`../SPEC.md`](../SPEC.md) defines the behavior, element
+inventory, launch-env hooks, deeplinks, and OS-alert placement once, and this suite implements them
+element-for-element. The suite mirrors the iOS pair: **Jetpack Compose** is the SwiftUI twin,
+**Android Views** is the UIKit twin, and each ships in two accessibility flavors.
 
 ## Four products from two codebases
 
-The flavor difference is a single Gradle product flavor pair (`a11y` / `noax`) driving one
-`BuildConfig.ACCESSIBLE` boolean; there is no forked source. The gated helpers in each module's
-`Accessibility.kt` (SPEC §8) attach an identifier — and mirror state for assertions — only in
+The flavors differ by a single Gradle product flavor pair (`a11y` / `noax`) that drives one
+`BuildConfig.ACCESSIBLE` boolean, so the source is not forked. The gated helpers in each module's
+`Accessibility.kt` (SPEC §8) attach an identifier, and mirror state for assertions, only in
 the `a11y` flavor.
 
 | Gradle task | Toolkit | `ACCESSIBLE` | Application id | Display name | Deeplink scheme |
@@ -23,8 +23,8 @@ the `a11y` flavor.
 | `:views:assembleA11yDebug` | Views | true | `com.bajutsu.showcase.android.views` | Showcase Views | `showcaseviews` |
 | `:views:assembleNoaxDebug` | Views | false | `com.bajutsu.showcase.android.views.noax` | Showcase Views (no a11y) | `showcaseviewsnoax` |
 
-The `a11y` builds expose the SPEC §5 element inventory as UI Automator `resource-id`s; the
-`noax` builds compile to a tree with none — the cost of skipping accessibility, made concrete
+The `a11y` builds expose the SPEC §5 element inventory as UI Automator `resource-id`s. The
+`noax` builds compile to a tree with none, which makes the cost of skipping accessibility concrete
 (`doctor --target` will grade the pair Ready / Blocked once BE-0007 lands).
 
 ## How identifiers surface (the two id conventions)
@@ -33,44 +33,50 @@ The two modules deliberately exercise BE-0007's two Android id paths:
 
 - **Compose** — `Modifier.aid("stable.refresh")` sets a `testTag`, and the content root sets
   `testTagsAsResourceId = true`, so UI Automator surfaces the tag as `resource-id`. A `testTag`
-  accepts any string, so the dotted SPEC §5 ids reproduce **verbatim** and the shared
+  accepts any string, so the dotted SPEC §5 ids reproduce **verbatim**, and the shared
   [`../scenarios/`](../scenarios) set can drive this app unchanged.
 - **Views** — `View.aid("stable_refresh")` assigns a real `android:id` (declared in
   [`views/src/main/res/values/ids.xml`](views/src/main/res/values/ids.xml)), which UI Automator
   surfaces natively. An `android:id` name allows neither `.` nor `-`, so the SPEC ids map
   mechanically: both become `_` (`stable.refresh` → `stable_refresh`,
-  `search.results-empty` → `search_results_empty`). The shared [`../scenarios/`](../scenarios) set
-  still drives Views unchanged because each selector **lists both id forms** —
-  `id: [stable.refresh, stable_refresh]` matches whichever the tree renders, an OR resolved by the
-  deterministic core (BE-0221). The id convention stays **explicit in the scenario**, never a hidden
-  driver-side `.` ↔ `_` rewrite, and the fixture exposes the honest native convention rather than
-  papering over it.
+  `search.results-empty` → `search_results_empty`).
+
+  The shared [`../scenarios/`](../scenarios) set still drives Views unchanged because each selector
+  **lists both id forms**. `id: [stable.refresh, stable_refresh]` matches whichever form the tree
+  renders, an OR resolved by the deterministic core (BE-0221). The id convention stays **explicit in
+  the scenario**, never a hidden driver-side `.` ↔ `_` rewrite, and the fixture exposes the honest
+  native convention rather than papering over it.
 
 State mirroring is the same in both toolkits: each mirrors the value to `content-desc`, the channel
 a `uiautomator dump` exposes (Compose's `stateDescription` is not in the dump). See SPEC §2.1.
 
 ## Launch-env hooks and deeplinks
 
-The launch env (`subject.launch.env`, SPEC §3) arrives as **intent extras** on the launcher Activity — BE-0007's launch
-sequence passes them via `am start` — read once at launch: `SHOWCASE_UITEST`, `SHOWCASE_TAB`,
-`SHOWCASE_API_URL`, `SHOWCASE_HTTP_BASE`, `SHOWCASE_GESTURES`. `SHOWCASE_GESTURES` (BE-0232) swaps the
-whole five-tab UI for a flat, scroll-free pinch/rotate screen (`log.pinch` / `log.rotate`), mirroring
-the iOS `GestureView`, so the shared `gestures_multitouch` scenario drives the adb two-finger
-`sendevent` gesture without depending on scroll. Deeplinks (SPEC §4) use the per-product scheme above
-with the shared host grammar (`…://stable` … `…://permissions`); the launcher Activity is
-`singleTask`, so a deeplink selects the tab in the running app and pops any pushed detail.
+The launch env (`subject.launch.env`, SPEC §3) arrives as **intent extras** on the launcher
+Activity, which BE-0007's launch sequence passes via `am start`. The Activity reads them once at
+launch: `SHOWCASE_UITEST`, `SHOWCASE_TAB`, `SHOWCASE_API_URL`, `SHOWCASE_HTTP_BASE`, and
+`SHOWCASE_GESTURES`.
 
-The OS-alert fixture (SPEC §7) maps to Android's **runtime-permission dialogs**: the
+`SHOWCASE_GESTURES` (BE-0232) swaps the whole five-tab UI for a flat, scroll-free pinch/rotate
+screen (`log.pinch` / `log.rotate`), mirroring the iOS `GestureView`. The shared
+`gestures_multitouch` scenario can then drive the adb two-finger `sendevent` gesture without
+depending on scroll.
+
+Deeplinks (SPEC §4) use the per-product scheme above with the shared host grammar (`…://stable` …
+`…://permissions`). The launcher Activity is `singleTask`, so a deeplink selects the tab in the
+running app and pops any pushed detail.
+
+The OS-alert fixture (SPEC §7) maps to Android's **runtime-permission dialogs**. The
 Permissions tab's two buttons raise the `POST_NOTIFICATIONS` and `ACCESS_FINE_LOCATION`
-prompts — out-of-process system UI, exactly the alert-guard fixture the iOS SpringBoard
+prompts. They are out-of-process system UI, exactly the alert-guard fixture the iOS SpringBoard
 prompts provide. Run on an **API 33+ emulator**: `POST_NOTIFICATIONS` is a runtime permission
 only on Android 13+, so the notification prompt does not appear on older images (SPEC §2.1).
-`SHOWCASE_UITEST` disables animations device-wide via the driver on Android, not in-app (SPEC §2.1).
+On Android, the driver disables animations device-wide for `SHOWCASE_UITEST`, not the app (SPEC §2.1).
 
 ## Build
 
-Requires a JDK (17+) and the Android SDK. The Gradle wrapper is committed, so no separate Gradle
-install is needed — `./gradlew` (via the Makefile) downloads the pinned Gradle on first use.
+The build requires a JDK (17+) and the Android SDK. The Gradle wrapper is committed, so no separate
+Gradle install is needed: `./gradlew` (via the Makefile) downloads the pinned Gradle on first use.
 
 ```bash
 make -C demos/showcase/android build-all   # all four APKs
@@ -80,5 +86,5 @@ make -C demos/showcase/android views-noax-build   # just the Views no-a11y produ
 
 Each APK lands at `<module>/build/outputs/apk/<flavor>/debug/`, exactly where
 [`../showcase.config.yaml`](../showcase.config.yaml)'s android targets point their `subject.path`.
-`run` / `doctor` against these targets need the BE-0007 adb backend; until it lands,
+`run` / `doctor` against these targets need the BE-0007 adb backend. Until it lands,
 `--backend android` fails with the registry's "not implemented yet".

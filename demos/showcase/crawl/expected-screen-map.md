@@ -3,9 +3,9 @@
 # Showcase crawl — the screen map it should produce
 
 > `crawl` ([BE-0038](../../../roadmaps/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md))
-> is a **proposal**, not yet implemented. This file is forward-looking *test data*: the graph a
-> correct breadth-first crawl of the showcase a11y apps should discover, so the crawl can be
-> validated against a known-good map the day it lands. Run it then with:
+> is a **proposal**, not yet implemented. This file is forward-looking *test data*: the graph that a
+> correct breadth-first crawl of the showcase a11y apps should discover. With it, the crawl can be
+> validated against a known-good map the day it lands. Run the crawl then with:
 >
 > ```bash
 > bajutsu crawl --target showcase-swiftui --config demos/showcase/showcase.config.yaml \
@@ -13,7 +13,7 @@
 > ```
 
 The showcase is built to be a genuinely branchy crawl target: 5 tabs × navigation pushes ×
-5 modal styles. Because every identifier is data-derived and stable (SPEC §5), the id-based
+5 modal styles. Every identifier is data-derived and stable (SPEC §5), so the id-based
 **state fingerprint** (the sorted set of on-screen identifiers, hashed —
 [BE-0038](../../../roadmaps/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md))
 is stable across runs.
@@ -38,15 +38,15 @@ is stable across runs.
 ## Edges worth noting
 
 - **Tab switches** are five edges out of every main node (the tab bar is always present).
-- **Modals** are reached-and-dismissed cycles off the Log node — a crawl should record the
+- **Modals** are reached-and-dismissed cycles off the Log node. A crawl should record the
   open edge and recognize the returned-to state by fingerprint rather than re-exploring it.
 - **Permissions** is the one node whose actions raise out-of-process OS alerts (SPEC §7).
-  A crawl reaching it should rely on the alert guard (`--system-alert-handling`) exactly as `run` does;
-  the alert is not a crawl-discoverable screen.
+  A crawl reaching the node should rely on the alert guard (`--system-alert-handling`) exactly as
+  `run` does. The alert is not a crawl-discoverable screen.
 
 ## What the no-a11y variant should show instead
 
-Run against `showcase-swiftui-noax` the crawl must fall back to the structural fingerprint
+Run against `showcase-swiftui-noax`, the crawl must fall back to the structural fingerprint
 (`(traits, frame-bucket)` — BE-0038) because there are no identifiers. The map should come out
-coarser and flagged as low-confidence — the same accessibility-debt signal `doctor` reports,
+coarser and flagged as low-confidence. This is the same accessibility-debt signal `doctor` reports,
 seen from the exploration side.
