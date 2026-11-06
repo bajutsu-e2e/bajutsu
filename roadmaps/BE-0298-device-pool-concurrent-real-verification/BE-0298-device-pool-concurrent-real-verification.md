@@ -33,18 +33,18 @@ concurrent-device lane.
 ## Motivation
 
 Fabricated udids and `FakeDriver` prove that the bookkeeping logic of the pool is internally
-consistent. Worker A's resources are kept separate from worker B's *in the data structures that the
+consistent. Worker A's resources stay separate from worker B's *in the data structures that the
 pool manages*. They cannot prove that the guarantee holds against real OS-level device and process
 contention.
 
-Two questions remain open. First, can two real `simctl` or `adb` invocations that target different
-devices race on a shared resource that idb or adb touches outside the bookkeeping of the pool? Such a
-resource could be a shared boot lock, a port collision, or an artifact path computed before the
-`run_dir/<scenario_id>` subdirectory of a worker is fully established.
+Two questions remain open. The first is whether two real `simctl` or `adb` invocations that target
+different devices can race on a shared resource that idb or adb touches outside the bookkeeping of the
+pool. Such a resource could be a shared boot lock, a port collision, or an artifact path computed
+before the `run_dir/<scenario_id>` subdirectory of a worker is fully established.
 
-Second, can the [evidence](../../docs/glossary.md#evidence-capturepolicy-trace-triage) capture of two
-real devices cross-write under real timing pressure? A synthetic, sequential fake test cannot produce
-that pressure.
+The second is whether the [evidence](../../docs/glossary.md#evidence-capturepolicy-trace-triage)
+capture of two real devices can cross-write under real timing pressure. A synthetic, sequential fake
+test cannot produce that pressure.
 
 ## Detailed design
 
