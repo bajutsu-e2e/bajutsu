@@ -330,11 +330,11 @@ def test_fetch_source_asks_for_native_z_only_when_the_target_opted_in() -> None:
     port, server = _serve_once()
     try:
         adb_resident.fetch_source(port)
-        assert _SourceHandler.last_source_path == "/source"
+        assert _SourceHandler.last_source_path == "/source?budgetMs=3500"
         adb_resident.fetch_source(port, native_z=True)
-        assert _SourceHandler.last_source_path == "/source?nativeZ=1"
+        assert _SourceHandler.last_source_path == "/source?budgetMs=3500&nativeZ=1"
         adb_resident.fetch_source(port, since=98765.0, native_z=True)
-        assert _SourceHandler.last_source_path == "/source?since=98765.0&nativeZ=1"
+        assert _SourceHandler.last_source_path == "/source?budgetMs=3500&since=98765.0&nativeZ=1"
     finally:
         server.shutdown()
 
@@ -516,7 +516,7 @@ def test_fetch_source_requests_a_since_mark_when_given() -> None:
     port, server = _serve_once()
     try:
         adb_resident.fetch_source(port, since=98765.0)
-        assert _SourceHandler.last_source_path == "/source?since=98765.0"
+        assert _SourceHandler.last_source_path == "/source?budgetMs=3500&since=98765.0"
     finally:
         server.shutdown()
 
@@ -527,7 +527,7 @@ def test_fetch_source_omits_since_when_not_requested() -> None:
     port, server = _serve_once()
     try:
         adb_resident.fetch_source(port)
-        assert _SourceHandler.last_source_path == "/source"
+        assert _SourceHandler.last_source_path == "/source?budgetMs=3500"
     finally:
         server.shutdown()
 
@@ -1185,7 +1185,7 @@ def test_type_text_carries_the_text_in_the_body_never_the_target() -> None:
         adb_resident.type_text(port, "馬術 🐎")
     finally:
         server.shutdown()
-    assert _SourceHandler.last_type_path == "/type"
+    assert _SourceHandler.last_type_path == "/type?budgetMs=3500"
     assert base64.b64decode(_SourceHandler.last_type_body or b"").decode("utf-8") == "馬術 🐎"
 
 
@@ -1195,7 +1195,7 @@ def test_type_text_sends_the_mark_the_devices_read_must_postdate() -> None:
         adb_resident.type_text(port, "馬", 42.0)
     finally:
         server.shutdown()
-    assert _SourceHandler.last_type_path == "/type?since=42.0"
+    assert _SourceHandler.last_type_path == "/type?budgetMs=3500&since=42.0"
 
 
 def test_type_text_raises_the_devices_reason_when_it_refuses() -> None:

@@ -27,7 +27,13 @@ from bajutsu.common.drivers.fake import FakeDriver
 if TYPE_CHECKING:
     from bajutsu.common.config import Effective
     from bajutsu.common.devices.os import DeviceOS
-    from bajutsu.common.drivers.adb import ActFn, ClockFetch, HierarchyFetch, TypeFn
+    from bajutsu.common.drivers.adb import (
+        ActFn,
+        ChannelRecovery,
+        ClockFetch,
+        HierarchyFetch,
+        TypeFn,
+    )
     from bajutsu.common.drivers.zorder import ZOrderSource
     from bajutsu.common.scenario import Scenario
 
@@ -533,6 +539,8 @@ def make_driver(
     fetch_clock: ClockFetch | None = None,
     act: ActFn | None = None,
     type_on_device: TypeFn | None = None,
+    channel_recovery: ChannelRecovery | None = None,
+    channel_start_failure: str | None = None,
     device_os: DeviceOS | None = None,
     is_real_device: bool = False,
     package: str | None = None,
@@ -579,6 +587,8 @@ def make_driver(
             fetch_clock=fetch_clock,
             act=act,
             type_on_device=type_on_device,
+            channel_recovery=channel_recovery,
+            channel_start_failure=channel_start_failure,
             package=package,
             api_level=api_level,
             launched_at=launched_at,

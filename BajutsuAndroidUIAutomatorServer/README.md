@@ -52,3 +52,59 @@ make -C BajutsuAndroidUIAutomatorServer build   # host APK + instrumentation (an
 
 This is not part of `make check` (the Python gate builds no Kotlin). It goes through the committed
 `./gradlew`, so a fresh clone needs no system-installed Gradle — only the Android SDK.
+
+## Measuring a slow read
+
+These steps measure one `GET /source` on a screen that never goes idle, and they show where its time
+went. The worst case is a screen that publishes accessibility events more often than every 500 ms,
+because `UiDevice.waitForIdle()` then waits for its full bound. Before the wait budget existed, one
+read on this screen took 120.9 seconds on an API 34 emulator.
+
+You need a built server, its two APKs installed, and one booted emulator or device. Bajutsu installs
+the APKs itself during a run, so you can skip the install after any Android run.
+
+1. Open the Clock app's Stopwatch tab, and start the stopwatch. The display updates about ten times
+   per second.
+
+2. Start the server. The command stays attached, so run it in its own terminal.
+
+   ```bash
+   adb shell am instrument -w -e class dev.bajutsu.android.server.ResidentServerTest#serve dev.bajutsu.android.server.test/androidx.test.runner.AndroidJUnitRunner
+   ```
+
+3. Forward the server's port.
+
+   ```bash
+   adb forward tcp:6790 tcp:6790
+   ```
+
+4. Time one read. An answer of `200` in about 3.6 seconds shows the budget holding, under the
+   host's 5-second read timeout.
+
+   ```bash
+   curl -s -o /dev/null -w '%{http_code} %{time_total}s\n' 'http://127.0.0.1:6790/source?budgetMs=3500'
+   ```
+
+5. Read where the time went. The `source waits` line lists each stage.
+
+   ```bash
+   adb logcat -d -s BajutsuResidentServer:D
+   ```
+
+   ```text
+   source waits: idle=1074ms dump=2140ms idle=330ms dump=25ms total=3570ms budget=3500ms
+   ```
+
+6. Clean up.
+
+   ```bash
+   adb forward --remove tcp:6790
+   ```
+
+   ```bash
+   adb shell am force-stop dev.bajutsu.android.server
+   ```
+
+`tests/test_adb_resident_budgets.py` keeps these waits inside the host's timeouts on every `make check`,
+with no device. The numbers themselves live in
+[`bajutsu/common/backend_cli/adb_resident/budgets.py`](../bajutsu/common/backend_cli/adb_resident/budgets.py).

@@ -151,6 +151,9 @@ class AndroidEnvironment:
         # launch inputs `start` was given are kept too, so a member's `foreground` launches it the way
         # `relaunch` would.
         self._channel: ResidentChannel | None = None
+        # Why this lease's server did not start, for the run's evidence; None when it did or when the
+        # run chose the dump path.
+        self._channel_start_failure: str | None = None
         self._drivers: dict[str, base.Driver] = {}
         # The driver `start` returned: the one whose bound is `_launch_marker`. Told apart by identity,
         # not package, since an update journey's two builds share one package (BE-0447).
@@ -254,7 +257,11 @@ class AndroidEnvironment:
             ) from exc
         # The resident read channel drives whatever app is now on screen (BE-0245); a startup failure
         # degrades to `uiautomator dump` rather than failing the lease.
-        self._channel = self._begin_resident(native_z=android.native_z)
+        self._channel = self._begin_resident(
+            native_z=android.native_z,
+            read_retries=android.resident_read_retries,
+            restart=android.resident_restart,
+        )
         # A live read, not a value frozen at construction — the same seam `fetch_clock` uses — so a
         # mid-scenario `relaunch` moves the bound the driver compares against (BE-0424).
         driver = self._driver_for(android.package, launched_at=lambda: self._launch_marker)
@@ -273,6 +280,8 @@ class AndroidEnvironment:
             fetch_hierarchy=channel.fetch if channel is not None else None,
             fetch_clock=channel.clock if channel is not None else None,
             act=channel.act if channel is not None else None,
+            channel_recovery=channel.recovery if channel is not None else None,
+            channel_start_failure=self._channel_start_failure,
             type_on_device=channel.type_text if channel is not None else None,
             package=package,
             api_level=self._read_api_level(),
@@ -315,9 +324,12 @@ class AndroidEnvironment:
         except ValueError:
             return None, None
 
-    def _begin_resident(self, *, native_z: bool = False) -> ResidentChannel | None:
+    def _begin_resident(
+        self, *, native_z: bool = False, read_retries: int = 1, restart: bool = True
+    ) -> ResidentChannel | None:
         """Start the resident server for this lease, or None to read via `uiautomator dump`."""
-        server = self._make_resident(native_z=native_z)
+        self._channel_start_failure = None
+        server = self._make_resident(native_z=native_z, read_retries=read_retries, restart=restart)
         if server is None:
             return None
         from bajutsu.common.drivers.adb import AdbResidentError
@@ -330,11 +342,14 @@ class AndroidEnvironment:
                 "actuating via coordinates",
                 exc,
             )
+            self._channel_start_failure = str(exc)
             return None
         self._resident = server
         return channel
 
-    def _make_resident(self, *, native_z: bool = False) -> ResidentServerLike | None:
+    def _make_resident(
+        self, *, native_z: bool = False, read_retries: int = 1, restart: bool = True
+    ) -> ResidentServerLike | None:
         if self._resident_factory is not None:
             return self._resident_factory()
         from bajutsu.common.backend_cli.adb_resident import ResidentServer, server_apks_built
@@ -374,6 +389,8 @@ class AndroidEnvironment:
             run=self._run,
             installed=self._installed_resident_apks,
             native_z=native_z,
+            read_retries=read_retries,
+            restart=restart,
         )
 
     def device_catalog(self) -> dict[str, dict[str, str]]:

@@ -300,6 +300,18 @@ def drain_actuations(driver: base.Driver, wall_offset_s: float) -> Drained:
     )
 
 
+def drain_channel_notes(driver: base.Driver) -> list[str]:
+    """What `driver`'s read channel did since the last drain; nothing for a backend without one."""
+    return driver.drain_channel_notes() if isinstance(driver, base.ChannelHealthReporter) else []
+
+
+def channel_degraded(driver: base.Driver) -> str:
+    """Why `driver`'s read channel is degraded right now, empty while it is healthy."""
+    if not isinstance(driver, base.ChannelHealthReporter):
+        return ""
+    return driver.channel_degraded() or ""
+
+
 # The budget both evidence-dir slugs share (BE-0420). Counted in characters, not bytes: a
 # fullwidth/Japanese scenario name should not be cut shorter than an equally long ASCII one just
 # because its characters encode to more bytes.

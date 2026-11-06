@@ -78,6 +78,7 @@ _PROTOCOLS: tuple[type, ...] = (
     base.Queryable,
     base.BackendLifecycle,
     base.BackgroundScreenshotProvider,
+    base.ChannelHealthReporter,
     base.EvidenceProvider,
     base.InterruptionPolicyTarget,
     base.RawSourceProvider,

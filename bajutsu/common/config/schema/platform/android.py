@@ -46,9 +46,23 @@ class AndroidRunsOn(RunsOnGroup):
     android: AndroidDestination = Field(default_factory=AndroidDestination)
 
 
+class ResidentRecovery(_Model):
+    """`driver.residentRecovery` on Android: what a timed-out resident read tries before the dump path."""
+
+    # Reads to repeat on a fresh connection. A timeout does not show the server is gone, and a read
+    # changes nothing on the device, so repeating one is safe.
+    read_retries: int = Field(default=1, ge=0, le=5, alias="readRetries")
+    # Whether to restart the server once the retries are spent, and before a non-ASCII `type` step
+    # after the channel has been lost.
+    restart: bool = True
+
+
 class AndroidDriver(_Model):
     """`driver` on Android: how Bajutsu drives the device through adb."""
 
     # Measure each opted-in view's `View.getZ()` (BE-0355); off by default because the walk costs
     # 20-100ms on every read and answers nothing unless the app links `BajutsuAndroid`.
     native_z: bool = Field(default=False, alias="nativeZ")
+    resident_recovery: ResidentRecovery = Field(
+        default_factory=ResidentRecovery, alias="residentRecovery"
+    )

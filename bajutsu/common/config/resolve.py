@@ -150,6 +150,8 @@ def _platform_config(a: TargetConfig) -> PlatformConfig:
             build=app.build,
             grant_permissions=list(app.grant_permissions),
             native_z=driver.native_z,
+            resident_read_retries=driver.resident_recovery.read_retries,
+            resident_restart=driver.resident_recovery.restart,
         )
     if isinstance(app, IosApp):
         return IosConfig(

@@ -87,6 +87,7 @@ def test_every_registered_model_forbids_extra_keys(platform: str, group: Group) 
             {"android": {"avd": ["Pixel_8", "Pixel_Tablet"], "apiLevel": "33 - 35"}},
         ),
         ("android", "driver", {"nativeZ": True}),
+        ("android", "driver", {"residentRecovery": {"readRetries": 2, "restart": False}}),
         ("fake", "subject", {}),
         ("fake", "subject", {"id": "anything"}),
         ("fake", "subject", {"idNamespaces": ["home"]}),
@@ -117,7 +118,7 @@ def test_defaults_are_what_an_omitted_block_means() -> None:
             "runsOn.ios.avd",
             "model, os, kind, family, locale, seedPhotos",
         ),
-        ("android", "driver", {"headless": True}, "driver.headless", "nativeZ"),
+        ("android", "driver", {"headless": True}, "driver.headless", "nativeZ, residentRecovery"),
         (
             "web",
             "subject",

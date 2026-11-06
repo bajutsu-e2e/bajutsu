@@ -166,6 +166,14 @@ The driver's log is bounded, so a pathological step (a `maxScrolls` in the hundr
 earliest records, and a damaged record can be lost the same way when a report loads a manifest back —
 `dropped_actuations` counts either kind rather than letting the list read as complete.
 
+The Android backend also records what happened to its read channel, because a run there can pass on
+a different read path from the one it started on. Nothing on the verdict path reads these fields. A
+step's `warnings` name a recovery, a loss, or a return during that step. A scenario's
+`channel_degraded` says why reads were on the `uiautomator dump` path when the scenario ended, and it
+stays empty while the channel is healthy. A scenario's `channel_notes` hold what happened after the
+last step. A run recorded before `schemaVersion` 18 carries neither scenario field, which reads as
+healthy.
+
 **Default modifiers**: the always-on instant baseline (below) is `before` — captured before the step
 acts, not after. A `capturePolicy` rule or inline `capture:` still defaults an unmodified instant
 kind to `after` when it fires; interval kinds (`video`/`deviceLog`) default to `around` (start

@@ -10,8 +10,10 @@ import android.util.Xml
 import android.view.InputDevice
 import android.view.MotionEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.uiautomator.Configurator
 import androidx.test.uiautomator.UiDevice
 import java.io.BufferedReader
 import java.io.ByteArrayOutputStream
@@ -223,6 +225,72 @@ class ResidentServerTest {
     private fun sinceOf(target: String): Double? = paramOf(target, "since")?.toDoubleOrNull()
 
     /**
+     * How long this request may wait, as the host asked. The host names it because the host's own
+     * timeout is what it has to fit inside (`adb_resident/budgets.py`); a target without the parameter
+     * gets the default, and a malformed or negative value cannot unbound the wait.
+     */
+    private fun budgetOf(target: String): Long =
+        paramOf(target, "budgetMs")?.toLongOrNull()?.coerceIn(0L, DEFAULT_WAIT_BUDGET_MS)
+            ?: DEFAULT_WAIT_BUDGET_MS
+
+    /**
+     * One request's allowance for waiting on the device, and the record of where it went.
+     *
+     * `UiDevice.waitForIdle()` waits up to 10 s by default, and on a screen that keeps publishing
+     * accessibility events it waits all of it. `dumpWindowHierarchy` runs the same wait twice inside
+     * itself, where no argument can reach it, so the bound goes through [Configurator]: the one
+     * setting both read. Measured on a 10 Hz stopwatch screen on an API 34 emulator before this bound
+     * existed: 120.9 s for one `GET /source`, twelve 10 s waits, against the host's 5 s timeout. Only
+     * the wait is cut short, never replaced by a sleep: a screen that goes idle still releases it at
+     * once.
+     *
+     * Safe as a process-wide setting because the accept loop serves one request at a time.
+     */
+    private class WaitBudget(
+        private val label: String,
+        private val device: UiDevice,
+        private val budgetMs: Long,
+    ) {
+        private val startedAt = SystemClock.uptimeMillis()
+        private val deadline = startedAt + budgetMs
+        private var lapStart = startedAt
+        private val laps = StringBuilder()
+
+        private fun remaining(): Long = (deadline - SystemClock.uptimeMillis()).coerceAtLeast(0L)
+
+        fun spent(): Boolean = remaining() == 0L
+
+        /** One bounded idle wait. A cap per wait keeps the first from spending the whole budget. */
+        fun awaitIdle() {
+            Configurator.getInstance().waitForIdleTimeout = minOf(IDLE_WAIT_MS, remaining())
+            device.waitForIdle()
+            lap("idle")
+        }
+
+        /** Bound the waits inside the next dump, sharing what is left between them. */
+        fun capDumpWaits() {
+            Configurator.getInstance().waitForIdleTimeout =
+                minOf(IDLE_WAIT_MS, remaining() / WAITS_PER_DUMP)
+        }
+
+        fun lap(stage: String) {
+            val now = SystemClock.uptimeMillis()
+            laps.append(stage).append('=').append(now - lapStart).append("ms ")
+            lapStart = now
+        }
+
+        /**
+         * Say where this request's time went. Logged before the reply goes out, so a request the host
+         * has already given up on still leaves its record, loudest when it used the whole budget.
+         */
+        fun report() {
+            val total = SystemClock.uptimeMillis() - startedAt
+            val line = "$label waits: ${laps}total=${total}ms budget=${budgetMs}ms"
+            if (total >= budgetMs) Log.w(TAG, line) else Log.d(TAG, line)
+        }
+    }
+
+    /**
      * Resolve a target by its accessibility fields against a *fresh* dump and inject the gesture here,
      * in the warm session, rather than answering a coordinate the host will inject a round trip later.
      *
@@ -264,12 +332,15 @@ class ResidentServerTest {
             paramOf(target, it.first)
                 ?: return respond(out, BAD_REQUEST, TEXT, "no ${it.first}\n".bytes())
         }
-        device.waitForIdle()
+        val budget = WaitBudget("act", device, budgetOf(target))
+        budget.awaitIdle()
         sinceOf(target)?.let {
             readMark.awaitPostdate(it, POSTDATE_BUDGET_MS)
-            device.waitForIdle()
+            budget.lap("postdate")
+            budget.awaitIdle()
         }
-        val matches = settledActBounds(device, want)
+        val matches = settledActBounds(device, want, budget)
+        budget.report()
         if (matches.size != count || index !in matches.indices) {
             // Loudly stale, never a guess: the screen the host resolved on is not the screen here, so
             // acting on `matches[index]` would be acting on a different element. The host re-resolves.
@@ -334,16 +405,20 @@ class ResidentServerTest {
         // previous step's text would erase that text. The host's `since` mark predates that step, so
         // an event newer than it proves the app has started publishing the text; idle then lets the
         // publishing finish, and the `refresh` in `awaitInputFocus` keeps a cached node from answering.
-        device.waitForIdle()
+        val budget = WaitBudget("type", device, budgetOf(target))
+        budget.awaitIdle()
         sinceOf(target)?.let {
             readMark.awaitPostdate(it, POSTDATE_BUDGET_MS)
-            device.waitForIdle()
+            budget.lap("postdate")
+            budget.awaitIdle()
         }
+        budget.report()
         val field = awaitInputFocus()
             ?: return respond(out, STALE_STATUS, TEXT, "no field holds input focus\n".bytes())
         val refusal = when {
             field.isPassword -> "the focused field is a password field\n"
-            !field.isEditable -> "the focused node (${field.className}) is not editable\n"
+            !field.isEditable ->
+                "the focused node (${field.className} in ${field.packageName}) is not editable\n"
             AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_TEXT !in field.actionList ->
                 "the focused field does not accept ACTION_SET_TEXT\n"
             else -> null
@@ -385,9 +460,35 @@ class ResidentServerTest {
         while (true) {
             val node = automation.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
             node?.refresh()
-            if (node?.isEditable == true || SystemClock.uptimeMillis() >= deadline) return node
+            if (node?.isEditable == true) return node
+            focusInTopApplicationWindow(automation)?.let { return it }
+            if (SystemClock.uptimeMillis() >= deadline) {
+                val windows = automation.windows.joinToString {
+                    "${it.root?.packageName}(type=${it.type} active=${it.isActive} focused=${it.isFocused})"
+                }
+                Log.w(TAG, "no editable node held input focus; windows, front to back: $windows")
+                return node
+            }
             SystemClock.sleep(FOCUS_POLL_MS)
         }
+    }
+
+    /**
+     * The editable node holding input focus in the frontmost application window.
+     *
+     * `UiAutomation.findFocus` searches the *active* window, and while the soft keyboard comes up that
+     * can be the keyboard's own: CI saw a `FrameLayout` in `com.google.android.inputmethod.latin`
+     * answer for seconds after the keyboard had opened on the field. Asking the frontmost application
+     * window skips the keyboard, and a dialog is an application window too, so a field left focused
+     * beneath one is never typed into.
+     */
+    private fun focusInTopApplicationWindow(automation: UiAutomation): AccessibilityNodeInfo? {
+        val window = automation.windows.firstOrNull {
+            it.type == AccessibilityWindowInfo.TYPE_APPLICATION
+        } ?: return null
+        val node = window.root?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return null
+        node.refresh()
+        return node.takeIf { it.isEditable }
     }
 
     private fun setCaret(field: AccessibilityNodeInfo, caret: Int): Boolean =
@@ -429,7 +530,9 @@ class ResidentServerTest {
         // Snapshot before the settle, for the reason [respondSource] states at length: the mark must
         // never outrun the body it is stamped on, or a stale tree would certify as caught up.
         val mark = readMark.current()
-        val body = settledDump(device)
+        val budget = WaitBudget("act tree", device, ACT_TREE_BUDGET_MS)
+        val body = settledDump(device, budget)
+        budget.report()
         respond(
             out,
             "200 OK",
@@ -574,7 +677,8 @@ class ResidentServerTest {
         // dumpWindowHierarchy traverses every window, so this XML also carries the SystemUI status
         // bar (clock, wifi, battery, notification icons — 29 nodes) that the platform `uiautomator
         // dump` omits by scoping to the active window. `parse_hierarchy` parses the format unchanged.
-        device.waitForIdle()
+        val budget = WaitBudget("source", device, budgetOf(target))
+        budget.awaitIdle()
         if (since != null) {
             // The mark-anchored barrier (BE-0332 Unit 4): block until an accessibility event postdates
             // the mark the host took before its gesture, then drain any it triggered. A genuine
@@ -582,7 +686,8 @@ class ResidentServerTest {
             // a lag that never comes (never a fixed sleep — Bajutsu determinism). On expiry the latest
             // tree is dumped anyway, carrying its own (still-stale) mark for the host to judge.
             readMark.awaitPostdate(since, POSTDATE_BUDGET_MS)
-            device.waitForIdle()
+            budget.lap("postdate")
+            budget.awaitIdle()
         }
         // Snapshot the read mark *before* the settle: the invariant the host relies on is
         // `mark > actuation_mark` ⟹ body is post-gesture, and that holds only when the body is at
@@ -594,7 +699,8 @@ class ResidentServerTest {
         // `awaitPostdate` has already advanced `current()` past `since`, so this undercount never
         // drops the mark back below the actuation it must clear.
         val mark = readMark.current()
-        val body = settledDump(device)
+        val body = settledDump(device, budget)
+        budget.report()
         val headers = mutableMapOf(READ_MARK_HEADER to mark.toString())
         // Only when the host asked (BE-0407 unit 18). The walk covers every node on every read —
         // 20-100ms — and answers nothing at all for an app that opted no view into `nativeZ`, which
@@ -706,11 +812,21 @@ class ResidentServerTest {
      * that never settles (an animation) costs at most [SETTLE_DUMPS] reads and returns the last one,
      * exactly as the host's `AdbDriver._CATCHUP_DWELL_S` accepts a tear that outlasts its dwell.
      */
-    private fun <T> settled(device: UiDevice, label: String, read: () -> T, sameAs: (T, T) -> Boolean): T {
+    private fun <T> settled(budget: WaitBudget, label: String, read: () -> T, sameAs: (T, T) -> Boolean): T {
+        budget.capDumpWaits()
         var previous = read()
+        budget.lap("dump")
         repeat(SETTLE_DUMPS - 1) {
-            device.waitForIdle()
+            // The tree in hand is the honest answer once the budget is gone: the host's own condition
+            // wait reads again, and its timeout is what a late answer would otherwise lose to.
+            if (budget.spent()) {
+                Log.d(TAG, "$label stopped settling when its wait budget ran out")
+                return previous
+            }
+            budget.awaitIdle()
+            budget.capDumpWaits()
             val current = read()
+            budget.lap("dump")
             if (sameAs(current, previous)) return current
             previous = current
         }
@@ -722,8 +838,8 @@ class ResidentServerTest {
      * [respondSource], which answers an arbitrary host-side selector and so cannot narrow the
      * comparison the way [settledActBounds] does for `/act`.
      */
-    private fun settledDump(device: UiDevice): ByteArray =
-        settled(device, "hierarchy", { dumpHierarchy(device) }, ByteArray::contentEquals)
+    private fun settledDump(device: UiDevice, budget: WaitBudget): ByteArray =
+        settled(budget, "hierarchy", { dumpHierarchy(device) }, ByteArray::contentEquals)
 
     /**
      * Like [settledDump], but scoped to the identity `/act` has already resolved: settles once two
@@ -740,10 +856,10 @@ class ResidentServerTest {
      * check skips the [XmlPullParser] walk on a screen that has genuinely gone idle, rather than paying
      * it on every settle attempt.
      */
-    private fun settledActBounds(device: UiDevice, want: List<String>): List<Rect> {
+    private fun settledActBounds(device: UiDevice, want: List<String>, budget: WaitBudget): List<Rect> {
         var seenXml: ByteArray? = null
         var seenBounds = emptyList<Rect>()
-        return settled(device, "act bounds", {
+        return settled(budget, "act bounds", {
             val xml = dumpHierarchy(device)
             if (seenXml?.contentEquals(xml) != true) {
                 seenBounds = matchingBounds(xml, want)
@@ -870,6 +986,22 @@ class ResidentServerTest {
         // (`AdbDriver._READ_LAG_S`, 4 s) so the host re-poll stays the outer bound. The read-lag
         // investigation saw the post-gesture update land within ~2 s (BE-0332 Motivation).
         const val POSTDATE_BUDGET_MS = 2_000L
+
+        // What one request may wait when the host names no budget. `adb_resident/budgets.py` is where
+        // these numbers are chosen and why they fit the host's timeouts, and a host test holds this
+        // file to it (`tests/test_adb_resident_budgets.py`).
+        const val DEFAULT_WAIT_BUDGET_MS = 3_500L
+
+        // The most any one idle wait may take. A screen that is not idle after a second will not be
+        // idle after ten for this request's purposes; the budget is better left for the mark.
+        const val IDLE_WAIT_MS = 1_000L
+
+        // `dumpWindowHierarchy` waits for idle this many times inside itself (measured: see
+        // [WaitBudget]), so a dump's share of what is left is divided by it.
+        const val WAITS_PER_DUMP = 2L
+
+        // What the tree a confirmed gesture carries back may wait, spent after the gesture landed.
+        const val ACT_TREE_BUDGET_MS = 1_500L
 
         // Max reads per `settled` call — shared by `settledDump` (whole hierarchy) and `settledActBounds`
         // (one element's bounds) — the tearing barrier layered under the mark gate (BE-0332 Unit 4). A
