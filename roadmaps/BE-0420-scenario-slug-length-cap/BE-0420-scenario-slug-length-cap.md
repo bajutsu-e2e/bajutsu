@@ -16,135 +16,144 @@
 
 ## Introduction
 
-Bajutsu writes each scenario's evidence under `runs/<runId>/<sid>/`. `_evidence_sid()`
-([`bajutsu/common/runner/pipeline.py:82`](../../bajutsu/common/runner/pipeline.py)) builds `sid`
-from a two-digit run-order index plus one of two slugs. A scenario loaded from a file gets
-`sanitize_source_stem(s.source_stem)`, the file's own stem with unsafe characters replaced
-([BE-0417](../BE-0417-scenario-result-folder-naming/BE-0417-scenario-result-folder-naming.md),
-**Implemented**). A scenario with no known source file falls back to `scenario_slug(s.name)`.
-Neither function caps its output length. A long source-file stem, or a long scenario `name`,
-produces an arbitrarily long `sid`, and the evidence directory fails to write.
+Bajutsu writes the evidence of each scenario under `runs/<runId>/<sid>/`. `_evidence_sid()`
+([`bajutsu/common/runner/pipeline.py:82`](../../bajutsu/common/runner/pipeline.py)) builds `sid` from
+a two-digit run-order index plus one of two slugs.
 
-This item adds a fixed length cap to both functions, counted in characters rather than bytes.
-`sanitize_source_stem()` preserves Unicode letters. A byte-oriented cap cuts a fullwidth or
-Japanese name shorter than an ASCII name of the same length. Counting characters instead keeps
-the two the same length. `scenario_slug()` reduces its input to ASCII first, where the two counts
-already coincide. Either way, the function now truncates an oversized slug
-instead of growing it without bound. `sid` then stays under a safe length, regardless of what
-produced it.
+- A scenario loaded from a file gets `sanitize_source_stem(s.source_stem)`. That is the stem of the
+  file itself, with unsafe characters replaced
+  ([BE-0417](../BE-0417-scenario-result-folder-naming/BE-0417-scenario-result-folder-naming.md),
+  **Implemented**).
+- A scenario with no known source file falls back to `scenario_slug(s.name)`.
+
+Neither function caps the length of its output. A long source-file stem or a long scenario `name`
+produces an arbitrarily long `sid`. The evidence directory then fails to write.
+
+This item adds a fixed length cap to both functions. The cap counts characters, not bytes.
+
+`sanitize_source_stem()` preserves Unicode letters. A byte-oriented cap would cut a fullwidth or
+Japanese name shorter than an ASCII name of the same length. Counting characters keeps the two the
+same length. `scenario_slug()` reduces its input to ASCII first, where the two counts already
+coincide.
+
+Either way, the function now truncates an oversized slug instead of growing it without bound. `sid`
+then stays under a safe length, whatever produced it.
 
 ### Not doing
 
-- **The top-level run directory (`runs/<runId>/`, a UTC timestamp) is unchanged.** This item
-  touches the two slugs nested under it, alone.
-- **`Scenario.name` and `Scenario.source_stem` stay untruncated.** `name` also feeds
-  `manifest.json`'s `scenario` field, `report.html`, and `declared_name()`'s row-suffix matching
-  for serve's run pickers
-  ([`bajutsu/common/scenario/expand.py:117`](../../bajutsu/common/scenario/expand.py)).
-  `source_stem` has one reader today, `_evidence_sid()` itself. This item still caps only the slug
-  it derives, not the field. A future second reader of `source_stem` then never receives a
-  silently shortened value.
-- **No new duplicate-suffix counter.** Every `sid` `_evidence_sid()` builds carries the
-  `{i:02d}-` index prefix, which keeps it unique within a run, truncated slug or not. Two
-  fallbacks build a bare slug with no such prefix, and can collide after truncation where they do
-  not today:
+- **The top-level run directory is unchanged.** `runs/<runId>/` is a timestamp in Coordinated
+  Universal Time (UTC). This item touches the two slugs nested under it, and nothing else.
+- **`Scenario.name` and `Scenario.source_stem` stay untruncated.**
+  - `name` also feeds the `scenario` field of `manifest.json` and `report.html`. It feeds the
+    row-suffix matching of `declared_name()` too. Serve uses that matching for its run pickers
+    ([`bajutsu/common/scenario/expand.py:117`](../../bajutsu/common/scenario/expand.py)).
+  - `source_stem` has one reader today, `_evidence_sid()` itself. This item still caps the slug it
+    derives, not the field. A future second reader of `source_stem` then never receives a silently
+    shortened value.
+- **No new duplicate-suffix counter.** Every `sid` that `_evidence_sid()` builds carries the
+  `{i:02d}-` index prefix. The prefix keeps `sid` unique within a run, truncated slug or not. Two fallbacks build a bare slug with no such prefix. They can collide after truncation
+  where they do not today:
   - `scenario_slug(scenario.name)`, when a direct `run_scenario` caller passes no `scenario_id`
     ([`bajutsu/common/orchestrator/loop/_functions.py:645`](../../bajutsu/common/orchestrator/loop/_functions.py))
-  - `scenario_slug(r.scenario)`, for a `sid`-less result in the report matrix
+  - `scenario_slug(r.scenario)`, for a result without a `sid` in the report matrix
     ([`bajutsu/common/report/manifest.py:127`](../../bajutsu/common/report/manifest.py))
 
-  Neither sits on the `run` CLI's own path: `pipeline.py:796` always passes `scenario_id=sid`, and
-  `pipeline.py:1253` builds `sid` through `_evidence_sid()` itself. This item leaves both call
-  sites unchanged — capping `scenario_slug()` still shortens what they produce.
-- **`record`'s own file-naming is unchanged.** An authored scenario with no explicit save name
-  falls back to the recording's natural-language goal
-  (`scenario_out_name()`, [`bajutsu/serve/helpers.py:454`](../../bajutsu/serve/helpers.py)). That
-  function has no length cap either. This item caps the evidence-directory slug a long file name
-  can produce, not the file name itself. A long `*.yaml` file name is legible on disk and blocks
-  nothing on its own. The evidence directory it produces competes with a real filesystem limit on
-  every run of that file.
+  Neither sits on the path of the `run` CLI itself. `pipeline.py:796` always passes
+  `scenario_id=sid`, and `pipeline.py:1253` builds `sid` through `_evidence_sid()` itself. This item
+  leaves both call sites unchanged. Capping `scenario_slug()` still shortens what they produce.
+- **The file naming of `record` is unchanged.** An authored scenario with no explicit save name falls
+  back to the natural-language goal of the recording. `scenario_out_name()` does that
+  ([`bajutsu/serve/helpers.py:454`](../../bajutsu/serve/helpers.py)). It has no length cap either.
+
+  This item caps the evidence-directory slug that a long file name can produce. It does not cap the
+  file name itself. A long `*.yaml` file name is legible on disk and blocks nothing on its own. The evidence
+  directory it produces competes with a real filesystem limit on every run of that file.
 
 ## Motivation
 
 [BE-0417](../BE-0417-scenario-result-folder-naming/BE-0417-scenario-result-folder-naming.md)
-already closes the failure this item was first reported against. Before it landed, every
-CSV-expanded row of a data-driven scenario
-([BE-0031](../BE-0031-data-driven-scenarios/BE-0031-data-driven-scenarios.md)) carried its own
-`key=value` parameter text in `name`. A long or many-columned row could then turn
-`scenario_slug(s.name)`'s output into an oversized `sid`. Both file loaders now stamp
-`source_stem` on every row after expansion:
+already closes the failure this item was first reported against. Before BE-0417 landed, every
+CSV-expanded row of a [data-driven scenario](../BE-0031-data-driven-scenarios/BE-0031-data-driven-scenarios.md)
+carried its own `key=value` parameter text in `name`. A long or many-columned row could then turn
+the output of `scenario_slug(s.name)` into an oversized `sid`.
+
+Both file loaders now stamp `source_stem` on every row after expansion:
 
 - [`bajutsu/run/cli.py:201`](../../bajutsu/run/cli.py)
 - [`bajutsu/common/scenario/load_expanded.py:91`](../../bajutsu/common/scenario/load_expanded.py)
 
-Every row of one file now shares that file's own short stem. `_evidence_sid()` no longer reaches
-`scenario_slug()` for a data-driven scenario at all.
+Every row of one file now shares the short stem of that file. For a data-driven scenario,
+`_evidence_sid()` no longer reaches `scenario_slug()` at all.
 
-The same class of failure still reaches two paths neither slug function caps. The first is a long
-source file. `record`'s own auto-naming falls back to the recording's natural-language goal when
-an operator gives no `--out` and no explicit name (see *Not doing*). A verbose goal — "log in with
-a saved card, confirm the checkout total matches the cart, and check the confirmation email
-arrives" — produces a `*.yaml` file exactly that long. Every later run of that file then tries to
-create an evidence directory of the same length.
+The same class of failure still reaches two paths that neither slug function caps.
 
-The second path is a scenario built directly, outside the file loaders. This covers the two
-bare-fallback call sites in *Not doing*. It also covers any caller of `run_scenario()` that
-constructs a `Scenario` itself, rather than loading one from a file — for example
-[`demos/showcase/record/generate_from_nl.py`](../../demos/showcase/record/generate_from_nl.py).
-Every one of these still falls back to `scenario_slug(s.name)`, uncapped.
+**A long source file.** Auto-naming in `record` falls back to the natural-language goal of the
+recording. That happens when an operator gives no `--out` and no explicit name (see *Not doing*).
 
-Capping both functions closes both paths at their own single definition — the same choke point
-`_evidence_sid()` and the two bare fallbacks already share. Once this item lands, a scenario with
-a long or verbose source file — or, lacking one, a long or verbose `name` — still runs to
-completion and writes its evidence directory.
+A verbose goal produces a `*.yaml` file exactly that long. Take the goal "log in with a saved card,
+confirm the checkout total matches the cart, and check the confirmation email arrives". Every later
+run of the resulting file tries to create an evidence directory of the same length.
+
+**A scenario built directly, outside the file loaders.** This path covers the two bare-fallback call
+sites in *Not doing*. It also covers any caller of `run_scenario()` that constructs a `Scenario`
+itself, rather than loading one from a file.
+[`demos/showcase/record/generate_from_nl.py`](../../demos/showcase/record/generate_from_nl.py) is an
+example. Each of these still falls back to an uncapped `scenario_slug(s.name)`.
+
+Capping both functions closes both paths at their single definition. `_evidence_sid()` and the two
+bare fallbacks already share that choke point.
+
+Once this item lands, a scenario with a long or verbose source file still runs to completion.
+It writes its evidence directory. So does a scenario with no source file and a long or verbose `name`.
 
 ## Detailed design
 
 1. **A shared character-count truncation helper.** Add `_MAX_SLUG_CHARS = 60` and a private
    `_cap_chars(slug: str) -> str` beside `scenario_slug()` and `sanitize_source_stem()` in
    [`bajutsu/common/orchestrator/types/_functions.py`](../../bajutsu/common/orchestrator/types/_functions.py).
-   `_cap_chars` slices `slug` to `_MAX_SLUG_CHARS` characters with ordinary Python string slicing. Python
-   string indexing is always at a codepoint boundary, so this needs no encode/decode step and
-   cannot split a character. One helper, one budget, serves both functions: today's
-   `.strip("-").lower()` ordering in `scenario_slug()` is unaffected.
+   `_cap_chars` slices `slug` to `_MAX_SLUG_CHARS` characters with ordinary Python string slicing.
+   Python string indexing always falls on a codepoint boundary. The helper needs no
+   encode/decode step and cannot split a character. One helper and one budget serve both functions.
+   The existing `.strip("-").lower()` ordering in `scenario_slug()` is unaffected.
 2. **`scenario_slug()` calls it last.** The existing regex first collapses each run of
    non-alphanumeric characters to `-`, strips the result, and lowercases it. Pass that string
-   through `_cap_chars` next, then `.rstrip("-")` to drop a hyphen the cut may leave dangling. Fall
-   back to `"scenario"` when that leaves nothing — the function already returns that same fallback
-   for an all-symbol name.
+   through `_cap_chars` next, then through `.rstrip("-")` to drop a hyphen that the cut may leave
+   dangling. Fall back to `"scenario"` when nothing is left. The function already returns that same
+   fallback for an all-symbol name.
 3. **`sanitize_source_stem()` calls it last.** The existing `re.sub()` call replaces unsafe
    characters. It matches `r"[^\w.-]"` and replaces each match with `"_"`. Pass the result through
-   `_cap_chars` next. No further fallback is needed. Slicing a non-empty string to a positive
-   length always keeps its first character. `re.sub` cannot turn a non-empty `stem` into an empty
-   string either.
-4. **No call site changes.** `_evidence_sid()`'s two branches, and the two bare-fallback call
-   sites in *Not doing*, all call `scenario_slug()` or `sanitize_source_stem()` directly. The cap
+   `_cap_chars` next. No further fallback is needed, for two reasons. Slicing a non-empty string to a
+   positive length always keeps its first character. And `re.sub` cannot turn a non-empty `stem` into
+   an empty string.
+4. **No call site changes.** The two branches of `_evidence_sid()` and the two bare-fallback call
+   sites in *Not doing* all call `scenario_slug()` or `sanitize_source_stem()` directly. The cap
    reaches every one of them without touching a single call site.
-5. **Docs.** [`docs/reporting.md`](../../docs/reporting.md) /
+5. **Docs.** [`docs/reporting.md`](../../docs/reporting.md) and
    [`docs/ja/reporting.md`](../../docs/ja/reporting.md) gain a short paragraph beside the existing
-   `runId` / `stepId` line, naming `sid`'s two possible sources and the shared cap.
+   `runId` / `stepId` line. The paragraph names the two possible sources of `sid` and the shared cap.
 6. **Tests.**
-   - A unit test for `scenario_slug()`: an overlong name comes back capped, with no trailing
-     hyphen.
+   - A unit test for `scenario_slug()`: an overlong name comes back capped, with no trailing hyphen.
    - A unit test for `sanitize_source_stem()`: an ASCII stem over 60 characters comes back capped.
    - A unit test for `sanitize_source_stem()`: `決済フロー` repeated comes back capped at 60
-     characters. Its UTF-8 encoding runs well past 60 bytes. The cap counts characters, not bytes.
-   - A unit test reproducing the `record`-with-no-`--out` case: a long natural-language goal, run
-     through `scenario_out_name()` then `sanitize_source_stem()`, produces a `sid` within the cap.
-   - A test that colliding truncated slugs still land in distinct directories, via the existing
+     characters. Its UTF-8 encoding runs well past 60 bytes, because the cap counts characters, not
+     bytes.
+   - A unit test that reproduces the `record`-with-no-`--out` case. A long natural-language goal, run
+     through `scenario_out_name()` and then `sanitize_source_stem()`, produces a `sid` within the
+     cap.
+   - A test that colliding truncated slugs still land in distinct directories, through the existing
      `{i:02d}-` index prefix.
 
 ## Alternatives considered
 
 | Alternative | Why we did not take it |
 |---|---|
-| Refuse a scenario whose slug would exceed the cap, mirroring [BE-0404](../BE-0404-collapse-project-layer/BE-0404-collapse-project-layer.md)'s "refuse, don't truncate" rule for run-history labels (`MAX_LABEL_LENGTH`, `bajutsu/common/report/manifest.py:13`) | A run-history label is text an operator typed and expects preserved exactly. Refusing it hands control back to the operator. `sid`'s slug is a derived filesystem id nobody authors directly — an operator recording a long natural-language goal is not choosing a file name, they are describing a flow. Refusing to run over that description blocks the whole scenario, where a legible, truncated slug does not. |
-| Hash the slug to a fixed-length digest instead of truncating it | A digest carries none of the original name or file stem, defeating the reason both functions derive the directory name from the scenario in the first place: letting an operator recognize a result by eye. Truncation keeps the recognizable lead. |
-| Truncate `Scenario.name` or `Scenario.source_stem` themselves, before the slug functions run | `name` also feeds `manifest.json`'s `scenario` field, `report.html`, and `declared_name()`'s row-suffix matching. `source_stem` has one reader today, but truncating the field itself would silently hand a shortened value to any future second reader. `sid` is the only consumer that is purely a filesystem identifier, so it is the only thing this item caps. |
-| Make the cap configurable per target | The cap protects a filesystem write, not app behavior. The app-agnostic boundary (prime directive 3) puts per-app differences in config, not a filesystem constant that holds the same regardless of the target under test. |
-| Keep the row-distinguishing suffix instead of the scenario name's own lead — truncate from the front, or elide the middle (a head fragment plus a tail fragment) | This weighs a suffix that no longer reaches `scenario_slug()` for the common data-driven case (*Motivation*): every such row now shares one source-file stem, told apart only by the `{i:02d}-` index already, cap or no cap. For the two paths this item does address — a long file name, a long in-memory `name` — the lead is what an operator recognizes on sight; a head-and-tail elision would preserve slightly more of either at the cost of a second slice, a wider test matrix, and a slug that no longer reads as one continuous name at a glance. |
-| Cap `scenario_out_name()` (`record`'s own file-naming) instead of, or in addition to, the two slug functions | Fixes only the case a `record` session with no `--out` produces; a hand-authored file with an equally long name reaches the same failure through `sanitize_source_stem()` untouched. Capping at the two slug functions protects every path that reaches `sid` — recorded, hand-authored, or built in memory — from one definition, regardless of how the source file (if any) got its name. |
-| Cap `sanitize_source_stem()` by UTF-8 byte count instead of character count | The first shipped revision did this. `scenario_slug()` reduces to ASCII first, where a byte and a character are the same thing. `sanitize_source_stem()` preserves Unicode letters instead, where the two counts differ. This codebase treats fullwidth and Japanese scenario names as ordinary. A byte-oriented cap cuts such a name to about a third the characters of an ASCII name that length. That cut lands at an arbitrary point in a name the author chose to describe a flow. Counting characters instead treats every scenario name the same, regardless of script. The cost is a wider `sid` worst case: 60 of the longest UTF-8 codepoints run to 240 bytes, not 60. That is still far short of typical filesystem name-length limits. |
+| Refuse a scenario whose slug would exceed the cap, mirroring the "refuse, don't truncate" rule of [BE-0404](../BE-0404-collapse-project-layer/BE-0404-collapse-project-layer.md) for run-history labels (`MAX_LABEL_LENGTH`, `bajutsu/common/report/manifest.py:13`) | A run-history label is text that an operator typed and expects preserved exactly. Refusing it hands control back to the operator. The slug of `sid` is a derived filesystem id that nobody authors directly. An operator who records a long natural-language goal is not choosing a file name. They are describing a flow. Refusing to run over that description blocks the whole scenario, where a legible, truncated slug does not. |
+| Hash the slug to a fixed-length digest instead of truncating it | A digest carries nothing of the original name or file stem. That defeats the reason both functions derive the directory name from the scenario in the first place: letting an operator recognize a result by eye. Truncation keeps the recognizable lead. |
+| Truncate `Scenario.name` or `Scenario.source_stem` themselves, before the slug functions run | `name` also feeds the `scenario` field of `manifest.json`, `report.html`, and the row-suffix matching of `declared_name()`. `source_stem` has one reader today, but truncating the field itself would silently hand a shortened value to any future second reader. `sid` is the only consumer that is purely a filesystem identifier, so it is the only thing this item caps. |
+| Make the cap configurable per target | The cap protects a filesystem write, not app behavior. The app-agnostic boundary (prime directive 3) puts per-app differences in config. It does not put there a filesystem constant that holds the same regardless of the target under test. |
+| Keep the row-distinguishing suffix instead of the lead of the scenario name: truncate from the front, or elide the middle (a head fragment plus a tail fragment) | This option weighs a suffix that no longer reaches `scenario_slug()` for the common data-driven case (*Motivation*). Every such row now shares one source-file stem, told apart by the `{i:02d}-` index alone, cap or no cap. For the two paths this item does address, a long file name and a long in-memory `name`, the lead is what an operator recognizes on sight. A head-and-tail elision would preserve slightly more of either. It would cost a second slice, a wider test matrix, and a slug that no longer reads as one continuous name at a glance. |
+| Cap `scenario_out_name()` (the file naming of `record`) instead of, or in addition to, the two slug functions | It fixes the case that a `record` session with no `--out` produces, and nothing more. A hand-authored file with an equally long name reaches the same failure through `sanitize_source_stem()`, untouched. Capping at the two slug functions protects every path that reaches `sid`, from one definition: recorded, hand-authored, or built in memory. It does so regardless of how the source file (if any) got its name. |
+| Cap `sanitize_source_stem()` by UTF-8 byte count instead of character count | The first shipped revision did this. `scenario_slug()` reduces to ASCII first, where a byte and a character are the same thing. `sanitize_source_stem()` preserves Unicode letters instead, where the two counts differ. This codebase treats fullwidth and Japanese scenario names as ordinary. A byte-oriented cap cuts such a name to about a third of the characters of an ASCII name that length. The cut lands at an arbitrary point in a name that the author chose to describe a flow. Counting characters treats every scenario name the same, regardless of script. The cost is a wider `sid` worst case: 60 of the longest UTF-8 codepoints run to 240 bytes, not 60. That is still far short of typical filesystem name-length limits. |
 
 ## Progress
 

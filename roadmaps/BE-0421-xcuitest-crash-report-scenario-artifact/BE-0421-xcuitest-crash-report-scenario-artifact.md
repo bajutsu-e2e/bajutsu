@@ -16,55 +16,68 @@
 
 ## Introduction
 
-The resident XCUITest runner sometimes dies mid-scenario, and the run pipeline's crash-recovery
-retries sometimes exhaust without a recovery. When that happens, `bajutsu run` builds the
-scenario's failure message from the crash error alone. It names the fact that the runner died, but
-it carries no runner-log path, no log content, and no mention of the report macOS itself writes for
-a process that faults. Two pieces of direct evidence do exist on disk at that moment: the runner's
-own captured output, and — when the host process itself faulted — the crash report macOS wrote for
-it. Neither reaches the scenario's own run directory (`runs/<run_id>/<sid>/`), where every other
-piece of that scenario's evidence already lives. This item copies both into that directory. A
-contributor debugging a red scenario then finds the runner's own failure evidence next to the
-screenshots and element trees the same run already produced — no digging through warning-level
-logs for a path, no re-running the scenario with extra diagnostics enabled just to see what the
-runner process actually did.
+The resident XCUITest runner sometimes dies mid-scenario. The crash-recovery retries of the run
+pipeline sometimes exhaust without a recovery. When that happens, `bajutsu run` builds the failure
+message of the scenario from the crash error alone. The message names the fact that the runner died.
+It carries no runner-log path and no log content. It does not mention the report that macOS itself
+writes for a process that faults.
+
+Two pieces of direct evidence do exist on disk at that moment:
+
+- the captured output of the runner itself
+- the crash report that macOS wrote, when the host process itself faulted
+
+Neither reaches the run directory of the scenario (`runs/<run_id>/<sid>/`), where every other piece
+of that scenario's evidence already lives.
+
+This item copies both into that directory. A contributor debugging a red scenario then finds the
+failure evidence of the runner next to the screenshots and element trees that the same run already
+produced. The contributor no longer digs through warning-level logs for a path. The contributor no
+longer re-runs the scenario with extra diagnostics enabled just to see what the runner process did.
 
 ## Motivation
 
 [BE-0361](../BE-0361-ios-ci-simulator-diagnostics/BE-0361-ios-ci-simulator-diagnostics.md) already
 built a layered diagnostics collection for the iOS lanes of continuous integration (CI). Its first
-layer — a result bundle per runner spawn, a bounded stall-time probe — is opt-in, behind an
-environment variable a CI workflow sets. Its other two layers are not: a composite GitHub Actions
-step already runs on every iOS job, unconditionally, sweeping the macOS host's own crash-report and
-log stores (`.github/actions/collect-ios-diagnostics/action.yml`). So CI already gathers a runner
-crash report today, in the common case.
+layer is a result bundle per runner spawn plus a bounded stall-time probe. That layer is opt-in,
+behind an environment variable that a CI workflow sets.
 
-That collection still leaves two gaps this item closes. First, it is job-wide, not scenario-wide:
-it tars up everything `~/Library/Logs/DiagnosticReports` held for the whole job, so a job that ran a
-dozen scenarios gives a contributor no way to tell which crash report belongs to which failing
-scenario, if more than one crashed. Second, it is CI-only shell code with no counterpart in
-`bajutsu` itself, so a developer reproducing a crash with a local `bajutsu run` gets nothing at
-all — not even the pointer BE-0319's own runner-log capture already writes to a log file, since
-that pointer never reaches the scenario's own failure message or report; it reaches only a
-warning-level log line
-([`_runner_log_hint`](../../bajutsu/common/platform_lifecycle/environments/xcuitest/xcuitest_environment.py)),
-which a failed run may never have surfaced.
+The other two layers are not opt-in. A composite GitHub Actions step runs on every iOS job,
+unconditionally. It sweeps the crash-report and log stores of the macOS host itself
+(`.github/actions/collect-ios-diagnostics/action.yml`). So CI already gathers a runner crash report
+today, in the common case.
 
-The crash report itself exists because XCUITest's host process (`xcodebuild test-without-building`)
-is an ordinary macOS process. When it terminates on a fault rather than an orderly exit — as
-opposed to exiting with a test-failure code, the far more common shape a stalled screenshot service
-produces — the operating system writes a `.ips` crash report under
-`~/Library/Logs/DiagnosticReports`, naming the terminating signal and, for system frames, a
-symbolicated stack trace. It is the one piece of direct evidence a genuine process fault produces,
-narrower and rarer than the ordinary "the channel stopped answering" crash this item's own scope
-otherwise covers.
+That collection still leaves two gaps, which this item closes.
 
-This item's observable outcome: a scenario that fails on an exhausted crash retry gains a
-`crash-diagnostics/` subdirectory under its own `runs/<run_id>/<sid>/`, holding a bounded tail of
-the runner's captured output and, whenever macOS wrote one for the `xcodebuild` process, its `.ips`
-crash report. The scenario's own failure string also names that subdirectory, so a contributor reading
-the failure never has to already know it exists. Today neither the subdirectory nor that mention
-exists at all.
+1. **It is job-wide, not scenario-wide.** It tars up everything that `~/Library/Logs/DiagnosticReports`
+   held for the whole job. A job that ran a dozen scenarios gives a contributor no way to tell which
+   crash report belongs to which failing scenario, if more than one crashed.
+2. **It is CI-only shell code with no counterpart in `bajutsu` itself.** A developer who reproduces a
+   crash with a local `bajutsu run` gets nothing at all. The developer does not even get the pointer
+   that the runner-log capture of BE-0319 already writes to a log file. That pointer never reaches
+   the failure message or the report of the scenario. It reaches only a warning-level log line
+   ([`_runner_log_hint`](../../bajutsu/common/platform_lifecycle/environments/xcuitest/xcuitest_environment.py)),
+   which a failed run may never have surfaced.
+
+The crash report itself exists because the host process of XCUITest
+(`xcodebuild test-without-building`) is an ordinary macOS process. Sometimes it terminates on a fault
+rather than an orderly exit. The operating system then writes a `.ips` crash report under
+`~/Library/Logs/DiagnosticReports`. The report names the terminating signal. For system frames, it
+carries a symbolicated stack trace.
+
+A fault differs from the far more common shape that a stalled screenshot service produces, where the
+process exits with a test-failure code. The `.ips` report is the one piece of direct evidence that a
+genuine process fault produces. It is narrower and rarer than the ordinary "the channel stopped
+answering" crash that the scope of this item otherwise covers.
+
+This item has one observable outcome. A scenario that fails on an exhausted crash retry gains a
+`crash-diagnostics/` subdirectory under its own `runs/<run_id>/<sid>/`. The subdirectory holds a
+bounded tail of the captured output of the runner. Whenever macOS wrote a crash report for the
+`xcodebuild` process, the subdirectory holds that `.ips` file too.
+
+The failure string of the scenario also names that subdirectory, so a contributor who reads the
+failure never has to already know it exists. Today neither the subdirectory nor that mention exists
+at all.
 
 ## Detailed design
 
@@ -72,17 +85,20 @@ exists at all.
 
 `RunEnvironment`
 ([`bajutsu/common/platform_lifecycle/protocols/run_environment.py`](../../bajutsu/common/platform_lifecycle/protocols/run_environment.py))
-is a structural `Protocol`. No concrete environment subclasses it, so a method's body there binds
-to nobody — every "no-op by default" method on it, `request_device_replacement` and
-`replaced_device` (BE-0354) included, is written out separately in each concrete class:
-`_DeviceEnvironment` ([`ios.py`](../../bajutsu/common/platform_lifecycle/environments/ios.py),
-shared by the Simulator XCUITest backend and the fake test backend), `WebEnvironment`
-([`web.py`](../../bajutsu/common/platform_lifecycle/environments/web.py)), and
-`AndroidEnvironment`
-([`android_environment.py`](../../bajutsu/common/platform_lifecycle/environments/android/android_environment.py)).
-This item adds `take_crash_snapshot()` to the protocol's declared shape and to all three of those
-classes, each handing back a thunk that answers with nothing — a real, callable no-op rather than a
-null, the shape `bridge_collector` already uses on this same surface:
+is a structural `Protocol`. No concrete environment subclasses it, so a method body there binds to
+nobody. Every "no-op by default" method on the protocol is written out separately in each concrete
+class. That includes `request_device_replacement` and `replaced_device` (BE-0354). The concrete
+classes are:
+
+- `_DeviceEnvironment` ([`ios.py`](../../bajutsu/common/platform_lifecycle/environments/ios.py)),
+  which the Simulator XCUITest backend and the fake test backend share
+- `WebEnvironment` ([`web.py`](../../bajutsu/common/platform_lifecycle/environments/web.py))
+- `AndroidEnvironment`
+  ([`android_environment.py`](../../bajutsu/common/platform_lifecycle/environments/android/android_environment.py))
+
+This item adds `take_crash_snapshot()` to the declared shape of the protocol and to all three
+classes. Each class hands back a thunk that answers with nothing. That is a real, callable no-op
+rather than a null, the shape that `bridge_collector` already uses on this same surface:
 
 ```python
 def take_crash_snapshot(self) -> Callable[[], list[tuple[str, bytes]]]:
@@ -90,127 +106,162 @@ def take_crash_snapshot(self) -> Callable[[], list[tuple[str, bytes]]]:
     return lambda: []
 ```
 
-It hands back a thunk rather than the bytes because the two halves resolve at different times, and it
-*takes* rather than reads because the environment is shared across scenarios while the evidence is one
-scenario's — both argued below. `XcuitestEnvironment` overrides it, the same way it already overrides
-`_DeviceEnvironment`'s `request_device_replacement`.
+The method hands back a thunk rather than the bytes, because the two halves resolve at different
+times. It *takes* rather than reads, because the environment is shared across scenarios while the
+evidence belongs to one scenario. Both points are argued below. `XcuitestEnvironment` overrides the
+method, the same way it already overrides the `request_device_replacement` of `_DeviceEnvironment`.
 
 ### Snapshotting at crash detection, not reading live state later
 
-The pipeline's crash-recovery retry loop, `_run_one_impl`
-([`bajutsu/common/runner/pipeline.py`](../../bajutsu/common/runner/pipeline.py)), releases the
-crashed lease back to the pool — `free.put(udid)` — inside `_run_on_lease`'s own `finally`,
-*before* the loop decides whether to retry. A `crash_artifacts()` that read `self._runner_log` /
-`self._runner_proc` lazily, only when the loop finally gives up, would race a concurrent worker on
-a multi-device run: that worker's own next lease can reuse this exact environment instance (`pool.py`
-keys its warm cache by udid) and respawn a fresh runner on it before this scenario's retry loop ever
-reads back the old crash's evidence — clearing `self._runner_log` and `self._runner_proc`
-(`_discard_runner`, `xcuitest_environment.py:1142`) and, for a healthy respawn, leaving nothing
-crash-related behind at all.
+The crash-recovery retry loop of the pipeline is `_run_one_impl`
+([`bajutsu/common/runner/pipeline.py`](../../bajutsu/common/runner/pipeline.py)). It releases the
+crashed lease back to the pool with `free.put(udid)`. The release happens inside the `finally` block of
+`_run_on_lease`, *before* the loop decides whether to retry.
 
-So `XcuitestEnvironment` captures eagerly instead, at the last moment a crashed runner is still this
-scenario's. That moment is **`end_lease`**, not the discard: on a mid-run crash the pipeline's only
-action is `lz.release()`, which reaches `pool.release()` and, for a Simulator whose resident the pool
-keeps warm, `XcuitestEnvironment.end_lease` — which terminates the app and nothing else. The discard
-that would otherwise notice the dead runner does not run until the *next* bring-up, inside `start()`,
-which is after `free.put(udid)` and never at all on a run whose retries are already spent. A capture
-hooked there would be both mistimed and, for `crash_retries: 0`, absent.
+Suppose a `crash_artifacts()` read `self._runner_log` and `self._runner_proc` lazily, only when the
+loop finally gives up. It would race a concurrent worker on a multi-device run. The next lease of
+that worker can reuse this exact environment instance, because `pool.py` keys its warm cache by udid.
+The worker can respawn a fresh runner on it before the retry loop of this scenario reads back the old
+crash's evidence. The respawn clears `self._runner_log` and `self._runner_proc` (`_discard_runner`,
+`xcuitest_environment.py:1142`). For a healthy respawn, it leaves nothing crash-related behind at all.
 
-`_discard_runner` carries the same hook as a second site, because a real-device lease, an actuator
-switch, a pool shutdown, and a failed lease's own cleanup all release through `teardown` instead. Both
-sites share one predicate, `_runner_crashed()`, which asks exactly the two signals `_runner_alive`
-declares a mid-run crash on: the `xcodebuild` leader exited, *or* its capture carries the marker
-saying the XCTest run ended while the process lingers. The second signal is what the older, narrower
-formulation of this design missed — it gated on `_discard_runner`'s own `crashed` flag, which is set
-only inside the `exited is not None` branch, so the dominant CI shape (a stalled screenshot service,
-which leaves `poll()` answering `None` throughout) would have captured nothing at all. The
-`_discard_runner` hook stays gated on `warn_on_crash` on top of the predicate, because a
-cold-spawn-failure discard (`_spawn_cold_with_retry`, and the `discard=lambda:
-self._discard_runner(warn_on_crash=False, keep_log=True)` wired into the driver) is explicitly *not*
-a mid-run crash and must not overwrite one's evidence with its own mid-retry-loop.
+So `XcuitestEnvironment` captures eagerly, at the last moment a crashed runner is still the runner of
+this scenario. That moment is **`end_lease`**, not the discard.
 
-One crash shape stays out of reach and is declared rather than papered over: a channel that stops
-answering while `xcodebuild` runs on and writes no run-ended marker raises a `BackendCrashError` that
-neither liveness signal sees. That is the wedged-Simulator degradation BE-0354 escalates to a
-replacement device and BE-0361's stall probe already captures on its own trigger, so this item leaves
-it to them rather than paying a bounded log read on every lease — green ones included — to cover it.
+- On a mid-run crash, the only action of the pipeline is `lz.release()`. The call reaches
+  `pool.release()`. For a Simulator whose resident the pool keeps warm, it then reaches
+  `XcuitestEnvironment.end_lease`, which terminates the app and nothing else.
+- The discard that would otherwise notice the dead runner does not run until the *next* bring-up,
+  inside `start()`. That is after `free.put(udid)`. It never runs at all on a run whose retries are
+  already spent.
+- A capture hooked at the discard would therefore be mistimed. For `crash_retries: 0`, it would be
+  absent.
 
-At each site, before `self._runner_proc = None` clears the handle, two different things get captured
-at two different times, because the runner log and the `.ips` crash report have different failure
-windows to race:
+`_discard_runner` carries the same hook as a second site. A real-device lease, an actuator switch, a
+pool shutdown, and the cleanup of a failed lease all release through `teardown` instead.
 
-- **The runner's own captured output**, read *eagerly, right there* as a bounded tail from
-  `self._runner_log` — the same streaming `deque(fh, maxlen=...)` read `_runner_log_hint` already
-  uses to avoid materializing the whole (high-volume) capture (`xcuitest_environment.py:1134-1137`),
-  just against a larger cap than that twenty-line hint, since this artifact exists to exceed it. This
-  one races `free.put(udid)`, so it cannot wait.
-- **The match criteria for the `xcodebuild test-without-building` process's own macOS crash
-  report**, frozen *eagerly, right there* too, but the report itself is read only later. `_spawn_runner`
-  already records the process handle as `self._runner_proc` right after `Popen` returns
-  (`xcuitest_environment.py:769`); this item adds a spawn timestamp next to it,
-  `self._runner_spawned_at = time.time()`, since `Popen` exposes no start time of its own. Both are
-  copied into a dedicated pair, `self._last_crash_report_match`, frozen at this exact moment —
-  distinct from the live `self._runner_spawned_at` / `self._runner_proc`, which a respawn on this
-  same environment instance would otherwise overwrite before anyone reads them back.
+Both sites share one predicate, `_runner_crashed()`. It asks exactly the two signals on which
+`_runner_alive` declares a mid-run crash, and either one alone is enough:
 
-Both entries are cached as `self._last_crash_artifacts` (a mix of the already-read log tail and the
-frozen match criteria); `crash_artifacts()` reads that cache when the pipeline calls it — the runner
-log unchanged, but the `.ips` lookup happens **only then**, against
-`self._last_crash_report_match`. That deferral is deliberate: macOS's `ReportCrash` writes a `.ips`
-report *asynchronously*, after the faulting process is already gone, and symbolication can take
-anywhere from hundreds of milliseconds to several seconds — so listing `DiagnosticReports`
-synchronously at the capture site would usually find nothing yet. The pipeline's own call site
-runs only once the retry loop has already given up, seconds later and off the respawn path, which
-gives `ReportCrash` the time it needs. The frozen match criteria are what make that deferral safe:
-by the time `crash_artifacts()` runs, `self._runner_spawned_at` / `self._runner_proc` may already
-belong to a different, later spawn, but `self._last_crash_report_match` still names the crashed one.
+- the `xcodebuild` leader exited
+- the capture of the leader carries the marker saying that the XCTest run ended while the process
+  lingers
 
-The lookup itself lists `~/Library/Logs/DiagnosticReports` for a `.ips` file named `xcodebuild-*`
-whose modification time falls at or after the frozen spawn timestamp; the name-and-time match keeps
-the sweep from picking up an unrelated `xcodebuild` invocation's report left on the same host. When
-the file's own JavaScript Object Notation (JSON) header names a `pid`, matching it against the frozen
-pid narrows a multi-worker host's several concurrent `xcodebuild` processes further, but a report
-whose header cannot be parsed is still taken on the name-and-time match alone. The listing is capped
-at the first few matches, mirroring BE-0361's own per-capture caps, so a runner that keeps
-crash-looping cannot make one scenario's evidence write unbounded. Both entries stay best-effort
-throughout, matching the posture `_result_bundle_path` and `_capture_stall` already take for their
-own captures: a missing log, an unreadable `DiagnosticReports` directory (any platform but macOS, or
-a sandboxed CI runner with no read permission), or a report that never showed up in time all resolve
-to that entry being skipped, never to a raise.
+The second signal is what an older, narrower formulation of this design missed. That formulation
+gated on the `crashed` flag of `_discard_runner`. The flag is set only inside the
+`exited is not None` branch. The dominant CI shape is a stalled screenshot service, which leaves
+`poll()` answering `None` throughout. That formulation would have captured nothing for it.
 
-This ordering is what a released, then re-leased, environment cannot undo: the snapshot is already
-taken and cached before `free.put(udid)` runs, so a later respawn's own state changes never touch it.
+The `_discard_runner` hook stays gated on `warn_on_crash` on top of the predicate. A cold-spawn-failure
+discard is explicitly *not* a mid-run crash. It must not overwrite the evidence of a crash with its
+own, mid-retry-loop. Two places perform such a discard: `_spawn_cold_with_retry`, and the
+`discard=lambda: self._discard_runner(warn_on_crash=False, keep_log=True)` wired into the driver.
 
-Caching on the environment is only half the story, though, because the environment outlives the
-scenario: the pool keeps it warm per device, so evidence left there is visible to — and destroyable
-by — whichever scenario leases that device next. Under `workers > 1` that cuts both ways. A second
-crash on the shared environment would overwrite a first scenario's snapshot before its retry loop read
-it, and a merely *healthy* intervening lease would be enough to strand it, since a scenario's own loop
-can spend minutes not reading (a forced-erase prep that hit a `DeviceTimeout`, BE-0374).
+One crash shape stays out of reach. This design declares it rather than papering over it. A channel
+can stop answering while `xcodebuild` runs on and writes no run-ended marker. That raises a
+`BackendCrashError` that neither liveness signal sees. It is the wedged-Simulator degradation that
+BE-0354 escalates to a replacement device. The stall probe of BE-0361 already captures it on its own
+trigger. This item leaves the shape to those two items. Covering it here would pay a bounded log read
+on every lease, green ones included.
 
-So the evidence does not stay on the environment at all: **ownership moves to the releasing lease.**
-`take_crash_snapshot()` hands back a thunk and clears what it handed over, and `pool.py`'s `release()`
-calls it once, after the teardowns that let the environment observe a crash and before `free.put(udid)`
-offers the device to anyone else. The `Lease` then reads its own copy. That is the rule
-`video_start_stalled` already follows, and for the same reason `pool.py` states for it: a `workers > 1`
-run must never read one scenario's signal on another's retry. The thunk still defers its `.ips` lookup
-— what it no longer does is read state a later lease can change.
+At each site, before `self._runner_proc = None` clears the handle, the environment captures two
+different things at two different times. The runner log and the `.ips` crash report have different
+failure windows to race.
 
-The capture itself is per spawn, at most once, tracked by `_crash_snapshotted`. Two sites observe one
-crash — the release, and any later discard that still finds the dead runner — and a second capture
-would regenerate evidence the releasing lease had already taken, putting it back on the environment
-for the next scenario to inherit.
+- **The captured output of the runner itself.** The environment reads it *eagerly, right there*, as
+  a bounded tail from `self._runner_log`. The read is the same streaming `deque(fh, maxlen=...)` that
+  `_runner_log_hint` already uses to avoid materializing the whole, high-volume capture
+  (`xcuitest_environment.py:1134-1137`). The cap is larger than the twenty-line cap of that hint,
+  because this artifact exists to exceed the hint. This read races `free.put(udid)`, so it cannot
+  wait.
+- **The match criteria for the macOS crash report of the `xcodebuild test-without-building`
+  process.** The environment freezes them *eagerly, right there* too. The report itself is read only
+  later.
+  - `_spawn_runner` already records the process handle as `self._runner_proc` right after `Popen`
+    returns (`xcuitest_environment.py:769`).
+  - This item adds a spawn timestamp next to it, `self._runner_spawned_at = time.time()`, because
+    `Popen` exposes no start time of its own.
+  - Both values are copied into a dedicated pair, `self._last_crash_report_match`, frozen at this
+    exact moment. The pair is distinct from the live `self._runner_spawned_at` and
+    `self._runner_proc`. A respawn on this same environment instance would otherwise overwrite those
+    two before anyone reads them back.
+
+Both entries are cached as `self._last_crash_artifacts`. The cache mixes the already-read log tail
+with the frozen match criteria. The pipeline calls `crash_artifacts()`, which reads that cache. The
+runner log comes back unchanged. The `.ips` lookup happens **only then**, against
+`self._last_crash_report_match`.
+
+That deferral is deliberate. The `ReportCrash` service of macOS writes a `.ips` report
+*asynchronously*, after the faulting process is already gone. Symbolication can take anywhere from
+hundreds of milliseconds to several seconds. Listing `DiagnosticReports` synchronously at the capture
+site would usually find nothing yet.
+
+The call site of the pipeline runs only once the retry loop has already given up. That is seconds
+later and off the respawn path, which gives `ReportCrash` the time it needs. The frozen match
+criteria make the deferral safe. By the time `crash_artifacts()` runs, `self._runner_spawned_at` and
+`self._runner_proc` may already belong to a different, later spawn. `self._last_crash_report_match`
+still names the crashed one.
+
+The lookup lists `~/Library/Logs/DiagnosticReports` for a `.ips` file named `xcodebuild-*`. The
+modification time of the file must fall at or after the frozen spawn timestamp. The name-and-time
+match keeps the sweep from picking up the report of an unrelated `xcodebuild` invocation, left on the
+same host.
+
+The header of the file is JavaScript Object Notation (JSON). When it names a `pid`, matching it
+against the frozen pid narrows the choice further on a multi-worker host, where several `xcodebuild`
+processes run concurrently. A report whose header cannot be parsed is still taken on the
+name-and-time match alone.
+
+The listing is capped at the first few matches, mirroring the per-capture caps of BE-0361. A
+runner that keeps crash-looping cannot make the evidence write of one scenario unbounded.
+
+Both entries stay best-effort throughout. `_result_bundle_path` and `_capture_stall` take the same
+posture for their own captures. A missing log resolves to that entry being skipped, and never to a
+raise. So does an unreadable `DiagnosticReports` directory, the case on any platform but macOS, and
+on a sandboxed CI runner with no read permission. So does a report that never showed up in time.
+
+This ordering is what a released, then re-leased, environment cannot undo. The snapshot is already
+taken and cached before `free.put(udid)` runs. The state changes of a later respawn never touch it.
+
+Caching on the environment is only half the story, though. The environment outlives the scenario,
+because the pool keeps it warm per device. Evidence left there is visible to whichever scenario
+leases that device next, and that scenario can destroy it. Under `workers > 1`, this cuts both ways.
+
+- A second crash on the shared environment would overwrite the snapshot of a first scenario before
+  its retry loop read the snapshot.
+- A merely *healthy* intervening lease would be enough to strand the snapshot. The loop of a
+  scenario can spend minutes not reading, for example when a forced-erase prep hit a `DeviceTimeout`
+  (BE-0374).
+
+So the evidence does not stay on the environment at all. **Ownership moves to the releasing lease.**
+`take_crash_snapshot()` hands back a thunk and clears what it handed over. The `release()` of
+`pool.py` calls it once. It calls it after the teardowns that let the environment observe a crash,
+and before `free.put(udid)` offers the device to anyone else. The `Lease` then reads its own copy.
+
+`video_start_stalled` already follows that rule, for the same reason that `pool.py` states for it: a
+`workers > 1` run must never read one scenario's signal on another's retry. The thunk still defers
+its `.ips` lookup. What it no longer does is read state that a later lease can change.
+
+The capture itself happens per spawn, at most once, tracked by `_crash_snapshotted`. Two sites
+observe one crash: the release, and any later discard that still finds the dead runner. A second
+capture would regenerate evidence that the releasing lease had already taken. It would put that
+evidence back on the environment, for the next scenario to inherit.
 
 ### Reaching the scenario's own writer
 
-`_run_one_impl` already holds `sid`, the scenario's own evidence-directory name, and it reaches the
-crashed attempt's environment through the `Lease` that attempt ran on. Not through `lz`, though: that
-variable is reset to `None` at the top of every attempt, so a loop that ends on a lease-time crash, or
-on a forced-erase prep that timed out (BE-0374), would find it empty while an *earlier* attempt's
-environment still holds the evidence this scenario failed for. The loop therefore keeps the crashed
-lease in a variable of its own, `crashed_lz`, assigned in the `except BackendCrashError` handler.
+`_run_one_impl` already holds `sid`, the name of the evidence directory of the scenario. It reaches
+the environment of the crashed attempt through the `Lease` that the attempt ran on. It does not use
+`lz` for this, because that variable is reset to `None` at the top of every attempt. Two kinds of
+loop would find `lz` empty while an *earlier* attempt's environment still holds the evidence that this
+scenario failed for: a loop that ends on a lease-time crash, and a loop that ends on a forced-erase
+prep that timed out (BE-0374).
+
+The loop therefore keeps the crashed lease in a variable of its own, `crashed_lz`. The
+`except BackendCrashError` handler assigns it.
+
 `Lease` ([`bajutsu/common/runner/types.py`](../../bajutsu/common/runner/types.py)) gains one more
-field, given a module-level no-op default the way `relaunch`/`control` neighbors already are:
+field. The field gets a module-level no-op default, the way its `relaunch` and `control` neighbors
+already do:
 
 ```python
 def _no_crash_artifacts() -> list[tuple[str, bytes]]:
@@ -220,54 +271,66 @@ def _no_crash_artifacts() -> list[tuple[str, bytes]]:
 crash_artifacts: Callable[[], list[tuple[str, bytes]]] = _no_crash_artifacts
 ```
 
-`pool.py`'s `lease()` closure holds a lease-local thunk beside the `Lease` it builds, starting at that
-same no-op and reassigned by `release()` from `lease_env.take_crash_snapshot()`. Unlike
-`request_device_replacement`, which is wired as a bound method reference because the *device* is what
-it acts on, this one must not stay bound to the environment: the environment is shared across
-scenarios, and the evidence is one scenario's.
+The `lease()` closure of `pool.py` holds a lease-local thunk beside the `Lease` it builds. The thunk
+starts at that same no-op. `release()` reassigns it from `lease_env.take_crash_snapshot()`.
 
-The pipeline asks for it once: where the retry loop gives up and builds the scenario's terminal
-`RunResult(ok=False, ...)` for a backend crash it could not recover — the `if device_timeout ...
-elif ... else:` chain that already sets `failure` for that case. Right after that chain, when
-`crashed_lz is not None` and `self._artifacts()` returns a writer, the pipeline calls
-`crashed_lz.crash_artifacts()` before returning that `RunResult`. After the chain rather than inside
-its crash branches, because a loop that ended on a device-preparation timeout was still recovering
-from a crash whose evidence explains it too, and a scenario that never crashed leaves `crashed_lz`
-`None` and reaches no write at all. For each `(name, content)` pair it writes through
-`writer.write_text(f"{sid}/crash-diagnostics/{name}", content.decode(errors="replace"))` — the same
-per-scenario write shape
+`request_device_replacement` is wired as a bound method reference, because the *device* is what it
+acts on. This thunk must not stay bound to the environment, unlike that method. The environment is
+shared across scenarios, and the evidence belongs to one scenario.
+
+The pipeline asks for the evidence once. It asks where the retry loop gives up and builds the
+terminal `RunResult(ok=False, ...)` of the scenario, for a backend crash it could not recover. That
+is the `if device_timeout ... elif ... else:` chain that already sets `failure` for that case.
+
+Right after that chain, the pipeline checks two conditions: `crashed_lz is not None`, and
+`self._artifacts()` returns a writer. If both hold, it calls `crashed_lz.crash_artifacts()` before it
+returns the `RunResult`. The call sits after the chain rather than inside its crash branches, for
+two reasons.
+
+- A loop that ended on a device-preparation timeout was still recovering from a crash, and the
+  evidence of that crash explains the timeout too.
+- A scenario that never crashed leaves `crashed_lz` as `None` and reaches no write at all.
+
+For each `(name, content)` pair, the pipeline writes through
+`writer.write_text(f"{sid}/crash-diagnostics/{name}", content.decode(errors="replace"))`. This is the
+same per-scenario write shape that
 [BE-0415](../BE-0415-driver-call-trace-per-scenario/BE-0415-driver-call-trace-per-scenario.md)
-already uses for `driver_trace.json` — and it uses `write_text` rather than `write_bytes` so the
-free-text scrub (BE-0331) still runs over content this item did not author. It also appends the
-subdirectory's path to `failure` itself, so the failure string a contributor actually reads points
-at the new evidence directly, closing the gap Motivation named. A logger — never a raise — catches
-a write problem, such as a full disk or a permissions error, because a diagnostic artifact must
-never turn an already-decided failure into a different, unrelated one.
+already uses for `driver_trace.json`. The pipeline uses `write_text` rather than `write_bytes`, so
+the free-text scrub (BE-0331) still runs over content that this item did not author.
+
+The pipeline also appends the path of the subdirectory to `failure` itself. The failure string that a
+contributor actually reads then points at the new evidence directly, which closes the gap that
+Motivation named.
+
+A logger catches a write problem, such as a full disk or a permissions error. A write problem never
+raises. A diagnostic artifact must never turn an already-decided failure into a different, unrelated
+one.
 
 ### Why once, not per attempt
 
-BE-0361's stall probe fires at every crash: it investigates whether the *retry itself* is worth
-trying. This item fires once, only when the retry loop has already given up. Its own evidence — the
-runner's crash — names the same fact on every attempt of one crash-looping scenario. Copying it
-after each attempt would leave a recovered scenario carrying crash evidence for a failure its own
-final result no longer reports. A scenario that recovers within its retry budget passes, and a
-passing scenario needs no crash report.
+The stall probe of BE-0361 fires at every crash. It investigates whether the *retry itself* is worth
+trying. This item fires once, and only when the retry loop has already given up.
+
+The evidence of this item is the crash of the runner. That crash names the same fact on every
+attempt of one crash-looping scenario. Copying it after each attempt would leave a recovered scenario
+carrying crash evidence for a failure that its own final result no longer reports. A scenario that
+recovers within its retry budget passes, and a passing scenario needs no crash report.
 
 ### Cost on every other backend
 
-Android's and the web backend's environments return `[]` from their own `crash_artifacts()`, so the
-pipeline's write step becomes a no-op list iteration, unchanged from today. The iOS backend itself
-only ever constructs on macOS, so the `DiagnosticReports` sweep never runs on a Linux host at all.
-Nothing in this item changes what a non-macOS run captures.
+The environments of Android and the web backend return `[]` from their own `crash_artifacts()`. The
+write step of the pipeline becomes a no-op list iteration, unchanged from today. The iOS backend
+itself only ever constructs on macOS, so the `DiagnosticReports` sweep never runs on a Linux host at
+all. Nothing in this item changes what a non-macOS run captures.
 
 ## Alternatives considered
 
 | Alternative | Why not |
 |---|---|
-| Gate the capture behind an environment variable, matching BE-0361's `BAJUTSU_XCUITEST_RESULT_BUNDLES` / `BAJUTSU_STALL_DIAGNOSTICS` | This item's own gap is the opposite of BE-0361 layer 1's: CI already gathers a crash report unconditionally (layers 2–3), and what is missing is a local-run counterpart and per-scenario attribution — neither served by an opt-in CI variable. The capture also runs only once a scenario is already ending in failure, so its cost is one bounded directory listing and one file copy — not a standing overhead worth gating. |
-| Also copy the `.xcresult` result bundle BE-0361 unit 1 can produce | That bundle is already BE-0361's own opt-in artifact, behind `BAJUTSU_XCUITEST_RESULT_BUNDLES`, and is not bounded the way a `.ips` report is. Making it default-on here would add an unbounded artifact for content the `.ips` report and the runner's own log already summarize. Left for a future item if this one's evidence proves insufficient. |
-| Capture at every crash-recovery attempt, not only the one that exhausts the budget | Rejected in *Why once, not per attempt* above. It duplicates for a scenario that eventually recovers. The scenario's crash-exhausted `RunResult` — the one place this evidence explains — exists only once, at the end of the loop. |
-| A full `xcrun simctl diagnose`, `log collect`, or `sysdiagnose` sweep on crash | Rejected for the reason BE-0361's own *Alternatives considered* already gave and measured: `simctl diagnose` alone runs to 22–78 MB and about 15 seconds per booted device, and a `.logarchive` of a job's whole window runs to hundreds of megabytes. The process's own `.ips` report already names the terminating signal and, for system frames, a symbolicated stack trace, at a cost of a few kilobytes. |
+| Gate the capture behind an environment variable, matching `BAJUTSU_XCUITEST_RESULT_BUNDLES` / `BAJUTSU_STALL_DIAGNOSTICS` of BE-0361 | The gap of this item is the opposite of the gap of layer 1 in BE-0361. CI already gathers a crash report unconditionally (layers 2–3). What is missing is a local-run counterpart and per-scenario attribution, and an opt-in CI variable serves neither. The capture also runs only once a scenario is already ending in failure. Its cost is one bounded directory listing and one file copy, not a standing overhead worth gating. |
+| Also copy the `.xcresult` result bundle that unit 1 of BE-0361 can produce | That bundle is already the opt-in artifact of BE-0361, behind `BAJUTSU_XCUITEST_RESULT_BUNDLES`. It is not bounded the way a `.ips` report is. Making it default-on here would add an unbounded artifact for content that the `.ips` report and the runner's own log already summarize. A future item can add it if the evidence of this item proves insufficient. |
+| Capture at every crash-recovery attempt, not only the one that exhausts the budget | Rejected in *Why once, not per attempt* above. It duplicates evidence for a scenario that eventually recovers. The crash-exhausted `RunResult` of the scenario is the one place this evidence explains, and it exists only once, at the end of the loop. |
+| A full `xcrun simctl diagnose`, `log collect`, or `sysdiagnose` sweep on crash | Rejected for the reason that *Alternatives considered* in BE-0361 already gave and measured. `simctl diagnose` alone runs to 22–78 MB and about 15 seconds per booted device. A `.logarchive` of the whole window of a job runs to hundreds of megabytes. The `.ips` report of the process already names the terminating signal and, for system frames, a symbolicated stack trace. It costs a few kilobytes. |
 
 ## Progress
 
