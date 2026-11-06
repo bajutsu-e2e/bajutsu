@@ -15,70 +15,81 @@
 
 ## はじめに
 
-オンボーディングのゲート、すなわちバックエンドのツール群をインストールする `provision.py`、
-`doctor` が報告する実行可能ゲートを担う `preflight.py`/`requirements.py`、そしてその両方を支える
-`simctl.py` の JSON パーサ（`booted_udids`、`device_catalog`）は、いずれも注入された fake だけで
-テストされています。正しいコマンド文字列が組み立てられたことを検証するモック化された
-`subprocess.run`、monkeypatch された `shutil.which`、さらに `xcrun simctl list devices -j` の
-代役を務める手書きの JSON リテラルです。これらが CI で実際に動かされることは一度もありません。
-本項目は `bajutsu doctor` と `python -m bajutsu.provision` を既存の E2E レーンに組み込み、オンボーディング
-経路全体を、本物の環境、そして意図的に壊した環境の両方に対して少なくとも一度は実行させます。
+オンボーディングのゲートは、3つの部品から成ります。
+
+- バックエンドのツール群をインストールする `provision.py`。
+- `doctor` が報告する実行可能ゲートを担う `preflight.py` と `requirements.py`。
+- その両方を支える `simctl.py` の JSON パーサ（`booted_udids`、`device_catalog`）。
+
+3つとも、注入された fake だけでテストされています。モック化された `subprocess.run` が、正しいコマンド文字列
+を検証します。`shutil.which` は monkeypatch されています。`xcrun simctl list devices -j` の代役は、手書きの
+JSON リテラルです。これらが CI で実際に動かされることは、一度もありません。
+
+本項目は、`bajutsu doctor` と `python -m bajutsu.provision` を既存の E2E レーンに組み込みます。これにより、
+オンボーディング経路の全体が、本物の環境と、意図的に壊した環境の両方に対して、少なくとも一度は実行
+されます。
 
 ## 動機
 
-3つのギャップは1つの根本原因と1つの解決策を共有しています。`provision.py` のテストは
-`("brew", "install", "facebook/fb/idb-companion")` のようなコマンドが*組み立てられた*ことだけを
-検証し、実際の `brew` がそれを受け付けたことは検証しません。しかも実際の E2E ワークフロー
-（`ios-e2e.yml`、`web-e2e.yml`、`android-e2e.yml`）はいずれも、`python -m bajutsu.provision` を呼ぶのではなく
-同等のインストールコマンドを直接手書きしているため、インストーラ自身のコマンド構築コードは
-どこでも実際に実行されることがありません。`preflight.py` のテストは `which`/`booted_count`/
-`web_pkg` を手動で注入する `callable` に頼っているため、このゲートが「手渡しの boolean にまさしく
-反応する」ことを超えて、本当に壊れた環境（Xcode のライセンス未同意、Chromium 未ダウンロードの
-Playwright など）で実際に*失敗する*ことを確認するテストはありません。そして `simctl.py` の
-`booted_udids`/`device_catalog` パーサは手書きの JSON リテラルに対してテストされているだけで、
-実際に捕捉した `xcrun simctl list devices -j` の出力に対してではありません。将来の Xcode の
-バージョンでスキーマが変われば、`doctor` とデバイスプールのラベリングは静かに壊れます。
-`.github/actions/bajutsu-e2e/action.yml` はすでに iOS レーンで `bajutsu doctor` を実行して
-いますが、それは非ブロッキングの慣習チェック（`|| echo "doctor: non-blocking (convention
-score only)"`）にすぎず、終了コードを握りつぶし、レンダリングされた出力に対して何かをアサーション
-することも一度もしていないため、そこで動く実際の `simctl` パースは実際には一度も検証されて
-いません。Android と web にはそもそも doctor のステップ自体が存在しません。
+3つのギャップは、1つの根本原因と1つの解決策を共有しています。
 
-既存の実機レーンの中で `bajutsu doctor`（および別途 `python -m bajutsu.provision`）を一度実際に呼び
-出すだけで、このギャップのほとんどが一度に埋まります。実際の `simctl` の JSON 形状を実際のパーサに通し、
-実際のツール有無チェックを実際のゲートに通し、さらに意図的に壊した版と対にすることで、このゲートが
-準備完了と未完了を実際に区別できることまで証明できます。
+**provision**：`provision.py` のテストが検証するのは、`("brew", "install", "facebook/fb/idb-companion")`
+のようなコマンドが*組み立てられた*ことだけです。実際の `brew` がそれを受け付けたことは検証しません。
+しかも実際の E2E ワークフロー（`ios-e2e.yml`、`web-e2e.yml`、`android-e2e.yml`）は、いずれも
+`python -m bajutsu.provision` を呼ばず、同等のインストールコマンドを手書きしています。そのため、インストーラ
+自身のコマンド構築コードは、どこでも実際に実行されません。
+
+**preflight**：`preflight.py` のテストは、`which`、`booted_count`、`web_pkg` の `callable` を手動で注入します。
+このテストが示すのは、ゲートが手渡しの boolean に正しく反応することです。本当に壊れた環境で、ゲートが実際に
+*失敗する*ことを確認するテストはありません。たとえば、Xcode のライセンスが未同意の環境や、Chromium を
+ダウンロードしていない Playwright の環境です。
+
+**simctl のパース**：`simctl.py` の `booted_udids` と `device_catalog` のパーサは、手書きの JSON リテラルに
+対してテストされているだけです。実際に捕捉した `xcrun simctl list devices -j` の出力に対してではありません。
+将来の Xcode のバージョンでスキーマが変われば、`doctor` とデバイスプールのラベリングは静かに壊れます。
+
+`.github/actions/bajutsu-e2e/action.yml` は、すでに iOS レーンで `bajutsu doctor` を実行しています。ただし
+それは、非ブロッキングの慣習チェック（`|| echo "doctor: non-blocking (convention score only)"`）にすぎません。
+終了コードを握りつぶし、レンダリングされた出力に対して何もアサーションしません。そこで動く実際の `simctl`
+パースは、一度も検証されていません。Android と web には、そもそも doctor のステップ自体がありません。
+
+既存の実機レーンの中で `bajutsu doctor`（および別途 `python -m bajutsu.provision`）を実際に1回呼び出すと、
+このギャップのほとんどが一度に埋まります。
+
+- 実際の `simctl` の JSON 形状を、実際のパーサに通せます。
+- 実際のツール有無チェックを、実際のゲートに通せます。
+- 意図的に壊した版と対にすれば、ゲートが準備完了と未完了を区別できることを証明できます。
 
 ## 詳細設計
 
 提案の粒度です。作業は以下の単位に沿って MECE に分かれます。
 
-- **既存の E2E レーン内で `bajutsu doctor` を実際に実行する**：
-  `ios-e2e.yml`（および別途 `android-e2e.yml`/`web-e2e.yml`）に、そのレーンの実際の環境に対して本物のコマンドを実行し、
-  レンダリングされた `environment:` セクションに `✗` が1つもない（環境ゲート自体が終了コード 1/2 に
-  ならない）ことを検証するステップを追加します。これにより `simctl.py` の実際の JSON パースと
-  `preflight.py` の実際のツールチェックを一度に検証します。
-- **意図的に壊した環境のケースを1つ追加する**：ツールを意図的に欠落させる、または誤設定した（例：`idb` を
-  含まない `PATH`）ジョブ（またはジョブのステップ）で、`doctor`/`preflight` が非ゼロの終了コードで
-  レンダリングされた `environment:` セクションに `✗` を報告することを検証します。これは、注入された
-  fake によるテストでは今日証明できない失敗側です。
-- **新しい環境で `python -m bajutsu.provision` を実際に実行する**：ベアなコンテナ、またはレーンのセットアップ
-  前段の新しいステップとして、実際のインストーラをエンドツーエンドで実行し、対象のツールが利用
-  可能になることを検証します。「コマンド文字列が正しかった」と「実際のパッケージマネージャが
-  それを受け付けた」の間のギャップを埋めます。
-- **実際の `simctl list devices -j` の出力をフィクスチャとして捕捉する**：`tests/test_simctl.py`
-  の手書き JSON リテラルを、実際の呼び出しから捕捉した1件に置き換える（または補う）ことで、
-  将来 Xcode のスキーマがドリフトしても、`doctor` やプールに影響が及ぶ前に捉えられる可能性を作ります。
+- **既存の E2E レーン内で `bajutsu doctor` を実際に実行する**：`ios-e2e.yml`（および別途 `android-e2e.yml`
+  と `web-e2e.yml`）に、ステップを追加します。このステップは、そのレーンの実際の環境に対して本物のコマンドを
+  実行します。レンダリングされた `environment:` セクションに `✗` が1つもないことを検証します。これは、環境
+  ゲート自体が終了コード 1 や 2 にならないという意味です。1回の実行で、`simctl.py` の実際の JSON パースと
+  `preflight.py` の実際のツールチェックを検証します。
+- **意図的に壊した環境のケースを1つ追加する**：ツールを意図的に欠落させる、または誤設定したジョブ（または
+  ジョブのステップ）を使います。例は、`idb` を含まない `PATH` です。`doctor` / `preflight` が非ゼロの終了
+  コードで終了し、レンダリングされた `environment:` セクションに `✗` が出ることを検証します。注入された
+  fake によるテストでは、この失敗側を今日証明できません。
+- **新しい環境で `python -m bajutsu.provision` を実際に実行する**：実際のインストーラをエンドツーエンドで
+  実行するジョブを追加します。ジョブは、ベアなコンテナか、レーンのセットアップ前段の新しいステップです。
+  インストーラが対象とするツールが利用可能になることを検証します。「コマンド文字列が正しかった」ことと「実際
+  のパッケージマネージャがそれを受け付けた」ことの間のギャップを埋めます。
+- **実際の `simctl list devices -j` の出力をフィクスチャとして捕捉する**：`tests/test_simctl.py` の手書き
+  JSON リテラルを、実際の呼び出しから捕捉した1件に置き換えます（または補います）。将来 Xcode のスキーマが
+  ドリフトしても、`doctor` やプールに影響が及ぶ前に捉えられる可能性が生まれます。
 
 ## 検討した代替案
 
-- **実際のツールは最終的にインストールされるので、E2E レーンでのインストールコマンド手書きを
-  そのまま残す**：これが証明するのは*ツール自体*が動くことであり、`python -m bajutsu.provision` 自身の
-  コマンド構築コードが正しいことではありません。この体制のもとでは、インストーラが回帰しても
-  CI から一切の信号が出ません。これこそが実際のギャップです。
-- **注入された fake によるユニットテストをさらに増やす**：手書きシナリオを増やしても、実際の
-  `xcrun simctl` のスキーマ変更や実際に壊れたツールチェインは検出できません。fake はすでに
-  内部的に整合しており、まさにそれゆえに現実からのドリフトを観測できないのです。
+- **実際のツールは最終的にインストールされるので、E2E レーンでのインストールコマンド手書きをそのまま残す**：
+  これが証明するのは、*ツール自体*が動くことです。`python -m bajutsu.provision` 自身のコマンド構築コードが
+  正しいことは証明しません。この体制では、インストーラが回帰しても CI から一切の信号が出ません。これこそが
+  実際のギャップです。
+- **注入された fake によるユニットテストをさらに増やす**：手書きシナリオを増やしても、実際の `xcrun simctl`
+  のスキーマ変更や、実際に壊れたツールチェインは検出できません。fake はすでに内部的に整合しており、まさに
+  それゆえに、現実からのドリフトを観測できません。
 
 ## 進捗
 
@@ -96,34 +107,38 @@ score only)"`）にすぎず、終了コードを握りつぶし、レンダリ�
 ### ログ
 
 - **web レーンのオンボーディングスライス**（本 PR）：`web-e2e.yml` に非ゲートの
-  `onboarding (doctor / provision)` ジョブを追加し、オンボーディングゲートを実環境に対して
-  エンドツーエンドで実行します。まずブラウザのない環境で `doctor` が `✗` を出して明示的に失敗すること
-  （壊した環境のケース）を確認し、続いて `python -m bajutsu.provision --backend web` が実際に Chromium を
-  インストールし、最後に `doctor` の環境ゲートが通過することを検証します。あわせて
-  `tests/test_simctl.py` に、実際に捕捉した `simctl list devices available -j` の出力
-  （`tests/data/simctl_list_devices_available.json`）を追加し、`device_catalog`/`booted_udids`
-  パーサをそれに対して検証することで、Xcode のスキーマドリフトを捉えられるようにします。iOS と
-  Android の `doctor` ステップ（最初のチェック項目の残る 2 レーン）は後続スライスとするため、本項目は
-  *実装中* のままとします。
-- **iOS + Android オンボーディングスライス**（本 PR）：最初のチェック項目の残る 2 レーンが着地し、
-  本項目を完了します。`ios-e2e.yml` の `smoke` ジョブ（シミュレータ起動済み）と `android-e2e.yml` の
-  `smoke` ジョブ（エミュレータのセッション内）が、それぞれ `bajutsu doctor` を実環境で実行し、
-  `environment:` セクションに `✗` がないことを検証します。これにより、`simctl.py` / `adb` の実際の
-  デバイス数パースと、`preflight.py` の実際のツール検査が、実アクチュエータを通じて動きます。新しい
-  `bajutsu doctor --environment-only` フラグは doctor を実行可能性ゲートで停止させ、検証範囲を環境
-  ゲートに限定します。これにより、画面プローブ（iOS では常駐 XCUITest ランナー）の起動コストや、その
-  不安定さの影響を受けません。web スライスが最初に用いた壊れやすいインラインの `awk`/`grep` は、
-  3 レーンすべてで `scripts/assert_doctor_env.py` に置き換えます。そのセクションパーサはユニット
-  テスト（`tests/test_assert_doctor_env.py`）で検証しており、`scripts/e2e_changes.py` と同じ
-  「未テストのシェル → ユニットテスト済みの Python」への移行です。両方の `smoke` ジョブはこの検証を
-  ゲートに含めます（`✗` は必須の `E2E` チェックを失敗させます）。環境ゲートは、各ジョブが既にゲート
-  対象としている `smoke` 実行より厳密に弱いため、不安定さを増やしません。この点が、`provision` を
-  再実行する（`playwright install` のネットワーク由来の不安定さがある）ために非ゲートのままとした
-  web スライスのジョブとは異なります。
+  `onboarding (doctor / provision)` ジョブを追加し、オンボーディングゲートを実環境に対してエンドツーエンドで
+  実行します。ジョブは3つの確認を順に行います。
+  - ブラウザのない環境で、`doctor` が `✗` を出して明示的に失敗すること。壊した環境のケースです。
+  - `python -m bajutsu.provision --backend web` が、実際に Chromium をインストールすること。
+  - 続いて `doctor` の環境ゲートが通過すること。
+
+  あわせて `tests/test_simctl.py` に、実際に捕捉した `simctl list devices available -j` の出力
+  （`tests/data/simctl_list_devices_available.json`）を追加します。`device_catalog` / `booted_udids` パーサを
+  その出力に対して検証することで、Xcode のスキーマドリフトを捉えられるようにします。iOS と Android の
+  `doctor` ステップ（最初のチェック項目の残る 2 レーン）は後続スライスとするため、本項目は*実装中*のままと
+  します。
+- **iOS + Android オンボーディングスライス**（本 PR）：最初のチェック項目の残る 2 レーンが着地し、本項目を
+  完了します。
+  - `ios-e2e.yml` の `smoke` ジョブ（シミュレータ起動済み）と `android-e2e.yml` の `smoke` ジョブ
+    （エミュレータのセッション内）が、それぞれ `bajutsu doctor` を実環境で実行し、`environment:` セクション
+    に `✗` がないことを検証します。この検証により、`simctl.py` と `adb` の実際のデバイス数パースと、
+    `preflight.py` の実際のツール検査が、実アクチュエータを通じて動きます。
+  - 新しい `bajutsu doctor --environment-only` フラグは、doctor を実行可能性ゲートで停止させます。検証範囲が
+    環境ゲートに限定され、画面プローブの起動コストや不安定さの影響を受けません。iOS の画面プローブは、
+    常駐 XCUITest ランナーです。
+  - web スライスが最初に用いた壊れやすいインラインの `awk` / `grep` は、3 レーンすべてで
+    `scripts/assert_doctor_env.py` に置き換えます。そのセクションパーサは、ユニットテスト
+    （`tests/test_assert_doctor_env.py`）で検証しています。`scripts/e2e_changes.py` と同じ、「未テストの
+    シェル → ユニットテスト済みの Python」への移行です。
+  - 両方の `smoke` ジョブは、この検証をゲートに含めます。`✗` は、必須の `E2E` チェックを失敗させます。
+    環境ゲートは、各ジョブがすでにゲート対象としている `smoke` 実行より厳密に弱いため、不安定さを増やしません。
+    web スライスのジョブは異なります。`provision` を再実行し、`playwright install` のネットワーク由来の不安定
+    さがあるため、非ゲートのままです。
 
 ## 参考
 
-- [BE-0024 — doctor / オンボーディング](../BE-0024-doctor-onboarding/BE-0024-doctor-onboarding-ja.md) — 本提案が引き継ぐ、このトピックの起点となる項目です。
+- [BE-0024 — doctor / オンボーディング](../BE-0024-doctor-onboarding/BE-0024-doctor-onboarding-ja.md)。本提案が引き継ぐ、このトピックの起点となる項目です。
 - [BE-0164 — config を踏まえた環境インストーラー](../BE-0164-config-aware-environment-installer/BE-0164-config-aware-environment-installer-ja.md)
 - [BE-0282 — ネットワークのキャプチャ・モック・アサーションを CI で実バックエンド検証する](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md)
 - `bajutsu/provision.py`、`bajutsu/preflight.py`、`bajutsu/requirements.py`、`bajutsu/simctl.py`、

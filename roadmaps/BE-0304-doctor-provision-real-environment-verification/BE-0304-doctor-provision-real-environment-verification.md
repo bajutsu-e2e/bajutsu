@@ -15,68 +15,82 @@
 
 ## Introduction
 
-The onboarding gate — `provision.py` (installs backend tooling), `preflight.py`/`requirements.py`
-(the runnability gate `doctor` reports), and `simctl.py`'s JSON parsers (`booted_udids`,
-`device_catalog`) that back both — is tested entirely through injected fakes: mocked
-`subprocess.run` calls asserting the right command string, monkeypatched `shutil.which`, and
-hand-typed JSON literals standing in for `xcrun simctl list devices -j`. None of it is ever run for
-real in CI. This item wires `bajutsu doctor` and `python -m bajutsu.provision` into an existing E2E lane so the
-whole onboarding path gets exercised against a genuinely real, and genuinely known-broken,
-environment at least once.
+The onboarding gate has three parts:
+
+- `provision.py`, which installs backend tooling.
+- `preflight.py` and `requirements.py`, the runnability gate that `doctor` reports.
+- The JSON parsers in `simctl.py` (`booted_udids`, `device_catalog`), which back both.
+
+Injected fakes test all three. Mocked `subprocess.run` calls assert the right command string.
+`shutil.which` is monkeypatched. Hand-typed JSON literals stand in for `xcrun simctl list devices -j`.
+CI never runs any of it for real.
+
+This item wires `bajutsu doctor` and `python -m bajutsu.provision` into an existing E2E lane. The whole
+onboarding path then runs at least once against a genuinely real environment, and against a genuinely
+known-broken one.
 
 ## Motivation
 
-Three gaps share one root cause and one fix. `provision.py`'s tests assert that a call like
-`("brew", "install", "facebook/fb/idb-companion")` was *built*, never that a real `brew` accepted it
-— and every real E2E workflow (`ios-e2e.yml`, `web-e2e.yml`, `android-e2e.yml`) hand-rolls the
-equivalent install commands directly rather than calling `python -m bajutsu.provision`, so the installer's own
-command-construction code is never the thing that actually runs anywhere. `preflight.py`'s tests
-inject `which`/`booted_count`/`web_pkg` callables by hand, so no test confirms the gate actually
-*fails* in a genuinely broken environment (no Xcode license accepted, Playwright installed without
-its Chromium download) rather than merely reacting correctly to a hand-fed boolean. And
-`simctl.py`'s `booted_udids`/`device_catalog` parsers are tested against JSON literals typed by hand,
-never a captured real `xcrun simctl list devices -j` payload — a schema change in a future Xcode
-version would silently break `doctor` and the device pool's labeling. `.github/actions/bajutsu-e2e/action.yml`
-already runs `bajutsu doctor` on the iOS lane, but only as a non-blocking convention check
-(`|| echo "doctor: non-blocking (convention score only)"`) that discards the exit code and never
-asserts anything from the rendered output, so the real `simctl` parsing it exercises is never
-actually checked; Android and web have no doctor step at all.
+Three gaps share one root cause and one fix.
 
-A single real invocation of `bajutsu doctor` (and, separately, `python -m bajutsu.provision`) inside an
-existing on-device lane closes most of these gaps at once: it exercises the real `simctl` JSON shape
-through the real parser, the real tool-presence checks through the real gate, and — paired with a
-deliberately broken variant — proves the gate actually distinguishes ready from not-ready.
+**Provision.** `provision.py`'s tests assert that a call like
+`("brew", "install", "facebook/fb/idb-companion")` was *built*. They never assert that a real `brew`
+accepted it. Every real E2E workflow (`ios-e2e.yml`, `web-e2e.yml`, `android-e2e.yml`) hand-rolls the
+equivalent install commands instead of calling `python -m bajutsu.provision`. The installer's own
+command-construction code therefore never runs anywhere.
+
+**Preflight.** `preflight.py`'s tests inject `which`, `booted_count`, and `web_pkg` callables by hand.
+They show that the gate reacts correctly to a hand-fed boolean. No test confirms that the gate *fails*
+in a genuinely broken environment, such as one with no Xcode license accepted, or with Playwright
+installed without its Chromium download.
+
+**Simctl parsing.** The `booted_udids` and `device_catalog` parsers in `simctl.py` are tested against
+hand-typed JSON literals, never against a captured real `xcrun simctl list devices -j` payload. A
+schema change in a future Xcode version would silently break `doctor` and the device pool's labeling.
+
+`.github/actions/bajutsu-e2e/action.yml` already runs `bajutsu doctor` on the iOS lane. But the run is
+a non-blocking convention check (`|| echo "doctor: non-blocking (convention score only)"`). It discards
+the exit code and never asserts anything from the rendered output, so the real `simctl` parsing it
+exercises is never checked. Android and web have no doctor step at all.
+
+A single real invocation of `bajutsu doctor` (and, separately, `python -m bajutsu.provision`) inside
+an existing on-device lane closes most of these gaps at once:
+
+- It exercises the real `simctl` JSON shape through the real parser.
+- It exercises the real tool-presence checks through the real gate.
+- Paired with a deliberately broken variant, it proves that the gate distinguishes ready from
+  not-ready.
 
 ## Detailed design
 
 Proposal altitude. The work is MECE along the units below.
 
-- **Run `bajutsu doctor` for real inside an existing E2E lane.** Add a step to `ios-e2e.yml`
-  (and, separately, `android-e2e.yml`/`web-e2e.yml`) that runs the real command against the lane's
-  real environment and asserts the rendered `environment:` section reports no `✗` (i.e. the
-  environment gate itself doesn't exit 1/2), exercising `simctl.py`'s real JSON parsing and
-  `preflight.py`'s real tool checks in one pass.
-- **Add one deliberately-broken-environment case.** In a job (or job step) with a tool intentionally
-  absent or misconfigured (e.g. `PATH` without `idb`), assert `doctor`/`preflight` correctly exits
-  non-zero with an `✗` in the rendered `environment:` section — the fail side no injected-fake test
-  can prove today.
-- **Run `python -m bajutsu.provision` for real in a fresh environment.** Add a job (a bare container, or a
-  fresh step before the rest of a lane's setup) that runs the real installer end-to-end and asserts
-  the tool it targets becomes available, closing the "command string was right" vs. "the real package
-  manager accepted it" gap.
+- **Run `bajutsu doctor` for real inside an existing E2E lane.** Add a step to `ios-e2e.yml` (and,
+  separately, `android-e2e.yml` and `web-e2e.yml`). The step runs the real command against the lane's
+  real environment. It asserts that the rendered `environment:` section reports no `✗`, which means the
+  environment gate itself does not exit 1 or 2. One pass exercises `simctl.py`'s real JSON parsing and
+  `preflight.py`'s real tool checks.
+- **Add one deliberately-broken-environment case.** Use a job (or job step) with a tool intentionally
+  absent or misconfigured, e.g. a `PATH` without `idb`. Assert that `doctor` / `preflight` exits
+  non-zero with an `✗` in the rendered `environment:` section. No injected-fake test can prove this
+  fail side today.
+- **Run `python -m bajutsu.provision` for real in a fresh environment.** Add a job that runs the real
+  installer end to end. The job is either a bare container or a fresh step before the rest of a lane's
+  setup. It asserts that the tool the installer targets becomes available. This closes the gap between
+  "the command string was right" and "the real package manager accepted it".
 - **Capture a real `simctl list devices -j` payload as a fixture.** Replace (or supplement) the
-  hand-typed JSON literals in `tests/test_simctl.py` with one captured from a real invocation, so a
-  future Xcode schema drift has a chance of being caught before it reaches `doctor` or the pool.
+  hand-typed JSON literals in `tests/test_simctl.py` with one captured from a real invocation. A
+  future Xcode schema drift then has a chance of being caught before it reaches `doctor` or the pool.
 
 ## Alternatives considered
 
 - **Leave the E2E lanes hand-rolling install commands, since the real tools do end up installed.**
-  This proves the *tools* work, not that `python -m bajutsu.provision`'s own command-construction code is
-  correct — the installer could regress with no CI signal at all under this arrangement, which is the
-  actual gap.
+  That proves the *tools* work. It does not prove that `python -m bajutsu.provision`'s own
+  command-construction code is correct. Under this arrangement the installer could regress with no CI
+  signal at all, and that is the actual gap.
 - **Add more injected-fake unit tests instead.** More fakes covering more hand-typed scenarios would
-  still not catch a real `xcrun simctl` schema change or a real broken toolchain; the fakes are
-  already internally consistent, which is precisely what makes them unable to observe drift from
+  still not catch a real `xcrun simctl` schema change or a real broken toolchain. The fakes are
+  already internally consistent, and that is precisely what makes them unable to observe drift from
   reality.
 
 ## Progress
@@ -95,28 +109,35 @@ Proposal altitude. The work is MECE along the units below.
 ### Log
 
 - **web-lane onboarding slice** (this PR): a new non-gating `onboarding (doctor / provision)` job in
-  `web-e2e.yml` runs the onboarding gate end to end against a real environment — the browserless host
-  where `doctor` must fail loudly with a `✗` (the broken-environment case), then `python -m
-  bajutsu.provision --backend web` installing Chromium for real, then `doctor`'s environment gate
-  passing. Separately, `tests/test_simctl.py` gains a real captured `simctl list devices available -j`
-  payload (`tests/data/simctl_list_devices_available.json`) that the `device_catalog` / `booted_udids`
-  parsers are checked against, so an Xcode schema drift has a chance of being caught. The iOS and
-  Android `doctor` steps (the first checklist item's remaining two lanes) are a later slice, which is
-  why the item stays *In progress*.
+  `web-e2e.yml` runs the onboarding gate end to end against a real environment. It runs three checks
+  in order.
+  - On the browserless host, `doctor` must fail loudly with a `✗`. This is the broken-environment
+    case.
+  - `python -m bajutsu.provision --backend web` installs Chromium for real.
+  - `doctor`'s environment gate then passes.
+
+  Separately, `tests/test_simctl.py` gains a real captured `simctl list devices available -j` payload
+  (`tests/data/simctl_list_devices_available.json`). The `device_catalog` / `booted_udids` parsers are
+  checked against it, so an Xcode schema drift has a chance of being caught. The iOS and Android
+  `doctor` steps (the first checklist item's remaining two lanes) are a later slice, which is why the
+  item stays *In progress*.
 - **iOS + Android onboarding slice** (this PR): the first checklist item's remaining two lanes land,
-  completing the item. `ios-e2e.yml`'s `smoke` job (Simulator booted) and `android-e2e.yml`'s
-  `smoke` job (inside the emulator session) each run `bajutsu doctor` for real and assert the
-  `environment:` section reports no `✗`, exercising `simctl.py`'s / `adb`'s real device-count parsing
-  and `preflight.py`'s real tool checks through the real actuator. A new `bajutsu doctor
-  --environment-only` flag stops doctor at the runnability gate, so the assertion is scoped to the
-  environment gate and never pays for — or flakes on — the screen probe (on iOS, the resident XCUITest
-  runner). The fragile inline `awk`/`grep` the web slice first shipped is replaced across all three
-  lanes by `scripts/assert_doctor_env.py`, whose section parser is unit-tested
-  (`tests/test_assert_doctor_env.py`) — the same "untested shell → unit-tested Python" move
-  `scripts/e2e_changes.py` made. Both smoke jobs gate on the assertion (a `✗` fails the required
-  `E2E` check): the environment gate is strictly weaker than the smoke run each job already gates on,
-  so it adds no flakiness — unlike the web slice's job, which stays non-gating because it re-runs
-  `provision` (a `playwright install` network flake).
+  completing the item.
+  - The `smoke` job of `ios-e2e.yml` (Simulator booted) and the `smoke` job of `android-e2e.yml`
+    (inside the emulator session) each run `bajutsu doctor` for real. Each asserts that the
+    `environment:` section reports no `✗`. The assertion exercises the real device-count parsing of
+    `simctl.py` and `adb`, and the real tool checks of `preflight.py`, through the real actuator.
+  - A new `bajutsu doctor --environment-only` flag stops doctor at the runnability gate. The assertion
+    is then scoped to the environment gate, and it never pays for the screen probe or flakes on it. On
+    iOS, the screen probe is the resident XCUITest runner.
+  - `scripts/assert_doctor_env.py` replaces the fragile inline `awk` / `grep` that the web slice first
+    shipped, across all three lanes. Its section parser is unit-tested
+    (`tests/test_assert_doctor_env.py`). This is the same "untested shell → unit-tested Python" move
+    that `scripts/e2e_changes.py` made.
+  - Both smoke jobs gate on the assertion, so a `✗` fails the required `E2E` check. The environment
+    gate is strictly weaker than the smoke run each job already gates on, so it adds no flakiness.
+    The web slice's job differs: it stays non-gating because it re-runs `provision`, which carries a
+    `playwright install` network flake.
 
 ## References
 
