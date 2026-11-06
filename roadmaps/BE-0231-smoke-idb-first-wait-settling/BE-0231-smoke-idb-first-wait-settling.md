@@ -15,31 +15,33 @@
 
 ## Introduction
 
-The `smoke (idb)` continuous-integration (CI) lane intermittently fails at the very first
-scenario step. The showcase smoke scenario's opening `wait` — for the first list row
-(`stable.row.1`) — times out after 10 seconds before any interaction happens, even though the
-Simulator booted, the app launched, and the post-launch readiness gate declared the app ready.
-The failure is byte-for-byte identical across occurrences and clears on rerun: on PR #936 the
-lane failed three times and only went green on the fourth attempt.
+The `smoke (idb)` continuous-integration (CI) lane intermittently fails at the very first scenario
+step. The showcase smoke scenario opens with a `wait` for the first list row (`stable.row.1`). That
+wait times out after 10 seconds, before any interaction happens. The Simulator booted, the app
+launched, and the post-launch readiness gate declared the app ready. The failure is byte-for-byte
+identical across occurrences and clears on rerun. On PR #936 the lane failed three times and went
+green only on the fourth attempt.
 
-This item proposes to **root-cause and harden that first wait** so the lane is green on its
-first attempt without manual reruns. It deliberately does **not** propose automatic retry of a
-failed lane — the roadmap lists that under *Not adopting* because it hides flakiness and is in
-tension with determinism-first. The fix here is to make the wait itself robust to a cold CI
-Simulator's settling, not to paper over the timeout by running again.
+This item proposes to **root-cause and harden that first wait**. The goal is a lane that is green on
+its first attempt without manual reruns.
+
+The item deliberately does **not** propose automatic retry of a failed lane. The roadmap lists that
+under *Not adopting* because it hides flakiness and is in tension with determinism-first. The fix
+here makes the wait itself robust to a cold CI Simulator's settling. It does not paper over the
+timeout by running again.
 
 ## Motivation
 
-Every rerun of the `smoke (idb)` lane costs roughly seven minutes of Simulator boot, build, and
-run, and — more importantly — erodes trust in the gate. A lane that is green only after three
-reruns trains contributors to reflexively re-run red checks, which is exactly the habit
-determinism-first exists to avoid: a green that needed four tries is not a dependable signal.
+Every rerun of the `smoke (idb)` lane costs roughly seven minutes of Simulator boot, build, and run.
+More importantly, reruns erode trust in the gate. A lane that is green only after three reruns trains
+contributors to re-run red checks reflexively. Determinism-first exists to avoid exactly that habit:
+a green that needed four tries is not a dependable signal.
 
 The flake is environmental, not a product defect. On PR #936 the change under test was pure
-read-only Python aggregation that touches no runner, driver, wait logic, or device path, and the
-sibling `conformance (idb + xcuitest)` lane — the same idb backend against the same Simulator —
-was green throughout. So the cause lives in the smoke lane's *own* startup timing on a
-cold-booted CI Simulator, independent of the code under test.
+read-only Python aggregation. It touches no runner, driver, wait logic, or device path. The sibling
+`conformance (idb + xcuitest)` lane runs the same idb backend against the same Simulator, and it was
+green throughout. So the cause lives in the smoke lane's *own* startup timing on a cold-booted CI
+Simulator, independent of the code under test.
 
 Prior work hardened adjacent layers but not this one:
 
@@ -47,83 +49,95 @@ Prior work hardened adjacent layers but not this one:
   satisfy the readiness gate. That fixed a *readiness-gate* misfire.
 - **BE-0087** added projection-based settle and transient-empty backoff to the idb driver's
   *actuation* path.
-- **BE-0207** added transient-retry to the XCUITest channel; **BE-0088** moved Simulator boot off
-  the critical path.
+- **BE-0207** added transient-retry to the XCUITest channel.
+- **BE-0088** moved Simulator boot off the critical path.
 
-The gap this item targets is the **handoff between the readiness gate and the scenario's first
-`wait`**: `_await_ready` can declare the app ready (an in-namespace element has appeared) a moment
-before the specific element the scenario immediately waits on — the first list row — has rendered
-and settled on a slow cold-boot Simulator. The 10-second first wait then races that render and
-occasionally loses. The remedy must stay condition-based (no fixed `sleep`, prime directive 2) and
-app-agnostic (any per-target difference lives in config, prime directive 3).
+This item targets the gap in the **handoff between the readiness gate and the scenario's first
+`wait`**. `_await_ready` can declare the app ready when an in-namespace element appears. That can
+happen a moment before the element the scenario waits on next, the first list row, has rendered and
+settled on a slow cold-boot Simulator. The 10-second first wait then races that render and
+occasionally loses.
+
+The remedy must stay condition-based, with no fixed `sleep` (prime directive 2). It must also stay
+app-agnostic, so any per-target difference lives in config (prime directive 3).
 
 ## Detailed design
 
 The work is deterministic diagnosis first, then targeted hardening, then a machine-checkable
 acceptance. Each unit is independently shippable.
 
-1. **Make the failure diagnosable from artifacts, not from reruns.** On a first-wait timeout,
-   capture enough state to tell *which* of the candidate causes fired: the element tree at
-   timeout, whether the readiness gate had passed and on which signal, and the time at which the
-   awaited element (if ever) became queryable. Stamp it with the existing BE-0049 run provenance
-   (scenario hash, tool version, git revision) so a rerun-to-green no longer discards the evidence.
-   This unit decides, from data, between the three hypotheses below rather than guessing.
+1. **Make the failure diagnosable from artifacts, not from reruns.** On a first-wait timeout, capture
+   enough state to tell *which* candidate cause fired:
+   - the element tree at timeout;
+   - whether the readiness gate had passed, and on which signal;
+   - the time at which the awaited element (if ever) became queryable.
 
-2. **Tighten the readiness → first-wait handoff.** If the diagnosis shows the readiness gate
-   declares ready before the content the scenario waits on is present, close that gap: either point
-   the showcase target's `readyWhen` at the first content-bearing element the scenario needs, or
-   strengthen namespace readiness to require a content element rather than any in-namespace node.
-   The change is config-first where possible (a target's `readyWhen`) and touches shared readiness
-   logic only if the gap is general.
+   Stamp that state with the existing BE-0049 run provenance (scenario hash, tool version, git
+   revision). A rerun-to-green then no longer discards the evidence. This unit decides from data
+   between the three hypotheses below, rather than guessing.
 
-3. **Make the first `wait` resilient to a mid-transition empty tree.** Confirm the scenario-level
-   `wait_for` tolerates a transient-empty or mid-transition query the way BE-0087 made the actuation
-   path tolerate one — a first poll landing on an empty tree during the launch transition must not
-   quietly consume the wait budget. Extend the transient-empty backoff to this path if it does not
-   already cover it.
+2. **Tighten the readiness → first-wait handoff.** Suppose the diagnosis shows the readiness gate
+   declares ready before the content the scenario waits on is present. Then close that gap in one of
+   two ways. Point the showcase target's `readyWhen` at the first content-bearing element the
+   scenario needs. Or strengthen namespace readiness to require a content element rather than any
+   in-namespace node. The change is config-first where possible (a target's `readyWhen`). It touches
+   shared readiness logic only if the gap is general.
 
-4. **Right-size the first-wait budget for a cold CI Simulator.** If the diagnosis shows the render
-   genuinely takes longer than 10 seconds on a cold-booted CI Simulator (versus a warm local one),
-   make the wait budget configurable per target/environment rather than a hardcoded constant — still
-   condition-based, so a fast environment returns as soon as the element appears and only a slow one
-   spends the larger budget. No fixed `sleep` is introduced.
+3. **Make the first `wait` resilient to a mid-transition empty tree.** Confirm that the
+   scenario-level `wait_for` tolerates a transient-empty or mid-transition query, the way BE-0087
+   made the actuation path tolerate one. A first poll that lands on an empty tree during the launch
+   transition must not quietly consume the wait budget. Extend the transient-empty backoff to this
+   path if it does not already cover it.
 
-5. **Prove it stays green.** The acceptance is machine-checkable: the `smoke (idb)` lane passes on
-   its first attempt across a bounded number of consecutive CI runs with no manual rerun. This is a
+4. **Right-size the first-wait budget for a cold CI Simulator.** Suppose the diagnosis shows the
+   render genuinely takes longer than 10 seconds on a cold-booted CI Simulator, versus a warm local
+   one. Then make the wait budget configurable per target or environment, rather than a hardcoded
+   constant. The wait stays condition-based. A fast environment returns as soon as the element
+   appears, and only a slow one spends the larger budget. No fixed `sleep` is introduced.
+
+5. **Prove it stays green.** The acceptance is machine-checkable. The `smoke (idb)` lane passes on
+   its first attempt across a bounded number of consecutive CI runs, with no manual rerun. This is a
    deterministic check on the gate itself, not an LLM judgment. It is the final unit, observed after
-   the hardening below (unit 6) lands.
+   the hardening in unit 6 lands.
 
 6. **Recover a wedged idb accessibility bridge (the root cause unit 1 revealed).** Unit 1's
-   diagnostic settled which cause fires, and it is none of the three above. On a cold CI Simulator's
-   first app launch, `idb ui describe-all` intermittently returns only the top-level `application`
-   element with a zero-area frame — idb's accessibility bridge has not attached to the app's window —
-   *while the app has fully rendered* (the run's screenshot shows the awaited first row on screen).
-   The readiness gate and the first `wait` then poll a tree the content is missing from and both time
-   out, though the element is present. This is why units 2–4 could not hold: a content `readyWhen`
-   and a larger budget cannot see an element that `describe-all` omits. Close it in the idb driver:
-   when a query returns this signature — a lone `application` root with no geometry — reset that
-   device's companion connection (`idb disconnect` then `idb connect`, per-udid so a concurrent crawl
-   lane on another Simulator is untouched, not a global `idb kill`) to force a fresh accessibility
-   attach, then re-read, bounded. A genuinely sparse but rendered screen keeps real geometry, so it
-   is never reset; and if the tree is still wedged after the bounded resets, the query returns it
-   as-is so the wait fails loudly with the unit 1 diagnostic — the recovery never masks a real
-   failure. Condition-based on a structural tree shape, so no fixed `sleep` (prime directive 2); the
-   behavior lives in the driver keyed on the tree, so it stays app- and target-agnostic (prime
-   directive 3); no LLM on the path (prime directive 1).
+   diagnostic settled which cause fires, and it is none of the three above.
+
+   On a cold CI Simulator's first app launch, `idb ui describe-all` intermittently returns only the
+   top-level `application` element with a zero-area frame. idb's accessibility bridge has not
+   attached to the app's window. Meanwhile the app has fully rendered: the run's screenshot shows the
+   awaited first row on screen. The readiness gate and the first `wait` then poll a tree that is
+   missing the content, and both time out, though the element is present.
+
+   This is why units 2–4 could not hold. A content `readyWhen` and a larger budget cannot see an
+   element that `describe-all` omits.
+
+   Close the gap in the idb driver. When a query returns this signature, a lone `application` root
+   with no geometry, reset that device's companion connection. The reset is `idb disconnect` then
+   `idb connect`. It runs per-udid, so a concurrent crawl lane on another Simulator is untouched; it
+   is not a global `idb kill`. The reset forces a fresh accessibility attach. Then re-read, bounded.
+
+   A genuinely sparse but rendered screen keeps real geometry, so it is never reset. If the tree is
+   still wedged after the bounded resets, the query returns it as-is. The wait then fails loudly with
+   the unit 1 diagnostic, so the recovery never masks a real failure.
+
+   The recovery is condition-based on a structural tree shape, so it adds no fixed `sleep` (prime
+   directive 2). The behavior lives in the driver keyed on the tree, so it stays app- and
+   target-agnostic (prime directive 3). No LLM is on the path (prime directive 1).
 
 ## Alternatives considered
 
 - **Automatic retry (with reboot) of the failed lane.** Rejected as the spine of this item. The
-  roadmap already lists *Automatic retry of failed tests* under *Not adopting*: it hides flakiness
-  and is in tension with determinism-first. If such a mechanism is ever adopted it must be
-  quarantine-only, loud (never silently masking an assertion failure), and provenance-stamped so a
-  masked flake stays visible to BE-0220's cross-run triage — a separate, carefully-scoped item, not
-  this one.
-- **Blindly raising the global wait timeout.** Rejected: it masks the root cause and slows every
-  run everywhere. Unit 4 raises the budget only where a diagnosis shows genuine cold-boot variance,
-  and only as a condition-based, per-environment bound.
-- **A fixed `sleep` warm-up after boot.** Rejected outright — prime directive 2 forbids fixed
-  sleeps; waits are condition-based only.
+  roadmap already lists *Automatic retry of failed tests* under *Not adopting*. It hides flakiness
+  and is in tension with determinism-first. Suppose such a mechanism is ever adopted. It must be
+  quarantine-only, loud (never silently masking an assertion failure), and provenance-stamped. A
+  masked flake then stays visible to BE-0220's cross-run triage. That is a separate,
+  carefully scoped item, not this one.
+- **Blindly raising the global wait timeout.** Rejected. It masks the root cause and slows every run
+  everywhere. Unit 4 raises the budget only where a diagnosis shows genuine cold-boot variance, and
+  only as a condition-based, per-environment bound.
+- **A fixed `sleep` warm-up after boot.** Rejected outright. Prime directive 2 forbids fixed sleeps,
+  and waits are condition-based only.
 
 ## Progress
 

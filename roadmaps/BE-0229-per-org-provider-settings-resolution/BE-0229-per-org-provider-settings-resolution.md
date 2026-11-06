@@ -16,61 +16,64 @@
 
 ## Introduction
 
-The serve Web UI's AI provider choice, model, and reasoning effort resolve *process-globally*:
-saving them writes `os.environ` (`_apply_provider_env` in `bajutsu/serve/operations/config.py`
-sets `PROVIDER_ENV` / `MODEL_ENV` / `EFFORT_ENV` / the Bedrock slots), and the AI paths pick them
-up from that one shared process environment, which spawned jobs inherit. A hosted, multi-tenant
-serve (BE-0015) already scopes artifacts, scenarios, baselines, and secrets *per organization*
-through a per-org `StoreBundle` resolved from the request's org (`ServeState.org_of`), but the AI
-provider selection is the one setting that stays process-wide. This item proposes resolving
-provider/model/effort per organization at runtime, so each org's `record` / triage / draft paths
-use that org's saved selection rather than a single shared one — the prerequisite BE-0184 named
-when it deferred its per-organization, DB-backed store.
+Today the serve Web UI resolves the AI provider choice, the model, and the reasoning effort
+*process-globally*. Saving them writes `os.environ`: `_apply_provider_env` in
+`bajutsu/serve/operations/config.py` sets `PROVIDER_ENV`, `MODEL_ENV`, `EFFORT_ENV`, and the Bedrock
+slots. The AI paths read the values from that one shared process environment, and spawned jobs
+inherit it.
+
+A hosted, multi-tenant serve (BE-0015) already scopes artifacts, scenarios, baselines, and secrets
+*per organization*. It does so through a per-org `StoreBundle`, which the request's org selects
+(`ServeState.org_of`). The AI provider selection is the one setting that stays process-wide.
+
+This item resolves provider, model, and effort per organization at runtime. Each org's `record`,
+triage, and draft paths then use that org's saved selection instead of a single shared one. BE-0184
+named this as the prerequisite when it deferred its per-organization, DB-backed store.
 
 ## Motivation
 
-BE-0184 shipped durable persistence for the provider settings and then deliberately deferred the
-per-organization, DB-backed store shape, because "in today's serve, provider/model/effort resolve
-process-globally (`os.environ` + a single `ServeState.provider_settings` map), not per
-organization, so a per-org store would persist values nothing reads per org." That is the gap this
-item closes: without per-org runtime resolution, two organizations sharing one hosted serve
-process necessarily share one provider/model/effort selection — whoever saved last wins for
-everyone, which breaks the tenant isolation BE-0015 gives every other stateful surface. The
-per-org DB-backed store BE-0184 deferred only becomes meaningful once there is a per-org read path
-for it to feed; this item is that read path.
+BE-0184 shipped durable persistence for the provider settings. It then deferred the per-organization,
+DB-backed store shape on purpose. Its reason: "in today's serve, provider/model/effort resolve
+process-globally (`os.environ` + a single `ServeState.provider_settings` map), not per organization,
+so a per-org store would persist values nothing reads per org." This item closes that gap.
+
+Without per-org runtime resolution, two organizations on one hosted serve process share one
+provider, model, and effort selection. Whoever saved last wins for everyone. That breaks the tenant
+isolation BE-0015 gives every other stateful surface.
+
+The per-org DB-backed store that BE-0184 deferred becomes meaningful only once a per-org read path
+exists for it to feed. This item is that read path.
 
 ## Detailed design
 
 1. **Per-organization settings state.** Replace the single `ServeState.provider_settings` map and
-   active-provider choice with an org-keyed structure, resolved through the same `org_of` the
-   request handlers already compute for the per-org `StoreBundle`. Local serve's single `default`
-   org keeps exactly today's shape — one bundle, one settings slot.
-2. **Per-request resolution instead of a shared process env.** The AI paths that today read
-   provider/model/effort from `os.environ` must instead resolve them from the requesting org's
-   settings. Because jobs are spawned as subprocesses that inherit the parent's environment, the
-   resolved per-org values must be passed to the spawn as that job's own environment (a per-job env
-   overlay) rather than by mutating the shared `os.environ` — otherwise one org's save would still
-   leak into every other org's jobs. This is the load-bearing change; the store work below depends
-   on it.
+   the active-provider choice with an org-keyed structure. Resolve it through the same `org_of` that
+   the request handlers already compute for the per-org `StoreBundle`. Local serve's single `default`
+   org keeps today's shape: one bundle, one settings slot.
+2. **Per-request resolution instead of a shared process env.** The AI paths that read
+   provider, model, and effort from `os.environ` must resolve them from the requesting org's
+   settings instead. Jobs are subprocesses that inherit the parent's environment. The resolved
+   per-org values must therefore reach the spawn as that job's own environment (a per-job env overlay), and the
+   shared `os.environ` stays unmutated. Otherwise one org's save would still leak into every other
+   org's jobs. This is the load-bearing change; the store work below depends on it.
 3. **Wire the per-organization, DB-backed store deferred by BE-0184.** With per-org resolution in
-   place, add the DB-backed `ProviderSettingsStore` shape (parallel to `DbSecretStore`), loaded and
-   saved per org through the same repository seam the secret store and job records already use, so
-   a saved selection survives a restart *per organization* on a hosted deployment.
-4. **Local parity and zero-config unchanged.** Local serve (a single `default` org, no database)
-   keeps BE-0184's file-backed `LocalProviderSettingsStore` and today's resolution behavior
-   unchanged; the AI-free zero-config path (BE-0101) is likewise untouched when nothing is
-   persisted.
+   place, add the DB-backed `ProviderSettingsStore` shape, parallel to `DbSecretStore`. It loads and
+   saves per org through the repository seam that the secret store and job records already use. A
+   saved selection then survives a restart *per organization* on a hosted deployment.
+4. **Local parity and zero-config unchanged.** Local serve has a single `default` org and no
+   database. It keeps BE-0184's file-backed `LocalProviderSettingsStore` and today's resolution
+   behavior. The AI-free zero-config path (BE-0101) is likewise untouched when nothing is persisted.
 
 ## Alternatives considered
 
-- **Keep the process-global env and accept one provider selection per serve process.** Rejected:
-  it silently breaks tenant isolation on a hosted, multi-tenant deployment — every other stateful
-  surface (artifacts, scenarios, secrets) is already per-org, and leaving the provider selection
-  shared makes one operator's save change every other org's AI runs.
-- **Add the per-org DB-backed store without per-org runtime resolution first** (i.e. do BE-0184's
-  deferred box directly). Rejected for the reason BE-0184 recorded: nothing would read the stored
-  values per org, so it would persist state with no effect. Runtime resolution is the prerequisite,
-  which is why it is a separate item.
+- **Keep the process-global env and accept one provider selection per serve process.** Rejected.
+  It breaks tenant isolation on a hosted, multi-tenant deployment without any signal. Every other
+  stateful surface (artifacts, scenarios, secrets) is already per-org. A shared provider selection
+  lets one operator's save change every other org's AI runs.
+- **Add the per-org DB-backed store without per-org runtime resolution first.** That would do
+  BE-0184's deferred box directly. Rejected for the reason BE-0184 recorded: nothing would read the
+  stored values per org, so the store would persist state with no effect. Runtime resolution is the
+  prerequisite, which is why it is a separate item.
 
 ## Progress
 
