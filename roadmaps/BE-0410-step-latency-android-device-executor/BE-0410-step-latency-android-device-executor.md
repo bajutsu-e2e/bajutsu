@@ -15,90 +15,47 @@
 
 ## Introduction
 
-[BE-0408](../BE-0408-step-latency-device-executor-protocol/BE-0408-step-latency-device-executor-protocol.md) defines a device-side step-execution protocol — what moves from the host to the
-device, what stays on the host, and the selector-semantics contract both platforms share — as the
-route to Bajutsu's 250–500 millisecond per-step target, past what host-side driver tuning alone can
-reach. This item is the Android half of that protocol's implementation: a step executor built into
-the resident UI Automator server
-([BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance.md)'s replacement for the
-per-invocation `uiautomator dump`), which already runs as an instrumentation with a live
-`UiAutomation` session and an accessibility-event listener — the two capabilities this executor needs
-and does not have to newly acquire.
+[BE-0408](../BE-0408-step-latency-device-executor-protocol/BE-0408-step-latency-device-executor-protocol.md) defines a device-side step-execution protocol. The protocol fixes what moves from the host to the device, what stays on the host, and the selector-semantics contract that both platforms share. The protocol is the route to Bajutsu's 250–500 millisecond per-step target. Host-side driver tuning alone cannot reach that target.
+
+This item is the Android half of that protocol's implementation. It builds a step executor into the resident UI Automator server. [BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance.md) introduced that server to replace the per-invocation `uiautomator dump`. The server already runs as an instrumentation with a live `UiAutomation` session and an accessibility-event listener. The executor needs these two capabilities and no others, so it does not have to add either one.
 
 ## Motivation
 
-Every condition wait on Android today polls the resident server over HTTP, and `settledDump` confirms
-a settle by taking two tree dumps and comparing them — an approach that costs a full read twice, even
-when nothing changed between them. [BE-0407](../BE-0407-step-latency-driver-internal-tuning/BE-0407-step-latency-driver-internal-tuning.md)
-already traces most of the
-measured 2204-millisecond `POST /act` average to a fixed 2000-millisecond
-`POSTDATE_BUDGET_MS` wait that a settled screen can never satisfy before the budget runs out,
-pending confirmation from the server's own logs. That same observation — that the server already has
-the accessibility-event stream needed to know a settle happened, without polling for it — is the
-starting point for this item's design: an executor that answers from the event stream directly instead
-of a fixed budget or a two-dump comparison.
+Every condition wait on Android today polls the resident server over HTTP. `settledDump` confirms a settle by taking two tree dumps and comparing them. That approach pays for a full read twice, even when nothing changed between the dumps.
 
-The estimate this item should be checked against once built: 20–50 milliseconds for a direct
-accessibility-tree walk, 50 milliseconds for input injection, and a settle judgment in the tens of
-milliseconds once it comes from the event stream rather than a dump comparison — around 150–300
-milliseconds total for a tap step, compared to today's 3.25–3.32 second Android baseline. A later
-reader can confirm this by tracing a real tap step against the built executor.
+[BE-0407](../BE-0407-step-latency-driver-internal-tuning/BE-0407-step-latency-driver-internal-tuning.md) already traces most of the measured 2204-millisecond `POST /act` average to a fixed 2000-millisecond `POSTDATE_BUDGET_MS` wait. A settled screen cannot end that wait early. The trace still awaits confirmation from the server's own logs.
+
+The same observation starts this item's design. The server already has the accessibility-event stream that shows a settle happened, so it does not need to poll. The item proposes an executor that answers from the event stream directly, in place of a fixed budget or a two-dump comparison.
+
+Once the executor is built, check it against this estimate for a tap step:
+
+- 20–50 milliseconds for a direct accessibility-tree walk
+- 50 milliseconds for input injection
+- a settle judgment in the tens of milliseconds, once it comes from the event stream rather than a dump comparison
+- around 150–300 milliseconds for the whole step, compared to today's 3.25–3.32 second Android baseline
+
+A later reader can confirm the estimate by tracing a real tap step against the built executor.
 
 ## Detailed design
 
-**Implementation order.** This item is the fourth and last of four related items in a strict order:
-BE-0407, BE-0408, the iOS executor ([BE-0409](../BE-0409-step-latency-ios-device-executor/BE-0409-step-latency-ios-device-executor.md)),
-then this item.
-**Work on this item must not begin until BE-0409 is complete** — sequencing the two
-platform executors lets the selector-semantics port (`resolve_unique` to Swift there, to Kotlin here)
-happen once, in BE-0409, before it is repeated here, so a gap that item's port surfaces
-does not have to be independently rediscovered in both platforms at once. This item has no successor
-in the sequence.
+**Implementation order.** This item is the fourth and last of four related items. The order is strict: BE-0407, BE-0408, the iOS executor ([BE-0409](../BE-0409-step-latency-ios-device-executor/BE-0409-step-latency-ios-device-executor.md)), then this item. No item follows this one in the sequence.
 
-The resident server already has what an executor needs — it is an instrumentation with a live
-`UiAutomation` session and an accessibility-event listener, both already exercised for the existing
-`nativeZ` node walk. Four changes turn it into a step executor:
+**Work on this item must not begin until BE-0409 is complete.** Sequencing the two platform executors lets the selector-semantics port happen once, in BE-0409, before it is repeated here. The port moves `resolve_unique` to Swift there and to Kotlin here. A gap that BE-0409's port surfaces then needs no independent rediscovery on both platforms at once.
 
-1. **Replace the `dumpWindowHierarchy`-XML tree read with a direct `AccessibilityNodeInfo`
-   traversal.** The server already performs the same kind of traversal for `nativeZ`; this generalizes
-   it into the primary read path instead of a secondary one, removing the XML serialize/parse round
-   trip on both ends.
-2. **Evaluate `wait` and `settled` from `TYPE_WINDOW_CONTENT_CHANGED` and `WINDOWS_CHANGED` events**,
-   replacing the current two-dump-match approach. This is the same event-driven judgment the
-   BE-0407 proposes as a point fix for the `POSTDATE_BUDGET_MS` wait,
-   generalized here into the executor's default way of deciding a screen has settled, rather than a
-   narrow fix layered on the existing dump-based path.
-3. **Inject taps and pans with `UiAutomation.injectInputEvent`**, confirming publication by the event
-   type the injection produces rather than a fixed wait or a follow-up read.
-4. **Capture screenshots with `UiAutomation.takeScreenshot()`**, returned alongside the step's result
-   instead of through a separate `adb exec-out screencap` subprocess call.
+The resident server already has what an executor needs: a live `UiAutomation` session and an accessibility-event listener. The existing `nativeZ` node walk already exercises both. Four changes turn the server into a step executor:
 
-Selector resolution ports the host's `resolve_unique` logic
-([`bajutsu/common/drivers/base.py`](../../bajutsu/common/drivers/base.py)) to Kotlin, including the
-Android-specific derived-label fallback
-([`drivers/adb.py:251-282`](../../bajutsu/common/drivers/adb.py)), per BE-0408's
-shared selector-semantics contract — verified against the driver conformance suite
-([BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md)) the same way the
-iOS executor's port is.
+1. **Replace the `dumpWindowHierarchy`-XML tree read with a direct `AccessibilityNodeInfo` traversal.** The server already performs the same kind of traversal for `nativeZ`. This change generalizes it into the primary read path, not a secondary one, and removes the XML serialize/parse round trip on both ends.
+2. **Evaluate `wait` and `settled` from `TYPE_WINDOW_CONTENT_CHANGED` and `WINDOWS_CHANGED` events**, replacing the current two-dump-match approach. BE-0407 proposes the same event-driven judgment as a point fix for the `POSTDATE_BUDGET_MS` wait. This item generalizes the judgment into the executor's default way of deciding a screen has settled. The judgment no longer sits as a narrow fix on the existing dump-based path.
+3. **Inject taps and pans with `UiAutomation.injectInputEvent`**, confirming publication by the event type the injection produces. A fixed wait or a follow-up read no longer confirms it.
+4. **Capture screenshots with `UiAutomation.takeScreenshot()`**, returned alongside the step's result. A separate `adb exec-out screencap` subprocess call no longer captures them.
+
+Selector resolution ports the host's `resolve_unique` logic ([`bajutsu/common/drivers/base.py`](../../bajutsu/common/drivers/base.py)) to Kotlin. The port includes the Android-specific derived-label fallback ([`drivers/adb.py:251-282`](../../bajutsu/common/drivers/adb.py)), per BE-0408's shared selector-semantics contract. The driver conformance suite ([BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md)) verifies the port, the same way it verifies the iOS executor's port.
 
 ## Alternatives considered
 
-- **Fold this item into the `POSTDATE_BUDGET_MS` point fix BE-0407 proposes,
-  rather than building a full event-driven executor.** Rejected: the point fix targets one wait inside
-  today's request/response `POST /act` path and needs confirmation from the server's own logs before
-  it can even land; this item is the larger redesign that generalizes the same underlying idea — read
-  the event stream instead of polling or budgeting — into the server's whole condition-evaluation
-  path. The two are related but not substitutes: the point fix can land first and independently, and
-  this item does not depend on it landing first.
-- **Keep the two-dump settle comparison and only remove the `POSTDATE_BUDGET_MS` wait.** Rejected as
-  the sole fix: even with that wait removed, a two-dump comparison still costs a full tree read twice
-  every time a settle is checked, which the event stream this item uses can avoid answering from
-  directly.
-- **Route Android's executor design through XML instead of `AccessibilityNodeInfo`, to keep the
-  parsing code shared with today's host-side parser.** Rejected: the on-device traversal already
-  exists for `nativeZ`, so reusing it removes a serialize/parse round trip that keeping XML would
-  preserve for no benefit — the host-side parser stays as-is for the `uiautomator dump` fallback path,
-  which this item does not touch.
+- **Fold this item into the `POSTDATE_BUDGET_MS` point fix that BE-0407 proposes, rather than building a full event-driven executor.** Rejected. The point fix targets one wait inside today's request/response `POST /act` path. It needs confirmation from the server's own logs before it can even land. This item is the larger redesign. It generalizes the same underlying idea, reading the event stream instead of polling or budgeting, into the server's whole condition-evaluation path. The two items relate but are not substitutes. The point fix can land first and independently, and this item does not depend on it landing first.
+- **Keep the two-dump settle comparison and remove the `POSTDATE_BUDGET_MS` wait alone.** Rejected as the sole fix. Even with that wait removed, each settle check still pays for a full tree read twice. The event stream that this item uses avoids that cost by answering directly.
+- **Route Android's executor design through XML instead of `AccessibilityNodeInfo`, to keep the parsing code shared with today's host-side parser.** Rejected. The on-device traversal already exists for `nativeZ`. Reusing the traversal removes a serialize/parse round trip, which keeping XML would preserve for no benefit. The host-side parser stays as is for the `uiautomator dump` fallback path, which this item does not touch.
 
 ## Progress
 
