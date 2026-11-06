@@ -19,7 +19,7 @@ npm --prefix tools/textlint ci --ignore-scripts
 
 ## Supply-chain defenses
 
-Install with `npm ci`, not `npm install`. Two properties make `npm ci` the safer choice:
+Install with `npm ci`, not `npm install`. Two defenses apply to the install command:
 
 - `npm ci` honors `package-lock.json` exactly rather than rewriting it. It also verifies each package
   tarball against the integrity hash (Subresource Integrity, sha512) recorded in the lockfile. A package
@@ -100,8 +100,8 @@ All four kanji-range rules are pinned in `package.json` but left disabled (`fals
   be reasonably rewritten, though, so the rule would either stall drafting or force a growing
   allow-list. Leaving the rules off keeps the skill's own prose (and the existing Japanese docs)
   passing textlint, which the policy requires.
-- `ja-kyoiku-kanji` (educational kanji) and `ja-allowed-kanji` (an explicit allow-list) restrict kanji
-  to an even narrower set than 常用漢字, which is stricter still. Turn one on individually, with an
+- `ja-kyoiku-kanji` (educational kanji) and `ja-allowed-kanji` (an explicit allow-list) are stricter
+  still: they restrict kanji to a set even narrower than 常用漢字. Turn one on individually, with an
   allow-list, only if a specific document needs a bounded kanji set.
 
 `preset-ja-technical-writing`'s own `no-mix-dearu-desumasu` stays enabled. The rule requires every
