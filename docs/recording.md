@@ -1,10 +1,10 @@
 **English** · [日本語](ja/recording.md)
 
-# AI authoring (record / Tier 1)
+# AI authoring with record
 
-> [Tier 1](glossary.md#the-two-tiers) = AI live operation. From a natural-language goal, the AI explores and operates the app,
-> then writes out a **deterministic scenario**. AI is involved only here (at record time). The
-> resulting YAML is AI-independent and is owned by the user from that point forward.
+> `record` is [Tier 1](glossary.md#the-two-tiers), the AI live-operation tier. From a natural-language goal, the AI explores and operates the app,
+> then writes out a **deterministic scenario**. AI is involved at record time alone. The
+> resulting YAML is AI-independent, and the user owns it from that point forward.
 >
 > Implementation: `bajutsu/record/loop.py` (the loop) · `bajutsu/agents/protocols.py` + `bajutsu/agents/factory.py`
 > (the abstraction + construction) · `bajutsu/agents/claude.py` (the SDK authoring agent) ·
@@ -89,17 +89,20 @@ nothing here affects `run`, which never sees a plan at all.
 7. Return Scenario(name, steps, expect)
 ```
 
-**Multi-action turns (BE-0178).** A turn's proposal is an ordered *batch* of steps — the actions the
-agent judges executable from the current screen without seeing the previous action's result (e.g.
-fill several form fields, then submit). The batch is intra-screen by construction: after each
-executed step the loop compares `crawl.screen_identity(...)` — a transition signature that ignores
-per-element state (a field's fill, a control's enabled/selected flags) so the batch's own fills
-don't look like a transition — against the identity captured before the batch. The moment it changes
-with steps still pending, the rest is abandoned and the loop re-observes ("仕切り直し"). Only the steps
-that executed are appended, so the recorded YAML is the same flat, individually-resolved
-step list as before — batching only changes *how many model turns* produce it (one observe → model →
-execute-N instead of N single-action turns), never the artifact's shape. The abort check is a
-deterministic comparison, never an LLM judgment.
+**Multi-action turns (BE-0178).** A turn's proposal is an ordered *batch* of steps. The batch holds
+the actions that the agent judges executable from the current screen without seeing the previous
+action's result, such as filling several form fields and then submitting.
+
+The batch is intra-screen by construction. After each executed step, the loop compares
+`crawl.screen_identity(...)` against the identity captured before the batch. This transition
+signature ignores per-element state (a field's fill, a control's enabled/selected flags), so the
+batch's own fills do not look like a transition. The moment the identity changes with steps still
+pending, the loop abandons the rest and re-observes ("仕切り直し").
+
+The loop appends the steps that ran and nothing else, so the recorded YAML is the same flat,
+individually-resolved step list as before. Batching changes *how many model turns* produce the list
+(one observe → model → execute-N instead of N single-action turns), never the artifact's shape. The
+abort check is a deterministic comparison, never an LLM judgment.
 
 The output is serialized to YAML via `dump_scenarios`
 ([scenarios](scenarios.md#round-trip-load--dump)).
@@ -127,65 +130,81 @@ server-sent-event stream as a `human-request` event (the paused job enters a vis
 A `bajutsu worker` runs the `record` (BE-0449). The worker relays the request to `serve`, takes
 the response back, and writes it to the `record` process's stdin.
 [Self-hosting](self-hosting.md#the-server-backend-on-one-machine-be-0449) describes the relay.
-Either way the wait is bounded and cancelable, so no surface hangs on a human who walked away. With no responder at all — a
-non-interactive or CI invocation — a needs-human turn is a clean, labeled non-zero exit, never a hang
-and never an AI guess. This substrate owns the mechanism and the boundary; the heuristics that raise
-"needs human" and the shape of what a handoff records are the child items' concern.
+Either way the wait is bounded and cancelable, so no surface hangs on a human who walked away.
+
+With no responder at all (a non-interactive or CI invocation), a needs-human turn is a clean,
+labeled non-zero exit, never a hang and never an AI guess. This substrate owns the mechanism and the
+boundary. The child items own the heuristics that raise "needs human" and the shape of what a
+handoff records.
 
 **Human value entry (BE-0182).** The value child pattern rides on the handoff for the most common
-blocker: a field the agent can locate but cannot know — a one-time password, a 2FA code, a random
-one-off value. The agent flags the field (via `ask_human`, addressing it by id/label) and proposes
-how a real run will supply the value with `classify`: `totp` or `email` (a `${vars.*}` produced by
-the run-time bridge step, BE-0046) or `secret` (a declared `${secrets.*}`). The human types the value
-once; the loop types it into the *live* field so the recording proceeds, but records a **placeholder**
-`type` step — `${vars.*}` / `${secrets.*}`, never the literal (reusing BE-0120's no-leak guarantee) —
-carrying a `from:` provenance line (BE-0044) that both marks the human-value origin and states the
-TODO to wire it. Consistent with prime directive 1, the AI only *proposes* the classification; the
-author confirms and wires it, after which replay is fully deterministic and AI-free.
+blocker: a field the agent can locate but cannot know, such as a one-time password, a 2FA code, or a
+random one-off value. The agent flags the field (via `ask_human`, addressing it by id/label). It
+then proposes with `classify` how a real run will supply the value:
 
-**Human takeover (BE-0185).** The other child pattern covers a handoff that names no field: the
-blocker is not a value the agent could type but an *operation* it cannot perform — a CAPTCHA, a
-biometric prompt, a gesture the agent repeatedly fails to resolve. The human operates the live device
-and answers "I acted" (the `acted` handoff, BE-0179); `record` records a marker of the observed
-transition, not the raw gesture, as a **`manual` step** ([scenarios](scenarios.md#manual)). The agent
-classifies the marker by whether it can propose a deterministic bypass: a `bypass` names the
-test-build flag or the device-control / device-state primitive (BE-0035 / BE-0052) an author could
-wire to make the step replayable, and its absence marks a takeover with no such equivalent (a real
-CAPTCHA). Every codegen target renders the step as a labeled `// TODO` (BE-0026), and — unlike the
-value pattern, which produces a replayable `type` step — a `manual` step has no deterministic run-time
-equivalent, so at `run` time it **fails loudly** with `ManualStepRequired` rather than faking a pass
-(directives 1 and 2). The marker keys on the explicit `acted` flag, not the handoff's default kind, so
-a bare resume never fabricates a run-failing step.
+- `totp` or `email`: a `${vars.*}` produced by the run-time bridge step (BE-0046).
+- `secret`: a declared `${secrets.*}`.
+
+The human types the value once. The loop types it into the *live* field so the recording proceeds,
+but records a **placeholder** `type` step: `${vars.*}` / `${secrets.*}`, never the literal (reusing
+BE-0120's no-leak guarantee). The step carries a `from:` provenance line (BE-0044) that marks the
+human-value origin and states the TODO to wire it. Consistent with prime directive 1, the AI only
+*proposes* the classification. The author confirms and wires it, after which replay is fully
+deterministic and AI-free.
+
+**Human takeover (BE-0185).** The other child pattern covers a handoff that names no field. The
+blocker is not a value the agent could type but an *operation* it cannot perform: a CAPTCHA, a
+biometric prompt, or a gesture the agent repeatedly fails to resolve. The human operates the live
+device and answers "I acted" (the `acted` handoff, BE-0179). `record` then records a marker of the
+observed transition, not the raw gesture, as a **`manual` step** ([scenarios](scenarios.md#manual)).
+
+The agent classifies the marker by whether it can propose a deterministic bypass. A `bypass` names
+the test-build flag or the device-control / device-state primitive (BE-0035 / BE-0052) that an
+author could wire to make the step replayable. No `bypass` marks a takeover that nothing can
+replace (a real CAPTCHA).
+
+Every codegen target renders the step as a labeled `// TODO` (BE-0026). Unlike the value pattern,
+which produces a replayable `type` step, a `manual` step has no deterministic run-time equivalent.
+At `run` time it **fails loudly** with `ManualStepRequired` rather than faking a pass
+(directives 1 and 2). The marker keys on the explicit `acted` flag, not the handoff's default kind,
+so a bare resume never fabricates a run-failing step.
 
 **Takeover triggers.** A takeover starts one of two ways. The agent can *ask* for one when it knows
-it cannot proceed (`proposal.needs_human` with no field). The **loop** also raises one on its own when
-the agent's proposed target will not resolve to a unique element even after the alert guard has
-cleared any covering prompt — the motivating case where `record` used to just print "could not resolve
-that target on the live screen; stopping" and abandon the run. Now, when a responder is present, that
-dead end becomes a takeover offer instead: the loop pauses and hands off, and the human either operates
-the device and resumes (recording a `manual` marker) or cancels (stopping cleanly). The loop — never an
-LLM — raises this, and it never guesses which element to act on; it only asks the human to take over.
-With no responder it keeps the old clean, labeled stop.
+it cannot proceed (`proposal.needs_human` with no field). The **loop** can also raise one on its own,
+when the agent's proposed target will not resolve to a unique element even after the alert guard has
+cleared any covering prompt.
 
-**Device reach on a remote serve.** A takeover asks the human to operate the live device, so unlike
-value entry — which completes entirely in the browser — it needs the device within the author's reach.
-On a local `serve` (the Simulator on the same machine) the author operates it directly and the handoff
-pane only coordinates the pause and resume; the browser never drives the device. On the **hosted
-`serve`** ([BE-0015](../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), the
-multi-tenant `server` backend) the device runs on a worker the author cannot reach, so a
-device-operation takeover cannot be honored: `respond-human` refuses the `acted` resume with a message
-naming the fallback — **re-record where the device is, or wire the test-build bypass** so `run` needs no
-live takeover. A value handoff and a cancel still work remotely.
+That second case motivated the trigger. `record` used to print "could not resolve that target on the
+live screen; stopping" and abandon the run. Now, when a responder is present, the dead end becomes a
+takeover offer: the loop pauses and hands off. The human either operates the device and resumes
+(recording a `manual` marker) or cancels (stopping cleanly). The loop, never an LLM, raises this
+offer, and it never guesses which element to act on. It only asks the human to take over. With no
+responder, the loop keeps the old clean, labeled stop.
 
-The `acted` refusal keys on the hosted-deployment signal, which is the only *certain* "device is not in
-the author's reach" indicator: a **self-hosted `serve`**
+**Device reach on a remote serve.** Value entry completes entirely in the browser. A takeover asks
+the human to operate the live device, so it needs the device within the author's reach.
+
+On a local `serve` (the Simulator on the same machine), the author operates the device directly.
+The handoff pane only coordinates the pause and resume, and the browser never drives the device.
+
+On the **hosted `serve`**
+([BE-0015](../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), the
+multi-tenant `server` backend), the device runs on a worker the author cannot reach. A
+device-operation takeover cannot be honored there. `respond-human` refuses the `acted` resume with a
+message naming the fallback: **re-record where the device is, or wire the test-build bypass** so
+`run` needs no live takeover. A value handoff and a cancel still work remotely.
+
+The `acted` refusal keys on the hosted-deployment signal, the only *certain* indicator that the
+device is not in the author's reach. A **self-hosted `serve`**
 ([BE-0016](../roadmaps/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)) exposed to a team
-over a network is *also* a remote case, but a serve cannot reliably tell whether a given client sits at
-the device (a loopback bind is not a sound proxy — it misses SSH forwards and wrongly flags a wildcard
-bind with the author present). So there the same fallback applies **by convention**, not by an enforced
-refusal — do not answer `acted` for an operation you did not perform on a reachable device. Tightening
-this into an enforced signal for the self-hosted case, and an interactive mirrored device view in the
-browser that would lift the constraint entirely, are both follow-up work.
+over a network is *also* a remote case. A serve cannot reliably tell whether a given client sits at
+the device, because a loopback bind is not a sound proxy: it misses SSH forwards and wrongly flags a
+wildcard bind with the author present. In the self-hosted case, the same fallback applies
+**by convention**, not by an enforced refusal. Do not answer `acted` for an operation you did not
+perform on a reachable device.
+
+Two follow-up items remain: tightening the self-hosted case into an enforced signal, and an
+interactive mirrored device view in the browser that would lift the constraint entirely.
 
 ### Automatic settle-step insertion
 
@@ -350,33 +369,39 @@ class SystemAlertGuard:
 
 ### Usage in run / record
 
-- `run`: the guard is **on by default** per scenario — the CLI builds each enabled scenario an
+- `run`: the guard is **on by default** per scenario. The CLI builds each enabled scenario an
   `AlertGuardConfig` ([BE-0315](../roadmaps/BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md)),
-  passed as `on_blocked`. On a backend that declares `HANDLE_SYSTEM_ALERT` (XCUITest), the guard
-  prefers a deterministic native path: it reads the same SpringBoard query
-  [`handleSystemAlert`](scenarios.md#handlesystemalert-the-deterministic-system-alert-step) (BE-0316)
-  uses, taps the button a scenario's rule names through `resolve_unique`, and needs no model
-  call. Where nothing deterministic can act — a backend without the capability (adb, Playwright), an
-  alert no rule identifies, or a surface the query cannot enumerate that no rule identifies either
-  (the ones a rule does identify, the in-tree path taps) — the guard does
-  nothing ([BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md)),
-  and what it saw rides the failure instead: a guarded `wait` always carries the note, and a blocked
-  step outside a wait carries it only where the native query enumerated the alert — with no native
-  query there is nothing to name, so such a step fails exactly as it did before. On step failure the
-  guard clears the prompt and **retries that step exactly once**
-  ([run-loop](run-loop.md#run_scenario-running-one-scenario)). For a `wait` step
-  (`for`/`gone`/`settled`/`screenChanged`), the native path is additionally polled on its own
-  interval (default 1s, decoupled from the wait's own condition poll), so a blocked wait can recover
-  before its own timeout elapses instead of only at the end-of-step retry (BE-0269). The guard answers
-  only the prompts that a `systemAlert` entry names, in the scenario's `interrupts` or the target's
-  `hooks.interrupts`: `- systemAlert: notifications` with `choice: grant` names a prompt and the
-  guard's answer to it
-  ([BE-0406](../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts.md),
-  [BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md)).
-  A scenario that handles a prompt itself writes `choice: leave` on that prompt's entry; no scenario
-  switches the whole guard off. An entry carries no vision instruction, since `run` reaches no model.
-  `--no-system-alert-handling` turns the guard off for every scenario, and `--alert-poll-interval`
-  sets the poll cadence for a single run. The entries have no flag of their own.
+  passed as `on_blocked`.
+  - **Native path.** On a backend that declares `HANDLE_SYSTEM_ALERT` (XCUITest), the guard prefers
+    a deterministic native path. It reads the same SpringBoard query that
+    [`handleSystemAlert`](scenarios.md#handlesystemalert-the-deterministic-system-alert-step)
+    (BE-0316) uses, taps the button a scenario's rule names through `resolve_unique`, and needs no
+    model call.
+  - **Nothing deterministic can act.** The guard does nothing
+    ([BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md))
+    in three cases: a backend without the capability (adb, Playwright), an alert no rule
+    identifies, and a surface the query cannot enumerate that no rule identifies either. (The
+    in-tree path taps the surfaces a rule does identify.) What the guard saw rides the failure
+    instead. A guarded `wait` always carries the note. A blocked step outside a wait carries it only
+    where the native query enumerated the alert. With no native query there is nothing to name, so
+    such a step fails exactly as it did before.
+  - **Retry.** On step failure the guard clears the prompt and **retries that step exactly once**
+    ([run-loop](run-loop.md#run_scenario-running-one-scenario)).
+  - **Polling during a `wait`.** For a `wait` step (`for`/`gone`/`settled`/`screenChanged`), the
+    native path is additionally polled on its own interval (default 1s, decoupled from the wait's
+    own condition poll). A blocked wait can then recover before its own timeout elapses, instead of
+    only at the end-of-step retry (BE-0269).
+  - **Which prompts it answers.** The guard answers only the prompts that a `systemAlert` entry
+    names, in the scenario's `interrupts` or the target's `hooks.interrupts`.
+    `- systemAlert: notifications` with `choice: grant` names a prompt and the guard's answer to it
+    ([BE-0406](../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts.md),
+    [BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md)).
+    A scenario that handles a prompt itself writes `choice: leave` on that prompt's entry. No
+    scenario switches the whole guard off. An entry carries no vision instruction, since `run`
+    reaches no model.
+  - **Flags.** `--no-system-alert-handling` turns the guard off for every scenario, and
+    `--alert-poll-interval` sets the poll cadence for a single run. The entries have no flag of
+    their own.
 - `record --system-alert-handling`: on by default (authoring has no scenario yet). Clears prompts
   that interrupt authoring so the agent always sees a clean screen. **A dismissal is an environment
   operation, not a recorded step** (replay handles it via the `systemAlert` interrupts entries).
