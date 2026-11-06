@@ -16,42 +16,44 @@
 
 ## はじめに
 
-`bajutsu/config.py` は各 target の YAML を、1 つの frozen dataclass である `Effective`
-（`config.py:420`）に解決します。runner とすべての backend は、この `Effective` をその target の
-設定の単一の情報源として読みます。現状の `Effective` は、どのプラットフォームが実際にその target を
+`bajutsu/config.py` は、各 target の YAML を 1 つの frozen dataclass である `Effective`
+（`config.py:420`）に解決します。runner とすべての backend は、この `Effective` を、その target の
+設定の単一の情報源として読みます。現状の `Effective` は、その target を実際にどのプラットフォームが
 動かすかに関わらず、あらゆるプラットフォームが必要としうるフィールドをすべて抱えています。本提案は
-`Effective` を小さな共通コアとプラットフォームごとのサブ設定に分割し、target が自分のプラットフォーム
-の項目だけを持つようにします。
+`Effective` を、小さな共通コアとプラットフォームごとのサブ設定に分割します。これにより target は、
+自分のプラットフォームが使う項目だけを持つようになります。
 
 ## 動機
 
-`Effective` は iOS、続いて web が追加されるにつれてフィールドが増え、現在 35 個に達しており
-（`config.py:420-487`）、すべてを 1 つの型に union しています。具体的には次のとおりです。
+`Effective` は、iOS、続いて web が追加されるにつれてフィールドが増え、現在 35 個に達しています
+（`config.py:420-487`）。すべてのフィールドを 1 つの型に union しています。具体的には次のとおりです。
 
-- `browser`（`config.py:471`、デフォルトは `chromium`）と `headless`（`config.py:468`、デフォルトは `True`）は Playwright（web）用の項目ですが、
-  これらは iOS target の `Effective` インスタンス上にも読み書き可能な状態で存在します。
-- `xcuitest`（`config.py:478`）と `idb_version`（`config.py:481`）は iOS 専用ですが、web target の
+- `browser`（`config.py:471`、デフォルトは `chromium`）と `headless`（`config.py:468`、デフォルトは `True`）は Playwright（web）用の項目です。それでも iOS target の `Effective` インスタンス上に、読み書き可能な状態で存在します。
+- `xcuitest`（`config.py:478`）と `idb_version`（`config.py:481`）は iOS 専用です。web target の
   `Effective` にも同様に存在します。
-- `package`（`config.py:464`）は未実装の Android backend（[BE-0007]）向けに予約されており、
-  現状すべての iOS・web target で常に `""` です。
+- `package`（`config.py:464`）は、未実装の Android backend（[BE-0007]）向けに予約されています。
+  現状、すべての iOS・web target で常に `""` です。
 
 型システムは、iOS の実行で `eff.browser` を読むことも、web の実行で `eff.xcuitest` を読むことも
-妨げません。歯止めは `environment.py:266`（`if not eff.base_url: raise ...`）や
-`environment.py:437`（`xcfg = eff.xcuitest`）のような呼び出し側の実行時の規律だけであり、これらは
-値を使う前にチェックしているだけで、型システムがそのフィールドをそもそも排除しているわけではあり
-ません。これは**中程度の深刻度**の正しさ・保守性のリスクです。今日の実行を失敗させるものではあり
-ませんが、「app-agnostic で、プラットフォームは backend の違いにすぎない」という境界（prime
-directive 3）を型のレベルで侵食しており、プラットフォーム固有のフィールドが増えるたびに「妥当な
-`Effective` とは何か」がさらに曖昧になります。Android（[BE-0007]）はこれを押し進める要因です。
-`adb` 固有のフィールド（デバイス選択、`am`/`pm` 呼び出しの項目など）を今の union にそのまま積むと、
-フィールド数は 35 を大きく超え、すべての target の設定に「常に無関係なフィールドの軸」が 4 つ目
-できてしまい、新しいプラットフォームが追加されるたびに dataclass の可読性・レビューのしやすさ・
-正しさの維持が難しくなります。
+妨げません。歯止めは、`environment.py:266`（`if not eff.base_url: raise ...`）や
+`environment.py:437`（`xcfg = eff.xcuitest`）のような、呼び出し側の実行時の規律だけです。これらの
+箇所は値を使う前にチェックしているだけで、型システムがそのフィールドをそもそも排除しているわけでは
+ありません。
+
+これは**中程度の深刻度**の、正しさと保守性のリスクです。今日の実行を失敗させるものではありません。
+ただし、「app-agnostic で、プラットフォームは backend の違いにすぎない」という境界（prime directive
+3）を型のレベルで侵食しています。プラットフォーム固有のフィールドが増えるたびに、「妥当な
+`Effective` とは何か」がさらに曖昧になります。
+
+Android（[BE-0007]）は、この問題を押し進める要因です。`adb` 固有のフィールド（デバイス選択、
+`am`/`pm` 呼び出しの項目など）を今の union にそのまま積むと、フィールド数は 35 を大きく超えます。
+すべての target の設定に、常に無関係なフィールドの軸が 4 つ目できます。新しいプラットフォームが追加
+されるたびに、dataclass の可読性、レビューのしやすさ、正しさの維持が難しくなります。
 
 ## 詳細設計
 
 対応方針は、既存の `platform` フィールド（`config.py:462`。すでに `ios | android | web` を取り、
-`config.py:122` の `_check_platform` で検証済み）を判別子とする**タグ付き union** です。作業は
+`config.py:122` の `_check_platform` で検証済み）を判別子とする**タグ付き union** です。作業は、
 フィールドの所有グループごとに MECE に分解できます。
 
 1. **共通コア。** `Effective` には、全プラットフォームが本当に共有するフィールドだけを残します。
@@ -59,51 +61,51 @@ directive 3）を型のレベルで侵食しており、プラットフォーム
    `reserved_namespaces`、`mock_server`、`setup`、`capture`、`redact`、`secrets`、`ai`、
    `mailbox`、`scenarios`、`baselines`、`schemas`、`goldens`、`launch_server`、`ready_when`、
    `doctor_ok_coverage`、`doctor_fail_coverage`、`notify`、そして判別子である `platform`
-   自体です（`device`・`locale` は実際には iOS/Android 専用と判明する可能性もあるため、実装者は
-   このリストを確定として扱わず、現在の呼び出し箇所での実際の使われ方を各フィールドについて
-   再確認してから割り当てます）。
+   自体です。このリストは確定ではありません。`device` と `locale` は、実際にはもっと限定的な
+   使われ方だと判明する可能性があります。そのため実装者は、各フィールドを割り当てる前に、現在の
+   呼び出し箇所での実際のプラットフォーム横断の使われ方を再確認します。
 2. **iOS 用サブ設定。** `bundle_id`、`deeplink_scheme`、`app_path`、`build`、`xcuitest`、
    `idb_version` を、`platform == "ios"` のときだけ `Effective` に付与される `IosConfig`
    （仮称）に移します。
 3. **web 用サブ設定。** `base_url`、`headless`、`browser` を、`platform == "web"` のときだけ
    付与される `WebConfig` に移します。
 4. **Android 用の受け皿。** `package` を、`platform == "android"` のときだけ付与される
-   `AndroidConfig` に移し、他の 2 つのサブ設定に手を入れることなく [BE-0007] が拡張できる
-   ようにします。
-5. **`resolve()` と `rebased()` の更新。** `Config` から `Effective` を組み立てる `resolve()`
-   と、Git 由来の設定（BE-0063）向けに `xcuitest.testRunner` などのパスフィールドを
-   再配置する `Effective.rebased()`（`config.py:489`）の両方を、フラットなフィールドではなく
-   サブ設定越しに構築・再配置するよう更新する必要があります。
-6. **呼び出し箇所の移行。** 移動したフィールドを読んでいる箇所（例えば
-   `environment.py:266-273`、`environment.py:437`）はすべて、`eff.base_url` のような書き方から
-   `eff.web.base_url` のような書き方に変わります。これは `eff.platform == "web"` のときにしか
-   到達できないため、今日の実行時ガード（`if not eff.base_url`）が、mypy strict が静的に検査
-   できるもの（サブ設定に対する `match eff.platform` や `isinstance` によるパターンなど）に
-   置き換わります。常に存在はするが意味を持たないこともあるフィールドではなくなります。
+   `AndroidConfig` に移します。これにより [BE-0007] は、他の 2 つのサブ設定に手を入れることなく
+   拡張できます。
+5. **`resolve()` と `rebased()` の更新。** `resolve()` は `Config` から `Effective` を組み立てます。
+   `Effective.rebased()`（`config.py:489`）は、Git 由来の設定（BE-0063）向けに
+   `xcuitest.testRunner` などのパスフィールドを再配置します。どちらも、フラットなフィールドではなく
+   サブ設定越しに構築・再配置するよう、更新する必要があります。
+6. **呼び出し箇所の移行。** 移動したフィールドを読んでいる箇所（例えば `environment.py:266-273` と
+   `environment.py:437`）はすべて、`eff.base_url` のような書き方から `eff.web.base_url` のような
+   書き方に変わります。この書き方は `eff.platform == "web"` のときにしか到達できません。そのため、
+   今日の実行時ガード（`if not eff.base_url`）は、mypy strict が静的に検査できるもの（サブ設定に
+   対する `match eff.platform` や `isinstance` によるパターンなど）に置き換わります。フィールドは、
+   常に存在するが意味を持たないこともある状態ではなくなります。
 
-これは設定レベルの変更に留まります。`targets.<name>` の YAML の形、runner、各 backend は変わり
-ません（prime directive 3、app-agnostic）。プラットフォーム固有のフィールドに到達するための
-属性名は変わる（`eff.browser` → `eff.web.browser` など）ため、上記で挙げた既存の呼び出し箇所は
-すべて同じ変更の中で追随させる必要があります。mypy strict が効いているため、これらは実行後に
-発覚する不具合ではなく、コンパイル時のチェックとして一つずつ見つかります。
+変更は設定レベルに留まります。`targets.<name>` の YAML の形、runner、各 backend は変わりません
+（prime directive 3、app-agnostic）。一方、プラットフォーム固有のフィールドに到達するための属性名は
+変わります（`eff.browser` → `eff.web.browser` など）。そのため、上記で挙げた既存の呼び出し箇所は
+すべて、同じ変更の中で追随させる必要があります。mypy strict が効いているので、これらは実行後に
+発覚する不具合ではなく、コンパイル時のチェックとして 1 つずつ見つかります。
 
 ## 検討した代替案
 
-- **Android が来るまで何もしない。** 痛みを先送りするだけでなく、むしろ悪化させます。3 つ目の
-  プラットフォームのフィールドが同じフラットな dataclass に積まれ、最終的な分割では 2
-  プラットフォームではなく 3 プラットフォーム分の呼び出し箇所を移行することになります。iOS と
-  web だけの今のうちにやるほうが、変更は小さく済みます。
+- **Android が来るまで何もしない。** 痛みを先送りするだけでなく、悪化させます。3 つ目のプラット
+  フォームのフィールドが同じフラットな dataclass に積まれ、最終的な分割では 2 プラットフォームでは
+  なく 3 プラットフォーム分の呼び出し箇所を移行することになります。iOS と web だけの今のうちに分割
+  するほうが、変更は小さく済みます。
 - **本当の分割の代わりに、命名規則（`ios_`／`web_` プレフィックスなど）を持つ `Optional`
-  フィールドにする。** すべてを 1 つのフラットな型に残せるため差分は小さくなりますが、これは
-  見た目だけの対策です。`eff.web_browser` が iOS target で読まれることを何も防がず、mypy
-  strict も命名規則に対してはタグ付き union のような絞り込みができません。
+  フィールドにする。** すべてを 1 つのフラットな型に残せるため、差分は小さくなります。ただし、
+  見た目だけの対策です。`eff.web_browser` が iOS target で読まれることを何も防ぎません。mypy strict
+  も、命名規則に対しては、タグ付き union のような絞り込みができません。
 - **プラットフォームごとのサブ設定フィールドを、すべて無条件に `Effective` に持たせる**
-  （`ios: IosConfig | None`、`web: WebConfig | None`、`android: AndroidConfig | None` を
-  すべて併存させる）。今日より多少安全にはなります（使う前に `None` チェックが必要になる
-  ため）が、それでも呼び出し側が誤ったプラットフォームの Optional なサブ設定を参照して、
-  「この target は web ではない」という明確なエラーの代わりに*型としては正しい* `None`
-  を得てしまう余地が残ります。サブ設定の存在を `platform` 判別子に結びつける設計であれば、
-  プラットフォームをまたいだ誤読は `None` を確認し損なうバグではなく、型エラーになります。
+  （`ios: IosConfig | None`、`web: WebConfig | None`、`android: AndroidConfig | None` をすべて
+  併存させる）。使う前に `None` チェックが必要になるため、今日より多少安全になります。それでも、
+  呼び出し側が誤ったプラットフォームの Optional なサブ設定を参照し、「この target は web ではない」
+  という明確なエラーの代わりに、*型としては正しい* `None` を得てしまう余地が残ります。サブ設定の
+  存在を `platform` 判別子に結びつける設計なら、プラットフォームをまたいだ誤読は型エラーになります。
+  代替案では、`None` を防御的に確認する必要が残ります。
 
 ## 進捗
 
@@ -125,14 +127,14 @@ directive 3）を型のレベルで侵食しており、プラットフォーム
 
 ## 参考
 
-- `bajutsu/config.py:420-487` — `Effective` dataclass と、その 35 個のフィールド。
-- `bajutsu/config.py:462,471,468,478,481,464` — `platform`、`browser`、`headless`、`xcuitest`、
+- `bajutsu/config.py:420-487`：`Effective` dataclass と、その 35 個のフィールド。
+- `bajutsu/config.py:462,471,468,478,481,464`：`platform`、`browser`、`headless`、`xcuitest`、
   `idb_version`、`package` の各フィールド宣言。
-- `bajutsu/config.py:489-529` — `xcuitest.testRunner` を含むパスフィールドを再配置する
+- `bajutsu/config.py:489-529`：`xcuitest.testRunner` を含むパスフィールドを再配置する
   `Effective.rebased()`。
-- `bajutsu/config.py:122-136,557-587` — 既存の `platform` 判別子とその `backend` からの導出を
+- `bajutsu/config.py:122-136,557-587`：既存の `platform` 判別子と、その `backend` からの導出を
   担う `_check_platform` と `_effective_platform`。
-- `bajutsu/environment.py:266-273,437` — プラットフォーム固有のフィールドを、型システムではなく
+- `bajutsu/environment.py:266-273,437`：プラットフォーム固有のフィールドを、型システムではなく
   実行時にガードしている呼び出し箇所。
 - 関連するロードマップ項目：[BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)
   （cross-platform abstractions）、[BE-0042](../BE-0042-platform-backend-registry/BE-0042-platform-backend-registry-ja.md)
