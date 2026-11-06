@@ -17,9 +17,9 @@
 
 `serve` has grown from a local preview server into the repository's largest, fastest-growing
 subsystem. Its host-facing concerns (organizations, roles) have started leaking into
-`bajutsu/config.py`, the schema the CLI's deterministic core also depends on.
+`bajutsu/config.py`. The CLI's deterministic core depends on that same schema.
 
-This proposal draws an explicit boundary around `serve`'s scope and keeps multi-tenant hosting
+This proposal draws an explicit boundary around `serve`'s scope. It keeps multi-tenant hosting
 concerns out of the config schema the rest of the tool shares.
 
 ## Motivation
@@ -31,32 +31,35 @@ concerns out of the config schema the rest of the tool shares.
 | `bajutsu/serve/operations.py` | 1,376 lines | tracked separately by a planned follow-up proposal to split this module (TBD) |
 | `bajutsu/` (whole core, Python) | ~30,000 lines | `serve` + `serve.js` together are roughly a fifth of this |
 
-None of that infrastructure is something a local CLI tool's core has a reason to know about.
+A local CLI tool's core has no reason to know about any of this infrastructure.
 
-The growth reaches into the core, too. `bajutsu/config.py:352` defines `OrgConfig`, and `Config`
-itself carries an `orgs: dict[str, OrgConfig]` field (`config.py:370`) plus four resolution helpers
-(`config.py:393-429`). None of this means anything to a solo developer running `bajutsu run`
-against a local Simulator — it exists purely to support `serve`'s hosted, multi-tenant deployment
-(BE-0015).
+The growth reaches into the core, too. `bajutsu/config.py:352` defines `OrgConfig`. `Config` itself
+carries an `orgs: dict[str, OrgConfig]` field (`config.py:370`) plus four resolution helpers
+(`config.py:393-429`). None of this means anything to a solo developer running `bajutsu run` against
+a local Simulator. It exists purely to support `serve`'s hosted, multi-tenant deployment (BE-0015).
 
 `Config` is the schema every entry point parses, so this hosting concern has become a permanent tax
-on the shared config surface — directly contradicting the "app-agnostic" and "keep the deterministic
-core unchanged" premise `Effective`/`Config` are supposed to serve.
+on the shared config surface. It directly contradicts the "app-agnostic" and "keep the deterministic
+core unchanged" premise that `Effective`/`Config` are supposed to serve.
 
-The deterministic `run` path parses that same schema, and — this is the subtle part — it does so
-against an **org-bearing** config in the hosted topology. An operator declares `orgs:` in the very
-`bajutsu.config.yaml` that a run consumes: `bajutsu/serve/operations/dispatch.py` ships the config's
-full text to a remote worker as `materials` (or points a local server-mode run at the same file via
-`--config`), and the core loader (`bajutsu/cli/_shared.py`'s `load_config`, and `bajutsu/mcp/tools.py`)
-reads it. So the org model isn't only a *schema* tax — it is a value the deterministic `run` already
-tolerates today because `Config` happens to carry an `orgs` field. Any move that drops that field must
-keep `run` reading an org-bearing config working, or it breaks a documented hosted deployment
-(`orgs:` is documented in `docs/configuration.md` / `docs/self-hosting.md`). This is exactly why the
-boundary belongs in the loader, not in a bare field removal.
+The subtle part is that the deterministic `run` path parses that same schema against an
+**org-bearing** config in the hosted topology. An operator declares `orgs:` in the very
+`bajutsu.config.yaml` that a run consumes:
 
-Severity: High. This is architectural drift, not a bug, but each new hosting feature (BE-0015,
-BE-0016, BE-0051) makes the boundary harder to draw retroactively, and the config schema is the
-part of the codebase every backend and every target depends on.
+- `bajutsu/serve/operations/dispatch.py` ships the config's full text to a remote worker as
+  `materials`.
+- A local server-mode run points at the same file via `--config`.
+- The core loader (`bajutsu/cli/_shared.py`'s `load_config`, and `bajutsu/mcp/tools.py`) reads it.
+
+So the org model is not merely a *schema* tax. The deterministic `run` already tolerates it today,
+because `Config` happens to carry an `orgs` field. Any move that drops that field must keep `run`
+reading an org-bearing config, or it breaks a documented hosted deployment (`orgs:` is documented
+in `docs/configuration.md` and `docs/self-hosting.md`). That is exactly why the boundary belongs in
+the loader, not in a bare field removal.
+
+Severity is High. This is architectural drift, not a bug. Each new hosting feature (BE-0015,
+BE-0016, BE-0051) makes the boundary harder to draw retroactively, and the config schema is the part
+of the codebase that every backend and every target depends on.
 
 ## Detailed design
 
@@ -73,37 +76,41 @@ package split.
 ### 1. Document the rule
 
 `bajutsu/config.py`, `bajutsu/drivers/`, `bajutsu/runner/`, and `bajutsu/scenario/` stay
-host-agnostic: no organization, role, tenancy, or billing concept enters them, and neither does the
-`db` (SQLAlchemy/Alembic/psycopg) or `oauth` (Authlib) extra. `bajutsu/serve/` — and only
-`bajutsu/serve/` — owns hosting concerns.
+host-agnostic. No organization, role, tenancy, or billing concept enters them, and neither does the
+`db` (SQLAlchemy/Alembic/psycopg) or `oauth` (Authlib) extra. `bajutsu/serve/` alone owns hosting
+concerns.
 
-The note points at the enforcement contract below instead of asking reviewers to hold the rule in
-their head.
+The note points at the enforcement contract below, so reviewers need not hold the rule in their
+heads.
 
 ### 2. Enforce it in the gate, not with a size ceiling
 
-The boundary already holds today: a check of every core module finds zero imports of
-`bajutsu.serve` or of the `db`/`oauth` extras. `bajutsu/serve/server/logbus.py` and `sessions.py`
-already take their Redis client through an injected `RedisLike` protocol rather than importing
-`redis` directly, so `serve` doesn't even carry a hard Redis dependency.
+The boundary already holds today. A check of every core module finds zero imports of `bajutsu.serve`
+or of the `db`/`oauth` extras. `bajutsu/serve/server/logbus.py` and `sessions.py` already take their
+Redis client through an injected `RedisLike` protocol rather than importing `redis` directly, so
+`serve` does not even carry a hard Redis dependency.
 
 BE-0112 landed an import-linter layer model (`[tool.importlinter]` in `pyproject.toml`, run by `make
-lint-imports` inside `make check`) whose periphery contract *already* forbids the core from importing
-`bajutsu.serve`. So rather than add a parallel AST test that would duplicate that half, a new
+lint-imports` inside `make check`). Its periphery contract *already* forbids the core from importing
+`bajutsu.serve`. A parallel AST test would duplicate that half, so we add no such test. A new
 forbidden contract, "Deterministic core stays free of the db/oauth hosting extras", covers the part
-the layer graph can't express: it forbids `bajutsu.config` / `bajutsu.drivers` / `bajutsu.runner` /
+the layer graph cannot express.
+
+The new contract forbids `bajutsu.config`, `bajutsu.drivers`, `bajutsu.runner`, and
 `bajutsu.scenario` from importing the external `db`/`oauth` packages (`sqlalchemy`, `alembic`,
-`psycopg`, `cryptography`, `authlib`), with `include_external_packages` so import-linter sees the
-external import. Together the two contracts turn "serve stays bounded" into a regression the gate
-catches — no separate installable distribution (e.g. `bajutsu-serve`) is needed, since the isolation
-is already dependency-level.
+`psycopg`, `cryptography`, `authlib`). It sets `include_external_packages` so that import-linter
+sees the external import.
+
+Together the two contracts turn "serve stays bounded" into a regression the gate catches. No
+separate installable distribution (for example `bajutsu-serve`) is needed, since the isolation is
+already dependency-level.
 
 ### 3. Move `OrgConfig` and the org helpers into `bajutsu/serve/orgs.py`
 
-Every current caller already lives under `bajutsu/serve/` — the org helpers (`org_for_*` /
-`targets_for_org`) are called only from `serve/__init__.py`, `authz.py`, and `operations/reads.py`,
-and `DEFAULT_ORG` additionally from `jobs.py` and `server/worker_job.py`. Nothing in the core calls
-any of them today, so the move is mechanical, not exploratory:
+Every current caller already lives under `bajutsu/serve/`. The org helpers (`org_for_*` /
+`targets_for_org`) are called only from `serve/__init__.py`, `authz.py`, and `operations/reads.py`.
+`DEFAULT_ORG` is additionally used by `jobs.py` and `server/worker_job.py`. Nothing in the core
+calls any of them today, so the move is mechanical, not exploratory:
 
 | Symbol | Today | After the move |
 |---|---|---|
@@ -113,39 +120,48 @@ any of them today, so the move is mechanical, not exploratory:
 | `Config.orgs` field | `config.py:370` | removed |
 | `load_config` | `config.py:663` | split into `parse_config_dict` (validation) + `load_config` (I/O) |
 
-`_Model` sets `extra="forbid"` (`config.py:44`) as a deliberate typo guard, and it must stay on for
-every other field. But `orgs` is different from a typo: the deterministic `run` legitimately reads an
-org-bearing config in the hosted topology (see Motivation), so once the `Config.orgs` field is gone,
-`Config.model_validate` would reject that config with "Extra inputs are not permitted: orgs" and break
-the run. The core loader therefore treats `orgs` as a **serve-owned key it does not understand and
-simply drops**: `parse_config_dict` pops any top-level `orgs` before validation, so the core is fully
-org-agnostic (no `OrgConfig`, no org semantics) yet keeps `run` working against an org-bearing config,
-while `extra="forbid"` still catches every genuine typo. The core never interprets `orgs`; it only
-declines to choke on it.
+`_Model` sets `extra="forbid"` (`config.py:44`) as a deliberate typo guard, and the guard must stay
+on for every other field. But `orgs` is different from a typo. The deterministic `run` legitimately
+reads an org-bearing config in the hosted topology (see Motivation). Once the `Config.orgs` field
+is gone, `Config.model_validate` would reject that config with "Extra inputs are not permitted:
+orgs" and break the run.
 
-`load_config` (`config.py:663`) splits into `parse_config_dict(data: dict) -> Config` (pop `orgs`,
-then validate) and `load_config(text: str) -> Config` (YAML I/O over `parse_config_dict`). Every
-existing core/serve caller of `load_config` keeps its signature.
+The core loader therefore treats `orgs` as a **serve-owned key it does not understand and simply
+drops**. `parse_config_dict` pops any top-level `orgs` before validation. The core stays fully
+org-agnostic (no `OrgConfig`, no org semantics) yet keeps `run` working against an org-bearing
+config, while `extra="forbid"` still catches every genuine typo. The core never interprets `orgs`;
+it merely declines to choke on it.
+
+`load_config` (`config.py:663`) splits into two functions:
+
+- `parse_config_dict(data: dict) -> Config` pops `orgs`, then validates.
+- `load_config(text: str) -> Config` does the YAML I/O over `parse_config_dict`.
+
+Every existing core/serve caller of `load_config` keeps its signature.
 
 `bajutsu/serve/orgs.py` gets a new `load_serve_config(text: str) -> tuple[Config, dict[str,
-OrgConfig]]`: it parses the raw YAML once, pops `orgs` before handing the remainder to
-`parse_config_dict`, and validates the popped block locally into `dict[str, OrgConfig]`. The serve
-callers that need the org model switch their `org_for_*`/`targets_for_org` imports from
-`bajutsu.config` to `bajutsu.serve.orgs`, and take orgs from `load_serve_config` (threaded through
+OrgConfig]]`. It parses the raw YAML once and pops `orgs` before handing the remainder to
+`parse_config_dict`. It then validates the popped block locally into `dict[str, OrgConfig]`.
+
+The serve callers that need the org model switch their `org_for_*`/`targets_for_org` imports from
+`bajutsu.config` to `bajutsu.serve.orgs`. They take orgs from `load_serve_config` (threaded through
 `serve/helpers.py`'s cached loader) rather than off a `Config.orgs` field.
 
 A local `bajutsu run` / `bajutsu record` keeps calling the plain `load_config` and never constructs
-or sees an `OrgConfig` — and a hosted `run` reading an org-bearing config keeps working because the
-core loader drops the key rather than rejecting it.
+or sees an `OrgConfig`. A hosted `run` reading an org-bearing config keeps working, because the core
+loader drops the key rather than rejecting it.
 
 ### 4. Give `serve.js` lint and a syntax gate, not a full test framework yet
 
-1,575 lines of untested vanilla JavaScript is itself a scope-creep symptom, but the proportionate
+1,575 lines of untested vanilla JavaScript are themselves a scope-creep symptom. The proportionate
 first step is a lighter guardrail: a minimal ESLint flat config (`eslint.config.mjs`) scoped to
-`bajutsu/templates/serve.js`, with `node --check` plus eslint wired into `make check` through a
-`make lint-js` step. `node --check` runs wherever Node is present (including CI runners); eslint runs
-only when it is already resolvable, so the gate never downloads it. Node absence skips with a notice,
-the same pattern `make` already uses for `actionlint`, so `make check` still runs anywhere.
+`bajutsu/templates/serve.js`. Both `node --check` and eslint are wired into `make check` through a
+`make lint-js` step.
+
+`node --check` runs wherever Node is present, including CI runners. Eslint runs merely when it is
+already resolvable, so the gate never downloads it. When Node is absent, the step skips with a
+notice, the same pattern `make` already uses for `actionlint`. `make check` therefore still runs
+anywhere.
 
 A full component/unit-test harness (Jest or Vitest) is explicitly deferred until `serve.js`
 accumulates enough branching logic to need one. Recording that trigger here keeps the deferral a
@@ -153,20 +169,20 @@ decision, not an oversight.
 
 ---
 
-This is scoping and gate work, not a runtime behavior change: `serve`'s behavior toward users is
-untouched, only where its code, config, and dependencies are allowed to live. It stays compliant
-with all three prime directives by construction — the two new gate checks run alongside `make
-check`, not inside `run`.
+This is scoping and gate work, not a runtime behavior change. `serve`'s behavior toward users is
+untouched; only where its code, config, and dependencies are allowed to live changes. The design
+stays compliant with all three prime directives by construction: the two new gate checks run
+alongside `make check`, not inside `run`.
 
 ## Alternatives considered
 
 | Alternative | Verdict | Why |
 |---|---|---|
-| Do nothing, keep growing `serve` in place | Rejected | The config leak compounds — every future hosting feature (SSO, billing, audit log retention) gets a precedent for landing in `config.py` |
+| Do nothing, keep growing `serve` in place | Rejected | The config leak compounds. Every future hosting feature (SSO, billing, audit log retention) gets a precedent for landing in `config.py` |
 | Have the core loader **reject** a top-level `orgs:` (`extra="forbid"` on the whole document) | Rejected | The hosted `run` legitimately reads an org-bearing `bajutsu.config.yaml` (shipped to the worker as `materials`, or passed via `--config`), so rejecting `orgs:` would break a documented deployment. Dropping the key in the core loader keeps `run` working and stays org-agnostic, while `extra="forbid"` still catches every other typo |
-| Strip `orgs:` at the serve→run boundary instead of in the core loader | Rejected | It would keep `extra="forbid"` rejecting `orgs:` core-side, but forces `dispatch.py` to rewrite the config text before shipping it and a *local* server-mode run to materialize a stripped temp file rather than pass `--config` at the real path — and a maintainer running `bajutsu run` by hand against an org-bearing config would still fail. Dropping the key once, in the loader every entry point already shares, is simpler and uniform |
-| Split `serve` into a separate distribution (e.g. `bajutsu-serve`) or repository | Rejected for now | The `db`/`oauth` extras and the injected `RedisLike` protocol already isolate `serve`'s heavy dependencies; a split adds real versioning/CI/release cost without solving a problem the gate test doesn't already solve. Revisit if `serve` needs its own release cadence |
-| Freeze `serve` feature work until the boundary lands | Rejected | `serve` hardening and hosting (BE-0015, BE-0016, BE-0051) are active, valuable tracks; the boundary should be drawn incrementally alongside them |
+| Strip `orgs:` at the serve→run boundary instead of in the core loader | Rejected | `extra="forbid"` would keep rejecting `orgs:` core-side. But `dispatch.py` would have to rewrite the config text before shipping it, and a *local* server-mode run would have to materialize a stripped temp file rather than pass `--config` at the real path. A maintainer running `bajutsu run` by hand against an org-bearing config would still fail. Dropping the key once, in the loader every entry point already shares, is simpler and uniform |
+| Split `serve` into a separate distribution (e.g. `bajutsu-serve`) or repository | Rejected for now | The `db`/`oauth` extras and the injected `RedisLike` protocol already isolate `serve`'s heavy dependencies. A split adds real versioning/CI/release cost without solving a problem the gate test does not already solve. Revisit if `serve` needs its own release cadence |
+| Freeze `serve` feature work until the boundary lands | Rejected | `serve` hardening and hosting (BE-0015, BE-0016, BE-0051) are active, valuable tracks. The boundary should be drawn incrementally alongside them |
 
 ## Progress
 
