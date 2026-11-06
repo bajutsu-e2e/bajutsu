@@ -2,7 +2,7 @@
 
 # BE-0310: on-device verification of the screen-transition signal
 
-This file describes the on-device confirmation
+This file describes the on-device confirmation procedure that
 [BE-0310](../../roadmaps/BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness.md)
 names as its gate (Unit 5): whether `BajutsuScreen`'s `viewDidAppear` swizzle actually reports a
 transition, on both showcase toolkits, for the transitions the readiness gate and the `settled` wait

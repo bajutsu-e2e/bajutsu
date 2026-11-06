@@ -178,7 +178,7 @@ scheme は変種ごと（§2）、host 文法は共通です。deeplink は**タ
 **Horse Detail**（Stable の行をタップして push）：
 - `horse.title`：馬の名前
 - `horse.id.value`：id、value にミラー
-- `horse.fetch`：ボタン：詳細 GET（`/horses/<id>`）。`horse.status` value `loading`→`done`/`error`
+- `horse.fetch`：詳細を GET（`/horses/<id>`）するボタン。`horse.status` value `loading`→`done`/`error`
 - `horse.status`：上記の value
 - `horse.favorite`：トグル。`selected` trait が状態を反映。`horse.favorite.value`（`on`/`off`）にミラー
 - **戻る**：標準のシステム戻るボタン（ナビゲーションスタックが用意します）。バックエンドは OS 由来の id `BackButton` で引きます。アプリ定義の戻る id はありません。
@@ -199,7 +199,7 @@ scheme は変種ごと（§2）、host 文法は共通です。deeplink は**タ
 - `log.count`：数値ステッパー。初期値は 1（共有の `extract.yaml` が絶対値をアサートするため、どのターゲットもここから始めます）。`log.count.value` が数値をミラー
 - `log.intense`：ボタン式トグル「Intense」（廃止済みの idb バックエンドは iOS 26 では素の Toggle/UISwitch を切り替えられませんでした、BE-0290）。`log.intense.value` = `on`/`off`
 - `log.segment.<one|two|three>`：ボタン式のセグメントコントロール（廃止済みの idb バックエンドは iOS 26 では native の `Picker(.segmented)` / `UISegmentedControl` を切り替えられませんでした、BE-0290）。選択中のボタンが `selected` トレイトを持ち、選択内容は `log.segment.value`（`one`/`two`/`three`、既定は `one`）にミラーされます
-- `log.submit`：ボタン：note/count を JSON にして `SHOWCASE_HTTP_BASE` + `/post` へ POST。成功で `log.toast` を表示（約 3 秒で自動消滅。ステップの境目をまたいでも出現と消滅をシナリオが観測できる長さ → `wait until gone` を行使）し、行を追加
+- `log.submit`：note/count を JSON にして `SHOWCASE_HTTP_BASE` + `/post` へ POST するボタン。成功で `log.toast` を表示（約 3 秒で自動消滅。ステップの境目をまたいでも出現と消滅をシナリオが観測できる長さ → `wait until gone` を行使）し、行を追加
 - `log.status`：value `idle`/`loading`/`done`/`error`
 - `log.row.<n>`：投入済みエントリ
 

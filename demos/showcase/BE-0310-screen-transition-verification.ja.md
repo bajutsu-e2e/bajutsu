@@ -2,9 +2,9 @@
 
 # BE-0310：画面遷移シグナルのオンデバイス検証
 
-このファイルは、
+このファイルが記すのは、
 [BE-0310](../../roadmaps/BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness-ja.md)
-がゲート（作業単位5）として名指ししているオンデバイスでの確認です。`BajutsuScreen` の `viewDidAppear`
+がゲート（作業単位5）として名指ししているオンデバイスでの確認手順です。`BajutsuScreen` の `viewDidAppear`
 swizzle が、showcase の両ツールキットで実際に遷移を報告するかを確かめます。対象は、readiness ゲートと `settled` 待ちが
 新たに参照する遷移と、意図して覆わない2つのケースです。高速ゲート（`make check`）はシミュレータを一切
 動かさないため、この手順は Mac 上で手動により実行してください。実行し終えたら、結果をこのファイル

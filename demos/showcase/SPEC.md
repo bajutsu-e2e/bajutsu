@@ -14,7 +14,7 @@ The showcase is Bajutsu's **next-generation dogfood target**, the practice groun
 and `run` (Tier 2 deterministic gate). It deliberately packs the interaction surface a real
 app has — tabbed + navigation + modal screen transitions, text entry, gestures, async
 loading, networking (live and mockable), and a screen that intentionally raises OS-level
-alerts, into the smallest coherent app that still tells that whole story.
+alerts — into the smallest coherent app that still tells that whole story.
 
 It is the **single iOS fixture** (BE-0079 retired the older `demo`/`sample`/`sample2` apps).
 A single-variant app is one codebase. The showcase instead ships **the same app written twice**
