@@ -15,13 +15,19 @@
 
 ## はじめに
 
-現状の Bajutsu は iOS Simulator 限定にスコープを切っています（[DESIGN §1](../../DESIGN.md)、[README](../../README.md)）が、そのコアは意図的にバックエンド非依存の `Driver` インターフェースの背後に構築されています。本項目は、同じ決定的コアで Android（エミュレータ）と Web（ブラウザ）も操作できるようにするための横断的な抽象化作業です。iOS 固有の継ぎ目をプラットフォーム中立なプロトコルの背後に抽出し、config スキーマを `platform` 判別子で一般化し、runner と orchestrator に漏れた iOS 前提を監査します。プラットフォーム別バックエンドそのものは別項目です。Android は [BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md)、Web は [BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)（web-playwright-backend）、すでに実装済みのセレクタ/レジストリのスライスは [BE-0042](../BE-0042-platform-backend-registry/BE-0042-platform-backend-registry-ja.md)（platform-backend-registry）です。本項目は、それらすべてが乗る共有の土台にあたります。
+現状の Bajutsu は、iOS Simulator 限定にスコープを切っています（[DESIGN §1](../../DESIGN.md)、[README](../../README.md)）。ただし、そのコアは意図的に、バックエンド非依存の `Driver` インターフェースの背後に構築されています。本項目は、同じ決定的コアで Android（エミュレータ）と Web（ブラウザ）も操作できるようにするための横断的な抽象化作業です。作業は 3 つからなります。
+
+- iOS 固有の継ぎ目を、プラットフォーム中立なプロトコルの背後に抽出する。
+- config スキーマを `platform` 判別子で一般化する。
+- runner と orchestrator に漏れた iOS 前提を監査する。
+
+プラットフォーム別バックエンドそのものは別項目です。Android は [BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md)、Web は [BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)（web-playwright-backend）です。すでに実装済みのセレクタ/レジストリのスライスは、[BE-0042](../BE-0042-platform-backend-registry/BE-0042-platform-backend-registry-ja.md)（platform-backend-registry）です。本項目は、それらすべてが乗る共有の土台にあたります。
 
 ## 動機
 
 ### 抽象はすでにプラットフォーム形をしている
 
-決定的なコア、すなわちシナリオ DSL（domain-specific language）、セレクタ解決、機械アサーション、オーケストレータループ、証跡サブシステム、レポーターのどこにも iOS は出てきません。今日 iOS 固有なのは **3 つの継ぎ目**だけです。
+決定的なコアのどこにも、iOS は出てきません。コアとは、シナリオの domain-specific language（DSL）、セレクタ解決、機械アサーション、オーケストレータループ、証跡サブシステム、レポーターです。今日 iOS 固有なのは、**3 つの継ぎ目**だけです。
 
 1. **actuator**（`drivers/idb.py`）。`idb` + frame 中心の座標 tap で UI を操作します。
 2. **環境マネージャ**（`env.py`）。`simctl` の boot / erase / launch / openurl を担います。
@@ -45,13 +51,13 @@
 | **doctor 規約チェック**（`doctor.py`） | **プラットフォームごとに新規**（§7 相当の充足度スコア） |
 | **codegen エミッタ**（`codegen.py`） | **プラットフォームごとに新規**（変換先のネイティブテスト） |
 
-最初の新プラットフォームが最もコストが高くなります。「不変」列に潜む iOS 固有の前提をすべて表に出させるためです。2 つ目は安くなります。この抽象化作業を独立した項目として行うことで、そのコストをデバイスなしで一度だけ払います。
+最初の新プラットフォームは、もっともコストが高くなります。「不変」列に潜む iOS 固有の前提を、すべて表に出させるためです。2 つ目は安くなります。この抽象化作業を独立した項目として行えば、そのコストをデバイスなしで一度だけ払えます。
 
 ## 詳細設計
 
 ### 核心: セレクタの可搬性
 
-シナリオがプラットフォーム横断で可搬なのは、**そのセレクタが `id` で書かれている範囲に限ります**。各プラットフォームには `accessibilityIdentifier` のネイティブ相当（**非ローカライズで、開発者が付与し、データ由来**のハンドル）があり、プラットフォーム別 id 規約（[DESIGN §7.3](../../DESIGN.md)）はそこへ対応付けます。
+シナリオがプラットフォーム横断で可搬なのは、**そのセレクタが `id` で書かれている範囲に限ります**。各プラットフォームには、`accessibilityIdentifier` のネイティブ相当があります。**非ローカライズで、開発者が付与し、データ由来**のハンドルです。プラットフォーム別 id 規約（[DESIGN §7.3](../../DESIGN.md)）は、そこへ対応付けます。
 
 | `Selector` フィールド | iOS | Android | Web |
 |---|---|---|---|
@@ -62,7 +68,11 @@
 
 要点は、**YAML のセレクタ `{ id: settings.reindex }` はすでにプラットフォーム中立だ**ということです。変わるのは *バックエンドがそれを満たすためにアプリ側のどの属性を読むか* だけで、それは新しい Driver の内側に完全に閉じます。シナリオには出てきません。
 
-**共有シナリオについての見解。** 同一プロダクトの 3 アプリが画面まで完全一致することは稀です。現実的なモデルは **1 つの DSL、1 つのランナー、1 つのツールチェーンを共有する、プラットフォーム別シナリオ**であって、1 つの YAML を 3 回実行することではありません。横断的な*再利用*は、本当に一致する範囲についての **opt-in** とし、既存の **予約/共有 id 名前空間**（`auth.*`、`nav.*`、[DESIGN §7.3](../../DESIGN.md)）で表現します。ログインの `setup:` コンポーネントは、それらの id が各プラットフォームで parity を保たれている限り、3 つすべてで動きます。このツールが提供するのは *可搬なツール* であり、*可搬なシナリオ* はチームが id 契約を維持する範囲でのみ提供します。1 つの YAML が自動的に 3 プラットフォームのテストになるわけではありません。
+**共有シナリオについての見解。** 同一プロダクトの 3 アプリが画面まで完全一致することは稀です。現実的なモデルは、**1 つの DSL、1 つのランナー、1 つのツールチェーンを共有する、プラットフォーム別シナリオ**です。1 つの YAML を 3 回実行するモデルではありません。
+
+横断的な*再利用*は、本当に一致する範囲についての **opt-in** とします。既存の **予約/共有 id 名前空間**（`auth.*`、`nav.*`、[DESIGN §7.3](../../DESIGN.md)）で表現します。ログインの `setup:` コンポーネントは、それらの id が各プラットフォームで parity を保たれている限り、3 つすべてで動きます。
+
+このツールが提供するのは*可搬なツール*です。*可搬なシナリオ*は、チームが id 契約を維持する範囲でのみ提供します。1 つの YAML が自動的に 3 プラットフォームのテストになるわけではありません。
 
 ### 設定の変更
 
@@ -95,7 +105,14 @@ apps:
     idNamespaces:   [home, settings]
 ```
 
-`platform` がどの **環境マネージャ**と **backend レジストリ**を使うかを決めます。スキーマの残り（名前空間、redact、setup、capture）は共有のままです。このレジストリの選択層のスライスはすでに実装済みです（`bajutsu/backends.py` はプラットフォームレジストリで分岐し、`--backend` / `backend:` はプラットフォームトークンを受け付けます）。[BE-0042](../BE-0042-platform-backend-registry/BE-0042-platform-backend-registry-ja.md) を参照してください。本項目が扱うのは残りの横断的作業で、`platform` 設定フィールドと、レジストリが引き渡す `Environment` プロトコルです。
+`platform` が、どの**環境マネージャ**と **backend レジストリ**を使うかを決めます。スキーマの残り（名前空間、redact、setup、capture）は共有のままです。
+
+このレジストリの選択層のスライスは、すでに実装済みです（[BE-0042](../BE-0042-platform-backend-registry/BE-0042-platform-backend-registry-ja.md) を参照）。
+
+- `bajutsu/backends.py` は、プラットフォームレジストリで分岐します。
+- `--backend` と `backend:` は、プラットフォームトークンを受け付けます。
+
+本項目が扱うのは残りの横断的作業で、`platform` 設定フィールドと、レジストリが引き渡す `Environment` プロトコルです。
 
 > **Web backend の v1 はここで近道を取りました。** 最初の Web（Playwright）スライス（[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）は対象 URL を必要としましたが、まだ `platform` 判別子は要りませんでした。そこで `apps.<name>` に単一の `baseUrl` フィールドを追加し、環境のライフサイクル（新しい `BrowserContext` = `erase`、`goto(baseUrl)` = `launch`）を **driver の内側**に置き、中立な `Environment` プロトコルを経由せず runner を `actuator == "playwright"` で分岐させました。これは動く web `run` を出荷するための最小の正しい変更でした。本項目はこれを一般化します。`platform` フィールドが `bundleId` か `baseUrl` かの選択を吸収し、プラットフォーム別のライフサイクルが `Environment` プロトコルの背後に移ることで、runner は actuator 名での分岐をやめます。
 
@@ -122,15 +139,21 @@ apps:
 
 具体的には、段階 0 は 3 つの作業です。
 
-- **`Environment` Protocol を抽出する。** 今日の `simctl` は具体かつ iOS 固有です。プロトコル（erase / boot / launch / deeplink / screenshot）は、「erase」「boot」がほぼ no-op になるブラウザコンテキストにも、デバイス前提を漏らさずに収まる必要があります。
-- **config に `platform` + プラットフォームスコープの backend レジストリを追加する。** レジストリのスライス（[BE-0042](../BE-0042-platform-backend-registry/BE-0042-platform-backend-registry-ja.md)）はすでに `--backend` / `backend:` をプラットフォームトークン経由でルーティングします。残る作業は明示的な `platform` 設定フィールドと、それを環境マネージャ選択へ結線することです。
+- **`Environment` Protocol を抽出する。** 今日の `simctl` は具体かつ iOS 固有です。プロトコルは、erase、boot、launch、deeplink、screenshot を扱います。「erase」と「boot」がほぼ no-op になるブラウザコンテキストにも、デバイス前提を漏らさずに収まる必要があります。
+- **config に `platform` + プラットフォームスコープの backend レジストリを追加する。** レジストリのスライス（[BE-0042](../BE-0042-platform-backend-registry/BE-0042-platform-backend-registry-ja.md)）は、すでに `--backend` と `backend:` をプラットフォームトークン経由でルーティングします。残る作業は、明示的な `platform` 設定フィールドと、そのフィールドを環境マネージャ選択へ結線することです。
 - **`runner.py` / `orchestrator.py` の漏れた iOS 固有部分を監査する。** 上表の「不変」列は検証すべき主張です。最初の抽象化パスこそが、潜在する iOS 固有の前提を表に出させます。
 
 これに乗るプラットフォーム別バックエンド（まず Web、次に Android）は別項目で扱います。Web は [BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)、Android は [BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md) です。
 
 ### `Environment` 継ぎ目（実装）
 
-監査の結果、「変わらないコア」という主張は成り立っていました。`resolve_unique`、`assertions`、orchestrator ループ、reporter のいずれにも iOS 前提は漏れていません。プラットフォーム依存の漏れはアクチュエータ名で分岐する制御フローだけで、3 箇所に集中しています。`runner/launch.py`（run ごとの起動フォーク、`if actuator == "playwright"`）、`runner/pool.py`（並列レーンの `is_web` 分岐と、web 専用のネットワーク／再起動のための `cast(PlaywrightDriver, …)`）、`cli/commands/crawl.py`（リセットと復旧の分岐）です。Web v1 のショートカット（[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）は、ライフサイクルを driver の中に抱え、これらの分岐を経由して到達していました。
+監査の結果、「変わらないコア」という主張は成り立っていました。`resolve_unique`、`assertions`、orchestrator ループ、reporter のいずれにも iOS 前提は漏れていません。プラットフォーム依存の漏れは、アクチュエータ名で分岐する制御フローだけです。漏れは 3 箇所に集中しています。
+
+- `runner/launch.py`：run ごとの起動フォーク、`if actuator == "playwright"`
+- `runner/pool.py`：並列レーンの `is_web` 分岐と、web 専用のネットワーク／再起動のための `cast(PlaywrightDriver, …)`
+- `cli/commands/crawl.py`：リセットと復旧の分岐
+
+Web v1 のショートカット（[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）は、ライフサイクルを driver の中に抱え、これらの分岐を経由して到達していました。
 
 解は、runner が分岐の代わりに呼ぶ単一のプロトコルです。
 
@@ -139,20 +162,38 @@ class Environment(Protocol):
     def start(self, eff, pre, *, extra_env=None, record_video_dir=None) -> Driver: ...
 ```
 
-`start` は、そのプラットフォームの run ごとの起動シーケンス全体を担い、ポーリング可能な driver を返します。呼び出し側は、それが simctl のデバイス列だったのか、ブラウザコンテキストの新規作成だったのかを知る必要がありません。`IosEnvironment` は simctl 列（erase → boot → install → launch → deeplink）を実行してから idb driver を構築し、`WebEnvironment` は Playwright driver を構築して `navigate()` します（web 専用の呼び出しは、runner ではなくこのクラスに閉じます）。`FakeEnvironment` は何もしません。`environment_for(actuator, udid, env_run)` がファクトリです。将来の `AndroidEnvironment`（[BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md)）は、同じプロトコルを `adb`（`pm clear` → AVD → `am start` → deeplink インテント）で実装します。
+`start` は、そのプラットフォームの run ごとの起動シーケンス全体を担い、ポーリング可能な driver を返します。呼び出し側は、起動が simctl のデバイス列だったのか、ブラウザコンテキストの新規作成だったのかを知る必要がありません。各実装は次のとおりです。
+
+- `IosEnvironment` は、simctl 列（erase → boot → install → launch → deeplink）を実行します。その後、idb driver を構築します。
+- `WebEnvironment` は、Playwright driver を構築して `navigate()` します。web 専用の呼び出しは、runner ではなくこのクラスに閉じます。
+- `FakeEnvironment` は、何もしません。
+
+`environment_for(actuator, udid, env_run)` がファクトリです。
+
+将来の `AndroidEnvironment`（[BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md)）は、同じプロトコルを `adb`（`pm clear` → AVD → `am start` → deeplink インテント）で実装します。
 
 Phase 0 は、各 PR を小さく保ち、ゲートを緑に保つため、段階的に着地させます。
 
-- **スライス 1（出荷済み）**：`Environment` プロトコル、`IosEnvironment` ／ `WebEnvironment` ／ `FakeEnvironment`、`environment_for`、そして `launch_driver` がそれに委譲します。`launch.py` の `actuator == "playwright"` フォークを除去します。
-- **スライス 2（出荷済み、[#364](https://github.com/bajutsu-e2e/bajutsu/pull/364)）**：`runner/pool.py` の `is_web` リース分岐と `cast(PlaywrightDriver, …)` のネットワーク／再起動をプロトコルの背後に畳みます（シナリオごとの再起動とリース解放時の後始末を Environment のメソッドにします）。
-- **スライス 3（出荷済み、[#369](https://github.com/bajutsu-e2e/bajutsu/pull/369)）**：`cli/commands/crawl.py` のアクチュエータ名分岐をプロトコルの背後に畳みます。レーンのサイジング（`plan_lanes` ／ `has_devices`）、crawl の `reset`（web は新規コンテキスト、iOS は再起動）、web のクラッシュ検知／ダイアログ自動処理／ハングしたブラウザの復旧（`crawl_aliveness` ／ `crawl_dialog_clearer` ／ `crawl_recover`）です。iOS のアラートガード（AI を使うフラグ依存の crawl 機能）は CLI 側に残し、seam の上に載せます。
-- **スライス 4（出荷済み）**：明示的な `platform` config 判別子。`platform` を `defaults` ／ `targets.<name>` ／ `Effective` に追加します（Android 識別子の `package` も）。`platform` は任意で、未指定なら backend から導出されるので既存の config はそのまま動きます。`Config` のバリデータが platform の識別子（`bundleId`（ios）／ `baseUrl`（web）／ `package`（android））を必須にし、未知のトークンを拒否します。これで BE-0009 段階 0 が完了します。seam の上に乗るプラットフォーム別バックエンドは別項目で追跡します（[BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md)、[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）。
+- **スライス 1（出荷済み）**：`Environment` プロトコル、`IosEnvironment`、`WebEnvironment`、`FakeEnvironment`、`environment_for`。`launch_driver` がこれらに委譲し、`launch.py` の `actuator == "playwright"` フォークを除去します。
+- **スライス 2（出荷済み、[#364](https://github.com/bajutsu-e2e/bajutsu/pull/364)）**：`runner/pool.py` の `is_web` リース分岐と、`cast(PlaywrightDriver, …)` のネットワーク／再起動を、プロトコルの背後に畳みます。シナリオごとの再起動と、リース解放時の後始末は、Environment のメソッドにします。
+- **スライス 3（出荷済み、[#369](https://github.com/bajutsu-e2e/bajutsu/pull/369)）**：`cli/commands/crawl.py` のアクチュエータ名分岐を、プロトコルの背後に畳みます。畳む分岐は次のとおりです。
+  - レーンのサイジング（`plan_lanes` ／ `has_devices`）
+  - crawl の `reset`（web は新規コンテキスト、iOS は再起動）
+  - web のクラッシュ検知、ダイアログ自動処理、ハングしたブラウザの復旧（`crawl_aliveness` ／ `crawl_dialog_clearer` ／ `crawl_recover`）
+
+  iOS のアラートガード（AI を使うフラグ依存の crawl 機能）は CLI 側に残し、seam の上に載せます。
+- **スライス 4（出荷済み）**：明示的な `platform` config 判別子。
+  - `platform` を `defaults`、`targets.<name>`、`Effective` に追加します。Android 識別子の `package` も追加します。
+  - `platform` は任意で、未指定なら backend から導出されるので、既存の config はそのまま動きます。
+  - `Config` のバリデータが、platform の識別子を必須にし、未知のトークンを拒否します。識別子は、ios なら `bundleId`、web なら `baseUrl`、android なら `package` です。
+
+  これで BE-0009 段階 0 が完了します。seam の上に乗るプラットフォーム別バックエンドは、別項目で追跡します（[BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md)、[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）。
 
 ## 検討した代替案
 
-- **runner をプラットフォームごとに分岐させる。** コアの前提に反するため却下。`resolve_unique` / `assertions.py` をプラットフォームごとに再実装すると、共通 `Element` ツリーへの正規化が共有するために存在する、まさにその決定性保証を重複させてしまいます。抽象の価値の全体は、決定的なコアを単一の出所に保つことにあります。
-- **「1 つの YAML を 3 回実行する」を可搬性モデルとする。** 実アプリに対して不誠実なため却下。同一プロダクトの 3 アプリが画面を共有することは稀です。選んだモデルは、共有する 1 つの DSL / ランナー / ツールチェーン上のプラットフォーム別シナリオで、横断的再利用は共有 id 名前空間による opt-in です。
-- **第 2 プラットフォームが実際に作られるまで抽象化を後回しにする。** 却下。最初のプラットフォームはいずれにせよ抽象化コストを払います。デバイス不要の段階 0 として行うことで、漏れた iOS 固有部分を最低コストで表に出し、第 2 プラットフォーム作業のリスクを下げられます。
+- **runner をプラットフォームごとに分岐させる。** コアの前提に反するため却下します。`resolve_unique` と `assertions.py` をプラットフォームごとに再実装すると、共通 `Element` ツリーが共有するために存在する決定性保証を、重複させてしまいます。抽象の価値の全体は、決定的なコアを単一の出所に保つことにあります。
+- **「1 つの YAML を 3 回実行する」を可搬性モデルとする。** 実アプリに対して不誠実なため却下します。同一プロダクトの 3 アプリが画面を共有することは稀です。選んだモデルは、共有する 1 つの DSL / ランナー / ツールチェーン上のプラットフォーム別シナリオで、横断的再利用は共有 id 名前空間による opt-in です。
+- **第 2 プラットフォームが実際に作られるまで抽象化を後回しにする。** 却下します。最初のプラットフォームはいずれにせよ抽象化コストを払います。デバイス不要の段階 0 として行うことで、漏れた iOS 固有部分を最低コストで表に出し、第 2 プラットフォーム作業のリスクを下げられます。
 
 ## 進捗
 

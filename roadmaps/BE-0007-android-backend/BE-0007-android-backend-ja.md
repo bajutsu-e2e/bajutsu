@@ -16,19 +16,25 @@
 
 ## はじめに
 
-Android エミュレータ向けの driver です。`adb` + UI Automator で UI を操作し、`resource-id` /
-`content-desc` セレクタを id ファーストで対応づけます。構造的には既存の iOS `idb` バックエンドの双子で、
-subprocess 駆動、座標ベースの actuation、semantic tap なしです。これを追加するとは、決定的コアを 1 バイトも
-変えずに、新しい三つ組（actuator + 環境マネージャ + id 規約）を追加することです。
+Android エミュレータ向けの driver を追加します。driver は `adb` と UI Automator で UI を操作し、`resource-id` と `content-desc` のセレクタを id ファーストで対応づけます。
+
+構造的には、既存の iOS `idb` バックエンドの双子です。subprocess 駆動で、座標ベースの actuation を行い、semantic tap はありません。
+
+追加とは、新しい三つ組（actuator、環境マネージャ、id 規約）を加えることです。決定的コアは 1 バイトも変わりません。
 
 ## 動機
 
-Android は **idb の構造的双子**です。subprocess 駆動、座標 actuation、遷移中の一過性に空なツリーという
-共通の形ゆえに、idb の *retry 付き解決、曖昧は即失敗* パターン（[drivers](../../docs/ja/drivers.md) を参照）を
-ほぼそのまま再利用します。これを作ることで、iOS 固有の部分が本当に 3 つの継ぎ目（actuator、環境マネージャ、
-安定 id 規約）に隔離されていたことを、「不変」なコアにほぼ新しい形を持ち込まずに実証できます。同時に、
-シナリオ DSL、セレクタモデル、機械アサーション、オーケストレータループ、レポーターに一切触れることなく、
-2 番目に一般的なモバイルターゲットへ到達範囲を広げます。
+Android は **idb の構造的双子**です。どちらも subprocess 駆動で、座標 actuation を行います。さらに、遷移中の一過性に空なツリーを返す点も同じです。そのため、idb の *retry 付き解決、曖昧は即失敗* パターンをほぼそのまま再利用できます（[drivers](../../docs/ja/drivers.md) を参照）。
+
+バックエンドを作ることで、iOS 固有の部分が 3 つの継ぎ目（actuator、環境マネージャ、安定 id 規約）に隔離されていたことを実証できます。「不変」なコアに、ほぼ新しい形は持ち込まれません。
+
+同時に、2 番目に一般的なモバイルターゲットへ到達範囲を広げます。次の部分には、一切触れません。
+
+- シナリオの domain-specific language（DSL）
+- セレクタモデル
+- 機械アサーション
+- オーケストレータループ
+- レポーター
 
 ## 詳細設計
 
@@ -42,21 +48,27 @@ Android は **idb の構造的双子**です。subprocess 駆動、座標 actuat
 | **証跡 provider** | screenshot = `adb exec-out screencap`、video = `adb shell screenrecord`、`deviceLog` = `adb logcat`（tag/pid で絞る）、`network` = ネイティブ監視なし → iOS と同じモック方式 |
 | **codegen 変換先** | Espresso または UI Automator（Kotlin/Java） |
 
-**環境**の行は、[BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md) のクロスプラットフォーム `Environment` プロトコルを実装する `AndroidEnvironment` として着地します。その `start` は adb 列（クリーン状態のための `pm clear` → 起動の `am start` → deeplink の `am start -a android.intent.action.VIEW -d <url>`）を実行し、`adb` driver を返します。アクチュエータと環境は、iOS が idb と simctl で埋める 2 つの継ぎ目の Android 版にあたります。したがって Android は runner に新しい形を持ち込まず、BE-0009 が抽出する継ぎ目に差し込まれます。
+**環境**の行は、`AndroidEnvironment` として着地します。`AndroidEnvironment` は、[BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md) のクロスプラットフォーム `Environment` プロトコルを実装します。その `start` は次の adb 列を実行し、`adb` driver を返します。
+
+1. クリーン状態のための `pm clear`
+2. 起動のための `am start`
+3. deeplink のための `am start -a android.intent.action.VIEW -d <url>`
+
+アクチュエータと環境は、iOS が idb と simctl で埋める 2 つの継ぎ目の Android 版にあたります。したがって Android は、runner に新しい形を持ち込みません。BE-0009 が抽出する継ぎ目に差し込まれます。
 
 ### idb の構造的双子
 
-Android は **idb の構造的双子**です。subprocess 駆動、座標 actuation、画面遷移中の一過性に空なツリー。
-この共通の形ゆえに、idb の *retry 付き解決、曖昧は即失敗* パターンをそのまま再利用します。すなわち、ツリーを
-ポーリングし、一過性に空な結果なら retry し、セレクタが 2 件以上に解決したら「最初に一致したものを tap する」
-のではなく即座に失敗します（[drivers](../../docs/ja/drivers.md) を参照）。これを実証すれば、iOS 固有の部分が
-本当に 3 つの継ぎ目に閉じていたこと、そしてシステムの残りからほぼ新しい形を要しないことが裏づけられます。
+Android は **idb の構造的双子**です。どちらも subprocess 駆動で、座標 actuation を行います。さらに、画面遷移中の一過性に空なツリーを返す点も同じです。この共通の形ゆえに、Android は idb の *retry 付き解決、曖昧は即失敗* パターンをそのまま再利用します（[drivers](../../docs/ja/drivers.md) を参照）。パターンは 3 つの規則からなります。
+
+- ツリーをポーリングします。
+- 一過性に空な結果なら retry します。
+- セレクタが 2 件以上に解決したら、「最初に一致したものを tap する」のではなく即座に失敗します。
+
+Android バックエンドは、iOS 固有の部分が 3 つの継ぎ目に閉じていたことを裏づけます。システムの残りは、ほぼ新しい形を要しません。
 
 ### セレクタの対応づけ
 
-YAML のセレクタ（`{ id: settings.reindex }`）はすでにプラットフォーム中立です。変わるのは *バックエンドが
-それを満たすためにアプリ側のどの属性を読むか* だけで、それは新しい Driver の内側に完全に閉じます。Android では
-`Selector` フィールドは次のように対応します。
+YAML のセレクタ（`{ id: settings.reindex }`）は、すでにプラットフォーム中立です。変わるのは、*バックエンドがそれを満たすためにアプリ側のどの属性を読むか*だけです。この違いは、新しい Driver の内側に完全に閉じます。Android では、`Selector` フィールドは次のように対応します。
 
 | `Selector` フィールド | iOS | Android |
 |---|---|---|
@@ -67,7 +79,7 @@ YAML のセレクタ（`{ id: settings.reindex }`）はすでにプラットフ�
 
 ### 能力マトリクスでの位置
 
-能力トークンはすでにこの幅を表現できます。Android は概念を増やさずに小さい端へ収まります。
+能力トークンは、すでにこの幅を表現できます。Android は概念を増やさずに小さい端へ収まります。
 
 | 能力 | idb (iOS) | adb (Android) | Playwright (Web) | fake |
 |---|:--:|:--:|:--:|:--:|
@@ -77,80 +89,62 @@ YAML のセレクタ（`{ id: settings.reindex }`）はすでにプラットフ�
 | `network`（ネイティブ） | — | — | ✅ | — |
 | `multiTouch` | — | — | ✅（エミュレート） | ✅ |
 
-idb と Android は小さい端（座標 actuation とモックネットワーク）、Playwright は大きい端（意味的操作とネイティブ
-ネットワーク）に位置します。無改造の能力モデルがこの両端をまたぐことは、抽象が成立している証拠です。
+idb と Android は、座標 actuation とモックネットワークを持つ小さい端に位置します。Playwright は、意味的操作とネイティブネットワークを持つ大きい端に位置します。無改造の能力モデルがこの両端をまたぐことは、抽象が成立している証拠です。
 
 ### 具体的なツール
 
-このバックエンドが必要とするのは `adb`（起動には `emulator`）への subprocess 呼び出しだけです。これが
-Android を idb の双子たらしめています。
+このバックエンドが必要とするのは、`adb` への subprocess 呼び出しだけです。起動には `emulator` も使います。これが、Android を idb の双子たらしめています。
 
-- **ツリー**：`adb -s <serial> exec-out uiautomator dump /dev/tty` がウィンドウの XML をストリームします。
-  各 `<node>` は `resource-id`、`content-desc`、`text`、`class`、`bounds="[x1,y1][x2,y2]"` を持ち、driver は
-  `bounds` を `Frame`（x, y, w, h）に解析してその中心を tap します。idb と同じ frame 中心の往復です。
-- **操作**：`adb shell input tap x y` / `input swipe x1 y1 x2 y2 <ms>` / `input text <s>`。座標ベースかつ
-  単一タッチで、semantic tap はありません。idb と同じです。
-- **一過性に空なツリー**：遷移の途中で `uiautomator dump` は「null root node returned by
-  UiTestAutomationBridge」を返して間欠的に失敗します（アニメーションが落ち着いていない状態です）。これは
-  SwiftUI 遷移中に idb が返すほぼ空のツリーの正確な相似形なので、driver は idb の *retry 付き解決、曖昧は
-  即失敗* の規律をそのまま再利用します。すなわち dump を有限回 retry し、2 件以上に一致したときは最初に
-  一致したものを tap せず即座に失敗します。
-- **Compose の id**：`Modifier.testTag("…")` が `resource-id` として公開されるのは、サブツリーの根が
-  `Modifier.semantics { testTagsAsResourceId = true }` を設定したときだけです（Compose 1.2.0-alpha08 以降）。
-  これが Compose アプリ向けにドキュメントで示す id 規約です。
-- **起動の準備完了**：AVD の boot の後に `adb wait-for-device` を実行し、続いて `getprop
-  sys.boot_completed` が `1` になるまでポーリングします（固定 sleep のない有限の条件待ちです）。その後に
-  アプリを launch します。
+- **ツリー**：`adb -s <serial> exec-out uiautomator dump /dev/tty` がウィンドウの XML をストリームします。各 `<node>` は `resource-id`、`content-desc`、`text`、`class`、`bounds="[x1,y1][x2,y2]"` を持ちます。driver は `bounds` を `Frame`（x, y, w, h）に解析してその中心を tap します。idb と同じ frame 中心の往復です。
+- **操作**：`adb shell input tap x y`、`input swipe x1 y1 x2 y2 <ms>`、`input text <s>`。座標ベースかつ単一タッチです。idb と同じく、semantic tap はありません。
+- **一過性に空なツリー**：遷移の途中で、`uiautomator dump` は「null root node returned by UiTestAutomationBridge」を返して間欠的に失敗します。アニメーションが落ち着いていない状態です。これは、SwiftUI 遷移中に idb が返すほぼ空のツリーの正確な相似形です。driver は、idb の *retry 付き解決、曖昧は即失敗* の規律をそのまま再利用します。dump を有限回 retry します。2 件以上に一致したときは、最初に一致したものを tap せず即座に失敗します。
+- **Compose の id**：`Modifier.testTag("…")` が `resource-id` として公開されるのは、サブツリーの根が `Modifier.semantics { testTagsAsResourceId = true }` を設定したときだけです（Compose 1.2.0-alpha08 以降）。この規約を、Compose アプリ向けの id 規約としてドキュメントで示します。
+- **起動の準備完了**：AVD の boot の後に、`adb wait-for-device` を実行します。続いて、`getprop sys.boot_completed` が `1` になるまでポーリングします。ポーリングは、固定 sleep のない有限の条件待ちです。その後にアプリを launch します。
 
 ### 作業分解（MECE）
 
-1. **レジストリ配線**（`bajutsu/backends.py`）。`PLATFORMS["android"] = ("adb",)` と `_EXECUTABLE["adb"]`
-   はすでにあるので、残りの編集は計画済みトークンを有効にするだけです。`adb` を `IMPLEMENTED` に加え、
-   `AdbDriver.CAPABILITIES`（デバイス不要で読めるクラス定数、BE-0082 の preflight 用）を返す
-   `capabilities_for("adb")` 分岐と、`make_driver("adb", serial)` 分岐を追加します。
-2. **`AdbDriver` actuator**（`bajutsu/drivers/adb.py`）。`uiautomator dump` の XML を正規化された `Element`
-   に解析し（上記のセレクタ対応）、`input tap/swipe/text` による座標操作、`screencap` による `screenshot`、
-   一過性に空なツリーの retry、`CAPABILITIES = {QUERY, ELEMENTS, SCREENSHOT}` を実装します。`pinch`/`rotate`
-   は idb と同様、単一タッチのため `UnsupportedAction` を送出します。
-3. **`AndroidEnvironment`**（`bajutsu/environment.py`、`environment_for`）。`start` は adb 列（クリーン状態の
-   ための `pm clear <package>`（`erase` 相当）→ 任意の AVD boot と起動準備完了待ち → 起動の
-   `am start -n <pkg>/<activity>` → deeplink の `am start -a android.intent.action.VIEW -d <url>`）を実行し、
-   `adb` driver を返します。リース整形メソッドは `_DeviceEnvironment` と同じ要領で埋めます。`adb devices` +
-   `getprop` からのデバイスカタログ、relauncher（`am force-stop` の後 `am start`）、teardown（`am force-stop`）、
-   そして `has_devices() = True` と serial をまたぐ `plan_lanes` を持つ crawl レーンのメソッドです。
-4. **証跡とデバイス制御**。`deviceLog` は `adb logcat`（tag/pid で絞る）、video は `adb shell screenrecord`
-   （デバイス側で録画し停止時に pull）で供給します。`network` はネイティブ監視がないため iOS のモック方式を
-   再利用します（`NETWORK` 能力なし）。エミュレータが対応するデバイス状態のステップ（`emu geo fix` による
-   `setLocation`、clipboard）を対応づけ、それ以外は `UnsupportedAction` を送出します。
-5. **doctor と開示**。`doctor --target` が idb の隣で `adb`/エミュレータの可用性を報告します。実行マニフェスト
-   は `backend: "adb"` を記録するので、選ばれた actuator が開示されます。
-6. **codegen 変換先**。Playwright/XCUITest のジェネレータと並ぶ `to_espresso`（または UI Automator）
-   ジェネレータ（`bajutsu/codegen_espresso.py`）です。構造的な対応づけのみで LLM を使わないので、実行ゲート
-   には触れません。driver の後続スライスとして着地できます。
-7. **検証**。高速ゲート（デバイス不要）：レジストリの切り替えは `select_actuator`/`capabilities_for` を駆動し、
-   driver は取得済みの `uiautomator dump` XML フィクスチャに対し**注入した fake `run`** で駆動します（セレクタ
-   対応、frame 中心の tap、一過性に空なツリーの retry、曖昧は即失敗を確認します）。あわせて注入した runner で
-   環境列も検証します。実機（e2e）：KVM を使う Linux CI 上の Android エミュレータ（`android-emulator-runner`
-   アクション）で `--backend android` のシナリオを実行します。idb の e2e 経路と同様、高速な `make check`
-   ゲートからは外します。
+1. **レジストリ配線**（`bajutsu/backends.py`）。`PLATFORMS["android"] = ("adb",)` と `_EXECUTABLE["adb"]` は、すでにあります。残りの編集で、計画済みトークンを有効にします。
+   - `adb` を `IMPLEMENTED` に加えます。
+   - `AdbDriver.CAPABILITIES` を返す `capabilities_for("adb")` 分岐を追加します。これはデバイス不要で読めるクラス定数で、BE-0082 の preflight 用です。
+   - `make_driver("adb", serial)` 分岐を追加します。
+2. **`AdbDriver` actuator**（`bajutsu/drivers/adb.py`）。driver は次の 5 つを実装します。
+   - `uiautomator dump` の XML を、正規化された `Element` に解析します（上記のセレクタ対応）。
+   - `input tap/swipe/text` による座標操作
+   - `screencap` による `screenshot`
+   - 一過性に空なツリーの retry
+   - `CAPABILITIES = {QUERY, ELEMENTS, SCREENSHOT}`
+
+   `pinch` と `rotate` は、idb と同様に単一タッチのため、`UnsupportedAction` を送出します。
+3. **`AndroidEnvironment`**（`bajutsu/environment.py`、`environment_for`）。`start` は次の adb 列を実行し、`adb` driver を返します。
+   1. クリーン状態のための `pm clear <package>`（`erase` 相当）
+   2. 任意の AVD boot と、起動準備完了待ち
+   3. 起動のための `am start -n <pkg>/<activity>`
+   4. deeplink のための `am start -a android.intent.action.VIEW -d <url>`
+
+   リース整形メソッドは、`_DeviceEnvironment` と同じ要領で埋めます。`adb devices` と `getprop` からのデバイスカタログ、relauncher（`am force-stop` の後 `am start`）、teardown（`am force-stop`）です。crawl レーンのメソッドは、`has_devices() = True` と、serial をまたぐ `plan_lanes` を持ちます。
+4. **証跡とデバイス制御**。
+   - `deviceLog` は、tag と pid で絞った `adb logcat` で供給します。
+   - video は `adb shell screenrecord` で供給します。デバイス側で録画し、停止時に pull します。
+   - `network` はネイティブ監視がないため、iOS のモック方式を再利用します（`NETWORK` 能力なし）。
+   - エミュレータが対応するデバイス状態のステップを対応づけます。`emu geo fix` による `setLocation` と、clipboard です。それ以外は `UnsupportedAction` を送出します。
+5. **doctor と開示**。`doctor --target` が、idb の隣で `adb` とエミュレータの可用性を報告します。実行マニフェストは `backend: "adb"` を記録するので、選ばれた actuator が開示されます。
+6. **codegen 変換先**。Playwright と XCUITest のジェネレータと並べて、`to_espresso`（または UI Automator）ジェネレータ（`bajutsu/codegen_espresso.py`）を登録します。構造的な対応づけのみで LLM を使わないので、実行ゲートには触れません。driver の後続スライスとして着地できます。
+7. **検証**。高速ゲートと実機レーンの 2 つがあります。
+   - 高速ゲート（デバイス不要）：レジストリの切り替えは、`select_actuator` と `capabilities_for` で検証します。driver は、取得済みの `uiautomator dump` XML フィクスチャに対し、**注入した fake `run`** で駆動します。フィクスチャで、セレクタ対応、frame 中心の tap、一過性に空なツリーの retry、曖昧は即失敗を確認します。環境列も、注入した runner で検証します。
+   - 実機（e2e）：KVM を使う Linux CI 上の Android エミュレータ（`android-emulator-runner` アクション）で、`--backend android` のシナリオを実行します。idb の e2e 経路と同様、このレーンは高速な `make check` ゲートから外します。
 
 ### 展開順：Web の後の第 2 段階
 
-Android は **第 2 段階**で、Web（Playwright）バックエンド（[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）の
-*後*に着手します。Web を先にするのは、macOS もデバイスエミュレータも不要な唯一のプラットフォームであり、
-動いた日から既存の Linux `make check` / CI ゲートに収まって、コアがプラットフォーム中立であることを最低コストで
-証明できるからです。Android はその後、すでに一般化されたコアの上で *小さい / 座標* 経路を確認します。座標
-モデルが idb をほぼ完全に映すので新しい形が少なく、エミュレータは KVM（Linux Kernel Virtual Machine）を使う
-Linux CI で動き、`capabilities()` の **小さい端**を行使します。
+Android は **第 2 段階**で、Web（Playwright）バックエンド（[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）の*後*に着手します。Web を先にするのは、macOS とデバイスエミュレータのどちらも不要だからです。動いた日から既存の Linux `make check` / CI ゲートに収まり、コアがプラットフォーム中立であることを最低コストで証明できます。
+
+Android はその後、すでに一般化されたコアの上で、*小さい / 座標* 経路を確認します。座標モデルが idb をほぼ完全に映すので、新しい形は少なくて済みます。エミュレータは、Linux Kernel Virtual Machine（KVM）を使う Linux CI で動き、`capabilities()` の **小さい端**を行使します。
 
 ## 検討した代替案
 
-- **主 actuator として Appium UiAutomator2 を採用する。** 意味的操作（bounds 中心の座標を計算せず
-  resource-id で選択して操作）を追加できる高機能な経路です。見送り: `adb` + `uiautomator dump` 経路が idb に
-  最も近い双子なので、最も新しい形を持ち込まずに抽象を実証できます。意味的な Android actuator は、iOS で idb と
-  並んで XCUITest が見込まれているのと同様、後から 2 つ目のバックエンドとして追加できます。
-- **Web より先に Android を作る。** 展開順の理由で却下: Android が構造的に近い双子であっても、Web は macOS も
-  エミュレータも不要で、現行 Linux ゲートに最低コストで収まります。[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md) を参照。
+- **主 actuator として Appium UiAutomator2 を採用する。** 意味的操作（bounds 中心の座標を計算せず、resource-id で選択して操作）を追加できる高機能な経路です。見送りの理由は 2 つあります。
+  - `adb` + `uiautomator dump` 経路が idb に最も近い双子なので、新しい形を最も少なく抑えて抽象を実証できます。
+  - 意味的な Android actuator は、iOS で idb と並んで XCUITest が見込まれているのと同様、後から 2 つ目のバックエンドとして追加できます。
+- **Web より先に Android を作る。** 展開順の理由で却下します。Android は構造的に近い双子ですが、Web は macOS とエミュレータのどちらも不要です。Web は現行 Linux ゲートに最低コストで収まります。[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md) を参照してください。
 
 ## 進捗
 

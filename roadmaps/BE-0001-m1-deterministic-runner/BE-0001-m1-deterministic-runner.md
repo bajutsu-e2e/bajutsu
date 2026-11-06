@@ -15,19 +15,27 @@
 
 ## Introduction
 
-The deterministic Tier 2 runner: environment (simctl) + drivers + scenarios + assertions + lightweight evidence + manifest + per-app config, wired behind `run` / `doctor`.
+Milestone 1 (M1) delivers the deterministic [Tier 2](../../docs/glossary.md#the-two-tiers) runner. It wires the environment (simctl), the drivers, scenarios, assertions, lightweight evidence, the manifest, and per-app config behind `run` and `doctor`.
 
 ## Motivation
 
-A test's pass/fail must be reproducible and AI-free. M1 establishes the deterministic foundation that all other components depend on: stable selector resolution, condition-based waits (no fixed sleeps), and a clean per-run environment.
+A test's pass/fail must be reproducible and free of AI. M1 establishes the deterministic foundation that every other component depends on. That foundation has three parts: stable selector resolution, condition-based waits (no fixed sleeps), and a clean environment for each run.
 
 ## Detailed design
 
-The determinism core is the driver abstraction + selector resolution (0/1/2+ match handling), the simctl environment layer, the scenario schema with strict validation, machine-checkable assertion evaluation, and the manifest reporter — exercised by an in-memory fake driver and validated on a real Simulator via the idb backend (the `cross_backend.yaml` scenario passes id-first on-device, target app switchable via config alone).
+The determinism core has five parts:
+
+- the driver abstraction with selector resolution, which handles zero, one, and two-or-more matches;
+- the simctl environment layer;
+- the scenario schema, with strict validation;
+- machine-checkable assertion evaluation;
+- the manifest reporter.
+
+An in-memory fake driver exercises the core. The idb backend validates it on a real Simulator: the `cross_backend.yaml` scenario passes on the device by preferring ids, and config alone switches the target app.
 
 ## Alternatives considered
 
-See [`DESIGN.md`](../../DESIGN.md) for the rationale behind determinism-first over AI-in-the-loop execution.
+[`DESIGN.md`](../../DESIGN.md) gives the rationale for putting determinism ahead of AI in the execution loop.
 
 ## Progress
 

@@ -15,19 +15,32 @@
 
 ## Introduction
 
-XCUITest codegen, app traces (`appTrace` / os_signpost), redaction of captured evidence, network **observation** (in-app collector + `request` assertions), **deterministic mocks** (scenario `mocks` → offline in-protocol stubs), and CI.
+Milestone 3 (M3) delivers five capabilities:
+
+- XCUITest codegen;
+- app traces (`appTrace` and os_signpost);
+- redaction of captured evidence;
+- network **observation**, through an in-app collector and `request` assertions;
+- **deterministic mocks**, which turn the scenario's `mocks` into offline in-protocol stubs.
+
+M3 also adds continuous integration (CI).
 
 ## Motivation
 
-To be adopted in real pipelines the tool must emit native tests, observe (and deterministically stub) network, redact secrets in evidence, and gate every change in CI (continuous integration).
+A real pipeline adopts the tool only if it does four things: emit native tests, observe (and deterministically stub) the network, redact secrets in evidence, and gate every change in CI.
 
 ## Detailed design
 
-codegen maps a scenario to an equivalent XCUITest (Swift) structurally (no AI at test time). `ci.yml` runs ruff + mypy + pytest on Linux (py3.13); `e2e.yml` runs the idb smoke scenario and the codegen→XCUITest path (`make -C demos/features ui-test`) on a macOS Simulator. All validated on-device.
+codegen maps a scenario structurally to an equivalent XCUITest (Swift), with no AI at test time. Two workflows gate changes:
+
+- `ci.yml` runs ruff, mypy, and pytest on Linux (py3.13).
+- `e2e.yml` runs the idb smoke scenario and the codegen-to-XCUITest path (`make -C demos/features ui-test`) on a macOS Simulator.
+
+Both were validated on a device.
 
 ## Alternatives considered
 
-The external `mockServer` command was superseded by declarative in-protocol `mocks` and remains unwired (tracked as a deferred proposal).
+Declarative in-protocol `mocks` superseded the external `mockServer` command. The command remains unwired and is tracked as a deferred proposal.
 
 ## Progress
 
