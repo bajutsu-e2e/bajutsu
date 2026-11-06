@@ -16,113 +16,137 @@
 
 ## Introduction
 
-`bajutsu/` holds roughly 71 top-level modules in a flat namespace, but the codebase already has a
-gate-enforced layering — deterministic core / contract / periphery — from
+`bajutsu/` holds roughly 71 top-level modules in a flat namespace. The codebase already has a
+gate-enforced layering of deterministic core, contract, and periphery, from
 [BE-0112](../BE-0112-layer-boundary-enforcement/BE-0112-layer-boundary-enforcement.md). Layer
-membership is invisible in the directory tree: it exists only as hand-maintained module lists in
-`pyproject.toml`'s `[tool.importlinter]` contracts and as prose in `docs/architecture.md`. This
-proposal groups the modules that already behave as a unit into packages, so a module's layer (and
-its cluster) is legible from its path, and the import-linter contracts can name one package instead
-of enumerating members by hand.
+membership is invisible in the directory tree. It exists only as hand-maintained module lists in the
+`[tool.importlinter]` contracts of `pyproject.toml`, and as prose in `docs/architecture.md`.
+
+This proposal groups the modules that already behave as a unit into packages. A module's layer and
+its cluster then become legible from its path. The import-linter contracts can name one package
+instead of enumerating members by hand.
 
 ## Motivation
 
-A module's architecture layer should be visible from where it lives. Today it isn't: a reader (and
-the linter config) has to carry the layer map in their head, cross-referencing
-`docs/architecture.md` against a flat file listing. `pyproject.toml:216-316` spells out the
-consequence directly — the three `[tool.importlinter.contracts]` blocks enumerate close to 40
-individual module names by hand, purely because the layers have no package boundary to name
+A module's architecture layer should be visible from where the module lives. Today it is not. A
+reader, and the linter config, must carry the layer map in their head. They cross-reference
+`docs/architecture.md` against a flat file listing.
+
+`pyproject.toml:216-316` shows the consequence. The three `[tool.importlinter.contracts]` blocks
+enumerate close to 40 individual module names by hand. The layers have no package boundary to name
 instead.
 
 Several tight clusters already behave as a package in every way except the directory structure:
 
-- **codegen** — `codegen.py` (401 lines) plus `codegen_common.py` (99), `codegen_emit.py` (55),
-  `codegen_playwright.py` (521), and `codegen_uiautomator.py` (419): one generator with per-backend
-  emitters, 1,495 lines total, already named with a shared `codegen_` prefix.
-- **crawl** — `crawl.py` (1,256 lines) plus `crawl_flows.py`, `crawl_guide.py`, `crawl_report.py`,
-  `crawl_repro.py`, and `crawl_tabs.py`: the largest module in the periphery, already split by
-  `crawl_` prefix into flow/guide/report/repro/tab concerns.
-- **AI / agent periphery** — `agent.py`, `agents.py`, `claude_agent.py`, `claude_enrich_agent.py`,
-  `claude_triage.py`, `anthropic_client.py`, `ai_availability.py`, `enrich.py`, and `alerts.py`: nine
-  modules that are all periphery-layer AI/agent surface per the BE-0112 contract, presently
-  scattered across the flat namespace with no shared prefix to signal the grouping.
+- **codegen**: `codegen.py` (401 lines) plus `codegen_common.py` (99), `codegen_emit.py` (55),
+  `codegen_playwright.py` (521), and `codegen_uiautomator.py` (419). It is one generator with
+  per-backend emitters, 1,495 lines in total. The files already share a `codegen_` prefix.
+- **crawl**: `crawl.py` (1,256 lines) plus `crawl_flows.py`, `crawl_guide.py`, `crawl_report.py`,
+  `crawl_repro.py`, and `crawl_tabs.py`. It is the largest module in the periphery. The `crawl_`
+  prefix already splits it into flow, guide, report, repro, and tab concerns.
+- **AI / agent periphery**: `agent.py`, `agents.py`, `claude_agent.py`, `claude_enrich_agent.py`,
+  `claude_triage.py`, `anthropic_client.py`, `ai_availability.py`, `enrich.py`, and `alerts.py`.
+  These nine modules are all periphery-layer AI/agent surface per the BE-0112 contract. They are
+  scattered across the flat namespace today, with no shared prefix to signal the grouping.
 
-Three name collisions exist across layers, distinguishable today only by knowing which import path
-resolves where: `bajutsu/mailbox.py` vs. `bajutsu/runner/mailbox.py`, `bajutsu/object_store.py` vs.
-`bajutsu/serve/server/object_store.py`, and `bajutsu/handoff.py` vs. `bajutsu/cli/handoff.py`.
+Three name collisions exist across layers. Telling the two modules of each pair apart today
+requires knowing which import path resolves where:
+
+- `bajutsu/mailbox.py` and `bajutsu/runner/mailbox.py`
+- `bajutsu/object_store.py` and `bajutsu/serve/server/object_store.py`
+- `bajutsu/handoff.py` and `bajutsu/cli/handoff.py`
+
 Packaging the top-level modules resolves each pair into a distinct, self-documenting path.
 
-There is also one real import cycle: `bajutsu/config_source.py` defines `GitHubAccessError`
-(`config_source.py:178`) and imports `bajutsu.github_app` lazily, inside a function body
-(`config_source.py:274`), specifically to avoid a cycle with `github_app.py`, which imports
-`GitHubAccessError` from `config_source` at module level (`github_app.py:24`). The deferred import
-is a workaround for a layering problem, not a fix for it — moving the shared error type into a
-`github/` package resolves the cycle at its root instead of routing around it.
+There is also one real import cycle. `bajutsu/config_source.py` defines `GitHubAccessError`
+(`config_source.py:178`). It imports `bajutsu.github_app` lazily, inside a function body
+(`config_source.py:274`), to avoid a cycle with `github_app.py`. `github_app.py` imports
+`GitHubAccessError` from `config_source` at module level (`github_app.py:24`).
+
+The deferred import works around a layering problem and does not fix it. Moving the shared error
+type into a `github/` package resolves the cycle at its root instead of routing around it.
 
 ## Detailed design
 
-The work is MECE by cluster. Each stage lands as its own follow-up PR and is independently
-verifiable via `make lint-imports` (the BE-0112 gate) — no stage depends on another landing first.
-Every stage preserves public import paths through `__init__.py` re-exports, following the pattern
-`bajutsu/report/__init__.py` already established (BE-0043): callers keep importing
-`bajutsu.codegen.foo` etc. unchanged; only the internal module layout moves. All stages are
-behavior-preserving — no runtime logic changes, only module location and import statements.
+The work is MECE by cluster. Each stage lands as its own follow-up PR. Each stage is independently
+verifiable via `make lint-imports` (the BE-0112 gate), and no stage depends on another landing
+first.
 
-1. **`bajutsu/codegen/` package** — `codegen/__init__.py` (re-exporting the current public API),
-   `codegen/common.py` (was `codegen_common.py`), `codegen/emit.py` (was `codegen_emit.py`),
-   `codegen/playwright.py` (was `codegen_playwright.py`), `codegen/uiautomator.py` (was
-   `codegen_uiautomator.py`).
-2. **`bajutsu/crawl/` package** — `crawl/__init__.py` plus `crawl/flows.py`, `crawl/guide.py`,
-   `crawl/report.py`, `crawl/repro.py`, `crawl/tabs.py`. Also extract the roughly 150-line
-   serialization group — `action_to_dict`, `action_from_dict`, `screenmap_from_dict`,
-   `screenmap_dict` (currently `crawl.py:1106-1218`) — into `crawl/serialize.py`, since it is a
-   self-contained concern (dict (de)serialization for `Action`/`ScreenMap`) distinct from the crawl
-   loop itself. Note: the crawl coordinator was already pulled out into its own class by
-   [BE-0092](../BE-0092-crawl-coordinator-extraction/BE-0092-crawl-coordinator-extraction.md), so
-   that extraction is out of scope here — this stage is purely a file-layout move of the remaining
-   modules.
-3. **`bajutsu/github/` package** — `github/__init__.py`, `github/actions.py` (was `github.py`, the
-   `bajutsu run` Actions-annotation integration), and `github/app.py` (was `github_app.py`, the
-   GitHub App installation-token path). Moving `GitHubAccessError` into `github/__init__.py` (or a
-   small `github/errors.py`) and having `config_source.py` import it from there — rather than
-   `github_app` importing it *from* `config_source` — breaks the cycle directly: the error type no
-   longer lives in the module that needs to import the App path lazily to avoid it.
-4. **`bajutsu/agents/` periphery package** — `agents/__init__.py` plus `agents/base.py` (was
-   `agent.py`), `agents/registry.py` (was `agents.py`), `agents/claude.py` (was `claude_agent.py`),
-   `agents/claude_enrich.py` (was `claude_enrich_agent.py`), `agents/claude_triage.py` (was
-   `claude_triage.py`), `agents/anthropic_client.py` (was `anthropic_client.py`),
-   `agents/availability.py` (was `ai_availability.py`), `agents/enrich.py` (was `enrich.py`), and
-   `agents/alerts.py` (was `alerts.py`). This is the largest single cluster (nine modules) and the
-   one where the BE-0112 forbidden-module list is longest today.
-5. **`bajutsu/evidence/` and `bajutsu/analysis/` packages** — split the remaining evidence-adjacent
-   flat modules into two packages by role: `evidence/` holds today's `bajutsu/evidence.py` moved to
-   `evidence/core.py` and re-exported via `evidence/__init__.py`, plus `evidence/intervals.py`,
-   `evidence/network.py`, `evidence/visual.py`, `evidence/golden.py`, and `evidence/redaction.py`
-   (evidence capture and redaction, all deterministic-core per BE-0112); `analysis/` holds
-   `analysis/__init__.py` plus `analysis/coverage.py`, `analysis/audit.py`, and `analysis/stats.py`
-   (post-run analysis, reporting-adjacent). Keeping the two separate rather than one large package
-   matches the BE-0112 layer split — `evidence` is core, `coverage`/`audit`/`stats` are consumers of
-   a run's output rather than part of deriving the verdict.
-6. **`bajutsu/analytics/` package** — `analytics/__init__.py` plus `analytics/usage.py` (was
-   `usage.py`), `analytics/ledger.py` (was `usage_ledger.py`), and `analytics/stats.py` (was
-   `usage_stats.py`): the token/cost accounting pipeline, a self-contained trio with a shared
-   `usage_` prefix today.
+Every stage preserves public import paths through `__init__.py` re-exports. It follows the pattern
+that `bajutsu/report/__init__.py` established (BE-0043). Callers keep importing
+`bajutsu.codegen.foo` and the like unchanged, and only the internal module layout moves. All stages
+preserve behavior. No runtime logic changes, only module locations and import statements.
 
-Each stage that removes a module-list contract member lets the matching `[[tool.importlinter.contracts]]`
-entry in `pyproject.toml` (`pyproject.toml:216-316`) name one package (e.g. `bajutsu.agents`) instead
-of enumerating each of its former top-level modules — shrinking the hand-maintained lists as the
-packaging lands, stage by stage.
+1. **`bajutsu/codegen/` package.** The package holds:
+   - `codegen/__init__.py` (re-exporting the current public API);
+   - `codegen/common.py` (was `codegen_common.py`);
+   - `codegen/emit.py` (was `codegen_emit.py`);
+   - `codegen/playwright.py` (was `codegen_playwright.py`);
+   - `codegen/uiautomator.py` (was `codegen_uiautomator.py`).
+2. **`bajutsu/crawl/` package.** The package holds `crawl/__init__.py` plus `crawl/flows.py`,
+   `crawl/guide.py`, `crawl/report.py`, `crawl/repro.py`, and `crawl/tabs.py`.
+   - The stage also extracts the roughly 150-line serialization group into `crawl/serialize.py`.
+     The group is `action_to_dict`, `action_from_dict`, `screenmap_from_dict`, and `screenmap_dict`
+     (currently `crawl.py:1106-1218`). It is a self-contained concern, dict (de)serialization for
+     `Action` and `ScreenMap`, distinct from the crawl loop itself.
+   - [BE-0092](../BE-0092-crawl-coordinator-extraction/BE-0092-crawl-coordinator-extraction.md)
+     already pulled the crawl coordinator out into its own class. That extraction is out of scope
+     here. This stage is purely a file-layout move of the remaining modules.
+3. **`bajutsu/github/` package.** The package holds:
+   - `github/__init__.py`;
+   - `github/actions.py` (was `github.py`, the `bajutsu run` Actions-annotation integration);
+   - `github/app.py` (was `github_app.py`, the GitHub App installation-token path).
+
+   `GitHubAccessError` moves into `github/__init__.py` (or a small `github/errors.py`).
+   `config_source.py` imports it from there, instead of `github_app` importing it *from*
+   `config_source`. This breaks the cycle directly. The error type no longer lives in the module
+   that must import the App path lazily to avoid the cycle.
+4. **`bajutsu/agents/` periphery package.** The package holds:
+   - `agents/__init__.py`;
+   - `agents/base.py` (was `agent.py`);
+   - `agents/registry.py` (was `agents.py`);
+   - `agents/claude.py` (was `claude_agent.py`);
+   - `agents/claude_enrich.py` (was `claude_enrich_agent.py`);
+   - `agents/claude_triage.py` (was `claude_triage.py`);
+   - `agents/anthropic_client.py` (was `anthropic_client.py`);
+   - `agents/availability.py` (was `ai_availability.py`);
+   - `agents/enrich.py` (was `enrich.py`);
+   - `agents/alerts.py` (was `alerts.py`).
+
+   This is the largest single cluster, with nine modules. Today it is also where the BE-0112
+   forbidden-module list is longest.
+5. **`bajutsu/evidence/` and `bajutsu/analysis/` packages.** This stage splits the remaining
+   evidence-adjacent flat modules into two packages by role.
+   - `evidence/` holds today's `bajutsu/evidence.py`, moved to `evidence/core.py` and re-exported
+     via `evidence/__init__.py`. It also holds `evidence/intervals.py`, `evidence/network.py`,
+     `evidence/visual.py`, `evidence/golden.py`, and `evidence/redaction.py`. These modules cover
+     evidence capture and redaction, all deterministic core per BE-0112.
+   - `analysis/` holds `analysis/__init__.py` plus `analysis/coverage.py`, `analysis/audit.py`, and
+     `analysis/stats.py`. These modules cover post-run analysis, which is reporting-adjacent.
+
+   Two separate packages match the BE-0112 layer split better than one large package. `evidence` is
+   core. `coverage`, `audit`, and `stats` consume a run's output and are not part of deriving the
+   verdict.
+6. **`bajutsu/analytics/` package.** The package holds `analytics/__init__.py` plus
+   `analytics/usage.py` (was `usage.py`), `analytics/ledger.py` (was `usage_ledger.py`), and
+   `analytics/stats.py` (was `usage_stats.py`). It is the token/cost accounting pipeline, a
+   self-contained trio that shares a `usage_` prefix today.
+
+Each stage that removes a module-list contract member lets the matching
+`[[tool.importlinter.contracts]]` entry in `pyproject.toml` (`pyproject.toml:216-316`) name one
+package (for example `bajutsu.agents`). The entry no longer enumerates each former top-level
+module. The hand-maintained lists shrink as the packaging lands, stage by stage.
 
 ## Alternatives considered
 
-- **Keep the flat layout and rely on the import-linter contracts alone.** Rejected: the contracts
-  are verbose (close to 40 modules enumerated by hand across three blocks) precisely because the
-  layout has no package boundary to name instead. Packaging shrinks the contracts as a direct
-  consequence, rather than asking every future contributor to keep a mental map of which flat module
-  belongs to which layer.
-- **Do the whole regrouping in one PR.** Rejected: the six clusters are independent of one another,
-  and each is sizable enough (the crawl cluster alone is over 2,200 lines) that one combined PR would
-  be difficult to review and to revert in isolation if a single stage needed rework. Staging keeps
+- **Keep the flat layout and rely on the import-linter contracts alone.** Rejected. The contracts
+  are verbose (close to 40 modules enumerated by hand across three blocks) because the layout has
+  no package boundary to name instead. Packaging shrinks the contracts as a direct consequence.
+  The alternative asks every future contributor to keep a mental map of which flat module belongs
+  to which layer.
+- **Do the whole regrouping in one PR.** Rejected. The six clusters are independent of one another.
+  Each is sizable (the crawl cluster alone is over 2,200 lines). One combined PR would be difficult
+  to review, and difficult to revert in isolation if a single stage needed rework. Staging keeps
   each move small, independently gate-verifiable, and independently revertable.
 
 ## Progress
