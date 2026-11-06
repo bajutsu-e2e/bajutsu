@@ -65,7 +65,7 @@ suggestion to what is already planned, in progress, or deliberately not adopted.
 2. **Ideate with you.** The skill offers concrete, bounded ideas. It asks the questions that
    sharpen scope: who the idea is for, which [tier](glossary.md#the-two-tiers) it touches, and what
    the *machine-checkable* outcome is. It pulls in adjacent items as reference points.
-3. **Classify each surviving idea** into one of three landings, and say which one it chose:
+3. **Classify each surviving idea** into one of three landings, naming which one it chose:
    - **overlaps an existing item**: augment that item rather than duplicate it.
    - **novel and scoped**: draft a new item.
    - **still unformed**: add a bullet under *Unsorted ideas* in both language READMEs, to promote
