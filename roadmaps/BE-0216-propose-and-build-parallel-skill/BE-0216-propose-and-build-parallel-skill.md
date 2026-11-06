@@ -27,10 +27,10 @@ confident enough in a small, well-scoped feature to write the proposal *and* its
 the same time. The author then lands both in a **single BE-creation PR** that carries the roadmap
 item, the code, and the tests together.
 
-The skill does not replace `ideation` / `implement-be`.
-It does not change the merge-time allocation of BE-0089. The item keeps the `BE-XXXX` placeholder throughout the life of the PR. CI
-allocates the real id the moment the PR merges, exactly as for any proposal. The serial path remains the default.
-It suits anything whose design deserves review first.
+The skill does not replace `ideation` / `implement-be`, and it does not change the merge-time
+allocation of BE-0089. The item keeps the `BE-XXXX` placeholder throughout the life of the PR, and CI
+allocates the real id the moment the PR merges, exactly as for any proposal. The serial path remains
+the default for anything whose design deserves review before anyone writes the code.
 
 ## Motivation
 

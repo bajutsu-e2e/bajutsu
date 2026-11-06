@@ -21,9 +21,8 @@ lives in `bajutsu/ai/claude_code.py`. It authenticates by inheriting the credent
 `claude` binary already holds. That credential is an interactive browser login. It can also be a
 prior `claude setup-token` run on the same machine.
 
-Bajutsu itself has no explicit notion of a `claude-code` credential. It has no documented
-environment variable. It has no `.env.example` entry. It has no field in the Settings panel of
-`serve`.
+Bajutsu itself has no explicit notion of a `claude-code` credential: no documented environment
+variable, no `.env.example` entry, and no field in the Settings panel of `serve`.
 
 Every other provider has such a credential. `api-key` has `ANTHROPIC_API_KEY` / `ai.keyEnv`. `ant`
 has `ant auth login` plus a `serve`-driven login button.
@@ -32,8 +31,8 @@ This item adds `CLAUDE_CODE_OAUTH_TOKEN` as a first-class, bajutsu-managed crede
 `claude setup-token` mints this long-lived token for the non-interactive case. The `claude` command-line
 interface (CLI) honors the token when the environment holds it.
 
-The credential is settable via `.env` or a real environment variable. A new write-once secret sets it
-too. The secret lives in the Settings panel of `serve`, beside the Claude API key field.
+A user can set the credential through `.env`, through a real environment variable, or through a new
+write-once secret in the Settings panel of `serve`, beside the Claude API key field.
 
 ## Motivation
 
