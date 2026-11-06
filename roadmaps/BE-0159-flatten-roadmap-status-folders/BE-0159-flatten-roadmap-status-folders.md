@@ -16,140 +16,154 @@
 
 ## Introduction
 
-[BE-0078](../BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders.md) gave
-each of the four `Status` values its own directory
-(`roadmaps/{implemented,in-progress,proposals,deferred}/`), so a promotion `git mv`s an item's
-directory every time its `Status` changes. This item proposes retiring that half of BE-0078: flatten
-every item into a single `roadmaps/BE-NNNN-<slug>/`, so an item's path is fixed forever from the
-moment its ID is allocated ([BE-0089](../BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation.md))
-and a promotion never touches the filesystem again. `Status` keeps deciding the generated index and
-dashboard bucket — the reader-facing distinction BE-0078 actually wanted stays exactly as it is —
-it just stops also deciding the file's location, which is the part that rots links.
+[BE-0078](../BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders.md) gave each of the four
+`Status` values its own directory (`roadmaps/{implemented,in-progress,proposals,deferred}/`). A
+promotion `git mv`s an item's directory every time its `Status` changes.
+
+This item retires that half of BE-0078. It flattens every item into a single
+`roadmaps/BE-NNNN-<slug>/`. An item's path is then fixed forever from the moment its ID is allocated
+([BE-0089](../BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation.md)), and a
+promotion never touches the filesystem again.
+
+`Status` keeps deciding the generated index and dashboard bucket. The reader-facing distinction that
+BE-0078 wanted stays as it is. `Status` stops deciding the file's location, which is the part
+that rots links.
 
 ## Motivation
 
 ### The premise: every promotion moves the file, and nothing outside this repo notices
 
 A `git mv` changes a file's path. Every reader who holds a path to a `roadmaps/<category>/BE-NNNN-…`
-item — a Markdown link, a GitHub blob URL, a bookmark — points at nothing the moment that item's
-`Status` next changes, unless something rewrites that specific reader. This repository already
-works around the fallout in two places: `promote_roadmap_items.py` rewrites cross-links **within**
-`roadmaps/`, and [BE-0096](../BE-0096-docs-roadmap-link-integrity/BE-0096-docs-roadmap-link-integrity.md)
-extended that to `docs/` (plus a gate check so a missed one fails `make check`). Both are real,
-working repairs — for the two link surfaces this repository can see and rewrite at HEAD.
+item points at nothing the moment that item's `Status` next changes, unless something rewrites that
+specific reader. The path may sit in a Markdown link, a GitHub blob URL, or a bookmark.
+
+This repository already works around the fallout in two places:
+
+- `promote_roadmap_items.py` rewrites cross-links **within** `roadmaps/`.
+- [BE-0096](../BE-0096-docs-roadmap-link-integrity/BE-0096-docs-roadmap-link-integrity.md) extended
+  that repair to `docs/`, and added a gate check so a missed link fails `make check`.
+
+Both are real, working repairs for the two link surfaces that this repository can see and rewrite at
+HEAD.
 
 ### A concrete, currently-live bug the existing repairs don't reach
 
-[`scripts/sync_roadmap_tracking_issues.py`](../../scripts/sync_roadmap_tracking_issues.py)
-(BE-0109) opens a GitHub tracking issue for every open item, with a body that links back to the
-item's file:
+[`scripts/sync_roadmap_tracking_issues.py`](../../scripts/sync_roadmap_tracking_issues.py) (BE-0109)
+opens a GitHub tracking issue for every open item. The issue body links back to the item's file:
 
 ```python
 href = f"{REPO_BLOB_ROOT}/roadmaps/{item.category}/{stem}/{stem}.md"
 ```
 
-`create_issue()` sets this body **once**, at creation time. The sync script's other action on an
-existing issue is `close_issue()` — nothing ever calls an update/edit on an already-open issue's
-body. So the instant an item is promoted from `Proposal` to `In progress` (its `Status` changes,
-its issue stays open because both are "open" statuses, its `category` segment changes from
-`proposals` to `in-progress`), the link embedded in that issue's body 404s — and stays broken for
-as long as the issue is open, then forever after it closes, since a closed issue is never revisited
-either. Given that almost every item passes through `Proposal`, and many also pass through
-`In progress`, before `Implemented`, this is not an edge case: it is the **default outcome** for the
-tracking-issue link on any item that is promoted at all, and BE-0096's docs/roadmaps repair — scoped
-explicitly to those two surfaces — does not and structurally cannot reach it (it is a GitHub API
-object, not a file in the tree).
+`create_issue()` sets this body **once**, at creation time. The sync script's one other action on an
+existing issue is `close_issue()`. Nothing ever edits the body of an already-open issue.
+
+Consider an item promoted from `Proposal` to `In progress`. Its `Status` changes, and its
+`category` segment changes from `proposals` to `in-progress`. Its issue stays open, because both are
+"open" statuses. The link embedded in that issue's body now returns 404. The link stays broken while
+the issue is open, and forever after the issue closes, since nobody revisits a closed issue either.
+
+Almost every item passes through `Proposal`, and many also pass through `In progress`, before
+`Implemented`. This is not an edge case. For the tracking-issue link on
+any item that is promoted at all, breakage is the **default outcome**. BE-0096's docs/roadmaps repair is scoped explicitly to those two
+surfaces. It does not reach this link and structurally cannot, because the link lives in a GitHub API
+object and not in a file in the tree.
 
 ### The repair-every-reader strategy has no ceiling
 
-Tracking issues are one instance of a broader pattern: every additional *consumer* of a roadmap
-item's path is a new place that can go stale, and "detect drift, then auto-repair or gate-check it"
-only covers the consumers this repository's tooling can see and rewrite in its own commits. It
-cannot reach, and never will:
+Tracking issues are one instance of a broader pattern. Every additional *consumer* of a roadmap
+item's path is a new place that can go stale. The strategy of "detect drift, then auto-repair or
+gate-check it" covers only the consumers that this repository's tooling can see and rewrite in its
+own commits. It cannot reach the following consumers, and never will:
 
-- **External references** — a link pasted into a Slack thread, cited from a blog post, indexed by a
-  search engine, or left in a comment on a *different* GitHub repository — all point at a specific
-  path at `main` and break the moment that path moves, permanently, with no mechanism in this repo
-  able to touch them.
-- **This repo's own closed artifacts** — a merged PR description, an old commit message, or (as
-  above) an already-closed tracking issue — nothing revisits these after the fact even though they
-  are technically "in GitHub," because nothing in the promotion path is wired to edit them.
+- **External references.** A link pasted into a Slack thread, cited from a blog post, indexed by a
+  search engine, or left in a comment on a *different* GitHub repository points at a specific path
+  at `main`. It breaks the moment that path moves. It breaks permanently, and no mechanism in this
+  repo can touch it.
+- **This repo's own closed artifacts.** A merged PR description, an old commit message, or an
+  already-closed tracking issue (as above) lives in GitHub, technically. Nothing in the promotion
+  path is wired to edit it, so nothing revisits it.
 
-Each newly discovered consumer (tracking issues today; the next one tomorrow) becomes a bespoke
-special case bolted onto `roadmap-promote`. That is the opposite of the "make the structure carry
-the invariant" principle the contributor-workflow line otherwise follows
+Each newly discovered consumer (tracking issues today, the next one tomorrow) becomes a bespoke
+special case bolted onto `roadmap-promote`. That is the opposite of the principle "make the structure
+carry the invariant", which the contributor-workflow line otherwise follows
 ([BE-0043](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md),
-[BE-0061](../BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md)):
-a path that keeps moving *is* the invariant violation, and chasing every reader of it is treating the
-symptom. `docs/ai-development.md` already documents the docs/-side repair as "the same self-healing
-the index gets" — i.e., it already concedes rot is the expected consequence of the folder scheme and
-budgets tooling to chase it. This item removes the underlying cause instead.
+[BE-0061](../BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md)). A path that
+keeps moving *is* the invariant violation, and chasing every reader of it treats the symptom.
+
+`docs/ai-development.md` already documents the docs/-side repair as "the same self-healing the index
+gets". That wording concedes that rot is the expected consequence of the folder scheme, and it
+budgets tooling to chase the rot. This item removes the underlying cause instead.
 
 ### What BE-0078 actually needed, versus what it built
 
-BE-0078's real complaint was legitimate: `proposals/` was flattening three states (live proposal,
-in-progress, deferred) that `Status` already distinguished, so a reader browsing the folder — on
-disk or via the index — couldn't tell them apart without opening each file. But a four-way
-**index/dashboard grouping** and a four-way **filesystem layout** are two different things that
-BE-0078 bundled into one change. `build_roadmap_index.py` already derives each item's bucket from
-its `Status` field, not from which folder the file physically sits in — the generated tables and the
-GitHub Pages dashboard ([BE-0094](../BE-0094-roadmap-status-dashboard/BE-0094-roadmap-status-dashboard.md))
-give a reader the exact at-a-glance distinction BE-0078 wanted, with no directory move required to
-keep it accurate. Decoupling the two removes the promotion-triggered rot while keeping the one thing
-BE-0078 actually needed.
+BE-0078's real complaint was legitimate. `proposals/` flattened three states (live proposal,
+in-progress, deferred) that `Status` already distinguished. A reader browsing the folder, on disk or
+via the index, could not tell the states apart without opening each file.
+
+But a four-way **index/dashboard grouping** and a four-way **filesystem layout** are two different
+things, and BE-0078 bundled them into one change. `build_roadmap_index.py` already derives each
+item's bucket from its `Status` field, not from the folder where the file physically sits. The
+generated tables and the GitHub Pages dashboard
+([BE-0094](../BE-0094-roadmap-status-dashboard/BE-0094-roadmap-status-dashboard.md)) give a reader the
+at-a-glance distinction that BE-0078 wanted, with no directory move to keep it accurate. Decoupling
+the two removes the promotion-triggered rot and keeps the one thing BE-0078 needed.
 
 ## Detailed design
 
-MECE work breakdown, all touching the tooling BE-0078 introduced and BE-0096/BE-0149 extended:
+The work breakdown is MECE. Every unit touches the tooling that BE-0078 introduced and that
+BE-0096 and BE-0149 extended.
 
 1. **One flat directory.** Every item lives at `roadmaps/BE-NNNN-<slug>/` (or `BE-0159-<slug>/`
-   while unallocated); the `{implemented,in-progress,proposals,deferred}/` segment is dropped. An
+   while unallocated). The `{implemented,in-progress,proposals,deferred}/` segment is dropped. An
    item's path becomes permanent the moment its ID is allocated
-   ([BE-0089](../BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation.md))
-   and never changes again — the same "permanent, never renumbered" guarantee the roadmap already
-   gives the ID itself, extended to the path.
-2. **`scripts/build_roadmap_index.py`.** Keeps deriving the Implemented / In progress / Proposals /
-   Deferred × Topic tables from `Status` exactly as today — only the generated link path drops the
-   category segment. `CATEGORIES` (a directory-scan concern) collapses to scanning one directory;
-   `SECTIONS`/bucketing (a `Status`-classification concern) is unchanged.
-3. **`scripts/promote_roadmap_items.py` and `roadmap-promote.yml`.** The `git mv` / "misfiled
-   directory" concept disappears — there is no folder an item's `Status` can disagree with anymore.
-   What is left of this script's job — regenerating the index after a `Status` edit — is already
-   what `make roadmap-index` does on its own, so the promote step shrinks to "rebuild the index and
-   commit if it changed," foldable into the existing `roadmap-id` workflow rather than kept as a
-   separate one.
+   ([BE-0089](../BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation.md)) and
+   never changes again. The roadmap already gives the ID this "permanent, never renumbered"
+   guarantee, and the guarantee now extends to the path.
+2. **`scripts/build_roadmap_index.py`.** The script keeps deriving the Implemented / In progress /
+   Proposals / Deferred × Topic tables from `Status`, as today. The generated link path
+   drops the category segment, and nothing else changes. `CATEGORIES` (a directory-scan concern)
+   collapses to scanning one directory. `SECTIONS`/bucketing (a `Status`-classification concern) is
+   unchanged.
+3. **`scripts/promote_roadmap_items.py` and `roadmap-promote.yml`.** The `git mv` and "misfiled
+   directory" concept disappears, because no folder exists that an item's `Status` can disagree
+   with. The script's remaining job is regenerating the index after a `Status` edit, which
+   `make roadmap-index` already does on its own. The promote step shrinks to "rebuild the
+   index and commit if it changed". The existing `roadmap-id` workflow can absorb that step, so it
+   no longer needs a separate workflow.
 4. **`scripts/allocate_roadmap_ids.py`.** The four-category scan (`CATEGORIES`, used for both
-   used-ID counting and placeholder discovery) collapses to scanning the one directory;
-   `PLACEHOLDER_CATEGORY` is no longer meaningful (there is only one place to look).
+   used-ID counting and placeholder discovery) collapses to scanning the one directory.
+   `PLACEHOLDER_CATEGORY` loses its meaning, because one place remains to look.
 5. **`scripts/check_roadmap_format.py` / `scripts/roadmap_ids.py` (BE-0149).** The shared
-   `is_item_dir` / `is_numbered_dir` / `is_placeholder_dir` predicates are unaffected — they already
-   test only the directory *name*, never its parent. `_items()`'s walk over `CATEGORIES` collapses
-   to walking one directory: a net simplification of the exact surface BE-0149 just finished
-   hardening against drift, removing one whole axis (which of four folders) that hardening had to
-   reason about.
-6. **`scripts/new_roadmap_item.py`.** Scaffolds every new item directly under `roadmaps/`,
-   regardless of `--status`; the flag still sets the metadata `Status` (and thus the eventual index
-   bucket), it just no longer selects a folder.
-7. **`scripts/sync_roadmap_tracking_issues.py` (BE-0109) — the concrete fix.** `issue_body()`'s
-   `href` drops the `item.category` segment, so a tracking issue's link is stable across every
-   future `Status` change for the rest of that item's life — closing the live bug described above.
-   As a one-time migration (not a recurring mechanism), a follow-up pass over every existing
-   tracking issue (`gh issue list --label roadmap-tracking --state all`, then `gh issue edit` each
-   body) repairs the links that are already broken today, rather than leaving them broken forever.
+   `is_item_dir` / `is_numbered_dir` / `is_placeholder_dir` predicates are unaffected. They already
+   test the directory *name* and never its parent. The walk over `CATEGORIES` in `_items()` collapses
+   to walking one directory. This is a net simplification of the surface that BE-0149 just finished
+   hardening against drift, and it removes one whole axis (which of four folders) that the hardening
+   had to reason about.
+6. **`scripts/new_roadmap_item.py`.** The script scaffolds every new item directly under
+   `roadmaps/`, regardless of `--status`. The flag still sets the metadata `Status`, and thus the
+   eventual index bucket. It no longer selects a folder.
+7. **`scripts/sync_roadmap_tracking_issues.py` (BE-0109), the concrete fix.** The `href` in
+   `issue_body()` drops the `item.category` segment. A tracking issue's link is then stable across
+   every future `Status` change for the rest of that item's life, which closes the live bug described
+   above. A one-time migration (not a recurring mechanism) repairs the links that are already broken
+   today, instead of leaving them broken forever. The migration is a follow-up pass over every
+   existing tracking issue: `gh issue list --label roadmap-tracking --state all`, then `gh issue
+   edit` on each body.
 8. **Prose.** `CLAUDE.md`, `roadmaps/README.md` / `README-ja.md`, and `docs/ai-development.md` drop
-   the "`Status` maps to one of four folders, a bijection" rule and its four-row table, replacing it
-   with "every item lives in `roadmaps/BE-NNNN-<slug>/`; `Status` decides only the index/dashboard
-   bucket." The four index buckets themselves, their order, and the "In progress" naming
-   (BE-0078) are untouched — only the folder-equals-bucket claim is retracted.
-9. **One-time migration.** A single PR `git mv`s every existing item's directory to the flat
-   layout and regenerates the index; this is the one deliberate, one-time breakage this item
-   accepts, in exchange for removing an unbounded number of future ones (see *Alternatives*).
+   the rule "`Status` maps to one of four folders, a bijection" and its four-row table. They replace
+   it with "every item lives in `roadmaps/BE-NNNN-<slug>/`; `Status` alone decides the index/dashboard
+   bucket." The four index buckets, their order, and the "In progress" naming (BE-0078) are
+   untouched. The change retracts the folder-equals-bucket claim and nothing else.
+9. **One-time migration.** A single PR `git mv`s every existing item's directory to the flat layout
+   and regenerates the index. This is the one deliberate, one-time breakage that this item accepts.
+   In exchange, it removes an unbounded number of future breakages (see *Alternatives*).
 10. **Downstream items.** [BE-0154](../BE-0154-roadmap-promote-base-sha/BE-0154-roadmap-promote-base-sha.md)
-    hardens `roadmap-promote.yml`'s checkout of `promote_roadmap_items.py`; once that script's job
-    shrinks to a reindex (item 3), BE-0154's premise — a PR-influenced script running under
-    `contents: write` — mostly evaporates, so BE-0154 should be revisited (closed or rewritten
-    against whatever remains) once this item lands, rather than implemented against code this item
-    retires.
+    hardens how `roadmap-promote.yml` checks out `promote_roadmap_items.py`. Once that script's job
+    shrinks to a reindex (unit 3), BE-0154's premise mostly evaporates. Its premise is a
+    PR-influenced script running under `contents: write`. BE-0154 should be revisited once this item
+    lands, either closed or rewritten against whatever remains. Implementing it against code that
+    this item retires would waste the work.
 
 ### Performance and scale
 
@@ -157,59 +171,62 @@ A fair question is whether regenerating the index (and syncing tracking issues) 
 grows costly as the item count climbs. It does not, for three reasons, and this item does not make it
 worse:
 
-- **The regeneration cost already exists today; this item removes work, not adds it.** The index is
-  *already* rebuilt from scratch on every roadmap change — `roadmap-promote` runs
-  `build_roadmap_index.py` after each move. What this item removes is the per-promotion `git mv`; the
-  reindex that remains is the same one that runs now. A status change goes from "move the directory
-  **and** reindex" to "reindex only," so the per-change work strictly shrinks.
-- **The rebuild is a cheap O(N) pass.** Both the index (`build_roadmap_index.py`) and the dashboard
-  (`build_roadmap_dashboard.py`) are a single linear scan that reads each item's small metadata block
-  and re-emits the tables. At the current 151 items the actual work is on the order of tens of
-  milliseconds (the wall-clock is dominated by Python startup, not the scan); a 10× larger roadmap is
-  still well under a second. The gate already runs a full index build on every `make check`, so this
-  cost is exercised continuously and is not a regression risk.
+- **The regeneration cost already exists today, and this item removes work.** The index is
+  *already* rebuilt from scratch on every roadmap change: `roadmap-promote` runs
+  `build_roadmap_index.py` after each move. This item removes the per-promotion `git mv`, and the
+  remaining reindex is the same one that runs now. A status change goes from "move the directory
+  **and** reindex" to "reindex", so the per-change work strictly shrinks.
+- **The rebuild is a cheap O(N) pass.** The index (`build_roadmap_index.py`) and the dashboard
+  (`build_roadmap_dashboard.py`) each make a single linear scan. The scan reads each item's small
+  metadata block and re-emits the tables. At the current 151 items, the actual work takes tens of
+  milliseconds, and Python startup dominates the wall-clock. A roadmap 10× larger would still take
+  well under a second. The gate already runs a full index build on every `make check`, so this cost
+  is exercised continuously and poses no regression risk.
 - **Tracking-issue sync is diff-based, not a full regeneration, so it does not grow with the total
-  item count.** `sync_roadmap_tracking_issues.py`'s `plan()` computes only the delta (`to_create` /
-  `to_close`) and touches just the issues that changed; a single promotion is typically zero or one
-  API write. The only quantity that scales with the roadmap is one local file scan (cheap) and one
-  `gh issue list` call bounded by the *open*-issue count (`--limit 1000`), neither of which this item
-  changes.
+  item count.** `plan()` in `sync_roadmap_tracking_issues.py` computes the delta (`to_create` /
+  `to_close`) and touches the issues that changed. A single promotion typically costs zero or one
+  API write. Two quantities scale with the roadmap: one local file scan (cheap) and one
+  `gh issue list` call bounded by the *open*-issue count (`--limit 1000`). This item changes
+  neither.
 
 ### Prime-directive compliance
 
-Documentation, roadmap-tooling scripts, and their gate tests only. No LLM enters any path; `run` and
-CI stay deterministic; nothing app- or backend-specific is touched.
+This item touches documentation, roadmap-tooling scripts, and their gate tests. No LLM enters any
+path, `run` and CI stay deterministic, and nothing app- or backend-specific is touched.
 
 ## Alternatives considered
 
-- **Keep four folders; keep extending detect-and-repair to every newly discovered consumer** (the
-  path already being walked: `promote_roadmap_items.py` for `roadmaps/`, BE-0096 for `docs/`, this
-  item's own fix for tracking issues). Rejected as the long-term answer: the list of consumers is
-  unbounded and this repository cannot see, let alone repair, the ones outside it (external
-  bookmarks, search-engine caches, other repositories' issues/PRs, already-closed artifacts of this
-  one). The tracking-issue bug shows a repo-*internal* consumer still slipped through even with
-  BE-0096 already shipped — the strategy has no ceiling by construction.
-- **Keep the four folders, but leave a redirect/alias at the old path when an item moves** (e.g. a
-  stub file forwarding to the new location). Rejected: git has no first-class alias/redirect
-  primitive, so simulating one is bespoke machinery roughly as involved as flattening, while still
-  leaving a filesystem layout that implies "current state" without actually being reliably current.
-- **A different folder count** (e.g. fold `deferred/` back into `proposals/`, three folders instead
-  of four). Doesn't address the actual problem: any folder keyed off a mutable `Status` still moves
-  a file on every status change; the number of folders is orthogonal to path stability.
-- **Do nothing; accept the rot as a documented, bounded cost.** Close to the status quo —
-  `docs/ai-development.md` already frames the docs/ repair as needed "self-healing," implicitly
-  conceding rot is expected. Rejected because the tracking-issue bug shows the cost is not bounded to
-  the two surfaces already patched, and it recurs on every future promotion of every currently open
-  item, with no repair in place today.
-- **Incrementally patch the index/dashboard on each change instead of the current full rebuild** (to
-  pre-empt any growth in reindex time as the item count climbs). Rejected, and out of scope for this
-  item: a full rebuild from each item's metadata is precisely the single-source-of-truth guarantee
-  the project already relies on ([BE-0043](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md),
-  [BE-0094](../BE-0094-roadmap-status-dashboard/BE-0094-roadmap-status-dashboard.md)) —
-  an incremental patch reintroduces a stateful drift surface for a speed the roadmap does not need
-  (the O(N) rebuild is tens of milliseconds at today's scale; see *Performance and scale*). This item
-  neither adds nor removes that rebuild, so if incremental generation is ever wanted it is an
-  orthogonal follow-up, not a reason to keep the folders.
+- **Keep four folders, and keep extending detect-and-repair to every newly discovered consumer.**
+  This is the path already being walked: `promote_roadmap_items.py` for `roadmaps/`, BE-0096 for
+  `docs/`, and this item's own fix for tracking issues. Rejected as the long-term answer. The list of
+  consumers is unbounded, and this repository cannot see, let alone repair, the ones outside it:
+  external bookmarks, search-engine caches, other repositories' issues and PRs, and already-closed
+  artifacts of this repository. The tracking-issue bug shows that a repo-*internal* consumer still
+  slipped through even with BE-0096 shipped. By construction, the strategy has no ceiling.
+- **Keep the four folders, but leave a redirect or alias at the old path when an item moves** (for
+  example, a stub file forwarding to the new location). Rejected. Git has no first-class
+  alias/redirect primitive, so simulating one is bespoke machinery about as involved as flattening.
+  The result would still be a filesystem layout that implies "current state" without being reliably
+  current.
+- **A different folder count** (for example, fold `deferred/` back into `proposals/`, for three
+  folders instead of four). This does not address the actual problem. Any folder keyed off a mutable
+  `Status` still moves a file on every status change, so the number of folders is orthogonal to path
+  stability.
+- **Do nothing, and accept the rot as a documented, bounded cost.** This is close to the status quo:
+  `docs/ai-development.md` already frames the docs/ repair as needed "self-healing", which
+  implicitly concedes that rot is expected. Rejected, because the tracking-issue bug shows the cost
+  is not bounded to the two surfaces already patched. It recurs on every future promotion of every
+  currently open item, with no repair in place today.
+- **Incrementally patch the index/dashboard on each change, instead of the current full rebuild**
+  (to pre-empt any growth in reindex time as the item count climbs). Rejected, and out of scope for
+  this item. A full rebuild from each item's metadata is the single-source-of-truth guarantee that
+  the project already relies on
+  ([BE-0043](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md),
+  [BE-0094](../BE-0094-roadmap-status-dashboard/BE-0094-roadmap-status-dashboard.md)). An incremental
+  patch reintroduces a stateful drift surface for a speed the roadmap does not need. The O(N)
+  rebuild takes tens of milliseconds at today's scale (see *Performance and scale*). This item
+  neither adds nor removes that rebuild. If incremental generation is ever wanted, it is an
+  orthogonal follow-up and not a reason to keep the folders.
 
 ## Progress
 
@@ -245,18 +262,24 @@ CI stay deterministic; nothing app- or backend-specific is touched.
 
 Log:
 
-- PR1 (batch 1), [#628](https://github.com/bajutsu-e2e/bajutsu/pull/628): added the transitional
-  dual-layout walk (`roadmap_ids.iter_item_dirs` scans the flat root and the legacy folders) across
-  the index / allocate / format / sync / dashboard / lint tooling, scaffolded new items flat, and
-  `git mv`'d the Implemented items to the flat root (regenerating the index and repairing the
-  cross-links). `promote` still manages the remaining foldered items. BE-0159 moved to `In progress`.
-- PR2 (batch 2), [#631](https://github.com/bajutsu-e2e/bajutsu/pull/631): `git mv`'d the remaining items (proposals / in-progress / deferred) to the flat root,
-  removed the transitional dual-layout code (`iter_item_dirs` is a single flat scan again, `category`
-  dropped), retired `promote_roadmap_items.py` + its workflow / gate test / Make target, switched the
-  proposal-approvals gate to Status-based detection, and completed the prose retraction across
-  `CLAUDE.md` / the READMEs / `docs/ai-development.md` / `docs/roadmap-workflow.md` / the skills.
-  BE-0159 → `Implemented`; BE-0154 flagged. Follow-up: the one-time `gh issue edit` repair of existing
-  tracking-issue links runs after merge (the flat paths only resolve once this lands on `main`).
+- PR1 (batch 1), [#628](https://github.com/bajutsu-e2e/bajutsu/pull/628):
+  - Added the transitional dual-layout walk (`roadmap_ids.iter_item_dirs` scans the flat root and
+    the legacy folders) across the index / allocate / format / sync / dashboard / lint tooling.
+  - Scaffolded new items flat.
+  - `git mv`'d the Implemented items to the flat root, regenerating the index and repairing the
+    cross-links.
+  - `promote` still manages the remaining foldered items. BE-0159 moved to `In progress`.
+- PR2 (batch 2), [#631](https://github.com/bajutsu-e2e/bajutsu/pull/631):
+  - `git mv`'d the remaining items (proposals / in-progress / deferred) to the flat root.
+  - Removed the transitional dual-layout code (`iter_item_dirs` is a single flat scan again, and
+    `category` is dropped).
+  - Retired `promote_roadmap_items.py` with its workflow, gate test, and Make target.
+  - Switched the proposal-approvals gate to Status-based detection.
+  - Completed the prose retraction across `CLAUDE.md`, the READMEs, `docs/ai-development.md`,
+    `docs/roadmap-workflow.md`, and the skills.
+  - BE-0159 → `Implemented`; BE-0154 flagged.
+  - Follow-up: the one-time `gh issue edit` repair of existing tracking-issue links runs after
+    merge. The flat paths resolve only once this lands on `main`.
 
 ## References
 

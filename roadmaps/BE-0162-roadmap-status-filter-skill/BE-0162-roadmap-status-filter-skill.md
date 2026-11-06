@@ -15,32 +15,33 @@
 
 ## Introduction
 
-Add a Claude Code skill that lists roadmap (BE) items filtered by `Status`, so an AI
-session can survey "everything that is `Approved`" (or `In progress`, `Implemented`,
-`Deferred`, `Rejected`) without reading the full `roadmaps/README.md`. The skill takes a
-status argument and prints one table — `ID`, title, `Topic`, and the item's file path — so
-Claude can then open only the items it actually needs.
+This item adds a Claude Code skill that lists roadmap (BE) items filtered by `Status`. An AI
+session can then survey "everything that is `Approved`" (or `In progress`, `Implemented`,
+`Deferred`, `Rejected`) without reading the full `roadmaps/README.md`.
+
+The skill takes a status argument and prints one table with the `ID`, the title, the `Topic`, and
+the item's file path. Claude can then open the items it needs and no others.
 
 ## Motivation
 
-`roadmaps/README.md` is the index of every BE item, and it has grown past 700 lines with
-well over a hundred items across four status buckets and many topics. A session that only
-needs, say, the open proposals still has two poor options today:
+`roadmaps/README.md` is the index of every BE item. It has grown past 700 lines, with well over a
+hundred items across four status buckets and many topics. A session that needs the open
+proposals alone has two poor options today:
 
-- **Read the whole index** — hundreds of lines of generated tables land in context, most of
-  them irrelevant to the task, spending tokens and burying the few rows that matter.
-- **`grep` the README by hand** — works, but every session re-invents the incantation, and
-  the README's per-bucket / per-topic table layout makes a clean "just the proposals, with
-  their file paths" projection awkward to assemble from `grep` alone.
+- **Read the whole index.** Hundreds of lines of generated tables land in context. Most of them are
+  irrelevant to the task, so they spend tokens and bury the few rows that matter.
+- **`grep` the README by hand.** This works, but every session re-invents the incantation. The
+  README's per-bucket and per-topic table layout also makes a clean projection awkward to assemble
+  from `grep` alone (the proposals, with their file paths).
 
-The index is *generated from each item's own metadata* (`Status` / `Topic` / title) by
-[`scripts/build_roadmap_index.py`](../../scripts/build_roadmap_index.py) (BE-0043 / BE-0078).
-That same metadata is the authoritative, machine-readable source a status filter needs — so
-the projection an AI session wants ("give me the `Approved` rows with paths") is a small,
-deterministic query over data the repo already parses, not a new source of truth.
+[`scripts/build_roadmap_index.py`](../../scripts/build_roadmap_index.py) generates the index from
+each item's own metadata (`Status`, `Topic`, and title) (BE-0043 / BE-0078). That same metadata is
+the authoritative, machine-readable source a status filter needs. The projection an AI session
+wants ("give me the `Approved` rows with paths") is a small, deterministic query over
+data the repo already parses, not a new source of truth.
 
-A focused, argument-driven skill gives every session one consistent, low-token way to ask
-that question and get back exactly the rows it needs, with the file path to read next.
+A focused, argument-driven skill gives every session one consistent, low-token way to ask that
+question. The session gets back the rows it needs, with the file path to read next.
 
 ## Detailed design
 
@@ -48,71 +49,71 @@ The work breaks down into three mutually exclusive, collectively exhaustive unit
 
 ### 1. A deterministic status-filter query
 
-Reuse the metadata parsing the index generator already owns rather than adding a second
-parser. `scripts/build_roadmap_index.py` (via `roadmap_ids.iter_item_dirs` +
-`metadata_fields`) already reads every `roadmaps/BE-*/` item's fenced `| Field | Value |`
-block for its `Status` and `Topic` and its H1 title. Expose that as a small query the skill
-can call — either:
+The query reuses the metadata parsing the index generator already owns, instead of adding a second
+parser. `scripts/build_roadmap_index.py` (via `roadmap_ids.iter_item_dirs` and `metadata_fields`)
+already reads the fenced `| Field | Value |` block of every `roadmaps/BE-*/` item. From that block
+it takes the `Status`, the `Topic`, and the H1 title. The skill calls this as a small query, in
+one of two forms:
 
-- a thin CLI entry point (e.g. `python scripts/roadmap_query.py --status Approved`) that
-  factors the shared parsing out of `build_roadmap_index.py` into an importable helper, or
+- a thin CLI entry point (e.g. `python scripts/roadmap_query.py --status Approved`) that factors
+  the shared parsing out of `build_roadmap_index.py` into an importable helper, or
 - a new `make` target that wraps it.
 
-The query:
+The query behaves as follows:
 
-- Takes one `Status` value — `Approved` / `In progress` / `Implemented` / `Deferred` /
-  `Rejected` — matched case-insensitively, and validates it against the known set
-  (an unknown status prints the valid values and exits non-zero, rather than an empty table).
-- Emits a Markdown table with columns `ID`, `Item` (title), `Topic`, and `Path` (the
-  relative path to the item's English `.md` file), sorted by `Topic` then `ID` for stable
-  output.
-- Is pure and offline — no `gh`, no network, no LLM. It only reads files under `roadmaps/`.
+- It takes one `Status` value: `Approved`, `In progress`, `Implemented`, `Deferred`, or
+  `Rejected`. It matches case-insensitively and validates the value against the known set. An
+  unknown status prints the valid values and exits non-zero, rather than printing an empty table.
+- It emits a Markdown table with columns `ID`, `Item` (title), `Topic`, and `Path` (the relative
+  path to the item's English `.md` file). Rows are sorted by `Topic` and then `ID`, so the output
+  is stable.
+- The query is pure and offline: no `gh`, no network, no LLM. It reads files under `roadmaps/` and nothing
+  else.
 
-Placeholder (`BE-0162`) items are read for their `Status`/`Topic` like any other, so an
-in-flight proposal shows up in the filter (its `ID` cell shows the placeholder).
+Placeholder (`BE-0162`) items are read for their `Status` and `Topic` like any other. An in-flight
+proposal shows up in the filter, with the placeholder in its `ID` cell.
 
 ### 2. The skill definition
 
-Add `.claude/skills/roadmap-status/` (name TBD) alongside the existing `ideation` /
-`implement-be` / `japanese-tech-writing` skills. The skill:
+The skill lives in `.claude/skills/roadmap-status/` (name TBD), alongside the existing `ideation`,
+`implement-be`, and `japanese-tech-writing` skills. It has three properties:
 
-- Is **read-only and Claude-facing** — it surveys the roadmap for the session; it does not
-  author, implement, or modify any item. It never edits files.
-- Takes the status as its argument, invokes the query from unit 1, and returns the table
-  to the session so Claude can pick the items to open in full.
-- Documents in its frontmatter/body the valid statuses and that the emitted `Path` column
-  is what to `Read` next for the full proposal text.
+- The skill is **read-only and Claude-facing**. It surveys the roadmap for the session. It never authors,
+  implements, or modifies an item, and it never edits files.
+- It takes the status as its argument, invokes the query from unit 1, and returns the table to the
+  session. Claude then picks the items to open in full.
+- Its frontmatter and body document the valid statuses. They also state that the emitted `Path`
+  column is what to `Read` next for the full proposal text.
 
 ### 3. Tests and docs
 
-- A test over the query asserting that filtering by each status returns exactly the items
-  whose metadata carries that status, and that an unknown status fails cleanly (this
-  mirrors the existing roadmap-format / index tests, and is a natural home in
-  `tests/test_roadmap_*`).
-- A short mention in [`docs/ai-development.md`](../../docs/ai-development.md) so sessions
-  know the skill exists, next to the model/effort-tiering guidance (BE-0103).
+- A test over the query asserts two things. Filtering by each status returns exactly the items
+  whose metadata carries that status, and an unknown status fails cleanly. The test mirrors the
+  existing roadmap-format and index tests, and `tests/test_roadmap_*` is its natural home.
+- A short mention in [`docs/ai-development.md`](../../docs/ai-development.md) tells sessions the
+  skill exists. It sits next to the model/effort-tiering guidance (BE-0103).
 
-**Prime directives.** This is contributor tooling over docs — no LLM enters the Tier-2
-`run`/CI gate (directive 1); the query is deterministic and offline (directive 2); it is
-app-agnostic, touching only `roadmaps/` metadata (directive 3).
+**Prime directives.** This is contributor tooling over docs, and no LLM enters the Tier-2
+`run`/CI gate (directive 1). The query is deterministic and offline (directive 2). The tooling is
+app-agnostic and touches `roadmaps/` metadata alone (directive 3).
 
 ## Alternatives considered
 
-- **Just tell sessions to `grep` the README.** No new code, but leaves every session to
-  re-derive the command and re-assemble the README's per-bucket tables into the projection
-  it wants — inconsistent and error-prone. A named skill over the metadata is the reusable,
+- **Tell sessions to `grep` the README.** This needs no new code. It leaves every session to
+  re-derive the command and re-assemble the README's per-bucket tables into the projection it
+  wants, which is inconsistent and error-prone. A named skill over the metadata is the reusable,
   low-token form.
-- **Query the generated index tables instead of the item metadata.** The README tables are
-  a rendering, not the source of truth, and would tie the filter to the index being freshly
-  regenerated. Reading each item's own metadata (as the generator does) is the authoritative
-  path and stays correct even mid-edit.
-- **Extend the GitHub Pages roadmap dashboard (BE-0094) instead.** That dashboard serves
-  humans in a browser; it does not help an AI session that needs the rows in its context
-  without a network fetch. Distinct audience, distinct surface — this is complementary, not
-  a duplicate.
-- **A general roadmap-search skill (filter by topic, text, etc.).** Broader, but out of
-  scope for this item, which is deliberately narrow: filter by `Status`. Richer filters can
-  follow as a separate item once this proves useful.
+- **Query the generated index tables instead of the item metadata.** The README tables are a
+  rendering, not the source of truth. Querying them would tie the filter to a freshly regenerated
+  index. Reading each item's own metadata, as the generator does, is the authoritative path and
+  stays correct even mid-edit.
+- **Extend the GitHub Pages roadmap dashboard (BE-0094) instead.** That dashboard serves humans in
+  a browser. It does not help an AI session that needs the rows in its context without a network
+  fetch. The audience and the surface differ, so the dashboard complements this skill and does not
+  duplicate it.
+- **A general roadmap-search skill (filter by topic, text, etc.).** This is broader, but out of
+  scope for this item, which is deliberately narrow: filter by `Status`. Richer filters can follow
+  as a separate item once this one proves useful.
 
 ## Progress
 
