@@ -98,46 +98,46 @@ iOS と web では失敗することがあります。
 このアクションは対象セレクタと方向を持ちます。
 加えて 2 つの任意指定を取ります。
 
-- **`to`**（必須）：引き出す[セレクタ](../../docs/selectors.md)
-  ループの停止条件。
-  単なる存在より厳しい条件。
-  `to` が解決し、かつその frame の中心点がビューポート内にある瞬間に戻る。
-  存在するだけでは不十分。
-  バックエンドは画面外の要素をツリーに残すことがある。
-  web バックエンドの `query()` は、画面外の Document Object Model（`DOM`）ノードも返す。
-  一方、native の lazy リストは画面外の行をツリーから外す。
-  `wait: { for: … }` の述語は存在だけを見る。
-  その wait は、流れ去った web 要素を「見つかった」とみなし、スクロールしない。
-  中心点は、`frame_center` が座標ベースの `tap` に対して解決する点と同じ（[BE-0251](../BE-0251-driver-base-helper-hoist/BE-0251-driver-base-helper-hoist-ja.md)）。
-  そのヘルパーは [`bajutsu/drivers/base.py`](../../bajutsu/drivers/base.py) にある。
-  後続の `tap` が画面内に必要とするのは frame 全体ではなく、その点。
-  frame 全体をビューポート内に要求すると、ビューポートより高い対象で失敗する。
-  単なる交差を要求すると、タップ対象の中心がまだ隠れたまま停止する。
-  中心点による判定は、この両方の問題を避ける。
-  frame は取得済みの各要素にすでに載っている。
-  比較相手のビューポート範囲は Unit 3 が与える。
+- **`to`**（必須）：引き出す[セレクタ](../../docs/selectors.md)です。
+  ループの停止条件になります。
+  単なる存在より厳しい条件です。
+  `to` が解決し、かつその frame の中心点がビューポート内にある瞬間に、アクションは戻ります。
+  存在するだけでは不十分です。
+  バックエンドは画面外の要素をツリーに残すことがあります。
+  web バックエンドの `query()` は、画面外の Document Object Model（`DOM`）ノードも返します。
+  一方、native の lazy リストは画面外の行をツリーから外します。
+  `wait: { for: … }` の述語は存在だけを見ます。
+  その wait は、流れ去った web 要素を「見つかった」とみなし、スクロールしません。
+  中心点は、`frame_center` が座標ベースの `tap` に対して解決する点と同じです（[BE-0251](../BE-0251-driver-base-helper-hoist/BE-0251-driver-base-helper-hoist-ja.md)）。
+  そのヘルパーは [`bajutsu/drivers/base.py`](../../bajutsu/drivers/base.py) にあります。
+  後続の `tap` が画面内に必要とするのは、frame 全体ではなくその点です。
+  frame 全体をビューポート内に要求すると、ビューポートより高い対象で失敗します。
+  単なる交差を要求すると、タップ対象の中心がまだ隠れたまま停止します。
+  中心点による判定は、この両方の問題を避けます。
+  frame は取得済みの各要素にすでに載っています。
+  比較相手のビューポート範囲は Unit 3 が与えます。
 
-- **`direction`**（デフォルト `down`）：コンテンツをたどる方向
-  ビューポートが進む方向。
-  指のジェスチャの逆。
-  `down` はコンテンツをさらに下へ進め、fold より下を引き出す。
-  ドライバは指を上へ動かすスワイプとして実現する。
-  ビューポートが下へ動くにつれ、コンテンツは上へ滑る。
-  `up`・`left`・`right` は他の軸。
-  `direction` はスクロール方向を指すため、`swipe` とは逆向きに読める。
-  `swipe` の `direction` は指の方向。
-  方向は明示であり、アクションはリストの進む向きを推測しない。
+- **`direction`**（デフォルト `down`）：コンテンツをたどる方向です。
+  ビューポートが進む方向を指します。
+  指のジェスチャの逆です。
+  `down` はコンテンツをさらに下へ進め、fold より下を引き出します。
+  ドライバは、指を上へ動かすスワイプとして実現します。
+  ビューポートが下へ動くにつれ、コンテンツは上へ滑ります。
+  `up`、`left`、`right` は他の軸です。
+  `direction` はスクロール方向を指すため、`swipe` とは逆向きに読めます。
+  `swipe` の `direction` は指の方向です。
+  方向は明示であり、アクションはリストの進む向きを推測しません。
 
-- **`within`**（任意）：ジェスチャを行うスクロールコンテナ
-  各スクロールはこのコンテナにアンカーする。
-  コンテンツ末尾はこのコンテナのサブツリーから判定する。
-  省略時は画面全体をスクロールする。
-  `within` は入れ子スクロールの内側の対象へ届く。
-  外側の面を動かさずに済む。
+- **`within`**（任意）：ジェスチャを行うスクロールコンテナです。
+  各スクロールは、このコンテナにアンカーします。
+  コンテンツ末尾は、このコンテナのサブツリーから判定します。
+  省略すると、画面全体をスクロールします。
+  `within` を使えば、入れ子スクロールの内側の対象へ届きます。
+  外側の面を動かさずに済みます。
 
-- **`maxScrolls`**（任意、デフォルト 15）：失敗までのスクロール回数上限
-  現れない対象が永遠にスクロールし続けるのを防ぐ。
-  上限に達すると決定的に失敗する。
+- **`maxScrolls`**（任意、デフォルト 15）：失敗までのスクロール回数の上限です。
+  現れない対象が永遠にスクロールし続けるのを防ぎます。
+  上限に達すると、決定的に失敗します。
 
 ### バックエンド横断の慣性なしスクロール
 
@@ -145,31 +145,31 @@ iOS と web では失敗することがあります。
 3 つのバックエンドは、それぞれ別の低レベル手段でこの条件を満たします。
 いずれも [`bajutsu/drivers/base.py`](../../bajutsu/drivers/base.py) の `Driver.scroll` の背後にあります。
 
-- **web（Playwright）**：すでに慣性なし。
-  デスクトップでは wheel、モバイルでは 1 本指のタッチドラッグ。
-  参照は [BE-0227](../BE-0227-web-swipe-scroll-fidelity/BE-0227-web-swipe-scroll-fidelity-ja.md)。
-  実装は [`bajutsu/drivers/playwright.py`](../../bajutsu/drivers/playwright.py)。
-  wheel のデルタはその大きさだけ動く。
-  合成タッチドラッグは fling を残さない。
-  区切ったステップで駆動すれば足りる。
+- **web（Playwright）**：すでに慣性がありません。
+  デスクトップでは wheel を使い、モバイルでは 1 本指のタッチドラッグを使います。
+  参照は [BE-0227](../BE-0227-web-swipe-scroll-fidelity/BE-0227-web-swipe-scroll-fidelity-ja.md) です。
+  実装は [`bajutsu/drivers/playwright.py`](../../bajutsu/drivers/playwright.py) にあります。
+  wheel のデルタは、その大きさだけ動きます。
+  合成タッチドラッグは fling を残しません。
+  区切ったステップで駆動すれば足ります。
 
-- **Android（adb）**：`input swipe` でスクロールする。
-  有限の持続時間がジェスチャの速さを決める。
-  実装は [`bajutsu/drivers/adb.py`](../../bajutsu/drivers/adb.py)。
-  短い持続時間は fling を起こす。
-  同じ距離でも長い持続時間はゆっくりしたドラッグになる。
-  リストは勢いなく追従する。
-  アクションは、ジェスチャ終了と同時にコンテンツが止まる長さを使う。
+- **Android（adb）**：`input swipe` でスクロールします。
+  有限の持続時間が、ジェスチャの速さを決めます。
+  実装は [`bajutsu/drivers/adb.py`](../../bajutsu/drivers/adb.py) にあります。
+  短い持続時間は fling を起こします。
+  同じ距離でも長い持続時間なら、ゆっくりしたドラッグになります。
+  リストは勢いなく追従します。
+  アクションは、ジェスチャの終了と同時にコンテンツが止まる長さを使います。
 
-- **iOS（XCUITest）**：常駐ランナー経由の実ドラッグでスクロールする。
-  実装は [`bajutsu/drivers/xcuitest.py`](../../bajutsu/drivers/xcuitest.py)。
-  素早いフリックは勢いを与える。
-  終点で少し止まってから離すドラッグは、ほぼゼロ速度で離れる。
-  スクロールビューはドラッグが残した位置に収まる。
+- **iOS（XCUITest）**：常駐ランナー経由の実ドラッグでスクロールします。
+  実装は [`bajutsu/drivers/xcuitest.py`](../../bajutsu/drivers/xcuitest.py) にあります。
+  素早いフリックは勢いを与えます。
+  終点で少し止まってから離すドラッグは、ほぼゼロ速度で離れます。
+  スクロールビューは、ドラッグが残した位置に収まります。
 
-実装では `Driver.scroll` の引数でも、別メソッドでも構いません。
-アクションが必要とする契約は一定です。
-区切られた距離だけ進み、勢いは持ち越さない。
+実装では、`Driver.scroll` の引数を足しても、別メソッドを置いても構いません。
+アクションが必要とする契約は変わりません。
+区切られた距離だけ進み、勢いは持ち越しません。
 [ドライバ適合スイート](../../docs/ja/architecture.md#driver-conformance-suitebe-0114) がこの契約を固定します。
 Unit 6 がこのスイートを扱います。
 
@@ -178,17 +178,17 @@ Unit 6 がこのスイートを扱います。
 領域がすでに末尾なら、存在しない対象は `maxScrolls` より速く失敗するべきです。
 `to` の打ち間違いや、データ変更で消えた行がその例です。
 各スクロールのあと、アクションは領域の要素サブツリーを比較します。
-`within` を省略したときはツリー全体を比較します。
+`within` を省略したときは、ツリー全体を比較します。
 スクロールがサブツリーを変えなくなったら、コンテンツは底に達しています。
 対象はないので、アクションはただちに失敗します。
 同一スクロールを上限まで繰り返しません。
 adb はいま、固定のリトライ回数で scroll-into-view を区切っています。
 その定数は [`bajutsu/drivers/adb.py`](../../bajutsu/drivers/adb.py) の `_SCROLL_RETRIES` です。
-`maxScrolls` はその区切りの移植版です。
+`maxScrolls` は、その区切りの移植版です。
 底打ち領域でのツリー差分による即時失敗は、このアクションの新機能です。
 既存 adb 信号の一般化ではありません。
-比較は、停止条件確認ですでに取得したツリーを再利用します。
-コンテンツ末尾の検出は追加の `query()` を出しません。
+比較は、停止条件の確認ですでに取得したツリーを再利用します。
+コンテンツ末尾の検出は、追加の `query()` を出しません。
 参照は [BE-0259](../BE-0259-assert-query-snapshot-reuse/BE-0259-assert-query-snapshot-reuse-ja.md) です。
 
 ### 作業分解（`MECE`）
@@ -197,187 +197,191 @@ Mutually Exclusive, Collectively Exhaustive（`MECE`）な作業単位は次の�
 
 1. **シナリオスキーマ。**
 
-   [`bajutsu/scenario/models/actions.py`](../../bajutsu/scenario/models/actions.py) に `Scroll` を追加する。
-   フィールドは `to: Selector`。
-   フィールドは `direction: Literal["up","down","left","right"] = "down"`。
-   フィールドは `within: Selector | None`。
-   フィールドは `max_scrolls: int = Field(default=15, alias="maxScrolls")`。
-   snake_case 属性に camelCase の alias を付ける。
-   同じモジュールの `save_body` と `battery_level` に合わせる。
-   [`bajutsu/scenario/models/steps.py`](../../bajutsu/scenario/models/steps.py) の `Step` に配線する。
-   `max_scrolls > 0` を要求する。
-   モデルは `Swipe` と `Drag` の隣に置く。
-   これらのモデルは同じ方向リテラルをすでに持つ。
+   [`bajutsu/scenario/models/actions.py`](../../bajutsu/scenario/models/actions.py) に `Scroll` を追加します。
+   フィールドは `to: Selector` です。
+   フィールドは `direction: Literal["up","down","left","right"] = "down"` です。
+   フィールドは `within: Selector | None` です。
+   フィールドは `max_scrolls: int = Field(default=15, alias="maxScrolls")` です。
+   snake_case の属性に camelCase の alias を付けます。
+   同じモジュールの `save_body` と `battery_level` に合わせます。
+   [`bajutsu/scenario/models/steps.py`](../../bajutsu/scenario/models/steps.py) の `Step` に配線します。
+   `max_scrolls > 0` を要求します。
+   モデルは `Swipe` と `Drag` の隣に置きます。
+   これらのモデルは、同じ方向リテラルをすでに持っています。
 
 2. **オーケストレータのハンドラ。**
 
-   [`bajutsu/orchestrator/actions/handlers/gestures.py`](../../bajutsu/orchestrator/actions/handlers/gestures.py) に `_do_scroll` を追加する。
-   回数を区切ったスクロールと再取得のループにする。
-   `to` が解決し、その frame の `frame_center` がビューポート内かを確認する。
-   そうでなければ慣性なしの 1 ステップを行い、再取得する。
-   端点は既存の `_scroll_gesture` から取る。
-   アンカーは `within` の中心、または画面中心。
-   コンテンツ方向 `direction` を、`_scroll_gesture` が期待する指ジェスチャへ変換する。
-   `down` の reveal は指を画面上へ動かすスワイプ。
-   これは [`demos/showcase/scenarios/notices.yaml`](../../demos/showcase/scenarios/notices.yaml) と同じ対応。
-   そのフィクスチャは手で `swipe … direction: up` と書いている。
-   `to` が画面内に入った最初のツリーで戻る。
-   `maxScrolls` を使い切るか、末尾を検出したら失敗する。
-   固定の `sleep` は使わない。
-   ループは条件待ち。
-   [`bajutsu/orchestrator/waits.py`](../../bajutsu/orchestrator/waits.py) の `for` 分岐と同じ構造。
+   [`bajutsu/orchestrator/actions/handlers/gestures.py`](../../bajutsu/orchestrator/actions/handlers/gestures.py) に `_do_scroll` を追加します。
+   回数を区切ったスクロールと再取得のループにします。
+   `to` が解決し、その frame の `frame_center` がビューポート内かを確認します。
+   そうでなければ、慣性なしの 1 ステップを行い、再取得します。
+   端点は既存の `_scroll_gesture` から取ります。
+   アンカーは `within` の中心、または画面中心です。
+   コンテンツ方向 `direction` を、`_scroll_gesture` が期待する指ジェスチャへ変換します。
+   `down` の reveal は、指を画面上へ動かすスワイプです。
+   これは [`demos/showcase/scenarios/notices.yaml`](../../demos/showcase/scenarios/notices.yaml) と同じ対応です。
+   そのフィクスチャは、手で `swipe … direction: up` と書いています。
+   `to` が画面内に入った最初のツリーで戻ります。
+   `maxScrolls` を使い切るか、末尾を検出したら失敗します。
+   固定の `sleep` は使いません。
+   ループは条件待ちです。
+   [`bajutsu/orchestrator/waits.py`](../../bajutsu/orchestrator/waits.py) の `for` 分岐と同じ構造です。
 
 3. **慣性なしのドライバ `API` とビューポート範囲。**
 
-   `Driver.scroll`（または対になるメソッド）に、区切りステップ・勢いなしの契約を与える。
-   バックエンドごとに実現する。
-   Playwright は変更不要で、すでに契約を満たす。
-   adb は持続時間の長い `input swipe`。
-   XCUITest は指を離す前に止めるドラッグ。
-   ビューポート内かの停止条件には、真のビューポート寸法も要る。
-   ツリーだけから一様には導けない。
-   native では取得ツリーが画面内要素だけなので、[`bajutsu/elements.py`](../../bajutsu/elements.py) の `screen_size_from_elements` が近似になる。
-   web のツリーは画面外の `DOM` ノードを含む。
-   コンテンツの extent はビューポートを超える。
-   Playwright は確認用に真のビューポートを露出する。
-   `window.innerWidth` と `window.innerHeight` を使う。
-   コンテンツ extent には頼らない。
-   [`bajutsu/drivers/fake.py`](../../bajutsu/drivers/fake.py) の `FakeDriver` に最小のビューポートモデルを持たせる。
-   端末なしでループを試せるようにする。
+   `Driver.scroll`（または対になるメソッド）に、区切りステップ・勢いなしの契約を与えます。
+   バックエンドごとに実現します。
+   Playwright は変更不要で、すでに契約を満たします。
+   adb は、持続時間の長い `input swipe` を使います。
+   XCUITest は、指を離す前に止めるドラッグを使います。
+   ビューポート内かの停止条件には、真のビューポート寸法も要ります。
+   ツリーだけから一様には導けません。
+   native では取得ツリーが画面内要素だけなので、[`bajutsu/elements.py`](../../bajutsu/elements.py) の `screen_size_from_elements` が近似になります。
+   web のツリーは、画面外の `DOM` ノードを含みます。
+   コンテンツの extent は、ビューポートを超えます。
+   Playwright は、確認用に真のビューポートを露出します。
+   `window.innerWidth` と `window.innerHeight` を使います。
+   コンテンツ extent には頼りません。
+   [`bajutsu/drivers/fake.py`](../../bajutsu/drivers/fake.py) の `FakeDriver` に、最小のビューポートモデルを持たせます。
+   端末なしでループを試せるようにします。
 
 4. **コンテンツ末尾の検出。**
 
-   ハンドラ内で連続スクロール間のサブツリーを比較する。
-   変化しなくなったらすぐに失敗する。
-   取得済みツリーを再利用する。
-   追加の `query()` は出さない。
+   ハンドラ内で、連続するスクロール間のサブツリーを比較します。
+   変化しなくなったら、すぐに失敗します。
+   取得済みツリーを再利用します。
+   追加の `query()` は出しません。
 
 5. **codegen。**
 
-   `interrupts` と違い、`scroll` は 3 つのうち 2 つで native 構文に対応する。
-   Playwright のロケータは操作前に自動でビューへ入れる。
-   UI Automator には `UiScrollable.scrollIntoView` がある。
-   XCUITest には単一の堅牢な対応がない。
-   そこではラベル付きの `TODO` を出す。
-   [`bajutsu/codegen/`](../../bajutsu/codegen/) の各ターゲットに配線する。
-   共有シナリオウォークは [BE-0083](../BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification-ja.md) に従う。
+   `interrupts` と違い、`scroll` は 3 つのうち 2 つで native 構文に対応します。
+   Playwright のロケータは、操作前に自動でビューへ入れます。
+   UI Automator には `UiScrollable.scrollIntoView` があります。
+   XCUITest には、単一の堅牢な対応がありません。
+   そこでは、ラベル付きの `TODO` を出します。
+   [`bajutsu/codegen/`](../../bajutsu/codegen/) の各ターゲットに配線します。
+   共有シナリオウォークは [BE-0083](../BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification-ja.md) に従います。
 
 6. **ドライバ適合。**
 
-   [`tests/driver_conformance.py`](../../tests/driver_conformance.py) に scroll-into-view のケースを追加する。
-   スクロールしてはじめて現れる画面外対象を使う。
-   `scroll` がそれを引き出すことを検証する：解決した frame の `frame_center` がビューポートに収まる。
-   ビューポートより高い対象も加え、その中心がビューポートに入った時点で `scroll` が成功することを検証する。
-   使い切った領域にない対象が失敗することを検証する。
-   慣性なしでバックエンド横断の契約を証明する。
-   FakeDriver、Playwright、XCUITest、adb で成り立つ。
-   参照は [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md)。
-   共有仕様で BE-0210 の非対称を解消する。
+   [`tests/driver_conformance.py`](../../tests/driver_conformance.py) に scroll-into-view のケースを追加します。
+   スクロールしてはじめて現れる画面外対象を使います。
+   `scroll` がそれを引き出すことを検証します。解決した frame の `frame_center` がビューポートに収まります。
+   ビューポートより高い対象も加え、その中心がビューポートに入った時点で `scroll` が成功することを検証します。
+   使い切った領域にない対象が失敗することを検証します。
+   慣性なしでバックエンド横断の契約を証明します。
+   FakeDriver、Playwright、XCUITest、adb で成り立ちます。
+   参照は [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md) です。
+   共有仕様で、BE-0210 の非対称を解消します。
 
 7. **ドキュメントとフィクスチャ。**
 
-   [`docs/scenarios.md`](../../docs/scenarios.md) と日本語版に `scroll` を書く。
-   `swipe` と `drag` の隣に置く。
-   `scroll`（対象を引き出す）の使い分けを示す。
-   `swipe`（固定ジェスチャ）の使い分けを示す。
-   `drag`（つかんだハンドルを動かす）の使い分けを示す。
-   [`docs/drivers.md`](../../docs/drivers.md) の adb 専用注記を更新する。
-   移植可能なアクションを指すようにする。
-   `scroll` の `direction` はスクロール方向だと明示する。
-   `swipe` の `direction` は指の方向だと明示する。
-   [`demos/showcase/scenarios/notices.yaml`](../../demos/showcase/scenarios/notices.yaml) の `swipe` 連なりを 1 つの `scroll` に書き換える。
-   目玉フィクスチャがアクションを端から端まで示すようにする。
+   [`docs/scenarios.md`](../../docs/scenarios.md) と日本語版に `scroll` を書きます。
+   `swipe` と `drag` の隣に置きます。
+   `scroll`（対象を引き出す）の使い分けを示します。
+   `swipe`（固定ジェスチャ）の使い分けを示します。
+   `drag`（つかんだハンドルを動かす）の使い分けを示します。
+   [`docs/drivers.md`](../../docs/drivers.md) の adb 専用注記を更新します。
+   移植可能なアクションを指すようにします。
+   `scroll` の `direction` はスクロール方向だと明示します。
+   `swipe` の `direction` は指の方向だと明示します。
+   [`demos/showcase/scenarios/notices.yaml`](../../demos/showcase/scenarios/notices.yaml) の `swipe` の連なりを、1 つの `scroll` に書き換えます。
+   目玉フィクスチャが、アクションを端から端まで示すようにします。
 
 8. **テスト。**
 
-   スキーマのパースと検証（デフォルト、`max_scrolls > 0`）をカバーする。
-   `FakeDriver` 上のハンドラループをカバーする。
-   ケース：N 回のスクロールで対象が見つかる。
-   ケース：対象が見つからず `maxScrolls` で失敗する。
-   ケース：コンテンツ末尾でただちに失敗する。
-   ケース：画面全体ではなく `within` がスクロールされる。
+   スキーマのパースと検証（デフォルト、`max_scrolls > 0`）をカバーします。
+   `FakeDriver` 上のハンドラループをカバーします。
+   ケースは次のとおりです。
+   N 回のスクロールで対象が見つかります。
+   対象が見つからず、`maxScrolls` で失敗します。
+   コンテンツ末尾で、ただちに失敗します。
+   画面全体ではなく、`within` がスクロールされます。
 
 ### prime directive の保持
 
-- **AI は判定しない。**
-  停止条件は `query()` に対するセレクタ解決。
-  機械が確認できる述語であり、モデル呼び出しではない。
-  このアクションは AI の面を足さない。
+- **AI は判定しません。**
 
-- **決定性が第一。**
-  固定の `sleep` はない。
-  アクションは回数を区切った条件待ち。
-  慣性なしのスクロールは端末依存の行き過ぎを取り除く。
-  その行き過ぎが、いまの `swipe` 連なりを不安定にしている。
-  使い切った上限や底に達した領域は失敗する。
-  ランは停滞しない。
+  停止条件は、`query()` に対するセレクタ解決です。
+  機械が確認できる述語であり、モデル呼び出しではありません。
+  このアクションは AI の面を足しません。
 
-- **アプリに依存しない。**
-  `scroll` は `Driver` インタフェース上の 1 つの汎用アクション。
-  アプリごとのコードはない。
-  シナリオの意味がバックエンドごとに分かれることもない。
+- **決定性が第一です。**
+
+  固定の `sleep` はありません。
+  アクションは、回数を区切った条件待ちです。
+  慣性なしのスクロールは、端末依存の行き過ぎを取り除きます。
+  その行き過ぎが、いまの `swipe` の連なりを不安定にしています。
+  使い切った上限や、底に達した領域は失敗します。
+  ランは停滞しません。
+
+- **アプリに依存しません。**
+
+  `scroll` は、`Driver` インタフェース上の 1 つの汎用アクションです。
+  アプリごとのコードはありません。
+  シナリオの意味が、バックエンドごとに分かれることもありません。
 
 ## 検討した代替案
 
 - **`wait` にスクロール挙動を足す（`wait: { for: X, scroll: down }`）。**
 
-  却下。
-  いまの `wait` は純粋な観測。
-  何も actuate しない。
-  run ループはそれに依存している。
-  `_wait` は最後に取得したツリーを返し、呼び出し側が `after` に再利用する。
-  wait では何も actuate しないからである。
-  参照は [`bajutsu/orchestrator/waits.py`](../../bajutsu/orchestrator/waits.py)。
-  参照は [BE-0259](../BE-0259-assert-query-snapshot-reuse/BE-0259-assert-query-snapshot-reuse-ja.md)。
-  ジェスチャを wait に畳み込むとその不変条件が壊れる。
-  観測と操作の境界がぼやける。
-  別アクションにすれば `wait` は観測専用のまま。
-  操作はシナリオ内で明示される。
+  却下します。
+  いまの `wait` は純粋な観測です。
+  何も actuate しません。
+  run ループはそれに依存しています。
+  `_wait` は最後に取得したツリーを返し、呼び出し側が `after` に再利用します。
+  wait では何も actuate しないからです。
+  参照は [`bajutsu/orchestrator/waits.py`](../../bajutsu/orchestrator/waits.py) です。
+  参照は [BE-0259](../BE-0259-assert-query-snapshot-reuse/BE-0259-assert-query-snapshot-reuse-ja.md) です。
+  ジェスチャを wait に畳み込むと、その不変条件が壊れます。
+  観測と操作の境界がぼやけます。
+  別アクションにすれば、`wait` は観測専用のままです。
+  操作はシナリオ内で明示されます。
 
 - **scroll-into-view を全アクションで暗黙にする。**
 
-  BE-0210 を全バックエンドへ広げる形。
-  主案としては却下。
-  暗黙の自動スクロールは意図を隠す。
-  シナリオはスクロールしたと述べない。
-  ランナーは方向を推測しなければならない。
-  その非決定性こそ、[`docs/drivers.md`](../../docs/drivers.md) が adb 経路を安全網に留めている理由。
-  明示アクションは方向と対象を述べる。
-  シナリオは自己記述的で決定的になる。
-  暗黙の adb 網をあとから安全網として重ねることはできる。
-  明示アクションの代わりにはならない。
+  BE-0210 を全バックエンドへ広げる形です。
+  主案としては却下します。
+  暗黙の自動スクロールは、意図を隠します。
+  シナリオは、スクロールしたと述べません。
+  ランナーは、方向を推測しなければなりません。
+  その非決定性こそ、[`docs/drivers.md`](../../docs/drivers.md) が adb 経路を安全網に留めている理由です。
+  明示アクションは、方向と対象を述べます。
+  シナリオは自己記述的で決定的になります。
+  暗黙の adb 網をあとから安全網として重ねることはできます。
+  明示アクションの代わりにはなりません。
 
 - **`swipe` に `to` や `until` を持たせて再利用する。**
 
-  却下。
-  `swipe` はすでに方向スクロールと座標ドラッグの 2 形を持つ。
-  検証がその混在を防ぐ。
-  3 つ目の「見えるまで繰り返す」形は、1 動詞に 3 挙動を負わせる。
-  別動詞 `scroll` の方が呼び出し箇所で読みやすい。
-  各動詞の契約を 1 つに保てる。
+  却下します。
+  `swipe` はすでに、方向スクロールと座標ドラッグの 2 形を持っています。
+  検証が、その混在を防いでいます。
+  3 つ目の「見えるまで繰り返す」形は、1 つの動詞に 3 つの挙動を負わせます。
+  別の動詞 `scroll` のほうが、呼び出し箇所で読みやすくなります。
+  各動詞の契約を 1 つに保てます。
 
-- **`scroll.direction` を `swipe` の指方向規約に合わせる。**
+- **`scroll.direction` を `swipe` の指方向の規約に合わせる。**
 
-  検討した。
-  ジェスチャ動詞をまたいでリテラルの意味を揃えたいため。
-  デフォルトとしては却下。
-  `scroll` に手を伸ばす作者はスクロール語彙で考える。
-  「下へスクロール」でリストのさらに下を意味したい。
-  下のコンテンツを出すのに指方向 `up` を書くのは意外な読み方。
-  そこで `scroll.direction` はスクロール方向を指す。
-  Unit 7 のドキュメントで `swipe` との対比を示す。
-  反転は暗黙の落とし穴ではなく明示になる。
-  共有リテラルの衝突を避ける別名は、実装時の判断として残す。
-  対比記述で足りなければその別名を使う。
+  検討しました。
+  ジェスチャ動詞をまたいで、リテラルの意味を揃えたいためです。
+  デフォルトとしては却下します。
+  `scroll` に手を伸ばす作者は、スクロールの語彙で考えます。
+  「下へスクロール」で、リストのさらに下を意味させたいのです。
+  下のコンテンツを出すのに指方向 `up` を書くのは、意外な読み方です。
+  そこで `scroll.direction` は、スクロール方向を指します。
+  Unit 7 のドキュメントで、`swipe` との対比を示します。
+  反転は、暗黙の落とし穴ではなく明示になります。
+  共有リテラルの衝突を避ける別名は、実装時の判断として残します。
+  対比の記述で足りなければ、その別名を使います。
 
 - **1 ステップの移動量 `amount` ノブ（`swipe` が持つもの）。**
 
-  先送り。
-  最初のスライスには含めない。
-  デフォルトの画面相対ステップは、慣性なしで確実になるよう選んでいる。
-  `amount` を出すと大きなステップで行き過ぎが戻りうる。
-  調整の必要が現れたら、あとから足せる。
-  アクションの形は変えなくてよい。
+  先送りします。
+  最初のスライスには含めません。
+  デフォルトの画面相対ステップは、慣性なしで確実になるよう選んでいます。
+  `amount` を出すと、大きなステップで行き過ぎが戻りえます。
+  調整の必要が現れたら、あとから足せます。
+  アクションの形は変えなくてよいです。
 
 ## 進捗
 
@@ -426,7 +430,7 @@ Mutually Exclusive, Collectively Exhaustive（`MECE`）な作業単位は次の�
   ジェスチャではなかったからです。ローカルのハードウェア支援エミュレータでは、明示的な接点の列のほうが
   悪化しました。接点の間隔が近くフリングが伸びるため、連続する 2 つの照会済みビューポートの間を対象が
   通り抜けてしまいます。
-- [#1489](https://github.com/bajutsu-e2e/bajutsu/pull/1489) — ユニット 7 の書き換えを、CI でカバーする
+- [#1489](https://github.com/bajutsu-e2e/bajutsu/pull/1489)：ユニット 7 の書き換えを、CI でカバーする
   残りの共有シナリオに広げました。`controls`、`modals`、`system` は、それぞれ手作業で調整した `swipe`
   連鎖を、シナリオが読む最も下の要素を狙う 1 つの `scroll` に置き換えます。`gestures.yaml` は意図的に
   `swipe` のままです。`ui-test-coverage` がこれをネイティブの XCUITest にコンパイルしますが、そこでは
@@ -434,13 +438,13 @@ Mutually Exclusive, Collectively Exhaustive（`MECE`）な作業単位は次の�
 
 ## 参考
 
-- [`bajutsu/scenario/models/actions.py`](../../bajutsu/scenario/models/actions.py) — 新しい `Scroll` の隣の `Swipe` / `Drag`
-- [`bajutsu/orchestrator/actions/handlers/gestures.py`](../../bajutsu/orchestrator/actions/handlers/gestures.py) — `_do_swipe` / `_scroll_gesture`
-- [`bajutsu/orchestrator/waits.py`](../../bajutsu/orchestrator/waits.py) — 条件待ちループ。`wait` は観測専用
-- [`bajutsu/drivers/base.py`](../../bajutsu/drivers/base.py) — 慣性なし契約の `Driver.scroll`
-- [`demos/showcase/scenarios/notices.yaml`](../../demos/showcase/scenarios/notices.yaml) — 動機となる手調整の `swipe` 連なり
-- [`docs/drivers.md`](../../docs/drivers.md) — scroll-into-view を adb 専用と記す注記
-- [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity-ja.md) — 一般化する adb の `_scroll_into_view`
-- [BE-0227](../BE-0227-web-swipe-scroll-fidelity/BE-0227-web-swipe-scroll-fidelity-ja.md) — web の慣性なしスクロール
-- [BE-0259](../BE-0259-assert-query-snapshot-reuse/BE-0259-assert-query-snapshot-reuse-ja.md) — 末尾検出のツリー再利用
-- [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md) — バックエンド横断の共有契約
+- [`bajutsu/scenario/models/actions.py`](../../bajutsu/scenario/models/actions.py)：新しい `Scroll` の隣の `Swipe` / `Drag`
+- [`bajutsu/orchestrator/actions/handlers/gestures.py`](../../bajutsu/orchestrator/actions/handlers/gestures.py)：`_do_swipe` / `_scroll_gesture`
+- [`bajutsu/orchestrator/waits.py`](../../bajutsu/orchestrator/waits.py)：条件待ちループ。`wait` は観測専用
+- [`bajutsu/drivers/base.py`](../../bajutsu/drivers/base.py)：慣性なし契約の `Driver.scroll`
+- [`demos/showcase/scenarios/notices.yaml`](../../demos/showcase/scenarios/notices.yaml)：動機となる手調整の `swipe` 連なり
+- [`docs/drivers.md`](../../docs/drivers.md)：scroll-into-view を adb 専用と記す注記
+- [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity-ja.md)：一般化する adb の `_scroll_into_view`
+- [BE-0227](../BE-0227-web-swipe-scroll-fidelity/BE-0227-web-swipe-scroll-fidelity-ja.md)：web の慣性なしスクロール
+- [BE-0259](../BE-0259-assert-query-snapshot-reuse/BE-0259-assert-query-snapshot-reuse-ja.md)：末尾検出のツリー再利用
+- [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md)：バックエンド横断の共有契約
