@@ -213,9 +213,9 @@ backend-agnostic, carrying whatever `name` a driver already reports (prime direc
 give `before.png` a tree of its own. The fallback to `before.png` would then keep its frames instead
 of losing them.
 
-We rejected it for two reasons. It doubles the tree bytes every step writes, and the tree is the
-largest per-step artifact after video. It serves a fallback that fires when a stored run has lost a
-file, and it fixes neither of the other two situations. Recording what an artifact depicts is what
+We rejected it for two reasons. First, it doubles the tree bytes every step writes, and the tree is
+the largest per-step artifact after video. It would serve a fallback that fires only when a stored run
+has lost a file. Second, it fixes neither of the other two situations. Recording what an artifact depicts is what
 all three need.
 
 **Record the moment alone, without the driver.** A `before` / `after` field would settle the two

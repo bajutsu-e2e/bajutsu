@@ -289,8 +289,8 @@ one.
 
 ## Alternatives considered
 
-- **Keep the project layer and fix its three gaps.** The gaps are: auto-register per org rather than
-  only for `default`, persist the active project in a column, and add a way to create a project from
+- **Keep the project layer and fix its three gaps.** The three fixes would be: auto-register per org rather
+  than only for `default`, persist the active project in a column, and add a way to create a project from
   the web UI. Rejected: the gaps are symptoms of a layer nobody reaches for. Fixing them delivers
   multi-configuration switching within one org, which the deployments this tool serves do not want.
   The run-history partition is the one part that is wanted, and it costs a single column without any

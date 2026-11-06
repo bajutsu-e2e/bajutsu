@@ -69,7 +69,7 @@ lets a project opt out of the fallback with `ai: { provider: none }`. Its own Mo
 three reasons a project might need the fallback gone:
 
 - an unmasked screenshot leaves the machine;
-- a coordinate tap replaces what a native query would resolve to a named button;
+- a coordinate tap stands in where a native query would instead resolve to a named button;
 - a model round trip sits on the run's critical path.
 
 That proposal's contribution was turning an environmental absence, no credential configured, into a
@@ -178,10 +178,10 @@ cooldown, the attempt ceiling). In their place, the gate records a note instead 
 - On a native-capable backend, `probe_native` can report the `"unhandled"` state: an alert is up, but
   no rule or candidate label names its button. The gate then records the button labels that probe now
   returns (unit 1).
-- A backend without the native capability, or a native backend's `"absent"` poll, covers a
-  non-SpringBoard surface the query cannot enumerate, such as an action sheet or a WKWebView dialog.
-  There, the same debounced collapsed-tree signal that used to trigger vision records that the screen
-  looks blocked. The note names no button labels.
+- Two cases leave the button unnamed: a backend without the native capability, and a native
+  backend's `"absent"` poll on a non-SpringBoard surface the query cannot enumerate, such as an
+  action sheet or a WKWebView dialog. In both, the same debounced collapsed-tree signal that used to
+  trigger vision records that the screen looks blocked. The note names no button labels.
 
 The gate exposes the note through a method that the wait loop consults only when it is about to
 report a timeout. A transient or self-resolved block therefore never reaches the timeout message.

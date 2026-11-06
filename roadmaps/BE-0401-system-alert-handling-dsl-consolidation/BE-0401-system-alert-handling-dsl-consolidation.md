@@ -141,7 +141,7 @@ A `visionInstruction` from any layer outranks that hint. A hint derived from lab
 statement about the fallback, and an explicit `visionInstruction` is.
 
 The hint derives from the **innermost layer that supplies `labels`**, not from the concatenation the
-native path walks. The native path compares labels exactly. A wider candidate list there lengthens a
+native path walks. The native path compares labels exactly. A wider candidate list there only lengthens a
 search that still taps a label some layer named.
 
 The fallback's instruction is free text that a locator interprets loosely. A concatenated list hands
@@ -208,7 +208,7 @@ which rule applies.
 | `pollInterval` | scalar | precedence, innermost layer wins: scenario, else command line, else target |
 | on / off | scalar | precedence: `--system-alert-handling` or `--no-system-alert-handling`, else scenario, else target, else on |
 
-`rules` names two layers because no flag supplies rules. An entry pairs a prompt with a choice, which
+`rules` names only two layers because no flag supplies rules. An entry pairs a prompt with a choice, which
 a single flag value cannot carry legibly. Every other key reaches all three layers.
 
 A list composes because concatenation preserves both layers' entries. The guard tries the scenario's
