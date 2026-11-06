@@ -95,166 +95,163 @@ driver conformance suite
 the tracer.
 
 **Group 1 is complete.** Units 1 and 3–6 landed as described. Unit 2 landed as its `after.png`
-half alone; *Progress* below records the measurement behind dropping its `elements.json` half.
+half alone. *Progress* below records the measurement behind dropping its `elements.json` half.
 
 ### Group 1 — common to both backends (orchestrator)
 
 1. **Reuse the previous step's `after.png` as the next step's `before.png`.** No actuation happens
-   between one step's end and the next step's start, so the two observe identical device state; the
-   first step in a scenario still reads once. Saves one screenshot per step (90 milliseconds on iOS,
-   103 on Android) — [`loop.py:1274-1329`](../../bajutsu/common/orchestrator/loop.py).
+   between one step's end and the next step's start, so the two observe identical device state. The
+   first step in a scenario still reads once. This saves one screenshot per step (90 milliseconds on
+   iOS, 103 on Android). See [`loop.py:1274-1329`](../../bajutsu/common/orchestrator/loop.py).
 2. **Move `after.png` and the `elements.json` write off the critical path.** Capture and write both
-   asynchronously once the step's own result is known, rather than blocking the next step on the
-   write completing —
-   [`loop.py:1601`](../../bajutsu/common/orchestrator/loop.py),
-   [`evidence/core.py:174-186`](../../bajutsu/common/evidence/core.py).
+   asynchronously once the step's own result is known, so the next step does not block on the
+   write completing. See [`loop.py:1601`](../../bajutsu/common/orchestrator/loop.py) and
+    [`evidence/core.py:174-186`](../../bajutsu/common/evidence/core.py).
 3. **Write `elements.json` once, after the step, not before and after.** Drop the pre-action read
-   entirely except where a capture policy actually requires it —
-   [`loop.py:1712-1727`](../../bajutsu/common/orchestrator/loop.py),
-   [`evidence_rules.py:190-194`](../../bajutsu/common/orchestrator/evidence_rules.py).
+   entirely, except where a capture policy requires it. See [`loop.py:1712-1727`](../../bajutsu/common/orchestrator/loop.py) and
+    [`evidence_rules.py:190-194`](../../bajutsu/common/orchestrator/evidence_rules.py).
 4. **Drop the hidden first-step read inside the evidence sink.** The sink issues its own query before
-   the scenario's first step runs; fold it into that step's regular read instead of paying it twice —
-   [`evidence/core.py:170`](../../bajutsu/common/evidence/core.py).
+   the scenario's first step runs. Fold that query into the step's regular read, so the device is
+   not read twice. See [`evidence/core.py:170`](../../bajutsu/common/evidence/core.py).
 5. **Stop polling during the BE-0310 transition-signal settle window.** Once the screen-change signal
    ([BE-0310](../BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness.md))
-   fires, the 0.3-second post-transition quiet period only needs to keep reading when a guard or an
-   interrupt handler is registered for the step; otherwise the signal alone is the condition —
+   fires, the 0.3-second post-transition quiet period keeps reading when a guard or an interrupt
+   handler is registered for the step. Otherwise the signal alone is the condition. See
    [`waits.py:1042-1061`](../../bajutsu/common/orchestrator/waits.py).
 6. **Fold `drain_interruptions` into the `/tap` or `/elements` response instead of its own round
    trip.** iOS pays a fresh Transmission Control Protocol (TCP) connection for this every step
-   ([`xcuitest.py:591,1170`](../../bajutsu/common/drivers/xcuitest.py)); Android already keeps it
-   in memory, so this unit is iOS-only.
+   ([`xcuitest.py:591,1170`](../../bajutsu/common/drivers/xcuitest.py)). Android already keeps the
+   drain in memory, so this unit is iOS-only.
 
 ### Group 2 — iOS driver internals
 
 7. **Batch the tap-path attribute reads into one `el.snapshot()` call.** `POST /tap` currently resolves
-   the element from its path, then reads roughly eleven attributes one at a time — `exists`,
-   `identifier`, `label`, `type`, `enabled`, `selected`, `frame` (twice), `isHittable` — before
-   synthesizing the tap
-   ([`XcuitestElementProvider.swift:127-151,410-430`](../../BajutsuKit/Runner/Sources/XcuitestElementProvider.swift)).
+   the element from its path. It then reads roughly eleven attributes one at a time before
+   synthesizing the tap. They are `exists`, `identifier`, `label`, and `type`. They also include
+   `enabled`, `selected`, `frame` (twice), and `isHittable`. See
+   [`XcuitestElementProvider.swift:127-151,410-430`](../../BajutsuKit/Runner/Sources/XcuitestElementProvider.swift).
    Cache `app.frame` across calls instead of re-reading it. Expected saving: 150–300 milliseconds per
    tap.
 8. **Tap the cached frame's center by coordinate, re-verifying identity only when staleness is
    suspected.** [BE-0396](../BE-0396-ios-sfsafariviewcontroller-tree/BE-0396-ios-sfsafariviewcontroller-tree.md)
-   already takes this route for Safari content; this unit generalizes it. Needs review before landing
-   — a coordinate tap trades one kind of correctness risk (a moved element) for latency, so the
-   fallback to identity re-verification has to be right. Expected saving: another 50–150 milliseconds.
+   already takes this route for Safari content, and this unit generalizes it. The unit needs review
+   before landing. A coordinate tap trades one kind of correctness risk (a moved element) for
+   latency, so the fallback to identity re-verification has to be right. Expected saving: another
+   50–150 milliseconds.
 9. **Skip the `safariViewService.state` cross-process check unless the snapshot shows a remote-view
-   boundary node.** Every query pays this Cross-Process Communication (XPC) probe today regardless of
-   whether the app under test embeds a web view —
+   boundary node.** Every query pays this Cross-Process Communication (XPC) probe today, whether or not
+   the app under test embeds a web view. See
    [`XcuitestElementProvider.swift:50`](../../BajutsuKit/Runner/Sources/XcuitestElementProvider.swift).
    Expected saving: 5–50 milliseconds per query. [#2117](https://github.com/bajutsu-e2e/bajutsu/pull/2117) reverts this unit. On iOS 26 the
    boundary node reaches the service's snapshot alone, never the app's. The gate never opens there.
-10. **Make the `/zorder` second round trip lazy.** Fetch z-order only when a selector is actually
-    ambiguous and needs it resolved —
-    [`xcuitest.py:744-768`](../../bajutsu/common/drivers/xcuitest.py). Expected saving: 5–30
-    milliseconds per query it currently runs unconditionally for.
-11. **Enable HyperText Transfer Protocol (HTTP) keep-alive on both ends of the XCUITest channel** —
-    [`xcuitest.py:591`](../../bajutsu/common/drivers/xcuitest.py),
+10. **Make the `/zorder` second round trip lazy.** Fetch z-order when a selector is actually
+    ambiguous and needs it resolved. See [`xcuitest.py:744-768`](../../bajutsu/common/drivers/xcuitest.py).
+    Expected saving: 5–30 milliseconds per query it currently runs unconditionally for.
+11. **Enable HyperText Transfer Protocol (HTTP) keep-alive on both ends of the XCUITest channel.**
+    See [`xcuitest.py:591`](../../bajutsu/common/drivers/xcuitest.py) and
     [`HTTPServer.swift:326`](../../BajutsuKit/Sources/BajutsuRunner/HTTPServer.swift). Expected
     saving: 1–3 milliseconds per round trip, compounding across a scenario's many reads.
 12. **Re-query immediately on the first stale-element retry instead of sleeping first.** The runner
     currently sleeps a fixed 0.5 seconds before its first retry and 1.0 seconds before its second
-    ([`xcuitest.py:141-149,146,848-853`](../../bajutsu/common/drivers/xcuitest.py)), because every
-    exception during actuation maps to `stale`, including a transient failure mid-animation. The
-    re-query is itself a wait, so removing the sleep does not weaken the retry's determinism.
+    ([`xcuitest.py:141-149,146,848-853`](../../bajutsu/common/drivers/xcuitest.py)). Every
+    exception during actuation maps to `stale`, including a transient failure mid-animation, which
+    is why the sleeps exist. The re-query is itself a wait, so removing the sleep does not weaken the
+    retry's determinism.
 13. **Check `alerts.firstMatch.exists` before enumerating SpringBoard alert buttons.** The current
-    probe lists every button on every check; test existence first and only enumerate when an alert is
-    actually present —
+    probe lists every button on every check. Test existence first, and list the buttons when an alert is
+    actually present. See
     [`XcuitestElementProvider.swift:302-320`](../../BajutsuKit/Runner/Sources/XcuitestElementProvider.swift).
     Expected saving: 100–400 milliseconds per probe.
 14. **Raise `BAJUTSU_XCUITEST_MAX_WARM_REUSES` above its current 3, and skip reinstall when the app
-    bundle's digest is unchanged.** Saves 4–10 seconds per scenario boundary —
+    bundle's digest is unchanged.** Saves 4–10 seconds per scenario boundary. See
     [`environments/xcuitest.py:259-306`](../../bajutsu/common/platform_lifecycle/environments/xcuitest.py).
-15. **Type text via `simctl pbcopy` and a paste keystroke instead of per-character `typeText`.** Needs
-    review — a paste bypasses input handlers some text fields rely on, so this unit needs a fallback
-    for fields that reject paste —
-    [`simctl.py:842-878`](../../bajutsu/common/backend_cli/simctl.py). Expected saving: roughly 40
-    milliseconds per character typed.
+15. **Type text via `simctl pbcopy` and a paste keystroke instead of per-character `typeText`.** The unit needs
+    review. A paste bypasses input handlers some text fields rely on, so the unit needs a fallback
+    for fields that reject paste. See [`simctl.py:842-878`](../../bajutsu/common/backend_cli/simctl.py).
+    Expected saving: roughly 40 milliseconds per character typed.
 
 ### Group 3 — Android driver internals
 
 16. **Confirm, then remove, the `POSTDATE_BUDGET_MS` wait that a settled screen can never satisfy.**
-    Highest-priority unit in this group — the investigation traces most of the 2204-millisecond
-    `POST /act` average to this single fixed 2000-millisecond budget, more than any other item
-    in this proposal. `respondAct` waits, before injecting a tap, for an accessibility event that
-    postdates the `since` mark the host captured immediately before sending the request
-    ([`ResidentServerTest.kt:184-188,642`](../../BajutsuAndroidUIAutomatorServer/server/src/androidTest/java/dev/bajutsu/android/server/ResidentServerTest.kt),
-    [`drivers/adb.py:812-831,1299`](../../bajutsu/common/drivers/adb.py)). When the screen is
+    This is the highest-priority unit in the group. The investigation traces most of the
+    2204-millisecond `POST /act` average to this single fixed 2000-millisecond budget, more than any
+    other item in this proposal. Before injecting a tap, `respondAct` waits for an accessibility
+    event that postdates the `since` mark the host captured immediately before sending the request.
+    See [`ResidentServerTest.kt:184-188,642`](../../BajutsuAndroidUIAutomatorServer/server/src/androidTest/java/dev/bajutsu/android/server/ResidentServerTest.kt) and
+    [`drivers/adb.py:812-831,1299`](../../bajutsu/common/drivers/adb.py). When the screen is
     already still, as it is at every tap target in `controls.yaml`, no event later than that mark
-    exists to satisfy the wait before the tap's own injection — so the budget is spent every time
-    rather than only when actually needed. **This must be confirmed against the resident server's own
-    logs before implementing a fix** — the investigation's account is built from code reading plus a
-    measurement correlation, not a direct log trace. Once confirmed, a fix (for example, answering
-    immediately when only a `VIEW_CLICKED` event with no accompanying layout event is expected) needs
-    review against the read-lag barrier (`_READ_LAG_S`,
-    [`adb.py:536`](../../bajutsu/common/drivers/adb.py)) that this same postdate mark also
-    protects, so the fix does not reopen a race the barrier currently closes.
+    exists to satisfy the wait before the tap's own injection. The wait spends its whole budget
+    every time, even when the budget is not needed.
+
+    **The mechanism must be confirmed against the resident server's own logs before a fix is
+    implemented.** The investigation's account is built from code reading plus a measurement
+    correlation, not a direct log trace. Once confirmed, a fix needs review against the read-lag
+    barrier (`_READ_LAG_S`, [`adb.py:536`](../../bajutsu/common/drivers/adb.py)) that this same
+    postdate mark also protects. One example fix is answering immediately when only a `VIEW_CLICKED`
+    event with no accompanying layout event is expected. The review ensures the fix does not reopen
+    a race the barrier currently closes.
 17. **Skip `settledDump`'s second read when no accessibility event fired between the two.** The
-    `ReadMark` already knows whether one arrived —
+    `ReadMark` already knows whether one arrived. See
     [`ResidentServerTest.kt:482-490,558-587`](../../BajutsuAndroidUIAutomatorServer/server/src/androidTest/java/dev/bajutsu/android/server/ResidentServerTest.kt).
     Expected saving: 100–200 milliseconds per read.
-18. **Make the `nativeZ` full-node walk opt-in per app**, rather than running on every read —
+18. **Make the `nativeZ` full-node walk opt-in per app**, rather than running on every read. See
     [`ResidentServerTest.kt:427-457`](../../BajutsuAndroidUIAutomatorServer/server/src/androidTest/java/dev/bajutsu/android/server/ResidentServerTest.kt).
     Expected saving: 20–100 milliseconds per read.
 19. **Carry the already-settled tree in `/act`'s own response**, so the host's `_settle` can skip its
-    first read when the server already confirmed the tree matched twice on-device —
-    [`adb.py:1015-1031,1341`](../../bajutsu/common/drivers/adb.py),
+    first read when the server already confirmed on-device that the tree matched twice. See [`adb.py:1015-1031,1341`](../../bajutsu/common/drivers/adb.py) and
     [`ResidentServerTest.kt:516-524`](../../BajutsuAndroidUIAutomatorServer/server/src/androidTest/java/dev/bajutsu/android/server/ResidentServerTest.kt).
     Expected saving: 400–600 milliseconds.
 20. **Take screenshots from the resident server with `UiAutomation.takeScreenshot()`**, removing the
-    `adb exec-out screencap` subprocess spin-up (measured 103 milliseconds today) —
+    `adb exec-out screencap` subprocess spin-up (measured 103 milliseconds today). See
     [`backend_cli/adb.py:975-990`](../../bajutsu/common/backend_cli/adb.py).
 21. **Keep the resident server's socket open across reads instead of answering `Connection: close`
-    on every one** —
-    [`adb_resident.py:125,183,269`](../../bajutsu/common/backend_cli/adb_resident.py),
+    on every one.** See [`adb_resident.py:125,183,269`](../../bajutsu/common/backend_cli/adb_resident.py) and
     [`ResidentServerTest.kt:83,544`](../../BajutsuAndroidUIAutomatorServer/server/src/androidTest/java/dev/bajutsu/android/server/ResidentServerTest.kt).
     Expected saving: 30–150 milliseconds per read.
 22. **Reuse the resident server's Android Application Package (APK) across a whole run**, skipping
-    reinstall when its signature and version already match the installed one —
-    [`adb_resident.py:395-399`](../../bajutsu/common/backend_cli/adb_resident.py),
-    [`environments/android.py:367`](../../bajutsu/common/platform_lifecycle/environments/android.py). Expected saving:
-    6–12 seconds per scenario boundary — the investigation's measured 1.5 seconds is a reinstall onto
-    an emulator that was already booted with the package already present once, not a cold-start
-    figure.
-23. **Stop parsing the hierarchy Extensible Markup Language (XML) twice on the host** —
-    [`adb_resident.py:78-102`](../../bajutsu/common/backend_cli/adb_resident.py),
+    reinstall when its signature and version already match the installed one. See [`adb_resident.py:395-399`](../../bajutsu/common/backend_cli/adb_resident.py) and
+    [`environments/android.py:367`](../../bajutsu/common/platform_lifecycle/environments/android.py).
+    Expected saving: 6–12 seconds per scenario boundary. The investigation's measured 1.5 seconds is
+    a reinstall onto an emulator that was already booted with the package already present once, not
+    a cold-start figure.
+23. **Stop parsing the hierarchy Extensible Markup Language (XML) twice on the host.** See [`adb_resident.py:78-102`](../../bajutsu/common/backend_cli/adb_resident.py) and
     [`drivers/adb.py:404-437`](../../bajutsu/common/drivers/adb.py). Expected saving: 10–40
     milliseconds per read.
 24. **Add a `swipe` variant to `/act` with the same publish confirmation a tap gets.** The
-    investigation measured a `scroll` step at 7.1 seconds — heavier than a tap — because the swipe
-    itself and the confirming read each separately exhaust the same fixed budget unit 16 targets —
+    investigation measured a `scroll` step at 7.1 seconds, heavier than a tap. The swipe itself and
+    the confirming read each separately exhaust the same fixed budget that unit 16 targets. See
     [`drivers/adb.py:1477-1552`](../../bajutsu/common/drivers/adb.py). This unit shares its root
-    cause with unit 16, and also reduces the cost of the off-screen tap-recovery path, which retries a
-    `scroll` internally when a tap target starts outside the visible frame
+    cause with unit 16. It also reduces the cost of the off-screen tap-recovery path, which retries
+    a `scroll` internally when a tap target starts outside the visible frame
     ([`bajutsu/common/orchestrator/loop.py`](../../bajutsu/common/orchestrator/loop.py), tap
-    recovery), so a `tap` step that needs recovery benefits from this unit too, not only a `scroll`
+    recovery). A `tap` step that needs recovery benefits from this unit too, as does a `scroll`
     step.
 
 ## Alternatives considered
 
-- **Wait for the device-side step executor and skip this incremental pass.** Rejected: the executor
-  is a protocol-level change tracked as its own, larger set of proposals, and every scenario run pays
-  today's redundant reads and fixed waits in the meantime. The units above ship independently of that
-  work and do not compete with it — several (the evidence-capture dedup, the keep-alive changes) stay
-  useful even after an executor lands, since a device-side executor still returns evidence to the host
-  over the same channel.
+- **Wait for the device-side step executor and skip this incremental pass.** Rejected. The executor
+  is a protocol-level change tracked as its own, larger set of proposals. Every scenario run pays
+  today's redundant reads and fixed waits in the meantime. The units above ship independently of
+  that work and do not compete with it. Some of them stay useful even after an executor lands:
+  the evidence-capture dedup and the keep-alive changes. A device-side executor still returns
+  evidence to the host over the same channel.
 - **Skip straight to the executor instead of tuning the current boundary.** Rejected for the same
-  reason [BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance.md) phased its own fix:
-  the internal-tuning units are lower-risk, ship as small independent pull requests, and prove out the
-  measurement tooling — [`trace_run.py`](misc/step-performance/trace_run.py) and
-  [`bench_orchestrator.py`](misc/step-performance/bench_orchestrator.py) — that a later
-  executor item will also depend on to show its own win.
+  reason [BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance.md) phased its own
+  fix. The internal-tuning units are lower-risk. They ship as small independent pull requests. They
+  also prove out the measurement tooling that a later executor item will depend on to show its own
+  win. That tooling is [`trace_run.py`](misc/step-performance/trace_run.py) and
+  [`bench_orchestrator.py`](misc/step-performance/bench_orchestrator.py).
 - **Split the Android `POSTDATE_BUDGET_MS` unit (16) into its own item, since it needs server-log
-  confirmation first.** Considered and rejected for now: it shares this item's driver/runner surface,
-  its "no protocol change" scope, and its measurement yardstick with every other Android unit here.
-  The checklist below marks it explicitly unconfirmed rather than done, so it cannot ship silently
-  ahead of that confirmation. If the fix turns out to need its own design discussion once confirmed,
-  splitting it out at that point remains available.
-- **One roadmap item per unit.** Rejected as too fragmented for 24 units that share one motivation
+  confirmation first.** Considered and rejected for now. The unit shares three traits with every
+  other Android unit here: its driver/runner surface, its "no protocol change" scope, and its
+  measurement yardstick. The checklist below marks the unit explicitly unconfirmed rather than
+  done, so it cannot ship ahead of that confirmation unnoticed. If the fix turns out to need its
+  own design discussion once confirmed, splitting it out at that point stays available.
+- **One roadmap item per unit.** Rejected as too fragmented. The 24 units share one motivation
   (today's measured step latency) and one yardstick (the tracer's before/after numbers). Each unit
-  still ships as its own focused pull request; grouping them under one item avoids maintaining
-  near-duplicate Motivation sections and cross-links across two dozen files for what is one initiative.
+  still ships as its own focused pull request. Grouping the units under one item avoids
+  maintaining near-duplicate Motivation sections and cross-links across two dozen files for what
+  is one initiative.
 
 ## Progress
 
