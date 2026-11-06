@@ -60,7 +60,7 @@ correctly to Swift and Kotlin too. BE-0408's own scope reduction (two backends, 
 three) does not remove this recurring cost.
 
 A second cost is how much round-trip reduction the staged rollout achieves before its last stage.
-BE-0408 first moves `wait` and `assert` evaluation to the device. At its fourth and final stage alone
+BE-0408 first moves `wait` and `assert` evaluation to the device. Only at its fourth and final stage
 does it bundle a whole step sequence into one `POST /scenario` call. Until then, a cross-step
 judgment stays a host responsibility, even at stage 4. The alert-guard's one-time retry after a
 system alert blocks a step is one such judgment. BE-0408 scopes control flow itself to the host.
@@ -198,8 +198,8 @@ whole-scenario `POST /scenario` holds that queue for its entire duration. Routin
 waiting behind the very call it exists to interrupt. Only `health` and `setInterruptionPolicy` bypass
 the queue today. The two new endpoints need the same bypass, stated explicitly rather than assumed.
 
-The Android resident UI Automator server embeds a Java Virtual Machine (JVM) hosted WASM runtime.
-Chicory is one candidate. It is a pure-JVM interpreter that avoids a native-library signing step,
+The Android resident UI Automator server embeds a WASM runtime hosted on the Java Virtual Machine
+(JVM). Chicory is one candidate. It is a pure-JVM interpreter that avoids a native-library signing step,
 which an instrumentation test target would otherwise need. The server supplies the same host
 functions, backed by its existing `UiAutomation` session and `AccessibilityNodeInfo` access.
 

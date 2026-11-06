@@ -291,7 +291,7 @@ iOS側のステップは、`demos/showcase/scenarios/firstlook.yaml`自身の「
 
 `run_scenario`の既存のフラットなキーワードパラメータは、まとめて見ると、今日パイプラインが1つのターゲットの1つのリースから束ねているもののすべてです(前節の一覧のとおりです)。
 
-`driver`、`sink`、`alert_guard`、`network`、`relaunch`、`control`、`ctx`、`mailbox`、`webview_bridge`、`transitions`、`interrupts`、`locale`、`capture`、`channel`、`target_launch_env`([`bajutsu/common/orchestrator/loop/_functions.py:572-594`](../../bajutsu/common/orchestrator/loop/_functions.py))
+そのパラメータは、`driver`、`sink`、`alert_guard`、`network`、`relaunch`、`control`、`ctx`、`mailbox`、`webview_bridge`、`transitions`、`interrupts`、`locale`、`capture`、`channel`、`target_launch_env`です([`bajutsu/common/orchestrator/loop/_functions.py:572-594`](../../bajutsu/common/orchestrator/loop/_functions.py))。
 
 `target`を持たないステップは、今までどおり、これらすべてを読み続けます。これらは`run_scenario`の主ターゲットのランタイムのままで、形は変わらないため、既存の呼び出し元は影響を受けません。
 
