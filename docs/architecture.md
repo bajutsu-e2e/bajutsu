@@ -535,7 +535,19 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   either as an OR — an explicit scenario-side convention, not a driver-side `.`↔`_` rewrite (BE-0221).
   The identifier-tagging plumbing behind both id forms — Compose's `testTagsAsResourceId`, the Views
   `android:id` lookup — ships as its own library, [`IdentifierTool`](../IdentifierTool/README.md)
-  (BE-0405), with no dependency on `BajutsuAndroid`.
+  (BE-0405), with no dependency on `BajutsuAndroid`. **Non-ASCII `type` text on Android** (BE-0476):
+  `type_text` keeps ASCII text on `input text` (splitting a literal `%s` across two calls, since the
+  command has no escape for its own escape) and routes non-ASCII text — Japanese, emoji — to a new
+  `POST /type` on the resident server, which builds the new value from the focused field's text and
+  selection and applies it with `ACTION_SET_TEXT`; a password field, a non-editable field, no focused
+  field, or no resident server fails the step and names the reason. **Resident-server read-timeout
+  recovery** (BE-0477): every wait on the device is now bounded to fit inside the host's 5-second
+  read timeout, so a never-idle screen costs a read about 3.6 seconds rather than the channel; a
+  timeout — unlike a refused or closed connection, which falls back at once as before — reads again
+  on a fresh connection and then restarts the server before falling back to `uiautomator dump`,
+  bounded by the target's `driver.residentRecovery` (retry count, whether a restart is allowed), and
+  a later non-ASCII `type` step revives a lost server since the dump path cannot serve that text;
+  `manifest.json` records any fallback per scenario and per step.
 - **Flutter apps, driven by the existing XCUITest / adb backends unchanged** (BE-0008): Flutter adds
   no new backend — `Semantics(identifier: …)` (Flutter 3.19+) surfaces into the same OS accessibility
   tree XCUITest and adb already read, so the platform-neutral `id` selector resolves and actuates
