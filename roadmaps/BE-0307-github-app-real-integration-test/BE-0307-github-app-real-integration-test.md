@@ -15,55 +15,65 @@
 
 ## Introduction
 
-`github/app.py` backs the private-repo config source with a GitHub App installation-token flow: sign
-a JSON Web Token (JWT), exchange it for an installation token, use the token to fetch config. The JWT signing itself
-is genuinely tested against real `cryptography` (a real RSA key, a real RS256 signature
-verification). The network leg is not: `installation_token`'s exchange is driven entirely by a
-hand-written `fake_fetch`, and `_fetch`'s HTTP-error mapping is tested by monkeypatching
-`urllib.request.urlopen` to raise a canned error. No test, and no CI job, ever completes this flow
-against a real GitHub App installation. This item adds one.
+`github/app.py` backs the private-repo config source with a GitHub App installation-token flow. The
+flow has three steps: sign a JSON Web Token (JWT), exchange it for an installation token, and use that
+token to fetch config.
+
+The JWT signing is genuinely tested against real `cryptography`, with a real RSA key and a real RS256
+signature verification. The network leg is not. A hand-written `fake_fetch` drives the exchange in
+`installation_token` entirely. The HTTP-error mapping in `_fetch` is tested by monkeypatching
+`urllib.request.urlopen` to raise a canned error.
+
+No test and no CI job completes this flow against a real GitHub App installation. This item adds one.
 
 ## Motivation
 
-The signing math is solid and this item does not touch it. What it cannot prove is that GitHub's
-real API accepts what Bajutsu sends and returns what the code assumes. A JWT whose claim shape or
-algorithm GitHub rejects in practice, a clock-skew edge case in the `iat`/`exp` claims that only
-shows up against a real clock, or an installation-token response whose real shape has drifted from
-the hand-typed `{"id": 999}` / `{"token": "..."}` fixtures — none of these would be caught by the
-current suite, because none of the exchange ever leaves the process. The private-repo config source is a
-secondary feature (`config_source.py`), but the token flow underneath it is exactly the kind of
-external-integration surface a mock cannot validate by construction: the mock only ever returns
-what the person who wrote it believes GitHub returns.
+The signing math is solid, and this item does not touch it. What the current tests cannot prove is
+that GitHub's real API accepts what Bajutsu sends and returns what the code assumes.
+
+Three defects would escape the current suite:
+
+- A JWT whose claim shape or algorithm GitHub rejects in practice.
+- A clock-skew edge case in the `iat` / `exp` claims that shows up only against a real clock.
+- An installation-token response whose real shape has drifted from the hand-typed `{"id": 999}` /
+  `{"token": "..."}` fixtures.
+
+None of the exchange ever leaves the process, so the suite cannot catch any of them.
+
+The private-repo config source (`config_source.py`) is a secondary feature. The token flow underneath
+it is exactly the kind of external-integration surface that a mock cannot validate by construction. A
+mock returns only what its author believes GitHub returns.
 
 ## Detailed design
 
 Proposal altitude. The work is MECE along the units below.
 
-- **A throwaway GitHub App for CI.** Register a minimal test-only GitHub App — scoped to nothing
-  beyond what `installation_token` needs — installed on a disposable or low-privilege test
-  repository, with its private key stored as a repository secret.
+- **A throwaway GitHub App for CI.** Register a minimal test-only GitHub App, scoped to nothing beyond
+  what `installation_token` needs. Install it on a disposable or low-privilege test repository, and
+  store its private key as a repository secret.
   [BE-0302](../BE-0302-config-source-real-repo-fetch/BE-0302-config-source-real-repo-fetch.md)'s
-  private-repo-fetch option needs the same kind of throwaway App on the same kind of repository;
-  reuse one App/repository pair across both items rather than standing up two.
+  private-repo-fetch option needs the same kind of throwaway App on the same kind of repository. Reuse
+  one App and repository pair across both items rather than standing up two.
 - **A key-gated live integration test.** Add a test that runs the real `_app_jwt` →
-  `installation_token` → `_fetch` chain against that real App and repository, skipped when the
-  secret is absent so `make check` stays green and credential-free for every contributor.
-- **Assert the real response shapes.** Confirm the real installation-lookup response still carries
-  the `id` field and the real access-tokens response the `token` field — the two fields the flow
-  reads through `_json_field` from two distinct endpoints — catching a schema drift the hand-typed
-  fixtures would not.
+  `installation_token` → `_fetch` chain against that real App and repository. The test is skipped when
+  the secret is absent, so `make check` stays green and credential-free for every contributor.
+- **Assert the real response shapes.** Confirm that the real installation-lookup response still
+  carries the `id` field, and that the real access-tokens response still carries the `token` field.
+  The flow reads these two fields through `_json_field` from two distinct endpoints. The assertion
+  catches a schema drift that the hand-typed fixtures would not.
 - **Non-gating first.** Land the new job as CI signal, following the precedent in
   [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md),
   before considering it required.
 
 ## Alternatives considered
 
-- **Trust the mocked HTTP tests, since the error-mapping logic is unit-tested.** Error mapping being
-  correct for a canned `HTTPError` says nothing about whether GitHub's real API ever returns that
-  error in that shape, or whether the JWT that triggers it is itself accepted in the first place.
+- **Trust the mocked HTTP tests, since the error-mapping logic is unit-tested.** The error mapping can
+  be correct for a canned `HTTPError`. That says nothing about whether GitHub's real API ever returns
+  that error in that shape, or whether GitHub accepts the JWT that triggers the error in the first
+  place.
 - **Skip a throwaway App and test only against GitHub's public documentation of the expected
-  shapes.** Documentation drifts from the implemented API in practice; a real call is the only check
-  that actually observes GitHub's current behavior rather than its stated one.
+  shapes.** In practice, documentation drifts from the implemented API. Only a real call observes
+  GitHub's current behavior rather than its stated behavior.
 
 ## Progress
 
