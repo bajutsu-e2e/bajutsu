@@ -1,10 +1,10 @@
 **English** · [日本語](ja/selectors.md)
 
-# Selectors and deterministic resolution (the determinism core)
+# Selectors and deterministic resolution
 
-> This module defines how you specify which element to act on or verify, and how it narrows that
-> specification to exactly one match. Every execution path (orchestrator / drivers /
-> assertions) depends on this module. Bajutsu's determinism logic is implemented here.
+> This module defines how a scenario names the element to act on or verify, and how the module
+> narrows that name to exactly one match. Bajutsu's determinism logic is implemented here, so every
+> execution path (orchestrator, drivers, assertions) depends on it.
 >
 > Implementation: `bajutsu/common/drivers/base/_functions.py`.
 
@@ -155,40 +155,46 @@ failure" (they do not propagate the exception upward).
 
 ### `ElementNotTappable`: a resolved but unreachable target
 
-`resolve_unique` only judges *how many* elements match; it says nothing about whether the one
-match is actually reachable on screen. An element can resolve uniquely, carry a valid frame, and
-still sit under a sticky header, a toast, or a dimmed modal backdrop — so a tap would land on the
-obstruction instead. `tap` / `double_tap` / `long_press` (and the focus-tap inside `type` /
-`clear` / `delete` / `select`) now check this before acting, the idiomatic way per backend (iOS's
-native `isHittable`; the web's `document.elementFromPoint`; adb's document-order geometric proxy,
-`Driver.is_tappable`). When the check fails, the orchestrator takes a small, bounded scroll — up
-to three `down` steps, then, only if `down` never clears it, up to six `up` steps (widened, since
-`up` must first retrace the ground `down` already covered before it can make any net progress of
-its own) — and retries the action once; if the target is still unreachable, the action raises
-`ElementNotTappable` instead of the misleading `ElementNotFound` a caller might otherwise mistake
-for "not in the tree at all".
+`resolve_unique` judges only *how many* elements match. It says nothing about whether the single
+match is reachable on screen. An element can resolve uniquely and carry a valid frame, yet sit
+under a sticky header, a toast, or a dimmed modal backdrop. A tap then lands on the obstruction
+instead of the target.
 
-`ElementNotTappable` is a sibling of `SelectorError`, not a subclass — the selector *did* resolve,
-so lumping it in with resolution failure would blur that "who matched" and "is it reachable" are
-different questions. The orchestrator's step-execution catch handles it the same way it handles
-`SelectorError`: a clean step failure, never a crash.
+`tap` / `double_tap` / `long_press` (and the focus-tap inside `type` / `clear` / `delete` /
+`select`) now check reachability before acting. Each backend uses its idiomatic check: iOS's native
+`isHittable`, the web's `document.elementFromPoint`, and adb's document-order geometric proxy,
+`Driver.is_tappable`. When the check fails, the orchestrator takes a small, bounded scroll. It first
+scrolls up to three `down` steps. Only if `down` never clears the obstruction does it scroll up to
+six `up` steps. The `up` limit is wider because `up` must first retrace the ground `down` already
+covered before it makes any net progress of its own. The orchestrator then retries the action once.
+If the target is still unreachable, the action raises `ElementNotTappable` instead of
+`ElementNotFound`, which a caller might mistake for "not in the tree at all".
 
-On the XCUITest backend a refused **tap** takes one more step before it fails, because iOS can
-report a container inflated over the control it wraps — a SwiftUI `Stepper` whose accessibility
-element spans its whole form row, refused while the buttons inside it are perfectly reachable. The
-driver probes the target's *named* descendants (those emitted after it, inside its frame, carrying
-an identifier). Where exactly one is reachable there is no choice to make and the tap goes there,
-recorded with `substitution: soleHittableDescendant` so the report and the `trace` timeline both
-say the element actuated is not the one the selector named. Where none or several are, there *is* a
-choice an author cannot predict, so the tap fails and the message names the candidates instead of
-picking one — a real `Stepper` has two reachable children, and `tap: { id: log.count }` has no
-single meaning between them. Only `tap` does this: a long-press redirected to a child is a
-different intent, not the same intent reaching its target.
+`ElementNotTappable` is a sibling of `SelectorError`, not a subclass. The selector *did* resolve,
+and lumping the error in with resolution failure would blur two different questions: "who matched"
+and "is it reachable". The orchestrator's step-execution catch handles `ElementNotTappable` the same
+way it handles `SelectorError`: a clean step failure, never a crash.
 
-The bounded scroll is a safety net for an obstruction an author could not have anticipated (a
-transient overlay, a sticky header settling into place) — it is not a substitute for the explicit
+On the XCUITest backend, a refused **tap** takes one more step before it fails. iOS can report a
+container inflated over the control it wraps. A SwiftUI `Stepper` is one example: its accessibility
+element spans its whole form row, so the container is refused while the buttons inside it are
+perfectly reachable. The driver probes the target's *named* descendants (those emitted after it,
+inside its frame, carrying an identifier).
+
+- **Exactly one descendant is reachable.** There is no choice to make, so the tap goes there. The
+  step records `substitution: soleHittableDescendant`, so the report and the `trace` timeline both
+  say the actuated element is not the one the selector named.
+- **None or several are reachable.** An author cannot predict which one would be right, so the tap
+  fails and the message names the candidates instead of picking one. A real `Stepper` has two
+  reachable children, and `tap: { id: log.count }` has no single meaning between them.
+
+Only `tap` does this. A long-press redirected to a child is a different intent, not the same intent
+reaching its target.
+
+The bounded scroll is a safety net for an obstruction an author could not have anticipated, such as
+a transient overlay or a sticky header settling into place. It is not a substitute for the explicit
 [`scroll` action](scenarios.md#scroll). An author who already knows a target starts off-screen
-still writes `scroll` themselves; this check only ever fires on a target that already resolved.
+still writes `scroll` by hand. This check only ever fires on a target that already resolved.
 
 On XCUITest, the runner also refuses a target whose frame center sits past the screen edge. iOS 26
 reports list rows below the fold in the tree. Such a row often sits behind the floating tab bar.
@@ -364,10 +370,12 @@ Per-kind mechanics:
 | `request` | matches over the observed network exchanges (not the element tree) | `equals`/`atLeast`/… via `count`, else ≥ 1 ([network](network.md)) |
 | `attribute` | `resolve_unique` inside the driver's `read_attributes` (web only) | compares the attribute via `equals`/`contains`/`matches`, or checks `absent` |
 
-> Only `exists` uses `find_all` (allows multiple); the other single-element assertions use
-> `resolve_unique` (ambiguous fails). So "tried to check the value when there were two matches" also
-> fails deterministically. The table above covers nine kinds. Seven resolve against the element
-> tree. `request` checks the captured HTTP(S) exchanges instead. `attribute` resolves its selector
-> with the same `resolve_unique`, inside the web driver, and reads the attribute from the live page. Six more kinds never
-> resolve a selector this way. They are `event` / `requestSequence` / `responseSchema` / `visual` /
-> `clipboard` / `golden`. See [scenarios](scenarios.md#assertion-dsl) for the full list.
+> Only `exists` uses `find_all`, which allows multiple matches. The other single-element assertions
+> use `resolve_unique`, where an ambiguous match fails. An attempt to check a value when two elements
+> match therefore also fails deterministically.
+>
+> The table above covers nine kinds. Seven of them resolve against the element tree. `request`
+> checks the captured HTTP(S) exchanges instead. `attribute` resolves its selector with the same
+> `resolve_unique` inside the web driver, then reads the attribute from the live page. Six more
+> kinds never resolve a selector this way: `event` / `requestSequence` / `responseSchema` /
+> `visual` / `clipboard` / `golden`. See [scenarios](scenarios.md#assertion-dsl) for the full list.
