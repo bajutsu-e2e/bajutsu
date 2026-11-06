@@ -15,14 +15,18 @@ Related: [CLI reference](cli.md#serve) · [scenarios](scenarios.md) · [recordin
 
 ## What the Web UI is, and when to use it
 
-The Web UI is a **Tier-1 convenience** — a browser front-end over the same CLI commands you would
-run by hand. It is **not part of the CI (continuous integration) gate**: the deterministic
-`run` verdict never depends on it, and nothing here judges pass/fail. Reach for it to **author** a
-scenario from a natural-language goal, **run** a scenario and read its report, **explore** an app
-and watch its screen map draw itself, **edit** a scenario against real screenshots, and **survey**
-the run history — all against one active config, without switching between terminal commands.
+The Web UI is a **Tier-1 convenience**: a browser front-end over the same CLI commands you would run
+by hand. It is **not part of the CI (continuous integration) gate**. The deterministic `run` verdict
+never depends on the Web UI, and nothing here judges pass/fail. Use it, all against one active
+config and without switching between terminal commands, to:
 
-Most of what the UI does maps onto a CLI command (`record`, `run`, `crawl`, `stats`, `lint`); the
+- **author** a scenario from a natural-language goal;
+- **run** a scenario and read its report;
+- **explore** an app and watch its screen map draw itself;
+- **edit** a scenario against real screenshots;
+- **survey** the run history.
+
+Most of what the UI does maps onto a CLI command (`record`, `run`, `crawl`, `stats`, `lint`). The
 exception is the **Author** tab, whose Capture / Edit / Enrich flows are serve-only helpers for
 building and editing scenario files, with no CLI twin. When a detail here needs the full option
 list, the [CLI reference](cli.md) is the source of truth.
@@ -44,69 +48,72 @@ make serve ARGS="--config demos/showcase/showcase.config.yaml --port 8766"   # t
 The showcase app needs the showcase config, since the repository has no root
 `bajutsu.config.yaml`.
 
-The server does not drive a device for a run. It queues each run for a `bajutsu worker`. The worker
-leases the run and drives the device or browser. For that reason `make serve` starts one worker
-beside the server. The worker runs on the same machine, with the same token. It stops when the
-server stops. It advertises the platforms of the startup config's targets. A target of another
-platform, bound later, needs its own worker; the no-worker notice says so. Set `SERVE_WORKER=0` to
-start the server alone, for example to attach your own workers:
+The server does not drive a device for a run. It queues each run for a `bajutsu worker`, which leases
+the run and drives the device or browser. For that reason `make serve` starts one worker beside the
+server. The worker runs on the same machine with the same token, and it stops when the server stops.
+It advertises the platforms of the startup config's targets. A target of another platform, bound
+later, needs its own worker; the no-worker notice says so. To start the server alone, for example to
+attach your own workers, set `SERVE_WORKER=0`:
 
 ```bash
 SERVE_WORKER=0 make serve
 ```
 
-A queued run says why it waits. The Replay status line shows a notice that no worker is
-available. `GET /api/jobs/<id>` carries the same text as `notice`. The notice
-clears once a worker that can serve the run polls the server. Triage, record, and crawl jobs go
-through the same worker. The server runs no job in its own process (BE-0449). A deployment with a
-bucket must name a database for its queue, or the server refuses to start. While a crawl runs, the Crawl
-tab draws its graph from the screen map the worker relays. A record that pauses for a person shows
-its request as before. The answer then travels back to the worker.
+A queued run says why it waits. The Replay status line shows a notice that no worker is available,
+and `GET /api/jobs/<id>` carries the same text as `notice`. The notice clears once a worker that can
+serve the run polls the server.
 
-Under the hood `make serve` runs `python -m bajutsu serve` — the `bajutsu serve` command the
-[CLI reference](cli.md#serve) documents. If you installed Bajutsu outside a checkout (so there is no
-`make`), run `bajutsu serve` (or `python -m bajutsu serve`) directly; you are then responsible for
-the backend's dependencies yourself — the XCUITest runner (and Xcode) for an iOS target (a web /
-Playwright target does not need them).
-Start the worker yourself, too, in a second terminal: `bajutsu worker`.
-A web target needs `--platform web` on that worker.
-Either way the server does not open a browser for you: it
-binds `127.0.0.1`, so once it is running, open the printed URL yourself (`http://127.0.0.1:8765` by
-default, or the `--port` you passed). These flags — `--port`, `--config`, `--root`,
-`--runs`, `--baselines`, `--themes`, `--host`, `--token`, `--max-concurrent-runs`,
-`--evidence-store` — cover everyday use; the complete option list is in the
+Triage, record, and crawl jobs go through the same worker; the server runs no job in its own process
+(BE-0449). A deployment with a bucket must name a database for its queue, or the server refuses to
+start. While a crawl runs, the Crawl tab draws its graph from the screen map the worker relays. A
+record that pauses for a person shows its request as before, and the answer then travels back to the
+worker.
+
+Under the hood, `make serve` runs `python -m bajutsu serve`, the `bajutsu serve` command that the
+[CLI reference](cli.md#serve) documents. If you installed Bajutsu outside a checkout, there is no
+`make`. Run `bajutsu serve` (or `python -m bajutsu serve`) directly, and install the backend's
+dependencies yourself: the XCUITest runner (and Xcode) for an iOS target. A web (Playwright) target
+does not need them. Start the worker yourself too, in a second terminal, with `bajutsu worker`; a web
+target needs `--platform web` on that worker.
+
+Either way, the server does not open a browser for you. It binds `127.0.0.1`, so once it is running,
+open the printed URL yourself (`http://127.0.0.1:8765` by default, or the `--port` you passed). The
+flags `--port`, `--config`, `--root`, `--runs`, `--baselines`, `--themes`, `--host`, `--token`,
+`--max-concurrent-runs`, and `--evidence-store` cover everyday use; the complete option list is in the
 [CLI reference](cli.md#serve).
 
 ## The layout
 
 The header holds nine top-level tabs: **Record**, **Replay**, **Crawl**, **Author**, **Stats**,
-**Flaky**, **Usage**, **Coverage**, and **Trash** (soft-deleted runs, restorable within a
-retention window — see [Trash](#trash--restore-or-permanently-delete-a-deleted-run)). A tenth,
-**Comparison**, appears only once the bound config declares more than one
-[target](glossary.md#target-app-device), since it compares targets against each other — see
-[Comparing targets](#comparing-targets). The tab is named for what it shows rather than for the
-Prometheus scrape endpoint the same server exposes at `/metrics`, which is a different surface
-entirely.
-To their right are **Open config** (with the active config's name shown beside it once one is bound,
-and a **View** button to inspect it — see below), **Settings**, and a theme picker that
-follows your system by default. On a deployment where you sign in with GitHub, a small badge beside
-the config name names the **org** this session acts as: every tab is scoped to it — the targets you
-can run, the runs and evidence you see, and the secrets — so it is worth being able
-to read at a glance, particularly for an admin who administers several. Hovering it names the login
-too. A local or shared-token `serve` has no signed-in identity and no tenants, so the badge does not
-appear there.
+**Flaky**, **Usage**, **Coverage**, and **Trash**. The **Trash** tab lists soft-deleted runs, which
+stay restorable within a retention window (see
+[Trash](#trash--restore-or-permanently-delete-a-deleted-run)).
 
-If your GitHub memberships admit you to more than one org, that badge is a dropdown instead: pick
-another org and the page reloads acting as it, with that tenant's runs, evidence, and secrets — and
-with the role that tenant grants you, which may differ from the one you held in the
-last. The choice sticks: your next sign-in lands you in the org you picked rather than re-deciding
-for you. It stops sticking only if that org stops admitting you, in which case the next sign-in moves
-you to the best remaining match. An admin who is a member of one of the deployment's admin Teams can
-act as any org it has, including one created after signing in. A switch does not move work already
-done: a run keeps the org it was started under, and so do its evidence and its audit entries.
+A tenth tab, **Comparison**, appears only once the bound config declares more than one
+[target](glossary.md#target-app-device), since it compares targets against each other (see
+[Comparing targets](#comparing-targets)). The tab is named for what it shows, not for the Prometheus
+scrape endpoint that the same server exposes at `/metrics`, which is a different surface entirely.
 
-Each tab is a full screen of its own; switching tabs never discards
-what another tab was doing.
+To the right of the tabs are **Open config**, **Settings**, and a theme picker that follows your
+system by default. Once a config is bound, its name appears beside **Open config**, together with a
+**View** button to inspect it (see below).
+
+On a deployment where you sign in with GitHub, a small badge beside the config name names the **org**
+this session acts as. Every tab is scoped to that org: the targets you can run, the runs and evidence
+you see, and the secrets. Reading the badge at a glance matters, particularly for an admin who
+administers several orgs. Hovering over the badge shows the login too. A local or shared-token
+`serve` has no signed-in identity and no tenants, so the badge does not appear there.
+
+If your GitHub memberships admit you to more than one org, the badge is a dropdown instead. Pick
+another org and the page reloads acting as that org, with that tenant's runs, evidence, and secrets,
+and with the role that tenant grants you, which may differ from the role you held in the previous
+org. The choice sticks: your next sign-in lands you in the org you picked rather than re-deciding for
+you. It stops sticking only if that org stops admitting you, in which case the next sign-in moves you
+to the best remaining match. An admin who is a member of one of the deployment's admin Teams can act
+as any org the deployment has, including one created after signing in. A switch does not move work
+already done: a run keeps the org it was started under, and so do its evidence and its audit entries.
+
+Each tab is a full screen of its own, and switching tabs never discards what another tab was doing.
 
 Some forms change with the backend. Against the iOS Simulator (XCUITest) you see a **Device** picker,
 a **Simulators** multi-select, and an **erase device first** option; against a web target (Playwright
@@ -216,28 +223,30 @@ instead of finding a truncated label in the history.
 
 ### Managing orgs
 
-An **org** is a tenant of a hosted deployment, and its membership decides which GitHub logins,
-GitHub organizations, and GitHub Teams may sign in as it, and which Team among them may write. The
-Team that may write is admitted too, so it needs no second entry to be able to sign in. A deployment that
-runs against a database keeps that membership in the database rather than in the config file, and the
-**Orgs** tab is where an admin edits it (BE-0375). The tab appears for an admin on such a
-deployment, and nowhere else: on any other deployment the server declines to list orgs, which is
-what keeps the tab hidden.
+An **org** is a tenant of a hosted deployment. Its membership decides which GitHub logins, GitHub
+organizations, and GitHub Teams may sign in as it, and which Team among them may write. The Team that
+may write is admitted too, so it needs no second entry to be able to sign in. A deployment that runs
+against a database keeps that membership in the database rather than in the config file, and the
+**Orgs** tab is where an admin edits it (BE-0375). The tab appears for an admin on such a deployment
+and nowhere else: on any other deployment the server declines to list orgs, which keeps the tab
+hidden.
 
-Each row shows an org's slug, how many members, GitHub organizations, and GitHub Teams it holds,
-its editor Team — plus its display name, when that differs from the slug the row
-already leads with. **Create** takes a slug and an optional display name, and the new org
-starts with no members at all — nobody can sign in as it until you fill in its membership, which the
-page says inline so an empty tenant does not read as a bug. The slug `default` is refused: it is
-where a sign-in matching no org lands — including every admin admitted by the admin-Team bypass — so
-a real tenant there would take the namespace an admin recovers through. That row still appears in
-the list, marked as the fallback and with both its controls disabled, since an admin who arrived
-that way is sitting in it. **Membership** opens a form that replaces
-all four fields at once, prefilled from what the server holds right now; a change takes effect on
-each member's next sign-in. **Delete** retires an org. Retiring signs out everyone holding a session as that org at the
-same moment, so nobody keeps acting as it on a cookie issued beforehand; it keeps the org's runs and
-audit history, and keeps its slug reserved. The confirmation states all three, since a reader would
-otherwise discover none of them until afterwards.
+Each row shows an org's slug; how many members, GitHub organizations, and GitHub Teams it holds; and
+its editor Team. The row also shows the org's display name when that differs from the slug the row
+already leads with.
+
+- **Create** takes a slug and an optional display name. The new org starts with no members at all, so
+  nobody can sign in as it until you fill in its membership. The page says so inline, so that an
+  empty tenant does not read as a bug. The slug `default` is refused: a sign-in matching no org lands
+  there, including every admin admitted by the admin-Team bypass, so a real tenant there would take
+  the namespace an admin recovers through. That row still appears in the list, marked as the
+  fallback and with both its controls disabled, since an admin who arrived that way is sitting in it.
+- **Membership** opens a form that replaces all four fields at once, prefilled from what the server
+  holds right now. A change takes effect on each member's next sign-in.
+- **Delete** retires an org. Retiring signs out everyone holding a session as that org at the same
+  moment, so nobody keeps acting as it on a cookie issued beforehand. It keeps the org's runs and
+  audit history, and it keeps the slug reserved. The confirmation states all three consequences,
+  since a reader would otherwise discover none of them until afterwards.
 
 Which targets an org owns still comes from the config file's `orgs:` block, so an org created here
 owns none until an entry there names some.
@@ -319,17 +328,27 @@ only names the config itself declares are settable, never an arbitrary environme
 one is an **admin** action on a role-gated deployment.
 
 **Server** is a read-only tab reporting how the running server is configured
-([BE-0318](../roadmaps/BE-0318-serve-server-settings-tab/BE-0318-serve-server-settings-tab.md)): the
-deployment mode (local or hosted), the bound config and its source, the backends this build can run,
-the runs and baselines directories, the trash retention window, the concurrency caps, and the running
-version. Its sharpest row is the **iOS test runner**: whether this build ships the bundled XCUITest
-Simulator runner
-([BE-0292](../roadmaps/BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner.md)), the
-Xcode and Simulator SDK versions it was built against when it does, and whether the bound config
-overrides it with an explicit `driver.runner.testRunner` — the one fact that decides whether an iOS
-Simulator run can start at all. A hosted deployment withholds the host paths (the config path, the
-runs and baselines directories); every other row shows either way. The tab takes no input: it reports
-what the launch command and environment already resolved, and never writes anything back.
+([BE-0318](../roadmaps/BE-0318-serve-server-settings-tab/BE-0318-serve-server-settings-tab.md)). It
+shows:
+
+- the deployment mode (local or hosted);
+- the bound config and its source;
+- the backends this build can run;
+- the runs and baselines directories;
+- the trash retention window;
+- the concurrency caps;
+- the running version.
+
+The most telling row is the **iOS test runner**. It states whether this build ships the bundled
+XCUITest Simulator runner
+([BE-0292](../roadmaps/BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner.md)), the Xcode
+and Simulator SDK versions the runner was built against when it does, and whether the bound config
+overrides the runner with an explicit `driver.runner.testRunner`. That is the one fact that decides
+whether an iOS Simulator run can start at all.
+
+A hosted deployment withholds the host paths (the config path, the runs and baselines directories);
+every other row shows either way. The tab takes no input. It reports what the launch command and
+environment already resolved, and it never writes anything back.
 
 ## Record — author a scenario from a goal
 
@@ -450,20 +469,24 @@ the per-row checkboxes (or **select all**) and use **Delete selected** in the ba
 Both are editor-level actions; a soft-deleted run leaves the history immediately and reappears if you
 restore it.
 
-**Triage a failed run.** When a run fails, a **Triage** button appears in the report bar (both on a
-just-run report and when you reopen a failed run from History) — the `triage` command in the
-browser, so you can ask "why did this fail?" without dropping to a terminal. Click it, then
-**Diagnose**: triage reads that run's stored failure context and reports a root-cause summary, the
-implicated step, and suggestions. The default is the deterministic rule-based agent; tick **Claude**
-(enabled only when an AI provider is configured — see [Settings](#settings)) to diagnose with the
-Claude investigator instead. When triage can propose a mechanical fix (rename a selector id,
-disambiguate a match, or raise a timeout), it shows the fix as a **diff** against the currently
-selected scenario source. **Apply fix** writes that patch back through the same validated save path
-the Author tab uses; **Apply & re-run** writes it and immediately re-runs the scenario to confirm.
-The fix is written only on that explicit click — nothing is edited automatically, and the run's
+**Triage a failed run.** When a run fails, a **Triage** button appears in the report bar, both on a
+just-run report and when you reopen a failed run from History. The button is the `triage` command in
+the browser, so you can ask "why did this fail?" without dropping to a terminal. Click it, then
+**Diagnose**. Triage reads that run's stored failure context and reports a root-cause summary, the
+implicated step, and suggestions. The default is the deterministic rule-based agent. Tick **Claude**
+to diagnose with the Claude investigator instead; the checkbox works only once an AI provider is
+configured (see [Settings](#settings)).
+
+When triage can propose a mechanical fix (rename a selector id, disambiguate a match, or raise a
+timeout), it shows the fix as a **diff** against the selected scenario source:
+
+- **Apply fix** writes the patch back through the same validated save path that the Author tab uses.
+- **Apply & re-run** writes the patch and immediately re-runs the scenario to confirm the fix.
+
+The fix is written only on that explicit click. Nothing is edited automatically, and the run's
 pass/fail verdict is read from the deterministic run, never recomputed by AI. Triage previews and
-applies against the scenario currently selected in the **Run** sub-tab, so pick the matching
-scenario and target before triaging a run from History.
+applies against the scenario currently selected in the **Run** sub-tab, so pick the matching scenario
+and target before triaging a run from History.
 
 ## Crawl — explore the app and map its screens live
 
@@ -605,10 +628,10 @@ so it runs no device, no AI, and computes no verdict; its known limits are `code
 the slowest and flakiest scenarios, failure hotspots, and run volume, aggregated from each run's
 stored `manifest.json`. Every scenario row names the content fingerprint behind its series.
 Editing a scenario between runs starts a second series, which reads as its own row, not a repeat.
-The dashboard aggregates a window of the newest runs the Replay tab's history list always covers.
-With a database the dashboard and the history list read the same window. Without one the history
-list carries no cap, so the dashboard's window sits inside it. Either way a drilldown opens a history that agrees with the row
-behind it.
+The dashboard aggregates a window of the newest runs, and the Replay tab's history list always covers
+that window. With a database, the dashboard and the history list read the same window. Without one,
+the history list carries no cap, so the dashboard's window sits inside the list. Either way, a
+drilldown opens a history that agrees with the row behind it.
 
 **How to use it.** Open the tab to load the dashboard; use the refresh button to recompute it over
 the current run history. No device, AI, or run is involved.
