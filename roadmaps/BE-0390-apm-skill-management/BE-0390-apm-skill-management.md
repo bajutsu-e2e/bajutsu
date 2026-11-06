@@ -53,12 +53,12 @@ one step of it. The fourteen workflows total 2,003 lines and 132 KB. The two lar
 the longest sessions load them most often.
 
 APM's authoring convention holds a `SKILL.md` within roughly 500 lines and 5,000 tokens. It moves
-the depth into `references/`, which the host loads for the step that needs it.
+the depth into `references/`, which the host loads only for the step that needs it.
 
 Once the change ships, a reader can check two things:
 
 - Invoking a skill reads one `SKILL.md` within that budget, instead of an adapter plus a whole
-  workflow. It reaches a `references/` file for the step that needs it.
+  workflow. It reaches a `references/` file only for the step that needs it.
 - `apm audit` reports any deployed file that no longer matches its source. Today nothing reports
   such drift at all.
 
@@ -75,7 +75,7 @@ The work breaks down into six independent pieces:
    We commit `apm.yml`, `apm.lock.yaml`, and the deployed `.claude/skills/` tree. A fresh clone then
    has a working skill set before anyone runs a command. `.claude/skills/.gitignore` goes away with
    the old layout, and all fourteen skills ship committed. That resolves the local-only
-   contradiction above: under a committed deployment target, an ignored entry would hide files that
+   contradiction above: under a committed deployment target, an ignored entry would only hide files that
    `apm install` keeps writing and `apm audit` keeps reporting.
 2. **Skill conversion.** Each of the fourteen skills folds the host-specific instructions of its
    Claude Code adapter into its single `SKILL.md`. Those instructions cover the Agent tool, `/loop`,

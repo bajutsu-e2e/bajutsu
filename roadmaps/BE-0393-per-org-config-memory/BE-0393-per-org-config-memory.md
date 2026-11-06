@@ -144,7 +144,7 @@ colleague's, or the same member's on another machine.
 A session's slots are dropped when the session ends, in two ways:
 
 - on the revocation the session store already performs;
-- on a bound the mapping enforces itself, so a process that accumulates quiet sessions evicts the
+- on the size bound the mapping enforces itself, so a process that accumulates quiet sessions evicts the
   oldest binding rather than growing without limit.
 
 The acting org joins the key because a session may change which org it acts as. A binding made as one
@@ -170,11 +170,11 @@ want. This unit therefore settles each of the five explicitly rather than by an 
 - Three report what a member is working against: the configuration view, the server-settings tab's
   `hasConfig` / `configSource` / configuration path, and the scenario directory. They resolve the
   session's binding rather than the ambient one.
-- Two of those three take the session from their handler. The scenario directory cannot.
-  `_scenarios_dir_for` is reached through a closure that `ServeState` constructs once, over `self`,
-  and hands to every org through `for_org`. No handler is in scope when the closure fires. The seam
-  that becomes session-aware there is the scenario store's own resolution, which the request already
-  reaches with a session in hand.
+  - Two of those three take the session from their handler. The scenario directory cannot.
+    `_scenarios_dir_for` is reached through a closure that `ServeState` constructs once, over
+    `self`, and hands to every org through `for_org`. No handler is in scope when the closure fires.
+    The seam that becomes session-aware there is the scenario store's own resolution, which the
+    request already reaches with a session in hand.
 - Two describe the deployment: the active key environment variable and the usage ledger. They read
   the fallback binding, which this item states rather than leaves implied.
 
@@ -284,7 +284,7 @@ overwrite each other, and the member still performs an action to get back to a c
 deployment already knows. The button is worth keeping as the interim state after units 3 to 5 land,
 not as the destination.
 
-**Conditional automatic restore, keeping the global binding.** Restore when nothing is bound, or when
+**Conditional automatic restore, keeping the global binding.** Restore only when nothing is bound, or when
 the bound configuration's owner matches the acting org. This avoids the hazard in the common case but
 not in the general one. Two orgs active at once still contend for the single binding, and whichever
 binds second decides what the first one sees. The condition would also have to be re-checked at every

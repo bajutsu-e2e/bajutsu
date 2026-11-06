@@ -24,8 +24,8 @@ Bajutsu reaches Claude from several paths:
   accessibility tree cannot see.
 
 The guard is the one path that runs inside `run`, the deterministic gate. On the iOS XCUITest
-backend, the guard clears the prompt natively. Where the native path cannot act, the guard falls back
-to sending a screenshot of the device to Claude vision and tapping the pixel the model names.
+backend, the guard clears the prompt natively. Only where the native path cannot act does the guard
+fall back to sending a screenshot of the device to Claude vision and tapping the pixel the model names.
 
 A project that does not want a screenshot of the device to leave the machine has no way to say so.
 Turning the whole setting off with `systemAlertHandling: false` also gives up the deterministic
@@ -71,7 +71,7 @@ model: a `--alert-instruction` passes through the `Redactor` before it reaches t
 ([BE-0047](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)). The image beside the text
 cannot be masked the same way, and the guard's own source records the gap. Consider a run against a
 staging environment holding production data, or an engagement whose contract forbids sending
-captured screens to a third party. Such a run needs the guarantee that the path does not exist. The
+captured screens to a third party. Either case needs the guarantee that the path does not exist. The
 observation that the path rarely fires does not suffice.
 
 The second property is non-determinism. The fallback resolves a button by coordinate estimate. When
@@ -86,7 +86,7 @@ a suite in continuous integration, the round trips accumulate into both wall-clo
 A native-capable backend needs the fallback rarely.
 
 Neither lever available today rules out any of the three properties. `systemAlertHandling: false`
-disables the guard as a whole, native path included. A scenario that wants the deterministic half
+disables the guard as a whole, native path included. A scenario that wants only the deterministic half
 loses that half and starts failing on the notification prompt the native path used to clear.
 
 The other lever is the credential. `_build_alert_locator` (`bajutsu/cli/_shared.py:450`) reads the
@@ -98,7 +98,7 @@ An absence is a poor way to hold a policy:
 
 - The absence lives nowhere in the repository. A reviewer reading the configuration cannot tell that
   screenshots are not sent.
-- A fresh continuous-integration runner inherits the policy by not having been set up.
+- A fresh continuous-integration runner inherits the policy only by not having been set up.
 - Every other AI path shares the absence, which makes it fragile in the one direction that matters.
   An engineer who exports the key to author a scenario with `record` re-enables the vision fallback
   for every `run` in the same shell, silently, for as long as the shell lives.
@@ -170,7 +170,7 @@ reader to fix an environment that is not broken.
 ### Precedence
 
 `resolve_provider` (`bajutsu/agents/ai_config.py:78`) reads `ai.provider` from the configuration
-first. It falls back to `BAJUTSU_AI_PROVIDER` when the configuration leaves the field unset. An
+first. It falls back to `BAJUTSU_AI_PROVIDER` only when the configuration leaves the field unset. An
 environment variable thus cannot undo a committed `provider: none`. That precedence makes the setting
 hold on a continuous-integration runner whose environment nobody controls. `BAJUTSU_AI_PROVIDER=none`
 remains available for a one-off run on a machine whose configuration says nothing.
@@ -196,7 +196,7 @@ at all on a project whose configuration names an `ai.provider`: the jobs would k
 model, and nothing would say so.
 
 A switch labeled off that silently stays on is the failure mode the *Motivation* argues against for
-an unset key. Putting it in a dropdown would make it harder to notice. The kill switch is a statement
+an unset key. Putting it in a dropdown would only make it harder to notice. The kill switch is a statement
 a repository commits, not a per-organization toggle.
 
 One limitation follows, and this item accepts it rather than closing it. `provider_info`
@@ -207,7 +207,7 @@ or, failing that, `resolved_provider()` with no `AiConfig` at all. It never read
 crawl tabs enabled.
 
 The kill switch itself holds. A job started from one of those tabs is a command-line invocation. It
-resolves the repository configuration itself and exits 2 before reaching a model. What is missing is
+resolves the repository configuration itself and exits 2 before reaching a model. What is missing is only
 the pre-flight signal that would grey the tab out first. Teaching `provider_info` to read the
 target's `ai` changes how `serve` reports reachability for every provider, which this item's seam
 does not imply. The change belongs to a follow-up item.

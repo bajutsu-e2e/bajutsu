@@ -48,15 +48,15 @@ reading the report could tell setup from the scenario under test at a glance.
 The gap on the other side is a missing mechanism, not partial coverage: Bajutsu has no "after" hook
 at all. The only place to put cleanup today is at the tail of `steps`, and that placement fails the
 one case cleanup exists for. The step loop breaks on the first failure
-([run-loop](../../docs/run-loop.md), step 9). Trailing cleanup steps therefore run when every
-preceding step already passed, which is the run that needed cleanup least.
+([run-loop](../../docs/run-loop.md), step 9). Trailing cleanup steps therefore run only when every
+preceding step already passed, which is exactly the run that needed cleanup least.
 
 Consider a scenario that signs up a test user and then hits a broken button three steps later. The
 scenario leaves the user behind, because the step that would have deleted the user was never
 reached. Nothing in the scenario file ran the deletion.
 
-A workaround outside the scenario file has two limits. Such a workaround is a CI-level script or a
-separately scheduled cleanup job.
+A workaround outside the scenario file, such as a CI-level script or a separately scheduled cleanup
+job, has two limits:
 
 - The workaround cannot see the run's own `vars.*` bindings. It cannot address the record that an
   `http` step's `saveBody` captured earlier in the same run.
@@ -113,7 +113,7 @@ scenario:
 ```
 
 The example's `before` step relies on `http`'s existing `saveBody`, which stores a response's whole
-body text as `${vars.<name>}`. The step captures the seed endpoint's bare id directly because that
+body text as `${vars.<name>}`. The step captures the seed endpoint's bare id directly only because that
 endpoint returns nothing else. Extracting one field out of a larger JSON response is a separate,
 unrelated gap, and this item does not propose closing it.
 
@@ -188,7 +188,7 @@ the way those existing users do.
    whole phase and not within one `on` group alone. A cancelled run dispatches as `error`,
    consistent with `docs/run-loop.md`'s framing of a cancelled run as an ordinary failed one.
 
-   An `after` entry's own failure updates `failure` when the run was passing up to that point
+   An `after` entry's own failure updates `failure` only when the run was passing up to that point
    (`failure = "after: " + reason`), mirroring how `expect` can already flip a passing `steps`
    sequence. When the run had already failed for any reason above, the entry's failure is appended to
    the existing `failure` string instead of replacing it. The reason a reader sees first is then
@@ -298,7 +298,7 @@ already use elsewhere.
   shows up in the report as an ordinary step rather than its own phase. The point is to stop
   merging setup and teardown into `steps`.
 - **Extend `capturePolicy`'s `Trigger` with a `result: "success"` value, and let a rule's action be
-  arbitrary steps instead of evidence capture.** Rejected. `Trigger` also matches `action` and
+  arbitrary steps instead of only evidence capture.** Rejected. `Trigger` also matches `action` and
   `event`, keyed to opportunistic checks made throughout the step loop, not to the scenario's single
   final verdict. Overloading `Trigger` would let an author write a `before`/`after`-shaped rule that
   fires mid-run by accident. It would also conflate two features that are triggered at fundamentally
