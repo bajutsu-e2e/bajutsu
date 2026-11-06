@@ -66,7 +66,7 @@ make -C demos/web codegen-e2e
 
 このゲートは、[`scenarios/smoke.yaml`](scenarios/smoke.yaml) から [`codegen/smoke.spec.ts`](codegen/smoke.spec.ts) を再生成し、その出力を実際の `@playwright/test` ランナーで実 Chromium に対して実行します。ランナーは TypeScript をトランスパイルして実行するので、この確認は `tsc --noEmit` の構文チェックではなく、コンパイル*かつ*実行です。最後に、出力が**チェックイン済みのフィクスチャからドリフトしていれば失敗させます**（エミッタとフィクスチャが黙って乖離しないようにします）。必要なのは Node/npm だけで（ランナーは我々の Python backend ではなく行き先のフレームワークです）、Simulator も macOS も要りません。
 
-このゲートは、iOS 側の `codegen (xcuitest)` ゲート（`demos/showcase` の `ui-test`。生成した `ComponentsUITests.swift` を `xcodebuild test` でビルドして実行します）の web 版です。CI では `web-e2e.yml` の `codegen (playwright)` ジョブになります。まず**シグナル**として着地させ（マージはブロックせず報告のみ）、`network (playwright)` がそうだったように、安定を確認してから必須の `E2E (web)` ゲートへ昇格させます（[BE-0293](../../roadmaps/BE-0293-codegen-playwright-real-compile/BE-0293-codegen-playwright-real-compile-ja.md)）。
+このゲートは、iOS 側の `codegen (xcuitest)` ゲート（`demos/showcase` の `ui-test`。生成した `ComponentsUITests.swift` を `xcodebuild test` でビルドして実行します）の web 版です。CI では `web-e2e.yml` の `codegen (playwright)` ジョブになります。このジョブは、まず**シグナル**として着地し（マージはブロックせず報告のみ）、`network (playwright)` がそうだったように、安定を確認してから必須の `E2E (web)` ゲートへ昇格する予定です（[BE-0293](../../roadmaps/BE-0293-codegen-playwright-real-compile/BE-0293-codegen-playwright-real-compile-ja.md)）。
 
 ## 記録（record）
 
