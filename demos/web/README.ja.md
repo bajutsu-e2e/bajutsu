@@ -1,8 +1,8 @@
-# Web デモ（Playwright backend）
+# Playwright backend による Web デモ
 
 [English](README.md)
 
-Bajutsu の **Playwright** backend（[BE-0041](../../roadmaps/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）で駆動する、小さな静的 web アプリです。iOS のデモと違い **Mac も Simulator も不要**で、`make check` と同じツールチェーンの Linux 上で動きます。
+このデモは、小さな静的 web アプリを Bajutsu の **Playwright** backend（[BE-0041](../../roadmaps/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）で駆動します。iOS のデモと違い **Mac も Simulator も不要**で、`make check` と同じツールチェーンの Linux 上で動きます。
 
 ## 構成
 
@@ -29,7 +29,7 @@ Bajutsu の **Playwright** backend（[BE-0041](../../roadmaps/BE-0041-web-playwr
 make -C demos/web e2e
 ```
 
-web backend をインストールし（`uv sync --extra web` ＋ `playwright install chromium`）、`app/` を `127.0.0.1:8787` で配信し、スモークシナリオを Playwright backend で実行して、サーバを後始末します。実行は完全に決定論的で、合否はシナリオの機械アサーション（カウンタが `2` を示す）だけから決まり、LLM は関与しません。
+このコマンドは、web backend をインストールし（`uv sync --extra web` ＋ `playwright install chromium`）、`app/` を `127.0.0.1:8787` で配信し、スモークシナリオを Playwright backend で実行して、サーバを後始末します。実行は完全に決定論的で、合否はシナリオの機械アサーション（カウンタが `2` を示す）だけから決まり、LLM は関与しません。
 
 `e2e` は、Android のレーンと同じく `BAJUTSU_MIN_WAIT_TIMEOUT` を `E2E_WAIT_FLOOR`（既定は `10` 秒）に設定します。これにより、ステップの `assert` はこの下限の範囲でポーリングします。`scenarios/html_attribute.yaml` にはこのポーリングが必要です。パネルの `data-state` は、タップのあと約 400 ミリ秒のあいだ `loading` のままだからです。アサーションが成功した時点でポーリングは終わるので、この下限は上限としての待ち時間であって、固定の待機ではありません。値は `make -C demos/web e2e E2E_WAIT_FLOOR=<秒数>` で上書きできます。
 
@@ -43,34 +43,43 @@ web backend をインストールし（`uv sync --extra web` ＋ `playwright ins
 make -C demos/web e2e-network
 ```
 
-`app/` を配信し、**Sync account** ボタン（`Authorization` ヘッダと `password` ボディフィールドを運ぶ実際の `POST /api/sync`）をタップして、`network` タグの付いた [`scenarios/network.yaml`](scenarios/network.yaml) を **network を有効にして** 実行します。[`mocks:`](scenarios/network.yaml) のエントリがその POST に `201` で応答するので（実サーバがあれば `404` を返すはずです）、status `201` でキャプチャされた exchange は、ネットワークではなくモックが応答したことの証拠になります。シナリオの `request` アサーションが決定論的な介入・キャプチャの確認で、続いて [`network/assert_redaction.py`](network/assert_redaction.py) が永続化された `network.json` を読み、exchange が `mocked` で `201`、両方の秘密情報がマスクされ、さらにリクエストの秘密でない `account` フィールドが値ごと残っていなければ失敗します。最後の条件がないと、ボディ全体を置き換えたり、値をすべてマスクしたりする redactor も通ってしまいます。どこにも LLM はありません。合否はそのアサーションとチェックだけです。
+このコマンドは `app/` を配信し、**Sync account** ボタン（`Authorization` ヘッダと `password` ボディフィールドを運ぶ実際の `POST /api/sync`）をタップして、`network` タグの付いた [`scenarios/network.yaml`](scenarios/network.yaml) を **network を有効にして** 実行します。[`mocks:`](scenarios/network.yaml) のエントリがその POST に `201` で応答します（実サーバがあれば `404` を返すはずです）。そのため、status `201` でキャプチャされた exchange は、ネットワークではなくモックが応答したことの証拠になります。
 
-このレーンは [BE-0282](../../roadmaps/BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md) の web 側です。CI では `network (playwright)` ジョブとして走ります。まずシグナルとして着地させましたが、CI で安定を確認できたので、現在は必須の `E2E (web)` ゲートに昇格しています（BE-0282）。**Android にも対応物ができました**（[BE-0283](../../roadmaps/BE-0283-android-network-capture/BE-0283-android-network-capture-ja.md)）。`android-e2e.yml` の `network (adb)` が、BajutsuAndroid のアプリ側インターセプタが `adb reverse` 越しにホスト側コレクタへ報告する形で実エミュレータのトラフィックをキャプチャします。ここでの Playwright のブラウザ内介入とは transport が異なりますが、`request` アサーションによる判定は同じで、このジョブと同様にあちらでもゲートに入っています。
+シナリオの `request` アサーションが、決定論的な介入・キャプチャの確認です。続いて [`network/assert_redaction.py`](network/assert_redaction.py) が永続化された `network.json` を読み、次の条件が一つでも欠ければ失敗します。
+
+- exchange が `mocked` です
+- status が `201` です
+- 両方の秘密情報がマスクされています
+- リクエストの秘密でない `account` フィールドが、値ごと残っています
+
+最後の条件がないと、ボディ全体を置き換えたり、値をすべてマスクしたりする redactor も通ってしまいます。どこにも LLM はありません。合否はそのアサーションとチェックだけで決まります。
+
+このレーンは [BE-0282](../../roadmaps/BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md) の web 側です。CI では `network (playwright)` ジョブとして走ります。まずシグナルとして着地させ、CI で安定を確認できたので、現在は必須の `E2E (web)` ゲートに昇格しています（BE-0282）。**Android にも対応物ができました**（[BE-0283](../../roadmaps/BE-0283-android-network-capture/BE-0283-android-network-capture-ja.md)）。`android-e2e.yml` の `network (adb)` が、BajutsuAndroid のアプリ側インターセプタを使って実エミュレータのトラフィックをキャプチャします。インターセプタは `adb reverse` 越しにホスト側コレクタへ報告します。ここでの Playwright のブラウザ内介入とは transport が異なりますが、判定は同じ `request` アサーションが下し、Android 側のジョブもこのジョブと同様にゲートに入っています。
 
 ## codegen 実コンパイルゲート（BE-0293）
 
-上の `e2e` は Bajutsu *自身* の Playwright backend を実行時に駆動するもので、codegen の出力には一切触れません。`bajutsu codegen --emit playwright` はこれとは別の経路で、シナリオを単体の `@playwright/test` ファイルへ変換します。チームが自分たちの Playwright CI で、Bajutsu ランタイムも AI も使わずに実行するためのものです。`tests/test_codegen_playwright.py` は出力ソースを文字列として検査しますが、確認できないのは codegen が本来主張していること、すなわち「生成されたファイルが実際に動く本物のネイティブテストである」という点です。このゲートがそのギャップを埋めます。
+上の `e2e` は、Bajutsu *自身* の Playwright backend を実行時に駆動するもので、codegen の出力には一切触れません。`bajutsu codegen --emit playwright` はこれとは別の経路で、シナリオを単体の `@playwright/test` ファイルへ変換します。チームが自分たちの Playwright CI で、Bajutsu ランタイムも AI も使わずに実行するためのものです。`tests/test_codegen_playwright.py` は出力ソースを文字列として検査しますが、codegen が本来主張していること、すなわち「生成されたファイルが実際に動く本物のネイティブテストである」という点は確認できません。このゲートがそのギャップを埋めます。
 
 ```bash
 make -C demos/web codegen-e2e
 ```
 
-[`scenarios/smoke.yaml`](scenarios/smoke.yaml) から [`codegen/smoke.spec.ts`](codegen/smoke.spec.ts) を再生成し、その出力を実際の `@playwright/test` ランナーで実 Chromium に対して実行します。ランナーは TypeScript をトランスパイルして実行するので、これは `tsc --noEmit` の構文チェックではなく、コンパイル*かつ*実行です。最後に、出力が**チェックイン済みのフィクスチャからドリフトしていれば失敗させます**（エミッタとフィクスチャが黙って乖離しないようにします）。必要なのは Node/npm だけで（ランナーは我々の Python backend ではなく行き先のフレームワークです）、Simulator も macOS も要りません。
+このゲートは、[`scenarios/smoke.yaml`](scenarios/smoke.yaml) から [`codegen/smoke.spec.ts`](codegen/smoke.spec.ts) を再生成し、その出力を実際の `@playwright/test` ランナーで実 Chromium に対して実行します。ランナーは TypeScript をトランスパイルして実行するので、この確認は `tsc --noEmit` の構文チェックではなく、コンパイル*かつ*実行です。最後に、出力が**チェックイン済みのフィクスチャからドリフトしていれば失敗させます**（エミッタとフィクスチャが黙って乖離しないようにします）。必要なのは Node/npm だけで（ランナーは我々の Python backend ではなく行き先のフレームワークです）、Simulator も macOS も要りません。
 
-これは iOS 側の `codegen (xcuitest)` ゲート（`demos/showcase` の `ui-test`。生成した `ComponentsUITests.swift` を `xcodebuild test` でビルドして実行します）の web 版です。CI では `web-e2e.yml` の `codegen (playwright)` ジョブになります。まず**シグナル**として着地させ（マージはブロックせず報告のみ）、`network (playwright)` がそうだったように、安定を確認してから必須の `E2E (web)` ゲートへ昇格させます（[BE-0293](../../roadmaps/BE-0293-codegen-playwright-real-compile/BE-0293-codegen-playwright-real-compile-ja.md)）。
+このゲートは、iOS 側の `codegen (xcuitest)` ゲート（`demos/showcase` の `ui-test`。生成した `ComponentsUITests.swift` を `xcodebuild test` でビルドして実行します）の web 版です。CI では `web-e2e.yml` の `codegen (playwright)` ジョブになります。このジョブは、まず**シグナル**として着地し（マージはブロックせず報告のみ）、`network (playwright)` がそうだったように、安定を確認してから必須の `E2E (web)` ゲートへ昇格する予定です（[BE-0293](../../roadmaps/BE-0293-codegen-playwright-real-compile/BE-0293-codegen-playwright-real-compile-ja.md)）。
 
 ## 記録（record）
 
-record（Tier 1）は記述の経路です。AI が自然言語のゴールと現在の画面を読み、`run` があとで AI なしにリプレイする決定論的なシナリオを書き出します。これは `make -C demos record` の web 版で、変わるのは backend だけです（Simulator ではなくブラウザ）。
+record（Tier 1）は記述の経路です。AI が自然言語のゴールと現在の画面を読み、`run` があとで AI なしにリプレイする決定論的なシナリオを書き出します。この経路は `make -C demos record` の web 版で、変わるのは backend だけです（Simulator ではなくブラウザ）。
 
 ```bash
 make -C demos/web record          # 実 Claude が Playwright backend を駆動（ANTHROPIC_API_KEY が必要）
 make -C demos/web record GOAL="Get started, then increment the counter three times and confirm it shows 3."
 ```
 
-`app/` を配信し、[`record/goals.txt`](record/goals.txt) のゴールに向けて実 Claude を走らせ、記述したシナリオを gitignore 対象の `tmp/` ファイルに書き出します。web アプリが安定した `data-testid` の id を公開しているので、Claude は `scenarios/smoke.yaml` と同じ id ベースのきれいなセレクタで記述します。API キーが要るのは web ではこの record 経路だけで、上の決定論的な `run`／`e2e` には要りません。
+このコマンドは `app/` を配信し、[`record/goals.txt`](record/goals.txt) のゴールに向けて実 Claude を走らせ、記述したシナリオを gitignore 対象の `tmp/` ファイルに書き出します。web アプリが安定した `data-testid` の id を公開しているので、Claude は `scenarios/smoke.yaml` と同じ id ベースのきれいなセレクタで記述します。API キーが要るのは web ではこの record 経路だけで、上の決定論的な `run`／`e2e` には要りません。
 
-キーもブラウザも無い場合、オフライン版が同じ record ループを再現します。実際の `Observation → Proposal` プロトコルと出力シナリオはそのままに、各ステップをインメモリの FakeDriver 上の要素に結びつけるのが決定論的な keyword agent なので、`make check` のツールチェーンで動きます。
+キーもブラウザも無い場合は、オフライン版が同じ record ループを再現します。実際の `Observation → Proposal` プロトコルと出力シナリオはそのままです。各ステップをインメモリの FakeDriver 上の要素に結びつけるのは決定論的な keyword agent なので、`make check` のツールチェーンで動きます。
 
 ```bash
 make -C demos/web record-offline                                   # 既定のゴール
@@ -79,9 +88,9 @@ uv run python demos/web/record/record_offline.py "get started, increment twice, 
 
 ## human-in-the-loop ハンドオフ（BE-0179）
 
-一部のステップは、AI が供給できない何かで塞がれます。ここでは out-of-band で届くワンタイムの検証コードです。`record` はそのようなステップで一時停止し、人に引き渡し、応答を受け取り、実際の画面を観測し直して再開します（[BE-0179](../../roadmaps/BE-0179-record-human-handoff/BE-0179-record-human-handoff-ja.md)）。人がループに入るのはオーサリングの最中だけで、記録したシナリオは決定論的な `run` の経路に人を置かずに再生されます。
+一部のステップは、AI が供給できない何かで塞がれます。たとえば、out-of-band で届くワンタイムの検証コードです。`record` はそのようなステップで一時停止し、人に引き渡し、応答を受け取り、実際の画面を観測し直して再開します（[BE-0179](../../roadmaps/BE-0179-record-human-handoff/BE-0179-record-human-handoff-ja.md)）。人がループに入るのはオーサリングの最中だけで、記録したシナリオは決定論的な `run` の経路に人を置かずに再生されます。
 
-AI が一時停止したときにブラウザを操作できるよう、**headed** で実行します。
+AI が一時停止したときにブラウザを操作できるよう、このデモは **headed** で実行します。
 
 ```bash
 make -C demos/web record-handoff   # 実 Claude ＋ headed ブラウザ（ANTHROPIC_API_KEY が必要）
@@ -89,7 +98,7 @@ make -C demos/web record-handoff   # 実 Claude ＋ headed ブラウザ（ANTHRO
 
 AI は **Verify a device** を押し、コード画面に着き、そのコードを知り得ないと判断して（`ask_human` のターン）一時停止します。ブラウザに表示されたコードを入力して **Verify** を押し、ターミナルのプロンプトに `done` と答えて再開してください。ループは検証済み画面を観測し直して完了します。
 
-キーもブラウザも生身の人も無い場合、オフライン版が同じ一時停止・再開を再現します。実際のハンドオフ契約と record ループはそのままに、台本化したエージェントと応答者で回すので、`make check` のツールチェーンで動きます。
+キーもブラウザも生身の人も無い場合は、オフライン版が同じ一時停止・再開を再現します。実際のハンドオフ契約と record ループはそのままに、台本化したエージェントと応答者で回すので、`make check` のツールチェーンで動きます。
 
 ```bash
 make -C demos/web record-handoff-offline
