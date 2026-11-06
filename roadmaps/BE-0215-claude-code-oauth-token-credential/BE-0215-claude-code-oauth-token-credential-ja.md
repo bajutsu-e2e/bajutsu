@@ -79,9 +79,9 @@ secret として置けるようにします。
    `AI_CLAUDE_CODE_TOKEN_SECRET = "aiClaudeCodeOauthToken"` を追加します。この secret には、
    `bajutsu/serve/operations/config.py` の `api_key_info` / `set_api_key` と同じ形の `describe` と `set`
    の対（`claude_code_token_info` / `set_claude_code_token`）を持たせます。
-   ローカルの `serve` は、保存した値をプロセス環境の `CLAUDE_CODE_OAUTH_TOKEN` に反映します。
+   - ローカルの `serve` は、保存した値をプロセス環境の `CLAUDE_CODE_OAUTH_TOKEN` に反映します。
      `set_api_key` が `ai.keyEnv` に反映するのと同じ形です。
-   ホスト型バックエンドは、他の名前付き secret と同様に、組織ごとに暗号化して保存します。
+   - ホスト型バックエンドは、他の名前付き secret と同様に、組織ごとに暗号化して保存します。
    BE-0136 が `aiApiKey` に与えているスコープの注記を、そのまま引き継ぎます。ホスト型ワーカーが
      spawn したジョブで secret を実際に利用する対応は、別のフォローアップとします。
 4. **Settings UI。** `bajutsu/templates/serve.html.j2` / `serve.core.js` に「Claude Code OAuth
@@ -104,10 +104,10 @@ secret として置けるようにします。
    自己ホスト型の利用を想定したものにします。README の自己ホスティングの節にある Secrets の案内
    にも、一行のポインタを加えます。
 7. **テスト。** 次の二つのテストを追加します。
-   新しい secret エンドポイントの対に対する `serve` operations のテスト。設定してから describe
+   - 新しい secret エンドポイントの対に対する `serve` operations のテスト。設定してから describe
      する往復がプレーンテキストを一切返さないことを確認し、既存の `aiApiKey` の契約テストと同じ形
      にします。
-   `OAUTH_TOKEN_ENV` が変更されないまま子プロセスへエクスポートされることを確認する、
+   - `OAUTH_TOKEN_ENV` が変更されないまま子プロセスへエクスポートされることを確認する、
      `claude_code.py` のテスト。現在すでにそうなっています。このテストは契約を明文化するもので、
      将来 `_ROUTING_ENV` を編集した際に、変数が気付かず取り除かれてしまうことを防ぎます。
 
