@@ -2,19 +2,20 @@
 
 [English](README.md) · **日本語**
 
-showcase は Bajutsu の次世代 dogfood 対象です。**同じアプリを 2 回書き**（UIKit と SwiftUI）、**各々を
-アクセシビリティの 2 変種**（識別子の有/無）で出すので、2 コードベースから 4 つのインストール可能な
-プロダクトができます。実アプリが持つ操作面（5 タブ、ナビゲーションスタックの push、5 つのモーダル様式、
-テキスト入力、非同期ロード、通信（実通信＋モック可能）、そして意図的に OS レベルのアラートを上げる
-画面）を、`record`、`crawl`、`run` を一度に行使できる最小のアプリに収めています。
+showcase は Bajutsu の次世代 dogfood 対象です。**同じアプリを 2 回書き**（UIKit と SwiftUI）、**それぞれを
+アクセシビリティの 2 変種**（識別子の有と無）で出すので、2 つのコードベースから 4 つのインストール可能な
+プロダクトができます。アプリには、実アプリが持つ操作面を詰め込んでいます。5 つのタブ、ナビゲーションスタックの
+push、5 つのモーダル様式、テキスト入力、非同期ロード、通信（実通信とモックの両方）、そして意図的に
+OS レベルのアラートを上げる画面です。それでも、`record`、`crawl`、`run` を一度に行使できる最小のアプリに
+収まっています。
 
-- **画面：** 全 10 画面の一覧（5 タブ＋push＋3 モーダル）は [`SPEC.md` §5](SPEC.ja.md#画面一覧) にあります。
-  タブは **Stable・Search・Log・Notices・Permissions** です。
+- **画面：** 全 10 画面の一覧（5 つのタブ、push、3 つのモーダル）は [`SPEC.md` §5](SPEC.ja.md#画面一覧) にあります。
+  タブは **Stable、Search、Log、Notices、Permissions** です。
 - **契約：** [`SPEC.ja.md`](SPEC.ja.md)（[en](SPEC.md)）に、すべての画面、識別子、launch-env フック、
   deeplink、OS アラートの配置を記します。2 つの `-a11y` アプリは同一の識別子契約を露出するので、1 つの
   [`scenarios/`](scenarios) 集が両方を駆動します。
 - **ロードマップ項目：** [BE-0045](../../roadmaps/BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps-ja.md)
-  が showcase 群の根拠を記録しています。[BE-0079](../../roadmaps/BE-0079-consolidate-demos-on-showcase/BE-0079-consolidate-demos-on-showcase-ja.md)
+  が showcase 群の根拠を記録し、[BE-0079](../../roadmaps/BE-0079-consolidate-demos-on-showcase/BE-0079-consolidate-demos-on-showcase-ja.md)
   が showcase への統合を完了させました（ロードマップの仕組みは [`roadmaps`](../../roadmaps/README-ja.md) を参照してください）。
 
 ## 4 つのプロダクト
@@ -26,13 +27,13 @@ showcase は Bajutsu の次世代 dogfood 対象です。**同じアプリを 2 
 | `showcase-swiftui-noax` | SwiftUI | 無 | `record`（ladder フォールバック）、`doctor` → Blocked |
 | `showcase-uikit-noax` | UIKit | 無 | 同上、別ツールキット |
 
-変種の差は Swift のコンパイルフラグ `ACCESSIBLE` ただ 1 つ（SPEC §8）で、ソースの分岐はありません。
-`-noax` ビルドは識別子を **持たない** ツリーにコンパイルされます。アクセシビリティを省いたチームが
+変種の差は Swift のコンパイルフラグ `ACCESSIBLE` ただ 1 つ（SPEC §8）で、ソースは分岐していません。
+`-noax` ビルドは識別子を **持たない** ツリーにコンパイルされます。これは、アクセシビリティを省いたチームが
 出荷するアプリを、そのままテスト可能にしたものです。
 
 **Android 版**（[`android/`](android/)、SPEC §2.1）：同じフィクスチャの Android 版も、BE-0007 の
 adb バックエンドに先行して用意してあります。Jetpack Compose 版が SwiftUI に、Android Views 版が
-UIKit に対応し、それぞれ同じ a11y/noax の flavor ペアでビルドします（プロダクトが 4 つ増え、
+UIKit に対応し、それぞれ同じ a11y/noax の flavor ペアを持ちます（プロダクトが 4 つ増え、
 `make -C demos/showcase/android build-all` でビルドできます）。BE-0007 が実装されるまではビルドのみ
 可能で、実行はできません（`--backend android` は「not implemented yet」と報告します）。
 
@@ -40,15 +41,17 @@ UIKit に対応し、それぞれ同じ a11y/noax の flavor ペアでビルド�
 1 つの Dart コードベースが同じ契約を**両プラットフォーム**で再現し、バックエンドを一切足しません。
 ウィジェットの `Semantics(identifier: …)` が OS のアクセシビリティツリーへ現れるので、同じ
 `scenarios/` セットが XCUITest / adb を通してそのまま駆動します（[`docs/drivers.md`](../../docs/ja/drivers.md)
-の「Flutter」を参照）。ただし Log タブのネイティブアラート（SPEC §2.1、§5.3）は例外で、Flutter 側に
-まだどの画面にも実装がありません。そのシナリオ（`scenarios/alert.yaml`）は `alert` タグを持ち、
+の「Flutter」を参照）。
+
+例外が 1 つあります。Log タブのネイティブアラート（SPEC §2.1、§5.3）で、Flutter 側のどの画面にも
+まだ実装がありません。そのシナリオ（`scenarios/alert.yaml`）は `alert` タグを持ち、
 `run-flutter` から除外しています。ターゲットは `showcase-flutter`（iOS）、`showcase-flutter-android`、
 `showcase-flutter-android-noax` です。`make -C demos/showcase run-flutter` / `run-flutter-android`
 で実行します（Flutter が PATH にあること）。
 
 ## ビルド
 
-[XcodeGen](https://github.com/yonaskolb/XcodeGen)（`brew install xcodegen`）と Xcode が必要です。
+ビルドには [XcodeGen](https://github.com/yonaskolb/XcodeGen)（`brew install xcodegen`）と Xcode が必要です。
 
 ```bash
 make -C demos/showcase build-all          # 4 プロダクトすべて
@@ -56,13 +59,13 @@ make -C demos/showcase swiftui-build      # SwiftUI a11y プロダクトのみ
 make -C demos/showcase uikit-noax-build   # UIKit no-a11y プロダクトのみ
 ```
 
-各ビルドは `…/build/dd/Build/Products/Debug-iphonesimulator/<Scheme>.app` に出力され、これは
+各ビルドは `…/build/dd/Build/Products/Debug-iphonesimulator/<Scheme>.app` に出力されます。この場所は
 `showcase.config.yaml` の `subject.path` が期待する場所そのものです。生成される `*.xcodeproj` と `build/` は
 gitignore 済みです。
 
-## 実行（起動済み Simulator 上）
+## 起動済み Simulator で実行する
 
-前提：起動済み Simulator、Xcode、XCUITest ランナー（`make -C demos/showcase runner-build`）。pip の extra は不要です。
+前提は、起動済み Simulator、Xcode、XCUITest ランナー（`make -C demos/showcase runner-build`）です。pip の extra は不要です。
 
 ```bash
 # run — 共有の id ベースシナリオを、どちらの a11y ツールキットにも（同じシナリオで）:
@@ -76,7 +79,7 @@ make -C demos/showcase doctor
 make -C demos/showcase record
 ```
 
-または `bajutsu` を直接駆動します（常にこの群の config を渡す）:
+`bajutsu` を直接駆動することもできます。その場合は常に、この群の config を渡します。
 
 ```bash
 bajutsu run --target showcase-swiftui --backend ios --config demos/showcase/showcase.config.yaml
@@ -99,36 +102,42 @@ bajutsu run --target showcase-swiftui --scenario demos/showcase/scenarios/modals
 | [`record/goals.txt`](record/goals.txt) | `record` A/B デモ用の自然言語ゴール |
 | [`crawl/`](crawl/expected-screen-map.ja.md) | `crawl`（[BE-0038](../../roadmaps/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md)、実装中）が生成すべき画面マップ。検証用テストデータ |
 
-### 対応づいた 2 つのシナリオスイート: `scenarios/`（a11y）↔ `ios/scenarios-noax/`（no-a11y）
+### 対応づいた 2 つのシナリオスイート
+
+対応づいているのは `scenarios/`（a11y）と `ios/scenarios-noax/`（no-a11y）です。
 
 `-noax` アプリは accessibility identifier を持たず、ミラーした a11y value も持たないので、id ベースの
-共有スイートでは駆動できません。`ios/scenarios-noax/` はそのラベル・可視テキスト版の対応物です。
-`scenarios/` の各操作に 1 対 1 で対応し、動作は同じですが、各ステップは要素を**可視ラベル**で指定し、
-各アサーションはアプリが同時に描画する画面上の**ミラー `Text`**（たとえば `Text("Segment: \(segment)")`、
+共有スイートでは駆動できません。`ios/scenarios-noax/` は、そのラベル・可視テキスト版の対応物です。
+`scenarios/` の各操作に 1 対 1 で対応し、動作は同じです。各ステップは要素を**可視ラベル**で指定します。
+各アサーションは、アプリが同時に描画する画面上の**ミラー `Text`**（たとえば `Text("Segment: \(segment)")`、
 `Text(favorite ? "Favorited" : "Not favorited")`）を読みます。落ちてしまう a11y value の代わりです。
-このスイートは、各 `-noax` 要素にその可視ラベルで到達できる（座標ベースのバックエンドでは届かない）
-XCUITest で実行します（`make -C demos/showcase run-swiftui-noax` / `run-uikit-noax`）。可視の
-ミラー文字列は `AppModel` と各 `*Controller`/`*View` のラベルで一致するので、1 つのスイートが `-noax` の
-両方の toolkit を駆動します。
+
+このスイートは XCUITest で実行します（`make -C demos/showcase run-swiftui-noax` / `run-uikit-noax`）。
+XCUITest は、各 `-noax` 要素にその可視ラベルで到達できます（座標ベースのバックエンドでは届きません）。
+可視のミラー文字列は `AppModel` と各 `*Controller`/`*View` のラベルで一致するので、1 つのスイートが
+`-noax` の両方の toolkit を駆動します。
 
 `scenarios/` のすべてのファイルに対応物があるわけではありません。これは意図した設計です。
 
 - **`components.yaml`**：目的は `codegen` による *id* を鍵にした native XCUITest の生成で、`-noax`
-  ビルドには id がありません。その操作（filter sheet、gallery、search）は `modals.yaml` と `search.yaml`
+  ビルドには id がありません。その操作（filter sheet、gallery、search）は、`modals.yaml` と `search.yaml`
   の対応物ですでに覆われています。
 - **`visual.yaml` / `golden/`**：ピクセルやツリーの baseline は id と画像に固有で、別の関心事です。
-- **`browser.yaml`**：`SFSafariViewController` のフロー。アサート対象のページを描くのはアプリではなく
+- **`browser.yaml`**：`SFSafariViewController` のフローです。アサート対象のページを描くのはアプリではなく
   ブラウザなので、`-noax` ビルドでもツリーは同一になり、twin は a11y 版と同じことしか確かめられません。
   アプリ側の id は 2 つで、どちらもページを配信するレーンの下にあります。
 - **`text_editing.yaml`**：テキストを入力すると Search フィールドは placeholder を失うため、`-noax`
   実行では後続の `select`／`clear`／`delete` でフィールドを可視ラベル「Search horses」で再指定できません。
   また（`push.yaml` と同様に）iOS 専用です。Compose／Views のツリーは編集可能フィールドのテキストを
   要素の `value` に出さず、`clear` はこの値を読み、各編集もこの値で検証するためです。したがって 4 つの
-  編集アクチュエータは XCUITest 上の SwiftUI／UIKit の a11y アプリで覆われています。
+  編集アクチュエータは、XCUITest 上の SwiftUI／UIKit の a11y アプリで覆われています。
 
-2 つの対応物は **SwiftUI 専用**です（`tags: [swiftui]`、`run-uikit-noax` が除外します）。`gestures_multitouch`
-（`SHOWCASE_GESTURES` の pinch/rotate 画面は SwiftUI と Compose にはありますが UIKit にはありません。a11y の
-対応物と同じ差です）と、`generated.yaml`（`showcase-swiftui-noax` で採取した `record` の出力）です。
+2 つの対応物は **SwiftUI 専用**です（`tags: [swiftui]`、`run-uikit-noax` が除外します）。
+
+- `gestures_multitouch`：`SHOWCASE_GESTURES` の pinch/rotate 画面は SwiftUI と Compose にはありますが
+  UIKit にはありません。a11y の対応物と同じ差です。
+- `generated.yaml`：`showcase-swiftui-noax` で採取した `record` の出力です。
+
 `permission.yaml` は 1 対 1 の対応のために残していますが、a11y の対応物とまったく同様に、iOS では
 **非決定的**です（SpringBoard の許可を AI の alert guard が処理します）。決定的なゲートではありません。
 これらの `-noax` 実行はオンデバイス専用で（`make check` には含みません）、ラベル・可視テキストのセレクタは
@@ -136,10 +145,11 @@ id より脆いので、スクロール回数は toolkit ごとにオンデバ�
 
 ## Deeplink
 
-deeplink scheme はプロダクトごとに分けています（2 つのインストール済みアプリが衝突しないようにするため）：`showcaseswiftui`、
-`showcaseuikit`、および `…noax` 変種です。`bajutsu` は URL をリテラルに開くので、共有シナリオは deeplink では
-なく `subject.launch.env` ＋ タップ（scheme 非依存）を使います。deeplink はタブを選択するだけで、詳細画面を push する
-ことはありません（BE-0079）。deeplink を直接行使するには次のようにします:
+deeplink scheme はプロダクトごとに分けています。2 つのインストール済みアプリが衝突しないようにするためです。
+scheme は `showcaseswiftui`、`showcaseuikit`、および `…noax` 変種です。`bajutsu` は URL をリテラルに開くので、
+共有シナリオは deeplink ではなく `subject.launch.env` ＋ タップ（scheme 非依存）を使います。
+deeplink はタブを選択するだけで、詳細画面を push することはありません（BE-0079）。
+deeplink を直接行使するには次のようにします。
 
 ```bash
 xcrun simctl openurl booted showcaseswiftui://log
@@ -148,6 +158,6 @@ xcrun simctl openurl booted showcaseuikit://permissions
 
 ## 唯一の iOS フィクスチャ
 
-showcase は Bajutsu で唯一の iOS フィクスチャです。BE-0079 で showcase を同等機能まで引き上げ、すべての
+showcase は Bajutsu で唯一の iOS フィクスチャです。BE-0079 は、showcase を同等機能まで引き上げ、すべての
 デモと実機 CI ジョブの向き先を showcase に変えたうえで、旧来の単一変種アプリ（`demo`、`sample`、`sample2`）を
 退役させました。
