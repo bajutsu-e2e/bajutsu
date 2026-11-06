@@ -257,7 +257,15 @@ A `systemAlert` entry in an `interrupts` list names an operating-system prompt a
 The scenario's own top-level `interrupts` takes the entry. The target's `hooks.interrupts` takes it
 too ([configuration](configuration.md#system-alerts-and-tipkit-in-hooksinterrupts)).
 
-The iOS backend cannot see or tap **SpringBoard-level prompts** (a notification or App Tracking Transparency request, "Allow Paste"). These prompts cover the app and collapse its element tree, silently blocking a step. The **alert guard** clears them reactively. On the iOS XCUITest backend it takes a **deterministic native path** (BE-0315): reusing BE-0316's SpringBoard query, it reads which buttons the alert offers and taps the one a `systemAlert` entry names — no screenshot and no model round trip, so it clears the common prompts in well under a tenth of a second and runs **without `ANTHROPIC_API_KEY`**. Where nothing deterministic can act — a backend without the capability, an alert no entry of yours identifies, or a non-SpringBoard surface the query cannot enumerate that no entry identifies either (the in-tree path below clears the ones an entry does identify) — **the guard does nothing** ([BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md)). The blocked step or `wait` runs on to its own timeout, exactly as it would with no guard configured, and that timeout **names what the guard saw**: `wait timeout: for {'id': 'submit'} (10.0s) — an unhandled system alert is blocking the screen (buttons: Allow, Don't Allow)`, or the hedged `… — the screen appears blocked, possibly by a system alert or another overlay outside the app's view` where nothing enumerated it. Before BE-0402 that case fell back to an AI-vision guard reading a screenshot; `run` no longer does, so **no flag of `run`'s reaches a model at all**. (`record` and `crawl` keep that guard for authoring — [details](recording.md#dismissing-system-alerts-automatically).) For a `wait` step (`for`/`gone`/`settled`/`screenChanged`), the guard acts **mid-wait**: on XCUITest, each of the wait's own tree reads answers a prompt an entry names before it returns the tree, checking SpringBoard at most once per `pollInterval` (default one second) ([BE-0461](../roadmaps/BE-0461-request-boundary-alert-resolution/BE-0461-request-boundary-alert-resolution.md)). The wait recovers before its own timeout elapses rather than waiting for the step to fail first (BE-0269).
+The iOS backend cannot see or tap **SpringBoard-level prompts** (a notification or App Tracking Transparency request, "Allow Paste"). These prompts cover the app and collapse its element tree, silently blocking a step. The **alert guard** clears them reactively.
+
+On the iOS XCUITest backend, the guard takes a **deterministic native path** (BE-0315). It reuses BE-0316's SpringBoard query to read which buttons the alert offers, then taps the one a `systemAlert` entry names. The path takes no screenshot and no model round trip, so the guard clears the common prompts in well under a tenth of a second and runs **without `ANTHROPIC_API_KEY`**.
+
+Where nothing deterministic can act, **the guard does nothing** ([BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md)). Three cases fall there: a backend without the capability, an alert that no entry identifies, and a non-SpringBoard surface that the query cannot enumerate and no entry identifies either. (The in-tree path below clears the surfaces an entry does identify.) The blocked step or `wait` runs on to its own timeout, exactly as it would with no guard configured, and that timeout **names what the guard saw**: `wait timeout: for {'id': 'submit'} (10.0s) — an unhandled system alert is blocking the screen (buttons: Allow, Don't Allow)`. Where nothing enumerated the screen, the message is the hedged `… — the screen appears blocked, possibly by a system alert or another overlay outside the app's view`.
+
+Before BE-0402, that case fell back to an AI-vision guard reading a screenshot. `run` no longer does, so **no flag of `run`'s reaches a model at all**. (`record` and `crawl` keep that guard for authoring — [details](recording.md#dismissing-system-alerts-automatically).)
+
+For a `wait` step (`for`/`gone`/`settled`/`screenChanged`), the guard acts **mid-wait**. On XCUITest, each of the wait's own tree reads answers a prompt an entry names before it returns the tree, checking SpringBoard at most once per `pollInterval` (default one second) ([BE-0461](../roadmaps/BE-0461-request-boundary-alert-resolution/BE-0461-request-boundary-alert-resolution.md)). The wait recovers before its own timeout elapses rather than waiting for the step to fail first (BE-0269).
 
 On the XCUITest backend, a frozen screen stops a `for` or `screenChanged` wait before its deadline. A screen counts as frozen when both conditions below hold. A fresh SpringBoard check finds no alert. Yet for 10 seconds, no element below the application has carried a label or an identifier. We measured such a screen on an iOS 26.5 Simulator. A notification request can land while iOS presents its Save Password alert. That alert then halts mid-presentation. It never draws and is in no process's accessibility tree, yet it stays modal over the app. Nothing the guard can reach clears it, so the wait fails at that point with a reason like this:
 
@@ -267,7 +275,7 @@ wait stopped: for {'id': 'Close'} after 10.4s — no element below the applicati
 
 A scenario opts into this stop by declaring a `systemAlert` entry for an in-app prompt such as `savePassword`. Without one, a long empty tree may be the app's own unlabelled loading screen. The wait then keeps its own timeout. An app with a slower unlabelled loading screen raises the bound with `frozenScreenTimeout` on that entry. A value of `0` turns the stop off. A `gone` or `settled` wait never stops this way, because a frozen tree already satisfies it. A `handleSystemAlert` step does not either: it waits on SpringBoard, which can still raise its prompt.
 
-It is **on by default**. On XCUITest it rides the reads a step already makes, and a step that passes takes no retry, so a passing scenario pays one SpringBoard check per `pollInterval` at most. It needs **no `ANTHROPIC_API_KEY`** and consults none. No scenario or target key turns the guard off; `bajutsu run --no-system-alert-handling` turns it off for the whole run. A scenario declares what the guard answers with `systemAlert` entries in its own top-level `interrupts`, which layer over the target's `hooks.interrupts` ([below](#layering-a-key-reaches-a-run-from-three-places)).
+The guard is **on by default**. On XCUITest it rides the reads a step already makes, and a step that passes takes no retry, so a passing scenario pays one SpringBoard check per `pollInterval` at most. The guard needs **no `ANTHROPIC_API_KEY`** and consults none. No scenario or target key turns the guard off; `bajutsu run --no-system-alert-handling` turns it off for the whole run. A scenario declares what the guard answers with `systemAlert` entries in its own top-level `interrupts`, which layer over the target's `hooks.interrupts` ([below](#layering-a-key-reaches-a-run-from-three-places)).
 
 **The `systemAlert` entries are the guard's whole declaration**
 ([BE-0406](../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts.md),
@@ -470,9 +478,10 @@ interrupts:
   - { systemAlert: localNetwork, choice: grant }
 ```
 
-The app raises this prompt during launch, before the scenario's first step. The guard otherwise first looks inside a pending wait. A first `tap` could then land on the
-prompt. To prevent that, the guard reads the SpringBoard query once before the first step. It answers a declared
+The app raises this prompt during launch, before the scenario's first step. The guard otherwise first looks inside a pending wait, so a first `tap` could land on the
+prompt. To prevent that, the guard reads the SpringBoard query once before the first step and answers a declared
 prompt already on screen.
+
 That read is native alone. It never taps the app's own buttons. It leaves an undeclared alert
 alone. A first `handleSystemAlert` step keeps its own prompt. The step may choose the opposite of an
 entry's choice. A step names a prompt by `prompt`, so the title still tells a look-alike apart. A
@@ -558,7 +567,7 @@ re-render, `trace`, and `triage`), which translate its `scenario.yaml` to the ne
 ## handleSystemAlert (the deterministic system-alert step)
 
 The `systemAlert` guard above is **reactive**: it fires automatically wherever a prompt surfaces.
-`handleSystemAlert` is its proactive counterpart — an explicit,
+`handleSystemAlert` is its proactive counterpart: an explicit,
 **deterministic step** the author places at the exact point a prompt is expected, which taps the
 prompt's button by a native accessibility query, with **no screenshot and no model**
 ([BE-0316](../roadmaps/BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md)). Reach
@@ -581,8 +590,8 @@ To dismiss the prompt rather than accept it, target the dismissive button
   `id` / `idMatches` / `traits` / `value` / `within` at parse time.
 - **The label a run must match is the one the target's [`runsOn.ios.locale`](configuration.md#config-layering-defaults--targets)
   renders.** SpringBoard owns the prompt, so it used to render in whatever system language the
-  Simulator happened to carry — making `label: "Allow"` work by accident on an English machine and
-  fail on a Japanese one. A run now pins the Simulator's own system language to that `locale` before
+  Simulator happened to carry. A `label: "Allow"` therefore worked by accident on an English machine and
+  failed on a Japanese one. A run now pins the Simulator's own system language to that `locale` before
   the app launches, so `label` / `labelMatches` resolve identically on CI, on a teammate's Mac, and on
   a contributor's Simulator alike
   ([BE-0320](../roadmaps/BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md)).
@@ -648,7 +657,7 @@ The step rejects `choice: leave` at load, because a step that taps no button mea
 this step cannot, `savePassword`, which the step rejects at parse time —
 see [the surfaces table](#answering-more-than-one-prompt-differently) above. One step names the
 button by its meaning, so the same file grants the prompt under `en_US` and under `ja_JP` without an
-author transcribing either language's text — worth having even for English alone, whose deny buttons
+author transcribing either language's text. That pays off even for English alone, because English deny buttons
 spell their apostrophe typographically (`Don’t Allow`, `Don’t Allow Paste`), not as the ASCII
 character a hand-typed label carries.
 
@@ -657,15 +666,23 @@ button's position instead
 ([BE-0445](../roadmaps/BE-0445-system-alert-locale-agnostic-answer/BE-0445-system-alert-locale-agnostic-answer.md)):
 on all three prompts SpringBoard lists the deny button first and the grant button second, which was
 measured under English and Japanese on iOS 18.6 and 26.5, and under Arabic on 26.5, by tapping each
-button and reading the authorization status the app was left with. The order is the order
+button and reading the authorization status the app was left with.
+
+The order is the order
 SpringBoard reports, not the order on screen: Arabic draws the notification prompt's deny button on
-the right, and it is still the first button. `choice: grant` taps button 2 of 2 and `choice: deny` taps button 1 of 2. The rule
+the right, and it is still the first button. `choice: grant` taps button 2 of 2 and `choice: deny` taps button 1 of 2.
+
+The rule
 names nothing on an alert with any other number of buttons, and the step then waits out its timeout
 and names the buttons it saw, rather than tapping by position on an alert the rule was never
-measured against. The rule names a button, not a prompt: SpringBoard's own title and message are
+measured against.
+
+The rule names a button, not a prompt: SpringBoard's own title and message are
 localized too, so nothing language-independent tells one two-button prompt from another, and any
 two-button SpringBoard alert up while the step waits is answered by position. Place the step
-right after the action that raises its prompt. A run with no locale at all (`record`'s replay) answers the same way. The step's
+right after the action that raises its prompt.
+
+A run with no locale at all (`record`'s replay) answers the same way. The step's
 report row shows the button it tapped and the rule that chose it — `sel`, `label table: <locale>`,
 or `position: button 2 of 2`. Every other alert keeps naming its button through `sel`, unchanged.
 
@@ -747,13 +764,16 @@ two forms fails at load and names both forms.
 A screen entry names a `condition` — the same assertion DSL `if` uses —
 and the `steps` that clear the screen. The runner checks each entry **opportunistically**, wherever in
 the sequence the screen happens to appear, and runs the entry's `steps` when the condition matches.
+
 That check is free where it rides a tree already read for this step — a `wait`'s poll tick, or
 the fresh `before` a `screenChanged`-policy step reads when it has no carried-over tree to reuse.
 Every other non-`wait` step pays one extra `driver.query()`, including a `screenChanged`-policy step
 whose `before` is the previous step's carried-over tree (BE-0234), which the guard re-reads rather
-than trust as current. After the handler runs, the interrupted step resumes where it
-left off — a `wait` keeps polling toward its original timeout, an act step takes its action — so an
-author no longer has to predict the one spot to place an `if`.
+than trust as current.
+
+After the handler runs, the interrupted step resumes where it
+left off: a `wait` keeps polling toward its original timeout, and an act step takes its action. An
+author therefore no longer has to predict the one spot to place an `if`.
 
 ```yaml
 # config.yaml — an app-wide default: this app's onboarding screen, on every scenario
@@ -783,13 +803,17 @@ targets:
 An `interrupts` list set at the **config** level (`targets.<name>.hooks.interrupts`) is an app-wide
 default; a scenario's own `interrupts` is **appended** to it, config entries checked first — the
 same config-then-scenario layering every form of entry follows ([layering](#layering-a-key-reaches-a-run-from-three-places)). An entry's `steps` share the
-enclosing scenario's `vars.*` bindings, exactly as `if`'s branches do. A handler may itself `use` a
+enclosing scenario's `vars.*` bindings, exactly as `if`'s branches do.
+
+A handler may itself `use` a
 [component](#reuse-data-and-tags), which expands before the run. A config-level entry may too: a
 `use` under `targets.<name>.hooks.interrupts` resolves when the config loads, against the config
-file's directory ([reuse](#reuse-data-and-tags)). If a handler's
+file's directory ([reuse](#reuse-data-and-tags)).
+
+If a handler's
 own `steps` never clear its `condition` (a broken selector, a screen that re-renders identically),
-the entry fires only a small bounded number of times per step and then the step falls back to its
-ordinary outcome (pass, fail, or timeout) — a mis-set entry fails the step cleanly rather than
+the entry fires only a small bounded number of times per step, and then the step falls back to its
+ordinary outcome (pass, fail, or timeout). A mis-set entry thus fails the step cleanly rather than
 hanging the run.
 
 A scenario may declare two or more [targets](#targets--target-multi-target-scenarios-be-0428).
@@ -969,7 +993,9 @@ A selector identifies **which element** to act on or assert against. Provide one
 
 ### Cross-platform ids: a candidate list (BE-0221)
 
-A scenario is shared across platforms only to the extent its selectors are by `id`, and the driver decides which app-side attribute satisfies that `id`. But some platforms can't reproduce the SPEC id **verbatim**: Android's `android:id` (the Views toolkit) allows neither `.` nor `-`, so `stable.refresh` surfaces as `stable_refresh` and `search.results-empty` as `search_results_empty`. To keep **one** scenario running unchanged everywhere, give `id` / `idMatches` a **list of candidates** and the match becomes an OR over them:
+A scenario is shared across platforms only to the extent its selectors are by `id`, and the driver decides which app-side attribute satisfies that `id`. But some platforms can't reproduce the SPEC id **verbatim**: Android's `android:id` (the Views toolkit) allows neither `.` nor `-`, so `stable.refresh` surfaces as `stable_refresh` and `search.results-empty` as `search_results_empty`.
+
+To keep **one** scenario running unchanged everywhere, give `id` / `idMatches` a **list of candidates** and the match becomes an OR over them:
 
 ```yaml
 - wait: { for: { id: [stable.refresh, stable_refresh] }, timeout: 10 }
