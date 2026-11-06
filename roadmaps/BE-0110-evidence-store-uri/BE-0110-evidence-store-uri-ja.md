@@ -16,33 +16,48 @@
 
 ## はじめに
 
-テスト実行後の証跡（スクリーンショット、要素ツリー、レポート、動画、ログ）を、S3 互換または GCS のオブジェクトストレージにアップロードする機能を追加します。アップロード先は単一の URI（`s3://bucket/prefix` または `gs://bucket/prefix`）で指定します。
+テスト実行後に、証跡（スクリーンショット、要素ツリー、レポート、動画、ログ）を S3 互換または GCS の
+オブジェクトストレージへアップロードできるようにします。アップロード先は、単一の URI
+（`s3://bucket/prefix` または `gs://bucket/prefix`）で指定します。
 
-アップロードパスによってクラウド側のライフサイクルポリシーが切り替わるため、main ブランチの証跡は永続保存し、feature ブランチの証跡は短期間で自動削除する、といった運用が可能になります。
+アップロードパスによって、クラウド側のライフサイクルポリシーが切り替わります。そのため、main
+ブランチの証跡は永続保存し、feature ブランチの証跡は短期間で自動削除する運用が可能になります。
 
 ## 動機
 
-`serve` をホスティング環境や CI から利用する場合、テスト証跡はワーカーのローカルファイルシステムに書き出されます。コンテナや VM が回収されると、証跡も失われます。監査、デバッグ、コンプライアンスのために証跡を永続化する必要がありますが、すべての証跡を同じ期間保持する必要はありません。
+`serve` をホスティング環境や CI から利用すると、テスト証跡はワーカーのローカルファイルシステムに
+書き出されます。コンテナや VM が回収されると、証跡も失われます。監査、デバッグ、コンプライアンスの
+ために証跡を永続化する必要がありますが、すべての証跡を同じ期間保持する必要はありません。
 
-- **main ブランチへのマージ時**に生成される証跡は、リグレッション履歴や監査証跡として長期保存が求められます。
-- **feature ブランチの PR 実行時**に生成される証跡は、レビュー期間中にのみ有用であり、数日後に削除してストレージコストを抑えられます。
+- **main ブランチへのマージ時**の証跡には、長期保存が求められます。リグレッション履歴や監査証跡と
+  して使うためです。
+- **feature ブランチの PR 実行時**の証跡は、レビュー期間中にだけ役立ちます。数日後に削除すれば、
+  ストレージコストを抑えられます。
 
-S3 や GCS のオブジェクトストレージは、プレフィックスに基づくライフサイクルルールを備えています。呼び出し側がアップロードパスを制御できれば、保持ポリシーはクラウドプロバイダに委譲できます。Bajutsu 側に TTL ロジックやガベージコレクション、削除コードを持つ必要はありません。
+S3 や GCS のオブジェクトストレージは、プレフィックスに基づくライフサイクルルールを備えています。
+呼び出し側がアップロードパスを制御できれば、保持ポリシーをクラウドプロバイダに委譲できます。
+Bajutsu 自身には、TTL ロジックもガベージコレクションも削除コードも要りません。
 
-現在の `serve` アーキテクチャ（BE-0015、BE-0106）には、`serve/server/object_store.py` に S3 向けの `ObjectStore` プロトコルがあり、アーティファクトの読み出し、シナリオの保存、ビジュアルベースラインの書き込みに使用されています。この提案では、そのインターフェースを run 完了後の証跡アップロードに拡張し、GCS 対応を追加し、`serve` の単一 URI フラグで設定を統一します。
+現在の `serve` アーキテクチャ（BE-0015、BE-0106）には、`serve/server/object_store.py` に S3 向けの
+`ObjectStore` プロトコルがあります。アーティファクトの読み出し、シナリオの保存、ビジュアル
+ベースラインの書き込みに使われています。この提案では、その継ぎ目を run 完了後の証跡アップロードへ
+拡張し、GCS 対応を加えます。あわせて、`serve` の設定を単一の URI フラグに統一します。
 
 ## 詳細設計
 
 ### 1. URI スキームとパース
 
-ストレージバックエンド、バケット、プレフィックスを一つの URI で表現します。
+ストレージバックエンド、バケット、プレフィックスを、一つの URI で表現します。
 
 ```
 s3://my-bucket/evidence/main/
 gs://my-bucket/evidence/feature/pr-123/
 ```
 
-スキーム（`s3` または `gs`）がバックエンドを選択します。`gs://` は内部的に `gcs` バックエンドにマップされます。スキームは `gsutil` / `gcloud` の慣例に合わせ、バックエンド名はライブラリ名に合わせています。最初のパスセグメントがバケット名、残りがキープレフィックスです。末尾のスラッシュは内部で正規化されます（常に付与）。
+スキーム（`s3` または `gs`）がバックエンドを選びます。`gs://` は内部的に `gcs` バックエンドへ対応
+づけます。スキームは `gsutil` / `gcloud` の慣例に合わせ、バックエンド名はライブラリ名に合わせて
+います。最初のパスセグメントがバケット名で、残りがキープレフィックスです。パーサーは末尾の
+スラッシュを正規化するので、内部では常に付いています。
 
 パーサー（`bajutsu/object_store.py`）が `StoreURI` データクラスを生成します。
 
@@ -56,12 +71,16 @@ class StoreURI:
 
 ### 2. 統一 `ObjectStore` プロトコル
 
-既存の `serve/server/object_store.py` にある `ObjectStore` プロトコルを、トップレベルモジュール（`bajutsu/object_store.py`）に昇格させます。`run` と `serve` の両方から利用できるようにするためです。
+既存の `serve/server/object_store.py` にある `ObjectStore` プロトコルを、トップレベルモジュール
+（`bajutsu/object_store.py`）へ昇格させます。`run` と `serve` の両方から使えるようにするためです。
 
-現行のプロトコル表面（`exists`、`get_bytes`、`put_bytes`、`put_file`、`presigned_url`、`list_keys`）を維持したまま、以下を追加します。
+現行のプロトコル表面（`exists`、`get_bytes`、`put_bytes`、`put_file`、`presigned_url`、
+`list_keys`）は維持したまま、次の二つを追加します。
 
-- `put_bytes` と `put_file` に `content_type` キーワード引数を追加。アップロード時にアーティファクトごとの MIME タイプを設定するためです。
-- `presigned_put_url` メソッドを追加。署名付き PUT URL を発行するためです（既存の `presigned_url` は GET 用）。
+- `put_bytes` と `put_file` に `content_type` キーワード引数を追加します。アップロード時に、
+  アーティファクトごとの MIME タイプを設定するためです。
+- `presigned_put_url` メソッドを追加します。署名付き PUT URL を発行するためです（既存の
+  `presigned_url` は GET 用）。
 
 ```python
 class ObjectStore(Protocol):
@@ -74,18 +93,20 @@ class ObjectStore(Protocol):
     def list_keys(self, prefix: str) -> list[str]: ...
 ```
 
-`StoreURI` から構築される実装は 2 種類です。
+`StoreURI` から構築する実装は 2 種類です。
 
 | 実装 | バックエンド | 依存ライブラリ |
 |---|---|---|
 | `S3ObjectStore` | S3 互換（AWS、MinIO、R2） | `boto3`（オプショナル） |
 | `GCSObjectStore` | Google Cloud Storage | `google-cloud-storage`（オプショナル） |
 
-ファクトリ関数（`object_store_from_uri(uri: StoreURI) -> ObjectStore`）が実装を選択し、必要なライブラリが未インストールの場合は具体的なインストールコマンドを含むエラーを返します。
+ファクトリ関数（`object_store_from_uri(uri: StoreURI) -> ObjectStore`）が実装を選びます。必要な
+ライブラリが未インストールなら、具体的なインストールコマンドを含むエラーを返します。
 
 ### 3. 二層アップロードアーキテクチャ
 
-証跡のアップロードは、デプロイ構成に応じて二つのモードを使い分けます。設計上の要点は、**`serve` 経由で実行する場合、Worker にクラウドの認証情報が不要**であることです。
+証跡のアップロードには、デプロイ構成に応じて使い分ける二つのモードがあります。設計上の要点は、
+**`serve` 経由で実行する場合、Worker にクラウドの認証情報が不要**であることです。
 
 | モード | 認証情報の保持者 | Worker の依存 | 利用場面 |
 |---|---|---|---|
@@ -94,7 +115,8 @@ class ObjectStore(Protocol):
 
 #### 3a. Presigned URL モード（serve、推奨）
 
-Server が `ObjectStore` の認証情報を保持し、署名付き PUT URL を発行します。Worker は平文の HTTP PUT でアップロードするため、SDK も認証情報も不要です。
+Server が `ObjectStore` の認証情報を保持し、署名付き PUT URL を発行します。Worker は平文の HTTP PUT で
+アップロードするので、SDK も認証情報も要りません。
 
 ```
 1. Run が Worker 上で完了 → 証跡が runs/<run_id>/ にローカル保存される
@@ -108,52 +130,68 @@ Server が `ObjectStore` の認証情報を保持し、署名付き PUT URL を�
 6. Worker → Server:  アップロード完了を報告
 ```
 
-Presigned PUT URL は S3（`generate_presigned_url("put_object", ...)`）と GCS（V4 signed URL）の両方でサポートされています。TTL はデフォルト 1 時間で、一般的な run のアーティファクトを一括アップロードするのに十分です。
+Presigned PUT URL は、S3（`generate_presigned_url("put_object", ...)`）と GCS（V4 signed URL）の
+どちらでも使えます。TTL のデフォルトは 1 時間です。一般的な run のアーティファクトを一括でアップ
+ロードするには十分です。
 
 #### 3b. 直接 SDK モード（スタンドアロン `bajutsu run`）
 
-ローカル実行やスタンドアロン CI（`serve` を介さない場合）では、Runner が SDK 経由で直接アップロードします。
+ローカル実行やスタンドアロン CI（`serve` を介さない場合）では、Runner が SDK 経由で直接アップロード
+します。
 
 ```bash
 bajutsu run --evidence-store gs://bucket/feature/pr-42/ scenarios/
 ```
 
-このパスでは `boto3` または `google-cloud-storage` と対応する認証情報が環境に必要です。後述する逐次アップロードと同じ処理ですが、presigned URL を介さない直接書き込みになります。
+このパスでは、`boto3` または `google-cloud-storage` と、対応する認証情報が環境に必要です。処理は
+後述の逐次アップロードと同じで、presigned URL を介さずに直接書き込みます。
 
 ### 4. run 完了後のアップロードステップ
 
-いずれのモードでも、アップロードは run パイプラインが完了し判定が確定した**後に**実行されます。ローカルの `runs/<run_id>/` ディレクトリツリーを走査し、設定されたプレフィックスの下に相対パス構造を保ったまま各ファイルをアップロードします。
+いずれのモードでも、アップロードは run パイプラインが完了し、判定が確定した**後に**実行します。
+このステップは、ローカルの `runs/<run_id>/` ディレクトリツリーを走査し、各ファイルをアップロード
+します。設定されたプレフィックスの下に、相対パス構造をそのまま保ちます。
 
 ```
 ローカル:  runs/20260702-143000/00-login/step-1/after.png
 リモート:  s3://bucket/evidence/main/20260702-143000/00-login/step-1/after.png
 ```
 
-重要な振る舞いは以下のとおりです。
+重要な振る舞いは、次のとおりです。
 
-- **アップロードの失敗は run の判定を変更しません。** run の結果はローカルに書き出し済みで、報告も完了しています。アップロードエラーは警告としてログに記録し、run のサマリーに表示しますが、終了コードは判定のまま維持します。
-- **Content-Type はファイル拡張子から推定します**（`.png` → `image/png`、`.json` → `application/json`、`.html` → `text/html` など）。
-- **並列アップロード**は将来の最適化として許容しますが、初回実装では逐次処理で十分です。
+- **アップロードの失敗は、run の判定を変更しません。** run の結果はローカルに書き出し済みで、報告も
+  完了しています。アップロードエラーは警告としてログに記録し、run のサマリーに表示します。終了
+  コードは、判定のまま維持します。
+- **Content-Type は、ファイル拡張子から推定します**（`.png` → `image/png`、`.json` →
+  `application/json`、`.html` → `text/html` など）。
+- **並列アップロード**は、将来の最適化として許容します。初回実装では必須ではなく、逐次処理で十分
+  です。
 
-アップロードは `runner/pipeline.py` のレポート生成後に、最後のステップとして組み込みます。
+アップロードは、`runner/pipeline.py` のレポート生成後に、最後のステップとして組み込みます。
 
 ### 5. `serve` の設定
 
-`serve` 経由で実行する場合、証跡ストアはサーバーレベルの設定です。ジョブごとには指定しません。`serve` コマンドは以下のフラグを受け付けます。
+`serve` 経由で実行する場合、証跡ストアはジョブごとではなく、サーバーレベルの設定です。`serve`
+コマンドは、次のフラグを受け付けます。
 
 ```bash
 bajutsu serve --evidence-store s3://bucket/evidence/
 ```
 
-環境変数でも同等に設定できます。
+環境変数でも、同等に設定できます。
 
 ```bash
 BAJUTSU_EVIDENCE_STORE=s3://bucket/evidence/ bajutsu serve ...
 ```
 
-Server が SDK の認証情報と `ObjectStore` インスタンスを保持します。この `serve` インスタンスで完了したすべてのジョブに対して、presigned PUT URL が発行されます。run ID が常にパスに含まれるため、run 同士が衝突することはありません。
+Server が、SDK の認証情報と `ObjectStore` インスタンスを保持します。この `serve` インスタンスで完了
+したすべてのジョブに対して、presigned PUT URL を発行します。run ID は常にパスに含まれるので、run
+同士が衝突することはありません。
 
-CI はジョブ投入時にプレフィックスをパラメータとして渡すことで、パスを制御します（`/api/runs` エンドポイントがオプショナルの `evidence_prefix` を受け付け、サーバーのベース URI に追記します）。Server は `evidence_prefix` を安全な相対パスセグメントとして検証し（先頭 `/` や `..` トラバーサルを拒否）、キーエスケープを防止します。
+CI は、run を投入するときにプレフィックスをジョブのパラメータとして渡し、パスを制御します。
+`/api/runs` エンドポイントは、オプショナルの `evidence_prefix` を受け付け、サーバーのベース URI に
+追記します。追記の前に、Server は `evidence_prefix` を安全な相対パスセグメントとして検証します
+（先頭 `/` や `..` トラバーサルを拒否します）。キーエスケープを防ぐためです。
 
 ```bash
 # CI が serve に run を投入し、プレフィックスを指定する例
@@ -161,11 +199,14 @@ curl -X POST https://serve.example.com/api/runs \
   -d '{"config": "...", "evidence_prefix": "main/abc1234/"}'
 ```
 
-`serve` インスタンスがバケットと認証情報を管理し、CI はパスのみを制御します。Worker はクラウドの認証情報に触れません。
+`serve` インスタンスがバケットと認証情報を管理し、CI はパスだけを制御します。関心事が綺麗に分かれ
+ます。Worker は、クラウドの認証情報に触れません。
 
 ### 6. オプショナル依存
 
-`boto3` と `google-cloud-storage` はいずれも必須依存にはしません。オプショナルの extras として宣言し、**Server（control plane）またはスタンドアロンモードでのみ必要**とします。Worker には不要です。
+`boto3` と `google-cloud-storage` は、どちらも必須依存にはしません。オプショナルの extras として
+宣言します。必要になるのは、**Server（control plane）またはスタンドアロンモードだけ**で、Worker には
+不要です。
 
 ```toml
 [project.optional-dependencies]
@@ -174,31 +215,37 @@ gcs = ["google-cloud-storage"]
 cloud = ["boto3", "google-cloud-storage"]
 ```
 
-`uv sync --extra s3` や `uv sync --extra cloud` で必要なものをインストールします。`--evidence-store` を指定したがライブラリが未インストールの場合、エラーメッセージにインストールコマンドを明記します。
+`uv sync --extra s3` や `uv sync --extra cloud` で、必要なものをインストールします。
+`--evidence-store` を指定したのにライブラリが未インストールなら、エラーメッセージにインストール
+コマンドを明記します。
 
 ### 7. 認証
 
 Bajutsu は認証情報を**管理しません**。各 SDK の標準クレデンシャルチェーンに委譲します。
 
-- **S3**: boto3 のクレデンシャルチェーン（環境変数、`~/.aws/credentials`、IAM ロール、OIDC）
-- **GCS**: `google-cloud-storage` の ADC（環境変数、`GOOGLE_APPLICATION_CREDENTIALS`、Workload Identity Federation、メタデータサーバー）
+- **S3**：boto3 のクレデンシャルチェーン（環境変数、`~/.aws/credentials`、IAM ロール、OIDC）
+- **GCS**：`google-cloud-storage` の ADC（環境変数、`GOOGLE_APPLICATION_CREDENTIALS`、Workload
+  Identity Federation、メタデータサーバー）
 
-`serve` 構成では、これらの認証情報が必要なのは **Server のみ**です。Worker は presigned URL 経由でアップロードするため、クラウド SDK も認証情報も不要です。エフェメラルなコンテナにシークレットを配布する必要がなくなります。
+`serve` 構成で、これらの認証情報が必要なのは **Server だけ**です。Worker は presigned URL 経由で
+アップロードするので、クラウド SDK も認証情報も要りません。エフェメラルなコンテナにシークレットを
+配布する必要がなくなります。
 
-GCS の signed URL には、署名用の秘密鍵が要ります。ところが Workload Identity Federation
-で解決した ADC の認証情報は、アクセストークンしか持ちません。Kubernetes サービスアカウント
-(KSA) が Google サービスアカウント (GSA) に成りすます KSA→GSA 連携も、この経路の一種です。
-秘密鍵を持たないため、ローカルでの署名はエラーになります。
+GCS の signed URL には、署名用の秘密鍵が要ります。ところが、Workload Identity Federation で解決した
+ADC の認証情報は、アクセストークンしか持ちません。Kubernetes サービスアカウント (KSA) が Google
+サービスアカウント (GSA) に成りすます KSA→GSA 連携も、この経路の一種です。秘密鍵を持たないので、
+ローカルでの署名はエラーになります。
 
 `object_store_from_uri` は、ADC を `cloud-platform` スコープで一度だけ解決し、その認証情報を
-`GCSObjectStore` に渡します。署名するとき、経路は認証情報がローカルで署名できるかどうかで
-分かれます。キーファイルや、なりすまし済みの認証情報は、ローカルでの署名をそのまま使います。
-KSA→GSA の認証情報はローカルで署名できないため、その `service_account_email` と
-`access_token` を使い、IAM の `signBlob` API 経由で署名します。
+`GCSObjectStore` に渡します。署名の経路は、認証情報がローカルで署名できるかどうかで分かれます。
 
-運用上の前提が1つ増えるのは、IAM 経由で署名する場合だけです。署名する GSA 自身に、IAM の
-権限を1つ追加する必要があります。付与する権限は `roles/iam.serviceAccountTokenCreator`
-(または同等の `iam.serviceAccounts.signBlob` 権限)です。
+- キーファイルの認証情報や、なりすまし済みの認証情報は、ローカルでの署名をそのまま使います。
+- KSA→GSA の認証情報はローカルで署名できません。その `service_account_email` と `access_token` を
+  使い、IAM の `signBlob` API 経由で署名します。
+
+運用上の前提が一つ増えるのは、IAM 経由で署名する場合だけです。署名する GSA 自身に、IAM の権限を
+一つ追加する必要があります。付与する権限は `roles/iam.serviceAccountTokenCreator`
+（または同等の `iam.serviceAccounts.signBlob` 権限）です。
 
 ## 検討した代替案
 
@@ -212,23 +259,31 @@ evidenceStore:
   prefix: evidence/
 ```
 
-バケット、リージョン、プレフィックスを設定フィールドに分離する方式です。URI 一本のほうが直感的で、`aws s3 cp` などのツールと同じ形式で統一感があるため、採用しませんでした。リージョンやエンドポイントは、既存の `s3_client_from_env()` が参照する環境変数（`BAJUTSU_S3_REGION` / `AWS_REGION`、`BAJUTSU_S3_ENDPOINT`）で設定できます。
+バケット、リージョン、プレフィックスを設定フィールドに分ける方式です。採用しませんでした。URI
+一本のほうが直感的で、`aws s3 cp` などのツールと同じ形式なので統一感があります。リージョンと
+エンドポイントは、既存の `s3_client_from_env()` が参照する環境変数（`BAJUTSU_S3_REGION` /
+`AWS_REGION`、`BAJUTSU_S3_ENDPOINT`）で設定できます。
 
 ### B. ダイレクト書き込み `ObjectStoreSink`（ローカル FS を経由しない）
 
-run 中にローカルの `FileSink` を経由せず、オブジェクトストレージに直接書き込む方式です。ローカルディスクの往復を省略できますが、以下の問題があります。
+run 中に、ローカルの `FileSink` を経由せず、オブジェクトストレージへ直接書き込む方式です。ローカル
+ディスクの往復を省けますが、次の問題があります。
 
-- ネットワーク障害が run 中に発生すると証跡を失う可能性があります。
-- レポートジェネレータがローカルファイルを読んで `manifest.json` と `report.html` を構築するため、パイプラインの変更が大きくなります。
-- ローカルコピーがないためデバッグが困難になります。
+- ネットワーク障害が run 中に起きると、証跡を失う可能性があります。
+- レポートジェネレータは、ローカルファイルを読んで `manifest.json` と `report.html` を構築します。
+  そのため、パイプラインの変更が大きくなります。
+- ローカルコピーがないので、デバッグが困難になります。
 
-run 完了後のアップロードのほうがシンプルで安全であり、既存のパイプラインを変更せずに済みます。
+run 完了後のアップロードのほうが、シンプルで安全です。既存のパイプラインを変更せずに済みます。
 
 ### C. 独立したアップロードコマンド（`bajutsu upload`）
 
-既存の `runs/` ディレクトリをアップロードするスタンドアロンコマンドです。統合型のアップロードと共存できますが、CI パイプラインに余分なステップが増えます。`--evidence-store` フラグであれば追加ステップは不要で、設定し忘れるリスクもありません。
+既存の `runs/` ディレクトリをアップロードする、スタンドアロンのコマンドです。統合型のアップロードと
+共存できますが、CI パイプラインに余分なステップが増えます。`--evidence-store` フラグなら追加の
+ステップは不要で、設定し忘れるリスクもありません。
 
-過去の run を遡ってアップロードしたい場合などに、将来スタンドアロンコマンドを追加しても、この設計と矛盾しません。
+過去の run を遡ってアップロードしたい場合などに、将来スタンドアロンのコマンドを追加しても、この
+設計とは矛盾しません。
 
 ## 進捗
 
