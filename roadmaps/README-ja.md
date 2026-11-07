@@ -5,8 +5,8 @@
 > [!IMPORTANT]
 > **オープンな項目の担当者管理は、このファイルではなく GitHub Issues で行っています。** `状態` が
 > `承認済み` または `実装中` の項目には、それぞれ対応する GitHub Issue があります。その Issue の
-> **Assignee（担当者）** が、誰か担当しているかどうかについての唯一の拠り所です。このリポジトリのどの欄も
-> 担当者を追跡していません。[`roadmap-tracking` ラベルの付いた Issue 一覧](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+is%3Aopen+label%3Aroadmap-tracking)
+> **Assignee（担当者）** が、誰が担当しているのか、あるいは誰も担当していないのかについての唯一の
+> 拠り所です。このリポジトリのどの欄も担当者を追跡していません。[`roadmap-tracking` ラベルの付いた Issue 一覧](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+is%3Aopen+label%3Aroadmap-tracking)
 > から確認できます。`no:assignee` で未着手のバックログを、`assignee:<user>` で担当者ごとの分担を
 > 絞り込めます。詳しくは
 > [BE-0109](BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues-ja.md)

@@ -4,8 +4,8 @@
 他社のアプリがこのライブラリを導入するときと同じ形をしています。
 
 サンプルは独自の Gradle ルートを持ち、[`demos/showcase/android`](../../demos/showcase/android) とは別物です。
-あちらははるかに大きなフィクスチャで、IdentifierTool を別の形で使っています。Views と Compose の
-両方の半分を、`BajutsuAndroid` と組み合わせています。
+あちらははるかに大きなフィクスチャで、IdentifierTool を別の形で使っています。Views 側と Compose 側の
+両方を、`BajutsuAndroid` と組み合わせています。
 
 `MainActivity.kt` は、2つの view に対して `View.accessibilityId` / `View.accessibilityStateValue` を呼びます。
 それぞれの名前は、`app/src/main/res/values/ids.xml` にあらかじめ宣言しています。この Views 側の注意点は、
