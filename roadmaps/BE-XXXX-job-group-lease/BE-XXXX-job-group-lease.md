@@ -28,7 +28,7 @@ Today a `run-set` already fans a target out into one job per scenario. Each job 
 - **A large set is cut short at registration.** The server's global, per-user, and per-org concurrency caps count queued jobs. When a fan-out reaches a cap, the server stops registering and returns the jobs it has so far, with status 200. The remaining scenarios are never queued.
 - **A set of jobs has no identity.** The response lists `jobIds` and nothing names the set. A caller cannot ask for the set's status. A retried request registers the same scenarios a second time, and nothing detects the duplicate. A caller that wants to publish the set as one check on a pull request has no key to attach it to.
 
-The observable difference has four parts. A `run-set` of N scenarios that share a config and a binary uploads the binary once per stretch in which a Device Farm worker holds jobs of the group, where today it uploads it N times. A `run-set` request without `environment` is accepted and runs on whichever workers serve the platform. A `run-set` larger than the concurrency caps registers every scenario and runs them in turns. And a second request that carries the same group key returns the existing group and registers no new jobs.
+The observable difference has four parts. A `run-set` of N scenarios that share a config and a binary uploads the binary once per stretch in which a Device Farm worker holds jobs of the group, where today it uploads it N times. A `run-set` request without `environment` is accepted and runs on whichever workers serve the platform. A `run-set` larger than the concurrency caps registers every scenario and runs them in turns. The group bound alone limits its size. And a second request that carries the same group key returns the existing group and registers no new jobs.
 
 ## Detailed design
 
@@ -36,19 +36,20 @@ The observable difference has four parts. A `run-set` of N scenarios that share 
 
 - **Group**: the jobs one `run-set` request registers. A group has a **group key**, which the caller may choose, and a **group id**, which the server assigns.
 - **Run intent**: what a job asks to run, independent of where. It names the target, the scenario, the config, the application reference, and the platform.
-- **Compatibility key**: a digest of what a worker can share between jobs. It covers the config bytes, the application binary digest, the platform, and the target name. It leaves out the scenario, which differs from job to job.
-- **Bundle**: the jobs one worker leases in one request. Every job in a bundle belongs to one group and has one compatibility key. A group may split into many bundles across many workers.
+- **Compatibility key**: a digest of what a worker can share between jobs. It covers the config bytes, the application binary digest, the platform, and the target name. It leaves out the scenario, which differs from job to job. One request fixes all four inputs, so a group holds one compatibility key.
+- **Route key**: a digest of a job's all-of `capabilities` list and its `anyOf` alternatives. Two jobs with the same route key get the same verdict from `can_serve`.
+- **Bundle**: the jobs one worker leases in one request. Every job in a bundle belongs to one group. A group may split into many bundles across many workers.
 
 ### Registering a group
 
 `POST /api/run-set` keeps its body, with `environment` now optional and one optional field added, `groupKey`. The response gains `groupId` and keeps `jobIds`.
 
 - The group key is a string of at most 128 characters from `[A-Za-z0-9._/:-]`. It is unique within the caller's org. The server generates a key when the caller sends none.
-- Registration is all or nothing. Either every scenario of the request becomes a queued job, or the request is refused and no group exists. The concurrency caps no longer cut a group short, because they apply at lease time, as a later section describes. A server setting instead bounds a group's scenario count, and a request above it is refused. Without it, one request could queue an unbounded number of jobs.
+- Registration is all or nothing. Either every scenario of the request becomes a queued job, or the request is refused and no group exists. The concurrency caps no longer cut a group short, because they apply at lease time, as a later section describes. A server setting instead bounds a group's scenario count, and a request above it is refused. Without it, one request could queue an unbounded number of jobs. The bound counts the scenarios the request expands to. An omitted `scenarios` expands to the target's whole directory. A deployment thus sets the bound above its largest target's scenario count. A caller above the bound names explicit subsets and gets one group per subset.
 - A server without a queue still refuses every `run-set`, as today. A single-machine start gets a queue by default, so only a server started without a queue meets the refusal.
 - A repeated request with the same key and the same request digest returns the existing group with status 200 and registers no jobs. A repeated key with a different digest is refused with status 409. The digest covers the target, the scenario names, the config digest, the application digest, the run label, and the `environment` (empty when omitted).
 - A GitHub Actions caller builds the key from `GITHUB_RUN_ID`, `GITHUB_RUN_ATTEMPT`, and `GITHUB_JOB`. `GITHUB_RUN_ID` alone is wrong, because a re-run of a workflow keeps its run id and changes only the attempt. The key therefore makes a retried request within one attempt idempotent. A deliberate re-run asks for a fresh group and gets one.
-- A new table, `job_groups`, holds the org, the key, the request digest, and the creation time, with a unique index on the org and key. Each job record gains `group_id` and `compat_key` columns. Jobs registered by other routes leave both empty.
+- A new table, `job_groups`, holds the org, the key, the request digest, and the creation time, with a unique index on the org and key. Each job record gains `group_id`, `compat_key`, and `route_key` columns. Jobs registered by other routes leave all three empty. The lease response carries `compat_key`, which keys the worker's upload cache (unit 4).
 - `GET /api/run-set/<groupId>` returns the group's jobs and their statuses, for the caller's own org alone. A group of another org answers 404 rather than 403, non-leaky like every other org-scoped read (BE-0015). It is the read route a reporter polls. Publishing the result as a GitHub check is a separate concern and is out of scope.
 
 ### A job that any environment can run
@@ -70,12 +71,18 @@ The server writes the alternatives from the target's platform. An `appium` grid 
 
 | Platform | Local alternative | Device-cloud alternatives |
 |---|---|---|
-| `android`, `ios` | every token a plain run of the target requires (`target_capabilities`): the platform and host tokens, BE-0468's device-family tokens, and the `cap:` and `setting:` tokens | one `environment:<provider>` per device cloud the deployment names, when the target has `subject.path` |
-| `web` | platform and host tokens, plus the same `cap:` and `setting:` tokens | none |
+| `android`, `ios` | every token a plain run of the scenario requires: the platform, host, and device-family tokens that `target_capabilities` returns, plus the scenario's own `cap:` and `setting:` tokens, read from its text by `scenario_route_needs` (BE-0467) | one `environment:<provider>` per device cloud the deployment names, when the target has `subject.path` |
+| `web` | platform and host tokens, plus the scenario's own `cap:` and `setting:` tokens | none |
 
-The server runs the same `route_refusal` check on the local alternative that it runs for a plain run. A refused local alternative is dropped, and the request is refused with status 400 only when no alternative remains. The deployment names its device clouds in the server's configuration, so no caller has to know them. A request that passes `environment` keeps today's single all-of list.
+The server runs the same `route_refusal` check on the local alternative that it runs for a plain run. Each job has alternatives of its own, because its scenario decides its `cap:` and `setting:` tokens. The check thus runs per job. A refused local alternative is dropped. A job with no alternative left refuses the whole request with status 400. Registration is all or nothing. The response names the scenario and the missing tokens. The deployment names its device clouds in the server's configuration, so no caller has to know them. A request that passes `environment` keeps today's single all-of list.
 
-Four consumers judge whether a worker can serve a job: the lease filter in `lease_job`, the unroutable count, the no-worker notice (`lacks_live_worker`), and `route_refusal`. All four go through `can_serve`, which accepts the alternatives and passes when any one does. The four thus keep agreeing, as BE-0468 requires of its own token.
+Four consumers judge whether a worker can serve a job: the lease filter in `lease_job`, the unroutable count, the no-worker notice (`lacks_live_worker`), and `route_refusal`. All four go through `can_serve`. It keeps today's `capabilities` list as an all-of condition and takes the alternatives beside it. A worker serves the job when each of these holds:
+
+- It advertises every token of the all-of list.
+- At least one alternative is a subset of the tokens it advertises.
+- If it advertises an `environment:*` token, the alternative it satisfies requires that token. This is BE-0448's environment rule, judged against the alternative instead of the all-of list.
+
+The token that keeps older workers off a run-intent job sits in the all-of list. It applies whichever alternative a worker satisfies. The four consumers thus keep agreeing, as BE-0468 requires of its own token.
 
 The worker that leases the job decides where it runs, and the first worker to lease wins. The place a scenario runs is therefore not fixed, and the same scenario may pass on a Simulator and fail on a cloud device. Prime directive 2 concerns waits and selectors, and the verdict still comes from assertions alone. The cost remains a reproducibility cost, so the run records the environment of the worker that executed it in its provenance, and the report shows it. A caller that needs one placement passes `environment`.
 
@@ -83,23 +90,27 @@ The worker that leases the job decides where it runs, and the first worker to le
 
 The lease request gains `maxJobs`, the number of free slots the worker has: `maxJobConcurrency` minus the jobs in flight. When the request carries `maxJobs`, the response is a list of leased jobs, each in today's per-job shape. Without it, the response is today's single object, so a worker from before this item still leases a plain job. A run-intent job additionally requires a token that only a worker from this item advertises, so an older worker never leases one. An older worker would fail the job instead of leaving it queued: a device-cloud worker's `environment_refusal` refuses a spec that carries no `batch` (BE-0448), and a local worker finds no `cmd` to run.
 
-`lease_job` first picks the anchor in the way it does today: the oldest queued job the worker can serve. When the anchor has a group, the call then claims up to `maxJobs - 1` further queued jobs. Each must carry the anchor's `group_id` and `compat_key` and be servable by the worker. Each claim is the same conditional `UPDATE ... WHERE status = 'queued'` as the anchor's claim, so a lost race skips one job and never fails the lease.
+`lease_job` first picks the anchor in the way it does today: the oldest queued job the worker can serve. When the anchor has a group, the call then claims up to `maxJobs - 1` further queued jobs. Each must carry the anchor's `group_id` and route key. It then shares the anchor's verdict, so the worker can serve it. Each claim is the same conditional `UPDATE ... WHERE status = 'queued'` as the anchor's claim, so a lost race skips one job and never fails the lease.
 
 The anchor stays the oldest servable job, so the order between groups does not change. The followers may overtake older jobs of other groups, and `maxJobs` bounds how far. This is a deliberate cost. The saved uploads are worth more than strict age order inside the queue.
 
-The scan that finds the anchor reads one candidate per pair of `group_id` and `compat_key`. Today `lease_job` loads every queued job, oldest first, and tests each with `can_serve`. A worker that cannot serve a group of five hundred scenarios thus tests five hundred jobs first. This item still reads every queued job outside a group. For group jobs, it reads the oldest queued job of each pair alone. A window function selects that job:
+The scan that finds the anchor reads one candidate per pair of `group_id` and route key. Registration stores the route key with the job. Today `lease_job` loads every queued job, oldest first, and tests each with `can_serve`. A worker that cannot serve a group of five hundred scenarios thus tests five hundred jobs first. This item still reads every queued job outside a group. For group jobs, it reads the oldest queued job of each pair alone. A window function selects that job:
 
 ```sql
-ROW_NUMBER() OVER (PARTITION BY group_id, compat_key ORDER BY created_at)
+ROW_NUMBER() OVER (PARTITION BY group_id, route_key ORDER BY created_at)
 ```
 
-SQLite and PostgreSQL both support window functions, so the SQLite gate exercises the same query. An index on `(status, group_id, compat_key, created_at)` keeps the selection inside the database. The `can_serve` calls in Python then grow with the groups and the plain jobs, not the queue.
+SQLite and PostgreSQL both support window functions, so the SQLite gate exercises the same query. An index on `(status, group_id, route_key, created_at)` keeps the selection inside the database. In Python, `can_serve` then runs once per plain job and once per route key of a group. The queue length no longer sets the cost.
 
-One candidate can stand for its pair because every job of a pair gets the same verdict. The server computes the required tokens and the `anyOf` alternatives once per request. It derives them from the target, the config, the `backend`, and the `environment`. Every job of a group thus stores the same set. The jobs also share the org and the actor, against which the caps count. This sameness is an invariant of the design. A later change could add a per-job input to the required set. That change would break the invariant. It would then have to add a digest of the required tokens to the pair.
+One candidate can stand for its pair because every job of a pair gets the same verdict. The verdict of `can_serve` reads the job's all-of list and alternatives. The route key digests both. The caps count against the org and the actor, which one request fixes.
 
-The candidate query takes no lock, as today. PostgreSQL would refuse `FOR UPDATE` on it anyway, since it uses a window function. The claim then runs a second query on the chosen pair alone, with no window function. That query takes the queued jobs of the pair oldest first, up to `maxJobs`. PostgreSQL locks them with `FOR UPDATE SKIP LOCKED`. SQLite claims each with the conditional `UPDATE`. Workers that chose the same pair thus spread across its jobs instead of racing for its oldest one.
+A group needs the route key because its jobs do not share one required set. A scenario's own `cap:` and `setting:` tokens come from its text (BE-0467). Two scenarios of one group can thus need different tokens. Such a group splits into more pairs, and each pair costs one `can_serve` call. When every scenario needs its own set, the scan costs what today's scan costs. A pair has one verdict, so its oldest job never hides a younger job that the worker could serve.
 
-The capability check stays in `can_serve` alone, so the four consumers keep one definition. The total number of queued group jobs stays unbounded. Registration bounds each group, and the `can_serve` calls in Python no longer grow with the total. The database still reads every queued group row through the index.
+The invariant is that the route key covers every per-job input of the verdict. A later change that adds one must add it to the key.
+
+The candidate query takes no lock, as today. PostgreSQL would refuse `FOR UPDATE` on it anyway, since it uses a window function. The claim then runs a second query on the chosen pair alone, with no window function. That query takes the queued jobs of the pair oldest first, up to `maxJobs`. PostgreSQL locks them with `FOR UPDATE SKIP LOCKED`. SQLite claims each with the conditional `UPDATE`. Workers that chose the same pair thus spread across its jobs instead of racing for its oldest one. A bundle holds jobs of one route key. A group with more than one route key fills its bundles one key at a time.
+
+The capability check stays in `can_serve` alone, so the four consumers keep one definition. The total number of queued group jobs stays unbounded. Registration bounds each group. The `can_serve` calls in Python follow the groups and their route keys, not their scenarios. The database still reads every queued group row through the index.
 
 A secret-store read failure during the lease fails every job of the bundle, where today it fails one job. The jobs share one org, and the read would fail for each of them alike.
 
@@ -145,11 +156,11 @@ A failed shared upload fails each slot that waited on it, through the same path 
 
 ### Work breakdown (MECE)
 
-1. **Group registration.** The `job_groups` table, the server setting that bounds a group's scenario count, the `group_id`, `compat_key`, and `actor` columns, the `groupKey` field, all-or-nothing registration, the idempotency and conflict rules, and `GET /api/run-set/<groupId>`.
+1. **Group registration.** The `job_groups` table, the server setting that bounds a group's scenario count, the `group_id`, `compat_key`, `route_key`, and `actor` columns, the `groupKey` field, all-or-nothing registration, the idempotency and conflict rules, and `GET /api/run-set/<groupId>`.
 2. **Run intent.** The job shape that names a run intent, its conversion into a local run on a local worker and into a `BatchRequest` on a device-cloud worker, the token that keeps an older worker from leasing it, `environment_refusal` accepting a run-intent spec, which carries no `batch`, and the web path.
-3. **Grouped lease and caps.** `maxJobs` on the lease request, the multi-claim in `lease_job`, the scan of one candidate per pair and its index, the list response, the worker client's use of its free slots, the lease-time caps counted on the jobs table, the registry's exclusion of queued group jobs, and its probe of the jobs table for leases.
+3. **Grouped lease and caps.** `maxJobs` on the lease request, the multi-claim in `lease_job`, the scan of one candidate per group and route key, with its index, the list response, the worker client's use of its free slots, the lease-time caps counted on the jobs table, the registry's exclusion of queued group jobs, and its probe of the jobs table for leases.
 4. **Shared upload.** The Device Farm provider's application upload held by compatibility key, the package reused only when it holds the job's scenario, the exception for a hook that sets a launch environment, and the fallback to one upload per job.
-5. **Either-or routing.** The `anyOf` field, `can_serve` accepting the alternatives for all four consumers, the server's choice of alternatives per platform, the dropped local alternative, and the provenance record.
+5. **Either-or routing.** The `anyOf` field, `can_serve` accepting the alternatives for all four consumers, the server's choice of alternatives per platform, the dropped local alternative, `environment` becoming optional on the request, and the provenance record. `environment` stays required until this unit lands. Until then, no job registers with an empty required set, which any worker would serve.
 6. **Documentation.** The `docs/` pages and their `docs/ja/` mirrors for the serve API, the worker, and routing, plus the affected passages of `DESIGN.md` and `docs/architecture.md`.
 
 Out of scope: publishing a group's result as a GitHub check, sharing uploads between workers, running concurrent jobs on a local device, and lease-time caps for jobs outside a group.
@@ -157,7 +168,7 @@ Out of scope: publishing a group's result as a GitHub check, sharing uploads bet
 ## Alternatives considered
 
 - **One Device Farm run per group, with the scenarios run in sequence.** This is the shape of [BE-0235](../BE-0235-aws-device-farm-submitter/BE-0235-aws-device-farm-submitter.md). It reserves the fewest devices, and the wall-clock time grows with the scenario count. BE-0336 left it for that reason, so this item keeps one run per job.
-- **Bundle by the compatibility key alone, with no group key.** Jobs from any route that share a config and a binary would bundle. Nothing would tell the caller which jobs form a set, and a retried request could not be detected as a duplicate. The group key supplies both, and the compatibility key still guards against a wrong bundle.
+- **Bundle by the compatibility key alone, with no group key.** Jobs from any route that share a config and a binary would bundle. Nothing would tell the caller which jobs form a set, and a retried request could not be detected as a duplicate. The group key supplies both.
 - **Keep the registration-time caps and let a retry register the rest.** A retry with the same key would add the scenarios the cap left out. A group would gain an "incomplete" state, and a caller would have to retry until the group fills. Lease-time caps make the same group run to completion with no retry.
 - **Let the server build the package and upload for the group.** The server would hold the cloud credentials again, which [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch.md) removed on purpose. The worker keeps both.
 - **Test capabilities in the query.** The scan would then skip the jobs a worker cannot serve. The cost is a second implementation of `can_serve` in two Structured Query Language (SQL) dialects. That query would carry the three rules of `can_serve` and the cap counts:
@@ -166,7 +177,7 @@ Out of scope: publishing a group's result as a GitHub check, sharing uploads bet
   - the `anyOf` alternatives
   - the caps
 
-  The other three consumers would keep the Python implementation. The two copies would have to stay in step. The scan of one candidate per pair bounds the cost by the group count, with one implementation.
+  The other three consumers would keep the Python implementation. The two copies would have to stay in step. The one-candidate scan bounds the cost by groups and route keys, with a single implementation.
 - **Keep the explicit environment and add grouping only.** This is the smaller change, and it needs no run intent. It leaves the second cost, that every caller must know the placement, and a CI workflow would still hard-code `devicefarm`.
 
 ## Progress
