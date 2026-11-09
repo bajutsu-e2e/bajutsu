@@ -26,7 +26,7 @@ Today a `run-set` already fans a target out into one job per scenario. Each job 
 - **Shared work repeats per job.** The Device Farm provider builds a package and calls `submit_and_collect` with the application path for every job. A `run-set` of forty scenarios against one target uploads the same binary forty times. The config and the scenarios in the package are the same bundle each time.
 - **The submitter must know where the run happens.** The request requires `environment` naming a batch provider. A caller such as a GitHub Actions job wants to say "run these on Android" and leave the placement to the operator. [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md) made the environment a choice per run, and that choice now falls on every caller.
 - **A large set is cut short at registration.** The server's global, per-user, and per-org concurrency caps count queued jobs. When a fan-out reaches a cap, the server stops registering and returns the jobs it has so far, with status 200. The remaining scenarios are never queued.
-- **A set of jobs has no identity.** The response lists `jobIds` and nothing names the set. A caller cannot ask for the set's status. A retried CI job registers the same scenarios a second time, and nothing detects the duplicate. A caller that wants to publish the set as one check on a pull request has no key to attach it to.
+- **A set of jobs has no identity.** The response lists `jobIds` and nothing names the set. A caller cannot ask for the set's status. A retried request registers the same scenarios a second time, and nothing detects the duplicate. A caller that wants to publish the set as one check on a pull request has no key to attach it to.
 
 The observable difference has four parts. A `run-set` of N scenarios that share a config and a binary uploads the binary once per stretch in which a Device Farm worker holds jobs of the group, where today it uploads it N times. A `run-set` request without `environment` is accepted and runs on whichever workers serve the platform. A `run-set` larger than the concurrency caps registers every scenario and runs them in turns. And a second request that carries the same group key returns the existing group and registers no new jobs.
 
@@ -44,12 +44,12 @@ The observable difference has four parts. A `run-set` of N scenarios that share 
 `POST /api/run-set` keeps its body, with `environment` now optional and one optional field added, `groupKey`. The response gains `groupId` and keeps `jobIds`.
 
 - The group key is a string of at most 128 characters from `[A-Za-z0-9._/:-]`. It is unique within the caller's org. The server generates a key when the caller sends none.
-- Registration is all or nothing. Either every scenario of the request becomes a queued job, or the request is refused and no group exists. The concurrency caps no longer cut a group short, because they apply at lease time, as a later section describes.
+- Registration is all or nothing. Either every scenario of the request becomes a queued job, or the request is refused and no group exists. The concurrency caps no longer cut a group short, because they apply at lease time, as a later section describes. A server setting instead bounds a group's scenario count, and a request above it is refused. Without it, one request could queue an unbounded number of jobs, and `lease_job` scans every queued job on each poll.
 - A server without a queue still refuses every `run-set`, as today. A single-machine start gets a queue by default, so only a server started without a queue meets the refusal.
-- A repeated request with the same key and the same request digest returns the existing group with status 200 and registers no jobs. A repeated key with a different digest is refused with status 409. The digest covers the target, the scenario names, the config digest, the application digest, and the `environment` (empty when omitted).
-- A GitHub Actions caller builds the key from `GITHUB_RUN_ID`, `GITHUB_RUN_ATTEMPT`, and `GITHUB_JOB`. `GITHUB_RUN_ID` alone is wrong, because a re-run of a workflow keeps its run id and changes only the attempt.
+- A repeated request with the same key and the same request digest returns the existing group with status 200 and registers no jobs. A repeated key with a different digest is refused with status 409. The digest covers the target, the scenario names, the config digest, the application digest, the run label, and the `environment` (empty when omitted).
+- A GitHub Actions caller builds the key from `GITHUB_RUN_ID`, `GITHUB_RUN_ATTEMPT`, and `GITHUB_JOB`. `GITHUB_RUN_ID` alone is wrong, because a re-run of a workflow keeps its run id and changes only the attempt. The key therefore makes a retried request within one attempt idempotent. A deliberate re-run asks for a fresh group and gets one.
 - A new table, `job_groups`, holds the org, the key, the request digest, and the creation time, with a unique index on the org and key. Each job record gains `group_id` and `compat_key` columns. Jobs registered by other routes leave both empty.
-- `GET /api/run-set/<groupId>` returns the group's jobs and their statuses. It is the read route a reporter polls. Publishing the result as a GitHub check is a separate concern and is out of scope.
+- `GET /api/run-set/<groupId>` returns the group's jobs and their statuses, for the caller's own org alone. A group of another org answers 404 rather than 403, non-leaky like every other org-scoped read (BE-0015). It is the read route a reporter polls. Publishing the result as a GitHub check is a separate concern and is out of scope.
 
 ### A job that any environment can run
 
@@ -66,11 +66,11 @@ When a request passes `environment`, the job carries the same run intent and rou
 
 A job's `capabilities` today is an all-of list, and a worker must advertise every token. A job registered without an `environment` needs an either-or. [BE-0468](../BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of.md) already stores one any-of group as a single token, `anyof:<token>|<token>`, which a worker satisfies by advertising any one member. That token cannot say "all of these tokens, or all of those", and the local alternative needs several tokens together. A new field, `anyOf`, therefore holds alternative token lists, and a worker may serve the job when at least one alternative is a subset of its advertised tokens.
 
-The server writes the alternatives from the target's platform.
+The server writes the alternatives from the target's platform. An `appium` grid (BE-0452) is not among them, so an environment-less request reaches no grid worker, and a grid-only deployment still passes `environment`. Adding that alternative is out of scope here.
 
 | Platform | Local alternative | Device-cloud alternatives |
 |---|---|---|
-| `android`, `ios` | platform and host tokens, plus the `cap:` and `setting:` tokens a plain run of the target requires | one `environment:<provider>` per device cloud the deployment names, when the target has `subject.path` |
+| `android`, `ios` | every token a plain run of the target requires (`target_capabilities`): the platform and host tokens, BE-0468's device-family tokens, and the `cap:` and `setting:` tokens | one `environment:<provider>` per device cloud the deployment names, when the target has `subject.path` |
 | `web` | platform and host tokens, plus the same `cap:` and `setting:` tokens | none |
 
 The server runs the same `route_refusal` check on the local alternative that it runs for a plain run. A refused local alternative is dropped, and the request is refused with status 400 only when no alternative remains. The deployment names its device clouds in the server's configuration, so no caller has to know them. A request that passes `environment` keeps today's single all-of list.
@@ -81,7 +81,7 @@ The worker that leases the job decides where it runs, and the first worker to le
 
 ### Leasing a bundle
 
-The lease request gains `maxJobs`, the number of free slots the worker has: `maxJobConcurrency` minus the jobs in flight. When the request carries `maxJobs`, the response is a list of leased jobs, each in today's per-job shape. Without it, the response is today's single object, so a worker from before this item keeps working.
+The lease request gains `maxJobs`, the number of free slots the worker has: `maxJobConcurrency` minus the jobs in flight. When the request carries `maxJobs`, the response is a list of leased jobs, each in today's per-job shape. Without it, the response is today's single object, so a worker from before this item still leases a plain job. A run-intent job additionally requires a token that only a worker from this item advertises, so an older worker never leases one. An older worker would fail the job instead of leaving it queued: a device-cloud worker's `environment_refusal` refuses a spec that carries no `batch` (BE-0448), and a local worker finds no `cmd` to run.
 
 `lease_job` first picks the anchor in the way it does today: the oldest queued job the worker can serve. When the anchor has a group, the call then claims up to `maxJobs - 1` further queued jobs. Each must carry the anchor's `group_id` and `compat_key` and be servable by the worker. Each claim is the same conditional `UPDATE ... WHERE status = 'queued'` as the anchor's claim, so a lost race skips one job and never fails the lease.
 
@@ -95,7 +95,7 @@ A local worker still accepts a `maxJobConcurrency` of one only, as [BE-0450](../
 
 The global, per-user, and per-org caps of the server keep their meaning: the number of jobs one deployment, one user, or one org may run at once. For a group job they count leased jobs instead of queued ones. Two stores count jobs today, and the design fixes which one owns each count.
 
-- **The jobs table owns the lease-time count.** It already holds every queued job, since the server runs no job itself. `lease_job` counts the jobs that hold a slot, globally, per org, and per user: leased jobs of every kind, plus queued jobs outside a group. The registry admits plain jobs on the same definition, so the two counts never disagree, and a queued plain job keeps its slot against a group lease. It skips a group job when any of the three caps is reached, and it stops adding followers to a bundle at the same point.
+- **The jobs table owns the lease-time count.** It already holds every queued job, since the server runs no job itself. `lease_job` counts the jobs that hold a slot, globally, per org, and per user: leased jobs of every kind, plus queued jobs outside a group. The registry admits plain jobs on the same definition, so the two counts never disagree, and a queued plain job keeps its slot against a group lease. `lease_job` skips a group job when any of the three caps is reached, and stops adding followers to a bundle at the same point.
 - **Each job record gains an `actor` column**, so the per-user count needs no read of the spec JSON. Today the actor lives inside the spec alone.
 - **The in-memory registry leaves queued group jobs out of its count.** The registry counts every registered job that has not finished, and plain jobs are capped on that count at registration. A group job enters that count when it is leased. The registry learns of a lease the way it learns of a finish today: it probes the jobs table before each count. Otherwise a queued group of two hundred scenarios would hold the caps and refuse every plain run of its org until the group drains.
 
@@ -131,8 +131,8 @@ A failed shared upload fails each slot that waited on it, through the same path 
 
 ### Work breakdown (MECE)
 
-1. **Group registration.** The `job_groups` table, the `group_id`, `compat_key`, and `actor` columns, the `groupKey` field, all-or-nothing registration, the idempotency and conflict rules, and `GET /api/run-set/<groupId>`.
-2. **Run intent.** The job shape that names a run intent, its conversion into a local run on a local worker and into a `BatchRequest` on a device-cloud worker, and the web path.
+1. **Group registration.** The `job_groups` table, the server setting that bounds a group's scenario count, the `group_id`, `compat_key`, and `actor` columns, the `groupKey` field, all-or-nothing registration, the idempotency and conflict rules, and `GET /api/run-set/<groupId>`.
+2. **Run intent.** The job shape that names a run intent, its conversion into a local run on a local worker and into a `BatchRequest` on a device-cloud worker, the token that keeps an older worker from leasing it, `environment_refusal` accepting a run-intent spec, which carries no `batch`, and the web path.
 3. **Grouped lease and caps.** `maxJobs` on the lease request, the multi-claim in `lease_job`, the list response, the worker client's use of its free slots, the lease-time caps counted on the jobs table, the registry's exclusion of queued group jobs, and its probe of the jobs table for leases.
 4. **Shared upload.** The Device Farm provider's application upload held by compatibility key, the package reused only when it holds the job's scenario, the exception for a hook that sets a launch environment, and the fallback to one upload per job.
 5. **Either-or routing.** The `anyOf` field, `can_serve` accepting the alternatives for all four consumers, the server's choice of alternatives per platform, the dropped local alternative, and the provenance record.
@@ -143,7 +143,7 @@ Out of scope: publishing a group's result as a GitHub check, sharing uploads bet
 ## Alternatives considered
 
 - **One Device Farm run per group, with the scenarios run in sequence.** This is the shape of [BE-0235](../BE-0235-aws-device-farm-submitter/BE-0235-aws-device-farm-submitter.md). It reserves the fewest devices, and the wall-clock time grows with the scenario count. BE-0336 left it for that reason, so this item keeps one run per job.
-- **Bundle by the compatibility key alone, with no group key.** Jobs from any route that share a config and a binary would bundle. Nothing would tell the caller which jobs form a set, and a retried CI job could not be detected as a duplicate. The group key supplies both, and the compatibility key still guards against a wrong bundle.
+- **Bundle by the compatibility key alone, with no group key.** Jobs from any route that share a config and a binary would bundle. Nothing would tell the caller which jobs form a set, and a retried request could not be detected as a duplicate. The group key supplies both, and the compatibility key still guards against a wrong bundle.
 - **Keep the registration-time caps and let a retry register the rest.** A retry with the same key would add the scenarios the cap left out. A group would gain an "incomplete" state, and a caller would have to retry until the group fills. Lease-time caps make the same group run to completion with no retry.
 - **Let the server build the package and upload for the group.** The server would hold the cloud credentials again, which [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch.md) removed on purpose. The worker keeps both.
 - **Keep the explicit environment and add grouping only.** This is the smaller change, and it needs no run intent. It leaves the second cost, that every caller must know the placement, and a CI workflow would still hard-code `devicefarm`.
