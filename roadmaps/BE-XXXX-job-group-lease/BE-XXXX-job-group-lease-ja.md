@@ -71,12 +71,17 @@
 
 - プラットフォームのトークンです。`platform:ios`、`platform:android`、`platform:web` のいずれかです。
 - iOS の target では、BE-0468 のデバイスファミリーのトークンです。
+- iOS の target では、run が取る kind ごとの `kind:simulator` または `kind:device` のトークンです。ファミリーを指定しているかどうかは問いません。
 - シナリオ自身の `cap:` と `setting:` のトークンです。シナリオの本文から読みます（BE-0467）。
 - 実行意図のトークンです。本項目の worker だけが広告します。
 
-`host:` のトークンは要求しません。driver が必要とするホストは、ローカルの worker の性質だからです。BE-0450 以降、ローカルの worker は自分のホストで動かせるプラットフォームだけを広告するので、プラットフォームのトークンがホストの条件も兼ねます。これは、1つのプラットフォームの actuator がすべて同じホストに結び付いていることを前提にしています。この前提を崩す actuator を足すときは、`host:` のトークンを戻す必要があります。非推奨の `--capabilities` の上書きにはまだ `platform:ios` を入れられるので、単位 5 でこの上書きに `platform:` を予約します。
+`host:` のトークンは要求しません。driver が必要とするホストは、ローカルの worker の性質だからです。BE-0450 以降、ローカルの worker は自分のホストで動かせるプラットフォームだけを広告するので、プラットフォームのトークンがホストの条件も兼ねます。これは、1つのプラットフォームの actuator がすべて同じホストに結び付いていることを前提にしています。この前提を崩す actuator を足すときは、`host:` のトークンを戻す必要があります。非推奨の `--capabilities` の上書きにはまだ `platform:ios` を入れられるので、単位 5 でこの上書きに `platform:` と `kind:` を予約します。
 
-デバイスクラウドの worker は、広告するものを変えます。現在は `platform:*` のトークンの代わりに `environment:<provider>` を広告しています（BE-0448）。本項目では、provider が担当するプラットフォームも広告します。デバイスファミリーのトークンは広告しません。provider のデバイスの選択は、プラットフォームだけで端末を絞り込むからです。そのため、ファミリーを指定する target（`runsOn.ios.family`）は、それを守れる worker にだけ回ります。現在は `environment: devicefarm` でそうした target も Device Farm に送られ、Device Farm はファミリーを無視します。
+kind のトークンは、target が宣言した kind 以外で target が走らないようにします。これがないと、ファミリーを指定しない iOS の target は kind について何も要求しません。その場合、Simulator 向けの target を、デバイスクラウドの worker が実機で走らせてしまいます。kind は、`_family_requirements` がすでに求めているものを使います。target が挙げる `kind` か、挙げない場合は target の driver から決まる kind（`driven_kind`）です。そのため、デバイスクラウド向けの iOS の target は、`device` を挙げるか、driver が `device` を選ぶ構成にします。そうした target のビルドは、もともと実機にインストールできなければならず、Simulator 向けのビルドではインストールできません。両方の kind を挙げる target は、両方を持つローカルの worker にだけ回ります。通常の job は kind のトークンを要求しません。
+
+ローカルの worker は、インストール済みの Simulator の端末があれば `kind:simulator` を広告します。iPhone か iPad がつながっていて、`worker.yaml` が `realDevices: false` でないあいだは、`kind:device` を広告します。このトークンは、現在の実機のトークンと同じく、lease のたびに読み直します。
+
+デバイスクラウドの worker は、広告するものを変えます。現在は `platform:*` のトークンの代わりに `environment:<provider>` を広告しています（BE-0448）。本項目では、provider が担当するプラットフォームも広告します。デバイスファミリーのトークンは広告しません。provider のデバイスの選択は、プラットフォームだけで端末を絞り込むからです。そのため、ファミリーを指定する target（`runsOn.ios.family`）は、それを守れる worker にだけ回ります。現在は `environment: devicefarm` でそうした target も Device Farm に送られ、Device Farm はファミリーを無視します。デバイスクラウドの worker は、予約する端末がすべて実機なので、`kind:device` を広告します。
 
 BE-0448 の環境の規則は、`environment:*` を広告する worker を、そのトークンを要求しないすべての job から遠ざけます。この規則は、実行意図のトークンを要求する job には適用しません。それ以外の job には引き続き適用するので、デバイスクラウドの worker が、ローカルのデバイスを起動する通常の run を lease することはありません。`appium` のグリッドの worker（BE-0452）は `platform:*` のトークンを広告しないので、グループの job を取りません。グリッドだけのデプロイは、通常の run の要求でシナリオを実行し続けます。
 
@@ -174,7 +179,7 @@ worker は、その互換キーを持つ job が1件でも実行中のあいだ�
 2. **実行意図。** 実行意図を持つ job の形、ローカルの worker でのローカル実行への変換とデバイスクラウドの worker での `BatchRequest` への変換、`batch` を持たない実行意図の spec を受け付ける `environment_refusal`、古い worker に lease させないトークン、web の経路。
 3. **グループ単位の lease と上限。** lease 要求の `maxJobs`、`lease_job` の複数 claim、グループとルートキーの組ごとに1件の候補を読む走査とその index、リストのレスポンス、worker クライアントによる空きスロットの利用、jobs テーブルで数える lease 時の上限、registry から待機中のグループの job を外す処理、registry による jobs テーブルでの lease の確認、不可分な登録、`groupKey` フィールド、要求ダイジェスト、org とキーの一意インデックス、冪等性と競合の規則。
 4. **upload の共有。** Device Farm provider のアプリの upload を互換キーごとに保持する処理、job のシナリオを含む場合に限った package の再利用、起動時の環境変数を設定するフックの例外、job ごとの upload へのフォールバック。
-5. **プラットフォームによるルーティング。** `host:` を含まないグループの job の要求トークン、プラットフォームを広告するデバイスクラウドの worker、`--capabilities` の上書きでの `platform:` の予約、登録時の job ごとの `scenario_route_needs` と `route_refusal`、実行意図の job に対する環境の規則の例外、`environment` を送った要求への 400、Replay タブが `environment` を送らなくなる変更、provenance の記録。この単位が入るまで、`run-set` は `environment` を必須とします。そのあいだ、グループの job は `environment:<provider>` と実行意図のトークンを要求し、現在どおりその環境に回ります。
+5. **プラットフォームによるルーティング。** `host:` を含まないグループの job の要求トークン、iOS のグループの job の `kind:` のトークンとそれを広告する worker、プラットフォームを広告するデバイスクラウドの worker、`--capabilities` の上書きでの `platform:` と `kind:` の予約、登録時の job ごとの `scenario_route_needs` と `route_refusal`、実行意図の job に対する環境の規則の例外、`environment` を送った要求への 400、Replay タブが `environment` を送らなくなる変更、provenance の記録。この単位が入るまで、`run-set` は `environment` を必須とします。そのあいだ、グループの job は `environment:<provider>` と実行意図のトークンを要求し、現在どおりその環境に回ります。
 6. **ドキュメント。** serve API、worker、ルーティングについての `docs/` と `docs/ja/` の各ページ、および `DESIGN.md` と `docs/architecture.md` の該当箇所。
 
 範囲外とするのは、グループの結果を GitHub の check として公開すること、worker 間で upload を共有すること、ローカルのデバイスで job を並行実行すること、グループ外の job に lease 時の上限を適用すること、デバイスクラウドの worker での `cap:` と `setting:` の確認です。デバイスクラウドの worker は、現在 route トークンを計算しません（BE-0467）。lease はそうした job を未確認として記録し（`unchecked_lease`）、レポートにもそう表示します。グループの job を `appium` のグリッドに回すことと、デバイスクラウドでファミリーによって端末を選ぶことも範囲外です。
