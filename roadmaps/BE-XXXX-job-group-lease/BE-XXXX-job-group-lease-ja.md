@@ -15,16 +15,16 @@
 
 ## はじめに
 
-本項目は、`run-set` の役割と、worker が `run-set` を消費する方法を変えます。`run-set` は job の**グループ**を登録するだけにします。worker は同じグループの job を1回の要求でまとめて lease します。共有する package とアプリのバイナリは1回だけ upload し、job は並列に実行します。1つのグループを複数の worker が分担でき、各 worker は空きスロットの数だけ job を取ります。投稿側が指定するのはプラットフォーム（`ios`、`android`、`web`）だけで、実行環境は指定しません。サーバは、そのプラットフォームを担当できる worker に job を回します。worker がローカルのデバイスを操作するか、デバイスクラウドへ submit するかは問いません。
+本項目は、`run-set` の役割と、worker が `run-set` を消費する方法を変えます。`run-set` は job の**グループ**を登録するだけにします。worker は同じグループの job を1回の要求でまとめて lease します。共有する package とアプリのバイナリは1回だけ upload し、job は並列に実行します。1つのグループを複数の worker が分担でき、各 worker は空きスロットの数だけ job を取ります。要求元が指定するのはプラットフォーム（`ios`、`android`、`web`）だけで、実行環境は指定しません。サーバは、そのプラットフォームを担当できる worker に job を回します。worker がローカルのデバイスを操作するか、デバイスクラウドへ submit するかは問いません。
 
-現在の `run-set` も、target をシナリオごとに1つの job へ展開します。ただし各 job は互いに独立しています。Device Farm の worker は job を1件ずつ lease し、job ごとに package を作り、同じバイナリを毎回 upload します。投稿側も `environment: devicefarm` を明示しなければなりません。本項目はシナリオごとの job と、job ごとの結果を残します。job の上にグループという単位を足し、job が共有する作業を worker ごとに1回で済ませます。
+現在の `run-set` も、target をシナリオごとに1つの job へ展開します。ただし各 job は互いに独立しています。Device Farm の worker は job を1件ずつ lease し、job ごとに package を作り、同じバイナリを毎回 upload します。要求元も `environment: devicefarm` を明示しなければなりません。本項目はシナリオごとの job と、job ごとの結果を残します。job の上にグループという単位を足し、job が共有する作業を worker ごとに1回で済ませます。
 
 ## 動機
 
 [BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out-ja.md) は、シナリオを並列に走らせるため、スイートをシナリオごとの Device Farm run に分けました。[BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch-ja.md) は、そのディスパッチを worker に移し、worker が最大 `maxJobConcurrency` 件の job を lease するようにしました。この分割で並列性は得られましたが、次の4つのコストが残っています。
 
 - **共有できる作業が job ごとに繰り返されます。** Device Farm provider は、job ごとに package を作り、アプリのパスを渡して `submit_and_collect` を呼びます。1つの target に対する40シナリオの `run-set` は、同じバイナリを40回 upload します。package に入る config とシナリオも、毎回同じ bundle です。
-- **投稿側が実行場所を知っている必要があります。** 現在の要求は、バッチ provider を指す `environment` を必須とします。GitHub Actions の job のような呼び出し元は、「これらを Android で走らせたい」とだけ言い、配置は運用者に任せたいはずです。[BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md) は環境を run ごとの選択にしましたが、その選択がすべての呼び出し元に降りかかっています。
+- **要求元が実行場所を知っている必要があります。** 現在の要求は、バッチ provider を指す `environment` を必須とします。GitHub Actions の job のような呼び出し元は、「これらを Android で走らせたい」とだけ言い、配置は運用者に任せたいはずです。[BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md) は環境を run ごとの選択にしましたが、その選択がすべての呼び出し元に降りかかっています。
 - **大きな集まりは登録の時点で途中までになります。** サーバ全体、ユーザーごと、org ごとの同時実行上限は、待機中の job を数えます。展開が上限に達すると、サーバは登録をやめ、そこまでの job を status 200 で返します。残りのシナリオはキューに入りません。
 - **job の集まりに識別子がありません。** レスポンスは `jobIds` を返すだけで、集まりを指す名前がありません。呼び出し元は集まりの状態を問い合わせられません。再試行された要求は同じシナリオを二重に登録しますが、重複を検出する手段もありません。集まりを pull request の1つの check として公開したい場合も、結びつけるキーがありません。
 
@@ -85,6 +85,8 @@ worker が job を担当できるかを判断する箇所は4つあります。`
 
 古い worker に実行意図の job を lease させないトークンは all-of のリストに入るので、worker がどの代替を満たしても必ず効きます。そのため4つの判断は、BE-0468 が自身のトークンに求めるとおり一致し続けます。
 
+5つ目の読み手は、worker の claim 時の再確認（`claim_refusal`、BE-0467）です。再確認は、lease のレスポンスの `capabilities` から route トークンを探します。そのため、レスポンスは all-of のリストに、1つの代替のトークンを加えて返します。その代替は、サーバが並べた順で、上の3つの条件をすべて満たす最初のものです。`lease_job` はこのリストを1回だけ組み立てて、レスポンスに渡します。`unchecked_lease` は変更不要です。実行意図のトークンが、BE-0467 より前の worker をすでに締め出しているからです。
+
 job を lease した worker が実行場所を決め、最初に lease した worker が勝ちます。このため、シナリオが走る場所は固定されず、同じシナリオがシミュレータでは通り、クラウドのデバイスでは落ちることがあります。原則2が扱うのは待機とセレクタであり、判定は引き続きアサーションだけで決まります。それでも残るのは再現性のコストです。そのため run は、実行した worker の環境を provenance に記録し、レポートがそれを表示します。配置を1つに固定したい呼び出し元は、`environment` を渡します。
 
 ### バンドルの lease
@@ -109,7 +111,7 @@ window 関数は SQLite と PostgreSQL の両方が対応しているので、SQ
 
 不変条件は、ルートキーが判定結果を左右する job ごとの入力をすべて含むことです。そうした入力を足す変更は、それをキーに加えなければなりません。
 
-候補を選ぶクエリは、現在と同じくロックを取りません。window 関数を含むので、PostgreSQL は `FOR UPDATE` を付けても拒否します。claim では、選んだ組だけを対象に、window 関数を含まない2つ目のクエリを実行します。このクエリは、組の待機中の job を古い順に、`maxJobs` と3つの上限が残す余裕の小さいほうの件数まで取ります。1つのクエリが上限を超えて claim することはありません。PostgreSQL では `FOR UPDATE SKIP LOCKED` でロックし、SQLite では各 claim を条件付きの `UPDATE` で行います。そのため、同じ組を選んだ worker 同士は、いちばん古い1件を奪い合わず、組の job に分散します。バンドルの job は同じルートキーを持ち、ルートキーが複数あるグループは、キーごとにバンドルを埋めていきます。
+候補を選ぶクエリは、現在と同じくロックを取りません。window 関数を含むので、PostgreSQL は `FOR UPDATE` を付けても拒否します。claim では、選んだ組だけを対象に、window 関数を含まない2つ目のクエリを実行します。このクエリは、組の待機中の job を古い順に、`maxJobs` と3つの上限が残す余裕の小さいほうの件数まで取ります。余裕を決める計数は、claim と同じトランザクションの中で行います（上限の節）。PostgreSQL では `FOR UPDATE SKIP LOCKED` でロックし、SQLite では各 claim を条件付きの `UPDATE` で行います。そのため、同じ組を選んだ worker 同士は、いちばん古い1件を奪い合わず、組の job に分散します。バンドルの job は同じルートキーを持ち、ルートキーが複数あるグループは、キーごとにバンドルを埋めていきます。
 
 capability の判定は `can_serve` だけが行うので、4つの判断箇所は1つの定義を共有し続けます。待機中のグループの job の総数には上限を設けません。Python で行う `can_serve` の判定の数は、シナリオの数ではなく、グループとそのルートキーの数で決まるからです。データベースは、待機中のグループの行を引き続き index 経由ですべて読みます。
 
@@ -121,7 +123,7 @@ lease の途中でシークレットストアの読み取りに失敗すると�
 
 サーバ全体、ユーザーごと、org ごとの上限は意味を保ちます。1つのデプロイ、1人のユーザー、1つの org が同時に走らせてよい job の数です。グループの job については、待機中の job ではなく lease 済みの job を数えます。現在は2つの場所が job を数えているので、どちらがどの数を受け持つかを定めます。
 
-- **lease 時の計数は jobs テーブルが受け持ちます。** サーバ自身は job を実行しないので、待機中の job はすべてすでに jobs テーブルにあります。`lease_job` は、スロットを占める job を、全体、org ごと、ユーザーごとに数えます。スロットを占めるのは、種類を問わない lease 済みの job と、グループに属さない待機中の job です。registry も同じ定義で通常の job を受け付けるので、2つの数が食い違うことはなく、待機中の通常の job はグループの lease に対してスロットを保ちます。`lease_job` は、3つの上限のどれかに達していればグループの job を飛ばし、同じ時点でバンドルへの後続の追加もやめます。
+- **lease 時の計数は jobs テーブルが受け持ちます。** サーバ自身は job を実行しないので、待機中の job はすべてすでに jobs テーブルにあります。`lease_job` は、スロットを占める job を、全体、org ごと、ユーザーごとに数えます。スロットを占めるのは、種類を問わない lease 済みの job と、グループに属さない待機中の job です。registry も同じ定義で通常の job を受け付けるので、2つの数が食い違うことはなく、待機中の通常の job はグループの lease に対してスロットを保ちます。`lease_job` は、3つの上限のどれかに達していればグループの job を飛ばし、同じ時点でバンドルへの後続の追加もやめます。計数の前に取るロックのもとで、計数と claim を1つのトランザクションで行います。SQLite は `BEGIN IMMEDIATE` でトランザクションを始め、計数の前に書き込みロックを取ります。PostgreSQL は、上限を持つ範囲ごとに、トランザクション単位の advisory lock を取ります。範囲はデプロイ、org、ユーザーで、2つの lease が互いを待ってデッドロックしないよう、この順に取ります。各ロックは2つのキーを取る形を使い、1つ目のキーを範囲にします。そのため、範囲の違うキーが衝突することはありません。上限が無制限の範囲と、actor を持たない job のユーザーの範囲では、ロックを取りません。後から来た lease は先の claim が済んだあとに数えるので、lease 同士で上限を超えることはありません。ただし、登録の途中にある通常の job は上限を超えさせることがあります。registry は、その job が jobs テーブルへ入る前に受け付けるので、超える数は登録の途中にある件数までです。
 - **job レコードに `actor` 列を足します。** ユーザーごとの計数で spec の JSON を読まずに済ませるためです。現在、actor は spec の中にしかありません。
 - **メモリ上の registry は、待機中のグループの job を数えません。** registry は登録済みで未完了の job をすべて数え、通常の job は登録時にその数で上限を判定されます。グループの job は、lease された時点でその数に入ります。registry は、現在 job の完了を知るのと同じ方法で lease を知ります。数える前に jobs テーブルを確認します。そうしないと、200シナリオの待機中のグループが、どの worker も取る前に上限を占め、その org の通常の run をすべて拒否してしまいます。worker が実行しているグループは、現在の `run-set` と同じく org の上限を埋めることがあります。その場合、その org の通常の run は、グループの待機中の job が捌けるまで status 429 で拒否されます。空いたスロットは、たいてい worker の次の lease が先に取るからです。通常の job のために lease 時に余裕を確保するかどうかは別の選択であり、本項目は選びません。
 
@@ -137,7 +139,7 @@ lease した各 job は、[BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-044
 
 バッチのライフサイクルフックは、package を job ごとに変えることがあります。`before_submit` が起動時の環境変数を設定すると、provider がそれを package 内の config に書き込むからです。そのため package を共有するのは、どのフックもその job の起動時の環境変数を設定しない場合に限ります。設定する場合は各 job が自分の package を作り、共有するのはアプリの upload だけになります。
 
-worker は、その互換キーを持つ job が1件でも実行中のあいだ、アプリの upload の識別子を互換キーごとに保持します。スロットが空いて同じグループの後続の job を lease したときは、保持した識別子を再利用します。package を再利用するのは、後続の job のシナリオがその package にすでに入っている場合に限ります。config ディレクトリから作った package は target の全シナリオを含みますが、送られてきた materials から作った package は自分のバンドルのシナリオしか含みません。入っていない場合、スロットは新しい package を作って upload します。そのキーを持つ job がなくなれば、worker はエントリを捨て、あとの lease では再び upload します。
+worker は、その互換キーを持つ job が1件でも実行中のあいだ、アプリの upload の識別子を互換キーごとに保持します。スロットが空いて同じグループの後続の job を lease したときは、保持した識別子を再利用します。config ディレクトリから作った package は target の全シナリオを含みますが、送られてきた materials から作った package は自分のバンドルのシナリオしか含みません。そのため、worker が package を再利用するのは、後続の job のシナリオがその package に入っている場合に限ります。入っていない場合、スロットは新しい package を作って upload します。そのキーを持つ job がなくなれば、worker はエントリを捨て、あとの lease では再び upload します。
 
 この設計は、複数の Device Farm run が1つの upload を参照できることを前提にします。単位4で、サービスに対してこの前提を確認してから依存します。run が upload を再利用できない場合、provider は job ごとに1回 upload する現在の動作へ戻ります。失うのは節約だけです。
 
@@ -157,9 +159,9 @@ worker は、その互換キーを持つ job が1件でも実行中のあいだ�
 
 ### 作業分解（MECE）
 
-1. **グループの登録。** `job_groups` テーブル、重複したシナリオ名の拒否、`group_id`、`compat_key`、`route_key`、`actor` の列、`groupKey` フィールド、冪等性と競合の規則、`GET /api/run-set/<groupId>`、`POST /api/run-set/<groupId>/cancel` と `required_role` でのその editor ゲート。登録は、単位 3 が上限を lease 時に移すまで、現在どおり上限での打ち切りを保ち、不可分な登録はその単位とともに入ります。上限が登録時に効いているあいだに要求全体を拒否すると、上限が target のシナリオ数を下回るデプロイでは、`run-set` を実行できなくなります。
+1. **グループの登録。** `job_groups` テーブル、重複したシナリオ名の拒否、`group_id`、`compat_key`、`route_key`、`actor` の列、サーバが採番するグループキー、`GET /api/run-set/<groupId>`、`POST /api/run-set/<groupId>/cancel` と `required_role` でのその editor ゲート。登録は、単位 3 が上限を lease 時に移すまで、現在どおり上限で打ち切ります。不可分な登録と、冪等性と競合の規則は、どちらも単位 3 とともに入ります。上限で打ち切られたグループを、要求全体への応答として返すわけにはいきません。同じキーを繰り返すと 200 が返り、上限が落としたシナリオは1件も待機に入らないからです。上限が登録時に効いているあいだに要求全体を拒否すると、上限が target のシナリオ数を下回るデプロイでは、`run-set` を実行できなくなります。
 2. **実行意図。** 実行意図を持つ job の形、ローカルの worker でのローカル実行への変換とデバイスクラウドの worker での `BatchRequest` への変換、`batch` を持たない実行意図の spec を受け付ける `environment_refusal`、古い worker に lease させないトークン、web の経路。
-3. **グループ単位の lease と上限。** lease 要求の `maxJobs`、`lease_job` の複数 claim、グループとルートキーの組ごとに1件の候補を読む走査とその index、リストのレスポンス、worker クライアントによる空きスロットの利用、jobs テーブルで数える lease 時の上限、registry から待機中のグループの job を外す処理、registry による jobs テーブルでの lease の確認、不可分な登録。
+3. **グループ単位の lease と上限。** lease 要求の `maxJobs`、`lease_job` の複数 claim、グループとルートキーの組ごとに1件の候補を読む走査とその index、リストのレスポンス、worker クライアントによる空きスロットの利用、jobs テーブルで数える lease 時の上限、registry から待機中のグループの job を外す処理、registry による jobs テーブルでの lease の確認、不可分な登録、`groupKey` フィールド、要求ダイジェスト、org とキーの一意インデックス、冪等性と競合の規則。
 4. **upload の共有。** Device Farm provider のアプリの upload を互換キーごとに保持する処理、job のシナリオを含む場合に限った package の再利用、起動時の環境変数を設定するフックの例外、job ごとの upload へのフォールバック。
 5. **either-or のルーティング。** `anyOf` フィールド、4つの判断箇所すべてで代替を受け取る `can_serve`、プラットフォームごとのサーバによる代替の選択、拒否されたローカルの代替の除外、要求の `environment` の省略可能化、provenance の記録。`environment` は、この単位が入るまで必須のままにします。この単位より前に省略を認めると、代替を持たない job は必要トークンが空のまま登録され、どの worker でも担当できてしまうからです。
 6. **ドキュメント。** serve API、worker、ルーティングについての `docs/` と `docs/ja/` の各ページ、および `DESIGN.md` と `docs/architecture.md` の該当箇所。
