@@ -43,8 +43,8 @@ widget's `Semantics(identifier: …)` surfaces into the OS accessibility tree, s
 `scenarios/` set drives the twin through XCUITest / adb unchanged (see
 [`docs/drivers.md`](../../docs/drivers.md) "Flutter").
 
-One scenario is the exception: the Log tab's native alert (SPEC §2.1, §5.3), which no Flutter
-screen implements yet. Its scenario (`scenarios/alert.yaml`) is tagged `alert` and excluded from
+One exception remains: the Log tab's native alert (SPEC §2.1, §5.3), which no Flutter
+screen implements yet. The alert's scenario (`scenarios/alert.yaml`) is tagged `alert` and excluded from
 `run-flutter` accordingly. The targets are `showcase-flutter` (iOS), `showcase-flutter-android`,
 and `showcase-flutter-android-noax`. Run them with
 `make -C demos/showcase run-flutter` / `run-flutter-android` (Flutter must be on PATH).
