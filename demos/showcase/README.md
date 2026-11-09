@@ -111,7 +111,7 @@ label**. Every assertion reads the on-screen **mirror `Text`** the app also rend
 `Text("Segment: \(segment)")` or `Text(favorite ? "Favorited" : "Not favorited")`) instead of the
 dropped a11y value.
 
-The suite runs over XCUITest (`make -C demos/showcase run-swiftui-noax` / `run-uikit-noax`), which
+The `ios/scenarios-noax/` suite runs over XCUITest (`make -C demos/showcase run-swiftui-noax` / `run-uikit-noax`), which
 reaches each `-noax` element by its visible label (a coordinate backend could not). The same suite
 drives both `-noax` toolkits, because the visible mirror strings are identical (`AppModel` and the
 `*Controller`/`*View` labels).
