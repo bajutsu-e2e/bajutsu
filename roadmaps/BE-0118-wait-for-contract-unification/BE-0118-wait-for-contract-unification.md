@@ -30,19 +30,19 @@ def wait_for(self, sel: base.Selector, timeout: float) -> bool:
 
 This code checks once and returns at once, so `timeout` is an unused parameter. Meanwhile `bajutsu/golden.py:190` calls `driver.wait_for(anchor, timeout)` directly, in `golden_assert`'s "drive-wait-query-compare" flow.
 
-When the call returns `False`, `golden.py` raises `TimeoutError(f"anchor {anchor!r} did not appear within {timeout}s")`. On idb, the call waits out the full timeout before failing. On Playwright, it fails on the first check. A `golden` assertion that races a page still rendering thus reports a false timeout on Web. The same real-world delay would have passed on iOS.
+When the call returns `False`, `golden_assert` raises `TimeoutError(f"anchor {anchor!r} did not appear within {timeout}s")`. On idb, the call waits out the full timeout before failing. On Playwright, it fails on the first check. A `golden` assertion that races a page still rendering thus reports a false timeout on Web. The same real-world delay would have passed on iOS.
 
 The severity is High, and this is a genuine bug rather than a design gap. It directly undermines prime directive 2 ("determinism first"). A flaky false failure is the class of problem that determinism-first exists to prevent. The bug is also backend-specific, so it erodes trust in the "platform is a backend" premise. The same scenario behaves differently for reasons unrelated to the app under test.
 
 ## Detailed design
 
-No backend should implement its own deadline loop. The contract makes `wait_for` a single-shot primitive, and one shared helper does the polling.
+No backend should implement its own deadline loop. Instead, the contract will make `wait_for` a single-shot primitive, and one shared helper will do the polling.
 
-1. **Redefine the `Driver.wait_for` contract as single-shot.** Change the docstring and contract at `bajutsu/drivers/base.py:114` to state plainly that `wait_for` checks *once* and returns at once. Remove `timeout` from the signature. If `timeout` stays for interface stability, document it as unused and reserved. Under the new contract, today's Playwright behavior is the correct implementation rather than a bug.
+1. **Redefine the `Driver.wait_for` contract as single-shot.** Change the docstring and contract at `bajutsu/drivers/base.py:114` to state plainly that `wait_for` checks *once* and returns at once. Remove `timeout` from the signature. If `timeout` stays for interface stability, document it as unused and reserved. Under the new contract, today's Playwright behavior becomes the correct implementation rather than a bug.
 2. **Add a shared polling helper.** Introduce a small function, for example `wait_until` in `bajutsu/drivers/base.py` next to `find_all`. The function takes a `Driver`, a `Selector`, a `timeout`, and a `poll` interval. It polls `driver.wait_for(sel, ...)` against a monotonic deadline.
    It may poll `driver.query()` directly instead, mirroring the existing `_wait` pattern in `orchestrator/waits.py`. Either way, the loop is the one that idb's current `wait_for` implements, lifted out of the driver.
-3. **Move the idb polling loop into the shared helper.** Simplify `bajutsu/drivers/idb.py:306-319` to a single-shot check that matches the new contract. Delete its bespoke deadline loop. The shared helper now provides that loop for every backend.
-4. **Point every direct caller at the shared helper.** The audit found one direct external caller of `driver.wait_for`: `bajutsu/golden.py:190`. Update it to call the new shared helper. Then `golden_assert` honors its timeout identically on idb and Playwright.
+3. **Move the idb polling loop into the shared helper.** Simplify `bajutsu/drivers/idb.py:306-319` to a single-shot check that matches the new contract. Delete its bespoke deadline loop. The shared helper will then provide that loop for every backend.
+4. **Point every direct caller at the shared helper.** The audit found one direct external caller of `driver.wait_for`: `bajutsu/golden.py:190`. Update it to call the new shared helper. Then `golden_assert` will honor its timeout identically on idb and Playwright.
 5. **Add a regression test.** Use a fake or stub driver whose `wait_for` first returns `False` and later returns `True`. That sequence simulates an element that renders late. The test exercises the shared helper and would have caught this bug. Add it alongside the existing driver and golden tests.
 
 This change leaves prime directive 1 alone: `run` and CI stay fully deterministic, and no AI enters this path. The change serves prime directive 2 directly. After the fix, a `timeout` given to a wait means the same number of real seconds on every backend.

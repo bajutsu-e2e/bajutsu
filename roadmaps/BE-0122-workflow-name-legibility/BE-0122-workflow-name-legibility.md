@@ -21,7 +21,7 @@ A reviewer who scans a red checks list cannot tell what any of these verifies wi
 
 ## Motivation
 
-- **The checks list is read far more often than the workflow files.** A reviewer triages every PR, human or agent, from the checks list first. A name that needs the run opened to decode adds a click to every red build. The many parallel sessions this repo runs multiply that cost (see "Working in parallel" in [CLAUDE.md](../../CLAUDE.md)).
+- **The checks list is read far more often than the workflow files.** A reviewer, human or agent, triages every PR from the checks list first. A name that needs the run opened to decode adds a click to every red build. The many parallel sessions this repo runs multiply that cost (see "Working in parallel" in [CLAUDE.md](../../CLAUDE.md)).
 - **The good pattern already exists but is applied unevenly.** `E2E (Simulator)` and `Swift (BajutsuKit)` show that someone already found the target shape. The other ten workflows never got the same treatment, so a new contributor cannot infer the convention from the repo alone.
 - **This is legibility, not correctness.** [BE-0067](../BE-0067-code-quality-gate-hardening/BE-0067-code-quality-gate-hardening.md) hardened what the gate checks. This item changes how the result is labeled, so it carries none of the behavioral risk of that item.
 

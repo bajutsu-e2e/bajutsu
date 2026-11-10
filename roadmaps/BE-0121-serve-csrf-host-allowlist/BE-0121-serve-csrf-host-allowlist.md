@@ -19,7 +19,7 @@ The default posture of `make serve` binds loopback and sets no token. In that po
 
 ## Motivation
 
-`serve`'s CSRF defense runs only when a token is configured. `_csrf_ok` (`bajutsu/serve/handler.py:198`) compares `Origin` against `Host`. But `do_POST` calls it when `state.token is not None` alone (`bajutsu/serve/handler.py:219`). `make serve` starts with no token, so the common default run leaves every state-changing `POST` unguarded.
+`serve`'s CSRF defense runs only when a token is configured. `_csrf_ok` (`bajutsu/serve/handler.py:198`) compares `Origin` against `Host`. But `do_POST` calls it only when `state.token is not None` (`bajutsu/serve/handler.py:219`). `make serve` starts with no token, so the common default run leaves every state-changing `POST` unguarded.
 
 A `text/plain` `fetch` from a malicious page qualifies as a CORS "simple request", so the browser sends it cross-origin without a preflight. Suppose a user runs `make serve` and opens such a page in another tab. The page load alone lets the page do two things.
 

@@ -39,7 +39,7 @@ The severity is Medium. The gap is not an active bug, but BE-0063 will make it r
 3. **Keep `extra="forbid"` for same-version documents.** The version check changes the failure *mode* for a version mismatch, and nothing else. It does not loosen `extra="forbid"` for scenarios that declare a schema this `bajutsu` supports. A real typo in an in-support scenario must keep failing loudly, as it does today.
 4. **Document the bump discipline.** Add a short note, near `_Model` in `_base.py` or in `docs/`, that states when `schema` must be bumped. Two kinds of change bump the constant:
    a change that removes the meaning of a previously required field, and a change that an older `bajutsu` would misinterpret rather than reject.
-   A purely additive optional field needs no bump when older tooling lacks the new behavior. That case is decided one change at a time. The manifest's `SCHEMA_VERSION` follows the same rule: `report/load.py` bumps it for load-breaking changes alone.
+   A purely additive optional field needs no bump when older tooling lacks the new behavior. That case is decided one change at a time. The manifest's `SCHEMA_VERSION` follows the same rule: it is bumped for load-breaking changes alone, per the read-side discipline `report/load.py` documents.
 
 This change covers parsing, which is the "fail loudly" concern of prime directive 2. A version mismatch fails at once, with a clear message. Otherwise the run would proceed, or misbehave without notice, on stale assumptions. Nothing here touches `run`'s pass/fail logic or adds an AI dependency. Prime directives 1 and 3 stay as they are.
 
