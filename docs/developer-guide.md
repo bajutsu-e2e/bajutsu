@@ -553,7 +553,6 @@ helper that a core module needs lives in the core rather than in `record/`. The 
 settings live in `config/` as a plain `AiConfig`, so the core reads them without importing an AI
 client. [Architecture](architecture.md#enforced-layer-boundaries-be-0112) records the full contract
 set.
-set.
 
 ---
 
