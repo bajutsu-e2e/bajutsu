@@ -40,6 +40,8 @@ class Driver(Protocol):
 
 `capabilities()` が返すトークン集合で、actuator 選択、証跡のフォールバック解決、**プリフライト能力検査**（後述）に使います。
 
+[iOS と Android のドライバの機能差](platform-parity.md)は、モバイルの2つのバックエンドの差を挙げ、それぞれを埋めるべき不足か不要な機能かに分けています。
+
 | 能力 | 意味 | xcuitest | adb | playwright | fake |
 |---|---|:--:|:--:|:--:|:--:|
 | `query` | 要素ツリー取得 | ✅ | ✅ | ✅ | ✅ |

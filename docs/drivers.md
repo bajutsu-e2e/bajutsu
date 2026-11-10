@@ -46,6 +46,9 @@ class Driver(Protocol):
 The set of tokens returned by `capabilities()`, used for actuator selection, evidence fallback
 resolution, and the **preflight capability check** (below).
 
+The two mobile backends differ in what they support.
+[iOS and Android driver parity](platform-parity.md) lists every difference and its plan.
+
 | Capability | Meaning | xcuitest | adb | playwright | fake |
 |---|---|:--:|:--:|:--:|:--:|
 | `query` | element-tree query | ✅ | ✅ | ✅ | ✅ |
