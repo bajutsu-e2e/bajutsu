@@ -36,7 +36,8 @@ A contributor (human or AI session) choosing the next item must grep open PRs or
 avoid duplicate effort. No single place answers "what is unclaimed?"
 
 The roadmap's `Author` field does not answer the question either. It records who *proposed* the
-item, who is frequently not the person who ends up *building* it, and it never changes once set.
+item. That person is frequently not the one who ends up *building* it, and the field never changes
+once set.
 An item can sit `In progress`, or a proposal can wait for a taker, with no visible claim on it.
 
 GitHub already ships an ownership primitive for exactly this: Issue **Assignees**. They are
