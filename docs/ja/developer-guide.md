@@ -184,8 +184,7 @@ flowchart TB
 - `capability/` は、backend が何を支えられるかを扱います。
 - `run_meta/` は、run の同一性と成果物の保管を扱います。
 - `analytics/` は、トークンとコストの集計を扱います。
-- `evidence/`、`devices/`、`provisioning/` も `common/` に入ります。
-- `github/`、`cloud/` も `common/` に入ります。
+- 残りは `evidence/`、`devices/`、`provisioning/`、`github/`、`cloud/` です。
 
 それぞれの役割は[アーキテクチャのモジュール一覧表](architecture.md#モジュール一覧と役割)に 1 行ずつ
 あります。
@@ -1270,7 +1269,7 @@ flowchart LR
 | CLI コマンド | `make test` | フィクスチャ設定に対してコマンドを手で走らせます。`capability/capabilities.py` 自身のテストが、登録済みのコマンドすべてが分類されていることを確かめます。 |
 | ドキュメント（図を含む） | `make lint-roadmap`、textlint（`tools/textlint/`） | `make docs`（`mkdocs build --strict`）。mermaid フェンスを変えたときは `make docs-diagrams` でチェックイン済みの SVG を再レンダリングします。このページ自身の図が従っている慣例です。 |
 
-カバレッジのラチェットは、変更のあとではなく、変更と並行して引き上げます。`make lint-pr` は、
+カバレッジのフロアは、変更のあとではなく、変更と並行して引き上げます。`make lint-pr` は、
 計測カバレッジが総合フロアより 2 ポイント以上上振れしたときに知らせます。`make coverage-floors`
 は、あるファイルのカバレッジが実際に上がったときに、ファイルごとのフロアのスナップショット
 （`coverage-floors.json`）を引き上げます。低下をごまかす手段ではなく、上昇を記録するための、

@@ -185,8 +185,7 @@ flowchart TB
 - `capability/`: what a backend supports.
 - `run_meta/`: run identity and artifact storage.
 - `analytics/`: token and cost accounting.
-- `evidence/`, `devices/`, and `provisioning/`.
-- `github/` and `cloud/`.
+- `evidence/`, `devices/`, `provisioning/`, `github/`, and `cloud/`.
 
 The [module table in architecture.md](architecture.md#module-list-and-roles) describes each in one
 row.
@@ -891,10 +890,10 @@ holds the step loop. `loop.py` is the largest file in the core, and its structur
 | `_InterruptGuard` | Fires a scenario's `interrupts` handlers when an interstitial screen appears mid-run. |
 | `_ScreenRead` | A lazily cached element-tree read, so one step never queries the same screen twice. |
 
-`types.py` holds the loop's vocabulary. Its types are `StepOutcome`, `RunResult`, and `AlertEvent`.
-It also holds `AlertGuardConfig`, `SelectionState`, and the `Clock` protocol, which lets tests run
-without real sleeps. `waits.py` holds the polling machinery and `WaitTrace`. `WaitTrace` records a
-wait's poll timeline, so a timeout stays diagnosable from the artifacts alone.
+`types.py` holds the loop's vocabulary: `StepOutcome`, `RunResult`, `AlertEvent`,
+`AlertGuardConfig`, `SelectionState`, and the `Clock` protocol, which lets tests run without real
+sleeps. `waits.py` holds the polling machinery and `WaitTrace`. `WaitTrace` records a wait's poll
+timeline, so a timeout stays diagnosable from the artifacts alone.
 
 ![Flowchart of one condition wait. Each turn reads the screen, or the observed traffic, and checks the condition first. A satisfied condition returns to the step at once. An unsatisfied one reaches the alert guard, which clears a blocking system prompt, and then the scenario's interrupts, which clear an interstitial screen. The deadline is checked last, which is why the first read always happens. Past the deadline the wait fails, and wait_diagnostic writes the WaitTrace beside the tree. Within it, _adaptive_sleep sleeps the remainder of the fixed poll period and the next turn begins.](assets/diagrams/developer-guide-wait-loop.svg)
 
