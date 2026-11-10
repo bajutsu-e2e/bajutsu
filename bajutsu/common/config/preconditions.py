@@ -93,13 +93,13 @@ def command_preconditions(eff: Effective, *, erase: bool | None) -> ResolvedPrec
 
     The command's `--erase` / `--no-erase` moves the target's `subject.reinstall` along its ladder
     (`ResolvedPreconditions.with_erase`); the target's `subject.launch.deeplink` and
-    `runsOn.ios.seedPhotos` still apply.
+    `runsOn.<platform>.seedPhotos` still apply.
 
     Raises:
-        ValueError: The target seeds photos but the run does not erase, which would seed none.
+        ValueError: An iOS target seeds photos but the run does not erase, which would seed none.
     """
     merged = resolve_preconditions(eff).with_erase(erase)
-    if merged.seed_photos and not merged.erase:
+    if merged.seed_photos and not merged.erase and eff.platform != "android":
         raise ValueError(
             f"target {eff.target!r} sets runsOn.ios.seedPhotos, which seeds only a wiped device: "
             "drop --no-erase, or clear the target's seedPhotos"
@@ -180,9 +180,10 @@ def check_preconditions(
     """Every problem with *pre* against the *targets* a scenario drives, before any device work.
 
     A field never goes ignored (BE-0452). A `subject` field that no driven target's platform has is a
-    problem, and so is a `tipKit` interrupt entry when no driven target is iOS. After merging, a target whose `seedPhotos` is non-empty needs an effective
-    `subject.reinstall: erase` (the scenario's, else the target's, then moved by the flag), because
-    seeding happens only on the erase path.
+    problem, and so is a `tipKit` interrupt entry when no driven target is iOS. After merging, an iOS
+    target whose `seedPhotos` is non-empty needs an effective `subject.reinstall: erase` (the
+    scenario's, else the target's, then moved by the flag), because seeding happens only on the
+    erase path. An Android target needs none: it resets the directory it seeds.
 
     A non-primary target with seeded photos is a problem too: the run seeds the photo library for
     the primary alone.
@@ -222,7 +223,9 @@ def check_preconditions(
                 "it for this scenario, or make the target the scenario's primary"
             )
             continue
-        if merged.seed_photos and not merged.with_erase(erase_flag).erase:
+        # Android seeds into a directory it resets itself, so only the iOS photo library needs a wipe.
+        needs_wipe = eff.platform != "android"
+        if needs_wipe and merged.seed_photos and not merged.with_erase(erase_flag).erase:
             problems.append(
                 f"seedPhotos on target {eff.target!r} needs a wiped device: set "
                 "preconditions.subject.reinstall: erase, the target's subject.reinstall: erase, or pass "

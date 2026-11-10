@@ -130,6 +130,7 @@ preconditions:
 | `subject.launch.deeplink` | str | 未設定（ターゲットの `subject.launch.deeplink`） | 起動後にアプリが開く URL です（iOS は `simctl openurl`、Android は intent） |
 | `device.ios.locale` | str | 未設定（ターゲットの `runsOn.ios.locale`） | 起動時の locale と言語を強制し（`-AppleLocale` / `-AppleLanguages`）、Simulator のシステム言語も固定します。ターゲットと異なる値は cold respawn を強制します |
 | `device.ios.seedPhotos` | list[str] | 未設定（ターゲットの `runsOn.ios.seedPhotos`） | erase の経路で、Simulator の写真ライブラリに順に投入する画像です。パスはシナリオファイルを基準に解決します。シナリオのリストはターゲットのリストを置き換えます |
+| `device.android.seedPhotos` | list[str] | 未設定（ターゲットの `runsOn.android.seedPhotos`） | デバイスの共有ストレージにある Bajutsu 専用のディレクトリへ順に投入する画像です。どの reinstall の段階でも投入します。パスはシナリオファイルを基準に解決します。シナリオのリストはターゲットのリストを置き換えます |
 | `inheritSetup` | bool | `true` | `false` にすると、このシナリオが宣言する全ターゲットの `hooks.setup` を省きます。各ターゲットの `hooks.cleanup` は走ります（[後述](#setup--cleanupセットアップとティアダウンのフェーズ)） |
 
 シナリオは、アプリを識別したりビルドしたりするフィールド（`id`、`path`、`build`、`startWhen`、
@@ -184,14 +185,17 @@ targets: [app-ipad]
 > `overwrite` と書きます。廃止した `preconditions.run` はロード時に失敗し、エラーメッセージが
 > 各フィールドの移動先を示します（[下記](#旧来のキーからの移行)）。
 
-> **写真の投入には wipe したデバイスが必要です。** 重ね合わせたあとの `seedPhotos` が空でなければ、
+> **iOS の写真の投入には wipe したデバイスが必要です。** 重ね合わせたあとの iOS の `seedPhotos` が空でなければ、
 > 実効の `subject.reinstall`（シナリオの値、なければターゲットの値に、フラグを反映したもの）が `erase` である
 > 必要があります。写真ライブラリへの投入は erase の経路でだけ行うからです。ターゲットの
 > `subject.reinstall: erase` でも条件を満たします。
 > 複数のターゲットを動かすシナリオでは、写真を投入するのはプライマリだけです。重ね合わせたあとの
 > `seedPhotos` を持つプライマリ以外のターゲットは、run を失敗させます。`record`、`crawl`、`repl` は、
 > 写真を投入するターゲットに対する `--no-erase` を拒否します。どちらの拒否も、デバイスを操作する前に
-> 終了コード 2 で終わります。
+> 終了コード 2 で終わります。Android では `erase` は要りません。投入先のディレクトリをシナリオごとに
+> 空にするので、reinstall の段階にかかわらず、そのディレクトリには並べた画像だけが入ります。
+> リストが空のシナリオでも、以前の投入が作ったディレクトリは空にします。
+> プライマリだけが投入するという規則は Android にも当てはまります。
 
 > `reinstall: clean` は権限状態（`permissions`。後述）も同時にリセットします。iOS では `simctl privacy
 > reset all`、Android では `pm clear` を使います。`overwrite` はどちらもリセットしません。`overwrite` は

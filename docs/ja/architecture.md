@@ -424,6 +424,7 @@ iOS 側の対になるジョブ `pool (xcuitest)` は、Simulator を 2 台起�
   - **ネットワーク捕捉。** アプリ内の OkHttp インターセプタ（`BajutsuAndroid`）がホストのコレクタへ報告し、そのコレクタを `adb reverse` でエミュレータへ橋渡しする `request` アサーションです（BE-0283）。`mocks` は追随の課題です。
   - **テスト。** 取得済み XML フィクスチャに対する fast ゲートのユニットテストがあります。
   - **実機上での actuation fidelity。** システム `back`、deeplink、単一ラウンドトリップの `doubleTap`、スクロールによる要素解決、実行時パーミッションの事前付与を含みます（BE-0210）。
+  - **写真の投入。** `runsOn.android.seedPhotos` は、共有ストレージにある Bajutsu 専用のディレクトリを空にし、並べた画像を更新時刻の昇順で送り、メディアスキャナで再スキャンします。これで、デバイス全体を wipe しなくても、写真ピッカーが既知の画像を表示します。
   - **デバイス制御。** `setLocation` とクリップボードの読み書き / クリアの部分集合を、操作ごとの capability トークンで管理する形で実装済みです（BE-0211 / BE-0212）。クリップボードは Android 10 以降シェルプロセスから到達できないため、アプリ内のレシーバ（`BajutsuAndroid`、BE-0233）を経由します。`foreground` も実装済みで（BE-0447）、アプリの状態を消さずにランチャーアクティビティを開始します。一方、`push`、`clearKeychain`、ステータスバーの上書き、`background` は、エミュレータ側に相当機能がないため未対応のままです。
   - **パーミッション。** シナリオ単位の `permissions` フィールド（`pm grant`/`pm revoke`、BE-0276）は、権限の語彙全体に対応しています。API 33 以降の `POST_NOTIFICATIONS` を含む `notifications` も同様です。対応する TCC（Transparency, Consent, and Control）サービスを持たない iOS の `simctl privacy` とは異なります。
   - **マルチタッチ。** `pinch`/`rotate` の 2 本指マルチタッチは、rooted device 限定で実装済みです（protocol-B の `sendevent`、単一タッチへのフォールバックなし。BE-0232）。

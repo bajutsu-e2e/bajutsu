@@ -208,7 +208,10 @@ def resolve(config: Config, target: str) -> Effective:
     runs_on = a.runs_on
     ios = runs_on.ios if isinstance(runs_on, IosRunsOn) else None
     locale = (ios.locale if ios is not None else None) or DEFAULT_LOCALE
-    seed_photos = list(ios.seed_photos) if ios is not None else []
+    android_dest = runs_on.android if isinstance(runs_on, AndroidRunsOn) else None
+    seed_photos = list(
+        ios.seed_photos if ios is not None else android_dest.seed_photos if android_dest else []
+    )
     tip_kit = tip_kit_entry(a.hooks.interrupts)
     return Effective(
         target=target,
