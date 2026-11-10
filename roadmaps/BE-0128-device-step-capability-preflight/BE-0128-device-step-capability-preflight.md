@@ -100,7 +100,7 @@ device-control operations the Android backend does or does not implement, with z
 
 ## Alternatives considered
 
-- **Leave the gap and rely on `_need_control`'s runtime failure.** This is the cheapest option. It
+- **Leave the gap and rely on `_need_control`'s runtime failure.** This option is the cheapest. It
   reproduces the exact "ran every earlier step, then failed late" problem BE-0082 already eliminated
   for gestures. Inconsistent coverage of the same failure class is worse than no preflight at all,
   because it teaches users that the preflight is unreliable.
@@ -109,7 +109,7 @@ device-control operations the Android backend does or does not implement, with z
   concern: simctl-backed OS operations, not gesture or rendering capabilities of the actuator
   itself. Reusing an unrelated token would misname the requirement and make `unsupported()`'s error
   messages misleading.
-- **Give every device-control operation its own fine-grained capability token from the start.** This
+- **Give every device-control operation its own fine-grained capability token from the start.** This option
   is more precise, but speculative before any backend needs partial support. idb supports the whole
   `DeviceControl` surface as one unit today, so a single shared token matches the current backend
   reality. Splitting later, when a real backend needs it, is a small, additive change to the

@@ -170,7 +170,7 @@ decision, not an oversight.
 ---
 
 This is scoping and gate work, not a runtime behavior change. `serve`'s behavior toward users is
-untouched; only where its code, config, and dependencies are allowed to live changes. The design
+untouched; what changes is merely where its code, config, and dependencies may live. The design
 stays compliant with all three prime directives by construction: the two new gate checks run
 alongside `make check`, not inside `run`.
 

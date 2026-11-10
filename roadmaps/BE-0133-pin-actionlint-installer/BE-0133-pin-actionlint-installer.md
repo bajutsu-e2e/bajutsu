@@ -84,7 +84,7 @@ unaffected. There is no product-code surface here; the change is CI supply-chain
   one third-party trust surface (rhysd's installer script) for another (a community-maintained
   Action), rather than simply pinning what is already used. Reconsider it only if the existing
   installer script becomes hard to pin reliably.
-- **Vendor the `actionlint` binary or build it from source in CI.** This removes the runtime fetch
+- **Vendor the `actionlint` binary or build it from source in CI.** Vendoring removes the runtime fetch
   entirely. It adds real maintenance cost, though: updating a vendored binary, or adding a Go
   toolchain step. A SHA pin already solves the problem with a one-line change, so the cost is
   disproportionate for the severity here.

@@ -79,7 +79,7 @@ unifying the helper is the natural place to also fix how it fails:
 
 ## Alternatives considered
 
-- **Keep both helpers but delegate one to the other.** Rejected. This still leaves two names for one
+- **Keep both helpers but delegate one to the other.** Rejected. Delegating still leaves two names for one
   behavior and one extra layer of indirection, with no benefit over deleting the duplicate outright.
 - **Fix the silent-swallow in place, in both copies, without deduplicating.** Rejected. It addresses
   the determinism concern but leaves the actual duplication. The next behavior change would still

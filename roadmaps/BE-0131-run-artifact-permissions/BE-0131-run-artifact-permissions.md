@@ -47,9 +47,9 @@ same threat model that BE-0032's secret masking already defends against for logs
 Tighten the permissions the runner creates artifacts with, without touching what gets written or how
 pass/fail is decided:
 
-- Create the top-level run directory `0700` (owner read/write/execute only) at the point it is first
+- Create the top-level run directory with mode `0700` (owner read/write/execute only) at the point it is first
   created. Every path underneath it then inherits a non-world-readable parent.
-- Create files that may hold sensitive content `0600` (owner read/write only) at write time. Those
+- Create files that may hold sensitive content with mode `0600` (owner read/write only) at write time. Those
   files are `network.json`, the copied scenario, the accessibility-element dump (`elements.json`),
   and screenshots. Relying on the directory permission alone to gate access is not enough.
 - Apply the change uniformly across backends. idb and Playwright both write through the same
