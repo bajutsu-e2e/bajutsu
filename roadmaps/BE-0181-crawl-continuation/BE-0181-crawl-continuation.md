@@ -20,7 +20,7 @@ Today a crawl can be extended within the live browser tab that started it, and n
 
 Two things are missing.
 
-1. The Web UI's "resume a pruned branch" affordance works while `crawlRunId` is still set in that
+1. The Web UI's "resume a pruned branch" affordance works *only* while `crawlRunId` is still set in that
    tab's in-memory state. A page reload, or reopening a different run, makes it unusable.
 2. Nothing continues exploring *past* a `--max-screens`/`--max-steps` stop. A single named pruned
    branch can be resumed, never the whole remaining frontier.
@@ -146,7 +146,7 @@ continuation the single-branch resume never supported.
 
 - **Auto-continue until the crawl is truly exhausted, dropping the budgets.** Rejected. The budgets
   exist to bound device time and AI-guide calls on purpose. An explicit, reviewable continue step
-  keeps the same "spend more when asked" gate that the single-branch resume already established.
+  keeps the same "spend more only when asked" gate that the single-branch resume already established.
 - **Persist a fully materialized list of pending `Action`s in `screenmap.json` instead of
   reconstructing them from `paths` + `plan` on resume.** This would work, but it doubles the state
   that must stay in sync with the live element tree, and it adds a schema change. Re-deriving via
