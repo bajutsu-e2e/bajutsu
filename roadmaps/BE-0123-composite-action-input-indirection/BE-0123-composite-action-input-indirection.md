@@ -72,7 +72,8 @@ The finding is **unconfirmed** as an active vulnerability. It is a latent patter
 exploit, and every present call site is safe. We flag it because composite actions are reusable by
 design. A future workflow, or a future edit to an existing one, could pass a less-trusted value into
 `target`, `scenarios`, `artifact-name`, or `wait`. Examples are a branch name, a PR label, or a matrix
-value derived from event data. Nobody would notice that the `run:` block was never hardened against it.
+value derived from event data. Such a change could land without anyone noticing that the `run:` block
+was never hardened against that value.
 
 ## Detailed design
 

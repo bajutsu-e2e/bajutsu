@@ -80,8 +80,8 @@ Android（[BE-0007]）は、この問題を押し進める要因です。`adb` �
    `environment.py:437`）はすべて、`eff.base_url` のような書き方から `eff.web.base_url` のような
    書き方に変わります。この書き方は `eff.platform == "web"` のときにしか到達できません。そのため、
    今日の実行時ガード（`if not eff.base_url`）は、mypy strict が静的に検査できるもの（サブ設定に
-   対する `match eff.platform` や `isinstance` によるパターンなど）に置き換わります。フィールドは、
-   常に存在するが意味を持たないこともある状態ではなくなります。
+   対する `match eff.platform` や `isinstance` によるパターンなど）に置き換わります。別のプラットフォームでは、
+   存在するのに意味を持たないフィールドが残らなくなります。
 
 変更は設定レベルに留まります。`targets.<name>` の YAML の形、runner、各 backend は変わりません
 （prime directive 3、app-agnostic）。一方、プラットフォーム固有のフィールドに到達するための属性名は

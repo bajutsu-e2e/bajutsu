@@ -78,7 +78,7 @@ down MECE by field-ownership group:
    `environment.py:437`) changes from `eff.base_url` to something like `eff.web.base_url`, reachable
    only when `eff.platform == "web"`. Today's runtime `if not eff.base_url` guard thus becomes
    something that mypy strict can check statically, such as a `match eff.platform` or `isinstance`
-   pattern against the sub-config. The field is no longer always present but sometimes meaningless.
+   pattern against the sub-config. No field is left present but meaningless on the wrong platform.
 
 The change stays at the config level. The `targets.<name>` YAML shape, the runner, and the drivers
 stay unchanged (prime directive 3, app-agnostic). The attribute name that a caller uses to reach a

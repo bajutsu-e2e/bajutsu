@@ -44,8 +44,10 @@ Severity is Low, for three reasons:
 - The value still goes over TLS to a fixed host.
 - In the common case, GitHub's own API rejects a malformed owner or repo in the request path.
 - The extraction step (`config_source.py:181-212`) already guards against `..` and absolute paths in
-  the *tarball's internal entries*. This proposal concerns the owner and repo segments themselves,
-  which reach the cache path before that stripping logic runs.
+  the *tarball's internal entries*.
+
+That guard does not cover what this proposal concerns, the owner and repo segments themselves. Those
+segments reach the cache path before the stripping logic runs.
 
 The context is TLS plus token authentication to GitHub, not an open filesystem or shell surface,
 which caps the practical impact.
