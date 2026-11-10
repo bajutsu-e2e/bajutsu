@@ -21,14 +21,14 @@ A real-device measurement pass, recorded under
 directory, timed a single `tap` step end to end on both backends. The step took 0.95–1.07 seconds on
 the iOS Simulator. On the Android emulator's resident-server path it took 3.25–3.32 seconds. The
 target is 250–500 milliseconds. Almost none of that time is the tap itself. The time goes to
-redundant host-device round trips. The orchestrator and the two drivers pay them on every step.
-Both backends can shed those round trips today. Neither the `Driver` protocol nor the wire format
-either backend speaks needs to change.
+redundant host-device round trips. The orchestrator and the two drivers pay them on every step, and
+can shed them today. Neither the `Driver` protocol nor the wire format either backend speaks needs
+to change.
 
 This item is that reduction: a mutually exclusive, collectively exhaustive (MECE) list of
 evidence-capture and driver-internal cuts, phased so the cheap, self-contained wins ship first. It
-targets roughly 0.3–0.6 seconds per iOS tap step and 0.6–1.2 seconds per Android tap step. That is
-real progress, but still short of the 250–500 millisecond target. Closing the remaining gap needs a
+targets roughly 0.3–0.6 seconds per iOS tap step and 0.6–1.2 seconds per Android tap step. Those numbers
+are real progress, but still short of the 250–500 millisecond target. Closing the remaining gap needs a
 device-side step executor. The executor is a protocol-level change out of this item's scope, tracked
 as a separate, larger set of proposals.
 
@@ -101,7 +101,7 @@ half alone. *Progress* below records the measurement behind dropping its `elemen
 
 1. **Reuse the previous step's `after.png` as the next step's `before.png`.** No actuation happens
    between one step's end and the next step's start, so the two observe identical device state. The
-   first step in a scenario still reads once. This saves one screenshot per step (90 milliseconds on
+   first step in a scenario still reads once. The reuse saves one screenshot per step (90 milliseconds on
    iOS, 103 on Android). See [`loop.py:1274-1329`](../../bajutsu/common/orchestrator/loop.py).
 2. **Move `after.png` and the `elements.json` write off the critical path.** Capture and write both
    asynchronously once the step's own result is known, so the next step does not block on the
@@ -127,8 +127,8 @@ half alone. *Progress* below records the measurement behind dropping its `elemen
 
 7. **Batch the tap-path attribute reads into one `el.snapshot()` call.** `POST /tap` currently resolves
    the element from its path. It then reads roughly eleven attributes one at a time before
-   synthesizing the tap. They are `exists`, `identifier`, `label`, and `type`. They also include
-   `enabled`, `selected`, `frame` (twice), and `isHittable`. See
+   synthesizing the tap: `exists` / `identifier` / `label` / `type` / `enabled` / `selected` /
+   `frame` (twice) / `isHittable`. See
    [`XcuitestElementProvider.swift:127-151,410-430`](../../BajutsuKit/Runner/Sources/XcuitestElementProvider.swift).
    Cache `app.frame` across calls instead of re-reading it. Expected saving: 150–300 milliseconds per
    tap.
@@ -173,7 +173,7 @@ half alone. *Progress* below records the measurement behind dropping its `elemen
 ### Group 3 — Android driver internals
 
 16. **Confirm, then remove, the `POSTDATE_BUDGET_MS` wait that a settled screen can never satisfy.**
-    This is the highest-priority unit in the group. The investigation traces most of the
+    This unit ranks highest in the group. The investigation traces most of the
     2204-millisecond `POST /act` average to this single fixed 2000-millisecond budget, more than any
     other item in this proposal. Before injecting a tap, `respondAct` waits for an accessibility
     event that postdates the `since` mark the host captured immediately before sending the request.
@@ -237,9 +237,9 @@ half alone. *Progress* below records the measurement behind dropping its `elemen
   evidence to the host over the same channel.
 - **Skip straight to the executor instead of tuning the current boundary.** Rejected for the same
   reason [BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance.md) phased its own
-  fix. The internal-tuning units are lower-risk. They ship as small independent pull requests. They
-  also prove out the measurement tooling that a later executor item will depend on to show its own
-  win. That tooling is [`trace_run.py`](misc/step-performance/trace_run.py) and
+  fix. The internal-tuning units are lower-risk, and ship as small independent pull requests. The
+  units also prove out the measurement tooling a later executor item will depend on to show its own
+  win: [`trace_run.py`](misc/step-performance/trace_run.py) and
   [`bench_orchestrator.py`](misc/step-performance/bench_orchestrator.py).
 - **Split the Android `POSTDATE_BUDGET_MS` unit (16) into its own item, since it needs server-log
   confirmation first.** Considered and rejected for now. The unit shares three traits with every
