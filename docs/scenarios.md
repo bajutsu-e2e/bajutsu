@@ -140,6 +140,7 @@ preconditions:
 | `subject.launch.deeplink` | str | unset (the target's `subject.launch.deeplink`) | A URL the app opens after launch (`simctl openurl` on iOS, an intent on Android) |
 | `device.ios.locale` | str | unset (the target's `runsOn.ios.locale`) | Force the locale and language at launch (`-AppleLocale` / `-AppleLanguages`), and pin the Simulator's system language. A value that differs from the target's forces a cold respawn |
 | `device.ios.seedPhotos` | list[str] | unset (the target's `runsOn.ios.seedPhotos`) | Images seeded into the Simulator's photo library on the erase path, in order; paths resolve against the scenario file, and a scenario's list replaces the target's |
+| `device.android.seedPhotos` | list[str] | unset (the target's `runsOn.android.seedPhotos`) | Images seeded into a directory Bajutsu owns in the device's shared storage, in order, on every reinstall level; paths resolve against the scenario file, and a scenario's list replaces the target's |
 | `inheritSetup` | bool | `true` | `false` skips the `hooks.setup` of every target this scenario declares; their `hooks.cleanup` still runs ([below](#setup--cleanup-setup-and-teardown-phases)) |
 
 A scenario cannot set `id`, `path`, or `build`. Nor can it set `startWhen` or `idNamespaces`. The
@@ -194,13 +195,16 @@ A list or a range on that target multiplies each of its scenarios into runs, as
 > [BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md) and
 > [configuration](configuration.md#config-layering-defaults--targets).
 
-> **Seeding needs a wiped device.** After merging, a non-empty `seedPhotos` requires the effective
+> **Seeding iOS photos needs a wiped device.** After merging, a non-empty iOS `seedPhotos` requires the effective
 > `subject.reinstall` (the scenario's, else the target's, then moved by the flag) to be `erase`, because
 > the photo library is seeded only on the erase path. A target-level `subject.reinstall: erase` satisfies
 > the rule. In a
 > scenario that drives several targets, the primary alone seeds photos. A non-primary target with
 > a merged `seedPhotos` fails the run. `record`, `crawl`, and `repl` refuse `--no-erase` on a
-> target that seeds photos. Both refusals exit 2 before any device work.
+> target that seeds photos. Both refusals exit 2 before any device work. Android needs no `erase`:
+> each scenario empties the directory it seeds, so the device shows exactly the listed images there,
+> whatever the reinstall level. A scenario with an empty list still empties a directory an earlier
+> seed created. The primary-only rule holds on Android too.
 
 > **`reinstall: clean` also resets permission state** (`permissions`, below): iOS via `simctl
 > privacy reset all`, Android via `pm clear`. `overwrite` resets neither. `overwrite` exists to keep a

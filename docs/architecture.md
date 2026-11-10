@@ -520,7 +520,10 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   emulator with `adb reverse` (BE-0283; `mocks` stay a follow-up), and
   fast-gate unit tests over captured XML fixtures; on-device actuation fidelity — system
   `back`, deeplink, a single-round-trip `doubleTap`, scroll-into-view resolution, and up-front
-  runtime-permission grants (BE-0210); a device-control subset — `setLocation` and clipboard
+  runtime-permission grants (BE-0210), and `runsOn.android.seedPhotos`, which resets a directory
+  Bajutsu owns in shared storage, pushes the listed images with ascending modification times, and
+  rescans it with the media scanner, so a photo picker shows a known set without a device-wide
+  wipe; a device-control subset — `setLocation` and clipboard
   read/write/clear, gated by per-operation capability tokens (BE-0211 / BE-0212), the clipboard
   through an in-app receiver (`BajutsuAndroid`, BE-0233) since a shell process cannot reach the
   clipboard on Android 10+, plus `foreground` (BE-0447), which starts the launcher activity without

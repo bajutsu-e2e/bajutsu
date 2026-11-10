@@ -142,7 +142,7 @@ web backend が動く Windows では、`run` は BE-0449 以前と同じく run 
 - **シナリオの preconditions は、デバイスを操作する前に検査します（BE-0452）。** `run` と `audit` は、
   各シナリオを、そのシナリオが動かすターゲットと照合します。動かすどのターゲットのプラットフォームにも
   ない `subject` のフィールドや、iOS 専用の `tipKit` エントリは、フィールド名を示して終了コード 2 で
-  終わります。実効の `subject.reinstall: erase` を伴わない `seedPhotos` も同じです（[scenarios](scenarios.md#preconditions環境準備)）。
+  終わります。実効の `subject.reinstall: erase` を伴わない iOS の `seedPhotos` も同じです（[scenarios](scenarios.md#preconditions環境準備)）。
 - `AI usage:` 行は出力しません。`run` はどのフラグを付けてもトークンを消費しないため（BE-0402）、
   使用量台帳を導入せず、報告もしません。`record`、`crawl`、`triage --ai` は従来どおり出力します。
 

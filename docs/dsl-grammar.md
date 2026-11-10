@@ -168,7 +168,7 @@ Preconditions ::= {
       deeplink?: string,                    # unset: the target's `subject.launch.deeplink`; iOS and Android
     },
   },
-  device?: { ios?: <IosDevice> },           # keyed by destination; a block for an undriven platform has no effect
+  device?: { ios?: <IosDevice>, android?: <AndroidDevice> },  # keyed by destination; a block for an undriven platform has no effect
   inheritSetup?: boolean,                   # default true — false skips every declared target's `hooks.setup`; their cleanup still runs
 }
 
@@ -176,6 +176,10 @@ Preconditions ::= {
 # same name. `seedPhotos` paths resolve against the scenario file, and a merged, non-empty list needs
 # an effective `subject.reinstall: erase`.
 IosDevice ::= { locale?: string, seedPhotos?: list(string) }
+
+# The Android device state a scenario applies; `seedPhotos` replaces the target's
+# `runsOn.android.seedPhotos`. Paths resolve against the scenario file; no erase is needed.
+AndroidDevice ::= { seedPhotos?: list(string) }
 
 # ── SystemAlertInterrupt (the reactive system-alert guard's answers) ───
 # The guard is on unless `run --no-system-alert-handling`; no scenario or target switches it off as a

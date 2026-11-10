@@ -161,7 +161,7 @@ uses it as always. Each self-declaring file has it checked for membership instea
 - **Preconditions come first (BE-0452).** Before any device work, `run` and `audit` check each
   scenario. They check it against the targets it drives. Some fields exist on one platform alone, such
   as `subject.launch.args` or a `tipKit` interrupts entry. When no driven target's platform has such a field,
-  the command exits 2 and names it. So does a merged `seedPhotos` without an effective `subject.reinstall: erase`
+  the command exits 2 and names it. So does a merged iOS `seedPhotos` without an effective `subject.reinstall: erase`
   ([scenarios](scenarios.md#preconditions-environment-setup)).
 - No `AI usage:` line: `run` spends no tokens under any flag (BE-0402), so it installs no usage
   ledger and reports none. `record`, `crawl`, and `triage --ai` still do.

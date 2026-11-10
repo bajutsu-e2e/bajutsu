@@ -185,7 +185,7 @@ def test_the_command_prints_the_schema() -> None:
     ("platform", "destination", "fields"),
     [
         ("ios", "ios", {"model", "os", "kind", "family", "locale", "seedPhotos"}),
-        ("android", "android", {"avd", "apiLevel"}),
+        ("android", "android", {"avd", "apiLevel", "seedPhotos"}),
         ("web", "browser", {"kind", "version", "emulate"}),
     ],
 )

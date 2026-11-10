@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import contextlib
 import subprocess
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from ._functions import (
+    SEED_PHOTOS_CLEARED,
+    SEED_PHOTOS_DIR,
     checked_serial,
     clear_primary_clip_cmd,
     deeplink_cmd,
@@ -17,13 +19,19 @@ from ._functions import (
     get_prop_cmd,
     install_cmd,
     launch_cmd,
+    media_scan_cmd,
     parse_clipboard_result,
     pm_clear_cmd,
     pm_grant_cmd,
     pm_revoke_cmd,
+    push_cmd,
     real_run,
     resolve_activity_cmd,
     screencap_cmd,
+    seed_photo_name,
+    seed_photo_time_cmd,
+    seed_photos_clear_cmd,
+    seed_photos_reset_cmd,
     set_primary_clip_cmd,
     uninstall_cmd,
 )
@@ -94,6 +102,28 @@ class Env:
         """
         with contextlib.suppress(subprocess.CalledProcessError, OSError):
             self._run(uninstall_cmd(self.serial, package))
+
+    def add_media(self, media_paths: Sequence[str]) -> None:
+        """Make the seed directory hold exactly *media_paths*, in order, and rescan it.
+
+        An empty list still empties a directory an earlier seed left behind, so a scenario that seeds
+        nothing never sees another scenario's images; a device never seeded is left untouched. Each
+        image gets a fixed, ascending modification time, so a picker that sorts by date shows the
+        list's last entry first, as the iOS `simctl addmedia` order does — for images without an EXIF
+        capture date, which the media store prefers. The scan is asynchronous: a scenario waits for
+        a seeded image to appear before selecting it.
+        """
+        if not media_paths:
+            if SEED_PHOTOS_CLEARED in self._run(seed_photos_clear_cmd(self.serial)):
+                self._run(media_scan_cmd(self.serial))
+            return
+        # Every name first, so a bad path fails before the directory is emptied.
+        names = [seed_photo_name(index, path) for index, path in enumerate(media_paths)]
+        self._run(seed_photos_reset_cmd(self.serial))
+        for index, (path, name) in enumerate(zip(media_paths, names, strict=True)):
+            self._run(push_cmd(self.serial, path, f"{SEED_PHOTOS_DIR}/{name}"))
+            self._run(seed_photo_time_cmd(self.serial, index, name))
+        self._run(media_scan_cmd(self.serial))
 
     def force_stop(self, package: str) -> None:
         with contextlib.suppress(subprocess.CalledProcessError):
