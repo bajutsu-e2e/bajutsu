@@ -11,7 +11,7 @@ iOS は `xcuitest` で、Android は `adb` で動きます。2つのバックエ
 1つ目の表は、テストで正しさを保ちます。テストは、表の印を各ドライバが宣言する能力と突き合わせます。
 そのため、このページを書き換えずに不足が増えたり埋まったりすることはありません。
 
-## 2つの表が扱う範囲
+## 3つの表が扱う範囲
 
 **能力**（capability）は、バックエンドが `Driver.capabilities()` で宣言する名前付きの機能です。
 たとえば `multiTouch` や `deviceControl.push` があります。実行前の事前チェック（preflight）は、
@@ -33,13 +33,13 @@ iOS の実機では、`simctl` が提供する能力がなくなります。こ�
 
 ## 印の読み方
 
-能力の対応表の各セルは、次の4つの印のどれかで始まります。
+能力の対応表の各セルには、次の4つの印のどれか1つだけを書きます。詳しい説明は備考の列に書きます。
 
 | 印 | 意味 |
 |---|---|
 | ✅ | バックエンドがその能力を宣言しています。 |
 | gap | まだ宣言していませんが、プラットフォームとしては対応できます。備考に実現の方法を書きます。 |
-| n/a | そのバックエンドには不要です。備考に理由を書きます。 |
+| n/a | そのバックエンドには不要か、プラットフォームとして提供できません。備考に理由を書きます。 |
 | per-run | 静的には宣言していませんが、アプリ側の準備があれば実行ごとに付与されます。 |
 
 ## 能力の対応表
@@ -83,7 +83,7 @@ iOS の実機では、`simctl` が提供する能力がなくなります。こ�
 | `deviceControl.permissions.contacts` | ✅ | ✅ | |
 | `deviceControl.permissions.photos` | ✅ | ✅ | |
 | `deviceControl.permissions.calendar` | ✅ | ✅ | |
-| `deviceControl.permissions.notifications` | gap | ✅ | `simctl privacy` には通知の項目がありません。当面は `handleSystemAlert` ステップで許可ダイアログに答えます。 |
+| `deviceControl.permissions.notifications` | n/a | ✅ | iOS は通知の許可を、`simctl privacy` が編集するプライバシーのデータベースの外で管理しているので、このコマンドでは操作できません。代わりに `handleSystemAlert` ステップで許可ダイアログに答えます。 |
 
 ## 起動時の設定
 

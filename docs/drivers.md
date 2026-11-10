@@ -92,18 +92,20 @@ The two mobile backends differ in what they support.
 > The `deviceControl.*` tokens are the `DeviceControl` family split per operation (BE-0212, from the
 > coarse `deviceControl` of BE-0128), so a backend can advertise exactly the operations it can
 > honor. XCUITest backs the whole family through `simctl`; the Android emulator backs
-> `setLocation`, `clipboard`, and `foreground` (its `push` / keychain / status-bar / `background`
-> operations have no faithful equivalent), which the split makes expressible without
-> green-lighting the rest. `background` and `foreground` were one `appLifecycle` token until
+> `setLocation`, `clipboard`, `foreground`, and all seven `permissions.*` services (its `push` /
+> keychain / status-bar / `background` operations have no faithful equivalent), which the split
+> makes expressible without green-lighting the rest. `background` and `foreground` were one `appLifecycle` token until
 > BE-0447 split them, since a device group's later member comes up at its `foreground`.
 
 > adb sits at the **lean end**, actuating by **frame-center coordinates** — it exposes no semantic
 > tap, so the run loop resolves a unique element via `query()` and taps its center. XCUITest, by
 > contrast, sits at the rich end: it taps directly by identifier, waits on native conditions, and
 > performs `pinch` / `rotate` natively. adb advertises `query` / `elements` / `screenshot`,
-> `multiTouch` (a rooted-device `sendevent` two-finger sweep; BE-0232), plus the emulator-backed
-> device-control subset `deviceControl.setLocation` + `deviceControl.clipboard` (BE-0211) +
-> `deviceControl.foreground`, `deviceGroup` (BE-0447), and the `video` / `deviceLog` evidence kinds
+> `multiTouch` (a rooted-device `sendevent` two-finger sweep; BE-0232), `textSelection`
+> (`Ctrl+A` / `Ctrl+C` chords; BE-0265), plus the emulator-backed device-control subset
+> `deviceControl.setLocation` + `deviceControl.clipboard` (BE-0211) + `deviceControl.foreground`,
+> the seven `deviceControl.permissions.*` services (`pm grant` / `pm revoke`; BE-0276),
+> `deviceGroup` (BE-0447), and the `video` / `deviceLog` evidence kinds
 > (`screenrecord`, `logcat`; BE-0467); the rest of the device-control family has
 > no faithful emulator equivalent and stays unadvertised. The
 > `fake` driver advertises a richer capability set (semanticTap / conditionWait / multiTouch) purely

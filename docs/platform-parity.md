@@ -11,7 +11,7 @@ as the working list for closing the gaps.
 A test keeps the first table honest. The test compares each mark with the capabilities each driver
 declares. A gap cannot open or close unless this page changes with it.
 
-## What the two tables cover
+## What the three tables cover
 
 A **capability** is a named feature a backend declares through `Driver.capabilities()`. Two
 examples are `multiTouch` and `deviceControl.push`. The preflight check runs before a run leases a
@@ -36,13 +36,14 @@ A real iOS device drops the capabilities that `simctl` provides.
 
 ## How to read a mark
 
-Each cell of the capability table starts with one of four marks:
+Each cell of the capability table holds one of four marks and nothing else. Any detail goes in the notes
+column.
 
 | Mark | Meaning |
 |---|---|
 | ✅ | The backend declares the capability. |
 | gap | The backend does not declare it yet, and the platform could support it. The notes name the route. |
-| n/a | The backend does not need it. The notes say why. |
+| n/a | The backend does not need it, or the platform cannot provide it. The notes say why. |
 | per-run | The backend does not declare it statically, and a run grants it when the app is set up for it. |
 
 ## Capability parity
@@ -86,7 +87,7 @@ Each cell of the capability table starts with one of four marks:
 | `deviceControl.permissions.contacts` | ✅ | ✅ | |
 | `deviceControl.permissions.photos` | ✅ | ✅ | |
 | `deviceControl.permissions.calendar` | ✅ | ✅ | |
-| `deviceControl.permissions.notifications` | gap | ✅ | `simctl privacy` has no notifications service. A `handleSystemAlert` step answers the prompt meanwhile. |
+| `deviceControl.permissions.notifications` | n/a | ✅ | iOS keeps notification authorization outside the privacy database that `simctl privacy` edits, so the command has no service to drive. A `handleSystemAlert` step answers the prompt instead. |
 
 ## Launch settings
 
