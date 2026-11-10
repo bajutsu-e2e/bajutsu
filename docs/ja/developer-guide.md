@@ -2,10 +2,10 @@
 
 # 開発者ガイド：コード構造、シナリオ DSL、開発のルーチン
 
-> ソースツリーを読み、そこで実際に手を動かすためのガイドです。どのファイルがどこにあり、そこに
-> どのクラスが住み、シナリオ DSL（ドメイン固有言語）と `Selector` の各欄がどう働き、シナリオの
-> 実行中に各クラスが何をするのか、そして変更を開発し動作確認するルーチンはどうなっているのかを
-> 順に説明します。
+> ソースツリーを読み、そこで手を動かすためのガイドです。どのファイルがどこにあり、どのクラスが
+> そこに入っているかを示します。シナリオのドメイン固有言語（DSL）と `Selector` の各欄がどう働くかを
+> 説明し、シナリオの実行中に各クラスが何をするかを追います。最後に、変更を開発して動作確認する
+> ルーチンを扱います。
 
 関連: [アーキテクチャ](architecture.md) · [中核概念](concepts.md) · [実行ループ](run-loop.md) ·
 [ドライバ](drivers.md) · [用語集](glossary.md)
@@ -14,8 +14,8 @@
 
 ## このページの読み方
 
-このページは外側から内側へ、一方向に進みます。最初にシステム全体の絵を置き、次にファイルの位置を
-示し、続いて残りのコードを支える少数の型を挙げます。そのあとで 1 つのコマンドを追いかけ、最後に
+このページは外側から内側へ、一方向に進みます。最初にシステム全体の絵を置き、ファイルの位置を
+示します。続いて、残りのコードを支える少数の型を挙げます。そのあとで 1 つのコマンドを追いかけ、
 クラスを順に説明します。先頭から読んで途中で止めても、粗いながら全体像は手元に残ります。
 
 この案内があえて省いた深さは、3 つのページが引き受けています。
@@ -25,18 +25,20 @@
 定義します。
 
 先に語を 2 つだけ決めておきます。**[シナリオ](glossary.md#シナリオのオーサリング)**とは、
-ユーザーの操作の流れをステップの並びとして記述した 1 つの YAML ファイルです。
-**[backend](glossary.md#driver-backend-actuator-platform)**とは、1 つのプラットフォーム向けのドライバ実装です。
-iOS Simulator 向けの XCUITest、Android 向けの adb、web ブラウザ向けの Playwright があります。
+ユーザーの操作の流れをステップの並びとして記述した 1 つの YAML（YAML Ain't Markup Language）
+ファイルです。**[backend](glossary.md#driver-backend-actuator-platform)**とは、1 つの
+プラットフォーム向けのドライバ実装です。iOS Simulator 向けの XCUITest、Android 向けの adb、
+web ブラウザ向けの Playwright があります。
 
 ---
 
 ## 1. システムの全体像
 
-Bajutsu は、混ざり合わない 2 つの層に分かれています。Tier 1 は大規模言語モデル（LLM）を使って
-シナリオを**作成**し、失敗を**調査**します。Tier 2 はそのシナリオを決定的に再生し、機械が検査できる
-アサーションだけから合否を出します。判定の経路にモデルは 1 つも登場しません。2 つの層をつなぐ
-ハブがシナリオファイルです。Tier 1 が書き、以後は人間が所有して編集し、Tier 2 が読みます。
+Bajutsu は、混ざり合わない 2 つの層に分かれています。[Tier 1](glossary.md#2-つの層)は大規模言語
+モデル（LLM）を使ってシナリオを**作成**し、失敗を**調査**します。
+[Tier 2](glossary.md#2-つの層)はそのシナリオを決定的に再生します。機械が検査できるアサーション
+だけから合否を出し、判定の経路にモデルは 1 つも登場しません。2 つの層をつなぐハブがシナリオ
+ファイルです。Tier 1 が書き、以後は人間が所有して編集し、Tier 2 が読みます。
 
 ![概念図。自然言語のゴールは Tier 1 に入り、record と crawl のコマンドがエージェントを動かしてシナリオ YAML を書き出します。人間は同じファイルを直接編集します。Tier 2 は同じファイルを読み、runner がデバイスを確保し、orchestrator が 1 つの Driver インターフェースを通して各ステップを実行し、アサーション評価が合否を出し、reporter が実行成果物を書き出します。Driver インターフェースが唯一のプラットフォーム接続面であり、その背後に XCUITest、adb、Playwright、fake の各 backend が並びます。失敗すると triage が実行成果物を読み、シナリオへの修正案を返します。](assets/diagrams/developer-guide-concept-ja.svg)
 
@@ -177,20 +179,25 @@ flowchart TB
 
 </details>
 
-`common/` にはこのほか、目的を 1 つに絞ったサブパッケージが並びます。`capability/`（backend が
-何を支えられるか）、`run_meta/`（run の同一性と成果物の保管）、`analytics/`（トークンとコストの
-集計）、`evidence/`、`devices/`、`provisioning/`、`github/`、`cloud/` です。それぞれの役割は
-[アーキテクチャのモジュール一覧表](architecture.md#モジュール一覧と役割)に 1 行ずつあります。
+`common/` にはこのほか、目的を 1 つに絞ったサブパッケージが並びます。
+
+- `capability/` は、backend が何を支えられるかを扱います。
+- `run_meta/` は、run の同一性と成果物の保管を扱います。
+- `analytics/` は、トークンとコストの集計を扱います。
+- 残りは `evidence/`、`devices/`、`provisioning/`、`github/`、`cloud/` です。
+
+それぞれの役割は[アーキテクチャのモジュール一覧表](architecture.md#モジュール一覧と役割)に 1 行ずつ
+あります。
 
 ### 2.3 パッケージの完全な一覧
 
-上の図はディレクトリを役割ごとにまとめたものです。以下の表は、その一つひとつを
-`make repo-map ARGS="--code"` が報告するファイル数・行数・中身とともに列挙します。図の枠には
-収まらなかった、より細かい目録です。
+上の図はディレクトリを役割ごとにまとめたものです。以下の表は、同じ分け方ですべてのディレクトリを
+列挙します。各行には、`make repo-map ARGS="--code"` が報告するファイル数と行数、そしてディレクトリが
+持つモジュールを載せます。図の枠には収まらなかった、より細かい目録です。
 
-**コマンド層** — ユーザー向けの機能ごとに 1 ディレクトリ、それぞれ自分の `cli.py` を持ちます。
+**コマンド層**：ユーザー向けの機能ごとに 1 ディレクトリ、それぞれ自分の `cli.py` を持ちます。
 
-| パッケージ | ファイル数・行数 | 中身 |
+| パッケージ | ファイル数と行数 | 中身 |
 |---|---|---|
 | `cli/` | 4 ファイル、786 行 | Typer アプリの組み立て：`_shared`、`dotenv`、`handoff` |
 | `cli/commands/` | 5 ファイル、448 行 | どの機能にも属さないコマンド：`doctor`、`lint`、`report`、`schema` |
@@ -203,14 +210,14 @@ flowchart TB
 | `mcp/` | 4 ファイル、327 行 | `cli`、`resources`、`tools` |
 | `analysis/` | 7 ファイル、2,543 行 | `audit`、`coverage`、`flakiness`、`impact`、`stats`、`trace` |
 | `analysis/cli/` | 8 ファイル、870 行 | レポートごとに 1 つの Typer コマンド |
-| `serve/` | 28 ファイル、8,457 行 | web UI 自身の最上位モジュール（`state`、`routes`、`handler`、`executor`、`jobs` など）。`cli/`・`operations/`・`server/` は以下で別立てします |
+| `serve/` | 28 ファイル、8,457 行 | web UI 自身の最上位モジュール（`state`、`routes`、`handler`、`executor`、`jobs` など）。`cli/`、`operations/`、`server/` は以下で別立てします |
 | `serve/cli/` | 4 ファイル、873 行 | `serve`、`worker`、`approve` |
 | `serve/operations/` | 27 ファイル、6,997 行 | web UI の操作ごとに 1 モジュール：`capture`、`codegen`、`coverage`、`doctor`、`enrich`、`evidence`、`lint`、`metrics`、`runs`、`triage`、`upload` など |
 | `serve/server/` | 17 ファイル、3,691 行 | ホスティング（マルチテナント）版の backend：`app`、`db`、`executor`、`models`、`oauth`、`artifacts`、`baselines`、`sessions`、`secrets` |
 
-**実行コア** — デバイスプール、ステップループ、プラットフォームごとのアプリ起動です。
+**実行コア**：デバイスプール、ステップループ、プラットフォームごとのアプリ起動です。
 
-| パッケージ | ファイル数・行数 | 中身 |
+| パッケージ | ファイル数と行数 | 中身 |
 |---|---|---|
 | `common/runner/` | 11 ファイル、3,122 行 | `pipeline`、`pool`、`launch`、`device_provider`、`recovery`、`mailbox`、`build`、`types` |
 | `common/orchestrator/` | 6 ファイル、3,534 行 | `loop`、`waits`、`substitution`、`evidence_rules`、`types` |
@@ -219,41 +226,41 @@ flowchart TB
 | `common/platform_lifecycle/` | 7 ファイル、968 行 | `protocols`、`factories`、`readiness`、`relaunchers`、`device_control`、`read_session` |
 | `common/platform_lifecycle/environments/` | 8 ファイル、3,115 行 | `ios`、`xcuitest`、`xcuitest_live`、`android`、`web`、`fake` |
 
-**プラットフォーム接続面** — `Driver` プロトコルと、その背後の各 backend です。
+**プラットフォーム接続面**：`Driver` プロトコルと、その背後の各 backend です。
 
-| パッケージ | ファイル数・行数 | 中身 |
+| パッケージ | ファイル数と行数 | 中身 |
 |---|---|---|
 | `common/drivers/` | 14 ファイル、7,198 行 | `base`、`actuation`、`coordinate_tree`、`fake`、`xcuitest`、`adb`、`playwright`、`xcuitest_live`、`elements`、`dom`、`web_network`、`webview`、`zorder` |
 | `common/backend_cli/` | 4 ファイル、2,428 行 | `simctl`、`adb`、`adb_resident` |
 | `common/devices/` | 4 ファイル、181 行 | `errors`、`id`、`os` |
 | `common/capability/` | 4 ファイル、548 行 | `capabilities`、`capability_preflight`、`preflight` |
 
-**契約層** — シナリオスキーマと、解決済み設定の形です。
+**契約層**：シナリオスキーマと、解決済み設定の形です。
 
-| パッケージ | ファイル数・行数 | 中身 |
+| パッケージ | ファイル数と行数 | 中身 |
 |---|---|---|
 | `common/scenario/` | 9 ファイル、1,232 行 | `load`、`load_expanded`、`expand`、`select`、`serialize`、`edit`、`interp`、`system_alerts` |
 | `common/scenario/models/` | 9 ファイル、1,942 行 | `scenario`、`steps`、`actions`、`assertions`、`selector`、`evidence`、`mocks`、`_base` |
 | `common/config/` | 5 ファイル、1,234 行 | `schema`、`effective`、`resolve`、`accessors` |
 
-**出力層** — 合否、採取した証跡、描画されたレポートです。
+**出力層**：合否、採取した証跡、描画されたレポートです。
 
-| パッケージ | ファイル数・行数 | 中身 |
+| パッケージ | ファイル数と行数 | 中身 |
 |---|---|---|
 | `common/assertions/` | 6 ファイル、1,225 行 | `evaluate`、`network`、`visual`、`schema`、`_common` |
 | `common/evidence/` | 9 ファイル、3,440 行 | `core`、`golden`、`intervals`、`media`、`network`、`redaction`、`sink`、`visual` |
 | `common/report/` | 11 ファイル、2,176 行 | `manifest`、`ctrf`、`format`、`rows`、`panels`、`html`、`richtext`、`archive`、`load`、`from_grouping` |
 
-**周辺層** — モデルに届く経路です。
+**周辺層**：モデルに届く経路です。
 
-| パッケージ | ファイル数・行数 | 中身 |
+| パッケージ | ファイル数と行数 | 中身 |
 |---|---|---|
 | `common/agents/` | 12 ファイル、2,386 行 | `protocols`、`factory`、`claude`、`claude_backed`、`claude_enrich`、`claude_triage`、`ai_config`、`anthropic_client`、`availability`、`enrich`、`alerts` |
 | `common/ai/` | 8 ファイル、1,072 行 | `base`、`registry`、`anthropic`、`claude_code`、`disabled`、`prompts`、`banner` |
 
-**`common/` 配下の共有ユーティリティ** — 他のどの群にも属さない、目的を 1 つに絞ったヘルパです。
+**`common/` 配下の共有ユーティリティ**：他のどの群にも属さない、目的を 1 つに絞ったヘルパです。
 
-| パッケージ | ファイル数・行数 | 中身 |
+| パッケージ | ファイル数と行数 | 中身 |
 |---|---|---|
 | `common/`（直下のファイル） | 14 ファイル、2,652 行 | `backends`、`doctor`、`lint`、`mailbox`、`totp`、`cancellation`、`config_source`、`deprecations`、`diagnostics`、`handoff`、`screenshots`、`stall_diagnostics`、`_yaml` |
 | `common/analytics/` | 4 ファイル、862 行 | `ledger`、`stats`、`usage` |
@@ -370,12 +377,12 @@ classDiagram
 `Selector` に変換されます。
 
 **`Effective`**（[`common/config/effective.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/common/config/effective.py)）は
-1 ターゲット分の解決済み設定です。チーム既定値の上にそのターゲットのブロックを重ね、下流が書き換え
-られないよう凍結してあります。プラットフォーム固有のつまみは、プラットフォームごとの欄を並べる
-のではなく、`platform_config: PlatformConfig` という 1 つの欄に絞ります。`IosConfig | WebConfig |
-AndroidConfig` の判別可能な共用型で、新しいプラットフォームを足すときは共用型にメンバーを 1 つ
-加えるだけで済み、読み手が無視し続けなければならない兄弟欄が増えることはありません。アプリ固有の
-差分はすべてここに集まります。だからツール本体はアプリに依存せずに済みます。
+1 ターゲット分の解決済み設定です。チーム既定値の上にそのターゲットのブロックを重ねます。設定を
+凍結するので、下流が書き換えることはありません。プラットフォーム固有のつまみは、
+`platform_config: PlatformConfig` という 1 つの欄に絞ります。`IosConfig | WebConfig | AndroidConfig`
+の判別可能な共用型です。プラットフォームごとに欄を並べると、読み手が無視し続けなければならない
+兄弟欄が増えます。共用型なら、新しいプラットフォームはメンバーを 1 つ加えるだけで済みます。
+アプリ固有の差分はすべてここに集まります。だからツール本体はアプリに依存せずに済みます。
 
 **`RunResult`**（[`common/orchestrator/types.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/common/orchestrator/types.py)）は
 1 シナリオの結果です。判定、ステップごとの `StepOutcome`、末尾のアサーション結果、途中で採取した
@@ -385,8 +392,8 @@ AndroidConfig` の判別可能な共用型で、新しいプラットフォー�
 
 ## 4. シナリオ DSL：シナリオファイルの見た目
 
-シナリオはただの YAML です。第 3 節の `Scenario`・`Step`・`Assertion` モデルに対して `extra="forbid"`
-で検証されるので、キーの綴りを間違えると読み込みで失敗します。黙って何も起きない、ということは
+シナリオはただの YAML です。第 3 節の `Scenario`、`Step`、`Assertion` のモデルが `extra="forbid"`
+で検証するので、キーの綴りを間違えると読み込みで失敗します。黙って何も起きない、ということは
 ありません。この節では実在する 1 本のシナリオを最初から最後まで読み、そこで使われている語彙を
 表にまとめます。正式な文法の全体は [DSL 文法](dsl-grammar.md)にあります。実例つきのオーサリング
 ガイドは [シナリオ](scenarios.md)と[クックブック](cookbook.md)です。
@@ -412,25 +419,28 @@ scenarios:
       - count: { sel: { traits: [link] }, atLeast: 5 }
 ```
 
-どのシナリオにも共通する部分が 3 つあります。`steps` はステップループ（第 6 節）が実行する順序
-付きの並びです。ここでは `wait` ステップが 1 つあり、固定時間の sleep ではなく、そのヒーロー
-ボタンが現れるまでポーリングします（第二原則）。`expect` はシナリオ末尾のアサーション
-ブロックで、最後のステップのあとに 1 回だけ検査されます。ここでは独立した 3 つのチェックがあり、
-すべてが通らなければなりません。`{ label: … }`・`{ labelMatches: … }`・`{ traits: […] }` という
-オブジェクトは `Selector`（第 3 節）です。`tap` や `type` ステップの対象が取るのと同じ形です。
+どのシナリオにも共通する部分が 3 つあります。
+
+- **`steps`** は、ステップループ（第 6 節）が実行する順序付きの並びです。ここでは `wait`
+  ステップが 1 つあり、固定時間の sleep ではなく、ヒーローボタンが現れるまでポーリングします
+  （第二原則）。
+- **`expect`** は、シナリオ末尾のアサーションブロックです。最後のステップのあとに 1 回だけ
+  検査されます。ここでは独立した 3 つのチェックがあり、すべてが通らなければなりません。
+- **`{ label: … }`、`{ labelMatches: … }`、`{ traits: […] }` というオブジェクト**は
+  `Selector`（第 3 節）です。`tap` や `type` ステップの対象が取るのと同じ形です。
 
 ### 4.2 操作する要素を選ぶ：`Selector`
 
 ほとんどのステップとアサーションは、画面上の 1 要素を対象にします。その対象はすべて
 `Selector` です。第 3 節で 4 つの契約の 1 つとして紹介したのと同じ型です。この節はオーサリング
-側の視点です。どの欄があり、どれから使うべきかを扱います。実行時の側、つまり `Selector` が
-`query()` のスナップショットをちょうど 1 要素まで絞り込む仕組みと、絞り込めなかったときに
-何が起きるかは、第 7.2 節の `resolve_unique` にあります。完全なリファレンスは
-[セレクタ](selectors.md)です。
+側の視点で、どの欄があり、どれから使うべきかを扱います。実行時の側は第 7.2 節の
+`resolve_unique` が扱います。そこでは、`Selector` が `query()` のスナップショットをちょうど
+1 要素まで絞り込む仕組みと、絞り込めなかったときに何が起きるかを説明します。完全な
+リファレンスは[セレクタ](selectors.md)です。
 
 指定した欄はすべて AND で結ばれます。例外が 2 つあります。`within` は残りとは別に適用される
-空間的なフィルタで、`index` は他のすべての欄で絞り込めるだけ絞り込んだあとに、最後の手段として
-だけ適用されます。
+空間的なフィルタです。`index` は最後の手段で、他のすべての欄で絞り込めるだけ絞り込んだあとに
+限って適用されます。
 
 | 欄 | 一致条件 | 役割 |
 |---|---|---|
@@ -450,12 +460,12 @@ scenarios:
 |---|---|
 | `button` | タップできるボタンです。 |
 | `link` | ハイパーリンクです。 |
-| `notEnabled` | 要素が無効です。`disabled`・`enabled` アサーションを支えます。 |
+| `notEnabled` | 要素が無効です。`disabled` と `enabled` のアサーションを支えます。 |
 | `selected` | 要素が選択またはトグルされています。`selected` アサーションを支えます。 |
 | `other` | 汎用的で未分類の要素です。解決アルゴリズムはこれを特別扱いします（第 7.2 節）。 |
 | `secureTextField` | プラットフォーム自身がそのフィールドを秘密だと印付けているので、設定なしで値をマスクします。 |
 
-`id`・`label`・`traits` より先に `index` へ手を伸ばす作成者は、順序を取り違えています。`id` は
+`id`、`label`、`traits` より先に `index` へ手を伸ばす作成者は、順序を取り違えています。`id` は
 画面上で要素が動くだけの改修を生き延びますが、`index` は画面がきょうだい要素を 1 つ増減した
 瞬間に壊れます。
 
@@ -468,11 +478,11 @@ scenarios:
 | 分類 | 欄 | すること |
 |---|---|---|
 | ジェスチャー | `tap`、`tapPoint`、`doubleTap`、`longPress`、`swipe`、`drag`、`scroll`、`pinch`、`rotate`、`back`、`navigate` | タッチとナビゲーションの入力です。 |
-| テキストと選択 | `type`、`select`、`clear`、`delete`、`copy`、`selectOption`、`setPickerValue` | テキストの入力・選択・コピーです。`copy` は事前の `select` を必要とします（第 7.5 節）。 |
+| テキストと選択 | `type`、`select`、`clear`、`delete`、`copy`、`selectOption`、`setPickerValue` | テキストの入力、選択、コピーです。`copy` は事前の `select` を必要とします（第 7.5 節）。 |
 | 条件 | `wait`、`assert` | 条件やアサーションブロックをポーリングします。固定時間の sleep は使いません。 |
 | アプリとデバイスのライフサイクル | `relaunch`、`setLocation`、`push`、`clearKeychain`、`clearClipboard`、`setClipboard`、`background`、`foreground`、`overrideStatusBar`、`clearStatusBar`、`handleSystemAlert` | アプリのライフサイクルと、その周りのシミュレートされたデバイスを操作します。 |
 | データと値 | `http`、`totp`、`generate`、`email` | 値を作るか取得します。HTTP 呼び出し、時刻ベースのワンタイムパスワード（TOTP）コード、乱数、メールボックスの検索です。 |
-| 合成と制御構文 | `use`、`web`、`manual`、`if`、`forEach` | コンポーネントを展開する、ブロックを WebView に絞る、人手の引き継ぎを記録する、分岐・繰り返しをします。 |
+| 合成と制御構文 | `use`、`web`、`manual`、`if`、`forEach` | コンポーネントを展開する、ブロックを WebView に絞る、人手の引き継ぎを記録する、分岐と繰り返しをします。 |
 
 ### 4.4 15 種のアサーション
 
@@ -487,7 +497,7 @@ scenarios:
 | クリップボード | `clipboard` | デバイスのクリップボードの現在のテキストです。 |
 | 要素の属性 | `attribute` | 要素の HTML 属性 1 つを、必要なときに読み取った値です（web のみ。BE-0466）。 |
 
-### 4.5 制御構文・合成・データ
+### 4.5 制御構文、合成、データ
 
 | 構文 | 欄 | すること |
 |---|---|---|
@@ -496,7 +506,7 @@ scenarios:
 | コンポーネント | `use` ステップ、別立てのコンポーネントファイル | 名前付きでパラメータ化されたステップの並びをコンパイル時に展開します。run が始まる前に解決済みです（`expand.py`、第 7.1 節）。ステップループが `use` ステップを目にすることはありません。 |
 | WebView のスコープ | `web` ステップ（`within`、`steps`） | `within` の `Selector` で届く WebView に、入れ子のステップの並びを絞ります。 |
 | 割り込みハンドラ | シナリオ直下の `interrupts:` | 許可ダイアログやアプリ更新のプロンプトのような、run の途中で予測できない位置に現れうる割り込み画面を片付けます。囲むシナリオの `vars.*` を共有します。 |
-| セットアップ・ティアダウンのフェーズ | シナリオ直下の `setup:` / `cleanup:` | `steps` の前と、判定が出たあとに走るステップです。本体のステップの並びとは別に報告されます。 |
+| セットアップとティアダウンのフェーズ | シナリオ直下の `setup:` / `cleanup:` | `steps` の前と、判定が出たあとに走るステップです。本体のステップの並びとは別に報告されます。 |
 | データ駆動の行 | `data:` / `dataFile:` | インラインの並びまたは CSV ファイルの行ごとに 1 つのシナリオを実体化し、`${row.*}` に代入します。 |
 
 ### 4.6 補間：`${namespace.key}`
@@ -515,8 +525,8 @@ scenarios:
 
 シナリオの `capturePolicy`（`common/scenario/models/evidence.py`）は、単発の指示ではなく、
 ステップループが繰り返し発火する規則を挙げます。だから 2 回目の run でも、AI を挟まずに同じ
-証跡が集まります。各規則の `on` トリガーは `action`（id が一致するステップが実行された）・
-`event: screenChanged`・`result: failure` のうちちょうど 1 つです。`capture` の並びは、トリガーが
+証跡が集まります。各規則の `on` トリガーは、`action`（id が一致するステップが実行された）、
+`event: screenChanged`、`result: failure` のうちちょうど 1 つです。`capture` の並びは、トリガーが
 発火したときに採取する成果物の種類を挙げます。仕組みの全体は[証跡](evidence.md)にあります。
 `capturePolicy` の有無にかかわらずどのステップにも付く、基準の `capture` 保証も含みます。
 
@@ -762,9 +772,11 @@ classDiagram
 一致が 2 件以上あれば `AmbiguousSelector` を送出します。この関数が**自分の判断で**位置で勝者を
 決めることはありません。最初に一致した要素を操作する振る舞いこそ、この設計全体が防ごうとしている
 不安定さだからです。作成者が明示した `index` だけが例外で、内容の異なる複数候補のうち n 番目を選べ
-ます。[セレクタ](selectors.md)が定める、あくまで最後の手段です。規則を弱めずに角を落とす工夫が
-2 つあります。報告内容がまったく同じ候補は 1 つにまとめます。作成者が区別できる材料がないためです。
-また、分類済みの兄弟要素と同じラベルを持つ汎用の `other` 特性の包みは、候補から落とします。
+ます。[セレクタ](selectors.md)が定める、あくまで最後の手段です。
+
+規則を弱めずに角を落とす工夫が 2 つあります。報告内容がまったく同じ候補は 1 つにまとめます。
+作成者が区別できる材料がないためです。また、分類済みの兄弟要素と同じラベルを持つ汎用の `other`
+特性の包みは、候補から落とします。
 
 ![セレクタ解決のフロー図。query() の 1 スナップショットが find_all に入ります。within があれば、空間的に内側の候補だけを残します。候補が 0 件なら ElementNotFound を送出します。内容がまったく同じ候補は、先に 1 つへまとめます。内容の異なる候補が 2 件以上残り、index の指定もなければ AmbiguousSelector を送出します。resolve_unique を出るのは 1 件だけです。そのあと backend が、要素自身の点が覆われていないかを調べます。覆いがあれば ElementNotTappable を送出し、なければその要素を操作します。](assets/diagrams/developer-guide-selector-resolution-ja.svg)
 
@@ -802,14 +814,17 @@ flowchart TB
 
 **狭い任意プロトコル**が、プラットフォーム間の能力差を引き受けます。すべての backend が空実装を
 並べる巨大なインターフェースを置く代わりに、`base.py` は小さなプロトコルを宣言します。
-`EvidenceProvider`、`ViewportProvider`、`ReadLagProvider`、`ReadOrderProvider`、
-`SettledReadProvider`、`RawSourceProvider`、`SettledCacheInvalidator` です。呼び出し側は実行時に
-所属を確かめます。backend は、そのプラットフォームが実際に支える振る舞いに限って狭いプロトコルを
-実装します。`BackendLifecycle` はあえての例外です。5 つのフックを実装側の backend が互いに素な
-部分集合として分担するので（`PlaywrightDriver` は `navigate`・`close`・`reset_context` を、
-`XcuitestDriver` は `await_ready`・`health_ready` を実装します）、どの backend も構造的な
-`isinstance` を満たしません。`platform_lifecycle` の環境は各フックに `cast(BackendLifecycle,
-driver)` で届きます。呼び出し箇所のための型付けの傘であって、適合の対象ではありません。
+`EvidenceProvider`、`ViewportProvider`、`ReadLagProvider` などです。さらに `ReadOrderProvider`、
+`SettledReadProvider`、`RawSourceProvider`、`SettledCacheInvalidator` があります。呼び出し側は
+実行時に所属を確かめます。backend は、そのプラットフォームが実際に支える振る舞いに限って狭い
+プロトコルを実装します。
+
+`BackendLifecycle` はあえての例外です。5 つのフックを、実装側の backend が互いに素な部分集合
+として分担します。`PlaywrightDriver` は `navigate`、`close`、`reset_context` を実装します。
+`XcuitestDriver` は `await_ready`、`health_ready` を実装します。部分集合が互いに素なので、
+どの backend も構造的な `isinstance` を満たしません。`platform_lifecycle` の環境は各フックに
+`cast(BackendLifecycle, driver)` で届きます。呼び出し箇所のための型付けの傘であって、
+適合の対象ではありません。
 
 **`FakeDriver`** には独立した説明が要ります。インメモリの backend があるおかげで、orchestrator 全体を
 デバイスなしで動かせます。決定的なゲートが Linux 上で数秒で終わり、Simulator を必要としないのは
@@ -823,11 +838,15 @@ driver)` で届きます。呼び出し箇所のための型付けの傘であ�
 `environments/` がプラットフォームごとの実装を置きます。`ios`、`xcuitest`、`xcuitest_live`、
 `android`、`web`、`fake` の 6 つです。
 
-プロトコルが覆う範囲は、起動（`start`）、準備完了の判定、再起動、デバイス操作、後片付けです。加えて
-runner が知りたい問いにも答えます。そのプラットフォームは動画を先行して録るのか、ネットワークを
-ドライバ経由で観測するのか、常駐ランナーはシナリオをまたいで生き残るのか、といった問いです。答えが
-プロトコルの裏にあるので、`runner/pool.py` と `crawl/cli.py` は actuator の名前で分岐せず、iOS と
-Android と web を 1 つのインターフェースで動かせます。
+プロトコルが覆う範囲は、起動（`start`）、準備完了の判定、再起動、デバイス操作、後片付けです。
+加えて、runner が知りたい次の 3 つにも、プラットフォームごとに答えます。
+
+- そのプラットフォームが動画を先行して録るかどうか。
+- そのプラットフォームがネットワークをドライバ経由で観測するかどうか。
+- そのプラットフォームの常駐ランナーがシナリオをまたいで生き残るかどうか。
+
+答えがプロトコルの裏にあるので、`runner/pool.py` と `crawl/cli.py` は actuator の名前で分岐せず、
+iOS と Android と web を 1 つのインターフェースで動かせます。
 
 ### 7.4 runner
 
@@ -844,10 +863,10 @@ Android と web を 1 つのインターフェースで動かせます。
 | `launch.py` · `launch_server.py` | `launch_driver` | ドライバを組み立て、アプリを立ち上げます。 |
 | `mailbox.py` | 転送方式のレジストリ | `email` ステップの転送方式を種類で解決します。 |
 
-**`_ScenarioRunner`** は、1 回の run が共有する文脈を持つ凍結 dataclass です。解決済みの設定、リースの
-生成関数、redactor、能力の集合、出力の設定が入ります。凍結してあること、そしてシナリオごとの値を
-`run_one` の局所に閉じ込めてあることが、`workers > 1` のときに複数の `ThreadPoolExecutor` ワーカで
-1 つのインスタンスを安全に共有できる理由です。
+**`_ScenarioRunner`** は、1 回の run が共有する文脈を持つ凍結 dataclass です。解決済みの設定、
+リースの生成関数、redactor、能力の集合、出力の設定が入ります。`workers > 1` のとき、複数の
+`ThreadPoolExecutor` ワーカが 1 つのインスタンスを安全に共有できます。理由は 2 つあります。
+dataclass が凍結してあること、そしてシナリオごとの値を `run_one` の局所に閉じ込めてあることです。
 
 **クラッシュ回復は判定の隣にあり、判定の内側には入りません。** backend のクラッシュはテスト結果では
 なくインフラの事象です。そこで `recovery.py` は、回数と実時間の両方に上限を置いたうえで、新しく確保
@@ -919,14 +938,16 @@ flowchart LR
 `requestSequence` を観測した通信と突き合わせます。`visual.py` は画像を比較し、`schema.py` は応答
 本文を検証し、`_common.py` は共有の `AssertionResult` を定義します。
 
-個々の評価関数より大事な性質が 2 つあります。**評価は全域関数です。** 例外を投げずに失敗の結果を
-返すので、壊れたアサーションは自分の検査だけを落とし、run を中断させません。そして
-**`EvalContext` が周辺の入力を束ねます。** 視覚比較の基準画像ディレクトリ、スキーマの
-ディレクトリ、golden のディレクトリ、クリップボードが入ります。ステップ内の `assert` は、あえて
-狭めた文脈を受け取ります。ステップの途中には、視覚比較が読むべき新しいスクリーンショットが存在
-しないからです。
+個々の評価関数より大事な性質が 2 つあります。
 
-### 7.7 証跡（evidence）
+- **評価は全域関数です。** 例外を投げずに失敗の結果を返すので、壊れたアサーションは自分の検査
+  だけを落とし、run を中断させません。
+- **`EvalContext` が周辺の入力を束ねます。** 視覚比較の基準画像ディレクトリ、スキーマの
+  ディレクトリ、golden のディレクトリ、クリップボードが入ります。ステップ内の `assert` は、あえて
+  狭めた文脈を受け取ります。ステップの途中には、視覚比較が読むべき新しいスクリーンショットが
+  存在しないからです。
+
+### 7.7 証跡
 
 [`common/evidence/`](https://github.com/bajutsu-e2e/bajutsu/tree/main/bajutsu/common/evidence) は、
 run が何を残すのかに答えます。
@@ -951,11 +972,14 @@ run が何を残すのかに答えます。
 ### 7.8 レポート
 
 [`common/report/`](https://github.com/bajutsu-e2e/bajutsu/tree/main/bajutsu/common/report) は
-`RunResult` の並びを 4 通りに描画します。`manifest.py` が `manifest.json` と JUnit XML を、
-`ctrf.py` が CTRF の JSON を書きます。`html.py`、`rows.py`、`panels.py`、`richtext.py` が対話的な
-HTML ページを組み立てます。`archive.py` と `load.py` は、終わった run を `.zip` に書き出し、
-オフラインで読み直して再描画します。`manifest.json` が唯一の正本であり、CI は HTML を解析せずに
-manifest を読みます。
+`RunResult` の並びを 4 通りに描画します。
+
+- `manifest.py` が `manifest.json` と JUnit XML を書きます。
+- `ctrf.py` が CTRF の JSON を書きます。
+- `html.py`、`rows.py`、`panels.py`、`richtext.py` が対話的な HTML ページを組み立てます。
+
+`archive.py` と `load.py` は、終わった run を `.zip` に書き出し、オフラインで読み直して再描画します。
+`manifest.json` が唯一の正本であり、CI は HTML を解析せずに manifest を読みます。
 
 ![証跡の書き込み経路のフロー図。3 つの供給元が 1 つのシンクへ入ります。ドライバはスクリーンショット、要素ツリー、生ダンプを供給します。アプリ内のコレクタは NetworkExchange の記録を供給します。Interval は動画と端末ログを供給します。シンクはすべてを RunArtifactWriter へ渡します。RunArtifactWriter は唯一の書き込み口で、run ディレクトリへ届く前に Redactor を適用します。これとは別に write_report が、メモリ上の RunResult の一覧を 4 通りに描画して同じディレクトリへ書きます。manifest.json、junit.xml、ctrf.json、report.html です。CI は manifest を読みます。共有用の zip は仕上がったディレクトリを詰めたもので、オフラインの再描画だけが manifest を読み戻して HTML レポートを作ります。](assets/diagrams/developer-guide-evidence-path-ja.svg)
 
@@ -998,7 +1022,7 @@ manifest は CI が読むファイルであって、他の 3 つが派生する�
 モデルに届く経路は 3 つあります。どれもモデルを狭いプロトコルの背後に閉じ込めるので、決定的コアが
 モデルを目にすることはありません。
 
-![Tier 1 の経路のクラス図。Agent プロトコルは、Observation を受け取って Proposal を返す next_action と、ゴールを受け取る plan を宣言します。ClaudeAgent が ClaudeBackedAgent の上でこれを実装し、ClaudeBackedAgent は AiBackend プロトコルと会話します。AiBackend の実装は 3 つで、API と Bedrock 向けの AnthropicBackend、Claude Code CLI 向けの ClaudeCodeBackend、そして生成時に例外を送出する無効化 backend です。record のループが Agent を動かします。crawl のエンジンは ActionProposer を動かし、決定的な実装と ClaudeActionProposer のいずれかが応えます。triage コマンドは TriageAgent を動かし、規則ベースの HeuristicTriageAgent か ClaudeTriageAgent が応え、どちらも summary・category・平文の suggestions・高々 1 件の構造化された Fix を持つ Triage の判定を返します。](assets/diagrams/developer-guide-tier1-ja.svg)
+![Tier 1 の経路のクラス図。Agent プロトコルは、Observation を受け取って Proposal を返す next_action と、ゴールを受け取る plan を宣言します。ClaudeAgent が ClaudeBackedAgent の上でこれを実装し、ClaudeBackedAgent は AiBackend プロトコルと会話します。AiBackend の実装は 3 つで、API と Bedrock 向けの AnthropicBackend、Claude Code CLI 向けの ClaudeCodeBackend、そして生成時に例外を送出する無効化 backend です。record のループが Agent を動かします。crawl のエンジンは ActionProposer を動かし、決定的な実装と ClaudeActionProposer のいずれかが応えます。triage コマンドは TriageAgent を動かし、規則ベースの HeuristicTriageAgent か ClaudeTriageAgent が応え、どちらも summary、category、平文の suggestions、高々 1 件の構造化された Fix を持つ Triage の判定を返します。](assets/diagrams/developer-guide-tier1-ja.svg)
 
 <details>
 <summary>Mermaid のソース</summary>
@@ -1057,11 +1081,15 @@ classDiagram
 
 **`record/`** は自然言語のゴールからシナリオを書き起こします。
 [`loop.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/record/loop.py) が
-observe、propose、execute、emit の順で回ります。画面を読んで `Observation` にし、`Agent` に
-`Proposal` を求め、提案された `Step` を決定的ループと同じ `_do_action` で実行し、育ちつつある
-シナリオに追記します。同じ振り分け役を使い回すからこそ、記録したステップはそのまま再生できます。
-`capture.py` は代理操作による記録の経路です。人間がアプリを操作し、記録側がそこからステップを
-起こします。
+observe、propose、execute、emit の順で回ります。
+
+1. 画面を読んで `Observation` にします。
+2. `Agent` に `Proposal` を求めます。
+3. 提案された `Step` を、決定的ループと同じ `_do_action` で実行します。
+4. 育ちつつあるシナリオに、そのステップを追記します。
+
+同じ振り分け役を使い回すからこそ、記録したステップはそのまま再生できます。`capture.py` は
+代理操作による記録の経路です。人間がアプリを操作し、記録側がそこからステップを起こします。
 
 ![record ループのフロー図。ループは画面を読んで Observation にし、Agent に次の操作を尋ねます。Step を運ぶ Proposal は、決定的な run と同じ _do_action の振り分け役へ渡ります。実行したステップは、次の観察へ移る前に、育ちつつあるシナリオへ追記されます。人手を必要とする Proposal は handoff へ向かい、そのあとループに戻ります。ゴール到達を報せる Proposal は、仕上がったシナリオを書き出します。](assets/diagrams/developer-guide-record-loop-ja.svg)
 
@@ -1098,10 +1126,13 @@ run のディレクトリから `TriageContext` を組み立て、`HeuristicTria
 プロトコルの背後で `ClaudeTriageAgent` に差し替えます。どちらの形でも triage は助言に留まり、修正案を
 出すだけで判定を変えません。
 
-**`common/ai/`** はベンダを 1 つの接続面の裏に置きます。`AiBackend` が要求と応答の型を正規化し、
-`registry.py` がプロバイダ名を adapter に対応づけます。`anthropic.py` が Anthropic API と Amazon
-Bedrock を、`claude_code.py` が Claude Code のコマンドラインインターフェース（CLI）を担当します。
-`disabled` プロバイダの生成関数は例外を送出するので、AI 経路が誤って backend を作ることはありません。
+**`common/ai/`** はベンダを 1 つの接続面の裏に置きます。`AiBackend` が要求と応答の型を正規化します。
+`registry.py` はプロバイダ名を adapter に対応づけます。
+
+- `anthropic.py` は Anthropic API と Amazon Bedrock を担当します。
+- `claude_code.py` は Claude Code のコマンドラインインターフェース（CLI）を担当します。
+- `disabled` プロバイダの生成関数は例外を送出するので、AI 経路が誤って backend を作ることは
+  ありません。
 
 ---
 
@@ -1127,14 +1158,18 @@ Bedrock を、`claude_code.py` が Claude Code のコマンドラインインタ
 **`mcp/`** は `run` と `doctor` を Model Context Protocol（MCP）のツールとして、run の証跡を MCP の
 リソースとして公開します。エディタ側のエージェントが、シェルを介さず決定的な経路に届きます。
 
-**`analysis/`** は読み取り専用の助言レポートを持ちます。どれも CI を止めません。`audit`（決定性と
-不安定さの監査）、`coverage`（識別子の名前空間の網羅率）、`impact`（差分が影響するステップ）、
-`stats`（run の集計統計）、`flakiness`（run をまたぐ不安定さの順位付け）、`trace`（1 回の run の
-時系列）です。
+**`analysis/`** は読み取り専用の助言レポートを持ちます。どれも CI を止めません。
+
+- `audit` は、決定性と不安定さの監査です。
+- `coverage` は、識別子の名前空間の網羅率です。
+- `impact` は、差分が影響するステップです。
+- `stats` は、run の集計統計です。
+- `flakiness` は、run をまたぐ不安定さの順位付けです。
+- `trace` は、1 回の run の時系列です。
 
 ---
 
-## 10. 機能の追加・修正：開発と動作確認のルーチン
+## 10. 機能の追加と修正：開発と動作確認のルーチン
 
 ### 10.1 変更の種類ごとの出発点
 
@@ -1155,7 +1190,7 @@ Bedrock を、`claude_code.py` が Claude Code のコマンドラインインタ
 
 ### 10.2 開発のルーチン
 
-![開発ルーチンのフロー図。ブランチまたは worktree の作成から始まり、1 つのレイヤの内側で変更を実装し、テストを足すか更新し、速い検査（format、lint、typecheck、test）に進みます。make check が通るかどうかの分岐があり、通らなければ実装に戻り、通れば適合スイート・実機・make docs によるスイート外の確認に進みます。続いて make preflight が main へリベースしてゲートを再実行し、push すると pre-push フックが make check を再実行して red なら拒否し、プルリクエストを開き、CI が同じゲートを再実行します。push から点線で伸びる警告が、git push --no-verify は例外なく禁止であることを示します。CI が red なら実装に戻ります。](assets/diagrams/developer-guide-routine-ja.svg)
+![開発ルーチンのフロー図。ブランチまたは worktree の作成から始まり、1 つのレイヤの内側で変更を実装し、テストを足すか更新し、速い検査（format、lint、typecheck、test）に進みます。make check が通るかどうかの分岐があり、通らなければ実装に戻り、通れば適合スイート、実機、make docs によるスイート外の確認に進みます。続いて make preflight が main へリベースしてゲートを再実行し、push すると pre-push フックが make check を再実行して red なら拒否し、プルリクエストを開き、CI が同じゲートを再実行します。push から点線で伸びる警告が、git push --no-verify は例外なく禁止であることを示します。CI が red なら実装に戻ります。](assets/diagrams/developer-guide-routine-ja.svg)
 
 <details>
 <summary>Mermaid のソース</summary>
@@ -1204,12 +1239,12 @@ flowchart LR
    すべての backend が共有する唯一の仕様です。`Driver` プロトコル向けの技術適合性キット
    （technology compatibility kit、TCK）で、新しい backend は `ConformanceHarness` を 1 度実装
    すれば、自分でテストを書かずにスイート全体を受け継ぎます。
-4. **反復作業中は速い検査を走らせます。** 毎回フルのゲートを走らせるのではなく、`make format`・
-   `make lint`・`make typecheck`・`make test` はそれぞれ 1 つのことだけを検査し、すぐに終わり
-   ます。`make check` はこれらに加えて、より重い構造的な検査（import のレイヤ、docstring、
-   ロードマップ、シークレットの走査）を CI と同じ順序で走らせます。「ローカルで green」が
-   「CI でも green」を予言する、という前提が成り立つのはこのためです。
-5. **テストスイートの外側でも手を動かして確認します。** ドライバ・backend・図に触れた変更には、
+4. **反復作業中は速い検査を走らせます。** 毎回フルのゲートを走らせるのではなく、`make format`、
+   `make lint`、`make typecheck`、`make test` をそれぞれ使います。どれも 1 つのことだけを検査し、
+   すぐに終わります。`make check` はこれらに加えて、より重い構造的な検査（import のレイヤ、
+   docstring、ロードマップ、シークレットの走査）を CI と同じ順序で走らせます。「ローカルで
+   green」が「CI でも green」を予言する、という前提が成り立つのはこのためです。
+5. **テストスイートの外側でも手を動かして確認します。** ドライバ、backend、図に触れた変更には、
    下の 10.3 節が何のコマンドを使うかを示します。
 6. **push の前にリベースします。** `make preflight` が `origin/main` を fetch し、その上に
    リベースし、ゲートを走らせ、「完了の定義」のリマインダーを表示します。pre-push フックが
@@ -1234,9 +1269,9 @@ flowchart LR
 | CLI コマンド | `make test` | フィクスチャ設定に対してコマンドを手で走らせます。`capability/capabilities.py` 自身のテストが、登録済みのコマンドすべてが分類されていることを確かめます。 |
 | ドキュメント（図を含む） | `make lint-roadmap`、textlint（`tools/textlint/`） | `make docs`（`mkdocs build --strict`）。mermaid フェンスを変えたときは `make docs-diagrams` でチェックイン済みの SVG を再レンダリングします。このページ自身の図が従っている慣例です。 |
 
-カバレッジは変更のあとではなく、変更と並行して棘を締めます。`make lint-pr` は、計測カバレッジが
-総合フロアより 2 ポイント以上上振れしたときに知らせます。`make coverage-floors` は、あるファイルの
-カバレッジが実際に上がったときに、ファイルごとのフロアのスナップショット
+カバレッジのフロアは、変更のあとではなく、変更と並行して引き上げます。`make lint-pr` は、
+計測カバレッジが総合フロアより 2 ポイント以上上振れしたときに知らせます。`make coverage-floors`
+は、あるファイルのカバレッジが実際に上がったときに、ファイルごとのフロアのスナップショット
 （`coverage-floors.json`）を引き上げます。低下をごまかす手段ではなく、上昇を記録するための、
 意図的でレビュー可能な手順です。
 
