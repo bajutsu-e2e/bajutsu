@@ -3,7 +3,8 @@
 The table is the working list for closing the gaps between the two mobile backends. Each mark is
 checked against the backend's static `CAPABILITIES` (read through `backends.capabilities_for`, the
 same source the preflight uses), so a gap cannot open or close without the page changing with it,
-and a new capability token cannot ship without a row.
+and a new capability token cannot ship without a row. The four-backend table in docs/drivers.md gets
+the same row-coverage and ✅-matches-declared checks.
 """
 
 from __future__ import annotations
@@ -79,6 +80,42 @@ def test_check_mark_matches_the_declared_capabilities(
 def test_every_non_supported_mark_carries_a_note(rows: dict[str, tuple[str, str, str]]) -> None:
     bare = [t for t, (ios, android, note) in rows.items() if {ios, android} != {"✅"} and not note]
     assert not bare, f"rows with a gap, n/a, or per-run mark need a note: {bare}"
+
+
+# docs/drivers.md keeps its own four-backend capability table. It had fallen 12 rows behind the
+# tokens before this check covered it, so it gets the same coverage and ✅-matches-declared checks.
+_DRIVERS_PAGES = {"en": _DOCS / "drivers.md", "ja": _DOCS / "ja" / "drivers.md"}
+_DRIVERS_HEADER_TAIL = "| xcuitest | adb | playwright | fake |"
+_DRIVERS_BACKENDS = ("xcuitest", "adb", "playwright", "fake")
+
+
+def _drivers_rows(page: Path) -> dict[str, list[str]]:
+    """Token → one mark per backend, from the table whose header ends with the four backends."""
+    lines = page.read_text(encoding="utf-8").splitlines()
+    start = next(i for i, line in enumerate(lines) if line.endswith(_DRIVERS_HEADER_TAIL)) + 2
+    rows: dict[str, list[str]] = {}
+    for line in lines[start:]:
+        if not line.startswith("|"):
+            break
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        rows[cells[0].strip("`")] = cells[-len(_DRIVERS_BACKENDS) :]
+    return rows
+
+
+@pytest.mark.parametrize("lang", sorted(_DRIVERS_PAGES))
+def test_drivers_page_table_matches_every_backend(lang: str) -> None:
+    rows = _drivers_rows(_DRIVERS_PAGES[lang])
+    tokens = _all_tokens()
+    assert set(rows) == tokens, (
+        f"missing rows: {sorted(tokens - set(rows))}; unknown rows: {sorted(set(rows) - tokens)}"
+    )
+    wrong = [
+        (token, backend, marks[i])
+        for token, marks in rows.items()
+        for i, backend in enumerate(_DRIVERS_BACKENDS)
+        if (marks[i] == "✅") != (token in backends.capabilities_for(backend))
+    ]
+    assert not wrong, f"marks that disagree with the declared capabilities: {wrong}"
 
 
 def test_both_languages_carry_the_same_marks() -> None:

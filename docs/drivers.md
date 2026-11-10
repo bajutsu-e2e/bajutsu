@@ -61,13 +61,18 @@ The two mobile backends differ in what they support.
 | `deviceLog` | whole-scenario device log or browser console stream (BE-0467; Simulator only on iOS) | ✅ | ✅ | ✅ | — |
 | `appTrace` | whole-scenario app `os_log` trace (BE-0467; iOS Simulator only) | ✅ | — | — | — |
 | `multiTouch` | two-finger gestures (pinch / rotate) | ✅ | ✅ | ✅ | ✅ |
+| `webView` | query and tap the DOM inside an embedded WKWebView (BE-0037); granted per run by the WebView bridge, so no backend declares it statically | — | — | — | — |
 | `textSelection` | select-all + clipboard copy on the focused field | ✅ | ✅ | ✅ | ✅ |
 | `selectOption` | set a native `<select>` by value (web only) | — | — | ✅ | ✅ |
 | `urlNavigation` | open a URL mid-scenario with `navigate` (web only; BE-0464) | — | — | ✅ | ✅ |
 | `elementAttribute` | read one HTML attribute of an element for the `attribute` assertion (web only; BE-0466) | — | — | ✅ | ✅ |
 | `handleSystemAlert` | tap an iOS SpringBoard permission-prompt button natively | ✅ | — | — | ✅ |
+| `resolveAlerts` | answer the policy's system alert inside the request that reads the screen (BE-0461; iOS only) | ✅ | — | — | — |
 | `pickerWheel` | set a wheel-style picker to a named row (iOS only) | ✅ | — | — | ✅ |
 | `handleTipkitTip` | dismiss a blocking Apple TipKit tip (iOS only) | ✅ | — | — | ✅ |
+| `appContext` | activate another installed app and drive it with the `app:` step (iOS only) | ✅ | — | — | ✅ |
+| `selectPhotos` | pick images from the system photo picker by position (iOS only; dropped on an Apple Silicon Simulator) | ✅ | — | — | ✅ |
+| `handleNotificationBanner` | report and swipe away a foreground notification banner (BE-0416; iOS only) | ✅ | — | — | ✅ |
 | `deviceControl.setLocation` | set the simulated GPS location | ✅ | ✅ | — | — |
 | `deviceControl.clipboard` | read / write / clear the clipboard | ✅ | ✅ | — | — |
 | `deviceControl.push` | deliver a push notification | ✅ | — | — | — |
@@ -75,6 +80,13 @@ The two mobile backends differ in what they support.
 | `deviceControl.background` | send the app to the background | ✅ | — | — | — |
 | `deviceControl.foreground` | bring the app to the front, launching it if needed | ✅ | ✅ | — | — |
 | `deviceControl.statusBar` | override / clear the status bar | ✅ | — | — | — |
+| `deviceControl.permissions.location` | grant or revoke the `location` permission (BE-0276) | ✅ | ✅ | — | — |
+| `deviceControl.permissions.camera` | grant or revoke the `camera` permission (BE-0276) | ✅ | ✅ | — | — |
+| `deviceControl.permissions.microphone` | grant or revoke the `microphone` permission (BE-0276) | ✅ | ✅ | — | — |
+| `deviceControl.permissions.contacts` | grant or revoke the `contacts` permission (BE-0276) | ✅ | ✅ | — | — |
+| `deviceControl.permissions.photos` | grant or revoke the `photos` permission (BE-0276) | ✅ | ✅ | — | — |
+| `deviceControl.permissions.calendar` | grant or revoke the `calendar` permission (BE-0276) | ✅ | ✅ | — | — |
+| `deviceControl.permissions.notifications` | grant or revoke the `notifications` permission (BE-0276) | — | ✅ | — | — |
 | `deviceGroup` | share one device between the targets of a device group (BE-0447; Simulator only on iOS) | ✅ | ✅ | — | ✅ |
 
 > The `deviceControl.*` tokens are the `DeviceControl` family split per operation (BE-0212, from the

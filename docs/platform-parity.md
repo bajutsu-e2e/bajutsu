@@ -109,3 +109,7 @@ this page and from its mirror under `docs/ja/`. Four checks run on every `make c
 
 When a change makes a backend declare a new capability, the test fails until the cell turns to ✅.
 The same holds the other way. A new capability token needs a new row before the test passes.
+
+The same test also checks the four-backend capability table in
+[Drivers](drivers.md#capabilities-capability). That table needs a row for every token.
+Each ✅ in it must match what the backend declares, for all four backends.

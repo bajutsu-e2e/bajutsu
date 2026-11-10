@@ -54,13 +54,18 @@ class Driver(Protocol):
 | `deviceLog` | シナリオ全体のデバイスログまたはブラウザのコンソール（BE-0467。iOS では Simulator のみ） | ✅ | ✅ | ✅ | — |
 | `appTrace` | シナリオ全体のアプリの `os_log` トレース（BE-0467。iOS Simulator のみ） | ✅ | — | — | — |
 | `multiTouch` | 2 本指ジェスチャ（pinch / rotate） | ✅ | ✅ | ✅ | ✅ |
+| `webView` | 埋め込まれた WKWebView の DOM を問い合わせてタップする（BE-0037、WebView ブリッジが実行ごとに付与し、静的な宣言はなし） | — | — | — | — |
 | `textSelection` | フォーカス中フィールドの全選択とクリップボードへのコピー | ✅ | ✅ | ✅ | ✅ |
 | `selectOption` | ネイティブ `<select>` を値で設定（web のみ） | — | — | ✅ | ✅ |
 | `urlNavigation` | `navigate` でシナリオの途中に URL を開く（web のみ。BE-0464） | — | — | ✅ | ✅ |
 | `elementAttribute` | `attribute` アサーションのために要素の HTML 属性を 1 つ読み取る（web のみ。BE-0466） | — | — | ✅ | ✅ |
 | `handleSystemAlert` | iOS SpringBoard の許可プロンプトのボタンをネイティブにタップ | ✅ | — | — | ✅ |
+| `resolveAlerts` | 画面を読むリクエストの中で、ポリシーが指定するシステムアラートに答える（BE-0461、iOS のみ） | ✅ | — | — | — |
 | `pickerWheel` | ホイール型のピッカーを指定した行へ設定（iOS のみ） | ✅ | — | — | ✅ |
 | `handleTipkitTip` | 操作をブロックしている Apple TipKit の tip を閉じる（iOS のみ） | ✅ | — | — | ✅ |
+| `appContext` | インストール済みの別アプリを前面に出し、`app:` ステップで操作する（iOS のみ） | ✅ | — | — | ✅ |
+| `selectPhotos` | システムの写真選択画面から位置を指定して画像を選ぶ（iOS のみ、Apple Silicon の Simulator では除外） | ✅ | — | — | ✅ |
+| `handleNotificationBanner` | 前面の通知バナーの位置を報告し、スワイプで消す（BE-0416、iOS のみ） | ✅ | — | — | ✅ |
 | `deviceControl.setLocation` | 疑似 GPS 位置の設定 | ✅ | ✅ | — | — |
 | `deviceControl.clipboard` | クリップボードの読み取り / 書き込み / クリア | ✅ | ✅ | — | — |
 | `deviceControl.push` | プッシュ通知の配信 | ✅ | — | — | — |
@@ -68,6 +73,13 @@ class Driver(Protocol):
 | `deviceControl.background` | アプリのバックグラウンド化 | ✅ | — | — | — |
 | `deviceControl.foreground` | アプリを前面に出す（起動していなければ起動する） | ✅ | ✅ | — | — |
 | `deviceControl.statusBar` | ステータスバーの上書き / クリア | ✅ | — | — | — |
+| `deviceControl.permissions.location` | `location` の権限を付与 / 取り消す（BE-0276） | ✅ | ✅ | — | — |
+| `deviceControl.permissions.camera` | `camera` の権限を付与 / 取り消す（BE-0276） | ✅ | ✅ | — | — |
+| `deviceControl.permissions.microphone` | `microphone` の権限を付与 / 取り消す（BE-0276） | ✅ | ✅ | — | — |
+| `deviceControl.permissions.contacts` | `contacts` の権限を付与 / 取り消す（BE-0276） | ✅ | ✅ | — | — |
+| `deviceControl.permissions.photos` | `photos` の権限を付与 / 取り消す（BE-0276） | ✅ | ✅ | — | — |
+| `deviceControl.permissions.calendar` | `calendar` の権限を付与 / 取り消す（BE-0276） | ✅ | ✅ | — | — |
+| `deviceControl.permissions.notifications` | `notifications` の権限を付与 / 取り消す（BE-0276） | — | ✅ | — | — |
 | `deviceGroup` | デバイスグループのターゲットで 1 台のデバイスを共有する（BE-0447、iOS は Simulator のみ） | ✅ | ✅ | — | ✅ |
 
 > `deviceControl.*` トークンは、`DeviceControl` 一族を操作ごとに分割したものです（BE-0212、BE-0128 の粗い `deviceControl` から分割しました）。これにより、バックエンドは自分が忠実に実現できる操作だけを公開でき、部分的にしか実現しないバックエンドも残りを誤って公開せずに済みます。XCUITest は `simctl` を通じて一族全体を実現しますが、Android エミュレータが実現するのは `setLocation`、`clipboard`、`foreground` だけです（その `push` / キーチェーン / ステータスバー / `background` の各操作には忠実な等価物がありません）。`background` と `foreground` は、BE-0447 が分けるまで 1 つの `appLifecycle` トークンでした。デバイスグループの後から入るメンバーは `foreground` で起動するので、分ける必要がありました。
