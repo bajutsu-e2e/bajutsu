@@ -193,7 +193,7 @@ A string may legitimately match a pattern without being a secret: a fixture, a d
 placeholder, or a shell variable reference. Exempt it with a scoped `[[allowlists]]` entry in
 `.gitleaks.toml` — gitleaks' own escape valve — rather than by loosening a pattern.
 
-A local hook helps a clone that has one wired and isn't bypassed with `--no-verify`. CI therefore
+A local hook only helps a clone that has one wired and isn't bypassed with `--no-verify`. CI therefore
 runs the same scan independently: `make lint-secrets` re-scans every tracked file and is folded
 into `make check`. This mirrors the way `make check` itself runs both locally and in CI. Neither a
 skipped `make setup` nor a `--no-verify` commit slips a secret past review.
@@ -705,8 +705,8 @@ same line you would write as the lead commit:
   after the merge (see [Roadmap items](#roadmap-items-be-ids-strict)).
 - **CI enforces the title.** The `pr-title` workflow (`.github/workflows/pr-title.yml`) runs
   `scripts/lint_pr.py --title-only` on every PR and re-runs when the title is edited. It fails the
-  check in two cases. The title may not be a scoped conventional subject. Or the branch name may
-  encode a roadmap id (`claude/be-0050-<slug>`) while the title doesn't lead with the matching
+  check in two cases: when the title is not a scoped conventional subject, and when the branch name
+  encodes a roadmap id (`claude/be-0050-<slug>`) while the title doesn't lead with the matching
   `[BE-0050]` prefix (a missing or mismatched id). The branch, not the diff, is the authoritative id
   signal, so a copy-pasted `[BE-0046]` on a `be-0050` branch is caught.
 
@@ -1267,10 +1267,11 @@ The *Documentation style* rules above govern the prose docs. This section is the
 `mkdocstrings`) renders. The reference build is a separate, heavier path kept out of `make check`.
 It adds no LLM and never runs inside `run`, so the prime directives hold by construction.
 
-- **English, like every code comment.** Code (and its docstrings) is not bilingual. The prose docs
-  under `docs/` alone are.
+- **English, like every code comment.** Code (and its docstrings) is not bilingual. Only the prose
+  docs under `docs/` are.
 - **Google style on the public surface.** The public API uses a one-line summary followed by
-  `Args:` / `Returns:` / `Raises:` (and `Yields:` / `Examples:`) **where they add information**.
+  `Args:` / `Returns:` / `Raises:` (and `Yields:` / `Examples:`) **only where they add
+  information**.
   The public API comprises:
   - the `Driver` protocol and shared types in
     [`bajutsu/common/drivers/base.py`](../bajutsu/common/drivers/base.py)
