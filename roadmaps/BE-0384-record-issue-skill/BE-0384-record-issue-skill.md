@@ -51,9 +51,9 @@ than filed.
 Claude Code's own harness already has a shape for the first half of this problem. The `spawn_task`
 tool lets a session flag an out-of-scope finding as a chip the user can act on later, without
 derailing the current turn. That chip is ephemeral and scoped to one session. It does not survive
-past the session and is not visible to the rest of the team. It is not a GitHub Issue either, so
-[`task-select`](../../.apm/skills/task-select/SKILL.md) cannot pick it up, although `task-select`
-already treats open GitHub Issues as one of its two candidate sources alongside the roadmap.
+past the session and is not visible to the rest of the team. It is not a GitHub Issue either, and
+[`task-select`](../../.apm/skills/task-select/SKILL.md) already treats open GitHub Issues as one of
+its two candidate sources alongside the roadmap, so it cannot pick the chip up.
 `record-issue` is the durable, repository-level counterpart. It files a persistent, team-visible
 issue that `task-select` can surface to anyone, in a later session, on a different machine.
 

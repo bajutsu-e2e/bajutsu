@@ -27,7 +27,7 @@ This item adds a curated set of them:
 - `RET` (return-statement consistency)
 - `ARG` (unused arguments)
 - `SLF` (private-member access from outside its class)
-- `W` (the pycodestyle warnings that `E`'s sibling never turned on)
+- `W` (pycodestyle's warning rules, the sibling of `E`, never enabled here until now)
 - `PLE` (Pylint's error tier, which ruff reimplements directly)
 - a hand-picked subset of `TRY` (exception-handling style) and `PLW` (Pylint's warning tier)
 
@@ -90,7 +90,7 @@ This item's `PLW` slice is the useful remainder once `PLC0415`'s noise is set as
 
 A further subset of `PL`, the function-size rules `PLR0911` / `PLR0912` / `PLR0915`, belongs with the
 sibling cyclomatic-complexity-ceiling proposal rather than here. Those rules measure the same thing a
-complexity threshold measures, how large and branchy one function has grown, and raise no style
+complexity threshold measures — how large and branchy one function has grown — rather than a style
 question.
 
 ## Detailed design

@@ -42,7 +42,7 @@ unpredictable point, such as an onboarding step, a tutorial overlay, or a permis
 accessibility tree can see. A TipKit tip has exactly that unpredictable-timing shape, so on its face
 `interrupts` looks like the right tool.
 
-That looks right but is not, for one concrete reason. The `condition` of `interrupts` is an assertion an
+It is not, for one concrete reason. The `condition` of `interrupts` is an assertion an
 author writes against the app's own accessibility tree, and that requires a selector the author can
 name. A custom onboarding screen is the app team's own view, so it carries whatever identifier the
 team chooses to give it. That is the case `interrupts` was built for.
@@ -255,7 +255,7 @@ The work divides into six units:
   every backend runs through. The spike's real dividend is narrower and still collected: no *Swift
   runner* route is needed, unlike BE-0315.
 - **Dismiss via the close button's identifier (`xmark.circle.fill`) instead of `PopoverDismissRegion`.**
-  Rejected. We confirmed on-device that both work as well as a dismiss target. But an SF Symbol
+  Rejected. We confirmed on-device that both work equally well as a dismiss target. But an SF Symbol
   name is a plausible accessibility identifier that an unrelated, app-authored button could reuse
   by coincidence, which risks `AmbiguousSelector` in some app. `PopoverDismissRegion` is a
   TipKit-internal name that no app-authored view would collide with.

@@ -106,7 +106,7 @@ threshold explicitly rather than leaving it at its default:
 
 ### What the counts measure for a function that nests other functions
 
-*Motivation* left one question to the implementation phase. Does `_make_handler`'s complexity of 100
+*Motivation* left one question to the implementation phase. Do `_make_handler`'s complexity of 100
 and `make_app`'s of 55 come from branching inside those factory bodies, or from folding each nested
 endpoint handler's own branches into the factory's total? Measurement answers it.
 

@@ -73,8 +73,8 @@ The flag `--no-warn-unused-ignores` stays in place only until the existing `# ty
 swept. The pass that finds a comment either removes it or replaces it with a narrowed
 `# type: ignore[<code>]` that names the reason. Nothing waits for later.
 
-**Step 2: clear the `attr-defined` findings that come from patching a module's own import**, module
-by module. Each count below is that directory's *total* mypy error count under the relaxed run, not
+**Step 2: clear the `attr-defined` findings that come from patching a module's own import**, directory
+by directory. Each count below is that directory's *total* mypy error count under the relaxed run, not
 its `attr-defined` subset. We clear each directory outright before the next one starts.
 
 Start with the smallest directories: `tests/scenario/` at 7 errors and `tests/report/` at 14. Clear
