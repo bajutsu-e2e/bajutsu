@@ -7,7 +7,7 @@
 > 意図的に対をなしていて、片方が[ロードマップ](../../roadmaps/README-ja.md)を満たし、もう片方がそれを
 > 消化します。両者が合わさって、Bajutsu への自明でない変更がすべて通る循環を形づくります。このページは
 > その循環を説明します。前提となる BE ID の仕組みは
-> [ai-development](ai-development.md#ロードマップ項目-be-id厳守) が規定します。
+> [ai-development](ai-development.md#ロードマップ項目の-be-id-は厳守する) が規定します。
 
 > **貢献が初めての方は、[コントリビューターワークフローチュートリアル](contributor-workflow-tutorial.md)から
 > 始めてください。** 一つのアイデアをこの循環全体に通す、手を動かしながらの段階的な walkthrough です
@@ -83,7 +83,7 @@ flowchart TB
 [`roadmap-id`](../../.github/workflows/roadmap-id.yml) ワークフローが PR 時に
 [`scripts/allocate_roadmap_ids.py`](../../scripts/allocate_roadmap_ids.py) を走らせ、次に空いている ID を
 アトミックに確保し、`BE-XXXX` を `BE-NNNN` にすべて書き換えて、結果をブランチに押し戻します。こうして起草は
-競合と無縁でいられます。詳しい仕組みは [ai-development](ai-development.md#ロードマップ項目-be-id厳守) に
+競合と無縁でいられます。詳しい仕組みは [ai-development](ai-development.md#ロードマップ項目の-be-id-は厳守する) に
 あります。
 
 ## 出荷：`implement-be` スキル
