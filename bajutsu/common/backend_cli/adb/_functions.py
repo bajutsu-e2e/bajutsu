@@ -926,6 +926,21 @@ def resolve_activity_cmd(serial: str, package: str) -> list[str]:
     return _adb(serial, "shell", "cmd", "package", "resolve-activity", "--brief", package)
 
 
+def launcher_component(out: str) -> str | None:
+    """The `<package>/<activity>` line in `resolve_activity_cmd`'s output, or None if it names none.
+
+    A launcher component is `<package>/<activity>`: a `/` with a non-empty left side and no spaces.
+    Requiring a non-empty left side rejects a stray absolute path (`/data/…`) in the manager's chatter
+    that would otherwise be launched as a bogus component.
+    """
+    for raw in reversed(out.splitlines()):
+        line = raw.strip()
+        head, sep, tail = line.partition("/")
+        if sep and head and tail and " " not in line:
+            return line
+    return None
+
+
 def launch_cmd(serial: str, component: str, extras: Mapping[str, str] | None = None) -> list[str]:
     """Launch `component` (`<package>/<activity>`), forwarding launch env as intent extras.
 

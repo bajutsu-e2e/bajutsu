@@ -65,7 +65,7 @@ iOS の実機では、`simctl` が提供する能力がなくなります。こ�
 | `handleSystemAlert` | ✅ | n/a | Android のシステムダイアログは取得した要素ツリーに現れるので、通常の `tap` で操作できます。 |
 | `resolveAlerts` | ✅ | n/a | `handleSystemAlert` と同じ理由です。 |
 | `pickerWheel` | ✅ | gap | Android で近いコントロールは `NumberPicker` と、スピナー表示の `DatePicker` です。値を直接設定する手段はまだありません。 |
-| `appContext` | ✅ | gap | UI Automator はどのアプリのウィンドウも読めます。`am start` で別のパッケージを前面に出せます。 |
+| `appContext` | ✅ | ✅ | Android は別のパッケージのランチャーアクティビティを `am start` で起動し、そのパッケージが resumed のアクティビティを持つまで待ちます。UI Automator は前面にあるアプリのウィンドウを読みます。 |
 | `selectPhotos` | ✅ | gap | Android の写真選択画面はシステム UI で、タップで操作できます。位置を指定して写真を選ぶステップはまだありません。iOS では、Apple Silicon のシミュレータに限り実行時にこの能力を外します。 |
 | `handleTipkitTip` | ✅ | n/a | TipKit は iOS のフレームワークです。 |
 | `handleNotificationBanner` | ✅ | gap | Android のヘッドアップ通知は、SystemUI のノードとして要素ツリーに現れます。 |

@@ -1,0 +1,52 @@
+# Cross-app UI control on Android (issue #2393): the Android twin of app.yaml. `app:` brings the
+# system Settings app forward — a separate package the showcase never launches — drives its own
+# tree, then returns to the showcase on the screen it left.
+#
+# Settings is the stand-in for app.yaml's Safari because every emulator image ships it.
+# `search_action_bar` is the homepage search bar's resource-id, read off the API 34 `google_apis`
+# image the Android lane boots; an id, not the "Search settings" label, so the device locale does
+# not matter.
+#
+# The showcase is driven between the two blocks (a pushed detail screen with its favorite toggled,
+# then the catalog again), so the round trip proves the showcase's own state survives each handoff,
+# not only that the app comes back. Each showcase id lists its dotted Compose form and its
+# underscore Android Views form, so the file runs unchanged on both toolkits.
+#
+# Tagged `android` so the iOS lanes exclude it: they sweep this directory, and `bundleId` here names
+# an Android package. The android Makefile names this file explicitly.
+- name: app drives Settings and back, twice, around real showcase navigation (android)
+  tags: [android]
+  preconditions:
+    subject:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
+  steps:
+    - wait: { for: { id: [stable.row.3, stable_row_3] }, timeout: 10 }
+    - tap: { id: [stable.row.3, stable_row_3] }
+    - wait: { for: { id: [horse.title, horse_title] }, timeout: 5 }
+    - tap: { id: [horse.favorite, horse_favorite] }
+    - assert:
+        - value: { sel: { id: [horse.favorite.value, horse_favorite_value] }, equals: "on" }
+    - app:
+        bundleId: com.android.settings
+        steps:
+          - assert:
+              - exists: { id: search_action_bar }
+              - exists: { id: [horse.title, horse_title], negate: true }
+    # Back on the showcase: the detail screen the block interrupted is still pushed, with the
+    # favorite it toggled still on.
+    - wait: { for: { id: [horse.title, horse_title] }, timeout: 10 }
+    - assert:
+        - value: { sel: { id: [horse.favorite.value, horse_favorite_value] }, equals: "on" }
+    - back: {}
+    - wait: { for: { id: [stable.row.3, stable_row_3] }, timeout: 5 }
+    # A second handoff from a different showcase screen: the return holds up on a repeat too.
+    - app:
+        bundleId: com.android.settings
+        steps:
+          - assert:
+              - exists: { id: search_action_bar }
+    - wait: { for: { id: [stable.row.3, stable_row_3] }, timeout: 10 }
+  expect:
+    - exists: { id: [stable.row.3, stable_row_3] }
+    - exists: { id: [horse.title, horse_title], negate: true }

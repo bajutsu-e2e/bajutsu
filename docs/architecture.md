@@ -728,10 +728,11 @@ Each red run spent about half an hour of a runner billed at 10x. BE-0361 measure
 
 #### DSL cross-app control
 
-- DSL `app` is a deterministic, iOS-only step. It activates an app that the test target never started, by bundle id and with no app-side cooperation. It then runs nested `steps` against that app's own accessibility tree.
+- DSL `app` is a deterministic step on iOS (XCUITest) and Android (adb). It activates an app that the test target never started, by bundle id and with no app-side cooperation. It then runs nested `steps` against that app's own accessibility tree.
   - `XcuitestElementProvider` holds a stack of `XCUIApplication` handles instead of one fixed one. Entering the block pushes a new handle and `.activate()`s it. Leaving pops back to the one beneath. Nesting an `app` block inside another thus returns to the immediate parent and not unconditionally to the test target.
   - The Python driver reuses the test target's own `XcuitestDriver` instance for the block. The `web` step uses a separate `WebContextDriver`, but `app` needs the full native actuation surface (tap, type, gestures, picker wheels), and reusing the same object gets that for free.
-  - The step is gated on the `APP_CONTEXT` capability. Only the resident-runner XCUITest backend and `FakeDriver` declare it, so Android and web are rejected at preflight before any device work. `web` differs: its WebView bridge availability is a per-run fact and not a fixed backend capability, so it fails at run time instead.
+  - On Android the adb driver does the same with no runner. It resolves the package's launcher activity with `cmd package resolve-activity --brief`, starts it with `am start -W -n`, then polls `dumpsys activity activities` (bounded) until the package holds the resumed activity, raising `ElementNotFound` on timeout. A driver-side app stack serves `leave_app`, which brings the app beneath back to the front.
+  - The step is gated on the `APP_CONTEXT` capability. The resident-runner XCUITest backend, the adb backend, and `FakeDriver` declare it, so only web is rejected at preflight before any device work. `web` differs: its WebView bridge availability is a per-run fact and not a fixed backend capability, so it fails at run time instead.
   - A feasibility spike measured `activate()` reliably foregrounding an uncooperative app (Safari, Maps, Contacts) on Simulator before this step was designed ([`docs/specs/ios-cross-app-ui-control-feasibility.md`](specs/ios-cross-app-ui-control-feasibility.md)).
 
 #### Evidence, network observation, and reporting

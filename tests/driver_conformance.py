@@ -600,14 +600,17 @@ class DriverConformanceContract:
         # with a bad bundle id, not something this contract should risk reproducing in CI; a
         # scenario mistake's failure semantics are covered instead by a fast-suite test against
         # `XcuitestDriver`'s fake transport (`test_enter_app_raises_element_not_found_when_never_foreground`).
+        # A harness names its own platform's always-installed app as `other_app` (Android's
+        # Settings); the rest fall back to Safari.
+        other_app = getattr(harness, "other_app", "com.apple.mobilesafari")
         driver = harness.with_screen([])
         supports = base.Capability.APP_CONTEXT in driver.capabilities()
         if supports:
-            driver.enter_app("com.apple.mobilesafari")
+            driver.enter_app(other_app)
             driver.leave_app()
         else:
             with pytest.raises(base.UnsupportedAction):
-                driver.enter_app("com.apple.mobilesafari")
+                driver.enter_app(other_app)
             with pytest.raises(base.UnsupportedAction):
                 driver.leave_app()
 

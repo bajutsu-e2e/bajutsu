@@ -267,7 +267,7 @@ Action    ::=
   | { if:          <If> }                                               # conditional (no capture/extract)
   | { forEach:     <ForEach> }                                          # loop (no capture/extract)
   | { web:         <Web> }                                              # enter a WebView's DOM context (BE-0037; no capture/extract)
-  | { app:         <App> }                                              # launch an app the test target never started and drive its UI (iOS/XCUITest only; no capture/extract)
+  | { app:         <App> }                                              # launch an app the test target never started and drive its UI (iOS/XCUITest and Android/adb; no capture/extract)
   | { manual:      { label: string, bypass?: string } }                # human takeover recorded during `record` (BE-0185); fails loudly at run time — no deterministic equivalent unless `bypass` is wired
 
 Group ::= { name: string, steps: list(<Step>) }   # both required, non-empty; compile-time macro, gone before `run` (§6.2)

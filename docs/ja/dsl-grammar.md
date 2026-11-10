@@ -265,7 +265,7 @@ Action    ::=
   | { if:          <If> }                                               # 条件分岐（capture/extract 不可）
   | { forEach:     <ForEach> }                                          # ループ（capture/extract 不可）
   | { web:         <Web> }                                              # WebView の DOM コンテキストに入る（BE-0037。capture/extract 不可）
-  | { app:         <App> }                                              # テスト対象アプリが起動していないアプリを起動してUIを操作する（iOS/XCUITest限定。capture/extract 不可）
+  | { app:         <App> }                                              # テスト対象アプリが起動していないアプリを起動してUIを操作する（iOS/XCUITest と Android/adb。capture/extract 不可）
   | { manual:      { label: string, bypass?: string } }                # `record` 中に記録される人による操作の引き取り（BE-0185）。決定的な等価物がないため、`bypass` を配線しない限り実行時に明示的に失敗する
 
 Group ::= { name: string, steps: list(<Step>) }   # どちらも必須、空を許さない。コンパイル時マクロで、runの前に消える（§6.2）

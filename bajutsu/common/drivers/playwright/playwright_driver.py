@@ -923,13 +923,17 @@ class PlaywrightDriver:
         )
 
     def enter_app(self, bundle_id: str) -> None:  # noqa: ARG002  # Driver shape
-        # app: rests on XCUITest's own cross-app activate(); a browser has no bundle-id
-        # concept to switch to. Preflight rejects the step before any device work; this is the
+        # app: rests on a native backend's own app switching (XCUITest's activate(), adb's
+        # `am start`); a browser has no bundle-id concept to switch to. Preflight rejects the step before any device work; this is the
         # mid-run backstop.
-        raise base.UnsupportedAction("app is iOS XCUITest-only; the web backend has no bundle ids")
+        raise base.UnsupportedAction(
+            "app is not supported on the web backend; it has no bundle ids"
+        )
 
     def leave_app(self) -> None:
-        raise base.UnsupportedAction("app is iOS XCUITest-only; the web backend has no bundle ids")
+        raise base.UnsupportedAction(
+            "app is not supported on the web backend; it has no bundle ids"
+        )
 
     def system_alert_labels(self) -> list[str]:
         # No OS-level SpringBoard prompt on the web; the reactive guard's native path never runs here.

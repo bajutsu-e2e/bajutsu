@@ -98,6 +98,9 @@ class _AndroidHarness(OnDeviceConformanceHarness):
     the model so ConformanceScreen re-renders. The adb analogue of iOS's spec-file write.
     """
 
+    # Every emulator image ships Settings, so the `app:` contract enters it (`other_app`).
+    other_app = "com.android.settings"
+
     def __init__(self, driver: base.Driver, serial: str, component: str) -> None:
         super().__init__("adb", driver)
         self._serial = serial

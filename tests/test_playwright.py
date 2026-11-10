@@ -1496,7 +1496,7 @@ def test_finalized_video_keeps_its_real_webm_magic_bytes(tmp_path: Any) -> None:
 
 
 def test_enter_app_and_leave_app_unsupported() -> None:
-    # app: rests on XCUITest's own cross-app activate(); a browser has no bundle ids.
+    # app: rests on a native backend's own app switching; a browser has no bundle ids.
     drv, _ = _driver([])
     with pytest.raises(base.UnsupportedAction):
         drv.enter_app("com.example")

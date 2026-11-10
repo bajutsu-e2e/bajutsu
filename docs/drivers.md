@@ -70,7 +70,7 @@ The two mobile backends differ in what they support.
 | `resolveAlerts` | answer the policy's system alert inside the request that reads the screen (BE-0461; iOS only) | ✅ | — | — | — |
 | `pickerWheel` | set a wheel-style picker to a named row (iOS only) | ✅ | — | — | ✅ |
 | `handleTipkitTip` | dismiss a blocking Apple TipKit tip (iOS only) | ✅ | — | — | ✅ |
-| `appContext` | activate another installed app and drive it with the `app:` step (iOS only) | ✅ | — | — | ✅ |
+| `appContext` | activate another installed app and drive it with the `app:` step | ✅ | ✅ | — | ✅ |
 | `selectPhotos` | pick images from the system photo picker by position (iOS only; dropped on an Apple Silicon Simulator) | ✅ | — | — | ✅ |
 | `handleNotificationBanner` | report and swipe away a foreground notification banner (BE-0416; iOS only) | ✅ | — | — | ✅ |
 | `deviceControl.setLocation` | set the simulated GPS location | ✅ | ✅ | — | — |
@@ -107,7 +107,7 @@ The two mobile backends differ in what they support.
 > `deviceControl.setLocation` + `deviceControl.clipboard` (BE-0211) + `deviceControl.foreground`
 > + `deviceControl.background` + `deviceControl.statusBar` (BE-0478),
 > the seven `deviceControl.permissions.*` services (`pm grant` / `pm revoke`; BE-0276),
-> `deviceGroup` (BE-0447), and the `video` / `deviceLog` / `appTrace` evidence kinds
+> `deviceGroup` (BE-0447), `appContext` (the `app:` step, via `am start`), and the `video` / `deviceLog` / `appTrace` evidence kinds
 > (`screenrecord`, `logcat`, a tag-filtered `logcat`; BE-0467, BE-0478). `push` (no receiver in
 > the app's process) and `clearKeychain` (no keychain on Android) stay unadvertised. The
 > `fake` driver advertises a richer capability set (semanticTap / conditionWait / multiTouch) purely
@@ -320,9 +320,9 @@ than resolving through frame-center coordinates. Needs Xcode's `xcodebuild`.
   above, this never merges two trees — `enter_app` pushes a new `XCUIApplication(bundleIdentifier:)`
   onto the runner's own app stack and `.activate()`s it, so every route above (`query()`, `tap`, …)
   addresses that app exclusively until a matching `leave_app` pops back to the one beneath. Gated on
-  the `APP_CONTEXT` capability, XCUITest-only like `HANDLE_SYSTEM_ALERT` / `PICKER_WHEEL`: a
-  feasibility spike confirmed `activate()` reliably foregrounds an app the test target never
-  launched, with no per-app config or app-side cooperation
+  the `APP_CONTEXT` capability, which XCUITest and adb declare (the adb mechanism is described in
+  the adb section). On XCUITest, a feasibility spike confirmed `activate()` reliably foregrounds an
+  app the test target never launched, with no per-app config or app-side cooperation
   ([`docs/specs/ios-cross-app-ui-control-feasibility.md`](specs/ios-cross-app-ui-control-feasibility.md)).
 
 > The generic runner uses `XCUIApplication(bundleIdentifier:)`, so it drives any installed app with
@@ -568,6 +568,16 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   never blocks a scenario. Granting deterministically up front, rather than tapping the dialog when
   it appears, keeps timing off the run path; the list is app-specific, so it lives in config, not the
   driver.
+- `enter_app` / `leave_app`: the `app:` step. UI Automator already reads whichever app's window is
+  in front, so entering another app is only a launch: the driver resolves the package's launcher
+  activity (`cmd package resolve-activity --brief`), starts it with the same `am start -n` the
+  `foreground` step uses, and polls `dumpsys activity activities` until that package holds the
+  resumed activity — a bounded condition wait that raises `ElementNotFound` when it runs out, or at
+  once when the package has no launcher activity. The driver keeps its own app stack: `leave_app`
+  pops it and brings back the app beneath the same way, which is the app under test after the
+  outermost block. The app under test keeps its process behind the other app, so the crash probe
+  (`pidof` plus exit-info, BE-0424) does not read the handoff as a crash. On a device a device group
+  shares (BE-0447), the front-app check expects the entered package while the block is open.
 
 ### Evidence and network
 
