@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0478") |
+| Implementing PR | [#2399](https://github.com/bajutsu-e2e/bajutsu/pull/2399) (units 1–5) |
 | Topic | Platform support |
 | Related | [BE-0211](../BE-0211-android-device-control/BE-0211-android-device-control.md), [BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities.md), [BE-0035](../BE-0035-device-control-primitives/BE-0035-device-control-primitives.md), [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md), [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md) |
 <!-- /BE-METADATA -->
@@ -286,7 +287,7 @@ returns the new interval for `appTrace`, and adds `Capability.APP_TRACE`.
 
 Log:
 
-- 2026-11-10 — Units 1–5 landed together (PR pending). Three deviations from the Detailed design:
+- 2026-11-10 — Units 1–5 landed together ([#2399](https://github.com/bajutsu-e2e/bajutsu/pull/2399)). Three deviations from the Detailed design:
   - No adb helper read the resumed activity, so `background`'s wait polls a new
     `dumpsys activity activities` parser. A step whose app never leaves the front fails with
     `UnsupportedAction`, the step-failure type the device-control handlers already raise.

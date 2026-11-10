@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0478") |
+| 実装 PR | [#2399](https://github.com/bajutsu-e2e/bajutsu/pull/2399)（単位 1〜5） |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0211](../BE-0211-android-device-control/BE-0211-android-device-control-ja.md), [BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities-ja.md), [BE-0035](../BE-0035-device-control-primitives/BE-0035-device-control-primitives-ja.md), [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md), [BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md) |
 <!-- /BE-METADATA -->
@@ -290,7 +291,7 @@ adb -s <serial> logcat -v year,usec,zone -T "<MM-DD hh:mm:ss.mmm>" -s <tag>:V
 
 ログ：
 
-- 2026-11-10 — 単位 1〜5 をまとめて着地させました（PR は作成予定です）。詳細設計から外れた点が3つあります。
+- 2026-11-10 — 単位 1〜5 をまとめて着地させました（[#2399](https://github.com/bajutsu-e2e/bajutsu/pull/2399)）。詳細設計から外れた点が3つあります。
   - resumed activity を読む adb のヘルパーがありませんでした。そのため `background` の待機は、新しく追加した
     `dumpsys activity activities` の解析器を使います。アプリが前面から外れないときは `UnsupportedAction` で
     ステップを失敗させます。デバイス制御のハンドラがすでに使っている、ステップ失敗の型です。
