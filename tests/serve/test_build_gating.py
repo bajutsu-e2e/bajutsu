@@ -6,12 +6,16 @@ from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import pytest
-from _shared import _post, _serve, project
+from _shared import FakeProc, _post, _serve, project
 
 from bajutsu import serve as srv
-from bajutsu.serve.operations.dispatch import _governed_build
+from bajutsu.common.config import RUNNER_BUILD_WITHHELD_ENV
+from bajutsu.serve.jobs import _spawn_env
+from bajutsu.serve.operations.dispatch import _governed_build, _register_and_dispatch
+from bajutsu.serve.server.worker_job import execute_job_spec, job_spec
 
 
 def _state(tmp_path: Path) -> srv.ServeState:
@@ -70,3 +74,77 @@ def test_api_bound_git_config_is_marked_untrusted(
     finally:
         server.shutdown()
         server.server_close()
+
+
+# --- #2282: driver.runner.build gets the same verdict, enforced inside the spawned run ---------
+
+
+class _Recording:
+    def __init__(self) -> None:
+        self.jobs: list[srv.Job] = []
+
+    def dispatch(self, _state: srv.ServeState, job: srv.Job) -> None:
+        self.jobs.append(job)
+
+
+def _dispatched(state: srv.ServeState) -> srv.Job:
+    state.executor = _Recording()
+    job, capped = _register_and_dispatch(state, srv.Job(cmd=["x"]), binding=state.binding)
+    assert capped is None and job is not None
+    return job
+
+
+def test_a_trusted_config_keeps_its_runner_build(tmp_path: Path) -> None:
+    job = _dispatched(_state(tmp_path))
+    assert job.withhold_runner_build is False
+    assert RUNNER_BUILD_WITHHELD_ENV not in _spawn_env(job)
+
+
+def test_an_api_bound_git_config_withholds_its_runner_build(tmp_path: Path) -> None:
+    state = _state(tmp_path)
+    state.binding = replace(state.binding, git_from_api=True)
+    job = _dispatched(state)
+    assert job.withhold_runner_build is True
+    assert _spawn_env(job)[RUNNER_BUILD_WITHHELD_ENV] == "1"
+
+
+def test_the_remote_build_opt_in_also_allows_the_runner_build(tmp_path: Path) -> None:
+    state = _state(tmp_path)
+    state.binding = replace(state.binding, git_from_api=True)
+    state.allow_remote_build = True
+    assert _dispatched(state).withhold_runner_build is False
+
+
+def test_an_uploaded_bundle_withholds_its_runner_build(tmp_path: Path) -> None:
+    class _Upload:
+        def __init__(self) -> None:
+            self.worker_ref = {"id": "a" * 64}
+
+    state = _state(tmp_path)
+    state.binding = replace(state.binding, upload=_Upload())  # type: ignore[arg-type]
+    assert _dispatched(state).withhold_runner_build is True
+
+
+@pytest.mark.parametrize("withhold", [True, False])
+def test_a_worker_spawn_carries_the_withheld_runner_build(tmp_path: Path, withhold: bool) -> None:
+    # A remote worker rebuilds the job from its spec, so the verdict must travel in it and reach
+    # the env of the run the worker spawns.
+    spec = job_spec(srv.Job(cmd=["bajutsu", "run"], withhold_runner_build=withhold))
+    seen: list[dict[str, str]] = []
+
+    def popen(_cmd: list[str], **kw: Any) -> FakeProc:
+        seen.append(kw["env"])
+        return FakeProc([], 0)
+
+    execute_job_spec({**spec, "job_id": "1"}, popen=popen, cwd=tmp_path, bus=srv.InMemoryLogBus())
+    assert (seen[0].get(RUNNER_BUILD_WITHHELD_ENV) == "1") is withhold
+
+
+def test_a_dispatch_without_a_binding_takes_the_deployments_verdict(tmp_path: Path) -> None:
+    # A caller that omits `binding` spawns against the deployment's (`_freeze_binding`), so the
+    # verdict must come from that binding too rather than defaulting to trusted.
+    state = _state(tmp_path)
+    state.binding = replace(state.binding, git_from_api=True)
+    state.executor = _Recording()
+    job, _ = _register_and_dispatch(state, srv.Job(cmd=["x"]))
+    assert job is not None and job.withhold_runner_build is True
