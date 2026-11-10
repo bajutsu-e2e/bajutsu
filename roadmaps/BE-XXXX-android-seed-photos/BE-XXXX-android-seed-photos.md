@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-XXXX](BE-XXXX-android-seed-photos.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Implementing PR | [#2382](https://github.com/bajutsu-e2e/bajutsu/pull/2382) |
 | Topic | Platform support |
@@ -130,15 +130,20 @@ source field reads `runsOn.<platform>.seedPhotos` in messages, since two platfor
 - [x] Seeding in `AndroidEnvironment.start`, and the erase requirement narrowed to iOS.
 - [x] The settings table's Android `seedPhotos` row set to `supported`.
 - [x] Documentation in English and Japanese.
-- [ ] Confirm the media scan and the picker order on an emulator in the Android E2E lane.
+- [x] Confirm the media scan and the picker order on an emulator.
 
 Log:
 
 - 2026-11-10 — implemented the fields, the seed, and the documentation, with unit tests over the
   command sequence. No emulator was attached during development, so the media scan's behavior on a
   device is not yet confirmed; the item stays In progress until the last checklist box is ticked.
-  That check covers whether a directory scan drops the rows of removed images on each supported API
-  level, and the picker order.
+  That check covers whether a directory scan drops the rows of removed images, and the picker order.
+- 2026-11-10 — confirmed on an API 34 arm64 emulator (`bajutsu-api34-arm64`, booted read-only).
+  Seeded rows reached the media store about 2 seconds after the scan, with ascending
+  `date_modified` and no `datetaken`. Reseeding one image dropped the three earlier rows, and an
+  empty list cleared them all. The system photo picker (`PICK_IMAGES`) showed the last listed image
+  first, and showed the new image after a reseed under the same file name. Other API levels are
+  not yet checked.
 
 ## References
 

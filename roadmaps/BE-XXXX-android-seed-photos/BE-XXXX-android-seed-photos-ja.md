@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-XXXX](BE-XXXX-android-seed-photos-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | 実装 PR | [#2382](https://github.com/bajutsu-e2e/bajutsu/pull/2382) |
 | トピック | Platform support |
@@ -128,15 +128,20 @@ Android のルートの `seedPhotos` の行を、`unsupported` から `supported
 - [x] `AndroidEnvironment.start` での投入と、erase の要件の iOS への限定
 - [x] 設定の表の Android の `seedPhotos` の行を `supported` に変更
 - [x] 英語と日本語のドキュメント
-- [ ] Android の E2E レーンのエミュレータで、メディアスキャンとピッカーの並び順を確認
+- [x] エミュレータで、メディアスキャンとピッカーの並び順を確認
 
 ログ：
 
 - 2026-11-10 — フィールド、投入、ドキュメントを実装し、コマンドの並びに対するユニットテストを
   加えました。開発中はエミュレータを接続していなかったため、デバイス上でのメディアスキャンの動作は
   まだ確認していません。チェックリストの最後のボックスに印が付くまで、本項目は実装中のままにします。
-この確認では、ディレクトリのスキャンが削除した画像の行を各 API レベルで消すかどうかと、ピッカーの
-並び順を確かめます。
+この確認では、ディレクトリのスキャンが削除した画像の行を消すかどうかと、ピッカーの並び順を
+確かめます。
+- 2026-11-10 — API 34 の arm64 エミュレータ（`bajutsu-api34-arm64`、読み取り専用で起動）で確認しました。
+  投入した画像の行は、スキャンから約2秒でメディアストアに現れました。`date_modified` は昇順で、
+  `datetaken` は空でした。1枚だけを投入し直すと以前の3行は消え、空のリストではすべて消えました。
+  システムの写真ピッカー（`PICK_IMAGES`）は、リストの最後の画像を先頭に表示しました。同じファイル名で
+  投入し直したあとは、新しい画像を表示しました。ほかの API レベルはまだ確認していません。
 
 ## 参考
 
