@@ -29,13 +29,18 @@ class AndroidApp(AppCommon):
 
 
 class AndroidDestination(_Model):
-    """`runsOn.android`: the emulator's Android Virtual Device (AVD), API level, and seeded photos.
+    """`runsOn.android`: the emulator's Android Virtual Device (AVD), API level, and device state.
 
-    `avd` and `apiLevel` are conditions the run matches; `seedPhotos` is device state it applies.
+    `avd` and `apiLevel` are conditions the run matches; `locale` and `seedPhotos` are device state
+    it applies.
     """
 
     avd: str | list[str] | None = None
     api_level: RangeField = Field(default=None, alias="apiLevel")
+    # The app's own language, set per app with `cmd locale` before every launch (API level 33 and
+    # later, BE-0478). Unset keeps the device's language, unlike iOS's built-in `en_US`: a default
+    # would change every existing Android run and demand API level 33 of every device.
+    locale: str | None = Field(default=None, min_length=1)
     # Images seeded into the device's shared storage before launch, in order, so a photo picker
     # addresses a known set. Paths resolve against the config file; a scenario's own list replaces
     # this one. Unlike iOS, no wipe is needed: the seed resets a directory Bajutsu owns.

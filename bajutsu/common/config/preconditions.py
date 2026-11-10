@@ -14,9 +14,10 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Literal
 
-from bajutsu.common.config.effective import Effective, IosConfig
+from bajutsu.common.config.effective import AndroidConfig, Effective, IosConfig
 from bajutsu.common.config.schema.platform import accepts_field, schema_for
 from bajutsu.common.devices.runs import condition_path
+from bajutsu.common.devices.version import VersionSpec
 from bajutsu.common.scenario import Preconditions
 
 
@@ -34,7 +35,8 @@ class ResolvedPreconditions:
     launch_env: dict[str, str] = field(default_factory=dict)
     launch_args: list[str] = field(default_factory=list)
     deeplink: str | None = None
-    # The scenario's own locale, or None to keep the target's `Effective.locale`.
+    # The scenario's own locale, or None to keep the target's (`Effective.locale` on iOS,
+    # `AndroidConfig.locale` on Android).
     locale: str | None = None
     seed_photos: list[str] = field(default_factory=list)
 
@@ -77,7 +79,7 @@ def resolve_preconditions(
     # iOS-shaped sub-config and runs under the scenario's iOS locale, as the flat `locale` did.
     platform = eff.platform
     seed = pre.seed_photos_for(platform)
-    locale = pre.resolved_locale("", platform)
+    locale = pre.resolved_locale("", platform) or pre.app_locale_for(platform)
     return ResolvedPreconditions(
         reinstall=pre.subject.reinstall or eff.reinstall or "clean",
         launch_env=dict(pre.subject.launch.env),
@@ -186,7 +188,8 @@ def check_preconditions(
     erase path. An Android target needs none: it resets the directory it seeds.
 
     A non-primary target with seeded photos is a problem too: the run seeds the photo library for
-    the primary alone.
+    the primary alone. An Android locale needs API level 33, so a target whose `apiLevel` admits an
+    earlier level cannot set one (BE-0478); with `apiLevel` unset the device is checked at start.
 
     Args:
         pre: The scenario's preconditions, as written (before a command fills in run defaults).
@@ -223,6 +226,8 @@ def check_preconditions(
                 "it for this scenario, or make the target the scenario's primary"
             )
             continue
+        if problem := _app_locale_api_problem(eff, merged):
+            problems.append(problem)
         # Android seeds into a directory it resets itself, so only the iOS photo library needs a wipe.
         needs_wipe = eff.platform != "android"
         if needs_wipe and merged.seed_photos and not merged.with_erase(erase_flag).erase:
@@ -232,3 +237,30 @@ def check_preconditions(
                 "--erase"
             )
     return problems
+
+
+# The first API level whose `cmd locale` sets a per-app language (`adb.APP_LOCALES_MIN_API`).
+_APP_LOCALES_MIN_API = 33
+
+
+def _app_locale_api_problem(eff: Effective, merged: ResolvedPreconditions) -> str | None:
+    """Why an Android target cannot set its per-app locale on every device it may get, or None.
+
+    Read from config alone, before the pool acquires a device: a range that admits a level below 33
+    would meet the conflict only after a device boots.
+    """
+    config = eff.platform_config
+    if eff.platform != "android" or not isinstance(config, AndroidConfig):
+        return None
+    locale = merged.locale or config.locale
+    api_level = eff.conditions.get("apiLevel")
+    if locale is None or not isinstance(api_level, str):
+        return None
+    spec = VersionSpec.parse(api_level)
+    if not any(spec.contains(level) for level in range(1, _APP_LOCALES_MIN_API)):
+        return None
+    return (
+        f"runsOn.android.locale {locale!r} on target {eff.target!r} needs API level "
+        f"{_APP_LOCALES_MIN_API} or later, but runsOn.android.apiLevel {api_level!r} admits an "
+        f'earlier one; narrow apiLevel to ">={_APP_LOCALES_MIN_API}"'
+    )

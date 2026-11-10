@@ -91,7 +91,7 @@ targets:
 | グループ | iOS | Android | Web |
 |---|---|---|---|
 | `subject` | `id`、`path`、`build`、`reinstall`、`launch.env`、`launch.args`、`launch.deeplink`、`startWhen`、`idNamespaces` | `id`、`path`、`build`、`reinstall`、`launch.env`、`launch.deeplink`、`grantPermissions`、`startWhen`、`idNamespaces` | `url`、`launch.env`、`startWhen`、`idNamespaces` |
-| `runsOn` | `ios.model`、`ios.os`、`ios.kind`、`ios.family`、`ios.locale`、`ios.seedPhotos` | `android.avd`、`android.apiLevel`、`android.seedPhotos` | `browser.kind`、`browser.version`、`browser.emulate` |
+| `runsOn` | `ios.model`、`ios.os`、`ios.kind`、`ios.family`、`ios.locale`、`ios.seedPhotos` | `android.avd`、`android.apiLevel`、`android.locale`、`android.seedPhotos` | `browser.kind`、`browser.version`、`browser.emulate` |
 | `driver` | `runner.testRunner`、`runner.build`、`runner.hostAddress` | `nativeZ`、`residentRecovery.readRetries`、`residentRecovery.restart` | `headless` |
 
 `runsOn` は、どのプラットフォームでも `ignoredSettings` も受け付けます。このキーは宛先を表しません。ターゲットの環境が適用できない設定を列挙します（[後述](#環境ごとの設定runsonignoredsettingsbe-0467)）。
@@ -195,7 +195,7 @@ targets:
 | プラットフォーム | 宛先のブロック | フィールド |
 |---|---|---|
 | iOS | `runsOn.ios` | `model`、`os`、`kind`、`family`、`locale`、`seedPhotos` |
-| Android | `runsOn.android` | `avd`、`apiLevel`、`seedPhotos` |
+| Android | `runsOn.android` | `avd`、`apiLevel`、`locale`、`seedPhotos` |
 | Web | `runsOn.browser` | `kind`、`version`、`emulate` |
 | fake | なし | なし |
 
@@ -315,7 +315,30 @@ targets:
 
 `record`、`crawl`、`repl` は run を増やしません。最初に並べた値と、合うデバイスが持つ最初のファミリーを使います。メジャーバージョンは、範囲内でプールが持ついちばん新しいものを使います。合うデバイスがなければ終了コード 2 で終わります。`doctor` はターゲット自身の run を一覧にし、`--scenario` でファイルを指定したときは各シナリオの run を一覧にします。どちらも、それぞれに合うデバイスを添えます（[doctor の出力](#出力)）。画面のプローブは、最初の run のデバイスを採点します。`--backend fake` はどの条件も照合せず、そのことを 1 回だけ知らせます。`runsOn.ios.kind` に `device` を含むターゲットは、`model` と `os` を宣言できません。Bajutsu は実機のモデルとリリースを照合しないからです。実機もファミリーは返すので、`family` は宣言できます。`appium` のグリッドが受け持つターゲットや Device Farm のジョブには、読み取るプールがありません。そこに書いた条件は、デバイスを操作する前に失敗し、フィールドを示します。
 
-`runsOn.ios` の 3 つのフィールドは、条件ではなくデバイスの状態です。単一の `kind`（`simulator` か `device`）は XCUITest の接続先を選びます。`locale` は run が適用する言語を固定します。`locale` が未指定なら、iOS はビルトインの `en_US` を使います。`seedPhotos` は写真ライブラリに投入する画像を並べます。シナリオは `preconditions.device.ios` の下で `locale` と `seedPhotos` を置き換えられます。Android の `runsOn.android.seedPhotos` も同じくデバイスの状態で、起動前に投入する画像を並べます。シナリオは `preconditions.device.android` の下でこの値を置き換えられます。web のブロックの `emulate` も、デバイスを照合するのではなく、デバイスモードを選びます。
+`runsOn.ios` の 3 つのフィールドは、条件ではなくデバイスの状態です。単一の `kind`（`simulator` か `device`）は XCUITest の接続先を選びます。`locale` は run が適用する言語を固定します。`locale` が未指定なら、iOS はビルトインの `en_US` を使います。`seedPhotos` は写真ライブラリに投入する画像を並べます。シナリオは `preconditions.device.ios` の下で `locale` と `seedPhotos` を置き換えられます。Android の `runsOn.android.locale` と `runsOn.android.seedPhotos` も、同じくデバイスの状態です。シナリオは `preconditions.device.android` の下でどちらも置き換えられます。web のブロックの `emulate` も、デバイスを照合するのではなく、デバイスモードを選びます。
+
+#### Android アプリの言語
+
+`runsOn.android.locale` は、テスト対象アプリの言語を設定します（BE-0478）。書き方は `runsOn.ios.locale` と同じで、`ja_JP` のように書きます。run はこの値を Best Current Practice 47（BCP 47）の言語タグ（`ja-JP`）に変換します。起動のたびに、run は `cmd locale set-app-locales` でタグを設定し、読み戻します。読み戻した値が違えば起動は失敗し、パッケージ名と言語を示します。
+
+```yaml
+targets:
+  shop-android:
+    platform: android
+    subject: { id: com.example.shop }
+    runsOn:
+      android: { apiLevel: ">=33", locale: ja_JP }
+```
+
+アプリごとの言語設定は、iOS の locale と3つの点で違います。
+
+- **未指定ならデバイスの言語のままです。** iOS はビルトインの `en_US` を使いますが、Android は何も設定しません。再利用するエミュレーターには、以前の run が残したアプリごとの言語設定が残っている場合があります。API レベル 33 以降では run がその設定を消すので、アプリはデバイス自身の言語に従います。
+- **API レベル 33 が必要です。** `cmd locale` は API レベル 33 から使えます。次の2段階で確かめます。
+  - `runsOn.android.apiLevel` が 33 より前のレベルを許すなら、デバイスを操作する前に run が失敗します。メッセージは `apiLevel` を狭めるよう促します。
+  - `apiLevel` が未指定なら、run は起動時にデバイスのレベルを読み、そこで失敗します。
+
+  言語を指定しない run は、レベルを読めなくても警告を記録するだけです。
+- **システムダイアログはエミュレーターの言語です。** 言語設定が届くのはアプリだけです。実行時の権限ダイアログは、エミュレーターのイメージの言語で表示されます。iOS は Simulator のシステム言語も固定する点が異なります。システムダイアログのボタンは、文言がイメージに従うので `id` セレクタで指定します。
 
 ### 解決（`resolve` → `Effective`）
 
@@ -433,7 +456,7 @@ config には、ガード全体をオンやオフにするキーがありませ�
 - `install`：`subject.path` のインストール（`subject.reinstall` はその方式）
 - `permissions.<service>`：シナリオの `permissions` の各サービス
 - `seedPhotos`：`runsOn.ios.seedPhotos` または `runsOn.android.seedPhotos`
-- `locale`：`runsOn.ios.locale`
+- `locale`：`runsOn.ios.locale` または `runsOn.android.locale`
 - `launchEnv`、`launchArgs`、`deeplink`：`subject.launch.env`、`subject.launch.args`、`subject.launch.deeplink`
 
 ルートが適用できない設定は、run の preflight でシナリオを失敗させます。失敗のメッセージは、その設定、ターゲット、無視するための宣言を示します。各環境は起動時にも、適用できない設定をもう一度拒否します。そのため、`record` や `crawl` のように直接リースする場合も、適用できない設定は通りません。

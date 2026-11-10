@@ -406,7 +406,7 @@ iOS 側の対になるジョブ `pool (xcuitest)` は、Simulator を 2 台起�
   - N 個の `BrowserContext` レーンにまたがる並列実行。
   - ターゲット単位の `runsOn.browser.emulate`。既定はデスクトップで、Playwright のデバイスプリセットを指定するとモバイルをエミュレーションします（BE-0228）。
   - `navigate` ステップ（`Driver.goto`）を支える `URL_NAVIGATION` 能力。driver が相対参照をターゲットの `baseUrl` を基準に解決します（BE-0464）。この `URL_NAVIGATION` を申告する実バックエンドは Playwright だけです。
-  - `appTrace` だけは iOS 専用（`os_log`/simctl 由来）のままです。
+  - web には `appTrace` がありません。流すアプリのログがないためです。iOS は `os_log` を、Android はタグで絞った `logcat` を流します（BE-0478）。
   - Playwright の `query()` は、`value` を各タグ自身の値の出所から埋めます。
     - `<a>` には `href`、`<img>` には `src`、`<time>` には `datetime` を使います。
     - フォームコントロール、`<meter>`、`value` 属性を持つ `<progress>` は、`role` を帯びていても live な `value` を報告します。
@@ -420,12 +420,13 @@ iOS 側の対になるジョブ `pool (xcuitest)` は、Simulator を 2 台起�
   - **tap の actuation。** `tap`、`long_press`、`double_tap` は、解決した要素の identity を resident server の `POST /act` へ送ります。server が自身の live なツリーに対して再解決して inject するため、ジェスチャは inject する瞬間にデバイスが持つ bounds へ着地します。リトライを使い切るか、channel に `/act` エンドポイントがないときは、host 側で計算した frame 中心の座標 tap にフォールバックします（BE-0339）。
   - **resident の読み取りリカバリ。** resident server の読み取りがタイムアウトした場合は、新しい接続で 1 回だけ再試行します。それでも失敗すれば、server を再起動してから `uiautomator dump` にフォールバックします。再試行回数と再起動の許可は `driver.residentRecovery`（`readRetries` / `restart`）で制御し、ステップ単位・シナリオ単位で `manifest.json` に記録されます（BE-0477）。
   - **テキスト入力。** `type` は、ASCII のみ `adb shell input text` を使います。日本語や絵文字などそれ以外は、resident server 自身の `/type` エンドポイントを経由します（BE-0476）。
-  - **起動、報告、証跡。** `AndroidEnvironment` の起動シーケンス、`doctor` の報告、interval 証跡です。`video` は `screenrecord`、`deviceLog` は `logcat` で、どちらも driver 供給の `driver_interval` seam を通します。
+  - **起動、報告、証跡。** `AndroidEnvironment` の起動シーケンス、`doctor` の報告、interval 証跡です。interval 証跡はいずれも driver 供給の `driver_interval` seam を通します。`video` は `screenrecord`、`deviceLog` は `logcat`、`appTrace` はタグで絞った `logcat` を使います（BE-0478）。
   - **ネットワーク捕捉。** アプリ内の OkHttp インターセプタ（`BajutsuAndroid`）がホストのコレクタへ報告し、そのコレクタを `adb reverse` でエミュレータへ橋渡しする `request` アサーションです（BE-0283）。`mocks` は追随の課題です。
   - **テスト。** 取得済み XML フィクスチャに対する fast ゲートのユニットテストがあります。
   - **実機上での actuation fidelity。** システム `back`、deeplink、単一ラウンドトリップの `doubleTap`、スクロールによる要素解決、実行時パーミッションの事前付与を含みます（BE-0210）。
+  - **アプリの言語。** 起動のたびに、`runsOn.android.locale` が `cmd locale` でアプリ自身の言語を設定し、読み戻します（BE-0478）。API レベル 33 が必要です。未指定なら、再利用するエミュレーターに以前の run が残した設定を消します。
   - **写真の投入。** `runsOn.android.seedPhotos` は、共有ストレージにある Bajutsu 専用のディレクトリを空にし、並べた画像を更新時刻の昇順で送り、メディアスキャナで再スキャンします。これで、デバイス全体を wipe しなくても、写真ピッカーが既知の画像を表示します。
-  - **デバイス制御。** `setLocation` とクリップボードの読み書き / クリアの部分集合を、操作ごとの capability トークンで管理する形で実装済みです（BE-0211 / BE-0212）。クリップボードは Android 10 以降シェルプロセスから到達できないため、アプリ内のレシーバ（`BajutsuAndroid`、BE-0233）を経由します。`foreground` も実装済みで（BE-0447）、アプリの状態を消さずにランチャーアクティビティを開始します。一方、`push`、`clearKeychain`、ステータスバーの上書き、`background` は、エミュレータ側に相当機能がないため未対応のままです。
+  - **デバイス制御。** `setLocation` とクリップボードの読み書き / クリアの部分集合を、操作ごとの capability トークンで管理する形で実装済みです（BE-0211 / BE-0212）。クリップボードは Android 10 以降シェルプロセスから到達できないため、アプリ内のレシーバ（`BajutsuAndroid`、BE-0233）を経由します。`foreground` も実装済みで（BE-0447）、アプリの状態を消さずにランチャーアクティビティを開始します。`background` は Home キーを押し、アプリが resumed activity から外れるまで待ちます（BE-0478）。ステータスバーの上書きとクリアには、System UI のデモモードを使います。一方、`push` はアプリのプロセス内にレシーバが必要なため、未対応のままです。Android にはキーチェーンがないので、`clearKeychain` は対象外です。
   - **パーミッション。** シナリオ単位の `permissions` フィールド（`pm grant`/`pm revoke`、BE-0276）は、権限の語彙全体に対応しています。API 33 以降の `POST_NOTIFICATIONS` を含む `notifications` も同様です。対応する TCC（Transparency, Consent, and Control）サービスを持たない iOS の `simctl privacy` とは異なります。
   - **マルチタッチ。** `pinch`/`rotate` の 2 本指マルチタッチは、rooted device 限定で実装済みです（protocol-B の `sendevent`、単一タッチへのフォールバックなし。BE-0232）。
   - **codegen。** UI Automator（Kotlin）ターゲットを実装済みです（BE-0209）。
@@ -916,7 +917,7 @@ iOS 側の対になるジョブ `pool (xcuitest)` は、Simulator を 2 台起�
 | 機能 | 現状 | 場所 |
 |---|---|---|
 | `services.mockServer`（外部モックコマンド） | config スキーマのみ。`cmd`/`port` の外部サーバは**未実装**で、シナリオ `mocks`（宣言的なプロトコル内スタブ、実装済み）で代替する | `common/config/schema/mock_server.py` `MockServer` |
-| **web** バックエンドでの `appTrace` 区間証跡 | `appTrace` は `os_log`/simctl 由来（iOS 専用）。Playwright バックエンドは代わりに `video` と `deviceLog` 相当（console / page-error）の区間証跡を実装する（BE-0054）が、`appTrace` に相当するものは持たない | `evidence/intervals` · `common/drivers/playwright` |
+| **web** バックエンドでの `appTrace` 区間証跡 | `appTrace` はアプリ自身のログを流す（iOS は `os_log`、Android はタグで絞った `logcat`、BE-0478）。Playwright バックエンドは代わりに `video` と `deviceLog` 相当（console / page-error）の区間証跡を実装する（BE-0054）が、`appTrace` に相当するものは持たない | `evidence/intervals` · `common/drivers/playwright` |
 | **SwiftUI** と **Jetpack Compose** の画面での `nativeZ` | 報告経路は両方とも実装済みだが（BE-0355）、宣言的な UI ツールキットはどちらも自身でアクセシビリティ要素を生成し、位置の測定元となる実体を外に出さない。SwiftUI は支援技術がプロセスに接続したときに初めて要素を実体化するため、アプリ自身のビューツリーに識別子が現れない。Compose はアプリが宣言した追加データキーを自身のノード生成に通さない。opt-in したアプリの UIKit と Android の `View` による画面は値を報告し、SwiftUI と Compose の画面は `null` になる。診断専用のフィールドで、セレクタも重なり判定もこれを読まない | `BajutsuKit/Sources/BajutsuKit/BajutsuZOrder.swift`・`BajutsuAndroid/…/BajutsuZOrder.kt` |
 
 これらはいずれも各機能ページで該当箇所に注記しています。

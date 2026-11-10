@@ -59,7 +59,7 @@ column.
 | `network` | n/a | n/a | The token means native in-process observation, which the web backend alone has. Both mobile backends answer `request` assertions through an app-side collector instead. |
 | `video` | ✅ | ✅ | |
 | `deviceLog` | ✅ | ✅ | |
-| `appTrace` | ✅ | gap | iOS streams the app's `os_log`. [BE-0478](../roadmaps/BE-0478-android-device-control-parity/BE-0478-android-device-control-parity.md) reads the app's own log lines from `logcat`, filtered by tag. |
+| `appTrace` | ✅ | ✅ | iOS streams the app's `os_log`. Android reads the app's own log lines from `logcat`, filtered by tag ([BE-0478](../roadmaps/BE-0478-android-device-control-parity/BE-0478-android-device-control-parity.md)). |
 | `multiTouch` | ✅ | ✅ | Android needs a rooted device. See the behavior table. |
 | `textSelection` | ✅ | ✅ | No Android run has checked the result on a device. See the behavior table. |
 | `webView` | per-run | gap | iOS grants it when the app embeds the BajutsuKit WebView bridge. Android has no bridge. Chrome's WebView debugging port is a possible route. |
@@ -78,9 +78,9 @@ column.
 | `deviceControl.clipboard` | ✅ | ✅ | Android needs the BajutsuAndroid library in the app. See the behavior table. |
 | `deviceControl.push` | ✅ | gap | The BajutsuAndroid library could post the notification from inside the app, the way it already handles the clipboard. |
 | `deviceControl.clearKeychain` | ✅ | n/a | Android has no keychain. The app's Android Keystore keys go away with its data on a clean reinstall. |
-| `deviceControl.background` | ✅ | gap | BE-0478 sends the home key (`KEYCODE_HOME`), which keeps the app's process alive. The step then waits until the app is no longer the resumed activity. |
+| `deviceControl.background` | ✅ | ✅ | Android sends the home key (`KEYCODE_HOME`), which keeps the app's process alive (BE-0478). The step then waits until the app is no longer the resumed activity. |
 | `deviceControl.foreground` | ✅ | ✅ | |
-| `deviceControl.statusBar` | ✅ | gap | BE-0478 drives the SystemUI demo mode. A field the step leaves unset takes the demo mode's fixed value, and `time` accepts `H:MM` or `HH:MM` alone. |
+| `deviceControl.statusBar` | ✅ | ✅ | Android drives the SystemUI demo mode (BE-0478). A field the step leaves unset takes the demo mode's fixed value, and `time` accepts `H:MM` or `HH:MM` alone. |
 | `deviceControl.permissions.location` | ✅ | ✅ | |
 | `deviceControl.permissions.camera` | ✅ | ✅ | |
 | `deviceControl.permissions.microphone` | ✅ | ✅ | |
@@ -106,7 +106,7 @@ already covers them. A ✅ means the route applies the setting.
 | `erase` | ✅ | ✅ | Android has no device-wide wipe. `erase` uninstalls the app and clears its data with `pm clear`. |
 | `install` | ✅ | ✅ | |
 | `seedPhotos` | ✅ | ✅ | Android empties a directory Bajutsu owns in shared storage, pushes the images, and rescans it ([BE-0479](../roadmaps/BE-0479-android-seed-photos/BE-0479-android-seed-photos.md)). |
-| `locale` | ✅ | gap | BE-0478 adds `runsOn.android.locale` through per-app locales, on Android 13 and later. |
+| `locale` | ✅ | ✅ | Android sets `runsOn.android.locale` as a per-app locale, on Android 13 (API level 33) and later (BE-0478). System dialogs keep the emulator's language. |
 | `launchEnv` | ✅ | ✅ | Android passes the variables to the app as intent extras. |
 | `launchArgs` | ✅ | n/a | `am start` takes no launch arguments. `launchEnv` carries values to the app instead. |
 | `deeplink` | ✅ | ✅ | |

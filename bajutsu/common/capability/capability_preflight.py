@@ -393,6 +393,36 @@ def requirements(scenario: Scenario) -> dict[str, list[str]]:
     return needs
 
 
+def android_status_bar_problems(scenario: Scenario) -> list[str]:
+    """Each `overrideStatusBar` value the Android demo mode cannot pin, with its step path (BE-0478).
+
+    The capability token says the adb backend has the step; this says whether one step's values fit.
+    `simctl status_bar` fails a step whose value it cannot show, while `am broadcast` reports success
+    and System UI ignores the value, so on Android the check has to run before any device work.
+    Pure: no device, no clock, no network.
+    """
+    from bajutsu.common.backend_cli import adb
+
+    problems: list[str] = []
+    for path, step in _walk_scenario(scenario):
+        osb = step.override_status_bar
+        if osb is None:
+            continue
+        fields: dict[str, str | int | None] = {
+            "time": osb.time,
+            "battery_level": osb.battery_level,
+            "battery_state": osb.battery_state,
+            "cellular_bars": osb.cellular_bars,
+            "wifi_bars": osb.wifi_bars,
+        }
+        set_fields = {k: v for k, v in fields.items() if v is not None}
+        problems.extend(
+            f"{path}: overrideStatusBar {problem}"
+            for problem in adb.status_bar_problems(set_fields)
+        )
+    return problems
+
+
 # --- The worker capability check (BE-0450) -------------------------------------------------------
 #
 # `unsupported()` answers "can this driver perform this step?"; the functions below answer "can this

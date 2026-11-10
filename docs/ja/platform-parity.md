@@ -55,7 +55,7 @@ iOS の実機では、`simctl` が提供する能力がなくなります。こ�
 | `network` | n/a | n/a | この能力は、プロセス内でのネイティブな通信観測を指し、web バックエンドだけが持ちます。モバイルの2つのバックエンドは、アプリ側のコレクタで `request` アサーションに答えます。 |
 | `video` | ✅ | ✅ | |
 | `deviceLog` | ✅ | ✅ | |
-| `appTrace` | ✅ | gap | iOS はアプリの `os_log` を取り込みます。[BE-0478](../../roadmaps/BE-0478-android-device-control-parity/BE-0478-android-device-control-parity-ja.md) で、`logcat` からアプリ自身のログ行をタグで絞って読みます。 |
+| `appTrace` | ✅ | ✅ | iOS はアプリの `os_log` を取り込みます。Android は `logcat` からアプリ自身のログ行をタグで絞って読みます（[BE-0478](../../roadmaps/BE-0478-android-device-control-parity/BE-0478-android-device-control-parity-ja.md)）。 |
 | `multiTouch` | ✅ | ✅ | Android では root 化した端末が必要です。振る舞いの差の表を参照してください。 |
 | `textSelection` | ✅ | ✅ | Android の端末上で結果を確かめた実行はまだありません。振る舞いの差の表を参照してください。 |
 | `webView` | per-run | gap | iOS では、アプリが BajutsuKit の WebView ブリッジを組み込んでいるときに付与されます。Android にはブリッジがありません。Chrome の WebView デバッグ用ポートが実現の候補です。 |
@@ -74,9 +74,9 @@ iOS の実機では、`simctl` が提供する能力がなくなります。こ�
 | `deviceControl.clipboard` | ✅ | ✅ | Android ではアプリに BajutsuAndroid ライブラリが必要です。振る舞いの差の表を参照してください。 |
 | `deviceControl.push` | ✅ | gap | クリップボードと同じく、BajutsuAndroid ライブラリがアプリの中から通知を出せば実現できます。 |
 | `deviceControl.clearKeychain` | ✅ | n/a | Android には iOS の Keychain にあたる仕組みがありません。アプリの Android Keystore の鍵は、クリーンな再インストールでデータと一緒に消えます。 |
-| `deviceControl.background` | ✅ | gap | BE-0478 でホームキー（`KEYCODE_HOME`）を送ります。アプリのプロセスは生きたままです。その後、アプリが前面のアクティビティでなくなるまで待ちます。 |
+| `deviceControl.background` | ✅ | ✅ | Android はホームキー（`KEYCODE_HOME`）を送ります（BE-0478）。アプリのプロセスは生きたままです。その後、アプリが前面のアクティビティでなくなるまで待ちます。 |
 | `deviceControl.foreground` | ✅ | ✅ | |
-| `deviceControl.statusBar` | ✅ | gap | BE-0478 で SystemUI のデモモードを使います。ステップが指定しない項目はデモモードの固定値になります。`time` は `H:MM` か `HH:MM` の形だけを受け付けます。 |
+| `deviceControl.statusBar` | ✅ | ✅ | Android は SystemUI のデモモードを使います（BE-0478）。ステップが指定しない項目はデモモードの固定値になります。`time` は `H:MM` か `HH:MM` の形だけを受け付けます。 |
 | `deviceControl.permissions.location` | ✅ | ✅ | |
 | `deviceControl.permissions.camera` | ✅ | ✅ | |
 | `deviceControl.permissions.microphone` | ✅ | ✅ | |
@@ -100,7 +100,7 @@ iOS の実機では、`simctl` が提供する能力がなくなります。こ�
 | `erase` | ✅ | ✅ | Android にはデバイス全体を初期化する手段がありません。`erase` はアプリをアンインストールし、`pm clear` でデータを消します。 |
 | `install` | ✅ | ✅ | |
 | `seedPhotos` | ✅ | ✅ | Android では、共有ストレージにある Bajutsu 専用のディレクトリを空にしてから画像を置き、再スキャンします（[BE-0479](../../roadmaps/BE-0479-android-seed-photos/BE-0479-android-seed-photos-ja.md)）。 |
-| `locale` | ✅ | gap | BE-0478 で、アプリごとの言語設定を使う `runsOn.android.locale` が Android 13 以降向けに加わります。 |
+| `locale` | ✅ | ✅ | Android は `runsOn.android.locale` をアプリごとの言語設定として適用します。Android 13（API レベル 33）以降が対象です（BE-0478）。システムダイアログはエミュレーターの言語のままです。 |
 | `launchEnv` | ✅ | ✅ | Android では、変数を intent の extra としてアプリに渡します。 |
 | `launchArgs` | ✅ | n/a | `am start` は起動引数を受け取りません。アプリへ値を渡すには `launchEnv` を使います。 |
 | `deeplink` | ✅ | ✅ | |

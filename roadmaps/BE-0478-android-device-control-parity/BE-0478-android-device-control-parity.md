@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0478](BE-0478-android-device-control-parity.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0478") |
+| Implementing PR | [#2399](https://github.com/bajutsu-e2e/bajutsu/pull/2399) (units 1–5) |
 | Topic | Platform support |
 | Related | [BE-0211](../BE-0211-android-device-control/BE-0211-android-device-control.md), [BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities.md), [BE-0035](../BE-0035-device-control-primitives/BE-0035-device-control-primitives.md), [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md), [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md) |
 <!-- /BE-METADATA -->
@@ -277,12 +278,23 @@ returns the new interval for `appTrace`, and adds `Capability.APP_TRACE`.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] `background` over `KEYCODE_HOME`, with `DC_BACKGROUND`.
-- [ ] `overrideStatusBar` / `clearStatusBar` over the demo mode, with `DC_STATUS_BAR`.
-- [ ] `runsOn.android.locale` over per-app locales, with the two-stage API-level check.
-- [ ] `appTrace` over tag-filtered `logcat`, with `APP_TRACE`.
-- [ ] Documentation in `docs/` and `docs/ja/`.
+- [x] `background` over `KEYCODE_HOME`, with `DC_BACKGROUND`.
+- [x] `overrideStatusBar` / `clearStatusBar` over the demo mode, with `DC_STATUS_BAR`.
+- [x] `runsOn.android.locale` over per-app locales, with the two-stage API-level check.
+- [x] `appTrace` over tag-filtered `logcat`, with `APP_TRACE`.
+- [x] Documentation in `docs/` and `docs/ja/`.
 - [ ] On-device confirmation on the Android emulator lane.
+
+Log:
+
+- 2026-11-10 — Units 1–5 landed together ([#2399](https://github.com/bajutsu-e2e/bajutsu/pull/2399)). Three deviations from the Detailed design:
+  - No adb helper read the resumed activity, so `background`'s wait polls a new
+    `dumpsys activity activities` parser. A step whose app never leaves the front fails with
+    `UnsupportedAction`, the step-failure type the device-control handlers already raise.
+  - The scenario's `preconditions.device.android.locale` stays out of `resolved_locale`. That method
+    also feeds the system-alert label lookup, which must keep the emulator's language.
+  - The settings table (BE-0467) listed `locale` as unsupported on Android. This change marks it
+    supported, and a settings message now names the route's own platform (`runsOn.android.locale`).
 
 ## References
 

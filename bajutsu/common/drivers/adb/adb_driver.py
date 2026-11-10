@@ -55,6 +55,8 @@ TypeFn = Callable[[str, float | None], None]
 # Android's `uiautomator` dump reports bounds in raw display pixels, so that is the space stamped on
 # this backend's actuation records — a coordinate only means something alongside its unit.
 _UNIT = "pixel"
+# The three `|`-separated renderings `adb.launch_marker_cmd` prints; `logcat -T`'s is the last.
+_MARKER_FIELDS = 3
 
 # `ApplicationExitInfo` — and therefore `dumpsys activity exit-info` — arrived in API 30. Below it
 # the corroborating half of BE-0424's crash signal cannot exist, so the probe scopes itself out
@@ -1901,15 +1903,23 @@ class AdbDriver(CoordinateTreeDriver):
 
         return join
 
-    def driver_interval(self, kind: str, path: Path) -> intervals.Interval | None:
+    def driver_interval(
+        self,
+        kind: str,
+        path: Path,
+        *,
+        subsystem: str | None = None,
+        json_path: Path | None = None,
+    ) -> intervals.Interval | None:
         """A whole-scenario interval recording via adb, or None for an unsupported kind.
 
         The device pool hands this to the `FileSink` so the same backend-independent `capture` policy
         that drives the simctl providers on iOS drives the adb ones here — Android is not `simctl`, so
         it routes through this driver-supplied seam rather than the sink's simctl path (the iOS backend,
         which has no such method, leaves the seam None and takes the simctl path). `video` records via
-        `screenrecord` (pulled off the device on stop); `deviceLog` streams `logcat`. `appTrace` has
-        no adb analogue, so it returns None.
+        `screenrecord` (pulled off the device on stop); `deviceLog` streams `logcat`; `appTrace`
+        streams `logcat` filtered to the *subsystem* tag and parses it into *json_path* on stop
+        (BE-0478), and needs both.
         """
         if kind == "video":
             # Unreachable through the device pool today — `AndroidEnvironment` always prestarts
@@ -1922,16 +1932,38 @@ class AdbDriver(CoordinateTreeDriver):
             )
         if kind == "deviceLog":
             return intervals.start_logcat(self.serial, path)
+        if kind == "appTrace" and subsystem and json_path is not None:
+            return intervals.start_logcat_app_trace(
+                self.serial, path, json_path, subsystem, self._device_now()
+            )
         return None
+
+    def _device_now(self) -> str | None:
+        """The device clock now, in `logcat -T`'s rendering; None when it cannot be read.
+
+        The device decides which log lines precede the stream, so host clock skew cannot drop a real
+        line or keep a stale one (BE-0478). The same one-read rendering the launch marker uses.
+        """
+        try:
+            out = self._run(adb.launch_marker_cmd(self.serial)).strip()
+        except (subprocess.CalledProcessError, OSError) as exc:
+            logger.warning("appTrace: could not read the clock of %s (%s)", self.serial, exc)
+            return None
+        fields = out.split("|")
+        if len(fields) != _MARKER_FIELDS:
+            logger.warning("appTrace: unexpected clock reply from %s: %r", self.serial, out)
+            return None
+        return fields[-1]
 
     # Runs anywhere Bajutsu runs (BE-0450): None means no host restriction.
     HOST_OS: frozenset[str] | None = None
 
     # No semantic tap and no native network monitoring — the lean end of the capability model.
-    # Of the device-control family it advertises only `setLocation` + `clipboard`:
-    # `setLocation` over the emulator console (BE-0211), `clipboard` over an ordered `am broadcast`
-    # to the app's in-app receiver (BajutsuAndroid, BE-0233); adb declares it because the backend can
-    # drive it given a cooperating app. The
+    # Of the device-control family it advertises all but `push` (which needs a receiver in the app's
+    # process) and `clearKeychain` (Android has no keychain): `setLocation` over the emulator console (BE-0211), `clipboard`
+    # over an ordered `am broadcast` to the app's in-app receiver (BajutsuAndroid, BE-0233; adb
+    # declares it because the backend can drive it given a cooperating app), `background` over the
+    # Home key, and the status-bar pair over the System UI demo mode (BE-0478). The
     # per-operation tokens (BE-0212) let it declare exactly that subset, so preflight admits those
     # steps and fails the rest fast. A class constant so the preflight (BE-0082) reads it via
     # `backends.capabilities_for` with no device. `multiTouch` is declared statically here too, so
@@ -1958,9 +1990,12 @@ class AdbDriver(CoordinateTreeDriver):
                 # (BE-0447).
                 base.Capability.DC_FOREGROUND,
                 base.Capability.DEVICE_GROUP,
-                # `screenrecord` and `logcat` (`driver_interval`); no os_log, so no appTrace.
+                base.Capability.DC_BACKGROUND,
+                base.Capability.DC_STATUS_BAR,
+                # `screenrecord`, `logcat`, and a tag-filtered `logcat` for appTrace (`driver_interval`).
                 base.Capability.VIDEO,
                 base.Capability.DEVICE_LOG,
+                base.Capability.APP_TRACE,
             }
         )
         | base.ANDROID_PERMISSION_CAPABILITIES

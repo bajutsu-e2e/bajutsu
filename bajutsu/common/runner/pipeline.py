@@ -365,6 +365,8 @@ class _ScenarioRunner:
                 return f"unsupported on backend '{pool.actuator}' (target '{name}'): {'; '.join(reasons)}"
             if problems := _settings_problems(pool.actuator, pool.eff, s, pool.udid_spec):
                 return f"unsupported on backend '{pool.actuator}' (target '{name}'): {problems}"
+            if problems := _step_value_problems(pool.actuator, steps_for_target(s, name)):
+                return f"unsupported on backend '{pool.actuator}' (target '{name}'): {problems}"
         return self._group_erase_problem(s)
 
     def _group_erase_problem(self, s: Scenario) -> str | None:
@@ -629,6 +631,8 @@ class _ScenarioRunner:
         # The settings check (BE-0467) needs only the route, so it runs even where no capability set
         # was resolved; the routed path above already ran it per target.
         if not routed and (problems := _settings_problems(actuator, self.eff, s, self.udid_spec)):
+            reasons.append(problems)
+        if not routed and (problems := _step_value_problems(actuator, s)):
             reasons.append(problems)
         if reasons:
             if self.progress is not None:
@@ -1656,6 +1660,17 @@ def _settings_problems(actuator: str | None, eff: Effective, s: Scenario, udid_s
         actuator, eff, resolve_preconditions(eff, s.preconditions), s.permissions, udid_spec
     )
     return "; ".join(check.problems())
+
+
+def _step_value_problems(actuator: str | None, s: Scenario) -> str:
+    """Why a step's values cannot be applied on *actuator*'s platform, or "" (BE-0478).
+
+    The capability check admits a step by kind; this one reads its values. Only the Android demo
+    mode narrows a step's values today, and it would otherwise accept a value it then ignores.
+    """
+    if actuator != "adb":
+        return ""
+    return "; ".join(capability_preflight.android_status_bar_problems(s))
 
 
 def _scenario_interrupts_for(s: Scenario, name: str, primary_target: str) -> list[Interrupt]:

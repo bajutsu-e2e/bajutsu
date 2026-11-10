@@ -52,7 +52,7 @@ SETTING_FIELDS: dict[str, str] = {
         for service in base.PERMISSION_SERVICES
     },
     "seedPhotos": "runsOn.<platform>.seedPhotos",
-    "locale": "runsOn.ios.locale",
+    "locale": "runsOn.<platform>.locale",
     "launchEnv": "subject.launch.env",
     "launchArgs": "subject.launch.args",
     "deeplink": "subject.launch.deeplink",
@@ -64,9 +64,8 @@ _SAT: SettingSupport = "satisfied"
 _U: SettingSupport = "unsupported"
 
 # Every key but the per-service permissions, which follow the route's capability tokens instead.
-# Android has no `subject.launch.args` (`am start` takes none) and no iOS locale, and the
-# web has no install, photo library, locale, launch arguments, or deeplink. `settings_in_effect`
-# never puts those keys in effect on those routes, because the loader and the platform-keyed
+# Android has no `subject.launch.args` (`am start` takes none), and the web has no install, photo
+# library, locale, launch arguments, or deeplink. `settings_in_effect` never puts those keys in effect on those routes, because the loader and the platform-keyed
 # preconditions keep the fields off them (BE-0452); the rows read `unsupported` so a later change
 # that does reach one fails loudly instead of applying nothing.
 _ROWS: dict[Route, dict[str, SettingSupport]] = {
@@ -100,11 +99,12 @@ _ROWS: dict[Route, dict[str, SettingSupport]] = {
         "launchArgs": _U,
         "deeplink": _U,
     },
+    # The locale is the app's own per-app language (`cmd locale`, BE-0478).
     "android": {
         "erase": _S,
         "install": _S,
         "seedPhotos": _S,
-        "locale": _U,
+        "locale": _S,
         "launchEnv": _S,
         "launchArgs": _U,
         "deeplink": _S,
@@ -206,7 +206,12 @@ def settings_in_effect(
     app_path = platform.app_path if isinstance(platform, IosConfig | AndroidConfig) else None
     # `Effective.locale` always holds a value, the built-in default when the target names none, so
     # only a value that differs from that default — or the scenario's own — counts as asked for.
-    locale = bool(pre.locale) or (isinstance(platform, IosConfig) and eff.locale != DEFAULT_LOCALE)
+    # Android's sits on its own config, where unset is None.
+    locale = (
+        bool(pre.locale)
+        or (isinstance(platform, IosConfig) and eff.locale != DEFAULT_LOCALE)
+        or (isinstance(platform, AndroidConfig) and platform.locale is not None)
+    )
     asked = {
         "erase": pre.erase,
         "install": bool(app_path),
@@ -254,10 +259,18 @@ class SettingsCheck:
     ignored: dict[str, str] = field(default_factory=dict)
     stale: list[str] = field(default_factory=list)
 
+    def _field(self, key: str) -> str:
+        """The source field of *key*, with `<platform>` named for this target's route."""
+        field_name = SETTING_FIELDS[key]
+        if self.route is None:
+            return field_name
+        platform = self.route if self.route in ("android", "web") else "ios"
+        return field_name.replace("<platform>", platform)
+
     def unsupported_problems(self) -> list[str]:
         """One message per unsupported key, naming the declaration that would ignore it."""
         return [
-            f"{SETTING_FIELDS[key]} is not supported on target '{self.target}' (route "
+            f"{self._field(key)} is not supported on target '{self.target}' (route "
             f"{self.route}); remove it, or declare '{key}' with a reason under "
             f"targets.{self.target}.runsOn.ignoredSettings to run without it"
             for key in self.unsupported

@@ -59,7 +59,7 @@ The two mobile backends differ in what they support.
 | `network` | native network monitoring | — | — | ✅ | — |
 | `video` | whole-scenario video recording (BE-0467; Simulator only on iOS) | ✅ | ✅ | ✅ | — |
 | `deviceLog` | whole-scenario device log or browser console stream (BE-0467; Simulator only on iOS) | ✅ | ✅ | ✅ | — |
-| `appTrace` | whole-scenario app `os_log` trace (BE-0467; iOS Simulator only) | ✅ | — | — | — |
+| `appTrace` | whole-scenario app log trace: `os_log` on iOS, a tag-filtered `logcat` on Android (BE-0467, BE-0478; Simulator only on iOS) | ✅ | ✅ | — | — |
 | `multiTouch` | two-finger gestures (pinch / rotate) | ✅ | ✅ | ✅ | ✅ |
 | `webView` | query and tap the DOM inside an embedded WKWebView (BE-0037); granted per run by the WebView bridge, so no backend declares it statically | — | — | — | — |
 | `textSelection` | select-all + clipboard copy on the focused field | ✅ | ✅ | ✅ | ✅ |
@@ -77,9 +77,9 @@ The two mobile backends differ in what they support.
 | `deviceControl.clipboard` | read / write / clear the clipboard | ✅ | ✅ | — | — |
 | `deviceControl.push` | deliver a push notification | ✅ | — | — | — |
 | `deviceControl.clearKeychain` | clear the keychain | ✅ | — | — | — |
-| `deviceControl.background` | send the app to the background | ✅ | — | — | — |
+| `deviceControl.background` | send the app to the background | ✅ | ✅ | — | — |
 | `deviceControl.foreground` | bring the app to the front, launching it if needed | ✅ | ✅ | — | — |
-| `deviceControl.statusBar` | override / clear the status bar | ✅ | — | — | — |
+| `deviceControl.statusBar` | override / clear the status bar | ✅ | ✅ | — | — |
 | `deviceControl.permissions.location` | grant or revoke the `location` permission (BE-0276) | ✅ | ✅ | — | — |
 | `deviceControl.permissions.camera` | grant or revoke the `camera` permission (BE-0276) | ✅ | ✅ | — | — |
 | `deviceControl.permissions.microphone` | grant or revoke the `microphone` permission (BE-0276) | ✅ | ✅ | — | — |
@@ -91,10 +91,11 @@ The two mobile backends differ in what they support.
 
 > The `deviceControl.*` tokens are the `DeviceControl` family split per operation (BE-0212, from the
 > coarse `deviceControl` of BE-0128), so a backend can advertise exactly the operations it can
-> honor. XCUITest backs the whole family through `simctl`; the Android emulator backs
-> `setLocation`, `clipboard`, `foreground`, and all seven `permissions.*` services (its `push` /
-> keychain / status-bar / `background` operations have no faithful equivalent), which the split
-> makes expressible without green-lighting the rest. `background` and `foreground` were one `appLifecycle` token until
+> honor. XCUITest backs the whole family through `simctl`. The Android emulator backs every
+> operation but `push` and `clearKeychain`, all seven `permissions.*` services included (BE-0478).
+> `push` needs a receiver inside the app's process, and Android has no keychain for
+> `clearKeychain` to clear. The split makes that subset expressible
+> without green-lighting the rest. `background` and `foreground` were one `appLifecycle` token until
 > BE-0447 split them, since a device group's later member comes up at its `foreground`.
 
 > adb sits at the **lean end**, actuating by **frame-center coordinates** — it exposes no semantic
@@ -103,11 +104,12 @@ The two mobile backends differ in what they support.
 > performs `pinch` / `rotate` natively. adb advertises `query` / `elements` / `screenshot`,
 > `multiTouch` (a rooted-device `sendevent` two-finger sweep; BE-0232), `textSelection`
 > (`Ctrl+A` / `Ctrl+C` chords; BE-0265), plus the emulator-backed device-control subset
-> `deviceControl.setLocation` + `deviceControl.clipboard` (BE-0211) + `deviceControl.foreground`,
+> `deviceControl.setLocation` + `deviceControl.clipboard` (BE-0211) + `deviceControl.foreground`
+> + `deviceControl.background` + `deviceControl.statusBar` (BE-0478),
 > the seven `deviceControl.permissions.*` services (`pm grant` / `pm revoke`; BE-0276),
-> `deviceGroup` (BE-0447), and the `video` / `deviceLog` evidence kinds
-> (`screenrecord`, `logcat`; BE-0467); the rest of the device-control family has
-> no faithful emulator equivalent and stays unadvertised. The
+> `deviceGroup` (BE-0447), and the `video` / `deviceLog` / `appTrace` evidence kinds
+> (`screenrecord`, `logcat`, a tag-filtered `logcat`; BE-0467, BE-0478). `push` (no receiver in
+> the app's process) and `clearKeychain` (no keychain on Android) stay unadvertised. The
 > `fake` driver advertises a richer capability set (semanticTap / conditionWait / multiTouch) purely
 > to exercise those code paths in tests. The `playwright` (web) driver advertises `semanticTap` /
 > `conditionWait` (Playwright has both natively), `network` — the **first backend with native

@@ -480,7 +480,7 @@ def test_filesink_dispatches_intervals_to_web_provider(tmp_path: Path) -> None:
 
     calls: list[tuple[str, str]] = []
 
-    def driver_interval(kind: str, path: Path) -> intervals.Interval | None:
+    def driver_interval(kind: str, path: Path, **_: object) -> intervals.Interval | None:
         calls.append((kind, path.name))
         if kind == "deviceLog":
             return intervals.Interval(kind="deviceLog", path=path, provider="playwright")
@@ -503,7 +503,7 @@ def test_filesink_reserves_the_video_extension_the_driver_actually_records(tmp_p
 
     calls: list[tuple[str, str]] = []
 
-    def driver_interval(kind: str, path: Path) -> intervals.Interval | None:
+    def driver_interval(kind: str, path: Path, **_: object) -> intervals.Interval | None:
         calls.append((kind, path.name))
         if kind == "video":
             return intervals.Interval(kind="video", path=path, provider="playwright")
@@ -645,7 +645,7 @@ def test_filesink_adopts_a_prestarted_video_instead_of_starting_one(tmp_path: Pa
 
     asked: list[str] = []
 
-    def driver_interval(kind: str, path: Path) -> intervals.Interval | None:
+    def driver_interval(kind: str, path: Path, **_: object) -> intervals.Interval | None:
         asked.append(kind)  # a prestarted kind must never reach the on-demand provider
         return intervals.Interval(kind=kind, path=path, provider="adb")
 
