@@ -87,8 +87,8 @@ subscription/SSO-billing goal, in place of a bespoke `record`-only agent.
 2. **`credential_gap()` / `resolve_model()`.** `credential_gap()` gains an `"ant"` branch. It returns
    `None` when the `ant` binary is present and reports an active credential. Otherwise it returns a
    gap token: `"ant-cli-missing"` when the binary is absent, `"ant-cli-unauthenticated"` when it is
-   present but not logged in. This mirrors the existing `CLAUDE_CODE_MISSING` pattern, which
-   `ai_availability.py` retires (below). `resolve_model()` needs no change, because the model
+   present but not logged in. This mirrors the existing `CLAUDE_CODE_MISSING` pattern in
+   `ai_availability.py`, which unit 5 retires (below). `resolve_model()` needs no change, because the model
    catalog of `ant` matches the bare Anthropic ids, unlike Bedrock's prefixed ones.
 3. **`ai/registry.py`.** Register `"ant"` against the *same* `Adapter` (factory + credential_gap)
    that `anthropic` and `bedrock` already share. No new adapter class is needed, since

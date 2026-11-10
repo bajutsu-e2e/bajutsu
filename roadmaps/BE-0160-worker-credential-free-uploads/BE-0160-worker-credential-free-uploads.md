@@ -129,8 +129,8 @@ drawbacks:
 
 - It is heavier, with an IAM role and STS setup.
 - It keeps the SDK dependency on the worker.
-- It still places *credentials*, however short-lived, on the worker. The zero-credential end state
-  this item targets is out of reach.
+- It still places *credentials*, however short-lived, on the worker. That is not the
+  zero-credential end state this item targets.
 
 Presigned URLs need no IAM plumbing beyond the credentials the control plane already has.
 

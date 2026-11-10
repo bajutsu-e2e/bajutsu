@@ -31,8 +31,8 @@ proposals alone has two poor options today:
 - **Read the whole index.** Hundreds of lines of generated tables land in context. Most of them are
   irrelevant to the task, so they spend tokens and bury the few rows that matter.
 - **`grep` the README by hand.** This works, but every session re-invents the incantation. The
-  README's per-bucket and per-topic table layout also makes a clean projection awkward to assemble
-  from `grep` alone (the proposals, with their file paths).
+  README's per-bucket and per-topic table layout also makes a clean "just the proposals, with their
+  file paths" projection awkward to assemble from `grep` alone.
 
 [`scripts/build_roadmap_index.py`](../../scripts/build_roadmap_index.py) generates the index from
 each item's own metadata (`Status`, `Topic`, and title) (BE-0043 / BE-0078). That same metadata is

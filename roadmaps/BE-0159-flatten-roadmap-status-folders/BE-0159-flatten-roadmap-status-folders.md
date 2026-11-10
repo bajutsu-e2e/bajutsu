@@ -152,7 +152,7 @@ BE-0096 and BE-0149 extended.
    edit` on each body.
 8. **Prose.** `CLAUDE.md`, `roadmaps/README.md` / `README-ja.md`, and `docs/ai-development.md` drop
    the rule "`Status` maps to one of four folders, a bijection" and its four-row table. They replace
-   it with "every item lives in `roadmaps/BE-NNNN-<slug>/`; `Status` alone decides the index/dashboard
+   it with "every item lives in `roadmaps/BE-NNNN-<slug>/`; `Status` decides only the index/dashboard
    bucket." The four index buckets, their order, and the "In progress" naming (BE-0078) are
    untouched. The change retracts the folder-equals-bucket claim and nothing else.
 9. **One-time migration.** A single PR `git mv`s every existing item's directory to the flat layout
