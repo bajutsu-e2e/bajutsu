@@ -34,7 +34,7 @@ The gap is not that XCUITest cannot see the browser. The *one capture path* the 
 | `app.debugDescription` | whole browser subtree | whole browser subtree |
 | `XCUIApplication(bundleIdentifier: "com.apple.SafariViewService").snapshot()` | whole browser subtree | whole browser subtree |
 
-[BE-0105](../BE-0105-xcuitest-single-snapshot-query/BE-0105-xcuitest-single-snapshot-query.md) made the query one `app.snapshot()` per screen instead of one round-trip per attribute. That cut 600 round-trips for a single screen down to one, and giving the cut up is not an option. The browser's tree has to come from somewhere else. The service's own handle answers with the complete tree on both iOS versions, in one round-trip, in the app's own coordinate space.
+[BE-0105](../BE-0105-xcuitest-single-snapshot-query/BE-0105-xcuitest-single-snapshot-query.md) made the query one `app.snapshot()` per screen instead of one round-trip per attribute. That cut 600 round-trips for a single screen down to one, and giving that up is not an option. The browser's tree has to come from somewhere else. The service's own handle answers with the complete tree on both iOS versions, in one round-trip, in the app's own coordinate space.
 
 Two further facts decide the design. First, the browser exposes its rendered page as an accessibility tree, not as a Document Object Model (DOM). The page's headings, links, and buttons therefore arrive as ordinary elements addressable by their visible text.
 

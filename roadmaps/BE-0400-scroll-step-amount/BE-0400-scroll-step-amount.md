@@ -146,7 +146,7 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
 
 6. **Guard the settle property that already holds.**
 
-   We wrote an on-device test for the neighbouring property, that content is at rest by the time the driver call returns, while measuring for this item. We verified it negatively: with the driver's request made asynchronous, it fails on the intended assertion instead of on a vacuity guard. Land it, and decide whether the `conformance (xcuitest)` job should invoke it. That job names its test file explicitly and is a required check, so wiring in a new file is a deliberate choice, not an oversight.
+   While measuring for this item, we wrote an on-device test for the neighbouring property: that content is at rest by the time the driver call returns. We verified it negatively: with the driver's request made asynchronous, it fails on the intended assertion instead of on a vacuity guard. Land it, and decide whether the `conformance (xcuitest)` job should invoke it. That job names its test file explicitly and is a required check, so wiring in a new file is a deliberate choice, not an oversight.
 
 7. **Tests.**
 

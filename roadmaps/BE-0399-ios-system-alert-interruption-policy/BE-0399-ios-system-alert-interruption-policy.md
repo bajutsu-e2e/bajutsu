@@ -26,7 +26,7 @@ Alongside the monitor, the mid-wait gate stops issuing its in-tree dismissal tap
 
 ## Motivation
 
-The two prompts do not live on the same surface, and one of them alone is a system alert. We measured an application that signs in through its in-app browser. iOS raises the save-password alert into the *application's own* process. The notification request is a SpringBoard alert in another process:
+The two prompts do not live on the same surface, and only one of them is a system alert. We measured an application that signs in through its in-app browser. iOS raises the save-password alert into the *application's own* process. The notification request is a SpringBoard alert in another process:
 
 ```
 springboard buttons = ["Don't Allow", "Allow"]
@@ -106,7 +106,7 @@ The showcase's in-app browser loads a sign-in page served beside the existing br
 
 We measured the other route from which iOS raises this alert, the application's own login screen: it does need an associated domain, an entitlement, and an HTTPS server. That route is left to a follow-up and is not made a standing prerequisite of this lane.
 
-The application arms the notification request on a delay once the browser opens (`SHOWCASE_NOTIF_AFTER_BROWSER`). A scenario cannot tap its way into the stacked state, because the monitor answers first any element tap made while a system alert is showing.
+The application arms the notification request on a delay once the browser opens (`SHOWCASE_NOTIF_AFTER_BROWSER`). A scenario cannot tap its way into the stacked state, because the monitor is the first to answer any element tap made while a system alert is showing.
 
 The scenario then waits on outcomes, not on an order, because the order moves between versions. We measured the following:
 
