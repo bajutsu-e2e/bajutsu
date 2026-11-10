@@ -1,9 +1,9 @@
-# serve Web UI の Dogfood（Playwright backend）
+# Playwright backend による serve Web UI の dogfood
 
 [English](README.md)
 
-Bajutsu が**自分自身**の `serve` Web UI をテストします。テスト対象は serve のシングルページアプリで、
-**Playwright** backend（[BE-0041](../../roadmaps/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）で
+このデモでは、Bajutsu が**自分自身**の `serve` Web UI をテストします。テスト対象は serve のシングル
+ページアプリで、**Playwright** backend（[BE-0041](../../roadmaps/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）で
 駆動します。[demos/web](../web) と同じく **Mac も Simulator も不要**で、`make check` と同じツールチェーンの
 Linux 上で動きます。Web UI の決定的なリグレッション網であり、合否は機械的なアサーションだけから決まり、LLM は
 関与しません。
@@ -42,15 +42,16 @@ Linux 上で動きます。Web UI の決定的なリグレッション網であ�
 make -C demos/serve-ui e2e
 ```
 
-これは web backend（`uv sync --extra web` ＋ `playwright install chromium`）を入れ、`bajutsu serve` を起動し
-（[web デモ](../web)の target を再利用する `inner.config.yaml` を読ませ、ドロップダウンに実在のアプリとシナリオが並ぶようにします）、Tier A の
-シナリオで Web UI を Playwright backend から駆動し、serve を畳みます。serve は `make serve` ではなく直接起動
+このコマンドは web backend（`uv sync --extra web` ＋ `playwright install chromium`）を入れ、
+`bajutsu serve` を起動します。この serve は `inner.config.yaml` を読み、[web デモ](../web)の target を
+再利用するので、Web UI のドロップダウンには実在のアプリとシナリオが並びます。続けて Tier A のシナリオで
+Web UI を Playwright backend から駆動し、serve を畳みます。serve は `make serve` を通さず、直接起動
 します。dogfood は Web 限定で、XCUITest ランナーも iOS の actuator も関わらないからです。
 
 Web UI を手で触るには、`make -C demos/serve-ui serve-ui` を実行して <http://127.0.0.1:8799/> を開きます。
 
-CI は serve UI に触れる PR ごとにこれをゲートします。[`.github/workflows/web-e2e.yml`](../../.github/workflows/web-e2e.yml)
-の `dogfood (serve UI)` ジョブが Linux 上で `make -C demos/serve-ui e2e` を走らせます（BE-0189）。
+CI は、serve UI に触れる PR ごとにこのデモをゲートします。[`.github/workflows/web-e2e.yml`](../../.github/workflows/web-e2e.yml)
+の `dogfood (serve UI)` ジョブが、Linux 上で `make -C demos/serve-ui e2e` を走らせます（BE-0189）。
 
 ## コアとの対応
 
@@ -60,24 +61,28 @@ Web UI のコントロールは `data-testid` 属性を持ちます。iOS の ac
 シナリオの `{ id: nav.replay }` という selector は、ほかの backend と**同じ** `resolve_unique` / `find_all` の
 決定性コアで解決します。
 
-シナリオは、LLM も device もなしに決定性コアが確かめられることだけをアサートします。どの `<main>` ビューと
-どのモーダルが存在するか（SPA は `hidden` 属性で切り替えるので、Playwright backend はアクティブなものだけを
-見ます）、ボタンが enabled か disabled か、フィールドやピッカーが持つ値です。これにより、この dogfood は
-**Tier 2** にとどまります。AI 駆動の Record と Crawl の run（モデルと device が要る）は、LLM を run/CI ゲート
-から締め出すのと同じ規則で、ここでは対象外です。
+シナリオがアサートするのは、LLM も device もなしに決定性コアが確かめられることだけです。
+
+- どの `<main>` ビューとどのモーダルが存在するか（SPA は `hidden` 属性で切り替えるので、Playwright
+  backend はアクティブなものだけを見ます）
+- ボタンが enabled か disabled か
+- フィールドやピッカーが持つ値
+
+この範囲に絞るので、この dogfood は **Tier 2** にとどまります。AI 駆動の Record と Crawl の run
+（モデルと device が要る）は、LLM を run/CI ゲートから締め出すのと同じ規則で、ここでは対象外です。
 
 二つの状態は、意図して間接的にアサートします。レポート系のペイン（Stats、Coverage、run のレポート）は
 **shadow root** に描画され、要素クエリはその中を覗けません。そこで該当シナリオは、light DOM の
 プレースホルダ（`stats.empty` / `coverage.empty`）がツリーから*消える*ことをアサートします。これは
 「描画パスが走った」ことと正確に一致します。また Record の Generate ボタンは Claude への到達可能性
-（BE-0101）でゲートされ、これはホスト側の状態なので、存在だけをアサートし、enabled かどうかは
+（BE-0101）でゲートされ、これはホスト側の状態なので、シナリオは存在だけをアサートし、enabled かどうかは
 アサートしません。
 
 ## 機能カバレッジマップ
 
 機能の一覧は [docs/ja/web-ui.md](../../docs/ja/web-ui.md) です。serve Web UI のユーザーに見える挙動は
-すべてそこに文書化されており、この表はその一つひとつを dogfood のシナリオに対応づけます。dogfood が
-動かせない機能は理由つきで列挙します。黙って未カバーのものはありません。どの機能もサーバ側は
+すべてそこに文書化されており、下の表はその一つひとつを dogfood のシナリオに対応づけます。dogfood が
+動かせない機能は理由つきで列挙するので、黙って未カバーのものはありません。どの機能もサーバ側は
 `tests/` の決定的な pytest（`make check` のゲート）が覆っており、AI 駆動のフローは**設計上**
 （プライムディレクティブ 1）どの決定的ゲートからも除外されます。
 
