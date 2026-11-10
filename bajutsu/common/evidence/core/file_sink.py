@@ -35,7 +35,8 @@ class DriverInterval(Protocol):
         *,
         subsystem: str | None = None,
         json_path: Path | None = None,
-    ) -> intervals.Interval | None: ...
+    ) -> intervals.Interval | None:
+        """Start one interval recording of *kind* into *path*, or None when the lane has none."""
 
 
 class FileSink:

@@ -635,7 +635,8 @@ def test_logcat_app_trace_interval_parses_the_stream_on_stop(tmp_path: object) -
     from bajutsu.common.evidence import intervals
 
     class _Proc:
-        def stop(self, sig: int, timeout: float) -> None: ...
+        def stop(self, sig: int, timeout: float) -> None:
+            return None
 
         def await_stderr(self, needle: str, timeout: float) -> float | None:
             return None
