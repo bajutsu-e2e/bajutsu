@@ -236,9 +236,7 @@ The layering above is more than a convention: it is an **executable contract in 
 Three contracts are enforced:
 
 - **The deterministic core must not import the periphery.** This contract enforces prime directives #1 and #3 statically. The verdict/evidence path stays free of the serve, AI, and codegen stacks and cannot silently grow a dependency on them.
-  - A core module may need a pure element-tree helper, such as `screen_size_from_elements` or `shows_app_ui`.
-  - The helper lives in the core (`bajutsu/common/drivers/elements.py`).
-  - It does not live in a periphery module such as `record/`.
+  - A pure element-tree helper that a core module needs, such as `screen_size_from_elements` or `shows_app_ui`, lives in the core (`bajutsu/common/drivers/elements.py`) and not in a periphery module such as `record/`.
   - Likewise the resolved `ai` block (`AiConfig`) lives in `config/`, so the core reads it without importing the AI client.
 - **The core must stay host-agnostic (BE-0129).** Multi-tenant hosting concerns belong to `bajutsu/serve/` alone. These concerns are organizations, roles, and tenancy, plus the `db` (SQLAlchemy/Alembic/psycopg/cryptography) and `oauth` (Authlib, joserfc) extras.
   - The org model (`OrgConfig`, `org_for_*`, `targets_for_org`, `load_serve_config`) lives in `bajutsu/serve/orgs.py`, not `config/`.
@@ -332,7 +330,7 @@ Neither lane guesses how long to hold a fault. Each lane lifts the fault on the 
 
 Both lanes now feed their lane's required aggregate check. They landed outside it, on the signal-then-required path that BE-0282 established. That caution was earned: these lanes break the device on purpose and so carry more inherent flakiness risk than lanes that drive a healthy one. Over its first ten days `fault-injection (xcuitest)` failed 78 times against 52 passes.
 
-The cause being found retired the caution, not the failure rate falling.
+What retired the caution was not the failure rate falling but the cause being found.
 
 - Every one of those 78 failures precedes the commit that fixed the runner's HTTP server against replying to a peer that had gone away. That reply killed the XCTest host with SIGPIPE.
 - The lane holds the runner under `SIGSTOP`, which is how a connection comes to be abandoned in the first place. The lane therefore tripped that defect far more often than any suite driving a healthy runner. It found a real runner-channel bug, which is what the lane exists to do.
@@ -420,15 +418,15 @@ Each red run spent about half an hour of a runner billed at 10x. BE-0361 measure
   - Parallel runs across N `BrowserContext` lanes.
   - A target-level `runsOn.browser.emulate`: the desktop default, or a Playwright device preset for mobile emulation (BE-0228).
   - `appTrace` stays iOS-only (`os_log`/simctl-based).
-- The Playwright `query()` fills `value` from each element's own source:
-  - `href` for `<a>`, `src` for `<img>`, and `datetime` for `<time>`.
-  - A form control, a `<meter>`, and a `<progress>` that carries a `value` attribute report their live `value`, even under a `role`.
-  - Any other element with a `role` reports `aria-valuetext` or `aria-valuenow` when either is present. Otherwise it reports its own `value` property.
-  - An indeterminate `<progress>` (one carrying no `value` attribute) reports `aria-valuetext` or `aria-valuenow` alone.
-  - An element that holds its own text but matches no other rule is read too. It is labeled with the `staticText` trait that iOS uses for a label.
-- The same Playwright walk descends into every iframe, nested and cross-origin included, offset into main-page CSS pixels.
-  - The exception is an iframe under a non-translation CSS transform. The walk leaves that iframe unread, so a tap cannot silently miss.
-  - A cross-origin iframe's elements carry `crossOriginFrame: true` and stay selectable. `doctor`'s score and the crawl's screen model leave them out, because the app cannot instrument or explore an embedded third-party page.
+  - The Playwright `query()` fills `value` from each element's own source:
+    - `href` for `<a>`, `src` for `<img>`, and `datetime` for `<time>`.
+    - A form control, a `<meter>`, and a `<progress>` that carries a `value` attribute report their live `value`, even under a `role`.
+    - Any other element with a `role` reports `aria-valuetext` or `aria-valuenow` when either is present. Otherwise it reports its own `value` property.
+    - An indeterminate `<progress>` (one carrying no `value` attribute) reports `aria-valuetext` or `aria-valuenow` alone.
+    - An element that holds its own text but matches no other rule is read too. It is labeled with the `staticText` trait that iOS uses for a label.
+  - The same Playwright walk descends into every iframe, nested and cross-origin included, offset into main-page CSS pixels.
+    - The exception is an iframe under a non-translation CSS transform. The walk leaves that iframe unread, so a tap cannot silently miss.
+    - A cross-origin iframe's elements carry `crossOriginFrame: true` and stay selectable. `doctor`'s score and the crawl's screen model leave them out, because the app cannot instrument or explore an embedded third-party page.
 - The **Android adb backend** (`common/drivers/adb` + `common/backend_cli/adb`) covers these areas:
   - **Tap actuation.** `tap`, `long_press`, and `double_tap` send the resolved element's identity to the resident server's `POST /act`. The server re-resolves the element and injects the gesture device-side, so the gesture lands on the bounds the device holds at inject time. Once retries exhaust, or when the channel has no `/act` endpoint, the driver falls back to a host-computed frame-center coordinate tap (BE-0339).
   - **Resident read recovery.** A resident read that times out retries once on a fresh connection. It then restarts the server before the lease falls back to `uiautomator dump`. `driver.residentRecovery` (`readRetries` / `restart`) bounds the recovery, and `manifest.json` records it per step and per scenario (BE-0477).
@@ -583,27 +581,27 @@ Each red run spent about half an hour of a runner billed at 10x. BE-0361 measure
 - DSL `scroll` action (BE-0326) scrolls a region, either the whole screen or a `within` container. It scrolls until a target selector's frame center lands inside the viewport. Otherwise it fails deterministically, either at a `maxScrolls` bound (default 15) or once two consecutive reads *show* the region standing still (end-of-content).
   - Each step travels a default fraction of the viewport. An optional per-step `amount` (0 < amount ≤ 1, the same unit `swipe`/`drag` take) overrides the fraction for a screen that the default step size overshoots or creeps across.
   - BE-0400 made the realized travel match what was requested. Before it, the iOS gesture flung past every requested distance by up to 6×, and no step travelled less than about a third of a screen. The smaller end of `amount` was therefore undeliverable.
-- What counts as showing that stillness is BE-0329's subject. Any one of three cases suffices:
-  - An element that the loop watched move is still there, unclipped, has stopped, and is not chrome sitting outside the scrolling region. A collapsing app bar shifts once and then pins, which would otherwise stand for a list still scrolling behind it.
-  - The region's bounds cut nothing off, so no frame can be hiding motion. A tree that reports a window or root view spanning the screen never meets this case.
-  - The tree can show neither of the above. A backend that clips an element taller than the screen to the screen reports the same frame while content scrolls behind it. In this case the captured screen's checksum did not change across the step either. The checksum is taken only on such a step and trusted only once two captures agree.
-- A step after which nothing that had been in view is on screen at all (partly counts) is read as a possible overshoot. The loop halves the step fraction (floor 0.125) and takes one look-back step to read the span that passed. At the floor, it fails naming the overshoot.
-- The re-read confirmation exists because a queried tree can lag a gesture that has already moved the content.
-  - Android publishes the accessibility update after the scroll. A read taken meanwhile describes the pre-scroll screen, and one read cannot tell that screen from a bottomed-out region.
-  - A backend that admits such a lag reports the budget in which a step's result has to arrive (`ReadLagProvider`). adb is the one backend that reports a lag today.
-  - A backend that reports none still fails on the first unchanged read that carries the evidence above. The synchronous backends thus stay as fail-fast as before.
-- The same budget governs two further reads on such a backend (BE-0332). It closes the `gestures` long-press flake and the `extract.yaml` stale-value flake.
-  - A coordinate resolve after a content-moving `tap` / `longPress` / `doubleTap` (not only after a pan) postdates that actuation before it trusts the tree.
-  - A mid-scenario `extract` waits for the value it copies out to postdate the action that produced it.
-- A device-side read mark turns this ceiling into an early-releasing wait.
-  - The resident Android reader stamps each read with the device-clock time of the newest accessibility event it has seen. The driver takes a device-clock mark before an actuation. A read is trusted the instant its mark postdates the action, and does not idle to the budget.
-  - The budget then stands for a one-shot `uiautomator dump` alone, which carries no such mark (BE-0332 Units 3–4). See [drivers](drivers.md#adb-android).
-- A gesture that the resident server injects narrows the wait further (BE-0339 Unit 5).
-  - The server watches its own accessibility event stream for the injection to publish, and reports that event back. A confirmed gesture arms no barrier at all. A gesture that the device could not confirm arms the barrier exactly as a coordinate injection does.
-  - A confirmed gesture also carries the tree that the device dumped once that publish had landed. The read that the driver would otherwise open its next settle with is thus already answered ([BE-0407](../roadmaps/BE-0407-step-latency-driver-internal-tuning/BE-0407-step-latency-driver-internal-tuning.md) unit 19).
-  - The driver adopts that tree only after re-checking that its own mark postdates the gesture. One mislabelled header therefore cannot seed a pre-gesture screen.
-- Each scroll step is non-inertial: a bounded advance with no fling. It is realized per backend behind `Driver.scroll` and a `ViewportProvider`. Web and fake report the true viewport directly, and a native backend's on-screen-only tree already is one. This closes the BE-0210 asymmetry where only adb recovered an off-screen `tap`.
-- Codegen maps `scroll` onto Playwright's `scrollIntoViewIfNeeded()` and UI Automator's `UiScrollable.scrollIntoView` natively. It emits a labeled `TODO` for XCUITest, which has no single robust scroll-to-element primitive.
+  - What counts as showing that stillness is BE-0329's subject. Any one of three cases suffices:
+    - An element that the loop watched move is still there, unclipped, has stopped, and is not chrome sitting outside the scrolling region. A collapsing app bar shifts once and then pins, which would otherwise stand for a list still scrolling behind it.
+    - The region's bounds cut nothing off, so no frame can be hiding motion. A tree that reports a window or root view spanning the screen never meets this case.
+    - The tree can show neither of the above. A backend that clips an element taller than the screen to the screen reports the same frame while content scrolls behind it. In this case the captured screen's checksum did not change across the step either. The checksum is taken only on such a step and trusted only once two captures agree.
+  - A step after which nothing that had been in view is on screen at all (partly counts) is read as a possible overshoot. The loop halves the step fraction (floor 0.125) and takes one look-back step to read the span that passed. At the floor, it fails naming the overshoot.
+  - The re-read confirmation exists because a queried tree can lag a gesture that has already moved the content.
+    - Android publishes the accessibility update after the scroll. A read taken meanwhile describes the pre-scroll screen, and one read cannot tell that screen from a bottomed-out region.
+    - A backend that admits such a lag reports the budget in which a step's result has to arrive (`ReadLagProvider`). adb is the one backend that reports a lag today.
+    - A backend that reports none still fails on the first unchanged read that carries the evidence above. The synchronous backends thus stay as fail-fast as before.
+  - The same budget governs two further reads on such a backend (BE-0332). It closes the `gestures` long-press flake and the `extract.yaml` stale-value flake.
+    - A coordinate resolve after a content-moving `tap` / `longPress` / `doubleTap` (not only after a pan) postdates that actuation before it trusts the tree.
+    - A mid-scenario `extract` waits for the value it copies out to postdate the action that produced it.
+  - A device-side read mark turns this ceiling into an early-releasing wait.
+    - The resident Android reader stamps each read with the device-clock time of the newest accessibility event it has seen. The driver takes a device-clock mark before an actuation. A read is trusted the instant its mark postdates the action, and does not idle to the budget.
+    - The budget then stands for a one-shot `uiautomator dump` alone, which carries no such mark (BE-0332 Units 3–4). See [drivers](drivers.md#adb-android).
+  - A gesture that the resident server injects narrows the wait further (BE-0339 Unit 5).
+    - The server watches its own accessibility event stream for the injection to publish, and reports that event back. A confirmed gesture arms no barrier at all. A gesture that the device could not confirm arms the barrier exactly as a coordinate injection does.
+    - A confirmed gesture also carries the tree that the device dumped once that publish had landed. The read that the driver would otherwise open its next settle with is thus already answered ([BE-0407](../roadmaps/BE-0407-step-latency-driver-internal-tuning/BE-0407-step-latency-driver-internal-tuning.md) unit 19).
+    - The driver adopts that tree only after re-checking that its own mark postdates the gesture. One mislabelled header therefore cannot seed a pre-gesture screen.
+  - Each scroll step is non-inertial: a bounded advance with no fling. It is realized per backend behind `Driver.scroll` and a `ViewportProvider`. Web and fake report the true viewport directly, and a native backend's on-screen-only tree already is one. This closes the BE-0210 asymmetry where only adb recovered an off-screen `tap`.
+  - Codegen maps `scroll` onto Playwright's `scrollIntoViewIfNeeded()` and UI Automator's `UiScrollable.scrollIntoView` natively. It emits a labeled `TODO` for XCUITest, which has no single robust scroll-to-element primitive.
 - Tap-target tappability check with a bounded scroll safety net (BE-0349). Before `tap` / `double_tap` / `long_press` act, each backend asks, in its own idiomatic way, whether the resolved element is reachable at its own point. The focus-tap inside `type`/`clear`/`delete`/`select` does the same. The backends check as follows:
   - The local XCUITest route uses the native `isHittable`, asked once the element's center is on-screen. The runner refuses a center past the screen edge outright, so the scroll below reaches the element instead of XCUITest's own unsettled scroll-into-view.
   - Web uses the `document.elementFromPoint` ancestor-chain hit test.
@@ -648,11 +646,11 @@ Each red run spent about half an hour of a runner billed at 10x. BE-0361 measure
   - The label is deterministic because the XCUITest lifecycle pins the *Simulator's own* system language to the run's `locale` on every cold spawn. SpringBoard is a separate process that no app launch argument reaches, so the pin is a global-domain write plus one reboot. Warm-runner reuse is gated on that locale still matching.
   - Some prompts cannot be pre-answered by `permissions`: notification authorization, ATT, and the cross-process paste consent (BE-0369). For these, the step also takes `prompt` + `choice` in place of `sel`. The run resolves the label that the pinned locale renders (BE-0320).
   - Under a language that the label table does not cover, the step keeps `prompt` + `choice` and answers by the button's position instead (BE-0445). SpringBoard lists deny first and grant second on all three prompts, measured across languages that include a right-to-left one. The position is resolved against each live read of the alert, never on an alert with another button count.
-- The step's *wait* for that prompt belongs to the orchestrator, not the driver (BE-0406).
-  - The driver queries SpringBoard once and taps. `wait_for_system_alert` polls to the step's own deadline. Each poll reads the step's target first and then drives the reactive guard below.
-  - Keeping the wait here lets the guard clear an interruption while the step waits. Inside the driver's own loop nothing else could act, so a declared prompt held the screen for the step's whole timeout.
-  - Since BE-0461, the step's own tree reads resolve in-tree alone, so its SpringBoard alert stays the step's.
-  - An alert that the step judges not its own goes to `POST /systemAlert/resolve`. The endpoint answers while that alert still offers the buttons the step read, and not otherwise. The two paths therefore never answer the same prompt.
+  - The step's *wait* for that prompt belongs to the orchestrator, not the driver (BE-0406).
+    - The driver queries SpringBoard once and taps. `wait_for_system_alert` polls to the step's own deadline. Each poll reads the step's target first and then drives the reactive guard below.
+    - Keeping the wait here lets the guard clear an interruption while the step waits. Inside the driver's own loop nothing else could act, so a declared prompt held the screen for the step's whole timeout.
+    - Since BE-0461, the step's own tree reads resolve in-tree alone, so its SpringBoard alert stays the step's.
+    - An alert that the step judges not its own goes to `POST /systemAlert/resolve`. The endpoint answers while that alert still offers the buttons the step read, and not otherwise. The two paths therefore never answer the same prompt.
 - DSL `systemAlert` interrupts entries (BE-0315) are the reactive counterpart: an alert guard. Until BE-0473 they were a `systemAlertHandling` key.
   - The guard answers each prompt that a `systemAlert` entry names, in the scenario or its target. It makes no model call. Each entry is one rule.
   - Since BE-0461, the XCUITest backend answers the prompts inside the requests that read the screen, not from a watcher in Python.
@@ -664,59 +662,59 @@ Each red run spent about half an hour of a runner billed at 10x. BE-0361 measure
   - Every path that presses shares one per-showing memo in the runner. The memo waits a re-tap delay before a re-press. After three presses it stops, and the runner records *gave up*.
   - Assertions (`assert`, `expect`, `extract`, `if`) and evidence keep the plain read. A check never changes the screen it is checking, and a screenshot shows the real screen.
   - Every other backend keeps a Python-side collapsed-tree proxy alone.
-- Since BE-0402, the guard is deterministic throughout. Where nothing can act, it does nothing. What it saw rides the step's own reason as a note, in one of three forms:
-  - A SpringBoard alert that no rule identifies, by its buttons: `… — an unhandled system alert is blocking the screen (buttons: Allow, Don't Allow)`.
-  - A press that did not clear its prompt, by the button the rule chose.
-  - A collapsed tree that no record explains, in a hedged form.
-- The history of the guard's declaration:
-  - Before BE-0402, the last case fell back to an AI-vision guard that read a screenshot. `visionInstruction` steered that fallback alone, so `run` now rejects it before any scenario starts and does not ignore it. This is the silent inversion that BE-0401 split the old single `instruction` key to expose.
-  - BE-0406 then made `rules` the guard's whole declaration and removed `labels`. A button label named a button, never the alert it sat on, so it licensed a tap on a screen that no scenario had described.
-- How the declaration composes:
-  - `rules` composes across two layers (scenario, then target) by concatenation, innermost-first.
-  - Each of the two scalars, `pollInterval` and `frozenScreenTimeout`, takes the innermost layer that supplies one.
-  - No flag carries a prompt paired with a choice legibly, so the command line supplies `pollInterval` alone.
-- On the XCUITest backend, `frozenScreenTimeout` (default 10s, `0` disables it) also bounds a second stop.
-  - A `for` or `screenChanged` wait gives up early when a resolving read's own SpringBoard check finds no alert, yet no element below the application has carried a label or an identifier for that long.
-  - A scenario opts in by declaring an in-tree prompt such as `savePassword` in `rules`.
-  - A `gone`/`settled` wait never stops this way, since a frozen tree already satisfies it.
-- A prompt's entry records which of the three answer surfaces it reaches: the `handleSystemAlert` step, the runner's SpringBoard check, and its in-tree pass.
-  - iOS raises `savePassword` inside the application's own process. It is thus declarable as a rule and answered by the in-tree pass alone.
-  - The step rejects it at parse time and does not poll an empty button list to its deadline.
-- A step makes at most one alert retry.
-  - Four kinds of step failure take the retry: a refused actuation, a target that the step's selector read could not find, a failed `assert`, and a failed `handleSystemAlert` step that answers by position (BE-0445), which waits without the gate. A failed `expect` takes it as well.
-  - The retry sends one forced resolving read (`forceCheck=true`), which skips the SpringBoard rate limit.
-  - Three outcomes license a second run: an answer, a press that the memo withheld, and an answer that the step's own reads made. On one of them, the screen settles and the step (or the `expect`) runs once more.
-  - The settle is a condition wait on the tree holding still, bounded at one second and best-effort. A prompt that has been tapped is not yet a prompt that is gone.
-  - A `wait` takes no such retry, since its polls already resolved throughout.
-  - A `handleSystemAlert` step's own tree reads resolve in-tree alone, so its own SpringBoard alert stays the step's. An alert that the step reads and judges not its own goes to `POST /systemAlert/resolve` at the guard's cadence. The runner answers it while it still offers the same labels the step read, and not otherwise. The policy thus never answers the step's own prompt arriving in its place.
-- XCUITest itself intervenes on an alert that interrupts an in-flight interaction *before* any read resolves it. Left alone, it answers with the alert's own default button, silently overriding a scenario's policy with nothing in the report.
-  - The runner therefore installs an interruption monitor. It presses the same rule-named button that the reactive guard would, and records what it pressed as an ordinary `AlertEvent`.
-  - The orchestrator resolves each rule's labels and pushes them, once per scenario, over `POST /interruptionPolicy`. It pushes alongside whether the guard governs the scenario at all.
-  - Each rule carries its surface. The monitor matches the native rules alone, since an in-process prompt never interrupts another process's interaction.
-  - The in-tree rules travel with the guard's pacing, so the runner can answer such a prompt inside the request that reads the screen (BE-0461).
-- A `handleSystemAlert` step's own prompt/choice form is not necessarily among those rules. The step exists precisely for a prompt that an author chooses not to declare as a `systemAlert` entry.
-  - While that one step waits, the orchestrator pushes one more rule for the step's own target alongside the scenario's.
-  - It restores the scenario's own policy once the step returns, fails, or the wait raises.
-  - Without the extra rule, an earlier action's own interruption could meet that same prompt first and find no matching rule. It would then fail a step for an alert that this one was about to answer.
-- A prompt on which the policy names no button is still left to XCUITest's own default handler, unchanged (BE-0399). Nothing here can stop that tap.
-  - Since BE-0406, a governing policy records the buttons it declined before doing so.
-  - The step or `expect` that met the interruption fails, naming those buttons. The run does not continue as if nothing had answered on the scenario's behalf.
-- A foreground notification banner reaches that same monitor but takes a branch of its own, ahead of the policy (BE-0416). A banner carries no button that a rule could identify, and its one tappable region opens the notification's app.
-  - The monitor waits for the banner to settle on screen. It swipes the banner upward by its own measured frame.
-  - It confirms the clearance before claiming the interruption. When the swipe misses, it waits out the banner's own auto-dismissal. On iOS 26.5, XCUITest's own handler ignores the banner and its lookup errors stop the runner.
-  - It records the banner as an `AlertEvent` under a `notificationBanner` kind, since the text beside it is the notification's and not a button's.
-  - The branch sits ahead of the `governs` check because neither alert outcome fits a banner. A governing policy recorded the banner as an undeclared interruption and failed an otherwise passing step. An ungoverned policy left XCUITest to wait the banner out, measured at ~9s per interrupted interaction against ~0.6s undisturbed.
-  - The guard itself is on by default, and `--no-system-alert-handling` disables it for every scenario. The banner branch above runs either way.
-- A banner reaches that monitor on an *interaction* alone. A plain query never invokes it, so a banner sitting on screen with nothing tapping through it is never cleared there (BE-0416 Units 2/3/8). A second, proactive path covers that gap.
-  - `Driver.notification_banner_frame()` is a non-blocking read of the same SpringBoard element by a different identifier query. The capability that gates it is `HANDLE_NOTIFICATION_BANNER`, and only XCUITest declares it. The query is `NotificationShortLookView` against SpringBoard's whole tree, not `alerts`.
-  - The step loop calls it once per step, right before the `after.png` shutter starts. The path exists to reach the corrupted capture, and every visual-regression comparison built from it.
-  - A found banner is swiped by `notification_banner_swipe_points`. This is the same upward gesture that the interruption monitor performs, and it reuses the ordinary `swipe` action rather than a second gesture primitive.
-  - The swipe happens only when the resulting drag still travels at least the 20 points that the monitor's own swipe clears a banner's top edge by. A frame caught mid-animation leaves the (top-margin-clamped) endpoint too close to the start for that. At the extreme below it, the drag inverts downward. Such a frame is left alone.
-  - Immediately before the gesture itself, a fresh presence check declines a banner that has since auto-dismissed. The confirmed frame and the acted-on one can otherwise differ by one round trip, landing the swipe on whatever the app now shows at that point.
-  - A bounded poll re-confirms the swipe gone immediately after. This is the same discipline as the interruption monitor's own confirm-before-claiming.
-  - The query is rate-limited to the guard's own resolved `pollInterval` (BE-0315's default when the guard is off). A passing scenario pays it once per interval and not once per step.
-  - The `expect`-phase visual capture gets the same unconditional check immediately before it, gated on an actual `visual` assertion being present. So does a step-level `assert`'s own `visual` entry, right before that step's own single-shot capture. The rate-limited sweep above runs after the step body finishes, which is too late for a capture taken inside it.
-  - There is no scenario or CLI toggle. A scenario cannot observe a banner, so none can be broken by clearing it. This is the same "no known use for a toggle" that the interruption path above already established.
+  - Since BE-0402, the guard is deterministic throughout. Where nothing can act, it does nothing. What it saw rides the step's own reason as a note, in one of three forms:
+    - A SpringBoard alert that no rule identifies, by its buttons: `… — an unhandled system alert is blocking the screen (buttons: Allow, Don't Allow)`.
+    - A press that did not clear its prompt, by the button the rule chose.
+    - A collapsed tree that no record explains, in a hedged form.
+  - The history of the guard's declaration:
+    - Before BE-0402, the last case fell back to an AI-vision guard that read a screenshot. `visionInstruction` steered that fallback alone, so `run` now rejects it before any scenario starts and does not ignore it. This is the silent inversion that BE-0401 split the old single `instruction` key to expose.
+    - BE-0406 then made `rules` the guard's whole declaration and removed `labels`. A button label named a button, never the alert it sat on, so it licensed a tap on a screen that no scenario had described.
+  - How the declaration composes:
+    - `rules` composes across two layers (scenario, then target) by concatenation, innermost-first.
+    - Each of the two scalars, `pollInterval` and `frozenScreenTimeout`, takes the innermost layer that supplies one.
+    - No flag carries a prompt paired with a choice legibly, so the command line supplies `pollInterval` alone.
+  - On the XCUITest backend, `frozenScreenTimeout` (default 10s, `0` disables it) also bounds a second stop.
+    - A `for` or `screenChanged` wait gives up early when a resolving read's own SpringBoard check finds no alert, yet no element below the application has carried a label or an identifier for that long.
+    - A scenario opts in by declaring an in-tree prompt such as `savePassword` in `rules`.
+    - A `gone`/`settled` wait never stops this way, since a frozen tree already satisfies it.
+  - A prompt's entry records which of the three answer surfaces it reaches: the `handleSystemAlert` step, the runner's SpringBoard check, and its in-tree pass.
+    - iOS raises `savePassword` inside the application's own process. It is thus declarable as a rule and answered by the in-tree pass alone.
+    - The step rejects it at parse time and does not poll an empty button list to its deadline.
+  - A step makes at most one alert retry.
+    - Four kinds of step failure take the retry: a refused actuation, a target that the step's selector read could not find, a failed `assert`, and a failed `handleSystemAlert` step that answers by position (BE-0445), which waits without the gate. A failed `expect` takes it as well.
+    - The retry sends one forced resolving read (`forceCheck=true`), which skips the SpringBoard rate limit.
+    - Three outcomes license a second run: an answer, a press that the memo withheld, and an answer that the step's own reads made. On one of them, the screen settles and the step (or the `expect`) runs once more.
+    - The settle is a condition wait on the tree holding still, bounded at one second and best-effort. A prompt that has been tapped is not yet a prompt that is gone.
+    - A `wait` takes no such retry, since its polls already resolved throughout.
+    - A `handleSystemAlert` step's own tree reads resolve in-tree alone, so its own SpringBoard alert stays the step's. An alert that the step reads and judges not its own goes to `POST /systemAlert/resolve` at the guard's cadence. The runner answers it while it still offers the same labels the step read, and not otherwise. The policy thus never answers the step's own prompt arriving in its place.
+  - XCUITest itself intervenes on an alert that interrupts an in-flight interaction *before* any read resolves it. Left alone, it answers with the alert's own default button, silently overriding a scenario's policy with nothing in the report.
+    - The runner therefore installs an interruption monitor. It presses the same rule-named button that the reactive guard would, and records what it pressed as an ordinary `AlertEvent`.
+    - The orchestrator resolves each rule's labels and pushes them, once per scenario, over `POST /interruptionPolicy`. It pushes alongside whether the guard governs the scenario at all.
+    - Each rule carries its surface. The monitor matches the native rules alone, since an in-process prompt never interrupts another process's interaction.
+    - The in-tree rules travel with the guard's pacing, so the runner can answer such a prompt inside the request that reads the screen (BE-0461).
+  - A `handleSystemAlert` step's own prompt/choice form is not necessarily among those rules. The step exists precisely for a prompt that an author chooses not to declare as a `systemAlert` entry.
+    - While that one step waits, the orchestrator pushes one more rule for the step's own target alongside the scenario's.
+    - It restores the scenario's own policy once the step returns, fails, or the wait raises.
+    - Without the extra rule, an earlier action's own interruption could meet that same prompt first and find no matching rule. It would then fail a step for an alert that this one was about to answer.
+  - A prompt on which the policy names no button is still left to XCUITest's own default handler, unchanged (BE-0399). Nothing here can stop that tap.
+    - Since BE-0406, a governing policy records the buttons it declined before doing so.
+    - The step or `expect` that met the interruption fails, naming those buttons. The run does not continue as if nothing had answered on the scenario's behalf.
+  - A foreground notification banner reaches that same monitor but takes a branch of its own, ahead of the policy (BE-0416). A banner carries no button that a rule could identify, and its one tappable region opens the notification's app.
+    - The monitor waits for the banner to settle on screen. It swipes the banner upward by its own measured frame.
+    - It confirms the clearance before claiming the interruption. When the swipe misses, it waits out the banner's own auto-dismissal. On iOS 26.5, XCUITest's own handler ignores the banner and its lookup errors stop the runner.
+    - It records the banner as an `AlertEvent` under a `notificationBanner` kind, since the text beside it is the notification's and not a button's.
+    - The branch sits ahead of the `governs` check because neither alert outcome fits a banner. A governing policy recorded the banner as an undeclared interruption and failed an otherwise passing step. An ungoverned policy left XCUITest to wait the banner out, measured at ~9s per interrupted interaction against ~0.6s undisturbed.
+    - The guard itself is on by default, and `--no-system-alert-handling` disables it for every scenario. The banner branch above runs either way.
+  - A banner reaches that monitor on an *interaction* alone. A plain query never invokes it, so a banner sitting on screen with nothing tapping through it is never cleared there (BE-0416 Units 2/3/8). A second, proactive path covers that gap.
+    - `Driver.notification_banner_frame()` is a non-blocking read of the same SpringBoard element by a different identifier query. The capability that gates it is `HANDLE_NOTIFICATION_BANNER`, and only XCUITest declares it. The query is `NotificationShortLookView` against SpringBoard's whole tree, not `alerts`.
+    - The step loop calls it once per step, right before the `after.png` shutter starts. The path exists to reach the corrupted capture, and every visual-regression comparison built from it.
+    - A found banner is swiped by `notification_banner_swipe_points`. This is the same upward gesture that the interruption monitor performs, and it reuses the ordinary `swipe` action rather than a second gesture primitive.
+    - The swipe happens only when the resulting drag still travels at least the 20 points that the monitor's own swipe clears a banner's top edge by. A frame caught mid-animation leaves the (top-margin-clamped) endpoint too close to the start for that. At the extreme below it, the drag inverts downward. Such a frame is left alone.
+    - Immediately before the gesture itself, a fresh presence check declines a banner that has since auto-dismissed. The confirmed frame and the acted-on one can otherwise differ by one round trip, landing the swipe on whatever the app now shows at that point.
+    - A bounded poll re-confirms the swipe gone immediately after. This is the same discipline as the interruption monitor's own confirm-before-claiming.
+    - The query is rate-limited to the guard's own resolved `pollInterval` (BE-0315's default when the guard is off). A passing scenario pays it once per interval and not once per step.
+    - The `expect`-phase visual capture gets the same unconditional check immediately before it, gated on an actual `visual` assertion being present. So does a step-level `assert`'s own `visual` entry, right before that step's own single-shot capture. The rate-limited sweep above runs after the step body finishes, which is too late for a capture taken inside it.
+    - There is no scenario or CLI toggle. A scenario cannot observe a banner, so none can be broken by clearing it. This is the same "no known use for a toggle" that the interruption path above already established.
 - DSL `- tipKit: dismiss` interrupts entry (BE-0389) is an opt-in guard for a blocking Apple TipKit tip. It was a top-level `iosTipKitHandling` until BE-0452, then `tipKitHandling` until BE-0473.
   - TipKit's presentation marks the content it covers accessibility-hidden and does not merely occlude it. A blocked tap can thus fail as `ElementNotFound`, not only `ElementNotTappable`.
   - The XCUITest backend alone declares `Capability.HANDLE_TIPKIT_TIP` and implements `Driver.dismiss_blocking_tip()`. It resolves the `PopoverDismissRegion` scrim, required together with the tip's own `TipView` container. An app's own popover is thus left alone, since a `confirmationDialog` installs an identical scrim.
@@ -897,9 +895,9 @@ Each red run spent about half an hour of a runner billed at 10x. BE-0361 measure
   - The job runs `demos/web/scenarios/network.yaml` **with network on**, and then asserts that the persisted `network.json` masks a captured secret.
   - It landed as signal first. Having proven stable in CI, it now feeds the required `E2E (web)` gate.
   - The iOS half is the `network (xcuitest)` job described under "Validated on a real Simulator" above. All three backends now drive the network runtime they implement.
-- Android now has app-side network capture (BE-0283). `BajutsuAndroid`'s OkHttp interceptor reports each exchange to the host collector over an `adb reverse` tunnel. This is the same app-side-cooperation shape that `BajutsuKit` uses on iOS.
-  - The adb driver itself still declares no native `NETWORK` capability, because there is no native network monitor to actuate.
-  - The `network (adb)` job (`android-e2e.yml`) therefore validates the app-side path directly and not through a driver capability.
+  - Android now has app-side network capture (BE-0283). `BajutsuAndroid`'s OkHttp interceptor reports each exchange to the host collector over an `adb reverse` tunnel. This is the same app-side-cooperation shape that `BajutsuKit` uses on iOS.
+    - The adb driver itself still declares no native `NETWORK` capability, because there is no native network monitor to actuate.
+    - The `network (adb)` job (`android-e2e.yml`) therefore validates the app-side path directly and not through a driver capability.
 
 ### Validated on an Android emulator (Linux, no Mac)
 
