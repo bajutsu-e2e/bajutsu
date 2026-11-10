@@ -203,9 +203,9 @@ class TestPlaywrightDriverConformance(DriverConformanceContract):
         # exists only in a secure context, which `about:blank` is not, so the page starts on a
         # localhost origin served by a route rather than a server; `set_content` keeps that origin.
         page = chromium.new_page(permissions=["clipboard-read", "clipboard-write"])
-        page.route(_SECURE_ORIGIN, lambda route: route.fulfill(body="<!doctype html>"))
-        page.goto(_SECURE_ORIGIN)
         try:
+            page.route(_SECURE_ORIGIN, lambda route: route.fulfill(body="<!doctype html>"))
+            page.goto(_SECURE_ORIGIN)
             yield PlaywrightConformanceHarness(page)
         finally:
             page.close()

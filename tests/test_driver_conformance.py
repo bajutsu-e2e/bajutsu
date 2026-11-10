@@ -220,6 +220,7 @@ class _ScreenHarness(FakeConformanceHarness):
     """Hands the fake's scroll screen to a driver built by `make`, so a case controls how it reads."""
 
     def __init__(self, make: Callable[[list[base.Element]], base.Driver]) -> None:
+        super().__init__()  # the inherited `with_screen` / `clipboard_text` need `_clipboard`
         self._make = make
 
     def scrollable_screen(self) -> base.Driver:
