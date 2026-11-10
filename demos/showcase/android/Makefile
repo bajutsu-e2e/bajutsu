@@ -104,14 +104,17 @@ SERIAL ?= booted
 #
 # The text-editing flow (select/copy/clear/delete, text_editing.yaml) is deliberately absent: the
 # Compose / Views trees do not expose an editable field's text as its `value`, so `clear` is a no-op
-# and the per-edit checks have nothing to read here. That scenario is iOS-only (see its header); a
-# count-only Android twin for select/copy/delete is a possible follow-up.
+# and the per-edit checks have nothing to read here (issue #2388). Its select/copy half runs instead
+# as `text_selection_android` (issue #2389): the clipboard starts on a sentinel, so the read-back
+# proves the Ctrl+C chord copied the field's text, and (since a collapsed caret copies nothing) that
+# Ctrl+A selected all of it. It carries both id forms, so it runs on Views too. Verified on a local
+# arm64 emulator (API 34), Compose and Views alike.
 #
 # Observed network capture lands in its own `e2e-network` target below (BE-0283); mocked network
 # (deterministic stub responses) stays a follow-up.
 E2E_SCENARIOS := smoke firstlook navigation search data_driven relaunch system components modals \
 	controls notices gestures gestures_multitouch permission device extract foreach interrupts \
-	text_entry_android
+	text_entry_android text_selection_android
 
 # Raise the condition-wait ceiling for this lane only: the CI x86_64 software-rendered emulator
 # presents sheets/covers slower than the shared scenarios' 5s waits allow. A wait returns as soon as
@@ -138,7 +141,7 @@ E2E_ENV = BAJUTSU_MIN_WAIT_TIMEOUT=$(E2E_WAIT_FLOOR) BAJUTSU_LOG_LEVEL=$(E2E_LOG
 # themselves). Anywhere else no lane resolves it, so a typo in it could never fail (issue #2233).
 # `device.yaml` carries the underscore form, so it joins (verified on a local arm64 emulator).
 E2E_VIEWS_SCENARIOS := smoke firstlook navigation search data_driven relaunch system extract foreach \
-	interrupts device text_entry_android
+	interrupts device text_entry_android text_selection_android
 
 # The wrapper jar IS committed (like any standard Android repo), so a fresh clone builds with no
 # extra step. Only run this to bump the pinned Gradle version — never as part of a build, since it
