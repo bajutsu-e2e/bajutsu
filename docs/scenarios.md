@@ -1701,10 +1701,45 @@ the `manual` step with the deterministic action — is the author's path to a re
 ```
 
 On iOS, these steps drive the Simulator through `simctl`, like `setLocation` / `push`. They need a
-per-device control channel and fail cleanly on the fake driver / in parallel runs. Three of them also
-run on Android: `foreground`, `setClipboard`, and `clearClipboard`. Every other step in this list runs
-on iOS alone. `overrideStatusBar` is most useful right before a screenshot or a `visual` assertion, to
-freeze the clock and signal bars for a stable image.
+per-device control channel and fail cleanly on the fake driver / in parallel runs. On Android, every
+step in this list runs except `clearKeychain`. That step needs a receiver inside the app's process.
+Use `overrideStatusBar` right before a screenshot or a `visual` assertion. It freezes the clock and
+signal bars for a stable image.
+
+On Android, adb drives these steps with no code inside the app
+([BE-0478](../roadmaps/BE-0478-android-device-control-parity/BE-0478-android-device-control-parity.md)):
+
+| Step | Android mechanism |
+|---|---|
+| `background` | presses Home (`input keyevent KEYCODE_HOME`); the app keeps its process |
+| `overrideStatusBar` | enters the System UI demo mode and sends one command per set field |
+| `clearStatusBar` | leaves the demo mode, restoring the live status bar |
+
+`background` waits, on a condition, until the app no longer holds the resumed activity. When the app
+stays in front, the step fails. After `background`, the launcher is in front. A selector for the app
+under test then finds nothing, as on iOS while the Home Screen is in front. Inside a device group, a
+read fails with `AppNotInFront` instead, until a `foreground` step brings the app back.
+
+The demo mode differs from `simctl status_bar` in three ways:
+
+- **Unset fields freeze too.** Entering the demo mode freezes every icon. A field the step leaves
+  unset takes the demo mode's own fixed value, not the live one. The step also hides the
+  notification icons, which the iOS status bar never shows.
+- **Values are narrower.** The table below lists what Android accepts. Preflight fails any other
+  value before device work and names the step. System UI would ignore such a value, and the
+  broadcast would still report success.
+- **Wi-Fi bars scale.** Android shows Wi-Fi levels 0–4, so a full iOS signal must stay full. The
+  table below gives the mapping.
+
+| Field | Android accepts | Mapping |
+|---|---|---|
+| `time` | `H:MM` or `HH:MM` | the clock as four digits (`9:41` becomes `0941`) |
+| `batteryLevel` | 0–100 | unchanged |
+| `batteryState` | `charging`, `charged`, `discharging` | `plugged` is true for the first two |
+| `cellularBars` | 0–4 | unchanged |
+| `wifiBars` | 0–3 | levels 0, 1, 3, and 4 for 0, 1, 2, and 3 |
+
+On both platforms the override persists on the device until a `clearStatusBar` step runs.
 
 `background` / `foreground` are the two halves of a background/foreground transition.
 `foreground` terminates nothing. Whether `foreground` waits depends on the case:

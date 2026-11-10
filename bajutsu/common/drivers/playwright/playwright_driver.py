@@ -222,7 +222,14 @@ class PlaywrightDriver:
 
     # --- interval evidence (web equivalents of the simctl video / deviceLog providers) ---
 
-    def driver_interval(self, kind: str, path: Path) -> intervals.Interval | None:
+    def driver_interval(
+        self,
+        kind: str,
+        path: Path,
+        *,
+        subsystem: str | None = None,
+        json_path: Path | None = None,
+    ) -> intervals.Interval | None:
         """A whole-scenario interval recording for the web backend, or None if unsupported.
 
         The device pool hands this to the `FileSink` (the driver-supplied interval seam, shared with
@@ -231,6 +238,7 @@ class PlaywrightDriver:
         browser console + uncaught page errors (the os_log analogue); `video` finalizes and
         collects the BrowserContext recording (only when a record dir was configured for this lane).
         """
+        del subsystem, json_path  # appTrace alone reads them, and the web has none
         if kind == "deviceLog":
             return self._console_interval(path)
         if kind == "video":

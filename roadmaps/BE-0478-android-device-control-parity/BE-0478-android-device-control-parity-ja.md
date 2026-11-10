@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0478](BE-0478-android-device-control-parity-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **承認済み** |
+| 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0478") |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0211](../BE-0211-android-device-control/BE-0211-android-device-control-ja.md), [BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities-ja.md), [BE-0035](../BE-0035-device-control-primitives/BE-0035-device-control-primitives-ja.md), [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md), [BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md) |
@@ -281,12 +281,23 @@ adb -s <serial> logcat -v year,usec,zone -T "<MM-DD hh:mm:ss.mmm>" -s <tag>:V
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] `KEYCODE_HOME` による `background` と、`DC_BACKGROUND` の宣言
-- [ ] デモモードによる `overrideStatusBar` と `clearStatusBar`、`DC_STATUS_BAR` の宣言
-- [ ] アプリ単位のロケールによる `runsOn.android.locale` と、2段階の API レベル検査
-- [ ] タグで絞り込んだ `logcat` による `appTrace` と、`APP_TRACE` の宣言
-- [ ] `docs/` と `docs/ja/` のドキュメント
+- [x] `KEYCODE_HOME` による `background` と、`DC_BACKGROUND` の宣言
+- [x] デモモードによる `overrideStatusBar` と `clearStatusBar`、`DC_STATUS_BAR` の宣言
+- [x] アプリ単位のロケールによる `runsOn.android.locale` と、2段階の API レベル検査
+- [x] タグで絞り込んだ `logcat` による `appTrace` と、`APP_TRACE` の宣言
+- [x] `docs/` と `docs/ja/` のドキュメント
 - [ ] Android エミュレータのレーンでの実機確認
+
+ログ：
+
+- 2026-11-10 — 単位 1〜5 をまとめて着地させました（PR は作成予定です）。詳細設計から外れた点が3つあります。
+  - resumed activity を読む adb のヘルパーがありませんでした。そのため `background` の待機は、新しく追加した
+    `dumpsys activity activities` の解析器を使います。アプリが前面から外れないときは `UnsupportedAction` で
+    ステップを失敗させます。デバイス制御のハンドラがすでに使っている、ステップ失敗の型です。
+  - シナリオの `preconditions.device.android.locale` は `resolved_locale` に含めません。このメソッドは
+    システムアラートのラベル照合にも使われ、そちらはエミュレータの言語のままでなければならないからです。
+  - 設定の表（BE-0467）は、Android の `locale` を未対応としていました。この変更で対応済みにし、設定の
+    メッセージがルート自身のプラットフォーム（`runsOn.android.locale`）を示すようにしました。
 
 ## 参考
 

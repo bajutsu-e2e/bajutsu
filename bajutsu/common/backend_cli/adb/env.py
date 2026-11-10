@@ -7,6 +7,18 @@ import subprocess
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
+from ._device_state import (
+    APP_LOCALES_MIN_API,
+    get_app_locales_cmd,
+    home_cmd,
+    language_tag,
+    parse_app_locales,
+    resumed_activities_cmd,
+    resumed_packages,
+    set_app_locales_cmd,
+    status_bar_demo_cmds,
+    status_bar_exit_cmd,
+)
 from ._functions import (
     SEED_PHOTOS_CLEARED,
     SEED_PHOTOS_DIR,
@@ -228,9 +240,10 @@ class Env:
             f.write(out)
 
     # Device control: the subset the emulator can honor, the Android peer of simctl's setLocation /
-    # clipboard. setLocation is a pure emulator-console op (BE-0211); clipboard goes through the app's
-    # in-app receiver (BE-0233), so its methods take the target package to address the broadcast. The
-    # rest of the DeviceControl family has no faithful emulator equivalent and is not wired (see
+    # clipboard / Home / status bar. setLocation is a pure emulator-console op (BE-0211); clipboard goes
+    # through the app's in-app receiver (BE-0233), so its methods take the target package to address the
+    # broadcast; Home and the status bar need no app at all (BE-0478). `push` / `clearKeychain` need a
+    # receiver in the app's process and are not wired (see
     # `platform_lifecycle.device_control.android_device_control`).
 
     def set_location(self, lat: float, lon: float) -> None:
@@ -244,3 +257,54 @@ class Env:
 
     def get_clipboard(self, package: str) -> str:
         return parse_clipboard_result(self._run(get_primary_clip_cmd(self.serial, package)))
+
+    def home(self) -> None:
+        """Press Home, sending the app to the background with its process alive (BE-0478)."""
+        self._run(home_cmd(self.serial))
+
+    def resumed_packages(self) -> set[str]:
+        """The packages holding a resumed activity now, the signal `background` waits on."""
+        return resumed_packages(self._run(resumed_activities_cmd(self.serial)))
+
+    def override_status_bar(self, **kwargs: str | int) -> None:
+        """Freeze the status bar through the System UI demo mode (`simctl status_bar`'s twin)."""
+        for cmd in status_bar_demo_cmds(self.serial, kwargs):
+            self._run(cmd)
+
+    def clear_status_bar(self) -> None:
+        self._run(status_bar_exit_cmd(self.serial))
+
+    def apply_app_locale(self, package: str, locale: str | None, api_level: int | None) -> None:
+        """Pin *package*'s per-app language to *locale*, or clear it when *locale* is None (BE-0478).
+
+        A set value is read back, because `cmd locale` accepts a tag the system then ignores. An unset
+        locale clears whatever an earlier run on this reused emulator left behind, so the app falls
+        back to the device's own language; below API level 33 nothing could have set one.
+
+        Raises:
+            DeviceError: A locale is set but the API level is unknown or below 33, or the read-back
+                does not match.
+        """
+        if locale is None:
+            if api_level is not None and api_level >= APP_LOCALES_MIN_API:
+                self._run(set_app_locales_cmd(self.serial, package, ""))
+                self._confirm_app_locale(package, "")
+            return
+        if api_level is None or api_level < APP_LOCALES_MIN_API:
+            level = "an unreadable API level" if api_level is None else f"API level {api_level}"
+            raise DeviceError(
+                f"runsOn.android.locale {locale!r} needs API level {APP_LOCALES_MIN_API} or later, "
+                f"but the device reports {level}"
+            )
+        tag = language_tag(locale)
+        self._run(set_app_locales_cmd(self.serial, package, tag))
+        self._confirm_app_locale(package, tag)
+
+    def _confirm_app_locale(self, package: str, tag: str) -> None:
+        # `cmd locale` accepts a value the system then ignores, so the read-back is the proof.
+        got = parse_app_locales(self._run(get_app_locales_cmd(self.serial, package)))
+        if got != tag:
+            action = f"setting {tag!r}" if tag else "clearing the one an earlier run left"
+            raise DeviceError(
+                f"runsOn.android.locale: {package} reports locale {got!r} after {action}"
+            )

@@ -77,13 +77,15 @@ def android_device_control(
     env_run: adb.RunFn = adb.real_run,
     *,
     foreground: Callable[[], None] | None = None,
+    background: Callable[[], None] | None = None,
 ) -> DeviceControl:
     """A `DeviceControl` for the Android emulator, backing only the operations it can honor.
 
     `setLocation` (`emu geo fix`) runs over the emulator console; the clipboard operations run over
     an ordered `am broadcast` to the app's in-app receiver (BajutsuAndroid, BE-0233) — hence `package`,
-    to address the broadcast at the app under test. `push` / `clearKeychain` / the status-bar overrides
-    / the app-lifecycle steps have no faithful emulator equivalent and raise `UnsupportedAction`.
+    to address the broadcast at the app under test. `background` presses Home and the status-bar pair
+    drives the System UI demo mode (BE-0478). `push` / `clearKeychain` need a receiver in the app's
+    process and raise `UnsupportedAction`.
     Preflight (BE-0212) rejects those steps up front from the adb backend's advertised subset, so this
     raise is the runtime backstop, never a silent no-op.
 
@@ -93,6 +95,8 @@ def android_device_control(
         env_run: The subprocess runner for adb, injectable for tests.
         foreground: The environment's own `foreground` (BE-0447), which launches the app when it
             is not running and waits for it; None leaves `foreground` unsupported.
+        background: The environment's own `background`, which presses Home and waits for the app
+            to leave the front (BE-0478); None presses Home without waiting.
     """
     e = adb.Env(serial, run=env_run)
 
@@ -100,6 +104,7 @@ def android_device_control(
         return base.UnsupportedAction(f"{op} is not supported on the Android emulator")
 
     bring_forward = _android_foreground(foreground)
+    send_home = background or e.home
 
     class _Control:
         def set_location(self, lat: float, lon: float) -> None:
@@ -121,18 +126,29 @@ def android_device_control(
             raise _unsupported("clearKeychain")
 
         def home(self) -> None:
-            raise _unsupported("background")
+            send_home()
 
         def foreground(self) -> None:
             bring_forward()
 
-        def override_status_bar(self, **kwargs: str | int) -> None:  # noqa: ARG002  # DeviceControl shape
-            raise _unsupported("overrideStatusBar")
+        def override_status_bar(self, **kwargs: str | int) -> None:
+            _require_showable_status_bar(kwargs)
+            e.override_status_bar(**kwargs)
 
         def clear_status_bar(self) -> None:
-            raise _unsupported("clearStatusBar")
+            e.clear_status_bar()
 
     return _Control()
+
+
+def _require_showable_status_bar(fields: dict[str, str | int]) -> None:
+    """The backstop to the Android preflight check (BE-0478).
+
+    `am broadcast` reports success for a value System UI then ignores, so the step fails here rather
+    than passing with the status bar unpinned.
+    """
+    if problems := adb.status_bar_problems(fields):
+        raise base.UnsupportedAction(f"overrideStatusBar: {'; '.join(problems)}")
 
 
 def _android_foreground(foreground: Callable[[], None] | None) -> Callable[[], None]:

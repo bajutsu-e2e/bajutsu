@@ -4,12 +4,13 @@
 over an ordered `am broadcast` to an in-app receiver (BajutsuAndroid), because since Android 10 only
 the foreground app / default IME may touch the clipboard — `cmd clipboard` answers "No shell command
 implementation" on-device, a silent no-op. The backend still advertises `clipboard` (it can drive it
-given a cooperating app, as the iOS clipboard rides simctl). `push` / `clearKeychain` / the status-bar
-overrides / app lifecycle have no faithful equivalent and stay unsupported. Fast gate over an
-injected `adb` runner (no device): command shape, the broadcast result parse (base64 + loud-fail on
-no receiver), the clipboard round-trip against a fake receiver, that the supported subset delegates
-and the rest raise, and that the adb backend advertises exactly `setLocation` + `clipboard` so
-preflight (BE-0212) admits those and fails the rest fast.
+given a cooperating app, as the iOS clipboard rides simctl). `push` / `clearKeychain` need a
+receiver in the app's process and stay unsupported; `background` and the status bar are covered in
+`test_android_device_state.py` (BE-0478). Fast gate over an injected `adb` runner (no device):
+command shape, the broadcast result parse (base64 + loud-fail on no receiver), the clipboard
+round-trip against a fake receiver, that the supported subset delegates and the rest raise, and that
+the adb backend advertises exactly that subset so preflight (BE-0212) admits it and fails the rest
+fast.
 """
 
 from __future__ import annotations
@@ -176,10 +177,7 @@ def test_android_control_clipboard_round_trip() -> None:
     [
         lambda c: c.push({"aps": {"alert": "hi"}}),
         lambda c: c.clear_keychain(),
-        lambda c: c.home(),  # `background`
         lambda c: c.foreground(),
-        lambda c: c.override_status_bar(time="9:41"),
-        lambda c: c.clear_status_bar(),
     ],
 )
 def test_android_control_unsupported_operations_raise(
@@ -195,17 +193,16 @@ def test_android_control_unsupported_operations_raise(
 # --- capability declaration + preflight (BE-0212 tokens) ---
 
 
-def test_adb_advertises_setlocation_clipboard_and_foreground() -> None:
+def test_adb_advertises_the_device_control_subset_it_can_honor() -> None:
     caps = AdbDriver("E", run=lambda a: "").capabilities()
     assert base.Capability.DC_SET_LOCATION in caps
     assert base.Capability.DC_CLIPBOARD in caps
     assert base.Capability.DC_FOREGROUND in caps
-    # The rest of the family stays unadvertised — `background`, push, keychain, and the status bar
-    # have no faithful emulator equivalent.
+    assert base.Capability.DC_BACKGROUND in caps
+    assert base.Capability.DC_STATUS_BAR in caps
+    # push and keychain need a receiver in the app's process, which the backend does not have.
     assert base.Capability.DC_PUSH not in caps
     assert base.Capability.DC_CLEAR_KEYCHAIN not in caps
-    assert base.Capability.DC_BACKGROUND not in caps
-    assert base.Capability.DC_STATUS_BAR not in caps
 
 
 def test_adb_advertises_the_whole_permission_vocabulary() -> None:
@@ -226,6 +223,9 @@ def _sc(**body: object) -> Scenario:
         {"setLocation": {"lat": 1.0, "lon": 2.0}},
         {"setClipboard": {"text": "x"}},
         {"clearClipboard": {}},
+        {"background": {}},
+        {"overrideStatusBar": {"time": "9:41"}},
+        {"clearStatusBar": {}},
     ],
 )
 def test_preflight_admits_supported_steps_on_adb(step: dict[str, object]) -> None:
@@ -237,8 +237,6 @@ def test_preflight_admits_supported_steps_on_adb(step: dict[str, object]) -> Non
     [
         {"push": {"payload": {"aps": {"alert": "hi"}}}},
         {"clearKeychain": {}},
-        {"background": {}},
-        {"overrideStatusBar": {"time": "9:41"}},
     ],
 )
 def test_preflight_rejects_unsupported_steps_on_adb(step: dict[str, object]) -> None:

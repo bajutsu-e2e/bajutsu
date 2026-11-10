@@ -152,6 +152,7 @@ def _platform_config(a: TargetConfig) -> PlatformConfig:
             native_z=driver.native_z,
             resident_read_retries=driver.resident_recovery.read_retries,
             resident_restart=driver.resident_recovery.restart,
+            locale=a.runs_on.android.locale if isinstance(a.runs_on, AndroidRunsOn) else None,
         )
     if isinstance(app, IosApp):
         return IosConfig(

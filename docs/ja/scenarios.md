@@ -1232,7 +1232,33 @@ secret として記録します。マスクはそのステップ自身のレポ�
 - clearStatusBar: {}                                                    # ライブのステータスバーに戻す
 ```
 
-iOS では、これらのステップは `setLocation` / `push` と同じく `simctl` 経由で Simulator を操作します。そのためデバイスごとの制御チャネルが必要で、fake ドライバや並列実行ではクリーンに失敗します。このうち `foreground`、`setClipboard`、`clearClipboard` の3つは Android でも動き、それ以外は iOS 専用です。`overrideStatusBar` は、スクリーンショットや `visual` アサーションの直前に時計や電波表示を固定して画像を安定させる用途に向きます。
+iOS では、これらのステップは `setLocation` / `push` と同じく `simctl` 経由で Simulator を操作します。そのためデバイスごとの制御チャネルが必要で、fake ドライバや並列実行ではクリーンに失敗します。Android では、この一覧のうち `clearKeychain` 以外のステップが動きます。`clearKeychain` には、アプリのプロセス内にレシーバが必要だからです。`overrideStatusBar` は、スクリーンショットや `visual` アサーションの直前に使います。時計や電波表示を固定して、画像を安定させます。
+
+Android では、adb がアプリ内のコードなしでこれらのステップを動かします（[BE-0478](../../roadmaps/BE-0478-android-device-control-parity/BE-0478-android-device-control-parity-ja.md)）。
+
+| ステップ | Android での仕組み |
+|---|---|
+| `background` | Home キーを押します（`input keyevent KEYCODE_HOME`）。アプリのプロセスは残ります |
+| `overrideStatusBar` | System UI のデモモードに入り、指定したフィールドごとにコマンドを1つ送ります |
+| `clearStatusBar` | デモモードを抜け、実際のステータスバーに戻します |
+
+`background` は、アプリが resumed activity でなくなるまで条件待ちをします。アプリが前面に残ったままなら、ステップは失敗します。`background` のあとはランチャーが前面に来ます。そのため、テスト対象アプリの要素を指すセレクタは何も見つけません。iOS でホーム画面が前面にあるときと同じです。デバイスグループの中では、`foreground` ステップでアプリを戻すまで、読み取りが `AppNotInFront` で失敗します。
+
+デモモードには、`simctl status_bar` と違う点が3つあります。
+
+- **未指定のフィールドも固定されます。** デモモードに入ると、すべてのアイコンが固定されます。ステップが指定しなかったフィールドは、実際の値ではなくデモモード自身の固定値になります。iOS のステータスバーは通知アイコンを出さないので、このステップも通知アイコンを隠します。
+- **受け付ける値が狭くなります。** Android で受け付ける値は下の表のとおりです。それ以外の値は、プリフライトがデバイスを操作する前に失敗させ、そのステップを名指しします。System UI はそうした値を無視しますが、ブロードキャストは成功を返してしまうからです。
+- **Wi-Fi の本数は換算します。** Android の Wi-Fi レベルは 0–4 なので、iOS で満タンの電波は Android でも満タンにします。換算は下の表のとおりです。
+
+| フィールド | Android で受け付ける値 | 換算 |
+|---|---|---|
+| `time` | `H:MM` または `HH:MM` | 4桁の時刻にします（`9:41` は `0941`） |
+| `batteryLevel` | 0–100 | そのまま |
+| `batteryState` | `charging`、`charged`、`discharging` | 前の2つで `plugged` を true にします |
+| `cellularBars` | 0–4 | そのまま |
+| `wifiBars` | 0–3 | 0、1、2、3 をレベル 0、1、3、4 にします |
+
+どちらのプラットフォームでも、上書きは `clearStatusBar` ステップを実行するまでデバイスに残ります。
 
 `background` / `foreground` はバックグラウンド/フォアグラウンド遷移の対で、`foreground` は何も終了させません。`foreground` が待つかどうかは場合によって異なります。
 

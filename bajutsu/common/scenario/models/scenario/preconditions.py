@@ -144,6 +144,11 @@ class PreconditionsAndroidDevice(_Model):
     Each field replaces the target's `runsOn.android` value of the same name when set.
     """
 
+    # The app's per-app language (BE-0478). It reaches the app alone, never the system dialogs, so it
+    # leaves the system-alert label lookup on the target's locale. An empty value would silently fall
+    # back to the target's locale, so it fails instead.
+    locale: str | None = Field(default=None, min_length=1)
+
     # Images seeded into the device's shared storage before launch, in order. Paths resolve against
     # the scenario file when it loads; None keeps the target's list. No wipe is needed: every
     # launch empties the directory Bajutsu owns before seeding, and `[]` seeds nothing.
@@ -209,6 +214,14 @@ class Preconditions(_Model):
         device = self._ios_device(platform)
         locale = device.locale if device is not None else None
         return locale or target_locale
+
+    def app_locale_for(self, platform: str) -> str | None:
+        """The scenario's own per-app locale for *platform*, or None when it sets none.
+
+        iOS's lives in `resolved_locale`, which also pins the system language; Android's reaches the
+        app alone (BE-0478), so it is kept apart from the locale system alerts are matched in.
+        """
+        return self.device.android.locale if platform == "android" else None
 
     def resolve_seed_photos(self, resolve: Callable[[str], str]) -> None:
         """Rewrite `device.ios.seedPhotos` and `device.android.seedPhotos` through *resolve*, in place.

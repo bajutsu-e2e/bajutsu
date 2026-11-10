@@ -52,7 +52,7 @@ class Driver(Protocol):
 | `network` | ネイティブネットワーク監視 | — | — | ✅ | — |
 | `video` | シナリオ全体の動画記録（BE-0467。iOS では Simulator のみ） | ✅ | ✅ | ✅ | — |
 | `deviceLog` | シナリオ全体のデバイスログまたはブラウザのコンソール（BE-0467。iOS では Simulator のみ） | ✅ | ✅ | ✅ | — |
-| `appTrace` | シナリオ全体のアプリの `os_log` トレース（BE-0467。iOS Simulator のみ） | ✅ | — | — | — |
+| `appTrace` | シナリオ全体のアプリのログトレース。iOS は `os_log`、Android はタグで絞った `logcat`（BE-0467、BE-0478。iOS は Simulator のみ） | ✅ | ✅ | — | — |
 | `multiTouch` | 2 本指ジェスチャ（pinch / rotate） | ✅ | ✅ | ✅ | ✅ |
 | `webView` | 埋め込まれた WKWebView の DOM を問い合わせてタップする（BE-0037、WebView ブリッジが実行ごとに付与し、静的な宣言はなし） | — | — | — | — |
 | `textSelection` | フォーカス中フィールドの全選択とクリップボードへのコピー | ✅ | ✅ | ✅ | ✅ |
@@ -70,9 +70,9 @@ class Driver(Protocol):
 | `deviceControl.clipboard` | クリップボードの読み取り / 書き込み / クリア | ✅ | ✅ | — | — |
 | `deviceControl.push` | プッシュ通知の配信 | ✅ | — | — | — |
 | `deviceControl.clearKeychain` | キーチェーンのクリア | ✅ | — | — | — |
-| `deviceControl.background` | アプリのバックグラウンド化 | ✅ | — | — | — |
+| `deviceControl.background` | アプリのバックグラウンド化 | ✅ | ✅ | — | — |
 | `deviceControl.foreground` | アプリを前面に出す（起動していなければ起動する） | ✅ | ✅ | — | — |
-| `deviceControl.statusBar` | ステータスバーの上書き / クリア | ✅ | — | — | — |
+| `deviceControl.statusBar` | ステータスバーの上書き / クリア | ✅ | ✅ | — | — |
 | `deviceControl.permissions.location` | `location` の権限を付与 / 取り消す（BE-0276） | ✅ | ✅ | — | — |
 | `deviceControl.permissions.camera` | `camera` の権限を付与 / 取り消す（BE-0276） | ✅ | ✅ | — | — |
 | `deviceControl.permissions.microphone` | `microphone` の権限を付与 / 取り消す（BE-0276） | ✅ | ✅ | — | — |
@@ -82,9 +82,9 @@ class Driver(Protocol):
 | `deviceControl.permissions.notifications` | `notifications` の権限を付与 / 取り消す（BE-0276） | — | ✅ | — | — |
 | `deviceGroup` | デバイスグループのターゲットで 1 台のデバイスを共有する（BE-0447、iOS は Simulator のみ） | ✅ | ✅ | — | ✅ |
 
-> `deviceControl.*` トークンは、`DeviceControl` 一族を操作ごとに分割したものです（BE-0212、BE-0128 の粗い `deviceControl` から分割しました）。これにより、バックエンドは自分が忠実に実現できる操作だけを公開でき、部分的にしか実現しないバックエンドも残りを誤って公開せずに済みます。XCUITest は `simctl` を通じて一族全体を実現しますが、Android エミュレータが実現するのは `setLocation`、`clipboard`、`foreground` と `permissions.*` の7サービスです（その `push` / キーチェーン / ステータスバー / `background` の各操作には忠実な等価物がありません）。`background` と `foreground` は、BE-0447 が分けるまで 1 つの `appLifecycle` トークンでした。デバイスグループの後から入るメンバーは `foreground` で起動するので、分ける必要がありました。
+> `deviceControl.*` トークンは、`DeviceControl` 一族を操作ごとに分割したものです（BE-0212、BE-0128 の粗い `deviceControl` から分割しました）。これにより、バックエンドは自分が忠実に実現できる操作だけを公開でき、部分的にしか実現しないバックエンドも残りを誤って公開せずに済みます。XCUITest は `simctl` を通じて一族全体を実現します。Android エミュレータは、`permissions.*` の7サービスを含め、`push` と `clearKeychain` 以外のすべてを実現します。この2つにはアプリのプロセス内のレシーバが必要だからです（BE-0478）。`background` と `foreground` は、BE-0447 が分けるまで 1 つの `appLifecycle` トークンでした。デバイスグループの後から入るメンバーは `foreground` で起動するので、分ける必要がありました。
 
-> adb は**リーンな端**に位置し、**frame 中心の座標**で操作します。semantic tap を持たないため、run ループは `query()` で要素を一意に確定しその中心をタップします。一方 XCUITest は豊かな端に位置し、identifier で直接 tap し、ネイティブの条件で待機し、`pinch` / `rotate` をネイティブに実行します。adb は `query` / `elements` / `screenshot`、`multiTouch`（rooted device での `sendevent` 2 本指スイープ、BE-0232）、`textSelection`（`Ctrl+A` / `Ctrl+C` のキー入力、BE-0265）に加えて、エミュレータが実現できるデバイス制御のサブセット `deviceControl.setLocation`、`deviceControl.clipboard`（BE-0211）、`deviceControl.foreground`、`deviceControl.permissions.*` の7サービス（`pm grant` / `pm revoke`、BE-0276）と、`deviceGroup`（BE-0447）、証跡種別の `video` と `deviceLog`（`screenrecord` と `logcat`。BE-0467）を公開します。デバイス制御一族の残りにはエミュレータでの忠実な等価物がないため、公開しません。`fake` ドライバはテストでそれらのコードパスを動かすためだけに、より広い能力集合（semanticTap / conditionWait / multiTouch）を公開します。`playwright`（web）ドライバは `semanticTap` / `conditionWait`（Playwright がネイティブに持つ）に加えて `network`（アプリ側の協力なしに通信を観測しスタブできる**初めてのネイティブネットワーク対応バックエンド**）と `multiTouch`（Chromium DevTools プロトコルの `Input.dispatchTouchEvent` で pinch / rotate を合成）を公開します（BE-0054）。証跡種別の `video` と `deviceLog`（ブラウザコンテキストの録画とコンソール。BE-0467）も公開します。
+> adb は**リーンな端**に位置し、**frame 中心の座標**で操作します。semantic tap を持たないため、run ループは `query()` で要素を一意に確定しその中心をタップします。一方 XCUITest は豊かな端に位置し、identifier で直接 tap し、ネイティブの条件で待機し、`pinch` / `rotate` をネイティブに実行します。adb は `query` / `elements` / `screenshot`、`multiTouch`（rooted device での `sendevent` 2 本指スイープ、BE-0232）、`textSelection`（`Ctrl+A` / `Ctrl+C` のキー入力、BE-0265）に加えて、エミュレータが実現できるデバイス制御のサブセットを公開します。`deviceControl.setLocation`、`deviceControl.clipboard`（BE-0211）、`deviceControl.foreground`、`deviceControl.background`、`deviceControl.statusBar`（BE-0478）、`deviceControl.permissions.*` の7サービス（`pm grant` / `pm revoke`、BE-0276）です。ほかに `deviceGroup`（BE-0447）と、証跡種別の `video`、`deviceLog`、`appTrace`（`screenrecord`、`logcat`、タグで絞った `logcat`。BE-0467、BE-0478）も公開します。`push` と `clearKeychain` はアプリのプロセス内にレシーバが必要なため、公開しません。`fake` ドライバはテストでそれらのコードパスを動かすためだけに、より広い能力集合（semanticTap / conditionWait / multiTouch）を公開します。`playwright`（web）ドライバは `semanticTap` / `conditionWait`（Playwright がネイティブに持つ）に加えて `network`（アプリ側の協力なしに通信を観測しスタブできる**初めてのネイティブネットワーク対応バックエンド**）と `multiTouch`（Chromium DevTools プロトコルの `Input.dispatchTouchEvent` で pinch / rotate を合成）を公開します（BE-0054）。証跡種別の `video` と `deviceLog`（ブラウザコンテキストの録画とコンソール。BE-0467）も公開します。
 
 ### プリフライト能力検査（BE-0082）
 

@@ -107,7 +107,7 @@ so a key another platform takes fails as unknown on this one, with the accepted 
 | Group | iOS | Android | Web |
 |---|---|---|---|
 | `subject` | `id`, `path`, `build`, `reinstall`, `launch.env`, `launch.args`, `launch.deeplink`, `startWhen`, `idNamespaces` | `id`, `path`, `build`, `reinstall`, `launch.env`, `launch.deeplink`, `grantPermissions`, `startWhen`, `idNamespaces` | `url`, `launch.env`, `startWhen`, `idNamespaces` |
-| `runsOn` | `ios.model`, `ios.os`, `ios.kind`, `ios.family`, `ios.locale`, `ios.seedPhotos` | `android.avd`, `android.apiLevel`, `android.seedPhotos` | `browser.kind`, `browser.version`, `browser.emulate` |
+| `runsOn` | `ios.model`, `ios.os`, `ios.kind`, `ios.family`, `ios.locale`, `ios.seedPhotos` | `android.avd`, `android.apiLevel`, `android.locale`, `android.seedPhotos` | `browser.kind`, `browser.version`, `browser.emulate` |
 | `driver` | `runner.testRunner`, `runner.build`, `runner.hostAddress` | `nativeZ`, `residentRecovery.readRetries`, `residentRecovery.restart` | `headless` |
 
 `runsOn` also takes `ignoredSettings` on every platform. That key names no destination. It lists
@@ -265,7 +265,7 @@ Each field thus names what it limits, so `runsOn.ios.os` reads as an iOS version
 | Platform | Destination block | Fields |
 |---|---|---|
 | iOS | `runsOn.ios` | `model`, `os`, `kind`, `family`, `locale`, `seedPhotos` |
-| Android | `runsOn.android` | `avd`, `apiLevel`, `seedPhotos` |
+| Android | `runsOn.android` | `avd`, `apiLevel`, `locale`, `seedPhotos` |
 | Web | `runsOn.browser` | `kind`, `version`, `emulate` |
 | fake | none | none |
 
@@ -433,9 +433,41 @@ Three `runsOn.ios` fields are device state rather than conditions. A single `kin
 `device`) selects the XCUITest destination. `locale` pins the language a run applies. iOS keeps the built-in
 `en_US` when `locale` is unset. `seedPhotos` lists the images seeded into the photo library. A
 scenario may replace `locale` and `seedPhotos` under `preconditions.device.ios`. On Android,
-`runsOn.android.seedPhotos` is device state in the same way: the images seeded before launch, which
-a scenario may replace under `preconditions.device.android`. The web block's
+`runsOn.android.locale` and `runsOn.android.seedPhotos` are device state in the same way, and a
+scenario may replace either under `preconditions.device.android`. The web block's
 `emulate` likewise selects a device mode rather than matching a device.
+
+#### Android app locale (`runsOn.android.locale`, BE-0478)
+
+`runsOn.android.locale` sets the language of the app under test. It takes the spelling of
+`runsOn.ios.locale`, such as `ja_JP`. The run converts it to a Best Current Practice 47 (BCP 47)
+language tag (`ja-JP`). Before every launch, the run sets the tag with `cmd locale set-app-locales`
+and reads it back. A mismatch fails the start and names the package and the locale.
+
+```yaml
+targets:
+  shop-android:
+    platform: android
+    subject: { id: com.example.shop }
+    runsOn:
+      android: { apiLevel: ">=33", locale: ja_JP }
+```
+
+The per-app language differs from the iOS locale in three ways:
+
+- **Unset keeps the device's language.** iOS falls back to a built-in `en_US`; Android sets none.
+  An earlier run may have left a per-app language on the reused emulator. On API level 33 and later,
+  the run clears it, so the app follows the device's own language.
+- **It needs API level 33.** `cmd locale` exists from API level 33. Two checks enforce that:
+  - When `runsOn.android.apiLevel` admits an earlier level, the run fails before any device work.
+    The message suggests narrowing `apiLevel`.
+  - When `apiLevel` is unset, the run reads the device's level at start and fails there.
+
+  A run that sets no locale merely logs a warning when it cannot read the level.
+- **System dialogs keep the emulator's language.** The per-app language reaches the app alone. A
+  runtime permission prompt stays in the language of the emulator image. iOS, by contrast, also pins
+  the Simulator's system language. Address a system dialog's buttons with an `id` selector, because
+  their text follows the image.
 
 ### Resolution (`resolve` → `Effective`)
 
@@ -593,7 +625,7 @@ The settings, each with the field it comes from:
 - `install`: the `subject.path` install (`subject.reinstall` is its mode)
 - `permissions.<service>`: each service in the scenario's `permissions`
 - `seedPhotos`: `runsOn.ios.seedPhotos` or `runsOn.android.seedPhotos`
-- `locale`: `runsOn.ios.locale`
+- `locale`: `runsOn.ios.locale` or `runsOn.android.locale`
 - `launchEnv`, `launchArgs`, `deeplink`: `subject.launch.env`, `subject.launch.args`, `subject.launch.deeplink`
 
 A setting the route cannot apply fails the scenario in the
