@@ -84,8 +84,8 @@ def android_device_control(
     `setLocation` (`emu geo fix`) runs over the emulator console; the clipboard operations run over
     an ordered `am broadcast` to the app's in-app receiver (BajutsuAndroid, BE-0233) — hence `package`,
     to address the broadcast at the app under test. `background` presses Home and the status-bar pair
-    drives the System UI demo mode (BE-0478). `push` / `clearKeychain` need a receiver in the app's
-    process and raise `UnsupportedAction`.
+    drives the System UI demo mode (BE-0478). `push` needs a receiver in the app's process, and
+    Android has no keychain for `clearKeychain` to clear, so both raise `UnsupportedAction`.
     Preflight (BE-0212) rejects those steps up front from the adb backend's advertised subset, so this
     raise is the runtime backstop, never a silent no-op.
 

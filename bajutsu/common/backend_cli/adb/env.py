@@ -242,8 +242,8 @@ class Env:
     # Device control: the subset the emulator can honor, the Android peer of simctl's setLocation /
     # clipboard / Home / status bar. setLocation is a pure emulator-console op (BE-0211); clipboard goes
     # through the app's in-app receiver (BE-0233), so its methods take the target package to address the
-    # broadcast; Home and the status bar need no app at all (BE-0478). `push` / `clearKeychain` need a
-    # receiver in the app's process and are not wired (see
+    # broadcast; Home and the status bar need no app at all (BE-0478). `push` needs a receiver in the
+    # app's process and Android has no keychain, so neither is wired (see
     # `platform_lifecycle.device_control.android_device_control`).
 
     def set_location(self, lat: float, lon: float) -> None:

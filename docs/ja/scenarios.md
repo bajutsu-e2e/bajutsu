@@ -1232,7 +1232,7 @@ secret として記録します。マスクはそのステップ自身のレポ�
 - clearStatusBar: {}                                                    # ライブのステータスバーに戻す
 ```
 
-iOS では、これらのステップは `setLocation` / `push` と同じく `simctl` 経由で Simulator を操作します。そのためデバイスごとの制御チャネルが必要で、fake ドライバや並列実行ではクリーンに失敗します。Android では、この一覧のうち `clearKeychain` 以外のステップが動きます。`clearKeychain` には、アプリのプロセス内にレシーバが必要だからです。`overrideStatusBar` は、スクリーンショットや `visual` アサーションの直前に使います。時計や電波表示を固定して、画像を安定させます。
+iOS では、これらのステップは `setLocation` / `push` と同じく `simctl` 経由で Simulator を操作します。そのためデバイスごとの制御チャネルが必要で、fake ドライバや並列実行ではクリーンに失敗します。Android では、この一覧のうち `clearKeychain` 以外のステップが動きます。Android にはキーチェーンがないからです。`overrideStatusBar` は、スクリーンショットや `visual` アサーションの直前に使います。時計や電波表示を固定して、画像を安定させます。
 
 Android では、adb がアプリ内のコードなしでこれらのステップを動かします（[BE-0478](../../roadmaps/BE-0478-android-device-control-parity/BE-0478-android-device-control-parity-ja.md)）。
 

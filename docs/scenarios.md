@@ -1702,7 +1702,7 @@ the `manual` step with the deterministic action — is the author's path to a re
 
 On iOS, these steps drive the Simulator through `simctl`, like `setLocation` / `push`. They need a
 per-device control channel and fail cleanly on the fake driver / in parallel runs. On Android, every
-step in this list runs except `clearKeychain`. That step needs a receiver inside the app's process.
+step in this list runs except `clearKeychain`, because Android has no keychain.
 Use `overrideStatusBar` right before a screenshot or a `visual` assertion. It freezes the clock and
 signal bars for a stable image.
 

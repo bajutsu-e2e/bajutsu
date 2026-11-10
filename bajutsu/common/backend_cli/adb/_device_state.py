@@ -41,8 +41,23 @@ _RESUMED = re.compile(
 )
 
 
+# Any resumed-activity field, whatever it holds (`topResumedActivity=null` included).
+_RESUMED_FIELD = re.compile(
+    r"^\s*(?:topResumedActivity|mResumedActivity|ResumedActivity)\s*[=:]", re.MULTILINE
+)
+
+
 def resumed_packages(text: str) -> set[str]:
-    """Every package that holds a resumed activity in a `dumpsys activity activities` dump."""
+    """Every package that holds a resumed activity in a `dumpsys activity activities` dump.
+
+    `background` waits for its package to be absent here, so a dump this cannot read must fail
+    rather than parse to an empty set, which would end that wait at once with the app in front.
+
+    Raises:
+        DeviceError: The dump names no resumed-activity field at all.
+    """
+    if not _RESUMED_FIELD.search(text):
+        raise DeviceError("dumpsys activity activities: no resumed-activity field to read")
     return {m.group("package") for m in _RESUMED.finditer(text)}
 
 

@@ -92,8 +92,9 @@ The two mobile backends differ in what they support.
 > The `deviceControl.*` tokens are the `DeviceControl` family split per operation (BE-0212, from the
 > coarse `deviceControl` of BE-0128), so a backend can advertise exactly the operations it can
 > honor. XCUITest backs the whole family through `simctl`. The Android emulator backs every
-> operation but `push` and `clearKeychain`, all seven `permissions.*` services included. Those two
-> need a receiver inside the app's process (BE-0478). The split makes that subset expressible
+> operation but `push` and `clearKeychain`, all seven `permissions.*` services included (BE-0478).
+> `push` needs a receiver inside the app's process, and Android has no keychain for
+> `clearKeychain` to clear. The split makes that subset expressible
 > without green-lighting the rest. `background` and `foreground` were one `appLifecycle` token until
 > BE-0447 split them, since a device group's later member comes up at its `foreground`.
 
@@ -107,8 +108,8 @@ The two mobile backends differ in what they support.
 > + `deviceControl.background` + `deviceControl.statusBar` (BE-0478),
 > the seven `deviceControl.permissions.*` services (`pm grant` / `pm revoke`; BE-0276),
 > `deviceGroup` (BE-0447), and the `video` / `deviceLog` / `appTrace` evidence kinds
-> (`screenrecord`, `logcat`, a tag-filtered `logcat`; BE-0467, BE-0478). `push` and
-> `clearKeychain` need a receiver inside the app's process and stay unadvertised. The
+> (`screenrecord`, `logcat`, a tag-filtered `logcat`; BE-0467, BE-0478). `push` (no receiver in
+> the app's process) and `clearKeychain` (no keychain on Android) stay unadvertised. The
 > `fake` driver advertises a richer capability set (semanticTap / conditionWait / multiTouch) purely
 > to exercise those code paths in tests. The `playwright` (web) driver advertises `semanticTap` /
 > `conditionWait` (Playwright has both natively), `network` — the **first backend with native

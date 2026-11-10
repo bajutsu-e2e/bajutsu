@@ -610,6 +610,9 @@ class AndroidEnvironment:
                 )
         except subprocess.CalledProcessError as exc:
             raise adb.device_error(exc) from exc
+        except adb.DeviceError as exc:
+            # An unreadable dump fails the step that relies on it, like a wait that runs out.
+            raise base.UnsupportedAction(f"background: {exc}") from exc
         driver = self._drivers.get(package)
         if isinstance(driver, base.SettledCacheInvalidator):
             driver.invalidate_settled_cache()

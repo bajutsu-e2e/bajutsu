@@ -4,8 +4,8 @@
 over an ordered `am broadcast` to an in-app receiver (BajutsuAndroid), because since Android 10 only
 the foreground app / default IME may touch the clipboard — `cmd clipboard` answers "No shell command
 implementation" on-device, a silent no-op. The backend still advertises `clipboard` (it can drive it
-given a cooperating app, as the iOS clipboard rides simctl). `push` / `clearKeychain` need a
-receiver in the app's process and stay unsupported; `background` and the status bar are covered in
+given a cooperating app, as the iOS clipboard rides simctl). `push` needs a receiver in the app's
+process and Android has no keychain, so both stay unsupported; `background` and the status bar are in
 `test_android_device_state.py` (BE-0478). Fast gate over an injected `adb` runner (no device):
 command shape, the broadcast result parse (base64 + loud-fail on no receiver), the clipboard
 round-trip against a fake receiver, that the supported subset delegates and the rest raise, and that
@@ -200,7 +200,7 @@ def test_adb_advertises_the_device_control_subset_it_can_honor() -> None:
     assert base.Capability.DC_FOREGROUND in caps
     assert base.Capability.DC_BACKGROUND in caps
     assert base.Capability.DC_STATUS_BAR in caps
-    # push and keychain need a receiver in the app's process, which the backend does not have.
+    # push needs a receiver in the app's process, and Android has no keychain to clear.
     assert base.Capability.DC_PUSH not in caps
     assert base.Capability.DC_CLEAR_KEYCHAIN not in caps
 

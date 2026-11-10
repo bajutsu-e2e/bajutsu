@@ -73,6 +73,19 @@ def test_resumed_packages_reads_the_activity_dump(dump: str, packages: set[str])
     assert adb.resumed_packages(dump) == packages
 
 
+def test_resumed_packages_refuses_a_dump_with_no_resumed_field() -> None:
+    with pytest.raises(adb.DeviceError, match="no resumed-activity field"):
+        adb.resumed_packages("ACTIVITY MANAGER ACTIVITIES (dumpsys activity activities)\n")
+
+
+def test_background_fails_the_step_on_an_unreadable_dump() -> None:
+    env = _env_with_dumps(["garbled\n"], [])
+    control = env.controller(_eff())
+    assert control is not None
+    with pytest.raises(base.UnsupportedAction, match="no resumed-activity field"):
+        control.home()
+
+
 def test_control_without_an_environment_presses_home_alone() -> None:
     calls: list[list[str]] = []
     platform_lifecycle.android_device_control("E", _PKG, _recorder(calls)).home()
@@ -509,11 +522,34 @@ def test_adb_driver_streams_app_trace_from_the_device_clock(
 def test_web_and_live_drivers_ignore_the_app_trace_arguments(tmp_path: object) -> None:
     from pathlib import Path
 
+    from bajutsu.common.drivers.playwright.playwright_driver import PlaywrightDriver
     from bajutsu.common.drivers.xcuitest_live.xcuitest_live_driver import XcuitestLiveDriver
 
     root = Path(str(tmp_path))
     live = XcuitestLiveDriver.__new__(XcuitestLiveDriver)
     assert live.driver_interval("appTrace", root / "a", subsystem="x", json_path=root / "b") is None
+    web = PlaywrightDriver.__new__(PlaywrightDriver)
+    assert web.driver_interval("appTrace", root / "a", subsystem="x", json_path=root / "b") is None
+
+
+@pytest.mark.parametrize("driver", ["AdbDriver", "PlaywrightDriver", "XcuitestLiveDriver"])
+def test_every_driver_interval_lane_accepts_the_app_trace_arguments(driver: str) -> None:
+    # The pool reaches the lane through `getattr`, so no type check holds a driver to the sink's
+    # `DriverInterval` shape; this does, for every driver that supplies a lane (BE-0478).
+    import inspect
+
+    from bajutsu.common.drivers.adb import AdbDriver
+    from bajutsu.common.drivers.playwright.playwright_driver import PlaywrightDriver
+    from bajutsu.common.drivers.xcuitest_live.xcuitest_live_driver import XcuitestLiveDriver
+
+    lanes: dict[str, Callable[..., object]] = {
+        "AdbDriver": AdbDriver.driver_interval,
+        "PlaywrightDriver": PlaywrightDriver.driver_interval,
+        "XcuitestLiveDriver": XcuitestLiveDriver.driver_interval,
+    }
+    params = inspect.signature(lanes[driver]).parameters
+    for name in ("subsystem", "json_path"):
+        assert params[name].kind is inspect.Parameter.KEYWORD_ONLY, name
 
 
 def test_sink_hands_app_trace_its_subsystem_and_json_path(tmp_path: object) -> None:
