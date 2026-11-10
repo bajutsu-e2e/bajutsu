@@ -138,13 +138,26 @@ class PreconditionsIosDevice(_Model):
     seed_photos: list[str] | None = Field(default=None, alias="seedPhotos")
 
 
+class PreconditionsAndroidDevice(_Model):
+    """`preconditions.device.android`: the Android device state a scenario applies over its target's.
+
+    Each field replaces the target's `runsOn.android` value of the same name when set.
+    """
+
+    # Images seeded into the device's shared storage before launch, in order. Paths resolve against
+    # the scenario file when it loads; None keeps the target's list. No wipe is needed: every
+    # launch empties the directory Bajutsu owns before seeding, and `[]` seeds nothing.
+    seed_photos: list[str] | None = Field(default=None, alias="seedPhotos")
+
+
 class PreconditionsDevice(_Model):
-    """`preconditions.device`: device state keyed by destination; only iOS has any (BE-0469).
+    """`preconditions.device`: device state keyed by destination (BE-0469).
 
     A block for a platform the run does not drive has no effect.
     """
 
     ios: PreconditionsIosDevice = Field(default_factory=PreconditionsIosDevice)
+    android: PreconditionsAndroidDevice = Field(default_factory=PreconditionsAndroidDevice)
 
 
 class Preconditions(_Model):
@@ -198,16 +211,18 @@ class Preconditions(_Model):
         return locale or target_locale
 
     def resolve_seed_photos(self, resolve: Callable[[str], str]) -> None:
-        """Rewrite `device.ios.seedPhotos` through *resolve*, in place.
+        """Rewrite `device.ios.seedPhotos` and `device.android.seedPhotos` through *resolve*, in place.
 
         A file loader passes the scenario-file-relative resolution `dataFile` uses (`contained_ref`),
         so a path never escapes the suite root and no later reader depends on the working directory.
         """
-        photos = self.device.ios.seed_photos
-        if photos is not None:
-            self.device.ios.seed_photos = [resolve(ref) for ref in photos]
+        for device in (self.device.ios, self.device.android):
+            if device.seed_photos is not None:
+                device.seed_photos = [resolve(ref) for ref in device.seed_photos]
 
     def seed_photos_for(self, platform: str) -> list[str] | None:
         """The scenario's `seedPhotos` for *platform*, or None when the scenario does not set them."""
-        device = self._ios_device(platform)
+        device: PreconditionsIosDevice | PreconditionsAndroidDevice | None = (
+            self.device.android if platform == "android" else self._ios_device(platform)
+        )
         return list(device.seed_photos) if device and device.seed_photos is not None else None

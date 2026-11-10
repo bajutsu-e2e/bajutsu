@@ -94,7 +94,7 @@ class AndroidEnvironment:
 
     `start` runs the adb sequence — boot-readiness wait → optional APK (re)install → `pm clear` for a
     clean state (the `erase` equivalent) → `am force-stop` → runtime-permission pre-grant (`pm grant`,
-    BE-0210) → `am start` (launch env forwarded as intent extras) → deeplink — and returns the `adb`
+    BE-0210) → seeded photos (`runsOn.android.seedPhotos`) → `am start` (launch env forwarded as intent extras) → deeplink — and returns the `adb`
     driver. The lease-shaping methods mirror the iOS
     `_DeviceEnvironment`, over `adb` instead of `simctl`: the same seam, a different subprocess tool.
     Network is not observed *natively* (the adb driver declares no `NETWORK` capability), but the app
@@ -227,6 +227,9 @@ class AndroidEnvironment:
             # permission to exercise the denied-path flow.
             if permissions:
                 e.apply_permissions(android.package, permissions)
+            # The seed directory is the run's own, so seeding needs no wipe and runs on every
+            # reinstall level. An empty list still empties what an earlier scenario seeded.
+            e.add_media(pre.seed_photos)
             launch_env: Mapping[str, str] = {
                 **eff.launch_env,
                 **pre.launch_env,

@@ -51,7 +51,7 @@ SETTING_FIELDS: dict[str, str] = {
         f"{_PERMISSION_PREFIX}{service}": f"permissions.{service}"
         for service in base.PERMISSION_SERVICES
     },
-    "seedPhotos": "runsOn.ios.seedPhotos",
+    "seedPhotos": "runsOn.<platform>.seedPhotos",
     "locale": "runsOn.ios.locale",
     "launchEnv": "subject.launch.env",
     "launchArgs": "subject.launch.args",
@@ -64,7 +64,7 @@ _SAT: SettingSupport = "satisfied"
 _U: SettingSupport = "unsupported"
 
 # Every key but the per-service permissions, which follow the route's capability tokens instead.
-# Android has no `subject.launch.args` (`am start` takes none) and no iOS photo library or locale, and the
+# Android has no `subject.launch.args` (`am start` takes none) and no iOS locale, and the
 # web has no install, photo library, locale, launch arguments, or deeplink. `settings_in_effect`
 # never puts those keys in effect on those routes, because the loader and the platform-keyed
 # preconditions keep the fields off them (BE-0452); the rows read `unsupported` so a later change
@@ -103,7 +103,7 @@ _ROWS: dict[Route, dict[str, SettingSupport]] = {
     "android": {
         "erase": _S,
         "install": _S,
-        "seedPhotos": _U,
+        "seedPhotos": _S,
         "locale": _U,
         "launchEnv": _S,
         "launchArgs": _U,

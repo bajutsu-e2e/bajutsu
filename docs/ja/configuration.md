@@ -91,7 +91,7 @@ targets:
 | グループ | iOS | Android | Web |
 |---|---|---|---|
 | `subject` | `id`、`path`、`build`、`reinstall`、`launch.env`、`launch.args`、`launch.deeplink`、`startWhen`、`idNamespaces` | `id`、`path`、`build`、`reinstall`、`launch.env`、`launch.deeplink`、`grantPermissions`、`startWhen`、`idNamespaces` | `url`、`launch.env`、`startWhen`、`idNamespaces` |
-| `runsOn` | `ios.model`、`ios.os`、`ios.kind`、`ios.family`、`ios.locale`、`ios.seedPhotos` | `android.avd`、`android.apiLevel` | `browser.kind`、`browser.version`、`browser.emulate` |
+| `runsOn` | `ios.model`、`ios.os`、`ios.kind`、`ios.family`、`ios.locale`、`ios.seedPhotos` | `android.avd`、`android.apiLevel`、`android.seedPhotos` | `browser.kind`、`browser.version`、`browser.emulate` |
 | `driver` | `runner.testRunner`、`runner.build`、`runner.hostAddress` | `nativeZ`、`residentRecovery.readRetries`、`residentRecovery.restart` | `headless` |
 
 `runsOn` は、どのプラットフォームでも `ignoredSettings` も受け付けます。このキーは宛先を表しません。ターゲットの環境が適用できない設定を列挙します（[後述](#環境ごとの設定runsonignoredsettingsbe-0467)）。
@@ -195,7 +195,7 @@ targets:
 | プラットフォーム | 宛先のブロック | フィールド |
 |---|---|---|
 | iOS | `runsOn.ios` | `model`、`os`、`kind`、`family`、`locale`、`seedPhotos` |
-| Android | `runsOn.android` | `avd`、`apiLevel` |
+| Android | `runsOn.android` | `avd`、`apiLevel`、`seedPhotos` |
 | Web | `runsOn.browser` | `kind`、`version`、`emulate` |
 | fake | なし | なし |
 
@@ -315,7 +315,7 @@ targets:
 
 `record`、`crawl`、`repl` は run を増やしません。最初に並べた値と、合うデバイスが持つ最初のファミリーを使います。メジャーバージョンは、範囲内でプールが持ついちばん新しいものを使います。合うデバイスがなければ終了コード 2 で終わります。`doctor` はターゲット自身の run を一覧にし、`--scenario` でファイルを指定したときは各シナリオの run を一覧にします。どちらも、それぞれに合うデバイスを添えます（[doctor の出力](#出力)）。画面のプローブは、最初の run のデバイスを採点します。`--backend fake` はどの条件も照合せず、そのことを 1 回だけ知らせます。`runsOn.ios.kind` に `device` を含むターゲットは、`model` と `os` を宣言できません。Bajutsu は実機のモデルとリリースを照合しないからです。実機もファミリーは返すので、`family` は宣言できます。`appium` のグリッドが受け持つターゲットや Device Farm のジョブには、読み取るプールがありません。そこに書いた条件は、デバイスを操作する前に失敗し、フィールドを示します。
 
-`runsOn.ios` の 3 つのフィールドは、条件ではなくデバイスの状態です。単一の `kind`（`simulator` か `device`）は XCUITest の接続先を選びます。`locale` は run が適用する言語を固定します。`locale` が未指定なら、iOS はビルトインの `en_US` を使います。`seedPhotos` は写真ライブラリに投入する画像を並べます。シナリオは `preconditions.device.ios` の下で `locale` と `seedPhotos` を置き換えられます。web のブロックの `emulate` も、デバイスを照合するのではなく、デバイスモードを選びます。
+`runsOn.ios` の 3 つのフィールドは、条件ではなくデバイスの状態です。単一の `kind`（`simulator` か `device`）は XCUITest の接続先を選びます。`locale` は run が適用する言語を固定します。`locale` が未指定なら、iOS はビルトインの `en_US` を使います。`seedPhotos` は写真ライブラリに投入する画像を並べます。シナリオは `preconditions.device.ios` の下で `locale` と `seedPhotos` を置き換えられます。Android の `runsOn.android.seedPhotos` も同じくデバイスの状態で、起動前に投入する画像を並べます。シナリオは `preconditions.device.android` の下でこの値を置き換えられます。web のブロックの `emulate` も、デバイスを照合するのではなく、デバイスモードを選びます。
 
 ### 解決（`resolve` → `Effective`）
 
@@ -345,7 +345,7 @@ targets:
 | `launch_env` / `launch_args` | `subject.launch.env` / `subject.launch.args` | シナリオの `preconditions.subject.launch.env` は環境変数にキーごとにマージし、`.args` は引数の後ろに追記します。`launch.args` は iOS 専用です |
 | `reinstall` | `subject.reinstall` | iOS と Android: 各シナリオの前にどこまで状態を戻すかを、弱いものから順の 1 本の段階で決めます。`overwrite` はアプリの上に install してデータを残します。`clean` は uninstall してから install します。`erase` はデバイス全体を wipe してから install します（デバイス全体の wipe がない Android では `clean` と同じです）。install には `subject.path` が必要です。シナリオの `preconditions.subject.reinstall` が優先し、どちらも未設定なら組み込みの `clean` を使います（[BE-0452](../../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)）。`bajutsu run --erase` はすべてのシナリオを `erase` に引き上げ、`--no-erase` は `erase` を `clean` に下げます。`erase` は廃止した `run.erase: true` の後継です。`run.erase` を書くと、このキーを示してロード時に失敗します。`subject` グループを持たない `defaults` では `defaults.platforms.<platform>.subject.reinstall: erase` と書きます（[BE-0473](../../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts-ja.md)） |
 | `deeplink` | `subject.launch.deeplink` | iOS と Android: 起動後にアプリが開く URL です。シナリオの `preconditions.subject.launch.deeplink` がこれを置き換えます |
-| `seed_photos` | `runsOn.ios.seedPhotos` | iOS: erase の経路で、Simulator の写真ライブラリに順に投入する画像です。これで `selectPhotos` が既知のライブラリを指せます。パスは config ファイルを基準に解決します。シナリオの `preconditions.device.ios.seedPhotos` がリストを置き換えます。重ね合わせたあとのリストが空でなければ、実効の `subject.reinstall: erase`（シナリオの値、なければターゲットの値に、`--erase` / `--no-erase` を反映したもの）が必要で、なければデバイスを操作する前に終了コード 2 で終わります |
+| `seed_photos` | `runsOn.ios.seedPhotos` / `runsOn.android.seedPhotos` | 起動前に順に投入する画像です。これで写真ピッカーが既知の画像を表示します。パスは config ファイルを基準に解決します。シナリオの `preconditions.device.<platform>.seedPhotos` がリストを置き換えます。iOS は erase の経路で Simulator の写真ライブラリに投入し、`selectPhotos` が既知のライブラリを指せるようにします。重ね合わせたあとのリストが空でなければ、実効の `subject.reinstall: erase`（シナリオの値、なければターゲットの値に、`--erase` / `--no-erase` を反映したもの）が必要で、なければデバイスを操作する前に終了コード 2 で終わります。Android にはデバイス全体の wipe がないため、Bajutsu 専用のディレクトリ（`/storage/emulated/0/Pictures/Bajutsu`）に投入します。シナリオごとにこのディレクトリを空にし、2037-01-01 から始まる更新時刻を昇順に付けて（これで投入した画像がデバイス自身の画像より前に並びます）画像を送り、メディアスキャナに再スキャンを依頼します。そのため Android では `erase` が要らず、デバイス上のほかの画像にも触れません。リストが空でも、以前の投入が作ったディレクトリは空にします。メディアストアは更新時刻より EXIF の撮影日時を優先するので、この並び順が成り立つのは撮影日時を持たない画像です。スキャンは起動後に終わるので、シナリオは投入した画像が現れるのを待ってから選びます |
 | `start_when` | `subject.startWhen` | 任意の `startWhen: { exists: { id: … } }` です。run を始める前に launch が出現を待つセレクタで、既定の「アプリが 2 要素以上を描画した」判定の代わりになります。`interrupts` のエントリが `condition` に使う形で書き、`negate` は付けません。最初の操作画面が常時表示のクロームの上に出るモーダルであるアプリ向けです（要素数の判定はモーダル提示前に返ってしまうことがあります）。`id` / `idMatches` はシナリオのセレクタと同様に OR 候補のリストを受け付けるので（`startWhen: { exists: { id: [stable.row.1, stable_row_1] } }`。BE-0221）、native な id 構文が異なる target も 1 つの `startWhen` で扱えます。固定 sleep ではなく条件待ちです。指定するのは、その target の**すべて**のシナリオが同じ画面から始まるときに限ります。シナリオごとに最初の画面が異なる場合は、各シナリオの先頭に `wait` ステップを置いてください。readiness の最も強いシグナルは引き続き `startWhen` です。iOS では、`BajutsuKit` の画面遷移 observer（BE-0310）を組み込んだ target が、namespace／要素数のヒューリスティックの上に、起動以降に報告された画面遷移という段を設定不要で得ます。ただし明示的な `startWhen` はそれより上位です。observer のシグナルが判定を担うのは、`startWhen` が設定されていないときだけです |
 | `id_namespaces` | `subject.idNamespaces` | doctor が参照します |
 | `reserved_namespaces` | トップレベルの `reservedNamespaces` | 情報用です（doctor は app の `idNamespaces` のみで採点します） |
@@ -432,7 +432,7 @@ config には、ガード全体をオンやオフにするキーがありませ�
 - `erase`：`subject.reinstall: erase`
 - `install`：`subject.path` のインストール（`subject.reinstall` はその方式）
 - `permissions.<service>`：シナリオの `permissions` の各サービス
-- `seedPhotos`：`runsOn.ios.seedPhotos`
+- `seedPhotos`：`runsOn.ios.seedPhotos` または `runsOn.android.seedPhotos`
 - `locale`：`runsOn.ios.locale`
 - `launchEnv`、`launchArgs`、`deeplink`：`subject.launch.env`、`subject.launch.args`、`subject.launch.deeplink`
 

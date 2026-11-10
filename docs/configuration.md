@@ -107,7 +107,7 @@ so a key another platform takes fails as unknown on this one, with the accepted 
 | Group | iOS | Android | Web |
 |---|---|---|---|
 | `subject` | `id`, `path`, `build`, `reinstall`, `launch.env`, `launch.args`, `launch.deeplink`, `startWhen`, `idNamespaces` | `id`, `path`, `build`, `reinstall`, `launch.env`, `launch.deeplink`, `grantPermissions`, `startWhen`, `idNamespaces` | `url`, `launch.env`, `startWhen`, `idNamespaces` |
-| `runsOn` | `ios.model`, `ios.os`, `ios.kind`, `ios.family`, `ios.locale`, `ios.seedPhotos` | `android.avd`, `android.apiLevel` | `browser.kind`, `browser.version`, `browser.emulate` |
+| `runsOn` | `ios.model`, `ios.os`, `ios.kind`, `ios.family`, `ios.locale`, `ios.seedPhotos` | `android.avd`, `android.apiLevel`, `android.seedPhotos` | `browser.kind`, `browser.version`, `browser.emulate` |
 | `driver` | `runner.testRunner`, `runner.build`, `runner.hostAddress` | `nativeZ`, `residentRecovery.readRetries`, `residentRecovery.restart` | `headless` |
 
 `runsOn` also takes `ignoredSettings` on every platform. That key names no destination. It lists
@@ -265,7 +265,7 @@ Each field thus names what it limits, so `runsOn.ios.os` reads as an iOS version
 | Platform | Destination block | Fields |
 |---|---|---|
 | iOS | `runsOn.ios` | `model`, `os`, `kind`, `family`, `locale`, `seedPhotos` |
-| Android | `runsOn.android` | `avd`, `apiLevel` |
+| Android | `runsOn.android` | `avd`, `apiLevel`, `seedPhotos` |
 | Web | `runsOn.browser` | `kind`, `version`, `emulate` |
 | fake | none | none |
 
@@ -432,7 +432,9 @@ a Device Farm job. A condition there fails before any device work and names the 
 Three `runsOn.ios` fields are device state rather than conditions. A single `kind` (`simulator` or
 `device`) selects the XCUITest destination. `locale` pins the language a run applies. iOS keeps the built-in
 `en_US` when `locale` is unset. `seedPhotos` lists the images seeded into the photo library. A
-scenario may replace `locale` and `seedPhotos` under `preconditions.device.ios`. The web block's
+scenario may replace `locale` and `seedPhotos` under `preconditions.device.ios`. On Android,
+`runsOn.android.seedPhotos` is device state in the same way: the images seeded before launch, which
+a scenario may replace under `preconditions.device.android`. The web block's
 `emulate` likewise selects a device mode rather than matching a device.
 
 ### Resolution (`resolve` → `Effective`)
@@ -472,7 +474,7 @@ platforms — rather than `effective.bundle_id` directly, which does not exist.
 | `launch_env` / `launch_args` | `subject.launch.env` / `subject.launch.args` | a scenario's `preconditions.subject.launch.env` merges over the environment key by key, and its `.args` append after the arguments; `launch.args` is iOS only |
 | `reinstall` | `subject.reinstall` | iOS and Android: how much state is reset before each scenario, as one ladder from weakest to strongest. `overwrite` installs over the app and keeps its data; `clean` uninstalls, then installs; `erase` wipes the whole device, then installs (on Android, which has no device-wide wipe, the same as `clean`). The install itself needs `subject.path`. A scenario's `preconditions.subject.reinstall` wins; unset on both, the built-in `clean` applies ([BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)). `bajutsu run --erase` raises every scenario to `erase`, and `--no-erase` lowers an `erase` to `clean`. `erase` replaces the removed `run.erase: true`, which now fails at load naming this key; in `defaults`, which has no `subject` group, write it as `defaults.platforms.<platform>.subject.reinstall: erase` ([BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md)) |
 | `deeplink` | `subject.launch.deeplink` | iOS and Android: a URL the app opens once it has launched; a scenario's `preconditions.subject.launch.deeplink` replaces it |
-| `seed_photos` | `runsOn.ios.seedPhotos` | iOS: images seeded into the Simulator's photo library, in order, on the erase path, so `selectPhotos` addresses a known library. Paths resolve against the config file. A scenario's `preconditions.device.ios.seedPhotos` replaces the list, and after merging a non-empty list needs an effective `subject.reinstall: erase` (the scenario's, else the target's, then moved by `--erase` / `--no-erase`), or the run exits 2 before any device work |
+| `seed_photos` | `runsOn.ios.seedPhotos` / `runsOn.android.seedPhotos` | Images seeded before launch, in order, so a photo picker shows a known set. Paths resolve against the config file, and a scenario's `preconditions.device.<platform>.seedPhotos` replaces the list. iOS seeds the Simulator's photo library on the erase path, so `selectPhotos` addresses a known library; after merging, a non-empty list needs an effective `subject.reinstall: erase` (the scenario's, else the target's, then moved by `--erase` / `--no-erase`), or the run exits 2 before any device work. Android has no device-wide wipe, so it seeds a directory of its own instead (`/storage/emulated/0/Pictures/Bajutsu`): each scenario empties that directory, pushes the images with ascending modification times from 2037-01-01 (so the set sorts ahead of the device's own images), and asks the media scanner to rescan it. Android therefore needs no `erase`, and leaves every other image on the device alone. An empty list still empties a directory an earlier seed created. The media store prefers an image's EXIF capture date to its modification time, so the order holds for images without one. The scan finishes after launch, so a scenario waits for a seeded image before it selects one |
 | `start_when` | `subject.startWhen` | optional `startWhen: { exists: { id: … } }` — a selector the launch waits for before the run starts, instead of the default "the app rendered any 2+ elements". It takes the form an `interrupts` entry uses for its `condition`, without `negate`. Use it for an app whose first interactive screen is a modal over always-present chrome (the element-count heuristic can return before the modal presents). Its `id` / `idMatches` accept an OR candidate list like a scenario selector (`startWhen: { exists: { id: [stable.row.1, stable_row_1] } }`, BE-0221), so one `startWhen` covers a target whose native id syntax differs. A condition wait, never a fixed sleep. Set it only when **every** scenario for the target starts on that same screen; when first screens vary per scenario, lead each scenario with a `wait` step instead. `startWhen` stays the strongest readiness signal: on iOS, a target linking `BajutsuKit`'s screen-transition observer (BE-0310) gets a reported-screen-change rung above the namespace/count heuristics for free, but an explicit `startWhen` still outranks it. The observer signal governs only when no `startWhen` is set |
 | `id_namespaces` | `subject.idNamespaces` | referenced by doctor |
 | `reserved_namespaces` | top-level `reservedNamespaces` | informational (doctor scores against the app's `idNamespaces` only) |
@@ -590,7 +592,7 @@ The settings, each with the field it comes from:
 - `erase`: `subject.reinstall: erase`
 - `install`: the `subject.path` install (`subject.reinstall` is its mode)
 - `permissions.<service>`: each service in the scenario's `permissions`
-- `seedPhotos`: `runsOn.ios.seedPhotos`
+- `seedPhotos`: `runsOn.ios.seedPhotos` or `runsOn.android.seedPhotos`
 - `locale`: `runsOn.ios.locale`
 - `launchEnv`, `launchArgs`, `deeplink`: `subject.launch.env`, `subject.launch.args`, `subject.launch.deeplink`
 

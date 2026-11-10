@@ -53,7 +53,7 @@ class Effective:
     reinstall: Literal["overwrite", "clean", "erase"] | None = None
     # The target's `subject.launch.deeplink` (BE-0452), opened after launch unless the scenario sets one.
     deeplink: str | None = None
-    # The target's `runsOn.ios.seedPhotos` (BE-0452), rebased against the config file; a scenario's own
+    # The target's `runsOn.ios.seedPhotos` (BE-0452) or `runsOn.android.seedPhotos`, rebased against the config file; a scenario's own
     # list replaces it.
     seed_photos: list[str] = field(default_factory=list)
     # The target's own `platform` key (BE-0452), which `schema_platform` reads. None for an
@@ -134,7 +134,7 @@ class Effective:
         """A copy with the relative path fields resolved against `root`.
 
         The common path fields — `scenarios` / `baselines` / `schemas` / `goldens` — the iOS or
-        Android sub-config's `app_path`, and an iOS target's `seed_photos` are rebased; a future
+        Android sub-config's `app_path`, and an iOS or Android target's `seed_photos` are rebased; a future
         path field is rebased by adding it here. `build` (a shell command) is intentionally absent —
         it is not rewritten but run from `root`, recorded as `base_dir` — and a component the
         target's hooks call was already resolved against the config file when it loaded. Called
@@ -197,11 +197,14 @@ class Effective:
             ),
         )
         if isinstance(self.platform_config, AndroidConfig):
-            # The Android sub-config's only rebasable path is the APK (BE-0007).
+            # The Android sub-config's rebasable paths are the APK (BE-0007) and the seeded photos.
             android = self.platform_config
             return replace(
                 common,
                 platform_config=replace(android, app_path=at("subject.path", android.app_path)),
+                seed_photos=[
+                    at("runsOn.android.seedPhotos", photo) or photo for photo in self.seed_photos
+                ],
             )
         if not isinstance(self.platform_config, IosConfig):
             return common  # only the iOS / Android sub-configs carry rebasable path fields
