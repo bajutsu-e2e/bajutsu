@@ -153,7 +153,7 @@ continuation the single-branch resume never supported.
   `candidate_actions` on replay costs one extra query per resumed screen. It reuses the determinism
   guarantee (identical elements give identical candidates) that the whole engine already relies on,
   with no schema change.
-- **Fix the Web UI's "resume works in the originating tab" bug alone, without the full-frontier
+- **Fix the Web UI's "resume only works in the originating tab" bug alone, without the full-frontier
   continuation.** That handles the pruned-branch gap but not "explore deeper", which is the more
   common way an app outgrows its first crawl's budget. The two are cheap to ship together once the
   run picker exists, because the continuation button is a variant of the same request.
