@@ -95,6 +95,11 @@ SERIAL ?= booted
 # a two-finger gesture cannot be approximated — so it requires root (the `e2e` target runs `adb root`)
 # and fails loudly otherwise. Verified on a local arm64 emulator.
 #
+# The resident UI Automator server now injects a two-finger gesture through `UiAutomation`, which needs
+# no root, and the driver asks it before the `sendevent` sweep. Under `adb root` the lane would pass on
+# either route, so the `e2e` target ends with one more `gestures_multitouch` run after `adb unroot`:
+# that run can pass only through the server, which is what makes CI prove the unrooted route.
+#
 # The scenario-authoring flows `extract` / `foreach` join the lane (BE-0285): the web slice (#1184)
 # proved them on Playwright, and this is their adb twin. `extract` captures the Log counter's live
 # value and reuses it (Log tab, exercised by `relaunch` already); `foreach` iterates the five Stable
@@ -245,6 +250,12 @@ e2e: compose-build views-build
 		uv run bajutsu run --scenario demos/showcase/scenarios/$$s.yaml \
 			--target showcase-views --udid $(SERIAL) --backend android --config $(CONFIG) || exit 1; \
 	done
+	adb unroot && adb wait-for-device
+	echo "=== showcase-compose / gestures_multitouch (unrooted) ==="
+	$(ANR_QUIET)
+	cd $(ROOT) && $(E2E_ENV) uv run bajutsu run \
+		--scenario demos/showcase/scenarios/gestures_multitouch.yaml \
+		--target showcase-compose --udid $(SERIAL) --backend android --config $(CONFIG)
 
 # On-device network-capture assertion (BE-0283): a `request` assertion observes real emulator traffic
 # end to end — the showcase GETs SHOWCASE_API_URL/horses over OkHttp, BajutsuAndroid's interceptor
@@ -379,8 +390,8 @@ e2e-visual: compose-build
 # run, against the Compose a11y twin. Unlike the other e2e targets this drives pytest, not the run
 # CLI, so it needs the dev group (the CI job's `uv sync` keeps it); `launch_driver` installs the APK
 # (built here) and boots the app straight into ConformanceScreen. `adb root` matches the `e2e` target:
-# the MULTI_TOUCH capability test drives a pinch/rotate, which the driver actuates via a rooted
-# `sendevent` sweep (BE-0232) — the google_apis image allows it and `adb root` enables it. `-n0` runs
+# the MULTI_TOUCH capability test drives a pinch/rotate, which the driver actuates through the resident
+# server and, where that is unavailable, via a rooted `sendevent` sweep (BE-0232). `-n0` runs
 # serially (the suite reseeds one shared emulator), and BAJUTSU_CONFORMANCE_SERIAL both routes the
 # backend and un-skips the module. Not part of `make check`: it needs a booted AVD, so
 # android-e2e.yml drives it in its own `conformance (adb)` job.
