@@ -86,6 +86,11 @@ Home キーはアプリのプロセスを生かしたままにします。これ
 - 後続の `foreground` は、アプリを前面へ戻します。その間にシステムがプロセスを回収していた場合、
   `foreground` はアプリを起動し直します。`installApp` の後と同じ振る舞いです。
 
+`input keyevent` は、画面の遷移が終わる前に戻ります。そのためステップは、テスト対象アプリが前面の
+アクティビティでなくなるまで条件で待ち、そうならなければ失敗を明示します。この待機は、`foreground`
+がすでに行っている待機の逆にあたります（[BE-0447](../BE-0447-install-app-step/BE-0447-install-app-step-ja.md)）。
+待機がなければ、遅いエミュレータでは `background` 直後の `visual` の検査がアプリを写しうるからです。
+
 `background` の後、デバイスにはランチャーが表示されます。テスト対象アプリの要素を指すセレクタは、
 何も見つけません。iOS で SpringBoard が前面にあるときと同じです。
 
@@ -103,7 +108,7 @@ Android の System UI は、スクリーンショットのためにデモモー�
 | `batteryLevel` | 0〜100 | `battery -e level N` | そのまま渡します |
 | `batteryState` | `charging`、`charged`、`discharging` | `battery -e plugged true\|false` | `charging` と `charged` は `true` に、`discharging` は `false` に対応させます |
 | `cellularBars` | 0〜4 | `network -e mobile show -e level N` | そのまま渡します |
-| `wifiBars` | 0〜3 | `network -e wifi show -e level N` | `round(N × 4 / 3)` で変換します。0→0、1→1、2→3、3→4 となり、iOS で満タンの電波は満タンのままです |
+| `wifiBars` | 0〜3 | `network -e wifi show -e level N` | `round(N × 4 / 3)` で変換します。0→0、1→1、2→3、3→4 となり、iOS で最大の電波は Android でも最大のままです |
 
 デモモードに入るときは、`notifications -e visible false` も送ります。iOS のステータスバーには
 通知アイコンが出ません。アイコンの列を隠せば、実行ごとのスクリーンショットが一致します。
@@ -116,7 +121,14 @@ Android の System UI は、スクリーンショットのためにデモモー�
 Android が受け付ける `time` は、iOS より狭い範囲です。Android のターゲットでは、`time` が `H:MM`
 でも `HH:MM` でもない `overrideStatusBar` を、プリフライトが失敗させ、そのステップを示します。この検査は
 デバイスの作業より前に走ります。同じ入力に対して、adb の制御側も最後の砦として `UnsupportedAction`
-を送出します。この対応を実装したうえで、adb ドライバは `Capability.DC_STATUS_BAR` を加えます。
+を送出します。
+
+同じプリフライト検査と最後の砦は、表の範囲外の値もすべて扱います。対象は、0〜100 を外れる
+`batteryLevel`、0〜4 を外れる `cellularBars`、0〜3 を外れる `wifiBars`、表にない `batteryState` です。
+iOS では、`simctl status_bar` がこうした値を拒否してステップを失敗させます。一方 `am broadcast` は、
+付加情報の中身にかかわらず成功を返し、System UI は表示できない値を無視します。検査がなければ、
+ステップは成功したまま、ステータスバーは固定されません。この対応を実装したうえで、adb ドライバは
+`Capability.DC_STATUS_BAR` を加えます。
 
 iOS の上書きと同じく、デモモードは `clearStatusBar` を実行するまでデバイスに残ります。Android だけに
 後片付けを加えることはせず、両方のプラットフォームでこの振る舞いを保ちます。
@@ -146,8 +158,15 @@ iOS と違い、Android で `locale` を指定しなければ言語を設定し�
 ロケール未指定のときも起動前に `cmd locale set-app-locales <package> --user current --locales ""`
 を実行し、アプリ単位の設定を消します。API レベル 33 未満ではアプリ単位のロケールを設定できず、
 前の実行が残した設定もないので、環境は何も発行しません。この判断のため、環境は `apiLevel` の値に
-かかわらず、起動のたびに `_read_api_level` でレベルを読みます。レベルを読めなければ `DeviceError` で
-起動を失敗させます。リセットを省けば前の実行のロケールが漏れ、発行すれば 33 未満で失敗しうるからです。
+かかわらず、起動のたびに `_read_api_level` でレベルを読みます。
+
+レベルを読めないときの扱いは、実行が Android のロケールを指定しているかで分かれます。指定している
+実行は、後述の第2段階と同じく `DeviceError` で起動を失敗させます。指定していない実行は、リセットを
+省いて警告を記録します。これにより、`_read_api_level` が現在持つ寛容さを保ちます。現在は、レベルを
+読めなくても終了の検知が弱まるだけで、シナリオは中断しません
+（[BE-0424](../BE-0424-app-crash-diagnostics/BE-0424-app-crash-diagnostics-ja.md)）。リセットを
+ロケールを指定した実行だけに絞ることはできません。エミュレータは1回の実行より長く生きるので、
+前に起動した Bajutsu が、ロケールを指定しない実行にアプリ単位のロケールを残しうるからです。
 
 アプリ単位のロケールが届くのは、アプリだけです。実行時の権限を求めるダイアログのようなシステムの
 ダイアログは、エミュレータ自身の言語のままです。iOS はさらに進んで、Simulator のシステム言語も
@@ -174,15 +193,21 @@ iOS の `appTrace` は、アプリの `os_log` のサブシステムをストリ
 絞り込んだ `logcat` をストリームで受け取ります。
 
 ```
-adb -s <serial> logcat -v year,usec,zone -T 1 -s <tag>:V
+adb -s <serial> logcat -v year,usec,zone -T "<MM-DD hh:mm:ss.mmm>" -s <tag>:V
 ```
 
 タグは `--log-subsystem` の値で、指定がなければ Android のパッケージ名です。`_log_subsystem_default`
 は、iOS にバンドル ID を返すのと同じく、Android のターゲットにはパッケージ名を返します。絞り込みは
 プロセス ID ではなくタグに基づきます。そのため、`relaunch` を挟んでもストリームは途切れません。
 
+`-T` の境界は、ストリームの開始時に読んだデバイスの時計の時刻です。読み取りには
+`adb.launch_marker_cmd` が返す `logcat -t` 形式の表記を使い、`logcat_crash_dump_cmd` も同じ方法で
+この表記を渡しています。どの行がストリームより前かは、デバイス側が決めます。ホスト側で切り捨てると、
+デバイスの時刻とホストの時刻を比べることになり、時計のずれで本物の行を落とすか、古い `started` を
+残してしまいます。
+
 新しい `parse_logcat_app_trace` は、各行の `year,usec,zone` 形式のタイムスタンプとメッセージを
-読みます。`-T 1` はバッファにある行を1つ再生するので、ストリームの開始より前の時刻の行は捨てます。そのうえで既存の `_BEGIN` と `_END` のパターンを再利用するので、両プラットフォームが同じ印を
+読みます。そのうえで既存の `_BEGIN` と `_END` のパターンを再利用するので、両プラットフォームが同じ印を
 認識します。アプリは `android.util.Log` で印を出力します。たとえば `Log.i(tag, "checkout started")`
 のように書きます。
 
@@ -197,11 +222,12 @@ adb -s <serial> logcat -v year,usec,zone -T 1 -s <tag>:V
    - コマンドの形を確かめます。
    - adb のプリフライトが `background` を通すことを確かめます。
    - アプリがバックグラウンドにある間、終了の検知が反応しないことを確かめます。
+   - アプリが前面から離れないとき、ステップが失敗することを確かめます。
 2. **ステータスバー**：デモモードのビルダーと、項目の対応を純粋関数として加えます。制御側を配線し、
-   Android 用の `time` のプリフライト検査を加え、`DC_STATUS_BAR` を宣言します。高速ゲートのテストでは、
+   Android 用の値のプリフライト検査を加え、`DC_STATUS_BAR` を宣言します。高速ゲートのテストでは、
    次の点を確かめます。
    - 対応表の各行を確かめます。
-   - プリフライトが `time` の各形式を失敗させることを確かめます。
+   - プリフライトが `time` の各形式と範囲外の各値を失敗させることを確かめます。
    - `clearStatusBar` が `exit` コマンドを送ることを確かめます。
 3. **ロケール**：`runsOn.android.locale` と `preconditions.device.android.locale` の項目を加え、
    実効設定へ解決します。設定と読み戻しを行う起動経路と、2段階の API レベル検査を加えます。高速
@@ -209,12 +235,14 @@ adb -s <serial> logcat -v year,usec,zone -T 1 -s <tag>:V
    - BCP 47 形式への変換を確かめます。
    - 読み戻しの不一致で起動が失敗することを確かめます。
    - API レベル検査が両方の段階で失敗することを確かめます。
-   - ロケール未指定のとき、API レベル 33 以上ではリセットだけを発行し、33 未満では何も発行せず、
-     レベルを読めなければ起動が失敗することを確かめます。
+   - ロケール未指定のとき、API レベル 33 以上ではリセットだけを発行し、33 未満では何も発行しない
+     ことを確かめます。
+   - レベルを読めないとき、ロケールを指定した実行は失敗し、指定していない実行は警告だけを記録する
+     ことを確かめます。
 4. **`appTrace`**：タグで絞り込む `logcat` のビルダーと `parse_logcat_app_trace` を加えます。
    `driver_interval` の継ぎ目を拡張し、Android のデフォルトのサブシステムを定め、`APP_TRACE` を宣言します。
-   高速ゲートのテストは、記録した `logcat` の標本を区間に解析します。Playwright と XCUITest live のドライバが新しい引数を無視することと、ストリームの開始前に
-   再生された行を捨てることも確かめます。
+   高速ゲートのテストは、記録した `logcat` の標本を区間に解析します。Playwright と XCUITest live のドライバが新しい引数を無視することと、ストリームがデバイスの時計の
+   境界から始まることも確かめます。
 5. **ドキュメント**：次の各ページを、`docs/ja/` の対訳とあわせて更新します。
    - `docs/scenarios.md`：新しいステップの Android 対応と、デモモードとの違いを記載します。
    - `docs/configuration.md`：`runsOn.android.locale` と、システムのダイアログについての注記を記載します。

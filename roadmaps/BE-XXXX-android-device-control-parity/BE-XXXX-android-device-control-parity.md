@@ -85,6 +85,11 @@ terminating"). Two existing behaviors follow from that and need no new code:
 - A later `foreground` brings the app back. When the system has reclaimed the process in the
   meantime, `foreground` relaunches it, as it already does after an `installApp`.
 
+`input keyevent` returns before the transition lands. The step thus waits on a condition until the
+app under test is no longer the resumed activity. When that never happens, the step fails. That wait is the inverse of the one `foreground` already runs
+([BE-0447](../BE-0447-install-app-step/BE-0447-install-app-step.md)). Without the wait, a `visual`
+check right after `background` could still capture the app on a slow emulator.
+
 After `background`, the device shows the launcher. A selector for an element of the app under test
 finds nothing, as it does on iOS while SpringBoard is in front.
 
@@ -114,8 +119,14 @@ documents the difference.
 
 Android accepts a narrower `time` than iOS. On an Android target, preflight fails an
 `overrideStatusBar` whose `time` is neither `H:MM` nor `HH:MM`, and names the step. That check runs before
-any device work. The adb control raises `UnsupportedAction` for the same input as a backstop. Once
-the mapping is in place, the adb driver adds `Capability.DC_STATUS_BAR`.
+any device work. The adb control raises `UnsupportedAction` for the same input as a backstop.
+
+The same preflight check and backstop cover every value outside the table: a `batteryLevel`
+outside 0–100, a `cellularBars` outside 0–4, a `wifiBars` outside 0–3, and a `batteryState` the
+table does not name. On iOS, `simctl status_bar` rejects such a value and fails the step. `am
+broadcast` instead reports success whatever the extras say, and System UI ignores a value it cannot
+show. Without the check, the step would pass and leave the status bar unpinned. Once the mapping is
+in place, the adb driver adds `Capability.DC_STATUS_BAR`.
 
 Like the iOS override, the demo mode persists on the device until `clearStatusBar` runs. This item
 keeps that behavior on both platforms rather than adding a teardown only to Android.
@@ -144,9 +155,15 @@ both the uninstall and `pm clear`, so the leak is certain there. On API level 33
 locale thus clears the per-app setting before launch. The command is `cmd locale set-app-locales
 <package> --user current --locales ""`. Below API level 33 the environment issues nothing,
 because no earlier run could have set a per-app locale there. The environment reads the level with
-`_read_api_level` on every start for this decision, whatever `apiLevel` states. A level it cannot
-read fails the start with a `DeviceError`. Skipping the reset could leak a previous locale, and
-issuing the reset could fail below 33.
+`_read_api_level` on every start for this decision, whatever `apiLevel` states.
+
+An unreadable level splits on whether the run names an Android locale. A run that sets one fails the
+start with a `DeviceError`, as stage 2 below does. A run that names none skips the reset and logs a
+warning, so it keeps the tolerance `_read_api_level` has today: an unreadable level there degrades
+exit detection alone and never aborts a scenario
+([BE-0424](../BE-0424-app-crash-diagnostics/BE-0424-app-crash-diagnostics.md)). Limiting the
+reset to runs that name a locale would not work. An emulator outlives one run, so a previous
+invocation of Bajutsu can leave a per-app locale behind for a run that names none.
 
 The per-app locale reaches the app alone. System dialogs, such as a runtime permission prompt, stay
 in the emulator's own language. iOS goes further and also pins the Simulator's system language
@@ -173,16 +190,20 @@ started" with "`<name>` finished" into intervals. The Android twin streams `logc
 to one tag:
 
 ```
-adb -s <serial> logcat -v year,usec,zone -T 1 -s <tag>:V
+adb -s <serial> logcat -v year,usec,zone -T "<MM-DD hh:mm:ss.mmm>" -s <tag>:V
 ```
 
 The tag is the value of `--log-subsystem`, else the Android package. `_log_subsystem_default`
 returns the package for an Android target, as it returns the bundle id for iOS. The filter keys on
 the tag rather than on a process id. The stream thus continues across a `relaunch`.
 
-A new `parse_logcat_app_trace` reads each line's `year,usec,zone` timestamp and message. `-T 1`
-replays one line already in the buffer, so the parser drops any line stamped before the stream
-started. It then reuses the existing `_BEGIN` and `_END` patterns, so both platforms recognize the same
+The `-T` bound is a device-clock instant, read when the stream starts. The read uses the `logcat -t`
+rendering of `adb.launch_marker_cmd`, which `logcat_crash_dump_cmd` already threads the same way.
+The device thus decides which lines precede the stream. A host-side cutoff would compare a device
+timestamp with a host instant, so clock skew would drop real lines or keep a stale `started`.
+
+A new `parse_logcat_app_trace` reads each line's `year,usec,zone` timestamp and message. It then
+reuses the existing `_BEGIN` and `_END` patterns, so both platforms recognize the same
 markers. The app emits them with `android.util.Log`, for example `Log.i(tag, "checkout started")`.
 
 The sink hands an interval kind to a driver-supplied lane through `driver_interval(kind, path)`.
@@ -194,15 +215,16 @@ returns the new interval for `appTrace`, and adds `Capability.APP_TRACE`.
 ### Work breakdown (MECE)
 
 1. **`background`.** Add the `KEYCODE_HOME` constant, an adb builder, and `adb.Env.home()`. Wire
-   the control and declare `DC_BACKGROUND`. Fast-gate tests cover three points:
+   the control and declare `DC_BACKGROUND`. Fast-gate tests cover four points:
    - the command shape
    - preflight admitting `background` on adb
    - the exit poll staying quiet while the app sits in the background
+   - the step failing when the app never leaves the front
 2. **Status bar.** Add the demo-mode builders and the field mapping as a pure function. Wire the
-   control, add the Android `time` preflight check, and declare `DC_STATUS_BAR`. Fast-gate tests
+   control, add the Android value preflight check, and declare `DC_STATUS_BAR`. Fast-gate tests
    cover three points:
    - each row of the mapping table
-   - each `time` form that preflight fails
+   - each `time` form and each out-of-range value that preflight fails
    - the `exit` command that `clearStatusBar` sends
 3. **Locale.** Add the `runsOn.android.locale` and `preconditions.device.android.locale` fields.
    Resolve them into the effective config. Add the set-and-verify launch path and the two-stage
@@ -210,13 +232,13 @@ returns the new interval for `appTrace`, and adds `Capability.APP_TRACE`.
    - the BCP 47 conversion
    - the read-back mismatch
    - both failing stages of the API-level check
-   - an unset locale issuing the reset on API level 33 and later, nothing below it, and an
-     unreadable level failing the start
+   - an unset locale issuing the reset on API level 33 and later, and nothing below it
+   - an unreadable level failing a run that sets a locale, and only warning in one that sets none
 4. **`appTrace`.** Add the tag-filtered `logcat` builder and `parse_logcat_app_trace`. Extend the
    `driver_interval` seam, set the Android default subsystem, and declare `APP_TRACE`. Fast-gate
    tests parse a recorded `logcat` sample into intervals. They also check that the Playwright
-   and XCUITest live drivers ignore the new arguments, and that a replayed pre-start line is
-   dropped.
+   and XCUITest live drivers ignore the new arguments, and that the stream starts at the
+   device-clock bound.
 5. **Documentation.** Update each page below together with its `docs/ja/` mirror:
    - `docs/scenarios.md`: Android support for the new steps, and the demo-mode difference
    - `docs/configuration.md`: `runsOn.android.locale`, and its system-dialog note
