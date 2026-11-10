@@ -59,20 +59,31 @@ _logger = logging.getLogger("bajutsu.serve.operations")
 _BUNDLE_CONFIG = "bajutsu.config.yaml"
 
 
-def _governed_build(state: ServeState, binding: ConfigBinding, build: str | None) -> str | None:
-    """The `build:` command serve may run for *binding*'s config, or None when it's untrusted.
+def _build_trusted(state: ServeState, binding: ConfigBinding) -> bool:
+    """Whether serve may run the build commands *binding*'s config declares on the host.
 
-    An uploaded bundle ships a prebuilt binary, so its build never runs on the host — DESIGN §1
+    An uploaded bundle ships prebuilt binaries, so its builds never run on the host — DESIGN §1
     "Bajutsu does not build the app" (BE-0073). A Git config bound at runtime via the API is equally
-    untrusted (a cross-origin request could have bound it), so its build is nulled too unless the
+    untrusted (a cross-origin request could have bound it), so its builds are withheld too unless the
     operator opted in with --allow-remote-build (BE-0121). A local or startup-bound config is
-    operator-trusted and keeps its build.
+    operator-trusted and keeps them.
+
+    One verdict covers every build a config declares: `subject.build`, which serve runs itself
+    (`_governed_build`), and `driver.runner.build`, which the spawned run would run on demand and so
+    is refused there through `Job.withhold_runner_build` (#2282).
     """
     if binding.upload is not None:
-        return None
-    if binding.git_from_api and not state.allow_remote_build:
-        return None
-    return build
+        return False
+    return not (binding.git_from_api and not state.allow_remote_build)
+
+
+def _governed_build(state: ServeState, binding: ConfigBinding, build: str | None) -> str | None:
+    """The `subject.build` command serve may run for *binding*'s config, or None when it's untrusted.
+
+    The trust model is `_build_trusted`'s; `_register_and_dispatch` applies the same verdict to
+    `driver.runner.build`.
+    """
+    return build if _build_trusted(state, binding) else None
 
 
 def _run_label(
@@ -237,6 +248,10 @@ def _register_and_dispatch(
     job.env_overlay = resolve_provider_env(state, job.org)
     if binding is not None:
         job.cwd = binding.cwd
+        # The spawned run executes `driver.runner.build` itself, past `_governed_build`, so the
+        # same trust verdict travels to it here — the one tail every start_* endpoint funnels
+        # through (#2282).
+        job.withhold_runner_build = not _build_trusted(state, binding)
         if binding.upload is not None and ship_bundle:
             # A remote worker has no project on disk, so `job.cwd` means nothing there. Carry the
             # bundle's identity as well, and the lease signs a GET for its stored zip — without it
