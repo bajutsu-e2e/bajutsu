@@ -15,7 +15,9 @@ is `content-desc`, not `text`, because the showcase mirrors its assertion state 
 `stateDescription`), while `text` carries the visible label — the Android peer of iOS's
 accessibilityLabel / accessibilityValue split. Tuned against the Android showcase on an emulator
 (BE-0007 Unit 7): with `text` → `value` a `value` assertion read the visible string ("Matches: 5",
-"Not favorited") instead of the mirrored value ("5", "off").
+"Not favorited") instead of the mirrored value ("5", "off"). An editable text node (class
+`android.widget.EditText`, which Views and Compose fields both report) is the exception: its `text`
+→ `value` and `content-desc` (else `hint`) → `label`, as on iOS (#2388; `_editable_element_fields`).
 
 A `clickable` node also carries the `button` trait, and a clickable node with no own `text`/
 `content-desc` derives its `label` from its descendants' text — so a Compose `NavigationBarItem`
