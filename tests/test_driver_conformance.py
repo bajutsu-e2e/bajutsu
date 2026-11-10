@@ -62,7 +62,9 @@ def _mirror(identifier: str, frame: base.Frame) -> base.Element:
 
 
 def _conformance_react(
-    field: base.Element, mirrors: dict[str, base.Element] | None = None
+    field: base.Element,
+    mirrors: dict[str, base.Element] | None = None,
+    clipboard: dict[str, str] | None = None,
 ) -> React:
     """Model the conformance field and tap mirrors, so the gate observes real state, not just a log.
 
@@ -76,11 +78,19 @@ def _conformance_react(
     target is the one tapped — the fake's twin of `LogScreen.kt`'s `log.longpress` /
     `log.longpress.value` split, so "the element that reacted is the element named" is observable
     on the fast gate too.
+
+    `clipboard` (#2390) holds the device clipboard under `"text"`: select-all on the focused field
+    selects its whole value and copy puts that selection there, so the copy's effect is checked on
+    the fast gate the way a real backend's clipboard read checks it on-device.
     """
     focused = {"on": False}
     mirrors = mirrors or {}
+    clipboard = clipboard if clipboard is not None else {}
+    selection: dict[str, str | None] = {"text": None}
 
     def react(_driver: FakeDriver, kind: str, arg: object) -> None:
+        if kind in ("tap", "tap_point", "type", "delete_text"):
+            selection["text"] = None  # any other edit or focus change drops the selection
         if kind == "tap":
             focused["on"] = isinstance(arg, dict) and arg.get("id") == FIELD_ID
             # `id` may be the both-forms list a real selector carries (BE-0221), not just a plain
@@ -97,6 +107,10 @@ def _conformance_react(
             field["value"] = (field["value"] or "") + arg
         elif kind == "delete_text" and focused["on"] and isinstance(arg, int):
             field["value"] = (field["value"] or "")[: -arg or None]
+        elif kind == "select_all" and focused["on"]:
+            selection["text"] = field["value"] or ""
+        elif kind == "copy_selection" and selection["text"] is not None:
+            clipboard["text"] = selection["text"]
 
     return react
 
@@ -113,6 +127,10 @@ class FakeConformanceHarness:
 
     backend = "fake"
 
+    def __init__(self) -> None:
+        # One clipboard per harness, shared across its screens like a device's system clipboard.
+        self._clipboard: dict[str, str] = {}
+
     def with_screen(self, elements: list[base.Element]) -> base.Driver:
         field = element(identifier=FIELD_ID, value="", frame=_FIELD_FRAME)
         tap_a = element(identifier=TAP_MIRROR_A_ID, frame=(0.0, 400.0, 100.0, 40.0))
@@ -121,8 +139,15 @@ class FakeConformanceHarness:
         value_b = _mirror(TAP_MIRROR_B_VALUE_ID, (0.0, 510.0, 100.0, 20.0))
         return FakeDriver(
             screen=[*elements, field, _secure_field(), tap_a, value_a, tap_b, value_b],
-            react=_conformance_react(field, {TAP_MIRROR_A_ID: value_a, TAP_MIRROR_B_ID: value_b}),
+            react=_conformance_react(
+                field,
+                {TAP_MIRROR_A_ID: value_a, TAP_MIRROR_B_ID: value_b},
+                self._clipboard,
+            ),
         )
+
+    def clipboard_text(self) -> str:
+        return self._clipboard.get("text", "")
 
     def scrollable_screen(self) -> base.Driver:
         # A FakeDriver in scrollable mode (BE-0326): rows and a taller-than-viewport row in content

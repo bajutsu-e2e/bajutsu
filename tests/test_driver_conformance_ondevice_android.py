@@ -96,6 +96,11 @@ class _AndroidHarness(OnDeviceConformanceHarness):
     (`OnDeviceConformanceHarness`); this backend supplies only `_realize` — re-launching the
     `singleTask` activity with the identifier spec as an intent extra, which `onNewIntent` hands to
     the model so ConformanceScreen re-renders. The adb analogue of iOS's spec-file write.
+
+    No `clipboard_text` yet: `select` / `copy` have never been verified on a device (#2389), so the
+    text-selection case keeps only its not-raising check here. The fix for #2389 adds the hook,
+    reading through BajutsuAndroid's clipboard receiver (`adb.Env.get_clipboard`), in the same
+    change that makes it pass (#2390).
     """
 
     def __init__(self, driver: base.Driver, serial: str, component: str) -> None:

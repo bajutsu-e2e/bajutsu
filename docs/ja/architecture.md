@@ -265,7 +265,7 @@ prime directive 3 は、どの backend も 1 つの `Driver` 界面の背後に�
 - `capabilities()` は観測される挙動と一致します（そうでなければ、該当の呼び出しはそれぞれ `UnsupportedAction` を送出します。BE-0280、BE-0464、BE-0466）。
   - `QUERY` / `ELEMENTS` の baseline を申告します。
   - multi-touch のジェスチャは、`MULTI_TOUCH` を申告したときに限り動作します。
-  - 全選択とクリップボードへのコピーは、`TEXT_SELECTION` を申告したときに限り動作します。
+  - 全選択とクリップボードへのコピーは、`TEXT_SELECTION` を申告したときに限り動作します。デバイスのクリップボードを読めるハーネスでは、コピーしたテキストがクリップボードに入ったことも確かめます。何もしないコピーはここで失敗します（#2390）。
   - ネイティブな `<select>` を値で設定する操作は、`SELECT_OPTION` を申告したときに限り動作します。
   - URL の読み込みは、`URL_NAVIGATION` を申告したときに限り動作します。
   - `read_attributes` は、`ELEMENT_ATTRIBUTE` を申告したときに限り、タップと同じ規則で各セレクタを解決して属性を読みます。

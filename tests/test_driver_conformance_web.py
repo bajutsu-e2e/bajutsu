@@ -86,6 +86,10 @@ _TAP_MIRROR_HTML = "".join(
 )
 
 
+#: A secure-context origin for the contract's page (localhost counts as one), never actually served.
+_SECURE_ORIGIN = "http://localhost/"
+
+
 def _render(elements: list[base.Element]) -> str:
     """One HTML page realizing the seeded conformance screen for `QUERY_JS` to read.
 
@@ -170,6 +174,11 @@ class PlaywrightConformanceHarness:
         )
         return self._driver
 
+    def clipboard_text(self) -> str:
+        # The page's own clipboard read, which the `clipboard-read` permission the harness fixture
+        # grants lets run without a user gesture (#2390).
+        return str(self._page.evaluate("navigator.clipboard.readText()"))
+
 
 @pytest.fixture(scope="module")
 def chromium() -> Iterator[Any]:
@@ -190,7 +199,12 @@ def chromium() -> Iterator[Any]:
 class TestPlaywrightDriverConformance(DriverConformanceContract):
     @pytest.fixture
     def harness(self, chromium: Any) -> Iterator[ConformanceHarness]:
-        page = chromium.new_page()
+        # `clipboard_text` reads back what the driver's copy wrote (#2390). `navigator.clipboard`
+        # exists only in a secure context, which `about:blank` is not, so the page starts on a
+        # localhost origin served by a route rather than a server; `set_content` keeps that origin.
+        page = chromium.new_page(permissions=["clipboard-read", "clipboard-write"])
+        page.route(_SECURE_ORIGIN, lambda route: route.fulfill(body="<!doctype html>"))
+        page.goto(_SECURE_ORIGIN)
         try:
             yield PlaywrightConformanceHarness(page)
         finally:
