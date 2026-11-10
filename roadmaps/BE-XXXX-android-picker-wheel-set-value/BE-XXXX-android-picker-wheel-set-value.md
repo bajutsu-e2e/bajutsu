@@ -73,8 +73,10 @@ and the documents that describe them.
 
 **Trait mapping.** `_traits` in `bajutsu/common/drivers/adb/_functions.py` derives a node's first
 trait from its widget class, so a `NumberPicker` node carries `numberPicker` today. The function
-gains one rule: a node whose class is `android.widget.NumberPicker` also carries `pickerWheel`. The
-class-derived `numberPicker` stays, so an existing selector keeps resolving. The shared token means a
+gains one rule: a node whose class is `android.widget.NumberPicker` also carries `pickerWheel`.
+The token becomes a new `Trait.PICKER_WHEEL` in `bajutsu/common/drivers/base/trait.py`, so the shared
+name has one definition for every backend to map onto and for the conformance suite to pin. The
+`Trait.SECURE_TEXT_FIELD` member is the precedent (BE-0331). The class-derived `numberPicker` stays, so an existing selector keeps resolving. The shared token means a
 scenario addresses a wheel with the same selector on both platforms. A spinner-mode `DatePicker`
 dumps as a container that holds its `NumberPicker` children. `within` scopes by frame containment,
 and `traits` and `index` pick one wheel among them, which is the addressing BE-0356 already uses on
@@ -104,18 +106,19 @@ not on a coordinate:
    again. `NumberPicker`'s accessibility provider maps each action to a one-row step, the same change
    a user's single flick of one row makes.
 4. The first walk can end at an edge without a match. A non-wrapping wheel reaches its last or first
-   row: the action returns `false`, or the value stops changing. The handler then walks the other
-   direction, as it did before the hint existed. This keeps correctness for numeric rows whose order
+   row: the action returns `false`, or the value stays unchanged across a confirming re-read.
+   A single unchanged read can be a row whose text has not republished yet, so it never ends a pass
+   alone. The handler then walks the other direction. This keeps correctness for numeric rows whose order
    is not monotonic. A wrapping wheel returns to the value it started from, and that ends the walk.
    Either case without a match means the wheel holds no such row, so the handler answers a new
    *picker-value-absent* status.
 5. Two budgets bound the walk, so a wheel that keeps changing its own values cannot hold the request
    forever. A fixed row cap, `MAX_PICKER_ROWS = 400`, bounds the total rows stepped across both
-   passes. Reaching it answers *picker-value-absent*, and the reply names the cap. Each row also has
+   passes. Reaching it answers a new *picker-walk-exhausted* status, and the reply names the cap. Each row also has
    a per-row budget, `PICKER_ROW_BUDGET_MS = 300`: one accessibility scroll plus the idle wait for
    `NumberPicker`'s one-row animation. That figure is a starting value. The first on-device run measures it and adjusts it. The handler
    also stops at a walk deadline of `MAX_PICKER_ROWS × PICKER_ROW_BUDGET_MS`, counted from the first
-   step, and answers *picker-value-absent* naming the deadline. A slow row thus never pushes the
+   step, and answers *picker-walk-exhausted* naming the deadline. A slow row thus never pushes the
    reply past the host timeout.
 
 A match answers `200` through `respondLanded`, the same reply `/act` sends. The host therefore gets
@@ -138,14 +141,15 @@ element's identity and ordinal. It handles each reply status as follows:
 | stale | Re-resolves and retries with the same bounded loop `_device_act` already runs for a stale `/act` reply. When the loop runs out of attempts, or the resolved element has no recorded identity to send or outlived the read its ordinal was counted from, raises `ElementNotFound` naming the selector, because there is no coordinate path to fall back to. |
 | not-a-picker-wheel | Raises `ElementNotFound`, naming the selector and stating that the element is not a `NumberPicker`. |
 | picker-value-absent | Raises `ElementNotFound`, naming the value that never appeared. BE-0356 maps the same case on iOS this way. |
+| picker-walk-exhausted | Raises `ElementNotFound`, stating that the walk hit its row cap or deadline before the value appeared. The message differs from the absent-value one, so a budget that needs retuning never reads as a missing row. |
 | `404` from an older server | Raises `UnsupportedAction`, stating that the deployed resident server predates `/setPickerValue` and needs a rebuild. The driver latches the absence of `/setPickerValue` alone for the lease, in its own flag, the way `AdbActUnsupported` already handles a missing `/act`. The `/act` path keeps serving taps. |
 | reply lost after sending | Raises `ElementNotFound`, stating that the server may have moved the wheel but did not confirm the row. A tap's `_device_act` continues as if landed in this case; this step cannot, because a half-walked wheel shows the wrong value. |
 
 The `set_picker_value` client does not reuse `ACTION_TIMEOUT_S`. Its timeout is
 `MAX_PICKER_ROWS × PICKER_ROW_BUDGET_MS` plus `ACTION_TIMEOUT_S`, about 130 seconds with the starting
 values. The constant is defined next to `ACTION_TIMEOUT_S` in
-`bajutsu/common/backend_cli/adb_resident/budgets.py`. The server answers *picker-value-absent* at the
-row cap before the host's timeout can fire. So a host timeout means the channel failed, not that the
+`bajutsu/common/backend_cli/adb_resident/budgets.py`. The server answers *picker-walk-exhausted* at the
+row cap or deadline before the host's timeout can fire. So a host timeout means the channel failed, not that the
 value is missing.
 
 The step has no coordinate fallback. When the resident channel is unavailable, the method raises
@@ -177,7 +181,8 @@ Each `id` in `picker_wheel.yaml` lists both forms, as every scenario on the View
 BE-0221 (`id: [form.school, form_school]`). Its `swiftui` tag keeps the UIKit and Flutter iOS lanes
 out. `picker_wheel` joins `E2E_SCENARIOS` and `E2E_VIEWS_SCENARIOS` in
 `demos/showcase/android/Makefile`, the lists the `android-e2e.yml` smoke job runs. The file's header
-comment drops its iOS-only and SwiftUI-only claims. The iOS scenario's month value is
+comment drops its iOS-only claim and narrows its SwiftUI-only one to the iOS lanes, which keep
+excluding the `swiftui` tag. The iOS scenario's month value is
 `"May"`, the label the iOS wheel renders under `en_US`. The first on-device run checks the row labels
 that the Android spinner renders under the same locale. If a label differs, the Android lane gets its
 own scenario file in place of a shared one.
@@ -201,10 +206,11 @@ own scenario file in place of a shared one.
 **Tests.** The deterministic gate covers the host side without an emulator:
 
 - A `_traits` test checks that a `NumberPicker` node carries both `numberPicker` and `pickerWheel`,
-  and that no other class gains `pickerWheel`.
+  and that no other class gains `pickerWheel`. A conformance case pins `Trait.PICKER_WHEEL` as
+  the token every wheel-capable backend maps its wheel to.
 - `AdbDriver.set_picker_value` tests stub the resident channel and cover each row of the reply
   table above: a match, a stale reply followed by a successful retry, an exhausted stale loop, a
-  non-wheel element, an absent value, a `404` from an older server, a lost reply, and an unavailable
+  non-wheel element, an absent value, an exhausted walk, a `404` from an older server, a lost reply, and an unavailable
   channel.
 - A preflight test checks that a `setPickerValue` scenario passes preflight on adb and still fails
   on the web backend.
@@ -234,8 +240,8 @@ job is not part of `make check`.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Trait mapping: a `NumberPicker` node also carries `pickerWheel`, with its unit test
-- [ ] Resident server: the `/setPickerValue` endpoint with its stale, not-a-picker-wheel, and picker-value-absent statuses, the numeric direction hint, and the row cap
+- [ ] Trait mapping: a `NumberPicker` node also carries `pickerWheel`, defined as `Trait.PICKER_WHEEL`, with its unit and conformance tests
+- [ ] Resident server: the `/setPickerValue` endpoint with its stale, not-a-picker-wheel, picker-value-absent, and picker-walk-exhausted statuses, the confirming re-read at an edge, the numeric direction hint, and the row cap
 - [ ] Host driver: the channel client with its own timeout, `AdbDriver.set_picker_value`, the `PICKER_WHEEL` capability, the preflight description, the `Driver.set_picker_value` comment and the preflight docstring, their unit tests, and the budgets check against the server's walk constants
 - [ ] Code generation: the labeled `// TODO` in the UI Automator generator
 - [ ] Showcase: the picker screen in the Views and Compose apps, and `picker_wheel` in the `android-e2e.yml` smoke job (added to the Android Makefile scenario lists)

@@ -72,6 +72,9 @@ Compose の画面です。Compose 自身が描画する wheel は対象外とし
 **trait の対応づけ。** `bajutsu/common/drivers/adb/_functions.py` の `_traits` は、ノードの最初の trait
 をウィジェットのクラスから作ります。このため `NumberPicker` のノードは、現在 `numberPicker` を持っています。
 `_traits` に規則を1つ加え、クラスが `android.widget.NumberPicker` のノードには `pickerWheel` も付けます。
+この token は `bajutsu/common/drivers/base/trait.py` の新しい `Trait.PICKER_WHEEL` として定義します。
+共通の名前の定義が1か所になり、各 backend の対応づけも conformance suite による検証も、そこを参照できます。
+`Trait.SECURE_TEXT_FIELD` が先例です（BE-0331）。
 クラス由来の `numberPicker` は残すので、既存のセレクターはそのまま解決します。共通の token により、
 シナリオは両プラットフォームで同じセレクターを使って wheel を指定できます。spinner モードの `DatePicker`
 は、子の `NumberPicker` を含むコンテナとしてダンプに現れます。`within` は枠の包含関係で範囲を絞り、
@@ -100,17 +103,18 @@ stale ステータスを返します。そこから先は、座標ではなく�
    のアクセシビリティのプロバイダーは、各操作を1行分の移動に対応づけています。利用者が wheel を
    1行だけはじいたときと同じ変化です。
 4. 最初の走査は、一致しないまま端で終わることがあります。折り返さない wheel では最後か最初の行に達し、
-   操作が `false` を返すか、値が変わらなくなります。この場合ハンドラーは、反対の向きに
+   操作が `false` を返すか、確認のための読み直しでも値が変わらないままになります。
+   値が変わらなかった1回の読み取りは、テキストがまだ更新されていない行の可能性があるため、それだけでは走査を終えません。この場合ハンドラーは、反対の向きに
    走査します。並びが単調でない数値の行でも、この反対向きの走査で目的の行に着けます。折り返す wheel では、
    走査を始めた値に戻ってきます。そこで走査を終えます。どちらも一致しなければ、wheel にその行は
    ありません。このときハンドラーは、新しい *picker-value-absent* ステータスを返します。
 5. 2つの予算で走査を区切ります。値が変わり続ける wheel がリクエストをいつまでも占有しないためです。
    固定の行数の上限 `MAX_PICKER_ROWS = 400` が、両方向を合わせて進める行の総数を制限します。
-   上限に達したときは *picker-value-absent* を返し、応答には上限の値を記します。1行ごとにも予算
+   上限に達したときは新しい *picker-walk-exhausted* ステータスを返し、応答には上限の値を記します。1行ごとにも予算
    `PICKER_ROW_BUDGET_MS = 300` があります。アクセシビリティのスクロール1回と、`NumberPicker`
    の1行分のアニメーションに対するアイドル待ちの合計です。この値は初期値です。最初の実機での実行で測定し、調整します。
    ハンドラーは、1行目から数えて `MAX_PICKER_ROWS × PICKER_ROW_BUDGET_MS` の期限でも走査を打ち切ります。
-   そのときも、期限を記した *picker-value-absent* を返します。このため、遅い行があっても、応答がホストの
+   そのときも、期限を記した *picker-walk-exhausted* を返します。このため、遅い行があっても、応答がホストの
    タイムアウトを過ぎることはありません。
 
 一致したときは、`/act` と同じ `respondLanded` で `200` を返します。ホストは追加の読み取りなしに、
@@ -132,13 +136,14 @@ stale ステータスを返します。そこから先は、座標ではなく�
 | stale | 再解決して再試行します。`/act` の stale 応答に対して `_device_act` がすでに使っている、回数に上限のある再試行と同じです。試行回数を使い切った場合と、解決した要素に送れる識別情報の記録がない場合と、序数を数えた読み取りより後まで要素が残っていた場合は、フォールバックできる座標経路がないため、セレクターを示して `ElementNotFound` を送出します。 |
 | not-a-picker-wheel | セレクターを示し、要素が `NumberPicker` ではないことを述べて `ElementNotFound` を送出します。 |
 | picker-value-absent | 現れなかった値を示して `ElementNotFound` を送出します。BE-0356 も iOS で同じ場合をこう扱います。 |
+| picker-walk-exhausted | 値が現れる前に、走査が行数の上限か期限に達したことを述べて `ElementNotFound` を送出します。存在しない値の場合とは別のメッセージにするので、調整が必要な予算が「行がない」と読まれることはありません。 |
 | 古いサーバーからの `404` | 配備されている常駐サーバーが `/setPickerValue` より古く、再ビルドが必要であることを述べて `UnsupportedAction` を送出します。`/act` がない場合に `AdbActUnsupported` がしているのと同じく、リースの間は `/setPickerValue` の不在だけを専用のフラグで記憶します。`/act` の経路はそのまま tap に使い続けます。 |
 | 送信後に応答が失われた | サーバーが wheel を動かした可能性はあるが、行を確認できなかったことを述べて `ElementNotFound` を送出します。tap の `_device_act` は、この場合に着地したものとして続行します。このステップは続行できません。走査の途中で止まった wheel は、誤った値を示すからです。 |
 
 `set_picker_value` のクライアントは `ACTION_TIMEOUT_S` を流用しません。タイムアウトは
 `MAX_PICKER_ROWS × PICKER_ROW_BUDGET_MS` に `ACTION_TIMEOUT_S` を足した値で、初期値では約130秒です。
 この定数は `bajutsu/common/backend_cli/adb_resident/budgets.py` の `ACTION_TIMEOUT_S` の隣に定義します。
-サーバーは、ホストのタイムアウトが切れるより前に、行数の上限で *picker-value-absent* を返します。
+サーバーは、ホストのタイムアウトが切れるより前に、行数の上限か期限で *picker-walk-exhausted* を返します。
 そのためホストでタイムアウトが起きたときは、値がないのではなく、通信路が壊れたことを意味します。
 
 このステップには座標による代替経路を設けません。常駐サーバーとの通信路が使えないときは、wheel
@@ -169,7 +174,7 @@ Compose 版の画面は、iOS の画面と同じ識別子 `form.school`、`form.
 BE-0221 以降、Views のレーンで動かすシナリオはすべてこの書き方です。`swiftui` タグは引き続き UIKit と
 Flutter の iOS のレーンを除外します。`picker_wheel` は、`demos/showcase/android/Makefile` の
 `E2E_SCENARIOS` と `E2E_VIEWS_SCENARIOS` に加えます。この2つは、`android-e2e.yml` の smoke ジョブが実行する
-シナリオの一覧です。ファイル冒頭のコメントからも、iOS 専用と SwiftUI 版専用という記述を外します。iOS のシナリオの月の値 `"May"` は、iOS の wheel が `en_US` で表示する行の名前です。
+シナリオの一覧です。ファイル冒頭のコメントからも、iOS 専用という記述を外します。SwiftUI 版専用という記述は、引き続き `swiftui` タグを除外する iOS のレーンに範囲を絞って残します。iOS のシナリオの月の値 `"May"` は、iOS の wheel が `en_US` で表示する行の名前です。
 同じロケールで Android の spinner が表示する行の名前は、最初の実機での実行で確かめます。名前が異なる場合は、
 共通のシナリオをやめ、Android のレーンに専用のシナリオファイルを用意します。
 
@@ -186,10 +191,16 @@ Flutter の iOS のレーンを除外します。`picker_wheel` は、`demos/sho
 **テスト。** 決定的なゲートは、エミュレーターなしでホスト側を検証します。
 
 - `_traits` のテストで、`NumberPicker` のノードが `numberPicker` と `pickerWheel` の両方を持つこと、
-  ほかのクラスには `pickerWheel` が付かないことを確かめます。
+  ほかのクラスには `pickerWheel` が付かないことを確かめます。conformance のケースで、wheel を扱う
+  すべての backend が wheel を `Trait.PICKER_WHEEL` に対応づけることを固定します。
 - `AdbDriver.set_picker_value` のテストでは、常駐サーバーとの通信路を差し替えて、上の応答表の各行を
-  確かめます。対象は、一致、stale の後の再試行の成功、使い切った stale の再試行、wheel でない要素、存在しない値、
-  古いサーバーからの `404`、失われた応答、通信路が使えない場合です。
+  確かめます。対象は次の場合です。
+  - 一致した場合と、stale の後の再試行が成功した場合
+  - stale の再試行を使い切った場合
+  - 要素が wheel でない場合と、値が存在しない場合
+  - 走査が打ち切られた場合
+  - 古いサーバーが `404` を返した場合
+  - 応答が失われた場合と、通信路が使えない場合
 - preflight のテストで、`setPickerValue` を使うシナリオが adb では preflight を通り、web backend
   では引き続き拒否されることを確かめます。
 - `tests/test_adb_resident_budgets.py` に、サーバーのソースから `MAX_PICKER_ROWS` と `PICKER_ROW_BUDGET_MS`
@@ -218,8 +229,8 @@ Flutter の iOS のレーンを除外します。`picker_wheel` は、`demos/sho
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] trait の対応づけ：`NumberPicker` のノードに `pickerWheel` も付け、ユニットテストを加える
-- [ ] 常駐サーバー：stale、not-a-picker-wheel、picker-value-absent の各ステータスを持つ `/setPickerValue` エンドポイント、数値の向きの手がかり、行数の上限
+- [ ] trait の対応づけ：`NumberPicker` のノードに `pickerWheel` も付けて `Trait.PICKER_WHEEL` として定義し、ユニットテストと conformance のテストを加える
+- [ ] 常駐サーバー：stale、not-a-picker-wheel、picker-value-absent、picker-walk-exhausted の各ステータスと端での確認の読み直しを持つ `/setPickerValue` エンドポイント、数値の向きの手がかり、行数の上限
 - [ ] ホスト側のドライバー：専用のタイムアウトを持つ通信路のクライアント、`AdbDriver.set_picker_value`、`PICKER_WHEEL` capability、preflight の説明文、`Driver.set_picker_value` のコメントと preflight の docstring、それらのユニットテスト、サーバーの走査の定数と照合する予算のテスト
 - [ ] コード生成：UI Automator 向けの生成器が出力する `// TODO`
 - [ ] showcase：Views 版と Compose 版のピッカー画面と、`android-e2e.yml` の smoke ジョブへの2つのシナリオの追加（Android の Makefile のシナリオ一覧に `picker_wheel` を加える）
