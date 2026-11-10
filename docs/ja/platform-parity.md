@@ -112,7 +112,6 @@ iOS の実機では、`simctl` が提供する能力がなくなります。こ�
 
 | 振る舞い | iOS | Android | 現時点での影響 |
 |---|---|---|---|
-| 入力欄の文字 | 要素の `value` に文字が入ります。 | 文字は `label` に入り、`value` には `content-desc` が入ります。 | 入力欄に対する `value` アサーションでは文字を読めません。`clear` ステップは先に `value` を読み、空なら何もしません。 |
 | `select` と `copy` | XCUITest がネイティブに選択とコピーをします。 | adb は `input keycombination` で Ctrl+A と Ctrl+C を送ります。Android 12 以降が必要です。 | この2つを実行する Android のシナリオはありません。適合テストも、どちらの呼び出しも例外を出さないことしか確かめていません。 |
 | `pinch` と `rotate` | XCUITest がネイティブに実行します。 | adb は `sendevent` で生のタッチイベントを書き込むので、root が必要です。 | root 化していない端末では、どちらのステップも失敗します。 |
 | `setLocation` | シミュレータ上で `simctl` が設定します。 | エミュレータのコンソールが設定します。 | どちらのバックエンドも、まだ実機では位置を設定できません。iOS 側は [BE-0475](../../roadmaps/BE-0475-ios-runner-set-location/BE-0475-ios-runner-set-location-ja.md) が扱います。 |

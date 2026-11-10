@@ -135,7 +135,32 @@ def _traits(node: ET.Element) -> list[str]:
     return out
 
 
+#: The accessibility class every editable text node reports: a Views `EditText` and its subclasses
+#: (`AutoCompleteTextView`, Material's `TextInputEditText`) inherit `EditText`'s
+#: `getAccessibilityClassName`, and a Compose text field reports the same name (#2388).
+_EDITABLE_CLASS = "android.widget.EditText"
+
+
+def _editable_element_fields(node: ET.Element) -> tuple[str | None, str | None]:
+    """The `(label, value)` of an editable text node, so its typed text reads as `value` (#2388).
+
+    `label` stays an accessible name (`content-desc`, else the hint) rather than the typed text, so an
+    `into: { label: … }` selector keeps its meaning as the user types — the split iOS already has. An
+    empty field reports its hint as `text`, which the dump's `hint` attribute (UI Automator 2.3+) lets
+    us tell apart; a masked field's text is withheld, whatever the dump carries in it.
+    """
+    desc = node.get("content-desc") or ""
+    text = node.get("text") or ""
+    hint = node.get("hint") or ""
+    showing_hint = bool(hint) and text == hint
+    value = None if node.get("password") == "true" or showing_hint else text
+    return desc or hint or None, value or None
+
+
 def _to_element(node: ET.Element, malformed_bounds: list[int] | None = None) -> base.Element:
+    if node.get("class") == _EDITABLE_CLASS:
+        label, value = _editable_element_fields(node)
+        return _element(node, label, value, malformed_bounds)
     desc = node.get("content-desc") or ""
     text = node.get("text") or ""
     # `text` is the visible label; `content-desc` is where the showcase mirrors the assertion value
@@ -146,10 +171,17 @@ def _to_element(node: ET.Element, malformed_bounds: list[int] | None = None) -> 
     label: str | None = text or desc
     if not label and node.get("clickable") == "true":
         label = _derived_label(node)
+    return _element(node, label or None, desc or None, malformed_bounds)
+
+
+def _element(
+    node: ET.Element, label: str | None, value: str | None, malformed_bounds: list[int] | None
+) -> base.Element:
+    """Assemble one `Element` from a node and its already-chosen label and value."""
     return {
         "identifier": _strip_pkg(node.get("resource-id") or ""),
-        "label": label or None,
-        "value": desc or None,
+        "label": label,
+        "value": value,
         "traits": _traits(node),
         "frame": _bounds(node.get("bounds") or "", malformed_bounds),
         # `dumpWindowHierarchy`'s XML has no z attribute, so a measured position arrives beside the

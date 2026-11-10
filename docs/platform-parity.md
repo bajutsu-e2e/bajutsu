@@ -118,7 +118,6 @@ declare, or outside what the two tables cover.
 
 | Behavior | iOS | Android | What it means today |
 |---|---|---|---|
-| Text in an editable field | The element's `value` holds the text. | The text lands in `label`, and `value` holds the `content-desc`. | A `value` assertion on a text field fails to read the text. A `clear` step reads `value` first and does nothing when it is empty. |
 | `select` and `copy` | XCUITest selects and copies natively. | adb sends Ctrl+A and Ctrl+C through `input keycombination`, which needs Android 12 or later. | No Android scenario runs the pair, and the conformance test checks only that neither call raises. |
 | `pinch` and `rotate` | XCUITest performs both natively. | adb writes raw touch events with `sendevent`, which needs root. | Both steps fail on an unrooted device. |
 | `setLocation` | `simctl` sets it on the Simulator. | The emulator console sets it. | Neither backend sets the location on a real device yet. [BE-0475](../roadmaps/BE-0475-ios-runner-set-location/BE-0475-ios-runner-set-location.md) covers iOS. |

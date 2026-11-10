@@ -245,6 +245,49 @@ def test_password_flag_derives_the_masked_input_trait() -> None:
     assert base.Trait.SECURE_TEXT_FIELD not in plain["traits"]
 
 
+# #2388: a Compose text field and a Views EditText both dump as `android.widget.EditText`. Their typed
+# text must read as `value` — what a `value` assertion and `clear` read — while `label` stays the
+# field's accessible name. An empty Views field reports its hint as `text`; the `hint` attribute
+# (UI Automator 2.3+) is what tells the two apart.
+EDITABLE_FIELDS = """<hierarchy rotation="0">
+  <node resource-id="search.field" class="android.widget.EditText" text="Horse 3" content-desc=""
+    hint="Search horses" bounds="[0,0][100,50]" />
+  <node resource-id="com.app:id/search_field" class="android.widget.EditText" text="Search horses"
+    content-desc="" hint="Search horses" bounds="[0,50][100,100]" />
+  <node resource-id="auth.password" class="android.widget.EditText" text="hunter2" content-desc=""
+    password="true" hint="Password" bounds="[0,100][100,150]" />
+  <node resource-id="note" class="android.widget.EditText" text="trot" content-desc="Note"
+    bounds="[0,150][100,200]" />
+  <node resource-id="blank" class="android.widget.EditText" text="" bounds="[0,200][100,250]" />
+  <node resource-id="caption" class="android.widget.TextView" text="Horse 3" content-desc="3"
+    bounds="[0,250][100,300]" />
+</hierarchy>"""
+
+
+def test_editable_field_reads_typed_text_as_value_and_keeps_its_name_as_label() -> None:
+    els = parse_hierarchy(EDITABLE_FIELDS)
+    typed = _by_id(els, "search.field")
+    assert typed["value"] == "Horse 3"  # the typed text, not content-desc
+    assert typed["label"] == "Search horses"  # the hint names it, not the typed text
+    # An empty field showing its hint has no value: the hint must not read as typed text.
+    empty = _by_id(els, "search_field")
+    assert empty["value"] is None
+    assert empty["label"] == "Search horses"
+    # A masked field never leaks its text into value, but keeps its name.
+    secret = _by_id(els, "auth.password")
+    assert secret["value"] is None
+    assert secret["label"] == "Password"
+    # content-desc is the accessible name when present, ahead of the hint.
+    note = _by_id(els, "note")
+    assert (note["label"], note["value"]) == ("Note", "trot")
+    # A field with no text, name, or hint is wholly blank rather than empty-string.
+    blank = _by_id(els, "blank")
+    assert (blank["label"], blank["value"]) == (None, None)
+    # A non-editable node keeps the SPEC §2.1 split: visible text → label, content-desc → value.
+    caption = _by_id(els, "caption")
+    assert (caption["label"], caption["value"]) == ("Horse 3", "3")
+
+
 def test_resource_id_with_no_local_name_is_none_not_empty() -> None:
     # A malformed resource-id ending in `/` must yield identifier None, not "" (which no selector
     # matches yet is falsy-but-present).

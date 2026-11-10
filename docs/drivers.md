@@ -363,7 +363,13 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   `testTag` surfaced via `testTagsAsResourceId` reproduces verbatim while a native `android:id`
   drops its prefix), `text` → `label` (`content-desc` fallback), `content-desc` → `value` (the app
   mirrors its state value there, SPEC §2.1), and the widget `class` (plus enabled / selected /
-  checked state) → `traits`. The local name is matched **exactly** — the driver does no `.`↔`_`
+  checked state) → `traits`. An editable text field — a node whose class is
+  `android.widget.EditText`, which both a Views `EditText` and a Compose text field report — maps
+  the other way, as on iOS: its `text` → `value`, so a `value` assertion and a `clear` step read
+  what was typed, and `content-desc` (else the `hint`) → `label`, so a label selector keeps its
+  meaning as the text changes. An empty field reports its hint as `text`; the dump's `hint`
+  attribute identifies that case, and the field's `value` is then empty. A masked field
+  (`password="true"`) never exposes its text as `value`. The local name is matched **exactly** — the driver does no `.`↔`_`
   rewriting, which would conflate distinct ids and erode determinism. Where a platform's native id
   syntax cannot reproduce the SPEC id verbatim (Android Views: `android:id` allows neither `.` nor
   `-`, so `stable.refresh` surfaces as `stable_refresh`), the scenario carries **both** id forms in
