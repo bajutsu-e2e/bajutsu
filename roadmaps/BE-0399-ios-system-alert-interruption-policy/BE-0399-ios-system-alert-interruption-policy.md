@@ -104,7 +104,7 @@ A duplicate like that is one control seen twice, not an ambiguity, but the tree 
 
 The showcase's in-app browser loads a sign-in page served beside the existing browser fixture. Submitting the page makes iOS raise its real "Save Password" alert. The browser route needs no associated domain, no entitlement, and no Hypertext Transfer Protocol Secure (HTTPS) server: iOS offers to save a credential typed into a web form for the page's own origin, exactly as Safari does.
 
-We measured the application's own login screen, the other route from which iOS raises this alert. It needs all three. That route is left to a follow-up and is not made a standing prerequisite of this lane.
+We measured the other route from which iOS raises this alert, the application's own login screen: it does need an associated domain, an entitlement, and an HTTPS server. That route is left to a follow-up and is not made a standing prerequisite of this lane.
 
 The application arms the notification request on a delay once the browser opens (`SHOWCASE_NOTIF_AFTER_BROWSER`). A scenario cannot tap its way into the stacked state, because the monitor answers first any element tap made while a system alert is showing.
 
