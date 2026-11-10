@@ -34,8 +34,8 @@ HTTP client and no cloud SDK or credentials.
 
 BE-0110 established the security win that *the worker never needs cloud credentials*, but for the
 new **evidence** destination alone. For the existing artifact, baseline, and scenario surface, the
-worker still constructs an object-store client from `object_store_from_env()` (`BAJUTSU_S3_BUCKET`
-+ `AWS_ACCESS_KEY_ID` / …). An ephemeral Mac worker still carries the object store's
+worker still constructs an object-store client from `object_store_from_env()` (`BAJUTSU_S3_BUCKET` +
+`AWS_ACCESS_KEY_ID` / …). An ephemeral Mac worker still carries the object store's
 secrets.
 
 That is the larger exposure. Workers are the numerous, disposable, GUI-session machines in the
