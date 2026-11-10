@@ -49,13 +49,13 @@ def test_seed_command_builders() -> None:
     ]  # fmt: skip
     assert adb.seed_photos_clear_cmd("S") == [
         "adb", "-s", "S", "shell",
-        f"[ -d {_DIR} ] && rm -rf {_DIR}/* && echo {adb.SEED_PHOTOS_CLEARED} || true",
+        f"if [ -d {_DIR} ]; then rm -rf {_DIR}/* && echo {adb.SEED_PHOTOS_CLEARED}; fi",
     ]  # fmt: skip
     assert adb.push_cmd("S", "/fixtures/red.png", f"{_DIR}/000.png") == [
         "adb", "-s", "S", "push", "/fixtures/red.png", f"{_DIR}/000.png",
     ]  # fmt: skip
     assert adb.seed_photo_time_cmd("S", 61, "061.png") == [
-        "adb", "-s", "S", "shell", "touch", "-t", "202001010101.00", f"{_DIR}/061.png",
+        "adb", "-s", "S", "shell", "touch", "-t", "203701010101.00", f"{_DIR}/061.png",
     ]  # fmt: skip
     scan = adb.media_scan_cmd("S")
     assert scan[:5] == ["adb", "-s", "S", "shell", "am"]

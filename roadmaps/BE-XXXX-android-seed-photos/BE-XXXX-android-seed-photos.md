@@ -80,7 +80,10 @@ images the device already holds. That matters on a physical device, where those 
 person rather than to the test.
 
 The fixed timestamps make the order reproducible. A picker that sorts by date shows the last listed
-image first, which matches the order `simctl addmedia` produces on iOS. Without the stamp, `adb push`
+image first, which matches the order `simctl addmedia` produces on iOS. The stamps start at
+2037-01-01, a date ahead of any real capture, so the whole set also sorts in front of the images the
+device already holds, as `simctl addmedia` fixtures sit ahead of the Simulator's own. The year stays
+inside a 32-bit `time_t`. Without the stamp, `adb push`
 would carry over each local file's own modification time, and the order would depend on the
 checkout. The media store prefers an image's EXIF capture date to its modification time, so the
 order holds for fixtures without one; a fixture exported from a camera keeps its own date.
@@ -144,6 +147,10 @@ Log:
   empty list cleared them all. The system photo picker (`PICK_IMAGES`) showed the last listed image
   first, and showed the new image after a reseed under the same file name. Other API levels are
   not yet checked.
+- 2026-11-10 — in review, moved the stamp base from 2020 to 2037 so the seeded set sorts ahead of
+  the device's own images, and made the empty-list clear fail on a failed `rm` instead of skipping
+  the rescan. Re-checked on the same emulator: the picker listed the seeded images before an image
+  the device already held, and a clear removed the seed directory's rows alone.
 
 ## References
 

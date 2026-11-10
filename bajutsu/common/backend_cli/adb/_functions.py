@@ -421,9 +421,11 @@ SEED_PHOTOS_DIR = "/storage/emulated/0/Pictures/Bajutsu"
 
 # The fixed modification time of the first seeded image; each later one is a minute newer, so the
 # order a photo picker sorts by (newest first) follows the list, whatever the local files' own times
-# were. The media store prefers an image's EXIF capture date to this time, so the order holds for
-# images that carry none.
-_SEED_PHOTOS_EPOCH = datetime(2020, 1, 1)  # noqa: DTZ001  # device-local wall time, by design
+# were. A date ahead of any real capture puts the whole set in front of the device's own images, as
+# `simctl addmedia` fixtures sit ahead of the Simulator's; 2037 stays inside a 32-bit `time_t`. The
+# media store prefers an image's EXIF capture date to this time, so the order holds for images that
+# carry none.
+_SEED_PHOTOS_EPOCH = datetime(2037, 1, 1)  # noqa: DTZ001  # device-local wall time, by design
 
 _SUFFIX = re.compile(r"\.[A-Za-z0-9]{1,8}")
 
@@ -460,12 +462,13 @@ SEED_PHOTOS_CLEARED = "cleared"
 def seed_photos_clear_cmd(serial: str) -> list[str]:
     """Empty the seed directory only if an earlier seed created it, printing `SEED_PHOTOS_CLEARED`.
 
-    A device never seeded keeps its shared storage untouched, and the `|| true` keeps the absent
-    directory, the ordinary case, off the error path.
+    A device never seeded keeps its shared storage untouched: an `if` with no matched branch exits
+    0, so the absent directory, the ordinary case, stays off the error path, while a failed `rm`
+    still fails the command rather than leaving the previous scenario's images in place.
     """
     d = SEED_PHOTOS_DIR
     return _adb(
-        serial, "shell", f"[ -d {d} ] && rm -rf {d}/* && echo {SEED_PHOTOS_CLEARED} || true"
+        serial, "shell", f"if [ -d {d} ]; then rm -rf {d}/* && echo {SEED_PHOTOS_CLEARED}; fi"
     )
 
 
