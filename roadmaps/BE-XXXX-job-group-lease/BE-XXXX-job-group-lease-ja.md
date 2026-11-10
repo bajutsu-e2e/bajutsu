@@ -38,6 +38,7 @@
 - **実行意図**：job が何を走らせたいかを、場所と切り離して表したものです。target、シナリオ、config、アプリの参照、プラットフォームを指します。
 - **互換キー**：worker が job 間で共有できるものを表すダイジェストです。config のバイト列、アプリ binary のダイジェスト、プラットフォーム、target 名を含みます。job ごとに異なるシナリオは含みません。1回の要求がこの4つの入力をすべて決めるので、1つのグループが持つ互換キーは1つです。
 - **ルートキー**：job の `capabilities` のリストのダイジェストです。ルートキーが同じ2つの job は、`can_serve` の判定結果が同じになります。
+- **基底キー**：route トークン（`cap:` と `setting:`）を除いて取った同じダイジェストです。route を確かめない worker は、基底キーが同じ2つの job に同じ判定結果を返します。
 - **バンドル**：1つの worker が1回の要求で lease する job です。バンドルの job はすべて同じグループに属します。1つのグループは、複数の worker にまたがる複数のバンドルに分かれることがあります。
 
 ### グループの登録
@@ -50,7 +51,7 @@
 - キューを持たないサーバは、現在どおりすべての `run-set` を拒否します。1台のマシンでの起動はデフォルトでキューを持つので、この拒否が及ぶのはキューなしで起動したサーバだけです。
 - 同じキーと同じ要求ダイジェストを持つ要求を繰り返すと、既存のグループを status 200 で返し、job は登録しません。同じキーで異なるダイジェストの要求は、status 409 で拒否します。ダイジェストは、target、解決したシナリオ名、config のダイジェスト、アプリのダイジェスト、run のラベルを含みます。
 - GitHub Actions の呼び出し元は、`GITHUB_RUN_ID`、`GITHUB_RUN_ATTEMPT`、`GITHUB_JOB` からキーを組み立てます。`GITHUB_RUN_ID` だけでは足りません。workflow を re-run しても run id は変わらず、attempt だけが変わるためです。このキーが冪等にするのは、1回の attempt の中で再試行された要求です。意図して re-run した場合は、新しいグループを求めたものとして、新しいグループが作られます。
-- 新しいテーブル `job_groups` に、org、キー、要求ダイジェスト、作成時刻を持たせ、org とキーに一意インデックスを張ります。job レコードには `group_id`、`compat_key`、`route_key` の列を足します。他の経路で登録した job は、3つとも `NULL` にします。後述の window 関数は `group_id` を持つ行にだけ適用するので、通常の job が1つの組にまとめられることはありません。lease のレスポンスは `compat_key` を返し、worker はそれを upload のキャッシュのキーに使います（単位 4）。
+- 新しいテーブル `job_groups` に、org、キー、要求ダイジェスト、作成時刻を持たせ、org とキーに一意インデックスを張ります。job レコードには `group_id`、`compat_key`、`route_key`、`base_key` の列を足します。他の経路で登録した job は、4つとも `NULL` にします。後述の window 関数は `group_id` を持つ行にだけ適用するので、通常の job が1つの組にまとめられることはありません。lease のレスポンスは `compat_key` を返し、worker はそれを upload のキャッシュのキーに使います（単位 4）。
 - GitHub Actions の呼び出し元は machine のプリンシパルです（BE-0414）。`forbidden_for_machine` は、名前を挙げていないルートをすべて拒否します。単位 1 で、`POST /api/run-set` を `_MACHINE_PATHS` に加えます。`GET /api/run-set/<groupId>` は、`_is_machine_job_route` が `/api/jobs/<id>` を通すのと同じ形の照合で加えます。グループのキャンセルは、job のキャンセルと同じく machine には閉じたままにします。今は machine が job をキャンセルできないからです。開く2つのルートは、`POST /api/run` と同じく、リクエストの文脈から `machine_org` を受け取ります。登録のルートは provenance のために `ci_job` も受け取ります。グループの org と、参照での org の照合は、`state.org_for` で決めます。`machine_org` がないと、machine の呼び出しはすべて `default` の org に解決され、別のテナントのグループに届いてしまいます。
 - `GET /api/run-set/<groupId>` は、呼び出し元自身の org のグループについてだけ、グループの job とその状態を返します。別の org のグループには、403 ではなく 404 を返します。BE-0015 に従い、他の org 単位の読み取りと同様、存在を漏らさないためです。報告側が poll する読み取り経路です。結果を GitHub の check として公開する処理は別の関心事であり、範囲外とします。
 - `POST /api/run-set/<groupId>/cancel` は、現在の job 単位のキャンセルを、グループの未完了の job すべてに適用します。待機中の job はその場で `cancelled` になり、どの worker も lease しません。lease 済みの job にはキャンセルの印が付き、worker が次の heartbeat でそれを受け取って止めます。現在の job のキャンセルと同じ動きです。このルートは `POST /api/jobs/<id>/cancel` と同じ権限を求めます。`required_role` は `/api/jobs/` の接頭辞と `/cancel` の接尾辞でそのルートを判定するので、グループのキャンセルにも同じ形の規則が要ります。規則は `path.startswith("/api/run-set/") and path.endswith("/cancel")` です。完全一致で照合する `_EDITOR_PATHS` の集合に項目を足しても、具体的なグループ id には一致しません。規則がないと、viewer でもグループをキャンセルできてしまいます。呼び出し元自身の org のグループだけを扱い、別の org のグループには 404 を返します。未完了の job を持たないグループへのキャンセルは 200 を返し、何も変えません。
@@ -82,7 +83,7 @@
 
 `host:` のトークンは要求しません。driver が必要とするホストは、ローカルの worker の性質だからです。BE-0450 以降、ローカルの worker は自分のホストで動かせるプラットフォームだけを広告するので、プラットフォームのトークンがホストの条件も兼ねます。これは、1つのプラットフォームの actuator がすべて同じホストに結び付いていることを前提にしています。この前提を崩す actuator を足すときは、`host:` のトークンを戻す必要があります。非推奨の `--capabilities` の上書きにはまだ `platform:ios` を入れられるので、単位 5 でこの上書きに `platform:` と `kind:` を予約します。
 
-kind のトークンは、target が宣言した kind 以外で target が走らないようにします。これがないと、ファミリーを指定しない iOS の target は kind について何も要求しません。その場合、Simulator 向けの target を、デバイスクラウドの worker が実機で走らせてしまいます。kind は、`_family_requirements` がすでに求めているものを使います。target が挙げる `kind` か、挙げない場合は target の driver から決まる kind（`driven_kind`）です。そのため、デバイスクラウド向けの iOS の target は、`device` を挙げるか、driver が `device` を選ぶ構成にします。そうした target のビルドは、もともと実機にインストールできなければならず、Simulator 向けのビルドではインストールできません。両方の kind を挙げる target は、両方を持つローカルの worker にだけ回ります。通常の job は kind のトークンを要求しません。
+kind のトークンは、target が宣言した kind 以外で target が走らないようにします。これがないと、ファミリーを指定しない iOS の target は kind について何も要求しません。その場合、Simulator 向けの target を、デバイスクラウドの worker が実機で走らせてしまいます。kind は、`_family_requirements` がすでに求めているものを使います。target が挙げる `kind` か、挙げない場合は target の driver から決まる kind（`driven_kind`）です。そのため、デバイスクラウド向けの iOS の target は、`device` を挙げるか、driver が `device` を選ぶ構成にします。そうした target のビルドは、もともと実機にインストールできなければならず、Simulator 向けのビルドではインストールできません。両方の kind を挙げる target は、両方を持つローカルの worker にだけ回ります。通常の job は kind のトークンを要求しません。デバイスクラウドは、ほかの `runsOn` の条件も submit の時点で拒否します（`_check_no_conditions`）。対象は `ios.model`、`ios.os`、`android.avd`、`android.apiLevel` です。本項目は、これらの条件にトークンを足しません。そうした条件を宣言する target のグループの job は、デバイスクラウドの worker に回り、submit で失敗して試行を1回消費することがあります。現在は呼び出し元がデバイスクラウドの環境を指定しないことで避けられるので、本項目はここでの劣化を受け入れます。
 
 ローカルの worker は、インストール済みの Simulator の端末があれば `kind:simulator` を広告します。iPhone か iPad がつながっていて、`worker.yaml` が `realDevices: false` でないあいだは、`kind:device` を広告します。`kind:simulator` は、`iosNN` や `iphone` / `ipad` のトークンを得る起動時の読み取りと同じ読み取りで決めます。`kind:device` は、実機のトークンと同じく、lease のたびに読み直します。
 
@@ -114,7 +115,7 @@ job を lease した worker が実行場所を決め、最初に lease した wo
 
 lease 要求に `maxJobs` を足します。worker の空きスロット数、つまり `maxJobConcurrency` から実行中の job 数を引いた値です。要求が `maxJobs` を持つ場合、レスポンスは lease した job のリストで、各要素は現在の job 1件分の形です。持たない場合、レスポンスは現在の単一のオブジェクトのままなので、本項目より前の worker も通常の job は lease できます。実行意図を持つ job は、本項目の worker だけが広告するトークンを追加で要求するので、古い worker は lease しません。古い worker が lease すると、job を待機に残さず失敗させてしまいます。デバイスクラウドの worker の `environment_refusal` は `batch` を持たない spec を拒否し（BE-0448）、ローカルの worker は実行する `cmd` を見つけられないからです。
 
-`lease_job` は、まず現在と同じ方法でアンカーを選びます。worker が担当できる最も古い待機中の job です。アンカーがグループを持つ場合は、アンカーと続く待機中の job をまとめて、合わせて最大 `maxJobs` 件かつ上限が残す余裕の範囲で claim します。アンカーに続く各 job は、アンカーと同じ `group_id` とルートキーを持つものに限ります。アンカーと判定結果が同じなので、worker はどれも担当できます。各 claim は条件付きの `UPDATE ... WHERE status = 'queued'` です。競合に負けても、その1件を飛ばすだけで lease は失敗しません。
+`lease_job` は、まず現在と同じ方法でアンカーを選びます。worker が担当できる最も古い待機中の job です。アンカーがグループを持つ場合は、アンカーと続く待機中の job をまとめて、合わせて最大 `maxJobs` 件かつ上限が残す余裕の範囲で claim します。アンカーに続く各 job は、アンカーと同じ `group_id` とルートキーを持つものに限ります。route を確かめない worker では、ルートキーの代わりに基底キーで照合します。アンカーと判定結果が同じなので、worker はどれも担当できます。各 claim は条件付きの `UPDATE ... WHERE status = 'queued'` です。競合に負けても、その1件を飛ばすだけで lease は失敗しません。
 
 アンカーは担当できる最も古い job のままなので、グループ間の順序は変わりません。後続の job は他のグループの古い job を追い越すことがあり、`maxJobs` がその幅を抑えます。これは意図したコストです。upload を省ける利益のほうが、キュー内の厳密な古さの順序より大きいと判断します。
 
@@ -130,9 +131,11 @@ window 関数は SQLite と PostgreSQL の両方が対応しているので、SQ
 
 ルートキーが要るのは、グループの job がすべて同じ要求トークンを持つわけではないからです。シナリオ自身の `cap:` と `setting:` のトークンは、シナリオの本文から決まります（BE-0467）。同じグループの2つのシナリオが、異なるトークンを要求することがあります。そうしたグループは複数の組に分かれ、組ごとに `can_serve` を1回呼びます。すべてのシナリオが固有の要求を持つ場合、走査のコストは現在の走査と同じです。組の判定結果は1つなので、組のいちばん古い job が、worker の担当できる新しい job を隠すことはありません。
 
-不変条件は、ルートキーが判定結果を左右する job ごとの入力をすべて含むことです。そのため、キーは、`start_run_set` が `route_refusal` で確かめるリストではなく、行に保存されるリストを digest します。つまり、サーバ上のパスでファイルを指す job に `routed_capabilities` が `machine:<id>` を付けた後のリストです（BE-0449）。入力を足す変更は、それをキーに加えなければなりません。
+route を確かめない worker は、ルートキーの代わりに基底キーで組を作ります。worker が route トークンを1つも広告しないとき、`can_serve` は要求集合から route トークンをすべて除きます（`checks_routes`）。デバイスクラウドの worker は route トークンを広告しません。そのため、こうした worker にとっては、基底キーが同じグループの job は、`cap:` と `setting:` のトークンが違っても判定結果が1つです。こうした worker の走査は `group_id` と基底キーで分割し、アンカーに続く job も基底キーで照合します。この走査には、`(status, group_id, base_key, created_at)` の2つ目の index を使います。シナリオごとに異なる `cap:` のトークンを要求するスイートでも、Device Farm の worker では1つのバンドルにまとまります。lease は、claim した各 job を、アンカーではなくその job 自身の capabilities のリストで `unchecked_lease` と判定します。
 
-候補を選ぶクエリは、現在と同じくロックを取りません。window 関数を含むので、PostgreSQL は `FOR UPDATE` を付けても拒否します。claim では、選んだ組だけを対象に、window 関数を含まない2つ目のクエリを実行します。このクエリは、アンカーとそれに続く job をまとめて claim するので、バンドル全体が計数と同じトランザクションに収まります。組の待機中の job を古い順に、`maxJobs` と3つの上限が残す余裕の小さいほうの件数まで取り、アンカーもその両方に数えます。余裕を決める計数は、claim と同じトランザクションの中で行います（上限の節）。PostgreSQL では `FOR UPDATE SKIP LOCKED` でロックし、SQLite では各 claim を条件付きの `UPDATE` で行います。そのため、同じ組を選んだ worker 同士は、いちばん古い1件を奪い合わず、組の job に分散します。バンドルの job は同じルートキーを持ち、ルートキーが複数あるグループは、キーごとにバンドルを埋めていきます。
+不変条件は、ルートキーが判定結果を左右する job ごとの入力をすべて含むことです。そのため、キーは、`start_run_set` が `route_refusal` で確かめるリストではなく、行に保存されるリストを digest します。つまり、サーバ上のパスでファイルを指す job に `routed_capabilities` が `machine:<id>` を付けた後のリストです（BE-0449）。入力を足す変更は、それをキーに加えなければなりません。基底キーも、route トークン以外のすべての入力について同じ規則に従います。
+
+候補を選ぶクエリは、現在と同じくロックを取りません。window 関数を含むので、PostgreSQL は `FOR UPDATE` を付けても拒否します。claim では、選んだ組だけを対象に、window 関数を含まない2つ目のクエリを実行します。このクエリは、アンカーとそれに続く job をまとめて claim するので、バンドル全体が計数と同じトランザクションに収まります。組の待機中の job を古い順に、`maxJobs` と3つの上限が残す余裕の小さいほうの件数まで取り、アンカーもその両方に数えます。余裕を決める計数は、claim と同じトランザクションの中で行います（上限の節）。PostgreSQL では `FOR UPDATE SKIP LOCKED` でロックし、SQLite では各 claim を条件付きの `UPDATE` で行います。そのため、同じ組を選んだ worker 同士は、いちばん古い1件を奪い合わず、組の job に分散します。バンドルの job は同じルートキー（route を確かめない worker では同じ基底キー）を持ち、そうしたキーが複数あるグループは、キーごとにバンドルを埋めていきます。
 
 capability の判定は `can_serve` だけが行うので、5つの判断箇所は1つの定義を共有し続けます。待機中のグループの job の総数には上限を設けません。lease の走査で行う `can_serve` の判定の数は、シナリオの数ではなく、グループとそのルートキーの数で決まるからです。routing できない job の計数は、グループの行を lease の走査と同じくルートキーで、通常の行を lease 時の計数と同じく capabilities のリストで集計します。キーごとに、稼働中の各 worker に対して `can_serve` を1回行い、結果にそのキーの job 数を掛けます。そのため、metrics を読むたびのコストも、シナリオの数ではなくルートキーの数で決まります。データベースは、待機中のグループの行を引き続き index 経由ですべて読みます。
 
@@ -180,14 +183,14 @@ worker は、その互換キーを持つ job が1件でも実行中のあいだ�
 
 ### 作業分解（MECE）
 
-1. **グループの登録。** `job_groups` テーブル、重複したシナリオ名の拒否、`group_id`、`compat_key`、`route_key`、`actor` の列、サーバが採番するグループキー、`GET /api/run-set/<groupId>`、`POST /api/run-set/<groupId>/cancel`、`required_role` でのその editor ゲート、登録と参照のルートに対する machine の許可リストの項目と、両方のルートへの `machine_org` の受け渡し。登録は、単位 3 が上限を lease 時に移すまで、現在どおり上限で打ち切ります。不可分な登録と、冪等性と競合の規則は、どちらも単位 3 とともに入ります。上限で打ち切られたグループを、要求全体への応答として返すわけにはいきません。同じキーを繰り返すと 200 が返り、上限が落としたシナリオは1件も待機に入らないからです。上限が登録時に効いているあいだに要求全体を拒否すると、上限が target のシナリオ数を下回るデプロイでは、`run-set` を実行できなくなります。
+1. **グループの登録。** `job_groups` テーブル、重複したシナリオ名の拒否、`group_id`、`compat_key`、`route_key`、`base_key`、`actor` の列、サーバが採番するグループキー、`GET /api/run-set/<groupId>`、`POST /api/run-set/<groupId>/cancel`、`required_role` でのその editor ゲート、登録と参照のルートに対する machine の許可リストの項目と、両方のルートへの `machine_org` の受け渡し。登録は、単位 3 が上限を lease 時に移すまで、現在どおり上限で打ち切ります。不可分な登録と、冪等性と競合の規則は、どちらも単位 3 とともに入ります。上限で打ち切られたグループを、要求全体への応答として返すわけにはいきません。同じキーを繰り返すと 200 が返り、上限が落としたシナリオは1件も待機に入らないからです。上限が登録時に効いているあいだに要求全体を拒否すると、上限が target のシナリオ数を下回るデプロイでは、`run-set` を実行できなくなります。
 2. **実行意図。** 実行意図を持つ job の形、ローカルの worker でのローカル実行への変換とデバイスクラウドの worker での `BatchRequest` への変換、`batch` を持たない実行意図の spec を受け付ける `environment_refusal`、古い worker に lease させないトークン、web の経路。
-3. **グループ単位の lease と上限。** lease 要求の `maxJobs`、`lease_job` の複数 claim、グループとルートキーの組ごとに1件の候補を読む走査とその index、リストのレスポンス、worker クライアントによる空きスロットの利用、jobs テーブルで数える lease 時の上限、registry から待機中のグループの job を外す処理、registry による jobs テーブルでの lease の確認、ルートキーで集計する routing できない job の計数、不可分な登録、`groupKey` フィールド、要求ダイジェスト、org とキーの一意インデックス、冪等性と競合の規則。
+3. **グループ単位の lease と上限。** lease 要求の `maxJobs`、`lease_job` の複数 claim、グループとルートキー（route を確かめない worker では基底キー）の組ごとに1件の候補を読む走査とその2つの index、リストのレスポンス、worker クライアントによる空きスロットの利用、jobs テーブルで数える lease 時の上限、registry から待機中のグループの job を外す処理、registry による jobs テーブルでの lease の確認、ルートキーで集計する routing できない job の計数、不可分な登録、`groupKey` フィールド、要求ダイジェスト、org とキーの一意インデックス、冪等性と競合の規則。
 4. **upload の共有。** Device Farm provider のアプリの upload を互換キーごとに保持する処理、job のシナリオを含む場合に限った package の再利用、起動時の環境変数を設定するフックの例外、job ごとの upload へのフォールバック。
 5. **プラットフォームによるルーティング。** `host:` を含まないグループの job の要求トークン、iOS のグループの job の `kind:` のトークンとそれを広告する worker、プラットフォームを広告するデバイスクラウドの worker、`--capabilities` の上書きでの `platform:` と `kind:` の予約、登録時の job ごとの `scenario_route_needs` と `route_refusal`（worker の読み取りは要求ごとに1回、ルートの要求はシナリオの文面ごとに1回）、実行意図の job に対する環境の規則の例外、`environment` を送った要求への 400、Replay タブが `environment` を送らなくなる変更と、環境のセレクタに代わるファンアウトの操作、provenance の記録。この単位が入るまで、`run-set` は `environment` を必須とします。そのあいだ、グループの job は `environment:<provider>` と実行意図のトークンを要求し、現在どおりその環境に回ります。
 6. **ドキュメント。** serve API、worker、ルーティングについての `docs/` と `docs/ja/` の各ページ、および `DESIGN.md` と `docs/architecture.md` の該当箇所。
 
-範囲外とするのは、グループの結果を GitHub の check として公開すること、worker 間で upload を共有すること、ローカルのデバイスで job を並行実行すること、グループ外の job に lease 時の上限を適用すること、デバイスクラウドの worker での `cap:` と `setting:` の確認です。デバイスクラウドの worker は、現在 route トークンを計算しません（BE-0467）。lease はそうした job を未確認として記録し（`unchecked_lease`）、レポートにもそう表示します。グループの job を `appium` のグリッドに回すことと、デバイスクラウドでファミリーによって端末を選ぶことも範囲外です。
+範囲外とするのは、グループの結果を GitHub の check として公開すること、worker 間で upload を共有すること、ローカルのデバイスで job を並行実行すること、グループ外の job に lease 時の上限を適用すること、デバイスクラウドの worker での `cap:` と `setting:` の確認です。デバイスクラウドの worker は、現在 route トークンを計算しません（BE-0467）。lease はそうした job を未確認として記録し（`unchecked_lease`）、レポートにもそう表示します。グループの job を `appium` のグリッドに回すことと、デバイスクラウドでファミリーによって端末を選ぶことも範囲外です。デバイスクラウドが満たせない `runsOn` の条件（`ios.model`、`ios.os`、`android.avd`、`android.apiLevel`）の routing も範囲外とします。
 
 ## 検討した代替案
 
