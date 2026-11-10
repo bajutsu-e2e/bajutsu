@@ -18,10 +18,12 @@ examples are `multiTouch` and `deviceControl.push`. The preflight check runs bef
 device. It stops a scenario that needs a capability the chosen backend lacks.
 [Drivers](drivers.md#capabilities-capability) lists every capability with its meaning.
 
-The two tables split the differences by whether a capability can express them:
+The three tables split the differences by what kind of difference each one is:
 
 - **Capability parity** lists every capability, with one mark per backend. The test checks this
   table.
+- **Launch settings** lists what a run sets up before the app starts. The test checks this table
+  too.
 - **Differences in behavior** lists differences that no capability names. Both backends can
   declare a feature that still behaves differently on one of them. People keep this table by hand.
 
@@ -83,10 +85,32 @@ Each cell of the capability table starts with one of four marks:
 | `deviceControl.permissions.calendar` | ✅ | ✅ | |
 | `deviceControl.permissions.notifications` | gap | ✅ | `simctl privacy` has no notifications service. A `handleSystemAlert` step answers the prompt meanwhile. |
 
+## Launch settings
+
+A **launch setting** reaches the device before the app starts. Two examples are a clean reinstall
+and a seeded photo library. Each platform route records the settings it can apply in a
+support table, `settings_support.py`. A run fails before any device work when it
+needs a setting the route cannot apply. A target can opt out by listing the setting under
+`runsOn.ignoredSettings` with a reason. The run then goes ahead without the setting.
+
+This table leaves out the permission settings. The capability table
+already covers them. A ✅ means the route applies the setting.
+
+<!-- settings-table -->
+| Setting | iOS | Android | Notes |
+|---|---|---|---|
+| `erase` | ✅ | ✅ | Android has no device-wide wipe. `erase` uninstalls the app and clears its data with `pm clear`. |
+| `install` | ✅ | ✅ | |
+| `seedPhotos` | ✅ | ✅ | Android empties a directory Bajutsu owns in shared storage, pushes the images, and rescans it ([BE-0479](../roadmaps/BE-0479-android-seed-photos/BE-0479-android-seed-photos.md)). |
+| `locale` | ✅ | gap | BE-0478 adds `runsOn.android.locale` through per-app locales, on Android 13 and later. |
+| `launchEnv` | ✅ | ✅ | Android passes the variables to the app as intent extras. |
+| `launchArgs` | ✅ | n/a | `am start` takes no launch arguments. `launchEnv` carries values to the app instead. |
+| `deeplink` | ✅ | ✅ | |
+
 ## Differences in behavior
 
-The capability table cannot show the differences below. Each one sits inside a feature both
-backends declare, or outside the capability set altogether.
+Neither table above can show the differences below. Each one sits inside a feature both backends
+declare, or outside what the two tables cover.
 
 | Behavior | iOS | Android | What it means today |
 |---|---|---|---|
@@ -95,9 +119,8 @@ backends declare, or outside the capability set altogether.
 | `pinch` and `rotate` | XCUITest performs both natively. | adb writes raw touch events with `sendevent`, which needs root. | Both steps fail on an unrooted device. |
 | `setLocation` | `simctl` sets it on the Simulator. | The emulator console sets it. | Neither backend sets the location on a real device yet. [BE-0475](../roadmaps/BE-0475-ios-runner-set-location/BE-0475-ios-runner-set-location.md) covers iOS. |
 | Clipboard steps | `simctl` reads and writes the pasteboard. | A receiver inside the app does the work. The app must link BajutsuAndroid, and Android 10 or later lets only the focused app read the clipboard. | An app without BajutsuAndroid fails every clipboard step, and so does a read while the app is in the background. |
-| `locale`, `launchArgs`, and `seedPhotos` | The launch applies all three. | The launch applies none of them, and forwards `launchEnv` as intent extras. | A scenario that relies on one of the three runs on Android without it. BE-0478 adds `runsOn.android.locale` for Android 13 and later. No item covers the other two yet. |
 
-## How the test checks the capability table
+## How the test checks the tables
 
 `tests/test_platform_parity.py` reads the rows after the `parity-table` marker. It reads them from
 this page and from its mirror under `docs/ja/`. Four checks run on every `make check`:
@@ -109,6 +132,11 @@ this page and from its mirror under `docs/ja/`. Four checks run on every `make c
 
 When a change makes a backend declare a new capability, the test fails until the cell turns to ✅.
 The same holds the other way. A new capability token needs a new row before the test passes.
+
+The test checks the rows after the `settings-table` marker the same way. Their source is the
+`ios-simulator` and `android` routes of the support table. A cell reads ✅ when the route supports
+the setting or already satisfies it. A new setting key needs a new row. A route that starts to apply
+a setting needs its cell turned to ✅.
 
 The same test also checks the four-backend capability table in
 [Drivers](drivers.md#capabilities-capability). That table needs a row for every token.

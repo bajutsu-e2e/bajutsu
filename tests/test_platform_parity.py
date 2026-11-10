@@ -3,8 +3,9 @@
 The table is the working list for closing the gaps between the two mobile backends. Each mark is
 checked against the backend's static `CAPABILITIES` (read through `backends.capabilities_for`, the
 same source the preflight uses), so a gap cannot open or close without the page changing with it,
-and a new capability token cannot ship without a row. The four-backend table in docs/drivers.md gets
-the same row-coverage and ✅-matches-declared checks.
+and a new capability token cannot ship without a row. The launch-settings table on the same page is
+checked the same way against the route support table (`settings_support`, BE-0467), and the
+four-backend table in docs/drivers.md gets the row-coverage and ✅-matches-declared checks.
 """
 
 from __future__ import annotations
@@ -14,11 +15,13 @@ from pathlib import Path
 import pytest
 
 from bajutsu.common import backends
+from bajutsu.common.capability import settings_support
 from bajutsu.common.drivers import base
 
 _DOCS = Path(__file__).resolve().parents[1] / "docs"
 _PAGES = {"en": _DOCS / "platform-parity.md", "ja": _DOCS / "ja" / "platform-parity.md"}
 _MARKER = "<!-- parity-table -->"
+_SETTINGS_MARKER = "<!-- settings-table -->"
 # Column order after the token column; each maps to the actuator whose CAPABILITIES it describes.
 _BACKENDS = ("xcuitest", "adb")
 _MARKS = frozenset({"✅", "gap", "n/a", "per-run"})
@@ -33,10 +36,10 @@ def _all_tokens() -> set[str]:
     return named | {base.permission_capability(s) for s in base.PERMISSION_SERVICES}
 
 
-def _rows(page: Path) -> dict[str, tuple[str, str, str]]:
-    """Token → (iOS mark, Android mark, note) for the body rows after the marker."""
+def _rows(page: Path, marker: str = _MARKER) -> dict[str, tuple[str, str, str]]:
+    """Key → (iOS mark, Android mark, note) for the body rows after *marker*."""
     lines = page.read_text(encoding="utf-8").splitlines()
-    start = lines.index(_MARKER) + 3  # skip the marker, the header, and the separator row
+    start = lines.index(marker) + 3  # skip the marker, the header, and the separator row
     rows: dict[str, tuple[str, str, str]] = {}
     for line in lines[start:]:
         if not line.startswith("|"):
@@ -123,3 +126,39 @@ def test_both_languages_carry_the_same_marks() -> None:
     marks_en = {t: cells[:2] for t, cells in en.items()}
     marks_ja = {t: cells[:2] for t, cells in ja.items()}
     assert marks_en == marks_ja
+
+
+# The launch-settings table: one column per platform route, keyed like `runsOn.ignoredSettings`.
+# Permission keys are left out because the capability table already carries them, and a route reads
+# them from those same tokens (`route_settings`).
+_ROUTES: tuple[settings_support.Route, ...] = ("ios-simulator", "android")
+_APPLIED = frozenset({"supported", "satisfied"})
+
+
+def _setting_keys() -> set[str]:
+    return {k for k in settings_support.SETTING_KEYS if not k.startswith("permissions.")}
+
+
+@pytest.mark.parametrize("lang", sorted(_PAGES))
+def test_settings_table_matches_the_route_support_table(lang: str) -> None:
+    rows = _rows(_PAGES[lang], _SETTINGS_MARKER)
+    keys = _setting_keys()
+    assert set(rows) == keys, (
+        f"missing rows: {sorted(keys - set(rows))}; unknown rows: {sorted(set(rows) - keys)}"
+    )
+    wrong = [
+        (key, route, cells[i])
+        for key, cells in rows.items()
+        for i, route in enumerate(_ROUTES)
+        if (cells[i] == "✅") != (settings_support.route_settings(route)[key] in _APPLIED)
+    ]
+    assert not wrong, f"marks that disagree with the route support table: {wrong}"
+    bad = [k for k, (ios, android, note) in rows.items() if not {ios, android} <= _MARKS]
+    assert not bad, f"marks outside {sorted(_MARKS)}: {bad}"
+    bare = [k for k, (ios, android, note) in rows.items() if {ios, android} != {"✅"} and not note]
+    assert not bare, f"rows with a gap or n/a mark need a note: {bare}"
+
+
+def test_both_languages_carry_the_same_settings_marks() -> None:
+    en, ja = (_rows(_PAGES[lang], _SETTINGS_MARKER) for lang in ("en", "ja"))
+    assert {k: c[:2] for k, c in en.items()} == {k: c[:2] for k, c in ja.items()}
