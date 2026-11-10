@@ -15,65 +15,64 @@
 
 ## Introduction
 
-Bajutsu writes a run's evidence — screenshots, the accessibility-element dump,
-`network.json`, and a copy of the scenario — under a run directory created with
-whatever the process's default umask happens to be. On a typical `022` umask that
-means `0755` directories and `0644` files: readable by every other local account.
+Bajutsu writes a run's evidence under a run directory. The evidence covers screenshots, the
+accessibility-element dump, `network.json`, and a copy of the scenario. The directory is created
+with whatever the process's default umask happens to be. On a typical `022` umask, that means `0755`
+directories and `0644` files, which every other local account can read.
 
 ## Motivation
 
-`bajutsu/evidence.py` creates the run's directory tree with plain `Path.mkdir`
-calls (e.g. `step_dir.mkdir(parents=True, exist_ok=True)`, `scenario_dir.mkdir(parents=True,
-exist_ok=True)`) and writes screenshots, element dumps, and interval recordings into
-it with ordinary file writes; `bajutsu/network.py` dumps captured traffic to
-`network.json` the same way. None of these call sites pass an explicit `mode`, so the
-resulting permissions are whatever the process umask leaves — world-readable by
-default on most systems.
+`bajutsu/evidence.py` creates the run's directory tree with plain `Path.mkdir` calls (for example
+`step_dir.mkdir(parents=True, exist_ok=True)` and `scenario_dir.mkdir(parents=True,
+exist_ok=True)`). It writes screenshots, element dumps, and interval recordings into the tree with
+ordinary file writes. `bajutsu/network.py` dumps captured traffic to `network.json` the same way.
 
-This is a hardening gap rather than an exploited vulnerability: a run's artifacts can
-carry sensitive data that Bajutsu deliberately protects elsewhere — `network.json` can
-contain request/response bodies and headers (redacted by rule, but redaction is a
-best-effort denylist, not a guarantee against every future header or body shape), and
-a screenshot or the scenario's own evidence can capture whatever secret-masked or
-unmasked text was on screen at capture time. Severity is medium: it requires another
-local account on the same host to read the run directory, but a shared CI runner is
-exactly the environment where that adjacency shows up, and it's the same threat model
-BE-0032's secret masking already defends against for logs.
+None of these call sites passes an explicit `mode`, so the resulting permissions are whatever the
+process umask leaves. On most systems, that means world-readable by default.
+
+This is a hardening gap rather than an exploited vulnerability. A run's artifacts can carry
+sensitive data that Bajutsu deliberately protects elsewhere:
+
+- `network.json` can contain request/response bodies and headers. Redaction applies by rule, but
+  redaction is a best-effort denylist, not a guarantee against every future header or body shape.
+- A screenshot, or the scenario's own evidence, can capture whatever secret-masked or unmasked text
+  was on screen at capture time.
+
+Severity is medium. Reading the run directory requires another local account on the same host. A
+shared CI runner is exactly the environment where that adjacency shows up, though, and it is the
+same threat model that BE-0032's secret masking already defends against for logs.
 
 ## Detailed design
 
-Tighten the permissions the runner creates artifacts with, without touching what gets
-written or how pass/fail is decided:
+Tighten the permissions the runner creates artifacts with, without touching what gets written or how
+pass/fail is decided:
 
-- Create the top-level run directory `0700` (owner read/write/execute only) at the
-  point it is first created, so every path underneath it inherits a non-world-readable
-  parent.
-- Create files that may hold sensitive content — `network.json`, the copied scenario,
-  the accessibility-element dump (`elements.json`), and screenshots — `0600` (owner
-  read/write only) at write time, rather than relying on the directory permission alone
-  to gate access.
-- Apply this uniformly across backends (idb and Playwright both write through the same
-  `evidence.py` / `network.py` paths), so the fix lives once in the shared runner code,
-  not per driver.
-- Keep this portable: `Path.mkdir(mode=...)` and `os.open` with an explicit mode (or
-  `os.chmod` right after creation) work the same way on macOS and Linux, which is all
-  the deterministic gate needs to support.
+- Create the top-level run directory with mode `0700` (owner read/write/execute only) at the point it is first
+  created. Every path underneath it then inherits a non-world-readable parent.
+- Create files that may hold sensitive content with mode `0600` (owner read/write only) at write time. Those
+  files are `network.json`, the copied scenario, the accessibility-element dump (`elements.json`),
+  and screenshots. Relying on the directory permission alone to gate access is not enough.
+- Apply the change uniformly across backends. idb and Playwright both write through the same
+  `evidence.py` / `network.py` paths, so the fix lives once in the shared runner code, not per
+  driver.
+- Keep the change portable. `Path.mkdir(mode=...)` and `os.open` with an explicit mode (or
+  `os.chmod` right after creation) work the same way on macOS and Linux, which is all the
+  deterministic gate needs to support.
 
 ## Alternatives considered
 
-- **Document the umask requirement instead of enforcing it in code.** Rejected: it
-  depends on every operator/CI image setting a strict umask correctly, which is exactly
-  the kind of environment-dependent assumption Bajutsu avoids elsewhere (the tool is
-  meant to behave the same regardless of the host's ambient config).
-  Enforcing the mode at creation time makes the guarantee unconditional.
-- **Encrypt artifacts at rest.** Rejected as disproportionate: the threat here is
-  another local account reading a world-readable file, not a stolen disk; file-mode
-  restriction addresses that threat directly with no added complexity or key
-  management.
-- **Redact more aggressively instead of restricting permissions.** Rejected as
-  complementary, not a substitute: redaction reduces what a leaked artifact reveals,
-  but it cannot be complete against every possible sensitive value, so it doesn't
-  remove the need to also restrict who can read the artifact.
+- **Document the umask requirement instead of enforcing it in code.** Rejected. The approach
+  depends on every operator and CI image setting a strict umask correctly. Bajutsu avoids exactly
+  this kind of environment-dependent assumption elsewhere, because the tool is meant to behave the
+  same regardless of the host's ambient config. Enforcing the mode at creation time makes the
+  guarantee unconditional.
+- **Encrypt artifacts at rest.** Rejected as disproportionate. The threat here is another local
+  account reading a world-readable file, not a stolen disk. File-mode restriction addresses that
+  threat directly, with no added complexity or key management.
+- **Redact more aggressively instead of restricting permissions.** Rejected as complementary, not a
+  substitute. Redaction reduces what a leaked artifact reveals, but it cannot be complete against
+  every possible sensitive value. It therefore does not remove the need to also restrict who can
+  read the artifact.
 
 ## Progress
 
