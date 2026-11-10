@@ -32,7 +32,7 @@ This move does not relax prime directive 1 ("AI is the author and the failure in
 
 A device-side executor resolves a selector and evaluates a wait or an `assert` deterministically. It is exactly as deterministic as the host doing the same read today. The code that walks the accessibility tree stays deterministic when it runs on-device instead of over HTTP.
 
-The verifiable outcome: once a platform implementation lands and exercises the protocol, a `wait for` step's round-trip count drops from one per 50-millisecond poll to one per step. [BE-0105](../BE-0105-xcuitest-single-snapshot-query/BE-0105-xcuitest-single-snapshot-query.md) did the same when it collapsed a multi-round-trip element read into a single snapshot.
+The verifiable outcome this protocol design should produce: once a platform implementation lands and exercises the protocol, a `wait for` step's round-trip count drops from one per 50-millisecond poll to one per step. [BE-0105](../BE-0105-xcuitest-single-snapshot-query/BE-0105-xcuitest-single-snapshot-query.md) did the same when it collapsed a multi-round-trip element read into a single snapshot.
 
 ## Detailed design
 
@@ -51,7 +51,7 @@ Python keeps three responsibilities that no protocol change should move off the 
 
 - Expanding a scenario into the steps a device-side executor can run. The scenario format and its expansion rules stay host-owned.
 - Receiving the evidence the device returns and writing it into `manifest.json` and the HTML report. The evidence is the resolved element tree, coordinates, a screenshot, and the timestamp a condition was satisfied at. Writing is unchanged from today.
-- Deciding pass/fail. A device-side evaluation result is an input. The host re-checks it against the same deterministic rule the host already applies, and still renders the final verdict.
+- Deciding pass/fail. A device-side evaluation result is an input. The host re-checks it against the same deterministic rule the host already applies, and the host, not the device, still renders the final verdict.
 
 These move to the device:
 

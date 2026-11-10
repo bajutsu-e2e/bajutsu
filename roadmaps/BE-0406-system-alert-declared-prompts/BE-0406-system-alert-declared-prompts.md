@@ -256,7 +256,7 @@ Everything else about those two paths is untouched:
 - BE-0399's rule that an in-tree tap is issued only on a poll whose own probe reported no
   SpringBoard alert.
 
-What changes is the question they ask of the tree. They now ask which declared alert is showing,
+What changes is only the question they ask of the tree. They now ask which declared alert is showing,
 instead of which acceptable word is on a button. These three sites are `pick_alert_label`'s only
 Python callers, so the function is deleted with `labels`.
 
