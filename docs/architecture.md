@@ -252,7 +252,7 @@ Three contracts are enforced:
   - The independence keeps the contract a stable layer. A consumer can depend on it without pulling in the runtime.
   - It underpins cross-version schema reads (BE-0119) and any future split of the periphery from the core.
 
-The check is static analysis on the import graph. It uses no model, and nothing on the `run` / CI verdict path changes beyond a deterministic pass/fail. A new module's layer decides where the module belongs:
+The check is static analysis on the import graph. It uses no model, and it puts nothing on the `run` / CI verdict path beyond a deterministic pass/fail. A new module's layer decides where the module belongs:
 
 - A module on the verdict/evidence path is core and must not reach the periphery.
 - A module that consumes the contract is periphery and belongs behind an extra.
