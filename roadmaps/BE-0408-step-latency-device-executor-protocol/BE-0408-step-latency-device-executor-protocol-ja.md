@@ -142,7 +142,7 @@ Python は、プロトコルを変更した後も、次の3つの役割をホス
 
 - [#1949](https://github.com/bajutsu-e2e/bajutsu/pull/1949) は、5つの単位すべてを完了しました。出荷した内容は次のとおりです。
   - 言語中立なセレクタ解決フィクスチャ（`tests/fixtures/be0408/`）と、`find_all` / `resolve_unique` / `parse_hierarchy` への再生テスト。
-  - `docs/selectors.md` の「別言語（Swift と Kotlin）への移植契約」節。
+  - `docs/selectors.md` の「別言語（Swift・Kotlin）への移植契約」節。
   - ステージ1〜4を覆う、共有 OpenAPI 3.1 文書の草案（`protocol/device-executor.openapi.yaml` と `protocol/README.md`）。
   - この文書自身の適合性フィクスチャとテスト（`tests/fixtures/be0408/protocol/`、`tests/test_be0408_protocol_fixtures.py`）。
 

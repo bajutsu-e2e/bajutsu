@@ -30,7 +30,7 @@
 
 本提案は、このタップが起きること自体を止められません。変えるのは、タップが黙って起きるかどうかです。割り込み監視は、辞退したアラートのボタンを報告するようになります。そのアラートを見た step または `expect` は、シナリオに代わって誰かが答えたかのようにランを続けません。ボタンを名指しして失敗します。
 
-後方互換は意図的に保ちません。`labels` を書いたままのシナリオは読み込みに失敗し、代わりに `rules` を使うよう名指しするエラーになります。[BE-0401](../BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation-ja.md) が削除したキーにも、同じ扱いを与えました。
+後方互換は意図的に保ちません。`labels` を書いたままのシナリオは読み込みに失敗し、代わりに `rules` を使うよう名指しするエラーになります。これは、[BE-0401](../BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation-ja.md) が自身の削除したキーに与えたのと同じ扱いです。
 
 ## 動機
 
@@ -195,7 +195,7 @@ XCUITest の実装は、`bajutsu/drivers/xcuitest.py:1105-1114` のポーリン�
 
 そのため `savePassword` は、`systemAlertHandling` のルールとしてのみ宣言できます。`HandleSystemAlert` は、解決しようのないステップを受け入れず、ルールの形を名指しするメッセージとともに、これをパース時に拒否します。
 
-宣言の面が分かれるのは、このプロンプトが最初です。そこで表は、プロンプトがどの面に届くかの記録を、プロンプトごとに持ちます。面は 3 つあります。`handleSystemAlert` ステップ、ガードのネイティブな SpringBoard の probe、ガードのツリー内消去です。この記録は、単位 2 が述べたとおり、3 つの仕事をします。ステップでの `savePassword` を拒否すること。どのルールがツリー内の経路を武装させるかを決めること。ツリー内でしか出ないルールを、割り込み監視へ push する方針から外すことです。
+宣言の面が分かれるのは、このプロンプトが最初です。そこで表は、プロンプトがどの面に届くかの記録を、プロンプトごとに持ちます。面は 3 つあります。`handleSystemAlert` ステップ、ガードのネイティブな SpringBoard の probe、ガードのツリー内消去です。この記録は、3 つの仕事をします。ステップでの `savePassword` を拒否すること。どのルールがツリー内の経路を武装させるかを決めること。ツリー内でしか出ないルールを、割り込み監視へ push する方針から外すことです。あとの 2 つは、単位 2 が述べたとおりです。
 
 **ボタンの組を 3 通り描画します。** 以下のラベルは、`WebUI.framework/<lang>.lproj/Localizable.strings` から転記しました。このファイルは、Simulator ランタイムの cryptex の `System/Cryptexes/OS/System/Library/PrivateFrameworks/` の下にあります。BE-0320 が求めるとおり、新しいランタイムで表を検査し直す人にとって、この置き場所には 2 つ意味があります。
 

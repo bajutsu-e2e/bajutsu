@@ -408,7 +408,7 @@ than accepting a step that could never resolve.
 This is the first prompt for which the declaration surfaces diverge. The table therefore gains a
 per-prompt record of which surfaces a prompt reaches. The three surfaces are the `handleSystemAlert`
 step, the guard's native SpringBoard probe, and the guard's in-tree dismissal. That record does
-three jobs, as Unit 2a describes:
+three jobs, the last two of which Unit 2a describes:
 
 - It rejects `savePassword` in a step.
 - It decides which rules arm the in-tree paths.
