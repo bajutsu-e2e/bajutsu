@@ -146,8 +146,10 @@ def _editable_element_fields(node: ET.Element) -> tuple[str | None, str | None]:
 
     `label` stays an accessible name (`content-desc`, else the hint) rather than the typed text, so an
     `into: { label: … }` selector keeps its meaning as the user types — the split iOS already has. An
-    empty field reports its hint as `text`, which the dump's `hint` attribute (UI Automator 2.3+) lets
-    us tell apart; a masked field's text is withheld, whatever the dump carries in it.
+    empty field reports its hint as `text`, told apart only when the dump carries `hint` (the resident
+    server's does); on the `uiautomator dump` fallback, which may omit it, an empty field's hint reads
+    as its value. The dump has no `isShowingHintText`, so typed text equal to the hint reads as no
+    value. A masked field's text is withheld, whatever the dump carries in it.
     """
     desc = node.get("content-desc") or ""
     text = node.get("text") or ""
@@ -159,8 +161,7 @@ def _editable_element_fields(node: ET.Element) -> tuple[str | None, str | None]:
 
 def _to_element(node: ET.Element, malformed_bounds: list[int] | None = None) -> base.Element:
     if node.get("class") == _EDITABLE_CLASS:
-        label, value = _editable_element_fields(node)
-        return _element(node, label, value, malformed_bounds)
+        return _element(node, *_editable_element_fields(node), malformed_bounds)
     desc = node.get("content-desc") or ""
     text = node.get("text") or ""
     # `text` is the visible label; `content-desc` is where the showcase mirrors the assertion value

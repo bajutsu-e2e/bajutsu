@@ -363,13 +363,7 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   `testTag` surfaced via `testTagsAsResourceId` reproduces verbatim while a native `android:id`
   drops its prefix), `text` → `label` (`content-desc` fallback), `content-desc` → `value` (the app
   mirrors its state value there, SPEC §2.1), and the widget `class` (plus enabled / selected /
-  checked state) → `traits`. An editable text field — a node whose class is
-  `android.widget.EditText`, which both a Views `EditText` and a Compose text field report — maps
-  the other way, as on iOS: its `text` → `value`, so a `value` assertion and a `clear` step read
-  what was typed, and `content-desc` (else the `hint`) → `label`, so a label selector keeps its
-  meaning as the text changes. An empty field reports its hint as `text`; the dump's `hint`
-  attribute identifies that case, and the field's `value` is then empty. A masked field
-  (`password="true"`) never exposes its text as `value`. The local name is matched **exactly** — the driver does no `.`↔`_`
+  checked state) → `traits`. The local name is matched **exactly** — the driver does no `.`↔`_`
   rewriting, which would conflate distinct ids and erode determinism. Where a platform's native id
   syntax cannot reproduce the SPEC id verbatim (Android Views: `android:id` allows neither `.` nor
   `-`, so `stable.refresh` surfaces as `stable_refresh`), the scenario carries **both** id forms in
@@ -379,7 +373,16 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   `android:id` a Views lookup needs — ships as a standalone library,
   [`IdentifierTool`](../IdentifierTool/README.md) (BE-0405), which the showcase itself consumes and
   which carries no dependency on `BajutsuAndroid`; declaring those `android:id` resources stays the
-  consuming app's own job.
+  consuming app's own job. An editable text field — a node whose class is `android.widget.EditText`,
+  which both a Views `EditText` and a Compose text field report — reverses the `text` /
+  `content-desc` mapping above, as on iOS: its `text` → `value`, so a `value` assertion and a
+  `clear` step read what was typed, and `content-desc` (else the `hint`) → `label`, so a label
+  selector keeps its meaning as the text changes. An empty field reports its hint as `text`. When
+  the dump carries a `hint` attribute (the resident server's dump does), the driver identifies that
+  case and the field's `value` is then empty; the `uiautomator dump` fallback may omit `hint`, and
+  there an empty field's hint reads as its `value`. The dump also has no `isShowingHintText`, so
+  typed text equal to the hint reads as no `value`. A masked field (`password="true"`) never exposes
+  its text as `value`.
 - `tap(sel)`: `_resolve` confirms uniqueness (**retries not-found, fails ambiguity fast** — a
   mid-transition dump is a transient null-root that is retried, and a 2+ match fails immediately).
   `tap`, `long_press`, and `double_tap` then send the resolved element's identity — its raw

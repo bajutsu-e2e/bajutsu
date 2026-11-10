@@ -122,9 +122,10 @@ Not every `scenarios/` file has a twin, by design:
   file does not. Its two app-side ids sit behind a lane that serves the page.
 - **`text_editing.yaml`** — once text is typed the Search field drops its placeholder, so a `-noax`
   run cannot re-address it by the visible "Search horses" label for the follow-up `select` / `clear`
-  / `delete`. It is also iOS-only (like `push.yaml`): the Compose / Views trees do not expose an
-  editable field's text as its `value`, which `clear` reads and the edits are checked against, so all
-  four editing actuators are covered on the SwiftUI and UIKit a11y apps under XCUITest.
+  / `delete`. It runs on iOS, covering all four editing actuators on the SwiftUI and UIKit a11y apps
+  under XCUITest. The adb driver now reads an editable field's text as its `value` (#2388), which
+  `clear` reads and the edits are checked against; the Android lane picks the scenario up with the
+  `select` / `copy` work (#2389).
 
 Two twins are **SwiftUI-only** (`tags: [swiftui]`, excluded by `run-uikit-noax`): `gestures_multitouch`
 (the `SHOWCASE_GESTURES` pinch/rotate screen exists in SwiftUI + Compose, not UIKit — the same gap the

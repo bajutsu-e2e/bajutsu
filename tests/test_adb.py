@@ -288,6 +288,16 @@ def test_editable_field_reads_typed_text_as_value_and_keeps_its_name_as_label() 
     assert (caption["label"], caption["value"]) == ("Horse 3", "3")
 
 
+def test_editable_field_without_a_hint_attribute_reads_its_text_as_value() -> None:
+    # The `uiautomator dump` fallback may omit `hint`, so an empty field's hint there reads as value.
+    xml = """<hierarchy rotation="0">
+  <node resource-id="search.field" class="android.widget.EditText" text="Search horses"
+    content-desc="" bounds="[0,0][100,50]" />
+</hierarchy>"""
+    field = _by_id(parse_hierarchy(xml), "search.field")
+    assert (field["label"], field["value"]) == (None, "Search horses")
+
+
 def test_resource_id_with_no_local_name_is_none_not_empty() -> None:
     # A malformed resource-id ending in `/` must yield identifier None, not "" (which no selector
     # matches yet is falsy-but-present).
