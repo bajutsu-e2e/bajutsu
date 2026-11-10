@@ -36,7 +36,7 @@
 
 S3 や GCS のオブジェクトストレージは、プレフィックスに基づくライフサイクルルールを備えています。
 呼び出し側がアップロードパスを制御できれば、保持ポリシーをクラウドプロバイダに委譲できます。
-Bajutsu 自身には、TTL ロジックもガベージコレクションも削除コードも要りません。
+Bajutsu 自身には、TTL ロジック、ガベージコレクション、削除コードのいずれも要りません。
 
 現在の `serve` アーキテクチャ（BE-0015、BE-0106）には、`serve/server/object_store.py` に S3 向けの
 `ObjectStore` プロトコルがあります。アーティファクトの読み出し、シナリオの保存、ビジュアル
@@ -47,7 +47,7 @@ Bajutsu 自身には、TTL ロジックもガベージコレクションも削�
 
 ### 1. URI スキームとパース
 
-ストレージバックエンド、バケット、プレフィックスを、一つの URI で表現します。
+ストレージバックエンド、バケット、プレフィックスを、1つの URI で表現します。
 
 ```
 s3://my-bucket/evidence/main/
@@ -75,7 +75,7 @@ class StoreURI:
 （`bajutsu/object_store.py`）へ昇格させます。`run` と `serve` の両方から使えるようにするためです。
 
 現行のプロトコル表面（`exists`、`get_bytes`、`put_bytes`、`put_file`、`presigned_url`、
-`list_keys`）は維持したまま、次の二つを追加します。
+`list_keys`）は維持したまま、次の2つを追加します。
 
 - `put_bytes` と `put_file` に `content_type` キーワード引数を追加します。アップロード時に、
   アーティファクトごとの MIME タイプを設定するためです。
@@ -105,7 +105,7 @@ class ObjectStore(Protocol):
 
 ### 3. 二層アップロードアーキテクチャ
 
-証跡のアップロードには、デプロイ構成に応じて使い分ける二つのモードがあります。設計上の要点は、
+証跡のアップロードには、デプロイ構成に応じて使い分ける2つのモードがあります。設計上の要点は、
 **`serve` 経由で実行する場合、Worker にクラウドの認証情報が不要**であることです。
 
 | モード | 認証情報の保持者 | Worker の依存 | 利用場面 |
@@ -116,7 +116,7 @@ class ObjectStore(Protocol):
 #### 3a. Presigned URL モード（serve、推奨）
 
 Server が `ObjectStore` の認証情報を保持し、署名付き PUT URL を発行します。Worker は平文の HTTP PUT で
-アップロードするので、SDK も認証情報も要りません。
+アップロードするので、SDK と認証情報のどちらも要りません。
 
 ```
 1. Run が Worker 上で完了 → 証跡が runs/<run_id>/ にローカル保存される
@@ -228,7 +228,7 @@ Bajutsu は認証情報を**管理しません**。各 SDK の標準クレデン
   Identity Federation、メタデータサーバー）
 
 `serve` 構成で、これらの認証情報が必要なのは **Server だけ**です。Worker は presigned URL 経由で
-アップロードするので、クラウド SDK も認証情報も要りません。エフェメラルなコンテナにシークレットを
+アップロードするので、クラウド SDK と認証情報のどちらも要りません。エフェメラルなコンテナにシークレットを
 配布する必要がなくなります。
 
 GCS の signed URL には、署名用の秘密鍵が要ります。ところが、Workload Identity Federation で解決した
@@ -243,8 +243,8 @@ ADC の認証情報は、アクセストークンしか持ちません。Kuberne
 - KSA→GSA の認証情報はローカルで署名できません。その `service_account_email` と `access_token` を
   使い、IAM の `signBlob` API 経由で署名します。
 
-運用上の前提が一つ増えるのは、IAM 経由で署名する場合だけです。署名する GSA 自身に、IAM の権限を
-一つ追加する必要があります。付与する権限は `roles/iam.serviceAccountTokenCreator`
+運用上の前提が1つ増えるのは、IAM 経由で署名する場合だけです。署名する GSA 自身に、IAM の権限を
+1つ追加する必要があります。付与する権限は `roles/iam.serviceAccountTokenCreator`
 （または同等の `iam.serviceAccounts.signBlob` 権限）です。
 
 ## 検討した代替案
