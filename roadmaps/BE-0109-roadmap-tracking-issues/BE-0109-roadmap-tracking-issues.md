@@ -61,8 +61,9 @@ enough.
 
 1. **Issue existence is keyed off GitHub, not a repo field.** A tracking issue for `BE-NNNN` is an
    open issue that carries the `roadmap-tracking` label and has `BE-NNNN` in its title. The sync
-   asks GitHub whether that issue exists (`gh issue list --label roadmap-tracking --state
-   open --search "BE-NNNN in:title"`) instead of reading a row out of the BE file.
+   asks GitHub whether that issue exists
+   (`gh issue list --label roadmap-tracking --state open --search "BE-NNNN in:title"`)
+   instead of reading a row out of the BE file.
 
    This is what lets the design avoid writing anything back to the repo. It also keeps the
    assignee, the state that changes most often, only where GitHub already manages it.

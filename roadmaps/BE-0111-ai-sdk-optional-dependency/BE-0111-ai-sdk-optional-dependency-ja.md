@@ -91,8 +91,8 @@ import guard テスト（`tests/serve/test_import_guard.py` のパターン）�
 ### 4. ゲートの AI 経路のテスト網は dev group で維持する
 
 AI のモジュールはコードベースの一部であり続けるので、回帰の網が要ります。そのため `dev` の依存
-グループは、AI extra を引き続きインストールします（`bajutsu[bedrock,server,worker,db,oauth,mcp,
-visual,schema]` の列に `ai` を加えます）。`make check` は、これまでどおり AI 経路を import して
+グループは、AI extra を引き続きインストールします（`bajutsu[bedrock,server,worker,db,oauth,mcp,visual,schema]`
+の列に `ai` を加えます）。`make check` は、これまでどおり AI 経路を import して
 テストします。
 
 新たに保証するのは、**基本**インストールが AI 非依存であることです。AI のテスト網を落とすことでは
