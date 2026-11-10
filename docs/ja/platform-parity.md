@@ -52,7 +52,7 @@ iOS の実機では、`simctl` が提供する能力がなくなります。こ�
 | `network` | n/a | n/a | この能力は、プロセス内でのネイティブな通信観測を指し、web バックエンドだけが持ちます。モバイルの2つのバックエンドは、アプリ側のコレクタで `request` アサーションに答えます。 |
 | `video` | ✅ | ✅ | |
 | `deviceLog` | ✅ | ✅ | |
-| `appTrace` | ✅ | gap | iOS はアプリの `os_log` を取り込みます。Android では、`logcat` をアプリのプロセス ID で絞れば実現できます。 |
+| `appTrace` | ✅ | gap | iOS はアプリの `os_log` を取り込みます。[BE-0478](../../roadmaps/BE-0478-android-device-control-parity/BE-0478-android-device-control-parity-ja.md) で、`logcat` からアプリ自身のログ行をタグで絞って読みます。 |
 | `multiTouch` | ✅ | ✅ | Android では root 化した端末が必要です。振る舞いの差の表を参照してください。 |
 | `textSelection` | ✅ | ✅ | Android の端末上で結果を確かめた実行はまだありません。振る舞いの差の表を参照してください。 |
 | `webView` | per-run | gap | iOS では、アプリが BajutsuKit の WebView ブリッジを組み込んでいるときに付与されます。Android にはブリッジがありません。Chrome の WebView デバッグ用ポートが実現の候補です。 |
@@ -71,9 +71,9 @@ iOS の実機では、`simctl` が提供する能力がなくなります。こ�
 | `deviceControl.clipboard` | ✅ | ✅ | Android ではアプリに BajutsuAndroid ライブラリが必要です。振る舞いの差の表を参照してください。 |
 | `deviceControl.push` | ✅ | gap | クリップボードと同じく、BajutsuAndroid ライブラリがアプリの中から通知を出せば実現できます。 |
 | `deviceControl.clearKeychain` | ✅ | n/a | Android には iOS の Keychain にあたる仕組みがありません。アプリの Android Keystore の鍵は、クリーンな再インストールでデータと一緒に消えます。 |
-| `deviceControl.background` | ✅ | gap | ホームキー（`KEYCODE_HOME`）を押すのが候補です。[BE-0211](../../roadmaps/BE-0211-android-device-control/BE-0211-android-device-control-ja.md) は忠実でないと判断しましたが、理由は記録されていません。 |
+| `deviceControl.background` | ✅ | gap | BE-0478 でホームキー（`KEYCODE_HOME`）を送ります。アプリのプロセスは生きたままです。その後、アプリが前面のアクティビティでなくなるまで待ちます。 |
 | `deviceControl.foreground` | ✅ | ✅ | |
-| `deviceControl.statusBar` | ✅ | gap | Android の SystemUI のデモモードで、時計、電池、通信のアイコンを上書きできます。 |
+| `deviceControl.statusBar` | ✅ | gap | BE-0478 で SystemUI のデモモードを使います。ステップが指定しない項目はデモモードの固定値になります。`time` は `H:MM` か `HH:MM` の形だけを受け付けます。 |
 | `deviceControl.permissions.location` | ✅ | ✅ | |
 | `deviceControl.permissions.camera` | ✅ | ✅ | |
 | `deviceControl.permissions.microphone` | ✅ | ✅ | |
@@ -94,7 +94,7 @@ iOS の実機では、`simctl` が提供する能力がなくなります。こ�
 | `pinch` と `rotate` | XCUITest がネイティブに実行します。 | adb は `sendevent` で生のタッチイベントを書き込むので、root が必要です。 | root 化していない端末では、どちらのステップも失敗します。 |
 | `setLocation` | シミュレータ上で `simctl` が設定します。 | エミュレータのコンソールが設定します。 | どちらのバックエンドも、まだ実機では位置を設定できません。iOS 側は [BE-0475](../../roadmaps/BE-0475-ios-runner-set-location/BE-0475-ios-runner-set-location-ja.md) が扱います。 |
 | クリップボードのステップ | `simctl` がペーストボードを読み書きします。 | アプリ内の受信部が処理します。アプリが BajutsuAndroid をリンクしている必要があります。Android 10 以降は、フォーカスを持つアプリしかクリップボードを読めません。 | BajutsuAndroid のないアプリでは、クリップボードのステップはすべて失敗します。アプリがバックグラウンドにあるときの読み取りも失敗します。 |
-| `locale`、`launchArgs`、`seedPhotos` | 起動時に3つとも適用します。 | 起動時にどれも適用しません。`launchEnv` は intent の extra として渡します。 | 3つのどれかに頼るシナリオは、Android ではその設定なしで動きます。 |
+| `locale`、`launchArgs`、`seedPhotos` | 起動時に3つとも適用します。 | 起動時にどれも適用しません。`launchEnv` は intent の extra として渡します。 | 3つのどれかに頼るシナリオは、Android ではその設定なしで動きます。BE-0478 で、Android 13 以降向けに `runsOn.android.locale` が加わります。残りの2つを扱う項目はまだありません。 |
 
 ## テストによる能力の対応表の検証
 

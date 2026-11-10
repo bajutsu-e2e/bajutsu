@@ -53,7 +53,7 @@ Each cell of the capability table starts with one of four marks:
 | `network` | n/a | n/a | The token means native in-process observation, which the web backend alone has. Both mobile backends answer `request` assertions through an app-side collector instead. |
 | `video` | ✅ | ✅ | |
 | `deviceLog` | ✅ | ✅ | |
-| `appTrace` | ✅ | gap | iOS streams the app's `os_log`. Android could filter `logcat` to the app's process ID. |
+| `appTrace` | ✅ | gap | iOS streams the app's `os_log`. [BE-0478](../roadmaps/BE-0478-android-device-control-parity/BE-0478-android-device-control-parity.md) reads the app's own log lines from `logcat`, filtered by tag. |
 | `multiTouch` | ✅ | ✅ | Android needs a rooted device. See the behavior table. |
 | `textSelection` | ✅ | ✅ | No Android run has checked the result on a device. See the behavior table. |
 | `webView` | per-run | gap | iOS grants it when the app embeds the BajutsuKit WebView bridge. Android has no bridge. Chrome's WebView debugging port is a possible route. |
@@ -72,9 +72,9 @@ Each cell of the capability table starts with one of four marks:
 | `deviceControl.clipboard` | ✅ | ✅ | Android needs the BajutsuAndroid library in the app. See the behavior table. |
 | `deviceControl.push` | ✅ | gap | The BajutsuAndroid library could post the notification from inside the app, the way it already handles the clipboard. |
 | `deviceControl.clearKeychain` | ✅ | n/a | Android has no keychain. The app's Android Keystore keys go away with its data on a clean reinstall. |
-| `deviceControl.background` | ✅ | gap | Pressing the home key (`KEYCODE_HOME`) is the candidate route. [BE-0211](../roadmaps/BE-0211-android-device-control/BE-0211-android-device-control.md) judged it unfaithful without recording a reason. |
+| `deviceControl.background` | ✅ | gap | BE-0478 sends the home key (`KEYCODE_HOME`), which keeps the app's process alive. The step then waits until the app is no longer the resumed activity. |
 | `deviceControl.foreground` | ✅ | ✅ | |
-| `deviceControl.statusBar` | ✅ | gap | Android's SystemUI demo mode overrides the clock, battery, and network icons. |
+| `deviceControl.statusBar` | ✅ | gap | BE-0478 drives the SystemUI demo mode. A field the step leaves unset takes the demo mode's fixed value, and `time` accepts `H:MM` or `HH:MM` alone. |
 | `deviceControl.permissions.location` | ✅ | ✅ | |
 | `deviceControl.permissions.camera` | ✅ | ✅ | |
 | `deviceControl.permissions.microphone` | ✅ | ✅ | |
@@ -95,7 +95,7 @@ backends declare, or outside the capability set altogether.
 | `pinch` and `rotate` | XCUITest performs both natively. | adb writes raw touch events with `sendevent`, which needs root. | Both steps fail on an unrooted device. |
 | `setLocation` | `simctl` sets it on the Simulator. | The emulator console sets it. | Neither backend sets the location on a real device yet. [BE-0475](../roadmaps/BE-0475-ios-runner-set-location/BE-0475-ios-runner-set-location.md) covers iOS. |
 | Clipboard steps | `simctl` reads and writes the pasteboard. | A receiver inside the app does the work. The app must link BajutsuAndroid, and Android 10 or later lets only the focused app read the clipboard. | An app without BajutsuAndroid fails every clipboard step, and so does a read while the app is in the background. |
-| `locale`, `launchArgs`, and `seedPhotos` | The launch applies all three. | The launch applies none of them, and forwards `launchEnv` as intent extras. | A scenario that relies on one of the three runs on Android without it. |
+| `locale`, `launchArgs`, and `seedPhotos` | The launch applies all three. | The launch applies none of them, and forwards `launchEnv` as intent extras. | A scenario that relies on one of the three runs on Android without it. BE-0478 adds `runsOn.android.locale` for Android 13 and later. No item covers the other two yet. |
 
 ## How the test checks the capability table
 
