@@ -23,7 +23,7 @@ a pool of Mac workers. The workers lease jobs from a **single** queue backed by 
 table. That works when every worker can run every job.
 
 A **heterogeneous** pool breaks this. A job whose target needs iOS 18 must not land on a worker that
-has iOS 17 installed alone. An iPad-only scenario must not land on an iPhone-only worker.
+has only iOS 17 installed. An iPad-only scenario must not land on an iPhone-only worker.
 
 This proposal adds **capability-routed queues**, so that only a worker that can run a job ever
 leases it. The item is carved out of the "growing one node into a pool" work of BE-0016.

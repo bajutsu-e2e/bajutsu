@@ -16,28 +16,58 @@
 
 ## Introduction
 
-The self-hosted server backend ([BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)) distributes test jobs to a pool of Mac workers over a Postgres `jobs` table. It already bounds concurrency with a **global** cap, a **per-user** cap, and a **per-org** cap (`max_concurrent_per_org`, shipped in [#367](https://github.com/bajutsu-e2e/bajutsu/pull/367)). Every one of these caps works by **rejecting** an over-cap job with HTTP 429.
+The self-hosted server backend
+([BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)) distributes test jobs to
+a pool of Mac workers over a Postgres `jobs` table. It already bounds concurrency with a **global**
+cap, a **per-user** cap, and a **per-org** cap (`max_concurrent_per_org`, shipped in
+[#367](https://github.com/bajutsu-e2e/bajutsu/pull/367)). Every one of these caps works by
+**rejecting** an over-cap job with HTTP 429.
 
-This proposal turns that rejection into **holding**. It adds per-org pending queues and a dispatcher that round-robins across organizations, so the scarce Mac pool stays fair under contention. The work is carved out of BE-0016's "growing one node into a pool" effort, where it was the one remaining piece with a machine-checkable contract.
+This proposal turns that rejection into **holding**. It adds per-org pending queues and a dispatcher
+that round-robins across organizations, so the scarce Mac pool stays fair under contention. The work
+is carved out of BE-0016's "growing one node into a pool" effort, where it was the one remaining
+piece with a machine-checkable contract.
 
 ## Motivation
 
-The Mac pool is a scarce, non-elastic resource. An operator cannot spin up more Simulators on demand the way stateless web containers scale. Under pure first-in, first-out (FIFO) dispatch, one organization that submits a burst of jobs takes every free slot and holds it until its runs finish. Other organizations wait behind the queue even though they are under their own caps.
+The Mac pool is a scarce, non-elastic resource. An operator cannot spin up more Simulators on demand
+the way they would scale stateless web containers. Under pure first-in, first-out (FIFO) dispatch, one
+organization that submits a burst of jobs takes every free slot and holds it until its runs finish.
+Other organizations wait behind the queue even though they are under their own caps.
 
-The per-org cap (BE-0016) limits how many slots one org can *hold at once*. But a job that hits the cap is **rejected** (429) rather than queued, so the caller must retry. A well-behaved org that submits work slightly faster than the pool drains still sees spurious failures.
+The per-org cap (BE-0016) limits how many slots one org can *hold at once*. But a job that hits the
+cap is **rejected** (429) rather than queued, so the caller must retry. A well-behaved org that
+submits work slightly faster than the pool drains still sees spurious failures.
 
-What is missing is **fair scheduling**. When several organizations have pending work, they should share the pool rather than drain it in submission order. That requires the control plane to *hold* jobs it cannot admit yet, and to pick the next job by fairness, not arrival time.
+What is missing is **fair scheduling**. When several organizations have pending work, they should
+share the pool rather than drain it in submission order. That requires the control plane to *hold*
+jobs it cannot admit yet, and to pick the next job by fairness, not arrival time.
 
 ## Detailed design
 
-The design extends the existing admission seam rather than adding a new subsystem. Today the tail of `_register_and_dispatch` (`bajutsu/serve/operations.py`) calls `try_register` (`bajutsu/serve/jobs.py`). That call counts in-flight jobs against the global, per-user, and per-org caps atomically under a lock, and **rejects with HTTP 429** when any cap is hit. The work breakdown:
+The design extends the existing admission seam rather than adding a new subsystem. Today the tail of
+`_register_and_dispatch` (`bajutsu/serve/operations.py`) calls `try_register`
+(`bajutsu/serve/jobs.py`). That call counts in-flight jobs against the global, per-user, and per-org
+caps atomically under a lock, and **rejects with HTTP 429** when any cap is hit. The work breakdown:
 
-1. **Per-org pending queues.** Replace the "reject on cap" tail with **holding**. A job that cannot be admitted immediately (its org is at its cap, or the global cap is full) goes onto a per-org pending queue instead of being rejected. The queue lives in the same state that `try_register` guards, so admission stays atomic.
-2. **Round-robin dispatcher.** When a slot frees (a run finishes, or a new submission arrives), the dispatcher walks the organizations with pending work in **round-robin** order. It admits the next job from the first org that is under its cap. An org at its cap is skipped for that round. The round-robin cursor prevents any one org from monopolizing the pool.
-3. **Priority tiers as weights.** Priority tiers ride the same round-robin: the dispatcher visits a higher-priority tier more often (weighted round-robin), so no separate scheduler is needed. Within a tier, jobs keep their submission order.
-4. **Backward compatibility.** With a single tenant (no `orgs:` block, one default org), the dispatcher degrades to plain FIFO, so single-tenant deployments are unchanged. The per-org cap default of `0` (unlimited) likewise leaves existing behavior untouched until an operator sets it.
+1. **Per-org pending queues.** Replace the "reject on cap" tail with **holding**. A job that cannot
+   be admitted immediately (its org is at its cap, or the global cap is full) goes onto a per-org
+   pending queue instead of being rejected. The queue lives in the same state that `try_register`
+   guards, so admission stays atomic.
+2. **Round-robin dispatcher.** When a slot frees (a run finishes, or a new submission arrives), the
+   dispatcher walks the organizations with pending work in **round-robin** order. It admits the next
+   job from the first org that is under its cap. An org at its cap is skipped for that round. The
+   round-robin cursor prevents any one org from monopolizing the pool.
+3. **Priority tiers as weights.** Priority tiers ride the same round-robin: the dispatcher visits a
+   higher-priority tier more often (weighted round-robin), so no separate scheduler is needed.
+   Within a tier, jobs keep their submission order.
+4. **Backward compatibility.** With a single tenant (no `orgs:` block, one default org), the
+   dispatcher degrades to plain FIFO, so single-tenant deployments are unchanged. The per-org cap
+   default of `0` (unlimited) likewise leaves existing behavior untouched until an operator sets it.
 
-**Verification.** This is the one piece of the remaining pool work with a machine-checkable contract. A unit test covers it against `ServeState` with **no Simulator**, mirroring the per-org cap's tests. The test pins four invariants:
+**Verification.** This is the one piece of the remaining pool work with a machine-checkable
+contract. A unit test covers it against `ServeState` with **no Simulator**, mirroring the per-org
+cap's tests. The test pins four invariants:
 
 - Under contention across two orgs, the admitted jobs alternate fairly.
 - An org never exceeds its cap.
@@ -46,13 +76,22 @@ The design extends the existing admission seam rather than adding a new subsyste
 
 These invariants sit entirely in the Python control plane and run in the Linux `make check` gate.
 
-**Coordination note.** The change lands in `bajutsu/serve/operations.py` and `jobs.py`, the same surface that other in-flight serve work touches. Land it after any open PR that edits those files merges, or coordinate to avoid a conflict.
+**Coordination note.** The change lands in `bajutsu/serve/operations.py` and `jobs.py`, the same
+surface that other in-flight serve work touches. Land it after any open PR that edits those files
+merges, or coordinate to avoid a conflict.
 
 ## Alternatives considered
 
-- **Keep rejecting with 429 and let clients retry.** Rejected. It pushes the scheduling problem onto every caller and produces spurious failures for well-behaved orgs. It also cannot express fairness, because a retry storm from one org still wins the race. Holding jobs server-side is what lets the control plane enforce a fair share.
-- **Pure FIFO across all orgs.** Rejected. FIFO is the status quo that the per-org cap already had to work around, and it lets one org's burst monopolize the scarce Mac pool. Per-org pending queues with a quota-respecting round-robin fix this.
-- **A separate priority scheduler distinct from the fairness round-robin.** Rejected as unnecessary. Folding priority into the round-robin as a weight keeps one dispatch path instead of two interacting ones, which is simpler to reason about and to test.
+- **Keep rejecting with 429 and let clients retry.** Rejected. It pushes the scheduling problem onto
+  every caller and produces spurious failures for well-behaved orgs. It also cannot express
+  fairness, because a retry storm from one org still wins the race. Holding jobs server-side is what
+  lets the control plane enforce a fair share.
+- **Pure FIFO across all orgs.** Rejected. FIFO is the status quo that the per-org cap already had
+  to work around, and it lets one org's burst monopolize the scarce Mac pool. Per-org pending queues
+  with a quota-respecting round-robin fix this.
+- **A separate priority scheduler distinct from the fairness round-robin.** Rejected as unnecessary.
+  Folding priority into the round-robin as a weight keeps one dispatch path instead of two
+  interacting ones, which is simpler to reason about and to test.
 
 ## Progress
 

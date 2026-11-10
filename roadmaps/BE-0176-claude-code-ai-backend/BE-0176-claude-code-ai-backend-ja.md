@@ -68,11 +68,11 @@ BE-0163 は旧バックエンドを `ant` プロバイダで置き換えまし�
 ### 4. テスト
 
 - 注入した `Runner` によるアダプタの単体テストで、次を確かめます。
-  - `NamedTool` と単一ツールの `AnyTool` は、そのまま対応づく。
-  - 複数ツールの `AnyTool` は、判別用スキーマを往復する。
-  - `structured_output` の欠落や不正では、`ToolUseBlock` が生じない。
-  - `ImagePart` は、スクラッチファイルを書き出し、そのパスをプロンプトに示し、`Read` を許可して後片付けする。
-  - 子プロセスの環境から、`ANTHROPIC_API_KEY` が取り除かれる。
+  - `NamedTool` と単一ツールの `AnyTool` は、そのまま対応づきます。
+  - 複数ツールの `AnyTool` は、判別用スキーマを往復します。
+  - `structured_output` の欠落や不正では、`ToolUseBlock` が生じません。
+  - `ImagePart` は、スクラッチファイルを書き出し、そのパスをプロンプトに示し、`Read` を許可して後片付けします。
+  - 子プロセスの環境から、`ANTHROPIC_API_KEY` が取り除かれます。
 - レジストリのテストでは、`claude-code` が独自のアダプタに解決され、`known_providers()` に現れることを確かめます。`credential_gap` がバイナリ不在の場合を報告することも確かめます。
 
 ## 検討した代替案

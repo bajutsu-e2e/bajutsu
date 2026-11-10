@@ -59,11 +59,11 @@ Linux の web worker は、`backend=web` という capability を持ち込みま
 - **ビルドステージ**：`bajutsu[worker-web]` を仮想環境にインストールします。editable なチェックアウトではなく、非 editable なインストールです。
 - **最終ステージ**：スリムな Python ベース、仮想環境、Playwright が必要とする Chromium ブラウザを載せます。`server`/`db`/`oauth`/`cloud`/`ai` からは何も入れません。
 
-ブラウザは `playwright install --with-deps --only-shell chromium` で入れます。フルの headed Chromium ではなく、**ヘッドレスシェル**を入れます。Linux の worker は常にヘッドレスで、Playwright はヘッドレス起動でシェルを自動選択するため、ドライバは変更不要です。シェルは数十 MB 軽く、`--with-deps` のシステムライブラリも小さくなります。
+  ブラウザは `playwright install --with-deps --only-shell chromium` で入れます。フルの headed Chromium ではなく、**ヘッドレスシェル**を入れます。Linux の worker は常にヘッドレスで、Playwright はヘッドレス起動でシェルを自動選択するため、ドライバは変更不要です。シェルは数十 MB 軽く、`--with-deps` のシステムライブラリも小さくなります。
 
-コンテナは、サンドボックスを弱めない限り root での Chromium の実行を拒みます。そこで最終ステージは、worker を非特権ユーザで動かします。ドライバは既定のサンドボックス付き起動フラグのままで、app 非依存です。自前導入のスリムベースと upstream の Playwright イメージの比較は、代替案 B で扱います。
+  コンテナは、サンドボックスを弱めない限り root での Chromium の実行を拒みます。そこで最終ステージは、worker を非特権ユーザで動かします。ドライバは既定のサンドボックス付き起動フラグのままで、app 非依存です。自前導入のスリムベースと upstream の Playwright イメージの比較は、代替案 B で扱います。
 
-エントリポイントは `bajutsu worker` を実行します。ベアメタルの worker と同様に、環境変数（`BAJUTSU_SERVER_URL`、`BAJUTSU_TOKEN`）で設定します。BE-0160 のとおり、オブジェクトストレージの credential は**一切**持ちません。
+- エントリポイントは `bajutsu worker` を実行します。ベアメタルの worker と同様に、環境変数（`BAJUTSU_SERVER_URL`、`BAJUTSU_TOKEN`）で設定します。BE-0160 のとおり、オブジェクトストレージの credential は**一切**持ちません。
 
 ### 3. compose サービス + セルフホストのドキュメント
 
