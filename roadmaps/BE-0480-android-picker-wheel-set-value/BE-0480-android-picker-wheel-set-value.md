@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-android-picker-wheel-set-value-ja.md)
+**English** · [日本語](BE-0480-android-picker-wheel-set-value-ja.md)
 
-# BE-XXXX — Set an Android NumberPicker wheel to an exact value with setPickerValue
+# BE-0480 — Set an Android NumberPicker wheel to an exact value with setPickerValue
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-android-picker-wheel-set-value.md) |
+| Proposal | [BE-0480](BE-0480-android-picker-wheel-set-value.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0480") |
 | Topic | Scenario authoring features |
 <!-- /BE-METADATA -->
 
