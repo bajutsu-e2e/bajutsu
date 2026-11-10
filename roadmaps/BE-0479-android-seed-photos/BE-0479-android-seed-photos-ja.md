@@ -1,14 +1,14 @@
-[English](BE-XXXX-android-seed-photos.md) · **日本語**
+[English](BE-0479-android-seed-photos.md) · **日本語**
 
-# BE-XXXX — 実行前に Android の写真ライブラリへ画像を投入する
+# BE-0479 — 実行前に Android の写真ライブラリへ画像を投入する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-android-seed-photos-ja.md) |
+| 提案 | [BE-0479](BE-0479-android-seed-photos-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0479") |
 | 実装 PR | [#2382](https://github.com/bajutsu-e2e/bajutsu/pull/2382) |
 | トピック | Platform support |
 | 関連 | [BE-0433](../BE-0433-phpicker-select-photos/BE-0433-phpicker-select-photos-ja.md)、[BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)、[BE-0467](../BE-0467-environment-specific-settings/BE-0467-environment-specific-settings-ja.md)、[BE-0469](../BE-0469-runson-destination-blocks/BE-0469-runson-destination-blocks-ja.md) |

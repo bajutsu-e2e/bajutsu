@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-android-seed-photos-ja.md)
+**English** · [日本語](BE-0479-android-seed-photos-ja.md)
 
-# BE-XXXX — Seed the Android photo library before a run
+# BE-0479 — Seed the Android photo library before a run
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-android-seed-photos.md) |
+| Proposal | [BE-0479](BE-0479-android-seed-photos.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0479") |
 | Implementing PR | [#2382](https://github.com/bajutsu-e2e/bajutsu/pull/2382) |
 | Topic | Platform support |
 | Related | [BE-0433](../BE-0433-phpicker-select-photos/BE-0433-phpicker-select-photos.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md), [BE-0467](../BE-0467-environment-specific-settings/BE-0467-environment-specific-settings.md), [BE-0469](../BE-0469-runson-destination-blocks/BE-0469-runson-destination-blocks.md) |
