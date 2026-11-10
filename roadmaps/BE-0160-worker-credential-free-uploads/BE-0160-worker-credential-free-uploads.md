@@ -102,7 +102,7 @@ The worker no longer needs a cloud SDK (`boto3`) at runtime. The `worker` extra 
 this change makes that true in practice. The worker's sole network dependency stays its existing
 HTTP client. The **control plane** keeps the `server` extra (boto3 / GCS) as today.
 
-### 5. Endpoint and key-building generalization
+### 5. Endpoint + key-building generalization
 
 Factor BE-0110's server-side key-builder and validator (`generate_upload_urls`) to serve multiple
 destinations (evidence, artifacts, scenarios), rather than duplicating it. Each destination fixes
