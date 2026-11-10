@@ -15,7 +15,10 @@ declares. A gap cannot open or close unless this page changes with it.
 
 A **capability** is a named feature a backend declares through `Driver.capabilities()`. Two
 examples are `multiTouch` and `deviceControl.push`. The preflight check runs before a run leases a
-device. It stops a scenario that needs a capability the chosen backend lacks.
+device. It stops a scenario that uses a gated step the chosen backend has no capability for. The
+check leaves some capabilities ungated, because the core supplies each one another way. Examples are
+`conditionWait`, `network`, `semanticTap`, and `webView`. The interval-evidence capabilities stay
+ungated too.
 [Drivers](drivers.md#capabilities-capability) lists every capability with its meaning.
 
 The three tables split the differences by what kind of difference each one is:
