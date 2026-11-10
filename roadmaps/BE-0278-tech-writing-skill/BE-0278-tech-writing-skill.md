@@ -15,38 +15,57 @@
 
 ## Introduction
 
-This proposal adds one authoritative prose norm — a `tech-writing` skill — that every BE item and
-every prose document follows, in both English and Japanese. It distills a compact set of
-language-agnostic writing techniques from Jeffrey Scott Vitter's *Structure + Style =
-Communication* and pairs them with the English-specific mechanics that article settles. The
-existing [`japanese-tech-writing`](../../.claude/skills/japanese-tech-writing/) skill becomes the
-Japanese layer beneath it, so a single norm governs writing while each language keeps the guidance
-that only its own grammar needs.
+This proposal adds one authoritative prose norm, a `tech-writing` skill. Every BE item and every
+prose document follows the norm in English and in Japanese.
+
+The skill distills a compact set of language-agnostic writing techniques from Jeffrey Scott
+Vitter's *Structure + Style = Communication*. It pairs them with the English-specific mechanics that
+the article settles. The existing [`japanese-tech-writing`](../../.claude/skills/japanese-tech-writing/)
+skill becomes the Japanese layer beneath the new skill. A single norm then governs writing. Each
+language keeps the guidance that its own grammar needs.
 
 ## Motivation
 
-The project's writing rules are real but lopsided. Japanese prose has a deep, dedicated norm — the
-[`japanese-tech-writing`](../../.claude/skills/japanese-tech-writing/) skill covers filler phrases,
-redundancy, paragraph structure, argument rigor, and restraint of rhetorical flourish. English
-prose has only the handful of bullets in
-[`docs/ai-development.md`](../../docs/ai-development.md)'s *Documentation style* section (no coined
-terms, no forced translation, no omissions, spell out acronyms). Nothing states, for English, how
-to structure a sentence, where to place its emphasis, how to keep the verb near the subject, or
-which filler words to cut. The result is asymmetric: the same author writing the two sides of one
-BE item works against a detailed rulebook in Japanese and near-silence in English.
+The project's writing rules are real but lopsided. Japanese prose has a deep, dedicated norm. The
+[`japanese-tech-writing`](../../.claude/skills/japanese-tech-writing/) skill covers these areas:
 
-Vitter's article is a proven, concise source for exactly the gap on the English side, and much of
-it is language-agnostic — the value of a top-down outline before drafting, the two stress points of
-a sentence, subject–verb proximity, active voice, and the discipline of cutting filler apply to
-Japanese prose just as well. Several of these already have Japanese counterparts in
-`japanese-tech-writing` (its filler-word and redundancy rules), which means the two norms should
-share one language-agnostic core rather than restate it twice and drift apart.
+- filler phrases
+- redundancy
+- paragraph structure
+- argument rigor
+- restraint of rhetorical flourish
 
-BE items are the concrete beneficiary. Each is a bilingual, argued document — an Introduction that
-must state a contribution up front, a Motivation that must move from the known problem to the new
-result, a Detailed design that must read cleanly in both languages. A shared norm raises the floor
-for every future item and gives review one place to point to, the same role BE-0065 gave docstrings
-and BE-0074 gave the item template.
+English prose has a handful of bullets in the *Documentation style* section of
+[`docs/ai-development.md`](../../docs/ai-development.md). They say no coined terms, no forced
+translation, no omissions, and spell out acronyms. Four questions go unanswered for English:
+
+- how to structure a sentence
+- where to place its emphasis
+- how to keep the verb near the subject
+- which filler words to cut
+
+The result is asymmetric. The same author writes the two sides of one BE item. Japanese gives that
+author a detailed rulebook, and English gives near-silence.
+
+Vitter's article is a proven, concise source for the English-side gap, and much of it is
+language-agnostic. Five techniques apply to Japanese prose just as well:
+
+- a top-down outline before drafting
+- the two stress points of a sentence
+- subject–verb proximity
+- active voice
+- the discipline of cutting filler
+
+Several of these techniques already have Japanese counterparts in `japanese-tech-writing` (its
+filler-word and redundancy rules). The two norms should share one language-agnostic core. Stating
+the core twice would let the copies drift apart.
+
+BE items are the concrete beneficiary. Each item is a bilingual, argued document. Its Introduction
+must state a contribution up front. Its Motivation must move from the known problem to the new
+result. Its Detailed design must read cleanly in both languages.
+
+A shared norm raises the floor for every future item. It gives review one place to point to. BE-0065
+gave docstrings that role, and BE-0074 gave the item template the same role.
 
 ## Detailed design
 
@@ -54,91 +73,105 @@ The work breaks down into four independent units.
 
 1. **A new `tech-writing` skill** at `.claude/skills/tech-writing/SKILL.md`, in two parts:
    - **Language-agnostic principles (both languages).** Distilled from Vitter:
-     - *Version-by-version refinement.* Draft top-down: a rough outline of points in order first,
-       then section titles and each section's main idea, then subideas and a story line, then the
-       near-final prose. Do not draft a long argued section linearly from the first sentence.
+     - *Version-by-version refinement.* Draft top-down. Start with a rough outline of points in
+       order. Then write section titles and each section's main idea. Then add subideas and a story
+       line. The near-final prose comes last. Do not draft a long argued section linearly from the
+       first sentence.
      - *Clarity and simplicity.* On review, cut words, phrases, and sentences that carry no meaning.
      - *State the contribution up front.* A BE item's Introduction and Motivation state the problem,
-       the background, the contribution, and why it matters — before the detail. A reader who stops
+       the background, the contribution, and why it matters before the detail. A reader who stops
        after the first two paragraphs should still have the point.
      - *The two stress points of a sentence are its beginning and its end.* Reserve the end for the
-       most important element; move from the known to the unknown, from background to result. Put
-       transitional and background words ("Therefore", "However", "In the last section") at the
-       front, saving the content for the end.
-     - *Keep the verb close to the subject.* A long clause wedged between them makes a sentence hard
-       to parse; rewrite so the subject's verb arrives early.
-     - *Active voice, first-person plural.* Prefer the active voice; write as "we", not "I", in a
+       most important element. Move from the known to the unknown, from background to result. Put
+       transitional and background words at the front, saving the content for the end. Examples are
+       "Therefore", "However", and "In the last section".
+     - *Keep the verb close to the subject.* A long clause wedged between the two makes a sentence
+       hard to parse. Rewrite the sentence until the subject's verb arrives early.
+     - *Active voice, first-person plural.* Prefer the active voice. Write as "we", not "I", in a
        proposal.
-     - *Cut filler.* Drop words and phrases that add no meaning — "actually", "basically",
-       "essentially", "it is important to note that", "note that", a bare "now". Keep "thus" /
-       "therefore" only where they genuinely signal a conclusion.
-   - **English-specific mechanics (English prose only).** From Vitter's grammar-and-style section:
-     "many" / "much" over "a lot of"; spell out contractions; reserve symbols and abbreviations for
-     formulas and spell out the word in text; the serial (Oxford) comma in a list of three or more;
-     *that* (restrictive, no comma) versus *which* (non-restrictive, set off by commas); no bare
-     "this" / "that" as a noun (say "this X"); avoid singular "they" for an unspecified single
-     person — reword to the plural or a role; hyphen for a compound adjective, en-dash for a range,
-     em-dash for emphasis (with surrounding spaces — this repo's own convention; Chicago itself
-     closes them up); spell out a positive whole number
-     below ten used as an adjective, numeral when used as a noun; a colon only after a complete
-     sentence. A short source note (an HTML comment) credits Vitter, mirroring how
-     `japanese-tech-writing` credits its own source.
-2. **The layering with `japanese-tech-writing`.** The new skill declares itself the umbrella and
-   names `japanese-tech-writing` as the Japanese layer: when writing Japanese prose, apply both, and
-   where the two overlap (filler, redundancy, restraint), the Japanese skill's specific wording
-   governs. `japanese-tech-writing` gains one line at the top pointing up to `tech-writing` as the
-   shared language-agnostic norm, so a reader arriving at either finds the other. No Japanese rule
-   changes; the English mechanics never apply to Japanese (Japanese has its own dash and punctuation
-   rules, already in that skill).
-3. **Reference wiring, no duplication.** Point the existing homes at the new skill instead of
-   copying its contents:
-   - [`docs/ai-development.md`](../../docs/ai-development.md)'s *Documentation style* section names
-     `tech-writing` as the authoritative prose norm for both languages, beside its current
-     `japanese-tech-writing` pointer.
-   - [`CLAUDE.md`](../../CLAUDE.md)'s *Conventions* gains a short-form pointer, beside the existing
-     `japanese-tech-writing` line.
-   - [`roadmaps/README.md`](../../roadmaps/README.md) (and `README-ja.md`) note in the BE-authoring
-     section that items follow `tech-writing`, next to the existing 敬体 / `japanese-tech-writing`
-     note.
-   - The authoring skills that draft BE prose point at `tech-writing` at the moment they write:
-     [`ideation`](../../.claude/skills/ideation/SKILL.md) (its drafting step) and the Phase A of
-     [`propose-and-build`](../../.claude/skills/propose-and-build/SKILL.md) invoke it before drafting,
-     beside their existing `japanese-tech-writing` pointer, so the norm is active at authoring time —
-     not merely discoverable in the docs.
-4. **Scope: BE items and every prose document, both languages.** The norm applies to
-   `roadmaps/BE-*/*.md` and `*-ja.md` and to every document under `docs/` (and its `docs/ja/`
-   mirror), consistent with the *Documentation style* section's existing reach ("including roadmap
-   items"). It does not extend to code docstrings, which keep their own separate standard (BE-0065).
+     - *Cut filler.* Drop words and phrases that add no meaning: "actually", "basically",
+       "essentially", "it is important to note that", "note that", and a bare "now". Keep "thus"
+       and "therefore" where they genuinely signal a conclusion.
+   - **English-specific mechanics (English prose only).** These come from Vitter's grammar-and-style
+     section:
+     - "many" or "much" over "a lot of"
+     - spelled-out contractions
+     - symbols and abbreviations reserved for formulas, with the word spelled out in text
+     - the serial (Oxford) comma in a list of three or more
+     - *that* (restrictive, no comma) versus *which* (non-restrictive, set off by commas)
+     - no bare "this" or "that" as a noun (say "this X")
+     - no singular "they" for an unspecified single person (reword to the plural or a role)
+     - a hyphen for a compound adjective
+     - an en-dash for a range
+     - an em-dash for emphasis, with surrounding spaces (this repo's own convention; Chicago itself
+       closes them up)
+     - a positive whole number below ten spelled out when used as an adjective, and a numeral when
+       used as a noun
+     - a colon only after a complete sentence
 
-**Enforcement stays a review-time norm, not a CI gate.** Judging whether prose actually reads
-clearly, leads with its contribution, or cut its filler needs semantic judgment. Putting that on
-the gate would put an LLM on the `run` / CI verdict path, which prime directive 1 forbids. So this
-norm holds exactly the way the bilingual-docs rule and the DESIGN.md-realignment rule (BE-0113) hold
-— a contributor and reviewer expectation, checked by people, not a machine-checkable assertion.
+     A short source note (an HTML comment) credits Vitter. It mirrors how `japanese-tech-writing`
+     credits its own source.
+2. **The layering with `japanese-tech-writing`.** The new skill declares itself the umbrella. It
+   names `japanese-tech-writing` as the Japanese layer.
+   - When writing Japanese prose, apply both skills. Where the two overlap (filler, redundancy,
+     restraint), the Japanese skill's specific wording governs.
+   - `japanese-tech-writing` gains one line at the top. The line points up to `tech-writing` as the
+     shared language-agnostic norm, so a reader arriving at either skill finds the other.
+   - No Japanese rule changes. The English mechanics never apply to Japanese. Japanese has its own
+     dash and punctuation rules, already in that skill.
+3. **Reference wiring, no duplication.** Point the existing homes at the new skill instead of copying
+   its contents:
+   - The *Documentation style* section of [`docs/ai-development.md`](../../docs/ai-development.md)
+     names `tech-writing` as the authoritative prose norm for both languages. The name sits beside
+     the current `japanese-tech-writing` pointer.
+   - The *Conventions* section of [`CLAUDE.md`](../../CLAUDE.md) gains a short-form pointer, beside
+     the existing `japanese-tech-writing` line.
+   - [`roadmaps/README.md`](../../roadmaps/README.md) (and `README-ja.md`) note in the BE-authoring
+     section that items follow `tech-writing`. The note sits next to the existing 敬体 /
+     `japanese-tech-writing` note.
+   - The authoring skills that draft BE prose point at `tech-writing` at the moment they write.
+     [`ideation`](../../.claude/skills/ideation/SKILL.md) (its drafting step) and Phase A of
+     [`propose-and-build`](../../.claude/skills/propose-and-build/SKILL.md) invoke the skill before
+     drafting, beside their existing `japanese-tech-writing` pointer. The norm is then active at
+     authoring time and not merely discoverable in the docs.
+4. **Scope: BE items and every prose document, both languages.** The norm applies to
+   `roadmaps/BE-*/*.md` and `*-ja.md`. It also applies to every document under `docs/` and its
+   `docs/ja/` mirror. That reach is consistent with the existing scope of the *Documentation style*
+   section ("including roadmap items"). The norm does not extend to code docstrings, which keep their
+   own separate standard (BE-0065).
+
+**Enforcement stays a review-time norm, not a CI gate.** Judging whether prose reads clearly, leads
+with its contribution, or has cut its filler needs semantic judgment. Putting that judgment on the
+gate would put an LLM on the `run` / CI verdict path, which prime directive 1 forbids. The norm
+holds the way the bilingual-docs rule and the DESIGN.md-realignment rule (BE-0113) hold. It is a
+contributor and reviewer expectation, checked by people, and not a machine-checkable assertion.
 
 ## Alternatives considered
 
-- **Enrich the *Documentation style* bullets in place, with no dedicated skill.** Rejected: it would
-  leave the asymmetry it is trying to fix. Japanese guidance lives in a rich skill the author is told
-  to invoke *before* writing; folding the English techniques into a few doc bullets keeps them as
-  passive reference the author reads *after*. A skill is the mechanism the repo already uses to make a
-  norm active at authoring time.
+- **Enrich the *Documentation style* bullets in place, with no dedicated skill.** Rejected. The
+  change would leave the asymmetry it is trying to fix. Japanese guidance lives in a rich skill, and
+  the author is told to invoke that skill *before* writing. Folding the English techniques into a few
+  doc bullets keeps them as passive reference that the author reads *after*. A skill is the
+  mechanism the repo already uses to make a norm active at authoring time.
 - **A standalone `english-tech-writing` skill mirroring `japanese-tech-writing`, with no umbrella.**
-  Rejected: the two would restate the language-agnostic core (outline first, cut filler, sentence
-  stress) twice and drift apart over time. A single umbrella that owns the shared principles and
-  defers to each language for its own mechanics keeps one source of truth.
+  Rejected. The two skills would restate the language-agnostic core twice. The core covers outline
+  first, cutting filler, and sentence stress. The two statements would drift apart over time. A
+  single umbrella owns the shared principles and defers to each language for its own mechanics. That
+  keeps one source of truth.
 
   **Adopted after all ([#1157](https://github.com/bajutsu-e2e/bajutsu/pull/1157)).** The English
-  mechanics were later split into an `english-tech-writing` skill — but *with* the umbrella, not
-  without it, which sidesteps the drift the rejection was about: `tech-writing` still owns the
-  shared language-agnostic core and states it once, while `english-tech-writing` and
-  `japanese-tech-writing` are now symmetric layers that each hold only their own language's
-  mechanics and defer up to it. The trigger was textlint gaining shared English-prose rules under
-  `tech-writing`: with a machine check now covering English too, keeping the English mechanics
-  inside the umbrella (while Japanese had its own layer) was the asymmetry worth removing.
-- **Enforce a subset in CI (a prose linter for filler words, "a lot of", etc.).** Rejected on the
-  prime directive: a lexical blocklist is machine-checkable, but the norm's substance (clarity,
-  emphasis, argument order) is not, and a partial lint invites treating the unlintable majority as
+  mechanics were later split into an `english-tech-writing` skill, but *with* the umbrella and not
+  without it. That shape sidesteps the drift the rejection was about. `tech-writing` still owns the
+  shared language-agnostic core and states it once. `english-tech-writing` and
+  `japanese-tech-writing` are now symmetric layers. Each layer holds only its own language's
+  mechanics and defers up to the umbrella.
+
+  The trigger was textlint gaining shared English-prose rules under `tech-writing`. A machine check
+  now covers English too. Keeping the English mechanics inside the umbrella, while Japanese had its
+  own layer, was the asymmetry worth removing.
+- **Enforce a subset in CI (a prose linter for filler words, "a lot of", and so on).** Rejected on
+  the prime directive. A lexical blocklist is machine-checkable. The norm's substance (clarity,
+  emphasis, argument order) is not. A partial lint invites treating the unlintable majority as
   optional. The norm is a review expectation, matching how every other prose rule in the repo holds.
 
 ## Progress

@@ -2,47 +2,57 @@
 
 # BajutsuAndroidUIAutomatorServer — resident UI Automator server
 
-A self-contained UI Automator instrumentation that bajutsu installs on the target device to answer
-screen reads over a local socket, keeping one `UiAutomation` session alive for the whole run. It
-exists to remove the per-invocation startup cost of `adb exec-out uiautomator dump` (≈ 2.4 s each,
-independent of tree size) that makes the Android adb backend read an order of magnitude slower than
-iOS. See the roadmap item
+BajutsuAndroidUIAutomatorServer is a self-contained UI Automator instrumentation. bajutsu installs it on
+the target device to answer screen reads over a local socket, and it keeps one `UiAutomation` session
+alive for the whole run.
+
+The server exists to remove the startup cost that `adb exec-out uiautomator dump` pays on every
+invocation (≈ 2.4 s each, independent of tree size). That cost makes the Android adb backend read an
+order of magnitude slower than iOS. See the roadmap item
 [BE-0245](../roadmaps/BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md).
 
 ## How it differs from BajutsuAndroid
 
-[`BajutsuAndroid`](../BajutsuAndroid/) is an **app-embedded** library (the Android peer of
-BajutsuKit): an app under test includes it by Gradle path to give bajutsu an in-app foothold for
-capabilities the platform only exposes from the app process, such as the clipboard (BE-0233).
+[`BajutsuAndroid`](../BajutsuAndroid/) is an **app-embedded** library, the Android peer of BajutsuKit.
+An app under test includes it by Gradle path. The library gives bajutsu an in-app foothold for
+capabilities the platform exposes only from the app process, such as the clipboard (BE-0233).
 
-This server is the opposite: an **app-independent** instrumentation that bajutsu installs and
-drives itself, the way Appium's UiAutomator2 server works. It has no UI, embeds into no app, and
-reads whatever app is on screen. That is why it lives in its own Gradle project rather than being
-included into an app's build.
+This server is the opposite: an **app-independent** instrumentation that bajutsu installs and drives
+itself, the way Appium's UiAutomator2 server works. It has no UI, embeds into no app, and reads
+whatever app is on screen. For that reason it lives in its own Gradle project, not in an app's build.
 
 ## Shape
 
 - The server is an `androidTest` instrumentation. `am instrument -w` runs a single blocking `@Test`
-  (`ResidentServerTest.serve`) that never returns — it opens a socket and serves until the
-  instrumentation is killed, which is what keeps the `UiAutomation` session warm.
-- Transport is a hand-rolled HTTP/1.1 over a raw `ServerSocket` bound to loopback (port 6790), with
-  no HTTP or JSON dependency: the server answers a small, fixed set of paths.
-- `GET /source` returns `UiDevice.dumpWindowHierarchy()`'s XML, the same
-  `AccessibilityNodeInfoDumper` format bajutsu's `parse_hierarchy` already parses.
-- `POST /type` enters text that `adb shell input text` cannot carry into the field holding input
-  focus. The text arrives as a base64 request body, and the server applies it with `ACTION_SET_TEXT`.
+  (`ResidentServerTest.serve`) that never returns. The test opens a socket and serves until the
+  instrumentation is killed, which keeps the `UiAutomation` session warm.
+- The transport is a hand-rolled HTTP/1.1 over a raw `ServerSocket` bound to loopback (port 6790), with
+  no HTTP or JSON dependency. The server answers a small, fixed set of paths.
+- `GET /source` returns the XML of `UiDevice.dumpWindowHierarchy()`. The XML uses the same
+  `AccessibilityNodeInfoDumper` format that bajutsu's `parse_hierarchy` already parses.
+- `POST /type` enters text into the field that holds input focus, for text that
+  `adb shell input text` cannot carry. The text arrives as a base64 request body, and the server
+  applies it with `ACTION_SET_TEXT`.
 
-One window difference is reconciled on the Python side: `dumpWindowHierarchy()` traverses every
-window, so its XML also carries the SystemUI status bar (clock, wifi, battery, notification icons —
-29 nodes) that the platform `uiautomator dump` omits by scoping to the active window. The app content
-is identical; `bajutsu.common.backend_cli.adb_resident.narrowed_root` drops the SystemUI decor windows so both
-paths yield the same Elements (the equivalence unit 2 of the roadmap item requires).
+### Window difference reconciled in Python
 
-The Python side that reaches this socket — `adb forward`, the `fetch_hierarchy` wiring, and the
-lifecycle tied to the device lease — lives in [`bajutsu/common/backend_cli/adb_resident.py`](../bajutsu/common/backend_cli/adb_resident.py)
-and is wired into the Android lease in `bajutsu/platform_lifecycle.py` (BE-0245 PR-C). It is opt-in
-behind the `BAJUTSU_ADB_RESIDENT` environment variable until the Android e2e lane builds and installs
-the server; unset, the adb backend reads via `uiautomator dump` exactly as before.
+`dumpWindowHierarchy()` traverses every window. Its XML therefore also carries the SystemUI status bar
+(clock, wifi, battery, notification icons — 29 nodes), which the platform `uiautomator dump` omits by
+scoping to the active window. The app content is identical.
+
+`bajutsu.common.backend_cli.adb_resident.narrowed_root` drops the SystemUI decor windows, so both paths
+yield the same Elements. Unit 2 of the roadmap item requires this equivalence.
+
+### Python side
+
+The Python side reaches this socket through three pieces: `adb forward`, the `fetch_hierarchy` wiring,
+and a lifecycle tied to the device lease. That code lives in
+[`bajutsu/common/backend_cli/adb_resident.py`](../bajutsu/common/backend_cli/adb_resident.py), and
+`bajutsu/platform_lifecycle.py` wires it into the Android lease (BE-0245 PR-C).
+
+The feature is opt-in behind the `BAJUTSU_ADB_RESIDENT` environment variable until the Android e2e
+lane builds and installs the server. When the variable is unset, the adb backend reads via
+`uiautomator dump` exactly as before.
 
 ## Build
 
@@ -50,8 +60,8 @@ the server; unset, the adb backend reads via `uiautomator dump` exactly as befor
 make -C BajutsuAndroidUIAutomatorServer build   # host APK + instrumentation (androidTest) APK
 ```
 
-This is not part of `make check` (the Python gate builds no Kotlin). It goes through the committed
-`./gradlew`, so a fresh clone needs no system-installed Gradle — only the Android SDK.
+The build is not part of `make check`, because the Python gate builds no Kotlin. It goes through the
+committed `./gradlew`, so a fresh clone needs no system-installed Gradle, only the Android SDK.
 
 ## Measuring a slow read
 
