@@ -486,9 +486,34 @@ class ResidentServerTest {
         val window = automation.windows.firstOrNull {
             it.type == AccessibilityWindowInfo.TYPE_APPLICATION
         } ?: return null
-        val node = window.root?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return null
-        node.refresh()
-        return node.takeIf { it.isEditable }
+        val root = window.root ?: return null
+        root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.let { node ->
+            node.refresh()
+            if (node.isEditable) return node
+        }
+        return focusedEditableIn(root)
+    }
+
+    /**
+     * The editable node under [root] that reports itself focused, read fresh from the app.
+     *
+     * `findFocus` answers from the accessibility cache, which keeps one input-focus position for all
+     * windows and moves it only on a focus event. CI saw that position stay on a node that was not the
+     * field for the whole focus budget, while the field held focus and the keyboard was open on it
+     * (#2385), so every retry got the same stale answer. `refresh` fetches each node's state from the
+     * app's own process, so this walk sees the field's focus whatever the cache holds.
+     */
+    private fun focusedEditableIn(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        val pending = ArrayDeque<AccessibilityNodeInfo>().apply { add(root) }
+        var visited = 0
+        while (pending.isNotEmpty() && visited < FOCUS_WALK_LIMIT) {
+            val node = pending.removeFirst()
+            visited++
+            if (!node.refresh()) continue
+            if (node.isEditable && node.isFocused) return node
+            for (i in 0 until node.childCount) node.getChild(i)?.let(pending::addLast)
+        }
+        return null
     }
 
     private fun setCaret(field: AccessibilityNodeInfo, caret: Int): Boolean =
@@ -1038,6 +1063,10 @@ class ResidentServerTest {
         // How long `/type` waits for input focus to arrive after the tap that asked for it.
         const val FOCUS_BUDGET_MS = 2_000L
         const val FOCUS_POLL_MS = 20L
+
+        // How many nodes the cache-free focus walk reads before giving up; an app screen holds far
+        // fewer, so the bound only stops a pathological tree from eating the focus budget.
+        const val FOCUS_WALK_LIMIT = 2_000
 
         // The element identity the host addresses a gesture by, as (query parameter, XML attribute).
         // Four fields, none of them a coordinate: the host picks the element, and this names it again
