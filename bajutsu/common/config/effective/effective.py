@@ -174,7 +174,7 @@ class Effective:
         config's build trusted exactly as the CLI path does, since neither can hand the host an
         attacker-authored command the way an API-bound Git spec or upload can. That verdict covers
         `driver.runner.build` too: rebasing makes its working directory `root` (#2277), but whether
-        it runs at all is `serve`'s call, refused inside the spawned run for an untrusted binding
+        it runs at all is `serve`'s call — the spawned run refuses it for an untrusted binding
         (#2282).
         """
         root_resolved = root.resolve()

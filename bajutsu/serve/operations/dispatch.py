@@ -68,9 +68,11 @@ def _build_trusted(state: ServeState, binding: ConfigBinding) -> bool:
     operator opted in with --allow-remote-build (BE-0121). A local or startup-bound config is
     operator-trusted and keeps them.
 
-    One verdict covers every build a config declares: `subject.build`, which serve runs itself
+    One verdict covers both builds this gate governs: `subject.build`, which serve runs itself
     (`_governed_build`), and `driver.runner.build`, which the spawned run would run on demand and so
-    is refused there through `Job.withhold_runner_build` (#2282).
+    is refused there through `Job.withhold_runner_build` (#2282). An uploaded bundle's
+    `launchServer.dockerfile` is a separate case, governed by `--upload-exec` instead
+    (`bajutsu.common.runner.sandbox`).
     """
     if binding.upload is not None:
         return False
@@ -246,12 +248,15 @@ def _register_and_dispatch(
     # so a remote worker needs no settings of its own. Done here — the single tail every start_*
     # endpoint (run / record / crawl / triage) funnels through — so every AI-capable job is covered.
     job.env_overlay = resolve_provider_env(state, job.org)
+    # The spawned run executes `driver.runner.build` itself, past `_governed_build`, so the same
+    # trust verdict travels to it here — the one tail every start_* endpoint funnels through
+    # (#2282). Taken from the binding the job will actually spawn against, so a caller that omits
+    # `binding` and inherits the deployment's in `_freeze_binding` cannot fail open.
+    job.withhold_runner_build = not _build_trusted(
+        state, binding if binding is not None else state.binding
+    )
     if binding is not None:
         job.cwd = binding.cwd
-        # The spawned run executes `driver.runner.build` itself, past `_governed_build`, so the
-        # same trust verdict travels to it here — the one tail every start_* endpoint funnels
-        # through (#2282).
-        job.withhold_runner_build = not _build_trusted(state, binding)
         if binding.upload is not None and ship_bundle:
             # A remote worker has no project on disk, so `job.cwd` means nothing there. Carry the
             # bundle's identity as well, and the lease signs a GET for its stored zip — without it

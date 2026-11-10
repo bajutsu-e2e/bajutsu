@@ -1286,7 +1286,8 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   token-authenticated LaunchAgent on a single Mac; `--upload-exec` (or `$BAJUTSU_UPLOAD_EXEC`) governs whether an
   **uploaded bundle**'s `services.server` command may run (`deny` / `reuse` / `sandbox`, default
   `sandbox`); `--allow-remote-build` (or `$BAJUTSU_ALLOW_REMOTE_BUILD`) opts a UI-bound **Git**
-  config's `subject.build` command into running on the host (off by default). All are covered in
+  config's `subject.build` and `driver.runner.build` commands into running on the host (off by
+  default). All are covered in
   [self-hosting](self-hosting.md).
 
 ## `mcp`

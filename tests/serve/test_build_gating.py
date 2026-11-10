@@ -138,3 +138,13 @@ def test_a_worker_spawn_carries_the_withheld_runner_build(tmp_path: Path, withho
 
     execute_job_spec({**spec, "job_id": "1"}, popen=popen, cwd=tmp_path, bus=srv.InMemoryLogBus())
     assert (seen[0].get(RUNNER_BUILD_WITHHELD_ENV) == "1") is withhold
+
+
+def test_a_dispatch_without_a_binding_takes_the_deployments_verdict(tmp_path: Path) -> None:
+    # A caller that omits `binding` spawns against the deployment's (`_freeze_binding`), so the
+    # verdict must come from that binding too rather than defaulting to trusted.
+    state = _state(tmp_path)
+    state.binding = replace(state.binding, git_from_api=True)
+    state.executor = _Recording()
+    job, _ = _register_and_dispatch(state, srv.Job(cmd=["x"]))
+    assert job is not None and job.withhold_runner_build is True
