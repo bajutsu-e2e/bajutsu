@@ -1,12 +1,12 @@
-# Serve Web UI dogfood (Playwright backend)
+# Dogfooding the serve Web UI with the Playwright backend
 
 [日本語](README.ja.md)
 
-Bajutsu testing **its own** `serve` Web UI. The app under test is the serve single-page app, driven
-by the **Playwright** backend ([BE-0041](../../roadmaps/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)).
-Like [demos/web](../web) this needs **no Mac and no Simulator** — it runs on Linux inside the same
-toolchain as `make check`. It is a deterministic regression net for the Web UI: pass/fail comes only
-from machine assertions, never an LLM.
+This demo has Bajutsu test **its own** `serve` Web UI. The app under test is the serve single-page
+app, driven by the **Playwright** backend ([BE-0041](../../roadmaps/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)).
+Like [demos/web](../web), it needs **no Mac and no Simulator** and runs on Linux inside the same
+toolchain as `make check`. The demo is a deterministic regression net for the Web UI: pass/fail
+comes from machine assertions alone, never an LLM.
 
 ## What's here
 
@@ -42,46 +42,51 @@ from machine assertions, never an LLM.
 make -C demos/serve-ui e2e
 ```
 
-This installs the web backend (`uv sync --extra web` + `playwright install chromium`), launches
-`bajutsu serve` (bound to `inner.config.yaml`, which reuses the [web demo](../web)'s target so its
-dropdowns have a real app + scenario to show), drives the Web UI through the Playwright backend with the Tier-A scenarios, and tears serve
-down. We start serve directly rather than via `make serve` because the dogfood is web-only — no XCUITest runner
-companion or iOS actuator is involved.
+The command installs the web backend (`uv sync --extra web` + `playwright install chromium`) and
+launches `bajutsu serve`. That serve is bound to `inner.config.yaml`, which reuses the
+[web demo](../web)'s target so the Web UI's dropdowns have a real app and scenario to show. The
+command then drives the Web UI through the Playwright backend with the Tier-A scenarios and tears
+serve down. It starts serve directly rather than through `make serve`, because the dogfood is
+web-only and involves no XCUITest runner companion or iOS actuator.
 
-To poke the Web UI by hand, `make -C demos/serve-ui serve-ui` and open <http://127.0.0.1:8799/>.
+To poke the Web UI by hand, run `make -C demos/serve-ui serve-ui` and open <http://127.0.0.1:8799/>.
 
-CI gates this on every PR that touches the serve UI — the `dogfood (serve UI)` job in
-[`.github/workflows/web-e2e.yml`](../../.github/workflows/web-e2e.yml) runs `make -C demos/serve-ui e2e`
-on Linux (BE-0189).
+CI gates every PR that touches the serve UI on this demo. The `dogfood (serve UI)` job in
+[`.github/workflows/web-e2e.yml`](../../.github/workflows/web-e2e.yml) runs
+`make -C demos/serve-ui e2e` on Linux (BE-0189).
 
 ## How it maps to the core
 
-The Web UI's controls carry `data-testid` attributes — the web equivalent of an iOS
-accessibilityIdentifier — namespaced by view (`nav.*`, `view.*`, `record.*`, `replay.*`, `crawl.*`,
+The Web UI's controls carry `data-testid` attributes, the web equivalent of an iOS
+accessibilityIdentifier, namespaced by view (`nav.*`, `view.*`, `record.*`, `replay.*`, `crawl.*`,
 `author.*`, `stats.*`, `coverage.*`, `settings.*`, `config.*`, `upload.*`). A scenario's
 `{ id: nav.replay }` selector resolves through the **same**
 `resolve_unique` / `find_all` determinism core as every other backend.
 
-The scenarios assert only what the deterministic core can check without an LLM or a device: which
-`<main>` view and which modal are present (the SPA toggles them via the `hidden` attribute, so the
-Playwright backend sees the active one and not the others), whether a button is `enabled` / `disabled`,
-and the `value` a field or picker holds. That keeps this dogfood firmly in **Tier 2** — the
-AI-driven Record and Crawl *runs* (which need a model and a device) are out of scope here, by the
-same rule that keeps the LLM out of the run/CI gate.
+The scenarios assert only what the deterministic core can check without an LLM or a device:
+
+- which `<main>` view and which modal are present (the SPA toggles them via the `hidden` attribute,
+  so the Playwright backend sees the active one and not the others),
+- whether a button is `enabled` / `disabled`,
+- the `value` a field or picker holds.
+
+That limit keeps this dogfood firmly in **Tier 2**. The AI-driven Record and Crawl *runs*, which need
+a model and a device, are out of scope here by the same rule that keeps the LLM out of the run/CI
+gate.
 
 Two states are asserted indirectly, by design. Report-like panes (Stats, Coverage, run reports)
-render into a **shadow root**, which the element query does not pierce — so their scenarios assert
-the light-DOM placeholder (`stats.empty` / `coverage.empty`) *leaving* the tree, which is exactly
-"the render path ran". And Record's Generate button is gated on Claude reachability (BE-0101) —
-host state — so only its presence is asserted, never its enabled state.
+render into a **shadow root**, which the element query does not pierce. Their scenarios
+assert that the light-DOM placeholder (`stats.empty` / `coverage.empty`) *leaves* the tree, which is
+exactly "the render path ran". Record's Generate button is gated on Claude reachability (BE-0101),
+which is host state, so the scenarios assert its presence and never its enabled state.
 
 ## Feature coverage map
 
-The feature list is [docs/web-ui.md](../../docs/web-ui.md) — every user-facing behavior of the
-serve Web UI is documented there, and this table maps each one to its dogfood scenario. Features
-the dogfood cannot exercise are listed with the reason; none of them is silently uncovered — the
-server side of every one has deterministic pytest coverage in `tests/` (the `make check` gate),
-and the AI-driven flows are excluded from any deterministic gate **by design** (prime directive 1).
+The feature list is [docs/web-ui.md](../../docs/web-ui.md), which documents every user-facing behavior
+of the serve Web UI. The table below maps each behavior to its dogfood scenario. Features the
+dogfood cannot exercise are listed with the reason, so none is silently uncovered: the server side of
+every one has deterministic pytest coverage in `tests/` (the `make check` gate), and the AI-driven
+flows are excluded from any deterministic gate **by design** (prime directive 1).
 
 | Web-UI feature (docs/web-ui.md) | Scenario |
 |---|---|
@@ -110,37 +115,38 @@ and the AI-driven flows are excluded from any deterministic gate **by design** (
 
 **Not exercised by the dogfood, and why:**
 
-- **AI-driven flows** — Record's Generate, Crawl's Start, and its **continue exploring** / pruned
-  **resume** (both launch a crawl), Enrich's proposals, Triage with Claude. Excluded from every
-  deterministic net by design: an LLM must never sit on a gate's verdict path. `crawl-history.yaml`
-  asserts the continue control is *offered*, never clicks it.
-- **Flows that need a prior run** — the embedded report's content, visual Approve, Triage (even
-  rule-based), Replay History entries, Coverage's run fold-in. The Replay run history is host state,
-  so asserting its content would be machine-dependent; the operations behind them are pytest-covered.
-  The one exception is the **Crawl** History, now driven off a committed `fixtures/crawl-runs` screen
-  map (BE-0181) so its read-only reopen and the continue control are asserted deterministically.
-- **Run execution round-trips** — Replay's Run and Record's in-place ▶ Run start a nested
-  `bajutsu run` (a browser inside the browser test); deferred in BE-0058.
-- **Native `<select>` option switching** — the coordinate-tapping web backend cannot open a native
+- **AI-driven flows.** Record's Generate, Crawl's Start, its **continue exploring** and pruned
+  **resume** (both launch a crawl), Enrich's proposals, and Triage with Claude. Every deterministic
+  net excludes them by design, because an LLM must never sit on a gate's verdict path.
+  `crawl-history.yaml` asserts the continue control is *offered* and never clicks it.
+- **Flows that need a prior run.** The embedded report's content, visual Approve, Triage (even
+  rule-based), Replay History entries, and Coverage's run fold-in. The Replay run history is host
+  state, so asserting its content would depend on the machine. Pytest covers the operations behind
+  these flows. The one exception is the **Crawl** History, now driven off a committed
+  `fixtures/crawl-runs` screen map (BE-0181), so its read-only reopen and the continue control are
+  asserted deterministically.
+- **Run execution round-trips.** Replay's Run and Record's in-place ▶ Run start a nested
+  `bajutsu run` (a browser inside the browser test). BE-0058 deferred them.
+- **Native `<select>` option switching.** The coordinate-tapping web backend cannot open a native
   dropdown, so anything behind "pick a provider / change the target" (API-key save, Bedrock
   fields, provider-specific flows) asserts only the pre-choice state. The one exception is
   `replay-device-cloud.yaml`, which sets Replay's target and environment with the `selectOption`
-  step; its fan-out never runs, because the faked worker leases no job and Stop all cancels them.
-- **Native browser chrome** — the upload file chooser, codegen's clipboard Copy and Download, and
+  step. Its fan-out never runs, because the faked worker leases no job and Stop all cancels them.
+- **Native browser chrome.** The upload file chooser, codegen's clipboard Copy and Download, and
   the token-login `prompt()` dialog are not in the page's DOM.
-- **Host-dependent state** — Generate/Start enabled state and the gate banner (Claude
-  reachability), doctor's check *results* (they probe the host's tools). Presence is asserted;
-  outcomes are not.
-- **Environment-shaped layout** — the narrow-tier stacked layout (the driver has no viewport
-  control) and the drag-to-move panel grips (multi-stage pointer choreography; the tiling *math*
-  is guarded by `panel-resize.yaml`).
-- **Binding a different config, saving keys, signing in** — these mutate the shared server state
-  under every other scenario, so the dogfood only opens and closes those dialogs; the mutations
-  are pytest-covered.
+- **Host-dependent state.** The Generate/Start enabled state and the gate banner (Claude
+  reachability) depend on the host, and so do doctor's check *results* (they probe the host's
+  tools). The scenarios assert presence and never outcomes.
+- **Environment-shaped layout.** The narrow-tier stacked layout (the driver has no viewport
+  control) and the drag-to-move panel grips (multi-stage pointer choreography). `panel-resize.yaml`
+  guards the tiling *math*.
+- **Binding a different config, saving keys, signing in.** These actions mutate the shared server
+  state under every other scenario, so the dogfood only opens and closes those dialogs. Pytest
+  covers the mutations.
 
 ## Scope (current)
 
-The web backend taps by coordinate, so it cannot operate a native `<select>` dropdown; these
+The web backend taps by coordinate, so it cannot operate a native `<select>` dropdown. These
 scenarios assert the **state the page loads** (which needs no dropdown interaction) rather
 than switching options. The one exception is `replay-device-cloud.yaml`, which switches options
 with the `selectOption` step. The dogfood roadmap item tracks the remaining `<select>` flows and
