@@ -135,10 +135,18 @@ def _traits(node: ET.Element) -> list[str]:
     return out
 
 
-#: The accessibility class every editable text node reports: a Views `EditText` and its subclasses
-#: (`AutoCompleteTextView`, Material's `TextInputEditText`) inherit `EditText`'s
-#: `getAccessibilityClassName`, and a Compose text field reports the same name (#2388).
-_EDITABLE_CLASS = "android.widget.EditText"
+#: The accessibility classes an editable text node reports (#2388). A Views `EditText` and the
+#: subclasses that inherit its `getAccessibilityClassName` (AppCompat's `AppCompatEditText`, Material's
+#: `TextInputEditText`) report `EditText`, and so does a Compose text field; `AutoCompleteTextView`
+#: and `MultiAutoCompleteTextView` (a `SearchView`'s inner field, a Material exposed dropdown) override
+#: the method with their own names.
+_EDITABLE_CLASSES = frozenset(
+    {
+        "android.widget.EditText",
+        "android.widget.AutoCompleteTextView",
+        "android.widget.MultiAutoCompleteTextView",
+    }
+)
 
 
 def _editable_element_fields(node: ET.Element) -> tuple[str | None, str | None]:
@@ -148,19 +156,23 @@ def _editable_element_fields(node: ET.Element) -> tuple[str | None, str | None]:
     `into: { label: … }` selector keeps its meaning as the user types — the split iOS already has. An
     empty field reports its hint as `text`, told apart only when the dump carries `hint` (the resident
     server's does); on the `uiautomator dump` fallback, which may omit it, an empty field's hint reads
-    as its value. The dump has no `isShowingHintText`, so typed text equal to the hint reads as no
-    value. A masked field's text is withheld, whatever the dump carries in it.
+    as its value, and `text` stays the label there — the only name that path has for the field, so a
+    label selector resolves on both read paths. The dump has no `isShowingHintText`, so typed text
+    equal to the hint reads as no value. A masked field's text is withheld from both, whatever the
+    dump carries in it.
     """
     desc = node.get("content-desc") or ""
     text = node.get("text") or ""
     hint = node.get("hint") or ""
     showing_hint = bool(hint) and text == hint
-    value = None if node.get("password") == "true" or showing_hint else text
-    return desc or hint or None, value or None
+    masked = node.get("password") == "true"
+    value = None if masked or showing_hint else text
+    label = desc or hint or ("" if masked or "hint" in node.attrib else text)
+    return label or None, value or None
 
 
 def _to_element(node: ET.Element, malformed_bounds: list[int] | None = None) -> base.Element:
-    if node.get("class") == _EDITABLE_CLASS:
+    if node.get("class") in _EDITABLE_CLASSES:
         return _element(node, *_editable_element_fields(node), malformed_bounds)
     desc = node.get("content-desc") or ""
     text = node.get("text") or ""

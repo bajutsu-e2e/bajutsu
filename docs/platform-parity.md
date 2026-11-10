@@ -118,6 +118,7 @@ declare, or outside what the two tables cover.
 
 | Behavior | iOS | Android | What it means today |
 |---|---|---|---|
+| Text in an editable field | The element's `value` holds the text. | `value` holds the text too (#2388), with two gaps: the `uiautomator dump` fallback carries no `hint`, so an empty field's hint reads as its value; and no dump carries `isShowingHintText`, so text equal to the field's hint reads as no value. | On the fallback read path a `value` assertion on an empty field reads its hint, and a `clear` step does nothing on a field whose text equals its hint. See [drivers](drivers.md). |
 | `select` and `copy` | XCUITest selects and copies natively. | adb sends Ctrl+A and Ctrl+C through `input keycombination`, which needs Android 12 or later. | No Android scenario runs the pair, and the conformance test checks only that neither call raises. |
 | `pinch` and `rotate` | XCUITest performs both natively. | adb writes raw touch events with `sendevent`, which needs root. | Both steps fail on an unrooted device. |
 | `setLocation` | `simctl` sets it on the Simulator. | The emulator console sets it. | Neither backend sets the location on a real device yet. [BE-0475](../roadmaps/BE-0475-ios-runner-set-location/BE-0475-ios-runner-set-location.md) covers iOS. |

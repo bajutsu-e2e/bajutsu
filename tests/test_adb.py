@@ -289,13 +289,25 @@ def test_editable_field_reads_typed_text_as_value_and_keeps_its_name_as_label() 
 
 
 def test_editable_field_without_a_hint_attribute_reads_its_text_as_value() -> None:
-    # The `uiautomator dump` fallback may omit `hint`, so an empty field's hint there reads as value.
+    # The `uiautomator dump` fallback may omit `hint`, so an empty field's hint there reads as value,
+    # and `text` stays the label so a label selector resolves on that read path too. A masked field's
+    # text never leaks into either, and an AutoCompleteTextView (which reports its own class) maps
+    # the same way as an EditText.
     xml = """<hierarchy rotation="0">
   <node resource-id="search.field" class="android.widget.EditText" text="Search horses"
     content-desc="" bounds="[0,0][100,50]" />
+  <node resource-id="pw" class="android.widget.EditText" text="hunter2" password="true"
+    bounds="[0,50][100,100]" />
+  <node resource-id="pick" class="android.widget.AutoCompleteTextView" text="Bay" content-desc=""
+    hint="Coat" bounds="[0,100][100,150]" />
 </hierarchy>"""
-    field = _by_id(parse_hierarchy(xml), "search.field")
-    assert (field["label"], field["value"]) == (None, "Search horses")
+    els = parse_hierarchy(xml)
+    field = _by_id(els, "search.field")
+    assert (field["label"], field["value"]) == ("Search horses", "Search horses")
+    pw = _by_id(els, "pw")
+    assert (pw["label"], pw["value"]) == (None, None)
+    pick = _by_id(els, "pick")
+    assert (pick["label"], pick["value"]) == ("Coat", "Bay")
 
 
 def test_resource_id_with_no_local_name_is_none_not_empty() -> None:
