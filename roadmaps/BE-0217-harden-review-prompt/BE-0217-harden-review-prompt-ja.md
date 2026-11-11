@@ -16,172 +16,194 @@
 
 ## はじめに
 
-[BE-0203](../BE-0203-claude-code-pr-review/BE-0203-claude-code-pr-review-ja.md) は Claude Code を
-自動 PR レビュアーにし、このリポジトリ独自の契約
-[`.github/claude-review-prompt.md`](../../.github/claude-review-prompt.md) を与えました。この契約は
-三つの prime directive、`implement-be` がすでに信頼しているレビューの観点（握りつぶしの検出、型設計、
-テスト網羅）、そしていくつかの house convention（ドキュメントの二言語ルール、docstring 規約、ロードマップの
-リンク）をカバーしています。実際の PR で効果を示してきましたが、その観点のリストはこのプロジェクト自身の
-慣習から書き起こされたものであり、レビュアーが実際に何を検出すべきかの調査から導かれたものではありません。
+[BE-0203](../BE-0203-claude-code-pr-review/BE-0203-claude-code-pr-review-ja.md) は、Claude Code を
+自動 PR レビュアーにしました。あわせて、このリポジトリ独自の契約
+[`.github/claude-review-prompt.md`](../../.github/claude-review-prompt.md) をレビュアーに与えています。
+この契約がカバーするのは、次の三つです。
 
-この項目は、同じ契約を二種類の根拠で強化します。一つは、BE-0203 の移行期間中に並行稼働している
-**GitHub Copilot** がこのリポジトリ自身の最近のプルリクエストで実際に何を指摘してきたかという実績、もう一つは
-確立された参照可能なコードレビューの標準（Google の Engineering Practices、Python の各 PEP、Bandit のルール
-一覧、OWASP のセキュアコードレビューの指針、Conventional Comments 仕様）です。変更するのはレビューの
-**契約**（`.github/claude-review-prompt.md`）と、書式が変わる分だけワークフローの識別プレフィックスにとどまり、
-BE-0203 が確立した助言専用・非ブロッキングの保証には手を加えません。この項目も同じ prime directive 1 の
-境界に従います。
+- 三つの prime directive
+- `implement-be` がすでに信頼しているレビューの観点（握りつぶしの検出、型設計、テスト網羅）
+- いくつかの house convention（ドキュメントの二言語ルール、docstring 規約、ロードマップのリンク）
+
+この契約は、実際の PR で効果を示してきました。ただし、観点のリストは、このプロジェクト自身の慣習から
+書き起こしたものです。レビュアーが実際に何を検出すべきかを調べて導いたものではありません。
+
+この項目は、同じ契約を二種類の根拠で強化します。どちらも、推測ではなく直接集めた根拠です。
+
+1. **GitHub Copilot** が、このリポジトリ自身の最近のプルリクエストで実際に何を指摘してきたかという実績。
+   このプロジェクトは、BE-0203 の移行期間中、Copilot を Claude Code と並行して稼働させています。
+2. 確立された、参照可能なコードレビューの標準。Google の Engineering Practices、Python の各 PEP、
+   Bandit のルール一覧、OWASP のセキュアコードレビューの指針、Conventional Comments 仕様です。
+
+変更するのは、レビューの**契約**（`.github/claude-review-prompt.md`）だけです。コメントの書式が変わる
+場合は、ワークフローの識別プレフィックスも変えます。BE-0203 が確立した、助言専用で非ブロッキングという
+保証には、手を加えません。この項目にも、同じ prime directive 1 の境界が及びます。
 
 ## 動機
 
 - **このリポジトリ自身のレビュー履歴が、すでに欠けている観点を示しています。** 最近マージされた PR に
-  対する Copilot のインラインコメントを読むと、現在のプロンプトが名指ししていないパターンが繰り返し
-  現れています。
+  対する Copilot のインラインコメントを読むと、同じパターンが繰り返し現れます。現在のプロンプトは、
+  そのどれも名指ししていません。
   - **コメントや docstring と実装のずれ（コメント腐敗）。**
-    [#825](https://github.com/bajutsu-e2e/bajutsu/pull/825) では `state.py` の docstring が
-    ストレージの seam が 4 つに増えたあとも古い数のままでした。
-    [#816](https://github.com/bajutsu-e2e/bajutsu/pull/816) では `platform_lifecycle.py` の
-    docstring が、すでに他所で参照済みのプラットフォームを「将来対応」と書き、run predicate の数も
-    実際と合っていませんでした。
-    [#813](https://github.com/bajutsu-e2e/bajutsu/pull/813) では `record.py` の docstring が、
-    実装の実際の戻り値の挙動と食い違っていました。
+    - [#825](https://github.com/bajutsu-e2e/bajutsu/pull/825) では、`state.py` の docstring が、
+      ストレージの seam が 4 つに増えたあとも古い数のままでした。
+    - [#816](https://github.com/bajutsu-e2e/bajutsu/pull/816) では、`platform_lifecycle.py` の
+      docstring が、すでに参照済みのプラットフォームを「将来対応」と書いていました。run predicate の
+      数も、実際と合っていませんでした。
+    - [#813](https://github.com/bajutsu-e2e/bajutsu/pull/813) では、`record.py` の docstring が、
+      実装の実際の戻り値の挙動と食い違っていました。
   - **docstring だけを本体に持つ `Protocol` メソッド。**
     [#816](https://github.com/bajutsu-e2e/bajutsu/pull/816) では、`RunEnvironment` や
-    `CrawlEnvironment` の複数のメソッドが本体に docstring しか持たず、`...` や
-    `raise NotImplementedError` を欠いていました。これは戻り値の型注釈が `None` でないにもかかわらず、
-    暗黙に `None` を返す具象メソッドになってしまう不具合で、`mypy --strict` では検出できません。
+    `CrawlEnvironment` の複数のメソッドが、本体に docstring しか持たず、`...` や
+    `raise NotImplementedError` を欠いていました。このようなメソッドは、戻り値の型注釈が `None` で
+    ないにもかかわらず、暗黙に `None` を返す具象メソッドになります。`mypy --strict` では検出できません。
   - **構造化データを組み立てる際の未エスケープな文字列補間。**
     [#811](https://github.com/bajutsu-e2e/bajutsu/pull/811) では、`bajutsu/templates/serve.author.js`
-    内の三つの関数が、セレクター ID を YAML の flow mapping にエスケープなしで埋め込んでおり、`:` を
-    含む ID を与えると不正な YAML になっていました。
-  - **脆いテストとフレーキーなテスト。**
-    同じく [#811](https://github.com/bajutsu-e2e/bajutsu/pull/811) では、あるテストが引用符のスタイルを
-    厳密な部分文字列一致で検証しており、挙動に関係のないフォーマット変更だけで壊れる状態でした。
-    [#808](https://github.com/bajutsu-e2e/bajutsu/pull/808) では、テストのアサーションが壁時計時刻に
-    依存しており、CI が遅いときにフレーキーになりえました。
+    内の三つの関数が、セレクター ID を YAML の flow mapping にエスケープなしで埋め込んでいました。
+    `:` を含む ID を与えると、不正な YAML になります。
+  - **脆いテストとフレーキーなテスト。** 同じく [#811](https://github.com/bajutsu-e2e/bajutsu/pull/811)
+    では、あるテストが引用符のスタイルを厳密な部分文字列一致で検証していました。挙動に関係のない
+    フォーマット変更だけで壊れます。[#808](https://github.com/bajutsu-e2e/bajutsu/pull/808) では、
+    テストのアサーションが壁時計時刻に依存しており、CI が遅いときにフレーキーになりえました。
   - **PR やロードマップの文章に残る陳腐化した記述。**
-    [#811](https://github.com/bajutsu-e2e/bajutsu/pull/811) 自身のロードマップファイルは、PR が
-    すでに `Implementing PR` をリンクしたあとも、その欄を「pending」のままにしていました。
+    [#811](https://github.com/bajutsu-e2e/bajutsu/pull/811) のロードマップファイルは、PR がすでに
+    `Implementing PR` をリンクしたあとも、その欄を「pending」のままにしていました。
 
-  これらはいずれも、現在のプロンプトが持つ三つの観点区分（prime directive、`implement-be` の観点、
-  house convention）がレビュアーに名指しで注意を促していないパターンです。レビュアーがこれらを拾えるのは
-  たまたま気づいた場合に限られ、契約がそう指示しているからではありません。
-- **汎用のセキュリティ/品質チェックリストを丸ごと持ち込むと、ゲートとの重複が大半を占めてしまいます。
-  網羅性より精度が重要です。** Bandit や OWASP 風のチェックリストを丸ごと足したくなりますが、このリポジトリの
-  `ruff` 設定（[`pyproject.toml`](../../pyproject.toml)）は `make lint` の一部としてすでに `S`
-  （Bandit 相当）のルール群を選択しています。ハードコードされた秘密情報、安全でない `yaml.load`、
-  `subprocess(shell=True)`、弱い乱数、リクエストのタイムアウト欠落、証明書検証の無効化は、すでに
-  Python 側のゲートで検出されます。これらをプロンプトで再び指摘するのは、すでにブロックしているチェックの
-  重複です。さらに `assert` の使用や `subprocess` への生の argv 呼び出しを指摘してしまうと、このリポジトリが
-  `S101` と `S603` に対して理由付きで下した ignore の判断と矛盾します。レビュアー独自の価値は、ゲートが
-  構造的に見えない領域にあります。ファイルをまたぐ意味的なずれ、型検査は通るのに誤っている `Protocol`
-  の本体、そして上記 `#811` の例のとおり `bajutsu/templates/serve.*.js` のようなインジェクション性の
-  不具合です。`make lint-js` はこのファイル群を `node --check` による構文チェックにしかかけておらず、
-  セキュリティやエスケープの観点の lint は一切ありません。この項目の設計は、汎用チェックリストの輸入では
-  なく、この区別を先頭に置きます。
-- **プロンプトには設計・アーキテクチャの観点がありません。**
-  [Google の Engineering Practices レビュアーガイド](https://google.github.io/eng-practices/review/reviewer/looking-for.html)
-  は、レビューの優先順位で設計（design）を機能性、複雑さ、テスト、命名、コメント、スタイルより上に
-  置いています。変更が置かれるべき場所に置かれているか、問題に対して過剰設計または過小設計になっていないか、
-  周囲のアーキテクチャに合っているかという観点です。現在のプロンプトはルールとチェックリストの集まり
-  （prime directive、観点、house convention）に終始しており、変更そのものの形について意見を述べる
-  観点がありません。これは Google 自身の指針と、この項目の依頼者の双方が最も価値が高いと考えるレビューの
-  軸です。
-- **コメントの重大度が、今はラベルのない地の文になっています。**
-  現在、すべての指摘は `🤖 **Claude Code** —` というプレフィックスのあとにラベルのない文章として
-  現れます。人間はコメントを一つずつ読まないと、それが些末な指摘なのか本当の問題なのか判断できません。
+  現在のプロンプトには、三つの観点区分があります。prime directive、`implement-be` の観点、
+  house convention です。このどれも、これらのパターンをレビュアーに名指しで示していません。レビュアーが
+  拾えるのは、たまたま気づいた場合に限られます。契約が見るよう指示しているからではありません。
+- **汎用のセキュリティ/品質チェックリストは、ゲートとの重複が大半を占めます。網羅性より精度が
+  重要です。** Bandit や OWASP 風の広いチェックリストを足したくなります。しかし、このリポジトリの
+  `ruff` 設定（[`pyproject.toml`](../../pyproject.toml)）は、`make lint` の一部として、すでに `S`
+  （Bandit 相当）のルール群を選択しています。Python 側のゲートは、ハードコードされた秘密情報、安全でない
+  `yaml.load`、`subprocess(shell=True)`、弱い乱数、リクエストのタイムアウト欠落、証明書検証の無効化を、
+  すでにブロックしています。
+  - これらをプロンプトで再び指摘すると、すでに PR をブロックしているチェックと重複します。
+  - `assert` の使用や、`subprocess` への生の argv 呼び出しを指摘すると、このリポジトリの `S101` と
+    `S603` の ignore と矛盾します。この ignore には、`pyproject.toml` に理由が記録されています。
+  - レビュアー独自の価値は、ゲートが構造的に見えない領域にあります。ファイルをまたぐ意味的なずれと、
+    型検査は通るのに誤っている `Protocol` の本体です。上記 `#811` の例のとおり、
+    `bajutsu/templates/serve.*.js` のようなインジェクション性の不具合も、具体的な例です。
+    `make lint-js` は、このファイル群を `node --check` による構文チェックにしかかけていません。
+    セキュリティやエスケープの観点の lint は、一切ありません。
+
+  この項目の設計は、汎用チェックリストを丸ごと輸入するのではなく、この区別を先頭に置きます。
+- **プロンプトには、設計とアーキテクチャの観点がありません。**
+  [Google の Engineering Practices のレビュアーガイド](https://google.github.io/eng-practices/review/reviewer/looking-for.html)
+  は、レビューの優先順位で、設計（design）を機能性、複雑さ、テスト、命名、コメント、スタイルより
+  上に置いています。設計とは、三つの問いです。変更が置かれるべき場所に置かれているか。問題に対して
+  過剰設計または過小設計になっていないか。周囲のアーキテクチャに合っているか。現在のプロンプトは、
+  ルールとチェックリスト（prime directive、観点、house convention）だけで構成されています。変更そのものの
+  形について意見を述べるよう求める箇所は、ありません。この軸は、Google 自身の指針と、この項目の依頼者の
+  双方が、最も価値が高いと考えるレビューの軸です。
+- **コメントの重大度が、今はラベルのない地の文になっています。** 現在、すべての指摘は
+  `🤖 **Claude Code** —` というプレフィックスのあとに、ラベルのない文章として現れます。人間は、指摘を
+  一つずつ読まないと、それが些末な指摘なのか本当の問題なのか判断できません。
   [Conventional Comments](https://conventionalcomments.org/) 仕様は、コミュニティで広く採用されている
-  簡潔な書式（`ラベル [装飾]: 主文`）で、`issue`、`suggestion`、`nitpick`、`question`、`praise`
-  といったラベルと `(non-blocking)` のような装飾を持ちます。これを採用すれば、指摘の重大度を一目で
-  把握できるようになるだけでなく、この項目が投稿するものは何一つマージを妨げないという保証を、周囲の
-  説明文だけでなく成果物自体でも繰り返し示すことになり、prime directive 1 を補強します。
-- **文言の一貫性を照らし合わせる、名前のついた標準がありません。** 現在の house convention の節は
-  二言語ドキュメントの欠落や docstring 規約は指摘しますが、用語のドリフト（同じ概念が場所によって
-  別々の言い方をされること）や、diff によってすでに否定された主張をドキュメントやコメントが
-  していることは指摘しません。これはまさに上記のコメント腐敗のパターンです。
+  簡潔な書式で、`ラベル [装飾]: 主文` の形をとります。ラベルには `issue`、`suggestion`、`nitpick`、
+  `question`、`praise` があり、装飾には `(non-blocking)` があります。この書式を使えば、指摘の重大度を
+  一目で把握できます。さらに、レビュアーが投稿するものは何一つマージを妨げないことを、常に目に見える形で
+  思い出させます。これは、周囲の説明文だけでなく成果物自体でも、prime directive 1 を補強します。
+- **文言の一貫性を照らし合わせる、名前のついた標準がありません。** 現在の house convention の節は、
+  二言語ドキュメントの欠落と docstring 規約を指摘します。用語のドリフト（同じ概念が場所によって別々の
+  言い方をされること）は、指摘しません。diff によってすでに否定された主張を、ドキュメントやコメントが
+  していることも、指摘しません。後者は、まさに上記のコメント腐敗のパターンです。
   [Google の開発者向けドキュメントスタイルガイド](https://developers.google.com/style) と、その
   [ドキュメントのベストプラクティス](https://google.github.io/styleguide/docguide/best_practices.html) は、
-  このクラスの不備を直接名指ししており、参照可能な典拠になります。
+  このクラスの不備を直接名指ししています。どちらも、参照可能で確立した典拠です。
 
 ## 詳細設計
 
-作業はすべて既存のレビュー契約とその識別プレフィックスの内側にとどまります。BE-0203 のワークフローの
-権限、トリガー、ゲートの意味論には一切変更を加えません。
+作業は、すべて既存のレビュー契約とその識別プレフィックスの内側にとどまります。BE-0203 のワークフローの
+権限、トリガー、ゲートの意味論には、一切変更を加えません。
 
-1. **「ゲートが見えないものをレビューする」という先頭原則を追加します。** `.github/claude-review-prompt.md`
-   の観点の節より前に短い段落を追加し、`make check` がすでにゲートしているもの（`ruff` が選択している
-   `S`（Bandit）系を含むルール、`mypy --strict`、docstring linter、カバレッジの下限）を再指摘しないこと、
-   そして `pyproject.toml` に記録された理由のあるファイル単位の ruff ignore（`S101`、`S603` など）を
-   蒸し返さないことを明記します。これはこの項目が追加する観点すべてに共通する組み立ての原則であり、
-   以下の各観点は、決定論的なゲートが構造的に見えないものだけを狙います。
-2. **設計・アーキテクチャの観点を追加します。** 変更が置かれるべき場所に置かれているか、解こうとしている
-   問題に対して過剰設計または過小設計になっていないか、既存のモジュール境界や seam に合っているかを
-   レビュアーに述べさせる新しい観点です。
+1. **「ゲートが見えないものをレビューする」という先頭原則を追加します。**
+   `.github/claude-review-prompt.md` の観点の節より前に、短い段落を追加します。段落は二つの規則を
+   述べます。
+   - `make check` がすでにゲートしているものを、レビュアーは再指摘しません。対象は、`ruff` が選択して
+     いる `S`（Bandit）系を含むルール、`mypy --strict`、docstring linter、カバレッジの下限です。
+   - `pyproject.toml` に記録された、理由のあるファイル単位の ruff ignore（`S101`、`S603` など）を、
+     レビュアーは蒸し返しません。段落は、そこにすでに記録された理由を引用します。
+
+   これは、この項目が追加する観点すべてに共通する、組み立ての原則です。以下の各観点は、決定論的な
+   ゲートが構造的に見えないものだけを狙います。
+2. **設計とアーキテクチャの観点を追加します。** この新しい観点は、レビュアーに三つの問いについて述べ
+   させます。変更が置かれるべき場所に置かれているか。解こうとしている問題に対して、過剰設計または
+   過小設計になっていないか。既存のモジュール境界や seam に合っているか。
    [Google のレビュアーガイド](https://google.github.io/eng-practices/review/reviewer/looking-for.html)
-   が示す「設計優先」の優先順位と同じです。prime directive 1 に沿って、あくまで批評と提案であり、
-   裁定にはしません。
-3. **コメントや docstring のずれ（コメント腐敗）を検出する観点を追加します。** docstring やコメント、
-   地の文の主張が、それが説明しているコードと矛盾している場合、同じファイルや PR の別の箇所と矛盾している
-   場合、diff 自身がすでに解決したことを保留・将来対応として書いている場合を指摘します。上記の `#825`、
-   `#816`、`#813`、`#811` の背後にあるパターンです。
-4. **`Protocol` や抽象メソッドの本体を検出する観点を追加します。** `Protocol` や `abc` のメソッドが、
-   戻り値の型注釈が `None` でないにもかかわらず、本体が docstring だけ（`...` や
-   `raise NotImplementedError`、実装のいずれも持たない）である場合を指摘します。`mypy --strict` では
-   見えない不具合の型で、このリポジトリ自身の `#816` のレビューが人手で捉えたものです。
+   が示す、「設計優先」の優先順位と同じです。観点は、prime directive 1 に沿って、あくまで批評と提案と
+   して書き、裁定にはしません。
+3. **コメントや docstring のずれ（コメント腐敗）を検出する観点を追加します。** docstring、コメント、
+   地の文の主張が、次の三つのいずれかに当たる場合を指摘します。説明しているコードと矛盾している。
+   同じファイルや PR の別の箇所と矛盾している。diff 自身がすでに解決したことを、保留や将来対応として
+   書いている。上記の `#825`、`#816`、`#813`、`#811` の背後にあるパターンです。
+4. **`Protocol` や抽象メソッドの本体を検出する観点を追加します。** `Protocol` や `abc` のメソッドで、
+   戻り値の型注釈が `None` でないにもかかわらず、本体が docstring だけの場合を指摘します。ここでの
+   「docstring だけ」とは、`...`、`raise NotImplementedError`、実際の実装のいずれも持たない状態です。
+   この種類の不具合は、`mypy --strict` では見えません。このリポジトリ自身の `#816` のレビューが、
+   人手で捉えました。
 5. **未エスケープな構造化データ補間の観点を、ゲートの及ばない範囲に絞って追加します。** 変数から
-   エスケープなしで YAML、JSON、HTML、シェル用の文字列を組み立てている箇所を指摘します。
-   `bajutsu/templates/serve.*.js`（[`Makefile`](../../Makefile) の `make lint-js` では `node --check`
-   のみで検査されている）がまさにこの種のゲートの及ばない領域であることを、`#811` の実例とともに
-   明記します。
-6. **テスト品質の観点（脆さとフレーキーさ）を追加します。** 挙動ではなく偶発的なフォーマット
-   （厳密な引用符やホワイトスペース）に固定されたアサーションと、壁時計時刻など非決定的な入力に
-   pass/fail が依存するテストを指摘します。これは、`run` に限らずテストスイート自体にも、このプロジェクト
-   自身の「決定性優先」という姿勢（prime directive 2）を広げる形です。
-7. **Conventional Comments のラベルを採用します。** すべてのインラインコメントに、既存の
-   `🤖 **Claude Code** —` という識別プレフィックスの前に、
+   エスケープなしで YAML、JSON、HTML、シェル用の文字列を組み立てている、文字列の連結や補間を指摘
+   します。この観点は、明示的な注記を持ちます。`bajutsu/templates/serve.*.js` は、まさにこの種の
+   ゲートの及ばない領域です。`make lint-js` が、このファイルを `node --check` でしか検査しないからです
+   （[`Makefile`](../../Makefile) を参照）。`#811` の実例が、そのリスクを示しています。
+6. **テスト品質の観点（脆さとフレーキーさ）を追加します。** 挙動ではなく、偶発的なフォーマット
+   （厳密な引用符やホワイトスペース）に固定されたアサーションを指摘します。壁時計時刻など、非決定的な
+   入力に pass/fail が依存するテストも指摘します。この観点は、このプロジェクト自身の「決定性優先」という
+   姿勢（prime directive 2）を、`run` だけでなくテストスイート自体にも広げる形をとります。
+7. **Conventional Comments のラベルを採用します。** すべてのインラインコメントに、
    [Conventional Comments](https://conventionalcomments.org/) のラベル（`issue`、`suggestion`、
-   `nitpick`、`question`、`praise` のいずれか）と `(non-blocking)` という装飾を付けます
-   （例：`🤖 **Claude Code** — issue (non-blocking): ...`）。プロンプトには、`(non-blocking)` が
-   単なる飾りではなく、このレビュアーが投稿するラベルすべてに必ず付くものであることを明記します。
-   レビューは設計上助言にとどまり（prime directive 1）、どのラベルもマージを妨げるものにはなりません。
-8. **文言・用語の一貫性を見る観点を追加します。** 既存の house convention の節を拡張し、diff が触れた
-   ファイルをまたいで同じ概念が別々の言い方をされている場合、頭字語が初出で展開されていない場合、
-   PR 本文やロードマップの `Progress` の記述が実際の diff と食い違っている場合を指摘します。
-   [Google の開発者向けドキュメントスタイルガイド](https://developers.google.com/style) と
+   `nitpick`、`question`、`praise` のいずれか）と、`(non-blocking)` という装飾を付けます。付ける位置は、
+   既存の `🤖 **Claude Code** —` という識別プレフィックスの前です。例は
+   `🤖 **Claude Code** — issue (non-blocking): ...` です。プロンプトには、`(non-blocking)` が単なる
+   飾りではないことを明記します。このレビュアーが投稿するラベルには、すべて必ず付きます。レビューは、
+   設計上、助言にとどまるからです（prime directive 1）。どのラベルも、マージを妨げません。
+8. **文言と用語の一貫性を見る観点を追加します。** 既存の house convention の節を拡張し、diff が触れた
+   ファイルについて、次の三つを指摘します。
+   - 同じ概念が、別々の言い方をされています。
+   - 頭字語が、初出で展開されていません。
+   - PR 本文やロードマップの `Progress` の記述が、説明している diff と食い違っています。
+
+   この観点は、[Google の開発者向けドキュメントスタイルガイド](https://developers.google.com/style) と
    [ドキュメントのベストプラクティス](https://google.github.io/styleguide/docguide/best_practices.html)
-   を典拠とし、`#811` 自身のレビューが捉えた `Implementing PR` 欄の陳腐化を踏まえています。
-9. **検証。** BE-0203 の項目 9 と同じ形をとります。この項目はプロンプトの Markdown だけを変更し
-   ワークフローの YAML には変更を加えないため、`actionlint`（すでに `make check` に含まれる）は
-   関与しません。レビューの挙動そのものは実際の PR がないと確認できないため、検証は手動で行います。
-   新しい観点それぞれの実例（陳腐化した docstring の主張、docstring だけの `Protocol` メソッド、
-   `serve.*.js` テンプレート内の未エスケープな YAML 補間、壁時計時刻に依存するテストのアサーション）を
-   一つずつ含むテスト用 PR を作成し、レビュアーのインラインコメントがそれぞれを新しい Conventional
-   Comments のラベル付きで捉えること、そして要約とすべてのインラインコメントが非ブロッキングのまま
-   であることを確認します。
+   を典拠とします。`#811` のレビューが捉えた、`Implementing PR` 欄の陳腐化も根拠にしています。
+9. **検証。** 形は、BE-0203 の項目 9 と同じです。この項目が変更するのは、プロンプトの Markdown
+   だけです。そのため、ワークフローの YAML に変更が不要なことを、`actionlint`（すでに `make check`
+   に含まれる）が検証します。レビューの挙動そのものは、実際の PR がないと確認できません。したがって、
+   検証は手動で行います。新しい観点それぞれの実例を、一つずつ含むテスト用 PR を作成します。
+   - 陳腐化した docstring の主張です。
+   - docstring だけの `Protocol` メソッドです。
+   - `serve.*.js` テンプレート内の、未エスケープな YAML 補間です。
+   - 壁時計時刻に依存する、テストのアサーションです。
+
+   そのうえで、二つを確認します。レビュアーのインラインコメントが、それぞれを新しい Conventional
+   Comments のラベル付きで捉えること。要約とすべてのインラインコメントが、非ブロッキングのままで
+   あることです。
 
 ## 検討した代替案
 
-- **Bandit や OWASP のセキュリティチェックリストを丸ごと輸入する。** 却下します。このリポジトリの
-  `ruff` 設定はすでに `S`（Bandit 相当）のルール群を `make lint` の一部として選択しており、その
-  チェックリストの大半はすでにブロッキングなチェックと重複します。重複しない部分（`S101`、`S603`）は
-  理由付きで意図的に ignore されており、これを再指摘するとこのリポジトリ自身が記録した判断と矛盾します。
-  項目 1 の「ゲートが見えないものをレビューする」原則が、チェックリストの輸入に代わる絞り込みの規則です。
-- **指摘に重大度で重みを付け、`issue` ラベルの指摘をブロッキング扱いにする。** これは明確に却下します。
-  LLM の判断をマージ経路に乗せることになり、BE-0203 が必須ステータスチェック化をすでに却下したのと
-  同じ理由で prime directive 1 に違反します。この項目が追加する Conventional Comments のラベルは
-  すべて `(non-blocking)` という装飾を伴います。ラベルは人間が一目で判断するためのものであり、
-  ゲートのためのものではありません。
-- **コメントを自由記述の地の文のまま変えない（Conventional Comments のラベルを採用しない）。**
-  手間の少ない選択として検討しましたが、却下します。ラベルのない指摘は、重大度を知るために人間へ
-  コメント全文を読ませてしまいます。またラベル書式の `(non-blocking)` という装飾は、助言にとどまる
-  という保証をもう一段、目に見える形で補強します。この書式は独自の語彙を一から考案して文書化する
-  必要のない、既存の参照可能な標準であるため、追加コストは小さいと判断しました。
-- **この項目を BE-0203 に統合する。** 検討しました。`.github/claude-review-prompt.md` へのこれまでの
-  変更（ワークフローの堅牢化、仕組みの修正、文言の訂正）は、`状態` が「実装済み」になったあとも
-  すべて `(BE-0203)` というタグ付きのコミットとして、その項目自身の `進捗` のログに積み重ねられてきました。
-  ただしこの項目は性質が異なります。BE-0203 が出荷したワークフローへの運用上の修正ではなく、外部の
-  調査に基づいてレビューの観点そのものを書き直す、実質のある政策変更です。そのため BE-0203 のログに
-  畳み込むのではなく、`関連` で相互に参照した独立の項目として提案します。
+- **Bandit や OWASP のセキュリティチェックリストを丸ごと輸入する案。** 却下します。このリポジトリの
+  `ruff` 設定は、すでに `S`（Bandit 相当）のルール群をゲートの一部として選択しています。そのため、
+  チェックリストの大半は、すでにブロッキングなチェックと重複します。重複しない部分（`S101`、`S603`）は、
+  理由付きで意図的に ignore されています。これを再指摘すると、このリポジトリ自身が記録した判断と矛盾
+  します。項目 1 の「ゲートが見えないものをレビューする」原則が、チェックリストの輸入に代わる、
+  絞り込みの規則です。
+- **指摘に重大度で重みを付け、`issue` ラベルの指摘をブロッキング扱いにする案。** 明確に却下します。
+  LLM の判断をマージ経路に乗せることになり、prime directive 1 に違反します。BE-0203 が必須ステータス
+  チェック化を却下したのと、同じ理由です。この項目が追加する Conventional Comments のラベルは、すべて
+  `(non-blocking)` という装飾を伴います。ラベルは人間が一目で判断するためのもので、ゲートのためのもの
+  ではありません。
+- **コメントを自由記述の地の文のまま変えない案（Conventional Comments のラベルを採用しない）。**
+  手間の少ない選択として検討し、却下します。ラベルのない指摘は、重大度を知るために、人間にコメント全文を
+  読ませます。ラベル書式の `(non-blocking)` という装飾は、助言にとどまるという保証を、もう一段、
+  目に見える形で補強します。この書式は、既存の参照可能な標準です。独自の語彙を一から考案して文書化する
+  必要がないので、追加のコストは小さくなります。
+- **この項目を BE-0203 に統合する案。** 検討しました。`.github/claude-review-prompt.md` へのこれまでの
+  変更（ワークフローの堅牢化、仕組みの修正、文言の訂正）は、`状態` が「実装済み」になったあとも、
+  すべて `(BE-0203)` というタグ付きのコミットとして、その項目自身の `進捗` のログに積み重ねられて
+  きました。ただし、この項目は性質が異なります。BE-0203 が出荷したワークフローへの運用上の修正では
+  ありません。外部の調査に基づいて、レビューの観点そのものを書き直す、実質のある方針の変更です。
+  そのため、BE-0203 のログに畳み込まず、`関連` で相互に参照した独立の項目として提案します。
 
 ## 進捗
 
@@ -201,47 +223,46 @@ BE-0203 が確立した助言専用・非ブロッキングの保証には手を
 
 ログ：
 
-- 提案を執筆しました。このリポジトリ自身の最近の Copilot レビューコメント
+- 提案を執筆しました。根拠は二つあります。一つは、このリポジトリ自身の最近の Copilot レビューコメント
   （[#808](https://github.com/bajutsu-e2e/bajutsu/pull/808)、
   [#811](https://github.com/bajutsu-e2e/bajutsu/pull/811)、
   [#813](https://github.com/bajutsu-e2e/bajutsu/pull/813)、
   [#816](https://github.com/bajutsu-e2e/bajutsu/pull/816)、
-  [#825](https://github.com/bajutsu-e2e/bajutsu/pull/825)）を読んだ実績と、外部標準の調査
+  [#825](https://github.com/bajutsu-e2e/bajutsu/pull/825)）を読んだ実績です。もう一つは、外部標準の調査
   （Google Engineering Practices、Python の各 PEP、Bandit のルール一覧、OWASP のセキュアコードレビューの
-  指針、Conventional Comments 仕様、Google の開発者向けドキュメントスタイルガイド）の双方に基づいています。
-- `.github/claude-review-prompt.md` を書き換え、項目 1〜8 を取り込みました。「ゲートが見えないものを
-  レビューする」という先頭原則、設計・アーキテクチャの観点、コメント腐敗・docstring だけの `Protocol`
-  本体・未エスケープな補間という意味的観点、テストの脆さ・フレーキーさの観点、すべてのインライン指摘への
-  Conventional Comments ラベル、ハウスルールへの用語一貫性の項目を追加しています。ワークフローの YAML は
-  変更していません（識別用の接頭辞はプロンプト内にあるため）。項目 9 は実際の PR でレビュアーを動かす必要が
-  あるため未着手のままです。
+  指針、Conventional Comments 仕様、Google の開発者向けドキュメントスタイルガイド）です。
+- `.github/claude-review-prompt.md` を書き換え、項目 1〜8 を取り込みました。追加したのは、
+  「ゲートが見えないものをレビューする」という先頭原則、設計とアーキテクチャの観点、コメント腐敗、
+  docstring だけの `Protocol` 本体、未エスケープな補間という意味的観点、テストの脆さとフレーキーさの観点、
+  すべてのインライン指摘への Conventional Comments ラベル、house convention への用語一貫性の項目です。
+  ワークフローの YAML は変更していません（識別用の接頭辞はプロンプト内にあるため）。項目 9 は、実際の
+  PR でレビュアーを動かす必要があるため、未着手のままです。
 
 ## 参考
 
-- [BE-0203](../BE-0203-claude-code-pr-review/BE-0203-claude-code-pr-review-ja.md) — Claude Code を
-  自動 PR レビュアーにした項目で、この項目が強化する契約の出所です。
-- [`.github/claude-review-prompt.md`](../../.github/claude-review-prompt.md) — この項目が変更する
-  ファイルです。
-- [`pyproject.toml`](../../pyproject.toml) — 項目 1 の「ゲートが見えないものをレビューする」原則が
-  基準にする `ruff` の `select`/`ignore` 設定です。
+- [BE-0203](../BE-0203-claude-code-pr-review/BE-0203-claude-code-pr-review-ja.md)：Claude Code を
+  自動 PR レビュアーにした項目で、この項目が強化する契約の出所
+- [`.github/claude-review-prompt.md`](../../.github/claude-review-prompt.md)：この項目が変更するファイル
+- [`pyproject.toml`](../../pyproject.toml)：項目 1 の「ゲートが見えないものをレビューする」原則が
+  基準にする `ruff` の `select`/`ignore` 設定
 - このリポジトリ自身のレビューコメントの根拠として読んだプルリクエスト：
   [#808](https://github.com/bajutsu-e2e/bajutsu/pull/808)、
   [#811](https://github.com/bajutsu-e2e/bajutsu/pull/811)、
   [#813](https://github.com/bajutsu-e2e/bajutsu/pull/813)、
   [#816](https://github.com/bajutsu-e2e/bajutsu/pull/816)、
-  [#825](https://github.com/bajutsu-e2e/bajutsu/pull/825)。
+  [#825](https://github.com/bajutsu-e2e/bajutsu/pull/825)
 - [Google Engineering Practices — What to look for in a code
   review](https://google.github.io/eng-practices/review/reviewer/looking-for.html) と
-  [The Standard of Code Review](https://google.github.io/eng-practices/review/reviewer/standard.html) —
-  項目 2 の背後にある設計優先の優先順位です。
+  [The Standard of Code Review](https://google.github.io/eng-practices/review/reviewer/standard.html)：
+  項目 2 の背後にある設計優先の優先順位
 - [PEP 8](https://peps.python.org/pep-0008/)、[PEP 257](https://peps.python.org/pep-0257/)、
-  [PEP 20](https://peps.python.org/pep-0020/) — Python のスタイル、docstring、設計思想に関する典拠です。
-- [Bandit のルール一覧](https://bandit.readthedocs.io/en/latest/plugins/index.html) — このリポジトリの
-  `ruff` の `S` セレクトがすでにカバーしているルール群で、動機の節で参照しています。
+  [PEP 20](https://peps.python.org/pep-0020/)：Python のスタイル、docstring、設計思想に関する典拠
+- [Bandit のルール一覧](https://bandit.readthedocs.io/en/latest/plugins/index.html)：このリポジトリの
+  `ruff` の `S` セレクトがすでにカバーしているルール群で、動機の節で参照している
 - [OWASP Secure Code Review Cheat
-  Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Secure_Code_Review_Cheat_Sheet.html) —
-  項目 5 の絞り込みの一般的な典拠です。
-- [Conventional Comments](https://conventionalcomments.org/) — 項目 7 が採用するラベル仕様です。
+  Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Secure_Code_Review_Cheat_Sheet.html)：
+  項目 5 の絞り込みの一般的な典拠
+- [Conventional Comments](https://conventionalcomments.org/)：項目 7 が採用するラベル仕様
 - [Google 開発者向けドキュメントスタイルガイド](https://developers.google.com/style) と
-  [Documentation Best Practices](https://google.github.io/styleguide/docguide/best_practices.html) —
-  項目 8 の背後にある文言・用語の一貫性の典拠です。
+  [Documentation Best Practices](https://google.github.io/styleguide/docguide/best_practices.html)：
+  項目 8 の背後にある文言と用語の一貫性の典拠

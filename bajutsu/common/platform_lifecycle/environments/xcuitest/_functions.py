@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from bajutsu.common.backend_cli import simctl
-from bajutsu.common.config import XcuitestConfig
+from bajutsu.common.config import RUNNER_BUILD_WITHHELD_ENV, XcuitestConfig
 from bajutsu.common.drivers.zorder import ZOrderResponder
 from bajutsu.common.platform_lifecycle.environments._bundled_runner import (
     bundled_products_dir,
@@ -668,7 +668,9 @@ def _resolve_runner(
 
     Precedence keeps explicit config above the default. A configured `testRunner` is used, built on
     demand via `build` when the file is missing; the build runs from `build_cwd`, the directory the
-    target's paths were rebased against, so a relative `testRunner` and its build agree. With
+    target's paths were rebased against, so a relative `testRunner` and its build agree. A run
+    `serve` spawned for an untrusted config carries `RUNNER_BUILD_WITHHELD_ENV`, and then the build
+    is refused rather than run (#2282). With
     neither configured, a Simulator run falls back to the wheel-bundled generic runner (BE-0292),
     materialized into a writable cache; a real device instead takes the per-user signed build
     `bajutsu runner build --device` cached (BE-0456), and fails loudly — never building mid-run —
@@ -688,6 +690,13 @@ def _resolve_runner(
         assert test_runner is not None  # guaranteed by _classify_runner's "explicit" tier
         runner_path = Path(test_runner)
         if not runner_path.exists() and build:
+            if os.environ.get(RUNNER_BUILD_WITHHELD_ENV) == "1":
+                # serve withholds an untrusted config's build from the host (#2282), as it does
+                # `subject.build`; fail loudly rather than report a bare missing testRunner.
+                raise simctl.DeviceError(
+                    f"driver.runner.build withheld: serve does not run the build command of an "
+                    f"uploaded or API-bound config ({build!r}); ship {test_runner} prebuilt instead"
+                )
             try:
                 argv = shlex.split(build)  # a mis-quoted build string is a clean failure
             except ValueError as exc:

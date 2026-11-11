@@ -15,70 +15,84 @@
 
 ## Introduction
 
-Crawl-adjacent code captures a best-effort screenshot of the current screen in more than one
-place, and two of those capture helpers have drifted into exact duplicates that also hide their
-own failures. This item unifies them into one helper and makes a failed capture surface instead
-of vanishing, in line with the determinism-first principle of failing loudly rather than silently
-swallowing errors.
+Crawl-adjacent code captures a best-effort screenshot of the current screen in more than one place.
+Two of those capture helpers have drifted into exact duplicates, and both hide their own failures.
+
+This item unifies the two helpers into one and makes a failed capture surface instead of vanishing.
+That follows the determinism-first principle of failing loudly rather than silently swallowing
+errors.
 
 ## Motivation
 
-`bajutsu/record.py:52` defines `_screenshot_bytes` and `bajutsu/alerts.py:48` defines
-`_screenshot_png`; both have the identical body — write to a temp PNG path, read it back as
-bytes, delete the temp file, and return `None` on any exception. `bajutsu/crawl_guide.py:82` and
-`bajutsu/enrich.py:92` both import and call `_screenshot_bytes` from `record.py` for their own
-best-effort captures, so the same logic is already relied on from four call sites through two
-separately maintained copies. Beyond the duplication, both copies wrap the whole capture in a
-bare `except Exception: return None`, which discards the actual failure (a stale simulator, a
-permissions error, a full disk) and reports it identically to "there was genuinely nothing to
-capture." Callers that skip the screenshot on `None` — an alert-locator prompt, a crawl-guide
-annotation, an enrichment record — can't tell a real failure from an expected absence, which is
-exactly the kind of ambiguity the determinism-first principle rules out for anything the tool
-treats as a signal. This is a size M/S effort: consolidating a self-contained ~10-line helper and
-threading through its four call sites.
+`bajutsu/record.py:52` defines `_screenshot_bytes`, and `bajutsu/alerts.py:48` defines
+`_screenshot_png`. Both have the identical body:
+
+1. Write to a temp PNG path.
+2. Read the file back as bytes.
+3. Delete the temp file.
+4. Return `None` on any exception.
+
+`bajutsu/crawl_guide.py:82` and `bajutsu/enrich.py:92` both import and call `_screenshot_bytes` from
+`record.py` for their own best-effort captures. The same logic is therefore already relied on from
+four call sites through two separately maintained copies.
+
+Beyond the duplication, both copies wrap the whole capture in a bare `except Exception: return
+None`. That discards the actual failure (a stale simulator, a permissions error, a full disk) and
+reports it identically to "there was genuinely nothing to capture."
+
+Some callers skip the screenshot on `None`: an alert-locator prompt, a crawl-guide annotation, and
+an enrichment record. These callers cannot tell a real failure from an expected absence. The
+determinism-first principle rules out exactly this kind of ambiguity for anything the tool treats as
+a signal.
+
+The effort is size M/S: consolidating a self-contained ~10-line helper and threading the change
+through its four call sites.
 
 ## Detailed design
 
-The fix has two independent parts — deduplication and error handling — applied together since
+The fix has two independent parts, deduplication and error handling. We apply them together, because
 unifying the helper is the natural place to also fix how it fails:
 
-- **Unify the two helpers into one.** Keep a single implementation (`_screenshot_bytes` in
-  `bajutsu/record.py`, since it already has the wider call surface) and have
-  `bajutsu/alerts.py` import and use it instead of defining `_screenshot_png`, deleting the
-  duplicate. `screenshot_bytes` is a more accurate name than `_screenshot_png` for a function that
-  returns bytes rather than a PNG object, so no call site needs a semantic adjustment.
-- **Stop swallowing errors silently.** Replace the bare `except Exception: return None` with
-  either letting the exception propagate (if every caller can tolerate a capture failure aborting
-  the enclosing operation) or logging the exception before returning `None` (if callers genuinely
-  need to treat a failed capture as best-effort and continue) — whichever the call sites at
-  `bajutsu/record.py:249`, `bajutsu/alerts.py:86`, `bajutsu/crawl_guide.py:82`, and
-  `bajutsu/enrich.py:92` turn out to need once inspected; the point is that a real failure is
-  distinguishable from an empty capture, not merged into it.
+- **Unify the two helpers into one.** Keep a single implementation, `_screenshot_bytes` in
+  `bajutsu/record.py`, since it already has the wider call surface. `bajutsu/alerts.py` imports and
+  uses it instead of defining `_screenshot_png`, and the duplicate is deleted. `screenshot_bytes` is
+  a more accurate name than `_screenshot_png` for a function that returns bytes rather than a PNG
+  object, so no call site needs a semantic adjustment.
+- **Stop swallowing errors silently.** Replace the bare `except Exception: return None` with one of
+  two behaviors:
+  - Let the exception propagate, if every caller can tolerate a capture failure aborting the
+    enclosing operation.
+  - Log the exception before returning `None`, if callers genuinely need to treat a failed capture
+    as best-effort and continue.
+
+  Which of the two applies depends on what the call sites at `bajutsu/record.py:249`,
+  `bajutsu/alerts.py:86`, `bajutsu/crawl_guide.py:82`, and `bajutsu/enrich.py:92` turn out to need
+  once inspected. The point is that a real failure stays distinguishable from an empty capture
+  instead of being merged into it.
 - **Update the four call sites and their imports.** `bajutsu/alerts.py` switches from its local
-  `_screenshot_png` to importing the unified helper; `bajutsu/crawl_guide.py` and
-  `bajutsu/enrich.py` already import from `record.py` and need no import change, only to keep
+  `_screenshot_png` to importing the unified helper. `bajutsu/crawl_guide.py` and
+  `bajutsu/enrich.py` already import from `record.py`. They need no import change, only to keep
   working against the (possibly renamed) unified function.
-- **Add or extend unit tests for the unified helper** covering the success path and the failure
-  path (a driver whose `screenshot()` raises), so the new error-surfacing behavior is pinned down
-  and doesn't regress back to silent swallowing.
+- **Add or extend unit tests for the unified helper.** The tests cover the success path and the
+  failure path (a driver whose `screenshot()` raises). They pin down the new error-surfacing
+  behavior, so it does not regress back to silent swallowing.
 
 ## Alternatives considered
 
-- **Keep both helpers but delegate one to the other.** Rejected: this still leaves two names for
-  one behavior and one extra layer of indirection for no benefit over deleting the duplicate
-  outright.
-- **Fix the silent-swallow in place, in both copies, without deduplicating.** Rejected: it
-  addresses the determinism concern but leaves the actual duplication — the next behavior change
-  would still need to land in two files, which is the more durable risk (BE-0064, BE-0066, and
-  BE-0092 all touched the surrounding crawl code without anyone noticing the duplicate).
-- **Deduplicate but leave the bare `except Exception: return None`.** Rejected: it removes the
-  maintenance burden but keeps the silent-failure problem the finding specifically calls out, and
-  a screenshot failure is exactly the kind of thing that should fail loudly rather than
-  disappear into a `None`.
-- **Move the unified helper to a new shared module** (e.g. a `screenshots.py`) rather than keeping
-  it in `record.py`. Considered but left as an implementation detail for whoever picks this up:
-  `record.py` already owns the function and three of the four call sites tolerate the existing
-  import path, so a new module is only worth it if it turns out to reduce coupling in practice.
+- **Keep both helpers but delegate one to the other.** Rejected. Delegating still leaves two names for one
+  behavior and one extra layer of indirection, with no benefit over deleting the duplicate outright.
+- **Fix the silent-swallow in place, in both copies, without deduplicating.** Rejected. It addresses
+  the determinism concern but leaves the actual duplication. The next behavior change would still
+  need to land in two files, which is the more durable risk (BE-0064, BE-0066, and BE-0092 all
+  touched the surrounding crawl code without anyone noticing the duplicate).
+- **Deduplicate but leave the bare `except Exception: return None`.** Rejected. It removes the
+  maintenance burden but keeps the silent-failure problem the finding specifically calls out. A
+  screenshot failure is exactly the kind of thing that should fail loudly rather than disappear into
+  a `None`.
+- **Move the unified helper to a new shared module** (for example a `screenshots.py`) rather than
+  keeping it in `record.py`. Considered, but left as an implementation detail for whoever picks this
+  up. `record.py` already owns the function, and three of the four call sites tolerate the existing
+  import path. A new module is worth it only if it turns out to reduce coupling in practice.
 
 ## Progress
 

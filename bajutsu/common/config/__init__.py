@@ -45,6 +45,7 @@ from bajutsu.common.config.resolve import (
     unknown_target,
 )
 from bajutsu.common.config.schema import (
+    RUNNER_BUILD_WITHHELD_ENV,
     AiSettings,
     Config,
     Defaults,
@@ -63,6 +64,7 @@ from bajutsu.common.config.schema import (
 )
 
 __all__ = [
+    "RUNNER_BUILD_WITHHELD_ENV",
     "AiConfig",
     "AiSettings",
     "AndroidConfig",

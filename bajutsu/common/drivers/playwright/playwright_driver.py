@@ -222,7 +222,14 @@ class PlaywrightDriver:
 
     # --- interval evidence (web equivalents of the simctl video / deviceLog providers) ---
 
-    def driver_interval(self, kind: str, path: Path) -> intervals.Interval | None:
+    def driver_interval(
+        self,
+        kind: str,
+        path: Path,
+        *,
+        subsystem: str | None = None,
+        json_path: Path | None = None,
+    ) -> intervals.Interval | None:
         """A whole-scenario interval recording for the web backend, or None if unsupported.
 
         The device pool hands this to the `FileSink` (the driver-supplied interval seam, shared with
@@ -231,6 +238,7 @@ class PlaywrightDriver:
         browser console + uncaught page errors (the os_log analogue); `video` finalizes and
         collects the BrowserContext recording (only when a record dir was configured for this lane).
         """
+        del subsystem, json_path  # appTrace alone reads them, and the web has none
         if kind == "deviceLog":
             return self._console_interval(path)
         if kind == "video":
@@ -842,15 +850,17 @@ class PlaywrightDriver:
 
     @_wedge_guard
     def select_all(self) -> None:
-        # Ctrl+A selects the focused field's whole content (BE-0265).
+        # Select-all on the focused field (BE-0265). `ControlOrMeta` is Cmd on a macOS host, where
+        # Chromium reads Ctrl+A as "caret to line start" and selects nothing (#2390).
         self._actuations.record(Actuation(gesture="selectAll", via="focused", unit=_UNIT))
-        self._page.keyboard.press("Control+a")
+        self._page.keyboard.press("ControlOrMeta+a")
 
     @_wedge_guard
     def copy_selection(self) -> None:
-        # Ctrl+C copies the active selection to the clipboard (BE-0265).
+        # Copies the active selection to the clipboard (BE-0265); Cmd+C on a macOS host, where Ctrl+C
+        # copies nothing (#2390).
         self._actuations.record(Actuation(gesture="copy", via="focused", unit=_UNIT))
-        self._page.keyboard.press("Control+c")
+        self._page.keyboard.press("ControlOrMeta+c")
 
     @_wedge_guard
     def select_option(self, sel: base.Selector, option: str) -> None:
@@ -904,7 +914,7 @@ class PlaywrightDriver:
 
     def select_photos(self, indices: list[int], *, timeout: float) -> None:  # noqa: ARG002  # Driver shape
         raise base.UnsupportedAction(
-            "selectPhotos is iOS-only; the web has no PHPickerViewController"
+            "selectPhotos drives a native system photo picker (iOS, Android); the web has none"
         )
 
     def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:  # noqa: ARG002  # Driver shape
@@ -915,13 +925,17 @@ class PlaywrightDriver:
         )
 
     def enter_app(self, bundle_id: str) -> None:  # noqa: ARG002  # Driver shape
-        # app: rests on XCUITest's own cross-app activate(); a browser has no bundle-id
-        # concept to switch to. Preflight rejects the step before any device work; this is the
+        # app: rests on a native backend's own app switching (XCUITest's activate(), adb's
+        # `am start`); a browser has no bundle-id concept to switch to. Preflight rejects the step before any device work; this is the
         # mid-run backstop.
-        raise base.UnsupportedAction("app is iOS XCUITest-only; the web backend has no bundle ids")
+        raise base.UnsupportedAction(
+            "app is not supported on the web backend; it has no bundle ids"
+        )
 
     def leave_app(self) -> None:
-        raise base.UnsupportedAction("app is iOS XCUITest-only; the web backend has no bundle ids")
+        raise base.UnsupportedAction(
+            "app is not supported on the web backend; it has no bundle ids"
+        )
 
     def system_alert_labels(self) -> list[str]:
         # No OS-level SpringBoard prompt on the web; the reactive guard's native path never runs here.

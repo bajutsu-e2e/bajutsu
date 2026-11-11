@@ -50,6 +50,10 @@ class Job:
     udids: list[str] = field(default_factory=list)  # devices to boot before the run
     app_path: str | None = None  # built .app the run needs; built on demand if missing
     build: str | None = None  # shell command that builds app_path (None = no on-demand build)
+    # Whether the spawned run must refuse the config's `driver.runner.build` (#2282): set by
+    # `_register_and_dispatch` for the same untrusted bindings `_governed_build` nulls `build` for,
+    # and carried in the job spec so a remote worker's spawn refuses it too.
+    withhold_runner_build: bool = False
     status: str = "running"  # running | done
     # Whether this job has given up its concurrency-cap slot. Separate from `status` because a job
     # that ran on a remote worker keeps `status == "running"` on the control plane by design

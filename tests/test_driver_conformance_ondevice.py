@@ -102,6 +102,10 @@ class _OnDeviceHarness(OnDeviceConformanceHarness):
         tmp.write_text(",".join(ids))
         tmp.replace(self._spec_path)
 
+    def clipboard_text(self) -> str:
+        # The Simulator's pasteboard through `simctl pbpaste`, where XCUITest's copy lands (#2390).
+        return simctl.Env(UDID).get_clipboard()
+
 
 def _effective() -> Effective:
     # A raw resolve() bypasses `_load_effective_with_source`, so the config's relative appPath /

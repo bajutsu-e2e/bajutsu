@@ -8,6 +8,11 @@ from pydantic import Field
 
 from ._model import _Model
 
+# Set to "1" in the environment of a run whose config `serve` does not trust to run host commands —
+# an uploaded bundle, or a Git config bound through the API without `--allow-remote-build` (BE-0073,
+# BE-0121). The run then refuses `build` below instead of executing it; `serve` sets it, never config.
+RUNNER_BUILD_WITHHELD_ENV = "BAJUTSU_WITHHOLD_RUNNER_BUILD"
+
 
 class XcuitestConfig(_Model):
     """Per-target XCUITest runner config (`targets.<name>.xcuitest`, BE-0019)."""

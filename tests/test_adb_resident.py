@@ -27,6 +27,7 @@ from bajutsu.common.drivers.adb import (
     ActRequest,
     AdbActUncertain,
     AdbActUnsupported,
+    AdbGestureRejected,
     AdbResidentError,
     HierarchyRead,
     elements_with_identities,
@@ -135,9 +136,16 @@ class _SourceHandler(http.server.BaseHTTPRequestHandler):
     last_type_path: str | None = None  # the full POST /type target the client last sent
     last_type_body: bytes | None = None  # the body of that request
 
+    gesture_status = 200  # what POST /gesture answers
+    gesture_drop_reply = False  # accept the request, then hang up without answering
+    last_gesture_path: str | None = None  # the full POST /gesture target the client last sent
+
     def do_POST(self) -> None:
         if self.path.split("?", 1)[0] == "/type":
             self._do_type()
+            return
+        if self.path.split("?", 1)[0] == "/gesture":
+            self._do_gesture()
             return
         if self.path.split("?", 1)[0] != "/act":
             self.send_error(404)
@@ -151,6 +159,16 @@ class _SourceHandler(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-Length", "0")
         if self.act_publish is not None:
             self.send_header(adb_resident._ACT_PUBLISH_HEADER, self.act_publish)
+        self.end_headers()
+
+    def _do_gesture(self) -> None:
+        type(self).last_gesture_path = self.path
+        if self.gesture_drop_reply:
+            self.close_connection = True
+            self.wfile.close()
+            return
+        self.send_response(self.gesture_status)
+        self.send_header("Content-Length", "0")
         self.end_headers()
 
     def _do_type(self) -> None:
@@ -1257,6 +1275,85 @@ def test_the_lease_channel_hands_text_to_the_type_probe(tmp_path: Path) -> None:
     )
     resident.start().type_text("馬", 7.0)
     assert typed == [(4321, "馬", 7.0)]
+
+
+# --- POST /gesture: a two-finger gesture along host-computed paths, injected without root ---
+
+_START = ((75.0, 150.0), (125.4, 150.0))
+_END = ((50.0, 150.0), (150.6, 150.0))
+
+
+def test_gesture_sends_both_paths_rounded_to_pixels() -> None:
+    port, server = _serve_once()
+    try:
+        adb_resident.gesture(port, _START, _END, duration_ms=300, steps=6)
+    finally:
+        server.shutdown()
+    sent = urllib.parse.parse_qs(
+        urllib.parse.urlparse(_SourceHandler.last_gesture_path or "").query
+    )
+    flat = {k: v[0] for k, v in sent.items()}
+    assert flat == {
+        "x0s": "75", "y0s": "150", "x0e": "50", "y0e": "150",
+        "x1s": "125", "y1s": "150", "x1e": "151", "y1e": "150",
+        "durationMs": "300", "steps": "6",
+    }  # fmt: skip
+
+
+def test_gesture_maps_each_answer_to_its_fault() -> None:
+    # 404 is an older server (nothing injected); anything else is a refusal the step fails on.
+    for status, raised, match in (
+        (404, AdbActUnsupported, "no /gesture endpoint"),
+        (500, AdbGestureRejected, "HTTP 500"),
+        (503, AdbResidentError, "HTTP 503"),
+    ):
+        port, server = _serve_once()
+        _SourceHandler.gesture_status = status
+        try:
+            with pytest.raises(raised, match=match):
+                adb_resident.gesture(port, _START, _END)
+        finally:
+            _SourceHandler.gesture_status = 200
+            server.shutdown()
+
+
+def test_gesture_separates_a_lost_reply_from_one_never_sent() -> None:
+    # A lost reply may follow a gesture that landed; a connect that never happened cannot have.
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        closed = probe.getsockname()[1]
+    with pytest.raises(AdbResidentError) as never_sent:
+        adb_resident.gesture(closed, _START, _END, timeout=0.2)
+    assert not isinstance(never_sent.value, AdbActUncertain)
+
+    port, server = _serve_once()
+    _SourceHandler.gesture_drop_reply = True
+    try:
+        with pytest.raises(AdbActUncertain, match="sent but its reply was lost"):
+            adb_resident.gesture(port, _START, _END)
+    finally:
+        _SourceHandler.gesture_drop_reply = False
+        server.shutdown()
+
+
+def test_the_lease_channel_hands_a_gesture_to_the_gesture_probe(tmp_path: Path) -> None:
+    server_apk, test_apk = tmp_path / "s.apk", tmp_path / "t.apk"
+    server_apk.write_bytes(b"s")
+    test_apk.write_bytes(b"t")
+    sent: list[tuple[int, object, object]] = []
+    resident = adb_resident.ResidentServer(
+        "S",
+        run=lambda argv: "4321\n" if "forward" in argv else "",
+        spawn=lambda argv: _FakeProc(),
+        fetch=lambda port, since: HierarchyRead("<hierarchy/>"),
+        gesture_probe=lambda port, start, end: sent.append((port, start, end)),
+        server_apk=server_apk,
+        test_apk=test_apk,
+    )
+    channel = resident.start()
+    assert channel.gesture is not None
+    channel.gesture(_START, _END)
+    assert sent == [(4321, _START, _END)]
 
 
 def test_act_sends_the_element_identity_and_no_coordinate() -> None:

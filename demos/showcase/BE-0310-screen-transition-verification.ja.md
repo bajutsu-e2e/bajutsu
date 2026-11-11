@@ -1,10 +1,10 @@
 [English](BE-0310-screen-transition-verification.md) · **日本語**
 
-# BE-0310 — オンデバイス検証：画面遷移シグナル
+# BE-0310：画面遷移シグナルのオンデバイス検証
 
-これは、
+このファイルが記すのは、
 [BE-0310](../../roadmaps/BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness-ja.md)
-がゲート（作業単位5）として名指ししているオンデバイスでの確認です。`BajutsuScreen` の `viewDidAppear`
+がゲート（作業単位5）として名指ししているオンデバイスでの確認手順です。`BajutsuScreen` の `viewDidAppear`
 swizzle が、showcase の両ツールキットで実際に遷移を報告するかを確かめます。対象は、readiness ゲートと `settled` 待ちが
 新たに参照する遷移と、意図して覆わない2つのケースです。高速ゲート（`make check`）はシミュレータを一切
 動かさないため、この手順は Mac 上で手動により実行してください。実行し終えたら、結果をこのファイル
@@ -20,7 +20,7 @@ swizzle が、showcase の両ツールキットで実際に遷移を報告する
   [`AppDelegate.swift`](ios/uikit/Sources/AppDelegate.swift) です。これが `BajutsuScreen` も同時に
   有効化するので、この手順を実行するためにアプリのコードを変更する必要はありません。
 
-## 何を確認するか
+## 確認する項目
 
 `showcase-swiftui` と `showcase-uikit` の**両方**について、次を確認します。
 
@@ -42,7 +42,7 @@ swizzle が、showcase の両ツールキットで実際に遷移を報告する
      試作用の画面に一時的に足して観測し、確認後は変更を破棄してください。恒久的な showcase 画面を、
      一度限りの確認のために追加しないでください。
 
-## 手順A — `bajutsu run` と、新設した2行のデバッグログによる確認
+## 手順A：`bajutsu run` と新設した2行のデバッグログで確認する
 
 BE-0310 は、まさにこの確認のために `_logger.debug(...)` を2行足しました。新しい段が readiness を決めたとき、
 `bajutsu.platform_lifecycle.readiness` はログを1行残します。その内容は
@@ -65,16 +65,16 @@ main()
 
 `--target showcase-uikit` でも同様に実行してください。実行結果の出力から上記の2行を検索します。それが
 現れていれば、その回はツリー差分のフォールバックではなく、シグナルが readiness / settled を決めたことが
-確認できます。push・モーダル・タブ切り替えのように遷移が起きるはずの回でこの2行が**現れない**ことこそ、
+確認できます。push、モーダル、タブ切り替えのように遷移が起きるはずの回でこの2行が**現れない**場合は、
 この手順が捕まえたい失敗のシグナルです。
 
-## 手順B — SwiftUI の XCUITest スキャフォールド
+## 手順B：SwiftUI の XCUITest スキャフォールドで確認する
 
 [`ios/swiftui/UITests/BE0310ScreenTransitionSignalUITests.swift`](ios/swiftui/UITests/BE0310ScreenTransitionSignalUITests.swift)
 は、`bajutsu codegen` の生成物ではなく手書きしたスキャフォールドです。実際の Python 側コレクタの代わりに、
 最小限のループバック HTTP リスナーを立てます。これにより、`BAJUTSU_COLLECTOR` から `POST /transitions` へ
 届く実際の配線を確かめます。cold launch、手順Aと同じ push・モーダル・タブの流れ、画面内データ更新のケースを
-一通り操作し、それぞれの前後で遷移の記録数を検証します。実行は次のとおりです。
+一通り操作します。それぞれの前後で、遷移の記録数を検証します。実行は次のとおりです。
 
 ```bash
 cd demos/showcase/ios/swiftui && xcodegen generate
@@ -90,9 +90,9 @@ xcodebuild test -project BajutsuShowcaseSwiftUI.xcodeproj -scheme UITests \
 これまで1つも足されていません。存在するのは、SwiftUI 側の `BajutsuShowcaseSwiftUIUITests`
 （`project.yml` を参照）だけです。UIKit については、手順A（`bajutsu run` とデバッグログによる確認）が主となる
 確認経路です。UIKit にも XCUITest ベースの確認を用意することは妥当な後続作業ですが、それをこの項目の作業として
-当てずっぽうに足すのは範囲外とします。
+当てずっぽうに足すのは、この項目の範囲外とします。
 
-## 結果の記録
+## 結果を記録する
 
 実行し終えたら、
 [BE-0310 の進捗チェックリスト](../../roadmaps/BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness-ja.md#進捗)

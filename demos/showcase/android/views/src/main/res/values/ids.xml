@@ -116,4 +116,7 @@
     <item name="sys_copy" type="id" />
     <item name="sys_paste" type="id" />
     <item name="sys_paste_value" type="id" />
+    <item name="perm_openPhotoPicker" type="id" />
+    <item name="perm_openPhotoPickerSingle" type="id" />
+    <item name="perm_photos_value" type="id" />
 </resources>
