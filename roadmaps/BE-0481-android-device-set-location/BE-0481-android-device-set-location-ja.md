@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0481") |
+| 実装 PR | [#2418](https://github.com/bajutsu-e2e/bajutsu/pull/2418)（作業単位 2〜6） |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0211](../BE-0211-android-device-control/BE-0211-android-device-control-ja.md), [BE-0233](../BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity-ja.md), [BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities-ja.md), [BE-0475](../BE-0475-ios-runner-set-location/BE-0475-ios-runner-set-location-ja.md) |
 <!-- /BE-METADATA -->
@@ -236,7 +237,7 @@ Android の showcase アプリは Compose 版と Views 版の両方で `Bajutsu.
 
 ログ：
 
-- 2026-11-11 — 作業単位 2〜6 をまとめて実装しました。作業単位 1 は実機ではなく、`adb connect` で
+- 2026-11-11 — 作業単位 2〜6 をまとめて実装しました（[#2418](https://github.com/bajutsu-e2e/bajutsu/pull/2418)）。作業単位 1 は実機ではなく、`adb connect` で
   接続した API 34 のエミュレータで試したので、作業単位 7 とともに未完了のままです。エミュレータでは
   次の 5 点を確かめました。
   - `appops set <package> android:mock_location allow` は、マニフェストに `ACCESS_MOCK_LOCATION`
