@@ -19,6 +19,10 @@
         env: { SHOWCASE_UITEST: "1" }
   steps:
     - setClipboard: { text: "SENTINEL" }
+    # Read the sentinel back: Android 10+ drops a write from an unfocused app and the receiver
+    # reports OK either way, so an unchecked sentinel would leave the closing assertion vacuous.
+    - assert:
+        - clipboard: { equals: "SENTINEL" }
     - tap: { label: "Search", traits: [button] }
     - wait: { for: { id: [search.field, search_field] }, timeout: 10 }
     - type: { text: "Horse 3", into: { id: [search.field, search_field] } }

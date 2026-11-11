@@ -108,7 +108,9 @@ SERIAL ?= booted
 # as `text_selection_android` (issue #2389): the clipboard starts on a sentinel, so the read-back
 # proves the Ctrl+C chord copied the field's text, and (since a collapsed caret copies nothing) that
 # Ctrl+A selected all of it. It carries both id forms, so it runs on Views too. Verified on a local
-# arm64 emulator (API 34), Compose and Views alike.
+# arm64 emulator (API 34), Compose and Views alike. `delete` stays uncovered here, and #2388 is not
+# what blocks it: it reads no `value`, and its effect is observable through the `search.count` mirror
+# this lane already asserts — so a count-only Android twin for it remains the open follow-up.
 #
 # Observed network capture lands in its own `e2e-network` target below (BE-0283); mocked network
 # (deterministic stub responses) stays a follow-up.
