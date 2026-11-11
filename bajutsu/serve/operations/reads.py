@@ -1189,7 +1189,9 @@ def _group(state: ServeState, group_id: str) -> dict[str, Any] | None:
 
 def _may_read_org(state: ServeState, org: str, actor: str | None, machine_org: str | None) -> bool:
     """Whether the caller may read a group of *org*: a machine its own org alone, a person any org
-    they belong to, so switching orgs never hides a group they started (as `job_view` reasons)."""
+    they belong to, so switching orgs never hides a group they started. Tighter than `job_view`,
+    which leaves a person unscoped: the design scopes the group read by org (BE-0484), and the
+    membership rule follows `cancel_job` (BE-0449)."""
     if machine_org is not None:
         return org == machine_org
     return not actor or org in state.eligible_orgs(actor) or org == state.org_of(actor)

@@ -241,9 +241,10 @@ Log:
   - The group row lands after its jobs, once at least one job has registered. A request the cap
     refuses outright thus leaves no empty group. `jobs.group_id` carries no foreign key yet. Unit 3 writes
     the group and its jobs in one transaction.
-  - A person reaches a group through org membership, as with `GET /api/jobs/<id>` and its cancel.
+  - A person reaches a group through org membership, as with `POST /api/jobs/<id>/cancel`.
     The active org alone does not decide. Under "own org alone", a person who switched orgs would
     get 404 for their own group. Each job of that group would stay reachable.
+    `GET /api/jobs/<id>` leaves a person unscoped, so the group read is the tighter of the two.
     Cancel needs the editor role in the group's org. A machine stays bound to its own org.
   - `docs/devicefarm.md` and `docs/self-hosting.md` describe the new routes in both languages. Unit 6 keeps the full documentation pass.
 

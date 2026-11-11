@@ -327,7 +327,7 @@ def route_key(required: Iterable[str]) -> str:
 
 
 def base_key(required: Iterable[str]) -> str:
-    """`route_key` without the route tokens, which a worker that `checks_routes` not drops."""
+    """`route_key` without the route tokens, which a worker that does not `checks_routes` drops."""
     return _digest(sorted({t for t in required if not is_route_token(t)}))
 
 

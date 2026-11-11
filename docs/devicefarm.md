@@ -437,7 +437,8 @@ leased job keeps its `leased` status until its worker stops the run. Until then,
 stays `pending`.
 
 Both routes answer 404 for a group of an org the caller does not belong to. A pipeline reaches the
-groups of its own org alone.
+groups of its own org alone, and may read them but not cancel them. The machine allowlist opens
+`POST /api/run-set` and `GET /api/run-set/<groupId>`. The group cancel stays a person's act.
 
 ### Restart and lease loss
 
