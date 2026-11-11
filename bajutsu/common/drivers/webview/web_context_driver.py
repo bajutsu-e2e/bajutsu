@@ -153,7 +153,9 @@ class WebContextDriver:
         raise UnsupportedAction("attribute is not supported in web context (first slice)")
 
     def set_picker_value(self, sel: Selector, value: str) -> None:  # noqa: ARG002  # Driver shape
-        raise UnsupportedAction("setPickerValue is iOS-only; a DOM has no picker wheel")
+        raise UnsupportedAction(
+            "setPickerValue drives a native iOS / Android wheel; a DOM has no picker wheel"
+        )
 
     def select_photos(self, indices: list[int], *, timeout: float) -> None:  # noqa: ARG002  # Driver shape
         raise UnsupportedAction("selectPhotos is iOS-only; a DOM has no photo picker")

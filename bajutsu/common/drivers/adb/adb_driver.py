@@ -26,6 +26,7 @@ from .act_outcome import ActOutcome
 from .act_request import ActRequest
 from .adb_act_uncertain import AdbActUncertain
 from .adb_act_unsupported import AdbActUnsupported
+from .adb_picker_refused import AdbPickerRefused
 from .adb_resident_error import AdbResidentError
 from .channel_recovery import ChannelRecovery
 from .hierarchy_read import HierarchyRead
@@ -51,6 +52,8 @@ ClockFetch = Callable[[], float | None]
 # the driver degrades to its own coordinate path.
 ActFn = Callable[[ActRequest], ActOutcome]
 TypeFn = Callable[[str, float | None], None]
+# The resident `/setPickerValue` endpoint (BE-0480): the wheel's request and the row to land on.
+PickerFn = Callable[[ActRequest, str], ActOutcome]
 
 # Android's `uiautomator` dump reports bounds in raw display pixels, so that is the space stamped on
 # this backend's actuation records — a coordinate only means something alongside its unit.
@@ -147,6 +150,27 @@ def _traced_act(act: ActFn) -> ActFn:
     return _wrapped
 
 
+def _traced_picker(set_picker_value: PickerFn) -> PickerFn:
+    def _wrapped(request: ActRequest, value: str) -> ActOutcome:
+        ctx = tracing.current_trace()
+        if ctx is None:
+            return set_picker_value(request, value)
+        started_at = time.time()
+        t0 = time.perf_counter()
+        outcome: ActOutcome | None = None
+        try:
+            outcome = set_picker_value(request, value)
+        finally:
+            # No value, as with `type`: the row a scenario names can be a resolved secret.
+            response = None if outcome is None else {"acted": outcome.acted}
+            ctx.record(
+                "transport", "setPickerValue", started_at, time.perf_counter() - t0, response
+            )
+        return outcome
+
+    return _wrapped
+
+
 def _traced_type(type_text: TypeFn) -> TypeFn:
     def _wrapped(text: str, since: float | None) -> None:
         ctx = tracing.current_trace()
@@ -162,6 +186,25 @@ def _traced_type(type_text: TypeFn) -> TypeFn:
             ctx.record("transport", "type", started_at, time.perf_counter() - t0)
 
     return _wrapped
+
+
+def _picker_refusal(sel: base.Selector, value: str, exc: AdbPickerRefused) -> str:
+    """The step's failure message for one `/setPickerValue` refusal, kept apart per cause."""
+    if exc.reason == "not-a-picker-wheel":
+        return f"setPickerValue {sel!r}: the element is not an android.widget.NumberPicker ({exc.detail})"
+    if exc.reason == "picker-value-absent":
+        return f"setPickerValue {sel!r}: the wheel has no row {value!r} ({exc.detail})"
+    if exc.reason == "picker-immovable":
+        return (
+            f"setPickerValue {sel!r}: the wheel refused to scroll either way, so it is likely "
+            f"disabled ({exc.detail})"
+        )
+    if exc.reason == "picker-walk-exhausted":
+        return (
+            f"setPickerValue {sel!r}: the walk toward {value!r} hit its row cap or deadline before "
+            f"the row appeared ({exc.detail})"
+        )
+    return f"setPickerValue {sel!r}: the resident server could not land the wheel on {value!r} ({exc.detail})"
 
 
 class AdbDriver(CoordinateTreeDriver):
@@ -241,6 +284,7 @@ class AdbDriver(CoordinateTreeDriver):
         fetch_clock: ClockFetch | None = None,
         act: ActFn | None = None,
         type_on_device: TypeFn | None = None,
+        set_picker_value: PickerFn | None = None,
         channel_recovery: ChannelRecovery | None = None,
         channel_start_failure: str | None = None,
         package: str | None = None,
@@ -285,6 +329,8 @@ class AdbDriver(CoordinateTreeDriver):
                 act = _traced_act(act)
             if type_on_device is not None:
                 type_on_device = _traced_type(type_on_device)
+            if set_picker_value is not None:
+                set_picker_value = _traced_picker(set_picker_value)
         self._run = run
         # When set, reads go through the resident channel and fall back to `uiautomator dump` only on
         # failure (BE-0245). Unset (the default) keeps today's dump-every-read behavior exactly.
@@ -301,6 +347,12 @@ class AdbDriver(CoordinateTreeDriver):
         self._act_fn = act
         # The resident server's text endpoint, the only route for text `input text` cannot carry.
         self._type_fn = type_on_device
+        # The resident server's wheel endpoint (BE-0480), the step's only route: a coordinate drag
+        # cannot promise to stop on a named row, so there is nothing to degrade to.
+        self._picker_fn = set_picker_value
+        # Set once the server proves it predates `/setPickerValue`. Its own flag, apart from
+        # `_act_unavailable`: an older server can still serve `/act`, and taps keep that route.
+        self._picker_unavailable = False
         # The device clock as of the latest text entry, on either route. `/type` rewrites the whole
         # field from what it reads, so its read must postdate the text the last entry put there.
         self._text_mark: float | None = None
@@ -1185,9 +1237,74 @@ class AdbDriver(CoordinateTreeDriver):
     # Fallback guards, each a distinct reason the coordinate path takes the gesture, inside the
     # bounded stale-retry loop on the actuation path: the count tracks those cases, and a split
     # would change run-path risk (BE-0386).
-    def _device_act(  # noqa: C901
-        self, sel: base.Selector, kind: str, duration_ms: int | None = None
-    ) -> bool:
+    def _device_ordinal(
+        self, el: base.Element, kind: str, sel: base.Selector
+    ) -> tuple[NodeIdentity, int, int] | None:
+        """`el`'s identity, its ordinal among the nodes sharing it, and their count; None if unsendable."""
+        identity = self._identities.get(id(el))
+        if identity is None:
+            # A seeded read: this driver never parsed that tree, so it recorded no identity to
+            # address the element by. Nothing to send.
+            logger.debug("device %s: %r came from an unparsed tree; nothing to send", kind, sel)
+            return None
+        same = [e for e in self._last_tree if self._identities.get(id(e)) == identity]
+        index = next((i for i, e in enumerate(same) if e is el), None)
+        if index is None:
+            # `el` outlived the read its peers were counted from. Rather than send an ordinal
+            # measured against the wrong screen, send nothing.
+            logger.debug("device %s: %r outlived the read its peers were counted from", kind, sel)
+            return None
+        return identity, index, len(same)
+
+    def _landed_on_device(
+        self,
+        kind: str,
+        sel: base.Selector,
+        outcome: ActOutcome,
+        pre_key: StableKey | None,
+        mark: float | None,
+    ) -> None:
+        """The bookkeeping after the device confirmed it acted: drop the cache, then seed or arm."""
+        # The gesture happened on the device, so the cached tree is stale whichever branch
+        # follows — the same bookkeeping `_act` does for a coordinate injection.
+        self.invalidate_settled_cache()
+        if outcome.published_mark is not None and (mark is None or outcome.published_mark > mark):
+            # The device followed its own gesture to the accessibility event that published it
+            # before answering (BE-0339 Unit 5), so the next read cannot describe the
+            # pre-gesture screen and there is nothing left for a barrier to wait out. Skipping
+            # it is worth a read: `_settle` would otherwise open with `_await_catchup`'s poll
+            # sleep plus a whole extra `query()`, the dominant per-step cost on this backend
+            # (BE-0234).
+            #
+            # The mark is compared, not merely counted. `mark` and `published_mark` are both
+            # `SystemClock.uptimeMillis` readings, so the ordering the header claims is
+            # checkable here — and a reply whose mark does not actually postdate the gesture
+            # (a server that repurposes the header, a value carried over from an earlier
+            # injection) would otherwise disable the barrier on the strength of the header
+            # merely existing. `mark is None` is the older server with no `/clock` endpoint:
+            # nothing to compare against, so the presence of a publish is all there is to go
+            # on, exactly as the barrier itself falls back to its wall-clock budget there.
+            #
+            # The claim is the device's, never this driver's assumption. A first pass at this
+            # unit asserted the resident session synchronized with the platform's idle state
+            # and stopped arming on that basis; it does not, and a coordinate-resolving
+            # follower (`pinch`, `rotate`, a directional `swipe`/`drag` anchor) has no `stale`
+            # re-resolve to self-heal with — see BE-0339's Progress log. Only a mark the device
+            # actually observed clears the barrier now, so an endpoint that cannot confirm
+            # falls through to the branch below rather than being taken at its word.
+            logger.debug(
+                "device %s on %r: publish confirmed at %.0f; no catchup barrier armed",
+                kind,
+                sel,
+                outcome.published_mark,
+            )
+            # The same confirmation licenses adopting the tree the reply carried, when it
+            # carried one (BE-0407 unit 19) — so the read `_settle` opens with is already done.
+            self._seed_from_act(outcome.read, mark)
+        else:
+            self._arm_catchup(pre_key, mark)
+
+    def _device_act(self, sel: base.Selector, kind: str, duration_ms: int | None = None) -> bool:
         """Perform `kind` on `sel` device-side, or return False to leave it to the coordinate path.
 
         Resolution stays here: `_resolve_frame_and_screen` settles the tree and `resolve_unique` picks
@@ -1220,23 +1337,10 @@ class AdbDriver(CoordinateTreeDriver):
             except base.ElementNotFound:
                 el, tree = self._scroll_into_view(sel, tree)
             base.raise_if_covered(tree, el, sel)
-            identity = self._identities.get(id(el))
-            if identity is None:
-                # A seeded read: this driver never parsed that tree, so it recorded no identity to
-                # address the element by. Nothing to send, so the coordinate path takes the gesture.
-                logger.debug(
-                    "device %s: %r came from an unparsed tree; coordinates it is", kind, sel
-                )
+            ordinal = self._device_ordinal(el, kind, sel)
+            if ordinal is None:
                 return False
-            same = [e for e in self._last_tree if self._identities.get(id(e)) == identity]
-            index = next((i for i, e in enumerate(same) if e is el), None)
-            if index is None:
-                logger.debug(
-                    "device %s: %r outlived the read its peers were counted from", kind, sel
-                )
-                # `el` outlived the read its peers were counted from. Rather than send an ordinal
-                # measured against the wrong screen, leave this gesture to the coordinate path.
-                return False
+            identity, index, count = ordinal
             if self._act_unavailable:
                 # Every read between the entry guard and here — `_settle`, a not-found retry inside
                 # `_resolve`, `_scroll_into_view` — goes through `_read_source`, which can itself
@@ -1262,7 +1366,7 @@ class AdbDriver(CoordinateTreeDriver):
                 kind=kind,
                 identity=identity,
                 index=index,
-                count=len(same),
+                count=count,
                 since=self._catchup.actuation_mark if self._catchup is not None else None,
                 duration_ms=duration_ms,
             )
@@ -1324,48 +1428,9 @@ class AdbDriver(CoordinateTreeDriver):
             self._actuations.settle(outcome.acted)
             if outcome.acted:
                 logger.debug(
-                    "device %s on %r: identity %r, %d of %d", kind, sel, identity, index, len(same)
+                    "device %s on %r: identity %r, %d of %d", kind, sel, identity, index, count
                 )
-                # The gesture happened on the device, so the cached tree is stale whichever branch
-                # follows — the same bookkeeping `_act` does for a coordinate injection.
-                self.invalidate_settled_cache()
-                if outcome.published_mark is not None and (
-                    mark is None or outcome.published_mark > mark
-                ):
-                    # The device followed its own gesture to the accessibility event that published it
-                    # before answering (BE-0339 Unit 5), so the next read cannot describe the
-                    # pre-gesture screen and there is nothing left for a barrier to wait out. Skipping
-                    # it is worth a read: `_settle` would otherwise open with `_await_catchup`'s poll
-                    # sleep plus a whole extra `query()`, the dominant per-step cost on this backend
-                    # (BE-0234).
-                    #
-                    # The mark is compared, not merely counted. `mark` and `published_mark` are both
-                    # `SystemClock.uptimeMillis` readings, so the ordering the header claims is
-                    # checkable here — and a reply whose mark does not actually postdate the gesture
-                    # (a server that repurposes the header, a value carried over from an earlier
-                    # injection) would otherwise disable the barrier on the strength of the header
-                    # merely existing. `mark is None` is the older server with no `/clock` endpoint:
-                    # nothing to compare against, so the presence of a publish is all there is to go
-                    # on, exactly as the barrier itself falls back to its wall-clock budget there.
-                    #
-                    # The claim is the device's, never this driver's assumption. A first pass at this
-                    # unit asserted the resident session synchronized with the platform's idle state
-                    # and stopped arming on that basis; it does not, and a coordinate-resolving
-                    # follower (`pinch`, `rotate`, a directional `swipe`/`drag` anchor) has no `stale`
-                    # re-resolve to self-heal with — see BE-0339's Progress log. Only a mark the device
-                    # actually observed clears the barrier now, so an endpoint that cannot confirm
-                    # falls through to the branch below rather than being taken at its word.
-                    logger.debug(
-                        "device %s on %r: publish confirmed at %.0f; no catchup barrier armed",
-                        kind,
-                        sel,
-                        outcome.published_mark,
-                    )
-                    # The same confirmation licenses adopting the tree the reply carried, when it
-                    # carried one (BE-0407 unit 19) — so the read `_settle` opens with is already done.
-                    self._seed_from_act(outcome.read, mark)
-                else:
-                    self._arm_catchup(pre_key, mark)
+                self._landed_on_device(kind, sel, outcome, pre_key, mark)
                 return True
             logger.debug("device %s on %r: the device called it stale; re-resolving", kind, sel)
         logger.warning(
@@ -1698,9 +1763,127 @@ class AdbDriver(CoordinateTreeDriver):
             "attribute is web-backend-only; Android has no HTML attributes"
         )
 
-    def set_picker_value(self, sel: base.Selector, value: str) -> None:  # noqa: ARG002  # Driver shape
-        raise base.UnsupportedAction(
-            "setPickerValue is iOS-picker-wheel-only; Android has no equivalent control"
+    def set_picker_value(self, sel: base.Selector, value: str) -> None:
+        """Walk the `NumberPicker` `sel` resolves to the row showing `value`, on the device (BE-0480).
+
+        Resolution is `_device_act`'s: the settled tree, `resolve_unique`, scroll-into-view on no
+        match, and the same bounded re-resolve on a stale reply. The device then steps the wheel one
+        row at a time and reads each row back. There is no coordinate fallback, because a drag cannot
+        promise to stop on the row: every route the endpoint cannot serve fails the step instead.
+
+        Raises:
+            UnsupportedAction: the resident channel is not serving this lease, or its server predates
+                `/setPickerValue`.
+            ElementNotFound: the element is not a wheel, the wheel holds no such row, its walk ran out
+                of budget, its reply was lost mid-walk, or the target kept moving.
+        """
+        if self._picker_fn is None or self._act_unavailable or self._picker_unavailable:
+            raise base.UnsupportedAction(self._picker_unavailable_reason())
+        unsendable = False
+        for _ in range(self._STALE_MAX_ATTEMPTS):
+            tree = self._settle()
+            try:
+                el, tree = self._resolve(sel, timeout=self._RESOLVE_TIMEOUT_S, initial_tree=tree)
+            except base.AppNotInFront:
+                raise
+            except base.ElementNotFound:
+                el, tree = self._scroll_into_view(sel, tree)
+            # A covered wheel cannot be scrolled by a user, and iOS acts through a hittable element,
+            # so the accessibility walk must not reach under an overlay either.
+            base.raise_if_covered(tree, el, sel)
+            ordinal = self._device_ordinal(el, "setPickerValue", sel)
+            if ordinal is None:
+                # A tree this driver did not parse (a seed) names no identity; a fresh read does.
+                unsendable = True
+                self.invalidate_settled_cache()
+                continue
+            unsendable = False
+            if self._act_unavailable:
+                # A read inside the loop found the channel dead (see `_device_act`).
+                raise base.UnsupportedAction(self._picker_unavailable_reason())
+            identity, index, count = ordinal
+            request = ActRequest(
+                kind="setPickerValue",
+                identity=identity,
+                index=index,
+                count=count,
+                since=self._catchup.actuation_mark if self._catchup is not None else None,
+                duration_ms=None,
+            )
+            pre_key = self._last_stable_key
+            mark = self._capture_mark()
+            self._log_identity("setPickerValue", el, None)
+            if self._send_picker(request, value, sel, pre_key, mark):
+                return
+            logger.debug("setPickerValue on %r: the device called it stale; re-resolving", sel)
+        if unsendable:
+            raise base.ElementNotFound(
+                f"setPickerValue {sel!r}: the wheel resolved from a read the device cannot address "
+                "(a seeded or superseded tree); there is no coordinate path to fall back to"
+            )
+        raise base.ElementNotFound(
+            f"setPickerValue {sel!r}: the device answered stale {self._STALE_MAX_ATTEMPTS} times, "
+            "so the wheel kept moving between the host's resolve and the device's; there is no "
+            "coordinate path to fall back to"
+        )
+
+    def _send_picker(
+        self,
+        request: ActRequest,
+        value: str,
+        sel: base.Selector,
+        pre_key: StableKey | None,
+        mark: float | None,
+    ) -> bool:
+        """Send one `/setPickerValue`; True when the wheel landed, False on a stale reply."""
+        assert self._picker_fn is not None
+        try:
+            outcome = self._picker_fn(request, value)
+        except AdbActUnsupported as exc:
+            self._actuations.settle(False)
+            self._picker_unavailable = True
+            raise base.UnsupportedAction(
+                f"{exc}: the deployed resident server predates /setPickerValue; rebuild it with "
+                "`make -C BajutsuAndroidUIAutomatorServer build`"
+            ) from exc
+        except AdbActUncertain as exc:
+            # The wheel may have moved, so the screen is not the one cached. Unlike a tap, the step
+            # cannot continue as if landed: a half-walked wheel shows the wrong value.
+            self.invalidate_settled_cache()
+            self._arm_catchup(pre_key, mark)
+            raise base.ElementNotFound(
+                f"setPickerValue {sel!r}: the resident server may have moved the wheel but did not "
+                f"confirm it reached {value!r} ({exc})"
+            ) from exc
+        except AdbPickerRefused as exc:
+            self._actuations.settle(False)
+            if exc.reason not in ("not-a-picker-wheel", "picker-immovable"):
+                # A refused walk still stepped rows on the way.
+                self.invalidate_settled_cache()
+                self._arm_catchup(pre_key, mark)
+            raise base.ElementNotFound(_picker_refusal(sel, value, exc)) from exc
+        except AdbResidentError as exc:
+            # Raised before anything was sent, so the wheel is untouched.
+            self._actuations.settle(False)
+            raise base.UnsupportedAction(
+                f"setPickerValue needs the resident UI Automator server, which could not be "
+                f"reached ({exc}); a coordinate drag cannot promise to stop on the row"
+            ) from exc
+        self._actuations.settle(outcome.acted)
+        if not outcome.acted:
+            return False
+        self._landed_on_device("setPickerValue", sel, outcome, pre_key, mark)
+        return True
+
+    def _picker_unavailable_reason(self) -> str:
+        if self._picker_unavailable:
+            return (
+                "setPickerValue needs /setPickerValue, which the deployed resident server predates; "
+                "rebuild it with `make -C BajutsuAndroidUIAutomatorServer build`"
+            )
+        return (
+            "setPickerValue needs the resident UI Automator server, which is not serving this "
+            "lease; a coordinate drag cannot promise to stop on the row"
         )
 
     def select_photos(self, indices: list[int], *, timeout: float) -> None:  # noqa: ARG002  # Driver shape
@@ -1983,6 +2166,9 @@ class AdbDriver(CoordinateTreeDriver):
                 base.Capability.SCREENSHOT,
                 base.Capability.MULTI_TOUCH,
                 base.Capability.TEXT_SELECTION,
+                # Through the resident server's `/setPickerValue` (BE-0480); without the channel the
+                # step raises UnsupportedAction rather than dragging the wheel.
+                base.Capability.PICKER_WHEEL,
                 base.Capability.DC_SET_LOCATION,
                 base.Capability.DC_CLIPBOARD,
                 # `am start` brings a member's app to the front, launching it when it is not running;

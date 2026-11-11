@@ -64,7 +64,7 @@ iOS の実機では、`simctl` が提供する能力がなくなります。こ�
 | `elementAttribute` | n/a | n/a | web ページの要素の属性を読む能力で、web バックエンドだけが持ちます。 |
 | `handleSystemAlert` | ✅ | n/a | Android のシステムダイアログは取得した要素ツリーに現れるので、通常の `tap` で操作できます。 |
 | `resolveAlerts` | ✅ | n/a | `handleSystemAlert` と同じ理由です。 |
-| `pickerWheel` | ✅ | gap | Android で近いコントロールは `NumberPicker` と、スピナー表示の `DatePicker` です。値を直接設定する手段はまだありません。 |
+| `pickerWheel` | ✅ | ✅ | 常駐サーバーが Android の `NumberPicker` を 1 行ずつ回します。スピナー表示の `DatePicker` と `TimePicker` のホイールも含みます（BE-0480）。Jetpack Compose が自前で描くホイールは、Compose に標準のホイールがないため対象外です。 |
 | `appContext` | ✅ | gap | UI Automator はどのアプリのウィンドウも読めます。`am start` で別のパッケージを前面に出せます。 |
 | `selectPhotos` | ✅ | gap | Android の写真選択画面はシステム UI で、タップで操作できます。位置を指定して写真を選ぶステップはまだありません。iOS では、Apple Silicon のシミュレータに限り実行時にこの能力を外します。 |
 | `handleTipkitTip` | ✅ | n/a | TipKit は iOS のフレームワークです。 |

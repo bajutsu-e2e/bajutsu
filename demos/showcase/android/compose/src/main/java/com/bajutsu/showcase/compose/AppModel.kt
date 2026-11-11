@@ -53,6 +53,10 @@ class AppModel(env: Map<String, String>) {
     // across launches and installs — the update scenario's fixture.
     val savedNoteMode: Boolean = env["SHOWCASE_SAVED_NOTE"] != null
 
+    // Wheel picker mode (BE-0480): gated on the SHOWCASE_PICKERS launch env, mirroring the iOS
+    // AppModel. When set, RootScreen swaps the whole five-tab UI for the flat picker screen.
+    val pickersMode: Boolean = env["SHOWCASE_PICKERS"] != null
+
     // Driver-conformance mode (BE-0114 / BE-0270): a test-only affordance gated on the
     // SHOWCASE_CONFORMANCE launch env, mirroring the iOS AppModel. null (env absent) = the normal
     // observe-only app (BE-0079, untouched); non-null = render exactly these identifiers (duplicates

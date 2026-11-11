@@ -296,6 +296,7 @@ class AndroidEnvironment:
             channel_recovery=channel.recovery if channel is not None else None,
             channel_start_failure=self._channel_start_failure,
             type_on_device=channel.type_text if channel is not None else None,
+            set_picker_value=channel.set_picker_value if channel is not None else None,
             package=package,
             api_level=self._read_api_level(),
             launched_at=launched_at,

@@ -77,3 +77,32 @@ def test_every_dump_runs_under_a_bound_of_its_own() -> None:
     assert _CODE.count("dumpHierarchy(device)") == 2  # `settledDump` and `settledActBounds`
     settled = _CODE[_CODE.index("private fun <T> settled") : _CODE.index("private fun settledDump")]
     assert settled.count("budget.capDumpWaits()") == settled.count("read()")
+
+
+def _int_const(name: str) -> int:
+    """One of the server's plain `Int` constants, read from its source."""
+    match = re.search(rf"const val {name} = ([\d_]+)\b(?!L)", _CODE)
+    assert match is not None, f"{name} not found in the server source"
+    return int(match.group(1).replace("_", ""))
+
+
+def test_the_picker_walk_bounds_are_the_ones_the_host_sizes_its_timeout_by() -> None:
+    # BE-0480: the host's `/setPickerValue` timeout is built from these, so retuning one end alone
+    # would let a walk the server is still running look like a dead channel.
+    assert _int_const("MAX_PICKER_ROWS") == budgets.MAX_PICKER_ROWS
+    assert _seconds("PICKER_ROW_BUDGET_MS") == budgets.PICKER_ROW_BUDGET_MS / 1000
+
+
+def test_set_picker_value_fits_inside_its_timeout_with_every_stage_at_its_ceiling() -> None:
+    # The deadline is checked before each step, so the last step can still spend its two row waits
+    # past it, then hold the landed row before the reply goes out.
+    walk_deadline = _int_const("MAX_PICKER_ROWS") * _seconds("PICKER_ROW_BUDGET_MS")
+    last_step = 2 * _seconds("PICKER_ROW_BUDGET_MS") + _seconds("PICKER_LANDING_HOLD_MS")
+    waits = (
+        budgets.WAIT_BUDGET_MS / 1000
+        + walk_deadline
+        + last_step
+        + _seconds("ACT_PUBLISH_BUDGET_MS")
+        + _seconds("ACT_TREE_BUDGET_MS")
+    )
+    assert waits <= budgets.PICKER_TIMEOUT_S - 1.0

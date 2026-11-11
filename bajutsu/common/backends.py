@@ -32,6 +32,7 @@ if TYPE_CHECKING:
         ChannelRecovery,
         ClockFetch,
         HierarchyFetch,
+        PickerFn,
         TypeFn,
     )
     from bajutsu.common.drivers.zorder import ZOrderSource
@@ -539,6 +540,7 @@ def make_driver(
     fetch_clock: ClockFetch | None = None,
     act: ActFn | None = None,
     type_on_device: TypeFn | None = None,
+    set_picker_value: PickerFn | None = None,
     channel_recovery: ChannelRecovery | None = None,
     channel_start_failure: str | None = None,
     device_os: DeviceOS | None = None,
@@ -555,7 +557,8 @@ def make_driver(
     read-lag barrier (BE-0332 Unit 3). `act` is that channel's actuation endpoint: with it a `tap`
     resolves its target on the device, so no host-computed coordinate is injected; without it the
     coordinate actuators stand in. `type_on_device` is its text endpoint, the route for text `input
-    text` cannot carry. Every other actuator ignores all four. The xcuitest backend reads
+    text` cannot carry, and `set_picker_value` its wheel endpoint (BE-0480). Every other actuator
+    ignores all five. The xcuitest backend reads
     `runner_alive` — the environment's `xcodebuild`-process liveness check — so crash-recovery can fail
     fast on a runner whose process has exited. It also takes `on_stall`, the environment's bounded
     diagnostics capture (BE-0361), called when that same layer declares a mid-run crash, and
@@ -587,6 +590,7 @@ def make_driver(
             fetch_clock=fetch_clock,
             act=act,
             type_on_device=type_on_device,
+            set_picker_value=set_picker_value,
             channel_recovery=channel_recovery,
             channel_start_failure=channel_start_failure,
             package=package,

@@ -245,6 +245,23 @@ def test_password_flag_derives_the_masked_input_trait() -> None:
     assert base.Trait.SECURE_TEXT_FIELD not in plain["traits"]
 
 
+def test_a_number_picker_also_carries_the_shared_picker_wheel_trait() -> None:
+    # BE-0480: the class-derived `numberPicker` stays so an existing selector keeps resolving, and the
+    # shared `pickerWheel` token is what lets the iOS wheel selector address the same wheel here.
+    xml = (
+        '<hierarchy><node resource-id="form_school" class="android.widget.NumberPicker" '
+        'bounds="[0,0][100,300]" />'
+        '<node resource-id="form_name" class="android.widget.EditText" bounds="[0,300][100,350]" />'
+        '<node resource-id="form_spin" class="android.widget.Spinner" bounds="[0,350][100,400]" />'
+        "</hierarchy>"
+    )
+    els = parse_hierarchy(xml)
+    assert _by_id(els, "form_school")["traits"][:2] == ["numberPicker", base.Trait.PICKER_WHEEL]
+    # No other class gains the token, a scrollable list-like widget included.
+    assert base.Trait.PICKER_WHEEL not in _by_id(els, "form_name")["traits"]
+    assert base.Trait.PICKER_WHEEL not in _by_id(els, "form_spin")["traits"]
+
+
 def test_resource_id_with_no_local_name_is_none_not_empty() -> None:
     # A malformed resource-id ending in `/` must yield identifier None, not "" (which no selector
     # matches yet is falsy-but-present).

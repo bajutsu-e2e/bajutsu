@@ -22,6 +22,7 @@ a `CodegenError` instead of a silent no-op stub (BE-0297).
 
 from __future__ import annotations
 
+import json
 import re
 
 from bajutsu.codegen.common import (
@@ -299,6 +300,15 @@ def _emit_step(step: Step) -> list[str]:  # noqa: C901, PLR0911, PLR0912
         return _act(step.pinch.sel.as_selector(), call)
     if step.rotate is not None:
         return ["// TODO: rotate — UI Automator has no rotate gesture; not generated"]
+    if step.set_picker_value is not None:
+        # `run` walks the wheel through the resident server's accessibility scroll actions (BE-0480),
+        # which `UiObject2` does not expose, so a faithful translation needs a helper of its own.
+        spv = step.set_picker_value
+        sel = json.dumps(spv.sel.as_selector(), ensure_ascii=False, sort_keys=True)
+        return [
+            f"// TODO: setPickerValue(sel: {sel}, value: {_s(spv.value)}) — walks a NumberPicker "
+            "through accessibility scroll actions UiObject2 does not expose; not generated"
+        ]
     if step.wait is not None:
         return _emit_wait(step.wait)
     if step.relaunch is not None:

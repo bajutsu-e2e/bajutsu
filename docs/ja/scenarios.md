@@ -705,7 +705,7 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
 | `select` | `select: { into: <Selector>, mode?: "all" }` | フィールドをフォーカスして内容を選択する（`mode` 既定 `all`）。web コンテキストは非対応。iOS（XCUITest）バックエンドはネイティブに対応し、codegen もネイティブの等価物を出力する |
 | `copy` | `copy: {}` | 選択中の内容をクリップボードへコピーする。事前の `select` が必要。web コンテキストは非対応。iOS（XCUITest）バックエンドはネイティブに対応する |
 | `selectOption` | `selectOption: { sel: <Selector>, option: "..." }` | web の `<select>` をこの value を持つ option に合わせる。web 専用（iOS / Android は失敗する） |
-| `setPickerValue` | `setPickerValue: { sel: <Selector>, value: "..." }` | ホイール型のピッカー（`UIPickerView`、ホイール表示の `UIDatePicker`）をこの value を持つ行へ動かす（[後述](#setpickervalue)）。iOS（XCUITest）専用。`sel` は 1 つのホイールを指し、複数コンポーネントのピッカーは `within` / `traits` / `index` で兄弟のホイールを区別し、コンポーネントごとに 1 ステップずつ書く |
+| `setPickerValue` | `setPickerValue: { sel: <Selector>, value: "..." }` | ホイール型のピッカー（iOS では `UIPickerView` かホイール表示の `UIDatePicker`、Android では `NumberPicker` かスピナー表示の `DatePicker`）をこの value を持つ行へ動かす（[後述](#setpickervalue)）。iOS（XCUITest）と Android（adb）で使える。`sel` は 1 つのホイールを指し、複数コンポーネントのピッカーは `within` / `traits` / `index` で兄弟のホイールを区別し、コンポーネントごとに 1 ステップずつ書く |
 | `swipe` | `swipe: { on: <Selector>, direction: up\|down\|left\|right }` または `swipe: { from: [x,y], to: [x,y] }` | セレクタ形と座標形は混在できない。方向指定形式は**スクロール**する |
 | `drag` | `drag: { on: <Selector>, direction: up\|down\|left\|right, amount?: <frac> }` | 要素そのものを**ドラッグ**する（ハンドル／仕切り／スライダー）。スクロールではない |
 | `scroll` | `scroll: { to: <Selector>, direction?: up\|down\|left\|right, within?: <Selector>, amount?: <frac>, maxScrolls?: <int> }` | `to` が画面に入るまで（慣性なしに）スクロールし、上限に達したら失敗する。`direction` は**スクロール**方向（既定 `down`）で、`swipe` とは逆向き |
@@ -806,9 +806,11 @@ Cookie とストレージは保たれるので、`navigate` はセッション�
     value: "大学"
 ```
 
-ホイール型のピッカー、つまり `UIPickerView` や、ホイール表示に切り替えた `UIDatePicker` は、iOS のフォームでありふれたコントロールです。その値を設定できるステップは `setPickerValue` だけです。ホイールの各行は個別に指定できる要素になっていないため、解決したハンドルを対象とする `tap` では特定の行に到達できません。座標を扱うステップも同様です。`swipe` / `drag` / `scroll` は距離や方向を指定するドラッグであり、ホイールを目的の値のあたりまで回せても、そこで止まる保証はありません。`tapPoint` にいたっては、すでに表示されている行を叩けるだけで、表示されていない行へホイールを動かせません。いずれの場合も、結果のアサーションはドラッグの距離が行の高さとたまたま一致することに依存します。Bajutsu がほかのすべてのステップで排除している、近似的な操作そのものです。`setPickerValue` は、セレクタが解決した要素に対して XCUITest 自身の `adjust(toPickerWheelValue:)` を呼びます。`swipe` のような座標指定ではなく、`tap` と同じハンドル指定です。
+ホイール型のピッカーは、iOS でも Android でもフォームでありふれたコントロールです。iOS では `UIPickerView` や、ホイール表示に切り替えた `UIDatePicker` がこれにあたります。Android では `android.widget.NumberPicker` と、スピナー表示の `DatePicker` や `TimePicker` がこれにあたり、後の 2 つは各欄を `NumberPicker` のホイールで構成します。ホイールの値を設定できるステップは `setPickerValue` だけです。ホイールの各行は個別に指定できる要素になっていないため、解決したハンドルを対象とする `tap` では特定の行に到達できません。座標を扱うステップも同様です。`swipe` / `drag` / `scroll` は距離や方向を指定するドラッグであり、ホイールを目的の値のあたりまで回せても、そこで止まる保証はありません。`tapPoint` にいたっては、すでに表示されている行を叩けるだけで、表示されていない行へホイールを動かせません。いずれの場合も、結果のアサーションはドラッグの距離が行の高さとたまたま一致することに依存します。Bajutsu がほかのすべてのステップで排除している、近似的な操作そのものです。`setPickerValue` は、セレクタが解決した要素に対して XCUITest 自身の `adjust(toPickerWheelValue:)` を呼びます。`swipe` のような座標指定ではなく、`tap` と同じハンドル指定です。
 
-`sel` が解決すべきなのはホイールそのものですが、識別子を持つ要素がホイールであることはまれです。`UIPickerView` は識別子をピッカー側に付け、ピッカーの下にあるホイールを別の子要素として公開します。そのため、識別子だけを指定したセレクタは親であるピッカーを解決し、ステップは失敗します。`adjust(toPickerWheelValue:)` は、ホイールでない要素に対しては例外を投げるからです。上の例のように識別子と `pickerWheel` トレイトを組み合わせると、セレクタは子要素のホイールに届きます。
+Android の adb バックエンドは、`tap` が対象を解決するのと同じ手順でホイールを解決し、そのホイールの識別情報を常駐 UI Automator サーバーへ渡します。座標は渡しません。サーバーは `NumberPicker` 自身が持つアクセシビリティのスクロール操作でホイールを 1 行ずつ進め、1 行進めるたびに選択中の行を読み直します。表示中の行と指定した値がどちらも整数なら、値に近づく向きから回し始めるので、年のホイールは近い側を回ります。それ以外の場合は前方向から回します。端のあるホイールは最後の行で逆向きに戻り、循環するホイールは回り始めた行に戻った時点で止まります。回す行数には 400 行の上限があり、期限も設けています。このステップは常駐サーバーを必要とし、サーバーがない場合は座標でホイールをドラッグせずに失敗します。
+
+`sel` が解決すべきなのはホイールそのものですが、識別子を持つ要素がホイールであることはまれです。`UIPickerView` は識別子をピッカー側に付け、ピッカーの下にあるホイールを別の子要素として公開します。そのため、識別子だけを指定したセレクタは親であるピッカーを解決し、ステップは失敗します。`adjust(toPickerWheelValue:)` は、ホイールでない要素に対しては例外を投げるからです。上の例のように識別子と `pickerWheel` トレイトを組み合わせると、セレクタは子要素のホイールに届きます。Android の `NumberPicker` は、自身のノードに `resource-id` をまったく持ちません。そのため識別子はホイールを囲むコンテナに付け、同じ `within` と `pickerWheel` の組み合わせで内側のホイールを指します。adb バックエンドは `NumberPicker` のノードに、クラス名から得る `numberPicker` に加えて `pickerWheel` トレイトも付けます。
 
 ホイールが持たない値を指定すると、ホイールが止まった位置をそのままにするのではなく、その値を名指しして**ステップが失敗します**。したがって、後続のアサーションが検証するのはアプリであって、ジェスチャの当たり外れではありません。
 
@@ -827,7 +829,7 @@ Cookie とストレージは保たれるので、`navigate` はセッション�
 
 この指定方法は、`datePicker` の分類の隙間（[セレクタ](selectors.md#正規化トレイトtrait)）も回避します。`UIDatePicker` のコンテナ要素自体は `other` に落ちますが、`setPickerValue` が指すのはその下にあるホイールの子要素であり、そちらは `pickerWheel` に分類されるためです。
 
-`setPickerValue` は iOS（XCUITest）のアクションです。ホイール型のピッカーは Android にも web にも対応物がありません。web で同じ意図を表すのは `<select>` であり、それを設定するのは [`selectOption`](#selectoption) です。したがって Android と web のバックエンドは `pickerWheel` ケーパビリティを公開せず、シナリオはデバイス操作が始まる前の preflight で、該当ステップの位置を名指しして棄却されます。
+`setPickerValue` は iOS（XCUITest）と Android（adb）で動きます。Android では、ホイールがどこに置かれていても `NumberPicker` を操作でき、Jetpack Compose の画面が `AndroidView` 経由で載せたものも対象です。一方、Compose が自前で描くホイールは対象外です。Compose には標準のホイールがなく、アプリごとのホイールがそれぞれ異なるアクセシビリティの形を公開するからです。web ページにはホイール型のピッカーがありません。web で同じ意図を表すのは `<select>` であり、それを設定するのは [`selectOption`](#selectoption) です。したがって web バックエンドは `pickerWheel` ケーパビリティを公開せず、シナリオは作業が始まる前の preflight で、該当ステップの位置を名指しして棄却されます。
 
 ### `web`（WebView の DOM コンテキストに入る）
 

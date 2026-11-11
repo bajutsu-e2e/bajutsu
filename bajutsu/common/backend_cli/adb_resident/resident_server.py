@@ -27,6 +27,7 @@ from ._functions import (
     fetch_clock,
     fetch_source,
     narrowed_root,
+    set_picker_value,
     type_text,
 )
 from ._process import _Process
@@ -45,6 +46,7 @@ ActProbe = Callable[[int, ActRequest], ActOutcome]
 # How many times a lease restarts its server without a read answering first try in between.
 _MAX_RESTARTS_IN_A_ROW = 2
 TypeProbe = Callable[[int, str, float | None], None]
+PickerProbe = Callable[[int, ActRequest, str], ActOutcome]
 
 
 class ResidentServer:
@@ -71,6 +73,7 @@ class ResidentServer:
         clock: ClockProbe | None = None,
         act_probe: ActProbe | None = None,
         type_probe: TypeProbe | None = None,
+        picker_probe: PickerProbe | None = None,
         server_apk: Path = _SERVER_APK,
         test_apk: Path = _TEST_APK,
         installed: dict[str, tuple[str, str]] | None = None,
@@ -112,6 +115,12 @@ class ResidentServer:
         self._type_text = type_probe or (
             lambda port, text, since: type_text(port, text, since, keepalive=self._keepalive)
         )
+        # `tree=0` for `nativeZ` for the reason `_act` gives above.
+        self._set_picker_value = picker_probe or (
+            lambda port, request, value: set_picker_value(
+                port, request, value, keepalive=self._keepalive, want_tree=not native_z
+            )
+        )
         self._server_apk = server_apk
         self._test_apk = test_apk
         # Which APK pair this run already put on which device (BE-0407 unit 22). Owned by the caller
@@ -150,6 +159,10 @@ class ResidentServer:
             # the reads, and the driver fails this one step on it.
             self._type_text(self._port(), text, since)
 
+        def set_picker_value_on_device(request: ActRequest, value: str) -> ActOutcome:
+            # Like `act_on_device`, a fault here leaves the read channel up.
+            return self._set_picker_value(self._port(), request, value)
+
         return ResidentChannel(
             self._read,
             clock,
@@ -160,6 +173,7 @@ class ResidentServer:
                 revive=self._revive,
                 drain_notes=self._drain_notes,
             ),
+            set_picker_value_on_device,
         )
 
     def _port(self) -> int:

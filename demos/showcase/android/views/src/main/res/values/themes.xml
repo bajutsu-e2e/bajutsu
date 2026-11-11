@@ -3,4 +3,11 @@
     <!-- Material3 no-action-bar theme: the UI is built in code (a header TextView per screen), and
          BottomSheetDialog needs a Material Components ancestor theme. -->
     <style name="Theme.Showcase" parent="Theme.Material3.Light.NoActionBar" />
+    <!-- BE-0480: a spinner-mode DatePicker for the picker screen. Its month / day / year are
+         three NumberPicker wheels, the control setPickerValue drives on Android; the calendar
+         view is hidden so the wheels are the whole control. -->
+    <style name="Widget.Showcase.SpinnerDatePicker" parent="@android:style/Widget.Material.Light.DatePicker">
+        <item name="android:datePickerMode">spinner</item>
+        <item name="android:calendarViewShown">false</item>
+    </style>
 </resources>

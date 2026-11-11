@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0480](BE-0480-android-picker-wheel-set-value-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **承認済み** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0480") |
+| 実装 PR | [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM)（単位 1〜6） |
 | トピック | シナリオ記述機能 |
 <!-- /BE-METADATA -->
 
@@ -229,12 +230,35 @@ Flutter の iOS のレーンを除外します。`picker_wheel` は、`demos/sho
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] trait の対応づけ：`NumberPicker` のノードに `pickerWheel` も付けて `Trait.PICKER_WHEEL` として定義し、ユニットテストと conformance のテストを加える
-- [ ] 常駐サーバー：stale、not-a-picker-wheel、picker-value-absent、picker-walk-exhausted の各ステータスと端での確認の読み直しを持つ `/setPickerValue` エンドポイント、数値の向きの手がかり、行数の上限
-- [ ] ホスト側のドライバー：専用のタイムアウトを持つ通信路のクライアント、`AdbDriver.set_picker_value`、`PICKER_WHEEL` capability、preflight の説明文、`Driver.set_picker_value` のコメントと preflight の docstring、それらのユニットテスト、サーバーの走査の定数と照合する予算のテスト
-- [ ] コード生成：UI Automator 向けの生成器が出力する `// TODO`
-- [ ] showcase：Views 版と Compose 版のピッカー画面と、`android-e2e.yml` の smoke ジョブへの2つのシナリオの追加（Android の Makefile のシナリオ一覧に `picker_wheel` を加える）
-- [ ] ドキュメント：`scenarios`、`drivers`、`platform-parity`、`selectors`、`architecture` の英日両方
+- [x] trait の対応づけ：`NumberPicker` のノードに `pickerWheel` も付けて `Trait.PICKER_WHEEL` として定義し、ユニットテストと conformance のテストを加える
+- [x] 常駐サーバー：stale、not-a-picker-wheel、picker-value-absent、picker-walk-exhausted の各ステータスと端での確認の読み直しを持つ `/setPickerValue` エンドポイント、数値の向きの手がかり、行数の上限
+- [x] ホスト側のドライバー：専用のタイムアウトを持つ通信路のクライアント、`AdbDriver.set_picker_value`、`PICKER_WHEEL` capability、preflight の説明文、`Driver.set_picker_value` のコメントと preflight の docstring、それらのユニットテスト、サーバーの走査の定数と照合する予算のテスト
+- [x] コード生成：UI Automator 向けの生成器が出力する `// TODO`
+- [x] showcase：Views 版と Compose 版のピッカー画面と、`android-e2e.yml` の smoke ジョブへの2つのシナリオの追加（Android の Makefile のシナリオ一覧に `picker_wheel` を加える）
+- [x] ドキュメント：`scenarios`、`drivers`、`platform-parity`、`selectors`、`architecture` の英日両方
+
+ログ：
+
+- 2026-11-11 — 単位 1〜6 をまとめて着地させました（[#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM)）。
+  API 34 arm64 のエミュレータで、Compose 版と Views 版の両方のショーケースアプリで `picker_wheel` が通りました。
+  詳細設計から外れた点が4つあります。
+  - `NumberPicker` のノードは `resource-id` を持ちません。アクセシビリティのプロバイダが設定しないためです。
+    そこでショーケースの画面では、ホイールを囲むコンテナに識別子を付けました。シナリオは iOS と同じく、
+    `within` と `pickerWheel` の組み合わせでホイールを指します。
+  - 1 行ごとの待機は、値が変わるまで 20 ms 間隔でホイールを読み直す方式にしました。アイドル待ちでは間に合いません。
+    アイドル待ちは 1 行分のアニメーション全体より長い無音の時間を必要とするからです。
+    アイドル待ちのままでは、25 行の walk で変化のない読み取りが2回続き、端に着いたと誤判定しました。
+  - 最初の実機実行では、1 行あたり 142〜1469 ms（中央値 625 ms、38 行）かかりました。
+    そのため 1 行の予算は 300 ms ではなく 1,500 ms から始めます。walk の期限は 600 秒、ホストのタイムアウトは
+    610 秒になります。サーバーが先に応答するので、このタイムアウトが発火するのは通信路の障害のときだけです。
+  - 常駐サーバーとの通信路の配線として、`ResidentChannel`、`ResidentServer`、`make_driver`、Android の環境に
+    `set_picker_value` の呼び出し口を加えました。詳細設計には挙がっていなかった変更です。web バックエンドと
+    WebView コンテキストの拒否メッセージも、このステップを iOS 専用とは書かなくなりました。
+  - セルフレビューを受けて、walk を設計より堅くしました。行の予算 2 回分で行が変わらないときは、端とみなさず
+    `picker-walk-exhausted` で失敗させます。そこで折り返すと、ホイールが直後に離れる行を着地と報告しうるからです。
+    着地した行は 400 ms 保たれることを確かめます。どちらの向きにもスクロールできないホイールには、5つ目の
+    ステータス `picker-immovable` を返します。端末側はホイールを識別情報の全体で照合し、2つ一致すれば拒否します。
+    ホスト側は `tap` と同じく、ほかの要素に覆われたホイールを先に拒否します。
 
 ## 参考
 

@@ -68,7 +68,7 @@ column.
 | `elementAttribute` | n/a | n/a | Reads an attribute of a web page element, which the web backend alone has. |
 | `handleSystemAlert` | ✅ | n/a | An Android system dialog appears in the dumped tree, so an ordinary `tap` reaches it. |
 | `resolveAlerts` | ✅ | n/a | Same reason as `handleSystemAlert`. |
-| `pickerWheel` | ✅ | gap | Android's `NumberPicker` and spinner-mode `DatePicker` are the nearest controls. No setter drives them yet. |
+| `pickerWheel` | ✅ | ✅ | The resident server walks an Android `NumberPicker` row by row, spinner-mode `DatePicker` and `TimePicker` wheels included (BE-0480). A wheel that Jetpack Compose draws itself stays out of scope, since Compose ships no standard wheel. |
 | `appContext` | ✅ | gap | UI Automator reads any app's window, and `am start` can bring another package forward. |
 | `selectPhotos` | ✅ | gap | Android's photo picker is system UI that a tap can reach. No step picks a photo by position yet. On iOS, an Apple Silicon Simulator drops the capability at run time. |
 | `handleTipkitTip` | ✅ | n/a | TipKit is an iOS framework. |
