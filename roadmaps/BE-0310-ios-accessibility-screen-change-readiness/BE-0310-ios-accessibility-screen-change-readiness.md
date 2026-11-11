@@ -78,9 +78,7 @@ The notification named the event, but the shipping observation reads the same co
 Bajutsu can capture the completion without asking any app to change its screen code. The project
 already has the mechanism and the policy for this shape of capability.
 [BE-0233](../BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity.md) established a
-standing design policy. A capability reachable from inside the app process is realized through a
-uniform, opt-in software development kit (SDK) that every target links identically. Per-app
-configuration is not used. The policy keeps the capability app-agnostic under prime directive 3.
+standing design policy. A capability reachable *only* from inside the app process is realized through a uniform, opt-in software development kit (SDK) that every target links identically, not through per-app configuration. The policy keeps the capability app-agnostic under prime directive 3.
 
 `BajutsuKit` already is that SDK on iOS. Its network capture links into the app under test. The
 capture reports each observed request out of process to a collector that Bajutsu runs

@@ -19,7 +19,7 @@
 This item adds a real-Postgres CI lane alongside the existing SQLite one for `serve`'s database
 layer.
 
-The layer already avoids the worst version of the gap.
+The layer already avoids the worst version of this verification gap.
 
 `tests/serve/test_db_migrations.py` runs real Alembic `upgrade`/`downgrade` against a throwaway
 SQLite file. The test does not bypass migrations with `Base.metadata.create_all()`.

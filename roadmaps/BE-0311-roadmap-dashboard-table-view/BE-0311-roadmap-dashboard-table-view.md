@@ -169,8 +169,7 @@ sentence there enumerates the views of the dashboard, update the sentence in the
   questions. Confining the sort to one topic at a time would still require opening every section by
   hand to compare across sections. A flat table answers both in one sort.
 - **A server-side / build-time sort (bake one fixed sort order into the generated page).** Rejected.
-  A reader wants ID order sometimes and Updated order at other times, and a static page can bake in
-  one order. Client-side sort over already-rendered rows costs nothing at build time and serves every
+  A reader wants ID order sometimes and Updated order at other times, and a static page can bake in only one order. Client-side sort over already-rendered rows costs nothing at build time and serves every
   order a reader might want.
 
 ## Progress

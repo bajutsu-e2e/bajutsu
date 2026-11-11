@@ -214,8 +214,7 @@ The lookup follows the same `Link`-header pagination that `_fetch_orgs` already 
 membership ([`bajutsu/serve/server/oauth.py`](../../bajutsu/serve/server/oauth.py)). A login whose
 target Team sits on a later page of a large Team list still resolves correctly.
 
-An unsuccessful call is treated the same as a genuine non-match: a non-200 response, a network
-failure, or an unparseable body. The login resolves to viewer and does not fail sign-in.
+An unsuccessful call — a non-200 response, a network failure, or an unparseable body — is treated the same as a genuine non-match. The login resolves to viewer and does not fail sign-in.
 
 This failure direction is the opposite of the org-membership fetch in `_fetch_orgs`. That fetch fails
 open to the `default` org, because a lookup failure there affects only *which* org a login lands in.
@@ -248,7 +247,7 @@ whose GitHub organization is not reachable through the `githubOrgs` or `members`
 ops-only GitHub organization that no `orgs:` entry lists is an example. Sign-in rejects that member
 before the admin Team is consulted. The member loses sign-in entirely and does not gain admin.
 
-This section names the admin Team independently of any tenant org. The naming works in practice when
+This section names the admin Team independently of any tenant org. The naming only works in practice when
 the admin is also a member of some configured tenant org, through `members` or `githubOrgs`. This
 item adds no separate path around the organization-membership gate for admins. A deployment must
 ensure that overlap itself.
@@ -337,8 +336,7 @@ it with less than it started with.
   access-control axis to a concept that BE-0225 defined purely as a config-source binding. That
   change is materially larger than swapping the role *source* for the Bajutsu org that this item
   already has. A deployment that needs different write rosters per repository can already declare
-  multiple Bajutsu orgs, each naming a different `editorTeam`, and adds no project-level access
-  control.
+  multiple Bajutsu orgs, each naming a different `editorTeam`, rather than add project-level access control.
 - **Nested-Team membership for the editor and admin Teams.** GitHub Teams support parent/child
   hierarchies, and `/user/teams` reports the membership of a login in a child Team distinct from its
   parent. Rejected for the first cut of this item, in favor of checking the exact configured Team

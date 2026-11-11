@@ -26,9 +26,7 @@ a fresh handle for every element on every accessibility-tree snapshot. The runne
 every prior handle unconditionally. A handle encodes the *snapshot generation* in which the element
 was seen, not the *identity* of the element itself.
 
-One redundant `GET /elements` is therefore enough to advance the generation and strand a handle that
-the client is about to use. The transport-retry seam re-sends the read whenever a read looks like it
-blipped. Nothing on the screen changed between the resolve and the actuation.
+One redundant `GET /elements` is therefore enough to advance the generation and strand a handle that the client is about to use, even though nothing on the screen changed between the resolve and the actuation. The transport-retry seam re-sends that read whenever a read looks like it blipped.
 
 This item proposes to derive the handle deterministically from the stable identity of the element:
 its identifier, label, and traits. A per-call counter no longer takes part. An element that is still
