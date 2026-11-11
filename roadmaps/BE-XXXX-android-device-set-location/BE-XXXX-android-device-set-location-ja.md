@@ -54,7 +54,10 @@ adb バックエンドは、どの Android ターゲットにも `deviceControl.
 ### 経路の選び方
 
 Android のデバイス制御は、リースの最初の `setLocation` で端末ごとに経路を選びます。bajutsu は
-`adb shell getprop` で `ro.boot.qemu` と `ro.kernel.qemu` の 2 つのシステムプロパティを読みます。どちらかが
+`adb shell getprop` で `ro.boot.qemu` と `ro.kernel.qemu` の 2 つのシステムプロパティを読みます。
+`bajutsu/common/devices/facts.py` は、同じ 2 つを `_EMULATOR_PROPS` としてすでに持っています。作業単位 3 で
+このタプルを共有の定数に移し、両方の読み手がそれを読み込むようにします。将来のイメージがプロパティの名前を
+変えても、直す場所は 1 か所で済みます。どちらかが
 `1` であればエミュレータです。新しいエミュレータのイメージは前者を、古いイメージは後者を設定します。
 ただし、コンソールの経路にはローカルのコンソールが要ります。adb がそのコンソールに届くのは、
 シリアルが `emulator-<port>` 形式のときに限られます。そこでデバイス制御は、プロパティがエミュレータを
@@ -169,6 +172,12 @@ Android のデバイス制御は、リースの最初の `setLocation` で端末
 作業単位 1 で確定させます。残らない場合は、環境がアプリを再起動したあとにデバイス制御が最後の位置を
 送り直します。こうすれば、エミュレータで保たれるのと同じ位置をシナリオが見ます。
 
+`installApp` ステップでも、同じように模擬の位置が失われます。`install_member` はインストールの前にアプリを
+強制停止するので、`keepData` がどちらでも、プロバイダはプロセスとともに消えます。アンインストールでは
+`appops` の権限も外れます。そこでデバイス制御は、`installApp` のあとにも記録した位置を送り直します。
+`install_member` は、同じ理由で実行時の権限を与え直し（BE-0210）、アプリごとのロケールを設定し直して
+います（BE-0478）。
+
 ### capability と事前検査
 
 `deviceControl.setLocation` は adb バックエンドの静的な capability の集合に残します。
@@ -180,8 +189,11 @@ Android のデバイス制御は、リースの最初の `setLocation` で端末
 ### showcase のシナリオ
 
 Android の showcase アプリは Compose 版と Views 版の両方で `Bajutsu.startLocation` を呼び、小さな位置表示を加えます。`LocationManager` から得た最新の緯度と経度を
-表示するテキストビューです。シナリオは位置を設定し、表示された座標を検証します。同じシナリオが
-エミュレータのレーンと実機の両方で動くので、1 つのファイルで 2 つの経路を確かめられます。showcase は
+表示するテキストビューです。シナリオは位置を設定し、表示された座標を検証します。ローカルのエミュレータはコンソールの
+経路を、実機はアプリ内の経路を使います。そのため、エミュレータのレーンだけではコンソールの経路しか確かめられず、
+レシーバが試されません。そこでレーンは、同じエミュレータに `adb connect` でつないで、シナリオをもう一度
+実行します。経路の規則により、この接続はアプリ内の経路を使います。こうして、レシーバと `appops` の権限付与と
+結果コードを、作業単位 7 の実機での検証だけでなく CI でも確かめます。showcase は
 既存の権限の前提条件で位置情報の権限を与えるため、システムのダイアログが実行を妨げることはありません。
 
 ### 作業分解（MECE）
@@ -190,9 +202,9 @@ Android の showcase アプリは Compose 版と Views 版の両方で `Bajutsu.
 |---|---|---|
 | 1 | 実機でのスパイク：マニフェストの権限の有無による `appops` の挙動、再起動を越えた模擬の存続、権限を外したときの解除、fused プロバイダへの反映 | 結果をこの項目の進捗ログに記録した |
 | 2 | BajutsuAndroid の `LocationReceiver`、`Bajutsu.startLocation`、結果コード | `make -C demos/showcase/android build-all` で、showcase のすべてのバリアントがライブラリとともにビルドできる |
-| 3 | adb のコマンド生成関数、`parse_location_result`、`Env` のメソッド | 各生成関数の引数列と各結果コードをユニットテストが確かめる |
-| 4 | `android_device_control` での経路選択と、Android 環境の `teardown` | 2 つの経路、判定結果の保持、`teardown` と `end_member` の順序と失敗時の許容をユニットテストが確かめる |
-| 5 | Compose 版と Views 版の showcase の位置表示と位置情報のシナリオ | エミュレータのレーンでシナリオが通る |
+| 3 | adb のコマンド生成関数、`parse_location_result`、`Env` のメソッド | 各生成関数の引数列と各結果コードをユニットテストが確かめる。`Env` と `facts.py` がエミュレータのプロパティの共有定数を読み込む |
+| 4 | `android_device_control` での経路選択と、Android 環境の `teardown` | 2 つの経路、判定結果の保持、再起動と `installApp` のあとの再送、`teardown` と `end_member` の順序と失敗時の許容をユニットテストが確かめる |
+| 5 | Compose 版と Views 版の showcase の位置表示と位置情報のシナリオ | エミュレータのレーンで、`emulator-<port>` のシリアルと `adb connect` の両方でシナリオが通る |
 | 6 | 英語と日本語のドキュメント：`docs/platform-parity.md` と `BajutsuAndroid/README.md` | 両ページと日本語版（`docs/ja/platform-parity.md`、`BajutsuAndroid/README.ja.md`）が 2 つの経路を説明している（capability の表の `deviceControl.setLocation` の行と、振る舞いの表の `setLocation` の行を含む） |
 | 7 | 実機での検証 | 実機でシナリオが通り、次のシナリオが実際の位置を見る。結果を PR に記録した |
 

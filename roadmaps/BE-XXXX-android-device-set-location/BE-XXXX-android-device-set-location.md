@@ -56,6 +56,9 @@ no longer lists Android under "Neither backend sets the location on a real devic
 
 The Android device control chooses the route per device, at the first `setLocation` of a lease.
 bajutsu reads two system properties with `adb shell getprop`: `ro.boot.qemu` and `ro.kernel.qemu`.
+`bajutsu/common/devices/facts.py` already keeps the same pair as `_EMULATOR_PROPS`. Unit 3 lifts
+that tuple to a shared constant both readers import. A future image family that renames the
+property then needs one fix, not two.
 Either one equal to `1` marks an emulator. Recent emulator images set the first property, and older
 images set the second. The console route also needs a local console. adb reaches that console
 through an `emulator-<port>` serial alone. The device control therefore takes `emu geo fix` when
@@ -161,6 +164,12 @@ the providers, and Android may remove the providers along with it. Unit 1 settle
 hardware. If the providers do not survive, the device control re-sends the last location after the
 environment's relaunch, so a scenario sees the same location the emulator would keep.
 
+An `installApp` step loses the mock the same way. `install_member` force-stops the app before it
+installs. The providers go away with the process on both `keepData` levels, and an uninstall drops
+the `appops` grant as well. The device control re-sends the recorded location after an
+`installApp` too. `install_member` already re-grants the runtime permissions (BE-0210) and re-pins
+the per-app locale (BE-0478) for the same reason.
+
 ### Capability and preflight
 
 `deviceControl.setLocation` stays in the adb backend's static capability set, and
@@ -174,8 +183,11 @@ today depends on configuration alone.
 
 Both Android showcase apps, Compose and Views, call `Bajutsu.startLocation` and gain a small location readout: a text view that shows the latest
 latitude and longitude from `LocationManager`. A scenario sets a location and asserts the displayed
-coordinates. The same scenario runs on the emulator lane and on a real device, so one file proves
-both routes. The showcase grants the location permission with the existing permission
+coordinates. A local emulator takes the console route, and a real device takes the in-app route.
+The emulator lane alone would exercise the console route and leave the receiver untested. The lane
+runs the scenario a second time, against the same emulator reached over `adb connect`. The routing
+rule sends that connection in-app. CI then covers the receiver, the `appops`
+grant, and the result codes, not merely the on-device verification of Unit 7. The showcase grants the location permission with the existing permission
 preconditions, so no system dialog interrupts the run.
 
 ### Work breakdown (MECE)
@@ -184,9 +196,9 @@ preconditions, so no system dialog interrupts the run.
 |---|---|---|
 | 1 | Spike on a real device: `appops` with and without the manifest permission, the mock across a relaunch, removal on revoke, and fused-provider visibility | Findings recorded in this item's Progress log |
 | 2 | BajutsuAndroid `LocationReceiver`, `Bajutsu.startLocation`, and result codes | `make -C demos/showcase/android build-all` builds every showcase variant against the library |
-| 3 | adb command builders, `parse_location_result`, and the `Env` methods | Unit tests cover each builder's argv and each result code |
-| 4 | Route selection in `android_device_control` and teardown in the Android environment | Unit tests cover both routes, the cached probe, and the order and tolerance of `teardown` and `end_member` |
-| 5 | Showcase location readout in the Compose and Views apps and the location scenario | The scenario passes on the emulator lane |
+| 3 | adb command builders, `parse_location_result`, and the `Env` methods | Unit tests cover each builder's argv and each result code; `Env` and `facts.py` import one shared emulator-property constant |
+| 4 | Route selection in `android_device_control` and teardown in the Android environment | Unit tests cover both routes, the cached probe, the re-send after a relaunch and an `installApp`, and the order and tolerance of `teardown` and `end_member` |
+| 5 | Showcase location readout in the Compose and Views apps and the location scenario | The scenario passes on the emulator lane over both the `emulator-<port>` serial and `adb connect` |
 | 6 | Documentation in English and Japanese: `docs/platform-parity.md` and `BajutsuAndroid/README.md` | Both pages and their Japanese mirrors (`docs/ja/platform-parity.md`, `BajutsuAndroid/README.ja.md`) describe both routes, including the `deviceControl.setLocation` row of the capability table and the `setLocation` row of the behavior table |
 | 7 | On-device verification | The scenario passes on a real device, and the next scenario sees the real location; the result is recorded in the PR |
 
