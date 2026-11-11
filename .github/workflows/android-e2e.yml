@@ -643,9 +643,9 @@ jobs:
         with:
           phase: start
 
-      # `e2e-conformance` runs `adb root` (the MULTI_TOUCH pinch/rotate test needs the rooted
-      # `sendevent` sweep, BE-0232) then the `ondevice`-marked contract serially (`-n0`) against the one
-      # booted emulator.
+      # `e2e-conformance` runs `adb root` (so the MULTI_TOUCH pinch/rotate test can fall back to the
+      # rooted `sendevent` sweep, BE-0232, should the resident server be unavailable) then the
+      # `ondevice`-marked contract serially (`-n0`) against the one booted emulator.
       - name: Run the driver conformance contract (adb)
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
         env:

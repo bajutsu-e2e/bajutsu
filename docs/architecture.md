@@ -276,7 +276,7 @@ The contract (`tests/driver_conformance.py`) is the "done" definition that a new
 - `capabilities()` matches observed behavior (else each affected call raises `UnsupportedAction`; BE-0280, BE-0464, BE-0466):
   - The `QUERY` / `ELEMENTS` baseline is declared.
   - Multi-touch gestures work exactly when `MULTI_TOUCH` is declared.
-  - Select-all and clipboard copy work exactly when `TEXT_SELECTION` is declared.
+  - Select-all and clipboard copy work exactly when `TEXT_SELECTION` is declared. A harness that can read the device clipboard also checks that the copied text lands there, so a copy that silently does nothing fails (#2390).
   - Setting a native `<select>` by value works exactly when `SELECT_OPTION` is declared.
   - Loading a URL works exactly when `URL_NAVIGATION` is declared.
   - `read_attributes` resolves each selector like a tap exactly when `ELEMENT_ATTRIBUTE` is declared.

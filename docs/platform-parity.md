@@ -60,7 +60,7 @@ column.
 | `video` | ✅ | ✅ | |
 | `deviceLog` | ✅ | ✅ | |
 | `appTrace` | ✅ | ✅ | iOS streams the app's `os_log`. Android reads the app's own log lines from `logcat`, filtered by tag ([BE-0478](../roadmaps/BE-0478-android-device-control-parity/BE-0478-android-device-control-parity.md)). |
-| `multiTouch` | ✅ | ✅ | Android needs a rooted device. See the behavior table. |
+| `multiTouch` | ✅ | ✅ | Android injects both fingers through the resident UI Automator server. Without the server, it needs a rooted device. |
 | `textSelection` | ✅ | ✅ | Android needs version 12 or later. See the behavior table. |
 | `webView` | per-run | gap | iOS grants it when the app embeds the BajutsuKit WebView bridge. Android has no bridge. Chrome's WebView debugging port is a possible route. |
 | `selectOption` | n/a | n/a | Sets a web page's `<select>` element, which the web backend alone has. |
@@ -120,7 +120,6 @@ declare, or outside what the two tables cover.
 |---|---|---|---|
 | Text in an editable field | The element's `value` holds the text. | The text lands in `label`, and `value` holds the `content-desc`. | A `value` assertion on a text field fails to read the text. A `clear` step reads `value` first and does nothing when it is empty. |
 | `select` and `copy` | XCUITest selects and copies natively. | adb sends Ctrl+A and Ctrl+C through `input keycombination`, which needs Android 12 or later. | The Android end-to-end (E2E) lane runs the pair on Compose and Views. It reads the copied text back from the clipboard. |
-| `pinch` and `rotate` | XCUITest performs both natively. | adb writes raw touch events with `sendevent`, which needs root. | Both steps fail on an unrooted device. |
 | `setLocation` | `simctl` sets it on the Simulator. | The emulator console sets it. | Neither backend sets the location on a real device yet. [BE-0475](../roadmaps/BE-0475-ios-runner-set-location/BE-0475-ios-runner-set-location.md) covers iOS. |
 | Clipboard steps | `simctl` reads and writes the pasteboard. | A receiver inside the app does the work. The app must link BajutsuAndroid, and Android 10 or later lets only the focused app read the clipboard. | An app without BajutsuAndroid fails every clipboard step, and so does a read while the app is in the background. |
 
