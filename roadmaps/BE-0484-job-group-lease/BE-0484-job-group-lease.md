@@ -219,7 +219,7 @@ Out of scope: publishing a group's result as a GitHub check, sharing uploads bet
 > (oldest first), linking the PRs.
 
 - [x] Unit 1 — Group registration
-- [ ] Unit 2 — Run intent
+- [x] Unit 2 — Run intent
 - [ ] Unit 3 — Grouped lease and caps
 - [ ] Unit 4 — Shared upload
 - [ ] Unit 5 — Platform routing
@@ -247,6 +247,25 @@ Log:
     `GET /api/jobs/<id>` leaves a person unscoped, so the group read is the tighter of the two.
     Cancel needs the editor role in the group's org. A machine stays bound to its own org.
   - `docs/devicefarm.md` and `docs/self-hosting.md` describe the new routes in both languages. Unit 6 keeps the full documentation pass.
+- 2026-11-11 — PR_LINK landed unit 2. A `run-set` job now carries a run intent in place of a
+  batch. The intent names the scenario, the target, and the config. It also names the platform, the
+  application path, and the upload-execution policy. The worker that leases the job turns the intent into its own
+  form first. A device-cloud worker submits it as its own provider's batch. Any other worker runs it
+  as the `bajutsu run` command a plain run carries. The job requires `job:run-intent`. Every worker
+  from this change advertises that token. Until unit 5, the job also requires
+  `environment:<provider>`. The unit departs from the design in three places.
+  - The `appium` worker advertises the token. Like a local worker, it turns the intent into a run
+    command. Its grid reaches that run through `--worker-config`, as for a plain run. Routing still
+    keeps group jobs off it. Until unit 5 they require `environment:<provider>`. After unit 5, the
+    grid worker still advertises no `platform:` token. Whether unit 5 routes group jobs to a grid
+    stays open.
+  - The worker resolves the intent before `environment_refusal`. The check thus sees a batch or a
+    command, as before. When the worker cannot resolve an intent, the check refuses it and names the
+    missing fields. The refusal comes before any fetch.
+  - Three values travel as existing spec fields, not as intent fields. The baselines decision
+    travels as `materialize_baselines`. The label and the provenance travel as `label` and
+    `provenance`. A job resolved into a batch drops `materialize_baselines`. A device-cloud worker
+    thus fetches no baselines, as before.
 
 ## References
 

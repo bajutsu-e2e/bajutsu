@@ -30,7 +30,11 @@ from bajutsu.common.scenario import load_scenario_file
 from bajutsu.serve import oplog
 from bajutsu.serve.authz import _record_audit
 from bajutsu.serve.batch_provider import BatchRequest
-from bajutsu.serve.capabilities import environment_capability, route_refusal
+from bajutsu.serve.capabilities import (
+    RUN_INTENT_CAPABILITY,
+    environment_capability,
+    route_refusal,
+)
 from bajutsu.serve.commands import _float, _int, crawl_command, record_command, run_command
 from bajutsu.serve.helpers import (
     request_backend_error,
@@ -53,6 +57,7 @@ from bajutsu.serve.operations.upload import _fetch_artifact, artifact_presence
 from bajutsu.serve.scenarios import Runnable, ScenarioScope
 from bajutsu.serve.server.object_store import upload_store_key
 from bajutsu.serve.state import ConfigBinding, Job, ServeState
+from bajutsu.serve.state.job import RunIntent
 from bajutsu.serve.upload_artifacts import ArtifactKind, ArtifactOverrides, artifact_store_key
 
 _logger = logging.getLogger("bajutsu.serve.operations")
@@ -953,19 +958,19 @@ def start_run_set(  # noqa: C901, PLR0911
     machine_org: str | None = None,
     ci_job: dict[str, str] | None = None,
 ) -> tuple[Any, int]:
-    """Fan out a scenario-set request into one cloud-batch job per scenario (BE-0336 Unit 3).
+    """Fan out a scenario-set request into one job per scenario (BE-0336 Unit 3).
 
     A neutral dispatch surface: the request names a `target`, the batch provider its runs go to as
     `environment` (BE-0452: where a run happens is a choice per run, not a property of the target),
     and, optionally, a `scenarios` subset (omitted = every scenario in the target's dir). Each
-    scenario becomes its own Job carrying a per-scenario `BatchRequest`, registered and dispatched
-    through the same concurrency-capped tail as every other run. Returns the dispatched job ids and
-    the id of the group they form (BE-0484), which `job_group_view` reads back.
+    scenario becomes its own Job carrying a per-scenario run intent (BE-0484), registered and
+    dispatched through the same concurrency-capped tail as every other run. Returns the dispatched
+    job ids and the id of the group they form (BE-0484), which `job_group_view` reads back.
 
-    Each job requires exactly `environment:<provider>` (BE-0448), so only a worker that registered
-    the provider leases it, and it ships what a worker without the project needs: the config and
-    scenario as materials when the scenario store yields them, else the bound bundle or the config's
-    directory, which the job names as its own.
+    Each job requires `environment:<provider>` (BE-0448) until BE-0484 unit 5, and `job:run-intent`,
+    so only a worker that registered the provider and resolves an intent leases it. It ships what a
+    worker without the project needs: the config and scenario as materials when the scenario store
+    yields them, else the bound bundle or the config's directory, which the job names as its own.
     """
     binding = state.binding_for(session, state.org_for(actor, machine_org))
     cfg = binding.config
@@ -1042,6 +1047,7 @@ def start_run_set(  # noqa: C901, PLR0911
     compat_key = _compat_key(
         config_text, _app_digest(batch_app, bundle, binding), batch_platform, target
     )
+    upload_exec = state.upload_exec if binding.upload is not None else ""
     for request, materials in requests:
         if materials:
             # The scenario store ships the scenario text, so the worker has no project on disk: the
@@ -1050,12 +1056,22 @@ def start_run_set(  # noqa: C901, PLR0911
         job, capped = _register_and_dispatch(
             state,
             Job(
-                batch=request,
+                intent=RunIntent(
+                    scenario=request.scenario,
+                    target=request.target,
+                    config=request.config,
+                    platform=request.platform,
+                    app_path=request.app_path,
+                    upload_exec=upload_exec,
+                ),
                 materials=materials,
+                materialize_baselines=binding.upload is None,
+                provenance=_provenance(binding, None),
                 actor=actor,
                 org=org,
                 label=label,
-                capabilities=[environment_capability(provider)],
+                # The environment token keeps routing the job as before until BE-0484 unit 5.
+                capabilities=[environment_capability(provider), RUN_INTENT_CAPABILITY],
                 batch_app=batch_app,
                 bundle=bundle,
                 group_id=group_id,
