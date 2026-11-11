@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0484](BE-0484-job-group-lease-ja.md) |
 | 提案者 | [@paihu](https://github.com/paihu) |
-| 状態 | **承認済み** |
+| 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0484") |
 | トピック | Device-cloud execution |
 | 関連 | [BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out-ja.md), [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch-ja.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md), [BE-0465](../BE-0465-serve-ui-device-farm-fan-out/BE-0465-serve-ui-device-farm-fan-out-ja.md), [BE-0468](../BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of-ja.md) |
@@ -217,12 +217,36 @@ worker は、その互換キーを持つ job が1件でも実行中のあいだ�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 単位1 — グループの登録
+- [x] 単位1 — グループの登録
 - [ ] 単位2 — 実行意図
 - [ ] 単位3 — グループ単位の lease と上限
 - [ ] 単位4 — upload の共有
 - [ ] 単位5 — プラットフォームによるルーティング
 - [ ] 単位6 — ドキュメント
+
+ログ：
+
+- 2026-11-11：PR_LINK で単位 1 を実装しました。`POST /api/run-set` は `job_groups` に行を書き、`groupId`
+  を返します。リクエストの各ジョブは、グループ、互換性キー、ルートキー、ベースキーを保存します。すべての
+  ジョブが actor も保存するようになりました。同じシナリオを2回指定したリクエストは拒否します。新しいルートは
+  `GET /api/run-set/<groupId>` と `POST /api/run-set/<groupId>/cancel` の2つです。マシンは自分の組織の下で、
+  グループを登録し、読み出せます。設計とは次の5点で異なります。
+  - グループの読み出しは、各ジョブの `exitCode` と `runId` も返します。グループ全体の `conclusion` も
+    返し、値は `pending`、`success`、`failure`、`cancelled` のいずれかです。ジョブの状態 `done` は、
+    終わったことしか示しません。終了コードがなければ、CI の呼び出し側は通ったグループと落ちたグループを
+    区別できません。値の名前は、のちに GitHub の check へ結果を出す作業に備え、check run に合わせました。
+  - 互換性キーには、バイナリが届く形のダイジェストを使います。保存したスナップショット、設定ファイルの
+    ディレクトリのバンドル、アップロードされたバンドルのいずれかです。バンドルのダイジェストはバイナリ
+    以外も含むので、キーは共有を減らす側に外れます。別のバイナリを共有する側には外れません。
+  - グループの行はジョブの後に書き、ジョブが1つ以上登録できたときに限ります。上限で最初から拒否された
+    リクエストは、空のグループを残しません。単位 3 がグループとジョブを1つのトランザクションで書くまで、
+    `jobs.group_id` に外部キーは張りません。
+  - 人がグループに届く範囲は、組織への所属で決めます。`GET /api/jobs/<id>` と取り消しと同じ扱いです。
+    設計の「自分の組織だけ」では、組織を切り替えた人が、自分の始めたグループで 404 を受けます。
+    そのグループの各ジョブには、届いたままです。取り消しには、グループの組織での editor 権限が要ります。
+    マシンは自分の組織に限られたままです。
+  - 新しいルートを説明する `docs/devicefarm.md` と `docs/self-hosting.md` の記述は、両言語ともこの単位で
+    追加しました。ドキュメント全体の見直しは単位 6 に残します。
 
 ## 参考
 

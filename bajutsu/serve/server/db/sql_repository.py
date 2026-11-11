@@ -609,17 +609,75 @@ class SqlRepository:
             session.commit()
 
     def enqueue_job(
-        self, job_id: str, org_id: str, spec: dict[str, Any], capabilities: Iterable[str] = ()
+        self,
+        job_id: str,
+        org_id: str,
+        spec: dict[str, Any],
+        capabilities: Iterable[str] = (),
+        *,
+        actor: str | None = None,
+        group_id: str | None = None,
+        compat_key: str | None = None,
     ) -> None:
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.capabilities import base_key, route_key
+        from bajutsu.serve.server.models import JobRecord
+
+        caps = list(capabilities)
+        grouped = group_id is not None
+        with Session(self._engine) as session:
+            session.add(
+                JobRecord(
+                    id=job_id,
+                    org_id=org_id,
+                    spec=spec,
+                    capabilities=caps,
+                    actor=actor,
+                    group_id=group_id,
+                    compat_key=compat_key,
+                    route_key=route_key(caps) if grouped else None,
+                    base_key=base_key(caps) if grouped else None,
+                )
+            )
+            session.commit()
+
+    def create_job_group(self, group_id: str, org_id: str, key: str) -> None:
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import JobGroup
+
+        with Session(self._engine) as session:
+            session.add(JobGroup(id=group_id, org_id=org_id, key=key))
+            session.commit()
+
+    def get_job_group(self, group_id: str) -> dict[str, Any] | None:
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import JobGroup
+
+        with Session(self._engine) as session:
+            row = session.get(JobGroup, group_id)
+            return None if row is None else {"id": row.id, "org_id": row.org_id, "key": row.key}
+
+    def group_jobs(self, group_id: str) -> list[dict[str, Any]]:
+        from sqlalchemy import func, select
         from sqlalchemy.orm import Session
 
         from bajutsu.serve.server.models import JobRecord
 
+        # Jobs of one request often share a `created_at` second on SQLite; ids are the registry's
+        # counter, so ordering by length then text keeps "9" ahead of "10".
+        query = (
+            select(JobRecord.id, JobRecord.status, JobRecord.result)
+            .where(JobRecord.group_id == group_id)
+            .order_by(JobRecord.created_at, func.length(JobRecord.id), JobRecord.id)
+        )
         with Session(self._engine) as session:
-            session.add(
-                JobRecord(id=job_id, org_id=org_id, spec=spec, capabilities=list(capabilities))
-            )
-            session.commit()
+            return [
+                {"id": i, "status": status, "result": result}
+                for i, status, result in session.execute(query)
+            ]
 
     def max_job_id(self) -> int:
         # Pulls every job id into Python to find the max — fine for a once-per-boot startup query,

@@ -58,6 +58,7 @@ _EXPECTED: frozenset[tuple[str, str]] = frozenset(
         ("GET", "/api/scenario"),
         ("GET", "/api/schema"),
         ("GET", "/api/jobs/{job_id}"),
+        ("GET", "/api/run-set/{group_id}"),
         ("GET", "/api/environments"),
         # --- GET: text responses (content_type) ---
         ("GET", "/metrics"),
@@ -124,6 +125,7 @@ _EXPECTED: frozenset[tuple[str, str]] = frozenset(
         ("POST", "/api/worker/artifact-urls"),
         ("POST", "/api/worker/scenario-url"),
         ("POST", "/api/jobs/{job_id}/cancel"),
+        ("POST", "/api/run-set/{group_id}/cancel"),
         ("POST", "/api/jobs/{job_id}/respond-human"),
         ("POST", "/api/runs/{run_id}/upload-urls"),
         ("POST", "/api/runs/bulk-delete"),

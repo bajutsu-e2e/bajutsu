@@ -407,6 +407,37 @@ cannot honor it at all:
   directory is one, such as an absolute `paths.scenarios`. A `subject.path` or scenario under a
   left-out directory such as `tmp/` is another. The refusal spares an upload that would fail on
   the device cloud.
+- a `scenarios` list that names one scenario more than once.
+
+The jobs of one request form a **group** (BE-0484). The response names the group as `groupId`,
+beside the `jobIds` it queued:
+
+```json
+{ "groupId": "5f0c…", "jobIds": ["41", "42"] }
+```
+
+`GET /api/run-set/<groupId>` reads the group back. Each job carries its status, its run's
+`exitCode`, and its `runId`. The `conclusion` field sums up the group:
+
+| `conclusion` | when |
+|---|---|
+| `pending` | a job is still queued or leased |
+| `failure` | every job finished, and one exited non-zero or reported no verdict |
+| `cancelled` | every other job exited with code 0, and one was cancelled |
+| `success` | every job finished with exit code 0 |
+
+A job whose `status` is `done` has finished, whatever its assertions found. The exit code carries
+the verdict. A continuous integration (CI) pipeline polls this route until `conclusion` leaves
+`pending`.
+
+`POST /api/run-set/<groupId>/cancel` cancels every unfinished job of the group. Each job goes
+through the same cancel as `POST /api/jobs/<id>/cancel`. The route needs the editor role in the
+group's org. The response lists the jobs it cancelled. A queued job becomes `cancelled` at once. A
+leased job keeps its `leased` status until its worker stops the run. Until then, `conclusion`
+stays `pending`.
+
+Both routes answer 404 for a group of an org the caller does not belong to. A pipeline reaches the
+groups of its own org alone.
 
 ### Restart and lease loss
 

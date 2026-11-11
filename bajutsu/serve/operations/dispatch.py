@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import os
 import shutil
 import tempfile
+import uuid
 import zipfile
 from dataclasses import replace
 from pathlib import Path, PurePosixPath
@@ -611,6 +613,9 @@ def _batch_requests(
                 {"error": f"scenario '{name}' is not under the config's directory"},
                 400,
             )
+        # Judged on the resolved path, since a scope may resolve two spellings to one file (BE-0484).
+        if any(r.scenario == scenario_arg for r, _ in requests):
+            return [], ({"error": f"scenario '{name}' is named more than once"}, 400)
         requests.append(
             (
                 BatchRequest(
@@ -940,7 +945,13 @@ def _run_environment(body: dict[str, Any]) -> tuple[list[str] | None, tuple[Any,
 # C901 and PLR0912 are exempted for the same reason; the self-contained steps, `_batch_requests` and
 # `_batch_application`, are already split.
 def start_run_set(  # noqa: C901, PLR0911
-    state: ServeState, body: dict[str, Any], *, actor: str | None = None, session: str | None = None
+    state: ServeState,
+    body: dict[str, Any],
+    *,
+    actor: str | None = None,
+    session: str | None = None,
+    machine_org: str | None = None,
+    ci_job: dict[str, str] | None = None,
 ) -> tuple[Any, int]:
     """Fan out a scenario-set request into one cloud-batch job per scenario (BE-0336 Unit 3).
 
@@ -948,14 +959,15 @@ def start_run_set(  # noqa: C901, PLR0911
     `environment` (BE-0452: where a run happens is a choice per run, not a property of the target),
     and, optionally, a `scenarios` subset (omitted = every scenario in the target's dir). Each
     scenario becomes its own Job carrying a per-scenario `BatchRequest`, registered and dispatched
-    through the same concurrency-capped tail as every other run. Returns the dispatched job ids.
+    through the same concurrency-capped tail as every other run. Returns the dispatched job ids and
+    the id of the group they form (BE-0484), which `job_group_view` reads back.
 
     Each job requires exactly `environment:<provider>` (BE-0448), so only a worker that registered
     the provider leases it, and it ships what a worker without the project needs: the config and
     scenario as materials when the scenario store yields them, else the bound bundle or the config's
     directory, which the job names as its own.
     """
-    binding = state.binding_for(session, state.org_of(actor))
+    binding = state.binding_for(session, state.org_for(actor, machine_org))
     cfg = binding.config
     if cfg is None:
         return {"error": "open a config first"}, 400
@@ -963,8 +975,9 @@ def start_run_set(  # noqa: C901, PLR0911
         return {"error": "target is required"}, 400
     if refused := _run_set_refusal(state, body):
         return refused
+    assert state.repository is not None  # _run_set_refusal refused a server with no queue
     target = str(body["target"])
-    org, forbidden = _resolve_org_or_forbid(state, target, actor, session)
+    org, forbidden = _resolve_org_or_forbid(state, target, actor, session, machine_org)
     if forbidden:
         return forbidden
     scope = state.for_org(org).scenarios.scope(target, session=session, org=org)
@@ -1025,6 +1038,10 @@ def start_run_set(  # noqa: C901, PLR0911
         return bundle_err
     dispatched: list[str] = []
     config_text = cfg.read_text(encoding="utf-8")
+    group_id = uuid.uuid4().hex
+    compat_key = _compat_key(
+        config_text, _app_digest(batch_app, bundle, binding), batch_platform, target
+    )
     for request, materials in requests:
         if materials:
             # The scenario store ships the scenario text, so the worker has no project on disk: the
@@ -1041,6 +1058,8 @@ def start_run_set(  # noqa: C901, PLR0911
                 capabilities=[environment_capability(provider)],
                 batch_app=batch_app,
                 bundle=bundle,
+                group_id=group_id,
+                compat_key=compat_key,
             ),
             binding=binding,
         )
@@ -1053,8 +1072,29 @@ def start_run_set(  # noqa: C901, PLR0911
             break
         assert job is not None
         dispatched.append(job.id)
-    _record_audit(state, actor, org, "run-set", target, {"count": len(dispatched)})
-    return {"jobIds": dispatched}, 200
+    # Written after the jobs, so a request the cap refuses outright leaves no empty group; BE-0484
+    # unit 3 makes the group and its jobs one transaction.
+    state.repository.create_job_group(group_id, org_id=org, key=uuid.uuid4().hex)
+    _record_audit(state, actor, org, "run-set", target, {"count": len(dispatched)}, ci_job=ci_job)
+    return {"groupId": group_id, "jobIds": dispatched}, 200
+
+
+def _app_digest(
+    batch_app: str | None, bundle: dict[str, Any] | None, binding: ConfigBinding
+) -> str | None:
+    """The digest the fan-out's binary travels under: a stored snapshot, or the bundle holding it."""
+    if batch_app is not None:
+        return batch_app
+    if bundle is not None:
+        return str(bundle["id"])
+    return binding.upload.sha256 if binding.upload is not None else None
+
+
+def _compat_key(config_text: str, app_digest: str | None, platform: str, target: str) -> str:
+    """What a worker may share between a group's jobs: the same config, binary, platform, target."""
+    return hashlib.sha256(
+        json.dumps([config_text, app_digest, platform, target]).encode()
+    ).hexdigest()
 
 
 def start_record(
