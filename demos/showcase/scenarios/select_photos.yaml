@@ -1,4 +1,6 @@
-# selectPhotos (roadmap item): pick images from an open PHPickerViewController grid.
+# selectPhotos: pick images from the open system photo picker's grid — PHPickerViewController on iOS
+# (BE-0433), Android's ACTION_PICK_IMAGES picker over adb. The grid wait lists both platforms' cell ids;
+# every app id lists its dotted and underscore form (BE-0221) for the Views twin.
 - name: selectPhotos picks images from the photo picker grid
   tags: [swiftui]
   preconditions:
@@ -11,17 +13,23 @@
         seedPhotos:
           - fixtures/photos/fixture-red.png
           - fixtures/photos/fixture-green.png
+      android:
+        seedPhotos:
+          - fixtures/photos/fixture-red.png
+          - fixtures/photos/fixture-green.png
   steps:
     - tap: { label: "Permissions", traits: [button] }
-    - wait: { for: { id: perm.openPhotoPicker }, timeout: 10 }
+    # Wait on the screen's first control, not the photo button: on the Views twin the button starts
+    # below the fold of a scroll view, where the tree holds no node for it until the scroll below.
+    - wait: { for: { id: [perm.requestNotif, perm_requestNotif] }, timeout: 10 }
     # The button resolves at the very bottom of the screen, behind the floating tab bar, on an
     # iPhone 17 Pro (iOS 26.5): frame y 850 of 874. Without this scroll the runner accepted the tap
     # there with no refusal and no recovery retry, the list ended up scrolled, and in 2 of 3 runs the
     # picker never opened. Scrolling first centers the button on screen before the tap, as
     # select_photo_single.yaml and tipkit.yaml already do.
-    - scroll: { to: { id: perm.openPhotoPicker }, direction: down }
-    - tap: { id: perm.openPhotoPicker }
-    - wait: { for: { id: "PXGGridLayout-Info" }, timeout: 10 }
+    - scroll: { to: { id: [perm.openPhotoPicker, perm_openPhotoPicker] }, direction: down }
+    - tap: { id: [perm.openPhotoPicker, perm_openPhotoPicker] }
+    - wait: { for: { id: ["PXGGridLayout-Info", icon_thumbnail] }, timeout: 10 }
     # The grid can render before the freshly-`erase`d + `seedPhotos`-ed library has finished its own
     # async catch-up (PHPhotoLibrary indexing/thumbnailing lags the `simctl addmedia` call that seeds
     # it), so a tap that lands the instant the first cell appears can race an in-flight collection-view
@@ -33,6 +41,6 @@
     # prevent (investigated; see the PR discussion for what was tried and ruled out).
     - wait: { until: settled, timeout: 5 }
     - selectPhotos: { indices: [0, 1], timeout: 10 }
-    - wait: { for: { id: perm.photos.value, value: "2" }, timeout: 10 }
+    - wait: { for: { id: [perm.photos.value, perm_photos_value], value: "2" }, timeout: 10 }
   expect:
-    - value: { sel: { id: perm.photos.value }, equals: "2" }
+    - value: { sel: { id: [perm.photos.value, perm_photos_value] }, equals: "2" }

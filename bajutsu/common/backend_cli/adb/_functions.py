@@ -8,6 +8,8 @@ import re
 import shlex
 import subprocess
 from collections.abc import Mapping
+from datetime import datetime, timedelta
+from pathlib import PurePosixPath
 
 from bajutsu.common.devices.id import is_valid_device_id
 
@@ -333,6 +335,16 @@ def id_u_cmd(serial: str) -> list[str]:
     return _adb(serial, "shell", "id", "-u")
 
 
+def focused_window_cmd(serial: str) -> list[str]:
+    """Print the window that holds input focus (`mCurrentFocus=Window{… <package>/<activity>}`).
+
+    A tree dump shows a window as soon as it is attached, but a coordinate tap lands on whichever
+    window holds input focus, which can still be the one beneath during a transition. `|| true`
+    keeps a grep with no match (focus momentarily null) from failing the command.
+    """
+    return _adb(serial, "shell", "dumpsys window | grep mCurrentFocus || true")
+
+
 def pidof_cmd(serial: str, package: str) -> list[str]:
     """The package's live process ids, empty when it holds none (BE-0424).
 
@@ -410,6 +422,94 @@ def tombstones_cmd(serial: str) -> list[str]:
 def cat_cmd(serial: str, device_path: str) -> list[str]:
     """One device-side file's contents on stdout — the tombstone read, which needs root."""
     return _adb(serial, "shell", "cat", device_path)
+
+
+# The shared-storage directory `seedPhotos` owns. Android has no device-wide wipe, so the seed resets
+# this one directory instead and leaves every other image on the device alone. The canonical path,
+# not `/sdcard`, because the media scanner keys its rows by the path it walks.
+SEED_PHOTOS_DIR = "/storage/emulated/0/Pictures/Bajutsu"
+
+# The fixed modification time of the first seeded image; each later one is a minute newer, so the
+# order a photo picker sorts by (newest first) follows the list, whatever the local files' own times
+# were. A date ahead of any real capture puts the whole set in front of the device's own images, as
+# `simctl addmedia` fixtures sit ahead of the Simulator's; 2037 stays inside a 32-bit `time_t`. The
+# media store prefers an image's EXIF capture date to this time, so the order holds for images that
+# carry none.
+_SEED_PHOTOS_EPOCH = datetime(2037, 1, 1)  # noqa: DTZ001  # device-local wall time, by design
+
+_SUFFIX = re.compile(r"\.[A-Za-z0-9]{1,8}")
+
+
+def seed_photo_name(index: int, local_path: str) -> str:
+    """The device-side name of the *index*-th seeded image: its ordinal, then its own extension.
+
+    The ordinal keeps two sources with the same basename apart, and dropping the basename keeps a
+    shell-unsafe character out of the `touch` command line. The extension stays, since the media
+    scanner reads the type from it.
+
+    Raises:
+        DeviceError: The file's extension is not plain alphanumerics.
+    """
+    suffix = PurePosixPath(local_path.replace("\\", "/")).suffix
+    if not _SUFFIX.fullmatch(suffix):
+        raise DeviceError(f"seedPhotos: {local_path!r} needs an image file extension")
+    return f"{index:03d}{suffix.lower()}"
+
+
+def seed_photos_reset_cmd(serial: str) -> list[str]:
+    """Empty the seed directory, so a run sees exactly the images it lists, never a past run's.
+
+    The directory itself stays, so the media scan that follows walks it and drops the rows of the
+    images just removed.
+    """
+    return _adb(serial, "shell", f"mkdir -p {SEED_PHOTOS_DIR} && rm -rf {SEED_PHOTOS_DIR}/*")
+
+
+# Printed by `seed_photos_clear_cmd` when it emptied a directory an earlier seed left behind.
+SEED_PHOTOS_CLEARED = "cleared"
+
+
+def seed_photos_clear_cmd(serial: str) -> list[str]:
+    """Empty the seed directory only if an earlier seed created it, printing `SEED_PHOTOS_CLEARED`.
+
+    A device never seeded keeps its shared storage untouched: an `if` with no matched branch exits
+    0, so the absent directory, the ordinary case, stays off the error path, while a failed `rm`
+    still fails the command rather than leaving the previous scenario's images in place.
+    """
+    d = SEED_PHOTOS_DIR
+    return _adb(
+        serial, "shell", f"if [ -d {d} ]; then rm -rf {d}/* && echo {SEED_PHOTOS_CLEARED}; fi"
+    )
+
+
+def push_cmd(serial: str, local_path: str, device_path: str) -> list[str]:
+    """Copy one host file to *device_path*."""
+    return _adb(serial, "push", local_path, device_path)
+
+
+def seed_photo_time_cmd(serial: str, index: int, name: str) -> list[str]:
+    """Stamp the *index*-th seeded image with its fixed modification time (`touch -t`)."""
+    stamp = (_SEED_PHOTOS_EPOCH + timedelta(minutes=index)).strftime("%Y%m%d%H%M.%S")
+    return _adb(serial, "shell", "touch", "-t", stamp, f"{SEED_PHOTOS_DIR}/{name}")
+
+
+def media_scan_cmd(serial: str) -> list[str]:
+    """Ask the media scanner to rescan the seed directory, adding new images and dropping old rows.
+
+    The broadcast reaches MediaProvider's manifest receiver only with
+    `--receiver-include-background`, since Android 8 keeps implicit broadcasts off manifest receivers.
+    """
+    return _adb(
+        serial,
+        "shell",
+        "am",
+        "broadcast",
+        "--receiver-include-background",
+        "-a",
+        "android.intent.action.MEDIA_SCANNER_SCAN_FILE",
+        "-d",
+        f"file://{SEED_PHOTOS_DIR}",
+    )
 
 
 # `AppExitInfoTracker.dumpLocked` (frameworks/base) prints entries newest first, each framed as its
@@ -834,6 +934,21 @@ def resolve_activity_cmd(serial: str, package: str) -> list[str]:
     `--brief` prints `<package>/<activity>` on the last line; parsed by `Env.resolve_activity`.
     """
     return _adb(serial, "shell", "cmd", "package", "resolve-activity", "--brief", package)
+
+
+def launcher_component(out: str) -> str | None:
+    """The `<package>/<activity>` line in `resolve_activity_cmd`'s output, or None if it names none.
+
+    A launcher component is `<package>/<activity>`: a `/` with a non-empty left side and no spaces.
+    Requiring a non-empty left side rejects a stray absolute path (`/data/…`) in the manager's chatter
+    that would otherwise be launched as a bogus component.
+    """
+    for raw in reversed(out.splitlines()):
+        line = raw.strip()
+        head, sep, tail = line.partition("/")
+        if sep and head and tail and " " not in line:
+            return line
+    return None
 
 
 def launch_cmd(serial: str, component: str, extras: Mapping[str, str] | None = None) -> list[str]:

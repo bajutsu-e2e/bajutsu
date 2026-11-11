@@ -8,6 +8,7 @@ from collections.abc import Callable
 RunFn = Callable[[list[str]], str]
 
 
+KEYCODE_HOME = 3  # the Home button: backgrounds the app without terminating it (BE-0478).
 KEYCODE_BACK = 4  # `input keyevent` code for the system back button (Android's true system back).
 KEYCODE_DEL = 67  # backspace — deletes the character before the cursor (BE-0265 delete / clear).
 KEYCODE_CTRL_LEFT = 113  # left Control, the modifier for the select-all / copy key combinations.

@@ -291,29 +291,27 @@ active project をカラムに永続化し、web UI から project を作れる�
 
 ## 参考
 
-- [`bajutsu/serve/project_registry.py`](../../bajutsu/serve/project_registry.py) — 本項目が削除する
+- [`bajutsu/serve/project_registry.py`](../../bajutsu/serve/project_registry.py)：本項目が削除する
   レジストリ
-- [`bajutsu/serve/operations/projects.py`](../../bajutsu/serve/operations/projects.py) — 削除する
+- [`bajutsu/serve/operations/projects.py`](../../bajutsu/serve/operations/projects.py)：削除する
   エンドポイント群
-- [`bajutsu/serve/operations/config.py`](../../bajutsu/serve/operations/config.py) — 起動時の自動登録と
+- [`bajutsu/serve/operations/config.py`](../../bajutsu/serve/operations/config.py)：起動時の自動登録と
   `launch_project_identity`
-- [`bajutsu/serve/operations/dispatch.py`](../../bajutsu/serve/operations/dispatch.py) — target の検証と
+- [`bajutsu/serve/operations/dispatch.py`](../../bajutsu/serve/operations/dispatch.py)：target の検証と
   `project_id` の解決
-- [`bajutsu/serve/server/models.py`](../../bajutsu/serve/server/models.py) — `projects` と `runs` の
+- [`bajutsu/serve/server/models.py`](../../bajutsu/serve/server/models.py)：`projects` と `runs` の
   テーブル定義
-- [`bajutsu/report/manifest.py`](../../bajutsu/report/manifest.py) — target を記録していない manifest
+- [`bajutsu/report/manifest.py`](../../bajutsu/report/manifest.py)：target を記録していない manifest
 - [アーキテクチャ](../../docs/ja/architecture.md)、[設定](../../docs/ja/configuration.md)、
   [レポート](../../docs/ja/reporting.md)、[用語集](../../docs/ja/glossary.md)
-- [BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub-ja.md) — 本項目が削除する project
+- [BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub-ja.md)：本項目が削除する project
   ハブ
-- [BE-0226](../BE-0226-cross-project-metrics-dashboard/BE-0226-cross-project-metrics-dashboard-ja.md) —
-  本項目が軸を付け替える比較
-- [BE-0275](../BE-0275-serve-projects-management-page/BE-0275-serve-projects-management-page-ja.md) —
-  単位5が削除する、追加フォームを備えたトップレベルの Projects ビュー
-- [BE-0393](../BE-0393-per-org-config-memory/BE-0393-per-org-config-memory-ja.md) — org ごとの config
+- [BE-0226](../BE-0226-cross-project-metrics-dashboard/BE-0226-cross-project-metrics-dashboard-ja.md)：本項目が軸を付け替える比較
+- [BE-0275](../BE-0275-serve-projects-management-page/BE-0275-serve-projects-management-page-ja.md)：単位5が削除する、追加フォームを備えたトップレベルの Projects ビュー
+- [BE-0393](../BE-0393-per-org-config-memory/BE-0393-per-org-config-memory-ja.md)：org ごとの config
   記憶。その機構が単位1にあたる
-- [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) — `projects` テーブルの
+- [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)：`projects` テーブルの
   出どころであるホスト型スキーマ
 - [BE-0243](../BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage-ja.md) と
-  [BE-0268](../BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts-ja.md) — 単位1が
+  [BE-0268](../BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts-ja.md)：単位1が
   移設するアップロード config の復元

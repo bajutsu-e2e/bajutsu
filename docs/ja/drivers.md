@@ -40,6 +40,8 @@ class Driver(Protocol):
 
 `capabilities()` が返すトークン集合で、actuator 選択、証跡のフォールバック解決、**プリフライト能力検査**（後述）に使います。
 
+[iOS と Android のドライバの機能差](platform-parity.md)は、モバイルの2つのバックエンドの差を挙げ、それぞれを埋めるべき不足か不要な機能かに分けています。
+
 | 能力 | 意味 | xcuitest | adb | playwright | fake |
 |---|---|:--:|:--:|:--:|:--:|
 | `query` | 要素ツリー取得 | ✅ | ✅ | ✅ | ✅ |
@@ -50,27 +52,39 @@ class Driver(Protocol):
 | `network` | ネイティブネットワーク監視 | — | — | ✅ | — |
 | `video` | シナリオ全体の動画記録（BE-0467。iOS では Simulator のみ） | ✅ | ✅ | ✅ | — |
 | `deviceLog` | シナリオ全体のデバイスログまたはブラウザのコンソール（BE-0467。iOS では Simulator のみ） | ✅ | ✅ | ✅ | — |
-| `appTrace` | シナリオ全体のアプリの `os_log` トレース（BE-0467。iOS Simulator のみ） | ✅ | — | — | — |
+| `appTrace` | シナリオ全体のアプリのログトレース。iOS は `os_log`、Android はタグで絞った `logcat`（BE-0467、BE-0478。iOS は Simulator のみ） | ✅ | ✅ | — | — |
 | `multiTouch` | 2 本指ジェスチャ（pinch / rotate） | ✅ | ✅ | ✅ | ✅ |
+| `webView` | 埋め込まれた WKWebView の DOM を問い合わせてタップする（BE-0037、WebView ブリッジが実行ごとに付与し、静的な宣言はなし） | — | — | — | — |
 | `textSelection` | フォーカス中フィールドの全選択とクリップボードへのコピー | ✅ | ✅ | ✅ | ✅ |
 | `selectOption` | ネイティブ `<select>` を値で設定（web のみ） | — | — | ✅ | ✅ |
 | `urlNavigation` | `navigate` でシナリオの途中に URL を開く（web のみ。BE-0464） | — | — | ✅ | ✅ |
 | `elementAttribute` | `attribute` アサーションのために要素の HTML 属性を 1 つ読み取る（web のみ。BE-0466） | — | — | ✅ | ✅ |
 | `handleSystemAlert` | iOS SpringBoard の許可プロンプトのボタンをネイティブにタップ | ✅ | — | — | ✅ |
+| `resolveAlerts` | 画面を読むリクエストの中で、ポリシーが指定するシステムアラートに答える（BE-0461、iOS のみ） | ✅ | — | — | — |
 | `pickerWheel` | ホイール型のピッカーを指定した行へ設定（iOS のみ） | ✅ | — | — | ✅ |
 | `handleTipkitTip` | 操作をブロックしている Apple TipKit の tip を閉じる（iOS のみ） | ✅ | — | — | ✅ |
+| `appContext` | インストール済みの別アプリを前面に出し、`app:` ステップで操作する | ✅ | ✅ | — | ✅ |
+| `selectPhotos` | システムの写真選択画面から位置を指定して画像を選ぶ（iOS の `PHPickerViewController`。Apple Silicon の Simulator では除外。adb では Android 13 以降の写真選択画面） | ✅ | ✅ | — | ✅ |
+| `handleNotificationBanner` | 前面の通知バナーの位置を報告し、スワイプで消す（BE-0416、iOS のみ） | ✅ | — | — | ✅ |
 | `deviceControl.setLocation` | 疑似 GPS 位置の設定 | ✅ | ✅ | — | — |
 | `deviceControl.clipboard` | クリップボードの読み取り / 書き込み / クリア | ✅ | ✅ | — | — |
 | `deviceControl.push` | プッシュ通知の配信 | ✅ | — | — | — |
 | `deviceControl.clearKeychain` | キーチェーンのクリア | ✅ | — | — | — |
-| `deviceControl.background` | アプリのバックグラウンド化 | ✅ | — | — | — |
+| `deviceControl.background` | アプリのバックグラウンド化 | ✅ | ✅ | — | — |
 | `deviceControl.foreground` | アプリを前面に出す（起動していなければ起動する） | ✅ | ✅ | — | — |
-| `deviceControl.statusBar` | ステータスバーの上書き / クリア | ✅ | — | — | — |
+| `deviceControl.statusBar` | ステータスバーの上書き / クリア | ✅ | ✅ | — | — |
+| `deviceControl.permissions.location` | `location` の権限を付与 / 取り消す（BE-0276） | ✅ | ✅ | — | — |
+| `deviceControl.permissions.camera` | `camera` の権限を付与 / 取り消す（BE-0276） | ✅ | ✅ | — | — |
+| `deviceControl.permissions.microphone` | `microphone` の権限を付与 / 取り消す（BE-0276） | ✅ | ✅ | — | — |
+| `deviceControl.permissions.contacts` | `contacts` の権限を付与 / 取り消す（BE-0276） | ✅ | ✅ | — | — |
+| `deviceControl.permissions.photos` | `photos` の権限を付与 / 取り消す（BE-0276） | ✅ | ✅ | — | — |
+| `deviceControl.permissions.calendar` | `calendar` の権限を付与 / 取り消す（BE-0276） | ✅ | ✅ | — | — |
+| `deviceControl.permissions.notifications` | `notifications` の権限を付与 / 取り消す（BE-0276） | — | ✅ | — | — |
 | `deviceGroup` | デバイスグループのターゲットで 1 台のデバイスを共有する（BE-0447、iOS は Simulator のみ） | ✅ | ✅ | — | ✅ |
 
-> `deviceControl.*` トークンは、`DeviceControl` 一族を操作ごとに分割したものです（BE-0212、BE-0128 の粗い `deviceControl` から分割しました）。これにより、バックエンドは自分が忠実に実現できる操作だけを公開でき、部分的にしか実現しないバックエンドも残りを誤って公開せずに済みます。XCUITest は `simctl` を通じて一族全体を実現しますが、Android エミュレータが実現するのは `setLocation`、`clipboard`、`foreground` だけです（その `push` / キーチェーン / ステータスバー / `background` の各操作には忠実な等価物がありません）。`background` と `foreground` は、BE-0447 が分けるまで 1 つの `appLifecycle` トークンでした。デバイスグループの後から入るメンバーは `foreground` で起動するので、分ける必要がありました。
+> `deviceControl.*` トークンは、`DeviceControl` 一族を操作ごとに分割したものです（BE-0212、BE-0128 の粗い `deviceControl` から分割しました）。これにより、バックエンドは自分が忠実に実現できる操作だけを公開でき、部分的にしか実現しないバックエンドも残りを誤って公開せずに済みます。XCUITest は `simctl` を通じて一族全体を実現します。Android エミュレータは、`permissions.*` の7サービスを含め、`push` と `clearKeychain` 以外のすべてを実現します（BE-0478）。`push` にはアプリのプロセス内のレシーバが必要で、Android には `clearKeychain` が消すキーチェーンがありません。`background` と `foreground` は、BE-0447 が分けるまで 1 つの `appLifecycle` トークンでした。デバイスグループの後から入るメンバーは `foreground` で起動するので、分ける必要がありました。
 
-> adb は**リーンな端**に位置し、**frame 中心の座標**で操作します。semantic tap を持たないため、run ループは `query()` で要素を一意に確定しその中心をタップします。一方 XCUITest は豊かな端に位置し、identifier で直接 tap し、ネイティブの条件で待機し、`pinch` / `rotate` をネイティブに実行します。adb は `query` / `elements` / `screenshot`、`multiTouch`（rooted device での `sendevent` 2 本指スイープ、BE-0232）に加えて、エミュレータが実現できるデバイス制御のサブセット `deviceControl.setLocation`、`deviceControl.clipboard`（BE-0211）、`deviceControl.foreground` と、`deviceGroup`（BE-0447）、証跡種別の `video` と `deviceLog`（`screenrecord` と `logcat`。BE-0467）を公開します。デバイス制御一族の残りにはエミュレータでの忠実な等価物がないため、公開しません。`fake` ドライバはテストでそれらのコードパスを動かすためだけに、より広い能力集合（semanticTap / conditionWait / multiTouch）を公開します。`playwright`（web）ドライバは `semanticTap` / `conditionWait`（Playwright がネイティブに持つ）に加えて `network`（アプリ側の協力なしに通信を観測しスタブできる**初めてのネイティブネットワーク対応バックエンド**）と `multiTouch`（Chromium DevTools プロトコルの `Input.dispatchTouchEvent` で pinch / rotate を合成）を公開します（BE-0054）。証跡種別の `video` と `deviceLog`（ブラウザコンテキストの録画とコンソール。BE-0467）も公開します。
+> adb は**リーンな端**に位置し、**frame 中心の座標**で操作します。semantic tap を持たないため、run ループは `query()` で要素を一意に確定しその中心をタップします。一方 XCUITest は豊かな端に位置し、identifier で直接 tap し、ネイティブの条件で待機し、`pinch` / `rotate` をネイティブに実行します。adb は `query` / `elements` / `screenshot`、`multiTouch`（常駐サーバーが注入する 2 本指ジェスチャ、または rooted device での `sendevent` スイープ、BE-0232）、`textSelection`（`Ctrl+A` / `Ctrl+C` のキー入力、BE-0265）に加えて、エミュレータが実現できるデバイス制御のサブセットを公開します。`deviceControl.setLocation`、`deviceControl.clipboard`（BE-0211）、`deviceControl.foreground`、`deviceControl.background`、`deviceControl.statusBar`（BE-0478）、`deviceControl.permissions.*` の7サービス（`pm grant` / `pm revoke`、BE-0276）です。ほかに `deviceGroup`（BE-0447）、`appContext`（`am start` による `app:` ステップ）、証跡種別の `video`、`deviceLog`、`appTrace`（`screenrecord`、`logcat`、タグで絞った `logcat`。BE-0467、BE-0478）も公開します。`push`（アプリのプロセス内にレシーバがない）と `clearKeychain`（Android にキーチェーンがない）は公開しません。`fake` ドライバはテストでそれらのコードパスを動かすためだけに、より広い能力集合（semanticTap / conditionWait / multiTouch）を公開します。`playwright`（web）ドライバは `semanticTap` / `conditionWait`（Playwright がネイティブに持つ）に加えて `network`（アプリ側の協力なしに通信を観測しスタブできる**初めてのネイティブネットワーク対応バックエンド**）と `multiTouch`（Chromium DevTools プロトコルの `Input.dispatchTouchEvent` で pinch / rotate を合成）を公開します（BE-0054）。証跡種別の `video` と `deviceLog`（ブラウザコンテキストの録画とコンソール。BE-0467）も公開します。
 
 ### プリフライト能力検査（BE-0082）
 
@@ -196,8 +210,9 @@ BE-0452 で取り除きました。ホストで実行する job が必要とす�
 - `enter_app` / `leave_app`: `app:` ステップです。上の `SFSafariViewController` のマージとは違い、
   2つのツリーをマージすることはありません。`enter_app` は新しい `XCUIApplication(bundleIdentifier:)` を
   runner自身のappスタックへpushして`.activate()`し、上のすべてのルート（`query()`、`tap`、…）は、対応する
-  `leave_app` が1つ下のappへpopするまで、そのappだけを対象にします。`HANDLE_SYSTEM_ALERT` / `PICKER_WHEEL`
-  と同じくXCUITest限定の`APP_CONTEXT` capabilityで許可を得ます。実現可能性のスパイクにより、
+  `leave_app` が1つ下のappへpopするまで、そのappだけを対象にします。`APP_CONTEXT`
+  capabilityでゲートし、これはXCUITestとadbが宣言します（adbでの仕組みはadbの節で説明します）。
+  XCUITestについては、実現可能性のスパイクにより、
   `activate()`はテスト対象アプリが一度も起動していないアプリを、アプリ単位のconfigやアプリ側の協力なしに
   確実に前面化することを確かめました
   （[`docs/specs/ios-cross-app-ui-control-feasibility.md`](../specs/ios-cross-app-ui-control-feasibility.md)）。
@@ -226,10 +241,15 @@ BE-0452 で取り除きました。ホストで実行する job が必要とす�
   > この not-found 時のスクロール回復は adb 専用です。XCUITest／Playwright は対象が初期ビューポートにないと `tap` を即座に失敗させます。そのため、これに頼ると、同じシナリオでも fold より下の要素への `tap` が Android では通り、iOS／web では失敗する非対称が生じます。画面外の要素へ届く移植可能な方法は、明示的な **[`scroll` アクション](scenarios.md#scroll)**（BE-0326）です。iOS、Android、web で同じように対象を現す、決定論的で慣性のない 1 つの構文で、`scroll: { to: <selector> }` としてから対象を操作します。showcase フィクスチャがかつて使っていた手作業調整の `swipe` 連鎖を置き換えます。adb の自動スクロールは、not-found のケースに限った `tap` の下の安全網として残ります。移植可能な書き方そのものではありません。
   >
   > これとは**別の、より狭い**安全網が、いまでは点のヒットテストができる全バックエンド（アプリ組み込みの WebView ブリッジ `WebContextDriver` を除きます。そのプロトコルは点のヒットテストを一切公開していません）を覆っています。`tap` / `double_tap` / `long_press` は、操作の前に、解決済みの対象が実際にその点で到達可能か（他の画面上の要素に覆われていないか）を確認します。各プラットフォームがもっとも自然に提供する手段（iOS はネイティブの `isHittable`、web は `document.elementFromPoint` によるヒットテスト、adb はドキュメント順による幾何学的な近似、`Driver.is_tappable` / [`topmost_at_point`](../../bajutsu/common/drivers/base.py)）を使います。この確認に失敗すると、オーケストレータが小さく回数を区切ったスクロールを試します。まず `down` 方向へ最大 3 回、それでも対象に到達できなければ `up` 方向へ最大 6 回まで試したうえで（`up` は `down` が残した分をまず巻き戻してからでないと自分の分の前進ができないため、上限を広げています）、操作をもう一度だけ再試行します。即座に失敗するわけではありません。詳細は [`selectors.md`](selectors.md#elementnottappable-解決はしたが到達できない対象)を参照してください。これは上記の明示的な `scroll` アクションの代替ではありません。対象が最初から画面外にあるとすでに知っている作者は、それでも自分で `scroll` を書きます。この仕組みが働くのは、作者が予期していなかった遮蔽（一時的なオーバーレイ、位置が定まりきっていないスティッキーヘッダーなど）に対してだけです。adb 自身の not-found フォールバックが、予期しない画面外の対象に対してすでに同じ役割を果たしているのと同じ考え方です。
-- **マルチタッチ**（BE-0232）: `pinch` / `rotate` は 2 スロットの protocol-B `sendevent` スイープで駆動します（`pinch_contacts` / `rotate_contacts` が 2 接点の座標を計算し、`rotate` は両端点を結ぶ直線の弦を掃きます。円弧の線形近似で、web バックエンドの rotate と同じです）。rooted device でタッチスクリーンを検出できることが前提で、`_two_finger_gesture` はそれ以外では `UnsupportedAction` で明確に失敗します。下の double-tap 経路と異なり、単一タッチへのフォールバックはありません。`MULTI_TOUCH` は root の有無にかかわらず能力集合で静的に宣言するので、preflight は adb 上の `gestures_multitouch` を通します。root のチェックは能力集合ではなく実行時に課します。
+- **マルチタッチ**（BE-0232）: `pinch_contacts` / `rotate_contacts` が、対象の frame から 2 接点の座標を計算します。`rotate` は両端点を結ぶ直線の弦を掃きます。円弧の線形近似で、web バックエンドの rotate と同じです。2 つの接点を注入する経路は 2 つあり、この順に試します。
+  1. 常駐 UI Automator サーバーの `POST /gesture` が、2 本の指を 1 つのマルチポインタの `MotionEvent` 列として `UiAutomation` で注入します。`UiAutomation` は shell の権限で動くので、**root は不要**です。記録の `via` は `resident` です。
+  2. タッチスクリーンを検出できる rooted device では、2 スロットの protocol-B `sendevent` スイープへフォールバックします。フォールバックするのは、サーバーがないとき、サーバーがエンドポイントを持たないとき、リクエストを送る前にサーバーへ接続できなかったときの 3 つだけです。いずれも、画面に何も届いていない場合です。記録の `via` は `coordinate` です。
+
+  サーバーがジェスチャを拒否したときはフォールバックせずにステップを失敗させ、応答が失われたときは着地したものとして扱います。どちらの場合も指がすでに画面に触れているかもしれず、その上に 2 つ目のジェスチャを重ねるより、明確に失敗させるほうが安全だからです。どちらの経路も使えない端末では、両方の前提条件を挙げた `UnsupportedAction` で失敗します。下の double-tap 経路と異なり、単一タッチへのフォールバックはありません。`MULTI_TOUCH` は能力集合で静的に宣言するので、preflight は adb 上の `gestures_multitouch` を通します。どの経路を使えるかは実行時に決まります。
 - `screenshot` は `adb exec-out screencap -p` の PNG バイト列（バイナリを崩さない stdout）を書き出します。
 - ライフサイクル（`AndroidEnvironment`、iOS の `simctl` シーケンスの双子）: 起動完了待ち（`getprop sys.boot_completed` を有界の期限まで polling する条件待機で、固定 sleep も、無期限にブロックする `adb wait-for-device` もありません）→ 必要に応じて APK インストール → `pm clear` によるクリーン状態（`erase` 相当）→ `am force-stop` → ランタイム権限の事前付与（`pm grant`、後述）→ `am start`（起動アクティビティはパッケージマネージャで解決し、launch env は intent extras として渡します）→ deeplink（`am start -a android.intent.action.VIEW`）。run の manifest は `backend: "adb"` を記録するので、選ばれた actuator が開示されます。
 - **ランタイム権限**（BE-0210）: ターゲットの config `subject.grantPermissions` に列挙した権限を、lease 時に `adb shell pm grant <package> <permission>` で事前付与します。`pm clear`（付与をリセットします）のあと、起動の前に付与するので、ランタイムの権限プロンプトがシナリオを止めることがありません。ダイアログが現れてからタップするのではなく、事前に決定論的に付与することで、タイミングを run の経路に持ち込みません。列挙する権限はアプリごとに異なるので、ドライバではなく config に置きます。
+- `enter_app` / `leave_app`: `app:` ステップです。UI Automator は前面にあるアプリのウィンドウをもともと読めます。そのため、別アプリに入る操作は起動だけで済みます。ドライバは `cmd package resolve-activity --brief` でパッケージのランチャーアクティビティを解決します。続けて、`foreground` ステップと同じ `am start -n` で起動します。そのあと、そのパッケージが resumed のアクティビティを持つまで `dumpsys activity activities` を polling します。この待機は有界の条件待機で、期限を過ぎると `ElementNotFound` を送出します。パッケージにランチャーアクティビティがなければ、待たずに同じ例外を送出します。ドライバは自前のアプリスタックを持ちます。`leave_app` はスタックを pop し、1 つ下のアプリを同じ手順で前面へ戻します。いちばん外側のブロックを抜けたときの戻り先は、テスト対象アプリです。テスト対象アプリは別アプリの背後でもプロセスを保ちます。そのため、クラッシュ検知（`pidof` と exit-info、BE-0424）はこの切り替えをクラッシュと読みません。デバイスグループ（BE-0447）で共有するデバイスでは、ブロックを開いている間の前面アプリの検査は、入ったパッケージを期待します。
 - **区間証跡**（BE-0007 の Unit 4）: `video` は `adb shell screenrecord` で録画し、`deviceLog` は `adb logcat` をストリームします。simctl の provider の双子です。`screenrecord` はデバイス側に書き込む（ホストのファイルへは流せない）ので、録画は停止時に SIGINT で確定させてから `adb pull` で回収し、`logcat` はファイルへストリームして SIGTERM で停止します。どちらも web バックエンドと同じ driver の `driver_interval` seam から供給するので、バックエンド非依存の `capture` ポリシーがそのまま両方を運びます（[evidence](evidence.md)を参照）。
 - **ネットワーク**はネイティブには観測しません（`NETWORK` 能力を持ちません）。iOS と同じモックで対応し、アプリ側の collector の URL を launch env 経由で intent extra として渡すので、新しいコードパスなしに `mocks` が動きます。デバイス制御は、エミュレータが実現できるサブセットとして `setLocation`（`emu geo fix`、BE-0211）とクリップボード操作に対応します。一族の残りは未対応のままです。クリップボードは `cmd clipboard` ではなくアプリ内のレシーバ（`BajutsuAndroid`、BE-0233）を経由します。このコマンドは実機では黙って何もせず、Android 10 以降はフォアグラウンドのアプリと既定の IME しかクリップボードを触れないためです。そこで bajutsu は順序付き `am broadcast` を送り、アプリの内側のレシーバがアプリプロセスからこれを処理します（両方向を base64 で運ぶので argv に引用符付けは要らず、レシーバがなければ空のクリップを読むのではなく明確に失敗します）。XCUITest がクリップボードを simctl 経由で実現するのと同じく、協調するアプリがあればバックエンドが駆動できるので、adb は `clipboard` を公開し続けます。[`BajutsuAndroid`](../../BajutsuAndroid/README.ja.md) を参照してください。
 

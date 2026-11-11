@@ -140,6 +140,7 @@ preconditions:
 | `subject.launch.deeplink` | str | unset (the target's `subject.launch.deeplink`) | A URL the app opens after launch (`simctl openurl` on iOS, an intent on Android) |
 | `device.ios.locale` | str | unset (the target's `runsOn.ios.locale`) | Force the locale and language at launch (`-AppleLocale` / `-AppleLanguages`), and pin the Simulator's system language. A value that differs from the target's forces a cold respawn |
 | `device.ios.seedPhotos` | list[str] | unset (the target's `runsOn.ios.seedPhotos`) | Images seeded into the Simulator's photo library on the erase path, in order; paths resolve against the scenario file, and a scenario's list replaces the target's |
+| `device.android.seedPhotos` | list[str] | unset (the target's `runsOn.android.seedPhotos`) | Images seeded into a directory Bajutsu owns in the device's shared storage, in order, on every reinstall level; paths resolve against the scenario file, and a scenario's list replaces the target's |
 | `inheritSetup` | bool | `true` | `false` skips the `hooks.setup` of every target this scenario declares; their `hooks.cleanup` still runs ([below](#setup--cleanup-setup-and-teardown-phases)) |
 
 A scenario cannot set `id`, `path`, or `build`. Nor can it set `startWhen` or `idNamespaces`. The
@@ -194,13 +195,16 @@ A list or a range on that target multiplies each of its scenarios into runs, as
 > [BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md) and
 > [configuration](configuration.md#config-layering-defaults--targets).
 
-> **Seeding needs a wiped device.** After merging, a non-empty `seedPhotos` requires the effective
+> **Seeding iOS photos needs a wiped device.** After merging, a non-empty iOS `seedPhotos` requires the effective
 > `subject.reinstall` (the scenario's, else the target's, then moved by the flag) to be `erase`, because
 > the photo library is seeded only on the erase path. A target-level `subject.reinstall: erase` satisfies
 > the rule. In a
 > scenario that drives several targets, the primary alone seeds photos. A non-primary target with
 > a merged `seedPhotos` fails the run. `record`, `crawl`, and `repl` refuse `--no-erase` on a
-> target that seeds photos. Both refusals exit 2 before any device work.
+> target that seeds photos. Both refusals exit 2 before any device work. Android needs no `erase`:
+> each scenario empties the directory it seeds, so the device shows exactly the listed images there,
+> whatever the reinstall level. A scenario with an empty list still empties a directory an earlier
+> seed created. The primary-only rule holds on Android too.
 
 > **`reinstall: clean` also resets permission state** (`permissions`, below): iOS via `simctl
 > privacy reset all`, Android via `pm clear`. `overwrite` resets neither. `overwrite` exists to keep a
@@ -997,6 +1001,7 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `select` | `select: { into: <Selector>, mode?: "all" }` | focus the field and select its content (`mode` default `all`); the web context raises — the iOS (XCUITest) backend supports it natively, and codegen emits the native equivalent |
 | `copy` | `copy: {}` | copy the active selection to the clipboard; requires a prior `select`; the web context raises — the iOS (XCUITest) backend supports it natively |
 | `selectOption` | `selectOption: { sel: <Selector>, option: "..." }` | set a web `<select>` to the option with this value; web only (iOS / Android raise) |
+| `selectPhotos` | `selectPhotos: { indices: [0, 1], timeout: 10 }` | pick the cells at these positions (0 = the first cell, newest image first) from the system photo picker the app has already opened, then confirm: `PHPickerViewController` on iOS (XCUITest), the Android 13+ photo picker on adb. A single-selection picker closes on its one tap; an index beyond the visible grid fails |
 | `setPickerValue` | `setPickerValue: { sel: <Selector>, value: "..." }` | move a wheel-style picker (`UIPickerView`, a wheel-mode `UIDatePicker`) to the row with this value ([below](#setpickervalue)); iOS (XCUITest) only. `sel` addresses one wheel — a multi-component picker's siblings are separated by `within` / `traits` / `index`, one step each |
 | `swipe` | `swipe: { on: <Selector>, direction: up\|down\|left\|right }` or `swipe: { from: [x,y], to: [x,y] }` | selector form and coordinate form cannot mix; the directional form **scrolls** |
 | `drag` | `drag: { on: <Selector>, direction: up\|down\|left\|right, amount?: <frac> }` | a real pointer **drag** of the element (a handle / divider / slider), not a scroll |
@@ -1180,7 +1185,7 @@ supports `tap` / `tapPoint` / `doubleTap` / `type` / `wait` / `assert` inside th
 `navigate` / `pinch` / `rotate` / `handleSystemAlert` / `setPickerValue` are not reachable there, and each fails
 with a clear "not supported in web context" reason.
 
-### `app` (driving another app's UI, iOS only)
+### `app`
 
 ```yaml
 - app:
@@ -1190,18 +1195,28 @@ with a clear "not supported in web context" reason.
           - exists: { id: TabBarItemTitle }
 ```
 
-`app` activates the named app by bundle id — installed but not yet running, and never launched by
-the test target — and runs the nested `steps` against that app's own accessibility tree, not the
-test target's. The feasibility findings behind this behavior are recorded in
+`app` drives another app's UI. It activates the named app by bundle id — any installed app,
+including one the test target never launched (a running app is brought forward) — and runs the
+nested `steps` against that app's own accessibility tree, not the test target's. The feasibility findings behind this behavior are recorded in
 `docs/specs/ios-cross-app-ui-control-feasibility.md`.
 Control returns to whatever was active before the block once its steps finish, the same
 enter/leave contract `web` uses — nesting an `app` block inside another returns to the immediate
 parent, not unconditionally to the test target. `bundleId` is a plain string, not a value drawn
 from a fixed set: any installed app can be named, including one the test target has no way to open
-itself. iOS (XCUITest) only; a scenario using it against another backend fails preflight before any
-device work. `bundleId` must name an app already installed on the device — one that is slow to
-foreground (a cold launch, a permission prompt) fails the step with `ElementNotFound`, but one that
-is not installed at all is not guaranteed to fail this cleanly.
+itself. iOS (XCUITest) and Android (adb) support it; a scenario using it against the web backend
+fails preflight before any device work. `bundleId` must name an app already installed on the device —
+one that is slow to foreground (a cold launch, a permission prompt) fails the step with
+`ElementNotFound`. On iOS, one that is not installed at all is not guaranteed to fail this cleanly.
+
+On Android, `bundleId` is the package name (`com.android.settings`, say). The adb driver starts the
+package's launcher activity with `am start` and waits until that package holds the resumed activity,
+so a package with no launcher activity — including one that is not installed — fails the step with
+`ElementNotFound` before any launch. Leaving brings the app beneath back the same way, and the app
+under test keeps its process meanwhile, so the handoff never reads as a crash. As on iOS, an
+entered app is not reset: it keeps whatever state an earlier block or run left it in. One Android
+limit applies on the way back: when an app's launcher activity is `singleTask` or `singleInstance`
+(or sets `clearTaskOnLaunch`), starting it again destroys every activity its task pushed above it, so
+that app comes back at its root screen rather than the screen it left.
 
 #### Driving the Home Screen (`com.apple.springboard`)
 
@@ -1697,10 +1712,45 @@ the `manual` step with the deterministic action — is the author's path to a re
 ```
 
 On iOS, these steps drive the Simulator through `simctl`, like `setLocation` / `push`. They need a
-per-device control channel and fail cleanly on the fake driver / in parallel runs. Three of them also
-run on Android: `foreground`, `setClipboard`, and `clearClipboard`. Every other step in this list runs
-on iOS alone. `overrideStatusBar` is most useful right before a screenshot or a `visual` assertion, to
-freeze the clock and signal bars for a stable image.
+per-device control channel and fail cleanly on the fake driver / in parallel runs. On Android, every
+step in this list runs except `clearKeychain`, because Android has no keychain.
+Use `overrideStatusBar` right before a screenshot or a `visual` assertion. It freezes the clock and
+signal bars for a stable image.
+
+On Android, adb drives these steps with no code inside the app
+([BE-0478](../roadmaps/BE-0478-android-device-control-parity/BE-0478-android-device-control-parity.md)):
+
+| Step | Android mechanism |
+|---|---|
+| `background` | presses Home (`input keyevent KEYCODE_HOME`); the app keeps its process |
+| `overrideStatusBar` | enters the System UI demo mode and sends one command per set field |
+| `clearStatusBar` | leaves the demo mode, restoring the live status bar |
+
+`background` waits, on a condition, until the app no longer holds the resumed activity. When the app
+stays in front, the step fails. After `background`, the launcher is in front. A selector for the app
+under test then finds nothing, as on iOS while the Home Screen is in front. Inside a device group, a
+read fails with `AppNotInFront` instead, until a `foreground` step brings the app back.
+
+The demo mode differs from `simctl status_bar` in three ways:
+
+- **Unset fields freeze too.** Entering the demo mode freezes every icon. A field the step leaves
+  unset takes the demo mode's own fixed value, not the live one. The step also hides the
+  notification icons, which the iOS status bar never shows.
+- **Values are narrower.** The table below lists what Android accepts. Preflight fails any other
+  value before device work and names the step. System UI would ignore such a value, and the
+  broadcast would still report success.
+- **Wi-Fi bars scale.** Android shows Wi-Fi levels 0–4, so a full iOS signal must stay full. The
+  table below gives the mapping.
+
+| Field | Android accepts | Mapping |
+|---|---|---|
+| `time` | `H:MM` or `HH:MM` | the clock as four digits (`9:41` becomes `0941`) |
+| `batteryLevel` | 0–100 | unchanged |
+| `batteryState` | `charging`, `charged`, `discharging` | `plugged` is true for the first two |
+| `cellularBars` | 0–4 | unchanged |
+| `wifiBars` | 0–3 | levels 0, 1, 3, and 4 for 0, 1, 2, and 3 |
+
+On both platforms the override persists on the device until a `clearStatusBar` step runs.
 
 `background` / `foreground` are the two halves of a background/foreground transition.
 `foreground` terminates nothing. Whether `foreground` waits depends on the case:

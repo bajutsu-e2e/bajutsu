@@ -285,3 +285,28 @@ def test_a_mixed_permissions_map_names_only_the_unsupported_service() -> None:
     assert check.unsupported == ["permissions.notifications"]
     [problem] = check.problems()
     assert "permissions.notifications" in problem and "camera" not in problem
+
+
+def test_android_applies_its_own_locale() -> None:
+    # BE-0478: `runsOn.android.locale` resolves onto the Android config, is in effect only when
+    # set, and the Android route supports it.
+    eff = _eff(
+        "android",
+        lines=(
+            "    runsOn:",
+            "      android: {locale: ja_JP}",
+        ),
+    )
+    from bajutsu.common.config import AndroidConfig
+
+    assert isinstance(eff.platform_config, AndroidConfig)
+    assert eff.platform_config.locale == "ja_JP"
+    assert settings_in_effect(eff, ResolvedPreconditions()) == ["locale"]
+    assert settings_in_effect(_eff("android"), ResolvedPreconditions()) == []
+    assert settings_support("adb", eff)["locale"] == "supported"
+    assert check_settings("adb", eff, ResolvedPreconditions()).problems() == []
+
+
+def test_an_unsupported_platform_field_names_the_route_platform() -> None:
+    check = check_settings("xcuitest", _eff("ios"), ResolvedPreconditions(locale="fr"), None, _GRID)
+    assert check.problems()[0].startswith("runsOn.ios.locale is not supported")

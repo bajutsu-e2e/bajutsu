@@ -16,83 +16,98 @@
 
 ## Introduction
 
-Bajutsu reaches Claude from several paths. `record` and `crawl` author scenarios, `triage`
-investigates a failure, and the reactive system-alert guard clears an operating-system prompt that
-the application's own accessibility tree cannot see. The guard is the one path that runs inside
-`run`, the deterministic gate. On the iOS XCUITest backend the guard clears the prompt natively, and
-only where the native path cannot act does it fall back to sending a screenshot of the device to
-Claude vision and tapping the pixel the model names.
+Bajutsu reaches Claude from several paths:
+
+- `record` and `crawl` author scenarios.
+- `triage` investigates a failure.
+- The reactive system-alert guard clears an operating-system prompt that the application's own
+  accessibility tree cannot see.
+
+The guard is the one path that runs inside `run`, the deterministic gate. On the iOS XCUITest
+backend, the guard clears the prompt natively. Only where the native path cannot act does the guard
+fall back to sending a screenshot of the device to Claude vision and tapping the pixel the model names.
 
 A project that does not want a screenshot of the device to leave the machine has no way to say so.
 Turning the whole setting off with `systemAlertHandling: false` also gives up the deterministic
 native path, which is the half worth keeping. The one remaining lever is to leave the provider's
-credential out of the environment, and an absent credential is an accident of the shell rather than
-a statement in the repository.
+credential out of the environment. An absent credential is an accident of the shell, not a statement
+in the repository.
 
 This proposal registers a provider named `none` in the provider registry that
 [BE-0104](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md) introduced.
-Writing `ai: { provider: none }` in the configuration disables every AI path at once: the vision
-fallback becomes a no-op while the native path keeps clearing prompts, the commands that need Claude
-exit with a message naming the setting, and no code path can construct an AI backend at all, because
-the provider's factory raises instead of returning one. The contribution is not a capability the
-tool lacks — an unset key already produces most of the same behavior. The contribution is turning
-that behavior from an environmental absence into a committed, reviewable, fail-closed statement.
+Writing `ai: { provider: none }` in the configuration disables every AI path at once:
+
+- The vision fallback becomes a no-op, while the native path keeps clearing prompts.
+- The commands that need Claude exit with a message naming the setting.
+- No code path can construct an AI backend at all, because the provider's factory raises instead of
+  returning one.
+
+The contribution is not a capability the tool lacks, since an unset key already produces most of the
+same behavior. The contribution is turning that behavior from an environmental absence into a
+committed, reviewable, fail-closed statement.
 
 ## Motivation
 
 The reactive guard fires while a step or a guarded wait is blocked. `AlertGuardConfig`
-(`bajutsu/orchestrator/types.py:304`) first probes the native path, which reads the alert's buttons
-through the SpringBoard query that
-[BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md) added and taps
-whichever label the scenario's `rules` or `instruction` names. When no rule and no candidate label
-resolves, or when the surface is one the query cannot enumerate at all — an action sheet, a web-view
-dialog, any backend that does not advertise the `HANDLE_SYSTEM_ALERT` capability — the guard falls
-back to `SystemAlertGuard.dismiss` (`bajutsu/agents/alerts.py`). The fallback captures a screenshot
-of the device, sends the image to Claude with the `resolve_alert` tool, and taps the coordinate the
-model returns.
+(`bajutsu/orchestrator/types.py:304`) first probes the native path. The probe reads the alert's
+buttons through the SpringBoard query that
+[BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md) added, and taps
+whichever label the scenario's `rules` or `instruction` names.
 
-Three properties of that fallback are ones a project may need to rule out, and none of them can be
-ruled out today.
+The guard falls back to `SystemAlertGuard.dismiss` (`bajutsu/agents/alerts.py`) in two cases:
+
+- No rule and no candidate label resolves.
+- The surface is one the query cannot enumerate at all: an action sheet, a web-view dialog, or any
+  backend that does not advertise the `HANDLE_SYSTEM_ALERT` capability.
+
+The fallback captures a screenshot of the device, sends the image to Claude with the `resolve_alert`
+tool, and taps the coordinate the model returns.
+
+A project may need to rule out three properties of that fallback. None of them can be ruled out
+today.
 
 The first property is the screenshot itself. Bajutsu masks secrets in the *text* it sends to a
 model: a `--alert-instruction` passes through the `Redactor` before it reaches the request
-([BE-0047](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)). The image beside
-it cannot be masked the same way, and the guard's own source records the gap. A run against a
+([BE-0047](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)). The image beside the text
+cannot be masked the same way, and the guard's own source records the gap. Consider a run against a
 staging environment holding production data, or an engagement whose contract forbids sending
-captured screens to a third party, needs the guarantee that the path does not exist, not the
-observation that it rarely fires.
+captured screens to a third party. Either case needs the guarantee that the path does not exist. The
+observation that the path rarely fires does not suffice.
 
-The second property is non-determinism. The fallback resolves a button by coordinate estimate, so
-when the native path cannot answer, the model's tap decides what happens next. A run that would have
+The second property is non-determinism. The fallback resolves a button by coordinate estimate. When
+the native path cannot answer, the model's tap thus decides what happens next. A run that would have
 failed on a prompt nobody taught it to handle instead continues down whatever branch the tap opened.
 Prime directive 2 puts determinism first, and a project may prefer a failure it can read to a rescue
 it cannot reproduce.
 
-The third property is cost and latency. The guard fires mid-wait, so the round trip sits on the
-run's critical path; the locator picks Sonnet over Opus for that reason, as its own comment records.
-Across a suite in continuous integration the round trips accumulate into both wall-clock time and
-spend, on a fallback that a native-capable backend needs only rarely.
+The third property is cost and latency. The guard fires mid-wait, so the round trip sits on the run's
+critical path. The locator picks Sonnet over Opus for that reason, as its own comment records. Across
+a suite in continuous integration, the round trips accumulate into both wall-clock time and spend.
+A native-capable backend needs the fallback rarely.
 
-Neither lever available today rules any of the three properties out. `systemAlertHandling: false`
-disables the guard as a whole, native path included, so a scenario that wants only the deterministic
-half loses the half it wants and starts failing on the notification prompt the native path used to
-clear.
+Neither lever available today rules out any of the three properties. `systemAlertHandling: false`
+disables the guard as a whole, native path included. A scenario that wants only the deterministic half
+loses that half and starts failing on the notification prompt the native path used to clear.
 
 The other lever is the credential. `_build_alert_locator` (`bajutsu/cli/_shared.py:450`) reads the
-provider's credential gap and returns `None` when the provider cannot authenticate, so the fallback
-no-ops and the native path keeps working — exactly the shape a project wants, reached by leaving
-`ANTHROPIC_API_KEY` unset. An absence is a poor way to hold a policy. It lives nowhere in the
-repository, so a reviewer reading the configuration cannot tell that screenshots are not sent, and a
-fresh continuous-integration runner inherits the policy only by not having been set up. The absence
-is also shared with every other AI path, which makes it fragile in the one direction that matters:
-an engineer who exports the key to author a scenario with `record` re-enables the vision fallback
-for every `run` in the same shell, silently, for as long as the shell lives.
+provider's credential gap and returns `None` when the provider cannot authenticate. The fallback
+then no-ops and the native path keeps working, which is the shape a project wants. A project reaches
+that shape by leaving `ANTHROPIC_API_KEY` unset.
+
+An absence is a poor way to hold a policy:
+
+- The absence lives nowhere in the repository. A reviewer reading the configuration cannot tell that
+  screenshots are not sent.
+- A fresh continuous-integration runner inherits the policy only by not having been set up.
+- Every other AI path shares the absence, which makes it fragile in the one direction that matters.
+  An engineer who exports the key to author a scenario with `record` re-enables the vision fallback
+  for every `run` in the same shell, silently, for as long as the shell lives.
 
 Once the `none` provider ships, a reader can tell the change arrived by exporting the provider's key
-and still finding no AI traffic. A `run` over a suite whose configuration carries `ai: { provider:
-none }` records no event in the AI usage ledger
-([BE-0196](../BE-0196-ai-usage-cost-ledger/BE-0196-ai-usage-cost-ledger.md)) and prints the alert
-guard's own note naming `ai.provider: none`, while the same run without the setting spends tokens on
+and still finding no AI traffic. A `run` over a suite whose configuration carries
+`ai: { provider: none }` records no event in the AI usage ledger
+([BE-0196](../BE-0196-ai-usage-cost-ledger/BE-0196-ai-usage-cost-ledger.md)). It also prints the
+alert guard's own note naming `ai.provider: none`. The same run without the setting spends tokens on
 every guarded wait the native path could not resolve.
 
 ## Detailed design
@@ -106,7 +121,7 @@ defaults:
 ```
 
 A new adapter module, `bajutsu/ai/disabled.py`, registers an `Adapter` under the name `none`
-alongside the built-in adapters in `bajutsu/ai/registry.py`. It is the smallest adapter the contract
+alongside the built-in adapters in `bajutsu/ai/registry.py`. The adapter is the smallest the contract
 admits, and it is deliberately inert.
 
 | Hook | Behavior |
@@ -115,17 +130,19 @@ admits, and it is deliberately inert.
 | `credential_gap` | returns the token `"ai-disabled"` |
 | `announce` | replaces the default provider-and-model line with `🤖 AI: disabled (ai.provider: none)`, so no surface that discloses the provider names a model that will never be used |
 
-The raising factory is what makes the setting fail closed rather than merely quiet. `create_backend`
-is the single construction entry point every agent reaches through `ClaudeBackedAgent`
-(`bajutsu/agents/claude_backed.py`), so a call site that skips the credential check gets an
-exception at construction instead of a silent round trip. Even the alert guard's own best-effort
-`except Exception`, which exists so a locator failure can never crash a run, cannot turn the raise
-into a request: the guard would log a warning and tap nothing, and nothing would have been sent.
+The raising factory makes the setting fail closed rather than merely quiet. `create_backend` is the
+single construction entry point that every agent reaches through `ClaudeBackedAgent`
+(`bajutsu/agents/claude_backed.py`). A call site that skips the credential check thus gets an
+exception at construction instead of a silent round trip.
+
+Even the alert guard's own best-effort `except Exception` cannot turn the raise into a request. That
+handler exists so a locator failure can never crash a run. Here it would log a warning and tap
+nothing, and nothing would have been sent.
 
 ### Why the credential-gap seam, and not a new configuration field
 
-Every consumer of `credential_gap` already fails closed on a non-`None` value, so registering the
-provider gives each surface the right behavior without a new branch of its own.
+Every consumer of `credential_gap` already fails closed on a non-`None` value. Registering the
+provider thus gives each surface the right behavior without a new branch of its own.
 
 | Site | Behavior under `provider: none` |
 |---|---|
@@ -135,14 +152,14 @@ provider gives each surface the right behavior without a new branch of its own.
 | `serve` settings (`bajutsu/serve/operations/config.py:508`) | unchanged — `provider_info` resolves the provider from the organization's saved selection rather than the target config, so `claudeAvailable` never sees this setting (see *`serve`* below) |
 | `serve` enrichment and triage (`bajutsu/serve/operations/enrich.py:64`, `bajutsu/serve/operations/triage.py:73`) | HTTP 400 before the job is dispatched, phrased through `availability.message` rather than interpolating the raw gap token — both strings reach the web UI, so "requires a credential" would send the reader to Settings to save a key that can never lift the switch |
 
-An `ai.enabled: false` field would have to be read at each of those sites in addition to the gap, and
-would admit the contradictory configuration `{ enabled: false, provider: api-key }`. The provider
-name carries the same information with one value and no new field.
+An `ai.enabled: false` field would have to be read at each of those sites in addition to the gap. It
+would also admit the contradictory configuration `{ enabled: false, provider: api-key }`. The
+provider name carries the same information with one value and no new field.
 
 ### Messages
 
-Two message tables gain a branch for the `"ai-disabled"` token, because the existing wording would
-send the reader to fix an environment that is not broken.
+Two message tables gain a branch for the `"ai-disabled"` token. The existing wording would send the
+reader to fix an environment that is not broken.
 
 | Site | Wording |
 |---|---|
@@ -153,64 +170,69 @@ send the reader to fix an environment that is not broken.
 ### Precedence
 
 `resolve_provider` (`bajutsu/agents/ai_config.py:78`) reads `ai.provider` from the configuration
-first and falls back to `BAJUTSU_AI_PROVIDER` only when the configuration leaves the field unset. A
-committed `provider: none` therefore cannot be undone by an environment variable, which is what
-makes the setting hold on a continuous-integration runner whose environment nobody controls.
-`BAJUTSU_AI_PROVIDER=none` remains available for a one-off run on a machine whose configuration says
-nothing.
+first. It falls back to `BAJUTSU_AI_PROVIDER` only when the configuration leaves the field unset. An
+environment variable thus cannot undo a committed `provider: none`. That precedence makes the setting
+hold on a continuous-integration runner whose environment nobody controls. `BAJUTSU_AI_PROVIDER=none`
+remains available for a one-off run on a machine whose configuration says nothing.
 
 `_merge_ai` (`bajutsu/config/resolve.py:43`) merges `defaults.ai` with `targets.<name>.ai` field by
-field, target winning, and the new provider needs no exception to that rule. A repository can
-disable AI in `defaults` and re-enable it for one target, and the re-enabling is a line a reviewer
-reads in the same file rather than an environment variable nobody sees.
+field, and the target wins. The new provider needs no exception to that rule. A repository can
+disable AI in `defaults` and re-enable it for one target. The re-enabling is a line that a reviewer
+reads in the same file, not an environment variable nobody sees.
 
 ### `serve`
 
 `serve` needs one exception, and it is a subtraction rather than a special case: `none` is registered
-but not **selectable**. The registry gains a `selectable_providers()` — `known_providers()` minus the
-disabled provider — and `serve` validates against it at the three points that read `known_providers()`
-today (`bajutsu/serve/operations/config.py:378` and `:392` on the load path, and the `set_provider`
-write path at `:864`), so the Settings dropdown never offers it.
+but not **selectable**. The registry gains a `selectable_providers()`, which is `known_providers()`
+minus the disabled provider. `serve` validates against it at the three points that read
+`known_providers()` today: `bajutsu/serve/operations/config.py:378` and `:392` on the load path, and
+the `set_provider` write path at `:864`. The Settings dropdown therefore never offers `none`.
 
-The reason is that an organization's Settings selection reaches a job only as an environment
-variable. `provider_env` (`bajutsu/serve/operations/config.py:456`) emits `BAJUTSU_AI_PROVIDER` set to
-the selection, and dispatch attaches that dict as the job's environment overlay. Because
-`resolve_provider` reads the configuration first, an operator who picked `none` in the dropdown would
-get no effect at all on a project whose configuration names an `ai.provider`: the jobs would keep
-calling the model, and nothing would say so. A switch labeled off that silently stays on is the
-failure mode the *Motivation* argues against for an unset key, and putting it in a dropdown would only
-make it harder to notice. The kill switch is a statement a repository commits, not a per-organization
-toggle.
+The reason is that an organization's Settings selection reaches a job as an environment variable
+alone. `provider_env` (`bajutsu/serve/operations/config.py:456`) emits `BAJUTSU_AI_PROVIDER` set to
+the selection, and dispatch attaches that dict as the job's environment overlay. `resolve_provider`
+reads the configuration first. An operator who picked `none` in the dropdown would thus get no effect
+at all on a project whose configuration names an `ai.provider`: the jobs would keep calling the
+model, and nothing would say so.
+
+A switch labeled off that silently stays on is the failure mode the *Motivation* argues against for
+an unset key. Putting it in a dropdown would only make it harder to notice. The kill switch is a statement
+a repository commits, not a per-organization toggle.
 
 One limitation follows, and this item accepts it rather than closing it. `provider_info`
 (`bajutsu/serve/operations/config.py:491`) resolves the provider as the organization's saved selection
-or, failing that, `resolved_provider()` with no `AiConfig` at all, and never reads `resolve(config,
-target).ai` — unlike the enrichment and triage handlers, which do. A repository that sets
-`ai.provider: none` therefore still reports `claudeAvailable: true`, and the web UI leaves the record
-and crawl tabs enabled. The kill switch itself holds: a job started from one of those tabs is a
-command-line invocation that resolves the repository configuration itself and exits 2 before reaching
-a model. What is missing is only the pre-flight signal that would grey the tab out first. Teaching
-`provider_info` to read the target's `ai` changes how `serve` reports reachability for every provider,
-which this item's seam does not imply, so it belongs to a follow-up item.
+or, failing that, `resolved_provider()` with no `AiConfig` at all. It never reads
+`resolve(config, target).ai`, unlike the enrichment and triage handlers. A repository that sets
+`ai.provider: none` thus still reports `claudeAvailable: true`, and the web UI leaves the record and
+crawl tabs enabled.
+
+The kill switch itself holds. A job started from one of those tabs is a command-line invocation. It
+resolves the repository configuration itself and exits 2 before reaching a model. What is missing is only
+the pre-flight signal that would grey the tab out first. Teaching `provider_info` to read the
+target's `ai` changes how `serve` reports reachability for every provider, which this item's seam
+does not imply. The change belongs to a follow-up item.
 
 ### What this proposal does not change
 
 The native alert path, the `systemAlertHandling` schema, and the resolution order that
 [BE-0177](../BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md) fixed all stay
-as they are. In particular, an alert that the native path cannot handle stays a silent no-op under
-`provider: none`, exactly as it is today under an absent credential. Turning that case into a step
-failure would make the third motivation above — determinism — visible in the verdict, but it also
-turns runs red that a vision tap used to carry, so it is a separate decision with its own migration.
-A later item can take it up; the switch proposed here does not depend on it.
+as they are.
 
-The switch is also global by design, not per scenario. A per-scenario `systemAlertHandling.vision:
-false` would answer the alert-guard motivation alone and leave `record`, `crawl`, and triage
-reachable, which is the opposite of what a policy against sending screenshots needs.
+In particular, an alert that the native path cannot handle stays a silent no-op under
+`provider: none`, exactly as it is today under an absent credential. Turning that case into a step
+failure would make the third motivation above, determinism, visible in the verdict. It would also
+turn runs red that a vision tap used to carry, so it is a separate decision with its own migration.
+A later item can take it up, and the switch proposed here does not depend on it.
+
+The switch is also global by design, not per scenario. A per-scenario
+`systemAlertHandling.vision: false` would answer the alert-guard motivation alone. It would leave
+`record`, `crawl`, and triage reachable, which is the opposite of what a policy against sending
+screenshots needs.
 
 ### Work breakdown
 
-The units below are mutually exclusive and cover the design in full; the *Progress* checklist
-mirrors them one for one.
+The units below are mutually exclusive and cover the design in full. The *Progress* checklist mirrors
+them one for one.
 
 1. **The adapter.** `bajutsu/ai/disabled.py` with the three hooks, registered in
    `_ensure_builtins` (`bajutsu/ai/registry.py`) so `known_providers()` reports it. Unit tests:
@@ -219,7 +241,7 @@ mirrors them one for one.
 2. **The `serve` exclusion.** `selectable_providers()` in `bajutsu/ai/registry.py`, and the three
    `known_providers()` call sites in `bajutsu/serve/operations/config.py` reading it instead. A test
    that `set_provider` rejects `none` with a 400, so the dropdown cannot offer a switch that would
-   reach a job only as an environment variable.
+   reach a job as an environment variable alone.
 3. **The messages.** The `"ai-disabled"` branch in `bajutsu/agents/availability.py` and in
    `_credential_gap_message`, plus the reworded note in `_build_alert_locator`.
 4. **The run-path test.** With the key present in the environment and `provider: none` in the
@@ -227,10 +249,10 @@ mirrors them one for one.
    clears an alert, and the usage ledger stays empty.
 5. **The refusal test.** `record`, `crawl`, and `triage --ai` exit 2 naming the setting, and
    enrichment and triage return HTTP 400 before dispatch. The same test pins `serve`'s settings
-   endpoint at `claudeAvailable: true` under a target config of `provider: none`, so the limitation
-   the *`serve`* section records stays a documented fact rather than drifting into a false claim.
+   endpoint at `claudeAvailable: true` under a target config of `provider: none`. The limitation the
+   *`serve`* section records thus stays a documented fact rather than drifting into a false claim.
 6. **Documentation.** The `ai:` section of `docs/configuration.md` and its `docs/ja/` mirror gain the
-   provider, the precedence rule, and the `serve` exclusion; `docs/ai-boundary.md` and its mirror
+   provider, the precedence rule, and the `serve` exclusion. `docs/ai-boundary.md` and its mirror
    record that a repository can now state "no AI path runs here" in one line.
 
 ## Alternatives considered

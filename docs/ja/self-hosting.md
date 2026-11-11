@@ -177,6 +177,12 @@ UI からバインドした Git config でその build を信頼して run を�
 抑止されるのと同じように build を抑止したまま run が進みます。ネットワーク越しに届いた config から、黙ってホスト側で
 コマンドが実行されることはありません。
 
+XCUITest runner をその場でビルドする `driver.runner.build` にも、同じ判定を適用します。このコマンドを実行するのは
+`serve` 自身ではなく、`serve` が起動する run です。run は `driver.runner.testRunner` のファイルが無いときにこのコマンドを実行します。
+アップロードされたバンドルと、`--allow-remote-build` なしで UI からバインドした Git config では、起動された run が
+このビルドを拒否し、`driver.runner.build withheld` というエラーで失敗します。こうした config では、`.xctestrun` を
+ビルド済みの状態で `testRunner` の位置に同梱してください。run はそのファイルをそのまま使います。
+
 ## Git config source の非公開リポジトリへのアクセス（BE-0224）
 
 `serve`（や CLI）が config を **非公開**の GitHub リポジトリから読むとき、すなわち `github:` の spec

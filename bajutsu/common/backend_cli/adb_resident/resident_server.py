@@ -20,12 +20,14 @@ from bajutsu.common.drivers.adb import (
 )
 
 from ._functions import (
+    Pair,
     _apk_digest,
     _default_spawn,
     _parse_forward_port,
     act,
     fetch_clock,
     fetch_source,
+    gesture,
     narrowed_root,
     type_text,
 )
@@ -45,6 +47,7 @@ ActProbe = Callable[[int, ActRequest], ActOutcome]
 # How many times a lease restarts its server without a read answering first try in between.
 _MAX_RESTARTS_IN_A_ROW = 2
 TypeProbe = Callable[[int, str, float | None], None]
+GestureProbe = Callable[[int, Pair, Pair], None]
 
 
 class ResidentServer:
@@ -71,6 +74,7 @@ class ResidentServer:
         clock: ClockProbe | None = None,
         act_probe: ActProbe | None = None,
         type_probe: TypeProbe | None = None,
+        gesture_probe: GestureProbe | None = None,
         server_apk: Path = _SERVER_APK,
         test_apk: Path = _TEST_APK,
         installed: dict[str, tuple[str, str]] | None = None,
@@ -112,6 +116,9 @@ class ResidentServer:
         self._type_text = type_probe or (
             lambda port, text, since: type_text(port, text, since, keepalive=self._keepalive)
         )
+        self._gesture = gesture_probe or (
+            lambda port, start, end: gesture(port, start, end, keepalive=self._keepalive)
+        )
         self._server_apk = server_apk
         self._test_apk = test_apk
         # Which APK pair this run already put on which device (BE-0407 unit 22). Owned by the caller
@@ -150,6 +157,10 @@ class ResidentServer:
             # the reads, and the driver fails this one step on it.
             self._type_text(self._port(), text, since)
 
+        def gesture_on_device(start: Pair, end: Pair) -> None:
+            # Like `act_on_device`, a fault here leaves the read channel up.
+            self._gesture(self._port(), start, end)
+
         return ResidentChannel(
             self._read,
             clock,
@@ -160,6 +171,7 @@ class ResidentServer:
                 revive=self._revive,
                 drain_notes=self._drain_notes,
             ),
+            gesture_on_device,
         )
 
     def _port(self) -> int:

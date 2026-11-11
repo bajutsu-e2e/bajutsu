@@ -71,7 +71,7 @@ make check   # 決定的なゲート（ステップの全一覧は CLAUDE.md）
 
 大きめの機能は **Bajutsu Evolution** 項目として [`roadmaps/`](roadmaps/README.md) で管理します。
 正確な手順（ディレクトリ構成、ID の採番、両言語ファイル、書式）は
-[`docs/ja/ai-development.md`](docs/ja/ai-development.md#ロードマップ項目-be-id厳守) に従って
+[`docs/ja/ai-development.md`](docs/ja/ai-development.md#ロードマップ項目の-be-id-は厳守する) に従って
 ください。
 
 ## ドキュメント
@@ -79,7 +79,7 @@ make check   # 決定的なゲート（ステップの全一覧は CLAUDE.md）
 ドキュメントはバイリンガルです。英語は [`docs/`](docs/README.md)、日本語ミラーは
 [`docs/ja/`](docs/ja/README.md) にあります。文書化された挙動を変えたら**両方を更新**してください。
 詳しい指針は
-[ドキュメントの書き方](docs/ja/ai-development.md#ドキュメントの書き方全ドキュメント両言語に適用)
+[ドキュメントの書き方](docs/ja/ai-development.md#両言語のドキュメントの書き方)
 にあります。
 
 ## 守るべき原則（破ってはいけません）
