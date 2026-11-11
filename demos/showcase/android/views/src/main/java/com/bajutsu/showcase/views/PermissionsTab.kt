@@ -118,8 +118,10 @@ class PermissionsTab(private val activity: MainActivity) {
     /**
      * Ask the `gps` provider for one fresh fix and report it as `lat,lon` (or `(none)` / `denied`).
      *
-     * A fresh request, not `getLastKnownLocation`: the emulator's GPS reports a console `geo fix` only
-     * while some app is listening, so a cached read would come back empty after a `setLocation`.
+     * A fresh request first: the emulator's GPS reports a console `geo fix` only while some app is
+     * listening, so a cached read alone would come back empty after a `setLocation`. A test provider, by
+     * contrast, emits only when mocked, so its fix ages; once older than the platform's current-location
+     * window the request answers `null` after its own timeout, and the last known fix (the mock) is read.
      */
     private fun readLocation(onReading: (String) -> Unit) {
         val manager = activity.getSystemService(Context.LOCATION_SERVICE) as LocationManager
@@ -130,7 +132,8 @@ class PermissionsTab(private val activity: MainActivity) {
                 null as CancellationSignal?,
                 ContextCompat.getMainExecutor(activity),
             ) { fix ->
-                onReading(fix?.let { String.format(Locale.US, "%.3f,%.3f", it.latitude, it.longitude) } ?: "(none)")
+                val best = fix ?: runCatching { manager.getLastKnownLocation(LocationManager.GPS_PROVIDER) }.getOrNull()
+                onReading(best?.let { String.format(Locale.US, "%.3f,%.3f", it.latitude, it.longitude) } ?: "(none)")
             }
         } catch (_: SecurityException) {
             onReading("denied")

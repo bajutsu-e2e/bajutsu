@@ -125,7 +125,8 @@ the last location again after each launch it makes:
 - a `relaunch` step
 - the launch after an `installApp` step
 - a crawl's reset
- When the lease ends, bajutsu runs three steps:
+
+When the lease ends, bajutsu runs three steps:
 
 1. It broadcasts `clear`, which removes both test providers. When the app is no longer running,
    bajutsu launches it first, because the providers outlive the process and only the app can remove them.

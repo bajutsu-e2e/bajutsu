@@ -262,7 +262,8 @@ e2e: compose-build views-build
 # over the same emulator reached with `adb connect`, whose `<host>:<port>` serial has no console adb can
 # reach, so the routing sends it in-app: the `appops` grant, BajutsuAndroid's location receiver, and
 # its result codes — the path a real device takes, which no emulator-serial run would touch. The
-# emulator's adbd listens on its console port plus one. Run after `e2e`, on the same emulator. With
+# emulator's adbd listens on its console port plus one. CI runs it as its own per-PR signal job,
+# `location over adb connect (adb)`, outside the required gate until it has a run history. With
 # more than one device attached, name the emulator: `SERIAL=emulator-5554 ADB="adb -s emulator-5554"`.
 e2e-location-connect: compose-build views-build
 	$(ADB) wait-for-device

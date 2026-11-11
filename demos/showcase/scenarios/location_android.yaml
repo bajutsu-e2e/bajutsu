@@ -8,6 +8,9 @@
 #
 # The readout is a button, not a live listener: the app asks for one fresh fix when tapped, so the
 # assertion waits on a value that changes only because the step moved it (prime directive 2). The
+# readout's waits outlast the platform's ~30s current-location timeout: on the in-app route a fix that
+# aged past the platform's window comes back only through the app's last-known fallback, after that
+# timeout. A wait returns as soon as the value appears, so the ceiling costs nothing on a pass. The
 # second scenario relaunches between the step and the read, so a fix that a relaunch dropped would
 # fail it. The console route keeps the fix by itself; on the in-app route the providers survived a
 # relaunch on an API 34 emulator even without the environment's re-send, so the unit tests, not this
@@ -32,7 +35,7 @@
     - wait: { for: { id: [perm.requestNotif, perm_requestNotif] }, timeout: 10 }
     - scroll: { to: { id: [perm.location.reading, perm_location_reading] }, direction: down }
     - tap: { id: [perm.location.read, perm_location_read] }
-    - wait: { for: { id: [perm.location.reading, perm_location_reading], value: "35.681,139.767" }, timeout: 10 }
+    - wait: { for: { id: [perm.location.reading, perm_location_reading], value: "35.681,139.767" }, timeout: 40 }
   expect:
     - value: { sel: { id: [perm.location.reading, perm_location_reading] }, equals: "35.681,139.767" }
 
@@ -52,6 +55,6 @@
     - wait: { for: { id: [perm.requestNotif, perm_requestNotif] }, timeout: 10 }
     - scroll: { to: { id: [perm.location.reading, perm_location_reading] }, direction: down }
     - tap: { id: [perm.location.read, perm_location_read] }
-    - wait: { for: { id: [perm.location.reading, perm_location_reading], value: "-33.857,151.215" }, timeout: 10 }
+    - wait: { for: { id: [perm.location.reading, perm_location_reading], value: "-33.857,151.215" }, timeout: 40 }
   expect:
     - value: { sel: { id: [perm.location.reading, perm_location_reading] }, equals: "-33.857,151.215" }
