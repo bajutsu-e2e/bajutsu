@@ -65,7 +65,7 @@ iOS の実機では、`simctl` が提供する能力がなくなります。こ�
 | `handleSystemAlert` | ✅ | n/a | Android のシステムダイアログは取得した要素ツリーに現れるので、通常の `tap` で操作できます。 |
 | `resolveAlerts` | ✅ | n/a | `handleSystemAlert` と同じ理由です。 |
 | `pickerWheel` | ✅ | ✅ | 常駐サーバーが Android の `NumberPicker` を 1 行ずつ回します。スピナー表示の `DatePicker` と `TimePicker` のホイールも含みます（BE-0480）。Jetpack Compose が自前で描くホイールは、Compose に標準のホイールがないため対象外です。 |
-| `appContext` | ✅ | gap | UI Automator はどのアプリのウィンドウも読めます。`am start` で別のパッケージを前面に出せます。 |
+| `appContext` | ✅ | ✅ | Android は別のパッケージのランチャーアクティビティを `am start` で起動し、そのパッケージが resumed のアクティビティを持つまで待ちます。UI Automator は前面にあるアプリのウィンドウを読みます。 |
 | `selectPhotos` | ✅ | ✅ | adb は Android 13 以降の写真選択画面のセルと追加ボタンを resource id で探すので、同じステップが両プラットフォームで動きます。iOS では、Apple Silicon のシミュレータで実行時にこの能力が外れます。 |
 | `handleTipkitTip` | ✅ | n/a | TipKit は iOS のフレームワークです。 |
 | `handleNotificationBanner` | ✅ | gap | Android のヘッドアップ通知は、SystemUI のノードとして要素ツリーに現れます。 |

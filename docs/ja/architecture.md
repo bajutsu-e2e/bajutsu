@@ -718,10 +718,11 @@ iOS 側の対になるジョブ `pool (xcuitest)` は、Simulator を 2 台起�
 
 #### DSL のクロスアプリ操作
 
-- 決定的で iOS 限定の DSL `app` は、テスト対象アプリが一度も起動していないアプリを、バンドル ID でアプリ側の協力なしに activate します。そして入れ子の `steps` を、そのアプリ自身のアクセシビリティツリーに対して実行します。
+- 決定的な DSL `app` は iOS（XCUITest）と Android（adb）で使えます。このステップは、テスト対象アプリが一度も起動していないアプリを、バンドル ID でアプリ側の協力なしに activate します。そして入れ子の `steps` を、そのアプリ自身のアクセシビリティツリーに対して実行します。
   - `XcuitestElementProvider` は、固定の単一ハンドルの代わりに、`XCUIApplication` ハンドルのスタックを持ちます。ブロックへ入ると新しいハンドルを push して `.activate()` し、抜けると 1 つ下へ pop します。`app` ブロックを別の `app` ブロックの中に入れ子にした場合、戻る先は直近の親です。
   - Python のドライバは、テスト対象アプリ自身の `XcuitestDriver` インスタンスをそのまま再利用します。`web` ステップは専用の `WebContextDriver` を使いますが、`app` はネイティブの操作面（tap、type、ジェスチャ、picker wheel）をそのまま必要とするため、同じインスタンスを再利用するほうが得るものが大きいからです。
-  - `APP_CONTEXT` capability でゲートし、これは常駐 runner の XCUITest backend と `FakeDriver` だけが宣言するので、Android と web はデバイス側の作業に入る前に preflight で弾かれます。`web` の WebView bridge の可否は、固定の backend capability ではなく実行ごとの事実であり、実行時に失敗するのとは対照的です。
+  - Android では、adb ドライバが runner なしで同じことを行います。まず `cmd package resolve-activity --brief` でパッケージの launcher activity を解決し、`am start -W -n` で起動します。続いて、そのパッケージが resumed activity を持つまで `dumpsys activity activities` を上限付きでポーリングします。時間切れなら `ElementNotFound` を送出します。`leave_app` はドライバ側の app スタックを使い、1 つ下のアプリを前面へ戻します。
+  - `APP_CONTEXT` capability でゲートします。宣言するのは常駐 runner の XCUITest backend、adb backend、`FakeDriver` です。そのため preflight で弾かれるのは web だけで、デバイス側の作業より前の段階で弾かれます。`web` の WebView bridge の可否は、固定の backend capability ではなく実行ごとの事実であり、実行時に失敗するのとは対照的です。
   - この設計に先立って、実現可能性のスパイクが、`activate()` が協力しないアプリ（Safari・Maps・Contacts）を Simulator 上で確実に前面化することを確かめました（[`docs/specs/ios-cross-app-ui-control-feasibility.md`](../specs/ios-cross-app-ui-control-feasibility.md)）。
 
 #### 証跡、ネットワーク観測、レポート

@@ -85,6 +85,14 @@ _PIDOF_NO_MATCH = 1
 _EXIT_INFO_TIMEOUT = 5.0
 _EXIT_INFO_POLL = 0.25
 
+# How long `enter_app` / `leave_app` wait for the package they started to hold the resumed activity,
+# and the backoff between `dumpsys` reads. A condition wait: a warm app returns on the first read, and
+# the bound covers a cold start on a contended emulator, where the Android lane already needs a 15s
+# floor for ordinary redraws (`E2E_WAIT_FLOOR`) — so the ceiling sits well above it.
+_APP_FRONT_TIMEOUT = 30.0
+_APP_FRONT_POLL = 0.2
+_APP_FRONT_POLL_MAX = 1.0
+
 # The system photo picker (`ACTION_PICK_IMAGES`) is built into Android 13 and later. Android 11 and 12
 # get it only through a Google system update, and older versions fall back to a Play services backport
 # or the document picker — trees `selectPhotos` has not surveyed, so it refuses below this floor.
@@ -366,6 +374,10 @@ class AdbDriver(CoordinateTreeDriver):
         # resolve a selector against. Off on a device that holds one target, so an ordinary run, the
         # `app:` block, and a system dialog read exactly as before.
         self._front_check = False
+        # The packages `app:` blocks entered and have not yet left, innermost last. The app beneath
+        # the innermost one — the next entry down, or this driver's own package — is what `leave_app`
+        # brings back, and the innermost one is what the front check expects to see.
+        self._app_stack: list[str] = []
         self.serial = adb.checked_serial(serial)
         # BE-0415: a driver built while a trace is open times every subprocess call `run` issues and
         # every resident-channel round trip these four callables make. Checked once here, not on
@@ -641,17 +653,22 @@ class AdbDriver(CoordinateTreeDriver):
         self._seeded_tree = els
 
     def _other_app_in_front(self, root: ET.Element | None) -> list[str] | None:
-        """The packages *root* shows when it is not this driver's own app's tree, else None."""
-        if not self._front_check or root is None or not self._package:
+        """The packages *root* shows when it is not the tree of the app this driver addresses."""
+        if not self._front_check or root is None or not self._front_package:
             return None
         shown = sorted({p for n in root.iter() if (p := n.get("package"))})
         # Empty means the tree named no package at all — the mid-transition dump
         # `_read_settled_tree`'s transient-empty retry exists to ride out — so "cannot tell", not
         # "another app": raising here would escape that retry on its first read.
-        return None if not shown or self._package in shown else shown
+        return None if not shown or self._front_package in shown else shown
+
+    @property
+    def _front_package(self) -> str | None:
+        """The package this driver addresses now: the innermost `app:` block's, else its own."""
+        return self._app_stack[-1] if self._app_stack else self._package
 
     def require_front_app(self) -> None:
-        """Refuse every read that does not show this driver's own app (BE-0447).
+        """Refuse every read that does not show the app this driver addresses (BE-0447).
 
         Called once the device holds a second device-group member: the shared resident channel then
         dumps whichever app is in front, and a selector resolved against another member's tree would
@@ -665,7 +682,7 @@ class AdbDriver(CoordinateTreeDriver):
         if (shown := self._other_app_in_front(root)) is not None:
             # Another member's tree: raised, never returned empty, so no check can pass on it.
             raise base.AppNotInFront(
-                f"{self._package} is not in front ({', '.join(shown) or 'no app'} is) — bring "
+                f"{self._front_package} is not in front ({', '.join(shown) or 'no app'} is) — bring "
                 "it up with a foreground step addressed to its target"
             )
         els, identities = elements_with_identities(root, self._native_z)
@@ -2166,13 +2183,78 @@ class AdbDriver(CoordinateTreeDriver):
             "ordinary tap"
         )
 
-    def enter_app(self, bundle_id: str) -> None:  # noqa: ARG002  # Driver shape
-        # app: は XCUITest backend 専用。preflight がデバイス側の作業に入る前にこのシナリオ
-        # を弾くので、これはmid-runのbackstopにすぎない。
-        raise base.UnsupportedAction("app は iOS XCUITest 専用; Android には対応する仕組みがない")
+    def enter_app(self, bundle_id: str) -> None:
+        """Bring the installed package `bundle_id` to the front and address it until `leave_app`.
+
+        UI Automator already reads whichever app's window is in front, so entering is only the
+        launch: the package's launcher activity is started and the call returns once that package
+        holds the resumed activity. A running app's task that the same bare `am start -n` started
+        (as bajutsu starts the app under test and every app it enters) is brought forward, clearing
+        nothing; an app whose task the launcher started may get a fresh launcher activity on top
+        instead. The app under test keeps its process meanwhile, so neither the crash probe nor the
+        exit poll reads the handoff as the app exiting.
+
+        Raises:
+            ElementNotFound: `bundle_id` has no launcher activity, or never reached the front.
+            DeviceError: adb itself failed (device offline, launch rejected).
+        """
+        self._bring_forward(bundle_id)
+        self._app_stack.append(bundle_id)
 
     def leave_app(self) -> None:
-        raise base.UnsupportedAction("app は iOS XCUITest 専用; Android には対応する仕組みがない")
+        """Leave the innermost entered app and bring back the one beneath it.
+
+        Raises:
+            ElementNotFound: The app beneath never reached the front again.
+            UnsupportedAction: No `app:` block is open, or the driver has no package to return to.
+        """
+        if not self._app_stack:
+            raise base.UnsupportedAction("leave_app without a matching enter_app")
+        # Popped before bringing the app beneath forward, as the iOS runner does: the block is closed
+        # whether or not that app then reaches the front, and the run loop only logs a failed leave.
+        self._app_stack.pop()
+        beneath = self._front_package
+        if beneath is None:
+            raise base.UnsupportedAction("app: the driver knows no app under test to return to")
+        self._bring_forward(beneath)
+
+    def _bring_forward(self, package: str) -> None:
+        """Start *package*'s launcher activity, then wait until it holds the resumed activity."""
+        try:
+            component = adb.launcher_component(
+                self._run(adb.resolve_activity_cmd(self.serial, package))
+            )
+            if component is None:
+                raise base.ElementNotFound(
+                    f"app: no launcher activity for {package!r} (is it installed?)"
+                )
+            # The same `am start -n` the `foreground` step and the launch use, so an app whose task
+            # that same bare intent started (the app under test, every app entered here) finds its
+            # root intent unchanged and resumes on the screen it left — unless its launcher activity
+            # is `singleTask` / `singleInstance` (or sets `clearTaskOnLaunch`), where the system
+            # destroys whatever the task pushed above it and the app comes back at its root.
+            # A task the launcher started may get a fresh launcher activity on top instead.
+            self._act(adb.launch_cmd(self.serial, component))
+        except subprocess.CalledProcessError as exc:
+            raise adb.device_error(exc) from exc
+        last_error = ""
+        for _ in base.deadline_ticks(_APP_FRONT_TIMEOUT, _APP_FRONT_POLL, _APP_FRONT_POLL_MAX):
+            try:
+                resumed = adb.resumed_packages(self._run(adb.resumed_activities_cmd(self.serial)))
+            except (subprocess.CalledProcessError, OSError, adb.DeviceError) as exc:
+                # One unreadable dump mid-transition is not an answer either way; keep polling, and
+                # name the last fault if the wait runs out.
+                last_error = f" (last read failed: {exc})"
+                continue
+            if package in resumed:
+                # The screen changed under the driver without one of its own gestures.
+                self.invalidate_settled_cache()
+                return
+            last_error = ""
+        raise base.ElementNotFound(
+            f"app did not reach the foreground within {_APP_FRONT_TIMEOUT:g}s: "
+            f"{package!r}{last_error}"
+        )
 
     def system_alert_labels(self) -> list[str]:
         # No SpringBoard on Android; the reactive guard's native path never runs here (BE-0315).
@@ -2444,6 +2526,9 @@ class AdbDriver(CoordinateTreeDriver):
                 base.Capability.DEVICE_GROUP,
                 base.Capability.DC_BACKGROUND,
                 base.Capability.DC_STATUS_BAR,
+                # `am start` brings another installed package forward and UI Automator reads whichever
+                # window is in front, so the `app:` step needs nothing from the app under test.
+                base.Capability.APP_CONTEXT,
                 # The system photo picker by resource id. Its API 33 floor is checked when the step
                 # runs, as `multiTouch`'s root requirement is, since preflight reads this set with no
                 # device.
