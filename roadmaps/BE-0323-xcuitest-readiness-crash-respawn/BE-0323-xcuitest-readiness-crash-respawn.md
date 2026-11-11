@@ -72,7 +72,7 @@ The traceback places the failure in the launch path, before any scenario body ra
    describe. The crash reproduces only on loaded CI hosts.
 4. The crash-recovery layer (`_with_crash_recovery`) catches the transport failure. A `GET` is
    idempotent, so the layer waits for the runner by polling `GET /health` for the 60-second window.
-   The process has gone, and nothing respawns it. The poll meets refusals for the full 60 seconds.
+   The process is gone, and nothing respawns it. Every poll draws a refusal for the full 60 seconds.
    Then the layer raises `XcuitestRunnerCrashError`.
 5. The error surfaces out of `_await_ready` and out of `launch_driver`. The pipeline calls
    `launch_driver` to build a lease. The pipeline's crash recovery leases inside its retry loop.
@@ -87,7 +87,7 @@ not cover this window, for two independent reasons.
   `launch_driver` and its readiness gate, and it sits outside the `try`. A crash raised while
   *building* the lease is exactly the case the retry does not see.
 - **The recovery spends the whole window on a dead process.** Suppose the recovery catches the crash.
-  Polling a runner whose process has exited for 60 seconds is still dead time before an inevitable
+  Even then, a 60-second poll of a runner whose process has exited is dead time before an inevitable
   failure.
   [BE-0319](../BE-0319-xcuitest-cold-spawn-resilience/BE-0319-xcuitest-cold-spawn-resilience.md)
   already fails a *cold spawn* fast when its `xcodebuild` process dies. The mid-run crash-recovery
