@@ -130,6 +130,7 @@ preconditions:
 | `subject.launch.deeplink` | str | 未設定（ターゲットの `subject.launch.deeplink`） | 起動後にアプリが開く URL です（iOS は `simctl openurl`、Android は intent） |
 | `device.ios.locale` | str | 未設定（ターゲットの `runsOn.ios.locale`） | 起動時の locale と言語を強制し（`-AppleLocale` / `-AppleLanguages`）、Simulator のシステム言語も固定します。ターゲットと異なる値は cold respawn を強制します |
 | `device.ios.seedPhotos` | list[str] | 未設定（ターゲットの `runsOn.ios.seedPhotos`） | erase の経路で、Simulator の写真ライブラリに順に投入する画像です。パスはシナリオファイルを基準に解決します。シナリオのリストはターゲットのリストを置き換えます |
+| `device.android.seedPhotos` | list[str] | 未設定（ターゲットの `runsOn.android.seedPhotos`） | デバイスの共有ストレージにある Bajutsu 専用のディレクトリへ順に投入する画像です。どの reinstall の段階でも投入します。パスはシナリオファイルを基準に解決します。シナリオのリストはターゲットのリストを置き換えます |
 | `inheritSetup` | bool | `true` | `false` にすると、このシナリオが宣言する全ターゲットの `hooks.setup` を省きます。各ターゲットの `hooks.cleanup` は走ります（[後述](#setup--cleanupセットアップとティアダウンのフェーズ)） |
 
 シナリオは、アプリを識別したりビルドしたりするフィールド（`id`、`path`、`build`、`startWhen`、
@@ -184,14 +185,17 @@ targets: [app-ipad]
 > `overwrite` と書きます。廃止した `preconditions.run` はロード時に失敗し、エラーメッセージが
 > 各フィールドの移動先を示します（[下記](#旧来のキーからの移行)）。
 
-> **写真の投入には wipe したデバイスが必要です。** 重ね合わせたあとの `seedPhotos` が空でなければ、
+> **iOS の写真の投入には wipe したデバイスが必要です。** 重ね合わせたあとの iOS の `seedPhotos` が空でなければ、
 > 実効の `subject.reinstall`（シナリオの値、なければターゲットの値に、フラグを反映したもの）が `erase` である
 > 必要があります。写真ライブラリへの投入は erase の経路でだけ行うからです。ターゲットの
 > `subject.reinstall: erase` でも条件を満たします。
 > 複数のターゲットを動かすシナリオでは、写真を投入するのはプライマリだけです。重ね合わせたあとの
 > `seedPhotos` を持つプライマリ以外のターゲットは、run を失敗させます。`record`、`crawl`、`repl` は、
 > 写真を投入するターゲットに対する `--no-erase` を拒否します。どちらの拒否も、デバイスを操作する前に
-> 終了コード 2 で終わります。
+> 終了コード 2 で終わります。Android では `erase` は要りません。投入先のディレクトリをシナリオごとに
+> 空にするので、reinstall の段階にかかわらず、そのディレクトリには並べた画像だけが入ります。
+> リストが空のシナリオでも、以前の投入が作ったディレクトリは空にします。
+> プライマリだけが投入するという規則は Android にも当てはまります。
 
 > `reinstall: clean` は権限状態（`permissions`。後述）も同時にリセットします。iOS では `simctl privacy
 > reset all`、Android では `pm clear` を使います。`overwrite` はどちらもリセットしません。`overwrite` は
@@ -701,6 +705,7 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
 | `select` | `select: { into: <Selector>, mode?: "all" }` | フィールドをフォーカスして内容を選択する（`mode` 既定 `all`）。web コンテキストは非対応。iOS（XCUITest）バックエンドはネイティブに対応し、codegen もネイティブの等価物を出力する |
 | `copy` | `copy: {}` | 選択中の内容をクリップボードへコピーする。事前の `select` が必要。web コンテキストは非対応。iOS（XCUITest）バックエンドはネイティブに対応する |
 | `selectOption` | `selectOption: { sel: <Selector>, option: "..." }` | web の `<select>` をこの value を持つ option に合わせる。web 専用（iOS / Android は失敗する） |
+| `selectPhotos` | `selectPhotos: { indices: [0, 1], timeout: 10 }` | アプリがすでに開いたシステムの写真選択画面から、指定した位置のセル（0 が先頭で、新しい画像ほど前）を選んで確定する。iOS（XCUITest）では `PHPickerViewController`、adb では Android 13 以降の写真選択画面を操作する。単一選択の画面は 1 回のタップで閉じる。見えているグリッドを超える位置は失敗する |
 | `setPickerValue` | `setPickerValue: { sel: <Selector>, value: "..." }` | ホイール型のピッカー（`UIPickerView`、ホイール表示の `UIDatePicker`）をこの value を持つ行へ動かす（[後述](#setpickervalue)）。iOS（XCUITest）専用。`sel` は 1 つのホイールを指し、複数コンポーネントのピッカーは `within` / `traits` / `index` で兄弟のホイールを区別し、コンポーネントごとに 1 ステップずつ書く |
 | `swipe` | `swipe: { on: <Selector>, direction: up\|down\|left\|right }` または `swipe: { from: [x,y], to: [x,y] }` | セレクタ形と座標形は混在できない。方向指定形式は**スクロール**する |
 | `drag` | `drag: { on: <Selector>, direction: up\|down\|left\|right, amount?: <frac> }` | 要素そのものを**ドラッグ**する（ハンドル／仕切り／スライダー）。スクロールではない |
@@ -837,7 +842,7 @@ Cookie とストレージは保たれるので、`navigate` はセッション�
 
 `web` は `within` をネイティブに解決し、ちょうど 1 つの `WKWebView` ホストを指します。入れ子の `steps` は、アプリのネイティブなアクセシビリティツリーではなく、その WebView の正規化された DOM（`data-testid` → `Element.identifier`）を対象にします。web コンテンツをネイティブアプリに埋め込んだハイブリッド画面向けの構造です（[BE-0037](../../roadmaps/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support-ja.md)）。ブロックの `steps` を終えると、制御はネイティブドライバーに戻ります。入れ子の `steps` は、`if` や `forEach` の分岐と同じく、囲むシナリオの `vars.*` を共有します。`capture` / `extract` 修飾子は `web` ステップ自体には使えません。WebView bridge の設定（`BAJUTSU_WEBVIEW_PORT`）が必要で、未設定のときは何もせず済ませるのではなくステップを明確に失敗させます。この最初の実装は、ブロック内の `tap` / `tapPoint` / `doubleTap` / `type` / `wait` / `assert` に対応しています。`longPress` / `swipe` / `drag` / `clear` / `delete` / `select` / `copy` / `selectOption` / `scroll` / `back` / `navigate` / `pinch` / `rotate` / `handleSystemAlert` / `setPickerValue` はそこに届かず、いずれも「web コンテキストは非対応」という明確な理由で失敗します。
 
-### `app`（別アプリのUIを操作する。iOS限定）
+### `app`
 
 ```yaml
 - app:
@@ -847,19 +852,30 @@ Cookie とストレージは保たれるので、`navigate` はセッション�
           - exists: { id: TabBarItemTitle }
 ```
 
-`app` は、バンドルIDで名指ししたアプリをactivateします。テスト対象アプリが一度も起動していない
-アプリでも構いません。入れ子の`steps`は、テスト対象アプリのものではなく、そのアプリ自身のアクセシ
+`app` は、別アプリのUIを操作するステップです。バンドルIDで名指ししたアプリをactivateします。
+テスト対象アプリが一度も起動していないアプリでも構いません。実行中のアプリは前面に出します。入れ子の`steps`は、テスト対象アプリのものではなく、そのアプリ自身のアクセシ
 ビリティツリーを対象にします。この挙動の裏付けとなるフィージビリティ調査の結果は
 `docs/specs/ios-cross-app-ui-control-feasibility.md`にあります。
 ブロックの`steps`を終えると、`web`と同じ入る・抜けるの契約で、直前にアクティブだったものへ制御が
 戻ります。`app`ブロックを別の`app`ブロックの中に入れ子にした場合、戻る先は直近の親であり、テスト
 対象アプリへ無条件に戻るわけではありません。`bundleId`は素のstringであり、固定の集合から選ぶ値では
 ありません。インストール済みの任意のアプリを名指しできます。テスト対象アプリ自身では開く手段がない
-アプリも含みます。iOS（XCUITest）限定です。ほかのbackendに対してこのステップを使うシナリオは、
-デバイス側の作業に入る前にpreflightで失敗します。`bundleId`は、デバイスにすでにインストール済みの
-アプリを名指しする必要があります。前面化が遅いアプリ（コールドスタート、権限プロンプトなど）は
-`ElementNotFound`としてステップを失敗させますが、そもそもインストールされていないアプリを名指しした
-場合、同じようにきれいに失敗するとは限りません。
+アプリも含みます。iOS（XCUITest）とAndroid（adb）が対応しています。webのbackendでこのステップを
+使うシナリオは、デバイス側の作業を始める前にpreflightで失敗します。`bundleId`には、デバイスへ
+インストール済みのアプリを指定します。前面化が遅いアプリ（コールドスタート、権限プロンプトなど）は
+`ElementNotFound`としてステップを失敗させます。iOSでは、インストールされていないアプリを名指しした
+場合、この例外できれいに失敗するとは限りません。
+
+Androidでは、`bundleId`にパッケージ名（たとえば`com.android.settings`）を書きます。adbのドライバは
+パッケージのランチャーアクティビティを`am start`で起動し、そのパッケージがresumedのアクティビティを
+持つまで待ちます。ランチャーアクティビティを持たないパッケージは、起動の前に`ElementNotFound`で
+ステップを失敗させます。インストールされていないパッケージも同じです。ブロックを抜けるときは、1つ下の
+アプリを同じ手順で前面に戻します。テスト対象アプリはその間もプロセスを保つので、この切り替えが
+クラッシュとして扱われることはありません。iOSと同じく、入ったアプリはリセットしません。以前の
+ブロックや実行が残した状態を、そのまま保ちます。ただし、戻るときにAndroid固有の制限があります。
+ランチャーアクティビティが`singleTask`か`singleInstance`のアプリは、起動し直すと、タスクが上に積んだ
+アクティビティがすべて破棄されます。`clearTaskOnLaunch`を設定したアプリも同じです。そのため、離れた
+ときの画面ではなく、最初の画面へ戻ります。
 
 #### ホーム画面を操作する（`com.apple.springboard`）
 
@@ -1228,7 +1244,33 @@ secret として記録します。マスクはそのステップ自身のレポ�
 - clearStatusBar: {}                                                    # ライブのステータスバーに戻す
 ```
 
-iOS では、これらのステップは `setLocation` / `push` と同じく `simctl` 経由で Simulator を操作します。そのためデバイスごとの制御チャネルが必要で、fake ドライバや並列実行ではクリーンに失敗します。このうち `foreground`、`setClipboard`、`clearClipboard` の3つは Android でも動き、それ以外は iOS 専用です。`overrideStatusBar` は、スクリーンショットや `visual` アサーションの直前に時計や電波表示を固定して画像を安定させる用途に向きます。
+iOS では、これらのステップは `setLocation` / `push` と同じく `simctl` 経由で Simulator を操作します。そのためデバイスごとの制御チャネルが必要で、fake ドライバや並列実行ではクリーンに失敗します。Android では、この一覧のうち `clearKeychain` 以外のステップが動きます。Android にはキーチェーンがないからです。`overrideStatusBar` は、スクリーンショットや `visual` アサーションの直前に使います。時計や電波表示を固定して、画像を安定させます。
+
+Android では、adb がアプリ内のコードなしでこれらのステップを動かします（[BE-0478](../../roadmaps/BE-0478-android-device-control-parity/BE-0478-android-device-control-parity-ja.md)）。
+
+| ステップ | Android での仕組み |
+|---|---|
+| `background` | Home キーを押します（`input keyevent KEYCODE_HOME`）。アプリのプロセスは残ります |
+| `overrideStatusBar` | System UI のデモモードに入り、指定したフィールドごとにコマンドを1つ送ります |
+| `clearStatusBar` | デモモードを抜け、実際のステータスバーに戻します |
+
+`background` は、アプリが resumed activity でなくなるまで条件待ちをします。アプリが前面に残ったままなら、ステップは失敗します。`background` のあとはランチャーが前面に来ます。そのため、テスト対象アプリの要素を指すセレクタは何も見つけません。iOS でホーム画面が前面にあるときと同じです。デバイスグループの中では、`foreground` ステップでアプリを戻すまで、読み取りが `AppNotInFront` で失敗します。
+
+デモモードには、`simctl status_bar` と違う点が3つあります。
+
+- **未指定のフィールドも固定されます。** デモモードに入ると、すべてのアイコンが固定されます。ステップが指定しなかったフィールドは、実際の値ではなくデモモード自身の固定値になります。iOS のステータスバーは通知アイコンを出さないので、このステップも通知アイコンを隠します。
+- **受け付ける値が狭くなります。** Android で受け付ける値は下の表のとおりです。それ以外の値は、プリフライトがデバイスを操作する前に失敗させ、そのステップを名指しします。System UI はそうした値を無視しますが、ブロードキャストは成功を返してしまうからです。
+- **Wi-Fi の本数は換算します。** Android の Wi-Fi レベルは 0–4 なので、iOS で満タンの電波は Android でも満タンにします。換算は下の表のとおりです。
+
+| フィールド | Android で受け付ける値 | 換算 |
+|---|---|---|
+| `time` | `H:MM` または `HH:MM` | 4桁の時刻にします（`9:41` は `0941`） |
+| `batteryLevel` | 0–100 | そのまま |
+| `batteryState` | `charging`、`charged`、`discharging` | 前の2つで `plugged` を true にします |
+| `cellularBars` | 0–4 | そのまま |
+| `wifiBars` | 0–3 | 0、1、2、3 をレベル 0、1、3、4 にします |
+
+どちらのプラットフォームでも、上書きは `clearStatusBar` ステップを実行するまでデバイスに残ります。
 
 `background` / `foreground` はバックグラウンド/フォアグラウンド遷移の対で、`foreground` は何も終了させません。`foreground` が待つかどうかは場合によって異なります。
 

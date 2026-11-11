@@ -146,6 +146,7 @@ class ResidentServerTest {
                 "/source" -> respondSource(out, device, readMark, target)
                 "/act" -> respondAct(out, device, readMark, target)
                 "/type" -> respondType(out, device, readMark, target, request.body)
+                "/gesture" -> respondGesture(out, target)
                 "/clock" ->
                     respond(
                         out,
@@ -375,6 +376,118 @@ class ResidentServerTest {
     }
 
     /**
+     * Inject one two-finger gesture along the contact paths the host computed — a `pinch` or `rotate`.
+     *
+     * The host resolves the target and derives both contacts from its frame, as it does for the rooted
+     * `sendevent` sweep this route stands in for; only the injector moves here. `UiAutomation` injects
+     * with the shell's privilege, so no root is needed — which is the whole point of the endpoint.
+     * Points arrive in the dump's own pixel space, the same space the host read them from.
+     *
+     * Every field is required and none is defaulted: a gesture built on a guessed point would land
+     * somewhere the host never asked for. The reply is `200` only when the platform accepted every
+     * event, and [INJECT_FAILED_STATUS] otherwise — the same contract as [respondAct].
+     */
+    private fun respondGesture(out: OutputStream, target: String) {
+        val coords = GESTURE_FIELDS.map {
+            paramOf(target, it)?.toIntOrNull()
+                ?: return respond(out, BAD_REQUEST, TEXT, "no usable $it\n".bytes())
+        }
+        val durationMs = paramOf(target, "durationMs")?.toLongOrNull()?.takeIf { it > 0 }
+            ?: return respond(out, BAD_REQUEST, TEXT, "no usable durationMs\n".bytes())
+        val steps = paramOf(target, "steps")?.toIntOrNull()?.takeIf { it > 0 }
+            ?: return respond(out, BAD_REQUEST, TEXT, "no usable steps\n".bytes())
+        // x0s y0s x0e y0e x1s y1s x1e y1e, in the order GESTURE_FIELDS names them.
+        val first = Contact(coords[0], coords[1], coords[2], coords[3])
+        val second = Contact(coords[4], coords[5], coords[6], coords[7])
+        if (!injectTwoFinger(first, second, durationMs, steps)) {
+            return respond(out, INJECT_FAILED_STATUS, TEXT, "gesture rejected by the platform\n".bytes())
+        }
+        respond(out, "200 OK", TEXT, "ok\n".bytes())
+    }
+
+    /** One finger's straight path, from (`xs`, `ys`) to (`xe`, `ye`). */
+    private class Contact(val xs: Int, val ys: Int, val xe: Int, val ye: Int) {
+        fun at(t: Float): Pair<Float, Float> = Pair(xs + (xe - xs) * t, ys + (ye - ys) * t)
+    }
+
+    /**
+     * Both fingers down, `steps` interleaved moves along their paths, both fingers up.
+     *
+     * The shape the rooted `sendevent` sweep writes as raw slots, built here as `MotionEvent`s the
+     * platform's gesture detectors read: `ACTION_DOWN` for the first pointer, `ACTION_POINTER_DOWN`
+     * for the second, `ACTION_MOVE` carrying both, then `ACTION_POINTER_UP` and `ACTION_UP`. Event
+     * times are stated rather than observed, as [injectDoubleTap]'s are, and the sleep between moves
+     * is the gesture's own duration, not a wait on any condition. Stops at the first rejected event
+     * and lifts whatever is down, so a refused gesture never leaves a finger on the screen.
+     */
+    private fun injectTwoFinger(first: Contact, second: Contact, durationMs: Long, steps: Int): Boolean {
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        val down = SystemClock.uptimeMillis()
+        val stepMs = durationMs / steps
+        var now = down
+        fun send(action: Int, pointers: Int, t: Float): Boolean =
+            injectPointers(automation, action, down, now, listOf(first.at(t), second.at(t)).take(pointers))
+        if (!send(MotionEvent.ACTION_DOWN, 1, 0f)) return false
+        val secondDown = MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT)
+        if (!send(secondDown, 2, 0f)) {
+            send(MotionEvent.ACTION_CANCEL, 1, 0f)
+            return false
+        }
+        var t = 0f
+        for (k in 1..steps) {
+            SystemClock.sleep(stepMs)
+            now += stepMs
+            t = k.toFloat() / steps
+            if (!send(MotionEvent.ACTION_MOVE, 2, t)) {
+                send(MotionEvent.ACTION_CANCEL, 2, t)
+                return false
+            }
+        }
+        val secondUp = MotionEvent.ACTION_POINTER_UP or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT)
+        if (!send(secondUp, 2, t)) {
+            // Both pointers are still down, so a one-pointer ACTION_UP would be an inconsistent
+            // stream the dispatcher drops; cancel both instead.
+            send(MotionEvent.ACTION_CANCEL, 2, t)
+            return false
+        }
+        return send(MotionEvent.ACTION_UP, 1, t)
+    }
+
+    /** One multi-pointer touchscreen event; pointer ids are the list's indices. */
+    private fun injectPointers(
+        automation: UiAutomation,
+        action: Int,
+        downTime: Long,
+        eventTime: Long,
+        points: List<Pair<Float, Float>>,
+    ): Boolean {
+        val properties = Array(points.size) { i ->
+            MotionEvent.PointerProperties().apply {
+                id = i
+                toolType = MotionEvent.TOOL_TYPE_FINGER
+            }
+        }
+        val coords = Array(points.size) { i ->
+            MotionEvent.PointerCoords().apply {
+                x = points[i].first
+                y = points[i].second
+                pressure = 1f
+                size = 1f
+            }
+        }
+        val event = MotionEvent.obtain(
+            downTime, eventTime, action, points.size, properties, coords,
+            0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0,
+        )
+        return try {
+            // Synchronous for the reason [inject] gives: a move must not overtake the down it follows.
+            automation.injectInputEvent(event, true)
+        } finally {
+            event.recycle()
+        }
+    }
+
+    /**
      * Enter text into the field holding input focus, for what `adb shell input text` cannot carry.
      *
      * `input` maps each character to key events through the virtual keyboard's character map, which
@@ -486,9 +599,34 @@ class ResidentServerTest {
         val window = automation.windows.firstOrNull {
             it.type == AccessibilityWindowInfo.TYPE_APPLICATION
         } ?: return null
-        val node = window.root?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return null
-        node.refresh()
-        return node.takeIf { it.isEditable }
+        val root = window.root ?: return null
+        root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.let { node ->
+            node.refresh()
+            if (node.isEditable) return node
+        }
+        return focusedEditableIn(root)
+    }
+
+    /**
+     * The editable node under [root] that reports itself focused, read fresh from the app.
+     *
+     * `findFocus` answers from the accessibility cache, which keeps one input-focus position for all
+     * windows and moves it only on a focus event. CI saw that position stay on a node that was not the
+     * field for the whole focus budget, while the field held focus and the keyboard was open on it
+     * (#2385), so every retry got the same stale answer. `refresh` fetches each node's state from the
+     * app's own process, so this walk sees the field's focus whatever the cache holds.
+     */
+    private fun focusedEditableIn(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        val pending = ArrayDeque<AccessibilityNodeInfo>().apply { add(root) }
+        var visited = 0
+        while (pending.isNotEmpty() && visited < FOCUS_WALK_LIMIT) {
+            val node = pending.removeFirst()
+            visited++
+            if (!node.refresh()) continue
+            if (node.isEditable && node.isFocused) return node
+            for (i in 0 until node.childCount) node.getChild(i)?.let(pending::addLast)
+        }
+        return null
     }
 
     private fun setCaret(field: AccessibilityNodeInfo, caret: Int): Boolean =
@@ -1035,9 +1173,16 @@ class ResidentServerTest {
         // fails the step on the host, so the distinct status only keeps the wire honest.
         const val UNPROCESSABLE_STATUS = "422 Unprocessable Entity"
 
+        // POST /gesture's contact fields: each finger's start then end, first finger then second.
+        val GESTURE_FIELDS = listOf("x0s", "y0s", "x0e", "y0e", "x1s", "y1s", "x1e", "y1e")
+
         // How long `/type` waits for input focus to arrive after the tap that asked for it.
         const val FOCUS_BUDGET_MS = 2_000L
         const val FOCUS_POLL_MS = 20L
+
+        // How many nodes the cache-free focus walk reads before giving up; an app screen holds far
+        // fewer, so the bound only stops a pathological tree from eating the focus budget.
+        const val FOCUS_WALK_LIMIT = 2_000
 
         // The element identity the host addresses a gesture by, as (query parameter, XML attribute).
         // Four fields, none of them a coordinate: the host picks the element, and this names it again

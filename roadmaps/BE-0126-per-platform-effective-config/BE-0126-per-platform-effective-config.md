@@ -17,88 +17,92 @@
 ## Introduction
 
 `bajutsu/config.py` resolves each target's YAML into one frozen dataclass, `Effective`
-(`config.py:420`), which the runner and every backend read as the single source of truth for that
-target's settings. Today `Effective` carries every field any platform might need, regardless of
-which platform the target actually runs on. This proposal splits `Effective` into a small common
-core plus a per-platform sub-config, so a target only ever exposes the knobs its own platform uses.
+(`config.py:420`). The runner and every backend read `Effective` as the single source of truth for
+that target's settings. Today `Effective` carries every field any platform might need, regardless of
+which platform the target actually runs on. This proposal splits `Effective` into a small common core
+plus a per-platform sub-config, so a target exposes only the knobs that its own platform uses.
 
 ## Motivation
 
-`Effective` has grown to 35 fields (`config.py:420-487`) as iOS, then web, were added, and it unions
+`Effective` has grown to 35 fields (`config.py:420-487`) as iOS, and then web, were added. It unions
 all of them onto one type. Concretely:
 
-- `browser` (`config.py:471`, default `chromium`) and `headless` (`config.py:468`, default `True`) are Playwright (web) knobs —
-  but they exist, readable and settable, on an `Effective` instance for an iOS
-  target.
-- `xcuitest` (`config.py:478`) and `idb_version` (`config.py:481`) are iOS-only, yet are equally
+- `browser` (`config.py:471`, default `chromium`) and `headless` (`config.py:468`, default `True`) are
+  Playwright (web) knobs. They still exist, readable and settable, on an `Effective` instance for an
+  iOS target.
+- `xcuitest` (`config.py:478`) and `idb_version` (`config.py:481`) are iOS-only. They are equally
   present on a web target's `Effective`.
-- `package` (`config.py:464`) is reserved for the not-yet-built Android backend ([BE-0007]) and is
+- `package` (`config.py:464`) is reserved for the not-yet-built Android backend ([BE-0007]). It is
   currently always `""` for every iOS and web target.
 
 Nothing in the type system stops a caller from reading `eff.browser` on an iOS run or `eff.xcuitest`
-on a web run; the only guard is runtime discipline in call sites such as `environment.py:266`
-(`if not eff.base_url: raise ...`) and `environment.py:437` (`xcfg = eff.xcuitest`), which check a
-value before using it rather than the type system ruling the field out. This is a **medium-severity**
-correctness/maintainability risk: it doesn't fail a run today, but it erodes the "app-agnostic,
-platform is a backend" boundary (prime directive 3) at the type level, and every new platform-specific
-field further dilutes what "a valid `Effective`" means. Android ([BE-0007]) is the forcing function:
-adding `adb`-specific fields (device selection, `am`/`pm` invocation knobs, etc.) on top of the
-existing union would push the field count well past 35 and add a fourth axis of always-irrelevant
-fields to every target's config, making the dataclass harder to read, review, and keep correct as
-each new platform lands.
+on a web run. The only guard is runtime discipline at call sites such as `environment.py:266`
+(`if not eff.base_url: raise ...`) and `environment.py:437` (`xcfg = eff.xcuitest`). Those sites check
+a value before using it, and the type system does not rule the field out.
+
+This is a **medium-severity** correctness and maintainability risk. It does not fail a run today. It
+does erode the "app-agnostic, platform is a backend" boundary (prime directive 3) at the type level,
+and every new platform-specific field further dilutes what "a valid `Effective`" means.
+
+Android ([BE-0007]) is the forcing function. Adding `adb`-specific fields (device selection,
+`am`/`pm` invocation knobs, and so on) on top of the existing union would push the field count well
+past 35. Every target's config would gain a fourth axis of always-irrelevant fields. The dataclass
+would then get harder to read, review, and keep correct as each new platform lands.
 
 ## Detailed design
 
-The fix is a **discriminated union** keyed by the existing `platform` field (`config.py:462`,
-already `ios | android | web`, already validated by `_check_platform` at `config.py:122`). The work
-breaks down MECE by field-ownership group:
+The fix is a **discriminated union** keyed by the existing `platform` field (`config.py:462`, already
+`ios | android | web`, already validated by `_check_platform` at `config.py:122`). The work breaks
+down MECE by field-ownership group:
 
-1. **Common core.** Keep on `Effective` only the fields every platform genuinely shares: `target`,
-   `backend`, `device`, `locale`, `launch_env`, `launch_args`, `id_namespaces`,
+1. **Common core.** Keep on `Effective` only the fields that every platform genuinely shares:
+   `target`, `backend`, `device`, `locale`, `launch_env`, `launch_args`, `id_namespaces`,
    `reserved_namespaces`, `mock_server`, `setup`, `capture`, `redact`, `secrets`, `ai`, `mailbox`,
    `scenarios`, `baselines`, `schemas`, `goldens`, `launch_server`, `ready_when`,
    `doctor_ok_coverage`, `doctor_fail_coverage`, `notify`, and the `platform` discriminator itself.
-   (`device`/`locale` may turn out to be narrower in practice; the implementer re-checks each
-   field's actual cross-platform usage against current call sites before assigning it, rather than
-   taking this list as final.)
-2. **iOS sub-config.** Move `bundle_id`, `deeplink_scheme`, `app_path`, `build`, `xcuitest`,
+   The list is not final. `device` and `locale` may turn out to be narrower in practice, so the
+   implementer re-checks each field's actual cross-platform usage against current call sites before
+   assigning it.
+2. **iOS sub-config.** Move `bundle_id`, `deeplink_scheme`, `app_path`, `build`, `xcuitest`, and
    `idb_version` into an `IosConfig` (or similar) attached to `Effective` only when
    `platform == "ios"`.
-3. **Web sub-config.** Move `base_url`, `headless`, `browser` into a `WebConfig` attached only when
-   `platform == "web"`.
+3. **Web sub-config.** Move `base_url`, `headless`, and `browser` into a `WebConfig` attached only
+   when `platform == "web"`.
 4. **Android placeholder.** Move `package` into an `AndroidConfig` attached only when
-   `platform == "android"`, ready for [BE-0007] to extend without touching the other two configs.
-5. **`resolve()` and `rebased()` updates.** `resolve()` (the `Config` → `Effective` builder) and
-   `Effective.rebased()` (`config.py:489`, which rebases path fields such as `xcuitest.testRunner`
-   for a Git-sourced config, BE-0063) both need updating to build and rebase through the new
-   sub-config rather than flat fields.
-6. **Call-site migration.** Every read of a moved field (e.g. `environment.py:266-273`,
+   `platform == "android"`. [BE-0007] can then extend it without touching the other two configs.
+5. **`resolve()` and `rebased()` updates.** `resolve()` is the `Config` → `Effective` builder.
+   `Effective.rebased()` (`config.py:489`) rebases path fields such as `xcuitest.testRunner` for a
+   Git-sourced config (BE-0063). Both need updating to build and rebase through the new sub-configs
+   instead of flat fields.
+6. **Call-site migration.** Every read of a moved field (for example `environment.py:266-273` and
    `environment.py:437`) changes from `eff.base_url` to something like `eff.web.base_url`, reachable
-   only when `eff.platform == "web"` — turning today's runtime `if not eff.base_url` guard into
-   something mypy strict can check statically (e.g. a `match eff.platform` / `isinstance` pattern
-   against the sub-config), instead of an always-present-but-sometimes-meaningless field.
+   only when `eff.platform == "web"`. Today's runtime `if not eff.base_url` guard thus becomes
+   something that mypy strict can check statically, such as a `match eff.platform` or `isinstance`
+   pattern against the sub-config. No field is left present but meaningless on the wrong platform.
 
-This is a config-level change only: `targets.<name>` YAML shape, the runner, and the drivers stay
-unchanged (prime directive 3, app-agnostic). The attribute name a caller uses to reach a
-platform-specific field changes (e.g. `eff.browser` → `eff.web.browser`), so every current call site
-enumerated above needs a matching update in the same change; mypy strict turns each one into a
-compile-time check rather than a runtime surprise.
+The change stays at the config level. The `targets.<name>` YAML shape, the runner, and the drivers
+stay unchanged (prime directive 3, app-agnostic). The attribute name that a caller uses to reach a
+platform-specific field does change (for example `eff.browser` → `eff.web.browser`). Every current
+call site enumerated above therefore needs a matching update in the same change. Under mypy strict,
+each one becomes a compile-time check instead of a runtime surprise.
 
 ## Alternatives considered
 
-- **Do nothing until Android lands.** Defers the pain but compounds it — a third platform's fields
-  would land on the same flat dataclass, and the eventual split would have three platforms' call
-  sites to migrate instead of two. Doing it now, with only iOS and web, is the smaller change.
-- **`Optional` fields with a naming convention (e.g. an `ios_`/`web_` prefix) instead of a real
-  split.** Keeps everything on one flat type, so it's a smaller diff, but it's cosmetic: nothing
-  stops `eff.web_browser` from being read on an iOS target, and mypy strict cannot narrow on a naming
-  convention the way it can on a discriminated union.
+- **Do nothing until Android lands.** This defers the pain and compounds it. A third platform's
+  fields would land on the same flat dataclass, and the eventual split would have three platforms'
+  call sites to migrate instead of two. Doing the split now, with only iOS and web, is the smaller
+  change.
+- **`Optional` fields with a naming convention (for example an `ios_`/`web_` prefix) instead of a
+  real split.** Everything stays on one flat type, so the diff is smaller. The measure is cosmetic,
+  though. Nothing stops `eff.web_browser` from being read on an iOS target, and mypy strict cannot
+  narrow on a naming convention the way it can on a discriminated union.
 - **One sub-config field per platform, all present unconditionally on `Effective`**
-  (`ios: IosConfig | None`, `web: WebConfig | None`, `android: AndroidConfig | None` together).
-  Marginally safer than today (a `None` check is required before use), but still lets a caller
-  branch on the wrong platform's optional config and get a *type-correct* `None` instead of a clear
-  "this target isn't web" error; tying the sub-config's presence to the `platform` discriminator
-  makes an accidental cross-platform read a type error rather than a `None` to defensively check.
+  (`ios: IosConfig | None`, `web: WebConfig | None`, and `android: AndroidConfig | None` together).
+  This is marginally safer than today, because a `None` check is required before use. A caller can
+  still branch on the wrong platform's optional config and get a *type-correct* `None`, instead of a
+  clear "this target isn't web" error. Tying the sub-config's presence to the `platform`
+  discriminator turns an accidental cross-platform read into a type error, where the alternative
+  leaves a `None` to check defensively.
 
 ## Progress
 

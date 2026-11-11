@@ -49,6 +49,12 @@ _LAUNCH_MARKER_FIELDS = 3
 _LOGCAT_TIMEOUT = 5.0
 _LOGCAT_POLL = 0.25
 
+# How long `background` waits for the app to stop being the resumed activity, and how often it asks.
+# `input keyevent` returns before the transition lands, so the step waits on that condition (BE-0478).
+_BACKGROUND_TIMEOUT = 10.0
+_BACKGROUND_POLL = 0.1
+_BACKGROUND_POLL_MAX = 0.5
+
 
 def _reset_exit_info_poll(driver: base.Driver) -> None:
     """Let a genuinely fresh launch restore the driver's app-crash poll bound (BE-0424).
@@ -94,7 +100,7 @@ class AndroidEnvironment:
 
     `start` runs the adb sequence — boot-readiness wait → optional APK (re)install → `pm clear` for a
     clean state (the `erase` equivalent) → `am force-stop` → runtime-permission pre-grant (`pm grant`,
-    BE-0210) → `am start` (launch env forwarded as intent extras) → deeplink — and returns the `adb`
+    BE-0210) → seeded photos (`runsOn.android.seedPhotos`) → `am start` (launch env forwarded as intent extras) → deeplink — and returns the `adb`
     driver. The lease-shaping methods mirror the iOS
     `_DeviceEnvironment`, over `adb` instead of `simctl`: the same seam, a different subprocess tool.
     Network is not observed *natively* (the adb driver declares no `NETWORK` capability), but the app
@@ -136,6 +142,9 @@ class AndroidEnvironment:
         # Whether `_pull_tombstone` found the device already root before it rooted it itself, so
         # `_restore_unroot` only drops a privilege level this call actually raised (BE-0424).
         self._was_root: bool = False
+        # The per-app locale each package's start applied (None: the device's own), so an
+        # `installApp` that uninstalls the package can pin the same one again (BE-0478).
+        self._app_locales: dict[str, str | None] = {}
         # Override the resident-server construction in tests; None uses the real, env-gated default.
         self._resident_factory = resident_factory
         self._resident: ResidentServerLike | None = None
@@ -227,6 +236,10 @@ class AndroidEnvironment:
             # permission to exercise the denied-path flow.
             if permissions:
                 e.apply_permissions(android.package, permissions)
+            self._apply_app_locale(e, android.package, pre.locale or android.locale)
+            # The seed directory is the run's own, so seeding needs no wipe and runs on every
+            # reinstall level. An empty list still empties what an earlier scenario seeded.
+            e.add_media(pre.seed_photos)
             launch_env: Mapping[str, str] = {
                 **eff.launch_env,
                 **pre.launch_env,
@@ -283,10 +296,31 @@ class AndroidEnvironment:
             channel_recovery=channel.recovery if channel is not None else None,
             channel_start_failure=self._channel_start_failure,
             type_on_device=channel.type_text if channel is not None else None,
+            gesture_on_device=channel.gesture if channel is not None else None,
             package=package,
             api_level=self._read_api_level(),
             launched_at=launched_at,
         )
+
+    def _apply_app_locale(self, e: adb.Env, package: str, locale: str | None) -> None:
+        """Pin *package*'s per-app language to *locale*, or clear one an earlier run left (BE-0478).
+
+        The level is read on every start, whatever `apiLevel` states: a reused emulator can carry a
+        per-app locale from an earlier scenario or an earlier invocation, so an unset locale resets it
+        on API level 33 and later. An unreadable level fails a run that names a locale, and only warns
+        in one that names none, keeping the tolerance `_read_api_level` has for exit detection.
+        """
+        self._app_locales[package] = locale
+        api_level = self._read_api_level()
+        if locale is None and api_level is None:
+            logger.warning(
+                "could not read the API level of %s; skipping the per-app locale reset for %s, so a "
+                "per-app locale an earlier run left may still apply",
+                self._serial,
+                package,
+            )
+            return
+        e.apply_app_locale(package, locale, api_level)
 
     def _read_api_level(self) -> int | None:
         """The device's SDK level, or None when it cannot be read (BE-0424).
@@ -539,7 +573,8 @@ class AndroidEnvironment:
 
     def controller(self, eff: Effective) -> DeviceControl | None:
         # The emulator-backed subset (setLocation over the console + clipboard over the app's in-app
-        # receiver, BE-0233, + `foreground` through this environment, BE-0447); the rest of the
+        # receiver, BE-0233, + `foreground` and `background` through this environment, BE-0447 /
+        # BE-0478, + the status bar over the demo mode); the rest of the
         # family raises UnsupportedAction, and preflight (BE-0212)
         # rejects it up front from the adb capability set. Clipboard addresses its broadcast at the
         # app under test, so the package is threaded through.
@@ -548,7 +583,40 @@ class AndroidEnvironment:
             require_android(eff).package,
             self._run,
             foreground=lambda: self._foreground(eff),
+            background=lambda: self._background(eff),
         )
+
+    def _background(self, eff: Effective) -> None:
+        """Press Home, then wait until *eff*'s app no longer holds the resumed activity (BE-0478).
+
+        The app keeps its process, so the exit poll reports nothing and a later `foreground` resumes
+        it. Without the wait, a `visual` check right after the step could still capture the app on a
+        slow emulator.
+
+        Raises:
+            UnsupportedAction: The app was still the resumed activity when the wait ran out.
+        """
+        package = require_android(eff).package
+        e = adb.Env(self._serial, run=self._run)
+        try:
+            e.home()
+            for _ in base.deadline_ticks(
+                _BACKGROUND_TIMEOUT, _BACKGROUND_POLL, _BACKGROUND_POLL_MAX
+            ):
+                if package not in e.resumed_packages():
+                    break
+            else:
+                raise base.UnsupportedAction(
+                    f"background: {package} was still in front {_BACKGROUND_TIMEOUT:g}s after Home"
+                )
+        except subprocess.CalledProcessError as exc:
+            raise adb.device_error(exc) from exc
+        except adb.DeviceError as exc:
+            # An unreadable dump fails the step that relies on it, like a wait that runs out.
+            raise base.UnsupportedAction(f"background: {exc}") from exc
+        driver = self._drivers.get(package)
+        if isinstance(driver, base.SettledCacheInvalidator):
+            driver.invalidate_settled_cache()
 
     def _foreground(self, eff: Effective) -> None:
         """Bring *eff*'s app to the front, launching it the way `relaunch` would if it is not running.
@@ -632,6 +700,7 @@ class AndroidEnvironment:
             e.grant_permissions(android.package, android.grant_permissions)
             if permissions:
                 e.apply_permissions(android.package, permissions)
+            self._apply_app_locale(e, android.package, pre.locale or android.locale)
             self._launch_member(e, eff, android.package)
         except subprocess.CalledProcessError as exc:
             raise adb.device_error(exc) from exc
@@ -688,6 +757,9 @@ class AndroidEnvironment:
                 # The uninstall took the config's runtime grants with it; re-grant them the way
                 # `start` does after `pm clear`, so no prompt blocks a later step (BE-0210).
                 e.grant_permissions(android.package, android.grant_permissions)
+                # It took the per-app locale too, so the start's choice is pinned again (BE-0478).
+                if (locale := self._app_locales.get(android.package)) is not None:
+                    self._apply_app_locale(e, android.package, locale)
         except subprocess.CalledProcessError as exc:
             error = adb.device_error(exc)
             if "INSTALL_FAILED_VERSION_DOWNGRADE" in f"{exc.output or ''}{exc.stderr or ''}":
