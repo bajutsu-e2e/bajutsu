@@ -67,8 +67,10 @@ object Bajutsu {
      * share between two processes.
      */
     fun enableWebViewDebugging(context: Context): Boolean {
-        if ((context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) == 0) return false
-        WebView.setWebContentsDebuggingEnabled(true)
-        return true
+        // The flag itself is the argument, not a literal `true`, so no build can pass debugging on
+        // that the manifest does not already mark debuggable.
+        val debuggable = (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+        if (debuggable) WebView.setWebContentsDebuggingEnabled(debuggable)
+        return debuggable
     }
 }
