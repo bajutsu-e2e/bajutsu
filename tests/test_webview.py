@@ -153,3 +153,10 @@ def test_bridge_connection_refused() -> None:
     bridge = WebViewBridge(port=1)
     with pytest.raises(ConnectionError):
         bridge.query_dom("any.webview")
+
+
+def test_bridge_session_is_a_no_op_span() -> None:
+    # The in-app server finds the WebView by id on every request, so a block opens nothing (BE-0482).
+    bridge = WebViewBridge(port=1)
+    with bridge.session("wv", (0.0, 0.0, 10.0, 10.0)) as entered:
+        assert entered is None

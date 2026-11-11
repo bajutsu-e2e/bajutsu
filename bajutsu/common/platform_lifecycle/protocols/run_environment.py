@@ -12,6 +12,7 @@ from bajutsu.common.drivers import base
 from bajutsu.common.evidence import intervals
 from bajutsu.common.evidence.network import Collector
 from bajutsu.common.orchestrator import DeviceControl, RelaunchFn
+from bajutsu.common.platform_lifecycle.webview_source import WebViewSource
 from bajutsu.common.scenario import Scenario
 
 from .collector_host import CollectorHost
@@ -181,6 +182,17 @@ class RunEnvironment(Protocol):
 
         Raises:
             DeviceError: the bridge cannot open (usbmuxd unreachable, or the device unlisted).
+        """
+
+    def webview_source(self, eff: Effective) -> WebViewSource:
+        """The `DomSource` this lease's `web:` blocks read through, allocated once per lease (BE-0482).
+
+        iOS reserves a port for the in-app BajutsuKit bridge and reaches it with `reach_device_port`;
+        Android returns a CDP source over the WebView's own DevTools socket and names no port; the
+        web backend, whose driver owns the page, returns `NO_WEBVIEW_SOURCE`.
+
+        Raises:
+            DeviceError: the bridge to the reserved port cannot open (see `reach_device_port`).
         """
 
     def mirrors_collector_port_on_device(self) -> bool:

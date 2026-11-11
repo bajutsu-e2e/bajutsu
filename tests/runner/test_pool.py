@@ -18,11 +18,12 @@ from bajutsu.common.backend_cli import simctl
 from bajutsu.common.config import Effective
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver, FakeNetworkCollector
-from bajutsu.common.drivers.webview import WebViewBridge
+from bajutsu.common.drivers.webview import CdpDomSource, WebViewBridge
 from bajutsu.common.evidence import FileSink
 from bajutsu.common.evidence.network import NetworkCollector, NetworkExchange, ScreenTransition
 from bajutsu.common.platform_lifecycle import CollectorHost, ProvisionProfile
 from bajutsu.common.platform_lifecycle.environments.ios import _DeviceEnvironment
+from bajutsu.common.platform_lifecycle.webview_source import WebViewSource, http_bridge_source
 from bajutsu.common.runner import ReadinessResult, device_pool, device_relauncher
 from bajutsu.common.scenario import Relaunch, Scenario
 
@@ -539,6 +540,8 @@ class _RecordingEnv:
         self.reached_ports: list[int] = []
         self.closed_reaches: list[int] = []
         self.reach_offset = 0
+        # When set, the lease's WebView source (the Android shape); None allocates the iOS bridge.
+        self.webview_source_value: WebViewSource | None = None
         # A device this env replaced during `start` (None: the leased device is the one that
         # ran, which is every platform but the XCUITest Simulator's vanished-device path).
         self.replacement = replacement
@@ -613,6 +616,11 @@ class _RecordingEnv:
             self.closed_reaches.append(port)
 
         return port + self.reach_offset, close
+
+    def webview_source(self, eff: Effective) -> WebViewSource:
+        if self.webview_source_value is not None:
+            return self.webview_source_value
+        return http_bridge_source(self.reach_device_port, eff)
 
     def bridge_collector(self, port: int) -> Callable[[], None]:
         self.bridged_port = port
@@ -843,6 +851,30 @@ def test_device_pool_reaches_the_webview_bridge_through_the_environment(
         assert env.closed_reaches == []
         la.release()
         assert env.closed_reaches == [device_port]
+    finally:
+        shutdown()
+
+
+def test_device_pool_gives_android_a_cdp_source_and_no_webview_port(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Android binds no app-side bridge (BE-0482): the lease carries the environment's CDP source
+    and the app is told no `BAJUTSU_WEBVIEW_PORT`, while nothing is reached on the device."""
+    cdp = CdpDomSource("emulator-5554", "com.example.app", lambda _argv: "")
+    released: list[bool] = []
+
+    def configure(env: _RecordingEnv) -> None:
+        env.webview_source_value = WebViewSource(cdp, None, lambda: released.append(True))
+
+    created, lease, shutdown = _recording_pool(monkeypatch, configure)
+    try:
+        la = lease(_eff(), _scn("a"))
+        env = created[1]
+        assert la.webview_bridge is cdp
+        assert "BAJUTSU_WEBVIEW_PORT" not in env.launch_env
+        assert env.reached_ports == []
+        la.release()
+        assert released == [True]
     finally:
         shutdown()
 

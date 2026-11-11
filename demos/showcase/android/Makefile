@@ -107,10 +107,9 @@ SERIAL ?= booted
 # cannot represent (the whole point of BE-0285). Both reuse the Stable/Log instruments the lane
 # already drives, need no app change, and carry both id forms so they run on Views too.
 #
-# The text-editing flow (select/copy/clear/delete, text_editing.yaml) is deliberately absent: the
-# Compose / Views trees do not expose an editable field's text as its `value`, so `clear` is a no-op
-# and the per-edit checks have nothing to read here. That scenario is iOS-only (see its header); a
-# count-only Android twin for select/copy/delete is a possible follow-up.
+# The text-editing flow (select/copy/clear/delete, text_editing.yaml) is not in the lane yet. The
+# driver now reads an editable field's text as its `value` (#2388), so `clear` and the `value` checks
+# work here; the lane picks the scenario up together with the `select` / `copy` work (#2389).
 #
 # `app_android` hands the screen to the system Settings app with the `app:` step and back, twice
 # (issue #2393); Settings ships on every emulator image, so it needs no extra install. Compose only:

@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0482](BE-0482-android-webview-cdp.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0482") |
+| Implementing PR | [#2416](https://github.com/bajutsu-e2e/bajutsu/pull/2416) (units 1–5) |
 | Topic | Platform support |
 <!-- /BE-METADATA -->
 
@@ -250,13 +251,28 @@ The units below are mutually exclusive and, together, cover the design above.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] CDP client and `CdpDomSource`
-- [ ] Socket discovery and forwarding
-- [ ] Run wiring
-- [ ] Optional extra and provisioning
-- [ ] BajutsuAndroid helper
+- [x] CDP client and `CdpDomSource`
+- [x] Socket discovery and forwarding
+- [x] Run wiring
+- [x] Optional extra and provisioning
+- [x] BajutsuAndroid helper
 - [ ] Showcase screens and a portable `web:` scenario
 - [ ] Docs (`platform-parity`, `drivers`, `scenarios`, en and ja)
+
+Log:
+
+- 2026-11-11 — Units 1–5 landed together ([#2416](https://github.com/bajutsu-e2e/bajutsu/pull/2416)). `CdpDomSource`, the socket discovery,
+  the `session` method, the `RunEnvironment.webview_source` hook, the `android` extra, and
+  `Bajutsu.enableWebViewDebugging()` are in place. The design said the run "asks the run environment
+  for its `DomSource`"; that became a `webview_source` method on `RunEnvironment`, which replaces
+  `pool._alloc_webview_bridge`. Review hardened two checks beyond the design. The tap hit-test also
+  rejects `<body>` and `<html>`, since `elementFromPoint` falls back to one of those wherever no
+  other element covers the point. The typing guard admits only a text-entry field, which excludes
+  the date and time picker types. The helper also deviates from the design: it takes a `Context`
+  and acts only when the app is debuggable (`FLAG_DEBUGGABLE`), so a release build that calls it
+  by mistake opens no socket, and CodeQL's WebView-debugging rule accepts the guarded call. It
+  therefore no longer covers a non-debuggable test build. Units 6 and 7 remain; the `webView`
+  parity mark waits for unit 6's on-device run.
 
 ## References
 
