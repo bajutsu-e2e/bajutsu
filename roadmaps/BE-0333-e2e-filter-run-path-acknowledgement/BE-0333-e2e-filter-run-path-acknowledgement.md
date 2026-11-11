@@ -155,7 +155,7 @@ Log (oldest first):
     fails if any file the closure reaches is neither gated nor a classified periphery entry.
   - Unit 3: The two former ad-hoc parity assertions (`test_agent_factory_is_not_relevant_by_parity`,
     `test_untouched_subpackage_is_not_relevant`) are now reasoned entries in
-    `_PERIPHERY_EXCLUSIONS`. The by-name package-split guards that these entries subsume were retired.
+    `_PERIPHERY_EXCLUSIONS`. The by-name package-split guards this item subsumes were retired.
   - Unit 4: `scripts/e2e_overfire_report.py` measures the trade against a baseline commit. Across the
     last 80 merged pull requests, the new default fired **identically** to the old default on all three
     lanes: 0 over-fire, 0 under-fire. The newly gated files never appeared in a pull request that was
