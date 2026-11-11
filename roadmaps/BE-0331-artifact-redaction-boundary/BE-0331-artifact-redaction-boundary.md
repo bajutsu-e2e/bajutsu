@@ -18,23 +18,23 @@
 
 Bajutsu redacts secrets per writer. The `Redactor` in
 [`bajutsu/evidence/redaction.py`](../../bajutsu/evidence/redaction.py) masks configured keys, labels,
-and known secret values, and the evidence subsystem calls it on the element tree, the device log, and
-each network exchange before writing them. Every other writer is on its honor to do the same, and
-`crawl`'s artifact writers do not.
+and known secret values. The evidence subsystem calls the `Redactor` on the element tree, the device
+log, and each network exchange before writing them. Every other writer is on its honor to do the same,
+and `crawl`'s artifact writers do not.
 
 This item moves redaction from a habit to a boundary. Every write into a run directory goes through
 one sink that requires a redactor, so a writer cannot emit an unredacted artifact by forgetting to
 ask. Masking becomes default-on for the two cases a caller should never have to configure: a field the
 platform itself marks secret, and a field whose identifier or label names a credential. The leak that
-motivated this item is the second case — the field was called `settings.apikey`, and nothing masked
-it. A pattern backstop then covers the case neither default anticipates: a value whose field name
-suggests nothing but whose shape is a recognizable credential.
+motivated this item is the second case. The field was called `settings.apikey`, and nothing masked it.
+A pattern backstop then covers the case neither default anticipates: a value whose field name suggests
+nothing but whose shape is a recognizable credential.
 
 That leak reached two artifacts. A `crawl --guide ai` run wrote
 `type settings.apikey='sk-ant-api03-…'` into `screenmap.json` and the generated screen-map report. The
 value was synthetic, invented by the model to satisfy a field asking for an API key, and it was never
-committed. The mechanism that carried it there is real: nothing on that path redacts, and one function
-put the value somewhere no configured rule could reach it.
+committed. The mechanism that carried the value there is real. Nothing on that path redacts, and one
+function put the value somewhere no configured rule could reach.
 
 ## Motivation
 
@@ -59,25 +59,25 @@ Several items built the current guarantee, and each holds where it was applied.
 - [BE-0151](../BE-0151-screenshot-secret-capture-warning/BE-0151-screenshot-secret-capture-warning.md)
   warns up front that a screenshot cannot be masked, rather than implying pixels are protected.
 
-Every one of those items is `Implemented`. What none of them establishes is that a *new* writer
-inherits the guarantee.
+Every one of those items is `Implemented`. None of them establishes that a *new* writer inherits the
+guarantee.
 
 ### The gap is enforcement, not configuration
 
 `crawl` already holds everything it needs to redact. The command builds a redactor from the resolved
 target configuration and the environment's secret values, at
-[`bajutsu/cli/_shared.py:137`](../../bajutsu/cli/_shared.py), and hands it to the AI guide so an
-outbound prompt is scrubbed. The guide is the only recipient. The same module then writes the screen
-map without passing the redactor it just built, and the two modules that render `crawl`'s artifacts —
-[`bajutsu/crawl/serialize.py`](../../bajutsu/crawl/serialize.py) and
-[`bajutsu/crawl/report.py`](../../bajutsu/crawl/report.py) — contain no reference to redaction at all.
-So BE-0097 protected what `crawl` sends to a model and left what `crawl` writes to disk unprotected —
-and the report it writes is a self-contained HTML file meant to be shared.
+[`bajutsu/cli/_shared.py:137`](../../bajutsu/cli/_shared.py). The command hands the redactor to the AI
+guide so an outbound prompt is scrubbed, and the guide is the only recipient. The same module then
+writes the screen map without passing the redactor it just built. The two modules that render `crawl`'s
+artifacts, [`bajutsu/crawl/serialize.py`](../../bajutsu/crawl/serialize.py) and
+[`bajutsu/crawl/report.py`](../../bajutsu/crawl/report.py), contain no reference to redaction at all.
+BE-0097 protected what `crawl` sends to a model and left what `crawl` writes to disk unprotected. The
+report that `crawl` writes is a self-contained HTML file meant to be shared.
 
 The wider shape of the problem is that there is no single place a run's bytes pass through. Writers
 call `Path.write_text` and `json.dumps` directly across the command modules, the crawl package, and
-the report renderers. Adding a writer is therefore adding a path that may or may not redact, and
-nothing tells the author which they chose.
+the report renderers. Adding a writer adds a path that may or may not redact, and nothing tells the
+author which path they chose.
 
 ### One function puts a value beyond every configured rule
 
@@ -87,20 +87,20 @@ configured, and when the value matches a known secret literal. A crawl action de
 `f"type {what}={self.value!r}"`, so the typed text is interpolated into a free-text string and
 serialized as the `action` field of every screen-map node and edge.
 
-No configured rule reaches it. The value is not a network header, so the default header set does not
-apply. The string is not an element, so label-based masking does not apply. And a value the AI guide
-invented is not a known secret literal, because it was never bound through `${secrets.X}` — the
-crawl invented it during exploration. Masking rules that depend on knowing the value in advance
-cannot cover a value the tool itself generates.
+No configured rule reaches the string. The value is not a network header, so the default header set
+does not apply. The string is not an element, so label-based masking does not apply. A value the AI
+guide invented is not a known secret literal, because it was never bound through `${secrets.X}`; the
+crawl invented it during exploration. Masking rules that depend on knowing the value in advance cannot
+cover a value the tool itself generates.
 
 ### Redaction is inert by default for anything but a header
 
 `Redactor.active` is true only when a key, a label, or a known value is configured. When a run
 configures none, `redact_text` and `redact_elements` return their input unchanged. Header masking is
-the deliberate exception, and BE-0130 made it default-on for exactly the reason that applies here:
-protection that arrives only when someone remembers to ask for it is protection that is absent on the
-runs that need it most. A `crawl` has no scenario at all, so it never carries a `redact:` block, and
-element and free-text masking are inert on that path even once the redactor is wired in.
+the deliberate exception. BE-0130 made header masking default-on for the reason that applies here:
+protection that arrives only when someone remembers to ask for it is absent on the runs that need it
+most. A `crawl` has no scenario at all, so it never carries a `redact:` block. Element and free-text
+masking are inert on that path even once the redactor is wired in.
 
 The same inertness reaches a real password field. A remaining local run holds
 `type auth.password='Passw0rd!2026'`, written verbatim. The platform marked that field
@@ -111,92 +111,97 @@ required.
 
 ### The boundary
 
-One sink owns every write into a run directory. A caller hands it a *relative name* and content, never
-a path; the sink resolves the name against the run directory, redacts, serializes, and writes. The sink
-is the only code in the repository that writes into a run directory, so redaction is a property of the
-location rather than of the caller's diligence.
+One sink owns every write into a run directory. A caller hands the sink a *relative name* and
+content, never a path. The sink resolves the name against the run directory, redacts, serializes, and
+writes. The sink is the only code in the repository that writes into a run directory, so redaction is
+a property of the location rather than of the caller's diligence.
 
 The sink takes content *before* serialization, which its entry points make explicit. Two of the rules
-this item makes default-on are structural rather than textual: the masked-input trait keys on an
-element's trait, and the credential-named default keys on an element's identifier or label to mask that
-element's value. `Redactor` already separates the three shapes accordingly —
+this item makes default-on are structural rather than textual. The masked-input trait keys on an
+element's trait. The credential-named default keys on an element's identifier or label to mask that
+element's value. `Redactor` already separates the three shapes accordingly:
 [`bajutsu/evidence/redaction.py`](../../bajutsu/evidence/redaction.py) has `redact_elements` for an
 element tree, `redact_exchange` for a network exchange, and `redact_text` for free text. Once an
-element tree is a `JSON` string the identifier-to-value pairing is gone, so a sink that only scanned
-serialized text could not apply either default, and moving the network writer onto such a sink would
-silently drop the header masking BE-0130 made default-on. The sink therefore has one entry point per
-shape — an element tree, network exchanges, a screen map, free text — each applying the matching
-redactor method and then serializing.
+element tree is a `JSON` string, the identifier-to-value pairing is gone. A sink that scanned
+serialized text alone could not apply either default, and moving the network writer onto such a sink
+would silently drop the header masking BE-0130 made default-on. The sink instead has one entry point
+per shape: an element tree, network exchanges, a screen map, and free text. Each entry point applies
+the matching redactor method and then serializes.
 
-The screen map needs a fourth method, because none of the three existing ones fits it. A screen-map
-node or edge is not an `Element`, so `redact_elements` cannot see the pairing between an action's target
-and the value that action typed; it is not a network exchange; and the credential-named default is
-structural, so a free-text pass cannot apply it either. The new method keys the same two defaults on
-each action's target — the masked-input trait where the crawl recorded it, and the credential-name
-vocabulary otherwise — and masks that action's own value. Naming it matters because the screen map is
-the artifact the motivating leak actually reached, so it is the one shape whose structural rule cannot
-be left implicit. It is a small typed API rather than a generic text writer, which
-is the cost of keeping the structural rules inside the boundary instead of back in the callers.
+The screen map needs a fourth method, because none of the three existing methods fits it. A
+screen-map node or edge is not an `Element`, so `redact_elements` cannot see the pairing between an
+action's target and the value that action typed. A screen-map node or edge is not a network exchange.
+The credential-named default is structural, so a free-text pass cannot apply it either. The new method
+keys the same two defaults on each action's target and masks that action's own value. The
+masked-input trait applies where the crawl recorded it, and the credential-name vocabulary applies
+otherwise. The method deserves a name because the screen map is the artifact the motivating leak
+actually reached, so the screen map is the one shape whose structural rule cannot be left implicit. The
+method is a small typed API rather than a generic text writer. That is the cost of keeping the
+structural rules inside the boundary instead of back in the callers.
 
 The pattern backstop runs last, over the serialized text, so it catches a value the structural rules
 did not reach.
 
-The sink also accepts opaque bytes for content it cannot inspect — screenshots, video, an archive —
-and records that the content was written unmasked, keeping
+The sink also accepts opaque bytes for content it cannot inspect: screenshots, video, and archives.
+The sink records that the content was written unmasked, which keeps
 [BE-0151](../BE-0151-screenshot-secret-capture-warning/BE-0151-screenshot-secret-capture-warning.md)'s
-honesty: an image is not claimed to be protected.
+honesty: the sink never claims that an image is protected.
 
 Withholding the path is what makes the boundary enforceable. A caller that never receives the run
-directory as a `Path` cannot write into it without the sink, so the guarantee rests on what a module
-can reach rather than on what a reviewer notices. Two mechanical checks pin that down, and neither
+directory as a `Path` cannot write into it without the sink. The guarantee rests on what a module can
+reach rather than on what a reviewer notices. Two mechanical checks pin the guarantee down, and neither
 needs to decide at analysis time whether a runtime path value points into a run directory.
 
 - **An import contract.** No module except the sink may reach the run-directory *write* provider.
-  This repository already runs such contracts in the gate — `lint-imports` keeps three today — and a
+  This repository already runs such contracts in the gate: `lint-imports` keeps three today. A
   contract states a property of the whole import graph rather than a list of writers, so a module that
   does not exist yet is covered the moment it does.
 - **A literal check.** The filesystem run root is derived in one function, and a run-root path literal
-  outside that function fails the gate. Together with the contract, this closes the remaining way to
-  rebuild the path without importing the provider.
+  outside that function fails the gate. Together with the contract, this check closes the remaining
+  way to rebuild the path without importing the provider.
 
 Both checks are decidable from source, which an inspection of runtime path values would not be. That
-distinction is the reason the design withholds the path instead of scanning for suspicious writes: a
-scan would have to guess which `write_text` call lands in a run directory, and it would either
-false-positive on a legitimate config, cache, or temporary-file write or need a curated module list —
-reintroducing the on-its-honor gap this item removes.
+distinction is the reason the design withholds the path instead of scanning for suspicious writes. A
+scan would have to guess which `write_text` call lands in a run directory. The scan would either
+false-positive on a legitimate config, cache, or temporary-file write, or need a curated module list.
+A curated list would reintroduce the on-its-honor gap this item removes.
 
 ### Reading is not writing
 
-The boundary governs writing alone, and saying so matters because the run directory's largest consumer
-only reads it. `serve` lists runs, mounts the `runs/<id>/` tree, resolves a job's `manifest.json`, and
-compares evidence across runs; [`bajutsu/serve/`](../../bajutsu/serve/) reaches run paths in several
-places, and this item's own rejection of encryption rests on those files staying plainly readable. A
-contract that forbade every module but the sink from resolving a run path would break all of it.
+The boundary governs writing, and the run directory's largest consumer merely reads it. `serve` lists
+runs, mounts the `runs/<id>/` tree, resolves a job's `manifest.json`, and compares evidence across
+runs. [`bajutsu/serve/`](../../bajutsu/serve/) reaches run paths in several places, and this item's own
+rejection of encryption rests on those files staying plainly readable. A contract that forbade every
+module but the sink from resolving a run path would break all of that.
 
-So the run directory is reached through two providers, and only one of them writes.
+The run directory is therefore reached through two providers, and one provider writes.
 
 - **A read accessor** answers read questions about a run: list its artifact names, read one as text or
   bytes, open one as a stream. `serve`, the evidence readers, `export`, and the comparison commands
   import it, and it is not restricted, because none of those operations can create an artifact.
-  Crucially it never returns a `Path`. A path into a run directory is writable, so handing one out
-  would let any unrestricted importer call `write_text` on it and reach the directory without the
-  sink — the contract would hold on paper while the boundary leaked.
+  Crucially, the read accessor never returns a `Path`. A path into a run directory is writable. Handing
+  one out would let any unrestricted importer call `write_text` on the path and reach the directory
+  without the sink, so the contract would hold on paper while the boundary leaked.
 - **The write sink** is what the import contract restricts. Nothing but the sink may reach it, so every
   byte entering a run directory still crosses redaction.
 
-Between them, no component outside the sink ever holds a writable handle into a run directory. That is
-what makes the contract mean what it says rather than merely regulating which module imports which.
+Between the two providers, no component outside the sink ever holds a writable handle into a run
+directory. That is what makes the contract mean what it says rather than merely regulating which module
+imports which.
 
-Two consequences follow for existing code. `serve`'s `/runs/` route prefix and its run-id regular
-expression are `URL` and stdout patterns rather than filesystem run roots, so the literal check does
-not touch them; the check is scoped to deriving the filesystem root. And `serve`'s artifact store does
-write into a run directory when a remote worker uploads its output, so that path moves onto the sink.
-The uploading case is the one place the receiving side may hold no secret values for the run that
-produced the content, since the run happened elsewhere. That limitation reaches only the rules which
-need to know a value in advance: a configured key, a configured label, and a known secret literal. The
-pattern backstop needs none of them, so the sink still runs it over uploaded text. Raw passthrough is
-reserved for the bytes it cannot inspect at all — images, video, an archive. The sink records which of
-the two an upload received, so an artifact is never described as scrubbed by rules that did not run.
+Two consequences follow for existing code. First, `serve`'s `/runs/` route prefix and its run-id
+regular expression are `URL` and stdout patterns rather than filesystem run roots, so the literal check
+does not touch them. The check is scoped to deriving the filesystem root. Second, `serve`'s artifact
+store does write into a run directory when a remote worker uploads its output, so that path moves onto
+the sink.
+
+The uploading case is the one place where the receiving side may hold no secret values for the run that
+produced the content, since the run happened elsewhere. That limitation reaches the rules that need to
+know a value in advance: a configured key, a configured label, and a known secret literal. The pattern
+backstop needs none of them, so the sink still runs the backstop over uploaded text. Raw passthrough is
+reserved for the bytes the sink cannot inspect at all: images, video, and archives. The sink records
+which of the two treatments an upload received, so an artifact is never described as scrubbed by rules
+that did not run.
 
 ### Masking that needs no configuration
 
@@ -209,31 +214,31 @@ already stated the field's secrecy; a configuration file should not have to rest
 
 That default needs a normalized trait before it can hold everywhere, because no such trait exists
 today. `secureTextField` is a raw XCUITest type rather than one of the normalized tokens in
-[`bajutsu/drivers/base.py`](../../bajutsu/drivers/base.py), which carries only `button`, `link`,
-`notEnabled`, and `selected`. The web backend maps every `input` to `textField`
+[`bajutsu/drivers/base.py`](../../bajutsu/drivers/base.py), which carries `button`, `link`,
+`notEnabled`, and `selected` alone. The web backend maps every `input` to `textField`
 ([`bajutsu/dom.py`](../../bajutsu/dom.py)), so a password input arrives indistinguishable from a plain
-one, and the adb backend never emits a secret-input trait at all. Keying the default on
-`secureTextField` as it stands would protect iOS and silently leave web and Android unprotected, which
-prime directive 3 does not allow: one construct must mean the same thing on every backend.
+input. The adb backend never emits a secret-input trait at all. Keying the default on `secureTextField`
+as it stands would protect iOS and silently leave web and Android unprotected. Prime directive 3 does
+not allow that outcome: one construct must mean the same thing on every backend.
 
 Each backend can supply the signal, so normalization is the work rather than a blocker. A new
-normalized trait joins `base.Trait`, and each driver maps its own source onto it: XCUITest's
+normalized trait joins `base.Trait`, and each driver maps its own source onto the trait: XCUITest's
 `secureTextField`, the web backend's `input[type=password]`, and the password flag the Android
 accessibility node already exposes. The driver conformance suite
 ([BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md)) pins the trait on
-every backend, so a backend that stops reporting it fails the suite rather than quietly dropping the
-default.
+every backend, so a backend that stops reporting the trait fails the suite rather than quietly
+dropping the default.
 
-**A field whose identifier or label names a credential.** A default vocabulary — `password`,
-`passwd`, `secret`, `token`, `apikey`, `api_key`, `credential`, `otp`, `pin` — matched against an
-element's identifier and label, case-insensitively and on word boundaries. This is the default that
-would have masked `settings.apikey`. The vocabulary is small and documented rather than clever,
+**A field whose identifier or label names a credential.** A default vocabulary matches an element's
+identifier and label, case-insensitively and on word boundaries. The vocabulary is `password`,
+`passwd`, `secret`, `token`, `apikey`, `api_key`, `credential`, `otp`, and `pin`. This is the default
+that would have masked `settings.apikey`. The vocabulary is small and documented rather than clever,
 because a rule an author cannot predict is a rule an author cannot rely on.
 
 ### Values the tool generates
 
-A masking rule keyed on a known secret cannot cover a value Bajutsu produced itself, which is what the
-AI guide does when it invents a realistic API key. Two changes address that class.
+A masking rule keyed on a known secret cannot cover a value Bajutsu produced itself, as when the AI
+guide invents a realistic API key. Two changes address that class.
 
 First, an input value stops being interpolated into a human-readable string.
 `Action.describe` emits `type <target>` and leaves the value in the action's own `value` field, so
@@ -241,12 +246,18 @@ exactly one place decides whether the value is written and the sink's rules can 
 map keeps a replayable action, since `perform` already reads `value` directly and never parses the
 description.
 
-Second, the sink applies a pattern backstop before writing text. High-confidence credential shapes are
-masked wherever they appear: `sk-ant-` for an Anthropic key, `AKIA` for an AWS access key id,
-`gh[pousr]_` for a GitHub token, a three-segment JSON Web Token (`JWT`), and a `PEM`
-private-key header. A match is masked and reported as a warning naming the artifact, because a value
-reaching the backstop means an earlier rule should have caught it. The patterns are literal regular
-expressions, so no model is consulted and prime directive 1 is untouched.
+Second, the sink applies a pattern backstop before writing text. The backstop masks high-confidence
+credential shapes wherever they appear:
+
+- `sk-ant-` for an Anthropic key
+- `AKIA` for an AWS access key id
+- `gh[pousr]_` for a GitHub token
+- a three-segment JSON Web Token (`JWT`)
+- a `PEM` private-key header
+
+The backstop masks a match and reports a warning naming the artifact, because a value reaching the
+backstop means an earlier rule should have caught it. The patterns are literal regular expressions, so
+no model is consulted and prime directive 1 is untouched.
 
 ### What this does not guarantee
 
@@ -255,25 +266,26 @@ be false. Three residues remain, and each is named rather than papered over.
 
 - **Pixels stay unmasked.** A screenshot of a filled password field still shows it. BE-0151 already
   established the warning; this item does not change that.
-- **An arbitrary value in an unmarked field can survive.** A secret typed into a field the platform
-  does not mark, whose identifier and label name nothing credential-like, whose value was never bound
-  through `${secrets.X}`, and whose shape matches no backstop pattern, is indistinguishable from
-  ordinary text. Detecting it would need semantic judgment, which prime directive 1 keeps off this
-  path.
-- **The backstop's vocabulary is finite.** A credential format nobody added a pattern for passes it.
+- **An arbitrary value in an unmarked field can survive.** Consider a secret typed into a field that
+  the platform does not mark, whose identifier and label name nothing credential-like, whose value was
+  never bound through `${secrets.X}`, and whose shape matches no backstop pattern. That secret is
+  indistinguishable from ordinary text. Detecting the secret would need semantic judgment, which prime
+  directive 1 keeps off this path.
+- **The backstop's vocabulary is finite.** A credential format nobody added a pattern for passes the
+  backstop.
 - **A configured key can over-mask a structured string.** A configured name is also matched in the
   `name: value` form, whose value has no delimiter and so runs to the end of the string it appears in.
-  That is right for a log line and wrong inside a bounded string an artifact carries: naming `app`
-  rewrites an Android resource id like `com.example.app:id/login` to `com.example.app:[REDACTED]`,
-  and a `crawl --continue` reading such a screen map back replays a branch that resolves nothing.
-  Restricting the rule to the delimited forms would close it at the cost of the free-text coverage a
-  configured key exists for, so masking keeps precedence over legibility and the limit is documented
-  instead.
+  That behavior is right for a log line and wrong inside a bounded string an artifact carries. Naming
+  `app` rewrites an Android resource id like `com.example.app:id/login` to
+  `com.example.app:[REDACTED]`, and a `crawl --continue` reading such a screen map back replays a
+  branch that resolves nothing. Restricting the rule to the delimited forms would close the gap at the
+  cost of the free-text coverage a configured key exists for. Masking therefore keeps precedence over
+  legibility, and the limit is documented instead.
 
-What the item does guarantee is narrower and checkable: no writer can bypass redaction, the two cases
-whose secrecy is knowable at capture time are masked without configuration, and a recognizable
-credential shape is masked wherever it occurs. The residue above is documented so an operator can
-judge before sharing an artifact rather than after.
+What the item does guarantee is narrower and checkable. No writer can bypass redaction. The two cases
+whose secrecy is knowable at capture time are masked without configuration. A recognizable credential
+shape is masked wherever it occurs. The residues above are documented so an operator can judge before
+sharing an artifact rather than after.
 
 ### Work breakdown (`MECE`)
 
