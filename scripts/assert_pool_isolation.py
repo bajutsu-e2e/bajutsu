@@ -80,30 +80,54 @@ def artifact_names(scenario: Mapping[str, object]) -> list[str]:
     return names
 
 
-def scenario_window(scenario: Mapping[str, object]) -> tuple[float, float] | None:
-    """The wall-clock window a result occupied, or None when its steps recorded no absolute instant.
+# The manifest phases whose outcomes carry an absolute `started_at`: the lifecycle `setup` and
+# `cleanup` phases (BE-0392) run on the same leased device as the steps, so they belong in the window.
+_TIMED_PHASES = ("before_outcomes", "steps", "after_outcomes")
 
-    Derived from the steps' own `started_at` (absolute epoch seconds since manifest v6) rather than
-    the scenario's `duration_s`, which also covers the launch and verification either side of the
-    first and last step: an end taken from the last step's own finish *understates* the window, so a
-    reported overlap is real rather than an artifact of counting setup time twice. None (a run
-    predating v6, or a result with no steps) leaves the result out of the overlap check instead of
-    contributing a window of zeros that would never overlap anything.
+
+def _positive_instant(value: object) -> float | None:
+    """`value` as an epoch instant, or None when it is missing, not a number, or not positive."""
+    return float(value) if isinstance(value, int | float) and value > 0 else None
+
+
+def scenario_window(scenario: Mapping[str, object]) -> tuple[float, float] | None:
+    """The wall-clock window a result held its leased device, or None when it recorded no instant.
+
+    The end is the latest finish of any timed outcome (`started_at` + `duration_s`, absolute epoch
+    seconds since manifest v6). The start is the earlier of the first outcome's `started_at` and the
+    result's `video_anchor_s` — the instant its recording began, which is also absolute since v6.
+
+    The anchor matters because the steps alone leave out the lease's bring-up: the app launch and
+    readiness wait run before `run_scenario` stamps its own start, so neither the steps nor the
+    scenario's `duration_s` cover them, while the recording of the leased device is already rolling
+    (issue #2419). On an Android pool run that bring-up is 10-15 s against a smoke scenario whose one
+    step lasts 1 s, so step windows alone made the two workers' scenarios miss each other by seconds
+    even though both devices were busy the whole time. The recording only runs on a device the worker
+    already holds, so the anchor never stretches the window past the worker's own tenure, and a pool
+    that ran its scenarios one at a time still leaves disjoint windows. A zero or absent anchor (no
+    recording, or a run predating v6) falls back to the first outcome's start.
+
+    None (a run predating v6, or a result with no timed outcome) leaves the result out of the overlap
+    check instead of contributing a window of zeros that would never overlap anything.
     """
     starts: list[float] = []
     ends: list[float] = []
-    for step in _entries(scenario, "steps"):
-        if not isinstance(step, Mapping):
-            continue
-        started_at = step.get("started_at")
-        if not isinstance(started_at, int | float) or started_at <= 0:
-            continue
-        duration = step.get("duration_s")
-        elapsed = float(duration) if isinstance(duration, int | float) else 0.0
-        starts.append(float(started_at))
-        ends.append(float(started_at) + elapsed)
+    for phase in _TIMED_PHASES:
+        for step in _entries(scenario, phase):
+            if not isinstance(step, Mapping):
+                continue
+            started_at = _positive_instant(step.get("started_at"))
+            if started_at is None:
+                continue
+            duration = step.get("duration_s")
+            elapsed = float(duration) if isinstance(duration, int | float) else 0.0
+            starts.append(started_at)
+            ends.append(started_at + elapsed)
     if not starts:
         return None
+    anchor = _positive_instant(scenario.get("video_anchor_s"))
+    if anchor is not None:
+        starts.append(anchor)
     return min(starts), max(ends)
 
 
