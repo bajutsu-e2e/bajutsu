@@ -1673,7 +1673,8 @@ class AdbDriver(CoordinateTreeDriver):
 
         Two routes, in order. The resident server injects through `UiAutomation` and needs no root;
         the raw two-slot `sendevent` sweep (BE-0232) needs root and a discoverable touchscreen, and
-        stands in only when the server is absent or lacks the endpoint, where nothing was injected.
+        stands in only when the server is absent, lacks the endpoint, or could not be reached before
+        the request went out — the cases where nothing was injected.
         There is no single-touch approximation of two fingers, so a device with neither route fails
         loudly with an `UnsupportedAction` naming both preconditions — never a degraded gesture.
         """
@@ -1698,6 +1699,10 @@ class AdbDriver(CoordinateTreeDriver):
         # read the tree, so the baseline costs nothing here.
         pre_key = self._pan_baseline()
         mark = self._capture_mark()
+        # Re-checked, not reused: the reads above can lose the resident channel and latch it off, and
+        # a request sent now would go to a connection the driver just tore down (as `_device_act`
+        # guards right before its own send).
+        server = server and self._gesture_server_usable()
         if server and self._gesture_on_server(action, (cx, cy), el, start, end, scale, radians):
             self._arm_catchup(pre_key, mark)
             return

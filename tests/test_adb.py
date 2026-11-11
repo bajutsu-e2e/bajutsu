@@ -1270,6 +1270,26 @@ def test_an_unreachable_server_falls_back_to_sendevent_and_asks_again_next_time(
     assert len(calls) == 2 and all("sendevent" in c[4] for c in calls)
 
 
+def test_a_channel_lost_during_the_resolve_is_not_sent_the_gesture() -> None:
+    # The read inside the resolve loses the resident channel and latches it off; the gesture must
+    # see that latch rather than POST to a connection the driver just tore down.
+    calls: list[list[str]] = []
+    asked: list[int] = []
+
+    def dead_fetch(since: float | None) -> HierarchyRead:
+        raise AdbResidentError("channel down")
+
+    driver = AdbDriver(
+        "U",
+        run=_server_run(calls, root=True),
+        fetch_hierarchy=dead_fetch,
+        gesture_on_device=lambda start, end: asked.append(1),
+    )
+    driver.pinch({"id": "stable_refresh"}, 2.0)
+    assert asked == []
+    assert len(calls) == 1 and "sendevent" in calls[0][4]
+
+
 def test_a_lost_server_reply_is_taken_as_landed() -> None:
     calls: list[list[str]] = []
 

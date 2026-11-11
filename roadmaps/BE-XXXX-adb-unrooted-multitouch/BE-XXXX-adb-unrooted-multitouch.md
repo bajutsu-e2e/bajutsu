@@ -68,8 +68,8 @@ hands the four contact points to the device, in the same tree-space pixels it al
    went out raises `AdbActUncertain`. Any other fault raises `AdbResidentError`. The resident channel
    carries the call to the driver, as it carries `type_text`.
 3. **Driver routing.** `pinch` and `rotate` try the server first. A rooted device falls back to the
-   `sendevent` sweep when the server is absent or predates the endpoint. Nothing reached the screen in
-   either case. A rejected gesture fails the step instead, because its first events may have landed.
+   `sendevent` sweep when the server is absent, predates the endpoint, or could not be reached before
+   the request went out. Nothing reached the screen in any of these cases. A rejected gesture fails the step instead, because its first events may have landed.
    A lost reply never falls back either, for the same reason. A device with neither route fails with
    an `UnsupportedAction` that names both preconditions.
 4. **Actuation log.** A gesture the server injected records `via: resident`, a new channel token. A

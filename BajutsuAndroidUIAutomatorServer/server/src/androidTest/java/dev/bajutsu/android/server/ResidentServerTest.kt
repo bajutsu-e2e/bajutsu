@@ -444,9 +444,13 @@ class ResidentServerTest {
             }
         }
         val secondUp = MotionEvent.ACTION_POINTER_UP or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT)
-        val liftedSecond = send(secondUp, 2, t)
-        val liftedFirst = send(MotionEvent.ACTION_UP, 1, t)
-        return liftedSecond && liftedFirst
+        if (!send(secondUp, 2, t)) {
+            // Both pointers are still down, so a one-pointer ACTION_UP would be an inconsistent
+            // stream the dispatcher drops; cancel both instead.
+            send(MotionEvent.ACTION_CANCEL, 2, t)
+            return false
+        }
+        return send(MotionEvent.ACTION_UP, 1, t)
     }
 
     /** One multi-pointer touchscreen event; pointer ids are the list's indices. */

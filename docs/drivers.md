@@ -551,8 +551,8 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
      `MotionEvent` sequence through `UiAutomation`, which holds the shell's privilege, so **no root
      is needed**. The record's `via` is `resident`.
   2. A rooted device with a discoverable touchscreen falls back to a raw two-slot protocol-B
-     `sendevent` sweep, but only when the server is absent or predates the endpoint — the two cases
-     where nothing reached the screen. The record's `via` is `coordinate`.
+     `sendevent` sweep, but only when the server is absent, predates the endpoint, or could not be
+     reached before the request went out — the three cases where nothing reached the screen. The record's `via` is `coordinate`.
 
   A gesture the server rejects fails the step rather than falling back, and a lost reply is taken
   as landed: either may already have put a finger down, and a second gesture on top of it would be
