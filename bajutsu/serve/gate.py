@@ -66,9 +66,10 @@ def _is_machine_job_route(path: str) -> bool:
     """Whether *path* is the job or job-group poll a machine may read (BE-0414 unit 3, BE-0484).
 
     Matched by shape because the job id is in the path, the same way `_is_worker_route` matches the
-    upload-URL route. `/api/jobs/{id}` only — not its `/events` stream, which each backend serves
-    off the uniform route table with its own streaming plumbing; a pipeline learns the same outcome
-    by polling, so opening a second, differently-shaped path buys nothing.
+    upload-URL route. One trailing segment only, so neither `/api/jobs/{id}`'s `/events` stream nor
+    `POST /api/run-set/{id}/cancel` is admitted: the stream each backend serves off the uniform
+    route table with its own streaming plumbing, and a pipeline learns the same outcome by polling,
+    so opening a second, differently-shaped path buys nothing.
 
     Admitting the path is not admitting the job: `job_view` and `job_group_view` refuse one
     belonging to another org.

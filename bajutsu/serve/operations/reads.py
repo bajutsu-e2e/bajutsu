@@ -1098,8 +1098,9 @@ def job_group_view(
 
     The row status says only whether a job finished, so each job also carries its run's
     ``exitCode`` and ``runId``. ``conclusion`` is ``pending`` while any job is unfinished, then
-    ``failure`` when any job failed or exited non-zero, else ``cancelled`` when any was cancelled,
-    else ``success``. It reads the exit codes alone, so no model sits on the verdict.
+    ``failure`` when a job that was *not* cancelled failed or exited non-zero, else ``cancelled``
+    when any was cancelled, else ``success``. It reads row statuses and exit codes alone, so no
+    model sits on the verdict.
 
     Args:
         state: The server state holding the repository.

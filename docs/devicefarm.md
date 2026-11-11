@@ -438,7 +438,8 @@ group's org. The response lists the jobs it cancelled. A queued job becomes `can
 leased job keeps its `leased` status until its worker stops the run. Until then, `conclusion`
 stays `pending`.
 
-Both routes answer 404 for a group of an org the caller does not belong to. A pipeline reaches the
+Both routes answer 404 for a group of an org the caller does not belong to. The cancel route also
+answers 404 to a member below the editor role in the group's org. A `GET` still reads that group. A pipeline reaches the
 groups of its own org alone, and may read them but not cancel them. The machine allowlist opens
 `POST /api/run-set` and `GET /api/run-set/<groupId>`. The group cancel stays a person's act.
 
