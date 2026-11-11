@@ -16,12 +16,14 @@ from bajutsu.common.capability.settings_support import enforce_settings
 from bajutsu.common.config import Effective, require_android, resolve_preconditions
 from bajutsu.common.config.preconditions import ResolvedPreconditions
 from bajutsu.common.drivers import base
+from bajutsu.common.drivers.webview import CdpDomSource
 from bajutsu.common.evidence import intervals
 from bajutsu.common.evidence.network import Collector
 from bajutsu.common.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.common.platform_lifecycle import readiness
 from bajutsu.common.platform_lifecycle.device_control import android_device_control
 from bajutsu.common.platform_lifecycle.protocols import CollectorHost, ProvisionProfile
+from bajutsu.common.platform_lifecycle.webview_source import NO_WEBVIEW_SOURCE, WebViewSource
 from bajutsu.common.scenario import Relaunch, Scenario
 from bajutsu.crawl import AliveCheck, ClearBlocking, Recover, Reset
 
@@ -449,6 +451,12 @@ class AndroidEnvironment:
 
     def reach_device_port(self, eff: Effective, port: int) -> tuple[int, Callable[[], None]]:  # noqa: ARG002  # Environment shape
         return port, lambda: None  # nothing between the host and the port to bridge
+
+    def webview_source(self, eff: Effective) -> WebViewSource:
+        # The WebView already serves CDP on its own DevTools socket, so the app binds no port and
+        # learns none: `CdpDomSource` forwards the socket per `web:` block instead (BE-0482).
+        source = CdpDomSource(self._serial, require_android(eff).package, self._run)
+        return WebViewSource(source, None, NO_WEBVIEW_SOURCE.release)
 
     def mirrors_collector_port_on_device(self) -> bool:
         # `bridge_collector`'s `adb reverse tcp:<port> tcp:<port>` binds the same number inside the

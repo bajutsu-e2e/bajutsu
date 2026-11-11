@@ -903,6 +903,25 @@ def forward_cmd(serial: str, device_port: int = RESIDENT_DEVICE_PORT) -> list[st
     return _adb(serial, "forward", "tcp:0", f"tcp:{device_port}")
 
 
+def forward_abstract_cmd(serial: str, socket_name: str) -> list[str]:
+    """Forward a free host port to the device's abstract socket `socket_name` (BE-0482).
+
+    A WebView's DevTools socket lives in the abstract namespace rather than on a TCP port, so the
+    device side is `localabstract:`; adb prints the chosen host port on stdout, as `forward_cmd` does.
+    """
+    return _adb(serial, "forward", "tcp:0", f"localabstract:{socket_name}")
+
+
+def ps_names_cmd(serial: str) -> list[str]:
+    """List every process's pid and name, so a package's `<package>:<name>` children show too."""
+    return _adb(serial, "shell", "ps", "-A", "-o", "PID,NAME")
+
+
+def proc_net_unix_cmd(serial: str) -> list[str]:
+    """Read the device's Unix socket table, where each WebView DevTools socket is listed by name."""
+    return _adb(serial, "shell", "cat", "/proc/net/unix")
+
+
 def forward_remove_cmd(serial: str, host_port: int) -> list[str]:
     """Tear down the `adb forward` for `host_port`, paired with `forward_cmd` at lease end."""
     return _adb(serial, "forward", "--remove", f"tcp:{host_port}")

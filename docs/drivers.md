@@ -374,7 +374,18 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   `android:id` a Views lookup needs — ships as a standalone library,
   [`IdentifierTool`](../IdentifierTool/README.md) (BE-0405), which the showcase itself consumes and
   which carries no dependency on `BajutsuAndroid`; declaring those `android:id` resources stays the
-  consuming app's own job.
+  consuming app's own job. An editable text field reverses the `text` / `content-desc` mapping
+  above, as on iOS. A node counts as one when its class is `android.widget.EditText` (which a Views
+  `EditText`, its AppCompat and Material subclasses, and a Compose text field all report),
+  `android.widget.AutoCompleteTextView`, or `android.widget.MultiAutoCompleteTextView`. Its `text`
+  → `value`, so a `value` assertion and a `clear` step read what was typed, and `content-desc` (else
+  the `hint`) → `label`, so a label selector keeps its meaning as the text changes. An empty field
+  reports its hint as `text`. When the dump carries a `hint` attribute (the resident server's dump
+  does), the driver identifies that case and the field's `value` is then empty. The `uiautomator
+  dump` fallback may omit `hint`; there an empty field's hint reads as its `value`, and `text` stays
+  the field's `label`, the only name that path has for it. The dump also has no
+  `isShowingHintText`, so typed text equal to the hint reads as no `value`. A masked field
+  (`password="true"`) never exposes its text as `value` or `label`.
 - `tap(sel)`: `_resolve` confirms uniqueness (**retries not-found, fails ambiguity fast** — a
   mid-transition dump is a transient null-root that is retried, and a 2+ match fails immediately).
   `tap`, `long_press`, and `double_tap` then send the resolved element's identity — its raw

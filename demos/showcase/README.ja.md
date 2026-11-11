@@ -122,9 +122,10 @@ XCUITest で実行します（`make -C demos/showcase run-swiftui-noax` / `run-u
   アプリ側の id は 2 つで、どちらもページを配信するレーンの下にあります。
 - **`text_editing.yaml`**：テキストを入力すると Search フィールドは placeholder を失うため、`-noax`
   実行では後続の `select`／`clear`／`delete` でフィールドを可視ラベル「Search horses」で再指定できません。
-  また（`push.yaml` と同様に）iOS 専用です。Compose／Views のツリーは編集可能フィールドのテキストを
-  要素の `value` に出さず、`clear` はこの値を読み、各編集もこの値で検証するためです。したがって 4 つの
-  編集アクチュエータは XCUITest 上の SwiftUI／UIKit の a11y アプリで覆われています。
+  このシナリオは iOS で実行し、4 つの編集アクチュエータを XCUITest 上の SwiftUI と UIKit の a11y
+  アプリで覆っています。`clear` は編集可能フィールドの `value` を読み、各編集もこの値で検証します。
+  adb ドライバはフィールドのテキストを `value` として読むようになりました（#2388）。Android のレーンは、
+  `select` と `copy` の対応（#2389）とあわせてこのシナリオを取り込みます。
 
 2 つの対応物は **SwiftUI 専用**です（`tags: [swiftui]`、`run-uikit-noax` が除外します）。`gestures_multitouch`
 （`SHOWCASE_GESTURES` の pinch/rotate 画面は SwiftUI と Compose にはありますが UIKit にはありません。a11y の
