@@ -85,7 +85,7 @@ Anthropic のルールだけは、単純な追加では済みませんでした�
 - [x] B。既定のルールセットを、Anthropic のキー/OAuth トークンのルールと `BAJUTSU_SERVE_TOKEN` / `GRAFANA_ADMIN_PASSWORD` のルールで拡張する `.gitleaks.toml`。
 - [x] C。`make lint-secrets` を `make check` に組み込みました。CI が固定バージョンの、チェックサムを検証した gitleaks リリースをインストールして実行します。
 - [x] D。実際にツリーをスキャンして見つけたすべての誤検出に対する、`.gitleaks.toml` の `[[allowlists]]` エントリ。
-- [x] E。`docs/ai-development.md`（および日本語版）、`SECURITY.md`（および日本語版）、`CLAUDE.md`、`Brewfile` を更新しました。
+- [x] E。`docs/ai-development.md`(および日本語版)、`SECURITY.md`(および日本語版)、`CLAUDE.md`、`Brewfile` を更新しました。
 
 ## 参考
 
