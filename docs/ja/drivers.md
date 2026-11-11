@@ -64,7 +64,7 @@ class Driver(Protocol):
 | `pickerWheel` | ホイール型のピッカーを指定した行へ設定（iOS のみ） | ✅ | — | — | ✅ |
 | `handleTipkitTip` | 操作をブロックしている Apple TipKit の tip を閉じる（iOS のみ） | ✅ | — | — | ✅ |
 | `appContext` | インストール済みの別アプリを前面に出し、`app:` ステップで操作する | ✅ | ✅ | — | ✅ |
-| `selectPhotos` | システムの写真選択画面から位置を指定して画像を選ぶ（iOS のみ、Apple Silicon の Simulator では除外） | ✅ | — | — | ✅ |
+| `selectPhotos` | システムの写真選択画面から位置を指定して画像を選ぶ（iOS の `PHPickerViewController`。Apple Silicon の Simulator では除外。adb では Android 13 以降の写真選択画面） | ✅ | ✅ | — | ✅ |
 | `handleNotificationBanner` | 前面の通知バナーの位置を報告し、スワイプで消す（BE-0416、iOS のみ） | ✅ | — | — | ✅ |
 | `deviceControl.setLocation` | 疑似 GPS 位置の設定 | ✅ | ✅ | — | — |
 | `deviceControl.clipboard` | クリップボードの読み取り / 書き込み / クリア | ✅ | ✅ | — | — |
