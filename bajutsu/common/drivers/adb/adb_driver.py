@@ -26,6 +26,7 @@ from .act_outcome import ActOutcome
 from .act_request import ActRequest
 from .adb_act_uncertain import AdbActUncertain
 from .adb_act_unsupported import AdbActUnsupported
+from .adb_gesture_rejected import AdbGestureRejected
 from .adb_resident_error import AdbResidentError
 from .channel_recovery import ChannelRecovery
 from .hierarchy_read import HierarchyRead
@@ -51,6 +52,12 @@ ClockFetch = Callable[[], float | None]
 # the driver degrades to its own coordinate path.
 ActFn = Callable[[ActRequest], ActOutcome]
 TypeFn = Callable[[str, float | None], None]
+# Inject one two-finger gesture on the device: both fingers' start points, then both end points, in the
+# tree's pixel space. Raises the `AdbResidentError` family, like `ActFn`.
+GestureFn = Callable[
+    [tuple[base.Point, base.Point], tuple[base.Point, base.Point]],
+    None,
+]
 
 # Android's `uiautomator` dump reports bounds in raw display pixels, so that is the space stamped on
 # this backend's actuation records — a coordinate only means something alongside its unit.
@@ -143,6 +150,22 @@ def _traced_act(act: ActFn) -> ActFn:
             )
             ctx.record("transport", "act", started_at, time.perf_counter() - t0, response)
         return outcome
+
+    return _wrapped
+
+
+def _traced_gesture(gesture: GestureFn) -> GestureFn:
+    def _wrapped(start: tuple[base.Point, base.Point], end: tuple[base.Point, base.Point]) -> None:
+        ctx = tracing.current_trace()
+        if ctx is None:
+            gesture(start, end)
+            return
+        started_at = time.time()
+        t0 = time.perf_counter()
+        try:
+            gesture(start, end)
+        finally:
+            ctx.record("transport", "gesture", started_at, time.perf_counter() - t0)
 
     return _wrapped
 
@@ -241,6 +264,7 @@ class AdbDriver(CoordinateTreeDriver):
         fetch_clock: ClockFetch | None = None,
         act: ActFn | None = None,
         type_on_device: TypeFn | None = None,
+        gesture_on_device: GestureFn | None = None,
         channel_recovery: ChannelRecovery | None = None,
         channel_start_failure: str | None = None,
         package: str | None = None,
@@ -285,6 +309,8 @@ class AdbDriver(CoordinateTreeDriver):
                 act = _traced_act(act)
             if type_on_device is not None:
                 type_on_device = _traced_type(type_on_device)
+            if gesture_on_device is not None:
+                gesture_on_device = _traced_gesture(gesture_on_device)
         self._run = run
         # When set, reads go through the resident channel and fall back to `uiautomator dump` only on
         # failure (BE-0245). Unset (the default) keeps today's dump-every-read behavior exactly.
@@ -301,6 +327,11 @@ class AdbDriver(CoordinateTreeDriver):
         self._act_fn = act
         # The resident server's text endpoint, the only route for text `input text` cannot carry.
         self._type_fn = type_on_device
+        # The resident server's two-finger endpoint: the route for `pinch` / `rotate` that needs no
+        # root. Latched off for the lease once the server answers that it lacks the endpoint, so an
+        # older server costs one round trip rather than one per gesture.
+        self._gesture_fn = gesture_on_device
+        self._gesture_unavailable = False
         # The device clock as of the latest text entry, on either route. `/type` rewrites the whole
         # field from what it reads, so its read must postdate the text the last entry put there.
         self._text_mark: float | None = None
@@ -1638,23 +1669,18 @@ class AdbDriver(CoordinateTreeDriver):
         scale: float | None = None,
         radians: float | None = None,
     ) -> None:
-        """Drive a two-finger gesture: resolve the target, then emit the raw two-slot sweep (BE-0232).
+        """Drive a two-finger gesture: resolve the target, then inject both contacts.
 
-        A rooted device with a discoverable touchscreen is required. Unlike the double-tap there is no
-        single-touch approximation of two fingers, so a missing precondition fails loudly with a clear
-        `UnsupportedAction` naming the root requirement — never a degraded gesture that silently passes.
+        Two routes, in order. The resident server injects through `UiAutomation` and needs no root;
+        the raw two-slot `sendevent` sweep (BE-0232) needs root and a discoverable touchscreen, and
+        stands in only when the server is absent, lacks the endpoint, or could not be reached before
+        the request went out — the cases where nothing was injected.
+        There is no single-touch approximation of two fingers, so a device with neither route fails
+        loudly with an `UnsupportedAction` naming both preconditions — never a degraded gesture.
         """
-        if not self._rooted():
-            raise base.UnsupportedAction(
-                f"{action} requires a rooted device; there is no single-touch fallback for a "
-                "two-finger gesture (sendevent writes to /dev/input, which needs root)"
-            )
-        dev = self._touch_device()
-        if dev is None:
-            raise base.UnsupportedAction(
-                f"{action} not possible (no touchscreen node found in getevent — cannot fire a "
-                "two-finger contact)"
-            )
+        server = self._gesture_server_usable()
+        if not server and not self._rooted():
+            raise base.UnsupportedAction(self._no_two_finger_route(action))
         frame, screen, el = self._resolve_frame_and_screen(sel)
         # gesture_anchor keeps both fingers (and a ~2x pinch-out) inside the target (BE-0251).
         cx, cy, half = base.gesture_anchor(frame)
@@ -1668,22 +1694,122 @@ class AdbDriver(CoordinateTreeDriver):
                 f"two-finger contact): {sel!r}"
             )
         start, end = contacts((cx, cy), half)
-        raw_start = (
-            adb.scale_to_touch(start[0], screen, dev),
-            adb.scale_to_touch(start[1], screen, dev),
-        )
-        raw_end = (adb.scale_to_touch(end[0], screen, dev), adb.scale_to_touch(end[1], screen, dev))
         # A zoom or a rotation moves every frame on screen just as a pan does, so it carries the same
         # publish lag and takes the same catch-up barrier. `_resolve_frame_and_screen` above already
         # read the tree, so the baseline costs nothing here.
         pre_key = self._pan_baseline()
         mark = self._capture_mark()
+        # Re-checked, not reused: the reads above can lose the resident channel and latch it off, and
+        # a request sent now would go to a connection the driver just tore down (as `_device_act`
+        # guards right before its own send).
+        server = server and self._gesture_server_usable()
+        if server and self._gesture_on_server(action, (cx, cy), el, start, end, scale, radians):
+            self._arm_catchup(pre_key, mark)
+            return
+        if not self._rooted():
+            raise base.UnsupportedAction(self._no_two_finger_route(action))
+        dev = self._touch_device()
+        if dev is None:
+            raise base.UnsupportedAction(
+                f"{action} not possible (no touchscreen node found in getevent — cannot fire a "
+                "two-finger contact)"
+            )
+        raw_start = (
+            adb.scale_to_touch(start[0], screen, dev),
+            adb.scale_to_touch(start[1], screen, dev),
+        )
+        raw_end = (adb.scale_to_touch(end[0], screen, dev), adb.scale_to_touch(end[1], screen, dev))
         # The anchor in tree space, not the raw touch-device range: `gesture_anchor`'s rule plus the
         # frame and the scale/rotation fully determine the two contacts from it, and the raw range is
         # an artifact of the injection method (as it is for the sendevent double-tap).
         self._log_coordinate(action, (cx, cy), el, scale=scale, radians=radians)
         self._act(adb.sendevent_gesture_cmd(self.serial, dev.path, raw_start, raw_end))
         self._arm_catchup(pre_key, mark)
+
+    def _gesture_server_usable(self) -> bool:
+        """Whether the resident server's two-finger endpoint is worth asking on this lease."""
+        # `_act_unavailable` also latches when the read channel is lost, and a connection that cannot
+        # serve a read cannot serve a gesture either.
+        return (
+            self._gesture_fn is not None
+            and not self._gesture_unavailable
+            and not self._act_unavailable
+        )
+
+    @staticmethod
+    def _no_two_finger_route(action: str) -> str:
+        return (
+            f"{action} needs the resident UI Automator server (rebuild it with `make -C "
+            "BajutsuAndroidUIAutomatorServer build`) or a rooted device for the `sendevent` sweep; "
+            "neither is available, and a two-finger gesture has no single-touch fallback"
+        )
+
+    def _gesture_on_server(
+        self,
+        action: str,
+        anchor: base.Point,
+        el: base.Element,
+        start: tuple[base.Point, base.Point],
+        end: tuple[base.Point, base.Point],
+        scale: float | None,
+        radians: float | None,
+    ) -> bool:
+        """Inject on the resident server; False when nothing was injected and `sendevent` may follow.
+
+        Only the faults that injected nothing fall through: an older server's `404`, and a channel that
+        could not be reached before the request went out. A rejection or a lost reply may already
+        have put a finger on the screen, so a second gesture on top of it is ruled out: a rejection
+        fails the step, and a lost reply is taken as landed, as `_device_act` takes one.
+        """
+        assert self._gesture_fn is not None  # `_gesture_server_usable` checked it
+        self._actuations.record(
+            Actuation(
+                gesture=action,
+                via="resident",
+                unit=_UNIT,
+                points=(anchor,),
+                frame=el["frame"],
+                target=el["identifier"],
+                scale=scale,
+                radians=radians,
+            )
+        )
+        try:
+            self._gesture_fn(start, end)
+        except AdbActUnsupported as exc:
+            self._actuations.settle(False)
+            self._gesture_unavailable = True
+            logger.warning(
+                "resident two-finger gesture unavailable (%s); a rooted device falls back to the "
+                "sendevent sweep",
+                exc,
+            )
+            return False
+        except AdbActUncertain as exc:
+            logger.warning(
+                "resident two-finger gesture may or may not have landed (%s); continuing as if it "
+                "did rather than injecting a second gesture on top of it",
+                exc,
+            )
+        except AdbGestureRejected as exc:
+            self._actuations.settle(False)
+            # Some of the gesture may have landed, so the cached tree can no longer be trusted.
+            self.invalidate_settled_cache()
+            raise base.UnsupportedAction(f"{action} failed on the resident server: {exc}") from exc
+        except AdbResidentError as exc:
+            # Nothing left the host. Like `_device_act`'s own blip, this degrades the one gesture and
+            # keeps the channel: the next gesture asks the server again.
+            self._actuations.settle(False)
+            logger.warning(
+                "resident two-finger gesture unreachable (%s); a rooted device falls back to the "
+                "sendevent sweep",
+                exc,
+            )
+            return False
+        else:
+            self._actuations.settle(True)
+        self.invalidate_settled_cache()
+        return True
 
     def select_option(self, sel: base.Selector, option: str) -> None:  # noqa: ARG002  # Driver shape
         raise base.UnsupportedAction(

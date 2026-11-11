@@ -850,15 +850,17 @@ class PlaywrightDriver:
 
     @_wedge_guard
     def select_all(self) -> None:
-        # Ctrl+A selects the focused field's whole content (BE-0265).
+        # Select-all on the focused field (BE-0265). `ControlOrMeta` is Cmd on a macOS host, where
+        # Chromium reads Ctrl+A as "caret to line start" and selects nothing (#2390).
         self._actuations.record(Actuation(gesture="selectAll", via="focused", unit=_UNIT))
-        self._page.keyboard.press("Control+a")
+        self._page.keyboard.press("ControlOrMeta+a")
 
     @_wedge_guard
     def copy_selection(self) -> None:
-        # Ctrl+C copies the active selection to the clipboard (BE-0265).
+        # Copies the active selection to the clipboard (BE-0265); Cmd+C on a macOS host, where Ctrl+C
+        # copies nothing (#2390).
         self._actuations.record(Actuation(gesture="copy", via="focused", unit=_UNIT))
-        self._page.keyboard.press("Control+c")
+        self._page.keyboard.press("ControlOrMeta+c")
 
     @_wedge_guard
     def select_option(self, sel: base.Selector, option: str) -> None:
