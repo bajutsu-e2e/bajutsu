@@ -3,13 +3,13 @@
 # Showcase：SwiftUI
 
 Bajutsu showcase ドッグフード一式の SwiftUI 版です。挙動、identifier、起動時の環境変数フック、
-ディープリンク、OS アラートを出す画面は、すべて [`../SPEC.md`](../SPEC.ja.md) に一度だけ定義され、
+ディープリンク、OS アラートを出す画面は、すべて [`../SPEC.md`](../SPEC.ja.md) に一度だけ定義されており、
 ここでは identifier 単位でそのまま実装しています（UIKit 版も同じ仕様を実装します）。そのため、
 1 つのシナリオ集ですべての variant を駆動できます。
 
 ## 1 つのコードベース、2 つのビルド variant
 
-variant の違いは Swift のコンパイル条件 `ACCESSIBLE` 1 つだけで、ソースを分岐させてはいません。
+variant の違いは Swift のコンパイル条件 `ACCESSIBLE` 1 つだけで、ソースは分岐していません。
 `aid(_:)` ヘルパー（[`Sources/AID.swift`](Sources/AID.swift)、SPEC §8）は、このフラグが定義されて
 いるときだけ identifier を付与し、状態を `accessibilityValue` に反映します。
 
@@ -18,13 +18,13 @@ variant の違いは Swift のコンパイル条件 `ACCESSIBLE` 1 つだけで�
 | `BajutsuShowcaseSwiftUI` | 定義あり | `com.bajutsu.showcase.ios.swiftui` | Showcase SwiftUI | `showcaseswiftui` |
 | `BajutsuShowcaseSwiftUINoAx` | — | `com.bajutsu.showcase.ios.swiftui.noax` | Showcase SwiftUI (no a11y) | `showcaseswiftuinoax` |
 
-`-a11y` ビルドは SPEC §5 のすべての identifier を公開し（`doctor --target` は **Ready** と判定）、
-no-a11y ビルドは identifier の無いツリーになります（**Blocked** と判定）。アクセシビリティ対応を
-省いたときのコストを具体的に示すものです。
+`-a11y` ビルドは SPEC §5 のすべての identifier を公開します（`doctor --target` は **Ready** と判定）。
+no-a11y ビルドは identifier の無いツリーになり（**Blocked** と判定）、アクセシビリティ対応を
+省いたときのコストを具体的に示します。
 
 ## ビルド
 
-Xcode と [XcodeGen](https://github.com/yonaskolb/XcodeGen)（`brew install xcodegen`）が必要です。
+ビルドには Xcode と [XcodeGen](https://github.com/yonaskolb/XcodeGen)（`brew install xcodegen`）が必要です。
 2 つのターゲットは同じ `Sources/` ディレクトリを共有します。
 
 ```bash
@@ -40,5 +40,5 @@ xcodebuild -scheme BajutsuShowcaseSwiftUINoAx \
 
 ## 起動時の環境変数フックとディープリンク
 
-`SHOWCASE_` プレフィックスで起動時に `ProcessInfo` から一度だけ読み込みます。ディープリンクは上記の
-variant ごとのスキームを使います。いずれも [`../SPEC.md`](../SPEC.ja.md) §3〜§4 に定義しています。
+フックは `SHOWCASE_` プレフィックスで、起動時に `ProcessInfo` から一度だけ読み込みます。ディープリンクは
+上記の variant ごとのスキームを使います。いずれも [`../SPEC.md`](../SPEC.ja.md) §3〜§4 に定義しています。
