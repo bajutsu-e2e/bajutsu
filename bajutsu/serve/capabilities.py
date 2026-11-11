@@ -318,9 +318,11 @@ def checks_routes(advertised: Iterable[str]) -> bool:
 
 
 def route_key(required: Iterable[str]) -> str:
-    """A digest of *required* that two jobs share exactly when `can_serve` gives them one verdict.
+    """A digest of *required*: two jobs that share it get one `can_serve` verdict from any worker.
 
-    The lease scan stands one job in for every queued job of its group with the same key (BE-0484),
+    One direction only — two jobs with *different* keys may still both be servable, so a caller may
+    stand one job in for another of the same key but must conclude nothing from a mismatch. The
+    lease scan stands one job in for every queued job of its group with the same key (BE-0484),
     so this must digest every per-job input of `can_serve`; a new input joins the key.
     """
     return _digest(sorted(set(required)))

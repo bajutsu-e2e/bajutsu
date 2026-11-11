@@ -422,7 +422,7 @@ beside the `jobIds` it queued:
 | `conclusion` | when |
 |---|---|
 | `pending` | a job is still queued or leased |
-| `failure` | every job finished, and one exited non-zero or reported no verdict |
+| `failure` | every job finished, and one that was not cancelled exited non-zero or reported no verdict |
 | `cancelled` | every other job exited with code 0, and one was cancelled |
 | `success` | every job finished with exit code 0 |
 

@@ -503,6 +503,23 @@ def test_package_writes_synthesized_extra_texts_at_their_arcnames(tmp_path: Path
         assert zf.read("requirements.txt").decode() == "# empty\n"
 
 
+def test_package_bytes_do_not_depend_on_the_clock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The archive's sha256 keys a run-set's compat key (BE-0484), so unchanged inputs must hash alike.
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "keep.yaml").write_text("scenarios: []")
+    digests = []
+    for i, now in enumerate((1_700_000_000.0, 1_800_000_000.0)):
+        monkeypatch.setattr(time, "time", lambda now=now: now)
+        out = tmp_path / f"p{i}.zip"
+        build_package([(src, ".")], out, extra_texts={"requirements.txt": "# empty\n"})
+        digests.append(out.read_bytes())
+
+    assert digests[0] == digests[1]
+
+
 def test_package_exclude_arcnames_skips_individual_file_entry(tmp_path: Path) -> None:
     # An individual-file source entry whose arcname is in exclude_arcnames must be omitted.
     config = tmp_path / "bajutsu.config.yaml"

@@ -71,8 +71,9 @@ def _resolve_org_or_forbid(
     is how the first eight callers came to omit it.
 
     *machine_org* is the tenant a machine principal acts as (BE-0414 unit 3), which `org_of` cannot
-    answer for: it reads a persisted user row, and a pipeline has none. Only `start_run` is on the
-    machine allowlist, so every other `start_*` caller leaves it None and resolves exactly as before.
+    answer for: it reads a persisted user row, and a pipeline has none. Every `start_*` endpoint on
+    the machine allowlist (`gate._MACHINE_PATHS`) must thread it; the rest leave it None and resolve
+    exactly as before.
     """
     org = state.org_for(actor, machine_org)
     if _target_forbidden(state, org, target, session):
