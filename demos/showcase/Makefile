@@ -201,9 +201,9 @@ run-uikit-tabs: uikit-build runner-build
 # `generated.yaml` have no UIKit counterpart). NOT part of `make check` — needs a booted Simulator; the
 # permission scenario is non-deterministic on iOS (its alert grant is an AI path, like the a11y twin).
 run-swiftui-noax: swiftui-noax-build runner-build
-	cd $(ROOT) && uv run bajutsu run --target showcase-swiftui-noax --udid $(SIM) --backend xcuitest --config $(CONFIG)
+	cd $(ROOT) && uv run bajutsu run --target showcase-swiftui-noax --udid $(SIM) --backend xcuitest --exclude android --config $(CONFIG)
 run-uikit-noax: uikit-noax-build runner-build
-	cd $(ROOT) && uv run bajutsu run --target showcase-uikit-noax --udid $(SIM) --backend xcuitest --exclude swiftui --config $(CONFIG)
+	cd $(ROOT) && uv run bajutsu run --target showcase-uikit-noax --udid $(SIM) --backend xcuitest --exclude swiftui,android --config $(CONFIG)
 
 # The accessibility A/B: doctor grades the a11y app Ready and the no-a11y app Blocked.
 doctor: swiftui-build swiftui-noax-build

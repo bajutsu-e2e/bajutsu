@@ -103,6 +103,9 @@ class _AndroidHarness(OnDeviceConformanceHarness):
     change that makes it pass (#2390).
     """
 
+    # Every emulator image ships Settings, so the `app:` contract enters it (`other_app`).
+    other_app = "com.android.settings"
+
     def __init__(self, driver: base.Driver, serial: str, component: str) -> None:
         super().__init__("adb", driver)
         self._serial = serial

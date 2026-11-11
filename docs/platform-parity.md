@@ -69,7 +69,7 @@ column.
 | `handleSystemAlert` | ✅ | n/a | An Android system dialog appears in the dumped tree, so an ordinary `tap` reaches it. |
 | `resolveAlerts` | ✅ | n/a | Same reason as `handleSystemAlert`. |
 | `pickerWheel` | ✅ | gap | Android's `NumberPicker` and spinner-mode `DatePicker` are the nearest controls. No setter drives them yet. |
-| `appContext` | ✅ | gap | UI Automator reads any app's window, and `am start` can bring another package forward. |
+| `appContext` | ✅ | ✅ | Android starts the other package's launcher activity with `am start` and waits until that package holds the resumed activity. UI Automator reads whichever app's window is in front. |
 | `selectPhotos` | ✅ | ✅ | adb finds the Android 13+ photo picker's cells and add button by resource id, so the same steps run on both platforms. On iOS, an Apple Silicon Simulator drops the capability at run time. |
 | `handleTipkitTip` | ✅ | n/a | TipKit is an iOS framework. |
 | `handleNotificationBanner` | ✅ | gap | An Android heads-up notification appears in the tree as a SystemUI node. |
