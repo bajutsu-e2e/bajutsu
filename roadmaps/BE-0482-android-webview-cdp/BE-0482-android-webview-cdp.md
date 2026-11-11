@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0482](BE-0482-android-webview-cdp.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0482") |
 | Topic | Platform support |
 <!-- /BE-METADATA -->
@@ -250,11 +250,11 @@ The units below are mutually exclusive and, together, cover the design above.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] CDP client and `CdpDomSource`
-- [ ] Socket discovery and forwarding
-- [ ] Run wiring
-- [ ] Optional extra and provisioning
-- [ ] BajutsuAndroid helper
+- [x] CDP client and `CdpDomSource`
+- [x] Socket discovery and forwarding
+- [x] Run wiring
+- [x] Optional extra and provisioning
+- [x] BajutsuAndroid helper
 - [ ] Showcase screens and a portable `web:` scenario
 - [ ] Docs (`platform-parity`, `drivers`, `scenarios`, en and ja)
 

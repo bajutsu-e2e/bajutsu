@@ -2,6 +2,7 @@ package dev.bajutsu.android
 
 import android.content.Context
 import android.content.IntentFilter
+import android.webkit.WebView
 import androidx.core.content.ContextCompat
 
 /**
@@ -42,5 +43,27 @@ object Bajutsu {
             ContextCompat.RECEIVER_EXPORTED,
         )
         registered = true // only after a successful registration, so a throw doesn't wedge it off
+    }
+
+    /**
+     * Let bajutsu read and tap inside this app's WebViews, for a scenario's `web:` block (BE-0482).
+     *
+     * Turns on WebView debugging, which opens each WebView's `webview_devtools_remote_<pid>` socket —
+     * the Chrome DevTools Protocol channel bajutsu forwards with `adb` to query the DOM and dispatch
+     * touches. Whether a WebView in a debuggable app enables this by itself has varied across WebView
+     * versions, so the explicit call removes that dependence and covers a non-debuggable test build
+     * too. Call it from `Application.onCreate`, before any WebView is created.
+     *
+     * In an app that hosts its WebViews in a separate `android:process`, call it only in that process
+     * (or after `WebView.setDataDirectorySuffix`): `Application.onCreate` runs in every process, and
+     * the call loads WebView, which takes the per-process data-directory lock that API 28+ refuses to
+     * share between two processes.
+     *
+     * **Never call it in a release build** — `if (BuildConfig.DEBUG) Bajutsu.enableWebViewDebugging()`.
+     * While it is on, any process on the device can connect to the socket and read or drive every
+     * page this app shows, session cookies and form input included. Idempotent.
+     */
+    fun enableWebViewDebugging() {
+        WebView.setWebContentsDebuggingEnabled(true)
     }
 }

@@ -18,6 +18,7 @@ from bajutsu.common.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.common.platform_lifecycle import readiness
 from bajutsu.common.platform_lifecycle.protocols import CollectorHost
 from bajutsu.common.platform_lifecycle.relaunchers import _web_relauncher
+from bajutsu.common.platform_lifecycle.webview_source import NO_WEBVIEW_SOURCE, WebViewSource
 from bajutsu.common.scenario import Scenario
 from bajutsu.crawl import AliveCheck, ClearBlocking, Recover, Reset
 
@@ -80,6 +81,9 @@ class WebEnvironment:
 
     def reach_device_port(self, eff: Effective, port: int) -> tuple[int, Callable[[], None]]:  # noqa: ARG002  # Environment shape
         return port, lambda: None  # nothing between the host and the port to bridge
+
+    def webview_source(self, eff: Effective) -> WebViewSource:  # noqa: ARG002  # Environment shape
+        return NO_WEBVIEW_SOURCE  # the Playwright driver owns the page itself
 
     def mirrors_collector_port_on_device(self) -> bool:
         return False  # no device and no pre-started collector to bridge

@@ -114,6 +114,8 @@ def test_plan_for_backends_includes_android_adb() -> None:
     # binary, provisioned via Homebrew.
     p = provision.plan_for_backends(["android"])
     assert Tool("adb", Brew("android-platform-tools")) in p.tools
+    # The WebSocket client the CDP WebView source needs rides on the same backend (BE-0482).
+    assert "android" in p.extras
 
 
 # --- provision(): idempotent execution over injectable subprocess seams ----------------------
