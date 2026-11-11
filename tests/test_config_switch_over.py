@@ -579,15 +579,18 @@ def test_the_mcp_run_tool_passes_its_worker_config_on(
 # --- an appium worker ---------------------------------------------------------------------------
 
 
-def test_an_appium_worker_advertises_its_environment_alone() -> None:
+def test_an_appium_worker_advertises_its_environment_and_the_run_intent_alone() -> None:
     from bajutsu.common.capability.route_tokens import ROUTE_AWARE_TOKEN, is_route_token
     from bajutsu.serve.cli import worker as worker_mod
 
     caps = worker_mod._advertised_capabilities("", "", _grid(), "linux")
-    # The live route's tokens ride along (BE-0467); nothing else a local job could match.
-    assert [c for c in caps if not is_route_token(c)] == ["environment:appium"]
+    # The live route's tokens ride along (BE-0467), and the run-intent token (BE-0484), which no
+    # plain job requires; nothing else a local job could match.
+    assert [c for c in caps if not is_route_token(c)] == ["environment:appium", "job:run-intent"]
     assert all(
-        c.startswith(("environment:", "cap:ios-live:")) for c in caps if c != ROUTE_AWARE_TOKEN
+        c.startswith(("environment:", "cap:ios-live:"))
+        for c in caps
+        if c not in (ROUTE_AWARE_TOKEN, "job:run-intent")
     )
     with pytest.raises(typer.BadParameter, match="takes no --platform"):
         worker_mod._advertised_capabilities("ios", "", _grid(), "linux")

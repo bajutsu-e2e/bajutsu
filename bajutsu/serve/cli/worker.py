@@ -47,6 +47,7 @@ from bajutsu.common.run_meta.object_store import content_type_for
 from bajutsu.serve import InMemoryLogBus
 from bajutsu.serve.capabilities import (
     MACHINE_ID_ENV,
+    RUN_INTENT_CAPABILITY,
     WORKER_CAPABILITIES_ENV,
     devicectl_capabilities,
     environment_capability,
@@ -69,7 +70,12 @@ from bajutsu.serve.operations.worker import (
 from bajutsu.serve.server.db import cancelled_job_result
 from bajutsu.serve.server.one_shot import environment_refusal
 from bajutsu.serve.server.worker_job import CancelRelay as _CancelRelay
-from bajutsu.serve.server.worker_job import WorkerIO, _materialize, execute_job_spec
+from bajutsu.serve.server.worker_job import (
+    WorkerIO,
+    _materialize,
+    execute_job_spec,
+    resolve_run_intent,
+)
 from bajutsu.serve.state import Job
 from bajutsu.serve.upload_artifacts import ARTIFACT_KINDS, OVERRIDE_KINDS, ArtifactOverrides
 from bajutsu.serve.uploads import find_bundle_config, materialize_bundle, validate_bundle_config
@@ -255,6 +261,7 @@ def _advertised_capabilities(
         return sorted(
             {
                 environment_capability(APPIUM),
+                RUN_INTENT_CAPABILITY,
                 *advertised_route_tokens(worker_routes((), appium=True)),
             }
         )
@@ -266,7 +273,12 @@ def _advertised_capabilities(
                 param_hint="--platform",
             )
         return sorted(
-            {environment_capability(cap.environment), host_token, *parse_capabilities(override)}
+            {
+                environment_capability(cap.environment),
+                RUN_INTENT_CAPABILITY,
+                host_token,
+                *parse_capabilities(override),
+            }
         )
     platforms = [p.strip() for p in (platform or "ios").split(",") if p.strip()]
     # Fail loudly on a typo'd platform (e.g. `--platform iso`) rather than silently advertising a
@@ -294,7 +306,7 @@ def _advertised_capabilities(
             # when worker.yaml says this Mac drives attached iPhones.
             routes=worker_routes(drivable, real_devices=cap.real_devices),
         )
-        | {host_token}
+        | {host_token, RUN_INTENT_CAPABILITY}
     )
 
 
@@ -1287,6 +1299,7 @@ def _run_once(path: Path, worker_file: Path | None, environment: str = LOCAL) ->
         spec = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as e:
         raise typer.BadParameter(f"cannot read the job spec: {e}", param_hint="--once") from None
+    spec = resolve_run_intent(spec, environment)
     if (reason := one_shot.refusal(spec, Path.cwd(), environment=environment)) is not None:
         raise typer.BadParameter(reason, param_hint="--once")
     try:
@@ -1578,6 +1591,7 @@ def _run_with_heartbeat(
     *claim_check* re-checks the job's route tokens against this worker's environment now (BE-0467);
     a job it refuses fails before anything is fetched or any device leased.
     """
+    spec = resolve_run_intent(spec, environment)
     holder: dict[str, Any] = {"work": work}
     lost = lost if lost is not None else threading.Event()
     cancel = cancel if cancel is not None else _CancelRelay()
@@ -2126,14 +2140,15 @@ def _bundle_workspace(work: Path, spec: dict[str, Any], bundle_urls: Any) -> Pat
     console log inside it — the worker already shares one working directory across jobs, and this
     keeps that property rather than paying a copy of an app binary per job.
 
-    A cloud-batch job that ships no bundle gets a fresh tree of its own instead (BE-0448).
+    A cloud-batch or run-intent job that ships no bundle gets a fresh tree of its own instead
+    (BE-0448, BE-0484).
 
     Raises rather than falling back to *work*: a run started against a missing binary fails opaquely
     at install time, far from this cause (directive 2).
     """
     bundle = spec.get("bundle")
     if not isinstance(bundle, dict):
-        return _batch_workspace(work, spec) if spec.get("batch") else work
+        return _batch_workspace(work, spec) if spec.get("batch") or spec.get("intent") else work
     bundle_id = bundle.get("id")
     if not valid_sha256(bundle_id):
         # Server-authored, so this is purely defensive — but the id becomes a directory name below,
@@ -2171,7 +2186,7 @@ def _batch_workspace(work: Path, spec: dict[str, Any]) -> Path:
 
 
 def _place_batch_app(tree: Path, spec: dict[str, Any], app_url: Any) -> None:
-    """Fetch the stored application a cloud-batch job names into *tree*, at its `appPath` (BE-0448).
+    """Fetch the stored application a cloud-batch or run-intent job names into *tree* (BE-0448).
 
     The job ships its config and scenario as materials and no bundle, so the lease's signed URL is
     the only way its binary reaches this worker. The `appPath` comes from a leased spec, so it must
@@ -2190,10 +2205,10 @@ def _place_batch_app(tree: Path, spec: dict[str, Any], app_url: Any) -> None:
         return
     if not valid_sha256(sha):
         raise RuntimeError(f"job carries an invalid application sha: {sha!r}")
-    batch = spec.get("batch")
-    rel = batch.get("app_path") if isinstance(batch, dict) else None
+    named = spec.get("batch") or spec.get("intent")
+    rel = named.get("app_path") if isinstance(named, dict) else None
     if not isinstance(rel, str) or not rel:
-        raise RuntimeError("job names a stored application but no batch.app_path to place it at")
+        raise RuntimeError("job names a stored application but no app_path to place it at")
     dest = tree / rel
     if Path(rel).is_absolute() or tree.resolve() not in dest.resolve().parents:
         raise RuntimeError(f"application path {rel!r} is outside this job's workspace")

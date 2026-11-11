@@ -75,6 +75,7 @@ def test_dispatch_enqueues_a_serializable_job_spec(tmp_path: Path) -> None:
         "label": None,  # no config bound for this locally-built job to derive one from (BE-0404)
         "env_overlay": {},  # no AI provider selected for this org, so no overlay (BE-0229)
         "batch": None,  # not a cloud-batch job (BE-0336 Unit 5)
+        "intent": None,  # not a `run-set` job (BE-0484)
         "batch_app": None,  # no stored application to fetch (BE-0448)
         "overrides": None,  # no per-job artifact override named (BE-0431)
         "provenance": None,  # nothing uploaded or overridden to record into the manifest

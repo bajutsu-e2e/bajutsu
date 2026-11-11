@@ -41,6 +41,23 @@ def _cmd_kind(cmd: list[str]) -> JobKind | None:
     return None
 
 
+@dataclass(frozen=True)
+class RunIntent:
+    """What a `run-set` job runs, leaving where to the worker that leases it (BE-0484).
+
+    Paths are relative to the job's workspace and the application is a logical reference, as in a
+    cloud-batch request. *upload_exec* is the server's `launchServer` policy for an uploaded bundle
+    (BE-0090), empty for any other binding.
+    """
+
+    scenario: str
+    target: str
+    config: str
+    platform: str
+    app_path: str
+    upload_exec: str = ""
+
+
 @dataclass
 class Job:
     # `id` is assigned by `ServeState.register`/`try_register` (from the job sequence); a caller
@@ -161,6 +178,9 @@ class Job:
     # branches on it; None is the ordinary local/worker run. The verdict still comes from the run's
     # own manifest, so the batch path stays off the `run`/CI verdict path.
     batch: BatchRequest | None = None
+    # A `run-set` job's run intent (BE-0484): the worker that leases it turns it into a `cmd` or a
+    # `batch` of its own, so the job names no provider. None for every other job.
+    intent: RunIntent | None = None
     # The sha256 of the application a cloud-batch job's `appPath` names, stored as a binary artifact
     # for a job whose files travel as materials with no uploaded bundle (BE-0448): the lease signs a
     # GET for it, and the worker places it at that `appPath` in the job's workspace. None when the
@@ -182,14 +202,14 @@ class Job:
 
     @property
     def kind(self) -> JobKind | None:
-        """What this job does: ``run-set`` for a cloud-batch request, else the subcommand its
-        command line spawns, or None for a command that is none of the job kinds.
+        """What this job does: ``run-set`` for a cloud-batch request or a run intent, else the
+        subcommand its command line spawns, or None for a command that is none of the job kinds.
 
-        Derived rather than stored (BE-0449): every dispatcher already fixes the kind in `cmd` or
+        Derived rather than stored (BE-0449): every dispatcher already fixes the kind in `cmd`, `intent`, or
         `batch`, so a stored field would be a second copy each dispatcher, the job spec, and the
         worker's rebuilt `Job` would all have to keep in step.
         """
-        if self.batch is not None:
+        if self.batch is not None or self.intent is not None:
             return "run-set"
         return _cmd_kind(self.cmd)
 
