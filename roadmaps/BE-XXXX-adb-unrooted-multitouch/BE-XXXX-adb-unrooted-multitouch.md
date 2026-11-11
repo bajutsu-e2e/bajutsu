@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| Implementing PR | TBD — filled in once the PR is open |
+| Implementing PR | [#2410](https://github.com/bajutsu-e2e/bajutsu/pull/2410) |
 | Topic | Platform support |
 | Related | [BE-0232](../BE-0232-adb-multitouch-gestures/BE-0232-adb-multitouch-gestures.md), [BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md), [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md) |
 <!-- /BE-METADATA -->
