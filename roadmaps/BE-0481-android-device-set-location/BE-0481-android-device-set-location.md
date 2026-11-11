@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-android-device-set-location-ja.md)
+**English** · [日本語](BE-0481-android-device-set-location-ja.md)
 
-# BE-XXXX — Set the location through BajutsuAndroid on a real Android device
+# BE-0481 — Set the location through BajutsuAndroid on a real Android device
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-android-device-set-location.md) |
+| Proposal | [BE-0481](BE-0481-android-device-set-location.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0481") |
 | Topic | Platform support |
 | Related | [BE-0211](../BE-0211-android-device-control/BE-0211-android-device-control.md), [BE-0233](../BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity.md), [BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities.md), [BE-0475](../BE-0475-ios-runner-set-location/BE-0475-ios-runner-set-location.md) |
 <!-- /BE-METADATA -->
