@@ -1,14 +1,14 @@
-[English](BE-XXXX-android-photo-picker.md) · **日本語**
+[English](BE-0485-android-photo-picker.md) · **日本語**
 
-# BE-XXXX — selectPhotos で Android の写真ピッカーから画像を選ぶ
+# BE-0485 — selectPhotos で Android の写真ピッカーから画像を選ぶ
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-android-photo-picker-ja.md) |
+| 提案 | [BE-0485](BE-0485-android-photo-picker-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0485") |
 | 実装 PR | [#2411](https://github.com/bajutsu-e2e/bajutsu/pull/2411) |
 | トピック | Platform support |
 | 関連 | [BE-0433](../BE-0433-phpicker-select-photos/BE-0433-phpicker-select-photos-ja.md)、[BE-0479](../BE-0479-android-seed-photos/BE-0479-android-seed-photos-ja.md) |
