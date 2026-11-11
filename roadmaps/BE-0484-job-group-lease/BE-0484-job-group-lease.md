@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-job-group-lease-ja.md)
+**English** · [日本語](BE-0484-job-group-lease-ja.md)
 
-# BE-XXXX — Register jobs as a group and let a worker lease a group together
+# BE-0484 — Register jobs as a group and let a worker lease a group together
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-job-group-lease.md) |
+| Proposal | [BE-0484](BE-0484-job-group-lease.md) |
 | Author | [@paihu](https://github.com/paihu) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0484") |
 | Topic | Device-cloud execution |
 | Related | [BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out.md), [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md), [BE-0465](../BE-0465-serve-ui-device-farm-fan-out/BE-0465-serve-ui-device-farm-fan-out.md), [BE-0468](../BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of.md) |
 <!-- /BE-METADATA -->
