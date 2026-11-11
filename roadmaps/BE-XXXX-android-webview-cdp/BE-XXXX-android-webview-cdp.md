@@ -181,7 +181,9 @@ Today `_alloc_webview_bridge` builds an HTTP `WebViewBridge` for every non-web p
 function lives in `bajutsu/common/runner/pool.py`. The new code asks the run environment for its `DomSource` instead. iOS
 keeps returning the HTTP bridge and its launch variable. Android returns a `CdpDomSource` and sets
 no `BAJUTSU_WEBVIEW_PORT`. Apart from the `session` call, `_handle_web` keeps its behavior. It
-still fails a block with a clear reason when no source exists. It also turns a transport failure into that block's failure reason.
+still fails a block with a clear reason when no source exists. That reason today names
+`BAJUTSU_WEBVIEW_PORT`, which Android now leaves unset by design. The new reason names the missing
+WebView source and drops the variable. It also turns a transport failure into that block's failure reason.
 
 A transport failure can come at two moments. Opening `session` fails when the socket or the
 `websockets` package is missing. A `DomSource` call inside the block can fail too. A CDP error response
@@ -225,7 +227,7 @@ The units below are mutually exclusive and, together, cover the design above.
 |---|---|---|---|
 | 1 | CDP client and `CdpDomSource` | The WebSocket request and response loop, target selection by rectangle, the four `DomSource` methods with the tap hit-test and the caret and `change` handling, and `WebViewTransportError` | Unit tests replay a recorded CDP exchange, with no device, including a tap at a point with no element and a socket closed mid-block |
 | 2 | Socket discovery and forwarding | The `ps`, `/proc/net/unix`, and `adb forward` steps, the per-block lifetime, and the missing-socket reason | Unit tests cover the command lines, a WebView in a `<package>:<name>` process, and the error reason |
-| 3 | Run wiring | The `session` method on `DomSource`, its no-op in `WebViewBridge` and the fakes, and `_handle_web` opening it with the resolved frame; the environment hook that supplies a `DomSource`, with iOS unchanged and Android returning `CdpDomSource` | A step-runner test asserts that `session` receives the resolved frame, closes on a failing block, and that a missing socket fails its block alone; a `tests/runner/test_pool.py` case asserts that Android sets no `BAJUTSU_WEBVIEW_PORT` and receives a `CdpDomSource` |
+| 3 | Run wiring | The `session` method on `DomSource`, its no-op in `WebViewBridge` and the fakes, `_handle_web` opening it with the resolved frame, and the no-source reason rewritten without `BAJUTSU_WEBVIEW_PORT`; the environment hook that supplies a `DomSource`, with iOS unchanged and Android returning `CdpDomSource` | A step-runner test asserts that `session` receives the resolved frame, closes on a failing block, and that a missing socket fails its block alone; a `tests/runner/test_pool.py` case asserts that Android sets no `BAJUTSU_WEBVIEW_PORT` and receives a `CdpDomSource` |
 | 4 | Optional extra and provisioning | The `websockets` extra in `pyproject.toml`, the lock refresh, the import guard, the extra on the `adb` entry of the provisioning requirements map, and the extra in the dev group's `bajutsu[...]` list | `make check`, including `lock-check` and the import guard test |
 | 5 | BajutsuAndroid helper | `Bajutsu.enableWebViewDebugging()` and its KDoc | The showcase apps call the helper and build |
 | 6 | Showcase | A WebView screen in the iOS showcase and in both Android twins (Compose and Views), plus one portable `web:` scenario that taps and types inside the WebView | The scenario passes on-device on both platforms; this run is the item's acceptance check |

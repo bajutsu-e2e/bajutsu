@@ -182,7 +182,9 @@ WebView の一部が隠れるのは、画面からはみ出したとき、スク
 作ります。この関数は `bajutsu/common/runner/pool.py` にあります。新しいコードでは、代わりに実行環境へ
 `DomSource` を問い合わせます。iOS はこれまでどおり HTTP ブリッジと起動時の環境変数を返します。Android は
 `CdpDomSource` を返し、`BAJUTSU_WEBVIEW_PORT` は設定しません。`session` の呼び出しを除けば、ステップランナーの
-`_handle_web` の振る舞いは変わりません。DOM ソースがないときは、これまでどおり明確な理由でブロックを失敗させます。通信の失敗も、そのブロックの失敗理由に変えます。
+`_handle_web` の振る舞いは変わりません。DOM ソースがないときは、これまでどおり明確な理由でブロックを失敗させます。ただし現在の理由は
+`BAJUTSU_WEBVIEW_PORT` を名指ししており、Android ではこの変数を設計上設定しません。新しい理由は、
+WebView の DOM ソースがないことを示し、変数名を含めません。通信の失敗も、そのブロックの失敗理由に変えます。
 
 通信の失敗が起きる場面は 2 つあります。1 つは `session` を開くときで、ソケットや `websockets`
 パッケージがない場合です。もう 1 つはブロック内の `DomSource` の呼び出しで、CDP がエラーを返した場合や、
@@ -227,7 +229,7 @@ BajutsuAndroid に `Bajutsu.enableWebViewDebugging()` を追加します。こ�
 |---|---|---|---|
 | 1 | CDP クライアントと `CdpDomSource` | WebSocket の要求と応答、矩形によるターゲット選択、`DomSource` の 4 メソッド（タップ前の当たり判定、キャレットと `change` の扱いを含む）、`WebViewTransportError` | 記録した CDP のやり取りを再生するユニットテストで、デバイスなしに確かめます。要素のない位置へのタップと、ブロックの途中で閉じたソケットも確かめます |
 | 2 | ソケットの発見と転送 | `ps`、`/proc/net/unix`、`adb forward` の手順、ブロック単位の寿命、ソケットがないときの理由 | ユニットテストで、コマンドライン、`<package>:<name>` のプロセスにある WebView、エラーの理由を確かめます |
-| 3 | 実行への組み込み | `DomSource` の `session` メソッド、`WebViewBridge` とフェイクでの何もしない実装、解決した frame で `session` を開く `_handle_web`。あわせて、`DomSource` を返す実行環境のフック。iOS は変えず、Android は `CdpDomSource` を返します | ステップランナーのテストで、`session` が解決した frame を受け取り、失敗したブロックでも閉じること、ソケットがないときはそのブロックだけが失敗することを確かめます。`tests/runner/test_pool.py` のケースで、Android が `BAJUTSU_WEBVIEW_PORT` を設定せず `CdpDomSource` を受け取ることを確かめます |
+| 3 | 実行への組み込み | `DomSource` の `session` メソッド、`WebViewBridge` とフェイクでの何もしない実装、解決した frame で `session` を開く `_handle_web`、`BAJUTSU_WEBVIEW_PORT` を含まない形に書き換えた DOM ソースなしの理由。あわせて、`DomSource` を返す実行環境のフック。iOS は変えず、Android は `CdpDomSource` を返します | ステップランナーのテストで、`session` が解決した frame を受け取り、失敗したブロックでも閉じること、ソケットがないときはそのブロックだけが失敗することを確かめます。`tests/runner/test_pool.py` のケースで、Android が `BAJUTSU_WEBVIEW_PORT` を設定せず `CdpDomSource` を受け取ることを確かめます |
 | 4 | オプションの extra とプロビジョニング | `pyproject.toml` の `websockets` extra、ロックの更新、import ガード、プロビジョニングの要件表の `adb` の項目への extra の追加、dev グループの `bajutsu[...]` への追加 | `lock-check` と import ガードのテストを含む `make check` が通ります |
 | 5 | BajutsuAndroid のヘルパー | `Bajutsu.enableWebViewDebugging()` とその KDoc | showcase のアプリがヘルパーを呼び、ビルドが通ります |
 | 6 | showcase | iOS の showcase と Android の 2 つの版（Compose と Views）に WebView 画面を追加し、WebView 内でタップと入力をする共通の `web:` シナリオを 1 本書きます | そのシナリオが両プラットフォームの実機で通ります。この実行が項目の受け入れ確認です |
