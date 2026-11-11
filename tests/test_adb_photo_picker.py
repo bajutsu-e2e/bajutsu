@@ -164,6 +164,23 @@ def test_a_tap_that_never_registers_times_out() -> None:
     assert calls == [_tap(CELLS[0])]
 
 
+def test_a_later_index_waits_out_a_grid_caught_mid_rebind() -> None:
+    # The read confirming cell 0 shows a shorter grid (the sheet growing on the first pick), so cell
+    # 3 is waited for on the next read rather than indexed out of range.
+    rebinding = MULTI_SELECTED.replace('bounds="[0,1003][354,1357]"', 'bounds="[0,0][0,0]"')
+    driver, calls = _driver([MULTI, MULTI, rebinding, MULTI_SELECTED, APP])
+    with pytest.raises(base.ElementNotFound, match="cell 3 to read back selected"):
+        driver.select_photos([0, 3], timeout=0.05)
+    assert calls == [_tap(CELLS[0]), _tap(CELLS[3])]
+
+
+def test_a_zero_area_add_button_is_not_a_target() -> None:
+    clipped = MULTI_SELECTED.replace(
+        'bounds="[807,2176][1038,2309]"', 'bounds="[807,2176][1038,2176]"'
+    )
+    assert read_picker_state(_root(clipped)).add_button is None
+
+
 def test_a_picker_that_never_takes_input_focus_is_never_tapped() -> None:
     # The tree already shows the picker, but input still goes to the app beneath it, so a cell tap
     # would land on the app's own view under the cell.

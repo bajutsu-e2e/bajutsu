@@ -83,6 +83,11 @@ _PHOTO_PICKER_MIN_API = 33
 _PHOTO_PICKER_POLL_S = 0.25
 
 
+def _has_cell(state: PickerState, *, index: int) -> bool:
+    """Whether the picker's grid currently shows cell `index`."""
+    return len(state.cells) > index
+
+
 def _cell_selected(state: PickerState, *, index: int) -> bool:
     """Whether the picker reads cell `index` back as selected (a `selectPhotos` tap landed)."""
     return len(state.cells) > index and state.cells[index].selected
@@ -1745,6 +1750,12 @@ class AdbDriver(CoordinateTreeDriver):
             )
         self._await_picker_focus(deadline)
         for i in indices:
+            if len(state.cells) <= i:
+                # The read that confirmed the previous pick can catch the grid mid-rebind (the sheet
+                # grows on a first pick), so a later index is waited for rather than indexed blind.
+                state = self._await_picker(
+                    functools.partial(_has_cell, index=i), deadline, f"photo picker cell {i}"
+                )
             frame = state.cells[i].frame
             point = base.frame_center(frame)
             self._actuations.record(

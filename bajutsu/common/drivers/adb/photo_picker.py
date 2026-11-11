@@ -67,7 +67,11 @@ def read_picker_state(root: ET.Element | None) -> PickerState:
         elif local == _CHECK:
             multi = True
         elif local == _ADD:
-            add = _bounds(n.get("bounds") or "")
+            button = _bounds(n.get("bounds") or "")
+            # Guarded like a thumbnail, for the same reason: a bar still sliding in (or a malformed
+            # `bounds`) reads as zero area, and a tap at its centre would land elsewhere.
+            if button[2] > 0 and button[3] > 0:
+                add = button
     # Reading order from the frames rather than document order: a recycling grid view does not
     # promise to emit its children in the order it lays them out.
     cells.sort(key=lambda c: (c.frame[1], c.frame[0]))

@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -51,7 +53,12 @@ fun PermissionsScreen(model: AppModel) {
 
     Column(Modifier.fillMaxSize()) {
         TopAppBar(title = { Text("Permissions") })
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        // Scrollable like the Views twin's scroll page, so a shorter screen can still reach the
+        // Photos section the select_photos scenarios scroll to.
+        Column(
+            Modifier.verticalScroll(rememberScrollState()).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             Text("Notifications", style = MaterialTheme.typography.titleMedium)
             // Raises the POST_NOTIFICATIONS runtime dialog (out-of-process — the alert-guard fixture).
             TextButton(onClick = { notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) }, modifier = Modifier.aid("perm.requestNotif")) {
