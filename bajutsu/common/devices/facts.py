@@ -33,8 +33,6 @@ from bajutsu.common.devices.version import Version
 # kernel-command-line name as `ro.boot.qemu.avd_name`, older ones as `ro.kernel.qemu.avd_name`
 # (BE-0452 unit 2). Neither read is verified on a real emulator at every supported API level yet.
 _AVD_PROPS = ("ro.boot.qemu.avd_name", "ro.kernel.qemu.avd_name")
-# A property that reads "1" on an emulator image and is unset on a physical device.
-_EMULATOR_PROPS = ("ro.boot.qemu", "ro.kernel.qemu")
 # How long `devicectl list devices` may take; it answers in a second or two on a healthy host.
 _DEVICECTL_READ_TIMEOUT_S = 30.0
 # How long one adb read may take. A wedged device or emulator console otherwise hangs the run
@@ -346,7 +344,7 @@ def read_android(serials: Sequence[str], run: adb.RunFn = _timed_adb) -> list[De
         if not sdk.isdigit():
             raise DeviceReadError(f"{serial}: ro.build.version.sdk reads {sdk!r}, not an API level")
         emulator = serial.startswith("emulator-") or any(
-            _prop(serial, prop, run) == "1" for prop in _EMULATOR_PROPS
+            _prop(serial, prop, run) == "1" for prop in adb.EMULATOR_PROPS
         )
         if emulator:
             avd = _avd_name(serial, run)

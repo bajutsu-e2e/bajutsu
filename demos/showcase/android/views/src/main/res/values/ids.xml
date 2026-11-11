@@ -113,6 +113,8 @@
     <item name="perm_notif_authorized" type="id" />
     <item name="perm_requestLocation" type="id" />
     <item name="perm_location_value" type="id" />
+    <item name="perm_location_read" type="id" />
+    <item name="perm_location_reading" type="id" />
     <item name="sys_copy" type="id" />
     <item name="sys_paste" type="id" />
     <item name="sys_paste_value" type="id" />

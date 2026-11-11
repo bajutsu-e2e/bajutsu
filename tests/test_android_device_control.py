@@ -141,14 +141,131 @@ def test_env_clipboard_raises_loudly_when_the_app_has_no_receiver() -> None:
         env.get_clipboard(_PKG)
 
 
+# --- the in-app location route (BE-0481) ---
+
+
+def _location_reply(code: int) -> str:
+    return f"Broadcast completed: result={code}"
+
+
+def test_location_builders_address_the_package_with_string_coordinates() -> None:
+    assert adb.mock_location_appop_cmd("R", _PKG, "allow") == [
+        "adb", "-s", "R", "shell", "appops", "set", _PKG, "android:mock_location", "allow",
+    ]  # fmt: skip
+    assert adb.location_broadcast_cmd("R", _PKG, "set", -33.8688, 151.2093) == [
+        "adb", "-s", "R", "shell", "am", "broadcast", "-a", adb.LOCATION_ACTION, "-p", _PKG,
+        "--es", "op", "set", "--es", "lat", "-33.8688", "--es", "lon", "151.2093",
+    ]  # fmt: skip
+    assert adb.location_broadcast_cmd("R", _PKG, "clear") == [
+        "adb", "-s", "R", "shell", "am", "broadcast", "-a", adb.LOCATION_ACTION, "-p", _PKG,
+        "--es", "op", "clear",
+    ]  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        lambda: adb.mock_location_appop_cmd("R", _PKG, "deny"),
+        lambda: adb.location_broadcast_cmd("R", _PKG, "get"),
+        lambda: adb.location_broadcast_cmd("R", _PKG, "set", 1.0, None),
+    ],
+)
+def test_location_builders_reject_what_the_receiver_would_not_handle(
+    build: Callable[[], list[str]],
+) -> None:
+    with pytest.raises(adb.DeviceError):
+        build()
+
+
+def test_parse_location_result_names_each_cause() -> None:
+    adb.parse_location_result(_location_reply(adb.LOCATION_RESULT_OK))
+    with pytest.raises(adb.DeviceError, match="mock-location app-op"):
+        adb.parse_location_result(_location_reply(adb.LOCATION_RESULT_NO_MOCK_PERMISSION))
+    with pytest.raises(adb.DeviceError, match=r"Bajutsu\.startLocation"):
+        adb.parse_location_result(_location_reply(0))
+    with pytest.raises(adb.DeviceError, match="no BajutsuAndroid location receiver"):
+        adb.parse_location_result("")
+    with pytest.raises(adb.DeviceError, match=r"rejected the mock location: .*bad provider"):
+        adb.parse_location_result(
+            f'Broadcast completed: result={adb.LOCATION_RESULT_MOCK_FAILED}, data="bad provider"'
+        )
+    with pytest.raises(adb.DeviceError, match=r"am replied: 'Error: no such package'"):
+        adb.parse_location_result("Error: no such package")
+
+
+@pytest.mark.parametrize(
+    ("serial", "props", "expected", "reads"),
+    [
+        ("emulator-5554", {"ro.boot.qemu": "1"}, True, 1),
+        ("emulator-5554", {"ro.kernel.qemu": "1"}, True, 2),  # an older image
+        ("emulator-5554", {}, False, 2),  # a device that merely carries the name
+        ("127.0.0.1:5555", {"ro.boot.qemu": "1"}, False, 0),  # `adb connect`: no console to reach
+        ("R5CT1234ABC", {}, False, 0),
+    ],
+)
+def test_has_emulator_console_needs_both_the_serial_and_the_property(
+    serial: str, props: dict[str, str], expected: bool, reads: int
+) -> None:
+    calls: list[list[str]] = []
+
+    def run(argv: list[str]) -> str:
+        calls.append(argv)
+        return props.get(argv[-1], "") + "\n"
+
+    assert adb.Env(serial, run=run).has_emulator_console() is expected
+    assert len(calls) == reads
+
+
+def test_env_set_mock_location_grants_the_app_op_before_broadcasting() -> None:
+    calls: list[list[str]] = []
+
+    def run(argv: list[str]) -> str:
+        calls.append(argv)
+        return _location_reply(adb.LOCATION_RESULT_OK) if "broadcast" in argv else ""
+
+    adb.Env("R", run=run).set_mock_location(_PKG, 35.681, 139.767)
+    assert calls == [
+        adb.mock_location_appop_cmd("R", _PKG, "allow"),
+        adb.location_broadcast_cmd("R", _PKG, "set", 35.681, 139.767),
+    ]
+
+
+def test_env_clear_and_revoke_mock_location() -> None:
+    calls: list[list[str]] = []
+
+    def run(argv: list[str]) -> str:
+        calls.append(argv)
+        return _location_reply(adb.LOCATION_RESULT_OK) if "broadcast" in argv else ""
+
+    env = adb.Env("R", run=run)
+    env.clear_mock_location(_PKG)
+    env.revoke_mock_location(_PKG)
+    assert calls == [
+        adb.location_broadcast_cmd("R", _PKG, "clear"),
+        adb.mock_location_appop_cmd("R", _PKG, "default"),
+    ]
+
+
+def test_env_set_mock_location_surfaces_an_appops_complaint() -> None:
+    # `appops set` can print its error and still exit 0, so any output fails the call.
+    env = adb.Env("R", run=lambda a: "Error: Unknown package: x" if "appops" in a else "")
+    with pytest.raises(adb.DeviceError, match="appops set"):
+        env.set_mock_location(_PKG, 1.0, 2.0)
+
+
 # --- android_device_control: supported subset delegates, the rest raise UnsupportedAction ---
 
 
 def test_android_control_set_location_delegates_with_longitude_first() -> None:
     calls: list[list[str]] = []
-    ctrl = platform_lifecycle.android_device_control("E", _PKG, env_run=_recorder(calls))
+
+    def run(argv: list[str]) -> str:
+        calls.append(argv)
+        return "1\n" if "getprop" in argv else ""  # a local emulator image (BE-0481)
+
+    ctrl = platform_lifecycle.android_device_control("emulator-5554", _PKG, env_run=run)
     ctrl.set_location(35.6, 139.7)
-    assert calls == [["adb", "-s", "E", "emu", "geo", "fix", "139.7", "35.6"]]
+    assert calls[-1] == ["adb", "-s", "emulator-5554", "emu", "geo", "fix", "139.7", "35.6"]
 
 
 def test_android_control_clipboard_round_trip() -> None:

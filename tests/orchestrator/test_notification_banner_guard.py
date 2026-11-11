@@ -11,6 +11,7 @@ real XCUITest driver queries.
 from __future__ import annotations
 
 import logging
+from contextlib import AbstractContextManager, nullcontext
 
 import pytest
 from _orch import FakeClock, _scenario
@@ -476,6 +477,9 @@ def test_the_sweep_is_stranded_actuation_free_across_a_web_block() -> None:
     # actuates a different (WebView) driver — the merge must fold the native swipe in after
     # whatever the block's own step recorded, matching the order the two really happened in.
     class _WebBridge:
+        def session(self, webview_id: str, frame: base.Frame) -> AbstractContextManager[None]:
+            return nullcontext()
+
         def query_dom(self, webview_id: str) -> list[base.Element]:
             return [
                 {

@@ -4,7 +4,7 @@
 
 BajutsuAndroid は、Android 上の [bajutsu](../) 向けのアプリ内デバイス支援ライブラリです。プラットフォームが
 アプリプロセスの内側からしか公開しない機能を、bajutsu が駆動できるようにします。test/debug 専用の
-Android ライブラリで、**クリップボード**と**ネットワーク捕捉**を担います。iOS の
+Android ライブラリで、**クリップボード**、実機での**位置**、**ネットワーク捕捉**を担います。iOS の
 [`BajutsuKit`](../BajutsuKit) パッケージに対応する Android 版にあたります。
 
 ## アプリ内支援が要る理由
@@ -42,8 +42,9 @@ bajutsu は空のクリップボードを成功と誤読せず、明確なエラ
 
 ## 組み込み
 
-ライブラリを追加し、**test/debug ビルドに限って**、`Application.onCreate` から一度だけ
-`startClipboard(context)` を呼びます。この呼び出しは、iOS の BajutsuKit の `App.init()` に対応します。
+ライブラリを追加し、`Application.onCreate` から `startClipboard(context)` と `startLocation(context)` を
+一度ずつ呼びます。呼ぶのは **test/debug ビルドに限ります**。これらの呼び出しは、iOS の BajutsuKit の
+`App.init()` に対応します。
 
 レシーバはどの Activity よりも先に登録します。そうすれば、bajutsu が最初にどの画面を駆動しても、レシーバが
 用意されています。複数 Activity のアプリが別の入口から再開すると、ランチャの `Activity.onCreate` は通らない
@@ -56,14 +57,18 @@ import dev.bajutsu.android.Bajutsu
 class MyApp : Application() {
     override fun onCreate() {
         super.onCreate()
-        if (BuildConfig.DEBUG) Bajutsu.startClipboard(this)
+        if (BuildConfig.DEBUG) {
+            Bajutsu.startClipboard(this)
+            Bajutsu.startLocation(this)
+        }
     }
 }
 ```
 
-マニフェストの `<application android:name>` を、このクラスに向けます。レシーバは実行時に登録され、マニフェスト
-には何も宣言しません。そのため、レシーバは `startClipboard` を呼んだときにだけ存在します。呼び出しは冪等
-なので、二重登録は起きません。
+マニフェストの `<application android:name>` を、このクラスに向けます。2 つのレシーバはどちらも実行時に
+登録され、マニフェストには何も宣言しません。そのため、各レシーバは対応する `start` 関数を呼んだときにだけ
+存在します。呼び出しは冪等なので、二重登録は起きません。実機で位置を設定する必要のないアプリは、
+`startLocation` を省けます。
 
 ライブラリを Gradle のモジュールとして使うには、パスで取り込みます。showcase は
 [`demos/showcase/android/settings.gradle.kts`](../demos/showcase/android/settings.gradle.kts) でこうしています。
@@ -77,12 +82,62 @@ project(":bajutsu-android").projectDir = file("../../../BajutsuAndroid")
 
 ## 安全性
 
-レシーバは**エクスポートされて**おり、権限も設定していません。そのため、adb 経由でも、デバイスに
-インストールされたほかのアプリ経由でも、*あらゆる*ローカルアプリが broadcast を送ってクリップボードを
-読み書きできます。
+2 つのレシーバはどちらも**エクスポートされて**おり、権限も設定していません。そのため、adb 経由でも、
+デバイスにインストールされたほかのアプリ経由でも、*あらゆる*ローカルアプリが broadcast を送れます。
+そうしたアプリはクリップボードを読み書きでき、bajutsu が mock location の許可を与えているあいだは
+アプリの位置も動かせます。
 
-このライブラリは**test/debug ビルド専用**です。`startClipboard` の呼び出しを `BuildConfig.DEBUG`（または独自の
-テストフラグ）で囲み、リリースビルドでは呼び出しが走らないようにしてください。
+このライブラリは**test/debug ビルド専用**です。`startClipboard` と `startLocation` の呼び出しを
+`BuildConfig.DEBUG`（または独自のテストフラグ）で囲んでください。リリースビルドでは呼び出しが走りません。
+
+## 実機での位置設定
+
+この節では、[BE-0481](../roadmaps/BE-0481-android-device-set-location/BE-0481-android-device-set-location-ja.md)
+で加わった位置の経路を説明します。ローカルのエミュレータでは、`setLocation` ステップにライブラリは要りません。
+bajutsu はエミュレータのコンソール（`adb emu geo fix`）で位置を設定します。実機にはコンソールがなく、
+`adb connect` で接続したエミュレータにも adb から届くコンソールがありません。そうした対象では、bajutsu は
+アプリを経由して位置を動かします。
+
+1. アプリに mock location の app-op を許可します。
+   `adb shell appops set <package> android:mock_location allow`
+2. 座標を文字列にした順序付き broadcast を送ります。
+   `adb shell am broadcast -a dev.bajutsu.LOCATION -p <package> --es op set --es lat <lat> --es lon <lon>`
+3. レシーバが `LocationManager.addTestProvider` で `gps` と `network` をテスト用 provider として登録します。
+   さらに両方を有効にし、それぞれに位置を設定します。
+
+bajutsu は lease で最初の `setLocation` を実行するときに経路を選びます。コンソールの経路を選ぶのは、serial が
+`emulator-<port>` の形で、かつ `ro.boot.qemu` か `ro.kernel.qemu` のプロパティが `1` のときです。それ以外の
+対象はすべてアプリ内の経路を通ります。
+
+レシーバは次の 4 つの結果コードのどれかを返します。
+
+| 結果 | 意味 | bajutsu の報告 |
+|---|---|---|
+| `1` | 位置を設定または解除した | — |
+| `2` | `addTestProvider` が `SecurityException` を投げた | アプリに mock location の app-op がない |
+| `3` | provider の呼び出しが `IllegalArgumentException` を投げた | 結果データに入ったプラットフォームのメッセージ |
+| `0` | broadcast を処理したレシーバがない | アプリが `startLocation` を呼んでいない |
+
+テスト用 provider は、登録したアプリのプロセスが終わると消えるかもしれません。API 34 のエミュレータでは
+強制停止と再起動のあとも残りましたが、ほかのイメージやデバイスでは異なる可能性があります。そのため bajutsu は、
+自分がアプリを起動するたびに直前の位置を送り直します。対象は `relaunch` ステップ、`installApp` ステップのあとの起動、crawl のリセットです。
+lease が終わるときは、次の 3 段階を実行します。
+
+1. `clear` を broadcast し、2 つのテスト用 provider を取り除きます。アプリが動いていなければ、先に
+   アプリを起動します。provider はプロセスより長く残り、取り除けるのはアプリだけだからです。
+2. `appops set <package> android:mock_location default` で app-op を元に戻します。
+3. すべての lease の終わりと同じく、アプリを強制停止します。
+
+これにより、同じデバイスで次に走るシナリオは、デバイス本来の位置から始まります。最初の 2 段階が失敗しても
+警告をログに残すだけで、シナリオの判定には影響しません。
+
+ライブラリが mock するのは `gps` と `network` の provider だけです。Google Play 開発者サービスの fused
+provider は mock しないので、ライブラリは Play 開発者サービスに依存しません。アプリが
+`FusedLocationProviderClient` で位置を読む場合、mock が見えるかどうかはデバイスと Play 開発者サービスの
+バージョンによります。この挙動は、まだ実機で確かめていません。
+
+ライブラリは `ACCESS_MOCK_LOCATION` 権限を宣言しません。bajutsu がテストに使うエミュレータのイメージでは、
+この権限がなくても `appops set` で app-op を許可できます。
 
 ## ネットワーク捕捉（BE-0283）
 
@@ -133,6 +188,8 @@ Android（API 28 以降）は既定でクリアテキスト通信を遮断しま
 
 クリップボードの対応範囲は、アプリのプライマリクリップに対する set / get / clear です。`get` は先頭の
 クリップ項目をテキストに変換して読みます。テキスト以外のクリップ内容（画像、intent）は対象外です。
+
+位置の対応範囲は `gps` と `network` の provider です。fused provider は対象外です。
 
 ネットワーク捕捉が見るのは **OkHttp 由来の HTTP(S)** の通信だけです。範囲は、iOS の `URLSession` に限られた
 捕捉と同じです。次のものは対象外です。
