@@ -2,6 +2,8 @@
 # auto-dismisses on the one required tap, leaving no confirm control for the driver to tap —
 # exercises `_confirm_photo_selection`'s no-op elimination path against a live picker, not just
 # the mocked unit test (test_xcuitest.py::test_confirm_photo_selection_is_a_noop_when_the_picker_already_dismissed_itself).
+# Android's single-selection picker closes on its one tap the same way, so the adb driver confirms nothing
+# either; the steps are shared, with each app id in its dotted and underscore form (BE-0221).
 - name: selectPhotos auto-confirms when a single-selection picker dismisses itself
   tags: [swiftui]
   preconditions:
@@ -13,15 +15,18 @@
       ios:
         seedPhotos:
           - fixtures/photos/fixture-red.png
+      android:
+        seedPhotos:
+          - fixtures/photos/fixture-red.png
   steps:
     - tap: { label: "Permissions", traits: [button] }
-    - scroll: { to: { id: perm.openPhotoPickerSingle }, direction: down }
-    - tap: { id: perm.openPhotoPickerSingle }
-    - wait: { for: { id: "PXGGridLayout-Info" }, timeout: 10 }
+    - scroll: { to: { id: [perm.openPhotoPickerSingle, perm_openPhotoPickerSingle] }, direction: down }
+    - tap: { id: [perm.openPhotoPickerSingle, perm_openPhotoPickerSingle] }
+    - wait: { for: { id: ["PXGGridLayout-Info", icon_thumbnail] }, timeout: 10 }
     # See select_photos.yaml's own comment on this step: waits out an in-flight collection-view
     # reload for the ordinary case, but does not fully close the rarer, deeper flake noted there.
     - wait: { until: settled, timeout: 5 }
     - selectPhotos: { indices: [0], timeout: 10 }
-    - wait: { for: { id: perm.photos.value, value: "1" }, timeout: 10 }
+    - wait: { for: { id: [perm.photos.value, perm_photos_value], value: "1" }, timeout: 10 }
   expect:
-    - value: { sel: { id: perm.photos.value }, equals: "1" }
+    - value: { sel: { id: [perm.photos.value, perm_photos_value] }, equals: "1" }

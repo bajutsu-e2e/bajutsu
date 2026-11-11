@@ -296,15 +296,19 @@ the fixture for out-of-process UI a scenario must still drive.
   the browser resets the value to `idle`, so a wait for `loaded` never reads an earlier one. A
   scenario reads the mirror after dismissing the browser, once this screen is back in the tree
 
-**Photos** (SwiftUI only; see *Alternatives* in the roadmap item) — presents the system
-`PHPickerViewController`. Two buttons cover the two ways the picker leaves the screen. The
+**Photos** (SwiftUI, Compose, and Views; the UIKit and Flutter apps have none) — presents the system
+photo picker: `PHPickerViewController` on iOS, and on Android the photo picker that
+`PickMultipleVisualMedia` / `PickVisualMedia` open for images only (the Views twin spells each id with
+underscores). Two buttons cover the two ways the picker leaves the screen. The
 unlimited-selection button always exercises the confirm tap `_confirm_photo_selection` performs; the
 `selectionLimit = 1` button auto-dismisses the picker on the one required tap, with no confirm
 control ever shown, so it exercises that method's no-op path instead. Both back `selectPhotos`, the
-one iOS-only DSL action gated on `Capability.SELECT_PHOTOS` (iOS XCUITest only).
+DSL action gated on `Capability.SELECT_PHOTOS` (iOS XCUITest, and adb on Android 13 and later).
+Android's single-selection picker closes on its one tap the same way.
 [`select_photos.yaml`](scenarios/select_photos.yaml) and
 [`select_photo_single.yaml`](scenarios/select_photo_single.yaml) each seed the photo library with
-`preconditions.device.ios.seedPhotos` (an effective `subject.reinstall: erase` required alongside it) before opening their picker.
+`preconditions.device.ios.seedPhotos` (an effective `subject.reinstall: erase` required alongside it) or
+`preconditions.device.android.seedPhotos` before opening their picker.
 - `perm.openPhotoPicker` — button that presents the unlimited-selection picker
 - `perm.openPhotoPickerSingle` — button that presents the picker with `selectionLimit = 1`
 - `perm.photos.value` — the picked count, mirrored back once the picker dismisses (0 until then)
