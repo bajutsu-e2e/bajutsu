@@ -81,9 +81,11 @@
 - シナリオ自身の `cap:` と `setting:` のトークンです。シナリオの本文から読みます（BE-0467）。
 - 実行意図のトークンです。本項目の worker だけが広告します。
 
+グループの job は `machine:<id>` のトークンを持ちません。すべてのグループの job は、config のディレクトリの bundle か materials として、自分のファイルを運ぶので（BE-0465）、サーバ上のパスを指す job はありません。登録は、最初のシナリオだけでなく、job ごとにこれを確かめます。
+
 `host:` のトークンは要求しません。driver が必要とするホストは、ローカルの worker の性質だからです。BE-0450 以降、ローカルの worker は自分のホストで動かせるプラットフォームだけを広告するので、プラットフォームのトークンがホストの条件も兼ねます。これは、1つのプラットフォームの actuator がすべて同じホストに結び付いていることを前提にしています。この前提を崩す actuator を足すときは、`host:` のトークンを戻す必要があります。非推奨の `--capabilities` の上書きにはまだ `platform:ios` を入れられるので、単位 5 でこの上書きに `platform:` と `kind:` を予約します。
 
-kind のトークンは、target が宣言した kind 以外で target が走らないようにします。これがないと、ファミリーを指定しない iOS の target は kind について何も要求しません。その場合、Simulator 向けの target を、デバイスクラウドの worker が実機で走らせてしまいます。kind は、`_family_requirements` がすでに求めているものを使います。target が挙げる `kind` か、挙げない場合は target の driver から決まる kind（`driven_kind`）です。そのため、デバイスクラウド向けの iOS の target は、スカラー値の `kind: device` を宣言します。`driven_kind` が driver を通して読むのは、この kind です。スカラー値の kind は target の駆動の仕方を表すので、`unpack_conditions` は条件に数えません。リストで挙げた `ios.kind` は条件であり、デバイスクラウドは submit の時点で拒否します。そうした target のビルドは、もともと実機にインストールできなければならず、Simulator 向けのビルドではインストールできません。両方の kind を挙げる target は、両方を持つローカルの worker にだけ回ります。通常の job は kind のトークンを要求しません。デバイスクラウドは、ほかの `runsOn` の条件も submit の時点で拒否します（`_check_no_conditions`）。対象は `ios.model`、`ios.os`、`android.avd`、`android.apiLevel` です。スキーマは、実機の kind に対する `ios.model` と `ios.os` をすでに拒否しているので、iOS のデバイスクラウド向け target が宣言できる条件として残るのは、リストで挙げた `ios.kind` です。本項目は、これらの条件にトークンを足しません。そうした条件を宣言する target のグループの job は、デバイスクラウドの worker に回り、submit で失敗して試行を1回消費することがあります。現在は呼び出し元がデバイスクラウドの環境を指定しないことで避けられるので、本項目はここでの劣化を受け入れます。
+kind のトークンは、target が宣言した kind 以外で target が走らないようにします。これがないと、ファミリーを指定しない iOS の target は kind について何も要求しません。その場合、Simulator 向けの target を、デバイスクラウドの worker が実機で走らせてしまいます。kind は、`_family_requirements` がすでに求めているものを使います。target が挙げる `kind` か、挙げない場合は target の driver から決まる kind（`driven_kind`）です。そのため、デバイスクラウド向けの iOS の target は、スカラー値の `kind: device` を宣言します。`driven_kind` が driver を通して読むのは、この kind です。スカラー値の kind は target の駆動の仕方を表すので、`unpack_conditions` は条件に数えません。リストで挙げた `ios.kind` は条件であり、デバイスクラウドは submit の時点で拒否します。そうした target のビルドは、もともと実機にインストールできなければならず、Simulator 向けのビルドではインストールできません。両方の kind を挙げる target は、両方を持つローカルの worker にだけ回ります。通常の job は kind のトークンを要求しません。デバイスクラウドは、ほかの `runsOn` の条件も submit の時点で拒否します（`_check_no_conditions`）。対象は `ios.model`、`ios.os`、`android.avd`、`android.apiLevel` です。スキーマは、実機の kind に対する `ios.model` と `ios.os` をすでに拒否しているので、iOS のデバイスクラウド向け target が宣言できる条件として残るのは、リストで挙げた `ios.kind` です。本項目は、これらの条件にトークンを足しません。そうした条件を宣言する target のグループの job は、デバイスクラウドの worker に回り、submit で失敗して試行を1回消費することがあります。現在も、そうした target の `run-set` は、要求が batch provider を指定する必要があるので、毎回この形で失敗します。本項目はこのケースを悪化させず、そうした要求の一部はローカルの worker で成功するようになります。
 
 ローカルの worker は、インストール済みの Simulator の端末があれば `kind:simulator` を広告します。iPhone か iPad がつながっていて、`worker.yaml` が `realDevices: false` でないあいだは、`kind:device` を広告します。`kind:simulator` は、`iosNN` や `iphone` / `ipad` のトークンを得る起動時の読み取りと同じ読み取りで決めます。`kind:device` は、実機のトークンと同じく、lease のたびに読み直します。
 
@@ -107,7 +109,7 @@ worker が job を担当できるかを判断する箇所は、次の5つです�
 - worker 不在の通知（`lacks_live_worker`）
 - `route_refusal`
 
-5つとも `can_serve` を通り、`can_serve` の変更は上の例外だけです。そのため5つの判断は、BE-0468 が自身のトークンに求めるとおり一致し続けます。worker の claim 時の再確認（`claim_refusal`、BE-0467）は、同じリストを読むので、変更は要りません。
+5つとも `can_serve` を通り、`can_serve` の変更は上の例外だけです。そのため5つの判断は、BE-0468 が自身のトークンに求めるとおり一致し続けます。worker の claim 時の再確認（`claim_refusal`、BE-0467）は、同じリストを読むので、変更は要りません。ただし、バンドルの job ごとに1回ずつ実行します。route のトークンが、worker の広告から claim までの間に消えると、バンドルのすべての job が失敗します。後述の secret store の読み取りと同じです。この拒否が判定するのは job ではなく worker なので、どのスロットも同じ結果になり、失敗のたびにその job の試行が消費されます。
 
 job を lease した worker が実行場所を決め、最初に lease した worker が勝ちます。このため、シナリオが走る場所は固定されず、同じシナリオがシミュレータでは通り、クラウドのデバイスでは落ちることがあります。原則2が扱うのは待機とセレクタであり、判定は引き続きアサーションだけで決まります。それでも残るのは再現性のコストです。そのため run は、実行した worker の環境を provenance に記録し、レポートがそれを表示します。呼び出し元は配置を固定できません。配置を固定したい運用者は、デプロイで動かす worker の構成で制御します。
 
@@ -133,7 +135,7 @@ window 関数は SQLite と PostgreSQL の両方が対応しているので、SQ
 
 route を確かめない worker は、ルートキーの代わりに基底キーで組を作ります。worker が route トークンを1つも広告しないとき、`can_serve` は要求集合から route トークンをすべて除きます（`checks_routes`）。デバイスクラウドの worker は route トークンを広告しません。そのため、こうした worker にとっては、基底キーが同じグループの job は、`cap:` と `setting:` のトークンが違っても判定結果が1つです。こうした worker の走査は `group_id` と基底キーで分割し、アンカーに続く job も基底キーで照合します。この走査には、`(status, group_id, base_key, created_at)` の2つ目の index を使います。シナリオごとに異なる `cap:` のトークンを要求するスイートでも、Device Farm の worker では1つのバンドルにまとまります。lease は、claim した各 job を、アンカーではなくその job 自身の capabilities のリストで `unchecked_lease` と判定します。
 
-不変条件は、ルートキーが判定結果を左右する job ごとの入力をすべて含むことです。そのため、キーは、`start_run_set` が `route_refusal` で確かめるリストではなく、行に保存されるリストを digest します。つまり、サーバ上のパスでファイルを指す job に `routed_capabilities` が `machine:<id>` を付けた後のリストです（BE-0449）。入力を足す変更は、それをキーに加えなければなりません。基底キーも、route トークン以外のすべての入力について同じ規則に従います。
+不変条件は、ルートキーが判定結果を左右する job ごとの入力をすべて含むことです。キーは、行に保存されるリストを digest します。入力を足す変更は、それをキーに加えなければなりません。基底キーも、route トークン以外のすべての入力について同じ規則に従います。
 
 候補を選ぶクエリは、現在と同じくロックを取りません。window 関数を含むので、PostgreSQL は `FOR UPDATE` を付けても拒否します。claim では、選んだ組だけを対象に、window 関数を含まない2つ目のクエリを実行します。このクエリは、アンカーとそれに続く job をまとめて claim するので、バンドル全体が計数と同じトランザクションに収まります。組の待機中の job を古い順に、`maxJobs` と3つの上限が残す余裕の小さいほうの件数まで取り、アンカーもその両方に数えます。余裕を決める計数は、claim と同じトランザクションの中で行います（上限の節）。PostgreSQL では `FOR UPDATE SKIP LOCKED` でロックし、SQLite では各 claim を条件付きの `UPDATE` で行います。そのため、同じ組を選んだ worker 同士は、いちばん古い1件を奪い合わず、組の job に分散します。バンドルの job は同じルートキー（route を確かめない worker では同じ基底キー）を持ち、そうしたキーが複数あるグループは、キーごとにバンドルを埋めていきます。
 
@@ -172,6 +174,8 @@ worker は、その互換キーを持つ job が1件でも実行中のあいだ�
 ### 互換性
 
 `run-set` は `environment` を受け付けなくなります。[BE-0465](../BE-0465-serve-ui-device-farm-fan-out/BE-0465-serve-ui-device-farm-fan-out-ja.md) の Replay タブは現在この値を送っています。同じ変更でタブはこの値を送るのをやめます。環境のセレクタは Run フォームをファンアウトに切り替える役も担っているので、セレクタはフォームから外れます（単位 5）。代わりに、明示的なファンアウトの操作がトリガーになります。タブはこの操作を web の target にも提供します。セレクタ自身のガードは web の target を拒んでいました。通常の `POST /api/run` は変更しません。
+
+単位 5 は、非推奨の `--capabilities` の上書きに `platform:` と `kind:` を予約します。worker は、すでに `environment:`、`host:` などのルーティングの接頭辞を予約しています。`--capabilities platform:ios`、または同じ値を `$WORKER_CAPABILITIES` に入れた worker は、現在は起動しますが、単位 5 の後は起動を拒否します。拒否のメッセージは予約された接頭辞を示し、運用者がそのトークンを外します。警告を出して捨てる方法は採りません。黙って捨てると、グループの job が頼るルーティングから、その worker の容量が外れてしまうからです。
 
 [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md) は、`run-set` が環境を必須とし、欠落を 400 で拒否すると定めています。本項目はこのフィールド自体を取り除き、取り除くのは意図したことです。この規則があったのは、`run-set` の job が登録の時点からデバイスクラウド向けの `BatchRequest` を持っていたからです。本項目では、job は、そのプラットフォームを担当するどの worker でも実行できる実行意図を持ちます。
 
