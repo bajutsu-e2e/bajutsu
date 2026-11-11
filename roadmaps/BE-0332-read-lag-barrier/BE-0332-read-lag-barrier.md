@@ -97,7 +97,7 @@ The design separates the barrier's question from its fallback. The question is o
 read reflects a device state later than the action just performed. Where the reader can answer that
 question, it does, and the barrier releases the moment the device publishes an update. Where no answer
 is available (a `uiautomator dump` invocation carries no such marker), a bounded budget stands in. The
-budget is spent while the answer would have been "no."
+budget is spent only while the answer would have been "no."
 
 Two constraints shape every unit below. Prime directive 2 forbids a fixed `sleep`. A budget must be a
 ceiling on a condition that can release early, never an unconditional delay. Unit 1 needs the most care
@@ -265,7 +265,7 @@ Log:
     planned" note with the landed mark: the resident reader's `X-Bajutsu-Read-Mark` header and
     `GET /clock` endpoint, the device-clock mark taken before an actuation, the ordering requirement
     (`read_postdates_actuation()`), and the `GET /source?since=` blocking read. The docs also record
-    that the wall-clock budget survives for the mark-less `uiautomator dump` fallback.
+    that the wall-clock budget survives only for the mark-less `uiautomator dump` fallback.
   - Status → Implemented.
 - 2026-08-02 — Follow-up (PR #1455): the read mark no longer releases the `extract` poll early.
   - The Motivation's own failure reproduced on `smoke (adb)` after Unit 3 landed, with the same string

@@ -159,7 +159,7 @@ import しない crawl と agents のモジュールです。PR
   - ユニット2：`tests/test_e2e_changes.py` は run パスの静的な `ast` import 閉包を辿ります。到達した
     ファイルがゲート対象でも分類済み周辺項目でもなければ、テストは落ちます。
   - ユニット3：従来の場当たり parity アサーション2つは、`_PERIPHERY_EXCLUSIONS` の理由つき項目へ置き換えました。2つとは `test_agent_factory_is_not_relevant_by_parity` と `test_untouched_subpackage_is_not_relevant` です。
-    この置き換えが包摂する「名前ベースのパッケージ分割」ガードは撤去しました。
+    本項目が包摂する「名前ベースのパッケージ分割」ガードは撤去しました。
   - ユニット4：`scripts/e2e_overfire_report.py` は基準コミットに対して過剰発火のトレードオフを計測します。
     直近80件のマージ済みプルリクエストでは、新しい既定は3レーンすべてで旧来と**完全に同一**に発火しました。
     過剰発火は0、過小発火も0です。新たにゲート対象になったファイルが、すでに他の run パスコードで発火して

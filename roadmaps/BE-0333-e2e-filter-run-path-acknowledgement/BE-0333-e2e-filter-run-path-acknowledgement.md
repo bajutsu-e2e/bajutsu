@@ -52,9 +52,9 @@ Guards added alongside those fixes close three narrow classes:
 
 Two classes remain open. A **new** top-level `bajutsu/*.py` module or command-line interface (CLI)
 command on the run path still defaults to firing nothing. A measured walk of the run path's import
-closure also finds 54 files that fire no lane today. Among them are `bajutsu/report/`, which every run
-writes through `runner/pipeline.py`, `deprecations.py`, `object_store.py`, `record_capture.py`,
-`requirements.py`, and `trace.py`.
+closure also finds 54 files that fire no lane today. Among them is `bajutsu/report/`, which every run
+writes through `runner/pipeline.py`, along with `deprecations.py`, `object_store.py`,
+`record_capture.py`, `requirements.py`, and `trace.py`.
 
 The obvious fix is to derive the list from the import closure automatically. Measurement rules it out.
 The closure of the run path reaches `bajutsu/ai/`, `bajutsu/analytics/`, and `bajutsu/github/`.
