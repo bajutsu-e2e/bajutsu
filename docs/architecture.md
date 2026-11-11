@@ -634,13 +634,13 @@ Each red run spent about half an hour of a runner billed at 10x. BE-0361 measure
   - A value that the wheel does not carry fails the step, naming that value. The step does not leave the wheel wherever it stopped.
   - A multi-component picker (a year wheel beside a month wheel) addresses each component through the selector's existing `within`/`traits`/`index` fields, one step per component.
   - The `PICKER_WHEEL` capability gates the step. The resident-runner XCUITest backend, the adb backend, and `FakeDriver` declare it. Preflight thus stops the step on the web backend before any work starts.
-- DSL `selectPhotos` (BE-0433) picks one or more images from an open `PHPickerViewController` grid by ordinal `indices`, then taps the picker's confirm control.
+- DSL `selectPhotos` (BE-0433) picks one or more images from an open `PHPickerViewController` grid by ordinal `indices`, then taps the picker's confirm control. On adb it drives the Android 13+ photo picker the same way, finding its cells and add button by resource id within the picker's own package.
   - The step resolves the confirm control structurally, by elimination inside the picker's navigation bar, since the control carries no identifier of its own.
   - Every cell in the grid shares one identifier (`PXGGridLayout-Info`). The existing `index` selector field disambiguates the cells, the same way `handleSystemAlert` addresses an unlabeled SpringBoard button.
   - Actuation is a raw coordinate tap at the resolved cell's exact frame center. A handle-based tap on the same cell is measured to fail (`element vanished`/`ElementNotTappable`) against this recycled collection view.
   - A `seedPhotos` precondition (`Preconditions.seed_photos`) seeds the Simulator's photo library with fixture images via `simctl addmedia`, so the grid's content is reproducible.
   - `seedPhotos` requires an effective `subject.reinstall: erase`. The scenario's value wins, else the target's, then `--erase` / `--no-erase` moves it. The load checks this, since a reused library would otherwise seed nothing silently.
-  - The step is gated on the `SELECT_PHOTOS` capability. Only the XCUITest backend declares it, and Android and web reject the step at preflight.
+  - The step is gated on the `SELECT_PHOTOS` capability. The XCUITest and adb backends declare it, and adb refuses a device below API 33 when the step runs. Web rejects the step at preflight.
 
 #### DSL system-alert and tip handling
 

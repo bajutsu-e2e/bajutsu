@@ -71,7 +71,7 @@ The two mobile backends differ in what they support.
 | `pickerWheel` | set a wheel-style picker to a named row (an Android `NumberPicker` through the resident server; BE-0480) | ✅ | ✅ | — | ✅ |
 | `handleTipkitTip` | dismiss a blocking Apple TipKit tip (iOS only) | ✅ | — | — | ✅ |
 | `appContext` | activate another installed app and drive it with the `app:` step (iOS only) | ✅ | — | — | ✅ |
-| `selectPhotos` | pick images from the system photo picker by position (iOS only; dropped on an Apple Silicon Simulator) | ✅ | — | — | ✅ |
+| `selectPhotos` | pick images from the system photo picker by position (`PHPickerViewController` on iOS, dropped on an Apple Silicon Simulator; the Android 13+ photo picker over adb) | ✅ | ✅ | — | ✅ |
 | `handleNotificationBanner` | report and swipe away a foreground notification banner (BE-0416; iOS only) | ✅ | — | — | ✅ |
 | `deviceControl.setLocation` | set the simulated GPS location | ✅ | ✅ | — | — |
 | `deviceControl.clipboard` | read / write / clear the clipboard | ✅ | ✅ | — | — |

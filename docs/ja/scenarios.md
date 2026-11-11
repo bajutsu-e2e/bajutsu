@@ -705,6 +705,7 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
 | `select` | `select: { into: <Selector>, mode?: "all" }` | フィールドをフォーカスして内容を選択する（`mode` 既定 `all`）。web コンテキストは非対応。iOS（XCUITest）バックエンドはネイティブに対応し、codegen もネイティブの等価物を出力する |
 | `copy` | `copy: {}` | 選択中の内容をクリップボードへコピーする。事前の `select` が必要。web コンテキストは非対応。iOS（XCUITest）バックエンドはネイティブに対応する |
 | `selectOption` | `selectOption: { sel: <Selector>, option: "..." }` | web の `<select>` をこの value を持つ option に合わせる。web 専用（iOS / Android は失敗する） |
+| `selectPhotos` | `selectPhotos: { indices: [0, 1], timeout: 10 }` | アプリがすでに開いたシステムの写真選択画面から、指定した位置のセル（0 が先頭で、新しい画像ほど前）を選んで確定する。iOS（XCUITest）では `PHPickerViewController`、adb では Android 13 以降の写真選択画面を操作する。単一選択の画面は 1 回のタップで閉じる。見えているグリッドを超える位置は失敗する |
 | `setPickerValue` | `setPickerValue: { sel: <Selector>, value: "..." }` | ホイール型のピッカー（iOS では `UIPickerView` かホイール表示の `UIDatePicker`、Android では `NumberPicker` かスピナー表示の `DatePicker`）をこの value を持つ行へ動かす（[後述](#setpickervalue)）。iOS（XCUITest）と Android（adb）で使える。`sel` は 1 つのホイールを指し、複数コンポーネントのピッカーは `within` / `traits` / `index` で兄弟のホイールを区別し、コンポーネントごとに 1 ステップずつ書く |
 | `swipe` | `swipe: { on: <Selector>, direction: up\|down\|left\|right }` または `swipe: { from: [x,y], to: [x,y] }` | セレクタ形と座標形は混在できない。方向指定形式は**スクロール**する |
 | `drag` | `drag: { on: <Selector>, direction: up\|down\|left\|right, amount?: <frac> }` | 要素そのものを**ドラッグ**する（ハンドル／仕切り／スライダー）。スクロールではない |

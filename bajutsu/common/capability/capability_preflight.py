@@ -27,9 +27,9 @@ The map gates only the **true hard requirements** the capability set cleanly dec
   `/setPickerValue`, which steps an `android.widget.NumberPicker` one row at a time) land a wheel on
   a named row deterministically, so a scenario setting a wheel's value is rejected up front on every
   other backend.
-- `selectPhotos` needs `selectPhotos` (roadmap item): a `PHPickerViewController` grid is an iOS
-  control, and only the resident-runner XCUITest backend can address it at all, so a scenario using
-  this step is rejected up front on every other backend.
+- `selectPhotos` needs `selectPhotos` (roadmap item): the system photo picker is an OS control that
+  only the resident-runner XCUITest backend (`PHPickerViewController`) and adb (Android's photo
+  picker) can address, so a scenario using this step is rejected up front on every other backend.
 - `select` / `copy` need `textSelection` (BE-0280): select-all + clipboard copy on the focused
   field. A backend with no select-all handle raises `UnsupportedAction` and does not advertise the
   token, so a scenario selecting or copying is rejected up front. `delete` / `clear` are not gated:
@@ -287,7 +287,7 @@ _REQUIREMENTS = (
     ),
     _Requirement(
         base.Capability.SELECT_PHOTOS,
-        "selectPhotos (iOS photo-picker selection; iOS XCUITest only)",
+        "selectPhotos (system photo-picker selection; iOS XCUITest and Android only)",
         _step_locations(lambda s: s.select_photos is not None),
     ),
     _Requirement(

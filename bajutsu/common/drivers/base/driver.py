@@ -97,10 +97,10 @@ class Driver(Protocol):
     # PICKER_WHEEL capability raises UnsupportedAction. A value the wheel does not carry raises ElementNotFound rather than leaving
     # the wheel wherever it happened to stop.
     def set_picker_value(self, sel: Selector, value: str) -> None: ...
-    # Pick the grid cells at `indices` from an already-open `PHPickerViewController`, then tap the
-    # picker's confirm control. A backend without SELECT_PHOTOS raises UnsupportedAction; on the one
-    # that has it, `capabilities_for_run` has already dropped the token on an Apple Silicon
-    # Simulator, where the grid's cells cannot be tapped reliably (roadmap item) — this method's own
+    # Pick the grid cells at `indices` from an already-open system photo picker
+    # (`PHPickerViewController` on iOS, Android's photo picker on adb), then confirm the selection. A
+    # backend without SELECT_PHOTOS raises UnsupportedAction; on XCUITest, `capabilities_for_run` has
+    # already dropped the token on an Apple Silicon Simulator, where the grid's cells cannot be tapped reliably (roadmap item) — this method's own
     # actuation assumes that gate already ran.
     def select_photos(self, indices: list[int], *, timeout: float) -> None: ...
     # Tap a button on an out-of-process iOS SpringBoard permission prompt (BE-0316), resolving `sel`

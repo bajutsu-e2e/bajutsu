@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextvars
+import functools
 import math
 import subprocess
 import threading
@@ -31,6 +32,7 @@ from .adb_picker_refused import AdbPickerRefused
 from .adb_resident_error import AdbResidentError
 from .channel_recovery import ChannelRecovery
 from .hierarchy_read import HierarchyRead
+from .photo_picker import PICKER_PACKAGES, PickerState, read_picker_state
 
 RunFn = Callable[[list[str]], str]
 
@@ -82,6 +84,23 @@ _PIDOF_NO_MATCH = 1
 # already failed.
 _EXIT_INFO_TIMEOUT = 5.0
 _EXIT_INFO_POLL = 0.25
+
+# The system photo picker (`ACTION_PICK_IMAGES`) is built into Android 13 and later. Android 11 and 12
+# get it only through a Google system update, and older versions fall back to a Play services backport
+# or the document picker — trees `selectPhotos` has not surveyed, so it refuses below this floor.
+# Re-reads of the picker while waiting are spaced by the poll interval.
+_PHOTO_PICKER_MIN_API = 33
+_PHOTO_PICKER_POLL_S = 0.25
+
+
+def _has_cell(state: PickerState, *, index: int) -> bool:
+    """Whether the picker's grid currently shows cell `index`."""
+    return len(state.cells) > index
+
+
+def _cell_selected(state: PickerState, *, index: int) -> bool:
+    """Whether the picker reads cell `index` back as selected (a `selectPhotos` tap landed)."""
+    return len(state.cells) > index and state.cells[index].selected
 
 
 # BE-0415: one wrap per callable, folded in at `__init__` only when a trace is already open
@@ -2021,10 +2040,122 @@ class AdbDriver(CoordinateTreeDriver):
             "lease; a coordinate drag cannot promise to stop on the row"
         )
 
-    def select_photos(self, indices: list[int], *, timeout: float) -> None:  # noqa: ARG002  # Driver shape
-        raise base.UnsupportedAction(
-            "selectPhotos は iOS の PHPickerViewController 専用; Android に相当するコントロールはない"
-        )
+    def select_photos(self, indices: list[int], *, timeout: float) -> None:
+        """Pick the grid cells at `indices` from the open system photo picker, then confirm.
+
+        Every control is found by its resource id within the picker's own packages, never by its
+        localized text (`photo_picker`). Each phase is a condition wait bounded by `timeout`: the grid
+        holding enough cells and two reads agreeing on them (the seed's media scan publishes after
+        launch), each tapped cell reading back selected, the confirm button, and finally the picker
+        gone so the next step reads the app's own screen. Cells beyond the visible grid fail rather
+        than scroll: a scroll would make an ordinal depend on how far the grid moved.
+
+        An API level below 33 refuses up front: the picker is built in from Android 13, and what an
+        older device shows instead (a system-update copy, a Play services backport, or the document
+        picker) is unsurveyed. An unknown API level (a driver built without one) proceeds, and a
+        missing picker then fails on the grid wait.
+        """
+        if self._api_level is not None and self._api_level < _PHOTO_PICKER_MIN_API:
+            raise base.UnsupportedAction(
+                f"selectPhotos needs the system photo picker (API {_PHOTO_PICKER_MIN_API}+); this "
+                f"device is API {self._api_level}"
+            )
+        deadline = time.monotonic() + timeout
+        state = self._await_picker_grid(max(indices) + 1, deadline)
+        if not state.multi_select and len(indices) > 1:
+            raise base.ElementNotFound(
+                f"the photo picker allows one image, but selectPhotos named {len(indices)} indices"
+            )
+        self._await_picker_focus(deadline)
+        for i in indices:
+            if len(state.cells) <= i:
+                # The read that confirmed the previous pick can catch the grid mid-rebind (the sheet
+                # grows on a first pick), so a later index is waited for rather than indexed blind.
+                state = self._await_picker(
+                    functools.partial(_has_cell, index=i), deadline, f"photo picker cell {i}"
+                )
+            frame = state.cells[i].frame
+            point = base.frame_center(frame)
+            self._actuations.record(
+                Actuation(
+                    gesture="tap",
+                    via="coordinate",
+                    unit=_UNIT,
+                    points=(point,),
+                    frame=frame,
+                    target=f"photo picker cell {i}",
+                )
+            )
+            self._act(adb.tap_cmd(self.serial, point[0], point[1]))
+            if state.multi_select:
+                state = self._await_picker(
+                    functools.partial(_cell_selected, index=i),
+                    deadline,
+                    f"photo picker cell {i} to read back selected",
+                )
+        if state.multi_select:
+            add = self._await_picker(
+                lambda s: s.add_button is not None, deadline, "the photo picker's add button"
+            ).add_button
+            if add is None:  # unreachable past the wait; narrows the type for mypy
+                raise base.ElementNotFound("the photo picker's add button vanished")
+            point = base.frame_center(add)
+            self._actuations.record(
+                Actuation(
+                    gesture="tap",
+                    via="coordinate",
+                    unit=_UNIT,
+                    points=(point,),
+                    frame=add,
+                    target="button_add",
+                )
+            )
+            self._act(adb.tap_cmd(self.serial, point[0], point[1]))
+        self._await_picker(lambda s: not s.present, deadline, "the photo picker to close")
+
+    def _await_picker_grid(self, needed: int, deadline: float) -> PickerState:
+        """Wait for a grid of at least `needed` cells that two consecutive reads agree on."""
+        previous: tuple[base.Frame, ...] | None = None
+        while True:
+            state = read_picker_state(self._read_source())
+            frames = tuple(c.frame for c in state.cells)
+            if len(frames) >= needed and frames == previous:
+                return state
+            previous = frames
+            if time.monotonic() >= deadline:
+                shown = f"{len(frames)} cell(s)" if state.present else "no photo picker"
+                raise base.ElementNotFound(
+                    f"selectPhotos needs {needed} photo picker cell(s) on screen; found {shown}"
+                )
+            time.sleep(_PHOTO_PICKER_POLL_S)
+
+    def _await_picker_focus(self, deadline: float) -> None:
+        """Wait until the picker's own window holds input focus, so a coordinate tap reaches it.
+
+        The tree shows the picker as soon as its window attaches, while input can still go to the app
+        beneath it: on-device, a cell tap taken then landed on the app's own button under the cell.
+        """
+        while True:
+            focused = self._run(adb.focused_window_cmd(self.serial))
+            if any(pkg in focused for pkg in PICKER_PACKAGES):
+                return
+            if time.monotonic() >= deadline:
+                raise base.ElementNotFound(
+                    f"the photo picker never took input focus ({focused.strip() or 'no window'})"
+                )
+            time.sleep(_PHOTO_PICKER_POLL_S)
+
+    def _await_picker(
+        self, ready: Callable[[PickerState], bool], deadline: float, what: str
+    ) -> PickerState:
+        """Re-read the picker until `ready` holds, or fail naming `what` at `deadline`."""
+        while True:
+            state = read_picker_state(self._read_source())
+            if ready(state):
+                return state
+            if time.monotonic() >= deadline:
+                raise base.ElementNotFound(f"timed out waiting for {what}")
+            time.sleep(_PHOTO_PICKER_POLL_S)
 
     def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:  # noqa: ARG002  # Driver shape
         # BE-0316 is iOS-only: Android surfaces a system permission dialog in the topmost-window
@@ -2313,6 +2444,10 @@ class AdbDriver(CoordinateTreeDriver):
                 base.Capability.DEVICE_GROUP,
                 base.Capability.DC_BACKGROUND,
                 base.Capability.DC_STATUS_BAR,
+                # The system photo picker by resource id. Its API 33 floor is checked when the step
+                # runs, as `multiTouch`'s root requirement is, since preflight reads this set with no
+                # device.
+                base.Capability.SELECT_PHOTOS,
                 # `screenrecord`, `logcat`, and a tag-filtered `logcat` for appTrace (`driver_interval`).
                 base.Capability.VIDEO,
                 base.Capability.DEVICE_LOG,

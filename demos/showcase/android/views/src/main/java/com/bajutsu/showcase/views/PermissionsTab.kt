@@ -6,7 +6,9 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.view.View
 import android.widget.LinearLayout
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia
 
 // Tab: Permissions (SPEC §5.4 / §7) — the OS-integration screen. It owns the two deliberate
 // runtime-permission prompts (notifications + location), the Android analog of iOS's SpringBoard
@@ -53,6 +55,26 @@ class PermissionsTab(private val activity: MainActivity) {
             pastedValue.stateValue(text)
         }.aid("sys_paste")
 
+        // `selectPhotos` (SPEC §5.4): the system photo picker in its two modes, mirroring the picked
+        // count back to perm.photos.value. Multi-selection confirms with the picker's add button;
+        // single-selection returns on its one tap.
+        val photosValue = activity.secondaryLabel("Selected: 0").aid("perm_photos_value").stateValue("0")
+        fun showPhotoCount(count: Int) {
+            photosValue.text = "Selected: $count"
+            photosValue.stateValue(count.toString())
+        }
+        val photosLauncher = activity.registerForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris ->
+            showPhotoCount(uris.size)
+        }
+        val photoLauncher = activity.registerForActivityResult(PickVisualMedia()) { uri ->
+            showPhotoCount(if (uri != null) 1 else 0)
+        }
+        val imagesOnly = PickVisualMediaRequest(PickVisualMedia.ImageOnly)
+        val openPhotos = activity.textButton("Open Photo Picker") { photosLauncher.launch(imagesOnly) }
+            .aid("perm_openPhotoPicker")
+        val openPhoto = activity.textButton("Open Photo Picker (Single)") { photoLauncher.launch(imagesOnly) }
+            .aid("perm_openPhotoPickerSingle")
+
         val form = activity.vstack(
             activity.label("Notifications"),
             requestNotif,
@@ -65,6 +87,10 @@ class PermissionsTab(private val activity: MainActivity) {
             copy,
             paste,
             pastedValue,
+            activity.label("Photos"),
+            openPhotos,
+            openPhoto,
+            photosValue,
         )
         root = activity.vstack(activity.header("Permissions"), activity.scrollPage(form)).apply {
             (getChildAt(1).layoutParams as LinearLayout.LayoutParams).apply { height = 0; weight = 1f }
