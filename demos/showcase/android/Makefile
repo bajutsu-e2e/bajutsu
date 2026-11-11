@@ -112,11 +112,16 @@ SERIAL ?= booted
 # and the per-edit checks have nothing to read here. That scenario is iOS-only (see its header); a
 # count-only Android twin for select/copy/delete is a possible follow-up.
 #
+# `app_android` hands the screen to the system Settings app with the `app:` step and back, twice
+# (issue #2393); Settings ships on every emulator image, so it needs no extra install. Compose only:
+# Views' `singleTask` MainActivity finishes the pushed HorseDetailActivity when `leave_app` starts it
+# again, so the scenario's first return would find the catalog instead of the detail screen.
+#
 # Observed network capture lands in its own `e2e-network` target below (BE-0283); mocked network
 # (deterministic stub responses) stays a follow-up.
 E2E_SCENARIOS := smoke firstlook navigation search data_driven relaunch system components modals \
 	controls notices gestures gestures_multitouch permission device extract foreach interrupts \
-	text_entry_android select_photos select_photo_single
+	text_entry_android select_photos select_photo_single app_android
 
 # Raise the condition-wait ceiling for this lane only: the CI x86_64 software-rendered emulator
 # presents sheets/covers slower than the shared scenarios' 5s waits allow. A wait returns as soon as

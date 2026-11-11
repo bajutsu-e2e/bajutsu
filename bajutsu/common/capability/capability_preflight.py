@@ -305,7 +305,7 @@ _REQUIREMENTS = (
     ),
     _Requirement(
         base.Capability.APP_CONTEXT,
-        "app (cross-app UI control; iOS XCUITest only)",
+        "app (cross-app UI control; iOS XCUITest and Android adb)",
         _step_locations(lambda s: s.app is not None),
     ),
     *(
