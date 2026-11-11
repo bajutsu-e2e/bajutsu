@@ -31,13 +31,14 @@ class WebViewTransportError(Exception):
 class Transport(Protocol):
     """One text-frame WebSocket, as the CDP client needs it; a recorded exchange stands in for tests."""
 
-    def send(self, message: str) -> None: ...
+    def send(self, message: str) -> None:
+        """Send one text frame, or raise `WebViewTransportError` when the socket refuses it."""
 
     def recv(self, timeout: float) -> str:
         """The next text frame, or `WebViewTransportError` once `timeout` passes or the socket closes."""
-        ...
 
-    def close(self) -> None: ...
+    def close(self) -> None:
+        """Close the socket; closing one that is already gone is not an error."""
 
 
 class _WebSocketTransport:
