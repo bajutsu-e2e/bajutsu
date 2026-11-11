@@ -107,15 +107,13 @@ SERIAL ?= booted
 # cannot represent (the whole point of BE-0285). Both reuse the Stable/Log instruments the lane
 # already drives, need no app change, and carry both id forms so they run on Views too.
 #
-# The text-editing flow (select/copy/clear/delete, text_editing.yaml) is deliberately absent: the
-# Compose / Views trees do not expose an editable field's text as its `value`, so `clear` is a no-op
-# and the per-edit checks have nothing to read here (issue #2388). Its select/copy half runs instead
-# as `text_selection_android` (issue #2389): the clipboard starts on a sentinel, so the read-back
-# proves the Ctrl+C chord copied the field's text, and (since a collapsed caret copies nothing) that
-# Ctrl+A selected all of it. It carries both id forms, so it runs on Views too. Verified on a local
-# arm64 emulator (API 34), Compose and Views alike. `delete` stays uncovered here, and #2388 is not
-# what blocks it: it reads no `value`, and its effect is observable through the `search.count` mirror
-# this lane already asserts — so a count-only Android twin for it remains the open follow-up.
+# The text-editing flow (select/copy/clear/delete, text_editing.yaml) is not in the lane yet. The
+# driver now reads an editable field's text as its `value` (#2388), so `clear` and the `value` checks
+# can work here; adding the whole file stays a follow-up that needs its own on-device run. Its
+# select/copy half already runs as `text_selection_android` (issue #2389): the clipboard starts on a
+# sentinel, so the read-back proves the Ctrl+C chord copied the field's text, and (since a collapsed
+# caret copies nothing) that Ctrl+A selected all of it. It carries both id forms, so it runs on Views
+# too. Verified on a local arm64 emulator (API 34), Compose and Views alike.
 #
 # `app_android` hands the screen to the system Settings app with the `app:` step and back, twice
 # (issue #2393); Settings ships on every emulator image, so it needs no extra install. Compose only:

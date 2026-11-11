@@ -100,15 +100,12 @@ fun ConformanceScreen(identifiers: List<String>) {
         BasicTextField(
             value = fieldText,
             onValueChange = { fieldText = it },
-            // Mirror the text into content-desc: the adb driver maps a node's `text` to `label` and
-            // content-desc to `value`, and the contract reads `value` (as the iOS AXValue and the web
-            // input value do), so without this the typed text would land in `label` and the round-trip
-            // length change the contract observes would be invisible.
+            // No content-desc mirror: since #2388 the adb driver reads an EditText's `text` as its
+            // `value` directly, and mirroring here would land the typed text in `label` instead.
             modifier = Modifier
                 .size(width = 280.dp, height = 44.dp)
                 .background(MaterialTheme.colorScheme.surfaceVariant)
-                .aid(CONFORMANCE_FIELD_ID)
-                .stateValue(fieldText),
+                .aid(CONFORMANCE_FIELD_ID),
         )
         // The masked field (BE-0331). Never typed into by the contract — it exists so query() can
         // report its trait — so it stays empty and needs no stateValue mirroring.

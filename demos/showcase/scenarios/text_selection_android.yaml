@@ -1,7 +1,7 @@
 # `select` and `copy` on the adb backend (issue #2389): the driver sends Ctrl+A and Ctrl+C as
 # `input keycombination` chords, and no Android lane ran either step until this file. It is the
-# select/copy half of text_editing.yaml; that file's `clear` / `value` half stays iOS-only until an
-# Android field exposes its text as `value` (issue #2388).
+# select/copy half of text_editing.yaml, which the Android lane does not run yet even though the
+# driver now reads a field's text as `value` (issue #2388).
 #
 # The clipboard starts on a sentinel, so the closing assertion can pass only if `copy` wrote to the
 # clipboard. A previous run's "Horse 3" survives `pm clear`, because the clipboard belongs to the
