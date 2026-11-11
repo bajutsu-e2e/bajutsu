@@ -2,6 +2,7 @@ package dev.bajutsu.android
 
 import android.content.Context
 import android.content.IntentFilter
+import android.content.pm.ApplicationInfo
 import android.webkit.WebView
 import androidx.core.content.ContextCompat
 
@@ -51,19 +52,23 @@ object Bajutsu {
      * Turns on WebView debugging, which opens each WebView's `webview_devtools_remote_<pid>` socket —
      * the Chrome DevTools Protocol channel bajutsu forwards with `adb` to query the DOM and dispatch
      * touches. Whether a WebView in a debuggable app enables this by itself has varied across WebView
-     * versions, so the explicit call removes that dependence and covers a non-debuggable test build
-     * too. Call it from `Application.onCreate`, before any WebView is created.
+     * versions, so the explicit call removes that dependence. Call it from `Application.onCreate`,
+     * before any WebView is created.
+     *
+     * It acts only when the app is debuggable (`android:debuggable`, set by every debug build type),
+     * and is a no-op otherwise. While debugging is on, any process on the device can connect to the
+     * socket and read or drive every page this app shows, session cookies and form input included, so
+     * a release build that calls this by mistake must still not open it. Returns whether it enabled
+     * debugging. Idempotent.
      *
      * In an app that hosts its WebViews in a separate `android:process`, call it only in that process
      * (or after `WebView.setDataDirectorySuffix`): `Application.onCreate` runs in every process, and
      * the call loads WebView, which takes the per-process data-directory lock that API 28+ refuses to
      * share between two processes.
-     *
-     * **Never call it in a release build** — `if (BuildConfig.DEBUG) Bajutsu.enableWebViewDebugging()`.
-     * While it is on, any process on the device can connect to the socket and read or drive every
-     * page this app shows, session cookies and form input included. Idempotent.
      */
-    fun enableWebViewDebugging() {
+    fun enableWebViewDebugging(context: Context): Boolean {
+        if ((context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) == 0) return false
         WebView.setWebContentsDebuggingEnabled(true)
+        return true
     }
 }

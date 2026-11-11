@@ -24,8 +24,8 @@ _SOCKET_RE = re.compile(rf"@{_SOCKET_PREFIX}(\d+)$")
 
 # The fix the missing-socket reason names, so the author reads the remedy rather than a bare symptom.
 DEBUGGING_HINT = (
-    "the app has not enabled WebView debugging; call `Bajutsu.enableWebViewDebugging()` from "
-    "`Application.onCreate` in a debug or test build"
+    "the app has not enabled WebView debugging; call `Bajutsu.enableWebViewDebugging(this)` from "
+    "`Application.onCreate` in a debuggable build"
 )
 
 

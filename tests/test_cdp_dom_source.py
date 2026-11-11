@@ -163,7 +163,7 @@ def test_connect_names_the_install_command_when_websockets_is_absent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setitem(sys.modules, "websockets.sync.client", None)
-    with pytest.raises(WebViewTransportError, match=r"bajutsu\[android\]"):
+    with pytest.raises(WebViewTransportError, match=r"uv sync --extra android"):
         connect_websocket("ws://127.0.0.1:1/devtools/page/1", 0.1)
 
 

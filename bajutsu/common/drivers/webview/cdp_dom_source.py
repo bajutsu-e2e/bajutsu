@@ -41,12 +41,13 @@ _Candidate = tuple[int, dict[str, Any]]
 # text and fires the same events on both platforms. `Input.insertText` inserts at the caret and fires
 # `input` alone, so the caret goes to the end first (iOS appends) and `change` is fired after.
 # Only a field that takes typed text counts as focused: `'value' in el` alone also admits a button,
-# a <select>, or an <li>, where `Input.insertText` inserts nothing and the step would pass anyway.
+# a <select>, or an <li>, and a date or time picker input is no plain-text editable either; in each,
+# `Input.insertText` inserts nothing and the step would pass anyway.
 _CARET_TO_END_JS = """
 (() => {
   const el = document.activeElement;
-  const noText = ['button', 'checkbox', 'color', 'file', 'hidden', 'image', 'radio', 'range',
-                  'reset', 'submit'];
+  const noText = ['button', 'checkbox', 'color', 'date', 'datetime-local', 'file', 'hidden',
+                  'image', 'month', 'radio', 'range', 'reset', 'submit', 'time', 'week'];
   const takesText = el instanceof HTMLTextAreaElement
     || (el instanceof HTMLInputElement && !noText.includes(el.type));
   if (!takesText) return false;

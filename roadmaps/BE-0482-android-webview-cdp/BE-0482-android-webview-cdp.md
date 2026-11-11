@@ -266,9 +266,13 @@ Log:
   `Bajutsu.enableWebViewDebugging()` are in place. The design said the run "asks the run environment
   for its `DomSource`"; that became a `webview_source` method on `RunEnvironment`, which replaces
   `pool._alloc_webview_bridge`. Review hardened two checks beyond the design. The tap hit-test also
-  rejects `<body>` and `<html>`, since `elementFromPoint` returns one of them for any point inside
-  the viewport. The typing guard admits only a text-entry field. Units 6 and 7 remain; the
-  `webView` parity mark waits for unit 6's on-device run.
+  rejects `<body>` and `<html>`, since `elementFromPoint` falls back to one of those wherever no
+  other element covers the point. The typing guard admits only a text-entry field, which excludes
+  the date and time picker types. The helper also deviates from the design: it takes a `Context`
+  and acts only when the app is debuggable (`FLAG_DEBUGGABLE`), so a release build that calls it
+  by mistake opens no socket, and CodeQL's WebView-debugging rule accepts the guarded call. It
+  therefore no longer covers a non-debuggable test build. Units 6 and 7 remain; the `webView`
+  parity mark waits for unit 6's on-device run.
 
 ## References
 

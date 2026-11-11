@@ -13,9 +13,10 @@ import json
 import time
 from typing import Any, Protocol
 
-# The install hint a missing package fails a block with — the same command `scripts/install.sh` runs
-# when the configured backends include Android.
-_INSTALL_HINT = "uv pip install 'bajutsu[android]'"
+# The install hint a missing package fails a block with — the same extra sync `scripts/install.sh`
+# runs, through `provision`, when the configured backends include Android. A `uv pip install` would
+# not stick: the next `uv sync` drops whatever `uv.lock` does not name.
+_INSTALL_HINT = "uv sync --extra android"
 
 
 class WebViewTransportError(Exception):
