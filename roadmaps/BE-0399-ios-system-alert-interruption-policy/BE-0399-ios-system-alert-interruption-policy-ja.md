@@ -93,7 +93,7 @@ runner が実行中に落ちました。監視を外した対照実行では生�
 
 ## 詳細設計
 
-### ユニット 1 — 割り込んできたアラートにシナリオの方針で答える
+### ユニット 1：割り込んできたアラートにシナリオの方針で答える
 
 runner に UI 割り込み監視を 1 つ入れます。アラートのボタンのラベルを読み、`InterruptionPolicy` に
 沿って 1 つを選び、押し、そのラベルを記録して `true` を返します。選び方は `match_alert_rule` と
@@ -112,7 +112,7 @@ runner に UI 割り込み監視を 1 つ入れます。アラートのボタン
 ハンドラが引き取ります。この監視が無かったときと同じ挙動です。そしてループしない唯一の結末でも
 あります。そのハンドラは実際にアラートを消すからです。
 
-### ユニット 2 — アラートがないと確かめた直後のポーリングだけでツリー内消去を走らせる
+### ユニット 2：アラートがないと確かめた直後のポーリングだけでツリー内消去を走らせる
 
 `_observe_native` にローカルなフラグを 1 つ足します。そのポーリングでネイティブ探査が実際に走り、
 なおかつ `"absent"` を返したかどうかを記録するフラグです。`_dismiss_from_tree` を呼ぶのは、そのフラグ
@@ -120,7 +120,7 @@ runner に UI 割り込み監視を 1 つ入れます。アラートのボタン
 そのタップはいずれも、同じポーリングのなかで何も見つけなかった SpringBoard のクエリを直前に伴います。
 2 つのプロンプトが同時に出たときの順序が決定的になるのは、この対応づけによります。
 
-### ユニット 3 — タップ不能時の打ち切り上限をポーリング数ではなく秒で定める
+### ユニット 3：タップ不能時の打ち切り上限をポーリング数ではなく秒で定める
 
 `_TREE_DISMISS_MAX_DECLINES` は、連続した `ElementNotTappable` の回数を縛る上限でした。その値 20 は
 「`_POLL` で約 1 秒」と導出されています。ユニット 2 は、この上限が数えている間隔を変えます。しかも
@@ -129,7 +129,7 @@ runner に UI 割り込み監視を 1 つ入れます。アラートのボタン
 どんな回数に置き換えても一定の時間には対応しません。そこで上限を時計に基づくものへ変えます。隣にある
 `_TREE_RETAP_DELAY` は、同じ理由ですでにその選択をしています。
 
-### ユニット 4 — `gone` の待ちをガード対象にする
+### ユニット 4：`gone` の待ちをガード対象にする
 
 `gone` の待ちはガード対象外でした。理由は「妨げるプロンプトはツリーを潰し、潰れたツリーはすでに
 `gone` を満たす」というものです。これは SpringBoard のプロンプトにだけ当てはまります。アプリ自身の
@@ -139,7 +139,7 @@ runner に UI 割り込み監視を 1 つ入れます。アラートのボタン
 ツリーを渡します。渡すのは自身の条件判定のあとなので、すでに満たされた待ちが操作を起こすことは
 ありません。
 
-### ユニット 5 — ブラウザと統合したツリーで、アプリ側のアラートを 1 回だけ報告する
+### ユニット 5：ブラウザと統合したツリーで、アプリ側のアラートを 1 回だけ報告する
 
 `SFSafariViewController` が出ているあいだ、`queryElements` はアプリの走査とブラウザサービスの走査を
 連結します
@@ -153,7 +153,7 @@ runner に UI 割り込み監視を 1 つ入れます。アラートのボタン
 推測を拒み、アラートは永久に消えません。マージは、アプリ側がすでに報告した要素と、報告されている
 同一性がフレームまで一致するサービス側のノードを落とすようにします。
 
-### ユニット 6 — ステップ終了時のガードでもアプリ側のプロンプトを片付ける
+### ユニット 6：ステップ終了時のガードでもアプリ側のプロンプトを片付ける
 
 ガードは待機中のゲートだけではありません。ステップや `expect` が失敗したとき、
 `AlertGuardConfig.__call__` が塞いでいるものに 1 度だけ挑みます。ここにはネイティブ経路と vision の
@@ -165,7 +165,7 @@ iOS 26.3、26.4、26.5 で保存アラートがシナリオ最後の待ちより
 答えが得られたときだけです。待機中の版が持つ表示ごとの記帳（再タップの遅延、タップ上限、辞退の上限）は
 持ちません。失敗したステップごとに 1 度走るだけで、抑えるべき流れがないからです。
 
-### ユニット 7 — showcase で本物のプロンプトを両方の経路から出す
+### ユニット 7：showcase で本物のプロンプトを両方の経路から出す
 
 showcase のアプリ内ブラウザが、既存のブラウザ用フィクスチャの隣に置いたサインインページを読み込み
 ます。これを送信すると iOS が本物の「パスワードを保存」アラートを出します。ブラウザ経路が必要とするものは
@@ -192,14 +192,24 @@ Simulator のキーチェインに入れた認証局が揃うまで、プロン�
 からです。実測では、通知の要求は iOS 26.4 と 26.5 ではサインインの入力中に届き、18.6 と 26.3 では入力
 のあとに届きました。26.4 では保存アラート自体が、ページの遷移よりあとに届きました。
 
-### ユニット 8 — オーケストレータ側を決定的なテストで覆う
+### ユニット 8：オーケストレータ側を決定的なテストで覆う
 
-fake アクチュエータで、オーケストレータが渡す方針を覆います。ガード自身の規則と候補、シナリオが何も
-名指ししないときの無害なデフォルト、ガードを無効にしたときの空の方針、そしてオプトインを持たないバックエンド
-では何も渡さないことの 4 点です。あわせて次の 4 点も覆います。drain が `AlertEvent` になること。ツリー内消去のゲートが 3 つの場合
-それぞれで働くこと。打ち切りが時計に基づくこと。`gone` の待ちがアプリ側のプロンプトを片付けること。あわせて、ステップ終了時
-のガード自身の 1 回きりのツリー内消去と、その 3 つの辞退も覆います。runner 側は Swift でこのゲートの外に
-着地するので、ユニット 7 のシナリオが検証を担います。
+fake アクチュエータで、オーケストレータが渡す方針を覆います。覆う対象は次の 4 点です。
+
+- ガード自身の規則と候補
+- シナリオが何も名指ししないときの無害なデフォルト
+- ガードを無効にしたときの空の方針
+- オプトインを持たないバックエンドでは何も渡さないこと
+
+あわせて、次の項目も覆います。
+
+- drain が `AlertEvent` になること
+- ツリー内消去のゲートが 3 つの場合それぞれで働くこと
+- 打ち切りが時計に基づくこと
+- `gone` の待ちがアプリ側のプロンプトを片付けること
+- ステップ終了時のガード自身の 1 回きりのツリー内消去と、その 3 つの辞退
+
+runner 側は Swift でこのゲートの外に着地するので、ユニット 7 のシナリオが検証を担います。
 
 ## 検討した代替案
 
@@ -254,19 +264,13 @@ XCUITest は引き取ったと申告された割り込みが解消したかを�
 
 ## 参考
 
-- [`bajutsu/orchestrator/waits.py`](../../bajutsu/orchestrator/waits.py) — `_AlertGuardGate`。ネイティブ
+- [`bajutsu/orchestrator/waits.py`](../../bajutsu/orchestrator/waits.py)：`_AlertGuardGate`。ネイティブ
   探査とツリー内消去、ツリーが潰れたことを手がかりにする経路の順序を決める `_observe_native` の置き場所
-- [`bajutsu/orchestrator/types.py`](../../bajutsu/orchestrator/types.py) — `AlertGuardConfig` と
+- [`bajutsu/orchestrator/types.py`](../../bajutsu/orchestrator/types.py)：`AlertGuardConfig` と
   `push_interruption_policy`、`drain_interruptions`、および `DEFAULT_DISMISSIVE_LABELS` の方針
-- [`BajutsuKit/Sources/BajutsuRunner/InterruptionPolicy.swift`](../../BajutsuKit/Sources/BajutsuRunner/InterruptionPolicy.swift)
-  — 渡された方針と、監視が適用する選び方
-- [`BajutsuKit/Runner/Sources/RunnerUITest.swift`](../../BajutsuKit/Runner/Sources/RunnerUITest.swift)
-  — 監視を入れる場所
-- [BE-0269 — 待機の途中で介入する](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention-ja.md)
-  — ステップが失敗したあとではなく待機の途中でガードを動かす理由
-- [BE-0315 — ネイティブのシステムアラート処理](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling-ja.md)
-  — ネイティブ経路と `poll_interval`、および本提案が再び払わずに済ませるポーリングごとのクエリの費用
-- [BE-0382 — プロンプトごとの規則](../BE-0382-system-alert-per-prompt-rules/BE-0382-system-alert-per-prompt-rules-ja.md)
-  — 黙った許可が上書きしてしまう、プロンプトごとの `choice`
-- [Apple — About the Password AutoFill workflow](https://developer.apple.com/documentation/security/about-the-password-autofill-workflow)
-  — 先送りにしたネイティブログイン経路の背景にある、associated domain の要件
+- [`BajutsuKit/Sources/BajutsuRunner/InterruptionPolicy.swift`](../../BajutsuKit/Sources/BajutsuRunner/InterruptionPolicy.swift)：渡された方針と、監視が適用する選び方
+- [`BajutsuKit/Runner/Sources/RunnerUITest.swift`](../../BajutsuKit/Runner/Sources/RunnerUITest.swift)：監視を入れる場所
+- [BE-0269 — 待機の途中で介入する](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention-ja.md)：ステップが失敗したあとではなく待機の途中でガードを動かす理由
+- [BE-0315 — ネイティブのシステムアラート処理](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling-ja.md)：ネイティブ経路と `poll_interval`、および本提案が再び払わずに済ませるポーリングごとのクエリの費用
+- [BE-0382 — プロンプトごとの規則](../BE-0382-system-alert-per-prompt-rules/BE-0382-system-alert-per-prompt-rules-ja.md)：黙った許可が上書きしてしまう、プロンプトごとの `choice`
+- [Apple — About the Password AutoFill workflow](https://developer.apple.com/documentation/security/about-the-password-autofill-workflow)：先送りにしたネイティブログイン経路の背景にある、associated domain の要件

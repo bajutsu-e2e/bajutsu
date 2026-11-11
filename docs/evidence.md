@@ -40,11 +40,15 @@ A `capture:` token is `<kind>[.<modifier>]` ([scenarios](scenarios.md#capture-to
 | `video` | `simctl io recordVideo` | interval | ✅ captured (needs udid) |
 | `deviceLog` | `simctl spawn log stream` | interval | ✅ captured (needs udid) |
 | `network` | the in-app collector (BajutsuKit → `network.json`) | interval | ✅ captured (the `--network` run flag) |
-| `appTrace` | `simctl spawn log stream` over the app's os_log subsystem | interval | ✅ captured (needs udid + subsystem) |
+| `appTrace` | `simctl spawn log stream` over the app's os_log subsystem (iOS); `adb logcat` filtered to the app's tag (Android) | interval | ✅ captured (needs a device + subsystem) |
 | `rawTree` | the device's own reply behind `elements`, untouched (`base.RawSourceProvider`; adb and XCUITest today) | instant | ✅ captured (opt-in, no-op elsewhere) |
 
-> `appTrace` pairs the app's `os_signpost` / `os_log` `<name> started` / `<name> finished` markers
-> into timed intervals (`intervals.parse_app_trace`). `network` is produced by the request collector
+> `appTrace` pairs the app's `<name> started` / `<name> finished` log markers into timed intervals.
+> On iOS the markers come from `os_signpost` / `os_log` (`intervals.parse_app_trace`). On Android
+> the app logs them with `android.util.Log`, as in `Log.i(tag, "checkout started")`.
+> `intervals.parse_logcat_app_trace` pairs those
+> ([BE-0478](../roadmaps/BE-0478-android-device-control-parity/BE-0478-android-device-control-parity.md)).
+> `network` is produced by the request collector
 > rather than the interval system — its exchanges are written to `<sid>/network.json`
 > ([network observation](drivers.md), the `--network` flag).
 
@@ -234,8 +238,18 @@ To capture just one step, attach `capture:` directly to the step.
 Implementation: `bajutsu/common/evidence/intervals.py`. These are **subprocess child processes** — `simctl` on iOS,
 `adb` on Android — started before the action and stopped after the step settles. Process spawning is
 injectable (`Spawn`) and testable. Web has no subprocess: its intervals are Playwright-native and
-supplied by the driver (see below). (`appTrace` is an iOS interval too — a `log stream` over the
-app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
+supplied by the driver (see below). On iOS, `appTrace` is a `log stream` over the app's `os_log`
+subsystem. `parse_app_trace` pairs its markers into timed intervals.
+
+On Android, `appTrace` streams `adb logcat -s <tag>:V`, and the app logs its markers under that tag.
+The tag is `--log-subsystem` when set, else the app's package. The stream follows the tag rather
+than a process id, so a `relaunch` leaves the stream running. The stream starts at an instant
+read from the device's own clock (`logcat -T`), to the second. The device thus decides which lines
+came earlier. A cutoff on the computer running Bajutsu would compare device times with its own
+clock. Any clock drift would then drop real lines. A line logged up to a second before the
+stream can still appear. A later `started` of the same name replaces such a line when pairing.
+When Bajutsu cannot read the device clock, the stream starts from the last logged line with a warning. On stop, `parse_logcat_app_trace` reads
+each line's time and pairs the markers into `appTrace.json`.
 
 > **Interval kinds are opt-in (BE-0028).** `video` / `deviceLog` / `appTrace` are heavy, so a
 > scenario records an interval **only when it asks for that kind** — through an inline `capture:`
@@ -625,7 +639,7 @@ route the scenario runs on
 | iOS Simulator | Recorded | Recorded | Recorded |
 | iOS real device (`runsOn.ios.kind: device`) | Skipped | Skipped | Skipped |
 | Live WebDriver endpoint | Skipped | Skipped | Skipped |
-| Android | Recorded | Recorded | Skipped |
+| Android | Recorded | Recorded | Recorded |
 | Web | Recorded | Recorded | Skipped |
 
 A gap is recorded only for a kind the scenario asked for, and the sink never starts a recorder for

@@ -208,10 +208,18 @@ class XcuitestLiveDriver:
     def capabilities(self) -> set[str]:
         return set(self.CAPABILITIES)
 
-    def driver_interval(self, kind: str, path: Path) -> intervals.Interval | None:  # noqa: ARG002  # Driver shape
+    def driver_interval(
+        self,
+        kind: str,
+        path: Path,
+        *,
+        subsystem: str | None = None,
+        json_path: Path | None = None,
+    ) -> intervals.Interval | None:
         # Returning None for every kind routes the evidence FileSink through the driver path rather
         # than the simctl path (which calls `simctl.validated_udid(endpoint)` and crashes on a URL).
         # In-driver recording over WebDriver actions is Slice B (BE-0238).
+        del kind, path, subsystem, json_path  # Driver shape
         return None
 
     # --- Slice B: input and gestures, mapped onto Appium's XCUITest `mobile:` commands ---

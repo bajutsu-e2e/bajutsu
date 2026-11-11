@@ -156,7 +156,9 @@ class WebContextDriver:
         raise UnsupportedAction("setPickerValue is iOS-only; a DOM has no picker wheel")
 
     def select_photos(self, indices: list[int], *, timeout: float) -> None:  # noqa: ARG002  # Driver shape
-        raise UnsupportedAction("selectPhotos is iOS-only; a DOM has no photo picker")
+        raise UnsupportedAction(
+            "selectPhotos drives the native system photo picker; a DOM has no photo picker"
+        )
 
     def handle_system_alert(self, sel: Selector, timeout: float) -> None:  # noqa: ARG002  # Driver shape
         # BE-0316 taps an iOS SpringBoard prompt; a WebView DOM context has no OS-level alert, and
@@ -164,13 +166,13 @@ class WebContextDriver:
         raise UnsupportedAction("handleSystemAlert is iOS-only; not supported in web context")
 
     def enter_app(self, bundle_id: str) -> None:  # noqa: ARG002  # Driver shape
-        # app: rests on XCUITest's own cross-app activate(); a WebView's DOM context has
-        # no bundle-id concept to switch to, and only the resident-runner XCUITest backend declares
+        # app: rests on the native backend's own app switching; a WebView's DOM context has no
+        # bundle-id concept to switch to, and only the native (XCUITest / adb) backends declare
         # APP_CONTEXT, so this never runs.
-        raise UnsupportedAction("app is iOS-only; not supported in web context")
+        raise UnsupportedAction("app is not supported in web context")
 
     def leave_app(self) -> None:
-        raise UnsupportedAction("app is iOS-only; not supported in web context")
+        raise UnsupportedAction("app is not supported in web context")
 
     def system_alert_labels(self) -> list[str]:
         # A WebView DOM context sees no SpringBoard alert layer; the reactive native path never runs.

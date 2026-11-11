@@ -183,6 +183,12 @@ whose build you trust. Without the opt-in the run proceeds with the build suppre
 uploaded bundle's build is suppressed — no silent host-side command execution from a config that
 arrived over the network.
 
+The same verdict covers the XCUITest runner's on-demand build, `driver.runner.build`. `serve` does
+not run that command itself; the run it spawns would, when the file at `driver.runner.testRunner`
+is missing. For an uploaded bundle, or a UI-bound Git config without `--allow-remote-build`, the
+spawned run refuses that build and fails with `driver.runner.build withheld` instead. Such a config
+ships its `.xctestrun` prebuilt at `testRunner`, which the run then uses as is.
+
 ## Private-repository access for the Git config source (BE-0224)
 
 When `serve` (or the CLI) reads its config from a **private** GitHub repository — a `github:` spec,

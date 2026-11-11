@@ -168,7 +168,7 @@ Preconditions ::= {
       deeplink?: string,                    # unset: the target's `subject.launch.deeplink`; iOS and Android
     },
   },
-  device?: { ios?: <IosDevice> },           # keyed by destination; a block for an undriven platform has no effect
+  device?: { ios?: <IosDevice>, android?: <AndroidDevice> },  # keyed by destination; a block for an undriven platform has no effect
   inheritSetup?: boolean,                   # default true — false skips every declared target's `hooks.setup`; their cleanup still runs
 }
 
@@ -176,6 +176,10 @@ Preconditions ::= {
 # same name. `seedPhotos` paths resolve against the scenario file, and a merged, non-empty list needs
 # an effective `subject.reinstall: erase`.
 IosDevice ::= { locale?: string, seedPhotos?: list(string) }
+
+# The Android device state a scenario applies; `seedPhotos` replaces the target's
+# `runsOn.android.seedPhotos`. Paths resolve against the scenario file; no erase is needed.
+AndroidDevice ::= { seedPhotos?: list(string) }
 
 # ── SystemAlertInterrupt (the reactive system-alert guard's answers) ───
 # The guard is on unless `run --no-system-alert-handling`; no scenario or target switches it off as a
@@ -263,7 +267,7 @@ Action    ::=
   | { if:          <If> }                                               # conditional (no capture/extract)
   | { forEach:     <ForEach> }                                          # loop (no capture/extract)
   | { web:         <Web> }                                              # enter a WebView's DOM context (BE-0037; no capture/extract)
-  | { app:         <App> }                                              # launch an app the test target never started and drive its UI (iOS/XCUITest only; no capture/extract)
+  | { app:         <App> }                                              # launch an app the test target never started and drive its UI (iOS/XCUITest and Android/adb; no capture/extract)
   | { manual:      { label: string, bypass?: string } }                # human takeover recorded during `record` (BE-0185); fails loudly at run time — no deterministic equivalent unless `bypass` is wired
 
 Group ::= { name: string, steps: list(<Step>) }   # both required, non-empty; compile-time macro, gone before `run` (§6.2)

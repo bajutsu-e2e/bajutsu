@@ -1,41 +1,41 @@
 **English** · [日本語](SPEC.ja.md)
 
-# Bajutsu Showcase — fixture specification
+# Bajutsu Showcase fixture specification
 
-> The single source of truth for the showcase dogfood targets. The UIKit and SwiftUI
-> codebases both implement *this* spec, identifier-for-identifier, so one scenario set
+> This document is the single source of truth for the showcase dogfood targets. The UIKit and SwiftUI
+> codebases both implement *this* spec, identifier for identifier, so one scenario set
 > drives every variant. Read it before changing any app source. Design rationale:
 > [`DESIGN.md`](../../DESIGN.md); roadmap item: the `dogfood-showcase-apps` BE item.
 
 ## 1. Purpose
 
-The showcase is Bajutsu's **next-generation dogfood target** — the practice ground for
+The showcase is Bajutsu's **next-generation dogfood target**, the practice ground for
 `record` (Tier 1 authoring), `crawl` (Tier 1 exploration, [BE-0038](../../roadmaps/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)),
 and `run` (Tier 2 deterministic gate). It deliberately packs the interaction surface a real
 app has — tabbed + navigation + modal screen transitions, text entry, gestures, async
-loading, networking (live + mockable), and a screen that intentionally raises OS-level
+loading, networking (live and mockable), and a screen that intentionally raises OS-level
 alerts — into the smallest coherent app that still tells that whole story.
 
 It is the **single iOS fixture** (BE-0079 retired the older `demo`/`sample`/`sample2` apps).
-Where a single-variant app is one codebase, the showcase ships **the same app written twice**
-(UIKit and SwiftUI) and **each in two accessibility variants**, to make a teaching point
-Bajutsu's whole design rests on visible:
+A single-variant app is one codebase. The showcase instead ships **the same app written twice**
+(UIKit and SwiftUI), **each in two accessibility variants**, to make visible a teaching point
+that Bajutsu's whole design rests on:
 
 | Variant | Accessibility identifiers | Demonstrates |
 |---|---|---|
-| **`*-a11y`** (identifiers ON) | every actionable element carries a stable `accessibilityIdentifier` | `run` — id-based selectors resolve uniquely, scenarios replay deterministically; `doctor --target` grades **Ready** |
-| **`*-noax`** (identifiers OFF) | no identifiers at all | `record` — the AI author must fall back down the stability ladder ([DESIGN §5](../../DESIGN.md)) to `label`/`traits`/coordinates; `doctor --target` grades **Blocked**. The cost of skipping accessibility, made concrete |
+| **`*-a11y`** (identifiers ON) | every actionable element carries a stable `accessibilityIdentifier` | `run`: id-based selectors resolve uniquely, scenarios replay deterministically, and `doctor --target` grades **Ready** |
+| **`*-noax`** (identifiers OFF) | no identifiers at all | `record`: the AI author must fall back down the stability ladder ([DESIGN §5](../../DESIGN.md)) to `label`/`traits`/coordinates, and `doctor --target` grades **Blocked**. This makes the cost of skipping accessibility concrete |
 
 > **Why the pairing matters.** Selector stability is the determinism lever
 > ([DESIGN §2](../../DESIGN.md)). The `-a11y` ↔ `-noax` twins are the controlled experiment:
 > same app, same flows, identifiers the only difference. Run the same goal through `record`
-> against both and the diff *is* the value of accessibility work.
+> against both, and the diff *is* the value of accessibility work.
 
 ## 2. App matrix
 
 The iOS matrix below is 2 codebases × 2 build variants = 4 products; §2.1 adds the 4 Android twins.
 Each toolkit is **one codebase, two build targets**. The variant difference is a single Swift
-active-compilation condition, `ACCESSIBLE`; there is no forked source. (See §8.)
+active-compilation condition, `ACCESSIBLE`, and there is no forked source (see §8).
 
 | App name (`targets.<name>`) | Toolkit | `ACCESSIBLE` | Bundle id | Deeplink scheme | Display name |
 |---|---|---|---|---|---|
@@ -50,11 +50,11 @@ SwiftUI views may differ in construction but never in the contract below.
 
 ### 2.1 Android twins ([`android/`](android/), BE-0007 preparation)
 
-The same fixture exists for Android — built ahead of the
+The same fixture exists for Android, built ahead of the
 [BE-0007 Android backend](../../roadmaps/BE-0007-android-backend/BE-0007-android-backend.md)
 as the app pair that backend will drive. **Jetpack Compose** mirrors the SwiftUI codebase,
 **Android Views** mirrors UIKit, and the a11y/noax pair is one Gradle flavor switch
-(`BuildConfig.ACCESSIBLE`) — no forked source, exactly like `ACCESSIBLE` on iOS.
+(`BuildConfig.ACCESSIBLE`). Like `ACCESSIBLE` on iOS, it forks no source.
 
 | App name (`targets.<name>`) | Toolkit | `ACCESSIBLE` | Application id | Deeplink scheme | Display name |
 |---|---|---|---|---|---|
@@ -76,7 +76,7 @@ in the channel (the BE-0007 selector mapping):
 | `UIPasteboard` round-trip (§5.4) | `ClipboardManager` | same |
 
 Both Android toolkits mirror the state value to `content-desc` (not Compose's `stateDescription`,
-which a `uiautomator dump` does not expose). Three Android-only carve-outs from the shared contract:
+which a `uiautomator dump` does not expose). The shared contract has three Android-only carve-outs:
 
 - **`SHOWCASE_UITEST` (disable animations, §3).** On iOS the app itself disables animations; on Android
   animations are disabled device-wide by the driver (`adb shell settings put global
@@ -102,8 +102,8 @@ carve-out above.
 
 ## 3. Launch environment hooks
 
-Driven via `launchEnv` ([DESIGN §6.1](../../DESIGN.md)). All are read once at launch from
-`ProcessInfo`. Prefix `SHOWCASE_`.
+The scenario sets these variables via `launchEnv` ([DESIGN §6.1](../../DESIGN.md)). The app reads each once at launch from
+`ProcessInfo`. Each name carries the prefix `SHOWCASE_`.
 
 | Variable | Effect | Default |
 |---|---|---|
@@ -113,16 +113,16 @@ Driven via `launchEnv` ([DESIGN §6.1](../../DESIGN.md)). All are read once at l
 | `SHOWCASE_BROWSER_URL` | page the in-app browser opens (§5.4) | `https://example.com` |
 | `SHOWCASE_SAVED_NOTE` | swap the tab UI for the persisted saved-note screen (§5.6; SwiftUI and Compose only) | unset |
 
-> There is **no auth gate**: the app launches straight into the tab UI, always on the Stable tab.
+> The app has **no auth gate**: it launches straight into the tab UI, always on the Stable tab.
 > Every other tab is reached by tapping the native tab bar, which the XCUITest backend does by
 > label (BE-0107 retired the `SHOWCASE_TAB` launch shortcut, which the retired idb backend needed because it could not tap the tab bar, BE-0290). The
 > catalog is **fixed** at five horses — there is no launch-env seed knob (BE-0079): a scenario
-> observes the app's own data, it cannot inject a data state. Likewise there is no launch-env
-> shortcut onto a *pushed* screen (see §4).
+> observes the app's own data, it cannot inject a data state. Likewise, no launch-env
+> shortcut leads onto a *pushed* screen (see §4).
 
 ## 4. Deeplinks
 
-Scheme is per-variant (§2); the host grammar is shared. A deeplink **selects a tab** (and
+The scheme differs per variant (§2); the host grammar is shared. A deeplink **selects a tab** (and
 dismisses modals / pops that tab to root); it does **not** push a detail screen (BE-0079). A
 detail is reached only by tapping its catalog row, so there is no shortcut straight onto a
 pushed screen.
@@ -133,8 +133,8 @@ pushed screen.
 
 ## 5. Screen-by-screen specification
 
-A **five-tab main UI, no auth gate** — the app launches straight into the tabs. Every actionable
-element's identifier is listed; the `-noax` variants omit all of them. Identifiers follow
+The app has a **five-tab main UI and no auth gate**: it launches straight into the tabs. This section lists every actionable
+element's identifier; the `-noax` variants omit all of them. Identifiers follow
 [DESIGN §7.3](../../DESIGN.md): `<namespace>.<element>`, lowercase, data-derived, unique per
 screen. State is mirrored to `accessibilityValue` (in `-a11y`) so assertions read it.
 
@@ -195,7 +195,7 @@ A `NavigationStack` (SwiftUI) / `UINavigationController` (UIKit). Catalog list w
 
 ### 5.3 Tab: Log — `log` namespace (forms + modals)
 
-A training-log composer exercising every input control and every modal style.
+A training-log composer that exercises every input control and every modal style.
 
 - `log.note` — multiline text field
 - `log.count` — stepper for a numeric count, starting at 1 (the shared `extract.yaml` asserts an absolute count, so every target starts here); `log.count.value` mirrors the number
@@ -296,15 +296,19 @@ the fixture for out-of-process UI a scenario must still drive.
   the browser resets the value to `idle`, so a wait for `loaded` never reads an earlier one. A
   scenario reads the mirror after dismissing the browser, once this screen is back in the tree
 
-**Photos** (SwiftUI only; see *Alternatives* in the roadmap item) — presents the system
-`PHPickerViewController`. Two buttons cover the two ways the picker leaves the screen. The
+**Photos** (SwiftUI, Compose, and Views; the UIKit and Flutter apps have none) — presents the system
+photo picker: `PHPickerViewController` on iOS, and on Android the photo picker that
+`PickMultipleVisualMedia` / `PickVisualMedia` open for images only (the Views twin spells each id with
+underscores). Two buttons cover the two ways the picker leaves the screen. The
 unlimited-selection button always exercises the confirm tap `_confirm_photo_selection` performs; the
 `selectionLimit = 1` button auto-dismisses the picker on the one required tap, with no confirm
 control ever shown, so it exercises that method's no-op path instead. Both back `selectPhotos`, the
-one iOS-only DSL action gated on `Capability.SELECT_PHOTOS` (iOS XCUITest only).
+DSL action gated on `Capability.SELECT_PHOTOS` (iOS XCUITest, and adb on Android 13 and later).
+Android's single-selection picker closes on its one tap the same way.
 [`select_photos.yaml`](scenarios/select_photos.yaml) and
 [`select_photo_single.yaml`](scenarios/select_photo_single.yaml) each seed the photo library with
-`preconditions.device.ios.seedPhotos` (an effective `subject.reinstall: erase` required alongside it) before opening their picker.
+`preconditions.device.ios.seedPhotos` (an effective `subject.reinstall: erase` required alongside it) or
+`preconditions.device.android.seedPhotos` before opening their picker.
 - `perm.openPhotoPicker` — button that presents the unlimited-selection picker
 - `perm.openPhotoPickerSingle` — button that presents the picker with `selectionLimit = 1`
 - `perm.photos.value` — the picked count, mirrored back once the picker dismisses (0 until then)
@@ -348,7 +352,7 @@ a note, installs the current build over it, and reads the note back.
 
 ## 6. Networking
 
-Uses the standard in-app collector integration (iOS: BajutsuKit; Android: BajutsuAndroid):
+The app uses the standard in-app collector integration (iOS: BajutsuKit; Android: BajutsuAndroid):
 
 - **iOS** — the app links **BajutsuKit** and calls `BajutsuNet.startIfEnabled()` at launch (a no-op
   unless one of BajutsuKit's launch-env keys is injected — `BAJUTSU_COLLECTOR` for network capture,
@@ -369,7 +373,7 @@ Uses the standard in-app collector integration (iOS: BajutsuKit; Android: Bajuts
 ## 7. OS-alert policy (deliberate, scoped)
 
 > Requirement: OS alerts (push-notification permission, location) are **off by default**,
-> and present **only on a specific screen**.
+> and appear **only on a specific screen**.
 
 - **No launch-time prompts.** The app never requests notification/location authorization at
   startup — only on explicit taps inside the **Permissions** tab (§5.4).
@@ -428,7 +432,7 @@ extension UIAccessibilityIdentification {
 }
 ```
 
-`UIAlertAction` — the native alert's two actions in §5.3 — takes an overload of its own. It is not
+`UIAlertAction`, the native alert's two actions in §5.3, takes an overload of its own. It is not
 a `UIView`, and its header never declares `UIAccessibilityIdentification`, yet the class does
 implement `setAccessibilityIdentifier:` and the identifier reaches the alert button XCUITest sees;
 key-value coding is what gets to that setter, guarded so an SDK that ever drops it leaves the button

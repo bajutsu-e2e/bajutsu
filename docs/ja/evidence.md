@@ -37,10 +37,10 @@
 | `video` | `simctl io recordVideo` | 区間 | ✅ 取得（要 udid） |
 | `deviceLog` | `simctl spawn log stream` | 区間 | ✅ 取得（要 udid） |
 | `network` | アプリ内 collector（BajutsuKit → `network.json`） | 区間 | ✅ 取得（`--network` フラグ） |
-| `appTrace` | `simctl spawn log stream`（アプリの os_log subsystem） | 区間 | ✅ 取得（要 udid + subsystem） |
+| `appTrace` | iOS は `simctl spawn log stream`（アプリの os_log subsystem）、Android はアプリのタグで絞った `adb logcat` | 区間 | ✅ 取得（要デバイス + subsystem） |
 | `rawTree` | `elements` の元になった、bajutsu の加工を経ていない生の応答（`base.RawSourceProvider`。現状 adb と XCUITest） | 瞬時 | ✅ 取得（opt-in。他のバックエンドでは何もしません） |
 
-> `appTrace` はアプリの `os_signpost` / `os_log` が出す `<name> started` / `<name> finished` マーカーを、時刻つきの区間にペアリングします（`intervals.parse_app_trace`）。`network` は区間システムではなく request collector が生成し、その exchange を `<sid>/network.json` に書き出します（[network observation](drivers.md)、`--network` フラグ）。
+> `appTrace` はアプリが出す `<name> started` / `<name> finished` のログマーカーを、時刻つきの区間にペアリングします。iOS ではマーカーを `os_signpost` / `os_log` から読みます（`intervals.parse_app_trace`）。Android ではアプリが `android.util.Log` でマーカーを出し、`intervals.parse_logcat_app_trace` がペアリングします（例：`Log.i(tag, "checkout started")`、[BE-0478](../../roadmaps/BE-0478-android-device-control-parity/BE-0478-android-device-control-parity-ja.md)）。`network` は区間システムではなく request collector が生成し、その exchange を `<sid>/network.json` に書き出します（[network observation](drivers.md)、`--network` フラグ）。
 
 > `elements.json` の各要素は、`identifier`、`label`、`traits`、`value`、`frame` に加えて、診断用のフィールドを1つ持ちます。テスト対象のアプリ自身が測った、その要素の実際の前後位置を表す `nativeZ` です（[BE-0355](../../roadmaps/BE-0355-native-z-position/BE-0355-native-z-position-ja.md)）。このフィールドを読んでも、実行の判定は何も変わりません。`nativeZ` でマッチするセレクタはなく、重なりの判定（`is_tappable`、`topmost_at_point`、XCUITest 自身の `isHittable`）もフィールドが存在しなかったときとまったく同じように振る舞います。web バックエンドでは、クロスオリジンの iframe から読んだ要素がさらに `crossOriginFrame: true` を持ちます（[drivers](drivers.md#playwrightweb)）。それ以外の要素には、このフィールドがありません。
 >
@@ -137,6 +137,8 @@ capturePolicy:
 実装: `bajutsu/common/evidence/intervals.py`。これらは **子プロセス**であり（iOS は `simctl`、Android は `adb`）、操作前に開始し、ステップが落ち着いてから停止します。プロセス起動は注入可能（`Spawn`）で、テストできます。
 
 web は子プロセスを使いません。区間証跡は Playwright ネイティブで、driver が供給します（後述）。`appTrace` も video / deviceLog と同じ区間系です（ペアリングの仕組みは前掲の注を参照）。
+
+Android の `appTrace` は `adb logcat -s <tag>:V` を流し、アプリはそのタグでマーカーを出します。タグは `--log-subsystem` を指定すればその値、指定しなければアプリのパッケージ名です。ストリームはプロセス ID ではなくタグで絞るので、`relaunch` のあとも途切れません。ストリームの開始点は、デバイス自身の時計から秒単位で読んだ時刻です（`logcat -T`）。どの行が開始より前かは、デバイスが判断します。Bajutsu を動かすマシン側で区切ると、デバイスの時刻を自分の時計と比べることになり、時計がずれていれば実際の行を落とします。開始の1秒前までの行は残ることがありますが、同じ名前のあとの `started` がペアリングで上書きします。デバイスの時計を読めないときは、警告を出して最後に記録された行から流します。停止すると、`parse_logcat_app_trace` が各行の時刻を読み、マーカーをペアリングして `appTrace.json` に書きます。
 
 > **区間証跡は opt-in です（BE-0028）。** `video` / `deviceLog` / `appTrace` は重いため、シナリオが
 > **その kind を要求したときだけ**記録します。要求の経路は、インライン `capture:` か `capturePolicy` ルール
@@ -399,7 +401,7 @@ class Artifact:
 | iOS Simulator | 記録する | 記録する | 記録する |
 | iOS 実機（`runsOn.ios.kind: device`） | skip | skip | skip |
 | ライブ WebDriver エンドポイント | skip | skip | skip |
-| Android | 記録する | 記録する | skip |
+| Android | 記録する | 記録する | 記録する |
 | Web | 記録する | 記録する | skip |
 
 gap を記録するのは、シナリオが要求した種別に限ります。gap になった種別については、sink が記録処理を開始しません。simctl が届くのは Simulator だけなので、実機に対して simctl を起動することはありません。証跡は判定に関与しないため、種別を skip しても結果は変わりません。

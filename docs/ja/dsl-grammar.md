@@ -166,7 +166,7 @@ Preconditions ::= {
       deeplink?: string,                    # 未設定はターゲットの `subject.launch.deeplink`。iOS と Android
     },
   },
-  device?: { ios?: <IosDevice> },           # 宛先がキー。動かさないプラットフォームのブロックは効果なし
+  device?: { ios?: <IosDevice>, android?: <AndroidDevice> },  # 宛先がキー。動かさないプラットフォームのブロックは効果なし
   inheritSetup?: boolean,                   # 既定 true — false で、宣言した全ターゲットの `hooks.setup` を省く。cleanup は走る
 }
 
@@ -174,6 +174,10 @@ Preconditions ::= {
 # 置き換えます。`seedPhotos` のパスはシナリオファイルを基準に解決します。重ね合わせたあとのリストが
 # 空でなければ、実効の `subject.reinstall: erase` が必要です。
 IosDevice ::= { locale?: string, seedPhotos?: list(string) }
+
+# シナリオが適用する Android のデバイスの状態です。`seedPhotos` はターゲットの
+# `runsOn.android.seedPhotos` を置き換えます。パスはシナリオファイルを基準に解決し、erase は要りません。
+AndroidDevice ::= { seedPhotos?: list(string) }
 
 # ── SystemAlertInterrupt（リアクティブなシステムアラートガードの答え）─
 # ガードは `run --no-system-alert-handling` を付けない限り ON です。シナリオやターゲットがガード全体を
@@ -261,7 +265,7 @@ Action    ::=
   | { if:          <If> }                                               # 条件分岐（capture/extract 不可）
   | { forEach:     <ForEach> }                                          # ループ（capture/extract 不可）
   | { web:         <Web> }                                              # WebView の DOM コンテキストに入る（BE-0037。capture/extract 不可）
-  | { app:         <App> }                                              # テスト対象アプリが起動していないアプリを起動してUIを操作する（iOS/XCUITest限定。capture/extract 不可）
+  | { app:         <App> }                                              # テスト対象アプリが起動していないアプリを起動してUIを操作する（iOS/XCUITest と Android/adb。capture/extract 不可）
   | { manual:      { label: string, bypass?: string } }                # `record` 中に記録される人による操作の引き取り（BE-0185）。決定的な等価物がないため、`bypass` を配線しない限り実行時に明示的に失敗する
 
 Group ::= { name: string, steps: list(<Step>) }   # どちらも必須、空を許さない。コンパイル時マクロで、runの前に消える（§6.2）

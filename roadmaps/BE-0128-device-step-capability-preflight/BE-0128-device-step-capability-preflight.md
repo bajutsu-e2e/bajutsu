@@ -16,93 +16,103 @@
 ## Introduction
 
 Device-control steps (`push`, `clearKeychain`, `setLocation`, and their siblings) carry simctl
-semantics into the shared scenario vocabulary and still fail only at runtime on a backend without
-a real device environment — exactly the "late failure" problem BE-0082 already fixed for gestures
-and visual assertions. This proposal extends the same preflight check to gate device-control steps
-by capability, so an unsupported step fails before any device work starts.
+semantics into the shared scenario vocabulary. On a backend without a real device environment, they
+still fail only at runtime. This is the "late failure" problem BE-0082 already fixed for gestures
+and visual assertions.
+
+This proposal extends the same preflight check to gate device-control steps by capability. An
+unsupported step then fails before any device work starts.
 
 ## Motivation
 
 `bajutsu/orchestrator/types.py:45-59` defines `DeviceControl`, a Protocol of simctl-backed
-operations (`set_location`, `push`, `clear_keychain`, `clear_clipboard`, `set_clipboard`, `get_clipboard`,
-`home`, `foreground`, `override_status_bar`, `clear_status_bar`) that the runner injects when a
-real device environment backs the run, and leaves `None` when it doesn't (the fake driver, or
-parallel runs that don't pin a single device). Every device-control step handler in
-`bajutsu/orchestrator/actions/handlers/device.py` (e.g. `_do_set_location`, `_do_push`,
-`_do_clear_keychain`) calls `_need_control(control, "<name>")`
-(`bajutsu/orchestrator/actions/_registry.py:72-78`), which raises `base.UnsupportedAction` — but
-only at the moment that step actually executes.
+operations: `set_location`, `push`, `clear_keychain`, `clear_clipboard`, `set_clipboard`,
+`get_clipboard`, `home`, `foreground`, `override_status_bar`, and `clear_status_bar`. The runner
+injects it when a real device environment backs the run. It leaves `None` when none does (the fake
+driver, or parallel runs that do not pin a single device).
 
-This is precisely the failure mode BE-0082 (the capability preflight check) was built to eliminate
-for gestures and visual assertions: "a scenario whose last step needed an unsupported capability ran
-every earlier step on a device first, then failed late" (`bajutsu/capability_preflight.py:1-9`).
-BE-0082's `unsupported()` gates `pinch`/`rotate` on `MULTI_TOUCH` and a `visual` assertion on
-`SCREENSHOT`, both declared on each driver class’s `CAPABILITIES`, but device-control steps have no capability
-token at all — they are gated by whether `DeviceControl` happens to be wired up at runtime, which
-the preflight (a pure function of `scenario` and the driver's `capabilities()`,
-`bajutsu/capability_preflight.py:109-122`) cannot see.
+Every device-control step handler in `bajutsu/orchestrator/actions/handlers/device.py` (for example
+`_do_set_location`, `_do_push`, and `_do_clear_keychain`) calls
+`_need_control(control, "<name>")` (`bajutsu/orchestrator/actions/_registry.py:72-78`). That call
+raises `base.UnsupportedAction`, but only when the step actually executes.
 
-The gap is latent today because idb always provides a real `DeviceControl` and Playwright-backed
-scenarios rarely use device-control steps, but it becomes a forcing function the moment Android
-(BE-0007) or a wider Web surface lands: a scenario authored against one target that uses `push` or
-`setLocation` will run every prior step on the new backend and only then discover, mid-run, that the
-construct has no equivalent there. Severity: Medium — not an active failure on the two shipped
-backends, but a predictable one that compounds with each new backend and directly regresses prime
-directive 2 ("fail loudly", the very concern BE-0082 was written to close).
+BE-0082 (the capability preflight check) was built to eliminate exactly this failure mode for
+gestures and visual assertions. The check's own description states it: "a scenario whose last step
+needed an unsupported capability ran every earlier step on a device first, then failed late"
+(`bajutsu/capability_preflight.py:1-9`). BE-0082's `unsupported()` gates `pinch`/`rotate` on
+`MULTI_TOUCH` and a `visual` assertion on `SCREENSHOT`. Each driver class declares both tokens in
+its `CAPABILITIES`.
+
+Device-control steps have no capability token at all. Whether `DeviceControl` happens to be wired up
+at runtime gates them. The preflight is a pure function of `scenario` and the driver's
+`capabilities()` (`bajutsu/capability_preflight.py:109-122`), so it cannot see that wiring.
+
+Today the gap is latent. idb always provides a real `DeviceControl`, and Playwright-backed scenarios
+rarely use device-control steps. The gap turns into a forcing function once Android (BE-0007) or a
+wider Web surface lands. A scenario authored against one target that uses `push` or `setLocation`
+would run every prior step on the new backend. Only then would it discover, mid-run, that the
+construct has no equivalent there.
+
+Severity is Medium. The two shipped backends show no active failure. The failure is predictable,
+though, and it compounds with each new backend. It also directly regresses prime directive 2 ("fail
+loudly"), the very concern BE-0082 was written to close.
 
 ## Detailed design
 
-1. **Add capability tokens for device-control steps.** Extend `bajutsu/drivers/base.py`'s
-   `Capability` class with a token for simctl-style device control (e.g.
-   `DEVICE_CONTROL = "deviceControl"`), following the existing pattern (`MULTI_TOUCH`,
-   `WEBVIEW`). A single shared token is enough if every device-control step is an all-or-nothing
-   capability per backend (idb has all of them via `DeviceControl`; a backend either supports the
-   family or doesn't) — the existing `DeviceControl` Protocol already groups them as one unit for
-   this reason. If a future backend supports only a subset, split into per-operation tokens instead;
-   that decision can be deferred to whichever backend first needs partial support.
+1. **Add capability tokens for device-control steps.** Extend the `Capability` class in
+   `bajutsu/drivers/base.py` with a token for simctl-style device control (for example
+   `DEVICE_CONTROL = "deviceControl"`), following the existing pattern (`MULTI_TOUCH`, `WEBVIEW`).
+   - A single shared token is enough while every device-control step is an all-or-nothing
+     capability per backend. idb has all of them via `DeviceControl`, and a backend either supports
+     the family or does not. The existing `DeviceControl` Protocol already groups them as one unit
+     for this reason.
+   - If a future backend supports only a subset, split into per-operation tokens instead. The
+     decision can wait for whichever backend first needs partial support.
 2. **Declare the capability on backends that support it.** Add the new token to idb's `CAPABILITIES`
-   frozenset (`bajutsu/drivers/idb.py:326-328`) since idb backs a real `DeviceControl`, **and to
-   xcuitest's** (`bajutsu/drivers/xcuitest.py`): xcuitest shares the iOS Simulator lifecycle
-   (`_DeviceEnvironment.controller` in `bajutsu/platform_lifecycle.py`), which wires the same real
-   simctl `DeviceControl` for its runs, so omitting it would make the preflight *falsely reject*
-   xcuitest scenarios that would actually run. Playwright's `CAPABILITIES`
-   (`bajutsu/drivers/playwright.py:566-576`) does not gain it, matching today's reality that
-   Playwright scenarios have no `DeviceControl` wired in; the `fake` backend likewise does not
-   declare it, so the preflight rejects device-control scenarios on it up front.
-3. **Extend `capability_preflight.py`'s requirement table.** Add a `_Requirement` entry (or one per
-   device-control step kind, depending on the token granularity chosen in step 1) to `_REQUIREMENTS`
-   in `bajutsu/capability_preflight.py`, with a `locations` function that walks the step tree
-   (reusing `_walk_steps`) for steps where `step.set_location`, `step.push`, `step.clear_keychain`,
-   etc. are not `None`. This makes `unsupported()` report every device-control step location that
-   needs a capability the target backend doesn't declare — before any device work starts, exactly
-   like the existing `pinch`/`rotate`/`visual` entries.
+   frozenset (`bajutsu/drivers/idb.py:326-328`), since idb backs a real `DeviceControl`. Add it to
+   **xcuitest's** as well (`bajutsu/drivers/xcuitest.py`). xcuitest shares the iOS Simulator
+   lifecycle (`_DeviceEnvironment.controller` in `bajutsu/platform_lifecycle.py`), which wires the
+   same real simctl `DeviceControl` for its runs. Omitting the token would make the preflight
+   *falsely reject* xcuitest scenarios that would actually run.
+   - Playwright's `CAPABILITIES` (`bajutsu/drivers/playwright.py:566-576`) does not gain the token.
+     That matches today's reality: Playwright scenarios have no `DeviceControl` wired in.
+   - The `fake` backend likewise does not declare it, so the preflight rejects device-control
+     scenarios on it up front.
+3. **Extend `capability_preflight.py`'s requirement table.** Add a `_Requirement` entry to
+   `_REQUIREMENTS` in `bajutsu/capability_preflight.py`, or one entry per device-control step kind,
+   depending on the token granularity chosen in step 1. Its `locations` function walks the step
+   tree (reusing `_walk_steps`) for steps where `step.set_location`, `step.push`,
+   `step.clear_keychain`, and the like are not `None`. `unsupported()` then reports every
+   device-control step location that needs a capability the target backend does not declare. It does
+   so before any device work starts, exactly like the existing `pinch`/`rotate`/`visual` entries.
 4. **Keep the runtime `_need_control` check as a safety net, not the primary gate.** The preflight
-   check becomes the mechanism that fails a scenario deterministically and early; the existing
-   `UnsupportedAction` from `_need_control` remains as a defense-in-depth check for the case where
-   capabilities say a backend supports device control but the specific run's environment (fake
-   driver, or a parallel run with no pinned device) doesn't wire one up — a capability, not
-   environment, concern the preflight is not meant to resolve.
+   check becomes the mechanism that fails a scenario deterministically and early. The existing
+   `UnsupportedAction` from `_need_control` remains as a defense-in-depth check. It covers the case
+   where capabilities say a backend supports device control, but the specific run's environment
+   (fake driver, or a parallel run with no pinned device) wires none up. That case is an
+   environment concern rather than a capability concern, and the preflight is not meant to resolve
+   it.
 
-This directly serves prime directive 2 (fail loudly, before device work) and prime directive 3
-(app-agnostic): the fix lives entirely in the capability/preflight abstraction, not in any
-per-target config, and it is a forcing function for Android — the same table gates whichever
-device-control operations the Android backend does or doesn't implement, with zero runner changes.
+The design directly serves prime directive 2 (fail loudly, before device work) and prime directive 3
+(app-agnostic). The fix lives entirely in the capability/preflight abstraction, not in any
+per-target config. It is also a forcing function for Android: the same table gates whichever
+device-control operations the Android backend does or does not implement, with zero runner changes.
 
 ## Alternatives considered
 
-- **Leave the gap and rely on `_need_control`'s runtime failure.** Cheapest, but reproduces the
-  exact "ran every earlier step, then failed late" problem BE-0082 already eliminated for gestures —
-  inconsistent coverage of the same failure class is worse than no preflight at all, since it teaches
-  users the preflight is unreliable.
+- **Leave the gap and rely on `_need_control`'s runtime failure.** This option is the cheapest. It
+  reproduces the exact "ran every earlier step, then failed late" problem BE-0082 already eliminated
+  for gestures. Inconsistent coverage of the same failure class is worse than no preflight at all,
+  because it teaches users that the preflight is unreliable.
 - **Fold device-control capability into the existing `MULTI_TOUCH`/`SCREENSHOT`-style ad hoc
-  requirements without a dedicated token.** Rejected — device control is a materially different
-  concern (simctl-backed OS operations, not gesture/rendering capabilities of the actuator itself);
-  reusing an unrelated token would misname the requirement and make `unsupported()`'s error messages
-  misleading.
-- **Give every device-control operation its own fine-grained capability token from the start.**
-  More precise, but speculative before any backend needs partial support — idb supports the whole
+  requirements without a dedicated token.** Rejected. Device control is a materially different
+  concern: simctl-backed OS operations, not gesture or rendering capabilities of the actuator
+  itself. Reusing an unrelated token would misname the requirement and make `unsupported()`'s error
+  messages misleading.
+- **Give every device-control operation its own fine-grained capability token from the start.** This option
+  is more precise, but speculative before any backend needs partial support. idb supports the whole
   `DeviceControl` surface as one unit today, so a single shared token matches the current backend
-  reality; splitting later (when a real backend needs it) is a small, additive change to the
+  reality. Splitting later, when a real backend needs it, is a small, additive change to the
   requirement table, not a breaking one.
 
 ## Progress

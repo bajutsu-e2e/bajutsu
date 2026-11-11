@@ -189,10 +189,10 @@ Two other docs gain the same cross-reference: [`docs/architecture.md`](../../doc
 and [`docs/drivers.md`](../../docs/drivers.md). Each already mentions the showcase's
 `Accessibility.kt` files. Each gains a mention of IdentifierTool next to it. A third turns up during
 implementation: [`docs/developer-guide.md`](../../docs/developer-guide.md). Its top-level directory
-table already lists `BajutsuAndroid/`. IdentifierTool joins it there too.
+table already lists `BajutsuAndroid/`, and IdentifierTool joins it there too.
+
 A reader following the adb id convention then also reaches the library. Today that reader reaches
-the showcase's own copy
-alone.
+the showcase's own copy alone.
 
 ### Work breakdown (MECE: mutually exclusive, collectively exhaustive)
 
@@ -254,11 +254,13 @@ Log:
   not cover `IdentifierTool/`. A change confined to it would have fired no E2E lane at all. The work
   breakdown implied this consequence without naming it. Added a filter entry for it, with a matching
   `tests/test_e2e_changes.py` assertion. Also added a `scripts/sync_roadmap_topic_labels.py` rule: a
-  PR touching `IdentifierTool/` now earns `topic:platform`, matching `BajutsuKit/`. A second
-  consequence surfaced during self-review: `compileOnly` alone does not stop R8 from failing the minified build
-  of a consumer using Views alone over the Compose file's own class references. Split that file
-  into `dev.bajutsu.identifier.compose` and added `consumerProguardFiles("consumer-rules.pro")`,
-  scoped to the two subpackages Compose touches rather than a blanket `androidx.compose.ui.**`.
+  PR touching `IdentifierTool/` now earns `topic:platform`, matching `BajutsuKit/`.
+
+  A second consequence surfaced during self-review. `compileOnly` alone does not keep R8 from
+  failing the minified build of a Views-alone consumer. The cause is the Compose file's own
+  class references. Split that file into `dev.bajutsu.identifier.compose` and added
+  `consumerProguardFiles("consumer-rules.pro")`. The rule covers the two subpackages Compose touches,
+  rather than a blanket `androidx.compose.ui.**`.
 
 - 2026-09-05 (PR #1904) — Added `IdentifierTool/sample/`. This minimal standalone app depends on
   IdentifierTool alone. The user asked for this beyond the item's original work breakdown. The

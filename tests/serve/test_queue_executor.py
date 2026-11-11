@@ -60,6 +60,7 @@ def test_dispatch_enqueues_a_serializable_job_spec(tmp_path: Path) -> None:
         "udids": ["U1"],
         "app_path": "A.app",
         "build": "make build",
+        "withhold_runner_build": False,  # a trusted config keeps its runner build (#2282)
         "materials": {},  # no materials for a local-built job
         "out_path": None,  # not a record job
         "record_save": None,

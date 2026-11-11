@@ -46,6 +46,9 @@ class Driver(Protocol):
 The set of tokens returned by `capabilities()`, used for actuator selection, evidence fallback
 resolution, and the **preflight capability check** (below).
 
+The two mobile backends differ in what they support.
+[iOS and Android driver parity](platform-parity.md) lists every difference and its plan.
+
 | Capability | Meaning | xcuitest | adb | playwright | fake |
 |---|---|:--:|:--:|:--:|:--:|
 | `query` | element-tree query | ✅ | ✅ | ✅ | ✅ |
@@ -56,41 +59,58 @@ resolution, and the **preflight capability check** (below).
 | `network` | native network monitoring | — | — | ✅ | — |
 | `video` | whole-scenario video recording (BE-0467; Simulator only on iOS) | ✅ | ✅ | ✅ | — |
 | `deviceLog` | whole-scenario device log or browser console stream (BE-0467; Simulator only on iOS) | ✅ | ✅ | ✅ | — |
-| `appTrace` | whole-scenario app `os_log` trace (BE-0467; iOS Simulator only) | ✅ | — | — | — |
+| `appTrace` | whole-scenario app log trace: `os_log` on iOS, a tag-filtered `logcat` on Android (BE-0467, BE-0478; Simulator only on iOS) | ✅ | ✅ | — | — |
 | `multiTouch` | two-finger gestures (pinch / rotate) | ✅ | ✅ | ✅ | ✅ |
+| `webView` | query and tap the DOM inside an embedded WKWebView (BE-0037); granted per run by the WebView bridge, so no backend declares it statically | — | — | — | — |
 | `textSelection` | select-all + clipboard copy on the focused field | ✅ | ✅ | ✅ | ✅ |
 | `selectOption` | set a native `<select>` by value (web only) | — | — | ✅ | ✅ |
 | `urlNavigation` | open a URL mid-scenario with `navigate` (web only; BE-0464) | — | — | ✅ | ✅ |
 | `elementAttribute` | read one HTML attribute of an element for the `attribute` assertion (web only; BE-0466) | — | — | ✅ | ✅ |
 | `handleSystemAlert` | tap an iOS SpringBoard permission-prompt button natively | ✅ | — | — | ✅ |
+| `resolveAlerts` | answer the policy's system alert inside the request that reads the screen (BE-0461; iOS only) | ✅ | — | — | — |
 | `pickerWheel` | set a wheel-style picker to a named row (iOS only) | ✅ | — | — | ✅ |
 | `handleTipkitTip` | dismiss a blocking Apple TipKit tip (iOS only) | ✅ | — | — | ✅ |
+| `appContext` | activate another installed app and drive it with the `app:` step | ✅ | ✅ | — | ✅ |
+| `selectPhotos` | pick images from the system photo picker by position (`PHPickerViewController` on iOS, dropped on an Apple Silicon Simulator; the Android 13+ photo picker over adb) | ✅ | ✅ | — | ✅ |
+| `handleNotificationBanner` | report and swipe away a foreground notification banner (BE-0416; iOS only) | ✅ | — | — | ✅ |
 | `deviceControl.setLocation` | set the simulated GPS location | ✅ | ✅ | — | — |
 | `deviceControl.clipboard` | read / write / clear the clipboard | ✅ | ✅ | — | — |
 | `deviceControl.push` | deliver a push notification | ✅ | — | — | — |
 | `deviceControl.clearKeychain` | clear the keychain | ✅ | — | — | — |
-| `deviceControl.background` | send the app to the background | ✅ | — | — | — |
+| `deviceControl.background` | send the app to the background | ✅ | ✅ | — | — |
 | `deviceControl.foreground` | bring the app to the front, launching it if needed | ✅ | ✅ | — | — |
-| `deviceControl.statusBar` | override / clear the status bar | ✅ | — | — | — |
+| `deviceControl.statusBar` | override / clear the status bar | ✅ | ✅ | — | — |
+| `deviceControl.permissions.location` | grant or revoke the `location` permission (BE-0276) | ✅ | ✅ | — | — |
+| `deviceControl.permissions.camera` | grant or revoke the `camera` permission (BE-0276) | ✅ | ✅ | — | — |
+| `deviceControl.permissions.microphone` | grant or revoke the `microphone` permission (BE-0276) | ✅ | ✅ | — | — |
+| `deviceControl.permissions.contacts` | grant or revoke the `contacts` permission (BE-0276) | ✅ | ✅ | — | — |
+| `deviceControl.permissions.photos` | grant or revoke the `photos` permission (BE-0276) | ✅ | ✅ | — | — |
+| `deviceControl.permissions.calendar` | grant or revoke the `calendar` permission (BE-0276) | ✅ | ✅ | — | — |
+| `deviceControl.permissions.notifications` | grant or revoke the `notifications` permission (BE-0276) | — | ✅ | — | — |
 | `deviceGroup` | share one device between the targets of a device group (BE-0447; Simulator only on iOS) | ✅ | ✅ | — | ✅ |
 
 > The `deviceControl.*` tokens are the `DeviceControl` family split per operation (BE-0212, from the
 > coarse `deviceControl` of BE-0128), so a backend can advertise exactly the operations it can
-> honor. XCUITest backs the whole family through `simctl`; the Android emulator backs
-> `setLocation`, `clipboard`, and `foreground` (its `push` / keychain / status-bar / `background`
-> operations have no faithful equivalent), which the split makes expressible without
-> green-lighting the rest. `background` and `foreground` were one `appLifecycle` token until
+> honor. XCUITest backs the whole family through `simctl`. The Android emulator backs every
+> operation but `push` and `clearKeychain`, all seven `permissions.*` services included (BE-0478).
+> `push` needs a receiver inside the app's process, and Android has no keychain for
+> `clearKeychain` to clear. The split makes that subset expressible
+> without green-lighting the rest. `background` and `foreground` were one `appLifecycle` token until
 > BE-0447 split them, since a device group's later member comes up at its `foreground`.
 
 > adb sits at the **lean end**, actuating by **frame-center coordinates** — it exposes no semantic
 > tap, so the run loop resolves a unique element via `query()` and taps its center. XCUITest, by
 > contrast, sits at the rich end: it taps directly by identifier, waits on native conditions, and
 > performs `pinch` / `rotate` natively. adb advertises `query` / `elements` / `screenshot`,
-> `multiTouch` (a rooted-device `sendevent` two-finger sweep; BE-0232), plus the emulator-backed
-> device-control subset `deviceControl.setLocation` + `deviceControl.clipboard` (BE-0211) +
-> `deviceControl.foreground`, `deviceGroup` (BE-0447), and the `video` / `deviceLog` evidence kinds
-> (`screenrecord`, `logcat`; BE-0467); the rest of the device-control family has
-> no faithful emulator equivalent and stays unadvertised. The
+> `multiTouch` (a two-finger gesture the resident server injects, or a rooted-device `sendevent`
+> sweep; BE-0232), `textSelection`
+> (`Ctrl+A` / `Ctrl+C` chords; BE-0265), plus the emulator-backed device-control subset
+> `deviceControl.setLocation` + `deviceControl.clipboard` (BE-0211) + `deviceControl.foreground`
+> + `deviceControl.background` + `deviceControl.statusBar` (BE-0478),
+> the seven `deviceControl.permissions.*` services (`pm grant` / `pm revoke`; BE-0276),
+> `deviceGroup` (BE-0447), `appContext` (the `app:` step, via `am start`), and the `video` / `deviceLog` / `appTrace` evidence kinds
+> (`screenrecord`, `logcat`, a tag-filtered `logcat`; BE-0467, BE-0478). `push` (no receiver in
+> the app's process) and `clearKeychain` (no keychain on Android) stay unadvertised. The
 > `fake` driver advertises a richer capability set (semanticTap / conditionWait / multiTouch) purely
 > to exercise those code paths in tests. The `playwright` (web) driver advertises `semanticTap` /
 > `conditionWait` (Playwright has both natively), `network` — the **first backend with native
@@ -301,9 +321,9 @@ than resolving through frame-center coordinates. Needs Xcode's `xcodebuild`.
   above, this never merges two trees — `enter_app` pushes a new `XCUIApplication(bundleIdentifier:)`
   onto the runner's own app stack and `.activate()`s it, so every route above (`query()`, `tap`, …)
   addresses that app exclusively until a matching `leave_app` pops back to the one beneath. Gated on
-  the `APP_CONTEXT` capability, XCUITest-only like `HANDLE_SYSTEM_ALERT` / `PICKER_WHEEL`: a
-  feasibility spike confirmed `activate()` reliably foregrounds an app the test target never
-  launched, with no per-app config or app-side cooperation
+  the `APP_CONTEXT` capability, which XCUITest and adb declare (the adb mechanism is described in
+  the adb section). On XCUITest, a feasibility spike confirmed `activate()` reliably foregrounds an
+  app the test target never launched, with no per-app config or app-side cooperation
   ([`docs/specs/ios-cross-app-ui-control-feasibility.md`](specs/ios-cross-app-ui-control-feasibility.md)).
 
 > The generic runner uses `XCUIApplication(bundleIdentifier:)`, so it drives any installed app with
@@ -523,14 +543,23 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   > off-screen still writes `scroll`. It only insures against an obstruction the author did not
   > expect (a transient overlay, a sticky header settling into place), the same way adb's own
   > not-found fallback already insures against an unexpected off-screen target.
-- **Multi-touch** (BE-0232): `pinch` / `rotate` drive a two-slot protocol-B `sendevent` sweep
-  (`pinch_contacts` / `rotate_contacts` compute the two contacts' geometry; `rotate` sweeps the
-  straight chord between the endpoints, a linear approximation of the arc, like the web backend's
-  rotate). This needs a rooted device with a discoverable touchscreen; `_two_finger_gesture` fails
-  loudly with `UnsupportedAction` otherwise — there is no single-touch fallback, unlike the
-  double-tap path below. `MULTI_TOUCH` is declared statically in the capability set regardless of
-  root, so preflight admits `gestures_multitouch` on adb; the root check is enforced at actuation
-  time, not in the capability set.
+- **Multi-touch** (BE-0232): `pinch_contacts` / `rotate_contacts` compute the two contacts'
+  geometry from the target's frame; `rotate` sweeps the straight chord between the endpoints, a
+  linear approximation of the arc, like the web backend's rotate. Two routes inject those contacts,
+  tried in order:
+  1. The resident UI Automator server's `POST /gesture` injects both fingers as one multi-pointer
+     `MotionEvent` sequence through `UiAutomation`, which holds the shell's privilege, so **no root
+     is needed**. The record's `via` is `resident`.
+  2. A rooted device with a discoverable touchscreen falls back to a raw two-slot protocol-B
+     `sendevent` sweep, but only when the server is absent, predates the endpoint, or could not be
+     reached before the request went out — the three cases where nothing reached the screen. The record's `via` is `coordinate`.
+
+  A gesture the server rejects fails the step rather than falling back, and a lost reply is taken
+  as landed: either may already have put a finger down, and a second gesture on top of it would be
+  worse than a loud failure. A device with neither route fails with `UnsupportedAction` naming both
+  preconditions — there is no single-touch fallback, unlike the double-tap path below.
+  `MULTI_TOUCH` is declared statically in the capability set, so preflight admits
+  `gestures_multitouch` on adb; which route is available is decided at actuation time.
 
 ### Screenshots, lifecycle, and permissions
 
@@ -549,6 +578,16 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   never blocks a scenario. Granting deterministically up front, rather than tapping the dialog when
   it appears, keeps timing off the run path; the list is app-specific, so it lives in config, not the
   driver.
+- `enter_app` / `leave_app`: the `app:` step. UI Automator already reads whichever app's window is
+  in front, so entering another app is only a launch: the driver resolves the package's launcher
+  activity (`cmd package resolve-activity --brief`), starts it with the same `am start -n` the
+  `foreground` step uses, and polls `dumpsys activity activities` until that package holds the
+  resumed activity — a bounded condition wait that raises `ElementNotFound` when it runs out, or at
+  once when the package has no launcher activity. The driver keeps its own app stack: `leave_app`
+  pops it and brings back the app beneath the same way, which is the app under test after the
+  outermost block. The app under test keeps its process behind the other app, so the crash probe
+  (`pidof` plus exit-info, BE-0424) does not read the handoff as a crash. On a device a device group
+  shares (BE-0447), the front-app check expects the entered package while the block is open.
 
 ### Evidence and network
 
