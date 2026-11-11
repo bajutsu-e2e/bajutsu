@@ -25,9 +25,9 @@ The map gates only the **true hard requirements** the capability set cleanly dec
 - `setPickerValue` needs `pickerWheel` (BE-0356): a picker wheel is an iOS control, and only the
   resident-runner XCUITest backend can land on a named row deterministically, so a scenario setting
   a wheel's value is rejected up front on every other backend.
-- `selectPhotos` needs `selectPhotos` (roadmap item): a `PHPickerViewController` grid is an iOS
-  control, and only the resident-runner XCUITest backend can address it at all, so a scenario using
-  this step is rejected up front on every other backend.
+- `selectPhotos` needs `selectPhotos` (roadmap item): the system photo picker is an OS control that
+  only the resident-runner XCUITest backend (`PHPickerViewController`) and adb (Android's photo
+  picker) can address, so a scenario using this step is rejected up front on every other backend.
 - `select` / `copy` need `textSelection` (BE-0280): select-all + clipboard copy on the focused
   field. A backend with no select-all handle raises `UnsupportedAction` and does not advertise the
   token, so a scenario selecting or copying is rejected up front. `delete` / `clear` are not gated:
@@ -285,7 +285,7 @@ _REQUIREMENTS = (
     ),
     _Requirement(
         base.Capability.SELECT_PHOTOS,
-        "selectPhotos (iOS photo-picker selection; iOS XCUITest only)",
+        "selectPhotos (system photo-picker selection; iOS XCUITest and Android only)",
         _step_locations(lambda s: s.select_photos is not None),
     ),
     _Requirement(
@@ -305,7 +305,7 @@ _REQUIREMENTS = (
     ),
     _Requirement(
         base.Capability.APP_CONTEXT,
-        "app (cross-app UI control; iOS XCUITest only)",
+        "app (cross-app UI control; iOS XCUITest and Android adb)",
         _step_locations(lambda s: s.app is not None),
     ),
     *(
@@ -391,6 +391,36 @@ def requirements(scenario: Scenario) -> dict[str, list[str]]:
                 f"{path}: {req.label}" for path in locations
             )
     return needs
+
+
+def android_status_bar_problems(scenario: Scenario) -> list[str]:
+    """Each `overrideStatusBar` value the Android demo mode cannot pin, with its step path (BE-0478).
+
+    The capability token says the adb backend has the step; this says whether one step's values fit.
+    `simctl status_bar` fails a step whose value it cannot show, while `am broadcast` reports success
+    and System UI ignores the value, so on Android the check has to run before any device work.
+    Pure: no device, no clock, no network.
+    """
+    from bajutsu.common.backend_cli import adb
+
+    problems: list[str] = []
+    for path, step in _walk_scenario(scenario):
+        osb = step.override_status_bar
+        if osb is None:
+            continue
+        fields: dict[str, str | int | None] = {
+            "time": osb.time,
+            "battery_level": osb.battery_level,
+            "battery_state": osb.battery_state,
+            "cellular_bars": osb.cellular_bars,
+            "wifi_bars": osb.wifi_bars,
+        }
+        set_fields = {k: v for k, v in fields.items() if v is not None}
+        problems.extend(
+            f"{path}: overrideStatusBar {problem}"
+            for problem in adb.status_bar_problems(set_fields)
+        )
+    return problems
 
 
 # --- The worker capability check (BE-0450) -------------------------------------------------------

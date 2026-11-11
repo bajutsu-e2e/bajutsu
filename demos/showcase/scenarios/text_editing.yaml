@@ -8,13 +8,9 @@
 # preceding `select` left selected, so the two run as a pair and the copied text is read back through
 # the `clipboard` assertion.
 #
-# iOS-only (XCUITest), like push.yaml is iOS-only for a device reason: the Compose / Views trees do
-# not expose an editable field's text as the element's `value`, so on Android `clear` — which reads
-# that value first to decide whether there's anything to clear at all (orchestrator/actions/handlers/
-# gestures.py) — is a no-op, and the per-edit `value` checks have nothing to read. XCUITest surfaces
-# the field value, so all four
-# actuators are both functional and observable there, on the SwiftUI and UIKit a11y apps alike. (adb
-# still backs `select` / `copy` / `delete` themselves, so a count-only Android twin is a later option.)
+# Runs on iOS (XCUITest), on the SwiftUI and UIKit a11y apps alike. The adb driver now reads an
+# editable field's text as its `value` (#2388), so `clear` and the per-edit `value` checks work on
+# Android too; the Android lane picks this scenario up with the `select` / `copy` work (#2389).
 #   bajutsu run --scenario text_editing.yaml --target showcase-swiftui ...
 - name: select and copy the field text, then clear and delete it
   preconditions:

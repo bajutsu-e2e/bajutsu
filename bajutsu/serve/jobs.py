@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING, Any
 from bajutsu.common.agents.ai_config import PROVIDER_MANAGED_ENV
 from bajutsu.common.backend_cli import simctl as _simctl
 from bajutsu.common.cancellation import GRACE_ENV, grace_seconds
+from bajutsu.common.config import RUNNER_BUILD_WITHHELD_ENV
 from bajutsu.common.devices import os as device_os
 from bajutsu.common.devices.runs import coordinates_from_manifest
 from bajutsu.common.evidence.redaction import Redactor
@@ -90,6 +91,8 @@ def _spawn_env(job: Job) -> dict[str, str]:
         # reproducing the silent gap for every ordinary cancel — `serve`'s longer window could never
         # rescue a run that already killed itself.
         e[GRACE_ENV] = f"{grace_seconds():g}"
+    if job.withhold_runner_build:
+        e[RUNNER_BUILD_WITHHELD_ENV] = "1"
     return e
 
 

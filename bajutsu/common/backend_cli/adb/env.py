@@ -4,10 +4,24 @@ from __future__ import annotations
 
 import contextlib
 import subprocess
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
+from ._device_state import (
+    APP_LOCALES_MIN_API,
+    get_app_locales_cmd,
+    home_cmd,
+    language_tag,
+    parse_app_locales,
+    resumed_activities_cmd,
+    resumed_packages,
+    set_app_locales_cmd,
+    status_bar_demo_cmds,
+    status_bar_exit_cmd,
+)
 from ._functions import (
+    SEED_PHOTOS_CLEARED,
+    SEED_PHOTOS_DIR,
     checked_serial,
     clear_primary_clip_cmd,
     deeplink_cmd,
@@ -17,13 +31,20 @@ from ._functions import (
     get_prop_cmd,
     install_cmd,
     launch_cmd,
+    launcher_component,
+    media_scan_cmd,
     parse_clipboard_result,
     pm_clear_cmd,
     pm_grant_cmd,
     pm_revoke_cmd,
+    push_cmd,
     real_run,
     resolve_activity_cmd,
     screencap_cmd,
+    seed_photo_name,
+    seed_photo_time_cmd,
+    seed_photos_clear_cmd,
+    seed_photos_reset_cmd,
     set_primary_clip_cmd,
     uninstall_cmd,
 )
@@ -95,6 +116,28 @@ class Env:
         with contextlib.suppress(subprocess.CalledProcessError, OSError):
             self._run(uninstall_cmd(self.serial, package))
 
+    def add_media(self, media_paths: Sequence[str]) -> None:
+        """Make the seed directory hold exactly *media_paths*, in order, and rescan it.
+
+        An empty list still empties a directory an earlier seed left behind, so a scenario that seeds
+        nothing never sees another scenario's images; a device never seeded is left untouched. Each
+        image gets a fixed, ascending modification time, so a picker that sorts by date shows the
+        list's last entry first, as the iOS `simctl addmedia` order does — for images without an EXIF
+        capture date, which the media store prefers. The scan is asynchronous: a scenario waits for
+        a seeded image to appear before selecting it.
+        """
+        if not media_paths:
+            if SEED_PHOTOS_CLEARED in self._run(seed_photos_clear_cmd(self.serial)):
+                self._run(media_scan_cmd(self.serial))
+            return
+        # Every name first, so a bad path fails before the directory is emptied.
+        names = [seed_photo_name(index, path) for index, path in enumerate(media_paths)]
+        self._run(seed_photos_reset_cmd(self.serial))
+        for index, (path, name) in enumerate(zip(media_paths, names, strict=True)):
+            self._run(push_cmd(self.serial, path, f"{SEED_PHOTOS_DIR}/{name}"))
+            self._run(seed_photo_time_cmd(self.serial, index, name))
+        self._run(media_scan_cmd(self.serial))
+
     def force_stop(self, package: str) -> None:
         with contextlib.suppress(subprocess.CalledProcessError):
             self._run(force_stop_cmd(self.serial, package))
@@ -165,16 +208,10 @@ class Env:
             DeviceError: the package manager returned no launcher activity (app not installed, or no
                 launcher intent) — surfaced cleanly rather than launching an empty component.
         """
-        out = self._run(resolve_activity_cmd(self.serial, package))
-        for raw in reversed(out.splitlines()):
-            line = raw.strip()
-            # A launcher component is `<package>/<activity>`: a `/` with a non-empty left side and
-            # no spaces. Requiring a non-empty left side rejects a stray absolute path (`/data/…`)
-            # in the manager's chatter that would otherwise be launched as a bogus component.
-            head, sep, tail = line.partition("/")
-            if sep and head and tail and " " not in line:
-                return line
-        raise DeviceError(f"no launcher activity for {package} (is it installed?)")
+        component = launcher_component(self._run(resolve_activity_cmd(self.serial, package)))
+        if component is None:
+            raise DeviceError(f"no launcher activity for {package} (is it installed?)")
+        return component
 
     def launch(self, package: str, env: Mapping[str, str] | None = None) -> None:
         """Launch the app's default launcher activity, forwarding `env` as intent extras."""
@@ -198,9 +235,10 @@ class Env:
             f.write(out)
 
     # Device control: the subset the emulator can honor, the Android peer of simctl's setLocation /
-    # clipboard. setLocation is a pure emulator-console op (BE-0211); clipboard goes through the app's
-    # in-app receiver (BE-0233), so its methods take the target package to address the broadcast. The
-    # rest of the DeviceControl family has no faithful emulator equivalent and is not wired (see
+    # clipboard / Home / status bar. setLocation is a pure emulator-console op (BE-0211); clipboard goes
+    # through the app's in-app receiver (BE-0233), so its methods take the target package to address the
+    # broadcast; Home and the status bar need no app at all (BE-0478). `push` needs a receiver in the
+    # app's process and Android has no keychain, so neither is wired (see
     # `platform_lifecycle.device_control.android_device_control`).
 
     def set_location(self, lat: float, lon: float) -> None:
@@ -214,3 +252,54 @@ class Env:
 
     def get_clipboard(self, package: str) -> str:
         return parse_clipboard_result(self._run(get_primary_clip_cmd(self.serial, package)))
+
+    def home(self) -> None:
+        """Press Home, sending the app to the background with its process alive (BE-0478)."""
+        self._run(home_cmd(self.serial))
+
+    def resumed_packages(self) -> set[str]:
+        """The packages holding a resumed activity now, the signal `background` waits on."""
+        return resumed_packages(self._run(resumed_activities_cmd(self.serial)))
+
+    def override_status_bar(self, **kwargs: str | int) -> None:
+        """Freeze the status bar through the System UI demo mode (`simctl status_bar`'s twin)."""
+        for cmd in status_bar_demo_cmds(self.serial, kwargs):
+            self._run(cmd)
+
+    def clear_status_bar(self) -> None:
+        self._run(status_bar_exit_cmd(self.serial))
+
+    def apply_app_locale(self, package: str, locale: str | None, api_level: int | None) -> None:
+        """Pin *package*'s per-app language to *locale*, or clear it when *locale* is None (BE-0478).
+
+        A set value is read back, because `cmd locale` accepts a tag the system then ignores. An unset
+        locale clears whatever an earlier run on this reused emulator left behind, so the app falls
+        back to the device's own language; below API level 33 nothing could have set one.
+
+        Raises:
+            DeviceError: A locale is set but the API level is unknown or below 33, or the read-back
+                does not match.
+        """
+        if locale is None:
+            if api_level is not None and api_level >= APP_LOCALES_MIN_API:
+                self._run(set_app_locales_cmd(self.serial, package, ""))
+                self._confirm_app_locale(package, "")
+            return
+        if api_level is None or api_level < APP_LOCALES_MIN_API:
+            level = "an unreadable API level" if api_level is None else f"API level {api_level}"
+            raise DeviceError(
+                f"runsOn.android.locale {locale!r} needs API level {APP_LOCALES_MIN_API} or later, "
+                f"but the device reports {level}"
+            )
+        tag = language_tag(locale)
+        self._run(set_app_locales_cmd(self.serial, package, tag))
+        self._confirm_app_locale(package, tag)
+
+    def _confirm_app_locale(self, package: str, tag: str) -> None:
+        # `cmd locale` accepts a value the system then ignores, so the read-back is the proof.
+        got = parse_app_locales(self._run(get_app_locales_cmd(self.serial, package)))
+        if got != tag:
+            action = f"setting {tag!r}" if tag else "clearing the one an earlier run left"
+            raise DeviceError(
+                f"runsOn.android.locale: {package} reports locale {got!r} after {action}"
+            )

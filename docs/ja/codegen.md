@@ -614,7 +614,7 @@ Gradle 自身のレポートとあわせて回収済みのディレクトリを�
 |---|---|
 | `id` | `byId('…')`（`By.res(Pattern.compile("(.*:id/)?" + Pattern.quote(id)))`） |
 | `label` | `By.text('…')` |
-| `value` | `By.desc('…')`（ドライバが読む `content-desc` のチャネル） |
+| `value` | `By.desc('…')`（ドライバが読む `content-desc` のチャネル）。ただし編集可能な入力欄の `value` は、ドライバが `text` から読みます（#2388）。この emitter はまだそれに追従していません |
 | `idMatches`（fnmatch glob） | `By.res(Pattern.compile('…'))`。glob は全文一致なので `Pattern` の全文一致で忠実（`*` → `.*`、`?` → `.`。`[…]` クラスは `// TODO`） |
 | `labelMatches`（メタ文字なし） | `By.textContains('…')`。DSL の `re.search` に合う部分文字列。実正規表現は `// TODO`（下記参照） |
 | `traits` / `within` / `index` / 複合 | `// TODO` |

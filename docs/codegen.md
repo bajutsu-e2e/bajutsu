@@ -630,7 +630,7 @@ rather than a broadened match that drops a constraint.
 |---|---|
 | `id` | `byId('…')` — `By.res(Pattern.compile("(.*:id/)?" + Pattern.quote(id)))` |
 | `label` | `By.text('…')` |
-| `value` | `By.desc('…')` (the `content-desc` channel the driver reads) |
+| `value` | `By.desc('…')` (the `content-desc` channel the driver reads, except on an editable field, whose `value` the driver reads from `text` (#2388); this emitter does not mirror that yet) |
 | `idMatches` (fnmatch glob) | `By.res(Pattern.compile('…'))` — a glob is a whole-string match, so `Pattern` full-match is faithful (`*` → `.*`, `?` → `.`; a `[…]` class → `// TODO`) |
 | `labelMatches` (metacharacter-free) | `By.textContains('…')` — a plain substring, matching the DSL's `re.search`; a real regex → `// TODO` (see below) |
 | `traits` / `within` / `index` / compound | `// TODO` |

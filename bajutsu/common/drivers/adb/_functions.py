@@ -135,7 +135,45 @@ def _traits(node: ET.Element) -> list[str]:
     return out
 
 
+#: The accessibility classes an editable text node reports (#2388). A Views `EditText` and the
+#: subclasses that inherit its `getAccessibilityClassName` (AppCompat's `AppCompatEditText`, Material's
+#: `TextInputEditText`) report `EditText`, and so does a Compose text field; `AutoCompleteTextView`
+#: and `MultiAutoCompleteTextView` (a `SearchView`'s inner field, a Material exposed dropdown) override
+#: the method with their own names.
+_EDITABLE_CLASSES = frozenset(
+    {
+        "android.widget.EditText",
+        "android.widget.AutoCompleteTextView",
+        "android.widget.MultiAutoCompleteTextView",
+    }
+)
+
+
+def _editable_element_fields(node: ET.Element) -> tuple[str | None, str | None]:
+    """The `(label, value)` of an editable text node, so its typed text reads as `value` (#2388).
+
+    `label` stays an accessible name (`content-desc`, else the hint) rather than the typed text, so an
+    `into: { label: … }` selector keeps its meaning as the user types — the split iOS already has. An
+    empty field reports its hint as `text`, told apart only when the dump carries `hint` (the resident
+    server's does); on the `uiautomator dump` fallback, which may omit it, an empty field's hint reads
+    as its value, and `text` stays the label there — the only name that path has for the field, so a
+    label selector resolves on both read paths. The dump has no `isShowingHintText`, so typed text
+    equal to the hint reads as no value. A masked field's text is withheld from both, whatever the
+    dump carries in it.
+    """
+    desc = node.get("content-desc") or ""
+    text = node.get("text") or ""
+    hint = node.get("hint") or ""
+    showing_hint = bool(hint) and text == hint
+    masked = node.get("password") == "true"
+    value = None if masked or showing_hint else text
+    label = desc or hint or ("" if masked or "hint" in node.attrib else text)
+    return label or None, value or None
+
+
 def _to_element(node: ET.Element, malformed_bounds: list[int] | None = None) -> base.Element:
+    if node.get("class") in _EDITABLE_CLASSES:
+        return _element(node, *_editable_element_fields(node), malformed_bounds)
     desc = node.get("content-desc") or ""
     text = node.get("text") or ""
     # `text` is the visible label; `content-desc` is where the showcase mirrors the assertion value
@@ -146,10 +184,17 @@ def _to_element(node: ET.Element, malformed_bounds: list[int] | None = None) -> 
     label: str | None = text or desc
     if not label and node.get("clickable") == "true":
         label = _derived_label(node)
+    return _element(node, label or None, desc or None, malformed_bounds)
+
+
+def _element(
+    node: ET.Element, label: str | None, value: str | None, malformed_bounds: list[int] | None
+) -> base.Element:
+    """Assemble one `Element` from a node and its already-chosen label and value."""
     return {
         "identifier": _strip_pkg(node.get("resource-id") or ""),
-        "label": label or None,
-        "value": desc or None,
+        "label": label,
+        "value": value,
         "traits": _traits(node),
         "frame": _bounds(node.get("bounds") or "", malformed_bounds),
         # `dumpWindowHierarchy`'s XML has no z attribute, so a measured position arrives beside the
