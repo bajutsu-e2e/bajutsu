@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0480") |
-| 実装 PR | [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM)（単位 1〜6） |
+| 実装 PR | [#2412](https://github.com/bajutsu-e2e/bajutsu/pull/2412)（単位 1〜6） |
 | トピック | シナリオ記述機能 |
 <!-- /BE-METADATA -->
 
@@ -239,7 +239,7 @@ Flutter の iOS のレーンを除外します。`picker_wheel` は、`demos/sho
 
 ログ：
 
-- 2026-11-11 — 単位 1〜6 をまとめて着地させました（[#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM)）。
+- 2026-11-11 — 単位 1〜6 をまとめて着地させました（[#2412](https://github.com/bajutsu-e2e/bajutsu/pull/2412)）。
   API 34 arm64 のエミュレータで、Compose 版と Views 版の両方のショーケースアプリで `picker_wheel` が通りました。
   詳細設計から外れた点が4つあります。
   - `NumberPicker` のノードは `resource-id` を持ちません。アクセシビリティのプロバイダが設定しないためです。
@@ -250,7 +250,7 @@ Flutter の iOS のレーンを除外します。`picker_wheel` は、`demos/sho
     アイドル待ちのままでは、25 行の walk で変化のない読み取りが2回続き、端に着いたと誤判定しました。
   - 最初の実機実行では、1 行あたり 142〜1469 ms（中央値 625 ms、38 行）かかりました。
     そのため 1 行の予算は 300 ms ではなく 1,500 ms から始めます。walk の期限は 600 秒、ホストのタイムアウトは
-    610 秒になります。サーバーが先に応答するので、このタイムアウトが発火するのは通信路の障害のときだけです。
+    613 秒になります。サーバーが先に応答するので、このタイムアウトが発火するのは通信路の障害のときだけです。
   - 常駐サーバーとの通信路の配線として、`ResidentChannel`、`ResidentServer`、`make_driver`、Android の環境に
     `set_picker_value` の呼び出し口を加えました。詳細設計には挙がっていなかった変更です。web バックエンドと
     WebView コンテキストの拒否メッセージも、このステップを iOS 専用とは書かなくなりました。

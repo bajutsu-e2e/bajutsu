@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0480") |
-| Implementing PR | [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM) (units 1–6) |
+| Implementing PR | [#2412](https://github.com/bajutsu-e2e/bajutsu/pull/2412) (units 1–6) |
 | Topic | Scenario authoring features |
 <!-- /BE-METADATA -->
 
@@ -250,7 +250,7 @@ job is not part of `make check`.
 
 Log:
 
-- 2026-11-11 — Units 1–6 landed together ([#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM)).
+- 2026-11-11 — Units 1–6 landed together ([#2412](https://github.com/bajutsu-e2e/bajutsu/pull/2412)).
   `picker_wheel` passed on an API 34 arm64 emulator for both the Compose and Views showcase apps.
   Four deviations from the Detailed design:
   - A `NumberPicker` node carries no `resource-id`, because its accessibility provider sets none.
@@ -261,7 +261,7 @@ Log:
     a 25-row walk read two unchanged rows in a row and ended as a false edge.
   - The first on-device run measured 142–1469 ms per row (median 625 ms, 38 rows). The row budget
     therefore starts at 1,500 ms, not 300 ms. The walk deadline becomes 600 s and the host timeout
-    610 s. That timeout fires on a channel fault alone, since the server answers first.
+    613 s. That timeout fires on a channel fault alone, since the server answers first.
   - The resident-channel wiring gained a `set_picker_value` callable on `ResidentChannel`,
     `ResidentServer`, `make_driver`, and the Android environment, which the Detailed design did not
     list. The web backend's and the WebView context's refusal messages stopped calling the step
