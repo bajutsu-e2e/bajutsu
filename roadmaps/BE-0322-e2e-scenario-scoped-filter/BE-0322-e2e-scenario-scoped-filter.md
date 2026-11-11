@@ -99,8 +99,7 @@ per-app scenario files stay the only place where per-app knowledge lives (prime 
   reaches shared code, signal the whole fleet as today.
 
 - **Workflow wiring.** Guard each scenario-keyed job on "a shared-code change occurred, or this job is
-  in the affected set". A shared-code change fires every job exactly as it does today. A
-  scenario-only change fires the jobs that load a changed scenario. Each on-device job builds its app
+  in the affected set". A shared-code change fires every job exactly as it does today. A scenario-only change fires only the jobs that load a changed scenario. Each on-device job builds its app
   and runner independently, and no shared build-once job exists. A narrowed run therefore skips the
   build and the Simulator boot of every job that the run drops.
 

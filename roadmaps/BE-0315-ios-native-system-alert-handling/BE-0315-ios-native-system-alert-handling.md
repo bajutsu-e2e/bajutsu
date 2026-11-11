@@ -161,8 +161,7 @@ interface) therefore holds throughout.
 4. **Poll the native check on an independent interval, dismiss on the first positive, and keep vision
    only as a fallback.** This unit has four parts.
 
-   - **Interval.** The backend advertises the presence and dismiss capabilities. BE-0269's
-     `_AlertGuardGate` then issues the native presence query on its own wall-clock interval, one
+   - **Interval.** When the backend advertises the presence and dismiss capabilities, BE-0269's `_AlertGuardGate` issues the native presence query on its own wall-clock interval, one
      second by default. The interval is decoupled from the wait's `_POLL` condition cadence. The gate
      dismisses the moment a poll finds a present alert whose button the policy names.
    - **Knob.** The right cadence is a heuristic: a trade-off between detection latency and runner
@@ -238,8 +237,7 @@ interface) therefore holds throughout.
   latency gain would be at most one interval. A bounded interval, one second by default, keeps the
   runner stable while still clearing a prompt far faster than the vision path it replaces.
 
-  A variant gates the native query on the free `shows_app_ui` collapse proxy, so the query runs when
-  the app tree looks blocked. The variant was also considered. The independent interval was preferred
+  A variant that gates the native query on the free `shows_app_ui` collapse proxy, querying only when the app tree looks blocked, was also considered. The independent interval was preferred
   because the interval does not inherit the proxy's false-negative blind spot. An overlay that leaves
   an app element on screen would never trigger the gated query.
 

@@ -118,8 +118,7 @@ runner built against?" without starting a run. The bundled runner is app-agnosti
 
 iOS earns a dedicated block now because the iOS runner is the one server-wide readiness fact whose
 absence silently blocks a whole backend. The same shape generalizes to a per-backend readiness map
-later (is Playwright's browser installed, is `adb` reachable). The generalization would replace a
-second one-off field. Those facts are not the gap this item closes, so the item names the iOS runner
+later (is Playwright's browser installed, is `adb` reachable), instead of accreting a second one-off field. Those facts are not the gap this item closes, so the item names the iOS runner
 and leaves the generalization to a follow-up.
 
 **Unit 3: the Server tab in the Settings modal.** Add a third tab beside AI and Secrets

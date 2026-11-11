@@ -93,14 +93,14 @@ To dismiss the prompt rather than accept it, the same step targets the dismissiv
   follows the `sel:`-wrapped shape that `longPress` and `pinch` already use. The `sel` field accepts
   the label-based `Selector` fields (`label`, `labelMatches`, `index`) and rejects `id`, `idMatches`,
   `traits`, `value`, and `within` at parse time. A SpringBoard alert button carries no app-assigned
-  accessibility identifier, trait set, or value. The button carries its visible text, so the rejected
+  accessibility identifier, trait set, or value. The button carries only its visible text, so the rejected
   fields could never match one. The `timeout` field is required, as it is for `wait`. A condition
   wait needs an explicit bound. The shared scenarios' timeout floor applies to the step the same way
   it applies to every other wait in the runner.
 - **iOS (XCUITest) runner support.** `BajutsuKit/Runner/Sources/RunnerUITest.swift` already builds an
   `XCUIApplication(bundleIdentifier:)` handle for the app under test. A `handleSystemAlert` step adds
   a second, on-demand handle for `com.apple.springboard`, which is SpringBoard's own bundle
-  identifier. The runner queries that handle when this step runs. Every other selector and query path
+  identifier. The runner queries that handle only when this step runs. Every other selector and query path
   stays scoped to the app under test, exactly as today. The step resolves the button by label within
   SpringBoard's alert element. The step taps the button through the same native accessibility tap that
   XCUITest already uses for an in-app element. The step uses no screenshot and no vision model.
