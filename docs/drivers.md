@@ -654,9 +654,10 @@ Out of scope (see the roadmap item for the reasoning):
     rely on. Routing Dart HTTP through the native stack (via `cupertino_http` / `cronet_http`) is a
     follow-up.
   - **The Android device-control `clipboard`** round-trips through `BajutsuAndroid`'s in-app receiver
-    (BE-0233), so `device.yaml`'s `setClipboard` / `clipboard` steps fail on the Flutter Android
-    target. iOS device-control clipboard goes through simctl with no app cooperation, so it works on
-    the Flutter iOS target — this gap is Android-only.
+    (BE-0233), so the `setClipboard` / `clipboard` steps of `device.yaml` and
+    `text_selection_android.yaml` fail on the Flutter Android target. iOS device-control clipboard
+    goes through simctl with no app cooperation, so it works on the Flutter iOS target — this gap is
+    Android-only.
 
   Beyond these, the Flutter targets pass the same on-device scenario sets the native twins run —
   minus what is platform-limited regardless of Flutter: multi-touch (`gestures_multitouch`) needs a
