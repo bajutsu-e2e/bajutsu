@@ -102,7 +102,8 @@ The two mobile backends differ in what they support.
 > tap, so the run loop resolves a unique element via `query()` and taps its center. XCUITest, by
 > contrast, sits at the rich end: it taps directly by identifier, waits on native conditions, and
 > performs `pinch` / `rotate` natively. adb advertises `query` / `elements` / `screenshot`,
-> `multiTouch` (a rooted-device `sendevent` two-finger sweep; BE-0232), `textSelection`
+> `multiTouch` (a two-finger gesture the resident server injects, or a rooted-device `sendevent`
+> sweep; BE-0232), `textSelection`
 > (`Ctrl+A` / `Ctrl+C` chords; BE-0265), plus the emulator-backed device-control subset
 > `deviceControl.setLocation` + `deviceControl.clipboard` (BE-0211) + `deviceControl.foreground`
 > + `deviceControl.background` + `deviceControl.statusBar` (BE-0478),
@@ -542,14 +543,23 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   > off-screen still writes `scroll`. It only insures against an obstruction the author did not
   > expect (a transient overlay, a sticky header settling into place), the same way adb's own
   > not-found fallback already insures against an unexpected off-screen target.
-- **Multi-touch** (BE-0232): `pinch` / `rotate` drive a two-slot protocol-B `sendevent` sweep
-  (`pinch_contacts` / `rotate_contacts` compute the two contacts' geometry; `rotate` sweeps the
-  straight chord between the endpoints, a linear approximation of the arc, like the web backend's
-  rotate). This needs a rooted device with a discoverable touchscreen; `_two_finger_gesture` fails
-  loudly with `UnsupportedAction` otherwise — there is no single-touch fallback, unlike the
-  double-tap path below. `MULTI_TOUCH` is declared statically in the capability set regardless of
-  root, so preflight admits `gestures_multitouch` on adb; the root check is enforced at actuation
-  time, not in the capability set.
+- **Multi-touch** (BE-0232): `pinch_contacts` / `rotate_contacts` compute the two contacts'
+  geometry from the target's frame; `rotate` sweeps the straight chord between the endpoints, a
+  linear approximation of the arc, like the web backend's rotate. Two routes inject those contacts,
+  tried in order:
+  1. The resident UI Automator server's `POST /gesture` injects both fingers as one multi-pointer
+     `MotionEvent` sequence through `UiAutomation`, which holds the shell's privilege, so **no root
+     is needed**. The record's `via` is `resident`.
+  2. A rooted device with a discoverable touchscreen falls back to a raw two-slot protocol-B
+     `sendevent` sweep, but only when the server is absent, predates the endpoint, or could not be
+     reached before the request went out — the three cases where nothing reached the screen. The record's `via` is `coordinate`.
+
+  A gesture the server rejects fails the step rather than falling back, and a lost reply is taken
+  as landed: either may already have put a finger down, and a second gesture on top of it would be
+  worse than a loud failure. A device with neither route fails with `UnsupportedAction` naming both
+  preconditions — there is no single-touch fallback, unlike the double-tap path below.
+  `MULTI_TOUCH` is declared statically in the capability set, so preflight admits
+  `gestures_multitouch` on adb; which route is available is decided at actuation time.
 
 ### Screenshots, lifecycle, and permissions
 

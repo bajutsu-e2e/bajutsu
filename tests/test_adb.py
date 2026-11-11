@@ -31,6 +31,7 @@ from bajutsu.common.drivers.adb import (
     AdbActUncertain,
     AdbActUnsupported,
     AdbDriver,
+    AdbGestureRejected,
     AdbResidentError,
     HierarchyRead,
     parse_hierarchy,
@@ -1175,6 +1176,149 @@ def test_pinch_and_rotate_require_root_no_fallback() -> None:
         driver.pinch({"id": "stable_refresh"}, 2.0)
     with pytest.raises(base.UnsupportedAction, match="root"):
         driver.rotate({"id": "stable_refresh"}, 1.0)
+
+
+def _server_run(calls: list[list[str]], *, root: bool) -> Callable[[list[str]], str]:
+    """A runner whose device is rooted or not, recording every actuation shell."""
+
+    def run(args: list[str]) -> str:
+        if "dump" in args:
+            return FIXTURE
+        if args[-2:] == ["id", "-u"]:
+            return "0\n" if root else "2000\n"
+        if "getevent" in args:
+            return GETEVENT_LP
+        calls.append(args)
+        return ""
+
+    return run
+
+
+def test_pinch_goes_through_the_resident_server_without_root() -> None:
+    # The unrooted route: the server injects both paths, so no shell actuation and no root probe gate.
+    calls: list[list[str]] = []
+    sent: list[object] = []
+    driver = AdbDriver(
+        "U",
+        run=_server_run(calls, root=False),
+        gesture_on_device=lambda start, end: sent.append((start, end)),
+    )
+    driver.pinch({"id": "stable_refresh"}, 2.0)
+    # Centre (100,150), half 25: contacts start at x=75/125 and spread to x=50/150 — tree pixels.
+    assert sent == [(((75.0, 150.0), (125.0, 150.0)), ((50.0, 150.0), (150.0, 150.0)))]
+    assert calls == []
+    (record,) = driver.drain_actuations().records
+    assert record.via == "resident" and record.accepted is True
+    assert record.points == ((100.0, 150.0),) and record.scale == 2.0
+
+
+def test_rotate_goes_through_the_resident_server_without_root() -> None:
+    sent: list[tuple[tuple[base.Point, base.Point], tuple[base.Point, base.Point]]] = []
+    driver = AdbDriver(
+        "U",
+        run=_server_run([], root=False),
+        gesture_on_device=lambda start, end: sent.append((start, end)),
+    )
+    driver.rotate({"id": "stable_refresh"}, math.pi / 2)
+    ((start, end),) = sent
+    assert start == ((75.0, 150.0), (125.0, 150.0))
+    assert [c for p in end for c in p] == pytest.approx([100.0, 125.0, 100.0, 175.0])
+
+
+def test_an_older_server_falls_back_to_sendevent_on_a_rooted_device_once() -> None:
+    # A 404 means nothing was injected, so the sweep may follow — and the endpoint is not asked again.
+    calls: list[list[str]] = []
+    asked: list[int] = []
+
+    def old_server(start: object, end: object) -> None:
+        asked.append(1)
+        raise AdbActUnsupported("resident server has no /gesture endpoint (HTTP 404)")
+
+    driver = AdbDriver("U", run=_server_run(calls, root=True), gesture_on_device=old_server)
+    driver.pinch({"id": "stable_refresh"}, 2.0)
+    driver.rotate({"id": "stable_refresh"}, 1.0)
+    assert asked == [1]
+    assert len(calls) == 2 and all("sendevent" in c[4] for c in calls)
+    first, second, third = driver.drain_actuations().records
+    assert (first.via, first.accepted) == ("resident", False)
+    assert second.via == "coordinate" and third.via == "coordinate"
+
+
+def test_an_older_server_on_an_unrooted_device_names_both_preconditions() -> None:
+    def old_server(start: object, end: object) -> None:
+        raise AdbActUnsupported("resident server has no /gesture endpoint (HTTP 404)")
+
+    driver = AdbDriver("U", run=_server_run([], root=False), gesture_on_device=old_server)
+    with pytest.raises(
+        base.UnsupportedAction, match=r"resident UI Automator server.*rooted device"
+    ):
+        driver.pinch({"id": "stable_refresh"}, 2.0)
+
+
+def test_a_rejected_server_gesture_fails_the_step_without_a_second_gesture() -> None:
+    # A rejection may follow fingers that already landed, so the sweep must not go on top of it.
+    calls: list[list[str]] = []
+
+    def rejecting(start: object, end: object) -> None:
+        raise AdbGestureRejected("resident gesture returned HTTP 500: gesture rejected")
+
+    driver = AdbDriver("U", run=_server_run(calls, root=True), gesture_on_device=rejecting)
+    with pytest.raises(base.UnsupportedAction, match="failed on the resident server"):
+        driver.pinch({"id": "stable_refresh"}, 2.0)
+    assert calls == []
+    (record,) = driver.drain_actuations().records
+    assert record.accepted is False
+    # Part of the gesture may have landed, so the pre-gesture tree is no longer trusted.
+    assert driver._settled_key is None
+
+
+def test_an_unreachable_server_falls_back_to_sendevent_and_asks_again_next_time() -> None:
+    # Nothing left the host, so the sweep is safe — and the channel is not latched off for the lease.
+    calls: list[list[str]] = []
+    asked: list[int] = []
+
+    def unreachable(start: object, end: object) -> None:
+        asked.append(1)
+        raise AdbResidentError("resident gesture unreachable on port 1: refused")
+
+    driver = AdbDriver("U", run=_server_run(calls, root=True), gesture_on_device=unreachable)
+    driver.pinch({"id": "stable_refresh"}, 2.0)
+    driver.pinch({"id": "stable_refresh"}, 2.0)
+    assert asked == [1, 1]
+    assert len(calls) == 2 and all("sendevent" in c[4] for c in calls)
+
+
+def test_a_channel_lost_during_the_resolve_is_not_sent_the_gesture() -> None:
+    # The read inside the resolve loses the resident channel and latches it off; the gesture must
+    # see that latch rather than POST to a connection the driver just tore down.
+    calls: list[list[str]] = []
+    asked: list[int] = []
+
+    def dead_fetch(since: float | None) -> HierarchyRead:
+        raise AdbResidentError("channel down")
+
+    driver = AdbDriver(
+        "U",
+        run=_server_run(calls, root=True),
+        fetch_hierarchy=dead_fetch,
+        gesture_on_device=lambda start, end: asked.append(1),
+    )
+    driver.pinch({"id": "stable_refresh"}, 2.0)
+    assert asked == []
+    assert len(calls) == 1 and "sendevent" in calls[0][4]
+
+
+def test_a_lost_server_reply_is_taken_as_landed() -> None:
+    calls: list[list[str]] = []
+
+    def lost(start: object, end: object) -> None:
+        raise AdbActUncertain("resident gesture was sent but its reply was lost")
+
+    driver = AdbDriver("U", run=_server_run(calls, root=True), gesture_on_device=lost)
+    driver.pinch({"id": "stable_refresh"}, 2.0)
+    assert calls == []
+    (record,) = driver.drain_actuations().records
+    assert record.via == "resident" and record.accepted is None
 
 
 def test_pinch_fails_when_no_touch_node_even_if_root() -> None:

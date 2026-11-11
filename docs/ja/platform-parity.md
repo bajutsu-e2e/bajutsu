@@ -56,7 +56,7 @@ iOS の実機では、`simctl` が提供する能力がなくなります。こ�
 | `video` | ✅ | ✅ | |
 | `deviceLog` | ✅ | ✅ | |
 | `appTrace` | ✅ | ✅ | iOS はアプリの `os_log` を取り込みます。Android は `logcat` からアプリ自身のログ行をタグで絞って読みます（[BE-0478](../../roadmaps/BE-0478-android-device-control-parity/BE-0478-android-device-control-parity-ja.md)）。 |
-| `multiTouch` | ✅ | ✅ | Android では root 化した端末が必要です。振る舞いの差の表を参照してください。 |
+| `multiTouch` | ✅ | ✅ | Android は常駐 UI Automator サーバーで 2 本の指を注入します。サーバーがないときは、root 化した端末が必要です。 |
 | `textSelection` | ✅ | ✅ | Android の端末上で結果を確かめた実行はまだありません。振る舞いの差の表を参照してください。 |
 | `webView` | per-run | gap | iOS では、アプリが BajutsuKit の WebView ブリッジを組み込んでいるときに付与されます。Android にはブリッジがありません。Chrome の WebView デバッグ用ポートが実現の候補です。 |
 | `selectOption` | n/a | n/a | web ページの `<select>` 要素を設定する能力で、web バックエンドだけが持ちます。 |
@@ -114,7 +114,6 @@ iOS の実機では、`simctl` が提供する能力がなくなります。こ�
 |---|---|---|---|
 | 入力欄の文字 | 要素の `value` に文字が入ります。 | 文字は `label` に入り、`value` には `content-desc` が入ります。 | 入力欄に対する `value` アサーションでは文字を読めません。`clear` ステップは先に `value` を読み、空なら何もしません。 |
 | `select` と `copy` | XCUITest がネイティブに選択とコピーをします。 | adb は `input keycombination` で Ctrl+A と Ctrl+C を送ります。Android 12 以降が必要です。 | この2つを実行する Android のシナリオはありません。適合テストも、どちらの呼び出しも例外を出さないことしか確かめていません。 |
-| `pinch` と `rotate` | XCUITest がネイティブに実行します。 | adb は `sendevent` で生のタッチイベントを書き込むので、root が必要です。 | root 化していない端末では、どちらのステップも失敗します。 |
 | `setLocation` | シミュレータ上で `simctl` が設定します。 | エミュレータのコンソールが設定します。 | どちらのバックエンドも、まだ実機では位置を設定できません。iOS 側は [BE-0475](../../roadmaps/BE-0475-ios-runner-set-location/BE-0475-ios-runner-set-location-ja.md) が扱います。 |
 | クリップボードのステップ | `simctl` がペーストボードを読み書きします。 | アプリ内の受信部が処理します。アプリが BajutsuAndroid をリンクしている必要があります。Android 10 以降は、フォーカスを持つアプリしかクリップボードを読めません。 | BajutsuAndroid のないアプリでは、クリップボードのステップはすべて失敗します。アプリがバックグラウンドにあるときの読み取りも失敗します。 |
 

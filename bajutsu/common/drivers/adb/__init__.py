@@ -48,7 +48,17 @@ from .act_request import ActRequest
 from .adb_act_uncertain import AdbActUncertain
 from .adb_act_unsupported import AdbActUnsupported
 from .adb_driver import _UNIT as _UNIT
-from .adb_driver import ActFn, AdbDriver, ClockFetch, HierarchyFetch, PickerFn, RunFn, TypeFn
+from .adb_driver import (
+    ActFn,
+    AdbDriver,
+    ClockFetch,
+    GestureFn,
+    HierarchyFetch,
+    PickerFn,
+    RunFn,
+    TypeFn,
+)
+from .adb_gesture_rejected import AdbGestureRejected
 from .adb_picker_refused import AdbPickerRefused
 from .adb_resident_error import AdbResidentError
 from .adb_resident_timeout import AdbResidentTimeout
@@ -62,11 +72,13 @@ __all__ = [
     "AdbActUncertain",
     "AdbActUnsupported",
     "AdbDriver",
+    "AdbGestureRejected",
     "AdbPickerRefused",
     "AdbResidentError",
     "AdbResidentTimeout",
     "ChannelRecovery",
     "ClockFetch",
+    "GestureFn",
     "HierarchyFetch",
     "HierarchyRead",
     "NodeIdentity",

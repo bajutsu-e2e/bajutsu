@@ -25,11 +25,12 @@ GESTURES: tuple[str, ...] = (
     "navigate",
 )
 
-# How a gesture reached its target. `coordinate` is the only value that implies `points`.
+# How a gesture reached its target. `coordinate` and `resident` are the values that imply `points`.
 CHANNELS: tuple[str, ...] = (
     "coordinate",  # the driver computed (or was handed) a point and sent it
     "handle",  # XCUITest actuated a snapshot handle; it chose the point
     "identity",  # the Android device resolved the element and chose the point
+    "resident",  # the driver computed the points and the Android resident server injected them
     "bridge",  # a WebView bridge call addressed by element id, which picks its own coordinate
     "focused",  # a text primitive on whatever field holds focus, addressing no element
     "key",  # a key event (Android's system back), no coordinate at all

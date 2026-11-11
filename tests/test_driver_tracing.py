@@ -281,6 +281,29 @@ def test_traced_type_passes_through_once_the_trace_has_closed() -> None:
     assert typed == ["馬"]
 
 
+def test_adb_server_gesture_records_its_transport_call() -> None:
+    sent: list[object] = []
+    with tracing.open_trace() as ctx:
+        driver = AdbDriver(
+            "U",
+            run=lambda _args: _DUMP,
+            gesture_on_device=lambda start, end: sent.append((start, end)),
+        )
+        driver._gesture_fn((((1.0, 2.0), (3.0, 4.0))), (((5.0, 6.0), (7.0, 8.0))))  # type: ignore[misc]
+    assert len(sent) == 1
+    assert any(r.category == "transport" and r.name == "gesture" for r in ctx.records)
+
+
+def test_traced_gesture_passes_through_once_the_trace_has_closed() -> None:
+    from bajutsu.common.drivers.adb.adb_driver import _traced_gesture
+
+    sent: list[object] = []
+    _traced_gesture(lambda start, end: sent.append((start, end)))(
+        ((1.0, 2.0), (3.0, 4.0)), ((5.0, 6.0), (7.0, 8.0))
+    )
+    assert len(sent) == 1
+
+
 def test_adb_run_text_runs_normally_with_no_trace_open(monkeypatch: Any) -> None:
     monkeypatch.setattr(
         "bajutsu.common.drivers.adb.adb_driver.subprocess.run", lambda *a, **k: None
