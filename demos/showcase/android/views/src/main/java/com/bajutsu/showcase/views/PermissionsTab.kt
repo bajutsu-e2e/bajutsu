@@ -4,15 +4,17 @@ import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.location.Location
+import android.location.LocationListener
 import android.location.LocationManager
-import android.os.CancellationSignal
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.View
 import android.widget.LinearLayout
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia
-import androidx.core.content.ContextCompat
-import androidx.core.location.LocationManagerCompat
 import java.util.Locale
 
 // Tab: Permissions (SPEC §5.4 / §7) — the OS-integration screen. It owns the two deliberate
@@ -116,30 +118,48 @@ class PermissionsTab(private val activity: MainActivity) {
     }
 
     /**
-     * Ask the `gps` provider for one fresh fix and report it as `lat,lon` (or `(none)` / `denied`).
+     * Report the next `gps` fix delivered after the tap as `lat,lon` (or `(none)` / `denied`).
      *
-     * A fresh request first: the emulator's GPS reports a console `geo fix` only while some app is
-     * listening, so a cached read alone would come back empty after a `setLocation`. A test provider, by
-     * contrast, emits only when mocked, so its fix ages; once older than the platform's current-location
-     * window the request answers `null` after its own timeout, and the last known fix (the mock) is read.
+     * Only a fix delivered to this request counts: the platform's "current location" can be a cached
+     * fix up to tens of seconds old, which after a second console `geo fix` still shows the first one.
+     * The emulator's GPS re-emits its `geo fix` about once a second while someone listens, so the console
+     * route answers within a second. A test provider emits only when mocked, so the in-app route delivers
+     * nothing new; after [FRESH_FIX_TIMEOUT_MS] the last known fix, which is the mock, is reported.
      */
     private fun readLocation(onReading: (String) -> Unit) {
         val manager = activity.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        val main = Handler(Looper.getMainLooper())
+        var reported = false
+        lateinit var listener: LocationListener
+        fun report(fix: Location?) {
+            if (reported) return
+            reported = true
+            manager.removeUpdates(listener)
+            main.removeCallbacksAndMessages(null)
+            onReading(fix?.let { String.format(Locale.US, "%.3f,%.3f", it.latitude, it.longitude) } ?: "(none)")
+        }
+        // An object, not a lambda: below API 30 the other callbacks are abstract and the platform calls them.
+        listener = object : LocationListener {
+            override fun onLocationChanged(location: Location) = report(location)
+            override fun onProviderEnabled(provider: String) = Unit
+            override fun onProviderDisabled(provider: String) = Unit
+            @Deprecated("Deprecated in Java")
+            override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) = Unit
+        }
         try {
-            LocationManagerCompat.getCurrentLocation(
-                manager,
-                LocationManager.GPS_PROVIDER,
-                null as CancellationSignal?,
-                ContextCompat.getMainExecutor(activity),
-            ) { fix ->
-                val best = fix ?: runCatching { manager.getLastKnownLocation(LocationManager.GPS_PROVIDER) }.getOrNull()
-                onReading(best?.let { String.format(Locale.US, "%.3f,%.3f", it.latitude, it.longitude) } ?: "(none)")
-            }
+            manager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0L, 0f, listener, Looper.getMainLooper())
         } catch (_: SecurityException) {
             onReading("denied")
+            return
         }
+        main.postDelayed({
+            report(runCatching { manager.getLastKnownLocation(LocationManager.GPS_PROVIDER) }.getOrNull())
+        }, FRESH_FIX_TIMEOUT_MS)
     }
 
     private fun clipboard(): ClipboardManager =
         activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
 }
+
+/** How long a read waits for a fix delivered to it before it reports the last known one. */
+private const val FRESH_FIX_TIMEOUT_MS = 5_000L
