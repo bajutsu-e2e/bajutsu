@@ -205,7 +205,7 @@ Android の showcase アプリは Compose 版と Views 版の両方で `Bajutsu.
 | 3 | adb のコマンド生成関数、`parse_location_result`、`Env` のメソッド | 各生成関数の引数列と各結果コードをユニットテストが確かめる。`Env` と `facts.py` がエミュレータのプロパティの共有定数を読み込む |
 | 4 | `android_device_control` での経路選択と、Android 環境の `teardown` | 2 つの経路、判定結果の保持、再起動と `installApp` のあとの再送、`teardown` と `end_member` の順序と失敗時の許容をユニットテストが確かめる |
 | 5 | Compose 版と Views 版の showcase の位置表示と位置情報のシナリオ | エミュレータのレーンで、`emulator-<port>` のシリアルと `adb connect` の両方でシナリオが通る |
-| 6 | 英語と日本語のドキュメント：`docs/platform-parity.md` と `BajutsuAndroid/README.md` | 両ページと日本語版（`docs/ja/platform-parity.md`、`BajutsuAndroid/README.ja.md`）が 2 つの経路を説明している（capability の表の `deviceControl.setLocation` の行と、振る舞いの表の `setLocation` の行を含む） |
+| 6 | 英語と日本語のドキュメント：`docs/platform-parity.md` と `BajutsuAndroid/README.md`。加えて、Android の `setLocation` をコンソール専用と書いているコード内のコメントと docstring（`device_control.android_device_control`、`adb/env.py` のデバイス制御のコメント、`android_environment.py` のクラスの docstring と `controller`、`adb_driver.py`） | 両ページと日本語版（`docs/ja/platform-parity.md`、`BajutsuAndroid/README.ja.md`）が 2 つの経路を説明している（capability の表の `deviceControl.setLocation` の行と、振る舞いの表の `setLocation` の行を含む）。`setLocation` をエミュレータのコンソール専用の操作と書くコメントや docstring が残っていない |
 | 7 | 実機での検証 | 実機でシナリオが通り、次のシナリオが実際の位置を見る。結果を PR に記録した |
 
 ## 検討した代替案
