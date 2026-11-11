@@ -428,7 +428,9 @@ beside the `jobIds` it queued:
 
 A job whose `status` is `done` has finished, whatever its assertions found. The exit code carries
 the verdict. A continuous integration (CI) pipeline polls this route until `conclusion` leaves
-`pending`.
+`pending`. The concurrency cap can stop a fan-out part-way. The group then holds the jobs queued
+before the stop, and its `conclusion` covers those jobs alone. A pipeline that needs every
+scenario to run checks `jobIds` against the scenarios it asked for.
 
 `POST /api/run-set/<groupId>/cancel` cancels every unfinished job of the group. Each job goes
 through the same cancel as `POST /api/jobs/<id>/cancel`. The route needs the editor role in the

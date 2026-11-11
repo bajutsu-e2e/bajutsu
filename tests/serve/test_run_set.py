@@ -641,13 +641,13 @@ def _group_of_two(tmp_path: Path) -> ServeState:
 
 
 def _finish(state: ServeState, *exit_codes: int | str | None) -> None:
-    """Lease and finish the group's jobs in order: an exit code completes one, None fails it, and
+    """Lease and finish jobs ``1`` then ``2``: an exit code completes one, None fails it, and
     ``"cancel"`` reports it cancelled the way a worker does, with a non-zero exit code."""
     repo = state.repository
-    assert repo is not None
-    for code in exit_codes:
+    assert repo is not None and len(exit_codes) <= 2
+    for job_id, code in zip(("1", "2"), exit_codes, strict=False):
         leased = repo.lease_job("w1")
-        assert leased is not None
+        assert leased is not None and leased.id == job_id  # lease_job ties on created_at
         if code is None:
             repo.fail_job(leased.id, "worker lost the device")
         elif code == "cancel":
