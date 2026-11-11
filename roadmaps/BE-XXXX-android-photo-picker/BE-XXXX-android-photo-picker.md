@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Implementing PR | [#2411](https://github.com/bajutsu-e2e/bajutsu/pull/2411) |
 | Topic | Platform support |
 | Related | [BE-0433](../BE-0433-phpicker-select-photos/BE-0433-phpicker-select-photos.md), [BE-0479](../BE-0479-android-seed-photos/BE-0479-android-seed-photos.md) |
 <!-- /BE-METADATA -->

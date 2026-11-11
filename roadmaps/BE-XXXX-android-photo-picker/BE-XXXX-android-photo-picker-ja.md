@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| 実装 PR | [#2411](https://github.com/bajutsu-e2e/bajutsu/pull/2411) |
 | トピック | Platform support |
 | 関連 | [BE-0433](../BE-0433-phpicker-select-photos/BE-0433-phpicker-select-photos-ja.md)、[BE-0479](../BE-0479-android-seed-photos/BE-0479-android-seed-photos-ja.md) |
 <!-- /BE-METADATA -->
