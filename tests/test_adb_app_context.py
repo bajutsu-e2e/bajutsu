@@ -165,6 +165,26 @@ def test_an_unreadable_dump_is_ridden_out_then_named_if_the_wait_runs_out() -> N
         AdbDriver("emulator-5554", run=flaky, package=_SUBJECT).enter_app(_SETTINGS)
 
 
+def test_one_unreadable_dump_is_ridden_out() -> None:
+    # The `continue` is the point of the except branch: one mid-transition dump is not an answer
+    # either way, so the wait keeps polling rather than failing the step.
+    device = _Device()
+    real = device.run
+    reads = 0
+
+    def flaky(args: list[str]) -> str:
+        nonlocal reads
+        if args[-2:] == ["activity", "activities"]:
+            reads += 1
+            if reads == 1:
+                device.calls.append(args)
+                return "no such field\n"
+        return real(args)
+
+    AdbDriver("emulator-5554", run=flaky, package=_SUBJECT).enter_app(_SETTINGS)
+    assert device.front == _SETTINGS
+
+
 @pytest.mark.usefixtures("_short_timeout")
 def test_a_failed_leave_still_closes_the_block() -> None:
     device = _Device()

@@ -75,8 +75,9 @@ _EXIT_INFO_POLL = 0.25
 
 # How long `enter_app` / `leave_app` wait for the package they started to hold the resumed activity,
 # and the backoff between `dumpsys` reads. A condition wait: a warm app returns on the first read, and
-# the bound covers a cold start on a contended emulator.
-_APP_FRONT_TIMEOUT = 15.0
+# the bound covers a cold start on a contended emulator, where the Android lane already needs a 15s
+# floor for ordinary redraws (`E2E_WAIT_FLOOR`) — so the ceiling sits well above it.
+_APP_FRONT_TIMEOUT = 30.0
 _APP_FRONT_POLL = 0.2
 _APP_FRONT_POLL_MAX = 1.0
 
@@ -541,7 +542,7 @@ class AdbDriver(CoordinateTreeDriver):
         self._seeded_tree = els
 
     def _other_app_in_front(self, root: ET.Element | None) -> list[str] | None:
-        """The packages *root* shows when it is not this driver's own app's tree, else None."""
+        """The packages *root* shows when it is not the tree of the app this driver addresses."""
         if not self._front_check or root is None or not self._front_package:
             return None
         shown = sorted({p for n in root.iter() if (p := n.get("package"))})
@@ -556,7 +557,7 @@ class AdbDriver(CoordinateTreeDriver):
         return self._app_stack[-1] if self._app_stack else self._package
 
     def require_front_app(self) -> None:
-        """Refuse every read that does not show this driver's own app (BE-0447).
+        """Refuse every read that does not show the app this driver addresses (BE-0447).
 
         Called once the device holds a second device-group member: the shared resident channel then
         dumps whichever app is in front, and a selector resolved against another member's tree would
@@ -1780,8 +1781,10 @@ class AdbDriver(CoordinateTreeDriver):
                 )
             # The same `am start -n` the `foreground` step and the launch use, so an app whose task
             # that same bare intent started (the app under test, every app entered here) finds its
-            # root intent unchanged and resumes on the screen it left. A task the launcher started
-            # may get a fresh launcher activity on top instead.
+            # root intent unchanged and resumes on the screen it left — unless its launcher activity
+            # is `singleTask` / `singleInstance` (or sets `clearTaskOnLaunch`), where the system
+            # destroys whatever the task pushed above it and the app comes back at its root.
+            # A task the launcher started may get a fresh launcher activity on top instead.
             self._act(adb.launch_cmd(self.serial, component))
         except subprocess.CalledProcessError as exc:
             raise adb.device_error(exc) from exc

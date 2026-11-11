@@ -1212,7 +1212,10 @@ package's launcher activity with `am start` and waits until that package holds t
 so a package with no launcher activity — including one that is not installed — fails the step with
 `ElementNotFound` before any launch. Leaving brings the app beneath back the same way, and the app
 under test keeps its process meanwhile, so the handoff never reads as a crash. As on iOS, an
-entered app is not reset: it keeps whatever state an earlier block or run left it in.
+entered app is not reset: it keeps whatever state an earlier block or run left it in. One Android
+limit applies on the way back: when an app's launcher activity is `singleTask` or `singleInstance`
+(or sets `clearTaskOnLaunch`), starting it again destroys every activity its task pushed above it, so
+that app comes back at its root screen rather than the screen it left.
 
 #### Driving the Home Screen (`com.apple.springboard`)
 

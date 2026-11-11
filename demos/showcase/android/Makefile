@@ -108,7 +108,9 @@ SERIAL ?= booted
 # count-only Android twin for select/copy/delete is a possible follow-up.
 #
 # `app_android` hands the screen to the system Settings app with the `app:` step and back, twice
-# (issue #2393); Settings ships on every emulator image, so it needs no extra install.
+# (issue #2393); Settings ships on every emulator image, so it needs no extra install. Compose only:
+# Views' `singleTask` MainActivity finishes the pushed HorseDetailActivity when `leave_app` starts it
+# again, so the scenario's first return would find the catalog instead of the detail screen.
 #
 # Observed network capture lands in its own `e2e-network` target below (BE-0283); mocked network
 # (deterministic stub responses) stays a follow-up.
@@ -141,7 +143,7 @@ E2E_ENV = BAJUTSU_MIN_WAIT_TIMEOUT=$(E2E_WAIT_FLOOR) BAJUTSU_LOG_LEVEL=$(E2E_LOG
 # themselves). Anywhere else no lane resolves it, so a typo in it could never fail (issue #2233).
 # `device.yaml` carries the underscore form, so it joins (verified on a local arm64 emulator).
 E2E_VIEWS_SCENARIOS := smoke firstlook navigation search data_driven relaunch system extract foreach \
-	interrupts device text_entry_android app_android
+	interrupts device text_entry_android
 
 # The wrapper jar IS committed (like any standard Android repo), so a fresh clone builds with no
 # extra step. Only run this to bump the pinned Gradle version — never as part of a build, since it
