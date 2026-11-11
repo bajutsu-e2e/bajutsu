@@ -2169,7 +2169,13 @@ class AdbDriver(CoordinateTreeDriver):
         # `count` backspaces (KEYCODE_DEL) in one `input keyevent` call. The orchestrator focuses the
         # field first, so the deletes land in it (BE-0265).
         self._actuations.record(Actuation(gesture="deleteText", via="focused", unit=_UNIT))
+        # Armed like a pan: the deletion only shows in a field's `value` (#2388), and a lagging tree
+        # would otherwise answer the next read — `clear`'s remaining-text check, a `value` assertion —
+        # with the pre-delete text (BE-0332's read lag, seen on the adb conformance lane).
+        pre_key = self._pan_baseline()
+        mark = self._capture_mark()
         self._act(adb.keyevents_cmd(self.serial, [adb.KEYCODE_DEL] * count))
+        self._arm_catchup(pre_key, mark)
 
     def select_all(self) -> None:
         # Ctrl+A selects the focused field's whole content (BE-0265).
