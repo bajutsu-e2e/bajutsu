@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0482") |
+| 実装 PR | [#2416](https://github.com/bajutsu-e2e/bajutsu/pull/2416)（単位 1〜5） |
 | トピック | プラットフォーム対応 |
 <!-- /BE-METADATA -->
 
@@ -259,6 +260,18 @@ BajutsuAndroid に `Bajutsu.enableWebViewDebugging()` を追加します。こ�
 - [x] BajutsuAndroid のヘルパー
 - [ ] showcase の画面と共通の `web:` シナリオ
 - [ ] ドキュメント（`platform-parity`、`drivers`、`scenarios` の英日両方）
+
+ログ：
+
+- 2026-11-11 — 単位 1〜5 をまとめて着地させました（[#2416](https://github.com/bajutsu-e2e/bajutsu/pull/2416)）。`CdpDomSource`、ソケットの発見、
+  `session` メソッド、`RunEnvironment.webview_source` フック、`android` extra、
+  `Bajutsu.enableWebViewDebugging()` が入りました。設計では「実行環境に `DomSource` を問い合わせる」と
+  書いていましたが、実装では `RunEnvironment` の `webview_source` メソッドとし、
+  `pool._alloc_webview_bridge` を置き換えました。レビューを受けて、設計にない確認を 2 つ強めています。
+  1 つ目はタップの当たり判定で、`<body>` と `<html>` も弾きます。`elementFromPoint` はビューポート内の
+  どの点でもこのどちらかを返すからです。2 つ目は入力の確認で、文字を入力できるフィールドだけを
+  フォーカス中とみなします。残りは単位 6 と 7 です。`webView` のパリティの印は、単位 6 の実機での
+  確認を待ってから変えます。
 
 ## 参考
 

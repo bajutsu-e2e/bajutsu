@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0482") |
+| Implementing PR | [#2416](https://github.com/bajutsu-e2e/bajutsu/pull/2416) (units 1–5) |
 | Topic | Platform support |
 <!-- /BE-METADATA -->
 
@@ -257,6 +258,17 @@ The units below are mutually exclusive and, together, cover the design above.
 - [x] BajutsuAndroid helper
 - [ ] Showcase screens and a portable `web:` scenario
 - [ ] Docs (`platform-parity`, `drivers`, `scenarios`, en and ja)
+
+Log:
+
+- 2026-11-11 — Units 1–5 landed together ([#2416](https://github.com/bajutsu-e2e/bajutsu/pull/2416)). `CdpDomSource`, the socket discovery,
+  the `session` method, the `RunEnvironment.webview_source` hook, the `android` extra, and
+  `Bajutsu.enableWebViewDebugging()` are in place. The design said the run "asks the run environment
+  for its `DomSource`"; that became a `webview_source` method on `RunEnvironment`, which replaces
+  `pool._alloc_webview_bridge`. Review hardened two checks beyond the design. The tap hit-test also
+  rejects `<body>` and `<html>`, since `elementFromPoint` returns one of them for any point inside
+  the viewport. The typing guard admits only a text-entry field. Units 6 and 7 remain; the
+  `webView` parity mark waits for unit 6's on-device run.
 
 ## References
 
