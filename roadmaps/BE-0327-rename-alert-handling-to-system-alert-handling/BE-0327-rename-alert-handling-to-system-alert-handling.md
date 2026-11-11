@@ -29,8 +29,8 @@ already took when it renamed `dismissAlerts` to `alertHandling`.
 [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md)'s
 `handleSystemAlert`. Both names say "system alert" explicitly. A reader tells the two apart by part
 of speech: the verb phrase `handleSystemAlert` names the explicit step, and the noun phrase
-`systemAlertHandling` names the reactive guard's setting. The two no longer look alike while
-differing in whether "system" appears.
+`systemAlertHandling` names the reactive guard's setting. The two are no longer look-alike names
+that differ merely in whether "system" appears.
 
 ## Motivation
 
@@ -55,9 +55,9 @@ greps the docs for the term the sibling step uses, and misses the field.
 [BE-0317](../BE-0317-rename-dismiss-alerts-to-alert-handling/BE-0317-rename-dismiss-alerts-to-alert-handling.md)
 closed the previous one. The name says directly what the surrounding prose already has to explain.
 
-BE-0317 established the pattern this item continues. A scenario-level setting reads as a noun phrase.
-The rename breaks no existing scenario, config, or command line, because the previous spelling stays
-as a deprecated alias.
+BE-0317 established the pattern this item continues: rename a scenario-level setting so it reads as a
+noun phrase, and keep the previous spelling as a deprecated alias so no existing scenario, config, or
+command line breaks.
 
 This item applies the same move to the same field a second time, under the same standard: a reader
 should learn what a field does from its name, not from a paragraph beside it.
