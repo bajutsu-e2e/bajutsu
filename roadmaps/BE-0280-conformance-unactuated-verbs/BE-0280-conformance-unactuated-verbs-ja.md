@@ -16,77 +16,98 @@
 
 ## はじめに
 
-すべてのバックエンド（idb、XCUITest、adb、Playwright、そして Linux ゲート上の `FakeDriver`）を、同じ 1 本の
-テスト（`tests/driver_conformance.py`）にかけて、どれも同じように振る舞うことを確かめる仕組みが、
-[BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md) にあります（adb レーンは
+[BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md) には、すべての
+[バックエンド](../../docs/ja/glossary.md#driver-backend-actuator-platform)を同じ 1 本のテスト
+（`tests/driver_conformance.py`）にかけ、どれも同じように振る舞うことを確かめる仕組みがあります。
+バックエンドごとに別々のテストを書くのではなく、この 1 本を各バックエンドに対して流します。
+こうして「どのバックエンドも同じように振る舞う」という前提が、そう期待するだけの状態から、実際の
+検査で裏づけられた状態に変わります。
+
+対象は、Linux ゲート上の `FakeDriver` と、実機の idb、XCUITest、adb、Playwright です。adb レーンは
 [BE-0270](../BE-0270-android-adb-driver-conformance/BE-0270-android-adb-driver-conformance-ja.md)
-が追加しました）。バックエンドごとに別々のテストを書くのではなく、この 1 本を各バックエンドに対して流します。
-こうして「どのバックエンドも同じように振る舞う」という前提が、そう期待するだけの状態から、実際の検査で
-裏づけられた状態に変わります。この共通テストが現在カバーして
-いるのは、tap、label と trait による解決、multi-touch と `selectOption` の capability の約束、そして条件待機の
-セマンティクスです。`Driver` プロトコルの操作のうち、テキスト編集の一群（`delete_text`、`select_all`、
-`copy_selection`）と `tap_point` は、この共通テストの範囲外にあり、どのレーンでも実機で一度もアクチュエート
-されていません。本項目では、これらの操作を共通テストに取り込み、1 本のテストがすべてのバックエンドでそれらを
-一度に検証するようにします。
+が追加しました。
+
+この共通テストが現在カバーしているのは、次の挙動です。
+
+- tap
+- label と trait による解決
+- multi-touch と `selectOption` の capability の約束
+- 条件待機のセマンティクス
+
+`Driver` プロトコルの操作のうち、共通テストの範囲外にあり、どのレーンでも実機で一度もアクチュエート
+されていないものがあります。テキスト編集の一群（`delete_text`、`select_all`、`copy_selection`）と
+`tap_point` です。本項目では、これらの操作を共通テストに取り込みます。1 本のテストが、すべての
+バックエンドでそれらを一度に検証します。
 
 ## 動機
 
 テキスト編集ステップ（[BE-0265](../BE-0265-text-editing-steps/BE-0265-text-editing-steps-ja.md)）は
-すでに実装され、各バックエンドのコマンド構築はサブプロセスをモックしたユニットテストで検証されています。
-どのレーンも行っていないのは、`delete_text`、`select_all`、`copy_selection` を実デバイスや実ブラウザに
-対してアクチュエートすることです。ステップから観測可能なフィールドの変化までの往復は一度も確認されて
-いません。`tap_point` も同じ状況にあり、実ドライバのコマンドテストは XCUITest と Playwright にしかなく、これを
-アクチュエートするレーンはありません。`tap_point` はアラート解消の経路（
-[BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention-ja.md)
-が依拠する、視覚で位置を特定した座標タップ）の土台なので、実機で未確認のまま残すのは実際のリスクです。
+すでに実装されています。各バックエンドのコマンド構築は、サブプロセスをモックしたユニットテストで
+検証されています。ところが、どのレーンも `delete_text`、`select_all`、`copy_selection` を実デバイスや
+実ブラウザに対してアクチュエートしていません。ステップから観測可能なフィールドの変化までの往復は、
+一度も確認されていません。
 
-このギャップを塞ぐのにもっとも安価な場所が、この共通テストです。1 つの仕様が 5 つのバックエンドに対して走るので、
-バックエンドごとにショーケースのシナリオを 1 本ずつ書くのではなく、1 つのテスト本体を足せば全バックエンドに
-カバレッジが広がります。capability モデルは、この共通テストの形をすでに定めています。capability を宣言した
-バックエンドはアクチュエートしなければならず、宣言していないバックエンドは黙って何もしないのではなく
+`tap_point` も同じ状況にあります。実ドライバのコマンドテストは XCUITest と Playwright にしかなく、
+この操作をアクチュエートするレーンはありません。`tap_point` は、アラート解消の経路の土台でもあります。
+[BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention-ja.md)
+が依拠する、視覚で位置を特定した座標タップです。実機で未確認のまま残すのは、実際のリスクです。
+
+このギャップを塞ぐのにもっとも安価な場所が、共通テストです。1 つの仕様が 5 つのバックエンドに対して
+走ります。バックエンドごとにショーケースのシナリオを 1 本ずつ書く代わりに、1 つのテスト本体を足せば
+全バックエンドにカバレッジが広がります。
+
+capability モデルは、共通テストの形をすでに定めています。capability を宣言したバックエンドは
+アクチュエートしなければなりません。宣言していないバックエンドは、黙って何もしないのではなく、
 `UnsupportedAction` を明示的に送出しなければなりません。テキスト編集の操作と `tap_point` は、この同じ
 パターンを拡張したものです。
 
 作業を形づくる制約が 1 つあります。実機の適合性ハーネスは、要求された画面を識別子つきボタンの並びとして
-実体化します。これは tap や解決のテストには十分ですが、テキスト編集には足りません。`delete_text` や
-`select_all` を試すには、画面上に編集可能な実テキストフィールドが必要です。そのため共通テストへの追加とあわせて、
-各プラットフォームの適合性画面（iOS の `ConformanceView`、Compose の `ConformanceScreen`、web ハーネスが
-描画する document）に、編集可能なフィールドと既知フレームの要素を出すための小さな拡張を加えます。
+実体化します。この形は tap や解決のテストには十分ですが、テキスト編集には足りません。`delete_text` や
+`select_all` を試すには、画面上に編集可能な実テキストフィールドが必要だからです。
+
+そのため、共通テストへの追加とあわせて、各プラットフォームの適合性画面に小さな拡張を加えます。
+対象は、iOS の `ConformanceView`、Compose の `ConformanceScreen`、web ハーネスが描画する document です。
+各画面に、編集可能なフィールドと既知フレームの要素を出します。
 
 ## 詳細設計
 
-提案の粒度です。作業は以下の単位に沿って MECE に分かれます。
+この節は提案の粒度で書きます。作業は、相互に排他的で全体を網羅する（MECE）以下の単位に分かれます。
 
-- **各操作の不変条件を列挙する。** `Driver` プロトコルに基づき、新しい操作が満たすべき不変条件を明文化します。
-  テキスト編集では、その操作をアクチュエートするバックエンドで `type_text` に続けて `select_all`、
-  `copy_selection` が `UnsupportedAction` なしに完了し、`delete_text` がフィールドの報告長を減らすこと。
-  アクチュエートしないバックエンド、すなわち現状 `select_all` / `copy_selection` を無条件に送出する idb では、
-  `UnsupportedAction` を送出すること。`MULTI_TOUCH` や `SELECT_OPTION` と違い、テキスト編集の select/copy 用の
-  `Capability` トークンはまだ存在しないため、共通テストがアクチュエートと送出の挙動を直接表明するか、それとも同じように
-  ゲートするための新しい capability を導入する（各バックエンドの `CAPABILITIES` に反映する）かは、最初に決めるべき
-  検討事項です。現状では adb、Playwright、XCUITest が select/copy をアクチュエートし、idb は送出します。`tap_point`
-  では、既知フレームの要素への座標タップが、その要素への意味的な tap と同じ観測可能な効果を持つこと。
-- **3 つの適合性画面を拡張する。** iOS の `ConformanceView`、Compose の `ConformanceScreen`、web ハーネスの
-  document に、編集可能なテキストフィールドと既知フレームの要素を加えます。準備完了マーカーの扱いはそのまま
-  保ちます。
-- **共通テストの本体を追加する。** 新しい不変条件を `tests/driver_conformance.py` に一度だけ書き、pytest が
-  各バックエンドのサブクラスに対して収集するようにします。
-- **実機ハーネスへ実体化を配線する。** 各ハーネスの画面実体化の経路（iOS のスペックファイル書き込み、Android の
-  インテント再シード、web の `set_content`）を拡張し、テスト本体が走る前にフィールドと既知フレームの要素が
-  存在するようにします。
-- **capability の宣言が挙動と一致することを確認する。** 各バックエンドが宣言する capability が、どの操作を
-  アクチュエートし、どの操作を拒むかと一致していることを確かめ、共通テストの「約束と挙動の一致」チェックを正しく
-  保ちます。
+- **各操作の不変条件を列挙する。** `Driver` プロトコルに基づき、新しい操作が満たすべき不変条件を
+  明文化します。
+  - テキスト編集：その操作をアクチュエートするバックエンドでは、`type_text` に続けて `select_all`、
+    `copy_selection` が `UnsupportedAction` なしに完了します。`delete_text` はフィールドの報告長を
+    減らします。アクチュエートしないバックエンドは `UnsupportedAction` を送出します。現状でこれに
+    当たるのは idb で、`select_all` / `copy_selection` を無条件に送出します。
+  - 最初に決める検討事項：`MULTI_TOUCH` や `SELECT_OPTION` と違い、テキスト編集の select/copy 用の
+    `Capability` トークンはまだ存在しません。選択肢は 2 つあります。1 つ目は、共通テストが
+    アクチュエートと送出の挙動を直接表明することです。2 つ目は、新しい capability を導入して同じ
+    ようにゲートすることです。その場合は各バックエンドの `CAPABILITIES` に反映します。現状では
+    adb、Playwright、XCUITest が select/copy をアクチュエートし、idb は送出します。
+  - `tap_point`：既知フレームの要素への座標タップは、その要素への意味的な tap と同じ観測可能な効果を
+    持ちます。
+- **3 つの適合性画面を拡張する。** 対象は、iOS の `ConformanceView`、Compose の `ConformanceScreen`、
+  web ハーネスの document です。各画面に、編集可能なテキストフィールドと既知フレームの要素を
+  加えます。準備完了マーカーの扱いはそのまま保ちます。
+- **共通テストの本体を追加する。** 新しい不変条件を `tests/driver_conformance.py` に一度だけ書きます。
+  pytest が、各バックエンドのサブクラスに対して収集します。
+- **実機ハーネスへ実体化を配線する。** 各ハーネスの画面実体化の経路を拡張します。経路は、iOS の
+  スペックファイル書き込み、Android のインテント再シード、web の `set_content` です。テスト本体が
+  走る前に、フィールドと既知フレームの要素が存在するようになります。
+- **capability の宣言が挙動と一致することを確認する。** 各バックエンドが宣言する capability を、
+  アクチュエートする操作と拒む操作に照らして確かめます。共通テストの「約束と挙動の一致」チェックが
+  正しく保たれます。
 
 ## 検討した代替案
 
-- **共通テストではなくショーケースにバックエンドごとのアクチュエーションシナリオを置く。** テキスト編集や
-  `tap_point` のシナリオをバックエンドごとに書くと、同じ意図が 4 回重複し、バックエンドごとのずれを招きます。
-  この共通テストは、まさにそのずれを防ぐために存在します。1 つの仕様をすべてのバックエンドに適用することが、
-  この設計の要点です。
-- **テキスト編集の操作をコマンド構築のユニットテストにとどめる。** サブプロセスをモックしたテストは、バックエンドが
-  組み立てる argv、HTTP、キーの組み合わせを検証しますが、実デバイスが編集を実行することは一度も確認しません。
-  ツールがうたっていてどのレーンも観測しない capability は、チェックのない約束です。
+- **共通テストではなく、ショーケースにバックエンドごとのアクチュエーションシナリオを置く。**
+  テキスト編集や `tap_point` のシナリオをバックエンドごとに書くと、同じ意図が 4 回重複します。
+  バックエンドごとのずれも招きます。共通テストは、まさにそのずれを防ぐために存在します。1 つの仕様を
+  すべてのバックエンドに適用することが、この設計の要点です。
+- **テキスト編集の操作をコマンド構築のユニットテストにとどめる。** サブプロセスをモックしたテストは、
+  バックエンドが組み立てる argv、HTTP、キーの組み合わせを検証します。実デバイスが編集を実行する
+  ことは、一度も確認しません。ツールがうたっていてどのレーンも観測しない capability は、チェックの
+  ない約束です。
 
 ## 進捗
 
@@ -102,7 +123,7 @@
 
 **ログ**
 
-- 2026-07-19 — 1 つの PR（[#1204](https://github.com/bajutsu-e2e/bajutsu/pull/1204)）で実装しました。新しい `Capability.TEXT_SELECTION` トークンが
+- 2026-07-19：1 つの PR（[#1204](https://github.com/bajutsu-e2e/bajutsu/pull/1204)）で実装しました。新しい `Capability.TEXT_SELECTION` トークンが
   `select` / `copy`（全選択とクリップボードへのコピー）を門にします。XCUITest / adb / Playwright /
   `fake` はこれを宣言し、idb は宣言せず `UnsupportedAction` を送出します。preflight
   （`capability_preflight.py`）は idb 上の `select` / `copy` シナリオを `selectOption` と同様に事前に
@@ -117,8 +138,8 @@
 
 ## 参考
 
-- [BE-0114 — バックエンド非依存の挙動を保証するドライバ適合性スイート](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md)
-- [BE-0270 — adb バックエンドの実機ドライバ適合性](../BE-0270-android-adb-driver-conformance/BE-0270-android-adb-driver-conformance-ja.md)
-- [BE-0265 — テキスト編集ステップ: select、clear、delete、copy](../BE-0265-text-editing-steps/BE-0265-text-editing-steps-ja.md)
-- [BE-0269 — wait ステップ中のシステムアラートガードの介入を早める](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention-ja.md)
+- [BE-0114：バックエンド非依存の挙動を保証するドライバ適合性スイート](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md)
+- [BE-0270：adb バックエンドの実機ドライバ適合性](../BE-0270-android-adb-driver-conformance/BE-0270-android-adb-driver-conformance-ja.md)
+- [BE-0265：テキスト編集ステップ: select、clear、delete、copy](../BE-0265-text-editing-steps/BE-0265-text-editing-steps-ja.md)
+- [BE-0269：wait ステップ中のシステムアラートガードの介入を早める](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention-ja.md)
 - `tests/driver_conformance.py`、`bajutsu/drivers/fake.py`

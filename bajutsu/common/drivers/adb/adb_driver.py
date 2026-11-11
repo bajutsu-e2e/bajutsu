@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextvars
+import functools
 import math
 import subprocess
 import threading
@@ -26,9 +27,11 @@ from .act_outcome import ActOutcome
 from .act_request import ActRequest
 from .adb_act_uncertain import AdbActUncertain
 from .adb_act_unsupported import AdbActUnsupported
+from .adb_gesture_rejected import AdbGestureRejected
 from .adb_resident_error import AdbResidentError
 from .channel_recovery import ChannelRecovery
 from .hierarchy_read import HierarchyRead
+from .photo_picker import PICKER_PACKAGES, PickerState, read_picker_state
 
 RunFn = Callable[[list[str]], str]
 
@@ -51,10 +54,18 @@ ClockFetch = Callable[[], float | None]
 # the driver degrades to its own coordinate path.
 ActFn = Callable[[ActRequest], ActOutcome]
 TypeFn = Callable[[str, float | None], None]
+# Inject one two-finger gesture on the device: both fingers' start points, then both end points, in the
+# tree's pixel space. Raises the `AdbResidentError` family, like `ActFn`.
+GestureFn = Callable[
+    [tuple[base.Point, base.Point], tuple[base.Point, base.Point]],
+    None,
+]
 
 # Android's `uiautomator` dump reports bounds in raw display pixels, so that is the space stamped on
 # this backend's actuation records — a coordinate only means something alongside its unit.
 _UNIT = "pixel"
+# The three `|`-separated renderings `adb.launch_marker_cmd` prints; `logcat -T`'s is the last.
+_MARKER_FIELDS = 3
 
 # `ApplicationExitInfo` — and therefore `dumpsys activity exit-info` — arrived in API 30. Below it
 # the corroborating half of BE-0424's crash signal cannot exist, so the probe scopes itself out
@@ -70,6 +81,31 @@ _PIDOF_NO_MATCH = 1
 # already failed.
 _EXIT_INFO_TIMEOUT = 5.0
 _EXIT_INFO_POLL = 0.25
+
+# How long `enter_app` / `leave_app` wait for the package they started to hold the resumed activity,
+# and the backoff between `dumpsys` reads. A condition wait: a warm app returns on the first read, and
+# the bound covers a cold start on a contended emulator, where the Android lane already needs a 15s
+# floor for ordinary redraws (`E2E_WAIT_FLOOR`) — so the ceiling sits well above it.
+_APP_FRONT_TIMEOUT = 30.0
+_APP_FRONT_POLL = 0.2
+_APP_FRONT_POLL_MAX = 1.0
+
+# The system photo picker (`ACTION_PICK_IMAGES`) is built into Android 13 and later. Android 11 and 12
+# get it only through a Google system update, and older versions fall back to a Play services backport
+# or the document picker — trees `selectPhotos` has not surveyed, so it refuses below this floor.
+# Re-reads of the picker while waiting are spaced by the poll interval.
+_PHOTO_PICKER_MIN_API = 33
+_PHOTO_PICKER_POLL_S = 0.25
+
+
+def _has_cell(state: PickerState, *, index: int) -> bool:
+    """Whether the picker's grid currently shows cell `index`."""
+    return len(state.cells) > index
+
+
+def _cell_selected(state: PickerState, *, index: int) -> bool:
+    """Whether the picker reads cell `index` back as selected (a `selectPhotos` tap landed)."""
+    return len(state.cells) > index and state.cells[index].selected
 
 
 # BE-0415: one wrap per callable, folded in at `__init__` only when a trace is already open
@@ -141,6 +177,22 @@ def _traced_act(act: ActFn) -> ActFn:
             )
             ctx.record("transport", "act", started_at, time.perf_counter() - t0, response)
         return outcome
+
+    return _wrapped
+
+
+def _traced_gesture(gesture: GestureFn) -> GestureFn:
+    def _wrapped(start: tuple[base.Point, base.Point], end: tuple[base.Point, base.Point]) -> None:
+        ctx = tracing.current_trace()
+        if ctx is None:
+            gesture(start, end)
+            return
+        started_at = time.time()
+        t0 = time.perf_counter()
+        try:
+            gesture(start, end)
+        finally:
+            ctx.record("transport", "gesture", started_at, time.perf_counter() - t0)
 
     return _wrapped
 
@@ -239,6 +291,7 @@ class AdbDriver(CoordinateTreeDriver):
         fetch_clock: ClockFetch | None = None,
         act: ActFn | None = None,
         type_on_device: TypeFn | None = None,
+        gesture_on_device: GestureFn | None = None,
         channel_recovery: ChannelRecovery | None = None,
         channel_start_failure: str | None = None,
         package: str | None = None,
@@ -268,6 +321,10 @@ class AdbDriver(CoordinateTreeDriver):
         # resolve a selector against. Off on a device that holds one target, so an ordinary run, the
         # `app:` block, and a system dialog read exactly as before.
         self._front_check = False
+        # The packages `app:` blocks entered and have not yet left, innermost last. The app beneath
+        # the innermost one — the next entry down, or this driver's own package — is what `leave_app`
+        # brings back, and the innermost one is what the front check expects to see.
+        self._app_stack: list[str] = []
         self.serial = adb.checked_serial(serial)
         # BE-0415: a driver built while a trace is open times every subprocess call `run` issues and
         # every resident-channel round trip these four callables make. Checked once here, not on
@@ -283,6 +340,8 @@ class AdbDriver(CoordinateTreeDriver):
                 act = _traced_act(act)
             if type_on_device is not None:
                 type_on_device = _traced_type(type_on_device)
+            if gesture_on_device is not None:
+                gesture_on_device = _traced_gesture(gesture_on_device)
         self._run = run
         # When set, reads go through the resident channel and fall back to `uiautomator dump` only on
         # failure (BE-0245). Unset (the default) keeps today's dump-every-read behavior exactly.
@@ -299,6 +358,11 @@ class AdbDriver(CoordinateTreeDriver):
         self._act_fn = act
         # The resident server's text endpoint, the only route for text `input text` cannot carry.
         self._type_fn = type_on_device
+        # The resident server's two-finger endpoint: the route for `pinch` / `rotate` that needs no
+        # root. Latched off for the lease once the server answers that it lacks the endpoint, so an
+        # older server costs one round trip rather than one per gesture.
+        self._gesture_fn = gesture_on_device
+        self._gesture_unavailable = False
         # The device clock as of the latest text entry, on either route. `/type` rewrites the whole
         # field from what it reads, so its read must postdate the text the last entry put there.
         self._text_mark: float | None = None
@@ -528,17 +592,22 @@ class AdbDriver(CoordinateTreeDriver):
         self._seeded_tree = els
 
     def _other_app_in_front(self, root: ET.Element | None) -> list[str] | None:
-        """The packages *root* shows when it is not this driver's own app's tree, else None."""
-        if not self._front_check or root is None or not self._package:
+        """The packages *root* shows when it is not the tree of the app this driver addresses."""
+        if not self._front_check or root is None or not self._front_package:
             return None
         shown = sorted({p for n in root.iter() if (p := n.get("package"))})
         # Empty means the tree named no package at all — the mid-transition dump
         # `_read_settled_tree`'s transient-empty retry exists to ride out — so "cannot tell", not
         # "another app": raising here would escape that retry on its first read.
-        return None if not shown or self._package in shown else shown
+        return None if not shown or self._front_package in shown else shown
+
+    @property
+    def _front_package(self) -> str | None:
+        """The package this driver addresses now: the innermost `app:` block's, else its own."""
+        return self._app_stack[-1] if self._app_stack else self._package
 
     def require_front_app(self) -> None:
-        """Refuse every read that does not show this driver's own app (BE-0447).
+        """Refuse every read that does not show the app this driver addresses (BE-0447).
 
         Called once the device holds a second device-group member: the shared resident channel then
         dumps whichever app is in front, and a selector resolved against another member's tree would
@@ -552,7 +621,7 @@ class AdbDriver(CoordinateTreeDriver):
         if (shown := self._other_app_in_front(root)) is not None:
             # Another member's tree: raised, never returned empty, so no check can pass on it.
             raise base.AppNotInFront(
-                f"{self._package} is not in front ({', '.join(shown) or 'no app'} is) — bring "
+                f"{self._front_package} is not in front ({', '.join(shown) or 'no app'} is) — bring "
                 "it up with a foreground step addressed to its target"
             )
         els, identities = elements_with_identities(root, self._native_z)
@@ -1636,23 +1705,18 @@ class AdbDriver(CoordinateTreeDriver):
         scale: float | None = None,
         radians: float | None = None,
     ) -> None:
-        """Drive a two-finger gesture: resolve the target, then emit the raw two-slot sweep (BE-0232).
+        """Drive a two-finger gesture: resolve the target, then inject both contacts.
 
-        A rooted device with a discoverable touchscreen is required. Unlike the double-tap there is no
-        single-touch approximation of two fingers, so a missing precondition fails loudly with a clear
-        `UnsupportedAction` naming the root requirement — never a degraded gesture that silently passes.
+        Two routes, in order. The resident server injects through `UiAutomation` and needs no root;
+        the raw two-slot `sendevent` sweep (BE-0232) needs root and a discoverable touchscreen, and
+        stands in only when the server is absent, lacks the endpoint, or could not be reached before
+        the request went out — the cases where nothing was injected.
+        There is no single-touch approximation of two fingers, so a device with neither route fails
+        loudly with an `UnsupportedAction` naming both preconditions — never a degraded gesture.
         """
-        if not self._rooted():
-            raise base.UnsupportedAction(
-                f"{action} requires a rooted device; there is no single-touch fallback for a "
-                "two-finger gesture (sendevent writes to /dev/input, which needs root)"
-            )
-        dev = self._touch_device()
-        if dev is None:
-            raise base.UnsupportedAction(
-                f"{action} not possible (no touchscreen node found in getevent — cannot fire a "
-                "two-finger contact)"
-            )
+        server = self._gesture_server_usable()
+        if not server and not self._rooted():
+            raise base.UnsupportedAction(self._no_two_finger_route(action))
         frame, screen, el = self._resolve_frame_and_screen(sel)
         # gesture_anchor keeps both fingers (and a ~2x pinch-out) inside the target (BE-0251).
         cx, cy, half = base.gesture_anchor(frame)
@@ -1666,22 +1730,122 @@ class AdbDriver(CoordinateTreeDriver):
                 f"two-finger contact): {sel!r}"
             )
         start, end = contacts((cx, cy), half)
-        raw_start = (
-            adb.scale_to_touch(start[0], screen, dev),
-            adb.scale_to_touch(start[1], screen, dev),
-        )
-        raw_end = (adb.scale_to_touch(end[0], screen, dev), adb.scale_to_touch(end[1], screen, dev))
         # A zoom or a rotation moves every frame on screen just as a pan does, so it carries the same
         # publish lag and takes the same catch-up barrier. `_resolve_frame_and_screen` above already
         # read the tree, so the baseline costs nothing here.
         pre_key = self._pan_baseline()
         mark = self._capture_mark()
+        # Re-checked, not reused: the reads above can lose the resident channel and latch it off, and
+        # a request sent now would go to a connection the driver just tore down (as `_device_act`
+        # guards right before its own send).
+        server = server and self._gesture_server_usable()
+        if server and self._gesture_on_server(action, (cx, cy), el, start, end, scale, radians):
+            self._arm_catchup(pre_key, mark)
+            return
+        if not self._rooted():
+            raise base.UnsupportedAction(self._no_two_finger_route(action))
+        dev = self._touch_device()
+        if dev is None:
+            raise base.UnsupportedAction(
+                f"{action} not possible (no touchscreen node found in getevent — cannot fire a "
+                "two-finger contact)"
+            )
+        raw_start = (
+            adb.scale_to_touch(start[0], screen, dev),
+            adb.scale_to_touch(start[1], screen, dev),
+        )
+        raw_end = (adb.scale_to_touch(end[0], screen, dev), adb.scale_to_touch(end[1], screen, dev))
         # The anchor in tree space, not the raw touch-device range: `gesture_anchor`'s rule plus the
         # frame and the scale/rotation fully determine the two contacts from it, and the raw range is
         # an artifact of the injection method (as it is for the sendevent double-tap).
         self._log_coordinate(action, (cx, cy), el, scale=scale, radians=radians)
         self._act(adb.sendevent_gesture_cmd(self.serial, dev.path, raw_start, raw_end))
         self._arm_catchup(pre_key, mark)
+
+    def _gesture_server_usable(self) -> bool:
+        """Whether the resident server's two-finger endpoint is worth asking on this lease."""
+        # `_act_unavailable` also latches when the read channel is lost, and a connection that cannot
+        # serve a read cannot serve a gesture either.
+        return (
+            self._gesture_fn is not None
+            and not self._gesture_unavailable
+            and not self._act_unavailable
+        )
+
+    @staticmethod
+    def _no_two_finger_route(action: str) -> str:
+        return (
+            f"{action} needs the resident UI Automator server (rebuild it with `make -C "
+            "BajutsuAndroidUIAutomatorServer build`) or a rooted device for the `sendevent` sweep; "
+            "neither is available, and a two-finger gesture has no single-touch fallback"
+        )
+
+    def _gesture_on_server(
+        self,
+        action: str,
+        anchor: base.Point,
+        el: base.Element,
+        start: tuple[base.Point, base.Point],
+        end: tuple[base.Point, base.Point],
+        scale: float | None,
+        radians: float | None,
+    ) -> bool:
+        """Inject on the resident server; False when nothing was injected and `sendevent` may follow.
+
+        Only the faults that injected nothing fall through: an older server's `404`, and a channel that
+        could not be reached before the request went out. A rejection or a lost reply may already
+        have put a finger on the screen, so a second gesture on top of it is ruled out: a rejection
+        fails the step, and a lost reply is taken as landed, as `_device_act` takes one.
+        """
+        assert self._gesture_fn is not None  # `_gesture_server_usable` checked it
+        self._actuations.record(
+            Actuation(
+                gesture=action,
+                via="resident",
+                unit=_UNIT,
+                points=(anchor,),
+                frame=el["frame"],
+                target=el["identifier"],
+                scale=scale,
+                radians=radians,
+            )
+        )
+        try:
+            self._gesture_fn(start, end)
+        except AdbActUnsupported as exc:
+            self._actuations.settle(False)
+            self._gesture_unavailable = True
+            logger.warning(
+                "resident two-finger gesture unavailable (%s); a rooted device falls back to the "
+                "sendevent sweep",
+                exc,
+            )
+            return False
+        except AdbActUncertain as exc:
+            logger.warning(
+                "resident two-finger gesture may or may not have landed (%s); continuing as if it "
+                "did rather than injecting a second gesture on top of it",
+                exc,
+            )
+        except AdbGestureRejected as exc:
+            self._actuations.settle(False)
+            # Some of the gesture may have landed, so the cached tree can no longer be trusted.
+            self.invalidate_settled_cache()
+            raise base.UnsupportedAction(f"{action} failed on the resident server: {exc}") from exc
+        except AdbResidentError as exc:
+            # Nothing left the host. Like `_device_act`'s own blip, this degrades the one gesture and
+            # keeps the channel: the next gesture asks the server again.
+            self._actuations.settle(False)
+            logger.warning(
+                "resident two-finger gesture unreachable (%s); a rooted device falls back to the "
+                "sendevent sweep",
+                exc,
+            )
+            return False
+        else:
+            self._actuations.settle(True)
+        self.invalidate_settled_cache()
+        return True
 
     def select_option(self, sel: base.Selector, option: str) -> None:  # noqa: ARG002  # Driver shape
         raise base.UnsupportedAction(
@@ -1701,10 +1865,122 @@ class AdbDriver(CoordinateTreeDriver):
             "setPickerValue is iOS-picker-wheel-only; Android has no equivalent control"
         )
 
-    def select_photos(self, indices: list[int], *, timeout: float) -> None:  # noqa: ARG002  # Driver shape
-        raise base.UnsupportedAction(
-            "selectPhotos は iOS の PHPickerViewController 専用; Android に相当するコントロールはない"
-        )
+    def select_photos(self, indices: list[int], *, timeout: float) -> None:
+        """Pick the grid cells at `indices` from the open system photo picker, then confirm.
+
+        Every control is found by its resource id within the picker's own packages, never by its
+        localized text (`photo_picker`). Each phase is a condition wait bounded by `timeout`: the grid
+        holding enough cells and two reads agreeing on them (the seed's media scan publishes after
+        launch), each tapped cell reading back selected, the confirm button, and finally the picker
+        gone so the next step reads the app's own screen. Cells beyond the visible grid fail rather
+        than scroll: a scroll would make an ordinal depend on how far the grid moved.
+
+        An API level below 33 refuses up front: the picker is built in from Android 13, and what an
+        older device shows instead (a system-update copy, a Play services backport, or the document
+        picker) is unsurveyed. An unknown API level (a driver built without one) proceeds, and a
+        missing picker then fails on the grid wait.
+        """
+        if self._api_level is not None and self._api_level < _PHOTO_PICKER_MIN_API:
+            raise base.UnsupportedAction(
+                f"selectPhotos needs the system photo picker (API {_PHOTO_PICKER_MIN_API}+); this "
+                f"device is API {self._api_level}"
+            )
+        deadline = time.monotonic() + timeout
+        state = self._await_picker_grid(max(indices) + 1, deadline)
+        if not state.multi_select and len(indices) > 1:
+            raise base.ElementNotFound(
+                f"the photo picker allows one image, but selectPhotos named {len(indices)} indices"
+            )
+        self._await_picker_focus(deadline)
+        for i in indices:
+            if len(state.cells) <= i:
+                # The read that confirmed the previous pick can catch the grid mid-rebind (the sheet
+                # grows on a first pick), so a later index is waited for rather than indexed blind.
+                state = self._await_picker(
+                    functools.partial(_has_cell, index=i), deadline, f"photo picker cell {i}"
+                )
+            frame = state.cells[i].frame
+            point = base.frame_center(frame)
+            self._actuations.record(
+                Actuation(
+                    gesture="tap",
+                    via="coordinate",
+                    unit=_UNIT,
+                    points=(point,),
+                    frame=frame,
+                    target=f"photo picker cell {i}",
+                )
+            )
+            self._act(adb.tap_cmd(self.serial, point[0], point[1]))
+            if state.multi_select:
+                state = self._await_picker(
+                    functools.partial(_cell_selected, index=i),
+                    deadline,
+                    f"photo picker cell {i} to read back selected",
+                )
+        if state.multi_select:
+            add = self._await_picker(
+                lambda s: s.add_button is not None, deadline, "the photo picker's add button"
+            ).add_button
+            if add is None:  # unreachable past the wait; narrows the type for mypy
+                raise base.ElementNotFound("the photo picker's add button vanished")
+            point = base.frame_center(add)
+            self._actuations.record(
+                Actuation(
+                    gesture="tap",
+                    via="coordinate",
+                    unit=_UNIT,
+                    points=(point,),
+                    frame=add,
+                    target="button_add",
+                )
+            )
+            self._act(adb.tap_cmd(self.serial, point[0], point[1]))
+        self._await_picker(lambda s: not s.present, deadline, "the photo picker to close")
+
+    def _await_picker_grid(self, needed: int, deadline: float) -> PickerState:
+        """Wait for a grid of at least `needed` cells that two consecutive reads agree on."""
+        previous: tuple[base.Frame, ...] | None = None
+        while True:
+            state = read_picker_state(self._read_source())
+            frames = tuple(c.frame for c in state.cells)
+            if len(frames) >= needed and frames == previous:
+                return state
+            previous = frames
+            if time.monotonic() >= deadline:
+                shown = f"{len(frames)} cell(s)" if state.present else "no photo picker"
+                raise base.ElementNotFound(
+                    f"selectPhotos needs {needed} photo picker cell(s) on screen; found {shown}"
+                )
+            time.sleep(_PHOTO_PICKER_POLL_S)
+
+    def _await_picker_focus(self, deadline: float) -> None:
+        """Wait until the picker's own window holds input focus, so a coordinate tap reaches it.
+
+        The tree shows the picker as soon as its window attaches, while input can still go to the app
+        beneath it: on-device, a cell tap taken then landed on the app's own button under the cell.
+        """
+        while True:
+            focused = self._run(adb.focused_window_cmd(self.serial))
+            if any(pkg in focused for pkg in PICKER_PACKAGES):
+                return
+            if time.monotonic() >= deadline:
+                raise base.ElementNotFound(
+                    f"the photo picker never took input focus ({focused.strip() or 'no window'})"
+                )
+            time.sleep(_PHOTO_PICKER_POLL_S)
+
+    def _await_picker(
+        self, ready: Callable[[PickerState], bool], deadline: float, what: str
+    ) -> PickerState:
+        """Re-read the picker until `ready` holds, or fail naming `what` at `deadline`."""
+        while True:
+            state = read_picker_state(self._read_source())
+            if ready(state):
+                return state
+            if time.monotonic() >= deadline:
+                raise base.ElementNotFound(f"timed out waiting for {what}")
+            time.sleep(_PHOTO_PICKER_POLL_S)
 
     def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:  # noqa: ARG002  # Driver shape
         # BE-0316 is iOS-only: Android surfaces a system permission dialog in the topmost-window
@@ -1715,13 +1991,78 @@ class AdbDriver(CoordinateTreeDriver):
             "ordinary tap"
         )
 
-    def enter_app(self, bundle_id: str) -> None:  # noqa: ARG002  # Driver shape
-        # app: は XCUITest backend 専用。preflight がデバイス側の作業に入る前にこのシナリオ
-        # を弾くので、これはmid-runのbackstopにすぎない。
-        raise base.UnsupportedAction("app は iOS XCUITest 専用; Android には対応する仕組みがない")
+    def enter_app(self, bundle_id: str) -> None:
+        """Bring the installed package `bundle_id` to the front and address it until `leave_app`.
+
+        UI Automator already reads whichever app's window is in front, so entering is only the
+        launch: the package's launcher activity is started and the call returns once that package
+        holds the resumed activity. A running app's task that the same bare `am start -n` started
+        (as bajutsu starts the app under test and every app it enters) is brought forward, clearing
+        nothing; an app whose task the launcher started may get a fresh launcher activity on top
+        instead. The app under test keeps its process meanwhile, so neither the crash probe nor the
+        exit poll reads the handoff as the app exiting.
+
+        Raises:
+            ElementNotFound: `bundle_id` has no launcher activity, or never reached the front.
+            DeviceError: adb itself failed (device offline, launch rejected).
+        """
+        self._bring_forward(bundle_id)
+        self._app_stack.append(bundle_id)
 
     def leave_app(self) -> None:
-        raise base.UnsupportedAction("app は iOS XCUITest 専用; Android には対応する仕組みがない")
+        """Leave the innermost entered app and bring back the one beneath it.
+
+        Raises:
+            ElementNotFound: The app beneath never reached the front again.
+            UnsupportedAction: No `app:` block is open, or the driver has no package to return to.
+        """
+        if not self._app_stack:
+            raise base.UnsupportedAction("leave_app without a matching enter_app")
+        # Popped before bringing the app beneath forward, as the iOS runner does: the block is closed
+        # whether or not that app then reaches the front, and the run loop only logs a failed leave.
+        self._app_stack.pop()
+        beneath = self._front_package
+        if beneath is None:
+            raise base.UnsupportedAction("app: the driver knows no app under test to return to")
+        self._bring_forward(beneath)
+
+    def _bring_forward(self, package: str) -> None:
+        """Start *package*'s launcher activity, then wait until it holds the resumed activity."""
+        try:
+            component = adb.launcher_component(
+                self._run(adb.resolve_activity_cmd(self.serial, package))
+            )
+            if component is None:
+                raise base.ElementNotFound(
+                    f"app: no launcher activity for {package!r} (is it installed?)"
+                )
+            # The same `am start -n` the `foreground` step and the launch use, so an app whose task
+            # that same bare intent started (the app under test, every app entered here) finds its
+            # root intent unchanged and resumes on the screen it left — unless its launcher activity
+            # is `singleTask` / `singleInstance` (or sets `clearTaskOnLaunch`), where the system
+            # destroys whatever the task pushed above it and the app comes back at its root.
+            # A task the launcher started may get a fresh launcher activity on top instead.
+            self._act(adb.launch_cmd(self.serial, component))
+        except subprocess.CalledProcessError as exc:
+            raise adb.device_error(exc) from exc
+        last_error = ""
+        for _ in base.deadline_ticks(_APP_FRONT_TIMEOUT, _APP_FRONT_POLL, _APP_FRONT_POLL_MAX):
+            try:
+                resumed = adb.resumed_packages(self._run(adb.resumed_activities_cmd(self.serial)))
+            except (subprocess.CalledProcessError, OSError, adb.DeviceError) as exc:
+                # One unreadable dump mid-transition is not an answer either way; keep polling, and
+                # name the last fault if the wait runs out.
+                last_error = f" (last read failed: {exc})"
+                continue
+            if package in resumed:
+                # The screen changed under the driver without one of its own gestures.
+                self.invalidate_settled_cache()
+                return
+            last_error = ""
+        raise base.ElementNotFound(
+            f"app did not reach the foreground within {_APP_FRONT_TIMEOUT:g}s: "
+            f"{package!r}{last_error}"
+        )
 
     def system_alert_labels(self) -> list[str]:
         # No SpringBoard on Android; the reactive guard's native path never runs here (BE-0315).
@@ -1828,7 +2169,13 @@ class AdbDriver(CoordinateTreeDriver):
         # `count` backspaces (KEYCODE_DEL) in one `input keyevent` call. The orchestrator focuses the
         # field first, so the deletes land in it (BE-0265).
         self._actuations.record(Actuation(gesture="deleteText", via="focused", unit=_UNIT))
+        # Armed like a pan: the deletion only shows in a field's `value` (#2388), and a lagging tree
+        # would otherwise answer the next read — `clear`'s remaining-text check, a `value` assertion —
+        # with the pre-delete text (BE-0332's read lag, seen on the adb conformance lane).
+        pre_key = self._pan_baseline()
+        mark = self._capture_mark()
         self._act(adb.keyevents_cmd(self.serial, [adb.KEYCODE_DEL] * count))
+        self._arm_catchup(pre_key, mark)
 
     def select_all(self) -> None:
         # Ctrl+A selects the focused field's whole content (BE-0265).
@@ -1901,15 +2248,23 @@ class AdbDriver(CoordinateTreeDriver):
 
         return join
 
-    def driver_interval(self, kind: str, path: Path) -> intervals.Interval | None:
+    def driver_interval(
+        self,
+        kind: str,
+        path: Path,
+        *,
+        subsystem: str | None = None,
+        json_path: Path | None = None,
+    ) -> intervals.Interval | None:
         """A whole-scenario interval recording via adb, or None for an unsupported kind.
 
         The device pool hands this to the `FileSink` so the same backend-independent `capture` policy
         that drives the simctl providers on iOS drives the adb ones here — Android is not `simctl`, so
         it routes through this driver-supplied seam rather than the sink's simctl path (the iOS backend,
         which has no such method, leaves the seam None and takes the simctl path). `video` records via
-        `screenrecord` (pulled off the device on stop); `deviceLog` streams `logcat`. `appTrace` has
-        no adb analogue, so it returns None.
+        `screenrecord` (pulled off the device on stop); `deviceLog` streams `logcat`; `appTrace`
+        streams `logcat` filtered to the *subsystem* tag and parses it into *json_path* on stop
+        (BE-0478), and needs both.
         """
         if kind == "video":
             # Unreachable through the device pool today — `AndroidEnvironment` always prestarts
@@ -1922,16 +2277,38 @@ class AdbDriver(CoordinateTreeDriver):
             )
         if kind == "deviceLog":
             return intervals.start_logcat(self.serial, path)
+        if kind == "appTrace" and subsystem and json_path is not None:
+            return intervals.start_logcat_app_trace(
+                self.serial, path, json_path, subsystem, self._device_now()
+            )
         return None
+
+    def _device_now(self) -> str | None:
+        """The device clock now, in `logcat -T`'s rendering; None when it cannot be read.
+
+        The device decides which log lines precede the stream, so host clock skew cannot drop a real
+        line or keep a stale one (BE-0478). The same one-read rendering the launch marker uses.
+        """
+        try:
+            out = self._run(adb.launch_marker_cmd(self.serial)).strip()
+        except (subprocess.CalledProcessError, OSError) as exc:
+            logger.warning("appTrace: could not read the clock of %s (%s)", self.serial, exc)
+            return None
+        fields = out.split("|")
+        if len(fields) != _MARKER_FIELDS:
+            logger.warning("appTrace: unexpected clock reply from %s: %r", self.serial, out)
+            return None
+        return fields[-1]
 
     # Runs anywhere Bajutsu runs (BE-0450): None means no host restriction.
     HOST_OS: frozenset[str] | None = None
 
     # No semantic tap and no native network monitoring — the lean end of the capability model.
-    # Of the device-control family it advertises only `setLocation` + `clipboard`:
-    # `setLocation` over the emulator console (BE-0211), `clipboard` over an ordered `am broadcast`
-    # to the app's in-app receiver (BajutsuAndroid, BE-0233); adb declares it because the backend can
-    # drive it given a cooperating app. The
+    # Of the device-control family it advertises all but `push` (which needs a receiver in the app's
+    # process) and `clearKeychain` (Android has no keychain): `setLocation` over the emulator console (BE-0211), `clipboard`
+    # over an ordered `am broadcast` to the app's in-app receiver (BajutsuAndroid, BE-0233; adb
+    # declares it because the backend can drive it given a cooperating app), `background` over the
+    # Home key, and the status-bar pair over the System UI demo mode (BE-0478). The
     # per-operation tokens (BE-0212) let it declare exactly that subset, so preflight admits those
     # steps and fails the rest fast. A class constant so the preflight (BE-0082) reads it via
     # `backends.capabilities_for` with no device. `multiTouch` is declared statically here too, so
@@ -1958,9 +2335,19 @@ class AdbDriver(CoordinateTreeDriver):
                 # (BE-0447).
                 base.Capability.DC_FOREGROUND,
                 base.Capability.DEVICE_GROUP,
-                # `screenrecord` and `logcat` (`driver_interval`); no os_log, so no appTrace.
+                base.Capability.DC_BACKGROUND,
+                base.Capability.DC_STATUS_BAR,
+                # `am start` brings another installed package forward and UI Automator reads whichever
+                # window is in front, so the `app:` step needs nothing from the app under test.
+                base.Capability.APP_CONTEXT,
+                # The system photo picker by resource id. Its API 33 floor is checked when the step
+                # runs, as `multiTouch`'s root requirement is, since preflight reads this set with no
+                # device.
+                base.Capability.SELECT_PHOTOS,
+                # `screenrecord`, `logcat`, and a tag-filtered `logcat` for appTrace (`driver_interval`).
                 base.Capability.VIDEO,
                 base.Capability.DEVICE_LOG,
+                base.Capability.APP_TRACE,
             }
         )
         | base.ANDROID_PERMISSION_CAPABILITIES

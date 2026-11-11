@@ -15,64 +15,69 @@
 
 ## Introduction
 
-[`docs/getting-started.md`](../../docs/getting-started.md) bills itself as "the tutorial" for
-Bajutsu, but Steps 4 through 6 — build the showcase app, run a scenario on a Simulator, read the
-report — require macOS, Xcode, and the idb backend. Anyone without a Mac can complete only half
-the tutorial and never reaches a finished `run`. This proposal adds a tutorial track that completes
-the same install → scenario → run → report loop using only the web (Playwright) backend, which
-already runs deterministically on Linux.
+[`docs/getting-started.md`](../../docs/getting-started.md) calls itself "the tutorial" for Bajutsu.
+Its Steps 4 through 6 build the showcase app, run a scenario on a Simulator, and read the report.
+They require macOS, Xcode, and the idb backend. Anyone without a Mac completes only half the
+tutorial and never reaches a finished `run`.
+
+This proposal adds a tutorial track that completes the same install → scenario → run → report loop.
+The track uses the web (Playwright) [backend](../../docs/glossary.md#driver-backend-actuator-platform)
+alone, which already runs deterministically on Linux.
 
 ## Motivation
 
-Steps 1 through 3 of the current tutorial (install, run the unit suite, read a scenario) are
-already platform-agnostic, but the walkthrough dead-ends into an iOS-only device flow from Step 4
-onward — the only way to *finish* the tutorial today is on a Mac. [`demos/web`](../../demos/web/README.md)
-already proves the content exists: it runs the same deterministic `run` loop, on the same scenario
-schema, against a static web app, inside the same gate CI uses on Linux. It just isn't packaged as
-a tutorial narrative — today it's a demo runbook (commands to copy), not a walkthrough that
-explains each step to a newcomer the way `getting-started.md` does for iOS.
+Steps 1 through 3 of the current tutorial (install, run the unit suite, read a scenario) are already
+platform-agnostic. From Step 4 onward, the walkthrough dead-ends into an iOS-only device flow. Today
+only a reader with a Mac can *finish* the tutorial.
 
-Bajutsu's own headline claim is "a platform is a backend": the deterministic core, the scenario
-format, and the reporter are the same regardless of which backend actuates the UI. An onboarding
-path that only finishes on iOS undercuts that claim in practice, even though it holds in the code.
-Fixing the onboarding path matters most for exactly the readers currently locked out of finishing
-it — a non-Mac laptop, a Linux CI runner, or a fresh container with no Simulator available (this
+[`demos/web`](../../demos/web/README.md) shows that the content already exists. It runs the same
+deterministic `run` loop, on the same scenario schema, against a static web app. It does so inside
+the same gate that CI uses on Linux. But it is a demo runbook (commands to copy), not a tutorial
+narrative. It does not explain each step to a newcomer the way `getting-started.md` does for iOS.
+
+Bajutsu's own headline claim is "a platform is a backend". The deterministic core, the scenario
+format, and the reporter stay the same whichever backend actuates the UI. An onboarding path that
+finishes only on iOS undercuts that claim in practice, even though the claim holds in the code.
+
+Fixing the path matters most for the readers who are locked out of finishing it today. They use a
+non-Mac laptop, a Linux CI runner, or a fresh container with no Simulator available (this
 proposal's own drafting environment among them).
 
 ## Detailed design
 
 1. **A new tutorial track.** Either a new page (`docs/getting-started-web.md`, + `docs/ja/`
-   mirror) or a restructuring of `docs/getting-started.md` so Steps 1–3 stay shared and Steps 4–6
-   fork into an "iOS track" and a "web track" — the exact file layout is an implementation-time
-   decision; the requirement this proposal fixes is a Mac-free path to the same finish line, not a
-   particular file shape.
-2. **Content**, mirroring the existing Step 4–6 shape with the showcase iOS app swapped for
-   `demos/web`: serving the static app (`app-serve`), running its bundled scenario through
-   `--backend web` (no Xcode, no idb, no Simulator), and reading the same three report formats
-   (`manifest.json` / `junit.xml` / `report.html`) the iOS track produces.
+   mirror) or a restructuring of `docs/getting-started.md`. In the restructuring, Steps 1–3 stay
+   shared and Steps 4–6 fork into an "iOS track" and a "web track". The exact file layout is an
+   implementation-time decision. This proposal fixes the requirement, a Mac-free path to the same
+   finish line, and not a particular file shape.
+2. **Content.** The content mirrors the existing Step 4–6 shape, with `demos/web` replacing the
+   showcase iOS app. It covers serving the static app (`app-serve`) and running its bundled scenario
+   through `--backend web` (no Xcode, no idb, no Simulator). It also covers reading the same three
+   report formats (`manifest.json` / `junit.xml` / `report.html`) that the iOS track produces.
 3. **Cross-links.** `docs/overview.md`'s reading order and `README.md`'s Setup/Demos sections point
-   a non-Mac reader at this track — ideally before, not after, the Xcode-first one, so the
-   platform-agnostic path isn't presented as a fallback.
-4. **Bilingual pass.** `docs/ja/` mirror, written as natural Japanese per the
+   a non-Mac reader at this track. The pointer ideally comes before the Xcode-first track, not
+   after, so the platform-agnostic path is not presented as a fallback.
+4. **Bilingual pass.** The `docs/ja/` mirror, written as natural Japanese per the
    [`japanese-tech-writing`](../../.claude/skills/japanese-tech-writing/) skill.
 
 This tutorial track should draw its vocabulary from the "glossary and documentation structure
-review" proposal (a sibling item drafted alongside this one) rather than phrasing `backend` /
-`actuator` / `target` differently on its own; landing that proposal first keeps this one from
+review" proposal (a sibling item drafted alongside this one). It should not phrase `backend` /
+`actuator` / `target` differently on its own. Landing that proposal first keeps this one from
 introducing yet another ad hoc phrasing of the same terms.
 
 ## Alternatives considered
 
 - **Extend `getting-started.md` in place, branching mid-page by platform, instead of a separate
-  page.** A plausible shape, left as an implementation-time choice rather than settled here — this
-  proposal's requirement is the Mac-free finish line, not the file layout that delivers it.
-- **Point readers at `demos/web/README.md` alone, without a dedicated tutorial track.** Rejected:
-  it is a demo runbook — the commands to run — not a tutorial that explains *why* each step
-  matters to a newcomer, which is the part of `getting-started.md` that carries the onboarding
-  value.
-- **Leave the tutorial iOS-only.** Rejected: it contradicts "a platform is a backend" as a lived
-  onboarding experience, and it disadvantages exactly the environments (Linux CI, non-Mac
-  machines) the web backend was built to support.
+  page.** This is a plausible shape. It is left as an implementation-time choice rather than settled
+  here, because this proposal's requirement is the Mac-free finish line, not the file layout that
+  delivers it.
+- **Point readers at `demos/web/README.md` alone, without a dedicated tutorial track.** Rejected.
+  The README is a demo runbook, the commands to run. It is not a tutorial that explains *why* each
+  step matters to a newcomer, and that explanation is the part of `getting-started.md` that carries
+  the onboarding value.
+- **Leave the tutorial iOS-only.** Rejected. It contradicts "a platform is a backend" as a lived
+  onboarding experience. It also disadvantages exactly the environments (Linux CI, non-Mac machines)
+  that the web backend was built to support.
 
 ## Progress
 

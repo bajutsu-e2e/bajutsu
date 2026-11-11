@@ -95,6 +95,37 @@ def test_the_build_command_runs_in_build_cwd(
     assert seen == [tmp_path]
 
 
+def test_a_withheld_build_is_refused_without_running(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # #2282: serve marks the run of an untrusted config; its `driver.runner.build` must not reach
+    # the host's shell, and the failure names why rather than a bare missing testRunner.
+    from bajutsu.common.config import RUNNER_BUILD_WITHHELD_ENV
+
+    cfg = XcuitestConfig.model_validate(
+        {"testRunner": str(tmp_path / "Built.xctestrun"), "build": "make runner"}
+    )
+    ran: list[list[str]] = []
+    monkeypatch.setattr(subprocess, "run", lambda argv, **_kw: ran.append(argv))
+    monkeypatch.setenv(RUNNER_BUILD_WITHHELD_ENV, "1")
+    with pytest.raises(simctl.DeviceError, match=r"driver\.runner\.build withheld"):
+        xcuitest._resolve_runner(cfg, "simulator", build_cwd=tmp_path)
+    assert ran == []
+
+
+def test_a_withheld_build_still_uses_an_existing_test_runner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Withholding only stops the build; a bundle that ships its runner prebuilt still runs.
+    from bajutsu.common.config import RUNNER_BUILD_WITHHELD_ENV
+
+    runner = tmp_path / "Built.xctestrun"
+    runner.write_bytes(b"")
+    cfg = XcuitestConfig.model_validate({"testRunner": str(runner), "build": "make runner"})
+    monkeypatch.setenv(RUNNER_BUILD_WITHHELD_ENV, "1")
+    assert xcuitest._resolve_runner(cfg, "simulator") == runner
+
+
 def test_a_failing_build_command_is_a_device_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

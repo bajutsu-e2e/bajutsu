@@ -31,6 +31,7 @@ from bajutsu.common.drivers.adb import (
     AdbActUncertain,
     AdbActUnsupported,
     AdbDriver,
+    AdbGestureRejected,
     AdbResidentError,
     HierarchyRead,
     parse_hierarchy,
@@ -245,6 +246,71 @@ def test_password_flag_derives_the_masked_input_trait() -> None:
     assert base.Trait.SECURE_TEXT_FIELD not in plain["traits"]
 
 
+# #2388: a Compose text field and a Views EditText both dump as `android.widget.EditText`. Their typed
+# text must read as `value` — what a `value` assertion and `clear` read — while `label` stays the
+# field's accessible name. An empty Views field reports its hint as `text`; the `hint` attribute
+# (UI Automator 2.3+) is what tells the two apart.
+EDITABLE_FIELDS = """<hierarchy rotation="0">
+  <node resource-id="search.field" class="android.widget.EditText" text="Horse 3" content-desc=""
+    hint="Search horses" bounds="[0,0][100,50]" />
+  <node resource-id="com.app:id/search_field" class="android.widget.EditText" text="Search horses"
+    content-desc="" hint="Search horses" bounds="[0,50][100,100]" />
+  <node resource-id="auth.password" class="android.widget.EditText" text="hunter2" content-desc=""
+    password="true" hint="Password" bounds="[0,100][100,150]" />
+  <node resource-id="note" class="android.widget.EditText" text="trot" content-desc="Note"
+    bounds="[0,150][100,200]" />
+  <node resource-id="blank" class="android.widget.EditText" text="" bounds="[0,200][100,250]" />
+  <node resource-id="caption" class="android.widget.TextView" text="Horse 3" content-desc="3"
+    bounds="[0,250][100,300]" />
+</hierarchy>"""
+
+
+def test_editable_field_reads_typed_text_as_value_and_keeps_its_name_as_label() -> None:
+    els = parse_hierarchy(EDITABLE_FIELDS)
+    typed = _by_id(els, "search.field")
+    assert typed["value"] == "Horse 3"  # the typed text, not content-desc
+    assert typed["label"] == "Search horses"  # the hint names it, not the typed text
+    # An empty field showing its hint has no value: the hint must not read as typed text.
+    empty = _by_id(els, "search_field")
+    assert empty["value"] is None
+    assert empty["label"] == "Search horses"
+    # A masked field never leaks its text into value, but keeps its name.
+    secret = _by_id(els, "auth.password")
+    assert secret["value"] is None
+    assert secret["label"] == "Password"
+    # content-desc is the accessible name when present, ahead of the hint.
+    note = _by_id(els, "note")
+    assert (note["label"], note["value"]) == ("Note", "trot")
+    # A field with no text, name, or hint is wholly blank rather than empty-string.
+    blank = _by_id(els, "blank")
+    assert (blank["label"], blank["value"]) == (None, None)
+    # A non-editable node keeps the SPEC §2.1 split: visible text → label, content-desc → value.
+    caption = _by_id(els, "caption")
+    assert (caption["label"], caption["value"]) == ("Horse 3", "3")
+
+
+def test_editable_field_without_a_hint_attribute_reads_its_text_as_value() -> None:
+    # The `uiautomator dump` fallback may omit `hint`, so an empty field's hint there reads as value,
+    # and `text` stays the label so a label selector resolves on that read path too. A masked field's
+    # text never leaks into either, and an AutoCompleteTextView (which reports its own class) maps
+    # the same way as an EditText.
+    xml = """<hierarchy rotation="0">
+  <node resource-id="search.field" class="android.widget.EditText" text="Search horses"
+    content-desc="" bounds="[0,0][100,50]" />
+  <node resource-id="pw" class="android.widget.EditText" text="hunter2" password="true"
+    bounds="[0,50][100,100]" />
+  <node resource-id="pick" class="android.widget.AutoCompleteTextView" text="Bay" content-desc=""
+    hint="Coat" bounds="[0,100][100,150]" />
+</hierarchy>"""
+    els = parse_hierarchy(xml)
+    field = _by_id(els, "search.field")
+    assert (field["label"], field["value"]) == ("Search horses", "Search horses")
+    pw = _by_id(els, "pw")
+    assert (pw["label"], pw["value"]) == (None, None)
+    pick = _by_id(els, "pick")
+    assert (pick["label"], pick["value"]) == ("Coat", "Bay")
+
+
 def test_resource_id_with_no_local_name_is_none_not_empty() -> None:
     # A malformed resource-id ending in `/` must yield identifier None, not "" (which no selector
     # matches yet is falsy-but-present).
@@ -266,13 +332,6 @@ def test_tap_resolves_frame_center() -> None:
     driver.tap({"id": "stable_refresh"})
     # centre of (0,100,200,100) → (100, 150)
     assert calls == [["adb", "-s", "U", "shell", "input", "tap", "100", "150"]]
-
-
-def test_select_photos_is_unsupported_on_android() -> None:
-    # `PHPickerViewController` is an iOS system control; Android has no equivalent (roadmap item).
-    driver = AdbDriver("U", run=lambda a: "")
-    with pytest.raises(base.UnsupportedAction):
-        driver.select_photos([0], timeout=10)
 
 
 def test_tap_on_ambiguous_selector_fails_fast() -> None:
@@ -958,7 +1017,27 @@ def test_delete_text_sends_count_backspaces_in_one_keyevent() -> None:
         return ""
 
     AdbDriver("U", run=run).delete_text(3)
-    assert calls == [["adb", "-s", "U", "shell", "input", "keyevent", "67", "67", "67"]]
+    # The one dump before it is the read barrier's baseline (see the test below).
+    assert calls[-1] == ["adb", "-s", "U", "shell", "input", "keyevent", "67", "67", "67"]
+    assert len(calls) == 2
+
+
+def test_delete_text_arms_the_read_barrier(monkeypatch: pytest.MonkeyPatch) -> None:
+    # #2388: a deletion shows only in the field's `value`, so the read after it must postdate it, the
+    # same barrier a pan arms. Without it a lagging tree answers with the pre-delete text — the adb
+    # conformance lane's `test_delete_text_reduces_the_field_length` failure.
+    clock = _Clock()
+    monkeypatch.setattr(adb_driver_impl, "time", clock)
+    driver, _ = _resident_driver(
+        reads=[(FIXTURE, 1000.0), (FIXTURE, 1000.0), (FIXTURE, 1001.0)],
+        clocks=[1000.0],
+    )
+    driver.query()
+    driver.delete_text(2)  # takes the mark 1000 and arms the barrier
+    driver.query()  # same mark — still stale
+    assert driver._catchup is not None
+    driver.query()  # mark 1001 postdates the deletion → caught up
+    assert driver._catchup is None
 
 
 def test_select_all_is_ctrl_a_keycombination() -> None:
@@ -1159,6 +1238,149 @@ def test_pinch_and_rotate_require_root_no_fallback() -> None:
         driver.rotate({"id": "stable_refresh"}, 1.0)
 
 
+def _server_run(calls: list[list[str]], *, root: bool) -> Callable[[list[str]], str]:
+    """A runner whose device is rooted or not, recording every actuation shell."""
+
+    def run(args: list[str]) -> str:
+        if "dump" in args:
+            return FIXTURE
+        if args[-2:] == ["id", "-u"]:
+            return "0\n" if root else "2000\n"
+        if "getevent" in args:
+            return GETEVENT_LP
+        calls.append(args)
+        return ""
+
+    return run
+
+
+def test_pinch_goes_through_the_resident_server_without_root() -> None:
+    # The unrooted route: the server injects both paths, so no shell actuation and no root probe gate.
+    calls: list[list[str]] = []
+    sent: list[object] = []
+    driver = AdbDriver(
+        "U",
+        run=_server_run(calls, root=False),
+        gesture_on_device=lambda start, end: sent.append((start, end)),
+    )
+    driver.pinch({"id": "stable_refresh"}, 2.0)
+    # Centre (100,150), half 25: contacts start at x=75/125 and spread to x=50/150 — tree pixels.
+    assert sent == [(((75.0, 150.0), (125.0, 150.0)), ((50.0, 150.0), (150.0, 150.0)))]
+    assert calls == []
+    (record,) = driver.drain_actuations().records
+    assert record.via == "resident" and record.accepted is True
+    assert record.points == ((100.0, 150.0),) and record.scale == 2.0
+
+
+def test_rotate_goes_through_the_resident_server_without_root() -> None:
+    sent: list[tuple[tuple[base.Point, base.Point], tuple[base.Point, base.Point]]] = []
+    driver = AdbDriver(
+        "U",
+        run=_server_run([], root=False),
+        gesture_on_device=lambda start, end: sent.append((start, end)),
+    )
+    driver.rotate({"id": "stable_refresh"}, math.pi / 2)
+    ((start, end),) = sent
+    assert start == ((75.0, 150.0), (125.0, 150.0))
+    assert [c for p in end for c in p] == pytest.approx([100.0, 125.0, 100.0, 175.0])
+
+
+def test_an_older_server_falls_back_to_sendevent_on_a_rooted_device_once() -> None:
+    # A 404 means nothing was injected, so the sweep may follow — and the endpoint is not asked again.
+    calls: list[list[str]] = []
+    asked: list[int] = []
+
+    def old_server(start: object, end: object) -> None:
+        asked.append(1)
+        raise AdbActUnsupported("resident server has no /gesture endpoint (HTTP 404)")
+
+    driver = AdbDriver("U", run=_server_run(calls, root=True), gesture_on_device=old_server)
+    driver.pinch({"id": "stable_refresh"}, 2.0)
+    driver.rotate({"id": "stable_refresh"}, 1.0)
+    assert asked == [1]
+    assert len(calls) == 2 and all("sendevent" in c[4] for c in calls)
+    first, second, third = driver.drain_actuations().records
+    assert (first.via, first.accepted) == ("resident", False)
+    assert second.via == "coordinate" and third.via == "coordinate"
+
+
+def test_an_older_server_on_an_unrooted_device_names_both_preconditions() -> None:
+    def old_server(start: object, end: object) -> None:
+        raise AdbActUnsupported("resident server has no /gesture endpoint (HTTP 404)")
+
+    driver = AdbDriver("U", run=_server_run([], root=False), gesture_on_device=old_server)
+    with pytest.raises(
+        base.UnsupportedAction, match=r"resident UI Automator server.*rooted device"
+    ):
+        driver.pinch({"id": "stable_refresh"}, 2.0)
+
+
+def test_a_rejected_server_gesture_fails_the_step_without_a_second_gesture() -> None:
+    # A rejection may follow fingers that already landed, so the sweep must not go on top of it.
+    calls: list[list[str]] = []
+
+    def rejecting(start: object, end: object) -> None:
+        raise AdbGestureRejected("resident gesture returned HTTP 500: gesture rejected")
+
+    driver = AdbDriver("U", run=_server_run(calls, root=True), gesture_on_device=rejecting)
+    with pytest.raises(base.UnsupportedAction, match="failed on the resident server"):
+        driver.pinch({"id": "stable_refresh"}, 2.0)
+    assert calls == []
+    (record,) = driver.drain_actuations().records
+    assert record.accepted is False
+    # Part of the gesture may have landed, so the pre-gesture tree is no longer trusted.
+    assert driver._settled_key is None
+
+
+def test_an_unreachable_server_falls_back_to_sendevent_and_asks_again_next_time() -> None:
+    # Nothing left the host, so the sweep is safe — and the channel is not latched off for the lease.
+    calls: list[list[str]] = []
+    asked: list[int] = []
+
+    def unreachable(start: object, end: object) -> None:
+        asked.append(1)
+        raise AdbResidentError("resident gesture unreachable on port 1: refused")
+
+    driver = AdbDriver("U", run=_server_run(calls, root=True), gesture_on_device=unreachable)
+    driver.pinch({"id": "stable_refresh"}, 2.0)
+    driver.pinch({"id": "stable_refresh"}, 2.0)
+    assert asked == [1, 1]
+    assert len(calls) == 2 and all("sendevent" in c[4] for c in calls)
+
+
+def test_a_channel_lost_during_the_resolve_is_not_sent_the_gesture() -> None:
+    # The read inside the resolve loses the resident channel and latches it off; the gesture must
+    # see that latch rather than POST to a connection the driver just tore down.
+    calls: list[list[str]] = []
+    asked: list[int] = []
+
+    def dead_fetch(since: float | None) -> HierarchyRead:
+        raise AdbResidentError("channel down")
+
+    driver = AdbDriver(
+        "U",
+        run=_server_run(calls, root=True),
+        fetch_hierarchy=dead_fetch,
+        gesture_on_device=lambda start, end: asked.append(1),
+    )
+    driver.pinch({"id": "stable_refresh"}, 2.0)
+    assert asked == []
+    assert len(calls) == 1 and "sendevent" in calls[0][4]
+
+
+def test_a_lost_server_reply_is_taken_as_landed() -> None:
+    calls: list[list[str]] = []
+
+    def lost(start: object, end: object) -> None:
+        raise AdbActUncertain("resident gesture was sent but its reply was lost")
+
+    driver = AdbDriver("U", run=_server_run(calls, root=True), gesture_on_device=lost)
+    driver.pinch({"id": "stable_refresh"}, 2.0)
+    assert calls == []
+    (record,) = driver.drain_actuations().records
+    assert record.via == "resident" and record.accepted is None
+
+
 def test_pinch_fails_when_no_touch_node_even_if_root() -> None:
     # Rooted but no touchscreen node in `getevent` → nothing to drive the two contacts on, so fail
     # loudly rather than silently no-op (there is no single-touch fallback for a gesture).
@@ -1180,15 +1402,6 @@ def test_select_option_unsupported() -> None:
     driver = AdbDriver("U", run=lambda a: FIXTURE)
     with pytest.raises(base.UnsupportedAction):
         driver.select_option({"id": "nav.theme-picker"}, "midnight")
-
-
-def test_enter_app_and_leave_app_unsupported() -> None:
-    # app: rests on XCUITest's own cross-app activate(); Android has no equivalent.
-    driver = AdbDriver("U", run=lambda a: FIXTURE)
-    with pytest.raises(base.UnsupportedAction):
-        driver.enter_app("com.example")
-    with pytest.raises(base.UnsupportedAction):
-        driver.leave_app()
 
 
 def test_screenshot_writes_capture_bytes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

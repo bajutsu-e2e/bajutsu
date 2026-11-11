@@ -818,16 +818,17 @@ def test_delete_text_presses_backspace_count_times() -> None:
     assert page.keyboard.pressed == ["Backspace", "Backspace", "Backspace"]
 
 
-def test_select_all_presses_control_a() -> None:
+def test_select_all_presses_control_or_meta_a() -> None:
+    # `ControlOrMeta`, not `Control`: Ctrl+A selects nothing in Chromium on a macOS host (#2390).
     drv, page = _driver([])
     drv.select_all()
-    assert page.keyboard.pressed == ["Control+a"]
+    assert page.keyboard.pressed == ["ControlOrMeta+a"]
 
 
-def test_copy_selection_presses_control_c() -> None:
+def test_copy_selection_presses_control_or_meta_c() -> None:
     drv, page = _driver([])
     drv.copy_selection()
-    assert page.keyboard.pressed == ["Control+c"]
+    assert page.keyboard.pressed == ["ControlOrMeta+c"]
 
 
 def test_wait_for_is_single_shot() -> None:
@@ -1496,7 +1497,7 @@ def test_finalized_video_keeps_its_real_webm_magic_bytes(tmp_path: Any) -> None:
 
 
 def test_enter_app_and_leave_app_unsupported() -> None:
-    # app: rests on XCUITest's own cross-app activate(); a browser has no bundle ids.
+    # app: rests on a native backend's own app switching; a browser has no bundle ids.
     drv, _ = _driver([])
     with pytest.raises(base.UnsupportedAction):
         drv.enter_app("com.example")
