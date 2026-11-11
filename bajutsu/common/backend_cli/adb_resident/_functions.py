@@ -65,7 +65,13 @@ _NO_ENDPOINT_STATUS = 404
 # with one of `_PICKER_REFUSALS` ahead of a colon, kept in step with the server's reason tokens.
 _REFUSED_STATUS = 422
 _PICKER_REFUSALS = frozenset(
-    {"not-a-picker-wheel", "picker-value-absent", "picker-walk-exhausted", "picker-immovable"}
+    {
+        "not-a-picker-wheel",
+        "picker-value-absent",
+        "picker-walk-exhausted",
+        "picker-immovable",
+        "picker-wheel-ambiguous",
+    }
 )
 
 # SystemUI owns the status and navigation bars — separate windows that `dumpWindowHierarchy` traverses

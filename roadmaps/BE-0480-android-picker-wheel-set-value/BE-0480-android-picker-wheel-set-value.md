@@ -252,7 +252,7 @@ Log:
 
 - 2026-11-11 — Units 1–6 landed together ([#2412](https://github.com/bajutsu-e2e/bajutsu/pull/2412)).
   `picker_wheel` passed on an API 34 arm64 emulator for both the Compose and Views showcase apps.
-  Four deviations from the Detailed design:
+  Five deviations from the Detailed design:
   - A `NumberPicker` node carries no `resource-id`, because its accessibility provider sets none.
     The showcase screens therefore put each id on a container around the wheel. The scenario
     reaches the wheel through `within` plus `pickerWheel`, as it does on iOS.
@@ -268,10 +268,10 @@ Log:
     iOS-only.
   - The self-review pass hardened the walk beyond the design. A row that stays unchanged across two
     row budgets now fails as `picker-walk-exhausted` instead of reading as an edge, since turning
-    back there could report a row the wheel then leaves. A landed row must hold for 400 ms. A wheel
-    that refuses both scroll directions answers a fifth status, `picker-immovable`. The device
-    matches the wheel by its whole identity and refuses two matches, and the host first refuses a
-    wheel another element covers, as `tap` does.
+    back there could report a row the wheel then leaves. A landed row must hold for 400 ms. Two
+    statuses join the design's: `picker-immovable` for a wheel that refuses both scroll directions,
+    and `picker-wheel-ambiguous` when two nodes on the device match the wheel's whole identity. The
+    host first refuses a wheel another element covers, as `tap` does.
 
 ## References
 

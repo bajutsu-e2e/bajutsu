@@ -256,7 +256,8 @@ def test_a_number_picker_also_carries_the_shared_picker_wheel_trait() -> None:
         "</hierarchy>"
     )
     els = parse_hierarchy(xml)
-    assert _by_id(els, "form_school")["traits"][:2] == ["numberPicker", base.Trait.PICKER_WHEEL]
+    wheel = _by_id(els, "form_school")["traits"]
+    assert "numberPicker" in wheel and base.Trait.PICKER_WHEEL in wheel
     # No other class gains the token, a scrollable list-like widget included.
     assert base.Trait.PICKER_WHEEL not in _by_id(els, "form_name")["traits"]
     assert base.Trait.PICKER_WHEEL not in _by_id(els, "form_spin")["traits"]

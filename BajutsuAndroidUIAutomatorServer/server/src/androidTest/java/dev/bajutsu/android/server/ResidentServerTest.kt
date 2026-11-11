@@ -446,7 +446,11 @@ class ResidentServerTest {
             WheelSearch.Absent ->
                 return refusePicker(out, NOT_A_PICKER_WHEEL, "no android.widget.NumberPicker at $bounds")
             is WheelSearch.Ambiguous ->
-                return refusePicker(out, NOT_A_PICKER_WHEEL, "${found.count} NumberPickers at $bounds")
+                return refusePicker(
+                    out,
+                    PICKER_WHEEL_AMBIGUOUS,
+                    "${found.count} nodes match the wheel's identity at $bounds",
+                )
             WheelSearch.TooLarge ->
                 return respond(
                     out,
@@ -1365,6 +1369,7 @@ class ResidentServerTest {
         const val PICKER_VALUE_ABSENT = "picker-value-absent"
         const val PICKER_WALK_EXHAUSTED = "picker-walk-exhausted"
         const val PICKER_IMMOVABLE = "picker-immovable"
+        const val PICKER_WHEEL_AMBIGUOUS = "picker-wheel-ambiguous"
 
         // The most rows one `/setPickerValue` steps across both passes. A spinner `DatePicker`'s year
         // wheel spans about 200 rows, so a walk to its far edge and back still fits.

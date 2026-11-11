@@ -144,6 +144,7 @@ def test_a_stale_loop_that_never_settles_fails_naming_the_selector() -> None:
         ("picker-value-absent", "has no row '大学'"),
         ("picker-walk-exhausted", "ran out of budget"),
         ("picker-immovable", "refused to scroll either way"),
+        ("picker-wheel-ambiguous", "narrow the selector's `within`"),
         ("failed", "could not land the wheel"),
     ],
 )
@@ -267,6 +268,7 @@ def test_the_trace_keeps_the_picker_call_but_not_its_value() -> None:
     [
         ("not-a-picker-wheel", False),
         ("picker-immovable", False),
+        ("picker-wheel-ambiguous", False),
         ("picker-value-absent", True),
         ("picker-walk-exhausted", True),
     ],
@@ -351,7 +353,13 @@ def test_the_client_reports_a_stale_wheel_rather_than_raising(serve: Callable[..
 
 @pytest.mark.parametrize(
     "reason",
-    ["not-a-picker-wheel", "picker-value-absent", "picker-walk-exhausted", "picker-immovable"],
+    [
+        "not-a-picker-wheel",
+        "picker-value-absent",
+        "picker-walk-exhausted",
+        "picker-immovable",
+        "picker-wheel-ambiguous",
+    ],
 )
 def test_the_client_maps_each_refusal_to_its_reason(serve: Callable[..., int], reason: str) -> None:
     port = serve(422, f"{reason}: what the device saw\n".encode())

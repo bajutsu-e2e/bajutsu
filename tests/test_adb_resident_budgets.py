@@ -11,6 +11,7 @@ import re
 from pathlib import Path
 
 from bajutsu.common.backend_cli.adb_resident import budgets
+from bajutsu.common.backend_cli.adb_resident._functions import _PICKER_REFUSALS
 
 _SERVER = (
     Path(__file__).resolve().parents[1]
@@ -106,3 +107,10 @@ def test_set_picker_value_fits_inside_its_timeout_with_every_stage_at_its_ceilin
         + _seconds("ACT_TREE_BUDGET_MS")
     )
     assert waits <= budgets.PICKER_TIMEOUT_S - 1.0
+
+
+def test_the_picker_refusal_tokens_are_the_ones_the_server_sends() -> None:
+    # BE-0480: a token renamed on the device side would otherwise degrade every refusal to the
+    # driver's generic message, with nothing in the gate to notice.
+    tokens = set(re.findall(r'const val (?:NOT_A_)?PICKER_\w+ = "([\w-]+)"', _CODE))
+    assert tokens == set(_PICKER_REFUSALS)

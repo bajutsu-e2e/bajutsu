@@ -188,12 +188,21 @@ def _traced_type(type_text: TypeFn) -> TypeFn:
     return _wrapped
 
 
+# The refusals the server gives before stepping any row, so the cached tree still holds.
+_UNMOVED_REFUSALS = frozenset({"not-a-picker-wheel", "picker-immovable", "picker-wheel-ambiguous"})
+
+
 def _picker_refusal(sel: base.Selector, value: str, exc: AdbPickerRefused) -> str:
     """The step's failure message for one `/setPickerValue` refusal, kept apart per cause."""
     if exc.reason == "not-a-picker-wheel":
         return f"setPickerValue {sel!r}: the element is not an android.widget.NumberPicker ({exc.detail})"
     if exc.reason == "picker-value-absent":
         return f"setPickerValue {sel!r}: the wheel has no row {value!r} ({exc.detail})"
+    if exc.reason == "picker-wheel-ambiguous":
+        return (
+            f"setPickerValue {sel!r}: more than one wheel on the device matches the resolved one; "
+            f"narrow the selector's `within` ({exc.detail})"
+        )
     if exc.reason == "picker-immovable":
         return (
             f"setPickerValue {sel!r}: the wheel refused to scroll either way, so it is likely "
@@ -1857,7 +1866,7 @@ class AdbDriver(CoordinateTreeDriver):
             ) from exc
         except AdbPickerRefused as exc:
             self._actuations.settle(False)
-            if exc.reason not in ("not-a-picker-wheel", "picker-immovable"):
+            if exc.reason not in _UNMOVED_REFUSALS:
                 # A refused walk still stepped rows on the way.
                 self.invalidate_settled_cache()
                 self._arm_catchup(pre_key, mark)
