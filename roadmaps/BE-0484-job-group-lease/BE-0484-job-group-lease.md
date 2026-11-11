@@ -9,6 +9,7 @@
 | Author | [@paihu](https://github.com/paihu) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0484") |
+| Implementing PR | [#2417](https://github.com/bajutsu-e2e/bajutsu/pull/2417) (unit 1) |
 | Topic | Device-cloud execution |
 | Related | [BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out.md), [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md), [BE-0465](../BE-0465-serve-ui-device-farm-fan-out/BE-0465-serve-ui-device-farm-fan-out.md), [BE-0468](../BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of.md) |
 <!-- /BE-METADATA -->
@@ -226,7 +227,7 @@ Out of scope: publishing a group's result as a GitHub check, sharing uploads bet
 
 Log:
 
-- 2026-11-11 — PR_LINK landed unit 1. `POST /api/run-set` writes a `job_groups` row and returns
+- 2026-11-11 — [#2417](https://github.com/bajutsu-e2e/bajutsu/pull/2417) landed unit 1. `POST /api/run-set` writes a `job_groups` row and returns
   `groupId`. Every job of the request stores its group, compatibility, route, and base keys. Every
   job now stores its actor. The request refuses a scenario named twice. Two routes are new:
   `GET /api/run-set/<groupId>` and `POST /api/run-set/<groupId>/cancel`. A machine may register a

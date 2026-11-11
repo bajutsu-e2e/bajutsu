@@ -9,6 +9,7 @@
 | 提案者 | [@paihu](https://github.com/paihu) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0484") |
+| 実装 PR | [#2417](https://github.com/bajutsu-e2e/bajutsu/pull/2417)（単位 1） |
 | トピック | Device-cloud execution |
 | 関連 | [BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out-ja.md), [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch-ja.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md), [BE-0465](../BE-0465-serve-ui-device-farm-fan-out/BE-0465-serve-ui-device-farm-fan-out-ja.md), [BE-0468](../BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of-ja.md) |
 <!-- /BE-METADATA -->
@@ -226,7 +227,7 @@ worker は、その互換キーを持つ job が1件でも実行中のあいだ�
 
 ログ：
 
-- 2026-11-11：PR_LINK で単位 1 を実装しました。`POST /api/run-set` は `job_groups` に行を書き、`groupId`
+- 2026-11-11：[#2417](https://github.com/bajutsu-e2e/bajutsu/pull/2417) で単位 1 を実装しました。`POST /api/run-set` は `job_groups` に行を書き、`groupId`
   を返します。リクエストの各ジョブは、グループ、互換性キー、ルートキー、ベースキーを保存します。すべての
   ジョブが actor も保存するようになりました。同じシナリオを2回指定したリクエストは拒否します。新しいルートは
   `GET /api/run-set/<groupId>` と `POST /api/run-set/<groupId>/cancel` の2つです。マシンは自分の組織の下で、
