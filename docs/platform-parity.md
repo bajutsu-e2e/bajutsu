@@ -118,7 +118,7 @@ declare, or outside what the two tables cover.
 
 | Behavior | iOS | Android | What it means today |
 |---|---|---|---|
-| Text in an editable field | The element's `value` holds the text. | The text lands in `label`, and `value` holds the `content-desc`. | A `value` assertion on a text field fails to read the text. A `clear` step reads `value` first and does nothing when it is empty. |
+| Text in an editable field | The element's `value` holds the text. | `value` holds the text too (#2388), with two gaps: the `uiautomator dump` fallback carries no `hint`, so an empty field's hint reads as its value; and no dump carries `isShowingHintText`, so text equal to the field's hint reads as no value. | On the fallback read path a `value` assertion on an empty field reads its hint, and a `clear` step does nothing on a field whose text equals its hint. See [drivers](drivers.md). |
 | `select` and `copy` | XCUITest selects and copies natively. | adb sends Ctrl+A and Ctrl+C through `input keycombination`, which needs Android 12 or later. | No Android scenario runs the pair, and the conformance test checks only that neither call raises. |
 | `setLocation` | `simctl` sets it on the Simulator. | The emulator console sets it. | Neither backend sets the location on a real device yet. [BE-0475](../roadmaps/BE-0475-ios-runner-set-location/BE-0475-ios-runner-set-location.md) covers iOS. |
 | Clipboard steps | `simctl` reads and writes the pasteboard. | A receiver inside the app does the work. The app must link BajutsuAndroid, and Android 10 or later lets only the focused app read the clipboard. | An app without BajutsuAndroid fails every clipboard step, and so does a read while the app is in the background. |

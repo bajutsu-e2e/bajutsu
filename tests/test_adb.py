@@ -264,6 +264,71 @@ def test_a_number_picker_also_carries_the_shared_picker_wheel_trait() -> None:
     assert base.Trait.PICKER_WHEEL not in _by_id(els, "form_spin")["traits"]
 
 
+# #2388: a Compose text field and a Views EditText both dump as `android.widget.EditText`. Their typed
+# text must read as `value` — what a `value` assertion and `clear` read — while `label` stays the
+# field's accessible name. An empty Views field reports its hint as `text`; the `hint` attribute
+# (UI Automator 2.3+) is what tells the two apart.
+EDITABLE_FIELDS = """<hierarchy rotation="0">
+  <node resource-id="search.field" class="android.widget.EditText" text="Horse 3" content-desc=""
+    hint="Search horses" bounds="[0,0][100,50]" />
+  <node resource-id="com.app:id/search_field" class="android.widget.EditText" text="Search horses"
+    content-desc="" hint="Search horses" bounds="[0,50][100,100]" />
+  <node resource-id="auth.password" class="android.widget.EditText" text="hunter2" content-desc=""
+    password="true" hint="Password" bounds="[0,100][100,150]" />
+  <node resource-id="note" class="android.widget.EditText" text="trot" content-desc="Note"
+    bounds="[0,150][100,200]" />
+  <node resource-id="blank" class="android.widget.EditText" text="" bounds="[0,200][100,250]" />
+  <node resource-id="caption" class="android.widget.TextView" text="Horse 3" content-desc="3"
+    bounds="[0,250][100,300]" />
+</hierarchy>"""
+
+
+def test_editable_field_reads_typed_text_as_value_and_keeps_its_name_as_label() -> None:
+    els = parse_hierarchy(EDITABLE_FIELDS)
+    typed = _by_id(els, "search.field")
+    assert typed["value"] == "Horse 3"  # the typed text, not content-desc
+    assert typed["label"] == "Search horses"  # the hint names it, not the typed text
+    # An empty field showing its hint has no value: the hint must not read as typed text.
+    empty = _by_id(els, "search_field")
+    assert empty["value"] is None
+    assert empty["label"] == "Search horses"
+    # A masked field never leaks its text into value, but keeps its name.
+    secret = _by_id(els, "auth.password")
+    assert secret["value"] is None
+    assert secret["label"] == "Password"
+    # content-desc is the accessible name when present, ahead of the hint.
+    note = _by_id(els, "note")
+    assert (note["label"], note["value"]) == ("Note", "trot")
+    # A field with no text, name, or hint is wholly blank rather than empty-string.
+    blank = _by_id(els, "blank")
+    assert (blank["label"], blank["value"]) == (None, None)
+    # A non-editable node keeps the SPEC §2.1 split: visible text → label, content-desc → value.
+    caption = _by_id(els, "caption")
+    assert (caption["label"], caption["value"]) == ("Horse 3", "3")
+
+
+def test_editable_field_without_a_hint_attribute_reads_its_text_as_value() -> None:
+    # The `uiautomator dump` fallback may omit `hint`, so an empty field's hint there reads as value,
+    # and `text` stays the label so a label selector resolves on that read path too. A masked field's
+    # text never leaks into either, and an AutoCompleteTextView (which reports its own class) maps
+    # the same way as an EditText.
+    xml = """<hierarchy rotation="0">
+  <node resource-id="search.field" class="android.widget.EditText" text="Search horses"
+    content-desc="" bounds="[0,0][100,50]" />
+  <node resource-id="pw" class="android.widget.EditText" text="hunter2" password="true"
+    bounds="[0,50][100,100]" />
+  <node resource-id="pick" class="android.widget.AutoCompleteTextView" text="Bay" content-desc=""
+    hint="Coat" bounds="[0,100][100,150]" />
+</hierarchy>"""
+    els = parse_hierarchy(xml)
+    field = _by_id(els, "search.field")
+    assert (field["label"], field["value"]) == ("Search horses", "Search horses")
+    pw = _by_id(els, "pw")
+    assert (pw["label"], pw["value"]) == (None, None)
+    pick = _by_id(els, "pick")
+    assert (pick["label"], pick["value"]) == ("Coat", "Bay")
+
+
 def test_resource_id_with_no_local_name_is_none_not_empty() -> None:
     # A malformed resource-id ending in `/` must yield identifier None, not "" (which no selector
     # matches yet is falsy-but-present).
@@ -970,7 +1035,27 @@ def test_delete_text_sends_count_backspaces_in_one_keyevent() -> None:
         return ""
 
     AdbDriver("U", run=run).delete_text(3)
-    assert calls == [["adb", "-s", "U", "shell", "input", "keyevent", "67", "67", "67"]]
+    # The one dump before it is the read barrier's baseline (see the test below).
+    assert calls[-1] == ["adb", "-s", "U", "shell", "input", "keyevent", "67", "67", "67"]
+    assert len(calls) == 2
+
+
+def test_delete_text_arms_the_read_barrier(monkeypatch: pytest.MonkeyPatch) -> None:
+    # #2388: a deletion shows only in the field's `value`, so the read after it must postdate it, the
+    # same barrier a pan arms. Without it a lagging tree answers with the pre-delete text — the adb
+    # conformance lane's `test_delete_text_reduces_the_field_length` failure.
+    clock = _Clock()
+    monkeypatch.setattr(adb_driver_impl, "time", clock)
+    driver, _ = _resident_driver(
+        reads=[(FIXTURE, 1000.0), (FIXTURE, 1000.0), (FIXTURE, 1001.0)],
+        clocks=[1000.0],
+    )
+    driver.query()
+    driver.delete_text(2)  # takes the mark 1000 and arms the barrier
+    driver.query()  # same mark — still stale
+    assert driver._catchup is not None
+    driver.query()  # mark 1001 postdates the deletion → caught up
+    assert driver._catchup is None
 
 
 def test_select_all_is_ctrl_a_keycombination() -> None:
