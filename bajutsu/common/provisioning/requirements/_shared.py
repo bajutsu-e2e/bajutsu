@@ -18,9 +18,10 @@ InstallMethod = Extra | Brew | Playwright | Manual
 # the sole iOS backend) needs Xcode's `xcodebuild`. The web browser is engine-specific, so it is not
 # listed here (see `playwright_browser`). `adb` (Android, BE-0007) needs the platform-tools `adb`
 # binary; the emulator is only needed to *boot* an AVD, not to drive a running device, so it is not
-# listed. `fake` needs nothing.
+# listed. Its `android` extra carries the WebSocket client a `web:` block's CDP source needs (BE-0482).
+# `fake` needs nothing.
 BACKENDS: dict[str, Requirement] = {
-    "adb": Requirement(tools=(Tool("adb", Brew("android-platform-tools")),)),
+    "adb": Requirement(extra="android", tools=(Tool("adb", Brew("android-platform-tools")),)),
     "playwright": Requirement(extra="web"),
     "xcuitest": Requirement(
         tools=(Tool("xcodebuild", Manual("Xcode — `xcode-select --install`")),)

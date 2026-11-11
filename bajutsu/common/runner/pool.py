@@ -24,7 +24,6 @@ from bajutsu.common.backends import (
 from bajutsu.common.backends import make_driver as _make_driver
 from bajutsu.common.config import Effective, resolve_preconditions
 from bajutsu.common.drivers import base
-from bajutsu.common.drivers.webview import WebViewBridge
 from bajutsu.common.evidence import FileSink
 from bajutsu.common.evidence.network import Collector, NetworkCollector, _no_transitions
 from bajutsu.common.evidence.redaction import Redactor
@@ -52,30 +51,6 @@ from bajutsu.common.scenario import Scenario, dump_scenario_file, redact_totp_se
 __all__ = ["device_control", "device_pool", "device_relauncher"]
 
 _logger = logging.getLogger(__name__)
-
-
-def _alloc_webview_bridge(
-    lease_env: RunEnvironment, eff: Effective
-) -> tuple[WebViewBridge | None, int | None, Callable[[], None]]:
-    """Allocate a WebView bridge for platforms that need one (iOS, not web).
-
-    Returns the host-side client, the port the app binds on the device, and the teardown of whatever
-    joins the two (a usbmuxd bridge on a real device, nothing where the host shares the device's
-    loopback); `(None, None, no-op)` when the platform doesn't use the bridge.
-    """
-    if lease_env.observes_network_via_driver():
-        return None, None, _no_release
-    import socket
-
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        port = s.getsockname()[1]
-    host_port, release = lease_env.reach_device_port(eff, port)
-    return WebViewBridge(port=host_port), port, release
-
-
-def _no_release() -> None:
-    pass
 
 
 def _chain(first: Callable[[], None], then: Callable[[], None]) -> Callable[[], None]:
@@ -456,7 +431,7 @@ def device_pool(  # noqa: C901, PLR0915
                 # Make the host collector reachable from the leased device before launch (Android
                 # tunnels the port with `adb reverse`; iOS shares the loopback and no-ops) — BE-0283.
                 release_bridge = lease_env.bridge_collector(collector.port)
-            webview_bridge, webview_port, release_webview = _alloc_webview_bridge(lease_env, eff)
+            webview_bridge, webview_port, release_webview = lease_env.webview_source(eff)
             # Joined to the collector's teardown, so every path that releases one releases both.
             release_bridge = _chain(release_bridge, release_webview)
             if webview_port is not None:

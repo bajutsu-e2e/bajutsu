@@ -10,7 +10,7 @@ from functools import partial
 from bajutsu.common.assertions import AssertionResult
 from bajutsu.common.cancellation import RunCancelled
 from bajutsu.common.drivers import base, tracing
-from bajutsu.common.drivers.webview import WebContextDriver
+from bajutsu.common.drivers.webview import WebContextDriver, WebViewTransportError
 from bajutsu.common.evidence import Artifact, NullSink, intervals, start_after_screenshot
 from bajutsu.common.orchestrator.actions import (
     _action_of,
@@ -695,17 +695,17 @@ class _StepRunner:
     ) -> str | None:
         assert step.web is not None
         try:
-            if self.cfg.webview_bridge is None:
-                ok, reason = (
-                    False,
-                    "web: no WebView bridge configured (BAJUTSU_WEBVIEW_PORT not set)",
-                )
+            source = self.cfg.webview_bridge
+            if source is None:
+                ok, reason = False, "web: this run has no WebView source for its platform"
             else:
                 sel = interp.interpolate(
                     step.web.within.model_dump(by_alias=True), self.state.bindings
                 )
                 host_sel = Selector.model_validate(sel).as_selector()
-                base.resolve_unique(active_driver.query(), host_sel)
+                # Kept, not discarded: its frame is how a source with no native id (Android's
+                # CDP) tells which WebView the block means (BE-0482).
+                host_el = base.resolve_unique(active_driver.query(), host_sel)
                 host_id = step.web.within.first_id()
                 if host_id is None:
                     ok, reason = False, "web: within selector must specify an id"
@@ -713,21 +713,27 @@ class _StepRunner:
                     # The inner steps run against a WebView driver; the active driver is
                     # passed explicitly, so control returns to `active_driver` for the
                     # steps after this block with no shared mutable state (BE-0172).
-                    web_driver = WebContextDriver(
-                        bridge=self.cfg.webview_bridge, webview_id=host_id
-                    )
+                    web_driver = WebContextDriver(bridge=source, webview_id=host_id)
                     # The inner steps run on a different driver, so its trees must not seed a
                     # native step's `before`: reset around the block on both sides (BE-0234). The
                     # screenshot reuse marker (BE-0407 Unit 1) is unaffected — the shutter always
                     # targets the native driver, web block or not, so the previous leaf step's
                     # `after.png` still describes the same screen this one is about to act on.
                     self.state.prev_after = None
-                    failure = self.exec_steps(step.web.steps, web_driver)
-                    self.state.prev_after = None
+                    try:
+                        with source.session(host_id, host_el["frame"]):
+                            failure = self.exec_steps(step.web.steps, web_driver)
+                    finally:
+                        self.state.prev_after = None
                     ok = failure is None
                     reason = failure or ""
         except base.SelectorError as e:
             ok, reason = False, str(e)
+        except WebViewTransportError as e:
+            # Caught here, because no layer below does: the inner handlers catch selector and
+            # reachability errors only, and an escaping exception would discard every scenario's
+            # result in the run, the ones already passed included (BE-0482).
+            ok, reason = False, f"web: {e}"
         outcome.ok, outcome.reason = ok, reason
         outcome.duration_s = self.cfg.clock.now() - start
         # `active_driver`, not the inner `web_driver`: the query this drains is the `within`
