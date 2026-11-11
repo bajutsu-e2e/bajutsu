@@ -15,7 +15,7 @@
 
 ## Introduction
 
-This item adds an automated guard, backed by [gitleaks](https://github.com/gitleaks/gitleaks). The guard blocks an API key, a cloud credential, or a private key from being committed to this repository. The guard has two layers. A tracked local git hook gives a contributor immediate feedback at commit time. A CI step re-scans every tracked file independently. A bypassed or never-installed local hook still gets caught before a PR merges.
+This item adds an automated guard, backed by [gitleaks](https://github.com/gitleaks/gitleaks). The guard blocks an API key, a cloud credential, or a private key from being committed to this repository. The guard has two layers. A tracked local git hook gives a contributor immediate feedback at commit time. A CI step re-scans every tracked file independently, so a secret still gets caught before a PR merges even when a contributor bypasses the local hook or never installs it.
 
 The item continues the *Contributor workflow* line. That line turned the review checklist for a scoped commit subject into an executable [commit-msg hook](../BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails.md). It also turned the review checklist for a conflict-free `uv.lock` merge into an executable [merge driver](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md). A session can forget a guardrail that only prose enforces, so this item makes "don't commit a secret" a command instead.
 
@@ -27,7 +27,7 @@ The proposal originally picked [git-secrets](https://github.com/awslabs/git-secr
 
 The repository already treats this gap as unacceptable for its other guardrails. [BE-0069](../BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails.md) argues that "a recipe that is only read, never executed, rots". It turned the scoped-commit-subject convention into a hook precisely so that nobody could skip the convention silently. A secret is a sharper case than a style convention. A leaked `ANTHROPIC_API_KEY` or an AWS credential (the kind [`deploy/self-host/README.md`](../../deploy/self-host/README.md) asks a self-hoster to export) is a security incident, not a style nit. A secret deserves at least the enforcement that a non-scoped commit subject already gets.
 
-An AI session compounds the risk that this item closes. A human contributor pastes a credential rarely and usually notices. An agent authoring or debugging a scenario can copy a value into a file that it is about to commit. The value may come from `.env`, a terminal, or a captured network exchange. The agent has no habitual pause to reconsider. This project runs many AI sessions in parallel (`CLAUDE.md`), so the guard has to hold equally for every session. A command-backed hook provides that, because the hook is checked out of the box and no one opts in. A documentation-only warning does not.
+An AI session compounds the risk that this item closes. A human contributor pastes a credential rarely and usually notices. An agent authoring or debugging a scenario can copy a value into a file that it is about to commit. The value may come from `.env`, a terminal, or a captured network exchange. The agent has no habitual pause to reconsider. This project runs many AI sessions in parallel (`CLAUDE.md`), so the guard has to hold equally for every session. A command-backed hook gives that guarantee, because the hook is checked out of the box and needs no opt-in. A documentation-only warning does not.
 
 ## Detailed design
 

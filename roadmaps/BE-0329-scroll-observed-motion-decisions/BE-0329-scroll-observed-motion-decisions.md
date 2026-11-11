@@ -24,7 +24,7 @@ The first defect is in how the loop decides that the content has ended. The loop
 
 The second defect is in the size of one scroll step. A step is meant to advance 0.6 of the screen. The code assumes that the content advances at most as far as the step asks for. If the gesture leaves any momentum, the content advances further. Once the content advances more than a full screen in one step, the target can pass between two queries without ever being looked at.
 
-The fix changes what the loop may conclude from two consecutive trees. The loop reports the end of the content in one of two cases.
+The fix changes what the loop may conclude from two consecutive trees. The loop reports the end of the content in the cases below.
 
 - An element that the loop has already seen move is still there and has stopped moving.
 - Every element in the region is clipped, so the tree can show nothing. In that case, the screen as drawn must also stop changing.
@@ -105,7 +105,7 @@ The first condition is the sound one. An element that has already moved during t
 - A collapsing app bar shifts once on the first scroll and then pins. The app bar becomes a mover that stands still forever while the list scrolls behind it.
 - A large title contracting on the first scroll does the same.
 
-A cut-off element speaks against a mover only when the cut-off element is larger along the scroll axis and does not contain the mover. Only something larger could hold content of its own that the mover sits outside of. The list that a row belongs to contains that row. The list that an app bar sits above does not contain the app bar. The same rule leaves the own neighbour of a mover alone. The row that the screen's edge cut off is no larger than the mover, so the row can hold nothing.
+A cut-off element speaks against a mover only when the cut-off element is larger along the scroll axis and does not contain the mover. Only something larger could hold content of its own that the mover sits outside of. The list that a row belongs to contains that row. The list that an app bar sits above does not contain the app bar. The same rule also leaves a mover's own neighbour alone. The row that the screen's edge cut off is no larger than the mover, so the row can hold nothing.
 
 A position-fixed element is excluded more simply. A sticky header never moves, so the header never enters the mover set at all.
 
@@ -127,7 +127,7 @@ What no capture can settle remains. An indeterminate progress bar keeps the chec
 
 Suppose nothing that was in view before the step is on screen at all after the step. Then the content advanced at least a full viewport. That is exactly the condition under which the target can pass unseen. The condition is directly visible in the two trees that the loop already holds.
 
-*On screen at all* is what makes the inference sound, and partly counts. An element that the step pushed half off the edge is still evidence that the two viewports overlapped, so nothing between them went unqueried. Reading the fully visible elements alone would fire on every step of a screen that shows one element at a time. A carousel card, or a row nearly as tall as the viewport, is replaced in that set by its neighbour after far less than a viewport of travel. The loop would halve the step and look back on an ordinary list.
+*On screen at all* is what makes the inference sound, and partial presence counts. An element that the step pushed half off the edge is still evidence that the two viewports overlapped, so nothing between them went unqueried. Reading the fully visible elements alone would fire on every step of a screen that shows one element at a time. A carousel card, or a row nearly as tall as the viewport, is replaced in that set by its neighbour after far less than a viewport of travel. The loop would halve the step and look back on an ordinary list.
 
 The inference also needs each of the two trees to have had something in view. A tree with nothing in view describes a viewport covered by an element larger than the viewport. That is the case above where the tree shows nothing, rather than evidence of travel. The ordinary step that scrolls *into* such an element ends that way while advancing a fraction of a viewport. So does the step that scrolls back out. The price is a fling that lands inside an element taller than the viewport. The loop treats that fling as a step that the loop cannot judge. The conformance check below keeps such a gesture out of the shipped backends.
 

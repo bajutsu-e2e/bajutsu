@@ -14,7 +14,7 @@
 
 ## はじめに
 
-本項目では、Claude Code 向けのスキルを配布します。Claude Code は、Anthropic のコーディングエージェントで、Command Line Interface（CLI）を備えています。このスキルは、`bajutsu` の配布物に同梱するパッケージとして提供します。
+本項目では、Claude Code 向けのスキルを配布します。Claude Code は、Anthropic のコーディングエージェントの Command Line Interface（CLI）です。このスキルは、`bajutsu` の配布物に同梱するパッケージとして提供します。
 
 スキルは、対象自身のソースコードを読み取ります。読み取った内容から、`bajutsu.config.yaml` のエントリと、対象の最初のシナリオファイルを起草します。起草した内容は、`run` がすでに備えているデバイス不要のツール群で検証します。開発者は、Simulator やブラウザ、エミュレータを起動する前に、この検証を終えられます。
 
