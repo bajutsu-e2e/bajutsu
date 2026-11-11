@@ -1024,7 +1024,27 @@ def test_delete_text_sends_count_backspaces_in_one_keyevent() -> None:
         return ""
 
     AdbDriver("U", run=run).delete_text(3)
-    assert calls == [["adb", "-s", "U", "shell", "input", "keyevent", "67", "67", "67"]]
+    # The one dump before it is the read barrier's baseline (see the test below).
+    assert calls[-1] == ["adb", "-s", "U", "shell", "input", "keyevent", "67", "67", "67"]
+    assert len(calls) == 2
+
+
+def test_delete_text_arms_the_read_barrier(monkeypatch: pytest.MonkeyPatch) -> None:
+    # #2388: a deletion shows only in the field's `value`, so the read after it must postdate it, the
+    # same barrier a pan arms. Without it a lagging tree answers with the pre-delete text — the adb
+    # conformance lane's `test_delete_text_reduces_the_field_length` failure.
+    clock = _Clock()
+    monkeypatch.setattr(adb_driver_impl, "time", clock)
+    driver, _ = _resident_driver(
+        reads=[(FIXTURE, 1000.0), (FIXTURE, 1000.0), (FIXTURE, 1001.0)],
+        clocks=[1000.0],
+    )
+    driver.query()
+    driver.delete_text(2)  # takes the mark 1000 and arms the barrier
+    driver.query()  # same mark — still stale
+    assert driver._catchup is not None
+    driver.query()  # mark 1001 postdates the deletion → caught up
+    assert driver._catchup is None
 
 
 def test_select_all_is_ctrl_a_keycombination() -> None:
