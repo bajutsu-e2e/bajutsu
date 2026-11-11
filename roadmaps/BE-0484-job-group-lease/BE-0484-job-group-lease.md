@@ -9,7 +9,7 @@
 | Author | [@paihu](https://github.com/paihu) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0484") |
-| Implementing PR | [#2417](https://github.com/bajutsu-e2e/bajutsu/pull/2417) (unit 1) |
+| Implementing PR | [#2417](https://github.com/bajutsu-e2e/bajutsu/pull/2417) (unit 1), [#2426](https://github.com/bajutsu-e2e/bajutsu/pull/2426) (unit 2) |
 | Topic | Device-cloud execution |
 | Related | [BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out.md), [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md), [BE-0465](../BE-0465-serve-ui-device-farm-fan-out/BE-0465-serve-ui-device-farm-fan-out.md), [BE-0468](../BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of.md) |
 <!-- /BE-METADATA -->
@@ -247,7 +247,7 @@ Log:
     `GET /api/jobs/<id>` leaves a person unscoped, so the group read is the tighter of the two.
     Cancel needs the editor role in the group's org. A machine stays bound to its own org.
   - `docs/devicefarm.md` and `docs/self-hosting.md` describe the new routes in both languages. Unit 6 keeps the full documentation pass.
-- 2026-11-11 — PR_LINK landed unit 2. A `run-set` job now carries a run intent in place of a
+- 2026-11-11 — [#2426](https://github.com/bajutsu-e2e/bajutsu/pull/2426) landed unit 2. A `run-set` job now carries a run intent in place of a
   batch. The intent names the scenario, the target, and the config. It also names the platform, the
   application path, and the upload-execution policy. The worker that leases the job turns the intent into its own
   form first. A device-cloud worker submits it as its own provider's batch. Any other worker runs it

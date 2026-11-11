@@ -9,7 +9,7 @@
 | 提案者 | [@paihu](https://github.com/paihu) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0484") |
-| 実装 PR | [#2417](https://github.com/bajutsu-e2e/bajutsu/pull/2417)（単位 1） |
+| 実装 PR | [#2417](https://github.com/bajutsu-e2e/bajutsu/pull/2417)（単位 1）、[#2426](https://github.com/bajutsu-e2e/bajutsu/pull/2426)（単位 2） |
 | トピック | Device-cloud execution |
 | 関連 | [BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out-ja.md), [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch-ja.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md), [BE-0465](../BE-0465-serve-ui-device-farm-fan-out/BE-0465-serve-ui-device-farm-fan-out-ja.md), [BE-0468](../BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of-ja.md) |
 <!-- /BE-METADATA -->
@@ -248,7 +248,7 @@ worker は、その互換キーを持つ job が1件でも実行中のあいだ�
     マシンは自分の組織に限られたままです。
   - 新しいルートを説明する `docs/devicefarm.md` と `docs/self-hosting.md` の記述は、両言語ともこの単位で
     追加しました。ドキュメント全体の見直しは単位 6 に残します。
-- 2026-11-11：PR_LINK で単位 2 を実装しました。`run-set` のジョブは、バッチの代わりに実行意図を
+- 2026-11-11：[#2426](https://github.com/bajutsu-e2e/bajutsu/pull/2426) で単位 2 を実装しました。`run-set` のジョブは、バッチの代わりに実行意図を
   持ちます。中身はシナリオ、target、設定、プラットフォーム、アプリケーションのパス、アップロード実行の
   方針です。ジョブをリースしたワーカーは、ほかの処理が spec を読む前に、実行意図を自分の形に変換します。
   device cloud のワーカーは、自分の provider のバッチとして送ります。それ以外のワーカーは、通常の run
