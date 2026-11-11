@@ -33,6 +33,7 @@ from ._functions import (
     install_cmd,
     is_emulator_serial,
     launch_cmd,
+    launcher_component,
     location_broadcast_cmd,
     media_scan_cmd,
     mock_location_appop_cmd,
@@ -212,16 +213,10 @@ class Env:
             DeviceError: the package manager returned no launcher activity (app not installed, or no
                 launcher intent) — surfaced cleanly rather than launching an empty component.
         """
-        out = self._run(resolve_activity_cmd(self.serial, package))
-        for raw in reversed(out.splitlines()):
-            line = raw.strip()
-            # A launcher component is `<package>/<activity>`: a `/` with a non-empty left side and
-            # no spaces. Requiring a non-empty left side rejects a stray absolute path (`/data/…`)
-            # in the manager's chatter that would otherwise be launched as a bogus component.
-            head, sep, tail = line.partition("/")
-            if sep and head and tail and " " not in line:
-                return line
-        raise DeviceError(f"no launcher activity for {package} (is it installed?)")
+        component = launcher_component(self._run(resolve_activity_cmd(self.serial, package)))
+        if component is None:
+            raise DeviceError(f"no launcher activity for {package} (is it installed?)")
+        return component
 
     def launch(self, package: str, env: Mapping[str, str] | None = None) -> None:
         """Launch the app's default launcher activity, forwarding `env` as intent extras."""

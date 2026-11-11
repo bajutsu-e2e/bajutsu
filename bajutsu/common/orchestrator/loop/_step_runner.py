@@ -756,8 +756,9 @@ class _StepRunner:
             self.state.prev_after = None
             # `active_driver` is the *same* object throughout — unlike `web:`'s separate
             # `WebContextDriver`, `app:` reuses the native driver's full actuation surface, so
-            # nesting (enter A, enter B, leave, leave) is Swift's own stack discipline on the
-            # runner side; this method's own nesting is just recursion.
+            # nesting (enter A, enter B, leave, leave) is the backend's own stack (the XCUITest
+            # runner's, or the adb driver's `_app_stack`); this method's own nesting is just
+            # recursion.
             try:
                 failure = self.exec_steps(step.app.steps, active_driver)
             except BaseException:
