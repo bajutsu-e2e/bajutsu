@@ -22,6 +22,7 @@ baseline, the post-action shutter, and the tree read that follows it.
 
 from __future__ import annotations
 
+from contextlib import AbstractContextManager, nullcontext
 from pathlib import Path
 
 from bajutsu.common.drivers import base
@@ -323,6 +324,9 @@ def test_inline_raw_tree_is_dropped_inside_a_web_block() -> None:
     # unrelated backend and read entirely. Dropped rather than serviced, both here (it is never
     # pre-captured either, for the same driver mismatch) and post-step.
     class _Bridge:
+        def session(self, webview_id: str, frame: base.Frame) -> AbstractContextManager[None]:
+            return nullcontext()
+
         def query_dom(self, webview_id: str) -> list[base.Element]:
             return [_el("confirm", "Confirm")]
 

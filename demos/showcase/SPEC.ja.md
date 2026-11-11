@@ -226,6 +226,9 @@ Log から到達するモーダル（5 つの提示様式）：
 - `perm.notif.authorized`：許可後にのみ表示される要素（run が待てる肯定条件を与える）
 - `perm.requestLocation`：ボタン → `CLLocationManager.requestWhenInUseAuthorization`。**システムの位置情報プロンプト**を上げる（同じく SpringBoard）。
 - `perm.location.value`：`notDetermined`/`authorizedWhenInUse`/`denied`
+- `perm.location.read`：Android のみ。`gps` provider に新しい位置を 1 回だけ要求するボタン（BE-0481）
+- `perm.location.reading`：Android のみ。取得した位置を小数 3 桁の `lat,lon` で示す。要求中は `reading`、
+  位置がなければ `(none)`、権限がなければ `denied` になる
 - `perm.requestTracking`：ボタン → `ATTrackingManager.requestTrackingAuthorization`。フォームの最後の行に置く。**App Tracking Transparency のプロンプト**（SpringBoard）を上げる。BE-0445 のプローブは、このプロンプトを通知とペーストのプロンプトと並べて測る。
 - `perm.tracking.value`：`notDetermined`/`authorized`/`denied`
 

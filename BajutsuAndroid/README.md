@@ -4,7 +4,8 @@ English · [日本語](README.ja.md)
 
 BajutsuAndroid is the in-app device support library for [bajutsu](../) on Android. It is a test/debug-only
 Android library that lets bajutsu drive capabilities the platform exposes only from inside the app
-process. It backs the **clipboard** and **network capture**, and it is the Android peer of the iOS
+process. It backs the **clipboard**, the **location** on a real device, and **network capture**. It is
+the Android peer of the iOS
 [`BajutsuKit`](../BajutsuKit) package.
 
 ## Why in-app support
@@ -41,8 +42,9 @@ fails loudly rather than reading an empty clipboard as success.
 
 ## Integrate
 
-Add the library, then call `startClipboard(context)` once from `Application.onCreate`, in a
-**test/debug build only**. This call is the Android peer of BajutsuKit's `App.init()`.
+Add the library, then call `startClipboard(context)` and `startLocation(context)` once from
+`Application.onCreate`, in a **test/debug build only**. These calls are the Android peer of
+BajutsuKit's `App.init()`.
 
 Register the receiver before any Activity, so it is ready whichever screen bajutsu drives first. A
 launcher `Activity.onCreate` can be skipped when a multi-Activity app resumes into another entry.
@@ -54,14 +56,18 @@ import dev.bajutsu.android.Bajutsu
 class MyApp : Application() {
     override fun onCreate() {
         super.onCreate()
-        if (BuildConfig.DEBUG) Bajutsu.startClipboard(this)
+        if (BuildConfig.DEBUG) {
+            Bajutsu.startClipboard(this)
+            Bajutsu.startLocation(this)
+        }
     }
 }
 ```
 
-Point the manifest's `<application android:name>` at this class. The receiver is registered at runtime
-and nothing is declared in the manifest, so the receiver exists only when you call `startClipboard`.
-The call is idempotent, so it never double-registers.
+Point the manifest's `<application android:name>` at this class. The manifest declares neither
+receiver. Each `start` function registers its receiver at runtime. A receiver exists once you call its
+function, and not before. Each call is idempotent, so it never double-registers. An app that does not need the
+location on a real device can skip `startLocation`.
 
 To use the library as a Gradle module, include it by path. The showcase does this in
 [`demos/showcase/android/settings.gradle.kts`](../demos/showcase/android/settings.gradle.kts):
@@ -75,11 +81,68 @@ Then depend on the module: `implementation(project(":bajutsu-android"))`.
 
 ## Safety
 
-The receiver is **exported** with no permission. *Any* local app can therefore send the broadcast and
-read or write the clipboard, whether through adb or as another app installed on the device.
+Both receivers are **exported** with no permission. *Any* local app can therefore send the broadcast,
+whether through adb or as another app installed on the device. Such an app can read or write the
+clipboard, and it can move the app's location while bajutsu holds the mock-location grant.
 
-Use the library in **test/debug builds only**. Gate the `startClipboard` call behind `BuildConfig.DEBUG`
-(or your own test flag), so the call never runs in a release build.
+Use the library in **test/debug builds only**. Gate the `startClipboard` and `startLocation` calls
+behind `BuildConfig.DEBUG` (or your own test flag), so the calls never run in a release build.
+
+## Location on a real device
+
+This section covers the location route that [BE-0481](../roadmaps/BE-0481-android-device-set-location/BE-0481-android-device-set-location.md)
+added. A `setLocation` step needs no library on a local emulator. bajutsu sets the fix there through the
+emulator console (`adb emu geo fix`). A real device has no console, and neither has an emulator that
+adb reaches with `adb connect`. On those targets bajutsu moves the location through the app instead:
+
+1. It grants the app the mock-location app-op:
+   `adb shell appops set <package> android:mock_location allow`.
+2. It sends an ordered broadcast with the coordinates as strings:
+   `adb shell am broadcast -a dev.bajutsu.LOCATION -p <package> --es op set --es lat <lat> --es lon <lon>`.
+3. The receiver registers the `gps` and `network` providers as test providers with
+   `LocationManager.addTestProvider`, enables them, and sets the location on each.
+
+bajutsu picks the route on the first `setLocation` of a lease. The console route needs two things:
+
+- an `emulator-<port>` serial
+- the `ro.boot.qemu` or `ro.kernel.qemu` property set to `1`
+
+Every other target takes the in-app route.
+
+The receiver answers with one of four result codes:
+
+| Result | Meaning | What bajutsu reports |
+|---|---|---|
+| `1` | The location is set or cleared | — |
+| `2` | `addTestProvider` raised `SecurityException` | The app lacks the mock-location app-op |
+| `3` | A provider call raised `IllegalArgumentException` | The platform's message, from the result data |
+| `0` | No receiver handled the broadcast | The app does not call `startLocation` |
+
+The test providers may not survive the app process that registered them. They survived a
+force-stop and relaunch on an API 34 emulator, but other images and devices may differ. bajutsu sends
+the last location again after each launch it makes:
+
+- a `relaunch` step
+- the launch after an `installApp` step
+- a crawl's reset
+
+When the lease ends, bajutsu runs three steps:
+
+1. It broadcasts `clear`, which removes both test providers. When the app is no longer running,
+   bajutsu launches it first, because the providers outlive the process and only the app can remove them.
+2. It resets the app-op with `appops set <package> android:mock_location default`.
+3. It force-stops the app, as every lease's end does.
+
+The next scenario on the device starts from the device's real location. If the first or second step goes wrong,
+bajutsu logs a warning. The scenario's verdict stays as it was.
+
+The library mocks the `gps` and `network` providers alone. It leaves the fused provider of Google
+Play services unmocked. The library thus takes no Play services dependency. An app may read the
+location through `FusedLocationProviderClient`. Whether that app sees the mock depends on the device
+and its Play services version. Nobody has checked that behavior on hardware yet.
+
+The library declares no `ACCESS_MOCK_LOCATION` permission. On the emulator images bajutsu tests,
+`appops set` grants the app-op without it.
 
 ## Network capture (BE-0283)
 
@@ -130,6 +193,8 @@ exchange ever reaches the collector.
 
 The clipboard support covers set, get, and clear on the app's primary clip. `get` reads the first clip
 item coerced to text. Non-text clip content (images, intents) is out of scope.
+
+The location support covers the `gps` and `network` providers. The fused provider is out of scope.
 
 Network capture sees **OkHttp-originated HTTP(S)** traffic alone. This is the same bounded scope as
 iOS's `URLSession`-only capture. The following are out of scope:

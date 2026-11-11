@@ -16,12 +16,14 @@ from bajutsu.common.capability.settings_support import enforce_settings
 from bajutsu.common.config import Effective, require_android, resolve_preconditions
 from bajutsu.common.config.preconditions import ResolvedPreconditions
 from bajutsu.common.drivers import base
+from bajutsu.common.drivers.webview import CdpDomSource
 from bajutsu.common.evidence import intervals
 from bajutsu.common.evidence.network import Collector
 from bajutsu.common.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.common.platform_lifecycle import readiness
 from bajutsu.common.platform_lifecycle.device_control import android_device_control
 from bajutsu.common.platform_lifecycle.protocols import CollectorHost, ProvisionProfile
+from bajutsu.common.platform_lifecycle.webview_source import NO_WEBVIEW_SOURCE, WebViewSource
 from bajutsu.common.scenario import Relaunch, Scenario
 from bajutsu.crawl import AliveCheck, ClearBlocking, Recover, Reset
 
@@ -106,9 +108,10 @@ class AndroidEnvironment:
     Network is not observed *natively* (the adb driver declares no `NETWORK` capability), but the app
     reports its own exchanges to the host collector, which `bridge_collector` reaches over `adb reverse`
     (BE-0283) — the same app-side capture iOS relies on, so a `request` assertion is satisfied without a
-    native monitor. Device control backs the subset the emulator can honor
-    (`setLocation`, BE-0211, plus clipboard through the app's in-app receiver, BE-0233); the rest of
-    the family stays unsupported.
+    native monitor. Device control backs the subset Android can honor: `setLocation` over the
+    emulator console on a local emulator (BE-0211) and through the app's in-app BajutsuAndroid receiver
+    elsewhere (BE-0481), plus clipboard through that receiver (BE-0233); the rest of the family stays
+    unsupported.
     """
 
     def __init__(
@@ -145,6 +148,11 @@ class AndroidEnvironment:
         # The per-app locale each package's start applied (None: the device's own), so an
         # `installApp` that uninstalls the package can pin the same one again (BE-0478).
         self._app_locales: dict[str, str | None] = {}
+        # The last location each package mocked through its in-app receiver this lease (BE-0481): a
+        # launch re-sends it, in case the providers did not survive the process that registered them,
+        # and the lease's end clears and revokes it. Written before the grant, so a failed broadcast
+        # is still undone.
+        self._mock_locations: dict[str, tuple[float, float]] = {}
         # Override the resident-server construction in tests; None uses the real, env-gated default.
         self._resident_factory = resident_factory
         self._resident: ResidentServerLike | None = None
@@ -444,6 +452,12 @@ class AndroidEnvironment:
     def reach_device_port(self, eff: Effective, port: int) -> tuple[int, Callable[[], None]]:  # noqa: ARG002  # Environment shape
         return port, lambda: None  # nothing between the host and the port to bridge
 
+    def webview_source(self, eff: Effective) -> WebViewSource:
+        # The WebView already serves CDP on its own DevTools socket, so the app binds no port and
+        # learns none: `CdpDomSource` forwards the socket per `web:` block instead (BE-0482).
+        source = CdpDomSource(self._serial, require_android(eff).package, self._run)
+        return WebViewSource(source, None, NO_WEBVIEW_SOURCE.release)
+
     def mirrors_collector_port_on_device(self) -> bool:
         # `bridge_collector`'s `adb reverse tcp:<port> tcp:<port>` binds the same number inside the
         # guest, so the collector's port must be one the emulator can bind too.
@@ -558,6 +572,7 @@ class AndroidEnvironment:
             else:
                 self._member_markers[package] = self._read_launch_marker()[0]
             e.launch(package, launch_env)
+            self._resend_mock_location(e, package)
             # `force_stop`/`launch` replace the screen through `adb.Env`, never through the driver's
             # own actuators — the one door `AdbDriver._settled_key` needs closed that its actuators
             # cannot close themselves (`base.SettledCacheInvalidator`, BE-0351).
@@ -572,19 +587,67 @@ class AndroidEnvironment:
         return relaunch
 
     def controller(self, eff: Effective) -> DeviceControl | None:
-        # The emulator-backed subset (setLocation over the console + clipboard over the app's in-app
-        # receiver, BE-0233, + `foreground` and `background` through this environment, BE-0447 /
-        # BE-0478, + the status bar over the demo mode); the rest of the
-        # family raises UnsupportedAction, and preflight (BE-0212)
-        # rejects it up front from the adb capability set. Clipboard addresses its broadcast at the
-        # app under test, so the package is threaded through.
+        # The subset Android can honor (setLocation over the console on a local emulator and over the
+        # app's in-app receiver elsewhere, BE-0481, + clipboard over that receiver, BE-0233, +
+        # `foreground` and `background` through this environment, BE-0447 / BE-0478, + the status bar
+        # over the demo mode); the rest of the family raises UnsupportedAction, and preflight
+        # (BE-0212) rejects it up front from the adb capability set. The in-app broadcasts address
+        # the app under test, so the package is threaded through.
+        package = require_android(eff).package
+
+        def record_mock_location(lat: float, lon: float) -> None:
+            self._mock_locations[package] = (lat, lon)
+
         return android_device_control(
             self._serial,
-            require_android(eff).package,
+            package,
             self._run,
             foreground=lambda: self._foreground(eff),
             background=lambda: self._background(eff),
+            record_mock_location=record_mock_location,
         )
+
+    def _resend_mock_location(self, e: adb.Env, package: str) -> None:
+        """Mock *package*'s recorded location again after a launch, as the emulator would keep it.
+
+        The providers survived a force-stop and relaunch on an API 34 emulator, but nothing promises
+        that elsewhere, and an `installApp` that uninstalls the package takes its grant along. The
+        re-send is idempotent, so it costs one broadcast where the mock did survive. `launch` waits
+        for the activity (`am start -W`), so the in-app receiver is registered by now.
+        """
+        if (location := self._mock_locations.get(package)) is not None:
+            e.set_mock_location(package, *location)
+
+    def _release_mock_location(self, e: adb.Env, package: str) -> None:
+        """Undo *package*'s mock location at the end of its lease, before its app is stopped.
+
+        The revoke runs even when the clear fails, so the app cannot mock afterward. Neither failure
+        fails the run: the scenario's verdict is decided by now.
+        """
+        if self._mock_locations.pop(package, None) is None:
+            return
+        undo_steps: tuple[tuple[str, Callable[[], None]], ...] = (
+            ("clear the mock location", lambda: self._clear_mock_location(e, package)),
+            ("revoke the mock-location app-op", lambda: e.revoke_mock_location(package)),
+        )
+        for what, undo in undo_steps:
+            try:
+                undo()
+            except (adb.DeviceError, subprocess.CalledProcessError, OSError) as exc:
+                logger.warning("could not %s for %s on %s: %s", what, package, self._serial, exc)
+
+    def _clear_mock_location(self, e: adb.Env, package: str) -> None:
+        """Clear *package*'s test providers, launching the app first when it is no longer running.
+
+        The receiver registers at run time, so a scenario that ends with the app stopped or crashed
+        leaves no one to answer the clear. The providers outlive that process, and neither revoking
+        the app-op nor the shell (`cmd location`, which lacks the mock-location app-op) removes them,
+        so the app is launched to clear them itself; without that the next scenario on the device
+        would start at the mocked location.
+        """
+        if not self._running(package):
+            e.launch(package, {})
+        e.clear_mock_location(package)
 
     def _background(self, eff: Effective) -> None:
         """Press Home, then wait until *eff*'s app no longer holds the resumed activity (BE-0478).
@@ -637,6 +700,7 @@ class AndroidEnvironment:
                 pre, extra_env = self._launch_inputs
                 self._stamp_launch_marker()
                 e.launch(package, {**eff.launch_env, **pre.launch_env, **extra_env})
+                self._resend_mock_location(e, package)
                 if driver is not None:
                     _reset_exit_info_poll(driver)
             else:
@@ -674,7 +738,17 @@ class AndroidEnvironment:
         if self._resident is not None:
             self._resident.stop()
             self._resident = None
-        adb.Env(self._serial, run=self._run).force_stop(require_android(eff).package)
+        e = adb.Env(self._serial, run=self._run)
+        # Every package still recorded, while its process lives (BE-0481): a device-group member
+        # whose `end_member` already ran has left the record. Each is stopped too, since the clear
+        # may have launched it.
+        recorded = list(self._mock_locations)
+        try:
+            for package in recorded:
+                self._release_mock_location(e, package)
+        finally:
+            for package in dict.fromkeys([*recorded, require_android(eff).package]):
+                e.force_stop(package)
 
     def start_member(
         self,
@@ -738,6 +812,7 @@ class AndroidEnvironment:
         # Stamped before the launch, per `start` (BE-0424): this member's own crash bound.
         self._member_markers[package] = self._read_launch_marker()[0]
         e.launch(package, launch_env)
+        self._resend_mock_location(e, package)
 
     def install_member(self, eff: Effective, *, keep_data: bool) -> None:  # Environment shape
         # Explicit, so never skipped: the scenario asked for this build now (BE-0447). The running
@@ -774,7 +849,11 @@ class AndroidEnvironment:
         # Two builds of one app share a package, so only this member's own driver leaves the map.
         if self._drivers.get(package) is driver:
             del self._drivers[package]
-        adb.Env(self._serial, run=self._run).force_stop(package)
+        e = adb.Env(self._serial, run=self._run)
+        try:
+            self._release_mock_location(e, package)
+        finally:
+            e.force_stop(package)
 
     def has_reusable_resident(self) -> bool:
         # The UI Automator read channel (BE-0245) is torn down per lease; amortizing it across leases
@@ -933,6 +1012,7 @@ class AndroidEnvironment:
             e.force_stop(package)
             self._stamp_launch_marker()  # before the launch, per `start` (BE-0424)
             e.launch(package, eff.launch_env)
+            self._resend_mock_location(e, package)
             # Same gap as `relauncher` above: this replaces the screen outside the driver's actuators.
             if isinstance(driver, base.SettledCacheInvalidator):
                 driver.invalidate_settled_cache()

@@ -17,51 +17,66 @@
 ## Introduction
 
 This item adds `handleSystemAlert`, a new scenario step that taps an iOS permission-prompt button
-deterministically — by a native accessibility query against the prompt itself, never a screenshot
-judged by a vision model — at the exact point in a scenario where the author expects the prompt to
-appear. iOS presents a permission request (location, camera, contacts, and the rest) as a
-SpringBoard-level alert: SpringBoard is the iOS home-screen process that also owns system-wide UI
-chrome, including these prompts, so the alert lives outside the app under test's own process and
-its accessibility tree. A scenario has two existing ways to handle such a prompt today, and neither
-fits the case this item targets: a scenario that wants to trigger the permission request itself and
-then act on the prompt, deterministically, at that specific step. `handleSystemAlert` closes that gap.
+deterministically. The step resolves the button by a native accessibility query against the prompt
+itself. A vision model never judges a screenshot. The step runs at the exact point in a scenario
+where the author expects the prompt to appear.
+
+iOS presents a permission request (location, camera, contacts, and the rest) as a SpringBoard-level
+alert. SpringBoard is the iOS home-screen process, and the process also owns system-wide UI chrome,
+including these prompts. The alert therefore lives outside the process of the app under test and
+outside that app's accessibility tree.
+
+A scenario has two existing ways to handle such a prompt today. Neither fits the case this item
+targets: a scenario that triggers the permission request itself and then acts on the prompt,
+deterministically, at that specific step. `handleSystemAlert` closes that gap.
 
 ## Motivation
 
-Bajutsu already handles a permission prompt two ways, and each earns its place for a different
-situation. The vision alert guard (`dismissAlerts`, `bajutsu/agents/alerts.py`) exists for the
-prompt a scenario cannot see coming: on a blocked step, it takes a screenshot, asks Claude where to
-tap, and clears the prompt — a reactive, best-effort recovery that needs a Claude API key and is not
-guaranteed to land on the same coordinates from one run to the next, since a vision call is a
-judgment, not a lookup. `permissions`
-([BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md)) exists for
-the permission a scenario knows about ahead of time: it grants or revokes the permission through
-`simctl privacy` before the app process starts, so the prompt never appears at all.
+Bajutsu already handles a permission prompt in two ways, and each earns its place in a different
+situation.
 
-Between those two sits a case neither handles well: a scenario that wants to test the request flow
-itself — tap the button that triggers the permission request, then grant or deny the prompt that
-follows — deterministically, with no AI call. Pre-launch `permissions` cannot cover this case,
-because the request only fires once the app makes it, mid-scenario; the only tool left for that
-moment is the vision guard, `dismissAlerts: { instruction: "tap Allow" }`. BE-0276 itself pointed at
-mid-flow permission work as a future direction, but the step it deferred is a different mechanism: an
-imperative `setPermissions` step that would set or revoke TCC (Transparency, Consent, and Control)
-state mid-scenario through `simctl privacy` — to revoke and re-exercise a denied path — never tapping
-a prompt. `handleSystemAlert` answers the same mid-flow moment from the other side: rather than setting
-permission state programmatically, it taps the visible SpringBoard prompt the request raises. The
-author already knows which prompt appears and which button it needs at that point in the scenario, so
-the same reasoning BE-0276 used to move
-a known, pre-launch permission off the vision guard applies again here: a known, mid-flow prompt has
-no reason to route through an AI call, when a native accessibility query resolves the same button
-deterministically, at less cost, and with a machine-checkable result — a step that either taps one
-unambiguous button or fails clearly, never a coordinate guess that can miss a moved button silently
-(prime directive 1: AI never decides pass/fail; prime directive 2: determinism first).
+- **The vision alert guard.** The guard (`dismissAlerts`, `bajutsu/agents/alerts.py`) exists for the
+  prompt that a scenario cannot see coming. On a blocked step, the guard takes a screenshot, asks
+  Claude where to tap, and clears the prompt. The recovery is reactive and best-effort. The recovery
+  needs a Claude API key. A vision call is a judgment, not a lookup, so the call is not guaranteed to
+  land on the same coordinates from one run to the next.
+- **`permissions`.** The field
+  ([BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md)) exists for
+  the permission that a scenario knows about ahead of time. The field grants or revokes the
+  permission through `simctl privacy` before the app process starts, so the prompt never appears.
+
+Between the two sits a case that neither handles well. A scenario wants to test the request flow
+itself: tap the button that triggers the permission request, then grant or deny the prompt that
+follows. The scenario wants the test to be deterministic and to make no AI call.
+
+Pre-launch `permissions` cannot cover this case, because the request fires only once the app makes
+it, mid-scenario. The vision guard, `dismissAlerts: { instruction: "tap Allow" }`, is the one tool
+left for that moment.
+
+BE-0276 itself pointed at mid-flow permission work as a future direction. The step that BE-0276
+deferred is a different mechanism, though. The deferred step is an imperative `setPermissions` step.
+The step would set or revoke Transparency, Consent, and Control (TCC) state mid-scenario through
+`simctl privacy`, to revoke a permission and re-exercise a denied path. The step never taps a prompt.
+
+`handleSystemAlert` answers the same mid-flow moment from the other side. The step does not set
+permission state programmatically. The step taps the visible SpringBoard prompt that the request
+raises.
+
+The author already knows which prompt appears and which button the scenario needs at that point.
+The reasoning that BE-0276 used to move a known, pre-launch permission off the vision guard
+therefore applies again. A known, mid-flow prompt has no reason to route through an AI call. A native
+accessibility query resolves the same button deterministically, at less cost, and with a
+machine-checkable result. The step either taps one unambiguous button or fails clearly. The step
+never guesses a coordinate that could miss a moved button silently (prime directive 1: AI never
+decides pass/fail; prime directive 2: determinism first).
 
 ## Detailed design
 
 Proposal altitude. The work is MECE along the units below.
 
-A scenario testing the request-and-grant flow reads like this — fire the OS permission request, then
-tap the SpringBoard prompt's button, deterministically and with no vision model:
+A scenario that tests the request-and-grant flow reads like this. The scenario fires the OS
+permission request, then taps the SpringBoard prompt's button, deterministically and with no vision
+model:
 
 ```yaml
 - name: grant the notification prompt mid-flow
@@ -75,108 +90,132 @@ To dismiss the prompt rather than accept it, the same step targets the dismissiv
 (`handleSystemAlert: { sel: { label: "Don't Allow" }, timeout: 5 }`).
 
 - **Scenario schema.** A new step action, `handleSystemAlert: { sel: <Selector>, timeout: <sec> }`,
-  following the `sel:`-wrapped shape `longPress` and `pinch` already use. `sel` accepts only the
-  label-based `Selector` fields — `label`, `labelMatches`, `index` — and rejects `id`, `idMatches`,
-  `traits`, `value`, and `within` at parse time: a SpringBoard alert button carries no app-assigned
-  accessibility identifier, trait set, or value — only its visible text — so those fields could
-  never match one. `timeout`
-  is required, exactly as it is for `wait`: a condition wait needs an explicit bound, and the shared
-  scenarios' timeout floor applies to it the same way it applies to every other wait in the runner.
-- **iOS (XCUITest) runner support.** `BajutsuKit/Runner/Sources/RunnerUITest.swift` already builds
-  an `XCUIApplication(bundleIdentifier:)` handle for the app under test; a `handleSystemAlert` step adds a
-  second, on-demand handle for `com.apple.springboard` — SpringBoard's own bundle identifier —
-  queried only when this step runs, so every other selector and query path stays scoped to the app
-  under test exactly as it is today. The step resolves the button by label within SpringBoard's
-  alert element and taps it through the same native accessibility tap XCUITest already uses
-  elsewhere for an in-app element — no screenshot, no vision model.
-- **Fail-fast on zero or multiple matches.** No alert within `timeout` fails the step with a clear
-  message; more than one button matching the label fails as ambiguous **unless** `index` selects the
-  nth of them — exactly the rule an ordinary selector already follows ([selectors](../../docs/selectors.md)),
-  applied here to the alert's button instead of an app element. (`index` is a last resort for an alert
-  as for any element; a label normally resolves a prompt button uniquely.)
-- **Capability token + preflight.** Advertise a capability naming this step, following the
+  follows the `sel:`-wrapped shape that `longPress` and `pinch` already use. The `sel` field accepts
+  the label-based `Selector` fields (`label`, `labelMatches`, `index`) and rejects `id`, `idMatches`,
+  `traits`, `value`, and `within` at parse time. A SpringBoard alert button carries no app-assigned
+  accessibility identifier, trait set, or value. The button carries only its visible text, so the rejected
+  fields could never match one. The `timeout` field is required, as it is for `wait`. A condition
+  wait needs an explicit bound. The shared scenarios' timeout floor applies to the step the same way
+  it applies to every other wait in the runner.
+- **iOS (XCUITest) runner support.** `BajutsuKit/Runner/Sources/RunnerUITest.swift` already builds an
+  `XCUIApplication(bundleIdentifier:)` handle for the app under test. A `handleSystemAlert` step adds
+  a second, on-demand handle for `com.apple.springboard`, which is SpringBoard's own bundle
+  identifier. The runner queries that handle only when this step runs. Every other selector and query path
+  stays scoped to the app under test, exactly as today. The step resolves the button by label within
+  SpringBoard's alert element. The step taps the button through the same native accessibility tap that
+  XCUITest already uses for an in-app element. The step uses no screenshot and no vision model.
+- **Fail-fast on zero or multiple matches.** The step follows the rule that an ordinary selector
+  already follows ([selectors](../../docs/selectors.md)), applied to the alert's button instead of an
+  app element:
+  - No alert within `timeout` fails the step with a clear message.
+  - More than one button matching the label fails as ambiguous, **unless** `index` selects the nth of
+    them.
+
+  The `index` field is a last resort for an alert, as for any element. A label normally resolves a
+  prompt button uniquely.
+- **Capability token and preflight.** Advertise a capability that names this step, following the
   per-operation preflight pattern
-  ([BE-0128](../BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight.md)),
-  and have only the iOS (XCUITest) [backend](../../docs/glossary.md#driver-backend-actuator-platform)
-  declare it. The Android (adb) backend already dumps
-  whatever window is topmost, including a system permission dialog, so an ordinary `tap` step
-  already reaches it there today; the web (Playwright) backend has no OS-level permission prompt at
-  all. A scenario naming `handleSystemAlert` against either backend fails preflight before any device
-  work, named individually, never at runtime.
-- **codegen.** iOS XCUITest codegen emits the native idiom directly: wait for
+  ([BE-0128](../BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight.md)).
+  Only the iOS (XCUITest)
+  [backend](../../docs/glossary.md#driver-backend-actuator-platform) declares the capability.
+
+  The Android (adb) backend already dumps whatever window is topmost, including a system permission
+  dialog. An ordinary `tap` step therefore reaches the dialog there today. The web (Playwright)
+  backend has no OS-level permission prompt at all. A scenario that names `handleSystemAlert` against
+  either backend fails preflight before any device work. The failure names the step individually and
+  never waits for runtime.
+- **codegen.** iOS XCUITest codegen emits the native idiom directly. The generated test waits for
   `XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons["Allow"]` to exist, bounded by
-  the step's own `timeout`, then tap it — exactly how a hand-written XCUITest test already clears a
-  SpringBoard alert, and it carries the step's required `timeout` into the generated wait rather than
-  dropping it. Android and web codegen emit a labeled `// TODO`,
-  consistent with [BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md)
-  and BE-0276's precedent for a field neither backend's native test framework can express. Unlike
-  `permissions`, where bajutsu itself applies the field before launch on every backend, `handleSystemAlert`
-  is a mid-flow step whose native idiom only the iOS (XCUITest) framework can express — hence the
-  split.
-- **Docs + fixture.** Document the step in [`docs/scenarios.md`](../../docs/scenarios.md) and its
-  Japanese mirror, and the DSL grammar. `docs/scenarios.md` already has a "dismissAlerts (the
-  system-alert guard)" section, so the new step's documentation must contrast the two by role
-  explicitly rather than let a reader conflate them: `dismissAlerts` is the reactive, AI-driven
-  *guard* that fires only when a step is already blocked, and `handleSystemAlert` is the deterministic,
-  native *step* the author places where the prompt is expected. Both act on the same kind of
-  OS-level alert through opposite mechanisms, and stating that contrast — reactive guard against
-  deterministic step — is what keeps a reader from reaching for the wrong one. Add the fixture as
-  its **own** scenario file
-  (`demos/showcase/scenarios/permission_system_alert.yaml`), not a new scenario inside the existing
-  `permission.yaml`: `permission.yaml`'s notification scenario is already tagged `ai` so the iOS
-  smoke lane can `--exclude ai` it, while Android's `smoke (adb)` job runs every scenario in that
-  file **unchanged** — a new `handleSystemAlert` scenario dropped into the same file would fail
-  Android's required job at preflight, since only the iOS (XCUITest) backend declares the capability.
-  A separate file sidesteps that, and the boundaries then split by mechanism rather than by one tag:
-  Android's `smoke (adb)` job runs a **fixed scenario list** from `demos/showcase/android/Makefile`,
-  so a file that list never names is never picked up there — the file separation, not any tag, is
-  what keeps the fixture off the Android lane. The fixture must also stay out of the local bulk
-  `run-swiftui`/`run-uikit` iOS runs, which discover every scenario file and do not reset
-  per-scenario permission state (so the `notDetermined` prompt the step needs is not guaranteed):
-  give it a **dedicated** exclusion tag (e.g. `systemalert`) that those two targets add to their
-  `--exclude`, rather than reusing `tabs.yaml`'s `xcuitest` tag. `xcuitest` is a legacy carve-out
-  from when `[ios]` could resolve to the retired idb backend (per `tabs.yaml`'s header and
-  `demos/showcase/Makefile`) and a documented removal candidate, so riding it would silently
-  un-exclude this fixture the day that tag is retired; a purpose-named tag keeps the fixture's
-  exclusion independent of that legacy split's removal.
-- **CI wiring.** A tag alone never adds a file to a CI job — every `ios-e2e.yml` job that runs a
-  scenario names its file explicitly, with no directory scan and no tag-based inclusion anywhere in
-  CI. Add an explicit `scenarios: demos/showcase/scenarios/permission_system_alert.yaml` step to the
-  `xcuitest (multi-touch)` job, the same job that already runs `permission.yaml` through its own
-  explicit step — this new scenario's Simulator, app, and runner build are already paid for there, so
-  it costs one more `bajutsu run` rather than a new job.
-- **Tests.** Schema parse/validate (accept the label-based fields, reject `id`/`idMatches`/
-  `traits`/`value`/`within` with a clear message); preflight over a subset-advertising backend (iOS passes,
-  Android and web named and failed fast); the XCUITest runner's SpringBoard resolution against a
-  fake button list covering zero, one, and multiple matches; a codegen snippet.
+  the step's own `timeout`, then taps the button. A hand-written XCUITest test already clears a
+  SpringBoard alert this way. The generated wait carries the step's required `timeout` instead of
+  dropping the value.
+
+  Android and web codegen emit a labeled `// TODO`. The precedent is
+  [BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md) and BE-0276,
+  for a field that neither backend's native test framework can express. The `permissions` field
+  differs: bajutsu itself applies that field before launch on every backend. `handleSystemAlert` is a
+  mid-flow step, and only the iOS (XCUITest) framework can express the native idiom for it. This
+  difference explains the split.
+- **Docs and fixture.** Document the step in [`docs/scenarios.md`](../../docs/scenarios.md), in the
+  Japanese mirror of that page, and in the DSL grammar.
+
+  `docs/scenarios.md` already has a "dismissAlerts (the system-alert guard)" section. The
+  documentation of the new step must therefore contrast the two by role, so that a reader does not
+  conflate them:
+  - `dismissAlerts` is the reactive, AI-driven *guard*. The guard fires only when a step is already
+    blocked.
+  - `handleSystemAlert` is the deterministic, native *step*. The author places the step where the
+    prompt is expected.
+
+  Both act on the same kind of OS-level alert through opposite mechanisms. Stating the contrast of
+  reactive guard against deterministic step keeps a reader from reaching for the wrong one.
+
+  Add the fixture as its **own** scenario file
+  (`demos/showcase/scenarios/permission_system_alert.yaml`). Do not add a new scenario inside the
+  existing `permission.yaml`. The notification scenario in `permission.yaml` is tagged `ai`, so the
+  iOS smoke lane can `--exclude ai` it. Android's `smoke (adb)` job runs every scenario in that file
+  **unchanged**. A new `handleSystemAlert` scenario in the same file would fail Android's required job
+  at preflight, because only the iOS (XCUITest) backend declares the capability.
+
+  A separate file sidesteps the failure, and the boundary then splits by mechanism instead of by one
+  tag. Android's `smoke (adb)` job runs a **fixed scenario list** from
+  `demos/showcase/android/Makefile`. A file that the list never names is never picked up there. The
+  file separation, not any tag, keeps the fixture off the Android lane.
+
+  The fixture must also stay out of the local bulk `run-swiftui` and `run-uikit` iOS runs. Those runs
+  discover every scenario file and do not reset per-scenario permission state. The runs therefore do
+  not guarantee the `notDetermined` prompt that the step needs. Give the fixture a **dedicated**
+  exclusion tag (for example `systemalert`) and add the tag to the `--exclude` of those two targets.
+  Do not reuse the `xcuitest` tag of `tabs.yaml`.
+
+  The `xcuitest` tag is a legacy carve-out from the time when `[ios]` could resolve to the retired
+  idb backend (per the `tabs.yaml` header and `demos/showcase/Makefile`). The tag is also a documented
+  removal candidate. Riding the tag would silently un-exclude this fixture on the day the tag is
+  retired. A purpose-named tag keeps the fixture's exclusion independent of the legacy split's
+  removal.
+- **CI wiring.** A tag alone never adds a file to a CI job. Every `ios-e2e.yml` job that runs a
+  scenario names its file explicitly. CI has no directory scan and no tag-based inclusion anywhere.
+  Add an explicit `scenarios: demos/showcase/scenarios/permission_system_alert.yaml` step to the
+  `xcuitest (multi-touch)` job. That job already runs `permission.yaml` through its own explicit step.
+  The Simulator, app, and runner build for the new scenario are already paid for there. The new
+  scenario costs one more `bajutsu run` instead of a new job.
+- **Tests.** The tests cover four areas:
+  - Schema parse and validation: accept the label-based fields, and reject `id`, `idMatches`,
+    `traits`, `value`, and `within` with a clear message.
+  - Preflight over a backend that advertises a subset: iOS passes, and Android and web fail fast,
+    each named.
+  - The XCUITest runner's SpringBoard resolution against a fake button list that covers zero, one,
+    and multiple matches.
+  - A codegen snippet.
 
 ## Alternatives considered
 
-- **Extend `dismissAlerts` to fire on demand, mid-step.** Rejected. `dismissAlerts`'s reactive
-  design fires only once a step is already blocked, and a passing scenario never calls the model at
-  all ([`docs/scenarios.md`](../../docs/scenarios.md)) — that invariant is part of its value. Making
-  it fire at an author-chosen point would mean either faking a blocked step to trigger it, or
-  breaking the "never calls the model on a passing scenario" guarantee for every scenario that uses
-  it. A dedicated step keeps that guarantee intact for `dismissAlerts` and gives `handleSystemAlert` its
-  own, simpler contract: deterministic, and unconditional at the point it appears in `steps`.
-- **Add a `system: true` scope to the general `Selector`, so `tap` / `wait` / `assert` reach
+- **Extend `dismissAlerts` to fire on demand, mid-step.** Rejected. The reactive design of
+  `dismissAlerts` fires only once a step is already blocked. A passing scenario never calls the model
+  at all ([`docs/scenarios.md`](../../docs/scenarios.md)), and that invariant is part of the value.
+  Firing at an author-chosen point would take one of two costs. One cost is to fake a blocked step
+  that triggers the guard. The other cost is to break the "never calls the model on a passing
+  scenario" guarantee for every scenario that uses the guard. A dedicated step keeps that guarantee
+  intact for `dismissAlerts`. The step also gives `handleSystemAlert` its own, simpler contract:
+  deterministic, and unconditional at the point where the step appears in `steps`.
+- **Add a `system: true` scope to the general `Selector`, so `tap`, `wait`, and `assert` reach
   SpringBoard directly.** Rejected for this item. Every step and assertion resolves through one
-  shared `Selector`-resolution path; threading a SpringBoard-versus-app distinction through all of
-  them, for a need that arises at one specific point in a scenario, widens the change's surface far
-  past what the need justifies. A dedicated `handleSystemAlert` action keeps the change contained to one
-  new step implementation, with no risk to the selector-resolution path every other step already
-  relies on.
+  shared `Selector`-resolution path. Threading a SpringBoard-versus-app distinction through all of
+  them would serve a need that arises at one specific point in a scenario. The change would widen far
+  past what the need justifies. A dedicated `handleSystemAlert` action keeps the change contained to
+  one new step implementation. The action puts no risk on the selector-resolution path that every
+  other step relies on.
 - **Cover every SpringBoard-level alert (a save-password prompt, a paste-permission prompt, a crash
-  sheet), not only a permission prompt.** Deferred. A permission prompt is the concrete, common case
-  a scenario author hits when testing a request flow, and the underlying SpringBoard query mechanism
-  does not distinguish an alert's origin, so nothing here forecloses widening `handleSystemAlert` to any
-  SpringBoard alert later. Scoping the first version to permission prompts keeps this proposal small
-  enough to review and land as one unit.
-- **Cache the vision guard's coordinates from one run and replay them.** Rejected. It still needs a
-  screenshot-and-model round trip at least once, still needs a Claude API key, and a cached
-  coordinate is not guaranteed to stay correct: a different device rotation, locale, or iOS version
-  can move the alert's button. A native accessibility query resolves the button's live position
-  every time, with no such assumption to invalidate.
+  sheet), not just a permission prompt.** Deferred. A permission prompt is the concrete, common case
+  that a scenario author hits when testing a request flow. The underlying SpringBoard query mechanism
+  does not distinguish an alert's origin, so nothing here forecloses widening `handleSystemAlert` to
+  any SpringBoard alert later. Scoping the first version to permission prompts keeps this proposal
+  small enough to review and land as one unit.
+- **Cache the vision guard's coordinates from one run and replay them.** Rejected. The approach still
+  needs a screenshot-and-model round trip at least once. The approach still needs a Claude API key. A
+  cached coordinate is not guaranteed to stay correct, because a different device rotation, locale,
+  or iOS version can move the alert's button. A native accessibility query resolves the button's live
+  position every time, with no such assumption to invalidate.
 
 ## Progress
 
@@ -197,28 +236,31 @@ To dismiss the prompt rather than accept it, the same step targets the dismissiv
       job (`ios-e2e.yml`); a tag alone adds nothing to a CI job.
 - [x] Tests — schema, preflight, SpringBoard resolution (zero/one/many matches), codegen snippet.
 
-**Design note (resolution stays Python-side).** The runner exposes two endpoints —
-`POST /systemAlert/query` (snapshot the SpringBoard alert's buttons, each with a handle) and
-`POST /systemAlert/tap` (tap one by handle) — and the Python driver polls the query to the step's
-`timeout`, then runs the label-based selector through the shared `resolve_unique`. Resolution therefore
-uses the same zero / ambiguous / index discipline every selector follows, and it is covered by the
-fast Python gate (no Simulator) against a fake button list; the on-device Swift path is exercised by
-the `xcuitest (multi-touch)` CI job.
+**Design note (resolution stays Python-side).** The runner exposes two endpoints:
+`POST /systemAlert/query` snapshots the SpringBoard alert's buttons, each with a handle, and
+`POST /systemAlert/tap` taps one button by handle. The Python driver polls the query to the step's
+`timeout`, then runs the label-based selector through the shared `resolve_unique`. Resolution
+therefore uses the same zero, ambiguous, and index discipline that every selector follows. The fast
+Python gate (no Simulator) covers resolution against a fake button list. The `xcuitest (multi-touch)`
+CI job exercises the on-device Swift path.
 
 ## References
 
-- [BE-0276 — Declarative per-scenario permission state](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md) —
-  the pre-launch, deterministic complement to the reactive guard; it deferred an imperative mid-flow
-  state-setting step (`simctl privacy`), a different mechanism from this item's prompt-tapping.
-- [BE-0128 — Preflight-gate device-control steps](../BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight.md) —
-  the per-operation preflight pattern this item follows.
-- [BE-0026 — Shrink unsupported syntax](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md) —
-  the labeled-`// TODO` codegen precedent for a step a backend's native framework cannot express.
-- `bajutsu/agents/alerts.py`, `docs/scenarios.md` (`dismissAlerts` section) — the existing reactive
-  vision guard this item complements.
-- `BajutsuKit/Runner/Sources/RunnerUITest.swift` — the existing `XCUIApplication(bundleIdentifier:)`
-  construction this item extends with a second, SpringBoard-scoped handle.
-- Sibling proposal `rename-dismiss-alerts-to-alert-handling` (`alertHandling`) — the proposal to
-  rename the reactive `dismissAlerts` guard this item stands beside and refers to throughout; a
-  reader adopting `dismissAlerts` here should know it is being deprecated in favor of `alertHandling`.
-  The two proposals' docs should contrast the reactive guard against the explicit step in one place.
+- [BE-0276: Declarative per-scenario permission state](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md).
+  The pre-launch, deterministic complement to the reactive guard. BE-0276 deferred an imperative
+  mid-flow state-setting step (`simctl privacy`), a different mechanism from this item's prompt
+  tapping.
+- [BE-0128: Preflight-gate device-control steps](../BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight.md).
+  The per-operation preflight pattern that this item follows.
+- [BE-0026: Shrink unsupported syntax](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md).
+  The labeled-`// TODO` codegen precedent for a step that a backend's native framework cannot
+  express.
+- `bajutsu/agents/alerts.py` and `docs/scenarios.md` (`dismissAlerts` section): the existing reactive
+  vision guard that this item complements.
+- `BajutsuKit/Runner/Sources/RunnerUITest.swift`: the existing `XCUIApplication(bundleIdentifier:)`
+  construction that this item extends with a second, SpringBoard-scoped handle.
+- Sibling proposal `rename-dismiss-alerts-to-alert-handling` (`alertHandling`): the proposal to
+  rename the reactive `dismissAlerts` guard, which this item stands beside and refers to throughout.
+  A reader adopting `dismissAlerts` here should know that the name is being deprecated in favor of
+  `alertHandling`. The docs of the two proposals should contrast the reactive guard against the
+  explicit step in one place.

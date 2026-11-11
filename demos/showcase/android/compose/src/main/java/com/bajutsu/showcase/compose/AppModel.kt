@@ -101,6 +101,7 @@ class AppModel(env: Map<String, String>) {
     // Permissions tab
     var notifStatus by mutableStateOf("notDetermined")
     var locationStatus by mutableStateOf("notDetermined")
+    var locationReading by mutableStateOf("")
     var pasted by mutableStateOf("")
     var selectedPhotoCount by mutableStateOf(0)
 

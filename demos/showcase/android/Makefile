@@ -6,7 +6,7 @@
 .PHONY: build-all wrapper \
 	compose-build compose-noax-build compose-previous-build views-build views-noax-build e2e e2e-pool e2e-network e2e-golden \
 	e2e-fallback e2e-visual e2e-conformance e2e-fault-injection e2e-app-crash e2e-codegen e2e-device-group \
-	clean
+	e2e-location-connect clean
 
 HERE := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 GRADLEW := $(HERE)/gradlew
@@ -124,7 +124,7 @@ SERIAL ?= booted
 # (deterministic stub responses) stays a follow-up.
 E2E_SCENARIOS := smoke firstlook navigation search data_driven relaunch system components modals \
 	controls notices gestures gestures_multitouch permission device extract foreach interrupts \
-	text_entry_android text_selection_android select_photos select_photo_single app_android
+	text_entry_android text_selection_android select_photos select_photo_single app_android location_android
 
 # Raise the condition-wait ceiling for this lane only: the CI x86_64 software-rendered emulator
 # presents sheets/covers slower than the shared scenarios' 5s waits allow. A wait returns as soon as
@@ -151,7 +151,7 @@ E2E_ENV = BAJUTSU_MIN_WAIT_TIMEOUT=$(E2E_WAIT_FLOOR) BAJUTSU_LOG_LEVEL=$(E2E_LOG
 # themselves). Anywhere else no lane resolves it, so a typo in it could never fail (issue #2233).
 # `device.yaml` carries the underscore form, so it joins (verified on a local arm64 emulator).
 E2E_VIEWS_SCENARIOS := smoke firstlook navigation search data_driven relaunch system extract foreach \
-	interrupts device text_entry_android text_selection_android select_photos select_photo_single
+	interrupts device text_entry_android text_selection_android select_photos select_photo_single location_android
 
 # The wrapper jar IS committed (like any standard Android repo), so a fresh clone builds with no
 # extra step. Only run this to bump the pinned Gradle version — never as part of a build, since it
@@ -264,6 +264,31 @@ e2e: compose-build views-build
 	cd $(ROOT) && $(E2E_ENV) uv run bajutsu run \
 		--scenario demos/showcase/scenarios/gestures_multitouch.yaml \
 		--target showcase-compose --udid $(SERIAL) --backend android --config $(CONFIG)
+
+# The in-app setLocation route on the emulator lane (BE-0481). `e2e` runs location_android.yaml over
+# the local `emulator-<port>` serial, which takes the console's `emu geo fix`; this target runs it again
+# over the same emulator reached with `adb connect`, whose `<host>:<port>` serial has no console adb can
+# reach, so the routing sends it in-app: the `appops` grant, BajutsuAndroid's location receiver, and
+# its result codes — the path a real device takes, which no emulator-serial run would touch. The
+# emulator's adbd listens on its console port plus one. CI runs it as its own per-PR signal job,
+# `location over adb connect (adb)`, outside the required gate until it has a run history. With
+# more than one device attached, name the emulator: `SERIAL=emulator-5554 ADB="adb -s emulator-5554"`.
+e2e-location-connect: compose-build views-build
+	$(ADB) wait-for-device
+	$(ANR_QUIET)
+	serial="$(SERIAL)"; \
+	[ "$$serial" != booted ] || serial=$$(adb devices | awk '$$1 ~ /^emulator-[0-9]+$$/ && $$2 == "device" { print $$1; exit }'); \
+	case "$$serial" in emulator-[0-9]*) ;; *) echo "SERIAL must name a local emulator, got '$$serial'" >&2; exit 1 ;; esac; \
+	remote=127.0.0.1:$$(( $${serial#emulator-} + 1 )); \
+	adb connect "$$remote" | grep -q "connected to" || { echo "adb connect $$remote failed" >&2; exit 1; }; \
+	trap 'adb disconnect "$$remote" >/dev/null 2>&1' EXIT; \
+	adb -s "$$remote" wait-for-device; \
+	cd $(ROOT) && for t in showcase-compose showcase-views; do \
+		echo "=== $$t / location_android (adb connect $$remote) ==="; \
+		$(E2E_ENV) \
+		uv run bajutsu run --scenario demos/showcase/scenarios/location_android.yaml \
+			--target $$t --udid "$$remote" --backend android --config $(CONFIG) || exit 1; \
+	done
 
 # On-device network-capture assertion (BE-0283): a `request` assertion observes real emulator traffic
 # end to end — the showcase GETs SHOWCASE_API_URL/horses over OkHttp, BajutsuAndroid's interceptor

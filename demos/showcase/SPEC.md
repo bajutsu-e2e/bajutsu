@@ -229,6 +229,9 @@ flow is reached directly — plus a System section with a pasteboard round-trip.
 - `perm.notif.authorized` — element shown only once granted (gives the run a positive condition to wait for)
 - `perm.requestLocation` — button → `CLLocationManager.requestWhenInUseAuthorization`. Raises the **system location prompt** (also SpringBoard).
 - `perm.location.value` — `notDetermined`/`authorizedWhenInUse`/`denied`
+- `perm.location.read` — Android only: button that asks the `gps` provider for one fresh fix (BE-0481)
+- `perm.location.reading` — Android only: that fix as `lat,lon` with three decimals, `reading` while
+  the request runs, `(none)` without a fix, or `denied` without the permission
 - `perm.requestTracking` — button → `ATTrackingManager.requestTrackingAuthorization`, the last row of the form. Raises the **App Tracking Transparency prompt** (SpringBoard), which BE-0445's probe measures beside the notification and paste prompts.
 - `perm.tracking.value` — `notDetermined`/`authorized`/`denied`
 
