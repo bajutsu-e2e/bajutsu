@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-android-webview-cdp-ja.md)
+**English** · [日本語](BE-0482-android-webview-cdp-ja.md)
 
-# BE-XXXX — Query and tap inside an embedded Android WebView over CDP
+# BE-0482 — Query and tap inside an embedded Android WebView over CDP
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-android-webview-cdp.md) |
+| Proposal | [BE-0482](BE-0482-android-webview-cdp.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0482") |
 | Topic | Platform support |
 <!-- /BE-METADATA -->
 
