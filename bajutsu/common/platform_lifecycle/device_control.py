@@ -78,37 +78,44 @@ def android_device_control(
     *,
     foreground: Callable[[], None] | None = None,
     background: Callable[[], None] | None = None,
+    record_mock_location: Callable[[float, float], None] | None = None,
 ) -> DeviceControl:
-    """A `DeviceControl` for the Android emulator, backing only the operations it can honor.
+    """A `DeviceControl` for an Android emulator or device, backing only the operations it can honor.
 
-    `setLocation` (`emu geo fix`) runs over the emulator console; the clipboard operations run over
-    an ordered `am broadcast` to the app's in-app receiver (BajutsuAndroid, BE-0233) — hence `package`,
-    to address the broadcast at the app under test. `background` presses Home and the status-bar pair
-    drives the System UI demo mode (BE-0478). `push` needs a receiver in the app's process, and
-    Android has no keychain for `clearKeychain` to clear, so both raise `UnsupportedAction`.
-    Preflight (BE-0212) rejects those steps up front from the adb backend's advertised subset, so this
-    raise is the runtime backstop, never a silent no-op.
+    `setLocation` takes one of two routes, chosen at its first call and cached for the control's
+    lease (BE-0481): a local emulator keeps the console's `emu geo fix`; every other target — a real
+    device, or an emulator reached with `adb connect` — mocks the location through the app's in-app
+    BajutsuAndroid receiver. The clipboard operations also run over an ordered `am broadcast` to the
+    app (BE-0233) — hence `package`, to address both broadcasts at the app under test. `background`
+    presses Home and the status-bar pair drives the System UI demo mode (BE-0478). `push` needs a
+    receiver in the app's process, and Android has no keychain for `clearKeychain` to clear, so both
+    raise `UnsupportedAction`. Preflight (BE-0212) rejects those steps up front from the adb backend's
+    advertised subset, so this raise is the runtime backstop, never a silent no-op.
 
     Args:
         serial: The target emulator/device serial.
-        package: The app under test's package, addressed by the clipboard broadcast.
+        package: The app under test's package, addressed by the in-app broadcasts.
         env_run: The subprocess runner for adb, injectable for tests.
         foreground: The environment's own `foreground` (BE-0447), which launches the app when it
             is not running and waits for it; None leaves `foreground` unsupported.
         background: The environment's own `background`, which presses Home and waits for the app
             to leave the front (BE-0478); None presses Home without waiting.
+        record_mock_location: Told the coordinates before the in-app route grants the mock-location
+            app-op, so the environment can re-send them after a relaunch and undo them at teardown
+            even when the broadcast that follows fails; None records nothing.
     """
     e = adb.Env(serial, run=env_run)
 
     def _unsupported(op: str) -> base.UnsupportedAction:
-        return base.UnsupportedAction(f"{op} is not supported on the Android emulator")
+        return base.UnsupportedAction(f"{op} is not supported on Android")
 
     bring_forward = _android_foreground(foreground)
     send_home = background or e.home
+    set_location = _AndroidLocation(e, package, record_mock_location)
 
     class _Control:
         def set_location(self, lat: float, lon: float) -> None:
-            e.set_location(lat, lon)
+            set_location(lat, lon)
 
         def set_clipboard(self, text: str) -> None:
             e.set_clipboard(package, text)
@@ -141,6 +148,29 @@ def android_device_control(
     return _Control()
 
 
+class _AndroidLocation:
+    """`setLocation`'s route on Android, probed at the first call and kept for the lease (BE-0481)."""
+
+    def __init__(
+        self, e: adb.Env, package: str, record: Callable[[float, float], None] | None
+    ) -> None:
+        self._e = e
+        self._package = package
+        self._record = record
+        # The target does not change kind within a lease, so the probe's answer is read once.
+        self._console: bool | None = None
+
+    def __call__(self, lat: float, lon: float) -> None:
+        if self._console is None:
+            self._console = self._e.has_emulator_console()
+        if self._console:
+            self._e.set_location(lat, lon)
+            return
+        if self._record is not None:
+            self._record(lat, lon)
+        self._e.set_mock_location(self._package, lat, lon)
+
+
 def _require_showable_status_bar(fields: dict[str, str | int]) -> None:
     """The backstop to the Android preflight check (BE-0478).
 
@@ -152,11 +182,13 @@ def _require_showable_status_bar(fields: dict[str, str | int]) -> None:
 
 
 def _android_foreground(foreground: Callable[[], None] | None) -> Callable[[], None]:
-    """The emulator control's `foreground`: the environment's own, else an `UnsupportedAction`."""
+    """The Android control's `foreground`: the environment's own, else an `UnsupportedAction`."""
     if foreground is not None:
         return foreground
 
     def unsupported() -> None:
-        raise base.UnsupportedAction("foreground is not supported on the Android emulator")
+        raise base.UnsupportedAction(
+            "foreground is not supported on Android without its environment"
+        )
 
     return unsupported

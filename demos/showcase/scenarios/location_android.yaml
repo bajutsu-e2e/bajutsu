@@ -1,0 +1,60 @@
+# setLocation on Android (BE-0481): the step moves the fix the app itself reads, on whichever route
+# the target takes. A local emulator (`emulator-<port>`) takes the console's `emu geo fix`; any other
+# target — a real device, or the same emulator reached with `adb connect` — takes the in-app route,
+# where adb grants the app the mock-location app-op and BajutsuAndroid's location receiver mocks the
+# `gps` and `network` providers. The android Makefile runs this file both ways (`e2e` and
+# `e2e-location-connect`), so the emulator lane exercises the receiver, the grant, and its result
+# codes, not the console alone.
+#
+# The readout is a button, not a live listener: the app asks for one fresh fix when tapped, so the
+# assertion waits on a value that changes only because the step moved it (prime directive 2). The
+# readout takes only a fix delivered after the tap, never a cached one, so a second `setLocation`
+# cannot read back the first; on the in-app route, where a test provider emits only when mocked, it
+# reports the last known fix (the mock) after five seconds. The
+# second scenario relaunches between the step and the read, so a fix that a relaunch dropped would
+# fail it. The console route keeps the fix by itself; on the in-app route the providers survived a
+# relaunch on an API 34 emulator even without the environment's re-send, so the unit tests, not this
+# scenario, prove the re-send.
+#
+# Each id lists both its dotted SPEC form (Compose) and its underscore form (Views), so the selector
+# resolves whichever tree renders (BE-0221). Tagged `android` so the iOS bulk lanes, which sweep this
+# directory, exclude it: iOS sets the location through simctl and has its own coverage in device.yaml.
+- name: setLocation moves the fix the app reads (android)
+  tags: [device, android]
+  permissions:
+    location: grant
+  preconditions:
+    subject:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
+  steps:
+    - setLocation: { lat: 35.681, lon: 139.767 }
+      capture: [deviceLog]
+    - tap: { label: "Permissions", traits: [button] }
+    # The tab transition is asynchronous, so wait for the tab's own first control before scrolling.
+    - wait: { for: { id: [perm.requestNotif, perm_requestNotif] }, timeout: 10 }
+    - scroll: { to: { id: [perm.location.reading, perm_location_reading] }, direction: down }
+    - tap: { id: [perm.location.read, perm_location_read] }
+    - wait: { for: { id: [perm.location.reading, perm_location_reading], value: "35.681,139.767" }, timeout: 15 }
+  expect:
+    - value: { sel: { id: [perm.location.reading, perm_location_reading] }, equals: "35.681,139.767" }
+
+- name: the location survives a relaunch (android)
+  tags: [device, android]
+  permissions:
+    location: grant
+  preconditions:
+    subject:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
+  steps:
+    - setLocation: { lat: -33.857, lon: 151.215 }
+      capture: [deviceLog]
+    - relaunch: {}
+    - tap: { label: "Permissions", traits: [button] }
+    - wait: { for: { id: [perm.requestNotif, perm_requestNotif] }, timeout: 10 }
+    - scroll: { to: { id: [perm.location.reading, perm_location_reading] }, direction: down }
+    - tap: { id: [perm.location.read, perm_location_read] }
+    - wait: { for: { id: [perm.location.reading, perm_location_reading], value: "-33.857,151.215" }, timeout: 15 }
+  expect:
+    - value: { sel: { id: [perm.location.reading, perm_location_reading] }, equals: "-33.857,151.215" }

@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0481](BE-0481-android-device-set-location-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **承認済み** |
+| 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0481") |
+| 実装 PR | [#2418](https://github.com/bajutsu-e2e/bajutsu/pull/2418)（作業単位 2〜6） |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0211](../BE-0211-android-device-control/BE-0211-android-device-control-ja.md), [BE-0233](../BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity-ja.md), [BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities-ja.md), [BE-0475](../BE-0475-ios-runner-set-location/BE-0475-ios-runner-set-location-ja.md) |
 <!-- /BE-METADATA -->
@@ -227,12 +228,37 @@ Android の showcase アプリは Compose 版と Views 版の両方で `Bajutsu.
 > ともに記録します。
 
 - [ ] 作業単位 1：実機でのスパイク（`appops`、再起動、権限の解除、fused への反映）
-- [ ] 作業単位 2：BajutsuAndroid の `LocationReceiver` と `Bajutsu.startLocation`
-- [ ] 作業単位 3：adb のコマンド生成関数、結果の解析、`Env` のメソッド
-- [ ] 作業単位 4：経路の選択とリース終了時の解除
-- [ ] 作業単位 5：showcase の位置表示とシナリオ
-- [ ] 作業単位 6：英語と日本語のドキュメント
+- [x] 作業単位 2：BajutsuAndroid の `LocationReceiver` と `Bajutsu.startLocation`
+- [x] 作業単位 3：adb のコマンド生成関数、結果の解析、`Env` のメソッド
+- [x] 作業単位 4：経路の選択とリース終了時の解除
+- [x] 作業単位 5：showcase の位置表示とシナリオ
+- [x] 作業単位 6：英語と日本語のドキュメント
 - [ ] 作業単位 7：実機での検証
+
+ログ：
+
+- 2026-11-11 — 作業単位 2〜6 をまとめて実装しました（[#2418](https://github.com/bajutsu-e2e/bajutsu/pull/2418)）。作業単位 1 は実機ではなく、`adb connect` で
+  接続した API 34 のエミュレータで試したので、作業単位 7 とともに未完了のままです。エミュレータでは
+  次の 5 点を確かめました。
+  - `appops set <package> android:mock_location allow` は、マニフェストに `ACCESS_MOCK_LOCATION`
+    がなくても app-op を許可します。存在しないパッケージを渡すと 0 以外で終了します。
+  - 許可がなければレシーバは `2` を返し、許可があれば `1` を返します。
+  - mock の provider は強制停止と再起動のあとも残り、`clear` で取り除けます。
+  - エミュレータ自身の fused provider も mock の位置を報告しました。Play 開発者サービスは関わっていません。
+  - app-op を取り消しても provider は残り、shell からも取り除けません
+    （`cmd location providers remove-test-provider` は uid 2000 に対して `SecurityException` を投げます）。
+    そのため teardown は、停止しているアプリを起動してから `clear` を broadcast します。
+
+  詳細設計からは次の 4 点を変えました。
+  - 環境は、記録した位置を、自分が行うすべての起動のあとに送り直します。再起動で provider が
+    消えた場合に限りません。送り直しは冪等なので、作業単位 1 が実機で何を見つけても成り立ちます。
+  - `installApp` ステップのあとの送り直しは、`install_member` の中ではなく次の起動で行います。
+    レシーバは実行時に登録されるので、動いているプロセスが要るためです。
+  - 設計の `clear_mock_location` を、`clear_mock_location`（broadcast）と `revoke_mock_location`
+    （`appops` の再設定）の 2 つに分けました。こうすると、解除の broadcast が失敗しても teardown で
+    許可を取り消せます。
+  - レシーバは 3 つ目の失敗コード `3` も返します。プラットフォームが `IllegalArgumentException` で mock を
+    拒んだ場合のコードです。これにより、拒まれた mock でアプリがクラッシュせず、レシーバがないとも誤認されません。
 
 ## 参考
 
