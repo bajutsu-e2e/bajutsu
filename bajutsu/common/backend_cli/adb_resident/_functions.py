@@ -345,7 +345,7 @@ def set_picker_value(
 
     Raises:
         AdbPickerRefused: the device answered with one of the endpoint's refusals (not a wheel, no
-            such row, walk budget spent), or failed mid-walk.
+            such row, walk budget spent or a row stalled), or failed mid-walk.
         AdbActUnsupported: the server predates `/setPickerValue`.
         AdbActUncertain: the request went out but its reply was lost, so the wheel may have moved.
         AdbResidentError: the channel could not be reached, so nothing was sent.

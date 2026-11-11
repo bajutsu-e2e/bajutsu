@@ -142,7 +142,7 @@ def test_a_stale_loop_that_never_settles_fails_naming_the_selector() -> None:
     [
         ("not-a-picker-wheel", "not an android.widget.NumberPicker"),
         ("picker-value-absent", "has no row '大学'"),
-        ("picker-walk-exhausted", "row cap or deadline"),
+        ("picker-walk-exhausted", "ran out of budget"),
         ("picker-immovable", "refused to scroll either way"),
         ("failed", "could not land the wheel"),
     ],

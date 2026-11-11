@@ -201,8 +201,8 @@ def _picker_refusal(sel: base.Selector, value: str, exc: AdbPickerRefused) -> st
         )
     if exc.reason == "picker-walk-exhausted":
         return (
-            f"setPickerValue {sel!r}: the walk toward {value!r} hit its row cap or deadline before "
-            f"the row appeared ({exc.detail})"
+            f"setPickerValue {sel!r}: the walk toward {value!r} ran out of budget before the row "
+            f"appeared ({exc.detail})"
         )
     return f"setPickerValue {sel!r}: the resident server could not land the wheel on {value!r} ({exc.detail})"
 

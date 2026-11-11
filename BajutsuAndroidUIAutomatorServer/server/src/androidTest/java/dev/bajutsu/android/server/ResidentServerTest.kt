@@ -1373,9 +1373,9 @@ class ResidentServerTest {
         // How long one row's wait gives the wheel to show its next row. `NumberPicker` animates each
         // step for 300ms, and an API 34 arm64 emulator took 142ms to 1469ms per row (median 625ms,
         // 38 rows, read from the `picker row` log line), so the budget sits just above that maximum.
-        // A row that outlasts it twice in a row reads as an edge. With the row cap it sets the walk
-        // deadline, which `adb_resident/budgets.py` sizes the host timeout by
-        // (`tests/test_adb_resident_budgets.py` holds the two ends together).
+        // A row that outlasts it twice in a row ends the walk as `picker-walk-exhausted`; it never
+        // reads as an edge. With the row cap it sets the walk deadline, which `adb_resident/budgets.py`
+        // sizes the host timeout by (`tests/test_adb_resident_budgets.py` holds the two ends together).
         const val PICKER_ROW_BUDGET_MS = 1_500L
 
         // How often a row's wait re-reads the wheel: a poll cadence, not a delay.
