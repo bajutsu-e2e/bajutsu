@@ -369,6 +369,7 @@ jobs:
             --target showcase-compose --backend android
             --config demos/showcase/showcase.config.yaml
             && make -C demos/showcase/android e2e
+            && make -C demos/showcase/android e2e-location-connect
             ; rc=$?
             ; if [ "$POLL_CPUINFO" = "true" ]; then kill "$(cat /tmp/cpuinfo.pid)" 2>/dev/null; fi
             ; scripts/collect_android_diagnostics.sh "$rc" || true

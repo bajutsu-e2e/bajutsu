@@ -2217,7 +2217,8 @@ class AdbDriver(CoordinateTreeDriver):
 
     # No semantic tap and no native network monitoring — the lean end of the capability model.
     # Of the device-control family it advertises all but `push` (which needs a receiver in the app's
-    # process) and `clearKeychain` (Android has no keychain): `setLocation` over the emulator console (BE-0211), `clipboard`
+    # process) and `clearKeychain` (Android has no keychain): `setLocation` over the emulator console
+    # on a local emulator (BE-0211) and through the app's in-app receiver elsewhere (BE-0481), `clipboard`
     # over an ordered `am broadcast` to the app's in-app receiver (BajutsuAndroid, BE-0233; adb
     # declares it because the backend can drive it given a cooperating app), `background` over the
     # Home key, and the status-bar pair over the System UI demo mode (BE-0478). The

@@ -4,6 +4,8 @@ import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.location.LocationManager
+import android.os.CancellationSignal
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -23,6 +25,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import androidx.core.location.LocationManagerCompat
+import java.util.Locale
 
 // Tab: Permissions (SPEC §5.4 / §7) — the OS-integration screen. It owns the two deliberate
 // runtime-permission prompts (notifications + location), the Android analog of iOS's SpringBoard
@@ -75,6 +80,12 @@ fun PermissionsScreen(model: AppModel) {
                 Text("Request Location")
             }
             Text("Location: ${model.locationStatus}", Modifier.aid("perm.location.value").stateValue(model.locationStatus))
+            // Reads one fresh GPS fix (SPEC §5.4) — the position a `setLocation` step moved,
+            // whichever route bajutsu took to move it (BE-0481).
+            TextButton(onClick = { model.locationReading = "reading"; readLocation(context) { model.locationReading = it } }, modifier = Modifier.aid("perm.location.read")) {
+                Text("Read Location")
+            }
+            Text("Position: ${model.locationReading}", Modifier.aid("perm.location.reading").stateValue(model.locationReading))
 
             // Clipboard round-trip (SPEC §5.4): Copy writes a known string, Paste reads it back into
             // sys.paste.value — pasteboard state the driver's app-scoped query cannot otherwise see.
@@ -96,6 +107,28 @@ fun PermissionsScreen(model: AppModel) {
             }
             Text("Selected: ${model.selectedPhotoCount}", Modifier.aid("perm.photos.value").stateValue(model.selectedPhotoCount.toString()))
         }
+    }
+}
+
+/**
+ * Ask the `gps` provider for one fresh fix and report it as `lat,lon` (or `(none)` / `denied`).
+ *
+ * A fresh request, not `getLastKnownLocation`: the emulator's GPS reports a console `geo fix` only
+ * while some app is listening, so a cached read would come back empty after a `setLocation`.
+ */
+private fun readLocation(context: Context, onReading: (String) -> Unit) {
+    val manager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+    try {
+        LocationManagerCompat.getCurrentLocation(
+            manager,
+            LocationManager.GPS_PROVIDER,
+            null as CancellationSignal?,
+            ContextCompat.getMainExecutor(context),
+        ) { fix ->
+            onReading(fix?.let { String.format(Locale.US, "%.3f,%.3f", it.latitude, it.longitude) } ?: "(none)")
+        }
+    } catch (_: SecurityException) {
+        onReading("denied")
     }
 }
 

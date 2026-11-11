@@ -20,6 +20,7 @@ from ._device_state import (
     status_bar_exit_cmd,
 )
 from ._functions import (
+    EMULATOR_PROPS,
     SEED_PHOTOS_CLEARED,
     SEED_PHOTOS_DIR,
     checked_serial,
@@ -30,9 +31,13 @@ from ._functions import (
     get_primary_clip_cmd,
     get_prop_cmd,
     install_cmd,
+    is_emulator_serial,
     launch_cmd,
+    location_broadcast_cmd,
     media_scan_cmd,
+    mock_location_appop_cmd,
     parse_clipboard_result,
+    parse_location_result,
     pm_clear_cmd,
     pm_grant_cmd,
     pm_revoke_cmd,
@@ -239,15 +244,68 @@ class Env:
         with Path(path).open("wb") as f:
             f.write(out)
 
-    # Device control: the subset the emulator can honor, the Android peer of simctl's setLocation /
-    # clipboard / Home / status bar. setLocation is a pure emulator-console op (BE-0211); clipboard goes
-    # through the app's in-app receiver (BE-0233), so its methods take the target package to address the
-    # broadcast; Home and the status bar need no app at all (BE-0478). `push` needs a receiver in the
-    # app's process and Android has no keychain, so neither is wired (see
+    # Device control: the Android peer of simctl's setLocation / clipboard / Home / status bar.
+    # setLocation has two routes: the emulator console (`emu geo fix`, BE-0211) on a local emulator,
+    # and BajutsuAndroid's in-app location receiver everywhere else (BE-0481). Clipboard goes through
+    # the in-app clipboard receiver (BE-0233); both in-app routes take the target package to address
+    # the broadcast. Home and the status bar need no app at all (BE-0478). `push` needs a receiver in
+    # the app's process and Android has no keychain, so neither is wired (see
     # `platform_lifecycle.device_control.android_device_control`).
 
+    def has_emulator_console(self) -> bool:
+        """Whether `emu geo fix` can reach this target: a local emulator's serial on an emulator image.
+
+        Neither check suffices alone (BE-0481): the serial names an emulator only by convention, and
+        an emulator reached with `adb connect` reports the emulator property but has no console adb
+        can reach. A non-emulator serial is answered without a device call.
+        """
+        if not is_emulator_serial(self.serial):
+            return False
+        return any(self._run(get_prop_cmd(self.serial, p)).strip() == "1" for p in EMULATOR_PROPS)
+
     def set_location(self, lat: float, lon: float) -> None:
+        """Set the location over the emulator console; only a local emulator has one."""
         self._run(geo_fix_cmd(self.serial, lat, lon))
+
+    def set_mock_location(self, package: str, lat: float, lon: float) -> None:
+        """Mock the location through *package*'s BajutsuAndroid receiver (BE-0481).
+
+        The mock-location app-op is granted on every call: the grant is idempotent, and an
+        `installApp` that uninstalled the package took the earlier one with it.
+
+        Raises:
+            DeviceError: `appops` reported a problem, or see `parse_location_result`.
+        """
+        self._set_mock_location_appop(package, "allow")
+        parse_location_result(
+            self._run(location_broadcast_cmd(self.serial, package, "set", lat, lon))
+        )
+
+    def clear_mock_location(self, package: str) -> None:
+        """Remove *package*'s test providers, so the device reports its real location again.
+
+        Runs while the app still holds the mock-location app-op it needs to remove them, so a teardown
+        calls it before `revoke_mock_location`.
+
+        Raises:
+            DeviceError: see `parse_location_result`.
+        """
+        parse_location_result(self._run(location_broadcast_cmd(self.serial, package, "clear")))
+
+    def revoke_mock_location(self, package: str) -> None:
+        """Drop *package*'s mock-location app-op, so the app can no longer mock afterward.
+
+        Raises:
+            DeviceError: `appops` reported a problem.
+        """
+        self._set_mock_location_appop(package, "default")
+
+    def _set_mock_location_appop(self, package: str, mode: str) -> None:
+        # `appops set` prints an error for an unknown package or op and may still exit 0, the same
+        # silent shape `_pm_run` guards against, so any output is surfaced.
+        out = self._run(mock_location_appop_cmd(self.serial, package, mode)).strip()
+        if out:
+            raise DeviceError(f"appops set {package} android:mock_location {mode} failed: {out}")
 
     def set_clipboard(self, package: str, text: str) -> None:
         parse_clipboard_result(self._run(set_primary_clip_cmd(self.serial, package, text)))

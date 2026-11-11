@@ -589,8 +589,12 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   `capture` policy drives them unchanged (see [evidence](evidence.md)).
 - **Network** is not observed natively (no `NETWORK` capability) — the same mocked story as iOS: the
   app-side collector URL is forwarded through the launch env as an intent extra, so `mocks` work with
-  no new code path. Device control backs the emulator subset `setLocation` (`emu geo fix`, BE-0211)
-  and the clipboard operations; the rest of the family stays unsupported. The clipboard runs through
+  no new code path. Device control backs `setLocation` and the clipboard operations; the rest of
+  the family stays unsupported. `setLocation` takes the emulator console (`emu geo fix`, BE-0211) on
+  a local `emulator-<port>` serial. Every other target — a real device, or an emulator reached with
+  `adb connect` — mocks the `gps` and `network` providers through BajutsuAndroid's location receiver,
+  after adb grants the app the mock-location app-op (BE-0481). The lease's end clears the mock and
+  resets the app-op. The clipboard runs through
   an in-app receiver (`BajutsuAndroid`, BE-0233), not `cmd clipboard`: on-device that command is a
   silent no-op, and since Android 10 only the foreground app / default IME may touch the clipboard —
   so bajutsu sends an ordered `am broadcast` that a receiver inside the app handles from the app

@@ -4,11 +4,16 @@ import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.location.LocationManager
+import android.os.CancellationSignal
 import android.view.View
 import android.widget.LinearLayout
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia
+import androidx.core.content.ContextCompat
+import androidx.core.location.LocationManagerCompat
+import java.util.Locale
 
 // Tab: Permissions (SPEC §5.4 / §7) — the OS-integration screen. It owns the two deliberate
 // runtime-permission prompts (notifications + location), the Android analog of iOS's SpringBoard
@@ -42,6 +47,17 @@ class PermissionsTab(private val activity: MainActivity) {
         val requestLocation = activity.textButton("Request Location") {
             locationLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
         }.aid("perm_requestLocation")
+        // Reads one fresh GPS fix (SPEC §5.4) — the position a `setLocation` step moved,
+        // whichever route bajutsu took to move it (BE-0481).
+        val locationReading = activity.secondaryLabel("Position: ").aid("perm_location_reading").stateValue("")
+        val readLocation = activity.textButton("Read Location") {
+            val show: (String) -> Unit = { reading ->
+                locationReading.text = "Position: $reading"
+                locationReading.stateValue(reading)
+            }
+            show("reading")
+            readLocation(show)
+        }.aid("perm_location_read")
 
         // Clipboard round-trip (SPEC §5.4): Copy writes a known string, Paste reads it back into
         // sys.paste.value — clipboard state the driver's tree query cannot otherwise observe.
@@ -83,6 +99,8 @@ class PermissionsTab(private val activity: MainActivity) {
             activity.label("Location"),
             requestLocation,
             locationValue,
+            readLocation,
+            locationReading,
             activity.label("System"),
             copy,
             paste,
@@ -94,6 +112,28 @@ class PermissionsTab(private val activity: MainActivity) {
         )
         root = activity.vstack(activity.header("Permissions"), activity.scrollPage(form)).apply {
             (getChildAt(1).layoutParams as LinearLayout.LayoutParams).apply { height = 0; weight = 1f }
+        }
+    }
+
+    /**
+     * Ask the `gps` provider for one fresh fix and report it as `lat,lon` (or `(none)` / `denied`).
+     *
+     * A fresh request, not `getLastKnownLocation`: the emulator's GPS reports a console `geo fix` only
+     * while some app is listening, so a cached read would come back empty after a `setLocation`.
+     */
+    private fun readLocation(onReading: (String) -> Unit) {
+        val manager = activity.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        try {
+            LocationManagerCompat.getCurrentLocation(
+                manager,
+                LocationManager.GPS_PROVIDER,
+                null as CancellationSignal?,
+                ContextCompat.getMainExecutor(activity),
+            ) { fix ->
+                onReading(fix?.let { String.format(Locale.US, "%.3f,%.3f", it.latitude, it.longitude) } ?: "(none)")
+            }
+        } catch (_: SecurityException) {
+            onReading("denied")
         }
     }
 
