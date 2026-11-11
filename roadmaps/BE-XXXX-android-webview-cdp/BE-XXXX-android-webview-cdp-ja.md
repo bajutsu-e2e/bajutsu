@@ -81,7 +81,7 @@ sequenceDiagram
     participant Adb as adb
     participant WV as WebView (in app)
     Run->>Src: session(webview_id, within frame)
-    Src->>Adb: pidof <package>
+    Src->>Adb: ps -A, cat /proc/net/unix
     Src->>Adb: forward tcp:0 localabstract:webview_devtools_remote_<pid>
     Src->>WV: GET /json/list
     Src->>Src: pick the one page whose rect contains the within frame
@@ -102,7 +102,7 @@ sequenceDiagram
 |---|---|
 | `query_dom` | 既存の `QUERY_JS` を `(QUERY_JS)()` の形にして `returnByValue` 付きの `Runtime.evaluate` で評価し、`parse_dom` で解析する |
 | `tap_element` | `Input.dispatchTouchEvent` で、指定位置に `touchStart` と `touchEnd` を送る |
-| `type_text` | `Input.insertText` で、フォーカス中の要素に入力する |
+| `type_text` | `Runtime.evaluate` でフォーカス中の欄の末尾にキャレットを置き、`Input.insertText` で入力し、`Runtime.evaluate` で `change` を発火する |
 | `scroll_to` | 要素の `scrollIntoView` を呼ぶスクリプトを `Runtime.evaluate` で評価する |
 
 `QUERY_JS` は `bajutsu/common/drivers/dom.py` にすでにあり、Playwright バックエンドと共有されています。
@@ -113,6 +113,17 @@ Android 向けの実装も同じスクリプトを使うので、得られるレ
 位置を受け取ります。ページには、ブラウザ自身の入力処理を通った信頼済みのタッチイベントが届きます。iOS の
 ブリッジはスクリプトでクリックするため、イベントの経路は両プラットフォームで異なります。ただし記録される
 操作は同じで、`cssPixel` 単位の 1 点へのタップです。
+
+`Input.dispatchTouchEvent` は、指定位置に何があっても成功を返します。そこで `tap_element` は、先に
+当たり判定をします。同じ位置で `document.elementFromPoint` を `Runtime.evaluate` で評価し、何も
+返らなければタッチを送る前にステップを失敗させます。iOS のブリッジも、スクリプトのクリックに
+`elementFromPoint` の結果が要るため、同じ場合に失敗します。この確認がなければ、`scroll_to` によって
+ビューポートの外へ押し出された位置へのタップが、何も操作しないまま成功として扱われます。
+
+入力も iOS のブリッジにそろえます。iOS のブリッジは欄の値の末尾に文字を追加し、`input` と `change` の
+両方を発火します。一方 `Input.insertText` はキャレットの位置に挿入し、`input` しか発火しません。そこで
+Android 向けの実装は、先にキャレットを末尾に置き、入力の後で `change` を発火します。これにより、共通の
+シナリオが両プラットフォームで同じ文字列を残し、同じイベントを発火します。
 
 ### ブロックが指す WebView の特定
 
@@ -148,13 +159,21 @@ WebView の一部が隠れるのは、画面からはみ出したとき、スク
 後など、アプリが再起動するたびに変わります。そのため `CdpDomSource` は、ソケットを実行ごとに 1 回ではなく、
 `session` を開くたび、つまり `web:` ブロックごとに解決します。
 
-1. `adb shell pidof <package>` で pid を読みます。このコマンドは adb ドライバがすでに組み立てています。
-2. `adb forward` で、空いているホスト側のポートを `localabstract:webview_devtools_remote_<pid>` に
-   転送します。
-3. 選んだターゲットの `webSocketDebuggerUrl` に WebSocket で接続します。
+1. `adb shell ps -A -o PID,NAME` でパッケージのプロセスを一覧し、`<package>` とすべての
+   `<package>:<name>` の子プロセスを残します。ハイブリッドアプリは WebView を別の `android:process` に
+   置くことがあり、`pidof <package>` ではそのプロセスを見落とします。
+2. `adb shell cat /proc/net/unix` から `webview_devtools_remote_<pid>` のソケットを一覧し、pid が
+   パッケージのプロセスに属するものを残します。`chrome://inspect` も同じファイルを読みます。
+3. 残した各ソケットへ、`adb forward` で空いているホスト側のポートを転送し、それぞれの `/json/list` を
+   読みます。
+4. すべてのソケットのターゲットをまとめて、前述の包含の規則で照合します。
+5. 選んだターゲットの `webSocketDebuggerUrl` に WebSocket で接続します。
+
+この手順はアプリごとのプロセス名を必要としないので、ツールはアプリに依存しないままです。
 
 `CdpDomSource` は `session` を閉じるときに転送を取り除くので、転送がブロックより長く残ることはありません。
-ソケットが見つからないときは、原因を示す理由とともにブロックを失敗させます。理由には、アプリが WebView の
+ソケットが見つからないときは、原因を示す理由とともにブロックを失敗させます。この理由が扱うのは、
+パッケージのどのプロセスにもソケットがない場合です。理由には、アプリが WebView の
 デバッグを有効にしていないことを書きます。対処は、後述のヘルパーを呼ぶことです。
 
 ### 実行への組み込み
@@ -163,10 +182,17 @@ WebView の一部が隠れるのは、画面からはみ出したとき、スク
 作ります。この関数は `bajutsu/common/runner/pool.py` にあります。新しいコードでは、代わりに実行環境へ
 `DomSource` を問い合わせます。iOS はこれまでどおり HTTP ブリッジと起動時の環境変数を返します。Android は
 `CdpDomSource` を返し、`BAJUTSU_WEBVIEW_PORT` は設定しません。`session` の呼び出しを除けば、ステップランナーの
-`_handle_web` の振る舞いは変わりません。DOM ソースがないときは、これまでどおり明確な理由でブロックを失敗させます。`session` を開く処理の失敗
-（ソケットがない、`websockets` パッケージがないなど）も、そのブロックの失敗理由に変えます。現在の
-`_handle_web` が捕まえるのは `SelectorError` だけで、それ以外の例外は実行ループの外へ抜け、すべての
-シナリオの結果を失わせるためです。
+`_handle_web` の振る舞いは変わりません。DOM ソースがないときは、これまでどおり明確な理由でブロックを失敗させます。通信の失敗も、そのブロックの失敗理由に変えます。
+
+通信の失敗が起きる場面は 2 つあります。1 つは `session` を開くときで、ソケットや `websockets`
+パッケージがない場合です。もう 1 つはブロック内の `DomSource` の呼び出しで、CDP がエラーを返した場合や、
+ページの遷移やアプリの再起動で WebSocket が閉じた場合です。`CdpDomSource` はこれらをすべて
+`WebViewTransportError` という 1 つの例外型で送出し、`_handle_web` がそれを捕まえます。
+
+現在は、このような例外を捕まえる層がありません。`_handle_web` が捕まえるのは `SelectorError` だけで、
+内側のステップの処理が捕まえるのは `SelectorError`、`ElementNotTappable`、`AppNotInFront` です。
+`bajutsu/common/runner/pipeline.py` のシナリオのループが捕まえるのも `BackendCrashError` だけです。
+それ以外の例外は実行ループの外へ抜け、すでに成功したものも含めて、すべてのシナリオの結果を失わせます。
 
 `webView` capability は、iOS と同じく実行ごとに付与されます。静的に宣言するバックエンドはありません。
 
@@ -199,8 +225,8 @@ BajutsuAndroid に `Bajutsu.enableWebViewDebugging()` を追加します。こ�
 
 | # | 作業 | 範囲 | 確認方法 |
 |---|---|---|---|
-| 1 | CDP クライアントと `CdpDomSource` | WebSocket の要求と応答、矩形によるターゲット選択、`DomSource` の 4 メソッド | 記録した CDP のやり取りを再生するユニットテストで、デバイスなしに確かめます |
-| 2 | ソケットの発見と転送 | `pidof` と `adb forward` の手順、ブロック単位の寿命、ソケットがないときの理由 | ユニットテストでコマンドラインとエラーの理由を確かめます |
+| 1 | CDP クライアントと `CdpDomSource` | WebSocket の要求と応答、矩形によるターゲット選択、`DomSource` の 4 メソッド（タップ前の当たり判定、キャレットと `change` の扱いを含む）、`WebViewTransportError` | 記録した CDP のやり取りを再生するユニットテストで、デバイスなしに確かめます。要素のない位置へのタップと、ブロックの途中で閉じたソケットも確かめます |
+| 2 | ソケットの発見と転送 | `ps`、`/proc/net/unix`、`adb forward` の手順、ブロック単位の寿命、ソケットがないときの理由 | ユニットテストで、コマンドライン、`<package>:<name>` のプロセスにある WebView、エラーの理由を確かめます |
 | 3 | 実行への組み込み | `DomSource` の `session` メソッド、`WebViewBridge` とフェイクでの何もしない実装、解決した frame で `session` を開く `_handle_web`。あわせて、`DomSource` を返す実行環境のフック。iOS は変えず、Android は `CdpDomSource` を返します | ステップランナーのテストで、`session` が解決した frame を受け取り、失敗したブロックでも閉じること、ソケットがないときはそのブロックだけが失敗することを確かめます。`tests/runner/test_pool.py` のケースで、Android が `BAJUTSU_WEBVIEW_PORT` を設定せず `CdpDomSource` を受け取ることを確かめます |
 | 4 | オプションの extra とプロビジョニング | `pyproject.toml` の `websockets` extra、ロックの更新、import ガード、プロビジョニングの要件表の `adb` の項目への extra の追加、dev グループの `bajutsu[...]` への追加 | `lock-check` と import ガードのテストを含む `make check` が通ります |
 | 5 | BajutsuAndroid のヘルパー | `Bajutsu.enableWebViewDebugging()` とその KDoc | showcase のアプリがヘルパーを呼び、ビルドが通ります |

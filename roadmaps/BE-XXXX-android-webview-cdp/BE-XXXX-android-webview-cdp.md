@@ -81,7 +81,7 @@ sequenceDiagram
     participant Adb as adb
     participant WV as WebView (in app)
     Run->>Src: session(webview_id, within frame)
-    Src->>Adb: pidof <package>
+    Src->>Adb: ps -A, cat /proc/net/unix
     Src->>Adb: forward tcp:0 localabstract:webview_devtools_remote_<pid>
     Src->>WV: GET /json/list
     Src->>Src: pick the one page whose rect contains the within frame
@@ -102,7 +102,7 @@ client, in `bajutsu/common/drivers/webview/`.
 |---|---|
 | `query_dom` | `Runtime.evaluate` of the existing `QUERY_JS`, invoked as `(QUERY_JS)()` with `returnByValue`, parsed with `parse_dom` |
 | `tap_element` | `Input.dispatchTouchEvent`, a `touchStart` then a `touchEnd` at the point |
-| `type_text` | `Input.insertText` into the focused element |
+| `type_text` | A `Runtime.evaluate` that moves the caret to the end of the focused field, then `Input.insertText`, then a `Runtime.evaluate` that dispatches `change` |
 | `scroll_to` | `Runtime.evaluate` of a `scrollIntoView` script for the element |
 
 `QUERY_JS` already lives in `bajutsu/common/drivers/dom.py`, shared with the Playwright backend. The
@@ -113,6 +113,17 @@ WebView's own space. The unit is the Cascading Style Sheets (CSS) pixel. `Input.
 that same space. The page receives trusted touch events through the browser's own input pipeline.
 On iOS, the bridge clicks through a script instead, so the event path differs between platforms.
 The recorded actuation stays the same: a tap in `cssPixel` at one point.
+
+`Input.dispatchTouchEvent` reports success whatever sits at the point. For that reason,
+`tap_element` hit-tests first. It evaluates `document.elementFromPoint` at the same point. When that
+call returns nothing, the step fails before `tap_element` sends any touch. The iOS bridge already fails this way,
+since its script click needs `elementFromPoint` to resolve. Without the check, `scroll_to` can push the
+point out of the viewport. The step would then pass as a tap that actuated nothing.
+
+Typing follows the iOS bridge too. That bridge appends to the field's value and dispatches both
+`input` and `change`. `Input.insertText` inserts at the caret and dispatches `input` alone. The Android
+source places the caret at the end first and dispatches `change` afterwards. One portable scenario
+then leaves the same text and fires the same events on both platforms.
 
 ### Which WebView a block means
 
@@ -148,12 +159,20 @@ The socket name carries the app's process id (pid). The pid changes whenever the
 it does after an app exit or a `relaunch` step. `CdpDomSource` resolves the socket when `session`
 opens, once per `web:` block rather than once per run:
 
-1. Read the pid with `adb shell pidof <package>`. The adb driver already builds that command.
-2. Forward a free host port to `localabstract:webview_devtools_remote_<pid>` with `adb forward`.
-3. Open the WebSocket to the chosen target's `webSocketDebuggerUrl`.
+1. List the package's processes with `adb shell ps -A -o PID,NAME`. Keep `<package>` and each
+   `<package>:<name>` child. A hybrid app may host its WebView in a separate `android:process`, and
+   `pidof <package>` misses that process.
+2. List the `webview_devtools_remote_<pid>` sockets in `adb shell cat /proc/net/unix`. Keep each
+   socket whose pid belongs to the package. `chrome://inspect` reads the same file.
+3. Forward a free host port to each kept socket with `adb forward`. Read each `/json/list`.
+4. Apply the containment rule above across the targets of every socket together.
+5. Open the WebSocket to the chosen target's `webSocketDebuggerUrl`.
+
+This discovery needs no per-app process name, so the tool stays app-agnostic.
 
 `CdpDomSource` removes the forward when `session` closes, so no forward outlives its block. A missing socket
-fails the block with a reason that names the cause. That reason says the app has not enabled
+fails the block with a reason that names the cause. A package process with no socket at all is
+the case this reason covers. That reason says the app has not enabled
 WebView debugging; the helper below is the fix.
 
 ### Wiring into the run
@@ -162,10 +181,17 @@ Today `_alloc_webview_bridge` builds an HTTP `WebViewBridge` for every non-web p
 function lives in `bajutsu/common/runner/pool.py`. The new code asks the run environment for its `DomSource` instead. iOS
 keeps returning the HTTP bridge and its launch variable. Android returns a `CdpDomSource` and sets
 no `BAJUTSU_WEBVIEW_PORT`. Apart from the `session` call, `_handle_web` keeps its behavior. It
-still fails a block with a clear reason when no source exists. It also turns a failure to open
-`session` into that block's failure reason. A missing socket and a missing `websockets` package are
-two such failures. Today `_handle_web` catches `SelectorError` alone, and any other exception escapes
-the run loop and discards every scenario's result.
+still fails a block with a clear reason when no source exists. It also turns a transport failure into that block's failure reason.
+
+A transport failure can come at two moments. Opening `session` fails when the socket or the
+`websockets` package is missing. A `DomSource` call inside the block can fail too. A CDP error response
+fails it, and so does a WebSocket that a navigation or an app restart closes. `CdpDomSource` raises one
+exception type for each of these, `WebViewTransportError`. `_handle_web` catches that type.
+
+Today no layer catches such an exception. `_handle_web` catches `SelectorError` alone. The inner
+step handlers catch `SelectorError`, `ElementNotTappable`, and `AppNotInFront`. The scenario loop in
+`bajutsu/common/runner/pipeline.py` catches `BackendCrashError` alone. Any other exception escapes the
+run loop and discards every scenario's result, including the ones that already passed.
 
 The `webView` capability stays granted per run, as on iOS. No backend declares it statically.
 
@@ -197,8 +223,8 @@ The units below are mutually exclusive and, together, cover the design above.
 
 | # | Unit | Scope | Check |
 |---|---|---|---|
-| 1 | CDP client and `CdpDomSource` | The WebSocket request and response loop, target selection by rectangle, and the four `DomSource` methods | Unit tests replay a recorded CDP exchange, with no device |
-| 2 | Socket discovery and forwarding | The `pidof` and `adb forward` steps, the per-block lifetime, and the missing-socket reason | Unit tests cover the command lines and the error reason |
+| 1 | CDP client and `CdpDomSource` | The WebSocket request and response loop, target selection by rectangle, the four `DomSource` methods with the tap hit-test and the caret and `change` handling, and `WebViewTransportError` | Unit tests replay a recorded CDP exchange, with no device, including a tap at a point with no element and a socket closed mid-block |
+| 2 | Socket discovery and forwarding | The `ps`, `/proc/net/unix`, and `adb forward` steps, the per-block lifetime, and the missing-socket reason | Unit tests cover the command lines, a WebView in a `<package>:<name>` process, and the error reason |
 | 3 | Run wiring | The `session` method on `DomSource`, its no-op in `WebViewBridge` and the fakes, and `_handle_web` opening it with the resolved frame; the environment hook that supplies a `DomSource`, with iOS unchanged and Android returning `CdpDomSource` | A step-runner test asserts that `session` receives the resolved frame, closes on a failing block, and that a missing socket fails its block alone; a `tests/runner/test_pool.py` case asserts that Android sets no `BAJUTSU_WEBVIEW_PORT` and receives a `CdpDomSource` |
 | 4 | Optional extra and provisioning | The `websockets` extra in `pyproject.toml`, the lock refresh, the import guard, the extra on the `adb` entry of the provisioning requirements map, and the extra in the dev group's `bajutsu[...]` list | `make check`, including `lock-check` and the import guard test |
 | 5 | BajutsuAndroid helper | `Bajutsu.enableWebViewDebugging()` and its KDoc | The showcase apps call the helper and build |
