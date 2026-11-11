@@ -165,6 +165,22 @@ def test_an_artifact_under_another_workers_slug_is_reported() -> None:
     assert any("outside its own evidence dir" in v for v in violations)
 
 
+@pytest.mark.parametrize("phase", ["before_outcomes", "after_outcomes"])
+def test_a_lifecycle_phase_artifact_under_another_workers_slug_is_reported(phase: str) -> None:
+    # `setup` and `cleanup` steps write evidence through the same step path, so a cross-write there
+    # is the same isolation violation as one in a numbered step.
+    scenarios = _isolated_run()
+    scenarios[0][phase] = [
+        {
+            "index": 0,
+            "action": "tap",
+            "artifacts": [{"name": "01-search/setup/after.png", "kind": "screenshot"}],
+        }
+    ]
+    violations = isolation_violations(scenarios, _dirs(scenarios), expect_devices=2)
+    assert any("'01-search/setup/after.png' outside its own evidence dir" in v for v in violations)
+
+
 def test_two_results_sharing_one_evidence_dir_is_reported() -> None:
     scenarios = _isolated_run()
     scenarios[1]["sid"] = "00-smoke"

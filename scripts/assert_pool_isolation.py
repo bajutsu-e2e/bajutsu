@@ -50,6 +50,11 @@ from pathlib import Path
 # it as evidence written outside every worker's dir.
 _VIDEO_STAGING = "_video_tmp"
 
+# The manifest's step-outcome lists: the lifecycle `setup` and `cleanup` phases (BE-0392) run through
+# the same step path on the same leased device as the numbered steps, so their evidence and their
+# timing belong to the result exactly as the steps' do.
+_PHASES = ("before_outcomes", "steps", "after_outcomes")
+
 
 def _entries(container: Mapping[str, object], key: str) -> list[object]:
     """The list stored at `key`, or an empty list when the manifest holds anything else there.
@@ -64,7 +69,7 @@ def _entries(container: Mapping[str, object], key: str) -> list[object]:
 
 
 def artifact_names(scenario: Mapping[str, object]) -> list[str]:
-    """Every artifact name one result recorded — its scenario-level captures and its steps'.
+    """Every artifact name one result recorded — its scenario-level captures and every phase's steps'.
 
     Names are run-directory-relative (`RunArtifactWriter._resolve`), which is what makes the
     own-evidence-dir check below a plain prefix test.
@@ -74,15 +79,11 @@ def artifact_names(scenario: Mapping[str, object]) -> list[str]:
         for artifact in _entries(scenario, "artifacts")
         if isinstance(artifact, Mapping) and isinstance(name := artifact.get("name"), str)
     ]
-    for step in _entries(scenario, "steps"):
-        if isinstance(step, Mapping):
-            names.extend(artifact_names(step))
+    for phase in _PHASES:
+        for step in _entries(scenario, phase):
+            if isinstance(step, Mapping):
+                names.extend(artifact_names(step))
     return names
-
-
-# The manifest phases whose outcomes carry an absolute `started_at`: the lifecycle `setup` and
-# `cleanup` phases (BE-0392) run on the same leased device as the steps, so they belong in the window.
-_TIMED_PHASES = ("before_outcomes", "steps", "after_outcomes")
 
 
 def _positive_instant(value: object) -> float | None:
@@ -112,7 +113,7 @@ def scenario_window(scenario: Mapping[str, object]) -> tuple[float, float] | Non
     """
     starts: list[float] = []
     ends: list[float] = []
-    for phase in _TIMED_PHASES:
+    for phase in _PHASES:
         for step in _entries(scenario, phase):
             if not isinstance(step, Mapping):
                 continue
