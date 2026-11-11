@@ -5,7 +5,9 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -35,6 +37,17 @@ fun PermissionsScreen(model: AppModel) {
     val locationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         model.locationStatus = if (granted) "authorizedWhenInUse" else "denied"
     }
+
+    // `selectPhotos` (SPEC §5.4): the system photo picker in its two modes, mirroring the picked count
+    // back to perm.photos.value. Multi-selection confirms with the picker's add button; single-selection
+    // returns on its one tap.
+    val photosLauncher = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris ->
+        model.selectedPhotoCount = uris.size
+    }
+    val photoLauncher = rememberLauncherForActivityResult(PickVisualMedia()) { uri ->
+        model.selectedPhotoCount = if (uri != null) 1 else 0
+    }
+    val imagesOnly = PickVisualMediaRequest(PickVisualMedia.ImageOnly)
 
     Column(Modifier.fillMaxSize()) {
         TopAppBar(title = { Text("Permissions") })
@@ -66,6 +79,15 @@ fun PermissionsScreen(model: AppModel) {
                 Text("Paste")
             }
             Text("Pasted: ${model.pasted}", Modifier.aid("sys.paste.value").stateValue(model.pasted))
+
+            Text("Photos", style = MaterialTheme.typography.titleMedium)
+            TextButton(onClick = { photosLauncher.launch(imagesOnly) }, modifier = Modifier.aid("perm.openPhotoPicker")) {
+                Text("Open Photo Picker")
+            }
+            TextButton(onClick = { photoLauncher.launch(imagesOnly) }, modifier = Modifier.aid("perm.openPhotoPickerSingle")) {
+                Text("Open Photo Picker (Single)")
+            }
+            Text("Selected: ${model.selectedPhotoCount}", Modifier.aid("perm.photos.value").stateValue(model.selectedPhotoCount.toString()))
         }
     }
 }

@@ -335,6 +335,16 @@ def id_u_cmd(serial: str) -> list[str]:
     return _adb(serial, "shell", "id", "-u")
 
 
+def focused_window_cmd(serial: str) -> list[str]:
+    """Print the window that holds input focus (`mCurrentFocus=Window{… <package>/<activity>}`).
+
+    A tree dump shows a window as soon as it is attached, but a coordinate tap lands on whichever
+    window holds input focus, which can still be the one beneath during a transition. `|| true`
+    keeps a grep with no match (focus momentarily null) from failing the command.
+    """
+    return _adb(serial, "shell", "dumpsys window | grep mCurrentFocus || true")
+
+
 def pidof_cmd(serial: str, package: str) -> list[str]:
     """The package's live process ids, empty when it holds none (BE-0424).
 

@@ -622,13 +622,13 @@ iOS 側の対になるジョブ `pool (xcuitest)` は、Simulator を 2 台起�
   - ホイールが持たない値を指定した場合は、ホイールを止まった場所に残したまま、その値を名指ししてステップを失敗させます。
   - 複数コンポーネントのピッカー（年のホイールと月のホイールが並ぶような場合）は、セレクタの既存の `within`/`traits`/`index` フィールドで、コンポーネントごとに 1 ステップずつアドレス指定します。
   - `PICKER_WHEEL` capability でゲートされています。これを宣言するのは、常駐 runner を持つ XCUITest バックエンドと `FakeDriver` だけなので、Android と web は、デバイス側の作業に入る前に preflight で拒否されます。
-- DSL の `selectPhotos`（BE-0433）は、開いている `PHPickerViewController` のグリッドから、序数の `indices` で 1 枚以上の画像を選び、ピッカーの確定コントロールをタップします。
+- DSL の `selectPhotos`（BE-0433）は、開いている `PHPickerViewController` のグリッドから、序数の `indices` で 1 枚以上の画像を選び、ピッカーの確定コントロールをタップします。adb では Android 13 以降の写真ピッカーを同じように操作し、セルと追加ボタンをピッカー自身のパッケージ内の resource id で探します。
   - 確定コントロールは自身の identifier を持たないため、ピッカーのナビゲーションバー内で、消去法により構造的に解決します。
   - グリッドの各セルは 1 つの identifier（`PXGGridLayout-Info`）を共有しています。`handleSystemAlert` がラベルのない SpringBoard のボタンを扱うのと同じ方法で、既存の `index` セレクタフィールドによって個々のセルを区別します。
   - actuation は、解決したセルの正確なフレーム中心への生の座標タップです。この再利用型のコレクションビューに対しては、同じセルへのハンドルベースのタップが失敗する（`element vanished`/`ElementNotTappable`）ことが確認されているためです。
   - `seedPhotos` precondition（`Preconditions.seed_photos`）は、`simctl addmedia` を介して Simulator の写真ライブラリにフィクスチャ画像をシードし、グリッドの内容を再現可能にします。
   - `seedPhotos` は、実効の `subject.reinstall: erase` を要求し、ロード時に検査します。実効値は、シナリオの値、なければターゲットの値に、`--erase` / `--no-erase` を反映したものです。再利用中のライブラリでは、何もシードされないまま黙って通ってしまうためです。
-  - `SELECT_PHOTOS` capability でゲートされています。これを宣言するのは XCUITest バックエンドだけなので、Android と web は preflight で拒否されます。
+  - `SELECT_PHOTOS` capability でゲートされています。これを宣言するのは XCUITest と adb のバックエンドで、adb は API 33 未満のデバイスをステップの実行時に断ります。web は preflight で拒否されます。
 
 #### DSL のシステムアラートと tip の処理
 

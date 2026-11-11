@@ -912,7 +912,7 @@ class PlaywrightDriver:
 
     def select_photos(self, indices: list[int], *, timeout: float) -> None:  # noqa: ARG002  # Driver shape
         raise base.UnsupportedAction(
-            "selectPhotos is iOS-only; the web has no PHPickerViewController"
+            "selectPhotos drives a native system photo picker (iOS, Android); the web has none"
         )
 
     def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:  # noqa: ARG002  # Driver shape

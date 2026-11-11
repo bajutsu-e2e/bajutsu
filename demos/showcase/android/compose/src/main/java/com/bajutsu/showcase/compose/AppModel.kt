@@ -102,6 +102,7 @@ class AppModel(env: Map<String, String>) {
     var notifStatus by mutableStateOf("notDetermined")
     var locationStatus by mutableStateOf("notDetermined")
     var pasted by mutableStateOf("")
+    var selectedPhotoCount by mutableStateOf(0)
 
     /**
      * Reseed the conformance screen from a new SHOWCASE_CONFORMANCE extra (BE-0270), a no-op when the

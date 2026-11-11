@@ -70,7 +70,7 @@ column.
 | `resolveAlerts` | ✅ | n/a | Same reason as `handleSystemAlert`. |
 | `pickerWheel` | ✅ | gap | Android's `NumberPicker` and spinner-mode `DatePicker` are the nearest controls. No setter drives them yet. |
 | `appContext` | ✅ | gap | UI Automator reads any app's window, and `am start` can bring another package forward. |
-| `selectPhotos` | ✅ | gap | Android's photo picker is system UI that a tap can reach. No step picks a photo by position yet. On iOS, an Apple Silicon Simulator drops the capability at run time. |
+| `selectPhotos` | ✅ | ✅ | adb finds the Android 13+ photo picker's cells and add button by resource id, so the same steps run on both platforms. On iOS, an Apple Silicon Simulator drops the capability at run time. |
 | `handleTipkitTip` | ✅ | n/a | TipKit is an iOS framework. |
 | `handleNotificationBanner` | ✅ | gap | An Android heads-up notification appears in the tree as a SystemUI node. |
 | `deviceGroup` | ✅ | ✅ | |

@@ -290,16 +290,19 @@ associated domain の仕掛けも要ります。無ければ iOS は何も申し
   ブラウザを開くたびに `idle` へ戻すので、前回の結果で `loaded` の待機が満たされることはない。
   読めるのはブラウザを閉じてこの画面がツリーに戻ってからで、シナリオもそこでアサートする
 
-**Photos**（SwiftUI のみ。ロードマップ項目の「代替案」を参照）は、システムの `PHPickerViewController` を
-提示します。ボタンは2つあり、ピッカーが画面を去る2通りの経路にそれぞれ対応します。無制限選択のボタンは、
+**Photos**（SwiftUI、Compose、Views にあり、UIKit と Flutter にはありません）は、システムの写真ピッカーを
+提示します。iOS では `PHPickerViewController`、Android では `PickMultipleVisualMedia` /
+`PickVisualMedia` が画像だけを対象に開く写真ピッカーです（Views 版では各 ID をアンダースコアでつづります）。ボタンは2つあり、ピッカーが画面を去る2通りの経路にそれぞれ対応します。無制限選択のボタンは、
 `selectPhotos` が頼る確定タップ（`_confirm_photo_selection`）を必ず起こします。`selectionLimit = 1` の
 ボタンは、必要な1回のタップでピッカーが自動的に閉じ、確定コントロールが一度も表示されない経路をたどります。
 これは同じメソッドが持つ、排除法による no-op の経路です。どちらも `selectPhotos` を支えます。
-`selectPhotos` は iOS 専用の DSL アクションで、`Capability.SELECT_PHOTOS` によって限定されます。
-有効なのは XCUITest バックエンドのみです。シナリオは
+`selectPhotos` は `Capability.SELECT_PHOTOS` によって限定される DSL アクションで、有効なのは iOS の
+XCUITest バックエンドと、Android 13 以降の adb バックエンドです。Android の単一選択のピッカーも、
+1 回のタップで同じように閉じます。シナリオは
 [`select_photos.yaml`](scenarios/select_photos.yaml) と
 [`select_photo_single.yaml`](scenarios/select_photo_single.yaml) です。どちらもピッカーを開く前に
-`preconditions.device.ios.seedPhotos` で写真ライブラリをシードします。実効の `subject.reinstall: erase` が必須です。
+iOS では `preconditions.device.ios.seedPhotos` で写真ライブラリをシードし、実効の
+`subject.reinstall: erase` が必須です。Android では `preconditions.device.android.seedPhotos` でシードします。
 - `perm.openPhotoPicker`：無制限選択のピッカーを提示するボタン
 - `perm.openPhotoPickerSingle`：`selectionLimit = 1` のピッカーを提示するボタン
 - `perm.photos.value`：選択した枚数。ピッカーが閉じた時点でミラーされる（それまでは 0）
