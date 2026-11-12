@@ -1,14 +1,14 @@
-[English](BE-XXXX-android-libraries-maven-central.md) · **日本語**
+[English](BE-0486-android-libraries-maven-central.md) · **日本語**
 
-# BE-XXXX — BajutsuAndroid と IdentifierTool を Maven Central で公開する
+# BE-0486 — BajutsuAndroid と IdentifierTool を Maven Central で公開する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-android-libraries-maven-central-ja.md) |
+| 提案 | [BE-0486](BE-0486-android-libraries-maven-central-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **承認済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0486") |
 | トピック | Platform support |
 | 関連 | [BE-0233](../BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity-ja.md), [BE-0283](../BE-0283-android-network-capture/BE-0283-android-network-capture-ja.md), [BE-0355](../BE-0355-native-z-position/BE-0355-native-z-position-ja.md), [BE-0405](../BE-0405-android-identifiertool/BE-0405-android-identifiertool-ja.md), [BE-0481](../BE-0481-android-device-set-location/BE-0481-android-device-set-location-ja.md) |
 <!-- /BE-METADATA -->

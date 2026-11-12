@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-android-libraries-maven-central-ja.md)
+**English** · [日本語](BE-0486-android-libraries-maven-central-ja.md)
 
-# BE-XXXX — Publish BajutsuAndroid and IdentifierTool to Maven Central
+# BE-0486 — Publish BajutsuAndroid and IdentifierTool to Maven Central
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-android-libraries-maven-central.md) |
+| Proposal | [BE-0486](BE-0486-android-libraries-maven-central.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0486") |
 | Topic | Platform support |
 | Related | [BE-0233](../BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity.md), [BE-0283](../BE-0283-android-network-capture/BE-0283-android-network-capture.md), [BE-0355](../BE-0355-native-z-position/BE-0355-native-z-position.md), [BE-0405](../BE-0405-android-identifiertool/BE-0405-android-identifiertool.md), [BE-0481](../BE-0481-android-device-set-location/BE-0481-android-device-set-location.md) |
 <!-- /BE-METADATA -->
