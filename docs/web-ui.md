@@ -425,8 +425,6 @@ A row also ends as unknown when the server no longer tracks the job (after a res
 Expanding a row streams that job's log. One log streams at a time, so a large fan-out never holds
 a stream per row. **Stop all** cancels every unfinished row.
 
-A fan-out that the concurrency cap cuts short reports its undispatched scenarios in the panel.
-
 Under the log panel, a **Generate code** bar exports the selected scenario as a native test — the
 same codegen as on the [Author](#author--capture-edit-and-enrich-one-scenario) tab, placed where a
 scenario has just run.

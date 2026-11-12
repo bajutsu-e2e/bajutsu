@@ -306,8 +306,8 @@ class Repository(Protocol):
                 registration; a plain job was capped when it registered. None is unlimited.
 
         Returns:
-            The leased jobs, oldest first; empty when nothing servable is queued, or a cap leaves
-            no room for the group the oldest servable job belongs to.
+            The leased jobs, oldest first. A group a cap holds back stays queued, and the lease
+            moves on to the next servable job; empty when no servable job fits within the caps.
         """
 
     def leased_group_counts(self) -> dict[tuple[str, str | None], int]:

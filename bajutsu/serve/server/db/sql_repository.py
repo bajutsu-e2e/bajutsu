@@ -799,19 +799,27 @@ class SqlRepository:
         # A worker that checks no routes drops the route tokens from every verdict, so jobs that
         # differ in those tokens alone share its verdict and pair by base key (BE-0484).
         pair = JobRecord.route_key if checks_routes(advertised) else JobRecord.base_key
+        caps = caps or ConcurrencyCaps()
+        # Scopes a count in this call found full: a later group in one stays queued without taking
+        # the lock and counting again, which on SQLite would hold the database's write lock per group.
+        full: set[tuple[int, str]] = set()
         for candidate in self._lease_candidates(pair):
             if not can_serve(candidate.capabilities or [], advertised):
                 continue
             if candidate.group_id is None:
                 leased = self._claim_plain(worker_id, candidate.id, advertised)
             else:
+                scopes = _capped_scopes(caps, candidate.org_id, candidate.actor)
+                if full.intersection(scopes):
+                    continue
                 leased = self._claim_bundle(
                     worker_id,
                     advertised,
                     group=(candidate.group_id, pair, candidate.pair),
-                    scope=(candidate.org_id, candidate.actor),
+                    scopes=scopes,
                     limit=max(1, max_jobs),
-                    caps=caps or ConcurrencyCaps(),
+                    caps=caps,
+                    full=full,
                 )
             if leased:
                 return leased
@@ -898,12 +906,13 @@ class SqlRepository:
         advertised: set[str],
         *,
         group: tuple[str, InstrumentedAttribute[str | None], str | None],
-        scope: tuple[str, str | None],
+        scopes: list[tuple[int, str]],
         limit: int,
         caps: ConcurrencyCaps,
+        full: set[tuple[int, str]],
     ) -> list[LeasedJob]:
         """Lease up to *limit* queued jobs of one group and pair key, oldest first, within the
-        headroom the caps leave (BE-0484).
+        headroom the caps leave in *scopes* (BE-0484); a scope found full joins *full*.
 
         The count and the claim share one transaction under a lock taken before the count, so two
         leasers never overshoot a cap together: SQLite's write lock, or PostgreSQL's
@@ -915,12 +924,12 @@ class SqlRepository:
         from bajutsu.serve.server.models import JobRecord
 
         group_id, pair, key = group
-        org_id, actor = scope
-        scopes = _capped_scopes(caps, org_id, actor)
         with Session(self._engine) as session:
             if scopes:
                 self._lock_scopes(session, scopes)
-                limit = min(limit, self._headroom(session, caps, org_id, actor))
+                room = self._headroom(session, caps, scopes)
+                full.update(scope for scope, left in room.items() if left <= 0)
+                limit = min(limit, *room.values())
                 if limit <= 0:
                     session.rollback()
                     return []
@@ -961,9 +970,9 @@ class SqlRepository:
             session.execute(select(func.pg_advisory_xact_lock(kind, _lock_key(name))))
 
     def _headroom(
-        self, session: Session, caps: ConcurrencyCaps, org_id: str, actor: str | None
-    ) -> int:
-        """How many more jobs of *org_id* and *actor* the caps admit now (BE-0484).
+        self, session: Session, caps: ConcurrencyCaps, scopes: list[tuple[int, str]]
+    ) -> dict[tuple[int, str], int]:
+        """How many more jobs each capped scope in *scopes* admits now (BE-0484).
 
         A slot is held by every leased job, and by every queued plain job some live worker can
         serve: the registry admitted it against the caps already, and a worker may take it next. A
@@ -995,14 +1004,15 @@ class SqlRepository:
                 if not servable[key]:
                     continue
             holding.append((row_org, row_actor))
-        room: list[int] = []
-        if caps.total > 0:
-            room.append(caps.total - len(holding))
-        if caps.per_org > 0:
-            room.append(caps.per_org - sum(1 for o, _ in holding if o == org_id))
-        if caps.per_user > 0 and actor:
-            room.append(caps.per_user - sum(1 for _, a in holding if a == actor))
-        return min(room)
+        room: dict[tuple[int, str], int] = {}
+        for kind, name in scopes:
+            if kind == _DEPLOYMENT_SCOPE:
+                room[kind, name] = caps.total - len(holding)
+            elif kind == _ORG_SCOPE:
+                room[kind, name] = caps.per_org - sum(1 for o, _ in holding if o == name)
+            else:
+                room[kind, name] = caps.per_user - sum(1 for _, a in holding if a == name)
+        return room
 
     def _claim_row(
         self, session: Session, row: JobRecord, worker_id: str, advertised: set[str]
