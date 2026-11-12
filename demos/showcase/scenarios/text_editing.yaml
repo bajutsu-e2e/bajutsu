@@ -9,8 +9,9 @@
 # the `clipboard` assertion.
 #
 # Runs on iOS (XCUITest), on the SwiftUI and UIKit a11y apps alike. The adb driver now reads an
-# editable field's text as its `value` (#2388), so `clear` and the per-edit `value` checks work on
-# Android too; the Android lane picks this scenario up with the `select` / `copy` work (#2389).
+# editable field's text as its `value` (#2388), so `clear` and the per-edit `value` checks can work on
+# Android too, but the Android lane does not run this file yet. Its select/copy half runs there as
+# text_selection_android.yaml (issue #2389).
 #   bajutsu run --scenario text_editing.yaml --target showcase-swiftui ...
 - name: select and copy the field text, then clear and delete it
   preconditions:
