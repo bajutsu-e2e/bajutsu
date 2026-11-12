@@ -29,6 +29,7 @@ from ._functions import (
     fetch_source,
     gesture,
     narrowed_root,
+    set_picker_value,
     type_text,
 )
 from ._process import _Process
@@ -48,6 +49,7 @@ ActProbe = Callable[[int, ActRequest], ActOutcome]
 _MAX_RESTARTS_IN_A_ROW = 2
 TypeProbe = Callable[[int, str, float | None], None]
 GestureProbe = Callable[[int, Pair, Pair], None]
+PickerProbe = Callable[[int, ActRequest, str], ActOutcome]
 
 
 class ResidentServer:
@@ -75,6 +77,7 @@ class ResidentServer:
         act_probe: ActProbe | None = None,
         type_probe: TypeProbe | None = None,
         gesture_probe: GestureProbe | None = None,
+        picker_probe: PickerProbe | None = None,
         server_apk: Path = _SERVER_APK,
         test_apk: Path = _TEST_APK,
         installed: dict[str, tuple[str, str]] | None = None,
@@ -119,6 +122,12 @@ class ResidentServer:
         self._gesture = gesture_probe or (
             lambda port, start, end: gesture(port, start, end, keepalive=self._keepalive)
         )
+        # `tree=0` for `nativeZ` for the reason `_act` gives above.
+        self._set_picker_value = picker_probe or (
+            lambda port, request, value: set_picker_value(
+                port, request, value, keepalive=self._keepalive, want_tree=not native_z
+            )
+        )
         self._server_apk = server_apk
         self._test_apk = test_apk
         # Which APK pair this run already put on which device (BE-0407 unit 22). Owned by the caller
@@ -161,6 +170,10 @@ class ResidentServer:
             # Like `act_on_device`, a fault here leaves the read channel up.
             self._gesture(self._port(), start, end)
 
+        def set_picker_value_on_device(request: ActRequest, value: str) -> ActOutcome:
+            # Like `act_on_device`, a fault here leaves the read channel up.
+            return self._set_picker_value(self._port(), request, value)
+
         return ResidentChannel(
             self._read,
             clock,
@@ -171,7 +184,8 @@ class ResidentServer:
                 revive=self._revive,
                 drain_notes=self._drain_notes,
             ),
-            gesture_on_device,
+            gesture=gesture_on_device,
+            set_picker_value=set_picker_value_on_device,
         )
 
     def _port(self) -> int:

@@ -32,6 +32,12 @@ def _strip_pkg(resource_id: str) -> str | None:
     return resource_id.rsplit("/", 1)[-1] or None
 
 
+# The platform wheel `setPickerValue` drives on Android (BE-0480). `NumberPicker`'s own accessibility
+# provider reports this class for the wheel, which is also how the wheels of a spinner-mode
+# `DatePicker` / `TimePicker` dump.
+_NUMBER_PICKER_CLASS = "android.widget.NumberPicker"
+
+
 def _norm_class(class_name: str) -> str:
     """Widget class to a trait token: `android.widget.Button` → `button`."""
     simple = class_name.rsplit(".", 1)[-1]
@@ -121,6 +127,10 @@ def _traits(node: ET.Element) -> list[str]:
     # yields it (BE-0223). Note this `button` means "tappable", broader than a `button` derived from
     # the widget type — so a bare `traits: [button]` matches any tappable node; pair it with a label.
     # Guarded so a widget already mapped to `button` by class (a Views Button) is not tagged twice.
+    # The class-derived `numberPicker` stays for existing selectors; the shared token is what lets the
+    # iOS wheel selector `{ within, traits: [pickerWheel], index }` resolve here too (BE-0480).
+    if cls == _NUMBER_PICKER_CLASS:
+        out.append(base.Trait.PICKER_WHEEL)
     if node.get("clickable") == "true" and base.Trait.BUTTON not in out:
         out.append(base.Trait.BUTTON)
     # UI Automator dumps a masked input as `password="true"`, whatever widget class backs it, so the

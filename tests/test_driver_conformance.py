@@ -48,6 +48,14 @@ _FIELD_FRAME: base.Frame = (0.0, 200.0, 100.0, 40.0)
 _SECURE_FIELD_FRAME: base.Frame = (0.0, 300.0, 100.0, 40.0)
 
 
+def test_the_picker_wheel_trait_is_the_token_every_wheel_backend_maps_to() -> None:
+    # BE-0480: iOS reports a wheel as XCUITest's `pickerWheel` and Android maps `NumberPicker` onto
+    # the same token, so one selector addresses a wheel on both. Renaming it on one side would split
+    # every shared wheel scenario, so the literal is pinned rather than only referenced.
+    assert base.Trait.PICKER_WHEEL == "pickerWheel"
+    assert base.Trait.PICKER_WHEEL == base.Capability.PICKER_WHEEL
+
+
 def _secure_field() -> base.Element:
     return element(
         identifier=SECURE_FIELD_ID,

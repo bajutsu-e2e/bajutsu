@@ -21,3 +21,8 @@ class Trait:
     # Android map their own source onto it (`input[type=password]`, the node's `password` flag), so
     # one construct means the same thing on every backend. Pinned by the conformance suite.
     SECURE_TEXT_FIELD = "secureTextField"
+    # A wheel picker one `setPickerValue` step can set (BE-0480). The token is XCUITest's own type
+    # name, as with `SECURE_TEXT_FIELD`: iOS already reported it, and Android maps
+    # `android.widget.NumberPicker` onto it, so one selector addresses a wheel on both platforms.
+    # Pinned by the conformance suite.
+    PICKER_WHEEL = "pickerWheel"

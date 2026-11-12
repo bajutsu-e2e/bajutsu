@@ -752,6 +752,21 @@ def test_generate_step_is_a_labeled_todo() -> None:
     assert "unsupported step" not in code
 
 
+def test_set_picker_value_is_a_labeled_todo_naming_the_selector_and_value() -> None:
+    # BE-0480: `run` walks the wheel through accessibility scroll actions UiObject2 does not expose,
+    # so the step is labeled for a reviewer rather than translated into a drag that could miss.
+    code = _gen(
+        "- name: x\n  steps:\n"
+        "    - setPickerValue:\n"
+        "        sel: { within: { id: form.birthdate }, traits: [pickerWheel], index: 2 }\n"
+        '        value: "2016"\n'
+    )
+    assert "// TODO: setPickerValue(sel: " in code
+    assert '"traits": ["pickerWheel"]' in code and '"index": 2' in code
+    assert 'value: "2016")' in code
+    assert "unsupported step" not in code
+
+
 def test_response_schema_and_visual_assertions_are_todo() -> None:
     code = _gen(
         "- name: x\n  steps:\n    - assert:\n"

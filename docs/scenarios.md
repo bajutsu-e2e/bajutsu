@@ -1002,7 +1002,7 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `copy` | `copy: {}` | copy the active selection to the clipboard; requires a prior `select`; the web context raises — the iOS (XCUITest) backend supports it natively |
 | `selectOption` | `selectOption: { sel: <Selector>, option: "..." }` | set a web `<select>` to the option with this value; web only (iOS / Android raise) |
 | `selectPhotos` | `selectPhotos: { indices: [0, 1], timeout: 10 }` | pick the cells at these positions (0 = the first cell, newest image first) from the system photo picker the app has already opened, then confirm: `PHPickerViewController` on iOS (XCUITest), the Android 13+ photo picker on adb. A single-selection picker closes on its one tap; an index beyond the visible grid fails |
-| `setPickerValue` | `setPickerValue: { sel: <Selector>, value: "..." }` | move a wheel-style picker (`UIPickerView`, a wheel-mode `UIDatePicker`) to the row with this value ([below](#setpickervalue)); iOS (XCUITest) only. `sel` addresses one wheel — a multi-component picker's siblings are separated by `within` / `traits` / `index`, one step each |
+| `setPickerValue` | `setPickerValue: { sel: <Selector>, value: "..." }` | move a wheel-style picker (`UIPickerView` or a wheel-mode `UIDatePicker` on iOS; `NumberPicker` or a spinner-mode `DatePicker` on Android) to the row with this value ([below](#setpickervalue)); iOS (XCUITest) and Android (adb). `sel` addresses one wheel — a multi-component picker's siblings are separated by `within` / `traits` / `index`, one step each |
 | `swipe` | `swipe: { on: <Selector>, direction: up\|down\|left\|right }` or `swipe: { from: [x,y], to: [x,y] }` | selector form and coordinate form cannot mix; the directional form **scrolls** |
 | `drag` | `drag: { on: <Selector>, direction: up\|down\|left\|right, amount?: <frac> }` | a real pointer **drag** of the element (a handle / divider / slider), not a scroll |
 | `scroll` | `scroll: { to: <Selector>, direction?: up\|down\|left\|right, within?: <Selector>, amount?: <frac>, maxScrolls?: <int> }` | scroll (non-inertially) until `to` is on-screen, or fail at a bound; `direction` is **scroll** direction (default `down`), the inverse of `swipe`'s |
@@ -1108,8 +1108,10 @@ that uses it on iOS or Android fails in preflight, before any device is leased, 
     value: "大学"
 ```
 
-A wheel-style picker — a `UIPickerView`, or a `UIDatePicker` switched to a wheel-only mode — is an
-ordinary iOS form control, and `setPickerValue` is the only step that can set one. Its rows are not
+A wheel-style picker is an ordinary form control on both mobile platforms. No step but
+`setPickerValue` can set one. On iOS the picker is a `UIPickerView`, or a `UIDatePicker` switched to
+a wheel-only mode. On Android it is an `android.widget.NumberPicker`. A `DatePicker` or `TimePicker`
+in spinner mode counts too, since its fields are `NumberPicker` wheels. Its rows are not
 separately addressable elements, so `tap`, which addresses a resolved handle, cannot land on a
 specific one. The coordinate-driven steps fare no better: `swipe` / `drag` / `scroll` are bounded or
 directional drags that can spin a wheel roughly toward a value but cannot guarantee stopping on it,
@@ -1119,11 +1121,25 @@ Bajutsu rules out everywhere else. `setPickerValue` instead calls XCUITest's own
 `adjust(toPickerWheelValue:)` on the element the selector already resolved, so it is handle-based
 the way `tap` is rather than coordinate-based the way `swipe` is.
 
+On Android, the adb backend resolves the wheel the way a `tap` resolves its target. It then hands
+the wheel's identity to the resident UI Automator server, with no coordinate. The server steps the
+wheel one row at a time. Each step is the accessibility scroll action `NumberPicker` itself provides.
+After each step, the server reads the selected row back. When the shown row and the value both parse
+as integers, the walk starts toward the value. A year wheel thus takes the short way. Otherwise the
+walk goes forward first. On a wheel with ends, the walk turns back at the last row. A wrapping wheel
+stops once it comes back to the row it started on. A cap of 400 rows and a deadline bound the walk. The
+step needs the resident server: without it, the step fails instead of dragging the wheel by
+coordinates.
+
 `sel` must resolve the wheel itself, which is seldom the element carrying the identifier. A
 `UIPickerView` publishes its identifier on the picker, and exposes the wheel as a separate child.
 A selector naming that identifier alone resolves the parent instead, and the step fails.
 `adjust(toPickerWheelValue:)` raises on any element that is not itself a wheel. Pairing the
-identifier with the `pickerWheel` trait, as above, reaches the child.
+identifier with the `pickerWheel` trait, as above, reaches the child. On Android, a
+`NumberPicker`'s own node carries no `resource-id` at all. Put the identifier on a container around
+the wheel instead. The same `within` plus `pickerWheel` selector then reaches the wheel inside. The
+adb backend gives a `NumberPicker` node the `pickerWheel` trait, next to the `numberPicker` trait its
+class name yields.
 
 A value the wheel does not carry **fails the step**, naming the value, rather than leaving the wheel
 wherever it stopped — so the following assertion tests the app, not the gesture.
@@ -1157,10 +1173,13 @@ This also works around the `datePicker` classification gap ([selectors](selector
 a `UIDatePicker`'s own container element falls to `other`, but the step addresses the wheel children
 underneath it, which are classified `pickerWheel`, so the gap never bites here.
 
-`setPickerValue` is an iOS (XCUITest) action. A picker wheel has no counterpart on Android or the
-web — a web `<select>` expresses the same intent, and [`selectOption`](#selectoption) sets that — so
-those backends have no `pickerWheel` capability and the scenario is rejected at preflight, before any
-device work starts, with the step's location named.
+`setPickerValue` runs on iOS (XCUITest) and Android (adb). On Android it drives any
+`NumberPicker`, one that a Jetpack Compose screen embeds through `AndroidView` included. A wheel that
+Compose draws itself stays out of scope. Compose ships no standard wheel, so each app's own wheel
+exposes a different accessibility shape. A web page has no picker wheel: a `<select>` expresses the
+same intent, and [`selectOption`](#selectoption) sets that. The web backend thus lacks the
+`pickerWheel` capability. Preflight stops the scenario there before any work starts, naming the
+step's location.
 
 ### `web` (entering a WebView's DOM)
 

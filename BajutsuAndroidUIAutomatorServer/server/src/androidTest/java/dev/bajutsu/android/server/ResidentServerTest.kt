@@ -146,6 +146,7 @@ class ResidentServerTest {
                 "/source" -> respondSource(out, device, readMark, target)
                 "/act" -> respondAct(out, device, readMark, target)
                 "/type" -> respondType(out, device, readMark, target, request.body)
+                "/setPickerValue" -> respondSetPickerValue(out, device, readMark, target)
                 "/gesture" -> respondGesture(out, target)
                 "/clock" ->
                     respond(
@@ -374,6 +375,278 @@ class ResidentServerTest {
         }
         respondLanded(out, device, readMark, injectedAt, paramOf(target, "tree") != "0")
     }
+
+    /**
+     * Move the `NumberPicker` wheel the host resolved to the row showing `value` (BE-0480).
+     *
+     * The opening is [respondAct]'s, so the wheel is addressed exactly as a tap target is: identity,
+     * ordinal and count, validated without defaults, then re-found in a settled dump, answering
+     * [STALE_STATUS] when the screen moved. From there the handler works on the accessibility node
+     * rather than a coordinate. Each `ACTION_SCROLL_FORWARD` / `_BACKWARD` is the wheel's own one-row
+     * step, and the value is read back after each one, so the walk stops on the named row or says
+     * why it could not. No coordinate drag could promise that landing.
+     *
+     * Typing into the wheel's input field would take one request instead of many, but whether it
+     * commits depends on the field's input filter and on focus leaving at the right time, which is
+     * each app's configuration rather than the platform's (BE-0480 *Alternatives considered*).
+     *
+     * Every refusal after the stale check answers [UNPROCESSABLE_STATUS] with a reason token ahead of
+     * the first colon in the body, which the host maps to its own error (`adb_resident.set_picker_value`).
+     */
+    private fun respondSetPickerValue(
+        out: OutputStream,
+        device: UiDevice,
+        readMark: ReadMark,
+        target: String,
+    ) {
+        val index = paramOf(target, "index")?.toIntOrNull()
+            ?: return respond(out, BAD_REQUEST, TEXT, "no usable index\n".bytes())
+        val count = paramOf(target, "count")?.toIntOrNull()
+            ?: return respond(out, BAD_REQUEST, TEXT, "no usable count\n".bytes())
+        val want = IDENTITY_FIELDS.map {
+            paramOf(target, it.first)
+                ?: return respond(out, BAD_REQUEST, TEXT, "no ${it.first}\n".bytes())
+        }
+        // Present but possibly empty, like an identity field: an empty row label is still a label.
+        val value = paramOf(target, "value")
+            ?: return respond(out, BAD_REQUEST, TEXT, "no value\n".bytes())
+        val budget = WaitBudget("setPickerValue", device, budgetOf(target))
+        budget.awaitIdle()
+        sinceOf(target)?.let {
+            readMark.awaitPostdate(it, POSTDATE_BUDGET_MS)
+            budget.lap("postdate")
+            budget.awaitIdle()
+        }
+        val matches = settledActBounds(device, want, budget)
+        budget.report()
+        if (matches.size != count || index !in matches.indices) {
+            return respond(out, STALE_STATUS, TEXT, "stale: ${matches.size} of $count\n".bytes())
+        }
+        val bounds = matches[index]
+        // A throw mid-walk would otherwise drop the connection, which the host can only read as a
+        // lost reply ("may have moved"); answering it names the cause instead.
+        try {
+            walkAndRespond(out, device, readMark, target, want, bounds, value)
+        } catch (e: RuntimeException) {
+            Log.w(TAG, "setPickerValue walk threw", e)
+            respond(out, INJECT_FAILED_STATUS, TEXT, "the walk threw ${e.javaClass.simpleName}\n".bytes())
+        }
+    }
+
+    private fun walkAndRespond(
+        out: OutputStream,
+        device: UiDevice,
+        readMark: ReadMark,
+        target: String,
+        want: List<String>,
+        bounds: Rect,
+        value: String,
+    ) {
+        val wheel = when (val found = pickerWheelAt(bounds, want)) {
+            is WheelSearch.Found -> found.node
+            WheelSearch.Absent ->
+                return refusePicker(out, NOT_A_PICKER_WHEEL, "no android.widget.NumberPicker at $bounds")
+            is WheelSearch.Ambiguous ->
+                return refusePicker(
+                    out,
+                    PICKER_WHEEL_AMBIGUOUS,
+                    "${found.count} nodes match the wheel's identity at $bounds",
+                )
+            WheelSearch.TooLarge ->
+                return respond(
+                    out,
+                    INJECT_FAILED_STATUS,
+                    TEXT,
+                    "the node search stopped at $FOCUS_WALK_LIMIT nodes before $bounds\n".bytes(),
+                )
+        }
+        val start = wheelValue(wheel)
+            ?: return refusePicker(out, NOT_A_PICKER_WHEEL, "the wheel at $bounds shows no input row")
+        // Taken before the first step, for the reason [publishHeader] gives for `injectedAt`.
+        val injectedAt = SystemClock.uptimeMillis()
+        val walk = walkWheel(wheel, start, value)
+        val rows = walk.rows
+        when (walk.end) {
+            WalkEnd.LANDED ->
+                respondLanded(out, device, readMark, injectedAt, paramOf(target, "tree") != "0")
+            WalkEnd.ABSENT ->
+                refusePicker(out, PICKER_VALUE_ABSENT, "the wheel holds no row \"$value\" ($rows rows walked)")
+            WalkEnd.IMMOVABLE ->
+                refusePicker(out, PICKER_IMMOVABLE, "the wheel at $bounds refused both scroll directions")
+            WalkEnd.STALLED ->
+                refusePicker(
+                    out,
+                    PICKER_WALK_EXHAUSTED,
+                    "row $rows did not change within ${2 * PICKER_ROW_BUDGET_MS}ms",
+                )
+            WalkEnd.ROW_CAP ->
+                refusePicker(out, PICKER_WALK_EXHAUSTED, "hit the $MAX_PICKER_ROWS-row cap before the row")
+            WalkEnd.DEADLINE ->
+                refusePicker(
+                    out,
+                    PICKER_WALK_EXHAUSTED,
+                    "hit the ${walkDeadlineMs()}ms deadline after $rows rows",
+                )
+            WalkEnd.UNSETTLED ->
+                respond(out, INJECT_FAILED_STATUS, TEXT, "the wheel left the row after reaching it\n".bytes())
+            WalkEnd.LOST ->
+                respond(out, INJECT_FAILED_STATUS, TEXT, "the wheel left the screen mid-walk\n".bytes())
+        }
+    }
+
+    private enum class WalkEnd { LANDED, ABSENT, IMMOVABLE, STALLED, ROW_CAP, DEADLINE, UNSETTLED, LOST }
+
+    private class Walk(val end: WalkEnd, val rows: Int)
+
+    private sealed interface WheelSearch {
+        class Found(val node: AccessibilityNodeInfo) : WheelSearch
+        class Ambiguous(val count: Int) : WheelSearch
+        object Absent : WheelSearch
+        object TooLarge : WheelSearch
+    }
+
+    /**
+     * Step `wheel` one row at a time until it shows `value`, and say how the walk ended.
+     *
+     * The first pass goes toward the value when both read as integers, so a non-wrapping year wheel
+     * takes the short way; otherwise it goes forward. A pass ends at an edge, which `NumberPicker`
+     * signals by refusing the scroll action, and the second pass walks back the other way. That
+     * also covers rows whose numeric order is not monotonic. A wrapping wheel never refuses, and
+     * coming back to where it started is what ends its walk. A wheel that refuses its very first step
+     * both ways (a disabled one) ends as [WalkEnd.IMMOVABLE], so the host does not report a missing
+     * row.
+     *
+     * A row that does not change across two row budgets ends the walk as [WalkEnd.STALLED] rather
+     * than as an edge. Turning back there would be unsafe: the next action first completes the step
+     * still in flight, so a read could show the target row an instant before the wheel moves on.
+     * For the same reason a landing must hold for [PICKER_LANDING_HOLD_MS] before it counts.
+     */
+    private fun walkWheel(wheel: AccessibilityNodeInfo, start: String, value: String): Walk {
+        if (start == value) return Walk(WalkEnd.LANDED, 0)
+        val forward = AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD.id
+        val backward = AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_BACKWARD.id
+        val from = start.trim().toLongOrNull()
+        val to = value.trim().toLongOrNull()
+        val first = if (from != null && to != null && to < from) backward else forward
+        val passes = listOf(first, if (first == forward) backward else forward)
+        val deadline = SystemClock.uptimeMillis() + walkDeadlineMs()
+        var rows = 0
+        var moved = false
+        var current = start
+        for ((pass, action) in passes.withIndex()) {
+            while (true) {
+                if (rows >= MAX_PICKER_ROWS) return Walk(WalkEnd.ROW_CAP, rows)
+                if (SystemClock.uptimeMillis() >= deadline) return Walk(WalkEnd.DEADLINE, rows)
+                if (!wheel.refresh()) return Walk(WalkEnd.LOST, rows)
+                val stepStarted = SystemClock.uptimeMillis()
+                if (!wheel.performAction(action)) break
+                rows++
+                moved = true
+                val before = current
+                current = rowChanged(wheel, before) ?: return Walk(WalkEnd.LOST, rows)
+                if (current == before) current = rowChanged(wheel, before) ?: return Walk(WalkEnd.LOST, rows)
+                // The row labels stay out of the log, as the typed text does in `/type`.
+                Log.d(TAG, "picker row $rows took ${SystemClock.uptimeMillis() - stepStarted}ms")
+                if (current == before) return Walk(WalkEnd.STALLED, rows)
+                if (current == value) {
+                    val held = rowHolds(wheel, value) ?: return Walk(WalkEnd.LOST, rows)
+                    return Walk(if (held) WalkEnd.LANDED else WalkEnd.UNSETTLED, rows)
+                }
+                if (pass == 0 && current == start) return Walk(WalkEnd.ABSENT, rows)
+            }
+        }
+        return Walk(if (moved) WalkEnd.ABSENT else WalkEnd.IMMOVABLE, rows)
+    }
+
+    /**
+     * The wheel's value once it differs from `before`, or `before` itself when one row's budget runs
+     * out first; null when the wheel is gone. A condition wait polled at [PICKER_POLL_MS]: the row
+     * changes when `NumberPicker`'s own one-row animation ends, which no idle wait tracks (an idle
+     * wait needs a quiet spell longer than the whole animation).
+     */
+    private fun rowChanged(wheel: AccessibilityNodeInfo, before: String): String? {
+        val deadline = SystemClock.uptimeMillis() + PICKER_ROW_BUDGET_MS
+        while (true) {
+            if (!wheel.refresh()) return null
+            val now = wheelValue(wheel) ?: return null
+            if (now != before || SystemClock.uptimeMillis() >= deadline) return now
+            SystemClock.sleep(PICKER_POLL_MS)
+        }
+    }
+
+    /** Whether the wheel still shows `value` throughout [PICKER_LANDING_HOLD_MS]; null when it is gone. */
+    private fun rowHolds(wheel: AccessibilityNodeInfo, value: String): Boolean? {
+        val until = SystemClock.uptimeMillis() + PICKER_LANDING_HOLD_MS
+        while (true) {
+            if (!wheel.refresh()) return null
+            val now = wheelValue(wheel) ?: return null
+            if (now != value) return false
+            if (SystemClock.uptimeMillis() >= until) return true
+            SystemClock.sleep(PICKER_POLL_MS)
+        }
+    }
+
+    /**
+     * The one `NumberPicker` node whose on-screen bounds are `bounds` and whose identity is `want`,
+     * searching every window but SystemUI's, as [matchingBounds] does. The dump reports bounds
+     * clipped to the window, so a node matches on its window-clipped bounds as well as its raw ones.
+     * Two such nodes (a dialog's wheel over the screen's own) answer [WheelSearch.Ambiguous] rather
+     * than a guess, the same refusal the host gives an ambiguous selector.
+     */
+    private fun pickerWheelAt(bounds: Rect, want: List<String>): WheelSearch {
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        val found = mutableListOf<AccessibilityNodeInfo>()
+        var visited = 0
+        for (window in automation.windows) {
+            val root = window.root ?: continue
+            val pkg = root.packageName?.toString()
+            if (pkg != null && pkg in SYSTEM_DECOR_PACKAGES) continue
+            val windowBounds = Rect().also(window::getBoundsInScreen)
+            val pending = ArrayDeque(listOf(root))
+            while (pending.isNotEmpty()) {
+                if (visited++ >= FOCUS_WALK_LIMIT) return WheelSearch.TooLarge
+                val node = pending.removeFirst()
+                val raw = Rect().also(node::getBoundsInScreen)
+                val clipped = Rect(raw).also { it.intersect(windowBounds) }
+                if ((raw == bounds || clipped == bounds) && identityOf(node) == want) found.add(node)
+                for (i in 0 until node.childCount) node.getChild(i)?.let(pending::addLast)
+            }
+        }
+        return when {
+            found.size > 1 -> WheelSearch.Ambiguous(found.size)
+            found.isEmpty() || found[0].className?.toString() != NUMBER_PICKER_CLASS -> WheelSearch.Absent
+            else -> WheelSearch.Found(found[0])
+        }
+    }
+
+    /** A node's four identity fields, in [IDENTITY_FIELDS] order, as the dump would report them. */
+    private fun identityOf(node: AccessibilityNodeInfo): List<String> = listOf(
+        node.viewIdResourceName.orEmpty(),
+        node.contentDescription?.toString().orEmpty(),
+        node.text?.toString().orEmpty(),
+        node.className?.toString().orEmpty(),
+    )
+
+    /**
+     * The row a wheel shows as selected: the text of its `numberpicker_input` child. Null when the
+     * child is missing, gone, or carries no text, so an unreadable row never reads as an empty label.
+     */
+    private fun wheelValue(wheel: AccessibilityNodeInfo): String? {
+        for (i in 0 until wheel.childCount) {
+            val child = wheel.getChild(i) ?: continue
+            if (child.viewIdResourceName == NUMBER_PICKER_INPUT_ID) {
+                // The child can come from the connection's node cache, whose text may predate the step.
+                if (!child.refresh()) return null
+                return child.text?.toString()
+            }
+        }
+        return null
+    }
+
+    private fun walkDeadlineMs(): Long = MAX_PICKER_ROWS * PICKER_ROW_BUDGET_MS
+
+    private fun refusePicker(out: OutputStream, reason: String, detail: String) =
+        respond(out, UNPROCESSABLE_STATUS, TEXT, "$reason: $detail\n".bytes())
 
     /**
      * Inject one two-finger gesture along the contact paths the host computed — a `pinch` or `rotate`.
@@ -1200,6 +1473,38 @@ class ResidentServerTest {
         // package name) — matchingBounds below must drop them too, or a count taken over the full dump
         // disagrees with one taken over the host's narrowed copy.
         val SYSTEM_DECOR_PACKAGES = setOf("com.android.systemui")
+
+        // The wheel `/setPickerValue` drives, and the child that shows its selected row (BE-0480).
+        // Kept in step with the host's `_NUMBER_PICKER_CLASS` (`bajutsu/common/drivers/adb/_functions.py`).
+        const val NUMBER_PICKER_CLASS = "android.widget.NumberPicker"
+        const val NUMBER_PICKER_INPUT_ID = "android:id/numberpicker_input"
+
+        // The reason tokens a `/setPickerValue` refusal leads its body with; the host maps each to its
+        // own error (`adb_resident.set_picker_value`).
+        const val NOT_A_PICKER_WHEEL = "not-a-picker-wheel"
+        const val PICKER_VALUE_ABSENT = "picker-value-absent"
+        const val PICKER_WALK_EXHAUSTED = "picker-walk-exhausted"
+        const val PICKER_IMMOVABLE = "picker-immovable"
+        const val PICKER_WHEEL_AMBIGUOUS = "picker-wheel-ambiguous"
+
+        // The most rows one `/setPickerValue` steps across both passes. A spinner `DatePicker`'s year
+        // wheel spans about 200 rows, so a walk to its far edge and back still fits.
+        const val MAX_PICKER_ROWS = 400
+
+        // How long one row's wait gives the wheel to show its next row. `NumberPicker` animates each
+        // step for 300ms, and an API 34 arm64 emulator took 142ms to 1469ms per row (median 625ms,
+        // 38 rows, read from the `picker row` log line), so the budget sits just above that maximum.
+        // A row that outlasts it twice in a row ends the walk as `picker-walk-exhausted`; it never
+        // reads as an edge. With the row cap it sets the walk deadline, which `adb_resident/budgets.py`
+        // sizes the host timeout by (`tests/test_adb_resident_budgets.py` holds the two ends together).
+        const val PICKER_ROW_BUDGET_MS = 1_500L
+
+        // How often a row's wait re-reads the wheel: a poll cadence, not a delay.
+        const val PICKER_POLL_MS = 20L
+
+        // How long a landed row must hold before the walk reports it. Longer than `NumberPicker`'s
+        // 300ms one-row animation, so a step still in flight shows before the reply goes out.
+        const val PICKER_LANDING_HOLD_MS = 400L
 
         // `UiDevice.swipe` paces a drag in steps of about this long, so a press-and-hold's duration is
         // requested as a step count.

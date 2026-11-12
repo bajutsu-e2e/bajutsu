@@ -90,10 +90,11 @@ class Driver(Protocol):
     def read_attributes(
         self, reads: Sequence[tuple[Selector, str]]
     ) -> list[str | None | SelectorError]: ...
-    # Move the picker wheel resolved by `sel` to the row whose value is `value` (BE-0356). iOS-only:
-    # a wheel exposes no addressable row, so only XCUITest's `adjust(toPickerWheelValue:)` can land
-    # on one deterministically; a backend without the PICKER_WHEEL capability raises
-    # UnsupportedAction. A value the wheel does not carry raises ElementNotFound rather than leaving
+    # Move the picker wheel resolved by `sel` to the row whose value is `value` (BE-0356). A wheel
+    # exposes no addressable row, so only a backend that acts on the wheel itself lands on one
+    # deterministically: XCUITest's `adjust(toPickerWheelValue:)`, and on Android the resident
+    # server's row-by-row accessibility walk of a `NumberPicker` (BE-0480). A backend without the
+    # PICKER_WHEEL capability raises UnsupportedAction. A value the wheel does not carry raises ElementNotFound rather than leaving
     # the wheel wherever it happened to stop.
     def set_picker_value(self, sel: Selector, value: str) -> None: ...
     # Pick the grid cells at `indices` from an already-open system photo picker

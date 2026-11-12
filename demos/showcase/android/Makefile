@@ -115,6 +115,12 @@ SERIAL ?= booted
 # caret copies nothing) that Ctrl+A selected all of it. It carries both id forms, so it runs on Views
 # too. Verified on a local arm64 emulator (API 34), Compose and Views alike.
 #
+# The wheel picker flow `picker_wheel` joins both lanes (BE-0480): the resident server's
+# `/setPickerValue` steps an `android.widget.NumberPicker` one row at a time through accessibility
+# scroll actions, so the shared scenario iOS runs on XCUITest runs unchanged here. Both apps render
+# the picker screen under SHOWCASE_PICKERS — Views natively, Compose through `AndroidView` — and the
+# scenario's ids carry both forms.
+#
 # `app_android` hands the screen to the system Settings app with the `app:` step and back, twice
 # (issue #2393); Settings ships on every emulator image, so it needs no extra install. Compose only:
 # Views' `singleTask` MainActivity finishes the pushed HorseDetailActivity when `leave_app` starts it
@@ -124,7 +130,7 @@ SERIAL ?= booted
 # (deterministic stub responses) stays a follow-up.
 E2E_SCENARIOS := smoke firstlook navigation search data_driven relaunch system components modals \
 	controls notices gestures gestures_multitouch permission device extract foreach interrupts \
-	text_entry_android text_selection_android select_photos select_photo_single app_android location_android
+	text_entry_android text_selection_android picker_wheel select_photos select_photo_single app_android location_android
 
 # Raise the condition-wait ceiling for this lane only: the CI x86_64 software-rendered emulator
 # presents sheets/covers slower than the shared scenarios' 5s waits allow. A wait returns as soon as
@@ -151,7 +157,7 @@ E2E_ENV = BAJUTSU_MIN_WAIT_TIMEOUT=$(E2E_WAIT_FLOOR) BAJUTSU_LOG_LEVEL=$(E2E_LOG
 # themselves). Anywhere else no lane resolves it, so a typo in it could never fail (issue #2233).
 # `device.yaml` carries the underscore form, so it joins (verified on a local arm64 emulator).
 E2E_VIEWS_SCENARIOS := smoke firstlook navigation search data_driven relaunch system extract foreach \
-	interrupts device text_entry_android text_selection_android select_photos select_photo_single location_android
+	interrupts device text_entry_android text_selection_android picker_wheel select_photos select_photo_single location_android
 
 # The wrapper jar IS committed (like any standard Android repo), so a fresh clone builds with no
 # extra step. Only run this to bump the pinned Gradle version — never as part of a build, since it

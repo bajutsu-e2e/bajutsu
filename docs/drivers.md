@@ -68,7 +68,7 @@ The two mobile backends differ in what they support.
 | `elementAttribute` | read one HTML attribute of an element for the `attribute` assertion (web only; BE-0466) | — | — | ✅ | ✅ |
 | `handleSystemAlert` | tap an iOS SpringBoard permission-prompt button natively | ✅ | — | — | ✅ |
 | `resolveAlerts` | answer the policy's system alert inside the request that reads the screen (BE-0461; iOS only) | ✅ | — | — | — |
-| `pickerWheel` | set a wheel-style picker to a named row (iOS only) | ✅ | — | — | ✅ |
+| `pickerWheel` | set a wheel-style picker to a named row (an Android `NumberPicker` through the resident server; BE-0480) | ✅ | ✅ | — | ✅ |
 | `handleTipkitTip` | dismiss a blocking Apple TipKit tip (iOS only) | ✅ | — | — | ✅ |
 | `appContext` | activate another installed app and drive it with the `app:` step | ✅ | ✅ | — | ✅ |
 | `selectPhotos` | pick images from the system photo picker by position (`PHPickerViewController` on iOS, dropped on an Apple Silicon Simulator; the Android 13+ photo picker over adb) | ✅ | ✅ | — | ✅ |
@@ -141,8 +141,8 @@ rejected too),
 (select-all + clipboard copy; the web context is coordinate-only for these and refuses both —
 `delete` / `clear` stay ungated, as every backend backs `delete_text`), a `visual` assertion needs
 `screenshot`, `handleSystemAlert` needs the `handleSystemAlert` token (only xcuitest declares it),
-`setPickerValue` needs the `pickerWheel` token (also xcuitest only — a picker wheel is a native iOS
-control, so Android and web are rejected before any device work),
+`setPickerValue` needs the `pickerWheel` token (xcuitest and adb declare it — a picker wheel is a
+native mobile control, so the web backend is rejected before any work starts),
 and each device-control step needs the token for its own operation — `setLocation` needs
 `deviceControl.setLocation`, the clipboard steps need `deviceControl.clipboard`, `push` needs
 `deviceControl.push`, and so on (BE-0212 split the coarse `deviceControl` family of BE-0128 into

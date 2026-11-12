@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0480](BE-0480-android-picker-wheel-set-value.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0480") |
+| Implementing PR | [#2412](https://github.com/bajutsu-e2e/bajutsu/pull/2412) (units 1–6) |
 | Topic | Scenario authoring features |
 <!-- /BE-METADATA -->
 
@@ -240,12 +241,37 @@ job is not part of `make check`.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Trait mapping: a `NumberPicker` node also carries `pickerWheel`, defined as `Trait.PICKER_WHEEL`, with its unit and conformance tests
-- [ ] Resident server: the `/setPickerValue` endpoint with its stale, not-a-picker-wheel, picker-value-absent, and picker-walk-exhausted statuses, the confirming re-read at an edge, the numeric direction hint, and the row cap
-- [ ] Host driver: the channel client with its own timeout, `AdbDriver.set_picker_value`, the `PICKER_WHEEL` capability, the preflight description, the `Driver.set_picker_value` comment and the preflight docstring, their unit tests, and the budgets check against the server's walk constants
-- [ ] Code generation: the labeled `// TODO` in the UI Automator generator
-- [ ] Showcase: the picker screen in the Views and Compose apps, and `picker_wheel` in the `android-e2e.yml` smoke job (added to the Android Makefile scenario lists)
-- [ ] Documentation: `scenarios`, `drivers`, `platform-parity`, `selectors`, and `architecture`, in both languages
+- [x] Trait mapping: a `NumberPicker` node also carries `pickerWheel`, defined as `Trait.PICKER_WHEEL`, with its unit and conformance tests
+- [x] Resident server: the `/setPickerValue` endpoint with its stale, not-a-picker-wheel, picker-value-absent, and picker-walk-exhausted statuses, the confirming re-read at an edge, the numeric direction hint, and the row cap
+- [x] Host driver: the channel client with its own timeout, `AdbDriver.set_picker_value`, the `PICKER_WHEEL` capability, the preflight description, the `Driver.set_picker_value` comment and the preflight docstring, their unit tests, and the budgets check against the server's walk constants
+- [x] Code generation: the labeled `// TODO` in the UI Automator generator
+- [x] Showcase: the picker screen in the Views and Compose apps, and `picker_wheel` in the `android-e2e.yml` smoke job (added to the Android Makefile scenario lists)
+- [x] Documentation: `scenarios`, `drivers`, `platform-parity`, `selectors`, and `architecture`, in both languages
+
+Log:
+
+- 2026-11-11 — Units 1–6 landed together ([#2412](https://github.com/bajutsu-e2e/bajutsu/pull/2412)).
+  `picker_wheel` passed on an API 34 arm64 emulator for both the Compose and Views showcase apps.
+  Five deviations from the Detailed design:
+  - A `NumberPicker` node carries no `resource-id`, because its accessibility provider sets none.
+    The showcase screens therefore put each id on a container around the wheel. The scenario
+    reaches the wheel through `within` plus `pickerWheel`, as it does on iOS.
+  - The row wait polls the wheel's value every 20 ms until it changes. An idle wait never released
+    in time: it needs a quiet spell longer than the wheel's whole one-row animation. With that wait,
+    a 25-row walk read two unchanged rows in a row and ended as a false edge.
+  - The first on-device run measured 142–1469 ms per row (median 625 ms, 38 rows). The row budget
+    therefore starts at 1,500 ms, not 300 ms. The walk deadline becomes 600 s and the host timeout
+    613 s. That timeout fires on a channel fault alone, since the server answers first.
+  - The resident-channel wiring gained a `set_picker_value` callable on `ResidentChannel`,
+    `ResidentServer`, `make_driver`, and the Android environment, which the Detailed design did not
+    list. The web backend's and the WebView context's refusal messages stopped calling the step
+    iOS-only.
+  - The self-review pass hardened the walk beyond the design. A row that stays unchanged across two
+    row budgets now fails as `picker-walk-exhausted` instead of reading as an edge, since turning
+    back there could report a row the wheel then leaves. A landed row must hold for 400 ms. Two
+    statuses join the design's: `picker-immovable` for a wheel that refuses both scroll directions,
+    and `picker-wheel-ambiguous` when two nodes on the device match the wheel's whole identity. The
+    host first refuses a wheel another element covers, as `tap` does.
 
 ## References
 

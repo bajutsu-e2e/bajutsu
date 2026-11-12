@@ -33,6 +33,7 @@ from ._functions import (
     gesture,
     narrowed_root,
     server_apks_built,
+    set_picker_value,
     type_text,
 )
 from ._process import _Process as _Process
@@ -48,6 +49,7 @@ from .resident_server import (
     ClockProbe,
     Fetch,
     GestureProbe,
+    PickerProbe,
     ResidentServer,
     Spawn,
     TypeProbe,
@@ -59,6 +61,7 @@ __all__ = [
     "Fetch",
     "GestureProbe",
     "Keepalive",
+    "PickerProbe",
     "ResidentChannel",
     "ResidentServer",
     "Spawn",
@@ -70,5 +73,6 @@ __all__ = [
     "logger",
     "narrowed_root",
     "server_apks_built",
+    "set_picker_value",
     "type_text",
 ]

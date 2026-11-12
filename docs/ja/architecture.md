@@ -617,11 +617,12 @@ iOS 側の対になるジョブ `pool (xcuitest)` は、Simulator を 2 台起�
   - `background`、`clearKeychain`、`clearClipboard`。
   - `overrideStatusBar` / `clearStatusBar`（決定的なステータスバー）。
   - テストデータ準備 / Webhook 用の `http` アクション。`saveBody` はレスポンスボディ全体を保存します。`extractBody`（BE-0440）は、固定のキー/インデックス `path` 文法で JSON ボディから 1 つ以上の指定フィールドを取り出し、`${vars.*}` へ直接格納します。
-- DSL の `setPickerValue`（BE-0356）は、ホイール式のピッカーを指定した行へ動かします。ピッカーは `UIPickerView`、またはホイールのみのモードに切り替えた `UIDatePicker` です。解決済みのホイールに対して、XCUITest 自身の `adjust(toPickerWheelValue:)` を呼び出します。
+- DSL の `setPickerValue`（BE-0356）は、ホイール式のピッカーを指定した行へ動かします。iOS のピッカーは `UIPickerView`、またはホイールのみのモードに切り替えた `UIDatePicker` です。解決済みのホイールに対して、XCUITest 自身の `adjust(toPickerWheelValue:)` を呼び出します。
+  - Android（BE-0480）のピッカーは `android.widget.NumberPicker` で、スピナー表示の `DatePicker` や `TimePicker` も含みます。adb ドライバは、タップ対象と同じ手順でホイールを解決し、その識別情報を常駐サーバーの `/setPickerValue` エンドポイントへ送ります。サーバーは `NumberPicker` のアクセシビリティのスクロール操作でホイールを 1 行ずつ進め、1 行ごとに行を読み直します。回す行数は 400 行を上限とし、期限も設けています。座標によるフォールバックはありません。
   - `tap` と同じくハンドルベースの操作であり、`swipe`/`drag`/`scroll` のような座標ベースではありません。ホイールの行は、座標ドラッグで確実に止められる個別の要素ではないからです。
   - ホイールが持たない値を指定した場合は、ホイールを止まった場所に残したまま、その値を名指ししてステップを失敗させます。
   - 複数コンポーネントのピッカー（年のホイールと月のホイールが並ぶような場合）は、セレクタの既存の `within`/`traits`/`index` フィールドで、コンポーネントごとに 1 ステップずつアドレス指定します。
-  - `PICKER_WHEEL` capability でゲートされています。これを宣言するのは、常駐 runner を持つ XCUITest バックエンドと `FakeDriver` だけなので、Android と web は、デバイス側の作業に入る前に preflight で拒否されます。
+  - `PICKER_WHEEL` capability でゲートされています。これを宣言するのは、常駐 runner を持つ XCUITest バックエンド、adb バックエンド、`FakeDriver` です。web バックエンドは、作業に入る前に preflight で拒否されます。
 - DSL の `selectPhotos`（BE-0433）は、開いている `PHPickerViewController` のグリッドから、序数の `indices` で 1 枚以上の画像を選び、ピッカーの確定コントロールをタップします。adb では Android 13 以降の写真ピッカーを同じように操作し、セルと追加ボタンをピッカー自身のパッケージ内の resource id で探します。
   - 確定コントロールは自身の identifier を持たないため、ピッカーのナビゲーションバー内で、消去法により構造的に解決します。
   - グリッドの各セルは 1 つの identifier（`PXGGridLayout-Info`）を共有しています。`handleSystemAlert` がラベルのない SpringBoard のボタンを扱うのと同じ方法で、既存の `index` セレクタフィールドによって個々のセルを区別します。
@@ -867,7 +868,7 @@ iOS 側の対になるジョブ `pool (xcuitest)` は、Simulator を 2 台起�
   - [BE-0290](../../roadmaps/BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend-ja.md) で idb を撤去して以来、この経路の iOS backend は XCUITest だけです。
 - XCUITest バックエンドの `back` とデバイス制御（`setLocation` / クリップボード / `push`）を、実機上で実行しています。`ios-e2e.yml` が PR ごとに検証します（[BE-0281](../../roadmaps/BE-0281-ios-on-device-actuation-coverage/BE-0281-ios-on-device-actuation-coverage-ja.md)）。
 - `pinch`/`rotate` の multi-touch ジェスチャを、`ios-e2e.yml` の `run (xcuitest)` ジョブ（`demos/showcase/scenarios/gestures_multitouch.yaml`、`--backend ios`）で確認済みです。
-- `setPickerValue` を、`ios-e2e.yml` の `run (xcuitest)` ジョブ（`demos/showcase/scenarios/picker_wheel.yaml`、BE-0356）で、実機で確認しています。対象は `UIPickerView` とホイール表示の `UIDatePicker` の両方で、複数コンポーネントの `within` / `traits` / `index` によるアドレス指定も含みます。
+- `setPickerValue` を、`ios-e2e.yml` の `run (xcuitest)` ジョブ（`demos/showcase/scenarios/picker_wheel.yaml`、BE-0356）で、実機で確認しています。対象は `UIPickerView` とホイール表示の `UIDatePicker` の両方で、複数コンポーネントの `within` / `traits` / `index` によるアドレス指定も含みます。`android-e2e.yml` のスモークジョブは、同じシナリオを Compose と Views のショーケースアプリで実行し、`NumberPicker` とスピナー表示の `DatePicker` を確認します（BE-0480）。
 - シナリオ作成機能を実機上で実行しています。`ios-e2e.yml` の `actuation (xcuitest)` ジョブが PR ごとに検証するので、どの機能も adb と Playwright だけに依存しなくなりました（[BE-0285](../../roadmaps/BE-0285-scenario-feature-real-backend-coverage/BE-0285-scenario-feature-real-backend-coverage-ja.md)）。機能は、`extract`、反復のあいだにツリーが変化するリストに対する `forEach`、data-driven の行、`relaunch` です。
 - ネットワークの実経路を実機上で動かしています。`ios-e2e.yml` の `network (xcuitest)` ジョブ（`make -C demos/showcase e2e-network`。[BE-0282](../../roadmaps/BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md)）が PR ごとに検証します。この経路では、`BajutsuKit` のアプリ内 `URLProtocol` がモックされたリクエストに自前のスタブで応答し、各 exchange をループバック上の collector へ報告します。
   - ジョブは `network_mock.yaml` を実行します。スタブが 201 で応答する `POST /post` で、実サーバなら 200 を返します。

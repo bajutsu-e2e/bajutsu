@@ -121,4 +121,10 @@
     <item name="perm_openPhotoPicker" type="id" />
     <item name="perm_openPhotoPickerSingle" type="id" />
     <item name="perm_photos_value" type="id" />
+
+    <!-- pickers (BE-0480), reached only under SHOWCASE_PICKERS -->
+    <item name="form_school" type="id" />
+    <item name="form_school_value" type="id" />
+    <item name="form_birthdate" type="id" />
+    <item name="form_birthdate_value" type="id" />
 </resources>

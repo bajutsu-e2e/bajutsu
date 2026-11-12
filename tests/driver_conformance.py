@@ -580,7 +580,9 @@ class DriverConformanceContract:
         # fail some other way — the seeded element is an ordinary one, not a real wheel, and no
         # harness can seed a wheel's rows — so any non-UnsupportedAction error is acceptable, exactly
         # the tolerance `test_select_option_capability_matches_behavior` already grants a non-<select>.
-        driver = harness.with_screen([element(identifier="wheel", traits=["pickerWheel"])])
+        driver = harness.with_screen(
+            [element(identifier="wheel", traits=[base.Trait.PICKER_WHEEL])]
+        )
         supports = base.Capability.PICKER_WHEEL in driver.capabilities()
         if supports:
             try:

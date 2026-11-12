@@ -49,6 +49,12 @@ fun RootScreen(model: AppModel) {
         SavedNoteScreen()
         return
     }
+    // BE-0480: the SHOWCASE_PICKERS launch env swaps the whole five-tab UI for the flat wheel
+    // picker screen (mirroring the iOS RootView). Otherwise the normal tab app (BE-0079) is untouched.
+    if (model.pickersMode) {
+        PickerScreen()
+        return
+    }
     Scaffold(
         modifier = Modifier
             .fillMaxSize()

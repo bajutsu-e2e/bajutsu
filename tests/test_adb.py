@@ -246,6 +246,24 @@ def test_password_flag_derives_the_masked_input_trait() -> None:
     assert base.Trait.SECURE_TEXT_FIELD not in plain["traits"]
 
 
+def test_a_number_picker_also_carries_the_shared_picker_wheel_trait() -> None:
+    # BE-0480: the class-derived `numberPicker` stays so an existing selector keeps resolving, and the
+    # shared `pickerWheel` token is what lets the iOS wheel selector address the same wheel here.
+    xml = (
+        '<hierarchy><node resource-id="form_school" class="android.widget.NumberPicker" '
+        'bounds="[0,0][100,300]" />'
+        '<node resource-id="form_name" class="android.widget.EditText" bounds="[0,300][100,350]" />'
+        '<node resource-id="form_spin" class="android.widget.Spinner" bounds="[0,350][100,400]" />'
+        "</hierarchy>"
+    )
+    els = parse_hierarchy(xml)
+    wheel = _by_id(els, "form_school")["traits"]
+    assert "numberPicker" in wheel and base.Trait.PICKER_WHEEL in wheel
+    # No other class gains the token, a scrollable list-like widget included.
+    assert base.Trait.PICKER_WHEEL not in _by_id(els, "form_name")["traits"]
+    assert base.Trait.PICKER_WHEEL not in _by_id(els, "form_spin")["traits"]
+
+
 # #2388: a Compose text field and a Views EditText both dump as `android.widget.EditText`. Their typed
 # text must read as `value` — what a `value` assertion and `clear` read — while `label` stays the
 # field's accessible name. An empty Views field reports its hint as `text`; the `hint` attribute

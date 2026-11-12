@@ -31,6 +31,12 @@ class MainActivity : AppCompatActivity() {
         // first request.
         if (BuildConfig.DEBUG) BajutsuNet.configure(launchEnv)
         model = AppModel(launchEnv)
+        // BE-0480: the SHOWCASE_PICKERS launch env swaps the whole five-tab UI for the flat wheel
+        // picker screen (mirroring the iOS RootView). Otherwise the normal tab app is untouched.
+        if (launchEnv["SHOWCASE_PICKERS"] != null) {
+            setContentView(PickerScreen(this).root)
+            return
+        }
         intent?.data?.let { model.selectedTab = model.deepLinkTab(it) }
 
         content = FrameLayout(this)
@@ -74,6 +80,8 @@ class MainActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        // The picker screen builds no tabs, so it has nothing for a deeplink to select.
+        if (!::logTab.isInitialized) return
         intent.data?.let {
             logTab.dismissModals()
             select(model.deepLinkTab(it))
@@ -112,6 +120,7 @@ class MainActivity : AppCompatActivity() {
         val extras = intent?.extras ?: return emptyMap()
         val keys = listOf(
             "SHOWCASE_UITEST", "SHOWCASE_TAB", "SHOWCASE_API_URL", "SHOWCASE_HTTP_BASE",
+            "SHOWCASE_PICKERS",
             // The network collector bajutsu injects (BE-0283); BajutsuNet.configure reads these, AppModel ignores them.
             "BAJUTSU_COLLECTOR", "BAJUTSU_COLLECTOR_TOKEN",
         )

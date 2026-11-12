@@ -3,7 +3,9 @@
 A wheel-style `UIPickerView` / `UIDatePicker` exposes no separately addressable row, so no
 coordinate drag can guarantee stopping on one — the non-determinism prime directive 2 rules out.
 XCUITest's `adjust(toPickerWheelValue:)` acts on the resolved element instead, which is what makes
-landing on a named row deterministic. iOS-only: every other backend refuses loudly.
+landing on a named row deterministic. The adb backend lands an Android `NumberPicker` the same way
+through the resident server (BE-0480, covered in `test_adb_set_picker_value.py`); every other backend
+refuses loudly.
 
 Covers the DSL parse + one-action rule, the orchestrator dispatch to the driver, the absent-value
 failure (`ElementNotFound`), multi-component addressing through `within` / `traits` / `index`, and
@@ -18,6 +20,7 @@ from bajutsu.common.capability.capability_preflight import unsupported
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.adb import AdbDriver
 from bajutsu.common.drivers.fake import FakeDriver
+from bajutsu.common.drivers.playwright import PlaywrightDriver
 from bajutsu.common.orchestrator import _action_of, run_scenario
 from bajutsu.common.scenario import load_scenarios
 
@@ -188,8 +191,8 @@ def test_preflight_rejects_a_backend_without_the_picker_wheel_capability() -> No
     scenario = load_scenarios(
         "- name: t\n  steps:\n    - setPickerValue: { sel: { id: form.school }, value: 大学 }\n"
     )[0]
-    assert base.Capability.PICKER_WHEEL not in AdbDriver.CAPABILITIES
-    reasons = unsupported(scenario, AdbDriver.CAPABILITIES)
+    assert base.Capability.PICKER_WHEEL not in PlaywrightDriver.CAPABILITIES
+    reasons = unsupported(scenario, PlaywrightDriver.CAPABILITIES)
     assert any("setPickerValue" in r and "pickerWheel" in r for r in reasons)
 
 
@@ -198,3 +201,5 @@ def test_preflight_accepts_a_backend_that_advertises_the_capability() -> None:
         "- name: t\n  steps:\n    - setPickerValue: { sel: { id: form.school }, value: 大学 }\n"
     )[0]
     assert unsupported(scenario, FakeDriver.CAPABILITIES) == []
+    # BE-0480: the adb backend advertises it too, through the resident server's `/setPickerValue`.
+    assert unsupported(scenario, AdbDriver.CAPABILITIES) == []

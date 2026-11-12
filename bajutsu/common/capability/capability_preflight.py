@@ -22,9 +22,11 @@ The map gates only the **true hard requirements** the capability set cleanly dec
 - an `attribute` assertion needs `elementAttribute` (BE-0466): only the web backend reads an HTML
   attribute, so the assertion — in `expect`, a step's `assert`, an `if` or `interrupts` condition,
   or inside a `web:` / `app:` block — is rejected before any device work everywhere else.
-- `setPickerValue` needs `pickerWheel` (BE-0356): a picker wheel is an iOS control, and only the
-  resident-runner XCUITest backend can land on a named row deterministically, so a scenario setting
-  a wheel's value is rejected up front on every other backend.
+- `setPickerValue` needs `pickerWheel` (BE-0356, BE-0480): only the resident-runner XCUITest
+  backend (`adjust(toPickerWheelValue:)`) and the adb backend (the resident server's
+  `/setPickerValue`, which steps an `android.widget.NumberPicker` one row at a time) land a wheel on
+  a named row deterministically, so a scenario setting a wheel's value is rejected up front on every
+  other backend.
 - `selectPhotos` needs `selectPhotos` (roadmap item): the system photo picker is an OS control that
   only the resident-runner XCUITest backend (`PHPickerViewController`) and adb (Android's photo
   picker) can address, so a scenario using this step is rejected up front on every other backend.
@@ -280,7 +282,7 @@ _REQUIREMENTS = (
     ),
     _Requirement(
         base.Capability.PICKER_WHEEL,
-        "setPickerValue (iOS picker-wheel value; iOS XCUITest only)",
+        "setPickerValue (picker-wheel value; iOS XCUITest and Android adb only)",
         _step_locations(lambda s: s.set_picker_value is not None),
     ),
     _Requirement(

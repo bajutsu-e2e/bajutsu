@@ -10,6 +10,7 @@ from bajutsu.common.drivers.adb import (
     ClockFetch,
     GestureFn,
     HierarchyFetch,
+    PickerFn,
     TypeFn,
 )
 
@@ -23,7 +24,9 @@ class ResidentChannel:
     its read-lag barrier before a gesture; `act` performs a gesture on the device against an element the
     host already resolved, so no coordinate crosses; `type_text` enters text `input text` cannot carry
     into the focused field; `gesture` injects a two-finger gesture along host-computed paths without
-    root. All of them follow the lease's forwarded host port, which a restart moves;
+    root; `set_picker_value` walks a resolved `NumberPicker` to a named row (BE-0480). The last two
+    are None only where a caller builds a channel without them. All of them follow the lease's
+    forwarded host port, which a restart moves;
     `recovery` is what a driver that fell back to `uiautomator dump` can ask of the server.
     """
 
@@ -34,3 +37,4 @@ class ResidentChannel:
     recovery: ChannelRecovery | None = None
     # Last, and optional, so a channel built before the endpoint existed still constructs.
     gesture: GestureFn | None = None
+    set_picker_value: PickerFn | None = None

@@ -909,7 +909,7 @@ class PlaywrightDriver:
         # The mirror of `select_option`'s iOS/Android refusal (BE-0356): a picker wheel is a native
         # iOS control with no DOM counterpart — a `<select>` is how the web expresses the same intent.
         raise base.UnsupportedAction(
-            "setPickerValue is iOS-only; use selectOption for a web <select>"
+            "setPickerValue drives a native iOS / Android wheel; use selectOption for a web <select>"
         )
 
     def select_photos(self, indices: list[int], *, timeout: float) -> None:  # noqa: ARG002  # Driver shape
