@@ -116,7 +116,14 @@ def test_a_device_cloud_lease_of_a_run_intent_job_signs_no_baselines(
     store = _FakeStore()
     store.put_bytes("o1/baselines/home.png", b"\x89PNG")
     state.object_store = store
-    spec = {"job_id": "j1", "intent": {"scenario": "a.yaml"}, "materialize_baselines": True}
+    intent = {
+        "scenario": "a.yaml",
+        "target": "demo",
+        "config": "bajutsu.config.yaml",
+        "platform": "android",
+        "app_path": "app.apk",
+    }
+    spec = {"job_id": "j1", "intent": intent, "materialize_baselines": True}
     repo.enqueue_job("j1", "o1", spec, ["environment:devicefarm", "job:run-intent"])
     repo.enqueue_job("j2", "o1", {**spec, "job_id": "j2"}, ["job:run-intent"])
 
