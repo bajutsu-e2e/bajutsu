@@ -225,8 +225,8 @@ def required_host(
 
 
 def reserved_tokens(tokens: Iterable[str]) -> list[str]:
-    """The tokens among *tokens* that carry a reserved routing prefix (``environment:``, ``host:``,
-    ``machine:``, ``device:``, ``cap:``, ``setting:``), sorted."""
+    """The tokens among *tokens* that carry a reserved routing prefix
+    (`RESERVED_ROUTING_PREFIXES`), sorted."""
     return reserved_routing_tokens(tokens)
 
 

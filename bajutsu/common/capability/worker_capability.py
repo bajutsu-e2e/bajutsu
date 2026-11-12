@@ -55,8 +55,9 @@ ENVIRONMENTS: frozenset[str] = frozenset({LOCAL, APPIUM, DEVICEFARM_HOST, *BATCH
 
 # The routing-token prefixes a worker fills in itself: `environment:<name>` for a provider it
 # registered (BE-0448), `host:<os>` for the operating system it runs on (BE-0450), `machine:<id>`
-# for the server machine it shares, whose jobs name files by their paths there (BE-0449), and
-# `device:<family>` for a real device connected to it (BE-0468). Reserved, so every hand-written
+# for the server machine it shares, whose jobs name files by their paths there (BE-0449),
+# `device:<family>` for a real device connected to it (BE-0468), and `job:run-intent` for the
+# `run-set` jobs it can resolve (BE-0484). Reserved, so every hand-written
 # token input — a worker's override — rejects them: a hand-written one could pull a job onto a
 # worker that cannot run it, or route a job nowhere. Defined here, beside the environment names, so
 # the core can check them without importing the server package.
@@ -69,6 +70,7 @@ DEVICE_ROUTING_PREFIX = "device:"
 # a capability the route lacks.
 CAP_ROUTING_PREFIX = "cap:"
 SETTING_ROUTING_PREFIX = "setting:"
+JOB_ROUTING_PREFIX = "job:"
 RESERVED_ROUTING_PREFIXES: tuple[str, ...] = (
     ENVIRONMENT_ROUTING_PREFIX,
     HOST_ROUTING_PREFIX,
@@ -76,11 +78,13 @@ RESERVED_ROUTING_PREFIXES: tuple[str, ...] = (
     DEVICE_ROUTING_PREFIX,
     CAP_ROUTING_PREFIX,
     SETTING_ROUTING_PREFIX,
+    JOB_ROUTING_PREFIX,
 )
 RESERVED_ROUTING_REASON = (
-    "the environment:, host:, machine:, device:, cap:, and setting: prefixes are reserved: a worker "
-    "advertises them itself, from its worker.yaml environment and drivers, the machine it runs on, "
-    "the server machine it shares, and the real devices connected to it"
+    "the environment:, host:, machine:, device:, cap:, setting:, and job: prefixes are reserved: a "
+    "worker advertises them itself, from its worker.yaml environment and drivers, the machine it "
+    "runs on, the server machine it shares, the real devices connected to it, and the jobs it can "
+    "resolve"
 )
 
 

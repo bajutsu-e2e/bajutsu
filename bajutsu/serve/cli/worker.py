@@ -256,8 +256,9 @@ def _advertised_capabilities(
                 param_hint="--platform",
             )
         # The grid owns the device and its host, so a job routed here requires the environment
-        # alone (BE-0452); advertising more would only let a stray local job match. What the live
-        # route can run and apply rides along (BE-0467), and only a grid job ever names that route.
+        # (BE-0452); advertising a `platform:*` token would only let a stray local job match. What
+        # the live route can run and apply rides along (BE-0467), and only a grid job ever names
+        # that route. The run-intent token (BE-0484) rides along too: no plain job requires it.
         return sorted(
             {
                 environment_capability(APPIUM),
