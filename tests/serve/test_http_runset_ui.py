@@ -56,10 +56,11 @@ def test_the_scenario_set_and_run_set_panel_show_only_in_a_device_cloud_environm
         "replay.scenarios",
         "replay.all-scenarios",
         "replay.runset-stop",
-        "replay.runset-partial",
     ):
         assert f'data-testid="{testid}"' in html
     assert "multiple" in _tag(html, "replay.scenarios")
+    # Registration is all or nothing (BE-0484), so no panel reports a fan-out cut short.
+    assert "replay.runset-partial" not in html
 
 
 def test_the_fields_a_fan_out_ignores_hide_in_a_device_cloud_environment(tmp_path: Path) -> None:

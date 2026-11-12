@@ -149,7 +149,12 @@ def worker_lease(
                 "could not read the stored secrets of org %s", leased[0].org_id, exc_info=True
             )
             for job in leased:
-                _fail_unread_secrets(state, job.id, worker_id)
+                # One failed write must not leave the bundle's later jobs leased to a worker that
+                # never receives them; a job this misses waits out its lease instead.
+                try:
+                    _fail_unread_secrets(state, job.id, worker_id)
+                except Exception:
+                    _logger.warning("could not fail job %s", job.id, exc_info=True)
             return {}, 204
     bodies = [_lease_body(state, job, advertised, secret_env) for job in leased]
     return (bodies if max_jobs is not None else bodies[0]), 200

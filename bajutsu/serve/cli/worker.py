@@ -695,9 +695,17 @@ def _lease_bundle(
     that group's uploads.
     """
     body = _post_lease(url, auth_token, {"worker_id": wid, "capabilities": caps, "maxJobs": free})
-    if not isinstance(body, list):
+    if body is None:
         return []
-    return [dict(b) for b in body if isinstance(b, dict) and b.get("spec")]
+    # A control plane from before BE-0484 ignores `maxJobs` and answers one body. Its job is leased
+    # already, so dropping the body would strand the job until its lease lapsed.
+    items = body if isinstance(body, list) else [body]
+    bodies = [dict(b) for b in items if isinstance(b, dict) and b.get("spec")]
+    if len(bodies) != len(items):
+        _logger.warning(
+            "unexpected lease body, %d item(s) not run: %.200s", len(items) - len(bodies), body
+        )
+    return bodies
 
 
 def _post_lease(url: str, auth_token: str | None, request: dict[str, Any]) -> Any:

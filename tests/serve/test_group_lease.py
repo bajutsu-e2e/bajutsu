@@ -358,3 +358,106 @@ def test_the_lease_route_reads_max_jobs(tmp_path: Path) -> None:
 
     assert status == 200
     assert [b["job_id"] for b in payload] == ["1", "2"]
+
+
+def test_a_bundle_whose_secrets_cannot_be_read_fails_every_job_even_if_one_fail_errors(
+    serve_engine: Callable[..., Engine], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import bajutsu.serve.operations.worker as worker_ops
+
+    state = _queued_state(serve_engine, tmp_path)
+    repo = state.repository
+    assert isinstance(repo, SqlRepository)
+    _group(repo, "g1", ["1", "2"])
+
+    def broken(_state: srv.ServeState, _org: str) -> dict[str, str]:
+        raise RuntimeError("database is down")
+
+    fail = repo.fail_job
+
+    def flaky_fail(job_id: str, error: str, *, worker_id: str | None = None) -> bool:
+        if job_id == "1":
+            raise RuntimeError("write lost")
+        return fail(job_id, error, worker_id=worker_id)
+
+    monkeypatch.setattr(worker_ops, "lease_secret_env", broken)
+    monkeypatch.setattr(repo, "fail_job", flaky_fail)
+
+    assert ops.worker_lease(state, "w1", _WORKER, max_jobs=2) == ({}, 204)
+    assert _statuses(repo) == {"1": "leased", "2": "failed"}
+
+
+@pytest.mark.parametrize(("digest", "held"), [("d", "g1"), ("other", None)])
+def test_a_key_taken_between_the_read_and_the_commit_resolves_as_a_repeat(
+    serve_engine: Callable[..., Engine],
+    monkeypatch: pytest.MonkeyPatch,
+    digest: str,
+    held: str | None,
+) -> None:
+    """The unique index catches the race the pre-read misses; the rollback leaves no job behind."""
+    repo = _repo(serve_engine)
+    _group(repo, "g1", ["1"], key="ci-7")
+    real = SqlRepository._group_by_key
+    reads = iter([None])
+    monkeypatch.setattr(
+        SqlRepository,
+        "_group_by_key",
+        staticmethod(lambda session, org, key: next(reads, real(session, org, key))),
+    )
+
+    assert _group(repo, "g2", ["2"], key="ci-7", digest=digest) == held
+    assert sorted(_statuses(repo)) == ["1"]
+
+
+def test_an_actorless_group_is_never_held_by_the_per_user_cap(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    repo = _repo(serve_engine)
+    _group(repo, "g1", ["1", "2", "3"])
+
+    leased = repo.lease_jobs("w1", _WORKER, max_jobs=5, caps=ConcurrencyCaps(per_user=1))
+
+    assert [j.id for j in leased] == ["1", "2", "3"]
+
+
+@pytest.mark.parametrize("name", ["", "acme", "x" * 4096])
+def test_an_advisory_lock_key_fits_a_signed_32_bit_integer(name: str) -> None:
+    from bajutsu.serve.server.db.sql_repository import _lock_key
+
+    assert -(2**31) <= _lock_key(name) < 2**31
+
+
+def test_the_state_counts_a_leased_group_job_against_a_plain_run(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    state = _queued_state(serve_engine, tmp_path)
+    assert isinstance(state.repository, SqlRepository)
+    state.max_concurrent = 1
+    _group(state.repository, "g1", ["1"])
+
+    assert state.active_jobs() == 0
+    assert state.repository.lease_job("w1", _WORKER) is not None
+    assert state.active_jobs() == 1
+    assert state.try_register(srv.Job(cmd=[])) is None
+
+
+def test_a_full_scope_is_counted_once_per_lease_not_once_per_group(
+    serve_engine: Callable[..., Engine], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Each count takes the database's write lock on SQLite, so a full cap must not repeat it."""
+    repo = _repo(serve_engine)
+    repo.enqueue_job("p", org_id="o", spec={}, capabilities=_CAPS)
+    assert repo.lease_job("w1", _WORKER) is not None
+    for group in ("g1", "g2", "g3"):
+        _group(repo, group, [f"{group}-1"])
+    claims: list[str] = []
+    claim = repo._claim_bundle
+
+    def spy(*args: object, **kwargs: object) -> object:
+        claims.append(str(kwargs["group"]))
+        return claim(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(repo, "_claim_bundle", spy)
+
+    assert repo.lease_jobs("w1", _WORKER, max_jobs=5, caps=ConcurrencyCaps(total=1)) == []
+    assert len(claims) == 1

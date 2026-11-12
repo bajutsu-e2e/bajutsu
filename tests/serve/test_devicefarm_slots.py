@@ -739,3 +739,29 @@ def test_a_local_worker_file_checks_no_batch_job(tmp_path: Path) -> None:
     assert _batch_worker_capability({}, _worker_file(tmp_path, slots=1)) is None
     checked = _batch_worker_capability({"batch": {}}, _worker_file(tmp_path, slots=1))
     assert checked is not None and checked.environment == "devicefarm"
+
+
+@pytest.mark.parametrize(
+    ("answer", "jobs"),
+    [
+        # A control plane from before BE-0484 ignores `maxJobs` and answers one body; the job is
+        # already leased, so dropping it would strand it.
+        ({"job_id": "j1", "spec": {"cmd": []}}, ["j1"]),
+        ([{"job_id": "j1", "spec": {"cmd": []}}, {"job_id": "j2"}, "junk"], ["j1"]),
+        ("junk", []),
+    ],
+)
+def test_a_bundle_lease_keeps_every_runnable_body_and_warns_on_the_rest(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    answer: Any,
+    jobs: list[str],
+) -> None:
+    monkeypatch.setattr(worker_mod, "_post_json", lambda *_a, **_k: (200, answer))
+
+    bodies = worker_mod._lease_bundle("http://server", None, "w1", [], 3)
+
+    assert [b["job_id"] for b in bodies] == jobs
+    assert ("unexpected lease body" in caplog.text) is (
+        answer != {"job_id": "j1", "spec": {"cmd": []}}
+    )
