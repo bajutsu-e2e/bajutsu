@@ -9,7 +9,7 @@
 | Author | [@paihu](https://github.com/paihu) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0484") |
-| Implementing PR | [#2417](https://github.com/bajutsu-e2e/bajutsu/pull/2417) (unit 1), [#2426](https://github.com/bajutsu-e2e/bajutsu/pull/2426) (unit 2) |
+| Implementing PR | [#2417](https://github.com/bajutsu-e2e/bajutsu/pull/2417) (unit 1), [#2426](https://github.com/bajutsu-e2e/bajutsu/pull/2426) (unit 2), [#2431](https://github.com/bajutsu-e2e/bajutsu/pull/2431) (unit 3) |
 | Topic | Device-cloud execution |
 | Related | [BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out.md), [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md), [BE-0465](../BE-0465-serve-ui-device-farm-fan-out/BE-0465-serve-ui-device-farm-fan-out.md), [BE-0468](../BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of.md) |
 <!-- /BE-METADATA -->
@@ -266,7 +266,7 @@ Log:
     travels as `materialize_baselines`. The label and the provenance travel as `label` and
     `provenance`. A job resolved into a batch drops `materialize_baselines`. A device-cloud worker
     thus fetches no baselines, as before.
-- 2026-11-13 — PR_LINK landed unit 3. `run-set` writes its group and every job in one store
+- 2026-11-13 — [#2431](https://github.com/bajutsu-e2e/bajutsu/pull/2431) landed unit 3. `run-set` writes its group and every job in one store
   transaction, so a request queues every scenario or none. The concurrency caps no longer cut a
   group short. They apply when a worker leases a group job. A lease request may carry `maxJobs`,
   and the response then lists a bundle of one group's jobs that share the anchor's verdict. The scan

@@ -9,7 +9,7 @@
 | 提案者 | [@paihu](https://github.com/paihu) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0484") |
-| 実装 PR | [#2417](https://github.com/bajutsu-e2e/bajutsu/pull/2417)（単位 1）、[#2426](https://github.com/bajutsu-e2e/bajutsu/pull/2426)（単位 2） |
+| 実装 PR | [#2417](https://github.com/bajutsu-e2e/bajutsu/pull/2417)（単位 1）、[#2426](https://github.com/bajutsu-e2e/bajutsu/pull/2426)（単位 2）、[#2431](https://github.com/bajutsu-e2e/bajutsu/pull/2431)（単位 3） |
 | トピック | Device-cloud execution |
 | 関連 | [BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out-ja.md), [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch-ja.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md), [BE-0465](../BE-0465-serve-ui-device-farm-fan-out/BE-0465-serve-ui-device-farm-fan-out-ja.md), [BE-0468](../BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of-ja.md) |
 <!-- /BE-METADATA -->
@@ -266,7 +266,7 @@ worker は、その互換キーを持つ job が1件でも実行中のあいだ�
   - ベースラインを取り込むかどうか、ラベル、来歴は、実行意図の項目ではなく、spec にすでにある
     `materialize_baselines`、`label`、`provenance` で伝えます。バッチに変換したジョブでは
     `materialize_baselines` を外すので、device cloud のワーカーはこれまでどおりベースラインを取り込みません。
-- 2026-11-13：PR_LINK で単位 3 を実装しました。`run-set` はグループとすべてのジョブを
+- 2026-11-13：[#2431](https://github.com/bajutsu-e2e/bajutsu/pull/2431) で単位 3 を実装しました。`run-set` はグループとすべてのジョブを
   1つのトランザクションで書くので、リクエストはすべてのシナリオを待機に入れるか、1つも入れないかの
   どちらかになります。同時実行数の上限は、グループを途中で打ち切らなくなりました。上限はワーカーが
   グループのジョブをリースする時点で効きます。リースの要求は `maxJobs` を持てます。そのときの応答は、
