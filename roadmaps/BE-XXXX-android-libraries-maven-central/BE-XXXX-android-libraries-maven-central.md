@@ -102,8 +102,9 @@ publish-agnostic. The showcase (`demos/showcase/android`) and `IdentifierTool/sa
 the libraries by path and never apply the publishing plugin. Neither build changes.
 
 The vanniktech plugin handles the Central Portal upload, the in-memory signing, the sources and
-Javadoc jars, and the POM in one place. Android libraries on Maven Central commonly publish with it
-today.
+Javadoc jars, and the POM in one place. Signing applies purely when the signing properties are
+present, so the secret-free `verify` job and a contributor's local `publishToMavenLocal` both run
+unsigned. Android libraries on Maven Central commonly publish with it today.
 
 ### Versions and tags
 
@@ -141,8 +142,10 @@ environment alone, out of reach of any pull-request workflow:
 - `SIGNING_IN_MEMORY_KEY` and `SIGNING_IN_MEMORY_KEY_PASSWORD` — the text-armored GNU Privacy Guard
   (GPG) private key and its passphrase.
 
-A repository ruleset restricts who may push the two tag patterns. A tag on a commit outside `main`
-fails the job before any upload.
+A repository ruleset restricts who may push the two tag patterns. The `release` job's first step
+then validates the tag before any upload: it fails on a version that is not semantic versioning
+(`<major>.<minor>.<patch>`), and fails on a tag whose commit is not an ancestor of `main`
+(`git merge-base --is-ancestor "$GITHUB_SHA" origin/main`).
 
 `publishAndReleaseToMavenCentral` uploads the bundle and releases it automatically once the Central
 Portal's own validation passes. Maven Central never deletes or overwrites a release. A maintainer
@@ -159,7 +162,9 @@ These steps need a human with the right account access. No workflow can do them:
 2. Generate a GPG key pair for signing, and publish its public key to a keyserver the Central
    Portal checks (`keys.openpgp.org`).
 3. Generate a Central Portal user token.
-4. Create the `maven-central` environment, store the four secrets in it, and add the tag ruleset.
+4. Create the `maven-central` environment, and restrict its deployment branches and tags to the two
+   tag patterns alone, so no pull-request workflow can read it. Store the four secrets in that
+   environment, and add the tag ruleset.
 
 The developer guide records these steps (see "Documentation"). A maintainer rotating a key or a
 token later then follows the same page.
@@ -173,6 +178,9 @@ token later then follows the same page.
 - `BajutsuAndroid/README.md` notes that `BajutsuNet`'s OkHttp interceptor declares OkHttp as
   `compileOnly`. The POM does not list OkHttp, so an app calling the interceptor brings OkHttp
   itself, as it already does.
+- `IdentifierTool/README.md` carries the same note for `androidx.compose.ui`, which the library
+  declares `compileOnly`. The POM does not list Compose, so an app calling the Compose helpers
+  brings Compose itself, as a path include requires today.
 - `docs/developer-guide.md` and `docs/ja/developer-guide.md` gain a "Releasing the Android libraries"
   section: the tag patterns, the version policy, and the one-time setup above.
 - `docs/drivers.md` (the adb section) and its Japanese mirror point at the coordinates where they
@@ -201,8 +209,8 @@ token later then follows the same page.
    `android-libraries/` to the `platform` topic in `scripts/sync_roadmap_topic_labels.py`, beside
    the existing `IdentifierTool/` rule. Leave `scripts/e2e_changes.py` unchanged: the showcase never
    builds through `android-libraries/`, so the on-device Android lane has nothing to exercise there.
-   Done when `make lint-actions` passes and the `verify` job is
-   green on the pull request.
+   Done when `make lint-actions` passes, the `verify` job is green on the pull request, and the
+   `release` job's tag validation rejects a non-semantic version and a commit outside `main`.
 3. Complete the one-time manual setup listed above. Done
    when the Central Portal shows `io.github.bajutsu-e2e` as verified.
 4. Update the READMEs and docs listed under "Documentation", in both languages.

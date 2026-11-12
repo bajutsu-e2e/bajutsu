@@ -106,7 +106,8 @@ Gradle ビルドとして、トップレベルに `android-libraries/` を新設
 したがって、どちらのビルドも変わりません。
 
 vanniktech のプラグインは、Central Portal へのアップロード、メモリ上での署名、sources jar と Javadoc jar の
-生成、POM の作成を一か所で引き受けます。Maven Central にある Android ライブラリの多くが、現在このプラグインで
+生成、POM の作成を一か所で引き受けます。署名は署名用のプロパティがあるときにだけ行うので、secret を使わない
+`verify` ジョブでも、開発者の手元の `publishToMavenLocal` でも、署名なしで動きます。Maven Central にある Android ライブラリの多くが、現在このプラグインで
 公開しています。
 
 ### バージョンとタグ
@@ -146,8 +147,10 @@ vanniktech のプラグインは、Central Portal へのアップロード、メ
 - `SIGNING_IN_MEMORY_KEY` と `SIGNING_IN_MEMORY_KEY_PASSWORD` は、テキスト形式で書き出した
   GNU Privacy Guard（GPG）の秘密鍵と、そのパスフレーズです。
 
-リポジトリの ruleset で、2つのタグ形式を push できる人を制限します。`main` 以外のコミットに付いたタグでは、
-アップロードの前にジョブが失敗します。
+リポジトリの ruleset で、2つのタグ形式を push できる人を制限します。さらに、`release` ジョブは最初の
+ステップで、アップロードの前にタグを検証します。バージョンがセマンティックバージョニング
+（`<major>.<minor>.<patch>`）の形式でない場合と、タグの指すコミットが `main` の祖先でない場合
+（`git merge-base --is-ancestor "$GITHUB_SHA" origin/main`）に、ジョブを失敗させます。
 
 `publishAndReleaseToMavenCentral` は成果物のバンドルをアップロードし、Central Portal 自身の検証を通ったら自動で
 リリースします。Maven Central に公開したリリースは、削除や上書きができません。誤ったリリースは、次のパッチバージョンを
@@ -162,7 +165,9 @@ vanniktech のプラグインは、Central Portal へのアップロード、メ
    公開リポジトリを作ります。Central Portal が namespace を確認済みにしたら、そのリポジトリは削除します。
 2. 署名用の GPG 鍵ペアを作り、Central Portal が参照する鍵サーバ（`keys.openpgp.org`）に公開鍵を登録します。
 3. Central Portal のユーザートークンを発行します。
-4. `maven-central` environment を作り、4つの secret を登録し、タグの ruleset を追加します。
+4. `maven-central` environment を作り、デプロイできるブランチとタグを2つのタグ形式だけに制限します。
+   これで、プルリクエストのワークフローからは environment を読めなくなります。そのうえで、4つの secret を
+   この environment に登録し、タグの ruleset を追加します。
 
 これらの手順は developer guide に記録します（「ドキュメント」を参照してください）。後で鍵やトークンを
 更新する保守担当者も、同じページに従えます。
@@ -176,6 +181,9 @@ vanniktech のプラグインは、Central Portal へのアップロード、メ
 - `BajutsuAndroid/README.md` には、`BajutsuNet` の OkHttp インターセプタが OkHttp を `compileOnly` で
   宣言していることを書き添えます。POM は OkHttp を依存に含めないので、インターセプタを呼ぶアプリは、
   現在と同じく自分で OkHttp を持ち込みます。
+- `IdentifierTool/README.md` にも、ライブラリが `androidx.compose.ui` を `compileOnly` で宣言している
+  ことを同じように書き添えます。POM は Compose を依存に含めないので、Compose 用のヘルパーを呼ぶアプリは、
+  現在のパス指定の取り込みと同じく自分で Compose を持ち込みます。
 - `docs/developer-guide.md` と `docs/ja/developer-guide.md` に「Android ライブラリのリリース」の節を足し、
   タグの形式、バージョンの方針、上記の一度だけ行う準備を記載します。
 - `docs/drivers.md`（adb の節）とその日本語版で2つのライブラリに言及している箇所から、座標を参照します。
@@ -203,7 +211,8 @@ vanniktech のプラグインは、Central Portal へのアップロード、メ
    `android-libraries/` を `platform` トピックとして登録します。`scripts/e2e_changes.py` は変更しません。
    showcase は `android-libraries/` を経由してビルドしないので、Android のオンデバイス E2E で検証できる
    ものがないためです。`make lint-actions` が通り、プルリクエストで
-   `verify` ジョブが成功すれば完了です。
+   `verify` ジョブが成功し、`release` ジョブのタグ検証がセマンティックバージョニングでない版と `main` の外の
+   コミットを拒否すれば完了です。
 3. 前述の「人が一度だけ行う準備」を済ませます。Central Portal で `io.github.bajutsu-e2e` が確認済みと
    表示されれば完了です。
 4. 「ドキュメント」に挙げた README とドキュメントを、両言語で更新します。
