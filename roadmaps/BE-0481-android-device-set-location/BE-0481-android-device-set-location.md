@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0481](BE-0481-android-device-set-location.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0481") |
+| Implementing PR | [#2418](https://github.com/bajutsu-e2e/bajutsu/pull/2418) (units 2–6) |
 | Topic | Platform support |
 | Related | [BE-0211](../BE-0211-android-device-control/BE-0211-android-device-control.md), [BE-0233](../BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity.md), [BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities.md), [BE-0475](../BE-0475-ios-runner-set-location/BE-0475-ios-runner-set-location.md) |
 <!-- /BE-METADATA -->
@@ -221,12 +222,38 @@ preconditions, so no system dialog interrupts the run.
 > (oldest first), linking the PRs.
 
 - [ ] Unit 1 — spike on a real device: `appops`, relaunch, revoke, fused visibility
-- [ ] Unit 2 — BajutsuAndroid `LocationReceiver` and `Bajutsu.startLocation`
-- [ ] Unit 3 — adb command builders, result parsing, and `Env` methods
-- [ ] Unit 4 — route selection and lease teardown
-- [ ] Unit 5 — showcase location readout and scenario
-- [ ] Unit 6 — documentation in English and Japanese
+- [x] Unit 2 — BajutsuAndroid `LocationReceiver` and `Bajutsu.startLocation`
+- [x] Unit 3 — adb command builders, result parsing, and `Env` methods
+- [x] Unit 4 — route selection and lease teardown
+- [x] Unit 5 — showcase location readout and scenario
+- [x] Unit 6 — documentation in English and Japanese
 - [ ] Unit 7 — on-device verification
+
+Log:
+
+- 2026-11-11 — Units 2–6 landed together ([#2418](https://github.com/bajutsu-e2e/bajutsu/pull/2418)). Unit 1 ran on an API 34 emulator reached over
+  `adb connect`, not on hardware, so it stays open with Unit 7. The emulator showed five things:
+  - `appops set <package> android:mock_location allow` grants the app-op with no
+    `ACCESS_MOCK_LOCATION` in the manifest, and an unknown package exits non-zero.
+  - Without the grant the receiver answers `2`; with it, `1`.
+  - The mock providers survived a force-stop and relaunch, and `clear` removed them.
+  - The emulator's own fused provider also reported the mocked location. Play services was not involved.
+  - Revoking the app-op leaves the providers in place, and the shell cannot remove them
+    (`cmd location providers remove-test-provider` raises `SecurityException` for uid 2000). A
+    teardown therefore launches a stopped app before it broadcasts `clear`.
+
+  Four deviations from the Detailed design:
+  - The environment re-sends the recorded location after every launch it makes, not only when a
+    relaunch drops the providers. The re-send is idempotent, so it holds on hardware whatever Unit 1
+    finds there.
+  - After an `installApp` step the re-send happens at the next launch, not inside `install_member`.
+    The receiver registers at run time, so it needs a live process.
+  - `Env` splits the design's `clear_mock_location` into `clear_mock_location` (the broadcast) and
+    `revoke_mock_location` (the `appops` reset), so a teardown revokes the grant even when the clear
+    fails.
+  - The receiver also answers a third failure code, `3`, when the platform rejects the mock with
+    `IllegalArgumentException`, so a rejected mock neither crashes the app nor reads as a missing
+    receiver.
 
 ## References
 

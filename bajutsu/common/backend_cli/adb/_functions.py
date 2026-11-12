@@ -95,6 +95,25 @@ CLIPBOARD_ACTION = "dev.bajutsu.CLIPBOARD"
 # present" (am leaves the code at 0). Must match BajutsuAndroid's receiver.
 CLIPBOARD_RESULT_OK = 1
 
+# The location route a real device takes, where no emulator console answers `emu geo fix` (BE-0481):
+# the same ordered broadcast as the clipboard, to BajutsuAndroid's location receiver, which mocks the
+# `gps` and `network` providers from the app process once adb has granted it the mock-location app-op.
+# The receivers share BajutsuAndroid's `RESULT_OK`; `RESULT_NO_MOCK_PERMISSION` names the missing grant.
+LOCATION_ACTION = "dev.bajutsu.LOCATION"
+LOCATION_RESULT_OK = CLIPBOARD_RESULT_OK
+LOCATION_RESULT_NO_MOCK_PERMISSION = 2
+# The platform rejected the mock itself (an `IllegalArgumentException` from a provider call); the
+# receiver puts the platform's message in the result data.
+LOCATION_RESULT_MOCK_FAILED = 3
+
+# A property that reads "1" on an emulator image and is unset on a physical device: recent images set
+# the first, older ones the second. Shared by the device-facts reader and the location route.
+EMULATOR_PROPS = ("ro.boot.qemu", "ro.kernel.qemu")
+
+# The serial adb gives a local emulator, the only kind whose console `adb emu` reaches; an emulator
+# reached with `adb connect` carries `<host>:<port>` instead.
+_EMULATOR_SERIAL_RE = re.compile(r"emulator-\d+")
+
 _RESULT_CODE_RE = re.compile(r"result=(-?\d+)")
 _RESULT_DATA_RE = re.compile(r'data="([^"]*)"')
 
@@ -884,6 +903,25 @@ def forward_cmd(serial: str, device_port: int = RESIDENT_DEVICE_PORT) -> list[st
     return _adb(serial, "forward", "tcp:0", f"tcp:{device_port}")
 
 
+def forward_abstract_cmd(serial: str, socket_name: str) -> list[str]:
+    """Forward a free host port to the device's abstract socket `socket_name` (BE-0482).
+
+    A WebView's DevTools socket lives in the abstract namespace rather than on a TCP port, so the
+    device side is `localabstract:`; adb prints the chosen host port on stdout, as `forward_cmd` does.
+    """
+    return _adb(serial, "forward", "tcp:0", f"localabstract:{socket_name}")
+
+
+def ps_names_cmd(serial: str) -> list[str]:
+    """List every process's pid and name, so a package's `<package>:<name>` children show too."""
+    return _adb(serial, "shell", "ps", "-A", "-o", "PID,NAME")
+
+
+def proc_net_unix_cmd(serial: str) -> list[str]:
+    """Read the device's Unix socket table, where each WebView DevTools socket is listed by name."""
+    return _adb(serial, "shell", "cat", "/proc/net/unix")
+
+
 def forward_remove_cmd(serial: str, host_port: int) -> list[str]:
     """Tear down the `adb forward` for `host_port`, paired with `forward_cmd` at lease end."""
     return _adb(serial, "forward", "--remove", f"tcp:{host_port}")
@@ -1047,6 +1085,88 @@ def parse_clipboard_result(out: str) -> str:
         )
     d = _RESULT_DATA_RE.search(out)
     return base64.b64decode(d.group(1)).decode() if d else ""  # no data (set/clear) → empty read
+
+
+def is_emulator_serial(serial: str) -> bool:
+    """Whether *serial* names a local emulator (`emulator-<port>`), whose console adb can reach."""
+    return _EMULATOR_SERIAL_RE.fullmatch(serial) is not None
+
+
+def mock_location_appop_cmd(serial: str, package: str, mode: str) -> list[str]:
+    """Set *package*'s mock-location app-op to *mode* (`allow` to grant, `default` to drop it).
+
+    Raises:
+        DeviceError: *mode* is neither `allow` nor `default`.
+    """
+    if mode not in ("allow", "default"):
+        raise DeviceError(f"unknown mock-location app-op mode: {mode!r} (expected allow|default)")
+    return _adb(serial, "shell", "appops", "set", package, "android:mock_location", mode)
+
+
+def location_broadcast_cmd(
+    serial: str, package: str, op: str, lat: float | None = None, lon: float | None = None
+) -> list[str]:
+    """Broadcast a location *op* (`set` with *lat* / *lon*, or `clear`) to the app's receiver.
+
+    The coordinates travel as strings (`--es`), so the receiver parses them and the joined
+    `adb shell` command needs no quoting; a float's `repr` round-trips exactly.
+
+    Raises:
+        DeviceError: *op* is neither `set` nor `clear`, or `set` lacks a finite coordinate.
+    """
+    if op == "set":
+        if lat is None or lon is None:
+            raise DeviceError("a location set needs both lat and lon")
+        # The receiver would leave `nan` / `inf` unhandled, which reads as a missing receiver.
+        if not (math.isfinite(lat) and math.isfinite(lon)):
+            raise DeviceError(f"setLocation needs finite coordinates, got lat={lat} lon={lon}")
+        extra: tuple[str, ...] = ("--es", "lat", repr(float(lat)), "--es", "lon", repr(float(lon)))
+    elif op == "clear":
+        extra = ()
+    else:
+        raise DeviceError(f"unknown location op: {op!r} (expected set|clear)")
+    return _adb(
+        serial,
+        "shell",
+        "am",
+        "broadcast",
+        "-a",
+        LOCATION_ACTION,
+        "-p",
+        package,
+        "--es",
+        "op",
+        op,
+        *extra,
+    )
+
+
+def parse_location_result(out: str) -> None:
+    """Check an `am broadcast` reply from the location receiver, raising with the cause on failure.
+
+    Raises:
+        DeviceError: the receiver reported that the platform refused the mock provider (the
+            mock-location app-op is missing) or rejected the mock itself, or no receiver handled the
+            broadcast at all — the app under test does not call `Bajutsu.startLocation`, or is not
+            running. The `am` reply rides along, so a cause this does not name is still visible.
+    """
+    m = _RESULT_CODE_RE.search(out)
+    code = int(m.group(1)) if m else 0
+    if code == LOCATION_RESULT_OK:
+        return
+    if code == LOCATION_RESULT_NO_MOCK_PERMISSION:
+        raise DeviceError(
+            "setLocation: the platform refused the mock location provider; the app lacks the "
+            "mock-location app-op (`appops set <package> android:mock_location allow`)"
+        )
+    reply = out.strip()
+    if code == LOCATION_RESULT_MOCK_FAILED:
+        raise DeviceError(f"setLocation: the platform rejected the mock location: {reply}")
+    raise DeviceError(
+        "setLocation: the location broadcast was not handled: the app under test has no "
+        "BajutsuAndroid location receiver, or is not running. A real device needs "
+        f"`Bajutsu.startLocation` in the app (see BajutsuAndroid/README.md). am replied: {reply!r}"
+    )
 
 
 # --- device catalog / serial resolution ---

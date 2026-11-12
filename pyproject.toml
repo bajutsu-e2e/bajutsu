@@ -33,6 +33,10 @@ ai = ["anthropic>=0.50"]
 # a browser is actually started — never on the default path (the import guard locks this). The
 # Chromium binary is a separate `playwright install chromium` (see demos/web), not a pip dep.
 web = ["playwright>=1.49"]
+# The Android WebView source reaches a WebView over the Chrome DevTools Protocol, which runs over
+# WebSocket — absent from the standard library (BE-0482). Imported on the first `web:` block of an
+# Android run, never earlier, so a base install that never drives an Android WebView skips it.
+android = ["websockets>=13"]
 visual = ["pillow>=10.0"]
 # Capped below 4: fastmcp 4 (and mcp 2 behind it) is a breaking API move for bajutsu/mcp, so a
 # lock refresh or a grouped Dependabot bump must not take it implicitly.
@@ -109,12 +113,13 @@ dev = [
     # The optional extras the gate imports and tests — referenced by name so each one's version is
     # declared once, in [project.optional-dependencies], and never duplicated here. The gate runs
     # with all of them installed: ai (the anthropic SDK for the AI paths, BE-0111), bedrock (its
-    # Bedrock variant + boto3), server (boto3), worker (empty since BE-0106),
+    # Bedrock variant + boto3), android (websockets for the CDP WebView source, BE-0482),
+    # server (boto3), worker (empty since BE-0106),
     # db (psycopg), oauth (Authlib), mcp, visual (Pillow), schema (jsonschema),
     # cloud (boto3 + google-cloud-storage for BE-0110), and githubapp (cryptography for the BE-0224
     # App JWT). Keeping `ai` here means `make check`
     # still imports and tests the AI paths; the AI-free guarantee is scoped to the *base* install.
-    "bajutsu[ai,bedrock,server,worker,db,oauth,mcp,visual,schema,cloud,githubapp]",
+    "bajutsu[ai,android,bedrock,server,worker,db,oauth,mcp,visual,schema,cloud,githubapp]",
     # Test/lint tooling — not part of any runtime extra, so declared directly here.
     "httpx>=0.27",  # FastAPI TestClient + real-uvicorn checks
     "import-linter>=2.0",  # BE-0112: static core/contract/periphery layer-boundary contract

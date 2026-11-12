@@ -6,8 +6,9 @@ import json
 import urllib.error
 import urllib.parse
 import urllib.request
+from contextlib import AbstractContextManager, nullcontext
 
-from bajutsu.common.drivers.base import Element, Point
+from bajutsu.common.drivers.base import Element, Frame, Point
 from bajutsu.common.drivers.dom import parse_dom
 
 
@@ -19,6 +20,10 @@ class WebViewBridge:
             port  # the host port this bridge reserved — one per lease, so leases never collide
         )
         self._base_url = f"http://{host}:{port}"
+
+    def session(self, webview_id: str, frame: Frame) -> AbstractContextManager[None]:  # noqa: ARG002  # DomSource shape
+        """Nothing to open: the in-app server finds the WebView by its id on every request."""
+        return nullcontext()
 
     def query_dom(self, webview_id: str) -> list[Element]:
         """Query the DOM of the WebView identified by its native accessibility id."""

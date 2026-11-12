@@ -61,7 +61,7 @@ column.
 | `deviceLog` | ✅ | ✅ | |
 | `appTrace` | ✅ | ✅ | iOS streams the app's `os_log`. Android reads the app's own log lines from `logcat`, filtered by tag ([BE-0478](../roadmaps/BE-0478-android-device-control-parity/BE-0478-android-device-control-parity.md)). |
 | `multiTouch` | ✅ | ✅ | Android injects both fingers through the resident UI Automator server. Without the server, it needs a rooted device. |
-| `textSelection` | ✅ | ✅ | No Android run has checked the result on a device. See the behavior table. |
+| `textSelection` | ✅ | ✅ | Android needs version 12 or later. See the behavior table. |
 | `webView` | per-run | gap | iOS grants it when the app embeds the BajutsuKit WebView bridge. Android has no bridge. Chrome's WebView debugging port is a possible route. |
 | `selectOption` | n/a | n/a | Sets a web page's `<select>` element, which the web backend alone has. |
 | `urlNavigation` | n/a | n/a | Opens a web address mid-scenario in a browser. Both mobile backends open a deep link as a launch precondition instead. |
@@ -74,7 +74,7 @@ column.
 | `handleTipkitTip` | ✅ | n/a | TipKit is an iOS framework. |
 | `handleNotificationBanner` | ✅ | gap | An Android heads-up notification appears in the tree as a SystemUI node. |
 | `deviceGroup` | ✅ | ✅ | |
-| `deviceControl.setLocation` | ✅ | ✅ | Android sets it through the emulator console alone. See the behavior table. |
+| `deviceControl.setLocation` | ✅ | ✅ | Off a local emulator, Android needs the BajutsuAndroid library in the app. See the behavior table. |
 | `deviceControl.clipboard` | ✅ | ✅ | Android needs the BajutsuAndroid library in the app. See the behavior table. |
 | `deviceControl.push` | ✅ | gap | The BajutsuAndroid library could post the notification from inside the app, the way it already handles the clipboard. |
 | `deviceControl.clearKeychain` | ✅ | n/a | Android has no keychain. The app's Android Keystore keys go away with its data on a clean reinstall. |
@@ -119,8 +119,8 @@ declare, or outside what the two tables cover.
 | Behavior | iOS | Android | What it means today |
 |---|---|---|---|
 | Text in an editable field | The element's `value` holds the text. | `value` holds the text too (#2388), with two gaps: the `uiautomator dump` fallback carries no `hint`, so an empty field's hint reads as its value; and no dump carries `isShowingHintText`, so text equal to the field's hint reads as no value. | On the fallback read path a `value` assertion on an empty field reads its hint, and a `clear` step does nothing on a field whose text equals its hint. See [drivers](drivers.md). |
-| `select` and `copy` | XCUITest selects and copies natively. | adb sends Ctrl+A and Ctrl+C through `input keycombination`, which needs Android 12 or later. | No Android scenario runs the pair, and the conformance test checks only that neither call raises. |
-| `setLocation` | `simctl` sets it on the Simulator. | The emulator console sets it. | Neither backend sets the location on a real device yet. [BE-0475](../roadmaps/BE-0475-ios-runner-set-location/BE-0475-ios-runner-set-location.md) covers iOS. |
+| `select` and `copy` | XCUITest selects and copies natively. | adb sends Ctrl+A and Ctrl+C through `input keycombination`, which needs Android 12 or later. | The Android end-to-end (E2E) lane runs the pair on Compose and Views. It reads the copied text back from the clipboard. |
+| `setLocation` | `simctl` sets it on the Simulator. | The emulator console sets it on a local emulator. Elsewhere, a receiver inside the app mocks the `gps` and `network` providers after adb grants the mock-location app-op ([BE-0481](../roadmaps/BE-0481-android-device-set-location/BE-0481-android-device-set-location.md)). | iOS does not set the location on a real device yet; [BE-0475](../roadmaps/BE-0475-ios-runner-set-location/BE-0475-ios-runner-set-location.md) covers it. On a real Android device, an app without BajutsuAndroid fails the step. |
 | Clipboard steps | `simctl` reads and writes the pasteboard. | A receiver inside the app does the work. The app must link BajutsuAndroid, and Android 10 or later lets only the focused app read the clipboard. | An app without BajutsuAndroid fails every clipboard step, and so does a read while the app is in the background. |
 
 ## How the test checks the tables
