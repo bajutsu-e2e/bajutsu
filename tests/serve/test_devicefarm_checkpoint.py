@@ -615,7 +615,7 @@ def test_the_stored_application_is_the_snapshot_that_was_hashed(tmp_path: Path) 
     _payload, status = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
 
     assert status == 200
-    (job,) = executor.jobs
+    (job,) = state.jobs.values()
     objects = state.object_store.objects  # type: ignore[union-attr]
     (stored,) = objects.values()
     assert hashlib.sha256(stored).hexdigest() == job.batch_app

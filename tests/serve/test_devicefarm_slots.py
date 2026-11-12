@@ -214,7 +214,9 @@ class _Server:
             self.calls.append(path)
         state = self._state
         if path == "/api/worker/lease":
-            payload, code = ops.worker_lease(state, body["worker_id"], body.get("capabilities"))
+            payload, code = ops.worker_lease(
+                state, body["worker_id"], body.get("capabilities"), max_jobs=body.get("maxJobs")
+            )
         elif path == "/api/worker/heartbeat":
             payload, code = ops.worker_heartbeat(state, body["worker_id"], body["job_id"])
         elif path == "/api/worker/batch-run":
@@ -310,7 +312,8 @@ def test_a_full_worker_sends_no_lease_request_until_a_result_is_posted(
     time.sleep(0.2)  # many poll intervals: a worker that kept asking would have leased the third
 
     assert sorted(cloud.scheduled) == sorted([first, second])  # two runs at once, one per slot
-    assert server.count("/api/worker/lease") == 2
+    # One request leased both: the worker asks for its free slots, and the group fills them.
+    assert server.count("/api/worker/lease") == 1
     assert _status(state, third)["status"] == "queued"
 
     cloud.finish(first)
@@ -538,7 +541,7 @@ def test_a_failing_lease_loop_still_lets_in_flight_leases_lapse(
     def boom(*_a: Any) -> Any:
         raise RuntimeError("lease exploded")
 
-    monkeypatch.setattr(worker_mod, "_lease", boom)
+    monkeypatch.setattr(worker_mod, "_lease_bundle", boom)
     with pytest.raises(RuntimeError, match="lease exploded"):
         worker_mod._serve_slots(
             url="http://server",
@@ -560,8 +563,8 @@ def test_a_failing_lease_loop_still_lets_in_flight_leases_lapse(
 def test_a_slot_whose_thread_cannot_start_gives_its_place_back(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    leases = iter([{"job_id": "j1", "spec": {}}, None])
-    monkeypatch.setattr(worker_mod, "_lease", lambda *_a: next(leases))
+    leases = iter([[{"job_id": "j1", "spec": {}}], []])
+    monkeypatch.setattr(worker_mod, "_lease_bundle", lambda *_a: next(leases))
 
     class _NoStart(threading.Thread):
         def start(self) -> None:

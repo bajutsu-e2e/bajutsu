@@ -534,7 +534,7 @@ def test_a_leased_fan_out_job_runs_on_the_worker_from_its_own_workspace(
     state = _storage_state(tmp_path, executor)
     _payload, status = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
     assert status == 200
-    (job,) = executor.jobs
+    (job,) = state.jobs.values()
     # The worker turns the job's run intent into its own provider's batch once leased (BE-0484).
     spec = resolve_run_intent(job_spec(job), "devicefarm")
     assert spec["batch"]["app_path"] == "app.apk"

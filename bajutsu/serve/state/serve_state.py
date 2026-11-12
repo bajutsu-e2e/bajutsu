@@ -37,7 +37,7 @@ from .store_bundle import StoreBundle
 if TYPE_CHECKING:
     from cryptography.fernet import Fernet
 
-    from bajutsu.serve.server.db import Repository
+    from bajutsu.serve.server.db import ConcurrencyCaps, Repository
 
 Popen = Callable[..., Any]
 
@@ -309,7 +309,11 @@ class ServeState:
         self.secrets = EnvSecretStore(self.env_var_for_secret)
         # `logbus` is resolved by now (a plain field), so the registry can capture it: it is never
         # reassigned after construction, so the registry's reference stays the live bus.
-        self.job_registry = JobRegistry(logbus=self.logbus, finished_ids=self._finished_job_ids)
+        self.job_registry = JobRegistry(
+            logbus=self.logbus,
+            finished_ids=self._finished_job_ids,
+            leased_groups=self._leased_group_counts,
+        )
 
     @property
     def jobs(self) -> dict[str, Job]:
@@ -544,6 +548,33 @@ class ServeState:
             max_concurrent_per_user=self.max_concurrent_per_user,
             max_concurrent_per_org=self.max_concurrent_per_org,
         )
+
+    def reserve_job_ids(self, count: int) -> list[str]:
+        """Draw *count* job ids for a group written to the store before it registers (BE-0484)."""
+        return self.job_registry.reserve_ids(count)
+
+    def admit(self, job: Job) -> Job:
+        """Register *job* under its reserved id with no cap check; a group job is capped at lease
+        time (BE-0484)."""
+        return self.job_registry.admit(self._freeze_binding(job))
+
+    @property
+    def concurrency_caps(self) -> ConcurrencyCaps:
+        """This state's concurrency caps, as the lease applies them to a group's jobs (BE-0484)."""
+        # Local: the server's db package stays off the local `serve` import path.
+        from bajutsu.serve.server.db import ConcurrencyCaps
+
+        return ConcurrencyCaps(
+            total=self.max_concurrent,
+            per_user=self.max_concurrent_per_user,
+            per_org=self.max_concurrent_per_org,
+        )
+
+    def _leased_group_counts(self) -> dict[tuple[str, str | None], int]:
+        """The leased `run-set` group jobs by org and actor — the registry's lease read (BE-0484).
+        None leased without a repository, which never queues a group."""
+        repository = self.repository
+        return {} if repository is None else repository.leased_group_counts()
 
     def _finished_job_ids(self, job_ids: list[str]) -> set[str]:
         """Which of *job_ids* the system of record says are finished — the registry's cap-release
