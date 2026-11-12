@@ -58,7 +58,7 @@ iOS の実機では、`simctl` が提供する能力がなくなります。こ�
 | `appTrace` | ✅ | ✅ | iOS はアプリの `os_log` を取り込みます。Android は `logcat` からアプリ自身のログ行をタグで絞って読みます（[BE-0478](../../roadmaps/BE-0478-android-device-control-parity/BE-0478-android-device-control-parity-ja.md)）。 |
 | `multiTouch` | ✅ | ✅ | Android は常駐 UI Automator サーバーで 2 本の指を注入します。サーバーがないときは、root 化した端末が必要です。 |
 | `textSelection` | ✅ | ✅ | Android 12 以降が必要です。振る舞いの差の表を参照してください。 |
-| `webView` | per-run | gap | iOS では、アプリが BajutsuKit の WebView ブリッジを組み込んでいるときに付与されます。Android にはブリッジがありません。Chrome の WebView デバッグ用ポートが実現の候補です。 |
+| `webView` | per-run | per-run | iOS では、アプリが BajutsuKit の WebView ブリッジを組み込んでいるときに付与されます。Android では、アプリが WebView デバッグを有効化し（`Bajutsu.enableWebViewDebugging()`）、bajutsu が `adb forward` 経由でその WebView 自身の DevTools ソケットに到達したときに付与されます（`CdpDomSource`、BE-0482）。 |
 | `selectOption` | n/a | n/a | web ページの `<select>` 要素を設定する能力で、web バックエンドだけが持ちます。 |
 | `urlNavigation` | n/a | n/a | シナリオの途中でブラウザに web アドレスを開かせる能力です。モバイルの2つのバックエンドは、ディープリンクを起動時の前提条件として開きます。 |
 | `elementAttribute` | n/a | n/a | web ページの要素の属性を読む能力で、web バックエンドだけが持ちます。 |

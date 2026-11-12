@@ -62,7 +62,7 @@ column.
 | `appTrace` | ✅ | ✅ | iOS streams the app's `os_log`. Android reads the app's own log lines from `logcat`, filtered by tag ([BE-0478](../roadmaps/BE-0478-android-device-control-parity/BE-0478-android-device-control-parity.md)). |
 | `multiTouch` | ✅ | ✅ | Android injects both fingers through the resident UI Automator server. Without the server, it needs a rooted device. |
 | `textSelection` | ✅ | ✅ | Android needs version 12 or later. See the behavior table. |
-| `webView` | per-run | gap | iOS grants it when the app embeds the BajutsuKit WebView bridge. Android has no bridge. Chrome's WebView debugging port is a possible route. |
+| `webView` | per-run | per-run | iOS grants it when the app embeds the BajutsuKit WebView bridge. Android grants it when the app enables WebView debugging (`Bajutsu.enableWebViewDebugging()`) and bajutsu reaches the view's own DevTools socket over `adb forward` (`CdpDomSource`, BE-0482). |
 | `selectOption` | n/a | n/a | Sets a web page's `<select>` element, which the web backend alone has. |
 | `urlNavigation` | n/a | n/a | Opens a web address mid-scenario in a browser. Both mobile backends open a deep link as a launch precondition instead. |
 | `elementAttribute` | n/a | n/a | Reads an attribute of a web page element, which the web backend alone has. |

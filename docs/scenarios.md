@@ -1035,7 +1035,7 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `clearStatusBar` | `clearStatusBar: {}` | remove status-bar overrides (restore the live bar) |
 | `use` | `use: { component: <file>, with?: {...} }` | expand a reusable component's steps — a compile-time macro ([reuse](#reuse-data-and-tags)); **takes no modifier but `target`** — `capture` / `extract` / `name` / `from` are rejected, and a `target` is stamped onto every step the component expands to ([multi-target](#components-in-a-multi-target-scenario)) |
 | `group` | `group: { name: <str>, steps: [...] }` | name a run of consecutive steps — a compile-time macro, folded together in `report.html` ([below](#grouping-steps-group--folded-in-reporthtml)) |
-| `web` | `web: { within: <Selector>, steps: [...] }` | enter a WebView's DOM: `within` resolves the host `WKWebView` natively, and the nested `steps` address its normalized DOM instead of the native tree ([below](#web-entering-a-webviews-dom)) |
+| `web` | `web: { within: <Selector>, steps: [...] }` | enter a WebView's DOM: `within` resolves the host WebView natively (a `WKWebView` on iOS, any WebView on Android), and the nested `steps` address its normalized DOM instead of the native tree ([below](#web-entering-a-webviews-dom)) |
 
 Modifiers (a `use` step takes `target` alone — see the table row above):
 
@@ -1191,14 +1191,19 @@ step's location.
       - wait: { for: { id: pay.confirmation }, timeout: 10 }
 ```
 
-`web` resolves `within` natively to exactly one `WKWebView` host. It then runs the nested `steps`
-against the WebView's normalized DOM (`data-testid` → `Element.identifier`), not the app's native
-accessibility tree — for a hybrid screen that embeds web content inside a native app
+`web` resolves `within` natively to exactly one WebView host — a `WKWebView` on iOS, any Android
+`WebView` on adb. It then runs the nested `steps` against that view's normalized DOM
+(`data-testid` → `Element.identifier`), not the app's native accessibility tree — for a hybrid
+screen that embeds web content inside a native app
 ([BE-0037](../roadmaps/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support.md)). Control
 returns to the native driver once the block's steps finish. The nested steps share the enclosing
 scenario's `vars.*` bindings, the same as `if`'s and `forEach`'s do, and `capture` / `extract`
-modifiers are not allowed on the `web` step itself. The step needs a WebView bridge configured
-(`BAJUTSU_WEBVIEW_PORT`); without one it fails cleanly rather than doing nothing. This first slice
+modifiers are not allowed on the `web` step itself. On iOS the step needs the BajutsuKit WebView
+bridge configured (`BAJUTSU_WEBVIEW_PORT`); on Android it instead reaches the WebView's own Chrome
+DevTools Protocol socket over `adb forward`, once the app has called
+`Bajutsu.enableWebViewDebugging()`
+([BE-0482](../roadmaps/BE-0482-android-webview-cdp/BE-0482-android-webview-cdp.md)). Either way,
+without the route available the step fails cleanly rather than doing nothing. This first slice
 supports `tap` / `tapPoint` / `doubleTap` / `type` / `wait` / `assert` inside the block. `longPress` /
 `swipe` / `drag` / `clear` / `delete` / `select` / `copy` / `selectOption` / `scroll` / `back` /
 `navigate` / `pinch` / `rotate` / `handleSystemAlert` / `setPickerValue` are not reachable there, and each fails
