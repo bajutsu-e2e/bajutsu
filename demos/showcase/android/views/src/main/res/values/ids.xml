@@ -127,4 +127,8 @@
     <item name="form_school_value" type="id" />
     <item name="form_birthdate" type="id" />
     <item name="form_birthdate_value" type="id" />
+
+    <!-- hybrid WebView screen (BE-0482), reached only under SHOWCASE_WEBVIEW -->
+    <item name="webview_title" type="id" />
+    <item name="webview_host" type="id" />
 </resources>

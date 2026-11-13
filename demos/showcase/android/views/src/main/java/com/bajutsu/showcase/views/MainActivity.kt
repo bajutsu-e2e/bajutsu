@@ -37,6 +37,12 @@ class MainActivity : AppCompatActivity() {
             setContentView(PickerScreen(this).root)
             return
         }
+        // BE-0482: the SHOWCASE_WEBVIEW launch env swaps the whole five-tab UI for the hybrid WebView
+        // screen (mirroring the iOS RootView). Otherwise the normal tab app is untouched.
+        if (launchEnv["SHOWCASE_WEBVIEW"] != null) {
+            setContentView(HybridScreen(this).root)
+            return
+        }
         intent?.data?.let { model.selectedTab = model.deepLinkTab(it) }
 
         content = FrameLayout(this)
@@ -120,7 +126,7 @@ class MainActivity : AppCompatActivity() {
         val extras = intent?.extras ?: return emptyMap()
         val keys = listOf(
             "SHOWCASE_UITEST", "SHOWCASE_TAB", "SHOWCASE_API_URL", "SHOWCASE_HTTP_BASE",
-            "SHOWCASE_PICKERS",
+            "SHOWCASE_PICKERS", "SHOWCASE_WEBVIEW",
             // The network collector bajutsu injects (BE-0283); BajutsuNet.configure reads these, AppModel ignores them.
             "BAJUTSU_COLLECTOR", "BAJUTSU_COLLECTOR_TOKEN",
         )

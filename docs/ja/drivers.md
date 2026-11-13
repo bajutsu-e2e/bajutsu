@@ -54,7 +54,7 @@ class Driver(Protocol):
 | `deviceLog` | シナリオ全体のデバイスログまたはブラウザのコンソール（BE-0467。iOS では Simulator のみ） | ✅ | ✅ | ✅ | — |
 | `appTrace` | シナリオ全体のアプリのログトレース。iOS は `os_log`、Android はタグで絞った `logcat`（BE-0467、BE-0478。iOS は Simulator のみ） | ✅ | ✅ | — | — |
 | `multiTouch` | 2 本指ジェスチャ（pinch / rotate） | ✅ | ✅ | ✅ | ✅ |
-| `webView` | 埋め込まれた WKWebView の DOM を問い合わせてタップする（BE-0037、WebView ブリッジが実行ごとに付与し、静的な宣言はなし） | — | — | — | — |
+| `webView` | アプリが埋め込んだ WebView の DOM を問い合わせてタップする（実行ごとに付与し、静的な宣言はなし。iOS は BajutsuKit の WebView ブリッジ（BE-0037）、Android は Chrome DevTools Protocol（BE-0482）が付与） | — | — | — | — |
 | `textSelection` | フォーカス中フィールドの全選択とクリップボードへのコピー | ✅ | ✅ | ✅ | ✅ |
 | `selectOption` | ネイティブ `<select>` を値で設定（web のみ） | — | — | ✅ | ✅ |
 | `urlNavigation` | `navigate` でシナリオの途中に URL を開く（web のみ。BE-0464） | — | — | ✅ | ✅ |
@@ -254,6 +254,32 @@ BE-0452 で取り除きました。ホストで実行する job が必要とす�
 - **ネットワーク**はネイティブには観測しません（`NETWORK` 能力を持ちません）。iOS と同じモックで対応し、アプリ側の collector の URL を launch env 経由で intent extra として渡すので、新しいコードパスなしに `mocks` が動きます。デバイス制御は `setLocation` とクリップボード操作に対応し、一族の残りは未対応のままです。`setLocation` は、ローカルの `emulator-<port>` の serial ではエミュレータのコンソール（`emu geo fix`、BE-0211）を使います。それ以外の対象は、実機と、`adb connect` で接続したエミュレータです。そうした対象では、まず adb がアプリに mock location の app-op を許可します。続いて BajutsuAndroid の位置レシーバが `gps` と `network` の provider を mock します（BE-0481）。lease の終わりに mock を解除し、app-op を元に戻します。クリップボードは `cmd clipboard` ではなくアプリ内のレシーバ（`BajutsuAndroid`、BE-0233）を経由します。このコマンドは実機では黙って何もせず、Android 10 以降はフォアグラウンドのアプリと既定の IME しかクリップボードを触れないためです。そこで bajutsu は順序付き `am broadcast` を送り、アプリの内側のレシーバがアプリプロセスからこれを処理します（両方向を base64 で運ぶので argv に引用符付けは要らず、レシーバがなければ空のクリップを読むのではなく明確に失敗します）。XCUITest がクリップボードを simctl 経由で実現するのと同じく、協調するアプリがあればバックエンドが駆動できるので、adb は `clipboard` を公開し続けます。[`BajutsuAndroid`](../../BajutsuAndroid/README.ja.md) を参照してください。
 
 > XML の属性名は UI Automator の `uiautomator dump` スキーマに従います。Views の `android:id` における `.`↔`_` の扱いはシナリオ側で解決します。セレクタが id を両方の形で持ち、どちらにもマッチします（BE-0221）。そのため共有の showcase シナリオが両 Android toolkit でそのまま走り、[`android-e2e.yml`](../../.github/workflows/android-e2e.yml) が `showcase-compose` と `showcase-views` を同じセットで駆動して push／PR ごとに検証します。fast ゲートでは、取得済みの XML フィクスチャに対してパーサ、frame 中心タップ、transient-empty のリトライ、ambiguity 即失敗を検証します。adb は `brew install android-platform-tools` でインストールします。
+
+### アプリに埋め込まれた WebView
+
+シナリオの `web:` ブロックは、アプリが埋め込んだ WebView の中を読み取り、タップします（[BE-0482](../../roadmaps/BE-0482-android-webview-cdp/BE-0482-android-webview-cdp-ja.md)）。adb のツリーでは、WebView の中身を選択できるほど細かく示さないことがよくあります。そこで run は、Chrome DevTools Protocol（CDP）でページに到達します。デバッグを有効にした Android の WebView は、`webview_devtools_remote_<pid>` という名前の abstract なローカルソケットで待ち受けます。このソケットは CDP を話します。`bajutsu/common/drivers/webview/` の `CdpDomSource` は、iOS のブリッジのクライアントと同じ `DomSource` の型を実装します。そのため `WebContextDriver` は、両方のプラットフォームで変更なしに動きます。
+
+ソケットを開くのはアプリです。デバッグ可能なビルドが、最初の WebView を作る直前に `Bajutsu.enableWebViewDebugging(context)` を呼びます。この呼び出しは WebView のプロバイダを読み込みます。`Application.onCreate` から呼ぶと、起動のたびに読み込みます。すると WebView のパッケージの更新によって、WebView を開かないシナリオの途中でもアクティビティが作り直されることがあります。呼び出し方は [`BajutsuAndroid`](../../BajutsuAndroid/README.ja.md) にあります。このヘルパーはデバッグ可能でないビルドでは何もしないので、リリースビルドがソケットを開くことはありません。bajutsu を動かすマシンには `android` extra（`websockets`）が要ります。構成済みのバックエンドに Android が含まれていれば、`scripts/install.sh` がこの extra を入れます。
+
+`web:` ブロックは 1 つごとにセッションを 1 つ開きます。ブロックが終わると、成否にかかわらずセッションを閉じます。
+
+1. run は `adb shell ps -A` でパッケージのプロセスを列挙します。WebView は別の `android:process` に置かれることがあるので、`<package>:<name>` の子プロセスも残します。
+2. それらのプロセスのソケットを `/proc/net/unix` から探します。各ソケットへ、空いているホストのポートを `adb forward` で転送し、ソケットごとのページ一覧 `/json/list` を読みます。
+3. アタッチ済みで表示中のページだけを残します。その中から、`within` の解決したフレームを矩形に含むページを選びます。フレームはネイティブのツリーでのものです。一致が 0 件、または 2 件以上ならセレクタのエラーとしてステップを失敗させます。重なり合う 2 つの WebView も、推測せずに失敗とします。
+4. 選んだページへ WebSocket を開きます。ブロックが終わると、開いた転送をすべて取り除きます。
+
+ブロックの中では、`DomSource` の各メソッドが次の CDP 呼び出しに対応します。
+
+| `DomSource` のメソッド | CDP 呼び出し |
+|---|---|
+| `query_dom` | 共有の `QUERY_JS` を `Runtime.evaluate` で実行します。web バックエンドと iOS のブリッジが実行するのと同じ走査です |
+| `tap_element` | `document.elementFromPoint` でヒットテストし、その点に `Input.dispatchTouchEvent`（`touchStart`、`touchEnd`）を送ります。ページにクリックが届いた時点で終わり、待つのは最大 3 秒です。条件待ちの下限 `BAJUTSU_MIN_WAIT_TIMEOUT` がそれより長いときは、その下限まで待ちます。その間にページを再び読み取れなければ、タップは失敗します |
+| `type_text` | フォーカスのあるテキスト欄の末尾へキャレットを移し、`Input.insertText` を送ってから `change` を発火します |
+| `scroll_to` | `scrollIntoView` のスクリプトを `Runtime.evaluate` で実行します |
+
+タップは信頼されたタッチなので、タッチイベントを待ち受けるページも反応します。iOS のブリッジは、代わりにスクリプトでクリックします。ページがタッチをクリックに変え、欄にフォーカスを移すのは、`touchEnd` が戻った少し後です。そのためタップはそのクリックを待ちます。待たなければ、欄をタップした直後の `type` が、フォーカスのある欄を見つけられません。クリックを取り消すページはクリックを発火しないので、この上限が過ぎた時点で、タップは送ったタッチだけで完了とし、警告を記録します。
+
+通信の失敗はすべて `WebViewTransportError` という 1 つの例外型で送出されます。この例外は run 全体を終わらせず、その理由でブロックを失敗させます。よくある原因は、ソケットがないこと、CDP のエラー、アプリの再起動で閉じたソケットの 3 つです。ソケットがないときの理由は、上のヘルパーを名指しします。
 
 ## Flutter（ネイティブバックエンド経由）
 

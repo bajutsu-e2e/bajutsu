@@ -57,6 +57,10 @@ class AppModel(env: Map<String, String>) {
     // AppModel. When set, RootScreen swaps the whole five-tab UI for the flat picker screen.
     val pickersMode: Boolean = env["SHOWCASE_PICKERS"] != null
 
+    // Hybrid mode (BE-0482): gated on the SHOWCASE_WEBVIEW launch env, mirroring the iOS AppModel.
+    // When set, RootScreen swaps the whole five-tab UI for the WebView screen a `web:` block enters.
+    val webViewMode: Boolean = env["SHOWCASE_WEBVIEW"] != null
+
     // Driver-conformance mode (BE-0114 / BE-0270): a test-only affordance gated on the
     // SHOWCASE_CONFORMANCE launch env, mirroring the iOS AppModel. null (env absent) = the normal
     // observe-only app (BE-0079, untouched); non-null = render exactly these identifiers (duplicates
