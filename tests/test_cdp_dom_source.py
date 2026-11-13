@@ -397,19 +397,51 @@ def test_tap_stops_waiting_for_a_click_the_page_cancels() -> None:
 
 
 def test_tap_counts_a_page_torn_down_by_its_click_as_landed() -> None:
-    # A link's click navigates, which destroys the script context the poll reads: the page reacted.
+    # A link's click navigates: the first read finds the old context destroyed, the next reads the new
+    # document, whose flag is `undefined` and so reads as landed.
+    reads = iter([{"error": {"message": "Execution context was destroyed."}}, _value(True)])
+
     def responder(method: str, p: dict[str, Any]) -> dict[str, Any]:
         if method != "Runtime.evaluate":
             return {"result": {}}
-        if "__bajutsuTapClicked ===" in p["expression"]:
-            return {"error": {"message": "Execution context was destroyed."}}
-        return _value(True)
+        return next(reads) if "__bajutsuTapClicked ===" in p["expression"] else _value(True)
 
     clock = _FakeClock()
     src = _clocked_source(RecordedTransport(responder), clock)
     with src.session("web", (0, 0, 1, 1)):
         src.tap_element("web", (1.0, 2.0))
-    assert clock.sleeps == []
+    assert len(clock.sleeps) == 1
+
+
+def test_tap_reads_a_missing_click_flag_as_a_navigated_page() -> None:
+    clock = _FakeClock()
+    t = RecordedTransport(lambda m, _p: _value(True) if m == "Runtime.evaluate" else {"result": {}})
+    src = _clocked_source(t, clock)
+    with src.session("web", (0, 0, 1, 1)):
+        src.tap_element("web", (1.0, 2.0))
+    poll = [m["params"]["expression"] for m in t.sent if "__bajutsuTapClicked ===" in str(m)]
+    assert poll == [
+        "window.__bajutsuTapClicked === true || window.__bajutsuTapClicked === undefined"
+    ]
+
+
+def test_tap_fails_when_the_click_poll_never_reads_again() -> None:
+    # A tap that kills the app (or drops the forward) fails every read; it must not pass as landed.
+    def responder(method: str, p: dict[str, Any]) -> dict[str, Any]:
+        if method != "Runtime.evaluate":
+            return {"result": {}}
+        if "__bajutsuTapClicked ===" in p["expression"]:
+            return {"error": {"message": "WebView DevTools socket closed"}}
+        return _value(True)
+
+    clock = _FakeClock()
+    src = _clocked_source(RecordedTransport(responder), clock)
+    with (
+        src.session("web", (0, 0, 1, 1)),
+        pytest.raises(WebViewTransportError, match="socket closed"),
+    ):
+        src.tap_element("web", (1.0, 2.0))
+    assert clock.now >= 3.0
 
 
 def test_tap_at_a_point_with_no_element_fails_before_any_touch() -> None:

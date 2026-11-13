@@ -273,7 +273,7 @@ BE-0452 で取り除きました。ホストで実行する job が必要とす�
 | `DomSource` のメソッド | CDP 呼び出し |
 |---|---|
 | `query_dom` | 共有の `QUERY_JS` を `Runtime.evaluate` で実行します。web バックエンドと iOS のブリッジが実行するのと同じ走査です |
-| `tap_element` | `document.elementFromPoint` でヒットテストし、その点に `Input.dispatchTouchEvent`（`touchStart`、`touchEnd`）を送ります。ページにクリックが届いた時点で終わり、待つのは最大 3 秒です |
+| `tap_element` | `document.elementFromPoint` でヒットテストし、その点に `Input.dispatchTouchEvent`（`touchStart`、`touchEnd`）を送ります。ページにクリックが届いた時点で終わり、待つのは最大 3 秒です。その間にページを再び読み取れなければ、タップは失敗します |
 | `type_text` | フォーカスのあるテキスト欄の末尾へキャレットを移し、`Input.insertText` を送ってから `change` を発火します |
 | `scroll_to` | `scrollIntoView` のスクリプトを `Runtime.evaluate` で実行します |
 

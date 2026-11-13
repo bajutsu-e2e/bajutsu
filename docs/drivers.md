@@ -663,7 +663,7 @@ Inside the block, each `DomSource` method maps to CDP calls:
 | `DomSource` method | CDP calls |
 |---|---|
 | `query_dom` | `Runtime.evaluate` of the shared `QUERY_JS`, the same walk the web backend and the iOS bridge run |
-| `tap_element` | A hit-test with `document.elementFromPoint`, then `Input.dispatchTouchEvent` (`touchStart`, `touchEnd`) at the point; the tap ends once the page's click lands, after at most three seconds |
+| `tap_element` | A hit-test with `document.elementFromPoint`, then `Input.dispatchTouchEvent` (`touchStart`, `touchEnd`) at the point; the tap ends once the page's click lands, after at most three seconds; a page that cannot be read again within that bound fails the tap |
 | `type_text` | Moves the caret to the end of the focused text field, sends `Input.insertText`, then dispatches `change` |
 | `scroll_to` | `Runtime.evaluate` of a `scrollIntoView` script |
 

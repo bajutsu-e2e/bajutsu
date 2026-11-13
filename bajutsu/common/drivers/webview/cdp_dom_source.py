@@ -71,7 +71,9 @@ _CARET_TO_END_JS = """
 _CLICK_FLAG = "__bajutsuTapClicked"
 _CLICK_WAIT_S = 3.0
 _CLICK_POLL_S = 0.02
-_CLICKED_JS = f"window.{_CLICK_FLAG} === true"
+# The hit script sets the flag to `false` just before the touch, so reading it as `undefined` means a
+# click navigated and the poll now reads the new document, which never had the flag.
+_CLICKED_JS = f"window.{_CLICK_FLAG} === true || window.{_CLICK_FLAG} === undefined"
 _FIRE_CHANGE_JS = """
 (() => {
   const el = document.activeElement;
@@ -253,6 +255,8 @@ class CdpDomSource:
         Raises:
             ElementNotTappable: nothing but the page itself sits at the point, so the touch would
                 actuate nothing.
+            WebViewTransportError: the page could not be read again before the bound passed, as when
+                the socket, the forward, or the app died after the touch.
         """
         conn = self._session()
         x, y = point
@@ -277,8 +281,20 @@ class CdpDomSource:
         )
         conn.call("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
         deadline = self._clock() + _CLICK_WAIT_S
-        while not self._clicked(conn):
+        while True:
+            # A click that navigates tears down the script context, so a read can fail until the new
+            # document has one; that read is retried, not counted as the click. A dead socket, a
+            # dropped forward, or a CDP timeout fails the same way but never recovers, so the last
+            # failure is raised once the bound passes and the block reports it instead of passing.
+            failure: WebViewTransportError | None = None
+            try:
+                if conn.evaluate(_CLICKED_JS) is True:
+                    return
+            except WebViewTransportError as e:
+                failure = e
             if self._clock() >= deadline:
+                if failure is not None:
+                    raise failure
                 _logger.warning(
                     "web: no click landed within %.0fs of the tap at (%s, %s); the page may have"
                     " cancelled it",
@@ -288,15 +304,6 @@ class CdpDomSource:
                 )
                 return
             self._sleep(_CLICK_POLL_S)
-
-    @staticmethod
-    def _clicked(conn: CdpConnection) -> bool:
-        # A click that navigates tears down the page's script context, so the read fails or the flag
-        # is gone; either way the page reacted to the tap, which is all the wait is for.
-        try:
-            return bool(conn.evaluate(_CLICKED_JS) is True)
-        except WebViewTransportError:
-            return True
 
     def type_text(self, webview_id: str, text: str) -> None:  # noqa: ARG002  # DomSource shape
         """Append `text` to the focused field, firing `input` and then `change`, as iOS does.

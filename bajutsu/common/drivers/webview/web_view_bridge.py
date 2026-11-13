@@ -41,8 +41,13 @@ class WebViewBridge:
         """Tap a point inside the WebView's coordinate space."""
         data = self._call("/webview/tap", {"id": webview_id, "point": [point[0], point[1]]})
         if data.get("status") == "not-found":
-            # The same refusal the Android source gives when `elementFromPoint` finds nothing.
-            raise ElementNotTappable(f"web: no element at {point} in the WebView viewport")
+            # The bridge answers `not-found` both when `elementFromPoint` resolves nothing (the same
+            # refusal the Android source gives) and when it finds no WKWebView with this id at all,
+            # so the reason names both.
+            raise ElementNotTappable(
+                f"web: no element at {point} in the WebView {webview_id!r}, or the app has no"
+                " WKWebView carrying that accessibility identifier"
+            )
         if data.get("status") != "ok":
             raise WebViewTransportError(f"WebView tap failed: {data}")
 
