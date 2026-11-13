@@ -19,20 +19,27 @@ class _Page(Protocol):
     @property
     def keyboard(self) -> _Keyboard: ...
 
-    def evaluate(self, expression: str) -> Any: ...
+    def evaluate(self, expression: str) -> Any:
+        """Run *expression* in the page and return its result."""
 
-    def goto(self, url: str) -> object: ...
+    def goto(self, url: str) -> object:
+        """Navigate to *url* and wait for it to load."""
 
-    def go_back(self) -> object: ...
+    def go_back(self) -> object:
+        """Navigate one entry back in the session history."""
 
-    def screenshot(self, *, path: str, timeout: float | None = None) -> object: ...
+    def screenshot(self, *, path: str, timeout: float | None = None) -> object:
+        """Capture the viewport to *path*, giving up after *timeout* ms."""
 
     def wait_for_load_state(
         self, state: Literal["domcontentloaded"], *, timeout: float | None = None
-    ) -> object: ...
+    ) -> object:
+        """Wait until the current document reaches *state*."""
 
     def wait_for_event(
         self, event: str, *, predicate: Callable[[Any], bool], timeout: float
-    ) -> object: ...
+    ) -> object:
+        """Wait for the next *event* whose argument satisfies *predicate*."""
 
-    def on(self, event: str, handler: Callable[[Any], None]) -> None: ...
+    def on(self, event: str, handler: Callable[[Any], None]) -> None:
+        """Call *handler* with the argument of every *event* the page emits."""
