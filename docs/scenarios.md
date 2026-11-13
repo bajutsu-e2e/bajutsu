@@ -1036,7 +1036,7 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `clearStatusBar` | `clearStatusBar: {}` | remove status-bar overrides (restore the live bar) |
 | `use` | `use: { component: <file>, with?: {...} }` | expand a reusable component's steps — a compile-time macro ([reuse](#reuse-data-and-tags)); **takes no modifier but `target`** — `capture` / `extract` / `name` / `from` are rejected, and a `target` is stamped onto every step the component expands to ([multi-target](#components-in-a-multi-target-scenario)) |
 | `group` | `group: { name: <str>, steps: [...] }` | name a run of consecutive steps — a compile-time macro, folded together in `report.html` ([below](#grouping-steps-group--folded-in-reporthtml)) |
-| `web` | `web: { within: <Selector>, steps: [...] }` | enter a WebView's DOM: `within` resolves the WebView host natively (the `WKWebView` on iOS, usually a container the `WebView` fills exactly on Android), and the nested `steps` address its normalized DOM instead of the native tree ([below](#web-entering-a-webviews-dom)) |
+| `web` | `web: { within: <Selector>, steps: [...] }` | enter a WebView's DOM: `within` resolves the WebView host natively (the `WKWebView` on iOS, usually a container the `WebView` fills on Android), and the nested `steps` address its normalized DOM instead of the native tree ([below](#web-entering-a-webviews-dom)) |
 
 Modifiers (a `use` step takes `target` alone — see the table row above):
 
@@ -1208,14 +1208,15 @@ more fail the step, as for any selector. On iOS that element is the WebView itse
 to sit on the `WKWebView`: the bridge looks that view up by the identifier on every request. On
 Android the element is usually a container that the WebView fills. A `WebView`'s own accessibility
 node reports no resource-id, so the id goes on the container, and the run uses that element's frame
-alone. The container has to match the WebView's size exactly: one padded around the WebView has a
-frame that no page rectangle contains, and the step fails. Each platform then finds the page behind
-that element in its own way:
+alone. The container must not reach past the WebView: a container padded around it, or one that also
+wraps a native header, has a frame that no page rectangle contains, and the step fails. Matching the
+WebView's bounds exactly is the safe shape. Each platform then finds the page behind that element in
+its own way:
 
 | Platform | How the run reaches the page | Which page it picks |
 |---|---|---|
 | iOS | The BajutsuKit WebView bridge, a Hypertext Transfer Protocol (HTTP) server inside the app, on the port the run passes as `BAJUTSU_WEBVIEW_PORT`. | The `WKWebView` whose accessibility identifier equals the first id of `within`. |
-| Android | The Chrome DevTools Protocol (CDP), on the WebView's debugging socket, which the run forwards with `adb` for the length of the block. | The one attached, visible page whose rectangle contains the frame `within` resolved to. Zero matches or two or more fail the step as ambiguous. |
+| Android | The Chrome DevTools Protocol (CDP), on the WebView's debugging socket, which the run forwards with `adb` for the length of the block. | The one attached, visible page whose rectangle contains the frame `within` resolved to. Zero matches fail the step as not found, and two or more as ambiguous. |
 
 Android matches by containment, not equality, because the two rectangles measure different areas.
 The native tree clips a view's bounds to the screen and to its ancestors. CDP reports the page's

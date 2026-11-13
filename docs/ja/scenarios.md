@@ -740,7 +740,7 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
 | `clearStatusBar` | `clearStatusBar: {}` | ステータスバーの上書きを解除する（ライブ表示に戻す） |
 | `use` | `use: { component: <file>, with?: {...} }` | 再利用コンポーネントの steps を展開する。コンパイル時マクロ（[再利用](#再利用とデータ駆動とタグ)）。**取れる修飾子は `target` だけ**：`capture` / `extract` / `name` / `from` は拒否され、`target` は展開後の全ステップに刻印される（[複数ターゲット](#複数ターゲットシナリオでのコンポーネント)） |
 | `group` | `group: { name: <str>, steps: [...] }` | 連続するステップに名前を付ける。コンパイル時マクロで、report.html では折りたたんで表示する（[後述](#ステップのグループ化group--reporthtmlで折りたたむ)） |
-| `web` | `web: { within: <Selector>, steps: [...] }` | WebView の DOM コンテキストに入ります。`within` は WebView のホストをネイティブに解決します（iOS では `WKWebView`、Android では通常、`WebView` とぴったり同じ大きさのコンテナです）。入れ子の `steps` はネイティブツリーではなく正規化された DOM を対象にします（[後述](#webwebview-の-dom-コンテキストに入る)） |
+| `web` | `web: { within: <Selector>, steps: [...] }` | WebView の DOM コンテキストに入ります。`within` は WebView のホストをネイティブに解決します（iOS では `WKWebView`、Android では通常、`WebView` が全体を埋めるコンテナです）。入れ子の `steps` はネイティブツリーではなく正規化された DOM を対象にします（[後述](#webwebview-の-dom-コンテキストに入る)） |
 
 修飾子（`use` ステップに付けられるのは `target` だけです。上表を参照）:
 
@@ -845,12 +845,12 @@ Android の adb バックエンドは、`tap` が対象を解決するのと同�
 
 `web` は、ネイティブアプリが埋め込んだブラウザのビューである WebView の Document Object Model（DOM）に対して、入れ子の `steps` を実行します。ステップが対象にするのは、アプリのネイティブなアクセシビリティツリーではなく、ページの正規化された DOM（`data-testid` → `Element.identifier`）です。アプリの UI の一部をアプリ内の web コンテンツが担うハイブリッド画面向けの構造です。iOS は [BE-0037](../../roadmaps/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support-ja.md)、Android は [BE-0482](../../roadmaps/BE-0482-android-webview-cdp/BE-0482-android-webview-cdp-ja.md) で対応しました。同じブロックが、両方のプラットフォームで変更なしに動きます。ブロックの `steps` を終えると、制御はネイティブドライバーに戻ります。入れ子の `steps` は、`if` や `forEach` の分岐と同じく、囲むシナリオの `vars.*` を共有します。`capture` / `extract` 修飾子は `web` ステップ自体には使えません。
 
-**ブロックが WebView を指す仕組み。** `within` は通常のセレクタで、`id` を必ず含みます。run はセレクタ全体をネイティブのツリーで解決し、ちょうど 1 つの要素を得ます。一致が 0 件、または 2 件以上ならステップは失敗します。ほかのセレクタと同じ扱いです。iOS では、その要素は WebView 自身です。id は `WKWebView` 自身に付ける必要があります。ブリッジは、要求のたびにその識別子で `WKWebView` を探すからです。Android では、その要素は通常、WebView が全体を埋めるコンテナです。`WebView` 自身のアクセシビリティノードは resource-id を報告しないので、id はコンテナに付けます。Android で run が使うのは、その要素のフレームだけです。このコンテナは、WebView とぴったり同じ大きさにします。周りに余白のあるコンテナのフレームは、どのページの矩形にも収まらず、ステップが失敗します。その要素の背後にあるページは、プラットフォームごとに次のように探します。
+**ブロックが WebView を指す仕組み。** `within` は通常のセレクタで、`id` を必ず含みます。run はセレクタ全体をネイティブのツリーで解決し、ちょうど 1 つの要素を得ます。一致が 0 件、または 2 件以上ならステップは失敗します。ほかのセレクタと同じ扱いです。iOS では、その要素は WebView 自身です。id は `WKWebView` 自身に付ける必要があります。ブリッジは、要求のたびにその識別子で `WKWebView` を探すからです。Android では、その要素は通常、WebView が全体を埋めるコンテナです。`WebView` 自身のアクセシビリティノードは resource-id を報告しないので、id はコンテナに付けます。Android で run が使うのは、その要素のフレームだけです。コンテナは、WebView の外へはみ出さないようにします。WebView の周りに余白のあるコンテナや、ネイティブのヘッダーまで囲むコンテナは、フレームがどのページの矩形にも収まらず、ステップが失敗します。WebView の矩形とぴったり重ねておくのが安全です。その要素の背後にあるページは、プラットフォームごとに次のように探します。
 
 | プラットフォーム | run がページに到達する経路 | 選ぶページ |
 |---|---|---|
 | iOS | BajutsuKit の WebView ブリッジです。アプリ内の Hypertext Transfer Protocol（HTTP）サーバーで、run が `BAJUTSU_WEBVIEW_PORT` として渡すポートで待ち受けます。 | アクセシビリティ識別子が `within` の最初の id と等しい `WKWebView` です。 |
-| Android | Chrome DevTools Protocol（CDP）です。WebView のデバッグ用ソケットを、run がブロックの間だけ `adb` で転送します。 | アタッチ済みで表示中のページのうち、`within` が解決したフレームを矩形に含む 1 つです。一致が 0 件、または 2 件以上なら、あいまいとしてステップを失敗させます。 |
+| Android | Chrome DevTools Protocol（CDP）です。WebView のデバッグ用ソケットを、run がブロックの間だけ `adb` で転送します。 | アタッチ済みで表示中のページのうち、`within` が解決したフレームを矩形に含む 1 つです。一致が 0 件なら見つからないとして、2 件以上ならあいまいとしてステップを失敗させます。 |
 
 Android は、等しさではなく包含で照合します。2 つの矩形の測る範囲が違うからです。ネイティブのツリーは、ビューの範囲を画面と祖先のビューで切り詰めて報告します。CDP は、ページの切り詰めていない矩形を報告します。そのため、ツールバーの下に一部が隠れた WebView でも一致します。
 
