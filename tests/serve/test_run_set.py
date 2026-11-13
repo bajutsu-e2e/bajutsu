@@ -690,6 +690,15 @@ def test_a_group_key_reused_for_a_different_request_is_a_conflict(tmp_path: Path
     assert len(registered.jobs) == 2
 
 
+def test_requests_that_differ_only_in_environment_are_not_the_same_request() -> None:
+    """Only one batch provider exists yet, so the route cannot send two; the digest is checked."""
+    from bajutsu.serve.operations.dispatch import _request_digest
+
+    args = ("t", ["one.yaml"], "config", "app", None)
+
+    assert _request_digest(*args, provider="devicefarm") != _request_digest(*args, provider="x")
+
+
 def test_a_machine_registers_its_group_under_its_own_org(tmp_path: Path) -> None:
     cfg = _local_bundle_project(tmp_path)
     with cfg.open("a", encoding="utf-8") as f:

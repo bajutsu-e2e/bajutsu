@@ -375,10 +375,10 @@ The server holds no budget of its own. It used to read a target's `cloudBatchBud
 `deviceBudget` gets a 400 error that points at `maxJobConcurrency`.
 
 The server's concurrency caps apply to a fan-out's jobs at lease time (BE-0484). The caps are
-global, per user, and per org. A job waiting in the queue holds no slot under them. A fan-out larger
-than the caps thus queues every scenario, and workers run the jobs in turns. A worker asks for every
-free slot in one lease request. The server fills those slots with jobs of one fan-out, up to the
-headroom the caps leave.
+global, per user, and per org. A fan-out's queued job holds no slot under them, while a plain run
+waiting in the queue still holds one. A fan-out larger than the caps thus queues every scenario,
+and workers run the jobs in turns. A worker asks for every free slot in one lease request. The
+server fills those slots with jobs of one fan-out, up to the headroom the caps leave.
 
 ### Fanning a target out
 
@@ -450,6 +450,7 @@ Two requests count as the same when they agree on each of these:
 - the config
 - the application
 - the run label
+- the environment (`environment`)
 
 A GitHub Actions job builds its key from four variables:
 
