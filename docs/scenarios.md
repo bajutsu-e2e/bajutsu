@@ -1000,6 +1000,7 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `delete` | `delete: { into: <Selector>, count: <int> }` | focus the field and delete `count` characters from the end (`count > 0`); web context raises |
 | `select` | `select: { into: <Selector>, mode?: "all" }` | focus the field and select its content (`mode` default `all`); the web context raises — the iOS (XCUITest) backend supports it natively, and codegen emits the native equivalent |
 | `copy` | `copy: {}` | copy the active selection to the clipboard; requires a prior `select`; the web context raises — the iOS (XCUITest) backend supports it natively |
+| `paste` | `paste: { into: <Selector> }` | focus the field and paste the clipboard at the caret that focusing tap leaves (on a field that already holds text, wherever the tap lands), replacing any selection; the clipboard holds what a `copy` or a `setClipboard` put there; verify the result with a `value` assertion; the web context raises. On iOS it taps the edit menu's Paste item (a hardware Cmd+V pastes nothing from a clipboard `setClipboard` wrote), accepting UIKit's label in any language because the menu follows the app's localization |
 | `selectOption` | `selectOption: { sel: <Selector>, option: "..." }` | set a web `<select>` to the option with this value; web only (iOS / Android raise) |
 | `selectPhotos` | `selectPhotos: { indices: [0, 1], timeout: 10 }` | pick the cells at these positions (0 = the first cell, newest image first) from the system photo picker the app has already opened, then confirm: `PHPickerViewController` on iOS (XCUITest), the Android 13+ photo picker on adb. A single-selection picker closes on its one tap; an index beyond the visible grid fails |
 | `setPickerValue` | `setPickerValue: { sel: <Selector>, value: "..." }` | move a wheel-style picker (`UIPickerView` or a wheel-mode `UIDatePicker` on iOS; `NumberPicker` or a spinner-mode `DatePicker` on Android) to the row with this value ([below](#setpickervalue)); iOS (XCUITest) and Android (adb). `sel` addresses one wheel — a multi-component picker's siblings are separated by `within` / `traits` / `index`, one step each |
@@ -1200,7 +1201,7 @@ scenario's `vars.*` bindings, the same as `if`'s and `forEach`'s do, and `captur
 modifiers are not allowed on the `web` step itself. The step needs a WebView bridge configured
 (`BAJUTSU_WEBVIEW_PORT`); without one it fails cleanly rather than doing nothing. This first slice
 supports `tap` / `tapPoint` / `doubleTap` / `type` / `wait` / `assert` inside the block. `longPress` /
-`swipe` / `drag` / `clear` / `delete` / `select` / `copy` / `selectOption` / `scroll` / `back` /
+`swipe` / `drag` / `clear` / `delete` / `select` / `copy` / `paste` / `selectOption` / `scroll` / `back` /
 `navigate` / `pinch` / `rotate` / `handleSystemAlert` / `setPickerValue` are not reachable there, and each fails
 with a clear "not supported in web context" reason.
 

@@ -2379,6 +2379,16 @@ class AdbDriver(CoordinateTreeDriver):
         self._actuations.record(Actuation(gesture="copy", via="focused", unit=_UNIT))
         self._act(adb.keycombination_cmd(self.serial, [adb.KEYCODE_CTRL_LEFT, adb.KEYCODE_C]))
 
+    def paste(self, sel: base.Selector) -> None:
+        self.tap(sel)
+        # Ctrl+V pastes the clipboard at the caret. Armed like `delete_text`: the insertion only shows
+        # in the field's `value`, which a lagging tree would otherwise answer with the pre-paste text.
+        self._actuations.record(Actuation(gesture="paste", via="focused", unit=_UNIT))
+        pre_key = self._pan_baseline()
+        mark = self._capture_mark()
+        self._act(adb.keycombination_cmd(self.serial, [adb.KEYCODE_CTRL_LEFT, adb.KEYCODE_V]))
+        self._arm_catchup(pre_key, mark)
+
     def screenshot(self, path: str) -> None:
         adb.Env(self.serial, run=self._run).screenshot(path)
 

@@ -47,6 +47,7 @@ def test_dedicated_lane_scenarios_carry_their_exclusion_tag() -> None:
         ("picker_wheel.yaml", "swiftui"),
         ("permission_system_alert.yaml", "systemalert"),
         ("paste_system_alert.yaml", "systemalert"),
+        ("paste.yaml", "pasteboard"),
         ("system_alert_handling.yaml", "systemalert"),
         ("browser.yaml", "browser"),
         ("save_password_browser.yaml", "systemalert"),

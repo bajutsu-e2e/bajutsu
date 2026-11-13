@@ -106,6 +106,7 @@ final class ComponentsUITests: XCTestCase {
 | `delete { count }` | `.tap()` + 削除キーを `count` 回（`typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count:))`、BE-0265） |
 | `select` | `.tap()` + 全選択（BE-0265） |
 | `copy` | `app.typeKey("c", modifierFlags: .command)` |
+| `paste` | `.tap()` のあと、編集メニューがまだ出ていなければ `.press(forDuration: 0.6)` で長押しを加え、`app.staticTexts["Paste"].tap()` で編集メニューから貼り付けます。ドライバーと同じ方法です。ラベルは英語なので、ほかの言語にローカライズしたアプリでは書き換えが必要です |
 | `back` | OS のナビゲーション戻るボタンを tap します。XCUITest ドライバが実行時に tap するのと同じ要素（共有定数、BE-0210） |
 | `navigate` | `// TODO: navigate(url: …) — web-only; not generated`（BE-0464） |
 | `sleep` | `// fixed pause: <reason>` と `Thread.sleep(forTimeInterval: <秒>)` |
@@ -219,6 +220,7 @@ test.describe('Components', () => {
 | `delete { count }` | フォーカス + `page.keyboard.press('Backspace')` を `count` 回（BE-0265） |
 | `select` | `await loc.selectText()`。web における全選択の対応物です（BE-0265） |
 | `copy` | `await page.keyboard.press('Control+c')` |
+| `paste` | フォーカス + `await page.keyboard.press('ControlOrMeta+v')` |
 | `back` | `await page.goBack()`。ブラウザ履歴で、ドライバの `back()` と同じ基本操作です（BE-0210） |
 | `navigate` | `await page.goto(new URL('<value>', BASE_URL).toString())`。ドライバが `baseUrl` を基準に解決するのと同じ規則で、値を `BASE_URL` を基準に解決します。`${...}` トークンを含む値は、生成したテストに展開元の値がないので `// TODO` になります（BE-0464） |
 | `sleep` | `// fixed pause: <reason>` と `await page.waitForTimeout(<ミリ秒>)` |
@@ -636,6 +638,7 @@ Gradle 自身のレポートとあわせて回収済みのディレクトリを�
 | `delete { count }` | `.click()` + `device.pressKeyCode(KeyEvent.KEYCODE_DEL)` を `count` 回（BE-0265） |
 | `select` | `.click()` + `device.pressKeyCode(KeyEvent.KEYCODE_A, KeyEvent.META_CTRL_ON)`（BE-0265） |
 | `copy` | `device.pressKeyCode(KeyEvent.KEYCODE_C, KeyEvent.META_CTRL_ON)` |
+| `paste` | `.click()` + `device.pressKeyCode(KeyEvent.KEYCODE_V, KeyEvent.META_CTRL_ON)` |
 | `back` | `device.pressBack()`。UI Automator ネイティブのシステム戻る操作で、adb ドライバの `keyevent 4` に対応します（BE-0210） |
 | `navigate` | `// TODO: navigate(url: …) — web-only; not generated`（BE-0464） |
 | `sleep` | `// fixed pause: <reason>` と `Thread.sleep(<ミリ秒>)` |

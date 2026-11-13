@@ -31,6 +31,7 @@ from .long_press import LongPress
 from .manual import Manual
 from .navigate import Navigate, navigate_url_problem
 from .override_status_bar import OverrideStatusBar
+from .paste import Paste
 from .pinch import Pinch
 from .push import Push
 from .random_float import RandomFloat
@@ -81,6 +82,7 @@ __all__ = [
     "Manual",
     "Navigate",
     "OverrideStatusBar",
+    "Paste",
     "Pinch",
     "Push",
     "RandomFloat",

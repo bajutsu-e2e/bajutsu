@@ -70,6 +70,17 @@ def test_text_editing_steps_emit_xcuitest_peers() -> None:
     assert 'app.typeKey("c", modifierFlags: .command)' in code
 
 
+def test_paste_taps_the_edit_menu_paste_item() -> None:
+    code = _gen("- name: x\n  steps:\n    - paste: { into: { id: form.coupon } }\n")
+    assert 'el("form.coupon").tap()' in code
+    assert (
+        'if !app.staticTexts["Paste"].waitForExistence(timeout: 1.0) '
+        '{ el("form.coupon").press(forDuration: 0.6) }' in code
+    )
+    assert 'app.staticTexts["Paste"].tap()' in code
+    assert 'typeKey("v"' not in code
+
+
 def test_long_press_and_swipe() -> None:
     code = _gen(
         "- name: x\n  steps:\n"

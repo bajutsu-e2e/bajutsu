@@ -64,6 +64,12 @@ def test_text_editing_steps_emit_web_peers() -> None:
     assert "await page.keyboard.press('Control+c');" in code
 
 
+def test_paste_focuses_then_presses_the_paste_chord() -> None:
+    code = _gen("- name: x\n  steps:\n    - paste: { into: { id: form.coupon } }\n")
+    assert "await page.getByTestId('form.coupon').focus();" in code
+    assert "await page.keyboard.press('ControlOrMeta+v');" in code
+
+
 def test_wait_until_gone() -> None:
     code = _gen(
         "- name: x\n  steps:\n    - wait: { until: { gone: { id: spinner } }, timeout: 3 }\n"

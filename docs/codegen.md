@@ -107,6 +107,7 @@ the selector at `el("UNSUPPORTED_SELECTOR")` — an honest gap, not a wrong gues
 | `delete { count }` | `.tap()` + `count` delete keypresses (`typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count:))`, BE-0265) |
 | `select` | `.tap()` + select-all (BE-0265) |
 | `copy` | `app.typeKey("c", modifierFlags: .command)` |
+| `paste` | `.tap()`, a `.press(forDuration: 0.6)` unless the edit menu is already up, then `app.staticTexts["Paste"].tap()` — the edit menu, as the driver uses it; the label is English, so an app localized elsewhere needs its own |
 | `back` | taps the OS navigation back button — the same element (and shared constant) the XCUITest driver taps at run time (BE-0210) |
 | `navigate` | `// TODO: navigate(url: …) — web-only; not generated` (BE-0464) |
 | `sleep` | `// fixed pause: <reason>` + `Thread.sleep(forTimeInterval: <seconds>)` |
@@ -223,6 +224,7 @@ test.describe('Components', () => {
 | `delete { count }` | focus + `count` × `page.keyboard.press('Backspace')` (BE-0265) |
 | `select` | `await loc.selectText()` — the web peer of select-all (BE-0265) |
 | `copy` | `await page.keyboard.press('Control+c')` |
+| `paste` | focus + `await page.keyboard.press('ControlOrMeta+v')` |
 | `back` | `await page.goBack()` — browser history, the same primitive the driver's `back()` uses (BE-0210) |
 | `navigate` | `await page.goto(new URL('<value>', BASE_URL).toString())` — resolves the value against `BASE_URL` exactly as the driver resolves it against `baseUrl`; a value with a `${...}` token becomes a `// TODO`, since the generated test has no binding to substitute (BE-0464) |
 | `sleep` | `// fixed pause: <reason>` + `await page.waitForTimeout(<milliseconds>)` |
@@ -652,6 +654,7 @@ same limit the XCUITest emitter hits for NSPredicate `MATCHES`), so it stays a `
 | `delete { count }` | `.click()` + `count` × `device.pressKeyCode(KeyEvent.KEYCODE_DEL)` (BE-0265) |
 | `select` | `.click()` + `device.pressKeyCode(KeyEvent.KEYCODE_A, KeyEvent.META_CTRL_ON)` (BE-0265) |
 | `copy` | `device.pressKeyCode(KeyEvent.KEYCODE_C, KeyEvent.META_CTRL_ON)` |
+| `paste` | `.click()` + `device.pressKeyCode(KeyEvent.KEYCODE_V, KeyEvent.META_CTRL_ON)` |
 | `back` | `device.pressBack()` — UI Automator's native system back, the peer of the adb driver's `keyevent 4` (BE-0210) |
 | `navigate` | `// TODO: navigate(url: …) — web-only; not generated` (BE-0464) |
 | `sleep` | `// fixed pause: <reason>` + `Thread.sleep(<milliseconds>)` |

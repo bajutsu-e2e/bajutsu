@@ -418,6 +418,13 @@ def _emit_step(step: Step) -> list[str]:  # noqa: C901, PLR0911, PLR0912
         return _act(step.select.into.as_selector(), "selectText()")
     if step.copy_ is not None:
         return ["await page.keyboard.press('Control+c');"]
+    if step.paste is not None:
+        sel = step.paste.into.as_selector()
+        loc = _locator(sel)
+        if loc is None:
+            return [_unsupported_selector_todo(sel)]
+        # Focus, then the paste chord — `ControlOrMeta` so the generated spec pastes on a macOS host too.
+        return [f"await {loc}.focus();", "await page.keyboard.press('ControlOrMeta+v');"]
     if step.swipe is not None:
         sw = step.swipe
         if sw.on is not None and sw.direction is not None:

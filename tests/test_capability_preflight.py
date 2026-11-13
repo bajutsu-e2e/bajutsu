@@ -481,7 +481,7 @@ def test_select_option_reason_includes_step_index() -> None:
     assert "selectOption" in reasons[0]
 
 
-# --- textSelection capability gating (select / copy; BE-0280) ---
+# --- textSelection capability gating (select / copy / paste; BE-0280) ---
 
 
 _TEXT = _LEAN_IOS | {base.Capability.TEXT_SELECTION}
@@ -489,9 +489,9 @@ _TEXT = _LEAN_IOS | {base.Capability.TEXT_SELECTION}
 
 @pytest.mark.parametrize(
     "step",
-    [{"select": {"into": {"id": "field"}}}, {"copy": {}}],
+    [{"select": {"into": {"id": "field"}}}, {"copy": {}}, {"paste": {"into": {"id": "field"}}}],
 )
-def test_select_and_copy_require_text_selection(step: dict[str, object]) -> None:
+def test_select_copy_and_paste_require_text_selection(step: dict[str, object]) -> None:
     # select-all / copy actuate only on a backend that can select natively; a coordinate-only backend (
     # no TEXT_SELECTION) is rejected up front rather than left to fail late mid-run (BE-0280).
     sc = _sc(steps=[step])

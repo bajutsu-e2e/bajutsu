@@ -599,19 +599,19 @@ jobs:
     name: actuation (xcuitest)
     needs: [changes, build]
     # BE-0322: runs on a shared-code change, or when one of its scenarios (navigation / extract /
-    # foreach / data_driven / relaunch / device / push / text_editing / system_alert_handling /
-    # paste_system_alert) changed.
+    # foreach / data_driven / relaunch / device / push / text_editing / paste /
+    # system_alert_handling / paste_system_alert) changed.
     if: >-
       needs.changes.outputs.relevant == 'true' &&
       (needs.changes.outputs.shared == 'true' ||
       contains(fromJSON(needs.changes.outputs.affected), 'actuation'))
     runs-on: macos-latest
     # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the 6h
-    # default. Install (no build) + the twenty scenario runs the ten files below produce (each file
-    # holds one scenario except: data_driven.yaml's three `${row.*}` rows expand to three, push.yaml
-    # holds two since BE-0416's foreground-banner scenario, system_alert_handling.yaml holds five, and
-    # paste_system_alert.yaml holds four) is ~33min — the
-    # dominant term is ten cold XCTest-host
+    # default. Install (no build) + the twenty-three scenario runs the eleven files below produce (each
+    # file holds one scenario except: data_driven.yaml's three `${row.*}` rows expand to three,
+    # push.yaml holds two since BE-0416's foreground-banner scenario, paste.yaml holds three,
+    # system_alert_handling.yaml holds five, and paste_system_alert.yaml holds four) is ~37min — the
+    # dominant term is twelve cold XCTest-host
     # startups, one per two runs at this lane's warm-reuse cap — so 60 catches a real hang with
     # headroom rather than reddening a healthy run. Of those startups only the first carries the 300s
     # cold ceiling (the rest take the 90s respawn one), and one pays a shutdown-and-boot cycle on top:
@@ -670,6 +670,9 @@ jobs:
       #     equivalent, so it lives apart from the cross-backend device.yaml).
       #   - text_editing.yaml (iOS-only): `select` + `copy` round-trip the Search field's text, then
       #     `delete` + `clear` — the four editing actuators no other scenario drove (Search tab).
+      #   - paste.yaml (iOS-only): `paste` through the edit menu, of an in-app `copy` and of a
+      #     `setClipboard` seed. After text_editing.yaml, because a `setClipboard` leaves in-app ⌘A / ⌘C
+      #     doing nothing on the device for every scenario after it.
       #   - system_alert_handling.yaml: the reactive `systemAlertHandling.rules` guard answering each
       #     covered SpringBoard prompt with no `handleSystemAlert` step — notifications denied, and
       #     tracking and paste each granted and denied. The deny scenarios are what prove the rule
@@ -698,6 +701,7 @@ jobs:
             demos/showcase/scenarios/device.yaml
             demos/showcase/scenarios/push.yaml
             demos/showcase/scenarios/text_editing.yaml
+            demos/showcase/scenarios/paste.yaml
             demos/showcase/scenarios/system_alert_handling.yaml
             demos/showcase/scenarios/paste_system_alert.yaml
           target: showcase-swiftui

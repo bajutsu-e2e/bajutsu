@@ -46,6 +46,7 @@ _TRACED_METHODS = frozenset(
         "delete_text",
         "select_all",
         "copy_selection",
+        "paste",
         "select_option",
         "read_attributes",
         "select_photos",

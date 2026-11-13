@@ -314,6 +314,18 @@ def _emit_step(step: Step) -> list[str]:  # noqa: C901, PLR0911, PLR0912
         return [f"{target}.tap()", f'{target}.typeKey("a", modifierFlags: .command)']
     if step.copy_ is not None:
         return ['app.typeKey("c", modifierFlags: .command)']
+    if step.paste is not None:
+        # The edit menu's Paste, as the driver taps it: Cmd+V pastes nothing from another process's
+        # clipboard. A tap on an already-focused field raises the menu itself, so long-press only when
+        # it has not (a second tap reads as a double-tap on a UIKit field). The label is the English
+        # one; an app localized elsewhere renders its own.
+        target = _element(step.paste.into.as_selector())
+        return [
+            f"{target}.tap()",
+            'if !app.staticTexts["Paste"].waitForExistence(timeout: 1.0) '
+            f"{{ {target}.press(forDuration: 0.6) }}",
+            'app.staticTexts["Paste"].tap()',
+        ]
     if step.sleep is not None:
         return [
             sleep_comment(step.sleep.reason),

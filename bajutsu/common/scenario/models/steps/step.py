@@ -34,6 +34,7 @@ from bajutsu.common.scenario.models.actions import (
     Manual,
     Navigate,
     OverrideStatusBar,
+    Paste,
     Pinch,
     Push,
     Relaunch,
@@ -90,6 +91,7 @@ class Step(_Model):
     # `copy_` (alias `copy`) mirrors `assert_` / `if_` / `from_`: the YAML key is `copy`, but the
     # Python field is suffixed so it doesn't shadow pydantic `BaseModel.copy`.
     copy_: Copy | None = Field(default=None, alias="copy")
+    paste: Paste | None = None
     select_option: SelectOption | None = Field(default=None, alias="selectOption")
     select_photos: SelectPhotos | None = Field(default=None, alias="selectPhotos")
     set_picker_value: SetPickerValue | None = Field(default=None, alias="setPickerValue")

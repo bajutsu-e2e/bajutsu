@@ -90,7 +90,7 @@ flowchart TB
 | `common/drivers/xcuitest` | XCUITest バックエンド（iOS）です。BE-0290 で idb を撤去して以来、iOS の唯一の backend です。実機上に常駐する runner が、semantic tap / ネイティブ条件待ち / テキスト選択 / multi-touch を提供します（BE-0019）。 | [drivers](drivers.md#xcuitestios) |
 | `common/drivers/adb` | adb バックエンド（Android）です。`tap`/`long_press`/`double_tap` は、resident server の `POST /act` で端末側にて解決し、inject します。channel が使えないときは、`uiautomator dump` による frame 中心の座標 tap にフォールバックします（BE-0339）。 | [drivers](drivers.md#adbandroid) |
 | `common/drivers/playwright` | Playwright web バックエンド（ブラウザ）です。第一段で、決定的 run を扱います。 | [drivers](drivers.md#playwrightweb) |
-| `common/drivers/xcuitest_live` | live-route の XCUITest ドライバです。常駐 runner のチャネルの代わりに、予約済みのデバイスクラウド上の iOS デバイスを W3C WebDriver（Appium の XCUITest ドライバ）で駆動します。`appium` デバイスプロバイダ向けです（BE-0238）。実装済みなのは、セッションのライフサイクル、query/tap/screenshot/readiness、ジェスチャ、テキスト入力です。`selectAll`/`copy` は Appium 側に相当機能がなく、明示的に失敗します。実デバイスクラウドのグリッドに対する検証は未了です（[BE-0303](../../roadmaps/BE-0303-xcuitest-live-real-grid-verification/BE-0303-xcuitest-live-real-grid-verification-ja.md)）。 | — |
+| `common/drivers/xcuitest_live` | live-route の XCUITest ドライバです。常駐 runner のチャネルの代わりに、予約済みのデバイスクラウド上の iOS デバイスを W3C WebDriver（Appium の XCUITest ドライバ）で駆動します。`appium` デバイスプロバイダ向けです（BE-0238）。実装済みなのは、セッションのライフサイクル、query/tap/screenshot/readiness、ジェスチャ、テキスト入力です。`selectAll`/`copy` は Appium 側に相当機能がなく、明示的に失敗します。`paste` も、編集メニューを使う組み合わせをこの経路に配線していないため、明示的に失敗します。実デバイスクラウドのグリッドに対する検証は未了です（[BE-0303](../../roadmaps/BE-0303-xcuitest-live-real-grid-verification/BE-0303-xcuitest-live-real-grid-verification-ja.md)）。 | — |
 | `common/drivers/elements.py` | 正規化済み要素ツリーに対する、プラットフォーム非依存の述語と幾何ヘルパー（`screen_size_from_elements`、`shows_app_ui`）です。assertions、crawl、runner パイプライン、record が共有します。 | [drivers](drivers.md) |
 | `common/drivers/dom.py` | DOM → `Element` の正規化です。Playwright バックエンドと WebView ブリッジが共有します。 | [drivers](drivers.md#playwrightweb) |
 | `common/drivers/web_network.py` | web のネットワーク観測です。Playwright 側の `Collector` が、`requestfinished` を iOS 側と同じ `NetworkExchange` モデルへ橋渡しします。`page.route` によるプロセス内 mock スタブも持ちます。 | [drivers](drivers.md#playwrightweb) |
@@ -265,7 +265,7 @@ prime directive 3 は、どの backend も 1 つの `Driver` 界面の背後に�
 - `capabilities()` は観測される挙動と一致します（そうでなければ、該当の呼び出しはそれぞれ `UnsupportedAction` を送出します。BE-0280、BE-0464、BE-0466）。
   - `QUERY` / `ELEMENTS` の baseline を申告します。
   - multi-touch のジェスチャは、`MULTI_TOUCH` を申告したときに限り動作します。
-  - 全選択とクリップボードへのコピーは、`TEXT_SELECTION` を申告したときに限り動作します。デバイスのクリップボードを読める harness では、コピーしたテキストがクリップボードに入ったことも確かめます。何もしないコピーはここで失敗します（#2390）。
+  - 全選択、クリップボードへのコピー、ペーストは、`TEXT_SELECTION` を申告したときに限り動作します。デバイスのクリップボードを読める harness では、コピーしたテキストがクリップボードに入ったことも確かめます。何もしないコピーはここで失敗します（#2390）。フィールドの `value` を報告するバックエンドでは、空にしたフィールドへのペーストでコピーしたテキストが戻ることも確かめます。
   - ネイティブな `<select>` を値で設定する操作は、`SELECT_OPTION` を申告したときに限り動作します。
   - URL の読み込みは、`URL_NAVIGATION` を申告したときに限り動作します。
   - `read_attributes` は、`ELEMENT_ATTRIBUTE` を申告したときに限り、タップと同じ規則で各セレクタを解決して属性を読みます。
@@ -601,8 +601,8 @@ iOS 側の対になるジョブ `pool (xcuitest)` は、Simulator を 2 台起�
   - オーケストレータは、小さく回数を区切ったスクロール（まず `down`、それでも届かなければ上端に固定された遮蔽物向けに範囲を広げた `up` フォールバック）を試したうえで再確認し、操作をもう一度だけ再試行します。
   - それでも対象へ到達できない場合は、誤解を招く `ElementNotFound` の代わりに、専用の `ElementNotTappable` エラーでステップが失敗します。
   - XCUITest バックエンドでは、中心が画面内にある対象への tap が拒否された場合に限り、スクロールの前にドライバが動きます。たとえば iOS が、コンテナの accessibility 要素を、そのコンテナが包む control の上に膨らませて報告する場合です。ドライバは対象の名前付き子要素を探索します。到達可能な要素がちょうど 1 つであれば、それをタップして `substitution: soleHittableDescendant` を記録します。0 個または複数であれば、どちらを選ぶかは決めずに候補を名指ししたうえで失敗します（BE-0373）。
-- DSL のテキスト編集ステップ（BE-0265）：`clear` / `delete` / `select` / `copy` が、`type` だけでは埋まらない部分を補います。adb・Playwright・XCUITest・fake の各バックエンドに実装済みです。
-  - web コンテキストは、`select`/`copy` で `UnsupportedAction` を送出します（codegen 側は代わりに XCUITest へ誘導します）。`clear`/`delete` でも同様に非対応です。
+- DSL のテキスト編集ステップ（BE-0265）：`clear` / `delete` / `select` / `copy` が、`type` だけでは埋まらない部分を補います。adb・Playwright・XCUITest・fake の各バックエンドに実装済みです。`paste` はこの組を補い、フィールドにフォーカスしてクリップボードの内容を入れます。
+  - web コンテキストは、`select`/`copy`/`paste` で `UnsupportedAction` を送出します（codegen 側は代わりに XCUITest へ誘導します）。`clear`/`delete` でも同様に非対応です。
   - ステップをまたぐ `SelectionState` が、「`copy` の前に `select` が必要」という前提条件を担保します。どのバックエンドも選択状態を照会可能な形で公開しないため、検証は既存の `clipboard` 読み戻しだけで行います。
 - DSL の `navigate` ステップ（BE-0464、web 限定）は、シナリオの途中で URL を読み込みます。どの control からもリンクされていないページ（メールのリンク、共有アイテムの URL）、UI を歩かないと届かない深いページ、リダイレクトの検証などに使います。
   - 値は単純な文字列で、ブラウザがリンクを解決する方法（`urljoin`）と同じ形で、ターゲットの `baseUrl` に対して解決します。

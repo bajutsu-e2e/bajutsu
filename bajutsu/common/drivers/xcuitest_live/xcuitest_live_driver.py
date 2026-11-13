@@ -339,6 +339,12 @@ class XcuitestLiveDriver:
             "first-class XCUITest command"
         )
 
+    def paste(self, sel: base.Selector) -> None:  # noqa: ARG002  # Driver shape
+        raise base.UnsupportedAction(
+            "paste is not reachable over the live Appium / WebDriver route (BE-0238); the local "
+            "driver's edit-menu paste is not wired onto this route"
+        )
+
     def goto(self, url: str) -> None:  # noqa: ARG002  # Driver shape
         raise base.UnsupportedAction("navigate is web-backend-only; iOS opens no URL mid-run")
 

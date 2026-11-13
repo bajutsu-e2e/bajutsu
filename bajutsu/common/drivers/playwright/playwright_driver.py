@@ -967,6 +967,14 @@ class PlaywrightDriver:
         self._page.keyboard.press("ControlOrMeta+c")
 
     @_wedge_guard
+    def paste(self, sel: base.Selector) -> None:
+        # Focus, then paste the clipboard at the caret; Cmd+V on a macOS host for the same reason as
+        # `copy`.
+        self.tap(sel)
+        self._actuations.record(Actuation(gesture="paste", via="focused", unit=_UNIT))
+        self._page.keyboard.press("ControlOrMeta+v")
+
+    @_wedge_guard
     def select_option(self, sel: base.Selector, option: str) -> None:
         # A native <select>'s dropdown isn't in the DOM, so a coordinate click can't switch it
         # deterministically. Resolve the <select> through the determinism core (unique match), then
