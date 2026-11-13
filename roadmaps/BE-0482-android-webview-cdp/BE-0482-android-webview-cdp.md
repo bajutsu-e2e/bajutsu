@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0482") |
-| Implementing PR | [#2416](https://github.com/bajutsu-e2e/bajutsu/pull/2416) (units 1–5) |
+| Implementing PR | [#2416](https://github.com/bajutsu-e2e/bajutsu/pull/2416) (units 1–5), [#2434](https://github.com/bajutsu-e2e/bajutsu/pull/2434) (units 6–7) |
 | Topic | Platform support |
 <!-- /BE-METADATA -->
 
@@ -273,7 +273,7 @@ Log:
   by mistake opens no socket, and CodeQL's WebView-debugging rule accepts the guarded call. It
   therefore no longer covers a non-debuggable test build. Units 6 and 7 remain; the `webView`
   parity mark waits for unit 6's on-device run.
-- 2026-11-13 — Units 6 and 7 landed together (PR_LINK). The showcase gained a hybrid screen
+- 2026-11-13 — Units 6 and 7 landed together ([#2434](https://github.com/bajutsu-e2e/bajutsu/pull/2434)). The showcase gained a hybrid screen
   under `SHOWCASE_WEBVIEW`, in the iOS SwiftUI app and in both Android twins. `webview.yaml` enters
   it with one `web:` block. The block types, taps, and asserts the text the page writes. The scenario
   passed on-device on the iOS Simulator (iOS 26.5). It passed on an arm64 emulator (API 34) for

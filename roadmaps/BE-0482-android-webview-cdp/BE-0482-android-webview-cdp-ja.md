@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0482") |
-| 実装 PR | [#2416](https://github.com/bajutsu-e2e/bajutsu/pull/2416)（単位 1〜5） |
+| 実装 PR | [#2416](https://github.com/bajutsu-e2e/bajutsu/pull/2416)（単位 1〜5）、[#2434](https://github.com/bajutsu-e2e/bajutsu/pull/2434)（単位 6〜7） |
 | トピック | プラットフォーム対応 |
 <!-- /BE-METADATA -->
 
@@ -276,7 +276,7 @@ BajutsuAndroid に `Bajutsu.enableWebViewDebugging()` を追加します。こ�
   デバッグのルールもこの条件付きの呼び出しを許容します。その代わり、デバッグ可能でないテストビルドは
   対象外になりました。残りは単位 6 と 7 です。`webView` のパリティの印は、単位 6 の実機での確認を
   待ってから変えます。
-- 2026-11-13 — 単位 6 と 7 をまとめて着地させました（PR_LINK）。iOS の SwiftUI アプリと Android の
+- 2026-11-13 — 単位 6 と 7 をまとめて着地させました（[#2434](https://github.com/bajutsu-e2e/bajutsu/pull/2434)）。iOS の SwiftUI アプリと Android の
   2 つのアプリに、`SHOWCASE_WEBVIEW` で開くハイブリッド画面を加えました。`webview.yaml` は、
   1 つの `web:` ブロックでこの画面に入ります。入力し、タップし、ページが書いた
   文字列を検証します。このシナリオは、iOS Simulator（iOS 26.5）と arm64 のエミュレータ（API 34）の
