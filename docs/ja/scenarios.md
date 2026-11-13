@@ -740,7 +740,7 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
 | `clearStatusBar` | `clearStatusBar: {}` | ステータスバーの上書きを解除する（ライブ表示に戻す） |
 | `use` | `use: { component: <file>, with?: {...} }` | 再利用コンポーネントの steps を展開する。コンパイル時マクロ（[再利用](#再利用とデータ駆動とタグ)）。**取れる修飾子は `target` だけ**：`capture` / `extract` / `name` / `from` は拒否され、`target` は展開後の全ステップに刻印される（[複数ターゲット](#複数ターゲットシナリオでのコンポーネント)） |
 | `group` | `group: { name: <str>, steps: [...] }` | 連続するステップに名前を付ける。コンパイル時マクロで、report.html では折りたたんで表示する（[後述](#ステップのグループ化group--reporthtmlで折りたたむ)） |
-| `web` | `web: { within: <Selector>, steps: [...] }` | WebView の DOM コンテキストに入ります。`within` がホストの WebView をネイティブに解決し、入れ子の `steps` はネイティブツリーではなく正規化された DOM を対象にします（[後述](#webwebview-の-dom-コンテキストに入る)） |
+| `web` | `web: { within: <Selector>, steps: [...] }` | WebView の DOM コンテキストに入ります。`within` は WebView のホストをネイティブに解決します（iOS では `WKWebView`、Android では通常、`WebView` とぴったり同じ大きさのコンテナです）。入れ子の `steps` はネイティブツリーではなく正規化された DOM を対象にします（[後述](#webwebview-の-dom-コンテキストに入る)） |
 
 修飾子（`use` ステップに付けられるのは `target` だけです。上表を参照）:
 

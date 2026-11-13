@@ -1036,7 +1036,7 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `clearStatusBar` | `clearStatusBar: {}` | remove status-bar overrides (restore the live bar) |
 | `use` | `use: { component: <file>, with?: {...} }` | expand a reusable component's steps — a compile-time macro ([reuse](#reuse-data-and-tags)); **takes no modifier but `target`** — `capture` / `extract` / `name` / `from` are rejected, and a `target` is stamped onto every step the component expands to ([multi-target](#components-in-a-multi-target-scenario)) |
 | `group` | `group: { name: <str>, steps: [...] }` | name a run of consecutive steps — a compile-time macro, folded together in `report.html` ([below](#grouping-steps-group--folded-in-reporthtml)) |
-| `web` | `web: { within: <Selector>, steps: [...] }` | enter a WebView's DOM: `within` resolves the host WebView natively, and the nested `steps` address its normalized DOM instead of the native tree ([below](#web-entering-a-webviews-dom)) |
+| `web` | `web: { within: <Selector>, steps: [...] }` | enter a WebView's DOM: `within` resolves the WebView host natively (the `WKWebView` on iOS, usually a container the `WebView` fills exactly on Android), and the nested `steps` address its normalized DOM instead of the native tree ([below](#web-entering-a-webviews-dom)) |
 
 Modifiers (a `use` step takes `target` alone — see the table row above):
 
