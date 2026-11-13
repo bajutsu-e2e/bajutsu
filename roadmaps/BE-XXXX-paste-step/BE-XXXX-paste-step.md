@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| Implementing PR | TBD — filled in once the PR is opened (this is a BE-creation PR; the id and PR are not opened by this session) |
+| Implementing PR | [#2438](https://github.com/bajutsu-e2e/bajutsu/pull/2438) |
 | Topic | Scenario authoring features |
 | Related | [BE-0265](../BE-0265-text-editing-steps/BE-0265-text-editing-steps.md), [BE-0052](../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md), [BE-0369](../BE-0369-ios-paste-consent-prompt-choice/BE-0369-ios-paste-consent-prompt-choice.md), [BE-0280](../BE-0280-conformance-unactuated-verbs/BE-0280-conformance-unactuated-verbs.md) |
 <!-- /BE-METADATA -->
