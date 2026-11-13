@@ -29,6 +29,8 @@ from ._functions import (
     _iframe_elements,
     _iframe_records,
     _is_browser_fault,
+    _is_context_destroyed,
+    _is_playwright_timeout,
     _nav_reason,
     _playwright_error_types,
     _rotate_point,
@@ -46,6 +48,18 @@ if TYPE_CHECKING:
 # `getBoundingClientRect` reports CSS pixels, so that is the space stamped on this backend's actuation
 # records — a coordinate only means something alongside its unit.
 _UNIT = "cssPixel"
+
+# Issue #2432: a screenshot or a page script issued between a navigating click and the navigation's
+# commit never returns or loses its document, while the same call against the new page succeeds. The
+# first screenshot attempt is cut short so the race costs seconds, not the 30 s default; the last
+# attempt keeps that default, so a genuinely slow capture fails no sooner than it did before, and at
+# most one short attempt plus one document wait (10 s) later.
+_SHOT_ATTEMPT_TIMEOUTS_MS: tuple[float | None, ...] = (5_000, None)
+_QUERY_ATTEMPTS = 3
+# How long to wait for the new document between attempts. A load that outlasts it is not an error
+# here: the retry itself reports whatever is still wrong. A `wait` step's poll can overrun its own
+# deadline by this bound per retry, which is still better than the wedge it replaces.
+_DOCUMENT_WAIT_MS = 5_000
 
 # Names whatever `elementFromPoint` hit, the same way for the element check and the `<iframe>` check.
 _DESCRIBE_COVER_JS = (
@@ -429,7 +443,7 @@ class PlaywrightDriver:
         `None` is the main document. Iframe elements are already framed in main-page CSS pixels,
         so a selector resolves over one flat snapshot whatever document an element lives in.
         """
-        records = self._page.evaluate(QUERY_JS)
+        records = self._evaluate_across_navigation(QUERY_JS)
         main: list[tuple[base.Element, _FrameScope | None]] = [
             (el, None) for el in parse_dom(records if isinstance(records, list) else [])
         ]
@@ -444,7 +458,9 @@ class PlaywrightDriver:
         # no window between finding an element and reading it, and no second matching rule. The
         # names reach the script `json.dumps`-encoded, as `_point_hits` encodes its strings.
         names = list(dict.fromkeys(name for _, name in reads))
-        records = self._page.evaluate(f"() => ({ATTRIBUTE_QUERY_JS})({json.dumps(names)})")
+        records = self._evaluate_across_navigation(
+            f"() => ({ATTRIBUTE_QUERY_JS})({json.dumps(names)})"
+        )
         rows = parse_dom_with_attributes(records if isinstance(records, list) else [])
         rows += [(el, values) for el, _, values in _iframe_records(self._page, names)]
         elements = [el for el, _ in rows]
@@ -455,6 +471,26 @@ class PlaywrightDriver:
             except base.SelectorError as e:
                 out.append(e)
         return out
+
+    def _evaluate_across_navigation(self, expression: str) -> Any:
+        """Run a read-only page script, re-running it on the new document if a navigation lands mid-call.
+
+        Only the destroyed-context failure is retried (issue #2432); any other error, a closed page
+        included, propagates on the first attempt so `_wedge_guard` reports it as before.
+        """
+        for _ in range(_QUERY_ATTEMPTS - 1):
+            try:
+                return self._page.evaluate(expression)
+            except Exception as exc:
+                if not _is_context_destroyed(exc):
+                    raise
+                self._await_document()
+        return self._page.evaluate(expression)
+
+    def _await_document(self) -> None:
+        """Wait, bounded, for the current navigation's document to be parsed (issue #2432)."""
+        with contextlib.suppress(*_playwright_error_types()):
+            self._page.wait_for_load_state("domcontentloaded", timeout=_DOCUMENT_WAIT_MS)
 
     def _center(self, sel: base.Selector) -> base.Point:
         point, _, _ = self._center_with_element(sel)
@@ -960,7 +996,18 @@ class PlaywrightDriver:
 
     @_wedge_guard
     def screenshot(self, path: str) -> None:
-        self._page.screenshot(path=path)
+        # Retried on a timeout only (issue #2432): a closed page or crashed renderer is a real wedge
+        # and is reported on the first attempt.
+        for timeout in _SHOT_ATTEMPT_TIMEOUTS_MS[:-1]:
+            try:
+                self._page.screenshot(path=path, timeout=timeout)
+            except Exception as exc:
+                if not _is_playwright_timeout(exc):
+                    raise
+                self._await_document()
+            else:
+                return
+        self._page.screenshot(path=path, timeout=_SHOT_ATTEMPT_TIMEOUTS_MS[-1])
 
     def network_collector(self, mocks: list[Mock] | None = None) -> WebNetworkCollector:
         """A collector hooked to this driver's page (Playwright sees every request natively).

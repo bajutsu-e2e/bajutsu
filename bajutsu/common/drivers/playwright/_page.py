@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from ._keyboard import _Keyboard
 from ._mouse import _Mouse
@@ -28,7 +28,12 @@ class _Page(Protocol):
     def go_back(self) -> object:
         pass
 
-    def screenshot(self, *, path: str) -> object:
+    def screenshot(self, *, path: str, timeout: float | None = None) -> object:
+        pass
+
+    def wait_for_load_state(
+        self, state: Literal["domcontentloaded"], *, timeout: float | None = None
+    ) -> object:
         pass
 
     def on(self, event: str, handler: Callable[[Any], None]) -> None:

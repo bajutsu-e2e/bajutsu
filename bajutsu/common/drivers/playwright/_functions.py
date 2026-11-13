@@ -306,6 +306,29 @@ def _is_browser_fault(exc: BaseException, target: str) -> bool:
     return "page crashed" in str(exc).replace(target, "").lower()
 
 
+def _is_context_destroyed(exc: BaseException) -> bool:
+    """Whether *exc* is an `evaluate` that lost its document to a navigation mid-call (issue #2432).
+
+    The old document's execution context is torn down when a navigation commits, so a script running
+    across that instant fails with this message; the same script against the new document succeeds.
+    Playwright gives the failure no class of its own, so the message is the only signal.
+    """
+    return isinstance(exc, _playwright_error_types()) and (
+        "execution context was destroyed" in str(exc).lower()
+    )
+
+
+def _is_playwright_timeout(exc: BaseException) -> bool:
+    """Whether *exc* is Playwright's own `TimeoutError`, matched by name like `_is_browser_fault`.
+
+    By name rather than by the imported class so a test can stand one in through `_PW_ERRORS`, the
+    way the wedge tests already stand in Playwright's base `Error`.
+    """
+    return isinstance(exc, _playwright_error_types()) and any(
+        cls.__name__ == "TimeoutError" for cls in type(exc).__mro__
+    )
+
+
 def _nav_reason(exc: BaseException, target: str) -> str:
     """The first meaningful line of a `goto` error, with the URL left out (BE-0464).
 

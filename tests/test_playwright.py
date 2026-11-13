@@ -283,6 +283,7 @@ class _FakePage:
         # Optional queue of return values for non-query evaluate() calls. Each pop() serves one
         # non-query call; once empty, non-query calls return None (simulating undefined JS return).
         self.evaluate_returns: list[Any] = []
+        self.load_waits: list[str] = []  # every wait_for_load_state() state, in call order
 
     def evaluate(self, expression: str) -> Any:
         self.evaluated.append(expression)
@@ -300,8 +301,12 @@ class _FakePage:
         self.went_back = True
         return None
 
-    def screenshot(self, *, path: str) -> object:
+    def screenshot(self, *, path: str, timeout: float | None = None) -> object:
         self.shot = path
+        return None
+
+    def wait_for_load_state(self, state: str, *, timeout: float | None = None) -> object:
+        self.load_waits.append(state)
         return None
 
     def on(self, event: str, handler: Any) -> None:
@@ -1314,6 +1319,146 @@ def test_wedge_surfaces_as_device_error_but_selection_errors_pass_through(
     healthy = PlaywrightDriver("http://app.test/", page=_FakePage([]))
     with pytest.raises(base.ElementNotFound):
         healthy.tap({"id": "missing"})
+
+
+class _NavPwError(Exception):
+    """Stands in for Playwright's base `Error` in the navigation-race tests (issue #2432)."""
+
+
+class _PwTimeout(_NavPwError):
+    pass
+
+
+# The driver recognizes Playwright's timeout by class name, so the stand-in carries that name. It is
+# named by assignment rather than `class TimeoutError` so the builtin isn't shadowed.
+_PwTimeout.__name__ = "TimeoutError"
+
+
+def _stub_playwright_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        sys.modules["bajutsu.common.drivers.playwright._functions"], "_PW_ERRORS", (_NavPwError,)
+    )
+
+
+class _NavigatingPage(_FakePage):
+    """A page whose first few calls land mid-navigation, then succeed on the new document."""
+
+    def __init__(self, records: list[dict[str, Any]], failures: list[BaseException]) -> None:
+        super().__init__(records)
+        self.failures = failures
+        self.shot_timeouts: list[float | None] = []
+
+    def evaluate(self, expression: str) -> Any:
+        if self.failures:
+            raise self.failures.pop(0)
+        return super().evaluate(expression)
+
+    def screenshot(self, *, path: str, timeout: float | None = None) -> object:
+        self.shot_timeouts.append(timeout)
+        if self.failures:
+            raise self.failures.pop(0)
+        return super().screenshot(path=path, timeout=timeout)
+
+
+_DESTROYED = "Page.evaluate: Execution context was destroyed, most likely because of a navigation"
+
+
+def test_screenshot_retries_a_timeout_after_waiting_for_the_new_document(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A screenshot issued before a navigation commits never returns; the retry against the new
+    document does (issue #2432). The first attempt is short, the last keeps Playwright's default."""
+    _stub_playwright_errors(monkeypatch)
+    page = _NavigatingPage([], [_PwTimeout("Page.screenshot: Timeout 5000ms exceeded.")])
+    PlaywrightDriver("http://app.test/", page=page).screenshot("after.png")
+
+    assert page.shot == "after.png"
+    assert page.shot_timeouts == [5_000, None]
+    assert page.load_waits == ["domcontentloaded"]
+
+
+def test_screenshot_timeout_on_every_attempt_still_wedges(monkeypatch: pytest.MonkeyPatch) -> None:
+    from bajutsu.common.backend_cli import simctl
+
+    _stub_playwright_errors(monkeypatch)
+    page = _NavigatingPage([], [_PwTimeout("first"), _PwTimeout("second")])
+    with pytest.raises(simctl.DeviceError, match="second"):
+        PlaywrightDriver("http://app.test/", page=page).screenshot("after.png")
+    assert page.shot_timeouts == [5_000, None]
+
+
+def test_screenshot_does_not_retry_a_closed_page(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Only a timeout is the navigation race; a closed target is a real wedge, reported at once."""
+    from bajutsu.common.backend_cli import simctl
+
+    _stub_playwright_errors(monkeypatch)
+    page = _NavigatingPage([], [_NavPwError("Target page, context or browser has been closed")])
+    with pytest.raises(simctl.DeviceError, match="has been closed"):
+        PlaywrightDriver("http://app.test/", page=page).screenshot("after.png")
+    assert page.shot_timeouts == [5_000]
+    assert page.load_waits == []
+
+
+def test_query_reruns_on_the_new_document_when_navigation_destroys_its_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stub_playwright_errors(monkeypatch)
+    page = _NavigatingPage(
+        [_rec(identifier="welcome", label="Welcome home")],
+        [_NavPwError(_DESTROYED), _NavPwError(_DESTROYED)],
+    )
+    elements = PlaywrightDriver("http://app.test/", page=page).query()
+
+    assert [el["identifier"] for el in elements] == ["welcome"]
+    assert page.load_waits == ["domcontentloaded", "domcontentloaded"]
+
+
+def test_read_attributes_reruns_on_the_new_document_when_navigation_destroys_its_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stub_playwright_errors(monkeypatch)
+    record = {**_rec(identifier="welcome", label="Welcome home"), "attributes": ["ready"]}
+    page = _NavigatingPage([record], [_NavPwError(_DESTROYED)])
+    driver = PlaywrightDriver("http://app.test/", page=page)
+
+    assert driver.read_attributes([({"id": "welcome"}, "data-state")]) == ["ready"]
+    assert page.load_waits == ["domcontentloaded"]
+
+
+def test_query_gives_up_after_its_attempts_and_wedges(monkeypatch: pytest.MonkeyPatch) -> None:
+    from bajutsu.common.backend_cli import simctl
+
+    _stub_playwright_errors(monkeypatch)
+    page = _NavigatingPage([], [_NavPwError(_DESTROYED) for _ in range(3)])
+    with pytest.raises(simctl.DeviceError, match="Execution context was destroyed"):
+        PlaywrightDriver("http://app.test/", page=page).query()
+    assert page.load_waits == ["domcontentloaded", "domcontentloaded"]
+
+
+def test_query_does_not_retry_an_unrelated_page_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    from bajutsu.common.backend_cli import simctl
+
+    _stub_playwright_errors(monkeypatch)
+    page = _NavigatingPage([], [_NavPwError("Target page, context or browser has been closed")])
+    with pytest.raises(simctl.DeviceError):
+        PlaywrightDriver("http://app.test/", page=page).query()
+    assert page.load_waits == []
+
+
+def test_a_document_wait_that_itself_fails_does_not_mask_the_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The between-attempt wait is best-effort: its own timeout leaves the retry to decide."""
+    _stub_playwright_errors(monkeypatch)
+
+    class _SlowLoadPage(_NavigatingPage):
+        def wait_for_load_state(self, state: str, *, timeout: float | None = None) -> object:
+            super().wait_for_load_state(state, timeout=timeout)
+            raise _PwTimeout("Page.wait_for_load_state: Timeout 10000ms exceeded.")
+
+    page = _SlowLoadPage([], [_PwTimeout("Page.screenshot: Timeout 5000ms exceeded.")])
+    PlaywrightDriver("http://app.test/", page=page).screenshot("after.png")
+    assert page.shot == "after.png"
 
 
 def test_driver_interval_captures_console_and_pageerror(tmp_path: Any) -> None:
