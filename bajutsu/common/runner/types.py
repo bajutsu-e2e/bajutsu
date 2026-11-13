@@ -69,8 +69,9 @@ class Lease:
     collector_provider: str = "collector"
     # Evidence kinds no eligible backend could supply, disclosed per scenario (BE-0020).
     skipped_captures: list[SkippedCapture] = field(default_factory=list)
-    # WebView bridge for hybrid apps (BE-0037). None when the app has no WebView or the platform
-    # doesn't support the bridge (e.g. web/Playwright — it already has DOM access).
+    # WebView DOM source for hybrid apps: the BajutsuKit bridge on iOS (BE-0037), `CdpDomSource` on
+    # Android (BE-0482). None when the platform has no such source (e.g. web/Playwright — it already
+    # has DOM access).
     webview_bridge: DomSource | None = None
     # Ask this lease's environment to bring the *next* lease up on a replacement device (BE-0354). The
     # crash retry calls it when an erase has already been tried and did not clear the degradation, so

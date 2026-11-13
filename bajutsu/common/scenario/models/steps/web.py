@@ -11,8 +11,9 @@ from .step import Step
 class Web(_Model):
     """Enter the web context: resolve a native WebView host, then run inner steps against its DOM.
 
-    The ``within`` selector resolves natively to exactly one ``WKWebView`` element; inner ``steps``
-    address the normalized DOM (``data-testid`` → ``Element.identifier``), not the native a11y tree.
+    The ``within`` selector resolves natively to exactly one WebView host: the ``WKWebView`` itself
+    on iOS, usually a container the ``WebView`` fills on Android. Inner ``steps`` address the
+    normalized DOM (``data-testid`` → ``Element.identifier``), not the native a11y tree.
     """
 
     within: Selector

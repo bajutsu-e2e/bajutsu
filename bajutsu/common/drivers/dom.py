@@ -1,4 +1,4 @@
-"""DOM → Element normalization shared by the Playwright backend and the WebView bridge.
+"""DOM → Element normalization shared by the Playwright backend and both WebView sources.
 
 Walks a flat list of DOM-node records (the shape QUERY_JS produces) into the normalized
 ``Element`` the rest of the core consumes. Pure and unit-tested — no browser, no Simulator.

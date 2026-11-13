@@ -25,7 +25,7 @@ class Capability:
     MULTI_TOUCH = (
         "multiTouch"  # two-finger gestures (pinch / rotate); a single-touch backend lacks it
     )
-    WEBVIEW = "webView"  # DOM query/tap inside an embedded WKWebView (BE-0037)
+    WEBVIEW = "webView"  # DOM query/tap inside an embedded WebView (iOS BE-0037, Android BE-0482)
     SELECT_OPTION = "selectOption"  # set a native <select> by value; web only (BE-0191)
     URL_NAVIGATION = "urlNavigation"  # open a URL mid-scenario (`navigate`); web only (BE-0464)
     ELEMENT_ATTRIBUTE = "elementAttribute"  # read one named HTML attribute; web only (BE-0466)
@@ -56,7 +56,7 @@ class Capability:
     # leave (the `app:` step). Only the resident-runner XCUITest backend advertises it: a
     # feasibility spike confirmed `XCUIApplication(bundleIdentifier:).activate()` reliably
     # foregrounds an uncooperative app with no per-run configuration (unlike WEBVIEW, whose DOM
-    # bridge availability is a per-run fact, not a fixed backend property) — a real Simulator
+    # source availability is a per-run fact, not a fixed backend property) — a real Simulator
     # capability, not a live-grid one, so `xcuitest_live` does not advertise it either (first slice).
     APP_CONTEXT = "appContext"
     # Pick images from an open system photo picker grid by ordinal position. Two backends advertise
