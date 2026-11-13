@@ -1201,7 +1201,8 @@ scenario's `vars.*` bindings, the same as `if`'s and `forEach`'s do, and `captur
 modifiers are not allowed on the `web` step itself. On iOS the step needs the BajutsuKit WebView
 bridge configured (`BAJUTSU_WEBVIEW_PORT`); on Android it instead reaches the WebView's own Chrome
 DevTools Protocol socket over `adb forward`, once a debuggable build of the app has called
-`Bajutsu.enableWebViewDebugging(this)` from `Application.onCreate` — the helper enables nothing in a
+[`BajutsuAndroid`](../BajutsuAndroid/README.md)'s `Bajutsu.enableWebViewDebugging(this)` from
+`Application.onCreate` — the helper enables nothing in a
 build the manifest does not mark debuggable
 ([BE-0482](../roadmaps/BE-0482-android-webview-cdp/BE-0482-android-webview-cdp.md)). An app that
 hosts its WebView in a separate `android:process` calls the helper in that process alone (or after

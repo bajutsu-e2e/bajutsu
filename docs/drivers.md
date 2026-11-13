@@ -61,7 +61,7 @@ The two mobile backends differ in what they support.
 | `deviceLog` | whole-scenario device log or browser console stream (BE-0467; Simulator only on iOS) | ✅ | ✅ | ✅ | — |
 | `appTrace` | whole-scenario app log trace: `os_log` on iOS, a tag-filtered `logcat` on Android (BE-0467, BE-0478; Simulator only on iOS) | ✅ | ✅ | — | — |
 | `multiTouch` | two-finger gestures (pinch / rotate) | ✅ | ✅ | ✅ | ✅ |
-| `webView` | query and tap the DOM inside an embedded WebView — a WKWebView over the BajutsuKit bridge on iOS (BE-0037), any WebView over its own Chrome DevTools Protocol socket on Android (BE-0482); granted per run by the WebView source, so no backend declares it statically | — | — | — | — |
+| `webView` | query and tap the DOM inside an embedded WebView — a WKWebView over the BajutsuKit bridge on iOS (BE-0037), any WebView over its own Chrome DevTools Protocol socket on Android, once a debuggable build calls [`BajutsuAndroid`](../BajutsuAndroid/README.md)'s `Bajutsu.enableWebViewDebugging(this)` (BE-0482); granted per run by the WebView source, so no backend declares it statically | — | — | — | — |
 | `textSelection` | select-all + clipboard copy on the focused field | ✅ | ✅ | ✅ | ✅ |
 | `selectOption` | set a native `<select>` by value (web only) | — | — | ✅ | ✅ |
 | `urlNavigation` | open a URL mid-scenario with `navigate` (web only; BE-0464) | — | — | ✅ | ✅ |

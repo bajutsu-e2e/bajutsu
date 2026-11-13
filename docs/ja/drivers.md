@@ -54,7 +54,7 @@ class Driver(Protocol):
 | `deviceLog` | シナリオ全体のデバイスログまたはブラウザのコンソール（BE-0467。iOS では Simulator のみ） | ✅ | ✅ | ✅ | — |
 | `appTrace` | シナリオ全体のアプリのログトレース。iOS は `os_log`、Android はタグで絞った `logcat`（BE-0467、BE-0478。iOS は Simulator のみ） | ✅ | ✅ | — | — |
 | `multiTouch` | 2 本指ジェスチャ（pinch / rotate） | ✅ | ✅ | ✅ | ✅ |
-| `webView` | 埋め込まれた WebView の DOM を問い合わせてタップする。iOS では WKWebView を BajutsuKit ブリッジ経由で（BE-0037）、Android では任意の WebView をその Chrome DevTools Protocol ソケット経由で（BE-0482）。WebView ソースが実行ごとに付与し、静的な宣言はなし | — | — | — | — |
+| `webView` | 埋め込まれた WebView の DOM を問い合わせてタップする。iOS では WKWebView を BajutsuKit ブリッジ経由で（BE-0037）、Android では、デバッグ可能なビルドが [`BajutsuAndroid`](../../BajutsuAndroid/README.md) の `Bajutsu.enableWebViewDebugging(this)` を呼び出していれば、任意の WebView をその Chrome DevTools Protocol ソケット経由で（BE-0482）。WebView ソースが実行ごとに付与し、静的な宣言はなし | — | — | — | — |
 | `textSelection` | フォーカス中フィールドの全選択とクリップボードへのコピー | ✅ | ✅ | ✅ | ✅ |
 | `selectOption` | ネイティブ `<select>` を値で設定（web のみ） | — | — | ✅ | ✅ |
 | `urlNavigation` | `navigate` でシナリオの途中に URL を開く（web のみ。BE-0464） | — | — | ✅ | ✅ |
