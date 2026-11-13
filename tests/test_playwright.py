@@ -283,6 +283,7 @@ class _FakePage:
         # Optional queue of return values for non-query evaluate() calls. Each pop() serves one
         # non-query call; once empty, non-query calls return None (simulating undefined JS return).
         self.evaluate_returns: list[Any] = []
+        self.load_waits: list[str] = []  # every wait_for_load_state() state, in call order
 
     def evaluate(self, expression: str) -> Any:
         self.evaluated.append(expression)
@@ -300,9 +301,16 @@ class _FakePage:
         self.went_back = True
         return None
 
-    def screenshot(self, *, path: str) -> object:
+    def screenshot(self, *, path: str, timeout: float | None = None) -> object:
         self.shot = path
         return None
+
+    def wait_for_load_state(self, state: str, *, timeout: float | None = None) -> object:
+        self.load_waits.append(state)
+        return None
+
+    def wait_for_event(self, event: str, *, predicate: Any, timeout: float) -> object:
+        raise NotImplementedError("only a page that fires a navigation request is waited on")
 
     def on(self, event: str, handler: Any) -> None:
         self._handlers.setdefault(event, []).append(handler)
@@ -1314,6 +1322,319 @@ def test_wedge_surfaces_as_device_error_but_selection_errors_pass_through(
     healthy = PlaywrightDriver("http://app.test/", page=_FakePage([]))
     with pytest.raises(base.ElementNotFound):
         healthy.tap({"id": "missing"})
+
+
+class _NavPwError(Exception):
+    """Stands in for Playwright's base `Error` in the navigation-race tests (issue #2432)."""
+
+
+class _PwTimeout(_NavPwError):
+    pass
+
+
+# The driver recognizes Playwright's timeout by class name, so the stand-in carries that name. It is
+# named by assignment rather than `class TimeoutError` so the builtin isn't shadowed.
+_PwTimeout.__name__ = "TimeoutError"
+
+
+def _stub_playwright_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        sys.modules["bajutsu.common.drivers.playwright._functions"], "_PW_ERRORS", (_NavPwError,)
+    )
+
+
+class _NavigatingPage(_FakePage):
+    """A page whose first few calls land mid-navigation, then succeed on the new document."""
+
+    def __init__(self, records: list[dict[str, Any]], failures: list[BaseException]) -> None:
+        super().__init__(records)
+        self.failures = failures
+        self.shot_timeouts: list[float | None] = []
+
+    def evaluate(self, expression: str) -> Any:
+        if self.failures:
+            raise self.failures.pop(0)
+        return super().evaluate(expression)
+
+    def screenshot(self, *, path: str, timeout: float | None = None) -> object:
+        self.shot_timeouts.append(timeout)
+        if self.failures:
+            raise self.failures.pop(0)
+        return super().screenshot(path=path, timeout=timeout)
+
+
+_DESTROYED = "Page.evaluate: Execution context was destroyed, most likely because of a navigation"
+
+
+def test_screenshot_retries_a_timeout_after_waiting_for_the_new_document(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A screenshot issued before a navigation commits never returns; the retry against the new
+    document does (issue #2432). The first attempt is short, the last keeps Playwright's default."""
+    _stub_playwright_errors(monkeypatch)
+    page = _NavigatingPage([], [_PwTimeout("Page.screenshot: Timeout 5000ms exceeded.")])
+    PlaywrightDriver("http://app.test/", page=page).screenshot("after.png")
+
+    assert page.shot == "after.png"
+    assert page.shot_timeouts == [5_000, None]
+    assert page.load_waits == ["domcontentloaded"]
+
+
+def test_screenshot_timeout_on_every_attempt_still_wedges(monkeypatch: pytest.MonkeyPatch) -> None:
+    from bajutsu.common.backend_cli import simctl
+
+    _stub_playwright_errors(monkeypatch)
+    page = _NavigatingPage([], [_PwTimeout("first"), _PwTimeout("second")])
+    with pytest.raises(simctl.DeviceError, match="second"):
+        PlaywrightDriver("http://app.test/", page=page).screenshot("after.png")
+    assert page.shot_timeouts == [5_000, None]
+
+
+def test_screenshot_does_not_retry_a_closed_page(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Only a timeout is the navigation race; a closed target is a real wedge, reported at once."""
+    from bajutsu.common.backend_cli import simctl
+
+    _stub_playwright_errors(monkeypatch)
+    page = _NavigatingPage([], [_NavPwError("Target page, context or browser has been closed")])
+    with pytest.raises(simctl.DeviceError, match="has been closed"):
+        PlaywrightDriver("http://app.test/", page=page).screenshot("after.png")
+    assert page.shot_timeouts == [5_000]
+    assert page.load_waits == []
+
+
+def test_query_reruns_on_the_new_document_when_navigation_destroys_its_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stub_playwright_errors(monkeypatch)
+    page = _NavigatingPage(
+        [_rec(identifier="welcome", label="Welcome home")],
+        [_NavPwError(_DESTROYED), _NavPwError(_DESTROYED)],
+    )
+    elements = PlaywrightDriver("http://app.test/", page=page).query()
+
+    assert [el["identifier"] for el in elements] == ["welcome"]
+    assert page.load_waits == ["domcontentloaded", "domcontentloaded"]
+
+
+def test_read_attributes_reruns_on_the_new_document_when_navigation_destroys_its_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stub_playwright_errors(monkeypatch)
+    record = {**_rec(identifier="welcome", label="Welcome home"), "attributes": ["ready"]}
+    page = _NavigatingPage([record], [_NavPwError(_DESTROYED)])
+    driver = PlaywrightDriver("http://app.test/", page=page)
+
+    assert driver.read_attributes([({"id": "welcome"}, "data-state")]) == ["ready"]
+    assert page.load_waits == ["domcontentloaded"]
+
+
+def test_the_tap_hit_check_reruns_on_the_new_document_when_navigation_destroys_its_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The occlusion check is the tap path's second page read; a commit landing between it and the
+    lookup must not wedge the lane either (issue #2432)."""
+    _stub_playwright_errors(monkeypatch)
+
+    class _CommitBeforeHitCheck(_FakePage):
+        def evaluate(self, expression: str) -> Any:
+            if expression != QUERY_JS and not self.load_waits:
+                raise _NavPwError(_DESTROYED)
+            return super().evaluate(expression)
+
+    page = _CommitBeforeHitCheck([_rec(identifier="go", label="Go")])
+    page.evaluate_returns = [{"ok": True, "cover": None, "rect": None}]
+
+    assert PlaywrightDriver("http://app.test/", page=page).is_tappable({"id": "go"}) is True
+    assert page.load_waits == ["domcontentloaded"]
+
+
+def test_query_gives_up_after_its_attempts_and_wedges(monkeypatch: pytest.MonkeyPatch) -> None:
+    from bajutsu.common.backend_cli import simctl
+
+    _stub_playwright_errors(monkeypatch)
+    page = _NavigatingPage([], [_NavPwError(_DESTROYED) for _ in range(3)])
+    with pytest.raises(simctl.DeviceError, match="Execution context was destroyed"):
+        PlaywrightDriver("http://app.test/", page=page).query()
+    assert page.load_waits == ["domcontentloaded", "domcontentloaded"]
+
+
+def test_query_does_not_retry_an_unrelated_page_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    from bajutsu.common.backend_cli import simctl
+
+    _stub_playwright_errors(monkeypatch)
+    page = _NavigatingPage([], [_NavPwError("Target page, context or browser has been closed")])
+    with pytest.raises(simctl.DeviceError):
+        PlaywrightDriver("http://app.test/", page=page).query()
+    assert page.load_waits == []
+
+
+def test_a_document_wait_that_itself_fails_does_not_mask_the_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The between-attempt wait is best-effort: its own timeout leaves the retry to decide."""
+    _stub_playwright_errors(monkeypatch)
+
+    class _SlowLoadPage(_NavigatingPage):
+        def wait_for_load_state(self, state: str, *, timeout: float | None = None) -> object:
+            super().wait_for_load_state(state, timeout=timeout)
+            raise _PwTimeout("Page.wait_for_load_state: Timeout 10000ms exceeded.")
+
+    page = _SlowLoadPage([], [_PwTimeout("Page.screenshot: Timeout 5000ms exceeded.")])
+    PlaywrightDriver("http://app.test/", page=page).screenshot("after.png")
+    assert page.shot == "after.png"
+
+
+_MAIN_FRAME = _FakeFrame()
+_CHILD_FRAME = _FakeFrame(parent=_MAIN_FRAME)
+
+
+class _NavRequest:
+    """A request carrying its frame, for the navigation-settle tests (issue #2432)."""
+
+    def __init__(self, *, navigation: bool = True, frame: _FakeFrame = _MAIN_FRAME) -> None:
+        self._navigation = navigation
+        self.frame = frame
+
+    def is_navigation_request(self) -> bool:
+        return self._navigation
+
+
+class _SubmittingPage(_FakePage):
+    """A page where the frame the settle step runs lets a scheduled form submit send its request.
+
+    `on_settle` lists the events that frame fires; `commits` says whether the navigation then lands
+    while the driver waits for it (issue #2432).
+    """
+
+    def __init__(self, on_settle: list[tuple[str, Any]], *, commits: bool = True) -> None:
+        super().__init__([_rec(identifier="go", label="Go")])
+        self.on_settle = on_settle
+        self.commits = commits
+        self.calls: list[str] = []
+
+    def evaluate(self, expression: str) -> Any:
+        if expression.startswith("new Promise"):
+            self.calls.append("settle")
+            for event, arg in self.on_settle:
+                self.fire(event, arg)
+            return None
+        self.calls.append("evaluate")
+        return super().evaluate(expression)
+
+    def wait_for_event(self, event: str, *, predicate: Any, timeout: float) -> object:
+        self.calls.append(f"wait:{event}")
+        if not self.commits:
+            raise _PwTimeout(f"Timeout {timeout}ms exceeded while waiting for event {event!r}")
+        self.fire("framenavigated", _CHILD_FRAME)  # an iframe's commit does not satisfy the wait
+        assert not predicate(_CHILD_FRAME)
+        self.fire("framenavigated", _MAIN_FRAME)
+        assert predicate(_MAIN_FRAME)
+        return _MAIN_FRAME
+
+    def wait_for_load_state(self, state: str, *, timeout: float | None = None) -> object:
+        self.calls.append(f"load:{state}")
+        return super().wait_for_load_state(state, timeout=timeout)
+
+    def screenshot(self, *, path: str, timeout: float | None = None) -> object:
+        self.calls.append(f"shot:{timeout}")
+        return super().screenshot(path=path, timeout=timeout)
+
+
+def test_a_screenshot_after_a_navigating_tap_waits_for_the_commit_instead_of_racing_it() -> None:
+    """The after-shot of a submitting tap waits for the new document, so its first, short attempt
+    succeeds rather than timing out first (issue #2432)."""
+    page = _SubmittingPage([("request", _NavRequest())])
+    driver = PlaywrightDriver("http://app.test/", page=page)
+    driver.tap_point((10, 10))
+    driver.screenshot("after.png")
+
+    assert page.calls == ["settle", "wait:framenavigated", "load:domcontentloaded", "shot:5000"]
+
+
+def test_a_tap_that_does_not_navigate_costs_one_settled_frame_and_no_wait() -> None:
+    page = _SubmittingPage([("request", _NavRequest(navigation=False))])
+    driver = PlaywrightDriver("http://app.test/", page=page)
+    driver.tap_point((10, 10))
+    driver.screenshot("after.png")
+    driver.screenshot("again.png")  # no input in between, so no second settle
+
+    assert page.calls == ["settle", "shot:5000", "shot:5000"]
+
+
+def test_an_iframe_navigation_or_an_aborted_one_is_not_waited_for() -> None:
+    child = _NavRequest(frame=_CHILD_FRAME)
+    aborted = _NavRequest()
+    page = _SubmittingPage([("request", child), ("request", aborted), ("requestfailed", aborted)])
+    driver = PlaywrightDriver("http://app.test/", page=page)
+    driver.tap_point((10, 10))
+    driver.screenshot("after.png")
+
+    assert page.calls == ["settle", "shot:5000"]
+
+
+def test_a_query_after_a_navigating_tap_reads_the_new_document() -> None:
+    page = _SubmittingPage([("request", _NavRequest())])
+    driver = PlaywrightDriver("http://app.test/", page=page)
+    driver.tap_point((10, 10))
+    assert [el["identifier"] for el in driver.query()] == ["go"]
+
+    assert page.calls == [
+        "settle",
+        "wait:framenavigated",
+        "load:domcontentloaded",
+        "evaluate",
+    ]
+
+
+def test_a_commit_that_lands_during_the_settle_frame_needs_no_wait() -> None:
+    page = _SubmittingPage([("request", _NavRequest()), ("framenavigated", _MAIN_FRAME)])
+    driver = PlaywrightDriver("http://app.test/", page=page)
+    driver.tap_point((10, 10))
+    driver.screenshot("after.png")
+
+    assert page.calls == ["settle", "shot:5000"]
+
+
+def test_an_iframe_request_failing_does_not_cancel_the_main_frame_wait() -> None:
+    page = _SubmittingPage(
+        [("request", _NavRequest()), ("requestfailed", _NavRequest(frame=_CHILD_FRAME))]
+    )
+    driver = PlaywrightDriver("http://app.test/", page=page)
+    driver.tap_point((10, 10))
+    driver.screenshot("after.png")
+
+    assert page.calls == ["settle", "wait:framenavigated", "load:domcontentloaded", "shot:5000"]
+
+
+def test_a_no_content_answer_to_the_navigation_needs_no_wait() -> None:
+    """A 204 keeps the current document, so no commit is coming to wait for."""
+    page = _SubmittingPage([("request", _NavRequest()), ("response", _FakeResponse(204))])
+    driver = PlaywrightDriver("http://app.test/", page=page)
+    driver.tap_point((10, 10))
+    driver.screenshot("after.png")
+
+    assert page.calls == ["settle", "shot:5000"]
+
+
+def test_a_navigation_that_never_commits_is_waited_for_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A navigation answered with no document (a 204) never commits: the bounded wait is suppressed
+    and cleared, so later reads do not wait for it again."""
+    _stub_playwright_errors(monkeypatch)
+    page = _SubmittingPage([("request", _NavRequest())], commits=False)
+    driver = PlaywrightDriver("http://app.test/", page=page)
+    driver.tap_point((10, 10))
+    driver.screenshot("after.png")
+    driver.screenshot("again.png")
+
+    assert page.calls == [
+        "settle",
+        "wait:framenavigated",
+        "load:domcontentloaded",
+        "shot:5000",
+        "shot:5000",
+    ]
 
 
 def test_driver_interval_captures_console_and_pageerror(tmp_path: Any) -> None:
