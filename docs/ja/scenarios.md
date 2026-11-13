@@ -856,7 +856,7 @@ Android は、等しさではなく包含で照合します。2 つの矩形の�
 **アプリが用意するもの。** 用意がないときは、何もせず済ませるのではなく、足りないものを名指しする理由でステップを失敗させます。
 
 - **iOS**：アプリが BajutsuKit をリンクし、`BajutsuNet.startIfEnabled()` を呼びます。この呼び出しは、run がポートを渡したときにブリッジを起動します。`WKWebView` にはアクセシビリティ識別子を付けます。
-- **Android**：デバッグ可能なビルドが、`Application.onCreate` で `Bajutsu.enableWebViewDebugging(context)` を呼びます。このヘルパーは BajutsuAndroid の関数です。どの debug ビルドタイプも `android:debuggable` を設定します。このヘルパーはデバッグ可能でないビルドでは何もしないので、リリースビルドがソケットを開くことはありません。bajutsu を動かすマシンには `android` extra（`websockets`）が要ります。構成済みのバックエンドに Android が含まれていれば、`scripts/install.sh` がこの extra を入れます。
+- **Android**：デバッグ可能なビルドが、`Application.onCreate`、または最初の WebView を作る直前に `Bajutsu.enableWebViewDebugging(context)` を呼びます。このヘルパーは BajutsuAndroid の関数です。どの debug ビルドタイプも `android:debuggable` を設定します。このヘルパーはデバッグ可能でないビルドでは何もしないので、リリースビルドがソケットを開くことはありません。bajutsu を動かすマシンには `android` extra（`websockets`）が要ります。構成済みのバックエンドに Android が含まれていれば、`scripts/install.sh` がこの extra を入れます。
 
 **ブロックが対応する範囲。** ブロックの中では `tap` / `tapPoint` / `doubleTap` / `type` / `wait` / `assert` が動きます。`longPress` / `swipe` / `drag` / `clear` / `delete` / `select` / `copy` / `selectOption` / `scroll` / `back` / `navigate` / `pinch` / `rotate` / `handleSystemAlert` / `setPickerValue` はそこに届きません。いずれも「web コンテキストは非対応」という明確な理由で失敗します。次の場合も、ブロックの対象外です。
 

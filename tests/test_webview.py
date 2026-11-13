@@ -164,6 +164,41 @@ def test_bridge_reports_an_error_status_with_its_body() -> None:
         bridge_404.server_close()
 
 
+def test_query_dom_names_a_webview_id_the_app_does_not_carry() -> None:
+    # BajutsuKit answers 404 when no WKWebView carries the id, so a `within` naming the wrong id
+    # fails on that id rather than reading as an empty page and failing later as "not found".
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            body = json.dumps(
+                {
+                    "status": "error",
+                    "message": "no WKWebView with accessibilityIdentifier 'webview.host'",
+                }
+            ).encode()
+            self.send_response(404)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *_args: Any) -> None:
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(
+        target=server.serve_forever, kwargs={"poll_interval": 0.02}, daemon=True
+    ).start()
+    try:
+        bridge = WebViewBridge(port=server.server_address[1])
+        with pytest.raises(
+            WebViewTransportError, match=r"HTTP 404.*accessibilityIdentifier .*webview\.host"
+        ):
+            bridge.query_dom("webview.host")
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_type_text_succeeds() -> None:
     server = _fake_bridge_server([])
     try:

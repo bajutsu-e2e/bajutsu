@@ -6,14 +6,15 @@ import android.view.View
 import android.webkit.WebView
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import dev.bajutsu.android.Bajutsu
 
 /**
  * BE-0482: the Views realization of the hybrid screen, mirroring the iOS HybridWebView. Reached only
  * when the SHOWCASE_WEBVIEW launch env is set (see MainActivity), so the normal five-tab app never
  * renders it. A native title sits over a platform `WebView` that renders [HYBRID_PAGE], so the shared
  * `webview.yaml` scenario resolves the WebView natively by `webview_host` and then taps and types
- * inside its DOM. bajutsu reaches the page over the WebView's DevTools socket, which ShowcaseApp opens
- * with `Bajutsu.enableWebViewDebugging`.
+ * inside its DOM. bajutsu reaches the page over the WebView's DevTools socket, which `hybridWebView`
+ * opens with `Bajutsu.enableWebViewDebugging` right before it creates the WebView.
  *
  * The id goes on a container around the WebView, the same as the picker screen's wheels: a
  * `WebView`'s accessibility node comes from its own provider, which reports no resource-id. The
@@ -38,12 +39,19 @@ class HybridScreen(context: Context) {
     private companion object {
         // The page's button runs an inline script, so JavaScript must be on; the page is a bundled
         // string, never a remote URL, which is what the lint rule guards against.
+        //
+        // Debugging is enabled here rather than in ShowcaseApp because the call loads the WebView
+        // provider: from `Application.onCreate` it would load it on every launch, and a later overlay
+        // update to the WebView package then relaunches whatever screen another scenario is driving.
+        // The helper is a no-op in a build that is not debuggable.
         @SuppressLint("SetJavaScriptEnabled")
-        fun hybridWebView(context: Context): WebView =
-            WebView(context).apply {
+        fun hybridWebView(context: Context): WebView {
+            Bajutsu.enableWebViewDebugging(context)
+            return WebView(context).apply {
                 settings.javaScriptEnabled = true
                 loadDataWithBaseURL(null, HYBRID_PAGE, "text/html", "utf-8", null)
             }
+        }
 
         // Kept identical to the iOS `HybridPage.html` and the Compose twin's copy, so the DOM a `web:`
         // block reads is the same on every platform. `data-testid` is the id a selector inside the

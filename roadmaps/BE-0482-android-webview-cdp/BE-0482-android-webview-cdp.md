@@ -292,6 +292,12 @@ Log:
   frame-containment rule, and the cases a block leaves out. The pages are `scenarios`, `drivers`,
   `platform-parity`, and the BajutsuAndroid README.
 
+  The Android showcase first enabled WebView debugging in `Application.onCreate`. The call loads the
+  WebView provider, so every launch loaded it, for every scenario. In CI, an overlay update to the
+  WebView package then relaunched the showcase activity mid-scenario (`CONFIG_ASSETS_PATHS`) in
+  `network (adb)`, a lane that never opens a WebView. Both apps now call the helper right before the
+  hybrid screen creates its WebView.
+
 ## References
 
 - [BE-0037](../BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support.md) — the iOS WebView

@@ -6,7 +6,8 @@
 #   from `BajutsuNet.startIfEnabled()` and which finds the `WKWebView` by its `webview.host`
 #   accessibility identifier — the first id of `within`.
 # - Android reaches it over the Chrome DevTools Protocol (CDP), on the DevTools socket the showcase
-#   opens with `Bajutsu.enableWebViewDebugging` in a debuggable build. A CDP page carries no native
+#   opens with `Bajutsu.enableWebViewDebugging` in a debuggable build, right before it creates the
+#   hybrid screen's WebView. A CDP page carries no native
 #   id, so the run picks the page whose rectangle contains the frame `within` resolved to.
 #
 # The SHOWCASE_WEBVIEW launch env swaps the app for the flat hybrid screen (the iOS HybridWebView and

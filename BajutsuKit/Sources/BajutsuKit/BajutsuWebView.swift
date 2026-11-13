@@ -326,12 +326,14 @@ private final class _BridgeServer {
         #if canImport(WebKit)
         let semaphore = DispatchSemaphore(value: 0)
         var elements: [[String: Any]] = []
+        var found = false
 
         DispatchQueue.main.async {
             guard let wv = BajutsuWebView.findWebView(id: id) else {
                 semaphore.signal()
                 return
             }
+            found = true
             wv.evaluateJavaScript(BajutsuWebView.queryJS) { result, _ in
                 if let records = result as? [[String: Any]] {
                     elements = records
@@ -340,6 +342,14 @@ private final class _BridgeServer {
             }
         }
         semaphore.wait()
+        // A missing view is an error, not an empty page: an empty list would surface only later, as
+        // "element not found", without naming the identifier `within` asked for.
+        guard found else {
+            _writeJSON(fd, status: 404, object: [
+                "status": "error", "message": "no WKWebView with accessibilityIdentifier '\(id)'",
+            ])
+            return
+        }
         _writeJSON(fd, status: 200, object: ["elements": elements])
         #else
         _writeJSON(fd, status: 200, object: ["elements": []])

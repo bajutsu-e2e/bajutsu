@@ -127,8 +127,11 @@ SERIAL ?= booted
 # again, so the scenario's first return would find the catalog instead of the detail screen.
 #
 # `webview` enters the hybrid screen's WebView with a `web:` block (BE-0482): bajutsu forwards the
-# WebView's DevTools socket, which both apps open with `Bajutsu.enableWebViewDebugging`, and taps and
-# types inside the page over the Chrome DevTools Protocol. Both apps render the screen under
+# WebView's DevTools socket, which both apps open with `Bajutsu.enableWebViewDebugging` right before
+# they create the WebView, and taps and types inside the page over the Chrome DevTools Protocol. The
+# call loads the WebView provider, so the apps make it on that screen alone rather than in
+# `Application.onCreate`: an early load exposes every other scenario to a relaunch when the WebView
+# package's overlays change. Both apps render the screen under
 # SHOWCASE_WEBVIEW, and `within` carries both id forms. Verified on a local arm64 emulator (API 34),
 # Compose and Views alike.
 #

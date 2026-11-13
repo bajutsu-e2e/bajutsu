@@ -14,12 +14,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import dev.bajutsu.android.Bajutsu
 
 // BE-0482: the Compose realization of the hybrid screen, mirroring the iOS HybridWebView. Reached only
 // when the SHOWCASE_WEBVIEW launch env is set (see AppModel / RootScreen). A native title sits over a
 // platform `WebView` that renders HYBRID_PAGE, so the shared `webview.yaml` scenario resolves the
 // WebView natively by `webview.host` and then taps and types inside its DOM. bajutsu reaches the page
-// over the WebView's DevTools socket, which ShowcaseApp opens with `Bajutsu.enableWebViewDebugging`.
+// over the WebView's DevTools socket, which `hybridWebView` opens with `Bajutsu.enableWebViewDebugging`
+// right before it creates the WebView.
 //
 // The id goes on a Box around the `AndroidView`, the same as the picker screen's wheels: the Box's
 // frame is the WebView's, and the `web:` block matches the page by that frame alone.
@@ -41,12 +43,19 @@ fun HybridScreen() {
 
 // The page's button runs an inline script, so JavaScript must be on; the page is a bundled string,
 // never a remote URL, which is what the lint rule guards against.
+//
+// Debugging is enabled here rather than in ShowcaseApp because the call loads the WebView provider:
+// from `Application.onCreate` it would load it on every launch, and a later overlay update to the
+// WebView package then relaunches whatever screen another scenario is driving. The helper is a no-op
+// in a build that is not debuggable.
 @SuppressLint("SetJavaScriptEnabled")
-private fun hybridWebView(context: android.content.Context): WebView =
-    WebView(context).apply {
+private fun hybridWebView(context: android.content.Context): WebView {
+    Bajutsu.enableWebViewDebugging(context)
+    return WebView(context).apply {
         settings.javaScriptEnabled = true
         loadDataWithBaseURL(null, HYBRID_PAGE, "text/html", "utf-8", null)
     }
+}
 
 // Kept identical to the iOS `HybridPage.html` and the Views twin's copy, so the DOM a `web:` block
 // reads is the same on every platform. `data-testid` is the id a selector inside the block names.

@@ -294,6 +294,13 @@ BajutsuAndroid に `Bajutsu.enableWebViewDebugging()` を追加します。こ�
   resource-id を報告しないからです。単位 7 では、動作の条件、フレームの包含による照合、ブロックの
   対象外を、`scenarios`、`drivers`、`platform-parity`、BajutsuAndroid の README に書きました。
 
+  Android の showcase は、最初は `Application.onCreate` で WebView のデバッグを有効にしていました。
+  この呼び出しは WebView のプロバイダを読み込むため、どのシナリオでも起動のたびに読み込みが
+  起きていました。CI では、WebView を開かない `network (adb)` のレーンで、WebView パッケージの
+  オーバーレイの更新がシナリオの途中で showcase の Activity を再起動させました
+  （`CONFIG_ASSETS_PATHS`）。現在は、どちらのアプリもハイブリッド画面が WebView を作る直前に
+  ヘルパーを呼びます。
+
 ## 参考
 
 - [BE-0037](../BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support-ja.md)：iOS の WebView

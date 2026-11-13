@@ -1215,13 +1215,14 @@ Android matches by containment, not equality, because the two rectangles measure
 The native tree clips a view's bounds to the screen and to its ancestors. CDP reports the page's
 full rectangle. A WebView partly hidden under a toolbar thus still matches.
 
-**What the app must provide.** A step that lacks it fails with a reason that names the missing
-piece.
+**What the app must provide.** A block whose app is missing one of these pieces fails the step
+with a reason that names what is missing.
 
 - **iOS:** the app links BajutsuKit and calls `BajutsuNet.startIfEnabled()`. That call starts the
   bridge when the run passes the port. The `WKWebView` carries an accessibility identifier.
 - **Android:** a debuggable build calls BajutsuAndroid's `Bajutsu.enableWebViewDebugging(context)`
-  in `Application.onCreate`. Every debug build type sets `android:debuggable`. The
+  in `Application.onCreate`, or right before it creates its first WebView. Every debug build type
+  sets `android:debuggable`. The
   helper does nothing in a non-debuggable build, so a release build never opens the socket. The
   machine running bajutsu needs the `android` extra (`websockets`). `scripts/install.sh` installs it
   when the configured backends include Android.
