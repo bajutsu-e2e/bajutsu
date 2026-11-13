@@ -125,9 +125,20 @@ it free of per-app knowledge (prime directive 3).
 ### The iOS route
 
 The runner gains one route, `POST /app/openUrl` with a body of `{url}`. The route calls
-`XCUIApplication.open(_:)` on the app at the top of its stack, then waits for the app's state to
-reach `runningForeground`. The route returns `not-foreground` when the wait runs out, the same reply
-`/app/enter` returns today. `XCUIApplication.open(_:)` exists from iOS 16.4. The runner's deployment
+`XCUIApplication.open(_:)` on the app at the top of its stack, then waits for the app's state to reach `runningForeground`. The route returns `not-foreground` when the wait runs out, the same reply
+`/app/enter` returns today.
+
+Mid-scenario the receiving app is usually in front already, so the foreground wait alone cannot show
+that the operating system accepted the URL. The route therefore runs `XCUIApplication.open(_:)`
+inside the runner's `ObjCExceptionCatcher`, as the runner already does for element interactions
+(`BajutsuKit/Sources/BajutsuRunner/APIHandler.swift`). An exception or an XCTest failure that the
+call raises becomes a new `not-opened` reply, with the message as the reason. The driver maps
+`not-opened` to a step failure. Unit 5 is done when the Simulator shows what `open(_:)` does for a
+scheme that the receiving app does not declare. If `open(_:)` raises nothing for that URL, the docs
+state the limit: on iOS such a URL passes the step, and the assertion that follows catches the wrong
+screen.
+
+`XCUIApplication.open(_:)` exists from iOS 16.4. The runner's deployment
 target is iOS 15.0 (`BajutsuKit/Runner/project.yml`), so the route guards the call with
 `#available(iOS 16.4, *)` and returns `unsupported` on an earlier system. `unsupported` is a new
 `ActuationReply` status, added to the enum in `BajutsuKit/Sources/BajutsuRunner/openapi.yaml`. The
@@ -151,7 +162,10 @@ front therefore fails the step with `not-foreground`. The step does not dismiss 
 
 The adb driver runs `am start -W --activity-single-top -a android.intent.action.VIEW -d <url>
 <package>`, with `<package>` set to `_front_package`. The `-W` flag makes `am start` wait for the
-launch and print a status.
+launch and print a status. When `_front_package` is `None`, because the driver addresses no app,
+the step fails with a named error before running `am start`. Leaving `<package>` out would send the
+unscoped intent that *Alternatives considered* rejects, and the driver already fails closed on a
+missing package elsewhere (`bajutsu/common/backends.py`).
 
 The `--activity-single-top` flag lets a scenario return to a screen with the same URL the launch
 deeplink used. Without the flag, Android compares the new intent with the intent that started the
@@ -175,14 +189,17 @@ rejects the intent wins over `Status: ok`, because `-W` prints a status line aft
 
 | Output of `am start` | Result |
 |---|---|
-| `Status: ok` | accepted |
+| `Status: ok`, with no rejecting line | accepted |
 | `Warning: Activity not started, intent has been delivered to currently running top-most instance.` | accepted; the running activity received the intent through `onNewIntent` |
 | a line that starts with `Error` | rejected, with that line as the reason |
 | `Warning: Activity not started, its current task has been brought to the front` | rejected, with that line as the reason; Android brought the task forward without delivering the URL |
 | a line that names an exception, such as `java.lang.SecurityException` | rejected, with that line as the reason |
-| any other output, such as `Status: timeout` | accepted; the foreground wait that follows decides the step |
+| any other output, such as `Status: timeout` | rejected, with the whole output as the reason |
 
-After an accepted intent, the driver waits until `_front_package` holds the resumed activity. The
+Acceptance needs a positive signal from the output: `Status: ok` or the delivery warning. The
+foreground wait cannot stand in for one, because mid-scenario the receiving app usually holds the
+resumed activity already, so the wait returns at its first poll. After an accepted intent, the
+driver waits until `_front_package` holds the resumed activity. The
 wait reuses the polling loop in `_bring_forward`, which already reads `dumpsys` for `app:` blocks.
 
 `adb shell` joins its arguments into one command line that the device's shell parses. The driver
@@ -209,10 +226,13 @@ that uses the step on a backend without the token, before the run leases a devic
 The generic preflight walk skips `web:` and `app:` blocks and `interrupts` recovery steps. `openUrl`
 therefore gets its own locator that follows all three, as `_navigate_locations` does for `navigate`
 (`bajutsu/common/capability/capability_preflight.py`). The token check alone cannot reject an
-`openUrl` nested inside a `web:` block on iOS or Android. Preflight reads the backend's token set,
-not the `WebContextDriver`'s, and a `_REQUIREMENTS` locator runs only when the backend lacks the
-token. A second check in `unsupported()`, outside the `_REQUIREMENTS` loop, therefore reports an
-`openUrl` under a `web:` block on every backend.
+`openUrl` nested inside a `web:` block on iOS or Android, because preflight reads the backend's
+token set, not the `WebContextDriver`'s. That rule does not depend on the backend, so it belongs to
+the scenario model, not to preflight. The model rejects an `openUrl` inside a `web:` block when the
+scenario loads, as it already rejects `installApp` there
+(`bajutsu/common/scenario/models/scenario/_targets.py`). A check inside `unsupported()` would ignore
+the capabilities that function judges, and `requirements()` would not mirror it, so serve could
+dispatch a job that the run preflight then rejects.
 
 The web
 backend keeps `navigate` and does not advertise `openUrl`. `navigate` loads a page inside the
@@ -239,11 +259,11 @@ Japanese:
 
 | Unit | Scope | Files |
 |---|---|---|
-| 1. Scenario model | `OpenUrl` model, the shared scheme rule, load-time check, `Step.open_url` field | `bajutsu/common/scenario/models/actions/`, `bajutsu/common/scenario/models/steps/step.py` |
+| 1. Scenario model | `OpenUrl` model, the shared scheme rule, load-time checks (scheme, and no `openUrl` under `web:`), `Step.open_url` field | `bajutsu/common/scenario/models/actions/`, `bajutsu/common/scenario/models/steps/step.py`, `bajutsu/common/scenario/models/scenario/_targets.py` |
 | 2. Driver surface and preflight | `Driver.open_url`, the `OPEN_URL` capability, the preflight locator, the handler, the fake driver | `bajutsu/common/drivers/base/`, `bajutsu/common/capability/capability_preflight.py`, `bajutsu/common/orchestrator/actions/handlers/navigation.py`, `bajutsu/common/drivers/fake/` |
 | 3. Android route | the quoted command with `--activity-single-top`, the output check, the foreground wait in the adb driver | `bajutsu/common/backend_cli/adb/`, `bajutsu/common/drivers/adb/adb_driver.py` |
 | 4. Launch deeplink fix | the `-W` flag, the quoted URL, and the output check on `subject.launch.deeplink` | `bajutsu/common/backend_cli/adb/_functions.py`, `bajutsu/common/backend_cli/adb/env.py`, `bajutsu/common/platform_lifecycle/environments/android/` |
-| 5. iOS route | the `/app/openUrl` runner route and the XCUITest driver's call | `BajutsuKit/Sources/BajutsuRunner/`, `bajutsu/common/drivers/xcuitest/` |
+| 5. iOS route | the `/app/openUrl` runner route, the `not-opened` and `unsupported` replies, and the XCUITest driver's call | `BajutsuKit/Sources/BajutsuRunner/`, `bajutsu/common/drivers/xcuitest/` |
 | 6. Showcase scenario | a scenario that reaches a tab by `openUrl` mid-scenario, run on iOS and Android | `demos/showcase/scenarios/` |
 | 7. Docs | the grammar, the guide, and the parity row, in English and Japanese | `docs/`, `docs/ja/` |
 

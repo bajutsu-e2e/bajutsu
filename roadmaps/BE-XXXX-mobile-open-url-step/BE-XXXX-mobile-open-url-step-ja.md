@@ -123,7 +123,17 @@ URL を1つのアプリに向けることで、ステップは決定的になり
 
 ランナーに `POST /app/openUrl` のルートを1つ追加します。本文は `{url}` です。このルートは、スタックの先頭のアプリに
 対して `XCUIApplication.open(_:)` を呼び、アプリの状態が `runningForeground` になるまで待ちます。待ちが上限に達したら、
-現在の `/app/enter` と同じ `not-foreground` を返します。`XCUIApplication.open(_:)` は iOS 16.4 から使えます。
+現在の `/app/enter` と同じ `not-foreground` を返します。
+
+シナリオの途中では、受け取るアプリはたいてい前面にあるので、前面の待ちだけでは OS が URL を受け付けたことを示せません。
+そこでルートは、`XCUIApplication.open(_:)` をランナーの `ObjCExceptionCatcher` の中で呼びます。ランナーは要素の操作でも
+すでに同じことをしています（`BajutsuKit/Sources/BajutsuRunner/APIHandler.swift`）。呼び出しが例外か XCTest の失敗を
+起こしたら、その内容を理由とする新しい `not-opened` の返答にします。ドライバーは `not-opened` をステップの失敗に
+対応づけます。単位 5 は、受け取るアプリが宣言していないスキームに対して `open(_:)` が何をするかを、Simulator で
+確かめた時点で完了とします。その URL で `open(_:)` が何も起こさない場合は、その制約をドキュメントに書きます。iOS では
+そうした URL でもステップは通り、後続のアサーションが違う画面を検出します。
+
+`XCUIApplication.open(_:)` は iOS 16.4 から使えます。
 ランナーのデプロイメントターゲットは iOS 15.0 です（`BajutsuKit/Runner/project.yml`）。そのため、呼び出しを
 `#available(iOS 16.4, *)` で囲み、それより前の OS では `unsupported` を返します。`unsupported` は `ActuationReply` の新しい状態で、
 `BajutsuKit/Sources/BajutsuRunner/openapi.yaml` の列挙に加えます。XCUITest ドライバーはこれを `UnsupportedAction` に
@@ -146,7 +156,10 @@ URL を1つのアプリに向けることで、ステップは決定的になり
 ### Android の経路
 
 adb ドライバーは `am start -W --activity-single-top -a android.intent.action.VIEW -d <url> <package>` を
-実行します。`<package>` には `_front_package` を渡します。`-W` を付けると、`am start` は起動を待ってから状態を
+実行します。`<package>` には `_front_package` を渡します。ドライバーが操作するアプリを持たず `_front_package` が `None` の
+ときは、`am start` を実行する前に、名前の付いたエラーでステップを失敗にします。`<package>` を省くと、*検討した代替案*
+で退けた、宛先を絞らない intent になってしまうからです。ドライバーは、パッケージが無いときに失敗する方へ倒す扱いを、
+ほかの箇所でもすでにとっています（`bajutsu/common/backends.py`）。`-W` を付けると、`am start` は起動を待ってから状態を
 出力します。
 
 `--activity-single-top` は、起動時 deeplink と同じ URL で画面へ戻れるようにするために付けます。このオプションが
@@ -170,14 +183,16 @@ deeplink を処理する必要があります。deeplink を受け付けるア�
 
 | `am start` の出力 | 結果 |
 |---|---|
-| `Status: ok` | 受け付けたものとします |
+| 拒否の行を含まない `Status: ok` | 受け付けたものとします |
 | `Warning: Activity not started, intent has been delivered to currently running top-most instance.` | 受け付けたものとします。起動中の Activity が `onNewIntent` で intent を受け取っているためです |
 | `Error` で始まる行 | 拒否されたものとし、その行を理由にします |
 | `Warning: Activity not started, its current task has been brought to the front` | 拒否されたものとし、その行を理由にします。Android は URL を届けずにタスクを前面に出しただけだからです |
 | `java.lang.SecurityException` のように例外を名指す行 | 拒否されたものとし、その行を理由にします |
-| `Status: timeout` のようなその他の出力 | 受け付けたものとします。成否は後続の前面の待ちで決まります |
+| `Status: timeout` のようなその他の出力 | 拒否されたものとし、出力の全体を理由にします |
 
-intent が受け付けられたら、ドライバーは `_front_package` が resumed の Activity を持つまで待ちます。この待ちには、
+受け付けたと判断するには、`Status: ok` か配信の警告という、出力の側の積極的な合図が要ります。前面の待ちは、その合図の
+代わりになりません。シナリオの途中では、受け取るアプリがたいてい resumed の Activity をすでに持っているので、待ちは
+最初の確認で終わってしまうからです。intent が受け付けられたら、ドライバーは `_front_package` が resumed の Activity を持つまで待ちます。この待ちには、
 `app:` ブロックのためにすでに `dumpsys` を読んでいる `_bring_forward` のポーリングを使います。
 
 `adb shell` は引数を1行のコマンドにまとめ、端末側のシェルがその行を解釈します。そこでドライバーは、入力した文字列に
@@ -202,10 +217,11 @@ preflight で拒否されます。
 ただし、preflight の汎用の走査は `web:` と `app:` のブロックと `interrupts` の復旧ステップをたどりません。そこで
 `openUrl` には、`navigate` の `_navigate_locations` と同じく3つをすべてたどる専用の検出を用意します
 （`bajutsu/common/capability/capability_preflight.py`）。iOS と Android では、トークンの検査だけでは `web:` ブロックの
-中の `openUrl` を拒否できません。preflight が見るのは `WebContextDriver` ではなく、バックエンドのトークンです。
-また、`_REQUIREMENTS` の検出は、バックエンドがトークンを持たないときにしか動きません。そこで、`unsupported()` の中で
-`_REQUIREMENTS` のループとは別に検査を1つ設け、`web:` ブロックの下の `openUrl` を、どのバックエンドでも拒否します。
-
+中の `openUrl` を拒否できません。preflight が見るのは、`WebContextDriver` ではなくバックエンドのトークンだからです。
+この規則はバックエンドに依存しないので、preflight ではなくシナリオのモデルに置きます。モデルは、`installApp` と同じく、
+`web:` ブロックの中の `openUrl` をシナリオの読み込み時に拒否します（`bajutsu/common/scenario/models/scenario/_targets.py`）。
+`unsupported()` の中に検査を置くと、この関数が判断する capability とは無関係な理由になります。しかも `requirements()` には
+反映されないので、serve が受け付けて配った仕事を、実行時の preflight が拒否することになります。
 web バックエンドは `navigate` を使い続け、`openUrl` は提示しません。`navigate` はブラウザの中でページを読み込み、
 `openUrl` は OS に URL を渡します。2つに同じステップ名を付けると、シナリオがどちらを意図しているのかが曖昧になります。
 
@@ -228,11 +244,11 @@ preflight からは分かりません。
 
 | 単位 | 範囲 | ファイル |
 |---|---|---|
-| 1. シナリオのモデル | `OpenUrl` モデル、共通のスキーム規則、読み込み時の検査、`Step.open_url` フィールド | `bajutsu/common/scenario/models/actions/`、`bajutsu/common/scenario/models/steps/step.py` |
+| 1. シナリオのモデル | `OpenUrl` モデル、共通のスキーム規則、読み込み時の検査（スキームと、`web:` の下の `openUrl` の禁止）、`Step.open_url` フィールド | `bajutsu/common/scenario/models/actions/`、`bajutsu/common/scenario/models/steps/step.py`、`bajutsu/common/scenario/models/scenario/_targets.py` |
 | 2. ドライバーの受け口と preflight | `Driver.open_url`、`OPEN_URL` capability、preflight の検出、ハンドラー、fake ドライバー | `bajutsu/common/drivers/base/`、`bajutsu/common/capability/capability_preflight.py`、`bajutsu/common/orchestrator/actions/handlers/navigation.py`、`bajutsu/common/drivers/fake/` |
 | 3. Android の経路 | adb ドライバーでの `--activity-single-top` 付きの引用符付きコマンド、出力の検査、前面の待ち | `bajutsu/common/backend_cli/adb/`、`bajutsu/common/drivers/adb/adb_driver.py` |
 | 4. 起動時 deeplink の修正 | `subject.launch.deeplink` での `-W`、引用符付き URL、出力の検査 | `bajutsu/common/backend_cli/adb/_functions.py`、`bajutsu/common/backend_cli/adb/env.py`、`bajutsu/common/platform_lifecycle/environments/android/` |
-| 5. iOS の経路 | ランナーの `/app/openUrl` ルートと、XCUITest ドライバーからの呼び出し | `BajutsuKit/Sources/BajutsuRunner/`、`bajutsu/common/drivers/xcuitest/` |
+| 5. iOS の経路 | ランナーの `/app/openUrl` ルート、`not-opened` と `unsupported` の返答、XCUITest ドライバーからの呼び出し | `BajutsuKit/Sources/BajutsuRunner/`、`bajutsu/common/drivers/xcuitest/` |
 | 6. showcase のシナリオ | シナリオの途中で `openUrl` を使ってタブに移り、iOS と Android で流すシナリオ | `demos/showcase/scenarios/` |
 | 7. ドキュメント | 文法、手引き、parity 表の行を英語と日本語で | `docs/`、`docs/ja/` |
 
@@ -254,9 +270,9 @@ preflight からは分かりません。
 
 ## 進捗
 
-> Keep this current as work proceeds. The checklist mirrors the MECE work breakdown in
-> *Detailed design* (one box per unit of work); the log records what changed and when
-> (oldest first), linking the PRs.
+> 開発の進行に合わせて常に最新の状態に保ってください。チェックリストは *詳細設計* の MECE な
+> 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
+> ともに記録します。
 
 - [ ] シナリオのモデル
 - [ ] ドライバーの受け口と preflight
