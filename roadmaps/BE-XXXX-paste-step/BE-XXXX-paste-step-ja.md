@@ -61,7 +61,7 @@ iOS では、ドライバーは何にも触れる前に、「Paste」ラベル�
 - 2つの言語の「Paste」項目が同時に現れた場合は `AmbiguousSelector` です。
 - 新しい項目のラベルがアプリの要素と同じ場合は、タップの対象が2つに解決されて `AmbiguousSelector` になります。
 
-編集メニューの「Paste」はシステムの貼り付けコントロールです。別のプロセスが書いたクリップボードも読み、貼り付け同意ダイアログは出ません。runner に新しいエンドポイントは不要です。ドライバーが既存のタップ、長押し、要素取得の呼び出しを組み合わせます。
+編集メニューの「Paste」はシステムの貼り付けコントロールで、別のプロセスが書いたクリップボードも読みます。iOS の貼り付け同意ダイアログが出るかどうかは、Simulator のビルドによって異なります。手元の Xcode 27 と iOS 26.5 では出ませんでしたが、CI のイメージ（Xcode 26.6）では、アプリ内のコピーも含めて貼り付けのたびに出ます。ステップ自身はダイアログに応答しません。同意するかどうかはシナリオの作者が決めることだからです。シナリオは `interrupts: [{ systemAlert: paste, choice: grant }]` を宣言します。ダイアログが出れば、run のシステムアラートのガードがネイティブな方法で応答します（BE-0369）。runner に新しいエンドポイントは不要です。ドライバーが既存のタップ、長押し、要素取得の呼び出しを組み合わせます。
 
 ### ローカライズされた「Paste」ラベル
 
@@ -105,5 +105,5 @@ iOS では、ドライバーは何にも触れる前に、「Paste」ラベル�
 
 - [BE-0265 — テキスト編集ステップ](../BE-0265-text-editing-steps/BE-0265-text-editing-steps-ja.md)：`select`、`clear`、`delete`、`copy`。このステップは形と capability をこれらと共有します。
 - [BE-0052 — デバイスの状態](../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)：`setClipboard` と `clipboard` アサーション。
-- [BE-0369 — 貼り付け同意ダイアログ](../BE-0369-ios-paste-consent-prompt-choice/BE-0369-ios-paste-consent-prompt-choice-ja.md)：編集メニューの経路が避ける iOS のダイアログ。
+- [BE-0369 — 貼り付け同意ダイアログ](../BE-0369-ios-paste-consent-prompt-choice/BE-0369-ios-paste-consent-prompt-choice-ja.md)：編集メニューからの貼り付けで出ることがある iOS のダイアログ。`paste` のシステムアラートの指定で応答します。
 - [`docs/ja/scenarios.md`](../../docs/ja/scenarios.md)：ステップのリファレンス。

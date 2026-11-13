@@ -95,9 +95,18 @@ it. The step fails loudly in three cases:
 - The new item shares its label with app content: the tap resolves two elements and fails with
   `AmbiguousSelector`.
 
-The edit menu's Paste is a system paste control. It reads a clipboard written by another process,
-and no paste-consent prompt appears. The runner needs no new endpoint: the driver composes the
-existing tap, long-press, and element-query calls.
+The edit menu's Paste is a system paste control, and it reads a clipboard another process wrote.
+Whether it also raises iOS's paste-consent prompt depends on the Simulator build:
+
+| Build | Paste-consent prompt |
+|---|---|
+| Local Xcode 27, iOS 26.5 runtime | Never appeared. |
+| CI image, Xcode 26.6 | Appears on every paste, an in-app copy included. |
+
+The step does not answer the prompt itself, because consent is the scenario author's decision. A
+scenario declares `interrupts: [{ systemAlert: paste, choice: grant }]`. The run's system-alert
+guard then answers the prompt natively whenever it appears (BE-0369). The runner needs no new
+endpoint. The driver composes the existing tap, long-press, and element-query calls.
 
 ### The localized Paste label
 
@@ -171,5 +180,5 @@ comes first in the file.
 - [BE-0052 — Device state](../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)
   — `setClipboard` and the `clipboard` assertion.
 - [BE-0369 — The paste-consent prompt](../BE-0369-ios-paste-consent-prompt-choice/BE-0369-ios-paste-consent-prompt-choice.md)
-  — the iOS prompt that the edit-menu route avoids.
+  — the iOS prompt the edit-menu paste can raise, answered through the `paste` system-alert entry.
 - [`docs/scenarios.md`](../../docs/scenarios.md) — the step reference.

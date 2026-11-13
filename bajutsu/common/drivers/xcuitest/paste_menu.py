@@ -2,8 +2,9 @@
 
 The iOS `paste` step taps the edit menu's Paste item rather than sending Cmd+V: a hardware Cmd+V
 inserts nothing when the clipboard was written by another process (a `setClipboard` step, which goes
-through simctl), and reports no error either. The edit menu's Paste is a system paste control, so it
-reads that clipboard without iOS's paste-consent prompt.
+through simctl), and reports no error either. The edit menu's Paste is a system paste control that
+does read such a clipboard. Depending on the Simulator build it may raise iOS's paste-consent prompt,
+which a scenario answers by declaring `interrupts: [{ systemAlert: paste, choice: grant }]`.
 
 The menu item carries no identifier, only its label, and UIKit renders that label in the *app's*
 localization, not the device language: an app that ships no Japanese strings shows "Paste" on a

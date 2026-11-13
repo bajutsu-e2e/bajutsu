@@ -5,9 +5,12 @@
 # The first scenario pastes what an in-app `copy` put on the clipboard. The other two paste a
 # clipboard seeded by `setClipboard`, which iOS attributes to another process (simctl writes it): the
 # case `paste` exists for. A hardware Cmd+V pastes nothing from such a clipboard and reports no error,
-# so the iOS driver pastes through the edit menu's Paste item instead; that item is a system paste
-# control, so no paste-consent prompt appears either. The third pastes into a field that already holds
-# text and focus, where the focusing tap raises the edit menu itself.
+# so the iOS driver pastes through the edit menu's Paste item instead. Whether that paste raises iOS's
+# paste-consent prompt depends on the Simulator build: a local Xcode 27 / iOS 26.5 run showed none,
+# the CI image (Xcode 26.6) shows it on every paste. So each scenario declares the `paste` prompt in
+# `interrupts` with `choice: grant`, and the run's guard answers it natively whenever it appears
+# (BE-0369). The third pastes into a field that already holds text and focus, where the focusing tap
+# raises the edit menu itself.
 #
 # The in-app scenario comes first, and the file runs only on the `actuation` CI lane after
 # text_editing.yaml, because on the iOS Simulator a `setClipboard` leaves in-app select-all and copy
@@ -23,6 +26,8 @@
     subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
+  interrupts:
+    - { systemAlert: paste, choice: grant }
   steps:
     - tap: { label: "Search", traits: [button] }
     - wait: { for: { id: search.field }, timeout: 10 }
@@ -47,6 +52,8 @@
     subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
+  interrupts:
+    - { systemAlert: paste, choice: grant }
   steps:
     - setClipboard: { text: "Horse 4" }
     - tap: { label: "Search", traits: [button] }
@@ -63,6 +70,8 @@
     subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
+  interrupts:
+    - { systemAlert: paste, choice: grant }
   steps:
     - setClipboard: { text: "2" }
     - tap: { label: "Search", traits: [button] }
