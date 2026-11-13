@@ -158,10 +158,12 @@ def test_a_cap_counts_only_its_own_org_and_actor(serve_engine: Callable[..., Eng
 def test_a_plain_job_still_leases_at_the_cap(serve_engine: Callable[..., Engine]) -> None:
     """Plain jobs keep their registration-time caps, so the lease does not count them again."""
     repo = _repo(serve_engine)
+    caps = ConcurrencyCaps(total=1)
     _group(repo, "g1", ["1"])
+    assert [j.id for j in repo.lease_jobs("w1", _WORKER, max_jobs=5, caps=caps)] == ["1"]
     repo.enqueue_job("p", org_id="o", spec={}, capabilities=_CAPS)
 
-    leased = repo.lease_jobs("w1", _WORKER, max_jobs=5, caps=ConcurrencyCaps(total=1))
+    leased = repo.lease_jobs("w1", _WORKER, max_jobs=5, caps=caps)
 
     assert [j.id for j in leased] == ["p"]
 
