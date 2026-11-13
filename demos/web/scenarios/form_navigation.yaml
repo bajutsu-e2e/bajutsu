@@ -1,0 +1,18 @@
+# A tap that navigates (issue #2432): submitting a form loads a new document, and the tap's own
+# after-screenshot and the next element read run while that navigation commits. Before the fix the
+# screenshot never returned and the run died as a browser wedge; this scenario keeps that path real.
+description: >-
+  Web form navigation — type into a form, submit it, and assert the page the submit navigated to.
+scenarios:
+  - name: a form submit navigates to the next page
+    steps:
+      - navigate: /signin.html
+      - wait: { for: { id: signin.name }, timeout: 5 }
+      - type: { into: { id: signin.name }, text: "Ada" }
+      - tap: { id: signin.submit }
+      - wait: { for: { id: welcome.title }, timeout: 5 }
+      - assert:
+          - exists: { id: welcome.name, label: "Ada" }
+          - exists: { id: signin.submit, negate: true }
+    expect:
+      - exists: { id: welcome.title }

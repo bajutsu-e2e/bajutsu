@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bajutsu Web Demo — Welcome</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 28rem; }
+      h1 { font-size: 1.4rem; }
+    </style>
+  </head>
+  <body>
+    <!-- The page signin.html's form submits to (scenarios/form_navigation.yaml). -->
+    <h1 data-testid="welcome.title">Welcome home</h1>
+    <p data-testid="welcome.name"></p>
+    <script>
+      document.querySelector('[data-testid="welcome.name"]').textContent =
+        new URLSearchParams(location.search).get("name") || "";
+    </script>
+  </body>
+</html>
