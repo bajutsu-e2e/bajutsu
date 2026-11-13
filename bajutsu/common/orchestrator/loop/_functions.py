@@ -397,12 +397,14 @@ def _wait_for_totp_window(
     clock: Clock,
     cancelled: CancelSource,
     wall: Callable[[], float] = time.time,
+    kind: str = "totp",
 ) -> str | None:
     """Wait for the next TOTP window when the current one has under `min_remaining` seconds left.
 
     A condition wait the clock decides (BE-0474): it ends on the window boundary itself, so
     `minRemaining: 30` terminates, and a monotonic deadline of one window plus one slice bounds it
     whatever the wall clock does. `wall` supplies the window phase, which `clock` — monotonic — cannot.
+    `kind` names the step (`totp` / `otp`) the warning lands on, so its report row reads true.
 
     Returns:
         A warning naming the jump when the wall clock moved apart from the monotonic one during the
@@ -431,7 +433,7 @@ def _wait_for_totp_window(
     if abs(drift) <= 1.0:
         return None
     left_s = TOTP_PERIOD_SECONDS - end_wall % TOTP_PERIOD_SECONDS
-    return f"totp: wall clock jumped {drift:+.0f}s during window wait; {left_s:.0f}s left"
+    return f"{kind}: wall clock jumped {drift:+.0f}s during window wait; {left_s:.0f}s left"
 
 
 def _align_step_window(
@@ -445,20 +447,24 @@ def _align_step_window(
     if bindings is None:
         return  # no var scope means the handler writes nothing, so no code to keep fresh either
     if step.totp is not None:
-        _align_totp_window(step.totp, clock, cancelled, warnings)
+        _align_totp_window("totp", step.totp, clock, cancelled, warnings)
     # An unregistered generator skips the wait, so the `otp` handler fails the step at once instead
     # of after up to a window's pause.
     elif step.otp is not None and generator_key(step.otp.from_) in bindings:
-        _align_totp_window(step.otp, clock, cancelled, warnings)
+        _align_totp_window("otp", step.otp, clock, cancelled, warnings)
 
 
 def _align_totp_window(
-    totp: Totp | Otp, clock: Clock, cancelled: CancelSource, warnings: list[str] | None
+    kind: str,
+    totp: Totp | Otp,
+    clock: Clock,
+    cancelled: CancelSource,
+    warnings: list[str] | None,
 ) -> None:
     """Run a `totp` / `otp` step's `minRemaining` wait, if it asks for one, and keep any warning."""
     if totp.min_remaining is None:
         return
-    warning = _wait_for_totp_window(totp.min_remaining, clock, cancelled)
+    warning = _wait_for_totp_window(totp.min_remaining, clock, cancelled, kind=kind)
     if warning is not None and warnings is not None:
         warnings.append(warning)
 
@@ -506,7 +512,7 @@ def _run_step_body(
     runs (BE-0269, BE-0406); other step kinds ignore them. ``system_alert_taps`` receives the label
     a ``handleSystemAlert`` step tapped, for the report (BE-0445), and ``system_alert_title`` is
     that step's title check (``prompt_title_check``). ``warnings`` receives the non-fatal note a
-    ``totp`` step's window wait leaves when the wall clock jumped (BE-0474). ``on_interrupt_poll``, when given for a
+    ``totp`` / ``otp`` step's window wait leaves when the wall clock jumped (BE-0474). ``on_interrupt_poll``, when given for a
     wait step, is passed to ``_wait`` so a scenario's ``interrupts`` handlers can clear an
     interstitial screen mid-wait (BE-0314). ``cancelled`` reaches the step kinds that poll —
     ``wait``, ``handleSystemAlert``, ``assert``, and ``email`` — so each notices a cancelled run

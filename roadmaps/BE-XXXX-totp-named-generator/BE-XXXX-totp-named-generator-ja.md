@@ -133,6 +133,10 @@ base32 として不正なシークレットは、あとの `otp` ステップで
 - [x] `otp` と `into` のない `totp` に対する codegen の `// TODO`
 - [x] ドキュメント（英語と日本語のシナリオリファレンス）とテスト
 
+ログ：
+
+- [#2436](https://github.com/bajutsu-e2e/bajutsu/pull/2436)：提案とすべての単位の実装を1つの変更で行いました。`totp` ステップに `name` と省略可能な `into` を加え、新しい `otp` ステップで名前付きのジェネレータを読み出せるようにしました。同じ名前を別のシークレットで登録し直すと、ステップは失敗します。窓の待機で壁時計が飛んだときの警告には、待機したステップの種類が入ります。ドキュメントは、シナリオリファレンスに加えて `docs/dsl-grammar.md`、`docs/architecture.md`、`docs/reporting.md` も更新しました。
+
 ## 参考
 
 - [BE-0046](../BE-0046-otp-email-steps/BE-0046-otp-email-steps-ja.md)：この提案が拡張する `totp` ステップを導入した項目です。

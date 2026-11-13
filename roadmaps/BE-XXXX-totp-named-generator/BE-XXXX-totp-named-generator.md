@@ -132,6 +132,14 @@ that `totp` already writes into `${vars.*}`.
 - [x] Codegen `// TODO` lines for `otp`, and the `into`-less `totp`
 - [x] Docs (English and Japanese scenario reference) and tests
 
+Log:
+
+- [#2436](https://github.com/bajutsu-e2e/bajutsu/pull/2436): Proposed and implemented every unit in
+  one change. The `totp` step gained `name` and an optional `into`, and the new `otp` step reads a
+  named generator back. A name registered again with a different secret fails the step. The window
+  wait's clock-jump warning names the step kind that waited. Besides the scenario reference, the
+  change updated `docs/dsl-grammar.md`, `docs/architecture.md`, and `docs/reporting.md`.
+
 ## References
 
 - [BE-0046 — OTP & email side-channel steps](../BE-0046-otp-email-steps/BE-0046-otp-email-steps.md)

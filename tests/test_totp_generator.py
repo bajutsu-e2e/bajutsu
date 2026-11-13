@@ -281,16 +281,19 @@ def test_a_generator_registered_in_setup_serves_the_steps() -> None:
 class _Clocks:
     """A monotonic fake clock whose wall clock moves with it, so a window wait ends at once."""
 
-    def __init__(self, phase: float) -> None:
+    def __init__(self, phase: float, jump: float = 0.0) -> None:
         self.mono = 0.0
         self.wall_t = _BOUNDARY + phase
+        # A one-off wall-clock shift on the first sleep — an NTP correction mid-wait.
+        self.jump = jump
 
     def now(self) -> float:
         return self.mono
 
     def sleep(self, seconds: float) -> None:
         self.mono += seconds
-        self.wall_t += seconds
+        self.wall_t += seconds + self.jump
+        self.jump = 0.0
 
     def wall(self) -> float:
         return self.wall_t
@@ -318,6 +321,22 @@ def test_otp_min_remaining_waits_for_the_next_window(monkeypatch: pytest.MonkeyP
     )
     assert c.wall_t == pytest.approx(_BOUNDARY + 30)
     assert _typed(driver) == [totp(_SEED, now=_BOUNDARY + 30)]
+
+
+def test_an_otp_jump_warning_names_the_otp_step(monkeypatch: pytest.MonkeyPatch) -> None:
+    c = _Clocks(phase=25, jump=62.0)
+    monkeypatch.setattr(
+        _functions, "_wait_for_totp_window", partial(_wait_for_totp_window, wall=c.wall)
+    )
+    monkeypatch.setattr(_HANDLER_TIME, c.wall)
+    scenario = _scenario(
+        {"totp": {"secret": _SEED, "name": "main"}},
+        {"otp": {"from": "main", "into": {"var": "code"}, "minRemaining": 10}},
+    )
+    result = run_scenario(FakeDriver([el("x", "X")]), scenario, clock=c)
+    assert result.ok, result.failure
+    [warning] = result.steps[1].warnings
+    assert warning.startswith("otp: wall clock jumped +62s during window wait;")
 
 
 def test_otp_without_min_remaining_never_waits(monkeypatch: pytest.MonkeyPatch) -> None:
