@@ -538,7 +538,8 @@ Each red run spent about half an hour of a runner billed at 10x. BE-0361 measure
   - `extract`, which captures an element's value, label, or identifier into `${vars.*}`.
 - DSL `totp` and `email` steps (BE-0046):
   - `totp` generates an RFC 6238 one-time password from a shared secret (commonly `${secrets.*}`) into `${vars.*}`. The step is local and deterministic, with no network and no model.
-  - The optional `minRemaining` of `totp` (BE-0474) makes the run loop wait, before the handler runs, for the next 30-second window when the current one has fewer seconds left. The wait ends on the boundary and is bounded by one window plus one cancellation slice. It records a non-fatal `StepOutcome.warnings` note when the wall clock jumped.
+  - A `totp` step with `name` also registers its secret in the scenario run's bindings, under a key holding a `}` so no `${...}` token can reach it. A later `otp` step names that generator in `from` and writes the code current at that step into `${vars.*}`; an unregistered name fails the step.
+  - The optional `minRemaining` of `totp` (BE-0474), and of `otp`, makes the run loop wait, before the handler runs, for the next 30-second window when the current one has fewer seconds left. The wait ends on the boundary and is bounded by one window plus one cancellation slice. It records a non-fatal `StepOutcome.warnings` note when the wall clock jumped.
   - `email` polls a mailbox (config `targets.<name>.services.mailbox`, a registry-based transport; `http` is the shipped adapter, BE-0186). It polls until a message that matches `to` / `subject` / `subjectMatches` arrives after the step started.
   - `email` then extracts a value through a `bodyMatches` regex into `${vars.*}`. The step is a condition wait bounded by `timeout`, never a fixed sleep.
 - DSL `generate` step (BE-0377): computes a value into `${vars.*}` with no network and no model. The step is a generator draw or a clock read in the runner.

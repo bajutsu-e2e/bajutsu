@@ -722,7 +722,8 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
 | `setLocation` | `setLocation: { lat: <num>, lon: <num> }` | シミュレータの GPS 位置を上書きする（`simctl location set`） |
 | `push` | `push: { payload: {...} }` | この APNs（Apple Push Notification service）ペイロードで疑似プッシュ通知を配信する（`simctl push`） |
 | `http` | `http: { method?, url, headers?, body?, status?, saveBody?, extractBody?: [{ var, path }] }` | HTTP リクエストを送る（テストデータ準備 / Webhook / API）。`status` を検証し、ボディを `${vars.<saveBody>}` に保存する、または `path` で指定した JSON のフィールドを `${vars.<var>}` に取り出す（[後述](#httpテストデータ準備用のリクエスト)） |
-| `totp` | `totp: { secret, into: { var } }` | RFC 6238 の時刻ベースワンタイムパスワード（2FA）をローカルで生成し `${vars.<var>}` に入れる |
+| `totp` | `totp: { secret, into?: { var }, name? }` | RFC 6238 の時刻ベースワンタイムパスワード（2FA）をローカルで生成し `${vars.<var>}` に入れる。`name` を指定すると、後続の `otp` ステップ向けにシークレットも登録する |
+| `otp` | `otp: { from, into: { var }, minRemaining? }` | `totp` ステップが `from` の名前で登録したジェネレータの現在のコードを `${vars.<var>}` に入れる（[後述](#otp-で後から新しいコードを取得する)） |
 | `email` | `email: { match: { to?, subject?, subjectMatches? }, extract: { var, bodyMatches }, timeout }` | 設定したメールボックスを一致するメッセージが届くまでポーリングし、コードを `${vars.<var>}` に取り出す |
 | `generate` | `generate: { random\|datetime: {...}, into: { var } }` | 乱数または現在日時の値を実行時に計算し、`${vars.<var>}` に保存する（[後述](#generate実行時に計算する値)） |
 | `eval` | `eval: { from, ops: [...], into: { var } \| { vars: [...] } }` | シナリオがすでに持つ値を分割、結合、絞り込みなどで変換し、`${vars.*}` に保存する（[後述](#eval変数に入った値の変換)） |
@@ -739,7 +740,7 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
 | `clearStatusBar` | `clearStatusBar: {}` | ステータスバーの上書きを解除する（ライブ表示に戻す） |
 | `use` | `use: { component: <file>, with?: {...} }` | 再利用コンポーネントの steps を展開する。コンパイル時マクロ（[再利用](#再利用とデータ駆動とタグ)）。**取れる修飾子は `target` だけ**：`capture` / `extract` / `name` / `from` は拒否され、`target` は展開後の全ステップに刻印される（[複数ターゲット](#複数ターゲットシナリオでのコンポーネント)） |
 | `group` | `group: { name: <str>, steps: [...] }` | 連続するステップに名前を付ける。コンパイル時マクロで、report.html では折りたたんで表示する（[後述](#ステップのグループ化group--reporthtmlで折りたたむ)） |
-| `web` | `web: { within: <Selector>, steps: [...] }` | WebView の DOM コンテキストに入ります。`within` がホストの WebView（iOS では `WKWebView`、Android では任意の WebView）をネイティブに解決し、入れ子の `steps` はネイティブツリーではなく正規化された DOM を対象にします（[後述](#webwebview-の-dom-コンテキストに入る)） |
+| `web` | `web: { within: <Selector>, steps: [...] }` | WebView の DOM コンテキストに入ります。`within` がホストの WebView をネイティブに解決し、入れ子の `steps` はネイティブツリーではなく正規化された DOM を対象にします（[後述](#webwebview-の-dom-コンテキストに入る)） |
 
 修飾子（`use` ステップに付けられるのは `target` だけです。上表を参照）:
 
@@ -842,7 +843,33 @@ Android の adb バックエンドは、`tap` が対象を解決するのと同�
       - wait: { for: { id: pay.confirmation }, timeout: 10 }
 ```
 
-`web` は `within` をネイティブに解決し、ちょうど 1 つの WebView ホスト（iOS では `WKWebView`、adb を使う Android では任意の `WebView`）を指します。入れ子の `steps` は、アプリのネイティブなアクセシビリティツリーではなく、その WebView の正規化された DOM（`data-testid` → `Element.identifier`）を対象にします。web コンテンツをネイティブアプリに埋め込んだハイブリッド画面向けの構造です（[BE-0037](../../roadmaps/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support-ja.md)）。ブロックの `steps` を終えると、制御はネイティブドライバーに戻ります。入れ子の `steps` は、`if` や `forEach` の分岐と同じく、囲むシナリオの `vars.*` を共有します。`capture` / `extract` 修飾子は `web` ステップ自体には使えません。iOS では BajutsuKit の WebView ブリッジの設定（`BAJUTSU_WEBVIEW_PORT`）が必要です。Android では代わりに、[`BajutsuAndroid`](../../BajutsuAndroid/README.md) ライブラリのヘルパー `Bajutsu.enableWebViewDebugging(this)` を使います。デバッグ可能なビルドのアプリが、このヘルパーを `Application.onCreate` で呼び出します。bajutsu は `adb forward` 経由で WebView 自身の Chrome DevTools Protocol ソケットに到達します（[BE-0482](../../roadmaps/BE-0482-android-webview-cdp/BE-0482-android-webview-cdp-ja.md)）。マニフェストがデバッグ可能としていないビルドでは、このヘルパーは何も有効にしません。WebView を別の `android:process` に置くアプリは、そのプロセスの中だけで（または `WebView.setDataDirectorySuffix` の後で）ヘルパーを呼び出します。`Application.onCreate` はすべてのプロセスで実行されます。そしてヘルパーの呼び出しは WebView を読み込み、プロセスごとのデータディレクトリのロックを取ります。API 28 以降は、このロックを 2 つのプロセスで共有することを拒否します。どちらの経路であっても、到達できないときは何もせず済ませるのではなくステップを明確に失敗させます。この最初の実装は、ブロック内の `tap` / `tapPoint` / `doubleTap` / `type` / `wait` / `assert` に対応しています。`longPress` / `swipe` / `drag` / `clear` / `delete` / `select` / `copy` / `selectOption` / `scroll` / `back` / `navigate` / `pinch` / `rotate` / `handleSystemAlert` / `setPickerValue` はそこに届かず、いずれも「web コンテキストは非対応」という明確な理由で失敗します。
+`web` は、ネイティブアプリが埋め込んだブラウザのビューである WebView の Document Object Model（DOM）に対して、入れ子の `steps` を実行します。ステップが対象にするのは、アプリのネイティブなアクセシビリティツリーではなく、ページの正規化された DOM（`data-testid` → `Element.identifier`）です。アプリの UI の一部をアプリ内の web コンテンツが担うハイブリッド画面向けの構造です。iOS は [BE-0037](../../roadmaps/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support-ja.md)、Android は [BE-0482](../../roadmaps/BE-0482-android-webview-cdp/BE-0482-android-webview-cdp-ja.md) で対応しました。同じブロックが、両方のプラットフォームで変更なしに動きます。ブロックの `steps` を終えると、制御はネイティブドライバーに戻ります。入れ子の `steps` は、`if` や `forEach` の分岐と同じく、囲むシナリオの `vars.*` を共有します。`capture` / `extract` 修飾子は `web` ステップ自体には使えません。
+
+**ブロックが WebView を指す仕組み。** `within` は通常のセレクタで、`id` を必ず含みます。run はセレクタ全体をネイティブのツリーで解決し、ちょうど 1 つの要素、つまりホストの WebView を得ます。一致が 0 件、または 2 件以上ならステップは失敗します。ほかのセレクタと同じ扱いです。その要素の背後にあるページは、プラットフォームごとに次のように探します。
+
+| プラットフォーム | run がページに到達する経路 | 選ぶページ |
+|---|---|---|
+| iOS | BajutsuKit の WebView ブリッジです。アプリ内の Hypertext Transfer Protocol（HTTP）サーバーで、run が `BAJUTSU_WEBVIEW_PORT` として渡すポートで待ち受けます。 | アクセシビリティ識別子が `within` の最初の id と等しい `WKWebView` です。 |
+| Android | Chrome DevTools Protocol（CDP）です。WebView のデバッグ用ソケットを、run がブロックの間だけ `adb` で転送します。 | アタッチ済みで表示中のページのうち、`within` が解決したフレームを矩形に含む 1 つです。一致が 0 件、または 2 件以上なら、あいまいとしてステップを失敗させます。 |
+
+Android は、等しさではなく包含で照合します。2 つの矩形の測る範囲が違うからです。ネイティブのツリーは、ビューの範囲を画面と祖先のビューで切り詰めて報告します。CDP は、ページの切り詰めていない矩形を報告します。そのため、ツールバーの下に一部が隠れた WebView でも一致します。
+
+**アプリが用意するもの。** 用意がないときは、何もせず済ませるのではなく、足りないものを名指しする理由でステップを失敗させます。
+
+- **iOS**：アプリが BajutsuKit をリンクし、`BajutsuNet.startIfEnabled()` を呼びます。この呼び出しは、run がポートを渡したときにブリッジを起動します。`WKWebView` にはアクセシビリティ識別子を付けます。
+- **Android**：デバッグ可能なビルドが、`Application.onCreate`、または最初の WebView を作る直前に `Bajutsu.enableWebViewDebugging(context)` を呼びます。このヘルパーは [BajutsuAndroid](../../BajutsuAndroid/README.ja.md#webview-のデバッグ) の関数です。どの debug ビルドタイプも `android:debuggable` を設定します。このヘルパーはデバッグ可能でないビルドでは何もしないので、リリースビルドがソケットを開くことはありません。bajutsu を動かすマシンには `android` extra（`websockets`）が要ります。構成済みのバックエンドに Android が含まれていれば、`scripts/install.sh` がこの extra を入れます。WebView を別の `android:process` に置くアプリは、ヘルパーをそのプロセスの中だけで呼び出します。`WebView.setDataDirectorySuffix` を呼んだ後であれば、ほかのプロセスで呼んでもかまいません。理由は次のとおりです。`Application.onCreate` はすべてのプロセスで実行され、ヘルパーの呼び出しは WebView を読み込んで、プロセスごとのデータディレクトリのロックを取ります。API 28 以降は、このロックを 2 つのプロセスで共有することを拒否します。
+
+**ブロックが対応する範囲。** ブロックの中では `tap` / `tapPoint` / `doubleTap` / `type` / `wait` / `assert` が動きます。`longPress` / `swipe` / `drag` / `clear` / `delete` / `select` / `copy` / `selectOption` / `scroll` / `back` / `navigate` / `pinch` / `rotate` / `handleSystemAlert` / `setPickerValue` はそこに届きません。いずれも「web コンテキストは非対応」という明確な理由で失敗します。次の場合も、ブロックの対象外です。
+
+| 場合 | 起きること |
+|---|---|
+| `<iframe>` の中のコンテンツ | DOM の走査はフレームの文書を飛ばすので、セレクタはその中の要素を指せません。 |
+| ファイル選択（`<input type="file">`） | タップは入力欄に届きますが、開く選択画面はページの外にあるシステムの画面なので、ブロックからは操作できません。 |
+| Android で重なり合う 2 つの WebView | 両方の矩形がフレームを含むので、推測せずにあいまいとしてステップを失敗させます。 |
+| Android でブロックの途中にアプリが再起動する | デバッグ用ソケットが閉じ、通信の理由でステップが失敗します。 |
+| Android で別のデバッガーがすでにページにアタッチしている | ページは 2 本目の接続を受け付けず、ステップが失敗します。 |
+| `web:` ブロックを使わず、WebView の中身をネイティブのラベルでタップする | 非対応です。ネイティブのツリーは WebView の中身を選択できるほど細かく示さないことが多く、対応する経路はブロックです。 |
+| システムがアプリの上に表示するブラウザのタブ | 非対応です。そのビューは別のブラウザアプリに属するので、ブリッジにもアプリのデバッグ用ソケットにも届きません。 |
 
 ### `app`
 
@@ -1073,6 +1100,33 @@ assertするまで、新しいステップもランナーの変更も要りま�
 待機は、作成者が決めた長さで止まるのではなく、時計が決めるウィンドウの境界で終わります。そのため待ち時間は1ウィンドウ以内に収まり、決定性監査も `fixed-sleep` として挙げません。実行中のログはこのステップを `totp (≥10s left)` と表示し、待った時間はレポートのステップの所要時間に現れます。
 
 待機の途中で壁時計が飛んだ場合（Network Time Protocol（NTP）による補正など）も、ステップは成功として扱われます。その代わり、レポートのステップ行に警告が残り、飛んだ秒数と残り秒数を示します。後のサインインが期限切れのコードで失敗したとき、この警告が原因の手がかりになります。
+
+#### `otp` で後から新しいコードを取得する
+
+コードを何度も入力するシナリオや、開始からかなり後でコードを入力するシナリオでは、シークレットを一度だけ登録し、コードが必要な時点でそれぞれ取得します。
+`totp` ステップに `name` を付け、`otp` ステップの `from` でそのジェネレータを指定します。
+
+```yaml
+- totp: { secret: "${secrets.TOTP_SEED}", name: main }   # ジェネレータを登録する。コードは書き込まない
+- tap: { id: auth.change_password }
+# ... 任意の数のステップ ...
+- otp: { from: main, into: { var: code }, minRemaining: 10 }   # vars.code ← この時点で有効なコード
+- type: { text: "${vars.code}", into: { id: auth.code } }
+```
+
+`totp` ステップには `name` と `into` の少なくとも一方が必要です。ジェネレータを登録するだけのステップは `into` を省略できます。
+使用中の名前に別のシークレットを登録すると、ステップは失敗します。
+`totp` ステップの `minRemaining` には `into` が必要です。コードを生成しないステップには、有効に保つコードがないからです。
+`totp` ステップはシークレットを登録する時点で検証するので、不正なシークレットはあとの `otp` ではなくその `totp` ステップを失敗させます。
+
+`otp` ステップは実行された時点で時計を読むので、各 `otp` はそのステップの時点で有効な窓のコードを書き込みます。
+`totp` と同じ `minRemaining` の待機を指定でき、実行中のログはこのステップを `otp (≥10s left)` と表示します。
+登録の順序は実行の順序に従います。
+ジェネレータがまだ登録されていない `otp` はステップの失敗になり、実行されなかった `if` 分岐の中の `totp` も何も登録しません。
+ジェネレータはシナリオの実行が終わるまで有効で、`if`、`forEach`、`group` の本体からも使えます。
+
+登録したシークレットには、どの `${...}` トークンからも届きません。そのため、シナリオがシークレットを読み出して入力欄へ入れることはできません。
+`otp` ステップ自体はシークレットを持たないので、証跡に残るのはジェネレータの名前だけです。
 
 ### `email`（メールで届くコードをメールボックスから取得）
 

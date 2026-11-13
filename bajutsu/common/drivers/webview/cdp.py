@@ -22,10 +22,12 @@ _INSTALL_HINT = "uv sync --extra android"
 class WebViewTransportError(Exception):
     """The channel to a WebView could not carry a request through.
 
-    One type for every way the channel fails — the socket is missing, the `websockets` package is
-    absent, CDP answers with an error, the page has no field to type into, or a navigation or an app
-    restart closes the WebSocket mid-block — so the run loop fails that one `web:` block with this
-    reason instead of letting the exception discard the whole run.
+    One type for every way either channel fails, so the run loop fails that one `web:` block with
+    this reason instead of letting the exception discard the whole run. On Android (CDP): the socket
+    is missing, the `websockets` package is absent, CDP answers with an error, the page has no field
+    to type into, or an app restart closes the WebSocket mid-block. On iOS (the BajutsuKit bridge,
+    `WebViewBridge`): the bridge is unreachable, answers with an HTTP error status, or answers with a
+    body that is not a JSON object.
     """
 
 

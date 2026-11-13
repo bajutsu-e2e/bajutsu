@@ -87,6 +87,11 @@ final class AppModel: ObservableObject {
     /// in-memory tab app every other scenario drives stays untouched.
     let savedNoteMode: Bool
 
+    /// Swaps the whole UI for the hybrid screen (`SHOWCASE_WEBVIEW`, BE-0482): a native title over a
+    /// `WKWebView` that renders a bundled page, so a scenario's `web:` block has one WebView to
+    /// enter. A launch-env swap like `SHOWCASE_PICKERS`, so the tab app stays untouched.
+    let webViewMode: Bool
+
     /// A test-only affordance gated on the SHOWCASE_NOTIFICATION_BANNER launch env, mirroring
     /// gestures above (BE-0416 Unit 5). When set, the app renders a flat screen with one target
     /// pinned at a known point near the top of the screen — inside the frame Unit 1 measured for a
@@ -109,6 +114,7 @@ final class AppModel: ObservableObject {
         signInMode = env["SHOWCASE_SIGNIN"] != nil
         crashMode = env["SHOWCASE_CRASH"] != nil
         savedNoteMode = env["SHOWCASE_SAVED_NOTE"] != nil
+        webViewMode = env["SHOWCASE_WEBVIEW"] != nil
         notificationBannerMode = env["SHOWCASE_NOTIFICATION_BANNER"] != nil
         tipKitMode = env["SHOWCASE_TIPKIT"] != nil
         conformanceIDs = Self.conformanceIDs(env["SHOWCASE_CONFORMANCE"])
