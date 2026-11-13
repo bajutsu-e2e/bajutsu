@@ -81,6 +81,11 @@ def _resolves_to_batch(spec: dict[str, Any], advertised: list[str]) -> bool:
     )
 
 
+# The most jobs one lease request may take. With no cap configured nothing else bounds a bundle, so
+# a worker that died after one poll could otherwise strand a whole fan-out until its leases lapse.
+MAX_LEASE_JOBS = 100
+
+
 def worker_lease(
     state: ServeState,
     worker_id: str,
@@ -128,9 +133,11 @@ def worker_lease(
     if not worker_id:
         return {"error": "worker_id is required"}, 400
     if max_jobs is not None and (
-        not isinstance(max_jobs, int) or isinstance(max_jobs, bool) or max_jobs < 1
+        not isinstance(max_jobs, int)
+        or isinstance(max_jobs, bool)
+        or not 1 <= max_jobs <= MAX_LEASE_JOBS
     ):
-        return {"error": "maxJobs must be a positive integer"}, 400
+        return {"error": f"maxJobs must be an integer from 1 to {MAX_LEASE_JOBS}"}, 400
     advertised = _clean_capabilities(capabilities)
     state.repository.register_worker(worker_id, advertised)
     leased = state.repository.lease_jobs(
