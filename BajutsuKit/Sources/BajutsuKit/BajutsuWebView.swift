@@ -128,12 +128,18 @@ public enum BajutsuWebView {
     """
 
     /// JavaScript template to click a point inside the WebView.
+    ///
+    /// A script `click()` moves no focus, unlike a finger, so a field tapped here would leave
+    /// `typeJS` with nothing focused; focusing the element first lets `type: { into: }` work, as it
+    /// does on Android, where the tap is a real touch (BE-0482).
     static func tapJS(x: Double, y: Double) -> String {
         """
         (() => {
           const el = document.elementFromPoint(\(x), \(y));
-          if (el) { el.click(); return 'ok'; }
-          return 'not-found';
+          if (!el) return 'not-found';
+          if (typeof el.focus === 'function') el.focus();
+          el.click();
+          return 'ok';
         })()
         """
     }
@@ -158,7 +164,7 @@ public enum BajutsuWebView {
         let json = _jsonEncode(elementId)
         return """
         (() => {
-          const el = document.querySelector('[data-testid=' + \(json) + ']');
+          const el = document.querySelector('[data-testid="' + CSS.escape(\(json)) + '"]');
           if (!el) return 'not-found';
           el.scrollIntoView({ behavior: 'instant', block: 'center' });
           return 'ok';
@@ -166,8 +172,10 @@ public enum BajutsuWebView {
         """
     }
 
+    // A bare string is a JSON fragment: without `.fragmentsAllowed`, `JSONSerialization` raises an
+    // Objective-C exception, which `try?` cannot catch, and the app aborts on every type or scroll.
     private static func _jsonEncode(_ s: String) -> String {
-        guard let data = try? JSONSerialization.data(withJSONObject: s),
+        guard let data = try? JSONSerialization.data(withJSONObject: s, options: .fragmentsAllowed),
               let json = String(data: data, encoding: .utf8) else { return "\"\"" }
         return json
     }
@@ -318,12 +326,14 @@ private final class _BridgeServer {
         #if canImport(WebKit)
         let semaphore = DispatchSemaphore(value: 0)
         var elements: [[String: Any]] = []
+        var found = false
 
         DispatchQueue.main.async {
             guard let wv = BajutsuWebView.findWebView(id: id) else {
                 semaphore.signal()
                 return
             }
+            found = true
             wv.evaluateJavaScript(BajutsuWebView.queryJS) { result, _ in
                 if let records = result as? [[String: Any]] {
                     elements = records
@@ -332,6 +342,14 @@ private final class _BridgeServer {
             }
         }
         semaphore.wait()
+        // A missing view is an error, not an empty page: an empty list would surface only later, as
+        // "element not found", without naming the identifier `within` asked for.
+        guard found else {
+            _writeJSON(fd, status: 404, object: [
+                "status": "error", "message": "no WKWebView with accessibilityIdentifier '\(id)'",
+            ])
+            return
+        }
         _writeJSON(fd, status: 200, object: ["elements": elements])
         #else
         _writeJSON(fd, status: 200, object: ["elements": []])

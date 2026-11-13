@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sys
 import threading
+import time
 from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
@@ -255,8 +256,23 @@ class _Adb:
         return ""
 
 
+class _FakeClock:
+    def __init__(self) -> None:
+        self.now = 0.0
+        self.sleeps: list[float] = []
+
+    def __call__(self) -> float:
+        return self.now
+
+    def sleep(self, s: float) -> None:
+        self.sleeps.append(s)
+        self.now += s
+
+
 def _source(
-    transport: RecordedTransport, targets: list[dict[str, Any]] | None = None
+    transport: RecordedTransport,
+    targets: list[dict[str, Any]] | None = None,
+    clock: _FakeClock | None = None,
 ) -> tuple[CdpDomSource, _Adb, list[str]]:
     run = _Adb()
     urls: list[str] = []
@@ -273,6 +289,8 @@ def _source(
             targets if targets is not None else [_target(0, 0, 1080, 2400)]
         ),
         connect=connect,
+        clock=clock if clock is not None else time.monotonic,
+        sleep=clock.sleep if clock is not None else time.sleep,
     )
     return src, run, urls
 
@@ -336,10 +354,128 @@ def test_tap_hit_tests_then_sends_a_touch_start_and_end() -> None:
         "Runtime.evaluate",
         "Input.dispatchTouchEvent",
         "Input.dispatchTouchEvent",
+        "Runtime.evaluate",
     ]
     assert "elementFromPoint(10.5, 20.0)" in t.sent[0]["params"]["expression"]
+    assert "addEventListener('click'" in t.sent[0]["params"]["expression"]
     assert t.sent[1]["params"] == {"type": "touchStart", "touchPoints": [{"x": 10.5, "y": 20.0}]}
     assert t.sent[2]["params"]["type"] == "touchEnd"
+
+
+def _clocked_source(t: RecordedTransport, clock: _FakeClock) -> CdpDomSource:
+    return _source(t, clock=clock)[0]
+
+
+def test_tap_waits_for_the_page_click_that_lands_after_the_touch() -> None:
+    # The emulator's WebView fires the click (and focuses a field) about 250 ms after `touchEnd`
+    # returns; the tap is not done until then, so a following `type` finds the field focused.
+    checks = iter([False, False, True])
+
+    def responder(method: str, p: dict[str, Any]) -> dict[str, Any]:
+        if method != "Runtime.evaluate":
+            return {"result": {}}
+        return _value(next(checks) if "__bajutsuTapClicked ===" in p["expression"] else True)
+
+    clock = _FakeClock()
+    src = _clocked_source(RecordedTransport(responder), clock)
+    with src.session("web", (0, 0, 1, 1)):
+        src.tap_element("web", (1.0, 2.0))
+    assert len(clock.sleeps) == 2
+
+
+def test_tap_stops_waiting_for_a_click_the_page_cancels() -> None:
+    def responder(method: str, p: dict[str, Any]) -> dict[str, Any]:
+        if method != "Runtime.evaluate":
+            return {"result": {}}
+        return _value("__bajutsuTapClicked ===" not in p["expression"])
+
+    clock = _FakeClock()
+    src = _clocked_source(RecordedTransport(responder), clock)
+    with src.session("web", (0, 0, 1, 1)):
+        src.tap_element("web", (1.0, 2.0))
+    assert 3.0 <= clock.now < 3.1
+
+
+def test_tap_widens_its_click_wait_to_the_lane_wait_floor(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The CI emulator lane sets the condition-wait floor; the click poll honors it like any wait.
+    monkeypatch.setenv("BAJUTSU_MIN_WAIT_TIMEOUT", "15")
+
+    def responder(method: str, p: dict[str, Any]) -> dict[str, Any]:
+        if method != "Runtime.evaluate":
+            return {"result": {}}
+        return _value("__bajutsuTapClicked ===" not in p["expression"])
+
+    clock = _FakeClock()
+    src = _clocked_source(RecordedTransport(responder), clock)
+    with src.session("web", (0, 0, 1, 1)):
+        src.tap_element("web", (1.0, 2.0))
+    assert 15.0 <= clock.now < 15.1
+
+
+@pytest.mark.parametrize("floor", ["1", "not-a-number"])
+def test_tap_keeps_its_click_wait_under_a_lower_or_malformed_floor(
+    monkeypatch: pytest.MonkeyPatch, floor: str
+) -> None:
+    monkeypatch.setenv("BAJUTSU_MIN_WAIT_TIMEOUT", floor)
+
+    def responder(method: str, p: dict[str, Any]) -> dict[str, Any]:
+        if method != "Runtime.evaluate":
+            return {"result": {}}
+        return _value("__bajutsuTapClicked ===" not in p["expression"])
+
+    clock = _FakeClock()
+    src = _clocked_source(RecordedTransport(responder), clock)
+    with src.session("web", (0, 0, 1, 1)):
+        src.tap_element("web", (1.0, 2.0))
+    assert 3.0 <= clock.now < 3.1
+
+
+def test_tap_counts_a_page_torn_down_by_its_click_as_landed() -> None:
+    # A link's click navigates: the first read finds the old context destroyed, the next reads the new
+    # document, whose flag is `undefined` and so reads as landed.
+    reads = iter([{"error": {"message": "Execution context was destroyed."}}, _value(True)])
+
+    def responder(method: str, p: dict[str, Any]) -> dict[str, Any]:
+        if method != "Runtime.evaluate":
+            return {"result": {}}
+        return next(reads) if "__bajutsuTapClicked ===" in p["expression"] else _value(True)
+
+    clock = _FakeClock()
+    src = _clocked_source(RecordedTransport(responder), clock)
+    with src.session("web", (0, 0, 1, 1)):
+        src.tap_element("web", (1.0, 2.0))
+    assert len(clock.sleeps) == 1
+
+
+def test_tap_reads_a_missing_click_flag_as_a_navigated_page() -> None:
+    clock = _FakeClock()
+    t = RecordedTransport(lambda m, _p: _value(True) if m == "Runtime.evaluate" else {"result": {}})
+    src = _clocked_source(t, clock)
+    with src.session("web", (0, 0, 1, 1)):
+        src.tap_element("web", (1.0, 2.0))
+    poll = [m["params"]["expression"] for m in t.sent if "__bajutsuTapClicked ===" in str(m)]
+    assert poll == [
+        "window.__bajutsuTapClicked === true || window.__bajutsuTapClicked === undefined"
+    ]
+
+
+def test_tap_fails_when_the_click_poll_never_reads_again() -> None:
+    # A tap that kills the app (or drops the forward) fails every read; it must not pass as landed.
+    def responder(method: str, p: dict[str, Any]) -> dict[str, Any]:
+        if method != "Runtime.evaluate":
+            return {"result": {}}
+        if "__bajutsuTapClicked ===" in p["expression"]:
+            return {"error": {"message": "WebView DevTools socket closed"}}
+        return _value(True)
+
+    clock = _FakeClock()
+    src = _clocked_source(RecordedTransport(responder), clock)
+    with (
+        src.session("web", (0, 0, 1, 1)),
+        pytest.raises(WebViewTransportError, match="socket closed"),
+    ):
+        src.tap_element("web", (1.0, 2.0))
+    assert clock.now >= 3.0
 
 
 def test_tap_at_a_point_with_no_element_fails_before_any_touch() -> None:

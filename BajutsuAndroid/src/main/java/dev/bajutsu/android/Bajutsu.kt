@@ -88,8 +88,10 @@ object Bajutsu {
      * Turns on WebView debugging, which opens each WebView's `webview_devtools_remote_<pid>` socket —
      * the Chrome DevTools Protocol channel bajutsu forwards with `adb` to query the DOM and dispatch
      * touches. Whether a WebView in a debuggable app enables this by itself has varied across WebView
-     * versions, so the explicit call removes that dependence. Call it from `Application.onCreate`,
-     * before any WebView is created.
+     * versions, so the explicit call removes that dependence. Call it before any WebView is created:
+     * right before the first one, or from `Application.onCreate`. The call loads the WebView provider,
+     * so the earlier placement loads it on every launch, where an update to the WebView package can
+     * relaunch an activity mid-test even when no WebView is ever shown.
      *
      * It acts only when the app is debuggable (`android:debuggable`, set by every debug build type),
      * and is a no-op otherwise. While debugging is on, any process on the device can connect to the

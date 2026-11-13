@@ -58,7 +58,7 @@ iOS の実機では、`simctl` が提供する能力がなくなります。こ�
 | `appTrace` | ✅ | ✅ | iOS はアプリの `os_log` を取り込みます。Android は `logcat` からアプリ自身のログ行をタグで絞って読みます（[BE-0478](../../roadmaps/BE-0478-android-device-control-parity/BE-0478-android-device-control-parity-ja.md)）。 |
 | `multiTouch` | ✅ | ✅ | Android は常駐 UI Automator サーバーで 2 本の指を注入します。サーバーがないときは、root 化した端末が必要です。 |
 | `textSelection` | ✅ | ✅ | Android 12 以降が必要です。振る舞いの差の表を参照してください。 |
-| `webView` | per-run | gap | iOS では、アプリが BajutsuKit の WebView ブリッジを組み込んでいるときに付与されます。Android にはブリッジがありません。Chrome の WebView デバッグ用ポートが実現の候補です。 |
+| `webView` | per-run | per-run | iOS では、アプリが BajutsuKit の WebView ブリッジを組み込んでいるときに付与されます。Android では、デバッグ可能なビルドが `Bajutsu.enableWebViewDebugging` を呼んでいるときに付与されます。run はそのページに Chrome DevTools Protocol で到達します（[BE-0482](../../roadmaps/BE-0482-android-webview-cdp/BE-0482-android-webview-cdp-ja.md)）。振る舞いの表も参照してください。 |
 | `selectOption` | n/a | n/a | web ページの `<select>` 要素を設定する能力で、web バックエンドだけが持ちます。 |
 | `urlNavigation` | n/a | n/a | シナリオの途中でブラウザに web アドレスを開かせる能力です。モバイルの2つのバックエンドは、ディープリンクを起動時の前提条件として開きます。 |
 | `elementAttribute` | n/a | n/a | web ページの要素の属性を読む能力で、web バックエンドだけが持ちます。 |
@@ -115,6 +115,7 @@ iOS の実機では、`simctl` が提供する能力がなくなります。こ�
 | 入力欄の文字 | 要素の `value` に文字が入ります。 | `value` にも文字が入ります（#2388）。ただし差が 2 つ残ります。`uiautomator dump` によるフォールバックのダンプには `hint` 属性がないので、空の入力欄のヒントを値として読みます。また、どのダンプにも `isShowingHintText` がないので、ヒントと同じ文字は値なしとして読みます。 | フォールバックの経路では、空の入力欄に対する `value` アサーションがヒントを読みます。ヒントと同じ文字が入った入力欄では、`clear` ステップが何もしません。詳しくは [drivers](drivers.md) を参照してください。 |
 | `select` と `copy` | XCUITest がネイティブに選択とコピーをします。 | adb は `input keycombination` で Ctrl+A と Ctrl+C を送ります。Android 12 以降が必要です。 | Android の end-to-end（E2E）レーンが、Compose と Views の両方でこの2つを実行します。コピーした文字列はクリップボードから読み戻して確かめます。 |
 | `setLocation` | シミュレータ上で `simctl` が設定します。 | ローカルのエミュレータではコンソールが設定します。それ以外では、adb が mock location の app-op を許可したあと、アプリ内のレシーバが `gps` と `network` の provider を mock します（[BE-0481](../../roadmaps/BE-0481-android-device-set-location/BE-0481-android-device-set-location-ja.md)）。 | iOS はまだ実機で位置を設定できず、[BE-0475](../../roadmaps/BE-0475-ios-runner-set-location/BE-0475-ios-runner-set-location-ja.md) が扱います。Android の実機では、BajutsuAndroid を組み込んでいないアプリはこのステップで失敗します。 |
+| `web:` ブロック | ブリッジが `within` の最初の id で `WKWebView` を探します。タップはスクリプトによるクリックです。 | `within` が解決したフレームを矩形に含むページを、run が選びます。タップは信頼されたタッチで、ページにクリックが届いた時点で終わります。 | 同じ `web:` ブロックが両方で動きます。Android では、重なり合う 2 つの WebView はあいまいとしてステップを失敗させます。リリースビルドはデバッグ用ソケットを開きません。[シナリオ](scenarios.md#webwebview-の-dom-コンテキストに入る)を参照してください。 |
 | クリップボードのステップ | `simctl` がペーストボードを読み書きします。 | アプリ内の受信部が処理します。アプリが BajutsuAndroid をリンクしている必要があります。Android 10 以降は、フォーカスを持つアプリしかクリップボードを読めません。 | BajutsuAndroid のないアプリでは、クリップボードのステップはすべて失敗します。アプリがバックグラウンドにあるときの読み取りも失敗します。 |
 
 ## テストによる表の検証
