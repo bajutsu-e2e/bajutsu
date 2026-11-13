@@ -324,6 +324,9 @@ def _emit_step(step: Step) -> list[str]:  # noqa: C901, PLR0911, PLR0912
             f"{target}.tap()",
             'if !app.staticTexts["Paste"].waitForExistence(timeout: 1.0) '
             f"{{ {target}.press(forDuration: 0.6) }}",
+            # The driver waits for the menu's item too; `tap()` itself carries no existence wait.
+            'XCTAssertTrue(app.staticTexts["Paste"].waitForExistence(timeout: 5.0), '
+            '"wait for the edit menu Paste")',
             'app.staticTexts["Paste"].tap()',
         ]
     if step.sleep is not None:

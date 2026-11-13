@@ -971,7 +971,7 @@ class PlaywrightDriver:
         # Focus, then paste the clipboard at the caret; Cmd+V on a macOS host for the same reason as
         # `copy`.
         self.tap(sel)
-        self._actuations.record(Actuation(gesture="paste", via="focused", unit=_UNIT))
+        self._record_actuation(Actuation(gesture="paste", via="focused", unit=_UNIT))
         self._page.keyboard.press("ControlOrMeta+v")
 
     @_wedge_guard

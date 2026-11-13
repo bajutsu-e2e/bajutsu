@@ -106,7 +106,7 @@ final class ComponentsUITests: XCTestCase {
 | `delete { count }` | `.tap()` + 削除キーを `count` 回（`typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count:))`、BE-0265） |
 | `select` | `.tap()` + 全選択（BE-0265） |
 | `copy` | `app.typeKey("c", modifierFlags: .command)` |
-| `paste` | `.tap()` のあと、編集メニューがまだ出ていなければ `.press(forDuration: 0.6)` で長押しを加え、`app.staticTexts["Paste"].tap()` で編集メニューから貼り付けます。ドライバーと同じ方法です。ラベルは英語なので、ほかの言語にローカライズしたアプリでは書き換えが必要です |
+| `paste` | `.tap()` のあと、編集メニューがまだ出ていなければ `.press(forDuration: 0.6)` で長押しを加え、`app.staticTexts["Paste"]` の出現を `waitForExistence(timeout: 5.0)` で待ってからタップし、編集メニューから貼り付けます。ドライバーと同じ方法です。ラベルは英語なので、ほかの言語にローカライズしたアプリでは書き換えが必要です |
 | `back` | OS のナビゲーション戻るボタンを tap します。XCUITest ドライバが実行時に tap するのと同じ要素（共有定数、BE-0210） |
 | `navigate` | `// TODO: navigate(url: …) — web-only; not generated`（BE-0464） |
 | `sleep` | `// fixed pause: <reason>` と `Thread.sleep(forTimeInterval: <秒>)` |

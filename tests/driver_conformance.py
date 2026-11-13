@@ -669,13 +669,15 @@ class DriverConformanceContract:
                 assert token in harness.clipboard_text()
             # Paste is the same promise's third chord. Delete the still-active selection first, so
             # a paste that inserts nothing leaves the field without the token instead of passing on
-            # the text that was already there; a backend that never surfaces `value` can't show it.
+            # the text that was already there. Probe `value` while the token is still in the field,
+            # so "this backend surfaces no value" stays distinct from "the paste inserted nothing",
+            # which the emptied field would hide.
+            surfaces_value = bool(field_value(driver))
             driver.select_all()
             driver.delete_text(1)
             driver.paste({"id": FIELD_ID})  # must not raise
-            pasted = field_value(driver)
-            if pasted:
-                assert token in pasted
+            if surfaces_value:
+                assert token in field_value(driver)
         else:
             with pytest.raises(base.UnsupportedAction):
                 driver.select_all()

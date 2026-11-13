@@ -77,6 +77,10 @@ def test_paste_taps_the_edit_menu_paste_item() -> None:
         'if !app.staticTexts["Paste"].waitForExistence(timeout: 1.0) '
         '{ el("form.coupon").press(forDuration: 0.6) }' in code
     )
+    assert (
+        'XCTAssertTrue(app.staticTexts["Paste"].waitForExistence(timeout: 5.0), '
+        '"wait for the edit menu Paste")'
+    ) in code
     assert 'app.staticTexts["Paste"].tap()' in code
     assert 'typeKey("v"' not in code
 

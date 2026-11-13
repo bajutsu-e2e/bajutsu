@@ -107,7 +107,7 @@ the selector at `el("UNSUPPORTED_SELECTOR")` — an honest gap, not a wrong gues
 | `delete { count }` | `.tap()` + `count` delete keypresses (`typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count:))`, BE-0265) |
 | `select` | `.tap()` + select-all (BE-0265) |
 | `copy` | `app.typeKey("c", modifierFlags: .command)` |
-| `paste` | `.tap()`, a `.press(forDuration: 0.6)` unless the edit menu is already up, then `app.staticTexts["Paste"].tap()` — the edit menu, as the driver uses it; the label is English, so an app localized elsewhere needs its own |
+| `paste` | `.tap()`, a `.press(forDuration: 0.6)` unless the edit menu is already up, then a `waitForExistence(timeout: 5.0)` on `app.staticTexts["Paste"]` and its `.tap()` — the edit menu, as the driver uses it; the label is English, so an app localized elsewhere needs its own |
 | `back` | taps the OS navigation back button — the same element (and shared constant) the XCUITest driver taps at run time (BE-0210) |
 | `navigate` | `// TODO: navigate(url: …) — web-only; not generated` (BE-0464) |
 | `sleep` | `// fixed pause: <reason>` + `Thread.sleep(forTimeInterval: <seconds>)` |
