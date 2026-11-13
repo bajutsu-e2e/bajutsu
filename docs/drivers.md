@@ -539,7 +539,7 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   > not-found case specifically, not the portable idiom.
   >
   > A **different, narrower** safety net now covers every backend that can hit-test a point (all
-  > except the app-embedded WebView bridge, `WebContextDriver`, whose protocol exposes none): before
+  > except the app-embedded WebView context, `WebContextDriver`, whose protocol exposes none): before
   > acting, `tap` / `double_tap` / `long_press` check that the resolved target is actually reachable
   > at its own point — not covered by another on-screen element — using the idiomatic signal each
   > platform offers (iOS: native `isHittable`; web: a `document.elementFromPoint` hit-test; adb: a

@@ -40,7 +40,7 @@ def run_scenario(driver, scenario, clock=None, sink=None, alert_guard=None, ...)
 | `driver` | そのターゲットのライブドライバ |
 | `sink` | そのターゲットの証跡の出力先 |
 | `network` / `transitions` / `channel` | そのターゲット自身のコレクタ |
-| `webview_bridge` | そのターゲットの WebView ブリッジ。`web:` ブロックが正しいアプリを開きます |
+| `webview_bridge` | そのターゲットの WebView の DOM ソース（iOS のブリッジまたは Android の `CdpDomSource`）。`web:` ブロックが正しいアプリを開きます |
 | `control` / `relaunch` | そのターゲットのデバイス |
 | `mailbox` / `locale` / `capture` / `interrupts` | そのターゲット自身の config（`services.mailbox`、`runsOn.ios.locale`、`evidence.capture`、`hooks.interrupts`） |
 | `ctx` | そのターゲットの `paths.baselines` / `paths.schemas` / `paths.goldens` ディレクトリ |

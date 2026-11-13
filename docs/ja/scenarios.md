@@ -842,7 +842,7 @@ Android の adb バックエンドは、`tap` が対象を解決するのと同�
       - wait: { for: { id: pay.confirmation }, timeout: 10 }
 ```
 
-`web` は `within` をネイティブに解決し、ちょうど 1 つの WebView ホスト（iOS では `WKWebView`、adb を使う Android では任意の `WebView`）を指します。入れ子の `steps` は、アプリのネイティブなアクセシビリティツリーではなく、その WebView の正規化された DOM（`data-testid` → `Element.identifier`）を対象にします。web コンテンツをネイティブアプリに埋め込んだハイブリッド画面向けの構造です（[BE-0037](../../roadmaps/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support-ja.md)）。ブロックの `steps` を終えると、制御はネイティブドライバーに戻ります。入れ子の `steps` は、`if` や `forEach` の分岐と同じく、囲むシナリオの `vars.*` を共有します。`capture` / `extract` 修飾子は `web` ステップ自体には使えません。iOS では BajutsuKit の WebView bridge の設定（`BAJUTSU_WEBVIEW_PORT`）が必要です。Android では代わりに、デバッグ可能なビルドのアプリが `Application.onCreate` で `Bajutsu.enableWebViewDebugging(this)` を呼び出します。bajutsu は `adb forward` 経由で WebView 自身の Chrome DevTools Protocol ソケットに到達します（[BE-0482](../../roadmaps/BE-0482-android-webview-cdp/BE-0482-android-webview-cdp-ja.md)）。マニフェストがデバッグ可能としていないビルドでは、このヘルパーは何も有効にしません。どちらの経路であっても、到達できないときは何もせず済ませるのではなくステップを明確に失敗させます。この最初の実装は、ブロック内の `tap` / `tapPoint` / `doubleTap` / `type` / `wait` / `assert` に対応しています。`longPress` / `swipe` / `drag` / `clear` / `delete` / `select` / `copy` / `selectOption` / `scroll` / `back` / `navigate` / `pinch` / `rotate` / `handleSystemAlert` / `setPickerValue` はそこに届かず、いずれも「web コンテキストは非対応」という明確な理由で失敗します。
+`web` は `within` をネイティブに解決し、ちょうど 1 つの WebView ホスト（iOS では `WKWebView`、adb を使う Android では任意の `WebView`）を指します。入れ子の `steps` は、アプリのネイティブなアクセシビリティツリーではなく、その WebView の正規化された DOM（`data-testid` → `Element.identifier`）を対象にします。web コンテンツをネイティブアプリに埋め込んだハイブリッド画面向けの構造です（[BE-0037](../../roadmaps/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support-ja.md)）。ブロックの `steps` を終えると、制御はネイティブドライバーに戻ります。入れ子の `steps` は、`if` や `forEach` の分岐と同じく、囲むシナリオの `vars.*` を共有します。`capture` / `extract` 修飾子は `web` ステップ自体には使えません。iOS では BajutsuKit の WebView ブリッジの設定（`BAJUTSU_WEBVIEW_PORT`）が必要です。Android では代わりに、デバッグ可能なビルドのアプリが `Application.onCreate` で `Bajutsu.enableWebViewDebugging(this)` を呼び出します。bajutsu は `adb forward` 経由で WebView 自身の Chrome DevTools Protocol ソケットに到達します（[BE-0482](../../roadmaps/BE-0482-android-webview-cdp/BE-0482-android-webview-cdp-ja.md)）。マニフェストがデバッグ可能としていないビルドでは、このヘルパーは何も有効にしません。WebView を別の `android:process` に置くアプリは、そのプロセスの中だけで（または `WebView.setDataDirectorySuffix` の後で）ヘルパーを呼び出します。`Application.onCreate` はすべてのプロセスで実行されます。そしてヘルパーの呼び出しは WebView を読み込み、プロセスごとのデータディレクトリのロックを取ります。API 28 以降は、このロックを2 つのプロセスで共有することを拒否します。どちらの経路であっても、到達できないときは何もせず済ませるのではなくステップを明確に失敗させます。この最初の実装は、ブロック内の `tap` / `tapPoint` / `doubleTap` / `type` / `wait` / `assert` に対応しています。`longPress` / `swipe` / `drag` / `clear` / `delete` / `select` / `copy` / `selectOption` / `scroll` / `back` / `navigate` / `pinch` / `rotate` / `handleSystemAlert` / `setPickerValue` はそこに届かず、いずれも「web コンテキストは非対応」という明確な理由で失敗します。
 
 ### `app`
 
@@ -1380,7 +1380,7 @@ run を止めます。ファイルが外したターゲットを選ぶことは�
 
 `web` ブロックまたは `app` ブロック内で入れ子になったステップだけは例外です。`target` は完全に
 省略しなければなりません。このステップは、囲んでいるブロックがすでに解決したデバイスに対して、
-常に走ります。`web` なら自分自身の WebView ブリッジ、`app` なら変わらない同じネイティブドライバ
+常に走ります。`web` なら自分自身の WebView ソース、`app` なら変わらない同じネイティブドライバ
 です。
 
 ### ターゲットグループ：連続するステップに対してターゲットを1回だけ書く（BE-0437）
@@ -1946,7 +1946,7 @@ expect:
 
 `attribute` は、ステップの `assert`、`expect`、`if` の条件、`interrupts` の条件で使えます。`wait` の条件には使えません。runner は、ブロックを評価するクエリの直後に、そのつど属性を読み取ります。そのため、ステップの `assert` では条件待機の各ティックで読み取りを繰り返します。繰り返しは、属性が一致するか、レーンの待機下限（`BAJUTSU_MIN_WAIT_TIMEOUT`）が尽きるまで続きます。要素のスナップショット、golden、クロールの出力、レポートにはフィールドが増えません。レポートに載る属性は、アサーションが名前を挙げたものだけです。
 
-このアサーションには `elementAttribute` capability が必要です。この capability を宣言するのは web バックエンドだけです。ほかのバックエンドでシナリオのどこかに `attribute` があれば、capability preflight がデバイスを確保する前に拒否します。`web:` ブロックの iOS WebView コンテキストも拒否の対象です。また、web 以外のターゲットの `hooks.interrupts` に `attribute` があれば、設定の検証が設定の読み込み時に拒否します。`attribute` が読むのは属性であって、DOM のプロパティではありません。フォーム部品の現在の値は、引き続き `value` アサーションで検証します。
+このアサーションには `elementAttribute` capability が必要です。この capability を宣言するのは web バックエンドだけです。ほかのバックエンドでシナリオのどこかに `attribute` があれば、capability preflight がデバイスを確保する前に拒否します。`web:` ブロックの WebView コンテキストも、iOS と Android のどちらでも拒否の対象です。また、web 以外のターゲットの `hooks.interrupts` に `attribute` があれば、設定の検証が設定の読み込み時に拒否します。`attribute` が読むのは属性であって、DOM のプロパティではありません。フォーム部品の現在の値は、引き続き `value` アサーションで検証します。
 
 ## ネットワークモック（決定的スタブ）
 

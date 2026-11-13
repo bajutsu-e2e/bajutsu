@@ -1203,7 +1203,10 @@ bridge configured (`BAJUTSU_WEBVIEW_PORT`); on Android it instead reaches the We
 DevTools Protocol socket over `adb forward`, once a debuggable build of the app has called
 `Bajutsu.enableWebViewDebugging(this)` from `Application.onCreate` — the helper enables nothing in a
 build the manifest does not mark debuggable
-([BE-0482](../roadmaps/BE-0482-android-webview-cdp/BE-0482-android-webview-cdp.md)). Either way,
+([BE-0482](../roadmaps/BE-0482-android-webview-cdp/BE-0482-android-webview-cdp.md)). An app that
+hosts its WebView in a separate `android:process` calls the helper in that process alone (or after
+`WebView.setDataDirectorySuffix`), since `Application.onCreate` runs in every process and the call
+loads WebView, whose per-process data-directory lock API 28 and later refuses to share. Either way,
 without the route available the step fails cleanly rather than doing nothing. This first slice
 supports `tap` / `tapPoint` / `doubleTap` / `type` / `wait` / `assert` inside the block. `longPress` /
 `swipe` / `drag` / `clear` / `delete` / `select` / `copy` / `selectOption` / `scroll` / `back` /
@@ -1882,7 +1885,7 @@ record each side touched, not merely a changed count.
 
 A step nested inside a `web` or `app` block is the one exception. It must **omit** `target`
 outright. It always runs against the device the enclosing block already resolved. That is `web`'s
-own WebView bridge, or `app`'s unchanged native driver.
+own WebView source, or `app`'s unchanged native driver.
 
 ### Target groups: naming one target once for a run of steps (BE-0437)
 
@@ -2491,7 +2494,7 @@ field. A report shows merely the attributes an assertion names.
 
 The assertion needs the `elementAttribute` capability, and the web backend alone declares it. On
 any other backend, the capability preflight fails the scenario before any device lease. The check
-finds an `attribute` anywhere, the iOS WebView context of a `web:` block included. Config
+finds an `attribute` anywhere, the WebView context of a `web:` block on either mobile platform included. Config
 validation also refuses an `attribute` in a non-web target's `hooks.interrupts` at load time. `attribute`
 reads attributes, not DOM properties: the `value` assertion keeps covering a form control's live
 value.
