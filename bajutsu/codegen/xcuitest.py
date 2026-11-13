@@ -320,15 +320,11 @@ def _emit_step(step: Step) -> list[str]:  # noqa: C901, PLR0911, PLR0912
         # it has not (a second tap reads as a double-tap on a UIKit field). The label is the English
         # one; an app localized elsewhere renders its own.
         target = _element(step.paste.into.as_selector())
-        return [
-            f"{target}.tap()",
-            'if !app.staticTexts["Paste"].waitForExistence(timeout: 1.0) '
-            f"{{ {target}.press(forDuration: 0.6) }}",
-            # The driver waits for the menu's item too; `tap()` itself carries no existence wait.
-            'XCTAssertTrue(app.staticTexts["Paste"].waitForExistence(timeout: 5.0), '
-            '"wait for the edit menu Paste")',
-            'app.staticTexts["Paste"].tap()',
-        ]
+        paste_item = 'app.staticTexts["Paste"]'
+        raise_menu = f"if !{paste_item}.waitForExistence(timeout: 1.0) {{ {target}.press(forDuration: 0.6) }}"
+        # The driver waits for the menu's item too; `tap()` itself carries no existence wait.
+        await_item = f'XCTAssertTrue({paste_item}.waitForExistence(timeout: 5.0), "wait for the edit menu Paste")'
+        return [f"{target}.tap()", raise_menu, await_item, f"{paste_item}.tap()"]
     if step.sleep is not None:
         return [
             sleep_comment(step.sleep.reason),
