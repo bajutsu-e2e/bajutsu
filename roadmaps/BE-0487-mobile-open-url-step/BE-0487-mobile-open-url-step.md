@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-mobile-open-url-step-ja.md)
+**English** · [日本語](BE-0487-mobile-open-url-step-ja.md)
 
-# BE-XXXX — An openUrl step that opens a URL mid-scenario on iOS and Android
+# BE-0487 — An openUrl step that opens a URL mid-scenario on iOS and Android
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-mobile-open-url-step.md) |
+| Proposal | [BE-0487](BE-0487-mobile-open-url-step.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0487") |
 | Topic | Scenario authoring features |
 <!-- /BE-METADATA -->
 

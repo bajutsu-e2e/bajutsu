@@ -1,14 +1,14 @@
-[English](BE-XXXX-mobile-open-url-step.md) · **日本語**
+[English](BE-0487-mobile-open-url-step.md) · **日本語**
 
-# BE-XXXX — iOS と Android でシナリオの途中に URL を開く openUrl ステップ
+# BE-0487 — iOS と Android でシナリオの途中に URL を開く openUrl ステップ
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-mobile-open-url-step-ja.md) |
+| 提案 | [BE-0487](BE-0487-mobile-open-url-step-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **承認済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0487") |
 | トピック | シナリオ作成機能 |
 <!-- /BE-METADATA -->
 
