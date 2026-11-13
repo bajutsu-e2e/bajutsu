@@ -1203,11 +1203,12 @@ finish. The nested steps share the enclosing scenario's `vars.*` bindings, the s
 `forEach`'s do. The `capture` / `extract` modifiers are not allowed on the `web` step itself.
 
 **How the block names its WebView.** `within` is an ordinary selector, and it must carry an `id`.
-The run resolves the whole selector against the native tree to one element. On iOS that element is
-the WebView itself. On Android it is usually a container around the WebView: a `WebView`'s own
-accessibility node reports no resource-id, so the id goes on the container. The run uses only that
-element's frame. Zero matches or two or more fail the step, as for any selector. Each platform then
-finds the page behind that element in its own way:
+The run resolves the whole selector against the native tree to one element. Zero matches or two or
+more fail the step, as for any selector. On iOS that element is the WebView itself, and the id has
+to sit on the `WKWebView`: the bridge looks that view up by the identifier on every request. On
+Android the element is usually a container that the WebView fills. A `WebView`'s own accessibility
+node reports no resource-id, so the id goes on the container, and the run uses that element's frame
+alone. Each platform then finds the page behind that element in its own way:
 
 | Platform | How the run reaches the page | Which page it picks |
 |---|---|---|
@@ -2564,10 +2565,10 @@ field. A report shows merely the attributes an assertion names.
 
 The assertion needs the `elementAttribute` capability, and the web backend alone declares it. On
 any other backend, the capability preflight fails the scenario before any device lease. The check
-finds an `attribute` anywhere, the WebView context of a `web:` block on either mobile platform included. Config
-validation also refuses an `attribute` in a non-web target's `hooks.interrupts` at load time. `attribute`
-reads attributes, not DOM properties: the `value` assertion keeps covering a form control's live
-value.
+finds an `attribute` anywhere, the WebView context of a `web:` block on either mobile platform
+included. Config validation also refuses an `attribute` in a non-web target's `hooks.interrupts` at
+load time. `attribute` reads attributes, not DOM properties: the `value` assertion keeps covering a
+form control's live value.
 
 ## Network mocks (deterministic stubs)
 

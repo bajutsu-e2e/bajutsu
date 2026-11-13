@@ -781,9 +781,9 @@ fits the same toolchain as `make check`. Implementation: `common/drivers/playwri
 - **Plain text**: `query()` also returns an element that holds its own text yet matches no rule
   above. A heading, a paragraph, and a `<span>` are typical. Its label is the element's text. Its
   one trait is `staticText`, the trait iOS reports for a label, so a selector such as
-  `{ label: Welcome, traits: [staticText] }` reads the same on both platforms. Both WebView
-  routes run the same script — the iOS bridge and Android's `CdpDomSource` — so a hybrid app's
-  WebView reads plain text this way too. Two kinds of text stay out. Each would make a once-unique selector match twice:
+  `{ label: Welcome, traits: [staticText] }` reads the same on both platforms. The iOS bridge and
+  Android's `CdpDomSource` run the same script, so a hybrid app's WebView reads plain text this way
+  too. Two kinds of text stay out. Each would make a once-unique selector match twice:
   - Text inside an interactive control (a button, a link, or an input). The control's label
     already carries it.
   - Text that repeats the label of its nearest ancestor with a `data-testid` or a `role`.
