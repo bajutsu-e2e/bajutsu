@@ -432,4 +432,22 @@ class CodegenandroiduitestUITest {
     assertEquals(1, device.findObjects(By.res(Pattern.compile("(.*:id/)?search\\.row\\..*"))).size)
   }
 
+  @Test
+  fun test_clipboard_round_trips_through_BajutsuAndroid() {
+    val extras = mutableMapOf<String, String>()
+    extras["SHOWCASE_UITEST"] = "1"
+    launch(extras)
+
+    clipboard("set", "馬 COUPON-123 \$5 \"q\"")
+    assertEquals("馬 COUPON-123 \$5 \"q\"", clipboard("get"))
+    assertTrue(Regex("COUPON-\\d+").containsMatchIn(clipboard("get")))
+    clipboard("set", "")
+    assertEquals("", clipboard("get"))
+    clipboard("set", "Horse 5")
+    clipboard("clear")
+
+    // expect
+    assertEquals("", clipboard("get"))
+  }
+
 }
