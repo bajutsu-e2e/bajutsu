@@ -274,8 +274,9 @@ Group ::= { name: string, steps: list(<Step>) }   # both required, non-empty; co
 If ::= { condition: <Assertion>, then: list(<Step>), else?: list(<Step>) }
 ForEach ::= { sel: <Selector>, as: string, steps: list(<Step>) }
 Web ::= { within: <Selector>, steps: list(<Step>) }
-    # `within` resolves natively to exactly one WKWebView host; nested `steps` address the
-    # normalized DOM (`data-testid` → Element.identifier), not the native accessibility tree.
+    # `within` resolves natively to exactly one WebView host — a `WKWebView` on iOS, any Android
+    # `WebView` on adb; nested `steps` address the normalized DOM (`data-testid` →
+    # Element.identifier), not the native accessibility tree.
 App ::= { bundleId: string, steps: list(<Step>) }
     # `bundleId` names any installed app, launched (or already running) with no cooperation from
     # the test target; nested `steps` address that app's own accessibility tree. Control returns to
