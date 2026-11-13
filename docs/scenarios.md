@@ -1200,8 +1200,9 @@ returns to the native driver once the block's steps finish. The nested steps sha
 scenario's `vars.*` bindings, the same as `if`'s and `forEach`'s do, and `capture` / `extract`
 modifiers are not allowed on the `web` step itself. On iOS the step needs the BajutsuKit WebView
 bridge configured (`BAJUTSU_WEBVIEW_PORT`); on Android it instead reaches the WebView's own Chrome
-DevTools Protocol socket over `adb forward`, once the app has called
-`Bajutsu.enableWebViewDebugging()`
+DevTools Protocol socket over `adb forward`, once a debuggable build of the app has called
+`Bajutsu.enableWebViewDebugging(this)` from `Application.onCreate` — the helper enables nothing in a
+build the manifest does not mark debuggable
 ([BE-0482](../roadmaps/BE-0482-android-webview-cdp/BE-0482-android-webview-cdp.md)). Either way,
 without the route available the step fails cleanly rather than doing nothing. This first slice
 supports `tap` / `tapPoint` / `doubleTap` / `type` / `wait` / `assert` inside the block. `longPress` /
