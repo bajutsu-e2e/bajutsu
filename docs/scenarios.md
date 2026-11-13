@@ -1205,13 +1205,13 @@ finish. The nested steps share the enclosing scenario's `vars.*` bindings, the s
 **How the block names its WebView.** `within` is an ordinary selector, and it must carry an `id`.
 The run resolves the whole selector against the native tree to one element. Zero matches or two or
 more fail the step, as for any selector. On iOS that element is the WebView itself, and the id has
-to sit on the `WKWebView`: the bridge looks that view up by the identifier on every request. On
-Android the element is usually a container that the WebView fills. A `WebView`'s own accessibility
-node reports no resource-id, so the id goes on the container, and the run uses that element's frame
-alone. The container must not reach past the WebView: a container padded around it, or one that also
-wraps a native header, has a frame that no page rectangle contains, and the step fails. Matching the
-WebView's bounds exactly is the safe shape. Each platform then finds the page behind that element in
-its own way:
+to sit on the `WKWebView`: the bridge looks that view up by the first id of `within` on every
+request. On Android the element is usually a container that the WebView fills. A `WebView`'s own
+accessibility node reports no resource-id, so the id goes on the container, and the run uses that
+element's frame alone. The container must not reach past the WebView: a container padded around it,
+or one that also wraps a native header, has a frame that no page rectangle contains, and the step
+fails. Matching the WebView's bounds exactly is the safe shape. Each platform then finds the page
+behind that element in its own way:
 
 | Platform | How the run reaches the page | Which page it picks |
 |---|---|---|
@@ -1230,9 +1230,10 @@ with a reason that names what is missing.
 - **Android:** a debuggable build calls
   [BajutsuAndroid](../BajutsuAndroid/README.md#webview-debugging)'s
   `Bajutsu.enableWebViewDebugging(context)` right before it creates its first WebView.
-  `Application.onCreate` works too. The call loads the WebView provider, though, so from there every
-  launch loads it. An update to the WebView package can then relaunch an activity mid-scenario, even
-  in a scenario that never opens a WebView. `Application.onCreate` also runs in every process, so an
+  `Application.onCreate` works too. The call loads the WebView provider, though. From
+  `Application.onCreate` it loads the provider on every launch, and an update to the WebView package
+  can then relaunch an activity mid-scenario, even in a scenario that never opens a WebView.
+  `Application.onCreate` also runs in every process, so an
   app that hosts its WebView in a separate `android:process` calls the helper in that process alone,
   or in another process only after `WebView.setDataDirectorySuffix`. The reason is that loading
   WebView takes a data-directory lock per process, and Android 9 (API 28) and later refuse to share
