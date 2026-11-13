@@ -285,8 +285,9 @@ Log:
   - On SQLite the claim takes the write lock (`BEGIN IMMEDIATE`) only when a cap binds the anchor's
     scope. With no cap there is no count to protect, and the conditional `UPDATE` alone guards each
     claim.
-  - `docs/devicefarm.md` drops the passage on caps cutting a fan-out short and documents `groupKey`, in both
-    languages. Unit 6 keeps the full documentation pass.
+  - `docs/devicefarm.md` drops the passage on caps cutting a fan-out short and documents `groupKey`,
+    and `docs/self-hosting.md` records that a fan-out's jobs are capped at lease time rather than
+    rejected with 429; each change lands in both languages. Unit 6 keeps the full documentation pass.
 
 ## References
 
