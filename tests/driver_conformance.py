@@ -158,6 +158,15 @@ def field_value(driver: base.Driver) -> str:
     return base.resolve_unique(driver.query(), {"id": FIELD_ID})["value"] or ""
 
 
+def _field_shows(driver: base.Driver, text: str, timeout: float = 5.0) -> bool:
+    """Whether the conformance field's value comes to contain `text` within `timeout`.
+
+    A condition wait, as a scenario's `wait` would do: on a slow emulator a single read straight after
+    a paste can land before the field publishes it.
+    """
+    return any(text in field_value(driver) for _ in base.deadline_ticks(timeout, 0.1, 0.5))
+
+
 def _mirror_value(driver: base.Driver, identifier: str) -> str:
     """The current tap count mirrored at `identifier` (`TAP_MIRROR_A_VALUE_ID` / `_B_VALUE_ID`)."""
     return base.resolve_unique(driver.query(), {"id": identifier})["value"] or "0"
@@ -677,7 +686,9 @@ class DriverConformanceContract:
             driver.delete_text(1)
             driver.paste({"id": FIELD_ID})  # must not raise
             if surfaces_value:
-                assert token in field_value(driver)
+                assert _field_shows(driver, token), (
+                    f"paste left the field at {field_value(driver)!r}"
+                )
         else:
             with pytest.raises(base.UnsupportedAction):
                 driver.select_all()
