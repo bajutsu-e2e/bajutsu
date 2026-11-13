@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-totp-named-generator-ja.md)
+**English** · [日本語](BE-0488-totp-named-generator-ja.md)
 
-# BE-XXXX — Fetch a fresh TOTP code at any point from a named generator
+# BE-0488 — Fetch a fresh TOTP code at any point from a named generator
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-totp-named-generator.md) |
+| Proposal | [BE-0488](BE-0488-totp-named-generator.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0488") |
 | Implementing PR | [#2436](https://github.com/bajutsu-e2e/bajutsu/pull/2436) |
 | Topic | Scenario authoring features |
 <!-- /BE-METADATA -->

@@ -1,14 +1,14 @@
-[English](BE-XXXX-totp-named-generator.md) · **日本語**
+[English](BE-0488-totp-named-generator.md) · **日本語**
 
-# BE-XXXX — 名前付きのジェネレータから任意の時点で TOTP コードを取得する
+# BE-0488 — 名前付きのジェネレータから任意の時点で TOTP コードを取得する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-totp-named-generator-ja.md) |
+| 提案 | [BE-0488](BE-0488-totp-named-generator-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0488") |
 | 実装 PR | [#2436](https://github.com/bajutsu-e2e/bajutsu/pull/2436) |
 | トピック | シナリオ記述機能 |
 <!-- /BE-METADATA -->
