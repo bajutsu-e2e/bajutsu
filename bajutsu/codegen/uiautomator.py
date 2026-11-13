@@ -41,6 +41,7 @@ from bajutsu.codegen.common import (
     render_test_file,
     sleep_comment,
     sleep_ms,
+    totp_todo,
 )
 from bajutsu.common.assertions import request_label
 from bajutsu.common.drivers import base
@@ -336,8 +337,8 @@ def _device_control_todo(step: Step) -> str:
         return "// TODO: push — no adb device control; not generated"
     if step.set_clipboard is not None:
         return f"// TODO: setClipboard(text: {_s(step.set_clipboard.text)}) — no adb device control; not generated"
-    if step.totp is not None:
-        return f"// TODO: totp(into: {step.totp.into.var}) — RFC 6238 OTP; not generated"
+    if (todo := totp_todo(step)) is not None:
+        return todo
     if step.email is not None:
         return f"// TODO: email(into: {step.email.extract.var}) — poll mailbox + extract; not generated"
     if step.generate is not None:

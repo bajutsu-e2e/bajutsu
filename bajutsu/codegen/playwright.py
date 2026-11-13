@@ -36,6 +36,7 @@ from bajutsu.codegen.common import (
     render_test_file,
     sleep_comment,
     sleep_ms,
+    totp_todo,
 )
 from bajutsu.common.assertions import request_label
 from bajutsu.common.drivers import base
@@ -477,6 +478,8 @@ def _emit_step(step: Step) -> list[str]:  # noqa: C901, PLR0911, PLR0912
     if (todo := device_group_todo(step)) is not None:
         return [todo]
     if (todo := eval_todo(step)) is not None:
+        return [todo]
+    if (todo := totp_todo(step)) is not None:
         return [todo]
     return ["// TODO: unsupported step"]
 

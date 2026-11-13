@@ -150,8 +150,8 @@ means the same thing after the run that produced it exits
   ([BE-0445](../roadmaps/BE-0445-system-alert-locale-agnostic-answer/BE-0445-system-alert-locale-agnostic-answer.md)).
   Absent on every other action, and on every run recorded before `schemaVersion` 12.
 - `steps[].warnings`: non-fatal notes about how the step ran, shown on the step's report row. Two
-  sources write them today: a `totp` step whose `minRemaining` window wait saw the wall clock jump
-  ([BE-0474](../roadmaps/BE-0474-totp-window-alignment/BE-0474-totp-window-alignment.md)), and the
+  sources write them today: a `totp` or `otp` step whose `minRemaining` window wait saw the wall
+  clock jump ([BE-0474](../roadmaps/BE-0474-totp-window-alignment/BE-0474-totp-window-alignment.md)), and the
   Android backend's read channel when it recovers, falls back, or returns during the step. A warning
   never changes `ok` or `reason`. Empty on a step that has none, and absent on every run recorded
   before `schemaVersion` 16, which a reader treats as no warnings.

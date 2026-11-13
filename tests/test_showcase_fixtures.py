@@ -7,6 +7,7 @@ own tour/features scenarios so they stay loadable as the schema evolves; needs n
 from __future__ import annotations
 
 import re
+import textwrap
 from dataclasses import replace
 from pathlib import Path
 
@@ -45,6 +46,7 @@ def test_dedicated_lane_scenarios_carry_their_exclusion_tag() -> None:
         ("visual.yaml", "visual"),
         ("network_android.yaml", "android"),
         ("picker_wheel.yaml", "swiftui"),
+        ("webview.yaml", "swiftui"),
         ("permission_system_alert.yaml", "systemalert"),
         ("paste_system_alert.yaml", "systemalert"),
         ("paste.yaml", "pasteboard"),
@@ -250,3 +252,21 @@ def _collect_ids(directory: Path) -> set[str]:
     for f in directory.glob("*.yaml"):
         walk(_yaml.safe_load(f.read_text(encoding="utf-8")))
     return ids
+
+
+def test_hybrid_page_is_the_same_on_every_platform() -> None:
+    # `webview.yaml` runs one `web:` block on all three apps, so each must render the same DOM; each
+    # app inlines its own copy of the page (BE-0482), and nothing else would notice the copies drift.
+    showcase = SCENARIO_DIR.parent
+    sources = [
+        showcase / "ios/swiftui/Sources/HybridWebView.swift",
+        showcase / "android/compose/src/main/java/com/bajutsu/showcase/compose/HybridScreen.kt",
+        showcase / "android/views/src/main/java/com/bajutsu/showcase/views/HybridScreen.kt",
+    ]
+    pages = []
+    for path in sources:
+        text = path.read_text(encoding="utf-8")
+        first, rest = text[text.index("<!doctype html>") : text.index("</html>") + 7].split("\n", 1)
+        # Swift indents the literal to its closing delimiter, which strips that indent at compile time.
+        pages.append(first + "\n" + textwrap.dedent(rest))
+    assert pages[0] == pages[1] == pages[2]

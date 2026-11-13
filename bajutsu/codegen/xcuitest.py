@@ -35,6 +35,7 @@ from bajutsu.codegen.common import (
     permissions_setup_lines,
     render_test_file,
     sleep_comment,
+    totp_todo,
 )
 from bajutsu.common.assertions import request_label
 from bajutsu.common.drivers import base
@@ -400,9 +401,9 @@ def _emit_step(step: Step) -> list[str]:  # noqa: C901, PLR0911, PLR0912
         ]
     if step.push is not None:
         return ["// TODO: push — simctl push (APNs payload); not generated"]
-    if step.totp is not None:
-        # A locally-computed RFC 6238 OTP into vars.*; no XCUITest equivalent (BE-0046).
-        return [f"// TODO: totp(into: {step.totp.into.var}) — RFC 6238 OTP; not generated"]
+    if (todo := totp_todo(step)) is not None:
+        # A runner-side RFC 6238 OTP (`totp` / `otp`); no XCUITest equivalent (BE-0046).
+        return [todo]
     if step.email is not None:
         # Polls an HTTP mailbox in the bajutsu runner; no XCUITest equivalent (BE-0046).
         return [

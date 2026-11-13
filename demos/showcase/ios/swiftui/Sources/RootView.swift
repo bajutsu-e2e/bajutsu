@@ -9,7 +9,8 @@ struct RootView: View {
         // SHOWCASE_PICKERS swaps in the flat wheel-picker screen; SHOWCASE_SIGNIN swaps in the
         // native sign-in screen; BE-0424: SHOWCASE_CRASH swaps in the flat crash-fixture screen;
         // BE-0416: SHOWCASE_NOTIFICATION_BANNER swaps in the flat notification-banner target screen;
-        // BE-0447: SHOWCASE_SAVED_NOTE swaps in the persisted saved-note screen.
+        // BE-0447: SHOWCASE_SAVED_NOTE swaps in the persisted saved-note screen; BE-0482:
+        // SHOWCASE_WEBVIEW swaps in the hybrid WebView screen.
         // Otherwise the normal tab app (BE-0079) is untouched.
         if let identifiers = model.conformanceIDs {
             ConformanceView(identifiers: identifiers)
@@ -25,6 +26,8 @@ struct RootView: View {
             NotificationBannerTargetView()
         } else if model.savedNoteMode {
             SavedNoteView()
+        } else if model.webViewMode {
+            HybridWebView()
         } else {
             MainTabView()
         }

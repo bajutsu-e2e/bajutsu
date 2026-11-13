@@ -33,6 +33,7 @@ from bajutsu.common.scenario.models.actions import (
     LongPress,
     Manual,
     Navigate,
+    Otp,
     OverrideStatusBar,
     Paste,
     Pinch,
@@ -115,6 +116,7 @@ class Step(_Model):
     use: Use | None = None
     http: HttpRequest | None = None
     totp: Totp | None = None
+    otp: Otp | None = None
     generate: Generate | None = None
     # `eval_` (alias `eval`) for the same reason as `copy_`: the Python name would shadow a builtin.
     eval_: Eval | None = Field(default=None, alias="eval")

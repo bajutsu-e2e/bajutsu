@@ -507,8 +507,8 @@ jobs:
       - name: Install the app
         run: xcrun simctl install "${{ steps.toolchain.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
 
-      # Every gating XCUITest scenario in one `bajutsu run`: seven cold runner startups (MAX_WARM_REUSES=1), warm-reused
-      # across the fourteen scenario documents that run (every scenario the eight files below hold; nothing is
+      # Every gating XCUITest scenario in one `bajutsu run`: eight cold runner startups (MAX_WARM_REUSES=1), warm-reused
+      # across the fifteen scenario documents that run (every scenario the nine files below hold; nothing is
       # `ai`-tagged since BE-0315, so no `--exclude`). State-neutral scenarios first, the three
       # permission scenarios last (see the job header).
       # alert.yaml is here for the duplicate-node resolution wiring: `swift test` compiles no target over
@@ -517,6 +517,9 @@ jobs:
       # presented `UIAlertController` reaches is `uniquelyIdentifiedElement`'s, on a duplicate group. On a
       # Simulator older than iOS 26 the duplicate registration never appears, so a green lane proves the
       # sole-match path rather than the group rule — it gates the flat-query wiring either way.
+      # webview.yaml is the one on-device check of the BajutsuKit WebView bridge (BE-0037, BE-0482):
+      # `swift test` checks the bridge's script templates as strings, but only a live `WKWebView` shows
+      # that the page they drive focuses, types, and clicks.
       - name: Run the gating XCUITest scenarios (smoke, gestures, runner channel, permissions)
         uses: ./.github/actions/bajutsu-e2e
         with:
@@ -524,6 +527,7 @@ jobs:
             demos/showcase/scenarios/smoke.yaml
             demos/showcase/scenarios/gestures_multitouch.yaml
             demos/showcase/scenarios/picker_wheel.yaml
+            demos/showcase/scenarios/webview.yaml
             demos/showcase/scenarios/search.yaml
             demos/showcase/scenarios/notices.yaml
             demos/showcase/scenarios/alert.yaml
