@@ -206,9 +206,11 @@ jobs:
     # conjunct, so it restates the three conditions rather than aliasing them.
     if: &warm-cache-consumer-if "!cancelled() && needs.changes.result == 'success' && needs.changes.outputs.relevant == 'true'"
     runs-on: ubuntu-latest
-    # A cold AVD boot + APK builds + the Compose full set and Views subset is ~18min; 30 catches a
-    # real hang (a wedged AVD boot or adb) with comfortable headroom.
-    timeout-minutes: 30
+    # A passing run with a warm AVD and Gradle cache already takes 25–29min. `Cache AVD` saves only on
+    # success, so a branch with no green run starts cold on every rerun: a missed AVD cache, a
+    # regenerated snapshot, and a cold Gradle build add ~5min. 40 lets that cold run finish and save
+    # the cache, while still catching a real hang such as a wedged AVD boot or adb (#2440).
+    timeout-minutes: 40
     # The adb backend itself is pure subprocess, but `webview.yaml`'s `web:` block reaches the page
     # over the Chrome DevTools Protocol (CDP), whose websocket client is the `android` extra
     # (BE-0482), so this job syncs that extra. It skips the dev group (mypy / pytest / ruff), which
@@ -240,7 +242,7 @@ jobs:
     # for the common case rather than a lane-wide backstop: it only bounds a file that itself sequences
     # more than one scenario. Set to keep parity with the per-scenario knobs above and to bound the few
     # multi-scenario files that do exist here, not on a claim that it caps the whole job — a
-    # systemically degrading emulator still runs every one of those invocations to this job's 30min
+    # systemically degrading emulator still runs every one of those invocations to this job's 40min
     # `timeout-minutes` regardless of this knob.
     env:
       UV_NO_DEV: "1"
