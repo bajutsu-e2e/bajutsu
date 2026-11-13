@@ -126,11 +126,18 @@ SERIAL ?= booted
 # Views' `singleTask` MainActivity finishes the pushed HorseDetailActivity when `leave_app` starts it
 # again, so the scenario's first return would find the catalog instead of the detail screen.
 #
+# `webview` enters the hybrid screen's WebView with a `web:` block (BE-0482): bajutsu forwards the
+# WebView's DevTools socket, which both apps open with `Bajutsu.enableWebViewDebugging`, and taps and
+# types inside the page over the Chrome DevTools Protocol. Both apps render the screen under
+# SHOWCASE_WEBVIEW, and `within` carries both id forms. Verified on a local arm64 emulator (API 34),
+# Compose and Views alike.
+#
 # Observed network capture lands in its own `e2e-network` target below (BE-0283); mocked network
 # (deterministic stub responses) stays a follow-up.
 E2E_SCENARIOS := smoke firstlook navigation search data_driven relaunch system components modals \
 	controls notices gestures gestures_multitouch permission device extract foreach interrupts \
-	text_entry_android text_selection_android picker_wheel select_photos select_photo_single app_android location_android
+	text_entry_android text_selection_android picker_wheel select_photos select_photo_single app_android location_android \
+	webview
 
 # Raise the condition-wait ceiling for this lane only: the CI x86_64 software-rendered emulator
 # presents sheets/covers slower than the shared scenarios' 5s waits allow. A wait returns as soon as
@@ -157,7 +164,8 @@ E2E_ENV = BAJUTSU_MIN_WAIT_TIMEOUT=$(E2E_WAIT_FLOOR) BAJUTSU_LOG_LEVEL=$(E2E_LOG
 # themselves). Anywhere else no lane resolves it, so a typo in it could never fail (issue #2233).
 # `device.yaml` carries the underscore form, so it joins (verified on a local arm64 emulator).
 E2E_VIEWS_SCENARIOS := smoke firstlook navigation search data_driven relaunch system extract foreach \
-	interrupts device text_entry_android text_selection_android picker_wheel select_photos select_photo_single location_android
+	interrupts device text_entry_android text_selection_android picker_wheel select_photos select_photo_single location_android \
+	webview
 
 # The wrapper jar IS committed (like any standard Android repo), so a fresh clone builds with no
 # extra step. Only run this to bump the pinned Gradle version — never as part of a build, since it

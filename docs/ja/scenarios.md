@@ -739,7 +739,7 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
 | `clearStatusBar` | `clearStatusBar: {}` | ステータスバーの上書きを解除する（ライブ表示に戻す） |
 | `use` | `use: { component: <file>, with?: {...} }` | 再利用コンポーネントの steps を展開する。コンパイル時マクロ（[再利用](#再利用とデータ駆動とタグ)）。**取れる修飾子は `target` だけ**：`capture` / `extract` / `name` / `from` は拒否され、`target` は展開後の全ステップに刻印される（[複数ターゲット](#複数ターゲットシナリオでのコンポーネント)） |
 | `group` | `group: { name: <str>, steps: [...] }` | 連続するステップに名前を付ける。コンパイル時マクロで、report.html では折りたたんで表示する（[後述](#ステップのグループ化group--reporthtmlで折りたたむ)） |
-| `web` | `web: { within: <Selector>, steps: [...] }` | WebView の DOM コンテキストに入ります。`within` がホストの `WKWebView` をネイティブに解決し、入れ子の `steps` はネイティブツリーではなく正規化された DOM を対象にします（[後述](#webwebview-の-dom-コンテキストに入る)） |
+| `web` | `web: { within: <Selector>, steps: [...] }` | WebView の DOM コンテキストに入ります。`within` がホストの WebView をネイティブに解決し、入れ子の `steps` はネイティブツリーではなく正規化された DOM を対象にします（[後述](#webwebview-の-dom-コンテキストに入る)） |
 
 修飾子（`use` ステップに付けられるのは `target` だけです。上表を参照）:
 
@@ -842,7 +842,33 @@ Android の adb バックエンドは、`tap` が対象を解決するのと同�
       - wait: { for: { id: pay.confirmation }, timeout: 10 }
 ```
 
-`web` は `within` をネイティブに解決し、ちょうど 1 つの `WKWebView` ホストを指します。入れ子の `steps` は、アプリのネイティブなアクセシビリティツリーではなく、その WebView の正規化された DOM（`data-testid` → `Element.identifier`）を対象にします。web コンテンツをネイティブアプリに埋め込んだハイブリッド画面向けの構造です（[BE-0037](../../roadmaps/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support-ja.md)）。ブロックの `steps` を終えると、制御はネイティブドライバーに戻ります。入れ子の `steps` は、`if` や `forEach` の分岐と同じく、囲むシナリオの `vars.*` を共有します。`capture` / `extract` 修飾子は `web` ステップ自体には使えません。WebView bridge の設定（`BAJUTSU_WEBVIEW_PORT`）が必要で、未設定のときは何もせず済ませるのではなくステップを明確に失敗させます。この最初の実装は、ブロック内の `tap` / `tapPoint` / `doubleTap` / `type` / `wait` / `assert` に対応しています。`longPress` / `swipe` / `drag` / `clear` / `delete` / `select` / `copy` / `selectOption` / `scroll` / `back` / `navigate` / `pinch` / `rotate` / `handleSystemAlert` / `setPickerValue` はそこに届かず、いずれも「web コンテキストは非対応」という明確な理由で失敗します。
+`web` は、ネイティブアプリが埋め込んだブラウザのビューである WebView の Document Object Model（DOM）に対して、入れ子の `steps` を実行します。ステップが対象にするのは、アプリのネイティブなアクセシビリティツリーではなく、ページの正規化された DOM（`data-testid` → `Element.identifier`）です。アプリの UI の一部をアプリ内の web コンテンツが担うハイブリッド画面向けの構造です。iOS は [BE-0037](../../roadmaps/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support-ja.md)、Android は [BE-0482](../../roadmaps/BE-0482-android-webview-cdp/BE-0482-android-webview-cdp-ja.md) で対応しました。同じブロックが、両方のプラットフォームで変更なしに動きます。ブロックの `steps` を終えると、制御はネイティブドライバーに戻ります。入れ子の `steps` は、`if` や `forEach` の分岐と同じく、囲むシナリオの `vars.*` を共有します。`capture` / `extract` 修飾子は `web` ステップ自体には使えません。
+
+**ブロックが WebView を指す仕組み。** `within` は通常のセレクタで、`id` を必ず含みます。run はセレクタ全体をネイティブのツリーで解決し、ちょうど 1 つの要素、つまりホストの WebView を得ます。一致が 0 件、または 2 件以上ならステップは失敗します。ほかのセレクタと同じ扱いです。その要素の背後にあるページは、プラットフォームごとに次のように探します。
+
+| プラットフォーム | run がページに到達する経路 | 選ぶページ |
+|---|---|---|
+| iOS | BajutsuKit の WebView ブリッジです。アプリ内の Hypertext Transfer Protocol（HTTP）サーバーで、run が `BAJUTSU_WEBVIEW_PORT` として渡すポートで待ち受けます。 | アクセシビリティ識別子が `within` の最初の id と等しい `WKWebView` です。 |
+| Android | Chrome DevTools Protocol（CDP）です。WebView のデバッグ用ソケットを、run がブロックの間だけ `adb` で転送します。 | アタッチ済みで表示中のページのうち、`within` が解決したフレームを矩形に含む 1 つです。一致が 0 件、または 2 件以上なら、あいまいとしてステップを失敗させます。 |
+
+Android は、等しさではなく包含で照合します。2 つの矩形の測る範囲が違うからです。ネイティブのツリーは、ビューの範囲を画面と祖先のビューで切り詰めて報告します。CDP は、ページの切り詰めていない矩形を報告します。そのため、ツールバーの下に一部が隠れた WebView でも一致します。
+
+**アプリが用意するもの。** 用意がないときは、何もせず済ませるのではなく、足りないものを名指しする理由でステップを失敗させます。
+
+- **iOS**：アプリが BajutsuKit をリンクし、`BajutsuNet.startIfEnabled()` を呼びます。この呼び出しは、run がポートを渡したときにブリッジを起動します。`WKWebView` にはアクセシビリティ識別子を付けます。
+- **Android**：デバッグ可能なビルドが、`Application.onCreate` で `Bajutsu.enableWebViewDebugging(context)` を呼びます。このヘルパーは BajutsuAndroid の関数です。どの debug ビルドタイプも `android:debuggable` を設定します。このヘルパーはデバッグ可能でないビルドでは何もしないので、リリースビルドがソケットを開くことはありません。bajutsu を動かすマシンには `android` extra（`websockets`）が要ります。構成済みのバックエンドに Android が含まれていれば、`scripts/install.sh` がこの extra を入れます。
+
+**ブロックが対応する範囲。** ブロックの中では `tap` / `tapPoint` / `doubleTap` / `type` / `wait` / `assert` が動きます。`longPress` / `swipe` / `drag` / `clear` / `delete` / `select` / `copy` / `selectOption` / `scroll` / `back` / `navigate` / `pinch` / `rotate` / `handleSystemAlert` / `setPickerValue` はそこに届きません。いずれも「web コンテキストは非対応」という明確な理由で失敗します。次の場合も、ブロックの対象外です。
+
+| 場合 | 起きること |
+|---|---|
+| `<iframe>` の中のコンテンツ | DOM の走査はフレームの文書を飛ばすので、セレクタはその中の要素を指せません。 |
+| ファイル選択（`<input type="file">`） | タップは入力欄に届きますが、開く選択画面はページの外にあるシステムの画面なので、ブロックからは操作できません。 |
+| Android で重なり合う 2 つの WebView | 両方の矩形がフレームを含むので、推測せずにあいまいとしてステップを失敗させます。 |
+| Android でブロックの途中にアプリが再起動する | デバッグ用ソケットが閉じ、通信の理由でステップが失敗します。 |
+| Android で別のデバッガーがすでにページにアタッチしている | ページは 2 本目の接続を受け付けず、ステップが失敗します。 |
+| `web:` ブロックを使わず、WebView の中身をネイティブのラベルでタップする | 非対応です。ネイティブのツリーは WebView の中身を選択できるほど細かく示さないことが多く、対応する経路はブロックです。 |
+| システムがアプリの上に表示するブラウザのタブ | 非対応です。そのビューは別のブラウザアプリに属するので、ブリッジにもアプリのデバッグ用ソケットにも届きません。 |
 
 ### `app`
 

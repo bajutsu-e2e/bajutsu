@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0482](BE-0482-android-webview-cdp.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0482") |
 | Implementing PR | [#2416](https://github.com/bajutsu-e2e/bajutsu/pull/2416) (units 1–5) |
 | Topic | Platform support |
@@ -256,8 +256,8 @@ The units below are mutually exclusive and, together, cover the design above.
 - [x] Run wiring
 - [x] Optional extra and provisioning
 - [x] BajutsuAndroid helper
-- [ ] Showcase screens and a portable `web:` scenario
-- [ ] Docs (`platform-parity`, `drivers`, `scenarios`, en and ja)
+- [x] Showcase screens and a portable `web:` scenario
+- [x] Docs (`platform-parity`, `drivers`, `scenarios`, en and ja)
 
 Log:
 
@@ -273,6 +273,24 @@ Log:
   by mistake opens no socket, and CodeQL's WebView-debugging rule accepts the guarded call. It
   therefore no longer covers a non-debuggable test build. Units 6 and 7 remain; the `webView`
   parity mark waits for unit 6's on-device run.
+- 2026-11-13 — Units 6 and 7 landed together (PR_LINK). The showcase gained a hybrid screen
+  under `SHOWCASE_WEBVIEW`, in the iOS SwiftUI app and in both Android twins. `webview.yaml` enters
+  it with one `web:` block. The block types, taps, and asserts the text the page writes. The scenario
+  passed on-device on the iOS Simulator (iOS 26.5). It passed on an arm64 emulator (API 34) for
+  Compose and Views too. The Android `webView` mark thus reads "per-run". The scenario joins the
+  Android E2E lanes and the iOS gating lane. The first runs found four defects, all fixed here:
+  - On Android, `touchEnd` returns before the page's click lands. A `type` right after tapping a
+    field found nothing focused. The tap now waits up to three seconds for that click.
+  - The BajutsuKit bridge crashed the app on every `type` or scroll. `JSONSerialization` threw an
+    uncatchable exception on a bare string.
+  - The bridge's scroll selector left a dotted `data-testid` unquoted.
+  - The bridge's script click moved no focus.
+
+  The iOS bridge client now raises `WebViewTransportError` for every error too. An app that crashes
+  mid-request ends its block, not the run. The Views twin carries its id on a container, since a
+  `WebView`'s own accessibility node reports no resource-id. Unit 7 documents the setup, the
+  frame-containment rule, and the cases a block leaves out. The pages are `scenarios`, `drivers`,
+  `platform-parity`, and the BajutsuAndroid README.
 
 ## References
 

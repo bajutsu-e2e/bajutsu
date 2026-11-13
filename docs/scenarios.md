@@ -1035,7 +1035,7 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `clearStatusBar` | `clearStatusBar: {}` | remove status-bar overrides (restore the live bar) |
 | `use` | `use: { component: <file>, with?: {...} }` | expand a reusable component's steps — a compile-time macro ([reuse](#reuse-data-and-tags)); **takes no modifier but `target`** — `capture` / `extract` / `name` / `from` are rejected, and a `target` is stamped onto every step the component expands to ([multi-target](#components-in-a-multi-target-scenario)) |
 | `group` | `group: { name: <str>, steps: [...] }` | name a run of consecutive steps — a compile-time macro, folded together in `report.html` ([below](#grouping-steps-group--folded-in-reporthtml)) |
-| `web` | `web: { within: <Selector>, steps: [...] }` | enter a WebView's DOM: `within` resolves the host `WKWebView` natively, and the nested `steps` address its normalized DOM instead of the native tree ([below](#web-entering-a-webviews-dom)) |
+| `web` | `web: { within: <Selector>, steps: [...] }` | enter a WebView's DOM: `within` resolves the host WebView natively, and the nested `steps` address its normalized DOM instead of the native tree ([below](#web-entering-a-webviews-dom)) |
 
 Modifiers (a `use` step takes `target` alone — see the table row above):
 
@@ -1191,18 +1191,56 @@ step's location.
       - wait: { for: { id: pay.confirmation }, timeout: 10 }
 ```
 
-`web` resolves `within` natively to exactly one `WKWebView` host. It then runs the nested `steps`
-against the WebView's normalized DOM (`data-testid` → `Element.identifier`), not the app's native
-accessibility tree — for a hybrid screen that embeds web content inside a native app
-([BE-0037](../roadmaps/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support.md)). Control
-returns to the native driver once the block's steps finish. The nested steps share the enclosing
-scenario's `vars.*` bindings, the same as `if`'s and `forEach`'s do, and `capture` / `extract`
-modifiers are not allowed on the `web` step itself. The step needs a WebView bridge configured
-(`BAJUTSU_WEBVIEW_PORT`); without one it fails cleanly rather than doing nothing. This first slice
-supports `tap` / `tapPoint` / `doubleTap` / `type` / `wait` / `assert` inside the block. `longPress` /
-`swipe` / `drag` / `clear` / `delete` / `select` / `copy` / `selectOption` / `scroll` / `back` /
-`navigate` / `pinch` / `rotate` / `handleSystemAlert` / `setPickerValue` are not reachable there, and each fails
-with a clear "not supported in web context" reason.
+A WebView is a browser view that a native app embeds. `web` runs its nested `steps` against the
+Document Object Model (DOM) of such a view. The steps address the page's normalized DOM, not the
+app's native accessibility tree: `data-testid` becomes `Element.identifier`. The block serves a hybrid
+screen, where part of the UI is web content inside the app. iOS support came with
+[BE-0037](../roadmaps/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support.md), and Android
+support with [BE-0482](../roadmaps/BE-0482-android-webview-cdp/BE-0482-android-webview-cdp.md). The same
+block runs unchanged on both platforms. Control returns to the native driver once the block's steps
+finish. The nested steps share the enclosing scenario's `vars.*` bindings, the same as `if`'s and
+`forEach`'s do. The `capture` / `extract` modifiers are not allowed on the `web` step itself.
+
+**How the block names its WebView.** `within` is an ordinary selector, and it must carry an `id`.
+The run resolves the whole selector against the native tree to one element, the WebView itself.
+Zero matches or two or more fail the step, as for any selector. Each platform then finds the page
+behind that element in its own way:
+
+| Platform | How the run reaches the page | Which page it picks |
+|---|---|---|
+| iOS | The BajutsuKit WebView bridge, a Hypertext Transfer Protocol (HTTP) server inside the app, on the port the run passes as `BAJUTSU_WEBVIEW_PORT`. | The `WKWebView` whose accessibility identifier equals the first id of `within`. |
+| Android | The Chrome DevTools Protocol (CDP), on the WebView's debugging socket, which the run forwards with `adb` for the length of the block. | The one attached, visible page whose rectangle contains the frame `within` resolved to. Zero matches or two or more fail the step as ambiguous. |
+
+Android matches by containment, not equality, because the two rectangles measure different areas.
+The native tree clips a view's bounds to the screen and to its ancestors. CDP reports the page's
+full rectangle. A WebView partly hidden under a toolbar thus still matches.
+
+**What the app must provide.** A step that lacks it fails with a reason that names the missing
+piece.
+
+- **iOS:** the app links BajutsuKit and calls `BajutsuNet.startIfEnabled()`. That call starts the
+  bridge when the run passes the port. The `WKWebView` carries an accessibility identifier.
+- **Android:** a debuggable build calls BajutsuAndroid's `Bajutsu.enableWebViewDebugging(context)`
+  in `Application.onCreate`. Every debug build type sets `android:debuggable`. The
+  helper does nothing in a non-debuggable build, so a release build never opens the socket. The
+  machine running bajutsu needs the `android` extra (`websockets`). `scripts/install.sh` installs it
+  when the configured backends include Android.
+
+**What a block supports.** Inside the block, `tap` / `tapPoint` / `doubleTap` / `type` / `wait` /
+`assert` run. `longPress` / `swipe` / `drag` / `clear` / `delete` / `select` / `copy` /
+`selectOption` / `scroll` / `back` / `navigate` / `pinch` / `rotate` / `handleSystemAlert` /
+`setPickerValue` are not reachable there, and each fails with a clear "not supported in web context"
+reason. The block also leaves these cases out:
+
+| Case | What happens |
+|---|---|
+| Content inside an `<iframe>` | The DOM walk skips a frame's document, so a selector cannot name an element inside it. |
+| A file chooser (`<input type="file">`) | A tap reaches the input, but the chooser it opens is a system screen outside the page, which the block cannot drive. |
+| Two WebViews that overlap, on Android | Both rectangles contain the frame, so the step fails as ambiguous rather than guessing. |
+| An app that restarts mid-block, on Android | The debugging socket closes, and the step fails with the transport's reason. |
+| Another debugger already attached to the page, on Android | The page offers no second connection, and the step fails. |
+| WebView content tapped by its native label, with no `web:` block | Not supported. The native tree often shows a WebView's content too coarsely to select by, and the block is the supported route. |
+| A browser tab that the system shows over the app | Not supported. The view belongs to a separate browser app, so neither the bridge nor the app's debugging socket reaches it. |
 
 ### `app`
 

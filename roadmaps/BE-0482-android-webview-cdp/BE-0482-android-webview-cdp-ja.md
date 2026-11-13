@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0482](BE-0482-android-webview-cdp-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0482") |
 | 実装 PR | [#2416](https://github.com/bajutsu-e2e/bajutsu/pull/2416)（単位 1〜5） |
 | トピック | プラットフォーム対応 |
@@ -258,8 +258,8 @@ BajutsuAndroid に `Bajutsu.enableWebViewDebugging()` を追加します。こ�
 - [x] 実行への組み込み
 - [x] オプションの extra とプロビジョニング
 - [x] BajutsuAndroid のヘルパー
-- [ ] showcase の画面と共通の `web:` シナリオ
-- [ ] ドキュメント（`platform-parity`、`drivers`、`scenarios` の英日両方）
+- [x] showcase の画面と共通の `web:` シナリオ
+- [x] ドキュメント（`platform-parity`、`drivers`、`scenarios` の英日両方）
 
 ログ：
 
@@ -276,6 +276,23 @@ BajutsuAndroid に `Bajutsu.enableWebViewDebugging()` を追加します。こ�
   デバッグのルールもこの条件付きの呼び出しを許容します。その代わり、デバッグ可能でないテストビルドは
   対象外になりました。残りは単位 6 と 7 です。`webView` のパリティの印は、単位 6 の実機での確認を
   待ってから変えます。
+- 2026-11-13 — 単位 6 と 7 をまとめて着地させました（PR_LINK）。iOS の SwiftUI アプリと Android の
+  2 つのアプリに、`SHOWCASE_WEBVIEW` で開くハイブリッド画面を加えました。`webview.yaml` は、
+  1 つの `web:` ブロックでこの画面に入ります。入力し、タップし、ページが書いた
+  文字列を検証します。このシナリオは、iOS Simulator（iOS 26.5）と arm64 のエミュレータ（API 34）の
+  Compose と Views で、実機の実行に通りました。そこで Android の `webView` の印を「per-run」に
+  変えました。シナリオは Android の E2E レーンと iOS のゲートのレーンにも加えています。
+  最初の実行で見つかった不具合は 4 つで、すべてここで直しました。Android では、ページにクリックが
+  届く前に `touchEnd` が戻ります。そのため、欄をタップした直後の `type` がフォーカスのある欄を
+  見つけられませんでした。タップはそのクリックを最大 3 秒待つようにしました。iOS では、BajutsuKit の
+  ブリッジが `type` やスクロールのたびにアプリを異常終了させていました。`JSONSerialization` が、
+  単独の文字列を渡されると例外を送出していたためです。スクロールのセレクタは、ドットを含む
+  `data-testid` を引用符で囲んでいませんでした。スクリプトによるクリックは、フォーカスを移して
+  いませんでした。iOS のブリッジのクライアントも、すべての失敗を `WebViewTransportError` で
+  送出するようにしました。要求の途中でアプリが落ちても、run 全体ではなくそのブロックだけが
+  失敗します。Views 版は、id をコンテナに付けています。`WebView` 自身のアクセシビリティノードが
+  resource-id を報告しないからです。単位 7 では、動作の条件、フレームの包含による照合、ブロックの
+  対象外を、`scenarios`、`drivers`、`platform-parity`、BajutsuAndroid の README に書きました。
 
 ## 参考
 

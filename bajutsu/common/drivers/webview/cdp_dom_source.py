@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import http.client
 import json
+import logging
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -30,6 +32,8 @@ from bajutsu.common.drivers.dom import QUERY_JS, parse_dom
 
 from . import cdp_discovery
 from .cdp import CdpConnection, Transport, WebViewTransportError, connect_websocket
+
+_logger = logging.getLogger(__name__)
 
 FetchTargets = Callable[[int, float], list[dict[str, Any]]]
 Connect = Callable[[str, float], Transport]
@@ -56,6 +60,18 @@ _CARET_TO_END_JS = """
   return true;
 })()
 """
+# The page turns a touch into a click (and focuses a field) a moment after `touchEnd` returns, not
+# within it, so a tap arms a one-shot click listener before touching and then waits for it to fire.
+# Without the wait, a `type` right after tapping a field finds nothing focused, and an assertion right
+# after tapping a button reads the page before its handler ran, where the iOS bridge's synchronous
+# script click has already run it. A page that cancels the click (`preventDefault` on `touchend`)
+# never fires one, so the wait is bounded and the tap then stands as sent. The bound is generous
+# because the click arrives in about 250 ms on a local emulator and later on a software-rendered one,
+# and it costs time only on a page that cancels the click.
+_CLICK_FLAG = "__bajutsuTapClicked"
+_CLICK_WAIT_S = 3.0
+_CLICK_POLL_S = 0.02
+_CLICKED_JS = f"window.{_CLICK_FLAG} === true"
 _FIRE_CHANGE_JS = """
 (() => {
   const el = document.activeElement;
@@ -171,6 +187,8 @@ class CdpDomSource:
         fetch: FetchTargets = fetch_targets,
         connect: Connect = connect_websocket,
         timeout: float = 10.0,
+        clock: Callable[[], float] = time.monotonic,
+        sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         self._serial = serial
         self._package = package
@@ -178,6 +196,8 @@ class CdpDomSource:
         self._fetch = fetch
         self._connect = connect
         self._timeout = timeout
+        self._clock = clock
+        self._sleep = sleep
         self._conn: CdpConnection | None = None
 
     @contextmanager
@@ -225,7 +245,10 @@ class CdpDomSource:
         return parse_dom(records)
 
     def tap_element(self, webview_id: str, point: Point) -> None:  # noqa: ARG002  # DomSource shape
-        """A trusted touch at `point`, in the page's CSS-pixel space.
+        """A trusted touch at `point`, in the page's CSS-pixel space, done once the page's click lands.
+
+        The page clicks (and focuses a field) after the touch returns, so the tap waits for that click,
+        for at most three seconds; a page that cancels the click is left with the touch alone.
 
         Raises:
             ElementNotTappable: nothing but the page itself sits at the point, so the touch would
@@ -237,9 +260,15 @@ class CdpDomSource:
         # the same refusal the iOS bridge's script click gives when `elementFromPoint` resolves nothing.
         # `<html>` and `<body>` sit under every in-viewport point, so landing on either means the
         # resolved element is not there either; `QUERY_JS` never yields them as a target.
+        # The same script arms the click listener once the hit-test passes, so a refused tap leaves
+        # no listener behind.
         hit = (
             f"(() => {{ const h = document.elementFromPoint({x}, {y});"
-            " return h !== null && h !== document.body && h !== document.documentElement; })()"
+            " if (h === null || h === document.body || h === document.documentElement) return false;"
+            f" window.{_CLICK_FLAG} = false;"
+            f" window.addEventListener('click', () => {{ window.{_CLICK_FLAG} = true; }},"
+            " { capture: true, once: true });"
+            " return true; })()"
         )
         if not conn.evaluate(hit):
             raise ElementNotTappable(f"web: no element at ({x}, {y}) in the WebView viewport")
@@ -247,6 +276,27 @@ class CdpDomSource:
             "Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [{"x": x, "y": y}]}
         )
         conn.call("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+        deadline = self._clock() + _CLICK_WAIT_S
+        while not self._clicked(conn):
+            if self._clock() >= deadline:
+                _logger.warning(
+                    "web: no click landed within %.0fs of the tap at (%s, %s); the page may have"
+                    " cancelled it",
+                    _CLICK_WAIT_S,
+                    x,
+                    y,
+                )
+                return
+            self._sleep(_CLICK_POLL_S)
+
+    @staticmethod
+    def _clicked(conn: CdpConnection) -> bool:
+        # A click that navigates tears down the page's script context, so the read fails or the flag
+        # is gone; either way the page reacted to the tap, which is all the wait is for.
+        try:
+            return bool(conn.evaluate(_CLICKED_JS) is True)
+        except WebViewTransportError:
+            return True
 
     def type_text(self, webview_id: str, text: str) -> None:  # noqa: ARG002  # DomSource shape
         """Append `text` to the focused field, firing `input` and then `change`, as iOS does.
@@ -256,7 +306,7 @@ class CdpDomSource:
         """
         conn = self._session()
         if not conn.evaluate(_CARET_TO_END_JS):
-            raise WebViewTransportError("web: no focused field in the WebView to type into")
+            raise WebViewTransportError("no focused field in the WebView to type into")
         conn.call("Input.insertText", {"text": text})
         conn.evaluate(_FIRE_CHANGE_JS)
 

@@ -48,7 +48,7 @@ class MainActivity : ComponentActivity() {
         val keys = listOf(
             "SHOWCASE_UITEST", "SHOWCASE_TAB", "SHOWCASE_API_URL", "SHOWCASE_HTTP_BASE",
             "SHOWCASE_GESTURES", "SHOWCASE_CONFORMANCE", "SHOWCASE_CRASH", "SHOWCASE_SAVED_NOTE",
-            "SHOWCASE_PICKERS",
+            "SHOWCASE_PICKERS", "SHOWCASE_WEBVIEW",
             // The network collector bajutsu injects (BE-0283); BajutsuNet.configure reads these, AppModel ignores them.
             "BAJUTSU_COLLECTOR", "BAJUTSU_COLLECTOR_TOKEN",
         )

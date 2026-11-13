@@ -61,7 +61,7 @@ The two mobile backends differ in what they support.
 | `deviceLog` | whole-scenario device log or browser console stream (BE-0467; Simulator only on iOS) | ✅ | ✅ | ✅ | — |
 | `appTrace` | whole-scenario app log trace: `os_log` on iOS, a tag-filtered `logcat` on Android (BE-0467, BE-0478; Simulator only on iOS) | ✅ | ✅ | — | — |
 | `multiTouch` | two-finger gestures (pinch / rotate) | ✅ | ✅ | ✅ | ✅ |
-| `webView` | query and tap the DOM inside an embedded WKWebView (BE-0037); granted per run by the WebView bridge, so no backend declares it statically | — | — | — | — |
+| `webView` | query and tap the DOM inside a WebView the app embeds; granted per run, by the BajutsuKit WebView bridge on iOS (BE-0037) and over the Chrome DevTools Protocol on Android (BE-0482), so no backend declares it statically | — | — | — | — |
 | `textSelection` | select-all + clipboard copy on the focused field | ✅ | ✅ | ✅ | ✅ |
 | `selectOption` | set a native `<select>` by value (web only) | — | — | ✅ | ✅ |
 | `urlNavigation` | open a URL mid-scenario with `navigate` (web only; BE-0464) | — | — | ✅ | ✅ |
@@ -630,6 +630,52 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
 > `showcase-views` over the same set. The fast gate exercises the parser, the frame-center taps, the
 > transient-empty retry, and ambiguous-fails-fast over captured XML fixtures. adb is
 > `brew install android-platform-tools`.
+
+### Embedded WebViews
+
+A scenario's `web:` block reads and taps inside a WebView that the app embeds
+([BE-0482](../roadmaps/BE-0482-android-webview-cdp/BE-0482-android-webview-cdp.md)). The adb tree
+often shows a WebView's content too coarsely to select by. The run reaches the page over the Chrome
+DevTools Protocol (CDP) instead. With debugging enabled, each Android WebView listens on a local
+socket, `webview_devtools_remote_<pid>`. That socket speaks CDP. `CdpDomSource` implements the
+same `DomSource` interface as the iOS bridge client. `WebContextDriver` thus runs unchanged on both
+platforms.
+
+The app opens the socket. A debuggable build calls `Bajutsu.enableWebViewDebugging(context)` from
+`Application.onCreate`. [`BajutsuAndroid`](../BajutsuAndroid/README.md) documents the call. The
+helper does nothing in a non-debuggable build, so a release build never opens the socket. The
+machine running bajutsu needs the `android` extra (`websockets`). `scripts/install.sh` installs it
+when the configured backends include Android.
+
+Each `web:` block opens one connection to the page. The block closes it when it ends, pass or fail:
+
+1. The run lists the package's processes with `adb shell ps -A`. It keeps each `<package>:<name>`
+   child too, because a WebView can run in another process.
+2. It finds those processes' sockets in `/proc/net/unix`. It forwards a free local port to each
+   socket with `adb forward`, then reads each socket's page list, `/json/list`.
+3. It keeps the attached, visible pages. It picks the page whose rectangle contains the frame that
+   `within` resolved to in the native tree. Zero matches or two or more fail the step as a selector
+   error. Two overlapping WebViews thus fail rather than let the run guess.
+4. It opens a WebSocket to the chosen page. When the block ends, it removes every forward it opened.
+
+Inside the block, each `DomSource` method maps to CDP calls:
+
+| `DomSource` method | CDP calls |
+|---|---|
+| `query_dom` | `Runtime.evaluate` of the shared `QUERY_JS`, the same walk the web backend and the iOS bridge run |
+| `tap_element` | A hit-test with `document.elementFromPoint`, then `Input.dispatchTouchEvent` (`touchStart`, `touchEnd`) at the point; the tap ends once the page's click lands, after at most three seconds |
+| `type_text` | Moves the caret to the end of the focused text field, sends `Input.insertText`, then dispatches `change` |
+| `scroll_to` | `Runtime.evaluate` of a `scrollIntoView` script |
+
+The tap is a trusted touch, so a page that listens for touch events reacts to it. The iOS bridge
+clicks through a script instead. The page turns the touch into a click a moment after `touchEnd`
+returns. The click also focuses a field. The tap waits for that click. Without the wait, a `type`
+right after tapping a field would find nothing focused. A page that cancels the click never sends
+one. After three seconds, the tap ends with the touch alone and logs a warning.
+
+Every transport error raises one exception type, `WebViewTransportError`. It ends the block with its
+reason, not the run. Three causes are common. The socket is missing, CDP
+returns an error, or an app restart closes the socket. The reason for a missing socket names the helper above.
 
 ## Flutter (via the native backends)
 
