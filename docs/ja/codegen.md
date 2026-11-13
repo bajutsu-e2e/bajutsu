@@ -669,8 +669,9 @@ broadcast が処理されなかったとき、`clipboard(…)` ヘルパーは�
 broadcast が処理されないのは、アプリが BajutsuAndroid のクリップボード受信側を組み込んでいない場合です。
 
 adb backend にはネットワーク傍受の面が無いので、ネットワークのアサーション（`request` / `requestSequence` /
-`responseSchema`）はすべて、理由を明記した `// TODO` を出力します。デバイス制御の残り（`setLocation` / `push` など）も
-同様です。XCUITest 出力先が自身のギャップに対して行うのと同じです。
+`responseSchema`）はすべて、理由を明記した `// TODO` を出力します。デバイス制御の残りも、理由を明記した `// TODO` を出力します。
+`setLocation` は `run` では動きますが、エミュレータコンソールやアプリ内受信側を使う経路を生成テストは持ちません。
+`push` には adb の経路そのものがありません。XCUITest 出力先も、自身のギャップを同じように示します。
 
 ## 名前の生成
 

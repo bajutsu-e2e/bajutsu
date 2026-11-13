@@ -681,13 +681,14 @@ same limit the XCUITest emitter hits for NSPredicate `MATCHES`), so it stays a `
 | `attribute` | `// TODO: attribute(name: "href", equals: "/docs") — web-only; not generated` (BE-0466) |
 | `clipboard` (equals/matches) | `assertEquals("…", clipboard("get"))` / `assertTrue(Regex("…").containsMatchIn(clipboard("get")))` |
 
-An unhandled broadcast fails the test by name. It never reads back as an empty clipboard. The
-broadcast goes unhandled when the app embeds no BajutsuAndroid clipboard receiver.
+An app that embeds no BajutsuAndroid clipboard receiver leaves the broadcast unhandled. The
+`clipboard(…)` helper then fails the test by naming that cause, rather than reading back an empty
+clipboard.
 
-The adb backend has no network-interception surface. So every network assertion (`request` /
-`requestSequence` / `responseSchema`) emits a labeled `// TODO` naming why. The rest of the
-device-control family (`setLocation` / `push` / …) does the same. The XCUITest target handles its
-own gaps exactly this way.
+Every network assertion (`request` / `requestSequence` / `responseSchema`) emits a labeled `// TODO`
+naming why, because the adb backend has no network-interception surface. The rest of the
+device-control family emits a labeled `// TODO` as well. `setLocation` works under `run`, but no
+generated route exists for it. `push` has no adb route at all. The XCUITest target labels its own gaps the same way.
 
 ## Name generation
 

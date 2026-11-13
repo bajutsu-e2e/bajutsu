@@ -326,10 +326,14 @@ def _emit_step(step: Step) -> list[str]:  # noqa: C901, PLR0911, PLR0912
 
 
 def _device_control_todo(step: Step) -> str:
-    """A labeled `// TODO` for a step the adb backend cannot drive (device control / helpers)."""
+    """A labeled `// TODO` for a step a generated test does not drive (device control / helpers)."""
     if step.set_location is not None:
         loc = step.set_location
-        return f"// TODO: setLocation(lat: {loc.lat}, lon: {loc.lon}) — no adb device control; not generated"
+        # `run` drives it on adb (BE-0211, BE-0481); only the generated test lacks that route.
+        return (
+            f"// TODO: setLocation(lat: {loc.lat}, lon: {loc.lon}) — the emulator console / "
+            "in-app location receiver route (BE-0211, BE-0481) is not generated"
+        )
     if step.push is not None:
         return "// TODO: push — no adb device control; not generated"
     if step.totp is not None:
