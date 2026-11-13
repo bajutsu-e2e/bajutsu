@@ -1093,7 +1093,12 @@ def start_run_set(  # noqa: C901, PLR0911
         jobs,
         key=str(body.get("groupKey") or uuid.uuid4().hex),
         digest=_request_digest(
-            target, [r.scenario for r, _ in requests], config_text, app_digest, label
+            target,
+            [r.scenario for r, _ in requests],
+            config_text,
+            app_digest,
+            label,
+            provider=provider,
         ),
         compat_key=_compat_key(config_text, app_digest, batch_platform, target),
         audit=(actor, org, target, ci_job),
@@ -1148,13 +1153,19 @@ def _register_group(
 
 
 def _request_digest(
-    target: str, scenarios: list[str], config_text: str, app_digest: str | None, label: str | None
+    target: str,
+    scenarios: list[str],
+    config_text: str,
+    app_digest: str | None,
+    label: str | None,
+    *,
+    provider: str,
 ) -> str:
     """What a `run-set` request asks to run, so a repeated group key tells a retry from another
     request (BE-0484). The scenarios are a set: a retry need not list them in the same order."""
     config_digest = hashlib.sha256(config_text.encode()).hexdigest()
     return hashlib.sha256(
-        json.dumps([target, sorted(scenarios), config_digest, app_digest, label]).encode()
+        json.dumps([target, sorted(scenarios), config_digest, app_digest, label, provider]).encode()
     ).hexdigest()
 
 
