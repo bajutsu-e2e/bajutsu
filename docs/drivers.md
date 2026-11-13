@@ -641,8 +641,11 @@ socket, `webview_devtools_remote_<pid>`. That socket speaks CDP. `CdpDomSource` 
 same `DomSource` interface as the iOS bridge client. `WebContextDriver` thus runs unchanged on both
 platforms.
 
-The app opens the socket. A debuggable build calls `Bajutsu.enableWebViewDebugging(context)` from
-`Application.onCreate`. [`BajutsuAndroid`](../BajutsuAndroid/README.md) documents the call. The
+The app opens the socket. A debuggable build calls `Bajutsu.enableWebViewDebugging(context)` right
+before it creates its first WebView. The call loads the WebView provider. From
+`Application.onCreate` it loads it on every launch, and an update to the WebView package can then
+relaunch an activity mid-scenario, even in a scenario that never opens a WebView.
+[`BajutsuAndroid`](../BajutsuAndroid/README.md) documents the call. The
 helper does nothing in a non-debuggable build, so a release build never opens the socket. The
 machine running bajutsu needs the `android` extra (`websockets`). `scripts/install.sh` installs it
 when the configured backends include Android.

@@ -259,7 +259,7 @@ BE-0452 で取り除きました。ホストで実行する job が必要とす�
 
 シナリオの `web:` ブロックは、アプリが埋め込んだ WebView の中を読み取り、タップします（[BE-0482](../../roadmaps/BE-0482-android-webview-cdp/BE-0482-android-webview-cdp-ja.md)）。adb のツリーでは、WebView の中身を選択できるほど細かく示さないことがよくあります。そこで run は、Chrome DevTools Protocol（CDP）でページに到達します。デバッグを有効にした Android の WebView は、`webview_devtools_remote_<pid>` という名前の abstract なローカルソケットで待ち受けます。このソケットは CDP を話します。`bajutsu/common/drivers/webview/` の `CdpDomSource` は、iOS のブリッジのクライアントと同じ `DomSource` の型を実装します。そのため `WebContextDriver` は、両方のプラットフォームで変更なしに動きます。
 
-ソケットを開くのはアプリです。デバッグ可能なビルドが、`Application.onCreate` から `Bajutsu.enableWebViewDebugging(context)` を呼びます。呼び出し方は [`BajutsuAndroid`](../../BajutsuAndroid/README.ja.md) にあります。このヘルパーはデバッグ可能でないビルドでは何もしないので、リリースビルドがソケットを開くことはありません。bajutsu を動かすマシンには `android` extra（`websockets`）が要ります。構成済みのバックエンドに Android が含まれていれば、`scripts/install.sh` がこの extra を入れます。
+ソケットを開くのはアプリです。デバッグ可能なビルドが、最初の WebView を作る直前に `Bajutsu.enableWebViewDebugging(context)` を呼びます。この呼び出しは WebView のプロバイダを読み込みます。`Application.onCreate` から呼ぶと、起動のたびに読み込みます。すると WebView のパッケージの更新によって、WebView を開かないシナリオの途中でもアクティビティが作り直されることがあります。呼び出し方は [`BajutsuAndroid`](../../BajutsuAndroid/README.ja.md) にあります。このヘルパーはデバッグ可能でないビルドでは何もしないので、リリースビルドがソケットを開くことはありません。bajutsu を動かすマシンには `android` extra（`websockets`）が要ります。構成済みのバックエンドに Android が含まれていれば、`scripts/install.sh` がこの extra を入れます。
 
 `web:` ブロックは 1 つごとにセッションを 1 つ開きます。ブロックが終わると、成否にかかわらずセッションを閉じます。
 

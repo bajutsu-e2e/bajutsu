@@ -254,3 +254,28 @@ def test_bridge_session_is_a_no_op_span() -> None:
     bridge = WebViewBridge(port=1)
     with bridge.session("wv", (0.0, 0.0, 10.0, 10.0)) as entered:
         assert entered is None
+
+
+def test_bridge_reports_a_reply_that_is_not_json_as_answered_not_unreachable() -> None:
+    # The bridge writes an empty 200 body when its own JSON encoding fails: a broken reply, which
+    # must not send the author looking at connectivity.
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            self.send_response(200)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+        def log_message(self, *_args: Any) -> None:
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(
+        target=server.serve_forever, kwargs={"poll_interval": 0.02}, daemon=True
+    ).start()
+    try:
+        bridge = WebViewBridge(port=server.server_address[1])
+        with pytest.raises(WebViewTransportError, match="not JSON"):
+            bridge.query_dom("wv")
+    finally:
+        server.shutdown()
+        server.server_close()

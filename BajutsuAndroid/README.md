@@ -211,8 +211,9 @@ class MyApp : Application() {
 ```
 
 Calling it right before the app creates its first WebView works too. The call loads the WebView
-provider, so an app whose WebViews sit on one screen can defer that cost to the screen. The bajutsu
-showcase apps do this.
+provider, so an app whose WebViews sit on one screen can defer that cost to the screen. Deferring it
+also keeps an update to the WebView package from relaunching an activity mid-scenario in a test that
+never opens a WebView. The bajutsu showcase apps call it there for that reason.
 
 `enableWebViewDebugging` turns debugging on when the app is debuggable, and does nothing otherwise.
 Every debug build type sets `android:debuggable`. A release build that calls the helper by mistake

@@ -76,15 +76,23 @@ class WebViewBridge:
         )
         try:
             with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
-                data = json.loads(resp.read())
+                body = resp.read()
         except urllib.error.HTTPError as e:
             # The bridge answered, with an error status: its body says why, not "unreachable".
             raise WebViewTransportError(
                 f"WebView bridge answered {path} with HTTP {e.code}: {e.read()[:200]!r}"
             ) from e
-        except (urllib.error.URLError, http.client.HTTPException, OSError, ValueError) as e:
+        except (urllib.error.URLError, http.client.HTTPException, OSError) as e:
             raise WebViewTransportError(
                 f"WebView bridge unreachable at {self._base_url}: {type(e).__name__}: {e}"
+            ) from e
+        try:
+            data = json.loads(body)
+        except ValueError as e:
+            # The bridge answered, with a body that is not JSON (an empty or truncated write): a broken
+            # reply, not an unreachable bridge.
+            raise WebViewTransportError(
+                f"WebView bridge answered {path} with a body that is not JSON: {body[:200]!r}"
             ) from e
         if not isinstance(data, dict):
             raise WebViewTransportError(

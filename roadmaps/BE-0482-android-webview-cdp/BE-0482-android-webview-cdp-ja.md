@@ -280,7 +280,7 @@ BajutsuAndroid に `Bajutsu.enableWebViewDebugging()` を追加します。こ�
   2 つのアプリに、`SHOWCASE_WEBVIEW` で開くハイブリッド画面を加えました。`webview.yaml` は、
   1 つの `web:` ブロックでこの画面に入ります。入力し、タップし、ページが書いた
   文字列を検証します。このシナリオは、iOS Simulator（iOS 26.5）と arm64 のエミュレータ（API 34）の
-  Compose と Views で、実機の実行に通りました。そこで Android の `webView` の印を「per-run」に
+  Compose と Views で、端末上の実行に通りました。そこで Android の `webView` の印を「per-run」に
   変えました。シナリオは Android の E2E レーンと iOS のゲートのレーンにも加えています。
   最初の実行で見つかった不具合は 4 つで、すべてここで直しました。Android では、ページにクリックが
   届く前に `touchEnd` が戻ります。そのため、欄をタップした直後の `type` がフォーカスのある欄を
