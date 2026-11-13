@@ -309,6 +309,9 @@ class _FakePage:
         self.load_waits.append(state)
         return None
 
+    def wait_for_event(self, event: str, *, predicate: Any, timeout: float) -> object:
+        raise NotImplementedError("only a page that fires a navigation request is waited on")
+
     def on(self, event: str, handler: Any) -> None:
         self._handlers.setdefault(event, []).append(handler)
 
@@ -1425,6 +1428,26 @@ def test_read_attributes_reruns_on_the_new_document_when_navigation_destroys_its
     assert page.load_waits == ["domcontentloaded"]
 
 
+def test_the_tap_hit_check_reruns_on_the_new_document_when_navigation_destroys_its_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The occlusion check is the tap path's second page read; a commit landing between it and the
+    lookup must not wedge the lane either (issue #2432)."""
+    _stub_playwright_errors(monkeypatch)
+
+    class _CommitBeforeHitCheck(_FakePage):
+        def evaluate(self, expression: str) -> Any:
+            if expression != QUERY_JS and not self.load_waits:
+                raise _NavPwError(_DESTROYED)
+            return super().evaluate(expression)
+
+    page = _CommitBeforeHitCheck([_rec(identifier="go", label="Go")])
+    page.evaluate_returns = [{"ok": True, "cover": None, "rect": None}]
+
+    assert PlaywrightDriver("http://app.test/", page=page).is_tappable({"id": "go"}) is True
+    assert page.load_waits == ["domcontentloaded"]
+
+
 def test_query_gives_up_after_its_attempts_and_wedges(monkeypatch: pytest.MonkeyPatch) -> None:
     from bajutsu.common.backend_cli import simctl
 
@@ -1459,6 +1482,159 @@ def test_a_document_wait_that_itself_fails_does_not_mask_the_retry(
     page = _SlowLoadPage([], [_PwTimeout("Page.screenshot: Timeout 5000ms exceeded.")])
     PlaywrightDriver("http://app.test/", page=page).screenshot("after.png")
     assert page.shot == "after.png"
+
+
+_MAIN_FRAME = _FakeFrame()
+_CHILD_FRAME = _FakeFrame(parent=_MAIN_FRAME)
+
+
+class _NavRequest:
+    """A request carrying its frame, for the navigation-settle tests (issue #2432)."""
+
+    def __init__(self, *, navigation: bool = True, frame: _FakeFrame = _MAIN_FRAME) -> None:
+        self._navigation = navigation
+        self.frame = frame
+
+    def is_navigation_request(self) -> bool:
+        return self._navigation
+
+
+class _SubmittingPage(_FakePage):
+    """A page where the frame the settle step runs lets a scheduled form submit send its request.
+
+    `on_settle` lists the events that frame fires; `commits` says whether the navigation then lands
+    while the driver waits for it (issue #2432).
+    """
+
+    def __init__(self, on_settle: list[tuple[str, Any]], *, commits: bool = True) -> None:
+        super().__init__([_rec(identifier="go", label="Go")])
+        self.on_settle = on_settle
+        self.commits = commits
+        self.calls: list[str] = []
+
+    def evaluate(self, expression: str) -> Any:
+        if expression.startswith("new Promise"):
+            self.calls.append("settle")
+            for event, arg in self.on_settle:
+                self.fire(event, arg)
+            return None
+        self.calls.append("evaluate")
+        return super().evaluate(expression)
+
+    def wait_for_event(self, event: str, *, predicate: Any, timeout: float) -> object:
+        self.calls.append(f"wait:{event}")
+        if not self.commits:
+            raise _PwTimeout(f"Timeout {timeout}ms exceeded while waiting for event {event!r}")
+        self.fire("framenavigated", _CHILD_FRAME)  # an iframe's commit does not satisfy the wait
+        assert not predicate(_CHILD_FRAME)
+        self.fire("framenavigated", _MAIN_FRAME)
+        assert predicate(_MAIN_FRAME)
+        return _MAIN_FRAME
+
+    def wait_for_load_state(self, state: str, *, timeout: float | None = None) -> object:
+        self.calls.append(f"load:{state}")
+        return super().wait_for_load_state(state, timeout=timeout)
+
+    def screenshot(self, *, path: str, timeout: float | None = None) -> object:
+        self.calls.append(f"shot:{timeout}")
+        return super().screenshot(path=path, timeout=timeout)
+
+
+def test_a_screenshot_after_a_navigating_tap_waits_for_the_commit_instead_of_racing_it() -> None:
+    """The after-shot of a submitting tap waits for the new document, so its first, short attempt
+    succeeds rather than timing out first (issue #2432)."""
+    page = _SubmittingPage([("request", _NavRequest())])
+    driver = PlaywrightDriver("http://app.test/", page=page)
+    driver.tap_point((10, 10))
+    driver.screenshot("after.png")
+
+    assert page.calls == ["settle", "wait:framenavigated", "load:domcontentloaded", "shot:5000"]
+
+
+def test_a_tap_that_does_not_navigate_costs_one_settled_frame_and_no_wait() -> None:
+    page = _SubmittingPage([("request", _NavRequest(navigation=False))])
+    driver = PlaywrightDriver("http://app.test/", page=page)
+    driver.tap_point((10, 10))
+    driver.screenshot("after.png")
+    driver.screenshot("again.png")  # no input in between, so no second settle
+
+    assert page.calls == ["settle", "shot:5000", "shot:5000"]
+
+
+def test_an_iframe_navigation_or_an_aborted_one_is_not_waited_for() -> None:
+    child = _NavRequest(frame=_CHILD_FRAME)
+    aborted = _NavRequest()
+    page = _SubmittingPage([("request", child), ("request", aborted), ("requestfailed", aborted)])
+    driver = PlaywrightDriver("http://app.test/", page=page)
+    driver.tap_point((10, 10))
+    driver.screenshot("after.png")
+
+    assert page.calls == ["settle", "shot:5000"]
+
+
+def test_a_query_after_a_navigating_tap_reads_the_new_document() -> None:
+    page = _SubmittingPage([("request", _NavRequest())])
+    driver = PlaywrightDriver("http://app.test/", page=page)
+    driver.tap_point((10, 10))
+    assert [el["identifier"] for el in driver.query()] == ["go"]
+
+    assert page.calls == [
+        "settle",
+        "wait:framenavigated",
+        "load:domcontentloaded",
+        "evaluate",
+    ]
+
+
+def test_a_commit_that_lands_during_the_settle_frame_needs_no_wait() -> None:
+    page = _SubmittingPage([("request", _NavRequest()), ("framenavigated", _MAIN_FRAME)])
+    driver = PlaywrightDriver("http://app.test/", page=page)
+    driver.tap_point((10, 10))
+    driver.screenshot("after.png")
+
+    assert page.calls == ["settle", "shot:5000"]
+
+
+def test_an_iframe_request_failing_does_not_cancel_the_main_frame_wait() -> None:
+    page = _SubmittingPage(
+        [("request", _NavRequest()), ("requestfailed", _NavRequest(frame=_CHILD_FRAME))]
+    )
+    driver = PlaywrightDriver("http://app.test/", page=page)
+    driver.tap_point((10, 10))
+    driver.screenshot("after.png")
+
+    assert page.calls == ["settle", "wait:framenavigated", "load:domcontentloaded", "shot:5000"]
+
+
+def test_a_no_content_answer_to_the_navigation_needs_no_wait() -> None:
+    """A 204 keeps the current document, so no commit is coming to wait for."""
+    page = _SubmittingPage([("request", _NavRequest()), ("response", _FakeResponse(204))])
+    driver = PlaywrightDriver("http://app.test/", page=page)
+    driver.tap_point((10, 10))
+    driver.screenshot("after.png")
+
+    assert page.calls == ["settle", "shot:5000"]
+
+
+def test_a_navigation_that_never_commits_is_waited_for_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A navigation answered with no document (a 204) never commits: the bounded wait is suppressed
+    and cleared, so later reads do not wait for it again."""
+    _stub_playwright_errors(monkeypatch)
+    page = _SubmittingPage([("request", _NavRequest())], commits=False)
+    driver = PlaywrightDriver("http://app.test/", page=page)
+    driver.tap_point((10, 10))
+    driver.screenshot("after.png")
+    driver.screenshot("again.png")
+
+    assert page.calls == [
+        "settle",
+        "wait:framenavigated",
+        "load:domcontentloaded",
+        "shot:5000",
+        "shot:5000",
+    ]
 
 
 def test_driver_interval_captures_console_and_pageerror(tmp_path: Any) -> None:

@@ -329,6 +329,14 @@ def _is_playwright_timeout(exc: BaseException) -> bool:
     )
 
 
+def _is_main_frame(frame: Any) -> bool:
+    """Whether *frame* is the page's top-level frame rather than an `<iframe>`.
+
+    A frame-less stand-in counts as the main frame, the same fallback `_on_response` uses.
+    """
+    return getattr(frame, "parent_frame", None) is None
+
+
 def _nav_reason(exc: BaseException, target: str) -> str:
     """The first meaningful line of a `goto` error, with the URL left out (BE-0464).
 

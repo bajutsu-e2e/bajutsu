@@ -19,22 +19,20 @@ class _Page(Protocol):
     @property
     def keyboard(self) -> _Keyboard: ...
 
-    def evaluate(self, expression: str) -> Any:
-        pass
+    def evaluate(self, expression: str) -> Any: ...
 
-    def goto(self, url: str) -> object:
-        pass
+    def goto(self, url: str) -> object: ...
 
-    def go_back(self) -> object:
-        pass
+    def go_back(self) -> object: ...
 
-    def screenshot(self, *, path: str, timeout: float | None = None) -> object:
-        pass
+    def screenshot(self, *, path: str, timeout: float | None = None) -> object: ...
 
     def wait_for_load_state(
         self, state: Literal["domcontentloaded"], *, timeout: float | None = None
-    ) -> object:
-        pass
+    ) -> object: ...
 
-    def on(self, event: str, handler: Callable[[Any], None]) -> None:
-        pass
+    def wait_for_event(
+        self, event: str, *, predicate: Callable[[Any], bool], timeout: float
+    ) -> object: ...
+
+    def on(self, event: str, handler: Callable[[Any], None]) -> None: ...

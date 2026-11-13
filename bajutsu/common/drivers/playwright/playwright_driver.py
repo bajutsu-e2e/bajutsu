@@ -30,6 +30,7 @@ from ._functions import (
     _iframe_records,
     _is_browser_fault,
     _is_context_destroyed,
+    _is_main_frame,
     _is_playwright_timeout,
     _nav_reason,
     _playwright_error_types,
@@ -60,6 +61,13 @@ _QUERY_ATTEMPTS = 3
 # here: the retry itself reports whatever is still wrong. A `wait` step's poll can overrun its own
 # deadline by this bound per retry, which is still better than the wedge it replaces.
 _DOCUMENT_WAIT_MS = 5_000
+# Lets the page run one frame and the task queued behind it, so a navigation an input scheduled (a
+# form submit, a click handler assigning `location`) has sent its request before the driver next
+# reads the page; the request event then tells the driver to wait for the commit instead of racing it
+# (issue #2432). Capped, because a page that never paints (a throttled tab) must not hold the step.
+_SETTLE_JS = (
+    "new Promise(r => { requestAnimationFrame(() => setTimeout(r, 0)); setTimeout(r, 100); })"
+)
 
 # Names whatever `elementFromPoint` hit, the same way for the element check and the `<iframe>` check.
 _DESCRIBE_COVER_JS = (
@@ -144,6 +152,10 @@ class PlaywrightDriver:
         self._page_errors: list[str]
         self._last_nav_status: int | None
         self._dialogs: list[str]
+        # Navigation tracking for issue #2432: an input actuation arms `_input_since_read`, and a
+        # main-frame navigation request sets `_navigation_pending` until that frame commits.
+        self._input_since_read: bool
+        self._navigation_pending: bool
         self._page: _Page
         if page is None:  # not a test injection: start a real browser process
             self._pw, self._browser, self._context, page = self._starter(headless)
@@ -190,6 +202,8 @@ class PlaywrightDriver:
         self._page_errors = []
         self._last_nav_status = None
         self._dialogs = []
+        self._input_since_read = False
+        self._navigation_pending = False
         self._cdp = None  # the old CDP session belonged to the previous context; re-open lazily
         self._register_health_handlers()
 
@@ -200,6 +214,9 @@ class PlaywrightDriver:
         on("pageerror", self._on_pageerror)
         on("response", self._on_response)
         on("dialog", self._on_dialog)
+        on("request", self._on_request)
+        on("requestfailed", self._on_request_failed)
+        on("framenavigated", self._on_frame_navigated)
 
     def _on_pageerror(self, error: Any) -> None:
         self._page_errors.append(str(error))
@@ -215,6 +232,22 @@ class PlaywrightDriver:
         if frame is not None and getattr(frame, "parent_frame", None) is not None:
             return  # a sub-frame navigation, not the top-level document
         self._last_nav_status = int(response.status)
+        # A 204 / 205 answer keeps the current document: no commit follows to clear the flag.
+        if self._last_nav_status in (204, 205):
+            self._navigation_pending = False
+
+    def _on_request(self, request: Any) -> None:
+        if request.is_navigation_request() and _is_main_frame(request.frame):
+            self._navigation_pending = True
+
+    def _on_request_failed(self, request: Any) -> None:
+        # An aborted navigation (a download, a cancelled submit) never commits; nothing to wait for.
+        if request.is_navigation_request() and _is_main_frame(request.frame):
+            self._navigation_pending = False
+
+    def _on_frame_navigated(self, frame: Any) -> None:
+        if _is_main_frame(frame):
+            self._navigation_pending = False
 
     def _on_dialog(self, dialog: Any) -> None:
         self._dialogs.append(str(dialog.message))
@@ -472,12 +505,42 @@ class PlaywrightDriver:
                 out.append(e)
         return out
 
+    def _record_actuation(self, actuation: Actuation) -> None:
+        """Record an input, and arm the navigation check the next page read runs (issue #2432)."""
+        self._actuations.record(actuation)
+        self._input_since_read = True
+
+    def _settle_navigation(self) -> None:
+        """Wait out a navigation the last input started, before reading the page (issue #2432).
+
+        A screenshot or page script issued between a navigation's request and its commit never
+        returns or loses its document. So after an input, let the page run one frame, then wait
+        for the main frame's commit if a navigation request was seen. Every Playwright error in
+        these waits is suppressed (`_await_document` suppresses its own): a failure leaves the read
+        itself, and its retries, to report what is wrong.
+        """
+        if not self._input_since_read:
+            return
+        self._input_since_read = False
+        with contextlib.suppress(*_playwright_error_types()):
+            self._page.evaluate(_SETTLE_JS)
+        if not self._navigation_pending:
+            return
+        with contextlib.suppress(*_playwright_error_types()):
+            self._page.wait_for_event(
+                "framenavigated", predicate=_is_main_frame, timeout=_DOCUMENT_WAIT_MS
+            )
+        # A navigation that never committed (a 204 response) must not make every later read wait.
+        self._navigation_pending = False
+        self._await_document()
+
     def _evaluate_across_navigation(self, expression: str) -> Any:
         """Run a read-only page script, re-running it on the new document if a navigation lands mid-call.
 
         Only the destroyed-context failure is retried (issue #2432); any other error, a closed page
         included, propagates on the first attempt so `_wedge_guard` reports it as before.
         """
+        self._settle_navigation()
         for _ in range(_QUERY_ATTEMPTS - 1):
             try:
                 return self._page.evaluate(expression)
@@ -560,20 +623,18 @@ class PlaywrightDriver:
         as adb-only. So an off-viewport point is reported as hit here, leaving that case to the
         explicit `scroll` action rather than this occlusion check.
         """
-        target: Any = self._page
         ox = oy = 0.0
         if scope is not None:
             hosts = self._hosts_hit(point, scope)
             if not hosts.ok:
                 return hosts
-            target = scope.frame
             ox, oy = scope.origin
         x, y = point[0] - ox, point[1] - oy
         tx, ty, tw, th = el["frame"]
         tx, ty = tx - ox, ty - oy
         identifier = json.dumps(el["identifier"])
         label = json.dumps(el["label"])
-        result = target.evaluate(
+        script = (
             "(() => {"
             f"{_DESCRIBE_COVER_JS}"
             f"if ({x} < 0 || {y} < 0 || {x} >= window.innerWidth || {y} >= window.innerHeight) "
@@ -601,6 +662,13 @@ class PlaywrightDriver:
             "}"
             "return describe(hit);"
             "})()"
+        )
+        # The top-level read rides out a navigation like `query` does (issue #2432): re-run on the
+        # new document, the old element's point is reported as covered rather than as a wedge.
+        result = (
+            self._evaluate_across_navigation(script)
+            if scope is None
+            else scope.frame.evaluate(script)
         )
         rect = result["rect"]
         return _HitResult(
@@ -656,7 +724,7 @@ class PlaywrightDriver:
         radians: float | None = None,
     ) -> None:
         """Record a click / gesture the driver aimed at a point it computed itself."""
-        self._actuations.record(
+        self._record_actuation(
             Actuation(
                 gesture=gesture,
                 via="coordinate",
@@ -678,7 +746,7 @@ class PlaywrightDriver:
 
     @_wedge_guard
     def tap_point(self, p: base.Point) -> None:
-        self._actuations.record(Actuation(gesture="tap", via="coordinate", unit=_UNIT, points=(p,)))
+        self._record_actuation(Actuation(gesture="tap", via="coordinate", unit=_UNIT, points=(p,)))
         self._page.mouse.click(p[0], p[1])
 
     @_wedge_guard
@@ -698,7 +766,7 @@ class PlaywrightDriver:
 
     @_wedge_guard
     def swipe(self, frm: base.Point, to: base.Point) -> None:
-        self._actuations.record(
+        self._record_actuation(
             Actuation(gesture="swipe", via="coordinate", unit=_UNIT, points=(frm, to))
         )
         # A literal pointer drag — the coordinate `swipe` form (canvas / map pan) and the `drag`
@@ -716,7 +784,7 @@ class PlaywrightDriver:
 
     @_wedge_guard
     def scroll(self, frm: base.Point, to: base.Point) -> None:
-        self._actuations.record(
+        self._record_actuation(
             Actuation(gesture="scroll", via="coordinate", unit=_UNIT, points=(frm, to))
         )
         # A directional scroll (see base.Driver.scroll). A mouse drag leaves the page inert, so
@@ -773,7 +841,7 @@ class PlaywrightDriver:
     def back(self) -> None:
         # The web's "back" is browser history; the platform peer of Android's system back key and
         # iOS's OS back button (BE-0210).
-        self._actuations.record(Actuation(gesture="back", via="history", unit=_UNIT))
+        self._record_actuation(Actuation(gesture="back", via="history", unit=_UNIT))
         self._page.go_back()
 
     @_wedge_guard
@@ -790,7 +858,7 @@ class PlaywrightDriver:
         """
         target = urljoin(self._base_url, url)
         # The URL is author data, so the record names only the gesture (`actuation` rule 3).
-        self._actuations.record(Actuation(gesture="navigate", via="url", unit=_UNIT))
+        self._record_actuation(Actuation(gesture="navigate", via="url", unit=_UNIT))
         try:
             self._page.goto(target)
         except _playwright_error_types() as exc:
@@ -873,14 +941,14 @@ class PlaywrightDriver:
         # The orchestrator taps `into` before this (see _do_type), focusing the field — same
         # contract every backend relies on, so typing always lands in the just-focused element.
         # `text` is deliberately absent from the record — not even its length (see `actuation.py`).
-        self._actuations.record(Actuation(gesture="typeText", via="focused", unit=_UNIT))
+        self._record_actuation(Actuation(gesture="typeText", via="focused", unit=_UNIT))
         self._page.keyboard.type(text)
 
     @_wedge_guard
     def delete_text(self, count: int) -> None:
         # `count` backspaces on the focused field (BE-0265). `press` per key, since Playwright has no
         # repeat-count on a single press.
-        self._actuations.record(Actuation(gesture="deleteText", via="focused", unit=_UNIT))
+        self._record_actuation(Actuation(gesture="deleteText", via="focused", unit=_UNIT))
         for _ in range(count):
             self._page.keyboard.press("Backspace")
 
@@ -888,14 +956,14 @@ class PlaywrightDriver:
     def select_all(self) -> None:
         # Select-all on the focused field (BE-0265). `ControlOrMeta` is Cmd on a macOS host, where
         # Chromium reads Ctrl+A as "caret to line start" and selects nothing (#2390).
-        self._actuations.record(Actuation(gesture="selectAll", via="focused", unit=_UNIT))
+        self._record_actuation(Actuation(gesture="selectAll", via="focused", unit=_UNIT))
         self._page.keyboard.press("ControlOrMeta+a")
 
     @_wedge_guard
     def copy_selection(self) -> None:
         # Copies the active selection to the clipboard (BE-0265); Cmd+C on a macOS host, where Ctrl+C
         # copies nothing (#2390).
-        self._actuations.record(Actuation(gesture="copy", via="focused", unit=_UNIT))
+        self._record_actuation(Actuation(gesture="copy", via="focused", unit=_UNIT))
         self._page.keyboard.press("ControlOrMeta+c")
 
     @_wedge_guard
@@ -997,7 +1065,9 @@ class PlaywrightDriver:
     @_wedge_guard
     def screenshot(self, path: str) -> None:
         # Retried on a timeout only (issue #2432): a closed page or crashed renderer is a real wedge
-        # and is reported on the first attempt.
+        # and is reported on the first attempt. The retry is the net for a navigation the settle
+        # step cannot see, such as one a timer starts later.
+        self._settle_navigation()
         for timeout in _SHOT_ATTEMPT_TIMEOUTS_MS[:-1]:
             try:
                 self._page.screenshot(path=path, timeout=timeout)
