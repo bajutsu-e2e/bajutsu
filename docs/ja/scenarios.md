@@ -722,7 +722,8 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
 | `setLocation` | `setLocation: { lat: <num>, lon: <num> }` | シミュレータの GPS 位置を上書きする（`simctl location set`） |
 | `push` | `push: { payload: {...} }` | この APNs（Apple Push Notification service）ペイロードで疑似プッシュ通知を配信する（`simctl push`） |
 | `http` | `http: { method?, url, headers?, body?, status?, saveBody?, extractBody?: [{ var, path }] }` | HTTP リクエストを送る（テストデータ準備 / Webhook / API）。`status` を検証し、ボディを `${vars.<saveBody>}` に保存する、または `path` で指定した JSON のフィールドを `${vars.<var>}` に取り出す（[後述](#httpテストデータ準備用のリクエスト)） |
-| `totp` | `totp: { secret, into: { var } }` | RFC 6238 の時刻ベースワンタイムパスワード（2FA）をローカルで生成し `${vars.<var>}` に入れる |
+| `totp` | `totp: { secret, into?: { var }, name? }` | RFC 6238 の時刻ベースワンタイムパスワード（2FA）をローカルで生成し `${vars.<var>}` に入れる。`name` を指定すると、後続の `otp` ステップ向けにシークレットも登録する |
+| `otp` | `otp: { from, into: { var }, minRemaining? }` | `totp` ステップが `from` の名前で登録したジェネレータの現在のコードを `${vars.<var>}` に入れる（[後述](#otp-で後から新しいコードを取得する)） |
 | `email` | `email: { match: { to?, subject?, subjectMatches? }, extract: { var, bodyMatches }, timeout }` | 設定したメールボックスを一致するメッセージが届くまでポーリングし、コードを `${vars.<var>}` に取り出す |
 | `generate` | `generate: { random\|datetime: {...}, into: { var } }` | 乱数または現在日時の値を実行時に計算し、`${vars.<var>}` に保存する（[後述](#generate実行時に計算する値)） |
 | `eval` | `eval: { from, ops: [...], into: { var } \| { vars: [...] } }` | シナリオがすでに持つ値を分割、結合、絞り込みなどで変換し、`${vars.*}` に保存する（[後述](#eval変数に入った値の変換)） |
@@ -1073,6 +1074,33 @@ assertするまで、新しいステップもランナーの変更も要りま�
 待機は、作成者が決めた長さで止まるのではなく、時計が決めるウィンドウの境界で終わります。そのため待ち時間は1ウィンドウ以内に収まり、決定性監査も `fixed-sleep` として挙げません。実行中のログはこのステップを `totp (≥10s left)` と表示し、待った時間はレポートのステップの所要時間に現れます。
 
 待機の途中で壁時計が飛んだ場合（Network Time Protocol（NTP）による補正など）も、ステップは成功として扱われます。その代わり、レポートのステップ行に警告が残り、飛んだ秒数と残り秒数を示します。後のサインインが期限切れのコードで失敗したとき、この警告が原因の手がかりになります。
+
+#### `otp` で後から新しいコードを取得する
+
+コードを何度も入力するシナリオや、開始からかなり後でコードを入力するシナリオでは、シークレットを一度だけ登録し、コードが必要な時点でそれぞれ取得します。
+`totp` ステップに `name` を付け、`otp` ステップの `from` でそのジェネレータを指定します。
+
+```yaml
+- totp: { secret: "${secrets.TOTP_SEED}", name: main }   # ジェネレータを登録する。コードは書き込まない
+- tap: { id: auth.change_password }
+# ... 任意の数のステップ ...
+- otp: { from: main, into: { var: code }, minRemaining: 10 }   # vars.code ← この時点で有効なコード
+- type: { text: "${vars.code}", into: { id: auth.code } }
+```
+
+`totp` ステップには `name` と `into` の少なくとも一方が必要です。ジェネレータを登録するだけのステップは `into` を省略できます。
+使用中の名前に別のシークレットを登録すると、ステップは失敗します。
+`totp` ステップの `minRemaining` には `into` が必要です。コードを生成しないステップには、有効に保つコードがないからです。
+`totp` ステップはシークレットを登録する時点で検証するので、不正なシークレットはあとの `otp` ではなくその `totp` ステップを失敗させます。
+
+`otp` ステップは実行された時点で時計を読むので、各 `otp` はそのステップの時点で有効な窓のコードを書き込みます。
+`totp` と同じ `minRemaining` の待機を指定でき、実行中のログはこのステップを `otp (≥10s left)` と表示します。
+登録の順序は実行の順序に従います。
+ジェネレータがまだ登録されていない `otp` はステップの失敗になり、実行されなかった `if` 分岐の中の `totp` も何も登録しません。
+ジェネレータはシナリオの実行が終わるまで有効で、`if`、`forEach`、`group` の本体からも使えます。
+
+登録したシークレットには、どの `${...}` トークンからも届きません。そのため、シナリオがシークレットを読み出して入力欄へ入れることはできません。
+`otp` ステップ自体はシークレットを持たないので、証跡に残るのはジェネレータの名前だけです。
 
 ### `email`（メールで届くコードをメールボックスから取得）
 

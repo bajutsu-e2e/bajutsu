@@ -1018,7 +1018,8 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `setLocation` | `setLocation: { lat: <num>, lon: <num> }` | override the simulated GPS location (`simctl location set`) |
 | `push` | `push: { payload: {...} }` | deliver a simulated push notification (`simctl push`) with this APNs (Apple Push Notification service) payload |
 | `http` | `http: { method?, url, headers?, body?, status?, saveBody?, extractBody?: [{ var, path }] }` | issue an HTTP request (test-data setup / webhook / API); checks `status`, stores the body as `${vars.<saveBody>}`, and/or pulls named JSON fields into `${vars.<var>}` by `path` ([below](#http-request-for-test-data-setup)) |
-| `totp` | `totp: { secret, into: { var } }` | generate an RFC 6238 time-based one-time password (2FA) locally into `${vars.<var>}` |
+| `totp` | `totp: { secret, into?: { var }, name? }` | generate an RFC 6238 time-based one-time password (2FA) locally into `${vars.<var>}`; `name` also registers the secret for later `otp` steps |
+| `otp` | `otp: { from, into: { var }, minRemaining? }` | write the current code of the generator a `totp` step registered as `from` into `${vars.<var>}` ([below](#fetch-a-fresh-code-later-with-otp)) |
 | `email` | `email: { match: { to?, subject?, subjectMatches? }, extract: { var, bodyMatches }, timeout }` | poll the configured mailbox until a matching message arrives, extract a code into `${vars.<var>}` |
 | `generate` | `generate: { random\|datetime: {...}, into: { var } }` | compute a random or current-datetime value at run time into `${vars.<var>}` ([below](#generate-a-value-computed-at-run-time)) |
 | `eval` | `eval: { from, ops: [...], into: { var } \| { vars: [...] } }` | split, join, filter, and otherwise transform a value the scenario already holds, into `${vars.*}` ([below](#eval-transform-a-value-held-in-a-variable)) |
@@ -1532,6 +1533,36 @@ audit does not list it as a `fixed-sleep`. The live log labels the step `totp (�
 report shows the time the wait took as the step's duration. If the wall clock jumps during the wait
 (a Network Time Protocol (NTP) correction, say), the step still passes and records a warning on its report row that states
 the jump and the seconds left, so a later sign-in that fails on an expired code shows its cause.
+
+#### Fetch a fresh code later with `otp`
+
+A scenario that enters a code more than once, or long after it starts, registers the secret once
+and fetches each code at the point it needs one. Give the `totp` step a `name`, then name that
+generator in an `otp` step's `from`:
+
+```yaml
+- totp: { secret: "${secrets.TOTP_SEED}", name: main }   # registers the generator; writes no code
+- tap: { id: auth.change_password }
+# ... any number of steps ...
+- otp: { from: main, into: { var: code }, minRemaining: 10 }   # vars.code ← the code current now
+- type: { text: "${vars.code}", into: { id: auth.code } }
+```
+
+A `totp` step needs `name`, `into`, or both, so a step that only registers a generator omits
+`into`. Registering a different secret under a name already in use fails the step. `minRemaining`
+needs `into` on a `totp` step, since a step that produces no code has nothing to keep fresh. The
+`totp` step checks the secret when it registers it, so a malformed secret fails that step rather
+than a later `otp`.
+
+The `otp` step reads the clock when it runs, so each `otp` writes the code of the window current at
+that step. It takes the same `minRemaining` window wait as `totp`, and the live log labels it
+`otp (≥10s left)`. Registration follows execution order: an `otp` whose generator has not been
+registered yet fails the step, as does one whose `totp` sat in an `if` branch that did not run. A
+generator lasts for the rest of the scenario run, `if`, `forEach`, and `group` bodies included.
+
+The run keeps a registered secret out of reach of every `${...}` token, so no scenario can read it
+back into a typed field. The `otp` step itself carries no secret, so its evidence shows only the
+generator's name.
 
 ### `email` (poll a mailbox for a received code)
 

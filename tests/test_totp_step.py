@@ -16,6 +16,7 @@ _SECRET = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
 def test_totp_step_parses() -> None:
     step = Step.model_validate({"totp": {"secret": _SECRET, "into": {"var": "code"}}})
     assert step.totp is not None
+    assert step.totp.into is not None
     assert step.totp.secret == _SECRET and step.totp.into.var == "code"
 
 
