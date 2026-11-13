@@ -1208,7 +1208,9 @@ more fail the step, as for any selector. On iOS that element is the WebView itse
 to sit on the `WKWebView`: the bridge looks that view up by the identifier on every request. On
 Android the element is usually a container that the WebView fills. A `WebView`'s own accessibility
 node reports no resource-id, so the id goes on the container, and the run uses that element's frame
-alone. Each platform then finds the page behind that element in its own way:
+alone. The container has to match the WebView's size exactly: one padded around the WebView has a
+frame that no page rectangle contains, and the step fails. Each platform then finds the page behind
+that element in its own way:
 
 | Platform | How the run reaches the page | Which page it picks |
 |---|---|---|

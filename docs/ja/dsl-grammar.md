@@ -275,7 +275,7 @@ ForEach ::= { sel: <Selector>, as: string, steps: list(<Step>) }
 Web ::= { within: <Selector>, steps: list(<Step>) }
     # `within` はネイティブに解決してちょうど1つの WebView ホストを指す。iOS では、アクセシビリティ
     # 識別子が一致する `WKWebView` を指す。adb では、Android の `WebView` のページをフレームで選ぶ要素を
-    # 指す。`WebView` 自身のノードは resource-id を報告しないので、通常は `WebView` が全体を埋めるコンテナになる。
+    # 指す。`WebView` 自身のノードは resource-id を報告しないので、通常は `WebView` とぴったり同じ大きさのコンテナになる。
     # 内側の `steps` はネイティブのアクセシビリティツリーではなく、正規化された DOM
     # （`data-testid` → Element.identifier）を対象にする。
 App ::= { bundleId: string, steps: list(<Step>) }
