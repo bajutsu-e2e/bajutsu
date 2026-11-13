@@ -30,6 +30,7 @@ from bajutsu.common.evidence.network import (
 )
 from bajutsu.common.mailbox import extract_value, select
 from bajutsu.common.orchestrator.actions import _do_action, handle_system_alert_selector
+from bajutsu.common.orchestrator.actions.handlers.totp import generator_key
 from bajutsu.common.orchestrator.control_channel import (
     ControlChannelError,
     capability_suspended,
@@ -89,7 +90,7 @@ from bajutsu.common.scenario import (
     Step,
     interp,
 )
-from bajutsu.common.scenario.models.actions import Totp
+from bajutsu.common.scenario.models.actions import Otp, Totp
 from bajutsu.common.totp import TOTP_PERIOD_SECONDS
 
 from ._loop_config import _LoopConfig
@@ -433,10 +434,28 @@ def _wait_for_totp_window(
     return f"totp: wall clock jumped {drift:+.0f}s during window wait; {left_s:.0f}s left"
 
 
-def _align_totp_window(
-    totp: Totp, clock: Clock, cancelled: CancelSource, warnings: list[str] | None
+def _align_step_window(
+    step: Step,
+    bindings: dict[str, str] | None,
+    clock: Clock,
+    cancelled: CancelSource,
+    warnings: list[str] | None,
 ) -> None:
-    """Run a `totp` step's `minRemaining` wait, if it asks for one, and keep any jump warning."""
+    """Run a `totp` / `otp` step's window wait before its handler generates the code."""
+    if bindings is None:
+        return  # no var scope means the handler writes nothing, so no code to keep fresh either
+    if step.totp is not None:
+        _align_totp_window(step.totp, clock, cancelled, warnings)
+    # An unregistered generator skips the wait, so the `otp` handler fails the step at once instead
+    # of after up to a window's pause.
+    elif step.otp is not None and generator_key(step.otp.from_) in bindings:
+        _align_totp_window(step.otp, clock, cancelled, warnings)
+
+
+def _align_totp_window(
+    totp: Totp | Otp, clock: Clock, cancelled: CancelSource, warnings: list[str] | None
+) -> None:
+    """Run a `totp` / `otp` step's `minRemaining` wait, if it asks for one, and keep any warning."""
     if totp.min_remaining is None:
         return
     warning = _wait_for_totp_window(totp.min_remaining, clock, cancelled)
@@ -612,11 +631,9 @@ def _run_step_body(
             )
             ok = assertions.passed(results)
             return ok, "" if ok else _fail_reason(results), results, tree
-        if step.totp is not None and bindings is not None:
-            # Here rather than in the handler, like `sleep`: the wait needs the clock and the cancel
-            # source, which the action-handler signature carries neither of (BE-0474). No var scope
-            # means the handler writes nothing, so there is no code to keep fresh either.
-            _align_totp_window(step.totp, clock, cancelled, warnings)
+        # Here rather than in the handler, like `sleep`: the wait needs the clock and the cancel
+        # source, which the action-handler signature carries neither of (BE-0474).
+        _align_step_window(step, bindings, clock, cancelled, warnings)
         _do_action(
             _action_driver(driver, resolving),
             step,

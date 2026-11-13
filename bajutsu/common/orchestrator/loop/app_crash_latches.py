@@ -8,10 +8,11 @@ from dataclasses import dataclass
 # a scenario's very first failing step would otherwise lack. Keyed positively, not by excluding the
 # obvious offenders: an `if`/`forEach` settles `ok=True` on an empty branch or zero matched elements
 # without the app behind the query ever answering (a dead app's SpringBoard-only tree answers a
-# `query()` perfectly well), and `http` / `generate` / `totp` / `email` / `push` never reach the app at
-# all. So a kind added later defaults to proving nothing, which only leaves the probe suppressed —
-# never the reverse. `tapPoint` is out for the same reason: it injects a raw coordinate and succeeds
-# whether or not anything is there to receive it. `relaunch` is out too, and handled separately below.
+# `query()` perfectly well), and `http` / `generate` / `totp` / `otp` / `email` / `push` never reach
+# the app at all. So a kind added later defaults to proving nothing, which only leaves the probe
+# suppressed — never the reverse. `tapPoint` is out for the same reason: it injects a raw
+# coordinate and succeeds whether or not anything is there to receive it. `relaunch` is out too,
+# and handled separately below.
 OBSERVES_APP = frozenset(
     {
         "tap",
