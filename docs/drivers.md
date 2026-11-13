@@ -663,7 +663,7 @@ Inside the block, each `DomSource` method maps to CDP calls:
 | `DomSource` method | CDP calls |
 |---|---|
 | `query_dom` | `Runtime.evaluate` of the shared `QUERY_JS`, the same walk the web backend and the iOS bridge run |
-| `tap_element` | A hit-test with `document.elementFromPoint`, then `Input.dispatchTouchEvent` (`touchStart`, `touchEnd`) at the point; the tap ends once the page's click lands, after at most three seconds; a page that cannot be read again within that bound fails the tap |
+| `tap_element` | A hit-test with `document.elementFromPoint`, then `Input.dispatchTouchEvent` (`touchStart`, `touchEnd`) at the point; the tap ends once the page's click lands, after at most three seconds (or the `BAJUTSU_MIN_WAIT_TIMEOUT` condition-wait floor, when that is longer); a page that cannot be read again within that bound fails the tap |
 | `type_text` | Moves the caret to the end of the focused text field, sends `Input.insertText`, then dispatches `change` |
 | `scroll_to` | `Runtime.evaluate` of a `scrollIntoView` script |
 
@@ -671,7 +671,7 @@ The tap is a trusted touch, so a page that listens for touch events reacts to it
 clicks through a script instead. The page turns the touch into a click a moment after `touchEnd`
 returns. The click also focuses a field. The tap waits for that click. Without the wait, a `type`
 right after tapping a field would find nothing focused. A page that cancels the click never sends
-one. After three seconds, the tap ends with the touch alone and logs a warning.
+one. Once that bound passes, the tap ends with the touch alone and logs a warning.
 
 Every transport error raises one exception type, `WebViewTransportError`. It ends the block with its
 reason, not the run. Three causes are common. The socket is missing, CDP

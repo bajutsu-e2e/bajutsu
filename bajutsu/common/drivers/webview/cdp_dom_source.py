@@ -11,6 +11,7 @@ from __future__ import annotations
 import http.client
 import json
 import logging
+import os
 import time
 import urllib.error
 import urllib.parse
@@ -67,9 +68,13 @@ _CARET_TO_END_JS = """
 # script click has already run it. A page that cancels the click (`preventDefault` on `touchend`)
 # never fires one, so the wait is bounded and the tap then stands as sent. The bound is generous
 # because the click arrives in about 250 ms on a local emulator and later on a software-rendered one,
-# and it costs time only on a page that cancels the click.
+# and it costs time only on a page that cancels the click. A lane that sets the condition-wait floor
+# (`BAJUTSU_MIN_WAIT_TIMEOUT`, for a slow emulator) raises this bound to it too, as every other
+# condition wait does; the env var is read here rather than through the orchestrator's helper, which
+# a driver does not import.
 _CLICK_FLAG = "__bajutsuTapClicked"
 _CLICK_WAIT_S = 3.0
+_WAIT_FLOOR_ENV = "BAJUTSU_MIN_WAIT_TIMEOUT"
 _CLICK_POLL_S = 0.02
 # The hit script sets the flag to `false` just before the touch, so reading it as `undefined` means a
 # click navigated and the poll now reads the new document, which never had the flag.
@@ -80,6 +85,17 @@ _FIRE_CHANGE_JS = """
   if (el) el.dispatchEvent(new Event('change', { bubbles: true }));
 })()
 """
+
+
+def _click_wait_s() -> float:
+    """The click poll's bound: three seconds, or the lane's condition-wait floor when that is longer."""
+    raw = os.environ.get(_WAIT_FLOOR_ENV)
+    try:
+        floor = float(raw) if raw else 0.0
+    except ValueError:
+        # The orchestrator's own waits reject a malformed floor with its name; a tap keeps its default.
+        floor = 0.0
+    return max(_CLICK_WAIT_S, floor)
 
 
 def _scroll_js(element_id: str) -> str:
@@ -250,7 +266,8 @@ class CdpDomSource:
         """A trusted touch at `point`, in the page's CSS-pixel space, done once the page's click lands.
 
         The page clicks (and focuses a field) after the touch returns, so the tap waits for that click,
-        for at most three seconds; a page that cancels the click is left with the touch alone.
+        for at most three seconds (or the lane's `BAJUTSU_MIN_WAIT_TIMEOUT` floor when that is longer);
+        a page that cancels the click is left with the touch alone.
 
         Raises:
             ElementNotTappable: nothing but the page itself sits at the point, so the touch would
@@ -280,7 +297,8 @@ class CdpDomSource:
             "Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [{"x": x, "y": y}]}
         )
         conn.call("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
-        deadline = self._clock() + _CLICK_WAIT_S
+        bound = _click_wait_s()
+        deadline = self._clock() + bound
         while True:
             # A click that navigates tears down the script context, so a read can fail until the new
             # document has one; that read is retried, not counted as the click. A dead socket, a
@@ -298,7 +316,7 @@ class CdpDomSource:
                 _logger.warning(
                     "web: no click landed within %.0fs of the tap at (%s, %s); the page may have"
                     " cancelled it",
-                    _CLICK_WAIT_S,
+                    bound,
                     x,
                     y,
                 )

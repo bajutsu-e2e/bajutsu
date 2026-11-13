@@ -396,6 +396,40 @@ def test_tap_stops_waiting_for_a_click_the_page_cancels() -> None:
     assert 3.0 <= clock.now < 3.1
 
 
+def test_tap_widens_its_click_wait_to_the_lane_wait_floor(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The CI emulator lane sets the condition-wait floor; the click poll honors it like any wait.
+    monkeypatch.setenv("BAJUTSU_MIN_WAIT_TIMEOUT", "15")
+
+    def responder(method: str, p: dict[str, Any]) -> dict[str, Any]:
+        if method != "Runtime.evaluate":
+            return {"result": {}}
+        return _value("__bajutsuTapClicked ===" not in p["expression"])
+
+    clock = _FakeClock()
+    src = _clocked_source(RecordedTransport(responder), clock)
+    with src.session("web", (0, 0, 1, 1)):
+        src.tap_element("web", (1.0, 2.0))
+    assert 15.0 <= clock.now < 15.1
+
+
+@pytest.mark.parametrize("floor", ["1", "not-a-number"])
+def test_tap_keeps_its_click_wait_under_a_lower_or_malformed_floor(
+    monkeypatch: pytest.MonkeyPatch, floor: str
+) -> None:
+    monkeypatch.setenv("BAJUTSU_MIN_WAIT_TIMEOUT", floor)
+
+    def responder(method: str, p: dict[str, Any]) -> dict[str, Any]:
+        if method != "Runtime.evaluate":
+            return {"result": {}}
+        return _value("__bajutsuTapClicked ===" not in p["expression"])
+
+    clock = _FakeClock()
+    src = _clocked_source(RecordedTransport(responder), clock)
+    with src.session("web", (0, 0, 1, 1)):
+        src.tap_element("web", (1.0, 2.0))
+    assert 3.0 <= clock.now < 3.1
+
+
 def test_tap_counts_a_page_torn_down_by_its_click_as_landed() -> None:
     # A link's click navigates: the first read finds the old context destroyed, the next reads the new
     # document, whose flag is `undefined` and so reads as landed.
