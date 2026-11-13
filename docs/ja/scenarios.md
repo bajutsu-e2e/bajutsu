@@ -732,8 +732,8 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
 | `installApp` | `installApp: { from: <target>, keepData?: bool }` | 後から入るデバイスグループのメンバーのビルドを、ステップのデバイスにインストールする。同じ識別子の既存ビルドの上に入れる（`keepData`、デフォルト `true`）か、先にアンインストールする（`false`）。何も起動しない（[デバイスグループ](#デバイスグループ1台のデバイスで複数のアプリを動かすbe-0447)） |
 | `setPrimaryTarget` | `setPrimaryTarget: { target: <target> }` | このステップ以降、`target` を省略したステップ、`interrupts` エントリ、トップレベルの `expect` エントリを `target` で動かす。トップレベルの `steps` にだけ書ける（[デバイスグループ](#デバイスグループ1台のデバイスで複数のアプリを動かすbe-0447)） |
 | `clearKeychain` | `clearKeychain: {}` | Simulator のキーチェーンをリセットする（保存済みパスワード / 証明書） |
-| `clearClipboard` | `clearClipboard: {}` | Simulator のペーストボードをクリアする |
-| `setClipboard` | `setClipboard: { text: "..." }` | ペースト操作のため Simulator のペーストボードにテキストを投入する |
+| `clearClipboard` | `clearClipboard: {}` | デバイスのクリップボードをクリアします（iOS Simulator と、BajutsuAndroid を組み込んだ Android） |
+| `setClipboard` | `setClipboard: { text: "..." }` | ペースト操作のため、デバイスのクリップボードにテキストを投入します（iOS Simulator と、BajutsuAndroid を組み込んだ Android） |
 | `setMocks` | `setMocks: [ { match, respond }... ]` | アプリ内制御チャネルを通して、シナリオの途中でアプリのスタブテーブル全体を置き換える（[後述](#シナリオの途中でモックを変えるsetmocks)）。`[]` はすべてのスタブを外す。iOS（XCUITest）かつネットワーク収集が有効な場合のみ（[BE-0365](../../roadmaps/BE-0365-in-app-control-channel/BE-0365-in-app-control-channel-ja.md)） |
 | `overrideStatusBar` | `overrideStatusBar: { time?, batteryLevel?, batteryState?, cellularBars?, wifiBars? }` | 決定的なスクリーンショットのためステータスバーを上書きする |
 | `clearStatusBar` | `clearStatusBar: {}` | ステータスバーの上書きを解除する（ライブ表示に戻す） |
@@ -1727,7 +1727,7 @@ showcase のデモは、この 2 つの流れを iOS と Android の両方で実
 | `requestSequence` | 複数のマッチャがこの順序で観測されたか検証（`--network` が必要） | `requestSequence: [ { urlMatches: "/auth/refresh" }, { urlMatches: "/api/account" } ]` |
 | `responseSchema` | 捕捉したレスポンスボディが JSON Schema に適合するか検証（`--network` が必要） | `responseSchema: { request: { urlMatches: "/api/items" }, schema: items.json }` |
 | `visual` | 画面が baseline 画像に一致する（ビジュアルリグレッション） | `visual: { baseline: home.png, threshold: 0.02 }` |
-| `clipboard` | デバイスのペーストボードが一致する（`simctl pbpaste` で読み戻す） | `clipboard: { equals: "COUPON123" }` / `clipboard: { matches: "\\d{6}" }` |
+| `clipboard` | デバイスのクリップボードが一致する（iOS は `simctl pbpaste`、Android は BajutsuAndroid の受信側で読み戻す） | `clipboard: { equals: "COUPON123" }` / `clipboard: { matches: "\\d{6}" }` |
 | `attribute` | 要素の HTML 属性が一致する、または属性がない（web のみ） | `attribute: { sel: { id: docs.link }, name: href, equals: /docs }` / `attribute: { sel: { id: panel }, name: aria-busy, absent: true }` |
 
 - `exists` はセレクタを **インラインで**書きます（`{ id: ... }` を直書き）。`negate` は任意です。
@@ -1739,7 +1739,7 @@ showcase のデモは、この 2 つの流れを iOS と Android の両方で実
 - `requestSequence` は複数の request マッチャが **順序どおりに観測された**かを検証します（[下記](#requestsequence順序付きリクエスト)）。`--network` 実行フラグが必要です。
 - `responseSchema` は捕捉した **レスポンスボディが JSON Schema に適合する**かを検証します（[下記](#responseschemaレスポンスの-json-schema)）。`--network` 実行フラグが必要です。
 - `visual` はスクリーンショットを baseline 画像とピクセル比較します（[下記](#visualビジュアルリグレッション)）。
-- `clipboard` はデバイスのペーストボードを `simctl pbpaste` で読み戻し、`equals` / `matches`（正規表現）の **いずれか 1 つ**を検証します。`setClipboard` の読み戻し側で、「コピー」操作の検証に使います。デバイスごとの制御チャネルが必要なため、fake ドライバや並列実行では利用できず、その場合はクリーンに失敗します（[BE-0052](../../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)）。
+- `clipboard` はデバイスのクリップボードを読み戻し、`equals` / `matches`（正規表現）の **いずれか 1 つ**を検証します。読み戻しには、iOS では `simctl pbpaste` を、Android ではアプリに組み込んだ BajutsuAndroid の受信側を使います（[BE-0233](../../roadmaps/BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity-ja.md)）。`setClipboard` の読み戻し側で、「コピー」操作の検証に使います。デバイスごとの制御チャネルが必要なため、fake ドライバや並列実行では利用できず、その場合はクリーンに失敗します（[BE-0052](../../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)）。
 - `attribute` は `sel:` と `name:` に加えて、`equals` / `contains` / `matches` / `absent: true` の **いずれか 1 つ**を取ります。詳細は[後述](#attribute要素の-html-属性)と [BE-0466](../../roadmaps/BE-0466-web-attribute-assertion/BE-0466-web-attribute-assertion-ja.md) を参照してください。属性は web（Playwright）バックエンドから必要なときに読み取ります。ほかのバックエンドでは、デバイスの確保前に失敗します。
 
 > **ロケール注意**: `label`/`value` の文字列比較や、可視テキストを見るアサーションは翻訳で壊れます。これらはターゲットの固定 `runsOn.ios.locale` を前提に書き、セレクタ自体は `id` で書いてください。

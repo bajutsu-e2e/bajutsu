@@ -664,6 +664,7 @@ same limit the XCUITest emitter hits for NSPredicate `MATCHES`), so it stays a `
 | `wait { until: gone }` | `awaitGone(<by>, <ms>L)` — the same, on `Until.gone` |
 | `wait { until: screenChanged/settled }` | `device.waitForIdle(<ms>L)` — `findObject` does not auto-wait, so this is a real condition wait, not a bare comment |
 | `relaunch` | `launch(extras)` (re-issues the launch intent) |
+| `setClipboard` / `clearClipboard` | `clipboard("set", "…")` / `clipboard("clear")` — the same `am broadcast` to the BajutsuAndroid clipboard receiver that `run` sends (BE-0233), so the app must embed BajutsuAndroid |
 | `doubleTap` / `rotate` | `// TODO` (no UI Automator gesture) |
 | `handleSystemAlert` | `// TODO` (iOS-only; tap the system dialog directly on Android) |
 
@@ -678,11 +679,15 @@ same limit the XCUITest emitter hits for NSPredicate `MATCHES`), so it stays a `
 | `selected` | `assertTrue(device.findObject(<by>).isSelected)` |
 | `count` (equals/atLeast/atMost) | `device.findObjects(<by>).size` with `assertEquals` / `assertTrue(size >= n)` / `assertTrue(size <= n)` |
 | `attribute` | `// TODO: attribute(name: "href", equals: "/docs") — web-only; not generated` (BE-0466) |
+| `clipboard` (equals/matches) | `assertEquals("…", clipboard("get"))` / `assertTrue(Regex("…").containsMatchIn(clipboard("get")))` |
 
-The adb backend has no network-interception surface, so every network assertion (`request` /
-`requestSequence` / `responseSchema`) and the device-control family (`setLocation` / `push` /
-`setClipboard` / …) emit a labeled `// TODO` naming why, exactly as the XCUITest target does for its
-own gaps.
+An unhandled broadcast fails the test by name. It never reads back as an empty clipboard. The
+broadcast goes unhandled when the app embeds no BajutsuAndroid clipboard receiver.
+
+The adb backend has no network-interception surface. So every network assertion (`request` /
+`requestSequence` / `responseSchema`) emits a labeled `// TODO` naming why. The rest of the
+device-control family (`setLocation` / `push` / …) does the same. The XCUITest target handles its
+own gaps exactly this way.
 
 ## Name generation
 

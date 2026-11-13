@@ -3,6 +3,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.SystemClock
+import android.util.Base64
 import android.util.Log
 import android.view.KeyEvent
 import androidx.test.core.app.ApplicationProvider
@@ -38,6 +39,8 @@ private const val CACHE_REREAD_SLICE_MS = 500L
 private const val DIAGNOSTICS_DIR = "codegen-diagnostics"
 private const val ADDITIONAL_OUTPUT_ARG = "additionalTestOutputDir"
 private const val LOG_TAG = "BajutsuCodegen"
+private const val CLIPBOARD_ACTION = "dev.bajutsu.CLIPBOARD"
+private const val CLIPBOARD_RESULT_OK = 1
 
 @RunWith(AndroidJUnit4::class)
 class CodegenandroiduitestUITest {
@@ -382,6 +385,33 @@ class CodegenandroiduitestUITest {
     throw AssertionError(
       "wait: an element still matched $by after ${timeoutMs}ms; windows:\n" + windowSummary()
     )
+  }
+
+  // Set, clear, or read the clipboard through BajutsuAndroid's in-app receiver, the route `run`
+  // takes (BE-0233): since Android 10 only the foreground app may touch the clipboard, so the
+  // app under test does it from its own process. The text travels base64-encoded, an alphabet
+  // with no whitespace, so the shell command's whitespace split cannot break it apart. An
+  // unhandled broadcast (an app that embeds no receiver) fails here by name rather than reading
+  // back as an empty clipboard.
+  private fun clipboard(op: String, text: String? = null): String {
+    // An empty set omits `b64`: base64 of "" is "", and the whitespace split drops that empty
+    // token, so the extra would reach `am` value-less and error. The receiver reads a missing `b64`
+    // as empty — the same rule as the adb backend's set_primary_clip_cmd.
+    val payload = text?.takeIf { it.isNotEmpty() }?.let {
+      " --es b64 " + Base64.encodeToString(it.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+    }.orEmpty()
+    val out = device.executeShellCommand(
+      "am broadcast -a $CLIPBOARD_ACTION -p $PACKAGE --es op $op$payload"
+    )
+    val code = Regex("result=(-?\\d+)").find(out)?.groupValues?.get(1)?.toIntOrNull()
+    if (code != CLIPBOARD_RESULT_OK) {
+      throw AssertionError(
+        "clipboard $op: the broadcast was not handled — $PACKAGE embeds no BajutsuAndroid " +
+          "clipboard receiver; am broadcast said: ${out.trim()}"
+      )
+    }
+    val data = Regex("data=\"([^\"]*)\"").find(out)?.groupValues?.get(1) ?: return ""
+    return String(Base64.decode(data, Base64.NO_WRAP), Charsets.UTF_8)
   }
 
   @Test

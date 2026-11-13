@@ -256,7 +256,7 @@ Action    ::=
   | { setPrimaryTarget: { target: string } }               # 以降、省略した `target`（ステップ、`interrupts` エントリ、トップレベルの `expect`）を `target` に解決する。トップレベルの `steps` だけ（BE-0447）
   | { clearKeychain:    {} }                               # 保存済みパスワード / 証明書をリセット
   | { clearClipboard:   {} }                               # ペーストボードをクリア
-  | { setClipboard:     { text: string } }                 # ペーストボードにテキストを書き込む（simctl pbcopy）。ペースト操作の準備用
+  | { setClipboard:     { text: string } }                 # クリップボードにテキストを書き込む（simctl pbcopy、Android は BajutsuAndroid）。ペースト操作の準備用
   | { setMocks:         list(<Mock>) }                     # シナリオの途中でアプリのスタブテーブル全体を置き換える（[] はすべてのスタブを外す）。iOS/XCUITest かつネットワーク収集が有効な場合のみ（BE-0365）
   | { overrideStatusBar: { time?: string, batteryLevel?: integer, batteryState?: string, cellularBars?: integer, wifiBars?: integer } }
   | { clearStatusBar:   {} }                               # ライブのステータスバーに戻す
@@ -357,7 +357,7 @@ Assertion ::=
   | { requestSequence: list(<RequestMatch>) }   # 1 つ以上のマッチャ。マッチしたやり取りの順序付き集合
   | { responseSchema: <ResponseSchemaMatch> }   # 取得したレスポンスボディを JSON Schema で検証する（BE-0048）
   | { visual:   <VisualMatch> }
-  | { clipboard: <ClipboardMatch> }   # デバイスのペーストボードの読み戻し（simctl pbpaste）
+  | { clipboard: <ClipboardMatch> }   # デバイスのクリップボードの読み戻し（simctl pbpaste、Android は BajutsuAndroid）
   | { attribute: <AttributeMatch> }   # 1 つの要素の HTML 属性を必要なときに読み取る（web のみ。BE-0466）
   | { golden:   <GoldenMatch> }       # 実行中の要素ツリーを記録済みの golden ファイルと比較する（BE-0006）
 

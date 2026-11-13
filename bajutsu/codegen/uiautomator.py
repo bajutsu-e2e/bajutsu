@@ -13,9 +13,11 @@ what the driver does at run time rather than an Espresso view-matcher idiom.
 
 Only a single-field selector (`id` / `label` / `value` / `idMatches` / `labelMatches`) maps to a
 `BySelector`; a compound selector (`traits` / `within` / `index`, or several fields together) has
-no faithful single-selector form and emits a `// TODO`. Constructs the adb backend cannot drive —
-the device-control family, multi-touch beyond pinch, and every network assertion — emit a labeled
-`// TODO` naming why, never a wrong guess, so the output is always reviewable. A runtime-only
+no faithful single-selector form and emits a `// TODO`. The clipboard steps and assertion go
+through the same BajutsuAndroid receiver `run` drives (BE-0233). Constructs a generated test cannot
+drive — the rest of the device-control family, multi-touch beyond pinch, and every network
+assertion — emit a labeled `// TODO` naming why, never a wrong guess, so the output is always
+reviewable. A runtime-only
 construct the shared walk cannot translate at all (`if` / `forEach` / `extract`) fails loudly with
 a `CodegenError` instead of a silent no-op stub (BE-0297).
 """
@@ -43,6 +45,7 @@ from bajutsu.codegen.common import (
     sleep_ms,
 )
 from bajutsu.common.assertions import request_label
+from bajutsu.common.backend_cli.adb import CLIPBOARD_ACTION, CLIPBOARD_RESULT_OK
 from bajutsu.common.drivers import base
 from bajutsu.common.scenario import (
     Assertion,
@@ -313,6 +316,10 @@ def _emit_step(step: Step) -> list[str]:  # noqa: C901, PLR0911, PLR0912
         return _emit_wait(step.wait)
     if step.relaunch is not None:
         return ["launch(extras)"]
+    if step.set_clipboard is not None:
+        return [f'clipboard("set", {_s(step.set_clipboard.text)})']
+    if step.clear_clipboard is not None:
+        return ['clipboard("clear")']
     if step.assert_ is not None:
         return [line for a in step.assert_ for line in _emit_assertion(a)]
     return [_device_control_todo(step)]
@@ -325,8 +332,6 @@ def _device_control_todo(step: Step) -> str:
         return f"// TODO: setLocation(lat: {loc.lat}, lon: {loc.lon}) — no adb device control; not generated"
     if step.push is not None:
         return "// TODO: push — no adb device control; not generated"
-    if step.set_clipboard is not None:
-        return f"// TODO: setClipboard(text: {_s(step.set_clipboard.text)}) — no adb device control; not generated"
     if step.totp is not None:
         return f"// TODO: totp(into: {step.totp.into.var}) — RFC 6238 OTP; not generated"
     if step.email is not None:
@@ -440,6 +445,13 @@ def _emit_assertion(a: Assertion) -> list[str]:  # noqa: C901, PLR0911
         return _emit_count(a.count)
     if a.attribute is not None:
         return [_attribute_todo(a.attribute)]
+    if a.clipboard is not None:
+        if a.clipboard.equals is not None:
+            return [f'assertEquals({_s(a.clipboard.equals)}, clipboard("get"))']
+        # `run` checks `matches` with re.search, so an unanchored containsMatchIn is its peer.
+        return [
+            f'assertTrue(Regex({_s(a.clipboard.matches or "")}).containsMatchIn(clipboard("get")))'
+        ]
     if a.request is not None:
         return [f"// TODO: request assertion ({request_label(a.request)}) — {_NO_NETWORK}"]
     if a.request_sequence is not None:
@@ -467,6 +479,7 @@ class _UiAutomatorGen:
             "import android.content.Intent",
             "import android.os.Build",
             "import android.os.SystemClock",
+            "import android.util.Base64",
             "import android.util.Log",
             "import android.view.KeyEvent",
             "import androidx.test.core.app.ApplicationProvider",
@@ -526,6 +539,10 @@ class _UiAutomatorGen:
             f"private const val DIAGNOSTICS_DIR = {_s(_DIAGNOSTICS_DIR)}",
             f"private const val ADDITIONAL_OUTPUT_ARG = {_s(_ADDITIONAL_OUTPUT_ARG)}",
             f"private const val LOG_TAG = {_s(_LOG_TAG)}",
+            # The broadcast BajutsuAndroid's clipboard receiver answers, and the result code it sets
+            # once it handled one — the same pair the adb backend sends at run time (BE-0233).
+            f"private const val CLIPBOARD_ACTION = {_s(CLIPBOARD_ACTION)}",
+            f"private const val CLIPBOARD_RESULT_OK = {CLIPBOARD_RESULT_OK}",
             "",
             "@RunWith(AndroidJUnit4::class)",
             f"class {self._class_name} {{",
@@ -1000,6 +1017,42 @@ class _UiAutomatorGen:
             '      "wait: an element still matched $by after ${timeoutMs}ms; windows:\\n" +'
             + " windowSummary()",
             "    )",
+            "  }",
+            "",
+            "  // Set, clear, or read the clipboard through BajutsuAndroid's in-app receiver, the route"
+            + " `run`",
+            "  // takes (BE-0233): since Android 10 only the foreground app may touch the clipboard, so"
+            + " the",
+            "  // app under test does it from its own process. The text travels base64-encoded, an"
+            + " alphabet",
+            "  // with no whitespace, so the shell command's whitespace split cannot break it apart."
+            + " An",
+            "  // unhandled broadcast (an app that embeds no receiver) fails here by name rather than"
+            + " reading",
+            "  // back as an empty clipboard.",
+            "  private fun clipboard(op: String, text: String? = null): String {",
+            '    // An empty set omits `b64`: base64 of "" is "", and the whitespace split drops'
+            + " that empty",
+            "    // token, so the extra would reach `am` value-less and error. The receiver reads a"
+            + " missing `b64`",
+            "    // as empty — the same rule as the adb backend's set_primary_clip_cmd.",
+            "    val payload = text?.takeIf { it.isNotEmpty() }?.let {",
+            '      " --es b64 " + Base64.encodeToString(it.toByteArray(Charsets.UTF_8),'
+            + " Base64.NO_WRAP)",
+            "    }.orEmpty()",
+            "    val out = device.executeShellCommand(",
+            '      "am broadcast -a $CLIPBOARD_ACTION -p $PACKAGE --es op $op$payload"',
+            "    )",
+            '    val code = Regex("result=(-?\\\\d+)").find(out)?.groupValues?.get(1)?.toIntOrNull()',
+            "    if (code != CLIPBOARD_RESULT_OK) {",
+            "      throw AssertionError(",
+            '        "clipboard $op: the broadcast was not handled — $PACKAGE embeds no BajutsuAndroid "'
+            + " +",
+            '          "clipboard receiver; am broadcast said: ${out.trim()}"',
+            "      )",
+            "    }",
+            '    val data = Regex("data=\\"([^\\"]*)\\"").find(out)?.groupValues?.get(1) ?: return ""',
+            "    return String(Base64.decode(data, Base64.NO_WRAP), Charsets.UTF_8)",
             "  }",
             "",
         ]

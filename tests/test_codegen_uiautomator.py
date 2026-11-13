@@ -727,17 +727,51 @@ def test_device_control_and_helper_steps_are_labeled_todo() -> None:
     code = _gen(
         "- name: x\n  steps:\n"
         "    - push: { payload: {} }\n"
-        "    - setClipboard: { text: hi }\n"
         "    - totp: { secret: GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ, into: { var: code } }\n"
         "    - email: { match: { subjectMatches: Verify }, extract: { var: pin, "
         "bodyMatches: 'PIN (\\d+)' }, timeout: 10 }\n"
         "    - background: {}\n"
     )
     assert "// TODO: push" in code
-    assert "// TODO: setClipboard(text: " in code
     assert "// TODO: totp(into: code)" in code
     assert "// TODO: email(into: pin)" in code
     assert "// TODO: unsupported step" in code
+
+
+def test_clipboard_steps_and_assertion_go_through_the_bajutsu_android_receiver() -> None:
+    # The same in-app receiver `run` drives (BE-0233), so the generated test seeds and reads the
+    # clipboard instead of leaving a TODO.
+    code = _gen(
+        "- name: x\n  steps:\n"
+        "    - setClipboard: { text: 'a$b \"q\"' }\n"
+        "    - clearClipboard: {}\n"
+        "  expect:\n"
+        "    - clipboard: { equals: hi }\n"
+        "    - clipboard: { matches: '^C\\d+' }\n"
+    )
+    assert 'clipboard("set", "a\\$b \\"q\\"")' in code
+    assert 'clipboard("clear")' in code
+    assert 'assertEquals("hi", clipboard("get"))' in code
+    assert 'assertTrue(Regex("^C\\\\d+").containsMatchIn(clipboard("get")))' in code
+    assert "TODO: setClipboard" not in code
+    assert "unsupported" not in code
+    # The helper speaks the adb backend's own broadcast contract, so the two cannot drift apart.
+    assert 'private const val CLIPBOARD_ACTION = "dev.bajutsu.CLIPBOARD"' in code
+    assert "private const val CLIPBOARD_RESULT_OK = 1" in code
+    assert "am broadcast -a $CLIPBOARD_ACTION -p $PACKAGE --es op $op$payload" in code
+    assert "import android.util.Base64" in code
+    # Pin the Python-to-Kotlin escaping of the reply parsing, and the unhandled-broadcast check.
+    assert 'Regex("result=(-?\\\\d+)")' in code
+    assert 'Regex("data=\\"([^\\"]*)\\"")' in code
+    assert "if (code != CLIPBOARD_RESULT_OK) {" in code
+
+
+def test_empty_set_clipboard_omits_the_b64_extra() -> None:
+    # base64("") is "", which the shell split would drop and leave `--es b64` value-less; the helper
+    # skips the extra instead, like the adb backend's set_primary_clip_cmd.
+    code = _gen("- name: x\n  steps:\n    - setClipboard: { text: '' }\n")
+    assert 'clipboard("set", "")' in code
+    assert "val payload = text?.takeIf { it.isNotEmpty() }?.let {" in code
 
 
 def test_generate_step_is_a_labeled_todo() -> None:
