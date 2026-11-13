@@ -1223,14 +1223,16 @@ with a reason that names what is missing.
   bridge when the run passes the port. The `WKWebView` carries an accessibility identifier.
 - **Android:** a debuggable build calls
   [BajutsuAndroid](../BajutsuAndroid/README.md#webview-debugging)'s
-  `Bajutsu.enableWebViewDebugging(context)` in `Application.onCreate`, or right before it creates its first WebView. Every debug build type
-  sets `android:debuggable`. The
-  helper does nothing in a non-debuggable build, so a release build never opens the socket. The
+  `Bajutsu.enableWebViewDebugging(context)` right before it creates its first WebView.
+  `Application.onCreate` works too, but the call loads the WebView provider, so from there every
+  launch loads it, and an update to the WebView package can then relaunch an activity mid-scenario
+  even in a scenario that never opens a WebView. Every debug build type sets `android:debuggable`.
+  The helper does nothing in a non-debuggable build, so a release build never opens the socket. The
   machine running bajutsu needs the `android` extra (`websockets`). `scripts/install.sh` installs it
-  when the configured backends include Android. An app that hosts its WebView in a separate
-  `android:process` calls the helper in that process alone (or after
-  `WebView.setDataDirectorySuffix`), since `Application.onCreate` runs in every process and the call
-  loads WebView, whose per-process data-directory lock API 28 and later refuses to share.
+  when the configured backends include Android. `Application.onCreate` runs in every process,
+  so an app that hosts its WebView in a separate `android:process` and calls the helper from there
+  calls it in that process alone (or after `WebView.setDataDirectorySuffix`): the call loads WebView,
+  whose per-process data-directory lock API 28 and later refuses to share.
 
 **What a block supports.** Inside the block, `tap` / `tapPoint` / `doubleTap` / `type` / `wait` /
 `assert` run. `longPress` / `swipe` / `drag` / `clear` / `delete` / `select` / `copy` /
