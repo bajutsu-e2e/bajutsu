@@ -845,7 +845,7 @@ Android の adb バックエンドは、`tap` が対象を解決するのと同�
 
 `web` は、ネイティブアプリが埋め込んだブラウザのビューである WebView の Document Object Model（DOM）に対して、入れ子の `steps` を実行します。ステップが対象にするのは、アプリのネイティブなアクセシビリティツリーではなく、ページの正規化された DOM（`data-testid` → `Element.identifier`）です。アプリの UI の一部をアプリ内の web コンテンツが担うハイブリッド画面向けの構造です。iOS は [BE-0037](../../roadmaps/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support-ja.md)、Android は [BE-0482](../../roadmaps/BE-0482-android-webview-cdp/BE-0482-android-webview-cdp-ja.md) で対応しました。同じブロックが、両方のプラットフォームで変更なしに動きます。ブロックの `steps` を終えると、制御はネイティブドライバーに戻ります。入れ子の `steps` は、`if` や `forEach` の分岐と同じく、囲むシナリオの `vars.*` を共有します。`capture` / `extract` 修飾子は `web` ステップ自体には使えません。
 
-**ブロックが WebView を指す仕組み。** `within` は通常のセレクタで、`id` を必ず含みます。run はセレクタ全体をネイティブのツリーで解決し、ちょうど 1 つの要素、つまりホストの WebView を得ます。一致が 0 件、または 2 件以上ならステップは失敗します。ほかのセレクタと同じ扱いです。その要素の背後にあるページは、プラットフォームごとに次のように探します。
+**ブロックが WebView を指す仕組み。** `within` は通常のセレクタで、`id` を必ず含みます。run はセレクタ全体をネイティブのツリーで解決し、ちょうど 1 つの要素を得ます。iOS では、その要素は WebView 自身です。Android では、通常は WebView を囲むコンテナです。`WebView` 自身のアクセシビリティノードは resource-id を報告しないので、id はコンテナに付けます。run が使うのは、その要素のフレームだけです。一致が 0 件、または 2 件以上ならステップは失敗します。ほかのセレクタと同じ扱いです。その要素の背後にあるページは、プラットフォームごとに次のように探します。
 
 | プラットフォーム | run がページに到達する経路 | 選ぶページ |
 |---|---|---|
@@ -857,7 +857,7 @@ Android は、等しさではなく包含で照合します。2 つの矩形の�
 **アプリが用意するもの。** 用意がないときは、何もせず済ませるのではなく、足りないものを名指しする理由でステップを失敗させます。
 
 - **iOS**：アプリが BajutsuKit をリンクし、`BajutsuNet.startIfEnabled()` を呼びます。この呼び出しは、run がポートを渡したときにブリッジを起動します。`WKWebView` にはアクセシビリティ識別子を付けます。
-- **Android**：デバッグ可能なビルドが、最初の WebView を作る直前に `Bajutsu.enableWebViewDebugging(context)` を呼びます。`Application.onCreate` で呼んでも動きます。ただし、この呼び出しは WebView のプロバイダを読み込むので、そこで呼ぶと起動のたびに読み込みます。その状態では、WebView のパッケージの更新によって、WebView を開かないシナリオの途中でもアクティビティの作り直しが起こりえます。このヘルパーは [BajutsuAndroid](../../BajutsuAndroid/README.ja.md#webview-のデバッグ) の関数です。どの debug ビルドタイプも `android:debuggable` を設定します。このヘルパーはデバッグ可能でないビルドでは何もしないので、リリースビルドがソケットを開くことはありません。bajutsu を動かすマシンには `android` extra（`websockets`）が要ります。構成済みのバックエンドに Android が含まれていれば、`scripts/install.sh` がこの extra を入れます。`Application.onCreate` はすべてのプロセスで実行されます。そのため、WebView を別の `android:process` に置くアプリがそこからヘルパーを呼ぶときは、そのプロセスの中だけで呼び出します。`WebView.setDataDirectorySuffix` を呼んだ後であれば、ほかのプロセスで呼んでもかまいません。1 つのプロセスに限る理由は、ヘルパーの呼び出しが WebView を読み込み、プロセスごとのデータディレクトリのロックを取ることです。API 28 以降は、このロックを 2 つのプロセスで共有することを拒否します。
+- **Android**：デバッグ可能なビルドが、最初の WebView を作る直前に `Bajutsu.enableWebViewDebugging(context)` を呼びます。このヘルパーは [BajutsuAndroid](../../BajutsuAndroid/README.ja.md#webview-のデバッグ) の関数です。`Application.onCreate` で呼んでも動きます。ただし、この呼び出しは WebView のプロバイダを読み込むので、そこで呼ぶと起動のたびに読み込みます。その状態では、WebView のパッケージの更新によって、WebView を開かないシナリオの途中でもアクティビティの作り直しが起こりえます。`Application.onCreate` はすべてのプロセスで実行されます。そのため、WebView を別の `android:process` に置くアプリがそこからヘルパーを呼ぶときは、そのプロセスの中だけで呼び出します。`WebView.setDataDirectorySuffix` を呼んだ後であれば、ほかのプロセスで呼んでもかまいません。1 つのプロセスに限る理由は、ヘルパーの呼び出しが WebView を読み込み、プロセスごとのデータディレクトリのロックを取ることです。Android 9（API 28）以降は、このロックを 2 つのプロセスで共有することを拒否します。どの debug ビルドタイプも `android:debuggable` を設定します。このヘルパーはデバッグ可能でないビルドでは何もしないので、リリースビルドがソケットを開くことはありません。bajutsu を動かすマシンには `android` extra（`websockets`）が要ります。構成済みのバックエンドに Android が含まれていれば、`scripts/install.sh` がこの extra を入れます。
 
 **ブロックが対応する範囲。** ブロックの中では `tap` / `tapPoint` / `doubleTap` / `type` / `wait` / `assert` が動きます。`longPress` / `swipe` / `drag` / `clear` / `delete` / `select` / `copy` / `selectOption` / `scroll` / `back` / `navigate` / `pinch` / `rotate` / `handleSystemAlert` / `setPickerValue` はそこに届きません。いずれも「web コンテキストは非対応」という明確な理由で失敗します。次の場合も、ブロックの対象外です。
 

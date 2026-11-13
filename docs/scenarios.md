@@ -1203,9 +1203,11 @@ finish. The nested steps share the enclosing scenario's `vars.*` bindings, the s
 `forEach`'s do. The `capture` / `extract` modifiers are not allowed on the `web` step itself.
 
 **How the block names its WebView.** `within` is an ordinary selector, and it must carry an `id`.
-The run resolves the whole selector against the native tree to one element, the WebView itself.
-Zero matches or two or more fail the step, as for any selector. Each platform then finds the page
-behind that element in its own way:
+The run resolves the whole selector against the native tree to one element. On iOS that element is
+the WebView itself. On Android it is usually a container around the WebView: a `WebView`'s own
+accessibility node reports no resource-id, so the id goes on the container. The run uses only that
+element's frame. Zero matches or two or more fail the step, as for any selector. Each platform then
+finds the page behind that element in its own way:
 
 | Platform | How the run reaches the page | Which page it picks |
 |---|---|---|
@@ -1224,15 +1226,16 @@ with a reason that names what is missing.
 - **Android:** a debuggable build calls
   [BajutsuAndroid](../BajutsuAndroid/README.md#webview-debugging)'s
   `Bajutsu.enableWebViewDebugging(context)` right before it creates its first WebView.
-  `Application.onCreate` works too, but the call loads the WebView provider, so from there every
-  launch loads it, and an update to the WebView package can then relaunch an activity mid-scenario
-  even in a scenario that never opens a WebView. Every debug build type sets `android:debuggable`.
-  The helper does nothing in a non-debuggable build, so a release build never opens the socket. The
-  machine running bajutsu needs the `android` extra (`websockets`). `scripts/install.sh` installs it
-  when the configured backends include Android. `Application.onCreate` runs in every process,
-  so an app that hosts its WebView in a separate `android:process` and calls the helper from there
-  calls it in that process alone (or after `WebView.setDataDirectorySuffix`): the call loads WebView,
-  whose per-process data-directory lock API 28 and later refuses to share.
+  `Application.onCreate` works too. The call loads the WebView provider, though, so from there every
+  launch loads it. An update to the WebView package can then relaunch an activity mid-scenario, even
+  in a scenario that never opens a WebView. An app that hosts its WebView in a separate
+  `android:process` and calls the helper from `Application.onCreate` calls it in that process
+  alone, or after `WebView.setDataDirectorySuffix`. `Application.onCreate` runs in every process,
+  and the call loads WebView. Loading WebView takes a data-directory lock per process, and Android 9
+  (API 28) and later refuse to share that lock between two processes. Every debug build type sets
+  `android:debuggable`. The helper does nothing in a non-debuggable build, so a release build never
+  opens the socket. The machine running bajutsu needs the `android` extra (`websockets`).
+  `scripts/install.sh` installs it when the configured backends include Android.
 
 **What a block supports.** Inside the block, `tap` / `tapPoint` / `doubleTap` / `type` / `wait` /
 `assert` run. `longPress` / `swipe` / `drag` / `clear` / `delete` / `select` / `copy` /
