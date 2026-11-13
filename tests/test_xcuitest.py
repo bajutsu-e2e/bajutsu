@@ -3339,3 +3339,12 @@ def test_paste_fails_loudly_when_the_menu_offers_no_paste(monkeypatch: pytest.Mo
     with pytest.raises(base.ElementNotFound):
         _driver(transport).paste({"id": "form.coupon"})
     assert sent == [_FIELD_TAP, _FIELD_PRESS]
+
+
+def test_paste_names_a_menu_already_up_before_the_step(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A menu an earlier step left up is counted before the gesture, so the one this raises adds
+    # nothing: the failure must say so, not blame an empty clipboard.
+    _fast_paste(monkeypatch)
+    transport, _sent = _paste_transport([], app=[_PASTE_ITEM])
+    with pytest.raises(base.ElementNotFound, match="already on screen"):
+        _driver(transport).paste({"id": "form.coupon"})

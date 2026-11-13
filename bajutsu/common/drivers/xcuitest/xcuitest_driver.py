@@ -1153,9 +1153,17 @@ class XcuitestDriver:
             self.long_press(sel, _PASTE_MENU_PRESS)
             label = self._new_paste_label(before, _PASTE_MENU_TIMEOUT)
         if label is None:
+            # A menu left up by an earlier step was counted in `before`, so the one this raised added
+            # nothing; name that case rather than blaming the clipboard.
+            cause = (
+                f"a Paste item was already on screen before the gesture ({sorted(before)}); "
+                "dismiss the earlier menu first"
+                if before
+                else "empty clipboard, or a field that offers no paste"
+            )
             raise base.ElementNotFound(
-                f"paste: the edit menu showed no Paste item within {_PASTE_MENU_TIMEOUT:g}s "
-                "(empty clipboard, or a field that offers no paste)"
+                f"paste: the edit menu showed no new Paste item within "
+                f"{_PASTE_MENU_TIMEOUT:g}s ({cause})"
             )
         self.tap({"label": label})
 
