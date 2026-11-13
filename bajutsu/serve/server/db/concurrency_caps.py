@@ -1,4 +1,4 @@
-"""The server's caps on jobs in flight, as one value the lease and the registry both read."""
+"""The server's caps on jobs in flight, as the one value a lease applies to a group's jobs."""
 
 from __future__ import annotations
 

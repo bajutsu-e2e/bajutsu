@@ -440,7 +440,9 @@ job, or the request fails and queues none.
 A pipeline may name the group itself with `groupKey`. The key holds at most 128 characters of
 letters, digits, and `. _ / : -`. The key makes a retried request safe:
 
-- The same key with the same request returns the existing group and queues nothing new.
+- The same key with the same request returns the existing group and queues nothing new. Its
+  `jobIds` follow the order of the *first* request, not of the retry, so a pipeline that reorders
+  its scenario list cannot pair the two by position.
 - The same key with a different request gets a 409 error.
 
 Two requests count as the same when they agree on each of these:
