@@ -1228,14 +1228,14 @@ with a reason that names what is missing.
   `Bajutsu.enableWebViewDebugging(context)` right before it creates its first WebView.
   `Application.onCreate` works too. The call loads the WebView provider, though, so from there every
   launch loads it. An update to the WebView package can then relaunch an activity mid-scenario, even
-  in a scenario that never opens a WebView. An app that hosts its WebView in a separate
-  `android:process` and calls the helper from `Application.onCreate` calls it in that process
-  alone, or after `WebView.setDataDirectorySuffix`. `Application.onCreate` runs in every process,
-  and the call loads WebView. Loading WebView takes a data-directory lock per process, and Android 9
-  (API 28) and later refuse to share that lock between two processes. Every debug build type sets
-  `android:debuggable`. The helper does nothing in a non-debuggable build, so a release build never
-  opens the socket. The machine running bajutsu needs the `android` extra (`websockets`).
-  `scripts/install.sh` installs it when the configured backends include Android.
+  in a scenario that never opens a WebView. `Application.onCreate` also runs in every process, so an
+  app that hosts its WebView in a separate `android:process` calls the helper in that process alone,
+  or in another process only after `WebView.setDataDirectorySuffix`. The reason is that loading
+  WebView takes a data-directory lock per process, and Android 9 (API 28) and later refuse to share
+  that lock between two processes. Every debug build type sets `android:debuggable`. The helper does
+  nothing in a non-debuggable build, so a release build never opens the socket. The machine running
+  bajutsu needs the `android` extra (`websockets`). `scripts/install.sh` installs it when the
+  configured backends include Android.
 
 **What a block supports.** Inside the block, `tap` / `tapPoint` / `doubleTap` / `type` / `wait` /
 `assert` run. `longPress` / `swipe` / `drag` / `clear` / `delete` / `select` / `copy` /
