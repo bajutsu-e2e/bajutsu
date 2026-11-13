@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from bajutsu import serve as srv
 from bajutsu.serve import operations as ops
 from bajutsu.serve.capabilities import UNCHECKED_PROVENANCE
+from bajutsu.serve.operations.worker import MAX_LEASE_JOBS
 from bajutsu.serve.server.db import ConcurrencyCaps, QueuedJob, SqlRepository, engine_from_url
 from bajutsu.serve.server.models import Base, JobGroup, JobRecord
 
@@ -312,7 +313,8 @@ def test_the_lease_applies_the_servers_caps_to_a_group(
     assert [b["job_id"] for b in payload] == ["1", "2"]
 
 
-@pytest.mark.parametrize("max_jobs", [0, -1, True, "2"])
+# Past the ceiling, one poll could lease a whole fan-out to a worker that may die holding it.
+@pytest.mark.parametrize("max_jobs", [0, -1, True, "2", MAX_LEASE_JOBS + 1])
 def test_a_lease_refuses_a_malformed_max_jobs(
     serve_engine: Callable[..., Engine], tmp_path: Path, max_jobs: object
 ) -> None:

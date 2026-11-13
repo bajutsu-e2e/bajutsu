@@ -63,6 +63,7 @@ from bajutsu.serve.helpers import unsafe_env_name, valid_sha256, warn_unsafe_env
 from bajutsu.serve.jobs import _runs_dir_of
 from bajutsu.serve.operations.composition import materialize_composition, place_overrides
 from bajutsu.serve.operations.worker import (
+    MAX_LEASE_JOBS,
     WORKER_LOG_BATCH_BYTES,
     WORKER_LOG_MAX_LINE_CHARS,
     WORKER_LOG_MAX_LINES,
@@ -784,7 +785,8 @@ def _serve_slots(
                 if free_slots <= 0:
                     places.wait(timeout=poll_interval)
                     continue
-            bodies = _lease_bundle(url, auth_token, wid, caps, free_slots)
+            # The control plane refuses a larger ask; the slots past it fill on the next poll.
+            bodies = _lease_bundle(url, auth_token, wid, caps, min(free_slots, MAX_LEASE_JOBS))
             if not bodies:
                 time.sleep(poll_interval)
                 continue

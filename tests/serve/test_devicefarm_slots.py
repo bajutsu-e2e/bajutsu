@@ -765,3 +765,33 @@ def test_a_bundle_lease_keeps_every_runnable_body_and_warns_on_the_rest(
     assert ("unexpected lease body" in caplog.text) is (
         answer != {"job_id": "j1", "spec": {"cmd": []}}
     )
+
+
+def test_a_worker_with_more_slots_than_a_lease_may_take_asks_for_the_ceiling(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from bajutsu.serve.operations.worker import MAX_LEASE_JOBS
+
+    asked: list[int] = []
+
+    def lease(_url: str, _token: str | None, _wid: str, _caps: list[str], free: int) -> list[Any]:
+        asked.append(free)
+        raise RuntimeError("stop after one request")
+
+    monkeypatch.setattr(worker_mod, "_lease_bundle", lease)
+    with pytest.raises(RuntimeError, match="stop after one request"):
+        worker_mod._serve_slots(
+            url="http://server",
+            auth_token=None,
+            wid="w1",
+            caps=["environment:devicefarm", "job:run-intent"],
+            work=tmp_path,
+            poll_interval=0.01,
+            heartbeat_interval=0.05,
+            worker_file=None,
+            slots=MAX_LEASE_JOBS + 5,
+            shutdown=worker_mod._SlotShutdown(),
+            stopped=lambda: False,
+            environment="devicefarm",
+        )
+    assert asked == [MAX_LEASE_JOBS]
