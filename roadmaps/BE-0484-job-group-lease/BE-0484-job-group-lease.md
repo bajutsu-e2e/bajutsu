@@ -333,11 +333,12 @@ Log:
     two `run-set` routes that a machine caller may use.
   - `DESIGN.md` records the fan-out to workers and the placement recorded as `workerEnvironment`.
     `docs/reporting.md` lists that provenance entry.
-  - The change removes four stale claims:
+  - The change removes five stale claims:
     - the environment in the `groupKey` comparison;
     - a 429 response to a Replay fan-out;
     - an `appium` worker advertising one token;
-    - a `host:` token on every hosted job.
+    - a `host:` token on every hosted job;
+    - the Device Farm workers' job budget alone bounding a fan-out's concurrency.
 
 ## References
 

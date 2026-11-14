@@ -1032,7 +1032,7 @@ bajutsu mcp [--config bajutsu.config.yaml] [--runs runs] [--transport stdio] [--
 
 `/api/worker/lease` を単純な HTTP でポーリングして job をリースします。Redis や RQ には頼りません（BE-0106）。リースした job はそのまま `run_job` で実行し、結果を `/api/worker/result` に返します。worker は cloud の資格情報を一切持ちません。run 前のベースラインのダウンロードも、run 後の run ツリーのアップロードも、コントロールプレーンが発行する署名付き URL（presigned URL）を経由します（BE-0160）。そのため worker に必要なのは HTTP クライアントだけです。
 
-実行する job がなければ、lease は `204` を返します。どの worker も、空きスロットの数を `maxJobs` として 1 から 100 の範囲で送るので、応答はリストになります。スロットを複数持つのは、`maxJobConcurrency` が 1 より大きい worker だけです。これは Device Farm を含む device-cloud の worker にあたります。扱えるもっとも古い job が `run-set` のグループに属していれば、リストにはそのグループの次の job も、サーバの同時実行の上限の範囲で加わります。こうして、スロットどうしがグループのアップロードを共有できます。`run-set` の job は、コマンドの代わりに実行意図（run intent）を持ちます。リースした worker が、その意図を自分の形の実行に変換します。ローカルの worker なら `bajutsu run` のコマンドに、Device Farm の worker ならプロバイダーのバッチに変換します（[BE-0484](../../roadmaps/BE-0484-job-group-lease/BE-0484-job-group-lease-ja.md)）。
+実行する job がなければ、lease は `204` を返します。スロットを複数持つのは、`maxJobConcurrency` が 1 より大きい worker だけです。これは Device Farm を含む device-cloud の worker にあたります。そうした worker は、空きスロットの数を `maxJobs` として 1 から 100 の範囲で送るので、応答はリストになります。スロットが 1 つの worker は `maxJobs` を送らず、応答は 1 件のままです。扱えるもっとも古い job が `run-set` のグループに属していれば、リストにはそのグループの次の job も、サーバの同時実行の上限の範囲で加わります。こうして、スロットどうしがグループのアップロードを共有できます。`run-set` の job は、コマンドの代わりに実行意図（run intent）を持ちます。リースした worker が、その意図を自分の形の実行に変換します。ローカルの worker なら `bajutsu run` のコマンドに、Device Farm の worker ならプロバイダーのバッチに変換します（[BE-0484](../../roadmaps/BE-0484-job-group-lease/BE-0484-job-group-lease-ja.md)）。
 
 ローカルの `bajutsu serve` も run をすべてキューに積むので、worker が要ります（BE-0449）。`make serve` は worker を1つ起動します。lease の応答は、worker にさらに2つのフィールドを渡します。
 
