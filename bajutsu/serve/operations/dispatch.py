@@ -17,10 +17,9 @@ from typing import Any
 
 import yaml
 
-from bajutsu.common.capability.worker_capability import APPIUM, BATCH_PROVIDERS
+from bajutsu.common.capability.worker_capability import APPIUM
 from bajutsu.common.cloud.devicefarm import (
     DeviceFarmError,
-    Platform,
     build_package,
     is_package_excluded,
 )
@@ -30,7 +29,6 @@ from bajutsu.common.run_meta.id import new_run_id
 from bajutsu.common.scenario import load_scenario_file
 from bajutsu.serve import oplog
 from bajutsu.serve.authz import _record_audit
-from bajutsu.serve.batch_provider import BatchRequest
 from bajutsu.serve.capabilities import (
     RUN_INTENT_CAPABILITY,
     environment_capability,
@@ -38,6 +36,7 @@ from bajutsu.serve.capabilities import (
 )
 from bajutsu.serve.commands import _float, _int, crawl_command, record_command, run_command
 from bajutsu.serve.helpers import (
+    group_capabilities,
     request_backend_error,
     scenario_route_needs,
     target_batch_info,
@@ -589,25 +588,24 @@ def start_run(  # noqa: C901, PLR0911
     return {"jobId": job.id}, 200
 
 
-def _batch_requests(
+def _run_intents(
     scope: ScenarioScope,
     names: list[str],
     *,
     bundle_dir: Path,
-    provider: str,
     target: str,
     config_arg: str,
-    platform: Platform,
+    platform: str,
     app_path: str,
-) -> tuple[list[tuple[BatchRequest, dict[str, str]]], tuple[Any, int] | None]:
-    """Resolve every named scenario to a `BatchRequest` and the materials it ships, or the refusal.
+) -> tuple[list[tuple[RunIntent, dict[str, str]]], tuple[Any, int] | None]:
+    """Resolve every named scenario to a `RunIntent` and the materials it ships, or the refusal.
 
     Paths are relative to the job's bundle directory (BE-0448): a scenario that travels as materials
     already names its place in the worker's workspace, and one on disk is made relative to
     *bundle_dir*, the config's own directory. All-or-nothing, so `start_run_set` never dispatches a
     partial fan-out for a set that names one bad scenario.
     """
-    requests: list[tuple[BatchRequest, dict[str, str]]] = []
+    requests: list[tuple[RunIntent, dict[str, str]]] = []
     for name in names:
         runnable = scope.runnable(name)
         if runnable is None:
@@ -630,8 +628,7 @@ def _batch_requests(
             return [], ({"error": f"scenario '{name}' is named more than once"}, 400)
         requests.append(
             (
-                BatchRequest(
-                    provider=provider,
+                RunIntent(
                     scenario=scenario_arg,
                     target=target,
                     config=config_arg,
@@ -650,14 +647,14 @@ def _batch_application(
     """Store a fan-out's application for a worker that receives no copy of it, or say why not.
 
     Returns the stored binary's sha256, which the lease signs a GET for (BE-0448, BE-0413), or None
-    when the worker already receives the binary: an uploaded bundle carries it, and a job that ships
-    no files names the config's directory, which a worker on this machine reads. A job whose files
-    travel as materials with no bundle has only the config's directory on this server to take the
-    binary from, so the `appPath` must name a file inside it — never an absolute path, or one that
-    leaves through `..` or a symbolic link, since the server would otherwise hand a file of its own
-    host to the worker and to Device Farm (BE-0051).
+    when there is no binary (a web target, BE-0484) or the worker already receives it: an uploaded
+    bundle carries it, and a job that ships no files names the config's directory, which a worker on
+    this machine reads. A job whose files travel as materials with no bundle has only the config's
+    directory on this server to take the binary from, so the `appPath` must name a file inside it —
+    never an absolute path, or one that leaves through `..` or a symbolic link, since the server
+    would otherwise hand a file of its own host to the worker and to Device Farm (BE-0051).
     """
-    if not ships_files or binding.upload is not None:
+    if not app_path or not ships_files or binding.upload is not None:
         return None, None
     if state.object_store is None:
         return None, (
@@ -710,7 +707,7 @@ def _put_once(
     return None
 
 
-def _bundle_refusal(cfg: Path, root: Path, requests: list[BatchRequest]) -> tuple[Any, int] | None:
+def _bundle_refusal(cfg: Path, root: Path, requests: list[RunIntent]) -> tuple[Any, int] | None:
     """Why the config's directory cannot travel as a fan-out's bundle, or None.
 
     Each refusal names what the worker would otherwise only find on the device cloud, after the
@@ -735,7 +732,7 @@ def _bundle_refusal(cfg: Path, root: Path, requests: list[BatchRequest]) -> tupl
     for rel in (first.app_path, *(r.scenario for r in requests)):
         if is_package_excluded(PurePosixPath(rel).parts):
             return {"error": f"{rel!r} is under a directory a Device Farm package leaves out"}, 400
-    if not (root / first.app_path).is_file():
+    if first.app_path and not (root / first.app_path).is_file():
         return {"error": f"appPath {first.app_path!r} names no file on this server"}, 400
     return None
 
@@ -770,12 +767,10 @@ def _config_dir_bundle(
     state: ServeState,
     binding: ConfigBinding,
     org: str,
-    requests: list[tuple[BatchRequest, dict[str, str]]],
+    requests: list[tuple[RunIntent, dict[str, str]]],
     *,
     ships_files: bool,
-) -> tuple[
-    dict[str, Any] | None, list[tuple[BatchRequest, dict[str, str]]], tuple[Any, int] | None
-]:
+) -> tuple[dict[str, Any] | None, list[tuple[RunIntent, dict[str, str]]], tuple[Any, int] | None]:
     """Ship the config's directory as the bundle of a fan-out off the server's disk, or say why not.
 
     A job naming its files by their paths here is pinned to a worker on this machine, and a
@@ -829,22 +824,53 @@ def _run_set_refusal(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]
     key = body.get("groupKey")
     if key is not None and not (isinstance(key, str) and _GROUP_KEY.fullmatch(key)):
         return {"error": "groupKey must be 1-128 characters of letters, digits, and . _ / : -"}, 400
-    environment = body.get("environment")
-    if environment not in BATCH_PROVIDERS:
-        # A fan-out packages the app for a device cloud, so it takes a batch-provider kind alone; an
-        # `appium` grid is reached through the plain run request instead (BE-0452).
+    if body.get("environment") is not None:
         return {
-            "error": "run-set needs an environment naming a device-cloud batch provider: "
-            f"one of {', '.join(sorted(BATCH_PROVIDERS))}"
+            "error": "run-set takes no environment (BE-0484): each job routes by its target's "
+            "platform to any worker that serves it"
         }, 400
     if state.repository is None:
-        # The server registers no batch provider (BE-0448) and runs no job itself (BE-0449), so a
-        # fan-out needs the queue; say where it has to run instead.
+        # The server runs no job itself (BE-0449), so a fan-out needs the queue.
         return {
-            "error": f"run-set needs a queue and a worker whose environment is {environment!r}; "
-            "this server has no queue"
+            "error": "run-set needs a queue and a worker serving the target's platform; this "
+            "server has no queue"
         }, 400
     return None
+
+
+def _group_routes(
+    state: ServeState, cfg: Path, target: str, scope: ScenarioScope, names: list[str]
+) -> tuple[list[list[str]], tuple[Any, int] | None]:
+    """Each named scenario's routing tokens, or the refusal naming one no live worker can run.
+
+    A group job routes as a plain run does, by its target's tokens and its scenario's `cap:` and
+    `setting:` tokens, plus the run-intent token (BE-0484). The live workers are read once, and each
+    distinct scenario text's needs once, so registration costs one parse per distinct scenario.
+    """
+    assert state.repository is not None  # _run_set_refusal refused a server with no queue
+    base = [*group_capabilities(cfg, target), RUN_INTENT_CAPABILITY]
+    live = list(state.repository.live_worker_capabilities())
+    directory = scope.directory()
+    needs_of: dict[str | None, dict[str, list[str]]] = {}
+    routes: list[list[str]] = []
+    for name in names:
+        text = scope.read(name)
+        if text not in needs_of:
+            needs_of[text] = scenario_route_needs(cfg, target, "", text, directory)
+        needs = needs_of[text]
+        capabilities = sorted({*base, *needs})
+        if missing := route_refusal(capabilities, live):
+            lines = [f"{token} (needed by {'; '.join(needs.get(token, []))})" for token in missing]
+            return [], (
+                {
+                    "error": f"no live worker can run scenario '{name}' on its route; missing "
+                    + ", ".join(lines),
+                    "missing": missing,
+                },
+                400,
+            )
+        routes.append(capabilities)
+    return routes, None
 
 
 def _run_capabilities(
@@ -1004,15 +1030,13 @@ def start_run_set(  # noqa: C901, PLR0911
     scope = state.for_org(org).scenarios.scope(target, session=session, org=org)
     if scope is None:
         return {"error": f"target '{target}' has no scenarios dir"}, 400
-    provider = str(body["environment"])
     platform, app_path = target_batch_info(cfg, target)
-    if platform not in ("android", "ios"):
-        return {"error": f"cloud-batch runs support android or ios, not {platform!r}"}, 400
-    batch_platform: Platform = "android" if platform == "android" else "ios"
-    if not app_path:
-        return {
-            "error": f"target '{target}' has no subject.path to install on the cloud device"
-        }, 400
+    if platform not in ("android", "ios", "web"):
+        return {"error": f"run-set supports android, ios, or web targets, not {platform!r}"}, 400
+    # A device-cloud worker serving the platform could lease the job and would have nothing to
+    # install; a browser installs nothing.
+    if not app_path and platform != "web":
+        return {"error": f"target '{target}' has no subject.path to install on the device"}, 400
     # Which scenarios to fan out: the requested subset, or every scenario in the target's dir.
     requested = body.get("scenarios")
     if requested is None:
@@ -1031,25 +1055,29 @@ def start_run_set(  # noqa: C901, PLR0911
     config_arg = os.path.relpath(cfg, binding.cwd)
     if _escapes(config_arg):
         return {"error": f"config is not under its bundle directory {binding.cwd}"}, 400
-    requests, requests_err = _batch_requests(
+    requests, requests_err = _run_intents(
         scope,
         names,
         bundle_dir=binding.cwd,
-        provider=provider,
         target=target,
         config_arg=config_arg,
-        platform=batch_platform,
-        app_path=app_path,
+        platform=platform,
+        app_path=app_path or "",
     )
     if requests_err:
         return requests_err
+    routes, route_err = _group_routes(state, cfg, target, scope, names)
+    if route_err:
+        return route_err
     label, label_err = _run_label(binding, body)
     if label_err:
         return label_err
     # Last of the checks: snapshotting the binary reads and copies it whole, so every plain body
     # refusal above stays free.
     ships_files = bool(requests[0][1])
-    batch_app, app_err = _batch_application(state, binding, org, app_path, ships_files=ships_files)
+    batch_app, app_err = _batch_application(
+        state, binding, org, app_path or "", ships_files=ships_files
+    )
     if app_err:
         return app_err
     bundle, requests, bundle_err = _config_dir_bundle(
@@ -1061,28 +1089,20 @@ def start_run_set(  # noqa: C901, PLR0911
     app_digest = _app_digest(batch_app, bundle, binding)
     upload_exec = state.upload_exec if binding.upload is not None else ""
     jobs: list[Job] = []
-    for request, materials in requests:
+    for (request, materials), capabilities in zip(requests, routes, strict=True):
         if materials:
             # The scenario store ships the scenario text, so the worker has no project on disk: the
             # config travels too, at the bundle-relative path the request names.
             materials[request.config] = config_text
         job = Job(
-            intent=RunIntent(
-                scenario=request.scenario,
-                target=request.target,
-                config=request.config,
-                platform=request.platform,
-                app_path=request.app_path,
-                upload_exec=upload_exec,
-            ),
+            intent=replace(request, upload_exec=upload_exec),
             materials=materials,
             materialize_baselines=binding.upload is None,
             provenance=_provenance(binding, None),
             actor=actor,
             org=org,
             label=label,
-            # The environment token keeps routing the job as before until BE-0484 unit 5.
-            capabilities=[environment_capability(provider), RUN_INTENT_CAPABILITY],
+            capabilities=capabilities,
             batch_app=batch_app,
             bundle=bundle,
         )
@@ -1098,9 +1118,8 @@ def start_run_set(  # noqa: C901, PLR0911
             config_text,
             app_digest,
             label,
-            provider=provider,
         ),
-        compat_key=_compat_key(config_text, app_digest, batch_platform, target),
+        compat_key=_compat_key(config_text, app_digest, platform, target),
         audit=(actor, org, target, ci_job),
     )
 
@@ -1158,14 +1177,12 @@ def _request_digest(
     config_text: str,
     app_digest: str | None,
     label: str | None,
-    *,
-    provider: str,
 ) -> str:
     """What a `run-set` request asks to run, so a repeated group key tells a retry from another
     request (BE-0484). The scenarios are a set: a retry need not list them in the same order."""
     config_digest = hashlib.sha256(config_text.encode()).hexdigest()
     return hashlib.sha256(
-        json.dumps([target, sorted(scenarios), config_digest, app_digest, label, provider]).encode()
+        json.dumps([target, sorted(scenarios), config_digest, app_digest, label]).encode()
     ).hexdigest()
 
 
