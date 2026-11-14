@@ -846,7 +846,7 @@ Each red run spent about half an hour of a runner billed at 10x. BE-0361 measure
     - Each job carries a run intent, not a command. The intent names the scenario, target, config, platform, and application path. The leasing worker turns it into a local `bajutsu run` or its provider's batch. The worker records where it ran as `workerEnvironment` in the run's provenance.
     - Each job stores its group, compatibility, route, and base keys. A lease with `maxJobs` returns a bundle. The bundle holds the oldest servable job and that group's next jobs sharing its verdict. The lease scans one candidate per group and route key.
     - The concurrency caps apply to group jobs at lease time, not at registration. A group is thus never cut short.
-    - A Device Farm worker shares a bundle's uploads. The application goes up once per compatibility key, and the package once per group.
+    - A Device Farm worker reuses an upload between the jobs it has in flight at once. It keys the application by compatibility key and the package by group, and drops the upload once no job in flight holds the key.
 - The `serve` local web UI (Tier 1) covers these areas:
   - **Authoring and running.** Author (`record` / `crawl`), edit, and run scenarios.
   - **Opening a config bundle.** Open a `.zip` bundle of config, scenarios, and the built app binary as the active config that the tabs run from (BE-0073).
