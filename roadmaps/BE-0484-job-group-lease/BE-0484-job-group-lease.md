@@ -9,7 +9,7 @@
 | Author | [@paihu](https://github.com/paihu) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0484") |
-| Implementing PR | [#2417](https://github.com/bajutsu-e2e/bajutsu/pull/2417) (unit 1), [#2426](https://github.com/bajutsu-e2e/bajutsu/pull/2426) (unit 2), [#2431](https://github.com/bajutsu-e2e/bajutsu/pull/2431) (unit 3), [#2443](https://github.com/bajutsu-e2e/bajutsu/pull/2443) (unit 4), [#UNIT5PR](https://github.com/bajutsu-e2e/bajutsu/pull/UNIT5PR) (unit 5) |
+| Implementing PR | [#2417](https://github.com/bajutsu-e2e/bajutsu/pull/2417) (unit 1), [#2426](https://github.com/bajutsu-e2e/bajutsu/pull/2426) (unit 2), [#2431](https://github.com/bajutsu-e2e/bajutsu/pull/2431) (unit 3), [#2443](https://github.com/bajutsu-e2e/bajutsu/pull/2443) (unit 4), [#2445](https://github.com/bajutsu-e2e/bajutsu/pull/2445) (unit 5) |
 | Topic | Device-cloud execution |
 | Related | [BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out.md), [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md), [BE-0465](../BE-0465-serve-ui-device-farm-fan-out/BE-0465-serve-ui-device-farm-fan-out.md), [BE-0468](../BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of.md) |
 <!-- /BE-METADATA -->
@@ -307,7 +307,7 @@ Log:
   - Hooks must treat the staging directory as read-only. The documentation states that contract,
     and the worker does not enforce it. Hooks are operator code, wired at process start.
 
-- 2026-11-14 — [#UNIT5PR](https://github.com/bajutsu-e2e/bajutsu/pull/UNIT5PR) landed unit 5. A `run-set` request names no environment, and one
+- 2026-11-14 — [#2445](https://github.com/bajutsu-e2e/bajutsu/pull/2445) landed unit 5. A `run-set` request names no environment, and one
   that still sends `environment` gets status 400. Each group job requires its target's platform, the
   run-intent token, and its scenario's `cap:` and `setting:` tokens. An iOS job also requires its
   family tokens and one `kind:` token per kind its runs take. No job requires a `host:` token.
