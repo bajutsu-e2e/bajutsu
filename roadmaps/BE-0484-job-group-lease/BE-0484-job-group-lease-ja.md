@@ -327,7 +327,7 @@ worker は、その互換キーを持つ job が1件でも実行中のあいだ�
     ルート自体は残しています。
   - リクエストのダイジェストは、環境を含まなくなりました。この単位より前に登録したグループキーを、
     この単位の後で繰り返すと、ダイジェストが異なるのでステータス 409 を返します。
-- 2026-11-14 — [#2446](https://github.com/bajutsu-e2e/bajutsu/pull/2446) で単位 6 を実装し、本項目を完了しました。serve の API、worker、ルーティングの
+- 2026-11-14：[#2446](https://github.com/bajutsu-e2e/bajutsu/pull/2446) で単位 6 を実装し、本項目を完了しました。serve の API、worker、ルーティングの
   ページを、単位 1 から 5 の内容にそろえました。どれも両言語です。
   - `docs/self-hosting.md` に、fan-out の job が必要とするトークンと、worker が広告する
     `job:run-intent`、`kind:`、Device Farm の `platform:` のトークンを記しました。`run-set` の
