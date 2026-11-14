@@ -547,6 +547,36 @@ def test_a_slot_whose_run_raises_leaves_no_batch_tree_behind(
     assert staged == [tmp_path / ".batch-groups" / "g1"] and not staged[0].exists()
 
 
+def test_a_grouped_job_carrying_overrides_stages_nothing_with_its_group(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    groups: list[Any] = []
+
+    def run(*_a: Any, group: Any, **_k: Any) -> Any:
+        groups.append(group)
+        raise RuntimeError("stop")
+
+    monkeypatch.setattr(worker_mod, "_run_with_heartbeat", run)
+    worker_mod._run_slot(
+        body={
+            "job_id": "j1",
+            "group_id": "g1",
+            "spec": {"materials": {"a.yaml": ""}, "overrides": {"target": "t"}},
+        },
+        dirs=worker_mod._SlotDirs(tmp_path),
+        groups=worker_mod._GroupDirs(tmp_path),
+        free=lambda: None,
+        shutdown=worker_mod._SlotShutdown(),
+        url="http://server",
+        auth_token=None,
+        wid="w1",
+        heartbeat_interval=0.05,
+        worker_file=None,
+        environment="devicefarm",
+    )
+    assert groups == [None]
+
+
 def test_a_runner_already_done_under_a_shutdown_leaves_the_lease_to_lapse() -> None:
     runner = threading.Thread(target=lambda: None)
     runner.start()

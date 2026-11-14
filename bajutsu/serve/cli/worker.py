@@ -853,8 +853,14 @@ def _run_slot(
         typer.echo(f"  leased job {job_id}")
         slot_work = dirs.acquire()
         # A job that ships its files stages them with its group's (BE-0484); a bundle's tree already
-        # holds every scenario of the target.
-        if body.get("group_id") and spec.get("materials") and spec.get("bundle") is None:
+        # holds every scenario of the target, and an override job runs from a tree of its own
+        # (`_override_workspace`) that the group's directory would shadow.
+        if (
+            body.get("group_id")
+            and spec.get("materials")
+            and spec.get("bundle") is None
+            and spec.get("overrides") is None
+        ):
             group = groups.acquire(str(body["group_id"]))
         io = PresignedWorkerIO(
             url=url,

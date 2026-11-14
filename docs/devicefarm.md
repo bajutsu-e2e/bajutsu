@@ -355,9 +355,11 @@ of the AWS environment, the source checkout, and the process.
 
 A worker whose `maxJobConcurrency` is above one runs each job in a **slot**. A slot is a thread that
 owns one leased job and its lease renewals. A slot also owns a workspace under `.slots/<n>/` and the
-job's log. The workspace holds the job's run output. A workspace returns to the pool once its job
-has uploaded its evidence. The next job thus never reuses a tree that an earlier job still uploads
-from. Size the disk for one application binary per slot, plus the run trees still uploading.
+job's log. The workspace holds the job's run output, and the application binary unless the job's
+`run-set` group stages one (see below). A workspace returns to the pool once its job has uploaded
+its evidence. The next job thus never reuses a tree that an earlier job still uploads from. Size the
+disk for one application binary per slot, one more per staged group under `.batch-groups/`, plus the
+run trees still uploading.
 
 The slots of one `run-set` fan-out share their uploads (BE-0484):
 
