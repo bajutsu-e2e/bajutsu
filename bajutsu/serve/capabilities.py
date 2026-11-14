@@ -445,8 +445,8 @@ def simctl_capabilities(run: _simctl.RunFn) -> set[str]:
 
     Each installed runtime contributes an ``iosNN`` token (major version only, so a job pinned to
     ``ios18`` matches any 18.x runtime), and each available device model contributes its device
-    class (``iphone`` / ``ipad``). Any device adds ``kind:simulator`` (BE-0484). The heavy lifting —
-    running `simctl` and tolerating its failures — is `simctl.device_catalog`; this only maps its
+    class (``iphone`` / ``ipad``). Any iPhone/iPad device adds ``kind:simulator`` (BE-0484).
+    The heavy lifting — running `simctl` and tolerating its failures — is `simctl.device_catalog`; this only maps its
     ``{name, runtime}`` values to tokens.
     """
     caps: set[str] = set()
@@ -455,7 +455,7 @@ def simctl_capabilities(run: _simctl.RunFn) -> set[str]:
             caps.add(token)
         if token := _device_class_token(entry.get("name", "")):
             caps.add(token)
-        caps.add(kind_capability("simulator"))
+            caps.add(kind_capability("simulator"))
     return caps
 
 

@@ -186,11 +186,11 @@ OS を表す `host:<os>` を広告します。target のドライバがすべて
 必要とします。macOS 以外の worker は `platform:ios` を広告しないからです。Device Farm の
 worker は、`environment:devicefarm` と `kind:device` を広告します。provider のプラットフォームを表す
 `platform:android` と `platform:ios` も広告します。`appium` の worker は
-`environment:appium` を広告し、サーバの run リクエストは `environment: appium` でこの worker に届きます。どの worker も、`run-set` のジョブを実行できることを示す `job:run-intent` を広告します（BE-0484）。worker 能力ファイル自体は
+`environment:appium` を広告し、サーバの run リクエストは `environment: appium` でこの worker に届きます。どの worker も、`run-set` のジョブを実行できることを示す `job:run-intent` を広告します（BE-0484）。`appium` の worker もこのトークンを広告しますが、`run-set` のジョブは `platform:*` のトークンを必要とし、この worker はそれを広告しません。grid の worker だけの構成では、シナリオを通常の run リクエストで実行します。worker 能力ファイル自体は
 ルーティング用のトークンを宣言しません。ランタイムやデバイス種別のトークン（`ios18`、`ipad`）は Simulator の
 在庫から得ます。実機のトークン（`device:ipad`）は `devicectl` から得ます（[BE-0468](../../roadmaps/BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of-ja.md)）。
 宣言では、マシンにないランタイムや実機まで約束できてしまうからです。種別のトークンも、同じ2つの読み取りから
-得ます（BE-0484）。Simulator の在庫にデバイスがあれば `kind:simulator` を、iPhone か iPad が接続されている
+得ます（BE-0484）。Simulator の在庫に iPhone か iPad があれば `kind:simulator` を、iPhone か iPad が接続されている
 間は `kind:device` を広告します。`realDevices: false` を設定すると、`kind:device` を広告しません。
 
 worker の `--capabilities` フラグと `$BAJUTSU_WORKER_CAPABILITIES` は非推奨です。

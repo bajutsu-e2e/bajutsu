@@ -96,6 +96,17 @@ def test_simctl_capabilities_derives_major_version_only() -> None:
     assert cap.simctl_capabilities(run) == {"ios17", "iphone", "kind:simulator"}
 
 
+def test_simctl_capabilities_omits_the_simulator_kind_without_an_iphone_or_ipad() -> None:
+    run = _fake_simctl(
+        {
+            "com.apple.CoreSimulator.SimRuntime.watchOS-11-0": [
+                {"udid": "W1", "name": "Apple Watch Series 10 (46mm)", "state": "Shutdown"}
+            ]
+        }
+    )
+    assert cap.simctl_capabilities(run) == set()
+
+
 def test_an_environment_worker_serves_only_jobs_that_require_its_token() -> None:
     # BE-0448: the subset test alone would hand a Device Farm worker every job requiring nothing.
     df = ["environment:devicefarm"]
