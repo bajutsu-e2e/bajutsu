@@ -1253,8 +1253,8 @@ deterministic `run` verdict.
   `$BAJUTSU_WORKER_CAPABILITIES` add tokens verbatim. Both still work for this release, with a
   one-time notice, and go away in the next release. The inventory and the worker capability file
   now supply what the override was for. An override can also claim a runtime the machine lacks.
-  Neither may carry the reserved `environment:`, `host:`, `machine:`, `device:`, `cap:`, or
-  `setting:` prefix, which the worker fills itself. A worker rejects such a token at startup.
+  Neither may carry the reserved `environment:`, `host:`, `machine:`, `device:`, `cap:`,
+  `setting:`, or `job:` prefix, which the worker fills itself. A worker rejects such a token at startup.
 - **An unroutable job** — one whose required capabilities no live worker advertises — stays queued
   rather than being leased to an incompatible worker or dropped, and is surfaced by the
   `bajutsu_unroutable_jobs` metric (below) so the operator knows to add a worker with the missing

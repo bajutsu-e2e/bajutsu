@@ -120,6 +120,12 @@ def test_reserved_tokens_names_the_device_prefix() -> None:
     assert cap.reserved_tokens(["ipad", "device:ipad"]) == ["device:ipad"]
 
 
+def test_reserved_tokens_names_the_job_prefix() -> None:
+    # A hand-written `job:run-intent` would let a worker without the resolver lease a `run-set` job
+    # it cannot run (BE-0484).
+    assert cap.reserved_tokens(["ipad", "job:run-intent"]) == ["job:run-intent"]
+
+
 def test_an_any_of_group_is_met_by_any_one_member() -> None:
     group = cap.any_of_capability(["device:ipad", "device:iphone"])
     assert group == "anyof:device:ipad|device:iphone"

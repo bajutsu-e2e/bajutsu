@@ -110,7 +110,11 @@ def test_a_target_requires_the_host_of_the_drivers_run_selects_from(tmp_path: Pa
 
 def test_a_local_worker_advertises_its_host() -> None:
     caps = worker_mod._advertised_capabilities("web", "", _local(), "linux")
-    assert [c for c in caps if not is_route_token(c)] == ["host:linux", "platform:web"]
+    assert [c for c in caps if not is_route_token(c)] == [
+        "host:linux",
+        "job:run-intent",
+        "platform:web",
+    ]
 
 
 def test_an_xcuitest_job_routes_only_to_a_darwin_worker(
@@ -160,6 +164,7 @@ def test_a_local_worker_serves_the_platforms_its_file_and_host_allow() -> None:
     )
     assert [c for c in caps if not is_route_token(c)] == [
         "host:darwin",
+        "job:run-intent",
         "platform:ios",
         "platform:web",
     ]

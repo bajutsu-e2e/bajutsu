@@ -185,7 +185,7 @@ OS を表す `host:<os>` を広告します。target のドライバがすべて
 プラットフォームのドライバを判定します。そのため、`fake` の backend で動く iOS の target も Mac の worker を
 必要とします。macOS 以外の worker は `platform:ios` を広告しないからです。environment が device cloud の
 worker は、`environment:<name>` を広告します。`platform:*` のトークンは広告しません。`appium` の worker は
-`environment:appium` だけを広告し、サーバの run リクエストは `environment: appium` でこの worker に届きます。worker 能力ファイル自体は
+`environment:appium` を広告し、サーバの run リクエストは `environment: appium` でこの worker に届きます。どの worker も、`run-set` のジョブを実行できることを示す `job:run-intent` を広告します（BE-0484）。worker 能力ファイル自体は
 ルーティング用のトークンを宣言しません。ランタイムやデバイス種別のトークン（`ios18`、`ipad`）は Simulator の
 在庫から得ます。実機のトークン（`device:ipad`）は `devicectl` から得ます（[BE-0468](../../roadmaps/BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of-ja.md)）。
 宣言では、マシンにないランタイムや実機まで約束できてしまうからです。

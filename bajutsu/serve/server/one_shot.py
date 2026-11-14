@@ -29,7 +29,12 @@ from typing import Any, Protocol
 
 from bajutsu.common.capability.worker_capability import APPIUM, LOCAL
 from bajutsu.run import INTERNAL_MODULE
-from bajutsu.serve.server.worker_job import CancelRelay, _run_argv_head, execute_job_spec
+from bajutsu.serve.server.worker_job import (
+    CancelRelay,
+    _run_argv_head,
+    execute_job_spec,
+    intent_problem,
+)
 from bajutsu.serve.state import Job
 
 _logger = logging.getLogger(__name__)
@@ -165,7 +170,12 @@ def environment_refusal(spec: dict[str, Any], environment: str) -> str | None:
     no device of its own, so it runs nothing but its provider's batches. An `appium` worker runs
     plain run specs through its grid and no batch (BE-0452). Routing already keeps them apart; this
     holds the line for a spec that reaches the wrong worker anyway.
+
+    A `run-set` job's run intent that the worker could not resolve is refused first (BE-0484):
+    unresolved, it carries neither a batch nor a command to run.
     """
+    if (reason := intent_problem(spec)) is not None:
+        return reason
     batch = spec.get("batch")
     provider = batch.get("provider") if isinstance(batch, dict) else None
     if environment == APPIUM:

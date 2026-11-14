@@ -248,10 +248,12 @@ def test_a_device_farm_worker_advertises_its_environment_and_host_alone(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("BAJUTSU_WORKER_CAPABILITIES", raising=False)
-    # No platform axis: the phone is the provider's. The host token is the machine's (BE-0450).
+    # No platform axis: the phone is the provider's. The host token is the machine's (BE-0450), and
+    # the run-intent token says it can take a `run-set` job (BE-0484).
     assert worker_mod._advertised_capabilities("", "", _worker("devicefarm"), "linux") == [
         "environment:devicefarm",
         "host:linux",
+        "job:run-intent",
     ]
 
 
@@ -265,7 +267,11 @@ def test_a_local_worker_defaults_to_ios(monkeypatch: pytest.MonkeyPatch) -> None
     # No Simulator inventory is probed, so the platform axis and the host alone are advertised.
     monkeypatch.setattr(simctl, "real_run", None)
     caps = worker_mod._advertised_capabilities("", "", _worker("local"), "darwin")
-    assert [c for c in caps if not is_route_token(c)] == ["host:darwin", "platform:ios"]
+    assert [c for c in caps if not is_route_token(c)] == [
+        "host:darwin",
+        "job:run-intent",
+        "platform:ios",
+    ]
     # The Simulator route's tokens ride along (BE-0467).
     assert "cap:ios-simulator:query" in caps
 
@@ -521,7 +527,7 @@ def test_a_leased_fan_out_job_runs_on_the_worker_from_its_own_workspace(
     # signed URL delivers, and the provider packages that workspace and lands the run there.
     import hashlib
 
-    from bajutsu.serve.server.worker_job import job_spec
+    from bajutsu.serve.server.worker_job import job_spec, resolve_run_intent
 
     monkeypatch.delenv("BAJUTSU_DATABASE_URL", raising=False)
     executor = _Recording()
@@ -529,10 +535,11 @@ def test_a_leased_fan_out_job_runs_on_the_worker_from_its_own_workspace(
     _payload, status = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
     assert status == 200
     (job,) = executor.jobs
-    spec = job_spec(job)
+    # The worker turns the job's run intent into its own provider's batch once leased (BE-0484).
+    spec = resolve_run_intent(job_spec(job), "devicefarm")
     assert spec["batch"]["app_path"] == "app.apk"
     assert spec["cwd"] is None  # it ships its files, so it names nothing on the server's disk
-    assert job.capabilities == ["environment:devicefarm"]
+    assert job.capabilities == ["environment:devicefarm", "job:run-intent"]
     assert spec["batch_app"] == hashlib.sha256(b"APK").hexdigest()
     assert state.object_store is not None
     (key,) = state.object_store.objects  # type: ignore[attr-defined]
