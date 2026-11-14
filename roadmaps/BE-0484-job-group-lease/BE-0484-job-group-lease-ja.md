@@ -9,7 +9,7 @@
 | 提案者 | [@paihu](https://github.com/paihu) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0484") |
-| 実装 PR | [#2417](https://github.com/bajutsu-e2e/bajutsu/pull/2417)（単位 1）、[#2426](https://github.com/bajutsu-e2e/bajutsu/pull/2426)（単位 2）、[#2431](https://github.com/bajutsu-e2e/bajutsu/pull/2431)（単位 3）、[#2443](https://github.com/bajutsu-e2e/bajutsu/pull/2443)（単位 4）、[#2445](https://github.com/bajutsu-e2e/bajutsu/pull/2445)（単位 5） |
+| 実装 PR | [#2417](https://github.com/bajutsu-e2e/bajutsu/pull/2417)（単位 1）、[#2426](https://github.com/bajutsu-e2e/bajutsu/pull/2426)（単位 2）、[#2431](https://github.com/bajutsu-e2e/bajutsu/pull/2431)（単位 3）、[#2443](https://github.com/bajutsu-e2e/bajutsu/pull/2443)（単位 4）、[#2445](https://github.com/bajutsu-e2e/bajutsu/pull/2445)（単位 5）、[#2446](https://github.com/bajutsu-e2e/bajutsu/pull/2446)（単位 6） |
 | トピック | Device-cloud execution |
 | 関連 | [BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out-ja.md), [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch-ja.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md), [BE-0465](../BE-0465-serve-ui-device-farm-fan-out/BE-0465-serve-ui-device-farm-fan-out-ja.md), [BE-0468](../BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of-ja.md) |
 <!-- /BE-METADATA -->
@@ -327,7 +327,7 @@ worker は、その互換キーを持つ job が1件でも実行中のあいだ�
     ルート自体は残しています。
   - リクエストのダイジェストは、環境を含まなくなりました。この単位より前に登録したグループキーを、
     この単位の後で繰り返すと、ダイジェストが異なるのでステータス 409 を返します。
-- 2026-11-14 — UNIT6PR で単位 6 を実装し、本項目を完了しました。serve の API、worker、ルーティングの
+- 2026-11-14 — [#2446](https://github.com/bajutsu-e2e/bajutsu/pull/2446) で単位 6 を実装し、本項目を完了しました。serve の API、worker、ルーティングの
   ページを、単位 1 から 5 の内容にそろえました。どれも両言語です。
   - `docs/self-hosting.md` に、fan-out の job が必要とするトークンと、worker が広告する
     `job:run-intent`、`kind:`、Device Farm の `platform:` のトークンを記しました。`run-set` の
