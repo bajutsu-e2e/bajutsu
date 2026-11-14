@@ -547,21 +547,36 @@ def test_a_slot_whose_run_raises_leaves_no_batch_tree_behind(
     assert staged == [tmp_path / ".batch-groups" / "g1"] and not staged[0].exists()
 
 
-def test_a_grouped_job_carrying_overrides_stages_nothing_with_its_group(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+@pytest.mark.parametrize(
+    ("group_id", "spec", "environment", "shares"),
+    [
+        ("g1", {"overrides": {"target": "t"}}, "devicefarm", False),
+        ("g1", {}, "local", True),
+        ("../g1", {}, "devicefarm", True),
+    ],
+    ids=["an override job", "a non-batch worker", "an unusable group directory"],
+)
+def test_a_grouped_job_that_cannot_use_its_group_s_directory_still_runs(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    group_id: str,
+    spec: dict[str, Any],
+    environment: str,
+    shares: bool,
 ) -> None:
-    groups: list[Any] = []
+    runs: list[tuple[dict[str, Any], Any]] = []
 
-    def run(*_a: Any, group: Any, **_k: Any) -> Any:
-        groups.append(group)
+    def run(spec: dict[str, Any], *_a: Any, group: Any, **_k: Any) -> Any:
+        runs.append((spec, group))
         raise RuntimeError("stop")
 
     monkeypatch.setattr(worker_mod, "_run_with_heartbeat", run)
     worker_mod._run_slot(
         body={
             "job_id": "j1",
-            "group_id": "g1",
-            "spec": {"materials": {"a.yaml": ""}, "overrides": {"target": "t"}},
+            "group_id": group_id,
+            "compat_key": "k1",
+            "spec": {"materials": {"a.yaml": ""}, **spec},
         },
         dirs=worker_mod._SlotDirs(tmp_path),
         groups=worker_mod._GroupDirs(tmp_path),
@@ -572,9 +587,11 @@ def test_a_grouped_job_carrying_overrides_stages_nothing_with_its_group(
         wid="w1",
         heartbeat_interval=0.05,
         worker_file=None,
-        environment="devicefarm",
+        environment=environment,
     )
-    assert groups == [None]
+    [(ran, group)] = runs
+    assert group is None
+    assert ("compat_key" in ran) is shares
 
 
 def test_a_runner_already_done_under_a_shutdown_leaves_the_lease_to_lapse() -> None:

@@ -33,6 +33,7 @@ from bajutsu.common.backend_cli import simctl
 from bajutsu.common.backends import PLATFORMS
 from bajutsu.common.capability.worker_capability import (
     APPIUM,
+    BATCH_PROVIDERS,
     DEVICEFARM_HOST,
     LOCAL,
     RESERVED_ROUTING_REASON,
@@ -847,21 +848,28 @@ def _run_slot(
     group: _GroupDir | None = None
     lost = threading.Event()
     try:
+        spec = dict(body["spec"])
         # The lease names the job's group apart from its spec (BE-0484); the provider shares the
-        # job's uploads under them.
-        spec = {**body["spec"], **{k: body[k] for k in _SHARE_FIELDS if body.get(k)}}
+        # job's uploads under them. An override job runs from a tree of its own
+        # (`_override_workspace`) whose binary the group's compatibility key does not digest, so it
+        # shares neither the group's uploads nor its staging directory.
+        if spec.get("overrides") is None:
+            spec.update({k: body[k] for k in _SHARE_FIELDS if body.get(k)})
         typer.echo(f"  leased job {job_id}")
         slot_work = dirs.acquire()
-        # A job that ships its files stages them with its group's (BE-0484); a bundle's tree already
-        # holds every scenario of the target, and an override job runs from a tree of its own
-        # (`_override_workspace`) that the group's directory would shadow.
+        # A job that ships its files stages them with its group's; a bundle's tree already holds
+        # every scenario of the target, and only a batch run packages the group's directory.
         if (
-            body.get("group_id")
+            spec.get("group_id")
             and spec.get("materials")
             and spec.get("bundle") is None
-            and spec.get("overrides") is None
+            and environment in BATCH_PROVIDERS
         ):
-            group = groups.acquire(str(body["group_id"]))
+            try:
+                group = groups.acquire(str(spec["group_id"]))
+            except (OSError, RuntimeError):
+                # Staged alone, the job is still correct; it only loses the group's shared package.
+                _logger.warning("job %s runs without its group's directory", job_id, exc_info=True)
         io = PresignedWorkerIO(
             url=url,
             auth_token=auth_token,
