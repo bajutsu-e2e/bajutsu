@@ -1322,6 +1322,16 @@ Redis or RQ**, BE-0106), runs it with the unchanged `run_job`, and posts the res
 baselines before a run, uploading the run tree after — goes through presigned URLs the control
 plane signs (BE-0160), so the worker needs only an HTTP client.
 
+A lease with nothing to run answers `204`. A Device Farm worker runs more than one job at
+once. It sends its free slots as `maxJobs`, from 1 to 100. The response is then a list. The oldest job the
+worker can serve may belong to a `run-set` group. The list then adds that group's next jobs, within
+the server's concurrency caps. The slots can thus share the group's uploads.
+
+A `run-set` job carries a run intent instead of a command
+([BE-0484](../roadmaps/BE-0484-job-group-lease/BE-0484-job-group-lease.md)). The worker that
+leases it turns the intent into its own run. A local worker runs a `bajutsu run` command. A Device
+Farm worker submits its provider's batch.
+
 A local `bajutsu serve` needs a worker as well, since it queues every run (BE-0449). `make serve`
 starts one. The lease response hands a worker two more fields:
 

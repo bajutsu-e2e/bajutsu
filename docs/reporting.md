@@ -180,7 +180,10 @@ means the same thing after the run that produced it exits
   `configSource` (`{ host, owner, repo, ref, sha }`, the exact commit a branch-based run executed).
   It groups accumulated runs by identity, so a verdict that flips while the fingerprint is
   unchanged is **true flakiness** rather than an edited scenario. Pure metadata — it never enters
-  `ok`. (`schemaVersion` is `3` or higher once this block can appear — it is `18` today.)
+  `ok`. (`schemaVersion` is `3` or higher once this block can appear — it is `18` today.) A
+  `run-set` job also records `workerEnvironment`, the environment of the worker that ran it
+  (`local`, `devicefarm`, …). Another run of the same job may land elsewhere. The report lists
+  it under *notices* ([BE-0484](../roadmaps/BE-0484-job-group-lease/BE-0484-job-group-lease.md)).
 - `target` (top, optional): the target the run ran, so "the Android target passes while the iOS
   target fails" is computable from stored data ([BE-0404](../roadmaps/BE-0404-collapse-project-layer/BE-0404-collapse-project-layer.md)).
   One run resolves one target, so it sits beside `backend` rather than on each scenario. `serve`

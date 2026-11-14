@@ -195,7 +195,9 @@ worker は、`environment:devicefarm` と `kind:device` を広告します。pro
 
 worker の `--capabilities` フラグと `$BAJUTSU_WORKER_CAPABILITIES` は非推奨です。
 どちらも今回のリリースでは、1 回だけの通知とともに引き続き効きます。target の `requires` リストは
-BE-0452 で取り除きました。ホストで実行する job が必要とするのは、そのプラットフォームとドライバのホストだけです。
+BE-0452 で取り除きました。ホストで実行する run の job が必要とするのは、そのプラットフォームとドライバのホストだけです。
+`run-set` の job はホストを必要としません。そのプラットフォームを扱うどの worker でも受け取れるからです
+（[セルフホスト](self-hosting.md#能力に基づくキューの振り分けbe-0166)）。
 2 つのどちらも、`environment:`、`host:`、`platform:`、`kind:` などの予約済みの接頭辞を含められません。
 worker がこれらのトークンを自分で埋めるからです。
 

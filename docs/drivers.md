@@ -281,7 +281,9 @@ Two hand-written inputs now log a deprecation notice. Each still works for this 
 
 Neither input may carry a reserved prefix. `environment:`, `host:`, `platform:`, and `kind:` are
 among them. The worker fills those tokens itself. BE-0452 removed a third input, a target's
-`requires` list: a hosted job now requires its platform and its driver's host alone.
+`requires` list: a hosted run job now requires its platform and its driver's host alone. A
+`run-set` job requires no host, since any worker serving its platform may take it
+([self-hosting](self-hosting.md#capability-routed-queues-be-0166)).
 
 ## XCUITest (iOS)
 
