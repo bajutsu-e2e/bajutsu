@@ -708,8 +708,8 @@ Each command that drives a device takes `--worker-config` with such a file: `run
 `crawl`, `repl`, `audit`, `doctor`, and `bajutsu mcp`. The targets of the grid's platform take the
 endpoint as their device. The other targets of the same scenario stay on this machine. The endpoint
 counts as one device, so the run refuses a scenario with two grid targets. `--udid` no longer
-accepts a URL. A Device Farm fan-out names its batch provider as the `environment` of the serve
-request, in place of the target's former `cloudBatch` ([Device Farm](devicefarm.md)).
+accepts a URL. A Device Farm fan-out names no batch provider, and no target carries the former
+`cloudBatch`. The server routes each fan-out job by its target's platform ([Device Farm](devicefarm.md)).
 
 ### Real-device host address (`driver.runner.hostAddress`)
 

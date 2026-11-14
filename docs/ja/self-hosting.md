@@ -580,8 +580,9 @@ curl -X POST "$SERVER/api/run" -H "Authorization: Bearer $TOKEN" \
 - `subject.path` を持たない target（web の target）に `binaryArtifact` を指定すると `400` を返します。
 - 単一プロセスの `serve` は、どちらのフィールドも拒否します。その構成では job がオペレータ自身の
   プロジェクトディレクトリで動くため、差し替えで上書きするわけにはいかないからです。
-- `POST /api/run-set` も、どちらのフィールドも拒否します。クラウドバッチのファンアウトは Device Farm の
-  worker で動きますが、差し替えを Device Farm へのリクエストに対応づける作業はまだ済んでいないためです。
+- `POST /api/run-set` も、どちらのフィールドも拒否します。ファンアウトのジョブは、ターゲットのプラットフォームを
+  扱う worker ならどれでもリースでき、Device Farm の worker もその1つです。差し替えを Device Farm への
+  リクエストに対応づける作業は、まだ済んでいません。
 
 リースは、指定された差し替えごとに presigned GET（`binary_url`、`scenarios_url`）を、リースした job の
 org の下で署名します。worker は各ダウンロードを sha256 で検証し、その job 専用のツリーを組み立てます。
@@ -1207,13 +1208,13 @@ Linux の web ワーカーに渡って失敗しかねません。それは本物
   `worker.yaml` で `environment: appium` を設定し、グリッドの `endpoint` を指定したワーカーは、このトークン
   だけを広告し、`--platform` を取りません。そのワーカーは、自分の `--worker-config` を付けたローカルの
   `bajutsu run` を実行します（[iOS を実機で動かす](ios-device-cloud.md#ライブ--appium-エンドポイントのプロバイダー)）。
-  Device Farm への fan-out は、`POST /api/run-set` で独自の `environment` を指定します
-  （[AWS Device Farm で実行する](devicefarm.md#ターゲットの-fan-out)）。
+  fan-out（`POST /api/run-set`）は `environment` を取らず、各ジョブをターゲットのプラットフォームで
+  振り分けます（[AWS Device Farm で実行する](devicefarm.md#ターゲットの-fan-out)）。
 - **ワーカーの手書きの入力は非推奨です。** ワーカーの `--capabilities` と `$BAJUTSU_WORKER_CAPABILITIES` は
   トークンをそのまま加えます。どちらも今回のリリースでは引き続き効き、1 回だけ通知を記録します。次のリリース
   で削除します。Simulator 在庫と worker 能力ファイルが、上書きの用途をすでに担っているからです。上書きは、
   マシンにないランタイムを広告できてしまう点でも問題です。どちらも、予約済みの接頭辞 `environment:`、
-  `host:`、`machine:`、`device:`、`cap:`、`setting:`、`job:` を含められません。ワーカーがいずれも自分で埋めるからです。ワーカーは起動時に、そのトークンを
+  `host:`、`machine:`、`device:`、`cap:`、`setting:`、`job:`、`platform:`、`kind:` を含められません。ワーカーがいずれも自分で埋めるからです。ワーカーは起動時に、そのトークンを
   拒否します。
 - **振り分け不能のジョブ**、すなわち必要とする capability を稼働中のどのワーカーも広告していないジョブは、
   非互換のワーカーにリースされたり捨てられたりせず、キューに残ります。そして `bajutsu_unroutable_jobs`
@@ -1337,7 +1338,7 @@ BE-0015 で今後の作業です。
 持てる run 数の上限を決められます。各ユーザがそれぞれの `BAJUTSU_MAX_CONCURRENT_PER_USER` 以内にとどまって
 いても、忙しい org が希少なデバイスを独占することを防げます。どちらも既定は無制限（`0`）で、いずれもグローバルな
 `--max-concurrent-runs` の下に効きます。上限を超えたリクエストはキューに入れず拒否します（HTTP 429）。
-ただし Device Farm の fan-out（`run-set`）は例外です。すべてのシナリオをキューに積み、ワーカーがジョブを
+ただし fan-out（`run-set`）は例外です。すべてのシナリオをキューに積み、ワーカーがジョブを
 リースする時点で上限を適用するので、枠が空くたびに順に実行します（BE-0484）。（org を
 またぐ公平な*スケジューリング*、つまり拒否した分を org 別キューで保留してラウンドロビンで投入する仕組みは、まだ
 今後の作業です。今日は通常の run を上限で拒否します。）
