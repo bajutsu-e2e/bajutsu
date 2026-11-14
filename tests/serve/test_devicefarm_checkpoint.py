@@ -254,7 +254,7 @@ def test_a_fan_out_that_cannot_deliver_its_application_is_refused(
     state = _storage_state(tmp_path, executor, app_path=app_path, store=store)
     (tmp_path / "app.apk").write_bytes(b"outside the config's directory")
 
-    payload, status = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
+    payload, status = start_run_set(state, {"target": "demo"})
 
     assert status == 400 and words in payload["error"]
     assert executor.jobs == []
@@ -612,7 +612,7 @@ def test_the_stored_application_is_the_snapshot_that_was_hashed(tmp_path: Path) 
 
     executor = _Recording()
     state = _storage_state(tmp_path, executor)
-    _payload, status = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
+    _payload, status = start_run_set(state, {"target": "demo"})
 
     assert status == 200
     (job,) = state.jobs.values()

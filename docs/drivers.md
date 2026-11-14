@@ -258,24 +258,30 @@ rules the platform out, the worker exits with the driver's reason. A Linux worke
 `--platform ios` thus stops. Its reason reads `xcuitest runs only on macOS; this worker runs on
 linux`. The check judges the platform's drivers, not a request's `backend`. No worker off macOS
 advertises `platform:ios`. An iOS target run on the `fake` backend thus still needs a Mac worker. A
-worker whose environment is a device cloud advertises `environment:<name>` and no `platform:*` token.
-An `appium` worker advertises `environment:appium`. A serve run request reaches it by naming
-`environment: appium`. Every worker also advertises `job:run-intent`, which says it can run a
-`run-set` job (BE-0484).
+Device Farm worker advertises `environment:devicefarm` and `kind:device`. It also advertises its
+provider's platforms, `platform:android` and `platform:ios`. An `appium` worker advertises
+`environment:appium`. A serve run request reaches it by naming `environment: appium`. Every worker
+also advertises `job:run-intent`, which says it can run a `run-set` job (BE-0484). An `appium`
+worker advertises the token too, but a `run-set` job requires a `platform:*` token, which such a
+worker does not advertise: a deployment of grid workers alone runs its scenarios through plain run
+requests.
 
 The file declares no routing token itself. The runtime and device-class tokens (`ios18`, `ipad`)
 come from the Simulator inventory. The real-device tokens (`device:ipad`) come from `devicectl`
 ([BE-0468](../roadmaps/BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of.md)). A
-declaration could promise a runtime or a device the machine lacks.
+declaration could promise a runtime or a device the machine lacks. The kind tokens follow the same
+two reads (BE-0484). A worker advertises `kind:simulator` when its Simulator inventory holds an
+iPhone or iPad. It advertises `kind:device` while it drives a connected iPhone or iPad.
+`realDevices: false` turns `kind:device` off.
 
 Two hand-written inputs now log a deprecation notice. Each still works for this release:
 
 - the worker's `--capabilities` flag
 - the `$BAJUTSU_WORKER_CAPABILITIES` environment variable
 
-Neither input may carry the reserved `environment:` or `host:` prefix. The worker fills both
-itself. BE-0452 removed a third input, a target's `requires` list: a hosted job now requires its
-platform and its driver's host alone.
+Neither input may carry a reserved prefix. `environment:`, `host:`, `platform:`, and `kind:` are
+among them. The worker fills those tokens itself. BE-0452 removed a third input, a target's
+`requires` list: a hosted job now requires its platform and its driver's host alone.
 
 ## XCUITest (iOS)
 

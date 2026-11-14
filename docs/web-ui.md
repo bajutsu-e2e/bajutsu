@@ -395,21 +395,19 @@ boots or the app builds — still stops outright and leaves no report, having re
 preserve. **Stop** on the Record and Crawl tabs is unchanged for the same reason: neither reaches a
 verdict of its own.
 
-**Run in a device cloud.** The **Environment** selector lists `local` plus each batch environment.
-A batch environment, such as an AWS Device Farm provider, appears once a live worker advertises
-it. Each entry shows its live worker count. Workers come and
-go, so the tab reads the list again each time it opens. The refresh button reads it on demand
+**Fan out to workers.** The checkbox turns the Run form into a fan-out
 ([BE-0465](../roadmaps/BE-0465-serve-ui-device-farm-fan-out/BE-0465-serve-ui-device-farm-fan-out.md)).
+A fan-out queues one job per chosen scenario. The server routes each job by its target's platform
+(BE-0484). Any worker serving that platform can take it, local or in a device cloud.
+The form names no placement. The checkbox works for every target, a web target included. **Apply &
+re-run** from triage unchecks it, so a re-run goes back to one run.
 
-A web target cannot use a device cloud. A fan-out installs the app on a cloud device, and a browser
-target has none. The selector then stays on `local` and states the reason.
-
-With a device-cloud environment chosen, the form dispatches a fan-out instead of one run:
+With **Fan out to workers** checked, the form dispatches a fan-out instead of one run:
 
 1. Pick scenarios in the multi-select, or check **All scenarios**.
    Either way the form sends every chosen name explicitly, so a file saved between the listing
    and the dispatch cannot move a row onto the wrong scenario.
-2. The fields a cloud device ignores disappear. They are the device picker, **Workers**,
+2. The fields a fan-out ignores disappear. They are the device picker, **Workers**,
    **erase device first**, **show browser (headed)**, **disable alert-dismiss**, **Readiness**,
    and the single scenario's select, View, and grade.
 3. **Run** posts to `POST /api/run-set`. The route needs the editor role, like a single **Run**.

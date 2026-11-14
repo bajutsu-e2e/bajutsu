@@ -33,6 +33,7 @@ from bajutsu.common.backend_cli import simctl
 from bajutsu.common.backends import PLATFORMS
 from bajutsu.common.capability.worker_capability import (
     APPIUM,
+    BATCH_PROVIDER_PLATFORMS,
     BATCH_PROVIDERS,
     DEVICEFARM_HOST,
     LOCAL,
@@ -53,6 +54,7 @@ from bajutsu.serve.capabilities import (
     devicectl_capabilities,
     environment_capability,
     host_capability,
+    kind_capability,
     machine_capability,
     parse_capabilities,
     platform_capability,
@@ -275,11 +277,15 @@ def _advertised_capabilities(
                 "it takes no --platform; the phone belongs to the provider's host",
                 param_hint="--platform",
             )
+        # Its provider's platforms, on physical devices alone, take a `run-set` job (BE-0484). No
+        # family token: the provider selects devices by platform alone.
         return sorted(
             {
                 environment_capability(cap.environment),
                 RUN_INTENT_CAPABILITY,
                 host_token,
+                kind_capability("device"),
+                *map(platform_capability, BATCH_PROVIDER_PLATFORMS.get(cap.environment, ())),
                 *parse_capabilities(override),
             }
         )
@@ -324,6 +330,12 @@ def _device_reader(
     """
     if not worker_capability.is_local or platform_capability("ios") not in caps:
         return None
+    if worker_capability.real_devices is False:
+        # A Simulator-only Mac keeps an iOS device run of a `run-set` off itself (BE-0484).
+        def read(*, on_error: Callable[[str], None]) -> set[str]:
+            return devicectl_capabilities(on_error=on_error) - {kind_capability("device")}
+
+        return _DeviceTokens(read)
     return _DeviceTokens()
 
 

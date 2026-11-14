@@ -823,7 +823,7 @@ iOS 側の対になるジョブ `pool (xcuitest)` は、Simulator を 2 台起�
   - 指定した方の脚は、そのアーティファクトだけを解決先とします。binary はその job 自身の target の `subject.path` に配置し、`scenarios` の zip はその target の scenarios ディレクトリを置き換えます。
   - 指定しなかった脚は、従来どおり org の有効な config の binding を解決先とするため、そちらは変更されません。この結果、1 つのデプロイに対する 2 つの同時 CI ディスパッチが、デプロイのフォールバック binding を奪い合ったり、org の記憶済み設定を書き換えたりすることがなくなります。
   - worker は、ジョブのワークスペースを override の識別子でキー付けするため、同じ worker 上の後続ジョブが汚染されることはありません。bundle のキャッシュ木も、再取得せずに再利用します。
-  - job のキューがない状態（`UnqueuedExecutor`。BE-0449）では、拒否されます。クラウドバッチの `run-set` ファンアウトでも拒否されます。その Device Farm worker（BE-0448）は、差し替えをリクエストへ対応づけないためです。
+  - job のキューがない状態（`UnqueuedExecutor`。BE-0449）では、拒否されます。`run-set` のファンアウトでも拒否されます。ファンアウトの job は Device Farm worker（BE-0448）もリースでき、この worker は差し替えをリクエストへ対応づけないためです。
   - 差し替えた sha256 は、それぞれ run の manifest の provenance に記録されます。
 - **target を横断する比較ダッシュボード**（BE-0226。BE-0404 で軸を target に付け替え）は、`serve` の **Comparison** タブです。bind している config の target を、pass 率、flaky 率、p50/p95 の run 所要時間、そして target ごとのトレンドスパークラインで、横並びに順位付けします。
   - BE-0102 の config 単位の集計を、target ごとに 1 回ずつ実行して再利用します（`GET /api/metrics/targets`）。BE-0102 と同じく、読み取り専用でアドバイザリです。
@@ -839,7 +839,7 @@ iOS 側の対になるジョブ `pool (xcuitest)` は、Simulator を 2 台起�
   - **バンドルを開く。** config、シナリオ、ビルド済みアプリバイナリの **`.zip` バンドルをアクティブな config として開いて**、各タブをそこから動かします（BE-0073）。
   - **Compose & load。** サーバは、この 3 つをそれぞれ独立した content-addressed な成果物としても受け付け、バインド時にそのツリーへ合成します（`POST /api/artifacts/{config,scenarios,binary}`、BE-0268）。UI にも **Compose & load** パネルを備え、成果物ごとのドロップゾーンでブラウザ側でハッシュ化します。サーバがまだ持たないバイト列だけをアップロードしたうえで、要求に応じてバインド済みの config へ合成します。パネルを開き直すと、現在バインド中の合成内容から各ゾーンを事前入力します（ゾーンごとの **Clear** 操作つき）。変更のあった成果物だけを再アップロードすれば済み、`POST /api/compose` はリクエストボディだけで決まる純粋な処理のままです（`GET /api/compose/current`、BE-0325）。
   - **レポートと証跡。** レポートと証跡を閲覧できます。
-  - **実行環境の選択。** Replay フォームには**実行環境の選択**も備えます。device-cloud の環境は、動いている worker がそれを広告している間だけ選べます。device-cloud の環境を選んだうえで複数のシナリオを選び Run を押すと、1 回の run ではなく Device Farm のファンアウト（`POST /api/run-set`、BE-0336）を UI から直接発行します。run-set パネルが、各シナリオの job を一覧で追います（BE-0465）。
+  - **ファンアウト。** Replay フォームの **Fan out to workers** にチェックを入れると、Run フォームがファンアウトに変わります。複数のシナリオを選び Run を押すと、1 回の run ではなくシナリオごとの job を発行します（`POST /api/run-set`、BE-0336）。リクエストは実行環境を指定しません。サーバは各 job を、ターゲットのプラットフォームを扱う worker へ振り分けます。ローカルの worker でも Device Farm の worker でもかまいません（BE-0484）。run-set パネルが、各シナリオの job を一覧で追います（BE-0465）。
   - **ゴミ箱。** Replay の履歴タブでも crawl でも、行ごとまたは一括で削除すると、実行は共有の**ゴミ箱**へ移動するだけで、保持期間内であれば復元できます（BE-0239）。
   - **crawl の再開。** 過去の crawl のスクリーンマップは、**再開**できます。残りのフロンティアを同じ予算とワーカー設定のまま続けて探索するか、剪定済みの 1 つの分岐だけを同じ予算で再探索します（BE-0181）。
   - **run 統計ダッシュボード。** 集計 **run 統計ダッシュボード**の各軸（日付、backend、シナリオ、step/assertion のホットスポット）から、履歴一覧の該当する run へ直接ジャンプできます（BE-0241）。

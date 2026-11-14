@@ -204,10 +204,10 @@ the shape. Instead of one serialized run, serve **fans the suite out one Device 
 scenario**, so scenarios run in parallel. The Device Farm workers' job budget, not a single device,
 bounds how many run at once.
 
-The target names no batch provider. Where a run happens is a choice per run, not a property of the
-target. The fan-out request names the provider instead, as its `environment`
-([BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)). The
-target needs nothing beyond a `subject.path`, the binary Device Farm installs on the reserved device:
+Neither the target nor the fan-out request names a batch provider (BE-0484). Each fan-out job routes
+by its target's platform. Any worker serving that platform can take it, local or Device Farm. The
+workers a deployment runs decide where the jobs land. The target needs a `subject.path` alone. That
+file is the binary Device Farm installs on the reserved device:
 
 ```yaml
 targets:
@@ -221,10 +221,11 @@ targets:
 ```
 
 The server does not submit these runs itself (BE-0448). Each fan-out job waits in the queue for a
-Device Farm worker. Such a worker's capability file, `worker.yaml`, sets `environment: devicefarm`.
-That worker packages the run and submits it. It then polls the run and posts the verdict back. The
-AWS role thus lives in the worker's environment, never in the server's. The server and the worker
-may share one machine as two processes. Start the worker with the file and no `--platform`:
+worker, and a Device Farm worker is one that can take it. Such a worker's capability file,
+`worker.yaml`, sets `environment: devicefarm`. That worker packages the run and submits it. It then
+polls the run and posts the verdict back. The AWS role thus lives in the worker's environment, never
+in the server's. The server and the worker may share one machine as two processes. Start the worker
+with the file and no `--platform`:
 
 ```yaml
 # devicefarm.worker.yaml
@@ -251,16 +252,39 @@ startup, the worker exits with the reason unless all three conditions below hold
 - The command line names no `--platform`. The phone belongs to the Device Farm host, so the worker
   drives no device of its own.
 
-Once registered, the worker prints `provider registered: devicefarm`. It advertises the routing
-token `environment:devicefarm`, beside the `host:<os>` token every worker advertises for its machine.
-A fan-out job requires `environment:devicefarm` and `job:run-intent`. The second token marks a worker
-that can turn the job's run intent into its own provider's batch. A worker from before BE-0484
-lacks it and leaves the job queued. A worker advertising `environment:devicefarm` leases nothing else. Local jobs and Device Farm jobs thus never reach each other's workers. Serving
-both on one machine takes two workers. Registration alone puts an `environment:` token on a worker.
-`--capabilities` and `$BAJUTSU_WORKER_CAPABILITIES` refuse that prefix at startup.
+Once registered, the worker prints `provider registered: devicefarm`. It advertises these routing
+tokens:
+
+- `environment:devicefarm`, which keeps plain runs off the worker
+- `host:<os>`, the token every worker advertises for its machine
+- `job:run-intent`, which says the worker can turn a fan-out job into a batch
+- `kind:device`, since every device the worker reserves is physical
+- `platform:android` and `platform:ios`, the platforms Device Farm serves
+
+It advertises no device-family token, since Device Farm picks a device by platform alone. A target
+that names `runsOn.ios.family` thus never routes to a Device Farm worker. Its jobs wait for a
+local worker that holds the family. Until one is live, they count in `bajutsu_unroutable_jobs`.
+
+A fan-out job requires its target's `platform:<p>` token and `job:run-intent`. It also requires its
+scenario's own `cap:` and `setting:` tokens. An iOS job adds its target's device-family tokens. It
+adds one `kind:<kind>` token per kind its runs take. A listed `runsOn.ios.kind` names those kinds.
+Without one, the target's driver implies the kind. An iOS target meant for Device Farm thus declares
+the scalar `kind: device`. A fan-out job requires no `host:` or `environment:` token. A worker from
+before BE-0484 lacks `job:run-intent` and leaves the job queued.
+
+A worker advertising `environment:devicefarm` leases a fan-out job and no other job. Plain runs thus
+never reach a Device Farm worker. A local worker serving the same platform may lease a fan-out job
+as well. Registration alone puts an `environment:` token on a worker. `--capabilities` and
+`$BAJUTSU_WORKER_CAPABILITIES` refuse that prefix at startup. They refuse `platform:` and `kind:` as
+well. A worker given one refuses to start and names the prefix.
 
 A fan-out job that no live worker can serve stays queued as unroutable, like any other job. A server
 with no queue has no worker to take the fan-out, so it refuses `POST /api/run-set`.
+
+The worker that leases a fan-out job decides where it runs. The same scenario may thus pass on a
+Simulator and fail on a cloud device. The worker records its environment in the run's provenance,
+as `workerEnvironment`. The report then names that environment. It also warns that another run of
+the job may land elsewhere.
 
 Unlike the headless submitter, the worker reserves one device per run through a device-selection
 filter. It needs no device-pool ARN.
@@ -401,30 +425,30 @@ server fills those slots with jobs of one fan-out, up to the headroom the caps l
 ### Fanning a target out
 
 The Replay tab dispatches a fan-out from the browser
-([web UI](web-ui.md#replay--run-a-scenario-and-read-its-report)). Choose a device-cloud environment,
-pick scenarios, and press Run. The tab lists the *batch* environments that a live worker
-advertises; an `appium` grid is reached through the plain run request instead (BE-0452).
-It reads them from `GET /api/environments`. The response gives each environment's `name`, its `kind`
-(`batch` or `grid`), and its `liveWorkers` count. It carries no ARN or credential.
+([web UI](web-ui.md#replay--run-a-scenario-and-read-its-report)). Check **Fan out to workers**,
+pick scenarios, and press Run. The tab offers the checkbox for every target, a web target included.
 
 A `POST /api/run-set` request fans a target out. It needs the editor role, like `POST /api/run`.
-Its body names the `target` and the batch provider
-as `environment` (today `devicefarm`). An optional `scenarios` subset narrows the run:
+Its body names the `target`. An optional `scenarios` subset narrows the run:
 
 ```json
-{ "target": "showcase-compose", "environment": "devicefarm", "scenarios": ["firstlook.yaml", "controls.yaml"] }
+{ "target": "showcase-compose", "scenarios": ["firstlook.yaml", "controls.yaml"] }
 ```
 
 Omitting `scenarios` runs every scenario in the target's directory. Every requested name resolves to
 its scenario **before** any dispatch, so one unknown name fails the whole request closed rather than
-fanning out the good ones and erroring on the bad one. serve queues one job per scenario. The Device
-Farm workers lease the jobs as their budgets allow. serve refuses the request outright when it
-cannot honor it at all:
+fanning out the good ones and erroring on the bad one. serve queues one job per scenario. The
+workers serving the target's platform lease the jobs as their budgets allow. serve refuses the
+request outright when it cannot honor it at all:
 
-- a missing `environment`, or one that names no batch provider. `appium` is one of these: the plain
-  run request reaches a grid ([self-hosting](self-hosting.md));
-- a web target, which has no device to reserve;
-- a target with no `subject.path`;
+- any `environment` field. The server routes each job by its target's platform, so the request
+  names no placement;
+- a target whose platform is not `android`, `ios`, or `web`;
+- an Android or iOS target with no `subject.path`. A web target needs none, and no Device Farm
+  worker serves `platform:web`;
+- a job that no live worker can serve, while live workers drive its route. Each of those workers
+  lacks one of the scenario's `cap:` or `setting:` tokens. The response names the scenario. It
+  lists the absent tokens in `missing`. The whole request fails, and serve queues no job;
 - a config or scenario outside the config's directory, which the worker packages;
 - for a config on the server's disk, a server with no object store to deliver the archive through;
 - for a config on the server's disk, a path the archive cannot carry. A config path that leaves the

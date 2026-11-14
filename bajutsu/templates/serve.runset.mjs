@@ -1,57 +1,28 @@
-// serve.runset.mjs — the Replay tab's Environment selector and its run-set panel (BE-0465).
-// A serve.*.mjs section module (BE-0247). Choosing a device-cloud environment a live worker
-// advertises turns the Run form into a fan-out: Run posts the chosen scenarios to /api/run-set, and
-// the panel tracks one row per dispatched job. `local` leaves the single-run form untouched.
+// serve.runset.mjs — the Replay tab's fan-out toggle and its run-set panel (BE-0465, BE-0484).
+// A serve.*.mjs section module (BE-0247). Fan-out turns the Run form into a run-set: Run posts the
+// chosen scenarios to /api/run-set, the server routes each job to any worker serving the target's
+// platform, and the panel tracks one row per dispatched job. Off leaves the single-run form untouched.
 import {
-  $, esc, getJSON, postJSON, setStatus, setBusy, streamJob, appendLine, scnFiles, FETCH_ERROR, isFetchError,
+  $, esc, postJSON, setStatus, setBusy, streamJob, appendLine, scnFiles,
 } from './serve.core.mjs';
 import {setReport} from './serve.panels.mjs';
 
 const POLL_MS=2000;
 // Consecutive failed status reads before a row stops polling and reads `unknown`.
 const MAX_POLL_ERRORS=5;
-// The batch entries of the last /api/environments read: run-set refuses a fan-out to a grid.
-let environments=[];
-// The last /api/environments failure, kept so syncCloudForm's own re-render does not wipe it.
-let envError='';
 // The open run-set: its rows, the pending poll timer, and the one row whose log is streaming.
 let runSet=null;
 
-async function loadEnvironments(){
-  const d=await getJSON('/api/environments',FETCH_ERROR);
-  // A failed read keeps the last list and selection: an empty rebuild would drop a chosen environment.
-  if(isFetchError(d)){envError='Could not load environments — Refresh to retry';syncCloudForm();return;}
-  envError='';
-  environments=(Array.isArray(d.environments)?d.environments:[]).filter(e=>e.kind==='batch');
-  const sel=$('#env'),prev=sel.value;
-  sel.innerHTML='<option value="local">local</option>'+environments.map(e=>{
-    const n=Number(e.liveWorkers)||0;
-    return `<option value="${esc(e.name)}">${esc(e.name)} (${n} worker${n===1?'':'s'})</option>`;
-  }).join('');
-  // An environment whose last worker went away drops out of the list, and the form falls back to local.
-  sel.value=[...sel.options].some(o=>o.value===prev)?prev:'local';
-  syncCloudForm();
-}
-function targetBackend(){const o=$('#target').selectedOptions[0];return (o&&o.dataset.backend)||'';}
-// A fan-out installs the target's app on a cloud device; a web target has none, so run-set refuses it.
-function cloudReason(){
-  return environments.length&&targetBackend()==='web'
-    ?'Device-cloud environments run iOS or Android targets; this target runs in a browser.':'';
-}
-function cloudEnvironment(){const v=$('#env').value;return v&&v!=='local'?v:'';}
-// Re-derive the form from the target and environment: called on either change and after every
-// scenario-list load, so the multi-select always lists what the target's scenario dir holds.
-function syncCloudForm(){
-  const reason=cloudReason(),sel=$('#env');
-  [...sel.options].forEach(o=>{if(o.value!=='local')o.disabled=!!reason;});
-  if(reason)sel.value='local';
-  const r=$('#env-reason'),text=reason||envError;r.textContent=text;r.hidden=!text;
-  $('#view-replay').classList.toggle('cloud',!!cloudEnvironment());
+function fanOut(){return $('#fanout').checked;}
+// Re-derive the form from the toggle: called on its change and after every scenario-list load, so
+// the multi-select always lists what the target's scenario dir holds.
+function syncFanOutForm(){
+  $('#view-replay').classList.toggle('fanout',fanOut());
   syncRunSetLive();
   renderScenarioChoices();
 }
 function runSetLive(){return !!runSet&&runSet.rows.some(r=>!r.terminal);}
-// The panel is cloud-only, except while a fan-out still runs: its rows and Stop all stay in view.
+// The panel shows in fan-out alone, except while a fan-out still runs: its rows and Stop all stay in view.
 function syncRunSetLive(){$('#view-replay').classList.toggle('runset-live',runSetLive());}
 function renderScenarioChoices(){
   const sel=$('#scns'),kept=new Set([...sel.selectedOptions].map(o=>o.value));
@@ -64,16 +35,16 @@ function chosenScenarios(){
   return $('#all-scns').checked?scnFiles.map(s=>s.file):[...$('#scns').selectedOptions].map(o=>o.value);
 }
 async function dispatchRunSet(){
-  const environment=cloudEnvironment(),scenarios=chosenScenarios(),status=$('#status');
+  const scenarios=chosenScenarios(),status=$('#status');
   if(!scenarios.length){setStatus(status,'pick at least one scenario','ng');return;}
   // A new fan-out replaces the panel, which would orphan the running rows and their Stop all.
   if(runSetLive()){setStatus(status,'a run-set is still running — Stop all or wait','ng');return;}
   setBusy($('#go'),$('#stop'),true,'Dispatching…');setStatus(status,'','run');
-  const d=await postJSON('/api/run-set',{target:$('#target').value,environment,scenarios},{error:'request failed'});
+  const d=await postJSON('/api/run-set',{target:$('#target').value,scenarios},{error:'request failed'});
   setBusy($('#go'),$('#stop'),false);
   if(d.error){setStatus(status,d.error,'ng');return;}
   if(!Array.isArray(d.jobIds)){setStatus(status,'no jobs started','ng');return;}
-  setStatus(status,`dispatched ${d.jobIds.length} of ${scenarios.length} to ${environment}`,'run');
+  setStatus(status,`dispatched ${d.jobIds.length} of ${scenarios.length}`,'run');
   // The server queues every scenario, in request order, or none (BE-0484), so the ids pair with the
   // names by position.
   openRunSet(d.jobIds.map((id,i)=>({id:String(id),name:scenarios[i]})));
@@ -205,16 +176,10 @@ async function stopAll(){
 }
 
 function initRunSet(){
-  $('#env').addEventListener('change',syncCloudForm);
-  $('#env-refresh').addEventListener('click',loadEnvironments);
-  $('#target').addEventListener('change',syncCloudForm);
+  $('#fanout').addEventListener('change',syncFanOutForm);
   $('#all-scns').addEventListener('change',()=>{$('#scns').disabled=$('#all-scns').checked;});
   $('#runset-rows').addEventListener('click',onRowClick);
   $('#runset-stop').addEventListener('click',stopAll);
-  // Workers come and go, so the list is read again whenever the Replay tab opens.
-  const tab=document.querySelector('.toptab[data-view="replay"]');
-  if(tab)tab.addEventListener('click',loadEnvironments);
-  loadEnvironments();
 }
 
-export {initRunSet, syncCloudForm, cloudEnvironment, dispatchRunSet};
+export {initRunSet, syncFanOutForm, fanOut, dispatchRunSet};

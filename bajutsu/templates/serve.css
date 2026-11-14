@@ -300,14 +300,13 @@ button.stop[hidden]{display:none}
 .logpanel{height:100%;min-height:0;display:flex;flex-direction:column;overflow:hidden}
 pre.out{flex:1;min-height:0;margin:.6rem 0 0;overflow:auto;background:var(--bg2);border:1px solid var(--line);border-radius:6px;padding:.5rem;font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere}
 pre.out:empty::before{content:attr(data-empty);color:var(--mut)}
-/* Device-cloud Replay (BE-0465). A class on the view rather than inline display, so it composes with
+/* Fan-out Replay (BE-0465, BE-0484). A class on the view rather than inline display, so it composes with
    syncPlatform's inline .iosonly/.webonly toggling: an element shows only when neither hides it. */
 /* renderGradeBadge rewrites the badge's className, so it is hidden by id rather than by class. */
-#view-replay.cloud .localonly,#view-replay.cloud #scn-grade{display:none!important}
-#view-replay:not(.cloud) .cloudonly{display:none!important}
-/* A fan-out still running keeps its panel and Stop all in view after a switch back to local. */
+#view-replay.fanout .localonly,#view-replay.fanout #scn-grade{display:none!important}
+#view-replay:not(.fanout) .fanoutonly{display:none!important}
+/* A fan-out still running keeps its panel and Stop all in view after fan-out is turned off. */
 #view-replay.runset-live #runset{display:flex!important}
-.envhead{margin:.6rem 0 .2rem}
 .allscn{display:flex;align-items:center;gap:.4rem;margin:.2rem 0 .3rem;color:var(--fg)}
 #scns:disabled{opacity:.5}
 .runset{flex:1;min-height:0;display:flex;flex-direction:column;margin-top:.6rem}

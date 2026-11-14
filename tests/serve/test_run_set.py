@@ -19,6 +19,7 @@ from _shared import _get_json, _post, _serve, queue_repository
 from conftest import FakeObjectStore
 
 from bajutsu import serve as srv
+from bajutsu.common.capability.route_tokens import is_route_token
 from bajutsu.serve import operations as ops
 from bajutsu.serve.capabilities import RUN_INTENT_CAPABILITY
 from bajutsu.serve.operations.dispatch import start_run_set
@@ -70,8 +71,13 @@ def _android_batch_project(tmp_path: Path, *, scenarios: list[str]) -> tuple[Pat
     return scn_dir, cfg
 
 
-# Where the runs go is the request's choice (BE-0452), named as a batch-provider environment.
-_DF = {"target": "demo", "environment": "devicefarm"}
+def _placement(capabilities: list[str]) -> list[str]:
+    """*capabilities* without the `cap:` / `setting:` tokens every scenario's steps add."""
+    return [t for t in capabilities if not is_route_token(t)]
+
+
+# The request names a target and no placement: any worker serving the platform runs it (BE-0484).
+_DF = {"target": "demo"}
 
 
 def _state(tmp_path: Path, cfg: Path, scn_dir: Path) -> tuple[ServeState, _Registered]:
@@ -110,9 +116,9 @@ def test_fan_out_registers_one_batch_job_per_scenario(tmp_path: Path) -> None:
         "scenarios/two.yaml",
     ]
     for job in executor.jobs:
-        # The intent names no provider; the environment token still routes it until BE-0484 unit 5.
+        # The platform routes the job, to a local worker or a device cloud alike (BE-0484).
         assert job.batch is None and job.intent is not None
-        assert job.capabilities == ["environment:devicefarm", RUN_INTENT_CAPABILITY]
+        assert _placement(job.capabilities) == [RUN_INTENT_CAPABILITY, "platform:android"]
         assert job.intent.target == "demo"
         assert job.intent.platform == "android"
         assert job.intent.config == "bajutsu.config.yaml"
@@ -169,30 +175,18 @@ def test_fan_out_honours_an_explicit_scenario_subset(tmp_path: Path) -> None:
     assert intent is not None and intent.scenario == "scenarios/two.yaml"
 
 
-@pytest.mark.parametrize(
-    ("environment", "why"),
-    [
-        (None, "missing"),
-        ("appium", "an appium grid is reached through the plain run request"),
-        ("local", "not a batch provider"),
-        ("firebase", "unknown"),
-    ],
-)
-def test_fan_out_needs_a_batch_provider_environment(
-    tmp_path: Path, environment: str | None, why: str
+@pytest.mark.parametrize("environment", ["devicefarm", "local", "appium"])
+def test_fan_out_refuses_a_request_that_names_an_environment(
+    tmp_path: Path, environment: str
 ) -> None:
-    # The fan-out packages the app for a device cloud, so it takes a batch-provider kind alone; the
-    # target no longer names one (BE-0452).
+    # Which worker runs a job is not the request's to say (BE-0484).
     scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml"])
     state, executor = _state(tmp_path, cfg, scn_dir)
-    body: dict[str, object] = {"target": "demo"}
-    if environment is not None:
-        body["environment"] = environment
 
-    payload, status = start_run_set(state, body)
+    payload, status = start_run_set(state, {**_DF, "environment": environment})
 
-    assert status == 400, why
-    assert "environment naming a device-cloud batch provider" in payload["error"]
+    assert status == 400
+    assert "run-set takes no environment (BE-0484)" in payload["error"]
     assert executor.jobs == []
 
 
@@ -209,31 +203,126 @@ def test_fan_out_rejects_the_removed_device_budget(tmp_path: Path) -> None:
     assert executor.jobs == []
 
 
-def test_fan_out_rejects_a_web_target(tmp_path: Path) -> None:
-    # Device-cloud batch runs on a physical android/ios device; a web target has no app to install.
+def _project(tmp_path: Path, target_yaml: str, scenarios: dict[str, str]) -> tuple[Path, Path]:
+    """A scenarios dir holding *scenarios* and a config whose `demo` target is *target_yaml*."""
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
-    (scn_dir / "one.yaml").write_text(
-        "- name: a\n  steps:\n    - tap: { id: x }\n", encoding="utf-8"
-    )
+    for name, text in scenarios.items():
+        (scn_dir / name).write_text(text, encoding="utf-8")
     cfg = tmp_path / "bajutsu.config.yaml"
-    cfg.write_text(
-        (
-            "targets:\n"
-            "  demo:\n"
-            "    platform: web\n"
-            f"    subject: {{url: 'http://localhost:8080'}}\n"
-            f"    paths: {{scenarios: {scn_dir}}}\n"
-        ),
-        encoding="utf-8",
-    )
+    cfg.write_text(f"targets:\n  demo:\n{target_yaml}    paths: {{scenarios: scenarios}}\n")
+    return scn_dir, cfg
+
+
+_TAP = "- name: a\n  steps:\n    - tap: { id: x }\n"
+_LOCATE = "- name: locate\n  steps:\n    - setLocation: { lat: 1, lon: 2 }\n"
+
+
+def test_fan_out_takes_a_web_target_with_no_app(tmp_path: Path) -> None:
+    # A browser installs nothing, and no device cloud serves `platform:web` (BE-0484).
+    target = "    platform: web\n    subject: {url: 'http://localhost:8080'}\n"
+    scn_dir, cfg = _project(tmp_path, target, {"one.yaml": _TAP})
     state, executor = _state(tmp_path, cfg, scn_dir)
+
+    _payload, status = start_run_set(state, _DF)
+
+    assert status == 200
+    (job,) = executor.jobs
+    assert job.intent is not None and job.intent.platform == "web" and job.intent.app_path == ""
+    assert _placement(job.capabilities) == [RUN_INTENT_CAPABILITY, "platform:web"]
+    assert job.batch_app is None
+
+
+def test_an_ios_group_job_requires_its_kind_and_family_but_no_host(tmp_path: Path) -> None:
+    # The kind keeps a Simulator target off a device cloud's phones; the host is the platform's to
+    # imply, since every iOS actuator runs on one host (BE-0484).
+    target = (
+        "    platform: ios\n"
+        "    subject: {id: com.example.demo, path: app.zip}\n"
+        "    runsOn: {ios: {family: ipad}}\n"
+    )
+    scn_dir, cfg = _project(tmp_path, target, {"one.yaml": _TAP})
+    (tmp_path / "app.zip").write_text("APP", encoding="utf-8")
+    state, executor = _state(tmp_path, cfg, scn_dir)
+
+    _payload, status = start_run_set(state, _DF)
+
+    assert status == 200
+    (job,) = executor.jobs
+    assert _placement(job.capabilities) == [
+        "ipad",
+        RUN_INTENT_CAPABILITY,
+        "kind:simulator",
+        "platform:ios",
+    ]
+
+
+def test_a_group_job_carries_its_scenarios_route_needs(tmp_path: Path) -> None:
+    target = (
+        "    platform: ios\n"
+        "    runsOn: {ios: {kind: device}}\n"
+        "    subject: {id: com.example.demo, path: app.ipa}\n"
+    )
+    scn_dir, cfg = _project(tmp_path, target, {"locate.yaml": _LOCATE, "tap.yaml": _TAP})
+    (tmp_path / "app.ipa").write_text("IPA", encoding="utf-8")
+    state, executor = _state(tmp_path, cfg, scn_dir)
+
+    _payload, status = start_run_set(state, _DF)
+
+    assert status == 200
+    caps = {j.intent.scenario: j.capabilities for j in executor.jobs if j.intent is not None}
+    assert "cap:ios-device:deviceControl.setLocation" in caps["scenarios/locate.yaml"]
+    assert "kind:device" in caps["scenarios/locate.yaml"]
+    assert not [t for t in caps["scenarios/tap.yaml"] if t.startswith("cap:ios-device:device")]
+
+
+def test_fan_out_refuses_a_group_whose_route_no_live_worker_can_run(tmp_path: Path) -> None:
+    from bajutsu.common.capability.route_tokens import route_tokens
+
+    target = (
+        "    platform: ios\n"
+        "    runsOn: {ios: {kind: device}}\n"
+        "    subject: {id: com.example.demo, path: app.ipa}\n"
+    )
+    scn_dir, cfg = _project(tmp_path, target, {"locate.yaml": _LOCATE, "tap.yaml": _TAP})
+    (tmp_path / "app.ipa").write_text("IPA", encoding="utf-8")
+    state, executor = _state(tmp_path, cfg, scn_dir)
+    # A live worker drives the real-device route, which cannot override the location.
+    assert state.repository is not None
+    state.repository.register_worker(
+        "mac", ["platform:ios", "kind:device", "job:run-intent", *route_tokens("ios-device")]
+    )
 
     payload, status = start_run_set(state, _DF)
 
     assert status == 400
-    assert "android or ios" in payload["error"]
+    assert "cap:ios-device:deviceControl.setLocation" in payload["missing"]
+    assert "locate.yaml" in payload["error"] and "step 1: setLocation" in payload["error"]
     assert executor.jobs == []
+
+
+def test_fan_out_reads_the_route_needs_once_per_distinct_scenario_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from bajutsu.serve import helpers
+    from bajutsu.serve.operations import dispatch
+
+    scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml", "two.yaml"])
+    (scn_dir / "three.yaml").write_text(_LOCATE, encoding="utf-8")
+    state, _executor = _state(tmp_path, cfg, scn_dir)
+    texts: list[str | None] = []
+    real = helpers.scenario_route_needs
+
+    def counting(*args: object, **kwargs: object) -> dict[str, list[str]]:
+        texts.append(args[3])  # type: ignore[arg-type]
+        return real(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(dispatch, "scenario_route_needs", counting)
+
+    _payload, status = start_run_set(state, _DF)
+
+    assert status == 200
+    assert sorted(t or "" for t in texts) == sorted([_LOCATE, _TAP])
 
 
 def test_fan_out_rejects_an_unknown_scenario_before_dispatching_any(tmp_path: Path) -> None:
@@ -376,6 +465,12 @@ def test_fan_out_ships_scenarios_that_travel_as_materials(tmp_path: Path) -> Non
                 materials={"one.yaml": "- name: a\n  steps:\n    - tap: { id: x }\n"},
             )
 
+        def read(self, name: str) -> str:
+            return "- name: a\n  steps:\n    - tap: { id: x }\n"
+
+        def directory(self) -> None:
+            return None
+
     class _MaterialsStore:
         def scope(self, app, *, session=None, org=""):
             return _MaterialsScope()
@@ -513,7 +608,7 @@ def test_fan_out_ships_a_local_config_directory_as_one_bundle(tmp_path: Path) ->
         assert job.materials == {}
         assert job.batch_app is None  # the bundle carries the binary
         assert job_spec(job)["cwd"] is None
-        assert job.capabilities == ["environment:devicefarm", RUN_INTENT_CAPABILITY]
+        assert _placement(job.capabilities) == [RUN_INTENT_CAPABILITY, "platform:android"]
 
 
 def test_fan_out_names_a_bundled_config_by_the_name_a_worker_finds(tmp_path: Path) -> None:
@@ -688,15 +783,6 @@ def test_a_group_key_reused_for_a_different_request_is_a_conflict(tmp_path: Path
     assert status == 409
     assert "ci-1" in payload["error"]
     assert len(registered.jobs) == 2
-
-
-def test_requests_that_differ_only_in_environment_are_not_the_same_request() -> None:
-    """Only one batch provider exists yet, so the route cannot send two; the digest is checked."""
-    from bajutsu.serve.operations.dispatch import _request_digest
-
-    args = ("t", ["one.yaml"], "config", "app", None)
-
-    assert _request_digest(*args, provider="devicefarm") != _request_digest(*args, provider="x")
 
 
 def test_a_machine_registers_its_group_under_its_own_org(tmp_path: Path) -> None:

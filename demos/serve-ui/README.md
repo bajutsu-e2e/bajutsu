@@ -31,7 +31,7 @@ comes from machine assertions alone, never an LLM.
 | `scenarios/author-editor.yaml` | Edit-mode Load fills the YAML editor and grades it; invalid YAML surfaces the inline problems panel (BE-0138) |
 | `scenarios/stats.yaml` | the Stats view loads the run dashboard (BE-0102) |
 | `scenarios/coverage.yaml` | Compute renders the target's coverage map (BE-0146) |
-| `scenarios/replay-device-cloud.yaml` | a faked `devicefarm` worker appears in Replay's Environment selector; a web target turns it off with a reason; an Android target fans its scenarios out to the run-set panel, whose Stop all cancels every row (BE-0465) |
+| `scenarios/replay-fan-out.yaml` | Replay's fan-out toggle hides the fields a run-set ignores; an Android target fans its scenarios out to the run-set panel, whose Stop all cancels every row (BE-0465, BE-0484) |
 | `scenarios/platform-ui.yaml` | each panel shows only the selected target's platform controls — a web target shows the headed toggle instead of the iOS device UI (simulators, workers, erase) |
 | `scenarios/panel-resize.yaml` | dragging one tiling divider redistributes only its pair, never a third panel |
 | `Makefile` | `web-deps` / `serve-ui` / `e2e` |
@@ -103,8 +103,8 @@ flows are excluded from any deterministic gate **by design** (prime directive 1)
 | Determinism-audit badge on the selected scenario | `replay-tools.yaml` |
 | Codegen export (Playwright emit offered, spec + filename, close) | `replay-tools.yaml` |
 | Platform-aware controls (web hides iOS device UI, shows headed) | `platform-ui.yaml` |
-| Replay Environment selector: a live device-cloud worker listed, a web target turned off with a reason, the fields a fan-out ignores hidden | `replay-device-cloud.yaml` |
-| Run-set panel: one row per dispatched scenario, Stop all cancels each | `replay-device-cloud.yaml` |
+| Replay fan-out toggle: the fields a fan-out ignores hidden | `replay-fan-out.yaml` |
+| Run-set panel: one row per dispatched scenario, Stop all cancels each | `replay-fan-out.yaml` |
 | Crawl form: bound target, default budget (1 / 50 / 200), Start offered | `crawl-form.yaml` |
 | Crawl History: reopen a past run read-only (past-crawl badge), plan tree renders the stored map | `crawl-history.yaml` |
 | Crawl continue exploring: a past run with a remaining frontier offers the continue control | `crawl-history.yaml` |
@@ -130,8 +130,8 @@ flows are excluded from any deterministic gate **by design** (prime directive 1)
 - **Native `<select>` option switching.** The coordinate-tapping web backend cannot open a native
   dropdown, so anything behind "pick a provider / change the target" (API-key save, Bedrock
   fields, provider-specific flows) asserts only the pre-choice state. The one exception is
-  `replay-device-cloud.yaml`, which sets Replay's target and environment with the `selectOption`
-  step. Its fan-out never runs, because the faked worker leases no job and Stop all cancels them.
+  `replay-fan-out.yaml`, which sets Replay's target with the `selectOption` step. Its fan-out never
+  runs, because no live worker serves its Android jobs and Stop all cancels them.
 - **Native browser chrome.** The upload file chooser, codegen's clipboard Copy and Download, and
   the token-login `prompt()` dialog are not in the page's DOM.
 - **Host-dependent state.** The Generate/Start enabled state and the gate banner (Claude
@@ -148,6 +148,6 @@ flows are excluded from any deterministic gate **by design** (prime directive 1)
 
 The web backend taps by coordinate, so it cannot operate a native `<select>` dropdown. These
 scenarios assert the **state the page loads** (which needs no dropdown interaction) rather
-than switching options. The one exception is `replay-device-cloud.yaml`, which switches options
+than switching options. The one exception is `replay-fan-out.yaml`, which switches options
 with the `selectOption` step. The dogfood roadmap item tracks the remaining `<select>` flows and
 the AI round-trips as future work.

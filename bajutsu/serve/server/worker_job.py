@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
 from bajutsu.common.backend_cli import simctl as _simctl
+from bajutsu.common.capability.route_tokens import WORKER_ENVIRONMENT_KEY
 from bajutsu.common.capability.worker_capability import BATCH_PROVIDERS
 from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR
 from bajutsu.run import INTERNAL_MODULE as _INTERNAL_RUN_MODULE
@@ -253,7 +254,13 @@ def intent_problem(spec: dict[str, Any]) -> str | None:
         return None
     if not isinstance(intent, dict):
         return "the spec's `intent` must be an object"
-    if bad := [k for k in _INTENT_FIELDS if not (isinstance(intent.get(k), str) and intent[k])]:
+    # A browser installs nothing, so a web intent names no application (BE-0484).
+    optional = {"app_path"} if intent.get("platform") == "web" else set()
+    if bad := [
+        k
+        for k in _INTENT_FIELDS
+        if not (isinstance(intent.get(k), str) and (intent[k] or k in optional))
+    ]:
         return f"the spec's `intent` must name {', '.join(bad)} as non-empty strings"
     return None
 
@@ -269,6 +276,9 @@ def resolve_run_intent(spec: dict[str, Any], environment: str) -> dict[str, Any]
     intent = spec.get("intent")
     if not isinstance(intent, dict) or intent_problem(spec) is not None:
         return spec
+    # The intent named no placement, so the run's provenance says where it ran.
+    provenance = {**(spec.get("provenance") or {}), WORKER_ENVIRONMENT_KEY: environment}
+    spec = {**spec, "provenance": provenance}
     if environment in BATCH_PROVIDERS:
         batch = {"provider": environment, **{k: intent[k] for k in _INTENT_FIELDS}}
         # A cloud-batch job fetched no baselines before the intent either.
