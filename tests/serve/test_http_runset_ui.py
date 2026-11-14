@@ -86,7 +86,7 @@ def test_the_hiding_composes_with_the_platform_toggle(tmp_path: Path) -> None:
 def test_the_form_reads_no_environments_and_offers_a_web_target_a_fan_out(tmp_path: Path) -> None:
     js = _fetch(tmp_path, "/serve.runset.mjs")[0]
     assert "/api/environments" not in js
-    assert "'web'" not in js
+    assert "targetBackend" not in js and "cloudReason" not in js
 
 
 def test_run_posts_explicit_scenario_names_to_run_set(tmp_path: Path) -> None:

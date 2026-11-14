@@ -320,12 +320,12 @@ def target_build_info(config_path: Path, target: str) -> tuple[str | None, str |
 
 
 def target_batch_info(config_path: Path, target: str) -> tuple[str | None, str | None]:
-    """``(platform, app_path)`` for *target* — its resolved platform axis and the app artifact to
-    install on a reserved cloud device (BE-0336 Unit 3). Both ``None`` on any load/resolve error, so a
-    fan-out request against an unreadable config fails closed at the endpoint rather than crashing
-    dispatch. Only an iOS/Android target carries an installable ``app_path``; a web target's
-    sub-config has none. Which provider runs the batch is the request's `environment`, not the
-    target's (BE-0452)."""
+    """``(platform, app_path)`` for *target* — its resolved platform axis and the app artifact the
+    worker that leases the batch installs (BE-0336 Unit 3). Both ``None`` on any load/resolve error,
+    so a fan-out request against an unreadable config fails closed at the endpoint rather than
+    crashing dispatch. Only an iOS/Android target carries an installable ``app_path``; a web
+    target's sub-config has none. The platform, not a named environment, routes the batch
+    (BE-0484)."""
     try:
         eff = resolve(_load_config_cached(config_path), target)
     except (OSError, ValueError, KeyError):

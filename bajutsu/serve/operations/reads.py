@@ -888,12 +888,13 @@ def _valid_step_id(step_id: str) -> bool:
 
 
 def list_environments(state: ServeState) -> tuple[Any, int]:
-    """The environments a live worker advertises, for the Replay tab's Environment selector (BE-0465).
+    """The environments a live worker advertises (BE-0465).
 
-    Returns only names, kinds and live-worker counts, never a provider ARN or credential. `local`
-    is never listed: it needs no worker. A name that is neither a batch provider nor the Appium
-    grid is skipped, since a worker may advertise any token but the run-set endpoint could not
-    dispatch to it. Without a repository there is no queue and so no worker: an empty list.
+    No UI reads this since BE-0484 routed `run-set` by platform; the route stays because removing
+    an API is a separate decision. Returns only names, kinds and live-worker counts, never a
+    provider ARN or credential. `local` is never listed: it needs no worker. A name that is
+    neither a batch provider nor the Appium grid is skipped, since it names no known kind.
+    Without a repository there is no queue and so no worker: an empty list.
     """
     live = state.repository.live_environments() if state.repository is not None else {}
     environments = [
