@@ -10,6 +10,7 @@ from ._functions import _created_at as _created_at
 from ._shared import _JSON as _JSON
 from .audit_log import AuditLog
 from .base import Base
+from .job_group import JobGroup
 from .job_record import JobRecord
 from .oidc_jti import OidcJti
 from .org import Org
@@ -24,6 +25,7 @@ from .worker_record import WorkerRecord
 __all__ = [
     "AuditLog",
     "Base",
+    "JobGroup",
     "JobRecord",
     "OidcJti",
     "Org",

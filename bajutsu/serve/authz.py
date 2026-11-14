@@ -594,8 +594,12 @@ def required_role(method: str, path: str) -> str | None:
         return "admin"
     # Cancelling a job or answering its handoff both mutate a running job's state, so both are
     # editor actions — a viewer must not be able to resume/cancel a paused record (BE-0179).
-    if path in _EDITOR_PATHS or (
-        path.startswith("/api/jobs/") and path.endswith(("/cancel", "/respond-human"))
+    # The group cancel matches by shape too: an exact `_EDITOR_PATHS` entry never matches a concrete
+    # group id, and missing it would let a viewer cancel a group (BE-0484).
+    if (
+        path in _EDITOR_PATHS
+        or (path.startswith("/api/jobs/") and path.endswith(("/cancel", "/respond-human")))
+        or (path.startswith("/api/run-set/") and path.endswith("/cancel"))
     ):
         return "editor"
     return None  # /api/login, /api/oauth/* — authenticated/guarded elsewhere, no role gate

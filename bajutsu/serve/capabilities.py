@@ -16,6 +16,8 @@ real devices, take an injected reader, so the gate drives them with captured JSO
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from collections.abc import Callable, Iterable, Sequence
 from typing import get_args
@@ -313,6 +315,26 @@ def claim_refusal(required: Iterable[str], current: Iterable[str] | None) -> str
 def checks_routes(advertised: Iterable[str]) -> bool:
     """Whether a worker advertising *advertised* routes by `cap:` / `setting:` tokens (BE-0467)."""
     return any(is_route_token(t) for t in advertised)
+
+
+def route_key(required: Iterable[str]) -> str:
+    """A digest of *required*: two jobs that share it get one `can_serve` verdict from any worker.
+
+    One direction only — two jobs with *different* keys may still both be servable, so a caller may
+    stand one job in for another of the same key but must conclude nothing from a mismatch. The
+    lease scan stands one job in for every queued job of its group with the same key (BE-0484),
+    so this must digest every per-job input of `can_serve`; a new input joins the key.
+    """
+    return _digest(sorted(set(required)))
+
+
+def base_key(required: Iterable[str]) -> str:
+    """`route_key` without the route tokens, which a worker that does not `checks_routes` drops."""
+    return _digest(sorted({t for t in required if not is_route_token(t)}))
+
+
+def _digest(tokens: list[str]) -> str:
+    return hashlib.sha256(json.dumps(tokens).encode()).hexdigest()
 
 
 def route_refusal(required: Iterable[str], live: Iterable[Iterable[str]]) -> list[str] | None:

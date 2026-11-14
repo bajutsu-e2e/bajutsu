@@ -371,7 +371,11 @@ def build_package(
                 if arcname not in excluded:
                     zf.write(source, arcname)
         for arc, text in (extra_texts or {}).items():
-            zf.writestr(arc, text)
+            # A bare arcname would stamp the current time, so the archive's digest would change
+            # with the clock; a run-set's compat key reads that digest (BE-0484).
+            info = zipfile.ZipInfo(arc)
+            info.external_attr = 0o600 << 16
+            zf.writestr(info, text, compress_type=zf.compression)
     return out_zip
 
 

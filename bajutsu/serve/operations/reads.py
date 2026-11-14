@@ -40,7 +40,7 @@ from bajutsu.serve.operations._common import (
 from bajutsu.serve.operations.config import FS_DISABLED_ERROR, launch_label
 from bajutsu.serve.operations.runs import sweep_expired_trash
 from bajutsu.serve.orgs import DEFAULT_ORG
-from bajutsu.serve.server.db import RunRecord, cancelled_job_result
+from bajutsu.serve.server.db import TERMINAL_JOB_STATUSES, RunRecord, cancelled_job_result
 from bajutsu.serve.state import ServeState
 
 _REPORT_SUFFIX = "/report.html"
@@ -1085,6 +1085,117 @@ def cancel_job(
     # This request stopped the in-memory job even when the dispatcher, seeing that, moved the row
     # first, so it reports the cancel it caused rather than the row's "already finished".
     return {"cancelled": applied or bool(in_process), "status": status}, 200
+
+
+def job_group_view(
+    state: ServeState,
+    group_id: str,
+    *,
+    actor: str | None = None,
+    machine_org: str | None = None,
+) -> tuple[Any, int]:
+    """One `run-set` group: each job's status and verdict, and the group's conclusion (BE-0484).
+
+    The row status says only whether a job finished, so each job also carries its run's
+    ``exitCode`` and ``runId``. ``conclusion`` is ``pending`` while any job is unfinished, then
+    ``failure`` when a job that was *not* cancelled failed or exited non-zero, else ``cancelled``
+    when any was cancelled, else ``success``. It reads row statuses and exit codes alone, so no
+    model sits on the verdict.
+
+    Args:
+        state: The server state holding the repository.
+        group_id: The group the `run-set` response named.
+        actor: The signed-in caller, or None for a shared-token or anonymous caller.
+        machine_org: The org a machine principal acts as, or None for every other caller.
+
+    Returns:
+        ``groupId``, ``groupKey``, ``conclusion``, and ``jobs`` in registration order, with 200; 404
+        for an unknown group or one of an org the caller does not belong to, which does not confirm
+        the id exists.
+    """
+    group = _group(state, group_id)
+    if group is None or not _may_read_org(state, group["org_id"], actor, machine_org):
+        return {"error": "no such group"}, 404
+    assert state.repository is not None  # a group was read from it just above
+    rows = state.repository.group_jobs(group_id)
+    jobs = [
+        {
+            "id": row["id"],
+            "status": row["status"],
+            "exitCode": row["result"].get("exitCode"),
+            "runId": row["result"].get("runId"),
+        }
+        for row in rows
+    ]
+    return {
+        "groupId": group_id,
+        "groupKey": group["key"],
+        "conclusion": _group_conclusion(rows),
+        "jobs": jobs,
+    }, 200
+
+
+def _group_conclusion(rows: list[dict[str, Any]]) -> str:
+    """The group's outcome, named after a GitHub check run's conclusion values."""
+    # Anything not terminal counts as unfinished, so a status added later never reads as a failure.
+    if any(row["status"] not in TERMINAL_JOB_STATUSES for row in rows):
+        return "pending"
+    cancelled = [row["status"] == "cancelled" or row["result"].get("cancelled") for row in rows]
+    if any(
+        not c and (row["status"] != "done" or row["result"].get("exitCode") != 0)
+        for row, c in zip(rows, cancelled, strict=True)
+    ):
+        return "failure"
+    return "cancelled" if any(cancelled) else "success"
+
+
+def cancel_job_group(
+    state: ServeState,
+    group_id: str,
+    *,
+    actor: str | None = None,
+    machine_org: str | None = None,
+) -> tuple[Any, int]:
+    """Cancel every unfinished job of a `run-set` group, each through `cancel_job` (BE-0484).
+
+    Args:
+        state: The server state holding the repository.
+        group_id: The group the `run-set` response named.
+        actor: The signed-in caller, or None for a shared-token or anonymous caller.
+        machine_org: The org a machine principal acts as, or None for every other caller.
+
+    Returns:
+        ``groupId`` and the ids of the jobs this request cancelled, with 200, also when none was
+        left to cancel; 404 for an unknown group or one whose jobs the caller may not cancel. A
+        leased job is flagged for its worker and stays ``leased`` until the worker stops it.
+    """
+    group = _group(state, group_id)
+    if group is None or not _may_act_on_job(
+        state, group["org_id"], actor=actor, machine_org=machine_org
+    ):
+        return {"error": "no such group"}, 404
+    assert state.repository is not None  # a group was read from it just above
+    cancelled = [
+        row["id"]
+        for row in state.repository.group_jobs(group_id)
+        if row["status"] not in TERMINAL_JOB_STATUSES
+        and cancel_job(state, row["id"], actor=actor, machine_org=machine_org)[0].get("cancelled")
+    ]
+    return {"groupId": group_id, "cancelled": cancelled}, 200
+
+
+def _group(state: ServeState, group_id: str) -> dict[str, Any] | None:
+    return state.repository.get_job_group(group_id) if state.repository is not None else None
+
+
+def _may_read_org(state: ServeState, org: str, actor: str | None, machine_org: str | None) -> bool:
+    """Whether the caller may read a group of *org*: a machine its own org alone, a person any org
+    they belong to, so switching orgs never hides a group they started. Tighter than `job_view`,
+    which leaves a person unscoped: the design scopes the group read by org (BE-0484), and the
+    membership rule follows `cancel_job` (BE-0449)."""
+    if machine_org is not None:
+        return org == machine_org
+    return not actor or org in state.eligible_orgs(actor) or org == state.org_of(actor)
 
 
 def _may_act_on_job(

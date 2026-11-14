@@ -358,3 +358,31 @@ def test_0024_adds_run_coordinates_null_on_existing_runs(migration_db_url: str) 
         assert "run_coordinates" not in columns
     finally:
         engine.dispose()
+
+
+@pytest.mark.parametrize("migration_db_url", _DIALECTS, indirect=True)
+def test_0025_adds_job_groups_and_leaves_existing_jobs_ungrouped(migration_db_url: str) -> None:
+    """0025 adds the group table and the job columns; a job queued before it belongs to no group."""
+    from alembic import command
+
+    cfg = _alembic_config()
+    command.upgrade(cfg, "0024")
+    engine = create_engine(migration_db_url)
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO jobs (id, org_id, spec, capabilities, status, attempts, result, "
+                    "batch_state) VALUES ('1', 'o', '{}', '[]', 'queued', 0, '{}', '{}')"
+                )
+            )
+        command.upgrade(cfg, "0025")
+        assert inspect(engine).has_table("job_groups")
+        with engine.connect() as conn:
+            row = conn.execute(text("SELECT group_id, actor FROM jobs WHERE id = '1'")).one()
+        assert tuple(row) == (None, None)
+        command.downgrade(cfg, "0024")
+        assert not inspect(engine).has_table("job_groups")
+        assert "group_id" not in {c["name"] for c in inspect(engine).get_columns("jobs")}
+    finally:
+        engine.dispose()

@@ -14,10 +14,11 @@ import zipfile
 from pathlib import Path
 
 import pytest
-from _shared import _post, _serve, queue_repository
+from _shared import _get_json, _post, _serve, queue_repository
 from conftest import FakeObjectStore
 
 from bajutsu import serve as srv
+from bajutsu.serve import operations as ops
 from bajutsu.serve.operations.dispatch import start_run_set
 from bajutsu.serve.state import Job, ServeState
 
@@ -550,3 +551,213 @@ def test_fan_out_needs_the_config_at_the_root_of_its_bundle(tmp_path: Path) -> N
     assert status == 400, payload
     assert "not at the root of its directory" in payload["error"]
     assert state.jobs == {}
+
+
+def test_fan_out_registers_one_group_its_jobs_share(tmp_path: Path) -> None:
+    """BE-0484: the response names the group, whose jobs are the ones the request queued."""
+    state = _queued_state(tmp_path, _local_bundle_project(tmp_path))
+    assert state.repository is not None
+
+    payload, status = start_run_set(state, {**_DF, "scenarios": ["one.yaml", "two.yaml"]})
+
+    assert status == 200
+    group = state.repository.get_job_group(payload["groupId"])
+    assert group is not None and group["org_id"] == "default" and group["key"]
+    assert [j["id"] for j in state.repository.group_jobs(payload["groupId"])] == payload["jobIds"]
+    jobs = [state.jobs[i] for i in payload["jobIds"]]
+    assert {j.group_id for j in jobs} == {payload["groupId"]}
+    assert len({j.compat_key for j in jobs}) == 1 and jobs[0].compat_key
+
+
+def test_a_new_request_is_a_new_group_and_shares_a_compat_key_until_the_config_changes(
+    tmp_path: Path,
+) -> None:
+    cfg = _local_bundle_project(tmp_path)
+    state = _queued_state(tmp_path, cfg)
+
+    first, _ = start_run_set(state, {**_DF, "scenarios": ["one.yaml"]})
+    second, _ = start_run_set(state, {**_DF, "scenarios": ["two.yaml"]})
+    cfg.write_text(cfg.read_text(encoding="utf-8") + "# edited\n", encoding="utf-8")
+    third, _ = start_run_set(state, {**_DF, "scenarios": ["one.yaml"]})
+
+    assert first["groupId"] != second["groupId"]
+    keys = [state.jobs[p["jobIds"][0]].compat_key for p in (first, second, third)]
+    assert keys[0] == keys[1] != keys[2]
+
+
+def test_fan_out_refuses_a_scenario_named_twice(tmp_path: Path) -> None:
+    scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml", "two.yaml"])
+    state, executor = _state(tmp_path, cfg, scn_dir)
+
+    payload, status = start_run_set(state, {**_DF, "scenarios": ["one.yaml", "one.yaml"]})
+
+    assert status == 400
+    assert "named more than once" in payload["error"]
+    assert executor.jobs == []
+
+
+def test_a_capped_first_job_leaves_no_group_behind(tmp_path: Path) -> None:
+    import unittest.mock
+
+    scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml"])
+    state, _ = _state(tmp_path, cfg, scn_dir)
+    with (
+        unittest.mock.patch.object(state, "try_register", return_value=None),
+        unittest.mock.patch.object(state.repository, "create_job_group") as create,
+    ):
+        _, status = start_run_set(state, _DF)
+
+    assert status == 429
+    create.assert_not_called()
+
+
+def test_a_machine_registers_its_group_under_its_own_org(tmp_path: Path) -> None:
+    cfg = _local_bundle_project(tmp_path)
+    with cfg.open("a", encoding="utf-8") as f:
+        f.write("orgs:\n  acme:\n    targets: [demo]\n")
+    state = _queued_state(tmp_path, cfg)
+    assert state.repository is not None
+
+    payload, status = start_run_set(
+        state, {**_DF, "scenarios": ["one.yaml"]}, machine_org="acme", ci_job={"run": "1"}
+    )
+
+    assert status == 200
+    group = state.repository.get_job_group(payload["groupId"])
+    assert group is not None and group["org_id"] == "acme"
+    assert state.jobs[payload["jobIds"][0]].org == "acme"
+
+
+def _group_of_two(tmp_path: Path) -> ServeState:
+    """A queued group ``g1`` of jobs ``1`` and ``2`` in the default org (BE-0484)."""
+    state = ServeState(
+        runs_dir=tmp_path / "runs", executor=_RecordingExecutor(), repository=queue_repository()
+    )
+    assert state.repository is not None
+    state.repository.create_job_group("g1", org_id="default", key="k1")
+    for job_id in ("1", "2"):
+        state.repository.enqueue_job(job_id, org_id="default", spec={}, group_id="g1")
+    return state
+
+
+def _finish(state: ServeState, *exit_codes: int | str | None) -> None:
+    """Lease and finish jobs ``1`` then ``2``: an exit code completes one, None fails it, and
+    ``"cancel"`` reports it cancelled the way a worker does, with a non-zero exit code."""
+    repo = state.repository
+    assert repo is not None and len(exit_codes) <= 2
+    for job_id, code in zip(("1", "2"), exit_codes, strict=False):
+        leased = repo.lease_job("w1")
+        assert leased is not None and leased.id == job_id  # lease_job ties on created_at
+        if code is None:
+            repo.fail_job(leased.id, "worker lost the device")
+        elif code == "cancel":
+            repo.complete_job(leased.id, {"exitCode": -15, "cancelled": True})
+        else:
+            repo.complete_job(leased.id, {"exitCode": code, "runId": f"run-{leased.id}"})
+
+
+def test_a_queued_group_reads_as_pending_with_each_jobs_status(tmp_path: Path) -> None:
+    payload, status = ops.job_group_view(_group_of_two(tmp_path), "g1")
+
+    assert status == 200
+    assert payload == {
+        "groupId": "g1",
+        "groupKey": "k1",
+        "conclusion": "pending",
+        "jobs": [
+            {"id": "1", "status": "queued", "exitCode": None, "runId": None},
+            {"id": "2", "status": "queued", "exitCode": None, "runId": None},
+        ],
+    }
+
+
+@pytest.mark.parametrize(
+    ("exit_codes", "conclusion"),
+    [
+        ((0,), "pending"),  # one job still queued
+        ((0, 0), "success"),
+        ((0, 1), "failure"),  # a job whose run finished with failing assertions
+        ((0, None), "failure"),  # a job that never produced a verdict
+        ((1, "cancel"), "failure"),  # a failure outranks a cancel
+        ((0, "cancel"), "cancelled"),
+    ],
+)
+def test_a_groups_conclusion_comes_from_its_jobs_exit_codes(
+    tmp_path: Path, exit_codes: tuple[int | str | None, ...], conclusion: str
+) -> None:
+    state = _group_of_two(tmp_path)
+    _finish(state, *exit_codes)
+
+    payload, _ = ops.job_group_view(state, "g1")
+
+    assert payload["conclusion"] == conclusion
+    assert payload["jobs"][0]["runId"] == "run-1"
+
+
+def test_another_orgs_group_and_an_unknown_one_both_read_as_not_found(tmp_path: Path) -> None:
+    state = _group_of_two(tmp_path)
+
+    assert ops.job_group_view(state, "g1", machine_org="acme")[1] == 404
+    assert ops.job_group_view(state, "nope")[1] == 404
+    assert ops.cancel_job_group(state, "g1", machine_org="acme")[1] == 404
+    assert ops.cancel_job_group(state, "nope")[1] == 404
+
+
+def test_cancelling_a_group_cancels_its_unfinished_jobs_only(tmp_path: Path) -> None:
+    state = _group_of_two(tmp_path)
+    _finish(state, 0)
+
+    payload, status = ops.cancel_job_group(state, "g1")
+
+    assert (payload, status) == ({"groupId": "g1", "cancelled": ["2"]}, 200)
+    view, _ = ops.job_group_view(state, "g1")
+    assert [j["status"] for j in view["jobs"]] == ["done", "cancelled"]
+    assert view["conclusion"] == "cancelled"
+    assert ops.cancel_job_group(state, "g1") == ({"groupId": "g1", "cancelled": []}, 200)
+
+
+def test_the_group_routes_are_wired(tmp_path: Path) -> None:
+    state = _group_of_two(tmp_path)
+    server, port = _serve(state)
+    try:
+        assert _get_json(port, "/api/run-set/g1")["conclusion"] == "pending"
+        status, payload = _post(port, "/api/run-set/g1/cancel", {})
+        assert (status, payload["cancelled"]) == (200, ["1", "2"])
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_a_person_reaches_a_group_through_membership_not_the_active_org(tmp_path: Path) -> None:
+    """As for a single job: switching orgs never hides a group, and only an editor cancels it."""
+    state = _group_of_two(tmp_path)
+    repo = state.repository
+    assert repo is not None
+    for org, member in (("default", "alice"), ("globex", "bob")):
+        repo.ensure_org(org, slug=org, name=org)
+        repo.upsert_user(member, org_id=org, github_login=member, email=f"{member}@x")
+        repo.set_user_orgs(member, {org: "editor"})
+
+    assert ops.job_group_view(state, "g1", actor="bob")[1] == 404
+    assert ops.cancel_job_group(state, "g1", actor="bob")[1] == 404
+    repo.set_user_orgs("bob", {"globex": "editor", "default": "viewer"})
+    assert ops.job_group_view(state, "g1", actor="bob")[1] == 200
+    assert ops.cancel_job_group(state, "g1", actor="bob")[1] == 404
+    repo.set_user_orgs("alice", {"default": "editor", "globex": "editor"})
+    repo.upsert_user("alice", org_id="globex", github_login="alice", email="alice@x")
+    assert ops.job_group_view(state, "g1", actor="alice")[1] == 200
+    assert ops.cancel_job_group(state, "g1", actor="alice")[0]["cancelled"] == ["1", "2"]
+
+
+def test_a_cancelled_leased_job_keeps_the_group_pending_until_its_worker_stops(
+    tmp_path: Path,
+) -> None:
+    state = _group_of_two(tmp_path)
+    assert state.repository is not None
+    assert state.repository.lease_job("w1") is not None
+
+    assert ops.cancel_job_group(state, "g1")[0]["cancelled"] == ["1", "2"]
+
+    view, _ = ops.job_group_view(state, "g1")
+    assert [j["status"] for j in view["jobs"]] == ["leased", "cancelled"]
+    assert view["conclusion"] == "pending"
