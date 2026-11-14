@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0484](BE-0484-job-group-lease-ja.md) |
 | 提案者 | [@paihu](https://github.com/paihu) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0484") |
 | 実装 PR | [#2417](https://github.com/bajutsu-e2e/bajutsu/pull/2417)（単位 1）、[#2426](https://github.com/bajutsu-e2e/bajutsu/pull/2426)（単位 2）、[#2431](https://github.com/bajutsu-e2e/bajutsu/pull/2431)（単位 3）、[#2443](https://github.com/bajutsu-e2e/bajutsu/pull/2443)（単位 4）、[#2445](https://github.com/bajutsu-e2e/bajutsu/pull/2445)（単位 5） |
 | トピック | Device-cloud execution |
@@ -223,7 +223,7 @@ worker は、その互換キーを持つ job が1件でも実行中のあいだ�
 - [x] 単位3 — グループ単位の lease と上限
 - [x] 単位4 — upload の共有
 - [x] 単位5 — プラットフォームによるルーティング
-- [ ] 単位6 — ドキュメント
+- [x] 単位6 — ドキュメント
 
 ログ：
 
@@ -327,6 +327,21 @@ worker は、その互換キーを持つ job が1件でも実行中のあいだ�
     ルート自体は残しています。
   - リクエストのダイジェストは、環境を含まなくなりました。この単位より前に登録したグループキーを、
     この単位の後で繰り返すと、ダイジェストが異なるのでステータス 409 を返します。
+- 2026-11-14 — UNIT6PR で単位 6 を実装し、本項目を完了しました。serve の API、worker、ルーティングの
+  ページを、単位 1 から 5 の内容にそろえました。どれも両言語です。
+  - `docs/self-hosting.md` に、fan-out の job が必要とするトークンと、worker が広告する
+    `job:run-intent`、`kind:`、Device Farm の `platform:` のトークンを記しました。`run-set` の
+    ルートによる拒否と、BE-0484 のアップグレードの注意も加えました。
+  - `docs/cli.md` に、`maxJobs`、バンドルの応答、lease が渡す実行意図を記しました。
+  - `docs/architecture.md` に、job のグループと `run-set` の job のルーティングを記しました。
+    マシンセッションが呼べる `run-set` の 2 つのルートも加えました。
+  - `DESIGN.md` に、worker への fan-out と、`workerEnvironment` として記録する実行場所を記しました。
+    `docs/reporting.md` には、その provenance の項目を加えました。
+  - 古くなった次の 4 つの記述を取り除きました。
+    - `groupKey` の比較に含まれていた環境
+    - Replay の fan-out への 429 の応答
+    - `appium` の worker が広告するトークンを 1 つとする記述
+    - ホストで動くすべての job が `host:` のトークンを必要とするという記述
 
 ## 参考
 
