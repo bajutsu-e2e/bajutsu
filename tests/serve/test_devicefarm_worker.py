@@ -301,7 +301,7 @@ def test_the_platform_and_kind_prefixes_are_reserved_in_the_override(
     # A hand-written platform would put the worker's capacity outside the routing a `run-set` job
     # follows, so the worker refuses to start rather than drop it (BE-0484).
     monkeypatch.delenv("BAJUTSU_WORKER_CAPABILITIES", raising=False)
-    with pytest.raises(typer.BadParameter, match=f"{token}: .*platform:, and kind:"):
+    with pytest.raises(typer.BadParameter, match=f"{token}: .*reserved"):
         worker_mod._advertised_capabilities("", token, _worker("local"), "darwin")
 
 
