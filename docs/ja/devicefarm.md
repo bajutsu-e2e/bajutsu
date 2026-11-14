@@ -140,7 +140,7 @@ DEVICEFARM_PROJECT_ARN=arn:aws:devicefarm:us-west-2:123456789012:project:abc \
 - `kind:device`：このワーカーが予約するデバイスは、すべて実機です。
 - `platform:android` と `platform:ios`：Device Farm が扱うプラットフォームです。
 
-デバイスファミリーのトークンは広告しません。Device Farm はプラットフォームだけでデバイスを選ぶからです。
+デバイスファミリーのトークンは広告しません。Device Farm はプラットフォームだけでデバイスを選ぶからです。そのため、`runsOn.ios.family` を指定したターゲットは、Device Farm のワーカーには振り分けられません。そのジョブは、そのファミリーの端末を持つローカルのワーカーを待ちます。そうしたワーカーが稼働するまで、ジョブは `bajutsu_unroutable_jobs` に数えられます。
 
 fan-out のジョブは、ターゲットの `platform:<p>` トークンと `job:run-intent` を要求します。シナリオ自身の `cap:` と `setting:` のトークンも要求します。iOS のジョブは、さらにターゲットのデバイスファミリーのトークンと、実行が取る種別ごとの `kind:<kind>` トークンを要求します。種別は、リストで書いた `runsOn.ios.kind` か、それがなければドライバから決まる種別です。そのため、Device Farm で動かす iOS のターゲットは、スカラーの `kind: device` を宣言します。`host:` と `environment:` のトークンは要求しません。BE-0484 より前のワーカーは `job:run-intent` を持たないため、ジョブはキューに残ります。
 
