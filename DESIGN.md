@@ -19,7 +19,7 @@
 - ユニット / 結合テスト（XCTest の領域。E2E に集中）
 - アプリのビルド自体（既存 `xcodebuild` 成果物を前提に受け取る）
 
-> **デバイスクラウド実行について（BE-0236）。** かつてはここに「実機 / クラウドデバイスファーム」をスコープ外として挙げていました。BE-0236 でこの姿勢を改め、run が駆動するデバイスの取得元を差し替えられる **device provider** の seam を導入しました。provider は worker 能力ファイル（`worker.yaml`）の `environment` で選びます。既定の `local`（従来のローカル接続デバイス）はそのままで、`environment: appium` にすると別のデバイス（ネットワーク越しに予約したクラウドデバイスなど）を run に渡せます。以前は target の `deviceProvider` で選んでいましたが、[BE-0452](roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md) でこのキーを worker 側へ移しました。seam は run/CI の判定経路の外にあり（provider の仕事はデバイスの取得と解放だけ）、決定的コア・ドライバ・ランナーは不変です。具象の provider（例: Firebase Device Streaming のように、実機を対話的にネットワーク越しに貸し出すサービス）は、決定的ゲートがクラウド SDK に依存しないよう、任意導入の別アダプタとして実装します。本項目は seam を出荷し、既定は `local` なので既存のターゲットの挙動は変わりません。AWS Device Farm はバッチサービスであって、この device provider の seam が前提とするような、run 中にネットワーク越しに対話的に借りられるライブデバイスは提供しないため、この seam の対象外です（[`docs/ja/devicefarm.md`](docs/ja/devicefarm.md) の submitter が別途カバーします）。
+> **デバイスクラウド実行について（BE-0236）。** かつてはここに「実機 / クラウドデバイスファーム」をスコープ外として挙げていました。BE-0236 でこの姿勢を改め、run が駆動するデバイスの取得元を差し替えられる **device provider** の seam を導入しました。provider は worker 能力ファイル（`worker.yaml`）の `environment` で選びます。既定の `local`（従来のローカル接続デバイス）はそのままで、`environment: appium` にすると別のデバイス（ネットワーク越しに予約したクラウドデバイスなど）を run に渡せます。以前は target の `deviceProvider` で選んでいましたが、[BE-0452](roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md) でこのキーを worker 側へ移しました。seam は run/CI の判定経路の外にあり（provider の仕事はデバイスの取得と解放だけ）、決定的コア・ドライバ・ランナーは不変です。具象の provider（例: Firebase Device Streaming のように、実機を対話的にネットワーク越しに貸し出すサービス）は、決定的ゲートがクラウド SDK に依存しないよう、任意導入の別アダプタとして実装します。本項目は seam を出荷し、既定は `local` なので既存のターゲットの挙動は変わりません。AWS Device Farm はバッチサービスであって、この device provider の seam が前提とするような、run 中にネットワーク越しに対話的に借りられるライブデバイスは提供しないため、この seam の対象外です（[`docs/ja/devicefarm.md`](docs/ja/devicefarm.md) の submitter と、serve のジョブを Device Farm へ投入する worker が別途カバーします。BE-0448、BE-0484）。
 
 > **補足（なぜ最初に iOS Simulator を選んだか）。** 最初の backend に iOS Simulator を選んだのは、ヘッドレスで動き、`simctl` でスクリプト化でき、`simctl clone` で水平にスケールでき、実機やクラウドデバイスファームを必要としないため、決定性と CI 親和性を最も安く得られたからです。これは「Simulator 限定」という恒久的な制約ではなく、最初の足場の選択でした。決定的コアは backend 非依存なので、同じシナリオ形式とランナーのまま web（Playwright）と Android（adb）へ広がり、BE-0236 の device provider seam でデバイスの取得元まで差し替えられるようになりました。
 
@@ -108,6 +108,7 @@ Reporter (manifest.json + JUnit/CTRF/HTML + スクショ/録画)
 
 - **アイソレーション単位 = ワーカー**：各ワーカーは固有の `udid`（`simctl clone` 等）を借り受けます。証跡の書き込み先は、run 全体で 1 つの `runs/<runId>` の下にある固有のサブディレクトリ `runs/<runId>/<scenarioId>` です。run ディレクトリは run に 1 つ、書き込み先はワーカーごとに別、という組み合わせが成果物の混線を防ぎます。`mocks` は in-protocol でアプリ内に閉じるため（§3.2）、ワーカー間で共有ポートを取り合いません
 - **ヘッドレス前提**：iOS Simulator はヘッドレスで動くため、N 台へ水平スケールできます（CI 向き）
+- **ワーカーへの fan-out**：serve の `run-set` は、シナリオごとに 1 つのジョブを積みます。実行場所はリースしたワーカーで決まり、ローカルの Simulator や実機のこともあれば Device Farm のこともあります。実行場所が変わりうることは決定性の例外ではなく、記録の対象です。ワーカーは実行した場所を run の provenance に `workerEnvironment` として残し、レポートはそれを notices に載せます（[BE-0484](roadmaps/BE-0484-job-group-lease/BE-0484-job-group-lease-ja.md)）
 - **CLI**：`bajutsu run ... --workers N` です。既定は 1 です。`--udid` はデバイスのカンマ区切りリストを受け取り、`--workers` はそのリストの台数を上限として丸められます
 - **デバイスの条件と run の組み合わせ**：ターゲットの `runsOn` には、宛先ごとのブロック（`ios`、`android`、`browser`）にデバイスの条件を書けます。iOS の `model` と `os`、Android の `avd` と `apiLevel`、web の `browser` です。シナリオは条件を宣言せず、必要な条件を持つターゲットを指定します（BE-0469）。run の前に、プールの各デバイスから読んだ事実とこれらの条件を照合します。リストは値ごとに、範囲はメジャーバージョンごとに run を作ります。各 run が使うデバイスの集合は、どれも同じモデルとリリースにそろえます。そのため、どのデバイスが run を受け持っても、観測する画面は変わりません。リストや両側が閉じた範囲で合うデバイスがなければ、その run は失敗します。片側が開いた範囲で合うデバイスがなければ、対象外（not applicable）の記録を残します。すべての記録が対象外なら、呼び出しは終了コード 1 で終わります。照合も run の数も決定的で、AI は関与しません（[BE-0452](roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)）
 - **不変条件**：並列でもシナリオ間で simulator / 索引 / モック状態を共有しません。共有が要る前提は `preconditions` で各テストが自前で構築します（§2）。この不変条件は、デバイスを実際に 2 台同時に起動する CI レーンが検証します（[BE-0298](roadmaps/BE-0298-device-pool-concurrent-real-verification/BE-0298-device-pool-concurrent-real-verification-ja.md)）。fake driver に架空の udid を渡すユニットテストが示せるのは、プール自身の記帳の整合性までです。OS レベルの競合は、実際に 2 台のデバイスを同時に動かしたときにしか表面化しません
@@ -562,7 +563,7 @@ runs/<runId>/
 
 - **run の preflight**：lease の前に、ターゲットごとにステップと設定を判定します。
 - **`bajutsu lint --config --target`**：デバイスなしで、展開後のシナリオを同じ規則で判定します（`common/target_lint.py`）。serve のエディタの lint も、選択中のターゲットを同じ規則で判定します。
-- **serve の配送**：ジョブは `cap:<route>:<capability>` と `setting:<route>:<key>` のトークンを要求し、ワーカーは自分が動かすルートごとにトークンを広告します（`common/capability/route_tokens.py`）。ワーカーは claim の時点でもう一度照合します。
+- **serve の配送**：ジョブは `cap:<route>:<capability>` と `setting:<route>:<key>` のトークンを要求し、ワーカーは自分が動かすルートごとにトークンを広告します（`common/capability/route_tokens.py`）。ワーカーは claim の時点でもう一度照合します。`run-set` のジョブは実行場所を指定しません。振り分けに使うのは、ターゲットのプラットフォーム、`job:run-intent`、iOS なら実行する種類ごとの `kind:` トークンと、ターゲットが `runsOn.ios.family` を指定していればそのデバイスファミリーのトークンです。そのため、そのプラットフォームを扱い、条件に合うデバイスを持つワーカーなら、ローカルでも Device Farm でも受け取れます。Device Farm のワーカーはファミリーのトークンを広告しないので、ファミリーを指定した iOS のターゲットはローカルのワーカーを待ちます（[BE-0484](roadmaps/BE-0484-job-group-lease/BE-0484-job-group-lease-ja.md)）。
 
 どれも大規模言語モデル（LLM）を使わない決定的な判定で、`run` の判定経路にモデルは入りません。
 

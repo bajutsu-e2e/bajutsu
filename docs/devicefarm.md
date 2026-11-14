@@ -201,8 +201,8 @@ The submitter and the workflow above are the headless path: one run packages the
 executes its scenarios back to back on a single reserved device. `bajutsu serve` (BE-0336) adds a
 second path on the surface operators already use to dispatch runs and watch history — and it changes
 the shape. Instead of one serialized run, serve **fans the suite out one Device Farm run per
-scenario**, so scenarios run in parallel. The Device Farm workers' job budget, not a single device,
-bounds how many run at once.
+scenario**, so scenarios run in parallel. Worker job budgets and server concurrency caps bound
+how many run at once, not a single device.
 
 Neither the target nor the fan-out request names a batch provider (BE-0484). Each fan-out job routes
 by its target's platform. Any worker serving that platform can take it, local or Device Farm. The
@@ -494,7 +494,9 @@ Two requests count as the same when they agree on each of these:
 - the config
 - the application
 - the run label
-- the environment (`environment`)
+
+The comparison leaves the placement out, since a request names none. A key registered before
+BE-0484 unit 5 also covered the environment. Repeating that key after the upgrade returns 409.
 
 A GitHub Actions job builds its key from four variables:
 

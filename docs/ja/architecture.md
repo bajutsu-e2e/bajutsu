@@ -129,7 +129,7 @@ flowchart TB
 | `common/github/` | GitHub ヘルパ：`actions`（CI、アノテーション + ジョブサマリ）、`app`（プライベートリポジトリの config source 向けの App インストールトークン）、`errors`（共有するアクセスエラー） | [ci](ci.md) |
 | `common/analytics/` | 役割で分けたトークン/コストの集計（BE-0257）：`usage`（プロセスグローバル、インメモリ、ベストエフォート）／`ledger`（帰属付きで永続化する AI 使用量/コスト台帳、BE-0196）／`stats`（serve の使用量ダッシュボード向けに台帳を集計、BE-0195） | [web-ui](web-ui.md#usage--ai-トークン利用量とコストのダッシュボード) |
 | `common/cloud/` | 決定的な `run`/CI の判定パスの外側で、バッチ送信先として利用するクラウドデバイスバックエンド（`devicefarm.py` が最初の具体的プロバイダ） | [devicefarm](devicefarm.md) |
-| `serve/` | ローカル Web UI（`serve` コマンド）: オーサリング / 実行 / レポート / 失敗した run の triage。サーバ自身は job を実行しないので、それぞれを job として `bajutsu worker` のキューに積みます（BE-0449）。`serve`/`worker`/`approve` の CLI コマンドは `cli/`（機能ごとに 1 ファイル）にあります。`capabilities.py` は、キューのジョブを、そのジョブが必要とするトークンをすべて広告するワーカーへ振り分けます。必要とするトークンは、プラットフォームと、ドライバが 1 つの OS でしか動かない場合の `host:<os>` です。ターゲットの `runsOn.ios.family` があれば、そのデバイスファミリーのトークンも必要とし、ファミリーの優先順位リストは any-of のグループ 1 つになります。ワーカーは自分のマシンの `host:<os>` を広告し、ファミリーのトークンは Simulator の在庫から、`device:<family>` は接続中の実機から広告します（BE-0166、BE-0450、BE-0468）。さらに、ステップと設定が必要とする環境ルートごとの `cap:` / `setting:` トークンも使います（`common/capability/route_tokens.py`、BE-0467） | [cli](cli.md) · [self-hosting](self-hosting.md#能力に基づくキューの振り分けbe-0166) |
+| `serve/` | ローカル Web UI（`serve` コマンド）: オーサリング / 実行 / レポート / 失敗した run の triage。サーバ自身は job を実行しないので、それぞれを job として `bajutsu worker` のキューに積みます（BE-0449）。`serve`/`worker`/`approve` の CLI コマンドは `cli/`（機能ごとに 1 ファイル）にあります。`capabilities.py` は、キューのジョブを、そのジョブが必要とするトークンをすべて広告するワーカーへ振り分けます。必要とするトークンは、プラットフォームと、ドライバが 1 つの OS でしか動かない場合の `host:<os>` です。ターゲットの `runsOn.ios.family` があれば、そのデバイスファミリーのトークンも必要とし、ファミリーの優先順位リストは any-of のグループ 1 つになります。ワーカーは自分のマシンの `host:<os>` を広告し、ファミリーのトークンは Simulator の在庫から、`device:<family>` は接続中の実機から広告します（BE-0166、BE-0450、BE-0468）。さらに、ステップと設定が必要とする環境ルートごとの `cap:` / `setting:` トークンも使います（`common/capability/route_tokens.py`、BE-0467）。`run-set` のジョブは `job:run-intent` と、iOS なら実行する種類ごとに 1 つの `kind:<kind>` トークンとターゲットのファミリーのトークンを必要とします。`host:` と `environment:` のトークンは必要としないので、そのプラットフォームを扱い、条件に合うデバイスを持つワーカーなら、Device Farm のワーカーも含めて受け取れます。ただし、`runsOn.ios.family` を指定したターゲットは、Device Farm のワーカーには届きません。Device Farm のワーカーはファミリーのトークンを広告しないためです（BE-0484） | [cli](cli.md) · [self-hosting](self-hosting.md#能力に基づくキューの振り分けbe-0166) |
 | `mcp/` | MCP サーバ: `run`/`doctor` をツール + 実行証跡をリソースとして公開、加えてその CLI コマンド（`cli.py`） | [cli](cli.md) |
 | `common/lint.py` | シナリオ linter + JSON Schema 生成（`lint` / `schema` コマンド） | [cli](cli.md) |
 | `common/target_lint.py` | `lint --config --target`：run と同じステップ・設定・前提条件のチェックを、デバイスなしでターゲットごとに行います（BE-0467） | [cli](cli.md) |
@@ -814,7 +814,7 @@ iOS 側の対になるジョブ `pool (xcuitest)` は、Simulator を 2 台起�
 - **CI ジョブ自身の識別情報**（BE-0414）：`permissions: id-token: write` を宣言した GitHub Actions のワークフローは、GitHub が発行する OpenID Connect（OIDC）トークンを `POST /api/oidc/exchange` へ一度だけ提示します。
   - serve は、発行者、JWKS（JSON Web Key Set）、デプロイが設定した `aud`（未設定なら OIDC 経路そのものを無効化）を検証します。そして、以後の呼び出しが使う短命な**マシンセッション**を発行します。
   - どの org として振る舞うかは、リクエスト自身が指定します。org の指定は選択であって、権限の付与ではありません。1 つのリポジトリを複数の org が列挙できるため、指定された org の `allowedRepositories` が受け入れたときにだけ、セッションを発行します。判定は、トークンの `repository` クレームへの完全一致で行います（`sub` はパースしません）。エントリごとに、`environment` / `ref` / `workflowRef` で絞り込めます。
-  - マシンセッションは、人間の OAuth セッション、worker の共有トークンに次ぐ 3 つ目の呼び出し元です。ロールではなく、`gate.py` の明示的なエンドポイント許可リストで権限が決まります。許可リストは、`GET /api/artifacts/exists` によるアーティファクトの有無の確認、3 種類のアーティファクトのアップロード、`POST /api/run`、自 org の run と発行したジョブの読み取りです。
+  - マシンセッションは、人間の OAuth セッション、worker の共有トークンに次ぐ 3 つ目の呼び出し元です。ロールではなく、`gate.py` の明示的なエンドポイント許可リストで権限が決まります。許可リストは、`GET /api/artifacts/exists` によるアーティファクトの有無の確認、3 種類のアーティファクトのアップロード、`POST /api/run`、`POST /api/run-set` と `GET /api/run-set/<groupId>`（BE-0484）、自 org の run と発行したジョブの読み取りです。
   - リポジトリ単位で失効できます。データベースなしのデプロイや、セッションの有効期限を守れないストアでは拒否されます。
 - **有効な config の binding とは独立した、job 単位のアーティファクト差し替え**（[BE-0431](../../roadmaps/BE-0431-job-scoped-artifact-override/BE-0431-job-scoped-artifact-override-ja.md)）。ホスト型デプロイでは、`POST /api/run` が `binaryArtifact` と `scenariosArtifact` を受け付けます。どちらも、保存済みのアーティファクトの sha256 です（BE-0268）。
   - 指定した方の脚は、そのアーティファクトだけを解決先とします。binary はその job 自身の target の `subject.path` に配置し、`scenarios` の zip はその target の scenarios ディレクトリを置き換えます。
@@ -831,6 +831,11 @@ iOS 側の対になるジョブ `pool (xcuitest)` は、Simulator を 2 台起�
   - 1 台のマシンでは、キューを `.bajutsu/` の下の SQLite に置きます。
   - バケットを指定したデプロイは `BAJUTSU_DATABASE_URL` を設定する必要があり、設定しなければサーバは起動を拒否します。
   - 非推奨の `--backend` フラグは無視します。
+  - **job のグループ**（[BE-0484](../../roadmaps/BE-0484-job-group-lease/BE-0484-job-group-lease-ja.md)）。`POST /api/run-set` は、`job_groups` の行と、シナリオごとに 1 つの job を 1 つのトランザクションで書き込みます。そのため、リクエストはすべてのシナリオを積むか、1 つも積まないかのどちらかです。
+    - 各 job は、コマンドではなく実行意図（シナリオ、ターゲット、設定、プラットフォーム、アプリケーションのパス）を持ちます。リースした worker が、それをローカルの `bajutsu run` かプロバイダーのバッチに変換します。worker は、実行した場所を run の provenance に `workerEnvironment` として記録します。
+    - 各 job は、グループ、互換性、ルート、ベースの各キーを保存します。`maxJobs` を付けた lease はバンドルを返します。バンドルに入るのは、扱えるもっとも古い job と、同じグループのうちルートキーが同じキュー上の job です（ルートを調べない worker では、ベースキーが同じ job です）。lease は、グループとルートキーの組ごとに候補を 1 つだけ調べます。
+    - グループの job には、同時実行の上限を登録時ではなく lease の時点でかけます。そのため、グループが途中で切られることはありません。
+    - Device Farm の worker は、同時に処理中の job どうしでアップロードを使い回します。アプリケーションは互換性キーごとに、パッケージはグループごとに保持します。処理中の job がそのキーを持たなくなると、アップロードを手放します。
 - `serve` ローカル Web UI（Tier 1）は、次の範囲を備えます。
   - **オーサリングと実行。** ブラウザからシナリオをオーサリング（`record` / `crawl`）、編集、実行します。
   - **バンドルを開く。** config、シナリオ、ビルド済みアプリバイナリの **`.zip` バンドルをアクティブな config として開いて**、各タブをそこから動かします（BE-0073）。

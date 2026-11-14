@@ -7,9 +7,9 @@
 |---|---|
 | Proposal | [BE-0484](BE-0484-job-group-lease.md) |
 | Author | [@paihu](https://github.com/paihu) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0484") |
-| Implementing PR | [#2417](https://github.com/bajutsu-e2e/bajutsu/pull/2417) (unit 1), [#2426](https://github.com/bajutsu-e2e/bajutsu/pull/2426) (unit 2), [#2431](https://github.com/bajutsu-e2e/bajutsu/pull/2431) (unit 3), [#2443](https://github.com/bajutsu-e2e/bajutsu/pull/2443) (unit 4), [#2445](https://github.com/bajutsu-e2e/bajutsu/pull/2445) (unit 5) |
+| Implementing PR | [#2417](https://github.com/bajutsu-e2e/bajutsu/pull/2417) (unit 1), [#2426](https://github.com/bajutsu-e2e/bajutsu/pull/2426) (unit 2), [#2431](https://github.com/bajutsu-e2e/bajutsu/pull/2431) (unit 3), [#2443](https://github.com/bajutsu-e2e/bajutsu/pull/2443) (unit 4), [#2445](https://github.com/bajutsu-e2e/bajutsu/pull/2445) (unit 5), [#2446](https://github.com/bajutsu-e2e/bajutsu/pull/2446) (unit 6) |
 | Topic | Device-cloud execution |
 | Related | [BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out.md), [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md), [BE-0465](../BE-0465-serve-ui-device-farm-fan-out/BE-0465-serve-ui-device-farm-fan-out.md), [BE-0468](../BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of.md) |
 <!-- /BE-METADATA -->
@@ -223,7 +223,7 @@ Out of scope: publishing a group's result as a GitHub check, sharing uploads bet
 - [x] Unit 3 — Grouped lease and caps
 - [x] Unit 4 — Shared upload
 - [x] Unit 5 — Platform routing
-- [ ] Unit 6 — Documentation
+- [x] Unit 6 — Documentation
 
 Log:
 
@@ -323,6 +323,22 @@ Log:
     is a separate decision.
   - The request digest no longer covers the environment. A group key registered before this unit
     and repeated after it gets status 409, since its digest differs.
+- 2026-11-14 — [#2446](https://github.com/bajutsu-e2e/bajutsu/pull/2446) landed unit 6 and completes the item. The pages for the serve API, the
+  worker, and routing now match units 1 to 5, in both languages.
+  - `docs/self-hosting.md` states a fan-out job's required tokens and a worker's `job:run-intent`,
+    `kind:`, and Device Farm `platform:` tokens. It adds the `run-set` route refusal and a BE-0484
+    upgrade note.
+  - `docs/cli.md` documents `maxJobs`, the bundle response, and the run intent on the lease.
+  - `docs/architecture.md` describes job groups and the `run-set` job's routing. It also lists the
+    two `run-set` routes that a machine caller may use.
+  - `DESIGN.md` records the fan-out to workers and the placement recorded as `workerEnvironment`.
+    `docs/reporting.md` lists that provenance entry.
+  - The change removes five stale claims:
+    - the environment in the `groupKey` comparison;
+    - a 429 response to a Replay fan-out;
+    - an `appium` worker advertising one token;
+    - a `host:` token on every hosted job;
+    - the Device Farm workers' job budget alone bounding a fan-out's concurrency.
 
 ## References
 

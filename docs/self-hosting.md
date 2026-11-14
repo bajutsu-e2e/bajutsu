@@ -1178,6 +1178,14 @@ deterministic `run` verdict.
   also advertises `machine:<id>`, the server's identity, which routes the jobs that name files on
   that machine ([the server backend on one machine](#the-server-backend-on-one-machine-be-0449)). The web-worker container bakes in `--platform web`, so it advertises
   `web` and needs no flag.
+- **A worker also advertises what a fan-out job needs.** Every worker advertises
+  `job:run-intent`. The token says it can turn a fan-out job into its own kind of run
+  ([BE-0484](../roadmaps/BE-0484-job-group-lease/BE-0484-job-group-lease.md)). An iOS worker
+  advertises `kind:simulator` when its inventory holds an iPhone or iPad Simulator. It advertises
+  `kind:device` while it reads a real iPhone or iPad over `devicectl`. A worker capability file that
+  sets `realDevices: false` turns that token off. A Device Farm worker advertises
+  `platform:android`, `platform:ios`, and `kind:device`. These are the platforms and the device kind
+  the service reserves.
 - **A local worker refuses a platform it cannot serve.** At startup, the worker checks each
   `--platform` against its [worker capability file](drivers.md#worker-capability-check-be-0450) and
   its host. When the file omits the platform's driver, or the host cannot run that driver, the
@@ -1204,6 +1212,14 @@ deterministic `run` verdict.
   token. A request that sends the target to the `fake` driver adds none either, because that
   driver drives no device
   ([BE-0468](../roadmaps/BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of.md)).
+- **A fan-out job requires no placement.** A job of `POST /api/run-set` requires its target's
+  `platform:<p>`, `job:run-intent`, and the `cap:` and `setting:` tokens of its scenario's route
+  (below). An iOS job adds the family tokens above and one `kind:<kind>` token per kind its runs
+  take. It requires no `host:`, `environment:`, or `machine:` token. A worker serving the platform
+  can lease it, local or Device Farm, when it advertises those tokens. A Device Farm worker
+  advertises no family token, so a target naming `runsOn.ios.family` never routes there. A worker that advertises an `environment:` token otherwise
+  leases only the jobs requiring that token. A fan-out job is the exception, since it names no
+  environment ([BE-0484](../roadmaps/BE-0484-job-group-lease/BE-0484-job-group-lease.md)).
 - **A paired device reads as connected.** `devicectl` lists every paired real device, plugged in or
   not. Its tunnel state reads `disconnected` until a run opens the tunnel. An idle device and an
   unplugged one look alike there. A worker keeps advertising an unplugged device's family. A job
@@ -1236,7 +1252,9 @@ deterministic `run` verdict.
     tokens, so while one still serves the job, a mixed fleet accepts it.
 
   `POST /api/run` then returns `400`. The error lists each missing token with the
-  steps or settings that need it. While no live worker drives the route, the job stays queued and
+  steps or settings that need it. `POST /api/run-set` checks each of its jobs the same way. One
+  refused job refuses the whole request with `400`. The error names the scenario and its missing
+  tokens. While no live worker drives the route, the job stays queued and
   counts toward `bajutsu_unroutable_jobs`. A cold start or a worker restart is such a case.
 - **A worker re-checks a job when it claims it.** The lease hands the worker the tokens the server
   routed the job by. Before the worker fetches anything or leases a device, it recomputes its route tokens
@@ -1245,8 +1263,9 @@ deterministic `run` verdict.
 - **A run on an Appium grid routes by environment.** The plain run request (`POST /api/run`) takes
   an optional `environment`. Its one accepted value is `appium`; any other value returns `400`. Such
   a job requires `environment:appium` alone, since the grid owns the device. An `appium` worker sets
-  `environment: appium` and the grid's `endpoint` in its `worker.yaml`. It advertises that token
-  alone and takes no `--platform`. It runs a local `bajutsu run` with its `--worker-config`
+  `environment: appium` and the grid's `endpoint` in its `worker.yaml`. It advertises that token and
+  `job:run-intent`, and takes no `--platform`. It advertises no `platform:` token, so it takes no
+  fan-out job. It runs a local `bajutsu run` with its `--worker-config`
   ([iOS on a real device](ios-device-cloud.md#live--an-appium-endpoint-provider)). A fan-out
   (`POST /api/run-set`) takes no `environment`. It routes each job by its target's platform
   ([Running on AWS Device Farm](devicefarm.md#fanning-a-target-out)).
@@ -1280,6 +1299,12 @@ deterministic `run` verdict.
 > the run's `manifest.json`. A report rendered on view, as a local serve renders it, lists that record
 > under *notices*. The report baked at run time does not, since the old worker baked it before the
 > record arrived. Roll the workers to stop the record.
+>
+> BE-0484 needs the workers first again. A fan-out job requires `job:run-intent`, which a worker
+> built before that change never advertises. A Device Farm worker built before it advertises no
+> `platform:` token. In both cases the fan-out jobs stay queued and count toward
+> `bajutsu_unroutable_jobs`. A worker started with `--capabilities platform:…` or `kind:…` used to
+> start, and now refuses to start. Remove the token, since the worker fills both prefixes itself.
 
 ### Evidence upload to object storage (optional, BE-0110)
 
