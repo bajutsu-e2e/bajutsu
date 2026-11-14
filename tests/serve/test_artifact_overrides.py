@@ -339,9 +339,7 @@ def test_the_override_fields_stay_at_the_editor_role() -> None:
 def test_run_set_refuses_either_override_field(tmp_path: Path) -> None:
     state, _ = _hosted(tmp_path)
     for field in ("binaryArtifact", "scenariosArtifact"):
-        resp, code = ops.start_run_set(
-            state, {"target": "demo", "environment": "devicefarm", field: "b" * 64}
-        )
+        resp, code = ops.start_run_set(state, {"target": "demo", field: "b" * 64})
         assert code == 400
         assert field in resp["error"]
 

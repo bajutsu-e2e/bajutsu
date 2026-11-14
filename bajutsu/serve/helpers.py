@@ -25,7 +25,13 @@ from bajutsu.common.devices.id import is_valid_device_id
 from bajutsu.common.report.manifest import history_summary
 from bajutsu.common.run_meta.files import is_soft_deleted
 from bajutsu.common.scenario import load_scenario_file
-from bajutsu.serve.capabilities import device_requirements, required_capabilities, required_host
+from bajutsu.serve.capabilities import (
+    device_requirements,
+    kind_capability,
+    platform_capability,
+    required_capabilities,
+    required_host,
+)
 from bajutsu.serve.orgs import OrgConfig, load_serve_config
 
 # Tokens a `--backend` may name: a platform (ios/android/web/fake) or a known actuator (xcuitest/…).
@@ -361,20 +367,41 @@ def target_capabilities(config_path: Path, target: str, backend: str = "") -> li
     return sorted({*required, *_family_requirements(eff)})
 
 
+def group_capabilities(config_path: Path, target: str) -> list[str]:
+    """The tokens every `run-set` job of *target* requires, before its scenario's own (BE-0484).
+
+    Its platform, and for an iOS target the family tokens and a `kind:` token for each kind its runs
+    take, so a device cloud never takes a Simulator target. No `host:` token: every actuator of a
+    platform runs on one host, so a worker serving the platform serves the host. Empty on any
+    load/resolve error, as `target_capabilities`.
+    """
+    try:
+        eff = resolve(_load_config_cached(config_path), target)
+    except (OSError, ValueError, KeyError):
+        return []
+    tokens = {platform_capability(eff.platform), *_family_requirements(eff)}
+    if eff.platform == "ios":
+        tokens |= {kind_capability(k) for k in _ios_kinds(eff)}
+    return sorted(tokens)
+
+
+def _ios_kinds(eff: Effective) -> list[str]:
+    """The kinds an iOS target's runs take: the listed `kind`, else the one its driver implies."""
+    from bajutsu.run.device_matrix import driven_kind
+
+    listed = eff.conditions.get("kind")
+    return list(listed) if isinstance(listed, list) else [driven_kind(eff) or "simulator"]
+
+
 def _family_requirements(eff: Effective) -> list[str]:
     """The device-family tokens an iOS target's runs need of a worker, over every kind it lists.
 
     A serve job runs the target's whole kind list, so one worker must hold a fitting device of each
     kind (BE-0468).
     """
-    from bajutsu.run.device_matrix import driven_kind
-
     if eff.platform != "ios":
         return []
-    listed = eff.conditions.get("kind")
-    kinds = list(listed) if isinstance(listed, list) else [driven_kind(eff) or "simulator"]
-    family = eff.conditions.get("family")
-    return device_requirements(kinds, family)
+    return device_requirements(_ios_kinds(eff), eff.conditions.get("family"))
 
 
 def scenario_route_needs(

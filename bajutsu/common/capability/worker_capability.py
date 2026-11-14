@@ -44,7 +44,9 @@ APPIUM = "appium"
 # Every batch-provider kind Bajutsu can register (`serve/batch_provider`). The kinds are listed here
 # rather than read from the provider registry, which the server package fills at runtime and the
 # deterministic core may not import; a test keeps the two in step.
-BATCH_PROVIDERS: frozenset[str] = frozenset({"devicefarm"})
+# Each kind maps to the platforms its devices run, which its worker advertises (BE-0484).
+BATCH_PROVIDER_PLATFORMS: dict[str, tuple[str, ...]] = {"devicefarm": ("android", "ios")}
+BATCH_PROVIDERS: frozenset[str] = frozenset(BATCH_PROVIDER_PLATFORMS)
 
 # The run a Device Farm package carries, on the Device Farm host (BE-0465). Device Farm reserved the
 # device and installed the uploaded app before the run starts, so every target takes a device that is
@@ -56,8 +58,9 @@ ENVIRONMENTS: frozenset[str] = frozenset({LOCAL, APPIUM, DEVICEFARM_HOST, *BATCH
 # The routing-token prefixes a worker fills in itself: `environment:<name>` for a provider it
 # registered (BE-0448), `host:<os>` for the operating system it runs on (BE-0450), `machine:<id>`
 # for the server machine it shares, whose jobs name files by their paths there (BE-0449),
-# `device:<family>` for a real device connected to it (BE-0468), and `job:run-intent` for the
-# `run-set` jobs it can resolve (BE-0484). Reserved, so every hand-written
+# `device:<family>` for a real device connected to it (BE-0468), `job:run-intent` for the
+# `run-set` jobs it can resolve, and `platform:<name>` / `kind:<kind>` for what its drivers or its
+# provider can run (BE-0484). Reserved, so every hand-written
 # token input — a worker's override — rejects them: a hand-written one could pull a job onto a
 # worker that cannot run it, or route a job nowhere. Defined here, beside the environment names, so
 # the core can check them without importing the server package.
@@ -71,6 +74,8 @@ DEVICE_ROUTING_PREFIX = "device:"
 CAP_ROUTING_PREFIX = "cap:"
 SETTING_ROUTING_PREFIX = "setting:"
 JOB_ROUTING_PREFIX = "job:"
+PLATFORM_ROUTING_PREFIX = "platform:"
+KIND_ROUTING_PREFIX = "kind:"
 RESERVED_ROUTING_PREFIXES: tuple[str, ...] = (
     ENVIRONMENT_ROUTING_PREFIX,
     HOST_ROUTING_PREFIX,
@@ -79,12 +84,14 @@ RESERVED_ROUTING_PREFIXES: tuple[str, ...] = (
     CAP_ROUTING_PREFIX,
     SETTING_ROUTING_PREFIX,
     JOB_ROUTING_PREFIX,
+    PLATFORM_ROUTING_PREFIX,
+    KIND_ROUTING_PREFIX,
 )
 RESERVED_ROUTING_REASON = (
-    "the environment:, host:, machine:, device:, cap:, setting:, and job: prefixes are reserved: a "
-    "worker advertises them itself, from its worker.yaml environment and drivers, the machine it "
-    "runs on, the server machine it shares, the real devices connected to it, and the jobs it can "
-    "resolve"
+    "the environment:, host:, machine:, device:, cap:, setting:, job:, platform:, and kind: "
+    "prefixes are reserved: a worker advertises them itself, from its worker.yaml environment and "
+    "drivers, the machine it runs on, the server machine it shares, the devices it can run on, and "
+    "the jobs it can resolve"
 )
 
 

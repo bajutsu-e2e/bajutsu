@@ -236,9 +236,9 @@
         <button class="cfgbtn localonly" id="viewscn" data-testid="replay.view-scenario" disabled>View scenario</button>
         <!-- Determinism audit badge (BE-0145): the selected scenario's static stability grade. -->
         <div class="grade-badge" id="scn-grade" data-testid="replay.grade" hidden></div>
-        <!-- A device-cloud fan-out (BE-0465) runs a set of scenarios, so it picks several. The names
+        <!-- A fan-out (BE-0465) runs a set of scenarios, so it picks several. The names
              sent are exactly the ones listed here, so each run-set row labels the file it ran. -->
-        <div class="cloudonly" data-testid="replay.scenario-set">
+        <div class="fanoutonly" data-testid="replay.scenario-set">
           <label>Scenarios</label>
           <label class="allscn"><input type="checkbox" id="all-scns" data-testid="replay.all-scenarios"> All scenarios</label>
           <select id="scns" multiple size="6" data-testid="replay.scenarios" aria-label="scenarios to fan out"></select>
@@ -251,11 +251,9 @@
         <button class="cfgbtn" id="replay-upload-pick" type="button" data-testid="replay.upload-pick" disabled>Upload scenario&hellip;</button>
         <div class="status" id="replay-upload-status" data-testid="replay.upload-status"></div>
         <label>Target</label><select id="target" data-testid="replay.target"></select>
-        <!-- Where the run happens (BE-0465): `local` keeps the form below unchanged; a device-cloud
-             environment a live worker advertises fans the chosen scenarios out through run-set. -->
-        <div class="hhead envhead"><span>Environment</span><button class="refresh" id="env-refresh" title="refresh environments" data-testid="replay.env-refresh">&#8635;</button></div>
-        <select id="env" data-testid="replay.environment"><option value="local">local</option></select>
-        <div class="subhint" id="env-reason" data-testid="replay.env-reason" hidden></div>
+        <!-- Fan-out (BE-0484) sends the chosen scenarios through run-set, one job each, and the server
+             routes each to any worker serving the target's platform; off keeps the form below. -->
+        <label class="allscn"><input type="checkbox" id="fanout" data-testid="replay.fan-out"> Fan out to workers</label>
         <div class="row iosonly localonly"><div><label>Workers</label><input id="workers" type="number" min="1" value="1"></div></div>
         <div class="hhead iosonly localonly" data-testid="replay.simulators"><span>Simulators</span><button class="refresh" id="simrefresh" title="refresh devices">&#8635;</button></div>
         <div class="sims iosonly localonly" id="sims"></div>
@@ -308,9 +306,9 @@
     <pre class="out localonly" id="out" data-empty="Run a scenario to see its output here."></pre>
     <!-- The run-set panel (BE-0465): one row per dispatched scenario, polled for its status without
          its log; expanding a row streams that one job's log, so connections never scale with rows. -->
-    <div class="runset cloudonly" id="runset" data-testid="replay.runset">
+    <div class="runset fanoutonly" id="runset" data-testid="replay.runset">
       <div class="hhead"><span>Run set</span><button class="stop" id="runset-stop" data-testid="replay.runset-stop" data-idle="Stop all" disabled>Stop all</button></div>
-      <div class="subhint" id="runset-empty">Run to fan the chosen scenarios out to the device cloud.</div>
+      <div class="subhint" id="runset-empty">Run to fan the chosen scenarios out to the workers serving this target&rsquo;s platform.</div>
       <ul class="runset-rows" id="runset-rows"></ul>
     </div>
     <!-- codegen (BE-0137): export the selected scenario as a native test, right where it just ran. -->

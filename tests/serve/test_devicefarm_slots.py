@@ -41,6 +41,14 @@ _TWO_TARGETS = (
     "- name: pair\n  targets: [demo, other]\n  steps:\n    - tap: { id: x }\n      target: demo\n"
 )
 _WAIT = 10.0
+# What a Device Farm worker advertises, beside its host (BE-0484).
+_DF_CAPS = [
+    "environment:devicefarm",
+    "job:run-intent",
+    "kind:device",
+    "platform:android",
+    "platform:ios",
+]
 
 
 @pytest.fixture(autouse=True)
@@ -244,7 +252,7 @@ def _start_worker(
             "url": "http://server",
             "auth_token": None,
             "wid": wid,
-            "caps": ["environment:devicefarm", "job:run-intent"],
+            "caps": _DF_CAPS,
             "work": tmp_path / wid,
             "poll_interval": 0.01,
             "heartbeat_interval": 0.05,
@@ -282,7 +290,7 @@ def test_a_full_worker_sends_no_lease_request_until_a_result_is_posted(
 ) -> None:
     names = ("one.yaml", "two.yaml", "three.yaml")
     state = _fan_out_state(tmp_path, {n: _SCENARIO.format(name=n[:-5]) for n in names}, monkeypatch)
-    payload, code = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
+    payload, code = start_run_set(state, {"target": "demo"})
     assert code == 200 and "warnings" not in payload
     first, second, third = payload["jobIds"]
     cloud = _Cloud()
@@ -337,7 +345,7 @@ def test_the_slots_of_one_group_share_the_app_and_the_package_upload(
 ) -> None:
     names = ("one.yaml", "two.yaml")
     state = _fan_out_state(tmp_path, {n: _SCENARIO.format(name=n[:-5]) for n in names}, monkeypatch)
-    payload, _code = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
+    payload, _code = start_run_set(state, {"target": "demo"})
     uploads: list[str] = []
 
     class _Counting(_Cloud):
@@ -382,7 +390,7 @@ def test_a_shutdown_lets_leases_lapse_and_a_restarted_worker_resumes_every_run(
         {n: _SCENARIO.format(name=n[:-5]) for n in ("one.yaml", "two.yaml")},
         monkeypatch,
     )
-    payload, _code = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
+    payload, _code = start_run_set(state, {"target": "demo"})
     job_ids = payload["jobIds"]
     cloud = _Cloud()
     _register(cloud)
@@ -641,7 +649,7 @@ def test_a_failing_lease_loop_still_lets_in_flight_leases_lapse(
             url="http://server",
             auth_token=None,
             wid="w1",
-            caps=["environment:devicefarm", "job:run-intent"],
+            caps=_DF_CAPS,
             work=tmp_path,
             poll_interval=0.01,
             heartbeat_interval=0.05,
@@ -671,7 +679,7 @@ def test_a_slot_whose_thread_cannot_start_gives_its_place_back(
             url="http://server",
             auth_token=None,
             wid="w1",
-            caps=["environment:devicefarm", "job:run-intent"],
+            caps=_DF_CAPS,
             work=tmp_path,
             poll_interval=0.01,
             heartbeat_interval=0.05,
@@ -776,7 +784,7 @@ def test_a_scenario_the_worker_cannot_run_fails_before_anything_is_submitted(
     words: str,
 ) -> None:
     state = _fan_out_state(tmp_path, {"one.yaml": scenario}, monkeypatch)
-    payload, _code = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
+    payload, _code = start_run_set(state, {"target": "demo"})
     (job_id,) = payload["jobIds"]
     cloud = _Cloud()
     _register(cloud)
@@ -878,7 +886,7 @@ def test_a_worker_with_more_slots_than_a_lease_may_take_asks_for_the_ceiling(
             url="http://server",
             auth_token=None,
             wid="w1",
-            caps=["environment:devicefarm", "job:run-intent"],
+            caps=_DF_CAPS,
             work=tmp_path,
             poll_interval=0.01,
             heartbeat_interval=0.05,

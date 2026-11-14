@@ -130,6 +130,28 @@ def test_a_malformed_intent_is_refused_by_name_before_anything_runs(
     assert reason is not None and "`intent`" in reason
 
 
+@pytest.mark.parametrize("environment", ["local", "devicefarm"])
+def test_the_resolved_job_records_the_environment_it_runs_in(environment: str) -> None:
+    resolved = resolve_run_intent(_spec(provenance={"bundle": "b"}), environment)
+    assert resolved["provenance"] == {"bundle": "b", "workerEnvironment": environment}
+
+
+def test_a_web_intent_runs_with_no_application() -> None:
+    # A browser installs nothing, so a web target names no `subject.path` (BE-0484).
+    web = replace(_INTENT, platform="web", app_path="")
+    resolved = resolve_run_intent(job_spec(Job(intent=web)), "local")
+    assert resolved["cmd"] == run_command(
+        "scenarios/one.yaml", "demo", config="bajutsu.config.yaml"
+    )
+
+
+def test_a_device_intent_without_an_application_is_still_refused() -> None:
+    from bajutsu.serve.server.worker_job import intent_problem
+
+    spec = job_spec(Job(intent=replace(_INTENT, app_path="")))
+    assert intent_problem(spec) == "the spec's `intent` must name app_path as non-empty strings"
+
+
 @pytest.mark.parametrize(("environment", "form"), [("local", "cmd"), ("devicefarm", "batch")])
 def test_worker_once_runs_the_intent_in_its_own_environments_form(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, environment: str, form: str

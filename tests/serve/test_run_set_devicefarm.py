@@ -196,7 +196,7 @@ def test_relative_app_path_travels_as_a_logical_reference(tmp_path: Path) -> Non
         object_store=FakeObjectStore(),
     )
 
-    _payload, status = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
+    _payload, status = start_run_set(state, {"target": "demo"})
 
     assert status == 200
     (job,) = _run_fanned_out(state)
@@ -237,7 +237,7 @@ def test_request_paths_are_relative_to_the_config_directory(tmp_path: Path) -> N
         object_store=FakeObjectStore(),
     )
 
-    _payload, status = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
+    _payload, status = start_run_set(state, {"target": "demo"})
 
     assert status == 200
     (job,) = _fanned_out(state)
@@ -246,7 +246,10 @@ def test_request_paths_are_relative_to_the_config_directory(tmp_path: Path) -> N
     assert job.intent.scenario == "scenarios/one.yaml"
     # The config's directory travels as the job's bundle, which is what a worker packages.
     assert job.bundle is not None
-    assert job.capabilities == ["environment:devicefarm", "job:run-intent"]
+    assert [c for c in job.capabilities if not c.startswith(("cap:", "setting:"))] == [
+        "job:run-intent",
+        "platform:android",
+    ]
 
 
 def test_a_scenario_outside_the_config_directory_is_refused(tmp_path: Path) -> None:
@@ -278,7 +281,7 @@ def test_a_scenario_outside_the_config_directory_is_refused(tmp_path: Path) -> N
         object_store=FakeObjectStore(),
     )
 
-    payload, status = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
+    payload, status = start_run_set(state, {"target": "demo"})
 
     assert status == 400
     assert "not under the config's directory" in payload["error"]
@@ -305,7 +308,7 @@ def test_fan_out_runs_every_scenario_through_the_device_farm_fake(tmp_path: Path
         object_store=FakeObjectStore(),
     )
 
-    payload, status = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
+    payload, status = start_run_set(state, {"target": "demo"})
 
     assert status == 200
     assert len(payload["jobIds"]) == 3
@@ -337,7 +340,7 @@ def test_fan_out_surfaces_a_failing_manifest_from_the_fake(tmp_path: Path) -> No
         object_store=FakeObjectStore(),
     )
 
-    payload, status = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
+    payload, status = start_run_set(state, {"target": "demo"})
 
     assert status == 200
     assert len(payload["jobIds"]) == 1
@@ -365,7 +368,7 @@ def test_every_scenario_of_a_faked_fan_out_lands(tmp_path: Path) -> None:
         object_store=FakeObjectStore(),
     )
 
-    payload, status = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
+    payload, status = start_run_set(state, {"target": "demo"})
 
     assert status == 200
     assert len(payload["jobIds"]) == 3

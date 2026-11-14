@@ -35,6 +35,7 @@ from bajutsu.common.capability.worker_capability import (
     DEVICE_ROUTING_PREFIX,
     ENVIRONMENT_ROUTING_PREFIX,
     HOST_ROUTING_PREFIX,
+    KIND_ROUTING_PREFIX,
     MACHINE_ROUTING_PREFIX,
     reserved_routing_tokens,
 )
@@ -51,6 +52,10 @@ PLATFORM_PREFIX = "platform:"
 # Reserved: only a worker that registered the named provider may advertise it, so an operator's
 # free-form tokens can never pull a cloud job onto a worker that holds no provider.
 ENVIRONMENT_PREFIX = ENVIRONMENT_ROUTING_PREFIX
+
+# The device kind axis (BE-0484): `kind:simulator` and `kind:device` keep an iOS `run-set` job on the
+# kind its target declares, whichever worker leases it.
+KIND_PREFIX = KIND_ROUTING_PREFIX
 
 # A `run-set` job carries a run intent instead of a command or a batch (BE-0484), and requires
 # this token so a worker that predates the intent never leases one it could not turn into a run.
@@ -98,6 +103,11 @@ _SPLIT = re.compile(r"[,\s]+")
 def platform_capability(platform: str) -> str:
     """The backend-axis token for a platform, e.g. ``platform:ios``."""
     return f"{PLATFORM_PREFIX}{platform}"
+
+
+def kind_capability(kind: str) -> str:
+    """The device-kind token, e.g. ``kind:simulator``."""
+    return f"{KIND_PREFIX}{kind}"
 
 
 def environment_capability(environment: str) -> str:
@@ -265,12 +275,14 @@ def can_serve(required: Iterable[str], advertised: Iterable[str]) -> bool:
     One rule narrows it (BE-0448): a worker advertising an ``environment:*`` token serves only jobs
     that require that token, since the empty set would otherwise hand it every local job. A job
     tied to the server's machine needs no rule of its own: it requires ``machine:<id>``, which only a
-    worker on that machine advertises (`routed_capabilities`). An ``anyof:`` group in *required* is
-    met by any one of its members (`any_of_capability`, BE-0468).
+    worker on that machine advertises (`routed_capabilities`). The rule stands aside for a job that
+    requires `RUN_INTENT_CAPABILITY`, which any worker serving its platform may run (BE-0484). An
+    ``anyof:`` group in *required* is met by any one of its members (`any_of_capability`, BE-0468).
     """
     needed, offered = set(required), set(advertised)
     environments = {t for t in offered if t.startswith(ENVIRONMENT_PREFIX)}
-    if environments and not environments & needed:
+    # A run-intent job names no placement (BE-0484): its platform and kind tokens route it instead.
+    if environments and not environments & needed and RUN_INTENT_CAPABILITY not in needed:
         return False
     if not checks_routes(offered):
         # A worker from before BE-0467 advertises no `cap:` / `setting:` token, so it is matched on
@@ -405,10 +417,11 @@ def devicectl_capabilities(
 ) -> set[str]:
     """The ``device:`` tokens of the real devices connected to this worker (best-effort, BE-0468).
 
-    Each family a `family` condition can name contributes ``device:<family>``; another family (an
-    Apple TV) adds nothing. A host whose devicectl cannot be read advertises no real device rather
-    than stopping the worker, as `simctl_capabilities` does for the Simulator inventory: a job that
-    needs a device then waits for a worker that has one.
+    Each family a `family` condition can name contributes ``device:<family>``, and any of them
+    ``kind:device`` (BE-0484); another family (an Apple TV) adds nothing. A host whose devicectl
+    cannot be read advertises no real device rather than stopping the worker, as
+    `simctl_capabilities` does for the Simulator inventory: a job that needs a device then waits for
+    a worker that has one.
 
     Args:
         read: The real-device family reader; `ios_device_families` over devicectl when omitted.
@@ -422,7 +435,8 @@ def devicectl_capabilities(
             on_error(str(exc))
         return set()
     known = set(get_args(IosFamily))
-    return {device_capability(f.lower()) for f in families if f.lower() in known}
+    tokens = {device_capability(f.lower()) for f in families if f.lower() in known}
+    return tokens | {kind_capability("device")} if tokens else tokens
 
 
 def simctl_capabilities(run: _simctl.RunFn) -> set[str]:
@@ -431,8 +445,9 @@ def simctl_capabilities(run: _simctl.RunFn) -> set[str]:
 
     Each installed runtime contributes an ``iosNN`` token (major version only, so a job pinned to
     ``ios18`` matches any 18.x runtime), and each available device model contributes its device
-    class (``iphone`` / ``ipad``). The heavy lifting — running `simctl` and tolerating its failures —
-    is `simctl.device_catalog`; this only maps its ``{name, runtime}`` values to tokens.
+    class (``iphone`` / ``ipad``). Any device adds ``kind:simulator`` (BE-0484). The heavy lifting —
+    running `simctl` and tolerating its failures — is `simctl.device_catalog`; this only maps its
+    ``{name, runtime}`` values to tokens.
     """
     caps: set[str] = set()
     for entry in _simctl.device_catalog(run).values():
@@ -440,6 +455,7 @@ def simctl_capabilities(run: _simctl.RunFn) -> set[str]:
             caps.add(token)
         if token := _device_class_token(entry.get("name", "")):
             caps.add(token)
+        caps.add(kind_capability("simulator"))
     return caps
 
 

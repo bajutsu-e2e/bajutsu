@@ -13,8 +13,8 @@ targets:
     evidence:
       redact:
         fields: [password]
-  # An Android target that exists only to be fanned out (BE-0465): replay-device-cloud.yaml picks it
-  # with a faked device-cloud worker, dispatches its two placeholder scenarios through run-set, and
+  # An Android target that exists only to be fanned out (BE-0465): replay-fan-out.yaml picks it,
+  # dispatches its two placeholder scenarios through run-set, and
   # cancels them. No worker ever leases those jobs, so nothing installs `subject.path` or runs the
   # scenarios. Dispatch zips this directory into each job's bundle and refuses a missing `subject.path`,
   # so `fanout/placeholder.apk` is a stand-in file that merely has to exist.
