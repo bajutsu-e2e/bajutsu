@@ -273,8 +273,12 @@ Group ::= { name: string, steps: list(<Step>) }   # どちらも必須、空を�
 If ::= { condition: <Assertion>, then: list(<Step>), else?: list(<Step>) }
 ForEach ::= { sel: <Selector>, as: string, steps: list(<Step>) }
 Web ::= { within: <Selector>, steps: list(<Step>) }
-    # `within` はネイティブに解決してちょうど1つの WKWebView ホストを指す。内側の `steps` はネイティブの
-    # アクセシビリティツリーではなく、正規化された DOM（`data-testid` → Element.identifier）を対象にする。
+    # `within` はネイティブに解決してちょうど1つの WebView ホストを指す。iOS では、アクセシビリティ
+    # 識別子が `within` の最初の id と等しい `WKWebView` を指す。Android では、`WebView` 自身のノード
+    # が resource-id を報告しないので、通常は `WebView` が全体を埋めるコンテナを指す。run は、その要素
+    # のフレームを含む矩形のページを選ぶ。
+    # 内側の `steps` はネイティブのアクセシビリティツリーではなく、正規化された DOM
+    # （`data-testid` → Element.identifier）を対象にする。
 App ::= { bundleId: string, steps: list(<Step>) }
     # `bundleId` はインストール済みの任意のアプリを名指しする。テスト対象アプリの協力なしに起動（また
     # は、すでに起動していればそれを活用）する。内側の `steps` はそのアプリ自身のアクセシビリティツリー

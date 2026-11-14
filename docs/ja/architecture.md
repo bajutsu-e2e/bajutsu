@@ -92,7 +92,7 @@ flowchart TB
 | `common/drivers/playwright` | Playwright web バックエンド（ブラウザ）です。第一段で、決定的 run を扱います。 | [drivers](drivers.md#playwrightweb) |
 | `common/drivers/xcuitest_live` | live-route の XCUITest ドライバです。常駐 runner のチャネルの代わりに、予約済みのデバイスクラウド上の iOS デバイスを W3C WebDriver（Appium の XCUITest ドライバ）で駆動します。`appium` デバイスプロバイダ向けです（BE-0238）。実装済みなのは、セッションのライフサイクル、query/tap/screenshot/readiness、ジェスチャ、テキスト入力です。`selectAll`/`copy` は Appium 側に相当機能がなく、明示的に失敗します。実デバイスクラウドのグリッドに対する検証は未了です（[BE-0303](../../roadmaps/BE-0303-xcuitest-live-real-grid-verification/BE-0303-xcuitest-live-real-grid-verification-ja.md)）。 | — |
 | `common/drivers/elements.py` | 正規化済み要素ツリーに対する、プラットフォーム非依存の述語と幾何ヘルパー（`screen_size_from_elements`、`shows_app_ui`）です。assertions、crawl、runner パイプライン、record が共有します。 | [drivers](drivers.md) |
-| `common/drivers/dom.py` | DOM → `Element` の正規化です。Playwright バックエンドと WebView ブリッジが共有します。 | [drivers](drivers.md#playwrightweb) |
+| `common/drivers/dom.py` | DOM → `Element` の正規化です。Playwright バックエンドと、2 つの WebView ソース（iOS のブリッジと Android の `CdpDomSource`）が共有します。 | [drivers](drivers.md#playwrightweb) |
 | `common/drivers/web_network.py` | web のネットワーク観測です。Playwright 側の `Collector` が、`requestfinished` を iOS 側と同じ `NetworkExchange` モデルへ橋渡しします。`page.route` によるプロセス内 mock スタブも持ちます。 | [drivers](drivers.md#playwrightweb) |
 | `common/drivers/webview` | `web:` ブロックが WebView の DOM を読む経路です。iOS では BajutsuKit ブリッジのクライアント（`WebViewBridge`）で、DOM 取得と tap 発行を HTTP 経由で実施します。Android では Chrome DevTools Protocol のソース（`CdpDomSource`、BE-0482）で、WebView 自身の DevTools ソケットを `adb` で転送します。 | [drivers](drivers.md) |
 | `common/drivers/zorder` | z 順応答クライアントです。BajutsuKit の `nativeZ` チャネルの Python 側です（BE-0355）。 | [drivers](drivers.md) |
@@ -613,7 +613,7 @@ iOS 側の対になるジョブ `pool (xcuitest)` は、Simulator を 2 台起�
 - DSL の `attribute` アサーション（BE-0466、web 限定）は、1 つの要素の HTML 属性（`href`、`alt`、状態を表す `data-*` や `aria-*`）を、`equals` / `contains` / `matches` か `absent: true` で検証します。
   - runner は、ブロックを評価するクエリの直後に、`Driver.read_attributes(reads)` で属性をそのつど読み取ります。ブロック全体を 1 回の呼び出しで読むので、ブロック内のアサーションは同じ時点の値で判定されます。
   - ステップの `assert` では、条件待機の各ティックで読み直します。レポートに載る属性は、アサーションが名前を挙げたものだけです。
-  - `elementAttribute` capability でゲートされています。この capability を宣言するのは Playwright バックエンドだけなので、デバイス側の作業に入る前に、preflight で iOS や Android（iOS の WebView コンテキストを含みます）を拒否します。
+  - `elementAttribute` capability でゲートされています。この capability を宣言するのは Playwright バックエンドだけなので、デバイス側の作業に入る前に、preflight で iOS や Android を拒否します。どちらのプラットフォームでも、`web:` ブロックの WebView コンテキストも拒否の対象です。
 - DSL のデバイス / システムアクション（iOS）：
   - `background`、`clearKeychain`、`clearClipboard`。
   - `overrideStatusBar` / `clearStatusBar`（決定的なステータスバー）。
@@ -723,7 +723,7 @@ iOS 側の対になるジョブ `pool (xcuitest)` は、Simulator を 2 台起�
   - `XcuitestElementProvider` は、固定の単一ハンドルの代わりに、`XCUIApplication` ハンドルのスタックを持ちます。ブロックへ入ると新しいハンドルを push して `.activate()` し、抜けると 1 つ下へ pop します。`app` ブロックを別の `app` ブロックの中に入れ子にした場合、戻る先は直近の親です。
   - Python のドライバは、テスト対象アプリ自身の `XcuitestDriver` インスタンスをそのまま再利用します。`web` ステップは専用の `WebContextDriver` を使いますが、`app` はネイティブの操作面（tap、type、ジェスチャ、picker wheel）をそのまま必要とするため、同じインスタンスを再利用するほうが得るものが大きいからです。
   - Android では、adb ドライバが runner なしで同じことを行います。まず `cmd package resolve-activity --brief` でパッケージの launcher activity を解決し、`am start -W -n` で起動します。続いて、そのパッケージが resumed activity を持つまで `dumpsys activity activities` を上限付きでポーリングします。時間切れなら `ElementNotFound` を送出します。`leave_app` はドライバ側の app スタックを使い、1 つ下のアプリを前面へ戻します。
-  - `APP_CONTEXT` capability でゲートします。宣言するのは常駐 runner の XCUITest backend、adb backend、`FakeDriver` です。そのため preflight で弾かれるのは web だけで、デバイス側の作業より前の段階で弾かれます。`web` の WebView bridge の可否は、固定の backend capability ではなく実行ごとの事実であり、実行時に失敗するのとは対照的です。
+  - `APP_CONTEXT` capability でゲートします。宣言するのは常駐 runner の XCUITest backend、adb backend、`FakeDriver` です。そのため preflight で弾かれるのは web だけで、デバイス側の作業より前の段階で弾かれます。`web` の WebView 経路に到達できるかどうかは、固定の backend capability ではなく実行ごとの事実です。そのため `web` は、preflight ではなく実行時に失敗します。
   - この設計に先立って、実現可能性のスパイクが、`activate()` が協力しないアプリ（Safari・Maps・Contacts）を Simulator 上で確実に前面化することを確かめました（[`docs/specs/ios-cross-app-ui-control-feasibility.md`](../specs/ios-cross-app-ui-control-feasibility.md)）。
 
 #### 証跡、ネットワーク観測、レポート

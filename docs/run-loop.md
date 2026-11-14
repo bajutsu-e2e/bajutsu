@@ -47,7 +47,7 @@ What each target's own bundle carries:
 | `driver` | that target's live driver |
 | `sink` | that target's evidence output |
 | `network` / `transitions` / `channel` | that target's own collector |
-| `webview_bridge` | that target's WebView bridge, so a `web:` block opens the right app |
+| `webview_bridge` | that target's WebView DOM source (the iOS bridge or Android's `CdpDomSource`), so a `web:` block opens the right app |
 | `control` / `relaunch` | that target's device |
 | `mailbox` / `locale` / `capture` / `interrupts` | that target's own config (`services.mailbox`, `runsOn.ios.locale`, `evidence.capture`, `hooks.interrupts`) |
 | `ctx` | that target's `paths.baselines` / `paths.schemas` / `paths.goldens` directories |

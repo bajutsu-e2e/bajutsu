@@ -155,7 +155,7 @@ def _select_option_locations(sc: Scenario) -> list[str]:
 def _navigate_locations(sc: Scenario) -> list[str]:
     """The paths where a navigate step appears, inside a `web:` / `app:` block included (BE-0464).
 
-    `_walk_steps` skips those blocks on purpose, but no backend that runs one (the iOS WebView
+    `_walk_steps` skips those blocks on purpose, but no backend that runs one (a mobile WebView
     context, the cross-app context) can open a URL, so a `navigate` nested there would otherwise reach
     a leased device before failing. Recursing for this one construct closes that gap without moving
     every other construct's failure from run time to preflight.
@@ -182,7 +182,7 @@ def _attribute_locations(sc: Scenario) -> list[str]:
     """The paths where an `attribute` assertion appears (BE-0466).
 
     Wider than `_assertions_with_path`, for the reason `_navigate_locations` gives: it follows `web:`
-    / `app:` blocks, whose backends (the iOS WebView context, the cross-app context) cannot read an
+    / `app:` blocks, whose backends (a mobile WebView context, the cross-app context) cannot read an
     attribute either, and `interrupts`, whose conditions and recovery steps poll the leased device too.
     """
 

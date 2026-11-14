@@ -1036,7 +1036,7 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `clearStatusBar` | `clearStatusBar: {}` | remove status-bar overrides (restore the live bar) |
 | `use` | `use: { component: <file>, with?: {...} }` | expand a reusable component's steps — a compile-time macro ([reuse](#reuse-data-and-tags)); **takes no modifier but `target`** — `capture` / `extract` / `name` / `from` are rejected, and a `target` is stamped onto every step the component expands to ([multi-target](#components-in-a-multi-target-scenario)) |
 | `group` | `group: { name: <str>, steps: [...] }` | name a run of consecutive steps — a compile-time macro, folded together in `report.html` ([below](#grouping-steps-group--folded-in-reporthtml)) |
-| `web` | `web: { within: <Selector>, steps: [...] }` | enter a WebView's DOM: `within` resolves the host WebView natively, and the nested `steps` address its normalized DOM instead of the native tree ([below](#web-entering-a-webviews-dom)) |
+| `web` | `web: { within: <Selector>, steps: [...] }` | enter a WebView's DOM: `within` resolves the WebView host natively (the `WKWebView` on iOS, usually a container the `WebView` fills on Android), and the nested `steps` address its normalized DOM instead of the native tree ([below](#web-entering-a-webviews-dom)) |
 
 Modifiers (a `use` step takes `target` alone — see the table row above):
 
@@ -1203,14 +1203,20 @@ finish. The nested steps share the enclosing scenario's `vars.*` bindings, the s
 `forEach`'s do. The `capture` / `extract` modifiers are not allowed on the `web` step itself.
 
 **How the block names its WebView.** `within` is an ordinary selector, and it must carry an `id`.
-The run resolves the whole selector against the native tree to one element, the WebView itself.
-Zero matches or two or more fail the step, as for any selector. Each platform then finds the page
+The run resolves the whole selector against the native tree to one element. Zero matches or two or
+more fail the step, as for any selector. On iOS that element is the WebView itself, and the id has
+to sit on the `WKWebView`: the bridge looks that view up by the first id of `within` on every
+request. On Android the element is usually a container that the WebView fills. A `WebView`'s own
+accessibility node reports no resource-id, so the id goes on the container, and the run uses that
+element's frame alone. The container must not reach past the WebView: a container padded around it,
+or one that also wraps a native header, has a frame that no page rectangle contains, and the step
+fails. Matching the WebView's bounds exactly is the safe shape. Each platform then finds the page
 behind that element in its own way:
 
 | Platform | How the run reaches the page | Which page it picks |
 |---|---|---|
 | iOS | The BajutsuKit WebView bridge, a Hypertext Transfer Protocol (HTTP) server inside the app, on the port the run passes as `BAJUTSU_WEBVIEW_PORT`. | The `WKWebView` whose accessibility identifier equals the first id of `within`. |
-| Android | The Chrome DevTools Protocol (CDP), on the WebView's debugging socket, which the run forwards with `adb` for the length of the block. | The one attached, visible page whose rectangle contains the frame `within` resolved to. Zero matches or two or more fail the step as ambiguous. |
+| Android | The Chrome DevTools Protocol (CDP), on the WebView's debugging socket, which the run forwards with `adb` for the length of the block. | The one attached, visible page whose rectangle contains the frame `within` resolved to. Zero matches fail the step as not found, and two or more as ambiguous. |
 
 Android matches by containment, not equality, because the two rectangles measure different areas.
 The native tree clips a view's bounds to the screen and to its ancestors. CDP reports the page's
@@ -1221,12 +1227,20 @@ with a reason that names what is missing.
 
 - **iOS:** the app links BajutsuKit and calls `BajutsuNet.startIfEnabled()`. That call starts the
   bridge when the run passes the port. The `WKWebView` carries an accessibility identifier.
-- **Android:** a debuggable build calls BajutsuAndroid's `Bajutsu.enableWebViewDebugging(context)`
-  in `Application.onCreate`, or right before it creates its first WebView. Every debug build type
-  sets `android:debuggable`. The
-  helper does nothing in a non-debuggable build, so a release build never opens the socket. The
-  machine running bajutsu needs the `android` extra (`websockets`). `scripts/install.sh` installs it
-  when the configured backends include Android.
+- **Android:** a debuggable build calls
+  [BajutsuAndroid](../BajutsuAndroid/README.md#webview-debugging)'s
+  `Bajutsu.enableWebViewDebugging(context)` right before it creates its first WebView.
+  `Application.onCreate` works too. The call loads the WebView provider, though. From
+  `Application.onCreate` it loads the provider on every launch, and an update to the WebView package
+  can then relaunch an activity mid-scenario, even in a scenario that never opens a WebView.
+  `Application.onCreate` also runs in every process, so an app that hosts its WebView in a separate
+  `android:process` calls the helper in that process alone, or in another process only after
+  `WebView.setDataDirectorySuffix`. The reason is that loading WebView takes a data-directory lock
+  per process, and Android 9 (API 28) and later refuse to share that lock between two processes.
+  Every debug build type sets `android:debuggable`. The helper does nothing in a non-debuggable
+  build, so a release build never opens the socket. The machine running bajutsu needs the `android`
+  extra (`websockets`). `scripts/install.sh` installs it when the configured backends include
+  Android.
 
 **What a block supports.** Inside the block, `tap` / `tapPoint` / `doubleTap` / `type` / `wait` /
 `assert` run. `longPress` / `swipe` / `drag` / `clear` / `delete` / `select` / `copy` /
@@ -1946,7 +1960,7 @@ record each side touched, not merely a changed count.
 
 A step nested inside a `web` or `app` block is the one exception. It must **omit** `target`
 outright. It always runs against the device the enclosing block already resolved. That is `web`'s
-own WebView bridge, or `app`'s unchanged native driver.
+own WebView source, or `app`'s unchanged native driver.
 
 ### Target groups: naming one target once for a run of steps (BE-0437)
 
@@ -2555,10 +2569,10 @@ field. A report shows merely the attributes an assertion names.
 
 The assertion needs the `elementAttribute` capability, and the web backend alone declares it. On
 any other backend, the capability preflight fails the scenario before any device lease. The check
-finds an `attribute` anywhere, the iOS WebView context of a `web:` block included. Config
-validation also refuses an `attribute` in a non-web target's `hooks.interrupts` at load time. `attribute`
-reads attributes, not DOM properties: the `value` assertion keeps covering a form control's live
-value.
+finds an `attribute` anywhere, the WebView context of a `web:` block on either mobile platform
+included. Config validation also refuses an `attribute` in a non-web target's `hooks.interrupts` at
+load time. `attribute` reads attributes, not DOM properties: the `value` assertion keeps covering a
+form control's live value.
 
 ## Network mocks (deterministic stubs)
 

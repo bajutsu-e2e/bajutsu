@@ -135,7 +135,7 @@ switch; iOS / Android are rejected before any device work), `navigate` needs `ur
 only, and caught even inside a `web:` or `app:` block — `navigate` and `attribute` are the two
 constructs this check follows into those blocks), an `attribute` assertion needs `elementAttribute`
 (web only; BE-0466 — found anywhere: `expect`, a step's `assert`, an `if` or `interrupts` condition,
-inside a `web:` or `app:` block, and in `interrupts` recovery steps, so the iOS WebView context is
+inside a `web:` or `app:` block, and in `interrupts` recovery steps, so a mobile WebView context is
 rejected too),
 `select` / `copy` need `textSelection`
 (select-all + clipboard copy; the web context is coordinate-only for these and refuses both —
@@ -539,7 +539,7 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   > not-found case specifically, not the portable idiom.
   >
   > A **different, narrower** safety net now covers every backend that can hit-test a point (all
-  > except the app-embedded WebView bridge, `WebContextDriver`, whose protocol exposes none): before
+  > except the app-embedded WebView context, `WebContextDriver`, whose protocol exposes none): before
   > acting, `tap` / `double_tap` / `long_press` check that the resolved target is actually reachable
   > at its own point — not covered by another on-screen element — using the idiomatic signal each
   > platform offers (iOS: native `isHittable`; web: a `document.elementFromPoint` hit-test; adb: a
@@ -781,9 +781,9 @@ fits the same toolchain as `make check`. Implementation: `common/drivers/playwri
 - **Plain text**: `query()` also returns an element that holds its own text yet matches no rule
   above. A heading, a paragraph, and a `<span>` are typical. Its label is the element's text. Its
   one trait is `staticText`, the trait iOS reports for a label, so a selector such as
-  `{ label: Welcome, traits: [staticText] }` reads the same on both platforms. The iOS WebView
-  bridge runs the same script, so a hybrid app's WebView reads plain text this way too. Two kinds
-  of text stay out. Each would make a once-unique selector match twice:
+  `{ label: Welcome, traits: [staticText] }` reads the same on both platforms. The iOS bridge and
+  Android's `CdpDomSource` run the same script, so a hybrid app's WebView reads plain text this way
+  too. Two kinds of text stay out. Each would make a once-unique selector match twice:
   - Text inside an interactive control (a button, a link, or an input). The control's label
     already carries it.
   - Text that repeats the label of its nearest ancestor with a `data-testid` or a `role`.
@@ -825,7 +825,7 @@ fits the same toolchain as `make check`. Implementation: `common/drivers/playwri
   gets its value, `None` for a missing attribute, or the `SelectorError` its selector raised, which
   is returned rather than raised so the other pairs keep their reads. Iframe,
   covered, and off-viewport elements read like any other listed element. The other backends
-  (XCUITest, adb, and the iOS WebView context) raise `UnsupportedAction`.
+  (XCUITest, adb, and the WebView context on either mobile platform) raise `UnsupportedAction`.
 - `type_text` types via `page.keyboard` (the orchestrator taps `into` first, focusing the field);
   `screenshot` is `page.screenshot`; `wait_for` is single-shot via `find_all` (like every backend —
   the shared `base.wait_until` supplies the deadline poll).

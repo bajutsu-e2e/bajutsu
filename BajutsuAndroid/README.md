@@ -197,23 +197,20 @@ A scenario's `web:` block reads and taps inside a WebView that the app embeds
 reaches the page over the Chrome DevTools Protocol (CDP). With debugging enabled, each WebView
 listens on a local socket, `webview_devtools_remote_<pid>`. bajutsu forwards that socket with `adb`
 for the length of the block. The app needs no server of its own. It turns debugging on with one
-call from `Application.onCreate`, before it creates any WebView:
+call right before it creates its first WebView:
 
 ```kotlin
-class MyApp : Application() {
-    override fun onCreate() {
-        super.onCreate()
-        if (BuildConfig.DEBUG) {
-            Bajutsu.enableWebViewDebugging(this)
-        }
-    }
+fun createWebView(context: Context): WebView {
+    Bajutsu.enableWebViewDebugging(context)
+    return WebView(context)
 }
 ```
 
-Calling it right before the app creates its first WebView works too. The call loads the WebView
-provider, so an app whose WebViews sit on one screen can defer that cost to the screen. Deferring it
-also keeps an update to the WebView package from relaunching an activity mid-scenario in a test that
-never opens a WebView. The bajutsu showcase apps call it there for that reason.
+Calling it from `Application.onCreate` works too, but the call loads the WebView provider. From
+`Application.onCreate` it loads the provider on every launch, and an update to the WebView package
+can then relaunch an activity mid-scenario, even in a test that never opens a WebView. The bajutsu
+showcase apps call it right before they create the WebView for that reason. The helper is
+idempotent, so a factory like the one above can call it before every WebView.
 
 `enableWebViewDebugging` turns debugging on when the app is debuggable, and does nothing otherwise.
 Every debug build type sets `android:debuggable`. A release build that calls the helper by mistake
@@ -222,9 +219,9 @@ connect to the socket. That process can read or drive every page the app shows, 
 form input included. The function returns whether it enabled debugging.
 
 An app that runs its WebViews in a separate `android:process` calls the helper in that process
-alone. `Application.onCreate` runs in every process, and the call loads WebView. Loading WebView
-takes a data-directory lock per process. Android 9 (API 28) and later refuse to share that lock
-between two processes.
+alone, or in another process only after `WebView.setDataDirectorySuffix`. `Application.onCreate`
+runs in every process, and the call loads WebView. Loading WebView takes a data-directory lock per
+process. Android 9 (API 28) and later refuse to share that lock between two processes.
 
 Without the call, bajutsu fails the `web:` block with a reason that names the helper. The scenario side is in [scenarios](../docs/scenarios.md#web-entering-a-webviews-dom).
 

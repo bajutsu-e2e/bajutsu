@@ -186,24 +186,20 @@ Android（API 28 以降）は既定でクリアテキスト通信を遮断しま
 
 ## WebView のデバッグ
 
-シナリオの `web:` ブロックは、アプリが埋め込んだ WebView の中を読み取り、タップします（[BE-0482](../roadmaps/BE-0482-android-webview-cdp/BE-0482-android-webview-cdp-ja.md)）。Android では、bajutsu は Chrome DevTools Protocol（CDP）でページに到達します。デバッグを有効にした WebView は、`webview_devtools_remote_<pid>` という名前の abstract なローカルソケットで待ち受けます。bajutsu はブロックの間だけ、このソケットを `adb` で転送します。アプリ側に専用のサーバーは要りません。WebView を作る前に、`Application.onCreate` からデバッグを 1 回の呼び出しで有効にします。
+シナリオの `web:` ブロックは、アプリが埋め込んだ WebView の中を読み取り、タップします（[BE-0482](../roadmaps/BE-0482-android-webview-cdp/BE-0482-android-webview-cdp-ja.md)）。Android では、bajutsu は Chrome DevTools Protocol（CDP）でページに到達します。デバッグを有効にした WebView は、`webview_devtools_remote_<pid>` という名前の abstract なローカルソケットで待ち受けます。bajutsu はブロックの間だけ、このソケットを `adb` で転送します。アプリ側に専用のサーバーは要りません。最初の WebView を作る直前に、1 回の呼び出しでデバッグを有効にします。
 
 ```kotlin
-class MyApp : Application() {
-    override fun onCreate() {
-        super.onCreate()
-        if (BuildConfig.DEBUG) {
-            Bajutsu.enableWebViewDebugging(this)
-        }
-    }
+fun createWebView(context: Context): WebView {
+    Bajutsu.enableWebViewDebugging(context)
+    return WebView(context)
 }
 ```
 
-最初の WebView を作る直前に呼んでもかまいません。この呼び出しは WebView のプロバイダを読み込みます。WebView を 1 つの画面にだけ置くアプリは、この読み込みをその画面まで遅らせられます。遅らせると、WebView を開かないテストの途中で、WebView のパッケージの更新がアクティビティを作り直すこともなくなります。bajutsu の showcase アプリは、この理由でこの方法をとっています。
+`Application.onCreate` から呼んでも動きます。ただし、この呼び出しは WebView のプロバイダを読み込むので、そこで呼ぶと起動のたびに読み込みます。その状態では、WebView のパッケージの更新によって、WebView を開かないテストの途中でもアクティビティの作り直しが起こりえます。bajutsu の showcase アプリは、この理由で WebView を作る直前に呼んでいます。このヘルパーは何度呼んでも同じ結果になるので、上の例のように WebView を作るたびに呼んでもかまいません。
 
 `enableWebViewDebugging` は、アプリがデバッグ可能なときにデバッグを有効にし、そうでないときは何もしません。どの debug ビルドタイプも `android:debuggable` を設定するので、誤って呼んだリリースビルドもソケットを開きません。デバッグが有効な間は、端末上のどのプロセスもソケットに接続できます。接続したプロセスは、アプリが表示するすべてのページを読み取り、操作できます。セッションの Cookie やフォームの入力も含みます。この確認が要るのはそのためです。関数は、デバッグを有効にしたかどうかを返します。
 
-WebView を別の `android:process` に置くアプリは、そのプロセスでだけヘルパーを呼びます。`Application.onCreate` はすべてのプロセスで走ります。そしてこの呼び出しは WebView を読み込み、プロセスごとのデータディレクトリのロックを取ります。Android 9（API 28）以降は、このロックを 2 つのプロセスで共有させません。
+WebView を別の `android:process` に置くアプリは、そのプロセスでだけヘルパーを呼びます。`WebView.setDataDirectorySuffix` を呼んだ後であれば、ほかのプロセスから呼んでもかまいません。`Application.onCreate` はすべてのプロセスで走ります。そしてこの呼び出しは WebView を読み込み、プロセスごとのデータディレクトリのロックを取ります。Android 9（API 28）以降は、このロックを 2 つのプロセスで共有させません。
 
 アプリがデバッグを有効にしていないと、bajutsu はこの呼び出しを名指しする理由で `web:` ブロックを失敗させます。シナリオ側の説明は[シナリオ](../docs/ja/scenarios.md#webwebview-の-dom-コンテキストに入る)にあります。
 
