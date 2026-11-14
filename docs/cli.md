@@ -1322,8 +1322,9 @@ Redis or RQ**, BE-0106), runs it with the unchanged `run_job`, and posts the res
 baselines before a run, uploading the run tree after — goes through presigned URLs the control
 plane signs (BE-0160), so the worker needs only an HTTP client.
 
-A lease with nothing to run answers `204`. A Device Farm worker runs more than one job at
-once. It sends its free slots as `maxJobs`, from 1 to 100. The response is then a list. The oldest job the
+A lease with nothing to run answers `204`. Every worker sends its free slots as `maxJobs`, from 1
+to 100, so the response is a list. Only a worker whose `maxJobConcurrency` is above 1 — a
+device-cloud worker, a Device Farm one included — has more than one slot. The oldest job the
 worker can serve may belong to a `run-set` group. The list then adds that group's next jobs, within
 the server's concurrency caps. The slots can thus share the group's uploads.
 
