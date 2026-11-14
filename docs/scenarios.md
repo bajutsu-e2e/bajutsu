@@ -1029,8 +1029,8 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `installApp` | `installApp: { from: <target>, keepData?: bool }` | install a later device-group member's build onto the step's device, over an existing build of the same identifier (`keepData`, default `true`) or after uninstalling it (`false`); launches nothing ([device groups](#device-groups-several-apps-on-one-device-be-0447)) |
 | `setPrimaryTarget` | `setPrimaryTarget: { target: <target> }` | from this step on, a step, `interrupts` entry, or top-level `expect` entry that omits `target` runs on `target`; top-level `steps` only ([device groups](#device-groups-several-apps-on-one-device-be-0447)) |
 | `clearKeychain` | `clearKeychain: {}` | reset the Simulator keychain (saved passwords / certificates) |
-| `clearClipboard` | `clearClipboard: {}` | clear the Simulator pasteboard |
-| `setClipboard` | `setClipboard: { text: "..." }` | seed the Simulator pasteboard for a paste flow |
+| `clearClipboard` | `clearClipboard: {}` | clear the device clipboard (iOS Simulator; Android with BajutsuAndroid embedded) |
+| `setClipboard` | `setClipboard: { text: "..." }` | seed the device clipboard for a paste flow (iOS Simulator; Android with BajutsuAndroid embedded) |
 | `setMocks` | `setMocks: [ { match, respond }... ]` | replace the app's whole stub table mid-scenario over the in-app control channel ([below](#changing-the-mocks-mid-scenario-setmocks)); `[]` removes every stub. iOS (XCUITest) with network collection on ([BE-0365](../roadmaps/BE-0365-in-app-control-channel/BE-0365-in-app-control-channel.md)) |
 | `overrideStatusBar` | `overrideStatusBar: { time?, batteryLevel?, batteryState?, cellularBars?, wifiBars? }` | override the status bar for deterministic screenshots |
 | `clearStatusBar` | `clearStatusBar: {}` | remove status-bar overrides (restore the live bar) |
@@ -2293,7 +2293,7 @@ are in [selectors](selectors.md#assertion-evaluation).
 | `requestSequence` | matchers were observed in this order (needs `--network`) | `requestSequence: [ { urlMatches: "/auth/refresh" }, { urlMatches: "/api/account" } ]` |
 | `responseSchema` | a captured response body conforms to a JSON Schema (needs `--network`) | `responseSchema: { request: { urlMatches: "/api/items" }, schema: items.json }` |
 | `visual` | the screen matches a baseline image (visual regression) | `visual: { baseline: home.png, threshold: 0.02 }` |
-| `clipboard` | the device pasteboard matches (read back via `simctl pbpaste`) | `clipboard: { equals: "COUPON123" }` / `clipboard: { matches: "\\d{6}" }` |
+| `clipboard` | the device clipboard matches (read back via `simctl pbpaste` on iOS, the BajutsuAndroid receiver on Android) | `clipboard: { equals: "COUPON123" }` / `clipboard: { matches: "\\d{6}" }` |
 | `attribute` | an element's HTML attribute matches, or is absent (web only) | `attribute: { sel: { id: docs.link }, name: href, equals: /docs }` / `attribute: { sel: { id: panel }, name: aria-busy, absent: true }` |
 
 - `exists` writes its selector **inline** (`{ id: ... }` directly). `negate` is optional.
@@ -2305,7 +2305,7 @@ are in [selectors](selectors.md#assertion-evaluation).
 - `requestSequence` checks a list of request matchers were **observed in order** ([details below](#requestsequence-ordered-requests)); needs the `--network` run flag.
 - `responseSchema` validates a captured **response body against a JSON Schema** ([details below](#responseschema-json-schema-of-a-response)); needs the `--network` run flag.
 - `visual` pixel-compares a screenshot against a baseline image ([details below](#visual-visual-regression)).
-- `clipboard` reads the device pasteboard (`simctl pbpaste`) and checks **exactly one** of `equals` / `matches` (regex) — the read-back half of `setClipboard`, for verifying a "copy" action. It needs the per-device control channel, so it is unavailable on the fake driver / in parallel runs and fails cleanly there ([BE-0052](../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)).
+- `clipboard` reads the device clipboard (`simctl pbpaste` on iOS; on Android, the BajutsuAndroid in-app receiver, [BE-0233](../roadmaps/BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity.md)) and checks **exactly one** of `equals` / `matches` (regex) — the read-back half of `setClipboard`, for verifying a "copy" action. It needs the per-device control channel, so it is unavailable on the fake driver / in parallel runs and fails cleanly there ([BE-0052](../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)).
 - `attribute` takes `sel:` + `name:` + **exactly one** of `equals` / `contains` / `matches` / `absent: true`. See [details below](#attribute-html-attribute-of-an-element) and [BE-0466](../roadmaps/BE-0466-web-attribute-assertion/BE-0466-web-attribute-assertion.md). The web (Playwright) backend reads the attribute on demand. Any other backend fails it before the device lease.
 
 > **Locale caveat**: string comparisons on `label`/`value` and assertions that look at visible
