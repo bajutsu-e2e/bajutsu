@@ -125,6 +125,10 @@ def test_an_environment_worker_serves_a_run_intent_job_of_its_platform() -> None
     assert cap.can_serve(["job:run-intent", "platform:ios", "kind:device"], df)
     assert not cap.can_serve(["job:run-intent", "platform:web"], df)
     assert not cap.can_serve(["job:run-intent", "platform:ios", "kind:simulator"], df)
+    # An `appium` grid advertises `job:run-intent` but no `platform:*`, so it takes no group job.
+    assert not cap.can_serve(
+        ["job:run-intent", "platform:ios"], ["environment:appium", "job:run-intent"]
+    )
 
 
 def test_reserved_tokens_names_the_routing_prefixes() -> None:
