@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from bajutsu.common.capability.worker_capability import BATCH_PROVIDERS
 from bajutsu.common.evidence.redaction import mask_credential_shapes
@@ -17,6 +17,9 @@ from bajutsu.serve.orgs import DEFAULT_ORG
 from bajutsu.serve.server.object_store import baseline_prefix, org_prefix, upload_store_key
 from bajutsu.serve.state import Job, ServeState
 from bajutsu.serve.upload_artifacts import ARTIFACT_KINDS, OVERRIDE_KINDS, artifact_store_key
+
+if TYPE_CHECKING:
+    from bajutsu.serve.server.db import LeasedJob
 
 _logger = logging.getLogger(__name__)
 
@@ -78,10 +81,25 @@ def _resolves_to_batch(spec: dict[str, Any], advertised: list[str]) -> bool:
     )
 
 
+# The most jobs one lease request may take. With no cap configured nothing else bounds a bundle, so
+# a worker that died after one poll could otherwise strand a whole fan-out until its leases lapse.
+MAX_LEASE_JOBS = 100
+
+
 def worker_lease(
-    state: ServeState, worker_id: str, capabilities: Any = None, *, relay_secrets: bool = True
-) -> tuple[dict[str, Any], int]:
+    state: ServeState,
+    worker_id: str,
+    capabilities: Any = None,
+    *,
+    max_jobs: Any = None,
+    relay_secrets: bool = True,
+) -> tuple[Any, int]:
     """Lease the oldest queued job *worker_id* can serve, or return 204 when none is servable.
+
+    With *max_jobs*, the worker's free slots, the response is a list of lease bodies: when the
+    oldest servable job belongs to a `run-set` group, the lease adds that group's next jobs that
+    share its verdict, within the server's concurrency caps (BE-0484). Without it, the response is
+    one body, so a worker from before BE-0484 leases as it did.
 
     *capabilities* is the worker's advertised capability set (BE-0166): the lease is filtered to
     jobs whose required capabilities it covers, so a worker never leases a job it cannot run. The
@@ -107,17 +125,53 @@ def worker_lease(
     job reads them from (BE-0449). They are read here, at lease time, and never enter the stored
     spec. The route passes False for a caller that came in on a browser or machine session, since
     a worker authenticates with the shared token and nothing else should receive the values. A
-    store that cannot be read fails the job rather than run it without them.
+    store that cannot be read fails every leased job rather than run them without the values; the
+    jobs of a bundle share one org, so the read would fail for each alike.
     """
     if state.repository is None:
         return {"error": "server backend has no database configured"}, 503
     if not worker_id:
         return {"error": "worker_id is required"}, 400
+    if max_jobs is not None and (
+        not isinstance(max_jobs, int)
+        or isinstance(max_jobs, bool)
+        or not 1 <= max_jobs <= MAX_LEASE_JOBS
+    ):
+        return {"error": f"maxJobs must be an integer from 1 to {MAX_LEASE_JOBS}"}, 400
     advertised = _clean_capabilities(capabilities)
     state.repository.register_worker(worker_id, advertised)
-    leased = state.repository.lease_job(worker_id, advertised)
-    if leased is None:
+    leased = state.repository.lease_jobs(
+        worker_id, advertised, max_jobs=max_jobs or 1, caps=state.concurrency_caps
+    )
+    if not leased:
         return {}, 204
+    secret_env: dict[str, str] = {}
+    if relay_secrets:
+        try:
+            secret_env = lease_secret_env(state, leased[0].org_id or DEFAULT_ORG)
+        # Any failure of the store, whatever its backend raises, must end the jobs rather than strand
+        # them leased or hand them to the worker without the values they may need.
+        except Exception:
+            _logger.warning(
+                "could not read the stored secrets of org %s", leased[0].org_id, exc_info=True
+            )
+            for job in leased:
+                # One failed write must not leave the bundle's later jobs leased to a worker that
+                # never receives them; a job this misses waits out its lease instead.
+                try:
+                    _fail_unread_secrets(state, job.id, worker_id)
+                except Exception:
+                    _logger.warning("could not fail job %s", job.id, exc_info=True)
+            return {}, 204
+    bodies = [_lease_body(state, job, advertised, secret_env) for job in leased]
+    return (bodies if max_jobs is not None else bodies[0]), 200
+
+
+def _lease_body(
+    state: ServeState, leased: LeasedJob, advertised: list[str], secret_env: dict[str, str]
+) -> dict[str, Any]:
+    """What a worker needs to run one leased job, as `worker_lease` describes."""
+    assert state.repository is not None  # caller guards
     resp: dict[str, Any] = {
         "job_id": leased.id,
         "org_id": leased.org_id,
@@ -126,18 +180,8 @@ def worker_lease(
         # (BE-0467), since its environment can change between registration and claim.
         "capabilities": leased.capabilities,
     }
-    if relay_secrets:
-        try:
-            secret_env = lease_secret_env(state, leased.org_id or DEFAULT_ORG)
-        # Any failure of the store, whatever its backend raises, must end the job rather than strand
-        # it leased or hand it to the worker without the values it may need.
-        except Exception:
-            _logger.warning(
-                "could not read the stored secrets of org %s", leased.org_id, exc_info=True
-            )
-            return _fail_unread_secrets(state, leased.id, worker_id), 204
-        if secret_env:
-            resp["secret_env"] = secret_env
+    if secret_env:
+        resp["secret_env"] = secret_env
     if (leased.spec.get("batch") is not None or leased.spec.get("intent") is not None) and (
         run_arn := state.repository.load_batch_run_arn(leased.id)
     ):
@@ -158,7 +202,7 @@ def worker_lease(
             resp["app_url"] = state.object_store.presigned_url(
                 artifact_store_key(state.object_store_prefix, org, "binary", sha)
             )
-    return resp, 200
+    return resp
 
 
 def _fail_unread_secrets(state: ServeState, job_id: str, worker_id: str) -> dict[str, Any]:

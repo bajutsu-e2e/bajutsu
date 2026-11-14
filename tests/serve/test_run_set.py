@@ -1,9 +1,8 @@
-"""Tests for the per-scenario cloud-batch fan-out dispatch (BE-0336 Unit 3).
+"""Tests for the per-scenario fan-out dispatch (BE-0336 Unit 3, BE-0484).
 
-`start_run_set` expands one scenario-set request into one cloud-batch job per scenario, each carrying
-its own `BatchRequest`, registered through the same concurrency-capped tail as every other run. A
-recording executor captures the dispatched jobs so the fan-out is asserted without actually running
-them (no thread, no cloud).
+`start_run_set` expands one scenario-set request into one job per scenario, each carrying its own run
+intent, and writes them as one group straight to the queue: no executor runs them, and the server's
+concurrency caps apply when a worker leases them (BE-0484 unit 3).
 """
 
 from __future__ import annotations
@@ -23,17 +22,29 @@ from bajutsu import serve as srv
 from bajutsu.serve import operations as ops
 from bajutsu.serve.capabilities import RUN_INTENT_CAPABILITY
 from bajutsu.serve.operations.dispatch import start_run_set
+from bajutsu.serve.server.db import QueuedJob
 from bajutsu.serve.state import Job, ServeState
 
 
 class _RecordingExecutor:
-    """Captures dispatched jobs instead of running them, so a fan-out test stays synchronous."""
+    """Captures dispatched jobs instead of running them; a fan-out must hand it none."""
 
     def __init__(self) -> None:
         self.jobs: list[Job] = []
 
     def dispatch(self, state: ServeState, job: Job) -> None:
         self.jobs.append(job)
+
+
+class _Registered:
+    """The jobs a fan-out registered, in id order, read off the state's registry."""
+
+    def __init__(self, state: ServeState) -> None:
+        self._state = state
+
+    @property
+    def jobs(self) -> list[Job]:
+        return sorted(self._state.jobs.values(), key=lambda j: int(j.id))
 
 
 def _android_batch_project(tmp_path: Path, *, scenarios: list[str]) -> tuple[Path, Path]:
@@ -63,7 +74,7 @@ def _android_batch_project(tmp_path: Path, *, scenarios: list[str]) -> tuple[Pat
 _DF = {"target": "demo", "environment": "devicefarm"}
 
 
-def _state(tmp_path: Path, cfg: Path, scn_dir: Path) -> tuple[ServeState, _RecordingExecutor]:
+def _state(tmp_path: Path, cfg: Path, scn_dir: Path) -> tuple[ServeState, _Registered]:
     executor = _RecordingExecutor()
     state = ServeState(
         scenarios_dir=scn_dir,
@@ -74,7 +85,7 @@ def _state(tmp_path: Path, cfg: Path, scn_dir: Path) -> tuple[ServeState, _Recor
         repository=queue_repository(),
     )
     state.object_store = FakeObjectStore()  # the bundle of the config's directory lands here
-    return state, executor
+    return state, _Registered(state)
 
 
 def test_fan_out_registers_one_batch_job_per_scenario(tmp_path: Path) -> None:
@@ -299,7 +310,7 @@ def test_fan_out_rejects_a_config_outside_the_run_directory(tmp_path: Path) -> N
 
     assert status == 400
     assert "not under its bundle directory" in payload["error"]
-    assert executor.jobs == []
+    assert state.jobs == {}
 
 
 def test_fan_out_requires_an_open_config(tmp_path: Path) -> None:
@@ -314,30 +325,20 @@ def test_fan_out_requires_an_open_config(tmp_path: Path) -> None:
     assert "config" in payload["error"]
 
 
-def test_fan_out_returns_429_when_cap_rejects_the_first_job(tmp_path: Path) -> None:
-    # When the concurrency cap rejects the very first job (nothing dispatched yet), the endpoint
-    # returns the 429 payload rather than 200 with an empty list — a silent failure that looks like
-    # success. Partial dispatch (some dispatched, then capped) is routine (Unit 4 governs this), but
-    # zero dispatched + cap = loud error, consistent with start_run / start_record / start_crawl.
-    scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml"])
-
-    # Make try_register always return None (cap hit) by wrapping ServeState.
-    import unittest.mock
-
-    state = ServeState(
-        scenarios_dir=scn_dir,
-        config=cfg,
-        runs_dir=tmp_path / "runs",
-        cwd=tmp_path,
-        executor=_RecordingExecutor(),
-        repository=queue_repository(),
+def test_fan_out_registers_every_scenario_past_the_caps(tmp_path: Path) -> None:
+    """The caps apply when a worker leases a group's jobs, so none cuts the group short."""
+    scn_dir, cfg = _android_batch_project(
+        tmp_path, scenarios=["one.yaml", "two.yaml", "three.yaml"]
     )
-    state.object_store = FakeObjectStore()
-    with unittest.mock.patch.object(state, "try_register", return_value=None):
-        payload, status = start_run_set(state, _DF)
+    state, registered = _state(tmp_path, cfg, scn_dir)
+    state.max_concurrent = state.max_concurrent_per_org = 1
+    state.register(Job(cmd=[]))  # a plain run already fills the caps
 
-    assert status == 429
-    assert "too many concurrent" in payload["error"]
+    payload, status = start_run_set(state, _DF)
+
+    assert status == 200
+    assert len(payload["jobIds"]) == 3
+    assert [j.id for j in registered.jobs] == ["1", *payload["jobIds"]]
 
 
 def test_fan_out_dispatches_every_scenario(tmp_path: Path) -> None:
@@ -398,7 +399,8 @@ def test_fan_out_ships_scenarios_that_travel_as_materials(tmp_path: Path) -> Non
         payload, status = start_run_set(state, _DF)
 
     assert status == 200, payload
-    (job,) = executor.jobs
+    (job,) = _Registered(state).jobs
+    assert executor.jobs == []
     assert job.intent is not None
     assert (job.intent.scenario, job.intent.config) == ("one.yaml", "bajutsu.config.yaml")
     assert job.materials["one.yaml"].startswith("- name: a")
@@ -636,19 +638,65 @@ def test_fan_out_refuses_a_scenario_named_twice(tmp_path: Path) -> None:
     assert executor.jobs == []
 
 
-def test_a_capped_first_job_leaves_no_group_behind(tmp_path: Path) -> None:
+def test_a_store_error_registers_no_job(tmp_path: Path) -> None:
     import unittest.mock
 
+    scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml", "two.yaml"])
+    state, _ = _state(tmp_path, cfg, scn_dir)
+    failing = unittest.mock.patch.object(
+        state.repository, "register_job_group", side_effect=RuntimeError("database is down")
+    )
+
+    with failing, pytest.raises(RuntimeError, match="database is down"):
+        start_run_set(state, _DF)
+
+    assert state.jobs == {}
+
+
+@pytest.mark.parametrize("key", ["", "has space", "x" * 129, 7])
+def test_fan_out_refuses_a_malformed_group_key(tmp_path: Path, key: object) -> None:
     scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml"])
     state, _ = _state(tmp_path, cfg, scn_dir)
-    with (
-        unittest.mock.patch.object(state, "try_register", return_value=None),
-        unittest.mock.patch.object(state.repository, "create_job_group") as create,
-    ):
-        _, status = start_run_set(state, _DF)
 
-    assert status == 429
-    create.assert_not_called()
+    payload, status = start_run_set(state, {**_DF, "groupKey": key})
+
+    assert status == 400
+    assert "groupKey" in payload["error"]
+
+
+def test_a_repeated_group_key_returns_its_group_and_queues_nothing_new(tmp_path: Path) -> None:
+    scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml", "two.yaml"])
+    state, registered = _state(tmp_path, cfg, scn_dir)
+    request = {**_DF, "groupKey": "gha/123/1:test-0"}
+
+    first, _ = start_run_set(state, request)
+    again, status = start_run_set(state, {**request, "scenarios": ["two.yaml", "one.yaml"]})
+
+    assert status == 200
+    assert again == first
+    assert len(registered.jobs) == 2
+
+
+def test_a_group_key_reused_for_a_different_request_is_a_conflict(tmp_path: Path) -> None:
+    scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml", "two.yaml"])
+    state, registered = _state(tmp_path, cfg, scn_dir)
+    request = {**_DF, "groupKey": "ci-1"}
+    start_run_set(state, request)
+
+    payload, status = start_run_set(state, {**request, "scenarios": ["one.yaml"]})
+
+    assert status == 409
+    assert "ci-1" in payload["error"]
+    assert len(registered.jobs) == 2
+
+
+def test_requests_that_differ_only_in_environment_are_not_the_same_request() -> None:
+    """Only one batch provider exists yet, so the route cannot send two; the digest is checked."""
+    from bajutsu.serve.operations.dispatch import _request_digest
+
+    args = ("t", ["one.yaml"], "config", "app", None)
+
+    assert _request_digest(*args, provider="devicefarm") != _request_digest(*args, provider="x")
 
 
 def test_a_machine_registers_its_group_under_its_own_org(tmp_path: Path) -> None:
@@ -674,9 +722,10 @@ def _group_of_two(tmp_path: Path) -> ServeState:
         runs_dir=tmp_path / "runs", executor=_RecordingExecutor(), repository=queue_repository()
     )
     assert state.repository is not None
-    state.repository.create_job_group("g1", org_id="default", key="k1")
-    for job_id in ("1", "2"):
-        state.repository.enqueue_job(job_id, org_id="default", spec={}, group_id="g1")
+    jobs = [QueuedJob(id=i, spec={}) for i in ("1", "2")]
+    state.repository.register_job_group(
+        "g1", org_id="default", key="k1", digest="d", compat_key=None, jobs=jobs
+    )
     return state
 
 

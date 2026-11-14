@@ -386,3 +386,29 @@ def test_0025_adds_job_groups_and_leaves_existing_jobs_ungrouped(migration_db_ur
         assert "group_id" not in {c["name"] for c in inspect(engine).get_columns("jobs")}
     finally:
         engine.dispose()
+
+
+@pytest.mark.parametrize("migration_db_url", _DIALECTS, indirect=True)
+def test_0026_makes_a_group_key_unique_within_its_org(migration_db_url: str) -> None:
+    """0026 keeps a group written before it and refuses a second group under its org and key."""
+    from alembic import command
+    from sqlalchemy.exc import IntegrityError
+
+    cfg = _alembic_config()
+    command.upgrade(cfg, "0025")
+    engine = create_engine(migration_db_url)
+    insert = "INSERT INTO job_groups (id, org_id, key) VALUES (:id, :org, 'k')"
+    try:
+        with engine.begin() as conn:
+            conn.execute(text(insert), {"id": "g1", "org": "o"})
+        command.upgrade(cfg, "0026")
+        with engine.connect() as conn:
+            assert conn.execute(text("SELECT digest FROM job_groups")).scalar_one() is None
+        with engine.begin() as conn:
+            conn.execute(text(insert), {"id": "g2", "org": "other"})
+        with pytest.raises(IntegrityError), engine.begin() as conn:
+            conn.execute(text(insert), {"id": "g3", "org": "o"})
+        command.downgrade(cfg, "0025")
+        assert "digest" not in {c["name"] for c in inspect(engine).get_columns("job_groups")}
+    finally:
+        engine.dispose()

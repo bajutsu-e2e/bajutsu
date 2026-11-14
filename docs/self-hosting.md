@@ -1424,8 +1424,10 @@ creates the first one from the Orgs page.
 one org may have in flight at once, so a busy org can't monopolize the scarce devices even when its
 users each stay under their own `BAJUTSU_MAX_CONCURRENT_PER_USER`. Both default to unlimited (`0`),
 and both sit under the global `--max-concurrent-runs`; an over-cap request is rejected (HTTP 429)
-rather than queued. (Fair *scheduling* across orgs — holding the rejected work in a per-org queue and
-dispatching it round-robin — is still future work; today the cap rejects.)
+rather than queued. A Device Farm fan-out (`run-set`) is the exception: it queues every scenario,
+and the caps apply when a worker leases a job, so the fan-out runs in turns as slots free (BE-0484).
+(Fair *scheduling* across orgs — holding the rejected work in a per-org queue and dispatching it
+round-robin — is still future work; today the cap rejects a plain run.)
 
 **Deleting runs, and how long the trash is kept.** A run (and its report) can be deleted through the
 API (BE-0239): `DELETE /api/runs/{id}` soft-deletes it — the run drops out of the history list but is

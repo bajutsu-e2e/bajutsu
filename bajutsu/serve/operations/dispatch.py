@@ -6,6 +6,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import shutil
 import tempfile
 import uuid
@@ -249,6 +250,32 @@ def _register_and_dispatch(
     *ship_bundle* False keeps an uploaded bundle off a job whose command line names its files by
     absolute path on the server's disk (`triage`, BE-0449), so a worker does not download the whole
     bundle, application binary included, for a job that reads none of it."""
+    _prepare_job(state, job, binding=binding, ship_bundle=ship_bundle)
+    registered = state.try_register(job)
+    if registered is None:
+        oplog.log_event(
+            _logger,
+            "quota.rejected",
+            "concurrency cap hit; job rejected",
+            org=job.org,
+            actor=job.actor,
+        )
+        return None, ({"error": "too many concurrent jobs; try again shortly"}, 429)
+    state.executor.dispatch(state, registered)
+    _log_dispatched(registered)
+    return registered, None
+
+
+def _log_dispatched(job: Job) -> None:
+    oplog.log_event(
+        _logger, "run.dispatched", "job dispatched", job_id=job.id, org=job.org, actor=job.actor
+    )
+
+
+def _prepare_job(
+    state: ServeState, job: Job, *, binding: ConfigBinding | None, ship_bundle: bool = True
+) -> None:
+    """Fill in what a dispatched job carries beyond its request (see `_register_and_dispatch`)."""
     # Resolve the requesting org's AI provider selection into this job's env overlay (BE-0229), so
     # the spawn uses that org's provider/model/effort without the serve process mutating its shared
     # os.environ. Empty when no provider is selected (the zero-config path). Travels in the job spec,
@@ -269,26 +296,6 @@ def _register_and_dispatch(
             # bundle's identity as well, and the lease signs a GET for its stored zip — without it
             # the run starts against an `appPath` no worker ever received.
             job.bundle = binding.upload.worker_ref
-    registered = state.try_register(job)
-    if registered is None:
-        oplog.log_event(
-            _logger,
-            "quota.rejected",
-            "concurrency cap hit; job rejected",
-            org=job.org,
-            actor=job.actor,
-        )
-        return None, ({"error": "too many concurrent jobs; try again shortly"}, 429)
-    state.executor.dispatch(state, registered)
-    oplog.log_event(
-        _logger,
-        "run.dispatched",
-        "job dispatched",
-        job_id=registered.id,
-        org=registered.org,
-        actor=registered.actor,
-    )
-    return registered, None
 
 
 # The request fields naming a per-job artifact override, and the artifact kind each one names.
@@ -803,6 +810,10 @@ def _config_dir_bundle(
     return {"id": sha, "artifacts": None, "scenarios_filename": None}, bundled, None
 
 
+# A caller-chosen group key (BE-0484): wide enough for a CI run's coordinates, `gha/<run>/<attempt>`.
+_GROUP_KEY = re.compile(r"[A-Za-z0-9._/:-]{1,128}")
+
+
 def _run_set_refusal(state: ServeState, body: dict[str, Any]) -> tuple[Any, int] | None:
     """Why `run-set` refuses *body* on this server before reading any target, or None."""
     # Refused rather than ignored: mapping an override onto a Device Farm request is separate work,
@@ -815,6 +826,9 @@ def _run_set_refusal(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]
             "error": "deviceBudget was removed (BE-0452): the device-cloud worker bounds its jobs "
             "with maxJobConcurrency in its worker.yaml"
         }, 400
+    key = body.get("groupKey")
+    if key is not None and not (isinstance(key, str) and _GROUP_KEY.fullmatch(key)):
+        return {"error": "groupKey must be 1-128 characters of letters, digits, and . _ / : -"}, 400
     environment = body.get("environment")
     if environment not in BATCH_PROVIDERS:
         # A fan-out packages the app for a device cloud, so it takes a batch-provider kind alone; an
@@ -963,9 +977,11 @@ def start_run_set(  # noqa: C901, PLR0911
     A neutral dispatch surface: the request names a `target`, the batch provider its runs go to as
     `environment` (BE-0452: where a run happens is a choice per run, not a property of the target),
     and, optionally, a `scenarios` subset (omitted = every scenario in the target's dir). Each
-    scenario becomes its own Job carrying a per-scenario run intent (BE-0484), registered and
-    dispatched through the same concurrency-capped tail as every other run. Returns the dispatched
-    job ids and the id of the group they form (BE-0484), which `job_group_view` reads back.
+    scenario becomes its own Job carrying a per-scenario run intent (BE-0484). The jobs are written
+    as one group, all or nothing, and the concurrency caps apply when a worker leases them. Returns
+    the job ids and the id of the group they form, which `job_group_view` reads back. An optional
+    `groupKey` makes a retry idempotent: the same key and request return the existing group, and the
+    same key with a different request is refused with 409.
 
     Each job requires `environment:<provider>` (BE-0448) until BE-0484 unit 5, and `job:run-intent`,
     so only a worker that registered the provider and resolves an intent leases it. It ships what a
@@ -1041,58 +1057,116 @@ def start_run_set(  # noqa: C901, PLR0911
     )
     if bundle_err:
         return bundle_err
-    dispatched: list[str] = []
     config_text = cfg.read_text(encoding="utf-8")
-    group_id = uuid.uuid4().hex
-    compat_key = _compat_key(
-        config_text, _app_digest(batch_app, bundle, binding), batch_platform, target
-    )
+    app_digest = _app_digest(batch_app, bundle, binding)
     upload_exec = state.upload_exec if binding.upload is not None else ""
+    jobs: list[Job] = []
     for request, materials in requests:
         if materials:
             # The scenario store ships the scenario text, so the worker has no project on disk: the
             # config travels too, at the bundle-relative path the request names.
             materials[request.config] = config_text
-        job, capped = _register_and_dispatch(
-            state,
-            Job(
-                intent=RunIntent(
-                    scenario=request.scenario,
-                    target=request.target,
-                    config=request.config,
-                    platform=request.platform,
-                    app_path=request.app_path,
-                    upload_exec=upload_exec,
-                ),
-                materials=materials,
-                materialize_baselines=binding.upload is None,
-                provenance=_provenance(binding, None),
-                actor=actor,
-                org=org,
-                label=label,
-                # The environment token keeps routing the job as before until BE-0484 unit 5.
-                capabilities=[environment_capability(provider), RUN_INTENT_CAPABILITY],
-                batch_app=batch_app,
-                bundle=bundle,
-                group_id=group_id,
-                compat_key=compat_key,
+        job = Job(
+            intent=RunIntent(
+                scenario=request.scenario,
+                target=request.target,
+                config=request.config,
+                platform=request.platform,
+                app_path=request.app_path,
+                upload_exec=upload_exec,
             ),
-            binding=binding,
+            materials=materials,
+            materialize_baselines=binding.upload is None,
+            provenance=_provenance(binding, None),
+            actor=actor,
+            org=org,
+            label=label,
+            # The environment token keeps routing the job as before until BE-0484 unit 5.
+            capabilities=[environment_capability(provider), RUN_INTENT_CAPABILITY],
+            batch_app=batch_app,
+            bundle=bundle,
         )
-        if capped:
-            # The concurrency cap (global/per-user/per-org) stops the fan-out here. If the cap
-            # rejected the *first* job, nothing was dispatched — surface the 429 rather than returning
-            # a silent 200 with an empty jobIds list (like the other start_* endpoints).
-            if not dispatched:
-                return capped
-            break
-        assert job is not None
-        dispatched.append(job.id)
-    # Written after the jobs, so a request the cap refuses outright leaves no empty group; BE-0484
-    # unit 3 makes the group and its jobs one transaction.
-    state.repository.create_job_group(group_id, org_id=org, key=uuid.uuid4().hex)
-    _record_audit(state, actor, org, "run-set", target, {"count": len(dispatched)}, ci_job=ci_job)
-    return {"groupId": group_id, "jobIds": dispatched}, 200
+        _prepare_job(state, job, binding=binding)
+        jobs.append(job)
+    return _register_group(
+        state,
+        jobs,
+        key=str(body.get("groupKey") or uuid.uuid4().hex),
+        digest=_request_digest(
+            target,
+            [r.scenario for r, _ in requests],
+            config_text,
+            app_digest,
+            label,
+            provider=provider,
+        ),
+        compat_key=_compat_key(config_text, app_digest, batch_platform, target),
+        audit=(actor, org, target, ci_job),
+    )
+
+
+def _register_group(
+    state: ServeState,
+    jobs: list[Job],
+    *,
+    key: str,
+    digest: str,
+    compat_key: str,
+    audit: tuple[str | None, str, str, dict[str, str] | None],
+) -> tuple[Any, int]:
+    """Write *jobs* to the queue as one group, all or nothing, and admit them once written (BE-0484).
+
+    The jobs bypass `try_register`: the caps apply when a worker leases them, so none cuts a group
+    short, and a retry of the key never meets a half-written fan-out.
+    """
+    from bajutsu.serve.server.db import QueuedJob
+    from bajutsu.serve.server.worker_job import job_spec
+
+    assert state.repository is not None  # _run_set_refusal refused a server with no queue
+    actor, org, target, ci_job = audit
+    rows: list[QueuedJob] = []
+    group_id = uuid.uuid4().hex
+    for job, job_id in zip(jobs, state.reserve_job_ids(len(jobs)), strict=True):
+        job.id, job.group_id, job.compat_key = job_id, group_id, compat_key
+        spec = job_spec(job)
+        if spec["cwd"] is not None:
+            # A job naming files on the server's disk would need its `machine:` token, which no
+            # group job carries; every fan-out ships its files, so this is a defect, not a request.
+            raise ValueError(f"run-set job {job_id} ships none of its files")
+        rows.append(
+            QueuedJob(id=job_id, spec=spec, capabilities=sorted(set(job.capabilities)), actor=actor)
+        )
+    held = state.repository.register_job_group(
+        group_id, org_id=org, key=key, digest=digest, compat_key=compat_key, jobs=rows
+    )
+    if held is None:
+        return {"error": f"groupKey {key!r} already names a different run-set request"}, 409
+    if held != group_id:
+        return {
+            "groupId": held,
+            "jobIds": [j["id"] for j in state.repository.group_jobs(held)],
+        }, 200
+    for job in jobs:
+        _log_dispatched(state.admit(job))
+    _record_audit(state, actor, org, "run-set", target, {"count": len(jobs)}, ci_job=ci_job)
+    return {"groupId": group_id, "jobIds": [j.id for j in jobs]}, 200
+
+
+def _request_digest(
+    target: str,
+    scenarios: list[str],
+    config_text: str,
+    app_digest: str | None,
+    label: str | None,
+    *,
+    provider: str,
+) -> str:
+    """What a `run-set` request asks to run, so a repeated group key tells a retry from another
+    request (BE-0484). The scenarios are a set: a retry need not list them in the same order."""
+    config_digest = hashlib.sha256(config_text.encode()).hexdigest()
+    return hashlib.sha256(
+        json.dumps([target, sorted(scenarios), config_digest, app_digest, label, provider]).encode()
+    ).hexdigest()
 
 
 def _app_digest(

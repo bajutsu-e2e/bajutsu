@@ -842,6 +842,43 @@ def test_job_registry_counts_only_running_jobs() -> None:
     assert reg.in_flight_by_org() == {"acme": 2, "beta": 1}
 
 
+def test_job_registry_admits_a_job_under_an_id_it_reserved() -> None:
+    """A group's ids are drawn before its store write, and its jobs enter after it (BE-0484)."""
+    bus = InMemoryLogBus()
+    reg = srv_state.JobRegistry(logbus=bus)
+    assert reg.reserve_ids(2) == ["1", "2"]
+    job = srv.Job(cmd=[], id="2")
+
+    assert reg.admit(job) is job and job.bus is bus and reg.jobs["2"] is job
+    assert reg.register(srv.Job(cmd=[])).id == "3"
+
+
+def test_job_registry_counts_a_group_job_once_it_is_leased() -> None:
+    """A queued group job holds no slot; the jobs table says which are leased (BE-0484)."""
+    leased: dict[tuple[str, str | None], int] = {("acme", "alice"): 2}
+    reg = srv_state.JobRegistry(logbus=InMemoryLogBus(), leased_groups=lambda: dict(leased))
+    for job_id in reg.reserve_ids(3):
+        reg.admit(srv.Job(cmd=[], id=job_id, org="acme", actor="alice", group_id="g1"))
+    reg.register(srv.Job(cmd=[], org="beta"))
+
+    assert reg.active_jobs() == 3
+    assert reg.in_flight_by_org() == {"acme": 2, "beta": 1}
+    assert reg.try_register(srv.Job(cmd=[], org="acme"), max_concurrent_per_org=2) is None
+    assert reg.try_register(srv.Job(cmd=[], actor="alice"), max_concurrent_per_user=2) is None
+    assert reg.try_register(srv.Job(cmd=[]), max_concurrent=3) is None
+    assert reg.try_register(srv.Job(cmd=[]), max_concurrent=4) is not None
+
+
+def test_job_registry_fails_a_registration_whose_lease_read_fails() -> None:
+    def broken() -> dict[tuple[str, str | None], int]:
+        raise RuntimeError("database is down")
+
+    reg = srv_state.JobRegistry(logbus=InMemoryLogBus(), leased_groups=broken)
+
+    with pytest.raises(RuntimeError, match="database is down"):
+        reg.try_register(srv.Job(cmd=[]), max_concurrent=1)
+
+
 def _bundle(uploads_dir: Path, name: str) -> Upload:
     """An Upload backed by a real extraction dir under *uploads_dir* (BE-0073)."""
     d = uploads_dir / name

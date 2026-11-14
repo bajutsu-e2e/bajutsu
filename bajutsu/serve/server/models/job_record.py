@@ -24,6 +24,10 @@ class JobRecord(Base):
         Index("ix_jobs_status_leased_at", "status", "leased_at"),
         Index("ix_jobs_status_created_at", "status", "created_at"),
         Index("ix_jobs_group_id", "group_id"),
+        # The grouped lease scan reads the oldest queued job of each group and key (BE-0484): the
+        # route key for a worker that checks routes, the base key for one that does not.
+        Index("ix_jobs_status_group_route", "status", "group_id", "route_key", "created_at"),
+        Index("ix_jobs_status_group_base", "status", "group_id", "base_key", "created_at"),
     )
 
     id: Mapped[str] = mapped_column(primary_key=True)
