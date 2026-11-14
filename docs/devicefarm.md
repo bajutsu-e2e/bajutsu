@@ -261,7 +261,9 @@ tokens:
 - `kind:device`, since every device the worker reserves is physical
 - `platform:android` and `platform:ios`, the platforms Device Farm serves
 
-It advertises no device-family token, since Device Farm picks a device by platform alone.
+It advertises no device-family token, since Device Farm picks a device by platform alone. A target
+that names `runsOn.ios.family` thus never routes to a Device Farm worker. Its jobs wait for a
+local worker that holds the family. Until one is live, they count in `bajutsu_unroutable_jobs`.
 
 A fan-out job requires its target's `platform:<p>` token and `job:run-intent`. It also requires its
 scenario's own `cap:` and `setting:` tokens. An iOS job adds its target's device-family tokens. It
