@@ -374,8 +374,9 @@ A fan-out with no uploaded bundle stages its scenario files in `.batch-groups/<g
 worker builds the package from that directory. The package thus holds every staged scenario of the
 fan-out. The worker removes the directory once the fan-out's last job on the worker has finished.
 When a shared upload fails, every slot that waited on it fails too. When Device Farm refuses a run
-on a reused upload, the slot uploads its own copy and retries. The worker then uploads once per job
-until it restarts.
+on a reused upload, the slot uploads its own copy and retries. When that retry succeeds, the worker
+stops sharing and uploads once per job until it restarts. A retry that fails leaves sharing on. The
+same error codes cover other bad arguments, so a refusal alone never turns sharing off.
 
 Before it uploads anything, the worker checks each leased scenario against its `worker.yaml`. The
 check is the one `bajutsu run --worker-config` makes
