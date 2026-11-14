@@ -916,6 +916,7 @@ def test_process_state_never_reaches_the_package(tmp_path: Path) -> None:
         ".bundles/o/x/app.apk",
         ".overrides/x",
         ".batch/j/x",
+        ".batch-groups/g/app.apk",
         ".owner-pid",
         ".job-pgid",
     ):

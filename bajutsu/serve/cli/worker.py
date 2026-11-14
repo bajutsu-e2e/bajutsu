@@ -2130,8 +2130,9 @@ def _workspace_or_failure(
     permanent failed job. Everything after the download is deterministic over verified bytes, so it
     keeps the permanent classification.
 
-    With a *group*, the job's materials and application go into the group's staging directory
-    instead (`_stage_in_group`), and the returned workspace keeps the job's run output alone.
+    With a *group*, the job's materials and application are staged in the group's directory
+    (`_stage_in_group`), which the provider packages in place of the returned workspace. That
+    workspace still receives the materials `execute_job_spec` writes, and the run's output.
     """
     try:
         base = _bundle_workspace(work, spec, bundle_urls)
