@@ -1049,7 +1049,16 @@ class SqlRepository:
         if provenance != (spec.get("provenance") or {}):
             spec["provenance"] = provenance or None
             row.spec = spec
-        return [LeasedJob(id=row.id, org_id=row.org_id, spec=spec, capabilities=caps)]
+        return [
+            LeasedJob(
+                id=row.id,
+                org_id=row.org_id,
+                spec=spec,
+                capabilities=caps,
+                group_id=row.group_id,
+                compat_key=row.compat_key,
+            )
+        ]
 
     def leased_group_counts(self) -> dict[tuple[str, str | None], int]:
         from sqlalchemy import func, select

@@ -422,6 +422,7 @@ def execute_job_spec(
     secret_env: Mapping[str, str] | None = None,
     batch_checkpoint: BatchCheckpoint | None = None,
     lease_lost: threading.Event | None = None,
+    batch_dir: Path | None = None,
 ) -> Job:
     """Worker entrypoint: rebuild the job from *spec*, run the unchanged `run_job`, then upload its
     run tree through the control plane's presigned URLs.
@@ -449,7 +450,8 @@ def execute_job_spec(
     *secret_env* is the org's stored secrets the lease relayed (BE-0449), laid over the child's
     environment and never written into the spec or the run's argv. *batch_checkpoint* and
     *lease_lost* are a leased cloud-batch job's link to its lease (BE-0448): where its run's ARN is
-    stored, and the flag that tells its poll the lease is gone."""
+    stored, and the flag that tells its poll the lease is gone. *batch_dir* is the directory a
+    cloud-batch job packages, when it is not *cwd*: its group's staging directory (BE-0484)."""
     # The subprocess runs with cwd=work and writes runs/<id>/ relative to it, so runs_dir must be
     # work/runs — otherwise state.artifacts would be confined to an unrelated process-CWD runs/.
     work = cwd or Path.cwd()
@@ -503,12 +505,16 @@ def execute_job_spec(
         # The cloud-batch request (BE-0336 Unit 5), so a batch job leased from the DB queue runs on the
         # batch seam here rather than degrading to a local subprocess. None for a normal job.
         batch=_batch_from_spec(spec.get("batch")),
+        # Set by a slot worker from the job's lease (BE-0484), so the batch provider shares uploads.
+        group_id=spec.get("group_id"),
+        compat_key=spec.get("compat_key"),
         provenance=_provenance_from_spec(spec.get("provenance")),
         keep_caller_path=keep_caller_path,
         cwd=job_cwd,
         secret_env=dict(secret_env or {}),
         batch_checkpoint=batch_checkpoint,
         lease_lost=lease_lost,
+        batch_dir=batch_dir,
         worker_capability=_batch_worker_capability(spec, worker_config),
     )
     # Bind the job's ids so every operational record on this worker correlates to it (BE-0055);

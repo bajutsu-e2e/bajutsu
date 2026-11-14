@@ -182,6 +182,11 @@ def _lease_body(
     }
     if secret_env:
         resp["secret_env"] = secret_env
+    if leased.group_id is not None:
+        # Keys the worker's shared uploads (BE-0484): its jobs of one group share a package, and its
+        # jobs of one compatibility key share the application upload.
+        resp["group_id"] = leased.group_id
+        resp["compat_key"] = leased.compat_key
     if (leased.spec.get("batch") is not None or leased.spec.get("intent") is not None) and (
         run_arn := state.repository.load_batch_run_arn(leased.id)
     ):
