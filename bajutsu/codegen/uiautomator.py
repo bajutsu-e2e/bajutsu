@@ -268,6 +268,15 @@ def _emit_step(step: Step) -> list[str]:  # noqa: C901, PLR0911, PLR0912
         ]
     if step.copy_ is not None:
         return ["device.pressKeyCode(KeyEvent.KEYCODE_C, KeyEvent.META_CTRL_ON)"]
+    if step.paste is not None:
+        by = _by(step.paste.into.as_selector())
+        if by is None:
+            return [_unsupported_selector_todo(step.paste.into.as_selector())]
+        # Focus, then Ctrl+V pastes the clipboard at the caret — the driver's own chord.
+        return [
+            f"act({by}).click()",
+            "device.pressKeyCode(KeyEvent.KEYCODE_V, KeyEvent.META_CTRL_ON)",
+        ]
     if step.swipe is not None:
         sw = step.swipe
         if sw.on is not None and sw.direction is not None:

@@ -1,0 +1,84 @@
+# The `paste` step: insert the clipboard into a field. All three scenarios paste into the Search field,
+# whose own value reflects its text, so each paste is checked with a `value` assertion on the field —
+# the step records nothing of its own to assert.
+#
+# The first scenario pastes what an in-app `copy` put on the clipboard. The other two paste a
+# clipboard seeded by `setClipboard`, which iOS attributes to another process (simctl writes it): the
+# case `paste` exists for. A hardware Cmd+V pastes nothing from such a clipboard and reports no error,
+# so the iOS driver pastes through the edit menu's Paste item instead. Whether that paste raises iOS's
+# paste-consent prompt depends on the Simulator build: a local Xcode 27 / iOS 26.5 run showed none,
+# the CI image (Xcode 26.6) shows it on every paste. So each scenario declares the `paste` prompt in
+# `interrupts` with `choice: grant`, and the run's guard answers it natively whenever it appears
+# (BE-0369). The third pastes into a field that already holds text and focus, where the focusing tap
+# raises the edit menu itself.
+#
+# The in-app scenario comes first, and the file runs only on the `actuation` CI lane after
+# text_editing.yaml, because on the iOS Simulator a `setClipboard` leaves in-app select-all and copy
+# (⌘A / ⌘C) doing nothing on that device until it is erased. The `pasteboard` tag keeps the file out
+# of the local bulk runs, which discover every scenario file in name order and would run it before
+# text_editing.yaml.
+#
+# Runs on iOS (XCUITest), on the SwiftUI and UIKit a11y apps alike.
+#   bajutsu run --scenario paste.yaml --target showcase-swiftui ...
+- name: paste back what copy took from the field
+  tags: [pasteboard]
+  preconditions:
+    subject:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
+  interrupts:
+    - { systemAlert: paste, choice: grant }
+  steps:
+    - tap: { label: "Search", traits: [button] }
+    - wait: { for: { id: search.field }, timeout: 10 }
+    - type: { text: "Horse 3", into: { id: search.field } }
+    - wait: { for: { id: search.row.3 }, timeout: 5 }
+    - select: { into: { id: search.field }, mode: all }
+    - copy: {}
+    - assert:
+        - clipboard: { equals: "Horse 3" }
+    # clear empties the field, so all five rows return; the paste must narrow them to one again.
+    - clear: { into: { id: search.field } }
+    - wait: { for: { id: search.row.1 }, timeout: 5 }
+    - paste: { into: { id: search.field } }
+    - wait: { for: { id: search.field, value: "Horse 3" }, timeout: 5 }
+  expect:
+    - value: { sel: { id: search.field }, equals: "Horse 3" }
+    - value: { sel: { id: search.count }, equals: "1" }
+
+- name: paste text seeded with setClipboard
+  tags: [pasteboard]
+  preconditions:
+    subject:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
+  interrupts:
+    - { systemAlert: paste, choice: grant }
+  steps:
+    - setClipboard: { text: "Horse 4" }
+    - tap: { label: "Search", traits: [button] }
+    - wait: { for: { id: search.field }, timeout: 10 }
+    - paste: { into: { id: search.field } }
+    - wait: { for: { id: search.row.4 }, timeout: 5 }
+  expect:
+    - value: { sel: { id: search.field }, equals: "Horse 4" }
+    - value: { sel: { id: search.count }, equals: "1" }
+
+- name: paste at the caret of a field that already holds text
+  tags: [pasteboard]
+  preconditions:
+    subject:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
+  interrupts:
+    - { systemAlert: paste, choice: grant }
+  steps:
+    - setClipboard: { text: "2" }
+    - tap: { label: "Search", traits: [button] }
+    - wait: { for: { id: search.field }, timeout: 10 }
+    - type: { text: "Horse ", into: { id: search.field } }
+    - paste: { into: { id: search.field } }
+    - wait: { for: { id: search.field, value: "Horse 2" }, timeout: 5 }
+  expect:
+    - value: { sel: { id: search.field }, equals: "Horse 2" }
+    - value: { sel: { id: search.count }, equals: "1" }

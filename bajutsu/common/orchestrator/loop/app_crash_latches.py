@@ -23,6 +23,7 @@ OBSERVES_APP = frozenset(
         "clear",
         "delete",
         "copy_",
+        "paste",
         "select_option",
         "set_picker_value",
         "swipe",

@@ -704,6 +704,7 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
 | `delete` | `delete: { into: <Selector>, count: <int> }` | フィールドをフォーカスして末尾から `count` 文字削除する（`count > 0`）。web コンテキストは非対応 |
 | `select` | `select: { into: <Selector>, mode?: "all" }` | フィールドをフォーカスして内容を選択する（`mode` 既定 `all`）。web コンテキストは非対応。iOS（XCUITest）バックエンドはネイティブに対応し、codegen もネイティブの等価物を出力する |
 | `copy` | `copy: {}` | 選択中の内容をクリップボードへコピーする。事前の `select` が必要。web コンテキストは非対応。iOS（XCUITest）バックエンドはネイティブに対応する |
+| `paste` | `paste: { into: <Selector> }` | フィールドにフォーカスし、そのタップで置かれたカーソル位置にクリップボードをペーストする（文字列のあるフィールドでは、タップした位置になる）。選択中の内容があれば置き換える。クリップボードには `copy` か `setClipboard` が入れた内容が入っている。結果は `value` アサーションで確かめる。web コンテキストは非対応。iOS では編集メニューの「Paste」項目をタップする（`setClipboard` で入れたクリップボードはハードウェアの Cmd+V では貼り付けられないため）。メニューはアプリのローカライズに従うので、UIKit の Paste ラベルをどの言語でも受け付ける。Simulator のビルドによってはこの貼り付けで iOS の貼り付け同意ダイアログが出るので、`interrupts: [{ systemAlert: paste, choice: grant }]` を宣言してガードに応答させる |
 | `selectOption` | `selectOption: { sel: <Selector>, option: "..." }` | web の `<select>` をこの value を持つ option に合わせる。web 専用（iOS / Android は失敗する） |
 | `selectPhotos` | `selectPhotos: { indices: [0, 1], timeout: 10 }` | アプリがすでに開いたシステムの写真選択画面から、指定した位置のセル（0 が先頭で、新しい画像ほど前）を選んで確定する。iOS（XCUITest）では `PHPickerViewController`、adb では Android 13 以降の写真選択画面を操作する。単一選択の画面は 1 回のタップで閉じる。見えているグリッドを超える位置は失敗する |
 | `setPickerValue` | `setPickerValue: { sel: <Selector>, value: "..." }` | ホイール型のピッカー（iOS では `UIPickerView` かホイール表示の `UIDatePicker`、Android では `NumberPicker` かスピナー表示の `DatePicker`）をこの value を持つ行へ動かす（[後述](#setpickervalue)）。iOS（XCUITest）と Android（adb）で使える。`sel` は 1 つのホイールを指し、複数コンポーネントのピッカーは `within` / `traits` / `index` で兄弟のホイールを区別し、コンポーネントごとに 1 ステップずつ書く |
@@ -859,7 +860,7 @@ Android は、等しさではなく包含で照合します。2 つの矩形の�
 - **iOS**：アプリが BajutsuKit をリンクし、`BajutsuNet.startIfEnabled()` を呼びます。この呼び出しは、run がポートを渡したときにブリッジを起動します。`WKWebView` にはアクセシビリティ識別子を付けます。
 - **Android**：デバッグ可能なビルドが、`Application.onCreate`、または最初の WebView を作る直前に `Bajutsu.enableWebViewDebugging(context)` を呼びます。このヘルパーは BajutsuAndroid の関数です。どの debug ビルドタイプも `android:debuggable` を設定します。このヘルパーはデバッグ可能でないビルドでは何もしないので、リリースビルドがソケットを開くことはありません。bajutsu を動かすマシンには `android` extra（`websockets`）が要ります。構成済みのバックエンドに Android が含まれていれば、`scripts/install.sh` がこの extra を入れます。
 
-**ブロックが対応する範囲。** ブロックの中では `tap` / `tapPoint` / `doubleTap` / `type` / `wait` / `assert` が動きます。`longPress` / `swipe` / `drag` / `clear` / `delete` / `select` / `copy` / `selectOption` / `scroll` / `back` / `navigate` / `pinch` / `rotate` / `handleSystemAlert` / `setPickerValue` はそこに届きません。いずれも「web コンテキストは非対応」という明確な理由で失敗します。次の場合も、ブロックの対象外です。
+**ブロックが対応する範囲。** ブロックの中では `tap` / `tapPoint` / `doubleTap` / `type` / `wait` / `assert` が動きます。`longPress` / `swipe` / `drag` / `clear` / `delete` / `select` / `copy` / `paste` / `selectOption` / `scroll` / `back` / `navigate` / `pinch` / `rotate` / `handleSystemAlert` / `setPickerValue` はそこに届きません。いずれも「web コンテキストは非対応」という明確な理由で失敗します。次の場合も、ブロックの対象外です。
 
 | 場合 | 起きること |
 |---|---|

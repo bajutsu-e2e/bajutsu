@@ -18,6 +18,7 @@ GESTURES: tuple[str, ...] = (
     "deleteText",
     "selectAll",
     "copy",
+    "paste",
     "selectOption",
     "setPickerValue",
     "systemAlert",

@@ -62,7 +62,7 @@ The two mobile backends differ in what they support.
 | `appTrace` | whole-scenario app log trace: `os_log` on iOS, a tag-filtered `logcat` on Android (BE-0467, BE-0478; Simulator only on iOS) | ✅ | ✅ | — | — |
 | `multiTouch` | two-finger gestures (pinch / rotate) | ✅ | ✅ | ✅ | ✅ |
 | `webView` | query and tap the DOM inside a WebView the app embeds; granted per run, by the BajutsuKit WebView bridge on iOS (BE-0037) and over the Chrome DevTools Protocol on Android (BE-0482), so no backend declares it statically | — | — | — | — |
-| `textSelection` | select-all + clipboard copy on the focused field | ✅ | ✅ | ✅ | ✅ |
+| `textSelection` | select-all + clipboard copy and paste on the focused field | ✅ | ✅ | ✅ | ✅ |
 | `selectOption` | set a native `<select>` by value (web only) | — | — | ✅ | ✅ |
 | `urlNavigation` | open a URL mid-scenario with `navigate` (web only; BE-0464) | — | — | ✅ | ✅ |
 | `elementAttribute` | read one HTML attribute of an element for the `attribute` assertion (web only; BE-0466) | — | — | ✅ | ✅ |
@@ -137,8 +137,8 @@ constructs this check follows into those blocks), an `attribute` assertion needs
 (web only; BE-0466 — found anywhere: `expect`, a step's `assert`, an `if` or `interrupts` condition,
 inside a `web:` or `app:` block, and in `interrupts` recovery steps, so the iOS WebView context is
 rejected too),
-`select` / `copy` need `textSelection`
-(select-all + clipboard copy; the web context is coordinate-only for these and refuses both —
+`select` / `copy` / `paste` need `textSelection`
+(select-all + clipboard copy and paste; the web context is coordinate-only for these and refuses all three —
 `delete` / `clear` stay ungated, as every backend backs `delete_text`), a `visual` assertion needs
 `screenshot`, `handleSystemAlert` needs the `handleSystemAlert` token (only xcuitest declares it),
 `setPickerValue` needs the `pickerWheel` token (xcuitest and adb declare it — a picker wheel is a
@@ -315,7 +315,7 @@ than resolving through frame-center coordinates. Needs Xcode's `xcodebuild`.
   ([selectors](selectors.md#elementnottappable-a-resolved-but-unreachable-target)).
 - `wait_for`: uses the runner's native condition waiting.
 - `pinch` / `rotate`: two-finger multi-touch gestures performed natively by the runner.
-- `select` / `copy`: native text selection on the focused field.
+- `select` / `copy` / `paste`: native text selection and clipboard paste on the focused field.
 - `screenshot`: `simctl io screenshot`.
 - `enter_app` / `leave_app`: the `app:` step. Unlike the `SFSafariViewController` merge
   above, this never merges two trees — `enter_app` pushes a new `XCUIApplication(bundleIdentifier:)`

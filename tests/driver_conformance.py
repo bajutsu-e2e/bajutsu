@@ -19,7 +19,7 @@ The invariants (grounded in the `Driver` Protocol and `drivers/base`):
 * A unique match acts without error.
 * `capabilities()` matches observed behavior — the `QUERY` / `ELEMENTS` baseline is declared,
   multi-touch gestures work exactly when `MULTI_TOUCH` is declared (else raise loudly),
-  select-all / clipboard copy work exactly when `TEXT_SELECTION` is declared (else raise loudly)
+  select-all / clipboard copy / paste work exactly when `TEXT_SELECTION` is declared (else raise loudly)
   and, on a harness that can read the device clipboard, the copy actually lands there,
   and a picker wheel is set exactly when `PICKER_WHEEL` is declared (else raise loudly).
 * Text editing round-trips on the focused field: typing then deleting reduces the field's
@@ -156,6 +156,15 @@ TAP_MIRROR_B_VALUE_ID = "conformance.tapMirror.b.value"
 def field_value(driver: base.Driver) -> str:
     """The current text of the conformance field (empty string when it reports none)."""
     return base.resolve_unique(driver.query(), {"id": FIELD_ID})["value"] or ""
+
+
+def _field_shows(driver: base.Driver, text: str, timeout: float = 5.0) -> bool:
+    """Whether the conformance field's value comes to contain `text` within `timeout`.
+
+    A condition wait, as a scenario's `wait` would do: on a slow emulator a single read straight after
+    a paste can land before the field publishes it.
+    """
+    return any(text in field_value(driver) for _ in base.deadline_ticks(timeout, 0.1, 0.5))
 
 
 def _mirror_value(driver: base.Driver, identifier: str) -> str:
@@ -647,8 +656,8 @@ class DriverConformanceContract:
                 driver.select_photos([0], timeout=10)
 
     def test_text_selection_capability_matches_behavior(self, harness: ConformanceHarness) -> None:
-        # capabilities() is a promise (BE-0280): a TEXT_SELECTION backend actuates select-all + copy
-        # without UnsupportedAction; one without it (a coordinate-only backend) refuses both loudly rather
+        # capabilities() is a promise (BE-0280): a TEXT_SELECTION backend actuates select-all + copy +
+        # paste without UnsupportedAction; one without it (a coordinate-only backend) refuses all three loudly rather
         # than silently no-op'ing — the same shape as MULTI_TOUCH. `delete_text` / `type_text` are
         # never gated (every backend backs them), so they must succeed on either side of the branch.
         driver = harness.with_screen([])  # the field is always present; no seeded buttons needed
@@ -667,11 +676,26 @@ class DriverConformanceContract:
             # in it, so the clipboard must contain the token rather than equal it.
             if hasattr(harness, "clipboard_text"):
                 assert token in harness.clipboard_text()
+            # Paste is the same promise's third chord. Delete the still-active selection first, so
+            # a paste that inserts nothing leaves the field without the token instead of passing on
+            # the text that was already there. Probe `value` while the token is still in the field,
+            # so "this backend surfaces no value" stays distinct from "the paste inserted nothing",
+            # which the emptied field would hide.
+            surfaces_value = bool(field_value(driver))
+            driver.select_all()
+            driver.delete_text(1)
+            driver.paste({"id": FIELD_ID})  # must not raise
+            if surfaces_value:
+                assert _field_shows(driver, token), (
+                    f"paste left the field at {field_value(driver)!r}"
+                )
         else:
             with pytest.raises(base.UnsupportedAction):
                 driver.select_all()
             with pytest.raises(base.UnsupportedAction):
                 driver.copy_selection()
+            with pytest.raises(base.UnsupportedAction):
+                driver.paste({"id": FIELD_ID})
 
     def test_delete_text_reduces_the_field_length(self, harness: ConformanceHarness) -> None:
         # The round-trip observable effect (BE-0280): typing grows the field, deleting shrinks it.

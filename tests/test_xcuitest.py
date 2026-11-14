@@ -44,6 +44,7 @@ from bajutsu.common.drivers.xcuitest import (
     _with_crash_recovery,
     _with_retry,
 )
+from bajutsu.common.drivers.xcuitest import xcuitest_driver as xcuitest_driver_module
 
 
 def _el_wire(
@@ -3229,3 +3230,121 @@ def test_set_interruption_policy_raises_when_the_runner_did_not_store_it() -> No
 
     with pytest.raises(XcuitestChannelError, match="interruption policy"):
         _driver(transport).set_interruption_policy([], True)
+
+
+_PASTE_ITEM = _el_wire("h-paste", None, "Paste", traits=["staticText"])
+_FIELD_TAP = ("POST", "/tap", {"handle": "h-field"})
+_FIELD_PRESS = ("POST", "/tap", {"handle": "h-field", "duration": 0.6})
+
+
+def _paste_transport(
+    menu: list[dict[str, Any]],
+    *,
+    raised_by: str = "press",
+    app: list[dict[str, Any]] | None = None,
+) -> tuple[TransportFn, list[tuple[str, str, Mapping[str, Any] | None]]]:
+    """A runner whose screen gains `menu` once the coupon field is long-pressed (or tapped).
+
+    `app` is content the screen shows throughout; `raised_by="tap"` models a field that already had
+    focus, where the plain focusing tap raises the edit menu.
+    """
+    sent: list[tuple[str, str, Mapping[str, Any] | None]] = []
+    state = {"menu": False}
+
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            field = _el_wire("h-field", "form.coupon", None, traits=["textField"])
+            return _elements(field, *(app or []), *(menu if state["menu"] else []))
+        sent.append((method, path, body))
+        if path == "/tap" and body is not None and body.get("handle") == "h-field":
+            pressed = "duration" in body
+            state["menu"] = state["menu"] or pressed or raised_by == "tap"
+        return _Reply(status="ok")
+
+    return transport, sent
+
+
+def _fast_paste(monkeypatch: pytest.MonkeyPatch) -> None:
+    # One read per wait, so a menu that never comes costs no wall time on the gate.
+    monkeypatch.setattr(xcuitest_driver_module, "_PASTE_MENU_AFTER_TAP", 0.0)
+    monkeypatch.setattr(xcuitest_driver_module, "_PASTE_MENU_TIMEOUT", 0.0)
+
+
+def test_paste_focuses_then_long_presses_to_raise_the_menu_then_taps_paste(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Cmd+V pastes nothing from another process's clipboard, so iOS pastes through the edit menu.
+    _fast_paste(monkeypatch)
+    transport, sent = _paste_transport([_PASTE_ITEM])
+    _driver(transport).paste({"id": "form.coupon"})
+    assert sent == [_FIELD_TAP, _FIELD_PRESS, ("POST", "/tap", {"handle": "h-paste"})]
+
+
+def test_paste_uses_the_menu_its_focusing_tap_raised(monkeypatch: pytest.MonkeyPatch) -> None:
+    # On a field that already had focus the tap raises the menu, and a long press would dismiss it.
+    _fast_paste(monkeypatch)
+    transport, sent = _paste_transport([_PASTE_ITEM], raised_by="tap")
+    _driver(transport).paste({"id": "form.coupon"})
+    assert sent == [_FIELD_TAP, ("POST", "/tap", {"handle": "h-paste"})]
+
+
+def test_paste_accepts_the_label_in_the_apps_own_localization(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # UIKit renders the menu in the app's localization, so any language's label is accepted.
+    _fast_paste(monkeypatch)
+    transport, sent = _paste_transport(
+        [_el_wire("h-paste", None, "ペースト", traits=["staticText"])]
+    )
+    _driver(transport).paste({"id": "form.coupon"})
+    assert sent[-1] == ("POST", "/tap", {"handle": "h-paste"})
+
+
+def test_paste_never_takes_app_content_for_the_menu(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The app's own "Paste" button was on screen before any touch, so it is not the menu's item:
+    # the driver still raises the menu rather than tapping the button and reporting success.
+    _fast_paste(monkeypatch)
+    app = [_el_wire("h-app", "app.paste", "Paste", traits=["button"], frame=(0, 500, 10, 10))]
+    transport, sent = _paste_transport([], app=app)
+    with pytest.raises(base.ElementNotFound):
+        _driver(transport).paste({"id": "form.coupon"})
+    assert ("POST", "/tap", {"handle": "h-app"}) not in sent
+
+
+def test_paste_refuses_a_menu_item_that_shares_app_contents_label(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The menu added a "Paste" item, but the app also shows one: no single element to tap.
+    _fast_paste(monkeypatch)
+    app = [_el_wire("h-app", "app.paste", "Paste", traits=["button"], frame=(0, 500, 10, 10))]
+    transport, sent = _paste_transport([_PASTE_ITEM], app=app)
+    with pytest.raises(base.AmbiguousSelector):
+        _driver(transport).paste({"id": "form.coupon"})
+    assert ("POST", "/tap", {"handle": "h-app"}) not in sent
+
+
+def test_paste_refuses_two_languages_paste_labels_at_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    _fast_paste(monkeypatch)
+    menu = [_PASTE_ITEM, _el_wire("h-colar", None, "Colar", traits=["button"])]
+    transport, sent = _paste_transport(menu)
+    with pytest.raises(base.AmbiguousSelector):
+        _driver(transport).paste({"id": "form.coupon"})
+    assert ("POST", "/tap", {"handle": "h-paste"}) not in sent
+
+
+def test_paste_fails_loudly_when_the_menu_offers_no_paste(monkeypatch: pytest.MonkeyPatch) -> None:
+    # An empty clipboard leaves Paste out of the menu; the step must fail, not pass having done nothing.
+    _fast_paste(monkeypatch)
+    transport, sent = _paste_transport([])
+    with pytest.raises(base.ElementNotFound):
+        _driver(transport).paste({"id": "form.coupon"})
+    assert sent == [_FIELD_TAP, _FIELD_PRESS]
+
+
+def test_paste_names_a_menu_already_up_before_the_step(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A menu an earlier step left up is counted before the gesture, so the one this raises adds
+    # nothing: the failure must say so, not blame an empty clipboard.
+    _fast_paste(monkeypatch)
+    transport, _sent = _paste_transport([], app=[_PASTE_ITEM])
+    with pytest.raises(base.ElementNotFound, match="already on screen"):
+        _driver(transport).paste({"id": "form.coupon"})

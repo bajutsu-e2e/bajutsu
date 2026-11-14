@@ -233,6 +233,11 @@ class FakeDriver:
         self._actuations.record(Actuation(gesture="copy", via="focused", unit=_UNIT))
         self._record("copy_selection", None)
 
+    def paste(self, sel: base.Selector) -> None:
+        self.tap(sel)
+        self._actuations.record(Actuation(gesture="paste", via="focused", unit=_UNIT))
+        self._record("paste", sel)
+
     def select_option(self, sel: base.Selector, option: str) -> None:
         # Like a real driver, require a unique match; state changes are scripted via `react`.
         # `option` never reaches the record (it can hold a resolved secret).

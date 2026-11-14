@@ -32,6 +32,7 @@ from .manual import Manual
 from .navigate import Navigate, navigate_url_problem
 from .otp import Otp
 from .override_status_bar import OverrideStatusBar
+from .paste import Paste
 from .pinch import Pinch
 from .push import Push
 from .random_float import RandomFloat
@@ -83,6 +84,7 @@ __all__ = [
     "Navigate",
     "Otp",
     "OverrideStatusBar",
+    "Paste",
     "Pinch",
     "Push",
     "RandomFloat",

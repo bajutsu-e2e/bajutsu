@@ -88,8 +88,9 @@ def _conformance_react(
     on the fast gate too.
 
     `clipboard` (#2390) holds the device clipboard under `"text"`: select-all on the focused field
-    selects its whole value and copy puts that selection there, so the copy's effect is checked on
-    the fast gate the way a real backend's clipboard read checks it on-device.
+    selects its whole value, copy puts that selection there, and paste inserts it back into the
+    field, so the copy's and paste's effects are checked on the fast gate the way a real backend's
+    clipboard and `value` reads check them on-device.
     """
     focused = {"on": False}
     mirrors = mirrors or {}
@@ -97,7 +98,9 @@ def _conformance_react(
     selection: dict[str, str | None] = {"text": None}
 
     def react(_driver: FakeDriver, kind: str, arg: object) -> None:
-        if kind in ("tap", "tap_point", "type", "delete_text"):
+        # Select-all is the only selection the fake models, so a live one always spans the field.
+        whole_field_selected = selection["text"] is not None
+        if kind in ("tap", "tap_point", "type", "delete_text", "paste"):
             selection["text"] = None  # any other edit or focus change drops the selection
         if kind == "tap":
             focused["on"] = isinstance(arg, dict) and arg.get("id") == FIELD_ID
@@ -114,7 +117,11 @@ def _conformance_react(
         elif kind == "type" and focused["on"] and isinstance(arg, str):
             field["value"] = (field["value"] or "") + arg
         elif kind == "delete_text" and focused["on"] and isinstance(arg, int):
-            field["value"] = (field["value"] or "")[: -arg or None]
+            # A backspace with a live selection removes the selection, as on a real field.
+            field["value"] = "" if whole_field_selected else (field["value"] or "")[: -arg or None]
+        elif kind == "paste" and focused["on"]:
+            pasted = clipboard.get("text", "")
+            field["value"] = pasted if whole_field_selected else (field["value"] or "") + pasted
         elif kind == "select_all" and focused["on"]:
             selection["text"] = field["value"] or ""
         elif kind == "copy_selection" and selection["text"] is not None:

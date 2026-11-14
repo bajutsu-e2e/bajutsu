@@ -130,6 +130,7 @@ _SCREEN_ACTIONS = frozenset(
         "clear",
         "delete",
         "copy_",
+        "paste",
         "select_option",
         "select_photos",
         "set_picker_value",

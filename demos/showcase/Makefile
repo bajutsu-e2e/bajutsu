@@ -138,6 +138,10 @@ runner-build-device:
 # named iOS CI scenario list (`run` for the first, `actuation` for the rest), where
 # what precedes it is controlled rather than discovered. A dedicated tag keeps them out without
 # riding the legacy `xcuitest` tag.
+# `pasteboard` (scenarios/paste.yaml) is excluded for a device-state reason of its own: its
+# `setClipboard` leaves in-app select-all and copy doing nothing on that Simulator until it is erased,
+# and name-order discovery would run it ahead of text_editing.yaml. The `actuation` CI lane runs it
+# after text_editing.yaml instead.
 # `browser` (scenarios/browser.yaml, the SFSafariViewController flow) is excluded for the same
 # reason as the two below: it needs a fixture page served on BROWSER_PORT, which only its own
 # `e2e-browser` lane starts, so discovering it here would leave the browser with nothing to load.
@@ -181,9 +185,9 @@ SIM ?= $(shell xcrun simctl list devices booted | sed -nE 's/.*\(([0-9A-F-]{36})
 # channel to hide the markers for its capture, and one added here would fail until the build gains
 # the setting.
 run-swiftui: swiftui-build runner-build
-	cd $(ROOT) && uv run bajutsu run --target showcase-swiftui --udid $(SIM) --backend ios --exclude xcuitest,systemalert,visual,android,browser,app,multi-target --config $(CONFIG) --touch-markers
+	cd $(ROOT) && uv run bajutsu run --target showcase-swiftui --udid $(SIM) --backend ios --exclude xcuitest,systemalert,pasteboard,visual,android,browser,app,multi-target --config $(CONFIG) --touch-markers
 run-uikit: uikit-build runner-build
-	cd $(ROOT) && uv run bajutsu run --target showcase-uikit --udid $(SIM) --backend ios --exclude xcuitest,systemalert,visual,android,swiftui,browser,app,multi-target --config $(CONFIG) --touch-markers
+	cd $(ROOT) && uv run bajutsu run --target showcase-uikit --udid $(SIM) --backend ios --exclude xcuitest,systemalert,pasteboard,visual,android,swiftui,browser,app,multi-target --config $(CONFIG) --touch-markers
 
 # scenarios/tabs.yaml on its own, forced onto XCUITest (see the comment above run-swiftui/run-uikit).
 run-swiftui-tabs: swiftui-build runner-build
@@ -544,7 +548,7 @@ flutter-android-noax-build:
 # Prereqs: a booted Simulator, `make runner-build`; an attached emulator for Android.
 run-flutter: flutter-build runner-build
 	cd $(ROOT) && uv run bajutsu run --target showcase-flutter --udid $(SIM) --backend xcuitest \
-		--exclude network,systemalert,alert,visual,swiftui,browser,app,android --config $(CONFIG)
+		--exclude network,systemalert,pasteboard,alert,visual,swiftui,browser,app,android --config $(CONFIG)
 
 # The same on-device set the native Compose lane runs (demos/showcase/android/Makefile), minus three
 # files. device.yaml's device-control clipboard round-trip and text_selection_android's sentinel /
