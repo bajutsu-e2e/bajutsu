@@ -1,8 +1,10 @@
 **English** · [日本語](ja/dsl-grammar.md)
 
-# Scenario DSL grammar (formal reference)
+# Scenario DSL grammar reference
 
-This page is the **normative grammar** of the scenario DSL (domain-specific language): every production, type, default, and validation constraint, derived directly from the pydantic models in `bajutsu/scenario/` (the `models/` subpackage; `extra="forbid"`, so unknown keys are rejected). Where [scenarios](scenarios.md) is the authoring guide (how to write a scenario, with examples), this page is the language spec (what parses and what is rejected). It also covers the templating and macro layer — components, data-driven rows, and `setup` preludes — that surrounds the core grammar.
+This page is the **normative grammar** of the scenario DSL (domain-specific language). It lists every production, type, default, and validation constraint. The grammar derives directly from the pydantic models in `bajutsu/scenario/` (the `models/` subpackage). The models set `extra="forbid"`, so unknown keys are rejected.
+
+[scenarios](scenarios.md) is the authoring guide: how to write a scenario, with examples. This page is the language spec: what parses and what is rejected. The page also covers the templating and macro layer around the core grammar. That layer holds components, data-driven rows, and `setup` preludes.
 
 Related: [scenarios](scenarios.md) (authoring guide) · [selectors](selectors.md) (how selectors/assertions evaluate) · [evidence](evidence.md) · [getting-started](getting-started/index.md)
 
@@ -35,7 +37,15 @@ Every mapping rejects keys it does not declare (`_Model`, `scenario/models/_base
 
 ## 2. Grammar at a glance
 
-The **reference graph** below shows which non-terminal references which. It makes visible the recursion and sharing that the EBNF text below states but does not show directly: `Selector`'s `within` self-loop; `RequestMatch`, shared by the `request` assertion, the `until: { request }` wait, and `Mock.match`; `Web`, `App`, `Group`, and `Component`, which all nest a fresh `Step` list (`App`'s own field is a bare `bundleId` string, not a `Selector`, so it has no edge into `Selector` the way `Web`'s `within` does); `Component` reached a second way from `ScenarioFile` itself (a file may declare its own components inline; §6.2); and the two control-flow steps — `If`, which nests `then`/`else` under an `Assertion` condition, and `ForEach`, which nests `steps` under a `Selector`. The diagram omits actions that carry only scalars and reference no shared non-terminal (`relaunch`, `setLocation`, `push`, `http`, `setClipboard`, `foreground`, and the remaining device / status-bar steps) and the `golden` assertion, whose payload is a bare path.
+The **reference graph** below shows which non-terminal references which. It makes visible the recursion and sharing that the EBNF text states but does not show directly:
+
+- `Selector`'s `within` loops back to `Selector`.
+- `RequestMatch` is shared by the `request` assertion, the `until: { request }` wait, and `Mock.match`.
+- `Web`, `App`, `Group`, and `Component` each nest a fresh `Step` list. `App`'s own field is a bare `bundleId` string, not a `Selector`. `App` therefore has no edge into `Selector`, unlike `Web`'s `within`.
+- `ScenarioFile` also reaches `Component` directly, since a file may declare its own components inline (§6.2).
+- The two control-flow steps nest `Step` lists too. `If` nests `then`/`else` under an `Assertion` condition, and `ForEach` nests `steps` under a `Selector`.
+
+The diagram omits two kinds of element. The first is actions that carry only scalars and reference no shared non-terminal. Examples are `relaunch`, `setLocation`, `push`, `http`, `setClipboard`, `foreground`, and the remaining device / status-bar steps. The second is the `golden` assertion, whose payload is a bare path.
 
 ```mermaid
 graph LR
@@ -96,7 +106,7 @@ graph LR
   MK -->|respond| MR["MockResponse"]
 ```
 
-And the productions in full:
+The productions in full follow.
 
 ```ebnf
 # ── Files ──────────────────────────────────────────────────────────────
@@ -451,22 +461,22 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 
 ## 3. The lexical layer (YAML)
 
-A scenario file is YAML, parsed by Bajutsu's loader (`common/_yaml.py`), with **one deliberate
+A scenario file is YAML, parsed by Bajutsu's loader (`common/_yaml.py`). The loader makes **one deliberate
 deviation** from YAML 1.1:
 
-- **Only `true` / `false` are booleans.** `on` / `off` / `yes` / `no` stay **strings**. This deviation keeps
-  the `capturePolicy` trigger key `on:` a key (not the boolean `True`) and keeps id/label values
-  like `on` intact. ([scenarios](scenarios.md#yaml-caveat))
+- **Only `true` and `false` are booleans.** `on`, `off`, `yes`, and `no` stay **strings**. The deviation keeps
+  the `capturePolicy` trigger key `on:` a key (not the boolean `True`) and keeps id and label values
+  like `on` intact ([scenarios](scenarios.md#yaml-caveat)).
 
-Scalar mapping: YAML strings → `string`, YAML ints → `integer`, ints or floats → `number`, and a
+Scalars map as follows: YAML strings to `string`, YAML ints to `integer`, and ints or floats to `number`. A
 `<Point>` is a two-element flow sequence `[x, y]`.
 
 ---
 
 ## 4. Cardinality & mutual-exclusion constraints
 
-Beyond shapes, the models enforce these rules (each is a `model_validator`; a violation is a load
-error). This table is the **authoritative list of "exactly one / at least one / not both"**.
+Beyond shapes, the models enforce the rules below. Each rule is a `model_validator`, and a violation is a load
+error. The table is the **authoritative list of "exactly one", "at least one", and "not both" constraints**.
 
 | Construct | Rule | Source |
 |---|---|---|
@@ -508,7 +518,7 @@ validation (`Exists._inline`, `scenario/models/assertions.py`).
 
 ## 5. Defaults
 
-Omitted optional keys take these values (so a minimal scenario is just `name` + `steps`).
+Omitted optional keys take the values below, so a minimal scenario is just `name` plus `steps`.
 
 | Field | Default |
 |---|---|
@@ -543,13 +553,13 @@ A complete minimal scenario:
 
 ## 6. The templating + macro layer
 
-Around the core grammar sits a small substitution + expansion layer. It runs at load time,
-**before** the deterministic run, so the runner only ever sees plain, fully-expanded scenarios.
+A small substitution and expansion layer surrounds the core grammar. It runs at load time,
+**before** the deterministic run, so the runner sees nothing but plain, fully expanded scenarios.
 
 ### 6.1 `${namespace.key}` interpolation
 
-Implementation: `bajutsu/interp.py`. A token is `${namespace.key}` (whitespace inside the braces is
-trimmed). Substitution is **type-preserving at the edges**:
+The implementation is `bajutsu/interp.py`. A token is `${namespace.key}`, and whitespace inside the braces is
+trimmed. Substitution is **type-preserving at the edges**:
 
 - A string that is **exactly one token** (`"${row.qty}"`) becomes the **raw bound value** (e.g. a
   number stays a number).
@@ -557,15 +567,18 @@ trimmed). Substitution is **type-preserving at the edges**:
 - A token whose namespace is not being substituted **right now is left intact**, so each layer fills
   only its own namespace.
 
-Namespaces: `params.*` (components, §6.2), `row.*` (data-driven, §6.3), `secrets.*` (declared
-via config `evidence.secrets`, resolved from the environment by the run loop at action time, §6.4), and
-`vars.*` (runtime capture via `extract`, §6.5).
+The namespaces are:
+
+- `params.*`: component parameters (§6.2).
+- `row.*`: data-driven rows (§6.3).
+- `secrets.*`: declared via config `evidence.secrets` and resolved from the environment by the run loop at action time (§6.4).
+- `vars.*`: runtime capture via `extract` (§6.5).
 
 ### 6.2 Components (`use` → reusable steps)
 
-A `<Component>` is a list of `params` and a list of `steps` that reference them as
-`${params.<name>}`. A `use` step invokes it, binding the params via `with`. A component lives in a
-file of its own (`ComponentFile`). It may instead live inline in the scenario file that calls it
+A `<Component>` pairs a list of `params` with a list of `steps` that reference them as
+`${params.<name>}`. A `use` step invokes the component and binds the params via `with`. A component
+lives either in a file of its own (`ComponentFile`) or inline in the scenario file that calls it
 (`ScenarioFile.components`, BE-0422):
 
 ```yaml
@@ -591,38 +604,40 @@ scenarios:
       - use: { component: dismiss }
 ```
 
-**The ref's own shape decides how it resolves.** One `component:` field carries both, with no new
-syntax. A ref holding a `/` or ending in `.yaml` / `.yml` is a path. It resolves as a component file,
-against the referring scenario file's own directory. It stays confined to the suite root
+**The ref's own shape decides how it resolves.** One `component:` field carries both forms, with no new
+syntax. A ref holding a `/` or ending in `.yaml` / `.yml` is a path. A path ref resolves as a component
+file against the referring scenario file's own directory, and stays confined to the suite root
 ([BE-0174](../roadmaps/BE-0174-scenario-ref-path-containment/BE-0174-scenario-ref-path-containment.md)).
-Anything else is a bare name. A bare name resolves in the calling file's own `components:` map. One
-that map does not define is an error, never a fallback file read.
+Anything else is a bare name, which resolves in the calling file's own `components:` map. A bare name
+that the map does not define is an error, never a fallback file read.
 
 The map is **scoped to one file**. The loader reads it per file and never merges it across a suite
 directory. A name declared in one file stays invisible to every other. Crossing into a component
 *file* drops the map entirely. That file declares no `components:` of its own, so a bare `use`
 inside one is always undefined. A file-scoped component's own steps, by contrast, expand in the
-declaring file's scope. One may `use` another by bare name, or `use` a file by path. Reuse that
-spans files stays the path ref's job.
+declaring file's scope. A file-scoped component may `use` another by bare name, or `use` a file by path.
+Reuse that spans files stays the path ref's job.
 
 `expand_components` (`scenario/expand.py`) **replaces** each `use` with the component's substituted
-steps, recursively (a component may itself `use` another, depth ≤ 25). It raises on a missing or
-unknown param, a residual `${params.*}` referencing something undeclared, an undefined bare name, or
-a reference cycle. `ComponentResolver` (`scenario/load_expanded.py`) is the one place binding a
-`resolve` to a file. It carries that file's map, the suite root, and the base directory refs
-resolve against, so `run` and every device-free reader expand a file identically. Expansion
-descends into every `if` / `else` branch and `forEach` body. It descends into every `web:` / `app:`
-block too. A `use` in a branch the run never takes thus still expands, and a broken one fails the
-load. Because expansion is
-pure and compile-time, **no `use` survives into the run** — determinism holds.
+steps, recursively: a component may itself `use` another, to a depth of 25. The function raises on a
+missing or unknown param, a residual `${params.*}` referencing something undeclared, an undefined bare
+name, or a reference cycle.
 
-A `use` step takes one modifier alone: `target`. The loader refuses one that also sets any of
-`capture` / `extract` / `name` / `from`. Expansion replaces the whole step, so it would otherwise
-drop those fields with no warning. Expansion carries `target` forward instead (BE-0446). It stamps
-the value onto every produced step that omits one. The stamp descends through `if` / `forEach`
-bodies and nested `use` calls. It stops at a `web:` / `app:` block. The loader accepts a produced
-step naming the same target. A produced step naming a different target fails the load. The message
-names the component chain.
+`ComponentResolver` (`scenario/load_expanded.py`) is the one place that binds a `resolve` to a file. The
+resolver carries that file's map, the suite root, and the base directory refs resolve against, so `run`
+and every device-free reader expand a file identically.
+
+Expansion descends into every `if` / `else` branch, every `forEach` body, and every `web:` / `app:`
+block. A `use` in a branch the run never takes thus still expands, and a broken one fails the load.
+Because expansion is pure and compile-time, **no `use` survives into the run**, and determinism holds.
+
+A `use` step takes one modifier alone: `target`. The loader refuses a `use` that also sets any of
+`capture` / `extract` / `name` / `from`, because expansion replaces the whole step and would drop those
+fields with no warning. Expansion carries `target` forward instead (BE-0446): it stamps the value onto
+every produced step that omits one. The stamp descends through `if` / `forEach` bodies and nested `use`
+calls, and stops at a `web:` / `app:` block. The loader accepts a produced step naming the same target.
+A produced step naming a different target fails the load, and the error message names the component
+chain.
 
 **`group` is `use`'s local sibling.** A `Group` carries `name` and `steps` alone — no `params`, no
 separate file. The same `expand()` recursion in `expand_components` replaces a `group` step with
@@ -637,10 +652,11 @@ those bodies. A `group` step's own `target` follows the `use` rule above.
 
 ### 6.3 Data-driven scenarios (`data` / `dataFile`)
 
-A scenario with `data` (inline rows) or `dataFile` (a CSV path; mutually exclusive) is expanded into
-**one scenario per row**, substituting `${row.<column>}` (`expand_data`, `scenario/expand.py`). Each
-derived scenario is renamed `"<name> [row N: col=val, …]"` and **keeps the original preconditions**
-(so every row reinstalls the app fresh and inherits the template's `subject.reinstall`).
+A scenario with `data` (inline rows) or `dataFile` (a CSV path) expands into
+**one scenario per row**, substituting `${row.<column>}` (`expand_data`, `scenario/expand.py`). The two
+keys are mutually exclusive. Each derived scenario is renamed `"<name> [row N: col=val, …]"` and
+**keeps the original preconditions**, so every row reinstalls the app fresh and inherits the template's
+`subject.reinstall`.
 
 ```yaml
 - name: search returns a result
@@ -672,7 +688,7 @@ derived scenario is renamed `"<name> [row N: col=val, …]"` and **keeps the ori
 
 ### 6.5 Expansion order
 
-The load pipeline (`cli/commands/run.py`) applies these deterministically, in order:
+The load pipeline (`cli/commands/run.py`) applies the layers deterministically, in this order:
 
 ```
 load_scenarios        # parse + validate against this grammar
