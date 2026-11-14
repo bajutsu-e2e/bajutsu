@@ -11,6 +11,12 @@
 # (`Modifier.aid("search")`, RootScreen.kt). The UI Automator emitter renders only a single-field
 # selector; a compound `label` + `traits` has no faithful BySelector and would emit a `// TODO`, so
 # the tab tap must be a bare id here. Compose only, matching the XCUITest gate's single-toolkit scope.
+#
+# The second scenario goes past that floor on purpose. It round-trips the clipboard through the
+# generated `clipboard(…)` helper and the BajutsuAndroid receiver the showcase embeds, so the
+# helper's broadcast runs on a device and not only as emitted text. The text is non-ASCII and
+# carries `$` and quotes, which exercises the Kotlin escaping and the UTF-8 base64 path. The empty
+# `setClipboard` exercises the branch that omits the `b64` extra.
 - name: search filters the catalog
   preconditions:
     subject:
@@ -31,3 +37,21 @@
     - value: { sel: { id: search.count }, equals: "1" }
     - exists: { id: search.row.5 }
     - count: { sel: { idMatches: "search.row.*" }, equals: 1 }
+
+- name: clipboard round-trips through BajutsuAndroid
+  preconditions:
+    subject:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
+  steps:
+    - setClipboard: { text: "馬 COUPON-123 $5 \"q\"" }
+    - assert:
+        - clipboard: { equals: "馬 COUPON-123 $5 \"q\"" }
+        - clipboard: { matches: "COUPON-\\d+" }
+    - setClipboard: { text: "" }
+    - assert:
+        - clipboard: { equals: "" }
+    - setClipboard: { text: "Horse 5" }
+    - clearClipboard: {}
+  expect:
+    - clipboard: { equals: "" }

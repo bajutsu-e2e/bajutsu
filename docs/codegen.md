@@ -667,6 +667,7 @@ same limit the XCUITest emitter hits for NSPredicate `MATCHES`), so it stays a `
 | `wait { until: gone }` | `awaitGone(<by>, <ms>L)` — the same, on `Until.gone` |
 | `wait { until: screenChanged/settled }` | `device.waitForIdle(<ms>L)` — `findObject` does not auto-wait, so this is a real condition wait, not a bare comment |
 | `relaunch` | `launch(extras)` (re-issues the launch intent) |
+| `setClipboard` / `clearClipboard` | `clipboard("set", "…")` / `clipboard("clear")` — the same `am broadcast` to the BajutsuAndroid clipboard receiver that `run` sends (BE-0233), so the app must embed BajutsuAndroid |
 | `doubleTap` / `rotate` | `// TODO` (no UI Automator gesture) |
 | `handleSystemAlert` | `// TODO` (iOS-only; tap the system dialog directly on Android) |
 
@@ -681,11 +682,16 @@ same limit the XCUITest emitter hits for NSPredicate `MATCHES`), so it stays a `
 | `selected` | `assertTrue(device.findObject(<by>).isSelected)` |
 | `count` (equals/atLeast/atMost) | `device.findObjects(<by>).size` with `assertEquals` / `assertTrue(size >= n)` / `assertTrue(size <= n)` |
 | `attribute` | `// TODO: attribute(name: "href", equals: "/docs") — web-only; not generated` (BE-0466) |
+| `clipboard` (equals/matches) | `assertEquals("…", clipboard("get"))` / `assertTrue(Regex("…").containsMatchIn(clipboard("get")))` |
 
-The adb backend has no network-interception surface, so every network assertion (`request` /
-`requestSequence` / `responseSchema`) and the device-control family (`setLocation` / `push` /
-`setClipboard` / …) emit a labeled `// TODO` naming why, exactly as the XCUITest target does for its
-own gaps.
+An app that embeds no BajutsuAndroid clipboard receiver leaves the broadcast unhandled. The
+`clipboard(…)` helper then fails the test by naming that cause, rather than reading back an empty
+clipboard.
+
+Every network assertion (`request` / `requestSequence` / `responseSchema`) emits a labeled `// TODO`
+naming why, because the adb backend has no network-interception surface. The rest of the
+device-control family emits a labeled `// TODO` as well. `setLocation` works under `run`, but no
+generated route exists for it. `push` has no adb route at all. The XCUITest target labels its own gaps the same way.
 
 ## Name generation
 
