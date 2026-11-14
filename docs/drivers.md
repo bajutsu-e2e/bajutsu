@@ -261,14 +261,17 @@ advertises `platform:ios`. An iOS target run on the `fake` backend thus still ne
 Device Farm worker advertises `environment:devicefarm` and `kind:device`. It also advertises its
 provider's platforms, `platform:android` and `platform:ios`. An `appium` worker advertises
 `environment:appium`. A serve run request reaches it by naming `environment: appium`. Every worker
-also advertises `job:run-intent`, which says it can run a `run-set` job (BE-0484).
+also advertises `job:run-intent`, which says it can run a `run-set` job (BE-0484). An `appium`
+worker advertises the token too, but a `run-set` job requires a `platform:*` token, which such a
+worker does not advertise: a deployment of grid workers alone runs its scenarios through plain run
+requests.
 
 The file declares no routing token itself. The runtime and device-class tokens (`ios18`, `ipad`)
 come from the Simulator inventory. The real-device tokens (`device:ipad`) come from `devicectl`
 ([BE-0468](../roadmaps/BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of.md)). A
 declaration could promise a runtime or a device the machine lacks. The kind tokens follow the same
-two reads (BE-0484). A worker advertises `kind:simulator` when its Simulator inventory holds a
-device. It advertises `kind:device` while it drives a connected iPhone or iPad.
+two reads (BE-0484). A worker advertises `kind:simulator` when its Simulator inventory holds an
+iPhone or iPad. It advertises `kind:device` while it drives a connected iPhone or iPad.
 `realDevices: false` turns `kind:device` off.
 
 Two hand-written inputs now log a deprecation notice. Each still works for this release:
