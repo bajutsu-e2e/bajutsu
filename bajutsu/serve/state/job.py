@@ -170,7 +170,8 @@ class Job:
     # kept out of `repr` so a logged `Job` cannot print a value.
     secret_env: dict[str, str] = field(default_factory=dict, repr=False)
     # The `run-set` group this job belongs to and what a worker may share between its jobs (BE-0484);
-    # both None for a job any other route registers. The jobs table stores them, not the spec.
+    # both None for a job any other route registers. The jobs table stores them, not the spec; a slot
+    # worker reads them from the lease, and its batch provider shares uploads under them.
     group_id: str | None = None
     compat_key: str | None = None
     # A cloud-batch run request (BE-0336): when set, this job runs one scenario on a batch device
@@ -192,6 +193,9 @@ class Job:
     # Worker-side only: set once the job's lease is lost, so a cloud-batch poll leaves its run to the
     # worker that holds the job now instead of waiting it out (BE-0448).
     lease_lost: threading.Event | None = None
+    # Worker-side only: the directory a cloud-batch job packages when its group's jobs stage their
+    # files together (BE-0484); None packages the job's own directory.
+    batch_dir: Path | None = None
     # Worker-side only: the device-cloud worker's `worker.yaml`, which a cloud-batch job's scenario
     # must fit before anything is submitted (BE-0450's check, run on the worker by BE-0448). None
     # submits unchecked, as a worker started without `--worker-config` runs no cloud job anyway.

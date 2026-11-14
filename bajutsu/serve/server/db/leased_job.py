@@ -15,3 +15,7 @@ class LeasedJob:
     spec: dict[str, Any]
     # The tokens the job was routed by, handed to the worker so it re-checks them at claim (BE-0467).
     capabilities: list[str] = field(default_factory=list)
+    # The `run-set` group and what its jobs share (BE-0484), so a worker shares uploads between the
+    # jobs it holds; None for a job outside a group.
+    group_id: str | None = None
+    compat_key: str | None = None

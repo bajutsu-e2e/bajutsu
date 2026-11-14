@@ -8,6 +8,7 @@ to that bundle. Everything runs against the in-memory Device Farm fake; no AWS c
 
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import plistlib
@@ -577,6 +578,165 @@ def test_a_leased_fan_out_job_runs_on_the_worker_from_its_own_workspace(
     assert not job_work.exists() and (work / "stray.txt").exists()
 
 
+# --- a group's shipped files staged once per worker (BE-0484 unit 4) ----------------------------
+
+_APK_SHA = hashlib.sha256(b"APK").hexdigest()
+
+
+def _group_spec(job_id: str, scenario: str) -> dict[str, Any]:
+    """A leased run-set job, resolved for Device Farm, that ships its files as materials."""
+    return {
+        "job_id": job_id,
+        "org": "o",
+        "batch": {
+            "provider": "devicefarm",
+            "scenario": f"scenarios/{scenario}",
+            "target": "demo",
+            "config": "bajutsu.config.yaml",
+            "platform": "android",
+            "app_path": "app.apk",
+        },
+        "materials": {
+            "bajutsu.config.yaml": "targets: {}\n",
+            f"scenarios/{scenario}": _SCENARIO,
+        },
+        "batch_app": _APK_SHA,
+        "bundle": None,
+    }
+
+
+def _fetching(monkeypatch: pytest.MonkeyPatch, *bodies: bytes) -> list[str]:
+    """Answer each `_get_file` with the next of *bodies*; the URLs it was asked for."""
+    fetched: list[str] = []
+    pending = list(bodies)
+
+    def fake_get(url: str, dest: Path, *, timeout: float | None = None) -> None:
+        fetched.append(url)
+        dest.write_bytes(pending.pop(0))
+
+    monkeypatch.setattr(worker_mod, "_get_file", fake_get)
+    return fetched
+
+
+def test_jobs_of_one_group_stage_their_files_and_app_in_one_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fetched = _fetching(monkeypatch, b"APK")
+    groups = worker_mod._GroupDirs(tmp_path / "worker")
+    group = groups.acquire("g1")
+    groups.acquire("g1")
+
+    works = []
+    for job_id, scenario in (("1", "a.yaml"), ("2", "b.yaml")):
+        job_work, failure = worker_mod._workspace_or_failure(
+            tmp_path / "worker" / ".slots" / job_id,
+            _group_spec(job_id, scenario),
+            None,
+            app_url="https://signed/app",
+            group=group,
+        )
+        assert failure is None
+        works.append(job_work)
+
+    assert fetched == ["https://signed/app"]
+    assert sorted(p.relative_to(group.path).as_posix() for p in group.path.rglob("*.*")) == [
+        "app.apk",
+        "bajutsu.config.yaml",
+        "scenarios/a.yaml",
+        "scenarios/b.yaml",
+    ]
+    # Each job keeps a workspace of its own, for its run output alone.
+    assert works[0] != works[1] and not (works[0] / "app.apk").exists()
+
+
+def test_a_group_directory_goes_once_its_last_job_is_done(tmp_path: Path) -> None:
+    groups = worker_mod._GroupDirs(tmp_path)
+    first = groups.acquire("g1")
+    second = groups.acquire("g1")
+    assert first is second
+
+    groups.release(first)
+    assert first.path.is_dir()
+    groups.release(second)
+    assert not first.path.exists()
+
+
+def test_a_group_with_an_unsafe_id_gets_no_directory(tmp_path: Path) -> None:
+    with pytest.raises(RuntimeError, match="cannot name a directory"):
+        worker_mod._GroupDirs(tmp_path).acquire("../x")
+
+
+def test_a_corrupt_app_fetch_leaves_nothing_a_later_job_would_reuse(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fetched = _fetching(monkeypatch, b"AP", b"APK")
+    group = worker_mod._GroupDirs(tmp_path / "worker").acquire("g1")
+    spec = _group_spec("1", "a.yaml")
+
+    with pytest.raises(worker_mod._TransientFetch):
+        worker_mod._workspace_or_failure(
+            tmp_path / "s0", spec, None, app_url="https://signed/app", group=group
+        )
+    assert not (group.path / "app.apk").exists()
+    assert not [p for p in group.path.parent.iterdir() if p != group.path]
+
+    worker_mod._workspace_or_failure(
+        tmp_path / "s1", spec, None, app_url="https://signed/app", group=group
+    )
+    assert len(fetched) == 2 and (group.path / "app.apk").read_bytes() == b"APK"
+
+
+@pytest.mark.parametrize(
+    ("rel", "content", "words"),
+    [
+        ("../escape.yaml", _SCENARIO, "outside its group's directory"),
+        ("bajutsu.config.yaml", "targets: {other: {}}\n", "ship different 'bajutsu.config.yaml'"),
+    ],
+)
+def test_a_material_the_group_cannot_share_fails_the_job(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, rel: str, content: str, words: str
+) -> None:
+    _fetching(monkeypatch, b"APK")
+    group = worker_mod._GroupDirs(tmp_path / "worker").acquire("g1")
+    worker_mod._workspace_or_failure(
+        tmp_path / "s0", _group_spec("1", "a.yaml"), None, app_url="u", group=group
+    )
+    spec = _group_spec("2", "b.yaml")
+    spec["materials"][rel] = content
+
+    _work, failure = worker_mod._workspace_or_failure(
+        tmp_path / "s1", spec, None, app_url="u", group=group
+    )
+
+    assert failure is not None and words in failure["error"]
+    assert not (tmp_path / "worker" / ".batch-groups" / "escape.yaml").exists()
+    assert [p.name for p in group.path.parent.iterdir()] == ["g1"]
+
+
+def test_a_staged_job_packages_its_group_and_lands_its_run_in_its_own_workspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("BAJUTSU_DATABASE_URL", raising=False)
+    _fetching(monkeypatch, b"APK")
+    group = worker_mod._GroupDirs(tmp_path / "worker").acquire("g1")
+    for job_id, scenario in (("1", "a.yaml"), ("2", "b.yaml")):
+        job_work, _ = worker_mod._workspace_or_failure(
+            tmp_path / "slot", _group_spec(job_id, scenario), None, app_url="u", group=group
+        )
+    provider, client, transfer = _provider(_source_tree(tmp_path / "src"))
+    bp.register("devicefarm", provider)
+
+    ran = execute_job_spec(
+        _group_spec("2", "b.yaml"), cwd=job_work, bus=InMemoryLogBus(), batch_dir=group.path
+    )
+
+    assert ran.view()["ok"] is True and client.schedule_calls == 1
+    names = set(transfer.package().namelist())
+    assert {"bundle/scenarios/a.yaml", "bundle/scenarios/b.yaml"} <= names
+    assert (job_work / "runs" / "20260101-1" / "manifest.json").is_file()
+    assert not (group.path / "runs").exists()
+
+
 def test_a_job_naming_a_host_directory_packages_that_directory(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -681,6 +841,7 @@ class _RecordingProvider:
         checkpoint: Any = None,
         job_id: str = "",
         interrupt: Any = None,
+        share: Any = None,
     ) -> Verdict:
         self.checkpoints.append(checkpoint)
         return self.inner.submit(
@@ -690,6 +851,7 @@ class _RecordingProvider:
             checkpoint=checkpoint,
             job_id=job_id,
             interrupt=interrupt,
+            share=share,
         )
 
 
@@ -754,6 +916,7 @@ def test_process_state_never_reaches_the_package(tmp_path: Path) -> None:
         ".bundles/o/x/app.apk",
         ".overrides/x",
         ".batch/j/x",
+        ".batch-groups/g/app.apk",
         ".owner-pid",
         ".job-pgid",
     ):

@@ -354,11 +354,29 @@ workers remain a valid alternative to one worker with `maxJobConcurrency: N`. Th
 of the AWS environment, the source checkout, and the process.
 
 A worker whose `maxJobConcurrency` is above one runs each job in a **slot**. A slot is a thread that
-owns one leased job and its lease renewals. A slot also owns a workspace under `.slots/<n>/`, the
-package it uploads, and the job's log. Slots share nothing that changes. A workspace returns to the
-pool once its job has uploaded its evidence. The next job thus never reuses a tree that an earlier
-job still uploads from. Size the disk for one application binary per slot, plus the run trees still
-uploading.
+owns one leased job and its lease renewals. A slot also owns a workspace under `.slots/<n>/` and the
+job's log. The workspace holds the job's run output, and the application binary unless the job's
+`run-set` group stages one (see below). A workspace returns to the pool once its job has uploaded
+its evidence. The next job thus never reuses a tree that an earlier job still uploads from. Size the
+disk for one application binary per slot, one more per staged group under `.batch-groups/`, plus the
+run trees still uploading.
+
+The slots of one `run-set` fan-out share their uploads (BE-0484):
+
+- **The application upload.** The first slot to need the binary uploads it. The other slots wait
+  for that upload. A slot reuses it while any job with the same config, binary, platform, and target
+  is in flight.
+- **The test package.** A slot reuses a package of the same fan-out that holds its scenario. A
+  lifecycle hook that sets a launch environment turns that reuse off. The packaged config then
+  belongs to that one job.
+
+A fan-out with no uploaded bundle stages its scenario files in `.batch-groups/<group id>/`. The
+worker builds the package from that directory. The package thus holds every staged scenario of the
+fan-out. The worker removes the directory once the fan-out's last job on the worker has finished.
+When a shared upload fails, every slot that waited on it fails too. When Device Farm refuses a run
+on a reused upload, the slot uploads its own copy and retries. When that retry succeeds, the worker
+stops sharing and uploads once per job until it restarts. A retry that fails leaves sharing on. The
+same error codes cover other bad arguments, so a refusal alone never turns sharing off.
 
 Before it uploads anything, the worker checks each leased scenario against its `worker.yaml`. The
 check is the one `bajutsu run --worker-config` makes
@@ -530,7 +548,9 @@ directive 1).
 Since the worker dispatch (BE-0448), `work_dir` is the job's bundle directory. The request names
 `request.config` and `request.scenario` by their paths inside it. `request.app_path` keeps the
 target's `subject.path` as written. A hook that reads the binary resolves a relative value against
-`ctx.work_dir`, not its own working directory. A worker that runs from a source checkout puts the
+`ctx.work_dir`, not its own working directory. The slots of one `run-set` fan-out may share one
+`work_dir` (BE-0484). Other jobs then reuse the package built from it. A hook must treat
+`ctx.work_dir` as read-only. A worker that runs from a source checkout puts the
 bundle under `bundle/` inside the package. A `pre_test_commands` command that names a file beside
 the config needs the `bundle/` prefix on the Device Farm machine.
 
