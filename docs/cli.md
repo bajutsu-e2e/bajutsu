@@ -1322,11 +1322,11 @@ Redis or RQ**, BE-0106), runs it with the unchanged `run_job`, and posts the res
 baselines before a run, uploading the run tree after — goes through presigned URLs the control
 plane signs (BE-0160), so the worker needs only an HTTP client.
 
-A lease with nothing to run answers `204`. Every worker sends its free slots as `maxJobs`, from 1
-to 100, so the response is a list. Only a worker whose `maxJobConcurrency` is above 1 — a
-device-cloud worker, a Device Farm one included — has more than one slot. The oldest job the
-worker can serve may belong to a `run-set` group. The list then adds that group's next jobs, within
-the server's concurrency caps. The slots can thus share the group's uploads.
+A lease with nothing to run answers `204`. A worker whose `maxJobConcurrency` is above 1 — a
+device-cloud worker, a Device Farm one included — sends its free slots as `maxJobs`, from 1 to 100,
+and the response is then a list; a one-slot worker sends no `maxJobs` and gets one body. The oldest
+job the worker can serve may belong to a `run-set` group. The list then adds that group's next jobs,
+within the server's concurrency caps. The slots can thus share the group's uploads.
 
 A `run-set` job carries a run intent instead of a command
 ([BE-0484](../roadmaps/BE-0484-job-group-lease/BE-0484-job-group-lease.md)). The worker that

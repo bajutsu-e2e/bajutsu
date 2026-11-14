@@ -337,11 +337,12 @@ worker は、その互換キーを持つ job が1件でも実行中のあいだ�
     マシンセッションが呼べる `run-set` の 2 つのルートも加えました。
   - `DESIGN.md` に、worker への fan-out と、`workerEnvironment` として記録する実行場所を記しました。
     `docs/reporting.md` には、その provenance の項目を加えました。
-  - 古くなった次の 4 つの記述を取り除きました。
+  - 古くなった次の 5 つの記述を取り除きました。
     - `groupKey` の比較に含まれていた環境
     - Replay の fan-out への 429 の応答
     - `appium` の worker が広告するトークンを 1 つとする記述
     - ホストで動くすべての job が `host:` のトークンを必要とするという記述
+    - fan-out の同時実行数を Device Farm ワーカーのジョブ予算だけで決めるという記述
 
 ## 参考
 

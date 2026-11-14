@@ -563,7 +563,7 @@ runs/<runId>/
 
 - **run の preflight**：lease の前に、ターゲットごとにステップと設定を判定します。
 - **`bajutsu lint --config --target`**：デバイスなしで、展開後のシナリオを同じ規則で判定します（`common/target_lint.py`）。serve のエディタの lint も、選択中のターゲットを同じ規則で判定します。
-- **serve の配送**：ジョブは `cap:<route>:<capability>` と `setting:<route>:<key>` のトークンを要求し、ワーカーは自分が動かすルートごとにトークンを広告します（`common/capability/route_tokens.py`）。ワーカーは claim の時点でもう一度照合します。`run-set` のジョブは実行場所を指定しません。振り分けに使うのは、ターゲットのプラットフォーム、`job:run-intent`、iOS なら実行する種類ごとの `kind:` トークンです。そのため、そのプラットフォームを扱うワーカーなら、ローカルでも Device Farm でも受け取れます（[BE-0484](roadmaps/BE-0484-job-group-lease/BE-0484-job-group-lease-ja.md)）。
+- **serve の配送**：ジョブは `cap:<route>:<capability>` と `setting:<route>:<key>` のトークンを要求し、ワーカーは自分が動かすルートごとにトークンを広告します（`common/capability/route_tokens.py`）。ワーカーは claim の時点でもう一度照合します。`run-set` のジョブは実行場所を指定しません。振り分けに使うのは、ターゲットのプラットフォーム、`job:run-intent`、iOS なら実行する種類ごとの `kind:` トークンと、ターゲットが `runsOn.ios.family` を指定していればそのデバイスファミリーのトークンです。そのため、そのプラットフォームを扱い、条件に合うデバイスを持つワーカーなら、ローカルでも Device Farm でも受け取れます。Device Farm のワーカーはファミリーのトークンを広告しないので、ファミリーを指定した iOS のターゲットはローカルのワーカーを待ちます（[BE-0484](roadmaps/BE-0484-job-group-lease/BE-0484-job-group-lease-ja.md)）。
 
 どれも大規模言語モデル（LLM）を使わない決定的な判定で、`run` の判定経路にモデルは入りません。
 
