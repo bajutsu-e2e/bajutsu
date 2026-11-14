@@ -1215,8 +1215,9 @@ deterministic `run` verdict.
 - **A fan-out job requires no placement.** A job of `POST /api/run-set` requires its target's
   `platform:<p>`, `job:run-intent`, and the `cap:` and `setting:` tokens of its scenario's route
   (below). An iOS job adds the family tokens above and one `kind:<kind>` token per kind its runs
-  take. It requires no `host:`, `environment:`, or `machine:` token. Any worker serving the platform
-  can lease it, local or Device Farm. A worker that advertises an `environment:` token otherwise
+  take. It requires no `host:`, `environment:`, or `machine:` token. A worker serving the platform
+  can lease it, local or Device Farm, when it advertises those tokens. A Device Farm worker
+  advertises no family token, so a target naming `runsOn.ios.family` never routes there. A worker that advertises an `environment:` token otherwise
   leases only the jobs requiring that token. A fan-out job is the exception, since it names no
   environment ([BE-0484](../roadmaps/BE-0484-job-group-lease/BE-0484-job-group-lease.md)).
 - **A paired device reads as connected.** `devicectl` lists every paired real device, plugged in or

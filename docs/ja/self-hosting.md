@@ -1172,8 +1172,9 @@ Linux の web ワーカーに渡って失敗しかねません。それは本物
 - **fan-out のジョブは、実行場所を要求しません。** `POST /api/run-set` のジョブは、ターゲットの
   `platform:<p>`、`job:run-intent`、シナリオのルートの `cap:` と `setting:` のトークン（後述）を必要とします。
   iOS のジョブは、上のファミリーのトークンと、実行する種類ごとに 1 つの `kind:<kind>` トークンも必要とします。
-  `host:`、`environment:`、`machine:` のトークンは必要としません。そのプラットフォームを扱うワーカーなら、
-  ローカルでも Device Farm でもリースできます。`environment:` トークンを広告するワーカーは、通常はその
+  `host:`、`environment:`、`machine:` のトークンは必要としません。そのプラットフォームを扱い、これらの
+  トークンを広告するワーカーなら、ローカルでも Device Farm でもリースできます。Device Farm のワーカーは
+  ファミリーのトークンを広告しないので、`runsOn.ios.family` を指定したターゲットは Device Farm へ振り分けられません。`environment:` トークンを広告するワーカーは、通常はその
   トークンを必要とするジョブだけをリースします。fan-out のジョブは環境を指定しないので、この規則の例外です
   （[BE-0484](../../roadmaps/BE-0484-job-group-lease/BE-0484-job-group-lease-ja.md)）。
 - **ペアリング済みの実機は、接続中として読まれます。** `devicectl` は、ペアリング済みの実機を、差さって
