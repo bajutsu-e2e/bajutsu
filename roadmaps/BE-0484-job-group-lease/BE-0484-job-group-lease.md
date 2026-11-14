@@ -9,7 +9,7 @@
 | Author | [@paihu](https://github.com/paihu) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0484") |
-| Implementing PR | [#2417](https://github.com/bajutsu-e2e/bajutsu/pull/2417) (unit 1), [#2426](https://github.com/bajutsu-e2e/bajutsu/pull/2426) (unit 2), [#2431](https://github.com/bajutsu-e2e/bajutsu/pull/2431) (unit 3) |
+| Implementing PR | [#2417](https://github.com/bajutsu-e2e/bajutsu/pull/2417) (unit 1), [#2426](https://github.com/bajutsu-e2e/bajutsu/pull/2426) (unit 2), [#2431](https://github.com/bajutsu-e2e/bajutsu/pull/2431) (unit 3), [#2443](https://github.com/bajutsu-e2e/bajutsu/pull/2443) (unit 4) |
 | Topic | Device-cloud execution |
 | Related | [BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out.md), [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md), [BE-0465](../BE-0465-serve-ui-device-farm-fan-out/BE-0465-serve-ui-device-farm-fan-out.md), [BE-0468](../BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of.md) |
 <!-- /BE-METADATA -->
@@ -288,6 +288,24 @@ Log:
   - `docs/devicefarm.md` drops the passage on caps cutting a fan-out short and documents `groupKey`,
     and `docs/self-hosting.md` records that a fan-out's jobs are capped at lease time rather than
     rejected with 429; each change lands in both languages. Unit 6 keeps the full documentation pass.
+- 2026-11-14 — [#2443](https://github.com/bajutsu-e2e/bajutsu/pull/2443) landed unit 4. The Device Farm slots of one group now share their
+  uploads. The application goes up once per compatibility key while a job with the key is in flight.
+  The package goes up once per group. A job reuses it when the package holds the job's scenario
+  and no hook set a launch environment. A group with no uploaded bundle stages its files in one directory per worker,
+  which the worker removes after the group's last slot. Each run still lands in its slot's own
+  workspace. The unit departs from the design in four places.
+  - Upload reuse rests on the AWS documentation alone, not a run against the service. `ScheduleRun`
+    takes each upload by its ARN, and the guide reuses a test spec upload in later runs. When
+    `ScheduleRun` refuses a reused upload with `ArgumentException` or `NotFoundException`, the job
+    uploads its own copy and retries once. The worker uploads once per job after that retry
+    succeeds, until it restarts. The same codes cover other bad arguments, so a refusal alone never
+    turns sharing off.
+  - The lease body, not the job's spec, carries the group id and the compatibility key. A slot
+    worker copies both into the spec it runs.
+  - A group whose jobs ship an uploaded bundle needs no staging directory. Each slot's copy of the
+    bundle already holds every scenario of the target.
+  - Hooks must treat the staging directory as read-only. The documentation states that contract,
+    and the worker does not enforce it. Hooks are operator code, wired at process start.
 
 ## References
 

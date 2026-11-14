@@ -9,7 +9,7 @@
 | 提案者 | [@paihu](https://github.com/paihu) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0484") |
-| 実装 PR | [#2417](https://github.com/bajutsu-e2e/bajutsu/pull/2417)（単位 1）、[#2426](https://github.com/bajutsu-e2e/bajutsu/pull/2426)（単位 2）、[#2431](https://github.com/bajutsu-e2e/bajutsu/pull/2431)（単位 3） |
+| 実装 PR | [#2417](https://github.com/bajutsu-e2e/bajutsu/pull/2417)（単位 1）、[#2426](https://github.com/bajutsu-e2e/bajutsu/pull/2426)（単位 2）、[#2431](https://github.com/bajutsu-e2e/bajutsu/pull/2431)（単位 3）、[#2443](https://github.com/bajutsu-e2e/bajutsu/pull/2443)（単位 4） |
 | トピック | Device-cloud execution |
 | 関連 | [BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out-ja.md), [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch-ja.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md), [BE-0465](../BE-0465-serve-ui-device-farm-fan-out/BE-0465-serve-ui-device-farm-fan-out-ja.md), [BE-0468](../BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of-ja.md) |
 <!-- /BE-METADATA -->
@@ -289,6 +289,25 @@ worker は、その互換キーを持つ job が1件でも実行中のあいだ�
   - `docs/devicefarm.md` から、上限が fan-out を打ち切るという記述を除き、`groupKey` の説明を
     加えました。`docs/self-hosting.md` には、fan-out のジョブは 429 で拒否せず、リースの時点で上限を
     適用することを記しました。どちらも両言語です。ドキュメント全体の見直しは単位 6 に残します。
+- 2026-11-14：[#2443](https://github.com/bajutsu-e2e/bajutsu/pull/2443) で単位 4 を実装しました。1つのグループに属する Device Farm のスロットは、
+  アップロードを共有するようになりました。アプリケーションは、互換キーを持つジョブが実行中である間、
+  そのキーごとに1回だけアップロードします。パッケージは、ジョブのシナリオを含み、フックが起動時の
+  環境変数を設定していない限り、グループごとに1回だけアップロードします。アップロード済みのバンドルを
+  持たないグループは、ワーカーごとに1つのディレクトリにファイルを集めます。ワーカーは、グループの最後の
+  スロットが終わるとそのディレクトリを削除します。実行結果は、これまでどおり各スロットの作業ディレクトリに
+  置きます。設計とは次の4点で異なります。
+  - アップロードを使い回せることは、AWS のドキュメントだけを根拠にしており、サービスに対して実行しては
+    確かめていません。`ScheduleRun` は各アップロードを ARN で受け取り、ガイドはテストスペックの
+    アップロードを後の実行でも使っています。使い回したアップロードを `ScheduleRun` が
+    `ArgumentException` か `NotFoundException` で拒んだ場合、ジョブは自分の分をアップロードし直して
+    1回だけ再試行します。その再試行が成功してから、ワーカーは再起動するまでジョブごとにアップロードします。
+    同じエラーコードはほかの不正な引数にも返るので、拒否されただけで共有を止めることはありません。
+  - グループ ID と互換キーは、ジョブのスペックではなくリースの応答が運びます。スロットを使うワーカーは、
+    両方を実行するスペックに写します。
+  - アップロード済みのバンドルを送るグループには、ファイルを集めるディレクトリは要りません。各スロットが
+    持つバンドルの写しに、ターゲットのシナリオがすべて入っているからです。
+  - フックがファイルを集めるディレクトリを読み取り専用として扱うことは、文書にした約束であり、ワーカーは
+    強制しません。フックは、オペレーターがプロセスの起動時に組み込むコードです。
 
 ## 参考
 
