@@ -259,7 +259,7 @@ Action    ::=
   | { setPrimaryTarget: { target: string } }               # from here on, an omitted `target` (step, `interrupts` entry, top-level `expect`) resolves to `target`; top-level `steps` only (BE-0447)
   | { clearKeychain:    {} }                               # reset saved passwords / certificates
   | { clearClipboard:   {} }                               # clear the pasteboard
-  | { setClipboard:     { text: string } }                 # seed the pasteboard with text (simctl pbcopy), for paste flows
+  | { setClipboard:     { text: string } }                 # seed the clipboard with text (simctl pbcopy; BajutsuAndroid on Android), for paste flows
   | { setMocks:         list(<Mock>) }                     # replace the app's whole stub table mid-scenario ([] removes every stub); iOS/XCUITest with network on (BE-0365)
   | { overrideStatusBar: { time?: string, batteryLevel?: integer, batteryState?: string, cellularBars?: integer, wifiBars?: integer } }
   | { clearStatusBar:   {} }                               # restore the live status bar
@@ -359,7 +359,7 @@ Assertion ::=
   | { requestSequence: list(<RequestMatch>) }   # ≥1 matcher; an ordered/aggregate set of matched exchanges
   | { responseSchema: <ResponseSchemaMatch> }   # validate a captured response body against a JSON Schema (BE-0048)
   | { visual:   <VisualMatch> }
-  | { clipboard: <ClipboardMatch> }   # read-back of the device pasteboard (simctl pbpaste)
+  | { clipboard: <ClipboardMatch> }   # read-back of the device clipboard (simctl pbpaste; BajutsuAndroid on Android)
   | { attribute: <AttributeMatch> }   # an HTML attribute of one element, read on demand (web only; BE-0466)
   | { golden:   <GoldenMatch> }       # compare the live element tree to a recorded golden file (BE-0006)
 

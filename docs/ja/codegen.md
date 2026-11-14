@@ -648,6 +648,7 @@ Gradle 自身のレポートとあわせて回収済みのディレクトリを�
 | `wait { until: gone }` | `awaitGone(<by>, <ms>L)`（同じものを `Until.gone` に対して行います） |
 | `wait { until: screenChanged/settled }` | `device.waitForIdle(<ms>L)`。`findObject` は auto-wait しないので、裸コメントではなく実際の条件待機にする |
 | `relaunch` | `launch(extras)`（起動 intent を再発行） |
+| `setClipboard` / `clearClipboard` | `clipboard("set", "…")` / `clipboard("clear")`。`run` と同じく、BajutsuAndroid のクリップボード受信側へ `am broadcast` を送ります（BE-0233）。そのため、アプリに BajutsuAndroid を組み込む必要があります |
 | `doubleTap` / `rotate` | `// TODO`（対応する UI Automator ジェスチャが無い） |
 | `handleSystemAlert` | `// TODO`（iOS 専用。Android ではシステムダイアログを直接 tap する） |
 
@@ -662,10 +663,15 @@ Gradle 自身のレポートとあわせて回収済みのディレクトリを�
 | `selected` | `assertTrue(device.findObject(<by>).isSelected)` |
 | `count` (equals/atLeast/atMost) | `device.findObjects(<by>).size` を `assertEquals` / `assertTrue(size >= n)` / `assertTrue(size <= n)` |
 | `attribute` | `// TODO: attribute(name: "href", equals: "/docs") — web-only; not generated`（BE-0466） |
+| `clipboard` (equals/matches) | `assertEquals("…", clipboard("get"))` / `assertTrue(Regex("…").containsMatchIn(clipboard("get")))` |
+
+broadcast が処理されなかったとき、`clipboard(…)` ヘルパーは空のクリップボードを読み戻さず、理由を示してテストを失敗させます。
+broadcast が処理されないのは、アプリが BajutsuAndroid のクリップボード受信側を組み込んでいない場合です。
 
 adb backend にはネットワーク傍受の面が無いので、ネットワークのアサーション（`request` / `requestSequence` /
-`responseSchema`）とデバイス制御の一群（`setLocation` / `push` / `setClipboard` など）はすべて、理由を明記した
-`// TODO` を出力します。XCUITest 出力先が自身のギャップに対して行うのと同じです。
+`responseSchema`）はすべて、理由を明記した `// TODO` を出力します。デバイス制御の残りも、理由を明記した `// TODO` を出力します。
+`setLocation` は `run` では動きますが、エミュレータコンソールやアプリ内受信側を使う経路を生成テストは持ちません。
+`push` には adb の経路そのものがありません。XCUITest 出力先も、自身のギャップを同じように示します。
 
 ## 名前の生成
 
