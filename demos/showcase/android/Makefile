@@ -100,6 +100,12 @@ SERIAL ?= booted
 # either route, so the `e2e` target ends with one more `gestures_multitouch` run after `adb unroot`:
 # that run can pass only through the server, which is what makes CI prove the unrooted route.
 #
+# `adb unroot` restarts adbd, and the restart can drop the very connection the command waits on
+# (`unable to connect for unroot: closed`) even when the restart went through (#2440). So its exit
+# status is not the verdict: each of a bounded number of attempts waits for the device, then reads the
+# uid adbd actually runs as, and only a non-zero uid ends the loop — `UNROOT_ATTEMPTS` failures in a
+# row fail the target loudly instead of running the unrooted pass as root.
+#
 # The scenario-authoring flows `extract` / `foreach` join the lane (BE-0285): the web slice (#1184)
 # proved them on Playwright, and this is their adb twin. `extract` captures the Log counter's live
 # value and reuses it (Log tab, exercised by `relaunch` already); `foreach` iterates the five Stable
@@ -242,6 +248,8 @@ views-noax-build:
 # the device in the read-back on the lanes that need it, which is the whole point of the read-back
 # when two devices could be the one that dropped the setting.
 ADB ?= adb
+# Bounded attempts at `e2e`'s `adb unroot` (#2440) — see the `adb unroot` note in the lane comment above.
+UNROOT_ATTEMPTS ?= 5
 ADB_LABEL ?=
 ANR_QUIET = $(ADB) shell settings put global hide_error_dialogs 1 && $(ADB) shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null && echo "ANR_QUIET$(ADB_LABEL): hide_error_dialogs=$$($(ADB) shell settings get global hide_error_dialogs | tr -d '\r')"
 
@@ -275,7 +283,14 @@ e2e: compose-build views-build
 		uv run bajutsu run --scenario demos/showcase/scenarios/$$s.yaml \
 			--target showcase-views --udid $(SERIAL) --backend android --config $(CONFIG) || exit 1; \
 	done
-	adb unroot && adb wait-for-device
+	for attempt in $$(seq 1 $(UNROOT_ATTEMPTS)); do \
+		adb unroot || true; \
+		adb wait-for-device; \
+		uid=$$(adb shell id -u 2>/dev/null | tr -d '\r'); \
+		if [ "$$uid" -gt 0 ] 2>/dev/null; then echo "adb unroot: uid=$$uid (attempt $$attempt)"; exit 0; fi; \
+		echo "adb unroot: attempt $$attempt left uid='$$uid'"; \
+	done; \
+	echo "adb unroot: adbd still runs as root after $(UNROOT_ATTEMPTS) attempts" >&2; exit 1
 	echo "=== showcase-compose / gestures_multitouch (unrooted) ==="
 	$(ANR_QUIET)
 	cd $(ROOT) && $(E2E_ENV) uv run bajutsu run \
