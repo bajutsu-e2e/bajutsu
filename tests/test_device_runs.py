@@ -228,6 +228,17 @@ def test_unpack_conditions_flattens_and_drops_device_state() -> None:
     assert unpack_conditions({"os": ">=18"}) == {}
 
 
+def test_unpack_conditions_skips_ignored_settings() -> None:
+    # `ignoredSettings` sits beside the destination blocks (BE-0473) but describes the environment,
+    # so its entries are not conditions.
+    assert unpack_conditions(
+        {
+            "ios": {"kind": "device", "model": "iPhone 15"},
+            "ignoredSettings": {"install": "the device cloud installs the build"},
+        }
+    ) == {"ios.model": "iPhone 15"}
+
+
 def test_condition_path_names_where_the_target_writes_it() -> None:
     from bajutsu.common.devices.runs import condition_path
 
