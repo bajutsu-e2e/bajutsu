@@ -300,6 +300,21 @@ def test_a_lease_with_max_jobs_answers_a_list_of_todays_bodies(
     assert ops.worker_lease(state, "w1", _WORKER, max_jobs=2) == ({}, 204)
 
 
+def test_a_group_jobs_lease_body_names_its_group_and_compatibility_key(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    state = _queued_state(serve_engine, tmp_path)
+    assert isinstance(state.repository, SqlRepository)
+    state.repository.enqueue_job("p", org_id="o", spec={}, capabilities=_CAPS)
+    _group(state.repository, "g1", ["1"])
+
+    plain, _ = ops.worker_lease(state, "w1", _WORKER)
+    grouped, _ = ops.worker_lease(state, "w1", _WORKER)
+
+    assert "group_id" not in plain and "compat_key" not in plain
+    assert (grouped["group_id"], grouped["compat_key"]) == ("g1", "c")
+
+
 def test_the_lease_applies_the_servers_caps_to_a_group(
     serve_engine: Callable[..., Engine], tmp_path: Path
 ) -> None:

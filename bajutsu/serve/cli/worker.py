@@ -758,6 +758,7 @@ def _serve_slots(
     places = threading.Condition()
     busy = 0
     dirs = _SlotDirs(work)
+    groups = _GroupDirs(work)
     threads: list[threading.Thread] = []
 
     def free() -> None:
@@ -768,6 +769,7 @@ def _serve_slots(
 
     slot: dict[str, Any] = {
         "dirs": dirs,
+        "groups": groups,
         "free": free,
         "shutdown": shutdown,
         "url": url,
@@ -814,6 +816,7 @@ def _run_slot(
     *,
     body: dict[str, Any],
     dirs: _SlotDirs,
+    groups: _GroupDirs,
     free: Callable[[], None],
     shutdown: _SlotShutdown,
     url: str,
@@ -841,11 +844,18 @@ def _run_slot(
     # Read inside the try, so a malformed lease body still gives the place back.
     job_id = str(body.get("job_id"))
     slot_work: Path | None = None
+    group: _GroupDir | None = None
     lost = threading.Event()
     try:
-        spec = body["spec"]
+        # The lease names the job's group apart from its spec (BE-0484); the provider shares the
+        # job's uploads under them.
+        spec = {**body["spec"], **{k: body[k] for k in _SHARE_FIELDS if body.get(k)}}
         typer.echo(f"  leased job {job_id}")
         slot_work = dirs.acquire()
+        # A job that ships its files stages them with its group's (BE-0484); a bundle's tree already
+        # holds every scenario of the target.
+        if body.get("group_id") and spec.get("materials") and spec.get("bundle") is None:
+            group = groups.acquire(str(body["group_id"]))
         io = PresignedWorkerIO(
             url=url,
             auth_token=auth_token,
@@ -878,6 +888,7 @@ def _run_slot(
                 claim_check=functools.partial(
                     _claim_refusal, body.get("capabilities"), worker_file
                 ),
+                group=group,
             )
         finally:
             shutdown.detach(lost)
@@ -893,12 +904,18 @@ def _run_slot(
     except Exception:  # one slot's failure never takes the worker, or its other slots, down
         _logger.exception("slot for job %s failed", job_id)
     finally:
+        # First, so a failing cleanup below never leaves the group's directory held.
+        if group is not None:
+            groups.release(group)
         post_done()
         if slot_work is not None:
             # The slot held this one job, so every cloud-batch tree under it is this job's: removed
             # on every exit, a failed run included, before the directory goes back to the pool.
             shutil.rmtree(slot_work / _BATCH_JOBS_DIR, ignore_errors=True)
             dirs.release(slot_work)
+
+
+_SHARE_FIELDS = ("group_id", "compat_key")
 
 
 # Where a slot worker keeps one workspace per slot under its own working directory (BE-0448). The
@@ -936,6 +953,58 @@ class _SlotDirs:
         """Give *path* back to the pool once its job is entirely done."""
         with self._lock:
             self._free.add(int(path.name))
+
+
+# Where a slot worker stages the files a `run-set` group's jobs ship, one directory per group
+# (BE-0484). Kept apart from `.slots`, which each hold one job's run output.
+_GROUP_DIRS = ".batch-groups"
+
+
+class _GroupDir:
+    """One group's staging directory, and how many slots hold a job of the group."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self.lock = threading.Lock()
+        self.holders = 0
+
+
+class _GroupDirs:
+    """The staging directories of a slot worker, one per `run-set` group whose jobs it holds.
+
+    The jobs of a group that ship their files stage them in one directory, so a package built for one
+    job holds the scenarios of the others (BE-0484). The directory lives while a slot holds a job of
+    the group, and goes once the last of them is done.
+    """
+
+    def __init__(self, work: Path) -> None:
+        self._root = work / _GROUP_DIRS
+        self._lock = threading.Lock()
+        self._held: dict[str, _GroupDir] = {}
+
+    def acquire(self, group_id: str) -> _GroupDir:
+        """The group's directory, created empty when no slot holds the group yet."""
+        if not _SAFE_SEGMENT.fullmatch(group_id):
+            raise RuntimeError(f"job carries a group that cannot name a directory: {group_id!r}")
+        with self._lock:
+            group = self._held.get(group_id)
+            if group is None:
+                group = _GroupDir(self._root / group_id)
+                # A worker killed outright may have left the directory; its files may be partial.
+                shutil.rmtree(group.path, ignore_errors=True)
+                group.path.mkdir(parents=True)
+                self._held[group_id] = group
+            group.holders += 1
+        return group
+
+    def release(self, group: _GroupDir) -> None:
+        """Let go of *group*, removing its directory once no slot holds it."""
+        with self._lock:
+            group.holders -= 1
+            if group.holders > 0:
+                return
+            self._held.pop(group.path.name, None)
+            shutil.rmtree(group.path, ignore_errors=True)
 
 
 class _SlotShutdown:
@@ -1578,6 +1647,7 @@ def _run_with_heartbeat(
     app_url: Any = None,
     lost: threading.Event | None = None,
     claim_check: Callable[[], str | None] | None = None,
+    group: _GroupDir | None = None,
 ) -> tuple[dict[str, Any] | None, bool, Path]:
     """Run the job on a background thread while heart-beating its lease from this one.
 
@@ -1619,6 +1689,9 @@ def _run_with_heartbeat(
 
     *claim_check* re-checks the job's route tokens against this worker's environment now (BE-0467);
     a job it refuses fails before anything is fetched or any device leased.
+
+    With a *group*, the job's files are staged in the group's directory, which the provider packages,
+    while the run lands in the job's own workspace (BE-0484).
     """
     spec = resolve_run_intent(spec, environment)
     holder: dict[str, Any] = {"work": work}
@@ -1660,7 +1733,7 @@ def _run_with_heartbeat(
             return
         try:
             job_work, failure = _workspace_or_failure(
-                work, spec, bundle_urls, override_urls, app_url=app_url
+                work, spec, bundle_urls, override_urls, app_url=app_url, group=group
             )
         except _TransientFetch as e:
             _logger.warning(
@@ -1690,6 +1763,7 @@ def _run_with_heartbeat(
                 secret_env=secret_env,
                 batch_checkpoint=checkpoint,
                 lease_lost=lost,
+                batch_dir=group.path if group is not None else None,
                 # Written before the run tree uploads, so console.log travels with it and is the
                 # durable copy the server's log stream falls back to (BE-0449).
                 before_upload=functools.partial(_write_job_console_log, job_work, bus),
@@ -2026,6 +2100,7 @@ def _workspace_or_failure(
     override_urls: dict[str, str] | None = None,
     *,
     app_url: Any = None,
+    group: _GroupDir | None = None,
 ) -> tuple[Path, dict[str, Any] | None]:
     """The workspace to run this job from, or the failed result to post when none can be prepared.
 
@@ -2040,10 +2115,16 @@ def _workspace_or_failure(
     succeed, so the caller lets the lease lapse rather than turning one network blip into a
     permanent failed job. Everything after the download is deterministic over verified bytes, so it
     keeps the permanent classification.
+
+    With a *group*, the job's materials and application go into the group's staging directory
+    instead (`_stage_in_group`), and the returned workspace keeps the job's run output alone.
     """
     try:
         base = _bundle_workspace(work, spec, bundle_urls)
-        _place_batch_app(base, spec, app_url)
+        if group is None:
+            _place_batch_app(base, spec, app_url)
+        else:
+            _stage_in_group(group, spec, app_url)
     except _TransientFetch:
         raise
     except Exception as e:
@@ -2245,6 +2326,51 @@ def _place_batch_app(tree: Path, spec: dict[str, Any], app_url: Any) -> None:
         raise RuntimeError(f"job needs application {sha}, but the lease signed no url for it")
     dest.parent.mkdir(parents=True, exist_ok=True)
     _fetch_part(app_url, dest, sha)
+
+
+def _stage_in_group(group: _GroupDir, spec: dict[str, Any], app_url: Any) -> None:
+    """Add a group job's materials and application to its group's staging directory (BE-0484).
+
+    Another slot may be packaging the directory meanwhile, so each file appears whole or not at all:
+    it is written aside and renamed into place. A file already there with the same content stays,
+    and the application is fetched once per group; its digest is the group's, fixed at registration.
+
+    Raises:
+        RuntimeError: A material names a path outside the directory, or another job of the group
+            staged different content there; or as `_place_batch_app` does.
+        _TransientFetch: As `_place_batch_app` does; nothing partial is left behind.
+    """
+    with group.lock:
+        base = group.path.resolve()
+        for rel, content in (spec.get("materials") or {}).items():
+            dest = (group.path / rel).resolve()
+            # Unlike a workspace's skipped material, a missing one here leaves a shared package short.
+            if base not in dest.parents:
+                raise RuntimeError(f"material {rel!r} names a path outside its group's directory")
+            if dest.is_file():
+                # One group ships one config and distinct scenarios, so a difference is a defect.
+                if dest.read_text(encoding="utf-8") != content:
+                    raise RuntimeError(f"jobs of group {group.path.name} ship different {rel!r}")
+                continue
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            fd, name = tempfile.mkstemp(dir=group.path.parent)
+            aside = Path(name)
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as tmp:
+                    tmp.write(content)
+                aside.replace(dest)
+            except BaseException:
+                aside.unlink(missing_ok=True)
+                raise
+        named = spec.get("batch") or spec.get("intent")
+        rel = named.get("app_path") if isinstance(named, dict) else None
+        if isinstance(rel, str) and rel and not Path(rel).is_absolute() and (base / rel).is_file():
+            return
+        with tempfile.TemporaryDirectory(dir=group.path.parent) as fetched:
+            _place_batch_app(Path(fetched), spec, app_url)
+            if isinstance(rel, str) and (Path(fetched) / rel).is_file():
+                (base / rel).parent.mkdir(parents=True, exist_ok=True)
+                (Path(fetched) / rel).replace(base / rel)
 
 
 class _CheckpointLostError(RuntimeError):

@@ -763,6 +763,7 @@ def test_execute_job_spec_reconstructs_the_batch_request(tmp_path: Path) -> None
             checkpoint: Any = None,
             job_id: str = "",
             interrupt: Any = None,
+            share: Any = None,
         ) -> Any:
             captured["request"] = request
             run_dir = dest / "runs" / "20260101-1"

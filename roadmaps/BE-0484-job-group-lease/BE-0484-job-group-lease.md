@@ -221,7 +221,7 @@ Out of scope: publishing a group's result as a GitHub check, sharing uploads bet
 - [x] Unit 1 — Group registration
 - [x] Unit 2 — Run intent
 - [x] Unit 3 — Grouped lease and caps
-- [ ] Unit 4 — Shared upload
+- [x] Unit 4 — Shared upload
 - [ ] Unit 5 — Platform routing
 - [ ] Unit 6 — Documentation
 

@@ -21,6 +21,7 @@ from .batch_checkpoint import BatchCheckpoint
 from .batch_lifecycle_hook import BatchContext, BatchLifecycleHook
 from .batch_provider import BatchProvider
 from .batch_request import BatchRequest
+from .batch_share import BatchShare
 from .device_farm_batch_provider import DeviceFarmBatchProvider
 
 __all__ = [
@@ -29,6 +30,7 @@ __all__ = [
     "BatchLifecycleHook",
     "BatchProvider",
     "BatchRequest",
+    "BatchShare",
     "DeviceFarmBatchProvider",
     "register",
     "resolve",

@@ -63,6 +63,7 @@ def test_run_job_cloud_batch_records_the_manifest_verdict(tmp_path: Path) -> Non
             checkpoint: Any = None,
             job_id: str = "",
             interrupt: Any = None,
+            share: Any = None,
         ) -> Any:
             run_dir = dest / "runs" / "20260101-1"
             run_dir.mkdir(parents=True)
@@ -138,6 +139,7 @@ def test_run_job_cloud_batch_fails_loud_when_submit_raises(tmp_path: Path) -> No
             checkpoint: Any = None,
             job_id: str = "",
             interrupt: Any = None,
+            share: Any = None,
         ) -> Any:
             raise RuntimeError("simulated AWS failure")
 
@@ -949,6 +951,7 @@ class _CapturingProvider:
         checkpoint: Any = None,
         job_id: str = "",
         interrupt: Any = None,
+        share: Any = None,
     ) -> Any:
         import json
 
