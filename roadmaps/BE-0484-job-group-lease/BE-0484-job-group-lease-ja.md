@@ -9,7 +9,7 @@
 | 提案者 | [@paihu](https://github.com/paihu) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0484") |
-| 実装 PR | [#2417](https://github.com/bajutsu-e2e/bajutsu/pull/2417)（単位 1）、[#2426](https://github.com/bajutsu-e2e/bajutsu/pull/2426)（単位 2）、[#2431](https://github.com/bajutsu-e2e/bajutsu/pull/2431)（単位 3）、[#2443](https://github.com/bajutsu-e2e/bajutsu/pull/2443)（単位 4）、[#UNIT5PR](https://github.com/bajutsu-e2e/bajutsu/pull/UNIT5PR)（単位 5） |
+| 実装 PR | [#2417](https://github.com/bajutsu-e2e/bajutsu/pull/2417)（単位 1）、[#2426](https://github.com/bajutsu-e2e/bajutsu/pull/2426)（単位 2）、[#2431](https://github.com/bajutsu-e2e/bajutsu/pull/2431)（単位 3）、[#2443](https://github.com/bajutsu-e2e/bajutsu/pull/2443)（単位 4）、[#2445](https://github.com/bajutsu-e2e/bajutsu/pull/2445)（単位 5） |
 | トピック | Device-cloud execution |
 | 関連 | [BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out-ja.md), [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch-ja.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md), [BE-0465](../BE-0465-serve-ui-device-farm-fan-out/BE-0465-serve-ui-device-farm-fan-out-ja.md), [BE-0468](../BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of-ja.md) |
 <!-- /BE-METADATA -->
@@ -310,7 +310,7 @@ worker は、その互換キーを持つ job が1件でも実行中のあいだ�
   - フックがファイルを集めるディレクトリを読み取り専用として扱うことは、文書にした約束であり、ワーカーは
     強制しません。フックは、オペレーターがプロセスの起動時に組み込むコードです。
 
-- 2026-11-14：[#UNIT5PR](https://github.com/bajutsu-e2e/bajutsu/pull/UNIT5PR) で単位 5 を実装しました。`run-set` のリクエストは環境を指定しません。
+- 2026-11-14：[#2445](https://github.com/bajutsu-e2e/bajutsu/pull/2445) で単位 5 を実装しました。`run-set` のリクエストは環境を指定しません。
   `environment` を送るリクエストには、ステータス 400 を返します。グループのジョブはそれぞれ、ターゲットの
   プラットフォーム、実行意図のトークン、シナリオ自身の `cap:` と `setting:` のトークンを要求します。
   iOS のジョブは、さらにファミリーのトークンと、実行が取る種類ごとに1つの `kind:` トークンを要求します。
