@@ -9,7 +9,7 @@
 | Author | [@paihu](https://github.com/paihu) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0484") |
-| Implementing PR | [#2417](https://github.com/bajutsu-e2e/bajutsu/pull/2417) (unit 1), [#2426](https://github.com/bajutsu-e2e/bajutsu/pull/2426) (unit 2), [#2431](https://github.com/bajutsu-e2e/bajutsu/pull/2431) (unit 3), [#2443](https://github.com/bajutsu-e2e/bajutsu/pull/2443) (unit 4), [#2445](https://github.com/bajutsu-e2e/bajutsu/pull/2445) (unit 5) |
+| Implementing PR | [#2417](https://github.com/bajutsu-e2e/bajutsu/pull/2417) (unit 1), [#2426](https://github.com/bajutsu-e2e/bajutsu/pull/2426) (unit 2), [#2431](https://github.com/bajutsu-e2e/bajutsu/pull/2431) (unit 3), [#2443](https://github.com/bajutsu-e2e/bajutsu/pull/2443) (unit 4), [#2445](https://github.com/bajutsu-e2e/bajutsu/pull/2445) (unit 5), [#2446](https://github.com/bajutsu-e2e/bajutsu/pull/2446) (unit 6) |
 | Topic | Device-cloud execution |
 | Related | [BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out.md), [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md), [BE-0465](../BE-0465-serve-ui-device-farm-fan-out/BE-0465-serve-ui-device-farm-fan-out.md), [BE-0468](../BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of.md) |
 <!-- /BE-METADATA -->
@@ -323,7 +323,7 @@ Log:
     is a separate decision.
   - The request digest no longer covers the environment. A group key registered before this unit
     and repeated after it gets status 409, since its digest differs.
-- 2026-11-14 — UNIT6PR landed unit 6 and completes the item. The pages for the serve API, the
+- 2026-11-14 — [#2446](https://github.com/bajutsu-e2e/bajutsu/pull/2446) landed unit 6 and completes the item. The pages for the serve API, the
   worker, and routing now match units 1 to 5, in both languages.
   - `docs/self-hosting.md` states a fan-out job's required tokens and a worker's `job:run-intent`,
     `kind:`, and Device Farm `platform:` tokens. It adds the `run-set` route refusal and a BE-0484
