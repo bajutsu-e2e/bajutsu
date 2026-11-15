@@ -23,6 +23,7 @@ class JobRecord(Base):
     __table_args__ = (
         Index("ix_jobs_status_leased_at", "status", "leased_at"),
         Index("ix_jobs_status_created_at", "status", "created_at"),
+        Index("ix_jobs_group_id", "group_id"),
     )
 
     id: Mapped[str] = mapped_column(primary_key=True)
@@ -55,4 +56,12 @@ class JobRecord(Base):
     # worker that re-leases this job after a restart resumes polling that run instead of resubmitting
     # it (BE-0336 Unit 5). Empty ``{}`` until the job is a scheduled cloud-batch run.
     batch_state: Mapped[dict[str, Any]] = mapped_column(_JSON, default=dict)
+    # Who started the job, so a per-user count reads a column rather than the spec (BE-0484).
+    actor: Mapped[str | None] = mapped_column(default=None)
+    # The `run-set` group the job belongs to, and the keys a worker shares work and a lease scan
+    # pairs jobs by (BE-0484). All four stay None on a job registered by any other route.
+    group_id: Mapped[str | None] = mapped_column(default=None)
+    compat_key: Mapped[str | None] = mapped_column(default=None)
+    route_key: Mapped[str | None] = mapped_column(default=None)
+    base_key: Mapped[str | None] = mapped_column(default=None)
     created_at: Mapped[datetime] = _created_at()

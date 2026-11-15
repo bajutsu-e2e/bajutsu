@@ -839,8 +839,8 @@ admin の endpoint です。マシンにその*ランク*を与えれば、confi
 |---|---|
 | `GET /api/artifacts/exists`（publish 済みのビルドの有無を問う） | `POST /api/config`、`POST /api/compose`（org の有効な config の再バインド） |
 | `POST /api/artifacts/config`、`.../scenarios`、`.../binary`（3種のアーティファクトの publish） | `GET /api/config/content`（config の本文にシークレットが埋まっていることがある） |
-| `POST /api/run`（run の投入） | `POST /api/apikey`、`POST /api/claudecodetoken`（operator のシークレット） |
-| `GET /api/runs`、`GET /api/jobs/<id>`（投入した run の監視） | `/api/orgs*`（誰がサインインして書けるか） |
+| `POST /api/run`、`POST /api/run-set`（run と run のグループの投入） | `POST /api/apikey`、`POST /api/claudecodetoken`（operator のシークレット） |
+| `GET /api/runs`、`GET /api/jobs/<id>`、`GET /api/run-set/<groupId>`（投入した run の監視） | `/api/orgs*`（誰がサインインして書けるか） |
 
 右の列は `serve` が保持している一覧ではありません。許可リストは、何も書かれていなければ拒否します。左に
 現れないことによって、その endpoint はマシンに閉ざされます。来年 `serve` に足された経路も、誰かが意図して

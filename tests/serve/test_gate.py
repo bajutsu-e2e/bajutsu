@@ -163,8 +163,17 @@ def test_the_machine_allowlist_is_exactly_the_pipelines_own_sequence() -> None:
         ("POST", "/api/run"),
         ("GET", "/api/runs"),
         ("GET", "/api/jobs/j-1"),
+        ("POST", "/api/run-set"),  # register a group of jobs (BE-0484)
+        ("GET", "/api/run-set/g-1"),
     ):
         assert gate.forbidden_for_machine(method, path, org="acme") is False, (method, path)
+
+
+def test_the_machine_group_poll_matches_one_segment_only_and_cancel_stays_closed() -> None:
+    """A machine polls a group it registered, but cancelling one stays a person's act, as for a job."""
+    assert gate.forbidden_for_machine("GET", "/api/run-set/g-1/x", org="acme") is True
+    assert gate.forbidden_for_machine("GET", "/api/run-set/", org="acme") is True
+    assert gate.forbidden_for_machine("POST", "/api/run-set/g-1/cancel", org="acme") is True
 
 
 def test_the_machine_allowlist_denies_by_default() -> None:

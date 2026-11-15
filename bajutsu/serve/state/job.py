@@ -152,6 +152,10 @@ class Job:
     # from the secrets its lease relayed, and `_spawn_env` merges it onto the child env. Never part of the job spec the queue stores, and
     # kept out of `repr` so a logged `Job` cannot print a value.
     secret_env: dict[str, str] = field(default_factory=dict, repr=False)
+    # The `run-set` group this job belongs to and what a worker may share between its jobs (BE-0484);
+    # both None for a job any other route registers. The jobs table stores them, not the spec.
+    group_id: str | None = None
+    compat_key: str | None = None
     # A cloud-batch run request (BE-0336): when set, this job runs one scenario on a batch device
     # cloud (its `provider` names the concrete backend) instead of spawning `cmd` locally. `run_job`
     # branches on it; None is the ordinary local/worker run. The verdict still comes from the run's

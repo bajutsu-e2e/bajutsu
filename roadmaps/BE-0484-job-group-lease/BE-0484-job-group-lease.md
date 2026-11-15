@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0484](BE-0484-job-group-lease.md) |
 | Author | [@paihu](https://github.com/paihu) |
-| Status | **Approved** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0484") |
+| Implementing PR | [#2417](https://github.com/bajutsu-e2e/bajutsu/pull/2417) (unit 1) |
 | Topic | Device-cloud execution |
 | Related | [BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out.md), [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md), [BE-0465](../BE-0465-serve-ui-device-farm-fan-out/BE-0465-serve-ui-device-farm-fan-out.md), [BE-0468](../BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of.md) |
 <!-- /BE-METADATA -->
@@ -217,12 +218,35 @@ Out of scope: publishing a group's result as a GitHub check, sharing uploads bet
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — Group registration
+- [x] Unit 1 — Group registration
 - [ ] Unit 2 — Run intent
 - [ ] Unit 3 — Grouped lease and caps
 - [ ] Unit 4 — Shared upload
 - [ ] Unit 5 — Platform routing
 - [ ] Unit 6 — Documentation
+
+Log:
+
+- 2026-11-11 — [#2417](https://github.com/bajutsu-e2e/bajutsu/pull/2417) landed unit 1. `POST /api/run-set` writes a `job_groups` row and returns
+  `groupId`. Every job of the request stores its group, compatibility, route, and base keys. Every
+  job now stores its actor. The request refuses a scenario named twice. Two routes are new:
+  `GET /api/run-set/<groupId>` and `POST /api/run-set/<groupId>/cancel`. A machine may register a
+  group and read one, under its own org. The unit departs from the design in five places.
+  - The group read also returns each job's `exitCode` and `runId`. It adds a `conclusion` for the
+    whole group: `pending`, `success`, `failure`, or `cancelled`. A job's `done` status says merely
+    that the job finished. Without the exit codes, a CI caller could not tell a passing group from
+    a failing one. The value names follow a GitHub check run's conclusion, for later publishing.
+  - The compatibility key takes the digest the binary arrives under, a snapshot or a bundle. A
+    bundle digest covers more than the binary. The key thus errs toward sharing less, never toward a different binary.
+  - The group row lands after its jobs, once at least one job has registered. A request the cap
+    refuses outright thus leaves no empty group. `jobs.group_id` carries no foreign key yet. Unit 3 writes
+    the group and its jobs in one transaction.
+  - A person reaches a group through org membership, as with `POST /api/jobs/<id>/cancel`.
+    The active org alone does not decide. Under "own org alone", a person who switched orgs would
+    get 404 for their own group. Each job of that group would stay reachable.
+    `GET /api/jobs/<id>` leaves a person unscoped, so the group read is the tighter of the two.
+    Cancel needs the editor role in the group's org. A machine stays bound to its own org.
+  - `docs/devicefarm.md` and `docs/self-hosting.md` describe the new routes in both languages. Unit 6 keeps the full documentation pass.
 
 ## References
 

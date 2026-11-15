@@ -39,7 +39,13 @@ class DbQueueExecutor:
             job.capabilities, names_host_paths=spec["cwd"] is not None, machine_id=self._machine_id
         )
         self._repo.enqueue_job(
-            job.id, org_id=job.org or "", spec=spec, capabilities=job.capabilities
+            job.id,
+            org_id=job.org or "",
+            spec=spec,
+            capabilities=job.capabilities,
+            actor=job.actor,
+            group_id=job.group_id,
+            compat_key=job.compat_key,
         )
         # The job is registered before its row exists, so a cancel can land in between, find no
         # row, and stop only the in-memory `Job` (BE-0449). Carry that cancel onto the row now, or

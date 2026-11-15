@@ -876,8 +876,8 @@ endpoints keeps a pipeline's reach to what a pipeline needs:
 |---|---|
 | `GET /api/artifacts/exists` — probe for a build it already published | `POST /api/config`, `POST /api/compose` — rebinding the org's active configuration |
 | `POST /api/artifacts/config`, `.../scenarios`, `.../binary` — publish the three artifact kinds | `GET /api/config/content` — a config body may embed secrets |
-| `POST /api/run` — dispatch a run | `POST /api/apikey`, `POST /api/claudecodetoken` — operator secrets |
-| `GET /api/runs` and `GET /api/jobs/<id>` — watch what it dispatched | `/api/orgs*` — who may sign in and write |
+| `POST /api/run` and `POST /api/run-set` — dispatch a run or a group of runs | `POST /api/apikey`, `POST /api/claudecodetoken` — operator secrets |
+| `GET /api/runs`, `GET /api/jobs/<id>`, and `GET /api/run-set/<groupId>` — watch what it dispatched | `/api/orgs*` — who may sign in and write |
 
 The right-hand column is **not** a list `serve` keeps. The allowlist denies by default. An endpoint
 stays shut to a machine by never appearing on the left, and a route added next year stays shut until

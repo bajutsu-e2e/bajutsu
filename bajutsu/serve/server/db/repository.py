@@ -215,9 +215,34 @@ class Repository(Protocol):
         """Append an audit-log entry — who did what to which target, and when (server clock)."""
 
     def enqueue_job(
-        self, job_id: str, org_id: str, spec: dict[str, Any], capabilities: Iterable[str] = ()
+        self,
+        job_id: str,
+        org_id: str,
+        spec: dict[str, Any],
+        capabilities: Iterable[str] = (),
+        *,
+        actor: str | None = None,
+        group_id: str | None = None,
+        compat_key: str | None = None,
     ) -> None:
-        """Insert a job with status ``queued`` and its required-capability routing key (BE-0166)."""
+        """Insert a job with status ``queued`` and its required-capability routing key (BE-0166).
+
+        Args:
+            actor: Who started the job, kept for a per-user count.
+            group_id: The `run-set` group the job belongs to (BE-0484). A grouped job also stores
+                the route and base keys of *capabilities*, which pair it with its group's other jobs.
+            compat_key: What a worker may share between the group's jobs: config, binary, platform,
+                and target.
+        """
+
+    def create_job_group(self, group_id: str, org_id: str, key: str) -> None:
+        """Insert the group one `run-set` request registers (BE-0484)."""
+
+    def get_job_group(self, group_id: str) -> dict[str, Any] | None:
+        """The group's ``id``, ``org_id``, and ``key``, or None when no group has that id."""
+
+    def group_jobs(self, group_id: str) -> list[dict[str, Any]]:
+        """Each job of the group, oldest first, as its ``id``, ``status``, and ``result``."""
 
     def max_job_id(self) -> int:
         """The highest numeric job id persisted so far, or 0 if the table is empty.
