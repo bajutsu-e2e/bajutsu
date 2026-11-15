@@ -1,0 +1,52 @@
+# Fan-out Replay (BE-0465, BE-0484) — the fan-out toggle turns the Run form into a run-set, and an
+# Android target fans its scenarios out through run-set into one row per job, which Stop all cancels.
+#
+# The request names no environment: the server routes each job to any worker serving the target's
+# platform. No live worker serves Android here, so the dispatched jobs stay queued until Stop all
+# cancels them, and nothing runs. Before that, fan-out is turned off: the live run-set stays in
+# view. The `zz-fanout-android` target and its two placeholder scenarios live in inner.config.yaml
+# and fanout/scenarios/.
+description: >-
+  Fan-out Replay — the fan-out toggle hides the single-run fields; an Android target fans its
+  scenarios out to a run-set panel that Stop all cancels.
+scenarios:
+  - name: an Android target fans its scenarios out through run-set
+    description: >-
+      Switch to the Android target, turn fan-out on, run All scenarios, turn fan-out off (the live
+      run-set stays), Stop all, and read the cancelled rows back with fan-out on.
+    steps:
+      - tap: { id: nav.replay }
+      - wait: { for: { id: replay.scenario, labelMatches: "counter" }, timeout: 10 }
+      - selectOption: { sel: { id: replay.target }, option: zz-fanout-android }
+      - tap: { id: replay.fan-out }
+      # The multi-select lists the Android target's own scenarios. Its label is its aria-label, so the
+      # wait reads the block around it.
+      - wait: { for: { id: replay.scenario-set, labelMatches: "second" }, timeout: 10 }
+      - assert:
+          - exists: { id: replay.all-scenarios }
+          - exists: { id: replay.scenarios }
+          - exists: { id: replay.grade, negate: true }
+          # The fields run-set ignores, and the host-side Readiness checks, are hidden.
+          - exists: { id: replay.scenario, negate: true }
+          - exists: { id: replay.doctor, negate: true }
+          - exists: { id: replay.headed, negate: true }
+          - exists: { id: replay.simulators, negate: true }
+      - tap: { id: replay.all-scenarios }
+      - tap: { id: replay.run }
+      - wait: { for: { id: replay.runset-row, index: 1 }, timeout: 10 }
+      - assert:
+          - count: { sel: { id: replay.runset-row }, equals: 2 }
+          - exists: { id: replay.runset-partial, negate: true }
+      # Turning fan-out off keeps a still-running fan-out and its Stop all in view.
+      - tap: { id: replay.fan-out }
+      - assert:
+          - exists: { id: replay.runset }
+          - exists: { id: replay.runset-stop }
+      - tap: { id: replay.runset-stop }
+      # Once every row has finished, the panel shows with fan-out alone again: it hides while fan-out
+      # is off and comes back with it.
+      - wait: { until: { gone: { id: replay.runset } }, timeout: 15 }
+      - tap: { id: replay.fan-out }
+      - wait: { for: { id: replay.runset-status, labelMatches: "cancelled", index: 1 }, timeout: 15 }
+    expect:
+      - count: { sel: { id: replay.runset-status, labelMatches: "cancelled" }, equals: 2 }

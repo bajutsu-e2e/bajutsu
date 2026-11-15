@@ -502,7 +502,7 @@ appium:
 drivers: [xcuitest, adb, playwright, fake]
 ```
 
-デバイスを駆動するコマンドは、いずれも `--worker-config` でこのファイルを受け付けます。`run`、`record`、`crawl`、`repl`、`audit`、`doctor`、`bajutsu mcp` です。グリッドのプラットフォームのターゲットは、エンドポイントをデバイスとして使います。同じシナリオのほかのターゲットは、このマシンに残ります。エンドポイントは 1 台のデバイスとして数えるので、グリッドのターゲットを 2 つ持つシナリオを run は拒否します。`--udid` は URL を受け付けなくなりました。Device Farm のファンアウトは、バッチの provider を serve のリクエストの `environment` で指定します。ターゲットの旧 `cloudBatch` は使いません（[Device Farm](devicefarm.md)）。
+デバイスを駆動するコマンドは、いずれも `--worker-config` でこのファイルを受け付けます。`run`、`record`、`crawl`、`repl`、`audit`、`doctor`、`bajutsu mcp` です。グリッドのプラットフォームのターゲットは、エンドポイントをデバイスとして使います。同じシナリオのほかのターゲットは、このマシンに残ります。エンドポイントは 1 台のデバイスとして数えるので、グリッドのターゲットを 2 つ持つシナリオを run は拒否します。`--udid` は URL を受け付けなくなりました。Device Farm のファンアウトは、バッチの provider を指定しません。ターゲットの旧 `cloudBatch` もありません。サーバは、ファンアウトの各ジョブをターゲットのプラットフォームで振り分けます（[Device Farm](devicefarm.md)）。
 
 ### 実機のホストアドレス（`driver.runner.hostAddress`）
 

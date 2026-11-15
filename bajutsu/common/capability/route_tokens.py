@@ -55,11 +55,23 @@ UNCHECKED_NOTICE = (
 )
 
 
+# The provenance entry a worker stamps on a `run-set` job it runs: the job names no placement, so the
+# report says where it ran (BE-0484).
+WORKER_ENVIRONMENT_KEY = "workerEnvironment"
+
+
 def report_notices(provenance: Mapping[str, object] | None) -> list[str]:
-    """The run-level notices a report shows for its manifest *provenance* (BE-0467)."""
-    if (provenance or {}).get(UNCHECKED_PROVENANCE_KEY) == UNCHECKED_PROVENANCE_VALUE:
-        return [UNCHECKED_NOTICE]
-    return []
+    """The run-level notices a report shows for its manifest *provenance* (BE-0467, BE-0484)."""
+    provenance = provenance or {}
+    notices = []
+    if provenance.get(UNCHECKED_PROVENANCE_KEY) == UNCHECKED_PROVENANCE_VALUE:
+        notices.append(UNCHECKED_NOTICE)
+    if environment := provenance.get(WORKER_ENVIRONMENT_KEY):
+        notices.append(
+            f"this run-set job ran on a worker whose environment is {environment!r} (BE-0484); "
+            "another run of it may land elsewhere"
+        )
+    return notices
 
 
 # Which route each actuator drives on a worker's own host. `fake` drives none: it applies nothing,

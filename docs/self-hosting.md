@@ -367,7 +367,7 @@ below, covers that case.
 there. The server runs no job itself. It queues each kind of job for a worker:
 
 - a `run`, with its build phase
-- a `run-set`, the Device Farm fan-out
+- a `run-set`, the fan-out of a target's scenarios
 - a `triage`, a `record`, or a `crawl`
 
 A `bajutsu worker` on the same machine leases each job and runs it. `make serve` starts that
@@ -609,8 +609,9 @@ The control plane checks the request before any job exists:
 - `binaryArtifact` on a target with no `subject.path`, such as a web target, returns `400`.
 - A single-process `serve` refuses both fields. It runs the job in the operator's own project
   directory, which no override may overwrite.
-- `POST /api/run-set` refuses both fields. Its cloud-batch fan-out runs on a Device Farm worker,
-  and mapping an override onto a Device Farm request is separate work.
+- `POST /api/run-set` refuses both fields. Any worker serving the target's platform may lease a
+  fan-out job, a Device Farm worker included. Mapping an override onto a Device Farm request is
+  separate work.
 
 The lease signs one presigned HTTP GET URL per named override: `binary_url` and `scenarios_url`.
 It signs each under the leased job's org. The worker checks each download against its sha256. It
@@ -1246,15 +1247,15 @@ deterministic `run` verdict.
   a job requires `environment:appium` alone, since the grid owns the device. An `appium` worker sets
   `environment: appium` and the grid's `endpoint` in its `worker.yaml`. It advertises that token
   alone and takes no `--platform`. It runs a local `bajutsu run` with its `--worker-config`
-  ([iOS on a real device](ios-device-cloud.md#live--an-appium-endpoint-provider)). A Device Farm
-  fan-out takes its own `environment` on `POST /api/run-set`
+  ([iOS on a real device](ios-device-cloud.md#live--an-appium-endpoint-provider)). A fan-out
+  (`POST /api/run-set`) takes no `environment`. It routes each job by its target's platform
   ([Running on AWS Device Farm](devicefarm.md#fanning-a-target-out)).
 - **A hand-written worker input now logs a deprecation notice.** A worker's `--capabilities` and
   `$BAJUTSU_WORKER_CAPABILITIES` add tokens verbatim. Both still work for this release, with a
   one-time notice, and go away in the next release. The inventory and the worker capability file
   now supply what the override was for. An override can also claim a runtime the machine lacks.
   Neither may carry the reserved `environment:`, `host:`, `machine:`, `device:`, `cap:`,
-  `setting:`, or `job:` prefix, which the worker fills itself. A worker rejects such a token at startup.
+  `setting:`, `job:`, `platform:`, or `kind:` prefix, which the worker fills itself. A worker rejects such a token at startup.
 - **An unroutable job** — one whose required capabilities no live worker advertises — stays queued
   rather than being leased to an incompatible worker or dropped, and is surfaced by the
   `bajutsu_unroutable_jobs` metric (below) so the operator knows to add a worker with the missing
@@ -1424,7 +1425,7 @@ creates the first one from the Orgs page.
 one org may have in flight at once, so a busy org can't monopolize the scarce devices even when its
 users each stay under their own `BAJUTSU_MAX_CONCURRENT_PER_USER`. Both default to unlimited (`0`),
 and both sit under the global `--max-concurrent-runs`; an over-cap request is rejected (HTTP 429)
-rather than queued. A Device Farm fan-out (`run-set`) is the exception: it queues every scenario,
+rather than queued. A fan-out (`run-set`) is the exception: it queues every scenario,
 and the caps apply when a worker leases a job, so the fan-out runs in turns as slots free (BE-0484).
 (Fair *scheduling* across orgs — holding the rejected work in a per-org queue and dispatching it
 round-robin — is still future work; today the cap rejects a plain run.)

@@ -245,16 +245,20 @@ def _worker(environment: str) -> WorkerCapability:
     return WorkerCapability(version=1, environment=environment, drivers=("xcuitest", "adb"))
 
 
-def test_a_device_farm_worker_advertises_its_environment_and_host_alone(
+def test_a_device_farm_worker_advertises_its_providers_platforms_and_device_kind(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("BAJUTSU_WORKER_CAPABILITIES", raising=False)
-    # No platform axis: the phone is the provider's. The host token is the machine's (BE-0450), and
-    # the run-intent token says it can take a `run-set` job (BE-0484).
+    # The host token is the machine's (BE-0450); the run-intent, platform, and kind tokens let a
+    # `run-set` job of either platform route here, on a physical device (BE-0484). No family token:
+    # the provider's device selection filters by platform alone.
     assert worker_mod._advertised_capabilities("", "", _worker("devicefarm"), "linux") == [
         "environment:devicefarm",
         "host:linux",
         "job:run-intent",
+        "kind:device",
+        "platform:android",
+        "platform:ios",
     ]
 
 
@@ -290,13 +294,24 @@ def test_the_environment_prefix_is_reserved_in_the_override(
         worker_mod._advertised_capabilities("", "", _worker(environment), "darwin")
 
 
+@pytest.mark.parametrize("token", ["platform:ios", "kind:device"])
+def test_the_platform_and_kind_prefixes_are_reserved_in_the_override(
+    token: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A hand-written platform would put the worker's capacity outside the routing a `run-set` job
+    # follows, so the worker refuses to start rather than drop it (BE-0484).
+    monkeypatch.delenv("BAJUTSU_WORKER_CAPABILITIES", raising=False)
+    with pytest.raises(typer.BadParameter, match=f"{token}: .*reserved"):
+        worker_mod._advertised_capabilities("", token, _worker("local"), "darwin")
+
+
 def test_a_server_without_a_queue_refuses_a_fan_out(tmp_path: Path) -> None:
     # No provider is registered in the server and it runs no job itself, so a fan-out needs a queue.
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text("targets: {}\n", encoding="utf-8")
     state = ServeState(config=cfg, runs_dir=tmp_path / "runs", cwd=tmp_path)
     assert isinstance(state.executor, UnqueuedExecutor)
-    payload, status = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
+    payload, status = start_run_set(state, {"target": "demo"})
     assert status == 400
     assert "needs a queue and a worker" in payload["error"]
 
@@ -493,6 +508,12 @@ def _storage_state(
         def runnable(self, name: str) -> Runnable:
             return Runnable(arg=f"scenarios/{name}", materials={f"scenarios/{name}": _SCENARIO})
 
+        def read(self, name: str) -> str:
+            return _SCENARIO
+
+        def directory(self) -> None:
+            return None
+
     class _Store:
         def scope(self, *_a: Any, **_k: Any) -> _Scope:
             return _Scope()
@@ -533,14 +554,17 @@ def test_a_leased_fan_out_job_runs_on_the_worker_from_its_own_workspace(
     monkeypatch.delenv("BAJUTSU_DATABASE_URL", raising=False)
     executor = _Recording()
     state = _storage_state(tmp_path, executor)
-    _payload, status = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
+    _payload, status = start_run_set(state, {"target": "demo"})
     assert status == 200
     (job,) = state.jobs.values()
     # The worker turns the job's run intent into its own provider's batch once leased (BE-0484).
     spec = resolve_run_intent(job_spec(job), "devicefarm")
     assert spec["batch"]["app_path"] == "app.apk"
     assert spec["cwd"] is None  # it ships its files, so it names nothing on the server's disk
-    assert job.capabilities == ["environment:devicefarm", "job:run-intent"]
+    assert [c for c in job.capabilities if not c.startswith(("cap:", "setting:"))] == [
+        "job:run-intent",
+        "platform:android",
+    ]
     assert spec["batch_app"] == hashlib.sha256(b"APK").hexdigest()
     assert state.object_store is not None
     (key,) = state.object_store.objects  # type: ignore[attr-defined]

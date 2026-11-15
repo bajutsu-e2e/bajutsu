@@ -9,7 +9,7 @@
 | 提案者 | [@paihu](https://github.com/paihu) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0484") |
-| 実装 PR | [#2417](https://github.com/bajutsu-e2e/bajutsu/pull/2417)（単位 1）、[#2426](https://github.com/bajutsu-e2e/bajutsu/pull/2426)（単位 2）、[#2431](https://github.com/bajutsu-e2e/bajutsu/pull/2431)（単位 3）、[#2443](https://github.com/bajutsu-e2e/bajutsu/pull/2443)（単位 4） |
+| 実装 PR | [#2417](https://github.com/bajutsu-e2e/bajutsu/pull/2417)（単位 1）、[#2426](https://github.com/bajutsu-e2e/bajutsu/pull/2426)（単位 2）、[#2431](https://github.com/bajutsu-e2e/bajutsu/pull/2431)（単位 3）、[#2443](https://github.com/bajutsu-e2e/bajutsu/pull/2443)（単位 4）、[#2445](https://github.com/bajutsu-e2e/bajutsu/pull/2445)（単位 5） |
 | トピック | Device-cloud execution |
 | 関連 | [BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out-ja.md), [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch-ja.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md), [BE-0465](../BE-0465-serve-ui-device-farm-fan-out/BE-0465-serve-ui-device-farm-fan-out-ja.md), [BE-0468](../BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of-ja.md) |
 <!-- /BE-METADATA -->
@@ -222,7 +222,7 @@ worker は、その互換キーを持つ job が1件でも実行中のあいだ�
 - [x] 単位2 — 実行意図
 - [x] 単位3 — グループ単位の lease と上限
 - [x] 単位4 — upload の共有
-- [ ] 単位5 — プラットフォームによるルーティング
+- [x] 単位5 — プラットフォームによるルーティング
 - [ ] 単位6 — ドキュメント
 
 ログ：
@@ -309,6 +309,24 @@ worker は、その互換キーを持つ job が1件でも実行中のあいだ�
     持つバンドルの写しに、ターゲットのシナリオがすべて入っているからです。
   - フックがファイルを集めるディレクトリを読み取り専用として扱うことは、文書にした約束であり、ワーカーは
     強制しません。フックは、オペレーターがプロセスの起動時に組み込むコードです。
+
+- 2026-11-14：[#2445](https://github.com/bajutsu-e2e/bajutsu/pull/2445) で単位 5 を実装しました。`run-set` のリクエストは環境を指定しません。
+  `environment` を送るリクエストには、ステータス 400 を返します。グループのジョブはそれぞれ、ターゲットの
+  プラットフォーム、実行意図のトークン、シナリオ自身の `cap:` と `setting:` のトークンを要求します。
+  iOS のジョブは、さらにファミリーのトークンと、実行が取る種類ごとに1つの `kind:` トークンを要求します。
+  `host:` トークンを要求するジョブはありません。稼働中のワーカーがジョブのルートを駆動していて、
+  どのワーカーもそのジョブを処理できない場合、登録はリクエストを拒否します。web のターゲットには
+  `subject.path` は要りません。Device Farm のワーカーは、自分のプラットフォームと `kind:device` を広告します。
+  環境のルールは、実行意図のジョブには適用しません。ローカルのワーカーは、手元の端末の一覧から
+  `kind:simulator` と `kind:device` を広告します。`--capabilities` の上書きでは、`platform:` と `kind:` を
+  予約しました。Replay タブは環境を送らず、環境の選択欄の代わりに fan-out のチェックボックスを置きました。
+  設計とは次の3点で異なります。
+  - ワーカーは、ジョブを実行した場所を `workerEnvironment` として実行の来歴に書き込みます。レポートは、
+    この項目を注記として表示します。BE-0467 の、ルートを確かめなかったことの注記と並べて示します。
+  - Replay タブは `GET /api/environments` を読まなくなりました。API を消すかどうかは別の判断なので、
+    ルート自体は残しています。
+  - リクエストのダイジェストは、環境を含まなくなりました。この単位より前に登録したグループキーを、
+    この単位の後で繰り返すと、ダイジェストが異なるのでステータス 409 を返します。
 
 ## 参考
 

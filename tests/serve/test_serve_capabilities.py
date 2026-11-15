@@ -68,8 +68,8 @@ def test_worker_capabilities_combines_platform_override_and_inventory() -> None:
         }
     )
     caps = cap.worker_capabilities(["ios"], override="beta, ipad", run=run)
-    # platform axis + override tokens + inventory-derived runtime (ios18) and device classes.
-    assert caps == {"platform:ios", "beta", "ipad", "ios18", "iphone"}
+    # platform axis + override tokens + inventory-derived runtime (ios18), device classes, and kind.
+    assert caps == {"platform:ios", "beta", "ipad", "ios18", "iphone", "kind:simulator"}
 
 
 def test_worker_capabilities_without_inventory_is_platform_plus_override() -> None:
@@ -93,7 +93,18 @@ def test_simctl_capabilities_derives_major_version_only() -> None:
         }
     )
     # A job pinned to `ios17` matches any 17.x runtime — the minor version is dropped.
-    assert cap.simctl_capabilities(run) == {"ios17", "iphone"}
+    assert cap.simctl_capabilities(run) == {"ios17", "iphone", "kind:simulator"}
+
+
+def test_simctl_capabilities_omits_the_simulator_kind_without_an_iphone_or_ipad() -> None:
+    run = _fake_simctl(
+        {
+            "com.apple.CoreSimulator.SimRuntime.watchOS-11-0": [
+                {"udid": "W1", "name": "Apple Watch Series 10 (46mm)", "state": "Shutdown"}
+            ]
+        }
+    )
+    assert cap.simctl_capabilities(run) == set()
 
 
 def test_an_environment_worker_serves_only_jobs_that_require_its_token() -> None:
@@ -108,11 +119,29 @@ def test_an_environment_worker_serves_only_jobs_that_require_its_token() -> None
     assert cap.can_serve([], ["platform:ios"])
 
 
-def test_reserved_tokens_names_the_environment_and_host_prefixes_alone() -> None:
+def test_an_environment_worker_serves_a_run_intent_job_of_its_platform() -> None:
+    # BE-0484: a run-intent job names no placement, so the environment rule stands aside for it.
+    df = ["environment:devicefarm", "job:run-intent", "platform:ios", "kind:device"]
+    assert cap.can_serve(["job:run-intent", "platform:ios", "kind:device"], df)
+    assert not cap.can_serve(["job:run-intent", "platform:web"], df)
+    assert not cap.can_serve(["job:run-intent", "platform:ios", "kind:simulator"], df)
+    # An `appium` grid advertises `job:run-intent` but no `platform:*`, so it takes no group job.
+    assert not cap.can_serve(
+        ["job:run-intent", "platform:ios"], ["environment:appium", "job:run-intent"]
+    )
+
+
+def test_reserved_tokens_names_the_routing_prefixes() -> None:
     assert cap.reserved_tokens(["ios18", "host:linux", "environment:x", "platform:ios"]) == [
         "environment:x",
         "host:linux",
+        "platform:ios",
     ]
+
+
+def test_reserved_tokens_names_the_kind_prefix() -> None:
+    # A hand-written `kind:device` could pull an iOS device run onto a worker with no device (BE-0484).
+    assert cap.reserved_tokens(["ipad", "kind:device"]) == ["kind:device"]
 
 
 def test_reserved_tokens_names_the_device_prefix() -> None:
@@ -168,7 +197,12 @@ def test_devicectl_capabilities_advertises_each_known_family() -> None:
     assert cap.devicectl_capabilities(lambda: {"iPhone", "iPad", "Apple TV"}) == {
         "device:iphone",
         "device:ipad",
+        "kind:device",
     }
+
+
+def test_devicectl_capabilities_claims_no_kind_for_a_device_of_no_known_family() -> None:
+    assert cap.devicectl_capabilities(lambda: {"Apple TV"}) == set()
 
 
 def test_devicectl_capabilities_is_empty_when_devicectl_cannot_be_read() -> None:

@@ -1,7 +1,7 @@
-"""Structural tests for the Replay tab's device-cloud form and run-set panel (BE-0465 units 2-3).
+"""Structural tests for the Replay tab's fan-out form and run-set panel (BE-0465 units 2-3, BE-0484).
 
 The markup ships inlined in the index; the JS ships as the serve.runset.mjs ES module (BE-0247).
-The dispatch, environment listing and job read are covered by their operation tests; here we pin
+The dispatch and job read are covered by their operation tests; here we pin
 that the form's controls exist, which local-only controls it hides, and that the module talks to the
 endpoints the design names — run-set with explicit names, and a status poll without the log.
 """
@@ -36,22 +36,20 @@ def _tag(html: str, testid: str) -> str:
     return match.group(0)
 
 
-def test_the_environment_selector_ships_with_local_as_its_default(tmp_path: Path) -> None:
+def test_the_fan_out_toggle_ships_off_and_no_environment_selector_remains(tmp_path: Path) -> None:
+    # The server routes a fan-out by platform (BE-0484), so the form names no environment.
     html = _fetch(tmp_path, "/")[0]
-    assert (
-        '<select id="env" data-testid="replay.environment"><option value="local">local</option>'
-        in html
-    )
-    for testid in ("replay.env-refresh", "replay.env-reason"):
-        assert f'data-testid="{testid}"' in html
+    assert '<input type="checkbox" id="fanout" data-testid="replay.fan-out">' in html
+    for testid in ("replay.environment", "replay.env-refresh", "replay.env-reason"):
+        assert f'data-testid="{testid}"' not in html
 
 
-def test_the_scenario_set_and_run_set_panel_show_only_in_a_device_cloud_environment(
+def test_the_scenario_set_and_run_set_panel_show_only_in_a_fan_out(
     tmp_path: Path,
 ) -> None:
     html = _fetch(tmp_path, "/")[0]
     for testid in ("replay.scenario-set", "replay.runset"):
-        assert "cloudonly" in _tag(html, testid), testid
+        assert "fanoutonly" in _tag(html, testid), testid
     for testid in (
         "replay.scenarios",
         "replay.all-scenarios",
@@ -63,8 +61,8 @@ def test_the_scenario_set_and_run_set_panel_show_only_in_a_device_cloud_environm
     assert "replay.runset-partial" not in html
 
 
-def test_the_fields_a_fan_out_ignores_hide_in_a_device_cloud_environment(tmp_path: Path) -> None:
-    # run-set reads none of these, and the Readiness checks probe the serve host, not the cloud.
+def test_the_fields_a_fan_out_ignores_hide_in_a_fan_out(tmp_path: Path) -> None:
+    # run-set reads none of these, and the Readiness checks probe the serve host, not the worker's.
     html = _fetch(tmp_path, "/")[0]
     for testid in ("replay.simulators", "replay.doctor", "replay.scenario", "replay.view-scenario"):
         assert "localonly" in _tag(html, testid), testid
@@ -74,28 +72,29 @@ def test_the_fields_a_fan_out_ignores_hide_in_a_device_cloud_environment(tmp_pat
 
 
 def test_the_hiding_composes_with_the_platform_toggle(tmp_path: Path) -> None:
-    # syncPlatform sets an inline display on .iosonly/.webonly, so the device-cloud hiding is a
+    # syncPlatform sets an inline display on .iosonly/.webonly, so the fan-out hiding is a
     # class on the view with !important: either one hiding an element keeps it hidden.
     css = _fetch(tmp_path, "/")[0]  # serve.css ships inlined in the index
     # The grade badge is named by id: renderGradeBadge rewrites its className, dropping any class.
     assert (
-        "#view-replay.cloud .localonly,#view-replay.cloud #scn-grade{display:none!important}" in css
+        "#view-replay.fanout .localonly,#view-replay.fanout #scn-grade{display:none!important}"
+        in css
     )
-    assert "#view-replay:not(.cloud) .cloudonly{display:none!important}" in css
+    assert "#view-replay:not(.fanout) .fanoutonly{display:none!important}" in css
 
 
-def test_the_form_lists_batch_environments_alone(tmp_path: Path) -> None:
+def test_the_form_reads_no_environments_and_offers_a_web_target_a_fan_out(tmp_path: Path) -> None:
     js = _fetch(tmp_path, "/serve.runset.mjs")[0]
-    assert "getJSON('/api/environments'" in js
-    assert "e.kind==='batch'" in js
+    assert "/api/environments" not in js
+    assert "targetBackend" not in js and "cloudReason" not in js
 
 
 def test_run_posts_explicit_scenario_names_to_run_set(tmp_path: Path) -> None:
     js, panels = _fetch(tmp_path, "/serve.runset.mjs", "/serve.panels.mjs")
-    assert "postJSON('/api/run-set',{target:$('#target').value,environment,scenarios}" in js
+    assert "postJSON('/api/run-set',{target:$('#target').value,scenarios}" in js
     # All scenarios sends every listed name rather than omitting the field.
     assert "scnFiles.map(s=>s.file)" in js
-    assert "if(cloudEnvironment())return dispatchRunSet();" in panels
+    assert "if(fanOut())return dispatchRunSet();" in panels
 
 
 def test_rows_poll_the_job_without_its_log_and_stream_one_row_at_a_time(tmp_path: Path) -> None:
@@ -148,20 +147,12 @@ def test_a_404_poll_ends_the_row_unknown_and_keeps_it_cancellable(tmp_path: Path
     )
 
 
-def test_a_failed_environment_read_keeps_the_previous_list(tmp_path: Path) -> None:
-    js = _fetch(tmp_path, "/serve.runset.mjs")[0]
-    assert "getJSON('/api/environments',FETCH_ERROR)" in js
-    # The failure lives in module state so syncCloudForm's own re-render of #env-reason keeps it.
-    assert "envError='Could not load environments — Refresh to retry';syncCloudForm();return;" in js
-    assert "text=reason||envError;r.textContent=text;r.hidden=!text;" in js
-
-
-def test_triage_rerun_forces_the_local_form(tmp_path: Path) -> None:
-    # Apply & re-run confirms one patched scenario, so it must never fan out to a device cloud.
+def test_triage_rerun_forces_the_single_run_form(tmp_path: Path) -> None:
+    # Apply & re-run confirms one patched scenario, so it must never fan out.
     js = _fetch(tmp_path, "/serve.panels.mjs")[0]
     assert (
-        "$('#env').value='local';$('#env').dispatchEvent(new Event('change'));\n  $('#go').click();"
-        in js
+        "$('#fanout').checked=false;$('#fanout').dispatchEvent(new Event('change'));\n"
+        "  $('#go').click();" in js
     )
 
 
@@ -181,9 +172,9 @@ def test_a_cancelled_row_reads_cancelling_until_it_finishes(tmp_path: Path) -> N
     assert "if(v.cancelled)return v.status==='done'?['cancelled','ng']:['cancelling…','run'];" in js
 
 
-def test_a_live_run_set_stays_visible_in_local_mode(tmp_path: Path) -> None:
+def test_a_live_run_set_stays_visible_once_fan_out_is_off(tmp_path: Path) -> None:
     html, js = _fetch(tmp_path, "/", "/serve.runset.mjs")
-    # Switching Environment back to local must not hide a fan-out still running, nor its Stop all.
+    # Turning fan-out off must not hide a fan-out still running, nor its Stop all.
     assert "#view-replay.runset-live #runset{display:flex!important}" in html
     assert "return !!runSet&&runSet.rows.some(r=>!r.terminal);" in js
     assert "$('#view-replay').classList.toggle('runset-live',runSetLive());" in js
