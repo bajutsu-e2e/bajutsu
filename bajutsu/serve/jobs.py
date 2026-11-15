@@ -1047,8 +1047,9 @@ def _run_batch_job(state: ServeState, job: Job, *, one_shot: bool = False) -> No
     job's verdict from the run's own manifest — no local device, no subprocess, off the verdict path.
 
     Only a worker whose environment registered the provider gets here (BE-0448): the server registers
-    none. The job's bundle directory — the directory it names on this machine (``job.cwd``), else the
-    workspace its materials or bundle were placed in — is what the request's paths are relative to.
+    none. The job's bundle directory — its group's staging directory (``job.batch_dir``, BE-0484),
+    else the directory it names on this machine (``job.cwd``), else the workspace its materials or
+    bundle were placed in — is what the request's paths are relative to.
     A job that shipped its files must name a binary inside that workspace; a job that names a
     directory on this machine, or a *one_shot* job, may name any path here.
 
@@ -1062,7 +1063,7 @@ def _run_batch_job(state: ServeState, job: Job, *, one_shot: bool = False) -> No
         request is None
     ):  # _run_job routes here only when batch is set; the guard keeps intent + mypy honest
         return
-    bundle_dir = job.cwd or state.binding.cwd
+    bundle_dir = job.batch_dir or job.cwd or state.binding.cwd
     confined = job.cwd is None and not one_shot
     if confined and (reason := _app_outside(request.app_path, bundle_dir)) is not None:
         _fail_batch(job, reason)
@@ -1097,6 +1098,11 @@ def _run_batch_job(state: ServeState, job: Job, *, one_shot: bool = False) -> No
                 checkpoint=job.batch_checkpoint,
                 job_id=job.id,
                 interrupt=functools.partial(_batch_interrupt, job),
+                share=(
+                    batch_provider.BatchShare(job.group_id, job.compat_key)
+                    if job.group_id and job.compat_key
+                    else None
+                ),
             )
         except RunInterrupted as exc:
             _end_interrupted_batch(job, exc)

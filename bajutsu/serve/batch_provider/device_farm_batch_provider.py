@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import functools
 import logging
 import tempfile
 import time
+import zipfile
 from collections.abc import Callable, Sequence
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +18,7 @@ from bajutsu.common.capability.worker_capability import DEVICEFARM_HOST
 from bajutsu.common.cloud.devicefarm import (
     APP_UPLOAD_TYPE,
     REQUIREMENTS_TXT,
+    TEST_UPLOAD_TYPES,
     DeviceFarmClient,
     DeviceFarmError,
     Interrupt,
@@ -25,7 +29,8 @@ from bajutsu.common.cloud.devicefarm import (
     collect_run,
     device_selection_for,
     render_test_spec,
-    submit_and_collect,
+    schedule_run,
+    upload,
 )
 from bajutsu.common.config.schema._merge import merge_defaults
 from bajutsu.common.config.schema._templates import expand_extends
@@ -34,9 +39,11 @@ from bajutsu.common.config.schema.platform._shared import destination_problems
 from bajutsu.common.devices.runs import unpack_conditions
 
 from ._package_layout import _PackageLayout
+from ._shared_uploads import Made, SharedUploads
 from .batch_checkpoint import BatchCheckpoint
 from .batch_lifecycle_hook import BatchContext, BatchLifecycleHook
 from .batch_request import BatchRequest
+from .batch_share import BatchShare
 from .xctest_runner import xctest_runner
 
 _logger = logging.getLogger(__name__)
@@ -56,6 +63,9 @@ _HOST_WORKER_ARCNAME = f"{DEVICEFARM_HOST}.worker.yaml"
 _HOST_DRIVER: dict[Platform, str] = {"android": "adb", "ios": "xcuitest"}
 # The layout `_package_entries` assumes when a caller names none: no runner build, so APPIUM_PYTHON.
 _NO_RUNNER = _PackageLayout(runner=None)
+# The ScheduleRun errors that say a run could not use an upload. A reused upload meeting one makes the
+# provider fall back to one upload per job (BE-0484).
+_REJECTED_UPLOAD = frozenset({"ArgumentException", "NotFoundException"})
 
 
 def _check_launch_env_collisions(
@@ -171,6 +181,11 @@ class DeviceFarmBatchProvider:
         self._sleep = sleep
         self._hooks = list(hooks)
         self._source_root = source_root
+        # By compatibility key and by group (BE-0484); `_reuse` turns off once Device Farm refuses a
+        # run on a reused upload.
+        self._apps = SharedUploads()
+        self._packages = SharedUploads()
+        self._reuse = True
 
     def submit(
         self,
@@ -181,6 +196,7 @@ class DeviceFarmBatchProvider:
         checkpoint: BatchCheckpoint | None = None,
         job_id: str = "",
         interrupt: Callable[[], Interrupt | None] | None = None,
+        share: BatchShare | None = None,
     ) -> Verdict:
         """Render the one-scenario spec, package `work_dir`, submit the run, and collect the verdict.
 
@@ -199,6 +215,12 @@ class DeviceFarmBatchProvider:
         dropped: each is logged, except that when no verdict was collected the last-registered
         hook that raised propagates its exception instead — so a teardown failure never discards
         a collected run.
+
+        With a `share`, the job reuses uploads that the worker's other jobs in flight already made
+        (BE-0484): the application upload of its compatibility key, and the package of its group
+        when that package holds its scenario. A package is never shared when a hook set a launch
+        environment, since the job's config is then its own. When Device Farm refuses a run on a
+        reused upload, the job uploads its own, and every later job does too.
         """
         resume_arn = checkpoint.load() if checkpoint is not None else None
         ctx = BatchContext(request=request, work_dir=work_dir, job_id=job_id)
@@ -263,31 +285,71 @@ class DeviceFarmBatchProvider:
                     worker_config=_HOST_WORKER_ARCNAME,
                     xctest_runner=layout.xctest_runner,
                 )
-                with tempfile.TemporaryDirectory() as staging_name:
+                with tempfile.TemporaryDirectory() as staging_name, ExitStack() as held:
                     staging = Path(staging_name)
                     spec_path = staging / "testspec.yml"
                     spec_path.write_text(spec, encoding="utf-8")
                     package_zip = staging / "devicefarm-package.zip"
-                    build_package(
-                        self._package_entries(work_dir, layout),
-                        package_zip,
-                        extra_texts=extra_texts,
-                        exclude_arcnames=exclude_arcnames,
-                    )
-                    verdict = submit_and_collect(
+                    package_type, spec_type = TEST_UPLOAD_TYPES[layout.test_type]
+                    send = functools.partial(
+                        upload,
                         self._client,
                         self._transfer,
                         project_arn=self._project_arn,
+                        sleep=self._sleep,
+                    )
+
+                    def send_app() -> Made:
+                        app_type = APP_UPLOAD_TYPE[request.platform]
+                        return send(name=app_path.name, upload_type=app_type, path=app_path), (
+                            frozenset()
+                        )
+
+                    def send_package() -> Made:
+                        build_package(
+                            self._package_entries(work_dir, layout),
+                            package_zip,
+                            extra_texts=extra_texts,
+                            exclude_arcnames=exclude_arcnames,
+                        )
+                        with zipfile.ZipFile(package_zip) as zf:
+                            members = frozenset(zf.namelist())
+                        return send(
+                            name=package_zip.name, upload_type=package_type, path=package_zip
+                        ), members
+
+                    schedule = functools.partial(
+                        schedule_run,
+                        self._client,
+                        project_arn=self._project_arn,
                         device_selection=device_selection_for(request.platform),
-                        app_path=app_path,
-                        package_zip=package_zip,
-                        spec_yaml=spec_path,
-                        dest=dest,
-                        app_upload_type=APP_UPLOAD_TYPE[request.platform],
                         test_type=layout.test_type,
                         run_name=job_id or "bajutsu",
-                        sleep=self._sleep,
                         on_scheduled=(checkpoint.save if checkpoint is not None else None),
+                        interrupt=interrupt,
+                    )
+                    run_arn = self._schedule_shared(
+                        held,
+                        share,
+                        # A hook's launch environment makes the packaged config this job's own.
+                        package_needs=(
+                            None
+                            if ctx.launch_env
+                            else layout.place(f"{layout.bundle}{request.scenario}")
+                        ),
+                        send_app=send_app,
+                        send_package=send_package,
+                        send_spec=functools.partial(
+                            send, name=spec_path.name, upload_type=spec_type, path=spec_path
+                        ),
+                        schedule=schedule,
+                    )
+                    verdict = collect_run(
+                        self._client,
+                        self._transfer,
+                        run_arn=run_arn,
+                        dest=dest,
+                        sleep=self._sleep,
                         interrupt=interrupt,
                     )
         finally:
@@ -312,6 +374,52 @@ class DeviceFarmBatchProvider:
 
         assert verdict is not None  # exceptions take the other path
         return verdict
+
+    def _schedule_shared(
+        self,
+        held: ExitStack,
+        share: BatchShare | None,
+        *,
+        package_needs: str | None,
+        send_app: Callable[[], Made],
+        send_package: Callable[[], Made],
+        send_spec: Callable[[], str],
+        schedule: Callable[..., str],
+    ) -> str:
+        """Schedule the run, on the uploads *share* lets the job reuse (see `submit`); its ARN.
+
+        The keys stay held in *held* until the run is collected. *package_needs* is the package
+        member a reused package must hold, None to share no package.
+        """
+        reused = False
+        if share is None or not self._reuse:
+            app_arn, package_arn = send_app()[0], send_package()[0]
+        else:
+            app_arn, reused = held.enter_context(self._apps.hold(share.compat_key))(send_app)
+            if package_needs is None:
+                package_arn = send_package()[0]
+            else:
+                get_package = held.enter_context(self._packages.hold(share.group_id))
+                package_arn, package_reused = get_package(send_package, needs=package_needs)
+                reused = reused or package_reused
+        spec_arn = send_spec()
+        try:
+            return schedule(app_arn=app_arn, package_arn=package_arn, spec_arn=spec_arn)
+        except Exception as exc:
+            if not (reused and _rejects_upload(exc)):
+                raise
+            # The same codes cover other bad arguments, so only a retry on fresh uploads that
+            # succeeds shows the reuse was at fault.
+            run_arn = schedule(
+                app_arn=send_app()[0], package_arn=send_package()[0], spec_arn=spec_arn
+            )
+            # An unlocked write: a slot racing it shares once more, and its own retry lands here.
+            self._reuse = False
+            _logger.warning(
+                "Device Farm refused a run on a reused upload (%s); uploading once per job from now on",
+                exc,
+            )
+            return run_arn
 
     def _package_entries(
         self, work_dir: Path, layout: _PackageLayout = _NO_RUNNER
@@ -349,6 +457,13 @@ def _with_launch_env(request: BatchRequest, work_dir: Path, launch_env: dict[str
     # The injected value wins over a pre-existing config value on collision.
     launch["env"] = {**launch.get("env", {}), **launch_env}
     return yaml.dump(config_data, allow_unicode=True)
+
+
+def _rejects_upload(exc: Exception) -> bool:
+    """Whether *exc* is a ScheduleRun error that says the run could not use an upload."""
+    response = getattr(exc, "response", None)
+    error = response.get("Error") if isinstance(response, dict) else None
+    return isinstance(error, dict) and error.get("Code") in _REJECTED_UPLOAD
 
 
 def _application(request: BatchRequest, work_dir: Path) -> Path:

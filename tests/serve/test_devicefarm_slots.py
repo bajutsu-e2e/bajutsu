@@ -332,6 +332,45 @@ def test_a_full_worker_sends_no_lease_request_until_a_result_is_posted(
     assert sorted(p.name for p in (tmp_path / "w1" / ".slots").iterdir()) == ["0", "1", "2"]
 
 
+def test_the_slots_of_one_group_share_the_app_and_the_package_upload(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    names = ("one.yaml", "two.yaml")
+    state = _fan_out_state(tmp_path, {n: _SCENARIO.format(name=n[:-5]) for n in names}, monkeypatch)
+    payload, _code = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
+    uploads: list[str] = []
+
+    class _Counting(_Cloud):
+        def create_upload(self, *, projectArn: str, name: str, type: str) -> dict[str, Any]:  # noqa: N803 - boto3 kwargs
+            uploads.append(type)
+            return super().create_upload(projectArn=projectArn, name=name, type=type)
+
+    cloud = _Counting()
+    _register(cloud)
+    server = _Server(state)
+    monkeypatch.setattr(worker_mod, "_post_json", server)
+    thread, _shutdown = _start_worker(
+        server,
+        tmp_path,
+        wid="w1",
+        slots=2,
+        stopped=lambda: server.count("/api/worker/result") >= 2,
+        worker_file=_worker_file(tmp_path, slots=2),
+    )
+    _until(lambda: len(cloud.scheduled) == 2)
+    for job_id in payload["jobIds"]:
+        cloud.finish(job_id)
+    thread.join(timeout=_WAIT)
+
+    assert not thread.is_alive()
+    assert sorted(uploads) == [
+        "ANDROID_APP",
+        "APPIUM_PYTHON_TEST_PACKAGE",
+        "APPIUM_PYTHON_TEST_SPEC",
+        "APPIUM_PYTHON_TEST_SPEC",
+    ]
+
+
 def test_a_shutdown_lets_leases_lapse_and_a_restarted_worker_resumes_every_run(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -461,6 +500,7 @@ def test_a_slot_that_fails_frees_its_place(monkeypatch: pytest.MonkeyPatch, tmp_
     worker_mod._run_slot(
         body={"job_id": "j1", "spec": {}},
         dirs=dirs,
+        groups=worker_mod._GroupDirs(tmp_path),
         free=lambda: freed.append(True),
         shutdown=worker_mod._SlotShutdown(),
         url="http://server",
@@ -478,7 +518,10 @@ def test_a_slot_whose_run_raises_leaves_no_batch_tree_behind(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     # The job's tree holds the uploaded binary; the reused slot directory must not keep it.
-    def boom(*_a: Any, work: Path, **_k: Any) -> Any:
+    staged: list[Path] = []
+
+    def boom(*_a: Any, work: Path, group: Any, **_k: Any) -> Any:
+        staged.append(group.path)
         tree = work / ".batch" / "j1"
         tree.mkdir(parents=True)
         (tree / "app.apk").write_bytes(b"APK")
@@ -487,8 +530,9 @@ def test_a_slot_whose_run_raises_leaves_no_batch_tree_behind(
     monkeypatch.setattr(worker_mod, "_run_with_heartbeat", boom)
     dirs = worker_mod._SlotDirs(tmp_path)
     worker_mod._run_slot(
-        body={"job_id": "j1", "spec": {}},
+        body={"job_id": "j1", "group_id": "g1", "spec": {"materials": {"a.yaml": ""}}},
         dirs=dirs,
+        groups=worker_mod._GroupDirs(tmp_path),
         free=lambda: None,
         shutdown=worker_mod._SlotShutdown(),
         url="http://server",
@@ -499,6 +543,55 @@ def test_a_slot_whose_run_raises_leaves_no_batch_tree_behind(
         environment="devicefarm",
     )
     assert not (tmp_path / ".slots" / "0" / ".batch").exists()
+    # Nor does the group's staging directory outlive its last job.
+    assert staged == [tmp_path / ".batch-groups" / "g1"] and not staged[0].exists()
+
+
+@pytest.mark.parametrize(
+    ("group_id", "spec", "environment", "shares"),
+    [
+        ("g1", {"overrides": {"target": "t"}}, "devicefarm", False),
+        ("g1", {}, "local", True),
+        ("../g1", {}, "devicefarm", True),
+    ],
+    ids=["an override job", "a non-batch worker", "an unusable group directory"],
+)
+def test_a_grouped_job_that_cannot_use_its_group_s_directory_still_runs(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    group_id: str,
+    spec: dict[str, Any],
+    environment: str,
+    shares: bool,
+) -> None:
+    runs: list[tuple[dict[str, Any], Any]] = []
+
+    def run(spec: dict[str, Any], *_a: Any, group: Any, **_k: Any) -> Any:
+        runs.append((spec, group))
+        raise RuntimeError("stop")
+
+    monkeypatch.setattr(worker_mod, "_run_with_heartbeat", run)
+    worker_mod._run_slot(
+        body={
+            "job_id": "j1",
+            "group_id": group_id,
+            "compat_key": "k1",
+            "spec": {"materials": {"a.yaml": ""}, **spec},
+        },
+        dirs=worker_mod._SlotDirs(tmp_path),
+        groups=worker_mod._GroupDirs(tmp_path),
+        free=lambda: None,
+        shutdown=worker_mod._SlotShutdown(),
+        url="http://server",
+        auth_token=None,
+        wid="w1",
+        heartbeat_interval=0.05,
+        worker_file=None,
+        environment=environment,
+    )
+    [(ran, group)] = runs
+    assert group is None
+    assert ("compat_key" in ran) is shares
 
 
 def test_a_runner_already_done_under_a_shutdown_leaves_the_lease_to_lapse() -> None:
@@ -518,6 +611,7 @@ def test_a_malformed_lease_frees_its_place_and_takes_no_workspace(tmp_path: Path
     worker_mod._run_slot(
         body={"job_id": "j1"},  # no spec
         dirs=dirs,
+        groups=worker_mod._GroupDirs(tmp_path),
         free=lambda: freed.append(True),
         shutdown=worker_mod._SlotShutdown(),
         url="http://server",

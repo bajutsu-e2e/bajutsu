@@ -47,7 +47,7 @@ APP_UPLOAD_TYPE: dict[Platform, str] = {"android": "ANDROID_APP", "ios": "IOS_AP
 # spec; XCTEST_UI is the one whose package Device Farm re-signs, so an iOS runner installs on whichever
 # device the run reserves (BE-0465).
 TestType = Literal["APPIUM_PYTHON", "XCTEST_UI"]
-_TEST_UPLOAD_TYPES: dict[TestType, tuple[str, str]] = {
+TEST_UPLOAD_TYPES: dict[TestType, tuple[str, str]] = {
     "APPIUM_PYTHON": ("APPIUM_PYTHON_TEST_PACKAGE", "APPIUM_PYTHON_TEST_SPEC"),
     "XCTEST_UI": ("XCTEST_UI_TEST_PACKAGE", "XCTEST_UI_TEST_SPEC"),
 }
@@ -97,11 +97,13 @@ _PACKAGE_EXCLUDES = frozenset(
         ".DS_Store",
         # A Bajutsu process's own state, which a bundle directory may hold when it is a project or a
         # worker's workspace: the local start's keys and queue (`.bajutsu`), the worker's bundle,
-        # override, batch, and slot directories, and its owner and process-group files (BE-0448).
+        # override, batch, group staging, and slot directories, and its owner and process-group files
+        # (BE-0448, BE-0484).
         ".bajutsu",
         ".bundles",
         ".overrides",
         ".batch",
+        ".batch-groups",
         ".slots",
         ".owner-pid",
         ".job-pgid",
@@ -411,7 +413,7 @@ def verdict_from_manifest(runs_root: Path) -> Verdict:
     return Verdict(ok=total > 0 and passed == total, passed=passed, total=total, failures=failures)
 
 
-def _upload_one(
+def upload(
     client: DeviceFarmClient,
     transfer: Transfer,
     *,
@@ -576,34 +578,68 @@ def submit_and_collect(
         raise DeviceFarmError(
             "schedule a run with exactly one of device_pool_arn or device_selection"
         )
-    package_type, spec_type = _TEST_UPLOAD_TYPES[test_type]
-    app_arn = _upload_one(
+    package_type, spec_type = TEST_UPLOAD_TYPES[test_type]
+    uploads = [
+        upload(
+            client,
+            transfer,
+            project_arn=project_arn,
+            name=path.name,
+            upload_type=kind,
+            path=path,
+            sleep=sleep,
+        )
+        for path, kind in (
+            (app_path, app_upload_type),
+            (package_zip, package_type),
+            (spec_yaml, spec_type),
+        )
+    ]
+    run_arn = schedule_run(
         client,
-        transfer,
         project_arn=project_arn,
-        name=app_path.name,
-        upload_type=app_upload_type,
-        path=app_path,
-        sleep=sleep,
+        device_pool_arn=device_pool_arn,
+        device_selection=device_selection,
+        app_arn=uploads[0],
+        package_arn=uploads[1],
+        spec_arn=uploads[2],
+        test_type=test_type,
+        run_name=run_name,
+        on_scheduled=on_scheduled,
+        interrupt=interrupt,
     )
-    package_arn = _upload_one(
-        client,
-        transfer,
-        project_arn=project_arn,
-        name=package_zip.name,
-        upload_type=package_type,
-        path=package_zip,
-        sleep=sleep,
+    return collect_run(
+        client, transfer, run_arn=run_arn, dest=dest, sleep=sleep, interrupt=interrupt
     )
-    spec_arn = _upload_one(
-        client,
-        transfer,
-        project_arn=project_arn,
-        name=spec_yaml.name,
-        upload_type=spec_type,
-        path=spec_yaml,
-        sleep=sleep,
-    )
+
+
+def schedule_run(
+    client: DeviceFarmClient,
+    *,
+    project_arn: str,
+    device_pool_arn: str | None = None,
+    device_selection: Mapping[str, Any] | None = None,
+    app_arn: str,
+    package_arn: str,
+    spec_arn: str,
+    test_type: TestType = "APPIUM_PYTHON",
+    run_name: str = "bajutsu",
+    on_scheduled: Callable[[str], None] | None = None,
+    interrupt: Callable[[], Interrupt | None] | None = None,
+) -> str:
+    """Schedule a run wiring three finished uploads together; the run's ARN.
+
+    Split from `submit_and_collect` so the serve fan-out can schedule a run on uploads another job
+    already made (BE-0484). The arguments mean what they mean there.
+
+    Raises:
+        DeviceFarmError: Neither or both of `device_pool_arn` / `device_selection` are given.
+        RunInterrupted: *interrupt* answered before the run was scheduled.
+    """
+    if (device_pool_arn is None) == (device_selection is None):
+        raise DeviceFarmError(
+            "schedule a run with exactly one of device_pool_arn or device_selection"
+        )
     # Checked once more after the uploads: they can take minutes, and a run scheduled now would hold a
     # device for a caller that already gave it up.
     _check_interrupt(client, interrupt, None)
@@ -620,7 +656,7 @@ def submit_and_collect(
         test={"type": test_type, "testPackageArn": package_arn, "testSpecArn": spec_arn},
         **where,
     )
-    run_arn = scheduled["run"]["arn"]
+    run_arn: str = scheduled["run"]["arn"]
     # Persist the run ARN before the long poll, so a restart mid-poll resumes this run rather than
     # orphaning it and scheduling a new one (BE-0336 Unit 5).
     if on_scheduled is not None:
@@ -629,9 +665,7 @@ def submit_and_collect(
         except BaseException:
             stop_run(client, run_arn)
             raise
-    return collect_run(
-        client, transfer, run_arn=run_arn, dest=dest, sleep=sleep, interrupt=interrupt
-    )
+    return run_arn
 
 
 def collect_run(
