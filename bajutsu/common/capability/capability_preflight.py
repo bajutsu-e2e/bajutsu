@@ -30,9 +30,9 @@ The map gates only the **true hard requirements** the capability set cleanly dec
 - `selectPhotos` needs `selectPhotos` (roadmap item): the system photo picker is an OS control that
   only the resident-runner XCUITest backend (`PHPickerViewController`) and adb (Android's photo
   picker) can address, so a scenario using this step is rejected up front on every other backend.
-- `select` / `copy` need `textSelection` (BE-0280): select-all + clipboard copy on the focused
-  field. A backend with no select-all handle raises `UnsupportedAction` and does not advertise the
-  token, so a scenario selecting or copying is rejected up front. `delete` / `clear` are not gated:
+- `select` / `copy` / `paste` need `textSelection` (BE-0280): select-all + clipboard copy and paste
+  on the focused field. A backend with no select-all handle raises `UnsupportedAction` and does not
+  advertise the token, so a scenario selecting, copying, or pasting is rejected up front. `delete` / `clear` are not gated:
   `delete` actuates `delete_text` (a run of backspaces), which every backend backs, and `clear` only
   *opportunistically* uses `textSelection` (select-all then one backspace) when a backend advertises
   it, falling back to a counted `delete_text` run when it doesn't — so neither ever needs the token.
@@ -209,15 +209,16 @@ def _attribute_locations(sc: Scenario) -> list[str]:
 
 
 def _text_selection_locations(sc: Scenario) -> list[str]:
-    """The paths where a `select` or `copy` step appears (BE-0280).
+    """The paths where a `select`, `copy`, or `paste` step appears (BE-0280).
 
     `delete` / `clear` are excluded: they actuate `delete_text`, which every backend backs, so they
-    need no capability. Only select-all / copy depend on the `textSelection` capability.
+    need no capability. Select-all, copy, and paste are the clipboard-shortcut trio a backend backs
+    together, so they share the `textSelection` capability.
     """
     return [
         path
         for path, step in _walk_scenario(sc)
-        if step.select is not None or step.copy_ is not None
+        if step.select is not None or step.copy_ is not None or step.paste is not None
     ]
 
 
@@ -292,7 +293,7 @@ _REQUIREMENTS = (
     ),
     _Requirement(
         base.Capability.TEXT_SELECTION,
-        "select / copy (select-all + clipboard copy; not supported by this backend)",
+        "select / copy / paste (select-all + clipboard copy/paste; not supported by this backend)",
         _text_selection_locations,
     ),
     _Requirement(

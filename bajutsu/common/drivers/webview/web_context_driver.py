@@ -142,6 +142,9 @@ class WebContextDriver:
     def copy_selection(self) -> None:
         raise UnsupportedAction("copy is not supported in web context (first slice)")
 
+    def paste(self, sel: Selector) -> None:  # noqa: ARG002  # Driver shape
+        raise UnsupportedAction("paste is not supported in web context (first slice)")
+
     def select_option(self, sel: Selector, option: str) -> None:  # noqa: ARG002  # Driver shape
         raise UnsupportedAction("selectOption is not supported in web context (first slice)")
 

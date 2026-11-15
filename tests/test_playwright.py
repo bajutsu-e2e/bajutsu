@@ -839,6 +839,14 @@ def test_copy_selection_presses_control_or_meta_c() -> None:
     assert page.keyboard.pressed == ["ControlOrMeta+c"]
 
 
+def test_paste_focuses_the_field_then_presses_control_or_meta_v() -> None:
+    drv, page = _driver([_rec(identifier="form.coupon", frame=[10, 20, 40, 10])])
+    page.evaluate_returns = [{"ok": True, "cover": None, "rect": None}]
+    drv.paste({"id": "form.coupon"})
+    assert page.mouse.calls == [("click", 30.0, 25.0)]
+    assert page.keyboard.pressed == ["ControlOrMeta+v"]
+
+
 def test_wait_for_is_single_shot() -> None:
     # BE-0118: single-shot check of the current DOM; the deadline poll lives in base.wait_until.
     drv, _ = _driver([_rec(identifier="home.title")])

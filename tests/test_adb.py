@@ -1082,6 +1082,13 @@ def test_copy_selection_is_ctrl_c_keycombination() -> None:
     assert calls == [["adb", "-s", "U", "shell", "input", "keycombination", "113", "31"]]
 
 
+def test_paste_is_ctrl_v_keycombination() -> None:
+    # The driver focuses the field, then a Ctrl(113)+V(50) chord pastes the clipboard at the caret.
+    calls: list[list[str]] = []
+    AdbDriver("U", run=_root_touch_run(calls)).paste({"id": "stable_refresh"})
+    assert calls[-1] == ["adb", "-s", "U", "shell", "input", "keycombination", "113", "50"]
+
+
 def test_pinch_contacts_spread_level_about_center() -> None:
     # Two fingers level on a line through the centre, `half` out to either side, moving to half*scale.
     start, end = adb.pinch_contacts((100.0, 150.0), 25.0, 2.0)
@@ -2381,6 +2388,7 @@ def test_every_actuator_invalidates_the_cached_tree() -> None:
         lambda d: d.delete_text(2),
         lambda d: d.select_all(),
         lambda d: d.copy_selection(),
+        lambda d: d.paste({"id": "stable_refresh"}),
     ]
     for actuate in actuations:
         driver = AdbDriver("U", run=_root_touch_run(calls))

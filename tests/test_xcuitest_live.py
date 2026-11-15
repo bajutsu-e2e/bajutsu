@@ -539,6 +539,8 @@ def test_select_all_and_copy_are_unsupported_on_the_live_route() -> None:
         driver.select_all()
     with pytest.raises(base.UnsupportedAction):
         driver.copy_selection()
+    with pytest.raises(base.UnsupportedAction):
+        driver.paste({"id": "f"})
 
 
 def test_enter_app_and_leave_app_are_unsupported_on_the_live_route() -> None:

@@ -135,6 +135,8 @@ def test_unsupported_actions_raise() -> None:
     with pytest.raises(base.UnsupportedAction):
         driver.copy_selection()
     with pytest.raises(base.UnsupportedAction):
+        driver.paste({"id": "f"})
+    with pytest.raises(base.UnsupportedAction):
         driver.enter_app("com.example")  # no bundle-id concept in a WebView DOM context
     with pytest.raises(base.UnsupportedAction):
         driver.leave_app()

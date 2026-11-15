@@ -404,6 +404,19 @@ def test_text_editing_steps_emit_uiautomator_peers() -> None:
     assert "device.pressKeyCode(KeyEvent.KEYCODE_C, KeyEvent.META_CTRL_ON)" in code
 
 
+def test_paste_focuses_then_sends_ctrl_v() -> None:
+    code = _gen("- name: x\n  steps:\n    - paste: { into: { id: form.coupon } }\n")
+    assert 'act(byId("form.coupon")).click()' in code
+    assert "device.pressKeyCode(KeyEvent.KEYCODE_V, KeyEvent.META_CTRL_ON)" in code
+
+
+def test_paste_into_an_unexpressible_selector_is_a_todo() -> None:
+    # No faithful BySelector means no field to focus, so no paste chord is emitted either.
+    code = _gen("- name: x\n  steps:\n    - paste: { into: { idMatches: ['f[0-9]', 'g_*'] } }\n")
+    assert "// TODO: unsupported selector" in code
+    assert "KEYCODE_V" not in code
+
+
 def test_back_presses_the_system_key() -> None:
     # BE-0210: UI Automator has a native system back (peer of the adb driver's keyevent 4).
     code = _gen("- name: x\n  steps:\n    - back: {}\n")

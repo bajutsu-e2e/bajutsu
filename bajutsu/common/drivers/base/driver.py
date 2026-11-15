@@ -71,12 +71,16 @@ class Driver(Protocol):
     # Text-editing primitives on the currently focused field (the orchestrator focuses it with a
     # `tap` first, the same contract `type_text` relies on) — BE-0265. `delete_text` removes `count`
     # characters from the end (backspace-equivalent); `select_all` selects the whole content;
-    # `copy_selection` copies the active selection to the clipboard. A backend that can't select or
-    # copy natively (a single-touch / coordinate-only backend) raises UnsupportedAction rather than
-    # faking it, mirroring the multi-touch gestures — codegen→XCUITest is the iOS path.
+    # `copy_selection` copies the active selection to the clipboard; `paste` focuses the field `sel`
+    # names and inserts the clipboard at the caret that tap leaves, replacing any selection — it
+    # focuses the field itself because iOS reads the screen before that tap, to tell the edit menu
+    # it pastes through from app content. A backend that can't select, copy, or paste natively (a
+    # single-touch / coordinate-only backend) raises UnsupportedAction rather than faking it,
+    # mirroring the multi-touch gestures — codegen→XCUITest is the iOS path.
     def delete_text(self, count: int) -> None: ...
     def select_all(self) -> None: ...
     def copy_selection(self) -> None: ...
+    def paste(self, sel: Selector) -> None: ...
     # Set a native `<select>` (resolved by `sel`) to the option whose value is `option`. Web-only:
     # a `<select>` has no native counterpart on iOS / Android, so those backends raise
     # UnsupportedAction (BE-0191).

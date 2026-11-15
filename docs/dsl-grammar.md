@@ -230,6 +230,7 @@ Action    ::=
   | { delete:      { into: <Selector>, count: integer } }  # focus the field and delete count characters from the end (count > 0; web-context raises)
   | { select:      { into: <Selector>, mode?: "all" } }    # focus the field and select its content (mode default "all"; web-context raises; codegen emits the native XCUITest equivalent)
   | { copy:        {} }                                    # copy the active selection to the clipboard (requires a prior select; web-context raises)
+  | { paste:       { into: <Selector> } }                  # focus the field and paste the clipboard at the caret (web-context raises)
   | { selectOption:{ sel: <Selector>, option: string } }   # set a web <select> to the option with this value (web only; iOS/Android raise)
   | { navigate:    string }                                # load a URL resolved against baseUrl; http/https only (web only; BE-0464)
   | { setPickerValue:{ sel: <Selector>, value: string } }  # move a wheel-style picker to the row with this value (iOS and Android; sel addresses one wheel)

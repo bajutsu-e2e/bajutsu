@@ -947,7 +947,7 @@ or starts with `@` or `label:`, and none of them reaches `idMatches`, `labelMatc
 own steps validate against — `step {swipe: {on: {id: card}, direction: up}}`,
 `step {pinch: {sel: {id: map}, scale: 0.5}}`. Runs through the same dispatcher `run` uses for a
 one-shot action (`tap`, `type`, `scroll`, `swipe`, `drag`, `pinch`, `rotate`, `setPickerValue`,
-`selectOption`, `select`, `copy`, `handleSystemAlert`, and more), so a target it resolves fails the
+`selectOption`, `select`, `copy`, `paste`, `handleSystemAlert`, and more), so a target it resolves fails the
 same way `tap`'s target does (`ElementNotFound` / `AmbiguousSelector`). `wait`, `assert`, and
 control flow (`if` / `forEach` / `web` / `app`) have no one-shot handler to run through — `step`
 reports the gap by name rather than attempting them; only a whole scenario run has the loop those
