@@ -6,8 +6,10 @@ import json
 import logging
 from typing import Any
 
+from bajutsu.common.capability.worker_capability import BATCH_PROVIDERS
 from bajutsu.common.evidence.redaction import mask_credential_shapes
 from bajutsu.common.handoff import DEFAULT_TIMEOUT_SECONDS, REQUEST_LINE_PREFIX, request_from_json
+from bajutsu.serve.capabilities import environment_capability
 from bajutsu.serve.helpers import valid_run_id, valid_sha256
 from bajutsu.serve.jobs import lease_secret_env, persist_run
 from bajutsu.serve.logbus import ARTIFACT_LINE_PREFIX
@@ -66,6 +68,14 @@ def _clean_capabilities(raw: Any) -> list[str]:
     Each token is stringified so a stray non-string can't reach the subset test.
     """
     return [str(t) for t in raw] if isinstance(raw, list) else []
+
+
+def _resolves_to_batch(spec: dict[str, Any], advertised: list[str]) -> bool:
+    """Whether a worker advertising *advertised* turns *spec*'s run intent into a cloud batch, which
+    fetches no baselines (`resolve_run_intent`, BE-0484)."""
+    return spec.get("intent") is not None and any(
+        environment_capability(provider) in advertised for provider in BATCH_PROVIDERS
+    )
 
 
 def worker_lease(
@@ -128,7 +138,7 @@ def worker_lease(
             return _fail_unread_secrets(state, leased.id, worker_id), 204
         if secret_env:
             resp["secret_env"] = secret_env
-    if leased.spec.get("batch") is not None and (
+    if (leased.spec.get("batch") is not None or leased.spec.get("intent") is not None) and (
         run_arn := state.repository.load_batch_run_arn(leased.id)
     ):
         # A re-leased cloud-batch job resumes the run an earlier attempt scheduled (BE-0448), so the
@@ -136,7 +146,9 @@ def worker_lease(
         resp["batch_run_arn"] = run_arn
     if state.object_store is not None:
         org = leased.org_id or DEFAULT_ORG
-        if leased.spec.get("materialize_baselines"):
+        if leased.spec.get("materialize_baselines") and not _resolves_to_batch(
+            leased.spec, advertised
+        ):
             resp["baseline_urls"] = _baseline_urls(state, org)
         if urls := _bundle_urls(state, org, leased.spec.get("bundle")):
             resp["bundle_urls"] = urls

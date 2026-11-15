@@ -47,10 +47,14 @@ from bajutsu.common.devices.facts import DeviceReadError, ios_device_families
 PLATFORM_PREFIX = "platform:"
 
 # The environment axis (BE-0448): a worker whose `worker.yaml` names a device cloud as its
-# `environment` advertises `environment:<name>`, and a cloud-batch job requires exactly that token.
+# `environment` advertises `environment:<name>`, and a cloud-batch or `run-set` job requires it.
 # Reserved: only a worker that registered the named provider may advertise it, so an operator's
 # free-form tokens can never pull a cloud job onto a worker that holds no provider.
 ENVIRONMENT_PREFIX = ENVIRONMENT_ROUTING_PREFIX
+
+# A `run-set` job carries a run intent instead of a command or a batch (BE-0484), and requires
+# this token so a worker that predates the intent never leases one it could not turn into a run.
+RUN_INTENT_CAPABILITY = "job:run-intent"
 
 # The host axis (BE-0450): every worker advertises `host:<os>` for the operating system it runs on,
 # and a job whose driver runs on one host operating system only (xcuitest: macOS) requires it, so the
@@ -221,8 +225,8 @@ def required_host(
 
 
 def reserved_tokens(tokens: Iterable[str]) -> list[str]:
-    """The tokens among *tokens* that carry a reserved routing prefix (``environment:``, ``host:``,
-    ``machine:``, ``device:``, ``cap:``, ``setting:``), sorted."""
+    """The tokens among *tokens* that carry a reserved routing prefix
+    (`RESERVED_ROUTING_PREFIXES`), sorted."""
     return reserved_routing_tokens(tokens)
 
 

@@ -339,7 +339,8 @@ def test_advertised_capabilities_splits_platforms_and_falls_back_to_env(
     monkeypatch.setenv(WORKER_CAPABILITIES_ENV, "ios18")
     caps = _advertised_capabilities("ios, web", "", None, "darwin")  # empty flag → env applies
     assert seen == {"platforms": ["ios", "web"], "override": "ios18"}
-    assert caps == ["host:darwin", "platform:ios", "platform:web"]  # sorted, host added (BE-0450)
+    # Sorted, with the host (BE-0450) and the run-intent token (BE-0484) added.
+    assert caps == ["host:darwin", "job:run-intent", "platform:ios", "platform:web"]
 
 
 def test_advertised_capabilities_rejects_an_unknown_platform() -> None:

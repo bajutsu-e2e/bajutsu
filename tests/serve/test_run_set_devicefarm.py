@@ -25,6 +25,7 @@ from conftest import FakeObjectStore
 from bajutsu import serve as srv
 from bajutsu.serve import batch_provider as bp
 from bajutsu.serve.operations.dispatch import start_run_set
+from bajutsu.serve.server.worker_job import _batch_from_spec, job_spec, resolve_run_intent
 from bajutsu.serve.state import Job, ServeState
 
 
@@ -97,6 +98,12 @@ class _FakeTransfer:
         return _zip_bytes({f"runs/{run_id}/manifest.json": manifest})
 
 
+def _leased_by_device_farm(job: Job) -> Job:
+    """*job* as a Device Farm worker runs it: its run intent turned into that provider's batch."""
+    job.batch = _batch_from_spec(resolve_run_intent(job_spec(job), "devicefarm")["batch"])
+    return job
+
+
 class _RunningExecutor:
     """Runs each dispatched job inline through `run_job`, so a fan-out drives the real provider seam
     against the fake synchronously — no thread, no cloud. The finished jobs are captured so the test
@@ -106,7 +113,7 @@ class _RunningExecutor:
         self.jobs: list[Job] = []
 
     def dispatch(self, state: ServeState, job: Job) -> None:
-        srv.run_job(state, job)
+        srv.run_job(state, _leased_by_device_farm(job))
         self.jobs.append(job)
 
 
@@ -192,8 +199,8 @@ def test_relative_app_path_travels_as_a_logical_reference(tmp_path: Path) -> Non
 
     assert status == 200
     (job,) = executor.jobs
-    assert job.batch is not None
-    assert job.batch.app_path == "app.apk"
+    assert job.intent is not None
+    assert job.intent.app_path == "app.apk"
     assert client.schedule_calls == 1 and job.view()["ok"] is True
 
 
@@ -233,12 +240,12 @@ def test_request_paths_are_relative_to_the_config_directory(tmp_path: Path) -> N
 
     assert status == 200
     (job,) = executor.jobs
-    assert job.batch is not None
-    assert job.batch.config == "bajutsu.config.yaml"
-    assert job.batch.scenario == "scenarios/one.yaml"
+    assert job.intent is not None
+    assert job.intent.config == "bajutsu.config.yaml"
+    assert job.intent.scenario == "scenarios/one.yaml"
     # The config's directory travels as the job's bundle, which is what a worker packages.
     assert job.bundle is not None
-    assert job.capabilities == ["environment:devicefarm"]
+    assert job.capabilities == ["environment:devicefarm", "job:run-intent"]
 
 
 def test_a_scenario_outside_the_config_directory_is_refused(tmp_path: Path) -> None:
@@ -364,7 +371,7 @@ def test_every_scenario_of_a_faked_fan_out_lands(tmp_path: Path) -> None:
 
     # Now run the dispatched jobs through the fake: each schedules its own run and lands a verdict.
     for job in executor.jobs:
-        srv.run_job(state, job)
+        srv.run_job(state, _leased_by_device_farm(job))
     assert client.schedule_calls == 3
     landed = sorted(p.parent.name for p in (tmp_path / "runs").glob("*/manifest.json"))
     assert landed == ["20260101-1", "20260101-2", "20260101-3"]

@@ -11,7 +11,9 @@ from __future__ import annotations
 import hashlib
 import io
 import zipfile
+from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from _shared import _get_json, _post, _serve, queue_repository
@@ -19,6 +21,7 @@ from conftest import FakeObjectStore
 
 from bajutsu import serve as srv
 from bajutsu.serve import operations as ops
+from bajutsu.serve.capabilities import RUN_INTENT_CAPABILITY
 from bajutsu.serve.operations.dispatch import start_run_set
 from bajutsu.serve.state import Job, ServeState
 
@@ -84,11 +87,11 @@ def test_fan_out_registers_one_batch_job_per_scenario(tmp_path: Path) -> None:
 
     assert status == 200
     assert len(payload["jobIds"]) == 3
-    # Every dispatched job carries a per-scenario BatchRequest — one scenario each, not the whole set.
+    # Every dispatched job carries a per-scenario run intent — one scenario each, not the whole set.
     dispatched: list[str] = []
     for job in executor.jobs:
-        assert job.batch is not None
-        dispatched.append(job.batch.scenario)
+        assert job.intent is not None
+        dispatched.append(job.intent.scenario)
     scenarios = sorted(dispatched)
     assert scenarios == [
         "scenarios/one.yaml",
@@ -96,12 +99,49 @@ def test_fan_out_registers_one_batch_job_per_scenario(tmp_path: Path) -> None:
         "scenarios/two.yaml",
     ]
     for job in executor.jobs:
-        assert job.batch is not None
-        assert job.batch.provider == "devicefarm"
-        assert job.batch.target == "demo"
-        assert job.batch.platform == "android"
-        assert job.batch.config == "bajutsu.config.yaml"
-        assert job.batch.app_path == "app.apk"
+        # The intent names no provider; the environment token still routes it until BE-0484 unit 5.
+        assert job.batch is None and job.intent is not None
+        assert job.capabilities == ["environment:devicefarm", RUN_INTENT_CAPABILITY]
+        assert job.intent.target == "demo"
+        assert job.intent.platform == "android"
+        assert job.intent.config == "bajutsu.config.yaml"
+        assert job.intent.app_path == "app.apk"
+
+
+def test_a_local_binding_copies_the_stored_baselines_and_names_no_upload_policy(
+    tmp_path: Path,
+) -> None:
+    # The values the server alone decides travel with the intent, as for a plain run (BE-0484).
+    scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml"])
+    state, executor = _state(tmp_path, cfg, scn_dir)
+
+    _payload, status = start_run_set(state, _DF)
+
+    assert status == 200
+    (job,) = executor.jobs
+    assert job.intent is not None and job.intent.upload_exec == ""
+    assert job.materialize_baselines is True
+    assert job.provenance is None
+
+
+def test_an_uploaded_binding_carries_its_launch_policy_and_provenance_but_no_baselines(
+    tmp_path: Path,
+) -> None:
+    upload = SimpleNamespace(
+        worker_ref={"id": "a" * 64}, sha256="a" * 64, provenance={"bundle": "a" * 64}
+    )
+    scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml"])
+    state, executor = _state(tmp_path, cfg, scn_dir)
+    state.binding = replace(state.binding, upload=upload)  # type: ignore[arg-type]
+    state.upload_exec = "deny"
+
+    _payload, status = start_run_set(state, _DF)
+
+    assert status == 200
+    (job,) = executor.jobs
+    assert job.intent is not None and job.intent.upload_exec == "deny"
+    assert job.materialize_baselines is False
+    assert job.provenance == {"bundle": "a" * 64}
 
 
 def test_fan_out_honours_an_explicit_scenario_subset(tmp_path: Path) -> None:
@@ -114,8 +154,8 @@ def test_fan_out_honours_an_explicit_scenario_subset(tmp_path: Path) -> None:
 
     assert status == 200
     assert len(payload["jobIds"]) == 1
-    batch = executor.jobs[0].batch
-    assert batch is not None and batch.scenario == "scenarios/two.yaml"
+    intent = executor.jobs[0].intent
+    assert intent is not None and intent.scenario == "scenarios/two.yaml"
 
 
 @pytest.mark.parametrize(
@@ -359,8 +399,8 @@ def test_fan_out_ships_scenarios_that_travel_as_materials(tmp_path: Path) -> Non
 
     assert status == 200, payload
     (job,) = executor.jobs
-    assert job.batch is not None
-    assert (job.batch.scenario, job.batch.config) == ("one.yaml", "bajutsu.config.yaml")
+    assert job.intent is not None
+    assert (job.intent.scenario, job.intent.config) == ("one.yaml", "bajutsu.config.yaml")
     assert job.materials["one.yaml"].startswith("- name: a")
     assert job.materials["bajutsu.config.yaml"] == cfg.read_text(encoding="utf-8")
     assert job.batch_app is not None  # the stored binary the lease signs for the worker
@@ -471,7 +511,7 @@ def test_fan_out_ships_a_local_config_directory_as_one_bundle(tmp_path: Path) ->
         assert job.materials == {}
         assert job.batch_app is None  # the bundle carries the binary
         assert job_spec(job)["cwd"] is None
-        assert job.capabilities == ["environment:devicefarm"]
+        assert job.capabilities == ["environment:devicefarm", RUN_INTENT_CAPABILITY]
 
 
 def test_fan_out_names_a_bundled_config_by_the_name_a_worker_finds(tmp_path: Path) -> None:
@@ -484,7 +524,7 @@ def test_fan_out_names_a_bundled_config_by_the_name_a_worker_finds(tmp_path: Pat
 
     assert status == 200, payload
     job = state.jobs[payload["jobIds"][0]]
-    assert job.batch is not None and job.batch.config == "bajutsu.config.yaml"
+    assert job.intent is not None and job.intent.config == "bajutsu.config.yaml"
     archive = _stored_zip(state, job)
     assert archive.read("bajutsu.config.yaml").decode("utf-8") == cfg.read_text(encoding="utf-8")
 

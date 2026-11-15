@@ -259,8 +259,9 @@ rules the platform out, the worker exits with the driver's reason. A Linux worke
 linux`. The check judges the platform's drivers, not a request's `backend`. No worker off macOS
 advertises `platform:ios`. An iOS target run on the `fake` backend thus still needs a Mac worker. A
 worker whose environment is a device cloud advertises `environment:<name>` and no `platform:*` token.
-An `appium` worker advertises `environment:appium` alone. A serve run request reaches it by naming
-`environment: appium`.
+An `appium` worker advertises `environment:appium`. A serve run request reaches it by naming
+`environment: appium`. Every worker also advertises `job:run-intent`, which says it can run a
+`run-set` job (BE-0484).
 
 The file declares no routing token itself. The runtime and device-class tokens (`ios18`, `ipad`)
 come from the Simulator inventory. The real-device tokens (`device:ipad`) come from `devicectl`

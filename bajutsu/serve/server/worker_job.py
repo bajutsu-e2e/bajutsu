@@ -18,13 +18,16 @@ import subprocess
 import sys
 import threading
 from contextlib import nullcontext
+from dataclasses import asdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
 from bajutsu.common.backend_cli import simctl as _simctl
+from bajutsu.common.capability.worker_capability import BATCH_PROVIDERS
 from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR
 from bajutsu.run import INTERNAL_MODULE as _INTERNAL_RUN_MODULE
 from bajutsu.serve import oplog
+from bajutsu.serve.commands import run_command
 from bajutsu.serve.jobs import _kill, _pgid_of, _still_running, cancel_job, run_job
 from bajutsu.serve.logbus import InMemoryLogBus, LogBus
 from bajutsu.serve.orgs import DEFAULT_ORG as _DEFAULT_ORG
@@ -175,6 +178,9 @@ def job_spec(job: Job) -> dict[str, Any]:
         # paths are relative to the job's bundle directory and its app is a logical reference, so
         # the spec names nothing on the server's host (BE-0448). None for a normal job.
         "batch": _batch_spec(job.batch),
+        # A `run-set` job's run intent (BE-0484), which `resolve_run_intent` turns into this worker's
+        # own `cmd` or `batch` once leased. None for every other job.
+        "intent": asdict(job.intent) if job.intent is not None else None,
         # The stored application a batch job's worker places at its `appPath` (BE-0448): the lease
         # signs a GET for this sha, since a job shipping materials has no other copy of the binary.
         "batch_app": job.batch_app,
@@ -235,6 +241,47 @@ def _batch_spec(batch: BatchRequest | None) -> dict[str, Any] | None:
         "platform": batch.platform,
         "app_path": batch.app_path,
     }
+
+
+_INTENT_FIELDS = ("scenario", "target", "config", "platform", "app_path")
+
+
+def intent_problem(spec: dict[str, Any]) -> str | None:
+    """Why *spec*'s run intent cannot be resolved, or None when it carries a whole one or none."""
+    intent = spec.get("intent")
+    if intent is None:
+        return None
+    if not isinstance(intent, dict):
+        return "the spec's `intent` must be an object"
+    if bad := [k for k in _INTENT_FIELDS if not (isinstance(intent.get(k), str) and intent[k])]:
+        return f"the spec's `intent` must name {', '.join(bad)} as non-empty strings"
+    return None
+
+
+def resolve_run_intent(spec: dict[str, Any], environment: str) -> dict[str, Any]:
+    """*spec* with its run intent turned into the form a worker in *environment* runs (BE-0484).
+
+    A batch provider's worker submits the intent as its own provider's batch. Any other worker runs
+    it as `bajutsu run`, the command a plain run job carries; an `appium` worker's grid reaches that
+    run through `--worker-config`, as for a plain run (BE-0452). A spec with no intent is returned
+    unchanged, and so is one `intent_problem` refuses, which `environment_refusal` then turns away.
+    """
+    intent = spec.get("intent")
+    if not isinstance(intent, dict) or intent_problem(spec) is not None:
+        return spec
+    if environment in BATCH_PROVIDERS:
+        batch = {"provider": environment, **{k: intent[k] for k in _INTENT_FIELDS}}
+        # A cloud-batch job fetched no baselines before the intent either.
+        return {**spec, "batch": batch, "materialize_baselines": False}
+    cmd = run_command(
+        intent["scenario"],
+        intent["target"],
+        config=intent["config"],
+        baselines="baselines" if spec.get("materialize_baselines") else "",
+        upload_exec=str(intent.get("upload_exec") or ""),
+        label=str(spec.get("label") or ""),
+    )
+    return {**spec, "cmd": cmd, "graceful_cancel": True}
 
 
 def _batch_from_spec(data: dict[str, Any] | None) -> BatchRequest | None:
