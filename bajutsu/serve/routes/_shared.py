@@ -514,6 +514,7 @@ ROUTES: tuple[Route, ...] = (
             state,
             ctx.body().get("worker_id", ""),
             ctx.body().get("capabilities"),
+            max_jobs=ctx.body().get("maxJobs"),
             relay_secrets=_worker_caller(ctx),
         ),
     ),

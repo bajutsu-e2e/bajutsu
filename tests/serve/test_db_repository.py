@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from bajutsu import serve as srv
 from bajutsu.serve.server.db import (
+    QueuedJob,
     RunRecord,
     SqlRepository,
     engine_from_url,
@@ -519,20 +520,18 @@ def test_a_group_job_stores_its_group_compat_and_route_keys(
     from bajutsu.serve.server.models import JobRecord
 
     engine, repo = _engine_repo(serve_engine)
-    repo.enqueue_job(
-        "1",
+    camera, dark = ["platform:ios", "cap:camera"], ["platform:ios", "setting:dark"]
+    repo.register_job_group(
+        "g1",
         org_id="o1",
-        spec={},
-        capabilities=["platform:ios", "cap:camera"],
-        group_id="g1",
+        key="k1",
+        digest="d",
         compat_key="c1",
-        actor="alice",
-    )
-    repo.enqueue_job(
-        "2", org_id="o1", spec={}, capabilities=["platform:ios", "setting:dark"], group_id="g1"
-    )
-    repo.enqueue_job(
-        "3", org_id="o1", spec={}, capabilities=["platform:ios", "cap:camera"], group_id="g1"
+        jobs=[
+            QueuedJob(id="1", spec={}, capabilities=camera, actor="alice"),
+            QueuedJob(id="2", spec={}, capabilities=dark),
+            QueuedJob(id="3", spec={}, capabilities=camera),
+        ],
     )
     with Session(engine) as session:
         rows = {r.id: r for r in session.scalars(select(JobRecord))}
@@ -560,10 +559,9 @@ def test_a_job_group_round_trips_with_its_jobs_in_registration_order(
     serve_engine: Callable[..., Engine],
 ) -> None:
     repo = _repo(serve_engine)
-    repo.create_job_group("g1", org_id="o1", key="k1")
     # Ids come from the registry's counter, so "9" registered before "10".
-    for job_id in ("9", "10"):
-        repo.enqueue_job(job_id, org_id="o1", spec={}, group_id="g1")
+    queued = [QueuedJob(id=i, spec={}) for i in ("9", "10")]
+    repo.register_job_group("g1", org_id="o1", key="k1", digest="d", compat_key=None, jobs=queued)
     repo.enqueue_job("11", org_id="o1", spec={})
 
     group = repo.get_job_group("g1")
@@ -577,16 +575,14 @@ def test_a_job_group_round_trips_with_its_jobs_in_registration_order(
     assert repo.get_job_group("missing") is None
 
 
-def test_the_db_executor_stores_a_jobs_actor_and_group(serve_engine: Callable[..., Engine]) -> None:
+def test_the_db_executor_stores_a_jobs_actor(serve_engine: Callable[..., Engine]) -> None:
     from bajutsu.serve.server.models import JobRecord
 
     engine, repo = _engine_repo(serve_engine)
     state = srv.ServeState(runs_dir=Path("/tmp/runs"))
-    job = state.register(
-        srv.Job(cmd=["bajutsu", "run"], actor="alice", group_id="g1", compat_key="c1")
-    )
+    job = state.register(srv.Job(cmd=["bajutsu", "run"], actor="alice"))
     DbQueueExecutor(repo).dispatch(state, job)
     with Session(engine) as session:
         row = session.get(JobRecord, job.id)
     assert row is not None
-    assert (row.actor, row.group_id, row.compat_key) == ("alice", "g1", "c1")
+    assert (row.actor, row.group_id) == ("alice", None)

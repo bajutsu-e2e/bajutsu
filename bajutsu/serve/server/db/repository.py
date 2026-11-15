@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from datetime import datetime, timedelta
 from typing import Any, Protocol, runtime_checkable
 
 from ._shared import DEFAULT_LEASE_MAX_ATTEMPTS, DEFAULT_RUN_LIMIT
+from .concurrency_caps import ConcurrencyCaps
 from .job_metrics import JobMetrics
 from .leased_job import LeasedJob
 from .org_record import OrgRecord
+from .queued_job import QueuedJob
 from .run_record import RunRecord
 
 
@@ -222,21 +224,39 @@ class Repository(Protocol):
         capabilities: Iterable[str] = (),
         *,
         actor: str | None = None,
-        group_id: str | None = None,
-        compat_key: str | None = None,
     ) -> None:
         """Insert a job with status ``queued`` and its required-capability routing key (BE-0166).
 
         Args:
             actor: Who started the job, kept for a per-user count.
-            group_id: The `run-set` group the job belongs to (BE-0484). A grouped job also stores
-                the route and base keys of *capabilities*, which pair it with its group's other jobs.
-            compat_key: What a worker may share between the group's jobs: config, binary, platform,
-                and target.
         """
 
-    def create_job_group(self, group_id: str, org_id: str, key: str) -> None:
-        """Insert the group one `run-set` request registers (BE-0484)."""
+    def register_job_group(
+        self,
+        group_id: str,
+        *,
+        org_id: str,
+        key: str,
+        digest: str,
+        compat_key: str | None,
+        jobs: Sequence[QueuedJob],
+    ) -> str | None:
+        """Write one `run-set` group and every job of it in one transaction (BE-0484).
+
+        Each job also stores the route and base keys of its capabilities, which pair it with its
+        group's other jobs in the lease scan. A store error rolls the whole write back and raises.
+
+        Args:
+            key: The group key, unique within *org_id*.
+            digest: What the request asked to run, which tells a retry from a different request.
+            compat_key: What a worker may share between the group's jobs: config, binary, platform,
+                and target.
+
+        Returns:
+            The id of the group holding *key*: *group_id* once written, or the existing group's id,
+            with no job written, when an earlier request with the same *digest* holds the key. None
+            when the key is held under a different digest.
+        """
 
     def get_job_group(self, group_id: str) -> dict[str, Any] | None:
         """The group's ``id``, ``org_id``, and ``key``, or None when no group has that id."""
@@ -262,11 +282,39 @@ class Repository(Protocol):
         """
 
     def lease_job(self, worker_id: str, capabilities: Iterable[str] = ()) -> LeasedJob | None:
-        """Atomically lease the oldest queued job *worker_id* can serve, or return None (BE-0166).
+        """`lease_jobs` with one slot and no caps: the oldest queued job *worker_id* can serve."""
 
-        A job is a candidate only when its required-capability set is a subset of *capabilities* —
-        so a worker never leases a job it cannot run. A job no live worker can serve simply stays
-        queued (surfaced as unroutable via `metrics_snapshot`), never leased to an incompatible one.
+    def lease_jobs(
+        self,
+        worker_id: str,
+        capabilities: Iterable[str] = (),
+        *,
+        max_jobs: int = 1,
+        caps: ConcurrencyCaps | None = None,
+    ) -> list[LeasedJob]:
+        """Atomically lease the oldest queued job *worker_id* can serve, with its group's followers.
+
+        A job is a candidate only when its required-capability set is a subset of *capabilities*
+        (BE-0166) — so a worker never leases a job it cannot run. A job no live worker can serve
+        simply stays queued (surfaced as unroutable via `metrics_snapshot`). When the oldest
+        servable job belongs to a `run-set` group, the lease also takes that group's next queued
+        jobs that share its verdict, so one worker shares their uploads (BE-0484).
+
+        Args:
+            max_jobs: The worker's free slots, which bound the bundle.
+            caps: The server's concurrency caps, applied to a group's jobs here rather than at
+                registration; a plain job was capped when it registered. None is unlimited.
+
+        Returns:
+            The leased jobs, oldest first. A group a cap holds back stays queued, and the lease
+            moves on to the next servable job; empty when no servable job fits within the caps.
+        """
+
+    def leased_group_counts(self) -> dict[tuple[str, str | None], int]:
+        """How many `run-set` group jobs are leased, by org and actor (BE-0484).
+
+        The registry leaves a queued group job out of its concurrency count, so this is how a
+        leased one enters it.
         """
 
     def touch_worker(self, worker_id: str) -> None:

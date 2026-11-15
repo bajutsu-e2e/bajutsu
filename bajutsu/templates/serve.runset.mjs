@@ -74,9 +74,9 @@ async function dispatchRunSet(){
   if(d.error){setStatus(status,d.error,'ng');return;}
   if(!Array.isArray(d.jobIds)){setStatus(status,'no jobs started','ng');return;}
   setStatus(status,`dispatched ${d.jobIds.length} of ${scenarios.length} to ${environment}`,'run');
-  // The server dispatches in request order and stops at the first capped job, so the ids pair, by
-  // position, with the leading names.
-  openRunSet(d.jobIds.map((id,i)=>({id:String(id),name:scenarios[i]})),scenarios.length);
+  // The server queues every scenario, in request order, or none (BE-0484), so the ids pair with the
+  // names by position.
+  openRunSet(d.jobIds.map((id,i)=>({id:String(id),name:scenarios[i]})));
 }
 
 function rowHtml(r){
@@ -87,14 +87,11 @@ function rowHtml(r){
     +`<div class="subhint rs-detail" data-testid="replay.runset-detail" hidden></div>`
     +`<pre class="out rs-log" data-testid="replay.runset-log" hidden></pre></li>`;
 }
-function openRunSet(rows,asked){
+function openRunSet(rows){
   closeRunSet();
   const list=$('#runset-rows');
   list.innerHTML=rows.map(rowHtml).join('');
   runSet={rows:rows.map((r,i)=>({...r,el:list.children[i],view:null,terminal:false})),timer:null,open:null};
-  const missed=asked-rows.length,p=$('#runset-partial');
-  p.textContent=missed>0?`${missed} scenario${missed===1?' was':'s were'} not dispatched: the concurrency cap cut the fan-out short. Run ${missed===1?'it':'them'} again once these finish.`:'';
-  p.hidden=missed<=0;
   $('#runset-empty').hidden=true;
   const stop=$('#runset-stop');stop.disabled=false;stop.textContent=stop.dataset.idle;
   syncRunSetLive();

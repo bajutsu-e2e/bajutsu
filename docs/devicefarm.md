@@ -372,8 +372,13 @@ check, since an earlier attempt already submitted that run.
 
 The server holds no budget of its own. It used to read a target's `cloudBatchBudget` and a request's
 `deviceBudget`; BE-0452 removed both. A request that still names
-`deviceBudget` gets a 400 error that points at `maxJobConcurrency`. The server's global, per-user,
-and per-org caps count queued jobs too. Those caps may still cut a large fan-out short.
+`deviceBudget` gets a 400 error that points at `maxJobConcurrency`.
+
+The server's concurrency caps apply to a fan-out's jobs at lease time (BE-0484). The caps are
+global, per user, and per org. A fan-out's queued job holds no slot under them, while a plain run
+waiting in the queue still holds one. A fan-out larger than the caps thus queues every scenario,
+and workers run the jobs in turns. A worker asks for every free slot in one lease request. The
+server fills those slots with jobs of one fan-out, up to the headroom the caps leave.
 
 ### Fanning a target out
 
@@ -429,9 +434,34 @@ beside the `jobIds` it queued:
 
 A job whose `status` is `done` has finished, whatever its assertions found. The exit code carries
 the verdict. A continuous integration (CI) pipeline polls this route until `conclusion` leaves
-`pending`. The concurrency cap can stop a fan-out part-way. The group then holds the jobs queued
-before the stop, and its `conclusion` covers those jobs alone. A pipeline that needs every
-scenario to run checks `jobIds` against the scenarios it asked for.
+`pending`. A group holds every scenario the request named. Either each scenario becomes a queued
+job, or the request fails and queues none.
+
+A pipeline may name the group itself with `groupKey`. The key holds at most 128 characters of
+letters, digits, and `. _ / : -`. The key makes a retried request safe:
+
+- The same key with the same request returns the existing group and queues nothing new. Its
+  `jobIds` follow the order of the *first* request, not of the retry, so a pipeline that reorders
+  its scenario list cannot pair the two by position.
+- The same key with a different request gets a 409 error.
+
+Two requests count as the same when they agree on each of these:
+
+- the target
+- the set of scenarios, in any order
+- the config
+- the application
+- the run label
+- the environment (`environment`)
+
+A GitHub Actions job builds its key from four variables:
+
+- `GITHUB_RUN_ID`
+- `GITHUB_RUN_ATTEMPT`
+- `GITHUB_JOB`
+- `strategy.job-index`, the index of its matrix leg
+
+A retry within one attempt then reuses the group, and a deliberate re-run gets a new one.
 
 `POST /api/run-set/<groupId>/cancel` cancels every unfinished job of the group. Each job goes
 through the same cancel as `POST /api/jobs/<id>/cancel`. The route needs the editor role in the

@@ -63,6 +63,7 @@ from bajutsu.serve.helpers import unsafe_env_name, valid_sha256, warn_unsafe_env
 from bajutsu.serve.jobs import _runs_dir_of
 from bajutsu.serve.operations.composition import materialize_composition, place_overrides
 from bajutsu.serve.operations.worker import (
+    MAX_LEASE_JOBS,
     WORKER_LOG_BATCH_BYTES,
     WORKER_LOG_MAX_LINE_CHARS,
     WORKER_LOG_MAX_LINES,
@@ -680,12 +681,38 @@ def _serve_leases(
 
 def _lease(url: str, auth_token: str | None, wid: str, caps: list[str]) -> dict[str, Any] | None:
     """Ask the control plane for one job; the lease body, or None when there is nothing to run."""
-    try:
-        code, body = _post_json(
-            f"{url}/api/worker/lease",
-            {"worker_id": wid, "capabilities": caps},
-            token=auth_token,
+    body = _post_lease(url, auth_token, {"worker_id": wid, "capabilities": caps})
+    if not isinstance(body, dict) or not body.get("spec"):
+        return None
+    return dict(body)
+
+
+def _lease_bundle(
+    url: str, auth_token: str | None, wid: str, caps: list[str], free: int
+) -> list[dict[str, Any]]:
+    """Ask for up to *free* jobs at once (BE-0484); the lease bodies, empty when there is none.
+
+    The control plane fills them from one `run-set` group, so the slots that run them can share
+    that group's uploads.
+    """
+    body = _post_lease(url, auth_token, {"worker_id": wid, "capabilities": caps, "maxJobs": free})
+    if body is None:
+        return []
+    # A control plane from before BE-0484 ignores `maxJobs` and answers one body. Its job is leased
+    # already, so dropping the body would strand the job until its lease lapsed.
+    items = body if isinstance(body, list) else [body]
+    bodies = [dict(b) for b in items if isinstance(b, dict) and b.get("spec")]
+    if len(bodies) != len(items):
+        _logger.warning(
+            "unexpected lease body, %d item(s) not run: %.200s", len(items) - len(bodies), body
         )
+    return bodies
+
+
+def _post_lease(url: str, auth_token: str | None, request: dict[str, Any]) -> Any:
+    """POST a lease request; the decoded body, or None on a refusal, a failure, or an empty queue."""
+    try:
+        code, body = _post_json(f"{url}/api/worker/lease", request, token=auth_token)
     except (URLError, OSError) as e:
         _logger.warning("lease request failed: %s", e)
         return None
@@ -697,10 +724,7 @@ def _lease(url: str, auth_token: str | None, wid: str, caps: list[str]) -> dict[
         # error page is kilobytes of HTML — one refusal must stay one readable line.
         _logger.warning("lease refused with HTTP %s: %.200s", code, body)
         return None
-
-    if code == 204 or not body.get("spec"):
-        return None
-    return dict(body)
+    return None if code == 204 else body
 
 
 def _serve_slots(
@@ -721,7 +745,9 @@ def _serve_slots(
     """Lease jobs into at most *slots* concurrent slots until stopped; the slot model (BE-0448).
 
     A job counts against *slots* from its lease until its result is posted, so a slot that is only
-    uploading evidence frees its place, and no lease request goes out while every place is taken. The
+    uploading evidence frees its place, and no lease request goes out while every place is taken.
+    Each request asks for every free place, which the control plane fills from one `run-set` group
+    when it can (BE-0484). The
     slot's own heartbeat keeps the worker live meanwhile, so its advertised set never changes. Each
     slot runs on a thread of its own, in a workspace no other running or uploading job shares.
 
@@ -740,40 +766,42 @@ def _serve_slots(
             busy -= 1
             places.notify_all()
 
+    slot: dict[str, Any] = {
+        "dirs": dirs,
+        "free": free,
+        "shutdown": shutdown,
+        "url": url,
+        "auth_token": auth_token,
+        "wid": wid,
+        "heartbeat_interval": heartbeat_interval,
+        "worker_file": worker_file,
+        "environment": environment,
+    }
+
     try:
         while not (stopped() or shutdown.stopping):
             with places:
-                if busy >= slots:
+                free_slots = slots - busy
+                if free_slots <= 0:
                     places.wait(timeout=poll_interval)
                     continue
-            body = _lease(url, auth_token, wid, caps)
-            if body is None:
+            # The control plane refuses a larger ask; the slots past it fill on the next poll.
+            bodies = _lease_bundle(url, auth_token, wid, caps, min(free_slots, MAX_LEASE_JOBS))
+            if not bodies:
                 time.sleep(poll_interval)
                 continue
-            with places:
-                busy += 1
-            thread = threading.Thread(
-                target=_run_slot,
-                kwargs={
-                    "body": body,
-                    "dirs": dirs,
-                    "free": free,
-                    "shutdown": shutdown,
-                    "url": url,
-                    "auth_token": auth_token,
-                    "wid": wid,
-                    "heartbeat_interval": heartbeat_interval,
-                    "worker_file": worker_file,
-                    "environment": environment,
-                },
-                daemon=True,
-            )
-            try:
-                thread.start()
-            except BaseException:
-                free()  # no slot ever owned the place, so give it back here
-                raise
-            threads = [t for t in threads if t.is_alive()] + [thread]
+            for body in bodies:
+                with places:
+                    busy += 1
+                thread = threading.Thread(
+                    target=_run_slot, kwargs={"body": body, **slot}, daemon=True
+                )
+                try:
+                    thread.start()
+                except BaseException:
+                    free()  # no slot ever owned the place, so give it back here
+                    raise
+                threads = [t for t in threads if t.is_alive()] + [thread]
     finally:
         # Whatever ends the loop, an exception included, the leases in flight lapse as on a stop.
         shutdown.request()

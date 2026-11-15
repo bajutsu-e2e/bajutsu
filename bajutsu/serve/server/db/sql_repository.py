@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import Iterable
+import zlib
+from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -14,13 +15,18 @@ from ._shared import (
     TERMINAL_JOB_STATUSES,
     cancelled_job_result,
 )
+from .concurrency_caps import ConcurrencyCaps
 from .job_metrics import JobMetrics
 from .leased_job import LeasedJob
 from .org_record import OrgRecord
+from .queued_job import QueuedJob
 from .run_record import RunRecord
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
+    from sqlalchemy.orm import InstrumentedAttribute, Session
+
+    from bajutsu.serve.server.models import JobGroup, JobRecord
 
 # A lease with no heartbeat for this long is treated as a dead worker and reclaimed; a job that is
 # reclaimed this many times is failed rather than re-queued forever (BE-0016 worker liveness). The
@@ -616,40 +622,79 @@ class SqlRepository:
         capabilities: Iterable[str] = (),
         *,
         actor: str | None = None,
-        group_id: str | None = None,
-        compat_key: str | None = None,
     ) -> None:
         from sqlalchemy.orm import Session
 
-        from bajutsu.serve.capabilities import base_key, route_key
         from bajutsu.serve.server.models import JobRecord
 
-        caps = list(capabilities)
-        grouped = group_id is not None
         with Session(self._engine) as session:
             session.add(
                 JobRecord(
                     id=job_id,
                     org_id=org_id,
                     spec=spec,
-                    capabilities=caps,
+                    capabilities=list(capabilities),
                     actor=actor,
-                    group_id=group_id,
-                    compat_key=compat_key,
-                    route_key=route_key(caps) if grouped else None,
-                    base_key=base_key(caps) if grouped else None,
                 )
             )
             session.commit()
 
-    def create_job_group(self, group_id: str, org_id: str, key: str) -> None:
+    def register_job_group(
+        self,
+        group_id: str,
+        *,
+        org_id: str,
+        key: str,
+        digest: str,
+        compat_key: str | None,
+        jobs: Sequence[QueuedJob],
+    ) -> str | None:
+        from sqlalchemy.exc import IntegrityError
         from sqlalchemy.orm import Session
+
+        from bajutsu.serve.capabilities import base_key, route_key
+        from bajutsu.serve.server.models import JobGroup, JobRecord
+
+        with Session(self._engine) as session:
+            held = self._group_by_key(session, org_id, key)
+            if held is not None:
+                return held.id if held.digest == digest else None
+            session.add(JobGroup(id=group_id, org_id=org_id, key=key, digest=digest))
+            session.add_all(
+                JobRecord(
+                    id=job.id,
+                    org_id=org_id,
+                    spec=job.spec,
+                    capabilities=list(job.capabilities),
+                    actor=job.actor,
+                    group_id=group_id,
+                    compat_key=compat_key,
+                    route_key=route_key(job.capabilities),
+                    base_key=base_key(job.capabilities),
+                )
+                for job in jobs
+            )
+            try:
+                session.commit()
+            except IntegrityError:
+                # A concurrent request took the key between the read and the commit; any other
+                # integrity error leaves no group under the key and is the caller's to see.
+                session.rollback()
+                held = self._group_by_key(session, org_id, key)
+                if held is None:
+                    raise
+                return held.id if held.digest == digest else None
+        return group_id
+
+    @staticmethod
+    def _group_by_key(session: Session, org_id: str, key: str) -> JobGroup | None:
+        from sqlalchemy import select
 
         from bajutsu.serve.server.models import JobGroup
 
-        with Session(self._engine) as session:
-            session.add(JobGroup(id=group_id, org_id=org_id, key=key))
-            session.commit()
+        return session.scalars(
+            select(JobGroup).where(JobGroup.org_id == org_id, JobGroup.key == key)
+        ).first()
 
     def get_job_group(self, group_id: str) -> dict[str, Any] | None:
         from sqlalchemy.orm import Session
@@ -733,96 +778,309 @@ class SqlRepository:
                 session.commit()
 
     def lease_job(self, worker_id: str, capabilities: Iterable[str] = ()) -> LeasedJob | None:
-        from sqlalchemy import select, update
-        from sqlalchemy.orm import Session
+        leased = self.lease_jobs(worker_id, capabilities)
+        return leased[0] if leased else None
 
-        from bajutsu.serve.capabilities import UNCHECKED_PROVENANCE, can_serve, unchecked_lease
+    def lease_jobs(
+        self,
+        worker_id: str,
+        capabilities: Iterable[str] = (),
+        *,
+        max_jobs: int = 1,
+        caps: ConcurrencyCaps | None = None,
+    ) -> list[LeasedJob]:
+        from bajutsu.serve.capabilities import can_serve, checks_routes
         from bajutsu.serve.server.models import JobRecord
 
         # Sweep dead workers' leases back into the queue before serving, so a stuck job is picked up
         # on the next poll without a separate reaper process.
         self.reclaim_expired_leases(self._lease_timeout, max_attempts=self._max_attempts)
         advertised = set(capabilities)
-        skip_locked = self._engine.dialect.name != "sqlite"
-        with Session(self._engine) as session:
-            # Scan queued jobs oldest-first for the first this worker can serve — capability filtering
-            # can't be a `.limit(1)` because the oldest queued job may need a capability this worker
-            # lacks, and skipping it must still find a younger servable one (the `status` index bounds
-            # the scan to queued rows). Only (id, capabilities) is read up front, taking no locks.
-            #
-            # The chosen candidate is then claimed by a conditional UPDATE on `status = 'queued'`
-            # whose row count says whether this worker won it (BE-0449): one statement both checks
-            # and writes, so two leasers can never both take a row — on SQLite, which has no
-            # `FOR UPDATE SKIP LOCKED`, as on PostgreSQL. A lost race reads as 0 rows and moves on.
-            # PostgreSQL first takes the candidate with `FOR UPDATE SKIP LOCKED`, so a row another
-            # leaser is mid-claim on is skipped at once instead of waited on — without it every
-            # leaser would convoy on the oldest candidate behind one stalled claimant.
-            #
-            # The scan is deliberately unbounded rather than capped at the oldest N: an unroutable
-            # backlog piles up at the *head* (oldest), so a fixed N would let it hide a servable
-            # younger job forever — the same starvation `.limit(1)` has. The only bounded-and-correct
-            # alternative pushes the subset test into SQL (Postgres JSONB `<@`), which the SQLite gate
-            # can't exercise. Kept simple for the intended small self-hosted pool, where the backlog is
-            # a misconfiguration `bajutsu_unroutable_jobs` surfaces; keyset pagination is the escalation
-            # if a deep-queue / large-fleet deployment ever needs it.
-            candidates = session.execute(
-                select(JobRecord.id, JobRecord.capabilities)
-                .where(JobRecord.status == "queued")
-                .order_by(JobRecord.created_at)
-            ).all()
-            for job_id, caps in candidates:
-                if not can_serve(caps or [], advertised):
+        # A worker that checks no routes drops the route tokens from every verdict, so jobs that
+        # differ in those tokens alone share its verdict and pair by base key (BE-0484).
+        pair = JobRecord.route_key if checks_routes(advertised) else JobRecord.base_key
+        caps = caps or ConcurrencyCaps()
+        # Scopes a count in this call found full: a later group in one stays queued without taking
+        # the lock and counting again, which on SQLite would hold the database's write lock per group.
+        full: set[tuple[int, str]] = set()
+        for candidate in self._lease_candidates(pair):
+            if not can_serve(candidate.capabilities or [], advertised):
+                continue
+            if candidate.group_id is None:
+                leased = self._claim_plain(worker_id, candidate.id, advertised)
+            else:
+                scopes = _capped_scopes(caps, candidate.org_id, candidate.actor)
+                if full.intersection(scopes):
                     continue
-                if skip_locked:
-                    locked = session.execute(
-                        select(JobRecord.id)
-                        .where(JobRecord.id == job_id, JobRecord.status == "queued")
-                        .with_for_update(skip_locked=True)
-                    ).first()
-                    if locked is None:  # held by another leaser, or already taken — try the next
-                        continue
-                claimed = session.execute(
-                    update(JobRecord)
-                    .where(JobRecord.id == job_id, JobRecord.status == "queued")
-                    .values(status="leased", leased_at=datetime.now(UTC), leased_by=worker_id)
+                leased = self._claim_bundle(
+                    worker_id,
+                    advertised,
+                    group=(candidate.group_id, pair, candidate.pair),
+                    scopes=scopes,
+                    limit=max(1, max_jobs),
+                    caps=caps,
+                    full=full,
                 )
-                if _rowcount(claimed) != 1:  # taken by another worker since the scan — try the next
-                    continue
-                row = session.get(JobRecord, job_id)
-                assert row is not None  # just claimed inside this transaction
-                spec = dict(row.spec)
-                # A worker from before BE-0467 serves the job on today's tokens alone, so the job
-                # carries that on to its report. Set or cleared on every lease: a job re-queued
-                # after such a worker died, then run by a checking one, reports no stale note.
-                provenance = {
-                    k: v
-                    for k, v in (spec.get("provenance") or {}).items()
-                    if k not in UNCHECKED_PROVENANCE
-                }
-                if unchecked_lease(caps or [], advertised):
-                    provenance.update(UNCHECKED_PROVENANCE)
-                if provenance != (spec.get("provenance") or {}):
-                    spec["provenance"] = provenance or None
-                    row.spec = spec
-                leased = LeasedJob(
-                    id=row.id, org_id=row.org_id, spec=spec, capabilities=list(caps or [])
-                )
-                session.commit()
+            if leased:
                 return leased
-            return None
+        return []
 
-    def live_worker_capabilities(self) -> list[list[str]]:
+    def _lease_candidates(self, pair: InstrumentedAttribute[str | None]) -> list[Any]:
+        """Every queued plain job, and the oldest queued job of each group and *pair* key, oldest
+        first; read with no lock, as each claim re-checks its row.
+
+        One job stands for its pair because the pair key digests every per-job input of
+        `can_serve` (BE-0484), so the scan's `can_serve` calls follow the groups, not their size.
+        The plain scan stays unbounded: an unroutable backlog piles up at the head, so a fixed
+        window would hide a servable younger job (BE-0166); `bajutsu_unroutable_jobs` surfaces it.
+        """
+        from sqlalchemy import func, literal, null, select
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import JobRecord
+
+        # Ids are the registry's counter, and one `run-set` shares a `created_at`, so they break ties.
+        order = (JobRecord.created_at, func.length(JobRecord.id), JobRecord.id)
+        queued = JobRecord.status == "queued"
+        columns = (
+            JobRecord.id,
+            JobRecord.capabilities,
+            JobRecord.created_at,
+            JobRecord.org_id,
+            JobRecord.actor,
+        )
+        ranked = (
+            select(
+                *columns,
+                JobRecord.group_id,
+                pair.label("pair"),
+                func.row_number()
+                .over(partition_by=(JobRecord.group_id, pair), order_by=order)
+                .label("rank"),
+            )
+            .where(queued, JobRecord.group_id.is_not(None))
+            .subquery()
+        )
+        with Session(self._engine) as session:
+            plain = session.execute(
+                select(*columns, null().label("group_id"), literal(None).label("pair"))
+                .where(queued, JobRecord.group_id.is_(None))
+                .order_by(*order)
+            ).all()
+            grouped = session.execute(
+                select(ranked.c.id, ranked.c.capabilities, ranked.c.created_at)
+                .add_columns(ranked.c.org_id, ranked.c.actor, ranked.c.group_id, ranked.c.pair)
+                .where(ranked.c.rank == 1)
+                .order_by(ranked.c.created_at, func.length(ranked.c.id), ranked.c.id)
+            ).all()
+        # Stable, so a plain job keeps its place ahead of a group registered in the same instant.
+        return sorted([*plain, *grouped], key=lambda row: _as_utc(row.created_at))
+
+    def _claim_plain(self, worker_id: str, job_id: str, advertised: set[str]) -> list[LeasedJob]:
+        """Lease the plain job *job_id*, or nothing when another worker took it since the scan."""
         from sqlalchemy import select
         from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import JobRecord
+
+        with Session(self._engine) as session:
+            if self._skip_locked:
+                # PostgreSQL takes the row with `FOR UPDATE SKIP LOCKED`, so a row another leaser is
+                # mid-claim on is skipped at once instead of waited on — without it every leaser
+                # would convoy on the oldest candidate behind one stalled claimant.
+                locked = session.execute(
+                    select(JobRecord.id)
+                    .where(JobRecord.id == job_id, JobRecord.status == "queued")
+                    .with_for_update(skip_locked=True)
+                ).first()
+                if locked is None:
+                    return []
+            row = session.get(JobRecord, job_id)
+            leased = [] if row is None else self._claim_row(session, row, worker_id, advertised)
+            session.commit()
+            return leased
+
+    def _claim_bundle(
+        self,
+        worker_id: str,
+        advertised: set[str],
+        *,
+        group: tuple[str, InstrumentedAttribute[str | None], str | None],
+        scopes: list[tuple[int, str]],
+        limit: int,
+        caps: ConcurrencyCaps,
+        full: set[tuple[int, str]],
+    ) -> list[LeasedJob]:
+        """Lease up to *limit* queued jobs of one group and pair key, oldest first, within the
+        headroom the caps leave in *scopes* (BE-0484); a scope found full joins *full*.
+
+        The count and the claim share one transaction under a lock taken before the count, so two
+        leasers never overshoot a cap together: SQLite's write lock, or PostgreSQL's
+        transaction-scoped advisory lock per capped scope. Each lease holds one candidate's locks.
+        """
+        from sqlalchemy import func, select
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import JobRecord
+
+        group_id, pair, key = group
+        with Session(self._engine) as session:
+            if scopes:
+                self._lock_scopes(session, scopes)
+                room = self._headroom(session, caps, scopes)
+                full.update(scope for scope, left in room.items() if left <= 0)
+                limit = min(limit, *room.values())
+                if limit <= 0:
+                    session.rollback()
+                    return []
+            query = (
+                select(JobRecord)
+                .where(JobRecord.status == "queued", JobRecord.group_id == group_id, pair == key)
+                .order_by(JobRecord.created_at, func.length(JobRecord.id), JobRecord.id)
+                .limit(limit)
+            )
+            if self._skip_locked:
+                # Workers that chose the same pair spread across its jobs instead of racing for one.
+                query = query.with_for_update(skip_locked=True)
+            leased = [
+                claimed
+                for row in session.scalars(query).all()
+                for claimed in self._claim_row(session, row, worker_id, advertised)
+            ]
+            session.commit()
+            return leased
+
+    @property
+    def _skip_locked(self) -> bool:
+        return self._engine.dialect.name != "sqlite"
+
+    def _lock_scopes(self, session: Session, scopes: list[tuple[int, str]]) -> None:
+        """Serialize the cap count of every scope in *scopes*, until the transaction ends."""
+        from sqlalchemy import func, select
+
+        if not self._skip_locked:
+            # Must be the connection's first statement: pysqlite then opens no implicit transaction
+            # of its own, so the write lock holds until the commit. `isolation_level=None` would do
+            # the same but change every other path on the shared engine.
+            session.connection().exec_driver_sql("BEGIN IMMEDIATE")
+            return
+        # One lock per scope, always in the same order, so two leasers cannot deadlock; the two-key
+        # form keeps keys of different scopes apart.
+        for kind, name in scopes:
+            session.execute(select(func.pg_advisory_xact_lock(kind, _lock_key(name))))
+
+    def _headroom(
+        self, session: Session, caps: ConcurrencyCaps, scopes: list[tuple[int, str]]
+    ) -> dict[tuple[int, str], int]:
+        """How many more jobs each capped scope in *scopes* admits now (BE-0484).
+
+        A slot is held by every leased job, and by every queued plain job some live worker can
+        serve: the registry admitted it against the caps already, and a worker may take it next. A
+        queued plain job no live worker serves holds none, or it would block its org indefinitely.
+        """
+        from sqlalchemy import or_, select
+
+        from bajutsu.serve.capabilities import can_serve, route_key
+        from bajutsu.serve.server.models import JobRecord
+
+        rows = session.execute(
+            select(
+                JobRecord.status, JobRecord.org_id, JobRecord.actor, JobRecord.capabilities
+            ).where(
+                or_(
+                    JobRecord.status == "leased",
+                    (JobRecord.status == "queued") & JobRecord.group_id.is_(None),
+                )
+            )
+        ).all()
+        live = self._live_capabilities(session)
+        servable: dict[str, bool] = {}
+        holding: list[tuple[str, str | None]] = []
+        for status, row_org, row_actor, required in rows:
+            if status == "queued":
+                key = route_key(required or [])
+                if key not in servable:
+                    servable[key] = any(can_serve(required or [], adv) for adv in live)
+                if not servable[key]:
+                    continue
+            holding.append((row_org, row_actor))
+        room: dict[tuple[int, str], int] = {}
+        for kind, name in scopes:
+            if kind == _DEPLOYMENT_SCOPE:
+                room[kind, name] = caps.total - len(holding)
+            elif kind == _ORG_SCOPE:
+                room[kind, name] = caps.per_org - sum(1 for o, _ in holding if o == name)
+            else:
+                room[kind, name] = caps.per_user - sum(1 for _, a in holding if a == name)
+        return room
+
+    def _claim_row(
+        self, session: Session, row: JobRecord, worker_id: str, advertised: set[str]
+    ) -> list[LeasedJob]:
+        """Move *row* from queued to leased, or nothing when another worker took it first.
+
+        One conditional UPDATE both checks and writes, so two leasers can never both take a row —
+        on SQLite, which has no `FOR UPDATE SKIP LOCKED`, as on PostgreSQL (BE-0449).
+        """
+        from sqlalchemy import update
+
+        from bajutsu.serve.capabilities import UNCHECKED_PROVENANCE, unchecked_lease
+        from bajutsu.serve.server.models import JobRecord
+
+        claimed = session.execute(
+            update(JobRecord)
+            .where(JobRecord.id == row.id, JobRecord.status == "queued")
+            .values(status="leased", leased_at=datetime.now(UTC), leased_by=worker_id)
+            .execution_options(synchronize_session=False)
+        )
+        if _rowcount(claimed) != 1:
+            return []
+        caps = list(row.capabilities or [])
+        spec = dict(row.spec)
+        # A worker from before BE-0467 serves the job on today's tokens alone, so the job carries
+        # that on to its report. Set or cleared on every lease: a job re-queued after such a worker
+        # died, then run by a checking one, reports no stale note. Judged by the job's own list,
+        # not its bundle anchor's.
+        provenance = {
+            k: v for k, v in (spec.get("provenance") or {}).items() if k not in UNCHECKED_PROVENANCE
+        }
+        if unchecked_lease(caps, advertised):
+            provenance.update(UNCHECKED_PROVENANCE)
+        if provenance != (spec.get("provenance") or {}):
+            spec["provenance"] = provenance or None
+            row.spec = spec
+        return [LeasedJob(id=row.id, org_id=row.org_id, spec=spec, capabilities=caps)]
+
+    def leased_group_counts(self) -> dict[tuple[str, str | None], int]:
+        from sqlalchemy import func, select
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import JobRecord
+
+        query = (
+            select(JobRecord.org_id, JobRecord.actor, func.count())
+            .where(JobRecord.status == "leased", JobRecord.group_id.is_not(None))
+            .group_by(JobRecord.org_id, JobRecord.actor)
+        )
+        with Session(self._engine) as session:
+            return {(org, actor): count for org, actor, count in session.execute(query)}
+
+    def _live_capabilities(self, session: Session) -> list[list[str]]:
+        from sqlalchemy import select
 
         from bajutsu.serve.server.models import WorkerRecord
 
         cutoff = datetime.now(UTC) - self._lease_timeout
-        with Session(self._engine) as session:
-            live = session.scalars(
-                select(WorkerRecord.capabilities).where(WorkerRecord.last_seen >= cutoff)
-            ).all()
+        live = session.scalars(
+            select(WorkerRecord.capabilities).where(WorkerRecord.last_seen >= cutoff)
+        ).all()
         return [list(caps or []) for caps in live]
+
+    def live_worker_capabilities(self) -> list[list[str]]:
+        from sqlalchemy.orm import Session
+
+        with Session(self._engine) as session:
+            return self._live_capabilities(session)
 
     def lacks_live_worker(self, job_id: str) -> bool:
         from sqlalchemy import select
@@ -1221,7 +1479,7 @@ class SqlRepository:
         from sqlalchemy import select
         from sqlalchemy.orm import Session
 
-        from bajutsu.serve.capabilities import can_serve
+        from bajutsu.serve.capabilities import can_serve, route_key
         from bajutsu.serve.server.models import JobRecord, WorkerRecord
 
         now = datetime.now(UTC)
@@ -1230,7 +1488,10 @@ class SqlRepository:
         # Per worker, keep its freshest lease renewal (max leased_at) — that is its last heartbeat.
         latest_heartbeat: dict[str, datetime] = {}
         oldest_in_flight = 0.0
-        queued_caps: list[list[str]] = []  # required-capability set of each queued job (BE-0166)
+        # Queued jobs by route key: one `can_serve` verdict per key, weighted by its job count, so a
+        # scrape costs per key rather than per scenario of a large group (BE-0484).
+        queued_caps: dict[str, list[str]] = {}
+        queued_weight: dict[str, int] = defaultdict(int)
         # Read only the columns the aggregate needs — never `spec`/`result`, which can carry
         # secrets. `capabilities` is the routing key (no secret), needed for the unroutable count.
         # Filtering to the two live states keeps the read off finished rows.
@@ -1241,13 +1502,18 @@ class SqlRepository:
             JobRecord.leased_at,
             JobRecord.created_at,
             JobRecord.capabilities,
+            JobRecord.route_key,
         ).where(JobRecord.status.in_(("queued", "leased")))
         cutoff = now - self._lease_timeout
         with Session(self._engine) as session:
-            for status, org_id, leased_by, leased_at, created_at, caps in session.execute(stmt):
+            for status, org_id, leased_by, leased_at, created_at, caps, key in session.execute(
+                stmt
+            ):
                 if status == "queued":
                     queued[org_id] += 1
-                    queued_caps.append(list(caps or []))
+                    pair = key or route_key(caps or [])
+                    queued_caps.setdefault(pair, list(caps or []))
+                    queued_weight[pair] += 1
                     continue
                 leased[org_id] += 1
                 oldest_in_flight = max(oldest_in_flight, _age_seconds(now, created_at))
@@ -1268,7 +1534,11 @@ class SqlRepository:
                     select(WorkerRecord).where(WorkerRecord.last_seen >= cutoff)
                 )
             ]
-        unroutable = sum(1 for req in queued_caps if not any(can_serve(req, adv) for adv in live))
+        unroutable = sum(
+            weight
+            for key, weight in queued_weight.items()
+            if not any(can_serve(queued_caps[key], adv) for adv in live)
+        )
         return JobMetrics(
             queued_by_org=dict(queued),
             leased_by_org=dict(leased),
@@ -1279,3 +1549,24 @@ class SqlRepository:
             oldest_in_flight_seconds=oldest_in_flight,
             unroutable_queued=unroutable,
         )
+
+
+# The advisory-lock namespaces of the three capped scopes, in the order a lease takes them.
+_DEPLOYMENT_SCOPE, _ORG_SCOPE, _USER_SCOPE = 1, 2, 3
+
+
+def _capped_scopes(caps: ConcurrencyCaps, org_id: str, actor: str | None) -> list[tuple[int, str]]:
+    """The scopes whose cap binds a job of *org_id* and *actor*, in lock order."""
+    scopes: list[tuple[int, str]] = []
+    if caps.total > 0:
+        scopes.append((_DEPLOYMENT_SCOPE, ""))
+    if caps.per_org > 0:
+        scopes.append((_ORG_SCOPE, org_id))
+    if caps.per_user > 0 and actor:
+        scopes.append((_USER_SCOPE, actor))
+    return scopes
+
+
+def _lock_key(name: str) -> int:
+    """*name* as a signed 32-bit advisory-lock key; two names that collide merely serialize."""
+    return (zlib.crc32(name.encode()) ^ 0x80000000) - 0x80000000

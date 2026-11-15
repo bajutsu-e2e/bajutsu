@@ -26,6 +26,10 @@ class JobRegistry:
     # Which of the given job ids finished off this process, asked before every count so a cap check
     # can never read a stale one (see `_release_finished`). None where nothing runs off-process.
     finished_ids: Callable[[list[str]], set[str]] | None = None
+    # How many `run-set` group jobs are leased, by org and actor (BE-0484). A group job holds no slot
+    # here while queued, since its caps apply at lease time; once leased, this read counts it. None
+    # where no job runs off-process.
+    leased_groups: Callable[[], dict[tuple[str, str | None], int]] | None = None
     jobs: dict[str, Job] = field(default_factory=dict)
     _seq: int = 0
     _lock: threading.Lock = field(default_factory=threading.Lock)
@@ -47,21 +51,39 @@ class JobRegistry:
     def active_jobs(self) -> int:
         """How many spawned jobs are still running (not yet finished)."""
         self._release_finished()
+        leased = self._leased_groups()
         with self._lock:
-            return len(self._running())
+            return len(self._running()) + sum(leased.values())
 
     def in_flight_by_org(self) -> dict[str, int]:
         """Running jobs grouped by org, for the ``/metrics`` endpoint (BE-0169). Counted under the
         lock, like `active_jobs`, so a concurrent register/finish can't corrupt the snapshot."""
         self._release_finished()
+        leased = self._leased_groups()
         with self._lock:
-            return dict(Counter(j.org for j in self._running()))
+            counts = Counter(j.org for j in self._running())
+        for (org, _), count in leased.items():
+            counts[org] += count
+        return dict(counts)
 
     def _running(self) -> list[Job]:
         """The jobs still holding a concurrency-cap slot — the one definition every count and cap
         check reads, so a released job can't be running for one of them and finished for another.
-        Caller must hold ``self._lock``."""
-        return [j for j in self.jobs.values() if j.status == "running" and not j.released]
+        A group job is counted through `_leased_groups` instead (BE-0484). Caller must hold
+        ``self._lock``."""
+        return [
+            j
+            for j in self.jobs.values()
+            if j.status == "running" and not j.released and j.group_id is None
+        ]
+
+    def _leased_groups(self) -> dict[tuple[str, str | None], int]:
+        """The leased group jobs by org and actor, read outside the lock like the finish probe.
+
+        A lease landing after the read is the in-flight overshoot the lease-time caps already
+        bound. A read that fails raises rather than count nothing, which would err past the cap.
+        """
+        return self.leased_groups() if self.leased_groups is not None else {}
 
     def _release_finished(self) -> None:
         """Release the cap slot of every job `finished_ids` reports as finished elsewhere.
@@ -109,19 +131,38 @@ class JobRegistry:
         A Device Farm batch has no cap of its own here: the worker that reserves the device bounds
         its jobs in flight with its ``maxJobConcurrency`` (BE-0448)."""
         self._release_finished()
+        leased = self._leased_groups()
         with self._lock:
-            running = self._running()
-            if max_concurrent > 0 and len(running) >= max_concurrent:
+            running = [(j.org, j.actor) for j in self._running()]
+            holding = Counter(running) + Counter(leased)
+            if max_concurrent > 0 and holding.total() >= max_concurrent:
                 return None
             if job.actor and max_concurrent_per_user > 0:
-                mine = sum(1 for j in running if j.actor == job.actor)
+                mine = sum(n for (_, actor), n in holding.items() if actor == job.actor)
                 if mine >= max_concurrent_per_user:
                     return None
             if max_concurrent_per_org > 0:
-                same_org = sum(1 for j in running if j.org == job.org)
+                same_org = sum(n for (org, _), n in holding.items() if org == job.org)
                 if same_org >= max_concurrent_per_org:
                     return None
             return self._register(job)
+
+    def reserve_ids(self, count: int) -> list[str]:
+        """Draw *count* ids for jobs that enter later through `admit` (BE-0484).
+
+        A group's jobs are written to the store in one transaction under ids it must know first,
+        and none may enter the registry before that write commits.
+        """
+        with self._lock:
+            first = self._seq + 1
+            self._seq += count
+            return [str(i) for i in range(first, self._seq + 1)]
+
+    def admit(self, job: Job) -> Job:
+        """Store *job* under the id `reserve_ids` gave it, with no cap check: a group job is capped
+        when a worker leases it (BE-0484)."""
+        with self._lock:
+            return self._store(job)
 
     def _register(self, job: Job) -> Job:
         """Assign the job its id + live-log bus and store it. Caller must hold ``self._lock``. The
@@ -132,6 +173,11 @@ class JobRegistry:
             raise ValueError(f"job {job.id!r} is already registered")
         self._seq += 1
         job.id = str(self._seq)
+        return self._store(job)
+
+    def _store(self, job: Job) -> Job:
+        """Wire *job*, which already has its id, to the live-log bus and store it. Caller must hold
+        ``self._lock``."""
         job.bus = self.logbus
         # Don't alias caller-owned collections (preserves the prior new_job semantics): a later edit
         # to the list/dict the caller passed must not mutate the registered job.

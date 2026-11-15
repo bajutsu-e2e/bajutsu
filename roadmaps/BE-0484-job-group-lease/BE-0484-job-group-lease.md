@@ -9,7 +9,7 @@
 | Author | [@paihu](https://github.com/paihu) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0484") |
-| Implementing PR | [#2417](https://github.com/bajutsu-e2e/bajutsu/pull/2417) (unit 1), [#2426](https://github.com/bajutsu-e2e/bajutsu/pull/2426) (unit 2) |
+| Implementing PR | [#2417](https://github.com/bajutsu-e2e/bajutsu/pull/2417) (unit 1), [#2426](https://github.com/bajutsu-e2e/bajutsu/pull/2426) (unit 2), [#2431](https://github.com/bajutsu-e2e/bajutsu/pull/2431) (unit 3) |
 | Topic | Device-cloud execution |
 | Related | [BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out.md), [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md), [BE-0465](../BE-0465-serve-ui-device-farm-fan-out/BE-0465-serve-ui-device-farm-fan-out.md), [BE-0468](../BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of.md) |
 <!-- /BE-METADATA -->
@@ -220,7 +220,7 @@ Out of scope: publishing a group's result as a GitHub check, sharing uploads bet
 
 - [x] Unit 1 — Group registration
 - [x] Unit 2 — Run intent
-- [ ] Unit 3 — Grouped lease and caps
+- [x] Unit 3 — Grouped lease and caps
 - [ ] Unit 4 — Shared upload
 - [ ] Unit 5 — Platform routing
 - [ ] Unit 6 — Documentation
@@ -266,6 +266,28 @@ Log:
     travels as `materialize_baselines`. The label and the provenance travel as `label` and
     `provenance`. A job resolved into a batch drops `materialize_baselines`. A device-cloud worker
     thus fetches no baselines, as before.
+- 2026-11-13 — [#2431](https://github.com/bajutsu-e2e/bajutsu/pull/2431) landed unit 3. `run-set` writes its group and every job in one store
+  transaction, so a request queues every scenario or none. The concurrency caps no longer cut a
+  group short. They apply when a worker leases a group job. A lease request may carry `maxJobs`,
+  and the response then lists a bundle of one group's jobs that share the anchor's verdict. The scan
+  reads one candidate per group and route key, or per base key for a worker that checks no routes.
+  The registry leaves queued group jobs out of its count and reads the leased ones from the jobs
+  table. The Device Farm worker asks for all its free slots in one request. The caller may send
+  `groupKey`. A repeat with the same request returns the group, and a different request gets 409.
+  The unit departs from the design in five places.
+  - The repository drops `create_job_group` and the group arguments of `enqueue_job`. One
+    `register_job_group` writes the group and its jobs. Group jobs never pass the executor, so
+    nothing else wrote a group row.
+  - An empty lease answers 204 with or without `maxJobs`, not an empty list. Every worker already
+    reads 204 as an empty queue.
+  - The request digest takes the scenario names as a set. A retry that lists them in another order
+    is the same request.
+  - On SQLite the claim takes the write lock (`BEGIN IMMEDIATE`) only when a cap binds the anchor's
+    scope. With no cap there is no count to protect, and the conditional `UPDATE` alone guards each
+    claim.
+  - `docs/devicefarm.md` drops the passage on caps cutting a fan-out short and documents `groupKey`,
+    and `docs/self-hosting.md` records that a fan-out's jobs are capped at lease time rather than
+    rejected with 429; each change lands in both languages. Unit 6 keeps the full documentation pass.
 
 ## References
 
