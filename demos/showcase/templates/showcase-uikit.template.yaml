@@ -4,3 +4,6 @@ platform: ios
 subject:
   launch: { env: { SHOWCASE_UITEST: "1" } }
   idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
+  # No `startWhen` here on purpose: showcase.config.yaml's `showcase-uikit` has never carried one, so
+  # adding it would newly gate that target — the one every iOS UIKit lane runs — on `stable.row.1`.
+  # showcase.bundled-runner.config.yaml's `showcase-uikit` keeps its own copy of the BE-0231 gate.

@@ -1,4 +1,8 @@
-# What the configs that drive the showcase SwiftUI a11y app share (BE-0471). `subject.path` and
+# What showcase.config.yaml and showcase.bundled-runner.config.yaml share for the showcase SwiftUI
+# a11y app (BE-0471). Three more configs drive the same bundle id and keep their own copy of this
+# block, because none of them can reach a file in this directory: demos/demo.config.yaml,
+# live/showcase.live.config.yaml, and devicefarm/showcase.devicefarm.ios.config.yaml — an edit here
+# must be mirrored in all three. `subject.path` and
 # `subject.build` stay in each config: a template's path resolves here, but its build command would run
 # in the extending config's directory, so the pair would point at two places.
 platform: ios
