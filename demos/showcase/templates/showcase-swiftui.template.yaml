@@ -1,0 +1,9 @@
+# What every config that drives the showcase SwiftUI a11y app shares (BE-0471). `subject.path` and
+# `subject.build` stay in each config: a template's path resolves here, but its build command would run
+# in the extending config's directory, so the pair would point at two places.
+platform: ios
+subject:
+  launch: { env: { SHOWCASE_UITEST: "1" } }
+  idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
+  # BE-0231: gate readiness on the first Stable row, in both id forms (BE-0221).
+  startWhen: { exists: { id: [stable.row.1, stable_row_1] } }

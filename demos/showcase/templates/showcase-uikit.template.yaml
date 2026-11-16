@@ -1,0 +1,6 @@
+# What every config that drives the showcase UIKit a11y app shares (BE-0471). `subject.path` and
+# `subject.build` stay in each config, for the reason showcase-swiftui.template.yaml gives.
+platform: ios
+subject:
+  launch: { env: { SHOWCASE_UITEST: "1" } }
+  idNamespaces: [stable, horse, search, log, notice, perm, sys, net]

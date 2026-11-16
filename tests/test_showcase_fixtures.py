@@ -14,7 +14,7 @@ from pathlib import Path
 from conftest import json_list
 
 from bajutsu.common import _yaml
-from bajutsu.common.config import AndroidConfig, Config, IosConfig, load_config, resolve
+from bajutsu.common.config import AndroidConfig, Config, IosConfig, load_config_file, resolve
 from bajutsu.common.scenario import load_scenarios
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -67,7 +67,7 @@ def test_dedicated_lane_scenarios_carry_their_exclusion_tag() -> None:
 
 
 def test_showcase_config_resolves() -> None:
-    cfg = load_config(SHOWCASE_CONFIG.read_text(encoding="utf-8"))
+    cfg = load_config_file(SHOWCASE_CONFIG)
     eff = resolve(cfg, "showcase-swiftui")
     ios = eff.platform_config
     assert isinstance(ios, IosConfig)
@@ -124,7 +124,7 @@ def test_showcase_android_targets_have_anr_interrupt() -> None:
     # (`stable.row.1`/`stable_row_1`). Pinning the exact ids catches both a wrong-prefix regression and
     # a condition/action id mix-up without an emulator; each mistake previously shipped and only
     # failed against a live dialog (PR #1492 review).
-    cfg = load_config(SHOWCASE_CONFIG.read_text(encoding="utf-8"))
+    cfg = load_config_file(SHOWCASE_CONFIG)
     android = [
         name
         for name in cfg.targets
@@ -137,7 +137,7 @@ def test_showcase_android_targets_have_anr_interrupt() -> None:
     # The AWS Device Farm config (BE-0235) drives a bare `bajutsu run` on a reserved device with no
     # Makefile-run ANR_QUIET around it — the same uncovered path this handler exists for, not an
     # optional extra — so it must carry the same handler, kept in step with the local target here.
-    devicefarm_cfg = load_config(DEVICEFARM_CONFIG.read_text(encoding="utf-8"))
+    devicefarm_cfg = load_config_file(DEVICEFARM_CONFIG)
     _assert_anr_interrupt(
         devicefarm_cfg, "showcase-compose", where="showcase.devicefarm.config.yaml"
     )
@@ -155,7 +155,7 @@ def test_showcase_live_config_routes_to_the_live_transport() -> None:
     from bajutsu.common.platform_lifecycle.environments.xcuitest_live import is_webdriver_endpoint
     from bajutsu.common.runner.device_provider import acquire_device
 
-    cfg = load_config(LIVE_CONFIG.read_text(encoding="utf-8"))
+    cfg = load_config_file(LIVE_CONFIG)
     eff = resolve(cfg, "showcase-swiftui-live")
     assert isinstance(eff.platform_config, IosConfig)
     assert eff.platform_config.bundle_id == "com.bajutsu.showcase.ios.swiftui"
@@ -177,7 +177,7 @@ def test_showcase_live_config_routes_to_the_live_transport() -> None:
 def test_demo_menu_config_declares_the_features_secret() -> None:
     # The menu's `features` tour types `${secrets.PASSWORD}`; the demo config must declare it
     # so the literal is masked in run artifacts.
-    cfg = load_config(DEMO_CONFIG.read_text(encoding="utf-8"))
+    cfg = load_config_file(DEMO_CONFIG)
     eff = resolve(cfg, "showcase-swiftui")
     assert isinstance(eff.platform_config, IosConfig)
     assert eff.platform_config.bundle_id == "com.bajutsu.showcase.ios.swiftui"

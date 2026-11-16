@@ -11,11 +11,9 @@ reservedNamespaces: []
 targets:
   showcase-swiftui:
     platform: ios
+    extends: ./templates/showcase-swiftui.template.yaml
     subject:
       id: com.bajutsu.showcase.ios.swiftui
-      launch: { env: { SHOWCASE_UITEST: "1" } }
-      idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
-      startWhen: { exists: { id: [stable.row.1, stable_row_1] } }
       path: ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app
       build: make swiftui-build
     paths:
@@ -23,10 +21,9 @@ targets:
 
   showcase-uikit:
     platform: ios
+    extends: ./templates/showcase-uikit.template.yaml
     subject:
       id: com.bajutsu.showcase.ios.uikit
-      launch: { env: { SHOWCASE_UITEST: "1" } }
-      idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
       startWhen: { exists: { id: [stable.row.1, stable_row_1] } }
       path: ios/uikit/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseUIKit.app
       build: make uikit-build

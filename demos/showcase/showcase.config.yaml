@@ -27,6 +27,8 @@ defaults:
 templates:
   # Blocks several targets share, each written once and pulled in with `extends` (BE-0471). A target
   # keeps its own `platform`; these templates name none, so one template serves both platforms.
+  # An app that other configs drive too (demos/demo.config.yaml, showcase.bundled-runner.config.yaml)
+  # keeps its identity in a file under templates/ instead, so every config reads one copy.
 
   # Every showcase app reads SHOWCASE_UITEST to start in its test configuration.
   showcase-app:
@@ -100,7 +102,7 @@ targets:
     # gestures_multitouch.yaml's pinch/rotate and the driver conformance contract (BE-0114) — runs on
     # identifier-bearing elements in one invocation with no --backend.
     platform: ios
-    extends: [showcase-app, local-runner]
+    extends: [./templates/showcase-swiftui.template.yaml, local-runner]
     subject:
       id: com.bajutsu.showcase.ios.swiftui
       # `saved`: the SHOWCASE_SAVED_NOTE screen (SPEC §5.6), which this app and showcase-compose alone
@@ -135,11 +137,9 @@ targets:
   # conformance suite (BE-0114) above keeps exercising the locally built runner unchanged.
   showcase-swiftui-bundled:
     platform: ios
-    extends: showcase-app
+    extends: ./templates/showcase-swiftui.template.yaml
     subject:
       id: com.bajutsu.showcase.ios.swiftui
-      idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
-      startWhen: { exists: { id: [stable.row.1, stable_row_1] } }
       path: ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app
       build: make swiftui-build
     hooks:
@@ -192,10 +192,9 @@ targets:
     # `ios` resolves to XCUITest (BE-0290), as for showcase-swiftui. The a11y UIKit scenarios cross
     # tabs by tapping the native tab bar (BE-0107), which the generic XCUITest runner drives.
     platform: ios
-    extends: [showcase-app, local-runner]
+    extends: [./templates/showcase-uikit.template.yaml, local-runner]
     subject:
       id: com.bajutsu.showcase.ios.uikit
-      idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
       path: ios/uikit/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseUIKit.app
       build: make uikit-build
     paths:
