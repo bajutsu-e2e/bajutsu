@@ -412,7 +412,8 @@ With **Fan out to workers** checked, the form dispatches a fan-out instead of on
    and the single scenario's select, View, and grade.
 3. **Run** posts to `POST /api/run-set`. The route needs the editor role, like a single **Run**.
    A refusal shows in the status line.
-   The codes are 400 for a bad request, 403 for a missing role, and 429 for a full queue.
+   The codes are 400 for a bad request and 403 for a missing role.
+   A full queue never refuses a fan-out, since its jobs wait for a free slot at lease time.
 
 A **run-set panel** then lists one row per dispatched job, in request order. Each row polls its job
 about every two seconds until the job finishes, fails, or errors. A row shows its state and a
