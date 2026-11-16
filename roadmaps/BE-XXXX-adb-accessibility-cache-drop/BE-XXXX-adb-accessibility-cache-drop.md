@@ -80,7 +80,20 @@ A static screen still settles in two dumps, so the defense costs no extra dump o
 
 ## Detailed design
 
+The design has five units.
+Units 1 and 3 change the resident server, unit 2 fixes the scope, unit 4 proves the change on the emulator lane, and unit 5 documents it.
+
+| Unit | What changes | Where |
+|---|---|---|
+| 1 | Drop the platform cache between settle dumps | `ResidentServerTest.kt`, the shared `settled()` loop |
+| 2 | Nothing: the scope statement that keeps every other path unchanged | — |
+| 3 | Record event types beside the read mark: an evicting-event mark and a type log | `ResidentServerTest.kt`, the event listener and `ReadMark` |
+| 4 | A fault-injection case that proves freshness, plus a static-screen regression assertion | Android emulator lane ([BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md)) |
+| 5 | Document the drop, the API floor, and the verified event types | `docs/drivers.md`, `docs/ja/drivers.md`, `docs/architecture.md` |
+
 ### 1. Drop the cache inside the shared settle loop
+
+In one line: while the settle loop re-dumps, throw the platform cache away before each re-dump, so the next dump must re-fetch the tree from the app.
 
 The resident server gains one helper, mirroring the codegen target's helper in name and in contract:
 
@@ -141,6 +154,8 @@ sequenceDiagram
 
 ### 2. Scope: the resident server only
 
+In one line: only the resident server changes, and every other read path keeps today's behavior.
+
 The item changes the resident server's settle reads and its event record, and no other read path.
 The read mark gate ([BE-0332](../BE-0332-read-lag-barrier/BE-0332-read-lag-barrier.md)) still runs before the settle, unchanged.
 The mark gate proves order: a read postdates the gesture that prompted the read.
@@ -165,6 +180,8 @@ The floor matches the floor the codegen target already ships.
 
 ### 3. Extend the resident server's event record
 
+In one line: today the server remembers only when the last event happened; this unit also remembers whether a cache-evicting event happened, and which event types arrived.
+
 The server's event listener feeds one record today: `ReadMark` keeps the newest event's device time and discards the event itself.
 That record cannot say which types arrived, and unit 4 needs exactly that distinction.
 The listener therefore records two more facts beside the existing mark.
@@ -187,6 +204,8 @@ The extension records what the listener already receives and currently throws aw
 
 ### 4. Verification on the Android emulator lane
 
+In one line: prove on the emulator lane that a screen change with no event now shows up in the next settled read, and that a quiet screen still costs exactly two dumps.
+
 The Android emulator lane ([BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md)) gains one fault-injection case.
 The case changes the screen while withholding the accessibility event that would invalidate the cache.
 The Compose showcase counter is the natural fixture for the case.
@@ -208,6 +227,8 @@ The assertion guards the cost claim in the Motivation.
 A settle that needed a third dump on a static screen would show up as a failing assertion, not as slower runs.
 
 ### 5. Documentation
+
+In one line: write down what changed, from which API level, and which event types the lane actually observed.
 
 The adb section of `docs/drivers.md` gains a short passage, with the Japanese mirror in `docs/ja/drivers.md`.
 The passage states three facts a scenario author needs.
@@ -269,11 +290,11 @@ We rejected the manual walk because the cache drop reaches the same re-fetch thr
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — Drop the platform accessibility cache inside the resident server's settle loop (API 34+, never throws)
-- [ ] Unit 2 — Keep the scope: resident server only; no host, fallback, endpoint, or configuration changes; support floor API 34
-- [ ] Unit 3 — Extend the resident server's event record with an evicting-event mark and a bounded event-type log, leaving the existing read mark unchanged; the record takes every delivered event, and the evicting classification defaults to evicting
-- [ ] Unit 4 — Add the no-event fault-injection case, with its precondition assertion and the event-type re-verification, and the two-dump static-screen assertion to the Android emulator lane
-- [ ] Unit 5 — Document the drop, the API floor, and the verified event types in `docs/drivers.md`, `docs/ja/drivers.md`, and `docs/architecture.md`
+- [ ] Unit 1 — Between settle dumps, drop the platform accessibility cache in the resident server's settle loop, so an agreeing pair of dumps is a re-fetched tree (API 34+, never throws)
+- [ ] Unit 2 — Change nothing else: host, fallback, endpoints, and configuration stay as they are; support floor API 34
+- [ ] Unit 3 — Remember event types, not just event times: add an evicting-event mark and a bounded event-type log beside the existing read mark; the record takes every delivered event, and the evicting classification defaults to evicting
+- [ ] Unit 4 — Prove it on the Android emulator lane: a no-event fault-injection case (precondition asserted from the evicting mark, event types re-verified) and a static-screen assertion that settle still takes two dumps
+- [ ] Unit 5 — Document it: the drop, the API floor, and the verified event types in `docs/drivers.md`, `docs/ja/drivers.md`, and `docs/architecture.md`
 
 ## References
 
