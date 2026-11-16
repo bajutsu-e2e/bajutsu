@@ -27,8 +27,8 @@ defaults:
 templates:
   # Blocks several targets share, each written once and pulled in with `extends` (BE-0471). A target
   # keeps its own `platform`; these templates name none, so one template serves both platforms.
-  # An app that other configs drive too (demos/demo.config.yaml, showcase.bundled-runner.config.yaml)
-  # keeps its identity in a file under templates/ instead, so every config reads one copy.
+  # An app that showcase.bundled-runner.config.yaml drives too keeps its identity in a file under
+  # templates/ instead, so both configs read one copy.
 
   # Every showcase app reads SHOWCASE_UITEST to start in its test configuration.
   showcase-app:
