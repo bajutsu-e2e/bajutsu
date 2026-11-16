@@ -214,6 +214,16 @@ def test_the_repl_attach_e2e_script_fires_the_ios_lane_alone() -> None:
     assert is_relevant([script], "web") is False
 
 
+def test_a_showcase_template_file_fires_the_ios_and_android_lanes() -> None:
+    # The per-app blocks the showcase configs extend (BE-0471) carry the launch env and the readiness
+    # gate, and the config load that expands them runs in both lanes; a template-only PR must not
+    # leave the required aggregators green having run none of it.
+    template = "demos/showcase/templates/showcase-swiftui.template.yaml"
+    assert is_relevant([template], "ios") is True
+    assert is_relevant([template], "android") is True
+    assert is_relevant([template], "web") is False
+
+
 def test_only_e2e_workflow_is_relevant() -> None:
     assert is_relevant([".github/workflows/ios-e2e.yml"]) is True
     assert is_relevant([".github/workflows/ci.yml"]) is False

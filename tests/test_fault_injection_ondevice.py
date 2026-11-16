@@ -44,7 +44,7 @@ from backend_crash_recovery import LeaseHolder, LeaseTeardown
 from driver_conformance import OnDeviceConformanceHarness
 from xcuitest_lease import xcuitest_lease_launch
 
-from bajutsu.common.config import Effective, load_config, resolve
+from bajutsu.common.config import Effective, load_config_file, resolve
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.xcuitest import XcuitestRunnerCrashError
 from bajutsu.common.evidence import intervals
@@ -96,7 +96,7 @@ def _effective() -> Effective:
     # A raw resolve() leaves the config's relative appPath / testRunner config-relative; rebase
     # against the config's own directory (unconfined, like a local config, BE-0242) so launch_driver
     # sees the same absolute paths the CLI would — mirrors the on-device conformance modules.
-    eff = resolve(load_config(_CONFIG_PATH.read_text()), _TARGET)
+    eff = resolve(load_config_file(_CONFIG_PATH), _TARGET)
     return eff.rebased(_CONFIG_PATH.resolve().parent, confine=False)
 
 

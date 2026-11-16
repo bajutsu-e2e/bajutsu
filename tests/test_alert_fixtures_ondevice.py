@@ -41,7 +41,7 @@ from alert_fixture_support import Control, save_fixture
 from xcuitest_lease import xcuitest_lease_launch
 
 from bajutsu.common.backend_cli import simctl
-from bajutsu.common.config import Effective, load_config, resolve
+from bajutsu.common.config import Effective, load_config_file, resolve
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.xcuitest import XcuitestDriver
 from bajutsu.common.scenario.system_alerts import (
@@ -80,7 +80,7 @@ _MAX_REVEALS = 6
 def _effective() -> Effective:
     # Rebase against the config's own directory (as `test_driver_conformance_ondevice.py` does), so
     # the relative appPath / testRunner resolve from where they point rather than from the cwd.
-    eff = resolve(load_config(_CONFIG_PATH.read_text()), _TARGET)
+    eff = resolve(load_config_file(_CONFIG_PATH), _TARGET)
     return eff.rebased(_CONFIG_PATH.resolve().parent, confine=False)
 
 

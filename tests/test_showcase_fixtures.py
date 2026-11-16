@@ -22,6 +22,7 @@ SCENARIO_DIR = ROOT / "demos" / "showcase" / "scenarios"
 MENU_DIR = SCENARIO_DIR / "menu"  # the demo menu's tour/features scenarios (non-globbed subdir)
 SHOWCASE_CONFIG = ROOT / "demos" / "showcase" / "showcase.config.yaml"
 LIVE_CONFIG = ROOT / "demos" / "showcase" / "live" / "showcase.live.config.yaml"
+BUNDLED_RUNNER_CONFIG = ROOT / "demos" / "showcase" / "showcase.bundled-runner.config.yaml"
 DEMO_CONFIG = ROOT / "demos" / "demo.config.yaml"
 DEVICEFARM_CONFIG = ROOT / "demos" / "showcase" / "devicefarm" / "showcase.devicefarm.config.yaml"
 
@@ -97,6 +98,18 @@ def test_showcase_config_resolves() -> None:
     bundled = resolve(cfg, "showcase-swiftui-bundled")
     assert len(bundled.run_defaults.interrupts) == 1
     assert bundled.run_defaults.interrupts[0].condition.exists is not None
+
+
+def test_bundled_runner_config_resolves_the_template_supplied_settings() -> None:
+    cfg = load_config_file(BUNDLED_RUNNER_CONFIG)
+    for name in ("showcase-swiftui", "showcase-uikit"):
+        eff = resolve(cfg, name)
+        assert eff.launch_env == {"SHOWCASE_UITEST": "1"}, name
+        assert "stable" in eff.id_namespaces, name
+        assert eff.start_when is not None, name
+    swiftui = resolve(cfg, "showcase-swiftui").platform_config
+    assert isinstance(swiftui, IosConfig)
+    assert swiftui.bundle_id == "com.bajutsu.showcase.ios.swiftui"
 
 
 def _assert_anr_interrupt(cfg: Config, name: str, where: str = "showcase.config.yaml") -> None:

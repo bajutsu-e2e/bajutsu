@@ -43,7 +43,7 @@ from ondevice_spec_path import SpecPathMemo, read_data_container
 from xcuitest_lease import xcuitest_lease_launch
 
 from bajutsu.common.backend_cli import simctl
-from bajutsu.common.config import Effective, ios_bundle_id, load_config, resolve
+from bajutsu.common.config import Effective, ios_bundle_id, load_config_file, resolve
 from bajutsu.common.drivers import base
 from bajutsu.common.evidence import intervals
 from bajutsu.common.orchestrator.actions.handlers.scroll import (
@@ -112,7 +112,7 @@ def _effective() -> Effective:
     # testRunner would stay config-relative and miss where they point from here. Rebase against the
     # config's own directory (unconfined, like a local config, BE-0242) so launch_driver sees the
     # same absolute paths the CLI would.
-    eff = resolve(load_config(_CONFIG_PATH.read_text()), _TARGET)
+    eff = resolve(load_config_file(_CONFIG_PATH), _TARGET)
     return eff.rebased(_CONFIG_PATH.resolve().parent, confine=False)
 
 

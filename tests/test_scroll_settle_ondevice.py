@@ -32,7 +32,7 @@ from test_driver_conformance_ondevice import _OnDeviceHarness
 from xcuitest_lease import xcuitest_lease_launch
 
 from bajutsu.common.backend_cli import simctl
-from bajutsu.common.config import Effective, ios_bundle_id, load_config, resolve
+from bajutsu.common.config import Effective, ios_bundle_id, load_config_file, resolve
 
 # The loop's own step geometry, from where it is defined — so this case scrolls exactly as the
 # `scroll` action does rather than re-deriving endpoints that could drift from it.
@@ -93,7 +93,7 @@ _MIN_POST_RETURN_FRAMES = 3
 def _effective() -> Effective:
     # As in the conformance module: rebase the raw resolve against the config's own directory so the
     # relative appPath / testRunner point where they would from the CLI.
-    eff = resolve(load_config(_CONFIG_PATH.read_text()), _TARGET)
+    eff = resolve(load_config_file(_CONFIG_PATH), _TARGET)
     return eff.rebased(_CONFIG_PATH.resolve().parent, confine=False)
 
 

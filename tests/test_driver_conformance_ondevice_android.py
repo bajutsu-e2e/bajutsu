@@ -47,7 +47,7 @@ from driver_conformance import (
 )
 
 from bajutsu.common.backend_cli import adb
-from bajutsu.common.config import Effective, load_config, require_android, resolve
+from bajutsu.common.config import Effective, load_config_file, require_android, resolve
 from bajutsu.common.drivers import base
 from bajutsu.common.evidence import intervals
 from bajutsu.common.runner.launch import launch_driver
@@ -125,7 +125,7 @@ def _eff() -> Effective:
     # stay config-relative and miss where it points from here. Rebase against the config's own
     # directory (unconfined, like a local config, BE-0242) so launch_driver sees the same absolute
     # appPath the CLI would — mirrors the iOS on-device module.
-    eff = resolve(load_config(_CONFIG_PATH.read_text()), _TARGET)
+    eff = resolve(load_config_file(_CONFIG_PATH), _TARGET)
     return eff.rebased(_CONFIG_PATH.resolve().parent, confine=False)
 
 

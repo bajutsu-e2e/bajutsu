@@ -301,6 +301,8 @@ _LANE_PATHS: dict[str, str] = {
         r"|demos/showcase/ios/uikit/"
         # The main config and the BE-0292 bundled-runner config the `bundled-runner (xcuitest)` job runs.
         r"|demos/showcase/showcase(?:\.[^/]+)?\.config\.yaml$"
+        # The per-app blocks those configs extend (BE-0471): a change here changes every target.
+        r"|demos/showcase/templates/"
         r"|demos/showcase/scenarios/"
         # The deterministic check the `network (xcuitest)` job runs over the persisted network.json
         # (BE-0282). iOS-only: the web lane has its own copy under the `demos/web/` sweep below, and
@@ -338,6 +340,7 @@ _LANE_PATHS: dict[str, str] = {
         r"|demos/showcase/android/"
         r"|demos/showcase/scenarios/"
         r"|demos/showcase/showcase\.config\.yaml$"
+        r"|demos/showcase/templates/"  # the per-app blocks that config extends (BE-0471)
         r"|BajutsuAndroid/"  # the app-side clipboard SDK the showcase APKs build in (BE-0233)
         r"|BajutsuAndroidUIAutomatorServer/"  # the resident server this lane builds + exercises (BE-0245)
         r"|IdentifierTool/"  # the app-side identifier-tagging library the showcase APKs build in (BE-0405)
