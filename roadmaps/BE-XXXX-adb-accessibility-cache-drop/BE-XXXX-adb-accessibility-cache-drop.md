@@ -108,6 +108,37 @@ A cache drop is not a dump, so the drop takes no dump lap from `WaitBudget`.
 The idle wait still precedes each re-read, and the drop lands between the idle wait and the re-read.
 The read therefore re-fetches a tree that the idle wait has already declared quiet.
 
+The diagram shows the three flows: how a dump hits the cache, how an event deletes from the cache, and how the drop deletes the whole cache between settle reads.
+
+```mermaid
+sequenceDiagram
+    participant App as app screen (Compose)
+    participant Cache as AccessibilityCache (per connection)
+    participant Srv as resident server (settle loop)
+    Note over App,Cache: an event deletes: the platform's own eviction
+    App->>Cache: UI change, with an accessibility event
+    Cache->>Cache: onAccessibilityEvent evicts the changed subtree (a window-state change evicts all)
+    Srv->>Cache: dump
+    Cache->>App: re-fetch nodes
+    App-->>Cache: current nodes
+    Cache-->>Srv: fresh tree
+    Note over App,Cache: no event: every dump hits the pinned cache
+    App->>App: UI change, no event published (Compose under UiAutomator)
+    Srv->>Cache: dump 1
+    Cache-->>Srv: cached nodes (hit, pre-change)
+    Srv->>Cache: dump 2
+    Cache-->>Srv: same cached nodes, dumps agree, stale tree certified as settled
+    Note over Srv,Cache: this item: the drop deletes the whole cache between dumps
+    Srv->>Cache: dump 1 (may be pinned)
+    Cache-->>Srv: cached nodes (hit, pre-change)
+    Srv->>Cache: clearCache()
+    Cache->>Cache: whole cache deleted
+    Srv->>Cache: dump 2
+    Cache->>App: re-fetch nodes
+    App-->>Cache: current nodes
+    Cache-->>Srv: fresh tree, agreement certifies the current screen
+```
+
 ### 2. Scope: the resident server only
 
 The item changes the resident server's settle reads and its event record, and no other read path.

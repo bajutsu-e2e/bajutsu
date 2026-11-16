@@ -120,6 +120,37 @@ settle の利用側は2つとも、共有の呼び出し箇所から破棄を受
 破棄は、アイドル待機と再読み取りの間に置きます。
 そのため読み取りは、アイドル待機が静止を宣言したツリーを再取得します。
 
+図は3つの流れを示します。ダンプがキャッシュにヒットする流れ、イベントがキャッシュを削除する流れ、破棄が settle 読み取りの合間にキャッシュ全体を削除する流れです。
+
+```mermaid
+sequenceDiagram
+    participant App as app screen (Compose)
+    participant Cache as AccessibilityCache (per connection)
+    participant Srv as resident server (settle loop)
+    Note over App,Cache: an event deletes: the platform's own eviction
+    App->>Cache: UI change, with an accessibility event
+    Cache->>Cache: onAccessibilityEvent evicts the changed subtree (a window-state change evicts all)
+    Srv->>Cache: dump
+    Cache->>App: re-fetch nodes
+    App-->>Cache: current nodes
+    Cache-->>Srv: fresh tree
+    Note over App,Cache: no event: every dump hits the pinned cache
+    App->>App: UI change, no event published (Compose under UiAutomator)
+    Srv->>Cache: dump 1
+    Cache-->>Srv: cached nodes (hit, pre-change)
+    Srv->>Cache: dump 2
+    Cache-->>Srv: same cached nodes, dumps agree, stale tree certified as settled
+    Note over Srv,Cache: this item: the drop deletes the whole cache between dumps
+    Srv->>Cache: dump 1 (may be pinned)
+    Cache-->>Srv: cached nodes (hit, pre-change)
+    Srv->>Cache: clearCache()
+    Cache->>Cache: whole cache deleted
+    Srv->>Cache: dump 2
+    Cache->>App: re-fetch nodes
+    App-->>Cache: current nodes
+    Cache-->>Srv: fresh tree, agreement certifies the current screen
+```
+
 ### 2. 対象範囲は常駐サーバだけとする
 
 本項目が変えるのは、常駐サーバの settle 読み取りとイベント記録だけです。
