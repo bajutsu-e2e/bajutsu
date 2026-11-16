@@ -301,7 +301,8 @@ _LANE_PATHS: dict[str, str] = {
         r"|demos/showcase/ios/uikit/"
         # The main config and the BE-0292 bundled-runner config the `bundled-runner (xcuitest)` job runs.
         r"|demos/showcase/showcase(?:\.[^/]+)?\.config\.yaml$"
-        # The per-app blocks those configs extend (BE-0471): a change here changes every target.
+        # The per-app blocks the showcase SwiftUI / UIKit targets extend (BE-0471). Both configs the
+        # lane loads expand them, so a malformed file here breaks the lane before any target runs.
         r"|demos/showcase/templates/"
         r"|demos/showcase/scenarios/"
         # The deterministic check the `network (xcuitest)` job runs over the persisted network.json

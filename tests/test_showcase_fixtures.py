@@ -112,6 +112,31 @@ def test_bundled_runner_config_resolves_the_template_supplied_settings() -> None
     assert swiftui.bundle_id == "com.bajutsu.showcase.ios.swiftui"
 
 
+def test_the_unextendable_swiftui_copies_match_the_template() -> None:
+    # live/ and devicefarm/ cannot extend ./templates (the ref escapes their own suite root), so they
+    # repeat the block verbatim. The template header requires mirroring an edit into both; without
+    # this, a BE-0231 readiness-id fix here leaves those two lanes on the stale gate and only fails
+    # as an opaque `_await_ready` timeout on a metered device.
+    shared = _yaml.safe_load(
+        (ROOT / "demos" / "showcase" / "templates" / "showcase-swiftui.template.yaml").read_text(
+            encoding="utf-8"
+        )
+    )["subject"]
+    copies = {
+        LIVE_CONFIG: "showcase-swiftui-live",
+        ROOT
+        / "demos"
+        / "showcase"
+        / "devicefarm"
+        / "showcase.devicefarm.ios.config.yaml": "showcase-swiftui",
+    }
+    for path, name in copies.items():
+        eff = resolve(load_config_file(path), name)
+        assert eff.launch_env == shared["launch"]["env"], path.name
+        assert list(eff.id_namespaces) == shared["idNamespaces"], path.name
+        assert eff.start_when == shared["startWhen"]["exists"], path.name
+
+
 def _assert_anr_interrupt(cfg: Config, name: str, where: str = "showcase.config.yaml") -> None:
     interrupts = resolve(cfg, name).run_defaults.interrupts
     anr = [
