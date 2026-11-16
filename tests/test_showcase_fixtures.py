@@ -105,8 +105,8 @@ def test_bundled_runner_config_resolves_the_template_supplied_settings() -> None
     for name in ("showcase-swiftui", "showcase-uikit"):
         eff = resolve(cfg, name)
         assert eff.launch_env == {"SHOWCASE_UITEST": "1"}, name
-        assert "stable" in eff.id_namespaces, name
-        assert eff.start_when is not None, name
+        assert set(eff.id_namespaces) == NAMESPACES, name
+        assert eff.start_when == {"id": ["stable.row.1", "stable_row_1"]}, name
     swiftui = resolve(cfg, "showcase-swiftui").platform_config
     assert isinstance(swiftui, IosConfig)
     assert swiftui.bundle_id == "com.bajutsu.showcase.ios.swiftui"

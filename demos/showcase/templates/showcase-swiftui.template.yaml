@@ -1,9 +1,12 @@
-# What every config that drives the showcase SwiftUI a11y app shares (BE-0471). `subject.path` and
+# What the configs that drive the showcase SwiftUI a11y app share (BE-0471). `subject.path` and
 # `subject.build` stay in each config: a template's path resolves here, but its build command would run
 # in the extending config's directory, so the pair would point at two places.
 platform: ios
 subject:
   launch: { env: { SHOWCASE_UITEST: "1" } }
   idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
-  # BE-0231: gate readiness on the first Stable row, in both id forms (BE-0221).
+  # BE-0231: gate readiness on the first Stable row, in both id forms (BE-0221). This and
+  # `idNamespaces` reach showcase-swiftui-bundled and the bundled-runner config's target alone:
+  # showcase.config.yaml's own `showcase-swiftui` replaces both with supersets that add `saved`
+  # (SPEC §5.6), and a list replaces rather than unions — so an edit here must be mirrored there.
   startWhen: { exists: { id: [stable.row.1, stable_row_1] } }
