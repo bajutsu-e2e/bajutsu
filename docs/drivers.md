@@ -519,6 +519,23 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   poll sleep) after the catch-up barrier itself closes for free — the barrier's own dump is free, the
   settle poll's is not.
 
+  The same settle also guards against the platform's own node cache
+  ([BE-0490](../roadmaps/BE-0490-adb-accessibility-cache-drop/BE-0490-adb-accessibility-cache-drop.md)).
+  Android caches accessibility nodes per connection. The platform drops a cached node when an accessibility
+  event reaches it, and at no other time. Most events name the node they drop. A window-level change clears
+  every window at once. A change that publishes no such event leaves
+  two dumps agreeing on the pre-change tree. On Android 14 and later, the resident server calls
+  `UiAutomation.clearCache()` between settle dumps. Both `GET /source` and `POST /act` settle this
+  way, so the agreeing pair is a re-fetched tree. Android 13 and earlier keep the earlier settle,
+  because no supported call clears the cache there. A static target still settles in two dumps.
+  The Android fault-injection lane checks both outcomes on an Android 14 emulator. Its fixture
+  withholds the event by construction: a tap on one view changes what a second view reports. The tap
+  publishes `TYPE_VIEW_CLICKED` alone, and the cache refreshes the clicked view for that type. The
+  second view's old node stays cached, so the settled read returns the new value because of the drop
+  and nothing else. Without the drop, the read returns the old value. The same lane recorded why the
+  fixture cannot be a plain Compose element. A Compose value published `TYPE_WINDOW_CONTENT_CHANGED`
+  for its own change, which evicts the changed node without any drop.
+
 ### On-device actuation
 
 - **On-device actuation fidelity** (roadmap

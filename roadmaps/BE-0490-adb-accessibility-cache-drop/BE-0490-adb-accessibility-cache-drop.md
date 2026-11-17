@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0490](BE-0490-adb-accessibility-cache-drop.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0490") |
+| Implementing PR | [#2451](https://github.com/bajutsu-e2e/bajutsu/pull/2451) (units 1–5) |
 | Topic | Platform support |
 <!-- /BE-METADATA -->
 
@@ -293,11 +294,36 @@ We rejected the manual walk because the cache drop reaches the same re-fetch thr
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — Between settle dumps, drop the platform accessibility cache in the resident server's settle loop, so an agreeing pair of dumps is a re-fetched tree (API 34+, never throws)
-- [ ] Unit 2 — Change nothing else: host, fallback, endpoints, and configuration stay as they are; support floor API 34
-- [ ] Unit 3 — Remember event types, not just event times: add an evicting-event mark carrying the event's window id and a bounded event-type log beside the existing read mark, both under the read mark's lock; the record takes every delivered event, and the evicting classification defaults to evicting
-- [ ] Unit 4 — Prove it on the Android emulator lane: a no-event fault-injection case (precondition asserted from the evicting mark, event types re-verified) and a static-screen assertion that settle still takes two dumps
-- [ ] Unit 5 — Document it: the drop, the API floor, and the verified event types in `docs/drivers.md`, `docs/ja/drivers.md`, and `docs/architecture.md`
+- [x] Unit 1 — Between settle dumps, drop the platform accessibility cache in the resident server's settle loop, so an agreeing pair of dumps is a re-fetched tree (API 34+, never throws)
+- [x] Unit 2 — Change nothing else: host, fallback, endpoints, and configuration stay as they are; support floor API 34
+- [x] Unit 3 — Remember event types, not just event times: add an evicting-event mark carrying the event's window id and a bounded event-type log beside the existing read mark, both under the read mark's lock; the record takes every delivered event, and the evicting classification defaults to evicting
+- [x] Unit 4 — Prove it on the Android emulator lane: a no-event fault-injection case (precondition asserted from the evicting mark, event types re-verified) and a static-screen assertion that settle still takes two dumps
+- [x] Unit 5 — Document it: the drop, the API floor, and the verified event types in `docs/drivers.md`, `docs/ja/drivers.md`, and `docs/architecture.md`
+
+Log:
+
+- 2026-11-17 — Units 1–5 landed together ([#2451](https://github.com/bajutsu-e2e/bajutsu/pull/2451)).
+  - The resident server drops the accessibility cache between settle dumps on Android 14 and later.
+  - `GET /source` now carries `X-Bajutsu-Evict-Mark`, the newest evicting event per window.
+  - `GET /source` also carries `X-Bajutsu-Event-Log`, the bounded event-type log.
+  - `GET /source` stamps both records when the request asks with `events=1`, the way it stamps `nativeZ`.
+  - The drop runs before every re-read, spent budget or not. Unit 1 proposed skipping it on a spent
+    budget, but the re-read runs either way. A re-read with no drop before it could agree with a
+    pinned first read.
+
+  Three findings on an Android 14 arm64 emulator reshaped Units 3 and 4:
+  - The Compose fixture this item named is not silent. A mirrored Compose value published
+    `TYPE_WINDOW_CONTENT_CHANGED` for its own change. The precondition rejected that fixture.
+  - The platform cache refreshes a click's source node. `AccessibilityCache.onAccessibilityEvent`
+    handles `TYPE_VIEW_CLICKED` like a text change. Unit 3 counts a click as evicting for that reason.
+  - The fixture became a pair of plain views on the Compose conformance screen. The
+    `conformance.withheld` sentinel seeds it. A tap on the target changes what the value view reports.
+    The tap publishes the target's click and nothing more. The precondition checks for that click alone.
+
+  Without the drop, the freshness case broke with its precondition holding. The settled read still
+  showed the old count. With the drop, the case passed three runs out of three. The static target
+  settled in two dumps. The whole `e2e-fault-injection` lane passed with four cases. The adb
+  conformance contract passed too, with 28 cases passing and 2 skipped.
 
 ## References
 
