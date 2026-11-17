@@ -114,3 +114,41 @@ def test_the_picker_refusal_tokens_are_the_ones_the_server_sends() -> None:
     # driver's generic message, with nothing in the gate to notice.
     tokens = set(re.findall(r'const val (?:NOT_A_)?PICKER_\w+ = "([\w-]+)"', _CODE))
     assert tokens == set(_PICKER_REFUSALS)
+
+
+# The on-device BE-0490 module never runs in this gate, so its copies of the server's constants are
+# read from its source here, the same way this module reads the server's.
+_CACHE_DROP_CHECK = (
+    Path(__file__).resolve().parent / "test_cache_drop_ondevice_android.py"
+).read_text(encoding="utf-8")
+
+
+def _constant(source: str, name: str, value: str) -> str:
+    match = re.search(rf"{name} = {value}", source)
+    assert match is not None, f"{name} not found"
+    return match.group(1).replace("_", "")
+
+
+def test_the_cache_drop_check_bounds_its_log_guard_by_the_server_s_log_size() -> None:
+    # A server log cut below this copy would make the check's truncation guard pass on every read.
+    server = _constant(_CODE, "const val EVENT_LOG_MAX", r"([\d_]+)")
+    assert int(server) == int(_constant(_CACHE_DROP_CHECK, "_EVENT_LOG_MAX", r"(\d+)"))
+
+
+def test_the_cache_drop_check_waits_out_the_server_s_idle_connection() -> None:
+    assert _seconds_int("SO_TIMEOUT_MS") == float(
+        _constant(_CACHE_DROP_CHECK, "_SERVER_IDLE_OUT_S", r"([\d.]+)")
+    )
+
+
+def test_the_cache_drop_check_reads_the_headers_the_server_stamps() -> None:
+    # A renamed header would leave every precondition reading nothing.
+    for header in ("EVICT_MARK_HEADER", "EVENT_LOG_HEADER"):
+        assert _constant(_CODE, f"const val {header}", r'"([^"]+)"') == _constant(
+            _CACHE_DROP_CHECK, f"_{header}", r'"([^"]+)"'
+        )
+
+
+def _seconds_int(name: str) -> float:
+    """An `Int` `..._MS` constant (no `L` suffix), in seconds."""
+    return int(_constant(_CODE, f"const val {name}", r"([\d_]+)\b")) / 1000

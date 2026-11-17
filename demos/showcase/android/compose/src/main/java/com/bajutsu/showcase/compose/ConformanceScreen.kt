@@ -279,8 +279,9 @@ private class WithheldEventPair(context: Context) : LinearLayout(context) {
         // Without a description at layout time the platform may leave a bare, empty view out of the
         // tree; the initial count keeps it reported from the first read.
         value.contentDescription = taps.toString()
-        val half = LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f)
-        addView(target, half)
-        addView(value, LayoutParams(half))
+        // A LayoutParams per child, built rather than copied: the weight-preserving copy constructor
+        // is API 33+, and this module's minSdk is 26.
+        addView(target, LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f))
+        addView(value, LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f))
     }
 }

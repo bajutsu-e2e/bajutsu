@@ -521,8 +521,9 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
 
   The same settle also guards against the platform's own node cache
   ([BE-0490](../roadmaps/BE-0490-adb-accessibility-cache-drop/BE-0490-adb-accessibility-cache-drop.md)).
-  Android caches accessibility nodes per connection. The platform evicts a cached node when an
-  accessibility event names it, and at no other time. A change that publishes no such event leaves
+  Android caches accessibility nodes per connection. The platform drops a cached node when an accessibility
+  event reaches it, and at no other time. Most events name the node they drop. A window-level change clears
+  every window at once. A change that publishes no such event leaves
   two dumps agreeing on the pre-change tree. On Android 14 and later, the resident server calls
   `UiAutomation.clearCache()` between settle dumps. Both `GET /source` and `POST /act` settle this
   way, so the agreeing pair is a re-fetched tree. Android 13 and earlier keep the earlier settle,

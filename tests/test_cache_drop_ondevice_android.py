@@ -90,6 +90,11 @@ _CONFORMANCE_ENV = {"SHOWCASE_UITEST": "1", "SHOWCASE_CONFORMANCE": ",conformanc
 # `READ_MARK_HEADER` the host driver already reads.
 _EVICT_MARK_HEADER = "X-Bajutsu-Evict-Mark"
 _EVENT_LOG_HEADER = "X-Bajutsu-Event-Log"
+# The server's `SO_TIMEOUT_MS`: how long it holds an idle connection before serving the next one.
+_SERVER_IDLE_OUT_S = 5.0
+# Event types whose platform eviction clears every window's nodes, whichever package published them
+# (`AccessibilityCache.onAccessibilityEvent`), so one from any window can re-fetch the value view.
+_GLOBAL_EVICTIONS = frozenset({"TYPE_WINDOW_STATE_CHANGED", "TYPE_WINDOWS_CHANGED"})
 # The server's `EVENT_LOG_MAX`, and what it writes for an event with no package name.
 _EVENT_LOG_MAX = 64
 _NO_PACKAGE = "-"
@@ -156,8 +161,12 @@ def app_package(_eff: Effective) -> str:
 def resident_port(_eff: Effective) -> Iterator[int]:
     """A host port forwarded to the resident server the launched driver keeps alive.
 
-    A forward of this module's own rather than the driver's, so these raw requests share no
-    keep-alive connection with the driver and the driver's lifecycle stays untouched.
+    The server serves one connection at a time and holds each until its peer idles out
+    (`SO_TIMEOUT_MS`), and the driver's readiness read leaves its keep-alive connection open. The
+    first request here therefore waits for that connection to go, under a timeout that covers the
+    idle-out plus a read: a condition wait the server releases the moment it accepts, never a guess
+    at whether the driver's socket has been collected. Every later request opens and closes its own
+    connection, so the server is free again for the next one.
     """
     api = int(adb.real_run(adb._adb(SERIAL, "shell", "getprop", "ro.build.version.sdk")).strip())
     if api < _API_FLOOR:
@@ -169,6 +178,8 @@ def resident_port(_eff: Effective) -> Iterator[int]:
     launch_driver(SERIAL, _eff, "adb", extra_env=_CONFORMANCE_ENV)
     port = _parse_forward_port(adb.real_run(adb.forward_cmd(SERIAL)))
     try:
+        reply = _request(port, "GET", "/clock", _SERVER_IDLE_OUT_S + READ_TIMEOUT_S)
+        assert reply.status == 200, f"GET /clock answered {reply.status}: {reply.body}"
         yield port
     finally:
         adb.real_run(adb.forward_remove_cmd(SERIAL, port))
@@ -278,13 +289,18 @@ def test_a_change_with_no_evicting_event_reaches_the_next_settled_read(
     # the fixture invalid, and the case fails rather than passing on the platform's own eviction. The
     # bounded log must not have dropped an entry since the tap, or a dropped one could be that
     # eviction; a log short of its bound has dropped nothing. An event with no package (`-`) cannot be
-    # ruled out of the app's window, so it counts as the app's.
+    # ruled out of the app's window, so it counts as the app's. A window-level change counts from any
+    # package, because the platform clears the whole cache for it, the value view's node included.
     assert len(entries) < _EVENT_LOG_MAX or entries[0].time <= mark, (
         f"invalid fixture: the full event log no longer reaches back to the tap at {mark}, so it "
         f"cannot show that no evicting event reached the app: {[e.raw for e in entries]}"
     )
     suspects = (app_package, _NO_PACKAGE)
-    unexpected = [e.raw for e in since_tap if e.package in suspects and e.type != _CLICK]
+    unexpected = [
+        e.raw
+        for e in since_tap
+        if (e.package in suspects and e.type != _CLICK) or e.type in _GLOBAL_EVICTIONS
+    ]
     # The per-window mark covers the same interval independently of the log: its newest eviction in
     # the app's window must be one the log shows as the click.
     clicks = {(e.window, e.time) for e in since_tap if e.type == _CLICK}
