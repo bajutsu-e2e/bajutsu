@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-adb-accessibility-cache-drop-ja.md)
+**English** · [日本語](BE-0490-adb-accessibility-cache-drop-ja.md)
 
-# BE-XXXX — Drop the platform accessibility cache between the resident server's settle reads
+# BE-0490 — Drop the platform accessibility cache between the resident server's settle reads
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-adb-accessibility-cache-drop.md) |
+| Proposal | [BE-0490](BE-0490-adb-accessibility-cache-drop.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0490") |
 | Topic | Platform support |
 <!-- /BE-METADATA -->
 
