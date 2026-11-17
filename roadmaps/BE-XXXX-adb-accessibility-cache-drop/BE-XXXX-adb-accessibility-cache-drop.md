@@ -76,7 +76,8 @@ No read gains a new round trip, a new wait, or a longer timeout.
 The observable difference this item promises is narrow and checkable.
 A screen change that arrives with no accessibility event appears in the next settled read on API 34 and above.
 Before this item, the same read could return the pre-change tree until an unrelated event arrived.
-A static screen still settles in two dumps, so the defense costs no extra dump on a healthy read.
+A static screen still settles in two dumps on the target itself, so the defense costs no extra dump on a healthy read.
+The whole-hierarchy comparison also carries unrelated windows, so a status-bar clock tick between dumps can add a third dump; unit 4 therefore asserts the two dumps on the target's own bounds.
 
 ## Detailed design
 
@@ -116,8 +117,8 @@ A third dump, after a second drop, agrees with the second dump and closes the se
 Four dumps (`SETTLE_DUMPS`) cover that worst case.
 A screen that keeps changing still exhausts the budget and returns the last dump, as today.
 
-The budget accounting does not change.
-A cache drop is not a dump, so the drop takes no dump lap from `WaitBudget`.
+The dump accounting does not change.
+A cache drop is not a dump, so the drop takes no dump lap from `WaitBudget` — but it does spend wall clock against the same deadline, and `capDumpWaits` divides what is left among the next dump's idle waits, so the loop keeps its budget check ahead of the drop and skips a drop it cannot pay the re-read for.
 The idle wait still precedes each re-read, and the drop lands between the idle wait and the re-read.
 The read therefore re-fetches a tree that the idle wait has already declared quiet.
 
@@ -184,47 +185,49 @@ In one line: today the server remembers only when the last event happened; this 
 
 The server's event listener feeds one record today: `ReadMark` keeps the newest event's device time and discards the event itself.
 That record cannot say which types arrived, and unit 4 needs exactly that distinction.
-The listener therefore records two more facts beside the existing mark.
+The listener therefore records two more facts beside the existing mark, both under `ReadMark`'s existing lock: the facts are written from the `UiAutomation` callback thread and read from the accept-loop thread, and a reader takes a snapshot of the bounded log under the lock rather than iterating the live collection.
 The first is an evicting-event mark: the device time of the newest cache-evicting event.
+The mark carries the event's window id beside its device time, so an eviction in an unrelated window cannot be mistaken for an eviction of the window under test.
 The platform's mapping evicts on a window-state change, a window-content change, or a scroll.
 The second is a bounded log of recent event types, kept for the verification in unit 4.
 The record observes the same event stream the platform cache consumes.
 The listener sits on the same connection, and the cache's invalidation runs on the events that connection delivers.
 The listener records every event it receives, with no filtering by type or package.
 Classification happens on the record, never at the listener, so no delivered event passes unrecorded.
-The classification is conservative: the evicting mark advances on every event type except the types the platform's mapping positively handles without evicting anything, such as a click.
+The classification is conservative: the evicting mark advances on every event type except the types the platform's mapping handles without evicting any node beyond the event's own source, such as a click.
 An unlisted type, a future type, or a type this item misjudges therefore fails toward an invalid fixture, never toward a certified stale read.
 The drop in unit 1 never consults this record.
 A gap in the record can fail a verification run, but it cannot leave a production read stale, because the drop is unconditional.
 If this guarantee cannot be kept, the design may pivot: the Alternatives section licenses dropping the cache on every read instead.
 Both facts ride the existing response pattern: the `/source` reply already stamps the read mark as a header, and the evicting mark joins it the same way.
+The bounded type log rides a second header on the same reply, so a host-side reader needs no in-process view of the server's record.
 The item adds no endpoint for either fact.
 The existing mark does not change: its value, its consumers, and the ordering proof of [BE-0332](../BE-0332-read-lag-barrier/BE-0332-read-lag-barrier.md) stay as they are.
 The extension records what the listener already receives and currently throws away.
 
 ### 4. Verification on the Android emulator lane
 
-In one line: prove on the emulator lane that a screen change with no event now shows up in the next settled read, and that a quiet screen still costs exactly two dumps.
+In one line: prove on the emulator lane that a screen change with no event now shows up in the next settled read, and that a quiet target still settles in two dumps, asserted on its own bounds.
 
 The Android emulator lane ([BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md)) gains one fault-injection case.
 The case changes the screen while withholding the accessibility event that would invalidate the cache.
 The Compose showcase counter is the natural fixture for the case.
 A Compose screen under a UI Automator connection publishes no window-content event for a text change.
 The case does not take that silence on trust.
-The case first asserts its own precondition from the evicting-event mark of unit 3: the mark does not advance while the screen changes.
-If an evicting event did arrive, the case fails as an invalid fixture instead of passing.
+The case first asserts its own precondition from the evicting-event mark of unit 3: no evicting event named the fixture's own window while the screen changed.
+The mark carries each event's window id, so an eviction in an unrelated window — the status-bar clock every dump carries — cannot invalidate the fixture, while an evicting event that did reach the fixture's window fails the case as an invalid fixture instead of passing.
 Only with the precondition established does the case assert the read: the next settled read returns the post-change tree on API 34 and above.
 The same run re-verifies the observation the Motivation qualified.
-The case logs the event types the fixture publishes during the change, from the type log of unit 3.
+The case logs the event types the fixture publishes during the change, read from the second `/source` header that unit 3 stamps the bounded type log into — the host-side case has no in-process view of the server's record.
 The log either confirms the recorded observation (the tapped element's own event arrives, and no window-content event covers the text change) or corrects it.
 Unit 5 documents the verified types, so the claim in `docs/drivers.md` rests on a current observation instead of a carried-forward one.
 No assertion covers API 33 and below: the lane boots API 34 only, so those levels keep the pre-item behavior unchanged and unverified, as §2 scopes them.
 The fault-injection lane ([BE-0305](../BE-0305-driver-resilience-fault-injection/BE-0305-driver-resilience-fault-injection.md)) hosts the case if the lane's harness fits the fixture.
 
 The existing resident-server tests and adb lanes pass unchanged.
-A regression assertion pins the healthy path: a static screen settles in exactly two dumps.
+A regression assertion pins the healthy path: a static screen settles in two dumps, asserted on the target's own bounds through `settledActBounds` rather than on the whole dump, which carries SystemUI's clock and would turn a minute tick into a third dump.
 The assertion guards the cost claim in the Motivation.
-A settle that needed a third dump on a static screen would show up as a failing assertion, not as slower runs.
+A settle that needed a third dump on the target's own bounds would show up as a failing assertion, not as slower runs.
 
 ### 5. Documentation
 
@@ -241,7 +244,7 @@ The Implemented section of `docs/architecture.md` records the shipped behavior i
 ### Machine-checkable outcome
 
 The fault-injection case in unit 4 fails against the pre-item server whenever its precondition assertion holds, and passes after unit 1.
-The static-screen assertion in unit 4 pins the settle at two dumps before and after the change.
+The static-screen assertion in unit 4 pins the settle at two dumps on the target's own bounds, before and after the change.
 The event types unit 5 documents match the types unit 4's run logged.
 The resident-server suite and the adb emulator lanes pass with no scenario edits.
 `make check` stays green, and no verdict path changes (prime directive 1).
@@ -292,7 +295,7 @@ We rejected the manual walk because the cache drop reaches the same re-fetch thr
 
 - [ ] Unit 1 — Between settle dumps, drop the platform accessibility cache in the resident server's settle loop, so an agreeing pair of dumps is a re-fetched tree (API 34+, never throws)
 - [ ] Unit 2 — Change nothing else: host, fallback, endpoints, and configuration stay as they are; support floor API 34
-- [ ] Unit 3 — Remember event types, not just event times: add an evicting-event mark and a bounded event-type log beside the existing read mark; the record takes every delivered event, and the evicting classification defaults to evicting
+- [ ] Unit 3 — Remember event types, not just event times: add an evicting-event mark carrying the event's window id and a bounded event-type log beside the existing read mark, both under the read mark's lock; the record takes every delivered event, and the evicting classification defaults to evicting
 - [ ] Unit 4 — Prove it on the Android emulator lane: a no-event fault-injection case (precondition asserted from the evicting mark, event types re-verified) and a static-screen assertion that settle still takes two dumps
 - [ ] Unit 5 — Document it: the drop, the API floor, and the verified event types in `docs/drivers.md`, `docs/ja/drivers.md`, and `docs/architecture.md`
 
