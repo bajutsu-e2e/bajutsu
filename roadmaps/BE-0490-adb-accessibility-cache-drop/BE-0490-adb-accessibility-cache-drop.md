@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0490") |
+| Implementing PR | [#2451](https://github.com/bajutsu-e2e/bajutsu/pull/2451) (units 1–5) |
 | Topic | Platform support |
 <!-- /BE-METADATA -->
 
@@ -301,7 +302,7 @@ We rejected the manual walk because the cache drop reaches the same re-fetch thr
 
 Log:
 
-- 2026-11-17 — Units 1–5 landed together.
+- 2026-11-17 — Units 1–5 landed together ([#2451](https://github.com/bajutsu-e2e/bajutsu/pull/2451)).
   - The resident server drops the accessibility cache between settle dumps on Android 14 and later.
   - `GET /source` now carries `X-Bajutsu-Evict-Mark`, the newest evicting event per window.
   - `GET /source` also carries `X-Bajutsu-Event-Log`, the bounded event-type log.

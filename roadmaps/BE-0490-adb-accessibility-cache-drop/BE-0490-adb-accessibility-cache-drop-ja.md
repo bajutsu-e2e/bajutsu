@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0490") |
+| 実装 PR | [#2451](https://github.com/bajutsu-e2e/bajutsu/pull/2451)（ユニット 1〜5） |
 | トピック | プラットフォーム対応 |
 <!-- /BE-METADATA -->
 
@@ -360,7 +361,7 @@ Appium は、イベントが届くまでキャッシュのリセットを遅ら�
 
 ログ：
 
-- 2026-11-17 — ユニット 1〜5 をまとめて実装しました。
+- 2026-11-17 — ユニット 1〜5 をまとめて実装しました（[#2451](https://github.com/bajutsu-e2e/bajutsu/pull/2451)）。
   - 常駐サーバーは、Android 14 以降で settle のダンプのあいだにアクセシビリティキャッシュを捨てます。
   - `GET /source` に、ウィンドウごとの最新の追い出しイベントを示す `X-Bajutsu-Evict-Mark` を付けました。
   - `GET /source` に、有界なイベント種別ログを示す `X-Bajutsu-Event-Log` も付けました。
