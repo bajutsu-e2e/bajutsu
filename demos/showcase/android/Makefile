@@ -475,13 +475,15 @@ e2e-conformance: compose-build
 # `adb root`: the cases only read and tap. Not part of `make check` (it needs a booted AVD); in CI,
 # android-e2e.yml drives it in its own `fault-injection (adb)` job, on the `E2E (android)` aggregate's
 # `needs:` since BE-0305's promotion (it landed as a non-gating signal and was promoted once measured
-# stable).
+# stable). The same lane hosts BE-0490's withheld-event case: a screen change the platform cache is
+# never told about must still reach the next settled resident read.
 e2e-fault-injection: compose-build
 	@[ -n "$(SERIAL)" ] || { echo "SERIAL is empty: the fault-injection module would skip and exit 0"; exit 1; }
 	$(ANR_QUIET)
 	$(TOUCH_DEBUG_OFF)
 	cd $(ROOT) && BAJUTSU_FAULT_INJECTION_SERIAL=$(SERIAL) \
-		uv run pytest tests/test_fault_injection_ondevice_android.py -m ondevice -n0 -v
+		uv run pytest tests/test_fault_injection_ondevice_android.py \
+		tests/test_cache_drop_ondevice_android.py -m ondevice -n0 -v
 
 # BE-0424: crash the app under test on purpose and assert the run diagnosed it. The scenario is
 # *expected* to fail — `||:` keeps that from ending the recipe — so the verdict comes from the

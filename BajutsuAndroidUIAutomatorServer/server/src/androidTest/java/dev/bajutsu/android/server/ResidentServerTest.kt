@@ -2,6 +2,7 @@ package dev.bajutsu.android.server
 
 import android.app.UiAutomation
 import android.graphics.Rect
+import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
 import android.util.Base64
@@ -9,6 +10,7 @@ import android.util.Log
 import android.util.Xml
 import android.view.InputDevice
 import android.view.MotionEvent
+import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -75,7 +77,7 @@ class ResidentServerTest {
         // on), so observing here does not disturb it.
         val readMark = ReadMark()
         instrumentation.uiAutomation.setOnAccessibilityEventListener { event ->
-            readMark.record(event.eventTime)
+            readMark.record(event)
         }
         ServerSocket(PORT, BACKLOG, InetAddress.getLoopbackAddress()).use { server ->
             Log.i(TAG, "resident UI Automator server listening on 127.0.0.1:$PORT")
@@ -1113,6 +1115,14 @@ class ResidentServerTest {
         val body = settledDump(device, budget)
         budget.report()
         val headers = mutableMapOf(READ_MARK_HEADER to mark.toString())
+        // Only when the host asked, like `nativeZ` below: the records serve a verification run, and
+        // the log alone runs to kilobytes that no driver read parses. Taken after the settle, unlike
+        // the read mark: they describe what reached the cache up to the served body, and an event
+        // counted past it only makes a verification read stricter.
+        if (paramOf(target, "events") == "1") {
+            headers[EVICT_MARK_HEADER] = readMark.evictionsHeader()
+            headers[EVENT_LOG_HEADER] = readMark.eventLogHeader()
+        }
         // Only when the host asked (BE-0407 unit 18). The walk covers every node on every read —
         // 20-100ms — and answers nothing at all for an app that opted no view into `nativeZ`, which
         // is every app but the ones BE-0355 was built for. The host asks on behalf of a target that
@@ -1235,6 +1245,14 @@ class ResidentServerTest {
                 return previous
             }
             budget.awaitIdle()
+            // Drop the platform's node cache before the re-read (BE-0490), so the pair that closes the
+            // settle is a re-fetched tree rather than two serializations of one pinned cache: the cache
+            // evicts a node only when an accessibility event names it, and a view whose reported state
+            // changes without notifying accessibility leaves its cached node in place. After the idle
+            // wait, so the re-fetch reads a tree already declared quiet. Unconditional, even on a spent
+            // budget: the read below runs either way, and a re-read the drop did not precede could
+            // agree with a pinned first read and certify it.
+            budget.lap(if (clearAccessibilityCache()) "drop" else "dropFailed")
             budget.capDumpWaits()
             val current = read()
             budget.lap("dump")
@@ -1280,6 +1298,27 @@ class ResidentServerTest {
         }) { a, b -> a == b }
     }
 
+    /**
+     * Drop this connection's accessibility node cache, on API 34 and above (BE-0490).
+     *
+     * The same helper, in name and contract, as the codegen target's (`bajutsu/codegen/uiautomator.py`):
+     * `UiAutomation.clearCache()` arrived in API 34, and the reflection route below that fails from
+     * API 33 under hidden-API restrictions, so below the floor this returns at once and the settle
+     * runs exactly as it did before. Never throws: a failed drop costs one read its defense, never
+     * the read itself. Returns whether the drop ran, so the settle's lap record says so rather than
+     * reporting a drop that threw.
+     */
+    private fun clearAccessibilityCache(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return false
+        return try {
+            InstrumentationRegistry.getInstrumentation().uiAutomation.clearCache()
+            true
+        } catch (e: RuntimeException) {
+            Log.w(TAG, "could not clear the accessibility cache", e)
+            false
+        }
+    }
+
     private fun dumpHierarchy(device: UiDevice): ByteArray =
         ByteArrayOutputStream().also { device.dumpWindowHierarchy(it) }.toByteArray()
 
@@ -1309,8 +1348,14 @@ class ResidentServerTest {
      * The device-clock time of the most recent accessibility event, with a monitor so a reader can
      * block until an event postdates a requested mark (BE-0332 Unit 4).
      *
+     * Beside the mark it keeps two records of the same stream (BE-0490 Unit 3): the newest
+     * cache-evicting event per window, and a bounded log of recent event types. Neither feeds a
+     * production decision — the settle drops the cache unconditionally — they are what lets a
+     * verification run prove its fixture published no evicting event, rather than assume it.
+     *
      * Written from the `UiAutomation` callback thread and read from the accept-loop thread; the lock
-     * guards both the value and the wait/notify so a waiting reader never misses a wake.
+     * guards every record and the wait/notify, so a waiting reader never misses a wake and a header
+     * is built from a snapshot rather than a collection still being written.
      */
     private class ReadMark {
         private val lock = ReentrantLock()
@@ -1318,12 +1363,38 @@ class ResidentServerTest {
         // Seeded with the current clock so a read taken before any event still reports a sensible,
         // pre-actuation mark.
         private var eventTime = SystemClock.uptimeMillis()
+        // Window id → "<package>=<time>" of its newest evicting event. Keyed by window so an eviction
+        // in an unrelated window (the status-bar clock every dump carries) cannot pass for one in the
+        // window under test; re-inserted on update so the eldest entry is the one bounded out.
+        private val evictions = LinkedHashMap<Int, String>()
+        private val events = ArrayDeque<String>()
 
-        /** Record an event's device-clock time and wake any reader waiting for a postdating event. */
-        fun record(time: Long) = lock.withLock {
+        /**
+         * Record every delivered event, with no filtering by type or package: classification happens
+         * here, on the record, so no delivered event goes unrecorded. Wakes any reader waiting for a
+         * postdating event.
+         */
+        fun record(event: AccessibilityEvent) = lock.withLock {
+            val time = event.eventTime
+            val pkg = event.packageName?.toString() ?: "-"
             eventTime = time
+            if (event.eventType !in NON_EVICTING_EVENT_TYPES) {
+                evictions.remove(event.windowId)
+                evictions[event.windowId] = "$pkg=$time"
+                if (evictions.size > EVICTION_WINDOWS_MAX) evictions.remove(evictions.keys.first())
+            }
+            events.addLast("$time:${AccessibilityEvent.eventTypeToString(event.eventType)}:${event.windowId}:$pkg")
+            if (events.size > EVENT_LOG_MAX) events.removeFirst()
             advanced.signalAll()
         }
+
+        /** [EVICT_MARK_HEADER]'s value: `<windowId>:<package>=<time>` per window, `;`-joined. */
+        fun evictionsHeader(): String = lock.withLock {
+            evictions.entries.joinToString(";") { (window, mark) -> "$window:$mark" }
+        }
+
+        /** [EVENT_LOG_HEADER]'s value: `<time>:<type>:<windowId>:<package>`, oldest first. */
+        fun eventLogHeader(): String = lock.withLock { events.joinToString(";") }
 
         /** The most recent event's device-clock time, as of now. */
         fun current(): Long = lock.withLock { eventTime }
@@ -1364,6 +1435,38 @@ class ResidentServerTest {
         // when none came, which is also what an older server returns — see `publishHeader`. Kept in
         // sync with the host side (`bajutsu/common/backend_cli/adb_resident.py` `_ACT_PUBLISH_HEADER`).
         const val ACT_PUBLISH_HEADER = "X-Bajutsu-Act-Publish"
+
+        // The response headers GET /source?events=1 stamps with [ReadMark]'s event records (BE-0490 Unit 3):
+        // the newest cache-evicting event per window, and the bounded log of recent event types. Read
+        // by the on-device verification (`tests/test_cache_drop_ondevice_android.py`), not by the
+        // driver, which neither needs nor parses them.
+        const val EVICT_MARK_HEADER = "X-Bajutsu-Evict-Mark"
+        const val EVENT_LOG_HEADER = "X-Bajutsu-Event-Log"
+
+        // Bounds on those records, so a header stays a header: a handful of windows are ever on screen,
+        // and a fixture's change publishes a few events, not dozens.
+        const val EVICTION_WINDOWS_MAX = 16
+        const val EVENT_LOG_MAX = 64
+
+        // The event types the platform cache (`AccessibilityCache.onAccessibilityEvent`, API 34) evicts
+        // no node for at all. Classification is conservative by listing the exceptions rather than the
+        // evictions: an unlisted, future, or misjudged type counts as evicting, so a mistake here fails
+        // a verification fixture as invalid and never certifies a stale read. A click is *not* here:
+        // the platform refreshes a click's source node, as it does a text or selection change's.
+        val NON_EVICTING_EVENT_TYPES = setOf(
+            AccessibilityEvent.TYPE_VIEW_LONG_CLICKED,
+            AccessibilityEvent.TYPE_VIEW_CONTEXT_CLICKED,
+            AccessibilityEvent.TYPE_VIEW_HOVER_ENTER,
+            AccessibilityEvent.TYPE_VIEW_HOVER_EXIT,
+            AccessibilityEvent.TYPE_TOUCH_INTERACTION_START,
+            AccessibilityEvent.TYPE_TOUCH_INTERACTION_END,
+            AccessibilityEvent.TYPE_TOUCH_EXPLORATION_GESTURE_START,
+            AccessibilityEvent.TYPE_TOUCH_EXPLORATION_GESTURE_END,
+            AccessibilityEvent.TYPE_GESTURE_DETECTION_START,
+            AccessibilityEvent.TYPE_GESTURE_DETECTION_END,
+            AccessibilityEvent.TYPE_ANNOUNCEMENT,
+            AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED,
+        )
 
         // How long POST /act waits for its own gesture to publish before answering unconfirmed.
         //

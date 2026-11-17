@@ -329,7 +329,7 @@ backend をこのスイートに加えるには、`ConformanceHarness`（画面�
 
 **障害注入レーン**は、代わりに実際の条件を注入します。
 
-- `fault-injection (adb)`（`android-e2e.yml`）は、エミュレータのディスプレイをスリープさせます。すると、実際の読み取り元（常駐 UI Automator チャネルと、その背後の `uiautomator dump` フォールバック）が本当に空のツリーを返します。レーンは、リトライがそこを、誤った「要素が見つからない」を出さずに乗り越えることを検証します。2 つ目のケースはディスプレイを落としたまま保ってリトライ予算を使い切らせ、その結末が静かな失敗ではなく明示的な `ElementNotFound` になることを固定します。
+- `fault-injection (adb)`（`android-e2e.yml`）は、エミュレータのディスプレイをスリープさせます。すると、実際の読み取り元（常駐 UI Automator チャネルと、その背後の `uiautomator dump` フォールバック）が本当に空のツリーを返します。レーンは、リトライがそこを、誤った「要素が見つからない」を出さずに乗り越えることを検証します。2 つ目のケースはディスプレイを落としたまま保ってリトライ予算を使い切らせ、その結末が静かな失敗ではなく明示的な `ElementNotFound` になることを固定します。3 つ目のケースは、アクセシビリティイベントを意図的に出さない画面を使います。settle 後の resident の読み取りが変化後の値を返すこと、静止した対象が今までどおり 2 回のダンプで settle することを確かめます（BE-0490）。
 - `fault-injection (xcuitest)`（`ios-e2e.yml`）は、ランナー自身のホストプロセスにシグナルを送ります。
   - `SIGSTOP` は、ソケットを accept できる状態に保ったまま応答を止めます。ホストから見れば、まさに固まったランナーの姿です。短い凍結は一過性リトライが吸収し、リトライ予算を超える凍結は crash-recovery が乗り越えます。
   - `SIGKILL` では、無関係なタイムアウトではなく、実行中のランナー障害を名指しするクラッシュ診断で、実行が終わらなければなりません。
@@ -439,6 +439,7 @@ iOS 側の対になるジョブ `pool (xcuitest)` は、Simulator を 2 台起�
 - **Android adb バックエンド**（`common/drivers/adb` ＋ `common/backend_cli/adb`）は、次の範囲を実装済みです。
   - **tap の actuation。** `tap`、`long_press`、`double_tap` は、解決した要素の identity を resident server の `POST /act` へ送ります。server が自身の live なツリーに対して再解決して inject するため、ジェスチャは inject する瞬間にデバイスが持つ bounds へ着地します。リトライを使い切るか、channel に `/act` エンドポイントがないときは、host 側で計算した frame 中心の座標 tap にフォールバックします（BE-0339）。
   - **resident の読み取りリカバリ。** resident server の読み取りがタイムアウトした場合は、新しい接続で 1 回だけ再試行します。それでも失敗すれば、server を再起動してから `uiautomator dump` にフォールバックします。再試行回数と再起動の許可は `driver.residentRecovery`（`readRetries` / `restart`）で制御し、ステップ単位・シナリオ単位で `manifest.json` に記録されます（BE-0477）。
+  - **resident の settle の鮮度。** プラットフォームは、resident server の接続ごとにアクセシビリティのノードをキャッシュします。Android 14 以降では、server が settle のダンプのあいだでこのキャッシュを捨てます。そのため一致した 2 回のダンプは取り直したツリーであり、アクセシビリティイベントで無効化されなかったキャッシュの写しではありません。Android 13 以前は従来の settle のままです（BE-0490）。
   - **テキスト入力。** `type` は、ASCII のみ `adb shell input text` を使います。日本語や絵文字などそれ以外は、resident server 自身の `/type` エンドポイントを経由します（BE-0476）。
   - **起動、報告、証跡。** `AndroidEnvironment` の起動シーケンス、`doctor` の報告、interval 証跡です。interval 証跡はいずれも driver 供給の `driver_interval` seam を通します。`video` は `screenrecord`、`deviceLog` は `logcat`、`appTrace` はタグで絞った `logcat` を使います（BE-0478）。
   - **ネットワーク捕捉。** アプリ内の OkHttp インターセプタ（`BajutsuAndroid`）がホストのコレクタへ報告し、そのコレクタを `adb reverse` でエミュレータへ橋渡しする `request` アサーションです（BE-0283）。`mocks` は追随の課題です。

@@ -1,5 +1,10 @@
 package com.bajutsu.showcase.compose
 
+import android.content.Context
+import android.graphics.Color
+import android.view.View
+import android.view.accessibility.AccessibilityNodeInfo
+import android.widget.LinearLayout
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -22,6 +27,7 @@ import androidx.compose.ui.semantics.password
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 
 // The marker present on every conformance screen, including the empty (zero-match) one — mirrors the
 // iOS ConformanceView.readyID and the on-device harness's _READY_ID (they must stay in step).
@@ -59,6 +65,14 @@ const val CONFORMANCE_SCROLL_ROW_PREFIX = "conformance.scroll.row."
 const val CONFORMANCE_SCROLL_ROW_COUNT = 20
 const val CONFORMANCE_SCROLL_TALL_ID = "conformance.scroll.tall"
 
+// The sentinel the resident server's cache-drop check seeds (BE-0490): when it is the whole seeded
+// set, render a tap target and a separate value view whose reported count the tap changes while
+// withholding every event that would tell the platform's node cache — see WithheldEventPair. Mirrors
+// `tests/test_cache_drop_ondevice_android.py`.
+const val CONFORMANCE_WITHHELD_SENTINEL = "conformance.withheld"
+const val CONFORMANCE_WITHHELD_TARGET_ID = "conformance.withheld.target"
+const val CONFORMANCE_WITHHELD_VALUE_ID = "conformance.withheld.value"
+
 // BE-0114 / BE-0270: the on-device realization of a driver-conformance screen for the adb backend,
 // the Compose twin of the iOS ConformanceView. The conformance suite seeds an arbitrary set of
 // identifiers — duplicated (an ambiguous selector), empty (a zero-match), or unique — and each
@@ -73,6 +87,10 @@ const val CONFORMANCE_SCROLL_TALL_ID = "conformance.scroll.tall"
 fun ConformanceScreen(identifiers: List<String>) {
     if (identifiers == listOf(CONFORMANCE_SCROLL_SENTINEL)) {
         ScrollConformanceScreen()
+        return
+    }
+    if (identifiers == listOf(CONFORMANCE_WITHHELD_SENTINEL)) {
+        WithheldEventConformanceScreen()
         return
     }
     Column(
@@ -210,5 +228,59 @@ private fun ScrollConformanceScreen() {
                 Text("tall")
             }
         }
+    }
+}
+
+// BE-0490: the screen the resident server's cache-drop check reads. Its own screen rather than one
+// more always-present element, because every conformance screen must fit above a raised keyboard.
+@Composable
+private fun WithheldEventConformanceScreen() {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .enableTestTagsAsResourceId(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text("ready", Modifier.aid(CONFORMANCE_READY_ID))
+        AndroidView(factory = ::WithheldEventPair, modifier = Modifier.size(width = 280.dp, height = 104.dp))
+    }
+}
+
+// A tap on the target changes the count the separate value view reports to accessibility, and
+// publishes nothing that would evict the value view's cached node: no invalidate, no
+// content-description setter, no state-change notification. The tap's own click event names the
+// target, and the platform cache refreshes only that source node. The pair is split for that reason,
+// the same split TapMirror makes. A Compose element cannot stand in for the value view: on the
+// emulator lane, a Compose mirrored value published a window-content change of its own, which evicts
+// the node by itself and leaves the drop nothing to prove (BE-0490). The withheld event is the fault
+// this fixture injects, by construction rather than by assumption.
+private class WithheldEventPair(context: Context) : LinearLayout(context) {
+    private var taps = 0
+
+    init {
+        orientation = VERTICAL
+        val target = object : View(context) {
+            override fun onInitializeAccessibilityNodeInfo(info: AccessibilityNodeInfo) {
+                super.onInitializeAccessibilityNodeInfo(info)
+                info.viewIdResourceName = CONFORMANCE_WITHHELD_TARGET_ID
+            }
+        }
+        target.isClickable = true
+        target.setBackgroundColor(Color.LTGRAY)
+        target.setOnClickListener { taps++ }
+        val value = object : View(context) {
+            override fun onInitializeAccessibilityNodeInfo(info: AccessibilityNodeInfo) {
+                super.onInitializeAccessibilityNodeInfo(info)
+                info.viewIdResourceName = CONFORMANCE_WITHHELD_VALUE_ID
+                info.contentDescription = taps.toString()
+            }
+        }
+        // Without a description at layout time the platform may leave a bare, empty view out of the
+        // tree; the initial count keeps it reported from the first read.
+        value.contentDescription = taps.toString()
+        val half = LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f)
+        addView(target, half)
+        addView(value, LayoutParams(half))
     }
 }
