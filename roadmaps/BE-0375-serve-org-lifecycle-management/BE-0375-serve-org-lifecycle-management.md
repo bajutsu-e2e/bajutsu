@@ -411,7 +411,7 @@ The delete endpoint also has these rules:
 - **Retiring revokes sessions.** The endpoint revokes every session bound to a login recorded
   under that org. It does so through a `revoke_identities` method. The method is added to the
   `SessionStore` seam ([`bajutsu/serve/sessions.py`](../../bajutsu/serve/sessions.py)) and
-  implemented by each store. The soft delete alone reaches the *next* sign-in. `users.org_id` still
+  implemented by each store. The soft delete alone reaches no further than the *next* sign-in. `users.org_id` still
   names the retired slug. A cookie issued beforehand would keep three abilities until it
   expired: listing that tenant's runs, triggering new ones, and reading its secrets.
 - **The revocation gap is newly reachable.** Retiring a tenant used to mean a configuration edit
