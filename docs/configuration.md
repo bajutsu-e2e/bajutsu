@@ -2,7 +2,7 @@
 
 # Configuration, onboarding a target, and doctor
 
-The tool core is app-agnostic. All app-specific differences belong in config, allowing multiple apps to run with the same binary and the same drivers. Adding a target means adding one `targets.<name>` entry.
+The tool core is app-agnostic. All app-specific differences belong in config, so the same binary and the same drivers run multiple apps. Adding a target means adding one `targets.<name>` entry.
 
 Implementation: `bajutsu/common/config/resolve.py` (resolution) · `bajutsu/common/doctor.py` (convention score). No config ships in the repo root; pass one with `--config` (default filename `bajutsu.config.yaml`) — the demos ship ready-to-run configs, e.g. [`demos/showcase/showcase.config.yaml`](../demos/showcase/showcase.config.yaml) (iOS) and [`demos/web/demo.config.yaml`](../demos/web/demo.config.yaml) (web).
 
@@ -756,20 +756,25 @@ defaults:
 ```
 
 - **Model and effort are config-first with an env fallback.** `model` (or `BAJUTSU_AI_MODEL`)
-  overrides the default model on any provider; `effort` (or `BAJUTSU_AI_EFFORT`) sets the reasoning
-  effort — one of `low`/`medium`/`high`/`xhigh`/`max`, honored by the `claude-code` provider
-  (passed to the CLI as `--effort`). An unrecognized `effort` from config or the env var falls back
-  to the model's default; the `serve` **Settings** panel instead validates its input and rejects an
-  unknown value (HTTP 400) rather than falling back. The panel exposes both; on **local** `serve` the
-  saved provider, model, and effort now persist to a serve-owned file and are restored on the next
-  start ([BE-0184](../roadmaps/BE-0184-persist-serve-ai-provider-settings/BE-0184-persist-serve-ai-provider-settings.md)),
-  so a restart no longer resets them to the launch environment; a config `ai:` block still wins over
-  a restored value. On a **hosted, multi-tenant** `serve` the selection resolves and persists **per
-  organization** ([BE-0229](../roadmaps/BE-0229-per-org-provider-settings-resolution/BE-0229-per-org-provider-settings-resolution.md)),
-  so each org's `record` / triage / draft paths use that org's own saved choice; the selection reaches
-  a spawned job as a per-job environment overlay rather than the shared process environment, so one
-  org's save never changes another org's AI runs. `record` prints the resolved choice up front
-  (`🤖 AI: <provider> · model <model> · effort <effort>`).
+  overrides the default model on any provider. `effort` (or `BAJUTSU_AI_EFFORT`) sets the reasoning
+  effort, one of `low`/`medium`/`high`/`xhigh`/`max`. The `claude-code` provider honors it and
+  passes it to the CLI as `--effort`. An unrecognized `effort` from config or the env var falls back
+  to the model's default. The `serve` **Settings** panel instead validates its input and rejects an
+  unknown value (HTTP 400) rather than falling back. The panel exposes both fields.
+
+  On **local** `serve`, the saved provider, model, and effort persist to a serve-owned file, and the
+  next start restores them
+  ([BE-0184](../roadmaps/BE-0184-persist-serve-ai-provider-settings/BE-0184-persist-serve-ai-provider-settings.md)).
+  A restart no longer resets them to the launch environment. A config `ai:` block still wins over
+  a restored value.
+
+  On a **hosted, multi-tenant** `serve`, the selection resolves and persists **per organization**
+  ([BE-0229](../roadmaps/BE-0229-per-org-provider-settings-resolution/BE-0229-per-org-provider-settings-resolution.md)).
+  Each org's `record` / triage / draft paths therefore use that org's own saved choice. The selection
+  reaches a spawned job as a per-job environment overlay rather than the shared process environment,
+  so one org's save never changes another org's AI runs.
+
+  `record` prints the resolved choice up front, as `🤖 AI: <provider> · model <model> · effort <effort>`.
 
 - **Output language is a separate, config-first knob**
   ([BE-0188](../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language.md)).
@@ -802,20 +807,23 @@ defaults:
 - **`none` states that no AI path may run**
   ([BE-0394](../roadmaps/BE-0394-ai-provider-none-kill-switch/BE-0394-ai-provider-none-kill-switch.md)).
   The `none` provider's adapter does nothing at all, so writing `provider: none` disables every
-  AI path at once: `record` / `crawl` / `triage --ai` exit 2 naming the setting, and no code path can
+  AI path at once. `record` / `crawl` / `triage --ai` exit 2 naming the setting, and no code path can
   construct an AI backend, because the provider's factory raises instead of returning one. `run` is
-  outside its reach in both directions — since
+  outside its reach in both directions: since
   [BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md)
-  it has no AI path to disable. Leaving the provider's key out of the environment already produces
-  most of the same behavior. What the setting adds is a policy a reviewer can read: an absent key
-  records the intent nowhere in the repository, and a key exported to author one scenario with
-  `record` is enough to put the authoring paths on a model in every later shell. Because config wins
-  over the environment, a committed `provider: none` survives `BAJUTSU_AI_PROVIDER` on a
-  continuous-integration runner whose environment nobody controls. `BAJUTSU_AI_PROVIDER=none`
-  still works for a one-off run on a machine whose config names no provider. This provider changes
-  nothing about the `defaults` / `targets.<name>` merge rule, so a repository can disable AI in
-  `defaults` and re-enable it for one target — on a line a reviewer reads in the same file, rather
-  than an environment variable nobody sees.
+  it has no AI path to disable.
+
+  Leaving the provider's key out of the environment already produces most of the same behavior. The
+  setting adds a policy a reviewer can read. An absent key records the intent nowhere in the
+  repository, and a key exported to author one scenario with `record` is enough to put the authoring
+  paths on a model in every later shell. Because config wins over the environment, a committed
+  `provider: none` survives `BAJUTSU_AI_PROVIDER` on a continuous-integration runner whose
+  environment nobody controls. `BAJUTSU_AI_PROVIDER=none` still works for a one-off run on a machine
+  whose config names no provider.
+
+  This provider changes nothing about the `defaults` / `targets.<name>` merge rule. A repository can
+  disable AI in `defaults` and re-enable it for one target, on a line a reviewer reads in the same
+  file, rather than an environment variable nobody sees.
 - **`serve` never offers `none` in its Settings dropdown.** The registry knows the provider but
   never lists it as *selectable*, so `/api/provider` answers HTTP 400 for it. An organization's
   Settings selection reaches a spawned job as `BAJUTSU_AI_PROVIDER`, which a project's own
@@ -1009,30 +1017,35 @@ CLI and local `serve` ignore `orgs:` entirely.
 
 Once GitHub OAuth is configured, org membership also decides access
 ([BE-0313](../roadmaps/BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md)). Signing in
-requires membership in a configured org — through `members`, `githubOrgs`, `githubTeams`, or
-`editorTeams` — which grants the **viewer** role; a member of a configured admin Team signs in
-regardless (below). A direct member of any of the org's `editorTeams` is promoted to **editor**; a
-member of one of the server-wide admin Teams (`BAJUTSU_OAUTH_ADMIN_TEAMS`, see
-[Self-hosting](self-hosting.md#2-add-github-oauth-optional)) is **admin**. `editorTeams` admits as
-well as promotes, so a Team that may write never has to be repeated under `githubTeams` to be able to
-sign in. `editorTeams` is a list because one org may span more than one GitHub organization, and a
-single slot could not then name the writing Team of each. A configuration still on the older
-singular `editorTeam` keeps working: `serve` folds that key into `editorTeams`, and folds both in
-when a partial rename leaves the singular name behind. Rename it anyway; the plural name is the
-documented one. Each `githubTeams` entry, each `editorTeams` entry, and each
-`BAJUTSU_OAUTH_ADMIN_TEAMS` entry is one flat Team, written as `"<github-org>/<team-slug>"`; a nested
-Team beneath any of them does not match, and all three are compared case-insensitively, as GitHub
-itself resolves an org login and a Team
-slug. A Team-declared org depends on GitHub's Teams API answering: that API fails closed — it never
-invents a Team — so while it errors, a login whose only membership is a Team is turned away rather
-than admitted. An OAuth deployment
-therefore must declare an `orgs:` block, or every login other than an admin Team member is turned
-away — a member of a configured admin Team can still sign in unless GitHub's Teams API is itself
-erroring, so a broken or missing `orgs:` block never locks every admin out on its own. An admin
-admitted only by their Team is placed in the `default` org, since no `orgs:` entry claims them — so
-a deployment relying on that recovery should avoid declaring a real org named `default`, or the
-recovering admin's user row, audit entries, and object-storage prefix land inside that tenant instead
-of a neutral catch-all.
+requires membership in a configured org, through `members`, `githubOrgs`, `githubTeams`, or
+`editorTeams`. That membership grants the **viewer** role. A member of a configured admin Team signs
+in regardless (below). The roles above viewer come from Team membership:
+
+- A direct member of any of the org's `editorTeams` is promoted to **editor**.
+- A member of one of the server-wide admin Teams (`BAJUTSU_OAUTH_ADMIN_TEAMS`) is **admin**.
+  [Self-hosting](self-hosting.md#2-add-github-oauth-optional) describes the setting.
+
+`editorTeams` admits as well as promotes, so a Team that may write never has to be repeated under
+`githubTeams` to be able to sign in. `editorTeams` is a list because one org may span more than one
+GitHub organization, and a single slot could not then name the writing Team of each. A configuration
+still on the older singular `editorTeam` keeps working: `serve` folds that key into `editorTeams`,
+and folds both in when a partial rename leaves the singular name behind. Rename it anyway; the plural
+name is the documented one.
+
+Each `githubTeams` entry, each `editorTeams` entry, and each `BAJUTSU_OAUTH_ADMIN_TEAMS` entry is one
+flat Team, written as `"<github-org>/<team-slug>"`. A nested Team beneath any of them does not match.
+All three are compared case-insensitively, as GitHub itself resolves an org login and a Team slug. A
+Team-declared org depends on GitHub's Teams API answering. That API fails closed and never invents a
+Team, so while it errors, a login whose only membership is a Team is turned away rather than
+admitted.
+
+An OAuth deployment must declare an `orgs:` block, or every login other than an admin Team
+member is turned away. A member of a configured admin Team can still sign in unless GitHub's Teams
+API is itself erroring, so a broken or missing `orgs:` block never locks every admin out on its own.
+An admin admitted only by their Team is placed in the `default` org, since no `orgs:` entry claims
+them. A deployment relying on that recovery should avoid declaring a real org named `default`. If it
+does, the recovering admin's user row, audit entries, and object-storage prefix land inside that
+tenant instead of a neutral catch-all.
 
 **A deployment with a database reads five of these six fields only once**
 ([BE-0375](../roadmaps/BE-0375-serve-org-lifecycle-management/BE-0375-serve-org-lifecycle-management.md)).
