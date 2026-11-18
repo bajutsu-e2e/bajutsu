@@ -54,7 +54,7 @@ operator who wants to know what such a config may run has to read two options an
 Finally, only an uploaded bundle's server command leaves a record today: BE-0090 stamps its decision
 into the manifest's `uploadExec` provenance, without a hash of what ran. A command from a Git or
 local config leaves none. An unintended command, such as a changed script in a repository, thus
-leaves no trace beside the run's evidence.
+leaves no trace in the run's evidence.
 
 Once this item ships, a reader can check two observable differences. A worker whose `worker.yaml`
 sets `uploaded: deny` never leases a job whose uploaded config declares a command. Every run's
@@ -160,6 +160,13 @@ whose binary already exists still runs. That second check covers a run started w
 advertisement no longer matches its file. The run writes `manifest.json` with the refused entry
 before it exits.
 
+A run started from a terminal or CI reads the `worker.yaml` that its `--worker-config` option names,
+or the shipped default when the option is absent, as `run` does today
+([BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md)). It never searches the disk
+for a worker's file. The shipped default sets `operator: allow`, so ordinary local runs keep working.
+An operator who wants a stricter policy for CLI runs on a machine passes that machine's file through
+`--worker-config`.
+
 ### The command record
 
 Every run adds a `commands` list to its `manifest.json`. Each entry records one governed command
@@ -227,8 +234,8 @@ readiness URL.
 - **An allowlist of approved hashes.** Deferred: it would stop a changed script from running, but
   it needs a flow for someone to review and approve each new hash. The command record above
   provides the hashes such a flow would start from.
-- **Keep the `reuse` mode.** Rejected: the readiness URL it depends on leaves Bajutsu with the
-  sibling hook proposal.
+- **Keep the `reuse` mode.** Rejected: the sibling hook proposal removes the readiness URL that
+  `reuse` depends on.
 
 ## Progress
 

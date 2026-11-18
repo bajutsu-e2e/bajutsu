@@ -214,6 +214,16 @@ directory, and Bajutsu copies it into the run directory with `${secrets.*}` valu
 of an entry with `mask: true` replaced. It copies when the entry exits, and again at the end of the
 run for output that a background process wrote later.
 
+The raw area is a hardening boundary, since a sandboxed command can write into it:
+
+- **Lifetime.** Bajutsu creates the raw directory per run with owner-only permissions and removes it
+  once the final masked copy is taken. A run that dies before then has its raw directory removed
+  when the next run starts, so a plaintext secret never outlives its run.
+- **What is copied.** The copy goes file by file, by the names Bajutsu itself created for each
+  entry's log and output file, never as a directory sweep. Bajutsu refuses a symbolic link or any
+  file that is not a regular file. A command therefore cannot pull host content, such as a key
+  file, into the run's evidence.
+
 ### Where the commands run
 
 The commands run inside the `bajutsu run` process, on the machine that runs `bajutsu run`:
@@ -288,6 +298,9 @@ The removal migrates every in-repo user:
   script starts the server and waits until it answers, and an `afterRun` script stops it.
 - `bajutsu/common/runner/launch_server.py` goes away. The five callers of
   `_start_launch_server_or_exit` call the run-level hook phase instead.
+- `bajutsu/common/runner/sandbox.py` moves onto `hooks.sandbox`. It reads `LaunchServer` fields and
+  imports `_probe`, `_default_log`, and `_POLL_INTERVAL` from `launch_server.py` today, so the
+  per-run container replaces its per-command bring-up rather than inheriting it.
 - `docs/configuration.md`, `docs/scenarios.md`, `docs/run-loop.md`, `docs/cli.md`,
   `docs/self-hosting.md`, `docs/overview.md`, `docs/developer-guide.md`, `DESIGN.md`, and
   `docs/architecture.md` change with the behavior, each with its Japanese mirror.
@@ -316,7 +329,7 @@ The removal migrates every in-repo user:
   it.
 - **Keep `services.mockServer` for a later mock-server feature.** Rejected: the block has never
   started a process. A `beforeRun` script can start a mock server like any other server.
-- **Fold `subject.build` into `beforeRun` as well.** Deferred: `build` runs merely when the app
+- **Fold `subject.build` into `beforeRun` as well.** Deferred: `build` runs only when the app
   binary is missing, and `serve` relies on that conditional behavior for prebuilt bundles. Moving
   it would change build semantics, a decision of its own.
 - **Pass values through environment variables declared in `evidence.secrets`.** Rejected as the
@@ -335,6 +348,7 @@ The removal migrates every in-repo user:
 
 - [ ] Schema: the four hook lists and their entry model; remove `services.server` and `services.mockServer` with a load error naming the replacement.
 - [ ] Hook runner: entries, timeouts, the output file, the environment, logs, and masking.
+- [ ] Command policy: route the hook lists through the sibling item's `commands` modes and its `manifest.json` record, replacing `services.server.cmd` as the governed command.
 - [ ] Run-level phase: wire `beforeRun` / `afterRun` into `run`, `audit`, `record`, `crawl`, and `repl`, replacing the `services.server` bring-up.
 - [ ] Scenario-level phase: wire `beforeScenario` / `afterScenario` into the scenario lifecycle, including `inheritSetup`, workers, multi-target order, and cancellation.
 - [ ] The `${hooks.<name>.<key>}` token: static load-time check and action-time substitution.
