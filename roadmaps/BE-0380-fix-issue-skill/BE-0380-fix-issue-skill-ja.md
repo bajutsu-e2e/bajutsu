@@ -28,9 +28,9 @@
 ## 動機
 
 BE提案を書かずに、軽い不具合や改善をIssueとして出すことは、すでにできます。
-`bug`と`enhancement`のIssueテンプレート（[`bug_report.yml`](../../.github/ISSUE_TEMPLATE/bug_report.yml)、
+`bug`ラベルと`enhancement`ラベルのIssueテンプレート（[`bug_report.yml`](../../.github/ISSUE_TEMPLATE/bug_report.yml)、
 [`feature_request.yml`](../../.github/ISSUE_TEMPLATE/feature_request.yml)）が、その用途で用意されています。
-両者の`config.yml`も、大きなアイデアのときはロードマップに進むよう、起票者に案内しています。
+両者の`config.yml`も、大きなアイデアのときだけロードマップに進むよう案内しています。
 [`task-select`](../../.apm/skills/task-select/SKILL.md)スキルも、これらのオープンなIssueをロードマップと並べて調査し、次に着手すべき候補として順位付けしています。
 
 しかし、候補が選ばれたあとにそれを仕上げる仕組みはありません。
