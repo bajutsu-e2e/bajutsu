@@ -29,7 +29,7 @@ already runs against once one is wired (`BAJUTSU_DATABASE_URL`). Membership data
 - which GitHub Team its editors belong to, as `editorTeam` in
   [BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md)
 
-Once the database holds an org's membership, it is the sole source consulted. The sign-in gate stops
+Once the database holds an org's membership, it is the sole source checked. The sign-in gate stops
 reading the configuration file. A configuration that fails to load no longer turns every sign-in
 into a denial.
 
@@ -37,7 +37,7 @@ The item also settles what an admin-created org means for target ownership, whic
 configuration. An org's targets resolve per org rather than per name. Two orgs may each claim a
 target of the same name. Configuration order no longer silently awards the name to one of them.
 
-A deployment with no database keeps reading `orgs:` from configuration exactly as today. This item
+A deployment with no database keeps reading `orgs:` from configuration precisely as today. This item
 changes nothing there.
 
 ## Motivation
@@ -49,16 +49,16 @@ leave, or transfer. BE-0313 left one roster in place: the `orgs:` block itself. 
 which GitHub organization or GitHub Team maps to which Bajutsu org, and who its editors are.
 
 Nothing in GitHub corresponds to a Bajutsu org. An org is a boundary this deployment defines, and
-this item could not read it off GitHub instead. Keeping the org as data is therefore not the
+this item could not read it off GitHub instead. Keeping the org as data is not the
 roster-drift problem that BE-0313 solved. The gap is where the data lives. Today it lives in a file
 that a deploy operator edits by hand and ships through a redeploy or a `POST /api/config` rebind.
 That is the same mechanism used to change which application `serve` tests. It was not built to
 change which customers or teams `serve` serves.
 
-The mechanism does not fit an operator who wants to onboard a new tenant, or move a team's edit
-access to a different GitHub Team, without touching the deployment's configuration repository or
-its CI/CD pipeline. Every other piece of per-org data already lives in the database once one is
-wired:
+The mechanism does not fit an operator who wants to onboard a new tenant. It also does not fit an
+operator who wants to move a team's edit access to a different GitHub Team. Both operators want to
+leave the deployment's configuration repository and its CI/CD pipeline alone. Every other piece of
+per-org data already lives in the database once one is wired:
 
 - registered projects ([BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub.md))
 - AI provider settings ([BE-0229](../BE-0229-per-org-provider-settings-resolution/BE-0229-per-org-provider-settings-resolution.md))
@@ -72,14 +72,14 @@ passive mirror of configuration. `ensure_org` creates a row with an id, a slug, 
 time a login for that org signs in, and stops there. The row carries none of `members`,
 `github_orgs`, or `editor_team`. Onboarding a tenant on a database-backed deployment still needs the
 same file edit and redeploy that a database-less one needs. Meanwhile the deployment has a database
-sitting idle for exactly this kind of operational, per-org data.
+sitting idle for precisely this kind of operational, per-org data.
 
 Moving the data also exposes two assumptions that the configuration file was quietly carrying. Both
 hold only while orgs are rare and hand-written.
 
 - **The file is always readable.** `oauth_callback` gates sign-in on the parsed `orgs:` block. A
-  parse failure fails closed to an empty roster. One malformed line therefore denies every
-  non-admin user on a deployment whose database already knows exactly who they are.
+  parse failure fails closed to an empty roster. One malformed line denies every
+  non-admin user on a deployment whose database already knows precisely who they are.
 - **No two orgs ever claim the same target name.** A reviewer could enforce this across a single
   hand-edited file. No one can enforce it once an admin creates tenants from a web UI that shows no
   other tenant's entry.
@@ -91,7 +91,7 @@ cheaper later.
 
 ### Terminology
 
-This item reuses "org," "GitHub organization," and "project" exactly as
+This item reuses "org," "GitHub organization," and "project" precisely as
 [BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md)'s own *Terminology*
 subsection distinguishes them. It does not restate that distinction here. In short:
 
@@ -117,9 +117,8 @@ columns mirror `OrgConfig`'s own shape: `members` and `github_orgs` are JSON arr
 
 `targets` stays in configuration, for two reasons:
 
-- Which application a target names, and which backend and device it runs on, are exactly the
-  app-specific differences that prime directive 3 (app-agnostic core) keeps out of any
-  admin-editable store.
+- Which application a target names, and which backend and device it runs on, are app-specific
+  differences. Prime directive 3 (app-agnostic core) keeps them out of any admin-editable store.
 - A database-backed deployment already has a more actively maintained way to scope an application
   to an org: registering a project under it
   ([BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub.md)). Moving `targets` too
@@ -140,15 +139,15 @@ The membership consumers are:
   ([`bajutsu/serve/authz.py`](../../bajutsu/serve/authz.py))
 - the denial diagnostics that unit 3 re-reads for that source
 
-Target resolution is the one consumer that keeps reading configuration. `targets_for_org` and the
-`org_for_target` that `authz.py`'s `_target_forbidden` calls both need an org's actual target
-ownership, and only the configuration-sourced dictionary carries it. Unit 4 covers what that
+Target resolution is the one consumer that keeps reading configuration. `targets_for_org` needs an
+org's actual target ownership. So does the `org_for_target` that `authz.py`'s `_target_forbidden`
+calls. Only the configuration-sourced dictionary carries that ownership. Unit 4 covers what the
 resolution has to become.
 
-Routing membership through a second producer of the same dictionary shape applies a principle that
-[BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md) itself invoked when it
-swapped a login list for GitHub Team membership. The policy is recomputed from its source on every
-sign-in. Changing the source therefore needs no data migration for the resolution logic itself.
+Routing membership through a second producer of the same dictionary shape applies a principle from
+[BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md). BE-0313 invoked it when
+it swapped a login list for GitHub Team membership. The policy is recomputed from its source on
+every sign-in. Changing the source needs no data migration for the resolution logic itself.
 
 ### 2. One org source per deployment, chosen once
 
@@ -169,7 +168,7 @@ The sign-in gate's *placement* is unchanged. The `members`/`github_orgs` match c
 before `org_for_identity` is ever called. It still sits above the `if state.repository is not
 None:` block, so a database-less, OAuth-configured deployment keeps gating sign-in
 ([BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md)). Only the dictionary
-that the check consults now depends on whether a database is wired. The place in `oauth_callback`
+that the check checks now depends on whether a database is wired. The place in `oauth_callback`
 where the check runs does not.
 
 Choosing the source before the gate, rather than after it, also severs a coupling that is a live
@@ -183,7 +182,7 @@ After this item, an unloadable configuration on that deployment has two effects.
 seeding of unit 6. It leaves target resolution (unit 4) with nothing to resolve against. It stops
 nothing else: sign-in, org placement, and role assignment keep working from the database.
 
-A database-less deployment keeps calling `parse_orgs` against the configuration file exactly as
+A database-less deployment keeps calling `parse_orgs` against the configuration file precisely as
 today, with no admin UI for org management. Three facts explain why it gains nothing from a per-org
 membership store:
 
@@ -217,7 +216,7 @@ propagates and does not fail closed to an empty mapping. When `serve` cannot rea
 answers with a 5xx that names the database. It does not deny every user with a message that blames
 their GitHub membership.
 
-What remains to report is one of three cases:
+Three cases are left to report:
 
 - No row in the `orgs` table declares any membership yet. Either nothing was created or seeded, or
   nothing admits anybody. Unit 7's bypass exists for this shape.
@@ -234,7 +233,7 @@ The recovery guard beside them is `not matched_org and parsed is None and state.
 It keeps a bypass-admitted user's already-recorded org, instead of relocating the user to `default`
 over one failed configuration load. This item removes the guard on this path and does not translate
 it. The guard sits inside the `if state.repository is not None:` block, so it only ever ran on a
-database-backed deployment. That is exactly the deployment whose org source stops being a file here.
+database-backed deployment. That is precisely the deployment whose org source stops being a file here.
 
 The guard's motivating failure goes away with its cause:
 
@@ -251,7 +250,7 @@ who can create orgs at will. `org_for_target`
 whose `targets` list names it. `_target_forbidden` forbids that target to every other org on exactly
 that basis.
 
-Two orgs that both name `checkout` therefore do not each get a `checkout`. Configuration order
+Two orgs that both name `checkout` do not each get a `checkout`. Configuration order
 silently awards it to whichever entry comes first, and the second org is forbidden every operation
 on it. The second org is still shown the target, because `targets_for_org` lists a target whenever
 the org's own entry names it. The result is a target that appears in an org's list and refuses every
@@ -262,7 +261,7 @@ diff. Once unit 5 lets an admin create a tenant from the web UI, with no view of
 configuration entry, the collision becomes routine. Its symptom reads like a permissions bug, not
 like the name clash it is.
 
-This item therefore makes an org's target ownership resolve per org rather than per name.
+This item makes an org's target ownership resolve per org rather than per name.
 `_target_forbidden` asks whether the target appears in *this* org's own list. It no longer asks
 which single org the name resolves to. `org_for_target`'s global name-to-org lookup is left with no
 caller. Two orgs may then each claim a target named `checkout`, and each is authorized for it.
@@ -275,7 +274,7 @@ caller. Two orgs may then each claim a target named `checkout`, and each is auth
 - Every *other* org absent from the block falls to the `orgs.get(org) is None` branch and owns
   nothing.
 
-Reading an entry directly would therefore forbid `default` every target it reaches today, since a
+Reading an entry directly would forbid `default` every target it reaches today, since a
 deployment typically declares no `default` entry at all.
 
 Routing through `targets_for_org` does change one shape, in the direction of consistency. A
@@ -321,11 +320,11 @@ source) is bound *as* an org. `Upload.org` already records which org, and the bu
 under that org's own cache prefix. Every target such a configuration declares belongs to that org
 and to no other, and its `orgs:` block is not read at all.
 
-Leaving that block authoritative would have been the same trust problem that this item already
-refused for membership, one layer over: a file the deployment does not control deciding what a
-tenant may reach. It also failed silently in practice. Consider a bundle uploaded by one org whose
-`orgs:` claimed its only target for another. The uploader got an empty target list and no signal,
-since `targets_for_org` then handed them only the targets nobody claimed.
+Leaving that block authoritative would have repeated a trust problem this item already refused for
+membership, one layer over. A file the deployment does not control would decide what a tenant may
+reach. It also failed silently in practice. Consider a bundle uploaded by one org whose `orgs:`
+claimed its only target for another. The uploader got an empty target list and no signal. The
+cause: `targets_for_org` handed them only the targets nobody claimed.
 
 One `ServeState.targets_for` answers this for all three readers: the target list, the cross-org
 guard, and the per-org scenario store. A fourth reader cannot answer it differently.
@@ -340,7 +339,7 @@ admits its members, and can be administered immediately. It is authorized for no
 `orgs:` entry names some. Closing the gap takes one of two changes:
 
 - giving an org targets that an admin can set, which is the move into the database that unit 1
-  rejects
+  refuses
 - a configuration bound per org, which is the deferral recorded under *Alternatives considered*
 
 Both changes are larger than this one. Both are better decided once admin-created orgs exist to
@@ -354,10 +353,10 @@ mutation is recorded through the existing `Repository.record_audit` (`org.create
 `org.membership.update`, with the org's slug as `target`).
 
 - `GET /api/orgs` — list every live org: slug, name, its `members` / `githubOrgs` / `editorTeam`
-  themselves, and its project count. The response carries the rosters, not their sizes, because the
-  membership form below replaces all three fields as one unit and so must start from the current
-  values. The endpoint is admin-only, the same tier that can already read the whole `orgs:` block
-  through `GET /api/config/content`.
+  themselves, and its project count. The response carries the rosters, not their sizes. The
+  membership form below replaces all three fields as one unit, so it must start from the current
+  values. The endpoint is admin-only. That tier can already read the whole `orgs:` block through
+  `GET /api/config/content`.
 - `POST /api/orgs` — create an org from `{slug, name}`. Membership starts empty (no member, no
   GitHub organization, no editor Team), so a freshly created org admits nobody until an admin adds
   to it.
@@ -370,16 +369,16 @@ mutation is recorded through the existing `Repository.record_audit` (`org.create
   - The created row's `id` is its slug, matching what every existing writer already does.
     `ensure_org(org, slug=org, name=org)` puts one string in all three columns. That same string is
     what `upsert_user(org_id=…)`, `state.org_of()`, and the org-scoped stores carry. So
-    `orgs_from_db` keys its dictionary by it, exactly as `parse_orgs` keys by an `orgs:` entry
+    `orgs_from_db` keys its dictionary by it, precisely as `parse_orgs` keys by an `orgs:` entry
     name. A generated id distinct from the slug would instead need a slug-to-id lookup on every one
     of those paths, which this item does not introduce.
   - Creation marks the new row seeded immediately. This is the same per-row marker that unit 6 sets
     on cutover. The row is treated as already past cutover, so no later `orgs:` entry for that slug
-    seeds or re-seeds it. A later entry therefore cannot overwrite membership that an admin sets
+    seeds or re-seeds it. A later entry cannot overwrite membership that an admin sets
     through this API.
 - `POST /api/orgs/<slug>/membership` — replace an org's `{members, githubOrgs, editorTeam}` as one
   unit. The endpoint refuses `default` for the same reason creation does. Membership is what places
-  a login in an org, so a roster on the fallback slug makes it a tenant just as surely as creating
+  a login in an org, so a roster on the fallback slug makes it a tenant as surely as creating
   it would. A bypass sign-in's `ensure_org` leaves a live `default` row, so the page lists the row
   and could otherwise reach it. The reservation has to hold on all three verbs, not two.
   the same granularity a config-file edit already has, rather than separate add/remove
@@ -391,69 +390,71 @@ mutation is recorded through the existing `Repository.record_audit` (`org.create
     this item has no other need for.
   - Every other whole-value write in `serve` is already a `POST`: `/api/projects/<name>/activate`
     and `/api/provider`.
-- `DELETE /api/orgs/<slug>` — delete an org. The endpoint rejects with 409 while the org still owns
+- `DELETE /api/orgs/<slug>` — delete an org. The endpoint refuses with 409 while the org still owns
   any project (`list_projects` non-empty). An admin must deregister the org's projects first
   (BE-0225's deregister, which retains their run history).
 
 The delete endpoint also has these rules:
 
-- **It rejects the `default` org outright.** `default` is the fallback slug that `serve` hardcodes
+- **It refuses the `default` org outright.** `default` is the fallback slug that `serve` hardcodes
   (`DEFAULT_ORG`, [`bajutsu/serve/orgs.py`](../../bajutsu/serve/orgs.py)). An unmatched bypass
   sign-in keeps resolving to it regardless of table state. Removing it would only leave a
   soft-deleted org that a bypass user keeps landing on.
 - **Deleting an emptied, non-default org soft-deletes it.** The `Org` row is marked deleted
   through a `deleted_at` column, the same soft-delete shape that `runs` already uses for a trashed
-  run. The row is kept. A hard delete would violate the foreign key that `users`, `runs`, `secrets`,
-  `provider_settings`, and `audit_log` still hold on the org's id, even once every project is
-  deregistered ([`bajutsu/serve/server/models.py`](../../bajutsu/serve/server/models.py)). The
-  delete's own audit-log entry would then have nothing left to point at. Soft-deleting the row
-  leaves every one of those foreign keys intact.
+  run. The row is kept.
+  - A hard delete would violate the foreign key that `users`, `runs`, `secrets`,
+    `provider_settings`, and `audit_log` still hold on the org's id. That holds even once every
+    project is deregistered ([`bajutsu/serve/server/models.py`](../../bajutsu/serve/server/models.py)).
+  - The delete's own audit-log entry would then have nothing left to point at.
+  - Soft-deleting the row leaves every one of those foreign keys intact.
 - **Retiring revokes sessions.** The endpoint revokes every session bound to a login recorded
-  under that org. It does so through a `revoke_identities` method added to the `SessionStore` seam
-  ([`bajutsu/serve/sessions.py`](../../bajutsu/serve/sessions.py)) and implemented by each of its
-  stores. The soft delete alone reaches only the *next* sign-in. `users.org_id` still names the
-  retired slug, so a cookie issued beforehand would keep listing that tenant's runs, triggering new
-  ones, and reading its secrets until it expired.
+  under that org. It does so through a `revoke_identities` method. The method is added to the
+  `SessionStore` seam ([`bajutsu/serve/sessions.py`](../../bajutsu/serve/sessions.py)) and
+  implemented by each store. The soft delete alone reaches the *next* sign-in. `users.org_id` still
+  names the retired slug. A cookie issued beforehand would keep three abilities until it
+  expired: listing that tenant's runs, triggering new ones, and reading its secrets.
 - **The revocation gap is newly reachable.** Retiring a tenant used to mean a configuration edit
-  plus a redeploy, and the restart dropped every session as a side effect. Making retirement an
+  plus a redeploy. The restart dropped every session as a side effect. Making retirement an
   in-process admin action removes that incidental revocation. This item restores it deliberately.
   A session carrying no identity (a shared-token login) belongs to no org and is never touched.
 - **Deleted orgs disappear from resolution.** Sign-in resolution and `GET /api/orgs` exclude a
-  deleted org from then on, so it can no longer be matched or listed. A user, secret, or provider
-  setting still recorded under that org id keeps its row and stays queryable, but admits no new
-  sign-in as that org.
+  deleted org from then on. The org can no longer be matched or listed. A user, secret, or provider
+  setting recorded under that org id keeps its row and stays queryable. It admits no new sign-in
+  as that org.
 - **History is retained.** The org's historical runs and audit-log entries stay under the deleted
-  org's id, exactly as a deregistered project's run history survives deregistration
+  org's id. A deregistered project's run history survives deregistration in the same way
   ([BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub.md)). An admin action removes
-  a tenant's ability to sign in and act. It does not remove the record of what the tenant already
-  did.
+  a tenant's ability to sign in and act. It does not remove the record of what the tenant did.
 
 Re-creating an org at a slug that was soft-deleted is out of this item's scope. `Org.slug` carries a
-UNIQUE constraint end-to-end ([`bajutsu/serve/server/models.py`](../../bajutsu/serve/server/models.py)),
-and a soft-deleted row still occupies it. `POST /api/orgs` therefore rejects that slug with a
-dedicated 409 error, and neither reactivates nor reuses the row. Reactivation, should it ever be
-needed, is a separate, explicit operation left to a future item. Unit 6's backfill likewise skips
-any row already marked deleted (`deleted_at` set). It neither seeds nor revives such a row, because
-a soft-deleted org is retired, not merely unseeded.
+UNIQUE constraint end-to-end ([`bajutsu/serve/server/models.py`](../../bajutsu/serve/server/models.py)).
+A soft-deleted row still occupies the slug. `POST /api/orgs` refuses that slug with a
+dedicated 409 error. It neither reactivates nor reuses the row. Reactivation is a separate, explicit
+operation left to a future item.
+
+Unit 6's backfill likewise skips any row already marked deleted (`deleted_at` set). It neither
+seeds nor revives such a row. A soft-deleted org is retired, not merely unseeded.
 
 The org a session acts as is also surfaced outside that page, in the shell header beside the bound
 configuration's name. `GET /api/config` is the boot read that every tab already starts from. It
-gains the caller's own `actor` and the `org` it resolves to, and the header shows the org with the
+gains the caller's own `actor` and the `org` it resolves to. The header shows the org, with the
 login on hover.
 
-Every tab is silently scoped to that org: which targets are runnable, which runs and evidence are
-visible, the secrets, and the project list. An admin administering several tenants could otherwise
-only infer which tenant their own work lands in. Returning a caller's own identity to that caller
-discloses nothing they did not present. The roster itself differs and stays behind the admin-only
-`GET /api/orgs`. Both fields are null where there is no signed-in identity (a local or
-shared-token `serve`, where `org_of` would answer `default` for everyone), and the header omits the
-badge there.
+Every tab is scoped to that org without saying so: which targets are runnable, which runs and
+evidence are visible, the secrets, and the project list. An admin administering several tenants
+could otherwise infer which tenant their own work lands in, and nothing more. Returning a caller's
+own identity to that caller discloses nothing they did not present. The roster itself differs. It
+stays behind the admin-only `GET /api/orgs`.
+
+Both fields are null where there is no signed-in identity. That is a local or shared-token `serve`,
+where `org_of` would answer `default` for everyone. The header omits the badge there.
 
 A new admin-only **Orgs** page joins the serve shell, parallel to
 [BE-0275](../BE-0275-serve-projects-management-page/BE-0275-serve-projects-management-page.md)'s
 Projects page. It has:
 
-- a list of orgs with create and delete actions (delete is disabled, with the project count shown,
+- a list of orgs with create and delete actions (delete is greyed out, with the project count shown,
   while the org still owns a project)
 - a membership form per org (members, GitHub organizations, editor Team) that calls the `POST`
   endpoint above
@@ -466,14 +467,14 @@ following unit 2's gate.
 ### 6. One conversion at startup, then a hard cutover
 
 A deployment upgrading from configuration-only org membership needs its existing `orgs:` block
-represented in the database before this item's admin UI has anything to show or edit. `serve` does
-that once, at startup (`serve()`, after `_configure_oplog` so the warning below reaches the live log
-sink). The conversion reads the configuration this server was **launched** with. It runs only while
+represented in the database. Without that, this item's admin UI has nothing to show or edit.
+`serve` does the conversion once, at startup. It runs in `serve()`, after `_configure_oplog`, so
+the warning below reaches the live log sink. The conversion reads the configuration this server was **launched** with. It runs only while
 the `orgs` table holds no row at all, a soft-deleted row included.
 
-For each entry in that block declaring any membership, a dedicated seeding method creates or fills
-the row's `members`/`github_orgs`/`editor_team` and stamps a persisted per-row marker. The method is
-not `ensure_org`, for three reasons:
+A dedicated seeding method handles each entry in that block that declares any membership. The
+method creates or fills the row's `members`/`github_orgs`/`editor_team`. It then stamps a persisted
+per-row marker. The method is not `ensure_org`, for three reasons:
 
 - `oauth_callback` and job completion already call `ensure_org(org, slug=org, name=org)` on every
   sign-in and every finished run.
@@ -484,22 +485,22 @@ not `ensure_org`, for three reasons:
   through unit 5's membership endpoint.
 
 The per-row marker stays for the same reason it always did. It tracks each row's converted state
-directly. An admin who intentionally empties an org's membership is therefore not mistaken for a row
+directly. An admin who intentionally empties an org's membership is not mistaken for a row
 never yet written, and is not re-seeded from a stale configuration value.
 
 **No API bind seeds, and no second startup does.** `bind_config`, `bind_git_config`, the upload and
 compose binds, and the project switcher all accept a configuration whose content the deployment
 does not own. [BE-0121](../BE-0121-serve-csrf-host-allowlist/BE-0121-serve-csrf-host-allowlist.md)
-says as much of the same file's `build:`, which stays ungoverned until `--allow-remote-build` opts
-in. Seeding from such a configuration would hand that file authority over who may sign in.
+says as much of the same file's `build:`. That field stays ungoverned until `--allow-remote-build`
+opts in. Seeding from such a configuration would hand that file authority over who may sign in.
 
 Before this item, that authority existed but was live and reversible. `oauth_callback` re-read the
-file on every sign-in, so rebinding to a clean configuration revoked the grant on the next login. A
-seeded row outlives the bind, so the same rebind would no longer revoke anything. An admin binding
+file on every sign-in. Rebinding to a clean configuration therefore revoked the grant on the next
+login. A seeded row outlives the bind, so the same rebind would no longer revoke anything. An admin binding
 `github:someone/repo@main` whose `orgs:` declares `partners: {githubOrgs: [attacker-gh]}` would
 otherwise grant every member of `attacker-gh` a permanent sign-in.
 
-The empty-table condition closes the same hole from the other side. A restart carrying an edited
+The empty-table condition closes the same gap from the other side. A restart carrying an edited
 configuration cannot add a tenant, revive a retired one, or reshape an existing one behind an
 admin's back. One boot converts a deployment. From then on, the database is the sole author of its
 own roster, and an org first declared after that is created on the Orgs page.
@@ -518,9 +519,9 @@ only `BAJUTSU_DATABASE_URL`. It never has access to a bound configuration's `org
 After the conversion, `oauth_callback` reads membership from the database exclusively. A later edit
 to the `orgs:` block has no effect on it. This matches the hard cutover that
 [BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md) and
-[BE-0352](../BE-0352-admin-team-bootstrap-bypass/BE-0352-admin-team-bootstrap-bypass.md) both chose
-over keeping two independent sources for the same role-deciding data (see *Alternatives
-considered*).
+[BE-0352](../BE-0352-admin-team-bootstrap-bypass/BE-0352-admin-team-bootstrap-bypass.md) both chose.
+They preferred it to keeping two independent sources for the same role-deciding data (see
+*Alternatives considered*).
 
 `serve` warns, once per boot, whenever all three conditions hold:
 
@@ -555,7 +556,7 @@ bootstrap question that
 answered for a broken or absent `orgs:` block: who signs in to create the first org?
 
 `BAJUTSU_OAUTH_ADMIN_TEAMS` stays an environment variable, deliberately outside this item's move
-into the database. It is the recovery path for exactly the case in which the org model itself,
+into the database. It is the recovery path for precisely the case in which the org model itself,
 wherever it lives, cannot yet admit anyone. A member of a configured admin Team clears the sign-in
 gate through that bypass regardless of how many `Org` rows exist. The member signs in with the admin
 role, which this item leaves unaffected ([BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md)'s
@@ -563,7 +564,7 @@ role, which this item leaves unaffected ([BE-0313](../BE-0313-github-org-team-rb
 first org.
 
 There is no chicken-and-egg problem. The one piece of tenancy data that this item deliberately
-leaves outside the database is exactly the piece that makes an empty `orgs` table recoverable.
+leaves outside the database is precisely the piece that makes an empty `orgs` table recoverable.
 
 ### 8. A GitHub Team is a membership axis of its own (follow-up)
 
@@ -581,7 +582,7 @@ Admitting one team of a shared organization meant one of two things. Either it m
 hand-maintained roster that decays as people join and leave. Or it meant opening the deployment to
 every other team in the organization. The Team is the unit that GitHub already models. `serve`
 reads a login's Teams on every sign-in for the editor/admin roles. The membership was on hand, and
-only the gate declined to consult it.
+only the gate declined to check it.
 
 `editorTeam` now admits as well as promotes. It names the Team allowed to run, record, and edit
 scenarios, which is the strongest per-org grant. Yet it admitted nobody. A Team named only there
@@ -596,7 +597,7 @@ through one org's Team and then filed it under another. That hands the login the
 targets and object-storage prefix (unit 4). It also reads the wrong org's `editorTeam` for the
 role, so a login admitted by its editor Team would land as viewer.
 
-`identity_matches_org` and `org_for_identity` therefore delegate to one private `_match_org`. It
+`identity_matches_org` and `org_for_identity` delegate to one private `_match_org`. It
 ranks `members`, then `githubOrgs`, then an org's admitting Teams, and returns the matching org or
 None. Teams rank last, so declaring one never relocates a login that an existing entry already
 placed.
@@ -612,7 +613,7 @@ anyone able to create the folded-equal Team would clear the gate. Lowercasing pr
 nested-Team guarantee, which rests on exact equality of the whole `"<github-org>/<team-slug>"`.
 
 The Team axis is a required parameter on both resolvers, not a defaulted one. A call site able to
-omit it is how the gate and the placement would come to consult different axes again. It would
+omit it is how the gate and the placement would come to check different axes again. It would
 type-check clean while denying or misplacing a Team-admitted login.
 
 `org_for_user` is retired here, for the reason that unit 1 retired `org_for_target`. `_match_org`
@@ -626,7 +627,7 @@ keeps its own column, since it decides a role as well as admitting.
 
 Unit 3's denial cause names the Team list too. It does so only when the list is *also* empty
 ("GitHub returned no orgs or teams for this login"). Blaming the org list alone would send an
-operator to an axis that a Team-declared org never consults.
+operator to an axis that a Team-declared org never checks.
 
 `/user/teams` fails closed. While GitHub's Teams API errors, a login whose only membership is a Team
 is turned away. That is the direction a gate has to fail in, and the trade that unit 7's bypass
