@@ -190,7 +190,9 @@ sets `remote: allow` on the workers instead. The launchd plist that
 The `reuse` mode does not carry over. Under `reuse`, an uploaded `services.server.cmd` never ran,
 and the run used a server that already answered the readiness URL. The sibling hook proposal
 removes that readiness URL, so a mode built around it has nothing left to check. An operator who
-used `reuse` picks `sandbox` or `deny`.
+used `reuse` picks `sandbox` or `deny`. Note that `deny` now fails a run whose config declares a
+server command, where today it lets the run proceed against a server that already answers the
+readiness URL.
 
 ### Migration
 
