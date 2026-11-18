@@ -663,12 +663,16 @@ def test_run_builds_a_git_sourced_app_from_the_checkout_root(
         "materialize",
         lambda spec, *, offline=False: Materialized(root / "bajutsu.config.yaml", root, "sha"),
     )
-    # `--backend nope` makes the run exit cleanly after the build (the sandbox has no Simulator),
-    # so the test asserts only that the build ran — producing the binary under the checkout root.
-    r = invoke(
+    (root / "e2e" / "s.yaml").write_text(
+        "- name: s\n  steps:\n    - tap: { id: a }\n", encoding="utf-8"
+    )
+    monkeypatch.chdir(tmp_path)  # the fake run writes its runs/ tree here, not in the repository
+    # The build runs once the run has settled its primary and passed its checks, so the run must
+    # get that far: the fake backend needs no Simulator. The test asserts only that the build ran —
+    # producing the binary under the checkout root.
+    invoke(
         CliRunner(),
         app,
-        ["run", "--target", "demo", "--backend", "nope", "--config", "github:acme/repo@main"],
+        ["run", "--target", "demo", "--backend", "fake", "--config", "github:acme/repo@main"],
     )
     assert (root / "build" / "Demo.app").exists()  # built under the checkout, not the process cwd
-    assert r.exit_code == 2  # then the unavailable backend exits cleanly

@@ -91,10 +91,15 @@ source. The working directory follows the rule the configuration reference alrea
 | Git repository | the checkout root (unchanged) |
 | Local file | the config file's own directory |
 
-The same rule reaches the other targets whose builds a run makes before any device work. Those
-targets are the members of a device group: a target that a later `installApp` step installs, and a
-target that starts on a shared device. Each of them now builds on Android and from a local config
-too.
+The same rule reaches every other target the run drives, because each one installs its own
+`subject.path` on its device. That includes a second target of a flat multi-target scenario and the
+members of a device group: a target that a later `installApp` step installs, and a target that
+starts on a shared device. The run builds the primary first, then the others by name.
+
+The build waits until the run has settled its primary. Without `--target`, the run first infers
+the primary from the first scenario file, then infers it again once `--tag` and `--exclude` have
+filtered the scenarios. A file may open with an iOS scenario that an Android lane filters out, and
+building the first guess would start an Xcode build on a Linux machine.
 
 `--rebuild` passes `force` to every one of those builds, and each target builds once per run.
 The flag needs the primary target to declare `subject.build`. Without one, `--rebuild` would build

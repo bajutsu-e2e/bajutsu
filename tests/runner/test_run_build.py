@@ -15,6 +15,7 @@ from bajutsu.common.config import Effective, load_config, resolve
 from bajutsu.common.scenario import Scenario
 from bajutsu.run.cli import (
     _build_primary_or_exit,
+    _build_targets_or_exit,
     _reject_bad_device_groups,
     _resolve_config_and_engines,
 )
@@ -237,9 +238,7 @@ def test_a_group_member_this_worker_cannot_build_is_a_preflight_problem(
             worker=parse_worker_capability(_NO_BUILD),
         )
     assert exc.value.exit_code == 2
-    assert "installApp from 'new': target 'new' needs its android app built" in (
-        capsys.readouterr().out
-    )
+    assert "installApp from 'new': its android app needs a build" in (capsys.readouterr().out)
 
 
 def test_resolving_a_target_never_builds_it(tmp_path: Path) -> None:
@@ -257,3 +256,58 @@ def test_resolving_a_target_never_builds_it(tmp_path: Path) -> None:
         browsers="",
     )
     assert not (cfg.parent / "built").exists()
+
+
+def _flat_effs(tmp_path: Path) -> dict[str, Effective]:
+    cfg = load_config(
+        f"""
+targets:
+  phone:
+    platform: android
+    subject: {{ id: com.example.phone, path: {tmp_path / "phone.apk"}, build: "touch {tmp_path / "phone-built"}" }}
+  tablet:
+    platform: android
+    subject: {{ id: com.example.tablet, path: {tmp_path / "tablet.apk"}, build: "touch {tmp_path / "tablet-built"}" }}
+  site: {{ platform: web, subject: {{ url: "http://localhost:1/" }} }}
+"""
+    )
+    return {name: resolve(cfg, name) for name in cfg.targets}
+
+
+def test_rebuild_reaches_every_target_the_run_drives(tmp_path: Path) -> None:
+    # A flat `targets: [phone, tablet]` installs each target's own app on its own device, so the
+    # second target's build must not be left stale; the web target has nothing to build.
+    (tmp_path / "phone.apk").touch()
+    (tmp_path / "tablet.apk").touch()
+    built: set[str] = set()
+    _build_targets_or_exit(
+        _flat_effs(tmp_path), "phone", checkout_root=None, rebuild=True, built=built, worker=None
+    )
+    assert (tmp_path / "phone-built").exists() and (tmp_path / "tablet-built").exists()
+    assert built == {"phone", "tablet"}
+
+
+def test_a_secondary_targets_missing_app_is_built_on_demand(tmp_path: Path) -> None:
+    (tmp_path / "phone.apk").touch()
+    _build_targets_or_exit(
+        _flat_effs(tmp_path), "phone", checkout_root=None, rebuild=False, built=set(), worker=None
+    )
+    assert not (tmp_path / "phone-built").exists()
+    assert (tmp_path / "tablet-built").exists()
+
+
+def test_a_secondary_targets_failed_build_exits_2(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (tmp_path / "phone.apk").touch()
+    with pytest.raises(typer.Exit) as exc:
+        _build_targets_or_exit(
+            _flat_effs(tmp_path),
+            "phone",
+            checkout_root=None,
+            rebuild=False,
+            built=set(),
+            worker=parse_worker_capability(_NO_BUILD),
+        )
+    assert exc.value.exit_code == 2
+    assert "target 'tablet': its android app needs a build" in capsys.readouterr().out

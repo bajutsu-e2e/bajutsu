@@ -108,9 +108,18 @@ def test_rebuild_with_a_binary_artifact_is_refused(tmp_path: Path) -> None:
     assert not recorder.jobs
 
 
-def test_a_non_boolean_rebuild_is_ignored(tmp_path: Path) -> None:
+def test_a_non_boolean_rebuild_is_refused(tmp_path: Path) -> None:
+    # Read as off, `"true"` would run the existing binary the caller meant to replace.
     state, recorder = _state(tmp_path)
-    _resp, code = _run(state, rebuild="yes")
+    resp, code = _run(state, rebuild="true")
+    assert code == 400
+    assert resp["error"] == "rebuild must be a boolean"
+    assert not recorder.jobs
+
+
+def test_rebuild_false_runs_as_before(tmp_path: Path) -> None:
+    state, recorder = _state(tmp_path)
+    _resp, code = _run(state, rebuild=False)
     assert code == 200
     assert recorder.jobs[-1].rebuild is False
 

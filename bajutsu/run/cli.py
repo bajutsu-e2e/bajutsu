@@ -949,8 +949,8 @@ def _build_target(
     needed = force or (app_path is not None and not Path(app_path).exists())
     if needed and worker is not None and not worker.can_build(eff.platform):
         raise BuildError(
-            f"target '{name}' needs its {eff.platform} app built, but this worker cannot build "
-            f"{eff.platform} apps: its worker.yaml `build` lists {list(worker.buildable)}"
+            f"its {eff.platform} app needs a build, but this worker cannot build {eff.platform} "
+            f"apps: its worker.yaml `build` lists {list(worker.buildable)}"
         )
     build_app(command, app_path, cwd=cwd, force=force)
     if force:
@@ -984,8 +984,49 @@ def _build_primary_or_exit(
             eff, name, checkout_root=checkout_root, rebuild=rebuild, built=built, worker=worker
         )
     except BuildError as e:
-        typer.echo(str(e))
+        typer.echo(f"target '{name}': {e}")
         raise typer.Exit(2) from None
+
+
+def _build_targets_or_exit(
+    target_effs: Mapping[str, Effective],
+    primary: str,
+    *,
+    checkout_root: Path | None,
+    rebuild: bool,
+    built: set[str],
+    worker: WorkerCapability | None,
+) -> None:
+    """Build the app of every target the run drives: the primary first, then the others by name.
+
+    Each declared target installs its own `subject.path` on its device, so a flat multi-target
+    scenario's second target needs its build as much as the primary does. `--rebuild` requires a
+    `subject.build` of the primary alone; another target without one keeps its existing app.
+
+    Raises:
+        typer.Exit: A build the run needs failed or cannot run here (exit code 2).
+    """
+    _build_primary_or_exit(
+        target_effs[primary],
+        primary,
+        checkout_root=checkout_root,
+        rebuild=rebuild,
+        built=built,
+        worker=worker,
+    )
+    for name in sorted(set(target_effs) - {primary}):
+        try:
+            _build_target(
+                target_effs[name],
+                name,
+                checkout_root=checkout_root,
+                rebuild=rebuild,
+                built=built,
+                worker=worker,
+            )
+        except BuildError as e:
+            typer.echo(f"target '{name}': {e}")
+            raise typer.Exit(2) from None
 
 
 def _build_problems(
@@ -2963,10 +3004,10 @@ def run_body(
     rebuild: bool = typer.Option(
         False,
         "--rebuild",
-        help="run the target's subject.build before the run even when its built app (subject.path) "
-        "already exists, so a source change is never tested against a stale build; each target "
-        "builds once. Exits 2 when the target declares no subject.build (default: build only a "
-        "missing app)",
+        help="run subject.build for every target the run drives, before the run, even when its "
+        "built app (subject.path) already exists, so a source change is never tested against a "
+        "stale build; each target builds once. Exits 2 when the primary target declares no "
+        "subject.build (default: build only a missing app)",
     ),
     # --- Reporting & output ---
     zip_run: bool = typer.Option(
@@ -3186,8 +3227,13 @@ def run_body(
     # Built only now, once `--tag` / `--exclude` and the worker check have settled the primary: an
     # inferred primary of a scenario selected away is never built (an iOS app on a Linux lane).
     rebuilt: set[str] = set()
-    _build_primary_or_exit(
-        eff, target_name, checkout_root=loaded.root, rebuild=rebuild, built=rebuilt, worker=worker
+    _build_targets_or_exit(
+        {**target_effs, target_name: eff},
+        target_name,
+        checkout_root=loaded.root,
+        rebuild=rebuild,
+        built=rebuilt,
+        worker=worker,
     )
     _reject_bad_device_groups(
         scenarios,

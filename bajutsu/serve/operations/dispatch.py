@@ -104,9 +104,14 @@ def _rebuild_flag(
     A forced build needs a command serve may run: without one the request would silently run the
     existing binary, which is what `rebuild` was asked to prevent. A stored `binaryArtifact` replaces
     the app the build makes, so forcing the build alongside one would build an app the run never
-    installs.
+    installs. A value that is not a boolean is refused rather than read as off: unlike `erase`, there
+    is no CLI default to fall back on, so dropping it would run the stale binary the caller meant to
+    replace.
     """
-    if _bool_flag(body, "rebuild") is not True:
+    raw = body.get("rebuild")
+    if raw is not None and not isinstance(raw, bool):
+        return False, ({"error": "rebuild must be a boolean"}, 400)
+    if raw is not True:
         return False, None
     if build is None:
         return False, (
