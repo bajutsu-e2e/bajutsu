@@ -101,7 +101,7 @@ Simulator を起動する残り1つの macOS ジョブである `codegen` は、
 
 実装の過程で、この設計の誤りが5つ実測で判明しました。どれも、放置すれば「静かに何も集めない収集器」を出荷することになります。それは、この提案が終わらせようとしている失敗そのものです。
 
-- **ゲストはホストのログに書き込みません。** この設計の初期版は、Simulator のゲストプロセスがホストの unified log に書き込むと述べていました。この記述は誤りです。起動済みデバイスで `SpringBoard` / `backboardd` / `testmanagerd` をホスト側の `log show` で絞ると、見出し行だけが返ります。これらのエントリは、デバイス自身のログストアにあります。そこで収集は、抽出を**2つ**走らせます。
+- **ゲストはホストのログに書き込みません。** 上の「Simulator のゲストプロセスはホストの unified log に書き込む」という記述は誤りです。起動済みデバイスで `SpringBoard` / `backboardd` / `testmanagerd` をホスト側の `log show` で絞ると、見出し行だけが返ります。これらのエントリは、デバイス自身のログストアにあります。そこで収集は、抽出を**2つ**走らせます。
   - 1つはホスト側で、CoreSimulator のサービスプロセス向けです。プロセス名は `CoreSimulatorService` ではなく `com.apple.CoreSimulator.CoreSimulatorService` で、サブシステムは `CONTAINS` での一致が必要です。
   - もう1つは、`simctl spawn` を通してゲストの内側で走らせます。
 
