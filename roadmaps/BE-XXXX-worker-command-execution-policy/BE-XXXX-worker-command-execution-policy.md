@@ -181,7 +181,7 @@ then shows a different hash, even when its command line stayed the same. The lis
 `$BAJUTSU_ALLOW_REMOTE_BUILD` go away. `serve` refuses to start when it gets any of them, and the
 message names the `commands` block of `worker.yaml`. An operator who passed `--allow-remote-build`
 sets `remote: allow` on the workers instead. The launchd plist that
-`serve --emit-launchagent` prints stops passing the option. The `--upload-exec` option of `run`, `record`, and
+`serve --emit-launchagent` prints stops passing `--upload-exec`. The `--upload-exec` option of `run`, `record`, and
 `crawl`, which `serve` passed to the run today, goes away with it.
 
 The `reuse` mode does not carry over. Under `reuse`, an uploaded `services.server.cmd` never ran,

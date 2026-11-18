@@ -40,7 +40,7 @@ worker は受け付ける出どころを申告し、`serve` はコマンドを�
   ファイル、ネットワーク、資格情報に触れられます。署名鍵を持つ worker には、使い捨ての Linux
   コンテナより厳しい方針が要ります。サーバー全体で1つの値では、この違いを表せません。
 - **サーバーからは worker のホストが見えません。** `sandbox` モードには、コンテナを動かすマシンに
-  Docker が必要です。`serve` は、ある worker に Docker があるかを知らないままモードを決めています。
+  Docker が必要です。`serve` は、ある worker に Docker があるかを確かめないまま、モードを決めています。
 - **worker の運用者は断れません。** worker は実行できるジョブを取り、そのコマンドをサーバーの方針の
   下で実行します。マシンを運用する人には、断るための設定がありません。
 
@@ -59,8 +59,8 @@ worker は受け付ける出どころを申告し、`serve` はコマンドを�
 
 本提案が入った後は、次の2つの違いを観察して確かめられます。`worker.yaml` で `uploaded: deny` を
 指定した worker は、アップロードされた設定がコマンドを宣言しているジョブを取りません。各ランの
-`manifest.json` には、ランが実行または拒否したコマンドが、出どころ、モード、実行した内容の
-ハッシュとともに並びます。
+`manifest.json` には、ランが実行または拒否したコマンドを記録します。記録には、出どころ、モード、
+実行した内容のハッシュを含めます。
 
 ## 詳細設計
 
@@ -90,14 +90,16 @@ commands:
 ブロックやキーを省略すると、デフォルト値の `uploaded: sandbox`、`remote: sandbox`、
 `operator: allow` になります。現在の扱いとの違いは、厳しくなる1点だけです。`remote` の設定の
 サーバーのコマンドは、ホスト上ではなくコンテナで動くようになります。現在の規則がその設定のビルドを
-すでに止めているのと、扱いをそろえるためです。キーを明示的に `sandbox` にした worker は、起動時に Docker の有無を確かめ、Docker がなければ
-そのキーを示すメッセージを出して終了します。デフォルト値によって `sandbox` になった出どころに
-ついては、Docker があるときに限って `commands:<source>` を申告します。どちらの場合も、worker が
+すでに止めているのと、扱いをそろえるためです。
+
+キーを明示的に `sandbox` にした worker は、起動時に Docker の有無を確かめます。Docker がなければ、
+そのキーを示すメッセージを出して終了します。デフォルト値で `sandbox` になった出どころについては、
+Docker があるときだけ `commands:<source>` を申告します。どちらの場合も、worker が
 後で失敗するジョブを取ることはありません。
 
 ### 統制の対象になるコマンド
 
-このブロックは、設定が Bajutsu に実行させるために宣言するコマンドを、すべて統制します。
+このブロックは、Bajutsu に実行させる目的で設定が宣言するコマンドを、すべて統制します。
 
 | コマンド | `allow` | `sandbox` | `deny` |
 |---|---|---|---|
@@ -105,14 +107,14 @@ commands:
 | `subject.build` | バイナリがないとき、ホスト上で実行します | 実行しません | 実行しません |
 | `driver.runner.build` | ランナーがないとき、ホスト上で実行します | 実行しません | 実行しません |
 
-`sandbox` でどちらのビルドも実行しないのは、iOS のビルドに macOS のツールチェーンが必要で、
-Linux のコンテナには無いからです。この扱いは、
+`sandbox` でどちらのビルドも実行しないのは、iOS のビルドに macOS のツールチェインが必要で、
+Linux のコンテナにはないからです。この扱いは、
 [BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md) が
 アップロードに適用している規則とも一致します。アップロードされたバンドルは、ビルド済みのバイナリを
-同梱しているからです。バイナリが無いランは失敗し、ビルドを止めたモードを示します。
+同梱しているからです。バイナリがないランは失敗し、ビルドを止めたモードを示します。
 
-姉妹提案「ターゲット設定から、ランと各シナリオの前後に外部コマンドを実行する」は、
-`targets.<name>.hooks` に4つのフックのリストを加え、`services.server` を削除します。姉妹提案が
+姉妹提案は「ターゲット設定から、ランと各シナリオの前後に外部コマンドを実行する」です。
+姉妹提案は `targets.<name>.hooks` に4つのフックのリストを加え、`services.server` を削除します。姉妹提案が
 入った後は、上の表の `services.server.cmd` の位置に、フックのエントリが入ります。
 
 ### 設定の出どころ
@@ -141,7 +143,7 @@ worker は、受け付ける出どころごとに capability のトークンを1
 必要なトークンがすべてそろっているかを確かめる部分集合の判定です。そのため、コマンドを宣言した
 ジョブは、その出どころを受け付ける worker にだけ届きます。`commands:` は予約済みのルーティング接頭辞に
 加わります。そのため、worker が手で書いたトークンの上書きで、`commands` ブロックが `deny` にした
-出どころを申告することはできません。接続中のどの worker とも合わないジョブは
+出どころを申告できません。接続中のどの worker とも合わないジョブは
 待ち続け、利用できる worker がないという既存の通知が付きます。
 
 worker は `serve` より先に更新します。本提案より前の worker は `commands:` のトークンを申告しないので、
@@ -180,11 +182,15 @@ worker は `serve` より先に更新します。本提案より前の worker �
 
 ### `--upload-exec` と `--allow-remote-build` の削除
 
-`serve --upload-exec`、`$BAJUTSU_UPLOAD_EXEC`、`serve --allow-remote-build`、
-`$BAJUTSU_ALLOW_REMOTE_BUILD` は削除します。どれかを受け取った `serve` は起動を拒み、メッセージは
+次の4つは削除します。
+
+- `serve --upload-exec` と `$BAJUTSU_UPLOAD_EXEC`
+- `serve --allow-remote-build` と `$BAJUTSU_ALLOW_REMOTE_BUILD`
+
+どれかを受け取った `serve` は起動を拒み、メッセージは
 `worker.yaml` の `commands` ブロックを示します。`--allow-remote-build` を渡していた運用者は、
 代わりに worker で `remote: allow` を指定します。
-`serve --emit-launchagent` が出力する launchd の plist も、このオプションを渡さなくなります。
+`serve --emit-launchagent` が出力する launchd の plist も、`--upload-exec` を渡さなくなります。
 `serve` がランに渡していた `run`、`record`、`crawl` の `--upload-exec` オプションも、あわせて
 削除します。
 
@@ -198,8 +204,8 @@ worker は `serve` より先に更新します。本提案より前の worker �
 - `bajutsu/common/capability/` は、`commands` ブロックを読み、検証し、申告します。
 - `bajutsu/serve/server/worker_job.py` と `bajutsu/serve/commands.py` は、`upload_exec` に代えて
   出どころのラベルを運びます。
-- `bajutsu/common/runner/launch_server.py` と `sandbox.py` は、`--upload-exec` オプションではなく、
-  ランの方針の確認からモードを受け取ります。
+- `bajutsu/common/runner/launch_server.py` と `sandbox.py` は、ランの方針の確認からモードを
+  受け取ります。`--upload-exec` オプションからは受け取りません。
 - `bajutsu/serve/operations/dispatch.py` は、`_build_trusted` による判断をやめます。その判断は
   worker の方針が受け持ちます。
 - `docs/self-hosting.md`（「Remote-config command execution (BE-0121)」の節を含みます）、
@@ -219,7 +225,7 @@ worker は `serve` より先に更新します。本提案より前の worker �
 - **方針を `serve` に残す**：採りません。`serve` はジョブを実行せず、worker のホストも見えず、
   worker の運用者に断る手段を与えません。
 - **両方に置き、厳しいほうを採る**：採りません。サーバー全体の上限があると方針の置き場所が2つになり、
-  片方だけを読んだ運用者には、実際に効くモードが分かりません。
+  片方だけを読んだ運用者には、実際に効くモードがわかりません。
 - **コマンドのパスの許可リスト**：採りません。パスはファイルの中身を保証しません。バンドルは、
   許可された名前で有害なスクリプトを同梱できます。
 - **承認済みハッシュの許可リスト**：見送ります。書き換えられたスクリプトの実行は止められますが、
