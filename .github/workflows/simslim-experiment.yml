@@ -1,0 +1,261 @@
+# Experiment (not a gate): does slimming the Simulator with simslim (github.com/mobai-app/simslim)
+# change boot time, run time, or flakiness on GitHub's macOS runner?
+#
+# simslim writes launchd disable overrides into one Simulator's own store before its first boot, so a
+# fresh device comes up with ~70 instead of ~250 processes. On a shutdown device it applies them
+# offline and boots once (slim.go `ensureOffline`), so the boot count matches the stock path — what
+# this measures is whether the smaller footprint shortens the boot and the run on a 7 GB / 3 vCPU
+# runner, and whether the gating XCUITest scenarios still pass with those daemons off.
+#
+# Each matrix cell mirrors ios-e2e.yml's gating `run` job (same scenarios, same XCUITest env), with one
+# deliberate difference: the boot is synchronous and timed, rather than overlapped with the download,
+# so the boot cost is measurable. simslim is installed in both variants so `simslim measure` reports
+# the Simulator's memory footprint for stock and slim alike; only the `on` call differs.
+name: simslim experiment
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/nice-gates-jrrbly]
+    paths: [.github/workflows/simslim-experiment.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: simslim-experiment-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SIMSLIM_VERSION: v0.15.0
+  BAJUTSU_XCUITEST_RUNNER_LOG: ${{ github.workspace }}/runs/runner-logs
+  BAJUTSU_XCUITEST_RESULT_BUNDLES: ${{ github.workspace }}/runs/runner-logs
+  BAJUTSU_STALL_DIAGNOSTICS: ${{ github.workspace }}/runs/diagnostics/stalls
+  BAJUTSU_XCUITEST_STARTUP_TIMEOUT: "300"
+  BAJUTSU_XCUITEST_RESPAWN_TIMEOUT: "90"
+  BAJUTSU_XCUITEST_RECOVERY_TIMEOUT: "180"
+  BAJUTSU_XCUITEST_MAX_WARM_REUSES: "1"
+  BAJUTSU_CRASH_RETRIES: "2"
+  BAJUTSU_CRASH_RECOVERY_BUDGET: "300"
+  BAJUTSU_RUN_CRASH_RECOVERY_BUDGET: "900"
+
+jobs:
+  build:
+    name: build (app + runner)
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Set up the iOS toolchain
+        id: toolchain
+        uses: ./.github/actions/setup-ios-toolchain
+        with:
+          boot: "false"
+
+      - name: Cache DerivedData (app)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: demos/showcase/ios/swiftui/build/dd
+          key: xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-${{ hashFiles('Package.swift', 'BajutsuKit/**/*.swift', 'demos/showcase/ios/swiftui/**/*.swift', 'demos/showcase/ios/swiftui/**/project.yml') }}
+          restore-keys: |
+            xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-
+
+      - name: Cache DerivedData (runner)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: BajutsuKit/Runner/build/dd
+          key: xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-${{ hashFiles('Package.swift', 'BajutsuKit/**/*.swift', 'BajutsuKit/Runner/project.yml', 'Package.resolved', 'BajutsuKit/Sources/BajutsuRunner/openapi.yaml', 'BajutsuKit/Sources/BajutsuRunner/openapi-generator-config.yaml') }}
+          restore-keys: |
+            xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-
+
+      - name: Build the app + runner
+        run: |
+          make -C demos/showcase swiftui-build
+          make runner-bundle
+
+      - name: Package the build products
+        run: |
+          tar -cf ios-build.tar \
+            demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app \
+            BajutsuKit/Runner/build/dd/Build/Products \
+            bajutsu/_xcuitest_runner
+
+      - name: Upload the build products
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: ios-build
+          path: ios-build.tar
+          retention-days: 1
+          if-no-files-found: error
+
+  measure:
+    name: run (${{ matrix.variant }} #${{ matrix.attempt }})
+    needs: build
+    runs-on: macos-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [stock, slim]
+        attempt: [1, 2, 3]
+    env:
+      BAJUTSU_MIN_WAIT_TIMEOUT: "20"
+      VARIANT: ${{ matrix.variant }}
+      ATTEMPT: ${{ matrix.attempt }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      # boot: false — this job boots the device itself so the boot can be timed (and slimmed first).
+      - name: Set up the iOS toolchain
+        uses: ./.github/actions/setup-ios-toolchain
+        with:
+          boot: "false"
+
+      # The runner image's Go may predate simslim's `go 1.26`; GOTOOLCHAIN=auto fetches the right one.
+      - name: Install simslim
+        env:
+          GOTOOLCHAIN: auto
+        run: |
+          set -euo pipefail
+          go install "github.com/mobai-app/simslim/cmd/simslim@${SIMSLIM_VERSION}"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Download the prebuilt app + runner
+        uses: ./.github/actions/download-ios-build
+
+      - name: Unpack the build products
+        run: tar -xpf ios-build.tar
+
+      # The timeouts README recommends for GitHub-hosted macOS runners (context deadline exceeded).
+      - name: Boot the Simulator (timed)
+        id: boot
+        env:
+          SIMSLIM_BOOT_TIMEOUT: 15m
+          SIMSLIM_SPAWN_TIMEOUT: 5m
+        run: |
+          set -euo pipefail
+          udid=$(xcrun simctl list devices available -j | jq -r '[.devices | to_entries[] | select(.key|test("iOS")) | .value[] | select(.name|startswith("iPhone")) | .udid] | first // empty')
+          if [ -z "$udid" ]; then
+            devtype=$(xcrun simctl list devicetypes -j | jq -r '[.devicetypes[] | select(.productFamily=="iPhone") | .identifier] | last')
+            udid=$(xcrun simctl create ci-iphone "$devtype")
+          fi
+          xcrun simctl list devices -j | jq -r --arg u "$udid" '.devices | to_entries[] | .value[] | select(.udid==$u) | "device: \(.name) \(.udid) state=\(.state)"'
+          start=$(date +%s)
+          if [ "$VARIANT" = "slim" ]; then
+            # Shutdown device: simslim writes the overrides offline and boots once, already slim.
+            simslim on "$udid"
+            # Boot it ourselves if this simslim version leaves it off.
+            state=$(xcrun simctl list devices -j | jq -r --arg u "$udid" '.devices | to_entries[] | .value[] | select(.udid==$u) | .state')
+            if [ "$state" != "Booted" ]; then xcrun simctl boot "$udid"; fi
+          else
+            xcrun simctl boot "$udid"
+          fi
+          xcrun simctl bootstatus "$udid" -b
+          end=$(date +%s)
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+          echo "BOOT_SECONDS=$((end - start))" >> "$GITHUB_ENV"
+          simslim status "$udid" || true
+
+      - name: Install the app (timed)
+        env:
+          UDID: ${{ steps.boot.outputs.udid }}
+        run: |
+          set -euo pipefail
+          start=$(date +%s)
+          xcrun simctl install "$UDID" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
+          echo "INSTALL_SECONDS=$(( $(date +%s) - start ))" >> "$GITHUB_ENV"
+
+      # Footprint after boot + install, before the run loads the host: the Simulator's own memory
+      # (simslim measure) and the host's free memory (memory_pressure).
+      - name: Measure memory (pre-run)
+        env:
+          UDID: ${{ steps.boot.outputs.udid }}
+        run: |
+          mkdir -p timing
+          simslim measure "$UDID" --json > timing/measure.json 2> timing/measure.err || true
+          cat timing/measure.json timing/measure.err || true
+          memory_pressure | tail -1 | tee timing/host-free.txt || true
+          echo "RUN_START=$(date +%s)" >> "$GITHUB_ENV"
+
+      # Same scenarios as ios-e2e.yml's gating `run` job.
+      - name: Run the gating XCUITest scenarios
+        id: e2e
+        continue-on-error: true
+        uses: ./.github/actions/bajutsu-e2e
+        with:
+          scenarios: >-
+            demos/showcase/scenarios/smoke.yaml
+            demos/showcase/scenarios/gestures_multitouch.yaml
+            demos/showcase/scenarios/picker_wheel.yaml
+            demos/showcase/scenarios/webview.yaml
+            demos/showcase/scenarios/search.yaml
+            demos/showcase/scenarios/notices.yaml
+            demos/showcase/scenarios/alert.yaml
+            demos/showcase/scenarios/permission.yaml
+            demos/showcase/scenarios/permission_system_alert.yaml
+          target: showcase-swiftui
+          backend: xcuitest
+          config: demos/showcase/showcase.config.yaml
+          udid: ${{ steps.boot.outputs.udid }}
+          artifact-name: run-${{ matrix.variant }}-${{ matrix.attempt }}
+
+      - name: Record timings
+        if: always()
+        env:
+          OUTCOME: ${{ steps.e2e.outcome }}
+        run: |
+          set -euo pipefail
+          mkdir -p timing
+          run_seconds=$(( $(date +%s) - ${RUN_START:-$(date +%s)} ))
+          footprint=$(jq -r '.bytes // empty' timing/measure.json 2>/dev/null || true)
+          procs=$(jq -r '.processes // empty' timing/measure.json 2>/dev/null || true)
+          jq -n \
+            --arg variant "$VARIANT" --argjson attempt "$ATTEMPT" \
+            --argjson boot "${BOOT_SECONDS:-null}" --argjson install "${INSTALL_SECONDS:-null}" \
+            --argjson run "$run_seconds" --arg outcome "$OUTCOME" \
+            --arg footprint "$footprint" --arg procs "$procs" --arg host_free "$(cat timing/host-free.txt 2>/dev/null || true)" \
+            '{variant:$variant, attempt:$attempt, boot_s:$boot, install_s:$install, run_s:$run,
+              outcome:$outcome, sim_processes:$procs, sim_footprint_bytes:$footprint, host_free:$host_free}' \
+            > "timing/result.json"
+          cat timing/result.json
+
+      - name: Upload timings
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: timing-${{ matrix.variant }}-${{ matrix.attempt }}
+          path: timing/
+          retention-days: 7
+
+      # The run step is continue-on-error so timings are always recorded; surface its verdict here.
+      - name: Fail if the scenarios failed
+        if: steps.e2e.outcome == 'failure'
+        run: exit 1
+
+  summarize:
+    name: summarize
+    needs: measure
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          pattern: timing-*
+
+      - name: Write the comparison table
+        run: |
+          set -euo pipefail
+          {
+            echo "## simslim experiment (${SIMSLIM_VERSION})"
+            echo
+            echo "| variant | # | boot (s) | install (s) | run (s) | outcome | sim procs | sim footprint (bytes) | host free |"
+            echo "|---|---|---|---|---|---|---|---|---|"
+            jq -s -r 'sort_by(.variant, .attempt)[] | "| \(.variant) | \(.attempt) | \(.boot_s) | \(.install_s) | \(.run_s) | \(.outcome) | \(.sim_processes) | \(.sim_footprint_bytes) | \(.host_free) |"' timing-*/result.json
+            echo
+            echo "| variant | mean boot (s) | mean run (s) | passed |"
+            echo "|---|---|---|---|"
+            jq -s -r 'group_by(.variant)[] | "| \(.[0].variant) | \(([.[].boot_s | numbers] | add / length) | floor) | \(([.[].run_s] | add / length) | floor) | \([.[] | select(.outcome=="success")] | length)/\(length) |"' timing-*/result.json
+          } >> "$GITHUB_STEP_SUMMARY"
+          cat "$GITHUB_STEP_SUMMARY"
