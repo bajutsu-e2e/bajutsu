@@ -13,7 +13,7 @@
 ## 共通
 
 - 全コマンドの前に `.env` を読み込みます（`_bootstrap`、下記）。
-- config がない、アプリが未定義、または actuator が使えないときは、メッセージを出して **終了コード 2** で終わります。
+- config がない、アプリが未定義、または actuator が使えないときの結果は、メッセージの出力と **終了コード 2**。
 - `--backend` は選択ではなく検査です。ターゲットは 1 つの `platform` を名指しし、それが actuator を
   決めます（[drivers](drivers.md#バックエンド選択と-actuator)）。このフラグが受け付けるのは、ターゲットの
   platform（例 `ios`）、その platform の actuator 名（`xcuitest`、`adb`、`playwright`）、`fake` です。
@@ -472,7 +472,7 @@ bajutsu record --target <name> --goal "<自然言語ゴール>" [--out <file.yam
 | `--config` | `bajutsu.config.yaml` | config |
 | `--worker-config` | 同梱のデフォルト | [`run`](#run) と同じ worker 能力ファイル。`appium` のファイルを渡すと、グリッドの platform のターゲットをグリッド上でオーサリングします |
 
-- 内部では、`launch_driver` の結果を `record_loop(driver, goal, ClaudeAgent(), ...)` に渡します。その結果は `dump_scenarios` で書き出します。
+- 内部の流れ: `launch_driver`、`record_loop(driver, goal, ClaudeAgent(), ...)`、`dump_scenarios` の順に呼び出し、シナリオを書き出す流れ。
 - 出力: `recorded <N> steps -> <path>`。**要 `ANTHROPIC_API_KEY`**（`ClaudeAgent`）。
 - **Git の `--config` は読み取り専用入力です**（[BE-0063](../../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）。`record` は config を取得したチェックアウトから読みますが、生成したシナリオは**ローカル**へ書きます。`--out` 省略時は（読み取り専用の SHA キーのキャッシュであるチェックアウト内の `paths.scenarios` ディレクトリではなく）**カレントディレクトリ**に自動命名し、チェックアウト内を指す `--out` は拒否します。そのファイルをレビューし、通常の git でリポジトリへコミットしてください。
 - 続けて、オーサリング（およびアラートガード）の AI が消費したトークン量を示す `AI usage:` 行を
