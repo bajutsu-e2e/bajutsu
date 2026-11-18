@@ -2,7 +2,7 @@
 
 # CLI リファレンス
 
-> 実装: `bajutsu/cli/`（Typer。各コマンドは所属する機能のディレクトリに置かれます。例：`run/cli.py`、`record/cli.py` — `cli/commands/` には機能を持たない `doctor`/`lint`/`schema`/`config`/`report`/`runner` のみが残ります）。エントリポイントは `pyproject.toml` の `bajutsu = "bajutsu.cli:app"`。
+> 実装: `bajutsu/cli/`（Typer。各コマンドは所属する機能のディレクトリに置かれます。例：`run/cli.py`、`record/cli.py`）。`cli/commands/` に残るのは、機能を持たない `doctor`、`lint`、`schema`、`config`、`report`、`runner` だけです。エントリポイントは `pyproject.toml` の `bajutsu = "bajutsu.cli:app"`。
 > この CLI（コマンドラインインターフェース）のすべてのコマンドは `--target <name>` で 1 [アプリ](glossary.md#target-app-device)を選び、
 > `--config`（既定 `bajutsu.config.yaml`）で設定を指します。アプリ固有の差分は config 側にあります（[configuration](configuration.md)）。
 
@@ -13,7 +13,7 @@
 ## 共通
 
 - 全コマンドの前に `.env` を読み込みます（`_bootstrap`、下記）。
-- config が無い / アプリ未定義 / actuator 無し → メッセージを出して **終了コード 2**。
+- config がない、アプリが未定義、または actuator が使えないときの結果は、メッセージの出力と **終了コード 2**。
 - `--backend` は選択ではなく検査です。ターゲットは 1 つの `platform` を名指しし、それが actuator を
   決めます（[drivers](drivers.md#バックエンド選択と-actuator)）。このフラグが受け付けるのは、ターゲットの
   platform（例 `ios`）、その platform の actuator 名（`xcuitest`、`adb`、`playwright`）、`fake` です。
@@ -188,7 +188,7 @@ drivers: [xcuitest, adb, playwright, fake]
 
 ## `doctor`
 
-**実行可能ゲート** + 現在画面の **規約充足度スコア**（AI 非依存。[configuration](configuration.md#doctor規約充足度スコア)）。
+**実行可能ゲート**と、現在画面の **規約充足度スコア**（AI 非依存。[configuration](configuration.md#doctor規約充足度スコア)）。
 
 ```bash
 bajutsu doctor --target <name> [--udid booted] [--backend ...] [--config ...] [--scenario <file.yaml>] [--environment-only] [--worker-config <worker.yaml>]
@@ -233,7 +233,7 @@ bajutsu doctor --target <name> [--udid booted] [--backend ...] [--config ...] [-
 
 ## `audit`
 
-シナリオの **静的な決定性スコア**です。`doctor` の規約充足度スコアの、デバイスを使わない従兄弟にあたります（AI 非依存。[selectors](selectors.md)、[BE-0049](../../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md)）。シナリオファイルを読み込み（`trace --explain` と同様に components / data を展開）、実行せずに、各シナリオがどれだけ再現可能かを報告します。
+シナリオの **静的な決定性スコア**です。`doctor` の規約充足度スコアの、デバイスを使わない対応物にあたります（AI 非依存。[selectors](selectors.md)、[BE-0049](../../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md)）。シナリオファイルを読み込み（`trace --explain` と同様に components / data を展開）、実行せずに、各シナリオがどれだけ再現可能かを報告します。
 
 ```bash
 bajutsu audit <scenario.yaml> [--json]
@@ -256,7 +256,7 @@ bajutsu audit --history <runs-dir>                         # 過去の run か�
 
 ## `coverage`
 
-スイートの **静的な e2e カバレッジマップ**です。`doctor` の規約充足度スコアの、read-only な従兄弟にあたります（AI 非依存。[BE-0050](../../roadmaps/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map-ja.md)）。`doctor` が1画面の*提供する* id を採点するのに対し、こちらはスイート全体が*行使する* id を採点します。アプリの設定済み `paths.scenarios` ディレクトリの `*.yaml` をすべて読み込み（components / data を展開）、参照している安定した id を namespace ごとにまとめ、アプリが宣言した `subject.idNamespaces`（[configuration](configuration.md#doctor規約充足度スコア)）に対して、実行せずに突き合わせます。
+スイートの **静的な e2e カバレッジマップ**です。`doctor` の規約充足度スコアの、read-only な対応物にあたります（AI 非依存。[BE-0050](../../roadmaps/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map-ja.md)）。`doctor` が1画面の*提供する* id を採点するのに対し、こちらはスイート全体が*行使する* id を採点します。アプリの設定済み `paths.scenarios` ディレクトリの `*.yaml` をすべて読み込み（components / data を展開）、参照している安定した id を namespace ごとにまとめ、アプリが宣言した `subject.idNamespaces`（[configuration](configuration.md#doctor規約充足度スコア)）に対して、実行せずに突き合わせます。
 
 ```bash
 bajutsu coverage --target <name> [--config ...] [--runs <dir>] [--crawl <screenmap>] [--json] [--html <path>]
@@ -472,7 +472,7 @@ bajutsu record --target <name> --goal "<自然言語ゴール>" [--out <file.yam
 | `--config` | `bajutsu.config.yaml` | config |
 | `--worker-config` | 同梱のデフォルト | [`run`](#run) と同じ worker 能力ファイル。`appium` のファイルを渡すと、グリッドの platform のターゲットをグリッド上でオーサリングします |
 
-- 内部で `launch_driver` → `record_loop(driver, goal, ClaudeAgent(), ...)` → `dump_scenarios` で書き出します。
+- 内部の流れ: `launch_driver` の結果を `record_loop(driver, goal, ClaudeAgent(), ...)` に渡し、`record_loop` の結果を `dump_scenarios` で書き出す流れ。
 - 出力: `recorded <N> steps -> <path>`。**要 `ANTHROPIC_API_KEY`**（`ClaudeAgent`）。
 - **Git の `--config` は読み取り専用入力です**（[BE-0063](../../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）。`record` は config を取得したチェックアウトから読みますが、生成したシナリオは**ローカル**へ書きます。`--out` 省略時は（読み取り専用の SHA キーのキャッシュであるチェックアウト内の `paths.scenarios` ディレクトリではなく）**カレントディレクトリ**に自動命名し、チェックアウト内を指す `--out` は拒否します。そのファイルをレビューし、通常の git でリポジトリへコミットしてください。
 - 続けて、オーサリング（およびアラートガード）の AI が消費したトークン量を示す `AI usage:` 行を
@@ -809,7 +809,7 @@ bajutsu codegen <scenario.yaml> --target <name> [--emit xcuitest | playwright | 
 ## `approve`
 
 実行で撮影したスクリーンショットを `visual` の**ベースライン**へ昇格させます。これはビジュアル
-リグレッションのループ（run → 確認 → approve → 再 run）の後半にあたります。`manifest.json` を読むだけなので
+リグレッションのループ（run、確認、approve、再 run）の後半にあたります。`manifest.json` を読むだけなので
 **Simulator 不要**で CI でもヘッドレスに動作し、WebUI の **Approve** ボタンの CLI 版です。
 
 ```bash
@@ -1009,7 +1009,7 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
 
 ## `mcp`
 
-エージェント（Claude Desktop / Code）がシナリオを実行し、run の証跡を読めるように **MCP（Model Context Protocol）サーバ**を起動します。オプションの `bajutsu[mcp]` extra（`fastmcp`）が必要です。
+エージェント（Claude Desktop や Claude Code）がシナリオを実行し、run の証跡を読めるように **MCP（Model Context Protocol）サーバ**を起動します。オプションの `bajutsu[mcp]` extra（`fastmcp`）が必要です。
 
 ```bash
 bajutsu mcp [--config bajutsu.config.yaml] [--runs runs] [--transport stdio] [--worker-config <worker.yaml>]
