@@ -73,7 +73,8 @@ Set these variables in the target's `subject.launch.env` or a scenario's
 ([drivers](drivers.md#environment-management-simctl)).
 
 BE-0079 removed the launch-env shortcuts to a *data state* and to a *pushed screen*. The catalog is
-fixed (no seed knob). A deeplink no longer jumps onto a detail, and only tapping its row opens one. BE-0107 finished the job by retiring `SHOWCASE_TAB`, the last launch-env shortcut
+fixed (no seed knob). A deeplink no longer jumps onto a detail: a detail is reached only by tapping
+its row. BE-0107 finished the job by retiring `SHOWCASE_TAB`, the last launch-env shortcut
 to a screen. The app always launches on the Stable tab, and every other tab is reached by tapping
 the native tab bar. The XCUITest backend taps the native tab bar's individual tabs, so the
 tab-crossing scenarios run on `--backend ios`.
