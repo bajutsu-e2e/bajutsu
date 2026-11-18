@@ -208,7 +208,7 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
     is always a self-contained, gate-green change. **Auto-open the Draft PR after the gate, then run
     a paced `/loop`** that drives the mechanical tail (CI fixes, review replies) to quiet-and-green.
     Delegate each iteration's `pr-followup` work to a fresh subagent so the heavy implement
-    transcript stays out of the loop. The loop escalates to the human on a design-change comment or
+    transcript stays out of that subagent's context. The loop escalates to the human on a design-change comment or
     a merge conflict, and never marks the PR ready itself. See `implement-be` steps 10–12.
     `fix-issue` runs the follow-up steps 11–12 unmodified, and its own step 7 adapts step 10 for a
     plain GitHub issue that carries no BE id.
