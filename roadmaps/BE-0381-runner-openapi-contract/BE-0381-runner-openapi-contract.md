@@ -448,12 +448,13 @@ Once Unit 4 takes `Router` out of production, `APIHandler.operations` is the sol
 invariant. The regression worth catching is an operation that stops routing through that queue. A
 queue that someone declares concurrent is a different case.
 
-`APIHandlerConcurrencyTests` takes four steps:
+`APIHandlerConcurrencyTests` takes three steps:
 
 1. It holds one operation on the main thread.
 2. It dispatches a probe onto the queue.
 3. It requires the probe *not* to run until the operation returns.
-4. That requirement holds only while the operation occupies the queue.
+
+That requirement holds only while the operation occupies the queue.
 
 The test fails against both regressions, as measured. A read that calls the provider inline leaves
 the case of that read red and the other families green. A concurrent queue turns all three red.
@@ -478,8 +479,8 @@ each reply declares `.userInitiated` instead of inheriting it. The work inside t
 through `operations` and its `qos:`. That work is the generated decode of the request and the encode
 of the reply, including the PNG of a screenshot.
 
-A test drives that hop from a `.utility` caller. Inheriting looks identical while the own
-`.userInitiated` queue of `HTTPServer` is the caller. It stops looking identical the moment the event
+A test drives that hop from a `.utility` caller. Inheriting looks identical while `HTTPServer`'s own
+`.userInitiated` queue is the caller. It stops looking identical the moment the event
 loop of Unit 5 is the caller.
 
 **The deliberate wire differences.** The generated serializer sends `application/json; charset=utf-8`

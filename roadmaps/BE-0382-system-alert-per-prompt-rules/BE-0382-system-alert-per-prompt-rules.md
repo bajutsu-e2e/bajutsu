@@ -166,8 +166,8 @@ path that reaches the vision guard is one where no rule identified the alert:
 - a surface that `springboard.alerts` cannot enumerate
 - an alert whose prompt no rule matched
 
-The tap label of a rule is therefore, by construction, the answer to some *other* prompt. The own
-policy of the locator is to follow an instruction when given one, and to fall back to the
+The tap label of a rule is therefore, by construction, the answer to some *other* prompt. The
+locator's own policy is to follow an instruction when given one, and to fall back to the
 least-destructive button otherwise. Passing rule labels down would steer the locator to accept a
 prompt that the scenario never named. That recreates the silent inversion this proposal removes, one
 layer lower. A scenario that carries only `rules` leaves the locator on its least-destructive
@@ -259,8 +259,8 @@ scenario meant to refuse. No assertion catches a permission that the scenario ne
 documented trick also stays correct only while today's label sets hold.
 
 **A general matcher over literal button labels.** An entry would pair the labels to look for with the
-label to tap. Such a matcher would cover alerts outside the table, including the own dialog of a
-third-party software development kit. It would hand the author back the locale-specific transcription
+label to tap. Such a matcher would cover alerts outside the table, including a third-party software
+development kit's own dialog. It would hand the author back the locale-specific transcription
 that BE-0320 removed. It would also give the schema two ways to say what one prompt-named rule says.
 The existing `instruction` already covers a literal-label catch-all, so the gap this alternative fills
 is narrower than it appears.
