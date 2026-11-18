@@ -1021,7 +1021,9 @@ through an injectable `RunFn`.
 > **Every call is bounded** ([BE-0363](../roadmaps/BE-0363-simctl-subprocess-timeout/BE-0363-simctl-subprocess-timeout.md)):
 > the shared runner passes a deadline to every one-shot `simctl` subprocess, chosen from the command
 > itself — a long one for the commands whose duration the device or the app sets rather than simctl
-> (`bootstatus`, `boot`, `erase`, `install`), a short one for everything else. A call that never returns, the observable symptom of a
+> (`bootstatus`, `boot`, `erase`, `install`, `uninstall`), a short one for everything else. The
+> pasteboard read, `pbpaste`, takes a shorter bound still and is retried on simctl's transient
+> exit 60, like the `pbcopy` write. A call that never returns, the observable symptom of a
 > wedged CoreSimulator, therefore raises `simctl.DeviceTimeout` naming the command and the deadline
 > it exceeded, instead of hanging until CI cancels the whole job with no cause. `DeviceTimeout`
 > subclasses `DeviceError`, so a handler that already converts a device fault needs no change. It
