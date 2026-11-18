@@ -842,7 +842,7 @@ URL を受け付けたかどうかの判定方法は、バックエンドによ�
 | バックエンド | URL の渡し方 | ステップが失敗する条件 |
 |---|---|---|
 | iOS（XCUITest） | ランナーが、受け取るアプリに対して `XCUIApplication.open(_:)` を呼ぶ | 呼び出しが例外を投げるか失敗を記録した場合（そのメッセージが理由になる）。デバイスの iOS が 16.4 より前の場合 |
-| Android（adb） | `am start -W --activity-single-top -a android.intent.action.VIEW -d <url> <package>` を実行する | `am start` が `Error` で始まる行、例外、`ok` 以外のステータスを出力した場合。Android が URL を渡さずにタスクを前面に出しただけの場合 |
+| Android（adb） | `am start -W --activity-single-top -a android.intent.action.VIEW -d <url> <package>` を実行する | `am start` が `Error` で始まる行、例外、`ok` 以外のステータスを出力した場合。実行中のアクティビティが受け取ったことを示すもの以外の `Activity not started` の警告を出力した場合 |
 
 iOS では、受け取るアプリはたいてい最初から前面にあるので、前面待ちは何も証明しません。
 判定は `open(_:)` が投げる例外や記録する失敗に頼ります。

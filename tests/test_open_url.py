@@ -275,6 +275,16 @@ def test_view_intent_cmd_quotes_the_url_into_one_shell_line() -> None:
     assert shlex.split(cmd[4])[7:9] == [url, _PKG]
 
 
+@pytest.mark.parametrize("value", ["myapp://x\nError: boom", "myapp://x\rStatus: ok", "a://b\tc"])
+def test_a_line_break_is_refused_by_the_rule_and_the_command(value: str) -> None:
+    # `am start` echoes the URL, so a line break inside it would forge a line of the verdict.
+    assert "no line break or tab" in (open_url_problem(value) or "")
+    with pytest.raises(adb.DeviceError, match="line break or tab"):
+        adb.view_intent_cmd("S", value, _PKG)
+    with pytest.raises(adb.DeviceError, match="line break or tab"):
+        adb.deeplink_cmd("S", value, _PKG)
+
+
 def test_launch_deeplink_cmd_waits_but_is_not_single_top() -> None:
     line = adb.deeplink_cmd("S", "showcase://tabs/settings", _PKG)[4]
     assert line.startswith("am start -W -a android.intent.action.VIEW")
@@ -302,10 +312,31 @@ _UNRESOLVED = "Error: Activity not started, unable to resolve Intent { act=VIEW 
             "java.lang.SecurityException: Permission Denial: starting Intent\n",
             "java.lang.SecurityException: Permission Denial: starting Intent",
         ),
+        (
+            "Warning: Activity not started because the  current activity is being kept for the "
+            "user.\nStatus: ok\n",
+            "Warning: Activity not started because the  current activity is being kept for the user.",
+        ),
+        (
+            "Warning: Activity not started because intent should be handled by the caller\n"
+            "Status: ok\n",
+            "Warning: Activity not started because intent should be handled by the caller",
+        ),
         ("Starting: Intent {}\nStatus: timeout\n", "Starting: Intent {} / Status: timeout"),
         ("", "am start printed nothing"),
     ],
-    ids=["ok", "delivered-ok", "delivered", "error", "fronted", "exception", "timeout", "empty"],
+    ids=[
+        "ok",
+        "delivered-ok",
+        "delivered",
+        "error",
+        "fronted",
+        "exception",
+        "switches-canceled",
+        "returned-to-caller",
+        "timeout",
+        "empty",
+    ],
 )
 def test_view_intent_rejection_reads_the_output_table(out: str, reason: str | None) -> None:
     assert adb.view_intent_rejection(out) == reason

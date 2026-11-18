@@ -32,6 +32,10 @@ def open_url_problem(url: str) -> str | None:
         return f"openUrl needs an absolute URL with a scheme, such as myapp://path, got {url!r}"
     if scheme in _REJECTED_SCHEMES:
         return f"openUrl does not open {scheme}: URLs, got {url!r}"
+    if any(c in stripped for c in "\n\r\t"):
+        # `urlsplit` drops these before reading the scheme, yet adb's verdict is read from
+        # `am start`'s output, which echoes the URL: a line break there would forge one of its lines.
+        return f"openUrl needs a URL with no line break or tab, got {url!r}"
     return None
 
 

@@ -1143,7 +1143,7 @@ Each backend decides acceptance its own way:
 | Backend | How the URL is handed over | When the step fails |
 |---|---|---|
 | iOS (XCUITest) | the runner calls `XCUIApplication.open(_:)` on the receiving app | the call raises or records an XCTest issue, whose message becomes the reason; or the device runs an iOS before 16.4 |
-| Android (adb) | `am start -W --activity-single-top -a android.intent.action.VIEW -d <url> <package>` | `am start` prints an `Error` line, an exception, or a status other than `ok`; or Android brings the task forward without delivering the URL |
+| Android (adb) | `am start -W --activity-single-top -a android.intent.action.VIEW -d <url> <package>` | `am start` prints an `Error` line, an exception, or a status other than `ok`; or it prints an `Activity not started` warning other than the one saying the running activity received the intent |
 
 On iOS, the receiving app is in front already mid-scenario, so the foreground wait proves nothing.
 The step then rests on what `open(_:)` raises or records.
