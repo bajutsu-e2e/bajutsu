@@ -59,7 +59,7 @@ Each hypothesis names evidence that exists at failure time and is gone by the ti
 - the host's load at the stall
 - thread samples of the wedged processes
 
-Collecting this evidence is cheap next to one more undiagnosable red run. A 10x-billed macOS runner pays for that run.
+Collecting this evidence is cheap next to one more undiagnosable red run on a 10x-billed macOS runner.
 
 ## Detailed design
 
@@ -84,7 +84,7 @@ At either moment, the state that would answer hypothesis (1) versus (2) still ex
 - `sample` of the runner host process and the Simulator's screenshot-serving processes
 - a `ps aux` plus `vm_stat` snapshot
 
-Each command carries a short subprocess timeout, and the probe swallows failures. Each run has a cap on captures: the first stalls get one, and later ones get none. A crash-looping run therefore cannot fill the disk or the wall clock. When both variables are unset, behavior stays as today. The hooks are CI's to opt into.
+Each command carries a short subprocess timeout, and the probe swallows failures. Captures are capped per run, covering only the first few stalls, so a crash-looping run cannot fill the disk or the wall clock. When both variables are unset, behavior stays as today. The hooks are CI's to opt into.
 
 ### Layer 2: Simulator and CoreSimulator state, from CI
 
@@ -106,7 +106,7 @@ A new composite action, `.github/actions/collect-ios-diagnostics`, owns the OS-s
 - **On failure only** (heavy):
   - Run `xcrun simctl diagnose` with a timeout. It is Apple's own collector for CoreSimulator and device state.
   - Take targeted unified-log extracts via `log show --last <window> --predicate`. They cover the processes that serve rendering and screenshots: `backboardd`, `SpringBoard`, `testmanagerd`, and the CoreSimulator service.
-  - Inside `bajutsu-e2e/action.yml`, this tier is gated on the run step's own outcome. In the pytest lanes, the caller gates it on the run step's outcome too. A `with:` value rejects `failure()`.
+  - Inside `bajutsu-e2e/action.yml`, this tier is gated on the run step's own outcome. In the pytest lanes, the caller gates it on the run step's outcome too, since `failure()` is rejected in a `with:` value.
 
 Implementation measured five things this design had wrong. Each would have shipped a collector that quietly gathers nothing. That is the very failure the proposal exists to end.
 
@@ -117,7 +117,7 @@ Implementation measured five things this design had wrong. Each would have shipp
   Measured over a 30-minute window, the host extract returned 34.5k lines and the guest extract 11.4k lines, about a second each.
 - **`simctl diagnose` blocks on stdin and deletes its `--output` directory.** It prints a consent notice and waits for a newline. A CI step's stdin is `/dev/null`, where it reads EOF and exits 0 having collected nothing. It also treats `--output` as the archive's *base path*. It replaces that directory with `<path>.tar.gz` and deletes whatever else was in it, so pointing it at the collection directory would delete the rest of the collection. Measured at ~15s and 22–78MB for one booted device. Its flags additionally require the `--flag=value` form.
 - **`CoreSimulator.log` is unbounded.** Copying it wholesale is a 183MB artifact on a long-lived host, on the *always* tier. The collection tails it instead.
-- **One shared capture budget would have starved the trigger that matters.** The Motivation above records that `recordVideo produced no new bytes` fires for every scenario, green runs included. A job runs a dozen scenario documents in one `bajutsu run` process. A single per-process cap of three would be spent on the third scenario's video warning. The runner crash is the failure the capture exists to explain. It also reaches the capture with the device's id, which no other trigger does. It finds nothing left. The budget is per trigger. A declined capture gets a warning rather than a debug line. The lane installs no log handler, and a debug line is no record at all.
+- **One shared capture budget would have starved the trigger that matters.** The Motivation above records that `recordVideo produced no new bytes` fires for every scenario, green runs included. A job runs a dozen scenario documents in one `bajutsu run` process. A single per-process cap of three would be spent on the third scenario's video warning, so the runner crash finds nothing left — and that crash is the failure the capture exists to explain, as well as the only trigger that reaches the capture with the device's id. The budget is per trigger. A declined capture gets a warning rather than a debug line. The lane installs no log handler, and a debug line is no record at all.
 - **A capture is charged to a clock it does not own.** BE-0353's `CrashRecoveryBudget` is a wall-clock deadline. It is set at the *first* crash and re-checked at each later one. Every second a capture spends is a second the recovery no longer has. The first CI run of this change showed it. A `visual` job missed its 300s recovery deadline by 75s. Two captures of up to 30s fell inside that window. A diagnostic turned a recoverable degradation into a failed run, which an observer may not do. The per-capture budget is 10s against that lane's 300s. The screenshot ceiling is 5s. The runner's own read timeout is 15s, so a `simctl` path unanswered at 5s has already answered the question. A test pins the relationship against the lane's configured budget rather than the bare number.
 
 Two smaller shapes follow from the same measurements:

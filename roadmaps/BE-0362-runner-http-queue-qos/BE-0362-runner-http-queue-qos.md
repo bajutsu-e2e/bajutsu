@@ -25,7 +25,7 @@ Neither queue declares a quality of service (QoS). QoS is the priority class tha
 
 This item declares one. A queue built without a QoS does not run at a fixed low priority. Dispatch propagates the submitting thread's QoS through `async` onto such a queue, capped at `.userInitiated`. The omission costs a guarantee, not priority. The priority of the whole request path is inherited from whichever context happened to start the accept loop. It stays correct only as long as that submission chain does.
 
-Declaring `.userInitiated` on both queues pins the priority of the channel that the [driver](../../docs/glossary.md#driver-backend-actuator-platform)'s readiness and health probes travel. Without the declaration, anyone who later moves where the server is started would silently re-derive the priority, and possibly to a different value.
+Declaring `.userInitiated` on both queues pins the priority of the channel that the [driver](../../docs/glossary.md#driver-backend-actuator-platform)'s readiness and health probes travel. Without the declaration, anyone who later moves where the server is started would silently re-derive the priority, possibly to a different value.
 
 ## Motivation
 
