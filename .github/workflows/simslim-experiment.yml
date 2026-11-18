@@ -90,7 +90,7 @@ jobs:
           if-no-files-found: error
 
   measure:
-    name: run (${{ matrix.variant }} #${{ matrix.attempt }})
+    name: "run (${{ matrix.variant }}, attempt ${{ matrix.attempt }})"
     needs: build
     runs-on: macos-latest
     timeout-minutes: 60
@@ -112,12 +112,17 @@ jobs:
         with:
           boot: "false"
 
-      # The runner image's Go may predate simslim's `go 1.26`; GOTOOLCHAIN=auto fetches the right one.
+      # The macos-26 image ships no Go, so take it from Homebrew (a bottle, seconds); GOTOOLCHAIN=auto
+      # still fetches a newer toolchain if simslim's `go` directive outruns it. `go install` at a tag
+      # pins the exact simslim release, which the tap formula would not.
       - name: Install simslim
         env:
           GOTOOLCHAIN: auto
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
         run: |
           set -euo pipefail
+          command -v go >/dev/null || brew install go
           go install "github.com/mobai-app/simslim/cmd/simslim@${SIMSLIM_VERSION}"
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
@@ -256,6 +261,6 @@ jobs:
             echo
             echo "| variant | mean boot (s) | mean run (s) | passed |"
             echo "|---|---|---|---|"
-            jq -s -r 'group_by(.variant)[] | "| \(.[0].variant) | \(([.[].boot_s | numbers] | add / length) | floor) | \(([.[].run_s] | add / length) | floor) | \([.[] | select(.outcome=="success")] | length)/\(length) |"' timing-*/result.json
+            jq -s -r 'group_by(.variant)[] | "| \(.[0].variant) | \(([.[].boot_s | numbers] | if length > 0 then (add / length | floor) else "n/a" end)) | \(([.[] | select(.outcome != "skipped") | .run_s] | if length > 0 then (add / length | floor) else "n/a" end)) | \([.[] | select(.outcome=="success")] | length)/\(length) |"' timing-*/result.json
           } >> "$GITHUB_STEP_SUMMARY"
           cat "$GITHUB_STEP_SUMMARY"
