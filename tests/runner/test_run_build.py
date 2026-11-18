@@ -9,10 +9,10 @@ from pathlib import Path
 import pytest
 import typer
 
+from bajutsu.cli._shared import _with_worker_device
 from bajutsu.common.capability.worker_capability import WorkerCapability, parse_worker_capability
 from bajutsu.common.config import Effective, load_config, resolve
 from bajutsu.common.scenario import Scenario
-from bajutsu.cli._shared import _with_worker_device
 from bajutsu.run.cli import (
     _build_primary_or_exit,
     _reject_bad_device_groups,
