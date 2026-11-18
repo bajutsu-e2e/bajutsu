@@ -82,14 +82,7 @@
 
 - **実際に送った座標だけを書きます。** プラットフォームへ座標が渡っていない場合、`points` は空です。handle 経由の iOS のタップや Android の端末側のジェスチャでは、点を選んだのが向こう側だからです。そのときは代わりに解決した `frame` を示し、取っていない測定値として frame の中心を差し出すことはしません。
 - **端末側の処理を増やしません。** 記録が持つ値はどれも actuator がすでに手にしていた値なので、query も read も往復も追加で発生しません。
-- **著者が書いた文字列は決して持ちません。** `manifest.json` は秘匿処理を通さずに書き出されるので、記録は次のいずれも持ちません。
-  - `type` ステップのテキスト（文字数さえ持ちません。`Redactor` が固定長のプレースホルダを使うのは、秘匿情報の長さがどの成果物にも出ないようにするためです）
-  - `selectOption` の option
-  - `setPickerValue` の value
-  - `navigate` ステップの URL
-  - 要素のアクセシビリティ label
-
-  `target` は常に解決したアクセシビリティ識別子だけなので、識別子を持たない要素では未設定になります。
+- **著者が書いた文字列は決して持ちません。** `manifest.json` は秘匿処理を通さずに書き出されるので、記録は `type` ステップのテキスト（文字数さえ持ちません。`Redactor` が固定長のプレースホルダを使うのは、秘匿情報の長さがどの成果物にも出ないようにするためです）、`selectOption` の option、`setPickerValue` の value、`navigate` ステップの URL、要素のアクセシビリティ label のいずれも持ちません。`target` は常に解決したアクセシビリティ識別子だけなので、識別子を持たない要素では未設定になります。
 
 記録はジェスチャを「試行した」時点、つまり通信が答える前に書きます。そのため操作に失敗したステップでも、何を狙ったかは残ります。ステップが動いたかどうかを語るのはステップ自身の結果です。
 
@@ -182,20 +175,10 @@ Android の `appTrace` は `adb logcat -s <tag>:V` を流し、アプリはそ�
 - iOS は `start_video` / `start_device_log`、Android は `start_screenrecord` / `start_logcat` が `Interval` を返し、`Interval.stop()` がシグナルを送ってファイルを確定します。`deviceLog` の停止は最大 10 秒待ち、超えたら kill します。`video` は停止から kill までに 120 秒という余裕のある確定待ちを取ります。`recordVideo` / `screenrecord` はクリップ全体をディスクへ flush して mux し終える必要があり、途中で kill すると mp4 が壊れ（`moov` atom を持たないファイルになり）、iOS では Simulator の録画セッションが解放されずに残ってしまうためです。
 - `screenrecord` はデバイス側に録画するので、その `Interval` は停止時に確定した mp4 を `adb pull` で回収し、デバイス側のコピーを削除します。pull が失敗した場合（デバイスが消えたなど）、Sink は実体のないパスを記録せず、その 1 件だけを警告つきで捨てます。区間証跡の確定処理の I/O で、通過するはずのシナリオを失敗させません。
 - なお `adb screenrecord` は 1 回の録画を約 180 秒（プラットフォームの既定／上限であり、bajutsu が調整できるものではありません）で打ち切るので、それより長いシナリオの Android 動画はその時点で終わります。
-- deviceLog は iOS では `--predicate`（NSPredicate）でサブシステムなどに絞れます（CLI の `--log-predicate`）。`adb logcat` はタグや優先度で絞り込みません（logcat の filterspec は別の構文で、後続の knob です）。取得はリングバッファ全体ではなくシナリオの区間を反映するよう、末尾から追従を始めます。
-  - バッファは `logcat` 単体の既定（`main,system,crash`）より広げ、`events` を加えています。アプリ自身の未捕捉例外は `crash` に記録されます。`ActivityManager` がメモリ不足を理由にプロセスを kill した場合は、`events` に `am_kill` や `am_low_memory` という構造化エントリが記録されます。この記録は `events` にしかありません。`events` を加えなければ、この原因は取得漏れによる失敗と区別できません。
-  - カーネル自身の OOM や low memory killer の経路はカーネルのリングバッファに記録されます。logd が `ro.logd.kernel` で `/proc/kmsg` を取り込んでいる環境（主に userdebug ビルド）なら `logcat -b kernel` で読めますが、環境に依存するのでここでは加えていません。
+- deviceLog は iOS では `--predicate`（NSPredicate）でサブシステムなどに絞れます（CLI の `--log-predicate`）。`adb logcat` はタグや優先度で絞り込みません（logcat の filterspec は別の構文で、後続の knob です）。取得はリングバッファ全体ではなくシナリオの区間を反映するよう、末尾から追従を始めます。バッファは `logcat` 単体の既定（`main,system,crash`）より広げ、`events` を加えています。アプリ自身の未捕捉例外は `crash` に記録されます。`ActivityManager` がメモリ不足を理由にプロセスを kill した場合は、`events` に `am_kill` や `am_low_memory` という構造化エントリが記録されます。この記録は `events` にしかありません。`events` を加えなければ、この原因は取得漏れによる失敗と区別できません。カーネル自身の OOM や low memory killer の経路はカーネルのリングバッファに記録されます。logd が `ro.logd.kernel` で `/proc/kmsg` を取り込んでいる環境（主に userdebug ビルド）なら `logcat -b kernel` で読めますが、環境に依存するのでここでは加えていません。
 - `INTERVAL_KINDS = {"video", "deviceLog", "appTrace"}`。orchestrator はこの集合で「区間 / 瞬時」を振り分けます。
-- **シナリオ全体の `video` は、Android ではアプリの起動より前に開始します**。録画がアプリの起動（コールドスタート）を取りこぼさず含むようにするためです。環境の `start` が録画を開始し（デバイスの boot とアプリの install の後、`am start` の前）、動いている `Interval` を `prestarted_intervals` で返します。Sink はシナリオ開始時にこの録画を新たに開始し直さず引き取り（`intervals.adopt`）、停止時に確定してファイルを `scenario.mp4` へ移します。Android の `screenrecord` は本物の mp4 を書き出すので、拡張子どおりの中身になります。
-
-  web も同じ前倒しの取得をブラウザコンテキストの生成時に組み込みますが、確定先は `scenario.webm` です。Playwright の録画機能は常に Matroska/WebM を書き出します。そのためアーティファクト名は Android や iOS が使う `.mp4` を借用せず、実際のコンテナに合わせて決まります。詳細は [drivers.md](drivers.md#playwrightweb) の `PlaywrightDriver.video_extension` を参照してください。
-
-  現在の iOS バックエンドである XCUITest は、代わりにオンデマンドで録画します。`xcodebuild` ランナーが起動してアプリを立ち上げるまでのあいだに録画を始める処理がどこにもないため、`prestarted_intervals` は常に空です。この前倒しの録画は `records_video_up_front` で制御します。`True` を返すのは Android と web だけです。`video` を要求しないシナリオは、いずれのバックエンドでも何も開始しません。
-- **確認済みの開始時刻が、レポートのステップ/通信ログのタイムスタンプを、単に録画を要求した瞬間ではなく動画の実際の開始に合わせて補正します。** 本番の呼び出し箇所は`start_video`（iOS）と`start_screenrecord`（Android）に`confirm_started=True`を渡します。両者は録画の起動のあと、実在の信号を待ちます。確認できた`time.monotonic()`の値は`Interval.true_start`に記録されます。
-  - **iOS** が待つのは、`simctl io recordVideo`が最初のフレームを処理した時点で自身の標準エラー出力へ書く`Recording started`の行です。
-  - **Android** が待つのは、デバイス側のファイルに最初の1バイトが書かれることです。`screenrecord`は出力ファイルを空のまま開き、最初にエンコードしたフレームでマルチプレクサが動き出すまで何も書きません。そのため最初の1バイトが録画の原点を示します。この待ちはデバイス上で、上限つきの`adb shell`ループ1本として動きます。起動の前にファイルを消しておくので、前回の録画の残りがこの待ちに答えることはありません。
-  - **Android で上の待ちが確認できなかった場合**、デバイス側のプロセスが現れることの確認に戻ります。プロセスが存在しても、そのエンコーダーがすでにフレームを出力しているとは限らないため、より弱い保証です。それでも当て推量よりは確かな信号です。
-  - **web アクチュエータ**はポーリングせず、録画対象のページが生成された直後に`true_start`を記録します。`record_video_dir`はコンテキスト配下のページに対する録画を有効にするだけで、動画そのものはページが生成されるまで存在しないため、記録するタイミングは`new_context()`ではなく`new_page()`の直後です。
+- **シナリオ全体の `video` は、Android ではアプリの起動より前に開始します**。録画がアプリの起動（コールドスタート）を取りこぼさず含むようにするためです。環境の `start` が録画を開始し（デバイスの boot とアプリの install の後、`am start` の前）、動いている `Interval` を `prestarted_intervals` で返します。Sink はシナリオ開始時にこの録画を新たに開始し直さず引き取り（`intervals.adopt`）、停止時に確定してファイルを `scenario.mp4` へ移します。Android の `screenrecord` は本物の mp4 を書き出すので、拡張子どおりの中身になります。web も同じ前倒しの取得をブラウザコンテキストの生成時に組み込みますが、確定先は `scenario.webm` です。Playwright の録画機能は常に Matroska/WebM を書き出します。そのためアーティファクト名は Android や iOS が使う `.mp4` を借用せず、実際のコンテナに合わせて決まります。詳細は [drivers.md](drivers.md#playwrightweb) の `PlaywrightDriver.video_extension` を参照してください。現在の iOS バックエンドである XCUITest は、代わりにオンデマンドで録画します。`xcodebuild` ランナーが起動してアプリを立ち上げるまでのあいだに録画を始める処理がどこにもないため、`prestarted_intervals` は常に空です。この前倒しの録画は `records_video_up_front` で制御します。`True` を返すのは Android と web だけです。`video` を要求しないシナリオは、いずれのバックエンドでも何も開始しません。
+- **確認済みの開始時刻が、レポートのステップ/通信ログのタイムスタンプを、単に録画を要求した瞬間ではなく動画の実際の開始に合わせて補正します。** 本番の呼び出し箇所は`start_video`（iOS）と`start_screenrecord`（Android）に`confirm_started=True`を渡します。両者は録画の起動のあと、実在の信号を待ちます。iOS が待つのは、`simctl io recordVideo`が最初のフレームを処理した時点で自身の標準エラー出力へ書く`Recording started`の行です。Android が待つのは、デバイス側のファイルに最初の1バイトが書かれることです。`screenrecord`は出力ファイルを空のまま開き、最初にエンコードしたフレームでマルチプレクサが動き出すまで何も書きません。そのため最初の1バイトが録画の原点を示します。この待ちはデバイス上で、上限つきの`adb shell`ループ1本として動きます。起動の前にファイルを消しておくので、前回の録画の残りがこの待ちに答えることはありません。この待ちで確認できなかった場合、Android はデバイス側のプロセスが現れることの確認に戻ります。プロセスが存在しても、そのエンコーダーがすでにフレームを出力しているとは限らないため、より弱い保証です。それでも当て推量よりは確かな信号です。確認できた`time.monotonic()`の値は`Interval.true_start`に記録されます。`intervals.adopt`は、事前録画されたインターバルを移すときも`true_start`をそのまま引き継ぐため、`adopt`が動く前に確認済みだったAndroidの値が失われることはありません。web アクチュエータはポーリングせず、録画対象のページが生成された直後に`true_start`を記録します。`record_video_dir`はコンテキスト配下のページに対する録画を有効にするだけで、動画そのものはページが生成されるまで存在しないため、記録するタイミングは`new_context()`ではなく`new_page()`の直後です。待ちが一度も確認できなかった場合は`true_start`が`None`のままとなり、基準時刻は`scenario_start`に戻ります。当て推量の数値が入ることはありません。
 
   `intervals.adopt`は、事前録画されたインターバルを移すときも`true_start`をそのまま引き継ぐため、`adopt`が動く前に確認済みだったAndroidの値が失われることはありません。待ちが一度も確認できなかった場合は`true_start`が`None`のままとなり、基準時刻は`scenario_start`に戻ります。当て推量の数値が入ることはありません。
 
@@ -276,11 +259,7 @@ Android の `appTrace` は `adb logcat -s <tag>:V` を流し、アプリはそ�
 
 チャネルを運べるのは `xcuitest` actuator だけで、しかもネットワーク収集が有効なときに限ります。
 BajutsuKit のポーリングが動くのは、実際に動作する Simulator プロセスの内側だけだからです。
-他の actuator は条件を満たしません。
-
-- `fake` では collector は立ちますが、それをポーリングするものが何もありません。
-- `playwright` はドライバ経由でネットワークを観測するので、この種の collector 自体がありません。
-- `adb` は iOS と同じホスト側の受け口へ報告するため、collector 自体は立ちます。ただし、端末側にはコマンドへ答えるポーリングがありません。チャネルを `xcuitest` に限っているのは、collector の形ではなく actuator の判定です。
+他の actuator は条件を満たしません。`fake` では collector は立ちますが、それをポーリングするものが何もありません。`playwright` はドライバ経由でネットワークを観測するので、この種の collector 自体がありません。`adb` は iOS と同じホスト側の受け口へ報告するため、collector 自体は立ちます。ただし、端末側にはコマンドへ答えるポーリングがありません。チャネルを `xcuitest` に限っているのは、collector の形ではなく actuator の判定です。
 
 `xcuitest` actuator とネットワーク収集の両方がそろったときにかぎって、`--touch-markers` は
 判定がスクリーンショットを読むシナリオのチャネルを起動します。それ以外では、スクリーンショットを
@@ -453,8 +432,7 @@ gap を記録するのは、シナリオが要求した種別に限ります。g
 
 対応が取れない状況は2つあります。
 
-- [`web` ブロック](scenarios.md#webwebview-の-dom-コンテキストに入る)の内側です。要素ツリーは WebView 自身の座標系で返り、スクリーンショットはネイティブドライバから取得します（`WebContextDriver` はスクリーンショットを取れません）。
-- `after.png` をストアが失った実行結果です。ゴミ箱から復元したものや、最後の書き込みを受け取れなかったオブジェクトストレージへ同期したものが該当し、隣の `before.png` を代わりに表示します。この画像を、操作後の要素ツリーは説明しません。
+1つは[`web` ブロック](scenarios.md#webwebview-の-dom-コンテキストに入る)の内側です。要素ツリーは WebView 自身の座標系で返り、スクリーンショットはネイティブドライバから取得します（`WebContextDriver` はスクリーンショットを取れません）。もう1つは、`after.png` をストアが失った実行結果です。ゴミ箱から復元したものや、最後の書き込みを受け取れなかったオブジェクトストレージへ同期したものが該当し、隣の `before.png` を代わりに表示します。この画像を、操作後の要素ツリーは説明しません。
 
 なお、操作する前に失敗したステップは2つのどちらでもありません。操作前の組だけを記録するため、対応は取れます。
 
@@ -569,4 +547,4 @@ run ディレクトリへの書き込みは、すべて1つのシンクを通り
 
 ランナーは各 run ディレクトリを所有者のみ（`0700`）で作成します。機微な内容を含み得るファイルは、ホストの `umask` に依存せず所有者のみ（`0600`）で書き込みます（[BE-0131](../../roadmaps/BE-0131-run-artifact-permissions/BE-0131-run-artifact-permissions-ja.md)）。該当するのは、`network.json`、コピーした `scenario.yaml`、要素ダンプ（`elements.json`）、スクリーンショットです。
 
-それ以外の証跡も `0700` の run ディレクトリ配下に置かれるため、共有ホスト（CI ランナーなど）の別のローカルアカウントからは既定で読めません。実装: `bajutsu/common/run_meta/artifact_perms.py`。
+それ以外の証跡も `0700` の run ディレクトリ配下に置かれるため、共有ホスト（CI ランナーなど）の別のローカルアカウントからはデフォルトでは読めません。実装: `bajutsu/common/run_meta/artifact_perms.py`。
