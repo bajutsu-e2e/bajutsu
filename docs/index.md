@@ -27,7 +27,7 @@ swapping the backend runs the same scenario, unchanged, on a different target.
 ## Status — pre-alpha
 
 The deterministic core, the AI authoring loop (`record` / `crawl`), the evidence subsystem,
-codegen, and self-healing triage are all implemented and unit-tested, and none needs a Simulator. The iOS **XCUITest backend** is validated end-to-end on a real Simulator, the
+codegen, and self-healing triage are all implemented and unit-tested, and those unit tests need no Simulator. The iOS **XCUITest backend** is validated end-to-end on a real Simulator, the
 **Android (adb) backend** is validated on an emulator, and the **web (Playwright) backend** runs
 a deterministic `run` against a browser on the Linux gate. Flutter apps run through those same
 backends unchanged, with no separate Flutter backend.

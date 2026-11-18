@@ -17,7 +17,7 @@ Bajutsu（馬術）は、自然言語で書いた、あるいは記録したテ�
 
 ## pre-alpha の状況
 
-決定的なコア、AI の著述ループ（`record` と `crawl`）、evidence サブシステム、codegen、自己修復の triage は、いずれも実装済みで、ユニットテストも揃っています。どれもシミュレータは要りません。iOS の **XCUITest バックエンド**はシミュレータ上で end-to-end に検証済み、**Android（adb）バックエンド**はエミュレータ上で end-to-end に検証済みで、**web（Playwright）バックエンド**は、Linux のゲートでブラウザに対して決定的な `run` を動かします。Flutter アプリには専用のバックエンドがなく、同じ XCUITest / adb バックエンドをそのまま使って動かします。
+決定的なコア、AI の著述ループ（`record` と `crawl`）、evidence サブシステム、codegen、自己修復の triage は、いずれも実装済みで、ユニットテストも揃っています。そのユニットテストはシミュレータを必要としません。iOS の **XCUITest バックエンド**はシミュレータ上で end-to-end に検証済み、**Android（adb）バックエンド**はエミュレータ上で end-to-end に検証済みで、**web（Playwright）バックエンド**は、Linux のゲートでブラウザに対して決定的な `run` を動かします。Flutter アプリには専用のバックエンドがなく、同じ XCUITest / adb バックエンドをそのまま使って動かします。
 
 ## クイックスタート
 
