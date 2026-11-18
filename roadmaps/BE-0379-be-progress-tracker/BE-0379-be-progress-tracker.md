@@ -15,93 +15,99 @@
 
 ## Introduction
 
-Add **`be-progress-tracker`**, a small dedicated skill that [`ideation`](../../.apm/skills/ideation/SKILL.md),
+This item adds **`be-progress-tracker`**, a small dedicated skill. The skills
+[`ideation`](../../.apm/skills/ideation/SKILL.md),
 [`implement-be`](../../.apm/skills/implement-be/SKILL.md), and
-[`propose-and-build`](../../.apm/skills/propose-and-build/SKILL.md) call at their own step
-boundaries to keep one live status page per BE item — its overview, implementation progress, and a
-work log — so a human watching a long session can see where an item stands without reading the
-whole transcript. It is a **separate** skill rather than logic folded into the three callers, and
-it defaults to a low-token-consumption model (`haiku`), so every checkpoint stays cheap regardless
-of which model the calling workflow itself runs on.
+[`propose-and-build`](../../.apm/skills/propose-and-build/SKILL.md) call it at their own step
+boundaries. It keeps one live status page per BE item.
+The page holds an overview, the implementation progress, and a work log. A human watching a long session can then see where an item stands without
+reading the whole transcript.
+
+The tracker is a **separate** skill, not logic folded into the three callers.
+Its default model is the low-token `haiku`, so every checkpoint stays cheap.
+That holds whichever model the calling workflow runs on.
 
 ## Motivation
 
-An `implement-be` or `propose-and-build` session can run long: a branch, a confirmed plan, written
-code, one or more review rounds, a gate run, an opened PR, and a paced follow-up loop. Today the
-only record of that progress is the session transcript itself, plus the eventual roadmap `Status`
-flip and the PR — there is no single, shareable place that answers "where does this item stand
+An `implement-be` or `propose-and-build` session can run long. The session creates a branch, confirms a plan, and writes code.
+It then runs review rounds and the gate, opens a PR, and runs a paced follow-up loop.
+Today the only record of that progress is the session transcript, the eventual roadmap `Status` flip,
+and the PR. No single, shareable place answers "where does this item stand
 right now" without reading the whole conversation.
 
-Two more points sharpen the design:
+Two points shape the design.
 
-1. **Reusing the calling skill's own model would tax every checkpoint at that skill's rate.**
-   `implement-be` defaults to `opus`; a status-page write is pure transcription of a decision the
-   calling skill already made, not new judgment, so paying `opus` rates for it on every checkpoint
-   would be wasteful. [BE-0103](../BE-0103-dev-model-effort-tiering/BE-0103-dev-model-effort-tiering.md)
-   already established the pattern of a lightweight default `model:` on a mechanical skill (see
-   [`roadmap-filter`](../../.claude/skills/roadmap-filter/SKILL.md)'s `haiku`); this item reapplies
-   it to a new, narrower job.
-2. **The three roadmap-authoring/implementing skills already share the same checkpoint shape** — a
-   plan confirmed, a review pass clean, the gate green, a PR opened. A single tracker skill, called
-   identically from all three, keeps that logic in one place instead of three skills each growing
-   their own status-formatting code.
+1. **Reusing the calling skill's model would charge every checkpoint at that skill's rate.**
+   `implement-be` defaults to `opus`. A status-page write transcribes a decision the calling skill
+   has already made and needs no new judgment, so paying `opus` rates at every checkpoint would be
+   wasteful. [BE-0103](../BE-0103-dev-model-effort-tiering/BE-0103-dev-model-effort-tiering.md)
+   already established a lightweight default `model:` for a mechanical skill (see the `haiku` in
+   [`roadmap-filter`](../../.claude/skills/roadmap-filter/SKILL.md)). This item applies the same
+   pattern to a new, narrower job.
+2. **The three roadmap-authoring and implementing skills already share one checkpoint shape.** The
+   checkpoints are a confirmed plan, a clean review pass, a green gate, and an opened PR. A single
+   tracker skill, called identically from all three, keeps that logic in one place. Otherwise each
+   of the three skills would grow its own status-formatting code.
 
 ## Detailed design
 
-The work breaks down into five independent pieces:
+The work breaks down into five independent pieces.
 
-1. **Shared workflow** — [`.apm/skills/be-progress-tracker/SKILL.md`](../../.apm/skills/be-progress-tracker/SKILL.md)
-   defines the document's three fixed sections (Overview, Progress, Work log), the checkpoint
-   contract a caller must supply (the BE id, the calling workflow's name and step, and one work-log
-   sentence), and the non-goals: never a source of truth (the roadmap item and the PR stay
-   canonical), never blocking (a failed or unavailable checkpoint is noted and the calling workflow
-   continues), and read-only against everything except its own status page.
-2. **Claude adapter** — [`.claude/skills/be-progress-tracker/SKILL.md`](../../.claude/skills/be-progress-tracker/SKILL.md)
-   carries `model: haiku` in its frontmatter and publishes the status page as a Markdown Artifact,
-   one per BE item, redeployed to the same URL on every later checkpoint rather than republished
-   from scratch.
-3. **Codex adapter** — `.agent-hosts/codex/skills/be-progress-tracker/SKILL.md`
-   has no hosted-Artifact equivalent to reach for, so it writes the same three-section page to a
-   local, gitignored file under `tmp/be-status/` instead and tells the user that path once.
-   ([BE-0390](../BE-0390-apm-skill-management/BE-0390-apm-skill-management.md) later retired the
-   Codex tree and folded the Claude adapter into the single per-skill source.)
-4. **Checkpoint wiring in the three calling workflows** — `implement-be/workflow.md` and
-   `ideation/workflow.md` each gain one short paragraph naming which of their own numbered steps
-   warrant a checkpoint. `propose-and-build/workflow.md` defines none of its own: it notes that it
-   inherits the checkpoints of the `ideation` and `implement-be` phases it delegates to, keyed on
-   the same `BE-0379` placeholder it already carries through both phases.
-5. **Claude-adapter dispatch instructions** — `implement-be`'s, `ideation`'s, and
-   `propose-and-build`'s `SKILL.md` each gain one line telling the host to dispatch the checkpoint
-   through the Agent tool with `model: "haiku"` passed explicitly, since a subagent call does not
-   automatically inherit a skill's own frontmatter model. The checkpoints themselves are
-   inheritable across `propose-and-build`'s two delegated phases (point 4 above), but their
-   dispatch is not: an adapter loads only its own shared workflow, never a sibling skill's adapter,
-   so `propose-and-build`'s adapter needs this line too, not only `implement-be`'s and
-   `ideation`'s.
+1. **Shared workflow.** [`.apm/skills/be-progress-tracker/SKILL.md`](../../.apm/skills/be-progress-tracker/SKILL.md)
+   defines the document's three fixed sections: Overview, Progress, and Work log. It also defines
+   the checkpoint contract a caller must supply: the BE id, the calling workflow's name and step,
+   and one work-log sentence. Its non-goals are:
+   - It is never a source of truth. The roadmap item and the PR stay canonical.
+   - It never blocks. A failed or unavailable checkpoint is noted, and the calling workflow
+     continues.
+   - It is read-only against everything except its own status page.
+2. **Claude adapter.** [`.claude/skills/be-progress-tracker/SKILL.md`](../../.claude/skills/be-progress-tracker/SKILL.md)
+   carries `model: haiku` in its frontmatter. It publishes the status page as a Markdown Artifact,
+   one per BE item. Every later checkpoint redeploys the page to the same URL instead of
+   republishing it from scratch.
+3. **Codex adapter.** `.agent-hosts/codex/skills/be-progress-tracker/SKILL.md` has no hosted-Artifact
+   equivalent to use. It writes the same three-section page to a local, gitignored file under
+   `tmp/be-status/` and tells the user that path once.
+   [BE-0390](../BE-0390-apm-skill-management/BE-0390-apm-skill-management.md) later retired the Codex
+   tree and folded the Claude adapter into the single per-skill source.
+4. **Checkpoint wiring in the three calling workflows.** `implement-be/workflow.md` and
+   `ideation/workflow.md` each gain one short paragraph. The paragraph names which of the workflow's
+   own numbered steps warrant a checkpoint. `propose-and-build/workflow.md` defines no checkpoints
+   of its own. It notes that it inherits the checkpoints of the `ideation` and `implement-be` phases
+   it delegates to, keyed on the same `BE-0379` placeholder it already carries through both phases.
+5. **Claude-adapter dispatch instructions.** The `SKILL.md` of `implement-be`, `ideation`, and
+   `propose-and-build` each gain one line. The line tells the host to dispatch the checkpoint
+   through the Agent tool with `model: "haiku"` passed explicitly, because a subagent call does not
+   inherit a skill's frontmatter model automatically. The two delegated phases of `propose-and-build`
+   can inherit the checkpoints themselves (point 4), but not their dispatch. An adapter loads only
+   its own shared workflow, never a sibling skill's adapter. The `propose-and-build` adapter
+   therefore needs this line as well.
 
-No product code changes: this item is entirely contributor-workflow tooling under the skill trees
-of the day (`.agent-workflows/`, `.claude/skills/`, and `.agent-hosts/codex/skills/`), and touches
-no `bajutsu/`, `BajutsuKit/`, or
-`run`/CI path. Prime directive 1 is untouched — the tracker never appears anywhere near the
-deterministic gate; it only ever formats decisions a human-in-the-loop skill has already made.
+The item changes no product code. It is purely contributor-workflow tooling under the skill trees of
+the day (`.agent-workflows/`, `.claude/skills/`, and `.agent-hosts/codex/skills/`). It touches no
+`bajutsu/`, `BajutsuKit/`, or `run`/CI path. Prime directive 1 stays intact: the tracker never
+appears near the deterministic gate, and it only formats decisions that a human-in-the-loop skill
+has already made.
 
 ## Alternatives considered
 
-- **Fold the tracker into each calling skill's own steps, instead of a separate skill.** Rejected:
-  it would duplicate the "format a short status page" logic three times and tie every checkpoint's
-  cost to whichever model the calling skill happens to run at (`opus` for `implement-be`), defeating
-  the point of keeping checkpoints cheap.
-- **Write the status to a file committed in the repository instead of an Artifact.** Rejected for
-  the Claude Code adapter: a live, frequently rewritten scratch document either needs a commit on
-  every checkpoint (noisy history, and a race with the actual implementation commits) or stays
-  untracked and invisible to anyone who isn't in the session. An Artifact is a hosted page a human
-  can open without touching git at all. The Codex adapter, which has no Artifact equivalent, still
-  falls back to a local file — but a gitignored one under `tmp/`, never committed.
-- **Update the roadmap item's own `Progress` section on every step, instead of a separate page.**
-  Rejected: `Progress` is a per-PR log of what actually shipped
+- **Fold the tracker into each calling skill's own steps, instead of a separate skill.** Rejected.
+  - The "format a short status page" logic would be duplicated three times.
+  - Every checkpoint's cost would depend on the model the calling skill happens to run at (`opus`
+    for `implement-be`), which defeats the point of cheap checkpoints.
+- **Write the status to a file committed in the repository, instead of an Artifact.** Rejected for
+  the Claude Code adapter.
+  - A live, frequently rewritten scratch document needs a commit at every checkpoint. That makes
+    the history noisy and races with the actual implementation commits.
+  - Left untracked, the document is invisible to anyone outside the session.
+  - An Artifact is a hosted page that a human can open without touching git.
+  - The Codex adapter has no Artifact equivalent and still falls back to a local file. That file is
+    gitignored under `tmp/` and never committed.
+- **Update the roadmap item's own `Progress` section at every step, instead of a separate page.**
+  Rejected. `Progress` is a per-PR log of what actually shipped
   ([`docs/ai-development.md`](../../docs/ai-development.md)), not a step-by-step session trace.
-  Conflating the two would make the roadmap item noisy and would touch a product-tracked file on
-  every minor step instead of only when something ships.
+  Mixing the two would make the roadmap item noisy. It would also touch a product-tracked file at
+  every minor step, not only when something ships.
 
 ## Progress
 

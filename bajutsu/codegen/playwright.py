@@ -36,6 +36,7 @@ from bajutsu.codegen.common import (
     render_test_file,
     sleep_comment,
     sleep_ms,
+    totp_todo,
 )
 from bajutsu.common.assertions import request_label
 from bajutsu.common.drivers import base
@@ -418,6 +419,13 @@ def _emit_step(step: Step) -> list[str]:  # noqa: C901, PLR0911, PLR0912
         return _act(step.select.into.as_selector(), "selectText()")
     if step.copy_ is not None:
         return ["await page.keyboard.press('Control+c');"]
+    if step.paste is not None:
+        sel = step.paste.into.as_selector()
+        loc = _locator(sel)
+        if loc is None:
+            return [_unsupported_selector_todo(sel)]
+        # Focus, then the paste chord — `ControlOrMeta` so the generated spec pastes on a macOS host too.
+        return [f"await {loc}.focus();", "await page.keyboard.press('ControlOrMeta+v');"]
     if step.swipe is not None:
         sw = step.swipe
         if sw.on is not None and sw.direction is not None:
@@ -470,6 +478,8 @@ def _emit_step(step: Step) -> list[str]:  # noqa: C901, PLR0911, PLR0912
     if (todo := device_group_todo(step)) is not None:
         return [todo]
     if (todo := eval_todo(step)) is not None:
+        return [todo]
+    if (todo := totp_todo(step)) is not None:
         return [todo]
     return ["// TODO: unsupported step"]
 

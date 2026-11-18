@@ -110,7 +110,11 @@ def test_a_target_requires_the_host_of_the_drivers_run_selects_from(tmp_path: Pa
 
 def test_a_local_worker_advertises_its_host() -> None:
     caps = worker_mod._advertised_capabilities("web", "", _local(), "linux")
-    assert [c for c in caps if not is_route_token(c)] == ["host:linux", "platform:web"]
+    assert [c for c in caps if not is_route_token(c)] == [
+        "host:linux",
+        "job:run-intent",
+        "platform:web",
+    ]
 
 
 def test_an_xcuitest_job_routes_only_to_a_darwin_worker(
@@ -122,8 +126,8 @@ def test_an_xcuitest_job_routes_only_to_a_darwin_worker(
         tmp_path, ("targets:\n  app:\n    platform: ios\n    subject: {id: com.example.app}\n")
     )
     required = target_capabilities(cfg, "app")
-    # A Linux worker that still claims `platform:ios` through the deprecated override.
-    linux = worker_mod._advertised_capabilities("web", "platform:ios", _local(), "linux")
+    # A Linux worker that claims `platform:ios`, as the deprecated override could before BE-0484.
+    linux = [*worker_mod._advertised_capabilities("web", "", _local(), "linux"), "platform:ios"]
     mac = worker_mod._advertised_capabilities("ios", "", _local(), "darwin")
 
     repo = _repo(serve_engine)
@@ -160,6 +164,7 @@ def test_a_local_worker_serves_the_platforms_its_file_and_host_allow() -> None:
     )
     assert [c for c in caps if not is_route_token(c)] == [
         "host:darwin",
+        "job:run-intent",
         "platform:ios",
         "platform:web",
     ]
@@ -393,6 +398,23 @@ def test_only_a_local_ios_worker_reads_its_real_devices() -> None:
     assert worker_mod._device_reader(web, _local()) is None
     cloud = WorkerCapability(version=1, environment="devicefarm", drivers=("xcuitest", "adb"))
     assert worker_mod._device_reader(ios, cloud) is None
+
+
+def test_a_worker_that_drives_no_real_device_claims_no_device_kind(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # `realDevices: false` keeps an iOS device run of a `run-set` off this Mac (BE-0484).
+    monkeypatch.setattr(
+        worker_mod, "devicectl_capabilities", lambda **_k: {"device:ipad", "kind:device"}
+    )
+    ios = ["host:darwin", "platform:ios"]
+    off = WorkerCapability(version=1, drivers=("xcuitest",), realDevices=False)
+    on = WorkerCapability(version=1, drivers=("xcuitest",))
+    assert (read := worker_mod._device_reader(ios, off)) is not None and read() == {"device:ipad"}
+    assert (read := worker_mod._device_reader(ios, on)) is not None and read() == {
+        "device:ipad",
+        "kind:device",
+    }
 
 
 def test_the_worker_rereads_its_real_devices_before_each_lease(

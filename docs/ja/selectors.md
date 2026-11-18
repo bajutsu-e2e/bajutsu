@@ -36,6 +36,8 @@ class Element(TypedDict):
 
 > 各バックエンドが自分自身の属性をこれらのトークンへ正規化します。adb は `enabled="false"` を `notEnabled` に正規化します。`selected="true"` /
 > `checked="true"` は `selected` に正規化します。XCUITest の常駐ランナーは `isEnabled` が false のとき同様に `notEnabled` に正規化します。
+> adb は `android.widget.NumberPicker` のノードに、クラス名から得る `numberPicker` に加えて `pickerWheel` トレイトも付けます。
+> これにより、1 つのホイール用セレクタで iOS と Android のどちらのホイールも指せます（BE-0480）。
 > バックエンドごとの正規化の詳細は [drivers](drivers.md) を参照してください。
 
 ## セレクタ（`Selector`）

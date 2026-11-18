@@ -10,6 +10,7 @@ from bajutsu.common.cloud.devicefarm import Interrupt, Verdict
 
 from .batch_checkpoint import BatchCheckpoint
 from .batch_request import BatchRequest
+from .batch_share import BatchShare
 
 
 class BatchProvider(Protocol):
@@ -29,6 +30,7 @@ class BatchProvider(Protocol):
         checkpoint: BatchCheckpoint | None = None,
         job_id: str = "",
         interrupt: Callable[[], Interrupt | None] | None = None,
+        share: BatchShare | None = None,
     ) -> Verdict:
         """Package `work_dir`, run `request.scenario` on the cloud, download artifacts under `dest`.
 
@@ -36,5 +38,7 @@ class BatchProvider(Protocol):
         restart rather than resubmitting (BE-0336 Unit 5); None keeps the best-effort, non-durable path.
         `interrupt` lets the caller give the run up while it is submitted or polled: ``stop`` stops
         it, ``leave`` leaves it to whoever resumes it, and either raises `RunInterrupted` (BE-0448).
+        `share` names the keys under which the job may reuse uploads that the worker's other jobs in
+        flight made (BE-0484); None shares nothing.
         """
         raise NotImplementedError

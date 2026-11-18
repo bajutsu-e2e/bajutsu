@@ -2,11 +2,11 @@
 
 # ドライバ抽象、バックエンド、環境管理
 
-> ひとつの `Driver` インターフェースの裏に[バックエンド](glossary.md#driver-backend-actuator-platform)（`xcuitest`（iOS Simulator）、`adb`（Android
-> エミュレータ）、`playwright`（web ブラウザ）、それにテスト用のインメモリ `fake`）を置き、能力差を
-> 抽象側で吸収します。プラットフォーム対応のレジストリが target の `platform` から actuator を選びます。
-> iOS ではアプリの起動（boot/launch）を `simctl` ラッパが担い、Android ではその双子である `adb`
-> ラッパが担います。
+> ひとつの `Driver` インターフェースの裏に[バックエンド](glossary.md#driver-backend-actuator-platform)を置きます。
+> バックエンドは、`xcuitest`（iOS Simulator）、`adb`（Android エミュレータ）、`playwright`（web ブラウザ）、
+> テスト用のインメモリ `fake` です。バックエンドごとの能力差は、抽象側で吸収します。
+> プラットフォーム対応のレジストリが、target の `platform` から actuator を選びます。
+> アプリの起動（boot/launch）は、iOS では `simctl` ラッパが、Android ではその双子である `adb` ラッパが担います。
 >
 > 実装: `bajutsu/common/drivers/`（`base.py` / `xcuitest.py` / `adb.py` / `playwright.py` / `fake.py`）・
 > `bajutsu/common/backends.py` ・ `bajutsu/common/backend_cli/simctl.py` ・ `bajutsu/common/backend_cli/adb.py`。
@@ -18,7 +18,7 @@
 ## Driver Protocol
 
 すべてのバックエンドが満たす共通インターフェースです（`base.py`、`runtime_checkable` な `Protocol`）。
-**操作（tap/type/swipe/wait/query）は actuator のみが行います**。
+**操作（tap/type/swipe/wait/query）を行うのは actuator だけです**。
 
 ```python
 class Driver(Protocol):
@@ -34,11 +34,21 @@ class Driver(Protocol):
     def capabilities(self) -> set[str]: ...          # 提供能力（actuator / フォールバック解決用）
 ```
 
-> **`wait_for` について**: 契約上、単発チェックです（BE-0118）。現在の画面を一度だけ確認して返し、ループはしません。締め切りまでのポーリングは共有ヘルパ `base.wait_until` に集約してあり、呼び出し側が渡す `timeout` は、どの backend でも同じ実時間を意味します。各ドライバがそれぞれのループを持つことはありません。run ループ自身の条件待機は、orchestrator が `query()` を直接ポーリングして行います（`_wait`、[run-loop](run-loop.md#待機条件待機)）。したがって `wait_until` を使うのは、このループの外側の呼び出し側（たとえば `golden_assert`）だけです。
+> **`wait_for` について**: 契約上、単発チェックです（BE-0118）。現在の画面を一度だけ確認して返し、ループはしません。
+> 締め切りまでのポーリングは、共有ヘルパ `base.wait_until` に集約してあります。
+> そのため、呼び出し側が渡す `timeout` は、どの backend でも同じ実時間を意味します。
+> 各ドライバがそれぞれのループを持つことはありません。
+> run ループ自身の条件待機は、これとは別の仕組みです。orchestrator が `query()` を直接ポーリングします
+> （`_wait`、[run-loop](run-loop.md#待機条件待機)）。
+> `wait_until` を使うのは、このループの外側の呼び出し側（たとえば `golden_assert`）だけです。
 
 ### 能力（`Capability`）
 
-`capabilities()` が返すトークン集合で、actuator 選択、証跡のフォールバック解決、**プリフライト能力検査**（後述）に使います。
+`capabilities()` はトークンの集合を返します。この集合は、actuator 選択、証跡のフォールバック解決、
+**プリフライト能力検査**（後述）に使います。
+
+[iOS と Android のドライバの機能差](platform-parity.md)は、モバイルの 2 つのバックエンドの差を挙げています。
+それぞれの差を、埋めるべき不足か不要な機能かに分けています。
 
 | 能力 | 意味 | xcuitest | adb | playwright | fake |
 |---|---|:--:|:--:|:--:|:--:|
@@ -50,41 +60,139 @@ class Driver(Protocol):
 | `network` | ネイティブネットワーク監視 | — | — | ✅ | — |
 | `video` | シナリオ全体の動画記録（BE-0467。iOS では Simulator のみ） | ✅ | ✅ | ✅ | — |
 | `deviceLog` | シナリオ全体のデバイスログまたはブラウザのコンソール（BE-0467。iOS では Simulator のみ） | ✅ | ✅ | ✅ | — |
-| `appTrace` | シナリオ全体のアプリの `os_log` トレース（BE-0467。iOS Simulator のみ） | ✅ | — | — | — |
+| `appTrace` | シナリオ全体のアプリのログトレース。iOS は `os_log`、Android はタグで絞った `logcat`（BE-0467、BE-0478。iOS は Simulator のみ） | ✅ | ✅ | — | — |
 | `multiTouch` | 2 本指ジェスチャ（pinch / rotate） | ✅ | ✅ | ✅ | ✅ |
-| `textSelection` | フォーカス中フィールドの全選択とクリップボードへのコピー | ✅ | ✅ | ✅ | ✅ |
+| `webView` | アプリが埋め込んだ WebView の DOM を問い合わせてタップする（実行ごとに付与し、静的な宣言はなし。iOS は BajutsuKit の WebView ブリッジ（BE-0037）、Android は Chrome DevTools Protocol（BE-0482）が付与） | — | — | — | — |
+| `textSelection` | フォーカス中フィールドの全選択と、クリップボードへのコピーとペースト | ✅ | ✅ | ✅ | ✅ |
 | `selectOption` | ネイティブ `<select>` を値で設定（web のみ） | — | — | ✅ | ✅ |
 | `urlNavigation` | `navigate` でシナリオの途中に URL を開く（web のみ。BE-0464） | — | — | ✅ | ✅ |
 | `elementAttribute` | `attribute` アサーションのために要素の HTML 属性を 1 つ読み取る（web のみ。BE-0466） | — | — | ✅ | ✅ |
 | `handleSystemAlert` | iOS SpringBoard の許可プロンプトのボタンをネイティブにタップ | ✅ | — | — | ✅ |
-| `pickerWheel` | ホイール型のピッカーを指定した行へ設定（iOS のみ） | ✅ | — | — | ✅ |
+| `resolveAlerts` | 画面を読むリクエストの中で、ポリシーが指定するシステムアラートに答える（BE-0461、iOS のみ） | ✅ | — | — | — |
+| `pickerWheel` | ホイール型のピッカーを指定した行へ設定（Android の `NumberPicker` は常駐サーバー経由。BE-0480） | ✅ | ✅ | — | ✅ |
 | `handleTipkitTip` | 操作をブロックしている Apple TipKit の tip を閉じる（iOS のみ） | ✅ | — | — | ✅ |
+| `appContext` | インストール済みの別アプリを前面に出し、`app:` ステップで操作する | ✅ | ✅ | — | ✅ |
+| `selectPhotos` | システムの写真選択画面から位置を指定して画像を選ぶ（iOS の `PHPickerViewController`。Apple Silicon の Simulator では除外。adb では Android 13 以降の写真選択画面） | ✅ | ✅ | — | ✅ |
+| `handleNotificationBanner` | 前面の通知バナーの位置を報告し、スワイプで消す（BE-0416、iOS のみ） | ✅ | — | — | ✅ |
 | `deviceControl.setLocation` | 疑似 GPS 位置の設定 | ✅ | ✅ | — | — |
 | `deviceControl.clipboard` | クリップボードの読み取り / 書き込み / クリア | ✅ | ✅ | — | — |
 | `deviceControl.push` | プッシュ通知の配信 | ✅ | — | — | — |
 | `deviceControl.clearKeychain` | キーチェーンのクリア | ✅ | — | — | — |
-| `deviceControl.background` | アプリのバックグラウンド化 | ✅ | — | — | — |
+| `deviceControl.background` | アプリのバックグラウンド化 | ✅ | ✅ | — | — |
 | `deviceControl.foreground` | アプリを前面に出す（起動していなければ起動する） | ✅ | ✅ | — | — |
-| `deviceControl.statusBar` | ステータスバーの上書き / クリア | ✅ | — | — | — |
+| `deviceControl.statusBar` | ステータスバーの上書き / クリア | ✅ | ✅ | — | — |
+| `deviceControl.permissions.location` | `location` の権限を付与 / 取り消す（BE-0276） | ✅ | ✅ | — | — |
+| `deviceControl.permissions.camera` | `camera` の権限を付与 / 取り消す（BE-0276） | ✅ | ✅ | — | — |
+| `deviceControl.permissions.microphone` | `microphone` の権限を付与 / 取り消す（BE-0276） | ✅ | ✅ | — | — |
+| `deviceControl.permissions.contacts` | `contacts` の権限を付与 / 取り消す（BE-0276） | ✅ | ✅ | — | — |
+| `deviceControl.permissions.photos` | `photos` の権限を付与 / 取り消す（BE-0276） | ✅ | ✅ | — | — |
+| `deviceControl.permissions.calendar` | `calendar` の権限を付与 / 取り消す（BE-0276） | ✅ | ✅ | — | — |
+| `deviceControl.permissions.notifications` | `notifications` の権限を付与 / 取り消す（BE-0276） | — | ✅ | — | — |
 | `deviceGroup` | デバイスグループのターゲットで 1 台のデバイスを共有する（BE-0447、iOS は Simulator のみ） | ✅ | ✅ | — | ✅ |
 
-> `deviceControl.*` トークンは、`DeviceControl` 一族を操作ごとに分割したものです（BE-0212、BE-0128 の粗い `deviceControl` から分割しました）。これにより、バックエンドは自分が忠実に実現できる操作だけを公開でき、部分的にしか実現しないバックエンドも残りを誤って公開せずに済みます。XCUITest は `simctl` を通じて一族全体を実現しますが、Android エミュレータが実現するのは `setLocation`、`clipboard`、`foreground` だけです（その `push` / キーチェーン / ステータスバー / `background` の各操作には忠実な等価物がありません）。`background` と `foreground` は、BE-0447 が分けるまで 1 つの `appLifecycle` トークンでした。デバイスグループの後から入るメンバーは `foreground` で起動するので、分ける必要がありました。
+> `deviceControl.*` トークンは、`DeviceControl` 一族を操作ごとに分割したものです
+> （BE-0212。BE-0128 の粗い `deviceControl` から分割しました）。
+> これにより、バックエンドは自分が忠実に実現できる操作だけを公開できます。
+> 部分的にしか実現しないバックエンドも、残りを誤って公開せずに済みます。
+> XCUITest は `simctl` を通じて一族全体を実現します。
+> Android エミュレータは、`permissions.*` の 7 サービスを含め、`push` と `clearKeychain` 以外のすべてを実現します（BE-0478）。
+> `push` にはアプリのプロセス内のレシーバが必要で、Android には `clearKeychain` が消すキーチェーンがありません。
+> `background` と `foreground` は、BE-0447 が分けるまで 1 つの `appLifecycle` トークンでした。
+> デバイスグループの後から入るメンバーは `foreground` で起動するので、分ける必要がありました。
 
-> adb は**リーンな端**に位置し、**frame 中心の座標**で操作します。semantic tap を持たないため、run ループは `query()` で要素を一意に確定しその中心をタップします。一方 XCUITest は豊かな端に位置し、identifier で直接 tap し、ネイティブの条件で待機し、`pinch` / `rotate` をネイティブに実行します。adb は `query` / `elements` / `screenshot`、`multiTouch`（rooted device での `sendevent` 2 本指スイープ、BE-0232）に加えて、エミュレータが実現できるデバイス制御のサブセット `deviceControl.setLocation`、`deviceControl.clipboard`（BE-0211）、`deviceControl.foreground` と、`deviceGroup`（BE-0447）、証跡種別の `video` と `deviceLog`（`screenrecord` と `logcat`。BE-0467）を公開します。デバイス制御一族の残りにはエミュレータでの忠実な等価物がないため、公開しません。`fake` ドライバはテストでそれらのコードパスを動かすためだけに、より広い能力集合（semanticTap / conditionWait / multiTouch）を公開します。`playwright`（web）ドライバは `semanticTap` / `conditionWait`（Playwright がネイティブに持つ）に加えて `network`（アプリ側の協力なしに通信を観測しスタブできる**初めてのネイティブネットワーク対応バックエンド**）と `multiTouch`（Chromium DevTools プロトコルの `Input.dispatchTouchEvent` で pinch / rotate を合成）を公開します（BE-0054）。証跡種別の `video` と `deviceLog`（ブラウザコンテキストの録画とコンソール。BE-0467）も公開します。
+> adb は**リーンな端**に位置し、**frame 中心の座標**で操作します。
+> semantic tap を持たないため、run ループは `query()` で要素を一意に確定し、その中心をタップします。
+> 一方 XCUITest は豊かな端に位置します。identifier で直接 tap し、ネイティブの条件で待機し、
+> `pinch` / `rotate` をネイティブに実行します。
+>
+> adb が公開する能力は次のとおりです。
+>
+> - `query` / `elements` / `screenshot`。
+> - `multiTouch`。常駐サーバーが注入する 2 本指ジェスチャ、または rooted device での `sendevent` スイープです（BE-0232）。
+> - `textSelection`。`Ctrl+A` / `Ctrl+C` のキー入力で実現します（BE-0265）。
+> - エミュレータが実現できるデバイス制御のサブセット。`deviceControl.setLocation`、
+>   `deviceControl.clipboard`（BE-0211）、`deviceControl.foreground`、`deviceControl.background`、
+>   `deviceControl.statusBar`（BE-0478）です。
+> - `deviceControl.permissions.*` の 7 サービス。`pm grant` / `pm revoke` で実現します（BE-0276）。
+> - `deviceGroup`（BE-0447）。
+> - `appContext`。`am start` による `app:` ステップです。
+> - 証跡種別の `video`、`deviceLog`、`appTrace`。`screenrecord`、`logcat`、タグで絞った `logcat` で実現します（BE-0467、BE-0478）。
+>
+> `push`（アプリのプロセス内にレシーバがない）と `clearKeychain`（Android にキーチェーンがない）は公開しません。
+>
+> `fake` ドライバは、テストでそれらのコードパスを動かすためだけに、より広い能力集合
+> （semanticTap / conditionWait / multiTouch）を公開します。
+>
+> `playwright`（web）ドライバが公開する能力は次のとおりです。
+>
+> - `semanticTap` / `conditionWait`。Playwright がネイティブに持っています。
+> - `network`。アプリ側の協力なしに通信を観測しスタブできる**初めてのネイティブネットワーク対応バックエンド**です。
+> - `multiTouch`。Chromium DevTools プロトコルの `Input.dispatchTouchEvent` で pinch / rotate を合成します（BE-0054）。
+> - 証跡種別の `video` と `deviceLog`。ブラウザコンテキストの録画とコンソールです（BE-0467）。
 
 ### プリフライト能力検査（BE-0082）
 
-バックエンドの能力集合は静的なので、選んだ actuator が持たない能力をシナリオが必要とするかどうかは、デバイス作業の前に分かります。run の開始時（actuator を選んだ後、最初のデバイスを lease する前）に、runner は各シナリオを actuator の能力と照合し（`bajutsu/common/capability/capability_preflight.py`）、未対応のシナリオを即座に失敗させます。集約した 1 つの理由（`UnsupportedAction` 相当）を付けて、デバイスを起動して途中で失敗するのを避けます（prime directive #2：速く明確に失敗する）。検査は (シナリオ, 能力集合) の純粋関数で、デバイスも時計も使いません。シナリオ単位なので、未対応のシナリオだけが失敗し、残りは実行されます。
+バックエンドの能力集合は静的です。選んだ actuator が持たない能力をシナリオが必要とするかどうかは、
+デバイス作業の前に分かります。run の開始時（actuator を選んだ後、最初のデバイスを lease する前）に、
+runner は各シナリオを actuator の能力と照合します（`bajutsu/common/capability/capability_preflight.py`）。
+未対応のシナリオは、集約した 1 つの理由（`UnsupportedAction` 相当）を付けて、即座に失敗させます。
+デバイスを起動してから途中で失敗するのを避けるためです（prime directive #2：速く明確に失敗する）。
 
-検査は、能力集合で明確に判定できる**真の hard requirement** だけを門にします。`pinch` / `rotate` は `multiTouch`、`selectOption` は `selectOption` トークン（web だけで通る `<select>` の切り替え。iOS / Android はデバイス作業の前に拒否されます）、`navigate` は `urlNavigation`（web 専用です。`web:` / `app:` ブロックの中にあっても拒否されます。検査がブロックの中まで追う構文は `navigate` と `attribute` の 2 つです）、`attribute` アサーションは `elementAttribute`（web 専用です。BE-0466。`expect`、ステップの `assert`、`if` と `interrupts` の条件、`web:` / `app:` ブロックの中、`interrupts` の復旧ステップのどこにあっても見つけるので、iOS の WebView コンテキストも拒否されます）、`select` / `copy` は `textSelection`（全選択とクリップボードへのコピー。web コンテキストはこれらについて座標専用でどちらも拒否します。`delete` / `clear` はどのバックエンドも `delete_text` を実現できるので門にしません）、`visual` アサーションは `screenshot`、`handleSystemAlert` は `handleSystemAlert` トークン（xcuitest だけが公開します）、`setPickerValue` は `pickerWheel` トークン（こちらも xcuitest だけです。ホイール型のピッカーは iOS ネイティブのコントロールなので、Android と web はデバイス作業の前に拒否されます）、そして各デバイス制御ステップは自分の操作に対応するトークンを必要とします。`setLocation` は `deviceControl.setLocation`、クリップボードのステップは `deviceControl.clipboard`、`push` は `deviceControl.push`、という具合です（この操作ごとのトークンへの分割は BE-0212、前掲）。`permissions` の各エントリも同様に、サービスごと（`deviceControl.permissions.<service>`）の門を通すので、未対応のサービスはフィールド全体としてではなく1 つずつ名指しされます。すべての run は `query` と `elements` を必要とします。`relaunch` はここに含みません。`relaunch` は `DeviceControl` ではなく、注入される relauncher で門を通すからです。一方、`conditionWait` は門にしません（run ループはすべての待機を polling で実装するので、どのバックエンドもこのトークンを必要としません）。`network` も門にしません（XCUITest は `network` を公開しませんが、アプリ側の collector で通信を捕捉するため、`request` / `event` / `requestSequence` / `responseSchema` アサーションや `until: { request }` 待機は iOS でも動きます）。`gestures.py` の `_require_multi_touch` は、ジェスチャ実行時の多層防御の検査として残します。デバイス制御ステップについても同様に `_need_control` を残し、その run で `DeviceControl` がまったく配線されていない場合（デバイスを固定しない並行 run など）を捕捉します。トークンが操作ごとになったので、一族の一部だけを実現するバックエンド（Android エミュレータの `setLocation`、`clipboard`、`foreground`）は、公開した操作については preflight を通し、残りについては速く失敗します。未対応のステップは1 つずつ名指しされ、一族が全か無かで扱われることはありません。
+検査は (シナリオ, 能力集合) の純粋関数で、デバイスも時計も使いません。
+シナリオ単位で働くので、未対応のシナリオだけが失敗し、残りは実行されます。
+
+検査が門にするのは、能力集合で明確に判定できる**真の hard requirement** だけです。
+
+- `pinch` / `rotate` は `multiTouch` を必要とします。
+- `selectOption` は `selectOption` トークンを必要とします。web だけで通る `<select>` の切り替えなので、
+  iOS / Android はデバイス作業の前に拒否されます。
+- `navigate` は `urlNavigation` を必要とします（web 専用）。`web:` / `app:` ブロックの中にあっても拒否されます。
+  検査がブロックの中まで追う構文は、`navigate` と `attribute` の 2 つです。
+- `attribute` アサーションは `elementAttribute` を必要とします（web 専用。BE-0466）。
+  `expect`、ステップの `assert`、`if` と `interrupts` の条件、`web:` / `app:` ブロックの中、
+  `interrupts` の復旧ステップのどこにあっても見つけます。そのため、iOS の WebView コンテキストも拒否されます。
+- `select` / `copy` / `paste` は `textSelection`（全選択と、クリップボードへのコピーとペースト）を必要とします。
+  web コンテキストはこれらについて座標専用で、3 つとも拒否します。
+  `delete` / `clear` は、どのバックエンドも `delete_text` を実現できるので門にしません。
+- `visual` アサーションは `screenshot` を必要とします。
+- `handleSystemAlert` は `handleSystemAlert` トークンを必要とします。公開するのは xcuitest だけです。
+- `setPickerValue` は `pickerWheel` トークンを必要とします。公開するのは xcuitest と adb です。
+  ホイール型のピッカーはモバイルのネイティブなコントロールなので、web は作業の前に拒否されます。
+- 各デバイス制御ステップは、自分の操作に対応するトークンを必要とします。
+  `setLocation` は `deviceControl.setLocation`、クリップボードのステップは `deviceControl.clipboard`、
+  `push` は `deviceControl.push`、という具合です。
+  この操作ごとのトークンへの分割は、BE-0212 が BE-0128 の粗い `deviceControl` 一族に対して行いました。
+- `permissions` の各エントリも、サービスごと（`deviceControl.permissions.<service>`）の門を通します。
+  未対応のサービスは、フィールド全体としてではなく 1 つずつ名指しされます。
+- すべての run は `query` と `elements` を必要とします。
+
+`relaunch` は、この検査の対象に含みません。`relaunch` は `DeviceControl` ではなく、注入される relauncher で門を通すからです。
+
+次の 2 つの能力は、意図的に門にしません。
+
+- `conditionWait`。run ループはすべての待機を polling で実装するので、どのバックエンドもこのトークンを必要としません。
+- `network`。XCUITest は `network` を公開しませんが、アプリ側の collector で通信を捕捉します。
+  そのため、`request` / `event` / `requestSequence` / `responseSchema` アサーションや `until: { request }` 待機は、iOS でも動きます。
+
+`gestures.py` の `_require_multi_touch` は、ジェスチャ実行時の多層防御の検査として残します。
+デバイス制御ステップについても、同様に `_need_control` を残します。
+その run で `DeviceControl` がまったく配線されていない場合（デバイスを固定しない並行 run など）を捕捉するためです。
+
+トークンが操作ごとになったので、一族の一部だけを実現するバックエンドは、
+公開した操作については preflight を通し、残りについては速く失敗します。
+例は、`setLocation`、`clipboard`、`foreground` だけを実現する Android エミュレータです。
+未対応のステップは 1 つずつ名指しされ、一族が全か無かで扱われることはありません。
 
 ### worker の能力検査（BE-0450）
 
-前節のプリフライト能力検査は、actuator がシナリオのステップに対応しているかを問います。もう 1 つの検査は、
-このマシンでそもそも[ドライバ](glossary.md#driver-backend-actuator-platform)を動かせるか、そして 1 つの
-シナリオが同時にいくつの [target](glossary.md#target-app-device) を持てるかを問います
-（[BE-0450](../../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability-ja.md)）。ここでいう
-**worker** は、シナリオを実行するマシンのことです。`bajutsu run` を実行する開発者のノート PC も、
+前節のプリフライト能力検査は、actuator がシナリオのステップに対応しているかを問います。
+もう 1 つの検査は、次の 2 点を問います
+（[BE-0450](../../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability-ja.md)）。
+
+- このマシンでそもそも[ドライバ](glossary.md#driver-backend-actuator-platform)を動かせるか。
+- 1 つのシナリオが同時にいくつの [target](glossary.md#target-app-device) を持てるか。
+
+ここでいう **worker** は、シナリオを実行するマシンのことです。`bajutsu run` を実行する開発者のノート PC も、
 サーバーから job をリースする `bajutsu worker` も worker にあたります。
 
 **ホストの要件。** ドライバがどのホスト OS で動くかは、ドライバごとに決まった事実です。各ドライバクラスは
@@ -97,9 +205,10 @@ class Driver(Protocol):
 | `playwright` | どのホストでも |
 | `fake` | どのホストでも |
 
-**worker 能力ファイル。** `worker.yaml` は 1 台の worker を記述します。マシンで何を動かせるかを知っているのは
-アプリのチームではなく運用者なので、`bajutsu.config.yaml` とは別のファイルにしています。ローダーはファイルを
-スキーマのバージョン 1 に照らして検証し、未知のキー、未知のドライバ、未知の environment、正でない数値を拒否します。
+**worker 能力ファイル。** `worker.yaml` は 1 台の worker を記述します。
+マシンで何を動かせるかを知っているのはアプリのチームではなく運用者なので、`bajutsu.config.yaml` とは別のファイルにしています。
+ローダーはファイルをスキーマのバージョン 1 に照らして検証します。
+未知のキー、未知のドライバ、未知の environment、正でない数値は拒否します。
 
 | キー | 意味 |
 |---|---|
@@ -111,8 +220,8 @@ class Driver(Protocol):
 | `drivers` | worker が提供するドライバを `xcuitest`、`adb`、`playwright`、`fake` から選んで並べます。リストにないドライバは使えません。 |
 | `realDevices` | `xcuitest` を提供する `local` の worker が、接続した実機の iPhone も動かすかどうかです。`true` なら、serve は実機のジョブもその worker に振り分けます。省くと `true` とみなします。そうした worker は、これまでも実機のジョブを受けていたからです。Simulator だけの Mac を実機のジョブから外すには `false` にします（[能力に基づく振り分け](self-hosting.md#能力に基づくキューの振り分けbe-0166)、BE-0467）。 |
 
-パッケージは既定のファイルを `bajutsu/common/capability/worker.yaml` に同梱しています。既定は、すべての
-ドライバを提供し target の数に上限を設けない、ローカルの worker を記述します。
+パッケージは既定のファイルを `bajutsu/common/capability/worker.yaml` に同梱しています。
+既定は、すべてのドライバを提供し、target の数に上限を設けないローカルの worker を記述します。
 
 ```yaml
 version: 1
@@ -137,107 +246,540 @@ drivers: [xcuitest, adb, playwright, fake]
 このホストにとどまります。グリッドの target を 2 つ持つシナリオは拒否します。
 
 `bajutsu worker`、`run`、`record`、`crawl`、`repl`、`audit`、`doctor`、`bajutsu mcp` は
-`--worker-config <path>` を受け付けます。指定したファイルは既定のファイルを丸ごと置き換え、2 つの
-ファイルをマージすることはありません。デバイスを駆動するコマンドは、device cloud のプロバイダを書いた
-ファイルを拒否します。`--udid` はもう URL を受け付けません。グリッドは `appium` の environment で指定します。環境変数や作業ディレクトリの探索でファイルを選ぶ仕組みはないので、
-効力を持つファイルは常にコマンドラインで指定したファイルです。ホストの要件は `local` の worker にだけ
-適用します。device cloud の worker では、ドライバはプロバイダ側のホストで動くからです。
+`--worker-config <path>` を受け付けます。
+指定したファイルは既定のファイルを丸ごと置き換え、2 つのファイルをマージすることはありません。
+デバイスを駆動するコマンドは、device cloud のプロバイダを書いたファイルを拒否します。
+`--udid` はもう URL を受け付けません。グリッドは `appium` の environment で指定します。
+
+環境変数や作業ディレクトリの探索でファイルを選ぶ仕組みはありません。効力を持つファイルは常にコマンドラインで指定したファイルです。
+ホストの要件は `local` の worker にだけ適用します。device cloud の worker では、ドライバはプロバイダ側のホストで動くからです。
 
 **検査。** `bajutsu/common/capability/worker_capability.py` がファイルを読み込んで検証します。
 そのうえで `capability_preflight.worker_capability_unsupported()` がシナリオを判定します。
-検査の結果は、シナリオ、target の設定、worker 能力ファイル、ホストだけで決まります。検査はデバイスと時計を
-使わないので、決定的な経路にとどまります。検査は次の 2 か所で働きます。
+検査の結果は、シナリオ、target の設定、worker 能力ファイル、ホストだけで決まります。
+検査はデバイスと時計を使わないので、決定的な経路にとどまります。検査は次の 2 か所で働きます。
 
 - **actuator の選択。** `run`、`record`、`crawl`、`audit`、`repl` は 1 つの選択処理を共有しています。
-  target の `platform` が 1 つの actuator を決めます。ホストで動かせないドライバや worker 能力ファイルに
-  ないドライバであれば、この処理はその actuator を拒否し、コマンドは理由を示して終了コード 2 で終了します。
+  target の `platform` が 1 つの actuator を決めます。
+  ホストで動かせないドライバや worker 能力ファイルにないドライバであれば、この処理はその actuator を拒否します。
+  コマンドは理由を示して終了コード 2 で終了します。
   理由の例は `worker-capability-unsupported: xcuitest runs only on macOS; this worker runs on linux` です。
-  以前は汎用の `no available actuator` で終了していました。`--worker-config` を付けずに起動したコマンドは
-  既定のファイルを使います。
+  以前は汎用の `no available actuator` で終了していました。
+  `--worker-config` を付けずに起動したコマンドは、既定のファイルを使います。
 - **シナリオごと。** `run` は target を解決する前に、各シナリオが自分で宣言した target を検査します。
   `maxTargetsPerJob` を超えるシナリオや、worker で動かせないドライバを必要とするシナリオは、
-  `worker-capability-unsupported:` で始まる理由で失敗します。そのシナリオのためにデバイスは確保せず、
-  残りのシナリオは実行します。最初のデバイスを確保する前に、すべての target の actuator を選んで検査します。
+  `worker-capability-unsupported:` で始まる理由で失敗します。
+  そのシナリオのためにデバイスは確保せず、残りのシナリオは実行します。
+  最初のデバイスを確保する前に、すべての target の actuator を選んで検査します。
   そのため、worker で動かせない target があっても、何も確保しないまま終わります。
 
 **広告とルーティング。** サーバの worker は、同じ事実をルーティング用のトークンに変えます
-（[self-hosting](self-hosting.md#能力に基づくキューの振り分けbe-0166)）。worker は、自分が動く
-OS を表す `host:<os>` を広告します。target のドライバがすべて 1 つの OS
-でしか動かない job は、そのホストを必要とします。そのため、`xcuitest` の job は `host:darwin` を
-必要とし、Mac の worker にだけ届きます。`local` の worker は起動時に、各 `--platform` を worker 能力
-ファイルとホストに照らして検査します。どちらかがそのプラットフォームを除外する場合は、ドライバの理由を
-示して終了します。たとえば `--platform ios` で起動した Linux の worker は止まります。理由は
-`xcuitest runs only on macOS; this worker runs on linux` です。この検査はリクエストの `backend` ではなく
-プラットフォームのドライバを判定します。そのため、`fake` の backend で動く iOS の target も Mac の worker を
-必要とします。macOS 以外の worker は `platform:ios` を広告しないからです。environment が device cloud の
-worker は、`environment:<name>` を広告します。`platform:*` のトークンは広告しません。`appium` の worker は
-`environment:appium` だけを広告し、サーバの run リクエストは `environment: appium` でこの worker に届きます。worker 能力ファイル自体は
-ルーティング用のトークンを宣言しません。ランタイムやデバイス種別のトークン（`ios18`、`ipad`）は Simulator の
-在庫から得ます。実機のトークン（`device:ipad`）は `devicectl` から得ます（[BE-0468](../../roadmaps/BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of-ja.md)）。
+（[self-hosting](self-hosting.md#能力に基づくキューの振り分けbe-0166)）。
+worker は、自分が動く OS を表す `host:<os>` を広告します。
+target のドライバがすべて 1 つの OS でしか動かない job は、そのホストを必要とします。
+そのため、`xcuitest` の job は `host:darwin` を必要とし、Mac の worker にだけ届きます。
+
+`local` の worker は起動時に、各 `--platform` を worker 能力ファイルとホストに照らして検査します。
+どちらかがそのプラットフォームを除外する場合は、ドライバの理由を示して終了します。
+たとえば `--platform ios` で起動した Linux の worker は止まります。
+理由は `xcuitest runs only on macOS; this worker runs on linux` です。
+この検査は、リクエストの `backend` ではなくプラットフォームのドライバを判定します。
+macOS 以外の worker は `platform:ios` を広告しません。
+そのため、`fake` の backend で動く iOS の target も Mac の worker を必要とします。
+
+Device Farm の worker は、`environment:devicefarm` と `kind:device` を広告します。
+provider のプラットフォームを表す `platform:android` と `platform:ios` も広告します。
+`appium` の worker は `environment:appium` を広告します。
+サーバの run リクエストは、`environment: appium` でこの worker に届きます。
+
+どの worker も、`run-set` のジョブを実行できることを示す `job:run-intent` を広告します（BE-0484）。
+`appium` の worker もこのトークンを広告します。
+ただし `run-set` のジョブは `platform:*` のトークンを必要とし、この worker はそれを広告しません。
+grid の worker だけの構成では、シナリオを通常の run リクエストで実行します。
+
+worker 能力ファイル自体は、ルーティング用のトークンを宣言しません。
+ランタイムやデバイス種別のトークン（`ios18`、`ipad`）は、Simulator の在庫から得ます。
+実機のトークン（`device:ipad`）は `devicectl` から得ます
+（[BE-0468](../../roadmaps/BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of-ja.md)）。
 宣言では、マシンにないランタイムや実機まで約束できてしまうからです。
+種別のトークンも、同じ 2 つの読み取りから得ます（BE-0484）。
+Simulator の在庫に iPhone か iPad があれば `kind:simulator` を広告します。
+iPhone か iPad が接続されている間は `kind:device` を広告します。
+`realDevices: false` を設定すると、`kind:device` を広告しません。
 
 worker の `--capabilities` フラグと `$BAJUTSU_WORKER_CAPABILITIES` は非推奨です。
-どちらも今回のリリースでは、1 回だけの通知とともに引き続き効きます。target の `requires` リストは
-BE-0452 で取り除きました。ホストで実行する job が必要とするのは、そのプラットフォームとドライバのホストだけです。
-2 つのどちらも、予約済みの接頭辞
-`environment:` と `host:` を含められません。worker がどちらも自分で埋めるからです。
+どちらも今回のリリースでは、1 回だけの通知とともに引き続き効きます。
+target の `requires` リストは BE-0452 で取り除きました。
+ホストで実行する run の job が必要とするのは、そのプラットフォームとドライバのホストだけです。
+`run-set` の job はホストを必要としません。どのホストの worker でも受け取れるからです
+（[セルフホスト](self-hosting.md#能力に基づくキューの振り分けbe-0166)）。
+2 つの入力は、どちらも `environment:`、`host:`、`platform:`、`kind:` などの予約済みの接頭辞を含められません。
+worker がこれらのトークンを自分で埋めるからです。
 
 ## XCUITest（iOS）
 
-[BE-0290](../../roadmaps/BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend-ja.md) で idb を撤去して以来、**iOS の唯一の backend** です。**XCTest のオートメーションスナップショット**を、**実機上に常駐する runner**（`BajutsuKit`）を loopback HTTP で駆動して読み取り、アプリ側の統合なしに任意のアプリを bundle id で駆動します。実装: `common/drivers/xcuitest.py`。frame 中心の座標に解決するのではなく、能力モデルの豊かな端に位置します（semantic tap、ネイティブ条件待機、multi-touch、テキスト選択）。Xcode の `xcodebuild` が必要です。
+[BE-0290](../../roadmaps/BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend-ja.md) で idb を撤去して以来、
+XCUITest は **iOS の唯一の backend** です。
+**XCTest のオートメーションスナップショット**を、**実機上に常駐する runner**（`BajutsuKit`）から読み取ります。
+runner は loopback HTTP で駆動します。アプリ側の統合なしに、任意のアプリを bundle id で駆動します。
+実装: `common/drivers/xcuitest.py`。Xcode の `xcodebuild` が必要です。
 
-- `query()`: XCTest のオートメーションスナップショットを読み取り、各要素を `Element` に写します。このスナップショットは**グループコンテナの内側まで降りる**ので、座標系 backend のフラットな frame ダンプと違い、**完全に展開された要素ツリー**を描き出します（`AXLabel`/`AXValue`/アクセシビリティ識別子 を `label`/`value`/`id` に写します）。
-- `query()` は、提示された **`SFSafariViewController`**（サインインページや利用規約のためにアプリが開くアプリ内ブラウザ）も読み取ります。読み取り元は、それを描いているプロセス `com.apple.SafariViewService` です。BE-0316 が SpringBoard のプロンプトを読むのと同じやり方です（[BE-0396](../../roadmaps/BE-0396-ios-sfsafariviewcontroller-tree/BE-0396-ios-sfsafariviewcontroller-tree-ja.md)）。アプリ自身のスナップショットは、このブラウザを iOS のバージョンによって違う形で報告します。iOS 18 までは部分木全体を写して返し、iOS 26 からはプロセス境界で止まり、その下を何も返しません。そこで写しの側を**刈り取り**、サービス自身のツリーを代わりに合流させます。こうしてどちらのバージョンでも欠けがなく、二重にも報告しない 1 つのツリーになります。**閉じるコントロール**は、バージョン間で識別子が食い違う唯一の chrome です（iOS 26 は `Close` を付け、iOS 18 は識別子を持たずラベル `Done` だけです）。runner はどちらでも iOS 26 の `Close` を**識別子として**報告するので、シナリオは `id: Close` という 1 つのセレクタで指せます。正規化するのは識別子だけで、ラベルはプラットフォームが読み上げるまま（iOS 18 では `Done`）なので、`label` を使ったセレクタは両バージョンをまたげません。ブラウザの要素は**frame の中心を座標でタップ**して操作します。`XCUIElement.tap()` はプロセス境界を越えてページ本体には届きますが、ブラウザ自身の chrome では黙って落とされるためです。iOS 18 にある無効状態の `ForwardButton` は iOS 26 に対応するコントロールがないので、シナリオはこれに依存できません。
-- `tap(sel)`: `_resolve` で一意確定します（**not-found はリトライ、ambiguity は即失敗**: 実機ツリーは遷移中に一時的に空になり得るため）。確定後、要素を**アクセシビリティ識別子で直接** tap します（座標を経由しない semantic tap。BE-0289 はスタックしたスナップショットハンドルを再解決し、依然として一意に一致するときだけ再操作します）。XCTest が*拒んだ* tap は、失敗する前にもう 1 段進みます。iOS は包んでいるコントロールより膨らんだ container を報告することがあるので、ドライバは対象の名前付きの子孫を調べ、到達できるものが**ちょうど 1 つ**ならそこへタップして `substitution: soleHittableDescendant` を記録します。0 個または複数なら、どれかを選ばずに失敗し、候補を名指します（[selectors](selectors.md#elementnottappable-解決はしたが到達できない対象)）。
+能力モデルの豊かな端に位置し、semantic tap、ネイティブ条件待機、multi-touch、テキスト選択を備えます。
+frame 中心の座標に解決することはありません。
+
+- `query()`: XCTest のオートメーションスナップショットを読み取り、各要素を `Element` に写します。
+  このスナップショットは**グループコンテナの内側まで降りる**ので、座標系 backend のフラットな frame ダンプと違い、
+  **完全に展開された要素ツリー**を描き出します（`AXLabel`/`AXValue`/アクセシビリティ識別子を `label`/`value`/`id` に写します）。
+- `query()` は、提示された **`SFSafariViewController`** も読み取ります。サインインページや利用規約のためにアプリが開く、アプリ内ブラウザです。
+  読み取り元は、それを描いているプロセス `com.apple.SafariViewService` です。
+  BE-0316 が SpringBoard のプロンプトを読むのと同じやり方です
+  （[BE-0396](../../roadmaps/BE-0396-ios-sfsafariviewcontroller-tree/BE-0396-ios-sfsafariviewcontroller-tree-ja.md)）。
+  - アプリ自身のスナップショットは、このブラウザを iOS のバージョンによって違う形で報告します。
+    iOS 18 までは部分木全体を写して返します。iOS 26 からはプロセス境界で止まり、その下を何も返しません。
+    そこで写しの側を**刈り取り**、サービス自身のツリーを代わりに合流させます。
+    こうして、どちらのバージョンでも欠けがなく、二重にも報告しない 1 つのツリーになります。
+  - **閉じるコントロール**は、バージョン間で識別子が食い違う唯一の chrome です。
+    iOS 26 は `Close` を付け、iOS 18 は識別子を持たずラベル `Done` だけです。
+    runner はどちらでも iOS 26 の `Close` を**識別子として**報告するので、シナリオは `id: Close` という 1 つのセレクタで指せます。
+    正規化するのは識別子だけです。ラベルはプラットフォームが読み上げるまま（iOS 18 では `Done`）なので、
+    `label` を使ったセレクタは両バージョンをまたげません。
+  - ブラウザの要素は、**frame の中心を座標でタップ**して操作します。
+    `XCUIElement.tap()` はプロセス境界を越えてページ本体には届きますが、ブラウザ自身の chrome では黙って落とされるためです。
+  - iOS 18 にある無効状態の `ForwardButton` は、iOS 26 に対応するコントロールがありません。シナリオはこれに依存できません。
+- `tap(sel)`: `_resolve` で一意確定します（**not-found はリトライ、ambiguity は即失敗**。実機ツリーは遷移中に一時的に空になり得るためです）。
+  確定後、要素を**アクセシビリティ識別子で直接** tap します。座標を経由しない semantic tap です。
+  BE-0289 は、スタックしたスナップショットハンドルを再解決し、依然として一意に一致するときだけ再操作します。
+  - XCTest が*拒んだ* tap は、失敗する前にもう 1 段進みます。
+    iOS は、包んでいるコントロールより膨らんだ container を報告することがあります。
+    そのためドライバは対象の名前付きの子孫を調べます。到達できるものが**ちょうど 1 つ**なら、そこへタップして `substitution: soleHittableDescendant` を記録します。
+    0 個または複数なら、どれかを選ばずに失敗し、候補を名指します
+    （[selectors](selectors.md#elementnottappable-解決はしたが到達できない対象)）。
 - `wait_for`: runner のネイティブな条件待機を使います。
 - `pinch` / `rotate`: runner がネイティブに実行する 2 本指の multi-touch ジェスチャです。
-- `select` / `copy`: フォーカス中フィールドのネイティブなテキスト選択です。
+- `select` / `copy` / `paste`: フォーカス中フィールドのネイティブなテキスト選択とペーストです。
 - `screenshot`: `simctl io screenshot`。
-- `enter_app` / `leave_app`: `app:` ステップです。上の `SFSafariViewController` のマージとは違い、
-  2つのツリーをマージすることはありません。`enter_app` は新しい `XCUIApplication(bundleIdentifier:)` を
-  runner自身のappスタックへpushして`.activate()`し、上のすべてのルート（`query()`、`tap`、…）は、対応する
-  `leave_app` が1つ下のappへpopするまで、そのappだけを対象にします。`HANDLE_SYSTEM_ALERT` / `PICKER_WHEEL`
-  と同じくXCUITest限定の`APP_CONTEXT` capabilityで許可を得ます。実現可能性のスパイクにより、
-  `activate()`はテスト対象アプリが一度も起動していないアプリを、アプリ単位のconfigやアプリ側の協力なしに
-  確実に前面化することを確かめました
+- `enter_app` / `leave_app`: `app:` ステップです。上の `SFSafariViewController` のマージとは違い、2 つのツリーをマージすることはありません。
+  `enter_app` は、新しい `XCUIApplication(bundleIdentifier:)` を runner 自身の app スタックへ push して `.activate()` します。
+  上のすべてのルート（`query()`、`tap`、…）は、対応する `leave_app` が 1 つ下の app へ pop するまで、その app だけを対象にします。
+  このステップは `APP_CONTEXT` capability でゲートします。この capability は XCUITest と adb が宣言します（adb での仕組みは adb の節で説明します）。
+  XCUITest については、実現可能性のスパイクにより、`activate()` はテスト対象アプリが一度も起動していないアプリを、
+  アプリ単位の config やアプリ側の協力なしに確実に前面化することを確かめました
   （[`docs/specs/ios-cross-app-ui-control-feasibility.md`](../specs/ios-cross-app-ui-control-feasibility.md)）。
 
-> 汎用の runner は `XCUIApplication(bundleIdentifier:)` を使うので、アプリ側の協力なしにインストール済みの任意のアプリを駆動します。Simulator の実行は runner の config を一切必要としません。target が `driver.runner.testRunner` も `driver.runner.build` も指定しないときは、wheel にパッケージデータとして同梱された Simulator 用 runner に解決します（BE-0292）。明示的な `testRunner` や `build` は依然としてこの既定より優先し、`runsOn.ios.kind: device` は、ユーザーが `bajutsu runner build --device` でビルドして署名した runner に解決します（BE-0456）。オペレーターのチーム向けに署名した runner を、Bajutsu は同梱できないためです。この backend は `make -C demos/showcase run-swiftui` ＋ `ios-e2e.yml` CI ワークフローで**実機検証済みです**（iPhone 17 Pro、最近の iOS）。XCUITest backend は pip extra を必要とせず、`xcodebuild` は Xcode が供給します。
+> 汎用の runner は `XCUIApplication(bundleIdentifier:)` を使うので、アプリ側の協力なしにインストール済みの任意のアプリを駆動します。
+> Simulator の実行は、runner の config を一切必要としません。
+> target が `driver.runner.testRunner` も `driver.runner.build` も指定しないときは、
+> wheel にパッケージデータとして同梱された Simulator 用 runner に解決します（BE-0292）。
+> 明示的な `testRunner` や `build` は、依然としてこの既定より優先します。
+> `runsOn.ios.kind: device` は、ユーザーが `bajutsu runner build --device` でビルドして署名した runner に解決します（BE-0456）。
+> オペレーターのチーム向けに署名した runner を、Bajutsu は同梱できないためです。
+>
+> この backend は、`make -C demos/showcase run-swiftui` と `ios-e2e.yml` CI ワークフローで**実機検証済みです**（iPhone 17 Pro、最近の iOS）。
+> XCUITest backend は pip extra を必要としません。`xcodebuild` は Xcode が供給します。
 
 ## adb（Android）
 
-ヘッドレスで座標ベースの、唯一の座標系バックエンドです。semantic tap を持たないため、抽象側で **id → frame 中心 → 座標 tap** に解決します。実装: `common/drivers/adb.py` ＋ `bajutsu/common/backend_cli/adb.py`（ロードマップ [BE-0007](../../roadmaps/BE-0007-android-backend/BE-0007-android-backend-ja.md)）。
+adb backend は、ヘッドレスで座標ベースの、唯一の座標系バックエンドです。
+semantic tap を持たないため、抽象側で **id → frame 中心 → 座標 tap** に解決します。
+実装: `common/drivers/adb.py` ＋ `bajutsu/common/backend_cli/adb.py`（ロードマップ [BE-0007](../../roadmaps/BE-0007-android-backend/BE-0007-android-backend-ja.md)）。
 
-- `query()`: ウィンドウの UI Automator XML を読み取り、純粋なパーサ（`parse_hierarchy`）が各 `<node>` を `Element` に写します。読み取りは、**常駐 UI Automator サーバ**がビルド済み（`make -C BajutsuAndroidUIAutomatorServer build`）のときはそのサーバ経由で行います。温めた 1 つの `UiAutomation` セッションが `adb forward` 越しに `GET /source` へ答えるので、1 回の読み取りは約 0.1〜0.3 秒で済み、呼び出しのたびに約 2.4 秒かかる `adb -s <serial> exec-out uiautomator dump /dev/tty` を都度起動せずに済みます（ロードマップ [BE-0245](../../roadmaps/BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server-ja.md)）。常駐サーバの全画面ダンプはアクティブウィンドウへ絞り込むので、ダンプ経路と同じ `Element` を返します。サーバが未ビルドのとき、またはリースが回復できないチャネルの障害が起きたときは `uiautomator dump` にフォールバックし、`BAJUTSU_ADB_RESIDENT`（`0`／`1`）でどちらの経路にも固定できます。端末側のすべての待ちには、ホストの読み取りの待ち時間 5 秒に収まる上限があります。そのため idle にならない画面でも、読み取りに約 3.6 秒かかるだけでチャネルは失いません。時間切れはサーバーの消失を示さないので、リースは新しい接続で読み直し、次にサーバーを再起動してからフォールバックします。接続の拒否や切断では、すぐにフォールバックします。ダンプの経路では非 ASCII の文字列を入力できないので、そのあとの非 ASCII の `type` ステップは、失ったサーバーを立ち上げ直します。再試行の回数と再起動の可否はターゲットの `driver.residentRecovery` で設定し、フォールバックは実行の `manifest.json` に記録します。
-- **セレクタの写像**: `resource-id` → `identifier`（`<package>:id/` 接頭辞を剥がしてローカル名にするので、`testTagsAsResourceId` で表出した Compose の `testTag` はそのまま、ネイティブの `android:id` は接頭辞が落ちます）、`text` → `label`（`content-desc` へフォールバック）、`content-desc` → `value`（アプリは状態値をここにミラーします。SPEC §2.1）、ウィジェットの `class`（と enabled / selected / checked の状態）→ `traits` です。
-- **id 照合ポリシー**: ローカル名は**厳密一致**で照合します。ドライバは `.`↔`_` の書き換えをしません。書き換えは別々の id を取り違え、決定性を損なうためです。プラットフォーム本来の id 構文が SPEC の id をそのまま再現できない場合（Android Views の `android:id` は `.` も `-` も許さず、`stable.refresh` は `stable_refresh` として現れます）は、シナリオが 1 つのセレクタに id を**両方の形**で持ち（`id: [stable.refresh, stable_refresh]`）、候補の OR として照合します（BE-0221）。[scenarios](scenarios.md#セレクタ要素の指定) を参照してください。この両方の形を支えるアプリ側の仕込みは、独立したライブラリ [`IdentifierTool`](../../IdentifierTool/README.ja.md)（BE-0405）として出荷しています。モーダルウィンドウの内側でも `testTagsAsResourceId` を設定すること、Views の解決に使う `android:id` を引くことを担います。`android:id` そのものの宣言は、引き続き消費側のアプリの仕事です。showcase 自身がこれを使っています。IdentifierTool 自体は `BajutsuAndroid` への依存を持ちません。
-- `tap(sel)`: `_resolve` で一意性を確定します（**not-found はリトライ、ambiguity は即失敗**。遷移中のダンプは一時的な null-root としてリトライし、2 件以上の一致は即座に失敗させます）。確定後、`tap`・`long_press`・`double_tap` は、解決した要素の identity（host 側で計算した座標ではなく、生のアクセシビリティ属性値と ordinal の組み合わせ）を resident server の `POST /act`（ロードマップ [BE-0339](../../roadmaps/BE-0339-adb-device-side-actuation/BE-0339-adb-device-side-actuation-ja.md)）へ送ります。server は自身が保持する live なツリーに対してその identity を再解決し、同じ warm session から inject するので、ジェスチャは inject する瞬間にデバイスが持つ bounds へ着地し、1 回前の round trip で host が計算した座標へは着地しません。`stale` 応答（host が数えた時点から identity の一致件数が変わった場合）は有界にリトライします。リトライを使い切ったとき、channel に `/act` エンドポイントがない（古い server の）とき、または channel 自体が fault したときは、host 側で計算した座標へフォールバックします（`tap` は frame 中心への `adb shell input tap`、`long_press` は duration だけ保持する同一点の swipe）。server が inject したにもかかわらず、その応答が host へ届かなかったときは、2 回目の touch が 1 回目に重なって着地する危険を避けるため、driver はそのジェスチャを完了扱いにします。`double_tap` のデバイス側経路は、server 側の 1 回の呼び出しから両方の `MotionEvent` を生成し、round trip のたまたまの timing に間隔を委ねる代わりに、固定した interval を宣言します。その座標フォールバックは後述の**実機アクチュエーションの忠実度**を参照してください。`swipe` は実際のドラッグにするため有限の duration を付け、`type_text` は、ASCII の文字列なら `input text`（空白はその `%s` エスケープで送ります）です。`input text` には自身のエスケープを回避する手段がないので、文字どおりの `%s` は 2 文字の間で分割して別々に呼び出します。非 ASCII 文字は文字マップに対応するキーがなくコマンドがクラッシュするので、base64 の本文にして常駐サーバーの `POST /type` に送ります。サーバーはフォーカス中の入力欄の文字列と選択範囲から新しい値を組み立て、`ACTION_SET_TEXT` で設定するので、この経路は入力メソッドエディター（IME）を通りません。この経路では、パスワード欄、`ACTION_SET_TEXT` を提供しない欄、フォーカス中の欄がない場合、常駐サーバーがない場合に、理由を示して step が失敗します。ASCII の文字列は、従来どおり `input text` でパスワード欄に入力できます。
-- **座標の解決は、pan にツリーが追いつくまで待ちます。** Android はまず内容を動かし、新しい frame を伝えるアクセシビリティ更新をその後に publish します。その 2 つの時点のあいだに当たった読み取りは、スクロール前の画面を返します。しかも読み取りを繰り返しても、すでに誤っている frame について互いに一致します。ツリーは揺れて見えるのではなく、誤ったまま自己整合しているのです。そのため、連続 2 回の読み取りの一致を settle と見なす判定だけでは、遅れを検出できません。そこで frame をまとめて動かすジェスチャ（`swipe`、`scroll`、`pinch`、`rotate`）の直後、**さらにデバイス側か座標かを問わずあらゆる `tap` / `long_press` / `double_tap` の直後**（BE-0332）に、ドライバはジェスチャ前の画面が持っていた frame の射影を記録します。次に座標を解決するときは、射影が記録から動き、さらに短時間そのまま保たれるまで読み直します。タップもレイアウトを動かしうる（メニューを開く、行を展開する、ステッパーを進める）ので、その次に続くアクチュエータは、タップより**後**にデバイスが公開したツリーに対して解決しなければなりません。タップ前のツリーではいけないのです。`tap_point`（生の座標）と `back`（解決する対象を持たない）は、後追いすべきレイアウト由来の対象がないので、この待ちを張りません。前述の `POST /act` 経路は、バリアが立てている問いに、その発生源で答えます。そのため、デバイスが確認したジェスチャにはバリアを張りません（BE-0339）。resident server は inject したあと、warm session がすでに観測しているアクセシビリティイベントの流れを短時間だけ待ち、inject より後に届いた最初のイベントのデバイス時刻を host へ返します。こうして確認が取れたジェスチャは、着地したと host が知らされる時点で、すでにツリーへ届いています。それはバリアが待つはずだったものそのものです。その待ち時間のうちに確認が取れなかったジェスチャは、座標での inject とまったく同じようにバリアを張ります。ここには、由来の異なる 3 つの場合が一緒に落ちてきます。frame を動かさなかったジェスチャ、待ち時間より遅い publish、そして待つ機能自体を持たない古い server です。確認はデバイスが与えるものであって、ドライバが仮定してよいものではありません。同一性で指すフォロワーと違い、座標で解決するフォロワー（`pinch`、`rotate`、方向付き `swipe`/`drag` のアンカー）には、自己修復のための `stale` 再解決がないからです。確認が取れたジェスチャは、publish が届いた時点でデバイスが取ったツリーも併せて返します。次の settle が冒頭で行うはずだった読み取りは、これで済んでいることになります。ドライバがそのツリーを採用するのは、ツリー自身のマークがジェスチャを後追いしていることを確かめたあとです（BE-0407 の作業単位 19）。バリアの待ち時間には実時間の上限を設け、使い切ったときはその旨を警告として残します。この上限は、`scroll` のループが内容の末尾を確認してから失敗するために使う値と同一です（`ReadLagProvider`、BE-0326 / BE-0332。[architecture](architecture.md) を参照）。publish の遅れは 1 つなので、予算も 1 つにして複数の経路で使います。方向付きの `swipe` と `drag` だけは、解決の**場所**が異なります。この 2 つは、ステップが指定するアンカー要素から端点をドライバの外側で計算するため、ドライバはセレクタではなく 2 つの座標を受け取り、自分でツリーを settle できません。settle を必要とするバックエンドはそれを公開し（`SettledReadProvider`）、ハンドラは素の読み取りに代えてその読み取りを使います。このプロトコルを実装しないバックエンドは、1 回の読み取りのままです。この継ぎ目がないと、方向付き swipe を 2 回続けたとき、2 回目は 1 回目の pan 前の frame を基準にしてしまいます。
+- `query()`: ウィンドウの UI Automator XML を読み取り、純粋なパーサ（`parse_hierarchy`）が各 `<node>` を `Element` に写します。
+  - **常駐経路。** **常駐 UI Automator サーバ**がビルド済み（`make -C BajutsuAndroidUIAutomatorServer build`）のときは、そのサーバ経由で読み取ります。
+    温めた 1 つの `UiAutomation` セッションが、`adb forward` 越しに `GET /source` へ答えます。
+    1 回の読み取りは約 0.1〜0.3 秒で済み、呼び出しのたびに約 2.4 秒かかる `adb -s <serial> exec-out uiautomator dump /dev/tty` を都度起動せずに済みます
+    （ロードマップ [BE-0245](../../roadmaps/BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server-ja.md)）。
+    常駐サーバの全画面ダンプはアクティブウィンドウへ絞り込むので、ダンプ経路と同じ `Element` を返します。
+  - **フォールバック。** サーバが未ビルドのとき、またはリースが回復できないチャネルの障害が起きたときは、`uiautomator dump` にフォールバックします。
+    `BAJUTSU_ADB_RESIDENT`（`0`／`1`）でどちらの経路にも固定できます。
+  - **待ちの上限。** 端末側のすべての待ちには、ホストの読み取りの待ち時間 5 秒に収まる上限があります。
+    そのため、idle にならない画面でも、読み取りに約 3.6 秒かかるだけでチャネルは失いません。
+  - **回復の順序。** 時間切れはサーバーの消失を示しません。
+    そこでリースは、新しい接続で読み直し、次にサーバーを再起動してからフォールバックします。
+    接続の拒否や切断では、すぐにフォールバックします。
+  - **そのあとの非 ASCII の `type` ステップ。** ダンプの経路では非 ASCII の文字列を入力できません。そのため、このステップは失ったサーバーを立ち上げ直します。
+  - **設定と記録。** 再試行の回数と再起動の可否は、ターゲットの `driver.residentRecovery` で設定します。
+    フォールバックは、実行の `manifest.json` に記録します。
+- **セレクタの写像**:
+  - `resource-id` → `identifier`。`<package>:id/` 接頭辞を剥がしてローカル名にします。
+    そのため、`testTagsAsResourceId` で表出した Compose の `testTag` はそのまま写り、ネイティブの `android:id` は接頭辞が落ちます。
+  - `text` → `label`（`content-desc` へフォールバック）。
+  - `content-desc` → `value`（アプリは状態値をここにミラーします。SPEC §2.1）。
+  - ウィジェットの `class`（と enabled / selected / checked の状態）→ `traits`。
+  - 編集可能な入力欄だけは、iOS と同じ向きに写像します。
+    編集可能な入力欄とは、class が `android.widget.EditText` のノードです。
+    `android.widget.AutoCompleteTextView` と `android.widget.MultiAutoCompleteTextView` も同じように扱います。
+    Views の `EditText` とその AppCompat や Material のサブクラス、Compose のテキストフィールドは、`android.widget.EditText` を報告します。
+  - 入力欄の `text` は `value` に入るので、`value` アサーションと `clear` ステップは入力済みの文字を読めます。
+    `label` には `content-desc`（無ければ `hint`）が入るので、文字が変わってもラベルのセレクタの意味は変わりません。
+  - 空の入力欄は `text` にヒントを報告します。
+    ダンプに `hint` 属性があれば（常駐サーバーのダンプにはあります）、ドライバはヒントの表示を見分けて `value` を空にします。
+  - `uiautomator dump` によるフォールバックのダンプは `hint` 属性を欠くことがあります。
+    その場合は空の入力欄のヒントを `value` として読みます。この経路では入力欄を指す名前が `text` しかないので、`label` にも `text` を入れます。
+    また、ダンプには `isShowingHintText` がないので、ヒントと同じ文字を入力した入力欄も `value` を空として読みます。
+  - マスクされた入力欄（`password="true"`）の文字は、`value` と `label` のどちらにも出しません。
+- **id 照合ポリシー**: ローカル名は**厳密一致**で照合します。ドライバは `.`↔`_` の書き換えをしません。
+  書き換えは別々の id を取り違え、決定性を損なうためです。
+  プラットフォーム本来の id 構文が SPEC の id をそのまま再現できない場合があります。
+  Android Views の `android:id` は `.` も `-` も許さず、`stable.refresh` は `stable_refresh` として現れます。
+  その場合、シナリオは 1 つのセレクタに id を**両方の形**で持ち（`id: [stable.refresh, stable_refresh]`）、候補の OR として照合します（BE-0221）。
+  [scenarios](scenarios.md#セレクタ要素の指定) を参照してください。
+  - この両方の形を支えるアプリ側の仕込みは、独立したライブラリ [`IdentifierTool`](../../IdentifierTool/README.ja.md)（BE-0405）として出荷しています。
+    モーダルウィンドウの内側でも `testTagsAsResourceId` を設定することと、Views の解決に使う `android:id` を引くことを担います。
+    showcase 自身がこのライブラリを使っています。IdentifierTool 自体は `BajutsuAndroid` への依存を持ちません。
+    `android:id` そのものの宣言は、引き続き消費側のアプリの仕事です。
+- `tap(sel)`: `_resolve` で一意性を確定します（**not-found はリトライ、ambiguity は即失敗**）。
+  遷移中のダンプは一時的な null-root としてリトライし、2 件以上の一致は即座に失敗させます。
+  - **デバイス側のアクチュエーション。** 確定後、`tap`・`long_press`・`double_tap` は、解決した要素の identity を resident server の `POST /act` へ送ります
+    （ロードマップ [BE-0339](../../roadmaps/BE-0339-adb-device-side-actuation/BE-0339-adb-device-side-actuation-ja.md)）。
+    identity は、生のアクセシビリティ属性値と ordinal の組み合わせで、host 側で計算した座標ではありません。
+    server は自身が保持する live なツリーに対してその identity を再解決し、同じ warm session から inject します。
+    そのためジェスチャは、inject する瞬間にデバイスが持つ bounds へ着地します。1 回前の round trip で host が計算した座標へは着地しません。
+  - **`stale` 応答。** `stale` 応答は、host が数えた時点から identity の一致件数が変わったことを表します。ドライバは有界にリトライします。
+  - **座標へのフォールバック。** 次の 3 つの場合は、host 側で計算した座標へフォールバックします。
+    リトライを使い切ったとき、channel に `/act` エンドポイントがない（古い server の）とき、channel 自体が fault したときです。
+    `tap` は frame 中心への `adb shell input tap` を使い、`long_press` は duration だけ保持する同一点の swipe を使います。
+  - **応答が届かないとき。** server が inject したにもかかわらず、その応答が host へ届かなかったときは、ドライバはそのジェスチャを完了扱いにします。
+    2 回目の touch が 1 回目に重なって着地する危険を避けるためです。
+  - **`double_tap`。** デバイス側経路は、server 側の 1 回の呼び出しから両方の `MotionEvent` を生成します。
+    round trip のたまたまの timing に間隔を委ねる代わりに、固定した interval を宣言します。
+    その座標フォールバックは、後述の**実機アクチュエーションの忠実度**を参照してください。
+  - **`swipe`。** 実際のドラッグにするため、有限の duration を付けます。
+  - **`type_text`。** ASCII の文字列なら `input text` です（空白はその `%s` エスケープで送ります）。
+    `input text` には自身のエスケープを回避する手段がないので、文字どおりの `%s` は 2 文字の間で分割して別々に呼び出します。
+  - **非 ASCII の文字列。** 文字マップに対応するキーがなく、コマンドがクラッシュします。
+    そのため、base64 の本文にして常駐サーバーの `POST /type` に送ります。
+    サーバーはフォーカス中の入力欄の文字列と選択範囲から新しい値を組み立て、`ACTION_SET_TEXT` で設定します。
+    この経路は入力メソッドエディター（IME）を通りません。
+    この経路では、パスワード欄、`ACTION_SET_TEXT` を提供しない欄、フォーカス中の欄がない場合、常駐サーバーがない場合に、理由を示して step が失敗します。
+    ASCII の文字列は、従来どおり `input text` でパスワード欄に入力できます。
 
-この判定が「違う」ではなく「追いついた」を意味するために、3 つの条件を置いています。短時間保たれることを要求するのは、追いつきが一括では起きないからです。Android は node の bounds を 1 つずつ publish し直すため、追いつきの途中に当たった読み取りは新しい frame と古い frame を混在させ、速い読み取りが 2 回とも同じ途中状態に当たって互いに一致することがあります。退化した読み取りは最初から数えません。空の射影はどの実在の射影とも違うので、数えると、読み取り経路自身がまだリトライしているツリーに予算を使ってしまいます。そして記録する射影は、前回の読み取り以降に何かが actuate していれば読み直します。その actuation より前の baseline は、無いよりも悪いからです。ジェスチャ後の最初の読み取りがその baseline から動いてしまい、ジェスチャが publish されたと数えられてしまいます。さらに、まだ publish を待っているジェスチャがあれば、次のジェスチャの baseline を取る前にそれを待ち切ります。この場合は読み直しでは救えません。読み取り自体がジェスチャ前の画面を返すので、先のジェスチャの publish を後から新しいジェスチャのものと取り違えてしまいます。
+### ツリーが pan に追いつくまでの待機
 
-判定にはすべての読み取りが寄与します。待ちが自分で発行した読み取りだけではありません。ジェスチャと次の actuator のあいだにランナーがすでに取る読み取り（`wait`、`assert`、ステップ後のキャプチャ）が通常はこの判定を満たすので、ツリーが追いついている実行は何も待ちません。
+**座標の解決は、pan にツリーが追いつくまで待ちます。**
+Android はまず内容を動かし、新しい frame を伝えるアクセシビリティ更新をその後に publish します。
+その 2 つの時点のあいだに当たった読み取りは、スクロール前の画面を返します。
+しかも読み取りを繰り返しても、すでに誤っている frame について互いに一致します。
+ツリーは揺れて見えるのではなく、誤ったまま自己整合しているのです。
+そのため、連続 2 回の読み取りの一致を settle と見なす判定だけでは、遅れを検出できません。
 
-この待ちによって、継続的インテグレーションのエミュレータで `gestures` が間欠的に落ちる問題が解消します。その実行では、ツリーが 73px のスクロールを 1 秒以上伏せました。`long_press` は対象の下端より 10px 下を狙ってしまい、該当ステップのスクリーンショットが 1 ピクセルも違わないまま、mirror された値は `idle` に留まりました。
-同じ publish の遅れは、シナリオ途中の `extract` にも及びます（BE-0332）。アクションがツリーに mirror する値は、アクションが返った後に一拍遅れて届くことがあり、アクション直後の最初の読み取りどうしはアクション前の値で互いに一致してしまいます。`extract.yaml` はカウンタの一つ前の値を束縛し、後続の `assert` が現在値と比べて正しい実行を落としました。この経路では、settle のポーリングは pan の「ステップ前の読み取りと違うか」という判定を使えません。`extract` の基準となる読み取りは、アクション直後の 1 回の読み取りにすぎず、それ自体が古くなりうるからです。そこで代わりに、一致した読み取りが予算のぶんだけアクションより後であることを要求します。**したがって読み取り遅延の申告は 1 つの契約です**。非ゼロの `read_lag()` を返すバックエンドは、内容を動かすアクチュエーション後のあらゆる座標解決と、シナリオ途中のあらゆる `extract` が、ツリーの追いつきを待って予算のぶんだけ費やしうることを引き受けます。この費用は、アクション前の画面にまだ一致している読み取りにのみ払われ、すでに反映済みの読み取りには払われません。遅延を申告しないバックエンドは、1 回読み取りで速く失敗する従来の挙動を保ちます。常駐リーダーは、ホストが比較できる読み取りマークを発行するようになり（BE-0332 作業単位 3〜4）、この上限を早期に解放される待ちへ変えます。リーダーはアクセシビリティイベントの流れを観測し、`GET /source` のたびに、そのダンプ時点で最新のイベントのデバイス時刻を `X-Bajutsu-Read-Mark` ヘッダとして刻印し、さらに `GET /clock` エンドポイントを備えます。ドライバは、待ちを張るアクチュエーションのたびにデバイス時刻のマークを取り、そのマークより後の読み取りを要求します（`read_postdates_actuation()`、`ReadOrderProvider` の継ぎ目）。こうして座標解決の追いつきは、予算いっぱいまで待つ代わりに、デバイスがアクションの更新を公開した瞬間に解放されます（滞留はありません）。マークが解放するのは**座標**のバリアだけです。シナリオ途中の `extract` は実時間の予算を保ちます。マークが答えるのは「アクセシビリティイベントがジェスチャより後である」ことであり、`extract` が必要とするのは「写し取る対象のプロパティが再公開済みである」ことだからです。1 回のジェスチャは複数のイベントを生みます。Compose は、新しいカウントを映す `Text` が再コンポーズされるより先に、タップされたボタン自身のイベントを publish します。そのため読み取りがタップより後でありながら、以前の値を持ったままになり、次の読み取りとも一致してしまいます。順序は、座標解決が待つ frame に対しては正しい問いですが、値に対しては誤った問いです。2 つのマークはどちらもデバイス自身の時計から取るので、ホストとデバイスのあいだの時計のずれは入りません。`GET /source?since=<mark>` は、同じ順序づけをリーダー自身へ持ち込みます。要求したマークより後のアクセシビリティイベントが届くまでブロックし、続いて有界な settle が tearing を閉じてから応答するので、2 回同一ダンプによる鮮度の判定はその源で退き、settle 済みの画面で 2 回目のダンプを払わなくなります。予算が残るのは、マークを持たない一発の `uiautomator dump` のフォールバックだけです。この読み取りマークの契約（読み取り順序を持つバックエンドでは、読み取りが内容を動かすジェスチャより後になること）を、ドライバ適合性スイート（BE-0114）が実バックエンドに対して検証します。
-- **実機アクチュエーションの忠実度**（ロードマップ [BE-0210](../../roadmaps/BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity-ja.md)）: `back` ステップは真のシステムバック（`input keyevent 4`、`KEYCODE_BACK`）です。Android にはタップできる画面上の戻る要素がなく、この点が iOS の OS 戻るボタンと異なります。`double_tap` の主経路は resident server の `POST /act`（前述）です。server は両方の `MotionEvent` を自ら生成し、round trip のたまたまの timing に double-tap ウィンドウへの着地を委ねる代わりに、宣言した interval をその間に刻みます（ロードマップ [BE-0339](../../roadmaps/BE-0339-adb-device-side-actuation/BE-0339-adb-device-side-actuation-ja.md)）。この channel がないときは、host 側の手順にフォールバックします。root 化されたデバイスでタッチスクリーンを検出できる場合は、生の 2 スロット `sendevent` シーケンス（BE-0208）が 2 回のタップの間隔をプロセス起動 5 回分まで狭めます。それ以外では、2 回のタップを**単一の `adb shell` 往復**（`input tap … ; input tap …`）で発行するので、adb の転送往復自体が間隔を double-tap ウィンドウの外へ広げることはありません。タップの対象が**現在のビューポートにない**ときは、そちらへスクロール（既定は上方向のスワイプ）して再クエリし、回数で区切ります。固定 sleep ではなく条件待機なので、決して現れないセレクタはそれでも決定論的に失敗します。
+ドライバは、次のアクチュエーションの直後に、ジェスチャ前の画面が持っていた frame の射影を記録します。
+
+- frame をまとめて動かすジェスチャ（`swipe`、`scroll`、`pinch`、`rotate`）。
+- **デバイス側か座標かを問わず、あらゆる `tap` / `long_press` / `double_tap`**（BE-0332）。
+
+次に座標を解決するときは、射影が記録から動き、さらに短時間そのまま保たれるまで読み直します。
+待ちには実時間の上限を設け、使い切ったときはその旨を警告として残します。
+
+タップもレイアウトを動かしえます（メニューを開く、行を展開する、ステッパーを進める）。
+そのため、タップの次に続くアクチュエータは、タップより**後**にデバイスが公開したツリーに対して解決しなければなりません。
+タップ前のツリーではいけません。
+`tap_point`（生の座標）と `back`（解決する対象を持たない）は、後追いすべきレイアウト由来の対象がないので、この待ちを張りません。
+
+**デバイスがジェスチャを確認する場合。** 前述の `POST /act` 経路は、バリアが立てている問いに、その発生源で答えます。
+そのため、デバイスが確認したジェスチャにはバリアを張りません（BE-0339）。
+
+- resident server は inject したあと、warm session がすでに観測しているアクセシビリティイベントの流れを短時間だけ待ちます。
+  そして、inject より後に届いた最初のイベントのデバイス時刻を host へ返します。
+- こうして確認が取れたジェスチャは、着地したと host が知らされる時点で、すでにツリーへ届いています。
+  それは、バリアが待つはずだったものそのものです。
+- その待ち時間のうちに確認が取れなかったジェスチャは、座標での inject とまったく同じようにバリアを張ります。
+  ここには由来の異なる 3 つの場合が一緒に落ちてきます。
+  frame を動かさなかったジェスチャ、待ち時間より遅い publish、待つ機能自体を持たない古い server です。
+- 確認はデバイスが与えるものであって、ドライバが仮定してよいものではありません。
+  同一性で指すフォロワーと違い、座標で解決するフォロワー（`pinch`、`rotate`、方向付き `swipe`/`drag` のアンカー）には、
+  自己修復のための `stale` 再解決がないからです。
+- 確認が取れたジェスチャは、publish が届いた時点でデバイスが取ったツリーも併せて返します。
+  次の settle が冒頭で行うはずだった読み取りは、これで済んでいることになります。
+  ドライバがそのツリーを採用するのは、ツリー自身のマークがジェスチャを後追いしていることを確かめたあとです（BE-0407 の作業単位 19）。
+
+**予算は 1 つです。** バリアの待ち時間の上限は、`scroll` のループが内容の末尾を確認してから失敗するために使う値と同一です。
+上限は、デバイスの publish 待ち時間とは別のものです（`ReadLagProvider`、BE-0326 / BE-0332。[architecture](architecture.md) を参照）。
+publish の遅れは 1 つなので、予算も 1 つにして複数の経路で使います。
+
+**方向付きの `swipe` と `drag`。** この 2 つだけは、解決の**場所**が異なります。
+端点は、ステップが指定するアンカー要素から、ドライバの外側で計算します。
+そのためドライバはセレクタではなく 2 つの座標を受け取り、自分でツリーを settle できません。
+settle を必要とするバックエンドはそれを公開し（`SettledReadProvider`）、ハンドラは素の読み取りに代えてその読み取りを使います。
+このプロトコルを実装しないバックエンドは、1 回の読み取りのままです。
+この継ぎ目がないと、方向付き swipe を 2 回続けたとき、2 回目は 1 回目の pan 前の frame を基準にしてしまいます。
+
+**この判定が「追いついた」を意味するための 3 つの条件。** 判定は、単に「違う」ではなく「追いついた」を意味しなければなりません。
+
+- **短時間保たれること。** 追いつきは一括では起きません。
+  Android は node の bounds を 1 つずつ publish し直すため、追いつきの途中に当たった読み取りは新しい frame と古い frame を混在させます。
+  速い読み取りが 2 回とも同じ途中状態に当たって、互いに一致することがあります。
+- **退化した読み取りを数えないこと。** 空の射影はどの実在の射影とも違います。
+  数えると、読み取り経路自身がまだリトライしているツリーに予算を使ってしまいます。
+- **記録を読み直すこと。** 記録する射影は、前回の読み取り以降に何かが actuate していれば読み直します。
+  その actuation より前の baseline は、無いよりも悪いからです。
+  ジェスチャ後の最初の読み取りがその baseline から動いてしまい、ジェスチャが publish されたと数えられてしまいます。
+
+まだ publish を待っているジェスチャがあれば、次のジェスチャの baseline を取る前にそれを待ち切ります。
+この場合は読み直しでは救えません。読み取り自体がジェスチャ前の画面を返すので、先のジェスチャの publish を後から新しいジェスチャのものと取り違えてしまいます。
+
+判定にはすべての読み取りが寄与します。待ちが自分で発行した読み取りだけではありません。
+ジェスチャと次の actuator のあいだにランナーがすでに取る読み取り（`wait`、`assert`、ステップ後のキャプチャ）が、通常はこの判定を満たします。
+そのため、ツリーが追いついている実行は何も待ちません。
+
+**この待ちが解消した問題。** この待ちによって、継続的インテグレーションのエミュレータで `gestures` が間欠的に落ちる問題が解消します。
+その実行では、ツリーが 73px のスクロールを 1 秒以上伏せました。
+`long_press` は対象の下端より 10px 下を狙ってしまい、該当ステップのスクリーンショットが 1 ピクセルも違わないまま、mirror された値は `idle` に留まりました。
+
+**シナリオ途中の `extract`。** 同じ publish の遅れは、シナリオ途中の `extract` にも及びます（BE-0332）。
+アクションがツリーに mirror する値は、アクションが返った後に一拍遅れて届くことがあります。
+アクション直後の最初の読み取りどうしは、アクション前の値で互いに一致してしまいます。
+`extract.yaml` はカウンタの一つ前の値を束縛し、後続の `assert` が現在値と比べて正しい実行を落としました。
+この経路では、settle のポーリングは pan の「ステップ前の読み取りと違うか」という判定を使えません。
+`extract` の基準となる読み取りは、アクション直後の 1 回の読み取りにすぎず、それ自体が古くなりうるからです。
+そこで代わりに、一致した読み取りが予算のぶんだけアクションより後であることを要求します。
+
+**したがって、読み取り遅延の申告は 1 つの契約です。**
+非ゼロの `read_lag()` を返すバックエンドは、次の 2 つを引き受けます。
+
+- 内容を動かすアクチュエーション後のあらゆる座標解決が、ツリーの追いつきを待って予算のぶんだけ費やしうること。
+- シナリオ途中のあらゆる `extract` が、同じように予算のぶんだけ費やしうること。
+
+この費用は、アクション前の画面にまだ一致している読み取りにのみ払われ、すでに反映済みの読み取りには払われません。
+遅延を申告しないバックエンドは、1 回読み取りで速く失敗する従来の挙動を保ちます。
+
+**読み取りマーク。** 常駐リーダーは、ホストが比較できる読み取りマークを発行します（BE-0332 作業単位 3〜4）。
+このマークが、上限を早期に解放される待ちへ変えます。
+
+- リーダーはアクセシビリティイベントの流れを観測します。
+  `GET /source` のたびに、そのダンプ時点で最新のイベントのデバイス時刻を `X-Bajutsu-Read-Mark` ヘッダとして刻印します。
+  さらに `GET /clock` エンドポイントを備えます。
+- ドライバは、待ちを張るアクチュエーションのたびにデバイス時刻のマークを取り、そのマークより後の読み取りを要求します
+  （`read_postdates_actuation()`、`ReadOrderProvider` の継ぎ目）。
+- こうして座標解決の追いつきは、予算いっぱいまで待つ代わりに、デバイスがアクションの更新を公開した瞬間に解放されます。滞留はありません。
+- 2 つのマークはどちらもデバイス自身の時計から取るので、ホストとデバイスのあいだの時計のずれは入りません。
+
+**マークが解放するのは座標のバリアだけです。** シナリオ途中の `extract` は、実時間の予算を保ちます。
+マークが答えるのは「アクセシビリティイベントがジェスチャより後である」ことです。
+`extract` が必要とするのは「写し取る対象のプロパティが再公開済みである」ことです。
+1 回のジェスチャは複数のイベントを生みます。
+Compose は、新しいカウントを映す `Text` が再コンポーズされるより先に、タップされたボタン自身のイベントを publish します。
+そのため、読み取りがタップより後でありながら以前の値を持ったままになり、次の読み取りとも一致してしまいます。
+順序は、座標解決が待つ frame に対しては正しい問いですが、値に対しては誤った問いです。
+
+**`GET /source?since=<mark>`。** このリクエストは、同じ順序づけをリーダー自身へ持ち込みます。
+要求したマークより後のアクセシビリティイベントが届くまでブロックします。
+続いて有界な settle が tearing を閉じてから応答します。
+そのため、追いつきのバリア自身の滞留である 2 回同一ダンプによる鮮度の判定は、その源で退きます。
+このバリアを閉じるために、2 回目のダンプを払うことはありません。
+予算が残るのは、マークを持たない一発の `uiautomator dump` のフォールバックだけです。
+この読み取りマークの契約（読み取り順序を持つバックエンドでは、読み取りが内容を動かすジェスチャより後になること）を、
+ドライバ適合性スイート（BE-0114）が実バックエンドに対して検証します。
+
+**マークの後続は静止の証明ではありません。** マークが証明するのは、読み取りがジェスチャより後に並ぶことです。
+その後で画面が動きを止めたことまでは証明しません（fling は、それより長く publish し続けることがあります）。
+そのため、上に重ねた settle のポーリング（`_settle()`）は、マークで閉じた追いつきだけを静止の証明とは見なしません
+（ロードマップ [BE-XXXX](../../roadmaps/BE-XXXX-adb-settle-proven-key/BE-XXXX-adb-settle-proven-key-ja.md)）。
+常駐チャネルでは、追いつきのバリア自身が無料で閉じたあとにも、座標解決は確認のための読み取りを 1 回（と短いポーリングの待ち）払います。
+バリア自身のダンプは無料ですが、settle のポーリングのダンプは無料ではありません。
+
+**同じ settle は、プラットフォーム自身のノードキャッシュによる古い読み取りも防ぎます**
+（[BE-0490](../../roadmaps/BE-0490-adb-accessibility-cache-drop/BE-0490-adb-accessibility-cache-drop-ja.md)）。
+
+- Android は、アクセシビリティのノードを接続ごとにキャッシュします。
+  キャッシュしたノードが追い出されるのは、アクセシビリティイベントが届いたときだけです。
+- 多くのイベントは追い出すノードを指し、ウィンドウ単位の変化ではすべてのウィンドウのノードがまとめて消えます。
+- イベントを伴わない変化では、2 回のダンプが変化前のツリーで一致してしまいます。
+- そこで常駐サーバーは、Android 14 以降では settle のダンプのあいだで `UiAutomation.clearCache()` を呼びます。
+  `GET /source` と `POST /act` はどちらもこの settle を通るので、一致した 2 回のダンプは取り直したツリーになります。
+- Android 13 以前には、キャッシュを消す公式の呼び出しがありません。そのため従来の settle のままです。
+  静止した対象は、今までどおり 2 回のダンプで settle します。
+
+Android の障害注入レーンは、Android 14 のエミュレーターでこの 2 つの結果を確かめます。
+レーンの fixture は、イベントを構造上出しません。1 つ目のビューをタップすると、2 つ目のビューの報告する値が変わります。
+タップで届くイベントは `TYPE_VIEW_CLICKED` だけです。この種別に対してキャッシュは、タップしたビューのノードだけを取り直します。
+2 つ目のビューの古いノードはキャッシュに残るので、settle 後の読み取りが新しい値を返すのはキャッシュを捨てたからです。
+捨てなければ、読み取りは古い値を返します。
+同じレーンで、fixture に Compose の要素をそのまま使えない理由も確かめました。
+Compose の値は自身の変化に対して `TYPE_WINDOW_CONTENT_CHANGED` を出すので、キャッシュを捨てなくても変化したノードが追い出されます。
+
+### 実機アクチュエーション
+
+- **実機アクチュエーションの忠実度**（ロードマップ [BE-0210](../../roadmaps/BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity-ja.md)）:
+  - `back` ステップは真のシステムバック（`input keyevent 4`、`KEYCODE_BACK`）です。
+    Android にはタップできる画面上の戻る要素がなく、この点が iOS の OS 戻るボタンと異なります。
+  - `double_tap` の主経路は resident server の `POST /act`（前述）です。
+    server は両方の `MotionEvent` を自ら生成し、宣言した interval をその間に刻みます。
+    round trip のたまたまの timing に、double-tap ウィンドウへの着地を委ねることはしません
+    （ロードマップ [BE-0339](../../roadmaps/BE-0339-adb-device-side-actuation/BE-0339-adb-device-side-actuation-ja.md)）。
+  - この channel がないときは、host 側の手順にフォールバックします。
+    root 化されたデバイスでタッチスクリーンを検出できる場合は、生の 2 スロット `sendevent` シーケンス（BE-0208）が 2 回のタップの間隔をプロセス起動 5 回分まで狭めます。
+    それ以外では、2 回のタップを**単一の `adb shell` 往復**（`input tap … ; input tap …`）で発行します。
+    adb の転送往復自体が、間隔を double-tap ウィンドウの外へ広げることはありません。
+  - タップの対象が**現在のビューポートにない**ときは、そちらへスクロール（既定は上方向のスワイプ）して再クエリし、回数で区切ります。
+    固定 sleep ではなく条件待機なので、決して現れないセレクタはそれでも決定論的に失敗します。
 
   > [!NOTE]
-  > この not-found 時のスクロール回復は adb 専用です。XCUITest／Playwright は対象が初期ビューポートにないと `tap` を即座に失敗させます。そのため、これに頼ると、同じシナリオでも fold より下の要素への `tap` が Android では通り、iOS／web では失敗する非対称が生じます。画面外の要素へ届く移植可能な方法は、明示的な **[`scroll` アクション](scenarios.md#scroll)**（BE-0326）です。iOS、Android、web で同じように対象を現す、決定論的で慣性のない 1 つの構文で、`scroll: { to: <selector> }` としてから対象を操作します。showcase フィクスチャがかつて使っていた手作業調整の `swipe` 連鎖を置き換えます。adb の自動スクロールは、not-found のケースに限った `tap` の下の安全網として残ります。移植可能な書き方そのものではありません。
+  > この not-found 時のスクロール回復は adb 専用です。XCUITest／Playwright は、対象が初期ビューポートにないと `tap` を即座に失敗させます。
+  > そのため、この回復に頼ると、同じシナリオでも fold より下の要素への `tap` が Android では通り、iOS／web では失敗する非対称が生じます。
   >
-  > これとは**別の、より狭い**安全網が、いまでは点のヒットテストができる全バックエンド（アプリ組み込みの WebView ブリッジ `WebContextDriver` を除きます。そのプロトコルは点のヒットテストを一切公開していません）を覆っています。`tap` / `double_tap` / `long_press` は、操作の前に、解決済みの対象が実際にその点で到達可能か（他の画面上の要素に覆われていないか）を確認します。各プラットフォームがもっとも自然に提供する手段（iOS はネイティブの `isHittable`、web は `document.elementFromPoint` によるヒットテスト、adb はドキュメント順による幾何学的な近似、`Driver.is_tappable` / [`topmost_at_point`](../../bajutsu/common/drivers/base.py)）を使います。この確認に失敗すると、オーケストレータが小さく回数を区切ったスクロールを試します。まず `down` 方向へ最大 3 回、それでも対象に到達できなければ `up` 方向へ最大 6 回まで試したうえで（`up` は `down` が残した分をまず巻き戻してからでないと自分の分の前進ができないため、上限を広げています）、操作をもう一度だけ再試行します。即座に失敗するわけではありません。詳細は [`selectors.md`](selectors.md#elementnottappable-解決はしたが到達できない対象)を参照してください。これは上記の明示的な `scroll` アクションの代替ではありません。対象が最初から画面外にあるとすでに知っている作者は、それでも自分で `scroll` を書きます。この仕組みが働くのは、作者が予期していなかった遮蔽（一時的なオーバーレイ、位置が定まりきっていないスティッキーヘッダーなど）に対してだけです。adb 自身の not-found フォールバックが、予期しない画面外の対象に対してすでに同じ役割を果たしているのと同じ考え方です。
-- **マルチタッチ**（BE-0232）: `pinch` / `rotate` は 2 スロットの protocol-B `sendevent` スイープで駆動します（`pinch_contacts` / `rotate_contacts` が 2 接点の座標を計算し、`rotate` は両端点を結ぶ直線の弦を掃きます。円弧の線形近似で、web バックエンドの rotate と同じです）。rooted device でタッチスクリーンを検出できることが前提で、`_two_finger_gesture` はそれ以外では `UnsupportedAction` で明確に失敗します。下の double-tap 経路と異なり、単一タッチへのフォールバックはありません。`MULTI_TOUCH` は root の有無にかかわらず能力集合で静的に宣言するので、preflight は adb 上の `gestures_multitouch` を通します。root のチェックは能力集合ではなく実行時に課します。
-- `screenshot` は `adb exec-out screencap -p` の PNG バイト列（バイナリを崩さない stdout）を書き出します。
-- ライフサイクル（`AndroidEnvironment`、iOS の `simctl` シーケンスの双子）: 起動完了待ち（`getprop sys.boot_completed` を有界の期限まで polling する条件待機で、固定 sleep も、無期限にブロックする `adb wait-for-device` もありません）→ 必要に応じて APK インストール → `pm clear` によるクリーン状態（`erase` 相当）→ `am force-stop` → ランタイム権限の事前付与（`pm grant`、後述）→ `am start`（起動アクティビティはパッケージマネージャで解決し、launch env は intent extras として渡します）→ deeplink（`am start -a android.intent.action.VIEW`）。run の manifest は `backend: "adb"` を記録するので、選ばれた actuator が開示されます。
-- **ランタイム権限**（BE-0210）: ターゲットの config `subject.grantPermissions` に列挙した権限を、lease 時に `adb shell pm grant <package> <permission>` で事前付与します。`pm clear`（付与をリセットします）のあと、起動の前に付与するので、ランタイムの権限プロンプトがシナリオを止めることがありません。ダイアログが現れてからタップするのではなく、事前に決定論的に付与することで、タイミングを run の経路に持ち込みません。列挙する権限はアプリごとに異なるので、ドライバではなく config に置きます。
-- **区間証跡**（BE-0007 の Unit 4）: `video` は `adb shell screenrecord` で録画し、`deviceLog` は `adb logcat` をストリームします。simctl の provider の双子です。`screenrecord` はデバイス側に書き込む（ホストのファイルへは流せない）ので、録画は停止時に SIGINT で確定させてから `adb pull` で回収し、`logcat` はファイルへストリームして SIGTERM で停止します。どちらも web バックエンドと同じ driver の `driver_interval` seam から供給するので、バックエンド非依存の `capture` ポリシーがそのまま両方を運びます（[evidence](evidence.md)を参照）。
-- **ネットワーク**はネイティブには観測しません（`NETWORK` 能力を持ちません）。iOS と同じモックで対応し、アプリ側の collector の URL を launch env 経由で intent extra として渡すので、新しいコードパスなしに `mocks` が動きます。デバイス制御は、エミュレータが実現できるサブセットとして `setLocation`（`emu geo fix`、BE-0211）とクリップボード操作に対応します。一族の残りは未対応のままです。クリップボードは `cmd clipboard` ではなくアプリ内のレシーバ（`BajutsuAndroid`、BE-0233）を経由します。このコマンドは実機では黙って何もせず、Android 10 以降はフォアグラウンドのアプリと既定の IME しかクリップボードを触れないためです。そこで bajutsu は順序付き `am broadcast` を送り、アプリの内側のレシーバがアプリプロセスからこれを処理します（両方向を base64 で運ぶので argv に引用符付けは要らず、レシーバがなければ空のクリップを読むのではなく明確に失敗します）。XCUITest がクリップボードを simctl 経由で実現するのと同じく、協調するアプリがあればバックエンドが駆動できるので、adb は `clipboard` を公開し続けます。[`BajutsuAndroid`](../../BajutsuAndroid/README.ja.md) を参照してください。
+  > 画面外の要素へ届く移植可能な方法は、明示的な **[`scroll` アクション](scenarios.md#scroll)**（BE-0326）です。
+  > iOS、Android、web で同じように対象を現す、決定論的で慣性のない 1 つの構文です。
+  > `scroll: { to: <selector> }` としてから、対象を操作します。
+  > showcase フィクスチャがかつて使っていた、手作業調整の `swipe` 連鎖を置き換えます。
+  > adb の自動スクロールは、not-found のケースに限った `tap` の下の安全網として残ります。移植可能な書き方そのものではありません。
+  >
+  > これとは**別の、より狭い**安全網が、いまでは点のヒットテストができる全バックエンドを覆っています。
+  > 例外は、アプリ組み込みの WebView ブリッジ `WebContextDriver` だけです。そのプロトコルは点のヒットテストを一切公開していません。
+  > `tap` / `double_tap` / `long_press` は、操作の前に、解決済みの対象が実際にその点で到達可能か（他の画面上の要素に覆われていないか）を確認します。
+  > 確認には、各プラットフォームがもっとも自然に提供する手段を使います。
+  >
+  > - iOS: ネイティブの `isHittable`。
+  > - web: `document.elementFromPoint` によるヒットテスト。
+  > - adb: ドキュメント順による幾何学的な近似、`Driver.is_tappable` / [`topmost_at_point`](../../bajutsu/common/drivers/base.py)。
+  >
+  > この確認に失敗すると、オーケストレータが小さく回数を区切ったスクロールを試し、操作をもう一度だけ再試行します。即座に失敗するわけではありません。
+  > スクロールは、まず `down` 方向へ最大 3 回です。それでも対象に到達できなければ、`up` 方向へ最大 6 回まで試します。
+  > `up` は `down` が残した分をまず巻き戻してからでないと自分の分の前進ができないため、上限を広げています。
+  > 詳細は [`selectors.md`](selectors.md#elementnottappable-解決はしたが到達できない対象)を参照してください。
+  >
+  > この安全網は、上記の明示的な `scroll` アクションの代替ではありません。
+  > 対象が最初から画面外にあるとすでに知っている作者は、それでも自分で `scroll` を書きます。
+  > この仕組みが働くのは、作者が予期していなかった遮蔽（一時的なオーバーレイ、位置が定まりきっていないスティッキーヘッダーなど）に対してだけです。
+  > adb 自身の not-found フォールバックが、予期しない画面外の対象に対してすでに同じ役割を果たしているのと同じ考え方です。
+- **マルチタッチ**（BE-0232）: `pinch_contacts` / `rotate_contacts` が、対象の frame から 2 接点の座標を計算します。
+  `rotate` は両端点を結ぶ直線の弦を掃きます。円弧の線形近似で、web バックエンドの rotate と同じです。
+  2 つの接点を注入する経路は 2 つあり、この順に試します。
+  1. 常駐 UI Automator サーバーの `POST /gesture` が、2 本の指を 1 つのマルチポインタの `MotionEvent` 列として `UiAutomation` で注入します。
+     `UiAutomation` は shell の権限で動くので、**root は不要**です。記録の `via` は `resident` です。
+  2. タッチスクリーンを検出できる rooted device では、2 スロットの protocol-B `sendevent` スイープへフォールバックします。
+     フォールバックするのは、サーバーがないとき、サーバーがエンドポイントを持たないとき、リクエストを送る前にサーバーへ接続できなかったときの 3 つだけです。
+     いずれも、画面に何も届いていない場合です。記録の `via` は `coordinate` です。
 
-> XML の属性名は UI Automator の `uiautomator dump` スキーマに従います。Views の `android:id` における `.`↔`_` の扱いはシナリオ側で解決します。セレクタが id を両方の形で持ち、どちらにもマッチします（BE-0221）。そのため共有の showcase シナリオが両 Android toolkit でそのまま走り、[`android-e2e.yml`](../../.github/workflows/android-e2e.yml) が `showcase-compose` と `showcase-views` を同じセットで駆動して push／PR ごとに検証します。fast ゲートでは、取得済みの XML フィクスチャに対してパーサ、frame 中心タップ、transient-empty のリトライ、ambiguity 即失敗を検証します。adb は `brew install android-platform-tools` でインストールします。
+  サーバーがジェスチャを拒否したときはフォールバックせずにステップを失敗させ、応答が失われたときは着地したものとして扱います。
+  どちらの場合も指がすでに画面に触れているかもしれず、その上に 2 つ目のジェスチャを重ねるより、明確に失敗させるほうが安全だからです。
+  どちらの経路も使えない端末では、両方の前提条件を挙げた `UnsupportedAction` で失敗します。
+  上の double-tap 経路と異なり、単一タッチへのフォールバックはありません。
+  `MULTI_TOUCH` は能力集合で静的に宣言するので、preflight は adb 上の `gestures_multitouch` を通します。
+  どの経路を使えるかは実行時に決まります。
+
+### スクリーンショット、ライフサイクル、権限
+
+- `screenshot` は `adb exec-out screencap -p` の PNG バイト列（バイナリを崩さない stdout）を書き出します。
+- ライフサイクル（`AndroidEnvironment`、iOS の `simctl` シーケンスの双子）:
+  1. 起動完了を待ちます。`getprop sys.boot_completed` を有界の期限まで polling する条件待機で、固定 sleep も、無期限にブロックする `adb wait-for-device` もありません。
+  2. 必要に応じて APK をインストールします。
+  3. `pm clear` でクリーン状態にします（`erase` 相当）。
+  4. `am force-stop`。
+  5. ランタイム権限を事前付与します（`pm grant`、後述）。
+  6. `am start`。起動アクティビティはパッケージマネージャで解決し、launch env は intent extras として渡します。
+  7. deeplink を開きます（`am start -a android.intent.action.VIEW`）。
+
+  run の manifest は `backend: "adb"` を記録するので、選ばれた actuator が開示されます。
+- **ランタイム権限**（BE-0210）: ターゲットの config `subject.grantPermissions` に列挙した権限を、lease 時に `adb shell pm grant <package> <permission>` で事前付与します。
+  `pm clear`（付与をリセットします）のあと、起動の前に付与するので、ランタイムの権限プロンプトがシナリオを止めることがありません。
+  ダイアログが現れてからタップするのではなく、事前に決定論的に付与することで、タイミングを run の経路に持ち込みません。
+  列挙する権限はアプリごとに異なるので、ドライバではなく config に置きます。
+- `enter_app` / `leave_app`: `app:` ステップです。
+  UI Automator は前面にあるアプリのウィンドウをもともと読めます。そのため、別アプリに入る操作は起動だけで済みます。
+  ドライバは `cmd package resolve-activity --brief` でパッケージのランチャーアクティビティを解決します。
+  続けて、`foreground` ステップと同じ `am start -n` で起動します。
+  そのあと、そのパッケージが resumed のアクティビティを持つまで `dumpsys activity activities` を polling します。
+  この待機は有界の条件待機で、期限を過ぎると `ElementNotFound` を送出します。
+  パッケージにランチャーアクティビティがなければ、待たずに同じ例外を送出します。
+  ドライバは自前のアプリスタックを持ちます。`leave_app` はスタックを pop し、1 つ下のアプリを同じ手順で前面へ戻します。
+  いちばん外側のブロックを抜けたときの戻り先は、テスト対象アプリです。
+  テスト対象アプリは別アプリの背後でもプロセスを保ちます。そのため、クラッシュ検知（`pidof` と exit-info、BE-0424）はこの切り替えをクラッシュと読みません。
+  デバイスグループ（BE-0447）で共有するデバイスでは、ブロックを開いている間の前面アプリの検査は、入ったパッケージを期待します。
+
+### 証跡とネットワーク
+
+- **区間証跡**（BE-0007 の Unit 4）: `video` は `adb shell screenrecord` で録画し、`deviceLog` は `adb logcat` をストリームします。simctl の provider の双子です。
+  `screenrecord` はデバイス側に書き込む（ホストのファイルへは流せない）ので、録画は停止時に SIGINT で確定させてから `adb pull` で回収します。
+  `logcat` はファイルへストリームして SIGTERM で停止します。
+  どちらも web バックエンドと同じ driver の `driver_interval` seam から供給するので、バックエンド非依存の `capture` ポリシーがそのまま両方を運びます（[evidence](evidence.md)を参照）。
+- **ネットワーク**: adb backend はネットワークをネイティブには観測しません（`NETWORK` 能力を持ちません）。iOS と同じモックで対応します。
+  アプリ側の collector の URL を launch env 経由で intent extra として渡すので、新しいコードパスなしに `mocks` が動きます。
+- **デバイス制御**: `setLocation` とクリップボード操作に対応し、一族の残りは未対応のままです。
+  `setLocation` は、ローカルの `emulator-<port>` の serial ではエミュレータのコンソール（`emu geo fix`、BE-0211）を使います。
+  それ以外の対象は、実機と、`adb connect` で接続したエミュレータです。
+  そうした対象では、まず adb がアプリに mock location の app-op を許可します。
+  続いて BajutsuAndroid の位置レシーバが `gps` と `network` の provider を mock します（BE-0481）。
+  lease の終わりに mock を解除し、app-op を元に戻します。
+- **クリップボード**: `cmd clipboard` ではなく、アプリ内のレシーバ（`BajutsuAndroid`、BE-0233）を経由します。
+  このコマンドは実機では黙って何もせず、Android 10 以降はフォアグラウンドのアプリと既定の IME しかクリップボードを触れないためです。
+  そこで bajutsu は順序付き `am broadcast` を送り、アプリの内側のレシーバがアプリプロセスからこれを処理します。
+  両方向を base64 で運ぶので argv に引用符付けは要りません。レシーバがなければ、空のクリップを読むのではなく明確に失敗します。
+  XCUITest がクリップボードを simctl 経由で実現するのと同じく、協調するアプリがあればバックエンドが駆動できるので、adb は `clipboard` を公開し続けます。
+  [`BajutsuAndroid`](../../BajutsuAndroid/README.ja.md) を参照してください。
+
+> XML の属性名は UI Automator の `uiautomator dump` スキーマに従います。
+> Views の `android:id` における `.`↔`_` の扱いは、シナリオ側で解決します。セレクタが id を両方の形で持ち、どちらにもマッチします（BE-0221）。
+> そのため、共有の showcase シナリオが両 Android toolkit でそのまま走ります。
+> [`android-e2e.yml`](../../.github/workflows/android-e2e.yml) が、`showcase-compose` と `showcase-views` を同じセットで駆動して push／PR ごとに検証します。
+>
+> fast ゲートでは、取得済みの XML フィクスチャに対して、パーサ、frame 中心タップ、transient-empty のリトライ、ambiguity 即失敗を検証します。
+> adb は `brew install android-platform-tools` でインストールします。
+
+### アプリに埋め込まれた WebView
+
+シナリオの `web:` ブロックは、アプリが埋め込んだ WebView の中を読み取り、タップします（[BE-0482](../../roadmaps/BE-0482-android-webview-cdp/BE-0482-android-webview-cdp-ja.md)）。
+adb のツリーでは、WebView の中身を選択できるほど細かく示さないことがよくあります。
+そこで run は、Chrome DevTools Protocol（CDP）でページに到達します。
+デバッグを有効にした Android の WebView は、`webview_devtools_remote_<pid>` という名前の abstract なローカルソケットで待ち受けます。
+このソケットは CDP を話します。
+`bajutsu/common/drivers/webview/` の `CdpDomSource` は、iOS のブリッジのクライアントと同じ `DomSource` の型を実装します。
+そのため `WebContextDriver` は、両方のプラットフォームで変更なしに動きます。
+
+ソケットを開くのはアプリです。
+デバッグ可能なビルドが、最初の WebView を作る直前に `Bajutsu.enableWebViewDebugging(context)` を呼びます。
+この呼び出しは WebView のプロバイダを読み込みます。`Application.onCreate` から呼ぶと、起動のたびに読み込みます。
+すると WebView のパッケージの更新によって、WebView を開かないシナリオの途中でもアクティビティが作り直されることがあります。
+呼び出し方は [`BajutsuAndroid`](../../BajutsuAndroid/README.ja.md) にあります。
+このヘルパーはデバッグ可能でないビルドでは何もしないので、リリースビルドがソケットを開くことはありません。
+bajutsu を動かすマシンには `android` extra（`websockets`）が要ります。
+構成済みのバックエンドに Android が含まれていれば、`scripts/install.sh` がこの extra を入れます。
+
+`web:` ブロックは 1 つごとにセッションを 1 つ開きます。ブロックが終わると、成否にかかわらずセッションを閉じます。
+
+1. run は `adb shell ps -A` でパッケージのプロセスを列挙します。
+   WebView は別の `android:process` に置かれることがあるので、`<package>:<name>` の子プロセスも残します。
+2. それらのプロセスのソケットを `/proc/net/unix` から探します。
+   各ソケットへ、空いているホストのポートを `adb forward` で転送し、ソケットごとのページ一覧 `/json/list` を読みます。
+3. アタッチ済みで表示中のページだけを残します。
+   その中から、`within` の解決したフレームを矩形に含むページを選びます。フレームはネイティブのツリーでのものです。
+   一致が 0 件、または 2 件以上ならセレクタのエラーとしてステップを失敗させます。
+   重なり合う 2 つの WebView も、推測せずに失敗とします。
+4. 選んだページへ WebSocket を開きます。ブロックが終わると、開いた転送をすべて取り除きます。
+
+ブロックの中では、`DomSource` の各メソッドが次の CDP 呼び出しに対応します。
+
+| `DomSource` のメソッド | CDP 呼び出し |
+|---|---|
+| `query_dom` | 共有の `QUERY_JS` を `Runtime.evaluate` で実行します。web バックエンドと iOS のブリッジが実行するのと同じ走査です |
+| `tap_element` | `document.elementFromPoint` でヒットテストし、その点に `Input.dispatchTouchEvent`（`touchStart`、`touchEnd`）を送ります。ページにクリックが届いた時点で終わり、待つのは最大 3 秒です。条件待ちの下限 `BAJUTSU_MIN_WAIT_TIMEOUT` がそれより長いときは、その下限まで待ちます。その間にページを再び読み取れなければ、タップは失敗します |
+| `type_text` | フォーカスのあるテキスト欄の末尾へキャレットを移し、`Input.insertText` を送ってから `change` を発火します |
+| `scroll_to` | `scrollIntoView` のスクリプトを `Runtime.evaluate` で実行します |
+
+タップは信頼されたタッチなので、タッチイベントを待ち受けるページも反応します。
+iOS のブリッジは、代わりにスクリプトでクリックします。
+ページがタッチをクリックに変え、欄にフォーカスを移すのは、`touchEnd` が戻った少し後です。
+そのためタップはそのクリックを待ちます。待たなければ、欄をタップした直後の `type` が、フォーカスのある欄を見つけられません。
+クリックを取り消すページはクリックを発火しないので、この上限が過ぎた時点で、タップは送ったタッチだけで完了とし、警告を記録します。
+
+通信の失敗はすべて `WebViewTransportError` という 1 つの例外型で送出されます。
+この例外は run 全体を終わらせず、その理由でブロックを失敗させます。
+よくある原因は、ソケットがないこと、CDP のエラー、アプリの再起動で閉じたソケットの 3 つです。
+ソケットがないときの理由は、上のヘルパーを名指しします。
 
 ## Flutter（ネイティブバックエンド経由）
 
-Flutter アプリは、**既存の XCUITest／adb バックエンドをそのまま**使って駆動します。Flutter は自前のバックエンドを追加しません（ロードマップ [BE-0008](../../roadmaps/BE-0008-flutter-support/BE-0008-flutter-support-ja.md)）。Flutter は Skia／Impeller で自前のピクセルを描きますが、ネイティブバックエンドはピクセルを一切読まず、OS のアクセシビリティツリーを読みます。Flutter はそこへ自身の semantics ツリーをエンジンが橋渡しします（Android の `AccessibilityBridge` は各 `SemanticsNode` を仮想の `AccessibilityNodeInfo` に変換し、iOS のエンジンは `UIAccessibility` 要素を公開します）。したがって `Semantics(identifier: …)` を設定したウィジェットは両バックエンドで解決可能な要素として現れ、bounds 中心への tap は semantics ノードの画面上の矩形と Flutter 自身のヒットテストを通じて着地します。セレクタモデル、機械アサーション、ランナーはバイト単位でそのまま変わりません。
+Flutter アプリは、**既存の XCUITest／adb バックエンドをそのまま**使って駆動します。Flutter は自前のバックエンドを追加しません
+（ロードマップ [BE-0008](../../roadmaps/BE-0008-flutter-support/BE-0008-flutter-support-ja.md)）。
+
+Flutter は Skia／Impeller で自前のピクセルを描きますが、ネイティブバックエンドはピクセルを一切読まず、OS のアクセシビリティツリーを読みます。
+Flutter は、自身の semantics ツリーをエンジンがそのツリーへ橋渡しします。
+
+- Android の `AccessibilityBridge` は、各 `SemanticsNode` を仮想の `AccessibilityNodeInfo` に変換します。
+- iOS のエンジンは、`UIAccessibility` 要素を公開します。
+
+したがって、`Semantics(identifier: …)` を設定したウィジェットは、両バックエンドで解決可能な要素として現れます。
+bounds 中心への tap は、semantics ノードの画面上の矩形と Flutter 自身のヒットテストを通じて着地します。
+セレクタモデル、機械アサーション、ランナーは、バイト単位でそのまま変わりません。
 
 id 規約は、上の iOS と Android のものと並べて記します（Flutter **3.19 以降**。このバージョンで `SemanticsProperties.identifier` がプラットフォームのツリーへ写り始めました）。
 
@@ -250,46 +792,162 @@ id 規約は、上の iOS と Android のものと並べて記します（Flutte
 
 アプリが満たすべき前提が 2 つあります。いずれもレンダラではなく Flutter の semantics の状態に関わるものです。
 
-- **semantics は遅延構築されます。** Flutter はアクセシビリティのクライアントが接続したとき、またはアプリが `SemanticsBinding.instance.ensureSemantics()` を呼んだときにだけツリーを組み立てます。両バックエンドとも接続が構築の引き金になります。Android では UI Automator がアクセシビリティサービスとして接続し、そしてこの項目が実機で確かめたとおり、**iOS でも XCUITest ランナーのアクセシビリティ照会が引き金になります**。したがって駆動される経路に `ensureSemantics()` の呼び出しは要りません。showcase アプリは、既定でオフの `--dart-define=ENSURE_SEMANTICS=true` の裏にこの呼び出しを残し、アクセシビリティのクライアントなしで駆動されるアプリのための文書化されたフォールバックとしています。
-- **semantics を持つウィジェットしか現れません。** 標準の Material／Cupertino ウィジェットやテキストは semantics を自動で持ちますが、`CustomPaint` で描いたコントロールを `Semantics` で包んでいなければツリーに入りません。`Semantics(identifier: …)` で包むことは、id を公開する規約と同じ操作です。Flutter はナビゲーションの見た目も自前で描くので、アプリは戻るコントロールの identifier も、iOS バックエンドの `back` ステップがタップするプラットフォーム規約 `BackButton`（`base.OS_BACK_BUTTON`）に設定します。Android ではシステムの戻るキーが従来どおり pop します。
+- **semantics は遅延構築されます。** Flutter は、アクセシビリティのクライアントが接続したとき、またはアプリが `SemanticsBinding.instance.ensureSemantics()` を呼んだときにだけ、ツリーを組み立てます。
+  両バックエンドとも、接続が構築の引き金になります。
+  Android では UI Automator がアクセシビリティサービスとして接続します。
+  そして、この項目が実機で確かめたとおり、**iOS でも XCUITest ランナーのアクセシビリティ照会が引き金になります**。
+  したがって、駆動される経路に `ensureSemantics()` の呼び出しは要りません。
+  showcase アプリは、既定でオフの `--dart-define=ENSURE_SEMANTICS=true` の裏にこの呼び出しを残しています。
+  アクセシビリティのクライアントなしで駆動されるアプリのための、文書化されたフォールバックです。
+- **semantics を持つウィジェットしか現れません。** 標準の Material／Cupertino ウィジェットやテキストは、semantics を自動で持ちます。
+  `CustomPaint` で描いたコントロールを `Semantics` で包んでいなければ、ツリーに入りません。
+  `Semantics(identifier: …)` で包むことは、id を公開する規約と同じ操作です。
+  Flutter はナビゲーションの見た目も自前で描くので、アプリは戻るコントロールの identifier も、プラットフォーム規約 `BackButton`（`base.OS_BACK_BUTTON`）に設定します。
+  iOS バックエンドの `back` ステップが、この identifier をタップします。Android ではシステムの戻るキーが従来どおり pop します。
 
-**実機検証済みです。** ネイティブ showcase アプリの Flutter 双子（[`demos/showcase/flutter`](../../demos/showcase/flutter)）を `showcase-flutter`（iOS、XCUITest）と `showcase-flutter-android`（Android、adb）のターゲットで駆動し、共有の `scenarios/` セットがそのまま走ります。id ベースのセレクタ、状態ミラーに対する `value` アサーション、遅延構築（culling）される Notices リストへの scroll-to-element、ネイティブの 2 本指 `pinch`／`rotate` を確認しました。`make -C demos/showcase run-flutter`（iOS）／ `run-flutter-android`（Android）で実行します。
+**実機検証済みです。** ネイティブ showcase アプリの Flutter 双子（[`demos/showcase/flutter`](../../demos/showcase/flutter)）を、
+`showcase-flutter`（iOS、XCUITest）と `showcase-flutter-android`（Android、adb）のターゲットで駆動します。
+共有の `scenarios/` セットがそのまま走ります。確認した内容は次のとおりです。
+
+- id ベースのセレクタ。
+- 状態ミラーに対する `value` アサーション。
+- 遅延構築（culling）される Notices リストへの scroll-to-element。
+- ネイティブの 2 本指 `pinch`／`rotate`。
+
+`make -C demos/showcase run-flutter`（iOS）／ `run-flutter-android`（Android）で実行します。
 
 スコープ外（理由はロードマップ項目を参照してください）:
 
-- **アプリ内 collector／receiver ライブラリを必要とする機能。** 2 つの機能は、`BajutsuKit`（iOS）／ `BajutsuAndroid`（Android）がアプリにリンクされていることに依存します。Flutter アプリはプラグインなしを保つためこれらをリンクしていません。
-  - **`network` の捕捉と `mocks`** はアプリ内のインターセプタ（iOS は `BajutsuKit` の `URLProtocol`、Android は `BajutsuAndroid` の OkHttp インターセプタ）に通信を通します。Flutter の Dart `HttpClient` はそのどちらも通らないので、`network` 証跡と `mocks` は Flutter の通信を観測しません。アプリの `*.status` ミラーは、シナリオが依拠する決定論的な wait／assert を引き続き駆動します。Dart の HTTP をネイティブのスタックへ通すこと（`cupertino_http`／`cronet_http` 経由）は後続作業です。
-  - **Android の device-control `clipboard`** は `BajutsuAndroid` のアプリ内レシーバ（BE-0233）を往復するので、`device.yaml` の `setClipboard`／`clipboard` ステップは Flutter Android ターゲットで失敗します。iOS の device-control クリップボードはアプリの協力なしに simctl を通るので、Flutter iOS ターゲットでは動きます。この差は Android だけのものです。
+- **アプリ内 collector／receiver ライブラリを必要とする機能。** 2 つの機能は、`BajutsuKit`（iOS）／ `BajutsuAndroid`（Android）がアプリにリンクされていることに依存します。
+  Flutter アプリは、プラグインなしを保つためこれらをリンクしていません。
+  - **`network` の捕捉と `mocks`** は、アプリ内のインターセプタ（iOS は `BajutsuKit` の `URLProtocol`、Android は `BajutsuAndroid` の OkHttp インターセプタ）に通信を通します。
+    Flutter の Dart `HttpClient` はそのどちらも通らないので、`network` 証跡と `mocks` は Flutter の通信を観測しません。
+    アプリの `*.status` ミラーは、シナリオが依拠する決定論的な wait／assert を引き続き駆動します。
+    Dart の HTTP をネイティブのスタックへ通すこと（`cupertino_http`／`cronet_http` 経由）は後続作業です。
+  - **Android の device-control `clipboard`** は、`BajutsuAndroid` のアプリ内レシーバ（BE-0233）を往復します。
+    そのため、`device.yaml` と `text_selection_android.yaml` の `setClipboard`／`clipboard` ステップは Flutter Android ターゲットで失敗します。
+    iOS の device-control クリップボードは、アプリの協力なしに simctl を通るので、Flutter iOS ターゲットでは動きます。この差は Android だけのものです。
 
-  これらを除けば、Flutter ターゲットはネイティブ双子が回すのと同じ実機シナリオ群を通ります。Flutter とは無関係にプラットフォームで制限されるものだけが外れます。マルチタッチ（`gestures_multitouch`）は adb では root 化したエミュレータを要し（ネイティブ Android アプリと同様）、`text_editing` と `device` の `push` 部分はネイティブのスイートでも iOS 専用です。
-- **ディープリンクからタブへのルーティング。** Flutter ターゲットはフレーバごとのスキームを登録します（Android の `VIEW` intent-filter、iOS の `CFBundleURLTypes`）。ただし、URI をタブへルーティングする（タブを選び、ルートまで戻し、開いているモーダルを閉じる）ネイティブ双子とは違い、Flutter アプリはまだ受け取った URI を処理しません。スキームを登録しているのは、BE-0007 のディープリンク実行の後続スライスが `am start -a VIEW -d <scheme>://<tab>` や `simctl openurl` で駆動できるようにするためで、アプリ側のハンドラはそのスライスで入ります。リテラルスキームのディープリンクを駆動する共有シナリオは今はなく（`navigation.yaml` や `notices.yaml` は launch env とタップだけで駆動します）、実機検証には影響しません。
+  これらを除けば、Flutter ターゲットはネイティブ双子が回すのと同じ実機シナリオ群を通ります。
+  外れるのは、Flutter とは無関係にプラットフォームで制限されるものだけです。
+
+  - マルチタッチ（`gestures_multitouch`）は、adb では root 化したエミュレータを要します（ネイティブ Android アプリと同様）。
+  - `text_editing` と `device` の `push` 部分は、ネイティブのスイートでも iOS 専用です。
+- **ディープリンクからタブへのルーティング。** Flutter ターゲットは、フレーバごとのスキームを登録します（Android の `VIEW` intent-filter、iOS の `CFBundleURLTypes`）。
+  ネイティブ双子は、URI をタブへルーティングします。タブを選び、ルートまで戻し、開いているモーダルを閉じます。
+  Flutter アプリは、まだ受け取った URI を処理しません。
+  スキームを登録しているのは、BE-0007 のディープリンク実行の後続スライスが `am start -a VIEW -d <scheme>://<tab>` や `simctl openurl` で駆動できるようにするためです。
+  アプリ側のハンドラは、そのスライスで入ります。
+  リテラルスキームのディープリンクを駆動する共有シナリオは今はなく（`navigation.yaml` や `notices.yaml` は launch env とタップだけで駆動します）、実機検証には影響しません。
 - **Flutter Web（CanvasKit）。** canvas へ描き、要素を DOM に出さないので、Playwright バックエンドでは解決できません。
-- **iOS の `noax` 双子。** a11y ビルドが公開の実証です。identifier を持たない別の iOS バンドルには Flutter フレーバによる bundle id の分離が要り、後続作業とします。Android の `noax` 双子は同梱します（`showcase-flutter-android-noax`）。Gradle のプロダクトフレーバでビルドします。
+- **iOS の `noax` 双子。** a11y ビルドが公開の実証です。identifier を持たない別の iOS バンドルには、Flutter フレーバによる bundle id の分離が要り、後続作業とします。
+  Android の `noax` 双子は同梱します（`showcase-flutter-android-noax`）。Gradle のプロダクトフレーバでビルドします。
 
 ## Playwright（web）
 
-Playwright（Python）によるヘッドレス Chromium です。Mac も Simulator も要らず Linux で動くため、`make check` と同じツールチェーンに収まります。実装: `common/drivers/playwright.py`（ロードマップ [BE-0041](../../roadmaps/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）。
+Playwright backend は、Playwright（Python）によるヘッドレス Chromium で駆動します。
+Mac も Simulator も要らず Linux で動くため、`make check` と同じツールチェーンに収まります。
+実装: `common/drivers/playwright.py`（ロードマップ [BE-0041](../../roadmaps/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）。
 
-- `query()`: 文書ごと（メインページ、続いて各 iframe）に 1 本の `evaluate()` が、可視、操作可能、アクセシビリティ関連の DOM ノードを走査し、純粋なパーサ（`parse_dom`）が各ノードを `Element` に写像します。id 規約は iOS の accessibilityIdentifier の web 版です。`data-testid` → `Selector.id`、ARIA `role`（またはタグ）→ `traits`、accessible name / `aria-label` / テキスト → `label`。`value` は、タグごとに異なる出どころから読みます。`<a>` は `href`、`<img>` は `src`、`<time>` は `datetime` です。`<input>`、`<select>`、`<textarea>`、`<meter>`、および `value` 属性を持つ `<progress>` は、`role` を併せ持つ場合でも、その時点の `value` プロパティを読みます。これらの `aria-valuenow` は実際の値に追いつかないことがあるためです。`value` 属性を持たない `<progress>` と、`role="slider"` のように明示的な `role` を持つそれ以外の要素は、`aria-valuetext`（ないか空なら `aria-valuenow`）を読みます。
-- **プレーンテキスト**: `query()` は、上の規則のどれにも当てはまらないものの自分のテキストを持つ要素（見出し、段落、`<span>` など）も返します。ラベルはその要素のテキストで、トレイトは `staticText` 1 つだけです。`staticText` は、iOS がラベルに付けるトレイトと同じ名前です。そのため `{ label: Welcome, traits: [staticText] }` のようなセレクタは、両方のプラットフォームで同じ意味になります。iOS の WebView ブリッジも同じスクリプトを実行するので、ハイブリッドアプリの WebView でもプレーンテキストを同じように読みます。次の 2 種類のテキストは返しません。どちらも、これまで 1 つの要素に解決していたセレクタを複数の要素に一致させてしまうからです。
+- `query()`: 文書ごと（メインページ、続いて各 iframe）に 1 本の `evaluate()` が、可視、操作可能、アクセシビリティ関連の DOM ノードを走査します。
+  純粋なパーサ（`parse_dom`）が各ノードを `Element` に写像します。id 規約は iOS の accessibilityIdentifier の web 版です。
+  - `data-testid` → `Selector.id`。
+  - ARIA `role`（またはタグ）→ `traits`。
+  - accessible name / `aria-label` / テキスト → `label`。
+  - `value` は、タグごとに異なる出どころから読みます。`<a>` は `href`、`<img>` は `src`、`<time>` は `datetime` です。
+  - `<input>`、`<select>`、`<textarea>`、`<meter>`、および `value` 属性を持つ `<progress>` は、`role` を併せ持つ場合でも、その時点の `value` プロパティを読みます。
+    これらの `aria-valuenow` は実際の値に追いつかないことがあるためです。
+  - `value` 属性を持たない `<progress>` と、`role="slider"` のように明示的な `role` を持つそれ以外の要素は、`aria-valuetext`（ないか空なら `aria-valuenow`）を読みます。
+- **プレーンテキスト**: `query()` は、上の規則のどれにも当てはまらないものの自分のテキストを持つ要素（見出し、段落、`<span>` など）も返します。
+  ラベルはその要素のテキストで、トレイトは `staticText` 1 つだけです。
+  `staticText` は、iOS がラベルに付けるトレイトと同じ名前です。
+  そのため、`{ label: Welcome, traits: [staticText] }` のようなセレクタは、両方のプラットフォームで同じ意味になります。
+  iOS の WebView ブリッジも同じスクリプトを実行するので、ハイブリッドアプリの WebView でもプレーンテキストを同じように読みます。
+  次の 2 種類のテキストは返しません。どちらも、これまで 1 つの要素に解決していたセレクタを複数の要素に一致させてしまうからです。
   - 操作できるコントロール（ボタン、リンク、入力欄）の中のテキストです。コントロールのラベルがすでにそのテキストを含んでいます。
   - もっとも近い祖先のうち `data-testid` か `role` を持つ要素と、同じラベルになるテキストです。
 
-  ページ内の別の場所にある同じテキストは、除外の対象になりません。たとえば「Sign in」という見出しとボタンが同じページにあると、`tap: { label: Sign in }` は両方に一致して失敗します。iOS でも同じ結果になります。テキスト要素のラベルには、その中にあるコントロールのテキストも含まれます。そのため「Terms」というリンクを含む段落は、リンクと並んで `labelMatches: Terms` に一致し、そのパターンに対する `count` も 1 つ増えます。目的の要素を指すには、`traits: [button]`、`within`、`index` のいずれかを加えます。テキスト要素も、文書順で `index` の数に入ります。そのため、これまで「Settings」という見出しを飛ばしていた `{ label: Settings, index: 1 }` は、エラーを出さないまま、その見出しを指します。`index` は `traits` と組み合わせて使います。
-- **iframe**: `query()` は、入れ子を含むすべての iframe の文書も読み、その要素を同じスナップショットに加えます。ドライバーは親ページの `contentDocument` ではなく Playwright のフレームツリーをたどるので、クロスオリジンの iframe にも届きます。各要素の frame は、iframe のコンテンツボックスの原点の分だけずらします。その結果、ほかの要素と同じくメインページの CSS ピクセルで表されます。iframe の表示領域の外へスクロールした要素は画面上にないので、スナップショットに含めません。平行移動以外の CSS の transform がかかった iframe（拡大縮小したデバイスプレビューや左右反転した表示など）は、まったく読みません。中の座標が画面と一致せず、tap がエラーなしに別の場所へ当たってしまうからです。クロスオリジンの iframe から読んだ要素には `crossOriginFrame: true` が付きます。セレクタとアサーションはほかの要素と同じように扱います。一方、`doctor` の採点と crawl の画面モデルからは除きます。埋め込んだ外部のページには、アプリ側では id を付けられず、探索もできないからです。
-  - セレクタはスナップショット全体に対して解決します。2 つの iframe に同じ `data-testid` の要素があると、セレクタは両方に一致します。`index` を指定すれば 1 つに絞れます。外部サービスの埋め込みも同じ扱いです。動画プレイヤーの「Share」ボタンがあると、アプリ側の `{ label: Share }` が曖昧になることがあります。その場合は `within` か `traits` でアプリ側に絞ります。
-  - `tap` と `selectOption` は、`elementFromPoint` によるヒットテストを要素自身の文書の中で行います。その前に、点が外側の各 `<iframe>` に当たっているかをドライバーが確かめます。iframe の上にオーバーレイがあると `ElementNotTappable` になり、エラーがそのオーバーレイを名指しします。
-- `tap(sel)`: adb バックエンドと同様、`query()` のスナップショットに対し共有の `resolve_unique`/`find_all` で要素を**一意に**確定し、**frame 中心**を座標クリック（`page.mouse.click`）します。Playwright 自身の `get_by_test_id().click()` は**あえて使いません**。これによりセレクタの意味が他のどの backend ともバイト単位で一致します。
-- `read_attributes(reads)`（BE-0466）は `attribute` アサーションを支えます。アサーションのブロックに含まれる `(sel, name)` の組をすべてまとめて受け取ります。1 回の `page.evaluate` で `QUERY_JS` と同じ走査を行い、各レコードに要求された名前すべての `getAttribute` の値を持たせます。そのため、ブロック全体を同じ時点の値で読めます。各 `sel` は、タップと同じ `resolve_unique` で解決します。組ごとに、値、属性がないときの `None`、セレクタが送出した `SelectorError` のいずれかを返します。`SelectorError` は送出せずに値として返すので、ほかの組の読み取り結果は失われません。iframe 内の要素、ほかの要素に覆われた要素、ビューポートの外にある要素も、列挙されるほかの要素と同じく読み取れます。ほかのバックエンド（XCUITest、adb、iOS の WebView コンテキスト）は `UnsupportedAction` を送出します。
-- `type_text` は `page.keyboard` で入力します（オーケストレータが先に `into` をタップしてフィールドにフォーカスします）。`screenshot` は `page.screenshot`、`wait_for` は `find_all` による単発です（どの backend も同様で、締め切りまでのポーリングは共有ヘルパ `base.wait_until` が担います）。
-- ライフサイクルは driver が所有します。新しい `BrowserContext` が `erase` 相当、`navigate()`（`page.goto(subject.url)`）が `launch`、`close()` でブラウザを破棄します。simctl のデバイスは無いので、run はダミーのリースを使い、device control は持ちません。
-- **デバイスモード**（BE-0228）: web ターゲットの `runsOn.browser.emulate` 設定が、各 `BrowserContext` の生成のしかたを選びます。`desktop`（省略時の既定で、素のデスクトップコンテキスト。従来と変わりません）か、Playwright のデバイスプリセット名（例 `iPhone 13`）です。プリセットは `playwright.devices` に対して解決し、その記述子（viewport / `device_scale_factor` / `is_mobile` / `has_touch` / `user_agent`）を `reduced_motion="reduce"` と並べて `new_context(**kwargs)` にマージするので、ターゲットをそのモバイル端末として駆動します。記述子は**遅延**して解決し（config 読み込みが Playwright を import することはありません）、記憶するので、`reset_context`（クロールのクリーンな起点）と `relaunch`（BE-0077）は同一のコンテキストを組み直します。モードはブラウザのライフサイクル全体を通して安定し、エンジンや `reduced_motion` が既に守っているのと同じ不変条件です。不明なプリセットはドライバー起動時に `ValueError` で明示的に失敗します。これは**デスクトップ級ブラウザでのエミュレーション**であり（デスクトップ級ブラウザの中でモバイルの viewport とタッチ入力を用いる、Chrome DevTools のデバイスツールバーが行うのと同じもの）、実機のモバイルブラウザやデバイスクラウドではありません。本物のモバイル OS が必要なら Android バックエンドが経路です。
-- **方向指定の `swipe` はスクロールになる**（BE-0227）: 方向指定形式 `swipe: { on, direction }` の意味は「スクロール」であり、マウスドラッグは web ページをスクロールしません。そこで web バックエンドは、実際にスクロールを起こす入力プリミティブへ、コンテキストの入力モード（上記の `runsOn.browser.emulate`）に応じて振り分けます。**デスクトップ**（ポインター）コンテキストでは、ジェスチャーの起点で `page.mouse.wheel(...)` を発火します。wheel の移動量は travel の符号を反転したものなので、`up` の swipe はページを**下へ**スクロールさせ、トラックパッドやホイールとまったく同じ挙動になります。**タッチ**コンテキスト（モバイルの `runsOn.browser.emulate`）では、CDP による 1 本指の本物のタッチドラッグ（`pinch` / `rotate` と同じ経路）を使い、ページのタッチリスナとスクロールリスナが発火します。**座標**形式 `swipe: { from, to }` は変わりません。canvas やマップのパン、ドラッグハンドルのための素のドラッグの最終手段として、`page.mouse` のドラッグのままです。`codegen` も方向指定形式にはデスクトップの wheel スクロールを出力するので、生成された Playwright テストは、従来の何も動かないドラッグではなく、物理的に正しい向きへスクロールします（codegen には `amount` を掛ける viewport がないため、距離は既定の固定値です）。別途用意した `drag` アクション（要素アンカーのポインタドラッグ。リサイズ用の仕切りやスライダーなど）はドライバーの `swipe` に振り分けられるので、web では掴んだ要素を実際に**動かす** `page.mouse` のドラッグになります。スクロールするだけの方向指定 `swipe` とは対照的です。
-- **マルチタッチ**（BE-0054）: `pinch` / `rotate` は Chromium DevTools プロトコル（`Input.dispatchTouchEvent`）で 2 本指のドラッグとして合成します。`mouse` は単一ポインタなので、ジェスチャは CDP 経由（実際のタッチと同じ経路）で送り、ページのタッチリスナが発火します。要素の中心を 2 本指の基準点とし、`scale` が指の間隔を広げ/狭め、`radians` がその中心まわりに回転させます。
-- **ネイティブネットワーク**（BE-0054）: Playwright はページが出すすべてのリクエストを見られるので、`--network` はアプリ側の協力なしに web でも動きます。`network_collector()` がページの `requestfinished` イベントを iOS と同じ `NetworkExchange` に変換するため、`request` アサーションも `network.json` 証跡もそのまま使えます。シナリオの `mocks` は `page.route` でその場で fulfill します。一致したリクエストには既定のレスポンスを返し、`mocked: true` を立てて記録します。一致判定は決定論的な `request` マッチャを再利用し、モデルは一切使いません。
-- **コンソール / ページエラー、動画の証跡**（BE-0054）: `deviceLog` キャプチャ種別はブラウザのコンソールと未捕捉のページエラーを `<scenario>/device.log` にストリームし、`video` はシナリオ全体を録画します。どちらも simctl ではなく Playwright ネイティブで、iOS の os_log / simctl 動画に相当します。録画はシナリオの `capture` に `video` がある時だけ有効化し（`BrowserContext` を `record_video_dir` 付きで生成）、`video` インターバルが context クローズ時に `<scenario>/scenario.webm` へ確定させます。Playwright の録画機能は常に Matroska/WebM を書き出します。そのため `PlaywrightDriver.video_extension` は、他のバックエンドが使う `.mp4` を借用せず、実際のコンテナに合わせてアーティファクト名を決めます。simctl と adb は本物の mp4 を書き出すため、そちらは従来どおり `.mp4` のままです。プールはドライバの `driver_interval`（adb バックエンドと共有する、driver 供給の区間証跡 seam）を `FileSink` に注入します。`video_extension` も同様に注入するので、バックエンド非依存の同じ `capture` ポリシーが両方を運びつつ、各アーティファクトは自分の中身を正直に名乗ります。
+  ページ内の別の場所にある同じテキストは、除外の対象になりません。
+  たとえば「Sign in」という見出しとボタンが同じページにあると、`tap: { label: Sign in }` は両方に一致して失敗します。iOS でも同じ結果になります。
 
-> `playwright` は**遅延 import** されます（実際にブラウザを起動するときだけ読み込む）。そのため既定の CLI パスには決して載りません（`tests/serve/test_import_guard.py` で固定）。インストールは `uv sync --extra web` ＋ `uv run playwright install chromium`。`demos/web` のデモ（`make -C demos/web e2e`）が小さな静的 web アプリを端から端まで駆動します。
+  テキスト要素のラベルには、その中にあるコントロールのテキストも含まれます。
+  そのため、「Terms」というリンクを含む段落は、リンクと並んで `labelMatches: Terms` に一致し、そのパターンに対する `count` も 1 つ増えます。
+  目的の要素を指すには、`traits: [button]`、`within`、`index` のいずれかを加えます。
+
+  テキスト要素も、文書順で `index` の数に入ります。
+  そのため、これまで「Settings」という見出しを飛ばしていた `{ label: Settings, index: 1 }` は、エラーを出さないまま、その見出しを指します。
+  `index` は `traits` と組み合わせて使います。
+- **iframe**: `query()` は、入れ子を含むすべての iframe の文書も読み、その要素を同じスナップショットに加えます。
+  - ドライバーは親ページの `contentDocument` ではなく Playwright のフレームツリーをたどるので、クロスオリジンの iframe にも届きます。
+  - 各要素の frame は、iframe のコンテンツボックスの原点の分だけずらします。その結果、ほかの要素と同じくメインページの CSS ピクセルで表されます。
+  - iframe の表示領域の外へスクロールした要素は画面上にないので、スナップショットに含めません。
+  - 平行移動以外の CSS の transform がかかった iframe（拡大縮小したデバイスプレビューや左右反転した表示など）は、まったく読みません。
+    中の座標が画面と一致せず、tap がエラーなしに別の場所へ当たってしまうからです。
+  - クロスオリジンの iframe から読んだ要素には `crossOriginFrame: true` が付きます。
+    セレクタとアサーションは、ほかの要素と同じように扱います。
+    一方、`doctor` の採点と crawl の画面モデルからは除きます。埋め込んだ外部のページには、アプリ側では id を付けられず、探索もできないからです。
+  - セレクタはスナップショット全体に対して解決します。2 つの iframe に同じ `data-testid` の要素があると、セレクタは両方に一致します。`index` を指定すれば 1 つに絞れます。
+    外部サービスの埋め込みも同じ扱いです。動画プレイヤーの「Share」ボタンがあると、アプリ側の `{ label: Share }` が曖昧になることがあります。
+    その場合は `within` か `traits` でアプリ側に絞ります。
+  - `tap` と `selectOption` は、`elementFromPoint` によるヒットテストを要素自身の文書の中で行います。
+    その前に、点が外側の各 `<iframe>` に当たっているかをドライバーが確かめます。
+    iframe の上にオーバーレイがあると `ElementNotTappable` になり、エラーがそのオーバーレイを名指しします。
+- `tap(sel)`: adb バックエンドと同様、`query()` のスナップショットに対し共有の `resolve_unique`/`find_all` で要素を**一意に**確定し、**frame 中心**を座標クリック（`page.mouse.click`）します。
+  Playwright 自身の `get_by_test_id().click()` は**あえて使いません**。これによりセレクタの意味が他のどの backend ともバイト単位で一致します。
+- `read_attributes(reads)`（BE-0466）は `attribute` アサーションを支えます。アサーションのブロックに含まれる `(sel, name)` の組をすべてまとめて受け取ります。
+  1 回の `page.evaluate` で `QUERY_JS` と同じ走査を行い、各レコードに要求された名前すべての `getAttribute` の値を持たせます。
+  そのため、ブロック全体を同じ時点の値で読めます。
+  各 `sel` は、タップと同じ `resolve_unique` で解決します。
+  組ごとに、値、属性がないときの `None`、セレクタが送出した `SelectorError` のいずれかを返します。
+  `SelectorError` は送出せずに値として返すので、ほかの組の読み取り結果は失われません。
+  iframe 内の要素、ほかの要素に覆われた要素、ビューポートの外にある要素も、列挙されるほかの要素と同じく読み取れます。
+  ほかのバックエンド（XCUITest、adb、iOS の WebView コンテキスト）は `UnsupportedAction` を送出します。
+- `type_text` は `page.keyboard` で入力します（オーケストレータが先に `into` をタップしてフィールドにフォーカスします）。
+  `screenshot` は `page.screenshot`、`wait_for` は `find_all` による単発です。
+  どの backend も同様で、締め切りまでのポーリングは共有ヘルパ `base.wait_until` が担います。
+- ライフサイクルは driver が所有します。新しい `BrowserContext` が `erase` 相当、`navigate()`（`page.goto(subject.url)`）が `launch`、`close()` でブラウザを破棄します。
+  simctl のデバイスは無いので、run はダミーのリースを使い、device control は持ちません。
+- **デバイスモード**（BE-0228）: web ターゲットの `runsOn.browser.emulate` 設定が、各 `BrowserContext` の生成のしかたを選びます。
+  値は、`desktop`（省略時の既定で、素のデスクトップコンテキスト。従来と変わりません）か、Playwright のデバイスプリセット名（例 `iPhone 13`）です。
+  - プリセットは `playwright.devices` に対して解決します。
+    その記述子（viewport / `device_scale_factor` / `is_mobile` / `has_touch` / `user_agent`）を `reduced_motion="reduce"` と並べて `new_context(**kwargs)` にマージするので、ターゲットをそのモバイル端末として駆動します。
+  - 記述子は**遅延**して解決し（config 読み込みが Playwright を import することはありません）、記憶します。
+    そのため、`reset_context`（クロールのクリーンな起点）と `relaunch`（BE-0077）は、同一のコンテキストを組み直します。
+    モードはブラウザのライフサイクル全体を通して安定します。エンジンや `reduced_motion` が既に守っているのと同じ不変条件です。
+  - 不明なプリセットは、ドライバー起動時に `ValueError` で明示的に失敗します。
+  - これは**デスクトップ級ブラウザでのエミュレーション**です。デスクトップ級ブラウザの中でモバイルの viewport とタッチ入力を用いる、Chrome DevTools のデバイスツールバーが行うのと同じものです。
+    実機のモバイルブラウザやデバイスクラウドではありません。本物のモバイル OS が必要なら、Android バックエンドが経路です。
+- **方向指定の `swipe` はスクロールになる**（BE-0227）: 方向指定形式 `swipe: { on, direction }` の意味は「スクロール」であり、マウスドラッグは web ページをスクロールしません。
+  そこで web バックエンドは、実際にスクロールを起こす入力プリミティブへ、コンテキストの入力モード（上記の `runsOn.browser.emulate`）に応じて振り分けます。
+  - **デスクトップ**（ポインター）コンテキストでは、ジェスチャーの起点で `page.mouse.wheel(...)` を発火します。
+    wheel の移動量は travel の符号を反転したものなので、`up` の swipe はページを**下へ**スクロールさせ、トラックパッドやホイールとまったく同じ挙動になります。
+  - **タッチ**コンテキスト（モバイルの `runsOn.browser.emulate`）では、CDP による 1 本指の本物のタッチドラッグ（`pinch` / `rotate` と同じ経路）を使い、ページのタッチリスナとスクロールリスナが発火します。
+  - **座標**形式 `swipe: { from, to }` は変わりません。canvas やマップのパン、ドラッグハンドルのための素のドラッグの最終手段として、`page.mouse` のドラッグのままです。
+  - `codegen` も、方向指定形式にはデスクトップの wheel スクロールを出力します。
+    生成された Playwright テストは、従来の何も動かないドラッグではなく、物理的に正しい向きへスクロールします。
+    codegen には `amount` を掛ける viewport がないため、距離は既定の固定値です。
+  - 別途用意した `drag` アクション（要素アンカーのポインタドラッグ。リサイズ用の仕切りやスライダーなど）は、ドライバーの `swipe` に振り分けられます。
+    web では、掴んだ要素を実際に**動かす** `page.mouse` のドラッグになります。スクロールするだけの方向指定 `swipe` とは対照的です。
+- **マルチタッチ**（BE-0054）: `pinch` / `rotate` は、Chromium DevTools プロトコル（`Input.dispatchTouchEvent`）で 2 本指のドラッグとして合成します。
+  `mouse` は単一ポインタなので、ジェスチャは CDP 経由（実際のタッチと同じ経路）で送り、ページのタッチリスナが発火します。
+  要素の中心を 2 本指の基準点とし、`scale` が指の間隔を広げ/狭め、`radians` がその中心まわりに回転させます。
+- **ネイティブネットワーク**（BE-0054）: Playwright はページが出すすべてのリクエストを見られるので、`--network` はアプリ側の協力なしに web でも動きます。
+  `network_collector()` がページの `requestfinished` イベントを iOS と同じ `NetworkExchange` に変換するため、`request` アサーションも `network.json` 証跡もそのまま使えます。
+  シナリオの `mocks` は `page.route` でその場で fulfill します。一致したリクエストには既定のレスポンスを返し、`mocked: true` を立てて記録します。
+  一致判定は決定論的な `request` マッチャを再利用し、モデルは一切使いません。
+- **コンソール / ページエラー、動画の証跡**（BE-0054）: `deviceLog` キャプチャ種別は、ブラウザのコンソールと未捕捉のページエラーを `<scenario>/device.log` にストリームします。
+  `video` は、シナリオ全体を録画します。どちらも simctl ではなく Playwright ネイティブで、iOS の os_log / simctl 動画に相当します。
+  - 録画は、シナリオの `capture` に `video` があるときだけ有効化します（`BrowserContext` を `record_video_dir` 付きで生成）。
+    `video` インターバルが、context クローズ時に `<scenario>/scenario.webm` へ確定させます。
+  - Playwright の録画機能は、常に Matroska/WebM を書き出します。
+    そのため `PlaywrightDriver.video_extension` は、他のバックエンドが使う `.mp4` を借用せず、実際のコンテナに合わせてアーティファクト名を決めます。
+    simctl と adb は本物の mp4 を書き出すため、そちらは従来どおり `.mp4` のままです。
+  - プールは、ドライバの `driver_interval`（adb バックエンドと共有する、driver 供給の区間証跡 seam）を `FileSink` に注入します。`video_extension` も同様に注入します。
+    バックエンド非依存の同じ `capture` ポリシーが両方を運びつつ、各アーティファクトは自分の中身を正直に名乗ります。
+
+> `playwright` は**遅延 import** されます（実際にブラウザを起動するときだけ読み込む）。そのため既定の CLI パスには決して載りません（`tests/serve/test_import_guard.py` で固定）。
+> インストールは `uv sync --extra web` ＋ `uv run playwright install chromium` です。
+> `demos/web` のデモ（`make -C demos/web e2e`）が、小さな静的 web アプリを端から端まで駆動します。
 
 ## FakeDriver
 
@@ -329,14 +987,50 @@ def select_actuator_for_scenario(backends, scenario, available, caps) -> str:  #
 def make_driver(actuator, udid, *, base_url=None, runner_port=None) -> Driver:  # "xcuitest"→XcuitestDriver, "playwright"→PlaywrightDriver, "fake"→FakeDriver
 ```
 
-- target の必須キー `platform`（`ios` / `android` / `web` / `fake`）が actuator を決めます。config の `backend:` キーは [BE-0452](../../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md) で取り除きました。現状はどのプラットフォームも単一の actuator に解決します。`ios` は `xcuitest`（BE-0290 で idb を撤去しました）、`android` は `adb`、`web` は `playwright` です。`--backend`（とサーバのリクエスト本文の `backend`）は順序付きのフォールバックのリストではなく、検査です。target のプラットフォーム、そのプラットフォームの actuator 名、`fake` のいずれかを受け付けるので、`--backend ios` と `--backend xcuitest` は等価です。それ以外の値やカンマ区切りのリストは終了コード 2 で終了します。`--backend fake` は、どの target も fake ドライバで動かします。fake ドライバには読み取るデバイスがないので、`runsOn` の条件を照合せず、run も増やしません。そのことを、呼び出しが 1 回だけ通知します（[configuration](configuration.md#デバイスの条件runson)）。`serve --backend` と `provision --backend` は、それぞれ独自の意味を保ちます。**actuator を複数持つ**プラットフォームのための仕組み（シナリオごとのコスト順解決。BE-0240）は将来のプラットフォームに備えて残していますが、今それを使うプラットフォームはありません。
-- 二つの順序が二つの問いに答えます。**安定度順**（`PLATFORMS`、最も高機能なものから。[concepts](concepts.md#5-安定度順ラダーstability-ladder)）は `select_actuator` を駆動します。これは、まだシナリオが手元に無くコストも問わない場面（`doctor`、プールの起動時セットアップ、明示的な単一 actuator の固定）で使う、可用性だけの選択です。**コスト順**（`COST_ORDER`、最も安いものから）は `select_actuator_for_scenario` と `select_actuator_cost_first` の両方を駆動し、両者は候補解決の前段（`_cost_ordered_available`）を共有します。`COST_ORDER` が空になった今、プラットフォームのコスト順は安定度順そのものなので、いずれも単一候補に落ち着きます。`select_actuator_for_scenario` はさらに `capability_preflight.unsupported`（BE-0082）を各候補の能力集合に対して再利用し、利用可能かつそのシナリオのステップに十分な最初の候補を返します。`select_actuator_cost_first` は同じコスト優先の選択をシナリオ無しで行うもので、能力の昇格判定なしに「立ち上げられる中で最も安い actuator」だけが必要な場面（serve の Author タブの **Capture** と **Enrich**。BE-0267）で使います。どちらも、解決した候補が 1 つに収まる場合は `select_actuator` に委譲し（その診断メッセージを保ちます）、現状はどのプラットフォームも単一 actuator なので常にそうなります。利用可能なものが無ければ `RuntimeError`（CLI は終了コード 2）。
+- **プラットフォームが actuator を決めます。** target の必須キー `platform`（`ios` / `android` / `web` / `fake`）が actuator を決めます。
+  config の `backend:` キーは [BE-0452](../../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md) で取り除きました。
+  現状は、どのプラットフォームも単一の actuator に解決します。
+  `ios` は `xcuitest`（BE-0290 で idb を撤去しました）、`android` は `adb`、`web` は `playwright` です。
+  - `--backend`（とサーバのリクエスト本文の `backend`）は、順序付きのフォールバックのリストではなく、検査です。
+    target のプラットフォーム、そのプラットフォームの actuator 名、`fake` のいずれかを受け付けるので、`--backend ios` と `--backend xcuitest` は等価です。
+    それ以外の値やカンマ区切りのリストは、終了コード 2 で終了します。
+  - `--backend fake` は、どの target も fake ドライバで動かします。
+    fake ドライバには読み取るデバイスがないので、`runsOn` の条件を照合せず、run も増やしません。
+    そのことを、呼び出しが 1 回だけ通知します（[configuration](configuration.md#デバイスの条件runson)）。
+  - `serve --backend` と `provision --backend` は、それぞれ独自の意味を保ちます。
+  - **actuator を複数持つ**プラットフォームのための仕組み（シナリオごとのコスト順解決。BE-0240）は、将来のプラットフォームに備えて残しています。今それを使うプラットフォームはありません。
+- **二つの順序が二つの問いに答えます。**
+  - **安定度順**（`PLATFORMS`、最も高機能なものから。[concepts](concepts.md#5-安定度順ラダーstability-ladder)）は、`select_actuator` を駆動します。
+    これは、まだシナリオが手元に無くコストも問わない場面で使う、可用性だけの選択です。
+    場面は、`doctor`、プールの起動時セットアップ、明示的な単一 actuator の固定です。
+  - **コスト順**（`COST_ORDER`、最も安いものから）は、`select_actuator_for_scenario` と `select_actuator_cost_first` の両方を駆動します。
+    両者は候補解決の前段（`_cost_ordered_available`）を共有します。
+    `COST_ORDER` が空になった今、プラットフォームのコスト順は安定度順そのものなので、いずれも単一候補に落ち着きます。
+  - `select_actuator_for_scenario` は、さらに `capability_preflight.unsupported`（BE-0082）を各候補の能力集合に対して再利用します。
+    利用可能で、かつそのシナリオのステップに十分な最初の候補を返します。
+  - `select_actuator_cost_first` は、同じコスト優先の選択をシナリオ無しで行うものです。
+    能力の昇格判定なしに「立ち上げられる中で最も安い actuator」だけが必要な場面（serve の Author タブの **Capture** と **Enrich**。BE-0267）で使います。
+  - どちらも、解決した候補が 1 つに収まる場合は `select_actuator` に委譲します（その診断メッセージを保ちます）。現状はどのプラットフォームも単一 actuator なので、常にそうなります。
+  - 利用可能なものが無ければ `RuntimeError` になります（CLI は終了コード 2）。
 - `web` は `playwright` に、`android` は `adb` に解決され、どちらも**実装済み**です
   （[vision → reach](vision.md#1-reachより多くのプラットフォームと面)）。
-- 可用性判定 `available` は注入可能です（テストで差し替え可）。既定は `shutil.which`（`fake` は実行ファイル不要で常に利用可能）。
-- actuator は**シナリオごと**に 1 つ確定し、そのシナリオの実行のあいだ固定です（BE-0240）。どの瞬間もリースしたデバイスを操作する actuator はちょうど 1 つで、実行の途中で切り替わりません。これは従来の「run ごとに固定」という単位をシナリオ単位へ狭めたもので、単一 actuator の規則を緩めるものではありません。
+- 可用性判定 `available` は注入可能です（テストで差し替え可）。既定は `shutil.which` です。
+  `fake` は実行ファイル不要で、常に利用可能です。
+- actuator は**シナリオごと**に 1 つ確定し、そのシナリオの実行のあいだ固定です（BE-0240）。
+  どの瞬間もリースしたデバイスを操作する actuator はちょうど 1 つで、実行の途中で切り替わりません。
+  これは従来の「run ごとに固定」という単位をシナリオ単位へ狭めたもので、単一 actuator の規則を緩めるものではありません。
 
-操作は単一の actuator にとどまります。リスト内の非 actuator バックエンドは、**read-only な証跡フォールバック**として機能します（DESIGN §9、[BE-0020](../../roadmaps/BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback-ja.md)）。その種別の provider には、actuator が欠く能力（例: `Capability.NETWORK`）を `capabilities()` で表明する同一プラットフォームのバックエンドを充てます。フォールバックには狭い `EvidenceProvider` Protocol 経由でのみアクセスし、tap/type/swipe は型レベルで不可能です。gap を埋めるバックエンドがない場合は、理由を記録して skip します（`SkippedCapture`）。なだらかな劣化であり、run の失敗にはなりません。この方法で埋められるのは `network` だけです。区間証跡の種別（`video`、`deviceLog`、`appTrace`）は、[BE-0467](../../roadmaps/BE-0467-environment-specific-settings/BE-0467-environment-specific-settings-ja.md) 以降それぞれが独立した能力です。これらは actuator のルートだけで判定し、そのルートで記録できなければ skip します。来歴の詳細は[証跡の provider](evidence.md#アーティファクトの来歴provider)を参照してください。
+操作は単一の actuator にとどまります。リスト内の非 actuator バックエンドは、**read-only な証跡フォールバック**として機能します
+（DESIGN §9、[BE-0020](../../roadmaps/BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback-ja.md)）。
+
+- その種別の provider には、actuator が欠く能力（例: `Capability.NETWORK`）を `capabilities()` で表明する同一プラットフォームのバックエンドを充てます。
+- フォールバックには、狭い `EvidenceProvider` Protocol 経由でのみアクセスします。tap/type/swipe は型レベルで不可能です。
+- gap を埋めるバックエンドがない場合は、理由を記録して skip します（`SkippedCapture`）。なだらかな劣化であり、run の失敗にはなりません。
+- この方法で埋められるのは `network` だけです。
+  区間証跡の種別（`video`、`deviceLog`、`appTrace`）は、[BE-0467](../../roadmaps/BE-0467-environment-specific-settings/BE-0467-environment-specific-settings-ja.md) 以降それぞれが独立した能力です。
+  これらは actuator のルートだけで判定し、そのルートで記録できなければ skip します。
+
+来歴の詳細は[証跡の provider](evidence.md#アーティファクトの来歴provider)を参照してください。
 
 ## 環境管理（simctl）
 
@@ -351,8 +1045,26 @@ def make_driver(actuator, udid, *, base_url=None, runner_port=None) -> Driver:  
 | `openurl(url)` | `simctl openurl <udid> <url>` | deeplink |
 | `screenshot(path)` | `simctl io <udid> screenshot <path>` | — |
 
-> **すべての呼び出しに期限があります**（[BE-0363](../../roadmaps/BE-0363-simctl-subprocess-timeout/BE-0363-simctl-subprocess-timeout-ja.md)）: 共有のランナーは、一回きりの `simctl` サブプロセスすべてに期限を渡します。値はコマンド自身から選ばれます。所要時間を simctl ではなくデバイスやアプリが決めるコマンド（`bootstatus`、`boot`、`erase`、`install`）には長い側を、それ以外には短い側を当てます。CoreSimulator が固まったときに観測される症状、すなわち返ってこない呼び出しは、CI がジョブ全体を原因不明のまま打ち切るまでハングするのではなく、超過した期限とコマンドを名前で示す `simctl.DeviceTimeout` を送出します。`DeviceTimeout` は `DeviceError` の派生なので、デバイス障害を変換している既存のハンドラは変更なしで動きます。あわせて、プラットフォーム中立な `device_errors.DeviceTimeout` も継承します（[BE-0374](../../roadmaps/BE-0374-device-timeout-crash-retry-policy/BE-0374-device-timeout-crash-retry-policy-ja.md)）。置き換えではなく 2 つ目の基底として足すので、バックエンドに依存しない run パイプラインは、捕まえる例外に名前を付けるためだけに iOS バックエンドのモジュールを読み込むことなく、固まったホストに対処できます。そこへ再試行する代わりにシナリオを失敗させる、という対処です。adb 側はまだどのコマンドにも期限を渡していないため、この基底の下に置くタイムアウト型を持ちません。adb の呼び出しに期限を与えるのは別項目の仕事です。どこで受け止めるかは呼び出し側で異なります。ベストエフォートのプローブ（`device_booted`、`device_available`、`device_catalog` など）は、文書化されたフォールバックへ畳み込んだうえでログに残すので、復旧ラダーは観測結果で判断し続けられます。それ以外の呼び出しは送出します。冪等な `shutdown` / `boot` / `uninstall` / `terminate` も同様で、これらが握りつぶすのは失敗した呼び出しであって、ハングした呼び出しではありません。
+> **すべての呼び出しに期限があります**（[BE-0363](../../roadmaps/BE-0363-simctl-subprocess-timeout/BE-0363-simctl-subprocess-timeout-ja.md)）:
+> 共有のランナーは、一回きりの `simctl` サブプロセスすべてに期限を渡します。
+> 値はコマンド自身から選ばれます。所要時間を simctl ではなくデバイスやアプリが決めるコマンド（`bootstatus`、`boot`、`erase`、`install`）には長い側を、それ以外には短い側を当てます。
+>
+> 返ってこない呼び出しは、CoreSimulator が固まったときに観測される症状です。
+> この呼び出しは、CI がジョブ全体を原因不明のまま打ち切るまでハングするのではなく、超過した期限とコマンドを名前で示す `simctl.DeviceTimeout` を送出します。
+> `DeviceTimeout` は `DeviceError` の派生なので、デバイス障害を変換している既存のハンドラは変更なしで動きます。
+>
+> `DeviceTimeout` は、プラットフォーム中立な `device_errors.DeviceTimeout` も継承します
+> （[BE-0374](../../roadmaps/BE-0374-device-timeout-crash-retry-policy/BE-0374-device-timeout-crash-retry-policy-ja.md)）。
+> 置き換えではなく 2 つ目の基底として足します。
+> そのため、バックエンドに依存しない run パイプラインは、捕まえる例外に名前を付けるためだけに iOS バックエンドのモジュールを読み込むことなく、固まったホストに対処できます。
+> そこへ再試行する代わりにシナリオを失敗させる、という対処です。
+> adb 側はまだどのコマンドにも期限を渡していないため、この基底の下に置くタイムアウト型を持ちません。adb の呼び出しに期限を与えるのは別項目の仕事です。
+>
+> どこで受け止めるかは、呼び出し側で異なります。
+> ベストエフォートのプローブ（`device_booted`、`device_available`、`device_catalog` など）は、文書化されたフォールバックへ畳み込んだうえでログに残します。復旧ラダーは、観測結果で判断し続けられます。
+> それ以外の呼び出しは送出します。冪等な `shutdown` / `boot` / `uninstall` / `terminate` も同様です。これらが握りつぶすのは失敗した呼び出しであって、ハングした呼び出しではありません。
 
-> **launch env の注入**: アプリへ渡す env 変数は、親プロセスに `SIMCTL_CHILD_<NAME>` として設定すると子（アプリ）に `<NAME>` で渡ります。`child_env()` がこの変換を行います。showcase アプリの `SHOWCASE_UITEST` 等の launch hook はこの仕組みを使います（[showcase](showcase.md#起動環境フック)）。
+> **launch env の注入**: アプリへ渡す env 変数は、親プロセスに `SIMCTL_CHILD_<NAME>` として設定すると、子（アプリ）に `<NAME>` で渡ります。
+> `child_env()` がこの変換を行います。showcase アプリの `SHOWCASE_UITEST` 等の launch hook は、この仕組みを使います（[showcase](showcase.md#起動環境フック)）。
 
 `video` / `deviceLog` の区間録りも `simctl io recordVideo` / `simctl spawn log stream` を使いますが、これらは証跡サブシステム側（`evidence/intervals.py`）に置かれています（[evidence](evidence.md#区間証跡video--devicelog--apptrace)）。

@@ -115,6 +115,7 @@ plugins:
             Codegen: コード生成
             Drivers & platforms: ドライバとプラットフォーム
             Drivers: ドライバ
+            iOS and Android parity: iOS と Android の機能差
             Network: ネットワーク
             iOS on a real device and in a device cloud: iOS を実機とデバイスクラウドで動かす
             Evidence & reporting: evidence とレポート
@@ -183,6 +184,7 @@ nav:
       - Codegen: codegen.md
   - Drivers & platforms:
       - Drivers: drivers.md
+      - iOS and Android parity: platform-parity.md
       - Network: network.md
       - iOS on a real device and in a device cloud: ios-device-cloud.md
   - Evidence & reporting:

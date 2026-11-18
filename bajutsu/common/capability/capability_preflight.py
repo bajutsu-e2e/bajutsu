@@ -22,15 +22,17 @@ The map gates only the **true hard requirements** the capability set cleanly dec
 - an `attribute` assertion needs `elementAttribute` (BE-0466): only the web backend reads an HTML
   attribute, so the assertion — in `expect`, a step's `assert`, an `if` or `interrupts` condition,
   or inside a `web:` / `app:` block — is rejected before any device work everywhere else.
-- `setPickerValue` needs `pickerWheel` (BE-0356): a picker wheel is an iOS control, and only the
-  resident-runner XCUITest backend can land on a named row deterministically, so a scenario setting
-  a wheel's value is rejected up front on every other backend.
-- `selectPhotos` needs `selectPhotos` (roadmap item): a `PHPickerViewController` grid is an iOS
-  control, and only the resident-runner XCUITest backend can address it at all, so a scenario using
-  this step is rejected up front on every other backend.
-- `select` / `copy` need `textSelection` (BE-0280): select-all + clipboard copy on the focused
-  field. A backend with no select-all handle raises `UnsupportedAction` and does not advertise the
-  token, so a scenario selecting or copying is rejected up front. `delete` / `clear` are not gated:
+- `setPickerValue` needs `pickerWheel` (BE-0356, BE-0480): only the resident-runner XCUITest
+  backend (`adjust(toPickerWheelValue:)`) and the adb backend (the resident server's
+  `/setPickerValue`, which steps an `android.widget.NumberPicker` one row at a time) land a wheel on
+  a named row deterministically, so a scenario setting a wheel's value is rejected up front on every
+  other backend.
+- `selectPhotos` needs `selectPhotos` (roadmap item): the system photo picker is an OS control that
+  only the resident-runner XCUITest backend (`PHPickerViewController`) and adb (Android's photo
+  picker) can address, so a scenario using this step is rejected up front on every other backend.
+- `select` / `copy` / `paste` need `textSelection` (BE-0280): select-all + clipboard copy and paste
+  on the focused field. A backend with no select-all handle raises `UnsupportedAction` and does not
+  advertise the token, so a scenario selecting, copying, or pasting is rejected up front. `delete` / `clear` are not gated:
   `delete` actuates `delete_text` (a run of backspaces), which every backend backs, and `clear` only
   *opportunistically* uses `textSelection` (select-all then one backspace) when a backend advertises
   it, falling back to a counted `delete_text` run when it doesn't — so neither ever needs the token.
@@ -207,15 +209,16 @@ def _attribute_locations(sc: Scenario) -> list[str]:
 
 
 def _text_selection_locations(sc: Scenario) -> list[str]:
-    """The paths where a `select` or `copy` step appears (BE-0280).
+    """The paths where a `select`, `copy`, or `paste` step appears (BE-0280).
 
     `delete` / `clear` are excluded: they actuate `delete_text`, which every backend backs, so they
-    need no capability. Only select-all / copy depend on the `textSelection` capability.
+    need no capability. Select-all, copy, and paste are the clipboard-shortcut trio a backend backs
+    together, so they share the `textSelection` capability.
     """
     return [
         path
         for path, step in _walk_scenario(sc)
-        if step.select is not None or step.copy_ is not None
+        if step.select is not None or step.copy_ is not None or step.paste is not None
     ]
 
 
@@ -280,17 +283,17 @@ _REQUIREMENTS = (
     ),
     _Requirement(
         base.Capability.PICKER_WHEEL,
-        "setPickerValue (iOS picker-wheel value; iOS XCUITest only)",
+        "setPickerValue (picker-wheel value; iOS XCUITest and Android adb only)",
         _step_locations(lambda s: s.set_picker_value is not None),
     ),
     _Requirement(
         base.Capability.SELECT_PHOTOS,
-        "selectPhotos (iOS photo-picker selection; iOS XCUITest only)",
+        "selectPhotos (system photo-picker selection; iOS XCUITest and Android only)",
         _step_locations(lambda s: s.select_photos is not None),
     ),
     _Requirement(
         base.Capability.TEXT_SELECTION,
-        "select / copy (select-all + clipboard copy; not supported by this backend)",
+        "select / copy / paste (select-all + clipboard copy/paste; not supported by this backend)",
         _text_selection_locations,
     ),
     _Requirement(
@@ -305,7 +308,7 @@ _REQUIREMENTS = (
     ),
     _Requirement(
         base.Capability.APP_CONTEXT,
-        "app (cross-app UI control; iOS XCUITest only)",
+        "app (cross-app UI control; iOS XCUITest and Android adb)",
         _step_locations(lambda s: s.app is not None),
     ),
     *(
@@ -391,6 +394,36 @@ def requirements(scenario: Scenario) -> dict[str, list[str]]:
                 f"{path}: {req.label}" for path in locations
             )
     return needs
+
+
+def android_status_bar_problems(scenario: Scenario) -> list[str]:
+    """Each `overrideStatusBar` value the Android demo mode cannot pin, with its step path (BE-0478).
+
+    The capability token says the adb backend has the step; this says whether one step's values fit.
+    `simctl status_bar` fails a step whose value it cannot show, while `am broadcast` reports success
+    and System UI ignores the value, so on Android the check has to run before any device work.
+    Pure: no device, no clock, no network.
+    """
+    from bajutsu.common.backend_cli import adb
+
+    problems: list[str] = []
+    for path, step in _walk_scenario(scenario):
+        osb = step.override_status_bar
+        if osb is None:
+            continue
+        fields: dict[str, str | int | None] = {
+            "time": osb.time,
+            "battery_level": osb.battery_level,
+            "battery_state": osb.battery_state,
+            "cellular_bars": osb.cellular_bars,
+            "wifi_bars": osb.wifi_bars,
+        }
+        set_fields = {k: v for k, v in fields.items() if v is not None}
+        problems.extend(
+            f"{path}: overrideStatusBar {problem}"
+            for problem in adb.status_bar_problems(set_fields)
+        )
+    return problems
 
 
 # --- The worker capability check (BE-0450) -------------------------------------------------------

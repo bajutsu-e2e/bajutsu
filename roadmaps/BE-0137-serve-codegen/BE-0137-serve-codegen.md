@@ -15,50 +15,53 @@
 
 ## Introduction
 
-Surface `codegen` in the `serve` Web UI: from a scenario you just authored or ran, generate the
-equivalent native test (XCUITest in Swift, or Playwright) and copy or download it in the browser.
-The mapping is deterministic and structural — no AI, no device, no verdict.
+This item surfaces `codegen` in the `serve` Web UI. From a scenario that the user just authored or ran,
+the UI generates the equivalent native test (XCUITest in Swift, or Playwright). The user copies or
+downloads the result in the browser. The mapping is deterministic and structural, with no AI, no device,
+and no verdict.
 
 ## Motivation
 
-`codegen` turns a Bajutsu scenario into a native test in a destination framework's idiom
-(`bajutsu codegen --emit xcuitest|playwright`; `bajutsu/codegen.py` and the Playwright target from
-[BE-0062](../BE-0062-playwright-codegen/BE-0062-playwright-codegen.md),
-`bajutsu/codegen_playwright.py`). It is the bridge for teams whose canonical suite is XCUITest or
-Playwright but who want to author with Bajutsu. Yet the only way to get that output is the terminal
-— even though the browser is where the scenario was just authored (Record) and confirmed to pass
-(Replay). A user who wants "give me this as a Playwright test" must leave the UI, reconstruct the
-config / target / scenario path, and run the command. Putting codegen one click away from a green
-scenario closes that gap and makes the bridge discoverable.
+`codegen` turns a Bajutsu scenario into a native test in the idiom of a destination framework. The
+command is `bajutsu codegen --emit xcuitest|playwright`. The code lives in `bajutsu/codegen.py`, and the
+Playwright target from [BE-0062](../BE-0062-playwright-codegen/BE-0062-playwright-codegen.md) lives in
+`bajutsu/codegen_playwright.py`. It is the bridge for teams whose canonical suite is XCUITest or
+Playwright but who want to author with Bajutsu.
+
+Today the terminal is the sole way to get that output. Yet the browser is where the user just authored
+the scenario (Record) and confirmed that it passes (Replay). A user who wants "give me this as a
+Playwright test" must leave the UI, reconstruct the config, target, and scenario path, and run the
+command. Putting codegen one click away from a green scenario closes that gap and makes the bridge
+discoverable.
 
 ## Detailed design
 
-Tier-1, deterministic; the UI only shells out to the existing command.
+The feature is Tier-1 and deterministic. The UI shells out to the existing command and does nothing
+more.
 
-- **A "Generate code" action** on a scenario, in the editor and the Replay view, with an emit
-  selector (XCUITest / Playwright — the destinations `codegen` already supports). It posts to
-  `POST /api/codegen` (`{target, scenario, emit}`), which runs codegen and returns the generated source.
-- **The result** renders in a read-only code viewer with copy-to-clipboard and download (the
-  filename derived from the scenario and destination, e.g. `LoginTest.swift` / `login.spec.ts`).
+- **A "Generate code" action** on a scenario, in the editor and the Replay view, with an emit selector
+  (XCUITest or Playwright, the destinations `codegen` already supports). The action posts
+  `{target, scenario, emit}` to `POST /api/codegen`, which runs codegen and returns the generated source.
+- **The result** renders in a read-only code viewer with copy-to-clipboard and download. The filename
+  derives from the scenario and the destination, for example `LoginTest.swift` or `login.spec.ts`.
 - **Deterministic and AI-free.** codegen is a structural mapping from the scenario model to target
-  syntax; nothing here runs a device or a model, and it never touches a verdict.
-- **Honest about limits.** The emit options offered track the codegen targets available for the
-  selected backend (XCUITest for iOS, Playwright for web), mirroring `--emit`; unsupported-syntax
-  limits are codegen's own
-  ([BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md)),
-  and the UI surfaces codegen's existing diagnostics rather than hiding them.
+  syntax. Nothing here runs a device or a model, and the feature never touches a verdict.
+- **Honest about limits.** The emit options track the codegen targets available for the selected backend
+  (XCUITest for iOS, Playwright for web), mirroring `--emit`. The limits on unsupported syntax belong
+  to codegen itself
+  ([BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md)). The UI
+  surfaces codegen's existing diagnostics instead of hiding them.
 - **App-agnostic.** The target and scenario path resolve from config (`targets.<name>`).
 
 ## Alternatives considered
 
-* **Leave codegen CLI-only.** Rejected: the moment a user most wants native code is right after a
-  scenario goes green in the browser; making them switch to a terminal loses that moment.
-* **Auto-generate code on every passing run.** Rejected as noise: codegen is an occasional export,
-  not a per-run artifact; an explicit action keeps runs lean (the report and `--zip` stay the run's
-  artifacts).
-* **Write the generated file into the repo from the UI.** Deferred: the first cut returns the code
-  for copy / download; writing into a destination tree touches file-layout decisions better made
-  explicitly, and can come later.
+* **Leave codegen CLI-only.** Rejected. The moment a user most wants native code is right after a
+  scenario goes green in the browser. Making the user switch to a terminal loses that moment.
+* **Auto-generate code on every passing run.** Rejected as noise. codegen is an occasional export, not a
+  per-run artifact. An explicit action keeps runs lean: the report and `--zip` stay the run's artifacts.
+* **Write the generated file into the repo from the UI.** Deferred. The first cut returns the code for
+  copy and download. Writing into a destination tree touches file-layout decisions that are better made
+  explicitly, and the feature can come later.
 
 ## Progress
 

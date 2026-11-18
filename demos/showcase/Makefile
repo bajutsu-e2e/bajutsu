@@ -138,6 +138,10 @@ runner-build-device:
 # named iOS CI scenario list (`run` for the first, `actuation` for the rest), where
 # what precedes it is controlled rather than discovered. A dedicated tag keeps them out without
 # riding the legacy `xcuitest` tag.
+# `pasteboard` (scenarios/paste.yaml) is excluded for a device-state reason of its own: its
+# `setClipboard` leaves in-app select-all and copy doing nothing on that Simulator until it is erased,
+# and name-order discovery would run it ahead of text_editing.yaml. The `actuation` CI lane runs it
+# after text_editing.yaml instead.
 # `browser` (scenarios/browser.yaml, the SFSafariViewController flow) is excluded for the same
 # reason as the two below: it needs a fixture page served on BROWSER_PORT, which only its own
 # `e2e-browser` lane starts, so discovering it here would leave the browser with nothing to load.
@@ -181,9 +185,9 @@ SIM ?= $(shell xcrun simctl list devices booted | sed -nE 's/.*\(([0-9A-F-]{36})
 # channel to hide the markers for its capture, and one added here would fail until the build gains
 # the setting.
 run-swiftui: swiftui-build runner-build
-	cd $(ROOT) && uv run bajutsu run --target showcase-swiftui --udid $(SIM) --backend ios --exclude xcuitest,systemalert,visual,android,browser,app,multi-target --config $(CONFIG) --touch-markers
+	cd $(ROOT) && uv run bajutsu run --target showcase-swiftui --udid $(SIM) --backend ios --exclude xcuitest,systemalert,pasteboard,visual,android,browser,app,multi-target --config $(CONFIG) --touch-markers
 run-uikit: uikit-build runner-build
-	cd $(ROOT) && uv run bajutsu run --target showcase-uikit --udid $(SIM) --backend ios --exclude xcuitest,systemalert,visual,android,swiftui,browser,app,multi-target --config $(CONFIG) --touch-markers
+	cd $(ROOT) && uv run bajutsu run --target showcase-uikit --udid $(SIM) --backend ios --exclude xcuitest,systemalert,pasteboard,visual,android,swiftui,browser,app,multi-target --config $(CONFIG) --touch-markers
 
 # scenarios/tabs.yaml on its own, forced onto XCUITest (see the comment above run-swiftui/run-uikit).
 run-swiftui-tabs: swiftui-build runner-build
@@ -201,9 +205,9 @@ run-uikit-tabs: uikit-build runner-build
 # `generated.yaml` have no UIKit counterpart). NOT part of `make check` — needs a booted Simulator; the
 # permission scenario is non-deterministic on iOS (its alert grant is an AI path, like the a11y twin).
 run-swiftui-noax: swiftui-noax-build runner-build
-	cd $(ROOT) && uv run bajutsu run --target showcase-swiftui-noax --udid $(SIM) --backend xcuitest --config $(CONFIG)
+	cd $(ROOT) && uv run bajutsu run --target showcase-swiftui-noax --udid $(SIM) --backend xcuitest --exclude android --config $(CONFIG)
 run-uikit-noax: uikit-noax-build runner-build
-	cd $(ROOT) && uv run bajutsu run --target showcase-uikit-noax --udid $(SIM) --backend xcuitest --exclude swiftui --config $(CONFIG)
+	cd $(ROOT) && uv run bajutsu run --target showcase-uikit-noax --udid $(SIM) --backend xcuitest --exclude swiftui,android --config $(CONFIG)
 
 # The accessibility A/B: doctor grades the a11y app Ready and the no-a11y app Blocked.
 doctor: swiftui-build swiftui-noax-build
@@ -544,11 +548,12 @@ flutter-android-noax-build:
 # Prereqs: a booted Simulator, `make runner-build`; an attached emulator for Android.
 run-flutter: flutter-build runner-build
 	cd $(ROOT) && uv run bajutsu run --target showcase-flutter --udid $(SIM) --backend xcuitest \
-		--exclude network,systemalert,alert,visual,swiftui,browser,app,android --config $(CONFIG)
+		--exclude network,systemalert,pasteboard,alert,visual,swiftui,browser,app,android --config $(CONFIG)
 
-# The same on-device set the native Compose lane runs (demos/showcase/android/Makefile), minus two
-# files. device.yaml's device-control clipboard round-trips through the in-app BajutsuAndroid receiver
-# the plugin-free Flutter app does not link (docs/drivers.md "Flutter" out-of-scope).
+# The same on-device set the native Compose lane runs (demos/showcase/android/Makefile), minus three
+# files. device.yaml's device-control clipboard round-trip and text_selection_android's sentinel /
+# clipboard read-back both go through the in-app BajutsuAndroid receiver, which the plugin-free
+# Flutter app does not link (docs/drivers.md "Flutter" out-of-scope).
 # text_entry_android's non-ASCII text needs ACTION_SET_TEXT, which no one has checked on a Flutter
 # field, so it joins this set only once this lane has run it. `adb root`
 # enables the `sendevent` path the gestures double-tap and multi-touch use, exactly as the native

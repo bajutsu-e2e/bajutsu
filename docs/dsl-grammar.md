@@ -168,7 +168,7 @@ Preconditions ::= {
       deeplink?: string,                    # unset: the target's `subject.launch.deeplink`; iOS and Android
     },
   },
-  device?: { ios?: <IosDevice> },           # keyed by destination; a block for an undriven platform has no effect
+  device?: { ios?: <IosDevice>, android?: <AndroidDevice> },  # keyed by destination; a block for an undriven platform has no effect
   inheritSetup?: boolean,                   # default true — false skips every declared target's `hooks.setup`; their cleanup still runs
 }
 
@@ -176,6 +176,10 @@ Preconditions ::= {
 # same name. `seedPhotos` paths resolve against the scenario file, and a merged, non-empty list needs
 # an effective `subject.reinstall: erase`.
 IosDevice ::= { locale?: string, seedPhotos?: list(string) }
+
+# The Android device state a scenario applies; `seedPhotos` replaces the target's
+# `runsOn.android.seedPhotos`. Paths resolve against the scenario file; no erase is needed.
+AndroidDevice ::= { seedPhotos?: list(string) }
 
 # ── SystemAlertInterrupt (the reactive system-alert guard's answers) ───
 # The guard is on unless `run --no-system-alert-handling`; no scenario or target switches it off as a
@@ -226,9 +230,10 @@ Action    ::=
   | { delete:      { into: <Selector>, count: integer } }  # focus the field and delete count characters from the end (count > 0; web-context raises)
   | { select:      { into: <Selector>, mode?: "all" } }    # focus the field and select its content (mode default "all"; web-context raises; codegen emits the native XCUITest equivalent)
   | { copy:        {} }                                    # copy the active selection to the clipboard (requires a prior select; web-context raises)
+  | { paste:       { into: <Selector> } }                  # focus the field and paste the clipboard at the caret (web-context raises)
   | { selectOption:{ sel: <Selector>, option: string } }   # set a web <select> to the option with this value (web only; iOS/Android raise)
   | { navigate:    string }                                # load a URL resolved against baseUrl; http/https only (web only; BE-0464)
-  | { setPickerValue:{ sel: <Selector>, value: string } }  # move a wheel-style picker to the row with this value (iOS only; sel addresses one wheel)
+  | { setPickerValue:{ sel: <Selector>, value: string } }  # move a wheel-style picker to the row with this value (iOS and Android; sel addresses one wheel)
   | { swipe:       <Swipe> }                          # directional form scrolls; coordinate form is a raw drag
   | { drag:        <Drag> }                           # pointer-drag a grabbed element (handle / divider / slider), not a scroll
   | { scroll:      <Scroll> }                         # scroll (non-inertially) until `to` is on-screen, else fail at a bound (BE-0326)
@@ -244,7 +249,8 @@ Action    ::=
   | { setLocation: { lat: number, lon: number } }
   | { push:        { payload: map(string,any) } }          # APNs payload, e.g. {aps:{alert:"…"}}
   | { http:        { method?: string, url: string, headers?: map(string,string), body?: string, status?: integer, saveBody?: string, extractBody?: list({ var: string, path: string }) } }  # method default GET; saveBody → vars.<name>; extractBody → vars.<var> per JSON path (BE-0440)
-  | { totp:        { secret: string, into: { var: string }, minRemaining?: integer } }  # RFC 6238 OTP → vars.<var> (secret is base32); minRemaining 1–30: wait for the next 30s window when fewer seconds are left (BE-0474)
+  | { totp:        { secret: string, into?: { var: string }, name?: string, minRemaining?: integer } }  # RFC 6238 OTP → vars.<var> (secret is base32); name registers the secret for `otp` (into and/or name required); minRemaining 1–30 (needs into): wait for the next 30s window when fewer seconds are left (BE-0474)
+  | { otp:         { from: string, into: { var: string }, minRemaining?: integer } }  # current code of the generator a totp step registered as `from` → vars.<var>; minRemaining as for totp
   | { email:       { match: { to?: string, subject?: string, subjectMatches?: string }, extract: { var: string, bodyMatches: string }, timeout: number } }  # poll mailbox → vars.<var>
   | { generate:    <Generate> }                            # a random or current-datetime value computed at run time → vars.<var> (BE-0377)
   | { eval:        <Eval> }                                # transform a held value through a fixed op vocabulary → vars.* (BE-0472)
@@ -254,7 +260,7 @@ Action    ::=
   | { setPrimaryTarget: { target: string } }               # from here on, an omitted `target` (step, `interrupts` entry, top-level `expect`) resolves to `target`; top-level `steps` only (BE-0447)
   | { clearKeychain:    {} }                               # reset saved passwords / certificates
   | { clearClipboard:   {} }                               # clear the pasteboard
-  | { setClipboard:     { text: string } }                 # seed the pasteboard with text (simctl pbcopy), for paste flows
+  | { setClipboard:     { text: string } }                 # seed the clipboard with text (simctl pbcopy; BajutsuAndroid on Android), for paste flows
   | { setMocks:         list(<Mock>) }                     # replace the app's whole stub table mid-scenario ([] removes every stub); iOS/XCUITest with network on (BE-0365)
   | { overrideStatusBar: { time?: string, batteryLevel?: integer, batteryState?: string, cellularBars?: integer, wifiBars?: integer } }
   | { clearStatusBar:   {} }                               # restore the live status bar
@@ -263,7 +269,7 @@ Action    ::=
   | { if:          <If> }                                               # conditional (no capture/extract)
   | { forEach:     <ForEach> }                                          # loop (no capture/extract)
   | { web:         <Web> }                                              # enter a WebView's DOM context (BE-0037; no capture/extract)
-  | { app:         <App> }                                              # launch an app the test target never started and drive its UI (iOS/XCUITest only; no capture/extract)
+  | { app:         <App> }                                              # launch an app the test target never started and drive its UI (iOS/XCUITest and Android/adb; no capture/extract)
   | { manual:      { label: string, bypass?: string } }                # human takeover recorded during `record` (BE-0185); fails loudly at run time — no deterministic equivalent unless `bypass` is wired
 
 Group ::= { name: string, steps: list(<Step>) }   # both required, non-empty; compile-time macro, gone before `run` (§6.2)
@@ -354,7 +360,7 @@ Assertion ::=
   | { requestSequence: list(<RequestMatch>) }   # ≥1 matcher; an ordered/aggregate set of matched exchanges
   | { responseSchema: <ResponseSchemaMatch> }   # validate a captured response body against a JSON Schema (BE-0048)
   | { visual:   <VisualMatch> }
-  | { clipboard: <ClipboardMatch> }   # read-back of the device pasteboard (simctl pbpaste)
+  | { clipboard: <ClipboardMatch> }   # read-back of the device clipboard (simctl pbpaste; BajutsuAndroid on Android)
   | { attribute: <AttributeMatch> }   # an HTML attribute of one element, read on demand (web only; BE-0466)
   | { golden:   <GoldenMatch> }       # compare the live element tree to a recorded golden file (BE-0006)
 

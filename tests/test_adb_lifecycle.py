@@ -1018,3 +1018,14 @@ def test_crawl_reset_invalidates_the_driver_settled_cache() -> None:
     driver._settled_key = ()
     env.crawl_reset(_eff())(driver)
     assert driver._settled_key is None
+
+
+def test_webview_source_is_a_cdp_source_for_the_package_with_no_port() -> None:
+    # The WebView serves CDP itself, so the app binds no bridge port (BE-0482).
+    from bajutsu.common.drivers.webview import CdpDomSource
+
+    env = AndroidEnvironment("adb", "emulator-5554", adb_run=_resolve_activity_run([]))
+    source, device_port, release = env.webview_source(_eff(package="com.example.app"))
+    assert isinstance(source, CdpDomSource)
+    assert device_port is None
+    release()  # nothing was opened, so nothing to close

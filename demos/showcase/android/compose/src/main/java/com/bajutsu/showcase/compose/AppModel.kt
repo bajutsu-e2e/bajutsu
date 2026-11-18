@@ -53,6 +53,14 @@ class AppModel(env: Map<String, String>) {
     // across launches and installs — the update scenario's fixture.
     val savedNoteMode: Boolean = env["SHOWCASE_SAVED_NOTE"] != null
 
+    // Wheel picker mode (BE-0480): gated on the SHOWCASE_PICKERS launch env, mirroring the iOS
+    // AppModel. When set, RootScreen swaps the whole five-tab UI for the flat picker screen.
+    val pickersMode: Boolean = env["SHOWCASE_PICKERS"] != null
+
+    // Hybrid mode (BE-0482): gated on the SHOWCASE_WEBVIEW launch env, mirroring the iOS AppModel.
+    // When set, RootScreen swaps the whole five-tab UI for the WebView screen a `web:` block enters.
+    val webViewMode: Boolean = env["SHOWCASE_WEBVIEW"] != null
+
     // Driver-conformance mode (BE-0114 / BE-0270): a test-only affordance gated on the
     // SHOWCASE_CONFORMANCE launch env, mirroring the iOS AppModel. null (env absent) = the normal
     // observe-only app (BE-0079, untouched); non-null = render exactly these identifiers (duplicates
@@ -101,7 +109,9 @@ class AppModel(env: Map<String, String>) {
     // Permissions tab
     var notifStatus by mutableStateOf("notDetermined")
     var locationStatus by mutableStateOf("notDetermined")
+    var locationReading by mutableStateOf("")
     var pasted by mutableStateOf("")
+    var selectedPhotoCount by mutableStateOf(0)
 
     /**
      * Reseed the conformance screen from a new SHOWCASE_CONFORMANCE extra (BE-0270), a no-op when the

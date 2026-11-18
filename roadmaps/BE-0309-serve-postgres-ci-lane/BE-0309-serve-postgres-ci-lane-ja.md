@@ -16,66 +16,35 @@
 
 ## はじめに
 
-`serve` の DB 層は、Postgres 方言に対する検証ギャップのうち最悪の形はすでに避けています。
-`tests/serve/test_db_migrations.py` は、`Base.metadata.create_all()` で migration を迂回するのでは
-なく、実際の使い捨て SQLite ファイルに対して実際の Alembic の `upgrade`/`downgrade` を実行します。
-ただし、その migration も、その上に乗る ORM/repository 層も、ホステッドなマルチテナント運用が
-実際に対象とする Postgres の
-方言に対しては一度も実行されません。`serve` の DB テストは、これ以外すべて `create_engine
-("sqlite://")` を使っています。本項目は、既存の SQLite レーンに加えて、実際の Postgres CI レーン
-を追加します。
+本項目は、`serve` のデータベース層に対して、既存の SQLite レーンに加えて実 Postgres の CI レーンを追加します。
+
+この層は、検証ギャップの最悪の形をすでに避けています。`tests/serve/test_db_migrations.py` は、`Base.metadata.create_all()` で migration を迂回せず、使い捨ての SQLite ファイルに対して実際の Alembic の `upgrade`/`downgrade` を実行します。
+
+ただし、migration を Postgres に対して実行するテストはありません。Postgres は、ホステッドなマルチテナント運用が対象とする方言です。migration の上に乗る ORM/repository 層にも同じ穴があります。`serve` の DB テストは、これ以外すべて `create_engine("sqlite://")` を使っています。
 
 ## 動機
 
-SQLite と Postgres は、migration がもっともバグを隠しやすい箇所でまさに乖離します。JSON 型や配列型の
-カラム、サーバサイドのデフォルト値、そして同じ宣言的モデルに対して各方言が異なる方式で生成する
-制約命名規約です。SQLite に対しては問題なく upgrade / downgrade できる migration が、Postgres に
-対しては失敗することがありえます。コードベースはこの乖離をすでに認識しています。
-`test_db_repository.py` の FK 強制テストは、そのコメント自身が「Postgres-vs-SQLite gap」と呼ぶものを
-名指しで対象としており、migration の1つ（`0010_run_project_fk_set_null.py`、`dialect.name ==
-"postgresql"` で分岐）と ORM モデル（Postgres でのみ選ばれる `JSONB` バリアント）は、すでに方言固有の
-コードを抱えています。この方言固有のコードは、CI で実際の Postgres インスタンスに対して一度も実行
-されたことがなく、SQLite だけを相手に書かれ、レビューされてきました。この検証ギャップは `serve` の
-DB 層の内側に完全に閉じているため、実際のユーザーが自身のホステッド Postgres インスタンスに対して
-migration を実行するまで表面化しません。それは方言固有のバグを発見するには最悪のタイミングです。
+SQLite と Postgres は、migration がもっともバグを隠しやすい箇所で乖離します。JSON 型や配列型のカラム、サーバサイドのデフォルト値、同じ宣言的モデルに対して各方言が異なる方式で生成する制約の命名規約がその箇所です。SQLite に対して問題なく upgrade と downgrade ができる migration が、Postgres に対しては失敗することがあります。
+
+コードベースは、この乖離をすでに認識しています。`test_db_repository.py` の FK 強制テストは、コメント自身が「Postgres-vs-SQLite gap」と呼ぶものを対象としています。migration の1つ（`0010_run_project_fk_set_null.py`、`dialect.name == "postgresql"` で分岐）と ORM モデル（Postgres でのみ選ばれる `JSONB` バリアント）も、方言固有のコードを抱えています。
+
+方言固有のコードは、CI で実際の Postgres インスタンスに対して一度も実行されていません。書いた人もレビューした人も、SQLite だけを相手にしてきました。
+
+この検証ギャップは `serve` の DB 層の内側に閉じています。そのため、ユーザーが自身のホステッド Postgres インスタンスに対して migration を実行するまで、ギャップは表面化しません。方言固有のバグを発見するには、最悪のタイミングです。
 
 ## 詳細設計
 
-提案の粒度です。作業は以下の単位に沿って MECE に分かれます。
+本節は提案の粒度で書きます。作業は以下の単位に沿って MECE に分かれます。
 
-- **`check` を変更するのではなく、Postgres 専用の新規ジョブを追加する**：`ci.yml` が定義する
-  テストジョブは `check` の1つだけで、すでに `main` の必須チェックの一部です。ここへ直接
-  `postgres` サービスを追加すると、コンテナの起動コストと方言固有の失敗の両方が初日から全 PR を
-  ゲートしてしまい、ゲート対象外の段階を実際には確保できません。代わりに、BE-0282 の
-  `web-e2e.yml` 内の `network (playwright)` ジョブと同じく、既存の必須ジョブを書き換えるのでは
-  なく、`postgres` サービスコンテナを持つ新規ジョブを追加します。GitHub Actions の標準的な
-  パターンで、そのジョブの実行中だけ実際の（一時的な）Postgres インスタンスを利用できるように
-  します。
-- **既存の migration テストスイートをそちらでも実行する**：`test_db_migrations.py` の
-  upgrade/downgrade テストを、SQLite と新しい Postgres サービスの両方に対して実行するように
-  パラメータ化（または複製）し、別仕様を書き起こすのではなく同じアサーションを再利用します。あわせて、
-  `tests/serve/` 全体にわたる DB に触れるテストスイート（`test_db_models.py`、
-  `test_db_repository.py`、`test_oauth.py` の永続化テストをはじめ、
-  `create_engine("sqlite://")` を呼ぶ約22ファイル）も Postgres に対して実行します。
-  migration 自体が成功していても、方言固有のカラム
-  や制約の挙動はそこで表面化しうるためです。
-- **まずゲート対象外とする**：
-  [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md)
-  の前例に従い、新しいジョブをまず CI のシグナルとして着地させます。初めて追加する Postgres の
-  サービスコンテナは、通常のフレーキーさとは別に、それ自身の立ち上げ時の不具合（イメージ取得の
-  一時的な失敗、接続タイミング、SQLite だけでは踏んだことのない方言固有の挙動など）を持ち込み
-  うるため、安定を確認してから必須化します。
+- **`check` を変更せず、Postgres 専用の新規ジョブを追加する**：`ci.yml` が定義するテストジョブは `check` の1つだけで、`main` はすでに `check` を必須にしています。`check` に `postgres` サービスを追加すると、コンテナの起動コストと方言固有の失敗の両方が初日から全 PR をゲートします。ゲート対象外の段階は確保できません。そこで、BE-0282 の `web-e2e.yml` 内にある `network (playwright)` ジョブと同じ形で、新規ジョブを追加します。既存の必須ジョブは書き換えません。新規ジョブは、GitHub Actions の標準的なパターンである `postgres` サービスコンテナを持ちます。そのジョブの実行中は、実際の（一時的な）Postgres インスタンスを利用できます。
+- **既存の migration テストスイートを新規ジョブでも実行する**：`test_db_migrations.py` の upgrade/downgrade テストを、SQLite と新しい Postgres サービスの両方に対して実行するようにパラメータ化（または複製）します。別の仕様は書き起こさず、同じアサーションを再利用します。
+- **`tests/serve/` 全体の DB に触れるテストスイートを Postgres に対して実行する**：`create_engine("sqlite://")` を呼ぶファイルは約22あります。`test_db_models.py`、`test_db_repository.py`、`test_oauth.py` の永続化テストが含まれます。migration 自体が成功しても、方言固有のカラムや制約の挙動はこれらのファイルで表面化することがあります。
+- **まずゲート対象外とする**：[BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md) の前例に従い、新しいジョブをまず CI のシグナルとして着地させます。初めて追加する Postgres のサービスコンテナは、立ち上げ時の不具合を持ち込むことがあります。イメージ取得の一時的な失敗、接続タイミング、SQLite だけでは踏んだことのない方言固有の挙動がその例です。これらは通常のフレーキーさとは別の問題です。そのため、安定を確認してから必須化します。
 
 ## 検討した代替案
 
-- **Alembic は1つの migration ファイルから両方の方言を対象にするので、SQLite のカバレッジを
-  信頼する**：1つの migration ファイルが2つの方言を対象にすること自体が、方言固有の挙動が静かに
-  乖離しうる理由です。Alembic は同じ Python コードから方言ごとに異なる SQL を発行し、実際の対象
-  方言に対して実行して初めて、それが実際に何を発行しているかを観測できます。
-- **CI レーンではなく migration の差分を手動レビューして Postgres 互換性を確認する**：手動レビュー
-  は明白なケース（`postgresql.JSON` の明示的な誤用など）は捕まえられますが、暗黙のケース（デフォルトの
-  サーバサイド制約名の衝突、挙動の異なる型変換）は捕まえられません。これは実際のデータベースなら
-  無償で捕まえられるのに、レビューでは捕まえられない種類のバグです。
+- **Alembic は1つの migration ファイルから両方の方言を対象にするので、SQLite のカバレッジを信頼する**：1つの migration ファイルが2つの方言を対象にすること自体が、方言固有の挙動が静かに乖離しうる理由です。Alembic は、同じ Python コードから方言ごとに異なる SQL を発行します。実際の対象方言に対して実行して初めて、Alembic が何を発行しているかを観測できます。
+- **CI レーンではなく migration の差分を手動レビューして Postgres 互換性を確認する**：手動レビューは、`postgresql.JSON` の明示的な誤用のような明白なケースを捕まえます。デフォルトのサーバサイド制約名の衝突や、挙動の異なる型変換のような暗黙のケースは捕まえられません。実際のデータベースなら無償で捕まえられる種類のバグを、レビューは見逃します。
 
 ## 進捗
 
@@ -86,57 +55,26 @@ migration を実行するまで表面化しません。それは方言固有の�
 - [x] サービスコンテナを持つ Postgres 専用の CI ジョブを新規に追加する（`check` の変更ではない）。
 - [x] migration の upgrade/downgrade テストと、DB に触れる広いテストスイートをそちらに対しても実行する。
   *（スライス 1 で migration テストを Postgres に対して実行しました。スライス 2 では、リスクの高い
-  3 つの DB に触れるスイート（`test_db_models.py`・`test_db_repository.py`・`test_oauth.py` の永続化
-  テスト）を、共有 Postgres が必要とするテストごとの分離を後付けする `serve_engine` フィクスチャの裏で
-  追加しました。スライス 3 では残りの 18 ファイルを同じフィクスチャへ移し、インメモリエンジンに
-  スキーマを構築する serve の DB テストがすべて両方の方言で走るようにしました。）*
+  3 つの DB に触れるスイート（`test_db_models.py`、`test_db_repository.py`、`test_oauth.py` の永続化
+  テスト）を、`serve_engine` フィクスチャの裏で追加しました。このフィクスチャは、共有 Postgres が
+  必要とするテストごとの分離を後付けします。スライス 3 では残りの 18 ファイルを同じフィクスチャへ
+  移しました。これで、インメモリエンジンにスキーマを構築する serve の DB テストはすべて、両方の
+  方言で走ります。）*
 - [x] ゲート対象外のシグナルとして CI に組み込み、安定後に必須化する。
-  *（ゲート対象外のシグナルとして着地しました。スライス 4 で、レーンに常時報告する
-  `serve db (postgres)` ゲートを与え（必須の `E2E (web)` アグリゲータと同じ形）、path-skip が必須チェックを
-  いつまでも保留のままにすることなく必須化できるようにしました。その後、管理者がこのチェックを
-  「Require code review」のブランチ ruleset に追加したため、`serve db (postgres)` は必須チェックになりました。
-  最後の一歩であるこの作業は、コードの PR の外側で行うリポジトリ設定です。）*
+  *（ゲート対象外のシグナルとして先に着地しました。スライス 4 で、レーンに常時報告する
+  `serve db (postgres)` ゲートを与えました。このゲートは、必須の `E2E (web)` アグリゲータと同じ形です。
+  path-skip が必須チェックをいつまでも保留のままにすることはなくなり、チェックを必須化できるように
+  なりました。その後、管理者がこのチェックを「Require code review」のブランチ ruleset に追加したため、
+  `serve db (postgres)` は必須チェックになりました。最後の一歩であるこの作業は、コードの PR の外側で
+  行うリポジトリ設定です。）*
 
 ### ログ
 
-- スライス 1 — `serve-db.yml` が `postgres:16` のサービスコンテナを立ち上げ、
-  `test_db_migrations.py` の upgrade/downgrade のアサーションを実 Postgres に対して再実行します。
-  テストは両方の方言でパラメータ化してあり（高速ゲートでは SQLite、レーンでは `postgres` マーカーの
-  裏で Postgres）、同じアサーションを再利用します。レーンは `-m postgres -n0` で実行します。これに
-  より、migration 0010 の `postgresql` FK 分岐と JSONB カラムのバリアントに、実 Postgres での初めての
-  カバレッジが得られます。BE-0282 の前例に従い、当面はゲート対象外とします。
-- スライス 2 — 共有の `tests/conftest.py` に `serve_engine` フィクスチャを追加しました。これは
-  テストを両方の方言でパラメータ化し（ゲートでは SQLite、レーンでは `postgres` マーカーのパラメータ）、
-  使い捨てのインメモリ DB で SQLite が自然に得ていたテストごとのスキーマ初期化を、共有 Postgres にも
-  与えます。リスクの高い 3 つのスイート（`test_db_models.py`・`test_db_repository.py`・`test_oauth.py`
-  の永続化テスト）がこれを要求するようになり、レーンは `tests/serve` ディレクトリ全体をマーカーで選択
-  して実行します（`pytest tests/serve -m postgres -n0`）。後続のスイートはフィクスチャを採用した時点で
-  自動的にレーンへ加わります。実 Postgres に対して実行したところ、いくつかの repository テストが親と
-  なる org 行を作らずに `runs`・`projects` を挿入しており、SQLite の FK 非強制の既定に依存していた
-  ことが判明しました。これらは org を先に用意し、Postgres が強制する参照整合性を尊重するようにしました。
-  FK 非強制で `project_id` が宙に残る挙動をアサートする 1 件は SQLite 専用のまま残し、その Postgres 側の
-  `ON DELETE SET NULL` の対応は姉妹テストがすでにカバーしています。
-- スライス 3 — DB に触れる残り 18 ファイルが `serve_engine` フィクスチャを採用し、リスクの高い 3
-  ファイルだけでなく、インメモリエンジンにスキーマを構築する serve の DB テストがすべて、ゲートの
-  インメモリ SQLite とレーンの実 Postgres の両方で走るようになりました。実 Postgres に対して実行したところ、スライス 2 と同じ外部キーの乖離が
-  現れました。secret ストアと provider-settings ストアは `org_id`（および secret ストアの `updated_by`
-  という `users.id` への外部キー）で行を挿入しますが、SQLite の外部キー非強制の既定ではこれらが宙に
-  残っていました。そこで各ストアのテストヘルパで親となる org 行（と書き手の行）を先に用意し、両方の
-  方言で通るようにしました。`test_db_run_listing.py` のスキーマ無しのエラー経路テスト 1 件は、設計上
-  SQLite 専用のまま残します。ワークフローの変更は不要でした。レーンはすでにディレクトリをマーカーで
-  選択しているため（`pytest tests/serve -m postgres -n0`）、後付けした各ファイルは自動的にレーンへ
-  加わりました。
-- スライス 4 — `serve-db.yml` を、必須チェックに必要な「常時報告する」形へ組み替えました。ワークフロー
-  トリガの `paths:` フィルタをやめ、すべての PR（およびマージキュー）で発火するようにし、重い `postgres`
-  ジョブを走らせるかどうかは `changes` ジョブ（`dorny/paths-filter`）が判断します。そして新しい
-  `if: always()` のゲートジョブ `serve db (postgres)` が、作業ジョブの skip を pass に、失敗を赤に翻訳
-  します。これは必須の `E2E (web)` アグリゲータと同じパターンで、path-skip が必須チェックを保留のまま
-  残さないようにするものです。これ自体はチェックを必須にはしません。必須化はゲートが安定してから管理者が
-  行う ruleset の変更であり、ここではチェックを必須にしても安全な状態にするだけです。
-- 必須化 — 管理者が `serve db (postgres)` を「Require code review」のブランチ ruleset の必須ステータス
-  チェックに追加したため、レーンは `check` や `E2E (…)` アグリゲータと同じようにマージをゲートするように
-  なりました。これは本項目の最後の一歩であり、これで項目は完了します。コードではなくリポジトリ設定である
-  ため PR の外側で反映されるので、このログにその事実を記録します。
+- スライス 1：`serve-db.yml` が `postgres:16` のサービスコンテナを立ち上げ、`test_db_migrations.py` の upgrade/downgrade のアサーションを実 Postgres に対して再実行します。テストは両方の方言でパラメータ化してあります。高速ゲートでは SQLite、レーンでは `postgres` マーカーの裏で Postgres を使います。両方の方言が同じアサーションを使い、レーンは `-m postgres -n0` で実行します。migration 0010 の `postgresql` FK 分岐と JSONB カラムのバリアントは、実 Postgres での初めてのカバレッジを得ます。BE-0282 の前例に従い、当面はゲート対象外とします。
+- スライス 2：共有の `tests/conftest.py` に `serve_engine` フィクスチャを追加しました。このフィクスチャは、要求したテストを両方の方言でパラメータ化します。ゲートでは SQLite、レーンでは `postgres` マーカーのパラメータを使います。また、使い捨てのインメモリ DB で SQLite が自然に得ていたテストごとのスキーマ初期化を、共有 Postgres にも与えます。リスクの高い 3 つのスイート（`test_db_models.py`、`test_db_repository.py`、`test_oauth.py` の永続化テスト）がフィクスチャを要求するようになりました。そのため、レーンは `tests/serve` ディレクトリ全体をマーカーで選択して実行します（`pytest tests/serve -m postgres -n0`）。後続のスイートは、フィクスチャを採用した時点で自動的にレーンへ加わります。実 Postgres に対して実行したところ、いくつかの repository テストが、親となる org 行を作らずに `runs` と `projects` を挿入していました。これらのテストは SQLite の FK 非強制の既定に依存していました。現在は org を先に用意し、Postgres が強制する参照整合性を尊重します。FK 非強制で `project_id` が宙に残る挙動をアサートする 1 件は、SQLite 専用のまま残します。その Postgres 側の `ON DELETE SET NULL` の対応は、姉妹テストがすでにカバーしています。
+- スライス 3：DB に触れる残り 18 ファイルが `serve_engine` フィクスチャを採用しました。リスクの高い 3 ファイルに限らず、インメモリエンジンにスキーマを構築する serve の DB テストはすべて、ゲートのインメモリ SQLite とレーンの実 Postgres の両方で走ります。実 Postgres に対して実行すると、スライス 2 と同じ外部キーの乖離が現れました。secret ストアと provider-settings ストアは、`org_id` をキーにして行を挿入します。secret ストアは、`users.id` への外部キーである `updated_by` も書き込みます。SQLite の外部キー非強制の既定では、これらのキーが宙に残っていました。各ストアのテストヘルパは、親となる org 行（と書き手の行）を先に用意するようになり、両方の方言で通ります。`test_db_run_listing.py` のスキーマ無しのエラー経路テスト 1 件は、設計上 SQLite 専用のまま残します。ワークフローの変更は不要でした。レーンはすでにディレクトリをマーカーで選択しているため（`pytest tests/serve -m postgres -n0`）、後付けした各ファイルは自動的にレーンへ加わりました。
+- スライス 4：`serve-db.yml` を、必須チェックに必要な「常時報告する」形へ組み替えました。ワークフローは、トリガの `paths:` フィルタをやめて、すべての PR（およびマージキュー）で発火します。重い `postgres` ジョブを走らせるかどうかは、`changes` ジョブ（`dorny/paths-filter`）が判断します。新しい `if: always()` のゲートジョブ `serve db (postgres)` は、作業ジョブの skip を pass に、作業ジョブの失敗を赤に翻訳します。必須の `E2E (web)` アグリゲータも同じパターンを使っており、path-skip が必須チェックを保留のまま残すことはありません。このスライス自体は、チェックを必須にしません。必須化は、ゲートが安定してから管理者が行う ruleset の変更です。スライス 4 は、チェックを必須にしても安全な状態にするだけです。
+- 必須化：管理者が `serve db (postgres)` を、「Require code review」のブランチ ruleset の必須ステータスチェックに追加しました。レーンは、`check` や `E2E (…)` アグリゲータと同じようにマージをゲートします。この作業は本項目の最後の一歩で、これで項目は完了します。コードではなくリポジトリ設定であるため、PR の外側で反映されます。このログは、その事実を記録します。
 
 ## 参考
 

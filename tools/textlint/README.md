@@ -1,9 +1,9 @@
 # textlint config for the prose skills
 
-This directory holds the [textlint](https://github.com/textlint/textlint) config and runtime that
-the `document-writing`, `english-document-writing`, and `japanese-document-writing` skills run after drafting. One
-config here covers both English and Japanese prose. It is written in English, like the rest of the
-repo's tooling, so a session drafting English-only prose can read it without Japanese fluency.
+This directory holds the [textlint](https://github.com/textlint/textlint) config and runtime that the
+`document-writing`, `english-document-writing`, and `japanese-document-writing` skills run after
+drafting. One config covers both English and Japanese prose. This README is in English, like the rest of
+the repo's tooling, so a session drafting English-only prose can read it without Japanese fluency.
 
 ## Files
 
@@ -19,27 +19,32 @@ npm --prefix tools/textlint ci --ignore-scripts
 
 ## Supply-chain defenses
 
-Install with `npm ci`, not `npm install`. `npm ci` honors `package-lock.json` exactly rather than
-rewriting it, and verifies each package tarball against the integrity hash (Subresource Integrity,
-sha512) recorded in the lockfile — so a package whose contents are swapped under the same version
-number fails on a hash mismatch. `--ignore-scripts` blocks install-time lifecycle scripts, the main
-path by which an npm supply-chain attack executes.
+Install with `npm ci`, not `npm install`. Two defenses apply to the install command:
 
-Pinning dependencies to a git commit hash in `package.json` is deliberately not done. textlint is a
-monorepo whose public npm packages are published from part of it, so pointing at a repo commit does
-not resolve to the published CLI package. More fundamentally, a commit hash pins only the one
-top-level package and leaves the real attack surface — the many transitive dependencies —
-unprotected; the lockfile's integrity hashes pin all of them by content, a broader and stronger
-guarantee. To bump a version, edit `package.json`, run `npm install` once, and always commit the
-updated `package-lock.json`.
+- `npm ci` honors `package-lock.json` exactly rather than rewriting it. It also verifies each package
+  tarball against the integrity hash (Subresource Integrity, sha512) recorded in the lockfile. A package
+  whose contents are swapped under the same version number therefore fails on a hash mismatch.
+- `--ignore-scripts` blocks install-time lifecycle scripts, the main path by which an npm supply-chain
+  attack executes.
+
+Pinning dependencies to a git commit hash in `package.json` is deliberately not done, for two reasons:
+
+- textlint is a monorepo whose public npm packages are published from part of it, so pointing at a repo
+  commit does not resolve to the published CLI package.
+- A commit hash pins only the one top-level package. It leaves the real attack surface, the many
+  transitive dependencies, unprotected. The lockfile's integrity hashes pin all of them by content, a
+  broader and stronger guarantee.
+
+To bump a version, edit `package.json`, run `npm install` once, and always commit the updated
+`package-lock.json`.
 
 ### Security overrides
 
-`overrides` in `package.json` holds floors that resolve npm advisories in transitive dependencies —
-**keep them when bumping a rule.** Removing one silently reintroduces the advisory:
+`overrides` in `package.json` holds floors that resolve npm advisories in transitive dependencies.
+**Keep them when bumping a rule.** Removing one silently reintroduces the advisory:
 
 - `js-yaml: ^4.3.2`, with per-parent `^3.15.2` for `prh`, `textlint-rule-ja-hiragana-fukushi`, and
-  `textlint-rule-ja-hiragana-hojodoushi` (which require the 3.x line) — GHSA-2883-xcg3-v3hh
+  `textlint-rule-ja-hiragana-hojodoushi` (which require the 3.x line): GHSA-2883-xcg3-v3hh
 
 After any bump, re-run `npm audit` in this directory and confirm it still reports 0 vulnerabilities.
 
@@ -50,19 +55,23 @@ ordered the same way: shared → Japanese → English.
 
 ### How rules relate to language
 
-textlint applies every enabled rule to every file it is given; there is no per-file, by-language
-routing. Most Japanese rules simply find nothing to flag in English-only text (half-width katakana
-and kanji checks, for instance, have nothing to match in English), while English rules can fire on
-the English words, technical terms, and code embedded in a Japanese document. If one language's
-noise ever becomes a problem, splitting the config per language is an option; for now a single
-config covers both.
+textlint applies every enabled rule to every file it is given, with no per-file, by-language routing.
+Two consequences follow:
+
+- Most Japanese rules find nothing to flag in English-only text. Half-width katakana and kanji checks,
+  for instance, have nothing to match in English.
+- English rules can fire on the English words, technical terms, and code embedded in a Japanese
+  document.
+
+If one language's noise ever becomes a problem, splitting the config per language is an option. For now,
+a single config covers both.
 
 ### Shared (language-agnostic)
 
 No language-agnostic textlint rule is enabled today. The Japanese technical-writing preset below,
-`textlint-rule-preset-ja-technical-writing`, is Japanese-only as its name says. A rule that applies
-equally to both languages — a future check of Markdown structure or dead links, say — would go in
-this group.
+`textlint-rule-preset-ja-technical-writing`, is Japanese-only, as its name says. A rule that applies
+equally to both languages, such as a future check of Markdown structure or dead links, would go in this
+group.
 
 ### Japanese
 
@@ -72,8 +81,8 @@ preset), the following are enabled:
 - `spellcheck-tech-word` — orthographic variants in technical terms (e.g. インターフェース → インタフェース)
 - `ja-hiragana-keishikimeishi` / `ja-hiragana-fukushi` / `ja-hiragana-hojodoushi` — formal nouns,
   adverbs, and auxiliary verbs that read better in hiragana
-- `ja-hiraku` — its `keishikimeishi` / `fukushi` / `hojodoushi` checks are turned off to avoid
-  double-reporting against the three `ja-hiragana-*` rules above; the remaining parts of speech
+- `ja-hiraku` — its `keishikimeishi` / `fukushi` / `hojodoushi` checks are turned off, to avoid
+  double-reporting against the three `ja-hiragana-*` rules above. The remaining parts of speech
   (pronouns, adverbial particles, auxiliary adjectives, adnominals, conjunctions) stay on
 - `general-novel-style-ja` — punctuation and symbol usage (only some options are on by default; see
   `.textlintrc.json`)
@@ -86,50 +95,54 @@ All four kanji-range rules are pinned in `package.json` but left disabled (`fals
 
 - `ja-joyo-or-jinmeiyo-kanji` (kanji outside 常用漢字 + 人名用漢字) and `joyo-kanji` (kanji outside
   常用漢字 alone) are disabled because they flag ordinary technical-writing words whose kanji fall
-  outside those sets — 推敲, 繋がる, 敷衍, 罫線, 腑分け, and the like. The `japanese-document-writing`
-  policy is to clear a finding by revising the prose, not by loosening the config; but these words
-  cannot be reasonably rewritten, so the rule would either stall drafting or force a growing
-  allow-list. Leaving them off keeps the skill's own prose (and the existing Japanese docs) passing
-  textlint, which the policy requires.
-- `ja-kyoiku-kanji` (educational kanji) and `ja-allowed-kanji` (an explicit allow-list) restrict
-  kanji to an even narrower set than 常用漢字, stricter still. Turn one on individually, with an
+  outside those sets: 推敲, 繋がる, 敷衍, 罫線, 腑分け, and the like. The `japanese-document-writing`
+  policy is to clear a finding by revising the prose, not by loosening the config. These words cannot
+  be reasonably rewritten, though, so the rule would either stall drafting or force a growing
+  allow-list. Leaving the rules off keeps the skill's own prose (and the existing Japanese docs)
+  passing textlint, which the policy requires.
+- `ja-kyoiku-kanji` (educational kanji) and `ja-allowed-kanji` (an explicit allow-list) are stricter
+  still: they restrict kanji to a set even narrower than 常用漢字. Turn one on individually, with an
   allow-list, only if a specific document needs a bounded kanji set.
 
-`preset-ja-technical-writing`'s own `no-mix-dearu-desumasu` stays enabled, even though it requires
-every bulleted or numbered list in a document to use plain (である) style, and fails the moment even
-one list item ends in です/ます. `japanese-document-writing` and `CLAUDE.md` both require every BE
-roadmap item and every `docs/ja/` page to stay in 敬体 (ですます) throughout, with no 常体 exception
-for lists, so a list written to satisfy that mandate leaves this rule's findings behind rather than
-clearing them — see `document-writing`'s "Mandatory textlint verification after drafting" section
-for the count-based bar that accepts this residue instead of chasing an unreachable zero.
+`preset-ja-technical-writing`'s own `no-mix-dearu-desumasu` stays enabled. The rule requires every
+bulleted or numbered list in a document to use plain (である) style, and it fails the moment even one
+list item ends in です/ます. `japanese-document-writing` and `CLAUDE.md` both require every BE roadmap
+item and every `docs/ja/` page to stay in 敬体 (ですます) throughout, with no 常体 exception for lists.
+A list written to satisfy that mandate therefore leaves this rule's findings behind rather than
+clearing them. See `document-writing`'s "Mandatory textlint verification after drafting" section for the
+count-based bar that accepts this residue instead of chasing an unreachable zero.
 
 ### English
 
 - `write-good` — English style issues such as passive voice and wordiness
 - `stop-words` — filler words, buzzwords, and clichés
-- `unexpanded-acronym` — whether an acronym is expanded in the document. It only recognizes an
-  expansion spelled as capitalized words matching the acronym's letters (`ABC` next to `Australian
-  Broadcasting Commission`), so a lowercase gloss such as `MECE (mutually exclusive, collectively
-  exhaustive)` still fires. `ignore_acronyms` in `.textlintrc.json` lists `MECE` (BE roadmap items'
-  own jargon, defined once in `docs/ai-development.md` and reused without re-expansion everywhere
-  else) and `XXXX` (the literal `BE-XXXX` placeholder every unallocated roadmap item carries — not
-  an acronym, so no expansion could ever satisfy the rule)
+- `unexpanded-acronym` — whether an acronym is expanded in the document. It recognizes an expansion
+  only when the expansion is spelled as capitalized words matching the acronym's letters (`ABC` next to
+  `Australian Broadcasting Commission`). A lowercase gloss such as
+  `MECE (mutually exclusive, collectively exhaustive)` therefore still fires. `ignore_acronyms` in
+  `.textlintrc.json` lists two entries:
+  - `MECE`: BE roadmap items' own jargon, defined once in `docs/ai-development.md` and reused without
+    re-expansion everywhere else.
+  - `XXXX`: the literal `BE-XXXX` placeholder every unallocated roadmap item carries. It is not an
+    acronym, so no expansion could ever satisfy the rule.
 - `abbr-within-parentheses` — abbreviation-in-parentheses form
 - `alex` — gender-, race-, or religion-insensitive phrasing
 - `ukraine` — Ukrainian place and person names spelled the Russian way
 
-`textlint-rule-ginger` (English grammar/spell-check via the Ginger API) is intentionally left out:
-its `gingerbread` → `request` → `form-data`/`qs`/`tough-cookie`/`uuid` chain reports two critical
-and three moderate `npm audit` findings with no fix available, and `gingerbread` itself is marked
-unsupported on npm.
+`textlint-rule-ginger` (English grammar/spell-check via the Ginger API) is intentionally left out, for
+two reasons:
+
+- Its `gingerbread` → `request` → `form-data`/`qs`/`tough-cookie`/`uuid` chain reports two critical and
+  three moderate `npm audit` findings with no fix available.
+- `gingerbread` itself is marked unsupported on npm.
 
 ## Changing the rules
 
-Clear a finding by revising the prose, not by loosening the config: textlint takes priority over the
-prose norms, so a rule is not turned off or a threshold raised merely to dodge a finding on text you
-have written (this is the `japanese-document-writing` policy, and it holds for English prose too). Change
-the config only for structural reasons — adopting or retiring a rule, or stopping a rule from
-double-reporting what another already covers — as with the kanji-range rules above.
+Clear a finding by revising the prose, not by loosening the config. textlint takes priority over the
+prose norms, so a rule is not turned off, and a threshold is not raised, merely to dodge a finding on
+text you have written. This is the `japanese-document-writing` policy, and it holds for English prose
+too. Change the config only for structural reasons, as with the kanji-range rules above: adopting or
+retiring a rule, or stopping a rule from double-reporting what another already covers.
 
 Edit `rules` in `.textlintrc.json`. To turn off one rule from the preset, override just that rule by
 name rather than expanding the whole preset:

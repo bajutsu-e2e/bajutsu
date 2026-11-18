@@ -16,149 +16,85 @@
 
 ## Introduction
 
-Before Bajutsu can drive an iOS Simulator, the device must be running: booted far enough that
-SpringBoard, the iOS process that owns the home screen and launches apps, will accept a launch
-request. The Simulator control tool `simctl` separates asking from waiting. Its `boot` subcommand
-returns as soon as the boot has been *requested*, and a second subcommand, `bootstatus`, blocks until
-the boot has actually *finished*.
+Bajutsu's Simulator preparation asks for a boot but does not wait for it to finish. This item adds the wait in the two places that boot a device and then use it. On this project's own hardware, the gap on a first boot measured **39.4 seconds**.
 
-Bajutsu's Simulator preparation asks without waiting. It calls `boot`, then installs the app and
-launches the test runner against a device that may still be starting up. This item inserts the wait,
-in the two places that boot a device and then use it: the shared device preparation, and the
-system-locale pin that reboots a device to make the new locale take effect. On this project's own
-hardware the gap between the two subcommands measured **39.4 seconds** on a first boot.
+Before Bajutsu can drive an iOS Simulator, the device must be booted far enough that SpringBoard accepts a launch request. SpringBoard is the iOS process that owns the home screen and launches apps. The Simulator control tool `simctl` separates asking from waiting:
 
-Continuous integration (CI) does not pay that gap on its first bring-up, and the item does not claim
-it does. Every iOS end-to-end job runs its own `bootstatus` step before the run step, which is
-[BE-0088](../BE-0088-overlap-simulator-boot/BE-0088-overlap-simulator-boot.md)'s design working as
-intended. The window Bajutsu genuinely leaves unwaited is a developer's Mac on every run, and on CI
-the erase-carrying retry, which boots again long after that step has returned.
+- `simctl boot` returns as soon as the boot has been *requested*.
+- `simctl bootstatus` blocks until the boot has actually *finished*.
+
+Today the Simulator preparation calls `boot`, then installs the app and launches the test runner. The device may still be starting up at that point. This item inserts the wait in two places:
+
+- the shared device preparation
+- the system-locale pin, which reboots a device to make the new locale take effect
+
+Continuous integration (CI) does not pay that gap on its first bring-up, and this item does not claim it does. Every iOS end-to-end job runs its own `bootstatus` step before the run step. That step is [BE-0088](../BE-0088-overlap-simulator-boot/BE-0088-overlap-simulator-boot.md)'s design working as intended. The unwaited window therefore appears in two places:
+
+- a developer's Mac, on every run
+- CI, in the erase-carrying retry, which boots again long after that step has returned
 
 ## Motivation
 
-Two of the four places that boot a device already wait, which is what makes the other two look like
-an oversight rather than a decision. The recovery ladder added by
-[BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery.md) reboots a degraded
-Simulator and replaces a vanished one, and both rungs run `bootstatus` before handing the device on.
-The shared preparation those rungs then call does not, and neither does the locale pin's own reboot.
-Across the whole XCUITest lifecycle module, `bootstatus` appears at exactly two call sites, both
-inside that ladder.
+Two of the four places that boot a device already wait. That makes the other two look like an oversight rather than a decision.
 
-The window is not theoretical. Measured on a freshly created iPhone 17 device running iOS 26.5 under
-Xcode 26.5, `simctl boot` returned in **0.56 seconds** while `bootstatus` did not complete until
-**39.94 seconds** — a 39.4-second stretch in which the preparation proceeds to install the app,
-apply permission grants, and start `xcodebuild`. A CI runner is slower still, and the project already
-knows it: the comment documenting the crash-recovery budget in the iOS end-to-end workflow sizes the
-unbounded preparation at roughly 80 to 150 seconds, citing one job's own 80-second Simulator-boot
-estimate. That is a wall-clock allowance for the boot, not a synchronisation with it.
+The recovery ladder from [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery.md) reboots a degraded Simulator and replaces a vanished one. Both rungs run `bootstatus` before handing the device on. The shared preparation that those rungs then call does not wait, and neither does the locale pin's own reboot. Across the whole XCUITest lifecycle module, `bootstatus` appears at exactly two call sites, both inside that ladder.
 
-Launching an app into a half-booted SpringBoard produces a recognisable failure. XCUITest reports
-`Failed to launch <bundle id>: Timed out attempting to launch app` after about 40 seconds, a duration
-that matches the measured window closely enough to make the connection worth naming. That signature
-was the dominant iOS flake through early August 2026 and drove
-[BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery.md)'s entire recovery
-ladder, which repairs the device *after* an attempt fails on it.
+The window is not theoretical. Measured on a freshly created iPhone 17 device running iOS 26.5 under Xcode 26.5, `simctl boot` returned in **0.56 seconds**. `bootstatus` did not complete until **39.94 seconds**. During those 39.4 seconds, the preparation goes on to install the app, apply permission grants, and start `xcodebuild`.
 
-The signature is absent from CI at the time of writing, and this item claims no current CI failure.
-What it claims is that the exposure grew while the symptom receded. CI passes no flag that suppresses
-the erase precondition, and
-[BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery.md)
-now forces that precondition on every crash-triggered retry, which sends the retry down the
-`shutdown` → `erase` → `boot` path. A freshly erased device boots from a genuine first-boot state,
-the slowest case measured above, and the retry then proceeds into the unwaited window. So the
-longest form of the gap is now on the path taken immediately after the failure that a retry exists to
-absorb.
+A CI runner is slower still, and the project already knows it. The comment that documents the crash-recovery budget in the iOS end-to-end workflow sizes the unbounded preparation at roughly 80 to 150 seconds. It cites one job's own 80-second Simulator-boot estimate. That figure is a wall-clock allowance for the boot, not a synchronisation with it.
 
-A developer's own Mac is exposed more directly, through the locale pin. The pin exists so that
-SpringBoard renders its permission-prompt buttons in a predictable language
-([BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md)),
-and it reboots the device because a running SpringBoard does not pick up a global-domain write. A
-newly created Simulator inherits the host's own language settings. On a host whose region is not the
-United States, the inherited value fails the pin's match test and the pin fires. Measured on a
-Japanese-region host, a fresh device seeded two language entries and the locale to match them. A
-two-entry list fails the pin's "exactly one entry" test. The pin therefore fires, reboots, and
-returns into the unwaited window on every fresh device.
+Launching an app into a half-booted SpringBoard produces a recognisable failure. After about 40 seconds, XCUITest reports `Failed to launch <bundle id>: Timed out attempting to launch app`. That duration matches the measured window closely enough to name the connection. The signature was the dominant iOS flake through early August 2026. It drove the entire recovery ladder of [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery.md), which repairs the device *after* an attempt fails on it.
 
-Whether the pin fires on GitHub's own runners cannot be answered from the logs today, because the pin
-writes nothing when it fires. That silence is itself worth fixing, and it is cheap: one log line
-turns an open question into a fact the next failing job answers on its own.
+The signature is absent from CI at the time of writing, and this item claims no current CI failure. The claim is that the exposure grew while the symptom receded:
+
+- CI passes no flag that suppresses the erase precondition.
+- [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery.md) now forces that precondition on every crash-triggered retry.
+- The retry therefore takes the `shutdown` → `erase` → `boot` path.
+- A freshly erased device boots from a genuine first-boot state, the slowest case measured above.
+- The retry then proceeds into the unwaited window.
+
+The longest form of the gap now sits on the path taken right after the failure that a retry exists to absorb.
+
+A developer's own Mac is exposed more directly, through the locale pin. The pin exists so that SpringBoard renders its permission-prompt buttons in a predictable language ([BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md)). The pin reboots the device because a running SpringBoard does not pick up a global-domain write.
+
+A newly created Simulator inherits the host's own language settings. On a host whose region is not the United States, the inherited value fails the pin's match test, and the pin fires. On a Japanese-region host, a fresh device seeded two language entries and the matching locale. A two-entry list fails the pin's "exactly one entry" test. The pin therefore fires, reboots, and returns into the unwaited window on every fresh device.
+
+Today's logs cannot say whether the pin fires on GitHub's own runners, because the pin writes nothing when it fires. That silence is worth fixing, and the fix is cheap. One log line turns an open question into a fact that the next failing job answers on its own.
 
 ## Detailed design
 
-The work breaks into three units. Unit 1 is independent; units 2 and 3 both depend on it only in the
-sense that they use the helper it names, and can land together with it.
+The work breaks into three units. Unit 1 is independent. Units 2 and 3 depend on unit 1 only because they use the helper it names, so all three can land together.
 
-1. **Name the wait once.** The argv builder is already shared and already named — `bootstatus_cmd`,
-   which the web UI's own boot wait builds from too — so this unit adds no second builder beside it;
-   the `-b` flag stays in exactly one place. What the two lifecycle call sites duplicate is the pair
-   of steps around that builder: running it, and converting a `simctl` failure into the module's
-   device-fault type. Give the Simulator environment a small private helper that performs both for
-   the device it holds, and route the existing two call sites through it, so the new call sites added
-   below do not each restate the pair.
+1. **Name the wait once.** The argv builder is already shared and named: `bootstatus_cmd`. The web UI's own boot wait builds from it too. This unit therefore adds no second builder, and the `-b` flag stays in exactly one place.
 
-   Put the helper on the environment class rather than in the `simctl` module, and accept what that
-   costs: `Env.boot()` suppresses its own failure, so any future `Env.boot()` caller outside this
-   class stays outside the wait this item names. That is the same boundary the two existing call
-   sites already live within, and narrowing it would mean changing `Env.boot()`'s contract, which
-   this item does not open.
+   The two lifecycle call sites duplicate the pair of steps around that builder: running it, and converting a `simctl` failure into the module's device-fault type. Give the Simulator environment a small private helper that performs both for the device it holds. Route the two existing call sites through it, so the new call sites below do not each restate the pair.
 
-2. **Wait after the preparation's own boot.** In the shared device preparation, follow the `boot` call
-   with the wait from unit 1, before the device type is recorded and before the locale pin runs. The
-   preparation is the single place both a cold bring-up and the recovery ladder's re-preparation pass
-   through, so one insertion covers every caller. The wait is unbounded, exactly as the preparation's
-   install and permission steps already are: a device that takes 80 seconds to come up has not failed,
-   and the run-level and job-level ceilings above this layer are what bound a device that never does.
+   Put the helper on the environment class rather than in the `simctl` module, and accept the cost. `Env.boot()` suppresses its own failure, so any future `Env.boot()` caller outside this class stays outside the wait. The two existing call sites already live within that boundary. Narrowing it would mean changing `Env.boot()`'s contract, which this item does not open.
 
-3. **Wait after the locale pin's reboot, and say when the pin fires.** The pin shuts the device down
-   and boots it again to make a global-domain write take effect, then reads the value back to confirm
-   it. Insert the wait between that boot and the read-back, so the confirmation reads a device that
-   finished starting and the caller returns into a ready device rather than a starting one.
+2. **Wait after the preparation's own boot.** In the shared device preparation, follow the `boot` call with the wait from unit 1. Place it before the device type is recorded and before the locale pin runs. A cold bring-up and the recovery ladder's re-preparation pass both go through this one place, so one insertion covers every caller.
 
-   The wait alone does not establish that the reboot happened, so pair it with the same read-back the
-   recovery ladder's reboot rung already performs. `Env.shutdown()` and `Env.boot()` both suppress
-   their own failure, and `bootstatus -b` returns at once on a device that never left `Booted` — so on
-   a CoreSimulator wedged enough to refuse `shutdown`, the pin would otherwise return a "ready" device
-   and record a confirmed pin while SpringBoard still renders the old language, defeating the
-   determinism
-   [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md)
-   exists for. The plist read-back cannot separate the two cases, because it reads the value the write
-   already changed rather than what SpringBoard loaded. Read the device's booted state back after
-   `shutdown`, three-valued as the ladder's rung reads it, and treat a device that did not go down as
-   a pin that was not confirmed rather than one that was. Separately,
-   log one informational line when the pin decides to write, naming the locale it is pinning. The pin
-   is silent today except when the read-back fails, which is why nobody can tell from a CI log whether
-   the pin fired at all — and the answer decides how much of unit 2's exposure applies to CI rather
-   than only to a developer's Mac.
+   The wait is unbounded, exactly as the preparation's install and permission steps already are. A device that takes 80 seconds to come up has not failed. The run-level and job-level ceilings above this layer bound a device that never comes up.
 
-The measurements this item rests on are reproducible with two commands and a stopwatch — `simctl
-boot` followed by `bootstatus -b` on a freshly created device — so a reviewer can confirm the window
-without a CI run. The behavioural change is covered by the existing lifecycle tests, which already
-assert the ordering of `simctl` calls in the preparation and in the recovery ladder; each new wait
-adds one expected call to those sequences.
+3. **Wait after the locale pin's reboot, and say when the pin fires.** The pin shuts the device down and boots it again to make a global-domain write take effect. It then reads the value back to confirm it. Insert the wait between that boot and the read-back. The confirmation then reads a device that finished starting, and the caller returns into a ready device rather than a starting one.
+
+   The wait alone does not establish that the reboot happened, so pair it with the same read-back that the recovery ladder's reboot rung already performs. Three facts make the pairing necessary:
+
+   - `Env.shutdown()` and `Env.boot()` both suppress their own failure.
+   - `bootstatus -b` returns at once on a device that never left `Booted`.
+   - The plist read-back reads the value the write already changed, not what SpringBoard loaded, so it cannot tell the two cases apart.
+
+   On a CoreSimulator wedged enough to refuse `shutdown`, the pin would otherwise return a "ready" device and record a confirmed pin while SpringBoard still renders the old language. That defeats the determinism [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md) exists for. Read the device's booted state back after `shutdown`, three-valued as the ladder's rung reads it. Treat a device that did not go down as a pin that was not confirmed.
+
+   Separately, log one informational line when the pin decides to write, naming the locale it is pinning. The pin is silent today except when the read-back fails. That silence is why nobody can tell from a CI log whether the pin fired at all. The answer decides how much of unit 2's exposure applies to CI rather than only to a developer's Mac.
+
+A reviewer can reproduce the measurements this item rests on with two commands and a stopwatch: `simctl boot` followed by `bootstatus -b` on a freshly created device. The window can be confirmed without a CI run. The existing lifecycle tests cover the behavioural change. They already assert the ordering of `simctl` calls in the preparation and in the recovery ladder, and each new wait adds one expected call to those sequences.
 
 ## Alternatives considered
 
-- **Bound the wait with a timeout and fail the run when it expires.** Attractive because it would
-  turn a hung boot into a named failure rather than a job-level timeout. Rejected for this item
-  because `simctl`'s own subprocess calls carry no timeout at all, so bounding the wait alone would
-  address one call among many while implying the rest are bounded. Bounding every `simctl` call is a
-  separate, larger change with its own choice of timeout and failure mode, and it belongs in its own
-  item rather than riding along here.
-- **Poll SpringBoard for readiness instead of calling `bootstatus`.** A readiness probe against
-  SpringBoard would answer the question the launch actually cares about, rather than the one the boot
-  reports. Rejected as redundant: `bootstatus` already waits on the device's own boot completion, it
-  is the tool Apple provides for the purpose, and the recovery ladder has used it since
-  [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery.md) without needing a
-  finer signal.
-- **Wait only when the preconditions carry an erase.** An erased device is the slowest case, so the
-  wait would go where the window is widest and leave the common path untouched. Rejected because the
-  window is not exclusive to an erase — a device booting for the first time in a job is equally
-  affected — and a conditional wait would leave the very asymmetry this item exists to remove, with
-  one more condition to explain.
-- **Log the pin's firing and measure before inserting any wait.** The cheapest possible first step,
-  and the reason unit 3's log line is worth having on its own. Rejected as the whole of the item: the
-  measurement already establishes the window on a developer's Mac, where the pin demonstrably fires,
-  so waiting for CI evidence would withhold a fix from the case that is already proven.
+- **Bound the wait with a timeout and fail the run when it expires.** This would turn a hung boot into a named failure rather than a job-level timeout. Rejected for this item, because `simctl`'s own subprocess calls carry no timeout at all. Bounding this wait alone would address one call among many while implying the rest are bounded. Bounding every `simctl` call is a separate, larger change with its own choice of timeout and failure mode. It belongs in its own item.
+- **Poll SpringBoard for readiness instead of calling `bootstatus`.** A readiness probe would answer the question the launch cares about, rather than the one the boot reports. Rejected as redundant. `bootstatus` already waits on the device's own boot completion, and Apple provides it for that purpose. The recovery ladder has used it since [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery.md) without needing a finer signal.
+- **Wait only when the preconditions carry an erase.** An erased device is the slowest case, so the wait would go where the window is widest and leave the common path untouched. Rejected because the window is not exclusive to an erase. A device booting for the first time in a job is equally affected. A conditional wait would also keep the asymmetry this item exists to remove, with one more condition to explain.
+- **Log the pin's firing and measure before inserting any wait.** This is the cheapest first step, and it is why unit 3's log line is worth having on its own. Rejected as the whole item. The measurement already establishes the window on a developer's Mac, where the pin demonstrably fires. Waiting for CI evidence would withhold a fix from the case that is already proven.
 
 ## Progress
 

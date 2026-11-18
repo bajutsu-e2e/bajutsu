@@ -15,30 +15,42 @@
 
 ## はじめに
 
-`push`・`clearKeychain`・`setLocation` といったデバイス制御ステップは、共有のシナリオ語彙に simctl 由来の意味論を持ち込んでいながら、実デバイス環境を持たないバックエンドでは今なお実行時にしか失敗しません。これはまさに BE-0082 がジェスチャーと visual アサーションに対してすでに解決した「late failure」の問題です。本提案は同じ preflight チェックをデバイス制御ステップにも拡張し、ケイパビリティによってゲートすることで、対応していないステップをデバイス操作が始まる前に失敗させます。
+`push`・`clearKeychain`・`setLocation` といったデバイス制御ステップは、simctl 由来の意味論を共有のシナリオ語彙に持ち込んでいます。実デバイス環境を持たないバックエンドでは、いまも実行時にしか失敗しません。これは、BE-0082 がジェスチャーと visual アサーションについて解決済みの「late failure」の問題です。
+
+本提案は、同じ preflight チェックをデバイス制御ステップにも拡張し、ケイパビリティでゲートします。対応していないステップは、デバイス操作が始まる前に失敗します。
 
 ## 動機
 
-`bajutsu/orchestrator/types.py:45-59` は、simctl に裏打ちされた操作（`set_location`、`push`、`clear_keychain`、`clear_clipboard`、`set_clipboard`、`get_clipboard`、`home`、`foreground`、`override_status_bar`、`clear_status_bar`）をまとめた Protocol である `DeviceControl` を定義しています。実行を支える実デバイス環境がある場合はランナーがこれを注入し、ない場合（フェイクドライバや、単一デバイスに固定しない並列実行）は `None` のままにします。`bajutsu/orchestrator/actions/handlers/device.py` にあるデバイス制御ステップの各ハンドラ（`_do_set_location`、`_do_push`、`_do_clear_keychain` など）は、いずれも `_need_control(control, "<name>")`（`bajutsu/orchestrator/actions/_registry.py:72-78`）を呼び出し、これが `base.UnsupportedAction` を送出します。しかし、それが起きるのはそのステップが実際に実行される瞬間だけです。
+`bajutsu/orchestrator/types.py:45-59` は、simctl に裏打ちされた操作をまとめた Protocol として `DeviceControl` を定義しています。操作は `set_location`、`push`、`clear_keychain`、`clear_clipboard`、`set_clipboard`、`get_clipboard`、`home`、`foreground`、`override_status_bar`、`clear_status_bar` です。実デバイス環境が run を支えている場合は、ランナーがこれを注入します。ない場合（フェイクドライバや、単一デバイスに固定しない並列実行）は `None` のままです。
 
-これはまさに、BE-0082（ケイパビリティ preflight チェック）がジェスチャーと visual アサーションについて排除しようとした失敗モードそのものです。「対応していないケイパビリティを最後のステップで必要とするシナリオは、まずデバイス上ですべての先行ステップを実行してから、後になって失敗していた」（`bajutsu/capability_preflight.py:1-9`）。BE-0082 の `unsupported()` は `pinch`/`rotate` を `MULTI_TOUCH` で、`visual` アサーションを `SCREENSHOT` でゲートしており、どちらも各ドライバクラスの `CAPABILITIES` 上で宣言されています。しかしデバイス制御ステップにはケイパビリティトークンが一切なく、実行時に `DeviceControl` がたまたま配線されているかどうかでゲートされています。これは、`scenario` とドライバの `capabilities()` だけの純粋関数である preflight（`bajutsu/capability_preflight.py:109-122`）からは見えません。
+`bajutsu/orchestrator/actions/handlers/device.py` にあるデバイス制御ステップの各ハンドラ（`_do_set_location`、`_do_push`、`_do_clear_keychain` など）は、いずれも `_need_control(control, "<name>")`（`bajutsu/orchestrator/actions/_registry.py:72-78`）を呼び出します。この呼び出しが `base.UnsupportedAction` を送出しますが、送出されるのはそのステップが実際に実行される瞬間だけです。
 
-この隙間は、idb が常に実体を持つ `DeviceControl` を提供し、Playwright ベースのシナリオがデバイス制御ステップをめったに使わない現状では潜在的なものにとどまっています。しかし Android（BE-0007）や、より広い Web の対応領域が実現した瞬間に、これは避けて通れない問題になります。あるターゲット向けに書かれ `push` や `setLocation` を使うシナリオを新しいバックエンドで実行すると、先行するすべてのステップを実行したあとになって初めて、その構文に対応するものが存在しないことが実行途中で判明します。深刻度は中です。現在出荷されている 2 つのバックエンドでは実際に発生している失敗ではありませんが、新しいバックエンドが増えるたびに悪化することが予見でき、プライムディレクティブ 2（「大きな声で失敗する」。まさに BE-0082 が閉じようとした関心事）を直接後退させます。
+BE-0082（ケイパビリティ preflight チェック）は、ジェスチャーと visual アサーションについて、まさにこの失敗モードを排除するために作られました。チェック自身の説明は次のとおりです。「対応していないケイパビリティを最後のステップで必要とするシナリオは、まずデバイス上ですべての先行ステップを実行してから、後になって失敗していた」（`bajutsu/capability_preflight.py:1-9`）。BE-0082 の `unsupported()` は、`pinch`/`rotate` を `MULTI_TOUCH` で、`visual` アサーションを `SCREENSHOT` でゲートします。どちらのトークンも、各ドライバクラスが `CAPABILITIES` で宣言しています。
+
+一方、デバイス制御ステップにはケイパビリティトークンが一切ありません。実行時に `DeviceControl` がたまたま配線されているかどうかが、ゲートの役割を果たしています。preflight は `scenario` とドライバの `capabilities()` だけの純粋関数であり（`bajutsu/capability_preflight.py:109-122`）、この配線を見ることができません。
+
+この隙間は、現状では潜在的なものにとどまります。idb は常に実体を持つ `DeviceControl` を提供し、Playwright ベースのシナリオはデバイス制御ステップをめったに使わないからです。しかし、Android（BE-0007）や、より広い Web の対応領域が実現すると、避けて通れない問題になります。あるターゲット向けに書かれ、`push` や `setLocation` を使うシナリオを新しいバックエンドで実行したとします。シナリオは先行するすべてのステップを実行します。その構文に対応するものがないと実行途中で判明するのは、そのあとです。
+
+深刻度は中です。現在出荷されている 2 つのバックエンドでは、実際の失敗は起きていません。ただし、失敗は予見でき、新しいバックエンドが増えるたびに悪化します。プライムディレクティブ 2（「大きな声で失敗する」。まさに BE-0082 が閉じようとした関心事）も直接後退させます。
 
 ## 詳細設計
 
-1. **デバイス制御ステップ用のケイパビリティトークンを追加する。** `bajutsu/drivers/base.py` の `Capability` クラスに、simctl 的なデバイス制御を表すトークン（例えば `DEVICE_CONTROL = "deviceControl"`）を、既存のパターン（`MULTI_TOUCH`、`WEBVIEW`）に倣って追加します。デバイス制御ステップがバックエンドごとにオール・オア・ナッシングのケイパビリティである限り（idb は `DeviceControl` を通じてそのすべてを持ち、あるバックエンドはこのファミリー全体を対応するかしないかのどちらかである限り）、共有のトークンを 1 つ用意すれば十分です。既存の `DeviceControl` Protocol がまさにこの理由でこれらを 1 つの単位としてまとめています。将来のバックエンドが一部だけをサポートする場合は、操作ごとの細粒度なトークンに分割します。その判断は、部分的な対応を最初に必要とするバックエンドが現れたときまで先送りできます。
-2. **対応しているバックエンドでケイパビリティを宣言する。** idb は実体を持つ `DeviceControl` を裏付けとして持つため、idb の `CAPABILITIES` frozenset（`bajutsu/drivers/idb.py:326-328`）に新しいトークンを追加します。**xcuitest の `CAPABILITIES`（`bajutsu/drivers/xcuitest.py`）にも追加します。** xcuitest は iOS Simulator ライフサイクル（`bajutsu/platform_lifecycle.py` の `_DeviceEnvironment.controller`）を共有しており、その run にも同じ実体を持つ simctl の `DeviceControl` が配線されます。ここでトークンを付けないと、実際には動く xcuitest のシナリオを preflight が誤って弾いてしまいます。Playwright の `CAPABILITIES`（`bajutsu/drivers/playwright.py:566-576`）にはこのトークンを追加しません。これは、Playwright のシナリオには `DeviceControl` が配線されていないという現状と一致します。`fake` バックエンドも同様に宣言しないため、そのデバイス制御シナリオは preflight が先に弾きます。
-3. **`capability_preflight.py` の要求テーブルを拡張する。** `bajutsu/capability_preflight.py` の `_REQUIREMENTS` に `_Requirement` エントリを（手順 1 で選んだトークンの粒度に応じて、1 つ、あるいはデバイス制御ステップの種類ごとに）追加します。`locations` 関数は（`_walk_steps` を再利用して）ステップツリーを歩き、`step.set_location`、`step.push`、`step.clear_keychain` などが `None` でないステップを見つけます。これにより `unsupported()` は、対象のバックエンドが宣言していないケイパビリティを必要とするデバイス制御ステップの位置を、既存の `pinch`/`rotate`/`visual` のエントリとまったく同じように、デバイス操作が始まる前にすべて報告できるようになります。
-4. **実行時の `_need_control` チェックは、主要なゲートではなく安全網として残す。** preflight チェックが、シナリオを決定的かつ早期に失敗させる主要な仕組みになります。既存の `_need_control` による `UnsupportedAction` は、ケイパビリティ上はバックエンドがデバイス制御に対応していても、その実行時の環境（フェイクドライバ、あるいは単一デバイスに固定しない並列実行）が配線されていない場合に備える多層防御として残します。これはケイパビリティではなく環境の問題であり、preflight が解決すべき対象ではありません。
+1. **デバイス制御ステップ用のケイパビリティトークンを追加する。** `bajutsu/drivers/base.py` の `Capability` クラスに、simctl 的なデバイス制御を表すトークン（例えば `DEVICE_CONTROL = "deviceControl"`）を追加します。既存のパターン（`MULTI_TOUCH`、`WEBVIEW`）に倣います。
+   - デバイス制御ステップがバックエンドごとにオール・オア・ナッシングのケイパビリティである限り、共有のトークンを 1 つ用意すれば十分です。idb は `DeviceControl` を通じてそのすべてを持ち、バックエンドはこのファミリー全体に対応するかしないかのどちらかです。既存の `DeviceControl` Protocol も、この理由でこれらを 1 つの単位としてまとめています。
+   - 将来のバックエンドが一部だけをサポートする場合は、操作ごとの細粒度なトークンに分割します。その判断は、部分的な対応を最初に必要とするバックエンドが現れるまで先送りできます。
+2. **対応しているバックエンドでケイパビリティを宣言する。** idb は実体を持つ `DeviceControl` を裏付けとして持つため、idb の `CAPABILITIES` frozenset（`bajutsu/drivers/idb.py:326-328`）に新しいトークンを追加します。**xcuitest の `CAPABILITIES`（`bajutsu/drivers/xcuitest.py`）にも追加します。** xcuitest は iOS Simulator ライフサイクル（`bajutsu/platform_lifecycle.py` の `_DeviceEnvironment.controller`）を共有しており、その run にも同じ実体を持つ simctl の `DeviceControl` が配線されます。トークンを付けないと、実際には動く xcuitest のシナリオを preflight が誤って弾いてしまいます。
+   - Playwright の `CAPABILITIES`（`bajutsu/drivers/playwright.py:566-576`）には、このトークンを追加しません。Playwright のシナリオには `DeviceControl` が配線されていないという現状と一致します。
+   - `fake` バックエンドも同様に宣言しないため、そのデバイス制御シナリオは preflight が先に弾きます。
+3. **`capability_preflight.py` の要求テーブルを拡張する。** `bajutsu/capability_preflight.py` の `_REQUIREMENTS` に `_Requirement` エントリを追加します。手順 1 で選んだトークンの粒度に応じて、1 つ追加するか、デバイス制御ステップの種類ごとに追加します。その `locations` 関数は、`_walk_steps` を再利用してステップツリーを歩き、`step.set_location`、`step.push`、`step.clear_keychain` などが `None` でないステップを見つけます。これにより `unsupported()` は、対象のバックエンドが宣言していないケイパビリティを必要とするデバイス制御ステップの位置を、すべて報告できます。報告はデバイス操作が始まる前に行われ、既存の `pinch`/`rotate`/`visual` のエントリとまったく同じです。
+4. **実行時の `_need_control` チェックは、主要なゲートではなく安全網として残す。** preflight チェックが、シナリオを決定的かつ早期に失敗させる主要な仕組みになります。既存の `_need_control` による `UnsupportedAction` は、多層防御として残します。対象は、ケイパビリティ上はバックエンドがデバイス制御に対応していても、その run の環境（フェイクドライバ、あるいは単一デバイスに固定しない並列実行）が何も配線していない場合です。これはケイパビリティではなく環境の問題であり、preflight が解決すべき対象ではありません。
 
-これはプライムディレクティブ 2（デバイス操作の前に大きな声で失敗する）とプライムディレクティブ 3（app-agnostic）の両方に直接資するものです。修正はどのターゲット向け config にも置かず、ケイパビリティ／preflight という抽象化の内部だけに完結します。そして Android にとっての先取りの仕組みにもなります。同じテーブルが、Android バックエンドが実装する・しないデバイス制御操作をゲートし、ランナー側の変更は一切不要です。
+この設計は、プライムディレクティブ 2（デバイス操作の前に大きな声で失敗する）とプライムディレクティブ 3（app-agnostic）の両方に直接資するものです。修正はどのターゲット向け config にも置かず、ケイパビリティ／preflight という抽象化の内部だけで完結します。Android にとっての先取りの仕組みにもなります。同じテーブルが、Android バックエンドが実装する・しないデバイス制御操作をゲートし、ランナー側の変更は一切不要です。
 
 ## 検討した代替案
 
-- **この隙間を放置し、`_need_control` の実行時失敗に任せる。** 最も安上がりですが、BE-0082 がジェスチャーについてすでに排除した「先行ステップをすべて実行してから、後になって失敗する」という問題をそのまま再現してしまいます。同じ失敗クラスに対する保護が一貫していないことは、preflight がない状態より悪いことです。ユーザーに「preflight は当てにならない」と学習させてしまうためです。
-- **専用のトークンを設けず、既存の `MULTI_TOUCH`/`SCREENSHOT` 的な場当たり的な要求にデバイス制御ケイパビリティを混ぜ込む。** 却下します。デバイス制御は本質的に異なる関心事です（アクチュエータ自体のジェスチャー・描画ケイパビリティではなく、simctl に裏打ちされた OS 操作です）。無関係なトークンを流用すると、要求の名前が実態と食い違い、`unsupported()` のエラーメッセージが誤解を招くものになります。
-- **最初からデバイス制御の各操作に、それぞれ専用の細粒度なケイパビリティトークンを与える。** より正確ではありますが、どのバックエンドも部分的な対応を必要としていない段階では先取りしすぎです。idb は今日、`DeviceControl` の対応領域全体を 1 つの単位としてサポートしており、単一の共有トークンは現状のバックエンドの実態と一致します。後から（実際にそれを必要とするバックエンドが現れたときに）分割するのは、破壊的な変更ではなく要求テーブルへの小さな追加変更で済みます。
+- **この隙間を放置し、`_need_control` の実行時失敗に任せる。** 最も安上がりです。しかし、BE-0082 がジェスチャーについて排除済みの「先行ステップをすべて実行してから、後になって失敗する」という問題を、そのまま再現してしまいます。同じ失敗クラスに対する保護が一貫していないのは、preflight がない状態より悪いことです。ユーザーに「preflight は当てにならない」と学習させてしまうからです。
+- **専用のトークンを設けず、既存の `MULTI_TOUCH`/`SCREENSHOT` 的な場当たり的な要求にデバイス制御ケイパビリティを混ぜ込む。** 却下します。デバイス制御は本質的に異なる関心事です。アクチュエータ自体のジェスチャーや描画のケイパビリティではなく、simctl に裏打ちされた OS 操作を扱います。無関係なトークンを流用すると、要求の名前が実態と食い違い、`unsupported()` のエラーメッセージが誤解を招くものになります。
+- **最初からデバイス制御の各操作に、それぞれ専用の細粒度なケイパビリティトークンを与える。** より正確ですが、どのバックエンドも部分的な対応を必要としていない段階では先取りしすぎです。idb は今日、`DeviceControl` の対応領域全体を 1 つの単位としてサポートしています。単一の共有トークンは、現状のバックエンドの実態と一致します。後から分割するのは、実際にそれを必要とするバックエンドが現れたときで十分です。分割は、破壊的な変更ではなく、要求テーブルへの小さな追加変更で済みます。
 
 ## 進捗
 

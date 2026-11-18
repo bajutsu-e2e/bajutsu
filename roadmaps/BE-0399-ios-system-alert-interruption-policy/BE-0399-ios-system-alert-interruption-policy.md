@@ -16,30 +16,17 @@
 
 ## Introduction
 
-Bajutsu's reactive system-alert guard clears an operating-system prompt that the application's own
-accessibility tree cannot see, tapping one of the prompt's buttons under a policy the
-[scenario](../../docs/glossary.md#scenario-authoring) sets. On iOS, two such prompts can be on
-screen at once: the "Save Password" alert iOS raises after a sign-in, and the notification
-authorization request. Measured on iOS 18.6, 26.3, 26.4, and 26.5 Simulators, the guard stops being
-deterministic when both appear together, and the reason is not in Bajutsu's own policy at all.
-XCUITest resolves an alert that interrupts one of its interactions *before* it synthesizes that
-interaction, and with nothing installed it answers using the alert's own default button.
+Bajutsu's reactive system-alert guard clears an operating-system prompt that the application's own accessibility tree cannot see. It taps one of the prompt's buttons under a policy that the [scenario](../../docs/glossary.md#scenario-authoring) sets.
 
-This proposal takes that decision back. The runner installs an interruption monitor that presses the
-button the scenario's own `systemAlertHandling` names — the labels are resolved in the orchestrator
-and pushed to the runner, so the policy stays in one place and the runner only applies it — and
-reports what it pressed, so such a dismissal reaches the run's report instead of happening in
-silence. Alongside it, the mid-wait gate stops issuing its in-tree dismissal tap on any poll that has
-not just confirmed no system alert is showing, which fixes the order the two prompts are answered in:
-the system-owned alert first, by the scenario's policy, and only then the application-owned
-save-password alert.
+On iOS, two such prompts can be on screen at once: the "Save Password" alert iOS raises after a sign-in, and the notification authorization request. We measured on iOS 18.6, 26.3, 26.4, and 26.5 Simulators. When both prompts appear together, the guard stops being deterministic, and the cause is not in Bajutsu's own policy at all. XCUITest resolves an alert that interrupts one of its interactions *before* it synthesizes that interaction. With nothing installed, it answers using the alert's own default button.
+
+This proposal takes that decision back. The runner installs an interruption monitor that presses the button the scenario's own `systemAlertHandling` names. The orchestrator resolves the labels and pushes them to the runner, so the policy stays in one place and the runner only applies it. The runner also reports what it pressed, so such a dismissal reaches the run's report instead of happening in silence.
+
+Alongside the monitor, the mid-wait gate stops issuing its in-tree dismissal tap on any poll that has not just confirmed no system alert is showing. That fixes the order in which the two prompts are answered: the system-owned alert first, by the scenario's policy, and only then the application-owned save-password alert.
 
 ## Motivation
 
-The two prompts do not live on the same surface, and only one of them is a system alert. Measured
-against an application signing in through its in-app browser, the save-password alert is raised by
-iOS into the *application's own* process and the notification request is a SpringBoard alert in
-another process:
+The two prompts do not live on the same surface, and only one of them is a system alert. We measured an application that signs in through its in-app browser. iOS raises the save-password alert into the *application's own* process. The notification request is a SpringBoard alert in another process:
 
 ```
 springboard buttons = ["Don't Allow", "Allow"]
@@ -47,12 +34,7 @@ app.alerts          = "Save Password" / "Never for This Website" / "Not Now"
 snapshot button id='' label='Not Now' frame=(61.7, 517.0, 270.0, 44.0)
 ```
 
-That split decides which code path handles each prompt.
-[BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md)'s
-native path reads `springboard.alerts` through `system_alert_labels()`, so the save-password alert
-reads as `"absent"` to it forever, and the one path that clears it is `_dismiss_from_tree` in
-`bajutsu/orchestrator/waits.py`, which matches an identifier-less labeled button in the poll's own
-tree and taps it through the ordinary `Driver.tap`.
+That split decides which code path handles each prompt. The native path of [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md) reads `springboard.alerts` through `system_alert_labels()`, so the save-password alert reads as `"absent"` to it forever. The one path that clears the alert is `_dismiss_from_tree` in `bajutsu/orchestrator/waits.py`. It matches an identifier-less labeled button in the poll's own tree and taps it through the ordinary `Driver.tap`.
 
 That tap is where XCUITest intervenes. The runner's activity log records the whole sequence:
 
@@ -66,151 +48,94 @@ t = 9.92s Confirmed successful handling of interrupting element
 t = 9.92s     Synthesize event
 ```
 
-The answer that built-in handler gives is the opposite of the policy the guard exists to apply.
-`DEFAULT_DISMISSIVE_LABELS` in `bajutsu/orchestrator/types.py` lists "Don't Allow" first, precisely
-so a permission request the scenario never spoke about is refused rather than granted, and
-[BE-0382](../BE-0382-system-alert-per-prompt-rules/BE-0382-system-alert-per-prompt-rules.md) lets a
-scenario name `choice: deny` for the notification request. A scenario that says `deny` still ends
-with the permission granted, because XCUITest answered first. No step fails, no warning is printed,
-and no `AlertEvent` reaches the report, so nothing in the run's output records that the permission
-was granted at all.
+The answer that the built-in handler gives is the opposite of the policy the guard exists to apply. `DEFAULT_DISMISSIVE_LABELS` in `bajutsu/orchestrator/types.py` lists "Don't Allow" first, so a permission request the scenario never spoke about is refused, not granted. [BE-0382](../BE-0382-system-alert-per-prompt-rules/BE-0382-system-alert-per-prompt-rules.md) lets a scenario name `choice: deny` for the notification request.
 
-The grant is intermittent rather than constant, which is what makes the failure read as flakiness.
-`_observe_native` probes SpringBoard at most once per `guard.poll_interval` (one second by default)
-but called `_dismiss_from_tree` on every `_POLL` (0.05 seconds). Nineteen of every twenty polls
-therefore issued an application tap without knowing whether a system alert was up.
+A scenario that says `deny` still ends with the permission granted, because XCUITest answered first. No step fails, no warning is printed, and no `AlertEvent` reaches the report. Nothing in the run's output records that the permission was granted at all.
 
-Declining the interruption is not an available answer, which is the finding that shaped the design.
-A monitor that claims the alert without pressing anything does suppress the built-in handler, but
-XCUITest verifies the interruption cleared, finds the alert still up, and re-invokes the monitor on
-the next interaction. In a resident runner that serves queries continuously — the interruption check
-fires on application-level queries, not only on taps — that is an unbounded loop, and it took the
-runner down mid-run in every measured attempt, against a control run that survived with the monitor
-removed. So the monitor has to actually answer, and the only question is with which button.
+The grant is intermittent, not constant, which makes the failure read as flakiness. `_observe_native` probes SpringBoard at most once per `guard.poll_interval` (one second by default) but called `_dismiss_from_tree` on every `_POLL` (0.05 seconds). Nineteen of every twenty polls therefore issued an application tap without knowing whether a system alert was up.
 
-A later reader can tell whether the change arrived by running a scenario that answers the
-notification request with `deny` while iOS's save-password alert is on screen, then asserting the
-application's own mirrored authorization status. Before the change the status settles on
-`authorized`; after it, on `denied`. The showcase scenario this proposal adds makes exactly that
-assertion, and it was measured green on four iOS versions.
+Declining the interruption is not an available answer, and that finding shaped the design. A monitor that claims the alert without pressing anything does suppress the built-in handler. XCUITest then verifies that the interruption cleared, finds the alert still up, and re-invokes the monitor on the next interaction.
+
+The resident runner serves queries continuously, and the interruption check fires on application-level queries, not on taps alone. The re-invocation is therefore an unbounded loop. It took the runner down mid-run in every measured attempt, against a control run that survived with the monitor removed. The monitor has to answer, and the only question is with which button.
+
+A later reader can tell whether the change arrived by running a scenario that answers the notification request with `deny` while iOS's save-password alert is on screen, then asserting the application's own mirrored authorization status. Before the change, the status settles on `authorized`. After it, the status settles on `denied`. The showcase scenario this proposal adds makes exactly that assertion, and it was measured green on four iOS versions.
 
 ## Detailed design
 
 ### Unit 1 — Answer an interrupting alert by the scenario's own policy
 
-The runner installs one user-interface interruption monitor. It reads the alert's button labels,
-picks one by `InterruptionPolicy` — a rule whose identifying labels are each present exactly once,
-else the first candidate present exactly once — presses it, records the label, and returns `true`.
-The matching discipline is a small port of `match_alert_rule` and `pick_alert_label`; every label in
-it is resolved in the orchestrator from the scenario's `systemAlertHandling` and pushed over a new
-`POST /interruptionPolicy`, so the decision has one home and the runner only applies it.
+The runner installs one user-interface interruption monitor. The monitor reads the alert's button labels and picks one by `InterruptionPolicy`: a rule whose identifying labels are each present exactly once, else the first candidate present exactly once. It presses the picked button, records the label, and returns `true`.
 
-The policy is pushed once per scenario rather than per lease, because the resident runner outlives a
-scenario: a scenario that disables the guard pushes an *empty* policy rather than skipping the call,
-so it never inherits the previous scenario's answer. A `POST /interruptionPolicy/drain` hands back
-the labels pressed since the last drain, which the run loop folds into the step's `AlertEvent`s
-beside its actuations — the report is where a dismissal answered this way stops being silent.
+The matching discipline is a small port of `match_alert_rule` and `pick_alert_label`. The orchestrator resolves every label in it from the scenario's `systemAlertHandling` and pushes the labels over a new `POST /interruptionPolicy`. The decision therefore has one home, and the runner only applies it.
 
-Declining stays the fallback for an alert the policy names no button on: the monitor returns `false`
-and XCUITest's own handler takes it, exactly as before this monitor existed. That is the one
-outcome that cannot loop, because that handler does clear the alert.
+The orchestrator pushes the policy once per scenario, not once per lease, because the resident runner outlives a scenario. A scenario that disables the guard pushes an *empty* policy instead of skipping the call, so it never inherits the previous scenario's answer.
+
+A `POST /interruptionPolicy/drain` hands back the labels pressed since the last drain. The run loop folds them into the step's `AlertEvent`s beside its actuations. The report is where a dismissal answered this way stops being silent.
+
+Declining stays the fallback for an alert on which the policy names no button. The monitor returns `false`, and XCUITest's own handler takes the alert, exactly as before this monitor existed. That is the one outcome that cannot loop, because that handler does clear the alert.
 
 ### Unit 2 — Run the in-tree dismissal only on a poll that just confirmed no alert
 
-`_observe_native` gains one local flag recording whether the native probe ran on this poll *and*
-returned `"absent"`, and `_dismiss_from_tree` is called only when the flag is set. The in-tree
-dismissal therefore fires at the `poll_interval` cadence instead of the `_POLL` cadence, and every
-one of its taps is preceded, in the same poll, by a fresh SpringBoard query that found nothing. That
-is what makes the order deterministic when both prompts are up.
+`_observe_native` gains one local flag. The flag records whether the native probe ran on this poll *and* returned `"absent"`. `_dismiss_from_tree` is called when the flag is set and not otherwise.
+
+The in-tree dismissal therefore fires at the `poll_interval` cadence instead of the `_POLL` cadence. Every one of its taps is preceded, in the same poll, by a fresh SpringBoard query that found nothing. That makes the order deterministic when both prompts are up.
 
 ### Unit 3 — Re-derive the not-tappable give-up bound in seconds
 
-`_TREE_DISMISS_MAX_DECLINES` bounded the consecutive `ElementNotTappable` declines
-`_dismiss_from_tree` tolerates, and its value of 20 was derived as "~1s at `_POLL`". Unit 2 changes
-the cadence it is counted in, and `poll_interval` is configurable per scenario, target, and flag
-([BE-0177](../BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md)), so no
-replacement count maps to a fixed duration. The bound becomes clock-based, like the neighbouring
-`_TREE_RETAP_DELAY` which already made that choice for the same reason.
+`_TREE_DISMISS_MAX_DECLINES` bounded the consecutive `ElementNotTappable` declines that `_dismiss_from_tree` tolerates. Its value of 20 was derived as "~1s at `_POLL`". Unit 2 changes the cadence the bound is counted in.
+
+`poll_interval` is configurable per scenario, target, and flag ([BE-0177](../BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md)), so no replacement count maps to a fixed duration. The bound becomes clock-based, like the neighbouring `_TREE_RETAP_DELAY`, which already made that choice for the same reason.
 
 ### Unit 4 — Guard the `gone` wait
 
-A `gone` wait went unguarded, on the reasoning that a blocking prompt collapses the tree and a
-collapsed tree already satisfies "gone". That holds for a SpringBoard prompt and only for those. A
-prompt drawn inside the application's own process collapses nothing and instead *adds* its buttons to
-the tree, so a `gone` wait on one of them sits unsatisfied for its whole timeout with nothing to
-clear it — measured on-device, where the save-password alert survived a full sixty-second wait. The
-branch now feeds the gate like `for` does, after its own condition check so a wait already satisfied
-never actuates.
+A `gone` wait went unguarded, on the reasoning that a blocking prompt collapses the tree and a collapsed tree already satisfies "gone". That reasoning holds for a SpringBoard prompt and for no other.
+
+A prompt drawn inside the application's own process collapses nothing. It *adds* its buttons to the tree. A `gone` wait on one of those buttons sits unsatisfied for its whole timeout with nothing to clear it. We measured this on-device, where the save-password alert survived a full sixty-second wait.
+
+The branch now feeds the gate as `for` does, after its own condition check, so a wait already satisfied never actuates.
 
 ### Unit 5 — Report an application-owned alert once in the browser-merged tree
 
-While `SFSafariViewController` is up, `queryElements` concatenates the application's walk with the
-browser service's
-([BE-0396](../BE-0396-ios-sfsafariviewcontroller-tree/BE-0396-ios-sfsafariviewcontroller-tree.md)). An
-alert the application raises *over* the browser is drawn by the application and mirrored into the
-service's tree as well, so each of its buttons was reported twice, and the identifier-prefix prune
-cannot reach it because the alert is not browser chrome. A duplicate like that is one control seen
-twice rather than an ambiguity, but the tree has to say so: left in, the pair fails `resolve_unique`,
-the in-tree dismissal correctly declines to guess, and the alert is never cleared. The merge now
-drops a service-tree node whose whole reported identity, frame included, matches one the application
-already reported.
+While `SFSafariViewController` is up, `queryElements` concatenates the application's walk with the browser service's walk ([BE-0396](../BE-0396-ios-sfsafariviewcontroller-tree/BE-0396-ios-sfsafariviewcontroller-tree.md)). An alert that the application raises *over* the browser is drawn by the application and mirrored into the service's tree as well. Each of its buttons was therefore reported twice, and the identifier-prefix prune cannot reach it, because the alert is not browser chrome.
+
+A duplicate like that is one control seen twice, not an ambiguity, but the tree has to say so. Left in, the pair fails `resolve_unique`, the in-tree dismissal correctly declines to guess, and the alert is never cleared. The merge now drops a service-tree node whose whole reported identity, frame included, matches one that the application already reported.
 
 ### Unit 6 — Raise the real prompt in the showcase
 
-The showcase's in-app browser loads a sign-in page served beside the existing browser fixture, and
-submitting it makes iOS raise its real "Save Password" alert. The browser route needs no associated
-domain, entitlement, or Hypertext Transfer Protocol Secure (HTTPS) server: iOS offers to save a
-credential typed into a web form for the page's own origin, exactly as Safari does. Measured, the
-application's own login screen — the other route iOS raises this alert from — does need all three,
-so it is left to a follow-up rather than made a standing prerequisite of this lane.
+The showcase's in-app browser loads a sign-in page served beside the existing browser fixture. Submitting the page makes iOS raise its real "Save Password" alert. The browser route needs no associated domain, no entitlement, and no Hypertext Transfer Protocol Secure (HTTPS) server: iOS offers to save a credential typed into a web form for the page's own origin, exactly as Safari does.
 
-The notification request is armed by the application on a delay once the browser opens
-(`SHOWCASE_NOTIF_AFTER_BROWSER`), because a scenario cannot tap its way into the stacked state: an
-element tap made while a system alert is showing is answered by the monitor first. The scenario then
-waits on outcomes rather than on an order, because the order moves between versions — measured, the
-notification request arrives while the sign-in is still being typed on iOS 26.4 and 26.5 but after it
-on 18.6 and 26.3, and on 26.4 the save alert itself arrives after the page has navigated.
+We measured the other route from which iOS raises this alert, the application's own login screen: it does need an associated domain, an entitlement, and an HTTPS server. That route is left to a follow-up and is not made a standing prerequisite of this lane.
+
+The application arms the notification request on a delay once the browser opens (`SHOWCASE_NOTIF_AFTER_BROWSER`). A scenario cannot tap its way into the stacked state, because the monitor is the first to answer any element tap made while a system alert is showing.
+
+The scenario then waits on outcomes, not on an order, because the order moves between versions. We measured the following:
+
+- On iOS 26.4 and 26.5, the notification request arrives while the sign-in is still being typed.
+- On iOS 18.6 and 26.3, the notification request arrives after the sign-in.
+- On iOS 26.4, the save alert itself arrives after the page has navigated.
 
 ### Unit 7 — Cover the orchestrator's half deterministically
 
-The fake actuator drives tests for the policy the orchestrator pushes (the guard's own rules and
-candidates, the dismissive default when a scenario names none, an empty policy when it disables the
-guard, and nothing at all on a backend without the opt-in), for the drain becoming `AlertEvent`s, for
-the in-tree dismissal's gating in all three of its cases, for the clock-based give-up, and for the
-`gone` wait now clearing an application-owned prompt. The runner's own half is Swift and lands
-outside that gate, so Unit 6's scenario is what verifies it.
+The fake actuator drives tests for each of these:
+
+- The policy the orchestrator pushes: the guard's own rules and candidates, the dismissive default when a scenario names none, an empty policy when it disables the guard, and nothing at all on a backend without the opt-in.
+- The drain becoming `AlertEvent`s.
+- The in-tree dismissal's gating in all three of its cases.
+- The clock-based give-up.
+- The `gone` wait now clearing an application-owned prompt.
+
+The runner's own half is Swift and lands outside that gate, so Unit 6's scenario verifies it.
 
 ## Alternatives considered
 
-* **Let the monitor decline and leave the alert to the guard's native path.** The first
-  implementation, and it is wrong: XCUITest verifies that a claimed interruption cleared, and
-  re-invokes the monitor on every following interaction while the alert is still up. Measured, that
-  loops until the runner dies, against a control run that survived once the monitor was removed. The
-  monitor must answer.
-* **Change only the Python gate and leave XCUITest's default handler in place.** Rejected because
-  the gate covers one caller. Every other element tap a scenario performs — an ordinary `tap` step
-  while a permission request happens to be up — would still let XCUITest grant the permission
-  silently, and measured on iOS 26.4 and 26.5 the request does interrupt an ordinary typing step.
-* **Resolve the button in Swift from the alert's text.** Rejected because it would split the button
-  policy across two languages: the ordered `instruction` candidates, BE-0382's per-prompt `rules`,
-  and BE-0320's locale-keyed label table all live in Python. Pushing resolved labels keeps one home
-  for the decision and leaves the runner a mechanism.
-* **Gate the in-tree dismissal on the last known native state rather than a fresh probe.** Rejected
-  because a cached "absent" can be a full `poll_interval` old, and that interval is exactly the
-  window the defect lives in.
-* **Probe SpringBoard on every `_POLL` and leave the in-tree cadence alone.** Rejected on the
-  measurement BE-0315 already recorded: a per-poll SpringBoard query roughly doubles the load on the
-  runner's single main thread.
-* **Reach the save-password alert through the native `springboard.alerts` query.** Rejected on the
-  measurement: the alert is raised into the application's process and never appears there.
-* **Commit a fixed test certificate authority for the native route instead of generating one.** It
-  would make that lane reproducible with fewer moving parts. Rejected because a private key in the
-  repository is a secret in the history whatever its purpose, and `make lint-secrets` would rightly
-  object; generating one per run into gitignored `tmp/` and deleting it afterwards costs a few
-  seconds of `openssl` and leaves nothing behind.
-* **Give the native route its own showcase application rather than a launch-env screen.** Rejected as
-  disproportionate: `SHOWCASE_SIGNIN` swaps the whole interface the way `SHOWCASE_GESTURES` already
-  does, so no other scenario's tab bar moves and no second product needs building.
+* **Let the monitor decline and leave the alert to the guard's native path.** This was the first implementation, and it is wrong. XCUITest verifies that a claimed interruption cleared, and re-invokes the monitor on every following interaction while the alert is still up. We measured that loop running until the runner dies, against a control run that survived once the monitor was removed. The monitor must answer.
+* **Change the Python gate alone and leave XCUITest's default handler in place.** Rejected, because the gate covers one caller. Every other element tap a scenario performs would still let XCUITest grant the permission silently. An ordinary `tap` step while a permission request happens to be up is one example, and we measured on iOS 26.4 and 26.5 that the request does interrupt an ordinary typing step.
+* **Resolve the button in Swift from the alert's text.** Rejected, because it would split the button policy across two languages. The ordered `instruction` candidates, BE-0382's per-prompt `rules`, and BE-0320's locale-keyed label table all live in Python. Pushing resolved labels keeps one home for the decision and leaves the runner a mechanism.
+* **Gate the in-tree dismissal on the last known native state instead of a fresh probe.** Rejected, because a cached "absent" can be a full `poll_interval` old, and that interval is exactly the window the defect lives in.
+* **Probe SpringBoard on every `_POLL` and leave the in-tree cadence alone.** Rejected on the measurement BE-0315 already recorded: a per-poll SpringBoard query roughly doubles the load on the runner's single main thread.
+* **Reach the save-password alert through the native `springboard.alerts` query.** Rejected on the measurement: the alert is raised into the application's process and never appears there.
+* **Commit a fixed test certificate authority for the native route instead of generating one.** It would make that lane reproducible with fewer moving parts. Rejected, because a private key in the repository is a secret in the history whatever its purpose, and `make lint-secrets` would rightly object. Generating one per run into gitignored `tmp/` and deleting it afterwards costs a few seconds of `openssl` and leaves nothing behind.
+* **Give the native route its own showcase application instead of a launch-env screen.** Rejected as disproportionate. `SHOWCASE_SIGNIN` swaps the whole interface the way `SHOWCASE_GESTURES` already does, so no other scenario's tab bar moves and no second product needs building.
 
 ## Progress
 

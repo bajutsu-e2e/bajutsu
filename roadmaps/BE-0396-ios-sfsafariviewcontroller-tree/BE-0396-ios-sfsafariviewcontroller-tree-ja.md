@@ -19,9 +19,9 @@
 `SFSafariViewController` は、ログインページや利用規約、ヘルプ記事を表示するために iOS アプリが開く
 アプリ内ブラウザです。Apple はこの画面を別プロセス（`com.apple.SafariViewService`）で描いています。
 そして iOS 26 からは、XCUITest ランナーがテスト対象アプリに対して取るアクセシビリティの
-スナップショットが、そのプロセス境界で打ち切られるようになりました。そのためアプリ内ブラウザを
-開いたシナリオには、空の画面しか見えません。ページの内容もブラウザのクロームも現れず、待つ対象もタップする対象も
-ありません。このフローはまったく駆動できない状態でした。
+スナップショットが、そのプロセス境界で打ち切られるようになりました。
+
+そのため、アプリ内ブラウザを開いたシナリオには空の画面しか見えません。ページの内容もブラウザのクロームも現れず、待つ対象もタップする対象もありません。このフローはまったく駆動できない状態でした。
 
 この項目の貢献は 2 つあります。1 つは、ブラウザのサブツリーを、それを所有するプロセスの
 アプリケーションハンドルから読むことです。
@@ -69,7 +69,7 @@ showcase アプリの両方に対して通ります。
 
 ## 詳細設計
 
-### ユニット 1 — ブラウザのツリーを、それを所有するプロセスから読む
+### ユニット 1：ブラウザのツリーを、それを所有するプロセスから読む
 
 `XcuitestElementProvider` に、BE-0316 が追加した SpringBoard のハンドルと並べて、
 `com.apple.SafariViewService` 用のハンドルを遅延生成で持たせます。`queryElements()` はまずその
@@ -79,8 +79,10 @@ showcase アプリの両方に対して通ります。
 
 サービスがフォアグラウンドにあるときは、アプリのツリーにブラウザのツリーを足したものを返します。
 ただしアプリ自身のスナップショットには修復が 1 つ要ります。iOS 18 までは、アプリのスナップショットが
-ブラウザのサブツリーを丸ごとミラーするため、そのままではブラウザの要素をすべて二重に報告し、
-セレクタが曖昧だと判定されてしまいます。そこで `flattenSnapshot` に `prune` 述語を持たせ、アプリ側の
+ブラウザのサブツリーを丸ごとミラーします。そのままではブラウザの要素をすべて二重に報告し、
+セレクタが曖昧だと判定されてしまいます。
+
+そこで `flattenSnapshot` に `prune` 述語を持たせ、アプリ側の
 走査ではブラウザの `BrowserView…` ノードを根とするサブツリーを落とします。刈られた子も自分の
 インデックスは消費するので、兄弟のポジションパスは変わらず、後のアクチュエーションはそこから
 同じ要素を再導出できます。
@@ -91,7 +93,7 @@ showcase アプリの両方に対して通ります。
 backing の指すアプリケーションハンドルに対して走ります。これがないと、iOS 26 ではブラウザの要素を
 アプリ側のハンドルで解決しようとして、健全に生きているコントロールを stale と報告してしまいます。
 
-### ユニット 2 — ブラウザの要素は、その要素自身の座標でアクチュエートする
+### ユニット 2：ブラウザの要素は、その要素自身の座標でアクチュエートする
 
 `tap` はアクチュエーション対象を 1 か所で選びます。アプリ内の要素なら要素そのもの、ブラウザの要素なら
 その要素の実時点の frame の中心座標です。`XCUIElement` と `XCUICoordinate` はどちらも `tap()` /
@@ -101,7 +103,7 @@ backing の指すアプリケーションハンドルに対して走ります。
 変えていません。ガードは従来どおり先に走るので、覆われたコントロールは確認なしにタップされることなく
 拒否されます。
 
-### ユニット 3 — ブラウザのクロームを iOS バージョン間で正規化する
+### ユニット 3：ブラウザのクロームを iOS バージョン間で正規化する
 
 両方のランタイムで実測したところ、2 つのバージョンが共有するコントロールについて、ブラウザは同一の
 識別子を報告します。`URL`、`BackButton`、`ShareButton`、`ReloadButton`、`OpenInSafariButton`、
@@ -113,7 +115,9 @@ iOS 18 には `ForwardButton` がありますが、iOS 26 にはありません�
 すでに使っている識別子で報告するので、`id: Close` が両方のバージョンで通ります。独自の名前を
 発明せずプラットフォーム自身の名前を採るのは、`bajutsu/drivers/base.py` の `OS_BACK_BUTTON` に
 ならった判断です。そこでも iOS の規約である `BackButton` が、そのままプラットフォーム横断の語彙に
-なっています。認識はテキストではなく構造で行います。終了コントロールとは、`TopBrowserBar` の直下に
+なっています。
+
+認識はテキストではなく構造で行います。終了コントロールとは、`TopBrowserBar` の直下に
 あって自分の識別子を持たない唯一のボタンです。ラベルで判定すると、`Done` も `Close` も報告しない
 日本語ロケールの端末で壊れます。識別子を持たないボタンがそのバーに 2 つ以上あるときは、修復を
 行いません。将来の iOS が 2 つ目を足したときに、そのどちらかが、シナリオがブラウザを離れるために
@@ -125,7 +129,7 @@ iOS 18 には `ForwardButton` がありますが、iOS 26 にはありません�
 `Close` に書き換えれば、ツリーとそこから採取した証跡が画面と食い違うからです。存在しない
 `ForwardButton` は報告のしようがないので、シナリオがそれに依存してはいけません。
 
-### ユニット 4 — showcase のフィクスチャと専用レーン
+### ユニット 4：showcase のフィクスチャと専用レーン
 
 showcase の Permissions タブは、意図的なプロセス外 UI をすでに担当しています。その System セクションも、
 アプリ内クエリでは見えないデバイス状態をすでにミラーしています。アプリ内ブラウザはそこに加わり、
@@ -140,7 +144,9 @@ SwiftUI アプリと UIKit アプリで同じ識別子を公開します。`sys.
 `demos/showcase/browser/` から、シナリオ専用のレーン `make -C demos/showcase e2e-browser` が配信します。
 アサート対象が実サイトの内容ではなく固定の内容になるためです。レーンはサーバの応答をポーリングして
 待ち、固定の sleep を置きません。ランナー自身の規律に合わせた形で、1 つのファイルを両方のツールキットに
-対して走らせます。シナリオには `browser` タグを付け、フィクスチャのページを配信しない discovery の
+対して走らせます。
+
+シナリオには `browser` タグを付け、フィクスチャのページを配信しない discovery の
 レーンからは除外しました。`visual` や `systemalert` をすでに除外しているのと同じ「このファイルは専用の
 レーンを持つ」という理由です。ページは開発マシンのループバック経由で配信するので、このレーンは
 Simulator 専用です。
@@ -188,7 +194,7 @@ Simulator 専用です。
 
 ログは次のとおりです。
 
-- 2026-08-25 — 4 つのユニットをまとめて実装しました。検証は Xcode 26.6 で、iOS 18.6（iPhone 16
+- 2026-08-25：4 つのユニットをまとめて実装しました。検証は Xcode 26.6 で、iOS 18.6（iPhone 16
   Pro）と iOS 26.5（iPhone 17 Pro）に対して行いました。`make -C demos/showcase e2e-browser` は
   両方のランタイムで、SwiftUI と UIKit の showcase アプリの両方について通ります。provider の
   変更を戻すと同じシナリオが iOS 26 で失敗します。この対照によって、変更が偶然ではなく実際に効いて
@@ -196,18 +202,18 @@ Simulator 専用です。
 
 ## 参考
 
-- `BajutsuKit/Sources/BajutsuRunner/BrowserChrome.swift` — クロームの正規化と、その鍵になる識別子。
+- `BajutsuKit/Sources/BajutsuRunner/BrowserChrome.swift`：クロームの正規化と、その鍵になる識別子。
   バージョンごとの実測差をコメントに残してあります。
-- `BajutsuKit/Sources/BajutsuRunner/PositionPath.swift` — `ElementRoot` と、`flattenSnapshot` の
+- `BajutsuKit/Sources/BajutsuRunner/PositionPath.swift`：`ElementRoot` と、`flattenSnapshot` の
   `prune` 述語。
-- `BajutsuKit/Runner/Sources/XcuitestElementProvider.swift` — 合流したクエリと、ルートを見た解決と
+- `BajutsuKit/Runner/Sources/XcuitestElementProvider.swift`：合流したクエリと、ルートを見た解決と
   アクチュエーション。
 - `demos/showcase/SPEC.ja.md` §5.4 — `sys.openBrowser` と `sys.browser.value` の showcase 側の契約。
-- [BE-0037](../BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support-ja.md) — アプリ自身の
+- [BE-0037](../BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support-ja.md)：アプリ自身の
   プロセス内で DOM に届く、アプリ内 `WKWebView` ブリッジ。
-- [BE-0105](../BE-0105-xcuitest-single-snapshot-query/BE-0105-xcuitest-single-snapshot-query-ja.md) —
+- [BE-0105](../BE-0105-xcuitest-single-snapshot-query/BE-0105-xcuitest-single-snapshot-query-ja.md)：
   この項目が 2 つ目のアプリケーションハンドルへ広げた、`snapshot()` 1 回のクエリ。
-- [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step-ja.md) — この項目の
+- [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step-ja.md)：この項目の
   2 つ目のハンドルが手本にした SpringBoard のハンドル。
-- [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md) — provider を所有する常駐の
+- [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md)：provider を所有する常駐の
   XCUITest ランナー。

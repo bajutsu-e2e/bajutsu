@@ -201,13 +201,13 @@ The submitter and the workflow above are the headless path: one run packages the
 executes its scenarios back to back on a single reserved device. `bajutsu serve` (BE-0336) adds a
 second path on the surface operators already use to dispatch runs and watch history — and it changes
 the shape. Instead of one serialized run, serve **fans the suite out one Device Farm run per
-scenario**, so scenarios run in parallel. The Device Farm workers' job budget, not a single device,
-bounds how many run at once.
+scenario**, so scenarios run in parallel. Worker job budgets and server concurrency caps bound
+how many run at once, not a single device.
 
-The target names no batch provider. Where a run happens is a choice per run, not a property of the
-target. The fan-out request names the provider instead, as its `environment`
-([BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)). The
-target needs nothing beyond a `subject.path`, the binary Device Farm installs on the reserved device:
+Neither the target nor the fan-out request names a batch provider (BE-0484). Each fan-out job routes
+by its target's platform. Any worker serving that platform can take it, local or Device Farm. The
+workers a deployment runs decide where the jobs land. The target needs a `subject.path` alone. That
+file is the binary Device Farm installs on the reserved device:
 
 ```yaml
 targets:
@@ -221,10 +221,11 @@ targets:
 ```
 
 The server does not submit these runs itself (BE-0448). Each fan-out job waits in the queue for a
-Device Farm worker. Such a worker's capability file, `worker.yaml`, sets `environment: devicefarm`.
-That worker packages the run and submits it. It then polls the run and posts the verdict back. The
-AWS role thus lives in the worker's environment, never in the server's. The server and the worker
-may share one machine as two processes. Start the worker with the file and no `--platform`:
+worker, and a Device Farm worker is one that can take it. Such a worker's capability file,
+`worker.yaml`, sets `environment: devicefarm`. That worker packages the run and submits it. It then
+polls the run and posts the verdict back. The AWS role thus lives in the worker's environment, never
+in the server's. The server and the worker may share one machine as two processes. Start the worker
+with the file and no `--platform`:
 
 ```yaml
 # devicefarm.worker.yaml
@@ -251,15 +252,39 @@ startup, the worker exits with the reason unless all three conditions below hold
 - The command line names no `--platform`. The phone belongs to the Device Farm host, so the worker
   drives no device of its own.
 
-Once registered, the worker prints `provider registered: devicefarm`. It advertises the routing
-token `environment:devicefarm`, beside the `host:<os>` token every worker advertises for its machine.
-A fan-out job requires `environment:devicefarm` and no other token. A worker advertising the token
-leases nothing else. Local jobs and Device Farm jobs thus never reach each other's workers. Serving
-both on one machine takes two workers. Registration alone puts an `environment:` token on a worker.
-`--capabilities` and `$BAJUTSU_WORKER_CAPABILITIES` refuse that prefix at startup.
+Once registered, the worker prints `provider registered: devicefarm`. It advertises these routing
+tokens:
+
+- `environment:devicefarm`, which keeps plain runs off the worker
+- `host:<os>`, the token every worker advertises for its machine
+- `job:run-intent`, which says the worker can turn a fan-out job into a batch
+- `kind:device`, since every device the worker reserves is physical
+- `platform:android` and `platform:ios`, the platforms Device Farm serves
+
+It advertises no device-family token, since Device Farm picks a device by platform alone. A target
+that names `runsOn.ios.family` thus never routes to a Device Farm worker. Its jobs wait for a
+local worker that holds the family. Until one is live, they count in `bajutsu_unroutable_jobs`.
+
+A fan-out job requires its target's `platform:<p>` token and `job:run-intent`. It also requires its
+scenario's own `cap:` and `setting:` tokens. An iOS job adds its target's device-family tokens. It
+adds one `kind:<kind>` token per kind its runs take. A listed `runsOn.ios.kind` names those kinds.
+Without one, the target's driver implies the kind. An iOS target meant for Device Farm thus declares
+the scalar `kind: device`. A fan-out job requires no `host:` or `environment:` token. A worker from
+before BE-0484 lacks `job:run-intent` and leaves the job queued.
+
+A worker advertising `environment:devicefarm` leases a fan-out job and no other job. Plain runs thus
+never reach a Device Farm worker. A local worker serving the same platform may lease a fan-out job
+as well. Registration alone puts an `environment:` token on a worker. `--capabilities` and
+`$BAJUTSU_WORKER_CAPABILITIES` refuse that prefix at startup. They refuse `platform:` and `kind:` as
+well. A worker given one refuses to start and names the prefix.
 
 A fan-out job that no live worker can serve stays queued as unroutable, like any other job. A server
 with no queue has no worker to take the fan-out, so it refuses `POST /api/run-set`.
+
+The worker that leases a fan-out job decides where it runs. The same scenario may thus pass on a
+Simulator and fail on a cloud device. The worker records its environment in the run's provenance,
+as `workerEnvironment`. The report then names that environment. It also warns that another run of
+the job may land elsewhere.
 
 Unlike the headless submitter, the worker reserves one device per run through a device-selection
 filter. It needs no device-pool ARN.
@@ -353,11 +378,29 @@ workers remain a valid alternative to one worker with `maxJobConcurrency: N`. Th
 of the AWS environment, the source checkout, and the process.
 
 A worker whose `maxJobConcurrency` is above one runs each job in a **slot**. A slot is a thread that
-owns one leased job and its lease renewals. A slot also owns a workspace under `.slots/<n>/`, the
-package it uploads, and the job's log. Slots share nothing that changes. A workspace returns to the
-pool once its job has uploaded its evidence. The next job thus never reuses a tree that an earlier
-job still uploads from. Size the disk for one application binary per slot, plus the run trees still
-uploading.
+owns one leased job and its lease renewals. A slot also owns a workspace under `.slots/<n>/` and the
+job's log. The workspace holds the job's run output, and the application binary unless the job's
+`run-set` group stages one (see below). A workspace returns to the pool once its job has uploaded
+its evidence. The next job thus never reuses a tree that an earlier job still uploads from. Size the
+disk for one application binary per slot, one more per staged group under `.batch-groups/`, plus the
+run trees still uploading.
+
+The slots of one `run-set` fan-out share their uploads (BE-0484):
+
+- **The application upload.** The first slot to need the binary uploads it. The other slots wait
+  for that upload. A slot reuses it while any job with the same config, binary, platform, and target
+  is in flight.
+- **The test package.** A slot reuses a package of the same fan-out that holds its scenario. A
+  lifecycle hook that sets a launch environment turns that reuse off. The packaged config then
+  belongs to that one job.
+
+A fan-out with no uploaded bundle stages its scenario files in `.batch-groups/<group id>/`. The
+worker builds the package from that directory. The package thus holds every staged scenario of the
+fan-out. The worker removes the directory once the fan-out's last job on the worker has finished.
+When a shared upload fails, every slot that waited on it fails too. When Device Farm refuses a run
+on a reused upload, the slot uploads its own copy and retries. When that retry succeeds, the worker
+stops sharing and uploads once per job until it restarts. A retry that fails leaves sharing on. The
+same error codes cover other bad arguments, so a refusal alone never turns sharing off.
 
 Before it uploads anything, the worker checks each leased scenario against its `worker.yaml`. The
 check is the one `bajutsu run --worker-config` makes
@@ -371,42 +414,109 @@ check, since an earlier attempt already submitted that run.
 
 The server holds no budget of its own. It used to read a target's `cloudBatchBudget` and a request's
 `deviceBudget`; BE-0452 removed both. A request that still names
-`deviceBudget` gets a 400 error that points at `maxJobConcurrency`. The server's global, per-user,
-and per-org caps count queued jobs too. Those caps may still cut a large fan-out short.
+`deviceBudget` gets a 400 error that points at `maxJobConcurrency`.
+
+The server's concurrency caps apply to a fan-out's jobs at lease time (BE-0484). The caps are
+global, per user, and per org. A fan-out's queued job holds no slot under them, while a plain run
+waiting in the queue still holds one. A fan-out larger than the caps thus queues every scenario,
+and workers run the jobs in turns. A worker asks for every free slot in one lease request. The
+server fills those slots with jobs of one fan-out, up to the headroom the caps leave.
 
 ### Fanning a target out
 
 The Replay tab dispatches a fan-out from the browser
-([web UI](web-ui.md#replay--run-a-scenario-and-read-its-report)). Choose a device-cloud environment,
-pick scenarios, and press Run. The tab lists the *batch* environments that a live worker
-advertises; an `appium` grid is reached through the plain run request instead (BE-0452).
-It reads them from `GET /api/environments`. The response gives each environment's `name`, its `kind`
-(`batch` or `grid`), and its `liveWorkers` count. It carries no ARN or credential.
+([web UI](web-ui.md#replay--run-a-scenario-and-read-its-report)). Check **Fan out to workers**,
+pick scenarios, and press Run. The tab offers the checkbox for every target, a web target included.
 
 A `POST /api/run-set` request fans a target out. It needs the editor role, like `POST /api/run`.
-Its body names the `target` and the batch provider
-as `environment` (today `devicefarm`). An optional `scenarios` subset narrows the run:
+Its body names the `target`. An optional `scenarios` subset narrows the run:
 
 ```json
-{ "target": "showcase-compose", "environment": "devicefarm", "scenarios": ["firstlook.yaml", "controls.yaml"] }
+{ "target": "showcase-compose", "scenarios": ["firstlook.yaml", "controls.yaml"] }
 ```
 
 Omitting `scenarios` runs every scenario in the target's directory. Every requested name resolves to
 its scenario **before** any dispatch, so one unknown name fails the whole request closed rather than
-fanning out the good ones and erroring on the bad one. serve queues one job per scenario. The Device
-Farm workers lease the jobs as their budgets allow. serve refuses the request outright when it
-cannot honor it at all:
+fanning out the good ones and erroring on the bad one. serve queues one job per scenario. The
+workers serving the target's platform lease the jobs as their budgets allow. serve refuses the
+request outright when it cannot honor it at all:
 
-- a missing `environment`, or one that names no batch provider. `appium` is one of these: the plain
-  run request reaches a grid ([self-hosting](self-hosting.md));
-- a web target, which has no device to reserve;
-- a target with no `subject.path`;
+- any `environment` field. The server routes each job by its target's platform, so the request
+  names no placement;
+- a target whose platform is not `android`, `ios`, or `web`;
+- an Android or iOS target with no `subject.path`. A web target needs none, and no Device Farm
+  worker serves `platform:web`;
+- a job that no live worker can serve, while live workers drive its route. Each of those workers
+  lacks one of the scenario's `cap:` or `setting:` tokens. The response names the scenario. It
+  lists the absent tokens in `missing`. The whole request fails, and serve queues no job;
 - a config or scenario outside the config's directory, which the worker packages;
 - for a config on the server's disk, a server with no object store to deliver the archive through;
 - for a config on the server's disk, a path the archive cannot carry. A config path that leaves the
   directory is one, such as an absolute `paths.scenarios`. A `subject.path` or scenario under a
   left-out directory such as `tmp/` is another. The refusal spares an upload that would fail on
   the device cloud.
+- a `scenarios` list that names one scenario more than once.
+
+The jobs of one request form a **group** (BE-0484). The response names the group as `groupId`,
+beside the `jobIds` it queued:
+
+```json
+{ "groupId": "5f0c…", "jobIds": ["41", "42"] }
+```
+
+`GET /api/run-set/<groupId>` reads the group back. Each job carries its status, its run's
+`exitCode`, and its `runId`. The `conclusion` field sums up the group:
+
+| `conclusion` | when |
+|---|---|
+| `pending` | a job is still queued or leased |
+| `failure` | every job finished, and one that was not cancelled exited non-zero or reported no verdict |
+| `cancelled` | every other job exited with code 0, and one was cancelled |
+| `success` | every job finished with exit code 0 |
+
+A job whose `status` is `done` has finished, whatever its assertions found. The exit code carries
+the verdict. A continuous integration (CI) pipeline polls this route until `conclusion` leaves
+`pending`. A group holds every scenario the request named. Either each scenario becomes a queued
+job, or the request fails and queues none.
+
+A pipeline may name the group itself with `groupKey`. The key holds at most 128 characters of
+letters, digits, and `. _ / : -`. The key makes a retried request safe:
+
+- The same key with the same request returns the existing group and queues nothing new. Its
+  `jobIds` follow the order of the *first* request, not of the retry, so a pipeline that reorders
+  its scenario list cannot pair the two by position.
+- The same key with a different request gets a 409 error.
+
+Two requests count as the same when they agree on each of these:
+
+- the target
+- the set of scenarios, in any order
+- the config
+- the application
+- the run label
+
+The comparison leaves the placement out, since a request names none. A key registered before
+BE-0484 unit 5 also covered the environment. Repeating that key after the upgrade returns 409.
+
+A GitHub Actions job builds its key from four variables:
+
+- `GITHUB_RUN_ID`
+- `GITHUB_RUN_ATTEMPT`
+- `GITHUB_JOB`
+- `strategy.job-index`, the index of its matrix leg
+
+A retry within one attempt then reuses the group, and a deliberate re-run gets a new one.
+
+`POST /api/run-set/<groupId>/cancel` cancels every unfinished job of the group. Each job goes
+through the same cancel as `POST /api/jobs/<id>/cancel`. The route needs the editor role in the
+group's org. The response lists the jobs it cancelled. A queued job becomes `cancelled` at once. A
+leased job keeps its `leased` status until its worker stops the run. Until then, `conclusion`
+stays `pending`.
+
+Both routes answer 404 for a group of an org the caller does not belong to. The cancel route also
+answers 404 to a member below the editor role in the group's org. A `GET` still reads that group. A pipeline reaches the
+groups of its own org alone, and may read them but not cancel them. The machine allowlist opens
+`POST /api/run-set` and `GET /api/run-set/<groupId>`. The group cancel stays a person's act.
 
 ### Restart and lease loss
 
@@ -464,7 +574,9 @@ directive 1).
 Since the worker dispatch (BE-0448), `work_dir` is the job's bundle directory. The request names
 `request.config` and `request.scenario` by their paths inside it. `request.app_path` keeps the
 target's `subject.path` as written. A hook that reads the binary resolves a relative value against
-`ctx.work_dir`, not its own working directory. A worker that runs from a source checkout puts the
+`ctx.work_dir`, not its own working directory. The slots of one `run-set` fan-out may share one
+`work_dir` (BE-0484). Other jobs then reuse the package built from it. A hook must treat
+`ctx.work_dir` as read-only. A worker that runs from a source checkout puts the
 bundle under `bundle/` inside the package. A `pre_test_commands` command that names a file beside
 the config needs the `bundle/` prefix on the Device Farm machine.
 

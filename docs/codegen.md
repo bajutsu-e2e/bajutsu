@@ -107,6 +107,7 @@ the selector at `el("UNSUPPORTED_SELECTOR")` — an honest gap, not a wrong gues
 | `delete { count }` | `.tap()` + `count` delete keypresses (`typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count:))`, BE-0265) |
 | `select` | `.tap()` + select-all (BE-0265) |
 | `copy` | `app.typeKey("c", modifierFlags: .command)` |
+| `paste` | `.tap()`, a `.press(forDuration: 0.6)` unless the edit menu is already up, then a `waitForExistence(timeout: 5.0)` on `app.staticTexts["Paste"]` and its `.tap()` — the edit menu, as the driver uses it; the label is English, so an app localized elsewhere needs its own |
 | `back` | taps the OS navigation back button — the same element (and shared constant) the XCUITest driver taps at run time (BE-0210) |
 | `navigate` | `// TODO: navigate(url: …) — web-only; not generated` (BE-0464) |
 | `sleep` | `// fixed pause: <reason>` + `Thread.sleep(forTimeInterval: <seconds>)` |
@@ -223,6 +224,7 @@ test.describe('Components', () => {
 | `delete { count }` | focus + `count` × `page.keyboard.press('Backspace')` (BE-0265) |
 | `select` | `await loc.selectText()` — the web peer of select-all (BE-0265) |
 | `copy` | `await page.keyboard.press('Control+c')` |
+| `paste` | focus + `await page.keyboard.press('ControlOrMeta+v')` |
 | `back` | `await page.goBack()` — browser history, the same primitive the driver's `back()` uses (BE-0210) |
 | `navigate` | `await page.goto(new URL('<value>', BASE_URL).toString())` — resolves the value against `BASE_URL` exactly as the driver resolves it against `baseUrl`; a value with a `${...}` token becomes a `// TODO`, since the generated test has no binding to substitute (BE-0464) |
 | `sleep` | `// fixed pause: <reason>` + `await page.waitForTimeout(<milliseconds>)` |
@@ -630,7 +632,7 @@ rather than a broadened match that drops a constraint.
 |---|---|
 | `id` | `byId('…')` — `By.res(Pattern.compile("(.*:id/)?" + Pattern.quote(id)))` |
 | `label` | `By.text('…')` |
-| `value` | `By.desc('…')` (the `content-desc` channel the driver reads) |
+| `value` | `By.desc('…')` (the `content-desc` channel the driver reads, except on an editable field, whose `value` the driver reads from `text` (#2388); this emitter does not mirror that yet) |
 | `idMatches` (fnmatch glob) | `By.res(Pattern.compile('…'))` — a glob is a whole-string match, so `Pattern` full-match is faithful (`*` → `.*`, `?` → `.`; a `[…]` class → `// TODO`) |
 | `labelMatches` (metacharacter-free) | `By.textContains('…')` — a plain substring, matching the DSL's `re.search`; a real regex → `// TODO` (see below) |
 | `traits` / `within` / `index` / compound | `// TODO` |
@@ -652,6 +654,7 @@ same limit the XCUITest emitter hits for NSPredicate `MATCHES`), so it stays a `
 | `delete { count }` | `.click()` + `count` × `device.pressKeyCode(KeyEvent.KEYCODE_DEL)` (BE-0265) |
 | `select` | `.click()` + `device.pressKeyCode(KeyEvent.KEYCODE_A, KeyEvent.META_CTRL_ON)` (BE-0265) |
 | `copy` | `device.pressKeyCode(KeyEvent.KEYCODE_C, KeyEvent.META_CTRL_ON)` |
+| `paste` | `.click()` + `device.pressKeyCode(KeyEvent.KEYCODE_V, KeyEvent.META_CTRL_ON)` |
 | `back` | `device.pressBack()` — UI Automator's native system back, the peer of the adb driver's `keyevent 4` (BE-0210) |
 | `navigate` | `// TODO: navigate(url: …) — web-only; not generated` (BE-0464) |
 | `sleep` | `// fixed pause: <reason>` + `Thread.sleep(<milliseconds>)` |
@@ -664,6 +667,7 @@ same limit the XCUITest emitter hits for NSPredicate `MATCHES`), so it stays a `
 | `wait { until: gone }` | `awaitGone(<by>, <ms>L)` — the same, on `Until.gone` |
 | `wait { until: screenChanged/settled }` | `device.waitForIdle(<ms>L)` — `findObject` does not auto-wait, so this is a real condition wait, not a bare comment |
 | `relaunch` | `launch(extras)` (re-issues the launch intent) |
+| `setClipboard` / `clearClipboard` | `clipboard("set", "…")` / `clipboard("clear")` — the same `am broadcast` to the BajutsuAndroid clipboard receiver that `run` sends (BE-0233), so the app must embed BajutsuAndroid |
 | `doubleTap` / `rotate` | `// TODO` (no UI Automator gesture) |
 | `handleSystemAlert` | `// TODO` (iOS-only; tap the system dialog directly on Android) |
 
@@ -678,11 +682,16 @@ same limit the XCUITest emitter hits for NSPredicate `MATCHES`), so it stays a `
 | `selected` | `assertTrue(device.findObject(<by>).isSelected)` |
 | `count` (equals/atLeast/atMost) | `device.findObjects(<by>).size` with `assertEquals` / `assertTrue(size >= n)` / `assertTrue(size <= n)` |
 | `attribute` | `// TODO: attribute(name: "href", equals: "/docs") — web-only; not generated` (BE-0466) |
+| `clipboard` (equals/matches) | `assertEquals("…", clipboard("get"))` / `assertTrue(Regex("…").containsMatchIn(clipboard("get")))` |
 
-The adb backend has no network-interception surface, so every network assertion (`request` /
-`requestSequence` / `responseSchema`) and the device-control family (`setLocation` / `push` /
-`setClipboard` / …) emit a labeled `// TODO` naming why, exactly as the XCUITest target does for its
-own gaps.
+An app that embeds no BajutsuAndroid clipboard receiver leaves the broadcast unhandled. The
+`clipboard(…)` helper then fails the test by naming that cause, rather than reading back an empty
+clipboard.
+
+Every network assertion (`request` / `requestSequence` / `responseSchema`) emits a labeled `// TODO`
+naming why, because the adb backend has no network-interception surface. The rest of the
+device-control family emits a labeled `// TODO` as well. `setLocation` works under `run`, but no
+generated route exists for it. `push` has no adb route at all. The XCUITest target labels its own gaps the same way.
 
 ## Name generation
 

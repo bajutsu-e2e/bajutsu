@@ -2,8 +2,8 @@
 
 Every grid cell shares one identifier, `PXGGridLayout-Info`, disambiguated by ordinal `index` — the
 same "nth of multiple matches" mechanism `handleSystemAlert` relies on for a SpringBoard button no
-author-assignable identifier ever names. iOS-only: only the resident-runner XCUITest backend
-advertises `Capability.SELECT_PHOTOS`.
+author-assignable identifier ever names. The resident-runner XCUITest backend and adb (Android's
+photo picker, covered in `test_adb_photo_picker.py`) advertise `Capability.SELECT_PHOTOS`.
 
 Covers the DSL parse + validation, the orchestrator dispatch to the driver, the fake's resolution
 discipline, and the preflight rejection on a backend without the capability.
@@ -13,9 +13,9 @@ from __future__ import annotations
 
 import pytest
 
+from bajutsu.common.backends import capabilities_for
 from bajutsu.common.capability.capability_preflight import unsupported
 from bajutsu.common.drivers import base
-from bajutsu.common.drivers.adb import AdbDriver
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.orchestrator import _action_of, run_scenario
 from bajutsu.common.scenario import load_scenarios
@@ -109,8 +109,10 @@ def test_preflight_rejects_a_backend_without_the_select_photos_capability() -> N
     scenario = load_scenarios(
         "- name: t\n  steps:\n    - selectPhotos: { indices: [0], timeout: 10 }\n"
     )[0]
-    assert base.Capability.SELECT_PHOTOS not in AdbDriver.CAPABILITIES
-    reasons = unsupported(scenario, AdbDriver.CAPABILITIES)
+    # The web backend has no system photo picker to drive.
+    web = capabilities_for("playwright")
+    assert base.Capability.SELECT_PHOTOS not in web
+    reasons = unsupported(scenario, web)
     assert any("selectPhotos" in r for r in reasons)
 
 

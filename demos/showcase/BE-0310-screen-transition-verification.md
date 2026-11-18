@@ -1,14 +1,14 @@
 **English** · [日本語](BE-0310-screen-transition-verification.ja.md)
 
-# BE-0310 — on-device verification: the screen-transition signal
+# BE-0310: on-device verification of the screen-transition signal
 
-This is the on-device confirmation
+This file describes the on-device confirmation procedure that
 [BE-0310](../../roadmaps/BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness.md)
 names as its gate (Unit 5): whether `BajutsuScreen`'s `viewDidAppear` swizzle actually reports a
 transition, on both showcase toolkits, for the transitions the readiness gate and the `settled` wait
 now consult — and whether it stays silent for the two cases it deliberately does not cover. The fast gate
-(`make check`) runs no Simulator, so this procedure is run by hand on a Mac; record the outcome in
-this file (or a linked follow-up comment on the item) once you have.
+(`make check`) runs no Simulator, so you run this procedure by hand on a Mac. Once you have, record the outcome in
+this file (or a linked follow-up comment on the item).
 
 ## Prerequisites
 
@@ -19,7 +19,7 @@ this file (or a linked follow-up comment on the item) once you have.
   [`AppDelegate.swift`](ios/uikit/Sources/AppDelegate.swift)), which now also activates
   `BajutsuScreen` — no app-code change is needed to run this procedure.
 
-## What to confirm
+## Items to confirm
 
 For **both** `showcase-swiftui` and `showcase-uikit`:
 
@@ -40,7 +40,7 @@ For **both** `showcase-swiftui` and `showcase-uikit`:
      a custom `AnyTransition` (SwiftUI) to a scratch screen, observe, then discard the change —
      don't commit a permanent showcase screen for a one-off check.
 
-## Procedure A — via `bajutsu run` + the two new debug log lines
+## Procedure A: confirm with `bajutsu run` and the two new debug log lines
 
 BE-0310 added two `_logger.debug(...)` lines for exactly this confirmation:
 `bajutsu.platform_lifecycle.readiness` logs `"readiness satisfied by the screenChanged signal"`
@@ -62,10 +62,10 @@ main()
 
 Repeat with `--target showcase-uikit`. Grep the run's output for the two debug lines above; their
 presence confirms the signal decided readiness/settled instead of the tree-diff fallback for that
-run. Their *absence* on a run that should have transitioned (push/modal/tab) is the failure signal
+run. Their *absence* on a run that should have transitioned (push, modal, or tab) is the failure signal
 this procedure exists to catch.
 
-## Procedure B — the SwiftUI XCUITest scaffold
+## Procedure B: confirm with the SwiftUI XCUITest scaffold
 
 [`ios/swiftui/UITests/BE0310ScreenTransitionSignalUITests.swift`](ios/swiftui/UITests/BE0310ScreenTransitionSignalUITests.swift)
 is a hand-written (not `bajutsu codegen`-generated) scaffold that stands in for the real Python
@@ -88,9 +88,9 @@ under the same `UITests` target's `sources:`.)
 one (only SwiftUI's `BajutsuShowcaseSwiftUIUITests` exists, see its `project.yml`). Procedure A
 (via `bajutsu run` + the debug log lines) is UIKit's primary confirmation path; adding a mirrored
 `UITests` target to the UIKit project is a reasonable follow-up if a XCUITest-based check is wanted
-there too, but is out of this item's scope to add blind.
+there too, but adding it blind is out of this item's scope.
 
-## Recording the outcome
+## Record the outcome
 
 Once run, update
 [BE-0310's Progress checklist](../../roadmaps/BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness.md#progress) —

@@ -1,4 +1,4 @@
-"""Text-editing steps: select / clear / delete / copy (BE-0265).
+"""Text-editing steps: select / clear / delete / copy (BE-0265) and paste.
 
 Verified through the orchestrator's dispatch (FakeDriver records the driver calls) and the
 selection-state contract `copy` relies on — `copy` fails deterministically without a prior
@@ -160,3 +160,34 @@ def test_one_selection_can_be_copied_twice() -> None:
     )
     assert ok, failure
     assert [a[0] for a in actions].count("copy_selection") == 2
+
+
+def test_paste_focuses_the_field_then_pastes() -> None:
+    ok, actions, failure = _run(
+        "    - paste: { into: { id: form.note } }\n", [_field("form.note", "hello")]
+    )
+    assert ok, failure
+    assert [a[0] for a in actions] == ["tap", "paste"]
+
+
+def test_paste_needs_no_prior_selection() -> None:
+    # Unlike `copy`, paste inserts at the caret: a clipboard seeded by `setClipboard` is pasted with
+    # no `select` before it.
+    ok, actions, failure = _run(
+        "    - paste: { into: { id: form.note } }\n    - paste: { into: { id: form.note } }\n",
+        [_field("form.note", "")],
+    )
+    assert ok, failure
+    assert [a[0] for a in actions].count("paste") == 2
+
+
+def test_paste_replaces_and_so_invalidates_the_selection() -> None:
+    # Paste replaces the selection it lands on, so a `copy` after it has nothing selected to copy.
+    ok, _actions, failure = _run(
+        "    - select: { into: { id: form.note } }\n"
+        "    - paste: { into: { id: form.note } }\n"
+        "    - copy: {}\n",
+        [_field("form.note", "hello")],
+    )
+    assert not ok
+    assert failure is not None and "selection" in failure

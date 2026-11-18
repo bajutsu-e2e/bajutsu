@@ -16,38 +16,55 @@
 ## Introduction
 
 `bajutsu/serve/operations.py` has grown into a 1,376-line, roughly 669-statement god-module that
-answers every `serve` endpoint from one file. This item splits it along the tab/resource axes the
-web UI itself already exposes, into a set of cohesive modules, and tightens the module's
-concentration of `Any`-typed parameters along the way.
+answers every `serve` endpoint from one file. This item splits the module into a set of cohesive
+modules along the tab and resource axes that the web UI itself already exposes. Along the way, the
+split also tightens the module's concentration of `Any`-typed parameters.
 
 ## Motivation
 
-`operations.py`'s own module docstring describes its role precisely: "the orchestration behind
-each serve endpoint, lifted out of the stdlib HTTP handler so the local stdlib server and the
+`operations.py`'s own module docstring describes its role precisely: "the orchestration behind each
+serve endpoint, lifted out of the stdlib HTTP handler so the local stdlib server and the
 hosted-backend FastAPI control plane share **one** implementation." That framework-agnostic-facade
-design is sound (it is what gives local/self-hosted and cloud-hosted `serve` parity — see
-BE-0011 and BE-0051), but the facade itself has become one undifferentiated file. Reading top to
-bottom, it answers config/provider/API-key management, doctor/preflight checks, live-log SSE
-streaming, run/record/crawl dispatch, config-bundle upload, capture-session management, scenario
-resolution, and enrichment — each a distinct resource area with its own section comment already
-marking the boundary (e.g. `# --- Doctor / preflight (BE-0024) ---` at
-`bajutsu/serve/operations.py:464`, `# --- Capture (BE-0012) ---` at `:1042`). A single file this
-size is slow to navigate, concentrates nearly all of the module's `Any` typing (52 occurrences)
-in one place regardless of which resource a change touches, and means every contributor working
-on any one `serve` feature edits the same file, which increases merge-conflict surface for
-parallel sessions (see `docs/ai-development.md`'s working-in-parallel guidance). This is a size-L
-effort: the module is large, but the resource boundaries are already visible in its own comments,
-so the split is a matter of relocating already-cohesive groups of functions, not redesigning the
-facade's public contract.
+design is sound. It is what gives local/self-hosted and cloud-hosted `serve` parity (see BE-0011 and
+BE-0051). The facade itself, however, has become one undifferentiated file.
+
+Reading the file top to bottom, it answers eight resource areas:
+
+- config, provider, and API-key management
+- doctor and preflight checks
+- live-log SSE streaming
+- run, record, and crawl dispatch
+- config-bundle upload
+- capture-session management
+- scenario resolution
+- enrichment
+
+Each area has its own section comment that already marks the boundary (for example
+`# --- Doctor / preflight (BE-0024) ---` at `bajutsu/serve/operations.py:464` and
+`# --- Capture (BE-0012) ---` at `:1042`).
+
+A single file this size causes three problems:
+
+- It is slow to navigate.
+- It concentrates nearly all of the module's `Any` typing (52 occurrences) in one place, regardless of
+  which resource a change touches.
+- Every contributor working on any one `serve` feature edits the same file, which increases the
+  merge-conflict surface for parallel sessions (see `docs/ai-development.md`'s working-in-parallel
+  guidance).
+
+The effort is size L. The module is large, but the resource boundaries are already visible in its own
+comments. The split therefore relocates already-cohesive groups of functions, and it does not
+redesign the facade's public contract.
 
 ## Detailed design
 
-The refactor is behavior-preserving: every function currently exported from `operations.py` keeps
-its signature and behavior, so both HTTP shells (the local stdlib server and the hosted FastAPI
-control plane) that call into it need no changes beyond their import paths. This is the concrete
-counterpart to the broader serve-scope-boundary item, which addresses *what* belongs in `serve`
-at all; this item addresses *how* what already belongs there is organized. The split follows the
-resource axes already implicit in the file's section comments:
+The refactor is behavior-preserving. Every function currently exported from `operations.py` keeps its
+signature and behavior, so both HTTP shells that call into it need no changes beyond their import
+paths. The two shells are the local stdlib server and the hosted FastAPI control plane.
+
+The serve-scope-boundary item is the broader design-level counterpart. That item addresses *what*
+belongs in `serve` at all, and this item addresses *how* what already belongs there is organized. The
+split follows the resource axes already implicit in the file's section comments:
 
 - **Config/provider/API-key module** — `config_info`, `bind_config`, `bind_git_config`,
   `set_api_key`, `set_provider`, `api_key_info`, `provider_info`, `_valid_key_env_name`,
@@ -75,32 +92,32 @@ resource axes already implicit in the file's section comments:
 - **Enrichment module** — `start_enrich` under its own delimited section
   (`bajutsu/serve/operations.py:1288`–`1376`).
 
-Each new module keeps the same `(payload, status)` return convention and takes `ServeState` plus
-already-parsed inputs, matching the existing contract described in the module's docstring. A thin
-`operations/__init__.py` (or equivalent) re-exports the full public surface so callers migrate
-gradually rather than in one atomic rename. Tightening the `Any`s is scoped per new module as it's
-extracted — each split is a natural point to replace a still-`Any` parameter (typically JSON
-request bodies) with a `TypedDict` or a narrower type, without doing so across the whole facade at
-once.
+Each new module keeps the same `(payload, status)` return convention. It takes `ServeState` plus
+already-parsed inputs, which matches the existing contract described in the module's docstring. A thin
+`operations/__init__.py` (or equivalent) re-exports the full public surface, so callers migrate
+gradually and not in one atomic rename.
+
+The `Any` tightening is scoped per new module as the module is extracted. Each split is a natural
+point to replace a still-`Any` parameter (typically a JSON request body) with a `TypedDict` or a
+narrower type, and the work need not touch the whole facade at once.
 
 ## Alternatives considered
 
-- **Leave `operations.py` as one file and rely on its section comments for navigation.** Rejected:
-  the comments already exist and demonstrably have not prevented the file from growing to 1,376
-  lines; comments do not reduce merge-conflict surface or make any one resource area
-  independently reviewable.
-- **Split by HTTP verb (GET/POST) rather than by resource.** Rejected: a verb-based split would
-  scatter a single resource's read and write operations (e.g. `read_scenario` and `save_scenario`)
-  across different files, which is less cohesive for a contributor working on one feature than the
-  resource-based split above.
-- **Rewrite the facade as classes (one per resource) instead of module-level functions.**
-  Rejected: the existing function-based, explicit-`ServeState`-parameter style is simple to test
-  and matches the rest of the codebase's conventions; introducing classes here would be a second,
-  unrelated design change bundled into what should be a pure reorganization.
-- **Do the split and the `Any`-tightening as two separate efforts.** Considered, but rejected in
-  favor of tightening incrementally within each split: waiting for a dedicated typing pass after
-  the split lands would mean re-reading every relocated function a second time, whereas tightening
-  the type as each cohesive group is extracted is a natural, low-cost addition to the same change.
+- **Leave `operations.py` as one file and rely on its section comments for navigation.** Rejected.
+  The comments already exist, and the file has grown to 1,376 lines regardless. Comments do not reduce
+  the merge-conflict surface, and they do not make any one resource area independently reviewable.
+- **Split by HTTP verb (GET/POST) rather than by resource.** Rejected. A verb-based split would
+  scatter a single resource's read and write operations across different files, such as
+  `read_scenario` and `save_scenario`. A contributor working on one feature finds that less
+  cohesive than the resource-based split above.
+- **Rewrite the facade as classes (one per resource) instead of module-level functions.** Rejected.
+  The existing function-based style, with an explicit `ServeState` parameter, is simple to test and
+  matches the rest of the codebase's conventions. Introducing classes here would bundle a second,
+  unrelated design change into what should be a pure reorganization.
+- **Do the split and the `Any` tightening as two separate efforts.** Considered, and rejected in favor
+  of tightening incrementally within each split. A dedicated typing pass after the split lands would
+  mean re-reading every relocated function a second time. Tightening the type as each cohesive group is
+  extracted is a natural, low-cost addition to the same change.
 
 ## Progress
 

@@ -33,6 +33,8 @@ from bajutsu.common.backend_cli import simctl
 from bajutsu.common.backends import PLATFORMS
 from bajutsu.common.capability.worker_capability import (
     APPIUM,
+    BATCH_PROVIDER_PLATFORMS,
+    BATCH_PROVIDERS,
     DEVICEFARM_HOST,
     LOCAL,
     RESERVED_ROUTING_REASON,
@@ -47,10 +49,12 @@ from bajutsu.common.run_meta.object_store import content_type_for
 from bajutsu.serve import InMemoryLogBus
 from bajutsu.serve.capabilities import (
     MACHINE_ID_ENV,
+    RUN_INTENT_CAPABILITY,
     WORKER_CAPABILITIES_ENV,
     devicectl_capabilities,
     environment_capability,
     host_capability,
+    kind_capability,
     machine_capability,
     parse_capabilities,
     platform_capability,
@@ -62,6 +66,7 @@ from bajutsu.serve.helpers import unsafe_env_name, valid_sha256, warn_unsafe_env
 from bajutsu.serve.jobs import _runs_dir_of
 from bajutsu.serve.operations.composition import materialize_composition, place_overrides
 from bajutsu.serve.operations.worker import (
+    MAX_LEASE_JOBS,
     WORKER_LOG_BATCH_BYTES,
     WORKER_LOG_MAX_LINE_CHARS,
     WORKER_LOG_MAX_LINES,
@@ -69,7 +74,12 @@ from bajutsu.serve.operations.worker import (
 from bajutsu.serve.server.db import cancelled_job_result
 from bajutsu.serve.server.one_shot import environment_refusal
 from bajutsu.serve.server.worker_job import CancelRelay as _CancelRelay
-from bajutsu.serve.server.worker_job import WorkerIO, _materialize, execute_job_spec
+from bajutsu.serve.server.worker_job import (
+    WorkerIO,
+    _materialize,
+    execute_job_spec,
+    resolve_run_intent,
+)
 from bajutsu.serve.state import Job
 from bajutsu.serve.upload_artifacts import ARTIFACT_KINDS, OVERRIDE_KINDS, ArtifactOverrides
 from bajutsu.serve.uploads import find_bundle_config, materialize_bundle, validate_bundle_config
@@ -250,11 +260,13 @@ def _advertised_capabilities(
                 param_hint="--platform",
             )
         # The grid owns the device and its host, so a job routed here requires the environment
-        # alone (BE-0452); advertising more would only let a stray local job match. What the live
-        # route can run and apply rides along (BE-0467), and only a grid job ever names that route.
+        # (BE-0452); advertising a `platform:*` token would only let a stray local job match. What
+        # the live route can run and apply rides along (BE-0467), and only a grid job ever names
+        # that route. The run-intent token (BE-0484) rides along too: no plain job requires it.
         return sorted(
             {
                 environment_capability(APPIUM),
+                RUN_INTENT_CAPABILITY,
                 *advertised_route_tokens(worker_routes((), appium=True)),
             }
         )
@@ -265,8 +277,17 @@ def _advertised_capabilities(
                 "it takes no --platform; the phone belongs to the provider's host",
                 param_hint="--platform",
             )
+        # Its provider's platforms, on physical devices alone, take a `run-set` job (BE-0484). No
+        # family token: the provider selects devices by platform alone.
         return sorted(
-            {environment_capability(cap.environment), host_token, *parse_capabilities(override)}
+            {
+                environment_capability(cap.environment),
+                RUN_INTENT_CAPABILITY,
+                host_token,
+                kind_capability("device"),
+                *map(platform_capability, BATCH_PROVIDER_PLATFORMS.get(cap.environment, ())),
+                *parse_capabilities(override),
+            }
         )
     platforms = [p.strip() for p in (platform or "ios").split(",") if p.strip()]
     # Fail loudly on a typo'd platform (e.g. `--platform iso`) rather than silently advertising a
@@ -294,7 +315,7 @@ def _advertised_capabilities(
             # when worker.yaml says this Mac drives attached iPhones.
             routes=worker_routes(drivable, real_devices=cap.real_devices),
         )
-        | {host_token}
+        | {host_token, RUN_INTENT_CAPABILITY}
     )
 
 
@@ -309,6 +330,12 @@ def _device_reader(
     """
     if not worker_capability.is_local or platform_capability("ios") not in caps:
         return None
+    if worker_capability.real_devices is False:
+        # A Simulator-only Mac keeps an iOS device run of a `run-set` off itself (BE-0484).
+        def read(*, on_error: Callable[[str], None]) -> set[str]:
+            return devicectl_capabilities(on_error=on_error) - {kind_capability("device")}
+
+        return _DeviceTokens(read)
     return _DeviceTokens()
 
 
@@ -667,12 +694,38 @@ def _serve_leases(
 
 def _lease(url: str, auth_token: str | None, wid: str, caps: list[str]) -> dict[str, Any] | None:
     """Ask the control plane for one job; the lease body, or None when there is nothing to run."""
-    try:
-        code, body = _post_json(
-            f"{url}/api/worker/lease",
-            {"worker_id": wid, "capabilities": caps},
-            token=auth_token,
+    body = _post_lease(url, auth_token, {"worker_id": wid, "capabilities": caps})
+    if not isinstance(body, dict) or not body.get("spec"):
+        return None
+    return dict(body)
+
+
+def _lease_bundle(
+    url: str, auth_token: str | None, wid: str, caps: list[str], free: int
+) -> list[dict[str, Any]]:
+    """Ask for up to *free* jobs at once (BE-0484); the lease bodies, empty when there is none.
+
+    The control plane fills them from one `run-set` group, so the slots that run them can share
+    that group's uploads.
+    """
+    body = _post_lease(url, auth_token, {"worker_id": wid, "capabilities": caps, "maxJobs": free})
+    if body is None:
+        return []
+    # A control plane from before BE-0484 ignores `maxJobs` and answers one body. Its job is leased
+    # already, so dropping the body would strand the job until its lease lapsed.
+    items = body if isinstance(body, list) else [body]
+    bodies = [dict(b) for b in items if isinstance(b, dict) and b.get("spec")]
+    if len(bodies) != len(items):
+        _logger.warning(
+            "unexpected lease body, %d item(s) not run: %.200s", len(items) - len(bodies), body
         )
+    return bodies
+
+
+def _post_lease(url: str, auth_token: str | None, request: dict[str, Any]) -> Any:
+    """POST a lease request; the decoded body, or None on a refusal, a failure, or an empty queue."""
+    try:
+        code, body = _post_json(f"{url}/api/worker/lease", request, token=auth_token)
     except (URLError, OSError) as e:
         _logger.warning("lease request failed: %s", e)
         return None
@@ -684,10 +737,7 @@ def _lease(url: str, auth_token: str | None, wid: str, caps: list[str]) -> dict[
         # error page is kilobytes of HTML — one refusal must stay one readable line.
         _logger.warning("lease refused with HTTP %s: %.200s", code, body)
         return None
-
-    if code == 204 or not body.get("spec"):
-        return None
-    return dict(body)
+    return None if code == 204 else body
 
 
 def _serve_slots(
@@ -708,7 +758,9 @@ def _serve_slots(
     """Lease jobs into at most *slots* concurrent slots until stopped; the slot model (BE-0448).
 
     A job counts against *slots* from its lease until its result is posted, so a slot that is only
-    uploading evidence frees its place, and no lease request goes out while every place is taken. The
+    uploading evidence frees its place, and no lease request goes out while every place is taken.
+    Each request asks for every free place, which the control plane fills from one `run-set` group
+    when it can (BE-0484). The
     slot's own heartbeat keeps the worker live meanwhile, so its advertised set never changes. Each
     slot runs on a thread of its own, in a workspace no other running or uploading job shares.
 
@@ -719,6 +771,7 @@ def _serve_slots(
     places = threading.Condition()
     busy = 0
     dirs = _SlotDirs(work)
+    groups = _GroupDirs(work)
     threads: list[threading.Thread] = []
 
     def free() -> None:
@@ -727,40 +780,43 @@ def _serve_slots(
             busy -= 1
             places.notify_all()
 
+    slot: dict[str, Any] = {
+        "dirs": dirs,
+        "groups": groups,
+        "free": free,
+        "shutdown": shutdown,
+        "url": url,
+        "auth_token": auth_token,
+        "wid": wid,
+        "heartbeat_interval": heartbeat_interval,
+        "worker_file": worker_file,
+        "environment": environment,
+    }
+
     try:
         while not (stopped() or shutdown.stopping):
             with places:
-                if busy >= slots:
+                free_slots = slots - busy
+                if free_slots <= 0:
                     places.wait(timeout=poll_interval)
                     continue
-            body = _lease(url, auth_token, wid, caps)
-            if body is None:
+            # The control plane refuses a larger ask; the slots past it fill on the next poll.
+            bodies = _lease_bundle(url, auth_token, wid, caps, min(free_slots, MAX_LEASE_JOBS))
+            if not bodies:
                 time.sleep(poll_interval)
                 continue
-            with places:
-                busy += 1
-            thread = threading.Thread(
-                target=_run_slot,
-                kwargs={
-                    "body": body,
-                    "dirs": dirs,
-                    "free": free,
-                    "shutdown": shutdown,
-                    "url": url,
-                    "auth_token": auth_token,
-                    "wid": wid,
-                    "heartbeat_interval": heartbeat_interval,
-                    "worker_file": worker_file,
-                    "environment": environment,
-                },
-                daemon=True,
-            )
-            try:
-                thread.start()
-            except BaseException:
-                free()  # no slot ever owned the place, so give it back here
-                raise
-            threads = [t for t in threads if t.is_alive()] + [thread]
+            for body in bodies:
+                with places:
+                    busy += 1
+                thread = threading.Thread(
+                    target=_run_slot, kwargs={"body": body, **slot}, daemon=True
+                )
+                try:
+                    thread.start()
+                except BaseException:
+                    free()  # no slot ever owned the place, so give it back here
+                    raise
+                threads = [t for t in threads if t.is_alive()] + [thread]
     finally:
         # Whatever ends the loop, an exception included, the leases in flight lapse as on a stop.
         shutdown.request()
@@ -773,6 +829,7 @@ def _run_slot(
     *,
     body: dict[str, Any],
     dirs: _SlotDirs,
+    groups: _GroupDirs,
     free: Callable[[], None],
     shutdown: _SlotShutdown,
     url: str,
@@ -800,11 +857,31 @@ def _run_slot(
     # Read inside the try, so a malformed lease body still gives the place back.
     job_id = str(body.get("job_id"))
     slot_work: Path | None = None
+    group: _GroupDir | None = None
     lost = threading.Event()
     try:
-        spec = body["spec"]
+        spec = dict(body["spec"])
+        # The lease names the job's group apart from its spec (BE-0484); the provider shares the
+        # job's uploads under them. An override job runs from a tree of its own
+        # (`_override_workspace`) whose binary the group's compatibility key does not digest, so it
+        # shares neither the group's uploads nor its staging directory.
+        if spec.get("overrides") is None:
+            spec.update({k: body[k] for k in _SHARE_FIELDS if body.get(k)})
         typer.echo(f"  leased job {job_id}")
         slot_work = dirs.acquire()
+        # A job that ships its files stages them with its group's; a bundle's tree already holds
+        # every scenario of the target, and only a batch run packages the group's directory.
+        if (
+            spec.get("group_id")
+            and spec.get("materials")
+            and spec.get("bundle") is None
+            and environment in BATCH_PROVIDERS
+        ):
+            try:
+                group = groups.acquire(str(spec["group_id"]))
+            except (OSError, RuntimeError):
+                # Staged alone, the job is still correct; it only loses the group's shared package.
+                _logger.warning("job %s runs without its group's directory", job_id, exc_info=True)
         io = PresignedWorkerIO(
             url=url,
             auth_token=auth_token,
@@ -837,6 +914,7 @@ def _run_slot(
                 claim_check=functools.partial(
                     _claim_refusal, body.get("capabilities"), worker_file
                 ),
+                group=group,
             )
         finally:
             shutdown.detach(lost)
@@ -852,12 +930,18 @@ def _run_slot(
     except Exception:  # one slot's failure never takes the worker, or its other slots, down
         _logger.exception("slot for job %s failed", job_id)
     finally:
+        # First, so a failing cleanup below never leaves the group's directory held.
+        if group is not None:
+            groups.release(group)
         post_done()
         if slot_work is not None:
             # The slot held this one job, so every cloud-batch tree under it is this job's: removed
             # on every exit, a failed run included, before the directory goes back to the pool.
             shutil.rmtree(slot_work / _BATCH_JOBS_DIR, ignore_errors=True)
             dirs.release(slot_work)
+
+
+_SHARE_FIELDS = ("group_id", "compat_key")
 
 
 # Where a slot worker keeps one workspace per slot under its own working directory (BE-0448). The
@@ -895,6 +979,58 @@ class _SlotDirs:
         """Give *path* back to the pool once its job is entirely done."""
         with self._lock:
             self._free.add(int(path.name))
+
+
+# Where a slot worker stages the files a `run-set` group's jobs ship, one directory per group
+# (BE-0484). Kept apart from `.slots`, which each hold one job's run output.
+_GROUP_DIRS = ".batch-groups"
+
+
+class _GroupDir:
+    """One group's staging directory, and how many slots hold a job of the group."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self.lock = threading.Lock()
+        self.holders = 0
+
+
+class _GroupDirs:
+    """The staging directories of a slot worker, one per `run-set` group whose jobs it holds.
+
+    The jobs of a group that ship their files stage them in one directory, so a package built for one
+    job holds the scenarios of the others (BE-0484). The directory lives while a slot holds a job of
+    the group, and goes once the last of them is done.
+    """
+
+    def __init__(self, work: Path) -> None:
+        self._root = work / _GROUP_DIRS
+        self._lock = threading.Lock()
+        self._held: dict[str, _GroupDir] = {}
+
+    def acquire(self, group_id: str) -> _GroupDir:
+        """The group's directory, created empty when no slot holds the group yet."""
+        if not _SAFE_SEGMENT.fullmatch(group_id):
+            raise RuntimeError(f"job carries a group that cannot name a directory: {group_id!r}")
+        with self._lock:
+            group = self._held.get(group_id)
+            if group is None:
+                group = _GroupDir(self._root / group_id)
+                # A worker killed outright may have left the directory; its files may be partial.
+                shutil.rmtree(group.path, ignore_errors=True)
+                group.path.mkdir(parents=True)
+                self._held[group_id] = group
+            group.holders += 1
+        return group
+
+    def release(self, group: _GroupDir) -> None:
+        """Let go of *group*, removing its directory once no slot holds it."""
+        with self._lock:
+            group.holders -= 1
+            if group.holders > 0:
+                return
+            self._held.pop(group.path.name, None)
+            shutil.rmtree(group.path, ignore_errors=True)
 
 
 class _SlotShutdown:
@@ -1287,6 +1423,7 @@ def _run_once(path: Path, worker_file: Path | None, environment: str = LOCAL) ->
         spec = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as e:
         raise typer.BadParameter(f"cannot read the job spec: {e}", param_hint="--once") from None
+    spec = resolve_run_intent(spec, environment)
     if (reason := one_shot.refusal(spec, Path.cwd(), environment=environment)) is not None:
         raise typer.BadParameter(reason, param_hint="--once")
     try:
@@ -1536,6 +1673,7 @@ def _run_with_heartbeat(
     app_url: Any = None,
     lost: threading.Event | None = None,
     claim_check: Callable[[], str | None] | None = None,
+    group: _GroupDir | None = None,
 ) -> tuple[dict[str, Any] | None, bool, Path]:
     """Run the job on a background thread while heart-beating its lease from this one.
 
@@ -1577,7 +1715,11 @@ def _run_with_heartbeat(
 
     *claim_check* re-checks the job's route tokens against this worker's environment now (BE-0467);
     a job it refuses fails before anything is fetched or any device leased.
+
+    With a *group*, the job's files are staged in the group's directory, which the provider packages,
+    while the run lands in the job's own workspace (BE-0484).
     """
+    spec = resolve_run_intent(spec, environment)
     holder: dict[str, Any] = {"work": work}
     lost = lost if lost is not None else threading.Event()
     cancel = cancel if cancel is not None else _CancelRelay()
@@ -1617,7 +1759,7 @@ def _run_with_heartbeat(
             return
         try:
             job_work, failure = _workspace_or_failure(
-                work, spec, bundle_urls, override_urls, app_url=app_url
+                work, spec, bundle_urls, override_urls, app_url=app_url, group=group
             )
         except _TransientFetch as e:
             _logger.warning(
@@ -1647,6 +1789,7 @@ def _run_with_heartbeat(
                 secret_env=secret_env,
                 batch_checkpoint=checkpoint,
                 lease_lost=lost,
+                batch_dir=group.path if group is not None else None,
                 # Written before the run tree uploads, so console.log travels with it and is the
                 # durable copy the server's log stream falls back to (BE-0449).
                 before_upload=functools.partial(_write_job_console_log, job_work, bus),
@@ -1983,6 +2126,7 @@ def _workspace_or_failure(
     override_urls: dict[str, str] | None = None,
     *,
     app_url: Any = None,
+    group: _GroupDir | None = None,
 ) -> tuple[Path, dict[str, Any] | None]:
     """The workspace to run this job from, or the failed result to post when none can be prepared.
 
@@ -1997,10 +2141,17 @@ def _workspace_or_failure(
     succeed, so the caller lets the lease lapse rather than turning one network blip into a
     permanent failed job. Everything after the download is deterministic over verified bytes, so it
     keeps the permanent classification.
+
+    With a *group*, the job's materials and application are staged in the group's directory
+    (`_stage_in_group`), which the provider packages in place of the returned workspace. That
+    workspace still receives the materials `execute_job_spec` writes, and the run's output.
     """
     try:
         base = _bundle_workspace(work, spec, bundle_urls)
-        _place_batch_app(base, spec, app_url)
+        if group is None:
+            _place_batch_app(base, spec, app_url)
+        else:
+            _stage_in_group(group, spec, app_url)
     except _TransientFetch:
         raise
     except Exception as e:
@@ -2126,14 +2277,15 @@ def _bundle_workspace(work: Path, spec: dict[str, Any], bundle_urls: Any) -> Pat
     console log inside it — the worker already shares one working directory across jobs, and this
     keeps that property rather than paying a copy of an app binary per job.
 
-    A cloud-batch job that ships no bundle gets a fresh tree of its own instead (BE-0448).
+    A cloud-batch or run-intent job that ships no bundle gets a fresh tree of its own instead
+    (BE-0448, BE-0484).
 
     Raises rather than falling back to *work*: a run started against a missing binary fails opaquely
     at install time, far from this cause (directive 2).
     """
     bundle = spec.get("bundle")
     if not isinstance(bundle, dict):
-        return _batch_workspace(work, spec) if spec.get("batch") else work
+        return _batch_workspace(work, spec) if spec.get("batch") or spec.get("intent") else work
     bundle_id = bundle.get("id")
     if not valid_sha256(bundle_id):
         # Server-authored, so this is purely defensive — but the id becomes a directory name below,
@@ -2171,7 +2323,7 @@ def _batch_workspace(work: Path, spec: dict[str, Any]) -> Path:
 
 
 def _place_batch_app(tree: Path, spec: dict[str, Any], app_url: Any) -> None:
-    """Fetch the stored application a cloud-batch job names into *tree*, at its `appPath` (BE-0448).
+    """Fetch the stored application a cloud-batch or run-intent job names into *tree* (BE-0448).
 
     The job ships its config and scenario as materials and no bundle, so the lease's signed URL is
     the only way its binary reaches this worker. The `appPath` comes from a leased spec, so it must
@@ -2190,10 +2342,10 @@ def _place_batch_app(tree: Path, spec: dict[str, Any], app_url: Any) -> None:
         return
     if not valid_sha256(sha):
         raise RuntimeError(f"job carries an invalid application sha: {sha!r}")
-    batch = spec.get("batch")
-    rel = batch.get("app_path") if isinstance(batch, dict) else None
+    named = spec.get("batch") or spec.get("intent")
+    rel = named.get("app_path") if isinstance(named, dict) else None
     if not isinstance(rel, str) or not rel:
-        raise RuntimeError("job names a stored application but no batch.app_path to place it at")
+        raise RuntimeError("job names a stored application but no app_path to place it at")
     dest = tree / rel
     if Path(rel).is_absolute() or tree.resolve() not in dest.resolve().parents:
         raise RuntimeError(f"application path {rel!r} is outside this job's workspace")
@@ -2201,6 +2353,51 @@ def _place_batch_app(tree: Path, spec: dict[str, Any], app_url: Any) -> None:
         raise RuntimeError(f"job needs application {sha}, but the lease signed no url for it")
     dest.parent.mkdir(parents=True, exist_ok=True)
     _fetch_part(app_url, dest, sha)
+
+
+def _stage_in_group(group: _GroupDir, spec: dict[str, Any], app_url: Any) -> None:
+    """Add a group job's materials and application to its group's staging directory (BE-0484).
+
+    Another slot may be packaging the directory meanwhile, so each file appears whole or not at all:
+    it is written aside and renamed into place. A file already there with the same content stays,
+    and the application is fetched once per group; its digest is the group's, fixed at registration.
+
+    Raises:
+        RuntimeError: A material names a path outside the directory, or another job of the group
+            staged different content there; or as `_place_batch_app` does.
+        _TransientFetch: As `_place_batch_app` does; nothing partial is left behind.
+    """
+    with group.lock:
+        base = group.path.resolve()
+        for rel, content in (spec.get("materials") or {}).items():
+            dest = (group.path / rel).resolve()
+            # Unlike a workspace's skipped material, a missing one here leaves a shared package short.
+            if base not in dest.parents:
+                raise RuntimeError(f"material {rel!r} names a path outside its group's directory")
+            if dest.is_file():
+                # One group ships one config and distinct scenarios, so a difference is a defect.
+                if dest.read_text(encoding="utf-8") != content:
+                    raise RuntimeError(f"jobs of group {group.path.name} ship different {rel!r}")
+                continue
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            fd, name = tempfile.mkstemp(dir=group.path.parent)
+            aside = Path(name)
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as tmp:
+                    tmp.write(content)
+                aside.replace(dest)
+            except BaseException:
+                aside.unlink(missing_ok=True)
+                raise
+        named = spec.get("batch") or spec.get("intent")
+        rel = named.get("app_path") if isinstance(named, dict) else None
+        if isinstance(rel, str) and rel and not Path(rel).is_absolute() and (base / rel).is_file():
+            return
+        with tempfile.TemporaryDirectory(dir=group.path.parent) as fetched:
+            _place_batch_app(Path(fetched), spec, app_url)
+            if isinstance(rel, str) and (Path(fetched) / rel).is_file():
+                (base / rel).parent.mkdir(parents=True, exist_ok=True)
+                (Path(fetched) / rel).replace(base / rel)
 
 
 class _CheckpointLostError(RuntimeError):

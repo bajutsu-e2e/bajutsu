@@ -404,6 +404,19 @@ def test_text_editing_steps_emit_uiautomator_peers() -> None:
     assert "device.pressKeyCode(KeyEvent.KEYCODE_C, KeyEvent.META_CTRL_ON)" in code
 
 
+def test_paste_focuses_then_sends_ctrl_v() -> None:
+    code = _gen("- name: x\n  steps:\n    - paste: { into: { id: form.coupon } }\n")
+    assert 'act(byId("form.coupon")).click()' in code
+    assert "device.pressKeyCode(KeyEvent.KEYCODE_V, KeyEvent.META_CTRL_ON)" in code
+
+
+def test_paste_into_an_unexpressible_selector_is_a_todo() -> None:
+    # No faithful BySelector means no field to focus, so no paste chord is emitted either.
+    code = _gen("- name: x\n  steps:\n    - paste: { into: { idMatches: ['f[0-9]', 'g_*'] } }\n")
+    assert "// TODO: unsupported selector" in code
+    assert "KEYCODE_V" not in code
+
+
 def test_back_presses_the_system_key() -> None:
     # BE-0210: UI Automator has a native system back (peer of the adb driver's keyevent 4).
     code = _gen("- name: x\n  steps:\n    - back: {}\n")
@@ -727,17 +740,51 @@ def test_device_control_and_helper_steps_are_labeled_todo() -> None:
     code = _gen(
         "- name: x\n  steps:\n"
         "    - push: { payload: {} }\n"
-        "    - setClipboard: { text: hi }\n"
         "    - totp: { secret: GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ, into: { var: code } }\n"
         "    - email: { match: { subjectMatches: Verify }, extract: { var: pin, "
         "bodyMatches: 'PIN (\\d+)' }, timeout: 10 }\n"
         "    - background: {}\n"
     )
     assert "// TODO: push" in code
-    assert "// TODO: setClipboard(text: " in code
     assert "// TODO: totp(into: code)" in code
     assert "// TODO: email(into: pin)" in code
     assert "// TODO: unsupported step" in code
+
+
+def test_clipboard_steps_and_assertion_go_through_the_bajutsu_android_receiver() -> None:
+    # The same in-app receiver `run` drives (BE-0233), so the generated test seeds and reads the
+    # clipboard instead of leaving a TODO.
+    code = _gen(
+        "- name: x\n  steps:\n"
+        "    - setClipboard: { text: 'a$b \"q\"' }\n"
+        "    - clearClipboard: {}\n"
+        "  expect:\n"
+        "    - clipboard: { equals: hi }\n"
+        "    - clipboard: { matches: '^C\\d+' }\n"
+    )
+    assert 'clipboard("set", "a\\$b \\"q\\"")' in code
+    assert 'clipboard("clear")' in code
+    assert 'assertEquals("hi", clipboard("get"))' in code
+    assert 'assertTrue(Regex("^C\\\\d+").containsMatchIn(clipboard("get")))' in code
+    assert "TODO: setClipboard" not in code
+    assert "unsupported" not in code
+    # The helper speaks the adb backend's own broadcast contract, so the two cannot drift apart.
+    assert 'private const val CLIPBOARD_ACTION = "dev.bajutsu.CLIPBOARD"' in code
+    assert "private const val CLIPBOARD_RESULT_OK = 1" in code
+    assert "am broadcast -a $CLIPBOARD_ACTION -p $PACKAGE --es op $op$payload" in code
+    assert "import android.util.Base64" in code
+    # Pin the Python-to-Kotlin escaping of the reply parsing, and the unhandled-broadcast check.
+    assert 'Regex("result=(-?\\\\d+)")' in code
+    assert 'Regex("data=\\"([^\\"]*)\\"")' in code
+    assert "if (code != CLIPBOARD_RESULT_OK) {" in code
+
+
+def test_empty_set_clipboard_omits_the_b64_extra() -> None:
+    # base64("") is "", which the shell split would drop and leave `--es b64` value-less; the helper
+    # skips the extra instead, like the adb backend's set_primary_clip_cmd.
+    code = _gen("- name: x\n  steps:\n    - setClipboard: { text: '' }\n")
+    assert 'clipboard("set", "")' in code
+    assert "val payload = text?.takeIf { it.isNotEmpty() }?.let {" in code
 
 
 def test_generate_step_is_a_labeled_todo() -> None:
@@ -749,6 +796,21 @@ def test_generate_step_is_a_labeled_todo() -> None:
     )
     assert "// TODO: generate(random, into: orderRef) — runner-computed value" in code
     assert "// TODO: generate(datetime, into: tomorrow) — runner-computed value" in code
+    assert "unsupported step" not in code
+
+
+def test_set_picker_value_is_a_labeled_todo_naming_the_selector_and_value() -> None:
+    # BE-0480: `run` walks the wheel through accessibility scroll actions UiObject2 does not expose,
+    # so the step is labeled for a reviewer rather than translated into a drag that could miss.
+    code = _gen(
+        "- name: x\n  steps:\n"
+        "    - setPickerValue:\n"
+        "        sel: { within: { id: form.birthdate }, traits: [pickerWheel], index: 2 }\n"
+        '        value: "2016"\n'
+    )
+    assert "// TODO: setPickerValue(sel: " in code
+    assert '"traits": ["pickerWheel"]' in code and '"index": 2' in code
+    assert 'value: "2016")' in code
     assert "unsupported step" not in code
 
 

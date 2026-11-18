@@ -19,6 +19,9 @@ class BatchContext:
     retrieve durable per-job state minted by before_submit even after a restart (Thread-7 design).
     `launch_env` is populated by before_submit hooks and merged into the packaged run config
     before upload — the only path that reaches the app's launch environment on-device.
+
+    `work_dir` may be a directory the jobs of one `run-set` group share, whose package other jobs
+    reuse (BE-0484), so a hook must treat it as read-only.
     """
 
     request: BatchRequest

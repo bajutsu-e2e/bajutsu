@@ -1,0 +1,33 @@
+# `select` and `copy` on the adb backend (issue #2389): the driver sends Ctrl+A and Ctrl+C as
+# `input keycombination` chords, and no Android lane ran either step until this file. It is the
+# select/copy half of text_editing.yaml, which the Android lane does not run yet even though the
+# driver now reads a field's text as `value` (issue #2388).
+#
+# The clipboard starts on a sentinel, so the closing assertion can pass only if `copy` wrote to the
+# clipboard. A previous run's "Horse 3" survives `pm clear`, because the clipboard belongs to the
+# system, not to the app. "Horse 3" arrives whole only if `select` covered the field's entire text,
+# because a field copies its selection and a collapsed caret selects nothing.
+#
+# Each id lists both its dotted SPEC form (Compose) and its underscore Android Views form, so the
+# scenario runs unchanged on both. Tagged `android` so the iOS lanes, which sweep this directory,
+# exclude it; text_editing.yaml already covers the pair there.
+- name: select the field text and copy it to the clipboard (android)
+  tags: [android]
+  preconditions:
+    subject:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
+  steps:
+    - setClipboard: { text: "SENTINEL" }
+    # Read the sentinel back: Android 10+ drops a write from an unfocused app and the receiver
+    # reports OK either way, so an unchecked sentinel would leave the closing assertion vacuous.
+    - assert:
+        - clipboard: { equals: "SENTINEL" }
+    - tap: { label: "Search", traits: [button] }
+    - wait: { for: { id: [search.field, search_field] }, timeout: 10 }
+    - type: { text: "Horse 3", into: { id: [search.field, search_field] } }
+    - wait: { for: { id: [search.row.3, search_row_3] }, timeout: 5 }
+    - select: { into: { id: [search.field, search_field] }, mode: all }
+    - copy: {}
+  expect:
+    - clipboard: { equals: "Horse 3" }

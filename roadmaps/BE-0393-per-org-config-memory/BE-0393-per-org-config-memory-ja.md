@@ -132,14 +132,18 @@ bundle のディレクトリが次のバインドへ漏れないよう、その�
 key に acting org を加える理由は、セッションが
 acting org を変えうることです。ある org として作ったバインドが、別の org として答えるわけには
 いきません。target の所有権は org に乗っています。そのため org の変更をまたいで残ったバインドは、
-ある org の target を、別の org として来たリクエストへ渡してしまいます。セッションのバインドはセッションとともに消えます。残るのは org が覚えて
-いる config（ユニット4）であり、次のセッションはそれを継承します（ユニット6）。
+ある org の target を、別の org として来たリクエストへ渡してしまいます。
+
+セッションのバインドは、セッションとともに消えます。残るのは、org が覚えている config です
+（ユニット4）。次のセッションがそれを継承します（ユニット6）。
 
 各バインドは、それを行った org を引き続き記録します。target の所有権はセッションではなく org の
 問いだからです。API 経由でバインドされた config は、バインドした org のものです。そのため
-`targets_for` はその org を、グローバルなタグではなくバインドから読みます。起動時の config は、今の意味のまま **フォールバックのバインド**になります。自分の
-バインドを持たず、継承する config もないセッションは、`serve` が起動した config を読みます。その
-`orgs:` ブロックは、今と同じように target を org 間で分割します。
+`targets_for` はその org を、グローバルなタグではなくバインドから読みます。
+
+起動時の config は、今の意味のまま **フォールバックのバインド**になります。自分のバインドを持たず、
+継承する config もないセッションは、`serve` が起動した config を読みます。その `orgs:` ブロックは、
+今と同じように target を org 間で分割します。
 
 バインドを読む場所は、どれもセッションを持つリクエストの中とは限りません。actor をそもそも
 受け取らない読み出しが5つあります。`config_content`、`server_settings`、`active_key_env`、
@@ -168,15 +172,13 @@ spawn します。
 ### 3. すべてのバインドが org のプロジェクトを記録する
 
 4つのバインドのそれぞれが、acting org のもとにプロジェクトを登録し、その org が覚えている config に
-します。対象は
-ファイルブラウザからのバインド、Git からのバインド、bundle の upload、compose された artifact の
-バインドです。レジストリの `add` は名前について冪等で、既存の名前の source は張り替えます。そのため
+します。対象は、ファイルブラウザからのバインド、Git からのバインド、bundle の upload、compose された
+artifact のバインドです。レジストリの `add` は名前について冪等で、既存の名前の source は張り替えます。そのため
 同じプロジェクトを何度バインドしても、重複と衝突は起きません。永続的な記録を作るのはこのユニット
 です。これがなければ、ユニット2の対応は毎回の起動時に空です。
 
 名前の付け方は、起動時の config がすでに導いている識別（`launch_project_identity`）を拡張して
-使います。
-その識別は、config のパスと provenance から決まります。Git source はリポジトリとパスで、upload は
+使います。その識別は、config のパスと provenance から決まります。Git source はリポジトリとパスで、upload は
 ファイル名で自分を名乗ります。プロジェクトのページを一度も開かないメンバーにも、読める名前の
 エントリが残ります。
 
@@ -300,21 +302,21 @@ config source」を org の行へ直接持たせる案です。それならユ�
 
 ## 参考
 
-- [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) — マルチテナンシー
+- [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)：マルチテナンシー
   の単位としての org と、他の値がすでに従っている org 単位の紐づけ
-- [BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub-ja.md) — プロジェクトの
+- [BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub-ja.md)：プロジェクトの
   レジストリ。org ごとの名前付きバインド、active なプロジェクト、この項目が復元に使う live な再バインド
-- [BE-0229](../BE-0229-per-org-provider-settings-resolution/BE-0229-per-org-provider-settings-resolution-ja.md)
-  — ユニット4が同じ形にする、org ごとで再起動をまたぐ永続化
-- [BE-0243](../BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage-ja.md) —
+- [BE-0229](../BE-0229-per-org-provider-settings-resolution/BE-0229-per-org-provider-settings-resolution-ja.md)：
+  ユニット4が同じ形にする、org ごとで再起動をまたぐ永続化
+- [BE-0243](../BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage-ja.md)：
   content hash による bundle の保存と、ユニット5が保つ検証
-- [BE-0268](../BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts-ja.md) —
+- [BE-0268](../BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts-ja.md)：
   compose された artifact の locator。ユニット3が扱う4つめのバインド
-- [BE-0375](../BE-0375-serve-org-lifecycle-management/BE-0375-serve-org-lifecycle-management-ja.md) —
+- [BE-0375](../BE-0375-serve-org-lifecycle-management/BE-0375-serve-org-lifecycle-management-ja.md)：
   API 経由でバインドされた config の target の所有権。ユニット2はバインドに記録した org でそれを表す
-- `session-scoped-org-selection` の提案（別ブランチで進行中、未採番）。1つのセッションが、login の
-  属する org のどれとして振る舞うかを選べるようにする項目。この項目の key はセッションと acting org の
-  組であり、両者はそこで出会う。セッション単位の org 選択がなければ acting org は login の唯一の org で
-  あり、組はセッションだけに縮む。選択があるとき、組は、ある org として作ったバインドが別の org として
-  答えることを防ぐ
-- [`docs/architecture.md`](../../docs/architecture.md) — 今の `serve` が持っているもの
+- `session-scoped-org-selection` の提案（別ブランチで進行中、未採番）：1つのセッションが、login の
+  属する org のどれとして振る舞うかを選べるようにする項目です。この項目の key は、セッションと acting org
+  の組です。両者はそこで出会います。セッション単位の org 選択がなければ、acting org は login の唯一の
+  org であり、組はセッションだけに縮みます。選択があるとき、組は、ある org として作ったバインドが別の
+  org として答えることを防ぎます
+- [`docs/architecture.md`](../../docs/architecture.md)：今の `serve` が持っているもの

@@ -16,82 +16,92 @@
 
 ## Introduction
 
-Rides on the record human-in-the-loop handoff substrate
-([BE-0179](../BE-0179-record-human-handoff/BE-0179-record-human-handoff.md)). This item
-covers the case where the AI can locate the input field but **cannot know the value** — a one-time
-password (OTP), a two-factor (2FA) code, a random string, or an externally-issued one-off value.
-`record` pauses, the human supplies the value, recording continues, and the recorded artifact
-resolves that value **deterministically** on re-run by bridging to a
-[BE-0046](../BE-0046-otp-email-steps/BE-0046-otp-email-steps.md) `totp` / `email` step or a
+This item rides on the record human-in-the-loop handoff substrate
+([BE-0179](../BE-0179-record-human-handoff/BE-0179-record-human-handoff.md)). It covers the case
+where the AI can locate an input field but **cannot know the value**. Examples are a one-time
+password (OTP), a two-factor (2FA) code, a random string, and an externally issued one-off value.
+
+`record` pauses, the human supplies the value, and recording continues. On re-run, the recorded
+artifact resolves the value **deterministically**. It bridges to a
+[BE-0046](../BE-0046-otp-email-steps/BE-0046-otp-email-steps.md) `totp` / `email` step or to a
 `secret` / `var`.
 
 ## Motivation
 
 An out-of-band value is the single most common thing that stops an AI recording of a real login,
-verification, or password-reset flow. The agent can see the "enter code" field, but the value
-exists only in an authenticator app, an inbox, or a human's head. In `record` today the loop either
-stops at that field or the agent invents a plausible-but-wrong value — both leave the author to
-hand-write the rest.
+verification, or password-reset flow. The agent can see the "enter code" field. The value exists
+in an authenticator app, an inbox, or a human's head, and nowhere else.
 
-[BE-0046](../BE-0046-otp-email-steps/BE-0046-otp-email-steps.md) already solves the *run-time* side:
-`totp` computes an OTP locally from a seed, `email` polls a test mailbox. But it assumes the author
-already knows the field is an OTP field and has wired the seed or mailbox ahead of time. The record
-loop is exactly where that knowledge is discovered — interactively, mid-flow. This item closes the
-gap: let the human supply the value **once** during recording so the flow can be captured end to
-end, and emit an artifact that re-runs with no human by pointing at BE-0046 or a declared secret.
+In `record` today, the loop either stops at that field or the agent invents a plausible-but-wrong
+value. Both leave the author to hand-write the rest.
+
+[BE-0046](../BE-0046-otp-email-steps/BE-0046-otp-email-steps.md) already solves the *run-time*
+side. `totp` computes an OTP locally from a seed, and `email` polls a test mailbox. But BE-0046
+assumes the author already knows the field is an OTP field and has wired the seed or mailbox ahead
+of time. The record loop is exactly where that knowledge is discovered, interactively and
+mid-flow.
+
+This item closes the gap. The human supplies the value **once** during recording, so the flow is
+captured end to end. The emitted artifact re-runs with no human by pointing at BE-0046 or a
+declared secret.
 
 ## Detailed design
 
-Built on the substrate's request/response contract; this item defines the value-specific behavior.
+The design builds on the substrate's request/response contract. This item defines the
+value-specific behavior.
 
 **Blocker detection and explicit request.** The agent raises the substrate's "needs human" outcome
-for a value when it flags a field it cannot fill from its own knowledge — heuristically (a field
-labeled OTP / code / verification, or one the author marked) — and the tool **never guesses** a
-value to fill it. The author can also mark a field as human-supplied up front.
+for a value when it flags a field it cannot fill from its own knowledge. The flag is heuristic: a
+field labeled OTP / code / verification, or one the author marked. The tool **never guesses** a
+value to fill the field. The author can also mark a field as human-supplied up front.
 
 **Prompt content.** The handoff request names the target field (a compact selector summary) and
-asks for the value; the human types it in (CLI stdin, or a `serve` input) through the substrate's
-surfaces.
+asks for the value. The human types it in through the substrate's surfaces: CLI stdin or a `serve`
+input.
 
-**Live execution versus recorded artifact.** The supplied value is typed into the *live* app so the
-recording proceeds to the next screen, but it is **not** written into the scenario — it is random
-or secret. This reuses [BE-0120](../BE-0120-recorded-scenario-secret-tokenization/BE-0120-recorded-scenario-secret-tokenization.md)'s
-tokenization and masking so the literal never lands in the YAML, the manifest, or the live progress
-stream.
+**Live execution versus recorded artifact.** The supplied value is typed into the *live* app, so
+the recording proceeds to the next screen. The scenario does **not** receive the value, because it
+is random or secret. This reuses the tokenization and masking of
+[BE-0120](../BE-0120-recorded-scenario-secret-tokenization/BE-0120-recorded-scenario-secret-tokenization.md).
+The literal never lands in the YAML, the manifest, or the live progress stream.
 
-**Deterministic output — the bridge.** The recorded step becomes a `${vars.*}` / `${secrets.*}`
-placeholder plus a labeled TODO that classifies the source so the author can wire it: "resolve with
-`totp` (BE-0046)", "resolve with `email` (BE-0046)", or "declare as a `secret`". Consistent with
-prime directive 1, the AI may *propose* the likely classification (it is authoring, not judging);
-the author confirms and wires it. Once wired, re-run is fully deterministic and AI-free.
+**Deterministic output (the bridge).** The recorded step becomes a `${vars.*}` / `${secrets.*}`
+placeholder plus a labeled TODO. The TODO classifies the source so the author can wire it:
+"resolve with `totp` (BE-0046)", "resolve with `email` (BE-0046)", or "declare as a `secret`".
+
+Consistent with prime directive 1, the AI may *propose* the likely classification, because that is
+authoring and not judging. The author confirms and wires it. Once wired, re-run is fully
+deterministic and AI-free.
 
 **Provenance.** The step carries `from:` provenance
 ([BE-0044](../BE-0044-scenario-provenance/BE-0044-scenario-provenance.md)) recording that it
-originated from a human value handoff, so the report and the GUI editor can show *why* it still
-needs wiring.
+originated from a human value handoff. The report and the GUI editor can then show *why* the step
+still needs wiring.
 
-**CLI and `serve`.** Both surfaces come from the substrate; this item adds only the value prompt
-and the classification/TODO emission on top. On `serve`, the handoff pane shows the awaited field
-(highlighted on the request screenshot) and a single input for the value — the author reads the
-code off their authenticator or inbox and types it into the browser. Because a value is supplied
-**entirely in the browser** and needs no access to the device, this pattern works unchanged on a
-remote or self-hosted `serve` (BE-0015 / BE-0016), where the Simulator is not in front of the
-author. That is the sharp contrast with the operation-takeover pattern, which does need the author
-to reach the device.
+**CLI and `serve`.** Both surfaces come from the substrate. This item adds the value prompt and
+the classification/TODO emission on top, and nothing more.
+
+On `serve`, the handoff pane shows the awaited field (highlighted on the request screenshot) and a
+single input for the value. The author reads the code off an authenticator or inbox and types it
+into the browser. A value supplied **entirely in the browser** needs no access to the device. This
+pattern therefore works unchanged on a remote or self-hosted `serve` (BE-0015 / BE-0016), where the
+Simulator is not in front of the author. The operation-takeover pattern contrasts sharply: it does
+need the author to reach the device.
 
 ## Alternatives considered
 
-- **Record the literal value the human typed.** Rejected: the value is random or secret, so the
-  scenario would be non-reproducible on the next run and would leak a secret into the artifact —
-  the exact problem [BE-0120](../BE-0120-recorded-scenario-secret-tokenization/BE-0120-recorded-scenario-secret-tokenization.md)
-  and [BE-0152](../BE-0152-totp-seed-artifact-leak/BE-0152-totp-seed-artifact-leak.md) guard against.
+- **Record the literal value the human typed.** Rejected. The value is random or secret, so the
+  scenario would be non-reproducible on the next run and would leak a secret into the artifact.
+  [BE-0120](../BE-0120-recorded-scenario-secret-tokenization/BE-0120-recorded-scenario-secret-tokenization.md)
+  and [BE-0152](../BE-0152-totp-seed-artifact-leak/BE-0152-totp-seed-artifact-leak.md) guard
+  against exactly that problem.
 - **Require BE-0046 pre-configuration before recording, with no handoff.** Rejected as the *only*
-  path: the author often does not yet know a field is an OTP field until the flow reaches it. The
-  handoff discovers it interactively and then nudges toward BE-0046 — the two are complementary, not
-  substitutes.
-- **A run-time "prompt for a value every run" step.** Rejected — that puts a human in the
+  path. The author often does not know a field is an OTP field until the flow reaches it. The
+  handoff discovers the field interactively and then nudges toward BE-0046. The two are
+  complementary, not substitutes.
+- **A run-time "prompt for a value every run" step.** Rejected. That puts a human in the
   deterministic `run` / CI gate (directive 1). The whole point is to resolve the value to a
-  deterministic source so the recorded flow replays unattended.
+  deterministic source, so the recorded flow replays unattended.
 
 ## Progress
 
@@ -106,23 +116,25 @@ to reach the device.
 - [x] `from:` provenance (BE-0044) marking the human-value origin.
 
 Deferred to a follow-up (out of this first slice): the *author mark up front* half of value-blocker
-detection — letting the author declare a field as human-supplied ahead of the flow, distinct from the
-agent-raised heuristic shipped here. It needs a config surface (`targets.<name>`) and mirrors how the
+detection. It lets the author declare a field as human-supplied ahead of the flow, which is distinct
+from the agent-raised heuristic shipped here. It needs a config surface (`targets.<name>`). The
 substrate ([BE-0179](../BE-0179-record-human-handoff/BE-0179-record-human-handoff.md)) deferred its
-author-initiated takeover trigger.
+author-initiated takeover trigger the same way.
 
 **Log**
 
-- Landed the value pattern on the BE-0179 substrate: the agent's `ask_human` tool now addresses the
-  field a value goes into and proposes a `classify` (`totp` / `email` / `secret`) and placeholder
-  `name` ([`bajutsu/agents/claude.py`](../../bajutsu/agents/claude.py)), carried on `Proposal`
-  ([`bajutsu/agents/protocols.py`](../../bajutsu/agents/protocols.py)). On a value response that names
-  a field, the record loop types the real value into the live app and records a placeholder `type`
-  step — `${vars.*}` (a `totp` / `email` run-time bridge, BE-0046) or `${secrets.*}` (a declared
-  secret), never the literal (BE-0120) — with a classified TODO in its `from:` provenance (BE-0044)
+- Landed the value pattern on the BE-0179 substrate. The agent's `ask_human` tool now addresses the
+  field a value goes into and proposes a `classify` (`totp` / `email` / `secret`) and a placeholder
+  `name` ([`bajutsu/agents/claude.py`](../../bajutsu/agents/claude.py)). `Proposal` carries both
+  ([`bajutsu/agents/protocols.py`](../../bajutsu/agents/protocols.py)).
+- On a value response that names a field, the record loop types the real value into the live app
+  and records a placeholder `type` step. The placeholder is `${vars.*}` (a `totp` / `email` run-time
+  bridge, BE-0046) or `${secrets.*}` (a declared secret), never the literal (BE-0120). The step's
+  `from:` provenance (BE-0044) carries a classified TODO
   ([`bajutsu/record.py`](../../bajutsu/record.py)). A handoff that names no field re-observes as
-  before. Fast-suite tests cover the placeholder shape, the live type, the no-leak guarantee, and the
-  no-field fallback; docs updated in both languages.
+  before.
+- Fast-suite tests cover the placeholder shape, the live type, the no-leak guarantee, and the
+  no-field fallback. Docs are updated in both languages.
 
 ## References
 

@@ -41,6 +41,14 @@ _TWO_TARGETS = (
     "- name: pair\n  targets: [demo, other]\n  steps:\n    - tap: { id: x }\n      target: demo\n"
 )
 _WAIT = 10.0
+# What a Device Farm worker advertises, beside its host (BE-0484).
+_DF_CAPS = [
+    "environment:devicefarm",
+    "job:run-intent",
+    "kind:device",
+    "platform:android",
+    "platform:ios",
+]
 
 
 @pytest.fixture(autouse=True)
@@ -214,7 +222,9 @@ class _Server:
             self.calls.append(path)
         state = self._state
         if path == "/api/worker/lease":
-            payload, code = ops.worker_lease(state, body["worker_id"], body.get("capabilities"))
+            payload, code = ops.worker_lease(
+                state, body["worker_id"], body.get("capabilities"), max_jobs=body.get("maxJobs")
+            )
         elif path == "/api/worker/heartbeat":
             payload, code = ops.worker_heartbeat(state, body["worker_id"], body["job_id"])
         elif path == "/api/worker/batch-run":
@@ -242,7 +252,7 @@ def _start_worker(
             "url": "http://server",
             "auth_token": None,
             "wid": wid,
-            "caps": ["environment:devicefarm"],
+            "caps": _DF_CAPS,
             "work": tmp_path / wid,
             "poll_interval": 0.01,
             "heartbeat_interval": 0.05,
@@ -280,7 +290,7 @@ def test_a_full_worker_sends_no_lease_request_until_a_result_is_posted(
 ) -> None:
     names = ("one.yaml", "two.yaml", "three.yaml")
     state = _fan_out_state(tmp_path, {n: _SCENARIO.format(name=n[:-5]) for n in names}, monkeypatch)
-    payload, code = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
+    payload, code = start_run_set(state, {"target": "demo"})
     assert code == 200 and "warnings" not in payload
     first, second, third = payload["jobIds"]
     cloud = _Cloud()
@@ -310,7 +320,8 @@ def test_a_full_worker_sends_no_lease_request_until_a_result_is_posted(
     time.sleep(0.2)  # many poll intervals: a worker that kept asking would have leased the third
 
     assert sorted(cloud.scheduled) == sorted([first, second])  # two runs at once, one per slot
-    assert server.count("/api/worker/lease") == 2
+    # One request leased both: the worker asks for its free slots, and the group fills them.
+    assert server.count("/api/worker/lease") == 1
     assert _status(state, third)["status"] == "queued"
 
     cloud.finish(first)
@@ -329,6 +340,45 @@ def test_a_full_worker_sends_no_lease_request_until_a_result_is_posted(
     assert sorted(p.name for p in (tmp_path / "w1" / ".slots").iterdir()) == ["0", "1", "2"]
 
 
+def test_the_slots_of_one_group_share_the_app_and_the_package_upload(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    names = ("one.yaml", "two.yaml")
+    state = _fan_out_state(tmp_path, {n: _SCENARIO.format(name=n[:-5]) for n in names}, monkeypatch)
+    payload, _code = start_run_set(state, {"target": "demo"})
+    uploads: list[str] = []
+
+    class _Counting(_Cloud):
+        def create_upload(self, *, projectArn: str, name: str, type: str) -> dict[str, Any]:  # noqa: N803 - boto3 kwargs
+            uploads.append(type)
+            return super().create_upload(projectArn=projectArn, name=name, type=type)
+
+    cloud = _Counting()
+    _register(cloud)
+    server = _Server(state)
+    monkeypatch.setattr(worker_mod, "_post_json", server)
+    thread, _shutdown = _start_worker(
+        server,
+        tmp_path,
+        wid="w1",
+        slots=2,
+        stopped=lambda: server.count("/api/worker/result") >= 2,
+        worker_file=_worker_file(tmp_path, slots=2),
+    )
+    _until(lambda: len(cloud.scheduled) == 2)
+    for job_id in payload["jobIds"]:
+        cloud.finish(job_id)
+    thread.join(timeout=_WAIT)
+
+    assert not thread.is_alive()
+    assert sorted(uploads) == [
+        "ANDROID_APP",
+        "APPIUM_PYTHON_TEST_PACKAGE",
+        "APPIUM_PYTHON_TEST_SPEC",
+        "APPIUM_PYTHON_TEST_SPEC",
+    ]
+
+
 def test_a_shutdown_lets_leases_lapse_and_a_restarted_worker_resumes_every_run(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -340,7 +390,7 @@ def test_a_shutdown_lets_leases_lapse_and_a_restarted_worker_resumes_every_run(
         {n: _SCENARIO.format(name=n[:-5]) for n in ("one.yaml", "two.yaml")},
         monkeypatch,
     )
-    payload, _code = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
+    payload, _code = start_run_set(state, {"target": "demo"})
     job_ids = payload["jobIds"]
     cloud = _Cloud()
     _register(cloud)
@@ -458,6 +508,7 @@ def test_a_slot_that_fails_frees_its_place(monkeypatch: pytest.MonkeyPatch, tmp_
     worker_mod._run_slot(
         body={"job_id": "j1", "spec": {}},
         dirs=dirs,
+        groups=worker_mod._GroupDirs(tmp_path),
         free=lambda: freed.append(True),
         shutdown=worker_mod._SlotShutdown(),
         url="http://server",
@@ -475,7 +526,10 @@ def test_a_slot_whose_run_raises_leaves_no_batch_tree_behind(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     # The job's tree holds the uploaded binary; the reused slot directory must not keep it.
-    def boom(*_a: Any, work: Path, **_k: Any) -> Any:
+    staged: list[Path] = []
+
+    def boom(*_a: Any, work: Path, group: Any, **_k: Any) -> Any:
+        staged.append(group.path)
         tree = work / ".batch" / "j1"
         tree.mkdir(parents=True)
         (tree / "app.apk").write_bytes(b"APK")
@@ -484,8 +538,9 @@ def test_a_slot_whose_run_raises_leaves_no_batch_tree_behind(
     monkeypatch.setattr(worker_mod, "_run_with_heartbeat", boom)
     dirs = worker_mod._SlotDirs(tmp_path)
     worker_mod._run_slot(
-        body={"job_id": "j1", "spec": {}},
+        body={"job_id": "j1", "group_id": "g1", "spec": {"materials": {"a.yaml": ""}}},
         dirs=dirs,
+        groups=worker_mod._GroupDirs(tmp_path),
         free=lambda: None,
         shutdown=worker_mod._SlotShutdown(),
         url="http://server",
@@ -496,6 +551,55 @@ def test_a_slot_whose_run_raises_leaves_no_batch_tree_behind(
         environment="devicefarm",
     )
     assert not (tmp_path / ".slots" / "0" / ".batch").exists()
+    # Nor does the group's staging directory outlive its last job.
+    assert staged == [tmp_path / ".batch-groups" / "g1"] and not staged[0].exists()
+
+
+@pytest.mark.parametrize(
+    ("group_id", "spec", "environment", "shares"),
+    [
+        ("g1", {"overrides": {"target": "t"}}, "devicefarm", False),
+        ("g1", {}, "local", True),
+        ("../g1", {}, "devicefarm", True),
+    ],
+    ids=["an override job", "a non-batch worker", "an unusable group directory"],
+)
+def test_a_grouped_job_that_cannot_use_its_group_s_directory_still_runs(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    group_id: str,
+    spec: dict[str, Any],
+    environment: str,
+    shares: bool,
+) -> None:
+    runs: list[tuple[dict[str, Any], Any]] = []
+
+    def run(spec: dict[str, Any], *_a: Any, group: Any, **_k: Any) -> Any:
+        runs.append((spec, group))
+        raise RuntimeError("stop")
+
+    monkeypatch.setattr(worker_mod, "_run_with_heartbeat", run)
+    worker_mod._run_slot(
+        body={
+            "job_id": "j1",
+            "group_id": group_id,
+            "compat_key": "k1",
+            "spec": {"materials": {"a.yaml": ""}, **spec},
+        },
+        dirs=worker_mod._SlotDirs(tmp_path),
+        groups=worker_mod._GroupDirs(tmp_path),
+        free=lambda: None,
+        shutdown=worker_mod._SlotShutdown(),
+        url="http://server",
+        auth_token=None,
+        wid="w1",
+        heartbeat_interval=0.05,
+        worker_file=None,
+        environment=environment,
+    )
+    [(ran, group)] = runs
+    assert group is None
+    assert ("compat_key" in ran) is shares
 
 
 def test_a_runner_already_done_under_a_shutdown_leaves_the_lease_to_lapse() -> None:
@@ -515,6 +619,7 @@ def test_a_malformed_lease_frees_its_place_and_takes_no_workspace(tmp_path: Path
     worker_mod._run_slot(
         body={"job_id": "j1"},  # no spec
         dirs=dirs,
+        groups=worker_mod._GroupDirs(tmp_path),
         free=lambda: freed.append(True),
         shutdown=worker_mod._SlotShutdown(),
         url="http://server",
@@ -538,13 +643,13 @@ def test_a_failing_lease_loop_still_lets_in_flight_leases_lapse(
     def boom(*_a: Any) -> Any:
         raise RuntimeError("lease exploded")
 
-    monkeypatch.setattr(worker_mod, "_lease", boom)
+    monkeypatch.setattr(worker_mod, "_lease_bundle", boom)
     with pytest.raises(RuntimeError, match="lease exploded"):
         worker_mod._serve_slots(
             url="http://server",
             auth_token=None,
             wid="w1",
-            caps=["environment:devicefarm"],
+            caps=_DF_CAPS,
             work=tmp_path,
             poll_interval=0.01,
             heartbeat_interval=0.05,
@@ -560,8 +665,8 @@ def test_a_failing_lease_loop_still_lets_in_flight_leases_lapse(
 def test_a_slot_whose_thread_cannot_start_gives_its_place_back(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    leases = iter([{"job_id": "j1", "spec": {}}, None])
-    monkeypatch.setattr(worker_mod, "_lease", lambda *_a: next(leases))
+    leases = iter([[{"job_id": "j1", "spec": {}}], []])
+    monkeypatch.setattr(worker_mod, "_lease_bundle", lambda *_a: next(leases))
 
     class _NoStart(threading.Thread):
         def start(self) -> None:
@@ -574,7 +679,7 @@ def test_a_slot_whose_thread_cannot_start_gives_its_place_back(
             url="http://server",
             auth_token=None,
             wid="w1",
-            caps=["environment:devicefarm"],
+            caps=_DF_CAPS,
             work=tmp_path,
             poll_interval=0.01,
             heartbeat_interval=0.05,
@@ -679,7 +784,7 @@ def test_a_scenario_the_worker_cannot_run_fails_before_anything_is_submitted(
     words: str,
 ) -> None:
     state = _fan_out_state(tmp_path, {"one.yaml": scenario}, monkeypatch)
-    payload, _code = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
+    payload, _code = start_run_set(state, {"target": "demo"})
     (job_id,) = payload["jobIds"]
     cloud = _Cloud()
     _register(cloud)
@@ -736,3 +841,59 @@ def test_a_local_worker_file_checks_no_batch_job(tmp_path: Path) -> None:
     assert _batch_worker_capability({}, _worker_file(tmp_path, slots=1)) is None
     checked = _batch_worker_capability({"batch": {}}, _worker_file(tmp_path, slots=1))
     assert checked is not None and checked.environment == "devicefarm"
+
+
+@pytest.mark.parametrize(
+    ("answer", "jobs"),
+    [
+        # A control plane from before BE-0484 ignores `maxJobs` and answers one body; the job is
+        # already leased, so dropping it would strand it.
+        ({"job_id": "j1", "spec": {"cmd": []}}, ["j1"]),
+        ([{"job_id": "j1", "spec": {"cmd": []}}, {"job_id": "j2"}, "junk"], ["j1"]),
+        ("junk", []),
+    ],
+)
+def test_a_bundle_lease_keeps_every_runnable_body_and_warns_on_the_rest(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    answer: Any,
+    jobs: list[str],
+) -> None:
+    monkeypatch.setattr(worker_mod, "_post_json", lambda *_a, **_k: (200, answer))
+
+    bodies = worker_mod._lease_bundle("http://server", None, "w1", [], 3)
+
+    assert [b["job_id"] for b in bodies] == jobs
+    assert ("unexpected lease body" in caplog.text) is (
+        answer != {"job_id": "j1", "spec": {"cmd": []}}
+    )
+
+
+def test_a_worker_with_more_slots_than_a_lease_may_take_asks_for_the_ceiling(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from bajutsu.serve.operations.worker import MAX_LEASE_JOBS
+
+    asked: list[int] = []
+
+    def lease(_url: str, _token: str | None, _wid: str, _caps: list[str], free: int) -> list[Any]:
+        asked.append(free)
+        raise RuntimeError("stop after one request")
+
+    monkeypatch.setattr(worker_mod, "_lease_bundle", lease)
+    with pytest.raises(RuntimeError, match="stop after one request"):
+        worker_mod._serve_slots(
+            url="http://server",
+            auth_token=None,
+            wid="w1",
+            caps=_DF_CAPS,
+            work=tmp_path,
+            poll_interval=0.01,
+            heartbeat_interval=0.05,
+            worker_file=None,
+            slots=MAX_LEASE_JOBS + 5,
+            shutdown=worker_mod._SlotShutdown(),
+            stopped=lambda: False,
+            environment="devicefarm",
+        )
+    assert asked == [MAX_LEASE_JOBS]

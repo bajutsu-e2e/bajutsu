@@ -5,7 +5,7 @@ from __future__ import annotations
 import subprocess
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from bajutsu.common.drivers import base
 from bajutsu.common.evidence import intervals
@@ -20,6 +20,23 @@ from .artifact import Artifact
 if TYPE_CHECKING:
     from bajutsu.common.orchestrator.waits import WaitTrace
     from bajutsu.common.platform_lifecycle import ReadinessResult
+
+
+class DriverInterval(Protocol):
+    """A driver's own interval lane: `Driver.driver_interval` on web and Android.
+
+    `subsystem` and `json_path` reach appTrace alone (BE-0478); a lane with no appTrace ignores them.
+    """
+
+    def __call__(
+        self,
+        kind: str,
+        path: Path,
+        *,
+        subsystem: str | None = None,
+        json_path: Path | None = None,
+    ) -> intervals.Interval | None:
+        """Start one interval recording of *kind* into *path*, or None when the lane has none."""
 
 
 class FileSink:
@@ -41,7 +58,7 @@ class FileSink:
         log_subsystem: str | None = None,
         redact: Redact | None = None,
         secrets: list[str] | None = None,
-        driver_interval: Callable[[str, Path], intervals.Interval | None] | None = None,
+        driver_interval: DriverInterval | None = None,
         prestarted_intervals: list[intervals.Interval] | None = None,
         readiness: ReadinessResult | None = None,
         provenance: Mapping[str, object] | None = None,
@@ -163,7 +180,9 @@ class FileSink:
                 # A driver-supplied lane owns every kind it records; one it declines (None) is simply
                 # absent — it must never fall through to the simctl starters (they would run against a
                 # non-simctl device, e.g. an Android serial).
-                interval = self.driver_interval(kind, target)
+                interval = self._start_driver_interval(
+                    self.driver_interval, kind, target, scenario_id
+                )
                 if interval is not None:
                     started.append(interval)
             elif self.udid is not None:
@@ -178,6 +197,25 @@ class FileSink:
         ):
             self.on_video_start_stall()
         return started
+
+    def _start_driver_interval(
+        self, driver_interval: DriverInterval, kind: str, target: Path, scenario_id: str
+    ) -> intervals.Interval | None:
+        """Start one interval on the driver's lane, handing appTrace its subsystem and JSON path.
+
+        appTrace needs both to stream and parse (BE-0478); without a subsystem it records nothing,
+        as on the simctl path.
+        """
+        if kind != "appTrace":
+            return driver_interval(kind, target)
+        if not self.log_subsystem:
+            return None
+        return driver_interval(
+            kind,
+            target,
+            subsystem=self.log_subsystem,
+            json_path=self._writer.reserve(f"{scenario_id}/appTrace.json"),
+        )
 
     def _start_simctl_interval(
         self, kind: str, target: Path, scenario_id: str

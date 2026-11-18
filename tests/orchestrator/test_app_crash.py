@@ -11,6 +11,7 @@ caused.
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import AbstractContextManager, nullcontext
 from typing import Any
 
 import pytest
@@ -559,6 +560,9 @@ def test_a_failing_inner_web_step_never_probes_but_the_wrapping_web_step_does() 
     # settles through a `WebContextDriver`, which never satisfies `base.AppCrashSignal`, so it must
     # never probe; the wrapping outcome settles through the native driver and must.
     class _Bridge:
+        def session(self, webview_id: str, frame: base.Frame) -> AbstractContextManager[None]:
+            return nullcontext()
+
         def query_dom(self, webview_id: str) -> list[base.Element]:
             return []  # empty DOM: the inner tap's selector never resolves
 

@@ -1,9 +1,9 @@
-# serve Web UI の Dogfood（Playwright backend）
+# Playwright backend による serve Web UI の dogfood
 
 [English](README.md)
 
-Bajutsu が**自分自身**の `serve` Web UI をテストします。テスト対象は serve のシングルページアプリで、
-**Playwright** backend（[BE-0041](../../roadmaps/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）で
+このデモでは、Bajutsu が**自分自身**の `serve` Web UI をテストします。テスト対象は serve のシングル
+ページアプリで、**Playwright** backend（[BE-0041](../../roadmaps/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）で
 駆動します。[demos/web](../web) と同じく **Mac も Simulator も不要**で、`make check` と同じツールチェーンの
 Linux 上で動きます。Web UI の決定的なリグレッション網であり、合否は機械的なアサーションだけから決まり、LLM は
 関与しません。
@@ -31,7 +31,7 @@ Linux 上で動きます。Web UI の決定的なリグレッション網であ�
 | `scenarios/author-editor.yaml` | Edit モードの Load が YAML エディタを埋めて grade を付ける。不正な YAML はインラインの problems パネルに出る（BE-0138） |
 | `scenarios/stats.yaml` | Stats ビューが run のダッシュボードを読み込む（BE-0102） |
 | `scenarios/coverage.yaml` | Compute がターゲットの coverage マップを描画する（BE-0146） |
-| `scenarios/replay-device-cloud.yaml` | 偽の `devicefarm` worker が Replay の Environment セレクタに現れる。web target では理由とともに無効になり、Android target ではシナリオを run-set パネルへ fan-out し、Stop all が全行を取り消す（BE-0465） |
+| `scenarios/replay-fan-out.yaml` | Replay の fan-out の切り替えで、run-set が使わない欄が隠れる。Android target ではシナリオを run-set パネルへ fan-out し、Stop all が全行を取り消す（BE-0465、BE-0484） |
 | `scenarios/platform-ui.yaml` | 各パネルは選択中の target のプラットフォームに応じた操作だけを表示する。web target では iOS 用デバイス UI（simulators / workers / erase）ではなく headed トグルが出る |
 | `scenarios/panel-resize.yaml` | タイル区切り一本のドラッグは隣接する二枚だけを再配分し、三枚目に触れない |
 | `Makefile` | `web-deps` / `serve-ui` / `e2e` |
@@ -42,15 +42,16 @@ Linux 上で動きます。Web UI の決定的なリグレッション網であ�
 make -C demos/serve-ui e2e
 ```
 
-これは web backend（`uv sync --extra web` ＋ `playwright install chromium`）を入れ、`bajutsu serve` を起動し
-（[web デモ](../web)の target を再利用する `inner.config.yaml` を読ませ、ドロップダウンに実在のアプリとシナリオが並ぶようにします）、Tier A の
-シナリオで Web UI を Playwright backend から駆動し、serve を畳みます。serve は `make serve` ではなく直接起動
+このコマンドは web backend（`uv sync --extra web` ＋ `playwright install chromium`）を入れ、
+`bajutsu serve` を起動します。この serve は `inner.config.yaml` を読み、[web デモ](../web)の target を
+再利用するので、Web UI のドロップダウンには実在のアプリとシナリオが並びます。続けて Tier A のシナリオで
+Web UI を Playwright backend から駆動し、serve を畳みます。serve は `make serve` を通さず、直接起動
 します。dogfood は Web 限定で、XCUITest ランナーも iOS の actuator も関わらないからです。
 
 Web UI を手で触るには、`make -C demos/serve-ui serve-ui` を実行して <http://127.0.0.1:8799/> を開きます。
 
-CI は serve UI に触れる PR ごとにこれをゲートします。[`.github/workflows/web-e2e.yml`](../../.github/workflows/web-e2e.yml)
-の `dogfood (serve UI)` ジョブが Linux 上で `make -C demos/serve-ui e2e` を走らせます（BE-0189）。
+CI は、serve UI に触れる PR ごとにこのデモをゲートします。[`.github/workflows/web-e2e.yml`](../../.github/workflows/web-e2e.yml)
+の `dogfood (serve UI)` ジョブが、Linux 上で `make -C demos/serve-ui e2e` を走らせます（BE-0189）。
 
 ## コアとの対応
 
@@ -60,24 +61,28 @@ Web UI のコントロールは `data-testid` 属性を持ちます。iOS の ac
 シナリオの `{ id: nav.replay }` という selector は、ほかの backend と**同じ** `resolve_unique` / `find_all` の
 決定性コアで解決します。
 
-シナリオは、LLM も device もなしに決定性コアが確かめられることだけをアサートします。どの `<main>` ビューと
-どのモーダルが存在するか（SPA は `hidden` 属性で切り替えるので、Playwright backend はアクティブなものだけを
-見ます）、ボタンが enabled か disabled か、フィールドやピッカーが持つ値です。これにより、この dogfood は
-**Tier 2** にとどまります。AI 駆動の Record と Crawl の run（モデルと device が要る）は、LLM を run/CI ゲート
-から締め出すのと同じ規則で、ここでは対象外です。
+シナリオがアサートするのは、LLM も device もなしに決定性コアが確かめられることだけです。
+
+- どの `<main>` ビューとどのモーダルが存在するか（SPA は `hidden` 属性で切り替えるので、Playwright
+  backend はアクティブなものだけを見ます）
+- ボタンが enabled か disabled か
+- フィールドやピッカーが持つ値
+
+この範囲に絞るので、この dogfood は **Tier 2** にとどまります。AI 駆動の Record と Crawl の run
+（モデルと device が要る）は、LLM を run/CI ゲートから締め出すのと同じ規則で、ここでは対象外です。
 
 二つの状態は、意図して間接的にアサートします。レポート系のペイン（Stats、Coverage、run のレポート）は
 **shadow root** に描画され、要素クエリはその中を覗けません。そこで該当シナリオは、light DOM の
 プレースホルダ（`stats.empty` / `coverage.empty`）がツリーから*消える*ことをアサートします。これは
 「描画パスが走った」ことと正確に一致します。また Record の Generate ボタンは Claude への到達可能性
-（BE-0101）でゲートされ、これはホスト側の状態なので、存在だけをアサートし、enabled かどうかは
+（BE-0101）でゲートされ、これはホスト側の状態なので、シナリオは存在だけをアサートし、enabled かどうかは
 アサートしません。
 
 ## 機能カバレッジマップ
 
 機能の一覧は [docs/ja/web-ui.md](../../docs/ja/web-ui.md) です。serve Web UI のユーザーに見える挙動は
-すべてそこに文書化されており、この表はその一つひとつを dogfood のシナリオに対応づけます。dogfood が
-動かせない機能は理由つきで列挙します。黙って未カバーのものはありません。どの機能もサーバ側は
+すべてそこに文書化されており、下の表はその一つひとつを dogfood のシナリオに対応づけます。dogfood が
+動かせない機能は理由つきで列挙するので、黙って未カバーのものはありません。どの機能もサーバ側は
 `tests/` の決定的な pytest（`make check` のゲート）が覆っており、AI 駆動のフローは**設計上**
 （プライムディレクティブ 1）どの決定的ゲートからも除外されます。
 
@@ -96,8 +101,8 @@ Web UI のコントロールは `data-testid` 属性を持ちます。iOS の ac
 | 選択中シナリオの determinism audit バッジ | `replay-tools.yaml` |
 | codegen の書き出し（Playwright emit の提示、コードとファイル名、閉じる） | `replay-tools.yaml` |
 | プラットフォーム対応のコントロール（web では iOS デバイス UI を隠し headed を出す） | `platform-ui.yaml` |
-| Replay の Environment セレクタ（稼働中の device-cloud worker の表示、web target での無効化と理由、fan-out が使わない欄の非表示） | `replay-device-cloud.yaml` |
-| run-set パネル（dispatch したシナリオごとに 1 行、Stop all による各行の取り消し） | `replay-device-cloud.yaml` |
+| Replay の fan-out の切り替え（fan-out が使わない欄の非表示） | `replay-fan-out.yaml` |
+| run-set パネル（dispatch したシナリオごとに 1 行、Stop all による各行の取り消し） | `replay-fan-out.yaml` |
 | Crawl フォーム：bind したターゲット、既定の予算（1 / 50 / 200）、Start の提示 | `crawl-form.yaml` |
 | Crawl History：過去の run を読み取り専用で開き直す（past-crawl バッジ）、plan ツリーが保存済みマップを描画する | `crawl-history.yaml` |
 | Crawl の続きを探索する：未探索のフロンティアが残る過去の run が continue コントロールを出す | `crawl-history.yaml` |
@@ -122,8 +127,8 @@ Web UI のコントロールは `data-testid` 属性を持ちます。iOS の ac
 - **ネイティブ `<select>` の選択操作**：座標タップの web backend はネイティブのドロップダウンを
   開けません。「provider を選ぶ／ターゲットを変える」の先にあるもの（API キーの保存、Bedrock の
   欄、provider 固有のフロー）は、選択前の状態だけをアサートします。唯一の例外は
-  `replay-device-cloud.yaml` で、`selectOption` ステップで Replay の target と environment を設定します。
-  偽の worker はジョブを lease せず、Stop all がすべて取り消すため、その fan-out は実行されません。
+  `replay-fan-out.yaml` で、`selectOption` ステップで Replay の target を設定します。
+  Android のジョブを処理できる稼働中の worker がなく、Stop all がすべて取り消すため、その fan-out は実行されません。
 - **ブラウザのネイティブ UI**：アップロードのファイル選択、codegen の Copy（クリップボード）と
   Download、トークンログインの `prompt()` ダイアログは、ページの DOM にありません。
 - **ホスト依存の状態**：Generate / Start の enabled とゲートのバナー（Claude への到達可能性）、
@@ -138,5 +143,5 @@ Web UI のコントロールは `data-testid` 属性を持ちます。iOS の ac
 
 web backend は座標でタップするため、ネイティブの `<select>` ドロップダウンを操作できません。これらのシナリオは、
 オプションを切り替えるのではなく、ページ読み込み時の**状態**（ドロップダウン操作を要しません）をアサート
-します。唯一の例外は `replay-device-cloud.yaml` で、`selectOption` ステップでオプションを切り替えます。
+します。唯一の例外は `replay-fan-out.yaml` で、`selectOption` ステップでオプションを切り替えます。
 残りの `<select>` の駆動と AI の往復は、dogfood のロードマップ項目で今後の課題として追跡します。

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from contextlib import AbstractContextManager, nullcontext
+
 import pytest
 
 from bajutsu.common.drivers import base
@@ -16,6 +18,9 @@ class FakeBridge:
         self.tapped: list[tuple[str, base.Point]] = []
         self.typed: list[tuple[str, str]] = []
         self.scrolled: list[tuple[str, str]] = []
+
+    def session(self, webview_id: str, frame: base.Frame) -> AbstractContextManager[None]:
+        return nullcontext()
 
     def query_dom(self, webview_id: str) -> list[base.Element]:
         return self._elements
@@ -129,6 +134,8 @@ def test_unsupported_actions_raise() -> None:
         driver.select_all()
     with pytest.raises(base.UnsupportedAction):
         driver.copy_selection()
+    with pytest.raises(base.UnsupportedAction):
+        driver.paste({"id": "f"})
     with pytest.raises(base.UnsupportedAction):
         driver.enter_app("com.example")  # no bundle-id concept in a WebView DOM context
     with pytest.raises(base.UnsupportedAction):

@@ -1,10 +1,10 @@
 **English** · [日本語](ja/evidence.md)
 
-# The evidence (Evidence/Trace) subsystem
+# The evidence subsystem
 
-[Evidence](glossary.md#evidence-capturepolicy-trace-triage) capture for a recurring action is expressed as a **repeatedly-firing rule** rather than a one-shot instruction. The rule ensures the same evidence is collected without AI on every subsequent run.
+[Evidence](glossary.md#evidence-capturepolicy-trace-triage) capture for a recurring action is expressed as a **repeatedly-firing rule** rather than a one-shot instruction. The rule collects the same evidence on every later run, without AI.
 
-Implementation: `bajutsu/common/evidence/core.py` (instant + Sinks) · `bajutsu/common/evidence/intervals.py` (interval: video / deviceLog / appTrace). Firing is decided on the orchestrator side ([run-loop](run-loop.md#evidence-rule-firing)).
+Implementation: `bajutsu/common/evidence/core.py` (instant captures and Sinks) · `bajutsu/common/evidence/intervals.py` (interval captures: video / deviceLog / appTrace). The orchestrator decides when a rule fires ([run-loop](run-loop.md#evidence-rule-firing)).
 
 Related: [the capture tokens in scenarios](scenarios.md#capture-token-grammar) · [reporting](reporting.md)
 
@@ -18,15 +18,15 @@ Related: [the capture tokens in scenarios](scenarios.md#capture-token-grammar) �
 | **B. Per-step (`capture:`)** | this one step only | video + deviceLog around a specific wait |
 | **C. Default policy** | a baseline guarantee | config's `evidence: { capture: [screenshot.after, elements, actionLog] }` |
 
-> C (config default) `evidence.capture` resolves to `Effective.capture` ([configuration](configuration.md))
-> and is applied on top of every step, alongside the scenario's `capturePolicy` and the per-step
-> `capture` — unlike those two, it fires unconditionally rather than on a trigger, so it acts as a
-> baseline guarantee rather than a rule.
+> The config default (C), `evidence.capture`, resolves to `Effective.capture` ([configuration](configuration.md)).
+> It applies on top of every step, alongside the scenario's `capturePolicy` and the per-step
+> `capture`. Unlike those two, it fires unconditionally rather than on a trigger, so it acts as a
+> baseline guarantee, not a rule.
 >
 > All three ways request evidence *on top of* what every step already records on both sides of its
 > action. Naming `screenshot.after` or `elements` in any of them therefore changes nothing, and
-> leaving either out costs nothing: `before.png`, `after.png`, and the post-action `elements.json`
-> are captured whatever the three ask for (below).
+> leaving either out costs nothing. Whatever the three ask for, the run captures `before.png`,
+> `after.png`, and the post-action `elements.json` (below).
 
 ## Evidence kinds and acquisition timing
 
@@ -40,11 +40,15 @@ A `capture:` token is `<kind>[.<modifier>]` ([scenarios](scenarios.md#capture-to
 | `video` | `simctl io recordVideo` | interval | ✅ captured (needs udid) |
 | `deviceLog` | `simctl spawn log stream` | interval | ✅ captured (needs udid) |
 | `network` | the in-app collector (BajutsuKit → `network.json`) | interval | ✅ captured (the `--network` run flag) |
-| `appTrace` | `simctl spawn log stream` over the app's os_log subsystem | interval | ✅ captured (needs udid + subsystem) |
+| `appTrace` | `simctl spawn log stream` over the app's os_log subsystem (iOS); `adb logcat` filtered to the app's tag (Android) | interval | ✅ captured (needs a device + subsystem) |
 | `rawTree` | the device's own reply behind `elements`, untouched (`base.RawSourceProvider`; adb and XCUITest today) | instant | ✅ captured (opt-in, no-op elsewhere) |
 
-> `appTrace` pairs the app's `os_signpost` / `os_log` `<name> started` / `<name> finished` markers
-> into timed intervals (`intervals.parse_app_trace`). `network` is produced by the request collector
+> `appTrace` pairs the app's `<name> started` / `<name> finished` log markers into timed intervals.
+> On iOS the markers come from `os_signpost` / `os_log` (`intervals.parse_app_trace`). On Android
+> the app logs them with `android.util.Log`, as in `Log.i(tag, "checkout started")`.
+> `intervals.parse_logcat_app_trace` pairs those
+> ([BE-0478](../roadmaps/BE-0478-android-device-control-parity/BE-0478-android-device-control-parity.md)).
+> `network` is produced by the request collector
 > rather than the interval system — its exchanges are written to `<sid>/network.json`
 > ([network observation](drivers.md), the `--network` flag).
 
@@ -59,68 +63,86 @@ A `capture:` token is `<kind>[.<modifier>]` ([scenarios](scenarios.md#capture-to
 > the field.
 >
 > **What the number means is the backend's own, and only its direction carries across.** On both
-> backends a larger `nativeZ` is closer to the viewer; nothing else about two values is comparable
-> unless they came from the same backend. iOS reports an ordinal over the app's real compositing
-> order, counted back to front, because `CALayer.zPosition` reads zero across an ordinary flat
-> layout and Apple documents it as the wrong tool for sibling order. Android reports `View.getZ()` —
-> elevation plus any translation on the z axis — in device pixels, and that value orders siblings
-> within one parent and nothing wider: a child at `0` under a parent at `8` still composites in front
-> of that parent's sibling at `4`. So on Android a number tells you which of two elements is in front
-> only when they are siblings; on iOS, any two values from the same read compare, since the ordinal
-> spans the whole screen; and no comparison holds across backends.
+> backends a larger `nativeZ` is closer to the viewer. Nothing else about two values is comparable
+> unless they came from the same backend.
+>
+> - **iOS** reports an ordinal over the app's real compositing order, counted back to front.
+>   `CALayer.zPosition` reads zero across an ordinary flat layout, and Apple documents it as the wrong
+>   tool for sibling order.
+> - **Android** reports `View.getZ()` (elevation plus any translation on the z axis) in device
+>   pixels. That value orders siblings within one parent and nothing wider: a child at `0` under a
+>   parent at `8` still composites in front of that parent's sibling at `4`.
+>
+> So on Android, a number tells a reader which of two elements is in front only when they are
+> siblings. On iOS, any two values from the same read compare, since the ordinal spans the whole
+> screen. No comparison holds across backends.
 >
 > **A `null` is the common case, and it is deliberate rather than a gap to be filled in by
-> inference.** Reporting a real value needs an app that opted in: on iOS by linking BajutsuKit, on
-> Android by calling `BajutsuZOrder.report(view)` in a debug build — and, on iOS, being driven through
-> bajutsu's own XCUITest runner rather than the WebDriverAgent-backed live/record path, which injects
-> no port for the responder to answer on and so reads `null` even for an opted-in app. Two toolkits
-> report nothing even then, because each generates its own accessibility elements and does not expose
-> the underlying one the position would be measured from: **SwiftUI** materializes its accessibility
-> elements only for an assistive technology attached to the process, so an app looking at its own view
-> tree finds no identifiers on it, and **Jetpack Compose** forwards no app-declared extra-data key
-> through its own node generation. UIKit and Android `View` screens report; SwiftUI and Compose
-> screens read `null`. Deriving a position from the element list's own order — the paint-order proxy
-> `topmost_at_point` falls back to — would read as authoritative while being wrong on exactly the
-> layouts an investigator opens the evidence for, such as an Android view whose `elevation` lifts it
+> inference.** Reporting a real value needs an app that opted in:
+>
+> - **iOS** needs two things. The app links BajutsuKit, and bajutsu drives the app through its own
+>   XCUITest runner. The WebDriverAgent-backed live/record path injects no port for the responder to
+>   answer on, so it reads `null` even for an opted-in app.
+> - **Android** needs the app to call `BajutsuZOrder.report(view)` in a debug build.
+>
+> Two toolkits report nothing even then, because each generates its own accessibility elements and
+> does not expose the underlying one the position would be measured from. **SwiftUI** materializes
+> its accessibility elements only for an assistive technology attached to the process, so an app
+> looking at its own view tree finds no identifiers on it. **Jetpack Compose** forwards no
+> app-declared extra-data key through its own node generation. UIKit and Android `View` screens
+> report; SwiftUI and Compose screens read `null`.
+>
+> The element list's own order is the paint-order proxy that `topmost_at_point` falls back to.
+> Deriving a position from it would read as authoritative while being wrong on exactly the layouts an
+> investigator opens the evidence for. One such layout is an Android view whose `elevation` lifts it
 > above a sibling declared after it.
 >
-> **Inside an iOS `app:` block, every element reads `null`.** The responder runs in the test target,
-> and while another app owns the screen the test target sits suspended in the background: its
-> positions would describe a tree the block is not reading, and requests queued to a suspended app
-> were measured to kill it with `SIGPIPE` once it resumed
+> **Inside an iOS `app:` block, every element reads `null`.** The responder runs in the test target.
+> While another app owns the screen, the test target sits suspended in the background, so its
+> positions would describe a tree the block is not reading. Requests queued to a suspended app were
+> measured to kill it with `SIGPIPE` once it resumed
 > ([the Home Screen widget spike](specs/ios-home-screen-widget-feasibility.md)). The driver skips the
 > round trip until the block ends.
 >
 > **On Android the target must also ask for it, with `driver: { nativeZ: true }` under its
-> `targets.<name>` entry.** The reading comes from a walk the resident server performs over every node on every screen
-> read, and that walk costs 20-100 milliseconds whether or not the app opted a single view in
+> `targets.<name>` entry.** The reading comes from a walk the resident server performs over every
+> node on every screen read. That walk costs 20-100 milliseconds whether or not the app opted a
+> single view in
 > ([BE-0407](../roadmaps/BE-0407-step-latency-driver-internal-tuning/BE-0407-step-latency-driver-internal-tuning.md)
 > unit 18). An app that calls `BajutsuZOrder.report(view)` and does not set the flag reads `null`,
-> the same honest absence every other unreported case gives. iOS needs no such flag: its responder
-> answers only when the app links BajutsuKit, so a target that did not opt in pays nothing to ask.
+> the same honest absence every other unreported case gives.
+>
+> iOS needs no such flag. Its responder answers only when the app links BajutsuKit, so a target that
+> did not opt in pays nothing to ask.
 
-> `rawTree` writes `hierarchy.raw<suffix>` — the device's/runner's own reply, untouched by any of
-> bajutsu's processing: adb's `uiautomator dump`/resident XML (`.xml`), or XCUITest's undecoded
-> `GET /elements` body (`.json`). On adb's resident channel, when narrowing changed something, it also
-> writes `hierarchy.parsed-input.xml` (what `parse_hierarchy` actually consumed, after SystemUI decor
-> windows were stripped) — XCUITest applies no such transform, so it never writes a second file.
-> It exists to diagnose a mismatch between a resolved coordinate and the real screen: whether the
-> device's/runner's own reply already looked wrong, or bajutsu's own parsing changed it. Never in the
-> default capture list — a scenario opts in with `capture: [rawTree, ...]`.
+> `rawTree` writes `hierarchy.raw<suffix>`, the device's/runner's own reply, untouched by any of
+> bajutsu's processing. For adb that is the `uiautomator dump`/resident XML (`.xml`); for XCUITest it
+> is the undecoded `GET /elements` body (`.json`).
+>
+> On adb's resident channel, when narrowing changed something, `rawTree` also writes
+> `hierarchy.parsed-input.xml`: what `parse_hierarchy` actually consumed, after SystemUI decor
+> windows were stripped. XCUITest applies no such transform, so it never writes a second file.
+>
+> The capture exists to diagnose a mismatch between a resolved coordinate and the real screen. It
+> shows whether the device's/runner's own reply already looked wrong, or whether bajutsu's own
+> parsing changed it. It is never in the default capture list; a scenario opts in with
+> `capture: [rawTree, ...]`.
 >
 > One redaction rule refuses it outright: when `redact.labels` is configured, `rawTree` writes
 > nothing for the whole run and logs why. `redact.labels` masks a labeled element's value
-> *structurally* — `elements.json` is written from the parsed tree, so the writer knows which value to
-> blank — but the raw dump is free text with no such structure, so it would ship an unmasked superset
-> of what `elements.json` just masked. Every other redaction rule (`headers`, `fields`, resolved
-> secret values) applies to the dump as free text and leaves `rawTree` enabled — with one caveat for
-> `redact.headers`/`redact.fields`: their key-pattern masking is written for multi-line logs, where a
-> matched value ends at the next newline, but a UI Automator dump is emitted as a single line. A
-> configured key that happens to match text inside the dump itself (an on-screen label or
-> `content-desc` reading like `Token: ...`) therefore masks everything after that match to the end of
-> the file, not just the matched value — the dump still ships, just truncated. A resolved secret value
-> (bound via `${secrets.*}`) is unaffected, since it is masked by matching a known literal rather than
-> a key pattern.
+> *structurally*. `elements.json` is written from the parsed tree, so the writer knows which value to
+> blank. The raw dump is free text with no such structure, so it would ship an unmasked superset
+> of what `elements.json` just masked.
+>
+> Every other redaction rule (`headers`, `fields`, resolved secret values) applies to the dump as
+> free text and leaves `rawTree` enabled. One caveat applies to `redact.headers` and
+> `redact.fields`. Their key-pattern masking is written for multi-line logs, where a matched value
+> ends at the next newline, but a UI Automator dump is emitted as a single line. A configured key
+> that happens to match text inside the dump itself (an on-screen label or `content-desc` reading
+> like `Token: ...`) therefore masks everything after that match to the end of the file, not just
+> the matched value. The dump still ships, just truncated. A resolved secret value (bound via
+> `${secrets.*}`) is unaffected, since it is masked by matching a known literal rather than a key
+> pattern.
 
 ### `actionLog` — what each step actually did to the screen
 
@@ -144,27 +166,34 @@ tree cannot: *where did this tap land, and how far did this swipe travel*.
 Three rules bound what a record may say, and every backend honors them:
 
 - **Only a coordinate that was really sent.** `points` is empty whenever no coordinate crossed to the
-  platform — a handle-based iOS tap, an Android device-side gesture — because the point was chosen on
-  the far side. The record shows the resolved `frame` instead rather than presenting the frame's centre
-  as a measurement it did not take.
+  platform (a handle-based iOS tap, an Android device-side gesture), because the far side chose the
+  point. The record shows the resolved `frame` instead. It does not present the frame's centre as a
+  measurement it never took.
 - **No device work.** Every value is one the actuator already had, so recording costs no extra query,
   read, or round trip.
-- **No authored string, ever.** `manifest.json` is written without a redactor, so the record carries
-  neither a `type` step's text (not even its length — `Redactor` uses a fixed-width placeholder
-  precisely so no artifact discloses a secret's length), nor a `selectOption`'s option, a
-  `setPickerValue`'s value, or a `navigate` step's URL, nor an element's
-  accessibility label. `target` is always the resolved accessibility identifier and nothing else, so it
-  is unset for an element that has none.
+- **No authored string, ever.** The writer of `manifest.json` runs no redactor, so the record
+  carries none of the following:
+  - a `type` step's text, not even its length (`Redactor` uses a fixed-width placeholder, so no
+    artifact discloses a secret's length)
+  - a `selectOption`'s option
+  - a `setPickerValue`'s value
+  - a `navigate` step's URL
+  - an element's accessibility label
+
+  `target` is always the resolved accessibility identifier and nothing else. An element with no
+  identifier leaves it unset.
 
 A record is written when the gesture is *attempted*, before its transport answers, so a step that
 failed to actuate still shows what it aimed at. The step's own result says whether the step worked.
 
-One actuation belongs to no step: the reactive system-alert guard also fires before the scenario-level
-`expect` re-check, so its record lands on the scenario's `expect_actuations` beside `expect_alerts`.
-A backend that does not implement the record simply contributes none, and the run is unchanged.
+One actuation belongs to no step. The reactive system-alert guard also acts before the
+scenario-level `expect` re-check. Its record lands on the scenario's `expect_actuations`, beside
+`expect_alerts`. A backend that does not implement the record contributes none, and the run does
+not change.
+
 The driver's log is bounded, so a pathological step (a `maxScrolls` in the hundreds) can lose its
-earliest records, and a damaged record can be lost the same way when a report loads a manifest back —
-`dropped_actuations` counts either kind rather than letting the list read as complete.
+earliest records. A report that loads a manifest back can lose a damaged record the same way.
+`dropped_actuations` counts both kinds, so the list never reads as complete when it is not.
 
 The Android backend also records what happened to its read channel, because a run there can pass on
 a different read path from the one it started on. Nothing on the verdict path reads these fields. A
@@ -212,10 +241,10 @@ The detailed firing logic is in [run-loop](run-loop.md#evidence-rule-firing).
 
 > **Preview firing before a run (BE-0028).** A loose glob or a `screenChanged` rule can fire on
 > far more steps than intended, and attaching a heavy capture (`video` / `deviceLog` / `appTrace` /
-> `network`) to it quietly produces gigabytes. `bajutsu trace --explain <scenario.yaml>` is a
-> read-only dry run that counts
-> how many times each rule would fire (and on which steps), and flags ⚠ a heavy capture on a
-> broadly-matching rule — so you can tighten the match before paying for it. See [cli](cli.md#trace).
+> `network`) to such a rule quietly produces gigabytes. `bajutsu trace --explain <scenario.yaml>` is
+> a read-only dry run. It counts how many times each rule would fire (and on which steps) and flags
+> ⚠ a heavy capture on a broadly-matching rule, so a reader can tighten the match before paying for
+> it. See [cli](cli.md#trace).
 
 ## B. Inline evidence
 
@@ -234,31 +263,49 @@ To capture just one step, attach `capture:` directly to the step.
 Implementation: `bajutsu/common/evidence/intervals.py`. These are **subprocess child processes** — `simctl` on iOS,
 `adb` on Android — started before the action and stopped after the step settles. Process spawning is
 injectable (`Spawn`) and testable. Web has no subprocess: its intervals are Playwright-native and
-supplied by the driver (see below). (`appTrace` is an iOS interval too — a `log stream` over the
-app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
+supplied by the driver (see below). On iOS, `appTrace` is a `log stream` over the app's `os_log`
+subsystem. `parse_app_trace` pairs its markers into timed intervals.
+
+On Android, `appTrace` streams `adb logcat -s <tag>:V`, and the app logs its markers under that tag.
+The tag is `--log-subsystem` when set, else the app's package. The stream follows the tag rather
+than a process id, so a `relaunch` leaves the stream running. The stream starts at an instant
+read from the device's own clock (`logcat -T`), to the second. The device thus decides which lines
+came earlier. A cutoff on the computer running Bajutsu would compare device times with its own
+clock. Any clock drift would then drop real lines. A line logged up to a second before the
+stream can still appear. A later `started` of the same name replaces such a line when pairing.
+When Bajutsu cannot read the device clock, the stream starts from the last logged line with a warning. On stop, `parse_logcat_app_trace` reads
+each line's time and pairs the markers into `appTrace.json`.
 
 > **Interval kinds are opt-in (BE-0028).** `video` / `deviceLog` / `appTrace` are heavy, so a
 > scenario records an interval **only when it asks for that kind** — through an inline `capture:`
 > or a `capturePolicy` rule (e.g. a `result: failure` rule that captures `video`). A scenario that
 > requests none records none, keeping the common case cheap; the lightweight instant baseline
 > (`screenshot` + `elements`) is always captured, so a failure still leaves evidence (DESIGN §10).
-> Every step captures a screenshot on **both** sides of its action, but a tree only after it:
-> `before.png` shows the screen it is about to act on, and `after.png` plus an `elements` write
-> once it has acted show what the action left behind (BE-0407). Neither screenshot depends on the
-> `capture` list — narrowing that list costs a step neither of its two screenshots. When nothing has
-> actuated the device since the previous step's `after.png`, `before.png` can be a byte-for-byte
-> copy of it rather than a fresh capture. Four cases skip the copy and always shoot fresh, because
-> an asynchronous interstitial could have arrived between the two steps: an interrupt's recovery
-> step, a `handleSystemAlert` step, any step in a scenario declaring `interrupts`, and any step
-> running under the system-alert guard. That guard is on by default, so a stock `run` shoots
-> fresh on every step — the copy reaches a step only where `--no-system-alert-handling` turns the
-> guard off.
-> `elements.json` has a single filename, so the post-action write is
-> the tree a run keeps: it describes the screen the action produced, which is the screen `after.png`
-> shows and the one every viewer draws element frames from. On a non-mutating step (`assert`,
-> `wait`) that tree is the one the step itself settled on, reused rather than re-read
-> ([BE-0259](../roadmaps/BE-0259-assert-query-snapshot-reuse/BE-0259-assert-query-snapshot-reuse.md)), so there it
-> comes from a moment just before the screenshot rather than just after.
+>
+> Every step captures a screenshot on **both** sides of its action, but a tree only after it.
+> `before.png` shows the screen the step is about to act on. Once the step has acted, `after.png`
+> and an `elements` write show what the action left behind (BE-0407). Neither screenshot depends on
+> the `capture` list, so narrowing that list never removes either of a step's two screenshots.
+>
+> When nothing has actuated the device since the previous step's `after.png`, `before.png` can be a
+> byte-for-byte copy of it rather than a fresh capture. Four cases skip the copy and always shoot
+> fresh, because an asynchronous interstitial could have arrived between the two steps:
+>
+> - an interrupt's recovery step
+> - a `handleSystemAlert` step
+> - any step in a scenario declaring `interrupts`
+> - any step running under the system-alert guard
+>
+> The guard is on by default, so a stock `run` shoots fresh on every step. The copy reaches a step
+> only where `--no-system-alert-handling` turns the guard off.
+>
+> `elements.json` has a single filename, so the post-action write is the tree a run keeps. It
+> describes the screen the action produced, which is the screen `after.png` shows and the one every
+> viewer draws element frames from. On a non-mutating step (`assert`, `wait`), that tree is the one
+> the step itself settled on, reused rather than re-read
+> ([BE-0259](../roadmaps/BE-0259-assert-query-snapshot-reuse/BE-0259-assert-query-snapshot-reuse.md)),
+> so it comes from a moment just before the screenshot rather than just after.
+>
 > Preview what a scenario would record with `bajutsu trace --explain` (see [cli](cli.md#trace)).
 
 | Kind | Start command (iOS / Android) | Stop signal | Filename |
@@ -267,70 +314,84 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
 | `deviceLog` | `simctl spawn <udid> log stream --level debug --style compact [--predicate ...]` / `adb logcat -b main,system,crash,events -T 1` | SIGTERM | `device.log` |
 
 - `start_video` / `start_device_log` (iOS) and `start_screenrecord` / `start_logcat` (Android)
-  return an `Interval`, and `Interval.stop()` sends the signal and finalizes the file. `deviceLog`
-  waits up to 10s, then kills; `video` gets a generous 120s finalize window before the kill, because
-  `recordVideo` / `screenrecord` still has to flush and mux the whole clip to disk, and a premature
-  kill truncates the mp4 (no `moov` atom) and, on iOS, wedges the simulator's recording session.
-  `screenrecord` records device-side, so its `Interval` also pulls the finalized mp4 off the device
-  on stop and removes the device copy. If the pull fails (the device vanished), the sink drops that
-  one artifact with a warning rather than emit a path with no file behind it — it does not fail an
-  otherwise-passing scenario while finalizing interval evidence. `adb screenrecord` caps a single
-  recording at ~180s (the platform default/maximum, not a limit bajutsu tunes), so an Android video
-  of a longer scenario ends at that mark.
-- deviceLog can be narrowed by `--predicate` (NSPredicate) to a subsystem, etc. (the CLI's
-  `--log-predicate`) on iOS; `adb logcat` is unfiltered by tag/priority (a logcat filterspec is a
-  different syntax, a later knob) and starts the follow from the tail so it reflects the scenario
-  window, not the whole ring buffer. It does widen past bare `logcat`'s default buffer set
-  (`main,system,crash`) to add `events`: an app's own uncaught exception lands in `crash`, but a
-  process killed by `ActivityManager` for memory pressure logs only a structured `am_kill` /
-  `am_low_memory` entry in `events` — without it, that cause is indistinguishable from a silent,
-  uncaptured failure. The kernel's own out-of-memory (OOM) / low memory killer (LMK) path lands in
-  the kernel ring buffer instead, which `logcat -b kernel` reaches only where logd bridges
-  `/proc/kmsg` (`ro.logd.kernel`, typically userdebug builds) — so it is left out of the set here,
-  not out of reach.
+  return an `Interval`, and `Interval.stop()` sends the signal and finalizes the file.
+  - `deviceLog` waits up to 10s, then sends a kill.
+  - `video` gets a generous 120s window to finish writing before the kill. `recordVideo` /
+    `screenrecord` still has to flush and mux the whole clip to disk. A premature kill truncates the
+    mp4 (no `moov` atom) and, on iOS, wedges the simulator's recording session.
+  - `screenrecord` records device-side. On stop, its `Interval` also pulls the finished mp4 off the
+    device and removes the device copy.
+  - If that pull fails (the device vanished), the sink drops that one artifact with a warning. It
+    does not emit a path with no file behind it, and it does not fail an otherwise-passing scenario.
+  - `adb screenrecord` caps a single recording at ~180s. That is the platform default/maximum, not
+    a limit bajutsu tunes. An Android video of a longer scenario ends at that mark.
+- On iOS, `--predicate` (NSPredicate) narrows `deviceLog` to a subsystem, for example (the CLI's
+  `--log-predicate`).
+  - `adb logcat` has no tag or priority filter. A logcat filterspec is a different syntax, a later
+    knob.
+  - `adb logcat` starts the follow from the tail, so it reflects the scenario window, not the whole
+    ring buffer.
+  - The buffer set widens past bare `logcat`'s default (`main,system,crash`) to add `events`. An
+    app's own uncaught exception lands in `crash`. A process that `ActivityManager` ends for memory
+    pressure logs a structured `am_kill` / `am_low_memory` entry in `events` alone. Without
+    `events`, that cause looks like a silent, uncaptured fault.
+  - The kernel's own out-of-memory (OOM) / low memory killer (LMK) path lands in the kernel ring
+    buffer instead. `logcat -b kernel` reaches that buffer where logd bridges `/proc/kmsg`
+    (`ro.logd.kernel`, typically userdebug builds) and nowhere else. The set here leaves the buffer
+    out, though it is not out of reach.
 - `INTERVAL_KINDS = {"video", "deviceLog", "appTrace"}`. The orchestrator uses this set to split
   "interval / instant."
 - **The scenario-wide `video` begins before the app launches on Android**, so the recording spans
   the app's cold start rather than missing it. There, the environment's `start` starts recording
   (after the device is booted and the app installed, but before `am start`) and hands the running
-  `Interval` back through `prestarted_intervals`; the sink *adopts* it at scenario start
-  (`intervals.adopt`) instead of starting a fresh one, and on stop finalizes it and relocates the
-  file to `scenario.mp4` (Android's `screenrecord` writes real ISO base media). Web wires the same
-  up-front capture into the browser context at creation, but finalizes to `scenario.webm` instead —
-  Playwright's recorder always writes Matroska/WebM, so its artifact is named after that real
-  container rather than borrowing Android/iOS's `.mp4` (see `PlaywrightDriver.video_extension` in
-  [drivers.md](drivers.md#playwright-web)).
-  XCUITest, the current iOS backend, records on demand instead: nothing starts a recording before
+  `Interval` back through `prestarted_intervals`. At scenario start, the sink *adopts* that
+  interval (`intervals.adopt`) instead of starting a fresh one. On stop, it finalizes the interval
+  and relocates the file to `scenario.mp4` (Android's `screenrecord` writes real ISO base media).
+
+  Web wires the same up-front capture into the browser context at creation, but finalizes to
+  `scenario.webm` instead. Playwright's recorder always writes Matroska/WebM, so its artifact is
+  named after that real container rather than borrowing Android/iOS's `.mp4` (see
+  `PlaywrightDriver.video_extension` in [drivers.md](drivers.md#playwright-web)).
+
+  XCUITest, the current iOS backend, records on demand instead. Nothing starts a recording before
   the `xcodebuild` runner spawns and launches the app, so its `prestarted_intervals` is always empty.
-  The up-front
-  behavior is gated by `records_video_up_front`, `True` for Android and web and `False` for
-  XCUITest and the fake backend; a scenario that requests no `video` starts none regardless.
+
+  The flag `records_video_up_front` controls the up-front behavior. It is `True` for Android and web
+  and `False` for XCUITest and the fake backend. A scenario that requests no `video` starts none
+  regardless.
 - **A confirmed start time corrects the report's step/network timestamps to the video's real
   origin, not the moment recording was merely requested.** `start_video` (iOS) and
   `start_screenrecord` (Android), passed `confirm_started=True` at their production call sites,
   wait on a real signal after spawning, and store the confirmed `time.monotonic()` instant on
-  `Interval.true_start`. iOS waits for the `Recording started` line on the recorder's stderr.
-  `simctl io recordVideo` writes that line once it has processed the first frame. Android waits for
-  the device-side file's first byte. `screenrecord` opens its output empty and writes nothing until
-  its muxer starts on the first encoded frame. That first byte thus marks the recording's origin. The
-  wait runs on the device, in one bounded `adb shell` loop. The run clears the file before the
-  spawn, so a leftover recording cannot answer the wait. Where the wait cannot answer, Android falls
-  back to the device-side process appearing. A running process is no proof its encoder emits frames
-  yet, so that signal is weaker. It still beats a guess. `intervals.adopt` carries `true_start`
-  forward unchanged when it relocates a prestarted interval, so Android's confirmation (made before
-  `adopt` even runs) is not lost. The web actuator stamps `true_start` right after the recording
-  page is created, with no poll: `record_video_dir` enables recording for the pages in a context,
-  but the video itself does not exist until a page does, so the stamp waits for `new_page()` rather
-  than `new_context()`. A poll that never confirms leaves `true_start` at `None`, so the anchor
-  falls back to `scenario_start` — never a guessed number.
+  `Interval.true_start`.
+  - **iOS** waits for the `Recording started` line on the recorder's stderr. `simctl io recordVideo`
+    writes that line once it has processed the first frame.
+  - **Android** waits for the device-side file's first byte. `screenrecord` opens its output empty.
+    It writes nothing until its muxer starts on the first encoded frame, so that first byte marks
+    the recording's origin.
+  - **Android's wait** runs on the device, in one bounded `adb shell` loop. The run clears the file
+    before the spawn, so a leftover recording cannot answer the wait.
+  - **Android, where the wait cannot answer,** falls back to the device-side process appearing. A
+    running process is no proof its encoder emits frames yet, so that signal is weaker. It still
+    beats a guess.
+  - **The web actuator** stamps `true_start` right after it creates the recording page, with no
+    poll. `record_video_dir` enables recording for the pages in a context. The video itself does not
+    exist until a page does, so the stamp waits for `new_page()` rather than `new_context()`.
+
+  `intervals.adopt` carries `true_start` forward unchanged when it relocates a prestarted interval.
+  Android's confirmation, made before `adopt` even runs, is therefore not lost.
+
+  A poll that never confirms leaves `true_start` at `None`. The anchor then falls back to
+  `scenario_start`, never a guessed number.
 
   Waiting on the recorder's own announcement rather than on its output file is load-bearing on iOS,
   and was learned the hard way. `simctl io recordVideo` does not write progressively: the mp4 stays
-  at zero bytes for the whole recording and is written in one piece at finalize. An earlier
-  confirmation polled that file for growth, so it could never succeed — it spent its entire ceiling
-  on every scenario, green runs included, and the iOS lane had raised that ceiling to 20 seconds on
-  the belief that overshooting was free. `simctl`'s own `--help` names the stderr line as the signal
-  to wait on, and it arrives in about 0.15 seconds.
+  at zero bytes for the whole recording, and `simctl` writes it in one piece at the end.
+
+  An earlier confirmation polled that file for growth, so it could never succeed. It spent its
+  entire ceiling on every scenario, green runs included. The iOS lane had raised that ceiling to 20
+  seconds on the belief that overshooting was free. `simctl`'s own `--help` names the stderr line as
+  the signal to wait on. That line arrives in about 0.15 seconds.
 
   How long that wait may run is still a knob, because startup jitter in `simctl` and `adb` is worse
   on a loaded continuous-integration (CI) machine than on a developer's, and a wait that gives up
@@ -356,25 +417,34 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
   `RunResult.video_anchor_s`.
 
   The subtraction is only as good as its two inputs, and each can be wrong in a way the other
-  cannot see. A duration is not always a wall-clock measure, which is a property of the recorder
-  rather than of the arithmetic: a container written at a nominal frame rate states more seconds
-  than the recorder was ever open for, as Playwright's short clips do, putting the origin *before*
-  the spawn. And `ended_at` is not always when the recording ended, because a recorder can stop
-  itself: Android's `screenrecord` quits at its own `SCREENRECORD_TIME_LIMIT_S` ceiling, so a
-  scenario outlasting that ceiling signals a recorder that stopped minutes earlier, putting the
-  origin *after* the first frame by that whole gap.
+  cannot see.
+  - **A duration is not always a wall-clock measure.** That is a property of the recorder rather
+    than of the arithmetic. A container written at a nominal frame rate states more seconds than
+    the recorder was ever open for, as Playwright's short clips do. The origin then lands *before*
+    the spawn.
+  - **`ended_at` is not always when the recording ended**, because a recorder can stop itself.
+    Android's `screenrecord` quits at its own `SCREENRECORD_TIME_LIMIT_S` ceiling. A scenario that
+    outlasts the ceiling signals a recorder that stopped minutes earlier. The origin then lands
+    *after* the first frame by that whole gap.
 
   A third issue sits in the recorder rather than in either input. The clip may stop short of the
   stop signal. The `simctl` movie header spans spawn to stop, even over a static screen. Playwright
-  repeats its last frame until the context closes. Android's `screenrecord` behaves differently. It
+  repeats its last frame until the context closes. Android's `screenrecord` behaves differently: it
   encodes a frame merely when the screen changes, and its file ends at the last one. A still screen
-  before the stop thus makes the measured origin late by that whole stretch. One emulator
-  run measured 0.8 seconds. That error sits well inside the window below, so no bound could catch
-  it. `Interval.measure_origin` decides whether `stop()` runs the subtraction at all. On Android
-  the first byte is the best anchor. The late measurement comes next, and a pid instant last. `start_screenrecord` turns the measurement off once the first-byte wait
-  confirmed the start. That recording keeps its first-byte `true_start` anchor. Where the wait could
-  not answer, the measurement stays on and still outranks the pid instant. `intervals.adopt`
-  carries the flag along.
+  before the stop thus makes the measured origin late by that whole stretch. One emulator run
+  measured 0.8 seconds. That error sits well inside the window below, so no bound could catch it.
+
+  `Interval.measure_origin` decides whether `stop()` runs the subtraction at all. On Android, the
+  anchors rank as follows:
+
+  1. The first byte is the best anchor.
+  2. The late measurement comes next.
+  3. A pid instant comes last.
+
+  `start_screenrecord` turns the measurement off once the first-byte wait confirmed the start.
+  That recording keeps its first-byte `true_start` anchor. Where the wait could not answer, the
+  measurement stays on and still outranks the pid instant. `intervals.adopt` carries the flag
+  along.
 
   `Interval.spawned_at` bounds both, because it is the one instant that needs no confirmation. A
   recording opens on its first frame somewhere between that spawn and `_ORIGIN_STARTUP_CEILING`,
@@ -409,7 +479,7 @@ own process, so they reach the recorded video and each step's `after.png` alike.
 drawn from the `UIEvent` the app dequeues rather than from the coordinate the driver sent, a marker
 is evidence that the touch was *delivered*, which a driver-side coordinate record cannot show.
 
-Three properties matter before turning the flag on.
+Three properties matter before a reader turns the flag on.
 
 - **It needs an app that links BajutsuKit.** The drawing lives in `BajutsuKit` (`BajutsuTouch`),
   which the demo apps already link. The flag sets `BAJUTSU_TOUCH_MARKERS=1` on the app's launch
@@ -447,37 +517,43 @@ gesture instead of sitting in a fixed region.
 
 The request travels the in-app control channel
 ([BE-0365](../roadmaps/BE-0365-in-app-control-channel/BE-0365-in-app-control-channel.md)).
-That channel is a command queue on the collector the app already reports to. The app opens no socket
+The channel is a command queue on the collector the app already reports to. The app opens no socket
 of its own, and the collector's per-run token guards the commands. The run loop waits for the app's
-acknowledgement rather than pausing for a fixed interval. That wait is what makes the capture
-correct instead of hopeful.
+acknowledgement rather than pausing for a fixed interval, and that wait makes the capture correct
+instead of hopeful.
 
 The markers themselves never reach the verdict path. The channel that hides them does. Once armed, the
 channel fails a scenario whose app never acknowledges a command. The second command is no
-exception. That command restores the markers after a capture that already succeeded. Both edges
-wait for an acknowledgement on purpose. The run loop must never report an unconfirmed state as a
+exception: it restores the markers after a capture that already succeeded. Both edges wait for an
+acknowledgement on purpose, because the run loop must never report an unconfirmed state as a
 confirmed one. From the moment the run loop arms the channel, `--touch-markers` bears on a
 verdict.
 
 The channel needs a real Simulator process, since that is where BajutsuKit's poll loop runs.
-Carrying it takes the `xcuitest` actuator with network collection on. A `fake` run starts a
-collector, but nothing ever polls it. `playwright` observes network through the driver, so it
-starts no such collector at all. `adb` reports to the same host receiver iOS does, so it does start
-one — but nothing on the device answers a command, which is why the actuator check, rather than the
-shape of the collector, is what keeps the channel to `xcuitest`. Where both of those hold — the
-`xcuitest` actuator, with network collection on — `--touch-markers` activates the channel for a
-scenario whose verdict reads a screenshot. Everywhere else, a screenshot-comparing scenario keeps
-the pre-BE-0365 behavior. It draws no markers. The investigator loses the touch evidence for that
-one scenario. That is the same trade-off this channel exists to remove, where it can.
+Carrying the channel takes the `xcuitest` actuator with network collection on. The other actuators
+fall short:
+
+- `fake` starts a collector, but nothing ever polls it.
+- `playwright` observes network through the driver, so it starts no such collector at all.
+- `adb` reports to the same receiver on the machine running bajutsu that iOS does, so it does start
+  a collector. Nothing on the device answers a command. For that reason the actuator check keeps
+  the channel to `xcuitest`, not the shape of the collector.
+
+Where both conditions hold (the `xcuitest` actuator, with network collection on), `--touch-markers`
+activates the channel for a scenario whose verdict reads a screenshot.
+
+Everywhere else, a screenshot-comparing scenario keeps the pre-BE-0365 behavior. It draws no
+markers, and the investigator loses the touch evidence for that one scenario. That is the same trade-off this
+channel exists to remove, where it can.
 
 `--backend` names one target's platform, never an ordered fallback list
 ([BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)).
 No scenario escalates past the run-level actuator to one with no pre-started collector.
 
-That fallback stays local to the scenario that took it. One scenario can arm the channel while the
-next stays unmarked. Between scenarios, the run relaunches the app with **each scenario's own**
-launch env. An unmarked scenario runs in a process the marker variable never reached. The rest of
-the same run still draws its markers.
+The unmarked fallback stays local to the scenario that took it. One scenario can arm the channel
+while the next stays unmarked. Between scenarios, the run relaunches the app with **each
+scenario's own** launch env. An unmarked scenario runs in a process the marker variable never
+reached. The rest of the same run still draws its markers.
 
 Where the channel is active, the app side gates it twice, and one of the two is a build setting.
 `BajutsuKit` compiles the channel out unless the build passes `-DBAJUTSU_ENABLE_CONTROL_CHANNEL`.
@@ -489,12 +565,13 @@ markers.
 The run loop reads those two launch-environment keys and nothing else, so it cannot tell a pair
 the flag armed from one a scenario assembled itself. It reads them from the scenario's *effective*
 launch environment. That environment merges the target's own `subject.launch.env` underneath the
-scenario's own. The merge follows the same order the launch itself uses. A target-level pin
-counts here the same as a scenario's own pin. That is why `--touch-markers` leaves a scenario
-with no `visual` verdict unmarked. That happens whenever the effective environment already sets
-`BAJUTSU_CONTROL_CHANNEL=1`. Adding the marker key there would complete the pair. Any such
-scenario whose `expect` runs against a baselines directory enters the channel unasked. Such a
-scenario keeps its markers off, and the run says so on stderr.
+scenario's own, in the same order the launch itself uses. A target-level pin counts the same as a
+scenario's own pin.
+
+Suppose the effective environment already sets `BAJUTSU_CONTROL_CHANNEL=1`. Adding the marker key
+would complete the pair. Any such scenario whose `expect` runs against a baselines directory would
+then enter the channel unasked. `--touch-markers` therefore leaves that scenario unmarked, and the
+run says so on stderr.
 
 ## Sinks (where evidence goes)
 
@@ -511,19 +588,21 @@ class EvidenceSink(Protocol):
 | `NullSink` (default) | writes nothing (keeps a run side-effect-free) |
 | `FileSink(run_dir, udid, log_predicate)` | writes under `run_dir/<step_id>/` |
 
-A capture the environment already began before launch (Android's `video`) is *adopted*
-rather than started — the sink relocates its finalized file into the scenario dir on stop. Otherwise
-interval captures come from the driver's `driver_interval` provider when it supplies one (web's
-Playwright-native console / video, Android's `adb` logcat); failing that `FileSink`
-takes the simctl path, which it skips when `udid` is absent. The CLI's `run` uses
+A capture the environment already began before launch (Android's `video`) is *adopted* rather than
+started. On stop, the sink relocates its finalized file into the scenario dir.
+
+Otherwise, interval captures come from the driver's `driver_interval` provider when it supplies
+one (web's Playwright-native console / video, Android's `adb` logcat). When the driver supplies
+none, `FileSink` takes the simctl path, which it skips when `udid` is absent. The CLI's `run` uses
 `FileSink(runs/<runId>, udid=..., log_predicate=...)` ([cli](cli.md#run)).
 
 ## First-wait timeout diagnostic (BE-0231)
 
 A `wait for <element>` that times out writes `run_dir/<step_id>/wait-timeout.json`
-**unconditionally** — independent of `capturePolicy`, so a timeout that no policy rule would have
-captured still leaves the evidence needed to decide *why* it fired. It is pure diagnosis, never a
-verdict input (the run's pass/fail still comes only from machine-checkable assertions).
+**unconditionally**, independent of `capturePolicy`. A timeout that no policy rule would have
+captured thus still leaves the evidence needed to decide *why* it fired. The file is pure
+diagnosis, never a verdict input. The run's pass/fail still comes from machine-checkable
+assertions alone.
 
 The file is self-contained so a rerun-to-green does not discard it:
 
@@ -545,12 +624,15 @@ platform's own report for it. Without this, the failure reads as an `ElementNotF
 selector that should exist and normally does, so a contributor has to rule out a renamed `id` and an
 unloaded screen before suspecting the app at all.
 
-It is a diagnostic, never a verdict: the scenario fails because its step failed, exactly as it would
-for any other terminal step failure, and nothing here decides pass/fail (prime directive 1). The
-crash is classified **in-band**, so the scenario finishes normally — the failing step's screenshot,
-the running video recording, and any `cleanup: on: failure` rule all land the way they always do — and
-the backend-crash retry loop (`crash-diagnostics/` above, BE-0421) is never triggered: that one names
-a fault in the *test infrastructure*, this one a likely defect in the app a team is testing.
+The evidence is a diagnostic, never a verdict. The scenario fails because its step failed, as it
+would for any other terminal step failure. Nothing here decides pass/fail (prime directive 1).
+
+The crash is classified **in-band**, so the scenario finishes normally. The failing step's
+screenshot, the running video recording, and any `cleanup: on: failure` rule land as they always do.
+
+The backend-crash retry loop (`crash-diagnostics/` above, BE-0421) never triggers. That loop names
+a fault in the *test infrastructure*. This evidence names a likely defect in the app a team is
+testing.
 
 | Backend | What lands in `app-crash/` | How the crash is confirmed |
 |---|---|---|
@@ -558,33 +640,36 @@ a fault in the *test infrastructure*, this one a likely defect in the app a team
 | Android (adb), **API 30 and above** | `logcat-crash.txt`, the crash buffer's own block for this process — managed (`FATAL EXCEPTION`) or native (`Fatal signal`) — plus `tombstone_NN` where the device allows `adb root` | `pidof` reporting no process, corroborated by `dumpsys activity exit-info` reporting `CRASH` / `CRASH_NATIVE` at or after this launch. Below API 30 `ApplicationExitInfo` does not exist, so nothing is confirmed |
 | web (Playwright) | nothing | left to a follow-up item |
 
-The check is **reactive**: a driver is asked only once a step's own action, wait, or assertion has
-already failed, never polled. Polling would add a round trip to every step of every green run to
-catch a failure mode that is rare by construction, and the reactive shape still catches the event at
-the exact step it happened, since that step is already failing.
+The check is **reactive**. The runner asks a driver only after a step's own action, wait, or
+assertion has already failed, and never polls. Polling would add a round trip to every step of
+every green run, to catch a fault that is rare by construction. The reactive shape still catches
+the event at the exact step where it happened, since that step is already failing.
 
-That shape has two blind spots, both accepted deliberately rather than closed with an unconditional
-end-of-scenario probe (which is the every-green-run cost the design exists to avoid):
+That shape has two blind spots. The design accepts both deliberately. An unconditional
+end-of-scenario probe would close them, but it would add the every-green-run cost the design exists
+to avoid.
 
-- A crash caused by a scenario's **last** step, where that step's own actuation still reports
-  success — a tap the runner delivered before the app died — is never probed, so a scenario
-  declaring neither `expect` nor a non-failure `cleanup` rule stays **green**.
-- The same shape *with* a scenario-level `expect` goes **red but unclassified**: `expect` produces
-  assertion results rather than step outcomes, so it never reaches the check, and the reader sees an
+- A crash caused by a scenario's **last** step can go unprobed when that step's own actuation still
+  reports success (a tap the runner delivered before the app died). A scenario that declares
+  neither `expect` nor a non-failure `cleanup` rule then stays **green**.
+- The same shape *with* a scenario-level `expect` goes **red but unclassified**. `expect` produces
+  assertion results rather than step outcomes, so it never reaches the check. The reader sees an
   assertion mismatch instead of a crash.
 
-A scenario written to exercise this signal therefore takes one more step after the crash trigger, so
-it is that later step — not the trigger itself — that fails and gets probed. A `cleanup` rule that
-runs on success or always is enough too: its own teardown step does reach the check, so the crash is
-caught one step later rather than missed.
+A scenario written to exercise this signal takes one more step after the crash trigger. The later
+step, not the trigger itself, fails and gets probed.
+
+A `cleanup` rule that runs on success or always is enough too. Its own teardown step does reach the
+check, so the check catches the crash one step later rather than missing it.
 
 A crawl records the same evidence under `crashes/crash-NNN/app-crash/`, beside that crash's own
-repro scenario. A crawl's *detection* stays the accessibility-tree heuristic it already used, which a
-covering system alert can trip; only the capture is gated on a driver positively confirming the
-event, so an unconfirmed detection records the crash with no artifacts rather than paying a bounded
-sweep on what may be an alert. The Android tombstone layer is `run`-only: the `adb root` it needs
-restarts `adbd`, which a crawl lane — holding one environment for its entire walk — could not recover
-from.
+repro scenario. A crawl's *detection* stays the accessibility-tree heuristic it already used, and a
+covering system alert can trip that heuristic. A driver must positively confirm the event before
+the crawl captures anything. An unconfirmed detection therefore records the crash with no
+artifacts, rather than paying a bounded sweep on what may be an alert.
+
+The Android tombstone layer is `run`-only. The `adb root` it needs restarts `adbd`. A crawl lane
+could not recover from that restart, because the lane holds one environment for its entire walk.
 
 Every write goes through the redacting text path, like the backend's own crash evidence above: a
 crash report is text a crashing app can echo a secret into.
@@ -614,7 +699,7 @@ class Artifact:
 | `"<backend> (fallback)"` | A read-only evidence fallback supplied the artifact ([BE-0020](../roadmaps/BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback.md)). |
 
 When an evidence kind cannot be supplied by any backend in the list, a `SkippedCapture(kind,
-reason)` is recorded per scenario and disclosed in the manifest — the gap is never silently empty.
+reason)` is recorded per scenario and disclosed in the manifest. The gap is never silently empty.
 
 Each interval kind is a capability of its own (`video`, `deviceLog`, `appTrace`), judged against the
 route the scenario runs on
@@ -625,49 +710,61 @@ route the scenario runs on
 | iOS Simulator | Recorded | Recorded | Recorded |
 | iOS real device (`runsOn.ios.kind: device`) | Skipped | Skipped | Skipped |
 | Live WebDriver endpoint | Skipped | Skipped | Skipped |
-| Android | Recorded | Recorded | Skipped |
+| Android | Recorded | Recorded | Recorded |
 | Web | Recorded | Recorded | Skipped |
 
-A gap is recorded only for a kind the scenario asked for, and the sink never starts a recorder for
-it: simctl reaches the Simulator alone, so it is not pointed at a real device. Evidence never decides
-a verdict, so a skipped kind leaves the result unchanged.
+A gap is recorded for a kind the scenario asked for, and for no other kind. The sink never starts
+a recorder for a skipped kind: simctl reaches the Simulator alone, so the sink does not point it at
+a real device. Evidence never decides a verdict, so a skipped kind leaves the result unchanged.
 
 ## Which screen an artifact shows (`depicts`)
 
 A step's screenshot and its element tree are shown together, and a viewer draws a hovered element's
-frame onto the image — so the two have to describe the same screen. `depicts` is what makes that
-checkable: `"<driver>:<moment>"` names the driver whose read produced the file and which side of the
-step's action it was taken on (`before` or `after`). A native step's `before.png` carries
+frame onto the image, so the two have to describe the same screen. `depicts` makes that checkable.
+Its value, `"<driver>:<moment>"`, names the driver whose read produced the file. It also names
+which side of the step's action (`before` or `after`) the read came from. A native step's `before.png` carries
 `"xcuitest:before"`, and its `after.png` and tree carry `"xcuitest:after"`.
 
 **Two artifacts describe the same screen exactly when their `depicts` values are equal.** A consumer
-compares, and never parses. `evidence.step_view` is where every consumer does the comparison — the
-HTML report's element viewer, the serve editor's element picker, and the triage context handed to a
-failure investigator — so none of them disagrees about which screen a step "is". It resolves a step
-to one screenshot, one tree, and whether the two are paired; an unpaired step keeps its image and
-loses its frames, which is the honest rendering when the frames would land on pixels they never
-described.
+compares the values and never parses them. Every consumer does the comparison in
+`evidence.step_view`. The consumers are:
 
-Two situations produce an unpaired step. Inside a
-[`web` block](scenarios.md#web-entering-a-webviews-dom) the tree comes from the WebView (in the
-WebView's own coordinate space) while the screenshot comes from the native driver, since a
-`WebContextDriver` cannot take one. And a run whose store no longer holds `after.png` — restored
-from Trash, or synced into an object store that never received the last write — falls back to the
-`before.png` beside it, which the post-action tree does not describe. A step that fails before it
-acts is not one of the two: it records only its pre-action pair, and that pair matches.
+- the HTML report's element viewer
+- the serve editor's element picker
+- the triage context handed to a failure investigator
+
+None of them can disagree about which screen a step "is".
+
+`evidence.step_view` resolves a step to one screenshot, one tree, and whether the two are paired.
+An unpaired step keeps its image and loses its frames. That is the honest rendering, because the
+frames would land on pixels they never described.
+
+Two situations produce an unpaired step:
+
+- Inside a [`web` block](scenarios.md#web-entering-a-webviews-dom), the tree comes from the WebView,
+  in the WebView's own coordinate space. The screenshot comes from the native driver, since a
+  `WebContextDriver` cannot take one.
+- A run whose store no longer holds `after.png` falls back to the `before.png` beside it. The
+  post-action tree does not describe that image. Restoring a run from Trash produces this case, as
+  does syncing a run into an object store that never received the last write.
+
+A step that fails before it acts is neither case. It records its pre-action pair alone, and that
+pair matches.
 
 `depicts` is absent from every run recorded before it existed (`manifest.json` `schemaVersion` 8 and
-below). Nothing in such a manifest says which side of the action an artifact was taken on, so a
-consumer reproduces the earlier choice — `after.png` over the `before.png` beside it — and treats it
-as paired, rather than dropping frames a stored run has always shown.
+below). Nothing in such a manifest says which side of the action an artifact was taken on.
+A consumer therefore reproduces the earlier choice, `after.png` over the `before.png` beside it,
+and treats the pair as paired. This keeps the frames a stored run has always shown.
 
 ## Visual evidence
 
-A `visual` assertion produces a `VisualEvidence` record carried into the manifest and the
-report. It contains the run-dir-relative paths to the baseline copy, the actual screenshot,
-and the diff visualization (when the comparison found differences), plus `diff_pct` (the
-percentage of pixels that differed) and `engine` — the comparison engine that produced the
-verdict (`"exact"` or `"pixelmatch"`; [BE-0165](../roadmaps/BE-0165-visual-compare-engines/BE-0165-visual-compare-engines.md)).
+A `visual` assertion produces a `VisualEvidence` record, which the manifest and the report carry.
+The record holds the run-dir-relative paths to the baseline copy, the actual screenshot, and the
+diff visualization (when the comparison found differences). It also holds two values:
+
+- `diff_pct`, the percentage of pixels that differed
+- `engine`, the comparison engine that produced the verdict (`"exact"` or `"pixelmatch"`;
+  [BE-0165](../roadmaps/BE-0165-visual-compare-engines/BE-0165-visual-compare-engines.md))
 
 The engine is selected per assertion (`compare:`) with a target-level config fallback
 (`evidence.visualCompare`), and is recorded in the manifest so the algorithm that produced each
@@ -675,7 +772,9 @@ verdict is traceable. Implementation: `bajutsu/assertions/visual.py` `VisualEvid
 
 ## Masking (redact)
 
-Screenshots, logs, and network data can capture personally identifiable information (PII) and tokens. Declare what to mask before writing. Implementation: `scenario/models/evidence.py` `Redact`. The run merges config's `evidence.redact` with the scenario's `redact` (union) ([configuration](configuration.md#merging-redact)).
+Screenshots, logs, and network data can capture personally identifiable information (PII) and tokens. Declare what to mask before writing.
+
+The run merges config's `evidence.redact` with the scenario's `redact` (union) ([configuration](configuration.md#merging-redact)). Implementation: `scenario/models/evidence.py` `Redact`.
 
 ```yaml
 redact:
@@ -693,17 +792,21 @@ Every write into a run directory goes through one sink, so an artifact is redact
 it lands rather than because its writer remembered to ask
 ([BE-0331](../roadmaps/BE-0331-artifact-redaction-boundary/BE-0331-artifact-redaction-boundary.md)).
 The sink takes content before serialization, with one entry point per shape: an element tree,
-network exchanges, a crawl's screen map, free text. Two of the rules below are structural — they
-read an element's trait, or its identifier and label. Once a tree is a JSON string that pairing is
-gone, so a sink that scanned only serialized text could apply neither. Content the sink cannot inspect — a screenshot, a video, an archive — goes
-through a separate entry point that records the artifact as unmasked. An image is never described
-as protected. Implementation: `evidence/sink.py` `RunArtifactWriter`.
+network exchanges, a crawl's screen map, and free text. Two of the rules below are structural.
+They read an element's trait, or its identifier and label. A JSON string no longer carries that
+pairing, so a sink that scanned serialized text could apply neither.
 
-The boundary governs writing alone. Reading a run stays unrestricted — the web UI, the evidence
-readers, `export`, and the comparison commands all need it, and none of those operations can create
-an artifact. Two mechanical checks keep the write side closed. An import contract lets the sink
-alone derive a writable run path, and a second check fails a run-root path literal written anywhere
-else. Both read source alone, so a writer nobody has written yet is covered the moment it exists.
+Content the sink cannot inspect (a screenshot, a video, an archive) goes through a separate entry
+point. That entry point records the artifact as unmasked. An image is never described as protected.
+Implementation: `evidence/sink.py` `RunArtifactWriter`.
+
+The boundary governs writing alone. Reading a run stays unrestricted. The web UI, the evidence
+readers, `export`, and the comparison commands all need to read, and none of those operations can
+create an artifact.
+
+Two mechanical checks keep the write side closed. An import contract lets the sink alone derive a
+writable run path. A second check fails a run-root path literal written anywhere else. Both read
+source alone, so a writer nobody has written yet is covered the moment it exists.
 
 ### Masking that needs no configuration
 
@@ -749,52 +852,65 @@ remain, and an operator deciding whether to share a report should weigh them.
 - **The backstop's vocabulary is finite.** A credential format nobody added a pattern for passes it.
 - **A configured key can over-mask a structured string.** A `redact.headers` / `redact.fields` name is
   also matched in the `name: value` form. That form's value has no delimiter, so it runs to the end of
-  the string. In a log line that is right. Inside a bounded string an artifact carries, it consumes the
-  rest of that string: naming `app` rewrites an Android resource id like `com.example.app:id/login` to
-  `com.example.app:[REDACTED]`, and a `crawl --continue` reading such a screen map back replays a
-  branch that resolves nothing. Masking wins over legibility here deliberately — a key an author named
-  is one they meant. Keep `redact.fields` to app body-field names rather than words that also appear
-  inside a control's own identifier.
+  the string. In a log line, that is right. Inside a bounded string an artifact carries, it consumes
+  the rest of that string. Naming `app` rewrites an Android resource id like
+  `com.example.app:id/login` to `com.example.app:[REDACTED]`, and a `crawl --continue` reading such a
+  screen map back replays a branch that resolves nothing.
+
+  Masking wins over legibility here on purpose, because a key an author named is one they meant.
+  Keep `redact.fields` to app body-field names, not words that also appear in a control's own
+  identifier.
 
 > **Sensitive headers are masked by default** (a scenario needs no `redact:` for this): the
 > built-in set is `authorization`, `proxy-authorization`, `cookie`, `set-cookie`, `x-api-key`,
 > and `x-auth-token`, matched case-insensitively. `cookie` and `set-cookie` are treated as one
-> concern — naming (or unmasking) either covers both. Header names in `redact.headers` add to
-> this set; they never replace it. If you genuinely need a default header's raw value (e.g.
-> debugging an auth failure), name it under `unmaskHeaders` — turning off protection is an
-> explicit, visible choice, never the mere absence of `redact:`.
+> concern, so naming (or unmasking) either covers both. Header names in `redact.headers` add to
+> this set and never replace it. When a reader needs a default header's raw value (for example,
+> debugging an auth failure), the reader names it under `unmaskHeaders`. Turning off protection is
+> an explicit, visible choice, never the mere absence of `redact:`.
 
-> Redaction **is applied** before evidence is written (`evidence/redaction.py` `Redactor`): the device log /
-> app trace are scrubbed by key→value patterns, the element tree masks a value when its label is
-> configured (or scrubs an embedded secret), and each network exchange is masked structurally —
-> header values by name, and the url / request / response bodies as free text (so query params and
-> `token` / `password` body fields are caught). Images (screenshots / video) cannot be masked and
-> are left as-is.
+> Redaction **is applied** before evidence is written (`evidence/redaction.py` `Redactor`):
+>
+> - The device log and app trace are scrubbed by key→value patterns.
+> - The element tree masks a value when its label is configured (or scrubs an embedded secret).
+> - Each network exchange is masked structurally: header values by name, and the url / request /
+>   response bodies as free text, so query params and `token` / `password` body fields are caught.
+>
+> Images (screenshots / video) cannot be masked and are left as-is.
 >
 > Redaction also extends to **secret input values**: the literal values behind `${secrets.X}`
 > (resolved from the environment, declared via config's `evidence.secrets`
 > [configuration](configuration.md#secrets-evidencesecrets)) are masked wherever they would appear in
-> evidence — not just the configured `labels` / `headers` / `fields`. Longest values are masked
-> first so a value that is a substring of another never leaves a partial leak.
+> evidence, not just the configured `labels` / `headers` / `fields`. Redaction masks the longest
+> values first, so a value that is a substring of another never leaves a partial leak.
 >
 > Value matching is **encoding-aware**: the same secret reaches evidence verbatim but often
 > encoded, so its literal bytes never appear. Alongside the raw value, redaction masks its
-> common encodings — percent-encoded (a URL query or form field, e.g. `p@ss` as `p%40ss`),
-> HTML-escaped and JSON-escaped forms, and an `Authorization: Basic <base64(user:pass)>` token
-> whose decoded credential carries the value. This is a fixed set of transforms applied to
-> *known* values (the value is encoded, then searched for), not a decode-everything scan, so
-> the cost and false-positive surface stay bounded. One limitation remains: where evidence is
-> genuinely fragmented before redaction runs (a value split across streamed chunks that
-> redaction never sees as one contiguous string), matching is best-effort — assembled full-text
-> evidence, the common case, is unaffected.
+> common encodings:
+>
+> - percent-encoded (a URL query or form field, e.g. `p@ss` as `p%40ss`)
+> - HTML-escaped and JSON-escaped forms
+> - an `Authorization: Basic <base64(user:pass)>` token whose decoded credential carries the value
+>
+> This is a fixed set of transforms applied to *known* values (the value is encoded, then searched
+> for), not a decode-everything scan, so the cost and false-positive surface stay bounded.
+>
+> One limitation remains. Where evidence is genuinely fragmented before redaction runs (a value
+> split across streamed chunks that redaction never sees as one contiguous string), matching is
+> best-effort. Assembled full-text evidence, the common case, is unaffected.
 >
 > The executed scenario is also snapshotted into the run directory (`scenario.yaml`, and the raw
 > YAML view in the report). A `totp` step's `secret` is a durable base32 seed, not a one-time code,
 > so a **literal** seed written straight into the scenario is masked to `<redacted>` in that
-> snapshot — a `${secrets.X}` reference is kept as-is (it is not the seed, and its resolved value
-> is masked by the secret-value rule above). Prefer `${secrets.X}` for a `totp` seed so it never
-> sits in the scenario file to begin with.
+> snapshot. A `${secrets.X}` reference is kept as-is, because it is not the seed, and the
+> secret-value rule above masks its resolved value. Prefer `${secrets.X}` for a `totp` seed, so the
+> seed never sits in the scenario file to begin with.
 
 ## File permissions
 
-Redaction reduces what a leaked artifact reveals, but it is a best-effort denylist, so who can read the artifact matters too. The runner creates each run directory owner-only (`0700`) and writes the sensitive files it may hold — `network.json`, the copied `scenario.yaml`, the element dump (`elements.json`), and screenshots — owner-only (`0600`), independent of the host's `umask` ([BE-0131](../roadmaps/BE-0131-run-artifact-permissions/BE-0131-run-artifact-permissions.md)). Everything else lands under the `0700` run directory, so a run's evidence is not readable by another local account on a shared host (a CI runner, say) by default. Implementation: `bajutsu/common/run_meta/artifact_perms.py`.
+Redaction reduces what a leaked artifact reveals, but a best-effort denylist cannot promise more.
+Who can read the artifact matters too.
+
+The runner creates each run directory with owner-only access (`0700`). The sensitive files a run may hold also get owner-only access (`0600`), whatever the `umask` of the machine running bajutsu says ([BE-0131](../roadmaps/BE-0131-run-artifact-permissions/BE-0131-run-artifact-permissions.md)). Those files are `network.json`, the copied `scenario.yaml`, the element dump (`elements.json`), and screenshots.
+
+Everything else lands under the `0700` run directory. On a shared machine (a CI runner, say), another local account cannot read a run's evidence by default. Implementation: `bajutsu/common/run_meta/artifact_perms.py`.

@@ -18,112 +18,76 @@
 > **Rejected — superseded by [BE-0365](../BE-0365-in-app-control-channel/BE-0365-in-app-control-channel.md).**
 > BE-0365 proposes the same channel in the same place, with the same boundaries: a command queue
 > behind the collector's idle `GET`, the app polling it, and a condition wait on the completion
-> report. The two items were written in parallel and reached `main` as separate proposals, so this
-> one is rejected rather than deferred — nothing here waits on a blocker, and BE-0365 leaves nothing
-> for it to propose. Two points this item argued more precisely are folded into BE-0365's
-> work breakdown: the completion endpoint matched ahead of `do_POST`'s catch-all, so a completion
-> report never enters the exchanges a `request` assertion reads, and the compile-time build setting
-> that keeps a launch environment variable from being the only guard on remote control of the app.
+> report. The two items were written in parallel and reached `main` as separate proposals. This
+> item is therefore rejected rather than deferred. Nothing here waits on a blocker, and BE-0365
+> leaves nothing for it to propose.
+>
+> Two points this item argued more precisely are folded into BE-0365's work breakdown:
+>
+> - The completion endpoint is matched ahead of `do_POST`'s catch-all, so a completion report never
+>   enters the exchanges a `request` assertion reads.
+> - A compile-time build setting keeps a launch environment variable from being the only guard on
+>   remote control of the app.
+>
 > Kept for the historical record.
 
-bajutsu configures the app under test once, at launch. `BajutsuKit` reads its launch environment in
-`startIfEnabled()`, and after that bajutsu has no way to send the app anything: the only connection
-from the app is outbound and fire-and-forget. Every in-app capability is therefore fixed for the life
-of the process.
+bajutsu configures the app under test once, at launch. `BajutsuKit` reads its launch environment in `startIfEnabled()`. After that, bajutsu has no way to send the app anything, because the only connection from the app is outbound and fire-and-forget. Every in-app capability is therefore fixed for the life of the process.
 
-This item adds a channel in the other direction and puts one command on it: hide the in-app touch
-visualization, or show it again. The command is delivered by having the app poll the collector it
-already sends reports to, so the app opens no port. The channel carries only this one command,
-because the visualization is evidence only and its visibility cannot change whether a step passes.
+This item adds a channel in the other direction and puts one command on it: hide the in-app touch visualization, or show it again. The app polls the collector it already sends reports to, so the app opens no port. The channel carries only this one command, because the visualization is evidence only and its visibility cannot change whether a step passes.
 
 ## Motivation
 
-The `visualize-touches-in-app` item, not yet on `main`, proposes an in-app touch visualization. It
-draws a marker at each touch the app receives, and the marks stay on screen until the next gesture,
-so a step's screenshot includes them.
+The `visualize-touches-in-app` item, not yet on `main`, proposes an in-app touch visualization. It draws a marker at each touch the app receives. The marks stay on screen until the next gesture, so a step's screenshot includes them.
 
-A `visual` assertion compares a step's screenshot against a checked-in baseline image. With the
-visualization on, the markers appear in that screenshot and the baseline does not contain them, so
-the comparison fails for a reason unrelated to the app. The correct behaviour is to hide the markers
-for that one capture and show them again afterwards. Because the launch environment is the only
-input, the visualization item disables itself for the whole scenario instead. That is coarser than
-the problem, and it removes the touch evidence from the scenario being investigated.
+A `visual` assertion compares a step's screenshot against a checked-in baseline image. With the visualization on, the markers appear in that screenshot and the baseline does not contain them. The comparison then fails for a reason unrelated to the app.
 
-Excluding the marker regions from the comparison is not a substitute. The marker moves with the
-gesture, so the excluded region would have to be computed for each step, and excluding it would drop
-the area where the touch landed from the comparison. That area is usually the one the assertion
-checks.
+The correct behaviour is to hide the markers for that one capture and show them again afterwards. The launch environment is the only input, so the visualization item disables itself for the whole scenario instead. That is coarser than the problem, and it removes the touch evidence from the scenario being investigated.
 
-Request stubbing has the same limit. `BajutsuNet.startIfEnabled()` loads a scenario's mock rules once
-from the launch environment (`BajutsuKit/Sources/BajutsuKit/BajutsuNet.swift:29`), so a scenario that
-needs one response early and a different one later has to be split into two scenarios. This item does
-not address that case; *Scope* below says why.
+Excluding the marker regions from the comparison is not a substitute:
+
+- The marker moves with the gesture, so the excluded region would have to be computed for each step.
+- Excluding it would drop the area where the touch landed from the comparison. That area is usually the one the assertion checks.
+
+Request stubbing has the same limit. `BajutsuNet.startIfEnabled()` loads a scenario's mock rules once from the launch environment (`BajutsuKit/Sources/BajutsuKit/BajutsuNet.swift:29`). A scenario that needs one response early and a different one later has to be split into two scenarios. This item does not address that case; *Scope* below says why.
 
 ## Detailed design
 
-The app and bajutsu already have an authenticated HTTP connection, and only one direction of it is
-used. `NetworkCollector` (`bajutsu/evidence/network.py:116`) runs a `BaseHTTPRequestHandler` on
-loopback, generates a token for each run (`:207`), and rejects a POST that does not carry it,
-comparing the token in constant time (`check_token`, `:167`). The app receives the collector URL and
-the token through `BAJUTSU_COLLECTOR` and `BAJUTSU_COLLECTOR_TOKEN`, and POSTs each exchange to the
-collector's root path and each transition to `/transitions` (`:305`). The handler already defines
-`do_GET`, which returns `200` and nothing else (`:315-317`), and no code calls it.
+The app and bajutsu already have an authenticated HTTP connection, and only one direction of it is used. `NetworkCollector` (`bajutsu/evidence/network.py:116`) works as follows:
 
-The channel therefore needs no new server, no new port, and no new authentication scheme. It needs a
-command queue served by that `GET`.
+- It runs a `BaseHTTPRequestHandler` on loopback.
+- It generates a token for each run (`:207`) and rejects a POST that does not carry it. The token comparison runs in constant time (`check_token`, `:167`).
+- The app receives the collector URL and the token through `BAJUTSU_COLLECTOR` and `BAJUTSU_COLLECTOR_TOKEN`. It POSTs each exchange to the collector's root path and each transition to `/transitions` (`:305`).
+- The handler already defines `do_GET`, which returns `200` and nothing else (`:315-317`). No code calls it.
+
+The channel therefore needs no new server, no new port, and no new authentication scheme. It needs a command queue served by that `GET`.
 
 ### How a command is delivered
 
-bajutsu adds a command to the queue. The app polls the collector, receives the command, applies it,
-and POSTs a completion report on the connection it already uses. The app opens no socket, and the
-token that protects the collector also protects the commands.
+bajutsu adds a command to the queue. The app polls the collector, receives the command, and applies it. The app then POSTs a completion report on the connection it already uses. The app opens no socket, and the token that protects the collector also protects the commands.
 
-The completion report is required. If bajutsu sent a command and then waited a fixed time, that would
-be the fixed sleep prime directive 2 forbids. Instead the run loop waits for the completion report as
-a condition and fails with a message if it does not arrive. Either the command took effect before the
-next step, or the step fails and says so. The screenshot is taken only after the app has reported
-that the markers are hidden.
+The completion report is required. If bajutsu sent a command and then waited a fixed time, that would be the fixed sleep that prime directive 2 forbids. Instead, the run loop waits for the completion report as a condition. It fails with a message if the report does not arrive. Either the command took effect before the next step, or the step fails and says so. The screenshot is taken only after the app has reported that the markers are hidden.
 
 ### Why the channel carries one command
 
-The channel could carry more than one kind of command. It carries one, which keeps the rest of the
-design simple.
+The channel could carry more than one kind of command. It carries one, which keeps the rest of the design simple.
 
-**The channel carries no pass/fail judgement.** The only state a command can change is whether an
-evidence-only overlay is drawn. Nothing on the channel can affect whether a step passes, and no
-assertion reads from it, so the app under test never contributes to its own verdict. This is prime
-directive 1 in its stricter form: the `run` gate stays machine-checkable and independent of the app.
-A second command would not necessarily break that property, but it would need its own argument.
-Mid-scenario stub replacement is the most likely request, and this item leaves it out deliberately:
-changing a mocked response changes what a `request` assertion sees, which is a reasonable thing to
-want and belongs in its own item.
+**The channel carries no pass/fail judgement.** The only state a command can change is whether an evidence-only overlay is drawn. Nothing on the channel can affect whether a step passes, and no assertion reads from it. The app under test therefore never contributes to its own verdict. This is prime directive 1 in its stricter form: the `run` gate stays machine-checkable and independent of the app.
 
-**The channel is off unless asked for, and a launch env alone does not enable it.** `BajutsuKit`'s
-README currently offers two options: gate the package out of release builds, or rely on the
-`BAJUTSU_COLLECTOR` guard. This item removes the second option, because that guard is what stops
-being sufficient. An adopter who links `BajutsuKit` into a release build and relies on it would
-otherwise ship a binary in which an environment variable enables remote control of the app's
-behaviour. The poll is therefore compiled out unless a build setting selects it, so the launch env is
-never the only guard, and the README has to be rewritten to say that.
+A second command would not necessarily break that property, but it would need its own argument. Mid-scenario stub replacement is the most likely request, and this item leaves it out deliberately. Changing a mocked response changes what a `request` assertion sees. That is a reasonable thing to want, and it belongs in its own item.
 
-**The channel does not change application state.** It controls bajutsu's own in-app
-instrumentation, not the application. A command that seeded app data or drove app navigation would
-move per-app knowledge into the tool and break prime directive 3, whatever the transport allowed.
+**The channel is off unless asked for, and a launch env alone does not enable it.** `BajutsuKit`'s README currently offers two options: gate the package out of release builds, or rely on the `BAJUTSU_COLLECTOR` guard. This item removes the second option, because that guard is what stops being sufficient. An adopter who links `BajutsuKit` into a release build and relies on the guard would otherwise ship a binary in which an environment variable enables remote control of the app's behaviour.
+
+The poll is therefore compiled out unless a build setting selects it. The launch env is never the only guard, and the README has to be rewritten to say that.
+
+**The channel does not change application state.** It controls bajutsu's own in-app instrumentation, not the application. A command that seeded app data or drove app navigation would move per-app knowledge into the tool. That would break prime directive 3, whatever the transport allowed.
 
 ### The cost of polling
 
-Polling avoids a listener, and the cost is latency: a command takes effect no sooner than the next
-poll. Here that latency is paid twice per screenshot-comparing step, once to hide and once to show,
-and each is serialized behind the wait for the completion report. That is acceptable for a step that
-already runs an image comparison. The poll also runs a timer inside the app under test, so it must be
-off unless the channel is enabled, and the implementation has to show that an idle poll does not
-change the app's own timing, which is what a test measures.
+Polling avoids a listener, and the cost is latency: a command takes effect no sooner than the next poll. A screenshot-comparing step pays that latency twice, once to hide and once to show. Each is serialized behind the wait for the completion report. That is acceptable for a step that already runs an image comparison.
 
-The design also introduces one dependency worth naming. The touch visualization needs no collector
-today, and a recorded run with no network features is its normal case. Delivering commands through the collector means a
-scenario that wants the mid-capture toggle also starts a collector it would not otherwise need. A
-second, purpose-built endpoint would avoid that, at the cost of a second server to secure;
-*Alternatives considered* says why this item does not take that option.
+The poll also runs a timer inside the app under test, so it must be off unless the channel is enabled. The implementation has to show that an idle poll does not change the app's own timing, which is what a test measures.
+
+The design also introduces one dependency worth naming. The touch visualization needs no collector today, and a recorded run with no network features is its normal case. Delivering commands through the collector means that a scenario wanting the mid-capture toggle also starts a collector it would not otherwise need. A second, purpose-built endpoint would avoid that, at the cost of a second server to secure. *Alternatives considered* says why this item does not take that option.
 
 ### Work breakdown
 
@@ -138,32 +102,13 @@ The units below are mutually exclusive and collectively exhaustive.
 
 ## Alternatives considered
 
-**Open a listener inside the app.** A small HTTP server in the app under test would receive commands
-directly, with no polling latency. We set it aside for a security reason rather than an engineering
-one: a listening socket inside the application under test is a larger exposure than a loopback client
-that polls, it needs its own port allocation and per-device forwarding, and if its authentication is
-wrong the app accepts commands from anything on the device. Polling's latency is small and bounded.
+**Open a listener inside the app.** A small HTTP server in the app under test would receive commands directly, with no polling latency. We set it aside for a security reason rather than an engineering one. A listening socket inside the application under test is a larger exposure than a loopback client that polls. It needs its own port allocation and per-device forwarding. If its authentication is wrong, the app accepts commands from anything on the device. Polling's latency is small and bounded.
 
-**A second control server, independent of the collector.** This removes the coupling described above,
-so a run that wants the toggle would not have to start a network collector. It also means a second
-authenticated server to get right: the token, the loopback binding, the port-collision handling, and
-the constant-time comparison would each be written twice. Reusing the collector's server is the
-smaller change, and if the coupling turns out to matter, splitting the endpoint later is a contained
-refactor, because the app-side command dispatch does not depend on which server answered.
+**A second control server, independent of the collector.** This removes the coupling described above, so a run that wants the toggle would not have to start a network collector. It also means a second authenticated server to get right. The token, the loopback binding, the port-collision handling, and the constant-time comparison would each be written twice. Reusing the collector's server is the smaller change. If the coupling turns out to matter, splitting the endpoint later is a contained refactor, because the app-side command dispatch does not depend on which server answered.
 
-**Report the marker geometry and exclude those regions from the visual comparison.** The app could
-POST each marker's rectangle on the connection it already has, and the comparison could exclude those
-regions, with no inbound channel at all. We rejected this for the reason *Motivation* gives: it removes
-the area where the gesture landed from the comparison, and it does so without reporting it. It also
-lets an evidence-only feature decide what a machine-checkable assertion is allowed to see.
+**Report the marker geometry and exclude those regions from the visual comparison.** The app could POST each marker's rectangle on the connection it already has, and the comparison could exclude those regions, with no inbound channel at all. We rejected this for the reason *Motivation* gives: it removes the area where the gesture landed from the comparison, and it does so without reporting it. It also lets an evidence-only feature decide what a machine-checkable assertion is allowed to see.
 
-**Leave the granularity at one scenario.** This is the current behaviour, and it is useful: the app is
-terminated and relaunched with each scenario's own launch environment, on the warm-runner path as well
-as the cold one (`_resume_warm`,
-[BE-0291](../BE-0291-xcuitest-runner-reuse-across-scenarios/BE-0291-xcuitest-runner-reuse-across-scenarios.md)),
-so a capability can already differ per scenario at no cost. The reason to go further is that the case
-in *Motivation* occurs within one scenario, where the state that scenario has built up is part of what
-is being tested, and splitting it changes what is under test.
+**Leave the granularity at one scenario.** This is the current behaviour, and it is useful. The app is terminated and relaunched with each scenario's own launch environment, on the warm-runner path as well as the cold one (`_resume_warm`, [BE-0291](../BE-0291-xcuitest-runner-reuse-across-scenarios/BE-0291-xcuitest-runner-reuse-across-scenarios.md)). A capability can therefore already differ per scenario at no cost. The reason to go further is that the case in *Motivation* occurs within one scenario. The state that scenario has built up is part of what is being tested, and splitting the scenario changes what is under test.
 
 ## Progress
 

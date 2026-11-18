@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from bajutsu import serve as srv
 from bajutsu.serve.server.db import (
+    QueuedJob,
     RunRecord,
     SqlRepository,
     engine_from_url,
@@ -510,3 +511,78 @@ def test_seeding_without_a_machine_roster_leaves_the_column_alone(
     seeded = repository.get_org("globex")
     assert seeded is not None
     assert seeded.members == ["carol"] and seeded.allowed_repositories == []
+
+
+def test_a_group_job_stores_its_group_compat_and_route_keys(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    """BE-0484: the route key digests the stored list; the base key drops `cap:` / `setting:`."""
+    from bajutsu.serve.server.models import JobRecord
+
+    engine, repo = _engine_repo(serve_engine)
+    camera, dark = ["platform:ios", "cap:camera"], ["platform:ios", "setting:dark"]
+    repo.register_job_group(
+        "g1",
+        org_id="o1",
+        key="k1",
+        digest="d",
+        compat_key="c1",
+        jobs=[
+            QueuedJob(id="1", spec={}, capabilities=camera, actor="alice"),
+            QueuedJob(id="2", spec={}, capabilities=dark),
+            QueuedJob(id="3", spec={}, capabilities=camera),
+        ],
+    )
+    with Session(engine) as session:
+        rows = {r.id: r for r in session.scalars(select(JobRecord))}
+    assert rows["1"].group_id == "g1" and rows["1"].compat_key == "c1"
+    assert rows["1"].actor == "alice"
+    assert rows["1"].route_key == rows["3"].route_key != rows["2"].route_key
+    assert rows["1"].base_key == rows["2"].base_key == rows["3"].base_key
+    assert rows["1"].route_key is not None and rows["1"].base_key is not None
+
+
+def test_a_plain_job_leaves_the_group_columns_unset_and_keeps_its_actor(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    from bajutsu.serve.server.models import JobRecord
+
+    engine, repo = _engine_repo(serve_engine)
+    repo.enqueue_job("1", org_id="o1", spec={}, capabilities=["platform:ios"], actor="bob")
+    with Session(engine) as session:
+        row = session.get(JobRecord, "1")
+    assert row is not None and row.actor == "bob"
+    assert (row.group_id, row.compat_key, row.route_key, row.base_key) == (None, None, None, None)
+
+
+def test_a_job_group_round_trips_with_its_jobs_in_registration_order(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    repo = _repo(serve_engine)
+    # Ids come from the registry's counter, so "9" registered before "10".
+    queued = [QueuedJob(id=i, spec={}) for i in ("9", "10")]
+    repo.register_job_group("g1", org_id="o1", key="k1", digest="d", compat_key=None, jobs=queued)
+    repo.enqueue_job("11", org_id="o1", spec={})
+
+    group = repo.get_job_group("g1")
+    assert group is not None
+    assert (group["id"], group["org_id"], group["key"]) == ("g1", "o1", "k1")
+    jobs = repo.group_jobs("g1")
+    assert [(j["id"], j["status"], j["result"]) for j in jobs] == [
+        ("9", "queued", {}),
+        ("10", "queued", {}),
+    ]
+    assert repo.get_job_group("missing") is None
+
+
+def test_the_db_executor_stores_a_jobs_actor(serve_engine: Callable[..., Engine]) -> None:
+    from bajutsu.serve.server.models import JobRecord
+
+    engine, repo = _engine_repo(serve_engine)
+    state = srv.ServeState(runs_dir=Path("/tmp/runs"))
+    job = state.register(srv.Job(cmd=["bajutsu", "run"], actor="alice"))
+    DbQueueExecutor(repo).dispatch(state, job)
+    with Session(engine) as session:
+        row = session.get(JobRecord, job.id)
+    assert row is not None
+    assert (row.actor, row.group_id) == ("alice", None)

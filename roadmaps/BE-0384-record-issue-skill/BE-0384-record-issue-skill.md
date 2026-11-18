@@ -15,193 +15,236 @@
 
 ## Introduction
 
-This item proposes `record-issue`, a skill that turns a minor bug or a small, bounded
-improvement noticed during work into a GitHub Issue. It classifies the finding, searches for a
-duplicate, drafts a title and body from this repository's own issue templates, and — only after
-the invoker gives explicit approval — files the issue with `gh issue create`. The shared procedure
-lives in one workflow document so it works two ways: as a standalone skill a person invokes
-directly, and as a sub-step another skill (for example `pr-followup`) calls when it notices
-something worth flagging but out of the current change's scope. A judge-only skill such as
-[`claude-review`](../../.apm/skills/claude-review/SKILL.md) never calls it — that skill
-edits and files nothing — so its findings reach `record-issue` only through whatever invoked it.
+This item proposes `record-issue`, a skill that turns a minor bug or a small, bounded improvement
+noticed during work into a GitHub Issue. The skill classifies the finding and searches for a
+duplicate. It drafts a title and body from this repository's own issue templates. After the invoker
+gives explicit approval, and not before, it files the issue with `gh issue create`.
+
+The shared procedure lives in one workflow document, so the skill works two ways. A person can
+invoke it directly as a standalone skill. Another skill (for example `pr-followup`) can call it as a
+sub-step when that skill notices something worth flagging that lies outside the current change's
+scope. A judge-only skill such as [`claude-review`](../../.apm/skills/claude-review/SKILL.md) never
+calls it, because that skill edits and files nothing. Its findings reach `record-issue` only through
+whatever invoked it.
 
 ## Motivation
 
 Bajutsu already draws a line between two weights of idea. A substantial feature goes through the
-roadmap (BE) process: [`ideation`](../../.apm/skills/ideation/SKILL.md) drafts a scoped
-proposal with a Motivation and a Detailed design, and a human merges it before CI allocates a real
-BE ID. A minor defect or a small improvement does not need any of that weight —
-[`feature_request.yml`](../../.github/ISSUE_TEMPLATE/feature_request.yml) already says as much:
-"Use this issue for a lightweight request or to start the conversation," pointing away from the
-roadmap process for anything short of a well-formed design.
+roadmap (BE) process. [`ideation`](../../.apm/skills/ideation/SKILL.md) drafts a scoped proposal
+with a Motivation and a Detailed design, and a human merges it before CI allocates a real BE ID. A
+minor defect or a small improvement needs none of that weight.
+[`feature_request.yml`](../../.github/ISSUE_TEMPLATE/feature_request.yml) already says as much: "Use
+this issue for a lightweight request or to start the conversation." It points away from the roadmap
+process for anything short of a well-formed design.
 
 Nothing today operationalizes that lightweight side. A contributor or an agent who notices a small
-defect while working on something unrelated faces three bad options: fix it inline and enlarge the
-current change's scope, keep going and lose track of it, or stop to write an issue by hand — recall
-which template applies, search for a duplicate, and phrase the report well. That last option is
-correct but has enough friction that a minor finding is more often dropped than filed.
+defect while working on something unrelated faces three bad options:
 
-Claude Code's own harness already has a shape for the first half of this problem: the `spawn_task`
+- Fix it inline and enlarge the current change's scope.
+- Keep going and lose track of it.
+- Stop to write an issue by hand: recall which template applies, search for a duplicate, and phrase
+  the report well.
+
+The last option is correct but carries enough friction that a minor finding is more often dropped
+than filed.
+
+Claude Code's own harness already has a shape for the first half of this problem. The `spawn_task`
 tool lets a session flag an out-of-scope finding as a chip the user can act on later, without
-derailing the current turn. That chip is ephemeral and scoped to one session — it does not survive
-past the session, is not visible to the rest of the team, and is not a GitHub Issue, so
-[`task-select`](../../.apm/skills/task-select/SKILL.md) — which already treats open GitHub
-Issues as one of its two candidate sources alongside the roadmap — cannot pick it up. `record-issue`
-is the durable, repository-level counterpart: filing a persistent, team-visible issue that
-`task-select` can surface to anyone, in a later session, on a different machine.
+derailing the current turn. That chip is ephemeral and scoped to one session. It does not survive
+past the session and is not visible to the rest of the team. It is not a GitHub Issue either, and
+[`task-select`](../../.apm/skills/task-select/SKILL.md) already treats open GitHub Issues as one of
+its two candidate sources alongside the roadmap, so it cannot pick the chip up.
+`record-issue` is the durable, repository-level counterpart. It files a persistent, team-visible
+issue that `task-select` can surface to anyone, in a later session, on a different machine.
 
-`record-issue` only ever files an issue; it never ships a fix.
+`record-issue` only files an issue and never ships a fix.
 [`fix-issue`](../BE-0380-fix-issue-skill/BE-0380-fix-issue-skill.md) is the consuming counterpart
-that ships an implementation for an already-filed issue — typically after `task-select` surfaces it
-as a candidate — so the two items never overlap in scope.
+that ships an implementation for an already-filed issue, typically after `task-select` surfaces it
+as a candidate. The two items never overlap in scope.
 
 ## Detailed design
 
-**Skill layout.** Following the single-source convention in
-[`CLAUDE.md`](../../CLAUDE.md#agent-skill-layout), the skill is one source directory,
-`.apm/skills/record-issue/`, holding a `SKILL.md` that carries both the procedure and the
-Claude Code invocation it needs, plus a `references/` file for any depth that would push the body
-past APM's size budget. `make skills` deploys it to `.claude/skills/record-issue/`, and both the
-source and the deployment are committed
+**Skill layout.** The skill follows the single-source convention in
+[`CLAUDE.md`](../../CLAUDE.md#agent-skill-layout). It is one source directory,
+`.apm/skills/record-issue/`, holding a `SKILL.md` that carries both the procedure and the Claude Code
+invocation it needs. A `references/` file holds any depth that would push the body past APM's size
+budget. `make skills` deploys the skill to `.claude/skills/record-issue/`, and both the source and
+the deployment are committed
 ([BE-0390](../BE-0390-apm-skill-management/BE-0390-apm-skill-management.md)).
 
-**Inputs.** A description of the finding — either typed directly by the invoker, or handed over by
-a calling skill that spotted something out of its own scope — plus whatever supporting context is
-available: a file and line, a command that reproduces it, or the environment it showed up in. A
-calling skill also states whether a human is in the turn, because the skill cannot observe that
-itself — and neither can `pr-followup`, whose steps "behave identically whether run in a subagent
-or called directly". Only the loop layer knows: `implement-be` step 12 states it when it hands a
-subagent `pr-followup`'s steps, `pr-followup` passes it on to the sub-step invocation, and its
-absence means attended. The other input shape is a resumed invocation: an approved new-issue
-draft — title, body, and label — from which the skill resumes directly at step 5's
-`gh issue create`, since the human already gave explicit approval on a later turn, against the
-draft the loop's report showed them. Only an attended turn can carry this input: the skill refuses a
-resumed invocation that arrives with the unattended flag set — that flag is its only signal that a
-human is in the turn — and returns the draft as a pending draft again rather than filing it, since
-resuming with no human present would file the draft with no approval at all, exactly what the
-confirmation gate exists to prevent. A comment on one of the candidate
-matches that an unattended run carried is the human's own follow-up from there, outside this resume
-path.
+**Inputs.** The first input is a description of the finding. The invoker types it directly, or a
+calling skill hands it over after spotting something outside its own scope. Whatever supporting
+context is available accompanies it: a file and line, a command that reproduces the finding, or the
+environment it showed up in.
 
-**Step 1 — classify.** Decide among three landings. `feature_request.yml` only points anything short
-of a well-formed design away from the roadmap, so this skill states the concrete bar itself: does
-this need a Detailed design, a discussion of trade-offs, or changes across multiple modules? If so,
-this is not a minor finding —
-stop and point the invoker to `ideation` (or, for a small item whose design is already settled,
-`propose-and-build`) instead of filing an issue. With no human in the turn there is no invoker to
-point at, so the finding returns in the same pending-draft field the unattended path below uses,
-marked as needing a roadmap item rather than an issue — without that route this one judgment call
-would cost the whole finding, the outcome this item exists to prevent. When none of the three
-would cost the whole finding, the outcome this item exists to prevent. When none of those three
-conditions holds, classify the finding as a **bug** (something behaves other than intended) or a
-lightweight **enhancement** (a small, bounded improvement).
+A calling skill also states whether a human is in the turn, because the skill cannot observe that
+itself. Neither can `pr-followup`, whose steps "behave identically whether run in a subagent or
+called directly". Only the loop layer knows. `implement-be` step 12 states it when it hands a
+subagent `pr-followup`'s steps, and `pr-followup` passes it on to the sub-step invocation. Its
+absence means attended.
+
+The other input shape is a resumed invocation: an approved new-issue draft with a title, a body, and
+a label. The skill resumes directly at step 5's `gh issue create`, because the human already gave
+explicit approval on a later turn, against the draft the loop's report showed them.
+
+An attended turn alone can carry this input. The skill refuses a resumed invocation that arrives
+with the unattended flag set, since that flag is its sole signal that a human is in the turn. It
+returns the draft as a pending draft again instead of filing it. Resuming with no human present
+would file the draft with no approval at all, which is exactly what the confirmation gate exists to
+prevent.
+
+A comment on one of the candidate matches that an unattended run carried is the human's own
+follow-up from there. That comment lies outside this resume path.
+
+**Step 1 — classify.** Decide among three landings. `feature_request.yml` points anything short of a
+well-formed design away from the roadmap and says no more, so this skill states the concrete bar
+itself: does the finding need a Detailed design, a discussion of trade-offs, or changes across
+multiple modules? If so, the finding is not minor. The skill stops and points the invoker to
+`ideation` (or, for a small item whose design is already settled, `propose-and-build`) instead of
+filing an issue.
+
+With no human in the turn, no invoker is there to point at. The finding then returns in the same
+pending-draft field the unattended path below uses, marked as needing a roadmap item rather than an
+issue. Without that route, this one judgment call would cost the whole finding, the outcome this
+item exists to prevent.
+
+When none of those three conditions holds, classify the finding as a **bug** (something behaves
+other than intended) or a lightweight **enhancement** (a small, bounded improvement).
+
 **Step 2 — search for a duplicate.** Run `gh issue list --search "<keywords>
--label:roadmap-tracking" --state all --limit 10` with keywords drawn from the finding, and show the
-invoker any candidate matches (number, title, state, labels). The search excludes the
-`roadmap-tracking` issues the workflow of
+-label:roadmap-tracking" --state all --limit 10` with keywords drawn from the finding. Show the
+invoker any candidate matches (number, title, state, labels).
+
+The search excludes the `roadmap-tracking` issues that the workflow of
 [BE-0109](../BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues.md) creates and closes
-on its own: those are bot-owned, so a comment on one of them is no landing at all. Because that
-exclusion also removes the only signal that a BE item already covers the finding, this step
-checks the roadmap itself, cheap pass first. The cheap pass is the keyword lookup
-[`roadmap-filter`](../../.apm/skills/roadmap-filter/SKILL.md) exists for, `make roadmap-find
-ARGS="--grep <keyword>"`, which matches the id, title, `Topic`, and `## Introduction` excerpt of
-every item in one run, across all five statuses. A title-and-introduction match is still coarse,
-since an item's coverage of a small finding usually lives in its `Detailed design`, so the step also
-greps the item files themselves (`grep -ril "<keyword>" roadmaps/`) — every time, not only when the
-cheap pass came back empty, since a coarse hit on one item says nothing about another item's
-`Detailed design`. The metadata pass still runs first, because it answers with each match's id,
-title, `Topic`, and status rather than a path still to open. The grep's keyword has to be narrowed
-until it discriminates before its hits reach the choices below: `roadmaps/` holds close to 400 items
-across some 770 files and 127,000-plus lines, so a common word matches nearly all of them —
-`grep -ril issue roadmaps/` returns essentially every file there — and a list that size filters
-nothing. A keyword narrow enough to discriminate returns a short list of paths rather than the prose
-behind them, which is what keeps the second pass affordable every time. Some findings sit in the
-roadmap's own core vocabulary, though, where even a faithful phrase returns dozens of paths, and
-narrowing past the finding's own wording is not the answer: an over-narrowed grep that comes back
-empty is a manufactured miss, indistinguishable from real absence. There the grep pass is reported
-**inconclusive** — the keywords tried and their hit counts, never a subset of paths the skill picked
-— and the metadata pass's hits plus that note carry the choices, since a truncated list would settle
-a choice the invoker owns on evidence the invoker never saw. Both passes
-span all five statuses, `Deferred` and `Rejected` included: an item the roadmap deliberately parked,
-or decided against with no condition expected to reopen it, is the last thing to re-file as an
-issue, and a status-scoped survey is exactly what would miss it. Neither pass proves absence,
-though — a keyword search finds only the wording it was given — so a miss never substitutes for the
-invoker's judgment. On a hit,
-title or body, show the invoker that item and ask whether to stop there instead of drafting
-anything — when the item already covers the finding, an issue would only duplicate it — or to
-proceed anyway: a keyword match, in a title or an item's body, is not proof of coverage, and only
-the invoker can judge it.
+on its own. Those issues are bot-owned, so a comment on one of them is no landing at all.
+
+That exclusion also removes the sole signal that a BE item already covers the finding. This step
+checks the roadmap itself, in two passes, cheap pass first.
+
+The cheap pass is the keyword lookup that
+[`roadmap-filter`](../../.apm/skills/roadmap-filter/SKILL.md) exists for: `make roadmap-find
+ARGS="--grep <keyword>"`. One run matches the id, title, `Topic`, and `## Introduction` excerpt of
+every item, across all five statuses. It runs first because it answers with each match's id, title,
+`Topic`, and status, where the grep pass below returns a path still to open.
+
+A title-and-introduction match is still coarse, since an item's coverage of a small finding usually
+lives in its `Detailed design`. The step therefore also greps the item files themselves
+(`grep -ril "<keyword>" roadmaps/`). It does so every time, not merely when the cheap pass came back
+empty, because a coarse hit on one item says nothing about another item's `Detailed design`.
+
+The grep's keyword has to be narrowed until it discriminates, before its hits reach the choices
+below. `roadmaps/` holds close to 400 items across some 770 files and 127,000-plus lines, so a
+common word matches nearly all of them. `grep -ril issue roadmaps/` returns essentially every file
+there, and a list that size filters nothing. A keyword narrow enough to discriminate returns a short
+list of paths rather than the prose behind them. That is what keeps the second pass affordable every
+time.
+
+Some findings sit in the roadmap's own core vocabulary, though, where even a faithful phrase returns
+dozens of paths. Narrowing past the finding's own wording is not the answer: an over-narrowed grep
+that comes back empty is a manufactured miss, indistinguishable from real absence. There the skill
+reports the grep pass as **inconclusive**. The report lists the keywords tried and their hit counts,
+and never a subset of paths the skill picked. The metadata pass's hits plus that note carry the
+choices, because a truncated list would settle a choice the invoker owns on evidence the invoker
+never saw.
+
+Both passes span all five statuses, `Deferred` and `Rejected` included. The roadmap deliberately
+parked one kind of item and decided against another with no condition expected to reopen it. Those
+are the last items to re-file as an issue, and a status-scoped survey is exactly what would miss
+them.
+
+Neither pass proves absence, though. A keyword search finds merely the wording it was given, so a
+miss never substitutes for the invoker's judgment.
+
+On a hit in a title or a body, show the invoker that item and ask whether to stop there instead of
+drafting anything, or to proceed anyway. Stopping fits when the item already covers the finding,
+because an issue would merely duplicate it. A keyword match, in a title or an item's body, is not
+proof of coverage, and the invoker alone can judge it.
+
 When an **open** match looks like the same issue, ask whether to comment on the existing issue
-instead of filing a new one, or to proceed anyway — the invoker decides, since only they can judge
-whether the match is close enough. Never route a report onto a **closed** match: `task-select`
-surveys open
-issues only, so a comment there never resurfaces as a candidate. File a new issue linking the
-closed one as prior context instead.
+instead of filing a new one, or to proceed anyway. The invoker decides, since the invoker alone can
+judge whether the match is close enough.
 
-**Step 3 — draft.** Read the matching template — `bug_report.yml` for a bug,
-`feature_request.yml` for an enhancement — and synthesize a markdown body whose sections mirror
-that template's input fields — its `textarea`s and, for `bug_report.yml`, its required `dropdown`,
-whose rendered value is one of the options that template declares, verbatim, rather than free prose.
-`gh issue create` posts plain markdown rather than rendering the
-template's YAML form, so the skill fills those fields itself instead of relying on `gh` to do it.
-A template's required `checkboxes` block is the exception: render it as a statement of what the
-skill actually verified — step 2's duplicate search and what it covered — never as a pre-ticked
-box, since `feature_request.yml`'s three prime-directive confirmations are the invoker's judgment
-to give. Pick the matching label (`bug` or `enhancement`); no new label is needed; see
-*Alternatives considered*. When the invoker instead chose to comment on an open match in step 2,
-draft that comment body separately — the finding, its evidence, and where it was noticed — since
-`gh issue comment` carries no title or label of its own. Note the chosen label as a
-`gh issue edit --add-label` addition for step 5 only when the target issue carries neither `bug`
-nor `enhancement` — step 2 shows each candidate's labels alongside its number, title, and state —
-so commenting never re-classifies an issue someone else filed.
+Never route a report onto a **closed** match. `task-select` surveys open issues alone, so a comment
+there never resurfaces as a candidate. File a new issue that links the closed one as prior context
+instead.
 
-**Step 4 — confirm.** Show the invoker everything about to be posted — a new issue's title, body,
-and label, or an existing issue's comment body and any label to add — and wait for explicit
-approval before posting anything. Filing or commenting on a GitHub Issue publishes content the
-whole team sees, so this step runs every time, not only the first time a session uses the skill.
+**Step 3 — draft.** Read the matching template: `bug_report.yml` for a bug, `feature_request.yml`
+for an enhancement. Synthesize a markdown body whose sections mirror that template's input fields.
+Those fields are its `textarea`s and, for `bug_report.yml`, its required `dropdown`. The rendered
+value of the dropdown is one of the options that template declares, verbatim, rather than free
+prose. `gh issue create` posts plain markdown rather than rendering the template's YAML form, so the
+skill fills those fields itself instead of relying on `gh` to do it.
+
+A template's required `checkboxes` block is the exception. Render it as a statement of what the
+skill actually verified, namely step 2's duplicate search and what it covered. Never render it as a
+pre-ticked box, since `feature_request.yml`'s three prime-directive confirmations are the invoker's
+judgment to give.
+
+Pick the matching label (`bug` or `enhancement`). No new label is needed; see *Alternatives
+considered*.
+
+When the invoker instead chose in step 2 to comment on an open match, draft that comment body
+separately: the finding, its evidence, and where it was noticed. `gh issue comment` carries no title
+or label of its own. Note the chosen label as a `gh issue edit --add-label` addition for step 5
+solely when the target issue carries neither `bug` nor `enhancement`. Step 2 shows each candidate's
+labels alongside its number, title, and state, so commenting never re-classifies an issue someone
+else filed.
+
+**Step 4 — confirm.** Show the invoker everything about to be posted: a new issue's title, body, and
+label, or an existing issue's comment body and any label to add. Wait for explicit approval before
+posting anything. Filing or commenting on a GitHub Issue publishes content the whole team sees, so
+this step runs every time, not merely the first time a session uses the skill.
 
 **Step 5 — create and report.** On approval, run `gh issue create --title <title> --body-file
-<file> --label <label>` for a new issue, or, for a comment on the match step 2 picked, `gh issue
-comment <number> --body-file <comment-file>` followed by `gh issue edit <number> --add-label
-<label>` when step 4 approved a label to add. Report the resulting issue URL back to the invoker,
-or, when called as a sub-step, back into the calling skill's own output, so a review or follow-up
-pass can list what it filed alongside what it fixed inline.
+<file> --label <label>` for a new issue. For a comment on the match step 2 picked, run `gh issue
+comment <number> --body-file <comment-file>`, followed by `gh issue edit <number> --add-label
+<label>` when step 4 approved a label to add. Report the resulting issue URL back to the invoker.
+When the skill is called as a sub-step, report it back into the calling skill's own output, so a
+review or follow-up pass can list what it filed alongside what it fixed inline.
 
-Because the workflow document describes one procedure regardless of caller, a standalone
-invocation and a call from another skill follow identical steps — including the confirmation
-gate, which no calling skill may skip on the invoker's behalf. A resumed invocation (see *Inputs*)
-is not a skip of that gate: its confirmation already ran, on the attended turn where the human
-approved the exact draft the loop's report showed, so entering at step 5 executes an approval the
-gate already collected. When no human is in the turn —
-`pr-followup` running as one iteration of `implement-be`'s hands-free loop (BE-0230) is the case
-that matters — the skill files nothing and stalls nothing: it returns the finished draft in a new
-**pending-draft** field of the iteration's structured summary. That field is distinct from the
-escalation field `implement-be` step 12 already reads — the one `pr-followup` step 4 routes a
-self-review-only finding through, and the one the loop treats as a stop signal — so a draft never
-stops the loop: the human sees it when the loop reports, and approves it on a later turn. The loop
-carries every pending draft its iterations returned into its own final report, deduplicated against
-the drafts earlier iterations already returned, because each iteration is a fresh subagent that
-re-notices the same finding. The report therefore holds one entry per finding rather than one per
-iteration, and a draft returned early survives to the report the human reads.
-Step 2's new-issue-or-comment choice, and a
-roadmap hit's stop-or-proceed choice, defer the same way rather than being settled
-unattended: the skill drafts for a new issue and carries every candidate it found — issue matches
-and every roadmap hit, from the metadata pass and the grep alike (an inconclusive grep contributing
-its keywords-and-counts note in place of hits) — beside the draft, so the human decides whether to approve it, comment
-on a candidate by hand instead, or discard the finding. Approval of the drafted issue resumes the
-skill directly at step 5 against the draft the human actually saw, rather than re-drafting it. A
-step 1 escalation entry carries no issue draft, so it is not resumable at all: approving it starts
-`ideation` or `propose-and-build` on the finding, never a re-entry at step 5. A
-pending draft
-is deliberately not an escalation: every entry in BE-0230's escalation list stops the loop and
-hands the PR to the human, which an incidental out-of-scope note should never do to an
+**One procedure for every caller.** The workflow document describes one procedure regardless of
+caller. A standalone invocation and a call from another skill therefore follow identical steps,
+including the confirmation gate, which no calling skill may skip on the invoker's behalf. A resumed
+invocation (see *Inputs*) does not skip that gate either. Its confirmation already ran, on the
+attended turn where the human approved the exact draft the loop's report showed, so entering at step
+5 executes an approval the gate already collected.
+
+**No human in the turn.** The case that matters is `pr-followup` running as one iteration of
+`implement-be`'s hands-free loop (BE-0230). The skill then files nothing and stalls nothing. It
+returns the finished draft in a new **pending-draft** field of the iteration's structured summary.
+
+That field is distinct from the escalation field `implement-be` step 12 already reads. The
+escalation field is the one `pr-followup` step 4 routes a self-review-only finding through, and the
+loop treats it as a stop signal. A draft therefore never stops the loop: the human sees it when the
+loop reports, and approves it on a later turn.
+
+The loop carries every pending draft its iterations returned into its own final report,
+deduplicated against the drafts earlier iterations already returned, because each iteration is a
+fresh subagent that re-notices the same finding. The report holds one entry per finding rather than
+one per iteration, and a draft returned early survives to the report the human reads.
+
+Step 2's new-issue-or-comment choice, and a roadmap hit's stop-or-proceed choice, defer the same way
+instead of being settled unattended. The skill drafts for a new issue. Beside the draft it carries
+every candidate it found: issue matches and every roadmap hit, from the metadata pass and the grep
+alike (an inconclusive grep contributes its keywords-and-counts note in place of hits). The human
+then decides whether to approve the draft, comment on a candidate by hand instead, or discard the
+finding.
+
+Approval of the drafted issue resumes the skill directly at step 5 against the draft the human
+actually saw, rather than re-drafting it. A step 1 escalation entry carries no issue draft, so it is
+not resumable at all. Approving it starts `ideation` or `propose-and-build` on the finding, never a
+re-entry at step 5.
+
+A pending draft is deliberately not an escalation. Every entry in BE-0230's escalation list stops
+the loop and hands the PR to the human, which an incidental out-of-scope note should never do to an
 otherwise-healthy follow-up loop.
 
-**Caller and documentation wiring.** A calling skill only runs a sub-step its own workflow names —
-`be-progress-tracker` runs because `ideation` and `implement-be` each name it — so `pr-followup`
-(and any other calling skill) gains an explicit `record-issue` sub-step. The same change wires the
-documentation: `docs/ai-development.md` (and its `docs/ja/` mirror) and `CLAUDE.md`, including the
-skill's default `model:` tier (BE-0103).
+**Caller and documentation wiring.** A calling skill runs a sub-step only when its own workflow
+names it. `be-progress-tracker` runs because `ideation` and `implement-be` each name it. In the same
+way, `pr-followup` (and any other calling skill) gains an explicit `record-issue` sub-step. The same
+change wires the documentation: `docs/ai-development.md` (and its `docs/ja/` mirror) and
+`CLAUDE.md`, including the skill's default `model:` tier (BE-0103).
 
 ## Alternatives considered
 
@@ -211,18 +254,18 @@ contributors before anyone reviews it.
 
 **Extend `ideation` to also handle minor findings.** Rejected: `ideation`'s contract is authoring a
 BE roadmap item — a placeholder ID, a Detailed design, the self-review pass against the CI review
-contract. A minor finding needs none of that weight, and folding both into one skill would either
+contract. A minor finding needs none of that weight. Folding both into one skill would either
 overload `ideation`'s procedure or leave it applied inconsistently across two very different sizes
 of idea.
 
 **Reuse `spawn_task`-style ephemeral chips instead of a GitHub Issue.** Rejected: a session-local
 chip does not survive past the session, is not visible to the rest of the team, and is not a
-candidate source `task-select` reads — so it does not close the gap this item targets.
+candidate source `task-select` reads. It does not close the gap this item targets.
 
 **Add a new label to mark these issues as lightweight.** Considered, but the absence of the
-`roadmap-tracking` label already distinguishes a `record-issue` filing from a BE-linked issue,
-and the existing `bug` / `enhancement` labels already say what kind of finding it is. An added label
-would add process without adding information.
+`roadmap-tracking` label already distinguishes a `record-issue` filing from a BE-linked issue. The
+existing `bug` / `enhancement` labels already say what kind of finding it is. An added label would
+add process without adding information.
 
 ## Progress
 

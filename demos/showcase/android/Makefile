@@ -6,7 +6,7 @@
 .PHONY: build-all wrapper \
 	compose-build compose-noax-build compose-previous-build views-build views-noax-build e2e e2e-pool e2e-network e2e-golden \
 	e2e-fallback e2e-visual e2e-conformance e2e-fault-injection e2e-app-crash e2e-codegen e2e-device-group \
-	clean
+	e2e-location-connect clean
 
 HERE := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 GRADLEW := $(HERE)/gradlew
@@ -95,6 +95,17 @@ SERIAL ?= booted
 # a two-finger gesture cannot be approximated — so it requires root (the `e2e` target runs `adb root`)
 # and fails loudly otherwise. Verified on a local arm64 emulator.
 #
+# The resident UI Automator server now injects a two-finger gesture through `UiAutomation`, which needs
+# no root, and the driver asks it before the `sendevent` sweep. Under `adb root` the lane would pass on
+# either route, so the `e2e` target ends with one more `gestures_multitouch` run after `adb unroot`:
+# that run can pass only through the server, which is what makes CI prove the unrooted route.
+#
+# `adb unroot` restarts adbd, and the restart can drop the very connection the command waits on
+# (`unable to connect for unroot: closed`) even when the restart went through (#2440). So its exit
+# status is not the verdict: each of a bounded number of attempts waits for the device, then reads the
+# uid adbd actually runs as, and only a non-zero uid ends the loop — `UNROOT_ATTEMPTS` failures in a
+# row fail the target loudly instead of running the unrooted pass as root.
+#
 # The scenario-authoring flows `extract` / `foreach` join the lane (BE-0285): the web slice (#1184)
 # proved them on Playwright, and this is their adb twin. `extract` captures the Log counter's live
 # value and reuses it (Log tab, exercised by `relaunch` already); `foreach` iterates the five Stable
@@ -102,16 +113,40 @@ SERIAL ?= booted
 # cannot represent (the whole point of BE-0285). Both reuse the Stable/Log instruments the lane
 # already drives, need no app change, and carry both id forms so they run on Views too.
 #
-# The text-editing flow (select/copy/clear/delete, text_editing.yaml) is deliberately absent: the
-# Compose / Views trees do not expose an editable field's text as its `value`, so `clear` is a no-op
-# and the per-edit checks have nothing to read here. That scenario is iOS-only (see its header); a
-# count-only Android twin for select/copy/delete is a possible follow-up.
+# The text-editing flow (select/copy/clear/delete, text_editing.yaml) is not in the lane yet. The
+# driver now reads an editable field's text as its `value` (#2388), so `clear` and the `value` checks
+# can work here; adding the whole file stays a follow-up that needs its own on-device run. Its
+# select/copy half already runs as `text_selection_android` (issue #2389): the clipboard starts on a
+# sentinel, so the read-back proves the Ctrl+C chord copied the field's text, and (since a collapsed
+# caret copies nothing) that Ctrl+A selected all of it. It carries both id forms, so it runs on Views
+# too. Verified on a local arm64 emulator (API 34), Compose and Views alike.
+#
+# The wheel picker flow `picker_wheel` joins both lanes (BE-0480): the resident server's
+# `/setPickerValue` steps an `android.widget.NumberPicker` one row at a time through accessibility
+# scroll actions, so the shared scenario iOS runs on XCUITest runs unchanged here. Both apps render
+# the picker screen under SHOWCASE_PICKERS — Views natively, Compose through `AndroidView` — and the
+# scenario's ids carry both forms.
+#
+# `app_android` hands the screen to the system Settings app with the `app:` step and back, twice
+# (issue #2393); Settings ships on every emulator image, so it needs no extra install. Compose only:
+# Views' `singleTask` MainActivity finishes the pushed HorseDetailActivity when `leave_app` starts it
+# again, so the scenario's first return would find the catalog instead of the detail screen.
+#
+# `webview` enters the hybrid screen's WebView with a `web:` block (BE-0482): bajutsu forwards the
+# WebView's DevTools socket, which both apps open with `Bajutsu.enableWebViewDebugging` right before
+# they create the WebView, and taps and types inside the page over the Chrome DevTools Protocol. The
+# call loads the WebView provider, so the apps make it on that screen alone rather than in
+# `Application.onCreate`: an early load exposes every other scenario to a relaunch when the WebView
+# package's overlays change. Both apps render the screen under
+# SHOWCASE_WEBVIEW, and `within` carries both id forms. Verified on a local arm64 emulator (API 34),
+# Compose and Views alike.
 #
 # Observed network capture lands in its own `e2e-network` target below (BE-0283); mocked network
 # (deterministic stub responses) stays a follow-up.
 E2E_SCENARIOS := smoke firstlook navigation search data_driven relaunch system components modals \
 	controls notices gestures gestures_multitouch permission device extract foreach interrupts \
-	text_entry_android
+	text_entry_android text_selection_android picker_wheel select_photos select_photo_single app_android location_android \
+	webview
 
 # Raise the condition-wait ceiling for this lane only: the CI x86_64 software-rendered emulator
 # presents sheets/covers slower than the shared scenarios' 5s waits allow. A wait returns as soon as
@@ -138,7 +173,8 @@ E2E_ENV = BAJUTSU_MIN_WAIT_TIMEOUT=$(E2E_WAIT_FLOOR) BAJUTSU_LOG_LEVEL=$(E2E_LOG
 # themselves). Anywhere else no lane resolves it, so a typo in it could never fail (issue #2233).
 # `device.yaml` carries the underscore form, so it joins (verified on a local arm64 emulator).
 E2E_VIEWS_SCENARIOS := smoke firstlook navigation search data_driven relaunch system extract foreach \
-	interrupts device text_entry_android
+	interrupts device text_entry_android text_selection_android picker_wheel select_photos select_photo_single location_android \
+	webview
 
 # The wrapper jar IS committed (like any standard Android repo), so a fresh clone builds with no
 # extra step. Only run this to bump the pinned Gradle version — never as part of a build, since it
@@ -212,6 +248,8 @@ views-noax-build:
 # the device in the read-back on the lanes that need it, which is the whole point of the read-back
 # when two devices could be the one that dropped the setting.
 ADB ?= adb
+# Bounded attempts at `e2e`'s `adb unroot` (#2440) — see the `adb unroot` note in the lane comment above.
+UNROOT_ATTEMPTS ?= 5
 ADB_LABEL ?=
 ANR_QUIET = $(ADB) shell settings put global hide_error_dialogs 1 && $(ADB) shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null && echo "ANR_QUIET$(ADB_LABEL): hide_error_dialogs=$$($(ADB) shell settings get global hide_error_dialogs | tr -d '\r')"
 
@@ -244,6 +282,44 @@ e2e: compose-build views-build
 		$(E2E_ENV) \
 		uv run bajutsu run --scenario demos/showcase/scenarios/$$s.yaml \
 			--target showcase-views --udid $(SERIAL) --backend android --config $(CONFIG) || exit 1; \
+	done
+	for attempt in $$(seq 1 $(UNROOT_ATTEMPTS)); do \
+		adb unroot || true; \
+		adb wait-for-device; \
+		uid=$$(adb shell id -u 2>/dev/null | tr -d '\r'); \
+		if [ "$$uid" -gt 0 ] 2>/dev/null; then echo "adb unroot: uid=$$uid (attempt $$attempt)"; exit 0; fi; \
+		echo "adb unroot: attempt $$attempt left uid='$$uid'"; \
+	done; \
+	echo "adb unroot: adbd still runs as root after $(UNROOT_ATTEMPTS) attempts" >&2; exit 1
+	echo "=== showcase-compose / gestures_multitouch (unrooted) ==="
+	$(ANR_QUIET)
+	cd $(ROOT) && $(E2E_ENV) uv run bajutsu run \
+		--scenario demos/showcase/scenarios/gestures_multitouch.yaml \
+		--target showcase-compose --udid $(SERIAL) --backend android --config $(CONFIG)
+
+# The in-app setLocation route on the emulator lane (BE-0481). `e2e` runs location_android.yaml over
+# the local `emulator-<port>` serial, which takes the console's `emu geo fix`; this target runs it again
+# over the same emulator reached with `adb connect`, whose `<host>:<port>` serial has no console adb can
+# reach, so the routing sends it in-app: the `appops` grant, BajutsuAndroid's location receiver, and
+# its result codes — the path a real device takes, which no emulator-serial run would touch. The
+# emulator's adbd listens on its console port plus one. CI runs it as its own per-PR signal job,
+# `location over adb connect (adb)`, outside the required gate until it has a run history. With
+# more than one device attached, name the emulator: `SERIAL=emulator-5554 ADB="adb -s emulator-5554"`.
+e2e-location-connect: compose-build views-build
+	$(ADB) wait-for-device
+	$(ANR_QUIET)
+	serial="$(SERIAL)"; \
+	[ "$$serial" != booted ] || serial=$$(adb devices | awk '$$1 ~ /^emulator-[0-9]+$$/ && $$2 == "device" { print $$1; exit }'); \
+	case "$$serial" in emulator-[0-9]*) ;; *) echo "SERIAL must name a local emulator, got '$$serial'" >&2; exit 1 ;; esac; \
+	remote=127.0.0.1:$$(( $${serial#emulator-} + 1 )); \
+	adb connect "$$remote" | grep -q "connected to" || { echo "adb connect $$remote failed" >&2; exit 1; }; \
+	trap 'adb disconnect "$$remote" >/dev/null 2>&1' EXIT; \
+	adb -s "$$remote" wait-for-device; \
+	cd $(ROOT) && for t in showcase-compose showcase-views; do \
+		echo "=== $$t / location_android (adb connect $$remote) ==="; \
+		$(E2E_ENV) \
+		uv run bajutsu run --scenario demos/showcase/scenarios/location_android.yaml \
+			--target $$t --udid "$$remote" --backend android --config $(CONFIG) || exit 1; \
 	done
 
 # On-device network-capture assertion (BE-0283): a `request` assertion observes real emulator traffic
@@ -379,8 +455,8 @@ e2e-visual: compose-build
 # run, against the Compose a11y twin. Unlike the other e2e targets this drives pytest, not the run
 # CLI, so it needs the dev group (the CI job's `uv sync` keeps it); `launch_driver` installs the APK
 # (built here) and boots the app straight into ConformanceScreen. `adb root` matches the `e2e` target:
-# the MULTI_TOUCH capability test drives a pinch/rotate, which the driver actuates via a rooted
-# `sendevent` sweep (BE-0232) — the google_apis image allows it and `adb root` enables it. `-n0` runs
+# the MULTI_TOUCH capability test drives a pinch/rotate, which the driver actuates through the resident
+# server and, where that is unavailable, via a rooted `sendevent` sweep (BE-0232). `-n0` runs
 # serially (the suite reseeds one shared emulator), and BAJUTSU_CONFORMANCE_SERIAL both routes the
 # backend and un-skips the module. Not part of `make check`: it needs a booted AVD, so
 # android-e2e.yml drives it in its own `conformance (adb)` job.
@@ -399,13 +475,15 @@ e2e-conformance: compose-build
 # `adb root`: the cases only read and tap. Not part of `make check` (it needs a booted AVD); in CI,
 # android-e2e.yml drives it in its own `fault-injection (adb)` job, on the `E2E (android)` aggregate's
 # `needs:` since BE-0305's promotion (it landed as a non-gating signal and was promoted once measured
-# stable).
+# stable). The same lane hosts BE-0490's withheld-event case: a screen change the platform cache is
+# never told about must still reach the next settled resident read.
 e2e-fault-injection: compose-build
 	@[ -n "$(SERIAL)" ] || { echo "SERIAL is empty: the fault-injection module would skip and exit 0"; exit 1; }
 	$(ANR_QUIET)
 	$(TOUCH_DEBUG_OFF)
 	cd $(ROOT) && BAJUTSU_FAULT_INJECTION_SERIAL=$(SERIAL) \
-		uv run pytest tests/test_fault_injection_ondevice_android.py -m ondevice -n0 -v
+		uv run pytest tests/test_fault_injection_ondevice_android.py \
+		tests/test_cache_drop_ondevice_android.py -m ondevice -n0 -v
 
 # BE-0424: crash the app under test on purpose and assert the run diagnosed it. The scenario is
 # *expected* to fail — `||:` keeps that from ending the recipe — so the verdict comes from the

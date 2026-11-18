@@ -3,4 +3,11 @@
     <!-- A no-action-bar Material theme so the Compose content owns the whole window. Framework
          theme (no Material Components dependency needed in the Compose module). -->
     <style name="Theme.Showcase" parent="@android:style/Theme.Material.Light.NoActionBar" />
+    <!-- BE-0480: a spinner-mode DatePicker for the picker screen. Its month / day / year are
+         three NumberPicker wheels, the control setPickerValue drives on Android; the calendar
+         view is hidden so the wheels are the whole control. -->
+    <style name="Widget.Showcase.SpinnerDatePicker" parent="@android:style/Widget.Material.Light.DatePicker">
+        <item name="android:datePickerMode">spinner</item>
+        <item name="android:calendarViewShown">false</item>
+    </style>
 </resources>

@@ -4,12 +4,13 @@
 over an ordered `am broadcast` to an in-app receiver (BajutsuAndroid), because since Android 10 only
 the foreground app / default IME may touch the clipboard — `cmd clipboard` answers "No shell command
 implementation" on-device, a silent no-op. The backend still advertises `clipboard` (it can drive it
-given a cooperating app, as the iOS clipboard rides simctl). `push` / `clearKeychain` / the status-bar
-overrides / app lifecycle have no faithful equivalent and stay unsupported. Fast gate over an
-injected `adb` runner (no device): command shape, the broadcast result parse (base64 + loud-fail on
-no receiver), the clipboard round-trip against a fake receiver, that the supported subset delegates
-and the rest raise, and that the adb backend advertises exactly `setLocation` + `clipboard` so
-preflight (BE-0212) admits those and fails the rest fast.
+given a cooperating app, as the iOS clipboard rides simctl). `push` needs a receiver in the app's
+process and Android has no keychain, so both stay unsupported; `background` and the status bar are in
+`test_android_device_state.py` (BE-0478). Fast gate over an injected `adb` runner (no device):
+command shape, the broadcast result parse (base64 + loud-fail on no receiver), the clipboard
+round-trip against a fake receiver, that the supported subset delegates and the rest raise, and that
+the adb backend advertises exactly that subset so preflight (BE-0212) admits it and fails the rest
+fast.
 """
 
 from __future__ import annotations
@@ -140,14 +141,131 @@ def test_env_clipboard_raises_loudly_when_the_app_has_no_receiver() -> None:
         env.get_clipboard(_PKG)
 
 
+# --- the in-app location route (BE-0481) ---
+
+
+def _location_reply(code: int) -> str:
+    return f"Broadcast completed: result={code}"
+
+
+def test_location_builders_address_the_package_with_string_coordinates() -> None:
+    assert adb.mock_location_appop_cmd("R", _PKG, "allow") == [
+        "adb", "-s", "R", "shell", "appops", "set", _PKG, "android:mock_location", "allow",
+    ]  # fmt: skip
+    assert adb.location_broadcast_cmd("R", _PKG, "set", -33.8688, 151.2093) == [
+        "adb", "-s", "R", "shell", "am", "broadcast", "-a", adb.LOCATION_ACTION, "-p", _PKG,
+        "--es", "op", "set", "--es", "lat", "-33.8688", "--es", "lon", "151.2093",
+    ]  # fmt: skip
+    assert adb.location_broadcast_cmd("R", _PKG, "clear") == [
+        "adb", "-s", "R", "shell", "am", "broadcast", "-a", adb.LOCATION_ACTION, "-p", _PKG,
+        "--es", "op", "clear",
+    ]  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        lambda: adb.mock_location_appop_cmd("R", _PKG, "deny"),
+        lambda: adb.location_broadcast_cmd("R", _PKG, "get"),
+        lambda: adb.location_broadcast_cmd("R", _PKG, "set", 1.0, None),
+    ],
+)
+def test_location_builders_reject_what_the_receiver_would_not_handle(
+    build: Callable[[], list[str]],
+) -> None:
+    with pytest.raises(adb.DeviceError):
+        build()
+
+
+def test_parse_location_result_names_each_cause() -> None:
+    adb.parse_location_result(_location_reply(adb.LOCATION_RESULT_OK))
+    with pytest.raises(adb.DeviceError, match="mock-location app-op"):
+        adb.parse_location_result(_location_reply(adb.LOCATION_RESULT_NO_MOCK_PERMISSION))
+    with pytest.raises(adb.DeviceError, match=r"Bajutsu\.startLocation"):
+        adb.parse_location_result(_location_reply(0))
+    with pytest.raises(adb.DeviceError, match="no BajutsuAndroid location receiver"):
+        adb.parse_location_result("")
+    with pytest.raises(adb.DeviceError, match=r"rejected the mock location: .*bad provider"):
+        adb.parse_location_result(
+            f'Broadcast completed: result={adb.LOCATION_RESULT_MOCK_FAILED}, data="bad provider"'
+        )
+    with pytest.raises(adb.DeviceError, match=r"am replied: 'Error: no such package'"):
+        adb.parse_location_result("Error: no such package")
+
+
+@pytest.mark.parametrize(
+    ("serial", "props", "expected", "reads"),
+    [
+        ("emulator-5554", {"ro.boot.qemu": "1"}, True, 1),
+        ("emulator-5554", {"ro.kernel.qemu": "1"}, True, 2),  # an older image
+        ("emulator-5554", {}, False, 2),  # a device that merely carries the name
+        ("127.0.0.1:5555", {"ro.boot.qemu": "1"}, False, 0),  # `adb connect`: no console to reach
+        ("R5CT1234ABC", {}, False, 0),
+    ],
+)
+def test_has_emulator_console_needs_both_the_serial_and_the_property(
+    serial: str, props: dict[str, str], expected: bool, reads: int
+) -> None:
+    calls: list[list[str]] = []
+
+    def run(argv: list[str]) -> str:
+        calls.append(argv)
+        return props.get(argv[-1], "") + "\n"
+
+    assert adb.Env(serial, run=run).has_emulator_console() is expected
+    assert len(calls) == reads
+
+
+def test_env_set_mock_location_grants_the_app_op_before_broadcasting() -> None:
+    calls: list[list[str]] = []
+
+    def run(argv: list[str]) -> str:
+        calls.append(argv)
+        return _location_reply(adb.LOCATION_RESULT_OK) if "broadcast" in argv else ""
+
+    adb.Env("R", run=run).set_mock_location(_PKG, 35.681, 139.767)
+    assert calls == [
+        adb.mock_location_appop_cmd("R", _PKG, "allow"),
+        adb.location_broadcast_cmd("R", _PKG, "set", 35.681, 139.767),
+    ]
+
+
+def test_env_clear_and_revoke_mock_location() -> None:
+    calls: list[list[str]] = []
+
+    def run(argv: list[str]) -> str:
+        calls.append(argv)
+        return _location_reply(adb.LOCATION_RESULT_OK) if "broadcast" in argv else ""
+
+    env = adb.Env("R", run=run)
+    env.clear_mock_location(_PKG)
+    env.revoke_mock_location(_PKG)
+    assert calls == [
+        adb.location_broadcast_cmd("R", _PKG, "clear"),
+        adb.mock_location_appop_cmd("R", _PKG, "default"),
+    ]
+
+
+def test_env_set_mock_location_surfaces_an_appops_complaint() -> None:
+    # `appops set` can print its error and still exit 0, so any output fails the call.
+    env = adb.Env("R", run=lambda a: "Error: Unknown package: x" if "appops" in a else "")
+    with pytest.raises(adb.DeviceError, match="appops set"):
+        env.set_mock_location(_PKG, 1.0, 2.0)
+
+
 # --- android_device_control: supported subset delegates, the rest raise UnsupportedAction ---
 
 
 def test_android_control_set_location_delegates_with_longitude_first() -> None:
     calls: list[list[str]] = []
-    ctrl = platform_lifecycle.android_device_control("E", _PKG, env_run=_recorder(calls))
+
+    def run(argv: list[str]) -> str:
+        calls.append(argv)
+        return "1\n" if "getprop" in argv else ""  # a local emulator image (BE-0481)
+
+    ctrl = platform_lifecycle.android_device_control("emulator-5554", _PKG, env_run=run)
     ctrl.set_location(35.6, 139.7)
-    assert calls == [["adb", "-s", "E", "emu", "geo", "fix", "139.7", "35.6"]]
+    assert calls[-1] == ["adb", "-s", "emulator-5554", "emu", "geo", "fix", "139.7", "35.6"]
 
 
 def test_android_control_clipboard_round_trip() -> None:
@@ -176,10 +294,7 @@ def test_android_control_clipboard_round_trip() -> None:
     [
         lambda c: c.push({"aps": {"alert": "hi"}}),
         lambda c: c.clear_keychain(),
-        lambda c: c.home(),  # `background`
         lambda c: c.foreground(),
-        lambda c: c.override_status_bar(time="9:41"),
-        lambda c: c.clear_status_bar(),
     ],
 )
 def test_android_control_unsupported_operations_raise(
@@ -195,17 +310,16 @@ def test_android_control_unsupported_operations_raise(
 # --- capability declaration + preflight (BE-0212 tokens) ---
 
 
-def test_adb_advertises_setlocation_clipboard_and_foreground() -> None:
+def test_adb_advertises_the_device_control_subset_it_can_honor() -> None:
     caps = AdbDriver("E", run=lambda a: "").capabilities()
     assert base.Capability.DC_SET_LOCATION in caps
     assert base.Capability.DC_CLIPBOARD in caps
     assert base.Capability.DC_FOREGROUND in caps
-    # The rest of the family stays unadvertised — `background`, push, keychain, and the status bar
-    # have no faithful emulator equivalent.
+    assert base.Capability.DC_BACKGROUND in caps
+    assert base.Capability.DC_STATUS_BAR in caps
+    # push needs a receiver in the app's process, and Android has no keychain to clear.
     assert base.Capability.DC_PUSH not in caps
     assert base.Capability.DC_CLEAR_KEYCHAIN not in caps
-    assert base.Capability.DC_BACKGROUND not in caps
-    assert base.Capability.DC_STATUS_BAR not in caps
 
 
 def test_adb_advertises_the_whole_permission_vocabulary() -> None:
@@ -226,6 +340,9 @@ def _sc(**body: object) -> Scenario:
         {"setLocation": {"lat": 1.0, "lon": 2.0}},
         {"setClipboard": {"text": "x"}},
         {"clearClipboard": {}},
+        {"background": {}},
+        {"overrideStatusBar": {"time": "9:41"}},
+        {"clearStatusBar": {}},
     ],
 )
 def test_preflight_admits_supported_steps_on_adb(step: dict[str, object]) -> None:
@@ -237,8 +354,6 @@ def test_preflight_admits_supported_steps_on_adb(step: dict[str, object]) -> Non
     [
         {"push": {"payload": {"aps": {"alert": "hi"}}}},
         {"clearKeychain": {}},
-        {"background": {}},
-        {"overrideStatusBar": {"time": "9:41"}},
     ],
 )
 def test_preflight_rejects_unsupported_steps_on_adb(step: dict[str, object]) -> None:

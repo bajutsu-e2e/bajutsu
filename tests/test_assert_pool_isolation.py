@@ -165,6 +165,22 @@ def test_an_artifact_under_another_workers_slug_is_reported() -> None:
     assert any("outside its own evidence dir" in v for v in violations)
 
 
+@pytest.mark.parametrize("phase", ["before_outcomes", "after_outcomes"])
+def test_a_lifecycle_phase_artifact_under_another_workers_slug_is_reported(phase: str) -> None:
+    # `setup` and `cleanup` steps write evidence through the same step path, so a cross-write there
+    # is the same isolation violation as one in a numbered step.
+    scenarios = _isolated_run()
+    scenarios[0][phase] = [
+        {
+            "index": 0,
+            "action": "tap",
+            "artifacts": [{"name": "01-search/setup/after.png", "kind": "screenshot"}],
+        }
+    ]
+    violations = isolation_violations(scenarios, _dirs(scenarios), expect_devices=2)
+    assert any("'01-search/setup/after.png' outside its own evidence dir" in v for v in violations)
+
+
 def test_two_results_sharing_one_evidence_dir_is_reported() -> None:
     scenarios = _isolated_run()
     scenarios[1]["sid"] = "00-smoke"
@@ -225,6 +241,66 @@ def test_scenario_window_ignores_a_step_with_no_absolute_instant() -> None:
 def test_scenario_window_is_none_when_no_step_recorded_an_instant() -> None:
     assert scenario_window({"steps": [{"index": 0, "action": "tap", "started_at": 0.0}]}) is None
     assert scenario_window({"steps": []}) is None
+    # An anchor alone never makes a window: on a pre-v6 run it would be relative seconds, not epoch.
+    assert scenario_window({"steps": [], "video_anchor_s": 1_000.0}) is None
+
+
+def test_scenario_window_starts_at_the_recording_anchor_before_the_first_step() -> None:
+    # The lease's app launch and readiness wait run after the recording starts and before the first
+    # step, so the window must open at the anchor rather than at the step (issue #2419).
+    scenario = _scenario("smoke", "00-smoke", "UDID-A", started_at=1_000.0, duration=1.0)
+    scenario["video_anchor_s"] = 985.0
+    assert scenario_window(scenario) == (985.0, 1_001.0)
+
+
+def test_scenario_window_ignores_a_missing_or_later_anchor() -> None:
+    scenario = _scenario("smoke", "00-smoke", "UDID-A", started_at=1_000.0)
+    # Zero is what a run with no recording (or one predating manifest v6) carries.
+    scenario["video_anchor_s"] = 0.0
+    assert scenario_window(scenario) == (1_000.0, 1_010.0)
+    # An anchor after the first step never narrows the window the steps already prove.
+    scenario["video_anchor_s"] = 1_004.0
+    assert scenario_window(scenario) == (1_000.0, 1_010.0)
+
+
+def test_scenario_window_spans_the_setup_and_cleanup_phases() -> None:
+    scenario = _scenario("smoke", "00-smoke", "UDID-A", started_at=1_000.0)
+    scenario["before_outcomes"] = [
+        {"index": 0, "action": "tap", "started_at": 990.0, "duration_s": 2.0}
+    ]
+    scenario["after_outcomes"] = [
+        {"index": 0, "action": "tap", "started_at": 1_020.0, "duration_s": 3.0}
+    ]
+    assert scenario_window(scenario) == (990.0, 1_023.0)
+
+
+def test_concurrent_bring_up_counts_as_overlap_when_the_steps_alone_miss() -> None:
+    # The shape issue #2419 recorded on an Android pool run: each device spends ~12 s launching the
+    # app before a short scenario's steps, so no two step windows on different devices meet, while
+    # each worker's bring-up ran during the other worker's steps.
+    scenarios = [
+        _scenario("smoke", "00-smoke", "UDID-A", started_at=1_013.0, duration=1.0),
+        _scenario("firstlook", "01-firstlook", "UDID-B", started_at=1_018.0, duration=12.0),
+        _scenario("navigation", "02-navigation", "UDID-A", started_at=1_032.0, duration=20.0),
+        _scenario("interrupts", "03-interrupts", "UDID-B", started_at=1_055.0, duration=7.0),
+    ]
+    for scenario, anchor in zip(scenarios, (1_000.0, 1_004.0, 1_020.0, 1_042.0), strict=True):
+        scenario["video_anchor_s"] = anchor
+    assert isolation_violations(scenarios, _dirs(scenarios), expect_devices=2) == []
+
+
+def test_serial_scenarios_still_fail_once_the_bring_up_is_counted() -> None:
+    # A pool that ran one scenario at a time, bring-up included, leaves disjoint windows even with the
+    # anchor counted, so the concurrency check still fails it.
+    scenarios = [
+        _scenario("smoke", "00-smoke", "UDID-A", started_at=1_013.0, duration=1.0),
+        _scenario("firstlook", "01-firstlook", "UDID-B", started_at=1_030.0, duration=12.0),
+        _scenario("navigation", "02-navigation", "UDID-A", started_at=1_058.0, duration=20.0),
+    ]
+    for scenario, anchor in zip(scenarios, (1_000.0, 1_015.0, 1_045.0), strict=True):
+        scenario["video_anchor_s"] = anchor
+    violations = isolation_violations(scenarios, _dirs(scenarios), expect_devices=2)
+    assert any("never kept two workers busy at once" in v for v in violations)
 
 
 def test_main_passes_on_a_real_isolated_run_directory(

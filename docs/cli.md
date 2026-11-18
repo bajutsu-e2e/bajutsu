@@ -161,7 +161,7 @@ uses it as always. Each self-declaring file has it checked for membership instea
 - **Preconditions come first (BE-0452).** Before any device work, `run` and `audit` check each
   scenario. They check it against the targets it drives. Some fields exist on one platform alone, such
   as `subject.launch.args` or a `tipKit` interrupts entry. When no driven target's platform has such a field,
-  the command exits 2 and names it. So does a merged `seedPhotos` without an effective `subject.reinstall: erase`
+  the command exits 2 and names it. So does a merged iOS `seedPhotos` without an effective `subject.reinstall: erase`
   ([scenarios](scenarios.md#preconditions-environment-setup)).
 - No `AI usage:` line: `run` spends no tokens under any flag (BE-0402), so it installs no usage
   ledger and reports none. `record`, `crawl`, and `triage --ai` still do.
@@ -947,7 +947,7 @@ or starts with `@` or `label:`, and none of them reaches `idMatches`, `labelMatc
 own steps validate against — `step {swipe: {on: {id: card}, direction: up}}`,
 `step {pinch: {sel: {id: map}, scale: 0.5}}`. Runs through the same dispatcher `run` uses for a
 one-shot action (`tap`, `type`, `scroll`, `swipe`, `drag`, `pinch`, `rotate`, `setPickerValue`,
-`selectOption`, `select`, `copy`, `handleSystemAlert`, and more), so a target it resolves fails the
+`selectOption`, `select`, `copy`, `paste`, `handleSystemAlert`, and more), so a target it resolves fails the
 same way `tap`'s target does (`ElementNotFound` / `AmbiguousSelector`). `wait`, `assert`, and
 control flow (`if` / `forEach` / `web` / `app`) have no one-shot handler to run through — `step`
 reports the gap by name rather than attempting them; only a whole scenario run has the loop those
@@ -1286,7 +1286,8 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   token-authenticated LaunchAgent on a single Mac; `--upload-exec` (or `$BAJUTSU_UPLOAD_EXEC`) governs whether an
   **uploaded bundle**'s `services.server` command may run (`deny` / `reuse` / `sandbox`, default
   `sandbox`); `--allow-remote-build` (or `$BAJUTSU_ALLOW_REMOTE_BUILD`) opts a UI-bound **Git**
-  config's `subject.build` command into running on the host (off by default). All are covered in
+  config's `subject.build` and `driver.runner.build` commands into running on the host (off by
+  default). All are covered in
   [self-hosting](self-hosting.md).
 
 ## `mcp`
@@ -1320,6 +1321,17 @@ Redis or RQ**, BE-0106), runs it with the unchanged `run_job`, and posts the res
 `/api/worker/result`. It holds **no cloud credentials**: every object-store touch — downloading
 baselines before a run, uploading the run tree after — goes through presigned URLs the control
 plane signs (BE-0160), so the worker needs only an HTTP client.
+
+A lease with nothing to run answers `204`. A worker whose `maxJobConcurrency` is above 1 — a
+device-cloud worker, a Device Farm one included — sends its free slots as `maxJobs`, from 1 to 100,
+and the response is then a list; a one-slot worker sends no `maxJobs` and gets one body. The oldest
+job the worker can serve may belong to a `run-set` group. The list then adds that group's next jobs,
+within the server's concurrency caps. The slots can thus share the group's uploads.
+
+A `run-set` job carries a run intent instead of a command
+([BE-0484](../roadmaps/BE-0484-job-group-lease/BE-0484-job-group-lease.md)). The worker that
+leases it turns the intent into its own run. A local worker runs a `bajutsu run` command. A Device
+Farm worker submits its provider's batch.
 
 A local `bajutsu serve` needs a worker as well, since it queues every run (BE-0449). `make serve`
 starts one. The lease response hands a worker two more fields:
@@ -1360,14 +1372,14 @@ bajutsu worker --once <spec.json> [--worker-config <worker.yaml>]
 | `--server-url` | `$BAJUTSU_SERVER_URL` or `http://localhost:8765` | the control plane's URL |
 | `--token` | "" | operator token for auth (the control plane's `--token` / `$BAJUTSU_SERVE_TOKEN`) |
 | `--platform` | `ios` | comma list of backends this worker can drive (`ios` / `web` / `android`) — the axis the control plane routes jobs on. A local worker exits at startup, naming the driver, when its worker capability file omits a listed platform's driver or its host cannot run that driver, so `--platform ios` stops a Linux worker ([BE-0450](../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability.md)). A device-cloud or `appium` worker takes none |
-| `--capabilities` | "" (also `$BAJUTSU_WORKER_CAPABILITIES`) | **deprecated** ([BE-0450](../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability.md)): extra capability tokens to advertise beyond the platform, the host, and the Simulator inventory (for example `ios18,ipad`). Still honored for this release, with a one-time notice, and removed in the next; the inventory and the worker capability file now supply these tokens. A token with the reserved `environment:`, `host:`, `machine:`, `device:`, `cap:`, or `setting:` prefix stops the worker at startup |
+| `--capabilities` | "" (also `$BAJUTSU_WORKER_CAPABILITIES`) | **deprecated** ([BE-0450](../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability.md)): extra capability tokens to advertise beyond the platform, the host, and the Simulator inventory (for example `ios18,ipad`). Still honored for this release, with a one-time notice, and removed in the next; the inventory and the worker capability file now supply these tokens. A token with the reserved `environment:`, `host:`, `machine:`, `device:`, `cap:`, `setting:`, `job:`, `platform:`, or `kind:` prefix stops the worker at startup |
 | `--poll-interval` | `2.0` | seconds between lease attempts while idle |
 | `--heartbeat-interval` | `30.0` | seconds between lease heartbeats during a run (kept under the control plane's lease timeout, so a long run is never mistaken for a dead worker and reclaimed) |
 | `--worker-id` | "" (auto) | worker identifier |
 | `--machine-id` | "" (also `$BAJUTSU_WORKER_MACHINE_ID`) | the server machine's identity, from its `.bajutsu/machine-id`. The worker advertises it as `machine:<id>` and so takes the jobs that name files by their paths on the server's machine: a local start's `run`, `triage`, `record`, and `crawl` ([self-hosting](self-hosting.md#the-server-backend-on-one-machine-be-0449)). Give it to a worker that sees those paths. A device-cloud worker takes none |
 | `--server-state-dir` | none | the server's state directory (`.bajutsu` beside its runs directory) to read `--machine-id` from, for a worker on the server's own machine; `make serve` passes it. The worker exits at startup when the directory holds no identity yet. Give this flag or `--machine-id`, not both. This flag wins over `$BAJUTSU_WORKER_MACHINE_ID`, which stands in for `--machine-id` alone |
 | `--workdir` | a new temporary directory | where leased jobs run: their materials, fetched bundles, and run trees before upload. The default directory is removed when the worker stops, so a worker started inside a project never writes into it |
-| `--worker-config` | the shipped default | the worker capability file this worker runs under ([BE-0450](../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability.md); see [drivers](drivers.md#worker-capability-check-be-0450)). The worker validates it at startup and exits before leasing anything when the file does not load. A file whose `environment` names a device cloud makes the worker register that provider and advertise `environment:<name>` ([Device Farm](devicefarm.md)). An `appium` file makes the worker advertise `environment:appium` alone and take no `--platform`; it runs each job as a local `bajutsu run` that drives the grid ([BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)). The worker passes the file's absolute path to every `bajutsu run` it spawns, so each leased run is checked against the same file; the server never reads it |
+| `--worker-config` | the shipped default | the worker capability file this worker runs under ([BE-0450](../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability.md); see [drivers](drivers.md#worker-capability-check-be-0450)). The worker validates it at startup and exits before leasing anything when the file does not load. A file whose `environment` names a device cloud makes the worker register that provider and advertise `environment:<name>` ([Device Farm](devicefarm.md)). An `appium` file makes the worker advertise `environment:appium` and take no `--platform`; it runs each job as a local `bajutsu run` that drives the grid ([BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)). Every worker also advertises `job:run-intent`, which says it can run a `run-set` job ([BE-0484](../roadmaps/BE-0484-job-group-lease/BE-0484-job-group-lease.md)). The worker passes the file's absolute path to every `bajutsu run` it spawns, so each leased run is checked against the same file; the server never reads it |
 
 `--once` executes one job spec without a server
 ([BE-0449](../roadmaps/BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs.md)). The spec has

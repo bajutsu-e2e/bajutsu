@@ -27,3 +27,6 @@ class AndroidConfig:
     # to read again on a fresh connection, and whether to restart the server after that.
     resident_read_retries: int = 1
     resident_restart: bool = True
+    # `runsOn.android.locale`: the app's per-app language (BE-0478). None keeps the device's own,
+    # which `Effective.locale` cannot say — it always holds the iOS default.
+    locale: str | None = None

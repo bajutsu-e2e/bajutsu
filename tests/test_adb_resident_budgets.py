@@ -11,6 +11,7 @@ import re
 from pathlib import Path
 
 from bajutsu.common.backend_cli.adb_resident import budgets
+from bajutsu.common.backend_cli.adb_resident._functions import _PICKER_REFUSALS
 
 _SERVER = (
     Path(__file__).resolve().parents[1]
@@ -77,3 +78,77 @@ def test_every_dump_runs_under_a_bound_of_its_own() -> None:
     assert _CODE.count("dumpHierarchy(device)") == 2  # `settledDump` and `settledActBounds`
     settled = _CODE[_CODE.index("private fun <T> settled") : _CODE.index("private fun settledDump")]
     assert settled.count("budget.capDumpWaits()") == settled.count("read()")
+
+
+def _int_const(name: str) -> int:
+    """One of the server's plain `Int` constants, read from its source."""
+    match = re.search(rf"const val {name} = ([\d_]+)\b(?!L)", _CODE)
+    assert match is not None, f"{name} not found in the server source"
+    return int(match.group(1).replace("_", ""))
+
+
+def test_the_picker_walk_bounds_are_the_ones_the_host_sizes_its_timeout_by() -> None:
+    # BE-0480: the host's `/setPickerValue` timeout is built from these, so retuning one end alone
+    # would let a walk the server is still running look like a dead channel.
+    assert _int_const("MAX_PICKER_ROWS") == budgets.MAX_PICKER_ROWS
+    assert _seconds("PICKER_ROW_BUDGET_MS") == budgets.PICKER_ROW_BUDGET_MS / 1000
+
+
+def test_set_picker_value_fits_inside_its_timeout_with_every_stage_at_its_ceiling() -> None:
+    # The deadline is checked before each step, so the last step can still spend its two row waits
+    # past it, then hold the landed row before the reply goes out.
+    walk_deadline = _int_const("MAX_PICKER_ROWS") * _seconds("PICKER_ROW_BUDGET_MS")
+    last_step = 2 * _seconds("PICKER_ROW_BUDGET_MS") + _seconds("PICKER_LANDING_HOLD_MS")
+    waits = (
+        budgets.WAIT_BUDGET_MS / 1000
+        + walk_deadline
+        + last_step
+        + _seconds("ACT_PUBLISH_BUDGET_MS")
+        + _seconds("ACT_TREE_BUDGET_MS")
+    )
+    assert waits <= budgets.PICKER_TIMEOUT_S - 1.0
+
+
+def test_the_picker_refusal_tokens_are_the_ones_the_server_sends() -> None:
+    # BE-0480: a token renamed on the device side would otherwise degrade every refusal to the
+    # driver's generic message, with nothing in the gate to notice.
+    tokens = set(re.findall(r'const val (?:NOT_A_)?PICKER_\w+ = "([\w-]+)"', _CODE))
+    assert tokens == set(_PICKER_REFUSALS)
+
+
+# The on-device BE-0490 module never runs in this gate, so its copies of the server's constants are
+# read from its source here, the same way this module reads the server's.
+_CACHE_DROP_CHECK = (
+    Path(__file__).resolve().parent / "test_cache_drop_ondevice_android.py"
+).read_text(encoding="utf-8")
+
+
+def _constant(source: str, name: str, value: str) -> str:
+    match = re.search(rf"{name} = {value}", source)
+    assert match is not None, f"{name} not found"
+    return match.group(1).replace("_", "")
+
+
+def test_the_cache_drop_check_bounds_its_log_guard_by_the_server_s_log_size() -> None:
+    # A server log cut below this copy would make the check's truncation guard pass on every read.
+    server = _constant(_CODE, "const val EVENT_LOG_MAX", r"([\d_]+)")
+    assert int(server) == int(_constant(_CACHE_DROP_CHECK, "_EVENT_LOG_MAX", r"(\d+)"))
+
+
+def test_the_cache_drop_check_waits_out_the_server_s_idle_connection() -> None:
+    assert _seconds_int("SO_TIMEOUT_MS") == float(
+        _constant(_CACHE_DROP_CHECK, "_SERVER_IDLE_OUT_S", r"([\d.]+)")
+    )
+
+
+def test_the_cache_drop_check_reads_the_headers_the_server_stamps() -> None:
+    # A renamed header would leave every precondition reading nothing.
+    for header in ("EVICT_MARK_HEADER", "EVENT_LOG_HEADER"):
+        assert _constant(_CODE, f"const val {header}", r'"([^"]+)"') == _constant(
+            _CACHE_DROP_CHECK, f"_{header}", r'"([^"]+)"'
+        )
+
+
+def _seconds_int(name: str) -> float:
+    """An `Int` `..._MS` constant (no `L` suffix), in seconds."""
+    return int(_constant(_CODE, f"const val {name}", r"([\d_]+)\b")) / 1000

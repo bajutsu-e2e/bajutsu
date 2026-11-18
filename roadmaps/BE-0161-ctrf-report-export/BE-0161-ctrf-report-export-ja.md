@@ -16,55 +16,65 @@
 ## はじめに
 
 実行結果を [Common Test Report Format (CTRF)](https://ctrf.io/) 形式の文書として出力します。出力先は
-`ctrf.json` で、既存の `manifest.json`・`junit.xml`・`report.html` と並べて実行ディレクトリに書き出し
-ます。CTRF はテストレポート向けのオープン標準の JSON スキーマで（`reportFormat: "CTRF"` と、`tool` /
-`summary` / `tests` を持つ `results` オブジェクトからなります）、どのフレームワークでも同じ形の文書を
-生成できるように設計されています。この標準のおかげで、GitHub Actions の PR コメント出力、ダッシュ
-ボード、flaky なテストの分析といった消費側のエコシステムが、ツールごとのアダプターなしに同じファイル
-を読めます。この出力機能は、Bajutsu がすでに算出している実行データを決定的に射影するだけのものです。
-入力は既存の `junit_xml()` と同じで、その隣に新しい出力形式を一つ足す形になります。LLM は関与せず、
-判定にも影響しません。
+`ctrf.json` で、既存の `manifest.json`、`junit.xml`、`report.html` と並べて実行ディレクトリに書き出し
+ます。
+
+CTRF はテストレポート向けのオープン標準の JSON スキーマです（`reportFormat: "CTRF"` と、`tool` /
+`summary` / `tests` を持つ `results` オブジェクトからなります）。どのフレームワークでも同じ形の文書を
+生成できます。そのため、消費側のエコシステムは、ツールごとのアダプターなしに同じファイルを読めます。
+GitHub Actions の PR コメント出力、ダッシュボード、flaky なテストの分析などです。
+
+この出力機能は、Bajutsu がすでに算出している実行データを決定的に射影するだけのものです。入力は既存の
+`junit_xml()` と同じで、その隣に新しい出力形式を 1 つ足します。LLM は関与せず、判定にも影響しません。
 
 ## 動機
 
 Bajutsu はすでに CI 連携のために `junit.xml` を出力しており（BE-0003）、これは CI がテスト結果を取り込む
-ときの共通語であり続けています。とはいえ JUnit XML は最大公約数的な形式です。テストの名前、クラス、
-所要時間、失敗内容の塊を運びますが、それ以上のものはほとんど持ちません。Bajutsu が実行について把握して
-いる、より豊かな情報、たとえばステップごとの結果、シナリオが動いたバックエンド／エンジンやデバイス、
-第一級のアーティファクトとしてのスクリーンショットや動画やネットワークログ、ビジュアル差分の証跡、
-クロスブラウザマトリックスのセル、シナリオの由来情報は、JUnit には収まる場所がなく、自由記述の文字列
-へ押し込められるか、失われます。
+ときの共通語であり続けています。ただし JUnit XML は最大公約数的な形式です。テストの名前、クラス、
+所要時間、失敗内容の塊を運びますが、それ以外はほとんど持ちません。
 
-CTRF は、まさにこの豊かで構造化された形を運ぶために存在しており、消費側のエコシステムも育っています。
+Bajutsu は、実行についてもっと多くの情報を把握しています。
+
+- ステップごとの結果
+- シナリオが動いたバックエンド／エンジンとデバイス
+- 第一級のアーティファクトとしてのスクリーンショット、動画、ネットワークログ
+- ビジュアル差分の証跡
+- クロスブラウザマトリックスのセル
+- シナリオの由来情報
+
+これらは JUnit には収まる場所がなく、自由記述の文字列へ押し込められるか、失われます。
+
+CTRF は、この豊かで構造化された形を運ぶために存在し、消費側のエコシステムも育っています。
 
 1. **PR コメント・サマリーの出力ツール**：`ctrf-io` の GitHub Actions（`github-test-reporter` など）は、
-   一つの `ctrf.json` から、失敗表とメッセージ、flaky なテストの指摘、履歴の傾向を備えた PR コメントや
-   ジョブサマリーを生成します。しかもツールを問わず、標準のファイル一つからそれができます。今の Bajutsu
-   利用者が同じ体験を得るには、JUnit からコメントを組み立てるステップを自分で書かなければなりません。
-2. **ツールをまたぐダッシュボードと分析**：CTRF はフレームワーク間で形を正規化するため、E2E に Bajutsu を、
-   単体テストに別のフレームワークを使っているチームは、両方を一つの CTRF ベースのダッシュボードに流し
-   込めます。デバイス・エンジン・ステップ・アタッチメントといった Bajutsu 固有の情報も、その道のりで
+   1 つの `ctrf.json` から PR コメントやジョブサマリーを生成します。失敗表とメッセージ、flaky なテストの
+   指摘、履歴の傾向を備えています。生成元のツールは問いません。今の Bajutsu 利用者が同じ体験を得るには、
+   JUnit からコメントを組み立てるステップを自分で書かなければなりません。
+2. **ツールをまたぐダッシュボードと分析**：CTRF はフレームワーク間で形を正規化します。E2E に Bajutsu を、
+   単体テストに別のフレームワークを使っているチームは、両方を 1 つの CTRF ベースのダッシュボードに流し
+   込めます。デバイス、エンジン、ステップ、アタッチメントといった Bajutsu 固有の情報も、その道のりで
    失われません。
-3. **Bajutsu の詳細を保つ構造化アーティファクト**：CTRF の `tests[].steps`・`attachments`・
+3. **Bajutsu の詳細を保つ構造化アーティファクト**：CTRF の `tests[].steps`、`attachments`、
    `browser`／`device`、および `extra` の拡張点により、出力ファイルは `manifest.json` の内容をほぼ
-   そのまま保てます。情報が失われる JUnit とは対照的です。
+   そのまま保てます。JUnit では情報が失われます。
 
-この機能を安く安全に保つ捉え方は、こうです。Bajutsu は新たな内部モデルを採用しませんし、実行が算出する
-内容も変えません。`manifest.json` はすでに正規かつバージョン管理された実行モデルであり
-（[BE-0068](../BE-0068-regenerable-reports/BE-0068-regenerable-reports-ja.md)）、調査の結果、それは
-CTRF の上位集合だとわかっています。CTRF の必須フィールドはどれも直接の供給元を持ち、Bajutsu の余剰は
-CTRF の第一級のオプションフィールド（`steps`・`attachments`・`browser`・`device`・`environment`）か、
-`extra` の拡張点に収まります。したがってこの出力機能は、既存データの射影を `junit_xml()` の隣に足すだけで、
-新しい記帳は生じません。判定後に確定済みの結果を直列化するだけなので、その性質上、決定性を第一とする
-契約の外側に完全に収まります。
+この機能を安く安全に保つ捉え方は、次のとおりです。Bajutsu は新たな内部モデルを採用せず、実行が算出する
+内容も変えません。`manifest.json` はすでに正規かつバージョン管理された実行モデルです
+（[BE-0068](../BE-0068-regenerable-reports/BE-0068-regenerable-reports-ja.md)）。調査の結果、
+`manifest.json` は CTRF の上位集合だとわかっています。CTRF の必須フィールドはどれも直接の供給元を持ち
+ます。Bajutsu の余剰は、CTRF の第一級のオプションフィールド（`steps`、`attachments`、`browser`、
+`device`、`environment`）か、`extra` の拡張点に収まります。
+
+この出力機能は、既存データの射影を `junit_xml()` の隣に足すだけで、新しい記帳は生じません。判定後に、
+確定済みの結果を直列化するだけなので、その性質上、決定性を第一とする契約の外側に収まります。
 
 ## 詳細設計
 
 ### フィールドの対応（manifest から CTRF へ）
 
-この出力機能は、レポート生成がすでに組み立てている実行結果モデル（`bajutsu/orchestrator/types.py`・
-`bajutsu/assertions.py`・`bajutsu/evidence.py` の `RunResult` / `StepOutcome` / `AssertionResult` /
-`Artifact`）をそのまま読み、CTRF 文書を生成します。
+この出力機能は、レポート生成がすでに組み立てている実行結果モデルをそのまま読み、CTRF 文書を生成します。
+モデルは `RunResult` / `StepOutcome` / `AssertionResult` / `Artifact` で、`bajutsu/orchestrator/types.py`、
+`bajutsu/assertions.py`、`bajutsu/evidence.py` にあります。
 
 | CTRF フィールド | 供給元 | 備考 |
 |---|---|---|
@@ -86,43 +96,45 @@ CTRF の第一級のオプションフィールド（`steps`・`attachments`・`
 | `results.environment.{commit,osPlatform,…}` | `provenance.gitRevision`、ホスト情報 | オプションのブロック |
 | 余剰（マトリックスのセル、`expect_results`、`expect_alerts`、`skipped_captures`、`sid`、ビジュアル差分） | `extra` | CTRF は「完全に拡張可能」 |
 
-調査により、CTRF の必須フィールド、すなわち `reportFormat`・`specVersion`・
-`results.{tool,summary,tests}`、および各テストの `name`／`status`／`duration` は、どれも直接の供給元を
-持つと確認できました。したがってこの対応で情報は失われません。
+調査により、CTRF の必須フィールドはどれも直接の供給元を持つと確認できました。必須フィールドは、
+`reportFormat`、`specVersion`、`results.{tool,summary,tests}`、および各テストの
+`name`／`status`／`duration` です。この対応で情報は失われません。
 
 ### すり合わせが要る二つの形の不一致（どちらもブロッカーではありません）
 
-1. **絶対時刻**：CTRF は `start`／`stop` を **Unix エポックからのミリ秒**として、実行ごと・テストごとに
-   求めます。Bajutsu は現状、`runId`（`YYYYmmdd-HHMMSS` の壁時計文字列）と、相対的な `duration_s`、各
-   `StepOutcome.started_at` のオフセットを持ちますが、シナリオごとの絶対開始時刻は持ちません。この出力
-   機能は `summary.start` を `runId` から導出し、テストごとの時刻を累積オフセットから求めます。これは
-   直列実行では正確で、並列やマトリックス実行では近似になります。完全な忠実性が要るなら、実行とシナリオ
-   に絶対エポック開始時刻を記録する小さな後続作業で対応できますが、本提案ではこれを `manifest.json` の
-   スキーマバージョンを上げるオプションの改良と位置づけ、前提条件とはしません。`duration`（CTRF と多くの
-   消費側が拠り所にするフィールド）は、いずれの場合も正確です。
+1. **絶対時刻**：CTRF は `start`／`stop` を **Unix エポックからのミリ秒**として、実行ごと、テストごとに
+   求めます。Bajutsu は、`runId`（`YYYYmmdd-HHMMSS` の壁時計文字列）、相対的な `duration_s`、各
+   `StepOutcome.started_at` のオフセットを持ちます。シナリオごとの絶対開始時刻は持ちません。この出力
+   機能は、`summary.start` を `runId` から導出し、テストごとの時刻を累積オフセットから求めます。直列実行
+   では正確で、並列やマトリックス実行では近似になります。
+
+   完全な忠実性が要るなら、実行とシナリオに絶対エポック開始時刻を記録する小さな後続作業で対応できます。
+   本提案はこの作業を、`manifest.json` のスキーマバージョンを上げるオプションの改良と位置づけ、前提条件
+   とはしません。`duration` はいずれの場合も正確で、CTRF と多くの消費側はこのフィールドを拠り所にします。
 2. **CTRF のステップは最小限**：CTRF の `step` は `{name, status, extra}` しか許さず、トップレベルに
-   duration や reason はありません。Bajutsu の `StepOutcome` はより豊か（duration、reason、ステップ
-   ごとのアサーション結果、アーティファクト）です。これらは `step.extra` へ入れるので、失われるものは
-   ありません。name／status だけを描画する消費側にはきれいな一覧が見え、Bajutsu を理解するツールは
+   duration や reason はありません。Bajutsu の `StepOutcome` はより豊かで、duration、reason、ステップ
+   ごとのアサーション結果、アーティファクトを持ちます。これらは `step.extra` へ入れるので、失われるものは
+   ありません。name と status だけを描画する消費側にはきれいな一覧が見え、Bajutsu を理解するツールは
    extra を読めます。
 
 `Artifact.kind`（`video` / `screenshot` / `deviceLog` / `elements` / `network` など）は、小さな対応表で
 MIME の `contentType`（`video/mp4`、`image/png`、`text/plain`、`application/json` など）へ写します。未知の
-kind には安全側の既定値 `application/octet-stream` を充てます。アタッチメントの `path` は実行ディレクトリ
-からの相対パスのままとし、`manifest.json` がアーティファクトを記録する方法に合わせます。
+kind には、安全側の既定値 `application/octet-stream` を充てます。アタッチメントの `path` は、実行ディレクトリ
+からの相対パスのままにします。`manifest.json` がアーティファクトを記録する方法と合わせるためです。
 
 ### 組み込み位置
 
-CTRF の生成は、既存の JUnit の経路の隣に置きます。`bajutsu/report/` に `ctrf_json()` ビルダーを設け
-（`bajutsu/report/manifest.py` の `junit_xml()` と `manifest_dict()` の隣）、`manifest.json` /
-`junit.xml` / `report.html` をすでに書き出しているレポート組み立て地点（`bajutsu/runner/pipeline.py` の
-`_assemble_report()`、`bajutsu/report/html.py` の `write_report()` 経由）から呼びます。BE-0068 により
-レポートは保存済みの実行データから再生成できるので、`bajutsu report <run>` は、HTML や JUnit を再出力する
-のと同じ要領で過去の実行の `ctrf.json` を再出力します。この出力機能は永続化済みのモデルだけを読み、実行
-時のデバイス状態には触れません。
+CTRF の生成は、既存の JUnit の経路の隣に置きます。`bajutsu/report/` に `ctrf_json()` ビルダーを設けます
+（`bajutsu/report/manifest.py` の `junit_xml()` と `manifest_dict()` の隣）。呼び出し元は、
+`manifest.json` / `junit.xml` / `report.html` をすでに書き出しているレポート組み立て地点です
+（`bajutsu/runner/pipeline.py` の `_assemble_report()`、`bajutsu/report/html.py` の `write_report()` 経由）。
+
+BE-0068 により、レポートは保存済みの実行データから再生成できます。`bajutsu report <run>` は、HTML や
+JUnit を再出力するのと同じ要領で、過去の実行の `ctrf.json` を再出力します。この出力機能は永続化済みの
+モデルだけを読み、実行時のデバイス状態には触れません。
 
 マトリックス実行（[BE-0076](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)、
-該当する場合）は、セルごとに CTRF の `test` を一つ出し、エンジンをテスト名と `browser` に入れます。これは
+該当する場合）は、セルごとに CTRF の `test` を 1 つ出し、エンジンをテスト名と `browser` に入れます。これは
 `junit_xml()` がすでにエンジンを JUnit の `classname` に埋め込んでいるやり方に倣ったものです。
 
 ### 決定性と Prime Directive
@@ -131,7 +143,7 @@ CTRF の生成は、既存の JUnit の経路の隣に置きます。`bajutsu/re
 
 - **LLM は一切使いません**：CTRF は `manifest.json` の機械的な直列化であり、Tier-2 のゲートにも判定にも
   触れません。
-- **判定後で副作用のみ**：ファイルは `run` が合否を決め、結果モデルを組み立てた後に書きます。書いても
+- **判定後で副作用なし**：ファイルは `run` が合否を決め、結果モデルを組み立てた後に書きます。書いても
   判定や終了コードは動きません。
 - **アプリ非依存**：この出力機能はドライバーにもターゲットにも依存しません。共有の結果モデルを読むので、
   iOS（idb）・Web（Playwright）・将来のバックエンドは、アプリごとの分岐なしに同一の出力を得ます。
@@ -188,7 +200,7 @@ CTRF の生成は、既存の JUnit の経路の隣に置きます。`bajutsu/re
 
 **ログ**
 
-- 2026-07-04 — 出力機能を出荷しました。`bajutsu/report/ctrf.py` に `kind → MIME` の対応表と
+- 2026-07-04：出力機能を出荷しました。`bajutsu/report/ctrf.py` に `kind → MIME` の対応表と
   `ctrf_json()` の射影を実装し、`write_html_and_junit` に配線して `run` と `bajutsu report` の両方が
   `ctrf.json` を出すようにしました（再生成の経路のため provenance を `RenderModel` に通しています）。
   あわせて `ctrf.json` を秘匿値のスクラブ対象に加えました。テストは直列実行とマトリックス実行を、
@@ -197,9 +209,9 @@ CTRF の生成は、既存の JUnit の経路の隣に置きます。`bajutsu/re
 
 ## 参考
 
-- [CTRF — Common Test Report Format](https://ctrf.io/) と [JSON スキーマ](https://github.com/ctrf-io/ctrf) — この項目が対象とする標準。
-- [BE-0068 — Regenerable reports](../BE-0068-regenerable-reports/BE-0068-regenerable-reports-ja.md) — この出力機能が射影元とする、正規かつバージョン管理された実行モデル `manifest.json` と、CTRF が再利用する `bajutsu report` の再生成経路。
-- [BE-0060 — Download / export a run report as a zip](../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md) — `ctrf.json` が加わる、実行ディレクトリのアーティファクト一式。
-- [BE-0099 — Webhook notifications for run results](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications-ja.md) — 判定後に `manifest.json` を形式中立に射影する姉妹項目。同じ「射影する、再算出しない」という方針。
-- [BE-0003 — M3: codegen, traces, network, CI](../BE-0003-m3-codegen-traces-network-ci/BE-0003-m3-codegen-traces-network-ci-ja.md) — CI 向けの JUnit XML が入った場所。CTRF はより豊かな相棒の形式。
-- [BE-0047 — AI data sovereignty](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md) — 出力ファイルが manifest から継承する秘匿処理。
+- [CTRF：Common Test Report Format](https://ctrf.io/) と [JSON スキーマ](https://github.com/ctrf-io/ctrf)：この項目が対象とする標準。
+- [BE-0068：Regenerable reports](../BE-0068-regenerable-reports/BE-0068-regenerable-reports-ja.md)：この出力機能が射影元とする、正規かつバージョン管理された実行モデル `manifest.json` と、CTRF が再利用する `bajutsu report` の再生成経路。
+- [BE-0060：Download / export a run report as a zip](../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md)：`ctrf.json` が加わる、実行ディレクトリのアーティファクト一式。
+- [BE-0099：Webhook notifications for run results](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications-ja.md)：判定後に `manifest.json` を形式中立に射影する姉妹項目。同じ「射影する、再算出しない」という方針。
+- [BE-0003：M3: codegen, traces, network, CI](../BE-0003-m3-codegen-traces-network-ci/BE-0003-m3-codegen-traces-network-ci-ja.md)：CI 向けの JUnit XML が入った場所。CTRF はより豊かな相棒の形式。
+- [BE-0047：AI data sovereignty](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md)：出力ファイルが manifest から継承する秘匿処理。

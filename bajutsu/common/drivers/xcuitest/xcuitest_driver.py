@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any, cast
@@ -29,6 +30,7 @@ from ._functions import (
 from ._health_wait import _HealthWait
 from ._reply import _Reply
 from ._shared import _OK, _TIPKIT_DISMISS_REGION, TransportFn
+from .paste_menu import PASTE_MENU_LABELS
 from .runner_target import RunnerTarget
 from .xcuitest_channel_error import XcuitestChannelError
 
@@ -64,6 +66,12 @@ _GRID_CELL_POLL_SECONDS = 0.3
 # iOS reports every frame and coordinate in points, so that is the space stamped on this backend's
 # actuation records.
 _UNIT = "point"
+# How long `paste` waits for the edit menu its tap raises; the menu animates in within a second.
+_PASTE_MENU_TIMEOUT = 5.0
+# How long `paste` looks for a menu its focusing tap raised before long-pressing for one instead.
+_PASTE_MENU_AFTER_TAP = 1.0
+# Long enough for iOS to read the press as a long press, which raises the edit menu.
+_PASTE_MENU_PRESS = 0.6
 
 
 class XcuitestDriver:
@@ -1128,6 +1136,54 @@ class XcuitestDriver:
         reply = self._transport("POST", "/copy", {})
         if reply.status != _OK:
             raise XcuitestChannelError(f"copy failed ({reply.status})")
+
+    def paste(self, sel: base.Selector) -> None:
+        # Through the edit menu, not Cmd+V, which pastes nothing from another process's clipboard
+        # (see `paste_menu`). The labels on screen are counted before any touch, so only a Paste item
+        # the gesture *added* counts as the menu's: app content that happens to carry a Paste label is
+        # never mistaken for it, and if it shares the menu's label the final tap resolves ambiguously
+        # and fails loudly (prime directive 2). Each gesture records its own actuation.
+        before = self._paste_label_counts()
+        self.tap(sel)
+        # A tap on a field that already had focus raises the menu itself, and a further gesture would
+        # dismiss it. Otherwise a long press raises it; a second tap would not, since a UIKit text
+        # field reads two quick taps as a double-tap.
+        label = self._new_paste_label(before, _PASTE_MENU_AFTER_TAP)
+        if label is None:
+            self.long_press(sel, _PASTE_MENU_PRESS)
+            label = self._new_paste_label(before, _PASTE_MENU_TIMEOUT)
+        if label is None:
+            # A menu left up by an earlier step was counted in `before`, so the one this raised added
+            # nothing; name that case rather than blaming the clipboard.
+            cause = (
+                f"a Paste item was already on screen before the gesture ({sorted(before)}); "
+                "dismiss the earlier menu first"
+                if before
+                else "empty clipboard, or a field that offers no paste"
+            )
+            raise base.ElementNotFound(
+                f"paste: the edit menu showed no new Paste item within "
+                f"{_PASTE_MENU_TIMEOUT:g}s ({cause})"
+            )
+        self.tap({"label": label})
+
+    def _paste_label_counts(self) -> Counter[str]:
+        """How many on-screen elements carry each language's Paste label, right now."""
+        return Counter(label for el in self.query() if (label := el["label"]) in PASTE_MENU_LABELS)
+
+    def _new_paste_label(self, before: Counter[str], timeout: float) -> str | None:
+        """The one Paste label that gained elements since `before`, waited for up to `timeout`."""
+        for _ in base.deadline_ticks(timeout, 0.1, 0.5):
+            now = self._paste_label_counts()
+            added = {label for label, n in now.items() if n > before[label]}
+            if len(added) > 1:
+                # Two languages' Paste appearing at once leaves no single menu item to choose.
+                raise base.AmbiguousSelector(
+                    f"paste: several Paste labels appeared at once ({sorted(added)})"
+                )
+            if added:
+                return added.pop()
+        return None
 
     def wait_for(self, sel: base.Selector) -> bool:
         """Single-shot: whether `sel` matches the current screen (BE-0118).

@@ -111,10 +111,12 @@ defaults:
 
 例外を送出する `factory` こそが、この設定を静かなだけの設定ではなく fail-closed にします。
 `create_backend` は、すべてのエージェントが `ClaudeBackedAgent`
-（`bajutsu/agents/claude_backed.py`）を通じて到達する唯一の構築点です。認証チェックを飛ばした呼び出しがあっても、黙って往復するのでは
-なく構築の時点で例外になります。ロケータの失敗が実行を落とさないようにアラートガードが持っている
-`except Exception` も、この送出を要求へ変えることはできません。ガードは警告を記録して何もタップせず、
-そのとき何も送信されていないからです。
+（`bajutsu/agents/claude_backed.py`）を通じて到達する唯一の構築点です。認証チェックを飛ばした
+呼び出しがあっても、黙って往復するのではなく、構築の時点で例外になります。
+
+ロケータの失敗が実行を落とさないようにアラートガードが持っている `except Exception` も、この送出を
+要求へ変えることはできません。ガードは警告を記録して何もタップせず、そのとき何も送信されていない
+からです。
 
 ### 設定フィールドではなく認証ギャップに乗せる理由
 
@@ -163,23 +165,26 @@ defaults:
 `none` を登録はしますが、**選択可能にはしません**。レジストリに `selectable_providers()` を足します。
 `known_providers()` から無効化用のプロバイダを除いたものです。`serve` が現在 `known_providers()` を
 読んでいるのは 3 箇所あります。`bajutsu/serve/operations/config.py:378` と `:392` の読み込み経路、
-`:864` の `set_provider` の書き込み経路です。この 3 箇所を、そちらへ向けます。Settings のドロップダウンに `none` は並びません。
+`:864` の `set_provider` の書き込み経路です。この 3 箇所を、そちらへ向けます。そのため、Settings の
+ドロップダウンに `none` は並びません。
 
 理由は、組織の Settings での選択がジョブへ届く経路が環境変数だけだからです。`provider_env`
 （`bajutsu/serve/operations/config.py:456`）は、選択した名前を `BAJUTSU_AI_PROVIDER` として出します。
 dispatch は、その辞書をジョブの環境オーバーレイとして渡します。`resolve_provider` は設定を先に読むので、
 ドロップダウンで `none` を選んだ運用者は、`ai.provider` を設定に書いているプロジェクトに対して何の
-効果も得られません。ジョブはモデルを呼び続け、そのことは誰にも知らされません。「オフ」と書かれた
-スイッチが黙って入ったままである状態は、鍵を設定しない運用について *動機* が批判した失敗そのもので、
-ドロップダウンへ並べれば気づきにくさが増すだけです。このキルスイッチは、リポジトリがコミットする
-表明であって、組織ごとのトグルではありません。
+効果も得られません。ジョブはモデルを呼び続け、そのことは誰にも知らされません。
+
+「オフ」と書かれたスイッチが黙って入ったままである状態は、鍵を設定しない運用について *動機* が批判した
+失敗そのものです。ドロップダウンへ並べれば、気づきにくさが増すだけです。このキルスイッチは、
+リポジトリがコミットする表明であって、組織ごとのトグルではありません。
 
 ここから制限が 1 つ残ります。本項目は、その制限を閉じずに受け入れます。`provider_info`
 （`bajutsu/serve/operations/config.py:491`）が読むのは、組織の保存済み選択です。選択が無ければ、
 `AiConfig` を渡さない `resolved_provider()` へ落ちます。enrich と triage のハンドラとは違い、
 `resolve(config, target).ai` を読みません。したがって `ai.provider: none` を設定したリポジトリでも
-`claudeAvailable: true` が返り、Web UI の record と crawl のタブは有効なままです。キルスイッチ自体は
-効いています。タブから起動したジョブはコマンドラインの呼び出しであり、リポジトリの設定を自分で解決
+`claudeAvailable: true` が返り、Web UI の record と crawl のタブは有効なままです。
+
+キルスイッチ自体は効いています。タブから起動したジョブはコマンドラインの呼び出しであり、リポジトリの設定を自分で解決
 して、モデルへ届く前に終了コード 2 で止まります。欠けているのは、タブをあらかじめ灰色にするための
 事前の合図だけです。`provider_info` にターゲットの `ai` を読ませる変更は、`serve` がすべての
 プロバイダについて到達性を報告する仕方を変えます。本項目の継ぎ目からは導かれないため、後続の項目に
@@ -251,10 +256,10 @@ triage は到達可能なまま残ります。スクリーンショットを送�
 
 ## 参考
 
-- [BE-0104 — ベンダー中立な AI バックエンド](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend-ja.md) — 本項目が拡張するプロバイダレジストリ。
-- [BE-0047 — AI のデータ主権](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md) — 本項目が再利用する `ai` ブロック、`keyEnv` の規則、認証ギャップ。
-- [BE-0315 — ネイティブなリアクティブアラート処理](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling-ja.md) — AI を切っても動き続ける決定的な経路。
-- [BE-0382 — システムアラートガードのプロンプト別ルール](../BE-0382-system-alert-per-prompt-rules/BE-0382-system-alert-per-prompt-rules-ja.md) — ネイティブ経路がプロンプトに答えるためのルール。
-- [BE-0196 — AI のトークン使用量と費用の記録](../BE-0196-ai-usage-cost-ledger/BE-0196-ai-usage-cost-ledger-ja.md) — 検証可能な成果が読む台帳。
-- [`docs/ja/configuration.md`](../../docs/ja/configuration.md) — `ai:` ブロックとその解決順序。
-- [`docs/ja/ai-boundary.md`](../../docs/ja/ai-boundary.md) — どの経路がモデルに到達してよく、どの経路が到達してはならないか。
+- [BE-0104：ベンダー中立な AI バックエンド](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend-ja.md)：本項目が拡張するプロバイダレジストリ。
+- [BE-0047：AI のデータ主権](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md)：本項目が再利用する `ai` ブロック、`keyEnv` の規則、認証ギャップ。
+- [BE-0315：ネイティブなリアクティブアラート処理](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling-ja.md)：AI を切っても動き続ける決定的な経路。
+- [BE-0382：システムアラートガードのプロンプト別ルール](../BE-0382-system-alert-per-prompt-rules/BE-0382-system-alert-per-prompt-rules-ja.md)：ネイティブ経路がプロンプトに答えるためのルール。
+- [BE-0196：AI のトークン使用量と費用の記録](../BE-0196-ai-usage-cost-ledger/BE-0196-ai-usage-cost-ledger-ja.md)：検証可能な成果が読む台帳。
+- [`docs/ja/configuration.md`](../../docs/ja/configuration.md)：`ai:` ブロックとその解決順序。
+- [`docs/ja/ai-boundary.md`](../../docs/ja/ai-boundary.md)：どの経路がモデルに到達してよく、どの経路が到達してはならないか。

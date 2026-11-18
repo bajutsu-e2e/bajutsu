@@ -16,207 +16,140 @@
 
 ## Introduction
 
-An **org** is the tenant a hosted `serve` deployment partitions everything by: the runs, the
-evidence, the scenarios, the secrets, the registered projects, and the
-[targets](../../docs/glossary.md#target-app-device) a signed-in user may reach. Today a user
-belongs to exactly one of them. GitHub OAuth sign-in resolves a login to a single org and writes it
-to that user's `users.org_id` column, and every request thereafter reads that one column through
-`ServeState.org_of`.
+An **org** is the tenant that a hosted `serve` deployment partitions everything by. The partition covers the runs, the evidence, the scenarios, the secrets, the registered projects, and the [targets](../../docs/glossary.md#target-app-device) a signed-in user may reach.
 
-That single column is wrong for a user whose GitHub memberships match more than one org. The
-resolution picks the first match and never revisits the choice, so the other orgs are unreachable —
-not merely inconvenient to reach, but invisible, with nothing in the web UI to say they exist.
+Today a user belongs to exactly one org. GitHub OAuth sign-in resolves a login to a single org and writes it to that user's `users.org_id` column. Every later request reads that one column through `ServeState.org_of`.
 
-We propose that membership become a set and the org become a choice. Sign-in records every org a
-login belongs to, together with the role it holds in each; the user picks the active one from a
-selector in the web UI header, in place of the org badge that already names the current tenant; and the
-next sign-in honors the pick instead of overwriting it. The single-org deployment sees no change:
-one eligible org renders the badge exactly as it renders today.
+That single column is wrong for a user whose GitHub memberships match more than one org. The resolution picks the first match and never revisits the choice, so the other orgs are unreachable. They are also invisible: nothing in the web UI says they exist.
+
+We propose that membership become a set and the org become a choice. Sign-in records every org a login belongs to, together with the role the login holds in each. The user picks the active org from a selector in the web UI header, in place of the org badge that already names the current tenant. The next sign-in honors the pick instead of overwriting it.
+
+A single-org deployment sees no change. One eligible org renders the badge as it renders today.
 
 ## Motivation
 
-Bajutsu's multi-tenant `serve` was built one axis at a time. BE-0015 introduced the org and gave
-each user a column naming theirs. [BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md)
-widened the ways a login can belong to one: an explicit `members` entry, membership in a GitHub
-organization the org claims under `githubOrgs`, or direct membership in a GitHub Team it claims
-under `githubTeams` / `editorTeams`.
-[BE-0375](../BE-0375-serve-org-lifecycle-management/BE-0375-serve-org-lifecycle-management.md) moved
-the whole membership roster into the database and gave admins a page to edit it. Each step made
-overlap more likely, and none of them made the overlap resolvable.
+Bajutsu's multi-tenant `serve` grew one axis at a time. BE-0015 introduced the org and gave each user a column naming theirs.
 
-Overlap is not a corner case in the deployment shape those items describe. A consultancy that runs
-one Bajutsu deployment for several client tenants staffs an engineer on two of them; a platform team
-keeps an org of its own alongside the product org whose GitHub organization it also belongs to. In
-both, the person is a legitimate member of two orgs and can work in only the one that happens to
-sort first. BE-0375 says so in its own text, and names the blocker: the real answer is to let a
-login that belongs to several orgs choose between them, which needs `users.org_id` to stop being a
-single column.
+[BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md) widened the ways a login can belong to an org:
 
-Worse than the restriction is the silence around it. The header badge shows one org and offers no
-hint that a second exists, so a user whose runs land in the wrong tenant has no way to tell whether
-the deployment is misconfigured or whether they are simply looking at the tenant the tie-break
-chose. The two failures look identical from the browser, and the second is not a failure at all.
+- an explicit `members` entry
+- membership in a GitHub organization the org claims under `githubOrgs`
+- direct membership in a GitHub Team the org claims under `githubTeams` / `editorTeams`
 
-Once this ships, a user who belongs to two orgs signs in, opens the header selector, picks the
-second org, and sees that tenant's runs, projects, and targets — then signs out, signs back in, and
-lands on the org they picked rather than the one the tie-break would have chosen. A user who
-belongs to one org sees the same header they see today.
+[BE-0375](../BE-0375-serve-org-lifecycle-management/BE-0375-serve-org-lifecycle-management.md) moved the whole membership roster into the database and gave admins a page to edit it. Each step made overlap more likely, and none made the overlap resolvable.
+
+Overlap is not a corner case in the deployment shape those items describe. A consultancy runs one Bajutsu deployment for several client tenants and staffs an engineer on two of them. A platform team keeps an org of its own alongside the product org whose GitHub organization it also belongs to. In both cases the person is a legitimate member of two orgs, yet can work only in the one that sorts first.
+
+BE-0375 says so in its own text and names the blocker: the real answer is to let a login that belongs to several orgs choose between them, which needs `users.org_id` to stop being a single column.
+
+The silence around the restriction is worse than the restriction. The header badge shows one org and gives no hint that a second exists. A user whose runs land in the wrong tenant cannot tell a misconfigured deployment from a tie-break that chose a different tenant. The two look identical from the browser, and the second is not a defect at all.
+
+Once this ships, a user who belongs to two orgs signs in, opens the header selector, and picks the second org. The user then sees that tenant's runs, projects, and targets. After signing out and back in, the user lands on the picked org, not on the one the tie-break would have chosen. A user who belongs to one org sees the same header as today.
 
 ## Detailed design
 
 ### Terminology
 
-An **org** is a tenant, identified by a slug that doubles as its database row id. An **actor** is
-the GitHub login behind a request, recovered from the session. A **role** is one of `viewer`,
-`editor`, or `admin`, and it decides which endpoints an actor may reach. An **eligible org** is one
-whose declared membership admits a given login. The **active org** is the single eligible org that
-this actor's requests currently resolve to — the one `ServeState.org_of` answers with, and the one
-whose runs, evidence, scenarios, secrets, and projects every tab shows.
+- **Org**: a tenant, identified by a slug that doubles as its database row id.
+- **Actor**: the GitHub login behind a request, recovered from the session.
+- **Role**: one of `viewer`, `editor`, or `admin`. The role decides which endpoints an actor may reach.
+- **Eligible org**: an org whose declared membership admits a given login.
+- **Active org**: the single eligible org that the actor's requests currently resolve to. `ServeState.org_of` answers with it, and every tab shows its runs, evidence, scenarios, secrets, and projects.
 
 ### 1. Membership becomes a set, computed at sign-in
 
-`bajutsu/serve/orgs.py` ranks the three membership axes in one place, `_match_org`, and returns the
-first org that matches: an explicit `members` entry first, then an intersection with an org's
-`githubOrgs`, then direct membership in one of its admitting Teams. We keep that ranking and change
-only what it returns. A new `orgs_for_identity` returns every matching org, in the same ranked
-order; `org_for_identity` becomes its first element, and `identity_matches_org` becomes a test that
-the result is non-empty. No caller's behavior changes, because the head of the ranked list is the
-org the old function already returned.
+`bajutsu/serve/orgs.py` ranks the three membership axes in one place, `_match_org`, and returns the first org that matches. The ranking is:
 
-The set has to outlive the OAuth callback, because that callback is the only place a login's GitHub
-organization and Team memberships are known — Bajutsu keeps no GitHub token afterward, so nothing
-later in the session can recompute them. A new `user_orgs` table records the set: one row per
-`(user_id, org_id)` pair, carrying the `role` that pair resolves to. The role belongs on the row
-rather than on the user, because a role is per-org by construction: `editorTeams` promotes a member
-to `editor` within one org and says nothing about another.
+1. an explicit `members` entry
+2. an intersection with an org's `githubOrgs`
+3. direct membership in one of the org's admitting Teams
 
-Every sign-in replaces that user's rows wholesale. Recomputing rather than merging is what makes
-leaving a GitHub organization take effect on the next sign-in, the same self-healing property
-BE-0313 gave the role.
+We keep that ranking and change only what the function returns. A new `orgs_for_identity` returns every matching org in the same ranked order. `org_for_identity` becomes its first element, and `identity_matches_org` becomes a test that the result is non-empty. No caller's behavior changes, because the head of the ranked list is the org the old function already returned.
+
+The set must outlive the OAuth callback. That callback is the only place where a login's GitHub organization and Team memberships are known, and Bajutsu keeps no GitHub token afterward. Nothing later in the session can recompute them.
+
+A new `user_orgs` table records the set. It holds one row per `(user_id, org_id)` pair, carrying the `role` that pair resolves to. The role belongs on the row, not on the user, because a role is per-org by construction: `editorTeams` promotes a member to `editor` within one org and says nothing about another.
+
+Every sign-in replaces that user's rows wholesale. Recomputing instead of merging makes leaving a GitHub organization take effect on the next sign-in. BE-0313 gave the role the same self-healing property.
 
 ### 2. The active org is a choice that the next sign-in honors
 
-`users.org_id` stays one column and keeps its meaning at every reader: the active org. What changes
-is who writes it. Today `oauth_callback` overwrites it on every sign-in with the first match. From
-now on it overwrites only when the recorded value is no longer eligible — a user removed from the
-org they had selected lands on the head of their new eligible list — and otherwise leaves the
-recorded choice alone. Either way, sign-in writes `users.role` from the active org's own
-`editorTeams` rather than from the first match's, so a user active in one tenant never carries a
-role another tenant's `editorTeams` granted.
+`users.org_id` stays one column and keeps its meaning at every reader: the active org. What changes is who writes it.
 
-Preserving the column is what keeps this change small. `ServeState.org_of(actor)` is the single seam
-every org-scoped read and write already goes through, from the run list to the per-org secret store,
-so a selection stored where that method already reads needs no new plumbing and cannot leave one tab
-scoped to a different tenant than another.
+Today `oauth_callback` overwrites the column on every sign-in with the first match. From now on it overwrites the column only when the recorded value is no longer eligible. A user removed from the selected org lands on the head of the new eligible list. Otherwise the recorded choice stays.
 
-Storing the choice on the user rather than on the session is deliberate, and the alternative fails
-for a concrete reason rather than a stylistic one. A session-scoped selection would have to travel
-in the session record, which on a hosted deployment is a database row shared across replicas
-(`SqlSessionStore`), while `org_of` is keyed by actor and receives no session. Threading the session
-through every caller of `org_of` is a far larger change than the feature justifies, and it would
-also make the selection evaporate on every re-login — the opposite of what a user who works in one
-tenant all week wants.
+Either way, sign-in writes `users.role` from the active org's own `editorTeams`, not from the first match's. A user active in one tenant therefore never carries a role that another tenant's `editorTeams` granted.
+
+Preserving the column keeps this change small. `ServeState.org_of(actor)` is the single seam that every org-scoped read and write already goes through, from the run list to the per-org secret store. A selection stored where that method already reads needs no new plumbing. It also cannot leave one tab scoped to a different tenant than another.
+
+Storing the choice on the user, not on the session, is deliberate. The alternative fails for a concrete reason, not a stylistic one. A session-scoped selection would have to travel in the session record. On a hosted deployment that record is a database row shared across replicas (`SqlSessionStore`), while `org_of` is keyed by actor and receives no session.
+
+Threading the session through every caller of `org_of` is a far larger change than the feature justifies. It would also make the selection evaporate on every re-login, the opposite of what a user who works in one tenant all week wants.
 
 ### 3. Switching orgs
 
-One new endpoint, `POST /api/org`, taking the target slug. It authorizes the switch against the
-`user_orgs` rows written at sign-in: a slug with no row for this user is refused with 403, and a
-missing row set refuses everything rather than defaulting to permissive. The exception is an
-admin-Team member, whose eligible set unit 4 computes at read time instead of storing it as rows. On
-success it writes both `users.org_id` and `users.role` from the row, so the role follows the tenant
-the way it does at sign-in.
+One new endpoint, `POST /api/org`, takes the target slug. It authorizes the switch against the `user_orgs` rows written at sign-in:
 
-The switch is an ordinary authenticated action, not an admin one: it moves the caller between orgs
-that already admit them, and grants nothing their last sign-in did not already establish. It inherits
-that sign-in's latency in both directions: a membership revoked since then keeps admitting a switch
-until the login next signs in, exactly as it keeps admitting the org they are already acting as —
-the next-sign-in latency every membership change in `serve` already has (BE-0313 recomputes the
-placement and the role on each login, and `update_org_membership` says so of its own writes). It is still recorded like
-every other operationally significant act in `serve` — an `org.switch` event through `oplog`, and an
-audit row through `Repository.record_audit` with the destination slug as the target — because a
-later reader of the audit log needs to know which tenant an actor was in when they acted, and the
-sign-in record alone no longer answers that.
+- A slug with no row for this user is refused with 403.
+- A missing row set refuses everything instead of defaulting to permissive.
+- An admin-Team member is the exception. Section 4 computes that member's eligible set at read time instead of storing it as rows.
 
-The boot read `GET /api/config` gains an `orgs` field alongside the `actor` and `org` it already
-returns: the eligible slugs, sorted by slug. The ranking decides only where a login starts, so it
-is not carried into the stored set and the selector's order is simply stable. Disclosing them to the actor whose memberships produced
-them reveals nothing they could not obtain by switching, which is the same reasoning that already
-lets that endpoint return the actor's own login and active org while the full org roster stays
-behind the admin-only `GET /api/orgs`.
+On success the endpoint writes both `users.org_id` and `users.role` from the row, so the role follows the tenant as it does at sign-in.
+
+The switch is an ordinary authenticated action, not an admin one. It moves the caller between orgs that already admit the caller, and grants nothing that the last sign-in did not already establish.
+
+The switch inherits that sign-in's latency in both directions. A membership revoked since then keeps admitting a switch until the login next signs in, exactly as it keeps admitting the org the login already acts as. Every membership change in `serve` has this next-sign-in latency: BE-0313 recomputes the placement and the role on each login, and `update_org_membership` says so of its own writes.
+
+The switch is still recorded like every other operationally significant act in `serve`:
+
+- an `org.switch` event through `oplog`
+- an audit row through `Repository.record_audit`, with the destination slug as the target
+
+A later reader of the audit log needs to know which tenant an actor was in when the actor acted, and the sign-in record alone no longer answers that.
+
+The boot read `GET /api/config` gains an `orgs` field alongside the `actor` and `org` it already returns. The field lists the eligible slugs, sorted by slug. The ranking decides only where a login starts, so it does not enter the stored set, and the selector's order is stable.
+
+Disclosing the slugs to the actor whose memberships produced them reveals nothing the actor could not learn by switching. The same reasoning already lets that endpoint return the actor's own login and active org, while the full org roster stays behind the admin-only `GET /api/orgs`.
 
 ### 4. A member of an admin Team is eligible for every org
 
-A member of one of the server-wide admin Teams named by `BAJUTSU_OAUTH_ADMIN_TEAMS` can sign in even
-when no org's membership admits them
-([BE-0352](../BE-0352-admin-team-bootstrap-bypass/BE-0352-admin-team-bootstrap-bypass.md)), so their
-ranked eligible list is frequently empty. Left alone, the selector would hide from exactly the user
-the header badge was built for: the admin who administers several orgs and needs to see which one
-their own work lands in.
+A member of one of the server-wide admin Teams named by `BAJUTSU_OAUTH_ADMIN_TEAMS` can sign in even when no org's membership admits that member ([BE-0352](../BE-0352-admin-team-bootstrap-bypass/BE-0352-admin-team-bootstrap-bypass.md)). The ranked eligible list of such a member is frequently empty. Left alone, the selector would hide from the very user the header badge was built for: the admin who administers several orgs and needs to see which one their own work lands in.
 
-Their eligible set is therefore every org the deployment has, and it is computed at read time from
-`Repository.list_orgs` rather than stored as rows. Storing it would go stale the moment an admin
-creates an org on the Orgs page — the one action such a user is most likely to take right before
-wanting to switch into the result. The test for "is this an admin-Team member" is `users.role ==
-"admin"`, which holds precisely for them: `role_for` returns `admin` for admin-Team membership and
-never for anything else. Switching leaves an admin's role at `admin`, since that role comes from a
-server-wide Team rather than from any org's membership.
+The eligible set of such a member is therefore every org the deployment has. The set is computed at read time from `Repository.list_orgs` and never stored as rows. A stored set would go stale the moment an admin creates an org on the Orgs page, which is the action such a user is most likely to take right before switching into the result.
+
+The test for "is this an admin-Team member" is `users.role == "admin"`. The test holds for exactly those members, because `role_for` returns `admin` for admin-Team membership and for nothing else.
+
+Switching leaves an admin's role at `admin`. That role comes from a server-wide Team, not from any org's membership.
 
 ### 5. The header selector
 
-The web UI header already carries an org badge (`#orgbadge`), populated from the boot read and
-hidden when no identity is signed in. With two or more eligible orgs it becomes a native `<select>`
-listing them, alongside the project switcher that already sits in that row and works the same way;
-with one, it stays the read-only badge it is today, so a single-tenant deployment and a
-single-org user see no change at all.
+The web UI header already carries an org badge (`#orgbadge`). The boot read populates the badge, and the badge is hidden when no identity is signed in.
 
-Changing the selection posts to `POST /api/org` and reloads the page. A reload rather than a
-per-view refresh: every tab is silently scoped to the active org, so a partial update would leave
-whichever views were already rendered showing the previous tenant's runs and projects — the exact
-confusion this item exists to remove.
+With two or more eligible orgs, the badge becomes a native `<select>` listing them. It sits beside the project switcher that already occupies that row and works the same way. With one eligible org, the badge stays the read-only badge it is today. A single-tenant deployment and a single-org user see no change at all.
+
+Changing the selection posts to `POST /api/org` and reloads the page. The page reloads, instead of refreshing one view, because every tab is silently scoped to the active org. A partial update would leave the already-rendered views showing the previous tenant's runs and projects, the confusion this item exists to remove.
 
 ### 6. What a switch does not move
 
-A switch changes where the actor's *next* action lands, and moves nothing that already happened. A
-run in flight keeps the org it was enqueued under: the job spec carries `job.org`, resolved once at
-enqueue and carried to a remote worker, so its evidence and its database row land in the org that
-started it even if the actor switches while it runs. Runs, audit entries, and uploaded bundles
-already recorded stay where they were recorded.
+A switch changes where the actor's *next* action lands and moves nothing that already happened.
 
-One pre-existing behavior becomes easier to reach, and we record it rather than leave it to be
-discovered. Binding a configuration sets the process-wide `state.config_org` from the binder's org
-(`bajutsu/serve/operations/config.py`), so on a deployment where two orgs both bind configurations,
-the last binder wins for the whole server. A switcher does not create that behavior and does not
-change it; it makes one actor able to reach it without logging out. Fixing it means giving each org
-a configuration of its own, which is exactly what
-[BE-0393](../BE-0393-per-org-config-memory/BE-0393-per-org-config-memory.md) proposes, so this item
-stops at recording the interaction. The two are independent: an active-org selector works whether or
-not the binding is per-org, and BE-0393's per-org memory is worth having whether or not a login can
-switch.
+A run in flight keeps the org it was enqueued under. The job spec carries `job.org`, resolved once at enqueue and carried to a remote worker. Its evidence and its database row therefore land in the org that started it, even if the actor switches while it runs. Runs, audit entries, and uploaded bundles already recorded stay where they were recorded.
+
+One pre-existing behavior becomes easier to reach, and we record it here so nobody has to discover it later. Binding a configuration sets the process-wide `state.config_org` from the binder's org (`bajutsu/serve/operations/config.py`). On a deployment where two orgs both bind configurations, the last binder wins for the whole server.
+
+A switcher neither creates nor changes that behavior. It lets one actor reach the behavior without logging out. Fixing it means giving each org a configuration of its own, which is what [BE-0393](../BE-0393-per-org-config-memory/BE-0393-per-org-config-memory.md) proposes. This item stops at recording the interaction.
+
+The two items are independent. An active-org selector works whether or not the binding is per-org. BE-0393's per-org memory is worth having whether or not a login can switch.
 
 ## Alternatives considered
 
-**Refuse an ambiguous match at sign-in.** Turning away a login that matches two orgs would make the
-overlap loud instead of silent, and it is the honest failure mode for a tie-break nobody chose. It
-also turns away logins that sign in successfully today, on deployments whose operators are content
-with the tie-break, so it trades a silent restriction for a hard regression.
+**Refuse an ambiguous match at sign-in.** Turning away a login that matches two orgs would make the overlap loud instead of silent. It is the honest failure mode for a tie-break nobody chose. It also turns away logins that sign in successfully today, on deployments whose operators are content with the tie-break. The option trades a silent restriction for a hard regression.
 
-**Order the orgs so the tie-break is intentional.** A position column on the org table would let an
-operator decide which org wins for a login matching several. That is a smaller change, but it
-answers a different question: it makes the *deployment* choose, when the user is the one who knows
-which tenant they mean today.
+**Order the orgs so the tie-break is intentional.** A position column on the org table would let an operator decide which org wins for a login matching several. This is a smaller change, but it answers a different question. It makes the *deployment* choose, when the user is the one who knows which tenant they mean today.
 
-**Put the org in the URL or a request header.** Scoping each request to an org named by the client
-would allow two tabs in two tenants at once. It would also move the tenant boundary from one
-server-side seam to every request's parameters, where a missing or forged value has to be defended
-on each endpoint rather than in one method — a large surface to add for a convenience no user has
-asked for.
+**Put the org in the URL or a request header.** Scoping each request to an org named by the client would allow two tabs in two tenants at once. It would also move the tenant boundary from one server-side seam to every request's parameters. A missing or forged value would then need a defense on each endpoint instead of in one method. That is a large surface to add for a convenience no user has asked for.
 
-**Store the eligible set in the session instead of a table.** Session records already expire and
-already span replicas, so the lifetime is right, and re-login would refresh the set for free. The
-`SessionStore` protocol has three implementations (in-memory, Redis, and SQL), so the set would have
-to be threaded through all three; and the switch endpoint would still need the per-org role, which
-is user state rather than session state. The table costs one migration and touches one
-implementation.
+**Store the eligible set in the session instead of a table.** Session records already expire and already span replicas, so the lifetime is right, and re-login would refresh the set for free. The `SessionStore` protocol has three implementations (in-memory, Redis, and SQL), so the set would have to be threaded through all three. The switch endpoint would still need the per-org role, which is user state, not session state. The table costs one migration and touches one implementation.
 
 ## Progress
 

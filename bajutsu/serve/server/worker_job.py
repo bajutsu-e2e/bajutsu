@@ -18,13 +18,17 @@ import subprocess
 import sys
 import threading
 from contextlib import nullcontext
+from dataclasses import asdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
 from bajutsu.common.backend_cli import simctl as _simctl
+from bajutsu.common.capability.route_tokens import WORKER_ENVIRONMENT_KEY
+from bajutsu.common.capability.worker_capability import BATCH_PROVIDERS
 from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR
 from bajutsu.run import INTERNAL_MODULE as _INTERNAL_RUN_MODULE
 from bajutsu.serve import oplog
+from bajutsu.serve.commands import run_command
 from bajutsu.serve.jobs import _kill, _pgid_of, _still_running, cancel_job, run_job
 from bajutsu.serve.logbus import InMemoryLogBus, LogBus
 from bajutsu.serve.orgs import DEFAULT_ORG as _DEFAULT_ORG
@@ -141,6 +145,7 @@ def job_spec(job: Job) -> dict[str, Any]:
         "udids": list(job.udids),
         "app_path": job.app_path,
         "build": job.build,
+        "withhold_runner_build": job.withhold_runner_build,
         "materials": dict(job.materials),
         # record: where in the workspace the authored file lands + (app, ref) to persist it as.
         "out_path": job.out_path,
@@ -174,6 +179,9 @@ def job_spec(job: Job) -> dict[str, Any]:
         # paths are relative to the job's bundle directory and its app is a logical reference, so
         # the spec names nothing on the server's host (BE-0448). None for a normal job.
         "batch": _batch_spec(job.batch),
+        # A `run-set` job's run intent (BE-0484), which `resolve_run_intent` turns into this worker's
+        # own `cmd` or `batch` once leased. None for every other job.
+        "intent": asdict(job.intent) if job.intent is not None else None,
         # The stored application a batch job's worker places at its `appPath` (BE-0448): the lease
         # signs a GET for this sha, since a job shipping materials has no other copy of the binary.
         "batch_app": job.batch_app,
@@ -234,6 +242,56 @@ def _batch_spec(batch: BatchRequest | None) -> dict[str, Any] | None:
         "platform": batch.platform,
         "app_path": batch.app_path,
     }
+
+
+_INTENT_FIELDS = ("scenario", "target", "config", "platform", "app_path")
+
+
+def intent_problem(spec: dict[str, Any]) -> str | None:
+    """Why *spec*'s run intent cannot be resolved, or None when it carries a whole one or none."""
+    intent = spec.get("intent")
+    if intent is None:
+        return None
+    if not isinstance(intent, dict):
+        return "the spec's `intent` must be an object"
+    # A browser installs nothing, so a web intent names no application (BE-0484).
+    optional = {"app_path"} if intent.get("platform") == "web" else set()
+    if bad := [
+        k
+        for k in _INTENT_FIELDS
+        if not (isinstance(intent.get(k), str) and (intent[k] or k in optional))
+    ]:
+        return f"the spec's `intent` must name {', '.join(bad)} as non-empty strings"
+    return None
+
+
+def resolve_run_intent(spec: dict[str, Any], environment: str) -> dict[str, Any]:
+    """*spec* with its run intent turned into the form a worker in *environment* runs (BE-0484).
+
+    A batch provider's worker submits the intent as its own provider's batch. Any other worker runs
+    it as `bajutsu run`, the command a plain run job carries; an `appium` worker's grid reaches that
+    run through `--worker-config`, as for a plain run (BE-0452). A spec with no intent is returned
+    unchanged, and so is one `intent_problem` refuses, which `environment_refusal` then turns away.
+    """
+    intent = spec.get("intent")
+    if not isinstance(intent, dict) or intent_problem(spec) is not None:
+        return spec
+    # The intent named no placement, so the run's provenance says where it ran.
+    provenance = {**(spec.get("provenance") or {}), WORKER_ENVIRONMENT_KEY: environment}
+    spec = {**spec, "provenance": provenance}
+    if environment in BATCH_PROVIDERS:
+        batch = {"provider": environment, **{k: intent[k] for k in _INTENT_FIELDS}}
+        # A cloud-batch job fetched no baselines before the intent either.
+        return {**spec, "batch": batch, "materialize_baselines": False}
+    cmd = run_command(
+        intent["scenario"],
+        intent["target"],
+        config=intent["config"],
+        baselines="baselines" if spec.get("materialize_baselines") else "",
+        upload_exec=str(intent.get("upload_exec") or ""),
+        label=str(spec.get("label") or ""),
+    )
+    return {**spec, "cmd": cmd, "graceful_cancel": True}
 
 
 def _batch_from_spec(data: dict[str, Any] | None) -> BatchRequest | None:
@@ -374,6 +432,7 @@ def execute_job_spec(
     secret_env: Mapping[str, str] | None = None,
     batch_checkpoint: BatchCheckpoint | None = None,
     lease_lost: threading.Event | None = None,
+    batch_dir: Path | None = None,
 ) -> Job:
     """Worker entrypoint: rebuild the job from *spec*, run the unchanged `run_job`, then upload its
     run tree through the control plane's presigned URLs.
@@ -401,7 +460,8 @@ def execute_job_spec(
     *secret_env* is the org's stored secrets the lease relayed (BE-0449), laid over the child's
     environment and never written into the spec or the run's argv. *batch_checkpoint* and
     *lease_lost* are a leased cloud-batch job's link to its lease (BE-0448): where its run's ARN is
-    stored, and the flag that tells its poll the lease is gone."""
+    stored, and the flag that tells its poll the lease is gone. *batch_dir* is the directory a
+    cloud-batch job packages, when it is not *cwd*: its group's staging directory (BE-0484)."""
     # The subprocess runs with cwd=work and writes runs/<id>/ relative to it, so runs_dir must be
     # work/runs — otherwise state.artifacts would be confined to an unrelated process-CWD runs/.
     work = cwd or Path.cwd()
@@ -438,6 +498,7 @@ def execute_job_spec(
         udids=list(spec.get("udids") or []),
         app_path=spec.get("app_path"),
         build=spec.get("build"),
+        withhold_runner_build=bool(spec.get("withhold_runner_build")),
         out_path=spec.get("out_path"),  # so the terminal-status payload reports it (record jobs)
         # Whether this job's spawn is a cooperatively-cancellable `run` (BE-0370).
         graceful_cancel=bool(spec.get("graceful_cancel")),
@@ -454,12 +515,16 @@ def execute_job_spec(
         # The cloud-batch request (BE-0336 Unit 5), so a batch job leased from the DB queue runs on the
         # batch seam here rather than degrading to a local subprocess. None for a normal job.
         batch=_batch_from_spec(spec.get("batch")),
+        # Set by a slot worker from the job's lease (BE-0484), so the batch provider shares uploads.
+        group_id=spec.get("group_id"),
+        compat_key=spec.get("compat_key"),
         provenance=_provenance_from_spec(spec.get("provenance")),
         keep_caller_path=keep_caller_path,
         cwd=job_cwd,
         secret_env=dict(secret_env or {}),
         batch_checkpoint=batch_checkpoint,
         lease_lost=lease_lost,
+        batch_dir=batch_dir,
         worker_capability=_batch_worker_capability(spec, worker_config),
     )
     # Bind the job's ids so every operational record on this worker correlates to it (BE-0055);

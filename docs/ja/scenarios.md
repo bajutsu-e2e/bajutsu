@@ -130,6 +130,7 @@ preconditions:
 | `subject.launch.deeplink` | str | 未設定（ターゲットの `subject.launch.deeplink`） | 起動後にアプリが開く URL です（iOS は `simctl openurl`、Android は intent） |
 | `device.ios.locale` | str | 未設定（ターゲットの `runsOn.ios.locale`） | 起動時の locale と言語を強制し（`-AppleLocale` / `-AppleLanguages`）、Simulator のシステム言語も固定します。ターゲットと異なる値は cold respawn を強制します |
 | `device.ios.seedPhotos` | list[str] | 未設定（ターゲットの `runsOn.ios.seedPhotos`） | erase の経路で、Simulator の写真ライブラリに順に投入する画像です。パスはシナリオファイルを基準に解決します。シナリオのリストはターゲットのリストを置き換えます |
+| `device.android.seedPhotos` | list[str] | 未設定（ターゲットの `runsOn.android.seedPhotos`） | デバイスの共有ストレージにある Bajutsu 専用のディレクトリへ順に投入する画像です。どの reinstall の段階でも投入します。パスはシナリオファイルを基準に解決します。シナリオのリストはターゲットのリストを置き換えます |
 | `inheritSetup` | bool | `true` | `false` にすると、このシナリオが宣言する全ターゲットの `hooks.setup` を省きます。各ターゲットの `hooks.cleanup` は走ります（[後述](#setup--cleanupセットアップとティアダウンのフェーズ)） |
 
 シナリオは、アプリを識別したりビルドしたりするフィールド（`id`、`path`、`build`、`startWhen`、
@@ -184,14 +185,17 @@ targets: [app-ipad]
 > `overwrite` と書きます。廃止した `preconditions.run` はロード時に失敗し、エラーメッセージが
 > 各フィールドの移動先を示します（[下記](#旧来のキーからの移行)）。
 
-> **写真の投入には wipe したデバイスが必要です。** 重ね合わせたあとの `seedPhotos` が空でなければ、
+> **iOS の写真の投入には wipe したデバイスが必要です。** 重ね合わせたあとの iOS の `seedPhotos` が空でなければ、
 > 実効の `subject.reinstall`（シナリオの値、なければターゲットの値に、フラグを反映したもの）が `erase` である
 > 必要があります。写真ライブラリへの投入は erase の経路でだけ行うからです。ターゲットの
 > `subject.reinstall: erase` でも条件を満たします。
 > 複数のターゲットを動かすシナリオでは、写真を投入するのはプライマリだけです。重ね合わせたあとの
 > `seedPhotos` を持つプライマリ以外のターゲットは、run を失敗させます。`record`、`crawl`、`repl` は、
 > 写真を投入するターゲットに対する `--no-erase` を拒否します。どちらの拒否も、デバイスを操作する前に
-> 終了コード 2 で終わります。
+> 終了コード 2 で終わります。Android では `erase` は要りません。投入先のディレクトリをシナリオごとに
+> 空にするので、reinstall の段階にかかわらず、そのディレクトリには並べた画像だけが入ります。
+> リストが空のシナリオでも、以前の投入が作ったディレクトリは空にします。
+> プライマリだけが投入するという規則は Android にも当てはまります。
 
 > `reinstall: clean` は権限状態（`permissions`。後述）も同時にリセットします。iOS では `simctl privacy
 > reset all`、Android では `pm clear` を使います。`overwrite` はどちらもリセットしません。`overwrite` は
@@ -700,8 +704,10 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
 | `delete` | `delete: { into: <Selector>, count: <int> }` | フィールドをフォーカスして末尾から `count` 文字削除する（`count > 0`）。web コンテキストは非対応 |
 | `select` | `select: { into: <Selector>, mode?: "all" }` | フィールドをフォーカスして内容を選択する（`mode` 既定 `all`）。web コンテキストは非対応。iOS（XCUITest）バックエンドはネイティブに対応し、codegen もネイティブの等価物を出力する |
 | `copy` | `copy: {}` | 選択中の内容をクリップボードへコピーする。事前の `select` が必要。web コンテキストは非対応。iOS（XCUITest）バックエンドはネイティブに対応する |
+| `paste` | `paste: { into: <Selector> }` | フィールドにフォーカスし、そのタップで置かれたカーソル位置にクリップボードをペーストする（文字列のあるフィールドでは、タップした位置になる）。選択中の内容があれば置き換える。クリップボードには `copy` か `setClipboard` が入れた内容が入っている。結果は `value` アサーションで確かめる。web コンテキストは非対応。iOS では編集メニューの「Paste」項目をタップする（`setClipboard` で入れたクリップボードはハードウェアの Cmd+V では貼り付けられないため）。メニューはアプリのローカライズに従うので、UIKit の Paste ラベルをどの言語でも受け付ける。Simulator のビルドによってはこの貼り付けで iOS の貼り付け同意ダイアログが出るので、`interrupts: [{ systemAlert: paste, choice: grant }]` を宣言してガードに応答させる |
 | `selectOption` | `selectOption: { sel: <Selector>, option: "..." }` | web の `<select>` をこの value を持つ option に合わせる。web 専用（iOS / Android は失敗する） |
-| `setPickerValue` | `setPickerValue: { sel: <Selector>, value: "..." }` | ホイール型のピッカー（`UIPickerView`、ホイール表示の `UIDatePicker`）をこの value を持つ行へ動かす（[後述](#setpickervalue)）。iOS（XCUITest）専用。`sel` は 1 つのホイールを指し、複数コンポーネントのピッカーは `within` / `traits` / `index` で兄弟のホイールを区別し、コンポーネントごとに 1 ステップずつ書く |
+| `selectPhotos` | `selectPhotos: { indices: [0, 1], timeout: 10 }` | アプリがすでに開いたシステムの写真選択画面から、指定した位置のセル（0 が先頭で、新しい画像ほど前）を選んで確定する。iOS（XCUITest）では `PHPickerViewController`、adb では Android 13 以降の写真選択画面を操作する。単一選択の画面は 1 回のタップで閉じる。見えているグリッドを超える位置は失敗する |
+| `setPickerValue` | `setPickerValue: { sel: <Selector>, value: "..." }` | ホイール型のピッカー（iOS では `UIPickerView` かホイール表示の `UIDatePicker`、Android では `NumberPicker` かスピナー表示の `DatePicker`）をこの value を持つ行へ動かす（[後述](#setpickervalue)）。iOS（XCUITest）と Android（adb）で使える。`sel` は 1 つのホイールを指し、複数コンポーネントのピッカーは `within` / `traits` / `index` で兄弟のホイールを区別し、コンポーネントごとに 1 ステップずつ書く |
 | `swipe` | `swipe: { on: <Selector>, direction: up\|down\|left\|right }` または `swipe: { from: [x,y], to: [x,y] }` | セレクタ形と座標形は混在できない。方向指定形式は**スクロール**する |
 | `drag` | `drag: { on: <Selector>, direction: up\|down\|left\|right, amount?: <frac> }` | 要素そのものを**ドラッグ**する（ハンドル／仕切り／スライダー）。スクロールではない |
 | `scroll` | `scroll: { to: <Selector>, direction?: up\|down\|left\|right, within?: <Selector>, amount?: <frac>, maxScrolls?: <int> }` | `to` が画面に入るまで（慣性なしに）スクロールし、上限に達したら失敗する。`direction` は**スクロール**方向（既定 `down`）で、`swipe` とは逆向き |
@@ -717,7 +723,8 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
 | `setLocation` | `setLocation: { lat: <num>, lon: <num> }` | シミュレータの GPS 位置を上書きする（`simctl location set`） |
 | `push` | `push: { payload: {...} }` | この APNs（Apple Push Notification service）ペイロードで疑似プッシュ通知を配信する（`simctl push`） |
 | `http` | `http: { method?, url, headers?, body?, status?, saveBody?, extractBody?: [{ var, path }] }` | HTTP リクエストを送る（テストデータ準備 / Webhook / API）。`status` を検証し、ボディを `${vars.<saveBody>}` に保存する、または `path` で指定した JSON のフィールドを `${vars.<var>}` に取り出す（[後述](#httpテストデータ準備用のリクエスト)） |
-| `totp` | `totp: { secret, into: { var } }` | RFC 6238 の時刻ベースワンタイムパスワード（2FA）をローカルで生成し `${vars.<var>}` に入れる |
+| `totp` | `totp: { secret, into?: { var }, name? }` | RFC 6238 の時刻ベースワンタイムパスワード（2FA）をローカルで生成し `${vars.<var>}` に入れる。`name` を指定すると、後続の `otp` ステップ向けにシークレットも登録する |
+| `otp` | `otp: { from, into: { var }, minRemaining? }` | `totp` ステップが `from` の名前で登録したジェネレータの現在のコードを `${vars.<var>}` に入れる（[後述](#otp-で後から新しいコードを取得する)） |
 | `email` | `email: { match: { to?, subject?, subjectMatches? }, extract: { var, bodyMatches }, timeout }` | 設定したメールボックスを一致するメッセージが届くまでポーリングし、コードを `${vars.<var>}` に取り出す |
 | `generate` | `generate: { random\|datetime: {...}, into: { var } }` | 乱数または現在日時の値を実行時に計算し、`${vars.<var>}` に保存する（[後述](#generate実行時に計算する値)） |
 | `eval` | `eval: { from, ops: [...], into: { var } \| { vars: [...] } }` | シナリオがすでに持つ値を分割、結合、絞り込みなどで変換し、`${vars.*}` に保存する（[後述](#eval変数に入った値の変換)） |
@@ -727,14 +734,14 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
 | `installApp` | `installApp: { from: <target>, keepData?: bool }` | 後から入るデバイスグループのメンバーのビルドを、ステップのデバイスにインストールする。同じ識別子の既存ビルドの上に入れる（`keepData`、デフォルト `true`）か、先にアンインストールする（`false`）。何も起動しない（[デバイスグループ](#デバイスグループ1台のデバイスで複数のアプリを動かすbe-0447)） |
 | `setPrimaryTarget` | `setPrimaryTarget: { target: <target> }` | このステップ以降、`target` を省略したステップ、`interrupts` エントリ、トップレベルの `expect` エントリを `target` で動かす。トップレベルの `steps` にだけ書ける（[デバイスグループ](#デバイスグループ1台のデバイスで複数のアプリを動かすbe-0447)） |
 | `clearKeychain` | `clearKeychain: {}` | Simulator のキーチェーンをリセットする（保存済みパスワード / 証明書） |
-| `clearClipboard` | `clearClipboard: {}` | Simulator のペーストボードをクリアする |
-| `setClipboard` | `setClipboard: { text: "..." }` | ペースト操作のため Simulator のペーストボードにテキストを投入する |
+| `clearClipboard` | `clearClipboard: {}` | デバイスのクリップボードをクリアします（iOS Simulator と、BajutsuAndroid を組み込んだ Android） |
+| `setClipboard` | `setClipboard: { text: "..." }` | ペースト操作のため、デバイスのクリップボードにテキストを投入します（iOS Simulator と、BajutsuAndroid を組み込んだ Android） |
 | `setMocks` | `setMocks: [ { match, respond }... ]` | アプリ内制御チャネルを通して、シナリオの途中でアプリのスタブテーブル全体を置き換える（[後述](#シナリオの途中でモックを変えるsetmocks)）。`[]` はすべてのスタブを外す。iOS（XCUITest）かつネットワーク収集が有効な場合のみ（[BE-0365](../../roadmaps/BE-0365-in-app-control-channel/BE-0365-in-app-control-channel-ja.md)） |
 | `overrideStatusBar` | `overrideStatusBar: { time?, batteryLevel?, batteryState?, cellularBars?, wifiBars? }` | 決定的なスクリーンショットのためステータスバーを上書きする |
 | `clearStatusBar` | `clearStatusBar: {}` | ステータスバーの上書きを解除する（ライブ表示に戻す） |
 | `use` | `use: { component: <file>, with?: {...} }` | 再利用コンポーネントの steps を展開する。コンパイル時マクロ（[再利用](#再利用とデータ駆動とタグ)）。**取れる修飾子は `target` だけ**：`capture` / `extract` / `name` / `from` は拒否され、`target` は展開後の全ステップに刻印される（[複数ターゲット](#複数ターゲットシナリオでのコンポーネント)） |
 | `group` | `group: { name: <str>, steps: [...] }` | 連続するステップに名前を付ける。コンパイル時マクロで、report.html では折りたたんで表示する（[後述](#ステップのグループ化group--reporthtmlで折りたたむ)） |
-| `web` | `web: { within: <Selector>, steps: [...] }` | WebView の DOM コンテキストに入ります。`within` がホストの `WKWebView` をネイティブに解決し、入れ子の `steps` はネイティブツリーではなく正規化された DOM を対象にします（[後述](#webwebview-の-dom-コンテキストに入る)） |
+| `web` | `web: { within: <Selector>, steps: [...] }` | WebView の DOM コンテキストに入ります。`within` がホストの WebView をネイティブに解決し、入れ子の `steps` はネイティブツリーではなく正規化された DOM を対象にします（[後述](#webwebview-の-dom-コンテキストに入る)） |
 
 修飾子（`use` ステップに付けられるのは `target` だけです。上表を参照）:
 
@@ -802,9 +809,11 @@ Cookie とストレージは保たれるので、`navigate` はセッション�
     value: "大学"
 ```
 
-ホイール型のピッカー、つまり `UIPickerView` や、ホイール表示に切り替えた `UIDatePicker` は、iOS のフォームでありふれたコントロールです。その値を設定できるステップは `setPickerValue` だけです。ホイールの各行は個別に指定できる要素になっていないため、解決したハンドルを対象とする `tap` では特定の行に到達できません。座標を扱うステップも同様です。`swipe` / `drag` / `scroll` は距離や方向を指定するドラッグであり、ホイールを目的の値のあたりまで回せても、そこで止まる保証はありません。`tapPoint` にいたっては、すでに表示されている行を叩けるだけで、表示されていない行へホイールを動かせません。いずれの場合も、結果のアサーションはドラッグの距離が行の高さとたまたま一致することに依存します。Bajutsu がほかのすべてのステップで排除している、近似的な操作そのものです。`setPickerValue` は、セレクタが解決した要素に対して XCUITest 自身の `adjust(toPickerWheelValue:)` を呼びます。`swipe` のような座標指定ではなく、`tap` と同じハンドル指定です。
+ホイール型のピッカーは、iOS でも Android でもフォームでありふれたコントロールです。iOS では `UIPickerView` や、ホイール表示に切り替えた `UIDatePicker` がこれにあたります。Android では `android.widget.NumberPicker` と、スピナー表示の `DatePicker` や `TimePicker` がこれにあたり、後の 2 つは各欄を `NumberPicker` のホイールで構成します。ホイールの値を設定できるステップは `setPickerValue` だけです。ホイールの各行は個別に指定できる要素になっていないため、解決したハンドルを対象とする `tap` では特定の行に到達できません。座標を扱うステップも同様です。`swipe` / `drag` / `scroll` は距離や方向を指定するドラッグであり、ホイールを目的の値のあたりまで回せても、そこで止まる保証はありません。`tapPoint` にいたっては、すでに表示されている行を叩けるだけで、表示されていない行へホイールを動かせません。いずれの場合も、結果のアサーションはドラッグの距離が行の高さとたまたま一致することに依存します。Bajutsu がほかのすべてのステップで排除している、近似的な操作そのものです。`setPickerValue` は、セレクタが解決した要素に対して XCUITest 自身の `adjust(toPickerWheelValue:)` を呼びます。`swipe` のような座標指定ではなく、`tap` と同じハンドル指定です。
 
-`sel` が解決すべきなのはホイールそのものですが、識別子を持つ要素がホイールであることはまれです。`UIPickerView` は識別子をピッカー側に付け、ピッカーの下にあるホイールを別の子要素として公開します。そのため、識別子だけを指定したセレクタは親であるピッカーを解決し、ステップは失敗します。`adjust(toPickerWheelValue:)` は、ホイールでない要素に対しては例外を投げるからです。上の例のように識別子と `pickerWheel` トレイトを組み合わせると、セレクタは子要素のホイールに届きます。
+Android の adb バックエンドは、`tap` が対象を解決するのと同じ手順でホイールを解決し、そのホイールの識別情報を常駐 UI Automator サーバーへ渡します。座標は渡しません。サーバーは `NumberPicker` 自身が持つアクセシビリティのスクロール操作でホイールを 1 行ずつ進め、1 行進めるたびに選択中の行を読み直します。表示中の行と指定した値がどちらも整数なら、値に近づく向きから回し始めるので、年のホイールは近い側を回ります。それ以外の場合は前方向から回します。端のあるホイールは最後の行で逆向きに戻り、循環するホイールは回り始めた行に戻った時点で止まります。回す行数には 400 行の上限があり、期限も設けています。このステップは常駐サーバーを必要とし、サーバーがない場合は座標でホイールをドラッグせずに失敗します。
+
+`sel` が解決すべきなのはホイールそのものですが、識別子を持つ要素がホイールであることはまれです。`UIPickerView` は識別子をピッカー側に付け、ピッカーの下にあるホイールを別の子要素として公開します。そのため、識別子だけを指定したセレクタは親であるピッカーを解決し、ステップは失敗します。`adjust(toPickerWheelValue:)` は、ホイールでない要素に対しては例外を投げるからです。上の例のように識別子と `pickerWheel` トレイトを組み合わせると、セレクタは子要素のホイールに届きます。Android の `NumberPicker` は、自身のノードに `resource-id` をまったく持ちません。そのため識別子はホイールを囲むコンテナに付け、同じ `within` と `pickerWheel` の組み合わせで内側のホイールを指します。adb バックエンドは `NumberPicker` のノードに、クラス名から得る `numberPicker` に加えて `pickerWheel` トレイトも付けます。
 
 ホイールが持たない値を指定すると、ホイールが止まった位置をそのままにするのではなく、その値を名指しして**ステップが失敗します**。したがって、後続のアサーションが検証するのはアプリであって、ジェスチャの当たり外れではありません。
 
@@ -823,7 +832,7 @@ Cookie とストレージは保たれるので、`navigate` はセッション�
 
 この指定方法は、`datePicker` の分類の隙間（[セレクタ](selectors.md#正規化トレイトtrait)）も回避します。`UIDatePicker` のコンテナ要素自体は `other` に落ちますが、`setPickerValue` が指すのはその下にあるホイールの子要素であり、そちらは `pickerWheel` に分類されるためです。
 
-`setPickerValue` は iOS（XCUITest）のアクションです。ホイール型のピッカーは Android にも web にも対応物がありません。web で同じ意図を表すのは `<select>` であり、それを設定するのは [`selectOption`](#selectoption) です。したがって Android と web のバックエンドは `pickerWheel` ケーパビリティを公開せず、シナリオはデバイス操作が始まる前の preflight で、該当ステップの位置を名指しして棄却されます。
+`setPickerValue` は iOS（XCUITest）と Android（adb）で動きます。Android では、ホイールがどこに置かれていても `NumberPicker` を操作でき、Jetpack Compose の画面が `AndroidView` 経由で載せたものも対象です。一方、Compose が自前で描くホイールは対象外です。Compose には標準のホイールがなく、アプリごとのホイールがそれぞれ異なるアクセシビリティの形を公開するからです。web ページにはホイール型のピッカーがありません。web で同じ意図を表すのは `<select>` であり、それを設定するのは [`selectOption`](#selectoption) です。したがって web バックエンドは `pickerWheel` ケーパビリティを公開せず、シナリオは作業が始まる前の preflight で、該当ステップの位置を名指しして棄却されます。
 
 ### `web`（WebView の DOM コンテキストに入る）
 
@@ -835,9 +844,35 @@ Cookie とストレージは保たれるので、`navigate` はセッション�
       - wait: { for: { id: pay.confirmation }, timeout: 10 }
 ```
 
-`web` は `within` をネイティブに解決し、ちょうど 1 つの `WKWebView` ホストを指します。入れ子の `steps` は、アプリのネイティブなアクセシビリティツリーではなく、その WebView の正規化された DOM（`data-testid` → `Element.identifier`）を対象にします。web コンテンツをネイティブアプリに埋め込んだハイブリッド画面向けの構造です（[BE-0037](../../roadmaps/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support-ja.md)）。ブロックの `steps` を終えると、制御はネイティブドライバーに戻ります。入れ子の `steps` は、`if` や `forEach` の分岐と同じく、囲むシナリオの `vars.*` を共有します。`capture` / `extract` 修飾子は `web` ステップ自体には使えません。WebView bridge の設定（`BAJUTSU_WEBVIEW_PORT`）が必要で、未設定のときは何もせず済ませるのではなくステップを明確に失敗させます。この最初の実装は、ブロック内の `tap` / `tapPoint` / `doubleTap` / `type` / `wait` / `assert` に対応しています。`longPress` / `swipe` / `drag` / `clear` / `delete` / `select` / `copy` / `selectOption` / `scroll` / `back` / `navigate` / `pinch` / `rotate` / `handleSystemAlert` / `setPickerValue` はそこに届かず、いずれも「web コンテキストは非対応」という明確な理由で失敗します。
+`web` は、ネイティブアプリが埋め込んだブラウザのビューである WebView の Document Object Model（DOM）に対して、入れ子の `steps` を実行します。ステップが対象にするのは、アプリのネイティブなアクセシビリティツリーではなく、ページの正規化された DOM（`data-testid` → `Element.identifier`）です。アプリの UI の一部をアプリ内の web コンテンツが担うハイブリッド画面向けの構造です。iOS は [BE-0037](../../roadmaps/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support-ja.md)、Android は [BE-0482](../../roadmaps/BE-0482-android-webview-cdp/BE-0482-android-webview-cdp-ja.md) で対応しました。同じブロックが、両方のプラットフォームで変更なしに動きます。ブロックの `steps` を終えると、制御はネイティブドライバーに戻ります。入れ子の `steps` は、`if` や `forEach` の分岐と同じく、囲むシナリオの `vars.*` を共有します。`capture` / `extract` 修飾子は `web` ステップ自体には使えません。
 
-### `app`（別アプリのUIを操作する。iOS限定）
+**ブロックが WebView を指す仕組み。** `within` は通常のセレクタで、`id` を必ず含みます。run はセレクタ全体をネイティブのツリーで解決し、ちょうど 1 つの要素、つまりホストの WebView を得ます。一致が 0 件、または 2 件以上ならステップは失敗します。ほかのセレクタと同じ扱いです。その要素の背後にあるページは、プラットフォームごとに次のように探します。
+
+| プラットフォーム | run がページに到達する経路 | 選ぶページ |
+|---|---|---|
+| iOS | BajutsuKit の WebView ブリッジです。アプリ内の Hypertext Transfer Protocol（HTTP）サーバーで、run が `BAJUTSU_WEBVIEW_PORT` として渡すポートで待ち受けます。 | アクセシビリティ識別子が `within` の最初の id と等しい `WKWebView` です。 |
+| Android | Chrome DevTools Protocol（CDP）です。WebView のデバッグ用ソケットを、run がブロックの間だけ `adb` で転送します。 | アタッチ済みで表示中のページのうち、`within` が解決したフレームを矩形に含む 1 つです。一致が 0 件、または 2 件以上なら、あいまいとしてステップを失敗させます。 |
+
+Android は、等しさではなく包含で照合します。2 つの矩形の測る範囲が違うからです。ネイティブのツリーは、ビューの範囲を画面と祖先のビューで切り詰めて報告します。CDP は、ページの切り詰めていない矩形を報告します。そのため、ツールバーの下に一部が隠れた WebView でも一致します。
+
+**アプリが用意するもの。** 用意がないときは、何もせず済ませるのではなく、足りないものを名指しする理由でステップを失敗させます。
+
+- **iOS**：アプリが BajutsuKit をリンクし、`BajutsuNet.startIfEnabled()` を呼びます。この呼び出しは、run がポートを渡したときにブリッジを起動します。`WKWebView` にはアクセシビリティ識別子を付けます。
+- **Android**：デバッグ可能なビルドが、`Application.onCreate`、または最初の WebView を作る直前に `Bajutsu.enableWebViewDebugging(context)` を呼びます。このヘルパーは BajutsuAndroid の関数です。どの debug ビルドタイプも `android:debuggable` を設定します。このヘルパーはデバッグ可能でないビルドでは何もしないので、リリースビルドがソケットを開くことはありません。bajutsu を動かすマシンには `android` extra（`websockets`）が要ります。構成済みのバックエンドに Android が含まれていれば、`scripts/install.sh` がこの extra を入れます。
+
+**ブロックが対応する範囲。** ブロックの中では `tap` / `tapPoint` / `doubleTap` / `type` / `wait` / `assert` が動きます。`longPress` / `swipe` / `drag` / `clear` / `delete` / `select` / `copy` / `paste` / `selectOption` / `scroll` / `back` / `navigate` / `pinch` / `rotate` / `handleSystemAlert` / `setPickerValue` はそこに届きません。いずれも「web コンテキストは非対応」という明確な理由で失敗します。次の場合も、ブロックの対象外です。
+
+| 場合 | 起きること |
+|---|---|
+| `<iframe>` の中のコンテンツ | DOM の走査はフレームの文書を飛ばすので、セレクタはその中の要素を指せません。 |
+| ファイル選択（`<input type="file">`） | タップは入力欄に届きますが、開く選択画面はページの外にあるシステムの画面なので、ブロックからは操作できません。 |
+| Android で重なり合う 2 つの WebView | 両方の矩形がフレームを含むので、推測せずにあいまいとしてステップを失敗させます。 |
+| Android でブロックの途中にアプリが再起動する | デバッグ用ソケットが閉じ、通信の理由でステップが失敗します。 |
+| Android で別のデバッガーがすでにページにアタッチしている | ページは 2 本目の接続を受け付けず、ステップが失敗します。 |
+| `web:` ブロックを使わず、WebView の中身をネイティブのラベルでタップする | 非対応です。ネイティブのツリーは WebView の中身を選択できるほど細かく示さないことが多く、対応する経路はブロックです。 |
+| システムがアプリの上に表示するブラウザのタブ | 非対応です。そのビューは別のブラウザアプリに属するので、ブリッジにもアプリのデバッグ用ソケットにも届きません。 |
+
+### `app`
 
 ```yaml
 - app:
@@ -847,19 +882,30 @@ Cookie とストレージは保たれるので、`navigate` はセッション�
           - exists: { id: TabBarItemTitle }
 ```
 
-`app` は、バンドルIDで名指ししたアプリをactivateします。テスト対象アプリが一度も起動していない
-アプリでも構いません。入れ子の`steps`は、テスト対象アプリのものではなく、そのアプリ自身のアクセシ
+`app` は、別アプリのUIを操作するステップです。バンドルIDで名指ししたアプリをactivateします。
+テスト対象アプリが一度も起動していないアプリでも構いません。実行中のアプリは前面に出します。入れ子の`steps`は、テスト対象アプリのものではなく、そのアプリ自身のアクセシ
 ビリティツリーを対象にします。この挙動の裏付けとなるフィージビリティ調査の結果は
 `docs/specs/ios-cross-app-ui-control-feasibility.md`にあります。
 ブロックの`steps`を終えると、`web`と同じ入る・抜けるの契約で、直前にアクティブだったものへ制御が
 戻ります。`app`ブロックを別の`app`ブロックの中に入れ子にした場合、戻る先は直近の親であり、テスト
 対象アプリへ無条件に戻るわけではありません。`bundleId`は素のstringであり、固定の集合から選ぶ値では
 ありません。インストール済みの任意のアプリを名指しできます。テスト対象アプリ自身では開く手段がない
-アプリも含みます。iOS（XCUITest）限定です。ほかのbackendに対してこのステップを使うシナリオは、
-デバイス側の作業に入る前にpreflightで失敗します。`bundleId`は、デバイスにすでにインストール済みの
-アプリを名指しする必要があります。前面化が遅いアプリ（コールドスタート、権限プロンプトなど）は
-`ElementNotFound`としてステップを失敗させますが、そもそもインストールされていないアプリを名指しした
-場合、同じようにきれいに失敗するとは限りません。
+アプリも含みます。iOS（XCUITest）とAndroid（adb）が対応しています。webのbackendでこのステップを
+使うシナリオは、デバイス側の作業を始める前にpreflightで失敗します。`bundleId`には、デバイスへ
+インストール済みのアプリを指定します。前面化が遅いアプリ（コールドスタート、権限プロンプトなど）は
+`ElementNotFound`としてステップを失敗させます。iOSでは、インストールされていないアプリを名指しした
+場合、この例外できれいに失敗するとは限りません。
+
+Androidでは、`bundleId`にパッケージ名（たとえば`com.android.settings`）を書きます。adbのドライバは
+パッケージのランチャーアクティビティを`am start`で起動し、そのパッケージがresumedのアクティビティを
+持つまで待ちます。ランチャーアクティビティを持たないパッケージは、起動の前に`ElementNotFound`で
+ステップを失敗させます。インストールされていないパッケージも同じです。ブロックを抜けるときは、1つ下の
+アプリを同じ手順で前面に戻します。テスト対象アプリはその間もプロセスを保つので、この切り替えが
+クラッシュとして扱われることはありません。iOSと同じく、入ったアプリはリセットしません。以前の
+ブロックや実行が残した状態を、そのまま保ちます。ただし、戻るときにAndroid固有の制限があります。
+ランチャーアクティビティが`singleTask`か`singleInstance`のアプリは、起動し直すと、タスクが上に積んだ
+アクティビティがすべて破棄されます。`clearTaskOnLaunch`を設定したアプリも同じです。そのため、離れた
+ときの画面ではなく、最初の画面へ戻ります。
 
 #### ホーム画面を操作する（`com.apple.springboard`）
 
@@ -1056,6 +1102,33 @@ assertするまで、新しいステップもランナーの変更も要りま�
 
 待機の途中で壁時計が飛んだ場合（Network Time Protocol（NTP）による補正など）も、ステップは成功として扱われます。その代わり、レポートのステップ行に警告が残り、飛んだ秒数と残り秒数を示します。後のサインインが期限切れのコードで失敗したとき、この警告が原因の手がかりになります。
 
+#### `otp` で後から新しいコードを取得する
+
+コードを何度も入力するシナリオや、開始からかなり後でコードを入力するシナリオでは、シークレットを一度だけ登録し、コードが必要な時点でそれぞれ取得します。
+`totp` ステップに `name` を付け、`otp` ステップの `from` でそのジェネレータを指定します。
+
+```yaml
+- totp: { secret: "${secrets.TOTP_SEED}", name: main }   # ジェネレータを登録する。コードは書き込まない
+- tap: { id: auth.change_password }
+# ... 任意の数のステップ ...
+- otp: { from: main, into: { var: code }, minRemaining: 10 }   # vars.code ← この時点で有効なコード
+- type: { text: "${vars.code}", into: { id: auth.code } }
+```
+
+`totp` ステップには `name` と `into` の少なくとも一方が必要です。ジェネレータを登録するだけのステップは `into` を省略できます。
+使用中の名前に別のシークレットを登録すると、ステップは失敗します。
+`totp` ステップの `minRemaining` には `into` が必要です。コードを生成しないステップには、有効に保つコードがないからです。
+`totp` ステップはシークレットを登録する時点で検証するので、不正なシークレットはあとの `otp` ではなくその `totp` ステップを失敗させます。
+
+`otp` ステップは実行された時点で時計を読むので、各 `otp` はそのステップの時点で有効な窓のコードを書き込みます。
+`totp` と同じ `minRemaining` の待機を指定でき、実行中のログはこのステップを `otp (≥10s left)` と表示します。
+登録の順序は実行の順序に従います。
+ジェネレータがまだ登録されていない `otp` はステップの失敗になり、実行されなかった `if` 分岐の中の `totp` も何も登録しません。
+ジェネレータはシナリオの実行が終わるまで有効で、`if`、`forEach`、`group` の本体からも使えます。
+
+登録したシークレットには、どの `${...}` トークンからも届きません。そのため、シナリオがシークレットを読み出して入力欄へ入れることはできません。
+`otp` ステップ自体はシークレットを持たないので、証跡に残るのはジェネレータの名前だけです。
+
 ### `email`（メールで届くコードをメールボックスから取得）
 
 ```yaml
@@ -1228,7 +1301,33 @@ secret として記録します。マスクはそのステップ自身のレポ�
 - clearStatusBar: {}                                                    # ライブのステータスバーに戻す
 ```
 
-iOS では、これらのステップは `setLocation` / `push` と同じく `simctl` 経由で Simulator を操作します。そのためデバイスごとの制御チャネルが必要で、fake ドライバや並列実行ではクリーンに失敗します。このうち `foreground`、`setClipboard`、`clearClipboard` の3つは Android でも動き、それ以外は iOS 専用です。`overrideStatusBar` は、スクリーンショットや `visual` アサーションの直前に時計や電波表示を固定して画像を安定させる用途に向きます。
+iOS では、これらのステップは `setLocation` / `push` と同じく `simctl` 経由で Simulator を操作します。そのためデバイスごとの制御チャネルが必要で、fake ドライバや並列実行ではクリーンに失敗します。Android では、この一覧のうち `clearKeychain` 以外のステップが動きます。Android にはキーチェーンがないからです。`overrideStatusBar` は、スクリーンショットや `visual` アサーションの直前に使います。時計や電波表示を固定して、画像を安定させます。
+
+Android では、adb がアプリ内のコードなしでこれらのステップを動かします（[BE-0478](../../roadmaps/BE-0478-android-device-control-parity/BE-0478-android-device-control-parity-ja.md)）。
+
+| ステップ | Android での仕組み |
+|---|---|
+| `background` | Home キーを押します（`input keyevent KEYCODE_HOME`）。アプリのプロセスは残ります |
+| `overrideStatusBar` | System UI のデモモードに入り、指定したフィールドごとにコマンドを1つ送ります |
+| `clearStatusBar` | デモモードを抜け、実際のステータスバーに戻します |
+
+`background` は、アプリが resumed activity でなくなるまで条件待ちをします。アプリが前面に残ったままなら、ステップは失敗します。`background` のあとはランチャーが前面に来ます。そのため、テスト対象アプリの要素を指すセレクタは何も見つけません。iOS でホーム画面が前面にあるときと同じです。デバイスグループの中では、`foreground` ステップでアプリを戻すまで、読み取りが `AppNotInFront` で失敗します。
+
+デモモードには、`simctl status_bar` と違う点が3つあります。
+
+- **未指定のフィールドも固定されます。** デモモードに入ると、すべてのアイコンが固定されます。ステップが指定しなかったフィールドは、実際の値ではなくデモモード自身の固定値になります。iOS のステータスバーは通知アイコンを出さないので、このステップも通知アイコンを隠します。
+- **受け付ける値が狭くなります。** Android で受け付ける値は下の表のとおりです。それ以外の値は、プリフライトがデバイスを操作する前に失敗させ、そのステップを名指しします。System UI はそうした値を無視しますが、ブロードキャストは成功を返してしまうからです。
+- **Wi-Fi の本数は換算します。** Android の Wi-Fi レベルは 0–4 なので、iOS で満タンの電波は Android でも満タンにします。換算は下の表のとおりです。
+
+| フィールド | Android で受け付ける値 | 換算 |
+|---|---|---|
+| `time` | `H:MM` または `HH:MM` | 4桁の時刻にします（`9:41` は `0941`） |
+| `batteryLevel` | 0–100 | そのまま |
+| `batteryState` | `charging`、`charged`、`discharging` | 前の2つで `plugged` を true にします |
+| `cellularBars` | 0–4 | そのまま |
+| `wifiBars` | 0–3 | 0、1、2、3 をレベル 0、1、3、4 にします |
+
+どちらのプラットフォームでも、上書きは `clearStatusBar` ステップを実行するまでデバイスに残ります。
 
 `background` / `foreground` はバックグラウンド/フォアグラウンド遷移の対で、`foreground` は何も終了させません。`foreground` が待つかどうかは場合によって異なります。
 
@@ -1683,7 +1782,7 @@ showcase のデモは、この 2 つの流れを iOS と Android の両方で実
 | `requestSequence` | 複数のマッチャがこの順序で観測されたか検証（`--network` が必要） | `requestSequence: [ { urlMatches: "/auth/refresh" }, { urlMatches: "/api/account" } ]` |
 | `responseSchema` | 捕捉したレスポンスボディが JSON Schema に適合するか検証（`--network` が必要） | `responseSchema: { request: { urlMatches: "/api/items" }, schema: items.json }` |
 | `visual` | 画面が baseline 画像に一致する（ビジュアルリグレッション） | `visual: { baseline: home.png, threshold: 0.02 }` |
-| `clipboard` | デバイスのペーストボードが一致する（`simctl pbpaste` で読み戻す） | `clipboard: { equals: "COUPON123" }` / `clipboard: { matches: "\\d{6}" }` |
+| `clipboard` | デバイスのクリップボードが一致する（iOS は `simctl pbpaste`、Android は BajutsuAndroid の受信側で読み戻す） | `clipboard: { equals: "COUPON123" }` / `clipboard: { matches: "\\d{6}" }` |
 | `attribute` | 要素の HTML 属性が一致する、または属性がない（web のみ） | `attribute: { sel: { id: docs.link }, name: href, equals: /docs }` / `attribute: { sel: { id: panel }, name: aria-busy, absent: true }` |
 
 - `exists` はセレクタを **インラインで**書きます（`{ id: ... }` を直書き）。`negate` は任意です。
@@ -1695,7 +1794,7 @@ showcase のデモは、この 2 つの流れを iOS と Android の両方で実
 - `requestSequence` は複数の request マッチャが **順序どおりに観測された**かを検証します（[下記](#requestsequence順序付きリクエスト)）。`--network` 実行フラグが必要です。
 - `responseSchema` は捕捉した **レスポンスボディが JSON Schema に適合する**かを検証します（[下記](#responseschemaレスポンスの-json-schema)）。`--network` 実行フラグが必要です。
 - `visual` はスクリーンショットを baseline 画像とピクセル比較します（[下記](#visualビジュアルリグレッション)）。
-- `clipboard` はデバイスのペーストボードを `simctl pbpaste` で読み戻し、`equals` / `matches`（正規表現）の **いずれか 1 つ**を検証します。`setClipboard` の読み戻し側で、「コピー」操作の検証に使います。デバイスごとの制御チャネルが必要なため、fake ドライバや並列実行では利用できず、その場合はクリーンに失敗します（[BE-0052](../../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)）。
+- `clipboard` はデバイスのクリップボードを読み戻し、`equals` / `matches`（正規表現）の **いずれか 1 つ**を検証します。読み戻しには、iOS では `simctl pbpaste` を、Android ではアプリに組み込んだ BajutsuAndroid の受信側を使います（[BE-0233](../../roadmaps/BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity-ja.md)）。`setClipboard` の読み戻し側で、「コピー」操作の検証に使います。デバイスごとの制御チャネルが必要なため、fake ドライバや並列実行では利用できず、その場合はクリーンに失敗します（[BE-0052](../../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)）。
 - `attribute` は `sel:` と `name:` に加えて、`equals` / `contains` / `matches` / `absent: true` の **いずれか 1 つ**を取ります。詳細は[後述](#attribute要素の-html-属性)と [BE-0466](../../roadmaps/BE-0466-web-attribute-assertion/BE-0466-web-attribute-assertion-ja.md) を参照してください。属性は web（Playwright）バックエンドから必要なときに読み取ります。ほかのバックエンドでは、デバイスの確保前に失敗します。
 
 > **ロケール注意**: `label`/`value` の文字列比較や、可視テキストを見るアサーションは翻訳で壊れます。これらはターゲットの固定 `runsOn.ios.locale` を前提に書き、セレクタ自体は `id` で書いてください。

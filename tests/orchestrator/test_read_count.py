@@ -11,6 +11,7 @@ adb driver's internal `_settle` reads are counted separately in `tests/test_adb.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from contextlib import AbstractContextManager, nullcontext
 from pathlib import Path
 
 from _orch import FakeClock, _scenario
@@ -202,6 +203,9 @@ def test_pre_step_baseline_skips_the_web_query_under_a_null_sink() -> None:
     class _CountingBridge:
         def __init__(self) -> None:
             self.calls = 0
+
+        def session(self, webview_id: str, frame: base.Frame) -> AbstractContextManager[None]:
+            return nullcontext()
 
         def query_dom(self, webview_id: str) -> list[base.Element]:
             self.calls += 1

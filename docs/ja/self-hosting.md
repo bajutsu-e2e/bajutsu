@@ -177,6 +177,12 @@ UI からバインドした Git config でその build を信頼して run を�
 抑止されるのと同じように build を抑止したまま run が進みます。ネットワーク越しに届いた config から、黙ってホスト側で
 コマンドが実行されることはありません。
 
+XCUITest runner をその場でビルドする `driver.runner.build` にも、同じ判定を適用します。このコマンドを実行するのは
+`serve` 自身ではなく、`serve` が起動する run です。run は `driver.runner.testRunner` のファイルが無いときにこのコマンドを実行します。
+アップロードされたバンドルと、`--allow-remote-build` なしで UI からバインドした Git config では、起動された run が
+このビルドを拒否し、`driver.runner.build withheld` というエラーで失敗します。こうした config では、`.xctestrun` を
+ビルド済みの状態で `testRunner` の位置に同梱してください。run はそのファイルをそのまま使います。
+
 ## Git config source の非公開リポジトリへのアクセス（BE-0224）
 
 `serve`（や CLI）が config を **非公開**の GitHub リポジトリから読むとき、すなわち `github:` の spec
@@ -574,8 +580,9 @@ curl -X POST "$SERVER/api/run" -H "Authorization: Bearer $TOKEN" \
 - `subject.path` を持たない target（web の target）に `binaryArtifact` を指定すると `400` を返します。
 - 単一プロセスの `serve` は、どちらのフィールドも拒否します。その構成では job がオペレータ自身の
   プロジェクトディレクトリで動くため、差し替えで上書きするわけにはいかないからです。
-- `POST /api/run-set` も、どちらのフィールドも拒否します。クラウドバッチのファンアウトは Device Farm の
-  worker で動きますが、差し替えを Device Farm へのリクエストに対応づける作業はまだ済んでいないためです。
+- `POST /api/run-set` も、どちらのフィールドも拒否します。ファンアウトのジョブは、ターゲットのプラットフォームを
+  扱う worker ならどれでもリースでき、Device Farm の worker もその1つです。差し替えを Device Farm への
+  リクエストに対応づける作業は、まだ済んでいません。
 
 リースは、指定された差し替えごとに presigned GET（`binary_url`、`scenarios_url`）を、リースした job の
 org の下で署名します。worker は各ダウンロードを sha256 で検証し、その job 専用のツリーを組み立てます。
@@ -833,8 +840,8 @@ admin の endpoint です。マシンにその*ランク*を与えれば、confi
 |---|---|
 | `GET /api/artifacts/exists`（publish 済みのビルドの有無を問う） | `POST /api/config`、`POST /api/compose`（org の有効な config の再バインド） |
 | `POST /api/artifacts/config`、`.../scenarios`、`.../binary`（3種のアーティファクトの publish） | `GET /api/config/content`（config の本文にシークレットが埋まっていることがある） |
-| `POST /api/run`（run の投入） | `POST /api/apikey`、`POST /api/claudecodetoken`（operator のシークレット） |
-| `GET /api/runs`、`GET /api/jobs/<id>`（投入した run の監視） | `/api/orgs*`（誰がサインインして書けるか） |
+| `POST /api/run`、`POST /api/run-set`（run と run のグループの投入） | `POST /api/apikey`、`POST /api/claudecodetoken`（operator のシークレット） |
+| `GET /api/runs`、`GET /api/jobs/<id>`、`GET /api/run-set/<groupId>`（投入した run の監視） | `/api/orgs*`（誰がサインインして書けるか） |
 
 右の列は `serve` が保持している一覧ではありません。許可リストは、何も書かれていなければ拒否します。左に
 現れないことによって、その endpoint はマシンに閉ざされます。来年 `serve` に足された経路も、誰かが意図して
@@ -1131,6 +1138,12 @@ Linux の web ワーカーに渡って失敗しかねません。それは本物
   動くワーカーは、サーバの識別子を表す `machine:<id>` も広告します。このトークンが、そのマシン上のファイルを
   指定するジョブを振り分けます（[1台のマシンで動かすサーバ backend](#1台のマシンで動かすサーバ-backendbe-0449)）。web ワーカーのコンテナは `--platform web` を組み込んであるので、
   `web` を広告し、フラグは要りません。
+- **ワーカーは、fan-out のジョブが必要とするトークンも広告します（[BE-0484](../../roadmaps/BE-0484-job-group-lease/BE-0484-job-group-lease-ja.md)）。**
+  どのワーカーも `job:run-intent` を広告します。fan-out のジョブを自分の形の実行へ変換できる、という印です。
+  iOS のワーカーは、在庫に iPhone か iPad の Simulator があれば `kind:simulator` を広告します。`devicectl` で
+  iPhone か iPad の実機を読めている間は、`kind:device` も広告します。worker 能力ファイルで
+  `realDevices: false` を設定すると、このトークンは広告しません。Device Farm のワーカーは `platform:android`、
+  `platform:ios`、`kind:device` を広告します。サービスが予約するプラットフォームとデバイスの種類です。
 - **ローカルのワーカーは、扱えないプラットフォームを拒否します。** ワーカーは起動時に、各 `--platform` を
   [worker 能力ファイル](drivers.md#worker-の能力検査be-0450)とホストに照らして検査します。ファイルが
   そのプラットフォームのドライバを含まないとき、またはホストがそのドライバを動かせないとき、ワーカーは
@@ -1156,6 +1169,14 @@ Linux の web ワーカーに渡って失敗しかねません。それは本物
   ルーティングがワーカーを選び、リストがデバイスを選びます。ファミリーを指定しないターゲットは、トークンを
   加えません。ターゲットを `fake` ドライバで動かすリクエストも加えません。このドライバはデバイスを操作しない
   からです（[BE-0468](../../roadmaps/BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of-ja.md)）。
+- **fan-out のジョブは、実行場所を要求しません。** `POST /api/run-set` のジョブは、ターゲットの
+  `platform:<p>`、`job:run-intent`、シナリオのルートの `cap:` と `setting:` のトークン（後述）を必要とします。
+  iOS のジョブは、上のファミリーのトークンと、実行する種類ごとに 1 つの `kind:<kind>` トークンも必要とします。
+  `host:`、`environment:`、`machine:` のトークンは必要としません。そのプラットフォームを扱い、これらの
+  トークンを広告するワーカーなら、ローカルでも Device Farm でもリースできます。Device Farm のワーカーは
+  ファミリーのトークンを広告しないので、`runsOn.ios.family` を指定したターゲットは Device Farm へ振り分けられません。`environment:` トークンを広告するワーカーは、通常はその
+  トークンを必要とするジョブだけをリースします。fan-out のジョブは環境を指定しないので、この規則の例外です
+  （[BE-0484](../../roadmaps/BE-0484-job-group-lease/BE-0484-job-group-lease-ja.md)）。
 - **ペアリング済みの実機は、接続中として読まれます。** `devicectl` は、ペアリング済みの実機を、差さって
   いるかどうかにかかわらず一覧に出します。トンネルの状態は、実行がトンネルを開くまで `disconnected` と
   読めます。このフィールドでは、使われていない実機と抜かれた実機を区別できません。そのため、ワーカーは抜かれた
@@ -1188,7 +1209,9 @@ Linux の web ワーカーに渡って失敗しかねません。それは本物
     そうしたワーカーがジョブを扱える間は、混在した構成でもジョブを受け付けます。
 
   このとき `POST /api/run` は `400` を返します。エラーには、
-  不足しているトークンと、それを必要とするステップや設定が並びます。稼働中のワーカーがそのルートを
+  不足しているトークンと、それを必要とするステップや設定が並びます。`POST /api/run-set` も、各ジョブを
+  同じ方法で検査します。拒否されるジョブが 1 つでもあればリクエスト全体を `400` で拒否し、エラーには
+  そのシナリオと不足しているトークンが並びます。稼働中のワーカーがそのルートを
   動かしていない間は、ジョブはキューに残り、`bajutsu_unroutable_jobs` に数えられます。コールドスタートや
   ワーカーの再起動の最中がこれにあたります。
 - **ワーカーは、ジョブを受け取るときにもう一度チェックします。** lease の応答は、サーバーがジョブの振り分けに
@@ -1199,15 +1222,16 @@ Linux の web ワーカーに渡って失敗しかねません。それは本物
   任意の `environment` を受け付けます。指定できる値は `appium` だけで、ほかの値には `400` を返します。
   このジョブが必要とするのは `environment:appium` だけです。グリッドがデバイスとそのホストを持つからです。
   `worker.yaml` で `environment: appium` を設定し、グリッドの `endpoint` を指定したワーカーは、このトークン
-  だけを広告し、`--platform` を取りません。そのワーカーは、自分の `--worker-config` を付けたローカルの
+  と `job:run-intent` を広告し、`--platform` を取りません。`platform:` のトークンは広告しないので、
+  fan-out のジョブは受け取りません。そのワーカーは、自分の `--worker-config` を付けたローカルの
   `bajutsu run` を実行します（[iOS を実機で動かす](ios-device-cloud.md#ライブ--appium-エンドポイントのプロバイダー)）。
-  Device Farm への fan-out は、`POST /api/run-set` で独自の `environment` を指定します
-  （[AWS Device Farm で実行する](devicefarm.md#ターゲットの-fan-out)）。
+  fan-out（`POST /api/run-set`）は `environment` を取らず、各ジョブをターゲットのプラットフォームで
+  振り分けます（[AWS Device Farm で実行する](devicefarm.md#ターゲットの-fan-out)）。
 - **ワーカーの手書きの入力は非推奨です。** ワーカーの `--capabilities` と `$BAJUTSU_WORKER_CAPABILITIES` は
   トークンをそのまま加えます。どちらも今回のリリースでは引き続き効き、1 回だけ通知を記録します。次のリリース
   で削除します。Simulator 在庫と worker 能力ファイルが、上書きの用途をすでに担っているからです。上書きは、
   マシンにないランタイムを広告できてしまう点でも問題です。どちらも、予約済みの接頭辞 `environment:`、
-  `host:`、`machine:`、`device:`、`cap:`、`setting:` を含められません。ワーカーがいずれも自分で埋めるからです。ワーカーは起動時に、そのトークンを
+  `host:`、`machine:`、`device:`、`cap:`、`setting:`、`job:`、`platform:`、`kind:` を含められません。ワーカーがいずれも自分で埋めるからです。ワーカーは起動時に、そのトークンを
   拒否します。
 - **振り分け不能のジョブ**、すなわち必要とする capability を稼働中のどのワーカーも広告していないジョブは、
   非互換のワーカーにリースされたり捨てられたりせず、キューに残ります。そして `bajutsu_unroutable_jobs`
@@ -1232,6 +1256,12 @@ Linux の web ワーカーに渡って失敗しかねません。それは本物
 > `manifest.json` に届きます。ローカルの serve のように閲覧時に描画するレポートは、その記録を *notices* に
 > 載せます。run の時点で焼き込んだレポートには載りません。古いワーカーは、記録が届く前にレポートを焼き込む
 > からです。この記録をなくすには、ワーカーを更新してください。
+>
+> BE-0484 では、再びワーカーを先に更新する必要があります。fan-out のジョブは `job:run-intent` を必要とし、
+> その変更より前のビルドのワーカーはこのトークンを広告しません。それより前のビルドの Device Farm のワーカーは、
+> `platform:` のトークンも広告しません。どちらの場合も、fan-out のジョブはキューに残り、`bajutsu_unroutable_jobs`
+> に数えられます。`--capabilities platform:…` や `kind:…` を付けたワーカーは、以前は起動できましたが、今は
+> 起動を拒否します。この 2 つの接頭辞はワーカー自身が埋めるので、トークンを取り除いてください。
 
 ### オブジェクトストレージへの証跡アップロード（任意、BE-0110）
 
@@ -1330,9 +1360,11 @@ BE-0015 で今後の作業です。
 **Mac プールを org 間で公平に保つ。** `BAJUTSU_MAX_CONCURRENT_PER_ORG` を設定すると、1 つの org が同時に
 持てる run 数の上限を決められます。各ユーザがそれぞれの `BAJUTSU_MAX_CONCURRENT_PER_USER` 以内にとどまって
 いても、忙しい org が希少なデバイスを独占することを防げます。どちらも既定は無制限（`0`）で、いずれもグローバルな
-`--max-concurrent-runs` の下に効きます。上限を超えたリクエストはキューに入れず拒否します（HTTP 429）。（org を
+`--max-concurrent-runs` の下に効きます。上限を超えたリクエストはキューに入れず拒否します（HTTP 429）。
+ただし fan-out（`run-set`）は例外です。すべてのシナリオをキューに積み、ワーカーがジョブを
+リースする時点で上限を適用するので、枠が空くたびに順に実行します（BE-0484）。（org を
 またぐ公平な*スケジューリング*、つまり拒否した分を org 別キューで保留してラウンドロビンで投入する仕組みは、まだ
-今後の作業です。今日は上限で拒否します。）
+今後の作業です。今日は通常の run を上限で拒否します。）
 
 **run の削除と、ゴミ箱の保持期間。** run（とそのレポート）は API から削除できます（BE-0239）。`DELETE /api/runs/{id}`
 はソフトデリートで、run は履歴一覧から消えますがゴミ箱へ移るだけなので、`POST /api/runs/{id}/restore` で復元できます。

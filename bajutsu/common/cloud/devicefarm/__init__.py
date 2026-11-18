@@ -37,11 +37,11 @@ from ._functions import _PACKAGE_EXCLUDES as _PACKAGE_EXCLUDES
 from ._functions import _PLATFORM_RUN as _PLATFORM_RUN
 from ._functions import _POLL_INITIAL_SECONDS as _POLL_INITIAL_SECONDS
 from ._functions import _POLL_INTERVAL_SECONDS as _POLL_INTERVAL_SECONDS
-from ._functions import _TEST_UPLOAD_TYPES as _TEST_UPLOAD_TYPES
 from ._functions import _UV as _UV
 from ._functions import _VENV as _VENV
 from ._functions import (
     APP_UPLOAD_TYPE,
+    TEST_UPLOAD_TYPES,
     XCTEST_PACKAGE_DIR,
     Platform,
     TestType,
@@ -51,15 +51,16 @@ from ._functions import (
     host_backend,
     is_package_excluded,
     render_test_spec,
+    schedule_run,
     stop_run,
     submit_and_collect,
+    upload,
     verdict_from_manifest,
 )
 from ._functions import _next_poll_delay as _next_poll_delay
 from ._functions import _python_bootstrap_commands as _python_bootstrap_commands
 from ._functions import _safe_extract as _safe_extract
 from ._functions import _store_artifact as _store_artifact
-from ._functions import _upload_one as _upload_one
 from ._functions import _wait_run as _wait_run
 from ._platform_run import _PlatformRun as _PlatformRun
 from ._shared import REQUIREMENTS_TXT
@@ -73,6 +74,7 @@ from .verdict import Verdict
 __all__ = [
     "APP_UPLOAD_TYPE",
     "REQUIREMENTS_TXT",
+    "TEST_UPLOAD_TYPES",
     "XCTEST_PACKAGE_DIR",
     "DeviceFarmClient",
     "DeviceFarmError",
@@ -89,7 +91,9 @@ __all__ = [
     "host_backend",
     "is_package_excluded",
     "render_test_spec",
+    "schedule_run",
     "stop_run",
     "submit_and_collect",
+    "upload",
     "verdict_from_manifest",
 ]
