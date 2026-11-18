@@ -196,7 +196,7 @@ class Driver(Protocol):
 
 ### 操作の安定度順
 
-操作の安定度順は、英語では stability ladder と呼びます。UI 操作は **最も安定する選択手段から順に試し、成立した手段を採用**します。採用結果は record で凍結し（§6.5）、`run` は凍結済みを決定的に再実行します。安定度で変わるのは **どの要素を選ぶか** です。actuation は backend によって異なります。XCUITest は解決した要素を identifier で直接 tap します（BE-0019）。adb は常駐 UI Automator サーバの `/act` エンドポイントへ解決済みの identity を渡し、端末側で tap / long press / double tap を行います。エンドポイントが使えない、または対象の identity を特定できないときに限り、frame 中心への座標 tap へ縮退します（BE-0339）。pinch / rotate は二本指ジェスチャで frame が要るため、座標のままです。下に行くほど壊れやすく、順 3 を使ったら manifest に degradation として明示します（§10）。
+本書ではこの安定度順を stability ladder と呼びます。UI 操作は **最も安定する選択手段から順に試し、成立した手段を採用**します。採用結果は record で凍結し（§6.5）、`run` は凍結済みを決定的に再実行します。安定度で変わるのは **どの要素を選ぶか** です。actuation は backend によって異なります。XCUITest は解決した要素を identifier で直接 tap します（BE-0019）。adb は常駐 UI Automator サーバの `/act` エンドポイントへ解決済みの identity を渡し、端末側で tap / long press / double tap を行います。エンドポイントが使えない、または対象の identity を特定できないときに限り、frame 中心への座標 tap へ縮退します（BE-0339）。pinch / rotate は二本指ジェスチャで frame が要るため、座標のままです。下に行くほど壊れやすく、順 3 を使ったら manifest に degradation として明示します（§10）。
 
 | 順 | 選択（どの要素） | 安定性 |
 |---|---|---|
@@ -556,7 +556,7 @@ runs/<runId>/
 
 ### バックエンド対応と能力差の吸収
 
-actuator とフォールバックで吸収します。`backend` は **安定度順の順序付きリスト**です（§8 / §5 stability ladder）。`tap` / `type` / `swipe` / `wait` / `query`（操作と解決）は **actuator のみ** が行います。**actuator はシナリオごとに、最も安く十分な backend** です（BE-0240。選定規則の詳細は §5 stability ladder を参照）。まだシナリオが手元に無い場面（doctor、プールの起動時セットアップ、明示的な単一 actuator の固定）は、安定度順で最初に利用可能なものを選びます。actuator 以外は **能力を補うフォールバック**で、実体は read-only な証跡供給に限ります。`capabilities()`（§5）で各 backend の提供能力を引きます。
+能力差は、actuator とフォールバックで吸収します。`backend` は **安定度順の順序付きリスト**です（§8 / §5 stability ladder）。`tap` / `type` / `swipe` / `wait` / `query`（操作と解決）は **actuator のみ** が行います。**actuator はシナリオごとに、最も安く十分な backend** です（BE-0240。選定規則の詳細は §5 stability ladder を参照）。まだシナリオが手元に無い場面（doctor、プールの起動時セットアップ、明示的な単一 actuator の固定）は、安定度順で最初に利用可能なものを選びます。actuator 以外は **能力を補うフォールバック**で、実体は read-only な証跡供給に限ります。`capabilities()`（§5）で各 backend の提供能力を引きます。
 
 能力ごとの解決順：
 

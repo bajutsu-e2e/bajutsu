@@ -202,7 +202,7 @@ make install               # base PLUS exactly the backends your config needs (c
 ```
 
 `make setup` is the config-agnostic floor the deterministic gate needs. `make install` builds on it.
-It reads your `--config`, which you pass via `make install ARGS="--config demos/showcase/showcase.config.yaml"`.
+It reads your `--config` (pass one via `make install ARGS="--config demos/showcase/showcase.config.yaml"`).
 From the config it resolves which backends the `targets.*` actually use, plus whether an AI provider
 is configured. It then installs only those pip extras and external tools: the XCUITest runner built
 via Xcode's `xcodebuild` for iOS, Playwright's browser for web, and the `anthropic` SDK when AI is

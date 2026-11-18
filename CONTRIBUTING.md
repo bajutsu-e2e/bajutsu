@@ -68,9 +68,10 @@ On-device E2E (macOS + Simulator) is a separate, heavier path and is **not** par
 ## Roadmap items
 
 Larger features are tracked as **Bajutsu Evolution** (BE) items under
-[`roadmaps/`](roadmaps/README.md). Follow the exact procedure for the directory layout, ID
-allocation, both language files, and format in
-[`docs/ai-development.md`](docs/ai-development.md#roadmap-items-be-ids-strict).
+[`roadmaps/`](roadmaps/README.md).
+[`docs/ai-development.md`](docs/ai-development.md#roadmap-items-be-ids-strict) holds the exact
+procedure: the directory layout, ID allocation, both language files, and the format. Follow it
+exactly.
 
 ## Documentation
 
