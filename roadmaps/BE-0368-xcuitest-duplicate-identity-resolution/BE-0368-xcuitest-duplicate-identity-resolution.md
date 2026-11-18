@@ -30,16 +30,16 @@ recorded element reference back into an actionable element in two steps:
 
 The fallback is `uniquelyIdentifiedElement` in
 [`XcuitestElementProvider.swift`](../../BajutsuKit/Runner/Sources/XcuitestElementProvider.swift). It
-demands **exactly one** candidate and returns nothing on two. A duplicate pair therefore defeats the
-very recovery meant to save it, and both members of the pair become unreachable.
+demands **exactly one** candidate and returns nothing on two. A duplicate pair thus defeats the
+recovery meant to save it, and both members of the pair become unreachable.
 
-We propose to treat a candidate group as the one physical control it really is, when its members are
+We propose to treat a candidate group as the one physical control it is, when its members are
 identical to *each other* down to the value and the frame. The fallback then resolves to a member of
 that group rather than giving up.
 
 ## Motivation
 
-On iOS 26, a `tap` on either button of a native alert fails. The failure occurs whether the scenario
+On iOS 26, a `tap` on either button of a native alert fails. The tap fails whether the scenario
 addresses the button by `id` or by `label` and `traits`:
 
 ```
@@ -60,7 +60,7 @@ directly:
 These three observations locate the defect precisely:
 
 - The pair is one genuinely tappable control, since tapping its centre works.
-- The channel and the handle bookkeeping are sound, since neighbouring elements answer normally.
+- The channel and the handle bookkeeping are sound, since neighbouring elements answer as usual.
 - What fails is resolution. Neither member of the pair can be turned back into an element the runner
   can act on.
 
@@ -79,7 +79,7 @@ recorded identifier and label. It hands them to `uniqueMatchingIndex` in
 contract of that function is to return the index of the **sole** candidate and `nil` otherwise: "Zero
 matches and multiple matches both return nil: neither case identifies one element safely."
 
-A duplicate pair is two matches. The fallback therefore returns nothing, `liveElement` returns
+A duplicate pair is two matches. The fallback thus returns nothing, `liveElement` returns
 nothing, and the runner reports `stale`. On iOS 18 the same fallback runs and succeeds, because there
 is one candidate to be sole.
 
@@ -147,10 +147,10 @@ match. The two uses do not conflict.
 Those candidates are nonetheless not sampled at one instant, and that decides how exactly the frames
 must agree. `uniquelyIdentifiedElement` builds its candidate attributes with `candidates.map(...)`.
 Each candidate's frame is its own XCUITest attribute fetch. A screen still settling under the very
-animation BE-0287 measured can therefore report one control's two registrations a fraction of a point
+animation BE-0287 measured can thus report one control's two registrations a fraction of a point
 apart.
 
-Frames therefore agree **within a point** rather than exactly. That tolerance is far below the
+Frames thus agree **within a point** rather than exactly. That tolerance is far below the
 distance separating two controls that genuinely stand at two places on screen. It costs the
 loud-failure branch nothing.
 
@@ -164,8 +164,8 @@ each docstring points at the other.
 
 Keying on less would let the runner guess where the host fails loudly. Consider two registrations of a
 value-bearing control that disagree on value. They are an ambiguity on the host side, and they must
-stay one on this side too. `RecordedAttributes` therefore gains the `value` that the flattened
-`ElementSnapshot` already reports. The group rule alone uses it. `attributesMatch` still leaves it out.
+stay one on this side too. `RecordedAttributes` thus gains the `value` that the flattened
+`ElementSnapshot` already reports. The group rule uses it, and nothing else does. `attributesMatch` still leaves it out.
 
 **Which member to resolve to is a question the implementation must answer with a measurement, not an
 assumption.** That assumption is the mistake this item exists to correct. Two candidate rules are open:
@@ -186,7 +186,7 @@ premise of this design then fails in the way BE-0357's did, and the design needs
 than implementing.
 
 **Scope.** `liveElement(for:)` calls `uniquelyIdentifiedElement`. Every actuation and the hittability
-probe already share `liveElement(for:)`. `tap`, `gesture`, and `isHittable` therefore all gain the
+probe already share `liveElement(for:)`. `tap`, `gesture`, and `isHittable` thus all gain the
 repair from one change, and none of them needs its own.
 
 The `/elements` reply is untouched. This item changes how a recorded reference resolves back to a live
@@ -325,7 +325,7 @@ Log:
 - [`bajutsu/drivers/base.py`](../../bajutsu/drivers/base.py): `_collapse_identical_duplicates`, the
   host-side twin of this item's rule. It keys on the same fields over an `/elements` reply.
 - [BE-0312 — Derive XCUITest actuation handles from element identity so an unchanged screen keeps its handles valid](../BE-0312-xcuitest-content-addressed-snapshot-handle/BE-0312-xcuitest-content-addressed-snapshot-handle.md):
-  the handle scheme this item leaves unchanged. Both members of a duplicate pair keep their own
+  the handle design this item leaves unchanged. Both members of a duplicate pair keep their own
   handles, and after this item both resolve.
 - [BE-0289 — Make the XCUITest channel re-resolve a stale actuation handle before failing](../BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve.md):
   the retry that cannot recover this failure, because every attempt re-derives the same unresolvable

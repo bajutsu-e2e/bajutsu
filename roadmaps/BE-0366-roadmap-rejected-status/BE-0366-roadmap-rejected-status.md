@@ -15,8 +15,8 @@
 
 ## Introduction
 
-A roadmap item's `Status` field takes one of four values today: `Implemented`, `In progress`,
-`Proposal`, and `Proposal (deferred)`. That value alone decides the item's dashboard bucket
+A roadmap item's `Status` field takes one of four values today. They are `Implemented`,
+`In progress`, `Proposal`, and `Proposal (deferred)`. That value alone decides the item's dashboard bucket
 ([BE-0078](../BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders.md)).
 
 The fourth value collapses two different situations into one bucket. One is a proposal that is
@@ -24,13 +24,13 @@ parked, waiting on a named blocker or a concrete future need. The other is a pro
 BE item has already made moot. Both read identically today.
 
 This item splits that bucket in two. `Proposal (deferred)` becomes the bare `Deferred`, matching the
-flat naming the other three values already use. A new `Rejected` value marks a proposal the
+flat naming of the other three values. A new `Rejected` value marks a proposal the
 maintainers have decided against for good. Two reasons qualify: another BE item already covers what
 the proposal described, or review found no path that respects the project's prime directives or
 scope.
 
-The change touches the metadata vocabulary, seven roadmap scripts (the dashboard generator among
-them), and their gate tests. It renames no item's directory, because `Status` has been
+The change touches the metadata vocabulary, seven roadmap scripts, and their gate tests. The
+dashboard generator is one of the scripts. It renames no item's directory, because `Status` has been
 directory-independent since
 [BE-0159](../BE-0159-flatten-roadmap-status-folders/BE-0159-flatten-roadmap-status-folders.md). It
 adds no LLM to any path.
@@ -46,23 +46,23 @@ Six roadmap items carry `Proposal (deferred)` today:
 [BE-0158](../BE-0158-timezone-device-primitive/BE-0158-timezone-device-primitive.md).
 
 Five of the six are parked. BE-0027 is parked only on balance (see *Migrating today's roadmap*).
-Each of the five names a concrete blocker or a future need that would revive it. For BE-0157 and
-BE-0158, the blocker is a missing headless actuator for the shake and timezone primitives. For
+Each of the five names a concrete blocker or a future need that would revive it. BE-0157 and
+BE-0158 wait on a headless actuator for the shake and timezone primitives. For
 BE-0040, it is a design that would let an AI-authored assertion lower to a deterministic check before
 `run` ever sees it.
 
-The sixth, BE-0154 (running `roadmap-promote` from a base SHA), already carries a filled
-`Superseded by` field that names BE-0159 as its successor. BE-0159 flattened the per-status folders
-that BE-0154's entire premise depended on. It deleted the promote workflow outright, so the workflow
+The sixth, BE-0154, proposes running `roadmap-promote` from a base SHA. Its filled
+`Superseded by` field already names BE-0159 as its successor. BE-0159 flattened the per-status folders
+that BE-0154's entire premise depended on. It deleted the promote workflow outright. The workflow
 BE-0154 would have hardened no longer exists. Nothing about BE-0154 waits on a blocker, and its
 proposal is dead.
 
-Yet BE-0154's `Status` reads the same `Proposal (deferred)` as the five items that remain open
-questions. A reader scanning the Deferred bucket on the dashboard cannot tell which of the six
+Yet BE-0154's `Status` reads the same `Proposal (deferred)` as the five items that stay open
+questions. A reader scanning the dashboard's Deferred bucket cannot tell which of the six
 deserve a second look without opening every file.
 
 BE-0078 already solved a problem one level above this one. Before BE-0078, a live proposal and one
-already accepted for active work shared a single `proposals/` folder. A reader could not tell them
+accepted for active work shared one `proposals/` folder. A reader could not tell them
 apart without opening each file. BE-0078 split that bucket by giving in-progress items their own
 folder and index bucket, and renamed `Accepted, in progress` to the bare `In progress` along the way.
 The same argument now applies to a `Deferred` bucket that quietly mixes "still worth revisiting" with
@@ -339,8 +339,8 @@ Log:
 ## References
 
 - [BE-0078 — Status-driven roadmap folders](../BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders.md)
-  introduced the four-bucket `Status` vocabulary and the invariant "the bucket is derived from
-  `Status`". This item extends the vocabulary to five. BE-0078 also set the precedent for flattening
+  introduced the four-bucket `Status` vocabulary and the invariant that the bucket is derived from
+  `Status`. This item extends the vocabulary to five. BE-0078 also set the precedent for flattening
   a wrapped status name to a bare one.
 - [BE-0159 — Flatten roadmap status folders](../BE-0159-flatten-roadmap-status-folders/BE-0159-flatten-roadmap-status-folders.md)
   made `Status` directory-independent. BE-0154's `Superseded by` field names it as the successor,

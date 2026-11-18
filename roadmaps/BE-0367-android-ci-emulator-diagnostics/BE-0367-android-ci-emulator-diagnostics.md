@@ -27,9 +27,9 @@ evidence. Nothing else is collected.
 
 A job can fail for an infrastructure reason:
 
-- The resident UI Automator server (`bajutsu/adb_resident.py`,
-  [BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md))
-  stops answering.
+- The resident UI Automator server stops answering. Its code is `bajutsu/adb_resident.py`.
+  See
+  [BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md).
 - The emulator's own rendering wedges.
 - The job runs out its `timeout-minutes`.
 
@@ -46,7 +46,7 @@ for the XCUITest lane:
 3. A background sampler that records host load for the whole job.
 
 One structural difference from the iOS lane runs through the whole design. The emulator exists only
-inside each job's `reactivecircus/android-emulator-runner` step. The device-side sweep therefore
+inside each job's `reactivecircus/android-emulator-runner` step. The device-side sweep thus
 lives in a script that the step invokes, not in a composite action beside it. *Detailed design*
 returns to this detail.
 
@@ -79,7 +79,7 @@ Yet today only one backend raises the error that this recovery reacts to.
 `base.BackendCrashError` in the codebase. The adb driver's own infrastructure-failure signal,
 `AdbResidentError` (`bajutsu/drivers/adb.py`), is deliberately *not* a `BackendCrashError`. It marks a
 degrade-to-fallback that the driver already absorbs, not a scenario-ending crash. The pipeline's
-crash-retry loop therefore has no adb-side trigger at all.
+crash-retry loop thus has no adb-side trigger at all.
 
 Whether to close that gap in *detection* is a separate question (see *Alternatives considered*). For
 *this* proposal, the gap means one thing. Layer 1's hook must attach to a signal that already fires
@@ -142,7 +142,7 @@ class's subclasses fire during perfectly healthy runs and mean the opposite of a
 Both are caught on the act path. There even the base class degrades one gesture while the channel
 stays in use. Hooking the class would fire the capture on runs where nothing stalled. Those captures
 would spend the per-run cap below, and a genuine stall later in the same run would find no budget
-left. That later stall is the one case the probe exists for. The act path is therefore excluded
+left. That later stall is the one case the probe exists for. The act path is thus excluded
 outright.
 
 When the environment variable `BAJUTSU_STALL_DIAGNOSTICS` names a directory, both trigger points run a
@@ -170,7 +170,7 @@ running as its own step can reach it, and BE-0361's `collect-ios-diagnostics` as
 
 Android has no such window. Every device-touching step in `android-e2e.yml` runs *inside* a
 `reactivecircus/android-emulator-runner` step. That step boots the emulator, runs its `script:`, and
-kills the emulator when the step ends. An ordinary step placed after it would run with **no device
+stops the emulator when the step ends. An ordinary step placed after it would run with **no device
 attached**. So would a step-level `if: failure()` gate. `adb logcat -d`, `adb bugreport`, and the
 rooted tombstone and ANR pulls would each collect nothing at all.
 
@@ -178,7 +178,7 @@ The in-tree precedent is already there. The `poll_cpuinfo` sampler lives embedde
 `script:` string for this very reason. It preserves the real exit code in `rc`, so it never masks a
 scenario failure.
 
-Device-side collection therefore lives in a script, not a composite action:
+Device-side collection thus lives in a script, not a composite action:
 `scripts/collect_android_diagnostics.sh`. Each job's own `script:` invokes it at the tail, where the
 emulator is still alive. The failure tier keys off the run command's own `rc`, the same shape the
 `poll_cpuinfo` poller already uses to survive a failing run. A step-level `if: failure()` would fire
@@ -209,16 +209,16 @@ The script runs two tiers.
   while the device is still attached.
   - `adb bugreport`, Android's own comprehensive collector and the direct analog of `simctl diagnose`.
     The report is zipped and copied under `runs/diagnostics/`.
-  - A rooted pull of `/data/tombstones` (native crash reports) and `/data/anr/` (Application Not
-    Responding (ANR) traces). The AVD profile these jobs already use (`target: google_apis`, not
-    `google_apis_playstore`) supports `adb root`. The iOS sweep gets these two crash-report classes
+  - A rooted pull of `/data/tombstones` (native crash reports) and `/data/anr/`. The second path holds
+    Application Not Responding (ANR) traces. These jobs already use the AVD profile
+    `target: google_apis`, not `google_apis_playstore`. That profile supports `adb root`. The iOS sweep gets these two crash-report classes
     for free from `~/Library/Logs/DiagnosticReports`. On Android they live device-side and need an
     explicit pull.
 
 ### Layer 3: host telemetry over time
 
 Unlike Layer 2, this layer reads **only the Linux runner**, never the device. The constraint above
-therefore does not bind it. `top -bn1` and `free -m` work from an ordinary workflow step, whether or
+thus does not bind it. `top -bn1` and `free -m` work from an ordinary workflow step, whether or
 not an emulator is attached.
 
 Layer 3 is the one part of the collection that *can* be a composite action,
@@ -299,7 +299,7 @@ Mutually exclusive, collectively exhaustive (`MECE`) units of work follow.
   `top`/`free` every ~20 seconds does not have it: the sampler issues no adb traffic at all and samples
   a tenth as often.
 
-  Layer 3 is therefore always on where `poll_cpuinfo` is opt-in. An implementer should read the two as
+  Layer 3 is thus always on where `poll_cpuinfo` is opt-in. An implementer should read the two as
   complementary, not as one superseding the other.
 - **Share one composite action between the iOS and Android lanes.** Rejected. `collect-ios-diagnostics`
   reads `simctl`/CoreSimulator/the macOS unified log. `collect-android-diagnostics` reads
@@ -349,13 +349,13 @@ Mutually exclusive, collectively exhaustive (`MECE`) units of work follow.
 - [x] Unit 6 — tests
 
 [BE-0361](../BE-0361-ios-ci-simulator-diagnostics/BE-0361-ios-ci-simulator-diagnostics.md) landed
-first. This item therefore wired its two triggers into that item's existing
+first. This item thus wired its two triggers into that item's existing
 `bajutsu/stall_diagnostics.py`, rather than adding a second module beside it. *Alternatives
 considered* anticipated this outcome when it refused to gate this item on BE-0361.
 
 The wiring surfaced a seam that neither item had named. *When* to capture, what a capture may cost,
 and where it lands are identical for both backends. *What to read* shares no command between them.
-Unit 2 therefore split the module along that seam:
+Unit 2 thus split the module along that seam:
 
 - A `capture` owns the opt-in gate, the per-trigger budget, and the summary.
 - A `ProbeSet` is what each backend contributes.
@@ -368,11 +368,11 @@ Units 3 and 4 also cover `uiautomator (codegen)`, which *Detailed design* above 
 exclusion reasoned from the collection's *mechanism*: the job writes nothing under `runs/`, so
 nothing rides there. It mistook the mechanism for the job's *need*, and the uploads show the opposite
 of that need. Gradle runs the generated test and produces every path that `codegen` uploads. A
-failure before that point therefore met `if-no-files-found: ignore` and uploaded nothing at all.
+failure before that point thus met `if-no-files-found: ignore` and uploaded nothing at all.
 Such failures include a wedged AVD boot, a codegen or build error, and the job's own
 `timeout-minutes`.
 
-The collection's output directory is a parameter, not a constraint. The job therefore takes the same
+The collection's output directory is a parameter, not a constraint. The job thus takes the same
 two tiers and the same host sampler, and its upload gains `runs/`.
 
 Layer 1 reaches `codegen` through one hook rather than two. No adb driver runs at test time, so only
