@@ -74,7 +74,7 @@ The work breaks into three units. Unit 2 depends on unit 1, and unit 3 depends o
 
    The four suppressed calls deliberately ignore failure. A timeout on shutdown, boot, uninstall, or terminate is not the ordinary "already in that state" outcome those sites exist to absorb. It is the wedge this item exists to surface. Let a timeout propagate from them rather than widening the suppression to cover it. A hung `shutdown` is exactly the signal the recovery ladder needs, and today's silence hides it.
 
-   For `terminate`, propagating out of the `simctl` module is not enough. This item settles that here rather than at implementation time, because it changes teardown behaviour. Two callers terminate an app on the runner-discard path: the app under test and the XCTRunner app. Both already suppress the module's device-fault type alongside `CalledProcessError`, so that an app that is not running does not fail a teardown. Converting a timed-out `terminate` into that same type would leave the discard path exactly as silent as it is today. Narrow those two suppressions to the failure they were written for. A timeout then surfaces, and "not running" stays absorbed.
+   For `terminate`, propagating out of the `simctl` module is not enough. This item settles that here rather than at implementation time, because it changes teardown behaviour. Two callers terminate an app on the runner-discard path: the app under test and the XCTRunner app. Both already suppress the module's device-fault type alongside `CalledProcessError`, so that an app that is not running does not fail a teardown. Converting a timed-out `terminate` into that same type would leave the discard path as silent as today. Narrow those two suppressions to the failure they were written for. A timeout then surfaces, and "not running" stays absorbed.
 
    The module's own best-effort probes want the opposite. About ten readers catch a failure and return a documented fallback instead: an empty list, or a third value meaning "could not tell". They cover these operations:
 
@@ -82,7 +82,7 @@ The work breaks into three units. Unit 2 depends on unit 1, and unit 3 depends o
    - asking whether a device is booted, available, or of a known type
    - reading the device catalogue, checking an install, and comparing the system locale
 
-   Those three-valued contracts exist to model exactly the state a timeout indicates. The recovery ladder of [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery.md) depends on the distinction. A probe that returns "unknown" leaves the device alone, while a probe that raises would turn a diagnostic read into a run-visible fault.
+   Those three-valued contracts exist to model the state a timeout indicates. The recovery ladder of [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery.md) depends on the distinction. A probe that returns "unknown" leaves the device alone, while a probe that raises would turn a diagnostic read into a run-visible fault.
 
    Fold a timeout into each probe's existing fallback rather than raising out of it, and log it at the probe. The ladder keeps choosing on what it observed, and the timeout still leaves a trace. A device fault is then raised only from the calls that were going to raise on a failure anyway.
 

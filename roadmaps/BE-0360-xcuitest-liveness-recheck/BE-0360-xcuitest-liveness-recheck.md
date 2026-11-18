@@ -38,7 +38,7 @@ Continuous integration (CI) measurements show the fast-fail missing its target i
 
 One of those jobs ran on a commit that already carried the widened verdict. It spent the full window five times in a single scenario. Its own captured output named the state the verdict looks for: the runner had exited on its own with code 65 after executing zero tests.
 
-The widened verdict does fire when a runner is already demonstrably gone at the moment the crash is declared. So the two shapes call for separate accounts. The mechanism is right, and the sampling is too early.
+The widened verdict does fire when a runner is already demonstrably gone when the crash is declared. So the two shapes call for separate accounts. The mechanism is right, and the sampling is too early.
 
 Each miss costs a full 60 seconds. Worse, it reports a diagnosis that misleads the reader. "The runner crashed mid-run and did not recover within 60s" describes a runner that was given a fair chance to return. A runner that stopped serving the moment it crashed was never coming back. The message that says so is already written and already correct, but it never reaches the reader.
 

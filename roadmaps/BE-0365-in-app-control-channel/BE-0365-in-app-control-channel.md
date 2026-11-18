@@ -16,7 +16,7 @@
 
 ## Introduction
 
-Everything bajutsu can say to the app under test, it says once, at launch. `BajutsuKit` reads its launch environment in `startIfEnabled()` and never hears from bajutsu again. Its only channel back is outbound and fire-and-forget. Every in-app capability is therefore fixed for the life of the process, and a capability that needs to change *within* a scenario cannot.
+Everything bajutsu can say to the app under test, it says once, at launch. `BajutsuKit` reads its launch environment in `startIfEnabled()` and never hears from bajutsu again. Its only channel back is outbound and fire-and-forget. Every in-app capability is fixed for the life of the process, and a capability that needs to change *within* a scenario cannot.
 
 This item adds the missing direction: a command channel that bajutsu can use to reach a running app. The channel is built as a poll on the collector the app already talks to, so no port is opened inside the app under test. It carries operational commands only, never a judgement, so the deterministic verdict is untouched.
 
@@ -43,7 +43,7 @@ The design starts from a fact that makes the cheap version possible. The app and
 - The app receives the collector's URL and that token through `BAJUTSU_COLLECTOR` and `BAJUTSU_COLLECTOR_TOKEN`. It POSTs each exchange to the collector's root path and each transition to `/transitions` (`:305`).
 - The handler's `do_GET` exists and does nothing but answer `200` (`:315-317`).
 
-The channel therefore needs no new server, no new port, and no new authentication scheme. It needs a queue behind that idle `GET`.
+The channel needs no new server, no new port, and no new authentication scheme. It needs a queue behind that idle `GET`.
 
 ### The shape
 
@@ -91,7 +91,7 @@ The units below are mutually exclusive and collectively exhaustive.
 
 **Report the marker geometry and mask those regions in the visual comparison.** The app could POST each marker's rectangle on the outbound channel it already has, and the comparison could exclude those regions, with no inbound channel at all. We rejected the approach because it blinds the comparison exactly where the gesture landed. That is usually the region the assertion exists to check, and the approach does so silently. It also puts an evidence-only feature on the verdict path, deciding what a machine-checkable assertion is allowed to see.
 
-**Leave it at per-scenario granularity.** This is the status quo, and it is not nothing. The app is terminated and relaunched with each scenario's own launch environment, on the warm-runner path as much as the cold one (`_resume_warm`, [BE-0291](../BE-0291-xcuitest-runner-reuse-across-scenarios/BE-0291-xcuitest-runner-reuse-across-scenarios.md)). A capability can therefore already differ per scenario at no cost. The reason to go further is that the two motivating cases are both *within* one scenario. There, the journey's own state is the thing being tested, and splitting the scenario changes what is under test.
+**Leave it at per-scenario granularity.** This is the status quo, and it is not nothing. The app is terminated and relaunched with each scenario's own launch environment, on the warm-runner path as much as the cold one (`_resume_warm`, [BE-0291](../BE-0291-xcuitest-runner-reuse-across-scenarios/BE-0291-xcuitest-runner-reuse-across-scenarios.md)). A capability can already differ per scenario at no cost. The reason to go further is that the two motivating cases are both *within* one scenario. There, the journey's own state is the thing being tested, and splitting the scenario changes what is under test.
 
 ## Progress
 
