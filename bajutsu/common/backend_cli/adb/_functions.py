@@ -7,7 +7,7 @@ import math
 import re
 import shlex
 import subprocess
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from datetime import datetime, timedelta
 from pathlib import PurePosixPath
 
@@ -241,6 +241,16 @@ def screenrecord_pids_cmd(serial: str) -> list[str]:
     poll reads presence from stdout, not the exit code (the `RunFn` raises on a non-zero exit).
     """
     return _adb(serial, "shell", "pgrep -x screenrecord || true")
+
+
+def interrupt_pids_cmd(serial: str, pids: Iterable[str]) -> list[str]:
+    """Send SIGINT to device-side `pids` — stops a `screenrecord` so it finalizes its mp4.
+
+    `screenrecord` treats SIGINT as "stop and finalize", and a repeat is harmless, so this is safe to
+    send to a recorder the local client's own SIGINT already reached. `|| true` keeps a pid that has
+    already exited (`kill` exits 1) from raising in the `RunFn`.
+    """
+    return _adb(serial, "shell", f"kill -INT {' '.join(pids)} 2>/dev/null || true")
 
 
 def file_size_cmd(serial: str, device_path: str) -> list[str]:

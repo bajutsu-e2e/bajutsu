@@ -420,10 +420,12 @@ def test_start_screenrecord_records_device_side_then_pulls_on_stop(tmp_path: Pat
     assert interval.stop() == target
     assert proc.stopped_with == signal.SIGINT  # SIGINT finalizes the mp4
     assert proc.stopped_timeout == intervals._VIDEO_FINALIZE_TIMEOUT  # same generous flush window
-    # The device-side screenrecord's exit is awaited (so the moov atom is written), then the mp4 is
-    # pulled, then the device copy is removed — in that order. The fake `run` reports no pid, so the
-    # wait clears on its first poll.
+    # The pre-spawn baseline is probed (so the stop waits for this recording alone), the device-side
+    # screenrecord's exit is awaited (so the moov atom is written), then the mp4 is pulled, then the
+    # device copy is removed — in that order. The fake `run` reports no pid, so the wait clears on
+    # its first poll.
     assert run_calls == [
+        adb.screenrecord_pids_cmd("SER"),
         adb.screenrecord_pids_cmd("SER"),
         adb.pull_cmd("SER", adb.VIDEO_DEVICE_PATH, str(target)),
         adb.rm_cmd("SER", adb.VIDEO_DEVICE_PATH),
@@ -495,7 +497,8 @@ def test_start_screenrecord_waits_for_device_side_exit_before_pull(
     monkeypatch.setattr(time, "sleep", lambda _s: None)  # no real waiting in the test
     proc = FakeProc()
     order: list[str] = []
-    pid_replies = iter(["1234", "1234", ""])  # still recording, still recording, then gone
+    # Nothing before the spawn; then still recording, still recording, and gone.
+    pid_replies = iter(["", "1234", "1234", ""])
 
     def spawn(argv: list[str], stdout_path: Path | None) -> FakeProc:
         return proc
@@ -504,13 +507,22 @@ def test_start_screenrecord_waits_for_device_side_exit_before_pull(
         if "pgrep" in " ".join(argv):
             order.append("poll")
             return next(pid_replies)
-        order.append("pull" if "pull" in argv else "rm" if "rm" in argv else "other")
+        order.append(
+            "pull"
+            if "pull" in argv
+            else "rm"
+            if "rm" in argv
+            else "kill"
+            if "kill" in argv[-1]
+            else "other"
+        )
         return ""
 
     interval = intervals.start_screenrecord("SER", tmp_path / "scenario.mp4", spawn=spawn, run=run)
     assert interval.stop() == tmp_path / "scenario.mp4"
-    # Polled until the pid list came back empty, and only then pulled (never before).
-    assert order == ["poll", "poll", "poll", "pull", "rm"]
+    # The baseline, then polled until the pid list came back empty — interrupting this recording's
+    # own pid once on the way — and only then pulled (never before).
+    assert order == ["poll", "poll", "kill", "poll", "poll", "pull", "rm"]
 
 
 def test_await_screenrecord_stopped_warns_on_probe_error(caplog: pytest.LogCaptureFixture) -> None:
@@ -520,7 +532,7 @@ def test_await_screenrecord_stopped_warns_on_probe_error(caplog: pytest.LogCaptu
         raise OSError("adb gone")
 
     with caplog.at_level("WARNING"):
-        intervals._await_screenrecord_stopped("SER", run)
+        intervals._await_screenrecord_stopped("SER", run, frozenset())
     assert any("could not probe" in r.message for r in caplog.records)
 
 
@@ -535,7 +547,7 @@ def test_await_screenrecord_stopped_warns_on_timeout(
         return "1234"  # device-side screenrecord always reports as still running
 
     with caplog.at_level("WARNING"):
-        intervals._await_screenrecord_stopped("SER", run, timeout=0.01, poll=0.001)
+        intervals._await_screenrecord_stopped("SER", run, frozenset(), timeout=0.01, poll=0.001)
     assert any("still running" in r.message for r in caplog.records)
 
 
@@ -978,7 +990,7 @@ def test_screenrecord_pids_warns_when_the_baseline_probe_fails(
 
     with caplog.at_level("WARNING"):
         pids = intervals._screenrecord_pids("SER", run)
-    assert pids == set()
+    assert pids is None
     assert any("could not probe device-side screenrecord" in r.message for r in caplog.records)
 
 
@@ -1319,3 +1331,103 @@ def test_a_recording_with_no_spawn_instant_stays_on_the_proxy(tmp_path: Path) ->
     interval = intervals.Interval(kind="video", path=path, _proc=FakeProc())
     interval.stop()
     assert interval.measured_start is None
+
+
+class _StopDevice:
+    """An `adb` runner for the stop path: a leaked `screenrecord` (999) outlives this one (1234).
+
+    `own_exits_on_kill` models a device whose `adb shell` never relays the local SIGINT: this
+    recording's pid then stays until the device-side interrupt reaches it.
+    """
+
+    def __init__(self, *, own_exits_on_kill: bool = False) -> None:
+        self.stopped = False
+        self.killed: list[str] = []
+        self.polls_after_stop = 0
+        self._own_exits_on_kill = own_exits_on_kill
+        self._spawned = False
+
+    def spawn(self, argv: list[str], stdout_path: Path | None) -> FakeProc:
+        self._spawned = True
+        device = self
+
+        class _Proc(FakeProc):
+            def stop(self, sig: int, timeout: float) -> None:
+                super().stop(sig, timeout)
+                device.stopped = True
+
+        return _Proc()
+
+    def _own_alive(self) -> bool:
+        if not self._spawned:
+            return False
+        if self._own_exits_on_kill:
+            return "1234" not in self.killed
+        # The relayed SIGINT finalizes this recording within one poll of the stop.
+        return not (self.stopped and self.polls_after_stop > 1)
+
+    def __call__(self, argv: list[str]) -> str:
+        tail = argv[-1]
+        if "pgrep" in tail:
+            if self.stopped:
+                self.polls_after_stop += 1
+            return "999 1234" if self._own_alive() else "999"
+        if tail.startswith("kill -INT"):
+            self.killed.extend(tail.split("2>")[0].split()[2:])
+        return ""
+
+
+def _bounded_sleep(monkeypatch: pytest.MonkeyPatch, limit: int = 50) -> None:
+    # A stop that waits for a process which never exits spins to its 120s deadline; fail fast instead.
+    calls = {"n": 0}
+
+    def sleep(_s: float) -> None:
+        calls["n"] += 1
+        if calls["n"] > limit:
+            raise AssertionError("stop() is still waiting for a screenrecord that is not its own")
+
+    monkeypatch.setattr(time, "sleep", sleep)
+
+
+def test_screenrecord_stop_ignores_a_leaked_recording(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    # A screenrecord already running before this one spawned (a crash-retry's leak, another tool's
+    # recording) must not hold this recording's stop until the finalize deadline: the scenario's
+    # steps are done, so the run must end as soon as *this* recording has finalized.
+    _bounded_sleep(monkeypatch)
+    device = _StopDevice()
+    target = tmp_path / "scenario.mp4"
+    interval = intervals.start_screenrecord("SER", target, spawn=device.spawn, run=device)
+    with caplog.at_level("WARNING"):
+        assert interval.stop() == target
+    assert not any("still running" in r.message for r in caplog.records)
+    assert "999" not in device.killed  # the leaked recording is never signalled
+
+
+def test_screenrecord_stop_interrupts_its_own_device_side_process(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Where `adb shell` does not relay the local SIGINT, the device-side recorder would run on to its
+    # 180s limit; the stop interrupts that one process device-side so it finalizes now.
+    _bounded_sleep(monkeypatch)
+    device = _StopDevice(own_exits_on_kill=True)
+    target = tmp_path / "scenario.mp4"
+    interval = intervals.start_screenrecord("SER", target, spawn=device.spawn, run=device)
+    assert interval.stop() == target
+    assert device.killed == ["1234"]
+
+
+def test_screenrecord_stop_without_a_baseline_waits_for_every_recorder_and_signals_none(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    # With no pre-spawn baseline this recording cannot be told apart from another, so the stop keeps
+    # the wait on every recorder (warning at its deadline) and never signals a process it cannot
+    # prove is its own.
+    monkeypatch.setattr(time, "sleep", lambda _s: None)
+    device = _StopDevice()
+    device.spawn([], None)
+    with caplog.at_level("WARNING"):
+        intervals._await_screenrecord_stopped("SER", device, None, timeout=0.01, poll=0.001)
+    assert any("still running" in r.message for r in caplog.records)
+    assert device.killed == []

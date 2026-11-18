@@ -320,9 +320,13 @@ def start_device_log(
 
 
 def _await_screenrecord_stopped(
-    serial: str, run: adb.RunFn, timeout: float = _VIDEO_FINALIZE_TIMEOUT, poll: float = 0.2
+    serial: str,
+    run: adb.RunFn,
+    baseline_pids: frozenset[str] | None,
+    timeout: float = _VIDEO_FINALIZE_TIMEOUT,
+    poll: float = 0.2,
 ) -> None:
-    """Wait until the device-side `screenrecord` has exited, before its mp4 is pulled.
+    """Wait until this recording's device-side `screenrecord` has exited, before its mp4 is pulled.
 
     On the stop signal the local `adb shell` client returns as soon as the connection closes, but the
     device-side `screenrecord` is still writing the mp4's `moov` atom. Pulling then races that write
@@ -331,12 +335,19 @@ def _await_screenrecord_stopped(
     run or never clears, proceed anyway so it can never hang the run — the pull stays best-effort —
     but log a warning: the pull may then copy a still-finalizing (truncated, moov-less) mp4, the very
     failure this wait exists to prevent, so it must not be silent.
+
+    Only this recording is waited for: a pid in `baseline_pids` was running before it spawned (a
+    crash-retry's leak, another tool's recording) and may outlive it by minutes, so waiting on it
+    held every scenario's end to the full deadline after its steps were done. This recording's own
+    pid is also interrupted device-side once, so its stop does not depend on `adb shell` relaying the
+    local SIGINT. With no baseline (its probe failed) this recording cannot be told apart from
+    another, so every recorder is waited for and none is signalled.
     """
     deadline = time.monotonic() + timeout
+    interrupted = False
     while time.monotonic() < deadline:
         try:
-            if not run(adb.screenrecord_pids_cmd(serial)).strip():
-                return
+            running = {pid for pid in run(adb.screenrecord_pids_cmd(serial)).split() if pid}
         except (subprocess.CalledProcessError, OSError) as exc:
             _logger.warning(
                 "could not probe device-side screenrecord (%s); pulling anyway — the video may be "
@@ -344,6 +355,14 @@ def _await_screenrecord_stopped(
                 exc,
             )
             return
+        own = running - baseline_pids if baseline_pids is not None else running
+        if not own:
+            return
+        if baseline_pids is not None and not interrupted:
+            interrupted = True
+            # Best-effort: the local SIGINT usually reached it already, and the wait still bounds it.
+            with contextlib.suppress(subprocess.CalledProcessError, OSError):
+                run(adb.interrupt_pids_cmd(serial, sorted(own)))
         time.sleep(poll)
     _logger.warning(
         "device-side screenrecord still running after %ss; pulling anyway — the video may be "
@@ -352,20 +371,21 @@ def _await_screenrecord_stopped(
     )
 
 
-def _screenrecord_pids(serial: str, run: adb.RunFn) -> set[str]:
-    """The device-side `screenrecord` pids right now, or an empty set on a probe failure."""
+def _screenrecord_pids(serial: str, run: adb.RunFn) -> set[str] | None:
+    """The device-side `screenrecord` pids right now, or None on a probe failure."""
     try:
         return {pid for pid in run(adb.screenrecord_pids_cmd(serial)).split() if pid}
     except (subprocess.CalledProcessError, OSError) as exc:
-        # An empty baseline reads as "nothing was running", so a failed probe silently disables the
-        # leaked-process guard the baseline exists for — disclose it rather than mistime silently.
+        # Without a baseline a leaked recording cannot be told from this one: it may confirm a start
+        # that never happened, and the stop must wait on it too — disclose rather than mistime.
         _logger.warning(
             "could not probe device-side screenrecord on %s before spawning (%s); a leaked "
-            "recording from an earlier attempt may now confirm a start that never happened",
+            "recording from an earlier attempt may now confirm a start that never happened or "
+            "delay this recording's stop",
             serial,
             exc,
         )
-        return set()
+        return None
 
 
 def _clear_screenrecord_target(serial: str, run: adb.RunFn, device_path: str) -> bool:
@@ -602,8 +622,10 @@ def start_screenrecord(
     # stale process on the same device must not confirm a start that never happened. Clearing the
     # target makes the first-bytes wait below trustworthy; where the clear failed, the size baseline
     # guards the growth check the same way — a leftover mp4 from a finalized earlier attempt
-    # already has bytes.
-    baseline_pids = frozenset(_screenrecord_pids(serial, run)) if confirm_started else frozenset()
+    # already has bytes. Taken whether or not the start is confirmed: the stop reads the same baseline
+    # to wait for this recording alone rather than for a leaked one too.
+    baseline = _screenrecord_pids(serial, run)
+    baseline_pids = frozenset(baseline) if baseline is not None else None
     cleared = confirm_started and _clear_screenrecord_target(serial, run, device_path)
     baseline_size = (
         _screenrecord_baseline_size(serial, run, device_path)
@@ -635,7 +657,9 @@ def start_screenrecord(
     true_start = first_bytes_at
     if confirm_started and true_start is None:
         remaining = max(_SCREENRECORD_PID_POLL, deadline - time.monotonic())
-        true_start = _await_screenrecord_started(serial, run, baseline_pids, remaining)
+        true_start = _await_screenrecord_started(
+            serial, run, baseline_pids or frozenset(), remaining
+        )
         # Only worth asking once the process is known to exist: with no process there is nothing
         # to produce bytes, that path already warned, and a second full timeout would buy no new
         # fact. This one separates a live-but-producing-nothing recording — a wedged renderer —
@@ -646,7 +670,7 @@ def start_screenrecord(
     def transform(target: Path) -> Path:
         # The local `adb shell` has returned, but the device-side screenrecord is still finalizing;
         # wait for it to exit so the pull gets a complete mp4 rather than a moov-less truncation.
-        _await_screenrecord_stopped(serial, run)
+        _await_screenrecord_stopped(serial, run, baseline_pids)
         # Let a failed pull surface (like the iOS video provider): swallowing it would record a video
         # artifact path with no file behind it, turning a real problem into a silent one.
         run(adb.pull_cmd(serial, device_path, str(target)))
