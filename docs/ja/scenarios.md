@@ -257,7 +257,7 @@ iOS の XCUITest バックエンドでは、ガードは**決定論的なネイ�
 
 ブロックされたステップまたは `wait` は、ガードを設定していないときとまったく同じように自身のタイムアウトまで進みます。そのタイムアウトが**ガードの見たものを名指しします**。形は `wait timeout: for {'id': 'submit'} (10.0s) — an unhandled system alert is blocking the screen (buttons: Allow, Don't Allow)` です。何も列挙できなかった場合は、曖昧な `… — the screen appears blocked, possibly by a system alert or another overlay outside the app's view` になります。
 
-BE-0402 より前は、この場合にスクリーンショットを読む AI 視覚ガードへフォールバックしていました。`run` はもうそれをしないため、**どのフラグを付けてもモデルに到達しません**。（`record` と `crawl` はオーサリング向けにそのガードを保持します。[詳細](recording.md#システムアラートの自動対処)）
+BE-0402 より前は、この3つの場合にスクリーンショットを読む AI 視覚ガードへフォールバックしていました。`run` はもうそれをしないため、**どのフラグを付けてもモデルに到達しません**。（`record` と `crawl` はオーサリング向けにそのガードを保持します。[詳細](recording.md#システムアラートの自動対処)）
 
 `wait` ステップ（`for`/`gone`/`settled`/`screenChanged`）では、ガードは **wait の途中でも**働きます。XCUITest では wait 自身のツリー読み取りのたびに、ツリーを返す前にエントリが名指しするプロンプトへ答えます。SpringBoard の確認は `pollInterval`（既定は 1 秒）につき 1 回までです（[BE-0461](../../roadmaps/BE-0461-request-boundary-alert-resolution/BE-0461-request-boundary-alert-resolution-ja.md)）。そのため wait 自体のタイムアウトを待たず、ステップが失敗する前に回復できます（BE-0269）。
 
