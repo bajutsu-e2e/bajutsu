@@ -10,18 +10,19 @@
 | 状態 | **承認済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | トピック | セキュリティ強化 |
-| 関連 | [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source-ja.md)、[BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md)、[BE-0090](../BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution-ja.md)、[BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues-ja.md)、[BE-0449](../BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs-ja.md)、[BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md) |
+| 関連 | [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source-ja.md)、[BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md)、[BE-0090](../BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution-ja.md)、[BE-0121](../BE-0121-serve-csrf-host-allowlist/BE-0121-serve-csrf-host-allowlist-ja.md)、[BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues-ja.md)、[BE-0449](../BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs-ja.md)、[BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
 
 本提案では、設定が宣言したコマンドを実行するかどうかの判断を、サーバーから worker に移します。
 設定は、ランを実行するマシンの上で Bajutsu に走らせるコマンドを宣言できます。現在は
-`services.server.cmd` と `subject.build` がそれにあたります。今は `serve` の `--upload-exec`
-オプションが、アップロードされたバンドルに限って、そうしたコマンドを実行するかを決めています。
-本提案は、このオプションを worker の capability ファイル `worker.yaml` の `commands` ブロックで
-置き換えます。このブロックは、設定の出どころ（アップロードされたバンドル、Git リポジトリ、
-ローカルのファイルシステム上の設定）ごとに1つずつモードを決めます。
+`services.server.cmd`、`subject.build`、`driver.runner.build` がそれにあたります。今は `serve` の
+2つのオプションが、そうしたコマンドを実行するかを決めています。`--upload-exec` はアップロードされた
+バンドルのサーバーのコマンドを統制し、`--allow-remote-build` は Web UI から結び付けた Git の設定に
+ビルドを許します。本提案は、この2つのオプションを worker の capability ファイル `worker.yaml` の
+`commands` ブロックで置き換えます。このブロックは、設定の信頼の度合い（アップロードされたバンドル、
+Web UI から結び付けた Git の設定、運用者が選んだ設定）ごとに1つずつモードを決めます。
 
 worker は受け付ける出どころを申告し、`serve` はコマンドを宣言したジョブを、そのジョブの出どころを
 受け付ける worker に振り分けます。ランは、実行したすべてのコマンドを、実行を許した判断とともに
@@ -43,10 +44,13 @@ worker は受け付ける出どころを申告し、`serve` はコマンドを�
 - **worker の運用者は断れません。** worker は実行できるジョブを取り、そのコマンドをサーバーの方針の
   下で実行します。マシンを運用する人には、断るための設定がありません。
 
-方針の外に残っている出どころもあります。BE-0090 は、アップロード以外から来た設定をすべて信頼済みと
-して扱います。Git リポジトリから読み込んだ設定
-（[BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）も、この扱いに入ります。
-そのため、多くのリポジトリのジョブを実行する worker は、どの設定が宣言したコマンドも実行します。
+2つのオプションは、1つの判断を信頼の度合いではなくコマンドの種類で分けています。Web UI の利用者が
+起動後に結び付けた Git の設定
+（[BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）は、運用者が自分で
+指定した設定より信頼の度合いが低い扱いです。クロスサイトのリクエストで結び付けられた可能性が
+あるからです（[BE-0121](../BE-0121-serve-csrf-host-allowlist/BE-0121-serve-csrf-host-allowlist-ja.md)）。`serve` は、運用者が `--allow-remote-build` を渡さない限り、
+その設定のビルドを止めます。ところが、同じ設定のサーバーのコマンドはホスト上でそのまま実行します。
+そうした設定が何を実行できるかを知るには、運用者は2つのオプションと2つの文書を読む必要があります。
 
 さらに、記録が残るのは、アップロードされたバンドルのサーバーのコマンドだけです。BE-0090 はその
 判断を manifest の来歴 `uploadExec` に記録しますが、実行した内容のハッシュは残しません。Git や
@@ -71,8 +75,8 @@ environment: local
 drivers: [playwright]
 commands:
   uploaded: sandbox
-  git: allow
-  local: allow
+  remote: sandbox
+  operator: allow
 ```
 
 各キーは設定の出どころを、各値はモードを表します。
@@ -81,10 +85,12 @@ commands:
 |---|---|
 | `allow` | worker のホスト上で実行します。 |
 | `sandbox` | worker のホスト上の使い捨ての Docker コンテナで実行します。現在の BE-0090 の `sandbox` モードと同じです。 |
-| `deny` | その出どころのコマンドは実行しません。worker は、下の「振り分け」で必要なトークンを加えるコマンドを、その出どころの設定が宣言しているジョブを取りません。`subject.build` はランの中で実行しません。 |
+| `deny` | その出どころのコマンドは実行しません。worker は、下の「振り分け」で必要なトークンを加えるコマンドを、その出どころの設定が宣言しているジョブを取りません。2つのビルドはランの中で実行しません。 |
 
-ブロックやキーを省略すると、現在と同じ扱いになります。`uploaded: sandbox`、`git: allow`、
-`local: allow` です。キーを明示的に `sandbox` にした worker は、起動時に Docker の有無を確かめ、Docker がなければ
+ブロックやキーを省略すると、デフォルト値の `uploaded: sandbox`、`remote: sandbox`、
+`operator: allow` になります。現在の扱いとの違いは、厳しくなる1点だけです。`remote` の設定の
+サーバーのコマンドは、ホスト上ではなくコンテナで動くようになります。現在の規則がその設定のビルドを
+すでに止めているのと、扱いをそろえるためです。キーを明示的に `sandbox` にした worker は、起動時に Docker の有無を確かめ、Docker がなければ
 そのキーを示すメッセージを出して終了します。デフォルト値によって `sandbox` になった出どころに
 ついては、Docker があるときに限って `commands:<source>` を申告します。どちらの場合も、worker が
 後で失敗するジョブを取ることはありません。
@@ -96,9 +102,10 @@ commands:
 | コマンド | `allow` | `sandbox` | `deny` |
 |---|---|---|---|
 | `services.server.cmd` | ホスト上で実行します | 現在と同じくコンテナで実行します | 実行しません |
-| `subject.build` | バイナリが無いとき、ホスト上で実行します | 実行しません | 実行しません |
+| `subject.build` | バイナリがないとき、ホスト上で実行します | 実行しません | 実行しません |
+| `driver.runner.build` | ランナーがないとき、ホスト上で実行します | 実行しません | 実行しません |
 
-`sandbox` で `subject.build` を実行しないのは、iOS のビルドに macOS のツールチェーンが必要で、
+`sandbox` でどちらのビルドも実行しないのは、iOS のビルドに macOS のツールチェーンが必要で、
 Linux のコンテナには無いからです。この扱いは、
 [BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md) が
 アップロードに適用している規則とも一致します。アップロードされたバンドルは、ビルド済みのバイナリを
@@ -115,19 +122,19 @@ Linux のコンテナには無いからです。この扱いは、
 | 出どころ | 設定の出元 |
 |---|---|
 | `uploaded` | ブラウザの利用者がアップロードしたバンドル（BE-0073） |
-| `git` | Git リポジトリと ref（BE-0063） |
-| `local` | ランを始めたマシンのファイルシステム上のファイル |
+| `remote` | `serve` の起動後に Web UI の利用者が結び付けた、Git リポジトリと ref（BE-0063、BE-0121） |
+| `operator` | 運用者自身が選んだ設定。`serve` の起動時の設定（ローカルでも Git でも）や、端末や CI のランが指定した設定です。 |
 
 ラベルは、現在の `upload_exec` フィールドに代わってジョブの intent に載ります。設定の側から自分の
-ラベルを指定する手段はありません。端末や CI から始めた `bajutsu run` は、Git の出どころから
-読み込んだ設定には `git` を、それ以外には `local` を付けます。worker は、起動するランに、`--upload-exec`
+ラベルを指定する手段はありません。端末や CI から始めた `bajutsu run` は、設定に `operator`
+を付けます。ランを始めた人が設定を選んだからです。worker は、起動するランに、`--upload-exec`
 に代わる `run` のオプションでジョブのラベルを渡します。ラベルを受け取ったランは、自分で決めずに
 そのラベルを使います。
 
 ### 振り分け
 
 worker は、受け付ける出どころごとに capability のトークンを1つ申告します。モードが `deny` でない
-出どころについて、`commands:uploaded`、`commands:git`、`commands:local` を申告します。`serve` は、
+出どころについて、`commands:uploaded`、`commands:remote`、`commands:operator` を申告します。`serve` は、
 統制の対象になるコマンドを1つ以上宣言した設定のジョブについて、必要なトークンの集合に
 `commands:<source>` を加えます。
 [BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues-ja.md) の振り分けは、
@@ -137,7 +144,13 @@ worker は、受け付ける出どころごとに capability のトークンを1
 出どころを申告することはできません。接続中のどの worker とも合わないジョブは
 待ち続け、利用できる worker がないという既存の通知が付きます。
 
-`subject.build` は、必要なトークンを加えません。worker がビルド済みのバイナリをすでに持っているかを、
+worker は `serve` より先に更新します。本提案より前の worker は `commands:` のトークンを申告しないので、
+統制の対象になるコマンドを宣言したジョブを取りません。そうしたジョブは、更新済みの worker が
+接続するまで待ちます。古い worker に振り分けるのは危険です。新しい `serve` は `--upload-exec` を
+渡さないので、古い worker はアップロードされたコマンドをホスト上でそのまま実行してしまいます。
+
+`subject.build` と `driver.runner.build` は、必要なトークンを加えません。worker がビルド済みの
+バイナリやランナーをすでに持っているかを、
 `serve` は知り得ないからです。ビルドするかどうかは、上の表に従って worker がランの中で決めます。
 
 ### ランの中での確認
@@ -165,10 +178,12 @@ worker は、受け付ける出どころごとに capability のトークンを1
 レポートは、このリストをランのほかの来歴と並べて示します。コマンドラインが同じでも、2つのランの
 あいだでスクリプトが書き換えられていれば、ハッシュの違いとして表れます。このリストは、来歴の `uploadExec` を置き換えます。
 
-### `--upload-exec` の削除
+### `--upload-exec` と `--allow-remote-build` の削除
 
-`serve --upload-exec` と `$BAJUTSU_UPLOAD_EXEC` は削除します。どちらかを受け取った `serve` は
-起動を拒み、メッセージは `worker.yaml` の `commands` ブロックを示します。
+`serve --upload-exec`、`$BAJUTSU_UPLOAD_EXEC`、`serve --allow-remote-build`、
+`$BAJUTSU_ALLOW_REMOTE_BUILD` は削除します。どれかを受け取った `serve` は起動を拒み、メッセージは
+`worker.yaml` の `commands` ブロックを示します。`--allow-remote-build` を渡していた運用者は、
+代わりに worker で `remote: allow` を指定します。
 `serve --emit-launchagent` が出力する launchd の plist も、このオプションを渡さなくなります。
 `serve` がランに渡していた `run`、`record`、`crawl` の `--upload-exec` オプションも、あわせて
 削除します。
@@ -185,8 +200,11 @@ worker は、受け付ける出どころごとに capability のトークンを1
   出どころのラベルを運びます。
 - `bajutsu/common/runner/launch_server.py` と `sandbox.py` は、`--upload-exec` オプションではなく、
   ランの方針の確認からモードを受け取ります。
-- `docs/self-hosting.md`、`docs/cli.md`、`docs/drivers.md`、`DESIGN.md`、`docs/architecture.md` を、
-  振る舞いの変更にあわせて日本語版とともに更新します。
+- `bajutsu/serve/operations/dispatch.py` は、`_build_trusted` による判断をやめます。その判断は
+  worker の方針が受け持ちます。
+- `docs/self-hosting.md`（「Remote-config command execution (BE-0121)」の節を含みます）、
+  `docs/cli.md`、`docs/drivers.md`、`DESIGN.md`、`docs/architecture.md` を、振る舞いの変更に
+  あわせて日本語版とともに更新します。
 
 ### プライムディレクティブとの関係
 
@@ -217,11 +235,11 @@ worker は、受け付ける出どころごとに capability のトークンを1
 > ともに記録します。
 
 - [ ] `worker.yaml`：`commands` ブロック、デフォルト値、検証、起動時の Docker の確認。
-- [ ] 出どころのラベル：`upload_exec` に代えて `uploaded` / `git` / `local` をジョブの intent で運び、ラベルを運ぶ `run` のオプションで渡し、CLI のランにもラベルを付ける。
+- [ ] 出どころのラベル：`upload_exec` に代えて `uploaded` / `remote` / `operator` をジョブの intent で運び、ラベルを運ぶ `run` のオプションで渡し、CLI のランにもラベルを付ける。
 - [ ] 振り分け：`commands:<source>` トークンを申告し、コマンドを宣言したジョブに必要なトークンを加える。
 - [ ] ランの中での確認：出どころが `deny` に当たる統制対象のコマンドを、デバイスの作業より前に拒否する。
 - [ ] コマンドの記録：`manifest.json` の `commands` のリストと、レポートでの表示。
-- [ ] `serve --upload-exec`、`$BAJUTSU_UPLOAD_EXEC`、`run`・`record`・`crawl` の `--upload-exec` オプションを削除する。
+- [ ] `serve --upload-exec`、`$BAJUTSU_UPLOAD_EXEC`、`serve --allow-remote-build`、`$BAJUTSU_ALLOW_REMOTE_BUILD`、`run`・`record`・`crawl` の `--upload-exec` オプションを削除する。
 - [ ] ドキュメント、`DESIGN.md`、`docs/architecture.md` を両言語で更新する。
 
 ## 参考
@@ -232,6 +250,8 @@ worker は、受け付ける出どころごとに capability のトークンを1
   されたバンドル。その `build` は実行しません。
 - [BE-0090](../BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution-ja.md)：
   本提案が置き換える `serve --upload-exec` の方針。
+- [BE-0121](../BE-0121-serve-csrf-host-allowlist/BE-0121-serve-csrf-host-allowlist-ja.md)：Web UI から結び付けた Git の設定の信頼の扱いと、本提案が置き換える
+  `--allow-remote-build`。
 - [BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues-ja.md)：capability の
   トークンによるジョブの振り分け。
 - [BE-0449](../BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs-ja.md)：`serve` はすべての

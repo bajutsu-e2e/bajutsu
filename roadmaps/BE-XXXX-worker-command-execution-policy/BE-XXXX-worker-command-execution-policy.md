@@ -10,17 +10,19 @@
 | Status | **Approved** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Topic | Security hardening |
-| Related | [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md), [BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md), [BE-0090](../BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md), [BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues.md), [BE-0449](../BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md) |
+| Related | [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md), [BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md), [BE-0090](../BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md), [BE-0121](../BE-0121-serve-csrf-host-allowlist/BE-0121-serve-csrf-host-allowlist.md), [BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues.md), [BE-0449](../BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
 
 This item moves the decision about whether a config's commands run from the server to the worker.
 A config can declare commands that Bajutsu runs on the machine that executes a run: today
-`services.server.cmd` and `subject.build`. Today the `serve` option `--upload-exec` decides, for
-uploaded bundles alone, whether such a command runs. This item replaces that option with a
-`commands` block in the worker capability file, `worker.yaml`. The block sets one mode per config
-source: an uploaded bundle, a Git repository, or a config on the local file system.
+`services.server.cmd`, `subject.build`, and `driver.runner.build`. Two `serve` options decide today
+whether such a command runs. `--upload-exec` governs an uploaded bundle's server command, and
+`--allow-remote-build` lets a Git config bound through the Web UI build. This item replaces both
+options with a `commands` block in the worker capability file, `worker.yaml`. The block sets one mode
+per trust level of a config: an uploaded bundle, a Git config bound through the Web UI, or a config
+the operator chose.
 
 The worker advertises the sources it accepts, and `serve` routes a job that declares commands to a
 worker that accepts the job's source. A run also records every command it executed, with the
@@ -42,11 +44,12 @@ and a `bajutsu worker` executes it. The policy and the risk now sit on different
   their commands under the server's policy. The person who operates the machine has no setting to
   say no.
 
-The policy also leaves one source ungoverned. BE-0090 treats every config that does not come from an
-upload as trusted, and a config loaded from a Git repository
-([BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md)) falls under that rule. A
-worker that runs jobs from many repositories therefore runs any command any of those configs
-declares.
+The two options also split one decision by command rather than by trust. A Git config
+([BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md)) that a Web UI user binds
+after startup is less trusted than one the operator typed, because a cross-site request could have
+bound it ([BE-0121](../BE-0121-serve-csrf-host-allowlist/BE-0121-serve-csrf-host-allowlist.md)). `serve` withholds that config's builds unless the operator
+passes `--allow-remote-build`, yet it runs the same config's server command on the bare host. An
+operator who wants to know what such a config may run has to read two options and two documents.
 
 Finally, only an uploaded bundle's server command leaves a record today: BE-0090 stamps its decision
 into the manifest's `uploadExec` provenance, without a hash of what ran. A command from a Git or
@@ -71,8 +74,8 @@ environment: local
 drivers: [playwright]
 commands:
   uploaded: sandbox
-  git: allow
-  local: allow
+  remote: sandbox
+  operator: allow
 ```
 
 Each key names a config source, and each value is a mode:
@@ -81,10 +84,12 @@ Each key names a config source, and each value is a mode:
 |---|---|
 | `allow` | The command runs on the worker's host. |
 | `sandbox` | The command runs in a throwaway Docker container on the worker's host, as BE-0090's `sandbox` mode does today. |
-| `deny` | No command from that source runs. The worker takes no job whose config from that source declares a command that *Routing* below adds a requirement for, and it skips `subject.build` at run time. |
+| `deny` | No command from that source runs. The worker takes no job whose config from that source declares a command that *Routing* below adds a requirement for, and it skips both builds at run time. |
 
-An omitted block or key keeps today's behavior: `uploaded: sandbox`, `git: allow`, and
-`local: allow`. A worker that sets a key to `sandbox` explicitly checks for Docker at startup and
+An omitted block or key takes the defaults `uploaded: sandbox`, `remote: sandbox`, and
+`operator: allow`. These keep today's behavior with one tightening: a `remote` config's server
+command now runs in a container instead of on the bare host, matching how today's rules already
+treat that config's builds. A worker that sets a key to `sandbox` explicitly checks for Docker at startup and
 exits with a message naming the key when Docker is missing. A worker whose `sandbox` mode comes from
 the default advertises `commands:<source>` for that source only when Docker is present. Either way,
 a worker never accepts a job it would then fail.
@@ -97,9 +102,10 @@ The block governs every command a config declares for Bajutsu to run:
 |---|---|---|---|
 | `services.server.cmd` | runs on the host | runs in a container, as today | never runs |
 | `subject.build` | runs on the host when the binary is missing | never runs | never runs |
+| `driver.runner.build` | runs on the host when the runner is missing | never runs | never runs |
 
-`subject.build` does not run under `sandbox`: an iOS build needs the macOS toolchain, which no Linux
-container provides. That matches the rule
+Neither build runs under `sandbox`: an iOS build needs the macOS toolchain, which no Linux container
+provides. That matches the rule
 [BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md) already applies to
 uploads, whose bundle ships a prebuilt binary. A run whose binary is missing then fails and names
 the mode that kept the build from running.
@@ -115,19 +121,19 @@ its hook entries take the place of `services.server.cmd` in the table above.
 | Source | The config came from |
 |---|---|
 | `uploaded` | a bundle a browser user uploaded (BE-0073) |
-| `git` | a Git repository and ref (BE-0063) |
-| `local` | a file on the file system of the machine that started the run |
+| `remote` | a Git repository and ref that a Web UI user bound after `serve` started (BE-0063, BE-0121) |
+| `operator` | the operator's own choice: the config `serve` started with, local or Git, or the config a terminal or CI run names |
 
 The label travels in the job's intent, in place of today's `upload_exec` field. The config itself
 has no way to set its own label. A `bajutsu run` started from a terminal or CI labels its config
-`git` when it loads the config through the Git source, and `local` otherwise. A worker passes the
+`operator`, since the person who started the run chose the config. A worker passes the
 job's label to the run it spawns through a `run` option that takes the place of `--upload-exec`,
 and the run then uses that label instead of deriving one.
 
 ### Routing
 
 The worker advertises one capability token per source it accepts: `commands:uploaded`,
-`commands:git`, or `commands:local`, for each source whose mode is not `deny`. `serve` adds
+`commands:remote`, or `commands:operator`, for each source whose mode is not `deny`. `serve` adds
 `commands:<source>` to the required set of a job whose config declares at least one governed
 command. The routing test of [BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues.md)
 is an all-of subset check, so a job that declares commands reaches only a worker that accepts its
@@ -135,8 +141,13 @@ source. `commands:` joins the reserved routing prefixes, so a worker's hand-writ
 cannot claim a source its `commands` block denies. A job that no connected worker matches keeps waiting, with the existing notice that no
 worker is available.
 
-`subject.build` adds no requirement, because `serve` cannot know whether a worker already holds the
-built binary. The worker decides the build at run time, under the table above.
+Workers are upgraded before `serve`. A worker that predates this item advertises no `commands:`
+token, so it never leases a job that declares a governed command. Such a job waits until an upgraded
+worker connects. Routing the job to an old worker instead would be unsafe: the new `serve` no longer
+sends `--upload-exec`, so the old worker would run an uploaded command on its bare host.
+
+`subject.build` and `driver.runner.build` add no requirement, because `serve` cannot know whether
+a worker already holds the built binary or runner. The worker decides the build at run time, under the table above.
 
 ### The check inside the run
 
@@ -164,10 +175,12 @@ The report shows the list beside the run's other provenance. A script that chang
 then shows a different hash, even when its command line stayed the same. The list replaces the
 `uploadExec` provenance entry.
 
-### Removing `--upload-exec`
+### Removing `--upload-exec` and `--allow-remote-build`
 
-`serve --upload-exec` and `$BAJUTSU_UPLOAD_EXEC` go away. `serve` refuses to start when it gets
-either, and the message names the `commands` block of `worker.yaml`. The launchd plist that
+`serve --upload-exec`, `$BAJUTSU_UPLOAD_EXEC`, `serve --allow-remote-build`, and
+`$BAJUTSU_ALLOW_REMOTE_BUILD` go away. `serve` refuses to start when it gets any of them, and the
+message names the `commands` block of `worker.yaml`. An operator who passed `--allow-remote-build`
+sets `remote: allow` on the workers instead. The launchd plist that
 `serve --emit-launchagent` prints stops passing the option. The `--upload-exec` option of `run`, `record`, and
 `crawl`, which `serve` passed to the run today, goes away with it.
 
@@ -183,8 +196,11 @@ used `reuse` picks `sandbox` or `deny`.
   place of `upload_exec`.
 - `bajutsu/common/runner/launch_server.py` and `sandbox.py` take the mode from the run's policy
   check in place of the `--upload-exec` option.
-- `docs/self-hosting.md`, `docs/cli.md`, `docs/drivers.md`, `DESIGN.md`, and
-  `docs/architecture.md` change with the behavior, each with its Japanese mirror.
+- `bajutsu/serve/operations/dispatch.py` drops its `_build_trusted` decision, which the worker's
+  policy now makes.
+- `docs/self-hosting.md` (including its "Remote-config command execution (BE-0121)" section),
+  `docs/cli.md`, `docs/drivers.md`, `DESIGN.md`, and `docs/architecture.md` change with the
+  behavior, each with its Japanese mirror.
 
 ### Prime directives
 
@@ -215,11 +231,11 @@ used `reuse` picks `sandbox` or `deny`.
 > (oldest first), linking the PRs.
 
 - [ ] `worker.yaml`: the `commands` block, its defaults, validation, and the Docker check at startup.
-- [ ] Source label: carry `uploaded` / `git` / `local` in the job intent in place of `upload_exec`, pass it through the `run` option that carries the label, and label CLI runs.
+- [ ] Source label: carry `uploaded` / `remote` / `operator` in the job intent in place of `upload_exec`, pass it through the `run` option that carries the label, and label CLI runs.
 - [ ] Routing: advertise `commands:<source>` tokens and add the requirement to jobs that declare commands.
 - [ ] Run-time check: refuse a governed command whose source maps to `deny`, before device work.
 - [ ] Command record: the `commands` list in `manifest.json` and its place in the report.
-- [ ] Remove `serve --upload-exec`, `$BAJUTSU_UPLOAD_EXEC`, and the `--upload-exec` option of `run`, `record`, and `crawl`.
+- [ ] Remove `serve --upload-exec`, `$BAJUTSU_UPLOAD_EXEC`, `serve --allow-remote-build`, `$BAJUTSU_ALLOW_REMOTE_BUILD`, and the `--upload-exec` option of `run`, `record`, and `crawl`.
 - [ ] Update the docs, `DESIGN.md`, and `docs/architecture.md` in both languages.
 
 ## References
@@ -230,6 +246,8 @@ used `reuse` picks `sandbox` or `deny`.
   whose `build` never runs.
 - [BE-0090](../BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md):
   the `serve --upload-exec` policy this item replaces.
+- [BE-0121](../BE-0121-serve-csrf-host-allowlist/BE-0121-serve-csrf-host-allowlist.md): the trust split for Git configs bound through the Web UI,
+  and `--allow-remote-build`, which this item replaces.
 - [BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues.md): routing jobs
   by capability tokens.
 - [BE-0449](../BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs.md): `serve` queues every
