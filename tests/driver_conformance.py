@@ -693,6 +693,10 @@ class DriverConformanceContract:
             # so "this backend surfaces no value" stays distinct from "the paste inserted nothing",
             # which the emptied field would hide.
             surfaces_value = bool(field_value(driver))
+            # Re-focus first, as the orchestrator does before any edit. The clipboard wait above
+            # can run for seconds, and on a loaded CI Simulator the field lost keyboard focus in
+            # that time: the backspace below then raised (`deleteText failed (stale)`).
+            driver.tap({"id": FIELD_ID})
             driver.select_all()
             driver.delete_text(1)
             driver.paste({"id": FIELD_ID})  # must not raise
