@@ -27,7 +27,6 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  SIMSLIM_VERSION: v0.15.0
   BAJUTSU_XCUITEST_RUNNER_LOG: ${{ github.workspace }}/runs/runner-logs
   BAJUTSU_XCUITEST_RESULT_BUNDLES: ${{ github.workspace }}/runs/runner-logs
   BAJUTSU_STALL_DIAGNOSTICS: ${{ github.workspace }}/runs/diagnostics/stalls
@@ -112,19 +111,17 @@ jobs:
         with:
           boot: "false"
 
-      # The macos-26 image ships no Go, so take it from Homebrew (a bottle, seconds); GOTOOLCHAIN=auto
-      # still fetches a newer toolchain if simslim's `go` directive outruns it. `go install` at a tag
-      # pins the exact simslim release, which the tap formula would not.
+      # The tap's formula builds from source (`depends_on "go" => :build`) and installs the tap's
+      # current release, so the version is not pinned here — log it so each run's numbers name the
+      # simslim they measured.
       - name: Install simslim
         env:
-          GOTOOLCHAIN: auto
           HOMEBREW_NO_AUTO_UPDATE: "1"
           HOMEBREW_NO_INSTALL_CLEANUP: "1"
         run: |
           set -euo pipefail
-          command -v go >/dev/null || brew install go
-          go install "github.com/mobai-app/simslim/cmd/simslim@${SIMSLIM_VERSION}"
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          brew install mobai-app/tap/simslim
+          simslim --version
 
       - name: Download the prebuilt app + runner
         uses: ./.github/actions/download-ios-build
@@ -253,7 +250,7 @@ jobs:
         run: |
           set -euo pipefail
           {
-            echo "## simslim experiment (${SIMSLIM_VERSION})"
+            echo "## simslim experiment"
             echo
             echo "| variant | # | boot (s) | install (s) | run (s) | outcome | sim procs | sim footprint (bytes) | host free |"
             echo "|---|---|---|---|---|---|---|---|---|"
