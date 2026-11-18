@@ -16,32 +16,36 @@
 ## Introduction
 
 A `generate` step computes a random or current-datetime value at run time and stores it as a
-runtime variable, so a scenario can produce a fresh input rather than only referencing a literal,
-a data-driven row, or a value captured from the UI.
+runtime variable. A scenario can then produce a fresh input. Before this step, a scenario could
+reference nothing but a literal, a data-driven row, or a value captured from the UI.
 
 ## Motivation
 
-Some flows need an input the author cannot write as a literal. A signup form refuses a username an
-earlier run already took. A booking form takes today's date. A record needs a value guaranteed not
-to collide with another scenario's.
+Some flows need an input the author cannot write as a literal. A signup form refuses a username
+that an earlier run already took. A booking form takes today's date. A record needs a value
+guaranteed not to collide with another scenario's.
 
-Existing scenario mechanisms do not produce that kind of value. Data-driven rows
+Existing scenario mechanisms do not produce such a value. Data-driven rows
 ([BE-0031](../BE-0031-data-driven-scenarios/BE-0031-data-driven-scenarios.md)) supply a fixed table
-chosen in advance, and `extract` ([BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow.md))
-captures a value the UI already displays — neither invents a value the scenario did not already
-have. Without a way to generate one, an author works around the gap with a literal that later
-collides, a date fixed at authoring time that ages, or a value seeded outside the scenario before
-the run starts.
+chosen in advance. `extract` ([BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow.md))
+captures a value the UI already displays. Neither invents a value the scenario did not already
+have.
 
-A step that generates the value in place — and hands it to later steps through the same `vars.*`
-binding `extract`, `http`, and `totp` already use — closes that gap without adding a new
-substitution mechanism.
+Without a way to generate one, an author works around the gap in one of three ways:
+
+- a literal that later collides
+- a date fixed at authoring time that goes stale
+- a value seeded outside the scenario before the run starts
+
+A step that generates the value in place closes the gap. It hands the value to later steps through
+the same `vars.*` binding that `extract`, `http`, and `totp` already use. No new substitution
+mechanism is needed.
 
 ## Detailed design
 
-`generate` computes a value from one of two generator kinds and stores it under `vars.<var>`,
-following the same run-time `vars.*` binding as `http`'s `saveBody`, in the `into: { var }` shape
-`totp` already uses:
+`generate` computes a value from one of two generator kinds and stores it under `vars.<var>`. The
+binding is the run-time `vars.*` binding that `http`'s `saveBody` uses, in the `into: { var }`
+shape that `totp` already uses:
 
 ```yaml
 - generate: { random: { string: { length: 8, charset: alnum } }, into: { var: username } }
@@ -59,57 +63,63 @@ following the same run-time `vars.*` binding as `http`'s `saveBody`, in the `int
 - **`string`** — `length` and an optional `charset` (`alnum` default, `alpha`, `numeric`, `hex`).
 - **`int`** — an integer in `[min, max]`.
 - **`float`** — a number in `[min, max]`, with an optional `precision` (decimal places).
-- **`uuid`** — a version-4 UUID.
+- **`uuid`** — a version-4 universally unique identifier (UUID).
 
-**`datetime`** produces the current time as text. An optional `format` field takes a `strftime`
-pattern, defaulting to ISO 8601. An optional signed offset — `offsetSeconds`, `offsetMinutes`,
-`offsetHours`, `offsetDays` — shifts that time for a relative value such as tomorrow or an hour
-from now. An optional `timezone` field (an IANA name, for example `America/Los_Angeles`) computes
-the value in that zone instead of the default, UTC. A scenario whose input must match a date the
-app renders in the device's local zone should pass that zone explicitly, rather than rely on
-the UTC default. Pinning the *device's* own zone to match is a
+**`datetime`** produces the current time as text. Its optional fields are:
+
+- **`format`**: a `strftime` pattern. The default is ISO 8601, the date and time format of the
+  International Organization for Standardization (ISO).
+- **`offsetSeconds`, `offsetMinutes`, `offsetHours`, `offsetDays`**: a signed offset that shifts
+  the time, for a relative value such as tomorrow or an hour from now.
+- **`timezone`**: an Internet Assigned Numbers Authority (IANA) name, for example
+  `America/Los_Angeles`. The value is computed in that zone instead of the default, Coordinated
+  Universal Time (UTC).
+
+A scenario whose input must match a date the app renders in the device's local zone should pass
+that zone explicitly. The UTC default does not match it. Pinning the *device's* own zone is a
 separate concern, tracked by
 [BE-0158](../BE-0158-timezone-device-primitive/BE-0158-timezone-device-primitive.md).
 
 The run's evidence and report record each generated value, so a later failure shows which value the
 step produced. A developer does not need a fixed seed to diagnose a run after the fact.
 
-`generate` carries no `extract` modifier. It writes into `vars.*` through its own `into` field
-instead, the same placement `totp` uses — so a reader finds every value-producing step in the same
-shape.
+`generate` carries no `extract` modifier. It writes into `vars.*` through its own `into` field,
+the same placement `totp` uses. A reader then finds every value-producing step in the same shape.
 
 Prime directives preserved:
 
-- **No LLM on the run path.** Both generator kinds are a deterministic local computation — a
-  pseudorandom-number generator (PRNG) draw, or a clock read. The run/CI verdict still comes
-  only from machine-checkable assertions.
-- **Determinism of flow, not of value.** With fields the validator accepted at load time, the
-  step always executes and always succeeds — only the produced value varies between runs, the
-  same way `totp`'s time-derived code already varies. An unresolvable `timezone` or an invalid
-  `format` is rejected when the scenario loads, never silently substituted at run time. A
-  scenario that must assert a specific value should capture it into `vars.*` and compare against
-  that capture, not against a literal it could not have known in advance.
-- **App-agnostic.** The step and its fields are identical across every target; nothing here is
+- **No large language model (LLM) on the run path.** Both generator kinds are a deterministic local
+  computation: a pseudorandom-number generator (PRNG) draw, or a clock read. The run/CI verdict
+  still comes from machine-checkable assertions alone.
+- **Determinism of flow, not of value.** The validator checks the fields when the scenario loads.
+  A step with accepted fields always executes and always succeeds. The produced value alone
+  varies between runs, as `totp`'s time-derived code already does. An unresolvable `timezone` or
+  a malformed `format` is rejected at load time. The runner never substitutes another value at
+  run time. A scenario that must assert a specific value captures it into `vars.*` and compares
+  against that capture. It cannot compare against a literal it could not have known in advance.
+- **App-agnostic.** The step and its fields are identical across every target. Nothing here is
   specific to one app.
-- **Codegen.** `generate` runs in the bajutsu runner, not the app. It has no XCUITest, Playwright,
-  or UI Automator equivalent, so codegen emits a labeled `// TODO` instead. This matches `http` and
-  `totp` ([BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md)).
+- **Codegen.** `generate` runs in the bajutsu runner, not the app. XCUITest, Playwright, and
+  UI Automator have no counterpart for it, so codegen emits a labeled `// TODO` instead. This
+  matches `http` and `totp` ([BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md)).
 
 ## Alternatives considered
 
 - **Function-call syntax inside `${...}` tokens (for example, `${random.int(1, 100)}`).**
-  Rejected. `interp.py`'s tokens are a flat lookup into a precomputed bindings map, substituted the
-  same way regardless of namespace. Parsing arguments out of a token would turn that primitive into
-  a small expression language — the same alternative BE-0033 already rejected for control flow. A
-  step keeps the same load-time/run-time split every other value-producing primitive already uses.
-- **An optional `seed` field for fully reproducible random values.** Rejected for v1. Recording the
-  generated value in the report already lets a developer see what ran. A scenario that needs a
-  specific, predictable value should capture and compare it through `vars.*` rather than predict it
-  from a seed. Worth revisiting if a concrete case needs bit-for-bit reproduction across runs.
+  Rejected. The tokens in `interp.py` are a flat lookup into a precomputed bindings map. The map
+  substitutes them the same way regardless of namespace. Parsing arguments out of a token would
+  turn the lookup into a small expression language, the same alternative BE-0033 already rejected
+  for control flow. A step keeps the load-time/run-time split that every other value-producing
+  step uses.
+- **An optional `seed` field for fully reproducible random values.** Rejected for v1. Recording
+  the generated value in the report already lets a developer see what ran. A scenario that needs
+  a specific, predictable value captures and compares it through `vars.*` instead of predicting
+  it from a seed. A concrete case that needs bit-for-bit reproduction across runs would justify
+  revisiting this.
 - **Random selection from an in-scenario list, and a run-scoped incrementing counter.** Both are
-  reasonable further generator kinds. Neither is needed to close the gap this item targets — a
-  fresh, collision-resistant value with no advance knowledge. Left as future generator kinds under
-  the same `generate` step, not as scope for this proposal.
+  reasonable further generator kinds. This item targets a fresh, collision-resistant value with
+  no advance knowledge, and neither kind is needed for that. They stay future generator kinds
+  under the same `generate` step, outside the scope of this proposal.
 
 ## Progress
 
