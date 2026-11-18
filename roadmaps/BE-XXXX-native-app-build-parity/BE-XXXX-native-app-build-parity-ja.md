@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| 実装 PR | 未定（PR を作成したら記入します） |
+| 実装 PR | [#2452](https://github.com/bajutsu-e2e/bajutsu/pull/2452)（ユニット 1〜6） |
 | トピック | プラットフォーム対応 |
 <!-- /BE-METADATA -->
 
@@ -188,7 +188,7 @@ Android を挙げ、`--rebuild`、Replay のチェックボックス、`worker.y
 
 ログ：
 
-- 2026-11-18 — 提案とあわせてユニット 1〜6 を実装しました。
+- 2026-11-18 — 提案とあわせてユニット 1〜6 を実装しました（[#2452](https://github.com/bajutsu-e2e/bajutsu/pull/2452)）。
 
 ## 参考
 

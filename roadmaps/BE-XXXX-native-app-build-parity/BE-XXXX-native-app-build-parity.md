@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| Implementing PR | Pending — filled in once the PR is opened |
+| Implementing PR | [#2452](https://github.com/bajutsu-e2e/bajutsu/pull/2452) (units 1–6) |
 | Topic | Platform support |
 <!-- /BE-METADATA -->
 
@@ -193,7 +193,7 @@ the `build` key of `worker.yaml`.
 
 Log:
 
-- 2026-11-18 — Units 1–6 landed together with the proposal.
+- 2026-11-18 — Units 1–6 landed together with the proposal ([#2452](https://github.com/bajutsu-e2e/bajutsu/pull/2452)).
 
 ## References
 
