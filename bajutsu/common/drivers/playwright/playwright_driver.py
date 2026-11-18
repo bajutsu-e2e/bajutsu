@@ -844,6 +844,10 @@ class PlaywrightDriver:
         self._record_actuation(Actuation(gesture="back", via="history", unit=_UNIT))
         self._page.go_back()
 
+    def open_url(self, url: str) -> None:  # noqa: ARG002  # Driver shape
+        # A browser loads a URL with `navigate`; `openUrl` hands one to a mobile OS (BE-0487).
+        raise base.UnsupportedAction("openUrl is iOS / Android only; the web backend uses navigate")
+
     @_wedge_guard
     def goto(self, url: str) -> None:
         """Load *url*, resolved against the base URL as a browser resolves a link (BE-0464).

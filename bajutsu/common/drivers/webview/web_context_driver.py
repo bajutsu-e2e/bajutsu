@@ -122,6 +122,11 @@ class WebContextDriver:
     def goto(self, url: str) -> None:  # noqa: ARG002  # Driver shape
         raise UnsupportedAction("navigate is not supported in web context (first slice)")
 
+    def open_url(self, url: str) -> None:  # noqa: ARG002  # Driver shape
+        # The scenario model already refuses an `openUrl` inside `web:`; this reaches only an
+        # interrupt's recovery step that fired mid-block (BE-0487).
+        raise UnsupportedAction("openUrl is not supported in web context")
+
     def pinch(self, sel: Selector, scale: float) -> None:  # noqa: ARG002  # Driver shape
         raise UnsupportedAction("pinch is not supported in web context (first slice)")
 

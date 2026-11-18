@@ -24,6 +24,7 @@ GESTURES: tuple[str, ...] = (
     "systemAlert",
     "back",
     "navigate",
+    "openUrl",
 )
 
 # How a gesture reached its target. `coordinate` and `resident` are the values that imply `points`.
@@ -36,7 +37,9 @@ CHANNELS: tuple[str, ...] = (
     "focused",  # a text primitive on whatever field holds focus, addressing no element
     "key",  # a key event (Android's system back), no coordinate at all
     "history",  # browser history navigation
-    "url",  # a page load by URL (`navigate`); the URL itself stays out of the record
+    # a page load by URL (`navigate`) or a URL handed to the OS (`openUrl`); the URL itself stays out
+    # of the record
+    "url",
 )
 
 # Why the element actuated is not the one the driver's default rule would have named. Absent on the

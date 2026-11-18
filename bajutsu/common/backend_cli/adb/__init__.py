@@ -134,6 +134,7 @@ from ._functions import (
     seed_photo_time_cmd,
     seed_photos_clear_cmd,
     seed_photos_reset_cmd,
+    send_view_intent,
     sendevent_double_tap_cmd,
     sendevent_gesture_cmd,
     set_primary_clip_cmd,
@@ -144,6 +145,8 @@ from ._functions import (
     tombstones_cmd,
     uninstall_cmd,
     unroot_cmd,
+    view_intent_cmd,
+    view_intent_rejection,
     wait_for_device_cmd,
     wm_size_cmd,
 )
@@ -287,6 +290,7 @@ __all__ = [
     "seed_photo_time_cmd",
     "seed_photos_clear_cmd",
     "seed_photos_reset_cmd",
+    "send_view_intent",
     "sendevent_double_tap_cmd",
     "sendevent_gesture_cmd",
     "set_app_locales_cmd",
@@ -301,6 +305,8 @@ __all__ = [
     "tombstones_cmd",
     "uninstall_cmd",
     "unroot_cmd",
+    "view_intent_cmd",
+    "view_intent_rejection",
     "wait_for_device_cmd",
     "wm_size_cmd",
 ]

@@ -346,7 +346,12 @@ class XcuitestLiveDriver:
         )
 
     def goto(self, url: str) -> None:  # noqa: ARG002  # Driver shape
-        raise base.UnsupportedAction("navigate is web-backend-only; iOS opens no URL mid-run")
+        raise base.UnsupportedAction("navigate is web-backend-only; iOS uses openUrl")
+
+    def open_url(self, url: str) -> None:  # noqa: ARG002  # Driver shape
+        raise base.UnsupportedAction(
+            "openUrl needs the XCUITest runner; xcuitest-live has no route"
+        )
 
     def select_option(self, sel: base.Selector, option: str) -> None:  # noqa: ARG002  # Driver shape
         raise base.UnsupportedAction("selectOption is web-only; iOS has no native <select>")

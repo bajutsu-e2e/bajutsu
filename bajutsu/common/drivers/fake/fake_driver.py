@@ -208,6 +208,11 @@ class FakeDriver:
         self._actuations.record(Actuation(gesture="navigate", via="url", unit=_UNIT))
         self._record("goto", url)
 
+    def open_url(self, url: str) -> None:
+        # Kept out of the actuation record for the reason `goto` gives.
+        self._actuations.record(Actuation(gesture="openUrl", via="url", unit=_UNIT))
+        self._record("open_url", url)
+
     def pinch(self, sel: base.Selector, scale: float) -> None:
         self._log_target("pinch", base.resolve_unique(self.screen, sel), scale=scale)
         self._record("pinch", (sel, scale))
@@ -420,6 +425,7 @@ class FakeDriver:
             base.Capability.MULTI_TOUCH,
             base.Capability.SELECT_OPTION,
             base.Capability.URL_NAVIGATION,
+            base.Capability.OPEN_URL,
             base.Capability.ELEMENT_ATTRIBUTE,
             base.Capability.TEXT_SELECTION,
             base.Capability.HANDLE_SYSTEM_ALERT,

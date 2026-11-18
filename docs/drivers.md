@@ -73,6 +73,7 @@ The two mobile backends differ in what they support.
 | `textSelection` | select-all + clipboard copy and paste on the focused field | ✅ | ✅ | ✅ | ✅ |
 | `selectOption` | set a native `<select>` by value (web only) | — | — | ✅ | ✅ |
 | `urlNavigation` | open a URL mid-scenario with `navigate` (web only; BE-0464) | — | — | ✅ | ✅ |
+| `openUrl` | hand a URL to the operating system mid-scenario with `openUrl` (iOS and Android; BE-0487) | ✅ | ✅ | — | ✅ |
 | `elementAttribute` | read one HTML attribute of an element for the `attribute` assertion (web only; BE-0466) | — | — | ✅ | ✅ |
 | `handleSystemAlert` | tap an iOS SpringBoard permission-prompt button natively | ✅ | — | — | ✅ |
 | `resolveAlerts` | answer the policy's system alert inside the request that reads the screen (BE-0461; iOS only) | ✅ | — | — | — |
@@ -166,7 +167,10 @@ The check gates only the **hard** requirements the capability set cleanly decide
 - `navigate` needs `urlNavigation` (web only).
   The check catches it even inside a `web:` or `app:`
   block.
-  `navigate` and `attribute` are the two constructs the check follows into those blocks.
+- `openUrl` needs the `openUrl` token (iOS and Android).
+  The check catches it inside an `app:` block too.
+  The scenario model already refuses an `openUrl` inside a `web:` block when the file loads.
+  `navigate`, `openUrl`, and `attribute` are the three constructs the check follows into those blocks.
 - An `attribute` assertion needs `elementAttribute` (web only; BE-0466).
   The check finds it anywhere. The places are `expect`, a step's `assert`, an `if` or `interrupts` condition, a `web:` or `app:` block, and `interrupts` recovery steps.
   The iOS WebView context is thus rejected too.

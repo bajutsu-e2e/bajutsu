@@ -127,7 +127,7 @@ preconditions:
 | `subject.reinstall` | `overwrite` \| `clean` \| `erase` | 未設定（ターゲットの `subject.reinstall`、次に `clean`） | 各 run の前にどこまで状態を戻すかを、弱い順に決めます。`overwrite` は既存アプリに上書き install します（データを保持します）。`clean` は uninstall してから install します（アプリとデータを fresh にします）。`erase` はデバイス全体を wipe してから install します（`simctl erase`。アプリ、データ、設定を消去します）。install にはターゲットの config の `subject.path` が必要です。デバイス全体の wipe がない Android では、`erase` は `clean` と同じに動きます。iOS と Android で使えます。web のターゲットが受け付けるのは `erase` だけで、新しいブラウザコンテキストがすでにこの値を満たします（[BE-0473](../../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts-ja.md)） |
 | `subject.launch.env` | dict | `{}` | 起動時の環境変数です。ターゲットの `subject.launch.env` にキーごとにマージします。iOS は `SIMCTL_CHILD_*` で、Android は intent extra で注入します。Web では Playwright のコード生成が読みます |
 | `subject.launch.args` | list[str] | `[]` | 起動引数です。ターゲットの `subject.launch.args` の後ろに追記します。iOS 専用です |
-| `subject.launch.deeplink` | str | 未設定（ターゲットの `subject.launch.deeplink`） | 起動後にアプリが開く URL です（iOS は `simctl openurl`、Android は intent） |
+| `subject.launch.deeplink` | str | 未設定（ターゲットの `subject.launch.deeplink`） | 起動後にアプリが開く URL です（iOS は `simctl openurl`、Android は intent）。Android では、アプリのどのアクティビティも解決できないディープリンクは、`am start` 自身の理由を付けて起動を失敗させます（BE-0487） |
 | `device.ios.locale` | str | 未設定（ターゲットの `runsOn.ios.locale`） | 起動時の locale と言語を強制し（`-AppleLocale` / `-AppleLanguages`）、Simulator のシステム言語も固定します。ターゲットと異なる値は cold respawn を強制します |
 | `device.ios.seedPhotos` | list[str] | 未設定（ターゲットの `runsOn.ios.seedPhotos`） | erase の経路で、Simulator の写真ライブラリに順に投入する画像です。パスはシナリオファイルを基準に解決します。シナリオのリストはターゲットのリストを置き換えます |
 | `device.android.seedPhotos` | list[str] | 未設定（ターゲットの `runsOn.android.seedPhotos`） | デバイスの共有ストレージにある Bajutsu 専用のディレクトリへ順に投入する画像です。どの reinstall の段階でも投入します。パスはシナリオファイルを基準に解決します。シナリオのリストはターゲットのリストを置き換えます |
@@ -713,6 +713,7 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
 | `scroll` | `scroll: { to: <Selector>, direction?: up\|down\|left\|right, within?: <Selector>, amount?: <frac>, maxScrolls?: <int> }` | `to` が画面に入るまで（慣性なしに）スクロールし、上限に達したら失敗する。`direction` は**スクロール**方向（既定 `down`）で、`swipe` とは逆向き |
 | `back` | `back: {}` | 1 階層戻ります。各バックエンドがプラットフォームに合った手段（Android のシステム戻るキー、iOS の OS 提供の戻るボタン、web の履歴）を使います（[BE-0210](../../roadmaps/BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity-ja.md)） |
 | `navigate` | `navigate: "<url>"` | 現在のページで URL を開きます。値はターゲットの `baseUrl` を基準に解決します（[後述](#navigate)）。web 専用です（iOS / Android は preflight で失敗します） |
+| `openUrl` | `openUrl: "<url>"` | ディープリンクなどの絶対 URL を、その時点でシナリオが操作しているアプリに向けて OS へ渡し、そのアプリが前面に来るまで待ちます（[後述](#openurl)）。iOS（16.4 以降）と Android で使えます（web バックエンドは preflight で失敗します） |
 | `pinch` | `pinch: { sel: <Selector>, scale: <num> }` | 2 本指の拡縮。`scale > 0`（`>1` で拡大, `<1` で縮小） |
 | `rotate` | `rotate: { sel: <Selector>, radians: <num> }` | 2 本指の回転。`>0` で時計回り |
 | `handleSystemAlert` | `handleSystemAlert: { sel: <Selector>, timeout: <sec> }` | iOS SpringBoard の権限プロンプトのボタンを決定的に tap する（[下記](#handlesystemalert決定的なシステムアラートステップ)）。iOS（XCUITest）専用。`sel` は `label` / `labelMatches` / `index` のみ受け付け、run が Simulator を固定するシステム言語に対して解決する。`sel` の代わりに `prompt: notifications\|tracking\|paste` と `choice: grant\|deny` を指定すると、ボタンを意味で指定でき、run がその label を解決する（BE-0320）。label の対応表にない言語では、ボタンの位置で解決する（BE-0445） |
@@ -800,6 +801,65 @@ Cookie とストレージは保たれるので、`navigate` はセッション�
 `navigate` には `urlNavigation` ケーパビリティが必要で、これを公開するのは web バックエンドだけです。
 そのため iOS や Android で `navigate` を使うシナリオは、デバイスを確保する前の preflight で失敗します。
 `web:` ブロックの中に置いた `navigate` も同じく preflight で失敗します。
+
+### `openUrl`
+
+```yaml
+- use: signIn
+- openUrl: "showcase://tabs/settings"          # テスト対象のアプリが URL を受け取る
+- assert: [{ exists: { id: settings.title } }]
+- openUrl: "showcase://items/${vars.itemId}"   # ${...} トークンはほかのステップのフィールドと同じく展開される
+- app:
+    bundleId: ${vars.browserId}                # ブラウザが URL を受け取る
+    steps:
+      - openUrl: "https://example.com/promo"
+      - tap: { label: "Open in app" }
+```
+
+`openUrl` は、モバイルのシナリオの途中で URL を OS へ渡すステップです（[BE-0487](../../roadmaps/BE-0487-mobile-open-url-step/BE-0487-mobile-open-url-step-ja.md)）。
+起動時のディープリンク（`subject.launch.deeplink`）はどのステップよりも先に開くので、サインインが必要な画面には届きません。
+`openUrl` を使えば、そうした画面にもシナリオの途中から移れます。
+値はマッピングではなく、ただの文字列です。
+値はスキームを持つ絶対 URL でなければなりません。
+モバイルのバックエンドには解決の基準になる `baseUrl` がないので、`/settings` のようにスキームのない値は拒否します。
+`javascript:`、`data:`、`file:` の URL も、アプリの中の行き先を指さないので拒否します。
+リテラルの値はシナリオの読み込み時に検査します。
+`${...}` トークンを含む値は実行時に展開した後で検査し、規則に反すればステップを失敗させます。
+
+URL を受け取るのは、その時点でシナリオが操作しているアプリです。
+`app:` ブロックの外では、テスト対象のアプリが受け取ります。
+`app:` ブロックの中では、そのブロックで指定したアプリが受け取ります。
+したがって、ブラウザを指定した `app:` ブロックでステップを囲めば、ブラウザが URL を開きます。
+受け取るアプリを 1 つに絞ることで、ステップは決定的になります。
+受け取り先を絞らない intent を Android へ送ると、同じ URL を扱えるアプリが 2 つあるときにアプリの選択画面が出てしまうためです。
+
+ステップは、OS が URL を受け付け、受け取ったアプリが前面に来た時点で成功します。
+前面に来るまでの待ち時間の上限は、同じバックエンドの `app:` ブロックと同じです（iOS は約 10 秒、Android は 30 秒）。
+ステップは画面の内容を待ちません。
+URL が開く画面は、続く `wait` や `assert` で待ちます。
+URL を受け付けたかどうかの判定方法は、バックエンドによって異なります。
+
+| バックエンド | URL の渡し方 | ステップが失敗する条件 |
+|---|---|---|
+| iOS（XCUITest） | ランナーが、受け取るアプリに対して `XCUIApplication.open(_:)` を呼ぶ | 呼び出しが例外を投げるか失敗を記録した場合（そのメッセージが理由になる）。デバイスの iOS が 16.4 より前の場合 |
+| Android（adb） | `am start -W --activity-single-top -a android.intent.action.VIEW -d <url> <package>` を実行する | `am start` が `Error` で始まる行、例外、`ok` 以外のステータスを出力した場合。実行中のアクティビティが受け取ったことを示すもの以外の `Activity not started` の警告を出力した場合 |
+
+iOS では、受け取るアプリはたいてい最初から前面にあるので、前面待ちは何も証明しません。
+判定は `open(_:)` が投げる例外や記録する失敗に頼ります。
+どのアプリも扱わない URL に対して `open(_:)` が何も報告しなければ、ステップは成功します。
+その場合は、続くアサーションが想定と違う画面を検出します。
+
+Android では `--activity-single-top` を付けるので、起動時のディープリンクと同じ URL も開けます。
+タスクの最前面にあるアクティビティが、`onNewIntent` で URL を受け取るためです。
+アプリ側は `onNewIntent` でディープリンクを扱う必要があり、ディープリンクを受け付けるアプリの多くはすでにそうしています。
+
+URL が出したシステムの確認ダイアログ（ブラウザが別のアプリを開いてよいか尋ねるダイアログなど）は、ステップの後も表示されたままです。
+実際のユーザーが目にする確認を、ステップが勝手に答えることはしません。
+このダイアログは、`interrupts` の `systemAlert` エントリーか、続く `handleSystemAlert` ステップで閉じます。
+`openUrl` には `openUrl` ケーパビリティが必要で、これを公開するのは iOS と Android のバックエンドです。
+そのため web バックエンドで `openUrl` を使うシナリオは preflight で失敗します。web バックエンドでは `navigate` でページを開きます。
+`web:` ブロックの中に置いた `openUrl` は、シナリオの読み込み時に拒否します。
+`web:` ブロックの中のステップはページに対して動くので、URL を渡す先の OS がないためです。
 
 ### `setPickerValue`
 

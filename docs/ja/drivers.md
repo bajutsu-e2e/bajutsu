@@ -66,6 +66,7 @@ class Driver(Protocol):
 | `textSelection` | フォーカス中フィールドの全選択と、クリップボードへのコピーとペースト | ✅ | ✅ | ✅ | ✅ |
 | `selectOption` | ネイティブ `<select>` を値で設定（web のみ） | — | — | ✅ | ✅ |
 | `urlNavigation` | `navigate` でシナリオの途中に URL を開く（web のみ。BE-0464） | — | — | ✅ | ✅ |
+| `openUrl` | `openUrl` でシナリオの途中に URL を OS へ渡す（iOS と Android。BE-0487） | ✅ | ✅ | — | ✅ |
 | `elementAttribute` | `attribute` アサーションのために要素の HTML 属性を 1 つ読み取る（web のみ。BE-0466） | — | — | ✅ | ✅ |
 | `handleSystemAlert` | iOS SpringBoard の許可プロンプトのボタンをネイティブにタップ | ✅ | — | — | ✅ |
 | `resolveAlerts` | 画面を読むリクエストの中で、ポリシーが指定するシステムアラートに答える（BE-0461、iOS のみ） | ✅ | — | — | — |
@@ -147,7 +148,9 @@ runner は各シナリオを actuator の能力と照合します（`bajutsu/com
 - `selectOption` は `selectOption` トークンを必要とします。web だけで通る `<select>` の切り替えなので、
   iOS / Android はデバイス作業の前に拒否されます。
 - `navigate` は `urlNavigation` を必要とします（web 専用）。`web:` / `app:` ブロックの中にあっても拒否されます。
-  検査がブロックの中まで追う構文は、`navigate` と `attribute` の 2 つです。
+- `openUrl` は `openUrl` を必要とします（iOS と Android）。`app:` ブロックの中にあっても拒否されます。
+  `web:` ブロックの中の `openUrl` は、ファイルを読み込む時点でシナリオのモデルが拒否します。
+  検査がブロックの中まで追う構文は、`navigate`、`openUrl`、`attribute` の 3 つです。
 - `attribute` アサーションは `elementAttribute` を必要とします（web 専用。BE-0466）。
   `expect`、ステップの `assert`、`if` と `interrupts` の条件、`web:` / `app:` ブロックの中、
   `interrupts` の復旧ステップのどこにあっても見つけます。そのため、iOS の WebView コンテキストも拒否されます。

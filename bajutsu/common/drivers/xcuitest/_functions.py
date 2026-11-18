@@ -169,11 +169,13 @@ def _decode(path: str, status_code: int, body: bytes) -> _Reply:
     size = (float(width), float(height)) if width is not None and height is not None else None
     # `POST /app/state` (BE-0424) carries the target app's process state; absent everywhere else.
     app_state = data.get("state")
+    reason = data.get("reason")
     return _Reply(
         status=str(status),
         elements=elements,
         size=size,
         app_state=str(app_state) if app_state is not None else None,
+        reason=str(reason) if reason is not None else None,
         raw=body,
     )
 
