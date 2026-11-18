@@ -68,7 +68,7 @@ Proposal altitude. The work is MECE along the units below.
 
 - **Compile with the Kotlin compiler alone, without running on a device.** This is cheaper and catches
   a syntax or type error. The emitted calls are UI Automator API calls, though, and their behavior
-  (`By.res` resolution, `waitForIdle` semantics) can be confirmed merely against a running app on a
+  (`By.res` resolution, `waitForIdle` semantics) can be confirmed only against a running app on a
   real or emulated device. A compile-only check would still miss a call that compiles but never
   matches anything.
 - **Leave the string-only test suite as the sole gate.** The suite already covers the emitter's DSL

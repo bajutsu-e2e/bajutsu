@@ -32,9 +32,9 @@ response to take. `_stub_ai_cli` in `tests/test_triage.py` backs the CLI's `--ai
 further: it swaps `ClaudeCrossRunTriageAgent` for `_FakeAgent`. The credential-gap path
 (`_require_ai_credential`) is stubbed as well, so the real check never runs.
 
-A real model looks at a real failure screenshot and a real run's evidence. Nothing in the suite confirms
-two properties of its output. First, its diagnosis JSON must parse into the `Triage` schema. Second, the
-category enum of a proposed fix must match the choices the prompt offers.
+Nothing in the suite confirms two properties of what a real model produces when it looks at a real
+failure screenshot and a real run's evidence. First, its diagnosis JSON must parse into the `Triage`
+schema. Second, the category enum of a proposed fix must match the choices the prompt offers.
 
 Triage is advisory by design. `--apply`/`--write` always previews a diff before touching a scenario,
 and a human reviews the result (M4 in the roadmap of `DESIGN.md`; prime directive 1 keeps triage off

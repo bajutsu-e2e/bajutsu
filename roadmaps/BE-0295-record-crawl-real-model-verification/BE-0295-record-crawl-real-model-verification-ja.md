@@ -30,9 +30,9 @@ transport 水準のアダプタ検証とは異なり、それを補完する位�
 
 [PR #1233](https://github.com/bajutsu-e2e/bajutsu/pull/1233) の提案が扱うのは、transport の問いです。
 アダプタは実サービスとそもそも往復できるのか、という問いです。本項目が扱うのは意味論的な問いです。
-本物の record/crawl プロンプトを与えたとき、実モデルのレスポンスが propose ループのアクション
-スキーマへパースできるのか。`record` と `crawl` が使う具体的なプロンプトとスキーマに関する問いで、
-手組みの `FakeBlock` では構造上どうしても再現できません。
+本物の record/crawl プロンプトを与えたとき、実モデルのレスポンスは propose ループのアクション
+スキーマへパースできるのでしょうか。これは `record` と `crawl` が使う具体的なプロンプトとスキーマに
+関する問いであり、手組みの `FakeBlock` では構造上どうしても再現できません。
 
 `tests/test_crawl_lanes.py` と `tests/test_crawl.py` は、実際の認証情報にもっとも近づいています。
 しかし、やっていることは逆です。`ANTHROPIC_API_KEY` を削除して、認証情報が欠落したときの
