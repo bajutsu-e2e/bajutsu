@@ -28,9 +28,9 @@ Related: [run-loop](run-loop.md) · [recording](recording.md) · [codegen](codeg
 
 ## `run`
 
-Runs a scenario **deterministically**. Only machine-checkable assertions decide pass or fail, and since [BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md) **no flag of `run` reaches a model at all**.
+Runs a scenario **deterministically**. Pass/fail is machine-only, and since [BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md) **no flag of `run` reaches a model at all**.
 
-The **alert guard** is on unless `--no-system-alert-handling` turns it off. The guard answers each OS prompt that a `systemAlert` interrupts entry names, in the scenario or its target. It answers through the native SpringBoard path (iOS XCUITest, no model). Any other prompt stays untouched, and the failure of the blocked step names it. The [`systemAlert` interrupts entries](scenarios.md#systemalert-the-system-alert-guard) describe the entries.
+The **alert guard** is on unless `--no-system-alert-handling` turns it off. The guard answers each OS prompt that a `systemAlert` interrupts entry names, in the scenario or its target. It answers through the native SpringBoard path (iOS XCUITest, no model). Any other prompt stays untouched, and the failure of the blocked step names it. See [the `systemAlert` interrupts entries](scenarios.md#systemalert-the-system-alert-guard).
 
 ```bash
 bajutsu run --target <name> [--scenario <file.yaml>] [options]
@@ -626,8 +626,8 @@ spinner most of the time, a network response that varied).
 bajutsu triage --flaky --scenario <name> --history <runs-dir> --ai [--apply <file> [--write]] [--json <path>]
 ```
 
-- **Requires `--ai`.** Cross-run diagnosis has no rule-based agent, because the delta reasoning is exactly
-  the judgement-free investigator work that the LLM does. `--flaky` without `--ai` therefore exits 2. It stays
+- **Requires `--ai`.** Cross-run diagnosis has no rule-based agent. The delta reasoning is exactly
+  the judgement-free investigator work that the LLM does, so `--flaky` without `--ai` exits 2. It stays
   advisory: the runs already decided pass/fail; this only explains and proposes, never on the
   verdict path (prime directive 1).
 - `--scenario <name>` picks the flaky scenario (matched as a substring of the run's scenario name,
@@ -861,7 +861,7 @@ engine is platform-neutral, so `bajutsu crawl --target <web-app> --backend web` 
 
 Opens a **manual shell** against the running app. In the shell, you read the current element tree, act on one of its
 ids, and read the tree again ([BE-0423](../roadmaps/BE-0423-cli-repl-inspect-actuate/BE-0423-cli-repl-inspect-actuate.md)).
-`repl` is a third way, beside `record` (goal-directed AI authoring) and `crawl` (autonomous exploration), to reach a target through the same [driver](glossary.md#driver-backend-actuator-platform)
+Beside `record` (goal-directed AI authoring) and `crawl` (autonomous exploration), `repl` is a third way to reach a target through the same [driver](glossary.md#driver-backend-actuator-platform)
 interface. Of the three, only `repl` asks no model anything and writes no scenario.
 Use it to answer, in seconds, the question that otherwise costs a whole run-and-read-the-report
 cycle: what does this screen actually expose, and does that id resolve?
@@ -1068,7 +1068,7 @@ gate**. Four top-level tabs over the CLI: **Record** authors a scenario from a g
 (`python -m bajutsu record ...`), **Replay** runs a scenario and shows its report
 (`python -m bajutsu.run.internal ...`, the body of `bajutsu run`), **Crawl** explores the app and draws its screen map live
 (`python -m bajutsu crawl ...`), and **Stats** shows the aggregate run-stats dashboard across the
-run history (`bajutsu stats`). All four tabs run against the **active config**, which you open from
+run history (`bajutsu stats`). All of these tabs run against the **active config**, which you open from
 the file browser, a Git repository, or an uploaded `.zip` bundle (see "Open config" below).
 Each request queues a job. A `bajutsu worker` runs it, since the server runs none itself
 (BE-0449). The server streams the job's output. It serves the produced `runs/<id>/` tree. The
@@ -1144,7 +1144,7 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   row (org-scoped); otherwise it builds the same records from each run's `manifest.json`. Each row
   also names the device OS version its runs happened on, and rows are grouped per version
   ([BE-0358](../roadmaps/BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact.md)).
-  The tab needs no device, no AI, and no verdict. The server serves it at `GET /flakiness`, and the tab's refresh
+  The tab needs no device and no AI, and renders no verdict. The server serves it at `GET /flakiness`, and the tab's refresh
   button refreshes it.
 - **Upload a bundle ([BE-0073](../roadmaps/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md)).**
   The "Open config" dialog has a third source, **Upload a bundle**, that lets a browser user **bring
@@ -1232,7 +1232,7 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   selected app's scenarios dir** (no arbitrary host paths or `..` traversal), and `backend` / `udid`
   must be known tokens, not free text — so a request can't run an arbitrary file or smuggle
   surprising argv. `backend` follows the same check as `run --backend`, and any other value is a 400.
-  This hardening is a prerequisite for
+  This hardening is the prerequisite for
   hosting `serve` beyond loopback
   ([BE-0015](../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) / [BE-0016](../roadmaps/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md));
   it still binds `127.0.0.1` and has no auth, so don't expose it to an untrusted network yet.
@@ -1556,8 +1556,8 @@ run printed before the knob existed, so turning diagnostics on is always deliber
 BAJUTSU_LOG_LEVEL=DEBUG uv run bajutsu run --scenario …
 ```
 
-Reach for `DEBUG` when a step fails and the assertion message does not explain why. Timing
-failures are the typical case: the question is not what the assertion said but which tree the actuator resolved
+Reach for `DEBUG` when a step fails and the assertion message does not explain why: the timing
+failures, where the question is not what the assertion said but which tree the actuator resolved
 against. On the adb backend, debug records each read and its device event mark, when the read-lag
 barrier opened and what closed it, how the tree settled, the frame each selector resolved to, and
 whether a gesture went to the device or fell back to injecting a coordinate. Read together, those

@@ -472,7 +472,7 @@ bajutsu record --target <name> --goal "<自然言語ゴール>" [--out <file.yam
 | `--config` | `bajutsu.config.yaml` | config |
 | `--worker-config` | 同梱のデフォルト | [`run`](#run) と同じ worker 能力ファイル。`appium` のファイルを渡すと、グリッドの platform のターゲットをグリッド上でオーサリングします |
 
-- 内部の流れ: `launch_driver`、`record_loop(driver, goal, ClaudeAgent(), ...)`、`dump_scenarios` の順に呼び出し、シナリオを書き出す流れ。
+- 内部の流れ: `launch_driver` の結果を `record_loop(driver, goal, ClaudeAgent(), ...)` に渡し、`record_loop` の結果を `dump_scenarios` で書き出す流れ。
 - 出力: `recorded <N> steps -> <path>`。**要 `ANTHROPIC_API_KEY`**（`ClaudeAgent`）。
 - **Git の `--config` は読み取り専用入力です**（[BE-0063](../../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）。`record` は config を取得したチェックアウトから読みますが、生成したシナリオは**ローカル**へ書きます。`--out` 省略時は（読み取り専用の SHA キーのキャッシュであるチェックアウト内の `paths.scenarios` ディレクトリではなく）**カレントディレクトリ**に自動命名し、チェックアウト内を指す `--out` は拒否します。そのファイルをレビューし、通常の git でリポジトリへコミットしてください。
 - 続けて、オーサリング（およびアラートガード）の AI が消費したトークン量を示す `AI usage:` 行を
