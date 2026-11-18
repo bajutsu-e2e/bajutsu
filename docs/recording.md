@@ -90,19 +90,19 @@ nothing here affects `run`, which never sees a plan at all.
 ```
 
 **Multi-action turns (BE-0178).** A turn's proposal is an ordered *batch* of steps. The batch holds
-the actions that the agent judges executable from the current screen without seeing the previous
-action's result, such as filling several form fields and then submitting.
+actions that the agent judges executable from the current screen. The agent need not see the
+previous action's result first. Filling several form fields and then submitting is one example.
 
 The batch is intra-screen by construction. After each executed step, the loop compares
 `crawl.screen_identity(...)` against the identity captured before the batch. This transition
-signature ignores per-element state (a field's fill, a control's enabled/selected flags), so the
-batch's own fills do not look like a transition. The moment the identity changes with steps still
-pending, the loop abandons the rest and re-observes ("仕切り直し").
+signature ignores per-element state (a field's fill, a control's enabled/selected flags), so
+the batch's own fills do not look like a transition. The moment the identity changes with
+steps still pending, the loop abandons the rest and re-observes ("仕切り直し").
 
-The loop appends the steps that ran and nothing else, so the recorded YAML is the same flat,
-individually-resolved step list as before. Batching changes *how many model turns* produce the list
-(one observe → model → execute-N instead of N single-action turns), never the artifact's shape. The
-abort check is a deterministic comparison, never an LLM judgment.
+The loop appends the steps that ran and nothing else. The recorded YAML stays the same flat,
+individually-resolved step list as before. Batching changes *how many model turns* produce the
+list: one observe → model → execute-N instead of N single-action turns. It never changes the
+artifact's shape. The abort check is a deterministic comparison, never an LLM judgment.
 
 The output is serialized to YAML via `dump_scenarios`
 ([scenarios](scenarios.md#round-trip-load--dump)).
@@ -145,41 +145,45 @@ then proposes with `classify` how a real run will supply the value:
 - `totp` or `email`: a `${vars.*}` produced by the run-time bridge step (BE-0046).
 - `secret`: a declared `${secrets.*}`.
 
-The human types the value once. The loop types it into the *live* field so the recording proceeds,
-but records a **placeholder** `type` step: `${vars.*}` / `${secrets.*}`, never the literal (reusing
-BE-0120's no-leak guarantee). The step carries a `from:` provenance line (BE-0044) that marks the
-human-value origin and states the TODO to wire it. Consistent with prime directive 1, the AI only
-*proposes* the classification. The author confirms and wires it, after which replay is fully
-deterministic and AI-free.
+The human types the value once. The loop types it into the *live* field so the recording proceeds.
+It records a **placeholder** `type` step instead: `${vars.*}` / `${secrets.*}`, never the literal
+(reusing BE-0120's no-leak guarantee). The step carries a `from:` provenance line (BE-0044). The
+line marks the human-value origin and states the TODO to wire it.
+
+Consistent with prime directive 1, the AI only *proposes* the classification. The author confirms
+and wires it. After that, replay is fully deterministic and AI-free.
 
 **Human takeover (BE-0185).** The other child pattern covers a handoff that names no field. The
-blocker is not a value the agent could type but an *operation* it cannot perform: a CAPTCHA, a
-biometric prompt, or a gesture the agent repeatedly fails to resolve. The human operates the live
-device and answers "I acted" (the `acted` handoff, BE-0179). `record` then records a marker of the
-observed transition, not the raw gesture, as a **`manual` step** ([scenarios](scenarios.md#manual)).
+blocker is not a value the agent could type but an *operation* it cannot perform. Examples are a
+CAPTCHA, a biometric prompt, and a gesture the agent repeatedly fails to resolve. The human operates
+the live device and answers "I acted" (the `acted` handoff, BE-0179). `record` then records a marker
+of the observed transition, not the raw gesture, as a **`manual` step**
+([scenarios](scenarios.md#manual)).
 
 The agent classifies the marker by whether it can propose a deterministic bypass. A `bypass` names
 the test-build flag or the device-control / device-state primitive (BE-0035 / BE-0052) that an
-author could wire to make the step replayable. No `bypass` marks a takeover that nothing can
-replace (a real CAPTCHA).
+author could wire to make the step replayable. The absence of a `bypass` marks a takeover with
+no such equivalent (a real CAPTCHA).
 
 Every codegen target renders the step as a labeled `// TODO` (BE-0026). Unlike the value pattern,
 which produces a replayable `type` step, a `manual` step has no deterministic run-time equivalent.
-At `run` time it **fails loudly** with `ManualStepRequired` rather than faking a pass
-(directives 1 and 2). The marker keys on the explicit `acted` flag, not the handoff's default kind,
-so a bare resume never fabricates a run-failing step.
+At `run` time it **fails loudly** with `ManualStepRequired` rather than faking a pass (directives 1 and 2). The
+marker keys on the explicit `acted` flag, not the handoff's default kind, so a bare
+resume never fabricates a run-failing step.
 
 **Takeover triggers.** A takeover starts one of two ways. The agent can *ask* for one when it knows
-it cannot proceed (`proposal.needs_human` with no field). The **loop** can also raise one on its own,
-when the agent's proposed target will not resolve to a unique element even after the alert guard has
-cleared any covering prompt.
+it cannot proceed (`proposal.needs_human` with no field). The **loop** can also raise one on its
+own. That happens when the agent's proposed target will not resolve to a unique element, even after
+the alert guard has cleared any covering prompt.
 
-That second case motivated the trigger. `record` used to print "could not resolve that target on the
-live screen; stopping" and abandon the run. Now, when a responder is present, the dead end becomes a
-takeover offer: the loop pauses and hands off. The human either operates the device and resumes
-(recording a `manual` marker) or cancels (stopping cleanly). The loop, never an LLM, raises this
-offer, and it never guesses which element to act on. It only asks the human to take over. With no
-responder, the loop keeps the old clean, labeled stop.
+The second case motivated the trigger. `record` used to print "could not resolve that target on the
+live screen; stopping" and abandon the run. Now, when a responder is present, the dead end becomes
+a takeover offer, and the loop pauses and hands off. The human either operates the device and
+resumes (recording a `manual` marker) or cancels (stopping cleanly).
+
+The loop, never an LLM, raises this offer. It never guesses which element to act on. It asks the
+human to take over, and nothing more. With no responder, the loop keeps the old clean, labeled
+stop.
 
 **Device reach on a remote serve.** Value entry completes entirely in the browser. A takeover asks
 the human to operate the live device, so it needs the device within the author's reach.
@@ -194,13 +198,15 @@ device-operation takeover cannot be honored there. `respond-human` refuses the `
 message naming the fallback: **re-record where the device is, or wire the test-build bypass** so
 `run` needs no live takeover. A value handoff and a cancel still work remotely.
 
-The `acted` refusal keys on the hosted-deployment signal, the only *certain* indicator that the
-device is not in the author's reach. A **self-hosted `serve`**
-([BE-0016](../roadmaps/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)) exposed to a team
-over a network is *also* a remote case. A serve cannot reliably tell whether a given client sits at
-the device, because a loopback bind is not a sound proxy: it misses SSH forwards and wrongly flags a
-wildcard bind with the author present. In the self-hosted case, the same fallback applies
-**by convention**, not by an enforced refusal. Do not answer `acted` for an operation you did not
+The `acted` refusal keys on the hosted-deployment signal. That signal is the only *certain*
+indicator that the device is not in the author's reach.
+
+A **self-hosted `serve`**
+([BE-0016](../roadmaps/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)) exposed to a
+team over a network is *also* a remote case. A serve cannot reliably tell whether a given client
+sits at the device. A loopback bind is not a sound proxy: it misses SSH forwards and wrongly flags a
+wildcard bind with the author present. In the self-hosted case, the same fallback applies **by
+convention**, not by an enforced refusal. Do not answer `acted` for an operation you did not
 perform on a reachable device.
 
 Two follow-up items remain: tightening the self-hosted case into an enforced signal, and an

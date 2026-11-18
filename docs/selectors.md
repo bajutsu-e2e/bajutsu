@@ -163,11 +163,11 @@ under a sticky header, a toast, or a dimmed modal backdrop. A tap then lands on 
 instead of the target.
 
 `tap` / `double_tap` / `long_press` (and the focus-tap inside `type` / `clear` / `delete` /
-`select`) now check reachability before acting. Each backend uses its idiomatic check: iOS's native
-`isHittable`, the web's `document.elementFromPoint`, and adb's document-order geometric proxy,
-`Driver.is_tappable`. When the check fails, the orchestrator takes a small, bounded scroll. It first
-scrolls up to three `down` steps. Only if `down` never clears the obstruction does it scroll up to
-six `up` steps. The `up` limit is wider because `up` must first retrace the ground `down` already
+`select`) now check reachability before acting, through `Driver.is_tappable`. Each backend
+implements that check in its idiomatic way: iOS's native `isHittable`, the web's
+`document.elementFromPoint`, and adb's document-order geometric proxy. When the check fails, the
+orchestrator takes a small, bounded scroll. It first takes up to three `down` steps. Only if `down`
+never clears the obstruction does it take up to six `up` steps. The `up` limit is wider because `up` must first retrace the ground `down` already
 covered before it makes any net progress of its own. The orchestrator then retries the action once.
 If the target is still unreachable, the action raises `ElementNotTappable` instead of
 `ElementNotFound`, which a caller might mistake for "not in the tree at all".
