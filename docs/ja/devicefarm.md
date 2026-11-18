@@ -207,7 +207,7 @@ fan-out は、Device Farm のホストへシークレットを運びません。
 
 ### ターゲットの fan-out
 
-Replay タブは、ブラウザから fan-out を投入できます（[Web UI](web-ui.md#replay--シナリオを実行してレポートを読む)）。
+Replay タブは、ブラウザから fan-out を投入できます（[Web UI](web-ui.md#replay-でシナリオを実行してレポートを読む)）。
 **Fan out to workers** にチェックを入れ、シナリオを選んで Run を押します。このチェックボックスは、web のターゲットを含むすべてのターゲットで使えます。
 
 `POST /api/run-set` リクエストがターゲットを fan-out します。`POST /api/run` と同じく editor 権限が必要です。ボディには `target` を指定し、任意で `scenarios` の部分集合を指定します。
