@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 import typer
 
+from bajutsu.common.capability.worker_capability import WorkerCapability, parse_worker_capability
 from bajutsu.common.config import Effective, load_config, resolve
 from bajutsu.common.scenario import Scenario
 from bajutsu.run.cli import _reject_bad_device_groups, _resolve_config_and_engines
@@ -23,7 +24,13 @@ def _config(tmp_path: Path, subject: str, platform: str = "android") -> Path:
     return cfg
 
 
-def _resolve(cfg: Path, *, rebuild: bool = False, built: set[str] | None = None) -> Effective:
+def _resolve(
+    cfg: Path,
+    *,
+    rebuild: bool = False,
+    built: set[str] | None = None,
+    worker: WorkerCapability | None = None,
+) -> Effective:
     _, eff, _, _ = _resolve_config_and_engines(
         str(cfg),
         "app",
@@ -34,6 +41,7 @@ def _resolve(cfg: Path, *, rebuild: bool = False, built: set[str] | None = None)
         browsers="",
         rebuild=rebuild,
         built=built,
+        worker=worker,
     )
     return eff
 
@@ -146,3 +154,25 @@ def test_rebuild_skips_a_group_member_this_run_already_built(tmp_path: Path) -> 
         [_update_journey()], effs, checkout_root=None, rebuild=True, built={"new"}
     )
     assert not (tmp_path / "rebuilt").exists()
+
+
+_DEVICEFARM_HOST = "version: 1\nenvironment: devicefarm-host\ndrivers: [adb, xcuitest]\n"
+
+
+def test_a_device_farm_host_never_builds_the_app_it_preinstalled(tmp_path: Path) -> None:
+    # Device Farm installs the uploaded app and its package leaves `subject.path` out on purpose, so
+    # the run must not try to build the missing binary on the host.
+    cfg = _config(tmp_path, "{ id: com.example.app, path: app.apk, build: 'touch built' }")
+    _resolve(cfg, worker=parse_worker_capability(_DEVICEFARM_HOST))
+    assert not (cfg.parent / "built").exists()
+
+
+def test_rebuild_on_a_device_farm_host_exits_2(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cfg = _config(tmp_path, "{ id: com.example.app, path: app.apk, build: 'touch built' }")
+    with pytest.raises(typer.Exit) as exc:
+        _resolve(cfg, rebuild=True, worker=parse_worker_capability(_DEVICEFARM_HOST))
+    assert exc.value.exit_code == 2
+    assert "'devicefarm-host' provider, which installs the app itself" in capsys.readouterr().out
+    assert not (cfg.parent / "built").exists()

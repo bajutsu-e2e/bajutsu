@@ -182,6 +182,8 @@ XCUITest runner をその場でビルドする `driver.runner.build` にも、�
 アップロードされたバンドルと、`--allow-remote-build` なしで UI からバインドした Git config では、起動された run が
 このビルドを拒否し、`driver.runner.build withheld` というエラーで失敗します。こうした config では、`.xctestrun` を
 ビルド済みの状態で `testRunner` の位置に同梱してください。run はそのファイルをそのまま使います。
+起動された run は、ターゲットの `subject.build` も同じように差し止めます。存在しないアプリのビルドは行わず、
+強制ビルド（`rebuild`）は拒否します。`bajutsu run` は存在しないアプリを自らビルドしますが、これで `serve` の判定が保たれます。
 
 ## Git config source の非公開リポジトリへのアクセス（BE-0224）
 

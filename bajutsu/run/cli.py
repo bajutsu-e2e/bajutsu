@@ -386,12 +386,14 @@ def _resolve_config_and_engines(
     kind: str = "",
     rebuild: bool = False,
     built: set[str] | None = None,
+    worker: WorkerCapability | None = None,
 ) -> tuple[LoadedConfig, Effective, dict[str, str] | None, list[str]]:
     """Resolve the effective config (building the target's app first) and the engine list.
 
     The app builds on demand when its binary is missing, or always under *rebuild*; *built* collects
     the targets a forced build already covered, so a later load or device-group member never builds
-    the same app twice in one run.
+    the same app twice in one run. *worker* says where the target's device comes from: a provider
+    that installs the app itself leaves nothing to build here.
 
     Applies `--headed`, `--kind`, and `--browser`, then parses `--browsers` into the cross-browser
     matrix axis (BE-0076). Each flag picks among the kinds or browsers the target lists (BE-0468).
@@ -411,7 +413,7 @@ def _resolve_config_and_engines(
         raise typer.Exit(2)
     try:
         _build_target(
-            eff,
+            _with_worker_device(eff, worker) if worker is not None else eff,
             target_name,
             checkout_root=checkout_root,
             rebuild=rebuild,
@@ -941,6 +943,16 @@ def _build_target(
     """
     command = _build_command(eff)
     if command is None:
+        return
+    if eff.device_provider is not None and eff.device_provider.kind != "local":
+        # Every provider a worker hands out — `devicefarm-host`, `appium` — gives the device over
+        # with the app already installed, so a local build would be installed nowhere; on a Device
+        # Farm host the package even leaves `subject.path` out on purpose (BE-0465).
+        if rebuild:
+            raise BuildError(
+                f"--rebuild: target '{name}' takes its device from the "
+                f"'{eff.device_provider.kind}' provider, which installs the app itself"
+            )
         return
     cwd = checkout_root or eff.base_dir or Path.cwd()
     force = rebuild and name not in built
@@ -3023,6 +3035,7 @@ def run_body(
             kind=kind,
             rebuild=rebuild,
             built=rebuilt,
+            worker=worker,
         )
         scenarios, description, source_name, files, plan_sources = _load_scenarios(
             eff, scenario or [], primary

@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-XXXX](BE-XXXX-native-app-build-parity.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Implementing PR | Pending — filled in once the PR is opened |
 | Topic | Platform support |
 <!-- /BE-METADATA -->
 
@@ -91,6 +92,12 @@ nothing, so the run exits with status 2 and names the target instead of starting
 without `subject.build` keeps its existing app, since such a member's app is expected on the device
 already.
 
+A target whose device comes from a worker's device provider never builds. The two providers a
+worker configuration can name, `devicefarm-host` and `appium`, hand the device over with the app
+already installed. A Device Farm package even leaves the built app out on purpose, so a build on the
+Device Farm host would only fail the run. `--rebuild` on such a target exits with status 2 and
+names the provider.
+
 ### Unit 3 — The web UI job
 
 `target_build_info`, the helper that hands a job its app path and build command, reads the Android
@@ -144,11 +151,15 @@ names Android beside iOS, and documents `--rebuild` and the Replay checkbox.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — One build function with a force switch, which honors the withhold flag
-- [ ] Unit 2 — The command-line run builds on Android and from a local config, and takes `--rebuild`
-- [ ] Unit 3 — The web UI job builds on Android and accepts `rebuild` on `POST /api/run`
-- [ ] Unit 4 — The Replay panel's "rebuild the app first" checkbox
-- [ ] Unit 5 — The configuration, command-line, and self-hosting documentation, in both languages
+- [x] Unit 1 — One build function with a force switch, which honors the withhold flag
+- [x] Unit 2 — The command-line run builds on Android and from a local config, and takes `--rebuild`
+- [x] Unit 3 — The web UI job builds on Android and accepts `rebuild` on `POST /api/run`
+- [x] Unit 4 — The Replay panel's "rebuild the app first" checkbox
+- [x] Unit 5 — The configuration, command-line, and self-hosting documentation, in both languages
+
+Log:
+
+- 2026-11-18 — Units 1–5 landed together with the proposal.
 
 ## References
 
