@@ -16,219 +16,146 @@
 
 ## Introduction
 
-The iOS lanes of continuous integration (CI) on GitHub Actions — most visibly the `run` and
-`actuation` jobs of `.github/workflows/ios-e2e.yml` — keep failing with mid-run crashes of the
-resident XCUITest runner, and the artifacts CI uploads today cannot say why. The runner is an
-XCTest host that `bajutsu` spawns on the macOS runner with `xcodebuild test-without-building`
-(`bajutsu/platform_lifecycle/environments/xcuitest.py`) and drives over a loopback Hypertext
-Transfer Protocol (`HTTP`) channel; when it dies mid-run, the pipeline respawns it and retries under
-the crash-recovery budgets [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery.md)
-added. Those budgets made a degrading run fail loudly instead of hanging to `timeout-minutes`, but
-the question they cannot answer is the one that decides the fix: *what* killed the runner. This
-proposal adds a layered diagnostics collection — inside `bajutsu`, from the Simulator and
-CoreSimulator, and from the macOS host — so the next failing run carries the evidence its own
-root-cause analysis needs. Everything lands under `runs/`, which the consuming on-device jobs
-already upload, and nothing touches the deterministic verdict path.
+The iOS lanes of continuous integration (CI) on GitHub Actions keep failing with mid-run crashes of the resident XCUITest runner. The most visible are the `run` and `actuation` jobs of `.github/workflows/ios-e2e.yml`. The artifacts CI uploads today cannot say why the runner crashed.
+
+The runner is an XCTest host. `bajutsu` spawns it on the macOS runner with `xcodebuild test-without-building` (`bajutsu/platform_lifecycle/environments/xcuitest.py`). It drives the runner over a loopback Hypertext Transfer Protocol (`HTTP`) channel.
+
+When the runner dies mid-run, the pipeline respawns it. The retry runs under the crash-recovery budgets that [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery.md) added.
+
+Those budgets made a degrading run fail loudly instead of hanging until `timeout-minutes`. They cannot answer the question that decides the fix: *what* killed the runner.
+
+This proposal adds a layered diagnostics collection, so the next failing run carries the evidence its own root-cause analysis needs. The layers sit in three places:
+
+- inside `bajutsu`
+- in the Simulator and CoreSimulator
+- on the macOS host
+
+Everything lands under `runs/`, which the consuming on-device jobs already upload. Nothing touches the deterministic verdict path.
 
 ## Motivation
 
-The captured runner logs (BE-0319's capture, retained under `runs/runner-logs/`) already narrowed
-the failing runs of 2026-08-12 down to one signature: the runner's own XCTest failure reads
-`Failed to get screenshot: Timed out while requesting screenshot.` — or a sibling,
-`cannot request screenshot data because it has an empty frame` and
-`Lost connection to the application` — after which the test method ends, `xcodebuild` exits with
-code 65, and the Python side sees `GET /screenshot` time out, then `Connection refused`, and
-declares a mid-run crash. Two observations point past `bajutsu`'s own code and into the platform
-underneath it. First, `recordVideo produced no new bytes` fires for **every** scenario on these
-runners, in green runs as much as red ones — the Simulator's video pipeline never produces a byte
-on GitHub Actions, so the screenshot service that fails hard in red runs is degraded in all of
-them. Second, the existing `Collect crash diagnostics` step of
-`.github/actions/bajutsu-e2e/action.yml` collects zero files every time: no process crashed, so
-the one OS-side artifact CI gathers today is empty by construction for this failure class.
+The captured runner logs ([BE-0319](../BE-0319-xcuitest-cold-spawn-resilience/BE-0319-xcuitest-cold-spawn-resilience.md)'s capture, retained under `runs/runner-logs/`) already narrowed the failing runs of 2026-08-12 down to one signature:
 
-What today's artifacts cannot distinguish is which of four hypotheses holds: (1) the Simulator's
-render or screenshot service wedges (the front-runner, given the dead video pipeline); (2) the
-virtualized macOS host starves the Simulator of processor time or memory when the stall hits;
-(3) the
-app process itself is killed, which the `empty frame` and `Lost connection` variants hint at; or
-(4) the failures cluster on a particular runner-image or hardware generation. Each hypothesis
-names evidence that exists at failure time and is gone by the time a human looks: the XCTest
-result bundle the runner's `xcodebuild` writes (its path is printed in the runner log and then
-discarded — only the `codegen` job uploads an `.xcresult` today), the unified log entries of the
-processes that serve screenshots, the host's load at the stall, and thread samples of the wedged
-processes. Collecting them is cheap next to one more undiagnosable red run on a 10x-billed macOS
-runner.
+1. The runner's own XCTest failure reads `Failed to get screenshot: Timed out while requesting screenshot.` A sibling is `cannot request screenshot data because it has an empty frame`, and another is `Lost connection to the application`.
+2. The test method then ends, and `xcodebuild` exits with code 65.
+3. The Python side sees `GET /screenshot` time out, then `Connection refused`, and declares a mid-run crash.
+
+Two observations point past `bajutsu`'s own code and into the platform underneath it:
+
+- **The video pipeline is dead.** `recordVideo produced no new bytes` fires for **every** scenario on these runners, in green runs as much as red ones. The Simulator's video pipeline never produces a byte on GitHub Actions. The screenshot service that fails hard in red runs is therefore degraded in all of them.
+- **The OS-side artifact is empty.** The existing `Collect crash diagnostics` step of `.github/actions/bajutsu-e2e/action.yml` collects zero files every time. No process crashed, so the one OS-side artifact CI gathers today is empty by construction for this failure class.
+
+Today's artifacts cannot distinguish which of four hypotheses holds:
+
+1. The Simulator's render or screenshot service wedges. This is the front-runner, given the dead video pipeline.
+2. The virtualized macOS host starves the Simulator of processor time or memory when the stall hits.
+3. The app process itself is killed. The `empty frame` and `Lost connection` variants hint at this.
+4. The failures cluster on a particular runner image or hardware generation.
+
+Each hypothesis names evidence that exists at failure time and is gone by the time a human looks:
+
+- the XCTest result bundle that the runner's `xcodebuild` writes (its path is printed in the runner log and then discarded; only the `codegen` job uploads an `.xcresult` today)
+- the unified log entries of the processes that serve screenshots
+- the host's load at the stall
+- thread samples of the wedged processes
+
+Collecting this evidence is cheap next to one more undiagnosable red run on a 10x-billed macOS runner.
 
 ## Detailed design
 
-The collection is three layers. The first layer lives in `bajutsu` because only the running
-process knows *when* a stall happens and *which* spawn failed; the other two live in CI because
-they read host state `bajutsu` has no business touching. Every layer writes under `runs/`, so the
-existing `Upload run artifacts` steps carry the results with no new upload wiring.
+The collection has three layers. The first layer lives in `bajutsu`, because only the running process knows *when* a stall happens and *which* spawn failed. The other two live in CI, because they read host state that `bajutsu` has no business touching. Every layer writes under `runs/`, so the existing `Upload run artifacts` steps carry the results with no new upload wiring.
 
 ### Layer 1: what only `bajutsu` can capture
 
-**The runner's XCTest result bundle.** `_spawn_runner`
-(`bajutsu/platform_lifecycle/environments/xcuitest.py`) gains a `-resultBundlePath` argument when
-the new environment variable `BAJUTSU_XCUITEST_RESULT_BUNDLES` names a directory, writing one
-bundle per spawn keyed by the runner port — the same keying the runner log already uses, so a
-respawn never overwrites its predecessor's bundle. The bundle records what testmanagerd itself saw:
-the precise failure, its timestamps, and any attachments. Retention: the variable naming the
-directory *is* the operator asking for the bundles, so — as with an explicit
-`BAJUTSU_XCUITEST_RUNNER_LOG` directory — every bundle is kept. BE-0319 prunes only its *default*,
-env-unset capture, and this feature has no such default. One honest limit: `xcodebuild`
-finalizes the bundle when the test run ends, which is exactly what happens on the code-65 failures
-above, but a runner `bajutsu` kills mid-hang may leave a truncated bundle — the collection is
-best-effort there.
+**The runner's XCTest result bundle.** When the new environment variable `BAJUTSU_XCUITEST_RESULT_BUNDLES` names a directory, `_spawn_runner` (`bajutsu/platform_lifecycle/environments/xcuitest.py`) gains a `-resultBundlePath` argument. It writes one bundle per spawn, keyed by the runner port. The runner log already uses the same keying, so a respawn never overwrites its predecessor's bundle. The bundle records what testmanagerd itself saw: the precise failure, its timestamps, and any attachments.
 
-**A stall-time probe.** The moment the channel declares a mid-run crash
-(`bajutsu/drivers/xcuitest.py`, where the transient-retry budget is exhausted) or the video
-watcher logs `recordVideo produced no new bytes` (`bajutsu/evidence/intervals.py`), the state that
-would answer hypothesis (1) versus (2) exists and is about to vanish. When the new environment
-variable `BAJUTSU_STALL_DIAGNOSTICS` names a directory, those two trigger points run a bounded,
-best-effort capture into it: a timed `xcrun simctl io <udid> screenshot` (if simctl's own path
-also stalls, the render service is wedged, not the runner), `sample` of the runner host process
-and the Simulator's screenshot-serving processes, and a `ps aux` plus `vm_stat` snapshot. Each
-command carries a short subprocess timeout, failures are swallowed, and captures are capped per
-run (first few stalls only) so a crash-looping run cannot fill the disk or the wall clock. Unset,
-both variables leave behavior exactly as today — the hooks are CI's to opt into.
+Retention follows from the variable. The variable naming the directory *is* the operator asking for the bundles. Every bundle is therefore kept, as with an explicit `BAJUTSU_XCUITEST_RUNNER_LOG` directory. BE-0319 prunes just its *default*, env-unset capture. This feature has no such default.
+
+One honest limit applies. `xcodebuild` finalizes the bundle when the test run ends, which is exactly what happens on the code-65 failures above. A runner that `bajutsu` kills mid-hang may leave a truncated bundle, so the collection is best-effort there.
+
+**A stall-time probe.** Two moments trigger the probe:
+
+- The channel declares a mid-run crash (`bajutsu/drivers/xcuitest.py`, where the transient-retry budget is exhausted).
+- The video watcher logs `recordVideo produced no new bytes` (`bajutsu/evidence/intervals.py`).
+
+At either moment, the state that would answer hypothesis (1) versus (2) still exists and is about to vanish. When the new environment variable `BAJUTSU_STALL_DIAGNOSTICS` names a directory, both trigger points run a bounded, best-effort capture into it. The capture has three parts:
+
+- a timed `xcrun simctl io <udid> screenshot`. If simctl's own path also stalls, the render service is wedged, not the runner.
+- `sample` of the runner host process and the Simulator's screenshot-serving processes
+- a `ps aux` plus `vm_stat` snapshot
+
+Each command carries a short subprocess timeout, and failures are swallowed. Captures are capped per run (first few stalls only), so a crash-looping run cannot fill the disk or the wall clock. When both variables are unset, behavior stays exactly as today. The hooks are CI's to opt into.
 
 ### Layer 2: Simulator and CoreSimulator state, from CI
 
-A new composite action, `.github/actions/collect-ios-diagnostics`, owns the OS-side collection so
-the seven Simulator-driving macOS jobs do not each grow their own shell steps. It replaces the
-`Collect crash diagnostics` step inside `bajutsu-e2e/action.yml` and is also wired into the jobs
-that do not run through that action (`conformance`, `fault-injection`, `visual`); `codegen`, the
-one remaining macOS job that boots a Simulator, stays out, because it uploads only its `.xcresult`
-and has no `runs/` artifact for the collection to ride. The action runs in two tiers:
+A new composite action, `.github/actions/collect-ios-diagnostics`, owns the OS-side collection, so the seven Simulator-driving macOS jobs do not each grow their own shell steps. It replaces the `Collect crash diagnostics` step inside `bajutsu-e2e/action.yml`. It is also wired into the jobs that do not run through that action: `conformance`, `fault-injection`, and `visual`.
 
-- **Always** (cheap, every run): copy `~/Library/Logs/CoreSimulator/CoreSimulator.log` and the
-  booted device's `~/Library/Logs/CoreSimulator/<UDID>/` directory; widen the crash-report sweep
-  from `*.ips` / `*.crash` to `*.diag`, `*.spin`, `*.hang`, and `JetsamEvent*`, and add the
-  system-wide `/Library/Logs/DiagnosticReports`; and record an environment snapshot — `sw_vers`,
-  `sysctl hw.model hw.ncpu hw.memsize kern.hv_vmm_present`, `system_profiler SPDisplaysDataType`,
-  `xcodebuild -version`, and `xcrun simctl list -j` — the cross-run key hypothesis (4) needs.
-- **On failure only** (heavy): `xcrun simctl diagnose` with a timeout, Apple's own collector for
-  CoreSimulator and device state; and targeted unified-log extracts via `log show --last <window>
-  --predicate` for the processes that serve rendering and screenshots — `backboardd`,
-  `SpringBoard`, `testmanagerd`, and the CoreSimulator service. Inside `bajutsu-e2e/action.yml` the
-  tier is gated on the run step's own outcome; in the pytest lanes the caller gates it on the run
-  step's outcome too, since `failure()` is rejected in a `with:` value.
+`codegen` is the one remaining macOS job that boots a Simulator, and it stays out. It uploads only its `.xcresult` and has no `runs/` artifact for the collection to ride. The action runs in two tiers:
 
-Implementation measured five things this design had wrong, each of which would have shipped a
-collector that quietly gathers nothing — the very failure the proposal exists to end:
+- **Always** (cheap, every run):
+  - Copy `~/Library/Logs/CoreSimulator/CoreSimulator.log` and the booted device's `~/Library/Logs/CoreSimulator/<UDID>/` directory.
+  - Widen the crash-report sweep from `*.ips` / `*.crash` to `*.diag`, `*.spin`, `*.hang`, and `JetsamEvent*`. Add the system-wide `/Library/Logs/DiagnosticReports`.
+  - Record an environment snapshot: `sw_vers`, `sysctl hw.model hw.ncpu hw.memsize kern.hv_vmm_present`, `system_profiler SPDisplaysDataType`, `xcodebuild -version`, and `xcrun simctl list -j`. This is the cross-run key that hypothesis (4) needs.
+- **On failure only** (heavy):
+  - Run `xcrun simctl diagnose` with a timeout. It is Apple's own collector for CoreSimulator and device state.
+  - Take targeted unified-log extracts via `log show --last <window> --predicate`. They cover the processes that serve rendering and screenshots: `backboardd`, `SpringBoard`, `testmanagerd`, and the CoreSimulator service.
+  - Inside `bajutsu-e2e/action.yml`, this tier is gated on the run step's own outcome. In the pytest lanes, the caller gates it on the run step's outcome too, since `failure()` is rejected in a `with:` value.
 
-- **The guest does not log to the host.** The claim above that "Simulator guest processes write to
-  the host's unified log" is false. On a booted device, a host-side `log show` filtered on
-  `SpringBoard` / `backboardd` / `testmanagerd` returns its header and no entries; those entries live
-  in the device's own log store. The collection therefore runs **two** extracts: one on the host for
-  the CoreSimulator service processes (whose process name is `com.apple.CoreSimulator.CoreSimulatorService`,
-  not `CoreSimulatorService`, and whose subsystem needs a `CONTAINS` match), and one inside the guest
-  through `simctl spawn`. Measured over a 30-minute window: 34.5k host lines and 11.4k guest lines,
-  about a second each.
-- **`simctl diagnose` blocks on stdin and destroys its `--output` directory.** It prints a consent
-  notice and waits for a newline; a CI step's stdin is `/dev/null`, where it reads EOF and exits 0
-  having collected nothing. It also treats `--output` as the archive's *base path*, replacing that
-  directory with `<path>.tar.gz` and deleting whatever else was in it — so pointing it at the
-  collection directory would delete the rest of the collection. Measured at ~15s and 22–78MB for one
-  booted device. Its flags additionally require the `--flag=value` form.
-- **`CoreSimulator.log` is unbounded.** Copying it wholesale is a 183MB artifact on a long-lived
-  host, on the *always* tier. The collection tails it instead.
-- **One shared capture budget would have starved the trigger that matters.** The Motivation above
-  records that `recordVideo produced no new bytes` fires for every scenario, green runs included, and a
-  job runs a dozen scenario documents in one `bajutsu run` process. A single per-process cap of three
-  is therefore spent on the third scenario's video warning, and the runner crash — the failure the
-  capture exists to explain, and the only trigger that reaches it with the device's id — finds nothing
-  left. The budget is per trigger, and a declined capture is logged at warning rather than debug,
-  since the lane installs no log handler and a debug line is no record at all.
+Implementation measured five things this design had wrong. Each would have shipped a collector that quietly gathers nothing, which is the very failure the proposal exists to end.
 
-- **A capture is charged to a clock it does not own.** BE-0353's `CrashRecoveryBudget` is a wall-clock
-  deadline set at the *first* crash and re-checked at each later one, so every second a capture spends
-  is a second the recovery no longer has. The first CI run of this change showed it: a `visual` job
-  missed its 300s recovery deadline by 75s with two captures of up to 30s inside that window, which is
-  a diagnostic turning a recoverable degradation into a failed run — exactly what an observer may not
-  do. The per-capture budget is 10s against that lane's 300s, the screenshot ceiling is 5s (the
-  runner's own read timeout is 15s, so a `simctl` path unanswered at 5s has already answered the
-  question), and a test pins the relationship against the lane's configured budget rather than the
-  bare number.
+- **The guest does not log to the host.** An earlier version of this design claimed that Simulator guest processes write to the host's unified log. That claim is false. On a booted device, a host-side `log show` filtered on `SpringBoard`, `backboardd`, and `testmanagerd` returns its header and no entries. Those entries live in the device's own log store. The collection therefore runs **two** extracts:
+  - One on the host, for the CoreSimulator service processes. Their process name is `com.apple.CoreSimulator.CoreSimulatorService`, not `CoreSimulatorService`, and their subsystem needs a `CONTAINS` match.
+  - One inside the guest, through `simctl spawn`.
 
-Two smaller shapes follow from the same measurements. `xcodebuild` refuses to start when its
-`-resultBundlePath` already exists, so unit 1 clears a leftover at its own key first — otherwise a
-recycled ephemeral port would turn the diagnostics into a spawn failure. And the `start` phase lives
-inside `bajutsu-e2e/action.yml` rather than in each calling job, because `bundled-runner` invokes that
-action twice and a job-level start would be stopped by the first invocation's `collect`.
+  Measured over a 30-minute window, the host extract returned 34.5k lines and the guest extract 11.4k lines, about a second each.
+- **`simctl diagnose` blocks on stdin and destroys its `--output` directory.** It prints a consent notice and waits for a newline. A CI step's stdin is `/dev/null`, where it reads EOF and exits 0 having collected nothing. It also treats `--output` as the archive's *base path*. It replaces that directory with `<path>.tar.gz` and deletes whatever else was in it, so pointing it at the collection directory would delete the rest of the collection. Measured at ~15s and 22–78MB for one booted device. Its flags additionally require the `--flag=value` form.
+- **`CoreSimulator.log` is unbounded.** Copying it wholesale is a 183MB artifact on a long-lived host, on the *always* tier. The collection tails it instead.
+- **One shared capture budget would have starved the trigger that matters.** The Motivation above records that `recordVideo produced no new bytes` fires for every scenario, green runs included. A job runs a dozen scenario documents in one `bajutsu run` process. A single per-process cap of three is therefore spent on the third scenario's video warning. The runner crash is the failure the capture exists to explain. It is also the only trigger that reaches the capture with the device's id. It finds nothing left. The budget is per trigger. A declined capture is logged at warning rather than debug, since the lane installs no log handler and a debug line is no record at all.
+- **A capture is charged to a clock it does not own.** BE-0353's `CrashRecoveryBudget` is a wall-clock deadline. It is set at the *first* crash and re-checked at each later one. Every second a capture spends is a second the recovery no longer has. The first CI run of this change showed it: a `visual` job missed its 300s recovery deadline by 75s, with two captures of up to 30s inside that window. A diagnostic turned a recoverable degradation into a failed run, which an observer may not do. The per-capture budget is 10s against that lane's 300s. The screenshot ceiling is 5s: the runner's own read timeout is 15s, so a `simctl` path unanswered at 5s has already answered the question. A test pins the relationship against the lane's configured budget rather than the bare number.
+
+Two smaller shapes follow from the same measurements:
+
+- `xcodebuild` refuses to start when its `-resultBundlePath` already exists. Unit 1 therefore clears a leftover at its own key first. Otherwise a recycled ephemeral port would turn the diagnostics into a spawn failure.
+- The `start` phase lives inside `bajutsu-e2e/action.yml` rather than in each calling job. The `bundled-runner` job invokes that action twice, and a job-level start would be stopped by the first invocation's `collect`.
 
 ### Layer 3: host telemetry over time
 
-A stall correlates with host starvation only if the host's load is on record when the stall
-happens, so the same composite action gains a `start` phase the consumer jobs call right after
-`bootstatus`: it launches a background sampler (an interval loop appending `top`, `vm_stat`, and
-`memory_pressure` output to `runs/diagnostics/host-telemetry.log` every ~20 seconds) and runs a
-one-shot render-pipeline probe — a timed `simctl io screenshot` plus a five-second `recordVideo`
-whose byte count answers, per job, whether the video pipeline was dead from the start. The
-`collect` phase stops the sampler. The sampler is an observer off the verdict path; its interval
-is a sampling cadence, not a wait, so prime directive 2's ban on fixed sleeps in the run loop is
-untouched.
+A stall correlates with host starvation only if the host's load is on record when the stall happens. The same composite action therefore gains a `start` phase, which the consumer jobs call right after `bootstatus`. The phase does two things:
+
+- It launches a background sampler. The sampler is an interval loop that appends `top`, `vm_stat`, and `memory_pressure` output to `runs/diagnostics/host-telemetry.log` every ~20 seconds.
+- It runs a one-shot render-pipeline probe: a timed `simctl io screenshot` plus a five-second `recordVideo`. The byte count answers, per job, whether the video pipeline was dead from the start.
+
+The `collect` phase stops the sampler. The sampler is an observer off the verdict path. Its interval is a sampling cadence, not a wait, so prime directive 2's ban on fixed sleeps in the run loop is untouched.
 
 ### Work breakdown (`MECE`)
 
 Mutually exclusive, collectively exhaustive (`MECE`) units of work follow.
 
-1. **Result bundles.** `-resultBundlePath` in `_spawn_runner` behind
-   `BAJUTSU_XCUITEST_RESULT_BUNDLES`, with the runner log's per-port keying and every bundle
-   kept (the variable is the operator asking for them); `ios-e2e.yml` points it under
-   `runs/runner-logs/`.
-2. **Stall-time probe.** The bounded capture module behind `BAJUTSU_STALL_DIAGNOSTICS`, its two
-   trigger points (channel crash declaration, video no-bytes warning), the per-run capture cap,
-   and the `ios-e2e.yml` opt-in.
-3. **The `collect-ios-diagnostics` composite action.** The always tier, the failure tier, and the
-   `start` phase; replacing the `Collect crash diagnostics` step in `bajutsu-e2e/action.yml`;
-   wiring into `conformance`, `fault-injection`, and `visual`.
-4. **Docs.** A diagnostics section in `docs/ci.md` and its `docs/ja/` mirror: the tiers, where
-   each artifact lands in `runs/`, and how to read them against the four hypotheses.
-5. **Tests.** Unit tests for the two `bajutsu` hooks — the spawn argv gains `-resultBundlePath`
-   exactly when the variable is set, the probe is a no-op when unset, bounded and best-effort when
-   set — and `tests/test_e2e_changes.py` names the new action in the iOS lane's positive path list,
-   without which a change to it would fire no lane at all. The composite action's own shell has **no**
-   static gate coverage, contrary to what this unit first assumed: `actionlint` lints
-   `.github/workflows/` only (pointed at an `action.yml` it reports a missing `jobs` section), and
-   `make lint-sh` runs `shellcheck` over a named list of `.sh` files that reaches nothing under
-   `.github/actions/`. That gap shipped a defect: the action's watchdog SIGKILLed a hung `simctl`
-   screenshot, `wait` returned the child's 137, and the errexit **Actions itself puts on the shell
-   line** — `bash --noprofile --norc -e -o pipefail`, which a script's own `set -uo pipefail` does not
-   clear — failed the step, skipping the real test step and reddening five iOS jobs. So the tests now
-   run the action's own `run:` blocks under exactly that interpreter and those flags, with `xcrun`
-   stubbed to hang (`tests/test_collect_ios_diagnostics_action.py`), pinning the one property that
-   matters: a diagnostics step cannot fail a job. Writing them found a second unbounded call
-   (`simctl list` on the *always* tier) that would have hung every job on a wedged CoreSimulator.
-   Closing the static-lint gap for every composite action is still its own follow-up.
+1. **Result bundles.** Add `-resultBundlePath` in `_spawn_runner` behind `BAJUTSU_XCUITEST_RESULT_BUNDLES`. Use the runner log's per-port keying, and keep every bundle (the variable is the operator asking for them). `ios-e2e.yml` points the variable under `runs/runner-logs/`.
+2. **Stall-time probe.** Add the bounded capture module behind `BAJUTSU_STALL_DIAGNOSTICS`. Wire its two trigger points (channel crash declaration, video no-bytes warning) and the per-run capture cap. Add the opt-in in `ios-e2e.yml`.
+3. **The `collect-ios-diagnostics` composite action.** Build the always tier, the failure tier, and the `start` phase. Replace the `Collect crash diagnostics` step in `bajutsu-e2e/action.yml`. Wire the action into `conformance`, `fault-injection`, and `visual`.
+4. **Docs.** Add a diagnostics section to `docs/ci.md` and its `docs/ja/` mirror. It covers the tiers, where each artifact lands in `runs/`, and how to read them against the four hypotheses.
+5. **Tests.** The tests cover three things:
+   - Unit tests for the two `bajutsu` hooks. The spawn argv gains `-resultBundlePath` exactly when the variable is set. The probe is a no-op when unset, and bounded and best-effort when set.
+   - `tests/test_e2e_changes.py` names the new action in the iOS lane's positive path list. Without that, a change to the action would fire no lane at all.
+   - The composite action's own shell. This unit first assumed that static gates cover that shell, and they do **not**. `actionlint` lints `.github/workflows/` only, and reports a missing `jobs` section when pointed at an `action.yml`. `make lint-sh` runs `shellcheck` over a named list of `.sh` files that reaches nothing under `.github/actions/`.
+
+   That gap shipped a defect. The action's watchdog SIGKILLed a hung `simctl` screenshot, and `wait` returned the child's 137. Actions itself puts an errexit on the shell line: `bash --noprofile --norc -e -o pipefail`. A script's own `set -uo pipefail` does not clear it. The errexit failed the step, skipped the real test step, and reddened five iOS jobs.
+
+   The tests therefore run the action's own `run:` blocks under exactly that interpreter and those flags, with `xcrun` stubbed to hang (`tests/test_collect_ios_diagnostics_action.py`). They pin the one property that matters: a diagnostics step cannot fail a job. Writing them found a second unbounded call (`simctl list` on the *always* tier). On a wedged CoreSimulator, it would have hung every job. Closing the static-lint gap for every composite action is still its own follow-up.
 
 ### Prime directives preserved
 
-- **AI never judges.** Every layer collects evidence; no model call enters any path this proposal
-  touches, and no collected artifact feeds a verdict.
-- **Determinism first.** The probes are bounded subprocess calls with timeouts, not sleeps; the
-  telemetry sampler observes from outside the run loop. Pass/fail is decided exactly as before.
-- **App-agnostic.** Nothing here reads the target app: the hooks key on the device and the runner
-  process, and the CI action on the host — no per-target branching anywhere.
+- **AI never judges.** Every layer collects evidence. No model call enters any path this proposal touches, and no collected artifact feeds a verdict.
+- **Determinism first.** The probes are bounded subprocess calls with timeouts, not sleeps. The telemetry sampler observes from outside the run loop. Pass/fail is decided exactly as before.
+- **App-agnostic.** Nothing here reads the target app. The hooks key on the device and the runner process, and the CI action keys on the host. No per-target branching exists anywhere.
 
 ## Alternatives considered
 
-- **Raising `BAJUTSU_LOG_LEVEL` instead of collecting OS-side state.** Rejected as the primary
-  measure: the failing layer is the Simulator's screenshot service, outside `bajutsu`'s process,
-  so no amount of `bajutsu`-side verbosity records it. More logging may still ride along, but it
-  cannot substitute for layers 2 and 3.
-- **A full `log collect` archive, or `sysdiagnose`, on failure.** Deferred: a `.logarchive` of the
-  whole window runs to hundreds of megabytes per job and `sysdiagnose` takes minutes to produce
-  gigabytes, while the targeted `log show` extracts cover the processes the failure signature
-  already names. Revisit only if the extracts prove insufficient.
-- **Streaming the unified log for the whole job.** Rejected: the per-step `device.log` interval
-  evidence already streams the guest log during scenarios, and a retrospective `log show` at
-  failure time yields the same host-side entries without a long-lived extra process.
-- **Making the runner survive a screenshot failure instead of diagnosing it.** Out of scope by
-  design: routing `/screenshot` around the runner (for example through `simctl io screenshot`) or
-  making the failure non-fatal in Swift is a *fix*, and choosing one before the diagnostics
-  confirm the cause would be guessing. A follow-up proposal owns the fix once the evidence is in.
+- **Raising `BAJUTSU_LOG_LEVEL` instead of collecting OS-side state.** Rejected as the primary measure. The failing layer is the Simulator's screenshot service, outside `bajutsu`'s process, so no amount of `bajutsu`-side verbosity records it. More logging may still ride along, but it cannot substitute for layers 2 and 3.
+- **A full `log collect` archive, or `sysdiagnose`, on failure.** Deferred. A `.logarchive` of the whole window runs to hundreds of megabytes per job. `sysdiagnose` takes minutes to produce gigabytes. The targeted `log show` extracts cover the processes the failure signature already names. Revisit only if the extracts prove insufficient.
+- **Streaming the unified log for the whole job.** Rejected. The per-step `device.log` interval evidence already streams the guest log during scenarios. A retrospective `log show` at failure time yields the same host-side entries without a long-lived extra process.
+- **Making the runner survive a screenshot failure instead of diagnosing it.** Out of scope by design. Routing `/screenshot` around the runner (for example through `simctl io screenshot`) or making the failure non-fatal in Swift is a *fix*. Choosing one before the diagnostics confirm the cause would be guessing. A follow-up proposal owns the fix once the evidence is in.
 
 ## Progress
 
