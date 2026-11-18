@@ -85,7 +85,7 @@ commands:
 |---|---|
 | `allow` | worker のホスト上で実行します。 |
 | `sandbox` | worker のホスト上の使い捨ての Docker コンテナで実行します。現在の BE-0090 の `sandbox` モードと同じです。 |
-| `deny` | その出どころのコマンドは実行しません。worker は、下の「振り分け」で必要なトークンを加えるコマンドを、その出どころの設定が宣言しているジョブを取りません。2つのビルドはランの中で実行しません。 |
+| `deny` | その出どころのコマンドは実行しません。その出どころの設定が、下の「振り分け」で必要なトークンを加えるコマンドを宣言していれば、worker はそのジョブを取りません。2つのビルドはランの中で実行しません。 |
 
 ブロックやキーを省略すると、デフォルト値の `uploaded: sandbox`、`remote: sandbox`、
 `operator: allow` になります。現在の扱いとの違いは、厳しくなる1点だけです。`remote` の設定の
@@ -129,9 +129,10 @@ Linux のコンテナにはないからです。この扱いは、
 
 ラベルは、現在の `upload_exec` フィールドに代わってジョブの intent に載ります。設定の側から自分の
 ラベルを指定する手段はありません。端末や CI から始めた `bajutsu run` は、設定に `operator`
-を付けます。ランを始めた人が設定を選んだからです。worker は、起動するランに、`--upload-exec`
-に代わる `run` のオプションでジョブのラベルを渡します。ラベルを受け取ったランは、自分で決めずに
-そのラベルを使います。
+を付けます。ランを始めた人が設定を選んだからです。worker は、起動するコマンド（`run`、`record`、
+`crawl`）に、`--upload-exec` に代わるオプションでジョブのラベルを渡します。ラベルを受け取った
+コマンドは、自分で決めずにそのラベルを使います。worker は自分の `worker.yaml` も3つのコマンドに
+渡します。そのため、ランの中での確認は、worker が申告したのと同じ `commands` ブロックを読みます。
 
 ### 振り分け
 
@@ -158,7 +159,8 @@ worker は `serve` より先に更新します。本提案より前の worker �
 ### ランの中での確認
 
 `bajutsu run` は、デバイスの作業より前に、読み込んだ `worker.yaml` に照らして方針をもう一度
-確かめます。出どころが `deny` に当たる統制対象のコマンドがあれば、ランは終了コード2で失敗します。
+確かめます。出どころが `deny` に当たる `services.server.cmd` があれば、ランは終了コード2で失敗します。
+ビルドは、上の表のとおり `deny` の下では飛ばすだけです。バイナリがすでにあるランは、そのまま進みます。
 メッセージは、コマンド、出どころ、モードを示します。この2度目の確認は、`serve` を通さずに始めた
 ランと、申告がファイルとずれた worker の両方を受け止めます。
 ランは、拒否したエントリを含む `manifest.json` を書いてから終了します。
@@ -207,7 +209,8 @@ worker は `serve` より先に更新します。本提案より前の worker �
 - `bajutsu/common/runner/launch_server.py` と `sandbox.py` は、ランの方針の確認からモードを
   受け取ります。`--upload-exec` オプションからは受け取りません。
 - `bajutsu/serve/operations/dispatch.py` は、`_build_trusted` による判断をやめます。その判断は
-  worker の方針が受け持ちます。
+  worker の方針が受け持ちます。`Job.withhold_runner_build` と、それをランに運ぶ環境変数も、
+  あわせて削除します。
 - `docs/self-hosting.md`（「Remote-config command execution (BE-0121)」の節を含みます）、
   `docs/cli.md`、`docs/drivers.md`、`DESIGN.md`、`docs/architecture.md` を、振る舞いの変更に
   あわせて日本語版とともに更新します。
@@ -241,9 +244,9 @@ worker は `serve` より先に更新します。本提案より前の worker �
 > ともに記録します。
 
 - [ ] `worker.yaml`：`commands` ブロック、デフォルト値、検証、起動時の Docker の確認。
-- [ ] 出どころのラベル：`upload_exec` に代えて `uploaded` / `remote` / `operator` をジョブの intent で運び、ラベルを運ぶ `run` のオプションで渡し、CLI のランにもラベルを付ける。
+- [ ] 出どころのラベル：`upload_exec` に代えて `uploaded` / `remote` / `operator` をジョブの intent で運び、ラベルを運ぶオプションで、worker の `worker.yaml` とともに `run`・`record`・`crawl` に渡し、CLI のランにもラベルを付ける。
 - [ ] 振り分け：`commands:<source>` トークンを申告し、コマンドを宣言したジョブに必要なトークンを加える。
-- [ ] ランの中での確認：出どころが `deny` に当たる統制対象のコマンドを、デバイスの作業より前に拒否する。
+- [ ] ランの中での確認：出どころが `deny` に当たる `services.server.cmd` を、デバイスの作業より前に拒否し、`deny` の下ではビルドを飛ばす。
 - [ ] コマンドの記録：`manifest.json` の `commands` のリストと、レポートでの表示。
 - [ ] `serve --upload-exec`、`$BAJUTSU_UPLOAD_EXEC`、`serve --allow-remote-build`、`$BAJUTSU_ALLOW_REMOTE_BUILD`、`run`・`record`・`crawl` の `--upload-exec` オプションを削除する。
 - [ ] ドキュメント、`DESIGN.md`、`docs/architecture.md` を両言語で更新する。

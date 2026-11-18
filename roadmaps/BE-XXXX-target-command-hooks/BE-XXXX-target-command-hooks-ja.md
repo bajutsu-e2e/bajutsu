@@ -191,7 +191,7 @@ Bajutsu は、各コマンドの出力をパイプではなくログファイル
 
 | 環境変数 | 渡す対象 |
 |---|---|
-| `BAJUTSU_RUN_ID`、`BAJUTSU_RUN_DIR`、`BAJUTSU_TARGET` | すべてのエントリ |
+| `BAJUTSU_RUN_ID`、`BAJUTSU_RUN_DIR`、`BAJUTSU_TARGET` | すべてのエントリ（`sandbox` の下では `BAJUTSU_RUN_DIR` を設定しません） |
 | `BAJUTSU_SCENARIO`、`BAJUTSU_SCENARIO_FILE`、`BAJUTSU_WORKER` | `beforeScenario` と `afterScenario` |
 | `BAJUTSU_VERDICT`（`success` または `failure`） | `afterRun` と `afterScenario` |
 
@@ -266,7 +266,7 @@ Bajutsu のコマンドごとに、実行するリストは次のとおりです
 ```yaml
 hooks:
   sandbox:
-    dockerImage: "node:20-slim"   # または dockerfile：バンドル内のパス
+    dockerImage: "node:20-slim"   # または dockerfile：設定のディレクトリ内のパス
     ports: [8787]                 # worker のループバックに公開するポート
 ```
 
@@ -276,9 +276,12 @@ hooks:
   コンテナは `afterRun` の後に削除します。
 - **ポート**：`ports` の各ポートを、worker のループバックの同じ番号のポートに公開します。worker
   上のブラウザやアプリは、`127.0.0.1:<port>` でサーバーに到達します。
-- **ファイル**：バンドルは、エントリの `cwd` ではなく、worker が用意したバンドルのディレクトリから
-  読み取り専用でマウントします。ランのディレクトリの `hooks/` は書き込み可能でマウントします。
-  `BAJUTSU_OUTPUT` と `BAJUTSU_RUN_DIR` は、コンテナ内のパスに書き換えます。
+- **ファイル**：worker が用意した設定のディレクトリ（アップロードされたバンドルか Git の
+  チェックアウト）を、読み取り専用でマウントします。エントリの `cwd` からはマウントしません。
+  ランのディレクトリの外にある、元のログと `BAJUTSU_OUTPUT` のファイルを置くディレクトリは、
+  書き込み可能でマウントします。そのため、マスクしてからランのディレクトリに写す流れは sandbox
+  でも変わりません。`BAJUTSU_OUTPUT` はコンテナ内のパスに書き換えます。ランのディレクトリは
+  マウントしないので、`BAJUTSU_RUN_DIR` はコンテナ内では設定しません。
 
 `hooks.sandbox` は、現在の `services.server` が持つ `dockerImage`、`dockerfile`、`port` の
 フィールドを置き換えます。フックが `sandbox` モードに当たったのに `hooks.sandbox` を持たない

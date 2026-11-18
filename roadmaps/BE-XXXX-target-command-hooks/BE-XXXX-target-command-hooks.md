@@ -187,7 +187,7 @@ Every later command in scope sees earlier outputs as environment variables named
 
 | Variable | Set for |
 |---|---|
-| `BAJUTSU_RUN_ID`, `BAJUTSU_RUN_DIR`, `BAJUTSU_TARGET` | every entry |
+| `BAJUTSU_RUN_ID`, `BAJUTSU_RUN_DIR`, `BAJUTSU_TARGET` | every entry (`BAJUTSU_RUN_DIR` is not set under `sandbox`) |
 | `BAJUTSU_SCENARIO`, `BAJUTSU_SCENARIO_FILE`, `BAJUTSU_WORKER` | `beforeScenario` and `afterScenario` |
 | `BAJUTSU_VERDICT` (`success` or `failure`) | `afterRun` and `afterScenario` |
 
@@ -254,7 +254,7 @@ that lives for the whole run. The target declares the container in a `hooks.sand
 ```yaml
 hooks:
   sandbox:
-    dockerImage: "node:20-slim"   # or dockerfile: a path inside the bundle
+    dockerImage: "node:20-slim"   # or dockerfile: a path inside the config's directory
     ports: [8787]                 # published to the worker's loopback interface
 ```
 
@@ -263,9 +263,12 @@ hooks:
   Bajutsu removes the container after `afterRun`.
 - **Ports.** Each port in `ports` is published to the same port on the worker's loopback interface.
   The browser or the app on the worker then reaches the server at `127.0.0.1:<port>`.
-- **Files.** The bundle is mounted read-only from the bundle directory the worker prepared, never
-  from an entry's `cwd`. The run directory's `hooks/` area is mounted writable. Bajutsu rewrites
-  `BAJUTSU_OUTPUT` and `BAJUTSU_RUN_DIR` to their paths inside the container.
+- **Files.** The config's directory that the worker prepared, an uploaded bundle or a Git
+  checkout, is mounted read-only, never from an entry's `cwd`. The directory outside the run
+  directory that holds the raw logs and the `BAJUTSU_OUTPUT` files is mounted writable, so the
+  masked copy into the run directory still applies. Bajutsu rewrites `BAJUTSU_OUTPUT` to its path
+  inside the container. It leaves `BAJUTSU_RUN_DIR` unset there, since the run directory is not
+  mounted.
 
 `hooks.sandbox` replaces the `dockerImage`, `dockerfile`, and `port` fields that `services.server`
 carries today. A target whose hooks meet the `sandbox` mode without a `hooks.sandbox` block fails

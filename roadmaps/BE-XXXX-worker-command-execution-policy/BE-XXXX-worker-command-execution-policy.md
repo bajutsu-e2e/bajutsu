@@ -127,8 +127,10 @@ its hook entries take the place of `services.server.cmd` in the table above.
 The label travels in the job's intent, in place of today's `upload_exec` field. The config itself
 has no way to set its own label. A `bajutsu run` started from a terminal or CI labels its config
 `operator`, since the person who started the run chose the config. A worker passes the
-job's label to the run it spawns through a `run` option that takes the place of `--upload-exec`,
-and the run then uses that label instead of deriving one.
+job's label to the command it spawns (`run`, `record`, or `crawl`) through an option that takes the
+place of `--upload-exec`, and that command then uses the label instead of deriving one. The worker
+also passes its `worker.yaml` to each of the three, so the check inside the run reads the same
+`commands` block the worker advertised.
 
 ### Routing
 
@@ -152,8 +154,9 @@ a worker already holds the built binary or runner. The worker decides the build 
 ### The check inside the run
 
 `bajutsu run` checks the policy again before any device work, against the `worker.yaml` it reads.
-A governed command whose source maps to `deny` fails the run with exit 2, naming the command, its
-source, and the mode. That second check covers a run started without `serve`, and a worker whose
+A `services.server.cmd` whose source maps to `deny` fails the run with exit 2, naming the command,
+its source, and the mode. A build under `deny` is skipped instead, as the table above says, so a run
+whose binary already exists still runs. That second check covers a run started without `serve`, and a worker whose
 advertisement no longer matches its file. The run writes `manifest.json` with the refused entry
 before it exits.
 
@@ -197,7 +200,8 @@ used `reuse` picks `sandbox` or `deny`.
 - `bajutsu/common/runner/launch_server.py` and `sandbox.py` take the mode from the run's policy
   check in place of the `--upload-exec` option.
 - `bajutsu/serve/operations/dispatch.py` drops its `_build_trusted` decision, which the worker's
-  policy now makes.
+  policy now makes. `Job.withhold_runner_build` goes away with the environment variable that
+  carries it to the run.
 - `docs/self-hosting.md` (including its "Remote-config command execution (BE-0121)" section),
   `docs/cli.md`, `docs/drivers.md`, `DESIGN.md`, and `docs/architecture.md` change with the
   behavior, each with its Japanese mirror.
@@ -231,9 +235,9 @@ used `reuse` picks `sandbox` or `deny`.
 > (oldest first), linking the PRs.
 
 - [ ] `worker.yaml`: the `commands` block, its defaults, validation, and the Docker check at startup.
-- [ ] Source label: carry `uploaded` / `remote` / `operator` in the job intent in place of `upload_exec`, pass it through the `run` option that carries the label, and label CLI runs.
+- [ ] Source label: carry `uploaded` / `remote` / `operator` in the job intent in place of `upload_exec`, pass it to `run`, `record`, and `crawl` through the option that carries the label, together with the worker's `worker.yaml`, and label CLI runs.
 - [ ] Routing: advertise `commands:<source>` tokens and add the requirement to jobs that declare commands.
-- [ ] Run-time check: refuse a governed command whose source maps to `deny`, before device work.
+- [ ] Run-time check: refuse a `services.server.cmd` whose source maps to `deny`, and skip builds under `deny`, before device work.
 - [ ] Command record: the `commands` list in `manifest.json` and its place in the report.
 - [ ] Remove `serve --upload-exec`, `$BAJUTSU_UPLOAD_EXEC`, `serve --allow-remote-build`, `$BAJUTSU_ALLOW_REMOTE_BUILD`, and the `--upload-exec` option of `run`, `record`, and `crawl`.
 - [ ] Update the docs, `DESIGN.md`, and `docs/architecture.md` in both languages.
