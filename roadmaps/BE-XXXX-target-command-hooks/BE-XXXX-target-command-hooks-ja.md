@@ -10,22 +10,23 @@
 | 状態 | **承認済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | トピック | シナリオ記述機能 |
-| 関連 | [BE-0036](../BE-0036-utility-steps/BE-0036-utility-steps-ja.md)、[BE-0059](../BE-0059-launch-target-server/BE-0059-launch-target-server-ja.md)、[BE-0090](../BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution-ja.md)、[BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks-ja.md)、[BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md) |
+| 関連 | [BE-0036](../BE-0036-utility-steps/BE-0036-utility-steps-ja.md)、[BE-0059](../BE-0059-launch-target-server/BE-0059-launch-target-server-ja.md)、[BE-0090](../BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution-ja.md)、[BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks-ja.md)、[BE-0449](../BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs-ja.md)、[BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
 
 本提案では、ターゲットの設定から、ラン全体と各シナリオの前後に外部コマンドを実行できるようにします。
 コマンドは `targets.<name>.hooks` の下に新設する4つのリストに書きます。リストは `beforeRun`、
-`afterRun`、`beforeScenario`、`afterScenario` です。コマンドの用途は、Web API（application programming interface）を介したテストデータの投入や
-ファイルの配置、アプリ自身の Web サーバーのような常駐プロセスの起動です。GitHub Actions のステップが
-`$GITHUB_OUTPUT` に書くのと同じ要領で、コマンドは出力ファイルを通じてシナリオに値を渡せます。
+`afterRun`、`beforeScenario`、`afterScenario` です。コマンドの用途は、Web API（application
+programming interface）を介したテストデータの投入、ファイルの配置、アプリ自身の Web サーバーの起動
+などです。GitHub Actions のステップが `$GITHUB_OUTPUT` に書くのと同じ要領で、コマンドは出力ファイルを
+通じてシナリオに値を渡せます。
 
-同じ仕組みで、既存の2つのサービス定義を置き換えます。`background: true` と `readyUrl` を持つ
-`beforeRun` のエントリは、現在の `services.server` と同じ働きをします。そこで本提案は
-`services.server` を削除します。あわせて、スキーマにだけ存在し、どのランも起動したことのない
-`services.mockServer` も削除します。本提案の後、`services` に残るのは `mailbox` だけです。
-`mailbox` は、ランが問い合わせるだけで起動はしない外部の受信箱です。
+どのエントリも、実行して終了するコマンドです。サーバーを起動し、サーバーが応答するまで待ってから
+終了する `beforeRun` のスクリプトは、現在の `services.server` と同じ働きをします。そこで本提案は、
+`services.server` を準備完了の確認のフィールドごと削除します。あわせて、スキーマにだけ存在し、
+どのランも起動したことのない `services.mockServer` も削除します。本提案の後、`services` に残るのは
+`mailbox` だけです。`mailbox` は、ランが問い合わせるだけで起動はしない外部の受信箱です。
 
 ## 動機
 
@@ -55,16 +56,16 @@ Bajutsu は、シナリオの中に汎用の抜け道を意図して設けてい
 Bajutsu はすでに、設定で宣言したコマンドを1つ、ランの前後で実行しています。Web ターゲットの
 ホストを起動するために
 [BE-0059](../BE-0059-launch-target-server/BE-0059-launch-target-server-ja.md) が追加した
-`services.server` です。`services.server` は、本提案が必要とするフックの特殊な形にあたります。
-コマンドに、準備完了の確認と後始末を加えた形だからです。両方を残すと、プロセスを起動する方法が
-2つになります。フィールドの組も2つになり、
-[BE-0090](../BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution-ja.md)
-のアップロードの方針の下でも、コードの経路が2本に分かれます。
+`services.server` です。`services.server` は、プロセスを起動し、準備完了の URL（uniform resource
+locator）に問い合わせ、最後にプロセスを止めます。この3つは、どれもスクリプト自身が行えます。
+しかも、準備完了の確かめ方を、サーバーに合わせて自由に選べます。`services.server` を新しいフックと
+並べて残すと、サーバーを起動する方法が2つになり、読み手が覚えるフィールドの組も2つになります。
 
 本提案が入った後は、次の違いを観察して確かめられます。データの投入を前提とするシナリオは、
 投入された識別子を `${hooks.<name>.<key>}` トークンで読みます。シナリオ自身の `setup` には、
 データを準備するためだけの `http` ステップが残りません。`demos/serve-ui/dogfood.config.yaml` は
-内側のサーバーを `hooks.beforeRun` で起動します。`services.server` を書いた設定は読み込めなくなります。
+内側のサーバーを `hooks.beforeRun` のスクリプトで起動します。`services.server` を書いた設定は
+読み込めなくなります。
 
 ## 詳細設計
 
@@ -74,7 +75,7 @@ Bajutsu はすでに、設定で宣言したコマンドを1つ、ランの前�
 既存の `setup` と `cleanup` は、引き続きシナリオのステップを持ちます。新しいリストが持つのは
 外部コマンドです。
 
-| リスト | 実行される時点 | 出力と常駐プロセスの有効範囲 |
+| リスト | 実行される時点 | 出力の有効範囲 |
 |---|---|---|
 | `beforeRun` | 最初のシナリオの前に1回 | ラン全体 |
 | `afterRun` | 最後のシナリオの後に1回（ランを抜けるすべての経路で） | なし |
@@ -89,13 +90,10 @@ targets:
     hooks:
       beforeRun:
         - name: server
-          cmd: "python -m http.server 8787"
-          background: true
-          readyUrl: "http://127.0.0.1:8787/"
-          readyTimeout: 30
+          cmd: "./scripts/start-server.sh"    # サーバーを起動し、応答するまで待ってから終了する
+          timeout: 60
         - name: catalog
           cmd: "./scripts/seed-catalog.sh"
-          timeout: 120
       beforeScenario:
         - name: user
           cmd: "./scripts/create-user.sh"     # userId=... を $BAJUTSU_OUTPUT に書く
@@ -104,7 +102,7 @@ targets:
           cmd: "./scripts/delete-user.sh"     # $BAJUTSU_HOOK__user__userId を読む
       afterRun:
         - on: always
-          cmd: "./scripts/reset-catalog.sh"
+          cmd: "./scripts/stop-server.sh"
 ```
 
 シナリオは、自前の準備ステップを持たずに、投入された値を読みます。
@@ -122,41 +120,26 @@ targets:
 | `cmd` | すべて | 実行するコマンドです。シェルと同じ規則で分割し、シェルを介さずに実行します。パイプやリダイレクトには `sh -c` かスクリプトを使います。 |
 | `name` | すべて | 識別子です。形式は `[A-Za-z][A-Za-z0-9_]*` で `__` を含まず、ランが動かすすべてのターゲットの4つのリスト全体で一意にします。出力を読まれるエントリでは必須です。 |
 | `cwd`、`env` | すべて | 作業ディレクトリと追加の環境変数です。現在の `services.server` と同じです。 |
-| `timeout` | すべて | フォアグラウンドで実行するコマンドの制限時間（秒）です。デフォルト値は 300 です。常駐のエントリでは使いません。 |
-| `background`、`readyUrl`、`readyTimeout` | `beforeRun`、`beforeScenario` | 常駐プロセスを起動し、準備完了を示す URL（uniform resource locator）が応答するまで待ちます。`background: true` のときは2つの準備完了フィールドがどちらも必須です。 |
+| `timeout` | すべて | コマンドの制限時間（秒）です。デフォルト値は 300 です。 |
 | `on` | `afterRun`、`afterScenario` | `always`、`success`、`failure` のいずれかです。デフォルト値は `always` です。シナリオの `cleanup` ルールと同じ語です。 |
 | `mask` | すべて | true のとき、エントリの出力値を `${secrets.*}` と同じく証跡でマスクします。デフォルト値は false です。 |
-| `dockerImage`、`dockerfile`、`port` | すべて | BE-0090 の `sandbox` モードで使う実行環境です。`services.server` から引き継ぎます。 |
-
-常駐のエントリの `readyUrl` にはデフォルト値を設けません。現在の `services.server` は、省略時に
-ターゲットの `subject.url` を使います。しかしフックのリストは複数のコマンドを持てるので、
-そのデフォルト値を受け持てるのは1つのエントリだけです。そこで準備完了の URL は常に明示します。
 
 ### 実行の順序
 
-フォアグラウンドのエントリは、完了するのを待ってから次のエントリを始めます。終了コードが0以外になるか `timeout` を
-過ぎると、そのエントリは失敗します。常駐のエントリは、専用のプロセスグループでプロセスを起動し、
-`readyUrl` が400未満のステータスを返すまで待ちます。この待機は条件待ちで、現在の
-`services.server` と同じ要領でポーリングします。プロセスを起動する前に `readyUrl` が応答した
-場合は、応答したサーバーを再利用し、停止もしません。BE-0059 の再利用の規則を引き継ぐためです。
+各エントリは、完了するのを待ってから次のエントリを始めます。終了コードが0以外になるか `timeout` を
+過ぎると、そのエントリは失敗します。`timeout` を過ぎたときは、コマンドのプロセスグループ全体を
+止めます。
 
-再利用の規則が成り立つのは `beforeRun` だけです。`run --workers` の下では、2つのワーカーが
-`beforeScenario` のサーバーを1つ共有しかねません。先に終わったワーカーがそのサーバーを止めると、
-もう一方のワーカーのシナリオが途中で壊れます。この共有を、次の2つの規則で防ぎます。
+スクリプトは、自分が終了した後も動き続けるプロセスを残せます。バックグラウンドで起動したサーバーが
+その例です。Bajutsu は、そのプロセスを追跡も停止もしません。サーバーを起動するスクリプトは、
+次の2つを受け持ちます。
 
-- **ワーカーごとの値**：`beforeScenario` のエントリでは、`cmd`、`readyUrl`、`env` の各値に含まれる
-  `${BAJUTSU_WORKER}` という文字列を、Bajutsu がワーカーの番号に置き換えます。たとえば
-  `cmd: "./mock --port 90${BAJUTSU_WORKER}"` と
-  `readyUrl: "http://127.0.0.1:90${BAJUTSU_WORKER}/"` を書いたエントリは、ワーカーごとに
-  サーバーを1つずつ起動します。
-- **シナリオ単位では再利用しません**：常駐の `beforeScenario` のエントリは、プロセスを起動する前に
-  `readyUrl` が応答した場合、シナリオを失敗させます。その応答は、別のワーカーか消し忘れの
-  プロセスがポートを使っていることを意味します。サーバーを共有すると、シナリオどうしの独立が
-  崩れます。
+- **準備完了の確認**：サーバーがリクエストを受け付けるようになってから、スクリプトを終了します。
+  確かめ方は、HTTP の問い合わせ、ポートの確認、ログの行など、サーバーに合わせて選びます。
+- **後始末**：`afterRun` か `afterScenario` のエントリでサーバーを止めます。
 
-常駐のエントリは、置き換え後の `readyUrl` を出力のキー `url` として書き出します。シナリオは
-`${hooks.<name>.url}` でワーカーごとのサーバーに到達でき、ポートを自分で計算する必要は
-ありません。
+Bajutsu は、各コマンドの出力をパイプではなくログファイルに書き出します。スクリプトの出力を
+引き継いだサーバーが残っていても、スクリプトの終了後に Bajutsu が待たされることはありません。
 
 1つのシナリオは、次の順で実行します。
 
@@ -164,17 +147,16 @@ targets:
 2. デバイスの確保とアプリの起動を、従来どおりに行います。
 3. `setup` のステップ、`steps` と `expect`、`cleanup` のルールを、従来どおりに実行します。
 4. `on` が判定と一致する `afterScenario` のルールを、宣言した順に実行します。
-5. シナリオの常駐プロセスを、起動と逆の順に停止します。
 
 `beforeScenario` をアプリの起動より前に置くのは、アプリが起動時に投入済みのデータを読めるように
 するためです。`preconditions.inheritSetup: false` を指定したシナリオは、ターゲットの `setup` と
 あわせて `beforeScenario` も飛ばします。`afterScenario` は、現在のターゲットの `cleanup` と
 同じく実行します。
 
-ラン全体も、すべてのシナリオを同じ形で包みます。`beforeRun` は最初のシナリオの前に実行します。
-`afterRun` はすべてのシナリオが終わってから実行し、ラン単位の常駐プロセスは最後に停止します。
-`afterRun` と `afterScenario` は、取り消されたラン（`SIGTERM` や Web UI の Cancel ボタン）でも
-実行します。取り消しの猶予時間のうち、`cleanup` が使うのと同じ上限付きの枠を共有します。
+ラン全体も、すべてのシナリオを同じ形で包みます。`beforeRun` は最初のシナリオの前に実行し、
+`afterRun` はすべてのシナリオが終わってから実行します。`afterRun` と `afterScenario` は、
+取り消されたラン（`SIGTERM` や Web UI の Cancel ボタン）でも実行します。取り消しの猶予時間のうち、
+`cleanup` が使うのと同じ上限付きの枠を共有します。
 
 ### 失敗と判定
 
@@ -215,7 +197,8 @@ targets:
 
 `BAJUTSU_WORKER` は、`run --workers` の下でのワーカーの番号です。シナリオのフックは、そのシナリオを
 実行するワーカーの中で実行します。そのため、並列に実行するシナリオではフックも並列に動きます。
-共有の状態に触れるスクリプトは、この番号で担当を分けられます。
+共有の状態に触れるスクリプトや、シナリオごとにサーバーを起動するスクリプトは、この番号でデータや
+ポートを選べます。
 
 ### 複数のターゲットを動かすシナリオ
 
@@ -234,75 +217,107 @@ targets:
 示しているのと同じ形です。ログにもマスクを適用します。`${secrets.*}` の値と、`mask: true` の
 エントリの出力値は、ログを書き出す前に置き換えます。
 
-### フックを実行するコマンド
+### コマンドが動くマシン
+
+コマンドは `bajutsu run` のプロセスの中で、`bajutsu run` を実行するマシン上で動きます。
+
+| ランの始め方 | フックが動くマシン |
+|---|---|
+| 端末や CI から `bajutsu run` を実行する | そのマシン |
+| `serve` の Web UI から始める | ジョブを取った `bajutsu worker`。`serve` 自身はジョブを実行しないためです（[BE-0449](../BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs-ja.md)）。 |
+| AWS Device Farm のようなデバイスクラウドの batch で始める | batch が `bajutsu run` を実行する、デバイスクラウドのホスト |
+
+フックが呼ぶ投入用の API や、フックが置くファイルは、そのマシンから届く必要があります。アプリではなく
+特定のデプロイ環境に属する準備は、これまでどおりの場所に置きます。BE-0432 の Device Farm の
+`pre_test_commands` と、BE-0435 の batch のライフサイクルのフックです。
+
+Bajutsu のコマンドごとに、実行するリストは次のとおりです。
 
 | コマンド | `beforeRun` / `afterRun` | `beforeScenario` / `afterScenario` |
 |---|---|---|
-| `run`（`run` を起動する `serve` を含みます） | 実行します | 実行します |
+| `run`（`serve` が worker に渡すジョブを含みます） | 実行します | 実行します |
 | `audit` | 実行します | 実行します（シナリオを `run_all` で再生するためです） |
 | `record`、`crawl`、`repl` | 実行します（`services.server` の起動を置き換えます） | 実行しません（シナリオファイルを実行しないコマンドだからです） |
 
-### アップロードの方針
+### コマンドを実行してよいかの判断
 
-BE-0090 は、アップロードされたバンドルの設定が宣言するすべてのコマンドを、
-`serve --upload-exec=<deny|reuse|sandbox>` で統制しています。4つのフックのリストは、
-`services.server` と `services.mockServer` に代わって、この統制の対象に入ります。
+フックは、設定に書かれたとおりのコマンドを実行します。あるマシンが、ある設定のコマンドをそもそも
+実行するかどうかは別の判断で、コマンドを実行するマシンの側が受け持ちます。その判断は、姉妹提案
+「設定が宣言したコマンドを実行するかを worker が判断する」で定めます。worker の capability
+ファイルに、設定の出どころごとの方針を置く形です。姉妹提案は
+[BE-0090](../BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution-ja.md)
+の `serve --upload-exec` を置き換えます。本提案のフックのリストは、姉妹提案が統制するコマンドに
+あたります。
 
-- **`sandbox`**：すべてのエントリを使い捨てのコンテナで実行します。コンテナはエントリの
-  `dockerImage` か `dockerfile` から作ります。バンドルは、エントリの `cwd` ではなく `serve` が管理する信頼済みのバンドルのルートから、
-  現在の BE-0090 の sandbox と同じく読み取り専用でマウントします。出力ファイルは書き込み可能で
-  マウントします。どちらの実行環境も宣言していないエントリは失敗し、
-  ホスト上での実行に切り替わることはありません。
-- **`reuse`**：どのエントリも実行しません。`readyUrl` がすでに応答している常駐のエントリは、
-  満たされたものとみなします。それ以外のエントリがあれば、ランは失敗します。
-- **`deny`**：どのエントリも実行しません。エントリを1つでも宣言したランは失敗します。
+本提案は、姉妹提案の後に入れます。先に `services.server` を削除すると、アップロードされた Web の
+バンドルが、統制された形でサーバーを起動する手段を失うためです。
 
-`sandbox` の下では、1つのランのコンテナはすべて、そのラン専用に作った Docker のネットワークに
-参加します。sandbox で動くエントリは、常駐のエントリにその `name` をホスト名として到達します
-（`http://server:8787/` など）。Bajutsu は、文脈を表す環境変数もコンテナ内のパスに書き換えます。
-`BAJUTSU_OUTPUT` と `BAJUTSU_RUN_DIR` は、マウントした出力ファイルとランのディレクトリを指します。
-コンテナの中では意味を持たないホスト側のパスは渡しません。
+姉妹提案の `sandbox` モードでは、1つのターゲットのフックのエントリを、ランの間ずっと動き続ける
+1つのコンテナの中で実行します。コンテナは、ターゲットの `hooks.sandbox` で宣言します。
 
-ローカルや Git から読み込んだ設定は、現在と同じく統制の対象外です。
+```yaml
+hooks:
+  sandbox:
+    dockerImage: "node:20-slim"   # または dockerfile：バンドル内のパス
+    ports: [8787]                 # worker のループバックに公開するポート
+```
+
+- **ランごとに1つのコンテナ**：Bajutsu は `beforeRun` の前にコンテナを起動し、各エントリを
+  その中で実行します。`beforeRun` のスクリプトが起動したサーバーは、ランが終わるまで動き続けます。
+  コンテナは `afterRun` の後に削除します。
+- **ポート**：`ports` の各ポートを、worker のループバックの同じ番号のポートに公開します。worker
+  上のブラウザやアプリは、`127.0.0.1:<port>` でサーバーに到達します。
+- **ファイル**：バンドルは、エントリの `cwd` ではなく、worker が用意したバンドルのディレクトリから
+  読み取り専用でマウントします。ランのディレクトリの `hooks/` は書き込み可能でマウントします。
+  `BAJUTSU_OUTPUT` と `BAJUTSU_RUN_DIR` は、コンテナ内のパスに書き換えます。
+
+`hooks.sandbox` は、現在の `services.server` が持つ `dockerImage`、`dockerfile`、`port` の
+フィールドを置き換えます。フックが `sandbox` モードに当たったのに `hooks.sandbox` を持たない
+ターゲットは、デバイスの作業より前に失敗し、メッセージはこのブロックを示します。
 
 ### `services.server` と `services.mockServer` の削除
 
 2つの定義はスキーマから外します。どちらかを宣言した設定は読み込みに失敗し、エラーは置き換え先
-（`background: true` を持つ `beforeRun` のエントリ）を示します。ローダーが古い名前を読まないのは、
-BE-0452 がターゲットのキーを改名したときと同じ規則です。`services.mailbox` は変更しません。
+（サーバーを起動し、応答するまで待つ `beforeRun` のスクリプト）を示します。ローダーが古い名前を
+読まないのは、[BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)
+がターゲットのキーを改名したときと同じ規則です。`services.mailbox` は変更しません。
 
 削除にあわせて、リポジトリ内の利用箇所をすべて移行します。
 
-- `demos/serve-ui/dogfood.config.yaml` は、内側のサーバーを `hooks.beforeRun` に移します。
-  これまで `subject.url` から得ていた `readyUrl` は、明示して書き足します。
-- `bajutsu/common/runner/launch_server.py` と `sandbox.py` は、フック実行部の常駐エントリを扱う経路に
-  なります。`_start_launch_server_or_exit` を呼んでいる5つの呼び出し元は、ラン単位のフックの
-  フェーズを呼ぶように変わります。
+- `demos/serve-ui/dogfood.config.yaml` は、内側のサーバーを2つのスクリプトに移します。`beforeRun`
+  のスクリプトがサーバーを起動して応答を待ち、`afterRun` のスクリプトがサーバーを止めます。
+- `bajutsu/common/runner/launch_server.py` は削除します。`_start_launch_server_or_exit` を
+  呼んでいる5つの呼び出し元は、ラン単位のフックのフェーズを呼ぶように変わります。
 - `docs/configuration.md`、`docs/scenarios.md`、`docs/run-loop.md`、`docs/cli.md`、
   `docs/self-hosting.md`、`docs/overview.md`、`docs/developer-guide.md`、`DESIGN.md`、
   `docs/architecture.md` を、振る舞いの変更にあわせて日本語版とともに更新します。
 
-### プライム・ディレクティブとの関係
+### プライムディレクティブとの関係
 
-- **AI は判定しません。** フックはコマンドと終了コードであり、ランやゲートに大規模言語モデル（LLM）の呼び出しは
-  入りません。
-- **決定性を優先します。** 準備完了の確認は条件待ちで、フォアグラウンドのコマンドにはすべて `timeout` の上限が
-  あります。スクリプトの内部で待機することは防げません。Bajutsu からスクリプトの中は見えず、
-  この点は現在の `services.server` のコマンドと同じです。
+- **AI は判定しません。** フックはコマンドと終了コードであり、ランやゲートに大規模言語モデル（LLM）の
+  呼び出しは入りません。
+- **決定性を優先します。** すべてのコマンドに `timeout` の上限があります。準備完了を待つ処理は
+  スクリプトの中に移り、条件の確かめ方はスクリプトの作者が選びます。Bajutsu からスクリプトの中は
+  見えず、この点は現在の `services.server` のコマンドと同じです。
 - **アプリに依存しません。** フックは `targets.<name>` に置くので、アプリごとの準備は設定に
-  とどまります。シナリオのドメイン固有言語（DSL）に加わるのはトークンの名前空間1つで、新しいステップは加わりません。
+  とどまります。シナリオのドメイン固有言語（DSL）に加わるのはトークンの名前空間1つで、新しい
+  ステップは加わりません。
 
 ## 検討した代替案
 
 - **シナリオの中の `shell` ステップ**：BE-0036 と同じ理由で採りません。任意のコマンドを実行する
   シナリオは、持ち運べず、レビューもできなくなります。本提案はコマンドをターゲットの設定に置き、
-  運用者が管理し、アップロードの方針が統制する形にします。
-- **`services.server` を新しいフックと並べて残す**：採りません。プロセスを起動する方法が2つあると、
-  フィールドの組、ドキュメント、BE-0090 の下での分岐が、それぞれ2つずつ必要になります。常駐の `beforeRun`
-  エントリで、`services.server` の働きはすべて表せます。
+  運用者が管理する形にします。
+- **`services.server` を新しいフックと並べて残す**：採りません。サーバーを起動する方法が2つあると、
+  フィールドの組もドキュメントも2つずつ必要になります。`beforeRun` のスクリプトで、
+  `services.server` の働きはすべて表せます。
+- **フックのエントリに準備完了の URL を残す**：採りません。URL への問い合わせは、準備完了の
+  確かめ方の1つにすぎず、スクリプトならどの方法でも使えます。フックの側に問い合わせを持たせると、
+  起動済みのサーバーを再利用する規則と、並列のワーカーの下でのその例外も戻ってきます。準備完了は
+  スクリプトが受け持ち、`timeout` がその上限を決めます。
 - **将来のモックサーバー機能のために `services.mockServer` を残す**：採りません。この定義が
-  プロセスを起動したことは一度もありません。モックサーバーは、準備完了の URL を持つ常駐コマンドとして
-  書けます。スタブの管理が本当に必要になれば、専用の定義を別の提案で戻せます。
+  プロセスを起動したことは一度もありません。モックサーバーも、ほかのサーバーと同じく `beforeRun`
+  のスクリプトで起動できます。
 - **`subject.build` も `beforeRun` に取り込む**：見送ります。`build` はアプリのバイナリが無いときだけ
   実行され、`serve` はビルド済みバンドルの扱いでこの条件付きの振る舞いに頼っています。移すと
   ビルドの意味が変わるので、別に判断すべき事柄です。
@@ -312,9 +327,6 @@ BE-0452 がターゲットのキーを改名したときと同じ規則です。
 - **フックの出力を `${vars.*}` に混ぜる**：採りません。フックのキーがステップの取り込んだ変数を
   隠してしまうことがあり、シナリオから値の出どころが分からなくなります。名前空間を分ければ、
   出どころがトークンに表れます。
-- **常駐エントリの `readyUrl` のデフォルト値を `subject.url` にする**：採りません。1つのリストに常駐の
-  エントリが複数あり得るので、そのうち1つだけに暗黙のデフォルト値を与えると、読み手が知っておくべき
-  規則が増えます。
 
 ## 進捗
 
@@ -323,11 +335,11 @@ BE-0452 がターゲットのキーを改名したときと同じ規則です。
 > ともに記録します。
 
 - [ ] スキーマ：4つのフックのリストとエントリのモデル。`services.server` と `services.mockServer` を削除し、置き換え先を示す読み込みエラーを出す。
-- [ ] フック実行部：フォアグラウンドと常駐のエントリ、出力ファイル、環境変数、ログ、マスク。
+- [ ] フック実行部：エントリ、制限時間、出力ファイル、環境変数、ログ、マスク。
 - [ ] ラン単位のフェーズ：`beforeRun` / `afterRun` を `run`、`audit`、`record`、`crawl`、`repl` に組み込み、`services.server` の起動を置き換える。
-- [ ] シナリオ単位のフェーズ：`beforeScenario` / `afterScenario` をシナリオのライフサイクルに組み込む（`inheritSetup`、ワーカー、取り消しを含む）。
+- [ ] シナリオ単位のフェーズ：`beforeScenario` / `afterScenario` をシナリオのライフサイクルに組み込む（`inheritSetup`、ワーカー、複数ターゲットの順序、取り消しを含む）。
 - [ ] `${hooks.<name>.<key>}` トークン：読み込み時の静的な確認と、アクション実行時の置き換え。
-- [ ] アップロードの方針：BE-0090 の `deny` / `reuse` / `sandbox` を、すべてのフックのエントリに広げる。
+- [ ] sandbox：`hooks.sandbox` とランごとのコンテナ、そのポート、マウント、パス。
 - [ ] レポート：フックのフェーズを独立したブロックで示し、ログへのリンクを付ける。
 - [ ] `demos/serve-ui/dogfood.config.yaml` を移行し、ドキュメント、`DESIGN.md`、`docs/architecture.md` を両言語で更新する。
 
@@ -338,9 +350,11 @@ BE-0452 がターゲットのキーを改名したときと同じ規則です。
 - [BE-0059](../BE-0059-launch-target-server/BE-0059-launch-target-server-ja.md)：`launchServer`
   （後の `services.server`）。本提案が置き換えます。
 - [BE-0090](../BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution-ja.md)：
-  設定で宣言したコマンドに対するアップロードの方針。
+  アップロードされた設定が宣言するコマンドに対する、現在の方針。
 - [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks-ja.md)：
   シナリオ自身の準備と後始末のフェーズ。本提案はその失敗の規則を再利用します。
+- [BE-0449](../BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs-ja.md)：`serve` はすべての
+  ジョブをキューに積み、worker が実行します。
 - [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)：
   ターゲット設定のグループと、ローダーが古い名前を読まない規則。
 - [`bajutsu/common/runner/launch_server.py`](../../bajutsu/common/runner/launch_server.py)：

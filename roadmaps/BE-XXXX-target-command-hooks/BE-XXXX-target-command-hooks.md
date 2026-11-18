@@ -10,29 +10,31 @@
 | Status | **Approved** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Topic | Scenario authoring features |
-| Related | [BE-0036](../BE-0036-utility-steps/BE-0036-utility-steps.md), [BE-0059](../BE-0059-launch-target-server/BE-0059-launch-target-server.md), [BE-0090](../BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md), [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md) |
+| Related | [BE-0036](../BE-0036-utility-steps/BE-0036-utility-steps.md), [BE-0059](../BE-0059-launch-target-server/BE-0059-launch-target-server.md), [BE-0090](../BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md), [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks.md), [BE-0449](../BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
 
 This item lets a target's config run external commands around a run and around each scenario.
 Four new lists under `targets.<name>.hooks` hold those commands: `beforeRun`, `afterRun`,
-`beforeScenario`, and `afterScenario`. A command can seed test data through a web application programming interface (API), place a file,
-or start a long-running process such as the app's own web server. A command can also hand values
-back to the scenario through an output file, the way a GitHub Actions step writes `$GITHUB_OUTPUT`.
+`beforeScenario`, and `afterScenario`. A command can seed test data through a web application
+programming interface (API), place a file, or start the app's own web server. A command can also
+hand values back to the scenario through an output file, the way a GitHub Actions step writes
+`$GITHUB_OUTPUT`.
 
-The same mechanism replaces two service blocks. A `beforeRun` entry with `background: true` and a
-`readyUrl` does what `services.server` does today, so this item removes `services.server`. It also
-removes `services.mockServer`, a schema-only block that no run has ever started. After this item,
-`services` holds `mailbox` alone: the external inbox a run polls but never starts.
+Every entry is a command that runs to completion. A `beforeRun` script that starts a server and
+waits until the server answers therefore does what `services.server` does today, so this item
+removes `services.server` and its readiness fields. It also removes `services.mockServer`, a
+schema-only block that no run has ever started. After this item, `services` holds `mailbox`
+alone: the external inbox a run polls but never starts.
 
 ## Motivation
 
 Test data that a scenario depends on has to come from somewhere. A scenario can create the data
 itself with the `http` step inside its `setup` phase. That route fits a single request to a seed
-endpoint. It fits poorly once the preparation grows into several requests, a file to write, or
-logic that branches on a response. The scenario file then carries a script written in step syntax,
-and none of that script is the behavior under test.
+endpoint. Once the preparation grows into several requests, a file to write, or logic that
+branches on a response, the route fits poorly. The scenario file then carries a script written in
+step syntax, and none of that script is the behavior under test.
 
 Bajutsu deliberately has no general escape hatch inside a scenario. The utility-steps item
 ([BE-0036](../BE-0036-utility-steps/BE-0036-utility-steps.md)) rejected a `shell` / `exec` step. A
@@ -53,15 +55,15 @@ works but has three gaps:
 
 Bajutsu already runs one config-declared command around a run: `services.server`, added by
 [BE-0059](../BE-0059-launch-target-server/BE-0059-launch-target-server.md) to bring up the web
-target's host. That block is a special case of the hook this item needs. Its shape is a command,
-plus a readiness probe and a teardown. Keeping both would leave two ways to start a process, with
-two sets of fields and two code paths under the upload policy of
-[BE-0090](../BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md).
+target's host. That block starts a process, polls a readiness URL, and stops the process at the
+end. A script can do all three itself, with whatever readiness check its server needs. Keeping
+`services.server` beside the new hooks would leave two ways to start a server, with two field sets
+for a reader to learn.
 
 Once this item ships, a reader can check one observable difference. A scenario that needs seeded
 data reads the seeded identifier through a `${hooks.<name>.<key>}` token, and its own `setup`
 holds no `http` step that exists merely to prepare data. `demos/serve-ui/dogfood.config.yaml`
-starts its inner server through `hooks.beforeRun`, and `services.server` no longer loads.
+starts its inner server from a `hooks.beforeRun` script, and `services.server` no longer loads.
 
 ## Detailed design
 
@@ -71,7 +73,7 @@ Each list lives under `targets.<name>.hooks`, beside the existing `setup`, `clea
 `interrupts`. The existing `setup` and `cleanup` keep holding scenario steps. The new lists hold
 external commands.
 
-| List | Runs | Scope of its outputs and background processes |
+| List | Runs | Scope of its outputs |
 |---|---|---|
 | `beforeRun` | once, before the first scenario | the whole run |
 | `afterRun` | once, after the last scenario, on every path out of the run | — |
@@ -86,13 +88,10 @@ targets:
     hooks:
       beforeRun:
         - name: server
-          cmd: "python -m http.server 8787"
-          background: true
-          readyUrl: "http://127.0.0.1:8787/"
-          readyTimeout: 30
+          cmd: "./scripts/start-server.sh"    # starts the server, waits until it answers, exits
+          timeout: 60
         - name: catalog
           cmd: "./scripts/seed-catalog.sh"
-          timeout: 120
       beforeScenario:
         - name: user
           cmd: "./scripts/create-user.sh"     # writes userId=... to $BAJUTSU_OUTPUT
@@ -101,7 +100,7 @@ targets:
           cmd: "./scripts/delete-user.sh"     # reads $BAJUTSU_HOOK__user__userId
       afterRun:
         - on: always
-          cmd: "./scripts/reset-catalog.sh"
+          cmd: "./scripts/stop-server.sh"
 ```
 
 A scenario then reads the seeded value without any preparation step of its own:
@@ -119,55 +118,41 @@ A scenario then reads the seeded value without any preparation step of its own:
 | `cmd` | all | The command. Bajutsu splits it like a shell would, then runs it without a shell. Pipes or redirects need `sh -c` or a script. |
 | `name` | all | An identifier, `[A-Za-z][A-Za-z0-9_]*` without `__`, unique across the four lists of every target the run drives. Required on an entry whose outputs are read. |
 | `cwd`, `env` | all | The working directory and extra environment, as `services.server` has them today. |
-| `timeout` | all | Seconds a foreground command may take. Default 300. Ignored for a background entry. |
-| `background`, `readyUrl`, `readyTimeout` | `beforeRun`, `beforeScenario` | Start a long-running process and wait on its readiness uniform resource locator (URL). Both readiness fields are required with `background: true`. |
+| `timeout` | all | Seconds the command may take. Default 300. |
 | `on` | `afterRun`, `afterScenario` | `always`, `success`, or `failure`. Default `always`. The same words as a scenario's `cleanup` rules. |
 | `mask` | all | When true, the entry's output values are masked in evidence, like `${secrets.*}`. Default false. |
-| `dockerImage`, `dockerfile`, `port` | all | The sandbox runtime under BE-0090's `sandbox` mode, carried over from `services.server`. |
-
-The `readyUrl` of a background entry has no default. Today's `services.server` falls back to the
-target's `subject.url`. A hook list holds several commands, and only one of them could own that
-fallback, so the readiness URL is always explicit.
 
 ### Lifecycle and order
 
-A foreground entry runs to completion before the next entry starts. A non-zero exit or an expired
-`timeout` fails the entry. A background entry starts its process in its own process group, then
-waits until `readyUrl` answers with a status below 400. That wait is a condition wait, polled the
-way `services.server` polls today. When `readyUrl` already answers before the process starts,
-Bajutsu reuses the server that answered and never stops it. This keeps BE-0059's reuse rule.
+Each entry runs to completion before the next entry starts. A non-zero exit or an expired
+`timeout` fails the entry. On a timeout, Bajutsu stops the command's whole process group.
 
-The reuse rule holds for `beforeRun` alone. Under `run --workers`, two workers could otherwise share
-one `beforeScenario` server, and the worker that finishes first would stop the server mid-scenario
-for the other. Two rules prevent that sharing:
+A script may leave a process running after the script itself exits, such as a server started in
+the background. Bajutsu neither tracks nor stops that process. The script that starts the server
+owns two duties:
 
-- **Per-worker values.** In a `beforeScenario` entry, Bajutsu replaces the text `${BAJUTSU_WORKER}`
-  in `cmd`, `readyUrl`, and each `env` value with the worker index. An entry such as
-  `cmd: "./mock --port 90${BAJUTSU_WORKER}"` with `readyUrl: "http://127.0.0.1:90${BAJUTSU_WORKER}/"`
-  then starts one server per worker.
-- **No reuse per scenario.** A background `beforeScenario` entry whose `readyUrl` already answers
-  before its process starts fails the scenario. Such an answer means another worker or a leftover
-  process owns the port, and a shared server would break the isolation between scenarios.
+- **Readiness.** The script exits once the server accepts requests. Each script picks the check
+  its server needs: an HTTP probe, a port check, or a line in a log.
+- **Teardown.** An `afterRun` or `afterScenario` entry stops the server.
 
-A background entry also writes its resolved `readyUrl` as the output key `url`. A scenario reaches
-a per-worker server through `${hooks.<name>.url}`, without computing the port itself.
+Bajutsu writes each command's output to a log file rather than a pipe. A server that inherits the
+script's output then cannot keep Bajutsu waiting after the script exits.
 
-One scenario then runs in this order:
+One scenario runs in this order:
 
 1. The `beforeScenario` entries, in declaration order.
 2. The device lease and the app launch, unchanged.
 3. The `setup` steps, then `steps` and `expect`, then the `cleanup` rules, all unchanged.
 4. The `afterScenario` rules whose `on` matches the verdict, in declaration order.
-5. The scenario's background processes stop, in reverse start order.
 
 The `beforeScenario` entries run ahead of the launch so the app reads seeded data at startup. A
 scenario that sets `preconditions.inheritSetup: false` skips the target's `beforeScenario` along
 with its `setup`. Its `afterScenario` still runs, as the target's `cleanup` does today.
 
-The run itself wraps every scenario the same way. `beforeRun` runs before the first scenario.
-`afterRun` runs once every scenario is done, and its run-level background processes stop last.
-`afterRun` and `afterScenario` also run on a cancelled run (`SIGTERM`, or the Web UI's Cancel
-button). They share the bounded slice of the cancellation grace window that `cleanup` uses.
+The run itself wraps every scenario the same way. `beforeRun` runs before the first scenario, and
+`afterRun` runs once every scenario is done. `afterRun` and `afterScenario` also run on a cancelled
+run (`SIGTERM`, or the Web UI's Cancel button). They share the bounded slice of the cancellation
+grace window that `cleanup` uses.
 
 ### Failures and the verdict
 
@@ -208,7 +193,7 @@ Every later command in scope sees earlier outputs as environment variables named
 
 `BAJUTSU_WORKER` is the worker index under `run --workers`. Scenario hooks run in the worker that
 runs their scenario, so parallel scenarios run their hooks in parallel. A script that touches shared
-state can partition by that index.
+state, or that starts a server per scenario, can pick its data or its port by that index.
 
 ### Scenarios that drive several targets
 
@@ -226,59 +211,88 @@ hook phase as its own block, apart from the scenario's numbered steps, as it alr
 `setup` and `cleanup`. Masking applies to the logs: `${secrets.*}` values and the values of an
 entry with `mask: true` are replaced before the logs are written.
 
-### Which commands run the hooks
+### Where the commands run
+
+The commands run inside the `bajutsu run` process, on the machine that runs `bajutsu run`:
+
+| How the run starts | Where the hooks run |
+|---|---|
+| `bajutsu run` from a terminal or CI | that machine |
+| the `serve` Web UI | the `bajutsu worker` that leased the job, since `serve` runs no job itself ([BE-0449](../BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs.md)) |
+| a device-cloud batch, such as AWS Device Farm | the device-cloud host, where the batch runs `bajutsu run` |
+
+A seed API that a hook calls, or a file a hook places, must therefore be reachable from that
+machine. Setup that belongs to one deployment rather than to the app keeps its existing homes: the
+Device Farm `pre_test_commands` of BE-0432, and the batch lifecycle hook of BE-0435.
+
+Each Bajutsu command runs the lists that fit it:
 
 | Command | `beforeRun` / `afterRun` | `beforeScenario` / `afterScenario` |
 |---|---|---|
-| `run` (and `serve`, which spawns it) | yes | yes |
+| `run` (and the jobs `serve` hands to workers) | yes | yes |
 | `audit` | yes | yes, since it replays scenarios through `run_all` |
 | `record`, `crawl`, `repl` | yes, replacing their `services.server` bring-up | no; these commands run no scenario file |
 
-### The upload policy
+### Whether a command may run
 
-BE-0090 governs every command an uploaded bundle's config declares, through `serve
---upload-exec=<deny|reuse|sandbox>`. The four hook lists join that governed surface in place of
-`services.server` and `services.mockServer`:
+A hook runs whatever its config says. Whether a given machine runs a given config's commands at
+all is a separate decision, owned by the machine that runs them. A sibling proposal, *Let the worker
+decide whether config-declared commands run*, defines that decision: a policy in the worker's
+capability file, chosen per config source. That proposal replaces the `serve --upload-exec` option
+of [BE-0090](../BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md),
+and this item's hook lists are the commands it governs.
 
-- **`sandbox`:** every entry runs in a throwaway container, built from the entry's `dockerImage` or
-  `dockerfile`. The bundle is mounted read-only from the trusted bundle root that `serve` controls, never from
-  the entry's `cwd`, as BE-0090's sandbox does today. The output file is mounted writable.
-  An entry declaring neither runtime fails, never falling back to the bare host.
-- **`reuse`:** no entry runs. A background entry whose `readyUrl` already answers counts as
-  satisfied. Any other entry fails the run.
-- **`deny`:** no entry runs, and a run that declares any entry fails.
+This item lands after the sibling proposal. Removing `services.server` first would leave uploaded
+web bundles without a governed way to start their server.
 
-Under `sandbox`, every container of one run joins a Docker network created for that run. A
-sandboxed entry reaches a background entry under that entry's `name` as the host name, such as
-`http://server:8787/`. Bajutsu also rewrites the context variables to the paths inside the
-container. `BAJUTSU_OUTPUT` and `BAJUTSU_RUN_DIR` then name the mounted output file and run
-directory, never the host paths, which mean nothing inside the container.
+Under the sibling proposal's `sandbox` mode, the hook entries of one target run in one container
+that lives for the whole run. The target declares the container in a `hooks.sandbox` block:
 
-A local or Git-sourced config stays ungoverned, as today.
+```yaml
+hooks:
+  sandbox:
+    dockerImage: "node:20-slim"   # or dockerfile: a path inside the bundle
+    ports: [8787]                 # published to the worker's loopback interface
+```
+
+- **One container per run.** Bajutsu starts the container before `beforeRun` and runs each entry
+  inside it. A server that a `beforeRun` script starts therefore keeps running until the run ends.
+  Bajutsu removes the container after `afterRun`.
+- **Ports.** Each port in `ports` is published to the same port on the worker's loopback interface.
+  The browser or the app on the worker then reaches the server at `127.0.0.1:<port>`.
+- **Files.** The bundle is mounted read-only from the bundle directory the worker prepared, never
+  from an entry's `cwd`. The run directory's `hooks/` area is mounted writable. Bajutsu rewrites
+  `BAJUTSU_OUTPUT` and `BAJUTSU_RUN_DIR` to their paths inside the container.
+
+`hooks.sandbox` replaces the `dockerImage`, `dockerfile`, and `port` fields that `services.server`
+carries today. A target whose hooks meet the `sandbox` mode without a `hooks.sandbox` block fails
+before any device work, and the message names the block.
 
 ### Removing `services.server` and `services.mockServer`
 
 Both blocks leave the schema. A config that still declares either fails to load, and the error
-names the replacement: a `beforeRun` entry with `background: true`. The loader reads no old name,
-which is the rule BE-0452 applied when it renamed the target's keys. `services.mailbox` is untouched.
+names the replacement: a `beforeRun` script that starts the server and waits until it answers. The
+loader reads no old name, which is the rule
+[BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md) applied when it
+renamed the target's keys. `services.mailbox` stays as it is.
 
 The removal migrates every in-repo user:
 
-- `demos/serve-ui/dogfood.config.yaml` moves its inner server to `hooks.beforeRun`, adding the
-  explicit `readyUrl` the server previously took from `subject.url`.
-- `bajutsu/common/runner/launch_server.py` and `sandbox.py` become the background-entry path of the
-  hook runner. The five callers of `_start_launch_server_or_exit` call the run-level hook phase.
+- `demos/serve-ui/dogfood.config.yaml` moves its inner server to a pair of scripts. A `beforeRun`
+  script starts the server and waits until it answers, and an `afterRun` script stops it.
+- `bajutsu/common/runner/launch_server.py` goes away. The five callers of
+  `_start_launch_server_or_exit` call the run-level hook phase instead.
 - `docs/configuration.md`, `docs/scenarios.md`, `docs/run-loop.md`, `docs/cli.md`,
   `docs/self-hosting.md`, `docs/overview.md`, `docs/developer-guide.md`, `DESIGN.md`, and
   `docs/architecture.md` change with the behavior, each with its Japanese mirror.
 
 ### Prime directives
 
-- **AI never judges.** A hook is a command and an exit code. No large language model (LLM) call enters the run or the
-  gate.
-- **Determinism first.** Readiness is a condition wait. Every foreground command has a bounded
-  `timeout`. A hook script can still sleep internally. Bajutsu cannot see inside the script, the
-  same as with today's `services.server` command.
+- **AI never judges.** A hook is a command and an exit code. No large language model (LLM) call
+  enters the run or the gate.
+- **Determinism first.** Every command has a bounded `timeout`. The readiness wait moves into the
+  script, where its author picks a condition check. Bajutsu cannot see inside the script, the same
+  as with today's `services.server` command.
 - **App-agnostic.** The hooks live in `targets.<name>`, so per-app preparation stays in config. The
   scenario domain-specific language (DSL) gains one token namespace and no new step.
 
@@ -286,13 +300,16 @@ The removal migrates every in-repo user:
 
 - **A `shell` step inside the scenario.** Rejected for the reason BE-0036 gives: a scenario that
   runs any command stops being portable and reviewable. This item keeps commands in the target's
-  config, where an operator owns them and the upload policy governs them.
-- **Keep `services.server` beside the new hooks.** Rejected: two ways to start a process would need
-  two field sets, two sets of docs, and two branches under BE-0090. A background `beforeRun` entry
-  expresses everything `services.server` does.
+  config, where an operator owns them.
+- **Keep `services.server` beside the new hooks.** Rejected: two ways to start a server would need
+  two field sets and two sets of docs. A `beforeRun` script expresses everything `services.server`
+  does.
+- **Keep a readiness URL on a hook entry.** Rejected: a URL probe is one readiness check among
+  several, and a script can run any of them. A hook-level probe would also bring back the reuse
+  rule and its edge cases under parallel workers. The script owns readiness, and `timeout` bounds
+  it.
 - **Keep `services.mockServer` for a later mock-server feature.** Rejected: the block has never
-  started a process. A mock server is a background command with a readiness URL. A dedicated block
-  can return with its own item if a real need for stub management appears.
+  started a process. A `beforeRun` script can start a mock server like any other server.
 - **Fold `subject.build` into `beforeRun` as well.** Deferred: `build` runs merely when the app
   binary is missing, and `serve` relies on that conditional behavior for prebuilt bundles. Moving
   it would change build semantics, a decision of its own.
@@ -303,8 +320,6 @@ The removal migrates every in-repo user:
 - **Merge hook outputs into `${vars.*}`.** Rejected: a hook key could shadow a variable a step
   captures, and the scenario could no longer tell where a value came from. A separate namespace
   makes the source visible in the token.
-- **Default a background entry's `readyUrl` to `subject.url`.** Rejected: one list can hold several
-  background entries, and an implicit default for one of them would be a rule a reader has to know.
 
 ## Progress
 
@@ -313,11 +328,11 @@ The removal migrates every in-repo user:
 > (oldest first), linking the PRs.
 
 - [ ] Schema: the four hook lists and their entry model; remove `services.server` and `services.mockServer` with a load error naming the replacement.
-- [ ] Hook runner: foreground and background entries, the output file, the environment, logs, and masking.
+- [ ] Hook runner: entries, timeouts, the output file, the environment, logs, and masking.
 - [ ] Run-level phase: wire `beforeRun` / `afterRun` into `run`, `audit`, `record`, `crawl`, and `repl`, replacing the `services.server` bring-up.
-- [ ] Scenario-level phase: wire `beforeScenario` / `afterScenario` into the scenario lifecycle, including `inheritSetup`, workers, and cancellation.
+- [ ] Scenario-level phase: wire `beforeScenario` / `afterScenario` into the scenario lifecycle, including `inheritSetup`, workers, multi-target order, and cancellation.
 - [ ] The `${hooks.<name>.<key>}` token: static load-time check and action-time substitution.
-- [ ] Upload policy: extend BE-0090's `deny` / `reuse` / `sandbox` to every hook entry.
+- [ ] Sandbox: the `hooks.sandbox` block and the per-run container, its ports, mounts, and paths.
 - [ ] Report: hook phases as their own blocks, with links to the logs.
 - [ ] Migrate `demos/serve-ui/dogfood.config.yaml`, and update the docs, `DESIGN.md`, and `docs/architecture.md` in both languages.
 
@@ -328,9 +343,11 @@ The removal migrates every in-repo user:
 - [BE-0059](../BE-0059-launch-target-server/BE-0059-launch-target-server.md): `launchServer`, later
   `services.server`, which this item replaces.
 - [BE-0090](../BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md):
-  the upload policy for config-declared commands.
+  today's policy for commands that uploaded configs declare.
 - [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks.md): the
   scenario's own setup and teardown phases, whose failure rules this item reuses.
+- [BE-0449](../BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs.md): `serve` queues every
+  job, and workers run them.
 - [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md): the target
   config groups, and the rule that the loader reads no old name.
 - [`bajutsu/common/runner/launch_server.py`](../../bajutsu/common/runner/launch_server.py): today's
