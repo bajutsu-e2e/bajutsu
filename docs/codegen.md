@@ -90,7 +90,7 @@ A single `id` / `label` / `idMatches` keeps its readable helper above. Any **com
 | `index: n` | `.element(boundBy: n)` (a negative `n` counts from the end: `.element(boundBy: query.count - k)`; else `.firstMatch`) |
 
 All set fields are **AND**-ed into the predicate. A field with no *faithful* structural form leaves
-the selector at `el("UNSUPPORTED_SELECTOR")`, an honest gap rather than a wrong guess. Three cases have no such form:
+the selector at `el("UNSUPPORTED_SELECTOR")`, an honest gap rather than a wrong guess:
 
 - **`labelMatches` with regex metacharacters** — it is a Python `re.search` pattern; only a
   metacharacter-free one is a plain substring (`CONTAINS`). A real regex (e.g. `^Item `) has no
