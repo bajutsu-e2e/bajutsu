@@ -47,8 +47,8 @@ in CI runs unrelated to that change. Two symptoms appeared.
   consecutive reruns. The first was the text length of a field after a delete. The second was an
   element that the suite expected to be focusable. The third was the field again.
 
-Those three symptoms look unrelated, but one underlying race caused them. They are not three separate
-bugs. None of these lanes exercise the changed code. Only the slower, more loaded machine of
+These symptoms look unrelated, and so do the three distinct failures of the three reruns. One
+underlying race caused them all. They are not separate bugs. None of these lanes exercise the changed code. Only the slower, more loaded machine of
 continuous integration (CI) reproduced the race, and a local run did not.
 
 Bajutsu already has the right fix for this race, but the fix is not applied everywhere the race can
