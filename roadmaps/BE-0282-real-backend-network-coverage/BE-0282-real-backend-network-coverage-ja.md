@@ -16,63 +16,74 @@
 
 ## はじめに
 
-ネットワークの経路（キャプチャ、リクエストとレスポンスのモック、そして request / event / sequence /
-response-schema のアサーション）は、純粋なロジックとして完全にモデル化されユニットテストされており、その
-実行経路は 2 つのバックエンドに配線されています。iOS はプロセス外でキャプチャし（アプリが各 exchange を
-ループバック上の `NetworkCollector` へ POST する）、web はプロセス内でキャプチャします（Playwright ドライバが
-`requestfinished` をフックし、`page.route` でモックのレスポンスを返す）。この実行経路を実デバイスや実ブラウザで
-動かす CI レーンはありません。web の 2 つのジョブはどちらも `--no-network` を渡し、iOS のネットワークデモ
-シナリオ（`network_live.yaml`、`network_mock.yaml`）はどの Makefile ターゲットからもどのワークフローからも
-参照されていません。本項目では、この実ネットワーク経路を CI に配線します。Linux で安価な web を先に、続いて
-iOS を対象にします。
+ネットワークの経路とは、キャプチャ、リクエストとレスポンスのモック、そして request / event / sequence /
+response-schema のアサーションを指します。この経路は、純粋なロジックとして完全にモデル化されユニット
+テストされており、実行経路は 2 つの[バックエンド](../../docs/ja/glossary.md#driver-backend-actuator-platform)に配線されています。
+
+- iOS はプロセス外でキャプチャします。アプリが各 exchange をループバック上の `NetworkCollector` へ POST します。
+- web はプロセス内でキャプチャします。Playwright ドライバが `requestfinished` をフックし、`page.route` で
+  モックのレスポンスを返します。
+
+この実行経路を実デバイスや実ブラウザで動かす CI レーンはありません。web の 2 つのジョブはどちらも
+`--no-network` を渡しています。iOS のネットワークデモシナリオ（`network_live.yaml`、`network_mock.yaml`）は、
+どの Makefile ターゲットからもどのワークフローからも参照されていません。本項目では、この実ネットワーク経路を
+CI に配線します。Linux で安価な web を先に、続いて iOS を対象にします。
 
 ## 動機
 
-ネットワークの経路は、プロジェクトで最大の、実経路が未検証の面です。純粋なマッチャ、リクエストの一対一割り当て、
-response-schema の検証、sequence のマッチングはユニットテストで検証され、collector の HTTP 受信部とトークン認証は
-プロセス内の自己ループとして動かされています。どのテストも観測していないのが、実際の境界です。すなわち、アプリ側の
-送信部（BajutsuKit の POST）、`page.route` による介入、ステップに対する `requestfinished` のタイミング、そして
-モデルのデフォルト値ではなく実スタブから記録された `mocked` の来歴フラグです。
+ネットワークの経路は、プロジェクトで最大の、実経路が未検証の面です。純粋なマッチャ、リクエストの一対一
+割り当て、response-schema の検証、sequence のマッチングは、ユニットテストで検証されています。collector の
+HTTP 受信部とトークン認証は、プロセス内の自己ループとして動かされています。どのテストも観測していない
+のは、次に挙げる実際の境界です。
 
-実ネットワークエビデンスの redaction が、そのもっとも鋭い実例です。redaction のアルゴリズムは十分にユニットテスト
-されていますが、入力はすべて手で組み立てた exchange の辞書か、手で書いたログファイルです。*実際に
-キャプチャされた* ヘッダやボディの中の秘密情報が、永続化されたエビデンスでマスクされるかは、どこでも
+- アプリ側の送信部（BajutsuKit の POST）
+- `page.route` による介入
+- ステップに対する `requestfinished` のタイミング
+- モデルのデフォルト値ではなく、実スタブから記録された `mocked` の来歴フラグ
+
+実ネットワーク[エビデンス](../../docs/ja/glossary.md#証跡-capturepolicy-trace-triage)の redaction が、もっとも鋭い実例です。redaction のアルゴリズムは十分にユニット
+テストされていますが、入力はすべて、手で組み立てた exchange の辞書か、手で書いたログファイルです。
+*実際にキャプチャされた* ヘッダやボディの中の秘密情報が、永続化されたエビデンスでマスクされるかは、どこでも
 検証されていません。そうしたエビデンスを生むレーンがないからです。キャプチャした資格情報を漏らす退行が
 あっても、スイート全体を通過してしまいます。
 
-この実経路を動かすシナリオは iOS についてはすでに存在し、孤立しています。web 側は、既存のジョブが `--no-network`
-で回避するのをやめるだけで足ります。したがってコストの大半は配線であり、新規の執筆ではありません。Android は
-別の話でスコープ外にとどめます。Android にはネイティブのネットワークモニタがなく（`observes_network_via_driver`
-は false で、adb ドライバは `NETWORK` capability を宣言しません）、まだそこにアクチュエーションの対象がないため
-です。本項目では、その欠落を黙って飛ばすのではなく、Android の既知のギャップとして記録します。
+この実経路を動かすシナリオは、iOS についてはすでに存在しますが、どこからも実行されていません。web 側は、
+既存のジョブが `--no-network` で回避するのをやめるだけで足ります。したがってコストの大半は配線であり、
+新規の執筆ではありません。
+
+Android は別の話で、スコープ外にとどめます。Android にはネイティブのネットワークモニタがなく
+（`observes_network_via_driver` は false で、adb ドライバは `NETWORK` capability を宣言しません）、まだ
+そこにアクチュエーションの対象がないためです。本項目では、その欠落を黙って飛ばすのではなく、Android の
+既知のギャップとして記録します。
 
 ## 詳細設計
 
-提案の粒度です。作業は以下の単位に沿って MECE に分かれます。
+この節は提案の粒度で書きます。作業は、相互に排他的で全体を網羅する（MECE）以下の単位に分かれます。
 
 - **web ネットワークスモーク。** リクエストのモックとリクエストアサーションを持つ `demos/web` のシナリオを
-  用意し（または既存を流用し）、`--no-network` なしで実行します。`page.route` がリクエストに介入すること、
-  `requestfinished` のキャプチャが exchange を記録すること、モックされた exchange が `mocked` を立てて記録される
-  ことをアサートします。
-- **web の実エビデンス redaction。** そのシナリオを拡張し、キャプチャされる exchange がヘッダとボディに秘密情報を
-  含むようにして、永続化されたエビデンスでそれがマスクされることをアサートします。「実ネットワークエビデンスの
-  redaction」のギャップを、安価な Linux レーンで塞ぎます。
-- **iOS collector の実経路。** `network_mock.yaml` と `network_live.yaml` をゲート対象外の `ios-e2e` ジョブとして
-  つなぎ、BajutsuKit からループバック POST、アサーションと redaction までの連鎖を実 Simulator で走らせます。
-- **Android のギャップを記録する。** Android のネットワークキャプチャはネイティブモニタが整うまでスコープ外で
-  あることを、ワークフローとカバレッジの記述に明示します。欠落が見落としではなく意図した境界として読めるように
-  します。
-- **ゲート対象外から始める。** golden / visual の前例に従い、新しいジョブをまずシグナル（必須チェックではない）
-  として着地させ、安定を確認してから必須に昇格させます。
+  用意し（または既存を流用し）、`--no-network` なしで実行します。シナリオは 3 点をアサートします。
+  `page.route` がリクエストに介入すること、`requestfinished` のキャプチャが exchange を記録すること、
+  モックされた exchange が `mocked` を立てて記録されることです。
+- **web の実エビデンス redaction。** そのシナリオを拡張し、キャプチャされる exchange がヘッダとボディに
+  秘密情報を含むようにして、永続化されたエビデンスでそれがマスクされることをアサートします。「実ネットワーク
+  エビデンスの redaction」のギャップを、安価な Linux レーンで塞ぎます。
+- **iOS collector の実経路。** `network_mock.yaml` と `network_live.yaml` をゲート対象外の `ios-e2e` ジョブと
+  してつなぎ、BajutsuKit からループバック POST、アサーションと redaction までの連鎖を実 Simulator で
+  走らせます。
+- **Android のギャップを記録する。** Android のネットワークキャプチャは、ネイティブモニタが整うまで
+  スコープ外であることを、ワークフローとカバレッジの記述に明示します。欠落が見落としではなく、意図した
+  境界として読めるようにします。
+- **ゲート対象外から始める。** golden / visual の前例に従い、新しいジョブをまずシグナル（必須チェック
+  ではない）として着地させ、安定を確認してから必須に昇格させます。
 
 ## 検討した代替案
 
-- **どこでも `--no-network` のままにしてユニットテストに頼る。** ユニットテストは純粋なロジックと collector の受信部を
-  検証しますが、アプリ側の送信部、ブラウザの介入、実際にキャプチャしたエビデンスの redaction は一度も検証
-  しません。最大の実経路のギャップが未観測のまま残ります。
-- **ドライバレベルの介入ではなく外部モックサーバ（[BE-0027](../BE-0027-mock-server-external/BE-0027-mock-server-external-ja.md)）を使う。**
-  その手法は別の層（アプリが対話する独立したスタブ）であり、本項目を置き換えるのではなく補完します。本項目が
-  対象とする `page.route` と collector の経路を動かすものではありません。
+- **どこでも `--no-network` のままにして、ユニットテストに頼る。** 却下します。ユニットテストは純粋な
+  ロジックと collector の受信部を検証しますが、アプリ側の送信部、ブラウザの介入、実際にキャプチャした
+  エビデンスの redaction は一度も検証しません。最大の実経路のギャップが未観測のまま残ります。
+- **ドライバレベルの介入ではなく、外部モックサーバ（[BE-0027](../BE-0027-mock-server-external/BE-0027-mock-server-external-ja.md)）を使う。**
+  本項目の置き換えとしては却下します。外部モックサーバは別の層（アプリが対話する独立したスタブ）で動き、
+  本項目を補完します。本項目が対象とする `page.route` と collector の経路を動かすものではありません。
 
 ## 進捗
 
@@ -88,14 +99,14 @@ response-schema の検証、sequence のマッチングはユニットテスト�
 
 ログ:
 
-- [#1183](https://github.com/bajutsu-e2e/bajutsu/pull/1183) — web スライス: デモアプリに Sync リクエストを追加し、`demos/web/scenarios/network.yaml`（モックされ、キャプチャされる、秘密情報を運ぶ `POST /api/sync`）、`fields: [password]` の redact ポリシー、`demos/web/network/assert_redaction.py`、`make -C demos/web e2e-network` ターゲット、ゲート対象外の `network (playwright)` CI ジョブを追加しました。Android のギャップはワークフローと `docs/architecture.md` に記録しました。iOS collector の実経路は後続に持ち越します。
-- [#1267](https://github.com/bajutsu-e2e/bajutsu/pull/1267) — `network (playwright)` ジョブが CI で安定を確認できた（直近 50 回の実行で失敗 0）ので、シグナルから必須の `E2E (web)` ゲートへ昇格させました。android-e2e.yml で既にゲート入りしている `network (adb)` の web 版にあたります。この昇格に合わせて、ジョブを説明する各ドキュメント（`docs/architecture.md`、`docs/ci.md`、`demos/web/README.md` と、それぞれの日本語ミラー）から「ゲート対象外／シグナルとして着地」の記述を落とし、同じ変更で更新しました。
-- [#1701](https://github.com/bajutsu-e2e/bajutsu/pull/1701) — web の redaction チェックが見落としていた、過剰なマスクを検出できるようにしました。プレースホルダでボディを丸ごと置き換えても、値をすべてマスクしても、ボディ側の規則はすべて満たされてしまうので、Sync リクエストの秘密でない `account` のキーと値が残っていることを新たに要求します。あわせて、チェック自体を実行するテストを追加しました。`assert_redaction.py` の `main` はゲートのテストからまったく実行されておらず、ブラウザレーンは正しくマスクされたエビデンスしか渡さないため、スクリプトの各規則は中身が生きているかどうかに関わらず通っていました。
-- [#1693](https://github.com/bajutsu-e2e/bajutsu/pull/1693) — iOS スライス（最後の単位）: `showcase-swiftui` に `redact: { fields: [password] }` のポリシー、`demos/showcase/network/assert_network_evidence.py`、`network_mock.yaml` と `network_live.yaml` を使い捨ての runs ディレクトリへ実行する `make -C demos/showcase e2e-network` ターゲット、そしてゲート対象外の `network (xcuitest)` CI ジョブを追加しました。redaction のチェックでは、スタブを介さない exchange が `mocked` を false として記録されることもアサートします。マッチ範囲の広すぎるモックが、何もスタブしていない通信を自分のものだと主張できないという確認で、モックした通信しか持たない web 版では行えません。ジョブのシナリオ帰属は `scripts/e2e_changes.py` が Makefile の宣言から読み（BE-0338）、`tests/test_showcase_network_demo.py` がシナリオ・ポリシー・アプリ側の秘密情報のリテラルを高速ゲートに固定します。起動済みの iPhone 17 Pro Simulator で検証しました。2 本のシナリオはいずれも PASS し、キャプチャされた `POST /post` は `mocked: true`・status 201 で、2 つの秘密情報はどちらも `[REDACTED]` にマスクされ、観測された `GET /horses` は `mocked: false` として記録されました。
+- [#1183](https://github.com/bajutsu-e2e/bajutsu/pull/1183)：web スライス: デモアプリに Sync リクエストを追加し、`demos/web/scenarios/network.yaml`（モックされ、キャプチャされる、秘密情報を運ぶ `POST /api/sync`）、`fields: [password]` の redact ポリシー、`demos/web/network/assert_redaction.py`、`make -C demos/web e2e-network` ターゲット、ゲート対象外の `network (playwright)` CI ジョブを追加しました。Android のギャップはワークフローと `docs/architecture.md` に記録しました。iOS collector の実経路は後続に持ち越します。
+- [#1267](https://github.com/bajutsu-e2e/bajutsu/pull/1267)：`network (playwright)` ジョブが CI で安定を確認できた（直近 50 回の実行で失敗 0）ので、シグナルから必須の `E2E (web)` ゲートへ昇格させました。android-e2e.yml で既にゲート入りしている `network (adb)` の web 版にあたります。この昇格に合わせて、ジョブを説明する各ドキュメント（`docs/architecture.md`、`docs/ci.md`、`demos/web/README.md` と、それぞれの日本語ミラー）から「ゲート対象外／シグナルとして着地」の記述を落とし、同じ変更で更新しました。
+- [#1701](https://github.com/bajutsu-e2e/bajutsu/pull/1701)：web の redaction チェックが見落としていた、過剰なマスクを検出できるようにしました。プレースホルダでボディを丸ごと置き換えても、値をすべてマスクしても、ボディ側の規則はすべて満たされてしまうので、Sync リクエストの秘密でない `account` のキーと値が残っていることを新たに要求します。あわせて、チェック自体を実行するテストを追加しました。`assert_redaction.py` の `main` はゲートのテストからまったく実行されておらず、ブラウザレーンは正しくマスクされたエビデンスしか渡さないため、スクリプトの各規則は中身が生きているかどうかに関わらず通っていました。
+- [#1693](https://github.com/bajutsu-e2e/bajutsu/pull/1693)：iOS スライス（最後の単位）: `showcase-swiftui` に `redact: { fields: [password] }` のポリシー、`demos/showcase/network/assert_network_evidence.py`、`network_mock.yaml` と `network_live.yaml` を使い捨ての runs ディレクトリへ実行する `make -C demos/showcase e2e-network` ターゲット、そしてゲート対象外の `network (xcuitest)` CI ジョブを追加しました。redaction のチェックでは、スタブを介さない exchange が `mocked` を false として記録されることもアサートします。マッチ範囲の広すぎるモックが、何もスタブしていない通信を自分のものだと主張できないという確認で、モックした通信しか持たない web 版では行えません。ジョブのシナリオ帰属は `scripts/e2e_changes.py` が Makefile の宣言から読み（BE-0338）、`tests/test_showcase_network_demo.py` がシナリオ・ポリシー・アプリ側の秘密情報のリテラルを高速ゲートに固定します。起動済みの iPhone 17 Pro Simulator で検証しました。2 本のシナリオはいずれも PASS し、キャプチャされた `POST /post` は `mocked: true`・status 201 で、2 つの秘密情報はどちらも `[REDACTED]` にマスクされ、観測された `GET /horses` は `mocked: false` として記録されました。
 
 ## 参考
 
-- [BE-0020 — マルチバックエンドのエビデンスフォールバック](../BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback-ja.md)
-- [BE-0027 — 外部モックサーバ](../BE-0027-mock-server-external/BE-0027-mock-server-external-ja.md)
-- [BE-0003 — codegen、トレース、ネットワークと CI（M3）](../BE-0003-m3-codegen-traces-network-ci/BE-0003-m3-codegen-traces-network-ci-ja.md)
+- [BE-0020：マルチバックエンドのエビデンスフォールバック](../BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback-ja.md)
+- [BE-0027：外部モックサーバ](../BE-0027-mock-server-external/BE-0027-mock-server-external-ja.md)
+- [BE-0003：codegen、トレース、ネットワークと CI（M3）](../BE-0003-m3-codegen-traces-network-ci/BE-0003-m3-codegen-traces-network-ci-ja.md)
 - `bajutsu/evidence/network.py`、`bajutsu/web_network.py`、`demos/showcase/scenarios/network_live.yaml`、`demos/showcase/scenarios/network_mock.yaml`

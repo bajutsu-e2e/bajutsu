@@ -20,6 +20,8 @@ from bajutsu.common.drivers.adb import (
     ActRequest,
     AdbActUncertain,
     AdbActUnsupported,
+    AdbGestureRejected,
+    AdbPickerRefused,
     AdbResidentError,
     AdbResidentTimeout,
     HierarchyRead,
@@ -28,7 +30,7 @@ from bajutsu.common.drivers.adb import (
 
 from ._process import _Process
 from ._shared import _SERVER_APK, _TEST_APK, logger
-from .budgets import ACTION_TIMEOUT_S, READ_TIMEOUT_S, WAIT_BUDGET_MS
+from .budgets import ACTION_TIMEOUT_S, PICKER_TIMEOUT_S, READ_TIMEOUT_S, WAIT_BUDGET_MS
 
 if TYPE_CHECKING:
     from .keepalive import Keepalive
@@ -59,6 +61,21 @@ _STALE_STATUS = 409
 # What an older resident server answers for a path it does not serve. Permanent for the lease, unlike a
 # socket fault, so the driver latches it instead of probing again on every gesture.
 _NO_ENDPOINT_STATUS = 404
+# What the server answers when the platform rejected an injected event (its `INJECT_FAILED_STATUS`).
+_INJECT_FAILED_STATUS = 500
+
+# What `/setPickerValue` answers when it will not, or cannot, land the wheel (BE-0480). The body leads
+# with one of `_PICKER_REFUSALS` ahead of a colon, kept in step with the server's reason tokens.
+_REFUSED_STATUS = 422
+_PICKER_REFUSALS = frozenset(
+    {
+        "not-a-picker-wheel",
+        "picker-value-absent",
+        "picker-walk-exhausted",
+        "picker-immovable",
+        "picker-wheel-ambiguous",
+    }
+)
 
 # SystemUI owns the status and navigation bars — separate windows that `dumpWindowHierarchy` traverses
 # but the platform `uiautomator dump` (active window only) omits. Dropping them is a uniform
@@ -316,6 +333,79 @@ def act(
         )
 
 
+def set_picker_value(
+    host_port: int,
+    request: ActRequest,
+    value: str,
+    *,
+    timeout: float = PICKER_TIMEOUT_S,
+    keepalive: Keepalive | None = None,
+    want_tree: bool = True,
+) -> ActOutcome:
+    """Ask the resident server to walk the wheel the host resolved to the row showing `value` (BE-0480).
+
+    The wheel crosses the way `act`'s target does — its identity, ordinal, and count, never a
+    coordinate — and the device steps it one row at a time through accessibility scroll actions,
+    reading the row back after each step.
+
+    Returns:
+        `acted` False for the `409` stale reply, so the host re-resolves; otherwise the landed
+        wheel's publish confirmation and caught-up tree, exactly as `act` reports a landed gesture.
+
+    Raises:
+        AdbPickerRefused: the device answered with one of the endpoint's refusals (not a wheel, no
+            such row, walk budget spent or a row stalled), or failed mid-walk.
+        AdbActUnsupported: the server predates `/setPickerValue`.
+        AdbActUncertain: the request went out but its reply was lost, so the wheel may have moved.
+        AdbResidentError: the channel could not be reached, so nothing was sent.
+    """
+    fields = {
+        "budgetMs": str(WAIT_BUDGET_MS),
+        "tree": "1" if want_tree else "0",
+        "index": str(request.index),
+        "count": str(request.count),
+        "rid": request.identity[0],
+        "desc": request.identity[1],
+        "text": request.identity[2],
+        "cls": request.identity[3],
+        "value": value,
+    }
+    if request.since is not None:
+        fields["since"] = str(request.since)
+    with _channel(host_port, keepalive, timeout) as conn:
+        try:
+            conn.request("POST", "/setPickerValue?" + urllib.parse.urlencode(fields))
+        except (OSError, http.client.HTTPException) as exc:
+            raise AdbResidentError(
+                f"resident picker request unreachable on port {host_port}: {exc}"
+            ) from exc
+        try:
+            resp = conn.getresponse()
+            raw = resp.read()
+        except (OSError, http.client.HTTPException) as exc:
+            raise AdbActUncertain(
+                f"resident picker request was sent but its reply was lost on port {host_port}: {exc}"
+            ) from exc
+        if resp.status == 200:
+            return ActOutcome(
+                acted=True,
+                published_mark=_parse_mark(resp.getheader(_ACT_PUBLISH_HEADER)),
+                read=_act_read(resp, raw),
+            )
+    body = raw.decode("utf-8", "replace").strip()
+    if resp.status == _STALE_STATUS:
+        logger.debug("resident picker request reported the wheel moved: %s", body)
+        return ActOutcome(acted=False, published_mark=None)
+    if resp.status == _NO_ENDPOINT_STATUS:
+        raise AdbActUnsupported(
+            f"resident server has no /setPickerValue endpoint (HTTP {resp.status})"
+        )
+    reason, sep, detail = body.partition(":")
+    if resp.status == _REFUSED_STATUS and sep and reason in _PICKER_REFUSALS:
+        raise AdbPickerRefused(reason, detail.strip())
+    raise AdbPickerRefused("failed", f"HTTP {resp.status}: {body}")
+
+
 def type_text(
     host_port: int,
     text: str,
@@ -363,6 +453,73 @@ def type_text(
     if resp.status != 200:
         reason = raw.decode("utf-8", "replace").strip()
         raise AdbResidentError(f"resident text entry returned HTTP {resp.status}: {reason}")
+
+
+# How a two-finger gesture moves on the device: its length, and the interleaved moves inside it. The
+# condition wait on the mirrored value proves the gesture landed, so these shape the motion and never
+# the verdict. Enough moves to carry both fingers past the platform's touch slop smoothly, and long
+# enough that a scale or rotation detector reads a gesture rather than a jump.
+GESTURE_DURATION_MS = 400
+GESTURE_STEPS = 10
+
+# One two-finger pose: the first finger's point and the second's, in the dump's pixel space.
+Pair = tuple[tuple[float, float], tuple[float, float]]
+
+
+def gesture(
+    host_port: int,
+    start: Pair,
+    end: Pair,
+    *,
+    duration_ms: int = GESTURE_DURATION_MS,
+    steps: int = GESTURE_STEPS,
+    timeout: float = ACTION_TIMEOUT_S,
+    keepalive: Keepalive | None = None,
+) -> None:
+    """Ask the resident server to inject one two-finger gesture along the paths the host computed.
+
+    Each finger moves in a straight line from its `start` point to its `end` point. The server injects
+    through `UiAutomation`, which holds the shell's privilege, so the gesture needs no root.
+
+    Raises:
+        AdbActUnsupported: the server predates `/gesture` (`404`). Nothing was injected.
+        AdbActUncertain: the request went out but its reply was lost, so the gesture may have landed.
+        AdbGestureRejected: the platform rejected one of the gesture's events (`500`), so the events
+            before it may have landed.
+        AdbResidentError: the channel could not be reached before the request went out, so nothing was
+            injected, or the device answered anything else.
+    """
+    (a0, a1), (b0, b1) = start, end
+    fields = {
+        "x0s": a0[0], "y0s": a0[1], "x0e": b0[0], "y0e": b0[1],
+        "x1s": a1[0], "y1s": a1[1], "x1e": b1[0], "y1e": b1[1],
+    }  # fmt: skip
+    query = {name: str(round(value)) for name, value in fields.items()}
+    query["durationMs"] = str(duration_ms)
+    query["steps"] = str(steps)
+    # The server holds the fingers down for the gesture's whole duration before it can answer.
+    timeout += duration_ms / 1000
+    with _channel(host_port, keepalive, timeout) as conn:
+        try:
+            conn.request("POST", "/gesture?" + urllib.parse.urlencode(query))
+        except (OSError, http.client.HTTPException) as exc:
+            raise AdbResidentError(
+                f"resident gesture unreachable on port {host_port}: {exc}"
+            ) from exc
+        try:
+            resp = conn.getresponse()
+            raw = resp.read()
+        except (OSError, http.client.HTTPException) as exc:
+            raise AdbActUncertain(
+                f"resident gesture was sent but its reply was lost on port {host_port}: {exc}"
+            ) from exc
+    if resp.status == _NO_ENDPOINT_STATUS:
+        raise AdbActUnsupported(f"resident server has no /gesture endpoint (HTTP {resp.status})")
+    reason = raw.decode("utf-8", "replace").strip()
+    if resp.status == _INJECT_FAILED_STATUS:
+        raise AdbGestureRejected(f"resident gesture returned HTTP {resp.status}: {reason}")
+    if resp.status != 200:
+        raise AdbResidentError(f"resident gesture returned HTTP {resp.status}: {reason}")
 
 
 def _act_read(resp: http.client.HTTPResponse, raw: bytes) -> HierarchyRead | None:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from contextlib import AbstractContextManager, nullcontext
 from pathlib import Path
 from typing import cast
 
@@ -1242,6 +1243,9 @@ class _FakeBridge:
 
     def __init__(self, dom_elements: list[base.Element]) -> None:
         self._elements = dom_elements
+
+    def session(self, webview_id: str, frame: base.Frame) -> AbstractContextManager[None]:
+        return nullcontext()
 
     def query_dom(self, webview_id: str) -> list[base.Element]:
         return self._elements

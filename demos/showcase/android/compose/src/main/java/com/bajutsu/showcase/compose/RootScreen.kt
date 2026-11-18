@@ -49,6 +49,18 @@ fun RootScreen(model: AppModel) {
         SavedNoteScreen()
         return
     }
+    // BE-0480: the SHOWCASE_PICKERS launch env swaps the whole five-tab UI for the flat wheel
+    // picker screen (mirroring the iOS RootView). Otherwise the normal tab app (BE-0079) is untouched.
+    if (model.pickersMode) {
+        PickerScreen()
+        return
+    }
+    // BE-0482: the SHOWCASE_WEBVIEW launch env swaps the whole five-tab UI for the hybrid WebView
+    // screen (mirroring the iOS RootView). Otherwise the normal tab app (BE-0079) is untouched.
+    if (model.webViewMode) {
+        HybridScreen()
+        return
+    }
     Scaffold(
         modifier = Modifier
             .fillMaxSize()

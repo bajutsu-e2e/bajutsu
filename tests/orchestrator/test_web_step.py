@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import AbstractContextManager, contextmanager, nullcontext
+
 from _orch import FakeClock, _scenario
 from conftest import el
 
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
+from bajutsu.common.drivers.webview import WebViewTransportError
 from bajutsu.common.orchestrator import run_scenario
 
 
@@ -16,6 +20,9 @@ class FakeBridge:
     def __init__(self, dom_elements: list[base.Element]) -> None:
         self._elements = dom_elements
         self.tapped: list[tuple[str, base.Point]] = []
+
+    def session(self, webview_id: str, frame: base.Frame) -> AbstractContextManager[None]:
+        return nullcontext()
 
     def query_dom(self, webview_id: str) -> list[base.Element]:
         return self._elements
@@ -239,7 +246,10 @@ def test_web_step_no_bridge_fails() -> None:
         clock=FakeClock(),
     )
     assert not result.ok
-    assert "bridge" in (result.failure or "").lower()
+    failure = result.failure or ""
+    assert "no WebView source" in failure
+    # Android leaves the variable unset by design (BE-0482), so the reason must not point at it.
+    assert "BAJUTSU_WEBVIEW_PORT" not in failure
 
 
 def test_web_step_dom_element_not_found() -> None:
@@ -265,3 +275,115 @@ def test_web_step_dom_element_not_found() -> None:
         webview_bridge=bridge,
     )
     assert not result.ok
+
+
+class SessionBridge(FakeBridge):
+    """Records each block's session: the id and frame it opened with, and whether it closed."""
+
+    def __init__(
+        self,
+        dom_elements: list[base.Element],
+        *,
+        open_error: Exception | None = None,
+        query_error: Exception | None = None,
+    ) -> None:
+        super().__init__(dom_elements)
+        self.opened: list[tuple[str, base.Frame]] = []
+        self.closed = 0
+        self._open_error = open_error
+        self._query_error = query_error
+
+    @contextmanager
+    def _session(self, webview_id: str, frame: base.Frame) -> Iterator[None]:
+        if self._open_error is not None:
+            raise self._open_error
+        self.opened.append((webview_id, frame))
+        try:
+            yield
+        finally:
+            self.closed += 1
+
+    def session(self, webview_id: str, frame: base.Frame) -> AbstractContextManager[None]:
+        return self._session(webview_id, frame)
+
+    def query_dom(self, webview_id: str) -> list[base.Element]:
+        if self._query_error is not None:
+            raise self._query_error
+        return super().query_dom(webview_id)
+
+
+_BUTTON: base.Element = {
+    "identifier": "go",
+    "label": "Go",
+    "traits": ["button"],
+    "value": None,
+    "frame": (10.0, 10.0, 50.0, 20.0),
+    "nativeZ": None,
+}
+
+
+def _web_block(
+    inner: list[dict[str, object]], after: list[dict[str, object]] | None = None
+) -> dict[str, object]:
+    return {
+        "name": "web session",
+        "steps": [{"web": {"within": {"id": "wv"}, "steps": inner}}, *(after or [])],
+    }
+
+
+def test_web_session_receives_the_frame_the_within_selector_resolved() -> None:
+    bridge = SessionBridge([_BUTTON])
+    driver = FakeDriver([el("wv", frame=(0.0, 220.0, 1080.0, 1700.0))])
+    result = run_scenario(
+        driver,
+        _scenario(_web_block([{"tap": {"id": "go"}}])),
+        clock=FakeClock(),
+        webview_bridge=bridge,
+    )
+    assert result.ok, result.failure
+    assert bridge.opened == [("wv", (0.0, 220.0, 1080.0, 1700.0))]
+    assert bridge.closed == 1
+
+
+def test_web_session_closes_when_the_block_fails() -> None:
+    bridge = SessionBridge([_BUTTON])
+    driver = FakeDriver([el("wv", frame=(0.0, 0.0, 400.0, 800.0))])
+    result = run_scenario(
+        driver,
+        _scenario(_web_block([{"tap": {"id": "missing"}}])),
+        clock=FakeClock(),
+        webview_bridge=bridge,
+    )
+    assert not result.ok
+    assert bridge.closed == 1
+
+
+def test_a_missing_socket_fails_its_block_with_the_reason_and_not_the_run() -> None:
+    bridge = SessionBridge(
+        [_BUTTON], open_error=WebViewTransportError("no WebView DevTools socket in com.example")
+    )
+    driver = FakeDriver([el("wv", frame=(0.0, 0.0, 400.0, 800.0))])
+    result = run_scenario(
+        driver,
+        _scenario(_web_block([{"tap": {"id": "go"}}])),
+        clock=FakeClock(),
+        webview_bridge=bridge,
+    )
+    assert not result.ok
+    assert "web: no WebView DevTools socket in com.example" in (result.failure or "")
+
+
+def test_a_transport_failure_inside_the_block_fails_it_and_closes_the_session() -> None:
+    bridge = SessionBridge(
+        [_BUTTON], query_error=WebViewTransportError("WebView DevTools socket closed: navigation")
+    )
+    driver = FakeDriver([el("wv", frame=(0.0, 0.0, 400.0, 800.0))])
+    result = run_scenario(
+        driver,
+        _scenario(_web_block([{"tap": {"id": "go"}}])),
+        clock=FakeClock(),
+        webview_bridge=bridge,
+    )
+    assert not result.ok
+    assert "socket closed" in (result.failure or "")
+    assert bridge.closed == 1

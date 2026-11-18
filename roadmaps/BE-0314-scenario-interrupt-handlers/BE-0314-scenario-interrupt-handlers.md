@@ -16,55 +16,69 @@
 
 ## Introduction
 
-A declarative `interrupts` field — set at the config level (an app-wide default) and extended per
-scenario — that names a screen an app can show at an unpredictable point in a run (an onboarding
-step, a tutorial overlay, a permission prompt the accessibility tree can see) together with the
-steps that clear it. The runner checks each `interrupts` entry's `condition` opportunistically,
-using the same deterministic assertion domain-specific language (DSL) that already backs `if`
-([BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow.md)),
-against the element tree it has already fetched for the step in progress, wherever in the step
-sequence the interstitial happens to appear, so an author no longer has to predict which single
+This item adds a declarative `interrupts` field. The field names a screen that an app can show at an
+unpredictable point in a run, together with the steps that clear the screen. Examples are an
+onboarding step, a tutorial overlay, and a permission prompt that the accessibility tree can see.
+
+The field is set at the config level, as an app-wide default, and extended per scenario.
+
+The runner checks the `condition` of each `interrupts` entry opportunistically. The check uses the
+deterministic assertion domain-specific language (DSL) that already backs `if`
+([BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow.md)).
+The check runs against the element tree that the runner has already fetched for the step in progress,
+wherever in the step sequence the interstitial appears. An author no longer has to predict the single
 spot in the scenario to check.
 
 ## Motivation
 
-Bajutsu already lets a scenario branch on the current screen: `if` ([BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow.md),
+Bajutsu already lets a scenario branch on the current screen. `if`
+([BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow.md),
 `_run_if`, [`bajutsu/orchestrator/loop.py:472`](../../bajutsu/orchestrator/loop.py)) evaluates a
-`condition` against a single `driver.query()` and runs `then` or `else`. That single check is a
-good fit when the author knows exactly which step precedes the screen in question. It is the wrong
-tool when the screen's appearance is not tied to any one step at all — a permission dialog, an
-app-specific onboarding screen, or a promotional overlay can each surface a few steps earlier or
-later than expected, or not at all, depending on account state, network timing, or an A/B cohort.
-Placing a single `if` after a chosen step only catches the screen when it happens to appear exactly
-there; every other timing slips through unhandled and the rest of the scenario fails against a
-screen it was not written to expect.
+`condition` against a single `driver.query()` and runs `then` or `else`.
 
-The gap is concrete, not hypothetical. [BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md)
-added a deterministic, pre-launch `permissions` field that grants or revokes an OS permission
-before the app's first request, but it documents one permission its own mechanism cannot reach:
-iOS notification authorization has no `simctl privacy` TCC (Transparency, Consent, and Control)
-service, so BE-0276 falls back to `dismissAlerts` — the vision-based alert guard
-([`bajutsu/agents/alerts.py`](../../bajutsu/agents/alerts.py)) — as the only path left for that one prompt. That
-guard is deliberately the one AI call left in `run` (prime directive 1: AI investigates, it never
-judges pass/fail), and it fires only reactively, after a step has already failed or a wait already
-looks blocked. A scenario that wants a deterministic, machine-checkable way to handle a screen the
-tree can actually see — as opposed to an out-of-process system alert only vision can locate — has
-nowhere to put that handling today, precisely because the screen's timing is not tied to a step.
+That single check fits well when the author knows exactly which step precedes the screen in question.
+It is the wrong tool when the appearance of the screen is not tied to any one step. A permission
+dialog, an app-specific onboarding screen, or a promotional overlay can each surface a few steps
+earlier or later than expected, or not at all. Account state, network timing, or an A/B cohort decides.
 
-Two existing mechanisms already establish the right shape for a fix, applied to a different layer.
-`dismissAlerts` itself is both a config-level default and a scenario-level override
-(`dismiss_alerts` in [`bajutsu/config/schema.py:368`](../../bajutsu/config/schema.py) and in
-[`bajutsu/scenario/models/scenario.py:104`](../../bajutsu/scenario/models/scenario.py)), so an
-app-wide expectation ("this app always shows X") composes with a per-scenario addition. And
-[BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention.md)
-already showed that a screen-collapse check can ride on a poll's already-fetched tree at zero extra
-query cost, and that a bounded, capped intervention can resume the interrupted wait rather than
-abandon it. XCUITest itself independently reaches for the same pattern outside this codebase:
-`addUIInterruptionMonitor` registers a handler that the test framework consults whenever a screen
-interaction is blocked, regardless of which line of the test triggered it. This proposal brings
-that same shape — config/scenario-level registration, checked continuously rather than at one
-scripted point — to the tree Bajutsu's own drivers already see, keeping the check itself
-deterministic (the assertion DSL) rather than adding a second AI surface.
+A single `if` after a chosen step catches the screen only when the screen appears exactly there. Every
+other timing slips through unhandled. The rest of the scenario then fails against a screen that it was
+not written to expect.
+
+The gap is concrete, not hypothetical.
+[BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md) added a
+deterministic, pre-launch `permissions` field that grants or revokes an OS permission before the first
+request of the app. BE-0276 documents one permission that its own mechanism cannot reach: iOS
+notification authorization has no `simctl privacy` TCC (Transparency, Consent, and Control) service.
+BE-0276 falls back to `dismissAlerts`, the vision-based alert guard
+([`bajutsu/agents/alerts.py`](../../bajutsu/agents/alerts.py)), as the only path left for that prompt.
+
+That guard is deliberately the one AI call left in `run` (prime directive 1: AI investigates and
+never judges pass/fail). It fires reactively, after a step has already failed or a wait already looks
+blocked.
+
+A scenario may want a deterministic, machine-checkable way to handle a screen that the tree can
+actually see, as opposed to an out-of-process system alert that only vision can locate. Today such a
+scenario has nowhere to put that handling, because the timing of the screen is not tied to a step.
+
+Two existing mechanisms already establish the right shape for a fix, applied to a different layer:
+
+- `dismissAlerts` is both a config-level default and a scenario-level override (`dismiss_alerts` in
+  [`bajutsu/config/schema.py:368`](../../bajutsu/config/schema.py) and in
+  [`bajutsu/scenario/models/scenario.py:104`](../../bajutsu/scenario/models/scenario.py)). An
+  app-wide expectation ("this app always shows X") composes with a per-scenario addition.
+- [BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention.md)
+  showed that a screen-collapse check can ride on the already-fetched tree of a poll at zero extra
+  query cost. BE-0269 also showed that a bounded, capped intervention can resume the interrupted wait
+  and need not abandon it.
+
+XCUITest reaches independently for the same pattern outside this codebase. `addUIInterruptionMonitor`
+registers a handler that the test framework consults whenever a screen interaction is blocked,
+regardless of which line of the test triggered it.
+
+This proposal brings that shape to the tree that the drivers of Bajutsu already see: registration at
+the config or scenario level, and checking that runs continuously and not at one scripted point. The
+check itself stays deterministic (the assertion DSL). The proposal adds no second AI surface.
 
 ## Detailed design
 
@@ -92,94 +106,114 @@ scenario:
     - wait: { for: { id: home.title }, timeout: 10 }
 ```
 
-Each entry is a `condition` (the same assertion DSL `if` already uses — `exists`, `value`, and the
-rest of the [Assertion DSL](../../docs/scenarios.md#assertion-dsl)) and a `steps` list to run when
-the condition matches. `interrupts` at the config level is an app-wide default; a scenario's own
-`interrupts` list is appended to it (config entries first), mirroring how `dismissAlerts` already
-layers a config-level default under a scenario-level value. An entry's `steps` share the enclosing
-scenario's `vars.*` bindings, the same as `if`'s `then`/`else` do today.
+Each entry has two parts:
+
+- A `condition`, in the same assertion DSL that `if` already uses: `exists`, `value`, and the rest of
+  the [Assertion DSL](../../docs/scenarios.md#assertion-dsl).
+- A `steps` list to run when the condition matches.
+
+`interrupts` at the config level is an app-wide default. The `interrupts` list of a scenario is
+appended to the default, with config entries first. The layering mirrors how `dismissAlerts` already
+layers a config-level default under a scenario-level value. The `steps` of an entry share the
+`vars.*` bindings of the enclosing scenario, as the `then` and `else` branches of `if` do today.
 
 ### Work breakdown (MECE)
 
 1. **Scenario and config schema.** Add `interrupts: list[Interrupt]` to both `Config`
    ([`bajutsu/config/schema.py`](../../bajutsu/config/schema.py)) and `Scenario`
-   ([`bajutsu/scenario/models/scenario.py`](../../bajutsu/scenario/models/scenario.py)), each entry
-   validated as `{ condition: Assertion, steps: list[Step] }` (reusing the existing `Assertion` and
-   `Step` models `If` at [`bajutsu/scenario/models/steps.py:71`](../../bajutsu/scenario/models/steps.py)
-   already validates against). At load time, the effective list for a run is the config's entries
-   followed by the scenario's own, the same config-then-scenario precedence `_alert_guard_factory`'s
-   `_enabled` helper already applies to `dismiss_alerts`
+   ([`bajutsu/scenario/models/scenario.py`](../../bajutsu/scenario/models/scenario.py)). Validate each
+   entry as `{ condition: Assertion, steps: list[Step] }`. The entry reuses the existing `Assertion`
+   and `Step` models that `If` at
+   [`bajutsu/scenario/models/steps.py:71`](../../bajutsu/scenario/models/steps.py) already validates
+   against.
+
+   At load time, the effective list for a run is the entries of the config followed by the entries of
+   the scenario. The precedence is the same config-then-scenario precedence that the `_enabled` helper
+   of `_alert_guard_factory` already applies to `dismiss_alerts`
    ([`bajutsu/cli/commands/run.py:339`](../../bajutsu/cli/commands/run.py)).
-2. **Opportunistic check, reusing already-fetched trees.** Thread the effective `interrupts` list
-   into `_run_steps` ([`bajutsu/orchestrator/loop.py:513`](../../bajutsu/orchestrator/loop.py)) so
-   each entry's `condition` is evaluated against a tree the loop already holds: the `before` /
-   `after` query already taken for a `screenChanged`-policy step, or the poll result already fetched
-   inside `_wait` ([`bajutsu/orchestrator/waits.py`](../../bajutsu/orchestrator/waits.py)) on every
-   tick. A step whose kind takes no such tree today (a bare `tap`/`type` with no capture policy)
-   takes one extra `query()` immediately before the act — the same cost `if` already pays for its
-   own single check, paid only for scenarios that declare at least one `interrupts` entry.
-3. **On a match, run the entry's `steps`, then resume.** Reuse the same `_ExecSteps` callable `if`
-   and `forEach` already close over ([`bajutsu/orchestrator/loop.py:452`](../../bajutsu/orchestrator/loop.py))
-   to run the matched entry's `steps`. After it returns, resume the interrupted step exactly where it
-   left off: a `wait` keeps polling toward its original `deadline` (the same "resume, don't restart
-   the timeout" contract BE-0269 established for the alert guard); an act step re-attempts its single
-   action once. A step whose own action changed the entry's `condition` from true back to false
-   (the common case — the interrupt's `steps` dismissed the screen) simply proceeds normally on
-   resume.
-4. **Cap re-entrancy.** An interrupt whose own `steps` do not actually clear its `condition` (a
-   broken selector, a screen that re-renders identically) must not turn the run into an infinite
-   loop. Cap consecutive fires of the *same* entry within one step's resolution at a small fixed
-   number, and fall back to running the original step to its ordinary outcome (pass, fail, or
-   timeout) once the cap is hit — mirroring BE-0269's `_GUARD_MAX_ATTEMPTS` /
-   `_GUARD_COOLDOWN` shape, so a mis-set condition fails the step cleanly instead of hanging the run.
-5. **codegen.** No native XCUITest / Espresso / Playwright construct maps onto "check this condition
-   opportunistically throughout the whole test." Emit a labeled `// TODO` naming the field and each
-   configured `condition`, consistent with how [BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md)
-   and BE-0276 already handle a field with no app-level equivalent.
+2. **Opportunistic check, reusing already-fetched trees.** Thread the effective `interrupts` list into
+   `_run_steps` ([`bajutsu/orchestrator/loop.py:513`](../../bajutsu/orchestrator/loop.py)). The loop
+   evaluates the `condition` of each entry against a tree that the loop already holds. Two sources
+   qualify: the `before` / `after` query already taken for a `screenChanged`-policy step, and the poll
+   result already fetched inside `_wait` ([`bajutsu/orchestrator/waits.py`](../../bajutsu/orchestrator/waits.py))
+   on every tick.
+
+   A step kind that takes no such tree today, such as a bare `tap` or `type` with no capture policy,
+   takes one extra `query()` immediately before the act. `if` already pays the same cost for its own
+   single check. Only scenarios that declare at least one `interrupts` entry pay the cost.
+3. **On a match, run the entry's `steps`, then resume.** Reuse the `_ExecSteps` callable that `if` and
+   `forEach` already close over ([`bajutsu/orchestrator/loop.py:452`](../../bajutsu/orchestrator/loop.py))
+   to run the `steps` of the matched entry. After the call returns, resume the interrupted step
+   exactly where it left off:
+   - A `wait` keeps polling toward its original `deadline`. This is the "resume, don't restart the
+     timeout" contract that BE-0269 established for the alert guard.
+   - An act step re-attempts its single action once.
+
+   The `steps` of the interrupt usually dismiss the screen, so the `condition` turns from true back
+   to false. A step in that common case proceeds normally on resume.
+4. **Cap re-entrancy.** An interrupt whose own `steps` do not clear its `condition` must not turn the
+   run into an infinite loop. Examples are a broken selector and a screen that re-renders identically.
+   Cap consecutive fires of the *same* entry within one step's resolution at a small fixed number.
+   Once the cap is hit, fall back to running the original step to its ordinary outcome: pass, fail, or
+   timeout. The cap mirrors the `_GUARD_MAX_ATTEMPTS` / `_GUARD_COOLDOWN` shape of BE-0269. A mis-set
+   condition then fails the step cleanly and does not hang the run.
+5. **codegen.** No native XCUITest, Espresso, or Playwright construct maps onto "check this condition
+   opportunistically throughout the whole test". Emit a labeled `// TODO` that names the field and
+   each configured `condition`. The output is consistent with how
+   [BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md) and BE-0276
+   already handle a field with no app-level equivalent.
 6. **Docs and fixture.** Document `interrupts` in [`docs/scenarios.md`](../../docs/scenarios.md) and
-   its Japanese mirror, alongside `dismissAlerts` and `permissions`, with a comparison table of when
-   to reach for `if` (a known spot), `interrupts` (an unpredictable spot, in-tree), `dismissAlerts`
-   (out-of-process, AI-vision), or `permissions` (avoid the prompt outright). Add a showcase fixture
-   whose config declares an onboarding-screen interrupt and a scenario that exercises it appearing
-   mid-flow.
-7. **Tests.** Schema parse/validate for both levels; config-then-scenario ordering; a fake driver
-   whose tree flips a condition true partway through a `wait`'s poll loop and partway through a plain
-   `tap`; the re-entrancy cap firing and falling back cleanly; `vars.*` sharing between the enclosing
-   scenario and an entry's `steps`.
+   its Japanese mirror, alongside `dismissAlerts` and `permissions`. Add a comparison table of when to
+   reach for each mechanism:
+   - `if`, for a known spot.
+   - `interrupts`, for an unpredictable spot visible in the tree.
+   - `dismissAlerts`, for an out-of-process screen handled by AI vision.
+   - `permissions`, to avoid the prompt outright.
+
+   Add a showcase fixture. Its config declares an onboarding-screen interrupt. Its scenario exercises
+   the screen appearing mid-flow.
+7. **Tests.** Cover these cases:
+   - Schema parse and validate for both levels.
+   - Config-then-scenario ordering.
+   - A fake driver whose tree flips a condition true partway through the poll loop of a `wait`.
+   - A fake driver whose tree flips a condition true partway through a plain `tap`.
+   - The re-entrancy cap firing and falling back cleanly.
+   - `vars.*` sharing between the enclosing scenario and the `steps` of an entry.
 
 ### Prime directives preserved
 
-- **AI never judges.** `condition` is the existing assertion DSL — a machine-checkable predicate,
-  never a model call. This item adds no new AI surface; it gives scenarios a deterministic path for
-  exactly the cases that would otherwise fall to the vision `dismissAlerts` guard.
-- **Determinism first.** No fixed `sleep`: the check rides on ticks the loop or a `wait` already
-  performs, and a capped re-entrancy count keeps a mis-set entry from hanging a run instead of
-  failing it.
-- **App-agnostic.** The `interrupts` list itself is config/scenario data; the runner and drivers gain
-  one generic mechanism, not per-app code.
+- **AI never judges.** `condition` is the existing assertion DSL: a machine-checkable predicate and
+  never a model call. This item adds no new AI surface. It gives scenarios a deterministic path for
+  the cases that would otherwise fall to the vision `dismissAlerts` guard.
+- **Determinism first.** No fixed `sleep` appears. The check rides on ticks that the loop or a `wait`
+  already performs. A capped re-entrancy count keeps a mis-set entry from hanging a run, and the run
+  fails instead.
+- **App-agnostic.** The `interrupts` list itself is config or scenario data. The runner and drivers
+  gain one generic mechanism and no per-app code.
 
 ## Alternatives considered
 
-- **Extend `if` with a `timeout` so it polls before branching.** This was the discussion's starting
-  point, and it does turn `if` into a wait-then-branch. It still requires the author to place that
-  `if` at one chosen point in the step sequence, so it does not solve the actual problem: an
-  interstitial whose timing relative to the step sequence cannot be predicted has no single correct
-  point to place it. Rejected as the primary shape for that reason; `if` keeps its current, simpler
+- **Extend `if` with a `timeout` so it polls before branching.** This was the starting point of the
+  discussion, and it does turn `if` into a wait-then-branch. The author still has to place the `if`
+  at one chosen point in the step sequence. The extension therefore does not solve the actual problem:
+  an interstitial whose timing relative to the step sequence cannot be predicted has no single correct
+  point to place it. Rejected as the primary shape for that reason. `if` keeps its current, simpler
   single-check semantics for the cases where a chosen spot is genuinely known.
 - **A new local `switch`/race step over several candidate conditions, still placed at one point in
-  `steps`.** Closer than a bare `if`, and useful when an author does know a specific point where one
-  of several screens might appear — but it has the same placement problem as the `if` extension: it
-  still asks the author to guess the right point. Deferred; nothing here would prevent adding it
-  later as a local complement to the config/scenario-level `interrupts` mechanism this item proposes.
-- **Extend `dismissAlerts` to cover in-tree screens too.** Rejected: `dismissAlerts` is deliberately
-  the one AI-vision path in `run`, reserved for screens the accessibility tree cannot see at all. An
-  in-tree screen already has a deterministic signal (`condition` against `query()`) available, and
-  routing it through the vision guard anyway would add cost and non-determinism this item removes
-  the need for.
+  `steps`.** The step comes closer than a bare `if`. It helps when an author does know a specific point
+  where one of several screens might appear. But it has the same placement problem as the `if`
+  extension, because it still asks the author to guess the right point. Deferred. Nothing here would
+  prevent adding the step later as a local complement to the config-level and scenario-level
+  `interrupts` mechanism that this item proposes.
+- **Extend `dismissAlerts` to cover in-tree screens too.** Rejected. `dismissAlerts` is deliberately
+  the one AI-vision path in `run`, reserved for screens that the accessibility tree cannot see at all.
+  An in-tree screen already has a deterministic signal available: a `condition` against `query()`.
+  Routing the screen through the vision guard anyway would add cost and non-determinism, which this
+  item removes the need for.
 - **A silent per-app allowlist of "expected extra screens" with no explicit recovery steps.**
-  Rejected: silently ignoring a matched screen (rather than running an author-specified `steps` list)
-  gives up the ability to actually dismiss it, and produces no evidence trail explaining what
-  happened when the allowlist masked something the author did not anticipate.
+  Rejected. Silently ignoring a matched screen, instead of running an author-specified `steps` list,
+  gives up the ability to dismiss the screen. It also produces no evidence trail. When the allowlist
+  masked something that the author did not anticipate, nothing would explain what happened.
 
 ## Progress
 

@@ -19,9 +19,11 @@ from ._shared import (
     TERMINAL_JOB_STATUSES,
     cancelled_job_result,
 )
+from .concurrency_caps import ConcurrencyCaps
 from .job_metrics import JobMetrics
 from .leased_job import LeasedJob
 from .org_record import OrgRecord
+from .queued_job import QueuedJob
 from .repository import Repository
 from .run_record import RunRecord
 from .sql_repository import DEFAULT_LEASE_TIMEOUT_SECONDS, SqlRepository
@@ -31,9 +33,11 @@ __all__ = [
     "DEFAULT_LEASE_TIMEOUT_SECONDS",
     "DEFAULT_RUN_LIMIT",
     "TERMINAL_JOB_STATUSES",
+    "ConcurrencyCaps",
     "JobMetrics",
     "LeasedJob",
     "OrgRecord",
+    "QueuedJob",
     "Repository",
     "RunRecord",
     "SqlRepository",

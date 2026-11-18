@@ -54,8 +54,8 @@ provider)`、すなわちファイルの種類と供給元だけです。どの�
 ### 対応が崩れる3つの経路
 
 **`web` ブロックでは、ネイティブの画像と WebView の要素ツリーが並びます。** `web` ブロックの内側で
-セレクタを解決する相手は [`WebContextDriver`](../../bajutsu/webview.py) です。`WebContextDriver` が返す要素ツリーの座標系は WebView 自身のものであり、端末画面のもの
-ではありません。スクリーンショットのほうは、同じドライバからは取れません。`WebContextDriver` は
+セレクタを解決する相手は [`WebContextDriver`](../../bajutsu/webview.py) です。
+`WebContextDriver` が返す要素ツリーの座標系は WebView 自身のものであり、端末画面のものではありません。スクリーンショットのほうは、同じドライバからは取れません。`WebContextDriver` は
 `screenshot` に対して `UnsupportedAction` を送出するからです。そのためスクリーンショットはネイティブ
 ドライバから取得され、ステータスバーやネイティブの装飾を含む端末画面の全体を写します。要素ビューアは
 要素ツリー自身の外接矩形から倍率を導き、すべての枠をネイティブ画像へ写します。こうして各枠は、それを
@@ -212,10 +212,8 @@ WebView の原点と倍率が要ります。ブリッジはどちらも報告し
 
 ## 参考
 
-- [BE-0341 — ステップの操作前にレポート用の成果物を取得する](../BE-0341-pre-action-evidence-capture/BE-0341-pre-action-evidence-capture-ja.md)
-  — すべてのステップに操作前のベースラインを与えた項目であり、そこで先送りされた注記を本項目が片付け
+- [BE-0341 — ステップの操作前にレポート用の成果物を取得する](../BE-0341-pre-action-evidence-capture/BE-0341-pre-action-evidence-capture-ja.md)：すべてのステップに操作前のベースラインを与えた項目であり、そこで先送りされた注記を本項目が片付け
   ます。
-- [BE-0234 — adb のシナリオ実行を高速化する（uiautomator dump のボトルネック）](../BE-0234-adb-run-performance/BE-0234-adb-run-performance-ja.md)
-  — 本項目が変えずに保つ、ステップあたりの読み取り予算。
-- [`docs/evidence.md`](../../docs/evidence.md) — 成果物の供給元を含む、成果物取得の仕組み。
-- [`docs/reporting.md`](../../docs/reporting.md) — `manifest.json` と HTML レポートの要素ビューア。
+- [BE-0234 — adb のシナリオ実行を高速化する（uiautomator dump のボトルネック）](../BE-0234-adb-run-performance/BE-0234-adb-run-performance-ja.md)：本項目が変えずに保つ、ステップあたりの読み取り予算。
+- [`docs/evidence.md`](../../docs/evidence.md)：成果物の供給元を含む、成果物取得の仕組み。
+- [`docs/reporting.md`](../../docs/reporting.md)：`manifest.json` と HTML レポートの要素ビューア。

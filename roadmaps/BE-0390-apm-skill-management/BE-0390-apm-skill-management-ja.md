@@ -96,29 +96,39 @@ APMは、スキル、プロンプト、指示、Model Context Protocol（MCP）�
    リポジトリパスへ移します。`document-writing`スキルと
    [`.github/dependabot.yml`](../../.github/dependabot.yml)のnpmエントリは、移設先を指すように
    更新します。
-5. **ツール整備**：`apm-cli`は`pyproject.toml`で版を厳密に固定した`dev`の依存です。ほかのPythonツールと
-   同じく`uv`が解決し、`apm.lock.yaml`を書き出す版は`uv.lock`が記録します。`make skills`で
-   `uv run apm install --no-policy`を、`make lint-skills`で`uv run apm audit --ci --no-policy`を
-   実行します。
-   `apm audit --ci`は一時ディレクトリへインストールを再現し、ソースと異なる配備ファイルを報告します。
-   `make check`にはこの検査を加えますが、`lint-actions`や`lint-secrets`と違ってスキップの分岐は
-   ありません。この2つのツールは`uv`では解決できませんが、`apm-cli`は`dev`の依存なので常に走り、
-   手元で走らないことで検査が通ってしまう余地がありません。CIにも個別の導入手順は要りません。
+5. **ツール整備**：この単位は4つの部分からなります。
+
+   **固定した依存**として、`apm-cli`を`pyproject.toml`で版を厳密に固定した`dev`の依存にします。ほかの
+   Pythonツールと同じく`uv`が解決し、`apm.lock.yaml`を書き出す版は`uv.lock`が記録します。
+
+   **makeターゲット**として、`make skills`は`uv run apm install --no-policy`を、`make lint-skills`は
+   `uv run apm audit --ci --no-policy`を実行します。`apm audit --ci`は一時ディレクトリへインストールを
+   再現し、ソースと異なる配備ファイルを報告します。
+
+   **ゲートの段**として、`make check`にこの検査を加えます。`lint-actions`や`lint-secrets`と違って
+   スキップの分岐はありません。この2つのツールは`uv`では解決できませんが、`apm-cli`は`dev`の依存なので
+   常に走ります。手元で走らないことで検査が通ってしまう余地はなく、CIにも個別の導入手順は要りません。
    [session-startフック](../../.claude/hooks/session-start.sh)も同様です。既存の
-   `uv sync --group dev`が`apm`を含むので、フックは配備だけを実行し、webセッションはコミット済みの
+   `uv sync --group dev`が`apm`を含むので、フックは配備だけを実行します。webセッションはコミット済みの
    スキル集合から始まります。
-   `apm install`はどの呼び出し箇所でも`--no-policy`を渡します。配備と、それを再現する検査とが
-   一つの設定の下に揃い、どちらもネットワークを必要としなくなるからです。渡さない場合、0.28.0は
-   到達できないポリシーについて警告して先へ進みます。往復のコストがかかるうえ、警告が失敗のように
-   読めてしまいます。
-   `make hooks`には、ローカルのgit設定をもう1つ加えます。競合時に`.apm/skills/`からロックファイルを
+
+   **オフラインのポリシー**として、`apm install`はどの呼び出し箇所でも`--no-policy`を渡します。配備と、
+   それを再現する検査とが1つの設定の下に揃い、どちらもネットワークを必要としなくなるからです。渡さない
+   場合、0.28.0は到達できないポリシーについて警告して先へ進みます。往復のコストがかかるうえ、警告が
+   失敗のように読めてしまいます。
+
+   `make hooks`には、ローカルのGit設定をもう1つ加えます。競合時に`.apm/skills/`からロックファイルを
    再生成するマージドライバ
    （[`scripts/merge-apm-generated.sh`](../../scripts/merge-apm-generated.sh)）で、対象は
    `apm.lock.yaml`と配置先の`.claude/skills/**`の両方です。
    [BE-0043](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md)が
-   `uv.lock`に対してすでに用意しているものと同じ仕組みです。ドライバがないと、同じスキルを編集した
-   2つのブランチは、正しい値がどちらの側にもないファイルごとのSHA-256の行に、競合マーカーを残します。
-   再生成したロックファイルは暫定的なものです。gitはマージ結果を書き出す前にドライバを走らせるため、
+   `uv.lock`に対してすでに用意しているものと同じ仕組みです。
+
+   ドライバがないと、同じスキルを編集した2つのブランチは、正しい値がどちらの側にもないファイルごとの
+   SHA-256の行に、競合マーカーを残します。配備先のコピーにも2つ目の競合が起こります。手作業の解決が妥当に
+   見えても、ソースと一致しない配備が残ります。
+
+   再生成したロックファイルは暫定的なものです。Gitはマージ結果を書き出す前にドライバを走らせるため、
    `apm install`はマージ前のツリーを読むからです。`uv lock --check`が`uv.lock`のドライバを支えるのと
    同じく、解決後の`make skills`で更新するまでは`make lint-skills`がゲートを落とします。
 6. **ドキュメント**：[`CLAUDE.md`](../../CLAUDE.md)の*Agent skill layout*節を、単一ソースの構成に
@@ -177,16 +187,16 @@ APMは、スキル、プロンプト、指示、Model Context Protocol（MCP）�
 
 ## 参考
 
-- [APM quickstart](https://microsoft.github.io/apm/quickstart/) — 本項目が採用するマニフェスト、
+- [APM quickstart](https://microsoft.github.io/apm/quickstart/)：本項目が採用するマニフェスト、
   ロックファイル、インストールの手順。
-- [APM skill authoring](https://microsoft.github.io/apm/producer/author-primitives/skills/) —
+- [APM skill authoring](https://microsoft.github.io/apm/producer/author-primitives/skills/)：
   `.apm/skills/<name>/`の配置と`SKILL.md`の分量の規約。
-- [APM targets matrix](https://microsoft.github.io/apm/reference/targets-matrix/) — ホストごとの
+- [APM targets matrix](https://microsoft.github.io/apm/reference/targets-matrix/)：ホストごとの
   配備先の一覧であり、上で述べた`.agents/skills/`の衝突の出典。
-- [BE-0103](../BE-0103-dev-model-effort-tiering/BE-0103-dev-model-effort-tiering-ja.md) —
+- [BE-0103](../BE-0103-dev-model-effort-tiering/BE-0103-dev-model-effort-tiering-ja.md)：
   移行後も残る`model:`のfrontmatterが担う、モデルと推論負荷の使い分け。
 - [BE-0379](../BE-0379-be-progress-tracker/BE-0379-be-progress-tracker-ja.md)、
   [BE-0380](../BE-0380-fix-issue-skill/BE-0380-fix-issue-skill-ja.md)、
-  [BE-0384](../BE-0384-record-issue-skill/BE-0384-record-issue-skill-ja.md) — 本項目が撤去する
+  [BE-0384](../BE-0384-record-issue-skill/BE-0384-record-issue-skill-ja.md)：本項目が撤去する
   3ツリー構成を前提に設計された項目。BE-0384だけが未実装（状態は`提案`）であり、リンクだけでなく
   設計の記述も構成の変更に合わせて移します。

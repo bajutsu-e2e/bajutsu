@@ -17,15 +17,13 @@
 
 ## Introduction
 
-`ClaudeCodeAgent` (`bajutsu/claude_code_agent.py`), the authoring agent backed by the
-local `claude` CLI, launches that CLI in print mode with no explicit tool
-restriction, relying only on a one-line system-prompt instruction to keep it from
-reaching for tools it shouldn't need.
+`ClaudeCodeAgent` (`bajutsu/claude_code_agent.py`) is the authoring agent backed by the local
+`claude` CLI. It launches that CLI in print mode with no explicit tool restriction. The only guard
+against the CLI reaching for tools it does not need is a one-line system-prompt instruction.
 
 ## Motivation
 
-`ClaudeCodeAgent._command` (`bajutsu/claude_code_agent.py:148`) builds the CLI
-invocation as:
+`ClaudeCodeAgent._command` (`bajutsu/claude_code_agent.py:148`) builds the CLI invocation as:
 
 ```python
 def _command(self, prompt: str, schema: dict[str, Any], system: str) -> list[str]:
@@ -41,53 +39,50 @@ def _command(self, prompt: str, schema: dict[str, Any], system: str) -> list[str
     ]
 ```
 
-No `--allowedTools`, `--disallowedTools`, or `--permission-mode` flag is passed, so
-the CLI runs with its default tool surface (shell, file read/write, and whatever else
-the invoking environment grants) and the only thing steering it away from calling
-tools is prose appended to the system prompt — a soft guard, not an enforced one. This
-matters because this agent's job is to decide the next test action from an
-**observation of the app under test** (`_render(observation)` in the prompt), and that
-observation includes on-screen text and accessibility labels the agent did not
-generate. An adversarial or compromised screen — a label or field value crafted to
-look like an instruction — is a prompt-injection vector: text in the observation could
-try to talk the model into invoking a tool (running a shell command, reading or
-writing an arbitrary file) instead of returning the expected structured action.
-Severity is medium: exploitation requires the app under test to render attacker-
-controlled content into something the accessibility tree/screenshot surfaces, but that
-is exactly the situation E2E authoring is meant to exercise (logging into real or
-staging backends, third-party web content in a webview, and so on).
+The command passes no `--allowedTools`, `--disallowedTools`, or `--permission-mode` flag. The CLI
+therefore runs with its default tool surface: shell, file read and write, and whatever else the
+invoking environment grants. Only prose appended to the system prompt steers the CLI away from
+calling tools. That guard is soft, not enforced.
+
+The guard matters because the agent decides the next test action from an **observation of the app
+under test** (`_render(observation)` in the prompt). The observation includes on-screen text and
+accessibility labels that the agent did not generate. An adversarial or compromised screen, such as a
+label or field value crafted to look like an instruction, is therefore a prompt-injection vector. Text
+in the observation could try to talk the model into invoking a tool (running a shell command, or
+reading or writing an arbitrary file) instead of returning the expected structured action.
+
+Severity is medium. Exploitation requires the app under test to render attacker-controlled content
+into something that the accessibility tree or screenshot surfaces. That situation is exactly what E2E
+authoring is meant to exercise: logging into real or staging backends, third-party web content in a
+webview, and so on.
 
 ## Detailed design
 
-Constrain the CLI's tool surface for this one call site; nothing about the agent
-protocol, the JSON-schema action contract, or the deterministic run/CI path changes:
+The change constrains the CLI's tool surface at this one call site. The agent protocol, the
+JSON-schema action contract, and the deterministic run/CI path stay unchanged.
 
-- Pass an explicit `--disallowedTools` (or the equivalent `--allowedTools` allowlist,
-  whichever the installed CLI version supports more precisely) in `_command`,
-  covering shell execution and file read/write — this agent's contract is "return one
-  structured action," so it never legitimately needs those tools.
-- Additionally pass `--permission-mode` set to a non-interactive, deny-by-default
-  mode, so that even a tool call the flag list doesn't anticipate cannot silently
-  proceed (print mode already can't prompt a human, so an unhandled permission
-  request should fail closed, not fall through).
-- Keep the change local to `ClaudeCodeAgent`: the API-backed `ClaudeAgent` in
-  `bajutsu/claude_agent.py` doesn't invoke a CLI and is unaffected; `plan()`'s CLI
-  invocation goes through the same `_command` helper, so it is covered for free.
+- Pass an explicit `--disallowedTools` in `_command`, or the equivalent `--allowedTools` allowlist,
+  whichever the installed CLI version supports more precisely. The list covers shell execution and
+  file read and write. The agent's contract is "return one structured action", so it never legitimately
+  needs those tools.
+- Also pass `--permission-mode` set to a non-interactive, deny-by-default mode. Then even a tool call
+  that the flag list does not anticipate cannot silently proceed. Print mode already cannot prompt a
+  human, so an unhandled permission request should fail closed instead of falling through.
+- Keep the change local to `ClaudeCodeAgent`. The API-backed `ClaudeAgent` in
+  `bajutsu/claude_agent.py` invokes no CLI and is unaffected. The CLI invocation in `plan()` goes
+  through the same `_command` helper, so it is covered at no extra cost.
 
 ## Alternatives considered
 
-- **Rely on the system-prompt instruction alone (status quo).** Rejected: a system
-  prompt is guidance the model can be argued out of by sufficiently adversarial input
-  in the observation; it is not an enforcement boundary, which is what closing a
-  prompt-injection vector needs.
-- **Sandbox the whole `claude` process (container/VM) instead of restricting tools.**
-  Rejected as disproportionate for this codebase: it adds an operational dependency
-  (container runtime) to a path that today only needs a CLI binary, for a risk that the
-  CLI's own flags already address directly.
-- **Drop the Claude Code agent path and keep only the API agent.** Rejected: the whole
-  point of `ClaudeCodeAgent` is to let authoring run off a Claude Pro/Max subscription
-  instead of API credits (see the module docstring); removing it removes that option
-  rather than fixing the gap.
+- **Rely on the system-prompt instruction alone (status quo).** Rejected. A system prompt is guidance
+  that sufficiently adversarial input in the observation can argue the model out of. It is not an
+  enforcement boundary, and closing a prompt-injection vector needs one.
+- **Sandbox the whole `claude` process (container or VM) instead of restricting tools.** Rejected as
+  disproportionate for this codebase. A sandbox adds an operational dependency (a container runtime)
+  to a path that today needs only a CLI binary. The CLI's own flags already address the risk directly.
+- **Drop the Claude Code agent path and keep only the API agent.** Rejected. The whole point of
+  `ClaudeCodeAgent` is to let authoring run off a Claude Pro/Max subscription instead of API credits
+  (see the module docstring). Removing the path removes that option and does not fix the gap.
 
 ## Progress
 

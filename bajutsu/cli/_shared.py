@@ -37,6 +37,7 @@ from bajutsu.common.config import (
     Effective,
     ResolvedPreconditions,
     WebConfig,
+    android_package,
     check_preconditions,
     command_preconditions,
     ios_bundle_id,
@@ -659,11 +660,12 @@ def _with_erase_flag(eff: Effective, erase: bool | None) -> Effective:
 
 
 def _log_subsystem_default(eff: Effective) -> str:
-    """The default iOS log subsystem — the iOS bundle id, or empty for a non-iOS target (BE-0126).
+    """The default appTrace subsystem: the iOS bundle id, the Android package, or "" for the web.
 
-    The device-log predicate scopes to the app's bundle id; a web target has no such subsystem.
+    On iOS it names the app's `os_log` subsystem (BE-0126); on Android the `logcat` tag the stream
+    filters to (BE-0478). A web target has no such subsystem.
     """
-    return ios_bundle_id(eff)
+    return ios_bundle_id(eff) or android_package(eff)
 
 
 def _select_actuator_or_exit(

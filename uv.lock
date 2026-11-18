@@ -415,6 +415,9 @@ dependencies = [
 ai = [
     { name = "anthropic" },
 ]
+android = [
+    { name = "websockets" },
+]
 aws = [
     { name = "boto3" },
 ]
@@ -475,7 +478,7 @@ worker-web = [
 [package.dev-dependencies]
 dev = [
     { name = "apm-cli" },
-    { name = "bajutsu", extra = ["ai", "bedrock", "cloud", "db", "githubapp", "mcp", "oauth", "schema", "server", "visual"] },
+    { name = "bajutsu", extra = ["ai", "android", "bedrock", "cloud", "db", "githubapp", "mcp", "oauth", "schema", "server", "visual"] },
     { name = "httpx" },
     { name = "import-linter" },
     { name = "libcst" },
@@ -521,13 +524,14 @@ requires-dist = [
     { name = "sqlalchemy", specifier = ">=2.0" },
     { name = "typer", specifier = ">=0.12" },
     { name = "uvicorn", specifier = ">=0.27" },
+    { name = "websockets", marker = "extra == 'android'", specifier = ">=13" },
 ]
-provides-extras = ["ai", "web", "visual", "mcp", "bedrock", "worker", "worker-web", "worker-ios", "server", "db", "oauth", "schema", "githubapp", "s3", "gcs", "cloud", "aws", "docs"]
+provides-extras = ["ai", "web", "android", "visual", "mcp", "bedrock", "worker", "worker-web", "worker-ios", "server", "db", "oauth", "schema", "githubapp", "s3", "gcs", "cloud", "aws", "docs"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "apm-cli", specifier = "==0.28.0" },
-    { name = "bajutsu", extras = ["ai", "bedrock", "server", "worker", "db", "oauth", "mcp", "visual", "schema", "cloud", "githubapp"] },
+    { name = "bajutsu", extras = ["ai", "android", "bedrock", "server", "worker", "db", "oauth", "mcp", "visual", "schema", "cloud", "githubapp"] },
     { name = "httpx", specifier = ">=0.27" },
     { name = "import-linter", specifier = ">=2.0" },
     { name = "libcst", specifier = ">=1.4" },

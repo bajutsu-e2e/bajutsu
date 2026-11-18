@@ -32,12 +32,13 @@ from bajutsu.common.cloud.devicefarm import (
     _next_poll_delay,
     _safe_extract,
     _store_artifact,
-    _upload_one,
     _wait_run,
     build_package,
     device_selection_for,
     render_test_spec,
+    schedule_run,
     submit_and_collect,
+    upload,
     verdict_from_manifest,
 )
 from bajutsu.common.config import AndroidConfig, IosConfig
@@ -503,6 +504,23 @@ def test_package_writes_synthesized_extra_texts_at_their_arcnames(tmp_path: Path
         assert zf.read("requirements.txt").decode() == "# empty\n"
 
 
+def test_package_bytes_do_not_depend_on_the_clock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The archive's sha256 keys a run-set's compat key (BE-0484), so unchanged inputs must hash alike.
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "keep.yaml").write_text("scenarios: []")
+    digests = []
+    for i, now in enumerate((1_700_000_000.0, 1_800_000_000.0)):
+        monkeypatch.setattr(time, "time", lambda now=now: now)
+        out = tmp_path / f"p{i}.zip"
+        build_package([(src, ".")], out, extra_texts={"requirements.txt": "# empty\n"})
+        digests.append(out.read_bytes())
+
+    assert digests[0] == digests[1]
+
+
 def test_package_exclude_arcnames_skips_individual_file_entry(tmp_path: Path) -> None:
     # An individual-file source entry whose arcname is in exclude_arcnames must be omitted.
     config = tmp_path / "bajutsu.config.yaml"
@@ -886,7 +904,7 @@ def test_upload_poll_starts_with_the_short_initial_wait(tmp_path: Path) -> None:
     waits: list[float] = []
     apk = tmp_path / "app.apk"
     apk.write_bytes(b"apk")
-    _upload_one(
+    upload(
         _SlowUploadClient(pending=1),
         _FakeTransfer(),
         project_arn="arn:project/1",
@@ -983,6 +1001,24 @@ def test_submit_and_collect_requires_exactly_one_of_pool_or_selection(tmp_path: 
             device_selection=device_selection_for("android"),
             **kwargs,
         )
+
+
+def test_schedule_run_requires_exactly_one_of_pool_or_selection() -> None:
+    # Scheduled on uploads another job made (BE-0484), the run never passes `submit_and_collect`'s
+    # own check, so `schedule_run` refuses the same caller bug before any call to Device Farm.
+    client = _FakeClient()
+    arns: dict[str, Any] = {"app_arn": "arn:a", "package_arn": "arn:p", "spec_arn": "arn:s"}
+    with pytest.raises(DeviceFarmError, match="exactly one"):
+        schedule_run(client, project_arn="arn:project/1", **arns)
+    with pytest.raises(DeviceFarmError, match="exactly one"):
+        schedule_run(
+            client,
+            project_arn="arn:project/1",
+            device_pool_arn="arn:pool/1",
+            device_selection=device_selection_for("android"),
+            **arns,
+        )
+    assert client.scheduled is None
 
 
 def test_submit_and_collect_uploads_the_android_app_type_by_default(tmp_path: Path) -> None:

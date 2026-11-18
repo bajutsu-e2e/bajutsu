@@ -148,7 +148,10 @@ BE-0208 wiring. It changes no shared scenario and adds no LLM to any path.
   Rejected for this item. An instrumentation APK can synthesize multi-pointer gestures without root.
   But it diverges from the adb driver's shell-only actuation model and adds a device-side test
   artifact to build and install. It is also a larger surface than the double-tap machinery already in
-  place. It stays a documented future option for lifting the root precondition.
+  place. It stays a documented future option for lifting the root precondition. That option has
+  since landed: the resident UI Automator server injects both fingers without root, and the
+  `sendevent` sweep remains as its rooted fallback
+  ([issue #2391](https://github.com/bajutsu-e2e/bajutsu/issues/2391)).
 - **Leave `gestures_multitouch` iOS-only and mark Android multi-touch out of scope.** Rejected. It
   leaves a permanent backend-parity gap in a capability the tool already models end to end
   (`Driver.pinch` / `rotate`, the `multiTouch` capability, the preflight, the shared scenario). The

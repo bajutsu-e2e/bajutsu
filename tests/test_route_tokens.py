@@ -220,6 +220,14 @@ def test_an_unchecked_lease_shows_a_notice_in_the_report() -> None:
     assert report_notices(None) == []
 
 
+def test_a_run_set_job_names_the_environment_it_ran_in() -> None:
+    # A `run-set` job runs wherever a worker serving its platform leased it (BE-0484).
+    assert report_notices({"workerEnvironment": "devicefarm"}) == [
+        "this run-set job ran on a worker whose environment is 'devicefarm' (BE-0484); another "
+        "run of it may land elsewhere"
+    ]
+
+
 def test_the_html_report_lists_run_notices_apart() -> None:
     from bajutsu.common.report.html import html_report
 

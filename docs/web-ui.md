@@ -395,26 +395,25 @@ boots or the app builds — still stops outright and leaves no report, having re
 preserve. **Stop** on the Record and Crawl tabs is unchanged for the same reason: neither reaches a
 verdict of its own.
 
-**Run in a device cloud.** The **Environment** selector lists `local` plus each batch environment.
-A batch environment, such as an AWS Device Farm provider, appears once a live worker advertises
-it. Each entry shows its live worker count. Workers come and
-go, so the tab reads the list again each time it opens. The refresh button reads it on demand
+**Fan out to workers.** The checkbox turns the Run form into a fan-out
 ([BE-0465](../roadmaps/BE-0465-serve-ui-device-farm-fan-out/BE-0465-serve-ui-device-farm-fan-out.md)).
+A fan-out queues one job per chosen scenario. The server routes each job by its target's platform
+(BE-0484). Any worker serving that platform can take it, local or in a device cloud.
+The form names no placement. The checkbox works for every target, a web target included. **Apply &
+re-run** from triage unchecks it, so a re-run goes back to one run.
 
-A web target cannot use a device cloud. A fan-out installs the app on a cloud device, and a browser
-target has none. The selector then stays on `local` and states the reason.
-
-With a device-cloud environment chosen, the form dispatches a fan-out instead of one run:
+With **Fan out to workers** checked, the form dispatches a fan-out instead of one run:
 
 1. Pick scenarios in the multi-select, or check **All scenarios**.
    Either way the form sends every chosen name explicitly, so a file saved between the listing
    and the dispatch cannot move a row onto the wrong scenario.
-2. The fields a cloud device ignores disappear. They are the device picker, **Workers**,
+2. The fields a fan-out ignores disappear. They are the device picker, **Workers**,
    **erase device first**, **show browser (headed)**, **disable alert-dismiss**, **Readiness**,
    and the single scenario's select, View, and grade.
 3. **Run** posts to `POST /api/run-set`. The route needs the editor role, like a single **Run**.
    A refusal shows in the status line.
-   The codes are 400 for a bad request, 403 for a missing role, and 429 for a full queue.
+   The codes are 400 for a bad request and 403 for a missing role.
+   A full queue never refuses a fan-out, since its jobs wait for a free slot at lease time.
 
 A **run-set panel** then lists one row per dispatched job, in request order. Each row polls its job
 about every two seconds until the job finishes, fails, or errors. A row shows its state and a
@@ -424,8 +423,6 @@ A row also ends as unknown when the server no longer tracks the job (after a res
 
 Expanding a row streams that job's log. One log streams at a time, so a large fan-out never holds
 a stream per row. **Stop all** cancels every unfinished row.
-
-A fan-out that the concurrency cap cuts short reports its undispatched scenarios in the panel.
 
 Under the log panel, a **Generate code** bar exports the selected scenario as a native test — the
 same codegen as on the [Author](#author--capture-edit-and-enrich-one-scenario) tab, placed where a

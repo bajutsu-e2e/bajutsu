@@ -24,9 +24,10 @@ from .paths import Paths
 from .pricing_entry import PricingEntry
 from .services import Services
 from .target_config import TargetConfig
-from .xcuitest_config import XcuitestConfig
+from .xcuitest_config import RUNNER_BUILD_WITHHELD_ENV, XcuitestConfig
 
 __all__ = [
+    "RUNNER_BUILD_WITHHELD_ENV",
     "AiSettings",
     "Config",
     "Defaults",

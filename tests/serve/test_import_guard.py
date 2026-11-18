@@ -37,6 +37,8 @@ FORBIDDEN = sorted(
         "boto3",
         "psycopg",
         "playwright",
+        # The Android WebView source's WebSocket client, imported on the first `web:` block (BE-0482).
+        "websockets",
     }
 )
 

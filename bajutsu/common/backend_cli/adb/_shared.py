@@ -8,11 +8,13 @@ from collections.abc import Callable
 RunFn = Callable[[list[str]], str]
 
 
+KEYCODE_HOME = 3  # the Home button: backgrounds the app without terminating it (BE-0478).
 KEYCODE_BACK = 4  # `input keyevent` code for the system back button (Android's true system back).
 KEYCODE_DEL = 67  # backspace — deletes the character before the cursor (BE-0265 delete / clear).
 KEYCODE_CTRL_LEFT = 113  # left Control, the modifier for the select-all / copy key combinations.
 KEYCODE_A = 29  # the `A` key — with Ctrl held, "select all" in a focused text field (BE-0265).
 KEYCODE_C = 31  # the `C` key — with Ctrl held, "copy" the active selection (BE-0265).
+KEYCODE_V = 50  # the `V` key — with Ctrl held, "paste" the clipboard at the caret.
 # The server's own package (its applicationId); force-stopped at lease end to kill any device-side
 # instrumentation the local adb client's exit did not.
 RESIDENT_SERVER_PACKAGE = "dev.bajutsu.android.server"

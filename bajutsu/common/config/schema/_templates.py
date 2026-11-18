@@ -23,6 +23,7 @@ TEMPLATE_KEYS: tuple[str, ...] = (*TARGET_KEYS, "extends")
 REBASED_PATHS: tuple[tuple[str, ...], ...] = (
     ("subject", "path"),
     ("runsOn", "ios", "seedPhotos"),
+    ("runsOn", "android", "seedPhotos"),
     ("driver", "runner", "testRunner"),
     ("paths", "scenarios"),
     ("paths", "baselines"),

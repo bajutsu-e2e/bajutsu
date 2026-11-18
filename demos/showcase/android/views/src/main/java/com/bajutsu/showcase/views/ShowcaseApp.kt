@@ -4,7 +4,8 @@ import android.app.Application
 import dev.bajutsu.android.Bajutsu
 
 /**
- * Registers BajutsuAndroid's clipboard receiver at the process entry point (BE-0233).
+ * Registers BajutsuAndroid's clipboard (BE-0233) and location (BE-0481) receivers at the process
+ * entry point.
  *
  * `Application.onCreate` is the Android peer of BajutsuKit's `App.init()` on iOS: it runs once per
  * process, before any Activity, so the receiver is ready whichever screen bajutsu drives first. This
@@ -15,6 +16,9 @@ import dev.bajutsu.android.Bajutsu
 class ShowcaseApp : Application() {
     override fun onCreate() {
         super.onCreate()
-        if (BuildConfig.DEBUG) Bajutsu.startClipboard(this)
+        if (BuildConfig.DEBUG) {
+            Bajutsu.startClipboard(this)
+            Bajutsu.startLocation(this) // the in-app setLocation route on a real device (BE-0481)
+        }
     }
 }

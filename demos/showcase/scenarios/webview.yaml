@@ -1,0 +1,42 @@
+# A `web:` block on a hybrid screen (BE-0037 on iOS, BE-0482 on Android): resolve the embedded
+# WebView natively, then tap and type inside its DOM, and read back the text the page wrote. One file
+# for every platform — the block, not the scenario, is where the platforms differ:
+#
+# - iOS reaches the page through the BajutsuKit WebView bridge, which the SwiftUI showcase starts
+#   from `BajutsuNet.startIfEnabled()` and which finds the `WKWebView` by its `webview.host`
+#   accessibility identifier — the first id of `within`.
+# - Android reaches it over the Chrome DevTools Protocol (CDP), on the DevTools socket the showcase
+#   opens with `Bajutsu.enableWebViewDebugging` in a debuggable build, right before it creates the
+#   hybrid screen's WebView. A CDP page carries no native
+#   id, so the run picks the page whose rectangle contains the frame `within` resolved to.
+#
+# The SHOWCASE_WEBVIEW launch env swaps the app for the flat hybrid screen (the iOS HybridWebView and
+# the Android HybridScreen), whose bundled page is the same on every platform, so the run depends on
+# no network. Selectors inside the block name the page's `data-testid`s, which read the same
+# everywhere; `within` lists the dotted SPEC id and the underscore form a Views `android:id` needs
+# (BE-0221).
+#
+# The `swiftui` tag keeps the file out of the bulk UIKit and Flutter iOS lanes: preflight cannot see
+# that only the SwiftUI showcase renders this screen (demos/showcase/Makefile), and
+# `tests/test_showcase_fixtures.py` asserts the tag stays.
+- name: a web block taps and types inside the embedded WebView
+  tags: [swiftui]
+  preconditions:
+    subject:
+      launch:
+        env: { SHOWCASE_UITEST: "1", SHOWCASE_WEBVIEW: "1" }
+  steps:
+    - wait: { for: { id: [webview.host, webview_host] }, timeout: 10 }
+    - web:
+        within: { id: [webview.host, webview_host] }
+        steps:
+          # The page loads after the native view appears, so wait on the DOM before acting on it.
+          - wait: { for: { id: web.greet }, timeout: 10 }
+          - type: { text: "Bajutsu", into: { id: web.name } }
+          - tap: { id: web.greet }
+          - wait: { for: { id: web.greeting, label: "Hello, Bajutsu" }, timeout: 5 }
+          - assert:
+              - label: { sel: { id: web.greeting }, equals: "Hello, Bajutsu" }
+    # Control is back on the native tree once the block ends.
+    - assert:
+        - exists: { id: [webview.title, webview_title] }

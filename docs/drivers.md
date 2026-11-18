@@ -46,6 +46,9 @@ class Driver(Protocol):
 The set of tokens returned by `capabilities()`, used for actuator selection, evidence fallback
 resolution, and the **preflight capability check** (below).
 
+The two mobile backends differ in what they support.
+[iOS and Android driver parity](platform-parity.md) lists every difference and its plan.
+
 | Capability | Meaning | xcuitest | adb | playwright | fake |
 |---|---|:--:|:--:|:--:|:--:|
 | `query` | element-tree query | ✅ | ✅ | ✅ | ✅ |
@@ -56,41 +59,58 @@ resolution, and the **preflight capability check** (below).
 | `network` | native network monitoring | — | — | ✅ | — |
 | `video` | whole-scenario video recording (BE-0467; Simulator only on iOS) | ✅ | ✅ | ✅ | — |
 | `deviceLog` | whole-scenario device log or browser console stream (BE-0467; Simulator only on iOS) | ✅ | ✅ | ✅ | — |
-| `appTrace` | whole-scenario app `os_log` trace (BE-0467; iOS Simulator only) | ✅ | — | — | — |
+| `appTrace` | whole-scenario app log trace: `os_log` on iOS, a tag-filtered `logcat` on Android (BE-0467, BE-0478; Simulator only on iOS) | ✅ | ✅ | — | — |
 | `multiTouch` | two-finger gestures (pinch / rotate) | ✅ | ✅ | ✅ | ✅ |
-| `textSelection` | select-all + clipboard copy on the focused field | ✅ | ✅ | ✅ | ✅ |
+| `webView` | query and tap the DOM inside a WebView the app embeds; granted per run, by the BajutsuKit WebView bridge on iOS (BE-0037) and over the Chrome DevTools Protocol on Android (BE-0482), so no backend declares it statically | — | — | — | — |
+| `textSelection` | select-all + clipboard copy and paste on the focused field | ✅ | ✅ | ✅ | ✅ |
 | `selectOption` | set a native `<select>` by value (web only) | — | — | ✅ | ✅ |
 | `urlNavigation` | open a URL mid-scenario with `navigate` (web only; BE-0464) | — | — | ✅ | ✅ |
 | `elementAttribute` | read one HTML attribute of an element for the `attribute` assertion (web only; BE-0466) | — | — | ✅ | ✅ |
 | `handleSystemAlert` | tap an iOS SpringBoard permission-prompt button natively | ✅ | — | — | ✅ |
-| `pickerWheel` | set a wheel-style picker to a named row (iOS only) | ✅ | — | — | ✅ |
+| `resolveAlerts` | answer the policy's system alert inside the request that reads the screen (BE-0461; iOS only) | ✅ | — | — | — |
+| `pickerWheel` | set a wheel-style picker to a named row (an Android `NumberPicker` through the resident server; BE-0480) | ✅ | ✅ | — | ✅ |
 | `handleTipkitTip` | dismiss a blocking Apple TipKit tip (iOS only) | ✅ | — | — | ✅ |
+| `appContext` | activate another installed app and drive it with the `app:` step | ✅ | ✅ | — | ✅ |
+| `selectPhotos` | pick images from the system photo picker by position (`PHPickerViewController` on iOS, dropped on an Apple Silicon Simulator; the Android 13+ photo picker over adb) | ✅ | ✅ | — | ✅ |
+| `handleNotificationBanner` | report and swipe away a foreground notification banner (BE-0416; iOS only) | ✅ | — | — | ✅ |
 | `deviceControl.setLocation` | set the simulated GPS location | ✅ | ✅ | — | — |
 | `deviceControl.clipboard` | read / write / clear the clipboard | ✅ | ✅ | — | — |
 | `deviceControl.push` | deliver a push notification | ✅ | — | — | — |
 | `deviceControl.clearKeychain` | clear the keychain | ✅ | — | — | — |
-| `deviceControl.background` | send the app to the background | ✅ | — | — | — |
+| `deviceControl.background` | send the app to the background | ✅ | ✅ | — | — |
 | `deviceControl.foreground` | bring the app to the front, launching it if needed | ✅ | ✅ | — | — |
-| `deviceControl.statusBar` | override / clear the status bar | ✅ | — | — | — |
+| `deviceControl.statusBar` | override / clear the status bar | ✅ | ✅ | — | — |
+| `deviceControl.permissions.location` | grant or revoke the `location` permission (BE-0276) | ✅ | ✅ | — | — |
+| `deviceControl.permissions.camera` | grant or revoke the `camera` permission (BE-0276) | ✅ | ✅ | — | — |
+| `deviceControl.permissions.microphone` | grant or revoke the `microphone` permission (BE-0276) | ✅ | ✅ | — | — |
+| `deviceControl.permissions.contacts` | grant or revoke the `contacts` permission (BE-0276) | ✅ | ✅ | — | — |
+| `deviceControl.permissions.photos` | grant or revoke the `photos` permission (BE-0276) | ✅ | ✅ | — | — |
+| `deviceControl.permissions.calendar` | grant or revoke the `calendar` permission (BE-0276) | ✅ | ✅ | — | — |
+| `deviceControl.permissions.notifications` | grant or revoke the `notifications` permission (BE-0276) | — | ✅ | — | — |
 | `deviceGroup` | share one device between the targets of a device group (BE-0447; Simulator only on iOS) | ✅ | ✅ | — | ✅ |
 
 > The `deviceControl.*` tokens are the `DeviceControl` family split per operation (BE-0212, from the
 > coarse `deviceControl` of BE-0128), so a backend can advertise exactly the operations it can
-> honor. XCUITest backs the whole family through `simctl`; the Android emulator backs
-> `setLocation`, `clipboard`, and `foreground` (its `push` / keychain / status-bar / `background`
-> operations have no faithful equivalent), which the split makes expressible without
-> green-lighting the rest. `background` and `foreground` were one `appLifecycle` token until
+> honor. XCUITest backs the whole family through `simctl`. The Android emulator backs every
+> operation but `push` and `clearKeychain`, all seven `permissions.*` services included (BE-0478).
+> `push` needs a receiver inside the app's process, and Android has no keychain for
+> `clearKeychain` to clear. The split makes that subset expressible
+> without green-lighting the rest. `background` and `foreground` were one `appLifecycle` token until
 > BE-0447 split them, since a device group's later member comes up at its `foreground`.
 
 > adb sits at the **lean end**, actuating by **frame-center coordinates** — it exposes no semantic
 > tap, so the run loop resolves a unique element via `query()` and taps its center. XCUITest, by
 > contrast, sits at the rich end: it taps directly by identifier, waits on native conditions, and
 > performs `pinch` / `rotate` natively. adb advertises `query` / `elements` / `screenshot`,
-> `multiTouch` (a rooted-device `sendevent` two-finger sweep; BE-0232), plus the emulator-backed
-> device-control subset `deviceControl.setLocation` + `deviceControl.clipboard` (BE-0211) +
-> `deviceControl.foreground`, `deviceGroup` (BE-0447), and the `video` / `deviceLog` evidence kinds
-> (`screenrecord`, `logcat`; BE-0467); the rest of the device-control family has
-> no faithful emulator equivalent and stays unadvertised. The
+> `multiTouch` (a two-finger gesture the resident server injects, or a rooted-device `sendevent`
+> sweep; BE-0232), `textSelection`
+> (`Ctrl+A` / `Ctrl+C` chords; BE-0265), plus the emulator-backed device-control subset
+> `deviceControl.setLocation` + `deviceControl.clipboard` (BE-0211) + `deviceControl.foreground`
+> + `deviceControl.background` + `deviceControl.statusBar` (BE-0478),
+> the seven `deviceControl.permissions.*` services (`pm grant` / `pm revoke`; BE-0276),
+> `deviceGroup` (BE-0447), `appContext` (the `app:` step, via `am start`), and the `video` / `deviceLog` / `appTrace` evidence kinds
+> (`screenrecord`, `logcat`, a tag-filtered `logcat`; BE-0467, BE-0478). `push` (no receiver in
+> the app's process) and `clearKeychain` (no keychain on Android) stay unadvertised. The
 > `fake` driver advertises a richer capability set (semanticTap / conditionWait / multiTouch) purely
 > to exercise those code paths in tests. The `playwright` (web) driver advertises `semanticTap` /
 > `conditionWait` (Playwright has both natively), `network` — the **first backend with native
@@ -117,12 +137,12 @@ constructs this check follows into those blocks), an `attribute` assertion needs
 (web only; BE-0466 — found anywhere: `expect`, a step's `assert`, an `if` or `interrupts` condition,
 inside a `web:` or `app:` block, and in `interrupts` recovery steps, so the iOS WebView context is
 rejected too),
-`select` / `copy` need `textSelection`
-(select-all + clipboard copy; the web context is coordinate-only for these and refuses both —
+`select` / `copy` / `paste` need `textSelection`
+(select-all + clipboard copy and paste; the web context is coordinate-only for these and refuses all three —
 `delete` / `clear` stay ungated, as every backend backs `delete_text`), a `visual` assertion needs
 `screenshot`, `handleSystemAlert` needs the `handleSystemAlert` token (only xcuitest declares it),
-`setPickerValue` needs the `pickerWheel` token (also xcuitest only — a picker wheel is a native iOS
-control, so Android and web are rejected before any device work),
+`setPickerValue` needs the `pickerWheel` token (xcuitest and adb declare it — a picker wheel is a
+native mobile control, so the web backend is rejected before any work starts),
 and each device-control step needs the token for its own operation — `setLocation` needs
 `deviceControl.setLocation`, the clipboard steps need `deviceControl.clipboard`, `push` needs
 `deviceControl.push`, and so on (BE-0212 split the coarse `deviceControl` family of BE-0128 into
@@ -238,23 +258,32 @@ rules the platform out, the worker exits with the driver's reason. A Linux worke
 `--platform ios` thus stops. Its reason reads `xcuitest runs only on macOS; this worker runs on
 linux`. The check judges the platform's drivers, not a request's `backend`. No worker off macOS
 advertises `platform:ios`. An iOS target run on the `fake` backend thus still needs a Mac worker. A
-worker whose environment is a device cloud advertises `environment:<name>` and no `platform:*` token.
-An `appium` worker advertises `environment:appium` alone. A serve run request reaches it by naming
-`environment: appium`.
+Device Farm worker advertises `environment:devicefarm` and `kind:device`. It also advertises its
+provider's platforms, `platform:android` and `platform:ios`. An `appium` worker advertises
+`environment:appium`. A serve run request reaches it by naming `environment: appium`. Every worker
+also advertises `job:run-intent`, which says it can run a `run-set` job (BE-0484). An `appium`
+worker advertises the token too, but a `run-set` job requires a `platform:*` token, which such a
+worker does not advertise: a deployment of grid workers alone runs its scenarios through plain run
+requests.
 
 The file declares no routing token itself. The runtime and device-class tokens (`ios18`, `ipad`)
 come from the Simulator inventory. The real-device tokens (`device:ipad`) come from `devicectl`
 ([BE-0468](../roadmaps/BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of.md)). A
-declaration could promise a runtime or a device the machine lacks.
+declaration could promise a runtime or a device the machine lacks. The kind tokens follow the same
+two reads (BE-0484). A worker advertises `kind:simulator` when its Simulator inventory holds an
+iPhone or iPad. It advertises `kind:device` while it drives a connected iPhone or iPad.
+`realDevices: false` turns `kind:device` off.
 
 Two hand-written inputs now log a deprecation notice. Each still works for this release:
 
 - the worker's `--capabilities` flag
 - the `$BAJUTSU_WORKER_CAPABILITIES` environment variable
 
-Neither input may carry the reserved `environment:` or `host:` prefix. The worker fills both
-itself. BE-0452 removed a third input, a target's `requires` list: a hosted job now requires its
-platform and its driver's host alone.
+Neither input may carry a reserved prefix. `environment:`, `host:`, `platform:`, and `kind:` are
+among them. The worker fills those tokens itself. BE-0452 removed a third input, a target's
+`requires` list: a hosted run job now requires its platform and its driver's host alone. A
+`run-set` job requires no host, since a worker on any host may take it
+([self-hosting](self-hosting.md#capability-routed-queues-be-0166)).
 
 ## XCUITest (iOS)
 
@@ -295,15 +324,15 @@ than resolving through frame-center coordinates. Needs Xcode's `xcodebuild`.
   ([selectors](selectors.md#elementnottappable-a-resolved-but-unreachable-target)).
 - `wait_for`: uses the runner's native condition waiting.
 - `pinch` / `rotate`: two-finger multi-touch gestures performed natively by the runner.
-- `select` / `copy`: native text selection on the focused field.
+- `select` / `copy` / `paste`: native text selection and clipboard paste on the focused field.
 - `screenshot`: `simctl io screenshot`.
 - `enter_app` / `leave_app`: the `app:` step. Unlike the `SFSafariViewController` merge
   above, this never merges two trees — `enter_app` pushes a new `XCUIApplication(bundleIdentifier:)`
   onto the runner's own app stack and `.activate()`s it, so every route above (`query()`, `tap`, …)
   addresses that app exclusively until a matching `leave_app` pops back to the one beneath. Gated on
-  the `APP_CONTEXT` capability, XCUITest-only like `HANDLE_SYSTEM_ALERT` / `PICKER_WHEEL`: a
-  feasibility spike confirmed `activate()` reliably foregrounds an app the test target never
-  launched, with no per-app config or app-side cooperation
+  the `APP_CONTEXT` capability, which XCUITest and adb declare (the adb mechanism is described in
+  the adb section). On XCUITest, a feasibility spike confirmed `activate()` reliably foregrounds an
+  app the test target never launched, with no per-app config or app-side cooperation
   ([`docs/specs/ios-cross-app-ui-control-feasibility.md`](specs/ios-cross-app-ui-control-feasibility.md)).
 
 > The generic runner uses `XCUIApplication(bundleIdentifier:)`, so it drives any installed app with
@@ -354,7 +383,18 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   `android:id` a Views lookup needs — ships as a standalone library,
   [`IdentifierTool`](../IdentifierTool/README.md) (BE-0405), which the showcase itself consumes and
   which carries no dependency on `BajutsuAndroid`; declaring those `android:id` resources stays the
-  consuming app's own job.
+  consuming app's own job. An editable text field reverses the `text` / `content-desc` mapping
+  above, as on iOS. A node counts as one when its class is `android.widget.EditText` (which a Views
+  `EditText`, its AppCompat and Material subclasses, and a Compose text field all report),
+  `android.widget.AutoCompleteTextView`, or `android.widget.MultiAutoCompleteTextView`. Its `text`
+  → `value`, so a `value` assertion and a `clear` step read what was typed, and `content-desc` (else
+  the `hint`) → `label`, so a label selector keeps its meaning as the text changes. An empty field
+  reports its hint as `text`. When the dump carries a `hint` attribute (the resident server's dump
+  does), the driver identifies that case and the field's `value` is then empty. The `uiautomator
+  dump` fallback may omit `hint`; there an empty field's hint reads as its `value`, and `text` stays
+  the field's `label`, the only name that path has for it. The dump also has no
+  `isShowingHintText`, so typed text equal to the hint reads as no `value`. A masked field
+  (`password="true"`) never exposes its text as `value` or `label`.
 - `tap(sel)`: `_resolve` confirms uniqueness (**retries not-found, fails ambiguity fast** — a
   mid-transition dump is a transient null-root that is retried, and a 2+ match fails immediately).
   `tap`, `long_press`, and `double_tap` then send the resolved element's identity — its raw
@@ -479,6 +519,23 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   poll sleep) after the catch-up barrier itself closes for free — the barrier's own dump is free, the
   settle poll's is not.
 
+  The same settle also guards against the platform's own node cache
+  ([BE-0490](../roadmaps/BE-0490-adb-accessibility-cache-drop/BE-0490-adb-accessibility-cache-drop.md)).
+  Android caches accessibility nodes per connection. The platform drops a cached node when an accessibility
+  event reaches it, and at no other time. Most events name the node they drop. A window-level change clears
+  every window at once. A change that publishes no such event leaves
+  two dumps agreeing on the pre-change tree. On Android 14 and later, the resident server calls
+  `UiAutomation.clearCache()` between settle dumps. Both `GET /source` and `POST /act` settle this
+  way, so the agreeing pair is a re-fetched tree. Android 13 and earlier keep the earlier settle,
+  because no supported call clears the cache there. A static target still settles in two dumps.
+  The Android fault-injection lane checks both outcomes on an Android 14 emulator. Its fixture
+  withholds the event by construction: a tap on one view changes what a second view reports. The tap
+  publishes `TYPE_VIEW_CLICKED` alone, and the cache refreshes the clicked view for that type. The
+  second view's old node stays cached, so the settled read returns the new value because of the drop
+  and nothing else. Without the drop, the read returns the old value. The same lane recorded why the
+  fixture cannot be a plain Compose element. A Compose value published `TYPE_WINDOW_CONTENT_CHANGED`
+  for its own change, which evicts the changed node without any drop.
+
 ### On-device actuation
 
 - **On-device actuation fidelity** (roadmap
@@ -523,14 +580,23 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   > off-screen still writes `scroll`. It only insures against an obstruction the author did not
   > expect (a transient overlay, a sticky header settling into place), the same way adb's own
   > not-found fallback already insures against an unexpected off-screen target.
-- **Multi-touch** (BE-0232): `pinch` / `rotate` drive a two-slot protocol-B `sendevent` sweep
-  (`pinch_contacts` / `rotate_contacts` compute the two contacts' geometry; `rotate` sweeps the
-  straight chord between the endpoints, a linear approximation of the arc, like the web backend's
-  rotate). This needs a rooted device with a discoverable touchscreen; `_two_finger_gesture` fails
-  loudly with `UnsupportedAction` otherwise — there is no single-touch fallback, unlike the
-  double-tap path below. `MULTI_TOUCH` is declared statically in the capability set regardless of
-  root, so preflight admits `gestures_multitouch` on adb; the root check is enforced at actuation
-  time, not in the capability set.
+- **Multi-touch** (BE-0232): `pinch_contacts` / `rotate_contacts` compute the two contacts'
+  geometry from the target's frame; `rotate` sweeps the straight chord between the endpoints, a
+  linear approximation of the arc, like the web backend's rotate. Two routes inject those contacts,
+  tried in order:
+  1. The resident UI Automator server's `POST /gesture` injects both fingers as one multi-pointer
+     `MotionEvent` sequence through `UiAutomation`, which holds the shell's privilege, so **no root
+     is needed**. The record's `via` is `resident`.
+  2. A rooted device with a discoverable touchscreen falls back to a raw two-slot protocol-B
+     `sendevent` sweep, but only when the server is absent, predates the endpoint, or could not be
+     reached before the request went out — the three cases where nothing reached the screen. The record's `via` is `coordinate`.
+
+  A gesture the server rejects fails the step rather than falling back, and a lost reply is taken
+  as landed: either may already have put a finger down, and a second gesture on top of it would be
+  worse than a loud failure. A device with neither route fails with `UnsupportedAction` naming both
+  preconditions — there is no single-touch fallback, unlike the double-tap path below.
+  `MULTI_TOUCH` is declared statically in the capability set, so preflight admits
+  `gestures_multitouch` on adb; which route is available is decided at actuation time.
 
 ### Screenshots, lifecycle, and permissions
 
@@ -549,6 +615,16 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   never blocks a scenario. Granting deterministically up front, rather than tapping the dialog when
   it appears, keeps timing off the run path; the list is app-specific, so it lives in config, not the
   driver.
+- `enter_app` / `leave_app`: the `app:` step. UI Automator already reads whichever app's window is
+  in front, so entering another app is only a launch: the driver resolves the package's launcher
+  activity (`cmd package resolve-activity --brief`), starts it with the same `am start -n` the
+  `foreground` step uses, and polls `dumpsys activity activities` until that package holds the
+  resumed activity — a bounded condition wait that raises `ElementNotFound` when it runs out, or at
+  once when the package has no launcher activity. The driver keeps its own app stack: `leave_app`
+  pops it and brings back the app beneath the same way, which is the app under test after the
+  outermost block. The app under test keeps its process behind the other app, so the crash probe
+  (`pidof` plus exit-info, BE-0424) does not read the handoff as a crash. On a device a device group
+  shares (BE-0447), the front-app check expects the entered package while the block is open.
 
 ### Evidence and network
 
@@ -560,8 +636,12 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   `capture` policy drives them unchanged (see [evidence](evidence.md)).
 - **Network** is not observed natively (no `NETWORK` capability) — the same mocked story as iOS: the
   app-side collector URL is forwarded through the launch env as an intent extra, so `mocks` work with
-  no new code path. Device control backs the emulator subset `setLocation` (`emu geo fix`, BE-0211)
-  and the clipboard operations; the rest of the family stays unsupported. The clipboard runs through
+  no new code path. Device control backs `setLocation` and the clipboard operations; the rest of
+  the family stays unsupported. `setLocation` takes the emulator console (`emu geo fix`, BE-0211) on
+  a local `emulator-<port>` serial. Every other target — a real device, or an emulator reached with
+  `adb connect` — mocks the `gps` and `network` providers through BajutsuAndroid's location receiver,
+  after adb grants the app the mock-location app-op (BE-0481). The lease's end clears the mock and
+  resets the app-op. The clipboard runs through
   an in-app receiver (`BajutsuAndroid`, BE-0233), not `cmd clipboard`: on-device that command is a
   silent no-op, and since Android 10 only the foreground app / default IME may touch the clipboard —
   so bajutsu sends an ordered `am broadcast` that a receiver inside the app handles from the app
@@ -576,6 +656,55 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
 > `showcase-views` over the same set. The fast gate exercises the parser, the frame-center taps, the
 > transient-empty retry, and ambiguous-fails-fast over captured XML fixtures. adb is
 > `brew install android-platform-tools`.
+
+### Embedded WebViews
+
+A scenario's `web:` block reads and taps inside a WebView that the app embeds
+([BE-0482](../roadmaps/BE-0482-android-webview-cdp/BE-0482-android-webview-cdp.md)). The adb tree
+often shows a WebView's content too coarsely to select by. The run reaches the page over the Chrome
+DevTools Protocol (CDP) instead. With debugging enabled, each Android WebView listens on a local
+socket, `webview_devtools_remote_<pid>`. That socket speaks CDP. `CdpDomSource` implements the
+same `DomSource` interface as the iOS bridge client. `WebContextDriver` thus runs unchanged on both
+platforms.
+
+The app opens the socket. A debuggable build calls `Bajutsu.enableWebViewDebugging(context)` right
+before it creates its first WebView. The call loads the WebView provider. From
+`Application.onCreate` it loads it on every launch, and an update to the WebView package can then
+relaunch an activity mid-scenario, even in a scenario that never opens a WebView.
+[`BajutsuAndroid`](../BajutsuAndroid/README.md) documents the call. The
+helper does nothing in a non-debuggable build, so a release build never opens the socket. The
+machine running bajutsu needs the `android` extra (`websockets`). `scripts/install.sh` installs it
+when the configured backends include Android.
+
+Each `web:` block opens one connection to the page. The block closes it when it ends, pass or fail:
+
+1. The run lists the package's processes with `adb shell ps -A`. It keeps each `<package>:<name>`
+   child too, because a WebView can run in another process.
+2. It finds those processes' sockets in `/proc/net/unix`. It forwards a free local port to each
+   socket with `adb forward`, then reads each socket's page list, `/json/list`.
+3. It keeps the attached, visible pages. It picks the page whose rectangle contains the frame that
+   `within` resolved to in the native tree. Zero matches or two or more fail the step as a selector
+   error. Two overlapping WebViews thus fail rather than let the run guess.
+4. It opens a WebSocket to the chosen page. When the block ends, it removes every forward it opened.
+
+Inside the block, each `DomSource` method maps to CDP calls:
+
+| `DomSource` method | CDP calls |
+|---|---|
+| `query_dom` | `Runtime.evaluate` of the shared `QUERY_JS`, the same walk the web backend and the iOS bridge run |
+| `tap_element` | A hit-test with `document.elementFromPoint`, then `Input.dispatchTouchEvent` (`touchStart`, `touchEnd`) at the point; the tap ends once the page's click lands, after at most three seconds (or the `BAJUTSU_MIN_WAIT_TIMEOUT` condition-wait floor, when that is longer); a page that cannot be read again within that bound fails the tap |
+| `type_text` | Moves the caret to the end of the focused text field, sends `Input.insertText`, then dispatches `change` |
+| `scroll_to` | `Runtime.evaluate` of a `scrollIntoView` script |
+
+The tap is a trusted touch, so a page that listens for touch events reacts to it. The iOS bridge
+clicks through a script instead. The page turns the touch into a click a moment after `touchEnd`
+returns. The click also focuses a field. The tap waits for that click. Without the wait, a `type`
+right after tapping a field would find nothing focused. A page that cancels the click never sends
+one. Once that bound passes, the tap ends with the touch alone and logs a warning.
+
+Every transport error raises one exception type, `WebViewTransportError`. It ends the block with its
+reason, not the run. Three causes are common. The socket is missing, CDP
+returns an error, or an app restart closes the socket. The reason for a missing socket names the helper above.
 
 ## Flutter (via the native backends)
 
@@ -635,9 +764,10 @@ Out of scope (see the roadmap item for the reasoning):
     rely on. Routing Dart HTTP through the native stack (via `cupertino_http` / `cronet_http`) is a
     follow-up.
   - **The Android device-control `clipboard`** round-trips through `BajutsuAndroid`'s in-app receiver
-    (BE-0233), so `device.yaml`'s `setClipboard` / `clipboard` steps fail on the Flutter Android
-    target. iOS device-control clipboard goes through simctl with no app cooperation, so it works on
-    the Flutter iOS target — this gap is Android-only.
+    (BE-0233), so the `setClipboard` / `clipboard` steps of `device.yaml` and
+    `text_selection_android.yaml` fail on the Flutter Android target. iOS device-control clipboard
+    goes through simctl with no app cooperation, so it works on the Flutter iOS target — this gap is
+    Android-only.
 
   Beyond these, the Flutter targets pass the same on-device scenario sets the native twins run —
   minus what is platform-limited regardless of Flutter: multi-touch (`gestures_multitouch`) needs a

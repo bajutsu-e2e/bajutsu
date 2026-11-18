@@ -40,7 +40,9 @@ The common tokens state assertions, selectors, and other checks read. Drivers no
 > Each backend normalizes its own attributes to these tokens. adb maps UI Automator's
 > `enabled="false"` to `notEnabled`. It maps `selected="true"` / `checked="true"` to `selected` the
 > same way. XCUITest's resident runner normalizes `isEnabled == false` to `notEnabled` the same way.
-> See [drivers](drivers.md) for each backend's exact mapping.
+> adb also gives an `android.widget.NumberPicker` node the `pickerWheel` trait, next to the
+> `numberPicker` its class name yields, so one wheel selector addresses a wheel on iOS and Android
+> alike (BE-0480). See [drivers](drivers.md) for each backend's exact mapping.
 
 ## The selector (`Selector`)
 

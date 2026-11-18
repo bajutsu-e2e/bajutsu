@@ -481,7 +481,7 @@ def test_select_option_reason_includes_step_index() -> None:
     assert "selectOption" in reasons[0]
 
 
-# --- textSelection capability gating (select / copy; BE-0280) ---
+# --- textSelection capability gating (select / copy / paste; BE-0280) ---
 
 
 _TEXT = _LEAN_IOS | {base.Capability.TEXT_SELECTION}
@@ -489,9 +489,9 @@ _TEXT = _LEAN_IOS | {base.Capability.TEXT_SELECTION}
 
 @pytest.mark.parametrize(
     "step",
-    [{"select": {"into": {"id": "field"}}}, {"copy": {}}],
+    [{"select": {"into": {"id": "field"}}}, {"copy": {}}, {"paste": {"into": {"id": "field"}}}],
 )
-def test_select_and_copy_require_text_selection(step: dict[str, object]) -> None:
+def test_select_copy_and_paste_require_text_selection(step: dict[str, object]) -> None:
     # select-all / copy actuate only on a backend that can select natively; a coordinate-only backend (
     # no TEXT_SELECTION) is rejected up front rather than left to fail late mid-run (BE-0280).
     sc = _sc(steps=[step])
@@ -674,7 +674,7 @@ def test_app_requires_the_capability() -> None:
     assert capability_preflight.unsupported(sc, _LEAN_IOS | {base.Capability.APP_CONTEXT}) == []
 
 
-def test_app_passes_on_xcuitest_but_fails_on_android_and_web() -> None:
+def test_app_passes_on_xcuitest_and_android_but_fails_on_web() -> None:
     from bajutsu.common.drivers.adb import AdbDriver
     from bajutsu.common.drivers.playwright import PlaywrightDriver
     from bajutsu.common.drivers.xcuitest import XcuitestDriver
@@ -682,12 +682,12 @@ def test_app_passes_on_xcuitest_but_fails_on_android_and_web() -> None:
     sc = _sc(
         steps=[{"app": {"bundleId": "com.example.app", "steps": [{"tap": {"id": "confirm"}}]}}]
     )
-    assert base.Capability.APP_CONTEXT in XcuitestDriver.CAPABILITIES
-    assert capability_preflight.unsupported(sc, set(XcuitestDriver.CAPABILITIES)) == []
-    for driver in (AdbDriver, PlaywrightDriver):
-        assert base.Capability.APP_CONTEXT not in driver.CAPABILITIES
-        reasons = capability_preflight.unsupported(sc, set(driver.CAPABILITIES))
-        assert any("app" in r for r in reasons)
+    for native in (XcuitestDriver, AdbDriver):
+        assert base.Capability.APP_CONTEXT in native.CAPABILITIES
+        assert capability_preflight.unsupported(sc, set(native.CAPABILITIES)) == []
+    assert base.Capability.APP_CONTEXT not in PlaywrightDriver.CAPABILITIES
+    reasons = capability_preflight.unsupported(sc, set(PlaywrightDriver.CAPABILITIES))
+    assert any("app" in r for r in reasons)
 
 
 def test_app_nested_in_if_branch_is_detected() -> None:

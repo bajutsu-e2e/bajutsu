@@ -140,6 +140,7 @@ preconditions:
 | `subject.launch.deeplink` | str | unset (the target's `subject.launch.deeplink`) | A URL the app opens after launch (`simctl openurl` on iOS, an intent on Android) |
 | `device.ios.locale` | str | unset (the target's `runsOn.ios.locale`) | Force the locale and language at launch (`-AppleLocale` / `-AppleLanguages`), and pin the Simulator's system language. A value that differs from the target's forces a cold respawn |
 | `device.ios.seedPhotos` | list[str] | unset (the target's `runsOn.ios.seedPhotos`) | Images seeded into the Simulator's photo library on the erase path, in order; paths resolve against the scenario file, and a scenario's list replaces the target's |
+| `device.android.seedPhotos` | list[str] | unset (the target's `runsOn.android.seedPhotos`) | Images seeded into a directory Bajutsu owns in the device's shared storage, in order, on every reinstall level; paths resolve against the scenario file, and a scenario's list replaces the target's |
 | `inheritSetup` | bool | `true` | `false` skips the `hooks.setup` of every target this scenario declares; their `hooks.cleanup` still runs ([below](#setup--cleanup-setup-and-teardown-phases)) |
 
 A scenario cannot set `id`, `path`, or `build`. Nor can it set `startWhen` or `idNamespaces`. The
@@ -194,13 +195,16 @@ A list or a range on that target multiplies each of its scenarios into runs, as
 > [BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md) and
 > [configuration](configuration.md#config-layering-defaults--targets).
 
-> **Seeding needs a wiped device.** After merging, a non-empty `seedPhotos` requires the effective
+> **Seeding iOS photos needs a wiped device.** After merging, a non-empty iOS `seedPhotos` requires the effective
 > `subject.reinstall` (the scenario's, else the target's, then moved by the flag) to be `erase`, because
 > the photo library is seeded only on the erase path. A target-level `subject.reinstall: erase` satisfies
 > the rule. In a
 > scenario that drives several targets, the primary alone seeds photos. A non-primary target with
 > a merged `seedPhotos` fails the run. `record`, `crawl`, and `repl` refuse `--no-erase` on a
-> target that seeds photos. Both refusals exit 2 before any device work.
+> target that seeds photos. Both refusals exit 2 before any device work. Android needs no `erase`:
+> each scenario empties the directory it seeds, so the device shows exactly the listed images there,
+> whatever the reinstall level. A scenario with an empty list still empties a directory an earlier
+> seed created. The primary-only rule holds on Android too.
 
 > **`reinstall: clean` also resets permission state** (`permissions`, below): iOS via `simctl
 > privacy reset all`, Android via `pm clear`. `overwrite` resets neither. `overwrite` exists to keep a
@@ -996,8 +1000,10 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `delete` | `delete: { into: <Selector>, count: <int> }` | focus the field and delete `count` characters from the end (`count > 0`); web context raises |
 | `select` | `select: { into: <Selector>, mode?: "all" }` | focus the field and select its content (`mode` default `all`); the web context raises — the iOS (XCUITest) backend supports it natively, and codegen emits the native equivalent |
 | `copy` | `copy: {}` | copy the active selection to the clipboard; requires a prior `select`; the web context raises — the iOS (XCUITest) backend supports it natively |
+| `paste` | `paste: { into: <Selector> }` | focus the field and paste the clipboard at the caret that focusing tap leaves (on a field that already holds text, wherever the tap lands), replacing any selection; the clipboard holds what a `copy` or a `setClipboard` put there; verify the result with a `value` assertion; the web context raises. On iOS it taps the edit menu's Paste item (a hardware Cmd+V pastes nothing from a clipboard `setClipboard` wrote), accepting UIKit's label in any language because the menu follows the app's localization. Depending on the Simulator build that paste raises iOS's paste-consent prompt, so declare `interrupts: [{ systemAlert: paste, choice: grant }]` to have the guard answer it |
 | `selectOption` | `selectOption: { sel: <Selector>, option: "..." }` | set a web `<select>` to the option with this value; web only (iOS / Android raise) |
-| `setPickerValue` | `setPickerValue: { sel: <Selector>, value: "..." }` | move a wheel-style picker (`UIPickerView`, a wheel-mode `UIDatePicker`) to the row with this value ([below](#setpickervalue)); iOS (XCUITest) only. `sel` addresses one wheel — a multi-component picker's siblings are separated by `within` / `traits` / `index`, one step each |
+| `selectPhotos` | `selectPhotos: { indices: [0, 1], timeout: 10 }` | pick the cells at these positions (0 = the first cell, newest image first) from the system photo picker the app has already opened, then confirm: `PHPickerViewController` on iOS (XCUITest), the Android 13+ photo picker on adb. A single-selection picker closes on its one tap; an index beyond the visible grid fails |
+| `setPickerValue` | `setPickerValue: { sel: <Selector>, value: "..." }` | move a wheel-style picker (`UIPickerView` or a wheel-mode `UIDatePicker` on iOS; `NumberPicker` or a spinner-mode `DatePicker` on Android) to the row with this value ([below](#setpickervalue)); iOS (XCUITest) and Android (adb). `sel` addresses one wheel — a multi-component picker's siblings are separated by `within` / `traits` / `index`, one step each |
 | `swipe` | `swipe: { on: <Selector>, direction: up\|down\|left\|right }` or `swipe: { from: [x,y], to: [x,y] }` | selector form and coordinate form cannot mix; the directional form **scrolls** |
 | `drag` | `drag: { on: <Selector>, direction: up\|down\|left\|right, amount?: <frac> }` | a real pointer **drag** of the element (a handle / divider / slider), not a scroll |
 | `scroll` | `scroll: { to: <Selector>, direction?: up\|down\|left\|right, within?: <Selector>, amount?: <frac>, maxScrolls?: <int> }` | scroll (non-inertially) until `to` is on-screen, or fail at a bound; `direction` is **scroll** direction (default `down`), the inverse of `swipe`'s |
@@ -1013,7 +1019,8 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `setLocation` | `setLocation: { lat: <num>, lon: <num> }` | override the simulated GPS location (`simctl location set`) |
 | `push` | `push: { payload: {...} }` | deliver a simulated push notification (`simctl push`) with this APNs (Apple Push Notification service) payload |
 | `http` | `http: { method?, url, headers?, body?, status?, saveBody?, extractBody?: [{ var, path }] }` | issue an HTTP request (test-data setup / webhook / API); checks `status`, stores the body as `${vars.<saveBody>}`, and/or pulls named JSON fields into `${vars.<var>}` by `path` ([below](#http-request-for-test-data-setup)) |
-| `totp` | `totp: { secret, into: { var } }` | generate an RFC 6238 time-based one-time password (2FA) locally into `${vars.<var>}` |
+| `totp` | `totp: { secret, into?: { var }, name? }` | generate an RFC 6238 time-based one-time password (2FA) locally into `${vars.<var>}`; `name` also registers the secret for later `otp` steps |
+| `otp` | `otp: { from, into: { var }, minRemaining? }` | write the current code of the generator a `totp` step registered as `from` into `${vars.<var>}` ([below](#fetch-a-fresh-code-later-with-otp)) |
 | `email` | `email: { match: { to?, subject?, subjectMatches? }, extract: { var, bodyMatches }, timeout }` | poll the configured mailbox until a matching message arrives, extract a code into `${vars.<var>}` |
 | `generate` | `generate: { random\|datetime: {...}, into: { var } }` | compute a random or current-datetime value at run time into `${vars.<var>}` ([below](#generate-a-value-computed-at-run-time)) |
 | `eval` | `eval: { from, ops: [...], into: { var } \| { vars: [...] } }` | split, join, filter, and otherwise transform a value the scenario already holds, into `${vars.*}` ([below](#eval-transform-a-value-held-in-a-variable)) |
@@ -1023,14 +1030,14 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `installApp` | `installApp: { from: <target>, keepData?: bool }` | install a later device-group member's build onto the step's device, over an existing build of the same identifier (`keepData`, default `true`) or after uninstalling it (`false`); launches nothing ([device groups](#device-groups-several-apps-on-one-device-be-0447)) |
 | `setPrimaryTarget` | `setPrimaryTarget: { target: <target> }` | from this step on, a step, `interrupts` entry, or top-level `expect` entry that omits `target` runs on `target`; top-level `steps` only ([device groups](#device-groups-several-apps-on-one-device-be-0447)) |
 | `clearKeychain` | `clearKeychain: {}` | reset the Simulator keychain (saved passwords / certificates) |
-| `clearClipboard` | `clearClipboard: {}` | clear the Simulator pasteboard |
-| `setClipboard` | `setClipboard: { text: "..." }` | seed the Simulator pasteboard for a paste flow |
+| `clearClipboard` | `clearClipboard: {}` | clear the device clipboard (iOS Simulator; Android with BajutsuAndroid embedded) |
+| `setClipboard` | `setClipboard: { text: "..." }` | seed the device clipboard for a paste flow (iOS Simulator; Android with BajutsuAndroid embedded) |
 | `setMocks` | `setMocks: [ { match, respond }... ]` | replace the app's whole stub table mid-scenario over the in-app control channel ([below](#changing-the-mocks-mid-scenario-setmocks)); `[]` removes every stub. iOS (XCUITest) with network collection on ([BE-0365](../roadmaps/BE-0365-in-app-control-channel/BE-0365-in-app-control-channel.md)) |
 | `overrideStatusBar` | `overrideStatusBar: { time?, batteryLevel?, batteryState?, cellularBars?, wifiBars? }` | override the status bar for deterministic screenshots |
 | `clearStatusBar` | `clearStatusBar: {}` | remove status-bar overrides (restore the live bar) |
 | `use` | `use: { component: <file>, with?: {...} }` | expand a reusable component's steps — a compile-time macro ([reuse](#reuse-data-and-tags)); **takes no modifier but `target`** — `capture` / `extract` / `name` / `from` are rejected, and a `target` is stamped onto every step the component expands to ([multi-target](#components-in-a-multi-target-scenario)) |
 | `group` | `group: { name: <str>, steps: [...] }` | name a run of consecutive steps — a compile-time macro, folded together in `report.html` ([below](#grouping-steps-group--folded-in-reporthtml)) |
-| `web` | `web: { within: <Selector>, steps: [...] }` | enter a WebView's DOM: `within` resolves the host `WKWebView` natively, and the nested `steps` address its normalized DOM instead of the native tree ([below](#web-entering-a-webviews-dom)) |
+| `web` | `web: { within: <Selector>, steps: [...] }` | enter a WebView's DOM: `within` resolves the host WebView natively, and the nested `steps` address its normalized DOM instead of the native tree ([below](#web-entering-a-webviews-dom)) |
 
 Modifiers (a `use` step takes `target` alone — see the table row above):
 
@@ -1103,8 +1110,10 @@ that uses it on iOS or Android fails in preflight, before any device is leased, 
     value: "大学"
 ```
 
-A wheel-style picker — a `UIPickerView`, or a `UIDatePicker` switched to a wheel-only mode — is an
-ordinary iOS form control, and `setPickerValue` is the only step that can set one. Its rows are not
+A wheel-style picker is an ordinary form control on both mobile platforms. No step but
+`setPickerValue` can set one. On iOS the picker is a `UIPickerView`, or a `UIDatePicker` switched to
+a wheel-only mode. On Android it is an `android.widget.NumberPicker`. A `DatePicker` or `TimePicker`
+in spinner mode counts too, since its fields are `NumberPicker` wheels. Its rows are not
 separately addressable elements, so `tap`, which addresses a resolved handle, cannot land on a
 specific one. The coordinate-driven steps fare no better: `swipe` / `drag` / `scroll` are bounded or
 directional drags that can spin a wheel roughly toward a value but cannot guarantee stopping on it,
@@ -1114,11 +1123,25 @@ Bajutsu rules out everywhere else. `setPickerValue` instead calls XCUITest's own
 `adjust(toPickerWheelValue:)` on the element the selector already resolved, so it is handle-based
 the way `tap` is rather than coordinate-based the way `swipe` is.
 
+On Android, the adb backend resolves the wheel the way a `tap` resolves its target. It then hands
+the wheel's identity to the resident UI Automator server, with no coordinate. The server steps the
+wheel one row at a time. Each step is the accessibility scroll action `NumberPicker` itself provides.
+After each step, the server reads the selected row back. When the shown row and the value both parse
+as integers, the walk starts toward the value. A year wheel thus takes the short way. Otherwise the
+walk goes forward first. On a wheel with ends, the walk turns back at the last row. A wrapping wheel
+stops once it comes back to the row it started on. A cap of 400 rows and a deadline bound the walk. The
+step needs the resident server: without it, the step fails instead of dragging the wheel by
+coordinates.
+
 `sel` must resolve the wheel itself, which is seldom the element carrying the identifier. A
 `UIPickerView` publishes its identifier on the picker, and exposes the wheel as a separate child.
 A selector naming that identifier alone resolves the parent instead, and the step fails.
 `adjust(toPickerWheelValue:)` raises on any element that is not itself a wheel. Pairing the
-identifier with the `pickerWheel` trait, as above, reaches the child.
+identifier with the `pickerWheel` trait, as above, reaches the child. On Android, a
+`NumberPicker`'s own node carries no `resource-id` at all. Put the identifier on a container around
+the wheel instead. The same `within` plus `pickerWheel` selector then reaches the wheel inside. The
+adb backend gives a `NumberPicker` node the `pickerWheel` trait, next to the `numberPicker` trait its
+class name yields.
 
 A value the wheel does not carry **fails the step**, naming the value, rather than leaving the wheel
 wherever it stopped — so the following assertion tests the app, not the gesture.
@@ -1152,10 +1175,13 @@ This also works around the `datePicker` classification gap ([selectors](selector
 a `UIDatePicker`'s own container element falls to `other`, but the step addresses the wheel children
 underneath it, which are classified `pickerWheel`, so the gap never bites here.
 
-`setPickerValue` is an iOS (XCUITest) action. A picker wheel has no counterpart on Android or the
-web — a web `<select>` expresses the same intent, and [`selectOption`](#selectoption) sets that — so
-those backends have no `pickerWheel` capability and the scenario is rejected at preflight, before any
-device work starts, with the step's location named.
+`setPickerValue` runs on iOS (XCUITest) and Android (adb). On Android it drives any
+`NumberPicker`, one that a Jetpack Compose screen embeds through `AndroidView` included. A wheel that
+Compose draws itself stays out of scope. Compose ships no standard wheel, so each app's own wheel
+exposes a different accessibility shape. A web page has no picker wheel: a `<select>` expresses the
+same intent, and [`selectOption`](#selectoption) sets that. The web backend thus lacks the
+`pickerWheel` capability. Preflight stops the scenario there before any work starts, naming the
+step's location.
 
 ### `web` (entering a WebView's DOM)
 
@@ -1167,20 +1193,59 @@ device work starts, with the step's location named.
       - wait: { for: { id: pay.confirmation }, timeout: 10 }
 ```
 
-`web` resolves `within` natively to exactly one `WKWebView` host. It then runs the nested `steps`
-against the WebView's normalized DOM (`data-testid` → `Element.identifier`), not the app's native
-accessibility tree — for a hybrid screen that embeds web content inside a native app
-([BE-0037](../roadmaps/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support.md)). Control
-returns to the native driver once the block's steps finish. The nested steps share the enclosing
-scenario's `vars.*` bindings, the same as `if`'s and `forEach`'s do, and `capture` / `extract`
-modifiers are not allowed on the `web` step itself. The step needs a WebView bridge configured
-(`BAJUTSU_WEBVIEW_PORT`); without one it fails cleanly rather than doing nothing. This first slice
-supports `tap` / `tapPoint` / `doubleTap` / `type` / `wait` / `assert` inside the block. `longPress` /
-`swipe` / `drag` / `clear` / `delete` / `select` / `copy` / `selectOption` / `scroll` / `back` /
-`navigate` / `pinch` / `rotate` / `handleSystemAlert` / `setPickerValue` are not reachable there, and each fails
-with a clear "not supported in web context" reason.
+A WebView is a browser view that a native app embeds. `web` runs its nested `steps` against the
+Document Object Model (DOM) of such a view. The steps address the page's normalized DOM, not the
+app's native accessibility tree: `data-testid` becomes `Element.identifier`. The block serves a hybrid
+screen, where part of the UI is web content inside the app. iOS support came with
+[BE-0037](../roadmaps/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support.md), and Android
+support with [BE-0482](../roadmaps/BE-0482-android-webview-cdp/BE-0482-android-webview-cdp.md). The same
+block runs unchanged on both platforms. Control returns to the native driver once the block's steps
+finish. The nested steps share the enclosing scenario's `vars.*` bindings, the same as `if`'s and
+`forEach`'s do. The `capture` / `extract` modifiers are not allowed on the `web` step itself.
 
-### `app` (driving another app's UI, iOS only)
+**How the block names its WebView.** `within` is an ordinary selector, and it must carry an `id`.
+The run resolves the whole selector against the native tree to one element, the WebView itself.
+Zero matches or two or more fail the step, as for any selector. Each platform then finds the page
+behind that element in its own way:
+
+| Platform | How the run reaches the page | Which page it picks |
+|---|---|---|
+| iOS | The BajutsuKit WebView bridge, a Hypertext Transfer Protocol (HTTP) server inside the app, on the port the run passes as `BAJUTSU_WEBVIEW_PORT`. | The `WKWebView` whose accessibility identifier equals the first id of `within`. |
+| Android | The Chrome DevTools Protocol (CDP), on the WebView's debugging socket, which the run forwards with `adb` for the length of the block. | The one attached, visible page whose rectangle contains the frame `within` resolved to. Zero matches or two or more fail the step as ambiguous. |
+
+Android matches by containment, not equality, because the two rectangles measure different areas.
+The native tree clips a view's bounds to the screen and to its ancestors. CDP reports the page's
+full rectangle. A WebView partly hidden under a toolbar thus still matches.
+
+**What the app must provide.** A block whose app is missing one of these pieces fails the step
+with a reason that names what is missing.
+
+- **iOS:** the app links BajutsuKit and calls `BajutsuNet.startIfEnabled()`. That call starts the
+  bridge when the run passes the port. The `WKWebView` carries an accessibility identifier.
+- **Android:** a debuggable build calls BajutsuAndroid's `Bajutsu.enableWebViewDebugging(context)`
+  in `Application.onCreate`, or right before it creates its first WebView. Every debug build type
+  sets `android:debuggable`. The
+  helper does nothing in a non-debuggable build, so a release build never opens the socket. The
+  machine running bajutsu needs the `android` extra (`websockets`). `scripts/install.sh` installs it
+  when the configured backends include Android.
+
+**What a block supports.** Inside the block, `tap` / `tapPoint` / `doubleTap` / `type` / `wait` /
+`assert` run. `longPress` / `swipe` / `drag` / `clear` / `delete` / `select` / `copy` /
+`paste` / `selectOption` / `scroll` / `back` / `navigate` / `pinch` / `rotate` / `handleSystemAlert` /
+`setPickerValue` are not reachable there, and each fails with a clear "not supported in web context"
+reason. The block also leaves these cases out:
+
+| Case | What happens |
+|---|---|
+| Content inside an `<iframe>` | The DOM walk skips a frame's document, so a selector cannot name an element inside it. |
+| A file chooser (`<input type="file">`) | A tap reaches the input, but the chooser it opens is a system screen outside the page, which the block cannot drive. |
+| Two WebViews that overlap, on Android | Both rectangles contain the frame, so the step fails as ambiguous rather than guessing. |
+| An app that restarts mid-block, on Android | The debugging socket closes, and the step fails with the transport's reason. |
+| Another debugger already attached to the page, on Android | The page offers no second connection, and the step fails. |
+| WebView content tapped by its native label, with no `web:` block | Not supported. The native tree often shows a WebView's content too coarsely to select by, and the block is the supported route. |
+| A browser tab that the system shows over the app | Not supported. The view belongs to a separate browser app, so neither the bridge nor the app's debugging socket reaches it. |
+
+### `app`
 
 ```yaml
 - app:
@@ -1190,18 +1255,28 @@ with a clear "not supported in web context" reason.
           - exists: { id: TabBarItemTitle }
 ```
 
-`app` activates the named app by bundle id — installed but not yet running, and never launched by
-the test target — and runs the nested `steps` against that app's own accessibility tree, not the
-test target's. The feasibility findings behind this behavior are recorded in
+`app` drives another app's UI. It activates the named app by bundle id — any installed app,
+including one the test target never launched (a running app is brought forward) — and runs the
+nested `steps` against that app's own accessibility tree, not the test target's. The feasibility findings behind this behavior are recorded in
 `docs/specs/ios-cross-app-ui-control-feasibility.md`.
 Control returns to whatever was active before the block once its steps finish, the same
 enter/leave contract `web` uses — nesting an `app` block inside another returns to the immediate
 parent, not unconditionally to the test target. `bundleId` is a plain string, not a value drawn
 from a fixed set: any installed app can be named, including one the test target has no way to open
-itself. iOS (XCUITest) only; a scenario using it against another backend fails preflight before any
-device work. `bundleId` must name an app already installed on the device — one that is slow to
-foreground (a cold launch, a permission prompt) fails the step with `ElementNotFound`, but one that
-is not installed at all is not guaranteed to fail this cleanly.
+itself. iOS (XCUITest) and Android (adb) support it; a scenario using it against the web backend
+fails preflight before any device work. `bundleId` must name an app already installed on the device —
+one that is slow to foreground (a cold launch, a permission prompt) fails the step with
+`ElementNotFound`. On iOS, one that is not installed at all is not guaranteed to fail this cleanly.
+
+On Android, `bundleId` is the package name (`com.android.settings`, say). The adb driver starts the
+package's launcher activity with `am start` and waits until that package holds the resumed activity,
+so a package with no launcher activity — including one that is not installed — fails the step with
+`ElementNotFound` before any launch. Leaving brings the app beneath back the same way, and the app
+under test keeps its process meanwhile, so the handoff never reads as a crash. As on iOS, an
+entered app is not reset: it keeps whatever state an earlier block or run left it in. One Android
+limit applies on the way back: when an app's launcher activity is `singleTask` or `singleInstance`
+(or sets `clearTaskOnLaunch`), starting it again destroys every activity its task pushed above it, so
+that app comes back at its root screen rather than the screen it left.
 
 #### Driving the Home Screen (`com.apple.springboard`)
 
@@ -1499,6 +1574,36 @@ report shows the time the wait took as the step's duration. If the wall clock ju
 (a Network Time Protocol (NTP) correction, say), the step still passes and records a warning on its report row that states
 the jump and the seconds left, so a later sign-in that fails on an expired code shows its cause.
 
+#### Fetch a fresh code later with `otp`
+
+A scenario that enters a code more than once, or long after it starts, registers the secret once
+and fetches each code at the point it needs one. Give the `totp` step a `name`, then name that
+generator in an `otp` step's `from`:
+
+```yaml
+- totp: { secret: "${secrets.TOTP_SEED}", name: main }   # registers the generator; writes no code
+- tap: { id: auth.change_password }
+# ... any number of steps ...
+- otp: { from: main, into: { var: code }, minRemaining: 10 }   # vars.code ← the code current now
+- type: { text: "${vars.code}", into: { id: auth.code } }
+```
+
+A `totp` step needs `name`, `into`, or both, so a step that only registers a generator omits
+`into`. Registering a different secret under a name already in use fails the step. `minRemaining`
+needs `into` on a `totp` step, since a step that produces no code has nothing to keep fresh. The
+`totp` step checks the secret when it registers it, so a malformed secret fails that step rather
+than a later `otp`.
+
+The `otp` step reads the clock when it runs, so each `otp` writes the code of the window current at
+that step. It takes the same `minRemaining` window wait as `totp`, and the live log labels it
+`otp (≥10s left)`. Registration follows execution order: an `otp` whose generator has not been
+registered yet fails the step, as does one whose `totp` sat in an `if` branch that did not run. A
+generator lasts for the rest of the scenario run, `if`, `forEach`, and `group` bodies included.
+
+The run keeps a registered secret out of reach of every `${...}` token, so no scenario can read it
+back into a typed field. The `otp` step itself carries no secret, so its evidence shows only the
+generator's name.
+
 ### `email` (poll a mailbox for a received code)
 
 ```yaml
@@ -1697,10 +1802,45 @@ the `manual` step with the deterministic action — is the author's path to a re
 ```
 
 On iOS, these steps drive the Simulator through `simctl`, like `setLocation` / `push`. They need a
-per-device control channel and fail cleanly on the fake driver / in parallel runs. Three of them also
-run on Android: `foreground`, `setClipboard`, and `clearClipboard`. Every other step in this list runs
-on iOS alone. `overrideStatusBar` is most useful right before a screenshot or a `visual` assertion, to
-freeze the clock and signal bars for a stable image.
+per-device control channel and fail cleanly on the fake driver / in parallel runs. On Android, every
+step in this list runs except `clearKeychain`, because Android has no keychain.
+Use `overrideStatusBar` right before a screenshot or a `visual` assertion. It freezes the clock and
+signal bars for a stable image.
+
+On Android, adb drives these steps with no code inside the app
+([BE-0478](../roadmaps/BE-0478-android-device-control-parity/BE-0478-android-device-control-parity.md)):
+
+| Step | Android mechanism |
+|---|---|
+| `background` | presses Home (`input keyevent KEYCODE_HOME`); the app keeps its process |
+| `overrideStatusBar` | enters the System UI demo mode and sends one command per set field |
+| `clearStatusBar` | leaves the demo mode, restoring the live status bar |
+
+`background` waits, on a condition, until the app no longer holds the resumed activity. When the app
+stays in front, the step fails. After `background`, the launcher is in front. A selector for the app
+under test then finds nothing, as on iOS while the Home Screen is in front. Inside a device group, a
+read fails with `AppNotInFront` instead, until a `foreground` step brings the app back.
+
+The demo mode differs from `simctl status_bar` in three ways:
+
+- **Unset fields freeze too.** Entering the demo mode freezes every icon. A field the step leaves
+  unset takes the demo mode's own fixed value, not the live one. The step also hides the
+  notification icons, which the iOS status bar never shows.
+- **Values are narrower.** The table below lists what Android accepts. Preflight fails any other
+  value before device work and names the step. System UI would ignore such a value, and the
+  broadcast would still report success.
+- **Wi-Fi bars scale.** Android shows Wi-Fi levels 0–4, so a full iOS signal must stay full. The
+  table below gives the mapping.
+
+| Field | Android accepts | Mapping |
+|---|---|---|
+| `time` | `H:MM` or `HH:MM` | the clock as four digits (`9:41` becomes `0941`) |
+| `batteryLevel` | 0–100 | unchanged |
+| `batteryState` | `charging`, `charged`, `discharging` | `plugged` is true for the first two |
+| `cellularBars` | 0–4 | unchanged |
+| `wifiBars` | 0–3 | levels 0, 1, 3, and 4 for 0, 1, 2, and 3 |
+
+On both platforms the override persists on the device until a `clearStatusBar` step runs.
 
 `background` / `foreground` are the two halves of a background/foreground transition.
 `foreground` terminates nothing. Whether `foreground` waits depends on the case:
@@ -2140,7 +2280,7 @@ are in [selectors](selectors.md#assertion-evaluation).
 | `requestSequence` | matchers were observed in this order (needs `--network`) | `requestSequence: [ { urlMatches: "/auth/refresh" }, { urlMatches: "/api/account" } ]` |
 | `responseSchema` | a captured response body conforms to a JSON Schema (needs `--network`) | `responseSchema: { request: { urlMatches: "/api/items" }, schema: items.json }` |
 | `visual` | the screen matches a baseline image (visual regression) | `visual: { baseline: home.png, threshold: 0.02 }` |
-| `clipboard` | the device pasteboard matches (read back via `simctl pbpaste`) | `clipboard: { equals: "COUPON123" }` / `clipboard: { matches: "\\d{6}" }` |
+| `clipboard` | the device clipboard matches (read back via `simctl pbpaste` on iOS, the BajutsuAndroid receiver on Android) | `clipboard: { equals: "COUPON123" }` / `clipboard: { matches: "\\d{6}" }` |
 | `attribute` | an element's HTML attribute matches, or is absent (web only) | `attribute: { sel: { id: docs.link }, name: href, equals: /docs }` / `attribute: { sel: { id: panel }, name: aria-busy, absent: true }` |
 
 - `exists` writes its selector **inline** (`{ id: ... }` directly). `negate` is optional.
@@ -2152,7 +2292,7 @@ are in [selectors](selectors.md#assertion-evaluation).
 - `requestSequence` checks a list of request matchers were **observed in order** ([details below](#requestsequence-ordered-requests)); needs the `--network` run flag.
 - `responseSchema` validates a captured **response body against a JSON Schema** ([details below](#responseschema-json-schema-of-a-response)); needs the `--network` run flag.
 - `visual` pixel-compares a screenshot against a baseline image ([details below](#visual-visual-regression)).
-- `clipboard` reads the device pasteboard (`simctl pbpaste`) and checks **exactly one** of `equals` / `matches` (regex) — the read-back half of `setClipboard`, for verifying a "copy" action. It needs the per-device control channel, so it is unavailable on the fake driver / in parallel runs and fails cleanly there ([BE-0052](../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)).
+- `clipboard` reads the device clipboard (`simctl pbpaste` on iOS; on Android, the BajutsuAndroid in-app receiver, [BE-0233](../roadmaps/BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity.md)) and checks **exactly one** of `equals` / `matches` (regex) — the read-back half of `setClipboard`, for verifying a "copy" action. It needs the per-device control channel, so it is unavailable on the fake driver / in parallel runs and fails cleanly there ([BE-0052](../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)).
 - `attribute` takes `sel:` + `name:` + **exactly one** of `equals` / `contains` / `matches` / `absent: true`. See [details below](#attribute-html-attribute-of-an-element) and [BE-0466](../roadmaps/BE-0466-web-attribute-assertion/BE-0466-web-attribute-assertion.md). The web (Playwright) backend reads the attribute on demand. Any other backend fails it before the device lease.
 
 > **Locale caveat**: string comparisons on `label`/`value` and assertions that look at visible

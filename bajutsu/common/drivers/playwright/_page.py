@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from ._keyboard import _Keyboard
 from ._mouse import _Mouse
@@ -20,16 +20,26 @@ class _Page(Protocol):
     def keyboard(self) -> _Keyboard: ...
 
     def evaluate(self, expression: str) -> Any:
-        pass
+        """Run *expression* in the page and return its result."""
 
     def goto(self, url: str) -> object:
-        pass
+        """Navigate to *url* and wait for it to load."""
 
     def go_back(self) -> object:
-        pass
+        """Navigate one entry back in the session history."""
 
-    def screenshot(self, *, path: str) -> object:
-        pass
+    def screenshot(self, *, path: str, timeout: float | None = None) -> object:
+        """Capture the viewport to *path*, giving up after *timeout* ms."""
+
+    def wait_for_load_state(
+        self, state: Literal["domcontentloaded"], *, timeout: float | None = None
+    ) -> object:
+        """Wait until the current document reaches *state*."""
+
+    def wait_for_event(
+        self, event: str, *, predicate: Callable[[Any], bool], timeout: float
+    ) -> object:
+        """Wait for the next *event* whose argument satisfies *predicate*."""
 
     def on(self, event: str, handler: Callable[[Any], None]) -> None:
-        pass
+        """Call *handler* with the argument of every *event* the page emits."""

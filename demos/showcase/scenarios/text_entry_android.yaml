@@ -24,5 +24,5 @@
     - type: { text: " 100%sure" }
     - wait: { for: { id: [search.results-empty, search_results_empty] }, timeout: 5 }
   expect:
-    # A field's content is its accessibility `text`, which the adb backend reads as the label.
-    - exists: { id: [search.field, search_field], label: "馬術🐎 x語 100%sure" }
+    # The adb backend reads an editable field's `text` as its `value` (#2388).
+    - exists: { id: [search.field, search_field], value: "馬術🐎 x語 100%sure" }

@@ -149,7 +149,9 @@ capability を表明し、共有シナリオが期待するジェスチャ画面
   却下しました。instrumentation の APK は、root なしでマルチポインタのジェスチャを合成できます。ただし、adb
   ドライバのシェルだけで完結する操作モデルから外れ、ビルドとインストールが必要なデバイス側のテスト成果物が
   増えます。すでにあるダブルタップの仕組みより、面も大きくなります。root の前提を外す将来の選択肢として、
-  文書に残します。
+  文書に残します。この選択肢は後に実装されました。常駐 UI Automator サーバーが root なしで 2 本の指を注入し、
+  `sendevent` スイープは root 化した端末でのフォールバックとして残っています
+  （[issue #2391](https://github.com/bajutsu-e2e/bajutsu/issues/2391)）。
 - **`gestures_multitouch` を iOS 専用のままにし、Android のマルチタッチをスコープ外とする。** 却下しました。
   ツールがすでに端から端までモデル化している capability（`Driver.pinch` と `rotate`、`multiTouch`
   capability、事前チェック、共有シナリオ）に、恒久的なバックエンド間の非対称を残してしまいます。root 化した

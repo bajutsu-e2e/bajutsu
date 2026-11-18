@@ -691,8 +691,7 @@ def _parse_ts(value: object) -> datetime | None:
 
 def parse_app_trace(ndjson_text: str) -> list[dict[str, object]]:
     """Pair '<name> started' / '<name> finished' log lines into timed intervals."""
-    begins: dict[str, datetime] = {}
-    out: list[dict[str, object]] = []
+    events: list[tuple[datetime, str]] = []
     for raw in ndjson_text.splitlines():
         line = raw.strip()
         if not line:
@@ -705,8 +704,26 @@ def parse_app_trace(ndjson_text: str) -> list[dict[str, object]]:
             continue
         message = str(event.get("eventMessage") or "").strip()
         stamp = _parse_ts(event.get("timestamp"))
-        if stamp is None:
-            continue
+        if stamp is not None:
+            events.append((stamp, message))
+    return _pair_markers(events)
+
+
+def parse_logcat_app_trace(text: str) -> list[dict[str, object]]:
+    """Pair the app's markers in a `-v year,usec,zone` logcat stream, as `parse_app_trace` does (BE-0478).
+
+    The same `_BEGIN` / `_END` patterns, so a marker an app logs with `android.util.Log` reads the
+    same as one it logs with `os_log`.
+    """
+    events = [event for line in text.splitlines() if (event := adb.parse_logcat_line(line))]
+    return _pair_markers(events)
+
+
+def _pair_markers(events: list[tuple[datetime, str]]) -> list[dict[str, object]]:
+    # Each "<name> finished" closes the latest open "<name> started".
+    begins: dict[str, datetime] = {}
+    out: list[dict[str, object]] = []
+    for stamp, message in events:
         begin = _BEGIN.match(message)
         if begin:
             begins[begin.group("name")] = stamp
@@ -723,6 +740,35 @@ def parse_app_trace(ndjson_text: str) -> list[dict[str, object]]:
                 }
             )
     return out
+
+
+def start_logcat_app_trace(
+    serial: str,
+    raw_path: Path,
+    json_path: Path,
+    tag: str,
+    since: str | None,
+    spawn: Spawn = spawn,
+) -> Interval:
+    """Stream the app's *tag* from logcat to raw_path; on stop, write the parsed trace (BE-0478).
+
+    *since* is the device-clock instant the stream starts from (`adb.logcat_app_trace_cmd`).
+    """
+    proc = spawn(adb.logcat_app_trace_cmd(serial, tag, since), raw_path)
+
+    def transform(raw: Path) -> Path:
+        text = raw.read_text(encoding="utf-8", errors="ignore") if raw.exists() else ""
+        json_path.write_text(json.dumps(parse_logcat_app_trace(text), indent=2), encoding="utf-8")
+        return json_path
+
+    return Interval(
+        kind="appTrace",
+        path=raw_path,
+        provider=ADB_PROVIDER,
+        _proc=proc,
+        _stop_signal=signal.SIGTERM,
+        _transform=transform,
+    )
 
 
 def start_app_trace(

@@ -15,11 +15,9 @@
 
 ## はじめに
 
-`serve` はローカルプレビュー用のサーバーから、リポジトリ内で最大かつ最も成長の速い
-サブシステムへと肥大化しました。組織やロールといったホスト固有の関心事も、決定的な
-コアが依存する共有スキーマ `bajutsu/config.py` に漏れ出し始めています。
+`serve` は、ローカルプレビュー用のサーバーから、リポジトリ内で最大かつ最も成長の速いサブシステムへと肥大化しました。組織やロールといったホスト固有の関心事も、`bajutsu/config.py` に漏れ出し始めています。CLI の決定的なコアは、この同じスキーマに依存しています。
 
-本提案は `serve` のスコープを明示的に画定し、マルチテナントホスティングの関心事を、ツール全体が共有する config スキーマから締め出します。
+本提案は、`serve` のスコープを明示的に画定します。マルチテナントホスティングの関心事は、ツール全体が共有する config スキーマから締め出します。
 
 ## 動機
 
@@ -30,19 +28,25 @@
 | `bajutsu/serve/operations.py` | 1,376行 | 別途、`operations.py` を分割する後続提案（ID未確定）で扱う |
 | `bajutsu/`（コア全体、Python） | 約30,000行 | `serve` と `serve.js` を合わせるとこの5分の1程度 |
 
-これらはいずれも、ローカル CLI ツールのコアが本来知る必要のないインフラです。
+これらのインフラは、ローカル CLI ツールのコアが知るべき理由のないものです。
 
-肥大化はコアの内部にも及んでいます。`bajutsu/config.py:352` は `OrgConfig` を定義しており、`Config` 自体も `orgs: dict[str, OrgConfig]` フィールド（`config.py:370`）と、それを解決する4つのヘルパー（`config.py:393-429`）を抱えています。これらはローカルの Simulator に対して `bajutsu run` を実行する個人開発者にとって何の意味も持ちません。存在理由は `serve` のホスト型マルチテナントデプロイ（BE-0015）を支えるためだけです。
+肥大化はコアの内部にも及んでいます。`bajutsu/config.py:352` は `OrgConfig` を定義しています。`Config` 自体も、`orgs: dict[str, OrgConfig]` フィールド（`config.py:370`）と、それを解決する4つのヘルパー（`config.py:393-429`）を抱えています。ローカルの Simulator に対して `bajutsu run` を実行する個人開発者にとって、どちらも何の意味も持ちません。存在理由は、`serve` のホスト型マルチテナントデプロイ（BE-0015）を支えることだけです。
 
-`Config` はあらゆるエントリポイントがパースするスキーマです。そのためホスティングの関心事が共有 config の表面に恒久的な負荷として居座ってしまっており、これは `Effective`/`Config` が本来体現すべき「app-agnostic」かつ「決定的なコアを不変に保つ」という前提に真っ向から反します。
+`Config` は、あらゆるエントリポイントがパースするスキーマです。そのため、ホスティングの関心事が共有 config の表面に恒久的な負荷として居座っています。これは、`Effective`/`Config` が本来体現すべき「app-agnostic」かつ「決定的なコアを不変に保つ」という前提に真っ向から反します。
 
-決定的な `run` パスも同じスキーマをパースします。見落としやすいのは、ホスト型の構成では `run` が組織情報を含む config を読む点です。運用者は `orgs:` を、`run` がそのまま消費する `bajutsu.config.yaml` に宣言します。`bajutsu/serve/operations/dispatch.py` はこの config の全文を `materials` としてリモートワーカーへ送り（ローカルのサーバーモードでは同じファイルを `--config` で指し）、コア側のローダー（`bajutsu/cli/_shared.py` の `load_config` と `bajutsu/mcp/tools.py`）がそれを読みます。つまり組織モデルは*スキーマ*上の負荷であるだけでなく、`Config` がたまたま `orgs` フィールドを持っているために、決定的な `run` が現時点ですでに許容している値でもあります。このフィールドを削除する変更は、`run` が組織情報を含む config を読めるまま保たなければなりません。さもなければ文書化済みのホスト型デプロイ（`orgs:` は `docs/configuration.md` と `docs/self-hosting.md` に記載があります）を壊します。境界の実装がフィールドの単純削除ではなくローダーに属するのは、まさにこのためです。
+見落としやすいのは、ホスト型の構成では、決定的な `run` パスも同じスキーマで**組織情報を含む** config をパースする点です。運用者は、`run` がそのまま消費する `bajutsu.config.yaml` に `orgs:` を宣言します。
 
-深刻度は高です。これはバグではなくアーキテクチャの漸進的な劣化ですが、ホスティング関連の新機能（BE-0015、BE-0016、BE-0051）が積み重なるたびに、境界を事後的に引き直すコストは増していきます。しかも config スキーマは、あらゆるバックエンドとターゲットが依存する部分です。
+- `bajutsu/serve/operations/dispatch.py` は、この config の全文を `materials` としてリモートワーカーへ送ります。
+- ローカルのサーバーモードでは、同じファイルを `--config` で指します。
+- コア側のローダー（`bajutsu/cli/_shared.py` の `load_config` と `bajutsu/mcp/tools.py`）が、それを読みます。
+
+つまり、組織モデルは*スキーマ*上の負荷であるだけではありません。`Config` がたまたま `orgs` フィールドを持っているために、決定的な `run` が現時点ですでに許容している値でもあります。このフィールドを削除する変更は、`run` が組織情報を含む config を読める状態を保たなければなりません。さもなければ、文書化済みのホスト型デプロイを壊します（`orgs:` は `docs/configuration.md` と `docs/self-hosting.md` に記載があります）。境界の実装が、フィールドの単純削除ではなくローダーに属するのは、まさにこのためです。
+
+深刻度は高です。これはバグではなく、アーキテクチャの漸進的な劣化です。ホスティング関連の新機能（BE-0015、BE-0016、BE-0051）が積み重なるたびに、境界を事後的に引き直すコストは増していきます。しかも config スキーマは、あらゆるバックエンドとターゲットが依存する部分です。
 
 ## 詳細設計
 
-境界は、サイズの上限やパッケージ分割ではなく、一つの具体的な移設と機械的に検査できる規則で引きます。
+境界は、サイズの上限やパッケージ分割ではなく、一つの具体的な移設と、機械的に検査できる規則で引きます。
 
 | # | 作業 | 具体的な内容 |
 |---|---|---|
@@ -53,19 +57,23 @@
 
 ### 1. 規則を文書化する
 
-`bajutsu/config.py`、`bajutsu/drivers/`、`bajutsu/runner/`、`bajutsu/scenario/` はホストに依存しないままとし、組織・ロール・テナンシー・課金といった概念も、`db`（SQLAlchemy、Alembic、psycopg）や `oauth`（Authlib）の extra も一切持ち込みません。ホスティングの関心事を持つのは `bajutsu/serve/` だけです。
+`bajutsu/config.py`、`bajutsu/drivers/`、`bajutsu/runner/`、`bajutsu/scenario/` は、ホストに依存しないままにします。組織・ロール・テナンシー・課金といった概念も、`db`（SQLAlchemy、Alembic、psycopg）や `oauth`（Authlib）の extra も、一切持ち込みません。ホスティングの関心事を持つのは `bajutsu/serve/` だけです。
 
-このノートは次に述べる契約を指し示すだけにとどめ、規則をレビュアーの記憶に頼らせません。
+ノートは、次に述べる契約を指し示すだけにとどめます。規則をレビュアーの記憶に頼らせないためです。
 
 ### 2. サイズの上限ではなく、ゲートで強制する
 
-この境界は現時点ですでに成り立っています。コアの各モジュールを調べたところ、`bajutsu.serve` や `db`・`oauth` extra への import は一件もありませんでした。`bajutsu/serve/server/logbus.py` と `sessions.py` は Redis クライアントを直接 import せず、注入された `RedisLike` プロトコル越しに扱っています。つまり `serve` 自体、Redis を必須の依存として抱えてすらいません。
+この境界は、現時点ですでに成り立っています。コアの各モジュールを調べたところ、`bajutsu.serve` や `db`・`oauth` extra への import は一件もありませんでした。`bajutsu/serve/server/logbus.py` と `sessions.py` は、Redis クライアントを直接 import せず、注入された `RedisLike` プロトコル越しに扱っています。つまり `serve` 自体、Redis を必須の依存として抱えてすらいません。
 
-BE-0112 が import-linter のレイヤモデル（`pyproject.toml` の `[tool.importlinter]`、`make check` 内の `make lint-imports` が実行）を導入しており、その periphery 契約が*すでに*コアからの `bajutsu.serve` の import を禁止しています。そこで、その半分を重複させる抽象構文木ベースのテストを別に足すのではなく、レイヤグラフでは表現できない部分を新しい forbidden 契約「決定性コアは db/oauth のホスティング extra を持たない」で押さえます。これは `bajutsu.config` / `bajutsu.drivers` / `bajutsu.runner` / `bajutsu.scenario` が外部の `db`・`oauth` パッケージ（`sqlalchemy`、`alembic`、`psycopg`、`cryptography`、`authlib`）を import することを禁止し、`include_external_packages` により import-linter が外部 import も検出します。この 2 つの契約により、「`serve` が境界内にとどまっている」という性質は判断ではなくゲートが捕まえる退行になります。分離はすでに依存関係のレベルで実現しているので、`bajutsu-serve` のような別配布物に切り出す必要はありません。
+BE-0112 は、import-linter のレイヤモデルを導入しました（`pyproject.toml` の `[tool.importlinter]`。`make check` 内の `make lint-imports` が実行します）。その periphery 契約は、コアからの `bajutsu.serve` の import を*すでに*禁止しています。この半分を重複させる抽象構文木ベースのテストは、別に足しません。レイヤグラフでは表現できない部分を、新しい forbidden 契約「決定性コアは db/oauth のホスティング extra を持たない」で押さえます。
+
+新しい契約は、`bajutsu.config`、`bajutsu.drivers`、`bajutsu.runner`、`bajutsu.scenario` が外部の `db`・`oauth` パッケージ（`sqlalchemy`、`alembic`、`psycopg`、`cryptography`、`authlib`）を import することを禁止します。`include_external_packages` を設定するので、import-linter は外部 import も検出します。
+
+この 2 つの契約により、「`serve` が境界内にとどまっている」という性質は、判断ではなくゲートが捕まえる退行になります。分離はすでに依存関係のレベルで実現しているので、`bajutsu-serve` のような別配布物に切り出す必要はありません。
 
 ### 3. `OrgConfig` と組織用ヘルパーを `bajutsu/serve/orgs.py` へ移す
 
-呼び出し元はいずれもすでに `bajutsu/serve/` の内部です。組織用ヘルパー（`org_for_*` / `targets_for_org`）を呼ぶのは `serve/__init__.py`、`authz.py`、`operations/reads.py` の3箇所で、`DEFAULT_ORG` はさらに `jobs.py` と `server/worker_job.py` からも使われています。コアからはいずれも一件も呼ばれていないため、この移設は探索の要る設計判断ではなく機械的な作業です。
+呼び出し元はいずれも、すでに `bajutsu/serve/` の内部にあります。組織用ヘルパー（`org_for_*` / `targets_for_org`）を呼ぶのは、`serve/__init__.py`、`authz.py`、`operations/reads.py` の3箇所だけです。`DEFAULT_ORG` は、さらに `jobs.py` と `server/worker_job.py` からも使われています。コアからは、いずれも一件も呼ばれていません。そのため、この移設は探索の要る設計判断ではなく、機械的な作業です。
 
 | シンボル | 現在の場所 | 移設後 |
 |---|---|---|
@@ -75,33 +83,44 @@ BE-0112 が import-linter のレイヤモデル（`pyproject.toml` の `[tool.im
 | `Config.orgs` フィールド | `config.py:370` | 削除 |
 | `load_config` | `config.py:663` | `parse_config_dict`（検証のみ）と `load_config`（I/O）に分割。後者はトップレベルの `orgs` を取り除く |
 
-`_Model` は typo 対策として意図的に `extra="forbid"`（`config.py:44`）を設定しており、他のすべてのフィールドではこの設定を維持します。ただし `orgs` は typo とは事情が異なります。決定的な `run` はホスト型の構成で組織情報を含む config を正当に読むため（動機を参照）、`Config.orgs` フィールドを削除すると、`Config.model_validate` はその config を「Extra inputs are not permitted: orgs」で弾き、`run` を壊してしまいます。そこでコア側のローダーは `orgs` を、**意味を解さず単に取り除く serve 所有のキー**として扱います。`parse_config_dict` は検証の前にトップレベルの `orgs` を取り除くので、コアは完全に組織非依存（`OrgConfig` も組織の意味論も持たない）でありながら、組織情報を含む config に対して `run` を動かし続けます。その一方で `extra="forbid"` は本物の typo をすべて捕まえ続けます。コアは `orgs` を解釈しません。ただ弾かないだけです。
+`_Model` は、typo 対策として意図的に `extra="forbid"`（`config.py:44`）を設定しています。この設定は、他のすべてのフィールドで維持します。ただし `orgs` は、typo とは事情が異なります。決定的な `run` は、ホスト型の構成で組織情報を含む config を正当に読みます（動機を参照）。`Config.orgs` フィールドを削除すると、`Config.model_validate` はその config を「Extra inputs are not permitted: orgs」で弾き、`run` を壊してしまいます。
 
-`load_config`（`config.py:663`）は、`parse_config_dict(data: dict) -> Config`（`orgs` を取り除いてから検証）と `load_config(text: str) -> Config`（`parse_config_dict` の上に YAML I/O を重ねる）に分割します。既存のコア側と serve 側の `load_config` 呼び出し元は、いずれもシグネチャを変えずに済みます。
+そこで、コア側のローダーは `orgs` を、**意味を解さず単に取り除く serve 所有のキー**として扱います。`parse_config_dict` は、検証の前にトップレベルの `orgs` を取り除きます。コアは完全に組織非依存（`OrgConfig` も組織の意味論も持たない）のまま、組織情報を含む config に対して `run` を動かし続けます。その一方で、`extra="forbid"` は本物の typo をすべて捕まえ続けます。コアは `orgs` を解釈せず、ただ弾かないだけです。
 
-`bajutsu/serve/orgs.py` には `load_serve_config(text: str) -> tuple[Config, dict[str, OrgConfig]]` を新設します。生の YAML を一度パースし、`orgs` キーを取り除いてから残りを `parse_config_dict` に渡し、取り除いた側は `serve` 内で `dict[str, OrgConfig]` として検証します。組織モデルを必要とする serve 側の呼び出し元は、`org_for_*` と `targets_for_org` の import 元を `bajutsu.config` から `bajutsu.serve.orgs` に切り替え、組織情報を `Config.orgs` フィールドからではなく `load_serve_config`（`serve/helpers.py` のキャッシュ付きローダー経由）から受け取ります。
+`load_config`（`config.py:663`）は、次の2つの関数に分割します。
 
-ローカルの `bajutsu run` / `bajutsu record` はそのまま `load_config` を呼び続け、`OrgConfig` を構築することも目にすることもありません。ホスト型の `run` が組織情報を含む config を読む場合も、コア側のローダーがキーを弾かずに取り除くため、これまでどおり動きます。
+- `parse_config_dict(data: dict) -> Config` は、`orgs` を取り除いてから検証します。
+- `load_config(text: str) -> Config` は、`parse_config_dict` の上に YAML I/O を重ねます。
+
+既存のコア側と serve 側の `load_config` 呼び出し元は、いずれもシグネチャを変えずに済みます。
+
+`bajutsu/serve/orgs.py` には、`load_serve_config(text: str) -> tuple[Config, dict[str, OrgConfig]]` を新設します。生の YAML を一度パースし、`orgs` キーを取り除いてから、残りを `parse_config_dict` に渡します。取り除いた側は、`serve` 内で `dict[str, OrgConfig]` として検証します。
+
+組織モデルを必要とする serve 側の呼び出し元は、`org_for_*` と `targets_for_org` の import 元を `bajutsu.config` から `bajutsu.serve.orgs` に切り替えます。組織情報は、`Config.orgs` フィールドからではなく、`load_serve_config`（`serve/helpers.py` のキャッシュ付きローダー経由）から受け取ります。
+
+ローカルの `bajutsu run` / `bajutsu record` は、そのまま `load_config` を呼び続け、`OrgConfig` を構築することも目にすることもありません。ホスト型の `run` が組織情報を含む config を読む場合も、コア側のローダーがキーを弾かずに取り除くため、これまでどおり動きます。
 
 ### 4. `serve.js` には lint と構文検査を与え、本格的なテストフレームワークはまだ導入しない
 
-1,575行のテストなしバニラ JavaScript はそれ自体がスコープ肥大の一症状ですが、まず見合った一歩は軽いガードレールです。`bajutsu/templates/serve.js` を対象にした最小限の ESLint のフラット設定（`eslint.config.mjs`）を追加し、`node --check` と eslint を `make check` 内の `make lint-js` ステップに組み込みます。`node --check` は Node があればどこでも（CI ランナーを含めて）走ります。eslint はすでに解決できるときだけ走るので、ゲートが eslint をダウンロードすることはありません。Node が入っていない環境では、`actionlint` と同じように通知つきでスキップするので、`make check` はどこでも走ります。
+1,575行のテストなしバニラ JavaScript は、それ自体がスコープ肥大の一症状です。ただし、まず見合った一歩は軽いガードレールです。`bajutsu/templates/serve.js` を対象にした最小限の ESLint のフラット設定（`eslint.config.mjs`）を追加します。`node --check` と eslint は、`make check` 内の `make lint-js` ステップに組み込みます。
 
-Jest や Vitest のようなコンポーネント・ユニットテストの基盤は、`serve.js` が導入するに値するだけの分岐ロジックを抱えるようになるまで明示的に先送りします。その判断条件をここに記録しておくことで、先送りが見落としではなく決定として残ります。
+`node --check` は、Node があればどこでも（CI ランナーを含めて）走ります。eslint は、すでに解決できるときだけ走るので、ゲートが eslint をダウンロードすることはありません。Node が入っていない環境では、`actionlint` と同じように通知つきでスキップします。そのため、`make check` はどこでも走ります。
+
+Jest や Vitest のようなコンポーネント・ユニットテストの基盤は、`serve.js` が導入するに値するだけの分岐ロジックを抱えるようになるまで、明示的に先送りします。その判断条件をここに記録しておくことで、先送りが見落としではなく決定として残ります。
 
 ---
 
-これはスコープを画定し、ゲートを整える作業であり、振る舞いの変更ではありません。`serve` がユーザーに対して行うことは変わらず、そのコードと config と依存関係がどこに存在してよいかだけが変わります。したがって3つのプライムディレクティブすべてに構造的に準拠します。新設する2つのゲート検査は `make check` の側で走るのであり、`run` の内部では動きません。
+これはスコープを画定し、ゲートを整える作業であり、振る舞いの変更ではありません。`serve` がユーザーに対して行うことは変わらず、そのコードと config と依存関係がどこに存在してよいかだけが変わります。したがって、3つのプライムディレクティブすべてに構造的に準拠します。新設する2つのゲート検査は `make check` の側で走るのであり、`run` の内部では動きません。
 
 ## 検討した代替案
 
 | 代替案 | 判断 | 理由 |
 |---|---|---|
-| 何もせず、現状のまま `serve` を成長させ続ける | 却下 | config の漏れは複利的に悪化する。将来のホスティング機能（SSO、課金、監査ログの保持）が `config.py` へ紛れ込む前例になる |
-| コア側のローダーがトップレベルの `orgs:` を**弾く**（文書全体に `extra="forbid"` を効かせる） | 却下 | ホスト型の `run` は組織情報を含む `bajutsu.config.yaml` を正当に読む（`materials` としてワーカーへ送るか `--config` で渡す）ため、`orgs:` を弾くと文書化済みのデプロイを壊す。コア側のローダーでキーを取り除けば `run` は動き続け、組織非依存も保たれ、しかも `extra="forbid"` は他のすべての typo を捕まえ続ける |
-| コア側のローダーではなく serve から run への境界で `orgs:` を取り除く | 却下 | コア側では `extra="forbid"` が `orgs:` を弾き続けられるが、`dispatch.py` が config の文面を送る前に書き換える必要が生じ、さらにローカルのサーバーモードの run では実ファイルを `--config` で渡す代わりに取り除いた一時ファイルを materialize しなければならない。しかも運用者が組織情報を含む config に対して手で `bajutsu run` を実行すれば、やはり失敗する。あらゆるエントリポイントが共有する一つのローダーでキーを一度だけ取り除くほうが、単純で統一的である |
-| `serve` を別配布物（例えば `bajutsu-serve`）や別リポジトリへ分割する | いまは却下 | `db`・`oauth` の extra と、注入された `RedisLike` プロトコルが分離をすでに依存関係のレベルで実現している。分割はゲート検査がすでに解決している問題に追加コストをかけるだけになる。`serve` が独立したリリース周期を必要とするようになれば再検討する |
-| 境界画定が終わるまで `serve` の機能開発を凍結する | 却下 | `serve` のハードニングとホスティング（BE-0015、BE-0016、BE-0051）はいずれも価値のある進行中のトラックであり、境界画定はそれらと並行して段階的に進めるべき |
+| 何もせず、現状のまま `serve` を成長させ続ける | 却下 | config の漏れは複利的に悪化します。将来のホスティング機能（SSO、課金、監査ログの保持）が `config.py` へ紛れ込む前例になります |
+| コア側のローダーがトップレベルの `orgs:` を**弾く**（文書全体に `extra="forbid"` を効かせる） | 却下 | ホスト型の `run` は、組織情報を含む `bajutsu.config.yaml` を正当に読みます（`materials` としてワーカーへ送るか、`--config` で渡します）。`orgs:` を弾くと、文書化済みのデプロイを壊します。コア側のローダーでキーを取り除けば、`run` は動き続け、組織非依存も保たれます。しかも `extra="forbid"` は、他のすべての typo を捕まえ続けます |
+| コア側のローダーではなく serve から run への境界で `orgs:` を取り除く | 却下 | コア側では `extra="forbid"` が `orgs:` を弾き続けられます。しかし、`dispatch.py` は config の文面を送る前に書き換える必要が生じます。ローカルのサーバーモードの run では、実ファイルを `--config` で渡す代わりに、取り除いた一時ファイルを materialize しなければなりません。しかも運用者が組織情報を含む config に対して手で `bajutsu run` を実行すれば、やはり失敗します。あらゆるエントリポイントが共有する一つのローダーでキーを一度だけ取り除くほうが、単純で統一的です |
+| `serve` を別配布物（例えば `bajutsu-serve`）や別リポジトリへ分割する | いまは却下 | `db`・`oauth` の extra と、注入された `RedisLike` プロトコルが、分離をすでに依存関係のレベルで実現しています。分割は、ゲート検査がすでに解決している問題に追加コストをかけるだけになります。`serve` が独立したリリース周期を必要とするようになれば再検討します |
+| 境界画定が終わるまで `serve` の機能開発を凍結する | 却下 | `serve` のハードニングとホスティング（BE-0015、BE-0016、BE-0051）は、いずれも価値のある進行中のトラックです。境界画定は、それらと並行して段階的に進めるべきです |
 
 ## 進捗
 

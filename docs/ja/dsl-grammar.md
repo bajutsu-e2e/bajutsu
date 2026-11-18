@@ -166,7 +166,7 @@ Preconditions ::= {
       deeplink?: string,                    # 未設定はターゲットの `subject.launch.deeplink`。iOS と Android
     },
   },
-  device?: { ios?: <IosDevice> },           # 宛先がキー。動かさないプラットフォームのブロックは効果なし
+  device?: { ios?: <IosDevice>, android?: <AndroidDevice> },  # 宛先がキー。動かさないプラットフォームのブロックは効果なし
   inheritSetup?: boolean,                   # 既定 true — false で、宣言した全ターゲットの `hooks.setup` を省く。cleanup は走る
 }
 
@@ -174,6 +174,10 @@ Preconditions ::= {
 # 置き換えます。`seedPhotos` のパスはシナリオファイルを基準に解決します。重ね合わせたあとのリストが
 # 空でなければ、実効の `subject.reinstall: erase` が必要です。
 IosDevice ::= { locale?: string, seedPhotos?: list(string) }
+
+# シナリオが適用する Android のデバイスの状態です。`seedPhotos` はターゲットの
+# `runsOn.android.seedPhotos` を置き換えます。パスはシナリオファイルを基準に解決し、erase は要りません。
+AndroidDevice ::= { seedPhotos?: list(string) }
 
 # ── SystemAlertInterrupt（リアクティブなシステムアラートガードの答え）─
 # ガードは `run --no-system-alert-handling` を付けない限り ON です。シナリオやターゲットがガード全体を
@@ -224,9 +228,10 @@ Action    ::=
   | { delete:      { into: <Selector>, count: integer } }  # フィールドをフォーカスして末尾から count 文字削除（count > 0。web コンテキストは非対応）
   | { select:      { into: <Selector>, mode?: "all" } }    # フィールドをフォーカスして内容を選択（mode 既定 "all"。web コンテキストは非対応。codegen は XCUITest の同等コードを出力）
   | { copy:        {} }                                    # 選択中の内容をクリップボードにコピー（事前に select が必要。web コンテキストは非対応）
+  | { paste:       { into: <Selector> } }                  # フィールドにフォーカスし、カーソル位置にクリップボードをペースト（web コンテキストは非対応）
   | { selectOption:{ sel: <Selector>, option: string } }   # web の <select> をこの value を持つ option に設定（web 専用。iOS/Android は非対応）
   | { navigate:    string }                                # baseUrl を基準に解決した URL を開く。http/https のみ（web 専用。BE-0464）
-  | { setPickerValue:{ sel: <Selector>, value: string } }  # ホイール型のピッカーをこの value を持つ行へ動かす（iOS 専用。sel は 1 つのホイールを指す）
+  | { setPickerValue:{ sel: <Selector>, value: string } }  # ホイール型のピッカーをこの value を持つ行へ動かす（iOS と Android。sel は 1 つのホイールを指す）
   | { swipe:       <Swipe> }                          # 方向指定形式はスクロール。座標形式は素のドラッグ
   | { drag:        <Drag> }                           # 掴んだ要素（ハンドル / 仕切り / スライダー）をポインタドラッグする。スクロールではない
   | { scroll:      <Scroll> }                         # `to` が画面に入るまで（慣性なしに）スクロールし、上限で失敗する（BE-0326）
@@ -242,7 +247,8 @@ Action    ::=
   | { setLocation: { lat: number, lon: number } }
   | { push:        { payload: map(string,any) } }          # APNs ペイロード 例 {aps:{alert:"…"}}
   | { http:        { method?: string, url: string, headers?: map(string,string), body?: string, status?: integer, saveBody?: string, extractBody?: list({ var: string, path: string }) } }  # method 既定 GET; saveBody → vars.<name>; extractBody → JSON path ごとに vars.<var>（BE-0440）
-  | { totp:        { secret: string, into: { var: string }, minRemaining?: integer } }  # RFC 6238 OTP → vars.<var>（secret は base32）。minRemaining は 1〜30 で、残りがそれ未満なら次の 30 秒ウィンドウを待つ（BE-0474）
+  | { totp:        { secret: string, into?: { var: string }, name?: string, minRemaining?: integer } }  # RFC 6238 OTP → vars.<var>（secret は base32）。name は otp 向けにシークレットを登録する（into と name の少なくとも一方が必要）。minRemaining は 1〜30（into が必要）で、残りがそれ未満なら次の 30 秒ウィンドウを待つ（BE-0474）
+  | { otp:         { from: string, into: { var: string }, minRemaining?: integer } }  # totp ステップが from の名前で登録したジェネレータの現在のコード → vars.<var>。minRemaining は totp と同じ
   | { email:       { match: { to?: string, subject?: string, subjectMatches?: string }, extract: { var: string, bodyMatches: string }, timeout: number } }  # メールボックスをポーリング → vars.<var>
   | { generate:    <Generate> }                            # 実行時に計算した乱数または現在日時の値 → vars.<var>（BE-0377）
   | { eval:        <Eval> }                                # 保持している値を固定語彙の操作で変換 → vars.*（BE-0472）
@@ -252,7 +258,7 @@ Action    ::=
   | { setPrimaryTarget: { target: string } }               # 以降、省略した `target`（ステップ、`interrupts` エントリ、トップレベルの `expect`）を `target` に解決する。トップレベルの `steps` だけ（BE-0447）
   | { clearKeychain:    {} }                               # 保存済みパスワード / 証明書をリセット
   | { clearClipboard:   {} }                               # ペーストボードをクリア
-  | { setClipboard:     { text: string } }                 # ペーストボードにテキストを書き込む（simctl pbcopy）。ペースト操作の準備用
+  | { setClipboard:     { text: string } }                 # クリップボードにテキストを書き込む（simctl pbcopy、Android は BajutsuAndroid）。ペースト操作の準備用
   | { setMocks:         list(<Mock>) }                     # シナリオの途中でアプリのスタブテーブル全体を置き換える（[] はすべてのスタブを外す）。iOS/XCUITest かつネットワーク収集が有効な場合のみ（BE-0365）
   | { overrideStatusBar: { time?: string, batteryLevel?: integer, batteryState?: string, cellularBars?: integer, wifiBars?: integer } }
   | { clearStatusBar:   {} }                               # ライブのステータスバーに戻す
@@ -261,7 +267,7 @@ Action    ::=
   | { if:          <If> }                                               # 条件分岐（capture/extract 不可）
   | { forEach:     <ForEach> }                                          # ループ（capture/extract 不可）
   | { web:         <Web> }                                              # WebView の DOM コンテキストに入る（BE-0037。capture/extract 不可）
-  | { app:         <App> }                                              # テスト対象アプリが起動していないアプリを起動してUIを操作する（iOS/XCUITest限定。capture/extract 不可）
+  | { app:         <App> }                                              # テスト対象アプリが起動していないアプリを起動してUIを操作する（iOS/XCUITest と Android/adb。capture/extract 不可）
   | { manual:      { label: string, bypass?: string } }                # `record` 中に記録される人による操作の引き取り（BE-0185）。決定的な等価物がないため、`bypass` を配線しない限り実行時に明示的に失敗する
 
 Group ::= { name: string, steps: list(<Step>) }   # どちらも必須、空を許さない。コンパイル時マクロで、runの前に消える（§6.2）
@@ -353,7 +359,7 @@ Assertion ::=
   | { requestSequence: list(<RequestMatch>) }   # 1 つ以上のマッチャ。マッチしたやり取りの順序付き集合
   | { responseSchema: <ResponseSchemaMatch> }   # 取得したレスポンスボディを JSON Schema で検証する（BE-0048）
   | { visual:   <VisualMatch> }
-  | { clipboard: <ClipboardMatch> }   # デバイスのペーストボードの読み戻し（simctl pbpaste）
+  | { clipboard: <ClipboardMatch> }   # デバイスのクリップボードの読み戻し（simctl pbpaste、Android は BajutsuAndroid）
   | { attribute: <AttributeMatch> }   # 1 つの要素の HTML 属性を必要なときに読み取る（web のみ。BE-0466）
   | { golden:   <GoldenMatch> }       # 実行中の要素ツリーを記録済みの golden ファイルと比較する（BE-0006）
 

@@ -107,6 +107,33 @@ def test_worker_lease_embeds_baseline_get_urls_under_the_orgs_prefix(
     }
 
 
+def test_a_device_cloud_lease_of_a_run_intent_job_signs_no_baselines(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # The worker resolves the intent into a batch, which drops the baselines (BE-0484), so the
+    # listing would be wasted work and a store error could fail the lease for nothing.
+    state, repo = _state_with_db(serve_engine, tmp_path)
+    store = _FakeStore()
+    store.put_bytes("o1/baselines/home.png", b"\x89PNG")
+    state.object_store = store
+    intent = {
+        "scenario": "a.yaml",
+        "target": "demo",
+        "config": "bajutsu.config.yaml",
+        "platform": "android",
+        "app_path": "app.apk",
+    }
+    spec = {"job_id": "j1", "intent": intent, "materialize_baselines": True}
+    repo.enqueue_job("j1", "o1", spec, ["environment:devicefarm", "job:run-intent"])
+    repo.enqueue_job("j2", "o1", {**spec, "job_id": "j2"}, ["job:run-intent"])
+
+    cloud, _ = ops.worker_lease(state, "w1", ["environment:devicefarm", "job:run-intent"])
+    local, _ = ops.worker_lease(state, "w2", ["platform:ios", "job:run-intent"])
+
+    assert "baseline_urls" not in cloud
+    assert set(local["baseline_urls"]) == {"home.png"}
+
+
 def test_worker_lease_omits_baseline_urls_when_not_materializing(
     serve_engine: Callable[..., Engine], tmp_path: Path
 ) -> None:

@@ -16,10 +16,12 @@
 ## Introduction
 
 A sibling proposal (`roadmaps/proposals/` under the slug `cli-command-coverage`) covers
-`doctor.py` / `record.py` / `run.py`, the three CLI command modules the 2026-07-02 codebase
-report singled out. It does not cover the rest of `bajutsu/cli/commands/` — seven more modules sit
-between 17.6% and 71.9% branch coverage, several of them worse than any module that item touches.
-This item adds unit tests for those seven modules, then raises the `make check` coverage floor
+`doctor.py` / `record.py` / `run.py`. These are the three CLI command modules that the 2026-07-02
+codebase report singled out. The sibling proposal does not cover the rest of
+`bajutsu/cli/commands/`. Seven more modules sit between 17.6% and 71.9% branch coverage, and
+several of them are worse than any module the sibling proposal touches.
+
+This item adds unit tests for those seven modules. It then raises the `make check` coverage floor
 (`--cov-fail-under` in the `Makefile`) to lock in both gains.
 
 ## Motivation
@@ -37,74 +39,85 @@ three modules the sibling proposal already targets, measured branch coverage is:
 | `bajutsu/cli/commands/schema.py` | 71.4% | 10, 12 (the whole `schema()` body — never invoked in tests) |
 | `bajutsu/cli/commands/audit.py` | 71.9% | 68–69, 79–102, 134, 167–205 (usage-error branches and `_history_audit`) |
 
-None of this needs a Simulator: it is option validation, error-message branches, and small pure
-helpers (`_post_json`, `_object_store`, `_write_console_log` in `worker.py`) — exactly the kind of
-logic the existing fast (non-E2E) suite already targets elsewhere, and exactly the pattern the
-sibling `cli-command-coverage` proposal already uses for `doctor.py` / `record.py` / `run.py`. Once
-both proposals land, the branch-coverage floor trails reality by more than the 1.8 points measured
-today (currently 87% floor vs. 88.8% measured); ratcheting it up front-loads that slack into an
-enforced regression guard instead of leaving it as unused margin a real regression could hide in.
+None of this needs a Simulator. The missing branches are option validation, error-message
+branches, and small pure helpers (`_post_json`, `_object_store`, and `_write_console_log` in
+`worker.py`). The existing fast (non-E2E) suite already targets this kind of logic elsewhere. The
+sibling `cli-command-coverage` proposal uses the same pattern for `doctor.py` / `record.py` /
+`run.py`.
+
+Once both proposals land, the branch-coverage floor trails reality by more than the 1.8 points
+measured today (currently an 87% floor against 88.8% measured). Ratcheting the floor up front-loads
+that slack into an enforced regression guard. Otherwise the slack stays as unused margin where a
+real regression could hide.
 
 ## Detailed design
 
-Work breaks down by module, then a final floor-raise once all test additions land:
+Work breaks down by module. A final floor-raise follows once all test additions land.
 
-- **`lint.py`**: `CliRunner` tests for `lint`'s branches — file not found (exit 1), an unreadable
-  file (mock `Path.read_text` to raise `OSError`, exit 1), a scenario with lint errors (exit 1,
-  errors echoed), a clean scenario with no `from:` provenance advisory, and a clean scenario that
-  does produce one (BE-0044's `provenance_coverage`).
-- **`worker.py`**: unit-test the three isolated helpers directly — `_post_json` (a 200 response, a
-  non-2xx `HTTPError` response, both with and without a body), `_object_store` (the `ImportError`
-  branch returns `None`; the success branch returns the constructed store), and
-  `_write_console_log` (no run dir → no-op, empty buffered lines → no-op, writes the joined
-  non-`None` lines to `console.log`). For the `worker()` polling loop itself, drive one iteration
-  through `_post_json`/`execute_job_spec` mocks with a `side_effect` that raises after the first
-  lease+result round trip, asserting the lease/execute/upload/post-result sequence runs once
-  without needing a real control plane.
-- **`mcp.py`**: `CliRunner` tests for an unsupported `--transport` (exit 2, message names the valid
-  choices), the `fastmcp`-not-installed path (mock the `bajutsu.mcp` import to raise `ImportError`,
-  exit 2), and the success path for both `stdio` and `sse` (mock `create_server`/`server.run` so
-  the command returns instead of blocking).
-- **`trace.py`**: `CliRunner` tests for `trace`'s "no run found" branch (missing `run_dir`, and a
-  `runs/` root with no matching run) and `_explain`'s error branches (a missing scenario path, and
-  a scenario that fails to load via `load_expanded_scenarios`, e.g. invalid YAML).
-- **`crawl.py`**: `CliRunner` tests for the option-validation and dispatch branches that don't need
-  a live actuator — an unknown `--agent` (exit 2), an unavailable backend/actuator (mock
-  `select_actuator` to raise, exit 2), and a missing AI credential when `--dismiss-alerts` or the
-  guide needs one (exit 2) — against the `fake` backend, mirroring the pattern the sibling proposal
-  uses for `run.py`'s option surface.
-- **`schema.py`**: one `CliRunner` test invoking `bajutsu schema` and asserting the output parses as
-  JSON and matches `scenario_json_schema()`'s output — the whole command body is currently
-  unexercised.
-- **`audit.py`**: `CliRunner` tests for the usage-error branches (`--history` combined with
-  `--repeat`, `--history` combined with a positional `scenario`, no `scenario` and no `--history`)
-  and unit tests for `_history_audit`'s grouping-by-`provenance.scenarioHash` and flaky-verdict
-  classification logic against a small synthetic runs directory.
-- **Raise `--cov-fail-under` in the `Makefile`.** Once the above lands (alongside the sibling
-  `cli-command-coverage` proposal, whichever merges last), run `make test` and read the actual
-  branch-coverage percentage from the pytest-cov summary; set the new floor to that value, rounded
-  down to avoid a gate that fails on ordinary run-to-run noise. Update the
-  `--cov-fail-under=87` line at `Makefile:69` accordingly, then re-run `make check` to confirm the
-  new floor is both accurate and stable.
+- **`lint.py`**: `CliRunner` tests for `lint`'s branches:
+  - file not found (exit 1);
+  - an unreadable file (mock `Path.read_text` to raise `OSError`, exit 1);
+  - a scenario with lint errors (exit 1, errors echoed);
+  - a clean scenario with no `from:` provenance advisory;
+  - a clean scenario that does produce the advisory (BE-0044's `provenance_coverage`).
+- **`worker.py`**: unit-test the three isolated helpers directly.
+  - `_post_json`: a 200 response and a non-2xx `HTTPError` response, each with and without a body.
+  - `_object_store`: the `ImportError` branch returns `None`, and the success branch returns the
+    constructed store.
+  - `_write_console_log`: no run dir is a no-op, empty buffered lines are a no-op, and otherwise it
+    writes the joined non-`None` lines to `console.log`.
+
+  For the `worker()` polling loop itself, drive one iteration through `_post_json` /
+  `execute_job_spec` mocks. A `side_effect` raises after the first lease-and-result round trip. The
+  test asserts that the lease / execute / upload / post-result sequence runs once, without a real
+  control plane.
+- **`mcp.py`**: `CliRunner` tests for three paths:
+  - an unsupported `--transport` (exit 2, message names the valid choices);
+  - the `fastmcp`-not-installed path (mock the `bajutsu.mcp` import to raise `ImportError`, exit 2);
+  - the success path for both `stdio` and `sse` (mock `create_server` / `server.run` so the command
+    returns instead of blocking).
+- **`trace.py`**: `CliRunner` tests for `trace`'s "no run found" branch (a missing `run_dir`, and a
+  `runs/` root with no matching run). Further tests cover `_explain`'s error branches: a missing
+  scenario path, and a scenario that fails to load via `load_expanded_scenarios` (for example,
+  invalid YAML).
+- **`crawl.py`**: `CliRunner` tests for the option-validation and dispatch branches that need no
+  live actuator, run against the `fake` backend. This mirrors the pattern the sibling proposal uses
+  for `run.py`'s option surface. The branches are:
+  - an unknown `--agent` (exit 2);
+  - an unavailable backend or actuator (mock `select_actuator` to raise, exit 2);
+  - a missing AI credential when `--dismiss-alerts` or the guide needs one (exit 2).
+- **`schema.py`**: one `CliRunner` test that invokes `bajutsu schema`. The test asserts that the
+  output parses as JSON and matches the output of `scenario_json_schema()`. No test currently
+  exercises the whole command body.
+- **`audit.py`**: `CliRunner` tests for the usage-error branches: `--history` combined with
+  `--repeat`, `--history` combined with a positional `scenario`, and neither `scenario` nor
+  `--history`. Unit tests cover `_history_audit`'s grouping by `provenance.scenarioHash` and its
+  flaky-verdict classification logic, against a small synthetic runs directory.
+- **Raise `--cov-fail-under` in the `Makefile`.** Run `make test` once the work above lands,
+  alongside the sibling `cli-command-coverage` proposal (whichever merges last). Read the actual
+  branch-coverage percentage from the pytest-cov summary. Set the new floor to that value rounded
+  down, so the gate does not fail on ordinary run-to-run noise. Update the `--cov-fail-under=87`
+  line at `Makefile:69` accordingly. Then re-run `make check` to confirm the new floor is both
+  accurate and stable.
 
 ## Alternatives considered
 
-- **Ratchet the floor first, then backfill tests to satisfy it.** Rejected for the same reason the
-  sibling `cli-command-coverage` proposal rejects it: ratcheting before the tests exist either
-  blocks unrelated work or forces rushed, low-value tests written just to hit a number.
-- **Fold this into the `cli-command-coverage` proposal instead of a separate item.** Rejected: that
+- **Ratchet the floor first, then backfill tests to satisfy it.** Rejected, for the same reason the
+  sibling `cli-command-coverage` proposal rejects it. Ratcheting before the tests exist either
+  blocks unrelated work or forces rushed, low-value tests written merely to hit a number.
+- **Fold this into the `cli-command-coverage` proposal instead of a separate item.** Rejected. That
   proposal's scope (`doctor.py` / `record.py` / `run.py`) already matches the original codebase
-  report's finding exactly; broadening it to seven more unrelated modules would make its own
-  Detailed design MECE breakdown harder to review as one unit. Keeping them separate, non-
-  overlapping proposals lets either land independently, with the floor-raise sequenced after both.
-- **Leave the floor at 87% and skip the extra CLI modules.** Rejected: this is the status quo the
-  original finding identifies as the problem — unused slack, and (as discovered while scoping this
-  item) `lint.py` at 17.6% and `worker.py` at 23.3% are worse than any of the three modules the
-  original report named.
-- **Set the new floor exactly to the measured percentage.** Rejected: pytest-cov's branch-coverage
-  percentage can shift by a fraction of a point between otherwise-identical runs (e.g. platform
-  differences in which branches a conditional import takes); rounding down leaves headroom so the
-  gate doesn't flap on noise.
+  report's finding exactly. Broadening it to seven more unrelated modules would make its own
+  Detailed design MECE breakdown harder to review as one unit. With separate, non-overlapping
+  proposals, either can land independently, and the floor-raise is sequenced after both.
+- **Leave the floor at 87% and skip the extra CLI modules.** Rejected. This is the status quo that
+  the original finding identifies as the problem: unused slack. Scoping this item also showed that
+  `lint.py` at 17.6% and `worker.py` at 23.3% are worse than any of the three modules the original
+  report named.
+- **Set the new floor exactly to the measured percentage.** Rejected. pytest-cov's branch-coverage
+  percentage can shift by a fraction of a point between otherwise-identical runs. One cause is a
+  platform difference in which branches a conditional import takes. Rounding down leaves headroom,
+  so the gate does not flap on noise.
 
 ## Progress
 

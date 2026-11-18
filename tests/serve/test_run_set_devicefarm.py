@@ -25,6 +25,7 @@ from conftest import FakeObjectStore
 from bajutsu import serve as srv
 from bajutsu.serve import batch_provider as bp
 from bajutsu.serve.operations.dispatch import start_run_set
+from bajutsu.serve.server.worker_job import _batch_from_spec, job_spec, resolve_run_intent
 from bajutsu.serve.state import Job, ServeState
 
 
@@ -97,28 +98,35 @@ class _FakeTransfer:
         return _zip_bytes({f"runs/{run_id}/manifest.json": manifest})
 
 
-class _RunningExecutor:
-    """Runs each dispatched job inline through `run_job`, so a fan-out drives the real provider seam
-    against the fake synchronously — no thread, no cloud. The finished jobs are captured so the test
-    reads their verdicts directly rather than reaching into the registry's internals."""
-
-    def __init__(self) -> None:
-        self.jobs: list[Job] = []
-
-    def dispatch(self, state: ServeState, job: Job) -> None:
-        srv.run_job(state, job)
-        self.jobs.append(job)
+def _leased_by_device_farm(job: Job) -> Job:
+    """*job* as a Device Farm worker runs it: its run intent turned into that provider's batch."""
+    job.batch = _batch_from_spec(resolve_run_intent(job_spec(job), "devicefarm")["batch"])
+    return job
 
 
 class _RecordingExecutor:
-    """Captures dispatched jobs without running them, so they stay in
-    flight (mirrors test_run_set); the test runs the captured jobs afterwards."""
+    """Captures dispatched jobs without running them; a fan-out queues its group and hands it none
+    (BE-0484)."""
 
     def __init__(self) -> None:
         self.jobs: list[Job] = []
 
     def dispatch(self, state: ServeState, job: Job) -> None:
         self.jobs.append(job)
+
+
+def _fanned_out(state: ServeState) -> list[Job]:
+    """The jobs a fan-out registered, in id order."""
+    return sorted(state.jobs.values(), key=lambda j: int(j.id))
+
+
+def _run_fanned_out(state: ServeState) -> list[Job]:
+    """Run each fanned-out job inline through `run_job`, as a Device Farm worker would, so the fan-out
+    drives the real provider seam against the fake synchronously — no thread, no cloud."""
+    jobs = _fanned_out(state)
+    for job in jobs:
+        srv.run_job(state, _leased_by_device_farm(job))
+    return jobs
 
 
 def _android_batch_project(tmp_path: Path, *, scenarios: list[str]) -> tuple[Path, Path]:
@@ -177,7 +185,7 @@ def test_relative_app_path_travels_as_a_logical_reference(tmp_path: Path) -> Non
         encoding="utf-8",
     )
     client, _ = _register_devicefarm(manifest_ok=True)
-    executor = _RunningExecutor()
+    executor = _RecordingExecutor()
     state = ServeState(
         scenarios_dir=scn_dir,
         config=cfg,
@@ -188,12 +196,12 @@ def test_relative_app_path_travels_as_a_logical_reference(tmp_path: Path) -> Non
         object_store=FakeObjectStore(),
     )
 
-    _payload, status = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
+    _payload, status = start_run_set(state, {"target": "demo"})
 
     assert status == 200
-    (job,) = executor.jobs
-    assert job.batch is not None
-    assert job.batch.app_path == "app.apk"
+    (job,) = _run_fanned_out(state)
+    assert job.intent is not None
+    assert job.intent.app_path == "app.apk"
     assert client.schedule_calls == 1 and job.view()["ok"] is True
 
 
@@ -229,16 +237,19 @@ def test_request_paths_are_relative_to_the_config_directory(tmp_path: Path) -> N
         object_store=FakeObjectStore(),
     )
 
-    _payload, status = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
+    _payload, status = start_run_set(state, {"target": "demo"})
 
     assert status == 200
-    (job,) = executor.jobs
-    assert job.batch is not None
-    assert job.batch.config == "bajutsu.config.yaml"
-    assert job.batch.scenario == "scenarios/one.yaml"
+    (job,) = _fanned_out(state)
+    assert job.intent is not None
+    assert job.intent.config == "bajutsu.config.yaml"
+    assert job.intent.scenario == "scenarios/one.yaml"
     # The config's directory travels as the job's bundle, which is what a worker packages.
     assert job.bundle is not None
-    assert job.capabilities == ["environment:devicefarm"]
+    assert [c for c in job.capabilities if not c.startswith(("cap:", "setting:"))] == [
+        "job:run-intent",
+        "platform:android",
+    ]
 
 
 def test_a_scenario_outside_the_config_directory_is_refused(tmp_path: Path) -> None:
@@ -270,11 +281,11 @@ def test_a_scenario_outside_the_config_directory_is_refused(tmp_path: Path) -> N
         object_store=FakeObjectStore(),
     )
 
-    payload, status = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
+    payload, status = start_run_set(state, {"target": "demo"})
 
     assert status == 400
     assert "not under the config's directory" in payload["error"]
-    assert executor.jobs == []
+    assert executor.jobs == [] and state.jobs == {}
 
 
 def test_fan_out_runs_every_scenario_through_the_device_farm_fake(tmp_path: Path) -> None:
@@ -286,7 +297,7 @@ def test_fan_out_runs_every_scenario_through_the_device_farm_fake(tmp_path: Path
         tmp_path, scenarios=["one.yaml", "two.yaml", "three.yaml"]
     )
     client, _ = _register_devicefarm(manifest_ok=True)
-    executor = _RunningExecutor()
+    executor = _RecordingExecutor()
     state = ServeState(
         scenarios_dir=scn_dir,
         config=cfg,
@@ -297,16 +308,17 @@ def test_fan_out_runs_every_scenario_through_the_device_farm_fake(tmp_path: Path
         object_store=FakeObjectStore(),
     )
 
-    payload, status = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
+    payload, status = start_run_set(state, {"target": "demo"})
 
     assert status == 200
     assert len(payload["jobIds"]) == 3
+    jobs = _run_fanned_out(state)
     assert client.schedule_calls == 3  # one Device Farm run scheduled per scenario
     # Each job ran through the fake to a PASS verdict and landed a distinct run under runs_dir.
     landed = sorted(p.parent.name for p in (tmp_path / "runs").glob("*/manifest.json"))
     assert landed == ["20260101-1", "20260101-2", "20260101-3"]
-    assert len(executor.jobs) == 3
-    for job in executor.jobs:
+    assert len(jobs) == 3
+    for job in jobs:
         view = job.view()
         assert view["status"] == "done" and view["exitCode"] == 0 and view["ok"] is True
 
@@ -317,7 +329,7 @@ def test_fan_out_surfaces_a_failing_manifest_from_the_fake(tmp_path: Path) -> No
     # manifest.json, never from Device Farm's own PASSED/FAILED classification (prime directive 1).
     scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml"])
     _register_devicefarm(manifest_ok=False)
-    executor = _RunningExecutor()
+    executor = _RecordingExecutor()
     state = ServeState(
         scenarios_dir=scn_dir,
         config=cfg,
@@ -328,11 +340,11 @@ def test_fan_out_surfaces_a_failing_manifest_from_the_fake(tmp_path: Path) -> No
         object_store=FakeObjectStore(),
     )
 
-    payload, status = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
+    payload, status = start_run_set(state, {"target": "demo"})
 
     assert status == 200
     assert len(payload["jobIds"]) == 1
-    (job,) = executor.jobs
+    (job,) = _run_fanned_out(state)
     view = job.view()
     assert view["status"] == "done" and view["exitCode"] == 1 and view["ok"] is False
 
@@ -356,18 +368,19 @@ def test_every_scenario_of_a_faked_fan_out_lands(tmp_path: Path) -> None:
         object_store=FakeObjectStore(),
     )
 
-    payload, status = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
+    payload, status = start_run_set(state, {"target": "demo"})
 
     assert status == 200
     assert len(payload["jobIds"]) == 3
-    assert len(executor.jobs) == 3
+    jobs = _fanned_out(state)
+    assert len(jobs) == 3 and executor.jobs == []
 
     # Now run the dispatched jobs through the fake: each schedules its own run and lands a verdict.
-    for job in executor.jobs:
-        srv.run_job(state, job)
+    for job in jobs:
+        srv.run_job(state, _leased_by_device_farm(job))
     assert client.schedule_calls == 3
     landed = sorted(p.parent.name for p in (tmp_path / "runs").glob("*/manifest.json"))
     assert landed == ["20260101-1", "20260101-2", "20260101-3"]
-    for job in executor.jobs:
+    for job in jobs:
         view = job.view()
         assert view["status"] == "done" and view["exitCode"] == 0 and view["ok"] is True

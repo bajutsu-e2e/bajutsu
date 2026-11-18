@@ -45,6 +45,7 @@ extract の修飾子を持ちません。定義は `bajutsu/scenario/models/step
 
 - `subject.reinstall`（`overwrite`、`clean`、デバイス全体を wipe する `erase` のいずれか）と `subject.launch.env` / `.args` / `.deeplink` です。
 - `device.ios.locale` / `.seedPhotos` です。iOS のデバイスの状態で、ターゲットの `runsOn.ios` の値を置き換えます。
+- `device.android.seedPhotos` です。Android のデバイスの状態で、ターゲットの `runsOn.android.seedPhotos` を置き換えます。
 - `inheritSetup` です。ターゲットの `hooks.setup` をシナリオの前に走らせるかどうかを決めます。
 
 システムアラートと TipKit への対処は、ここではなくシナリオ自身の `interrupts` に書きます（BE-0473）。

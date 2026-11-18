@@ -15,52 +15,54 @@
 
 ## Introduction
 
-Give the `serve` Web UI's YAML scenario editor inline validation: surface lint findings and
-JSON-Schema checks *as you edit*, instead of only failing on save. Deterministic and AI-free, it
-turns the raw textarea into a guided editor — and it can ship on today's textarea, ahead of and
-complementary to the richer structured editor
-([BE-0013](../BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md)).
+This item gives the `serve` Web UI's YAML scenario editor inline validation. It surfaces lint findings
+and JSON-Schema checks *as the author edits*, instead of failing on save alone. The validation is
+deterministic and AI-free. It turns the raw textarea into a guided editor. It can ship on today's
+textarea, ahead of the richer structured editor
+([BE-0013](../BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md)) and complementary to it.
 
 ## Motivation
 
-The serve editor today is a raw YAML textarea. It validates only on save — `load_scenario_file`
-raises if the YAML is invalid, so a malformed scenario cannot be written, but the author gets no
-inline feedback about *what* is wrong or *where*, and none of the lint-level checks the CLI already
-runs. Bajutsu has both halves: `bajutsu lint` validates a scenario without running it
-(`bajutsu/lint.py`), and `bajutsu schema` emits the scenario JSON Schema for editor integration
-(`lint.scenario_json_schema`). Neither reaches the browser editor. So an author hand-editing in the
-UI flies blind until they hit Save and get a single exception, when the CLI could have shown the
-exact line and rule. Surfacing lint + schema where the editing happens is the cheapest,
-highest-frequency authoring win.
+The serve editor today is a raw YAML textarea. It validates on save alone. `load_scenario_file` raises
+if the YAML is invalid, so a malformed scenario cannot be written. But the author gets no inline
+feedback about *what* is wrong or *where*, and none of the lint-level checks that the CLI already runs.
+
+Bajutsu has both halves of the answer. `bajutsu lint` validates a scenario without running it
+(`bajutsu/lint.py`). `bajutsu schema` emits the scenario JSON Schema for editor integration
+(`lint.scenario_json_schema`). Neither reaches the browser editor. An author who hand-edits in the UI
+flies blind until Save, and then gets a single exception, when the CLI could have shown the exact line
+and rule. Surfacing lint and schema where the editing happens is the cheapest, highest-frequency
+authoring win.
 
 ## Detailed design
 
-Tier-1, deterministic; the UI only shells out to the existing validators.
+The feature is Tier-1 and deterministic. The UI shells out to the existing validators and does nothing
+more.
 
-- **Validate as you edit (debounced) and on demand.** Lint findings come from a `POST /api/lint`
-  (`{yaml}`) that runs `bajutsu/lint.py` and returns line-anchored diagnostics; JSON-Schema
-  validation is driven by the scenario schema (`lint.scenario_json_schema`, the same output
-  `bajutsu schema` prints), provided to the client. Diagnostics render inline — gutter markers and
-  a problems list — anchored to lines.
-- **Schema-driven assistance.** The same JSON Schema can power lightweight completion / hover for
-  the scenario grammar, the very schema editors consume outside the UI.
-- **Deterministic and AI-free.** Lint and schema are static validation; nothing runs a device or a
-  model. Saving keeps its existing `load_scenario_file` guard — inline validation makes the failure
-  visible early; it does not replace the save-time check.
-- **App-agnostic.** Validation is over the scenario grammar, not any app.
+- **Validate as you edit (debounced) and on demand.** Lint findings come from `POST /api/lint`
+  (`{yaml}`), which runs `bajutsu/lint.py` and returns line-anchored diagnostics. The scenario schema
+  (`lint.scenario_json_schema`, the same output that `bajutsu schema` prints) drives JSON-Schema
+  validation, and the server provides it to the client. Diagnostics render inline, as gutter markers and
+  a problems list anchored to lines.
+- **Schema-driven assistance.** The same JSON Schema can power lightweight completion and hover for the
+  scenario grammar. Editors outside the UI consume this very schema.
+- **Deterministic and AI-free.** Lint and schema are static validation. Nothing runs a device or a
+  model. Saving keeps its existing `load_scenario_file` guard. Inline validation makes the failure
+  visible early and does not replace the save-time check.
+- **App-agnostic.** Validation runs over the scenario grammar, not over any app.
 
 ## Alternatives considered
 
-* **Keep validate-on-save only (status quo).** Rejected: a single save-time exception with no
-  location is the poorest possible feedback for an editor; the line-anchored lint already exists.
+* **Keep validate-on-save alone (status quo).** Rejected. A single save-time exception with no
+  location is the poorest possible feedback for an editor, and the line-anchored lint already exists.
 * **Wait for the structured GUI editor
   ([BE-0013](../BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md)) to carry
-  validation.** Rejected as the gating choice: BE-0013 (element picker + structured fields +
-  `doctor` score) is a larger build; inline lint / schema is separable, works on today's textarea,
-  and should not wait behind it. The two are complementary — this is the validation layer, BE-0013
-  is the structured-editing layer.
-* **Re-implement validation in client-side JS.** Rejected: the lint rules and the schema are defined
-  once in Python; reusing them server-side keeps a single source of truth and avoids drift.
+  validation.** Rejected as the gating choice. BE-0013 (element picker, structured fields, and `doctor`
+  score) is a larger build. Inline lint and schema are separable and work on today's textarea, so they
+  should not wait behind it. The two items are complementary: this one is the validation layer, and
+  BE-0013 is the structured-editing layer.
+* **Re-implement validation in client-side JS.** Rejected. The lint rules and the schema are defined
+  once in Python. Reusing them server-side keeps a single source of truth and avoids drift.
 
 ## Progress
 
@@ -75,10 +77,12 @@ Tier-1, deterministic; the UI only shells out to the existing validators.
 - [x] Render diagnostics inline (gutter markers + problems list), debounced as you edit and on demand
 - [x] Add schema-driven completion / hover for the scenario grammar
 
-- [#673](https://github.com/bajutsu-e2e/bajutsu/pull/673) — Ships the whole item: `lint_diagnostics` (line-anchored findings; parse errors carry
-  the exact mark, validation errors resolve their `loc` against the YAML node tree best-effort), the
-  `POST /api/lint` + `GET /api/schema` routes on both the stdlib handler and the FastAPI control
-  plane, and the Author-editor gutter / problems list / completion / hover.
+- [#673](https://github.com/bajutsu-e2e/bajutsu/pull/673) ships the whole item:
+  - `lint_diagnostics` returns line-anchored findings. Parse errors carry the exact mark, and
+    validation errors resolve their `loc` against the YAML node tree on a best-effort basis.
+  - The `POST /api/lint` and `GET /api/schema` routes exist on both the stdlib handler and the FastAPI
+    control plane.
+  - The Author editor gains the gutter, the problems list, completion, and hover.
 
 ## References
 

@@ -35,6 +35,7 @@ from bajutsu.codegen.common import (
     permissions_setup_lines,
     render_test_file,
     sleep_comment,
+    totp_todo,
 )
 from bajutsu.common.assertions import request_label
 from bajutsu.common.drivers import base
@@ -314,6 +315,17 @@ def _emit_step(step: Step) -> list[str]:  # noqa: C901, PLR0911, PLR0912
         return [f"{target}.tap()", f'{target}.typeKey("a", modifierFlags: .command)']
     if step.copy_ is not None:
         return ['app.typeKey("c", modifierFlags: .command)']
+    if step.paste is not None:
+        # The edit menu's Paste, as the driver taps it: Cmd+V pastes nothing from another process's
+        # clipboard. A tap on an already-focused field raises the menu itself, so long-press only when
+        # it has not (a second tap reads as a double-tap on a UIKit field). The label is the English
+        # one; an app localized elsewhere renders its own.
+        target = _element(step.paste.into.as_selector())
+        paste_item = 'app.staticTexts["Paste"]'
+        raise_menu = f"if !{paste_item}.waitForExistence(timeout: 1.0) {{ {target}.press(forDuration: 0.6) }}"
+        # The driver waits for the menu's item too; `tap()` itself carries no existence wait.
+        await_item = f'XCTAssertTrue({paste_item}.waitForExistence(timeout: 5.0), "wait for the edit menu Paste")'
+        return [f"{target}.tap()", raise_menu, await_item, f"{paste_item}.tap()"]
     if step.sleep is not None:
         return [
             sleep_comment(step.sleep.reason),
@@ -389,9 +401,9 @@ def _emit_step(step: Step) -> list[str]:  # noqa: C901, PLR0911, PLR0912
         ]
     if step.push is not None:
         return ["// TODO: push — simctl push (APNs payload); not generated"]
-    if step.totp is not None:
-        # A locally-computed RFC 6238 OTP into vars.*; no XCUITest equivalent (BE-0046).
-        return [f"// TODO: totp(into: {step.totp.into.var}) — RFC 6238 OTP; not generated"]
+    if (todo := totp_todo(step)) is not None:
+        # A runner-side RFC 6238 OTP (`totp` / `otp`); no XCUITest equivalent (BE-0046).
+        return [todo]
     if step.email is not None:
         # Polls an HTTP mailbox in the bajutsu runner; no XCUITest equivalent (BE-0046).
         return [

@@ -210,6 +210,20 @@ def test_the_lease_signs_the_stored_application(tmp_path: Path) -> None:
     assert "batch_run_arn" not in payload  # nothing scheduled yet
 
 
+def test_a_re_leased_run_intent_job_learns_its_stored_run(tmp_path: Path) -> None:
+    # A `run-set` job carries a run intent rather than a batch (BE-0484), and still resumes its run.
+    state, repo = _db_state(tmp_path)
+    intent = {k: v for k, v in _batch().items() if k != "provider"}
+    repo.enqueue_job("j1", "acme", {"job_id": "j1", "intent": intent})
+    ops.worker_lease(state, "w1")
+    assert repo.save_batch_run_arn("j1", "arn:run/1", worker_id="w1")
+    assert repo.reclaim_expired_leases(timedelta(0)) == ["j1"]
+
+    payload, _code = ops.worker_lease(state, "w2")
+
+    assert payload["batch_run_arn"] == "arn:run/1"
+
+
 def test_a_lease_signs_no_application_for_a_malformed_sha(tmp_path: Path) -> None:
     state, repo = _db_state(tmp_path)
     state.object_store = FakeObjectStore()
@@ -240,7 +254,7 @@ def test_a_fan_out_that_cannot_deliver_its_application_is_refused(
     state = _storage_state(tmp_path, executor, app_path=app_path, store=store)
     (tmp_path / "app.apk").write_bytes(b"outside the config's directory")
 
-    payload, status = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
+    payload, status = start_run_set(state, {"target": "demo"})
 
     assert status == 400 and words in payload["error"]
     assert executor.jobs == []
@@ -598,10 +612,10 @@ def test_the_stored_application_is_the_snapshot_that_was_hashed(tmp_path: Path) 
 
     executor = _Recording()
     state = _storage_state(tmp_path, executor)
-    _payload, status = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
+    _payload, status = start_run_set(state, {"target": "demo"})
 
     assert status == 200
-    (job,) = executor.jobs
+    (job,) = state.jobs.values()
     objects = state.object_store.objects  # type: ignore[union-attr]
     (stored,) = objects.values()
     assert hashlib.sha256(stored).hexdigest() == job.batch_app

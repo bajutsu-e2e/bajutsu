@@ -208,10 +208,18 @@ class XcuitestLiveDriver:
     def capabilities(self) -> set[str]:
         return set(self.CAPABILITIES)
 
-    def driver_interval(self, kind: str, path: Path) -> intervals.Interval | None:  # noqa: ARG002  # Driver shape
+    def driver_interval(
+        self,
+        kind: str,
+        path: Path,
+        *,
+        subsystem: str | None = None,
+        json_path: Path | None = None,
+    ) -> intervals.Interval | None:
         # Returning None for every kind routes the evidence FileSink through the driver path rather
         # than the simctl path (which calls `simctl.validated_udid(endpoint)` and crashes on a URL).
         # In-driver recording over WebDriver actions is Slice B (BE-0238).
+        del kind, path, subsystem, json_path  # Driver shape
         return None
 
     # --- Slice B: input and gestures, mapped onto Appium's XCUITest `mobile:` commands ---
@@ -329,6 +337,12 @@ class XcuitestLiveDriver:
         raise base.UnsupportedAction(
             "copy is not reachable over the live Appium / WebDriver route (BE-0238); it has no "
             "first-class XCUITest command"
+        )
+
+    def paste(self, sel: base.Selector) -> None:  # noqa: ARG002  # Driver shape
+        raise base.UnsupportedAction(
+            "paste is not reachable over the live Appium / WebDriver route (BE-0238); the local "
+            "driver's edit-menu paste is not wired onto this route"
         )
 
     def goto(self, url: str) -> None:  # noqa: ARG002  # Driver shape

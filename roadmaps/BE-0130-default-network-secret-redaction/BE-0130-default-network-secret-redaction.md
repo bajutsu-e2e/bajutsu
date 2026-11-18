@@ -16,74 +16,80 @@
 ## Introduction
 
 Network-evidence redaction (`redact:`) exists but is entirely opt-in, and header-name matching is
-exact rather than case-insensitive. This item makes a standard set of sensitive headers redacted
-by default, and fixes header matching so `cookie` also masks `set-cookie`.
+exact rather than case-insensitive. This item makes a standard set of sensitive headers redacted by
+default. It also fixes header matching, so that `cookie` masks `set-cookie` as well.
 
 ## Motivation
 
-`Redact` (`bajutsu/scenario/models/evidence.py:47`) defaults every list — `labels`, `headers`,
-`fields` — to empty, so a scenario that never mentions `redact:` gets a `Redactor` whose `active`
-property is `False`. `_write_network` (`bajutsu/runner/pipeline.py:49`) still calls
-`redactor.redact_exchange` unconditionally, but with an inactive redactor that call is a no-op
-(`bajutsu/redaction.py:88`, the `if not self.active: return exchange` guard): every captured
-exchange — headers, cookies, and bodies verbatim — is written as-is to
+`Redact` (`bajutsu/scenario/models/evidence.py:47`) defaults every list (`labels`, `headers`,
+`fields`) to empty. A scenario that never mentions `redact:` therefore gets a `Redactor` whose
+`active` property is `False`. `_write_network` (`bajutsu/runner/pipeline.py:49`) still calls
+`redactor.redact_exchange` unconditionally. With an inactive redactor, that call is a no-op (the
+`if not self.active: return exchange` guard at `bajutsu/redaction.py:88`).
+
+As a result, every captured exchange (headers, cookies, and bodies verbatim) is written as-is to
 `runs/<id>/<sid>/network.json`. `Authorization` tokens, session `Cookie`/`Set-Cookie` values, and
-any secret embedded in a request/response body persist on disk in every run's evidence unless the
-author remembered to opt in.
+any secret embedded in a request or response body persist on disk in every run's evidence, unless
+the author remembered to opt in.
 
-This is a silent default-open posture in a tool whose evidence is routinely shared (a run's report
-is designed to be inspected, attached to a bug report, or sent through `record`/`enrich`/`triage`
-to the configured AI provider — see BE-0047, AI data sovereignty). A reviewer reading `network.json`
-after a failed run should not be handed a live bearer token by default.
+This is a silent default-open posture in a tool whose evidence is routinely shared. A run's report is
+designed to be inspected and attached to a bug report. It can also be sent through
+`record`/`enrich`/`triage` to the configured AI provider (see BE-0047, AI data sovereignty). A
+reviewer reading `network.json` after a failed run should not be handed a live bearer token by
+default.
 
-Independently, header matching is exact-name only: `_header_names` in `Redactor.__init__`
-(`bajutsu/redaction.py:104`, the `{h.lower() for h in redact.headers}` set built from the
-author-supplied names) matches only the literal header name given. An author who writes
-`headers: [cookie]` — the natural, singular way to say "mask the session cookie" — does not get
-`Set-Cookie` masked in the response, since `"set-cookie" != "cookie"`. The two names refer to the
-same secret (a cookie sent by the client vs. issued by the server) and should be treated as one
-concern.
+Separately, header matching is exact-name only. `_header_names` in `Redactor.__init__`
+(`bajutsu/redaction.py:104`) is the `{h.lower() for h in redact.headers}` set, built from the
+author-supplied names. It matches only the literal header name given.
+
+An author who writes `headers: [cookie]`, the natural singular way to say "mask the session
+cookie", does not get `Set-Cookie` masked in the response, since `"set-cookie" != "cookie"`. The two
+names refer to the same secret (a cookie sent by the client versus issued by the server) and should
+be treated as one concern.
 
 ## Detailed design
 
-1. **Redact a standard sensitive-header set by default.** Introduce a built-in default list —
-   `authorization`, `cookie`, `set-cookie`, `x-api-key`, and other common credential-bearing
-   headers (`proxy-authorization`, `x-auth-token`) — masked even when a scenario's `redact:` is
+1. **Redact a standard sensitive-header set by default.** Introduce a built-in default list:
+   `authorization`, `cookie`, `set-cookie`, `x-api-key`, and other common credential-bearing headers
+   (`proxy-authorization`, `x-auth-token`). These are masked even when a scenario's `redact:` is
    unset or omits `headers`. `Redactor` merges the scenario-supplied `headers` with this default
-   set rather than requiring the author to opt in to baseline protection; `redact:` still lets an
+   set, rather than requiring the author to opt in to baseline protection. `redact:` still lets an
    author add scenario-specific header/field names and element `labels` on top.
-2. **Allow an explicit escape hatch, not a silent one.** An author who genuinely needs the raw
-   value of a defaulted header (e.g. debugging an auth failure) can request it by naming it under
-   a scenario option that disables a specific default (not by mere absence of `redact:`), so
-   turning off protection is a visible, deliberate choice rather than the current implicit default.
-3. **Normalize header-name matching.** Make `_header_names` comparisons case-insensitive
-   end-to-end (already the intent, but verify request/response header dict keys are lowercased
-   consistently before the set lookup) and treat `cookie` and `set-cookie` as linked: requesting
-   either masks both, since they carry the same class of secret in opposite directions.
-4. **Tests.** A scenario with no `redact:` block still masks `Authorization`/`Cookie`/`Set-Cookie`
-   in `network.json`; a scenario requesting `headers: [cookie]` also masks `Set-Cookie`; the
-   escape-hatch option surfaces the raw value only when explicitly set.
+2. **Allow an explicit escape hatch, not a silent one.** An author who genuinely needs the raw value
+   of a defaulted header (for example, when debugging an auth failure) can request it by naming the
+   header under a scenario option that disables a specific default. Mere absence of `redact:` does
+   not disable it. Turning off protection thus becomes a visible, deliberate choice, instead of the
+   current implicit default.
+3. **Normalize header-name matching.** Make `_header_names` comparisons case-insensitive end to end.
+   That is already the intent, but verify that request/response header dict keys are lowercased
+   consistently before the set lookup. Treat `cookie` and `set-cookie` as linked: requesting either
+   masks both, since they carry the same class of secret in opposite directions.
+4. **Tests.** Three cases:
+   - A scenario with no `redact:` block still masks `Authorization`/`Cookie`/`Set-Cookie` in
+     `network.json`.
+   - A scenario requesting `headers: [cookie]` also masks `Set-Cookie`.
+   - The escape-hatch option surfaces the raw value only when explicitly set.
 5. **Docs.** Document the default-masked header set and the escape hatch in the evidence/redaction
-   docs (`docs/` and `docs/ja/`), and note that `cookie`/`set-cookie` are treated as one concern.
+   docs (`docs/` and `docs/ja/`). Note there that `cookie`/`set-cookie` are treated as one concern.
 
-The encode-aware matching gap (percent-encoding, Basic-auth base64, HTML/JSON escaping) is a
-separate, sibling item (encode-aware secret redaction) — this item is scoped to which headers are
-masked by default and how header names are matched, not how values are matched. Nothing here
-touches the deterministic `run`/CI pass/fail logic or introduces an LLM; redaction runs entirely in
-the evidence-writing path.
+The encode-aware matching gap (percent-encoding, Basic-auth base64, HTML/JSON escaping) belongs to a
+separate, sibling item (encode-aware secret redaction). This item is scoped to which headers are
+masked by default and how header names are matched, not how values are matched.
+
+Nothing here touches the deterministic `run`/CI pass/fail logic or introduces an LLM. Redaction runs
+entirely in the evidence-writing path.
 
 ## Alternatives considered
 
-- **Leave redaction fully opt-in and just document the risk.** Rejected: the finding is that this
-  is the current behavior and it already produces plaintext secrets in evidence by default; a
-  tool whose evidence is shared and sent to an AI provider needs a safe default, not a stronger
-  warning.
+- **Leave redaction fully opt-in and just document the risk.** Rejected. The finding is that this is
+  the current behavior, and it already produces plaintext secrets in evidence by default. A tool
+  whose evidence is shared and sent to an AI provider needs a safe default, not a stronger warning.
 - **Require `redact: {}` (empty but present) to opt in to the default set, changing nothing for a
   fully-absent `redact:`.** Rejected as an unnecessary and confusing distinction between "no
-  `redact:` key" and "`redact:` present but empty" — both should get the same safe baseline.
-- **Mask every header unless explicitly allowlisted.** Rejected as too aggressive a default: most
-  headers (`Content-Type`, `User-Agent`, custom app headers) are not secrets and masking them by
-  default would make `network.json` far less useful as evidence without a corresponding security
+  `redact:` key" and "`redact:` present but empty". Both should get the same safe baseline.
+- **Mask every header unless explicitly allowlisted.** Rejected as too aggressive a default. Most
+  headers (`Content-Type`, `User-Agent`, custom app headers) are not secrets. Masking them by
+  default would make `network.json` far less useful as evidence, without a corresponding security
   benefit.
 
 ## Progress

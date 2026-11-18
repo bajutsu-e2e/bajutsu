@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bajutsu Web Demo — Sign in</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 28rem; }
+      h1 { font-size: 1.4rem; }
+    </style>
+  </head>
+  <body>
+    <!--
+      A plain form submit, so the tap that sends it navigates to a new document (welcome.html). The
+      step's after-screenshot and the next element read then race that navigation's commit — what
+      scenarios/form_navigation.yaml pins down (issue #2432).
+    -->
+    <h1 data-testid="signin.title">Sign in</h1>
+    <form method="get" action="welcome.html">
+      <input data-testid="signin.name" type="text" name="name" aria-label="Name" />
+      <button data-testid="signin.submit" type="submit">Sign in</button>
+    </form>
+  </body>
+</html>

@@ -41,6 +41,23 @@ def _cmd_kind(cmd: list[str]) -> JobKind | None:
     return None
 
 
+@dataclass(frozen=True)
+class RunIntent:
+    """What a `run-set` job runs, leaving where to the worker that leases it (BE-0484).
+
+    Paths are relative to the job's workspace and the application is a logical reference, as in a
+    cloud-batch request. *upload_exec* is the server's `launchServer` policy for an uploaded bundle
+    (BE-0090), empty for any other binding.
+    """
+
+    scenario: str
+    target: str
+    config: str
+    platform: str
+    app_path: str
+    upload_exec: str = ""
+
+
 @dataclass
 class Job:
     # `id` is assigned by `ServeState.register`/`try_register` (from the job sequence); a caller
@@ -50,6 +67,10 @@ class Job:
     udids: list[str] = field(default_factory=list)  # devices to boot before the run
     app_path: str | None = None  # built .app the run needs; built on demand if missing
     build: str | None = None  # shell command that builds app_path (None = no on-demand build)
+    # Whether the spawned run must refuse the config's `driver.runner.build` (#2282): set by
+    # `_register_and_dispatch` for the same untrusted bindings `_governed_build` nulls `build` for,
+    # and carried in the job spec so a remote worker's spawn refuses it too.
+    withhold_runner_build: bool = False
     status: str = "running"  # running | done
     # Whether this job has given up its concurrency-cap slot. Separate from `status` because a job
     # that ran on a remote worker keeps `status == "running"` on the control plane by design
@@ -148,11 +169,19 @@ class Job:
     # from the secrets its lease relayed, and `_spawn_env` merges it onto the child env. Never part of the job spec the queue stores, and
     # kept out of `repr` so a logged `Job` cannot print a value.
     secret_env: dict[str, str] = field(default_factory=dict, repr=False)
+    # The `run-set` group this job belongs to and what a worker may share between its jobs (BE-0484);
+    # both None for a job any other route registers. The jobs table stores them, not the spec; a slot
+    # worker reads them from the lease, and its batch provider shares uploads under them.
+    group_id: str | None = None
+    compat_key: str | None = None
     # A cloud-batch run request (BE-0336): when set, this job runs one scenario on a batch device
     # cloud (its `provider` names the concrete backend) instead of spawning `cmd` locally. `run_job`
     # branches on it; None is the ordinary local/worker run. The verdict still comes from the run's
     # own manifest, so the batch path stays off the `run`/CI verdict path.
     batch: BatchRequest | None = None
+    # A `run-set` job's run intent (BE-0484): the worker that leases it turns it into a `cmd` or a
+    # `batch` of its own, so the job names no provider. None for every other job.
+    intent: RunIntent | None = None
     # The sha256 of the application a cloud-batch job's `appPath` names, stored as a binary artifact
     # for a job whose files travel as materials with no uploaded bundle (BE-0448): the lease signs a
     # GET for it, and the worker places it at that `appPath` in the job's workspace. None when the
@@ -164,6 +193,9 @@ class Job:
     # Worker-side only: set once the job's lease is lost, so a cloud-batch poll leaves its run to the
     # worker that holds the job now instead of waiting it out (BE-0448).
     lease_lost: threading.Event | None = None
+    # Worker-side only: the directory a cloud-batch job packages when its group's jobs stage their
+    # files together (BE-0484); None packages the job's own directory.
+    batch_dir: Path | None = None
     # Worker-side only: the device-cloud worker's `worker.yaml`, which a cloud-batch job's scenario
     # must fit before anything is submitted (BE-0450's check, run on the worker by BE-0448). None
     # submits unchecked, as a worker started without `--worker-config` runs no cloud job anyway.
@@ -174,14 +206,14 @@ class Job:
 
     @property
     def kind(self) -> JobKind | None:
-        """What this job does: ``run-set`` for a cloud-batch request, else the subcommand its
-        command line spawns, or None for a command that is none of the job kinds.
+        """What this job does: ``run-set`` for a cloud-batch request or a run intent, else the
+        subcommand its command line spawns, or None for a command that is none of the job kinds.
 
-        Derived rather than stored (BE-0449): every dispatcher already fixes the kind in `cmd` or
+        Derived rather than stored (BE-0449): every dispatcher already fixes the kind in `cmd`, `intent`, or
         `batch`, so a stored field would be a second copy each dispatcher, the job spec, and the
         worker's rebuilt `Job` would all have to keep in step.
         """
-        if self.batch is not None:
+        if self.batch is not None or self.intent is not None:
             return "run-set"
         return _cmd_kind(self.cmd)
 

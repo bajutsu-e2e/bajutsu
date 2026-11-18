@@ -20,6 +20,7 @@ from bajutsu.common.platform_lifecycle import readiness
 from bajutsu.common.platform_lifecycle.device_control import device_control
 from bajutsu.common.platform_lifecycle.protocols import CollectorHost
 from bajutsu.common.platform_lifecycle.relaunchers import device_relauncher
+from bajutsu.common.platform_lifecycle.webview_source import WebViewSource, http_bridge_source
 from bajutsu.common.scenario import Scenario
 from bajutsu.crawl import AliveCheck, ClearBlocking, Recover, Reset
 
@@ -70,6 +71,10 @@ class _DeviceEnvironment:
 
     def reach_device_port(self, eff: Effective, port: int) -> tuple[int, Callable[[], None]]:  # noqa: ARG002  # Environment shape
         return port, lambda: None  # nothing between the host and the port to bridge
+
+    def webview_source(self, eff: Effective) -> WebViewSource:
+        # Through `self.reach_device_port`, so a real device's usbmuxd override bridges it too.
+        return http_bridge_source(self.reach_device_port, eff)
 
     def mirrors_collector_port_on_device(self) -> bool:
         return False  # the Simulator shares the Mac's loopback: nothing binds the port device-side

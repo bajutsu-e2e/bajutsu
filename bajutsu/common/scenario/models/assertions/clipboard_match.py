@@ -12,7 +12,8 @@ from bajutsu.common.scenario.models._base import _Model
 class ClipboardMatch(_Model):
     """`clipboard`: verify what the app copied to the pasteboard — exactly one of equals / matches.
 
-    Read off the device (`simctl pbpaste`), so it needs the per-device control channel and is
+    Read off the device (`simctl pbpaste` on iOS; the BajutsuAndroid receiver on Android, BE-0233),
+    so it needs the per-device control channel and is
     unavailable on the fake driver / in parallel runs.
     """
 

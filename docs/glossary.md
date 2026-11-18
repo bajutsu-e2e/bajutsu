@@ -41,6 +41,8 @@ target the scenario drives. Its fields:
   `subject.launch.env` / `.args` / `.deeplink`
 - `device.ios.locale` / `.seedPhotos`: the iOS device state, replacing the target's `runsOn.ios`
   values
+- `device.android.seedPhotos`: the Android device state, replacing the target's
+  `runsOn.android.seedPhotos`
 - `inheritSetup`: whether the targets' `hooks.setup` runs before the scenario
 
 The system-alert and TipKit handlers live in the scenario's own `interrupts`, not here (BE-0473).

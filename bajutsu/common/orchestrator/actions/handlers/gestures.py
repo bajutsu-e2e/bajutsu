@@ -220,6 +220,16 @@ def _do_copy(driver: base.Driver, step: Step, _r: object, _c: object, _b: object
     driver.copy_selection()
 
 
+@_handler("paste")
+def _do_paste(driver: base.Driver, step: Step, _r: object, _c: object, _b: object) -> None:
+    assert step.paste is not None
+    # The driver focuses the field itself: iOS must read the screen before that tap to tell the edit
+    # menu it raises from app content. A focusing tap that is not tappable fails before anything is
+    # pasted, so the recovery's retry of the whole paste is safe. A `value` assertion checks the outcome.
+    sel = step.paste.into.as_selector()
+    _tap_with_recovery(lambda: driver.paste(sel), driver, sel)
+
+
 def _directional_endpoints(
     driver: base.Driver, sel: base.Selector, direction: str, amount: float | None
 ) -> tuple[base.Point, base.Point]:

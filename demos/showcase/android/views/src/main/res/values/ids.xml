@@ -113,7 +113,22 @@
     <item name="perm_notif_authorized" type="id" />
     <item name="perm_requestLocation" type="id" />
     <item name="perm_location_value" type="id" />
+    <item name="perm_location_read" type="id" />
+    <item name="perm_location_reading" type="id" />
     <item name="sys_copy" type="id" />
     <item name="sys_paste" type="id" />
     <item name="sys_paste_value" type="id" />
+    <item name="perm_openPhotoPicker" type="id" />
+    <item name="perm_openPhotoPickerSingle" type="id" />
+    <item name="perm_photos_value" type="id" />
+
+    <!-- pickers (BE-0480), reached only under SHOWCASE_PICKERS -->
+    <item name="form_school" type="id" />
+    <item name="form_school_value" type="id" />
+    <item name="form_birthdate" type="id" />
+    <item name="form_birthdate_value" type="id" />
+
+    <!-- hybrid WebView screen (BE-0482), reached only under SHOWCASE_WEBVIEW -->
+    <item name="webview_title" type="id" />
+    <item name="webview_host" type="id" />
 </resources>

@@ -19,7 +19,8 @@ The invariants (grounded in the `Driver` Protocol and `drivers/base`):
 * A unique match acts without error.
 * `capabilities()` matches observed behavior — the `QUERY` / `ELEMENTS` baseline is declared,
   multi-touch gestures work exactly when `MULTI_TOUCH` is declared (else raise loudly),
-  select-all / clipboard copy work exactly when `TEXT_SELECTION` is declared (else raise loudly),
+  select-all / clipboard copy / paste work exactly when `TEXT_SELECTION` is declared (else raise loudly)
+  and, on a harness that can read the device clipboard, the copy actually lands there,
   and a picker wheel is set exactly when `PICKER_WHEEL` is declared (else raise loudly).
 * Text editing round-trips on the focused field: typing then deleting reduces the field's
   reported length, on every backend that surfaces the field's value.
@@ -49,6 +50,7 @@ from __future__ import annotations
 import math
 import statistics
 import time
+import uuid
 from collections import Counter
 from collections.abc import Callable
 from typing import Protocol, runtime_checkable
@@ -154,6 +156,15 @@ TAP_MIRROR_B_VALUE_ID = "conformance.tapMirror.b.value"
 def field_value(driver: base.Driver) -> str:
     """The current text of the conformance field (empty string when it reports none)."""
     return base.resolve_unique(driver.query(), {"id": FIELD_ID})["value"] or ""
+
+
+def _field_shows(driver: base.Driver, text: str, timeout: float = 5.0) -> bool:
+    """Whether the conformance field's value comes to contain `text` within `timeout`.
+
+    A condition wait, as a scenario's `wait` would do: on a slow emulator a single read straight after
+    a paste can land before the field publishes it.
+    """
+    return any(text in field_value(driver) for _ in base.deadline_ticks(timeout, 0.1, 0.5))
 
 
 def _mirror_value(driver: base.Driver, identifier: str) -> str:
@@ -308,6 +319,11 @@ class ConformanceHarness(Protocol):
     should return a driver showing `OBSTRUCTION_TARGET_ID` genuinely covered by
     `OBSTRUCTION_COVER_ID` at the same point, plus an unobstructed `OBSTRUCTION_CLEAR_ID` on the
     same screen.
+
+    `clipboard_text(self) -> str` is optional on the same terms, and for the same `hasattr` reason:
+    a harness that can read the device clipboard returns its current text, so the text-selection
+    case checks that `copy_selection()` really put the selection there (#2390) rather than only
+    that it did not raise. A harness without it keeps the not-raising check alone.
     """
 
     backend: str
@@ -542,7 +558,8 @@ class DriverConformanceContract:
     def test_url_navigation_capability_matches_behavior(self, harness: ConformanceHarness) -> None:
         # capabilities() is a promise (BE-0464): a URL_NAVIGATION backend loads the URL; one without
         # it refuses with UnsupportedAction rather than silently staying put. `about:blank` is
-        # absolute, so it needs no base URL, and the web harness's own base is `about:blank` anyway.
+        # absolute, so it needs no base URL, and the web harness's driver base URL is `about:blank`
+        # anyway.
         driver = harness.with_screen([element(identifier="a")])
         if base.Capability.URL_NAVIGATION in driver.capabilities():
             driver.goto("about:blank")
@@ -572,7 +589,9 @@ class DriverConformanceContract:
         # fail some other way — the seeded element is an ordinary one, not a real wheel, and no
         # harness can seed a wheel's rows — so any non-UnsupportedAction error is acceptable, exactly
         # the tolerance `test_select_option_capability_matches_behavior` already grants a non-<select>.
-        driver = harness.with_screen([element(identifier="wheel", traits=["pickerWheel"])])
+        driver = harness.with_screen(
+            [element(identifier="wheel", traits=[base.Trait.PICKER_WHEEL])]
+        )
         supports = base.Capability.PICKER_WHEEL in driver.capabilities()
         if supports:
             try:
@@ -600,14 +619,17 @@ class DriverConformanceContract:
         # with a bad bundle id, not something this contract should risk reproducing in CI; a
         # scenario mistake's failure semantics are covered instead by a fast-suite test against
         # `XcuitestDriver`'s fake transport (`test_enter_app_raises_element_not_found_when_never_foreground`).
+        # A harness names its own platform's always-installed app as `other_app` (Android's
+        # Settings); the rest fall back to Safari.
+        other_app = getattr(harness, "other_app", "com.apple.mobilesafari")
         driver = harness.with_screen([])
         supports = base.Capability.APP_CONTEXT in driver.capabilities()
         if supports:
-            driver.enter_app("com.apple.mobilesafari")
+            driver.enter_app(other_app)
             driver.leave_app()
         else:
             with pytest.raises(base.UnsupportedAction):
-                driver.enter_app("com.apple.mobilesafari")
+                driver.enter_app(other_app)
             with pytest.raises(base.UnsupportedAction):
                 driver.leave_app()
 
@@ -634,22 +656,46 @@ class DriverConformanceContract:
                 driver.select_photos([0], timeout=10)
 
     def test_text_selection_capability_matches_behavior(self, harness: ConformanceHarness) -> None:
-        # capabilities() is a promise (BE-0280): a TEXT_SELECTION backend actuates select-all + copy
-        # without UnsupportedAction; one without it (a coordinate-only backend) refuses both loudly rather
+        # capabilities() is a promise (BE-0280): a TEXT_SELECTION backend actuates select-all + copy +
+        # paste without UnsupportedAction; one without it (a coordinate-only backend) refuses all three loudly rather
         # than silently no-op'ing — the same shape as MULTI_TOUCH. `delete_text` / `type_text` are
         # never gated (every backend backs them), so they must succeed on either side of the branch.
         driver = harness.with_screen([])  # the field is always present; no seeded buttons needed
         driver.tap({"id": FIELD_ID})  # focus the field, as the orchestrator does before editing
-        driver.type_text("abc")
-        driver.delete_text(1)  # actuates everywhere, capability-independent
+        # A fresh token per run, so a clipboard still holding an earlier run's copy cannot pass for
+        # this one. Digits only: a soft keyboard's autocapitalization or autocorrect can rewrite
+        # letters (iOS capitalizes the first one in an empty field), but leaves a run of digits alone.
+        token = f"{uuid.uuid4().int % 10**10:010d}"
+        driver.type_text(f"{token}x")
+        driver.delete_text(1)  # actuates everywhere, capability-independent; leaves `token` typed
         if base.Capability.TEXT_SELECTION in driver.capabilities():
             driver.select_all()  # must not raise
             driver.copy_selection()  # must not raise
+            # Not raising is not the effect (#2390): a copy that silently does nothing passed here
+            # on every lane. Select-all takes the whole field, including text an earlier test left
+            # in it, so the clipboard must contain the token rather than equal it.
+            if hasattr(harness, "clipboard_text"):
+                assert token in harness.clipboard_text()
+            # Paste is the same promise's third chord. Delete the still-active selection first, so
+            # a paste that inserts nothing leaves the field without the token instead of passing on
+            # the text that was already there. Probe `value` while the token is still in the field,
+            # so "this backend surfaces no value" stays distinct from "the paste inserted nothing",
+            # which the emptied field would hide.
+            surfaces_value = bool(field_value(driver))
+            driver.select_all()
+            driver.delete_text(1)
+            driver.paste({"id": FIELD_ID})  # must not raise
+            if surfaces_value:
+                assert _field_shows(driver, token), (
+                    f"paste left the field at {field_value(driver)!r}"
+                )
         else:
             with pytest.raises(base.UnsupportedAction):
                 driver.select_all()
             with pytest.raises(base.UnsupportedAction):
                 driver.copy_selection()
+            with pytest.raises(base.UnsupportedAction):
+                driver.paste({"id": FIELD_ID})
 
     def test_delete_text_reduces_the_field_length(self, harness: ConformanceHarness) -> None:
         # The round-trip observable effect (BE-0280): typing grows the field, deleting shrinks it.

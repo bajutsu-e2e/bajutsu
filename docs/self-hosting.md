@@ -183,6 +183,12 @@ whose build you trust. Without the opt-in the run proceeds with the build suppre
 uploaded bundle's build is suppressed — no silent host-side command execution from a config that
 arrived over the network.
 
+The same verdict covers the XCUITest runner's on-demand build, `driver.runner.build`. `serve` does
+not run that command itself; the run it spawns would, when the file at `driver.runner.testRunner`
+is missing. For an uploaded bundle, or a UI-bound Git config without `--allow-remote-build`, the
+spawned run refuses that build and fails with `driver.runner.build withheld` instead. Such a config
+ships its `.xctestrun` prebuilt at `testRunner`, which the run then uses as is.
+
 ## Private-repository access for the Git config source (BE-0224)
 
 When `serve` (or the CLI) reads its config from a **private** GitHub repository — a `github:` spec,
@@ -361,7 +367,7 @@ below, covers that case.
 there. The server runs no job itself. It queues each kind of job for a worker:
 
 - a `run`, with its build phase
-- a `run-set`, the Device Farm fan-out
+- a `run-set`, the fan-out of a target's scenarios
 - a `triage`, a `record`, or a `crawl`
 
 A `bajutsu worker` on the same machine leases each job and runs it. `make serve` starts that
@@ -603,8 +609,9 @@ The control plane checks the request before any job exists:
 - `binaryArtifact` on a target with no `subject.path`, such as a web target, returns `400`.
 - A single-process `serve` refuses both fields. It runs the job in the operator's own project
   directory, which no override may overwrite.
-- `POST /api/run-set` refuses both fields. Its cloud-batch fan-out runs on a Device Farm worker,
-  and mapping an override onto a Device Farm request is separate work.
+- `POST /api/run-set` refuses both fields. Any worker serving the target's platform may lease a
+  fan-out job, a Device Farm worker included. Mapping an override onto a Device Farm request is
+  separate work.
 
 The lease signs one presigned HTTP GET URL per named override: `binary_url` and `scenarios_url`.
 It signs each under the leased job's org. The worker checks each download against its sha256. It
@@ -870,8 +877,8 @@ endpoints keeps a pipeline's reach to what a pipeline needs:
 |---|---|
 | `GET /api/artifacts/exists` — probe for a build it already published | `POST /api/config`, `POST /api/compose` — rebinding the org's active configuration |
 | `POST /api/artifacts/config`, `.../scenarios`, `.../binary` — publish the three artifact kinds | `GET /api/config/content` — a config body may embed secrets |
-| `POST /api/run` — dispatch a run | `POST /api/apikey`, `POST /api/claudecodetoken` — operator secrets |
-| `GET /api/runs` and `GET /api/jobs/<id>` — watch what it dispatched | `/api/orgs*` — who may sign in and write |
+| `POST /api/run` and `POST /api/run-set` — dispatch a run or a group of runs | `POST /api/apikey`, `POST /api/claudecodetoken` — operator secrets |
+| `GET /api/runs`, `GET /api/jobs/<id>`, and `GET /api/run-set/<groupId>` — watch what it dispatched | `/api/orgs*` — who may sign in and write |
 
 The right-hand column is **not** a list `serve` keeps. The allowlist denies by default. An endpoint
 stays shut to a machine by never appearing on the left, and a route added next year stays shut until
@@ -1171,6 +1178,14 @@ deterministic `run` verdict.
   also advertises `machine:<id>`, the server's identity, which routes the jobs that name files on
   that machine ([the server backend on one machine](#the-server-backend-on-one-machine-be-0449)). The web-worker container bakes in `--platform web`, so it advertises
   `web` and needs no flag.
+- **A worker also advertises what a fan-out job needs.** Every worker advertises
+  `job:run-intent`. The token says it can turn a fan-out job into its own kind of run
+  ([BE-0484](../roadmaps/BE-0484-job-group-lease/BE-0484-job-group-lease.md)). An iOS worker
+  advertises `kind:simulator` when its inventory holds an iPhone or iPad Simulator. It advertises
+  `kind:device` while it reads a real iPhone or iPad over `devicectl`. A worker capability file that
+  sets `realDevices: false` turns that token off. A Device Farm worker advertises
+  `platform:android`, `platform:ios`, and `kind:device`. These are the platforms and the device kind
+  the service reserves.
 - **A local worker refuses a platform it cannot serve.** At startup, the worker checks each
   `--platform` against its [worker capability file](drivers.md#worker-capability-check-be-0450) and
   its host. When the file omits the platform's driver, or the host cannot run that driver, the
@@ -1197,6 +1212,14 @@ deterministic `run` verdict.
   token. A request that sends the target to the `fake` driver adds none either, because that
   driver drives no device
   ([BE-0468](../roadmaps/BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of.md)).
+- **A fan-out job requires no placement.** A job of `POST /api/run-set` requires its target's
+  `platform:<p>`, `job:run-intent`, and the `cap:` and `setting:` tokens of its scenario's route
+  (below). An iOS job adds the family tokens above and one `kind:<kind>` token per kind its runs
+  take. It requires no `host:`, `environment:`, or `machine:` token. A worker serving the platform
+  can lease it, local or Device Farm, when it advertises those tokens. A Device Farm worker
+  advertises no family token, so a target naming `runsOn.ios.family` never routes there. A worker that advertises an `environment:` token otherwise
+  leases only the jobs requiring that token. A fan-out job is the exception, since it names no
+  environment ([BE-0484](../roadmaps/BE-0484-job-group-lease/BE-0484-job-group-lease.md)).
 - **A paired device reads as connected.** `devicectl` lists every paired real device, plugged in or
   not. Its tunnel state reads `disconnected` until a run opens the tunnel. An idle device and an
   unplugged one look alike there. A worker keeps advertising an unplugged device's family. A job
@@ -1229,7 +1252,9 @@ deterministic `run` verdict.
     tokens, so while one still serves the job, a mixed fleet accepts it.
 
   `POST /api/run` then returns `400`. The error lists each missing token with the
-  steps or settings that need it. While no live worker drives the route, the job stays queued and
+  steps or settings that need it. `POST /api/run-set` checks each of its jobs the same way. One
+  refused job refuses the whole request with `400`. The error names the scenario and its missing
+  tokens. While no live worker drives the route, the job stays queued and
   counts toward `bajutsu_unroutable_jobs`. A cold start or a worker restart is such a case.
 - **A worker re-checks a job when it claims it.** The lease hands the worker the tokens the server
   routed the job by. Before the worker fetches anything or leases a device, it recomputes its route tokens
@@ -1238,17 +1263,18 @@ deterministic `run` verdict.
 - **A run on an Appium grid routes by environment.** The plain run request (`POST /api/run`) takes
   an optional `environment`. Its one accepted value is `appium`; any other value returns `400`. Such
   a job requires `environment:appium` alone, since the grid owns the device. An `appium` worker sets
-  `environment: appium` and the grid's `endpoint` in its `worker.yaml`. It advertises that token
-  alone and takes no `--platform`. It runs a local `bajutsu run` with its `--worker-config`
-  ([iOS on a real device](ios-device-cloud.md#live--an-appium-endpoint-provider)). A Device Farm
-  fan-out takes its own `environment` on `POST /api/run-set`
+  `environment: appium` and the grid's `endpoint` in its `worker.yaml`. It advertises that token and
+  `job:run-intent`, and takes no `--platform`. It advertises no `platform:` token, so it takes no
+  fan-out job. It runs a local `bajutsu run` with its `--worker-config`
+  ([iOS on a real device](ios-device-cloud.md#live--an-appium-endpoint-provider)). A fan-out
+  (`POST /api/run-set`) takes no `environment`. It routes each job by its target's platform
   ([Running on AWS Device Farm](devicefarm.md#fanning-a-target-out)).
 - **A hand-written worker input now logs a deprecation notice.** A worker's `--capabilities` and
   `$BAJUTSU_WORKER_CAPABILITIES` add tokens verbatim. Both still work for this release, with a
   one-time notice, and go away in the next release. The inventory and the worker capability file
   now supply what the override was for. An override can also claim a runtime the machine lacks.
-  Neither may carry the reserved `environment:`, `host:`, `machine:`, `device:`, `cap:`, or
-  `setting:` prefix, which the worker fills itself. A worker rejects such a token at startup.
+  Neither may carry the reserved `environment:`, `host:`, `machine:`, `device:`, `cap:`,
+  `setting:`, `job:`, `platform:`, or `kind:` prefix, which the worker fills itself. A worker rejects such a token at startup.
 - **An unroutable job** — one whose required capabilities no live worker advertises — stays queued
   rather than being leased to an incompatible worker or dropped, and is surfaced by the
   `bajutsu_unroutable_jobs` metric (below) so the operator knows to add a worker with the missing
@@ -1273,6 +1299,12 @@ deterministic `run` verdict.
 > the run's `manifest.json`. A report rendered on view, as a local serve renders it, lists that record
 > under *notices*. The report baked at run time does not, since the old worker baked it before the
 > record arrived. Roll the workers to stop the record.
+>
+> BE-0484 needs the workers first again. A fan-out job requires `job:run-intent`, which a worker
+> built before that change never advertises. A Device Farm worker built before it advertises no
+> `platform:` token. In both cases the fan-out jobs stay queued and count toward
+> `bajutsu_unroutable_jobs`. A worker started with `--capabilities platform:…` or `kind:…` used to
+> start, and now refuses to start. Remove the token, since the worker fills both prefixes itself.
 
 ### Evidence upload to object storage (optional, BE-0110)
 
@@ -1418,8 +1450,10 @@ creates the first one from the Orgs page.
 one org may have in flight at once, so a busy org can't monopolize the scarce devices even when its
 users each stay under their own `BAJUTSU_MAX_CONCURRENT_PER_USER`. Both default to unlimited (`0`),
 and both sit under the global `--max-concurrent-runs`; an over-cap request is rejected (HTTP 429)
-rather than queued. (Fair *scheduling* across orgs — holding the rejected work in a per-org queue and
-dispatching it round-robin — is still future work; today the cap rejects.)
+rather than queued. A fan-out (`run-set`) is the exception: it queues every scenario,
+and the caps apply when a worker leases a job, so the fan-out runs in turns as slots free (BE-0484).
+(Fair *scheduling* across orgs — holding the rejected work in a per-org queue and dispatching it
+round-robin — is still future work; today the cap rejects a plain run.)
 
 **Deleting runs, and how long the trash is kept.** A run (and its report) can be deleted through the
 API (BE-0239): `DELETE /api/runs/{id}` soft-deletes it — the run drops out of the history list but is

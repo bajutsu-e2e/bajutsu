@@ -10,13 +10,14 @@ from .step import Step
 
 
 class App(_Model):
-    """Activate an app by bundle id and run inner steps against its own UI (iOS only).
+    """Activate an app and run inner steps against its own UI (iOS XCUITest and Android adb).
 
     ``bundle_id`` is a plain scenario-level string, not a value drawn from a fixed set — any
     installed app can be named, including one the scenario's own target has no way to open
-    itself. Inner ``steps`` address that app's own accessibility tree, exactly as they address the
-    test target's outside this block; control returns to whatever was active before the block once
-    it ends, matching `Web`'s enter/leave contract.
+    itself. On Android it is the app's package name. Inner ``steps`` address that app's own
+    accessibility tree, exactly as they address the test target's outside this block; control
+    returns to whatever was active before the block once it ends, matching `Web`'s enter/leave
+    contract.
     """
 
     bundle_id: str = Field(alias="bundleId")

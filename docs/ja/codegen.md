@@ -106,6 +106,7 @@ final class ComponentsUITests: XCTestCase {
 | `delete { count }` | `.tap()` + 削除キーを `count` 回（`typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count:))`、BE-0265） |
 | `select` | `.tap()` + 全選択（BE-0265） |
 | `copy` | `app.typeKey("c", modifierFlags: .command)` |
+| `paste` | `.tap()` のあと、編集メニューがまだ出ていなければ `.press(forDuration: 0.6)` で長押しを加え、`app.staticTexts["Paste"]` の出現を `waitForExistence(timeout: 5.0)` で待ってからタップし、編集メニューから貼り付けます。ドライバーと同じ方法です。ラベルは英語なので、ほかの言語にローカライズしたアプリでは書き換えが必要です |
 | `back` | OS のナビゲーション戻るボタンを tap します。XCUITest ドライバが実行時に tap するのと同じ要素（共有定数、BE-0210） |
 | `navigate` | `// TODO: navigate(url: …) — web-only; not generated`（BE-0464） |
 | `sleep` | `// fixed pause: <reason>` と `Thread.sleep(forTimeInterval: <秒>)` |
@@ -219,6 +220,7 @@ test.describe('Components', () => {
 | `delete { count }` | フォーカス + `page.keyboard.press('Backspace')` を `count` 回（BE-0265） |
 | `select` | `await loc.selectText()`。web における全選択の対応物です（BE-0265） |
 | `copy` | `await page.keyboard.press('Control+c')` |
+| `paste` | フォーカス + `await page.keyboard.press('ControlOrMeta+v')` |
 | `back` | `await page.goBack()`。ブラウザ履歴で、ドライバの `back()` と同じ基本操作です（BE-0210） |
 | `navigate` | `await page.goto(new URL('<value>', BASE_URL).toString())`。ドライバが `baseUrl` を基準に解決するのと同じ規則で、値を `BASE_URL` を基準に解決します。`${...}` トークンを含む値は、生成したテストに展開元の値がないので `// TODO` になります（BE-0464） |
 | `sleep` | `// fixed pause: <reason>` と `await page.waitForTimeout(<ミリ秒>)` |
@@ -614,7 +616,7 @@ Gradle 自身のレポートとあわせて回収済みのディレクトリを�
 |---|---|
 | `id` | `byId('…')`（`By.res(Pattern.compile("(.*:id/)?" + Pattern.quote(id)))`） |
 | `label` | `By.text('…')` |
-| `value` | `By.desc('…')`（ドライバが読む `content-desc` のチャネル） |
+| `value` | `By.desc('…')`（ドライバが読む `content-desc` のチャネル）。ただし編集可能な入力欄の `value` は、ドライバが `text` から読みます（#2388）。この emitter はまだそれに追従していません |
 | `idMatches`（fnmatch glob） | `By.res(Pattern.compile('…'))`。glob は全文一致なので `Pattern` の全文一致で忠実（`*` → `.*`、`?` → `.`。`[…]` クラスは `// TODO`） |
 | `labelMatches`（メタ文字なし） | `By.textContains('…')`。DSL の `re.search` に合う部分文字列。実正規表現は `// TODO`（下記参照） |
 | `traits` / `within` / `index` / 複合 | `// TODO` |
@@ -636,6 +638,7 @@ Gradle 自身のレポートとあわせて回収済みのディレクトリを�
 | `delete { count }` | `.click()` + `device.pressKeyCode(KeyEvent.KEYCODE_DEL)` を `count` 回（BE-0265） |
 | `select` | `.click()` + `device.pressKeyCode(KeyEvent.KEYCODE_A, KeyEvent.META_CTRL_ON)`（BE-0265） |
 | `copy` | `device.pressKeyCode(KeyEvent.KEYCODE_C, KeyEvent.META_CTRL_ON)` |
+| `paste` | `.click()` + `device.pressKeyCode(KeyEvent.KEYCODE_V, KeyEvent.META_CTRL_ON)` |
 | `back` | `device.pressBack()`。UI Automator ネイティブのシステム戻る操作で、adb ドライバの `keyevent 4` に対応します（BE-0210） |
 | `navigate` | `// TODO: navigate(url: …) — web-only; not generated`（BE-0464） |
 | `sleep` | `// fixed pause: <reason>` と `Thread.sleep(<ミリ秒>)` |
@@ -648,6 +651,7 @@ Gradle 自身のレポートとあわせて回収済みのディレクトリを�
 | `wait { until: gone }` | `awaitGone(<by>, <ms>L)`（同じものを `Until.gone` に対して行います） |
 | `wait { until: screenChanged/settled }` | `device.waitForIdle(<ms>L)`。`findObject` は auto-wait しないので、裸コメントではなく実際の条件待機にする |
 | `relaunch` | `launch(extras)`（起動 intent を再発行） |
+| `setClipboard` / `clearClipboard` | `clipboard("set", "…")` / `clipboard("clear")`。`run` と同じく、BajutsuAndroid のクリップボード受信側へ `am broadcast` を送ります（BE-0233）。そのため、アプリに BajutsuAndroid を組み込む必要があります |
 | `doubleTap` / `rotate` | `// TODO`（対応する UI Automator ジェスチャが無い） |
 | `handleSystemAlert` | `// TODO`（iOS 専用。Android ではシステムダイアログを直接 tap する） |
 
@@ -662,10 +666,15 @@ Gradle 自身のレポートとあわせて回収済みのディレクトリを�
 | `selected` | `assertTrue(device.findObject(<by>).isSelected)` |
 | `count` (equals/atLeast/atMost) | `device.findObjects(<by>).size` を `assertEquals` / `assertTrue(size >= n)` / `assertTrue(size <= n)` |
 | `attribute` | `// TODO: attribute(name: "href", equals: "/docs") — web-only; not generated`（BE-0466） |
+| `clipboard` (equals/matches) | `assertEquals("…", clipboard("get"))` / `assertTrue(Regex("…").containsMatchIn(clipboard("get")))` |
+
+broadcast が処理されなかったとき、`clipboard(…)` ヘルパーは空のクリップボードを読み戻さず、理由を示してテストを失敗させます。
+broadcast が処理されないのは、アプリが BajutsuAndroid のクリップボード受信側を組み込んでいない場合です。
 
 adb backend にはネットワーク傍受の面が無いので、ネットワークのアサーション（`request` / `requestSequence` /
-`responseSchema`）とデバイス制御の一群（`setLocation` / `push` / `setClipboard` など）はすべて、理由を明記した
-`// TODO` を出力します。XCUITest 出力先が自身のギャップに対して行うのと同じです。
+`responseSchema`）はすべて、理由を明記した `// TODO` を出力します。デバイス制御の残りも、理由を明記した `// TODO` を出力します。
+`setLocation` は `run` では動きますが、エミュレータコンソールやアプリ内受信側を使う経路を生成テストは持ちません。
+`push` には adb の経路そのものがありません。XCUITest 出力先も、自身のギャップを同じように示します。
 
 ## 名前の生成
 

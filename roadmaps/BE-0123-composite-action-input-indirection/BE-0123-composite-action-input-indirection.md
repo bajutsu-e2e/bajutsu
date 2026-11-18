@@ -15,15 +15,15 @@
 
 ## Introduction
 
-Two of this repository's composite GitHub Actions —
+Two composite GitHub Actions in this repository expand `${{ inputs.* }}` directly inside shell `run:`
+blocks instead of passing the values through `env:` first. The two actions are
 [`.github/actions/bajutsu-e2e/action.yml`](../../.github/actions/bajutsu-e2e/action.yml) and
-[`.github/actions/boot-simulator/action.yml`](../../.github/actions/boot-simulator/action.yml) —
-expand `${{ inputs.* }}` directly inside shell `run:` blocks instead of passing them through `env:`
-first. Every call site today passes literal strings or a trusted prior step's output, so there is no
-exploitable path right now, but the pattern is fragile: it is the same shape that turns into a
-shell-injection vector the day an input carries attacker-influenced content. This proposal routes
-composite-action inputs through `env:` indirection, matching how untrusted fields are already
-handled elsewhere in this repository's CI.
+[`.github/actions/boot-simulator/action.yml`](../../.github/actions/boot-simulator/action.yml).
+
+Every call site today passes literal strings or the output of a trusted prior step, so no exploitable
+path exists right now. The pattern is still fragile. It turns into a shell-injection vector the day an
+input carries attacker-influenced content. This proposal routes composite-action inputs through `env:`
+indirection, which matches how this repository's CI already handles untrusted fields elsewhere.
 
 ## Motivation
 
@@ -51,66 +51,69 @@ handled elsewhere in this repository's CI.
 if [ "${{ inputs.wait }}" = "true" ]; then
 ```
 
-When GitHub Actions expands `${{ ... }}` inside a `run:` block, the substitution happens textually,
-before the shell ever parses the line — so any input value containing shell metacharacters
-(`` ` ``, `$(...)`, `;`, `"`, etc.) is spliced into the script and interpreted by `bash`, not passed
-as an inert argument. This is the well-documented GitHub Actions script-injection pattern (the same
-class of issue GitHub's own security lab has written up for `pull_request_target` workflows and
-untrusted `github.event.*` fields).
+GitHub Actions expands `${{ ... }}` inside a `run:` block textually, before the shell parses the line.
+An input value that contains shell metacharacters (`` ` ``, `$(...)`, `;`, `"`, and so on) is therefore
+spliced into the script and interpreted by `bash`, instead of arriving as an inert argument. This is
+the well-documented GitHub Actions script-injection pattern. GitHub's own security lab has written up
+the same class of issue for `pull_request_target` workflows and untrusted `github.event.*` fields.
 
-Today this is **not exploitable**: every call site in `.github/workflows/e2e.yml` and
-`.github/workflows/idb-monitor.yml` passes either a hardcoded literal (`scenarios:
-demos/showcase/scenarios/smoke.yaml`, `target: showcase-swiftui`, `wait: "false"`, etc.) or
-`udid: ${{ steps.sim.outputs.udid }}`, which is a UDID string produced by `boot-simulator`'s own
-`xcrun simctl` calls — not user- or PR-controlled input. There is no current caller that forwards a
-PR title, branch name, issue body, or other attacker-influenced text into these inputs.
+Today the pattern is **not exploitable**. Every call site in `.github/workflows/e2e.yml` and
+`.github/workflows/idb-monitor.yml` passes one of two things:
 
-Severity: this finding is **unconfirmed** as an active vulnerability — it is a latent pattern, not a
-demonstrated exploit, and every present call site is safe. It is flagged because composite actions
-are reusable by design: a future workflow (or a future edit to an existing one) could pass a
-less-trusted value — e.g. a branch name, PR label, or matrix value derived from event data — into
-`target`, `scenarios`, `artifact-name`, or `wait` without anyone noticing the `run:` block was never
-hardened against that.
+- A hardcoded literal, such as `scenarios: demos/showcase/scenarios/smoke.yaml`,
+  `target: showcase-swiftui`, or `wait: "false"`.
+- `udid: ${{ steps.sim.outputs.udid }}`, a UDID string that `boot-simulator`'s own `xcrun simctl` calls
+  produce, so neither a user nor a PR controls it.
+
+No current caller forwards a PR title, branch name, issue body, or other attacker-influenced text into
+these inputs.
+
+The finding is **unconfirmed** as an active vulnerability. It is a latent pattern, not a demonstrated
+exploit, and every present call site is safe. We flag it because composite actions are reusable by
+design. A future workflow, or a future edit to an existing one, could pass a less-trusted value into
+`target`, `scenarios`, `artifact-name`, or `wait`. Examples are a branch name, a PR label, or a matrix
+value derived from event data. Such a change could land without anyone noticing that the `run:` block
+was never hardened against that value.
 
 ## Detailed design
 
-The fix is mechanical and localized to the two action files, with no product-code or `run`/CI
-pass/fail-logic changes:
+The fix is mechanical and local to the two action files. It changes no product code and no `run`/CI
+pass/fail logic.
 
-1. **`bajutsu-e2e/action.yml`: route the two `run:` steps' inputs through `env:`.** For "Preflight"
-   and "Run scenarios", add an `env:` block mapping each input to an uppercase environment variable
-   (e.g. `TARGET: ${{ inputs.target }}`, `UDID: ${{ inputs.udid }}`, `BACKEND: ${{ inputs.backend }}`,
-   `CONFIG: ${{ inputs.config }}`, `SCENARIOS: ${{ inputs.scenarios }}`), then reference `"$TARGET"`,
-   `"$UDID"`, etc. inside the shell command instead of the inline `${{ inputs.* }}` expansions. The
-   `env:` assignment still substitutes the raw value, but as a shell *variable*, so the shell parses
-   it as data rather than splicing it into the script text — the standard mitigation for this class
-   of finding.
+1. **`bajutsu-e2e/action.yml`: route the two `run:` steps' inputs through `env:`.** For "Preflight" and
+   "Run scenarios", add an `env:` block that maps each input to an uppercase environment variable
+   (for example `TARGET: ${{ inputs.target }}`, `UDID: ${{ inputs.udid }}`,
+   `BACKEND: ${{ inputs.backend }}`, `CONFIG: ${{ inputs.config }}`, `SCENARIOS: ${{ inputs.scenarios }}`).
+   Inside the shell command, reference `"$TARGET"`, `"$UDID"`, and so on in place of the inline
+   `${{ inputs.* }}` expansions. The `env:` assignment still substitutes the raw value, but as a shell
+   *variable*. The shell then parses the value as data and never splices it into the script text. This
+   is the standard mitigation for this class of finding.
 2. **`bajutsu-e2e/action.yml`: route the "Upload run artifacts" step's `${{ inputs.artifact-name }}`
-   the same way.** This one is a `with:` value on a `uses:` step (`actions/upload-artifact`), not a
-   `run:` block, so it is not subject to shell injection — no code change needed there, but it is
-   worth a one-line note in the action so a future edit doesn't assume the same risk applies.
+   the same way.** That input is a `with:` value on a `uses:` step (`actions/upload-artifact`), not a
+   `run:` block, so shell injection does not apply and the code needs no change. A one-line note in the
+   action is still worthwhile, so a future edit does not assume the same risk applies.
 3. **`boot-simulator/action.yml`: route `${{ inputs.wait }}` through `env:`.** Add
-   `env: WAIT: ${{ inputs.wait }}` to the "Boot" step and change `if [ "${{ inputs.wait }}" =
-   "true" ]` to `if [ "$WAIT" = "true" ]`.
-4. **Add a regression check.** Extend `make lint-actions` (`actionlint`) coverage or a small
-   repository-specific check (e.g. a `scripts/` lint or a `grep`-based test) that fails if a
-   composite action's `run:` block contains a raw `${{ inputs.` expansion, so this pattern cannot
+   `env: WAIT: ${{ inputs.wait }}` to the "Boot" step, and change `if [ "${{ inputs.wait }}" = "true" ]`
+   to `if [ "$WAIT" = "true" ]`.
+4. **Add a regression check.** Extend `make lint-actions` (`actionlint`) coverage, or add a small
+   repository-specific check (for example a `scripts/` lint or a `grep`-based test). The check fails
+   when a composite action's `run:` block contains a raw `${{ inputs.` expansion, so the pattern cannot
    silently reappear in a future action or edit.
 
 ## Alternatives considered
 
-- **Leave the inputs inline since every current call site is a literal or trusted output.** Rejected
-  — the whole motivation for this proposal is that "safe today because nothing untrusted flows in
-  yet" is not a durable guarantee for a reusable composite action; the fix is cheap and removes the
-  hazard permanently rather than relying on every future caller remembering to only pass literals.
-- **Restrict composite-action inputs with a regex/`pattern` validation step instead of `env:`
-  indirection.** GitHub Actions has no native input-validation syntax, so this would mean adding a
-  shell-based validation step before the risky one — more code than the `env:` indirection fix, and
-  it only reduces risk (a permissive-but-imperfect pattern) rather than removing the injection
-  vector the way `env:` indirection does.
-- **Rewrite the affected steps to avoid shell interpolation entirely (e.g. pass arguments via a
-  wrapper script's argv).** More invasive than necessary; `env:` indirection is the standard,
-  minimal fix for this exact pattern and keeps the diff small and reviewable.
+- **Leave the inputs inline, since every current call site is a literal or a trusted output.**
+  Rejected. The motivation for this proposal is that "safe today because nothing untrusted flows in
+  yet" is no durable guarantee for a reusable composite action. The fix is cheap, and it removes the
+  hazard permanently instead of relying on every future caller to pass only literals.
+- **Restrict composite-action inputs with a regex or `pattern` validation step instead of `env:`
+  indirection.** GitHub Actions has no native input-validation syntax. Validation would need a
+  shell-based step before the risky one, which is more code than the `env:` fix. It would also merely
+  reduce the risk, since the pattern would stay permissive but imperfect. `env:` indirection removes
+  the injection vector itself.
+- **Rewrite the affected steps to avoid shell interpolation entirely (for example by passing arguments
+  through a wrapper script's argv).** This is more invasive than necessary. `env:` indirection is the
+  standard, minimal fix for this exact pattern, and it keeps the diff small and reviewable.
 
 ## Progress
 

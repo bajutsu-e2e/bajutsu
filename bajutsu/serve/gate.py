@@ -45,8 +45,9 @@ OIDC_EXCHANGE_PATH = "/api/oidc/exchange"
 _WORKER_PREFIX = "/api/worker/"
 
 # Every endpoint a machine principal may reach (BE-0414 unit 3), as `(method, path)` pairs — the
-# pipeline's whole sequence: probe for a build, publish the three artifact kinds, dispatch a run,
-# then watch it. `GET /api/runs` and the job poll below are how it learns the outcome; both are
+# pipeline's whole sequence: probe for a build, publish the three artifact kinds, dispatch a run or
+# a group of runs (BE-0484), then watch it. `GET /api/runs` and the job and group polls below are
+# how it learns the outcome; all are
 # scoped to the machine's own org at the operation, since the gate admits a path and never a tenant.
 _MACHINE_PATHS = frozenset(
     {
@@ -55,25 +56,27 @@ _MACHINE_PATHS = frozenset(
         ("POST", "/api/artifacts/binary"),
         ("GET", "/api/artifacts/exists"),
         ("POST", "/api/run"),
+        ("POST", "/api/run-set"),
         ("GET", "/api/runs"),
     }
 )
 
 
 def _is_machine_job_route(path: str) -> bool:
-    """Whether *path* is the job poll a machine may read (BE-0414 unit 3).
+    """Whether *path* is the job or job-group poll a machine may read (BE-0414 unit 3, BE-0484).
 
     Matched by shape because the job id is in the path, the same way `_is_worker_route` matches the
-    upload-URL route. `/api/jobs/{id}` only — not its `/events` stream, which each backend serves
-    off the uniform route table with its own streaming plumbing; a pipeline learns the same outcome
-    by polling, so opening a second, differently-shaped path buys nothing.
+    upload-URL route. One trailing segment only, so neither `/api/jobs/{id}`'s `/events` stream nor
+    `POST /api/run-set/{id}/cancel` is admitted: the stream each backend serves off the uniform
+    route table with its own streaming plumbing, and a pipeline learns the same outcome by polling,
+    so opening a second, differently-shaped path buys nothing.
 
-    Admitting the path is not admitting the job: `job_view` refuses one belonging to another org.
+    Admitting the path is not admitting the job: `job_view` and `job_group_view` refuse one
+    belonging to another org.
     """
-    return (
-        path.startswith("/api/jobs/")
-        and "/" not in path[len("/api/jobs/") :]
-        and len(path) > len("/api/jobs/")
+    return any(
+        path.startswith(prefix) and "/" not in path[len(prefix) :] and len(path) > len(prefix)
+        for prefix in ("/api/jobs/", "/api/run-set/")
     )
 
 

@@ -1,4 +1,4 @@
-"""The `selectPhotos` action: pick images from PHPickerViewController's grid, by ordinal position."""
+"""The `selectPhotos` action: pick images from the system photo picker's grid, by ordinal position."""
 
 from __future__ import annotations
 
@@ -10,11 +10,11 @@ from bajutsu.common.scenario.models._base import _Model
 
 
 class SelectPhotos(_Model):
-    """`selectPhotos` action — pick one or more images from an open `PHPickerViewController` grid.
+    """`selectPhotos` action — pick one or more images from an open system photo picker grid.
 
-    iOS-only (`Capability.SELECT_PHOTOS`, device / Intel Simulator; see `capabilities_for_run`):
-    every grid cell shares one identifier (`PXGGridLayout-Info`), so `indices` names each cell by its
-    ordinal position — the same "nth of multiple matches" mechanism `handleSystemAlert` already
+    Gated on `Capability.SELECT_PHOTOS`: iOS's `PHPickerViewController` over XCUITest (device / Intel
+    Simulator) and Android 13+'s photo picker over adb. On iOS every grid cell shares one identifier
+    (`PXGGridLayout-Info`), so `indices` names each cell by its ordinal position — the same "nth of multiple matches" mechanism `handleSystemAlert` already
     relies on for a SpringBoard button no author-assignable identifier ever names. A cell carries no
     label an author could ask for by name, only its position in the grid the picker renders, so no
     `sel` field is offered here the way `tap` or `setPickerValue` take one.

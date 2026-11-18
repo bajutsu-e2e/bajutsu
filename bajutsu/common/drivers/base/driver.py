@@ -71,12 +71,16 @@ class Driver(Protocol):
     # Text-editing primitives on the currently focused field (the orchestrator focuses it with a
     # `tap` first, the same contract `type_text` relies on) — BE-0265. `delete_text` removes `count`
     # characters from the end (backspace-equivalent); `select_all` selects the whole content;
-    # `copy_selection` copies the active selection to the clipboard. A backend that can't select or
-    # copy natively (a single-touch / coordinate-only backend) raises UnsupportedAction rather than
-    # faking it, mirroring the multi-touch gestures — codegen→XCUITest is the iOS path.
+    # `copy_selection` copies the active selection to the clipboard; `paste` focuses the field `sel`
+    # names and inserts the clipboard at the caret that tap leaves, replacing any selection — it
+    # focuses the field itself because iOS reads the screen before that tap, to tell the edit menu
+    # it pastes through from app content. A backend that can't select, copy, or paste natively (a
+    # single-touch / coordinate-only backend) raises UnsupportedAction rather than faking it,
+    # mirroring the multi-touch gestures — codegen→XCUITest is the iOS path.
     def delete_text(self, count: int) -> None: ...
     def select_all(self) -> None: ...
     def copy_selection(self) -> None: ...
+    def paste(self, sel: Selector) -> None: ...
     # Set a native `<select>` (resolved by `sel`) to the option whose value is `option`. Web-only:
     # a `<select>` has no native counterpart on iOS / Android, so those backends raise
     # UnsupportedAction (BE-0191).
@@ -90,16 +94,17 @@ class Driver(Protocol):
     def read_attributes(
         self, reads: Sequence[tuple[Selector, str]]
     ) -> list[str | None | SelectorError]: ...
-    # Move the picker wheel resolved by `sel` to the row whose value is `value` (BE-0356). iOS-only:
-    # a wheel exposes no addressable row, so only XCUITest's `adjust(toPickerWheelValue:)` can land
-    # on one deterministically; a backend without the PICKER_WHEEL capability raises
-    # UnsupportedAction. A value the wheel does not carry raises ElementNotFound rather than leaving
+    # Move the picker wheel resolved by `sel` to the row whose value is `value` (BE-0356). A wheel
+    # exposes no addressable row, so only a backend that acts on the wheel itself lands on one
+    # deterministically: XCUITest's `adjust(toPickerWheelValue:)`, and on Android the resident
+    # server's row-by-row accessibility walk of a `NumberPicker` (BE-0480). A backend without the
+    # PICKER_WHEEL capability raises UnsupportedAction. A value the wheel does not carry raises ElementNotFound rather than leaving
     # the wheel wherever it happened to stop.
     def set_picker_value(self, sel: Selector, value: str) -> None: ...
-    # Pick the grid cells at `indices` from an already-open `PHPickerViewController`, then tap the
-    # picker's confirm control. A backend without SELECT_PHOTOS raises UnsupportedAction; on the one
-    # that has it, `capabilities_for_run` has already dropped the token on an Apple Silicon
-    # Simulator, where the grid's cells cannot be tapped reliably (roadmap item) — this method's own
+    # Pick the grid cells at `indices` from an already-open system photo picker
+    # (`PHPickerViewController` on iOS, Android's photo picker on adb), then confirm the selection. A
+    # backend without SELECT_PHOTOS raises UnsupportedAction; on XCUITest, `capabilities_for_run` has
+    # already dropped the token on an Apple Silicon Simulator, where the grid's cells cannot be tapped reliably (roadmap item) — this method's own
     # actuation assumes that gate already ran.
     def select_photos(self, indices: list[int], *, timeout: float) -> None: ...
     # Tap a button on an out-of-process iOS SpringBoard permission prompt (BE-0316), resolving `sel`
@@ -134,17 +139,18 @@ class Driver(Protocol):
     def wait_for(self, sel: Selector) -> bool: ...
     def screenshot(self, path: str) -> None: ...
     def capabilities(self) -> set[str]: ...
-    # Activate the app named by `bundle_id` — installed but not yet running, and never launched by
-    # the test target — and make it the target of every method above until a matching
+    # Activate the app named by `bundle_id` — installed, and never launched by the test target (a
+    # running app is brought forward) — and make it the target of every method above until a matching
     # `leave_app()`. Nests: entering a second app before leaving the first pushes onto
     # it, and `leave_app` pops back to it, not past it. A backend without the APP_CONTEXT
     # capability raises UnsupportedAction; preflight rejects the scenario before any device work,
     # so this raise is only the mid-run backstop, mirroring `handle_system_alert`. `bundle_id`
     # must name an app already installed on the device: an app that is slow to foreground (a cold
-    # launch, a permission prompt) raises ElementNotFound once the bounded poll gives up, but a
-    # bundle id that is not installed at all is not guaranteed to fail this cleanly — confirmed on
-    # real hardware to leave the runner unresponsive instead, because the handoff from the
-    # currently-foreground app never completes. Not fixed here; see the roadmap item's own Scope.
+    # launch, a permission prompt) raises ElementNotFound once the bounded poll gives up. On
+    # XCUITest, a bundle id that is not installed at all is not guaranteed to fail this cleanly —
+    # confirmed on real hardware to leave the runner unresponsive instead, because the handoff from
+    # the currently-foreground app never completes. Not fixed here; see the roadmap item's own
+    # Scope. adb fails a package with no launcher activity cleanly, with ElementNotFound.
     def enter_app(self, bundle_id: str) -> None: ...
     # Leave the most recently entered app and re-activate the one beneath it — the test target
     # itself, if this is the outermost `leave_app()`.

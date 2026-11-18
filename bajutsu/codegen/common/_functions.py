@@ -181,6 +181,28 @@ def eval_todo(step: Step) -> str | None:
     return f"// TODO: eval(into: {names}) — runner-computed value; not generated"
 
 
+def totp_todo(step: Step) -> str | None:
+    """The `// TODO` for a `totp` or `otp` step (BE-0046), else None.
+
+    Both compute an RFC 6238 code inside the bajutsu runner from a secret no generated test holds,
+    so they render as a labeled comment naming the generator and the variable, never the secret.
+    """
+    parts: list[str] = []
+    if step.totp is not None:
+        kind = "totp"
+        if step.totp.name is not None:
+            parts.append(f"name: {_collapse_line_terminators(step.totp.name)}")
+        if step.totp.into is not None:
+            parts.append(f"into: {_collapse_line_terminators(step.totp.into.var)}")
+    elif step.otp is not None:
+        kind = "otp"
+        parts.append(f"from: {_collapse_line_terminators(step.otp.from_)}")
+        parts.append(f"into: {_collapse_line_terminators(step.otp.into.var)}")
+    else:
+        return None
+    return f"// TODO: {kind}({', '.join(parts)}) — RFC 6238 OTP; not generated"
+
+
 def permissions_setup_lines(scenario: Scenario) -> list[str]:
     """The `// TODO` lines naming each `permissions` entry (BE-0276), one per service.
 

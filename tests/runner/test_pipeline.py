@@ -2963,3 +2963,32 @@ def test_a_lease_time_crash_keeps_the_earlier_attempts_crash_evidence(tmp_path: 
     directory = run_dir / "00-a" / "crash-diagnostics"
     assert (directory / "runner.log").exists()
     assert str(directory) in (results[0].failure or "")
+
+
+def test_a_routed_android_target_fails_a_status_bar_value_it_cannot_show() -> None:
+    # BE-0478: the demo mode ignores a value it cannot show while the broadcast still succeeds, so
+    # each routed Android target's own steps are checked before any lease.
+    from bajutsu.common.config import AndroidConfig
+
+    def lease_must_not_run(eff: Effective, s: Scenario) -> Lease:
+        raise AssertionError("lease must not be called when the value check rejects")
+
+    phone = replace(_eff(), platform_config=AndroidConfig(package="com.x"))
+    scenario = Scenario.model_validate(
+        {
+            "name": "pair",
+            "targets": ["phone", "site"],
+            "steps": [
+                {"target": "phone", "overrideStatusBar": {"time": "9:41 AM"}},
+                {"target": "site", "tap": {"id": "ok"}},
+            ],
+        }
+    )
+    targets = {
+        "phone": TargetPool(phone, _lease, "adb"),
+        "site": TargetPool(_web_eff(), _lease, "playwright"),
+    }
+    results = run_all(_eff(), [scenario], lease_must_not_run, targets=targets)
+    assert not results[0].ok
+    assert "(target 'phone')" in (results[0].failure or "")
+    assert "must be H:MM or HH:MM" in (results[0].failure or "")

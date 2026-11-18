@@ -175,6 +175,13 @@ ROUTES: tuple[Route, ...] = (
             include_lines=ctx.query("lines") != "0",
         ),
     ),
+    Route(
+        "GET",
+        "/api/run-set/{group_id}",
+        lambda state, ctx: ops.job_group_view(
+            state, ctx.path_param("group_id"), actor=ctx.actor(), machine_org=ctx.machine_org()
+        ),
+    ),
     Route("GET", "/api/environments", lambda state, _ctx: ops.list_environments(state)),
     # --- GET: text responses (content_type) ---
     Route(
@@ -318,7 +325,12 @@ ROUTES: tuple[Route, ...] = (
         "POST",
         "/api/run-set",
         lambda state, ctx: ops.start_run_set(
-            state, ctx.body(), actor=ctx.actor(), session=ctx.session()
+            state,
+            ctx.body(),
+            actor=ctx.actor(),
+            session=ctx.session(),
+            machine_org=ctx.machine_org(),
+            ci_job=ctx.ci_job(),
         ),
     ),
     # Rebind the org's remembered config (BE-0404 unit 1) — the recovery path for a replica that
@@ -502,6 +514,7 @@ ROUTES: tuple[Route, ...] = (
             state,
             ctx.body().get("worker_id", ""),
             ctx.body().get("capabilities"),
+            max_jobs=ctx.body().get("maxJobs"),
             relay_secrets=_worker_caller(ctx),
         ),
     ),
@@ -555,6 +568,13 @@ ROUTES: tuple[Route, ...] = (
         "POST",
         "/api/worker/scenario-url",
         lambda state, ctx: ops.worker_scenario_url(state, ctx.body()),
+    ),
+    Route(
+        "POST",
+        "/api/run-set/{group_id}/cancel",
+        lambda state, ctx: ops.cancel_job_group(
+            state, ctx.path_param("group_id"), actor=ctx.actor(), machine_org=ctx.machine_org()
+        ),
     ),
     Route(
         "POST",

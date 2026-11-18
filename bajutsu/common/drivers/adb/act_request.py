@@ -18,7 +18,7 @@ class ActRequest:
     itself, microseconds before the touch, from a dump of its own.
     """
 
-    kind: str  # "tap" | "longPress" | "doubleTap"
+    kind: str  # "tap" | "longPress" | "doubleTap" | "setPickerValue" (BE-0480, its own endpoint)
     identity: NodeIdentity
     index: int  # the element's ordinal among the nodes sharing `identity`, in document order
     count: int  # how many such nodes the host saw — the device refuses if its own count differs

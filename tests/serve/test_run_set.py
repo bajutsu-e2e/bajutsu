@@ -1,9 +1,8 @@
-"""Tests for the per-scenario cloud-batch fan-out dispatch (BE-0336 Unit 3).
+"""Tests for the per-scenario fan-out dispatch (BE-0336 Unit 3, BE-0484).
 
-`start_run_set` expands one scenario-set request into one cloud-batch job per scenario, each carrying
-its own `BatchRequest`, registered through the same concurrency-capped tail as every other run. A
-recording executor captures the dispatched jobs so the fan-out is asserted without actually running
-them (no thread, no cloud).
+`start_run_set` expands one scenario-set request into one job per scenario, each carrying its own run
+intent, and writes them as one group straight to the queue: no executor runs them, and the server's
+concurrency caps apply when a worker leases them (BE-0484 unit 3).
 """
 
 from __future__ import annotations
@@ -11,25 +10,42 @@ from __future__ import annotations
 import hashlib
 import io
 import zipfile
+from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
-from _shared import _post, _serve, queue_repository
+from _shared import _get_json, _post, _serve, queue_repository
 from conftest import FakeObjectStore
 
 from bajutsu import serve as srv
+from bajutsu.common.capability.route_tokens import is_route_token
+from bajutsu.serve import operations as ops
+from bajutsu.serve.capabilities import RUN_INTENT_CAPABILITY
 from bajutsu.serve.operations.dispatch import start_run_set
+from bajutsu.serve.server.db import QueuedJob
 from bajutsu.serve.state import Job, ServeState
 
 
 class _RecordingExecutor:
-    """Captures dispatched jobs instead of running them, so a fan-out test stays synchronous."""
+    """Captures dispatched jobs instead of running them; a fan-out must hand it none."""
 
     def __init__(self) -> None:
         self.jobs: list[Job] = []
 
     def dispatch(self, state: ServeState, job: Job) -> None:
         self.jobs.append(job)
+
+
+class _Registered:
+    """The jobs a fan-out registered, in id order, read off the state's registry."""
+
+    def __init__(self, state: ServeState) -> None:
+        self._state = state
+
+    @property
+    def jobs(self) -> list[Job]:
+        return sorted(self._state.jobs.values(), key=lambda j: int(j.id))
 
 
 def _android_batch_project(tmp_path: Path, *, scenarios: list[str]) -> tuple[Path, Path]:
@@ -55,11 +71,16 @@ def _android_batch_project(tmp_path: Path, *, scenarios: list[str]) -> tuple[Pat
     return scn_dir, cfg
 
 
-# Where the runs go is the request's choice (BE-0452), named as a batch-provider environment.
-_DF = {"target": "demo", "environment": "devicefarm"}
+def _placement(capabilities: list[str]) -> list[str]:
+    """*capabilities* without the `cap:` / `setting:` tokens every scenario's steps add."""
+    return [t for t in capabilities if not is_route_token(t)]
 
 
-def _state(tmp_path: Path, cfg: Path, scn_dir: Path) -> tuple[ServeState, _RecordingExecutor]:
+# The request names a target and no placement: any worker serving the platform runs it (BE-0484).
+_DF = {"target": "demo"}
+
+
+def _state(tmp_path: Path, cfg: Path, scn_dir: Path) -> tuple[ServeState, _Registered]:
     executor = _RecordingExecutor()
     state = ServeState(
         scenarios_dir=scn_dir,
@@ -70,7 +91,7 @@ def _state(tmp_path: Path, cfg: Path, scn_dir: Path) -> tuple[ServeState, _Recor
         repository=queue_repository(),
     )
     state.object_store = FakeObjectStore()  # the bundle of the config's directory lands here
-    return state, executor
+    return state, _Registered(state)
 
 
 def test_fan_out_registers_one_batch_job_per_scenario(tmp_path: Path) -> None:
@@ -83,11 +104,11 @@ def test_fan_out_registers_one_batch_job_per_scenario(tmp_path: Path) -> None:
 
     assert status == 200
     assert len(payload["jobIds"]) == 3
-    # Every dispatched job carries a per-scenario BatchRequest — one scenario each, not the whole set.
+    # Every dispatched job carries a per-scenario run intent — one scenario each, not the whole set.
     dispatched: list[str] = []
     for job in executor.jobs:
-        assert job.batch is not None
-        dispatched.append(job.batch.scenario)
+        assert job.intent is not None
+        dispatched.append(job.intent.scenario)
     scenarios = sorted(dispatched)
     assert scenarios == [
         "scenarios/one.yaml",
@@ -95,12 +116,49 @@ def test_fan_out_registers_one_batch_job_per_scenario(tmp_path: Path) -> None:
         "scenarios/two.yaml",
     ]
     for job in executor.jobs:
-        assert job.batch is not None
-        assert job.batch.provider == "devicefarm"
-        assert job.batch.target == "demo"
-        assert job.batch.platform == "android"
-        assert job.batch.config == "bajutsu.config.yaml"
-        assert job.batch.app_path == "app.apk"
+        # The platform routes the job, to a local worker or a device cloud alike (BE-0484).
+        assert job.batch is None and job.intent is not None
+        assert _placement(job.capabilities) == [RUN_INTENT_CAPABILITY, "platform:android"]
+        assert job.intent.target == "demo"
+        assert job.intent.platform == "android"
+        assert job.intent.config == "bajutsu.config.yaml"
+        assert job.intent.app_path == "app.apk"
+
+
+def test_a_local_binding_copies_the_stored_baselines_and_names_no_upload_policy(
+    tmp_path: Path,
+) -> None:
+    # The values the server alone decides travel with the intent, as for a plain run (BE-0484).
+    scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml"])
+    state, executor = _state(tmp_path, cfg, scn_dir)
+
+    _payload, status = start_run_set(state, _DF)
+
+    assert status == 200
+    (job,) = executor.jobs
+    assert job.intent is not None and job.intent.upload_exec == ""
+    assert job.materialize_baselines is True
+    assert job.provenance is None
+
+
+def test_an_uploaded_binding_carries_its_launch_policy_and_provenance_but_no_baselines(
+    tmp_path: Path,
+) -> None:
+    upload = SimpleNamespace(
+        worker_ref={"id": "a" * 64}, sha256="a" * 64, provenance={"bundle": "a" * 64}
+    )
+    scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml"])
+    state, executor = _state(tmp_path, cfg, scn_dir)
+    state.binding = replace(state.binding, upload=upload)  # type: ignore[arg-type]
+    state.upload_exec = "deny"
+
+    _payload, status = start_run_set(state, _DF)
+
+    assert status == 200
+    (job,) = executor.jobs
+    assert job.intent is not None and job.intent.upload_exec == "deny"
+    assert job.materialize_baselines is False
+    assert job.provenance == {"bundle": "a" * 64}
 
 
 def test_fan_out_honours_an_explicit_scenario_subset(tmp_path: Path) -> None:
@@ -113,34 +171,22 @@ def test_fan_out_honours_an_explicit_scenario_subset(tmp_path: Path) -> None:
 
     assert status == 200
     assert len(payload["jobIds"]) == 1
-    batch = executor.jobs[0].batch
-    assert batch is not None and batch.scenario == "scenarios/two.yaml"
+    intent = executor.jobs[0].intent
+    assert intent is not None and intent.scenario == "scenarios/two.yaml"
 
 
-@pytest.mark.parametrize(
-    ("environment", "why"),
-    [
-        (None, "missing"),
-        ("appium", "an appium grid is reached through the plain run request"),
-        ("local", "not a batch provider"),
-        ("firebase", "unknown"),
-    ],
-)
-def test_fan_out_needs_a_batch_provider_environment(
-    tmp_path: Path, environment: str | None, why: str
+@pytest.mark.parametrize("environment", ["devicefarm", "local", "appium"])
+def test_fan_out_refuses_a_request_that_names_an_environment(
+    tmp_path: Path, environment: str
 ) -> None:
-    # The fan-out packages the app for a device cloud, so it takes a batch-provider kind alone; the
-    # target no longer names one (BE-0452).
+    # Which worker runs a job is not the request's to say (BE-0484).
     scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml"])
     state, executor = _state(tmp_path, cfg, scn_dir)
-    body: dict[str, object] = {"target": "demo"}
-    if environment is not None:
-        body["environment"] = environment
 
-    payload, status = start_run_set(state, body)
+    payload, status = start_run_set(state, {**_DF, "environment": environment})
 
-    assert status == 400, why
-    assert "environment naming a device-cloud batch provider" in payload["error"]
+    assert status == 400
+    assert "run-set takes no environment (BE-0484)" in payload["error"]
     assert executor.jobs == []
 
 
@@ -157,31 +203,126 @@ def test_fan_out_rejects_the_removed_device_budget(tmp_path: Path) -> None:
     assert executor.jobs == []
 
 
-def test_fan_out_rejects_a_web_target(tmp_path: Path) -> None:
-    # Device-cloud batch runs on a physical android/ios device; a web target has no app to install.
+def _project(tmp_path: Path, target_yaml: str, scenarios: dict[str, str]) -> tuple[Path, Path]:
+    """A scenarios dir holding *scenarios* and a config whose `demo` target is *target_yaml*."""
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
-    (scn_dir / "one.yaml").write_text(
-        "- name: a\n  steps:\n    - tap: { id: x }\n", encoding="utf-8"
-    )
+    for name, text in scenarios.items():
+        (scn_dir / name).write_text(text, encoding="utf-8")
     cfg = tmp_path / "bajutsu.config.yaml"
-    cfg.write_text(
-        (
-            "targets:\n"
-            "  demo:\n"
-            "    platform: web\n"
-            f"    subject: {{url: 'http://localhost:8080'}}\n"
-            f"    paths: {{scenarios: {scn_dir}}}\n"
-        ),
-        encoding="utf-8",
-    )
+    cfg.write_text(f"targets:\n  demo:\n{target_yaml}    paths: {{scenarios: scenarios}}\n")
+    return scn_dir, cfg
+
+
+_TAP = "- name: a\n  steps:\n    - tap: { id: x }\n"
+_LOCATE = "- name: locate\n  steps:\n    - setLocation: { lat: 1, lon: 2 }\n"
+
+
+def test_fan_out_takes_a_web_target_with_no_app(tmp_path: Path) -> None:
+    # A browser installs nothing, and no device cloud serves `platform:web` (BE-0484).
+    target = "    platform: web\n    subject: {url: 'http://localhost:8080'}\n"
+    scn_dir, cfg = _project(tmp_path, target, {"one.yaml": _TAP})
     state, executor = _state(tmp_path, cfg, scn_dir)
+
+    _payload, status = start_run_set(state, _DF)
+
+    assert status == 200
+    (job,) = executor.jobs
+    assert job.intent is not None and job.intent.platform == "web" and job.intent.app_path == ""
+    assert _placement(job.capabilities) == [RUN_INTENT_CAPABILITY, "platform:web"]
+    assert job.batch_app is None
+
+
+def test_an_ios_group_job_requires_its_kind_and_family_but_no_host(tmp_path: Path) -> None:
+    # The kind keeps a Simulator target off a device cloud's phones; the host is the platform's to
+    # imply, since every iOS actuator runs on one host (BE-0484).
+    target = (
+        "    platform: ios\n"
+        "    subject: {id: com.example.demo, path: app.zip}\n"
+        "    runsOn: {ios: {family: ipad}}\n"
+    )
+    scn_dir, cfg = _project(tmp_path, target, {"one.yaml": _TAP})
+    (tmp_path / "app.zip").write_text("APP", encoding="utf-8")
+    state, executor = _state(tmp_path, cfg, scn_dir)
+
+    _payload, status = start_run_set(state, _DF)
+
+    assert status == 200
+    (job,) = executor.jobs
+    assert _placement(job.capabilities) == [
+        "ipad",
+        RUN_INTENT_CAPABILITY,
+        "kind:simulator",
+        "platform:ios",
+    ]
+
+
+def test_a_group_job_carries_its_scenarios_route_needs(tmp_path: Path) -> None:
+    target = (
+        "    platform: ios\n"
+        "    runsOn: {ios: {kind: device}}\n"
+        "    subject: {id: com.example.demo, path: app.ipa}\n"
+    )
+    scn_dir, cfg = _project(tmp_path, target, {"locate.yaml": _LOCATE, "tap.yaml": _TAP})
+    (tmp_path / "app.ipa").write_text("IPA", encoding="utf-8")
+    state, executor = _state(tmp_path, cfg, scn_dir)
+
+    _payload, status = start_run_set(state, _DF)
+
+    assert status == 200
+    caps = {j.intent.scenario: j.capabilities for j in executor.jobs if j.intent is not None}
+    assert "cap:ios-device:deviceControl.setLocation" in caps["scenarios/locate.yaml"]
+    assert "kind:device" in caps["scenarios/locate.yaml"]
+    assert not [t for t in caps["scenarios/tap.yaml"] if t.startswith("cap:ios-device:device")]
+
+
+def test_fan_out_refuses_a_group_whose_route_no_live_worker_can_run(tmp_path: Path) -> None:
+    from bajutsu.common.capability.route_tokens import route_tokens
+
+    target = (
+        "    platform: ios\n"
+        "    runsOn: {ios: {kind: device}}\n"
+        "    subject: {id: com.example.demo, path: app.ipa}\n"
+    )
+    scn_dir, cfg = _project(tmp_path, target, {"locate.yaml": _LOCATE, "tap.yaml": _TAP})
+    (tmp_path / "app.ipa").write_text("IPA", encoding="utf-8")
+    state, executor = _state(tmp_path, cfg, scn_dir)
+    # A live worker drives the real-device route, which cannot override the location.
+    assert state.repository is not None
+    state.repository.register_worker(
+        "mac", ["platform:ios", "kind:device", "job:run-intent", *route_tokens("ios-device")]
+    )
 
     payload, status = start_run_set(state, _DF)
 
     assert status == 400
-    assert "android or ios" in payload["error"]
+    assert "cap:ios-device:deviceControl.setLocation" in payload["missing"]
+    assert "locate.yaml" in payload["error"] and "step 1: setLocation" in payload["error"]
     assert executor.jobs == []
+
+
+def test_fan_out_reads_the_route_needs_once_per_distinct_scenario_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from bajutsu.serve import helpers
+    from bajutsu.serve.operations import dispatch
+
+    scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml", "two.yaml"])
+    (scn_dir / "three.yaml").write_text(_LOCATE, encoding="utf-8")
+    state, _executor = _state(tmp_path, cfg, scn_dir)
+    texts: list[str | None] = []
+    real = helpers.scenario_route_needs
+
+    def counting(*args: object, **kwargs: object) -> dict[str, list[str]]:
+        texts.append(args[3])  # type: ignore[arg-type]
+        return real(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(dispatch, "scenario_route_needs", counting)
+
+    _payload, status = start_run_set(state, _DF)
+
+    assert status == 200
+    assert sorted(t or "" for t in texts) == sorted([_LOCATE, _TAP])
 
 
 def test_fan_out_rejects_an_unknown_scenario_before_dispatching_any(tmp_path: Path) -> None:
@@ -258,7 +399,7 @@ def test_fan_out_rejects_a_config_outside_the_run_directory(tmp_path: Path) -> N
 
     assert status == 400
     assert "not under its bundle directory" in payload["error"]
-    assert executor.jobs == []
+    assert state.jobs == {}
 
 
 def test_fan_out_requires_an_open_config(tmp_path: Path) -> None:
@@ -273,30 +414,20 @@ def test_fan_out_requires_an_open_config(tmp_path: Path) -> None:
     assert "config" in payload["error"]
 
 
-def test_fan_out_returns_429_when_cap_rejects_the_first_job(tmp_path: Path) -> None:
-    # When the concurrency cap rejects the very first job (nothing dispatched yet), the endpoint
-    # returns the 429 payload rather than 200 with an empty list — a silent failure that looks like
-    # success. Partial dispatch (some dispatched, then capped) is routine (Unit 4 governs this), but
-    # zero dispatched + cap = loud error, consistent with start_run / start_record / start_crawl.
-    scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml"])
-
-    # Make try_register always return None (cap hit) by wrapping ServeState.
-    import unittest.mock
-
-    state = ServeState(
-        scenarios_dir=scn_dir,
-        config=cfg,
-        runs_dir=tmp_path / "runs",
-        cwd=tmp_path,
-        executor=_RecordingExecutor(),
-        repository=queue_repository(),
+def test_fan_out_registers_every_scenario_past_the_caps(tmp_path: Path) -> None:
+    """The caps apply when a worker leases a group's jobs, so none cuts the group short."""
+    scn_dir, cfg = _android_batch_project(
+        tmp_path, scenarios=["one.yaml", "two.yaml", "three.yaml"]
     )
-    state.object_store = FakeObjectStore()
-    with unittest.mock.patch.object(state, "try_register", return_value=None):
-        payload, status = start_run_set(state, _DF)
+    state, registered = _state(tmp_path, cfg, scn_dir)
+    state.max_concurrent = state.max_concurrent_per_org = 1
+    state.register(Job(cmd=[]))  # a plain run already fills the caps
 
-    assert status == 429
-    assert "too many concurrent" in payload["error"]
+    payload, status = start_run_set(state, _DF)
+
+    assert status == 200
+    assert len(payload["jobIds"]) == 3
+    assert [j.id for j in registered.jobs] == ["1", *payload["jobIds"]]
 
 
 def test_fan_out_dispatches_every_scenario(tmp_path: Path) -> None:
@@ -334,6 +465,12 @@ def test_fan_out_ships_scenarios_that_travel_as_materials(tmp_path: Path) -> Non
                 materials={"one.yaml": "- name: a\n  steps:\n    - tap: { id: x }\n"},
             )
 
+        def read(self, name: str) -> str:
+            return "- name: a\n  steps:\n    - tap: { id: x }\n"
+
+        def directory(self) -> None:
+            return None
+
     class _MaterialsStore:
         def scope(self, app, *, session=None, org=""):
             return _MaterialsScope()
@@ -357,9 +494,10 @@ def test_fan_out_ships_scenarios_that_travel_as_materials(tmp_path: Path) -> Non
         payload, status = start_run_set(state, _DF)
 
     assert status == 200, payload
-    (job,) = executor.jobs
-    assert job.batch is not None
-    assert (job.batch.scenario, job.batch.config) == ("one.yaml", "bajutsu.config.yaml")
+    (job,) = _Registered(state).jobs
+    assert executor.jobs == []
+    assert job.intent is not None
+    assert (job.intent.scenario, job.intent.config) == ("one.yaml", "bajutsu.config.yaml")
     assert job.materials["one.yaml"].startswith("- name: a")
     assert job.materials["bajutsu.config.yaml"] == cfg.read_text(encoding="utf-8")
     assert job.batch_app is not None  # the stored binary the lease signs for the worker
@@ -470,7 +608,7 @@ def test_fan_out_ships_a_local_config_directory_as_one_bundle(tmp_path: Path) ->
         assert job.materials == {}
         assert job.batch_app is None  # the bundle carries the binary
         assert job_spec(job)["cwd"] is None
-        assert job.capabilities == ["environment:devicefarm"]
+        assert _placement(job.capabilities) == [RUN_INTENT_CAPABILITY, "platform:android"]
 
 
 def test_fan_out_names_a_bundled_config_by_the_name_a_worker_finds(tmp_path: Path) -> None:
@@ -483,7 +621,7 @@ def test_fan_out_names_a_bundled_config_by_the_name_a_worker_finds(tmp_path: Pat
 
     assert status == 200, payload
     job = state.jobs[payload["jobIds"][0]]
-    assert job.batch is not None and job.batch.config == "bajutsu.config.yaml"
+    assert job.intent is not None and job.intent.config == "bajutsu.config.yaml"
     archive = _stored_zip(state, job)
     assert archive.read("bajutsu.config.yaml").decode("utf-8") == cfg.read_text(encoding="utf-8")
 
@@ -550,3 +688,251 @@ def test_fan_out_needs_the_config_at_the_root_of_its_bundle(tmp_path: Path) -> N
     assert status == 400, payload
     assert "not at the root of its directory" in payload["error"]
     assert state.jobs == {}
+
+
+def test_fan_out_registers_one_group_its_jobs_share(tmp_path: Path) -> None:
+    """BE-0484: the response names the group, whose jobs are the ones the request queued."""
+    state = _queued_state(tmp_path, _local_bundle_project(tmp_path))
+    assert state.repository is not None
+
+    payload, status = start_run_set(state, {**_DF, "scenarios": ["one.yaml", "two.yaml"]})
+
+    assert status == 200
+    group = state.repository.get_job_group(payload["groupId"])
+    assert group is not None and group["org_id"] == "default" and group["key"]
+    assert [j["id"] for j in state.repository.group_jobs(payload["groupId"])] == payload["jobIds"]
+    jobs = [state.jobs[i] for i in payload["jobIds"]]
+    assert {j.group_id for j in jobs} == {payload["groupId"]}
+    assert len({j.compat_key for j in jobs}) == 1 and jobs[0].compat_key
+
+
+def test_a_new_request_is_a_new_group_and_shares_a_compat_key_until_the_config_changes(
+    tmp_path: Path,
+) -> None:
+    cfg = _local_bundle_project(tmp_path)
+    state = _queued_state(tmp_path, cfg)
+
+    first, _ = start_run_set(state, {**_DF, "scenarios": ["one.yaml"]})
+    second, _ = start_run_set(state, {**_DF, "scenarios": ["two.yaml"]})
+    cfg.write_text(cfg.read_text(encoding="utf-8") + "# edited\n", encoding="utf-8")
+    third, _ = start_run_set(state, {**_DF, "scenarios": ["one.yaml"]})
+
+    assert first["groupId"] != second["groupId"]
+    keys = [state.jobs[p["jobIds"][0]].compat_key for p in (first, second, third)]
+    assert keys[0] == keys[1] != keys[2]
+
+
+def test_fan_out_refuses_a_scenario_named_twice(tmp_path: Path) -> None:
+    scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml", "two.yaml"])
+    state, executor = _state(tmp_path, cfg, scn_dir)
+
+    payload, status = start_run_set(state, {**_DF, "scenarios": ["one.yaml", "one.yaml"]})
+
+    assert status == 400
+    assert "named more than once" in payload["error"]
+    assert executor.jobs == []
+
+
+def test_a_store_error_registers_no_job(tmp_path: Path) -> None:
+    import unittest.mock
+
+    scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml", "two.yaml"])
+    state, _ = _state(tmp_path, cfg, scn_dir)
+    failing = unittest.mock.patch.object(
+        state.repository, "register_job_group", side_effect=RuntimeError("database is down")
+    )
+
+    with failing, pytest.raises(RuntimeError, match="database is down"):
+        start_run_set(state, _DF)
+
+    assert state.jobs == {}
+
+
+@pytest.mark.parametrize("key", ["", "has space", "x" * 129, 7])
+def test_fan_out_refuses_a_malformed_group_key(tmp_path: Path, key: object) -> None:
+    scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml"])
+    state, _ = _state(tmp_path, cfg, scn_dir)
+
+    payload, status = start_run_set(state, {**_DF, "groupKey": key})
+
+    assert status == 400
+    assert "groupKey" in payload["error"]
+
+
+def test_a_repeated_group_key_returns_its_group_and_queues_nothing_new(tmp_path: Path) -> None:
+    scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml", "two.yaml"])
+    state, registered = _state(tmp_path, cfg, scn_dir)
+    request = {**_DF, "groupKey": "gha/123/1:test-0"}
+
+    first, _ = start_run_set(state, request)
+    again, status = start_run_set(state, {**request, "scenarios": ["two.yaml", "one.yaml"]})
+
+    assert status == 200
+    assert again == first
+    assert len(registered.jobs) == 2
+
+
+def test_a_group_key_reused_for_a_different_request_is_a_conflict(tmp_path: Path) -> None:
+    scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml", "two.yaml"])
+    state, registered = _state(tmp_path, cfg, scn_dir)
+    request = {**_DF, "groupKey": "ci-1"}
+    start_run_set(state, request)
+
+    payload, status = start_run_set(state, {**request, "scenarios": ["one.yaml"]})
+
+    assert status == 409
+    assert "ci-1" in payload["error"]
+    assert len(registered.jobs) == 2
+
+
+def test_a_machine_registers_its_group_under_its_own_org(tmp_path: Path) -> None:
+    cfg = _local_bundle_project(tmp_path)
+    with cfg.open("a", encoding="utf-8") as f:
+        f.write("orgs:\n  acme:\n    targets: [demo]\n")
+    state = _queued_state(tmp_path, cfg)
+    assert state.repository is not None
+
+    payload, status = start_run_set(
+        state, {**_DF, "scenarios": ["one.yaml"]}, machine_org="acme", ci_job={"run": "1"}
+    )
+
+    assert status == 200
+    group = state.repository.get_job_group(payload["groupId"])
+    assert group is not None and group["org_id"] == "acme"
+    assert state.jobs[payload["jobIds"][0]].org == "acme"
+
+
+def _group_of_two(tmp_path: Path) -> ServeState:
+    """A queued group ``g1`` of jobs ``1`` and ``2`` in the default org (BE-0484)."""
+    state = ServeState(
+        runs_dir=tmp_path / "runs", executor=_RecordingExecutor(), repository=queue_repository()
+    )
+    assert state.repository is not None
+    jobs = [QueuedJob(id=i, spec={}) for i in ("1", "2")]
+    state.repository.register_job_group(
+        "g1", org_id="default", key="k1", digest="d", compat_key=None, jobs=jobs
+    )
+    return state
+
+
+def _finish(state: ServeState, *exit_codes: int | str | None) -> None:
+    """Lease and finish jobs ``1`` then ``2``: an exit code completes one, None fails it, and
+    ``"cancel"`` reports it cancelled the way a worker does, with a non-zero exit code."""
+    repo = state.repository
+    assert repo is not None and len(exit_codes) <= 2
+    for job_id, code in zip(("1", "2"), exit_codes, strict=False):
+        leased = repo.lease_job("w1")
+        assert leased is not None and leased.id == job_id  # lease_job ties on created_at
+        if code is None:
+            repo.fail_job(leased.id, "worker lost the device")
+        elif code == "cancel":
+            repo.complete_job(leased.id, {"exitCode": -15, "cancelled": True})
+        else:
+            repo.complete_job(leased.id, {"exitCode": code, "runId": f"run-{leased.id}"})
+
+
+def test_a_queued_group_reads_as_pending_with_each_jobs_status(tmp_path: Path) -> None:
+    payload, status = ops.job_group_view(_group_of_two(tmp_path), "g1")
+
+    assert status == 200
+    assert payload == {
+        "groupId": "g1",
+        "groupKey": "k1",
+        "conclusion": "pending",
+        "jobs": [
+            {"id": "1", "status": "queued", "exitCode": None, "runId": None},
+            {"id": "2", "status": "queued", "exitCode": None, "runId": None},
+        ],
+    }
+
+
+@pytest.mark.parametrize(
+    ("exit_codes", "conclusion"),
+    [
+        ((0,), "pending"),  # one job still queued
+        ((0, 0), "success"),
+        ((0, 1), "failure"),  # a job whose run finished with failing assertions
+        ((0, None), "failure"),  # a job that never produced a verdict
+        ((1, "cancel"), "failure"),  # a failure outranks a cancel
+        ((0, "cancel"), "cancelled"),
+    ],
+)
+def test_a_groups_conclusion_comes_from_its_jobs_exit_codes(
+    tmp_path: Path, exit_codes: tuple[int | str | None, ...], conclusion: str
+) -> None:
+    state = _group_of_two(tmp_path)
+    _finish(state, *exit_codes)
+
+    payload, _ = ops.job_group_view(state, "g1")
+
+    assert payload["conclusion"] == conclusion
+    assert payload["jobs"][0]["runId"] == "run-1"
+
+
+def test_another_orgs_group_and_an_unknown_one_both_read_as_not_found(tmp_path: Path) -> None:
+    state = _group_of_two(tmp_path)
+
+    assert ops.job_group_view(state, "g1", machine_org="acme")[1] == 404
+    assert ops.job_group_view(state, "nope")[1] == 404
+    assert ops.cancel_job_group(state, "g1", machine_org="acme")[1] == 404
+    assert ops.cancel_job_group(state, "nope")[1] == 404
+
+
+def test_cancelling_a_group_cancels_its_unfinished_jobs_only(tmp_path: Path) -> None:
+    state = _group_of_two(tmp_path)
+    _finish(state, 0)
+
+    payload, status = ops.cancel_job_group(state, "g1")
+
+    assert (payload, status) == ({"groupId": "g1", "cancelled": ["2"]}, 200)
+    view, _ = ops.job_group_view(state, "g1")
+    assert [j["status"] for j in view["jobs"]] == ["done", "cancelled"]
+    assert view["conclusion"] == "cancelled"
+    assert ops.cancel_job_group(state, "g1") == ({"groupId": "g1", "cancelled": []}, 200)
+
+
+def test_the_group_routes_are_wired(tmp_path: Path) -> None:
+    state = _group_of_two(tmp_path)
+    server, port = _serve(state)
+    try:
+        assert _get_json(port, "/api/run-set/g1")["conclusion"] == "pending"
+        status, payload = _post(port, "/api/run-set/g1/cancel", {})
+        assert (status, payload["cancelled"]) == (200, ["1", "2"])
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_a_person_reaches_a_group_through_membership_not_the_active_org(tmp_path: Path) -> None:
+    """As for a single job: switching orgs never hides a group, and only an editor cancels it."""
+    state = _group_of_two(tmp_path)
+    repo = state.repository
+    assert repo is not None
+    for org, member in (("default", "alice"), ("globex", "bob")):
+        repo.ensure_org(org, slug=org, name=org)
+        repo.upsert_user(member, org_id=org, github_login=member, email=f"{member}@x")
+        repo.set_user_orgs(member, {org: "editor"})
+
+    assert ops.job_group_view(state, "g1", actor="bob")[1] == 404
+    assert ops.cancel_job_group(state, "g1", actor="bob")[1] == 404
+    repo.set_user_orgs("bob", {"globex": "editor", "default": "viewer"})
+    assert ops.job_group_view(state, "g1", actor="bob")[1] == 200
+    assert ops.cancel_job_group(state, "g1", actor="bob")[1] == 404
+    repo.set_user_orgs("alice", {"default": "editor", "globex": "editor"})
+    repo.upsert_user("alice", org_id="globex", github_login="alice", email="alice@x")
+    assert ops.job_group_view(state, "g1", actor="alice")[1] == 200
+    assert ops.cancel_job_group(state, "g1", actor="alice")[0]["cancelled"] == ["1", "2"]
+
+
+def test_a_cancelled_leased_job_keeps_the_group_pending_until_its_worker_stops(
+    tmp_path: Path,
+) -> None:
+    state = _group_of_two(tmp_path)
+    assert state.repository is not None
+    assert state.repository.lease_job("w1") is not None
+
+    assert ops.cancel_job_group(state, "g1")[0]["cancelled"] == ["1", "2"]
+
+    view, _ = ops.job_group_view(state, "g1")
+    assert [j["status"] for j in view["jobs"]] == ["leased", "cancelled"]
+    assert view["conclusion"] == "pending"
