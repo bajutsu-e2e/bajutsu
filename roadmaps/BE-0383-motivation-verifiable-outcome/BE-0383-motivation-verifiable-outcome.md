@@ -15,100 +15,128 @@
 
 ## Introduction
 
-This item extends [`document-writing`][document-writing]'s contribution-first principle so a BE
-item's Motivation names not only what should change but how a reader would later judge whether the
-change delivered. Today the norm requires stating the contribution up front; it does not require
-stating a way to check it. GitHub's [Spec Kit][spec-kit] closes exactly this gap for its own
-specifications by requiring a measurable success criterion, and this item imports one piece of that
-practice: a verifiable-outcome sentence in Motivation. It imports nothing else — *Alternatives
-considered* records why the rest of Spec Kit does not fit Bajutsu's roadmap format or its review
-contract.
+This item extends the contribution-first principle of [`document-writing`][document-writing]. A BE
+item's Motivation then names not only what should change, but also how a reader would later judge
+whether the change delivered.
+
+Today the norm requires stating the contribution up front. It does not require stating a way to check
+it. GitHub's [Spec Kit][spec-kit] closes exactly this gap for its own specifications. It requires a
+measurable success criterion.
+
+This item imports one piece of that practice: a verifiable-outcome sentence in Motivation. It imports
+nothing else. *Alternatives considered* records why the rest of Spec Kit does not fit the roadmap
+format of Bajutsu or its review contract.
 
 ## Motivation
 
-A BE item is argued prose: Motivation makes the case for a change, and `document-writing` already
-requires that case to state its contribution before its detail. What it does not require is a way to
-tell, once the change ships, whether that contribution actually arrived. [BE-0347][] argues that
-splitting a review pass into two roles "should let each round close a finding instead of deferring
-it" and that doing so "should cut down how often the live bot's own re-review cycle even starts" —
-plausible claims, but neither Motivation nor the item's *Progress* checklist states what a reader
-could check, after the fact, to confirm either one happened. *Progress* tracks whether the units of
-work landed, not whether the change produced the effect Motivation predicted; the two are different
-questions, and only the first has a place to live today.
+A BE item is argued prose. Motivation makes the case for a change, and `document-writing` already
+requires that case to state its contribution before its detail. The norm does not require a way to
+tell, once the change ships, whether the contribution actually arrived.
 
-GitHub's Spec Kit is built around closing this same gap for its own specifications: a `spec.md`'s
-success criteria must be "measurable" and "technology-agnostic", so a requirement such as "checkout
-completes in under three minutes" gives every later reader a fact they can check against the shipped
-result. Bajutsu cannot import that requirement's technology-agnostic half. A BE item's Detailed
-design is expected to name concrete files, functions, and mechanisms; a Spec Kit `spec.md` must avoid
-implementation detail entirely. But the measurability half transfers cleanly: asking
-an author to name one observable difference the change is meant to produce costs nothing extra at
-authoring time, when the author already knows why the change matters, and gives every later reader
-— a reviewer, a future contributor revisiting the item, or the author checking their own prediction
-after the implementing PR lands — a concrete fact to check the claim against, instead of only the
-prose's own say-so. This item's own verifiable outcome, stated to meet the norm it proposes: a
-reader of any later-merged item can hold that item's Motivation against the shipped change and say
-whether the predicted effect arrived — where BE-0347's two predictions above leave nothing to hold
-them against.
+[BE-0347][] shows the gap. It argues that splitting a review pass into two roles "should let each
+round close a finding instead of deferring it". It also argues that the split "should cut down how
+often the live bot's own re-review cycle even starts". Both claims are plausible. Neither Motivation
+nor the *Progress* checklist of the item states what a reader could check, after the fact, to confirm
+that either one happened.
+
+*Progress* tracks whether the units of work landed. It does not track whether the change produced the
+effect that Motivation predicted. Those are two different questions, and only the first has a place to
+live today.
+
+GitHub's Spec Kit is built around closing this same gap for its own specifications. The success
+criteria of a `spec.md` must be "measurable" and "technology-agnostic". A requirement such as
+"checkout completes in under three minutes" gives every later reader a fact to check against the
+shipped result.
+
+Bajutsu cannot import the technology-agnostic half of that requirement. The Detailed design of a BE
+item is expected to name concrete files, functions, and mechanisms. A Spec Kit `spec.md` must avoid
+implementation detail entirely.
+
+The measurability half transfers cleanly. Asking an author to name one observable difference that the
+change is meant to produce costs nothing extra at authoring time, because the author already knows why
+the change matters. The sentence gives every later reader a concrete fact to check the claim against,
+instead of the bare say-so of the prose. The later readers are:
+
+- a reviewer
+- a future contributor revisiting the item
+- the author, checking a prediction after the implementing PR lands
+
+This item states its own verifiable outcome, to meet the norm it proposes. A reader of any
+later-merged item can hold the Motivation of that item against the shipped change and say whether the
+predicted effect arrived. The two predictions of BE-0347 above leave a reader nothing to hold them
+against.
 
 ## Detailed design
 
-1. **[`document-writing`][document-writing] — add a verifiable-outcome bullet.** In the
-   *Language-agnostic principles* section, add a bullet next to "State the contribution up front":
-   a BE item's Motivation names one observable difference the change is meant to produce — a change
-   in behavior, output, or a quantity a reader could check — distinct from the *Progress* checklist,
-   which tracks completed work rather than delivered effect. The outcome does not need a numeric
-   target; "the local self-review pass converges before a push, instead of the live bot's cycle
-   restarting on unrelated findings" is as valid as a number would be, as long as a later reader could
-   tell whether it held. State the new bullet as a BE-specific instance of the existing principle,
-   not a new, separate principle — the existing "State the contribution up front" bullet already
-   carries a BE-specific clause ("A BE item's Introduction and Motivation state the problem..."), so
-   BE-specific guidance is already at home there.
-2. **[`ideation`][ideation] step 2 — ask for the verifiable outcome during the conversation.** The
-   step already asks "what's the machine-checkable outcome" — the deterministic assertion a feature
+1. **[`document-writing`][document-writing]: add a verifiable-outcome bullet.** In the
+   *Language-agnostic principles* section, add a bullet next to "State the contribution up front".
+   The bullet says that the Motivation of a BE item names one observable difference the change is
+   meant to produce: a change in behavior, in output, or in a quantity a reader could check. The
+   outcome is distinct from the *Progress* checklist, which tracks completed work, not delivered
+   effect.
+   - The outcome does not need a numeric target. "The local self-review pass converges before a push,
+     instead of the live bot's cycle restarting on unrelated findings" is as valid as a number would
+     be, as long as a later reader could tell whether it held.
+   - State the new bullet as a BE-specific instance of the existing principle, not as a new, separate
+     principle. The existing "State the contribution up front" bullet already carries a BE-specific
+     clause ("A BE item's Introduction and Motivation state the problem..."). BE-specific guidance is
+     already at home there.
+2. **[`ideation`][ideation] step 2: ask for the verifiable outcome during the conversation.** The step
+   already asks "what's the machine-checkable outcome". That is the deterministic assertion a feature
    is gated on, which is a different question from this one. Add one clause, worded so the two do not
-   collide: also ask what the author would point to, after the change ships, to say it worked — the
-   same question step 4 then expects Motivation to answer in prose. This keeps the question inside the
-   existing back-and-forth rather than adding a new step; unit 1's norm is what makes the answer
-   mandatory in the drafted prose, not this step.
-3. **[`ideation`][ideation] step 4 — carry the answer into the draft.** The step already instructs
-   invoking `document-writing` "before you draft that prose". Add one sentence: when filling
-   Motivation's `TBD`, include the verifiable outcome from step 2's conversation. This is the only
-   change needed here — unit 1 supplies the standing rule, unit 2 supplies the conversation that
-   produces the answer, and this unit only points the drafting step at using it.
+   collide. The clause also asks what the author would point to, after the change ships, to say it
+   worked. Step 4 then expects Motivation to answer the same question in prose. The clause keeps the
+   question inside the existing back-and-forth, without adding a new step. The norm of unit 1 makes the
+   answer mandatory in the drafted prose, not this step.
+3. **[`ideation`][ideation] step 4: carry the answer into the draft.** The step already instructs the
+   author to invoke `document-writing` "before you draft that prose". Add one sentence: when filling
+   the `TBD` of Motivation, include the verifiable outcome from the conversation in step 2. This is the
+   only change needed here. Unit 1 supplies the standing rule, and unit 2 supplies the conversation
+   that produces the answer. This unit points the drafting step at using the answer.
 
-No change reaches [`propose-and-build`][propose-and-build] or [`.github/claude-review-prompt.md`][claude-review-prompt]:
-`propose-and-build` Phase A already invokes `document-writing` by reference (per [BE-0278][]), so it
-inherits unit 1 with no separate edit, and the review contract's severity floor is deliberately
-functional-impact-only (see *Alternatives considered*), so this item leaves it untouched.
+No change reaches [`propose-and-build`][propose-and-build] or
+[`.github/claude-review-prompt.md`][claude-review-prompt].
+
+- `propose-and-build` Phase A already invokes `document-writing` by reference (per [BE-0278][]). It
+  inherits unit 1 with no separate edit.
+- The severity floor of the review contract is deliberately functional-impact-only (see *Alternatives
+  considered*). This item leaves the contract untouched.
 
 ## Alternatives considered
 
-**Add a "success criteria are unmeasurable" check to `.github/claude-review-prompt.md`'s prose-quality
-lens.** Rejected. The contract's severity floor was deliberately narrowed, twice, to functional impact
-only, after the prose lenses proved too strict in practice; whether Motivation names a verifiable
-outcome is a question about content rather than wording, and does not fit either of the two prose lenses the
-contract keeps ("Japanese prose quality" and "English documentation and roadmap prose quality" both
-judge how something is phrased, not what claim it makes). Widening the contract to catch this would
-re-open the exact churn [BE-0347][] narrowed the contract to avoid, for a norm this item can instead
-enforce for free, in the same authoring pass that already invokes `document-writing`.
+**Add a "success criteria are unmeasurable" check to the prose-quality lens of
+`.github/claude-review-prompt.md`.** Rejected.
 
-**Adopt Spec Kit's `[NEEDS CLARIFICATION]` marker for an unresolved design point.** Rejected. The
-marker exists because Spec Kit's specification-writing step runs without the stakeholder present, so
-an unresolved question has nowhere to go until a later, separate review step reads the marker. In
-`ideation`, the author and the stakeholder are in the same conversation: step 2 resolves an unformed
-point through the back-and-forth itself, before step 4 ever drafts prose, so a marker meant to survive
-until a later reader has no gap here to fill.
+- The severity floor of the contract was deliberately narrowed twice, to functional impact only, after
+  the prose lenses proved too strict in practice.
+- Whether Motivation names a verifiable outcome is a question about content, not wording. It fits
+  neither of the two prose lenses that the contract keeps. "Japanese prose quality" and "English
+  documentation and roadmap prose quality" both judge how something is phrased, not what claim it
+  makes.
+- Widening the contract to catch this would reopen the exact churn that [BE-0347][] narrowed the
+  contract to avoid. This item can instead enforce the norm for free, in the same authoring pass that
+  already invokes `document-writing`.
 
-**Adopt Spec Kit's `spec.md` / `plan.md` / `tasks.md` three-document split, or its `constitution.md`
-gate.** Rejected for both. A BE item is a single file whose Detailed design is expected to carry
-implementation detail — file names, functions, mechanisms — which is exactly what Spec Kit's
-`spec.md` must exclude by design; splitting Motivation's "what and why" from Detailed design's "how"
-into separate documents would fight the format every existing BE item already uses. A
-`constitution.md`-style gate already exists in a different shape: `ideation`'s own prime directives
-[step](../../.apm/skills/ideation/SKILL.md#prime-directives-these-bound-every-idea), backed
-by `CLAUDE.md` and `DESIGN.md`, and adding a second, Spec-Kit-shaped gate on top would duplicate it
-rather than close a gap.
+**Adopt the `[NEEDS CLARIFICATION]` marker of Spec Kit for an unresolved design point.** Rejected.
+
+- The marker exists because the specification-writing step of Spec Kit runs without the stakeholder
+  present. An unresolved question has nowhere to go until a later, separate review step reads the
+  marker.
+- In `ideation`, the author and the stakeholder are in the same conversation. Step 2 resolves an
+  unformed point through the back-and-forth itself, before step 4 ever drafts prose.
+- A marker meant to survive until a later reader has no gap here to fill.
+
+**Adopt the three-document split of Spec Kit (`spec.md` / `plan.md` / `tasks.md`), or its
+`constitution.md` gate.** Rejected for both.
+
+- A BE item is a single file. Its Detailed design is expected to carry implementation detail: file
+  names, functions, and mechanisms. That is exactly what a Spec Kit `spec.md` must exclude by design.
+  Splitting the "what and why" of Motivation from the "how" of Detailed design into separate documents
+  would fight the format that every existing BE item already uses.
+- A `constitution.md`-style gate already exists in a different shape: the prime directives
+  [step](../../.apm/skills/ideation/SKILL.md#prime-directives-these-bound-every-idea) of `ideation`,
+  backed by `CLAUDE.md` and `DESIGN.md`. Adding a second, Spec-Kit-shaped gate on top would duplicate
+  the existing gate, not close a gap.
 
 ## Progress
 

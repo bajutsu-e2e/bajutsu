@@ -16,98 +16,140 @@
 
 ## Introduction
 
-This item adds a third prompt, `paste`, to the locale-independent `prompt` / `choice` lookup
+This item adds a third prompt, `paste`, to a lookup. The lookup maps a `prompt` / `choice` pair to a
+button label, whatever the Simulator's locale.
 [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md)
-built for `handleSystemAlert`
-([BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md)) — the iOS
-system alert guarding a cross-process read of `UIPasteboard.general`'s content and offering to allow
-or deny it. BE-0320 scoped its lookup to two prompts on purpose — notification authorization and App
-Tracking Transparency (ATT) — because those were the two prompts
+built it for `handleSystemAlert`
+([BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md)).
+
+The paste-consent prompt is an iOS system alert. It guards a cross-process read of
+`UIPasteboard.general`'s content. It offers to allow or deny the read.
+
+BE-0320 scoped its lookup to two prompts on purpose. They are notification authorization and App
+Tracking Transparency (ATT). Those were the two prompts that
 [BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md)'s pre-launch
-permission presets cannot pre-answer. The paste-consent prompt belongs to that same family: no
-`simctl privacy` service reaches it, and no other pre-launch toggle is known to — whether the
-per-app "Paste from Other Apps" preference can be pre-set from outside the app is the open question
-unit 3 probes — so a scenario that means to grant or deny it today has only the literal,
-locale-fragile `sel: { label: "Allow Paste" }` to reach for. This item's contribution is twofold: closing that
-label-lookup gap the same way BE-0320 closed it for the first two prompts, and adding the first
-showcase fixture that exercises a genuine cross-process paste — the exact case bajutsu's own
-Permissions tab today routes around.
+permission presets cannot pre-answer.
+
+The paste-consent prompt belongs to that same family. No `simctl privacy` service reaches it. No
+other pre-launch toggle is known to reach it either.
+
+One question stays open. Unit 3 probes whether something outside the app can pre-set the "Paste from
+Other Apps" preference. Meanwhile, a scenario has only the literal `sel: { label: "Allow Paste" }` to
+grant or deny the prompt. That selector is locale-fragile.
+
+This item's contribution is twofold:
+
+1. It closes that label-lookup gap the same way BE-0320 closed it for the first two prompts.
+2. It adds the first showcase fixture that exercises a genuine cross-process paste. Bajutsu's own
+   Permissions tab today routes around exactly that case.
 
 ## Motivation
 
-Real paste flows read content that something outside the app under test wrote — a coupon code
-copied from Notes, a link shared from Safari, or, inside a bajutsu scenario itself,
+Real paste flows read content that something outside the app under test wrote. Examples are a coupon
+code copied from Notes and a link shared from Safari. A bajutsu scenario creates the same case with
 [BE-0052](../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)'s
-`setClipboard`, which seeds the Simulator's pasteboard from outside the app process entirely. iOS
-meets exactly that case with a system alert: since iOS 16, reading pasteboard content that a
-different process last wrote triggers a consent dialog offering to allow or deny the read, unless
-the source is the same app. A scenario that seeds the pasteboard from outside the app and then reads
-it back inside the app under test runs straight into this prompt.
+`setClipboard`, which seeds the Simulator's pasteboard from outside the app process entirely.
 
-No pre-launch toggle is known to answer it ahead of time. BE-0276's permission presets write Transparency,
-Consent, and Control (TCC) state through `simctl privacy` before the app process starts, but the
-paste-consent prompt falls outside `simctl privacy`'s reach, just as notification authorization (not
-a TCC service at all) and ATT (TCC-backed as `kTCCServiceUserTracking`, yet with no `simctl` toggle)
-both do — [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md)
-names exactly those two as the prompts `simctl privacy` cannot reach, and the paste-consent prompt
-belongs to the same class. The only known deterministic mechanism is therefore the one BE-0315 and
-BE-0316 already built for the other two: a native tap on the SpringBoard alert, resolved through the
-same `resolve_unique` discipline every other selector already follows.
+iOS meets that case with a system alert. Since iOS 16, reading content that another process last
+wrote triggers a consent dialog. The dialog offers to allow or deny the read. It does not appear when
+the source is the same app.
+
+A scenario can seed the pasteboard from outside the app. Reading it back inside the app under test
+then runs straight into this prompt.
+
+No pre-launch toggle is known to answer the prompt ahead of time. BE-0276's presets write
+Transparency, Consent, and Control (TCC) state with `simctl privacy`. They write it before the app
+process starts. The paste-consent prompt falls outside `simctl privacy`'s reach, as do two other
+prompts:
+
+- Notification authorization is not a TCC service at all.
+- ATT is TCC-backed as `kTCCServiceUserTracking`, yet it has no `simctl` toggle.
+
+[BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md)
+names exactly those two as the prompts that `simctl privacy` cannot reach. The paste-consent prompt
+belongs to the same class.
+
+One deterministic mechanism is known. BE-0315 and BE-0316 built it for the other two prompts. It is a
+native tap on the SpringBoard alert. The tap resolves through the same `resolve_unique` discipline
+that every other selector follows.
 
 That mechanism has been generically capable of clearing this prompt since BE-0316 shipped.
-`bajutsu/agents/alerts.py` already names "Allow Paste" among the examples its vision guard
-recognizes, and a scenario can already write `handleSystemAlert: { sel: { label: "Allow Paste" } }`
-or `systemAlertHandling: { instruction: ["Allow Paste"] }` today. But BE-0320 pins the Simulator's
-system language specifically because `handleSystemAlert`'s label match is exact, so a literal
-English string resolves only on an English-locale Simulator — the identical fragility BE-0320 closed
-for notifications and ATT by resolving `grant` and `deny` from the Simulator's own shipped strings
-instead of a hand-transcribed literal. The paste-consent prompt inherits that fragility today,
-unclosed.
+`bajutsu/agents/alerts.py` already lists "Allow Paste" among its vision guard's examples. A scenario
+can already write either of these today:
 
-Nothing has actually exercised even that literal path.
-[`demos/showcase/ios/swiftui/Sources/PermissionsView.swift`](../../demos/showcase/ios/swiftui/Sources/PermissionsView.swift)'s
-own comment states plainly that reading a pasteboard seeded by another process trips this prompt,
-and the showcase's System section avoids it on purpose: its `Copy` and `Paste` buttons
-write and read within the same app, so the round-trip "reads back silently" rather than surfacing the
-alert this item targets. An author who wants to prove a genuine cross-process paste — the case
-BE-0052's own `setClipboard` exists for — has no demonstrated scenario to build from today, native or
-otherwise.
+- `handleSystemAlert: { sel: { label: "Allow Paste" } }`
+- `systemAlertHandling: { instruction: ["Allow Paste"] }`
+
+BE-0320 pins the Simulator's system language, because `handleSystemAlert`'s label match is exact. A
+literal English string resolves only on an English-locale Simulator.
+
+BE-0320 closed this fragility for notifications and ATT. It resolved `grant` and `deny` from the
+Simulator's own shipped strings. It did not use a hand-transcribed literal. The paste-consent prompt
+still has the fragility.
+
+Nothing has actually exercised even the literal path.
+[`demos/showcase/ios/swiftui/Sources/PermissionsView.swift`](../../demos/showcase/ios/swiftui/Sources/PermissionsView.swift)
+states in its own comment that reading a pasteboard seeded by another process trips this prompt.
+
+The showcase's System section avoids the prompt on purpose. Its `Copy` and `Paste` buttons write and
+read within the same app. The round-trip "reads back silently". It never surfaces the alert this item
+targets.
+
+An author who wants to prove a genuine cross-process paste has no scenario to build from today. That
+is the case BE-0052's own `setClipboard` exists for.
 
 ## Detailed design
 
-The work divides into five units: extending the locale-keyed lookup, building a showcase fixture
-around the existing Permissions tab, verifying both against a real Simulator, updating the docs once
-that verification lands, and covering the new entry in the fast suite — the verification unit
-deliberately first-class, since this proposal has not confirmed whether BE-0052's `setClipboard`
-actually triggers the alert the way a genuine cross-app paste does.
+The work divides into five units:
 
-1. **Extend `bajutsu/scenario/system_alerts.py`'s prompt table with a third entry.** The
-   `SystemAlertPrompt` literal gains `"paste"` alongside today's `"notifications"` and `"tracking"`;
-   the `_Prompts` `TypedDict` gains a matching `paste` key so a half-filled entry stays a type error,
-   exactly as it already does for the other two; and `_LABELS["paste"]` holds the `grant` / `deny`
-   label pair per language subtag. The module's own docstring names the exact framework and
-   `Localizable.strings` key each of today's two prompts was transcribed from
-   (`UserNotificationsServer.framework` and `TCC.framework`); the implementing session must locate the
-   paste-consent alert's equivalent shipped strings the same way before writing the third entry,
-   rather than guessing at the wording, and unit 3 below is where that lookup gets confirmed against
-   a real Simulator. That module docstring, the comment above `SystemAlertPrompt`, and
-   `HandleSystemAlert`'s own docstring in `bajutsu/scenario/models/actions.py` each name "the two
-   prompts" explicitly, and nothing in `make check` pins that prose against the `Literal`, so the same
-   change rewrites all three — otherwise unit 1 ships a module whose own docstring contradicts its
-   type. No other part of the module's behavior changes: `system_alert_label`'s resolution, the
-   `UncoveredSystemAlertLocale` failure mode, and `covered_languages` all already generalize to a
-   third prompt with no change to their bodies. `HandleSystemAlert`
-   (`bajutsu/scenario/models/actions.py`) needs no schema change beyond widening the type it already
-   imports; `sel` / `label` / `labelMatches` / `index` keep working unchanged for every alert this
-   table does not name, exactly as they do today for the two it already covers.
-2. **A showcase scenario that reaches the alert from outside the app, reusing today's fixture rather
-   than adding new app UI.** The Permissions tab's existing `sys.paste` button already reads
+1. Extend the locale-keyed lookup.
+2. Build a showcase fixture around the existing Permissions tab.
+3. Verify both against a real Simulator.
+4. Update the docs once that verification lands.
+5. Cover the new entry in the fast suite.
+
+Verification is a unit of its own on purpose. This proposal has not confirmed one fact: whether
+BE-0052's `setClipboard` triggers the alert like a genuine cross-app paste.
+
+1. **Extend `bajutsu/scenario/system_alerts.py`'s prompt table with a third entry.**
+   - The `SystemAlertPrompt` literal gains `"paste"` alongside today's `"notifications"` and
+     `"tracking"`.
+   - The `_Prompts` `TypedDict` gains a matching `paste` key. A half-filled entry stays a type error,
+     exactly as it already does for the other two.
+   - `_LABELS["paste"]` holds the `grant` / `deny` label pair per language subtag.
+
+   The module's own docstring names a framework and a `Localizable.strings` key for each of today's
+   two prompts. Those are `UserNotificationsServer.framework` and `TCC.framework`. The strings were
+   copied from them.
+
+   The implementer must find the paste-consent alert's shipped strings the same way. This comes before
+   writing the third entry, and the implementer must not guess at the wording. Unit 3 below confirms
+   the lookup against a real Simulator.
+
+   Three pieces of prose each name "the two prompts" explicitly:
+
+   - The module docstring.
+   - The comment above `SystemAlertPrompt`.
+   - `HandleSystemAlert`'s own docstring in `bajutsu/scenario/models/actions.py`.
+
+   Nothing in `make check` pins that prose against the `Literal`. The same change rewrites all three.
+   Otherwise unit 1 ships a module whose own docstring contradicts its type.
+
+   No other part of the module's behavior changes. `system_alert_label`'s resolution, the
+   `UncoveredSystemAlertLocale` failure mode, and `covered_languages` already generalize to a third
+   prompt with no change to their bodies.
+
+   `HandleSystemAlert` (`bajutsu/scenario/models/actions.py`) needs no schema change. Its imported type
+   widens, and nothing else moves. `sel` / `label` / `labelMatches` / `index` keep working for
+   every alert this table does not name.
+2. **A showcase scenario that reaches the alert from outside the app.** It reuses today's fixture
+   rather than adding new app UI. The Permissions tab's existing `sys.paste` button already reads
    `UIPasteboard.general.string` unconditionally
    ([`PermissionsView.swift`](../../demos/showcase/ios/swiftui/Sources/PermissionsView.swift),
-   [`PermissionsController.swift`](../../demos/showcase/ios/uikit/Sources/PermissionsController.swift)),
-   with no dependency on the tab's own `Copy` button having run first, so seeding the pasteboard
-   through `setClipboard` instead of `Copy` is enough to make that same button trip the cross-process
-   prompt — no new app-side control, and no BajutsuKit change, only a new scenario file:
+   [`PermissionsController.swift`](../../demos/showcase/ios/uikit/Sources/PermissionsController.swift)).
+   The read does not depend on the tab's own `Copy` button having run first. Seeding the pasteboard
+   through `setClipboard` instead of `Copy` makes that same button trip the cross-process prompt.
+   The change needs no new app-side control and no BajutsuKit change. It needs a new scenario file:
 
    ```yaml
    - name: grant the paste-consent prompt with handleSystemAlert
@@ -128,83 +170,106 @@ actually triggers the alert the way a genuine cross-app paste does.
        - value: { sel: { id: [sys.paste.value, sys_paste_value] }, equals: "bajutsu-cross-clip" }
    ```
 
-   Following [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md)'s
-   precedent, this scenario stays in its own file rather than joining the existing `system.yaml` or
-   `permission.yaml`, and reuses BE-0316's own `systemalert` tag: Android's `smoke (adb)` job runs a
-   fixed scenario list that never names this file, and the tag already keeps such a fixture out of
-   the local bulk `run-swiftui` / `run-uikit` runs that do not reset per-scenario device state. Wire
-   it into CI by naming the new file in a job's `scenarios:` list, since a tag alone adds nothing to a
-   CI job that names every scenario file explicitly. Land it first in the **non-gating** `actuation
-   (xcuitest)` job — the lane's landing pad for on-device coverage that has not yet earned a place in
-   the gating `run` job (BE-0218), and where `device.yaml`'s own `setClipboard` already runs — and
-   promote it into `run`'s list, after that list's permission scenarios for device-state neutrality,
-   only once unit 3 has proven the prompt appears. Landing straight in `run` would rest the required
-   `E2E` gate on the one mechanism this item concedes is unverified: an absent prompt would time the
-   `handleSystemAlert` step out and redden a required check for every unrelated PR. Either way the
-   same change updates the receiving job's header comments, which count the files and scenario
-   documents that job runs.
+   [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md) set the
+   precedent. This scenario stays in its own file, not in the existing `system.yaml` or
+   `permission.yaml`. It reuses BE-0316's own `systemalert` tag:
+
+   - Android's `smoke (adb)` job runs a fixed scenario list that never names this file.
+   - The tag already keeps such a fixture out of the local bulk `run-swiftui` / `run-uikit` runs, which
+     do not reset per-scenario device state.
+
+   Wire the scenario into CI by naming the new file in a job's `scenarios:` list. A tag alone adds
+   nothing to a CI job that names every scenario file explicitly.
+
+   Land it first in the **non-gating** `actuation (xcuitest)` job. That job is the lane's landing pad
+   for on-device coverage that has not yet earned a place in the gating `run` job (BE-0218). It is also
+   where `device.yaml`'s own `setClipboard` already runs.
+
+   Promote the scenario into `run`'s list after unit 3 has proven that the prompt appears. Place it
+   after that list's permission scenarios, for device-state neutrality.
+
+   Landing in `run` first would rest the required `E2E` gate on an unverified mechanism. An absent prompt would time the `handleSystemAlert` step out. Every unrelated PR would
+   then have a red required check.
+
+   Either way, the same change updates the receiving job's header comments. Those comments count the
+   files and scenario documents that the job runs.
 3. **Verify on a real Simulator, and name the fallback if verification does not hold.** Two facts
-   here are unconfirmed, and neither is provable off-Simulator: whether `simctl pbcopy`'s write is
-   attributed as "another process" strongly enough for iOS to raise the consent prompt at all — a
-   write made through the Simulator's own control channel is not the same code path as one app
-   handing pasteboard content to another — and what exact button strings iOS's pasteboard consent
-   alert ships for the languages this table means to cover. The implementing session must boot a
-   Simulator, run the sequence unit 2 proposes, and confirm the prompt actually appears before
-   transcribing its labels into unit 1's table. If `setClipboard` does not trigger the prompt, unit
-   2's fixture needs a genuine second process to write the pasteboard instead — a heavier fixture (a
-   second demo target, or some other cross-process write outside bajutsu's own device-control
-   channel) that this item leaves as an open design question for that implementing session, mirroring
-   how [BE-0052](../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)
-   itself carved `setTimezone` and `shake` into their own deferred items once triage found no reliable
-   mechanism, rather than shipping a step that only appears to work. While that Simulator is already
-   booted, the same session should also cheaply probe whether the "Paste from Other Apps" preference
-   (see *Alternatives considered* below) can be pre-set from outside the app — for instance with a
-   `defaults write` against the target app's identifier — and report back if it can, rather than leave
-   this item's rejection of a preventive mechanism unexamined.
-4. **Docs.** Add `paste` beside `notifications` and `tracking` in
-   [`docs/scenarios.md`](../../docs/scenarios.md#naming-the-intent-instead-of-the-text)'s
-   "Naming the intent instead of the text" section and in
-   [`docs/dsl-grammar.md`](../../docs/dsl-grammar.md)'s `handleSystemAlert` production, which spells
-   the field out as `prompt: notifications|tracking`, along with both files' Japanese mirrors, once
-   unit 3 confirms the labels. Nothing in `make check` pins that grammar against the models, so a
-   docs unit scoped to `scenarios.md` alone would leave a reference that silently omits `paste` and
-   reads as though the schema rejected it. The two limits `docs/scenarios.md` already states — the
-   Simulator-only language pin, and the reactive guard's still-English default labels — apply to this
-   third prompt unchanged, so neither needs restating from scratch.
+   are unconfirmed. Neither is provable off-Simulator:
+   - Whether `simctl pbcopy`'s write counts as "another process" strongly enough for iOS to raise the
+     consent prompt at all. A write through the Simulator's own control channel is not the same code
+     path as one app handing pasteboard content to another.
+   - Which exact button strings iOS's pasteboard consent alert ships for the languages this table
+     means to cover.
+
+   The implementer must boot a Simulator and run the sequence that unit 2 proposes. The implementer
+   must confirm that the prompt actually appears. Only then should the labels go into unit 1's table.
+
+   Suppose `setClipboard` does not trigger the prompt. Unit 2's fixture then needs a genuine second
+   process to write the pasteboard. That is a heavier fixture: a second demo target, or some other
+   cross-process write outside bajutsu's own device-control channel. This item leaves it as an open
+   design question for the implementer.
+
+   [BE-0052](../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)
+   took the same stance. It carved `setTimezone` and `shake` into their own deferred items once triage
+   found no reliable mechanism. It did not ship a step that only appears to work.
+
+   While that Simulator is already booted, the implementer should also probe cheaply whether the
+   "Paste from Other Apps" preference (see *Alternatives considered* below) can be pre-set from
+   outside the app. A `defaults write` against the target app's identifier is one way to probe. The
+   implementer should report back if the preference can be pre-set. Otherwise this item's rejection
+   of a preventive mechanism stays unexamined.
+4. **Docs.** Add `paste` beside `notifications` and `tracking` in two places, once unit 3 confirms the
+   labels:
+   - [`docs/scenarios.md`](../../docs/scenarios.md#naming-the-intent-instead-of-the-text)'s "Naming the
+     intent instead of the text" section.
+   - [`docs/dsl-grammar.md`](../../docs/dsl-grammar.md)'s `handleSystemAlert` production, which spells
+     the field out as `prompt: notifications|tracking`.
+
+   Update both files' Japanese mirrors as well. Nothing in `make check` pins that grammar against the
+   models. A docs unit scoped to `scenarios.md` alone would leave a reference that silently omits
+   `paste`. It would read as though the schema rejected `paste`.
+
+   `docs/scenarios.md` already states two limits. One is the Simulator-only language pin. The other is
+   the reactive guard's still-English default labels. Both apply to this third prompt unchanged, so
+   neither needs restating from scratch.
 5. **Tests.** Cover `paste` in
-   [`tests/scenario/test_system_alerts.py`](../../tests/scenario/test_system_alerts.py), which names
-   today's prompts literally: `test_every_covered_language_answers_both_choices` iterates
-   `("notifications", "tracking")`, and the label expectations are a hand-written `parametrize` list.
-   Adding an entry to `_LABELS` without touching that file leaves the gate green while the
-   half-filled-entry guard — the check that keeps `deny` from resolving while `grant` raises a
-   `KeyError` mid-run — never looks at the new prompt. Unit 3's on-device verification cannot stand in
-   for this one: `make check` runs on Linux with no Simulator.
+   [`tests/scenario/test_system_alerts.py`](../../tests/scenario/test_system_alerts.py).
+   That file names today's prompts literally. `test_every_covered_language_answers_both_choices`
+   iterates `("notifications", "tracking")`. The label expectations are a hand-written `parametrize`
+   list.
+
+   Suppose an entry is added to `_LABELS` without touching that file. The gate stays green. The
+   half-filled-entry guard never looks at the new prompt. That guard keeps `deny` from resolving while
+   `grant` raises a `KeyError` mid-run.
+
+   Unit 3's on-device verification cannot stand in for this unit. `make check` runs on Linux with no
+   Simulator.
 
 ## Alternatives considered
 
-- **Widen the table to arbitrary SpringBoard alerts, not one named prompt at a time.**
-  Rejected, mirroring BE-0316's own rejection of "cover every SpringBoard alert, not only a
-  permission prompt": an open-ended translation table would need to track Apple's exact
-  operating-system-supplied text for every alert and every locale indefinitely, the same
-  maintenance burden BE-0320 rejected for its own two prompts. Adding one named, independently
-  verifiable prompt at a time keeps every entry checkable against a real Simulator rather than
-  trusted on faith.
+- **Widen the table to arbitrary SpringBoard alerts, not one named prompt at a time.** Rejected,
+  mirroring BE-0316's own rejection of "cover every SpringBoard alert, not only a permission prompt".
+  An open-ended translation table would track Apple's exact system-supplied text for every alert and
+  every locale, indefinitely. BE-0320 rejected that same maintenance burden for its own two prompts.
+  Adding one named, independently verifiable prompt at a time keeps every entry checkable against a
+  real Simulator rather than trusted on faith.
 - **Rely solely on the generic `sel: { label: "Allow Paste" }` literal (today's status quo).**
-  Rejected as the only answer: it inherits BE-0320's exact locale fragility — a literal English
-  string resolves only on an English-locale Simulator — for a prompt real scenarios will want to
-  grant, the precise gap BE-0320 closed for notifications and ATT.
-- **Build a dedicated two-app fixture instead of `setClipboard`.** A second demo target that
-  writes the pasteboard as a genuinely separate process would sidestep unit 3's open question about
-  whether `simctl pbcopy` is attributed as "another process" strongly enough to raise the prompt.
-  Deferred as the fallback unit 3 already names, rather than adopted up front: it is a heavier
-  fixture, and `setClipboard` is worth trying first since it needs no new demo target if it works.
-- **Prevent the prompt entirely, the way BE-0276 prevents a TCC-backed permission prompt.**
-  Rejected for the same reason BE-0315 rejected it for notifications and ATT: since iOS 16.1,
-  Settings does ship a per-app "Paste from Other Apps" preference (Ask / Allow / Deny) that governs
-  exactly this alert, but what remains unknown is whether anything can pre-set that preference from
-  outside the app on a Simulator, the way BE-0320 pre-sets `AppleLanguages`. Until that is confirmed,
-  a reactive tap is the only mechanism known to work today. A future item can revisit prevention if
-  pre-setting turns out to be possible.
+  Rejected as the only answer. The literal inherits BE-0320's exact locale fragility. A literal
+  English string resolves only on an English-locale Simulator. Real scenarios will want to grant this
+  prompt. It is the precise gap BE-0320 closed for notifications and ATT.
+- **Build a dedicated two-app fixture instead of `setClipboard`.** A second demo target would write
+  the pasteboard as a genuinely separate process. That would sidestep unit 3's open question. The
+  question is whether `simctl pbcopy` counts as "another process" strongly enough to raise the
+  prompt. Deferred as the fallback that unit 3 already names, rather than adopted up front. It is a
+  heavier fixture. `setClipboard` is worth trying first, since it needs no new demo target if it
+  works.
+- **Prevent the prompt entirely, the way BE-0276 prevents a TCC-backed permission prompt.** Rejected,
+  for the same reason BE-0315 rejected it for notifications and ATT. Since iOS 16.1, Settings does
+  ship a per-app "Paste from Other Apps" preference (Ask / Allow / Deny). That preference governs
+  exactly this alert. What remains unknown is whether anything can pre-set it from outside the app on
+  a Simulator, the way BE-0320 pre-sets `AppleLanguages`. Until that is confirmed, a reactive tap is
+  the only mechanism known to work today. A future item can revisit prevention if pre-setting turns
+  out to be possible.
 
 ## Progress
 
@@ -239,29 +304,32 @@ actually triggers the alert the way a genuine cross-app paste does.
 
 ### What unit 3 found
 
-Three facts the proposal left open, and one it did not anticipate:
+Unit 3 settled three facts that the proposal left open. It also found one fact the proposal did not
+anticipate.
 
 - **`setClipboard` does raise the prompt.** iOS attributes a `simctl pbcopy` write to
-  `CoreSimulatorBridge`, another process, so the app's own read raises `"Showcase SwiftUI" would
-  like to paste from "CoreSimulatorBridge"`. The heavier two-app fallback fixture is not needed.
-  The consent is asked on every read, so the fixture is repeatable on one device.
+  `CoreSimulatorBridge`, another process. The app's own read therefore raises `"Showcase SwiftUI" would
+  like to paste from "CoreSimulatorBridge"`. The heavier two-app fallback fixture is not needed. iOS
+  asks for consent on every read, so the fixture is repeatable on one device.
 - **The button strings** come from `DragUI.framework/<lang>.lproj/Localizable.strings`
-  (`PASTE_AUTHORIZATION_BUTTON_ALLOW` / `_DENY`), a third framework beside the two the module
-  already cites: `Allow Paste` / `Don’t Allow Paste` and `ペーストを許可` / `ペーストを許可しない`,
-  identical under the iOS 18.6 and 26.5 runtimes and across `en` / `en_GB` / `en_AU`. The English
-  deny label carries the typographic apostrophe (U+2019) this lookup exists to get right.
+  (`PASTE_AUTHORIZATION_BUTTON_ALLOW` / `_DENY`). That is a third framework beside the two the module
+  already cites. The strings are `Allow Paste` / `Don’t Allow Paste` and `ペーストを許可` /
+  `ペーストを許可しない`. They are identical under the iOS 18.6 and 26.5 runtimes and across `en` /
+  `en_GB` / `en_AU`. The English deny label carries the typographic apostrophe (U+2019) that this
+  lookup exists to get right.
 - **The preference cannot be pre-set from outside the app.** iOS records the consent in TCC as
-  `kTCCServicePasteboard`, but `simctl privacy` exposes no toggle for that service — the same shape
-  as ATT. Writing the Simulator's `TCC.db` directly did not suppress the prompt either, and the
-  system restored the row. *Alternatives considered*'s rejection of a preventive mechanism stands,
-  now on measurement rather than on an open question.
+  `kTCCServicePasteboard`, but `simctl privacy` exposes no toggle for that service. ATT has the same
+  shape. Writing the Simulator's `TCC.db` directly did not suppress the prompt either, and the system
+  restored the row. *Alternatives considered*'s rejection of a preventive mechanism stands, now on
+  measurement rather than on an open question.
 - **The synchronous read deadlocks the fixture the design proposed.** `UIPasteboard.general.string`
-  blocks its caller for as long as the prompt is up, so with the showcase's main-thread read,
-  XCUITest's tap on `sys.paste` never returned — the run diagnosed a mid-run runner crash, and the
-  `handleSystemAlert` step that would have answered the prompt could never run. The fix is one change
-  per showcase app: read off the main thread and publish the value when the read returns, which is
-  what the design's own `wait` step already assumed. `system.yaml` gains the matching condition wait,
-  since its in-app round-trip is now asynchronous too.
+  blocks its caller for as long as the prompt is up. The showcase read on the main thread, so
+  XCUITest's tap on `sys.paste` never returned. The run diagnosed a mid-run runner crash, and the
+  `handleSystemAlert` step that would have answered the prompt could never run.
+
+  The fix is one change per showcase app: read off the main thread and publish the value when the read
+  returns. The design's own `wait` step already assumed that behavior. `system.yaml` gains the
+  matching condition wait, since its in-app round-trip is now asynchronous too.
 
 ## References
 

@@ -15,124 +15,139 @@
 
 ## Introduction
 
-This item adds `fix-issue`, a skill that ships a plain GitHub issue end to end: implementation,
-review, the gate, and a Draft pull request (PR). A plain issue is a small bug, a papercut, or a
-scoped improvement that never warranted a roadmap (Bajutsu Evolution, BE) item. The skill touches
-no roadmap file and needs no new label. It plays the same role for a bare issue that
-[`implement-be`](../../.apm/skills/implement-be/SKILL.md) plays for a numbered BE item, and
-it reuses that skill's implementation, review, and follow-up steps directly. It diverges where a
-plain issue genuinely differs from a BE item: how the skill claims ownership, and what closes the
-loop once the fix merges.
+This item adds `fix-issue`, a skill that ships a plain GitHub issue end to end. The skill covers
+implementation, review, the gate, and a Draft pull request (PR). A plain issue is a small bug, a
+papercut, or a scoped improvement that never warranted a roadmap (Bajutsu Evolution, BE) item. The
+skill touches no roadmap file and needs no new label.
+
+`fix-issue` plays the same role for a bare issue that
+[`implement-be`](../../.apm/skills/implement-be/SKILL.md) plays for a numbered BE item. It reuses the
+implementation, review, and follow-up steps of `implement-be` directly. It diverges in two places
+where a plain issue differs from a BE item: how the skill claims ownership, and what closes the loop
+once the fix merges.
 
 ## Motivation
 
 A contributor can already file a lightweight bug or improvement without writing a BE proposal. The
 `bug` and `enhancement` issue templates
 ([`bug_report.yml`](../../.github/ISSUE_TEMPLATE/bug_report.yml),
-[`feature_request.yml`](../../.github/ISSUE_TEMPLATE/feature_request.yml)) exist for that case, and
-their `config.yml` already tells a filer to reach for the roadmap when an idea is large. The
-[`task-select`](../../.apm/skills/task-select/SKILL.md) skill already surveys
-these open issues alongside the roadmap and ranks them as candidates for the next task.
+[`feature_request.yml`](../../.github/ISSUE_TEMPLATE/feature_request.yml)) exist for that case. Their
+`config.yml` already tells a filer to reach for the roadmap when an idea is large. The
+[`task-select`](../../.apm/skills/task-select/SKILL.md) skill already surveys these open issues
+alongside the roadmap and ranks them as candidates for the next task.
 
-Nothing ships the candidate once someone picks it, though. `implement-be` turns a plan into a
-merged fix, but every one of its steps assumes a BE file exists. It reads a `Status` field, claims a
-bot-managed tracking issue (BE-0109), flips that `Status` to `Implemented`, and prefixes the PR title
-with `[BE-NNNN]`. A one-line bug fix has none of that scaffolding available. A session
-that picks up a plain issue today faces two bad options: inflate the issue into a BE proposal it
-does not need, or reproduce `implement-be`'s branch, review, and gate discipline from memory. Two
-sessions doing the latter have no guarantee they do it the same way.
+Nothing ships a candidate once someone picks it, though. `implement-be` turns a plan into a merged
+fix, but every one of its steps assumes a BE file exists. It reads a `Status` field and claims a
+bot-managed tracking issue (BE-0109). It flips that `Status` to `Implemented` and prefixes the PR
+title with `[BE-NNNN]`. A one-line bug fix has none of that scaffolding.
 
-A natural first fix is a new label. A maintainer would apply it after judging an issue small
-enough to skip a BE item, the way [BE-0109](../BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues.md)
-already labels roadmap-tracking issues. This item skips that label on purpose. The boundary between
-"ship it as a plain fix" and "this needs a proposal" is a judgment call. That call can surface
-mid-fix instead of at filing time alone, so the skill itself makes it.
-[`ideation`](../../.apm/skills/ideation/SKILL.md) already judges the opposite boundary this
-way: it redirects a user who wants to build, rather than propose, without leaning on a label to
-draw that line.
+A session that picks up a plain issue today faces two bad options:
+
+- Inflate the issue into a BE proposal it does not need.
+- Reproduce the branch, review, and gate discipline of `implement-be` from memory. Two sessions doing
+  so have no guarantee they do it the same way.
+
+A natural first fix is a new label. A maintainer would apply it after judging an issue small enough
+to skip a BE item, the way
+[BE-0109](../BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues.md) already labels
+roadmap-tracking issues. This item skips that label on purpose. The boundary between "ship it as a
+plain fix" and "this needs a proposal" is a judgment call. The call can surface mid-fix, not only at
+filing time, so the skill itself makes it.
+[`ideation`](../../.apm/skills/ideation/SKILL.md) already judges the opposite boundary this way. It
+redirects a user who wants to build, not propose, without leaning on a label to draw that line.
 
 ## Detailed design
 
-1. **No new label; the skill judges scope-fit and escalates when a fix does not fit.** Before
-   planning a fix, `fix-issue` checks the issue's scope against a short bar: one clear cause, a
-   localized change, no user-facing behavior or configuration surface beyond what the issue itself
-   already specifies, and no tension with the
-   [three prime directives](../../CLAUDE.md#prime-directives-do-not-violate). When a fix turns out
-   to need a design decision, a cross-cutting change, or a reshaping of an idea that brushes a
-   directive, the skill stops. It tells the user why, and points at
+1. **No new label: the skill judges scope fit and escalates when a fix does not fit.** Before
+   planning a fix, `fix-issue` checks the issue's scope against a short bar:
+   - one clear cause
+   - a localized change
+   - no user-facing behavior or configuration surface beyond what the issue already specifies
+   - no tension with the [three prime directives](../../CLAUDE.md#prime-directives-do-not-violate)
+
+   When a fix turns out to need a design decision, a cross-cutting change, or a reshaping of an idea
+   that brushes a directive, the skill stops and tells the user why. It points at
    [`ideation`](../../.apm/skills/ideation/SKILL.md) or
-   [`propose-and-build`](../../.apm/skills/propose-and-build/SKILL.md) rather than
-   continuing — and it releases the claim design point 2 made
-   (`gh issue edit <N> --remove-assignee @me`), so an escalated issue does not stay marked as in
-   flight. This valve can trigger at any point through step 3's planning stage, because a fix's
-   true shape does not always show in the issue body alone.
+   [`propose-and-build`](../../.apm/skills/propose-and-build/SKILL.md) instead of continuing. It
+   also releases the claim that design point 2 made (`gh issue edit <N> --remove-assignee @me`), so
+   an escalated issue does not stay marked as in flight. This valve can trigger at any point through
+   the planning stage of step 3, because the true shape of a fix does not always show in the issue
+   body alone.
 2. **Ownership through the issue's own assignee field, not a bot-managed tracking issue.** BE-0109
-   never syncs a plain issue, so `fix-issue` checks and claims ownership on the issue directly:
-   `gh issue view <N> --json state,assignees` first, then `gh issue edit <N> --add-assignee @me`
-   when the issue is open and carries no assignee or already carries the current user. A closed
-   issue, or one already assigned to someone else, stops the skill. `implement-be` applies that
-   same assignee rule to a BE tracking issue, and its step 1 `Status` read is the guard the state
-   check replaces here.
+   never syncs a plain issue, so `fix-issue` checks and claims ownership on the issue directly. It
+   runs `gh issue view <N> --json state,assignees` first. It then runs
+   `gh issue edit <N> --add-assignee @me` when the issue is open and carries no assignee, or already
+   carries the current user. A closed issue stops the skill, and so does an issue assigned to someone
+   else. `implement-be` applies the same assignee rule to a BE tracking issue. Its step 1 `Status`
+   read is the guard that the state check replaces here.
 3. **The ship-the-code steps reuse `implement-be` almost word for word.** The skill grounds itself in
-   the linked code and tests, opens a one-topic branch (`claude/fix-issue-<N>-<slug>`), and drafts a
-   short plan: the files it will touch, the machine-checkable outcome, and the tests to add. It
-   confirms that plan with the user before writing code. Implementation matches the codebase's
-   grain, then a two-role self-review checks the diff against
+   the linked code and tests. It opens a one-topic branch (`claude/fix-issue-<N>-<slug>`) and drafts
+   a short plan: the files it will touch, the machine-checkable outcome, and the tests to add. It
+   confirms the plan with the user before writing code. Implementation matches the grain of the
+   codebase. A two-role self-review then checks the diff against
    [`.github/claude-review-prompt.md`](../../.github/claude-review-prompt.md)
-   ([BE-0347](../BE-0347-bounded-ci-review-cycle/BE-0347-bounded-ci-review-cycle.md)). `make check`
-   — never an AI call — is the sole verdict on the [Tier-2 gate](../../docs/glossary.md#the-two-tiers).
-   None of these steps need re-specifying here; `fix-issue` points straight at `implement-be`'s steps.
-4. **What differs from a BE-item PR.** There is no `Status` field to flip, so `implement-be`'s
-   roadmap-promotion step has no counterpart here. The PR title keeps the plain scoped subject with
-   no `[BE-NNNN]` prefix, matching the shape
-   [`docs/ai-development.md`](../../docs/ai-development.md) already documents for a PR with no
-   roadmap item. Its body adds `Closes #<N>`, so merging the PR closes the source issue on its own.
-   The Draft PR still opens on its own once the self-review and the gate both come back clean
-   ([BE-0230](../BE-0230-hands-free-implement-review-loop/BE-0230-hands-free-implement-review-loop.md)),
-   and `implement-be` step 10's exception carries over unchanged: a fix whose diff is
-   documentation-only opens **Ready for review** with `--reviewer bajutsu-e2e/steering-committee`
-   rather than as a Draft. The same bounded `pr-followup` loop then drives it to quiet-and-green,
-   using the same stop conditions, escalation rules, and iteration caps `implement-be` already uses.
-5. **New skill files.** A host-neutral `.agent-workflows/fix-issue/workflow.md` carries the steps
-   above. A Claude Code adapter, `.claude/skills/fix-issue/SKILL.md`, declares `model: opus` in its
-   frontmatter — the same Heavy tier as `implement-be`, since both ship product code. A Codex
-   adapter, `.agent-hosts/codex/skills/fix-issue/SKILL.md`, keeps the host parity every existing
-   skill has today ([`CLAUDE.md`](../../CLAUDE.md#agent-skill-layout)). (BE-0390 later folded the
-   three files into the single source `.apm/skills/fix-issue/SKILL.md`.)
+   ([BE-0347](../BE-0347-bounded-ci-review-cycle/BE-0347-bounded-ci-review-cycle.md)). `make check`,
+   never an AI call, is the sole verdict on the [Tier-2 gate](../../docs/glossary.md#the-two-tiers).
+   These steps need no re-specification here. `fix-issue` points straight at the steps of
+   `implement-be`.
+4. **What differs from a BE-item PR.**
+   - There is no `Status` field to flip, so the roadmap-promotion step of `implement-be` has no
+     counterpart here.
+   - The PR title keeps the plain scoped subject with no `[BE-NNNN]` prefix. This matches the shape
+     that [`docs/ai-development.md`](../../docs/ai-development.md) documents for a PR with no roadmap
+     item.
+   - The PR body adds `Closes #<N>`, so merging the PR closes the source issue.
+   - The Draft PR opens on its own once the self-review and the gate both come back clean
+     ([BE-0230](../BE-0230-hands-free-implement-review-loop/BE-0230-hands-free-implement-review-loop.md)).
+   - The exception in step 10 of `implement-be` carries over unchanged. A fix whose diff is
+     documentation-only opens **Ready for review** with `--reviewer bajutsu-e2e/steering-committee`,
+     not as a Draft.
+   - The same bounded `pr-followup` loop then drives the PR to quiet-and-green. It uses the stop
+     conditions, escalation rules, and iteration caps that `implement-be` already uses.
+5. **New skill files.**
+   - A host-neutral `.agent-workflows/fix-issue/workflow.md` carries the steps above.
+   - A Claude Code adapter, `.claude/skills/fix-issue/SKILL.md`, declares `model: opus` in its
+     frontmatter. That is the same Heavy tier as `implement-be`, since both ship product code.
+   - A Codex adapter, `.agent-hosts/codex/skills/fix-issue/SKILL.md`, keeps the host parity that
+     every existing skill has today ([`CLAUDE.md`](../../CLAUDE.md#agent-skill-layout)).
+   - BE-0390 later folded the three files into the single source `.apm/skills/fix-issue/SKILL.md`.
 6. **Documentation and hand-off wiring.**
    - [`docs/ai-development.md`](../../docs/ai-development.md) (and its `docs/ja/` mirror) gains a
-     `fix-issue` → `opus` (Heavy) line in the per-skill model list, next to `propose-and-build`'s
-     entry and for the same reason. It also gains a short note beside "Authoring and shipping
-     roadmap items: the three skills," pointing at `fix-issue` as the sibling path for work that
-     never receives a BE id.
-   - [`CLAUDE.md`](../../CLAUDE.md)'s "Who opens the PR depends on the work (BE-0230)" bullet names
-     `fix-issue` alongside `implement-be` under "Implementation work." A `fix-issue` PR is the same
-     self-contained, gate-green change that bullet already auto-opens as Draft and drives with the
-     paced follow-up loop.
-   - [`task-select`](../../.apm/skills/task-select/SKILL.md) step 5's recommended next
-     command becomes `fix-issue #<N>` when the chosen candidate is a bare GitHub issue with no BE
+     `fix-issue` → `opus` (Heavy) line in the per-skill model list. The line sits next to the entry
+     for `propose-and-build`, for the same reason. The page also gains a short note beside "Authoring
+     and shipping roadmap items: the three skills". The note points at `fix-issue` as the sibling
+     path for work that never receives a BE id.
+   - The bullet "Who opens the PR depends on the work (BE-0230)" in [`CLAUDE.md`](../../CLAUDE.md)
+     names `fix-issue` alongside `implement-be` under "Implementation work." A `fix-issue` PR is the
+     same self-contained, gate-green change. That bullet already auto-opens such a PR as a Draft and
+     drives it with the paced follow-up loop.
+   - Step 5 of [`task-select`](../../.apm/skills/task-select/SKILL.md) recommends
+     `fix-issue #<N>` as the next command when the chosen candidate is a bare GitHub issue with no BE
      id. Its existing `implement-be BE-NNNN` recommendation stays for a roadmap item.
 
 ## Alternatives considered
 
 - **A new `quick-fix` label, applied once a maintainer judges an issue small enough to skip a BE
-  item.** Rejected. The label would need its own maintained taxonomy: who applies it, whether it
-  needs a sync workflow the way BE-0109's `roadmap-tracking` label does, and what happens when
-  someone applies it to the wrong issue. The skill can already draw this distinction by reading the
-  issue itself, and a static label fixed at filing time cannot see a fix turn out to need a design
-  call mid-investigation. Design point 1's escalation valve can.
+  item.** Rejected.
+  - The label would need its own maintained taxonomy: who applies it, whether it needs a sync
+    workflow like the `roadmap-tracking` label of BE-0109, and what happens when someone applies it
+    to the wrong issue.
+  - The skill can already draw this distinction by reading the issue itself.
+  - A static label fixed at filing time cannot see a fix turn out to need a design call
+    mid-investigation. The escalation valve of design point 1 can.
 - **Repurposing the existing `good first issue` label.** Rejected. That label already carries an
   established, human-facing meaning: approachable for a newcomer. Overloading it with an "AI-ready"
   sense would make the two meanings hard to tell apart on sight.
 - **Extending `implement-be` to accept a bare issue number.** Rejected. Every step of that skill
-  assumes a BE file exists: the `Status` metadata, the `Implementing PR` row, the `[BE-NNNN]`
-  prefix. Accepting an issue would mean branching around each of those instead of reusing them,
-  adding conditional complexity to a skill whose contract is otherwise unconditional. A smaller
-  sibling skill keeps both contracts easy to follow.
-- **Leaving the work to ad hoc sessions, as today.** Rejected. A session reproduces `implement-be`'s
-  branch, review, and gate discipline from memory each time, with no guaranteed consistency. It also
-  does not compose with `task-select`, which already surfaces plain issues as candidates but has
-  nothing to hand off to once someone picks one.
+  assumes a BE file exists: the `Status` metadata, the `Implementing PR` row, the `[BE-NNNN]` prefix.
+  Accepting an issue would mean branching around each of those, not reusing them. That adds
+  conditional complexity to a skill whose contract is otherwise unconditional. A smaller sibling
+  skill keeps both contracts easy to follow.
+- **Leaving the work to ad hoc sessions, as today.** Rejected.
+  - Each session reproduces the branch, review, and gate discipline of `implement-be` from memory,
+    with no guaranteed consistency.
+  - The work does not compose with `task-select`. That skill already surfaces plain issues as
+    candidates but has nothing to hand off to once someone picks one.
 
 ## Progress
 

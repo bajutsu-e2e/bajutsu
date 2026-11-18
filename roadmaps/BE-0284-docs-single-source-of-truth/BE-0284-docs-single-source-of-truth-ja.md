@@ -15,58 +15,28 @@
 
 ## はじめに
 
-ある規範をどこに書くかを1つのファイルに決め、そのファイルを唯一の拠り所（single source of
-truth）とします。以下ではこのファイルを「基準ファイル」と呼びます。本項目は、Bajutsu の
-ドキュメントで複数箇所に独立して再記述されている横断的な規範ごとに基準ファイルを1つ定め、それ
-以外の記述をそのファイルへの短いリンクに置き換えます。規範を変更するたびにすべての再記述を手作業で
-探して直す現状を、基準ファイル1箇所の修正で済むようにします。
+Bajutsu のドキュメントでは、複数のファイルが同じ横断的な規範を独立に再記述しています。本項目は、規範ごとに基準ファイル（single source of truth）を1つ定め、それ以外の記述を基準ファイルへの短いリンクに置き換えます。現状では、規範を変更するたびに、すべての再記述を手作業で探して直さなければなりません。本項目の後は、基準ファイルを1箇所直せば済みます。
 
 ## 動機
 
-`CLAUDE.md`、`docs/ai-development.md`、`CONTRIBUTING.md`、`AGENTS.md` を調査しました。あわせて
-`roadmaps/README.md`、`.github/PULL_REQUEST_TEMPLATE.md` も調べました。
-`.github/claude-review-prompt.md` も対象です。同じ規範が複数ファイルに再記述されています。
-逐語的な場合もパラフレーズの場合もあります。基準ファイルへのリンクを
-持たない箇所も見つかりました。そのうち2つはすでに矛盾へと乖離しています。この構造が抱える具体的な
-コストを示す例です。
+調査の対象は、`CLAUDE.md`、`docs/ai-development.md`、`CONTRIBUTING.md`、`AGENTS.md`、`roadmaps/README.md`、`.github/PULL_REQUEST_TEMPLATE.md`、`.github/claude-review-prompt.md` です。同じ規範が複数のファイルに、逐語またはパラフレーズで再記述されており、基準ファイルへのリンクはありませんでした。そのうち2つはすでに矛盾するまで乖離しており、この構造のコストを具体的に示しています。
 
-- `CONTRIBUTING.md`、`AGENTS.md`、`.github/PULL_REQUEST_TEMPLATE.md` は、ロードマップ項目の現在の
-  置き場所を、古い記述のままにしています。いまも
-  `roadmaps/proposals/` / `implemented/` / `in-progress/` / `deferred/` に振り分けられるものとして
-  記述されています。
-  [BE-0159](../BE-0159-flatten-roadmap-status-folders/BE-0159-flatten-roadmap-status-folders-ja.md)
-  がこのフォルダ分割を廃止しました。現行の正しい構成——項目ごとに1つのフラットな
-  `roadmaps/BE-NNNN-<slug>/`、`Status` はインデックスの分類にのみ使う——は `docs/ai-development.md`
-  と `CLAUDE.md` にあります。古い記述を先に読んだコントリビューターは、CI が拒否するディレクトリ
-  構成を作ってしまいます。
-- `CLAUDE.md`、`docs/ai-development.md`、`CONTRIBUTING.md`、`AGENTS.md`、
-  `docs/contributor-workflow-tutorial.md` は、それぞれ異なる部分集合で `make check` の実行内容を
-  列挙しています。どれも実際の11ステップと一致しません。短い列挙を信じた読み手は、ゲートが
-  検証している範囲を過小評価します。
+- `CONTRIBUTING.md`、`AGENTS.md`、`.github/PULL_REQUEST_TEMPLATE.md` は、ロードマップ項目が `roadmaps/proposals/`、`implemented/`、`in-progress/`、`deferred/` に振り分けられると、いまも記述しています。[BE-0159](../BE-0159-flatten-roadmap-status-folders/BE-0159-flatten-roadmap-status-folders-ja.md) はこのフォルダ分割を廃止しました。現行の構成は、項目ごとに1つのフラットな `roadmaps/BE-NNNN-<slug>/` を置き、`Status` はインデックスの分類にだけ使うものです。`docs/ai-development.md` と `CLAUDE.md` は、この構成を正しく記述しています。古い記述を先に読んだコントリビューターは、CI が拒否するディレクトリ構成を作ってしまいます。
+- `CLAUDE.md`、`docs/ai-development.md`、`CONTRIBUTING.md`、`AGENTS.md`、`docs/contributor-workflow-tutorial.md` は、`make check` が実行するステップを、それぞれ異なる部分集合で列挙しています。どの列挙も、実際の11ステップと一致しません。短い列挙を信じた読み手は、ゲートの検証範囲を過小評価します。
 
-この2つの矛盾以外にも、同じ構造がまだ乖離せずに繰り返されています。ロードマップの BE-ID 規約には、
-基準となる記述が `docs/ai-development.md` にあります。プレースホルダー `BE-0284`、マージ時の
-割り当て、両言語ファイル、インデックスの再生成という規約です。しかし `roadmaps/README.md` は、
-そこへリンクせず全文を再記述しています。PR タイトル・本文・Draft の規約も同様です。
-`docs/ai-development.md` を指す代わりに、`AGENTS.md` でまるごと再説明されています。そして
-`.github/claude-review-prompt.md` は、6つの規範をリンクなしで凝縮再記述しています。prime
-directives、docstring のスタイル
-（[BE-0065](../BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference-ja.md)）、
-バイリンガルドキュメント、日本語の文章スタイル、ロードマップへのリンク規約という規約です。
-コメントは「なぜ」を書く規約も含みます。これが、この項目のきっかけとなった事例です。再記述は
-それぞれ、将来の修正が見落としうるもう1箇所になります。
+同じ構造は、まだ乖離していない箇所にも繰り返されています。
 
-これはプロダクトの振る舞いではなく、プロジェクトの運用上のリスクです。ただし、このロードマップが
-すでに扱ってきたコントリビューター向け基盤整備の範囲そのものでもあります。手順書をコマンドに変換
-した [BE-0069](../BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails-ja.md)、
-両言語に単一のプローズ・スタイル権威を置いた
-[BE-0278](../BE-0278-tech-writing-skill/BE-0278-tech-writing-skill-ja.md) と同じ系譜にあります。
-本項目は、その系譜を「文体」から「規範をどのファイルに置くか」へ広げるものです。
+- `roadmaps/README.md` は、ロードマップの BE-ID 規約（プレースホルダー `BE-0284`、マージ時の割り当て、両言語ファイル、インデックスの再生成）を、`docs/ai-development.md` の基準となる節へリンクせず、全文で再記述しています。
+- `AGENTS.md` は、PR のタイトル、本文、Draft の規約を、`docs/ai-development.md` へ向けず、まるごと再説明しています。
+- `.github/claude-review-prompt.md` は、6つの規範をリンクなしで凝縮して再記述しています。prime directives、docstring のスタイル（[BE-0065](../BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference-ja.md)）、バイリンガルドキュメント、日本語の文章スタイル、ロードマップへのリンク規約、コメントは「なぜ」を書く規約です。このファイルが、本項目のきっかけとなった事例です。
+
+再記述はどれも、将来の修正が見落としうるもう1箇所になります。
+
+このリスクはプロダクトの振る舞いではなく、プロジェクトの運用にあります。それでも、本ロードマップがすでに扱っているコントリビューター向け基盤整備の範囲に収まります。[BE-0069](../BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails-ja.md) は、手順書をコマンドに変換しました。[BE-0278](../BE-0278-tech-writing-skill/BE-0278-tech-writing-skill-ja.md) は、両言語に単一の文章スタイルの権威を置きました。本項目は、この系譜を「文体」から「規範をどのファイルに置くか」へ広げます。
 
 ## 詳細設計
 
-規範のクラスタごとに、現時点でもっとも詳しく最新の内容を保っているファイルを基準ファイルと定め、
-それ以外の記述は、乖離しうる独自の詳細を持たない短いリンクまたは要約に置き換えます。
+規範のクラスタごとに、もっとも詳しく最新の内容を保っているファイルを基準ファイルと定めます。それ以外の記述は、短いリンクか、乖離しうる独自の詳細を持たない要約に置き換えます。
 
 | 規範 | 基準ファイル | ポインタに縮小するファイル |
 |---|---|---|
@@ -78,49 +48,23 @@ directives、docstring のスタイル
 | 日本語の文章スタイル（敬体、造語を使わない） | `japanese-document-writing` スキル（BE-0278 のとおり） | `.github/claude-review-prompt.md`、`AGENTS.md` |
 | Prime directives | `CLAUDE.md`（維持。後述） | — |
 
-作業は MECE に次のとおり分解します。
+作業は MECE（互いに重複せず、漏れもない分割）に、次のとおり分解します。
 
-1. **まず矛盾している箇所を直します。** `CONTRIBUTING.md`、`AGENTS.md`、
-   `.github/PULL_REQUEST_TEMPLATE.md` を、BE-0159 を引用してフラットな `roadmaps/BE-NNNN-<slug>/`
-   構成の記述に更新します。あわせて、5箇所で食い違っている `make check` の列挙を、`CLAUDE.md`
-   の11ステップに合わせます。
-2. **`.github/claude-review-prompt.md` の6つの再記述をリンクに畳み込みます。** それぞれを
-   `CLAUDE.md` または `docs/ai-development.md` の基準となる記述、あるいは文章スタイルについては
-   `japanese-document-writing` スキルへ向け、規約を再説明しないようにします。
-3. **`roadmaps/README.md` の独自の BE-ID 規約再記述を、リンクに置き換えます。**
-   `docs/ai-development.md` へ向け、インデックス表にたどり着くまでに読者が必要とする1、2文だけを
-   残します。
-4. **`AGENTS.md` と `CONTRIBUTING.md` の PR 規約・ロードマップ規約のフルの記述を縮小します。**
-   ポインタと、その文書の読者だけに固有の詳細を残します。
-5. **「再記述せずリンクする」という一文を、`docs/ai-development.md` 自体へ追記します。**
-   既存のドキュメント規約と並べて置きます。そうすれば、新しい規範を追加するコントリビューター
-   は、最初から一箇所にまとめられます。
+1. **まず矛盾している箇所を直します。** `CONTRIBUTING.md`、`AGENTS.md`、`.github/PULL_REQUEST_TEMPLATE.md` を、BE-0159 を引用してフラットな `roadmaps/BE-NNNN-<slug>/` 構成の記述に更新します。続いて、食い違う5箇所の `make check` の列挙を、`CLAUDE.md` が挙げる11ステップに合わせます。
+2. **`.github/claude-review-prompt.md` の6つの再記述をリンクに畳み込みます。** それぞれの規範を、`CLAUDE.md` または `docs/ai-development.md` の基準となる節へ向けます。文章スタイルは `japanese-document-writing` スキルへ向けます。規約そのものは再説明しません。
+3. **`roadmaps/README.md` の独自の BE-ID 規約の再記述を、リンクに置き換えます。** リンク先は `docs/ai-development.md` の基準となる節です。インデックス表にたどり着くまでに読者が必要とする1、2文だけを残します。
+4. **`AGENTS.md` と `CONTRIBUTING.md` にある PR 規約とロードマップ規約のフルの記述を縮小します。** ポインタに加えて、それぞれの文書の読者に固有の詳細だけを残します。
+5. **「再記述せずリンクする」という一文を、`docs/ai-development.md` 自体へ追記します。** 既存のドキュメント規約と並べて置きます。新しい規範を後から追加するコントリビューターは、最初から1箇所にまとめるようになります。
 
-**Prime directives は意図的な例外です。** 短く、行き渡ることを前提とした重要な規範です。
-`CLAUDE.md` 自体が、PR 規約セクションでの再記述を、より詳しい規範の「短縮形」だと明記しています。
-本項目は、短く正確な prime directives の再記述をすべて維持します。取り除くのは、乖離したものや、
-その規範自体を超える詳細を再現しているものだけです。
+**Prime directives は意図的な例外です。** 短く、行き渡ることを前提とした重要な規範です。`CLAUDE.md` 自体が、PR 規約の節に置いた再記述を、より詳しい規範の「短縮形」だと明記しています。本項目は、短く正確な prime directives の再記述をすべて維持します。取り除くのは、乖離したものと、規範そのものを超える詳細を再現しているものだけです。
 
-この整理は CI のチェックではなく、レビュー時の規範のままとします。ある段落が「再記述」なのか、
-「行き渡らせるべき規範を正当に繰り返している」だけなのかの判定には、意味論的な判断が要ります。
-それは、バイリンガルドキュメントの規範や
-[BE-0113](../BE-0113-design-doc-realignment/BE-0113-design-doc-realignment-ja.md) の DESIGN.md
-整合性規範と同じ判断です。prime directive 1 は、この種の判断を決定的なゲートから締め出しています。
+この整理は CI のチェックではなく、レビュー時の規範のままとします。ある段落が規範を「再記述」しているのか、行き渡らせるべき規範を「正当に繰り返している」のかを判定するには、意味論的な判断が要ります。バイリンガルドキュメントの規範や、[BE-0113](../BE-0113-design-doc-realignment/BE-0113-design-doc-realignment-ja.md) の DESIGN.md 整合性規範にも、同じ判断が要ります。prime directive 1 は、この種の判断を決定的なゲートから締め出しています。
 
 ## 検討した代替案
 
-- **プローズの断片をハッシュ化・差分比較して乖離を CI で落とすスクリプト。** 却下しました。
-  言い回しの異なる2つの段落が同じ規範を述べていると判定するには意味論的な判断が必要で、それは
-  `run`・CI の合否判定に LLM を持ち込むことになり、prime directive 1 が禁じています。LLM を
-  使わなければ、意図的に短くした再記述（特に prime directives）のすべてを誤検知します。
-- **すべての再記述を削除し、例外なくすべての文書にリンクさせる。** 短く行き渡らせるべき規範に
-  ついては却下しました。初読で自己完結していなければならない文書もあります
-  （`CLAUDE.md` がすでに述べている「省略なし」の規範）。そうした文書は、3文程度のために初読の
-  読者を他の文書へ送るより、短く正確な prime directives の写しを正当に持ち続けるべきです。
-- **すべての規範を統合する新しいトップレベルの `conventions.md` を1つ作る。** 却下しました。
-  AI 開発プロセスの規範の基準ファイルはすでに `docs/ai-development.md` です。prime directives と
-  クイックリファレンスとしてのゲートの基準ファイルは `CLAUDE.md` です。3つ目のトップレベル文書を
-  作ることは、統合ではなくむしろ規範をさらに分散させます。
+- **プローズの断片をハッシュ化または差分比較し、乖離を CI で落とすスクリプト。** 却下しました。言い回しの異なる2つの段落が同じ規範を述べていると判定するには、意味論的な判断が必要です。その判断は `run` と CI の合否判定に大規模言語モデル（LLM）を持ち込むことになり、prime directive 1 が禁じています。LLM を使わなければ、意図的に短くした再記述、特に prime directives のすべてを誤検知します。
+- **すべての再記述を削除し、例外なくすべての文書にリンクさせる。** 短く行き渡らせるべき規範については却下しました。`CLAUDE.md` はすでに「省略なし」の規範を述べており、文書は初読で自己完結していなければなりません。そうした文書は、prime directives の短く正確な写しを正当に持ち続けます。3文程度のために、初読の読者を他の文書へ送るべきではありません。
+- **すべての規範を統合する新しいトップレベルの `conventions.md` を1つ作る。** 却下しました。AI 開発プロセスの規範の基準ファイルは、すでに `docs/ai-development.md` です。prime directives とクイックリファレンスとしてのゲートの基準ファイルは、`CLAUDE.md` です。3つ目のトップレベル文書を作ると、規範は統合されず、さらに分散します。
 
 ## 進捗
 
@@ -140,12 +84,13 @@ directives、docstring のスタイル
 
 ### ログ
 
-- 一括で集約しました（PR #1169）。`CONTRIBUTING.md` / `AGENTS.md` /
-  `.github/PULL_REQUEST_TEMPLATE.md` のフラット構成への修正、`docs/ai-development.md`・
-  `CONTRIBUTING.md`・`AGENTS.md`・`docs/contributor-workflow-tutorial.md` の `make check` 記述を
-  `CLAUDE.md` へのリンクに統一、`.github/claude-review-prompt.md` の各規範を基準ファイルへリンク、
-  `roadmaps/README.md` の BE-ID 再記述をポインタへ縮小、`docs/ai-development.md` へ「再記述せず
-  リンクする」規範を追加、を行いました。日本語のミラーも同時に更新しました。
+- 規範を一括で集約しました（PR #1169）。
+  - `CONTRIBUTING.md`、`AGENTS.md`、`.github/PULL_REQUEST_TEMPLATE.md` の記述を、フラット構成へ修正しました。
+  - `docs/ai-development.md`、`CONTRIBUTING.md`、`AGENTS.md`、`docs/contributor-workflow-tutorial.md` にある `make check` の記述を、`CLAUDE.md` へのリンクに統一しました。
+  - `.github/claude-review-prompt.md` の各規範を、基準ファイルへリンクしました。
+  - `roadmaps/README.md` の BE-ID 再記述を、ポインタへ縮小しました。
+  - 「再記述せずリンクする」規範を、`docs/ai-development.md` へ追加しました。
+  - 日本語のミラーも同時に更新しました。
 
 ## 参考
 

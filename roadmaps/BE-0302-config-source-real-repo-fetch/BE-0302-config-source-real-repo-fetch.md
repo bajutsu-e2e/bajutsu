@@ -15,63 +15,72 @@
 
 ## Introduction
 
-`config_source.py`'s `materialize()` fetches config from a Git host so a team can point `bajutsu`
-at a remote repository instead of a local checkout. Its own test module says outright that it
-"injects a fake transport... no network, no `git` binary" — every `materialize()` test passes a
-fake `Transport`, and `_GitHubTransport`'s real `urllib.request`-based implementation is exercised
-only for its HTTP-error mapping, via a monkeypatched `urlopen` raising a canned error. No test ever
-fetches a real tarball from a real repository. This item adds one.
+`materialize()` in `config_source.py` fetches config from a Git host. A team can then point `bajutsu`
+at a remote repository instead of a local checkout.
+
+The test module says outright that it "injects a fake transport... no network, no `git` binary". Every
+`materialize()` test passes a fake `Transport`. The real `urllib.request`-based implementation of
+`_GitHubTransport` is exercised only for its HTTP-error mapping, through a monkeypatched `urlopen` that
+raises a canned error. No test fetches a real tarball from a real repository. This item adds one.
 
 ## Motivation
 
-The fake transport proves `materialize()` correctly composes whatever bytes a transport hands it
-into a working config tree — real and useful coverage of the composition logic. It proves nothing
-about `_GitHubTransport` itself: whether a real GitHub tarball URL's redirect chain is followed
-correctly, whether the real response's content-type or compression is handled as assumed, or whether
-a real rate-limit or auth-failure response is mapped to the right error rather than an
-unhandled exception. The same gap shows up in the GitHub App token flow: a mock only ever returns
-what its author believes the real host returns.
+The fake transport proves that `materialize()` composes whatever bytes a transport hands it into a
+working config tree. That is real and useful coverage of the composition logic.
+
+The fake transport proves nothing about `_GitHubTransport` itself:
+
+- Whether the redirect chain of a real GitHub tarball URL is followed correctly.
+- Whether the real response's content-type or compression is handled as assumed.
+- Whether a real rate-limit or auth-failure response maps to the right error, rather than to an
+  unhandled exception.
+
+The GitHub App token flow has the same gap. A mock returns only what its author believes the real host
+returns.
 
 ## Detailed design
 
 Proposal altitude. The work is MECE along the units below.
 
-- **A real disposable test repository.** Use a small, stable, low-privilege public repository (or a
-  private repository with a dedicated throwaway GitHub App installed) as the fetch target.
-  `_GitHubTransport` already works unauthenticated when no token is configured, and GitHub's
-  commits/tarball endpoints don't require auth for a public repository, so the public-repo option
-  needs no credential to fetch at all — a personal access token (PAT) there is purely to buy the higher authenticated rate
-  limit (GitHub's unauthenticated cap is 60 requests/hour, tight on a shared Actions-runner IP) and
-  stays optional. Store whichever credential is actually used — a fine-grained,
-  read-only PAT scoped to the one repository, or the throwaway App's private key for the
-  private-repo option — as a dedicated repository secret; whoever owns the test repository (or the
-  App) rotates it.
+- **A real disposable test repository.** Use a small, stable, low-privilege public repository as the
+  fetch target. A private repository with a dedicated throwaway GitHub App installed is the alternative.
+  - `_GitHubTransport` already works unauthenticated when no token is configured. GitHub's
+    commits/tarball endpoints also need no auth for a public repository. The public-repo option
+    therefore needs no credential to fetch at all.
+  - A personal access token (PAT) there buys one thing: the higher authenticated rate limit. GitHub's
+    unauthenticated cap is 60 requests/hour, which is tight on a shared Actions-runner IP. The PAT
+    stays optional.
+  - Store whichever credential is actually used as a dedicated repository secret. For the public-repo
+    option it is a fine-grained, read-only PAT scoped to the one repository. For the private-repo
+    option it is the throwaway App's private key.
+  - Whoever owns the test repository (or the App) rotates the secret.
 - **A live fetch test.** Drive `materialize()` through the real `_GitHubTransport` against that
-  repository, skipped when network access or the relevant credential is unavailable, asserting the
-  fetched config tree matches what's actually in the repository.
-- **Cover the error path for real too.** Where feasible, provoke a real 404/403 (a deliberately wrong
-  ref or an unauthorized private repo) rather than only a monkeypatched `HTTPError`, confirming the
-  real error surface maps the way `_GitHubTransport`'s tests assume.
-- **Non-gating, permanently.** Land the new job as CI signal, following BE-0282's precedent of
-  landing new backend coverage as signal first. Unlike BE-0282's own `network (playwright)` job,
-  though — which needs no secret and so safely triggers on every `pull_request`, including a fork's
-  — this job needs a real credential and triggers only on `push` to `main` (or `schedule`), never
-  `pull_request`, mirroring the trigger restriction `roadmap-id.yml` already relies on to keep its
-  `AUTOMATION_BOT_PRIVATE_KEY`/`AUTOMATION_BOT_APP_ID` secrets away from a fork-triggered run. A check
-  that only runs after merge reports against `main`'s commit, not a PR's head SHA, so it structurally
-  cannot become a required status check the way BE-0282's job could: this is the design's permanent
-  shape, not a step toward requiring it later, since the only way to change that would be exposing
-  the credential to a PR-triggered run.
+  repository. Skip the test when network access or the relevant credential is unavailable. Assert that
+  the fetched config tree matches what is actually in the repository.
+- **Cover the error path for real too.** Where feasible, provoke a real 404 or 403: a deliberately
+  wrong ref, or an unauthorized private repo. Do not rely on a monkeypatched `HTTPError` alone. The
+  test confirms that the real error surface maps the way the `_GitHubTransport` tests assume.
+- **Non-gating, permanently.** Land the new job as CI signal, following BE-0282's precedent of landing
+  new backend coverage as signal first.
+  - BE-0282's own `network (playwright)` job needs no secret. It therefore triggers safely on every
+    `pull_request`, including a fork's.
+  - This job needs a real credential. It triggers only on `push` to `main` (or `schedule`), never on
+    `pull_request`. `roadmap-id.yml` relies on the same trigger restriction to keep its
+    `AUTOMATION_BOT_PRIVATE_KEY` / `AUTOMATION_BOT_APP_ID` secrets away from a fork-triggered run.
+  - A check that runs only after merge reports against `main`'s commit, not a PR's head SHA. It
+    structurally cannot become a required status check the way BE-0282's job could.
+  - That is the design's permanent shape, not a step toward requiring the job later. The only way to
+    change it would be to expose the credential to a PR-triggered run.
 
 ## Alternatives considered
 
 - **Trust the fake-transport tests, since the composition logic is thoroughly covered.** Composition
-  correctness assumes the transport handed it correct bytes in the first place; it says nothing
-  about whether the real transport implementation actually produces those bytes from a real host.
-- **Cover this indirectly through a GitHub App token-flow integration test alone.** That verifies the
-  token flow; this item verifies the fetch-and-materialize path built on top of it. Both are needed —
-  a working token with a broken fetch, or a working fetch with a broken token, are each independently
-  observable failure modes.
+  correctness assumes that the transport handed it correct bytes in the first place. It says nothing
+  about whether the real transport implementation produces those bytes from a real host.
+- **Cover this indirectly through a GitHub App token-flow integration test alone.** That test verifies
+  the token flow. This item verifies the fetch-and-materialize path built on top of the token flow.
+  Both are needed, because a working token with a broken fetch, and a working fetch with a broken
+  token, are each independently observable failure modes.
 
 ## Progress
 
