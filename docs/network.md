@@ -32,7 +32,7 @@ proceeds in three stages:
 2. The app (linked with **BajutsuKit**) installs a `URLProtocol` that records each
    request/response and POSTs it to the collector **after TLS (Transport Layer Security)**. The
    capture uses no proxy and no certificate authority (CA). It works regardless of which backend
-   drives the app, and it is readable programmatically. Each POST proves the token. The collector
+   drives the app, and programs can read it. Each POST proves the token. The collector
    rejects any request that does not (401), so another local process cannot inject fabricated
    exchanges into the run's evidence.
    - bajutsu always announces `BAJUTSU_COLLECTOR_AUTH=hmac`. A current BajutsuKit then signs each
@@ -67,7 +67,7 @@ Android works the same way, with two differences (BE-0283).
   `BAJUTSU_COLLECTOR` URL resolves unchanged.
 
 That one port number must be bindable on **both** sides, so an Android lane takes the collector's
-port from a small reserved band. The operating system does not pick a free one. An
+port from a small reserved band rather than letting the operating system pick a free one. An
 operating-system pick comes from the host's ephemeral range, which is also the range the emulator
 hands out to its own sockets. The pick periodically names a port the guest already holds, and the
 bridge then fails to bind.
@@ -91,10 +91,10 @@ resulting `NetworkExchange` records match the same `request` assertion as on iOS
 ## The `request` assertion
 
 `request` is an assertion kind (alongside `exists` / `value` / `count` / …). Match fields
-are AND-ed. Each plain `request` corresponds to **one** observed exchange. Several `request`
-assertions in a block are matched **one-to-one** to distinct exchanges, so two `request` lines
-need two separate requests. `count` is the exception: it is an explicit aggregate (exact when
-set, otherwise the lone matcher needs at least one).
+are AND-ed. Each plain `request` corresponds to **one** observed exchange. Each `request`
+assertion in a block pairs **one-to-one** with a distinct exchange, so two `request` lines
+need two separate requests. `count` is the exception: an explicit aggregate (exact when set,
+otherwise the lone matcher needs at least one).
 
 ```yaml
 expect:
@@ -146,8 +146,8 @@ The first matching rule wins. `match` reuses the request matcher's request-side 
 `query` / `body` dictionaries, since the in-app matcher would ignore them.
 
 Mocks ride the same channel as observation, so they need `--network`. On iOS, the rules reach the
-app via the `BAJUTSU_MOCKS` launch env (like `BAJUTSU_COLLECTOR`). On web there is no app to launch
-into, so `network_collector()` takes the scenario's `mocks` directly and fulfills them in-process.
+app via the `BAJUTSU_MOCKS` launch env (like `BAJUTSU_COLLECTOR`). On web, no app launches,
+so `network_collector()` takes the scenario's `mocks` directly and fulfills them in-process.
 
 On iOS, a `setMocks` step replaces the stub table while the app runs (BE-0365). The collector
 queues the new table, and the app drains it over the in-app control channel. The step waits until
@@ -157,11 +157,13 @@ the app confirms the new table. `setMocks` needs the `xcuitest` backend with net
 
 ## Timing
 
-Network I/O is asynchronous, so a step can run before the response lands. Bridge the gap with a wait
-on the UI that reflects the response (for example `wait: { until: settled }`, or a wait for an
-element the response reveals) **before** the `request` assertion. On iOS and Android the SDK POSTs
-on completion, and on web Playwright's own `requestfinished` event fires then. On every platform,
-the exchange is in the collector by the time the UI has updated.
+Network I/O is asynchronous, so a step can run before the response lands. Bridge the gap with a
+wait on the UI that reflects the response **before** the `request` assertion. Use
+`wait: { until: settled }`, or wait for an element the response reveals.
+
+On iOS and Android the SDK POSTs on completion, and on web Playwright's own `requestfinished`
+event fires then. On every platform, the exchange is in the collector by the time the UI has
+updated.
 
 ## App contract
 
@@ -181,10 +183,10 @@ is likewise **test/debug-only**: it records headers and bodies, so keep it out o
 and use `redact`, the same caveat as on iOS.
 
 Android also needs a `network_security_config` cleartext exception for `127.0.0.1` in the
-test/debug build. The collector URL is plain HTTP, which API 28+ blocks by default; iOS exempts
-loopback from App Transport Security (ATS), so it needs no exception. Without the exception, the
+test/debug build. The collector URL is plain HTTP, which API 28+ blocks by default. iOS exempts
+loopback from App Transport Security (ATS) and needs no exception. Without the exception, the
 report POST fails. The app logs the error and stays otherwise silent, so no exchange ever reaches
 the collector.
 
-**Web:** there is no app-side contract at all. Playwright observes and mocks the page's traffic
+**Web:** the app has no side of the contract at all. Playwright observes and mocks the page's traffic
 natively, so nothing in the app under test needs to change.

@@ -26,8 +26,8 @@ Claude can be reached four ways:
 - the Anthropic CLI `ant` under a browser-based OAuth/SSO sign-in
 - the Claude Code CLI `claude`, billing a Claude Pro/Max/Console seat
 
-"Needs an API key" is therefore the wrong unit. "Uses Claude" is the accurate one, and it stays
-correct as providers are added.
+"Needs an API key" is the wrong unit. "Uses Claude" is the accurate one, and it stays correct
+when providers join the list.
 
 Everything on the **Claude-free** side runs with **zero configuration**: no credential, no `.env`,
 no login, no AI runtime. Clone the repo and it works immediately.
@@ -60,8 +60,8 @@ Since
 [BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md),
 `run` is Claude-free with **no flag-gated exception at all**. Its alert guard
 (`--system-alert-handling`, on by default) used to be one: where the native SpringBoard path could
-not name a prompt, the guard read a screenshot with a model and tapped where the model said. That
-fallback is gone from `run`. The guard now needs no credential and consults none. It leaves a
+not name a prompt, the guard read a screenshot with a model and tapped where the model directed. That
+fallback is gone from `run`, so the guard needs no credential and consults none. It leaves a
 prompt it cannot name alone, and names the prompt in the blocked step's own failure instead.
 
 The split makes the [Tier-1 / Tier-2 boundary](concepts.md) visible. Nothing here puts a model on
@@ -89,8 +89,8 @@ The AI software development kit (SDK) is an opt-in extra, so the base install ca
 dependency at all.
 
 - `pip install bajutsu` installs the deterministic authoring / running paths (`run`, `doctor`,
-  `lint`, `codegen`, `trace`, `approve`, and the rest of the Claude-free column above). No AI SDK
-  is installed, and nothing here reaches a model.
+  `lint`, `codegen`, `trace`, `approve`, and the rest of the Claude-free column above). The install adds
+  no AI SDK, and nothing here reaches a model.
 - `pip install bajutsu[ai]` adds the Anthropic SDK for the Claude paths (`record`, `crawl`,
   `triage --ai`) under the API-key, Bedrock, or `ant` provider. For the Amazon Bedrock provider,
   use `bajutsu[bedrock]` instead; it layers the Bedrock variant onto the same SDK. The
@@ -98,7 +98,7 @@ dependency at all.
   rather than the SDK.
 
 Contributors get every extra at once through `uv sync --group dev`, so the gate keeps testing the
-Claude paths. The AI-free guarantee covers the *base* install; it does not drop test coverage.
+Claude paths. The AI-free guarantee is about the *base* install, not about dropping test coverage.
 
 ## Reaching Claude, when you want it
 
@@ -124,8 +124,8 @@ The classification above is the same whichever mechanism you pick.
 ## Turning every Claude path off, in one line
 
 The mechanisms above are opt-in, so a project that configures none of them reaches no model. That
-silence is an accident of the environment, not a statement in the repository. Nothing a reviewer
-reads records the intent, and a key exported to author one scenario with `record` puts `record` and
+silence is still an accident of the environment, not a statement in the repository. Nothing a reviewer
+reads records the intent, and a key exported to author one scenario with `record` is enough to put `record` and
 `crawl` on a model in every later shell. Setting the provider to `none` states the policy instead
 ([BE-0394](../roadmaps/BE-0394-ai-provider-none-kill-switch/BE-0394-ai-provider-none-kill-switch.md)):
 

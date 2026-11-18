@@ -75,8 +75,10 @@ apart.
 
 `RunResult` and its parts are all dataclasses, so `manifest_dict` drops the step / expect results
 verbatim, minus `wall_offset_s`. That field is an in-run-only conversion constant with no meaning
-once persisted (see below). Every other timestamp is an absolute wall-clock instant (epoch seconds),
-so it still means the same thing after the run that produced it exits
+once persisted (see below).
+
+Every other timestamp is an absolute wall-clock instant (epoch seconds). It keeps its meaning after
+the run that produced it exits
 (see [evidence](evidence.md#interval-evidence-video--devicelog--apptrace)).
 
 ```json
@@ -113,29 +115,32 @@ so it still means the same thing after the run that produced it exits
 
 - `ok` (top): true if every scenario is ok.
 - `backend`: the actuator that drove the run (`xcuitest`, or `fake` in tests). One actuator is fixed
-  per run, so the top-level value is normally a single name; each scenario also carries its own
+  per run, so the top-level value is normally a single name. Each scenario also carries its own
   `backend` ([drivers](drivers.md#backend-selection-and-the-actuator)).
 - `steps[].duration_s`: each step's timing. A run measures every elapsed time on the monotonic
-  clock. A wall clock can jump backward mid-run (a Network Time Protocol (NTP) correction, a manual
-  clock change) and would corrupt a duration or a timeout. A run reads the wall clock once
-  per scenario and uses it for the recorded timestamps alone.
+  clock. A wall clock can jump backward mid-run, for example after a Network Time Protocol (NTP)
+  correction or a manual clock change. Such a jump would corrupt a duration or a timeout. A run
+  reads the wall clock once per scenario and uses it for the recorded timestamps alone.
 - `steps[].started_at`: the absolute wall-clock instant (epoch seconds) the step began, with no
   video correction folded in. A viewer subtracts `video_anchor_s` (below) at render time to get the
   seconds to seek the recording to. [report.html](#reporthtml) shows that number as the **steps**
-  table's `at` column. Storing the raw instant, rather than the already-corrected offset, lets a
-  viewer recompute the offset from a saved run, for example after a fix to how a run resolves its
-  anchor, instead of forcing a re-run of the scenario
+  table's `at` column.
+
+  Storing the raw instant, rather than the already-corrected offset, lets a viewer recompute the
+  offset from a saved run. A fix to how a run resolves its anchor is one example. Nothing requires a
+  re-run of the scenario
   ([BE-0348](../roadmaps/BE-0348-absolute-timestamp-recording/BE-0348-absolute-timestamp-recording.md)).
-- `video_anchor_s` (per scenario): the absolute wall-clock instant the scenario's video started,
-  measured from the finished recording's own duration where that duration is a wall-clock measure,
-  and otherwise from the recording's confirmed start signal
+- `video_anchor_s` (per scenario): the absolute wall-clock instant the scenario's video started.
+  Where the finished recording's own duration is a wall-clock measure, the anchor derives from
+  that duration. Otherwise it comes from the recording's confirmed start signal
   ([evidence](evidence.md#interval-evidence-video--devicelog--apptrace)). Every viewer subtracts it.
+
   A run recorded before `schemaVersion` 6 carries no anchor. Its `started_at` values are already
   video-relative, so a viewer reads the missing anchor as `0.0` and renders them unchanged.
 - `wall_offset_s` (in-run only, not persisted): what the run adds to one of its own monotonic
-  instants to reach a wall-clock epoch, so it can carry a network exchange's monotonic receive time
-  onto the same anchor `video_anchor_s` uses. It never survives into the manifest, and no monotonic
-  instant does either, so a later reader would have nothing left to convert with it.
+  instants to reach a wall-clock epoch. The run uses it to carry a network exchange's monotonic
+  receive time onto the same anchor `video_anchor_s` uses. It never survives into the manifest, and
+  no monotonic instant does either, so a later reader would have nothing left to convert with it.
 - `steps[].artifacts`: the provenance of evidence captured for that step
   ([evidence](evidence.md#artifact-provenance-provider)).
 - `steps[].actuations`: what the driver actually did to the screen during that step: the coordinate
@@ -152,7 +157,7 @@ so it still means the same thing after the run that produced it exits
     the same footing as `started_at`. A viewer subtracts `video_anchor_s` from it the same way. An
     older run carries no `at`, and a viewer then falls back to the step's `started_at`.
 - `steps[].system_alert`: for a `handleSystemAlert` step, the button it tapped (`label`) and the rule
-  that chose it (`rule`: `sel`, `label table: <locale>`, or `position: button 2 of 2`), so a run under
+  that chose it (`rule`: `sel`, `label table: <locale>`, or `position: button 2 of 2`). A run under
   a language the label table does not cover still shows what was tapped and why
   ([BE-0445](../roadmaps/BE-0445-system-alert-locale-agnostic-answer/BE-0445-system-alert-locale-agnostic-answer.md)).
   Absent on every other action, and on every run recorded before `schemaVersion` 12.
@@ -165,21 +170,22 @@ so it still means the same thing after the run that produced it exits
   A warning never changes `ok` or `reason`. The list is empty on a step that has none, and absent on
   every run recorded before `schemaVersion` 16, which a reader treats as no warnings.
 - `channel_degraded`: why the Android backend's reads were on the `uiautomator dump` path when the
-  scenario ended, so a run that passed on that fallback can be found. It never changes `ok`. It is
-  empty while the channel is healthy and on every other backend, and absent on every run recorded
-  before `schemaVersion` 18, which a reader treats as healthy.
+  scenario ended. With it, a run that passed on that fallback can be found. It never changes `ok`. The
+  value is empty while the channel is healthy and on every other backend. Every run recorded before
+  `schemaVersion` 18 lacks it, and a reader treats such a run as healthy.
 - `channel_notes`: what the same read channel did after the scenario's last step, the notes no step
   was left to carry in its `warnings`. Empty when nothing happened, and absent on every run recorded
   before `schemaVersion` 18.
 - `ignored_settings`: each setting the scenario put in effect that a target's route could not apply
   and the target declared under `runsOn.ignoredSettings`, as `{target, key, reason}`
   ([BE-0467](../roadmaps/BE-0467-environment-specific-settings/BE-0467-environment-specific-settings.md),
-  [configuration](configuration.md#environment-specific-settings-runsonignoredsettings-be-0467)). It
-  never changes `ok`. Empty on a scenario that ignored nothing or that the preflight refused before any launch, and absent on
-  every run recorded before `schemaVersion` 17, which a reader treats as none ignored.
+  [configuration](configuration.md#environment-specific-settings-runsonignoredsettings-be-0467)).
+  It never changes `ok`. The list is empty on a scenario that ignored nothing, and on one that the
+  preflight refused before any launch. Every run recorded before `schemaVersion` 17 lacks it, and a
+  reader treats such a run as having ignored nothing.
 - `network.json`'s `startedAt` (one file per scenario, not shown in the manifest above): each
-  observed exchange's absolute start, on the same footing as `steps[].started_at` and derived
-  through the same scenario anchor, so a viewer subtracts `video_anchor_s` from both. See
+  observed exchange's absolute start. It stands on the same footing as `steps[].started_at` and
+  derives through the same scenario anchor, so a viewer subtracts `video_anchor_s` from both. See
   [report.html](#reporthtml) for how the two are interleaved into one timeline.
 - `failure`: a summary on failure (e.g. `"step 3 (tap): no match: {...}"`). null on success.
 - `provenance` (top, optional): a run-identity stamp ([BE-0049](../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md)).
@@ -191,25 +197,28 @@ so it still means the same thing after the run that produced it exits
     present when the config came from a Git source
     ([BE-0063](../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source.md))
 
-  The stamp groups accumulated runs by identity, so a verdict that flips while the fingerprint is
+  The stamp groups accumulated runs by identity. A verdict that flips while the fingerprint is
   unchanged is **true flakiness** rather than an edited scenario. The stamp is pure metadata and never
   enters `ok`. (`schemaVersion` is `3` or higher once this block can appear, and `18` today.)
 
   A `run-set` job also records `workerEnvironment`, the environment of the worker that ran it
-  (`local`, `devicefarm`, …), since another run of the same job may land elsewhere. The report lists
+  (`local`, `devicefarm`, …). Another run of the same job may land elsewhere. The report lists
   it under *notices* ([BE-0484](../roadmaps/BE-0484-job-group-lease/BE-0484-job-group-lease.md)).
 - `target` (top, optional): the target the run ran, so "the Android target passes while the iOS
-  target fails" is computable from stored data ([BE-0404](../roadmaps/BE-0404-collapse-project-layer/BE-0404-collapse-project-layer.md)).
-  One run resolves one target, so it sits beside `backend` rather than on each scenario. `serve`
-  mirrors it onto the run row and ranks targets against each other from it. Omitted when the run
-  named no target. (`schemaVersion` is `10` or higher once this key can appear.)
+  target fails" is computable from stored data
+  ([BE-0404](../roadmaps/BE-0404-collapse-project-layer/BE-0404-collapse-project-layer.md)).
+  One run resolves one target, so the key sits beside `backend` rather than on each scenario.
+  `serve` mirrors it onto the run row and ranks targets against each other from it. Omitted when the
+  run named no target. (`schemaVersion` is `10` or higher once this key can appear.)
 - `label` (top, optional): the run-history partition, either the bound config's own name or the
-  operator's `run --label` override. The label is opaque metadata: never parsed, never matched against
-  config, and never an input to `ok`. It keeps two configs' runs readable apart after a `serve`
-  restart. Omitted when the run carried no label. (`schemaVersion` is `10` or higher once this key can appear.)
+  operator's `run --label` override. The label is opaque metadata: never parsed, never matched
+  against config, and never an input to `ok`. It keeps two configs' runs readable apart after a
+  `serve` restart. Omitted when the run carried no label. (`schemaVersion` is `10` or higher once
+  this key can appear.)
 - `idb` (top, optional, legacy): older manifests may carry an `idb_companion` / client version
-  block (BE-0005). It was retired with the idb backend (BE-0290) and is no longer written; an old
-  manifest that still has it loads fine, since an unknown top-level key is ignored.
+  block (BE-0005). BE-0290 retired the block with the idb backend, and the manifest no longer
+  writes it. An old manifest that still has it loads fine, since an unknown top-level key is
+  ignored.
 - `matrix` (top, optional): the cross-browser engine × scenario grid, present only on a
   `bajutsu run --browsers` run ([BE-0076](../roadmaps/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md)).
   `scenarios` stays the flat result list, each entry tagged with its `engine`. `matrix` is
@@ -218,15 +227,15 @@ so it still means the same thing after the run that produced it exits
   across every engine × scenario. A single-engine / iOS run omits the block.
 
   Nothing enforces a unique `name:` across a multi-file run. A second scenario sharing an earlier
-  one's name gets its own row labeled with a `(2)`, `(3)`, … suffix rather than
-  overwriting the first's cell. (`schemaVersion` is `4` or higher once this block can appear.)
+  one's name gets its own row. The row carries a `(2)`, `(3)`, … suffix, so it does not
+  overwrite the first's cell. (`schemaVersion` is `4` or higher once this block can appear.)
 
 ## junit.xml
 
 `junit.xml` serves CI integration. **One scenario is one `<testcase>`.** A failing scenario gets a
 `<failure>`, whose `text` lists each step / expect's ok/FAIL and reason.
 
-- On a `--browsers` matrix run, the case name carries the engine (`classname="bajutsu.<engine>"`),
+- On a `--browsers` matrix run, the engine keys the classname (`classname="bajutsu.<engine>"`),
   so CI sees `chromium.login` and `webkit.login` as distinct cases (BE-0076). A single-engine run
   keeps `classname="bajutsu"`.
 - A scenario that ran without a setting its target declared under `runsOn.ignoredSettings` carries a
@@ -249,14 +258,14 @@ step 1 tap: FAIL no match: {...}</failure>
 
 The [Common Test Report Format (CTRF)](https://ctrf.io/) export
 ([BE-0161](../roadmaps/BE-0161-ctrf-report-export/BE-0161-ctrf-report-export.md)) is an
-open-standard JSON test report. A growing ecosystem reads it without per-tool adapters: the
+open-standard JSON test report. A growing ecosystem reads it without per-tool adapters. The ecosystem includes the
 `ctrf-io` GitHub Actions (PR-comment / job-summary reporters), cross-tool dashboards, and
 flaky-test analytics.
 
 JUnit XML strips a run down to name / time / a failure blob. CTRF carries Bajutsu's structured
-detail that JUnit has no place for: per-step outcomes, the engine and device, and artifacts as
-first-class attachments. The export is a **pure projection of `manifest.json`**, the same data in a
-new shape beside `junit.xml`, so it adds no bookkeeping. Written after the verdict, it cannot change
+detail. JUnit has no place for per-step outcomes, the engine and device, or artifacts as
+first-class attachments. The export is a **pure projection of `manifest.json`**: the same data in a
+new shape beside `junit.xml`. It adds no bookkeeping. Written after the verdict, it cannot change
 that verdict (no LLM, no effect on pass/fail).
 
 The document is `{ reportFormat: "CTRF", specVersion, generatedBy, timestamp, results }`, where
@@ -283,8 +292,8 @@ The document is `{ reportFormat: "CTRF", specVersion, generatedBy, timestamp, re
 
 - `summary.duration` and each `tests[].duration` are milliseconds (Σ / per-scenario `duration_s`),
   the field CTRF consumers key on, and exact. `summary.start` and the document `timestamp` derive
-  from the `YYYYMMDD-HHMMSS` runId, parsed as UTC (the runId is stamped in UTC), and
-  `stop = start + duration`. Absolute per-test start/stop are deferred, because they need an
+  from the `YYYYMMDD-HHMMSS` runId, parsed as UTC (the runId is stamped in UTC).
+  `stop = start + duration`. Absolute per-test start/stop are deferred. They need an
   absolute per-scenario epoch (an optional follow-up), so the export omits them rather than
   approximating. The export carries no live host state, so `bajutsu report` regenerates the same
   run's `ctrf.json` byte-for-byte.
@@ -306,7 +315,7 @@ The document is `{ reportFormat: "CTRF", specVersion, generatedBy, timestamp, re
   grid lives under `results.extra.matrix`. Bajutsu's other surplus lives under the per-test
   `extra`: `sid`, `expect` results, alerts, `skipped_captures`, and the settings the run went
   without as `ignoredSettings`.
-- CTRF is projected from the already-redacted manifest, so it inherits the same secret scrubbing
+- Since CTRF is projected from the already-redacted manifest, it inherits the same secret scrubbing
   ([BE-0047](../roadmaps/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)). No raw secret
   reaches it.
 
@@ -406,8 +415,8 @@ picker resolves a step to the same image, for the same reason.
 
 In two cases the image and the tree describe *different* screens. One is a
 [`web` block](scenarios.md#web-entering-a-webviews-dom)'s native screenshot beside its WebView tree.
-The other is a stored run that has lost its `after.png`. In both, the viewer shows both and draws no
-frames, and the tree button says why
+The other is a stored run that has lost its `after.png`. In both cases the viewer shows the image and the tree but draws no
+frames. The tree button says why
 ([evidence](evidence.md#which-screen-an-artifact-shows-depicts)).
 
 The serve editor offers no image for such a step at all. Every click there would resolve to an
@@ -447,8 +456,8 @@ four modes:
 A `diff <pct>%` badge accompanies the comparator. On a first run, when only the actual screenshot
 exists, a `no baseline yet` badge appears instead.
 
-When the check did not pass, an **Approve as baseline** button promotes the captured screenshot
-into the baselines dir. The button `POST`s `/api/approve`, so it works only when the report is
+When the check did not pass, an **Approve as baseline** button appears. It promotes the captured
+screenshot into the baselines dir. The button `POST`s `/api/approve`, so it works only when the report is
 opened through `bajutsu serve`. A report opened from disk hides the button. The CLI twin is
 [`bajutsu approve`](cli.md#approve).
 
@@ -456,7 +465,7 @@ opened through `bajutsu serve`. A report opened from disk hides the button. The 
 
 Failing rows have a red background. During playback, the report highlights the row whose action is on
 screen and scrolls that row into view. A row takes over at its first accepted actuation's `at`, and
-never ahead of its own `at` column. The reason is where a step stamps `started_at`: the stamp
+never ahead of its own `at` column. The reason is where a step stamps `started_at`. The stamp
 comes before the step screenshots, reads the tree, and resolves its target. The screen then changes up
 to seconds later. A highlight switched at `started_at` would lead the picture by that whole lead-in.
 
@@ -471,7 +480,7 @@ its action landed.
 
 Clicking a step seeks the recording to that same switch instant **without auto-playing**. A paused
 video stays paused, and a playing one keeps playing. The clicked row is then the highlighted one.
-Its action appears a moment later, because the screen answers a sent gesture within a fraction of a
+Its action appears a moment later. The screen answers a sent gesture within a fraction of a
 second.
 
 The row's start button still seeks to the `at` column. That column is `started_at` minus
@@ -481,14 +490,14 @@ began. The seek thus lands on what the row shows
 ([evidence](evidence.md#interval-evidence-video--devicelog--apptrace)).
 
 One visible consequence follows. For a video-capturing Android or web scenario, the derived
-seconds-into-the-recording value can exceed the scenario's own `duration_s`. The two measure
+value (seconds into the recording) can exceed the scenario's own `duration_s`. The two measure
 different things on purpose. The video's timeline starts before the run's own step loop does, while
 `duration_s` measures the loop itself. The difference is expected and does not mean either number is
 wrong.
 
 Clicking a step's screenshot opens a full-size lightbox. **← / →** (or the on-screen arrows) then
-walk through every screenshot in the run, across scenario boundaries. A caption shows the scenario,
-step, and position. The run's actuator backend is shown as a `driver: <backend>` chip in the
+walk through every screenshot in the run, across scenario boundaries. A caption shows the
+scenario, step, and position. The run's actuator backend is shown as a `driver: <backend>` chip in the
 header and a small badge on each scenario row.
 
 ### Multi-target recordings
@@ -497,13 +506,13 @@ A multi-target scenario stacks one recording per target that captured video. Eac
 highlights its own target's step while it plays, so two rows can be highlighted at once.
 
 When two or more recordings stack, each gets a color to keep them apart. Its target label, its steps'
-highlight, and the target chip on those steps all share the color. The colors are amber, blue, pink,
+highlight, and the target chip on those steps all share it. The colors are amber, blue, pink,
 and green in stacking order, repeating from the fifth recording on. A target that recorded no video
 has no player of its own; its steps seek the first recording and take that recording's color. Every
 recording's frame stays the same blue. A scenario with a single recording keeps the default look.
 
-Each recording carries its own **expand** button, beside its play/pause control. Pressing it opens a
-modal that shows that recording enlarged. The scenario's own **steps** rows clone beside it. The
+Each recording carries its own **expand** button, beside its play/pause control. Pressing the
+button opens a modal that shows that recording enlarged. The scenario's own **steps** rows clone beside it. The
 screenshot/element-tree column stays empty in the clone. A click there would otherwise reopen
 the element viewer on top of the modal. Clicking a cloned step seeks the enlarged recording, the same
 way a click seeks it in the compact view. Playback highlights the row in progress and scrolls it into
@@ -562,7 +571,7 @@ failure.
 
 ## Regenerating a report (BE-0068)
 
-The report is a **pure rendering of data stored in the run dir**, so a finished run can be
+The report is a **pure rendering of data stored in the run dir**. A finished run can be
 re-rendered offline with the current template, without re-executing it. `manifest.json` is the
 **versioned** (`schemaVersion`), lossless render model. `report.load` is its inverse:
 `results_from_manifest()` reconstructs the `RunResult`s, and `load_run(run_dir)` recovers the whole
@@ -570,5 +579,5 @@ render model (outcomes from `manifest.json`, the scenario plan from `scenario.ya
 
 `bajutsu report <run>` ([cli](cli.md#report)) rewrites `report.html`, `junit.xml`, and `ctrf.json`
 from that model. Re-rendering only re-presents recorded outcomes. It never re-runs an assertion or
-changes a verdict, and an older run renders with any newer-only section shown as "not captured"
+changes a verdict. An older run renders with any newer-only section shown as "not captured"
 rather than invented.
