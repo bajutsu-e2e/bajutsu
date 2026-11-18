@@ -17,7 +17,7 @@
 
 A `generate` step computes a random or current-datetime value at run time and stores it as a
 runtime variable. A scenario can then produce a fresh input. Before this step, a scenario could
-reference a literal, a data-driven row, or a value captured from the UI.
+reference nothing but a literal, a data-driven row, or a value captured from the UI.
 
 ## Motivation
 
@@ -67,8 +67,8 @@ shape that `totp` already uses:
 
 **`datetime`** produces the current time as text. Its optional fields are:
 
-- **`format`**: a `strftime` pattern. The default is the International Organization for
-  Standardization (ISO) 8601 format.
+- **`format`**: a `strftime` pattern. The default is ISO 8601, the date and time format of the
+  International Organization for Standardization (ISO).
 - **`offsetSeconds`, `offsetMinutes`, `offsetHours`, `offsetDays`**: a signed offset that shifts
   the time, for a relative value such as tomorrow or an hour from now.
 - **`timezone`**: an Internet Assigned Numbers Authority (IANA) name, for example

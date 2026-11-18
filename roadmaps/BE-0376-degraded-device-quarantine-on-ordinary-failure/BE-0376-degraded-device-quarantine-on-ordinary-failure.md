@@ -241,9 +241,9 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
   too, because `start_screenrecord` polls for the device-side process. Its lease can therefore
   report the stall. The remedy is what is missing there. An emulator or handset is brought up out of
   band, so `request_device_replacement` is a no-op
-  (`bajutsu/platform_lifecycle/environments/android.py`). This stays as
-  [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery.md)
-  deferred it, with the emulator-process restart.
+  (`bajutsu/platform_lifecycle/environments/android.py`). This is unchanged from
+  [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery.md)'s
+  own deferral of the emulator-process restart.
 
 ## Progress
 

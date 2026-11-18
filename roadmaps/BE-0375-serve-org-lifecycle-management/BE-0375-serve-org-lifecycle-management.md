@@ -168,7 +168,7 @@ The sign-in gate's *placement* is unchanged. The `members`/`github_orgs` match c
 before `org_for_identity` is ever called. It still sits above the `if state.repository is not
 None:` block, so a database-less, OAuth-configured deployment keeps gating sign-in
 ([BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md)). Only the dictionary
-that the check checks now depends on whether a database is wired. The place in `oauth_callback`
+that the check consults now depends on whether a database is wired. The place in `oauth_callback`
 where the check runs does not.
 
 Choosing the source before the gate, rather than after it, also severs a coupling that is a live
@@ -178,9 +178,9 @@ configuration file that is unreadable, malformed, or not yet bound turns every n
 into a denial. Every one of those users, their orgs, and their roles are already rows in the
 database.
 
-After this item, an unloadable configuration on that deployment has two effects. It stops the
-seeding of unit 6. It leaves target resolution (unit 4) with nothing to resolve against. It stops
-nothing else: sign-in, org placement, and role assignment keep working from the database.
+After this item, an unloadable configuration on that deployment has two effects: it stops the
+seeding of unit 6, and it leaves target resolution (unit 4) with nothing to resolve against. It
+stops nothing else: sign-in, org placement, and role assignment keep working from the database.
 
 A database-less deployment keeps calling `parse_orgs` against the configuration file precisely as
 today, with no admin UI for org management. Three facts explain why it gains nothing from a per-org
@@ -443,7 +443,7 @@ login on hover.
 
 Every tab is scoped to that org without saying so: which targets are runnable, which runs and
 evidence are visible, the secrets, and the project list. An admin administering several tenants
-could otherwise infer which tenant their own work lands in, and nothing more. Returning a caller's
+would otherwise have to guess which tenant their own work lands in. Returning a caller's
 own identity to that caller discloses nothing they did not present. The roster itself differs. It
 stays behind the admin-only `GET /api/orgs`.
 
@@ -454,7 +454,7 @@ A new admin-only **Orgs** page joins the serve shell, parallel to
 [BE-0275](../BE-0275-serve-projects-management-page/BE-0275-serve-projects-management-page.md)'s
 Projects page. It has:
 
-- a list of orgs with create and delete actions (delete is greyed out, with the project count shown,
+- a list of orgs with create and delete actions (delete disabled, with the project count shown,
   while the org still owns a project)
 - a membership form per org (members, GitHub organizations, editor Team) that calls the `POST`
   endpoint above
