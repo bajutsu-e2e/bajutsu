@@ -1115,20 +1115,22 @@ nested inside a `web:` block.
     value: "大学"
 ```
 
-A wheel-style picker is an ordinary form control on both mobile platforms, and `setPickerValue` is
-the only step that can set one. On iOS the picker is a `UIPickerView`, or a `UIDatePicker` switched
+A wheel-style picker is an ordinary form control on both mobile platforms. No step but
+`setPickerValue` can set one. On iOS the picker is a `UIPickerView`, or a `UIDatePicker` switched
 to a wheel-only mode. On Android it is an `android.widget.NumberPicker`. A `DatePicker` or
 `TimePicker` in spinner mode counts too, since its fields are `NumberPicker` wheels. The wheel's rows
 are not separately addressable elements, so `tap`, which addresses a resolved handle, cannot land on
 a specific row.
 
 The coordinate-driven steps fare no better. `swipe`, `drag`, and `scroll` are bounded or directional
-drags that can spin a wheel roughly toward a value but cannot guarantee stopping on it. `tapPoint`
+drags. They can spin a wheel roughly toward a value but cannot guarantee stopping on it. `tapPoint`
 can only hit whatever row the wheel already shows. Asserting the result of any of those steps would
-depend on a drag distance matching the row height by chance, which is the approximate action Bajutsu
-rules out everywhere else. On iOS, `setPickerValue` instead calls XCUITest's own
-`adjust(toPickerWheelValue:)` on the element the selector already resolved. It is handle-based the
-way `tap` is, and not coordinate-based the way `swipe` is.
+depend on a drag distance matching the row height by chance. Bajutsu rules out that approximate
+action everywhere else.
+
+On iOS, `setPickerValue` instead calls XCUITest's own `adjust(toPickerWheelValue:)` on the element
+the selector already resolved. The step is handle-based the way `tap` is, and not coordinate-based
+the way `swipe` is.
 
 On Android, the adb backend resolves the wheel the way a `tap` resolves its target. It then hands
 the wheel's identity to the resident UI Automator server, with no coordinate. The server steps the
@@ -1429,8 +1431,8 @@ which is the determinism a hand-tuned `swipe` chain cannot guarantee.
 
 The distance a step travels is the distance it asked for, on every backend. The driver conformance
 suite measures one step's realized travel and fails a backend whose content carries on past the
-gesture's own endpoints. A step that overshoots anyway is caught by the look-back above rather than
-assumed away.
+gesture's own endpoints. The look-back above catches a step that overshoots anyway, rather than
+assuming it away.
 
 > **`scroll`'s `direction` is the direction the content moves, not the finger** — the inverse of
 > `swipe`. `scroll: { direction: down }` reveals below-the-fold content (the driver swipes the finger
