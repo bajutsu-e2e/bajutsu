@@ -27,4 +27,6 @@ class _Reply:
     # the runner's own spelling rather than a bool, so the driver decides what counts as a crash and
     # `unknown` stays distinguishable from a confirmed answer either way.
     app_state: str | None = None
+    # Why `/app/openUrl` did not open its URL, set with `not-opened` alone (BE-0487).
+    reason: str | None = None
     raw: bytes | None = field(default=None, repr=False)

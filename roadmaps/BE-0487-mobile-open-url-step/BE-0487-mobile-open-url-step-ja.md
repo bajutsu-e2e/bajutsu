@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0487](BE-0487-mobile-open-url-step-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **承認済み** |
+| 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0487") |
 | トピック | シナリオ作成機能 |
 <!-- /BE-METADATA -->
@@ -274,13 +274,22 @@ preflight からは分かりません。
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] シナリオのモデル
-- [ ] ドライバーの受け口と preflight
+- [x] シナリオのモデル
+- [x] ドライバーの受け口と preflight
 - [ ] Android の経路
-- [ ] 起動時 deeplink の修正
+- [x] 起動時 deeplink の修正
 - [ ] iOS の経路
 - [ ] showcase のシナリオ
-- [ ] ドキュメント
+- [x] ドキュメント
+
+ログ：
+
+- 提案しました。
+- PR_LINK：単位 1、2、4、7 をすべて実装し、単位 3、5、6 もコードとテストまで実装しました。単位 3、5、6 は、実機での実行が完了の条件を満たすまで未完了のままにします。手元では Android のエミュレーターを確保できませんでした。確保した iOS の Simulator は、`bajutsu run` が届かないデバイスセットにありました。新しい showcase のシナリオは CI の実機レーンで実行します（`ios-e2e.yml` のゲートとなる XCUITest のジョブで `open_url.yaml`、Android の Compose のレーンで `open_url_android.yaml`）。設計の記述と異なる点が 4 つあります。
+  - `real_run` は引き続き stdout だけを返します。adb のコマンドは、`shlex` でクォートし `2>&1` で終わる 1 行の `adb shell` にしました。そのため端末側の `Error` 行は stdout に届き、adb 自身の通信障害はホストの stderr に残って `DeviceError` のままです。終了ステータスが 0 以外でも `am start` の出力があれば、0 のときと同じように読みます。
+  - 読み込み時の検査は、BE-0464 と同じ理由で、モデルではなく `Scenario` のバリデーター（`_open_urls.py`）で行います。`web:` の中に置けない規則は入れ子のステップをすべてたどり、`${...}` を含む値も例外にしません。`expand_components` はコンポーネントを展開した後にこの規則をもう一度適用するので、`web:` の中の `use:` から `openUrl` がすり抜けることはありません。
+  - `XCUIApplication.open(_:)` が XCTest の issue として記録した失敗は、`continueAfterFailure` のもとでは通常どおり戻ります。そこで `RunnerUITest.record(_:)` から受け取る収集器（`RecordedIssues`）で捕まえ、`ActuationReply` にメッセージを運ぶ `reason` フィールドを加えました。
+  - codegen は、XCUITest では `#available(iOS 16.4, *)` で囲んだ `app.open(URL(string:)!)` を、UI Automator と Playwright ではラベル付きの `// TODO` を出力します。この点は設計で扱っていませんでした。
 
 ## 参考
 

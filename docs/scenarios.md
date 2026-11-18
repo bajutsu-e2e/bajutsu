@@ -137,7 +137,7 @@ preconditions:
 | `subject.reinstall` | `overwrite` \| `clean` \| `erase` | unset (the target's `subject.reinstall`, then `clean`) | How much state is reset before each run, weakest first: `overwrite` installs over the existing app (keeps its data); `clean` uninstalls and then installs (fresh app and data); `erase` wipes the whole device (`simctl erase`: apps, data, settings), then installs. The install needs the target config's `subject.path`. Android has no device-wide wipe, so `erase` there acts as `clean`. iOS and Android; a web target accepts `erase` alone, which its fresh browser context already satisfies ([BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md)) |
 | `subject.launch.env` | dict | `{}` | Launch environment, merged onto the target's `subject.launch.env` key by key. iOS injects it through `SIMCTL_CHILD_*`, Android as intent extras; on the web the Playwright code generator reads it |
 | `subject.launch.args` | list[str] | `[]` | Launch arguments, appended after the target's `subject.launch.args`. iOS only |
-| `subject.launch.deeplink` | str | unset (the target's `subject.launch.deeplink`) | A URL the app opens after launch (`simctl openurl` on iOS, an intent on Android) |
+| `subject.launch.deeplink` | str | unset (the target's `subject.launch.deeplink`) | A URL the app opens after launch (`simctl openurl` on iOS, an intent on Android). On Android, a deep link that no activity of the app resolves fails the launch with `am start`'s own reason (BE-0487) |
 | `device.ios.locale` | str | unset (the target's `runsOn.ios.locale`) | Force the locale and language at launch (`-AppleLocale` / `-AppleLanguages`), and pin the Simulator's system language. A value that differs from the target's forces a cold respawn |
 | `device.ios.seedPhotos` | list[str] | unset (the target's `runsOn.ios.seedPhotos`) | Images seeded into the Simulator's photo library on the erase path, in order; paths resolve against the scenario file, and a scenario's list replaces the target's |
 | `device.android.seedPhotos` | list[str] | unset (the target's `runsOn.android.seedPhotos`) | Images seeded into a directory Bajutsu owns in the device's shared storage, in order, on every reinstall level; paths resolve against the scenario file, and a scenario's list replaces the target's |
@@ -1009,6 +1009,7 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `scroll` | `scroll: { to: <Selector>, direction?: up\|down\|left\|right, within?: <Selector>, amount?: <frac>, maxScrolls?: <int> }` | scroll (non-inertially) until `to` is on-screen, or fail at a bound; `direction` is **scroll** direction (default `down`), the inverse of `swipe`'s |
 | `back` | `back: {}` | navigate back one level, each backend using its platform-correct primitive — the Android system back key, the iOS OS-provided back button, or web history ([BE-0210](../roadmaps/BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md)) |
 | `navigate` | `navigate: "<url>"` | load a URL in the current page, resolved against the target's `baseUrl` ([below](#navigate)); web only (iOS / Android fail in preflight) |
+| `openUrl` | `openUrl: "<url>"` | hand an absolute URL, such as a deep link, to the operating system for the app the scenario drives at that point, and wait until that app is in front ([below](#openurl)); iOS (16.4 or later) and Android (the web backend fails in preflight) |
 | `pinch` | `pinch: { sel: <Selector>, scale: <num> }` | two-finger magnify; `scale > 0` (`>1` zooms in, `<1` out) |
 | `rotate` | `rotate: { sel: <Selector>, radians: <num> }` | two-finger rotation; `>0` is clockwise |
 | `handleSystemAlert` | `handleSystemAlert: { sel: <Selector>, timeout: <sec> }` | tap a button on an iOS SpringBoard permission prompt, deterministically ([below](#handlesystemalert-the-deterministic-system-alert-step)); iOS (XCUITest) only. `sel` accepts only `label` / `labelMatches` / `index`, and resolves against the system language the run pins the Simulator to. In place of `sel`, `prompt: notifications\|tracking\|paste` + `choice: grant\|deny` names the button by meaning and lets the run resolve its label (BE-0320), or its position under a language the label table does not cover (BE-0445) |
@@ -1101,6 +1102,65 @@ causes, such as an unresolvable host or a timeout, fails the step with the brows
 `navigate` needs the `urlNavigation` capability, which only the web backend declares, so a scenario
 that uses it on iOS or Android fails in preflight, before any device is leased, including a
 `navigate` nested inside a `web:` block.
+
+### `openUrl`
+
+```yaml
+- use: signIn
+- openUrl: "showcase://tabs/settings"          # the app under test receives the URL
+- assert: [{ exists: { id: settings.title } }]
+- openUrl: "showcase://items/${vars.itemId}"   # ${...} tokens are expanded like any step field
+- app:
+    bundleId: ${vars.browserId}                # the browser receives the URL
+    steps:
+      - openUrl: "https://example.com/promo"
+      - tap: { label: "Open in app" }
+```
+
+`openUrl` hands a URL to the operating system in the middle of a mobile scenario
+([BE-0487](../roadmaps/BE-0487-mobile-open-url-step/BE-0487-mobile-open-url-step.md)).
+The launch deep link (`subject.launch.deeplink`) opens before any step runs.
+So it cannot reach a screen that needs a signed-in user, and `openUrl` can.
+The value is a plain string, not a mapping, and must be an absolute URL such as `myapp://path`.
+A mobile backend has no `baseUrl`, so a relative value such as `/settings` fails the check.
+A `javascript:`, `data:`, or `file:` URL fails it too, since none of them names a place in an app.
+The scenario loader checks a literal value.
+The run checks a value with a `${...}` token after substitution, and fails the step on a bad one.
+
+The URL goes to the app the scenario drives at that point.
+Outside any `app:` block, the app under test receives it.
+Inside an `app:` block, the app the block names receives it.
+To open a URL in a browser, wrap the step in an `app:` block that names the browser.
+Scoping the URL to one app keeps the step deterministic.
+On Android, an unscoped intent can raise the app chooser when two installed apps claim one URL.
+
+The step passes when the operating system accepts the URL and the receiving app comes to the front.
+The wait for the front uses the bound of the `app:` block on that backend.
+That bound is about 10 seconds on iOS and 30 seconds on Android.
+The step waits for no screen content: a following `wait` or `assert` waits for the new screen.
+Each backend decides acceptance its own way:
+
+| Backend | How the URL is handed over | When the step fails |
+|---|---|---|
+| iOS (XCUITest) | the runner calls `XCUIApplication.open(_:)` on the receiving app | the call raises or records an XCTest issue, whose message becomes the reason; or the device runs an iOS before 16.4 |
+| Android (adb) | `am start -W --activity-single-top -a android.intent.action.VIEW -d <url> <package>` | `am start` prints an `Error` line, an exception, or a status other than `ok`; or Android brings the task forward without delivering the URL |
+
+On iOS, the receiving app is in front already mid-scenario, so the foreground wait proves nothing.
+The step then rests on what `open(_:)` raises or records.
+If `open(_:)` reports nothing for a URL that no app handles, the step passes.
+The assertion that follows then catches the wrong screen.
+
+On Android, `--activity-single-top` lets the step open the URL the launch deep link used.
+The activity on top of its task receives the URL through `onNewIntent`.
+The app must handle a deep link there, as most apps that accept deep links already do.
+
+A URL may raise a system confirmation dialog, such as a browser asking to open another app.
+The step leaves that dialog up, since it does not answer a prompt the real user would see.
+A `systemAlert` entry in `interrupts` or a following `handleSystemAlert` step clears it.
+`openUrl` needs the `openUrl` capability, which the iOS and Android backends declare.
+On the web backend, a scenario with `openUrl` fails in preflight; that backend uses `navigate`.
+The scenario loader refuses an `openUrl` inside a `web:` block.
+A step there runs against the page, which has no operating system to hand a URL to.
 
 ### `setPickerValue`
 

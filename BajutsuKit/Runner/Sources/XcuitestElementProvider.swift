@@ -489,6 +489,19 @@ final class XcuitestElementProvider: ElementProviding {
         appStack[0] = XCUIApplication(bundleIdentifier: bundleId)
     }
 
+    func openUrl(_ url: String) -> AppOpenResult {
+        guard let parsed = URL(string: url) else { return .notOpened("not a URL: \(url)") }
+        guard #available(iOS 16.4, *) else { return .unsupported }
+        // Mid-scenario `app` is usually in front already, so the foreground wait below cannot show
+        // the system accepted the URL. A failure `open(_:)` records is a soft XCTIssue
+        // `continueAfterFailure` swallows, so collect it around the call and report it as the reason;
+        // a raised exception reaches `APIHandler.openUrl`'s catch instead (BE-0487).
+        let target = app
+        let issues = RecordedIssues.shared.collect { target.open(parsed) }
+        if let first = issues.first { return .notOpened(first) }
+        return waitForForeground(target) ? .ok : .notForeground
+    }
+
     /// Poll `target.state` for the bounded window the spike measured as generous —
     /// Safari, Maps, and Contacts on Simulator each reached `.runningForeground` well inside it. A
     /// condition wait, never a fixed sleep past the deadline: the loop returns the moment the state

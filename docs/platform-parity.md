@@ -64,7 +64,8 @@ column.
 | `textSelection` | ✅ | ✅ | Android needs version 12 or later. See the behavior table. |
 | `webView` | per-run | per-run | iOS grants it when the app embeds the BajutsuKit WebView bridge. Android grants it when a debuggable build calls `Bajutsu.enableWebViewDebugging`. The run then reaches the page over the Chrome DevTools Protocol ([BE-0482](../roadmaps/BE-0482-android-webview-cdp/BE-0482-android-webview-cdp.md)). See the behavior table. |
 | `selectOption` | n/a | n/a | Sets a web page's `<select>` element, which the web backend alone has. |
-| `urlNavigation` | n/a | n/a | Opens a web address mid-scenario in a browser. Both mobile backends open a deep link as a launch precondition instead. |
+| `urlNavigation` | n/a | n/a | Opens a web address mid-scenario in a browser. Both mobile backends hand a URL to the operating system with `openUrl` instead, at any point in a scenario. |
+| `openUrl` | ✅ | ✅ | Hands a URL to the operating system for the app the scenario drives at that point ([BE-0487](../roadmaps/BE-0487-mobile-open-url-step/BE-0487-mobile-open-url-step.md)). iOS needs version 16.4 or later. The web backend opens a page with `navigate` instead. |
 | `elementAttribute` | n/a | n/a | Reads an attribute of a web page element, which the web backend alone has. |
 | `handleSystemAlert` | ✅ | n/a | An Android system dialog appears in the dumped tree, so an ordinary `tap` reaches it. |
 | `resolveAlerts` | ✅ | n/a | Same reason as `handleSystemAlert`. |

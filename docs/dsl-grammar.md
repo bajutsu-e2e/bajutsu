@@ -233,6 +233,7 @@ Action    ::=
   | { paste:       { into: <Selector> } }                  # focus the field and paste the clipboard at the caret (web-context raises)
   | { selectOption:{ sel: <Selector>, option: string } }   # set a web <select> to the option with this value (web only; iOS/Android raise)
   | { navigate:    string }                                # load a URL resolved against baseUrl; http/https only (web only; BE-0464)
+  | { openUrl:     string }                                # hand an absolute URL to the OS for the app the scenario drives; any scheme but javascript:/data:/file:; not inside web: (iOS and Android; BE-0487)
   | { setPickerValue:{ sel: <Selector>, value: string } }  # move a wheel-style picker to the row with this value (iOS and Android; sel addresses one wheel)
   | { swipe:       <Swipe> }                          # directional form scrolls; coordinate form is a raw drag
   | { drag:        <Drag> }                           # pointer-drag a grabbed element (handle / divider / slider), not a scroll

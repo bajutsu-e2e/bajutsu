@@ -1001,11 +1001,80 @@ def launch_cmd(serial: str, component: str, extras: Mapping[str, str] | None = N
     return cmd
 
 
-def deeplink_cmd(serial: str, url: str, package: str) -> list[str]:
-    """Open a deeplink, scoped to `package` so the intent resolves to the app under test."""
-    return _adb(
-        serial, "shell", "am", "start", "-a", "android.intent.action.VIEW", "-d", url, package
+def view_intent_cmd(serial: str, url: str, package: str, *, single_top: bool = False) -> list[str]:
+    """Hand `url` to `package` as a `VIEW` intent and wait for `am start` to report on it (BE-0487).
+
+    Scoped to `package` so the intent never raises the chooser between two apps that claim the URL.
+    `adb shell` joins its arguments into one line the device's shell parses, so the URL and package
+    are `shlex.quote`d: unquoted, a query string's `&` ends the command, and a crafted URL runs one.
+    `-W` makes `am start` wait and print a `Status:` line, and `2>&1` folds the device-side stderr
+    (where `am` may write its `Error:` line) into the stdout `real_run` returns, while adb's own
+    transport faults stay on the host's stderr. Read the output with `view_intent_rejection`: the
+    exit status reports neither an unresolved nor an undelivered intent.
+
+    `single_top` adds `--activity-single-top`, so an activity already on top of its task receives
+    the URL through `onNewIntent` even when it matches the intent that started the task — which
+    Android otherwise answers by bringing the task forward and delivering nothing. The mid-scenario
+    `openUrl` sets it; the launch deeplink, sent right after a fresh launch, does not need it.
+    """
+    flags = "-W --activity-single-top" if single_top else "-W"
+    line = (
+        f"am start {flags} -a android.intent.action.VIEW -d {shlex.quote(url)} "
+        f"{shlex.quote(package)} 2>&1"
     )
+    return _adb(serial, "shell", line)
+
+
+def deeplink_cmd(serial: str, url: str, package: str) -> list[str]:
+    """Open the launch deeplink, scoped to `package` so the intent resolves to the app under test."""
+    return view_intent_cmd(serial, url, package)
+
+
+# What `am start -W` prints for an intent that reached a running activity without starting one.
+_DELIVERED_TO_TOP = "Warning: Activity not started, intent has been delivered to currently running"
+# ...and for one Android answered by bringing the task forward, delivering nothing.
+_BROUGHT_TO_FRONT = "Warning: Activity not started, its current task has been brought to the front"
+
+
+def view_intent_rejection(out: str) -> str | None:
+    """Why `am start -W` did not deliver the `VIEW` intent, or None when it did (BE-0487).
+
+    Acceptance needs a positive signal — `Status: ok`, or the warning that the running top-most
+    activity received the intent — because `am start` exits 0 on an unresolved intent too. A
+    rejecting line wins over `Status: ok`, since `-W` prints its status after a warning: an `Error`
+    line, the brought-to-the-front warning, or a line naming an exception, each returned as the
+    reason. Anything else (`Status: timeout`, no output) is rejected with the whole output.
+    """
+    lines = [raw.strip() for raw in out.splitlines() if raw.strip()]
+    for line in lines:
+        # The `Starting: Intent { ... dat=<url> }` echo carries the URL, which may itself contain
+        # "Exception"; only `am`'s own lines are read for one.
+        if line.startswith("Starting:"):
+            continue
+        if line.startswith(("Error", _BROUGHT_TO_FRONT)) or "Exception" in line:
+            return line
+    if "Status: ok" in lines or any(line.startswith(_DELIVERED_TO_TOP) for line in lines):
+        return None
+    return " / ".join(lines) or "am start printed nothing"
+
+
+def send_view_intent(run: RunFn, cmd: list[str]) -> str | None:
+    """Run a `view_intent_cmd` through *run* and read its output with `view_intent_rejection`.
+
+    A non-zero exit that still carries `am`'s own output is read the same way, since that output
+    names why the intent failed; one with no output on stdout is adb's own transport fault (`error:
+    device offline`, on the host's stderr), re-raised for the caller to report as a `DeviceError`.
+
+    Raises:
+        subprocess.CalledProcessError: adb itself failed before `am start` printed anything.
+    """
+    try:
+        out = run(cmd)
+    except subprocess.CalledProcessError as exc:
+        if not (isinstance(exc.stdout, str) and exc.stdout.strip()):
+            raise
+        out = exc.stdout
+    return view_intent_rejection(out)
 
 
 # --- device control (BE-0211): the emulator-backed subset of the DeviceControl family ---

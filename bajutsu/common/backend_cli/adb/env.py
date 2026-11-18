@@ -26,6 +26,7 @@ from ._functions import (
     checked_serial,
     clear_primary_clip_cmd,
     deeplink_cmd,
+    device_error,
     force_stop_cmd,
     geo_fix_cmd,
     get_primary_clip_cmd,
@@ -50,6 +51,7 @@ from ._functions import (
     seed_photo_time_cmd,
     seed_photos_clear_cmd,
     seed_photos_reset_cmd,
+    send_view_intent,
     set_primary_clip_cmd,
     uninstall_cmd,
 )
@@ -223,7 +225,19 @@ class Env:
         self._run(launch_cmd(self.serial, self.resolve_activity(package), env or {}))
 
     def open_url(self, url: str, package: str) -> None:
-        self._run(deeplink_cmd(self.serial, url, package))
+        """Open the launch deeplink in `package`, failing when Android did not deliver it.
+
+        Raises:
+            DeviceError: `am start` reported the intent unresolved or undelivered (BE-0487) — before
+                this check, `am start`'s exit status 0 let a run continue on the wrong screen — or
+                adb itself failed.
+        """
+        try:
+            problem = send_view_intent(self._run, deeplink_cmd(self.serial, url, package))
+        except subprocess.CalledProcessError as exc:
+            raise device_error(exc) from exc
+        if problem is not None:
+            raise DeviceError(f"the launch deeplink did not open: {problem}")
 
     def screenshot(self, path: str) -> None:
         """Write a PNG screenshot to `path` from `screencap`'s binary stdout.

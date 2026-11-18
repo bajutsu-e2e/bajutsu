@@ -392,6 +392,9 @@ def _emit_step(step: Step) -> list[str]:  # noqa: C901, PLR0911, PLR0912
             return [f"// TODO: navigate({_ts(url)}) — runtime-substituted URL; not generated"]
         # `new URL(ref, base)` resolves a reference exactly as the driver's `urljoin` does (BE-0464).
         return [f"await page.goto(new URL({_ts(url)}, BASE_URL).toString());"]
+    if step.open_url is not None:
+        # Mobile-only (BE-0487): the web backend opens a URL with `navigate`.
+        return [f"// TODO: openUrl({_ts(step.open_url.url)}) — iOS / Android only; not generated"]
     if step.long_press is not None:
         return _act(
             step.long_press.sel.as_selector(),

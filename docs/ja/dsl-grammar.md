@@ -231,6 +231,7 @@ Action    ::=
   | { paste:       { into: <Selector> } }                  # フィールドにフォーカスし、カーソル位置にクリップボードをペースト（web コンテキストは非対応）
   | { selectOption:{ sel: <Selector>, option: string } }   # web の <select> をこの value を持つ option に設定（web 専用。iOS/Android は非対応）
   | { navigate:    string }                                # baseUrl を基準に解決した URL を開く。http/https のみ（web 専用。BE-0464）
+  | { openUrl:     string }                                # シナリオが操作中のアプリに向けて絶対 URL を OS へ渡す。javascript:/data:/file: 以外の任意のスキーム。web: の中には置けない（iOS と Android。BE-0487）
   | { setPickerValue:{ sel: <Selector>, value: string } }  # ホイール型のピッカーをこの value を持つ行へ動かす（iOS と Android。sel は 1 つのホイールを指す）
   | { swipe:       <Swipe> }                          # 方向指定形式はスクロール。座標形式は素のドラッグ
   | { drag:        <Drag> }                           # 掴んだ要素（ハンドル / 仕切り / スライダー）をポインタドラッグする。スクロールではない

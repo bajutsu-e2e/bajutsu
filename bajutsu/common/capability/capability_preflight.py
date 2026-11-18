@@ -104,8 +104,8 @@ def _walk_steps(steps: list[Step], prefix: str = "") -> Iterator[tuple[str, Step
         # capability neither backend today declares only alongside WEBVIEW/APP_CONTEXT does not
         # currently exist, so this is a real but so-far harmless gap, not fixed here (this item
         # keeps it rather than fixing `web:`'s pre-existing one as a drive-by, which is out of its
-        # lane). `navigate` (BE-0464) is now such a construct; `_navigate_locations` follows `web:`
-        # / `app:` blocks for it alone.
+        # lane). `navigate` (BE-0464) and `openUrl` (BE-0487) are now such constructs;
+        # `_deep_step_locations` follows `web:` / `app:` blocks for them alone.
 
 
 def _walk_scenario(sc: Scenario) -> Iterator[tuple[str, Step]]:
@@ -152,30 +152,39 @@ def _select_option_locations(sc: Scenario) -> list[str]:
     return [path for path, step in _walk_scenario(sc) if step.select_option is not None]
 
 
-def _navigate_locations(sc: Scenario) -> list[str]:
-    """The paths where a navigate step appears, inside a `web:` / `app:` block included (BE-0464).
+def _deep_step_locations(matches: Callable[[Step], bool]) -> Callable[[Scenario], list[str]]:
+    """The paths of every step that `matches`, inside `web:` / `app:` blocks and interrupts too.
 
-    `_walk_steps` skips those blocks on purpose, but no backend that runs one (the iOS WebView
-    context, the cross-app context) can open a URL, so a `navigate` nested there would otherwise reach
-    a leased device before failing. Recursing for this one construct closes that gap without moving
-    every other construct's failure from run time to preflight.
+    `_walk_steps` skips those blocks on purpose, but a URL step nested there would otherwise reach a
+    leased device before failing: no backend that runs a block (the iOS WebView context, the
+    cross-app context) can open a `navigate` URL (BE-0464), and an `openUrl` inside an `app:` block
+    runs on the backend's own driver, whose token decides it (BE-0487). Recursing for these
+    constructs alone closes that gap without moving every other construct's failure from run time to
+    preflight.
     """
 
     def found(pairs: Iterator[tuple[str, Step]]) -> Iterator[str]:
         for path, step in pairs:
-            if step.navigate is not None:
+            if matches(step):
                 yield path
             for name, block in (("web", step.web), ("app", step.app)):
                 if block is not None:
                     yield from found(_walk_steps(block.steps, f"{path} > {name}"))
 
-    paths = list(found(_walk_scenario(sc)))
-    # `_walk_scenario` stops at setup / steps / cleanup; an interrupt's recovery steps run on the
-    # leased device too, so a `navigate` there has to be caught before the lease as well.
-    for i, entry in enumerate(sc.interrupts):
-        if isinstance(entry, Interrupt):
-            paths.extend(found(_walk_steps(entry.steps, f"interrupts[{i}] ")))
-    return paths
+    def locations(sc: Scenario) -> list[str]:
+        paths = list(found(_walk_scenario(sc)))
+        # `_walk_scenario` stops at setup / steps / cleanup; an interrupt's recovery steps run on the
+        # leased device too, so a step there has to be caught before the lease as well.
+        for i, entry in enumerate(sc.interrupts):
+            if isinstance(entry, Interrupt):
+                paths.extend(found(_walk_steps(entry.steps, f"interrupts[{i}] ")))
+        return paths
+
+    return locations
+
+
+_navigate_locations = _deep_step_locations(lambda s: s.navigate is not None)
+_open_url_locations = _deep_step_locations(lambda s: s.open_url is not None)
 
 
 def _attribute_locations(sc: Scenario) -> list[str]:
@@ -275,6 +284,11 @@ _REQUIREMENTS = (
         base.Capability.URL_NAVIGATION,
         "navigate (open a URL; web only, not supported on iOS / Android)",
         _navigate_locations,
+    ),
+    _Requirement(
+        base.Capability.OPEN_URL,
+        "openUrl (hand a URL to the OS; iOS and Android only)",
+        _open_url_locations,
     ),
     _Requirement(
         base.Capability.ELEMENT_ATTRIBUTE,

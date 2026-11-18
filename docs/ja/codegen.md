@@ -109,6 +109,7 @@ final class ComponentsUITests: XCTestCase {
 | `paste` | `.tap()` のあと、編集メニューがまだ出ていなければ `.press(forDuration: 0.6)` で長押しを加え、`app.staticTexts["Paste"]` の出現を `waitForExistence(timeout: 5.0)` で待ってからタップし、編集メニューから貼り付けます。ドライバーと同じ方法です。ラベルは英語なので、ほかの言語にローカライズしたアプリでは書き換えが必要です |
 | `back` | OS のナビゲーション戻るボタンを tap します。XCUITest ドライバが実行時に tap するのと同じ要素（共有定数、BE-0210） |
 | `navigate` | `// TODO: navigate(url: …) — web-only; not generated`（BE-0464） |
+| `openUrl` | `if #available(iOS 16.4, *)` の中の `app.open(URL(string: "<url>")!)`。それより前のシステムでは `XCTFail` にします。ランナーの `/app/openUrl` ルートと同じ呼び出しです。`${...}` トークンを含む値は `// TODO` になります（BE-0487） |
 | `sleep` | `// fixed pause: <reason>` と `Thread.sleep(forTimeInterval: <秒>)` |
 | `swipe { on, direction }` | `.swipeUp/Down/Left/Right()` |
 | `swipe { from, to }` | `coord(x1, y1).press(forDuration: 0.1, thenDragTo: coord(x2, y2))`（`XCUICoordinate` のドラッグ。BE-0025） |
@@ -223,6 +224,7 @@ test.describe('Components', () => {
 | `paste` | フォーカス + `await page.keyboard.press('ControlOrMeta+v')` |
 | `back` | `await page.goBack()`。ブラウザ履歴で、ドライバの `back()` と同じ基本操作です（BE-0210） |
 | `navigate` | `await page.goto(new URL('<value>', BASE_URL).toString())`。ドライバが `baseUrl` を基準に解決するのと同じ規則で、値を `BASE_URL` を基準に解決します。`${...}` トークンを含む値は、生成したテストに展開元の値がないので `// TODO` になります（BE-0464） |
+| `openUrl` | `// TODO: openUrl('<url>') — iOS / Android only; not generated`。web バックエンドは `navigate` でページを開きます（BE-0487） |
 | `sleep` | `// fixed pause: <reason>` と `await page.waitForTimeout(<ミリ秒>)` |
 | `swipe { on, direction }` | 要素中心からその方向への `page.mouse.wheel` スクロール（BE-0227） |
 | `swipe { from, to }` | `// TODO`（座標スワイプは生成しない） |
@@ -641,6 +643,7 @@ Gradle 自身のレポートとあわせて回収済みのディレクトリを�
 | `paste` | `.click()` + `device.pressKeyCode(KeyEvent.KEYCODE_V, KeyEvent.META_CTRL_ON)` |
 | `back` | `device.pressBack()`。UI Automator ネイティブのシステム戻る操作で、adb ドライバの `keyevent 4` に対応します（BE-0210） |
 | `navigate` | `// TODO: navigate(url: …) — web-only; not generated`（BE-0464） |
+| `openUrl` | `// TODO: openUrl("<url>") — am start VIEW intent; not generated`。driver が送る受け取り先を絞った intent を、生成したテストから送る経路がないためです（BE-0487） |
 | `sleep` | `// fixed pause: <reason>` と `Thread.sleep(<ミリ秒>)` |
 | `swipe { on, direction }` | `.swipe(Direction.<UP/DOWN/LEFT/RIGHT>, 0.75f)` |
 | `swipe { from, to }` | `// TODO`（座標スワイプは生成しない） |

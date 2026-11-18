@@ -429,6 +429,33 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ActuationReply"
+  /app/openUrl:
+    post:
+      operationId: openUrl
+      summary: Hand a URL to the operating system for the app at the top of the runner's app stack.
+      description: >-
+        Calls `XCUIApplication.open(_:)` on the app every other route addresses — the innermost
+        `/app/enter`'s, else the base — then waits for it to reach `.runningForeground` within
+        the same bounded poll `/app/enter` uses (BE-0487). Reports `not-opened`, with `reason`, when
+        the call raises or records an XCTest failure; `not-foreground` when the app never comes to
+        the front; and `unsupported` on a system before iOS 16.4, where the call does not exist.
+        A system confirmation dialog the URL raises is left up: the step does not answer a prompt
+        the real user would see.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OpenUrlRequest"
+      responses:
+        "200":
+          description: The open outcome.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActuationReply"
+        "400":
+          $ref: "#/components/responses/BadRequest"
   /app/target:
     post:
       operationId: targetApp
@@ -788,7 +815,7 @@ components:
       properties:
         status:
           type: string
-          enum: [ok, stale, not-found, not-hittable, value-not-found, not-foreground]
+          enum: [ok, stale, not-found, not-hittable, value-not-found, not-foreground, not-opened, unsupported]
           description: >-
             `ok` succeeded. `stale` means the handle no longer maps to a live element, and
             `not-found` that no live element matched it; both are test outcomes rather than
@@ -796,7 +823,14 @@ components:
             its own point right now. `value-not-found` means the element resolved and was acted
             on, but never took the requested value — a picker wheel with no such row (BE-0356).
             `not-foreground` means `/app/enter` or `/app/leave` called `activate()` but the app
-            never reached `.runningForeground` within the bounded poll.
+            never reached `.runningForeground` within the bounded poll; `/app/openUrl` reports it
+            too. `not-opened` means `/app/openUrl`'s `open(_:)` raised or recorded a failure, named
+            in `reason`, and `unsupported` that the system predates `open(_:)` (iOS 16.4).
+        reason:
+          type: string
+          description: >-
+            Why `/app/openUrl` did not open its URL, set with `not-opened` alone: the raised
+            exception's or the recorded XCTest failure's own message (BE-0487).
         synthesisId:
           type: string
           description: >-
@@ -1078,6 +1112,15 @@ components:
           description: >-
             The row value the wheel must end on. It never reaches the actuation record, since like
             a typed string it can hold a resolved secret.
+    OpenUrlRequest:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          description: >-
+            The absolute URL to hand to the operating system, e.g. `myapp://orders/42`. The driver
+            has already applied the scheme rule; the runner only parses it.
     AppRequest:
       type: object
       required: [bundleId]

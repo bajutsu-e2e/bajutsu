@@ -105,4 +105,5 @@ _ACTION_META = {
     "assert": ("assert", "act-assert"),
     "relaunch": ("relaunch", "act-wait"),
     "navigate": ("navigate", "act-move"),
+    "openUrl": ("openUrl", "act-move"),
 }

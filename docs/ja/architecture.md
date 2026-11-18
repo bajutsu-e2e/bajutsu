@@ -611,6 +611,12 @@ iOS 側の対になるジョブ `pool (xcuitest)` は、Simulator を 2 台起�
   - `http`/`https` 以外のスキームは拒否されます。リテラル値ならロード時に、`${...}` トークンを含む値なら実行時に失敗します。
   - ステップは、ページの `load` イベントが発火した時点で戻ります。レスポンスのステータスは読まないため、cookie とストレージはそのまま引き継がれます。
   - 新設の `Driver.goto(url)` メソッドに乗り、`urlNavigation` capability でゲートされています。これを宣言するのは Playwright バックエンドだけなので、`web:` ブロックの中に入れ子にした `navigate` を含め、デバイス側の作業に入る前に preflight で iOS や Android を拒否します。
+- DSL の `openUrl` ステップ（BE-0487、iOS と Android）は、シナリオの途中で URL を OS へ渡します。サインインの後ろにある画面のように、起動時のディープリンクでは届かない画面に移れます。
+  - 値は単純な文字列で、`javascript:`、`data:`、`file:` 以外の任意のスキームを持つ絶対 URL です。リテラル値ならロード時に、`${...}` トークンを含む値なら実行時に、この規則で検査します。`web:` ブロックの中の `openUrl` は、ファイルの読み込み時にシナリオのモデルが拒否します。
+  - URL を受け取るのは、driver がその時点で操作しているアプリ（テスト対象のアプリか、囲んでいる `app:` ブロックが指定したアプリ）です。ステップはその後、`app:` ブロックと同じ上限で、そのアプリが前面に来るまで待ちます。
+  - 新設の `Driver.open_url(url)` メソッドに乗り、`openUrl` capability でゲートされています。これを宣言するのは XCUITest と adb のバックエンドなので、`app:` ブロックの中の `openUrl` を含め、web バックエンドでは preflight で拒否します。
+  - iOS では、ランナーの `POST /app/openUrl` が `XCUIApplication.open(_:)`（iOS 16.4 以降）を呼びます。例外や XCTest の失敗の記録は、そのメッセージを理由にした `not-opened` として返します。
+  - Android では、adb driver がパッケージを指定した `VIEW` intent を `am start -W --activity-single-top` で送ります。コマンドは `shlex` でクォートした 1 行のシェルコマンドです。判定は `am start` の終了ステータスではなく出力から読みます。終了ステータスは、解決できなかった intent も成功として報告するためです。起動時のディープリンクも同じ出力を読むので、開かなかったディープリンクは起動の失敗になります。
 - DSL の `attribute` アサーション（BE-0466、web 限定）は、1 つの要素の HTML 属性（`href`、`alt`、状態を表す `data-*` や `aria-*`）を、`equals` / `contains` / `matches` か `absent: true` で検証します。
   - runner は、ブロックを評価するクエリの直後に、`Driver.read_attributes(reads)` で属性をそのつど読み取ります。ブロック全体を 1 回の呼び出しで読むので、ブロック内のアサーションは同じ時点の値で判定されます。
   - ステップの `assert` では、条件待機の各ティックで読み直します。レポートに載る属性は、アサーションが名前を挙げたものだけです。

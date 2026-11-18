@@ -419,6 +419,35 @@ final class APIHandler: APIProtocol {
         return .ok(.init(body: .json(appActivationReply(result))))
     }
 
+    /// Hand a URL to the operating system for the app every other route addresses (BE-0487).
+    ///
+    /// Not routed through `caught`, whose fallback drops the raised message: here that message is
+    /// the step's failure reason, so a raise becomes `not-opened` carrying it.
+    func openUrl(
+        _ input: Operations.openUrl.Input
+    ) async throws -> Operations.openUrl.Output {
+        let request: Components.Schemas.OpenUrlRequest
+        switch input.body { case .json(let body): request = body }
+        let url = request.url
+        let result: AppOpenResult = await serialized {
+            var result = AppOpenResult.notOpened("open(_:) did not return")
+            do {
+                try ObjCExceptionCatcher.catchException { result = self.provider.openUrl(url) }
+            } catch {
+                return .notOpened(error.localizedDescription)
+            }
+            return result
+        }
+        let reply: Components.Schemas.ActuationReply
+        switch result {
+        case .ok: reply = .init(status: .ok)
+        case .notOpened(let reason): reply = .init(status: .not_hyphen_opened, reason: reason)
+        case .notForeground: reply = .init(status: .not_hyphen_foreground)
+        case .unsupported: reply = .init(status: .unsupported)
+        }
+        return .ok(.init(body: .json(reply)))
+    }
+
     /// Make a named app the base every following route addresses, without activating it (BE-0447).
     func targetApp(
         _ input: Operations.targetApp.Input

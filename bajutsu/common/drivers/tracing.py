@@ -40,6 +40,7 @@ _TRACED_METHODS = frozenset(
         "scroll",
         "back",
         "goto",
+        "open_url",
         "pinch",
         "rotate",
         "type_text",

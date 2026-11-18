@@ -386,6 +386,20 @@ def _emit_step(step: Step) -> list[str]:  # noqa: C901, PLR0911, PLR0912
     if step.navigate is not None:
         # Web-only (BE-0464); an iOS deep link is a separate item, so there is nothing to generate.
         return [f"// TODO: navigate(url: {_s(step.navigate.url)}) — web-only; not generated"]
+    if step.open_url is not None:
+        url = step.open_url.url
+        if "${" in url:
+            # Substituted by the runner at run time; the generated test has no binding to read it from.
+            return [f"// TODO: openUrl({_s(url)}) — runtime-substituted URL; not generated"]
+        # The call the runner's `/app/openUrl` route makes (BE-0487), guarded as the runner guards it:
+        # `open(_:)` exists from iOS 16.4, and a test target may deploy to an earlier system.
+        return [
+            "if #available(iOS 16.4, *) {",
+            f"    app.open(URL(string: {_s(url.strip())})!)",
+            "} else {",
+            '    XCTFail("openUrl needs iOS 16.4 or later")',
+            "}",
+        ]
     if step.set_clipboard is not None:
         # simctl-backed in bajutsu; not currently generated for XCUITest (BE-0052).
         return [

@@ -1,0 +1,30 @@
+# openUrl on Android (BE-0487): the Android twin of open_url.yaml, on the Compose showcase.
+#
+# The scenario launches with the Log deep link, moves to Stable with `openUrl`, pushes a detail
+# screen, then opens the launch URL again mid-scenario. A last `openUrl` returns to Stable with its
+# pushed detail cleared. The Compose activity is `singleTask`, so each URL reaches `onNewIntent`;
+# the scenario does not exercise the case `--activity-single-top` exists for, a URL equal to the
+# intent that started the task, which a unit test pins instead.
+#
+# Tagged `android` so the iOS lanes, which sweep this directory, exclude it; the Compose scheme is
+# named literally, so the Views app is not its target.
+- name: openUrl reopens the launch deep link mid-scenario (android)
+  tags: [android]
+  preconditions:
+    subject:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
+        deeplink: "showcasecompose://log"
+  steps:
+    - wait: { for: { id: log.note }, timeout: 10 }
+    - openUrl: "showcasecompose://stable"
+    - wait: { for: { id: stable.row.3 }, timeout: 5 }
+    - tap: { id: stable.row.3 }
+    - wait: { for: { id: horse.title }, timeout: 5 }
+    - openUrl: "showcasecompose://log"
+    - wait: { for: { id: log.note }, timeout: 5 }
+    - openUrl: "showcasecompose://stable"
+    - wait: { for: { id: stable.row.3 }, timeout: 5 }
+  expect:
+    - exists: { id: stable.row.3 }
+    - exists: { id: horse.title, negate: true }

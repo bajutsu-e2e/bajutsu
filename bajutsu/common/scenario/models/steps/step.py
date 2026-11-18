@@ -33,6 +33,7 @@ from bajutsu.common.scenario.models.actions import (
     LongPress,
     Manual,
     Navigate,
+    OpenUrl,
     Otp,
     OverrideStatusBar,
     Paste,
@@ -103,6 +104,9 @@ class Step(_Model):
     # A web-only step gated by the `urlNavigation` capability (BE-0464); the YAML value is a plain
     # string, which `Navigate` maps to its `url` field and dumps back.
     navigate: Navigate | None = None
+    # The mobile counterpart, gated by the `openUrl` capability (BE-0487): hands an absolute URL to
+    # the OS for the app the driver addresses. A plain string too, mapped to `OpenUrl.url`.
+    open_url: OpenUrl | None = Field(default=None, alias="openUrl")
     pinch: Pinch | None = None
     rotate: Rotate | None = None
     wait: Wait | None = None
@@ -213,6 +217,14 @@ class Step(_Model):
         if v is not None and not isinstance(v, (str, Navigate)):
             # pydantic turns only a ValueError into a ValidationError naming the field.
             raise ValueError("navigate takes a URL string, e.g. `navigate: /settings`")
+        return v
+
+    @field_validator("open_url", mode="before")
+    @classmethod
+    def _open_url_is_a_string(cls, v: object) -> object:
+        # The authored form is a plain string; see `OpenUrl` for why a mapping is refused here.
+        if v is not None and not isinstance(v, (str, OpenUrl)):
+            raise ValueError('openUrl takes a URL string, e.g. `openUrl: "myapp://orders/42"`')
         return v
 
     @model_validator(mode="after")
