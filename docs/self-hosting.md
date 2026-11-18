@@ -1186,7 +1186,9 @@ deterministic `run` verdict.
   ([BE-0484](../roadmaps/BE-0484-job-group-lease/BE-0484-job-group-lease.md)). An iOS worker
   advertises `kind:simulator` when its inventory holds an iPhone or iPad Simulator. It advertises
   `kind:device` while it reads a real iPhone or iPad over `devicectl`. A worker capability file that
-  sets `realDevices: false` turns that token off. A Device Farm worker advertises
+  sets `realDevices: false` turns that token off. A local worker advertises `build:<platform>` for
+  each platform it runs whose app its file's `build` list says it can build, and a run that forces a
+  build (`rebuild`) requires that token. A Device Farm worker advertises
   `platform:android`, `platform:ios`, and `kind:device`. These are the platforms and the device kind
   the service reserves.
 - **A local worker refuses a platform it cannot serve.** At startup, the worker checks each

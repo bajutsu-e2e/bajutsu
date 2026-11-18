@@ -1144,7 +1144,9 @@ Linux の web ワーカーに渡って失敗しかねません。それは本物
   どのワーカーも `job:run-intent` を広告します。fan-out のジョブを自分の形の実行へ変換できる、という印です。
   iOS のワーカーは、在庫に iPhone か iPad の Simulator があれば `kind:simulator` を広告します。`devicectl` で
   iPhone か iPad の実機を読めている間は、`kind:device` も広告します。worker 能力ファイルで
-  `realDevices: false` を設定すると、このトークンは広告しません。Device Farm のワーカーは `platform:android`、
+  `realDevices: false` を設定すると、このトークンは広告しません。ローカルのワーカーは、自身が動かすプラットフォームの
+  うち、ファイルの `build` のリストでビルドできるとしたものごとに `build:<platform>` を広告します。強制ビルド
+  （`rebuild`）を伴う実行は、このトークンを要求します。Device Farm のワーカーは `platform:android`、
   `platform:ios`、`kind:device` を広告します。サービスが予約するプラットフォームとデバイスの種類です。
 - **ローカルのワーカーは、扱えないプラットフォームを拒否します。** ワーカーは起動時に、各 `--platform` を
   [worker 能力ファイル](drivers.md#worker-の能力検査be-0450)とホストに照らして検査します。ファイルが

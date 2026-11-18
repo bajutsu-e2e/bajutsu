@@ -31,6 +31,7 @@ from bajutsu.serve import oplog
 from bajutsu.serve.authz import _record_audit
 from bajutsu.serve.capabilities import (
     RUN_INTENT_CAPABILITY,
+    build_capability,
     environment_capability,
     route_refusal,
 )
@@ -557,6 +558,7 @@ def start_run(  # noqa: C901, PLR0911
     rebuild, rebuild_err = _rebuild_flag(body, target, build, overrides)
     if rebuild_err:
         return rebuild_err
+    build_platform = target_batch_info(cfg, target)[0] if build else None
     # Per-run evidence-upload prefix (BE-0110): CI passes it to select the cloud lifecycle policy. It
     # becomes a storage key segment, so reject a non-string, a leading `/`, or `..` traversal here —
     # the same guard the upload-urls endpoint re-applies to the worker-relayed value.
@@ -567,7 +569,16 @@ def start_run(  # noqa: C901, PLR0911
     if not valid_relative_key(evidence_prefix, allow_empty=True):
         return {"error": "invalid evidence_prefix"}, 400
     capabilities, route_err = _run_capabilities(
-        state, org, session, cfg, target, backend, body, overrides, grid_capabilities
+        state,
+        org,
+        session,
+        cfg,
+        target,
+        backend,
+        body,
+        overrides,
+        grid_capabilities,
+        rebuild_platform=build_platform if rebuild else None,
     )
     if route_err:
         return route_err
@@ -579,6 +590,7 @@ def start_run(  # noqa: C901, PLR0911
             app_path=app_path,
             build=build,
             rebuild=rebuild,
+            build_platform=build_platform,
             materials=materials,
             # An uploaded bundle ships its own baselines and runs from its own tree, so the org's
             # stored baselines must not be materialized over them — `_download_baselines` clears the
@@ -912,12 +924,15 @@ def _run_capabilities(
     body: dict[str, Any],
     overrides: ArtifactOverrides | None,
     grid_capabilities: list[str] | None,
+    *,
+    rebuild_platform: str | None = None,
 ) -> tuple[list[str], tuple[Any, int] | None]:
     """The tokens a run job routes by, or the refusal when no live worker's routes can run it.
 
     Beside its platform and host (or its grid's environment), the job requires a `cap:` token for
     each capability its steps need and a `setting:` token for each setting it puts in effect, on the
-    route each target resolves to (BE-0467). A job no live worker can serve stays queued; it is
+    route each target resolves to (BE-0467). A forced build (*rebuild_platform*) requires
+    `build:<platform>`, so only a worker whose `worker.yaml` builds that platform's app takes it. A job no live worker can serve stays queued; it is
     refused only when a live worker drives its route and none advertises every token it needs.
     """
     base_caps = (
@@ -936,6 +951,8 @@ def _run_capabilities(
         exclude=str(body.get("exclude") or ""),
         grid=grid_capabilities is not None,
     )
+    if rebuild_platform:
+        needs = {**needs, build_capability(rebuild_platform): ["rebuild"]}
     capabilities = sorted({*base_caps, *needs})
     if state.repository is not None and (
         missing := route_refusal(capabilities, state.repository.live_worker_capabilities())
@@ -1289,6 +1306,7 @@ def start_record(
             udids=_boot_targets(udid),
             app_path=app_path,
             build=build,
+            build_platform=target_batch_info(cfg, str(body["target"]))[0] if build else None,
             out_path=authored.out,
             materials=materials,
             record_save=authored.save,
@@ -1382,6 +1400,7 @@ def start_crawl(
             udids=_boot_targets(udid),
             app_path=app_path,
             build=build,
+            build_platform=target_batch_info(cfg, target)[0] if build else None,
             actor=actor,
             org=org,
             capabilities=target_capabilities(cfg, target, backend),

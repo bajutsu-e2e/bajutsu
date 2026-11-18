@@ -131,3 +131,53 @@ def test_a_rebuild_job_builds_even_when_the_binary_exists(tmp_path: Path) -> Non
     srv.run_job(state, job)
     assert calls == [["make", "apk"], ["run"]]  # the build ran despite the existing binary
     assert any("rebuilding the app: make apk" in line for line in job.view()["lines"])
+
+
+def test_a_rebuild_routes_to_a_worker_that_builds_the_platform(tmp_path: Path) -> None:
+    state, recorder = _state(tmp_path)
+    _run(state, rebuild=True)
+    job = recorder.jobs[-1]
+    assert job.build_platform == "android"
+    assert "build:android" in job.capabilities
+    # An on-demand build is decided on the worker, so a plain run requires no build token.
+    _run(state)
+    assert not any(c.startswith("build:") for c in recorder.jobs[-1].capabilities)
+
+
+def test_a_worker_that_cannot_build_skips_the_run(tmp_path: Path) -> None:
+    scn_dir, cfg, runs = project(tmp_path)
+    calls: list[Any] = []
+
+    def popen(cmd: Any, **_kw: Any) -> FakeProc:
+        calls.append(cmd)
+        return FakeProc(["PASS  runs/r/manifest.json\n"])
+
+    state = srv.ServeState(
+        scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path, popen=popen
+    )
+    job = state.register(
+        srv.Job(
+            cmd=["run"],
+            app_path="MyApp.apk",
+            build="make apk",
+            build_platform="android",
+            can_build=False,
+        )
+    )
+    srv.run_job(state, job)
+    assert calls == []  # neither the build nor the run spawned
+    view = job.view()
+    assert view["ok"] is False and view["exitCode"] == 2
+    assert any("cannot build android apps" in line for line in view["lines"])
+
+
+def test_the_worker_reads_its_build_declaration_for_the_job(tmp_path: Path) -> None:
+    from bajutsu.serve.server.worker_job import _can_build
+
+    file = tmp_path / "worker.yaml"
+    file.write_text("version: 1\ndrivers: [adb]\nbuild: [ios]\n", encoding="utf-8")
+    spec = {"build": "make apk", "build_platform": "android"}
+    assert _can_build(spec, file) is False
+    assert _can_build({**spec, "build_platform": "ios"}, file) is True
+    assert _can_build(spec, None) is True  # no --worker-config: the default builds every platform
+    assert _can_build({"build": None, "build_platform": None}, file) is True

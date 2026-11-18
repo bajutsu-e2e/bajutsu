@@ -418,6 +418,7 @@ def _resolve_config_and_engines(
             checkout_root=checkout_root,
             rebuild=rebuild,
             built=set() if built is None else built,
+            worker=worker,
         )
     except BuildError as e:
         typer.echo(str(e))
@@ -795,6 +796,7 @@ def _reject_bad_device_groups(
     checkout_root: Path | None,
     rebuild: bool = False,
     built: set[str] | None = None,
+    worker: WorkerCapability | None = None,
 ) -> None:
     """Refuse, before any device work, a device group the config cannot honor (BE-0447).
 
@@ -826,6 +828,7 @@ def _reject_bad_device_groups(
             label=f"installApp from {member!r}",
             rebuild=rebuild,
             built=built,
+            worker=worker,
         )
     # A group's other starting members install at lease time too, so their builds are made and
     # checked here as well; the run's primary already was. One that names no `appPath` is expected
@@ -850,6 +853,7 @@ def _reject_bad_device_groups(
                 label=f"starting member {member!r}",
                 rebuild=rebuild,
                 built=built,
+                worker=worker,
             )
     if problems:
         typer.echo("device group preflight failed (BE-0447):\n  " + "\n  ".join(problems))
@@ -931,15 +935,24 @@ def _build_command(eff: Effective) -> str | None:
 
 
 def _build_target(
-    eff: Effective, name: str, *, checkout_root: Path | None, rebuild: bool, built: set[str]
+    eff: Effective,
+    name: str,
+    *,
+    checkout_root: Path | None,
+    rebuild: bool,
+    built: set[str],
+    worker: WorkerCapability | None = None,
 ) -> None:
     """Build *name*'s app when it is missing, or always under *rebuild* — once per run.
 
     The command runs where its relative parts are rooted: a Git checkout's root (BE-0063), else the
     local config file's own directory, the anchor `rebased` already resolved `subject.path` against.
+    A build the run needs must be one *worker* declares it can make (`worker.yaml` `build`), so a
+    machine without the platform's toolchain stops with the reason instead of a failing build.
 
     Raises:
-        BuildError: The build was needed and failed, or a forced one was withheld.
+        BuildError: The build was needed and failed, the worker cannot build the target's platform,
+            or a forced one was withheld.
     """
     command = _build_command(eff)
     if command is None:
@@ -956,7 +969,14 @@ def _build_target(
         return
     cwd = checkout_root or eff.base_dir or Path.cwd()
     force = rebuild and name not in built
-    build_app(command, _app_path(eff), cwd=cwd, force=force)
+    app_path = _app_path(eff)
+    needed = force or (app_path is not None and not Path(app_path).exists())
+    if needed and worker is not None and not worker.can_build(eff.platform):
+        raise BuildError(
+            f"target '{name}' needs its {eff.platform} app built, but this worker cannot build "
+            f"{eff.platform} apps: its worker.yaml `build` lists {list(worker.buildable)}"
+        )
+    build_app(command, app_path, cwd=cwd, force=force)
     if force:
         built.add(name)
 
@@ -969,6 +989,7 @@ def _build_problems(
     label: str,
     rebuild: bool,
     built: set[str],
+    worker: WorkerCapability | None = None,
 ) -> Iterator[str]:
     # The scenario names a target, never a path, so the build a member puts on the device is that
     # target's `appPath`, built where the run already builds the primary's.
@@ -977,7 +998,9 @@ def _build_problems(
         yield f"{label}: that target defines no appPath to install"
         return
     try:
-        _build_target(eff, name, checkout_root=checkout_root, rebuild=rebuild, built=built)
+        _build_target(
+            eff, name, checkout_root=checkout_root, rebuild=rebuild, built=built, worker=worker
+        )
     except BuildError as e:
         yield f"{label}: {e}"
         return
@@ -3160,7 +3183,12 @@ def run_body(
     _reject_cross_browser_matrix_with_targets(all_scenarios, engines)
     _reject_bad_target_config_hooks(target_effs, scenarios, target_name)
     _reject_bad_device_groups(
-        scenarios, target_effs, checkout_root=loaded.root, rebuild=rebuild, built=rebuilt
+        scenarios,
+        target_effs,
+        checkout_root=loaded.root,
+        rebuild=rebuild,
+        built=rebuilt,
+        worker=worker,
     )
     # Where this target's devices come from is a seam (BE-0236): the provider `acquire` returns the
     # udid spec the lanes resolve against (the `--udid` flag verbatim for the default local provider,

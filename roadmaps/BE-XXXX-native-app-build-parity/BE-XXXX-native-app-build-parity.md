@@ -22,12 +22,15 @@ from the web UI (`bajutsu serve`). Both places run it only for an iOS target, an
 built app is missing.
 
 This item makes `subject.build` behave the same on every native platform and on every entry point.
-It adds two changes:
+It adds three changes:
 
 - **Build on demand everywhere.** An Android target's build runs wherever an iOS target's does.
   A run started from a local config file builds a missing app too, instead of failing.
 - **Force a rebuild on request.** `bajutsu run --rebuild`, and a matching checkbox on the web UI's
   Replay panel, run `subject.build` even when the built app already exists.
+- **Declare which machines can build.** A worker's capability file, `worker.yaml`, lists the
+  platforms whose app the machine can build. A run that needs a build on a machine that cannot make
+  it stops with the reason, and the web UI routes a forced build to a machine that can.
 
 ## Motivation
 
@@ -47,14 +50,21 @@ developer who edits the app's source and reruns a scenario tests the old build. 
 today is to delete the built app before the run. A flag that always builds closes that loop in one
 step.
 
+Once builds run on every entry point, the machine running them matters. A Linux worker that drives
+the Android emulator may lack Xcode, and a Mac without the Android SDK cannot run Gradle. Such a
+machine would start the build and stop partway through it, and the broken build would read as a broken
+app. The worker's capability file already declares what one machine can run; declaring what it can
+build there lets the run refuse up front and lets the web UI pick a machine that can build.
+
 After this change, an Android target with `subject.build` and a missing APK builds it and runs,
 from the command line and from the web UI alike. A run with `--rebuild` prints the build's output
-before the first scenario even when the app already exists.
+before the first scenario even when the app already exists. A worker whose `worker.yaml` omits the
+target's platform from `build` stops with a message naming the platform, before any build starts.
 
 ## Detailed design
 
-The work splits into five units: the shared build function, the command-line run, the web UI job,
-the web UI control, and the documentation.
+The work splits into six units: the shared build function, the command-line run, the web UI job,
+the web UI control, the worker's build capability, and the documentation.
 
 ### Unit 1 — One build function with a force switch
 
@@ -122,11 +132,34 @@ The checkbox sits with the other per-run options. A fan-out Replay hides it, as 
 per-run options, so the fan-out request carries no `rebuild`. Record and Crawl keep their current
 behavior; each still builds a missing app on demand, now on Android too.
 
-### Unit 5 — Documentation
+### Unit 5 — The worker's build capability
 
-The configuration reference, the command-line reference, and the self-hosting guide describe the
-new behavior in English and Japanese. The text drops the statement that a local `run` never builds,
-names Android beside iOS, and documents `--rebuild` and the Replay checkbox.
+`worker.yaml` gains a `build` key: the platforms, from `ios` and `android`, whose app the worker can
+build. An omitted key counts as both platforms, since every worker built any app before the key
+existed; `build: []` builds none. The shipped default file lists both platforms explicitly.
+
+The declaration matters only when a build is needed. `bajutsu run` checks it in the same place it
+decides to build: when the app is missing, or when `--rebuild` forces the build. A target whose
+platform the list omits makes the run exit with status 2 and name the platform. An existing app
+runs as before, whatever the list says.
+
+The web UI uses the same declaration at two points:
+
+| Point | What happens |
+|---|---|
+| Routing | A local worker advertises the routing token `build:<platform>` for each listed platform it runs. A job with `rebuild` requires the token, so only a worker that can build that platform leases it. |
+| The worker | A job carries its target's platform. A worker whose file omits that platform fails a job whose app is missing, instead of running the build. |
+
+The `build:` prefix joins the reserved routing prefixes, so a hand-written token cannot claim a
+build the machine cannot make. An on-demand build does not add the token, because the control
+plane cannot see whether the app exists on the worker that leases the job.
+
+### Unit 6 — Documentation
+
+The configuration reference, the command-line reference, the drivers guide, and the self-hosting
+guide describe the new behavior in English and Japanese. The text drops the statement that a local
+`run` never builds, names Android beside iOS, and documents `--rebuild`, the Replay checkbox, and
+the `build` key of `worker.yaml`.
 
 ## Alternatives considered
 
@@ -155,11 +188,12 @@ names Android beside iOS, and documents `--rebuild` and the Replay checkbox.
 - [x] Unit 2 — The command-line run builds on Android and from a local config, and takes `--rebuild`
 - [x] Unit 3 — The web UI job builds on Android and accepts `rebuild` on `POST /api/run`
 - [x] Unit 4 — The Replay panel's "rebuild the app first" checkbox
-- [x] Unit 5 — The configuration, command-line, and self-hosting documentation, in both languages
+- [x] Unit 5 — The worker's `build` capability: the `worker.yaml` key, the run's check, and the `build:<platform>` routing token
+- [x] Unit 6 — The configuration, command-line, drivers, and self-hosting documentation, in both languages
 
 Log:
 
-- 2026-11-18 — Units 1–5 landed together with the proposal.
+- 2026-11-18 — Units 1–6 landed together with the proposal.
 
 ## References
 

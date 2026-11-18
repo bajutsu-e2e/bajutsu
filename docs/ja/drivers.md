@@ -124,14 +124,16 @@ class Driver(Protocol):
 | `maxTargetsPerJob` | 1 つのシナリオが宣言できる target の数で、正の整数です。すべてのドライバとデバイスグループをまたいで数えるので、Simulator の target とブラウザの target は合わせて 2 です。省くと上限なしになります。 |
 | `drivers` | worker が提供するドライバを `xcuitest`、`adb`、`playwright`、`fake` から選んで並べます。リストにないドライバは使えません。 |
 | `realDevices` | `xcuitest` を提供する `local` の worker が、接続した実機の iPhone も動かすかどうかです。`true` なら、serve は実機のジョブもその worker に振り分けます。省くと `true` とみなします。そうした worker は、これまでも実機のジョブを受けていたからです。Simulator だけの Mac を実機のジョブから外すには `false` にします（[能力に基づく振り分け](self-hosting.md#能力に基づくキューの振り分けbe-0166)、BE-0467）。 |
+| `build` | target の `subject.build` を実行してアプリをビルドできるプラットフォームを、`ios` と `android` から選んで並べます。省くと両方とみなします。このキーができる前から、worker はどのアプリもビルドしていたからです。`[]` にすると何もビルドしません。run がビルドを必要とするとき（`subject.path` のアプリが存在しないとき、または `--rebuild` を指定したとき）にリストが target のプラットフォームを含まなければ、`run` はツールチェーンのないマシンでビルドを始めずに、プラットフォーム名を示して終了コード 2 で終わります。worker は、リストにあり自身が動かすプラットフォームごとに `build:<platform>` を広告し、serve は強制ビルドのジョブをその worker に振り分けます（[能力に基づく振り分け](self-hosting.md#能力に基づくキューの振り分けbe-0166)）。 |
 
 パッケージは既定のファイルを `bajutsu/common/capability/worker.yaml` に同梱しています。既定は、すべての
-ドライバを提供し target の数に上限を設けない、ローカルの worker を記述します。
+ドライバを提供し、iOS と Android のどちらのアプリもビルドし、target の数に上限を設けない、ローカルの worker を記述します。
 
 ```yaml
 version: 1
 environment: local
 drivers: [xcuitest, adb, playwright, fake]
+build: [ios, android]
 ```
 
 `appium` の environment は、[BE-0452](../../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)

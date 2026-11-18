@@ -70,6 +70,13 @@ class Job:
     # Build even when app_path exists (`rebuild` on POST /api/run), so a source change is never run
     # against a stale binary. serve builds, never the spawned run, so the build happens once.
     rebuild: bool = False
+    # The platform whose app `build` makes, so a worker can tell whether it may make it; None for a
+    # job with no build.
+    build_platform: str | None = None
+    # Worker-side only: whether this worker's `worker.yaml` `build` lists `build_platform`. A job
+    # whose app is missing on a worker that cannot build it fails with the reason instead of
+    # running a build the machine has no toolchain for.
+    can_build: bool = True
     # Whether the spawned run must refuse the config's `driver.runner.build` (#2282): set by
     # `_register_and_dispatch` for the same untrusted bindings `_governed_build` nulls `build` for,
     # and carried in the job spec so a remote worker's spawn refuses it too.

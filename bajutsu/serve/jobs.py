@@ -430,10 +430,22 @@ def _build_app(state: ServeState, job: Job) -> bool:
     # directory. The fallback is the worker path, where the job was rebuilt from a spec and resolves
     # against the worker's own deployment binding.
     cwd = job.cwd or state.binding.cwd
+    if not job.rebuild and job.app_path and (cwd / job.app_path).exists():
+        return True
+    if not job.can_build:
+        # The worker.yaml of this machine omits the platform: refuse here, before a build that
+        # would fail without the toolchain, and name the declaration that decided it.
+        _log(
+            job,
+            f"this worker cannot build {job.build_platform} apps (worker.yaml `build`) "
+            "— skipping the run",
+        )
+        with job.lock:
+            job.exit_code = 2
+            job.status = "done"
+        return False
     if job.rebuild:
         _log(job, f"rebuilding the app: {job.build}")
-    elif job.app_path and (cwd / job.app_path).exists():
-        return True
     else:
         _log(job, f"app binary missing ({job.app_path}) — building: {job.build}")
     try:

@@ -176,3 +176,54 @@ def test_rebuild_on_a_device_farm_host_exits_2(
     assert exc.value.exit_code == 2
     assert "'devicefarm-host' provider, which installs the app itself" in capsys.readouterr().out
     assert not (cfg.parent / "built").exists()
+
+
+_NO_BUILD = "version: 1\ndrivers: [adb, xcuitest]\nbuild: []\n"
+
+
+def test_a_worker_that_cannot_build_stops_on_a_missing_app(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cfg = _config(tmp_path, "{ id: com.example.app, path: app.apk, build: 'touch built' }")
+    with pytest.raises(typer.Exit) as exc:
+        _resolve(cfg, worker=parse_worker_capability(_NO_BUILD))
+    assert exc.value.exit_code == 2
+    assert "this worker cannot build android apps" in capsys.readouterr().out
+    assert not (cfg.parent / "built").exists()
+
+
+def test_a_worker_that_cannot_build_still_runs_an_existing_app(tmp_path: Path) -> None:
+    # The declaration only matters when a build is needed: an existing app runs as before.
+    cfg = _config(tmp_path, "{ id: com.example.app, path: app.apk, build: 'touch built' }")
+    (cfg.parent / "app.apk").touch()
+    _resolve(cfg, worker=parse_worker_capability(_NO_BUILD))
+
+
+def test_rebuild_needs_the_worker_to_build_the_targets_platform(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cfg = _config(tmp_path, "{ id: com.example.app, path: app.apk, build: 'touch built' }")
+    (cfg.parent / "app.apk").touch()
+    ios_only = parse_worker_capability("version: 1\ndrivers: [adb, xcuitest]\nbuild: [ios]\n")
+    with pytest.raises(typer.Exit) as exc:
+        _resolve(cfg, rebuild=True, worker=ios_only)
+    assert exc.value.exit_code == 2
+    assert "this worker cannot build android apps" in capsys.readouterr().out
+    assert not (cfg.parent / "built").exists()
+
+
+def test_a_group_member_this_worker_cannot_build_is_a_preflight_problem(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    effs = _group_effs(tmp_path, f"touch {tmp_path / 'new.apk'}")
+    with pytest.raises(typer.Exit) as exc:
+        _reject_bad_device_groups(
+            [_update_journey()],
+            effs,
+            checkout_root=None,
+            worker=parse_worker_capability(_NO_BUILD),
+        )
+    assert exc.value.exit_code == 2
+    assert "installApp from 'new': target 'new' needs its android app built" in (
+        capsys.readouterr().out
+    )

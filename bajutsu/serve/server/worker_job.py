@@ -146,6 +146,7 @@ def job_spec(job: Job) -> dict[str, Any]:
         "app_path": job.app_path,
         "build": job.build,
         "rebuild": job.rebuild,
+        "build_platform": job.build_platform,
         "withhold_runner_build": job.withhold_runner_build,
         "materials": dict(job.materials),
         # record: where in the workspace the authored file lands + (app, ref) to persist it as.
@@ -500,6 +501,8 @@ def execute_job_spec(
         app_path=spec.get("app_path"),
         build=spec.get("build"),
         rebuild=bool(spec.get("rebuild")),
+        build_platform=spec.get("build_platform"),
+        can_build=_can_build(spec, worker_config),
         withhold_runner_build=bool(spec.get("withhold_runner_build")),
         out_path=spec.get("out_path"),  # so the terminal-status payload reports it (record jobs)
         # Whether this job's spawn is a cooperatively-cancellable `run` (BE-0370).
@@ -548,6 +551,20 @@ def execute_job_spec(
 
 
 _logger = logging.getLogger("bajutsu.serve.worker")
+
+
+def _can_build(spec: dict[str, Any], worker_config: Path | None) -> bool:
+    """Whether this worker's `worker.yaml` lets it build the app of the job's platform.
+
+    A job with no build, or a worker started without `--worker-config` (the shipped default builds
+    every platform), may build as before.
+    """
+    platform = spec.get("build_platform")
+    if not spec.get("build") or not platform or worker_config is None:
+        return True
+    from bajutsu.common.capability.worker_capability import load_worker_capability
+
+    return load_worker_capability(worker_config).can_build(str(platform))
 
 
 def _batch_worker_capability(
