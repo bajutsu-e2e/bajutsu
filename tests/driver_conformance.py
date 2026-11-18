@@ -167,6 +167,15 @@ def _field_shows(driver: base.Driver, text: str, timeout: float = 5.0) -> bool:
     return any(text in field_value(driver) for _ in base.deadline_ticks(timeout, 0.1, 0.5))
 
 
+def _clipboard_shows(read: Callable[[], str], text: str, timeout: float = 15.0) -> bool:
+    """Whether the device clipboard `read` returns comes to contain `text` within `timeout`.
+
+    A condition wait, like `_field_shows`: the Simulator syncs a copy to the pasteboard the host reads
+    asynchronously, so a read straight after `copy_selection()` can still return the previous text.
+    """
+    return any(text in read() for _ in base.deadline_ticks(timeout, 0.2, 1.0))
+
+
 def _mirror_value(driver: base.Driver, identifier: str) -> str:
     """The current tap count mirrored at `identifier` (`TAP_MIRROR_A_VALUE_ID` / `_B_VALUE_ID`)."""
     return base.resolve_unique(driver.query(), {"id": identifier})["value"] or "0"
@@ -619,8 +628,8 @@ class DriverConformanceContract:
         # with a bad bundle id, not something this contract should risk reproducing in CI; a
         # scenario mistake's failure semantics are covered instead by a fast-suite test against
         # `XcuitestDriver`'s fake transport (`test_enter_app_raises_element_not_found_when_never_foreground`).
-        # A harness names its own platform's always-installed app as `other_app` (Android's
-        # Settings); the rest fall back to Safari.
+        # A harness names its own platform's always-installed app as `other_app` (Settings, on both
+        # the Android and the iOS on-device harness); the rest fall back to Safari.
         other_app = getattr(harness, "other_app", "com.apple.mobilesafari")
         driver = harness.with_screen([])
         supports = base.Capability.APP_CONTEXT in driver.capabilities()
@@ -675,7 +684,9 @@ class DriverConformanceContract:
             # on every lane. Select-all takes the whole field, including text an earlier test left
             # in it, so the clipboard must contain the token rather than equal it.
             if hasattr(harness, "clipboard_text"):
-                assert token in harness.clipboard_text()
+                assert _clipboard_shows(harness.clipboard_text, token), (
+                    f"the clipboard never came to contain {token!r}"
+                )
             # Paste is the same promise's third chord. Delete the still-active selection first, so
             # a paste that inserts nothing leaves the field without the token instead of passing on
             # the text that was already there. Probe `value` while the token is still in the field,

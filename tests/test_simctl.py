@@ -899,3 +899,63 @@ def test_a_timeout_is_not_absorbed_by_the_idempotent_calls() -> None:
     quiet.boot()
     quiet.uninstall("com.x")
     quiet.terminate("com.x")
+
+
+def _flaky_reads(failures: list[Exception], text: str = "copied") -> tuple[simctl.RunFn, list[int]]:
+    """A RunFn whose `pbpaste` raises each of `failures` in turn, then returns `text`."""
+    calls = [0]
+
+    def run(cmd: list[str], _env: Mapping[str, str] | None = None) -> str:
+        assert cmd == simctl.pbpaste_cmd("UDID")
+        calls[0] += 1
+        if calls[0] <= len(failures):
+            raise failures[calls[0] - 1]
+        return text
+
+    return run, calls
+
+
+def test_get_clipboard_retries_a_stalled_pasteboard_read(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The on-device conformance suite went red on a single pbpaste that simctl gave up on (exit 60)
+    # or that outlived its deadline; a read has no side effect, so asking again is safe.
+    slept: list[float] = []
+    monkeypatch.setattr(time, "sleep", slept.append)
+    cmd = simctl.pbpaste_cmd("UDID")
+    run, calls = _flaky_reads(
+        [
+            subprocess.CalledProcessError(60, cmd, output="", stderr="Operation timed out"),
+            simctl.DeviceTimeout("device operation timed out after 20s"),
+        ]
+    )
+    assert simctl.Env("UDID", run=run).get_clipboard() == "copied"
+    assert calls[0] == 3
+    assert len(slept) == 2  # slept between attempts only
+
+
+def test_get_clipboard_raises_the_last_stall_after_its_attempts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(time, "sleep", lambda _s: None)
+    stalls: list[Exception] = [
+        simctl.DeviceTimeout(f"stall {i}") for i in range(simctl._PBPASTE_MAX_ATTEMPTS)
+    ]
+    run, calls = _flaky_reads(stalls)
+    with pytest.raises(simctl.DeviceTimeout, match=f"stall {simctl._PBPASTE_MAX_ATTEMPTS - 1}"):
+        simctl.Env("UDID", run=run).get_clipboard()
+    assert calls[0] == simctl._PBPASTE_MAX_ATTEMPTS  # bounded, fails loudly after the last
+
+
+def test_get_clipboard_fails_fast_on_a_non_transient_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    # An un-booted device or a bad UDID won't clear on a re-run, so it surfaces at once.
+    monkeypatch.setattr(time, "sleep", lambda _s: pytest.fail("must not back off"))
+    cmd = simctl.pbpaste_cmd("UDID")
+    run, calls = _flaky_reads([subprocess.CalledProcessError(149, cmd, output="", stderr="")])
+    with pytest.raises(subprocess.CalledProcessError):
+        simctl.Env("UDID", run=run).get_clipboard()
+    assert calls[0] == 1
+
+
+def test_a_pbpaste_attempt_gets_its_own_short_bound() -> None:
+    # Each attempt is short because the read is retried rather than waited out.
+    assert simctl._timeout_for(simctl.pbpaste_cmd("U")) == simctl._PBPASTE_TIMEOUT_S
+    assert simctl._PBPASTE_TIMEOUT_S < simctl._SIMCTL_TIMEOUT_S

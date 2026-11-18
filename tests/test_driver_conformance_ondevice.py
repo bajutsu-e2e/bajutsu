@@ -102,8 +102,17 @@ class _OnDeviceHarness(OnDeviceConformanceHarness):
         tmp.write_text(",".join(ids))
         tmp.replace(self._spec_path)
 
+    # The `app:` contract enters Settings, not the contract's default Safari. Both ship on every
+    # Simulator, but Safari's first launch brings up WebKit's process family, and on CI the runner
+    # dropped `POST /app/enter` mid-switch in 3 of 15 red conformance jobs. The tests after it ran up
+    # to minutes slower in those jobs. Settings is the same switch without that load, and Android's
+    # harness already enters its own Settings.
+    other_app = "com.apple.Preferences"
+
     def clipboard_text(self) -> str:
         # The Simulator's pasteboard through `simctl pbpaste`, where XCUITest's copy lands (#2390).
+        # `get_clipboard` retries the host's transient pasteboard-sync stall, and the contract waits
+        # for the copied token, since the sync can also lag the copy.
         return simctl.Env(UDID).get_clipboard()
 
 

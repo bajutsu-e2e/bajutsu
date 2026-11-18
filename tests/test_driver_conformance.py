@@ -25,6 +25,7 @@ from driver_conformance import (
     TAP_MIRROR_B_VALUE_ID,
     ConformanceHarness,
     DriverConformanceContract,
+    _clipboard_shows,
     _measure_one_step,
     element,
 )
@@ -259,3 +260,15 @@ def test_step_travel_still_reads_zero_for_a_step_that_moved_nothing() -> None:
     )
     assert requested > 0
     assert realized == 0.0
+
+
+def test_the_clipboard_check_waits_for_a_copy_the_host_reads_late() -> None:
+    # The Simulator syncs a copy to the host pasteboard asynchronously, so the first reads after
+    # `copy_selection()` can still return the previous text; the check waits for the token instead
+    # of failing on the first stale read.
+    reads = iter(["old", "old", "123x"])
+    assert _clipboard_shows(lambda: next(reads, "123x"), "123", timeout=5.0)
+
+
+def test_the_clipboard_check_fails_when_the_copy_never_lands() -> None:
+    assert not _clipboard_shows(lambda: "old", "123", timeout=0.3)

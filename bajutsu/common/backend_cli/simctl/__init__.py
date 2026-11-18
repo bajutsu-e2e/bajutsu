@@ -8,6 +8,7 @@ from ._functions import _DEVICE_BLOCKING_SUBCOMMANDS as _DEVICE_BLOCKING_SUBCOMM
 from ._functions import _DEVICE_BLOCKING_TIMEOUT_S as _DEVICE_BLOCKING_TIMEOUT_S
 from ._functions import _GLOBAL_DOMAIN as _GLOBAL_DOMAIN
 from ._functions import _LOCALE_RE as _LOCALE_RE
+from ._functions import _PBPASTE_TIMEOUT_S as _PBPASTE_TIMEOUT_S
 from ._functions import _SIMCTL_TIMEOUT_S as _SIMCTL_TIMEOUT_S
 from ._functions import _logger as _logger
 from ._functions import _probe_timed_out as _probe_timed_out
@@ -76,6 +77,7 @@ from .env import _PBCOPY_MAX_ATTEMPTS as _PBCOPY_MAX_ATTEMPTS
 from .env import _PBCOPY_RETRY_DELAY_S as _PBCOPY_RETRY_DELAY_S
 from .env import _PBCOPY_TIMEOUT_EXIT as _PBCOPY_TIMEOUT_EXIT
 from .env import _PBCOPY_TIMEOUT_S as _PBCOPY_TIMEOUT_S
+from .env import _PBPASTE_MAX_ATTEMPTS as _PBPASTE_MAX_ATTEMPTS
 from .env import Env
 
 __all__ = [

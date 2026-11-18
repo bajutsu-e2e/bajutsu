@@ -49,13 +49,16 @@ _DEVICE_BLOCKING_SUBCOMMANDS = frozenset({"bootstatus", "boot", "erase", "instal
 # scenario can stretch it — `list` returns in well under a second. This sits far above all of them,
 # and still catches a wedge long before a CI job's own `timeout-minutes` would.
 #
-# The pasteboard is the one family the host itself can stall (see `_PBCOPY_*` above), and the two
-# halves are bounded differently on purpose. The write runs outside this helper with its own
-# per-attempt deadline and a retry, because it was measured stalling transiently and re-feeding the
-# same stdin is safe. The read (`pbpaste`) takes this bound and raises, because its result is the
-# scenario's data: retrying it is the device-level decision BE-0363 deferred to the recovery ladder,
-# and a read that raises at a named deadline already improves on the unbounded hang it replaced.
+# The pasteboard is the one family the host itself can stall (see `_PBCOPY_*` in `env.py`). Both
+# halves retry that stall: the write re-feeds the same stdin, and the read (`pbpaste`, below) has no
+# side effect, so asking again returns the same data once the host's pasteboard sync answers. A
+# single 60-second read was the most common way the on-device conformance suite went red: the stall
+# clears within seconds, but one attempt could not wait for it.
 _SIMCTL_TIMEOUT_S = 60.0
+
+# One `pbpaste` attempt's deadline. Short, because `Env.get_clipboard` retries a stalled read rather
+# than waiting one out: a healthy read returns in well under a second.
+_PBPASTE_TIMEOUT_S = 20.0
 
 
 def device_error(exc: subprocess.CalledProcessError) -> DeviceError:
@@ -419,8 +422,11 @@ def _timeout_for(args: list[str]) -> float:
     Classifying here rather than taking the bound from the caller is what lets a new call site
     inherit the right one without its author having to know a bound exists at all.
     """
-    if _subcommand_of(args) in _DEVICE_BLOCKING_SUBCOMMANDS:
+    subcommand = _subcommand_of(args)
+    if subcommand in _DEVICE_BLOCKING_SUBCOMMANDS:
         return _DEVICE_BLOCKING_TIMEOUT_S
+    if subcommand == "pbpaste":
+        return _PBPASTE_TIMEOUT_S
     return _SIMCTL_TIMEOUT_S
 
 
