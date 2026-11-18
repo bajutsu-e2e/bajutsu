@@ -185,8 +185,8 @@ iOS の container（`other`）を落として increment だけを残します。
 **runner の `typeName` で `.stepper` を分類する。** container が `other` の trait に落ちるのは、`typeName`
 が `XCUIElementType.stepper` を名指していないためです。これは、バージョン非依存の直し方に見えます。
 計測はこれを否定します。trait のトークンは変わっても、frame も `isHittable` も変わらないので、タップは
-拒まれたままです。`resolve_unique` の `other` trait による同点落としのためには、この分類にそれ自体を行う
-価値がありますが、それは別の問題です。
+拒まれたままです。この分類は、`resolve_unique` の `other` trait による同点落としのためには行う価値が
+ありますが、それは別の問題です。
 
 **すべての要素の hittability を先に調べる。** 拒否された場合を「特別な場合ではないもの」にできます。
 ただし、どの問い合わせでも要素 1 つにつきネイティブの呼び出しが 1 回かかり、そのほとんどは拒否に関わり

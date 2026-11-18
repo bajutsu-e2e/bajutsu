@@ -33,9 +33,9 @@ Degrading protects the run. Without it, the fault would escape the retry loop an
 scenario, discarding the verdicts already earned.
 
 [BE-0363](../BE-0363-simctl-subprocess-timeout/BE-0363-simctl-subprocess-timeout.md) gives every
-one-shot `simctl` call a deadline. A wedged CoreSimulator is the macOS service that owns Simulator
-devices. It now raises a named `simctl.DeviceTimeout`. Before, it hung until the `timeout-minutes` of
-the continuous integration (CI) job cancelled it.
+one-shot `simctl` call a deadline. CoreSimulator, the macOS service that owns Simulator devices,
+now raises a named `simctl.DeviceTimeout` when it wedges, instead of hanging until the
+`timeout-minutes` of the continuous integration (CI) job cancels it.
 
 The degradation branch does not distinguish that new type from any other device fault. A device that
 never answered `shutdown` is retried on the terms written for a device that answered by refusing.
