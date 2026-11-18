@@ -95,6 +95,31 @@ def _governed_build(state: ServeState, binding: ConfigBinding, build: str | None
     return build if _build_trusted(state, binding) else None
 
 
+def _rebuild_flag(
+    body: dict[str, Any], target: str, build: str | None, overrides: ArtifactOverrides | None
+) -> tuple[bool, tuple[Any, int] | None]:
+    """The run request's `rebuild` flag, or the 400 that refuses it.
+
+    A forced build needs a command serve may run: without one the request would silently run the
+    existing binary, which is what `rebuild` was asked to prevent. A stored `binaryArtifact` replaces
+    the app the build makes, so forcing the build alongside one would build an app the run never
+    installs.
+    """
+    if _bool_flag(body, "rebuild") is not True:
+        return False, None
+    if build is None:
+        return False, (
+            {
+                "error": f"rebuild needs target '{target}' to declare a subject.build this server "
+                "may run"
+            },
+            400,
+        )
+    if overrides is not None and overrides.binary is not None:
+        return False, ({"error": "rebuild cannot be combined with binaryArtifact"}, 400)
+    return True, None
+
+
 def _run_label(
     binding: ConfigBinding, body: dict[str, Any]
 ) -> tuple[str | None, tuple[Any, int] | None]:
@@ -529,6 +554,9 @@ def start_run(  # noqa: C901, PLR0911
     )
     app_path, build = target_build_info(cfg, target)
     build = _governed_build(state, binding, build)
+    rebuild, rebuild_err = _rebuild_flag(body, target, build, overrides)
+    if rebuild_err:
+        return rebuild_err
     # Per-run evidence-upload prefix (BE-0110): CI passes it to select the cloud lifecycle policy. It
     # becomes a storage key segment, so reject a non-string, a leading `/`, or `..` traversal here —
     # the same guard the upload-urls endpoint re-applies to the worker-relayed value.
@@ -550,6 +578,7 @@ def start_run(  # noqa: C901, PLR0911
             udids=_boot_targets(udid),
             app_path=app_path,
             build=build,
+            rebuild=rebuild,
             materials=materials,
             # An uploaded bundle ships its own baselines and runs from its own tree, so the org's
             # stored baselines must not be materialized over them — `_download_baselines` clears the

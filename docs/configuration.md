@@ -1127,7 +1127,9 @@ git+https://<host>/<owner>/<repo>.git[@<ref>][#<path>]          # general form (
   Git-sourced `run` **builds the app on demand**: when `subject.path` is set but missing, it runs the
   config's `subject.build` command from the **checkout root** (where the command's relative parts, e.g.
   `make -C demos/showcase swiftui-build`, are rooted), then proceeds. A failed build exits cleanly.
-  A local-path `run` is unchanged (it never builds; a missing binary still errors).
+  A local-path `run` builds a missing app the same way, from the config file's own directory, for an
+  iOS or an Android target alike. `run --rebuild` runs the build even when the app already exists
+  ([CLI](cli.md#run)).
 - A **pinned commit SHA** (`@<sha>`) is reproducible and runs offline after the first fetch; a branch
   (or tag) is resolved fresh each load.
 - **A private repository needs a credential**

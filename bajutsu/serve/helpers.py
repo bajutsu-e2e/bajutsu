@@ -20,7 +20,14 @@ import yaml
 
 from bajutsu.common.backend_cli import simctl as _simctl
 from bajutsu.common.backends import KNOWN_ACTUATORS, PLATFORMS, backend_override, resolve_actuators
-from bajutsu.common.config import Config, Effective, IosConfig, resolve, unknown_target
+from bajutsu.common.config import (
+    AndroidConfig,
+    Config,
+    Effective,
+    IosConfig,
+    resolve,
+    unknown_target,
+)
 from bajutsu.common.devices.id import is_valid_device_id
 from bajutsu.common.report.manifest import history_summary
 from bajutsu.common.run_meta.files import is_soft_deleted
@@ -306,17 +313,19 @@ def list_targets(config_path: Path) -> list[str]:
 
 
 def target_build_info(config_path: Path, target: str) -> tuple[str | None, str | None]:
-    """``(app_path, build)`` for *target* from config — the built ``.app`` path and the shell
-    command that builds it.  Either may be ``None`` (unset or any load/resolve error); the run
-    then proceeds without an on-demand build (and the runner reports a missing binary as
+    """``(app_path, build)`` for *target* from config — the built app's path and the shell
+    command that builds it.  Either may be ``None`` (unset, a web target, or any load/resolve
+    error); the run then proceeds without a build (and the runner reports a missing binary as
     before)."""
     try:
         eff = resolve(_load_config_cached(config_path), target)
     except (OSError, ValueError, KeyError):
         return (None, None)
-    ios = eff.platform_config
-    # Only an iOS target carries an on-demand build; other platforms have no .app to build.
-    return (ios.app_path, ios.build) if isinstance(ios, IosConfig) else (None, None)
+    native = eff.platform_config
+    # An iOS or Android target carries a build; a web target has no app binary to build.
+    if isinstance(native, IosConfig | AndroidConfig):
+        return (native.app_path, native.build)
+    return (None, None)
 
 
 def target_batch_info(config_path: Path, target: str) -> tuple[str | None, str | None]:

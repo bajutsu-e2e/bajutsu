@@ -67,6 +67,9 @@ class Job:
     udids: list[str] = field(default_factory=list)  # devices to boot before the run
     app_path: str | None = None  # built .app the run needs; built on demand if missing
     build: str | None = None  # shell command that builds app_path (None = no on-demand build)
+    # Build even when app_path exists (`rebuild` on POST /api/run), so a source change is never run
+    # against a stale binary. serve builds, never the spawned run, so the build happens once.
+    rebuild: bool = False
     # Whether the spawned run must refuse the config's `driver.runner.build` (#2282): set by
     # `_register_and_dispatch` for the same untrusted bindings `_governed_build` nulls `build` for,
     # and carried in the job spec so a remote worker's spawn refuses it too.

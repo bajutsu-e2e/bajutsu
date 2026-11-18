@@ -419,19 +419,23 @@ def _boot_devices(state: ServeState, job: Job) -> bool:
 
 
 def _build_app(state: ServeState, job: Job) -> bool:
-    """Build the app's binary on demand when it is missing.  Returns True if the run may
-    proceed: nothing to build (no ``build`` command, no ``app_path``, or the binary already
-    exists), or the build command succeeded.  Returns False (marking the job failed) only when
-    a needed build fails — so the run isn't spawned against a missing binary."""
-    if not job.build or not job.app_path:
+    """Build the app's binary when it is missing, or always when ``job.rebuild`` asks.  Returns
+    True if the run may proceed: nothing to build (no ``build`` command, or — without
+    ``rebuild`` — no ``app_path`` or a binary that already exists), or the build command
+    succeeded.  Returns False (marking the job failed) only when a needed build fails — so the
+    run isn't spawned against a missing or stale binary."""
+    if not job.build or not (job.app_path or job.rebuild):
         return True
     # `job.cwd` is frozen at registration (BE-0393 unit 2), so this is the accepted job's own
     # directory. The fallback is the worker path, where the job was rebuilt from a spec and resolves
     # against the worker's own deployment binding.
     cwd = job.cwd or state.binding.cwd
-    if (cwd / job.app_path).exists():
+    if job.rebuild:
+        _log(job, f"rebuilding the app: {job.build}")
+    elif job.app_path and (cwd / job.app_path).exists():
         return True
-    _log(job, f"app binary missing ({job.app_path}) — building: {job.build}")
+    else:
+        _log(job, f"app binary missing ({job.app_path}) — building: {job.build}")
     try:
         proc = state.popen(
             shlex.split(job.build),

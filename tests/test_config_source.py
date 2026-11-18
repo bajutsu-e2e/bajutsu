@@ -517,8 +517,9 @@ def test_load_effective_local_config_allows_a_path_outside_its_dir(tmp_path: Pat
 
 def test_load_effective_local_config_returns_no_checkout_root(tmp_path: Path) -> None:
     # The rebase anchor must not leak into the third tuple element: `checkout_root` stays None for a
-    # local config so it keeps reading as "local, not a read-only Git checkout" — otherwise `run`'s
-    # on-demand build_if_missing and record/crawl's _refuse_out_in_checkout would switch on (BE-0242).
+    # local config so it keeps reading as "local, not a read-only Git checkout" — otherwise
+    # record/crawl's _refuse_out_in_checkout would switch on, and `run`'s build would run from the
+    # checkout root instead of the config file's own directory (BE-0242).
     from bajutsu.cli import _shared
 
     proj = tmp_path / "proj"
