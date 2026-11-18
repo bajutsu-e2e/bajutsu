@@ -71,7 +71,7 @@ In practice, the source often answers the question directly. The serial accept l
 **Unit 3 — Detect a mid-run crash and surface it deterministically.** Suppose the channel stays unreachable past the retry budget of a single call. The driver must then decide deterministically between two outcomes, instead of letting the run drift into a misleading assertion.
 
 - For an idempotent read (a `GET`, or a write that never reached the runner), the driver waits for the runner to come back, reusing the existing `await_ready` health poll, and continues. Re-issuing a read is safe.
-- For a side-effecting write that may already have been delivered, the driver does not retry in the background. It fails with a distinct runner-crash diagnostic that names the crash. The run then stops on an honest "the runner died mid-gesture" message, not on `actual='idle'`.
+- For a side-effecting write that may already have been delivered, the driver does not silently retry it. It fails with a distinct runner-crash diagnostic that names the crash. The run then stops on an honest "the runner died mid-gesture" message, not on `actual='idle'`.
 
 The distinction is the `delivered` split that the retry seam already draws. This unit extends the seam instead of inventing a parallel one.
 
