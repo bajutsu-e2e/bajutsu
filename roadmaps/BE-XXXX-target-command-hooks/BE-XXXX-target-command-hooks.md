@@ -117,7 +117,7 @@ A scenario then reads the seeded value without any preparation step of its own:
 | Field | Lists | Meaning |
 |---|---|---|
 | `cmd` | all | The command. Bajutsu splits it like a shell would, then runs it without a shell. Pipes or redirects need `sh -c` or a script. |
-| `name` | all | An identifier, `[A-Za-z][A-Za-z0-9_]*` without `__`, unique across the target's four lists. Required on an entry whose outputs are read. |
+| `name` | all | An identifier, `[A-Za-z][A-Za-z0-9_]*` without `__`, unique across the four lists of every target the run drives. Required on an entry whose outputs are read. |
 | `cwd`, `env` | all | The working directory and extra environment, as `services.server` has them today. |
 | `timeout` | all | Seconds a foreground command may take. Default 300. Ignored for a background entry. |
 | `background`, `readyUrl`, `readyTimeout` | `beforeRun`, `beforeScenario` | Start a long-running process and wait on its readiness uniform resource locator (URL). Both readiness fields are required with `background: true`. |
@@ -136,6 +136,21 @@ A foreground entry runs to completion before the next entry starts. A non-zero e
 waits until `readyUrl` answers with a status below 400. That wait is a condition wait, polled the
 way `services.server` polls today. When `readyUrl` already answers before the process starts,
 Bajutsu reuses the server that answered and never stops it. This keeps BE-0059's reuse rule.
+
+The reuse rule holds for `beforeRun` alone. Under `run --workers`, two workers could otherwise share
+one `beforeScenario` server, and the worker that finishes first would stop the server mid-scenario
+for the other. Two rules prevent that sharing:
+
+- **Per-worker values.** In a `beforeScenario` entry, Bajutsu replaces the text `${BAJUTSU_WORKER}`
+  in `cmd`, `readyUrl`, and each `env` value with the worker index. An entry such as
+  `cmd: "./mock --port 90${BAJUTSU_WORKER}"` with `readyUrl: "http://127.0.0.1:90${BAJUTSU_WORKER}/"`
+  then starts one server per worker.
+- **No reuse per scenario.** A background `beforeScenario` entry whose `readyUrl` already answers
+  before its process starts fails the scenario. Such an answer means another worker or a leftover
+  process owns the port, and a shared server would break the isolation between scenarios.
+
+A background entry also writes its resolved `readyUrl` as the output key `url`. A scenario reaches
+a per-worker server through `${hooks.<name>.url}`, without computing the port itself.
 
 One scenario then runs in this order:
 
@@ -195,6 +210,14 @@ Every later command in scope sees earlier outputs as environment variables named
 runs their scenario, so parallel scenarios run their hooks in parallel. A script that touches shared
 state can partition by that index.
 
+### Scenarios that drive several targets
+
+A scenario can drive more than one target. A run then executes the hooks of every target it
+drives. Within each list, the targets run in the order the scenario declares them. The `after`
+lists run in the reverse order, so the last target prepared is the first one torn down. A hook
+`name` is unique across every target the run drives. Two targets that declare the same `name` fail
+at load time, so a `${hooks.<name>.<key>}` token never resolves ambiguously.
+
 ### Evidence
 
 A command's standard output and standard error go to the run directory, under
@@ -224,6 +247,12 @@ BE-0090 governs every command an uploaded bundle's config declares, through `ser
 - **`reuse`:** no entry runs. A background entry whose `readyUrl` already answers counts as
   satisfied. Any other entry fails the run.
 - **`deny`:** no entry runs, and a run that declares any entry fails.
+
+Under `sandbox`, every container of one run joins a Docker network created for that run. A
+sandboxed entry reaches a background entry under that entry's `name` as the host name, such as
+`http://server:8787/`. Bajutsu also rewrites the context variables to the paths inside the
+container. `BAJUTSU_OUTPUT` and `BAJUTSU_RUN_DIR` then name the mounted output file and run
+directory, never the host paths, which mean nothing inside the container.
 
 A local or Git-sourced config stays ungoverned, as today.
 
