@@ -76,7 +76,7 @@ is one of the conditions under which the XCUITest environment reuses a warm resi
 of preparing the device cold.
 
 The reuse path is not free of `simctl`. Only the health check avoids it. `_healthy_resident_driver()`
-is a `poll()` plus a bounded `/health` query over the own channel of the runner. `_resume_warm` then
+is a `poll()` plus a bounded `/health` query over the runner's own channel. `_resume_warm` then
 runs the following steps of `_prepare_simulator(cold=False)`:
 
 - the uninstall, the install, and the permission writes

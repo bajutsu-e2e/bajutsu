@@ -128,7 +128,7 @@ transform for four reasons.
 - The other three reasons are answered by construction:
   - The redirect is not implicit, because the record carries an explicit token.
   - It cannot conflate distinct ids, because it never invents a name. It only actuates an element
-    already in the tree, inside the own frame of the target, whose identifier resolves uniquely.
+    already in the tree, inside the target's own frame, whose identifier resolves uniquely.
   - It is predictable. The offer must be named. Where more than one candidate exists, the driver
     refuses instead of choosing.
 
@@ -203,7 +203,7 @@ the `other`-trait tie-drop in `resolve_unique`, which is a different problem.
 
 **Probe the hittability of every element up front.** This would make the refused case a special case
 of nothing. But it would cost one native call per element on every query, and most of those elements
-never take part in a refusal. Scoping the probe to the own descendants of a refused tap keeps the
+never take part in a refusal. Scoping the probe to a refused tap's own descendants keeps the
 cost proportional to how often this shape occurs.
 
 ## Progress
