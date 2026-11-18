@@ -1,10 +1,10 @@
 [English](../../getting-started/web.md) · **日本語**
 
-# Getting started（web トラック。Mac 不要）
+# ブラウザでシナリオを実行する
 
-> [Getting started](index.md) のループを、**どの OS でも**、実際の web アプリに対してブラウザ上で
-> **Playwright** backend を使って完結させます。macOS も Xcode も iOS Simulator も要りません。
-> Mac もある場合は、代わりに[iOS トラック](ios.md)で同じループを Simulator 上で完結できます。
+> このページでは、[Getting started](index.md) のループを**どの OS でも**完結させます。実際の web アプリに
+> 対して、ブラウザ上で **Playwright** backend を使って実行します。macOS も Xcode も iOS Simulator も
+> 要りません。Mac もある場合は、代わりに[iOS トラック](ios.md)で同じループを Simulator 上で完結できます。
 
 関連: [Getting started](index.md) · [iOS トラック](ios.md) · [drivers](../drivers.md) · [用語集](../glossary.md)
 
@@ -16,10 +16,10 @@
 
 Bajutsu の看板の主張は**「プラットフォームは backend にすぎない」**です。決定的コア、シナリオ形式、
 レポーターは、UI を実際に操作する backend が何であっても同じです。[iOS トラック](ios.md)は
-Simulator（`XCUITest` backend）で完結しますが、これには Xcode 入りの Mac が必要です。このトラックは
-同じループをブラウザ（`web` / Playwright backend）で完結させます。ブラウザなら Linux でも Windows
-でも macOS でも同じように動きます。これは、Bajutsu 自身の web デモを Linux のゲート上で動かしている
-のと同じ backend です（[`demos/web`](../../../demos/web/README.md)）。
+Simulator（`XCUITest` backend）で完結しますが、Xcode 入りの Mac が必要です。web トラックは同じ
+ループをブラウザ（`web` / Playwright backend）で完結させます。ブラウザなら、Linux でも Windows でも
+macOS でも同じように動きます。Bajutsu 自身の web デモを Linux のゲート上で動かしているのも、同じ
+backend です（[`demos/web`](../../../demos/web/README.md)）。
 
 ここでの用語は[用語集](../glossary.md)に従います。**backend** はターゲットが `platform:` で宣言する
 プラットフォーム（ここでは `web`）です。backend は **actuator**（タップや入力を実際に行う Playwright
@@ -54,7 +54,7 @@ make -C demos/web app-serve        # demos/web/app を 127.0.0.1:8787 で配信�
 
 配信したまま、自分のブラウザで <http://127.0.0.1:8787/index.html> を開くと、アプリに手で触れます。
 Get started を押し、任意のメールアドレスとパスワードでサインインし、カウンターを増やしてみてください。
-これがデモのシナリオが自動化している流れそのものです。
+この流れそのものを、デモのシナリオが自動化しています。
 
 ```yaml
 scenarios:
@@ -72,12 +72,17 @@ scenarios:
       - value: { sel: { id: counter.value }, equals: "2" }
 ```
 
-これは[共通ウォークスルーの iOS 側の smoke テスト](index.md#ステップ-3シナリオを読む)と**まったく
-同じ step/expect の文法**を使っています。steps が操作し `expect` が判定すること、セレクタが id 優先
-であること（ここでは `data-testid`。iOS の `accessibilityIdentifier` に相当する web 側の属性で、
-他のどの backend とも**同じ**セレクタ解決コアを通ります。[selectors](../selectors.md)、
-[drivers](../drivers.md#playwrightweb) 参照）、待機が条件であること、曖昧なセレクタが即座に失敗する
-ことも同じです。トラックごとに違うのは個々のシナリオの中身だけです。全文は
+このシナリオは、[共通ウォークスルーの iOS 側の smoke テスト](index.md#ステップ-3シナリオを読む)と
+**まったく同じ step/expect の文法**を使っています。
+
+- steps が操作し、`expect` が判定します。
+- セレクタは id 優先です。ここでの id は `data-testid` で、iOS の `accessibilityIdentifier` に相当する
+  web 側の属性です。他のどの backend とも**同じ**セレクタ解決コアを通ります
+  （[selectors](../selectors.md)、[drivers](../drivers.md#playwrightweb) 参照）。
+- 待機は条件です。
+- 曖昧なセレクタは即座に失敗します。
+
+トラックごとに違うのは、個々のシナリオの中身だけです。全文は
 [`demos/web/scenarios/smoke.yaml`](../../../demos/web/scenarios/smoke.yaml) にあります。
 
 ## ステップ 5：ブラウザでシナリオを実行する

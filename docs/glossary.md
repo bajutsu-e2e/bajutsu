@@ -4,8 +4,8 @@
 
 > A term-by-term reference for the domain vocabulary that runs through the rest of the docs.
 > Where [concepts](concepts.md) explains *why* Bajutsu is shaped the way it is, this page
-> answers *what a word means* and — for the clusters that are easy to confuse — *which of two
-> similar-sounding words is which*. The source of truth is the implementation (`bajutsu/`), not
+> answers *what a word means*. For the clusters that are easy to confuse, it also answers *which of
+> two similar-sounding words is which*. The source of truth is the implementation (`bajutsu/`), not
 > how any single page phrases a term; each entry points at the page or module that defines it.
 
 Related: [concepts](concepts.md) (design rationale) · [scenarios](scenarios.md) · [drivers](drivers.md) · [cli](cli.md)
@@ -16,7 +16,7 @@ Related: [concepts](concepts.md) (design rationale) · [scenarios](scenarios.md)
 
 **scenario** — One named test: a `name`, optional `preconditions`, an ordered list of `steps`,
 and an `expect` list of machine-checkable assertions (plus per-scenario `capturePolicy`,
-`network`, `mocks`, and similar). It is Bajutsu's only persisted artifact — plain YAML, reviewed
+`network`, `mocks`, and similar). A scenario is Bajutsu's only persisted artifact: plain YAML, reviewed
 in a pull request. Defined by `Scenario` in `bajutsu/scenario/models/scenario.py`; the authoring
 guide is [scenarios](scenarios.md).
 
@@ -26,7 +26,7 @@ guide is [scenarios](scenarios.md).
 > `load_scenarios()` accepts either a bare list or a `{ description, scenarios }` mapping.)
 
 **goal** — The natural-language objective a human hands to `bajutsu record`; the AI explores the
-app toward it and authors a scenario. It is authoring input, not a scenario field — it survives
+app toward it and authors a scenario. A goal is authoring input, not a scenario field. It survives
 in the finished scenario only as provenance (see `from`). See [recording](recording.md).
 
 **step** — Exactly one action (tap / type / swipe / wait / …) plus optional modifiers
@@ -54,21 +54,21 @@ Defined by `Preconditions` in `bajutsu/common/scenario/models/scenario/precondit
 
 **expect / assertion** — An **assertion** is a single machine-checkable check (one of `exists` /
 `value` / `label` / `count` / `enabled` / `disabled` / `selected` / `request` / `event` /
-`visual` / …). **`expect`** is the scenario-level list of assertions. This list is the *sole*
-source of pass/fail — no large language model (LLM) ever decides a verdict (see [concepts §1](concepts.md#1-ai-is-the-author-and-the-investigator-never-the-judge)).
+`visual` / …). **`expect`** is the scenario-level list of assertions. The `expect` list is the *sole*
+source of pass/fail: no large language model (LLM) ever decides a verdict (see [concepts §1](concepts.md#1-ai-is-the-author-and-the-investigator-never-the-judge)).
 Assertions also appear inline on a step (`assert:`) and as a wait's `until` condition. Defined by
 `Assertion` in `bajutsu/scenario/models/assertions.py`.
 
 **selector / identifier** — A **selector** is *how you address a UI element*: an AND-combined set
 of fields (`id`, `idMatches`, `label`, `labelMatches`, `traits`, `value`, `within`, `index`). An
 **identifier** (the element's stable `id`) is the primary selector field and the one to prefer.
-So the selector is the whole query object; the identifier is one field within it. Resolution is
+The selector is the whole query object, and the identifier is one field within it. Resolution is
 deterministic — zero matches or two-or-more matches fail rather than guess. See
 [selectors](selectors.md); defined by `Selector` in `bajutsu/scenario/models/selector.py`.
 
 **component** — A reusable, parameterized sequence of steps, invoked from a step with `use:` and
-`with:`. It is a macro in the scenario DSL (domain-specific language), expanded away at compile time, so it does not affect
-determinism — not a UI "component". Defined by `Component` in
+`with:`. A component is a macro in the scenario DSL (domain-specific language), expanded away at compile time, so it does not affect
+determinism. It is not a UI "component". Defined by `Component` in
 `bajutsu/scenario/models/scenario.py`; expanded by `bajutsu/scenario/expand.py`.
 
 **from (provenance)** — The natural-language phrase a construct was recorded from. It is authoring
@@ -78,9 +78,9 @@ an assertion, a capture rule, and a scenario (YAML key `from`, model field `from
 ## The two tiers
 
 **Tier 1** — AI live operation: exploration and authoring (`record`, `crawl`, `triage`, `serve`).
-Flexible and non-deterministic; it authors and investigates but never decides pass/fail.
+Flexible and non-deterministic; Tier 1 authors and investigates but never decides pass/fail.
 
-**Tier 2** — The deterministic runner (`bajutsu run`) that gates CI (continuous integration). No AI on this path; the
+**Tier 2** — The deterministic runner (`bajutsu run`) that gates continuous integration (CI). No AI sits on this path; the
 verdict comes only from the `expect` assertions. Tier 2 is the only pass/fail authority.
 
 The split is the top-level constraint of the project — see
@@ -89,7 +89,7 @@ The split is the top-level constraint of the project — see
 ## Driver, backend, actuator, platform
 
 These four name the one platform-specific seam of an otherwise platform-neutral core. They are
-easy to blur, so here is the whole relationship in one place. The source of truth is
+easy to blur, so this section gives the whole relationship in one place. The source of truth is
 `bajutsu/common/backends.py` (`PLATFORMS`, `IMPLEMENTED`), not the prose on any page.
 
 | Term | What it is |
@@ -100,7 +100,7 @@ easy to blur, so here is the whole relationship in one place. The source of trut
 | **platform** | A coarse token naming a class of target — `ios` / `android` / `web` / `fake` — that expands to an ordered, most-stable-first list of actuators. Every target declares one, as its required `platform` key. |
 
 Selection expands the target's `platform` to its actuators and picks the first one that is both
-known and available on this machine. Platform → actuator, as
+known and available on this machine. The table below maps each platform to its actuators as
 wired in code today (all four actuators are in `IMPLEMENTED`):
 
 | Platform | Actuator(s), most-stable-first | Availability gate |
@@ -129,7 +129,7 @@ is why BE-0057 renamed the config concept from `app` to `target`.
 | **app** | The application under test itself — the software the target points at and that gets installed on a device. |
 | **device** | The concrete runtime instance the target is driven on — a Simulator / emulator / browser context, addressed at runtime by `udid`. A target's `runsOn` group describes it, with one block per destination (`runsOn.ios`, `runsOn.android`, `runsOn.browser`). Its device conditions (`runsOn.ios.model`, `runsOn.ios.os`, and the like) are matched against each available device before a run ([configuration](configuration.md#device-conditions-runson)). A list or a range splits a scenario into one run per value or major version. An open range that no device meets leaves a *not applicable* record instead of a failed run. |
 
-So a **target** (config) points at an **app** (software) driven on a **device** (runtime instance).
+A **target** (config) points at an **app** (software) driven on a **device** (runtime instance).
 
 ### subject
 
@@ -144,9 +144,9 @@ different word: it matches the subject header of a received mail, and the two ne
 
 **label** — The run-history partition, recorded on every run
 ([BE-0404](../roadmaps/BE-0404-collapse-project-layer/BE-0404-collapse-project-layer.md)). It
-defaults to the bound configuration's own name — a local file's stem, or a Git-sourced
-configuration's repository plus its in-repo path — and an operator overrides it per run with
-`bajutsu run --label`. Its whole job is to keep two configurations' runs readable apart after a
+defaults to the bound configuration's own name (a local file's stem, or a Git-sourced
+configuration's repository plus its in-repo path), and an operator overrides it per run with
+`bajutsu run --label`. A label exists to keep two configurations' runs readable apart after a
 `serve` restart, so the run list, Replay, and the run-stats dashboard show one label's runs by
 default.
 
@@ -175,11 +175,11 @@ Distinct from a step's inline `capture:`, which is a *one-shot* capture at that 
 
 **trace vs. triage** — One edit apart in spelling, opposite in kind:
 
-- **`trace`** — a CLI (command-line interface) verb that renders a *finished* run as a read-only text timeline (steps + network +
-  app trace), or with `--explain` previews how a scenario's `capturePolicy` would fire. It is
-  deterministic and observational — no AI, no verdict. Engine in `bajutsu/trace.py`.
-- **`triage`** (CLI verb) is *AI diagnosing a failed run* and proposing a minimal fix. It is a
-  Tier-1, advisory activity — it never gates CI. Engine in `bajutsu/triage/heuristic.py`.
+- **`trace`** — a command-line interface (CLI) verb that renders a *finished* run as a read-only text timeline (steps + network +
+  app trace), or with `--explain` previews how a scenario's `capturePolicy` would fire. The verb is
+  deterministic and observational: no AI, no verdict. Engine in `bajutsu/trace.py`.
+- **`triage`** (CLI verb) is *AI diagnosing a failed run* and proposing a minimal fix. Triage is a
+  Tier-1, advisory activity that never gates CI. Engine in `bajutsu/triage/heuristic.py`.
 
 > `trace` is overloaded three ways: besides the verb, **`appTrace`** is an interval evidence kind
 > (os_signpost / os_log intervals), and `bajutsu run --trace-driver` writes a per-scenario
@@ -189,7 +189,7 @@ Distinct from a step's inline `capture:`, which is a *one-shot* capture at that 
 
 ## CLI verbs
 
-The commands the rest of the docs lean on. This is the vocabulary, not the full reference — every
+The commands the rest of the docs lean on. The list is vocabulary, not the full reference; every
 command and option is in [cli](cli.md).
 
 | Verb | Tier | What it does |

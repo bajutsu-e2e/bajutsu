@@ -6,10 +6,10 @@ hide:
   - toc
 ---
 
-Bajutsu (馬術) takes test scenarios written in — or recorded from — natural language, drives your
+Bajutsu (馬術) takes test scenarios written in, or recorded from, natural language, drives your
 app (taps, typing, swipes, waits), and verifies the result with **machine-checkable assertions**.
-Everything but one seam is platform-neutral; that seam is the **backend** that actuates the UI, so
-swapping that seam runs the same scenario, unchanged, on a different target.
+Everything but one seam is platform-neutral. That seam is the **backend** that actuates the UI, so
+swapping the backend runs the same scenario, unchanged, on a different target.
 
 ## The core stance
 
@@ -19,7 +19,7 @@ swapping that seam runs the same scenario, unchanged, on a different target.
 - **Two tiers.** Tier 1 is AI live operation (exploration and authoring); Tier 2 is the
   deterministic runner that gates CI.
 - **Determinism first.** Condition waits only (the one fixed pause is an explicit, capped `sleep`
-  step that must state its reason); an ambiguous selector fails
+  step that must state its reason). An ambiguous selector fails
   immediately instead of tapping whatever matched first.
 - **A platform is a backend.** The deterministic core names no platform; add or swap a backend and
   the same scenario format, runner, and CLI target a new platform unchanged.
@@ -27,10 +27,10 @@ swapping that seam runs the same scenario, unchanged, on a different target.
 ## Status — pre-alpha
 
 The deterministic core, the AI authoring loop (`record` / `crawl`), the evidence subsystem,
-codegen, and self-healing triage are all implemented and unit-tested with no Simulator
-needed. The iOS **XCUITest backend** is validated end-to-end on a real Simulator, the
+codegen, and self-healing triage are all implemented and unit-tested, and those unit tests need no Simulator. The iOS **XCUITest backend** is validated end-to-end on a real Simulator, the
 **Android (adb) backend** is validated on an emulator, and the **web (Playwright) backend** runs
-a deterministic `run` against a browser on the Linux gate. Flutter apps run through those same backends unchanged, with no separate Flutter backend.
+a deterministic `run` against a browser on the Linux gate. Flutter apps run through those same
+backends unchanged, with no separate Flutter backend.
 
 ## Quickstart
 
@@ -41,8 +41,8 @@ bajutsu run    --target <name> [--scenario f.yaml]          # Tier 2: determinis
 ```
 
 The [Getting started tutorial](getting-started/index.md) walks through install, unit tests, scenario authoring, a
-device run, and the report. On a machine without a Mac, the [web track](getting-started/web.md) does the
-same loop against a browser (Playwright backend) — no Xcode or Simulator.
+device run, and the report. On a machine without a Mac, the [web track](getting-started/web.md) runs the
+same loop against a browser (Playwright backend), with no Xcode or Simulator.
 
 ## Feature highlights
 
