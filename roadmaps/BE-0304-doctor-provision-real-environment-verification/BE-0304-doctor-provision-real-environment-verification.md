@@ -75,7 +75,7 @@ Proposal altitude. The work is MECE along the units below.
   non-zero with an `✗` in the rendered `environment:` section. No injected-fake test can prove this
   fail side today.
 - **Run `python -m bajutsu.provision` for real in a fresh environment.** Add a job that runs the real
-  installer end to end. The job is either a bare container or a fresh step before the rest of a lane's
+  installer end to end, either in a bare container or as a fresh step before the rest of a lane's
   setup. It asserts that the tool the installer targets becomes available. This closes the gap between
   "the command string was right" and "the real package manager accepted it".
 - **Capture a real `simctl list devices -j` payload as a fixture.** Replace (or supplement) the
