@@ -48,8 +48,10 @@ upload as trusted, and a config loaded from a Git repository
 worker that runs jobs from many repositories therefore runs any command any of those configs
 declares.
 
-Finally, nothing records which commands a run executed. An unintended command, such as a changed
-script in a repository, leaves no trace beside the run's evidence.
+Finally, only an uploaded bundle's server command leaves a record today: BE-0090 stamps its decision
+into the manifest's `uploadExec` provenance, without a hash of what ran. A command from a Git or
+local config leaves none. An unintended command, such as a changed script in a repository, thus
+leaves no trace beside the run's evidence.
 
 Once this item ships, a reader can check two observable differences. A worker whose `worker.yaml`
 sets `uploaded: deny` never leases a job whose uploaded config declares a command. Every run's
@@ -79,12 +81,13 @@ Each key names a config source, and each value is a mode:
 |---|---|
 | `allow` | The command runs on the worker's host. |
 | `sandbox` | The command runs in a throwaway Docker container on the worker's host, as BE-0090's `sandbox` mode does today. |
-| `deny` | No command from that source runs. The worker takes no job whose config from that source declares one. |
+| `deny` | No command from that source runs. The worker takes no job whose config from that source declares a command that *Routing* below adds a requirement for, and it skips `subject.build` at run time. |
 
 An omitted block or key keeps today's behavior: `uploaded: sandbox`, `git: allow`, and
-`local: allow`. A worker that sets any key to `sandbox` checks for Docker at startup and exits with
-a message naming the key when Docker is missing. A worker that cannot honor its own file thus never
-starts, so it never accepts a job it would then fail.
+`local: allow`. A worker that sets a key to `sandbox` explicitly checks for Docker at startup and
+exits with a message naming the key when Docker is missing. A worker whose `sandbox` mode comes from
+the default advertises `commands:<source>` for that source only when Docker is present. Either way,
+a worker never accepts a job it would then fail.
 
 ### The commands the block governs
 
@@ -117,7 +120,9 @@ its hook entries take the place of `services.server.cmd` in the table above.
 
 The label travels in the job's intent, in place of today's `upload_exec` field. The config itself
 has no way to set its own label. A `bajutsu run` started from a terminal or CI labels its config
-`git` when it loads the config through the Git source, and `local` otherwise.
+`git` when it loads the config through the Git source, and `local` otherwise. A worker passes the
+job's label to the run it spawns through a `run` option that takes the place of `--upload-exec`,
+and the run then uses that label instead of deriving one.
 
 ### Routing
 
@@ -126,7 +131,8 @@ The worker advertises one capability token per source it accepts: `commands:uplo
 `commands:<source>` to the required set of a job whose config declares at least one governed
 command. The routing test of [BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues.md)
 is an all-of subset check, so a job that declares commands reaches only a worker that accepts its
-source. A job that no connected worker matches keeps waiting, with the existing notice that no
+source. `commands:` joins the reserved routing prefixes, so a worker's hand-written token override
+cannot claim a source its `commands` block denies. A job that no connected worker matches keeps waiting, with the existing notice that no
 worker is available.
 
 `subject.build` adds no requirement, because `serve` cannot know whether a worker already holds the
@@ -137,7 +143,8 @@ built binary. The worker decides the build at run time, under the table above.
 `bajutsu run` checks the policy again before any device work, against the `worker.yaml` it reads.
 A governed command whose source maps to `deny` fails the run with exit 2, naming the command, its
 source, and the mode. That second check covers a run started without `serve`, and a worker whose
-advertisement no longer matches its file.
+advertisement no longer matches its file. The run writes `manifest.json` with the refused entry
+before it exits.
 
 ### The command record
 
@@ -154,7 +161,8 @@ the run met:
 | `sha256` | the hash of the command line, and of the executable file when that file lies inside the config's directory |
 
 The report shows the list beside the run's other provenance. A script that changed between two runs
-then shows a different hash, even when its command line stayed the same.
+then shows a different hash, even when its command line stayed the same. The list replaces the
+`uploadExec` provenance entry.
 
 ### Removing `--upload-exec`
 
@@ -207,7 +215,7 @@ used `reuse` picks `sandbox` or `deny`.
 > (oldest first), linking the PRs.
 
 - [ ] `worker.yaml`: the `commands` block, its defaults, validation, and the Docker check at startup.
-- [ ] Source label: carry `uploaded` / `git` / `local` in the job intent in place of `upload_exec`, and label CLI runs.
+- [ ] Source label: carry `uploaded` / `git` / `local` in the job intent in place of `upload_exec`, pass it through the `run` option that carries the label, and label CLI runs.
 - [ ] Routing: advertise `commands:<source>` tokens and add the requirement to jobs that declare commands.
 - [ ] Run-time check: refuse a governed command whose source maps to `deny`, before device work.
 - [ ] Command record: the `commands` list in `manifest.json` and its place in the report.

@@ -60,7 +60,7 @@ end. A script can do all three itself, with whatever readiness check its server 
 `services.server` beside the new hooks would leave two ways to start a server, with two field sets
 for a reader to learn.
 
-Once this item ships, a reader can check one observable difference. A scenario that needs seeded
+Once this item ships, a reader can check two observable differences. A scenario that needs seeded
 data reads the seeded identifier through a `${hooks.<name>.<key>}` token, and its own `setup`
 holds no `http` step that exists merely to prepare data. `demos/serve-ui/dogfood.config.yaml`
 starts its inner server from a `hooks.beforeRun` script, and `services.server` no longer loads.
@@ -177,7 +177,7 @@ malformed line fails the entry, so a typo never turns into a silently missing va
 
 A scenario reads a value as `${hooks.<name>.<key>}`. The run loop substitutes the token at action
 time, as it does for `${secrets.*}`. The scenario loader checks each token statically. A token
-naming no declared `name` is a load error. A key the command never wrote fails the step and names
+naming no `beforeRun` or `beforeScenario` entry is a load error. A key the command never wrote fails the step and names
 both the hook and the key. A scenario sees the outputs of `beforeRun` and of its own
 `beforeScenario` entries.
 
@@ -206,10 +206,13 @@ at load time, so a `${hooks.<name>.<key>}` token never resolves ambiguously.
 ### Evidence
 
 A command's standard output and standard error go to the run directory, under
-`hooks/<list>/<name-or-index>.log`. Today `services.server` discards both. The report shows each
+`hooks/<list>/<target>/<name-or-index>.log` for the run-level lists, and under
+`hooks/<list>/<target>/<scenario-index>/<name-or-index>.log` for the scenario-level lists. Today `services.server` discards both. The report shows each
 hook phase as its own block, apart from the scenario's numbered steps, as it already does for
-`setup` and `cleanup`. Masking applies to the logs: `${secrets.*}` values and the values of an
-entry with `mask: true` are replaced before the logs are written.
+`setup` and `cleanup`. Masking applies to the logs: each command writes to a raw file outside the run
+directory, and Bajutsu copies it into the run directory with `${secrets.*}` values and the values
+of an entry with `mask: true` replaced. It copies when the entry exits, and again at the end of the
+run for output that a background process wrote later.
 
 ### Where the commands run
 
@@ -255,8 +258,8 @@ hooks:
     ports: [8787]                 # published to the worker's loopback interface
 ```
 
-- **One container per run.** Bajutsu starts the container before `beforeRun` and runs each entry
-  inside it. A server that a `beforeRun` script starts therefore keeps running until the run ends.
+- **One container per run.** Bajutsu starts the container before `beforeRun` with an idle command of
+  its own in place of the image's default, and runs each entry inside it with `docker exec`. A server that a `beforeRun` script starts therefore keeps running until the run ends.
   Bajutsu removes the container after `afterRun`.
 - **Ports.** Each port in `ports` is published to the same port on the worker's loopback interface.
   The browser or the app on the worker then reaches the server at `127.0.0.1:<port>`.
