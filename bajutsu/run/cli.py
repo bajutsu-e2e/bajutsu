@@ -384,16 +384,8 @@ def _resolve_config_and_engines(
     browser: str,
     browsers: str,
     kind: str = "",
-    rebuild: bool = False,
-    built: set[str] | None = None,
-    worker: WorkerCapability | None = None,
 ) -> tuple[LoadedConfig, Effective, dict[str, str] | None, list[str]]:
-    """Resolve the effective config (building the target's app first) and the engine list.
-
-    The app builds on demand when its binary is missing, or always under *rebuild*; *built* collects
-    the targets a forced build already covered, so a later load or device-group member never builds
-    the same app twice in one run. *worker* says where the target's device comes from: a provider
-    that installs the app itself leaves nothing to build here.
+    """Resolve the effective config and the engine list.
 
     Applies `--headed`, `--kind`, and `--browser`, then parses `--browsers` into the cross-browser
     matrix axis (BE-0076). Each flag picks among the kinds or browsers the target lists (BE-0468).
@@ -406,23 +398,7 @@ def _resolve_config_and_engines(
     """
     loaded = _load_config_with_source(config, offline=offline, require_pinned=require_pinned)
     eff = _effective_for(loaded, target_name)
-    config_source, checkout_root = loaded.source, loaded.root
-    if rebuild and _build_command(eff) is None:
-        # A forced build of nothing would read as a rebuild the run never made.
-        typer.echo(f"--rebuild needs target '{target_name}' to declare subject.build")
-        raise typer.Exit(2)
-    try:
-        _build_target(
-            _with_worker_device(eff, worker) if worker is not None else eff,
-            target_name,
-            checkout_root=checkout_root,
-            rebuild=rebuild,
-            built=set() if built is None else built,
-            worker=worker,
-        )
-    except BuildError as e:
-        typer.echo(str(e))
-        raise typer.Exit(2) from None
+    config_source = loaded.source
     # --headed/--no-headed overrides the target's `driver.headless` (web only; iOS ignores it).
     eff = _with_headed(eff, headed)
     # --kind narrows the target's `runsOn.ios.kind` to the kinds it names (iOS only; BE-0468).
@@ -979,6 +955,37 @@ def _build_target(
     build_app(command, app_path, cwd=cwd, force=force)
     if force:
         built.add(name)
+
+
+def _build_primary_or_exit(
+    eff: Effective,
+    name: str,
+    *,
+    checkout_root: Path | None,
+    rebuild: bool,
+    built: set[str],
+    worker: WorkerCapability | None,
+) -> None:
+    """Build the run's primary target's app as `_build_target` does, or exit 2 with the reason.
+
+    *built* collects the targets a forced build covered, so a device-group member that is also the
+    primary is not built twice in one run.
+
+    Raises:
+        typer.Exit: `--rebuild` on a target with no `subject.build`, or a needed build that failed
+            or that this worker cannot make (exit code 2).
+    """
+    if rebuild and _build_command(eff) is None:
+        # A forced build of nothing would read as a rebuild the run never made.
+        typer.echo(f"--rebuild needs target '{name}' to declare subject.build")
+        raise typer.Exit(2)
+    try:
+        _build_target(
+            eff, name, checkout_root=checkout_root, rebuild=rebuild, built=built, worker=worker
+        )
+    except BuildError as e:
+        typer.echo(str(e))
+        raise typer.Exit(2) from None
 
 
 def _build_problems(
@@ -3028,9 +3035,6 @@ def run_body(
     worker = _load_device_worker_or_exit(worker_config)
     _reject_url_udid(udid)
     target_name = _resolve_primary_target(target_name, scenario or [])
-    # The targets a forced build already covered: a reload under another primary and the device
-    # groups' members below each rebuild an app at most once per run.
-    rebuilt: set[str] = set()
 
     def load_under(
         primary: str,
@@ -3056,9 +3060,6 @@ def run_body(
             browser=browser,
             browsers=browsers,
             kind=kind,
-            rebuild=rebuild,
-            built=rebuilt,
-            worker=worker,
         )
         scenarios, description, source_name, files, plan_sources = _load_scenarios(
             eff, scenario or [], primary
@@ -3182,6 +3183,12 @@ def run_body(
     # pipeline, whose own guard would otherwise raise mid-run instead of this clean exit 2.
     _reject_cross_browser_matrix_with_targets(all_scenarios, engines)
     _reject_bad_target_config_hooks(target_effs, scenarios, target_name)
+    # Built only now, once `--tag` / `--exclude` and the worker check have settled the primary: an
+    # inferred primary of a scenario selected away is never built (an iOS app on a Linux lane).
+    rebuilt: set[str] = set()
+    _build_primary_or_exit(
+        eff, target_name, checkout_root=loaded.root, rebuild=rebuild, built=rebuilt, worker=worker
+    )
     _reject_bad_device_groups(
         scenarios,
         target_effs,

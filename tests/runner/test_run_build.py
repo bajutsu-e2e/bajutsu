@@ -12,7 +12,12 @@ import typer
 from bajutsu.common.capability.worker_capability import WorkerCapability, parse_worker_capability
 from bajutsu.common.config import Effective, load_config, resolve
 from bajutsu.common.scenario import Scenario
-from bajutsu.run.cli import _reject_bad_device_groups, _resolve_config_and_engines
+from bajutsu.cli._shared import _with_worker_device
+from bajutsu.run.cli import (
+    _build_primary_or_exit,
+    _reject_bad_device_groups,
+    _resolve_config_and_engines,
+)
 
 
 def _config(tmp_path: Path, subject: str, platform: str = "android") -> Path:
@@ -31,7 +36,8 @@ def _resolve(
     built: set[str] | None = None,
     worker: WorkerCapability | None = None,
 ) -> Effective:
-    _, eff, _, _ = _resolve_config_and_engines(
+    """Resolve the `app` target and build its app the way `run` does once its primary is settled."""
+    loaded, eff, _, _ = _resolve_config_and_engines(
         str(cfg),
         "app",
         offline=False,
@@ -39,8 +45,15 @@ def _resolve(
         headed=None,
         browser="",
         browsers="",
+    )
+    if worker is not None:
+        eff = _with_worker_device(eff, worker)
+    _build_primary_or_exit(
+        eff,
+        "app",
+        checkout_root=loaded.root,
         rebuild=rebuild,
-        built=built,
+        built=set() if built is None else built,
         worker=worker,
     )
     return eff
@@ -75,7 +88,7 @@ def test_rebuild_builds_an_existing_app_once_per_run(tmp_path: Path) -> None:
     _resolve(cfg, rebuild=True, built=built)
     assert (cfg.parent / "rebuilt").exists()
     assert built == {"app"}
-    # A reload under the same run (a re-inferred primary) does not build the same app again.
+    # Within one run (a device-group member that is also the primary) the same app is not rebuilt.
     (cfg.parent / "rebuilt").unlink()
     _resolve(cfg, rebuild=True, built=built)
     assert not (cfg.parent / "rebuilt").exists()
@@ -227,3 +240,20 @@ def test_a_group_member_this_worker_cannot_build_is_a_preflight_problem(
     assert "installApp from 'new': target 'new' needs its android app built" in (
         capsys.readouterr().out
     )
+
+
+def test_resolving_a_target_never_builds_it(tmp_path: Path) -> None:
+    # `run` may resolve an inferred primary that `--tag` later selects away (an iOS scenario first
+    # in a file an Android lane filters), so resolving alone must not build: only the settled
+    # primary is built, by `_build_primary_or_exit`.
+    cfg = _config(tmp_path, "{ id: com.example.app, path: app.apk, build: 'touch built' }", "ios")
+    _resolve_config_and_engines(
+        str(cfg),
+        "app",
+        offline=False,
+        require_pinned=False,
+        headed=None,
+        browser="",
+        browsers="",
+    )
+    assert not (cfg.parent / "built").exists()
