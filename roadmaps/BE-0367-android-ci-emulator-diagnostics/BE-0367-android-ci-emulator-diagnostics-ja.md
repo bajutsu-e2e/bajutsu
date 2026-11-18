@@ -23,9 +23,9 @@
 
 ジョブがインフラ由来の理由で失敗する場合があります。
 
-- 常駐 UI Automator サーバー（`bajutsu/adb_resident.py`、[BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server-ja.md)）が応答しなくなる。
-- エミュレータの描画自体が固まる。
-- ジョブが `timeout-minutes` を使い切って終わる。
+- 常駐 UI Automator サーバー（`bajutsu/adb_resident.py`、[BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server-ja.md)）が応答しなくなります。
+- エミュレータの描画自体が固まります。
+- ジョブが `timeout-minutes` を使い切って終わります。
 
 いずれの場合も、アップロードされたアーティファクトには、理由を示す証拠が残りません。シナリオまたはジョブそのものが完了しなかったという事実だけが残ります。
 
@@ -114,7 +114,7 @@ Android には、その余地がありません。`android-e2e.yml` でデバイ
 このスクリプトは、2段階で実行します。
 
 - **常時**（軽量で、毎回実行します）。
-  - `adb logcat -d -b main,system,crash,events,radio` による全バッファのダンプです。区間証拠の `deviceLog` は、シナリオに `capture: [deviceLog]` が付いている間だけストリームします。このダンプは違い、デバイス自身のリングバッファを直接読みます。そのため、どのシナリオの捕捉も始まる前にジョブが失敗した場合にも、何かしら見せるものが残ります。ストリームを担うプロセスが死んで途中で切れた場合にも、同じです。
+  - `adb logcat -d -b main,system,crash,events,radio` による全バッファのダンプです。区間証拠の `deviceLog` は、シナリオに `capture: [deviceLog]` が付いている間だけストリームします。このダンプはそれとは違って、デバイス自身のリングバッファを直接読みます。そのため、どのシナリオの捕捉も始まる前にジョブが失敗した場合にも、何かしら見せるものが残ります。ストリームを担うプロセスが死んで途中で切れた場合にも、同じです。
   - `adb shell dumpsys meminfo`、`adb shell getprop`、`adb devices -l` による環境スナップショットです。内容は API level、ABI、エミュレータ自身の起動オプションです。このスナップショットは、BE-0361 の実行横断の仮説（4）、すなわち失敗が特定のエミュレータ構成に集中しているかどうかに答えます。
 - **失敗時のみ**（重量級）。この段は、上で述べた `rc` でゲートします。そのため、デバイスがまだ接続されているうちに発火します。
   - Android 純正の総合コレクタである `adb bugreport`（`simctl diagnose` の直接の対応物です）。zip して `runs/diagnostics/` 配下へ保存します。

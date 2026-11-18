@@ -366,8 +366,8 @@ reason.
 
 Units 3 and 4 also cover `uiautomator (codegen)`, which *Detailed design* above excludes. That
 exclusion reasoned from the collection's *mechanism*: the job writes nothing under `runs/`, so
-nothing rides there. It mistook the mechanism for the job's *need*, and the uploads show the opposite
-of that need. Gradle runs the generated test and produces every path that `codegen` uploads. A
+nothing rides there. It mistook the mechanism for the job's *need*, and the uploads show the
+opposite. Gradle runs the generated test and produces every path that `codegen` uploads. A
 failure before that point thus met `if-no-files-found: ignore` and uploaded nothing at all.
 Such failures include a wedged AVD boot, a codegen or build error, and the job's own
 `timeout-minutes`.

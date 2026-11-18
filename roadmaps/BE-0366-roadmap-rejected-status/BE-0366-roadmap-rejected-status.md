@@ -77,7 +77,7 @@ have nothing to do with a successor BE:
   authoring-side design that stays inside the boundary.
 - The maintainers can decide, after weighing the idea, that it does not belong.
 
-Each case needs the signal that a browsing reader needs: the proposal will not be pursued, and no
+Both cases call for the same signal a browsing reader needs: the proposal will not be pursued, and no
 named condition is expected to change that. `Rejected` covers every one of them, not only the
 superseded case that surfaced the gap.
 
