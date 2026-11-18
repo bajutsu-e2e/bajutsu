@@ -76,7 +76,7 @@ OpenAPI層の費用が、どちらのトランスポートの取り分よりも�
 
 - [BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience-ja.md)は、リッスンのバックログを1から16へ引き上げ、同時ハンドラー数を8に抑えるセマフォを追加しました。ドライバーとヘルスチェックの接続が集中して、元のバックログが尽きたためです。
 - [BE-0323](../BE-0323-xcuitest-readiness-crash-respawn/BE-0323-xcuitest-readiness-crash-respawn-ja.md)は、メインスレッドでの直列化ロック（`actuationLock`）を追加しました。XCUITestは再入できません。2つのXCUITest操作が同時にメインスレッドへ届くと、再入が起き、テストホストが異常終了するからです。
-- [BE-0362](../BE-0362-runner-http-queue-qos/BE-0362-runner-http-queue-qos-ja.md)は、まだ解決していない提案です。サーバーのディスパッチキューに、優先度（Quality of Service、QoS）を明示します。今日はどちらのキューにも明示がなく、正しい優先度は、アクセプトループをたまたま起動したスレッドの巡り合わせで決まっています。
+- [BE-0362](../BE-0362-runner-http-queue-qos/BE-0362-runner-http-queue-qos-ja.md)は、サーバーのディスパッチキューに優先度（Quality of Service、QoS）を明示する、まだ解決していない提案です。今日はどちらのキューにも明示がなく、正しい優先度は、アクセプトループをたまたま起動したスレッドの巡り合わせで決まっています。
 
 1つ目と3つ目は、接続のバックプレッシャーとスケジューリング優先度の問題です。
 HTTPフレームワークは、これらを構造として解決します。

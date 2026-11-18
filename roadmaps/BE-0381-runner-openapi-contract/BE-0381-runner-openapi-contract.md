@@ -81,7 +81,7 @@ The history of this repository shows that the upkeep is real, not hypothetical.
   concurrent XCUITest operations reaching the main thread at once re-enter it and abort the test
   host.
 - [BE-0362](../BE-0362-runner-http-queue-qos/BE-0362-runner-http-queue-qos.md) is a still-open
-  proposal. It declares an explicit quality of service (QoS) on the dispatch queues of the server.
+  proposal to declare an explicit quality of service (QoS) on the dispatch queues of the server.
   Neither queue declares one today. The correct priority is a coincidence of which thread happens to
   start the accept loop.
 
@@ -176,8 +176,8 @@ so they cannot drift from the contract that produced them.
 Swift OpenAPI Generator and Swift OpenAPI Runtime both declare `swift-tools-version:6.1`. That is
 above the current `5.9` of `BajutsuKit/Package.swift`. The declaration raises the Swift toolchain
 floor for building `BajutsuKit` to 6.1, whichever transport Unit 2 picks. The floor comes from the
-OpenAPI tooling itself, not from Hummingbird or FlyingFox. It does not by itself force the tools
-version declared by the package, because a `5.9` manifest may depend on packages that declare `6.1`.
+OpenAPI tooling itself, not from Hummingbird or FlyingFox. It does not by itself raise the tools
+version that the package declares, because a `5.9` manifest may depend on packages that declare `6.1`.
 
 This unit must decide two questions and record the answers here:
 
