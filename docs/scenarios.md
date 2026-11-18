@@ -1341,8 +1341,8 @@ The constraints come from driving an operating-system screen the scenario does n
 - swipe: { from: [100, 400], to: [100, 200] }              # raw coordinates (last resort)
 ```
 
-A `swipe` takes **exactly one** of `{on,direction}` and `{from,to}`; mixing the two or omitting both
-fails validation.
+A `swipe` takes **exactly one or the other** of `{on,direction}` and `{from,to}`. Mixing the two forms
+or omitting a side is a validation error.
 
 The **directional** form means "scroll", and each backend realizes it with the primitive that
 actually scrolls. iOS and Android use a real OS drag. On web, a mouse drag does not scroll a page, so
@@ -1384,7 +1384,7 @@ so a target taller than the viewport still succeeds once its center is reached.
 
 `scroll` reports the end of the content only on evidence. The end of the content means the target is
 not in the scrolled region, which is the whole screen or the container `within` names. `scroll`
-reports it only once two consecutive reads *show* the content standing still, by one of three signs:
+reports it only once two consecutive reads *show* the content standing still, by any of these signs:
 
 - An element the loop watched move is still there, has stopped, and belongs to the scrolling region
   rather than to chrome above it.
@@ -1525,8 +1525,8 @@ step's `assert` cannot evaluate: it always fails there with "no schema context",
 ```
 
 A step-level check's first baseline is not yet reachable from `bajutsu approve` or the serve UI's
-Approve button, because both read merely the scenario's `expect` results today. Until that catches
-up, promote the baseline by hand. The failing step's own `assertion_results` records a
+Approve button. Both read merely the scenario's `expect` results today. Until that catches up,
+promote the baseline by hand. The failing step's own `assertion_results` records a
 `visual.actual` path in the run's `manifest.json` (the report's raw JSON view shows it too). Copy the
 file at that path into the baselines directory, under the name the `baseline:` field gives.
 
@@ -1575,7 +1575,7 @@ A string value lands as-is. Any other JSON value (number/boolean/null/object/arr
 the same compact JSON text a captured event body field would (`42`, `true`, `null`, `{"id":42}`), so
 a later `${vars.*}` comparison reads the shape the API returned.
 
-Three cases fail the step:
+These cases fail the step:
 
 - A response body that fails to parse as JSON fails with the JSON parser's own message.
 - A `path` that does not resolve fails with an error naming the `var` and the `path`. A path does not
