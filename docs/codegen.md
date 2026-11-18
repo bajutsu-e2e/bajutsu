@@ -287,7 +287,7 @@ targets make.
 
 The listing below is a skeleton, not a transcript. The emitted file carries a paragraph of rationale
 above each helper, abridged here to a short inline comment where one is worth keeping. Some
-helpers are left out entirely. That is why `uiAutomation()`, `accessibilityWindows()`, and
+helpers are left out entirely. The omissions are why `uiAutomation()`, `accessibilityWindows()`, and
 `windowSummary()` are called below but defined nowhere in it, and why the `gone` halves of the
 sliced wait, `waitGone()` and `awaitGone()`, appear neither called nor defined. Read the checked-in
 [`CodegenAndroidUITest.kt`](../demos/showcase/android/compose/src/androidTest/java/CodegenAndroidUITest.kt)
@@ -477,7 +477,7 @@ class ComponentsUITest {
   which matches the driver's own assertions.
 - Each method builds an `extras` map (config's `subject.launch.env` < the scenario's
   `preconditions.subject.launch.env`) and calls `launch(extras)`, which forwards the env as intent
-  extras. This is the reverse of the adb backend's `am start --es`.
+  extras. That forwarding is the reverse of the adb backend's `am start --es`.
 - `launch` waits for the app's first window, then for that window to settle
   (`device.waitForIdle`). The window wait proves that some window from the package exists. It does
   not prove that the window has finished drawing its first frame. On a loaded CI runner, the next
@@ -734,6 +734,6 @@ with a checked-in fixture that CI regenerates, compiles, and runs against a real
   signal first, promoted to the gate once stable. Because it regenerates the checked-in `.kt` before
   building, a stale check-in cannot mask an emitter or `androidx.test.uiautomator` API drift.
 
-Both run with no bajutsu runtime, no driver of ours, and no AI at test time, which is the
-codegen output path exactly as a downstream team would run it. See [showcase](showcase.md) for the
-live runs.
+Both run with no bajutsu runtime, no driver of ours, and no AI at test time. That combination is
+the codegen output path exactly as a downstream team would run it. See [showcase](showcase.md) for
+the live runs.
