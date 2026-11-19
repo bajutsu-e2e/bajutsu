@@ -73,8 +73,9 @@ reached `main`. It had three jobs:
 | `measure` | Ran a matrix of two variants (`stock`, `slim`) by three attempts, six jobs in parallel |
 | `summarize` | Collected each job's timings into one table |
 
-Each `measure` job mirrored the gating `run` job of `ios-e2e.yml`. It ran the same nine scenario files
-with the same XCUITest environment variables. One deliberate difference made the boot measurable:
+Each `measure` job mirrored the gating `run` job of `ios-e2e.yml` as it stood at commit `303c491`.
+It ran that job's nine scenario files with the same XCUITest environment variables. The job has
+listed ten files on `main` since then. One deliberate difference made the boot measurable:
 the job booted the Simulator synchronously and timed it, instead of overlapping the boot with the
 download ([BE-0088](../BE-0088-overlap-simulator-boot/BE-0088-overlap-simulator-boot.md)).
 
@@ -107,8 +108,9 @@ Every run passed all nine scenario files, the slimmed ones included.
 
 The speed claim failed on the measured numbers:
 
-- **Boot.** A slimmed boot took 62–89 seconds against 46–47 for a normal stock boot. Writing the
-  overrides costs 15 seconds or more, and nothing in the boot wins it back.
+- **Boot.** A slimmed boot took 62–89 seconds against 46–47 for a normal stock boot. The experiment
+  timed the boot as one step, so it cannot say how much of that gap the override write accounts
+  for. Either way, nothing in the boot wins the gap back.
 - **Run.** The scenarios took 369–495 seconds slimmed against 404–426 stock. The spread within each
   variant is larger than any gap between them.
 
