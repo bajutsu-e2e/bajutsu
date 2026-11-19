@@ -1416,7 +1416,7 @@ Command builders are pure functions
 > the shared runner passes a deadline to every one-shot `simctl` subprocess.
 > The command itself
 > chooses the deadline: a long one for the commands whose duration the device or the app sets rather
-> than simctl (`bootstatus`, `boot`, `erase`, `install`, `uninstall`), a short one for everything
+> than simctl (`bootstatus`, `boot`, `erase`, `install`, `uninstall`, `privacy`), a short one for everything
 > else. The pasteboard read, `pbpaste`, takes a shorter bound still. Like the `pbcopy` write, it is
 > retried on simctl's transient exit 60.
 >

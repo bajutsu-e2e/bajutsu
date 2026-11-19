@@ -1049,7 +1049,7 @@ def make_driver(actuator, udid, *, base_url=None, runner_port=None) -> Driver:  
 
 > **すべての呼び出しに期限があります**（[BE-0363](../../roadmaps/BE-0363-simctl-subprocess-timeout/BE-0363-simctl-subprocess-timeout-ja.md)）:
 > 共有のランナーは、一回きりの `simctl` サブプロセスすべてに期限を渡します。
-> 値はコマンド自身から選ばれます。所要時間を simctl ではなくデバイスやアプリが決めるコマンド（`bootstatus`、`boot`、`erase`、`install`、`uninstall`）には長い側を、それ以外には短い側を当てます。
+> 値はコマンド自身から選ばれます。所要時間を simctl ではなくデバイスやアプリが決めるコマンド（`bootstatus`、`boot`、`erase`、`install`、`uninstall`、`privacy`）には長い側を、それ以外には短い側を当てます。
 > クリップボードを読む `pbpaste` には、さらに短い期限を当てます。書き込み側の `pbcopy` と同じく、simctl が一時的に返す exit 60 では読み直します。
 >
 > 返ってこない呼び出しは、CoreSimulator が固まったときに観測される症状です。

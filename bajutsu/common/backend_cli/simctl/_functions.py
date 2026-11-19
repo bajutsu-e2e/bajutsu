@@ -41,12 +41,16 @@ _GLOBAL_DOMAIN = "-globalDomain"
 # so its cost scales with the app under test — an input no bound can see. `uninstall` drives the same
 # install daemon in reverse, removing the bundle and its data container. The first one after a CI boot
 # outlived the 60-second bound in the on-device conformance lane, while the lease right after it
-# succeeded. Sized against the roughly
+# succeeded. `privacy` reaches the Simulator's TCC daemon, which a fresh boot is still bringing up:
+# `privacy reset all` right after a reboot (the locale pin's, or the recovery ladder's) outlived the
+# same bound in the actuation, run, and conformance lanes alike. Sized against the roughly
 # 80 seconds the iOS end-to-end workflow prices a CI Simulator boot at, since CI is both the slower
 # environment and the one where a hang matters; the headroom over that is deliberate, because the
 # bound exists to catch a call that will never return, not to police a slow one.
 _DEVICE_BLOCKING_TIMEOUT_S = 300.0
-_DEVICE_BLOCKING_SUBCOMMANDS = frozenset({"bootstatus", "boot", "erase", "install", "uninstall"})
+_DEVICE_BLOCKING_SUBCOMMANDS = frozenset(
+    {"bootstatus", "boot", "erase", "install", "uninstall", "privacy"}
+)
 
 # Every other command costs only simctl's own small, bounded work, so nothing about the app or the
 # scenario can stretch it — `list` returns in well under a second. This sits far above all of them,

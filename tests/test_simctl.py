@@ -800,6 +800,7 @@ def test_the_bound_is_chosen_from_the_subcommand() -> None:
         simctl.erase_cmd("U"),
         simctl.install_cmd("U", "/p.app"),
         simctl.uninstall_cmd("U", "com.x"),
+        simctl.privacy_cmd("U", "reset", "all", "com.x"),
     ):
         assert simctl._timeout_for(cmd) == simctl._DEVICE_BLOCKING_TIMEOUT_S
     for cmd in (
