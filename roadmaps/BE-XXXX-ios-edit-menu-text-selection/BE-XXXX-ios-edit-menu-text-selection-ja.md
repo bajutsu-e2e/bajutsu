@@ -48,24 +48,37 @@ Bajutsu は iOS を直せませんが、ショートカットに頼るのをや�
 
 ### Driver API の変更
 
-現在の `Driver.select_all()` は引数を取りません（`bajutsu/common/drivers/base/driver.py`）。`Element` もキーボードフォーカスの有無を持たないので、XCUITest ドライバは `query()` だけではタップや長押しの対象フィールドを特定できません。本項目は、このメソッドを `paste(sel)` と同じ形の `select_all(sel)` に変えます。変更は、このメソッドを宣言または呼び出すすべての箇所に及びます。
+現在の `Driver.select_all()` は引数を取りません（`bajutsu/common/drivers/base/driver.py`）。`Element` もキーボードフォーカスの有無を持たないので、XCUITest ドライバは `query()` だけではタップや長押しの対象フィールドを特定できません。本項目は、このメソッドを `paste(sel)` と同じ形の `select_all(sel)` に変えます。次の節で述べる理由から、`copy_selection()` も `copy_selection(sel)` に変えます。変更は、この 2 つのメソッドを宣言または呼び出すすべての箇所に及びます。
 
 - `Driver` プロトコルと、トレース用のラッパー（`bajutsu/common/drivers/tracing.py`）
 - 6 つのドライバ：XCUITest、live XCUITest、adb、Playwright、WebView コンテキスト、フェイク
 - `bajutsu/common/orchestrator/actions/handlers/gestures.py` の `select` と `clear` のハンドラ（ステップの selector を渡します。`select` は自前のフォーカス用タップを常にやめ、`clear` は `TEXT_SELECTION` を持つバックエンドの場合だけやめます）
+- `bajutsu/common/orchestrator/actions/_registry.py` の `copy` のハンドラと `SelectionState`（選択状態は、その選択を作った `select` ステップの selector を記録し、`copy` はその selector を `copy_selection(sel)` に渡します）
 
-ハンドラは、先にフィールドをタップするのをやめます。`_do_paste` が `paste` を呼ぶのと同じく、`_tap_with_recovery(lambda: driver.select_all(sel), driver, sel)` を呼びます。`paste(sel)` と同じく、`select_all(sel)` がフィールドへのフォーカスを自分で合わせます。iOS ではフォーカスのあるフィールドをタップすると編集メニューが開くので、ハンドラが別にタップすると、ドライバがラベルを数える前に「Select All」項目が画面に出てしまい、ドライバは新しく増えた項目を見つけられません。XCUITest 以外のドライバは、フィールドをタップしてから今までどおりに操作します。`clear` のハンドラは、最初にフィールドの現在の値を読むところを残します。フォーカス用のタップを `select_all(sel)` に任せるのは、`TEXT_SELECTION` を持つバックエンドの場合だけです。空のフィールドと、この機能を持たないバックエンドでは、文字数ぶんのバックスペースがフォーカスのあるフィールドに効くので、ハンドラが自分でタップします。`copy_selection()` は、`select` が残した選択範囲に対して働くので、形を変えません。
+ハンドラは、先にフィールドをタップするのをやめます。`_do_paste` が `paste` を呼ぶのと同じく、`_tap_with_recovery(lambda: driver.select_all(sel), driver, sel)` を呼びます。`paste(sel)` と同じく、`select_all(sel)` がフィールドへのフォーカスを自分で合わせます。iOS ではフォーカスのあるフィールドをタップすると編集メニューが開くので、ハンドラが別にタップすると、ドライバがラベルを数える前に「Select All」項目が画面に出てしまい、ドライバは新しく増えた項目を見つけられません。XCUITest 以外のドライバは、フィールドをタップしてから今までどおりに操作します。`clear` のハンドラは、最初にフィールドの現在の値を読むところを残します。フォーカス用のタップを `select_all(sel)` に任せるのは、`TEXT_SELECTION` を持つバックエンドの場合だけです。空のフィールドと、この機能を持たないバックエンドでは、文字数ぶんのバックスペースがフォーカスのあるフィールドに効くので、ハンドラが自分でタップします。XCUITest 以外のドライバは、`copy_selection(sel)` が受け取る selector を使わず、今までどおり有効な選択範囲をコピーします。
 
 ### XCUITest ドライバでの操作
 
 Python の XCUITest ドライバ（`bajutsu/common/drivers/xcuitest/xcuitest_driver.py`）は、2 つの操作を既存の基本操作（`tap`、`long_press`、`query`）の組み合わせで実現します。同じドライバの `paste` メソッドと同じ作り方で、Runner のエンドポイントは使いません。
 
-- **`select_all`** は、画面上の「Select All」ラベルの数を数えてから、そのステップで最初の操作として、`sel` が指すフィールドをタップします。すでにフォーカスのあるフィールドをタップすると、編集メニューが開きます。1 秒以内に新しい「Select All」項目が現れない場合は、代わりにフィールドを長押しします。2 回目のタップは、ダブルタップとして扱われるからです。そのうえで、要素が増えた「Select All」ラベルをタップします。
-- **`copy_selection`** は、select-all の直後から画面上で開いている「Copy」項目をタップします。「Select All」を押すと、iOS はメニューを「Cut」「Copy」「Paste」を並べたものに切り替えるので、追加の操作は要りません。`select_all` は、自分の操作の前の時点での「Copy」ラベルの数を保持します。`copy_selection` は、その時点から要素が増えた「Copy」ラベルだけを対象にします。
+- **`select_all`** は、画面上の「Select All」ラベルの数を数えてから、そのステップで最初の操作として、`sel` が指すフィールドをタップします。すでにフォーカスのあるフィールドをタップすると編集メニューが開くことがあります（BE-0489）が、後述の確認では `type` ステップの直後には開きませんでした。1 秒以内に新しい「Select All」項目が現れない場合は、代わりにフィールドを長押しします。2 回目のタップは、ダブルタップとして扱われるからです。そのうえで、要素が増えた「Select All」ラベルをタップします。
+- **`copy_selection`** は、`select` が残したメニューに頼りません。画面に残っている編集メニューを閉じてから、`sel` が指すフィールドを同じ手順で全選択し、自分の操作で増えた「Copy」項目をタップします。「Select All」を押すと、iOS はメニューを「Cut」「Copy」「Paste」を並べたものに切り替えます。`select` が対応するのは `mode: all` だけで、フィールドの文字列を変えうるステップはどれも選択を終わらせるので、全選択をやり直せば `select` が作った選択範囲がそのまま再現されます。そのため `select` → `copy` → `copy` の並びも動き続け、ラベルの数がステップをまたいで持ち越されることもありません。
+- **`paste`** にも、同じ最初の操作を加えます。`select` が開いたままにした編集メニューには「Paste」項目があるので、現在の `paste` は「a Paste item was already on screen before the gesture」で止まります。ドライバは、まずそのメニューを閉じ、項目が消えるのを待ちます。消えずに残る「Paste」ラベルはアプリの要素であり、既存のエラーがそのまま名指しします。
+
+2 つの規則は、iOS 26.5 Simulator での編集メニューの振る舞いから決まります。SwiftUI の showcase アプリで、次の 4 つを確かめました。
+
+| 確認したこと | 結果 |
+|---|---|
+| `type` ステップの直後にフィールドをタップする | メニューは開かず、続く 0.6 秒の長押しで「Select All」が現れました |
+| 「Copy」をタップする | メニューが閉じ、選択範囲も消えました。その後の長押しではメニューが開きませんでした |
+| メニューが開いている間にフィールドをタップする | メニューが閉じ、選択範囲も消えました |
+| `select` のメニューが開いたまま `paste` を実行する | 「a Paste item was already on screen before the gesture」で失敗しました |
+
+つまり、フィールドへのタップで残ったメニューを閉じられる一方、選択範囲を保ったままメニューを開き直す手段は、後続のステップにはありません。そこで、メニューを使う各操作は、メニューを閉じた状態から始めて自分でメニューを開きます。
 
 操作の前にラベルを数えておくことで、アプリ内の要素を取り違えずに済みます。アプリに「Copy」というボタンがあっても、そのボタンは操作の前から画面にあるので、メニューの項目には数えません。アプリの要素とメニューの項目が同じラベルを持つときは、最後のタップの対象が一意に決まらず、ステップは失敗します（プライムディレクティブ 2）。メニューが現れない場合、ステップは `ElementNotFound` を送出し、待っていた項目の名前をメッセージに含めます。
 
-`clear` ステップは、`select_all` のあとにバックスペースを 1 回送ります（`bajutsu/common/orchestrator/actions/handlers/gestures.py`）。ハンドラはフォーカス用のタップを `select_all(sel)` に任せるようになりますが、バックスペースは編集メニューが作った選択範囲をそのまま消すので、それ以外の手順は変わりません。残った文字を文字数ぶん消し直す `clear` のフォールバックも、そのまま残します。
+`clear` ステップは、`select_all(sel)` のあとにバックスペースを 1 回送ります（`bajutsu/common/orchestrator/actions/handlers/gestures.py`）。ハンドラはフォーカス用のタップを `select_all(sel)` に任せるようになりますが、バックスペースは編集メニューが作った選択範囲をそのまま消すので、それ以外の手順は変わりません。残った文字を文字数ぶん消し直す `clear` のフォールバックも、そのまま残します。
 
 ### ローカライズされたメニューのラベル
 
@@ -93,7 +106,7 @@ Python の XCUITest ドライバ（`bajutsu/common/drivers/xcuitest/xcuitest_dri
 | `copy` | `app.staticTexts["Copy"]` の出現を待ってタップします。 |
 | `clear` | 上の `select` の手順のあと、`XCUIKeyboardKey.delete` を 1 回送ります。 |
 
-生成する `paste` と同じく、これらのラベルは英語です。別の言語にローカライズしたアプリでは、書き出したテストに独自のラベルが必要になります。
+生成する `copy` は、直前の `select` が残した項目をタップするので、書き出したテストで `copy` を 2 回続けるには、`select` の手順をもう一度入れる必要があります。生成する `paste` と同じく、これらのラベルは英語です。別の言語にローカライズしたアプリでは、書き出したテストに独自のラベルが必要になります。
 
 ### レーンとドキュメント
 
@@ -106,7 +119,7 @@ Python の XCUITest ドライバ（`bajutsu/common/drivers/xcuitest/xcuitest_dri
 
 本項目が変えるのは、ローカルの XCUITest の経路だけです。live Appium / WebDriver の経路（BE-0238）は、`select`、`copy`、`paste` に対して引き続き `UnsupportedAction` を送出します。これらのステップをドライバ側の組み合わせで実現するようになると、その経路にも同じ操作を載せられる見込みが立ちますが、本項目では配線しません。
 
-Flutter の showcase も範囲外です。`run-flutter` ターゲットは XCUITest バックエンドで Flutter のアプリを操作しますが、Flutter は UIKit の編集メニューではなく、独自のテキスト選択ツールバーを描きます。フォーカスのある Flutter のフィールドをタップしてそのツールバーが開くか、どのラベルを持つかは、まだ誰も確かめていません。そのため `run-flutter` では、`paste.yaml` と `text_editing.yaml` を実行から外したままにします。2 つのファイルに `textselection` タグを付け、`run-flutter` だけがこのタグを除外します。SwiftUI と UIKit の一括実行には、どちらのファイルも含めます。
+Flutter の showcase も範囲外です。`run-flutter` ターゲットは XCUITest バックエンドで Flutter のアプリを操作しますが、Flutter は UIKit の編集メニューではなく、独自のテキスト選択ツールバーを描きます。フォーカスのある Flutter のフィールドをタップしてそのツールバーが開くか、どのラベルを持つかは、まだ誰も確かめていません。そのため `run-flutter` では、`paste.yaml` と `text_editing.yaml` を実行から外したままにします。2 つのファイルに `textselection` タグを付け、`run-flutter` だけがこのタグを除外します。SwiftUI と UIKit の一括実行には、どちらのファイルも含めます。ただし、この除外は後退を避けるものではなく、後退を記録するものです。ショートカットと 2 つの Runner エンドポイントがなくなると、Flutter のツールバーが同じラベルを持たない限り、XCUITest バックエンドで Flutter のアプリを操作したときに `select`、`copy`、`clear` が動かなくなります。`select_all` が先に、存在しないメニューに対して `ElementNotFound` を送出するので、`clear` の文字数ぶんのバックスペースによるフォールバックでも補えません。手元の Flutter SDK が古く showcase アプリをビルドできなかったため、本提案では Flutter のツールバーを実機で確かめられていません。実装の最初にこれを確かめます。ツールバーが「Select All」と「Copy」を持つなら除外を外し、持たないなら `docs/drivers.md` の Flutter の制限の一覧に追記します。
 
 ## 検討した代替案
 
@@ -126,12 +139,14 @@ iOS 26.5 Simulator では、編集メニューを使うと `select` や `copy` 1
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] Driver API：フィールドへのフォーカスを自分で合わせる `select_all(sel)`（プロトコル、トレース用ラッパー、すべてのドライバ、`select` と `clear` のハンドラ）
+- [ ] Driver API：フィールドへのフォーカスを自分で合わせる `select_all(sel)` と、`SelectionState` が記録する selector を受け取る `copy_selection(sel)`（プロトコル、トレース用ラッパー、すべてのドライバ、`select`、`clear`、`copy` のハンドラ）
 - [ ] 「Select All」と「Copy」のラベル表と、それを作り直す抽出スクリプトの拡張
 - [ ] 編集メニューを使う XCUITest ドライバの `select_all` と `copy_selection`、およびユニットテスト
 - [ ] Runner：契約、プロトコル、ルーター、ハンドラ、provider、フェイクからの `/selectAll` と `/copy` の削除
 - [ ] `select`、`copy`、`clear` の XCUITest コード生成とテスト
 - [ ] `actuation` レーンの順序、`pasteboard` タグと除外リストの整理、`run-flutter` での `textselection` タグ、iOS 26.5 Simulator での確認（SwiftUI と UIKit のアプリ）
+- [ ] 前のステップが残した編集メニューを閉じてから操作する `paste`
+- [ ] Flutter：実機でツールバーのラベルを確かめ、`textselection` の除外を外すか、`docs/drivers.md` に制限を記録する
 - [ ] 英語と日本語のドキュメント
 
 ## 参考

@@ -77,13 +77,17 @@ without an immediate read-back, before `text_editing.yaml`. The `pasteboard` tag
 `Driver.select_all()` takes no argument today (`bajutsu/common/drivers/base/driver.py`), and an
 `Element` carries no keyboard-focus field. The XCUITest driver therefore cannot name the field to tap
 or long-press from `query()` alone. This item changes the method to `select_all(sel)`, the same shape
-as `paste(sel)`. The change reaches every place that declares or calls the method:
+as `paste(sel)`, and `copy_selection()` to `copy_selection(sel)` for the reason the next section
+gives. The change reaches every place that declares or calls the two methods:
 
 - the `Driver` protocol and the tracing wrapper (`bajutsu/common/drivers/tracing.py`);
 - the six drivers: XCUITest, live XCUITest, adb, Playwright, the WebView context, and the fake driver;
 - the `select` and `clear` handlers in `bajutsu/common/orchestrator/actions/handlers/gestures.py`,
   which pass the step's selector. `select` drops its own focusing tap outright, and `clear` drops
-  it only on a backend with `TEXT_SELECTION`.
+  it only on a backend with `TEXT_SELECTION`;
+- the `copy` handler and `SelectionState` in `bajutsu/common/orchestrator/actions/_registry.py`. The
+  selection state records the selector of the `select` step that established it, and `copy` passes
+  that selector to `copy_selection(sel)`.
 
 The handlers no longer tap the field first; they call
 `_tap_with_recovery(lambda: driver.select_all(sel), driver, sel)`, the way `_do_paste` calls `paste`.
@@ -93,8 +97,8 @@ item on screen before the driver counts the labels, and the driver would never s
 driver other than XCUITest taps the field and then actuates as it does today. The `clear` handler still reads the field's current value first. It hands the focusing tap to
 `select_all(sel)` only on a backend with `TEXT_SELECTION`. On an empty field, and on a backend
 without that capability, it keeps its own tap, because its counted backspace run acts on whichever
-field has focus. `copy_selection()` keeps its shape, since it acts on the selection that
-`select` left.
+field has focus. Every driver other than XCUITest ignores the selector that `copy_selection(sel)`
+receives and copies the active selection as it does today.
 
 ### Actuation in the XCUITest driver
 
@@ -102,14 +106,35 @@ The Python XCUITest driver (`bajutsu/common/drivers/xcuitest/xcuitest_driver.py`
 actions from its existing primitives (`tap`, `long_press`, and `query`), the way its `paste` method
 already does. No runner endpoint is involved.
 
-- **`select_all`** counts the "Select All" labels on screen, then taps the field that `sel` names, before any other touch in the step. A tap on a
-  field that already has focus raises the edit menu. If no new "Select All" item appears within a
+- **`select_all`** counts the "Select All" labels on screen, then taps the field that `sel` names, before any other touch in the step. A tap on a field that already has focus can raise the edit menu
+  (BE-0489), though the probes below saw it fail to right after a `type` step. If no new "Select All" item appears within a
   second, the driver long-presses the field instead, since a second tap would read as a double-tap.
   The driver then taps the one "Select All" label that gained an element.
-- **`copy_selection`** taps the "Copy" item that the select-all left on screen. After "Select All",
-  iOS replaces the menu with one that holds "Cut", "Copy", and "Paste", so no further gesture is
-  needed. `select_all` keeps the "Copy" label counts from before its own gesture. `copy_selection`
-  accepts only a "Copy" label that gained an element since then.
+- **`copy_selection`** does not rely on the menu that `select` left behind. It dismisses any edit
+  menu still on screen, runs the same select-all gesture on the field that `sel` names, and taps the
+  "Copy" item that its own gesture added. After "Select All", iOS replaces the menu with one that
+  holds "Cut", "Copy", and "Paste". Running the select-all again reproduces the selection that
+  `select` made, because `select` supports `mode: all` alone, and every step that could change the
+  field's text already ends the selection. A `select` → `copy` → `copy` sequence therefore keeps
+  working, and no label count carries over from one step to the next.
+- **`paste`** gains the same first move. An edit menu that `select` left up holds a "Paste" item, so
+  today's `paste` would stop with "a Paste item was already on screen before the gesture". The driver
+  first dismisses that menu and waits for its items to leave. A "Paste" label that stays is app
+  content, and the existing error still names it.
+
+The edit menu's own behavior on the iOS 26.5 Simulator dictates both rules. Four probes on the
+SwiftUI showcase app observed it:
+
+| Probe | Observed |
+|---|---|
+| Tap the field right after a `type` step | No menu appeared; a 0.6-second long-press then raised "Select All" |
+| Tap "Copy" | The menu closed and the selection ended; a later long-press raised no menu |
+| Tap the field while the menu is up | The menu closed and the selection ended |
+| `paste` while `select`'s menu is up | Failed: "a Paste item was already on screen before the gesture" |
+
+A tap on the field therefore dismisses a lingering menu, and nothing in a later step can reopen a
+menu for a selection that still exists. Each menu-driven action starts from a dismissed menu and
+raises its own.
 
 Counting labels before the gesture keeps app content out of the match. A button in the app labeled
 "Copy" is already on screen before the gesture, so it never counts as the menu's item. When the app's
@@ -117,7 +142,7 @@ own element shares the menu item's label, the final tap resolves ambiguously and
 directive 2). When the menu never appears, the step raises `ElementNotFound` and names the item it
 waited for.
 
-The `clear` step calls `select_all` and then one backspace (`bajutsu/common/orchestrator/actions/handlers/gestures.py`).
+The `clear` step calls `select_all(sel)` and then one backspace (`bajutsu/common/orchestrator/actions/handlers/gestures.py`).
 The handler now leaves the focusing tap to `select_all(sel)`, and the rest of the sequence stays as it is,
 because the backspace deletes whatever selection the edit menu made. `clear` also keeps its fallback that deletes any remaining text by count.
 
@@ -153,7 +178,9 @@ The generated XCUITest code follows the driver, as it already does for `paste`
 | `copy` | A wait for `app.staticTexts["Copy"]`, then a tap on it. |
 | `clear` | The `select` sequence above, then one `XCUIKeyboardKey.delete`. |
 
-Like the generated `paste`, these labels are English. An app localized into another language needs
+The generated `copy` taps the item that the preceding `select` left on screen, so a second `copy` in
+a row needs the `select` sequence again in the exported test. Like the generated `paste`, these
+labels are English. An app localized into another language needs
 its own label in the exported test.
 
 ### Lanes and documentation
@@ -181,7 +208,14 @@ XCUITest backend, and Flutter draws its own text-selection toolbar rather than U
 Nobody has checked whether a tap on a focused Flutter field raises that toolbar, or which labels it
 exposes. `run-flutter` therefore keeps `paste.yaml` and `text_editing.yaml` out of its run, through a
 `textselection` tag that both files carry and that `run-flutter` alone excludes. The SwiftUI and
-UIKit bulk runs include both files.
+UIKit bulk runs include both files. That exclusion records a regression rather than avoiding one:
+once the shortcuts and the two runner endpoints are gone, `select`, `copy`, and `clear` stop working
+on a Flutter app through the XCUITest backend, unless Flutter's toolbar exposes the same labels.
+`clear`'s counted-backspace fallback does not cover the gap, since `select_all` raises
+`ElementNotFound` on the absent menu first. The local Flutter SDK was too old to build the showcase
+app, so this proposal could not check Flutter's toolbar on a device. The implementation checks it
+first. If the toolbar exposes "Select All" and "Copy", the exclusion goes away. Otherwise
+`docs/drivers.md`'s Flutter limitation list gains that entry.
 
 ## Alternatives considered
 
@@ -203,12 +237,14 @@ deterministic step outweighs it.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Driver API: `select_all(sel)` that focuses the field itself, across the protocol, the tracing wrapper, every driver, and the `select` and `clear` handlers.
+- [ ] Driver API: `select_all(sel)` that focuses the field itself, and `copy_selection(sel)` with `SelectionState` recording the selector, across the protocol, the tracing wrapper, every driver, and the `select`, `clear`, and `copy` handlers.
 - [ ] Label tables for "Select All" and "Copy", with the extraction script extended to regenerate them.
 - [ ] XCUITest driver `select_all` and `copy_selection` through the edit menu, with unit tests.
 - [ ] Runner: remove `/selectAll` and `/copy` from the contract, protocol, router, handler, provider, and fakes.
 - [ ] XCUITest codegen for `select`, `copy`, and `clear`, with tests.
 - [ ] `actuation` lane order, the `pasteboard` tag and exclude lists, the `textselection` tag on `run-flutter`, verified on the iOS 26.5 Simulator (SwiftUI and UIKit apps).
+- [ ] `paste` dismisses an edit menu an earlier step left on screen.
+- [ ] Flutter: check the toolbar's labels on a device, then drop the `textselection` exclusion or record the limitation in `docs/drivers.md`.
 - [ ] English and Japanese documentation.
 
 ## References
