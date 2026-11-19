@@ -1,0 +1,58 @@
+# The device-state steps adb gained in BE-0478, confirmed on the Android emulator lane (unit 6):
+# `background` / `foreground` over the Home key, `overrideStatusBar` / `clearStatusBar` over the System
+# UI demo mode, and the per-app locale `preconditions.device.android.locale` applies before launch.
+#
+# Each step is checked by what it changes, never by a step reporting success:
+#   - `background` waits until the app loses the resumed activity, so the absence check right after it
+#     reads the launcher's tree, not the app's.
+#   - `foreground` brings back the same process; the Stable catalog is on screen again.
+#   - The `visual` expectation compares only the top 100-pixel strip. The demo mode freezes every icon,
+#     so the strip is identical from run to run; a live clock would churn it within a minute. The rest
+#     of the screen is masked (visual_android.yaml guards the app's own pixels). The pixel_6 status bar
+#     is about 127 pixels tall, so the strip holds no app pixels. `threshold` is 0: it is a percentage of the whole
+#     screen, masked pixels included, so even a small value would let one changed clock glyph through.
+#     The CI renderer is fixed and pixelmatch's `colorTolerance` already absorbs sub-visible noise.
+#   - `sys.locale.value` is the language tag of the app's own configuration, so it proves the locale
+#     reached the app, beyond the environment's read-back of `cmd locale get-app-locales`.
+#
+# The compare sits in `expect` rather than in a step: the override is still in force there, since
+# `cleanup` runs only once the verdict exists, and `bajutsu approve` promotes an `expect` baseline
+# (baselines_android/README.md). `clearStatusBar` sits in an `always` cleanup rule, so the live bar
+# comes back on every path out of `steps`. The demo mode would otherwise outlive the scenario on the
+# emulator.
+#
+# The baseline (baselines_android/status_bar.png) is host-specific, like stable.png, so it is recorded
+# on the CI lane and committed (see baselines_android/README.md). The mask box is in screenshot pixels
+# for the pixel_6 x86_64 profile (1080×2400) the CI lane pins. Tagged `android` so the iOS bulk lanes
+# exclude it: iOS covers `overrideStatusBar` in widget.yaml.
+- name: background, foreground, and a frozen status bar under a per-app locale (android)
+  tags: [visual, device, android]
+  description: >-
+    Send the app home and bring it back, freeze the status bar through the demo mode and compare the
+    strip against its baseline, then confirm the per-app locale reached the app's configuration.
+  preconditions:
+    device:
+      android:
+        locale: ja_JP
+    subject:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
+  steps:
+    - wait: { for: { id: stable.row.1 }, timeout: 10 }
+      capture: [video, deviceLog]
+    - background: {}
+    - assert:
+        - exists: { id: stable.row.1, negate: true }
+    - foreground: {}
+    - wait: { for: { id: stable.row.1 }, timeout: 10 }
+    - overrideStatusBar: { time: "9:41", batteryLevel: 100, batteryState: charged, cellularBars: 4, wifiBars: 3 }
+    - tap: { label: "Permissions", traits: [button] }
+    - wait: { for: { id: perm.requestNotif }, timeout: 10 }
+    - scroll: { to: { id: sys.locale.value }, direction: down }
+  expect:
+    - value: { sel: { id: sys.locale.value }, equals: "ja-JP" }
+    - visual: { baseline: status_bar.png, threshold: 0.0, exclude: [{ x: 0, y: 100, w: 1080, h: 2300 }] }
+  cleanup:
+    - on: always
+      steps:
+        - clearStatusBar: {}

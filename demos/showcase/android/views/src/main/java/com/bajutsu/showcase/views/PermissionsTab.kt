@@ -72,6 +72,11 @@ class PermissionsTab(private val activity: MainActivity) {
             pastedValue.text = "Pasted: $text"
             pastedValue.stateValue(text)
         }.aid("sys_paste")
+        // The language the app's own configuration carries (SPEC §5.4), so a scenario can see the
+        // per-app locale `runsOn.android.locale` (or its
+        // `preconditions.device.android.locale` override) applied (BE-0478), not only the read-back.
+        val locale = activity.resources.configuration.locales[0].toLanguageTag()
+        val localeValue = activity.secondaryLabel("Locale: $locale").aid("sys_locale_value").stateValue(locale)
 
         // `selectPhotos` (SPEC §5.4): the system photo picker in its two modes, mirroring the picked
         // count back to perm.photos.value. Multi-selection confirms with the picker's add button;
@@ -107,6 +112,7 @@ class PermissionsTab(private val activity: MainActivity) {
             copy,
             paste,
             pastedValue,
+            localeValue,
             activity.label("Photos"),
             openPhotos,
             openPhoto,

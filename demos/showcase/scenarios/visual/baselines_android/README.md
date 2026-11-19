@@ -1,7 +1,8 @@
 # Android visual baselines (committed)
 
-This folder holds the baseline PNGs for the Android visual regression check
-(`../visual_android.yaml`, BE-0208 unit 4).
+This folder holds the baseline PNGs for the Android visual regression checks:
+`stable.png` for the Stable catalog (`../visual_android.yaml`, BE-0208 unit 4) and `status_bar.png`
+for the status-bar strip the System UI demo mode freezes (`../status_bar_android.yaml`, BE-0478).
 
 The iOS VRT demo (`../../visual.yaml`) keeps baselines that are device-specific and **gitignored**
 (regenerated locally). These Android baselines are instead **committed**, and the `e2e-visual`
@@ -16,7 +17,7 @@ emulator diverge per pixel. The baseline must be **captured on the CI lane**, no
    screenshot in the `android-e2e-visual-run` artifact (`runs/`).
 2. Download that artifact and promote the captured screenshot to a baseline here with
    `bajutsu approve --baselines demos/showcase/scenarios/visual/baselines_android <run-dir>`, then
-   commit the resulting `stable.png`.
+   commit the resulting PNG.
 3. Re-run the lane. The comparison now passes.
 
 Regenerate the baseline the same way whenever a deliberate UI change moves pixels.

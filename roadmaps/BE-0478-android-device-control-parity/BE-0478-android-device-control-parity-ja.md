@@ -7,9 +7,9 @@
 |---|---|
 | 提案 | [BE-0478](BE-0478-android-device-control-parity-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0478") |
-| 実装 PR | [#2399](https://github.com/bajutsu-e2e/bajutsu/pull/2399)（単位 1〜5） |
+| 実装 PR | [#2399](https://github.com/bajutsu-e2e/bajutsu/pull/2399)（単位 1〜5）、[#2480](https://github.com/bajutsu-e2e/bajutsu/pull/2480)（単位 6） |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0211](../BE-0211-android-device-control/BE-0211-android-device-control-ja.md), [BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities-ja.md), [BE-0035](../BE-0035-device-control-primitives/BE-0035-device-control-primitives-ja.md), [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md), [BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md) |
 <!-- /BE-METADATA -->
@@ -287,7 +287,7 @@ adb -s <serial> logcat -v year,usec,zone -T "<MM-DD hh:mm:ss.mmm>" -s <tag>:V
 - [x] アプリ単位のロケールによる `runsOn.android.locale` と、2段階の API レベル検査
 - [x] タグで絞り込んだ `logcat` による `appTrace` と、`APP_TRACE` の宣言
 - [x] `docs/` と `docs/ja/` のドキュメント
-- [ ] Android エミュレータのレーンでの実機確認
+- [x] Android エミュレータのレーンでの実機確認
 
 ログ：
 
@@ -299,6 +299,11 @@ adb -s <serial> logcat -v year,usec,zone -T "<MM-DD hh:mm:ss.mmm>" -s <tag>:V
     システムアラートのラベル照合にも使われ、そちらはエミュレータの言語のままでなければならないからです。
   - 設定の表（BE-0467）は、Android の `locale` を未対応としていました。この変更で対応済みにし、設定の
     メッセージがルート自身のプラットフォーム（`runsOn.android.locale`）を示すようにしました。
+- 2026-11-19 — 単位 6 を着地させました（[#2480](https://github.com/bajutsu-e2e/bajutsu/pull/2480)）。android の `e2e-visual` ターゲットに
+  `status_bar_android.yaml` を加えました。アプリ単位のロケールを `ja_JP` にしたうえで `background` と
+  `foreground` を実行し、固定したステータスバーの帯を CI のレーンで採取したベースラインと比較します。
+  showcase のアプリには Android 専用の表示欄 `sys.locale.value` を追加しました。これでシナリオは、
+  環境による読み戻しに加えて、アプリ自身の構成に届いたロケールも確かめられます。
 
 ## 参考
 

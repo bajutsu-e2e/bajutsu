@@ -27,6 +27,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import java.util.Locale
@@ -99,6 +100,11 @@ fun PermissionsScreen(model: AppModel) {
                 Text("Paste")
             }
             Text("Pasted: ${model.pasted}", Modifier.aid("sys.paste.value").stateValue(model.pasted))
+            // The language the app's own configuration carries (SPEC §5.4), so a scenario can see the
+            // per-app locale `runsOn.android.locale` (or its
+            // `preconditions.device.android.locale` override) applied (BE-0478), not only the read-back.
+            val locale = LocalConfiguration.current.locales[0].toLanguageTag()
+            Text("Locale: $locale", Modifier.aid("sys.locale.value").stateValue(locale))
 
             Text("Photos", style = MaterialTheme.typography.titleMedium)
             TextButton(onClick = { photosLauncher.launch(imagesOnly) }, modifier = Modifier.aid("perm.openPhotoPicker")) {
