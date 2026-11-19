@@ -98,7 +98,8 @@ at scenario load on every backend, before any device work. The rules measure the
   The shared size function catches it and raises `ValueError`. The message names the offending key path
   and no value. An unquoted date then fails at load with a clean validation error.
 
-`simctl push` already rejects both cases itself, after device work starts and with its own message.
+`simctl push` already rejects a missing `aps` key and an oversized payload itself, after device work
+starts and with its own message.
 The model validator fails earlier and names the cause. The mapping holds no copy of either rule.
 The measure counts the escaped text that the iOS path hands to `simctl push`.
 That matches what `simctl` checks.
@@ -482,7 +483,8 @@ push-after-`background` case runs through bajutsu, which needs the capability.
 
 Unit 3 inverts the tests that pin the old rejection in `tests/test_android_device_control.py`:
 
-- `test_push_scenario_is_rejected_by_preflight_on_adb` now expects preflight to admit `push.yaml`.
+- `test_push_scenario_is_rejected_by_preflight_on_adb` becomes
+  `test_push_scenario_is_admitted_by_preflight_on_adb` and expects preflight to admit `push.yaml`.
 - `test_adb_advertises_the_device_control_subset_it_can_honor` now asserts `DC_PUSH` is in `caps`.
 - The `push` parameter of `test_preflight_rejects_unsupported_steps_on_adb` moves to
   `test_preflight_admits_supported_steps_on_adb`.

@@ -102,7 +102,7 @@ showcase アプリが表示するタイトルを検証します。parity の表�
   この例外は問題のあるキーのパスを示し、値は示しません。
   引用符のない日付は、読み込み時に明確な検証エラーで失敗します。
 
-`simctl push` は、この2つの場合をすでに自分で拒否します。ただし、端末の操作が始まってからで、
+`simctl push` は、`aps` キーがない場合と、ペイロードが大きすぎる場合を、すでに自分で拒否します。ただし、端末の操作が始まってからで、
 メッセージも `simctl` 独自のものです。モデルの検証なら、より早い段階で原因を示して失敗できます。対応づけの側には、どちらの規則の写しも置きません。
 この長さは、iOS の経路が `simctl push` に渡すエスケープ後の文字列で数えるので、`simctl` が検査する長さと一致します。
 基本ラテン文字の範囲外の文字を含む場合は、エンコード後のバイト数で数える APNs の上限より厳しくなります。
@@ -487,6 +487,7 @@ API 34 で `background` ステップの後にプッシュする場合は、作�
 作業単位 3 では、`tests/test_android_device_control.py` にある、従来の拒否を固定したテストを反転します。
 
 - `test_push_scenario_is_rejected_by_preflight_on_adb` は、事前検査が `push.yaml` を通すことを確かめます。
+  名前も `test_push_scenario_is_admitted_by_preflight_on_adb` に変えます。
 - `test_adb_advertises_the_device_control_subset_it_can_honor` は、`DC_PUSH` が `caps` に含まれることを確かめます。
 - `test_preflight_rejects_unsupported_steps_on_adb` の `push` のパラメータは、
   `test_preflight_admits_supported_steps_on_adb` に移します。
@@ -506,9 +507,9 @@ API 34 で `background` ステップの後にプッシュする場合は、作�
 - `controller` のコメント（`android_environment.py`、591〜596 行目）は、`push` が例外を送出すると書いています。
   コメントの書き出しは「The subset Android can honor」です。
 - `bajutsu/common/drivers/base/capability.py`（94〜96 行目）と
-  `bajutsu/common/capability/capability_preflight.py`（43〜45 行目）のコメントは、Android エミュレータを名指ししています。
-  `setLocation` とクリップボードだけを支える backend だと書いているからです。
-  名指しをやめ、ファミリーの一部を支える backend として一般的に書き直します。
+  `bajutsu/common/capability/capability_preflight.py`（43〜45 行目）のコメントは、`setLocation` と
+  クリップボードだけに対応する backend の例として、Android エミュレータを名指ししています。
+  名指しをやめ、一族の一部に対応する backend として一般的に書き直します。
 - `tests/test_capability_preflight.py` は、`_SUBSET` を Android エミュレータと説明しています（46〜48 行目）。
   エミュレータが対応できない操作の例にも `push` を使っています（270 行目と 289 行目）。
   `_SUBSET` は合成した一部対応の backend だと書き直します。
