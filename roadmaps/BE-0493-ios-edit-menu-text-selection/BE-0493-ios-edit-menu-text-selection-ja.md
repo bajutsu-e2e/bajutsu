@@ -1,14 +1,14 @@
-[English](BE-XXXX-ios-edit-menu-text-selection.md) · **日本語**
+[English](BE-0493-ios-edit-menu-text-selection.md) · **日本語**
 
-# BE-XXXX — iOS の select と copy をシステムの編集メニューで操作する
+# BE-0493 — iOS の select と copy をシステムの編集メニューで操作する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-ios-edit-menu-text-selection-ja.md) |
+| 提案 | [BE-0493](BE-0493-ios-edit-menu-text-selection-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **承認済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0493") |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0265](../BE-0265-text-editing-steps/BE-0265-text-editing-steps-ja.md)、[BE-0489](../BE-0489-paste-step/BE-0489-paste-step-ja.md)、[BE-0052](../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)、[BE-0381](../BE-0381-runner-openapi-contract/BE-0381-runner-openapi-contract-ja.md) |
 <!-- /BE-METADATA -->

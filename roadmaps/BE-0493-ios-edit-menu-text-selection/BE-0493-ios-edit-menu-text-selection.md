@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-ios-edit-menu-text-selection-ja.md)
+**English** · [日本語](BE-0493-ios-edit-menu-text-selection-ja.md)
 
-# BE-XXXX — Drive iOS select and copy through the system edit menu
+# BE-0493 — Drive iOS select and copy through the system edit menu
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-ios-edit-menu-text-selection.md) |
+| Proposal | [BE-0493](BE-0493-ios-edit-menu-text-selection.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0493") |
 | Topic | Platform support |
 | Related | [BE-0265](../BE-0265-text-editing-steps/BE-0265-text-editing-steps.md), [BE-0489](../BE-0489-paste-step/BE-0489-paste-step.md), [BE-0052](../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md), [BE-0381](../BE-0381-runner-openapi-contract/BE-0381-runner-openapi-contract.md) |
 <!-- /BE-METADATA -->
