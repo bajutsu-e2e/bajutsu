@@ -15,47 +15,59 @@
 
 ## はじめに
 
-`bajutsu run`でシナリオを実行するCIジョブは、いずれも`video`と`deviceLog`のエビデンスを取得します。
-ところが、オンデバイスの`conformance (adb)`・`fault-injection (adb)`と、そのiOS版である
-`conformance (xcuitest)`・`fault-injection (xcuitest)`は、いずれもpytestからバックエンドを直接
-操作しています。この取得を一切受け継いでいません。4つのジョブのどれで失敗が起きても、診断できる
-アーティファクトが残らないということです。本項目は、パイプラインがすでに提供しているこのインター
-バル型エビデンス（テスト1件につき1本の画面録画と1本のデバイスログストリーム）を4つのスイートすべて
-に追加します。録画とログは、それを生んだテストが失敗したときだけ残します。対象は各テスト自身の
-セットアップ以降に起きた失敗です。これにより、シナリオ駆動の失敗がすでに得ているのと同じ動画と
-デバイスログが手に入ります。このセットアップより前、つまりスイート自身のモジュールスコープの
-バックエンド起動中の失敗が残す隙間は、単位2で触れます。
+`bajutsu run`でシナリオを実行するCIジョブは、いずれもそのシナリオの`video`と`deviceLog`のエビデンスを
+取得します。オンデバイスの4つのジョブは取得しません。`conformance (adb)`、`fault-injection (adb)`、
+およびそのiOS版である`conformance (xcuitest)`、`fault-injection (xcuitest)`です。これらはpytestから
+バックエンドを直接操作しており、取得の仕組みを一切受け継いでいません。4つのどれで失敗が起きても、
+診断に使えるアーティファクトが残りません。
+
+本項目は、パイプラインがすでに提供しているインターバル型エビデンスを、4つのスイートすべてに追加します。
+エビデンスとは、テスト1件につき1本の画面録画と1本のデバイスログストリームです。録画とログは、それを
+生んだテストが失敗したときだけ残します。対象は各テスト自身のセットアップ以降に起きた失敗です。
+シナリオ駆動の失敗が得ているのと同じ動画とデバイスログが、これらの失敗にも付くようになります。
+セットアップより前に起きる失敗、つまりスイート自身のmoduleスコープのバックエンド起動中の失敗は、
+隙間として残ります。この隙間は単位2で述べます。
 
 ## 動機
 
 このギャップは仮説ではなく、実際に観測されています。プルリクエスト
-[#1520](https://github.com/bajutsu-e2e/bajutsu/pull/1520)（差分はシナリオYAMLへの`deviceLog`取得の
-追加のみ）で、`conformance (adb)`の`test_a_read_postdates_a_content_moving_gesture`が
+[#1520](https://github.com/bajutsu-e2e/bajutsu/pull/1520)の差分は、シナリオYAMLへの`deviceLog`取得の
+追加だけでした。そのプルリクエストで、`conformance (adb)`の
+`test_a_read_postdates_a_content_moving_gesture`が
 `bajutsu.drivers.base.ElementNotFound: scroll: {'id': 'conformance.scroll.row.19'} not found; the
-region did not change ... (end of content)`で失敗しました。これはまさに、画面録画さえあれば一目で
-判断がつくはずのスクロールタイミングのずれです。このジョブ自身のログは
-`No files were found with the provided path: runs/. No artifacts will be uploaded.`で終わっており、
-ワークフローの「Upload run artifacts」ステップ自体はすでに存在し、シナリオ駆動のAndroidジョブがいずれも
-書き出す`runs/`を対象にしているにもかかわらず、オンデバイスのpytestスイートはそこに何も書き出して
-いません。
+region did not change ... (end of content)`で失敗しました。この種のスクロールタイミングのずれは、
+画面録画があれば一目で判断がつきます。
 
-このエビデンス欠落は、取得コード自体の見落としではなく、これらのスイートがデバイスへ到達する経路
-そのものの結果です。`bajutsu/evidence/core.py`の`FileSink`は、シナリオの`capture:`リストに基づいて
-`video`/`deviceLog`のインターバルを開始・停止しますが、これは`bajutsu run`パイプライン
-（`bajutsu/runner/pool.py`）の内部で完結しています。一方、
-`tests/test_driver_conformance_ondevice_android.py`と`tests/test_fault_injection_ondevice_android.py`、
-そのiOS版である`tests/test_driver_conformance_ondevice.py`と`tests/test_fault_injection_ondevice.py`は、
-モジュールスコープのpytestフィクスチャから`launch_driver`を直接呼び出します。これは意図的な設計であり、
-すでに[BE-0334](../BE-0334-conformance-suite-infra-fault-recovery/BE-0334-conformance-suite-infra-fault-recovery-ja.md)
-が、同じ形のpytestハーネスを持つiOS側のconformanceスイート自身に、同じ理由でインフラ障害からの復旧を
-持たせています。パイプラインを経由しないことでドライバーレベルの契約テストが得られる一方、エビデンス
-取得を含め、パイプラインが無償で提供するものすべてを失う、という代償を払っています。iOSのconformance
-ジョブには、同じギャップがもう一段重なっています。そのCIワークフロー（`ios-e2e.yml`）はBE-0334の復旧
-回数レポートをアップロードするステップこそ持っていますが、`runs/`向けの「Upload run artifacts」ステップ
-自体が存在しません。同じワークフローの他のジョブはいずれもこのステップを持っています。`run`・
-`actuation`・`golden`・`bundled-runner`は共有の`bajutsu-e2e`コンポジットアクションからこのステップを
-受け取り、`fault-injection`・`visual`は自身のインラインステップとして持ち、`android-e2e.yml`の
-オンデバイスジョブもいずれも持っています。
+このジョブ自身のログは、`No files were found with the provided path: runs/. No artifacts will be
+uploaded.`で終わっています。ワークフローの「Upload run artifacts」ステップはすでに存在し、
+シナリオ駆動のAndroidジョブがいずれも書き出す`runs/`を対象にしています。それでも、オンデバイスの
+pytestスイートは、そのパスの下に何も書き出していません。
+
+エビデンスが欠ける原因は、これらのスイートがデバイスへ到達する経路にあります。取得コード自体に
+見落としがあるわけではありません。`bajutsu/evidence/core.py`の`FileSink`は、シナリオの`capture:`
+リストに基づいて`video`/`deviceLog`のインターバルを開始・停止します。この処理は`bajutsu run`
+パイプライン（`bajutsu/runner/pool.py`）の内部で完結しています。次の4つのテストファイルは、このパイプラインを
+経由しません。
+
+- `tests/test_driver_conformance_ondevice_android.py`
+- `tests/test_fault_injection_ondevice_android.py`
+- `tests/test_driver_conformance_ondevice.py`
+- `tests/test_fault_injection_ondevice.py`
+
+どのファイルも、moduleスコープのpytestフィクスチャから`launch_driver`を直接呼び出します。これは意図的な
+設計であり、[BE-0334](../BE-0334-conformance-suite-infra-fault-recovery/BE-0334-conformance-suite-infra-fault-recovery-ja.md)
+に記録されています。BE-0334は、同じ形のpytestハーネスを持つiOS側のconformanceスイートに、同じ理由で
+インフラ障害からの復旧を持たせました。パイプラインを経由しないことで、ドライバーレベルの契約テストが
+得られます。その代償として、エビデンス取得を含め、パイプラインが無償で提供するものをすべて失います。
+
+iOSのconformanceジョブには、同じギャップがもう一段重なっています。そのCIワークフロー（`ios-e2e.yml`）は
+BE-0334の復旧回数レポートをアップロードしますが、`runs/`向けの「Upload run artifacts」ステップを
+まったく持ちません。他のジョブはいずれもこのステップを持っています。
+
+- `run`、`actuation`、`golden`、`bundled-runner`は、共有の`bajutsu-e2e`コンポジットアクションから
+  このステップを受け取ります。
+- `fault-injection`と`visual`は、自身のインラインステップとして持ちます。
+- `android-e2e.yml`のオンデバイスジョブも、いずれも持っています。
 
 ## 詳細設計
 
@@ -63,122 +75,148 @@ region did not change ... (end of content)`で失敗しました。これはま�
 
 ### 単位1 — パイプライン自身のプリミティブの上に、テスト単位・バックエンド非依存の取得フィクスチャを作る
 
-各テストを2つのインターバル起動関数で包む共有pytestフィクスチャを追加します。これらはシナリオ
-パイプライン自身が呼んでいる関数そのものであり、もともとどんなシナリオやYAMLにも依存しません。adb向け
-の`bajutsu.evidence.intervals.start_screenrecord`/`start_logcat`と、XCUITest向けの
-`intervals.start_video`/`start_device_log`です。`demos/showcase/android/screenrecord.py`は、codegen
-レーンの`connectedAndroidTest`向けに、`bajutsu run`の外から`start_screenrecord`をすでに直接呼んでい
-ます。単位1は、バックグラウンドで動かすスクリプトの代わりにpytestフィクスチャへ、同じ手法を適用する
-というものです。フィクスチャ自身はバックエンド非依存のままにします。2つの起動関数をどちらかのバック
-エンドに固定せず明示的な引数として受け取るので、1つの実装で4つのスイートすべてに使えます。フィクスチャ
-とプリミティブのあいだには、薄いヘルパーを2つ置きます。`android_screenrecord`は、adb側の2スイートが
-共有するサイズ・ビットレート・時間上限をあらかじめ束縛し、どちらの呼び出し側でも重複させません。あわせて、
-spawnのたびに`adb.VIDEO_DEVICE_PATH`を消去します。`start_screenrecord`はこの1つの固定パスへ録画し、
-stop時にはそこにあるものを無条件にpullするため、前のテストがpullに失敗して残したクリップが、このテストの
-エビデンスとしてpullされてしまうからです。中身が空ではないので、欠落・空の検査もこれを捉えられません。
-`xcuitest_video`は`confirm_started=True`を束縛します。`android_screenrecord`も同じです。spawnした
-だけでは手元のクライアントが起動したことしか分からず、早く失敗したケースは録画が何も残らないうちに
-teardownへ進み、まさにこのエビデンスが説明するはずの失敗に対して、存在しないmp4や再生できないmp4を
-残してしまいます。
+各テストを2つのインターバル起動関数で包む、共有pytestフィクスチャを追加します。2つの起動関数は、
+シナリオパイプライン自身が呼んでいる関数そのものです。どんなシナリオやYAMLにも、もともと依存しません。
 
-取得の範囲は、モジュール単位ではなくテスト単位にします。`screenrecord`のデバイス側録画は、
-`time_limit`を明示的に指定するかどうかにかかわらず約180秒で止まります。本項目のきっかけとなったジョブ
-では、conformanceモジュールの18件のテストですでに177秒かかっています。モジュール全体を1本の録画で
-覆おうとすると、テストが1件増えるだけで末尾から欠け始め、診断にまさに必要な部分を失います。テスト単位の
-録画ならこの上限に対して十分な余裕があり、失敗の様子を長い録画から探し出す代わりに、そのテスト自身の
-クリップから直接見つけられます。
+- adb向けの`bajutsu.evidence.intervals.start_screenrecord`と`start_logcat`
+- XCUITest向けの`intervals.start_video`と`start_device_log`
+
+`demos/showcase/android/screenrecord.py`は、codegenレーンの`connectedAndroidTest`向けに、
+`bajutsu run`の外から`start_screenrecord`をすでに直接呼んでいます。単位1は、バックグラウンドで動かす
+スクリプトの代わりにpytestフィクスチャで、同じ手法を適用します。フィクスチャ自身はバックエンド非依存の
+ままにします。2つの起動関数を、どちらかのバックエンドに固定せず明示的な引数として受け取るので、
+1つの実装で4つのスイートすべてに使えます。
+
+フィクスチャとプリミティブのあいだには、薄いヘルパーを2つ置きます。
+
+- `android_screenrecord`は、adb側の2スイートが共有するサイズ、ビットレート、時間上限をあらかじめ束縛し、
+  どちらの呼び出し側でも重複させません。あわせて、spawnのたびに`adb.VIDEO_DEVICE_PATH`を消去します。
+  `start_screenrecord`はこの1つの固定パスへ録画し、stop時にはそこにあるものを無条件にpullします。
+  前のテストがpullに失敗して残したクリップが、このテストのエビデンスとしてpullされてしまうからです。
+  そのクリップは中身が空ではないので、欠落・空の検査でも見つかりません。
+- `xcuitest_video`は`confirm_started=True`を束縛します。`android_screenrecord`も同じです。spawnしただけ
+  では、手元のクライアントが起動したことしか分かりません。早く失敗したケースは、録画が何も残らない
+  うちにteardownへ進むことがあります。その場合、このエビデンスが説明するはずの失敗に対して、存在しない
+  mp4や再生できないmp4を残してしまいます。
+
+取得の範囲は、モジュール単位ではなくテスト単位にします。`screenrecord`のデバイス側録画は、`time_limit`を
+明示的に指定するかどうかにかかわらず、約180秒で止まります。本項目のきっかけとなったジョブでは、
+conformanceモジュールの18件のテストですでに177秒かかっています。モジュール全体を1本の録画で覆うと、
+テストが1件増えるだけで末尾から欠け始め、診断に必要な部分を失います。テスト単位の録画なら、この上限に
+対して十分な余裕があります。長い録画から失敗の瞬間を探す代わりに、そのテスト自身のクリップから失敗の
+様子を直接見つけられます。
 
 ### 単位2 — 失敗したテストのアーティファクトだけを残す
 
-録画とデバイスログは、それを包んだテストが成功すれば破棄し、失敗したときだけ`runs/<lane>/<test-id>/`
-以下に残します。これは`screenrecord.py`自身のMakefileターゲットがcodegenレーンに対してすでに適用して
-いる、失敗時のみ残す方針と同じです。
+録画とデバイスログは、それを包んだテストが成功すれば破棄します。失敗したときは`runs/<lane>/<test-id>/`
+以下に残します。これは、`screenrecord.py`自身のMakefileターゲットがcodegenレーンにすでに適用している、
+失敗時のみ残す方針と同じです。
 
-この判定は、フィクスチャ自身のteardownには置けません。`_evidence`はautouseかつfunctionスコープなの
-で、そのテストのfunctionスコープのフィクスチャの中では最初にセットアップされ、最後にteardownされま
-す。pytestが「teardown」の
-`TestReport`を組み立てるのは、その項目のすべてのfinalizer（このフィクスチャ自身のteardownも含む）が
-実行を終えたあとです。自分のteardownコード内でテストの結果を読もうとするフィクスチャは、その時点で
-すでに作られている「call」フェーズのレポートは読めますが、**自分より前にteardownされる、別のフィクス
-チャ自身のteardown失敗**は読めません。まだレポートされていないからです。これはfault-injectionスイート
-にとって仮の話ではありません。テストごとの`driver`フィクスチャの`yield`より後の半分は画面表示を既知の
-状態へ戻す処理であり、画面が戻らないという失敗は、まさに録画があれば説明がつく失敗そのものです。判定は
-代わりに`pytest_runtest_makereport`フックへ委ねます。これは`tests/backend_crash_recovery.py`が、オン
-デバイスconformanceスイート向けにレポートを分類するために（BE-0334）すでに使っている仕組みと同じもの
-です。委ねる先は、このフックの「teardown」呼び出し自身です。試行全体を実際に見終えている最初の時点だ
-からです。フィクスチャは、2つの`start_*`呼び出しが成功したかどうかにかかわらず、自分のディレクトリを
-このフックが掃除してよい対象として無条件に登録します。開始の失敗は警告するだけで例外にはしないため、
-試行の結果タグには届きません。未登録のまま残すと、録画だけが残ったディレクトリを、成功したテストに
-対しても保持し続けてしまいます。成功した実行では、このフィクスチャ自身は`runs/`へ何も加えません。
-そのため「Upload run artifacts」ステップが運ぶのは、そのジョブがもともと書き出していたものだけです。
-`conformance (xcuitest)`では、ワークフローレベルの`BAJUTSU_XCUITEST_RUNNER_LOG`が指す
-`runs/runner-logs`がそれにあたります。このジョブにアップロードステップが欠けていたことで、ランナー
-ログも同時に捨てられていました。テストごとのエビデンスが加わるのは、実際の失敗が最初に起きたときです。
+この判定は、フィクスチャ自身のteardownには置けません。`_evidence`はautouseかつfunctionスコープなので、
+そのテストのfunctionスコープのフィクスチャの中では最初にセットアップされ、最後にteardownされます。
+pytestが「teardown」の`TestReport`を組み立てるのは、その項目のすべてのfinalizerが実行を終えたあとです。
+このフィクスチャ自身のteardownも、finalizerに含まれます。フィクスチャのteardownコードは、その時点で
+すでに作られている「call」フェーズのレポートを読めます。一方で、自分より前にteardownされる別の
+フィクスチャのteardown失敗は読めません。その失敗は、まだレポートされていないからです。
 
-このフックが追う試行ごとの結果は、真のときだけ立てて以後保持するのではなく、「setup」レポートごとに
-リセットし、それ以降は積算するだけにする必要があります。iOS側のconformanceスイート自身が持つ
-`backend_crash_recovery`マーカー（BE-0334）は、インフラ障害からの再試行のたびに、このフィクスチャを
-含む項目1件全体を`_initrequest()`で再実行し、同じ`pytest.Item`（したがって同じstash）を試行のあいだ
-使い続けます。立てたら保持するだけのタグでは、後で復旧して成功した試行でも「失敗」と読めてしまい、成功
-したテストには要らないエビデンスを誤って残してしまいます。しかもその時点では、クラッシュした試行自身の
-録画は、それを引き継いだ試行によって同じディレクトリからもう消去されています。各試行自身の「setup」
-レポートでリセットすることで、`backend_crash_recovery`自身が最終的に公開する試行の結果だけが残ります。
+fault-injectionスイートでは、これが仮の話ではありません。テストごとの`driver`フィクスチャの`yield`
+より後の半分は、画面表示を既知の状態へ戻す処理です。画面が戻らないという失敗は、録画があれば説明が
+つく失敗そのものです。
+
+判定は、代わりに`pytest_runtest_makereport`フックへ委ねます。`tests/backend_crash_recovery.py`が、
+オンデバイスconformanceスイート向けにレポートを分類するために（BE-0334）すでに使っている仕組みと
+同じものです。委ねる先は、このフックの「teardown」呼び出しです。試行全体を実際に見終えている、最初の
+時点だからです。
+
+フィクスチャは、2つの`start_*`呼び出しが成功したかどうかにかかわらず、自分のディレクトリをこのフックが
+掃除してよい対象として無条件に登録します。開始の失敗は警告するだけで例外にしないため、試行の結果タグには
+届きません。未登録のまま残すと、録画だけが残ったディレクトリを、成功したテストに対しても保持し続けて
+しまいます。
+
+成功した実行では、このフィクスチャ自身は`runs/`へ何も加えません。そのため、「Upload run artifacts」
+ステップが運ぶのは、そのジョブがもともと書き出していたものだけです。`conformance (xcuitest)`では、
+ワークフローレベルの`BAJUTSU_XCUITEST_RUNNER_LOG`が指す`runs/runner-logs`がそれにあたります。このジョブに
+アップロードステップが欠けていたため、ランナーログも同時に捨てられていました。テストごとの
+エビデンスが加わるのは、実際の失敗が最初に起きたときです。
 
 `_evidence`自身のfunctionスコープは、本項目の境界でもあります。各スイートのバックエンド起動は、
-functionスコープのどのフィクスチャよりも前に、moduleスコープで実行されます。Android側の
-`_eff`/`_adb_driver`/`_component`、iOS側conformanceスイートの`_backend_launch`、
-`backend_crash_recovery.py`の`_backend_lease_holder`は、いずれも`_evidence`より後ではなく前に
-セットアップされます。
+functionスコープのどのフィクスチャよりも前に、moduleスコープで実行されます。
 
-これらが失敗する経路は2つあります。`launch_driver`がアプリのインストールや起動に失敗する経路と、
-XCUITestランナーが`BAJUTSU_XCUITEST_STARTUP_TIMEOUT`（300秒）以内に準備完了へ達しない経路です。
-どちらの場合も、pytestはそのフィクスチャでモジュールのセットアップを打ち切ります。`_evidence`は
-一度も実行されず、`runs/<lane>/<test-id>/`も作られません。モジュール内の全ケースが、動画・
-デバイスログのいずれも欠けたままエラーになります。`backend_crash_recovery`（BE-0334）の再試行も、
-同じmoduleスコープの起動を`_evidence`より前にやり直します。復旧を使い切るまでクラッシュし続ける
-起動失敗には、やはり何も残りません。
+- Android側の`_eff`、`_adb_driver`、`_component`
+- iOS側conformanceスイートの`_backend_launch`
+- `backend_crash_recovery.py`の`_backend_lease_holder`
 
-「はじめに」と単位3が述べる対象範囲は、各テスト自身のfunctionスコープのセットアップ以降に起きた
-失敗です。スイート自身のmoduleスコープの起動中の失敗は、本項目の対象外です。
+いずれも、`_evidence`より後ではなく前にセットアップされます。この順序から、失敗する経路が2つ生じます。
+
+- `launch_driver`が、アプリのインストールや起動に失敗する。
+- XCUITestランナーが、`BAJUTSU_XCUITEST_STARTUP_TIMEOUT`（300秒）以内に準備完了へ達しない。
+
+どちらの場合も、pytestはその起動フィクスチャでmoduleのセットアップを打ち切ります。`_evidence`は
+一度も実行されず、`runs/<lane>/<test-id>/`も作られません。moduleの全ケースが、動画もデバイスログも
+欠けたままエラーになります。`backend_crash_recovery`（BE-0334）の再試行も、同じmoduleスコープの起動を
+`_evidence`より前にやり直します。復旧を使い切るまでクラッシュし続ける起動失敗には、やはり何も
+残りません。
+
+したがって、「はじめに」と単位3が述べる対象範囲は、各テスト自身のfunctionスコープのセットアップ以降に
+起きた失敗です。スイート自身のmoduleスコープの起動中の失敗は、本項目の対象外です。
+
+フックが追う試行ごとの結果は、「setup」レポートごとにリセットし、それ以降は積算するだけにする
+必要があります。真になったら保持し続ける方式にはしません。iOS側conformanceスイート自身が持つ
+`backend_crash_recovery`マーカー（BE-0334）は、インフラ障害からの再試行のたびに、このフィクスチャを含む
+項目1件全体を`_initrequest()`で再実行します。再実行は同じ`pytest.Item`、つまり同じstashを、試行の
+あいだ使い続けます。立てたら保持するだけのタグでは、後で復旧して成功した試行でも「失敗」と読めて
+しまいます。すると、成功したテストには要らないエビデンスを誤って残すことになります。しかもその時点では、
+クラッシュした試行自身の録画は、それを引き継いだ試行によって同じディレクトリからもう消去されています。
+各試行自身の「setup」レポートでリセットすれば、`backend_crash_recovery`が最終的に公開する試行の結果だけが
+残ります。
 
 ### 単位3 — 4つのスイートすべてにautouseフィクスチャとして組み込む
 
-このフィクスチャを`tests/test_driver_conformance_ondevice_android.py`、
-`tests/test_fault_injection_ondevice_android.py`、`tests/test_driver_conformance_ondevice.py`、
-`tests/test_fault_injection_ondevice.py`の4つにautouseフィクスチャとして追加し、テストごとに個別に
-指定しなくても4つのスイートすべての全ケースに適用します。対象は各テスト自身のセットアップ以降に
-起きた失敗です。moduleスコープの起動区間が対象外である点は、単位2で述べたとおりです。それぞれの
-スイートは自分自身のレーン名
-（`conformance-adb`/`fault-injection-adb`/`conformance-xcuitest`/`fault-injection-xcuitest`）を渡す
-ので、各ジョブがアップロードするアーティファクトは互いに独立したままで、同じパス上で衝突しません。
+このフィクスチャを、次のファイルにautouseフィクスチャとして追加します。テストごとに個別に指定しなくても、
+4つのスイートすべての全ケースに適用されます。
+
+- `tests/test_driver_conformance_ondevice_android.py`
+- `tests/test_fault_injection_ondevice_android.py`
+- `tests/test_driver_conformance_ondevice.py`
+- `tests/test_fault_injection_ondevice.py`
+
+対象は、各テスト自身のセットアップ以降に起きた失敗です。moduleスコープの起動区間が対象外である点は、
+単位2で述べたとおりです。それぞれのスイートは自分自身のレーン名（`conformance-adb`/
+`fault-injection-adb`/`conformance-xcuitest`/`fault-injection-xcuitest`）を渡します。これにより、
+各ジョブがアップロードするアーティファクトは互いに独立したままで、同じパス上で衝突しません。
 
 ### 単位4 — iOSのconformanceジョブに「Upload run artifacts」ステップを追加する
 
-`ios-e2e.yml`の他のジョブがいずれもすでに持っている、`path: runs/`・`if-no-files-found: ignore`の
-同じアップロードステップを、`conformance (xcuitest)`ジョブに追加します。`run`・`actuation`・`golden`・
-`bundled-runner`は共有の`bajutsu-e2e`コンポジットアクション経由で、`fault-injection`・`visual`は自身の
-インラインステップとして持っており、`android-e2e.yml`のオンデバイスジョブもいずれもすでに持っています。
-このジョブにはこれまで一切存在しませんでした。単位3のフィクスチャだけでは、このジョブの`runs/`に
-書き出しても、ワークフローがそれを一切拾わないため、無駄になってしまいます。
+`conformance (xcuitest)`ジョブに、アップロードステップを追加します。このジョブには、これまでアップロード
+ステップが一切ありませんでした。他のジョブがすでに持っている、`path: runs/`、
+`if-no-files-found: ignore`の同じステップを使います。
+
+- `ios-e2e.yml`では、`run`、`actuation`、`golden`、`bundled-runner`が共有の`bajutsu-e2e`
+  コンポジットアクション経由で受け取り、`fault-injection`と`visual`が自身のインラインステップとして
+  持ちます。
+- `android-e2e.yml`のオンデバイスジョブは、いずれもすでに持っています。
+
+このステップがないと、単位3のフィクスチャがこのジョブの`runs/`に書き出しても、ワークフローがそれを
+拾わないため、無駄になります。
 
 ## 検討した代替案
 
 - **Androidだけを対応し、iOSは後続の項目に見送る。** 採用しません。`capture()`の明示的な
-  `start_video`/`start_log`注入（単位1）は、すでにAndroid固有の前提を共有関数側に残さずバックエンド
-  をまたいで一般化できているため、iOSを見送っても得られるものがないままレビューをもう1周増やすだけ
-  になります。iOSのconformanceジョブのほうがむしろこの修正をより必要としていました。フィクスチャに
-  加えて、そのワークフロー自体に「Upload run artifacts」ステップがまるごと欠けていたからです（単位4）。
-- **両スイートを`bajutsu run`経由にして、`FileSink`をそのまま受け継ぐ。** 採用しません。同じ形の
-  pytestハーネスについて、BE-0334がすでに記録している理由と同じです。これらはシナリオレベルではなく
-  ドライバーレベルの契約テストであり、パイプラインの配管まで到達するようシナリオへ作り替えることは、
-  ドライバーの検証のためではなく、エビデンス取得だけを目的に契約をねじ曲げることになります。
+  `start_video`/`start_log`注入（単位1）は、すでにバックエンドをまたいで一般化できており、共有関数に
+  Android固有の前提は残っていません。iOSを見送っても得られるものはなく、レビューがもう1周増えるだけです。
+  iOSのconformanceジョブのほうが、むしろこの修正を必要としていました。フィクスチャに加えて、ワークフロー
+  自体に「Upload run artifacts」ステップがまるごと欠けていたからです（単位4）。
+- **これらのスイートを`bajutsu run`経由にして、`FileSink`をそのまま受け継ぐ。** 採用しません。同じ形の
+  pytestハーネスについて、BE-0334が記録している理由と同じです。これらはシナリオレベルではなく
+  ドライバーレベルの契約テストです。パイプラインの配管に到達するためにシナリオへ作り替えると、
+  ドライバーを検証するためではなく、エビデンスを取得するために契約をねじ曲げることになります。
 - **テスト単位ではなく、モジュール単位で1本の連続した録画を取得する。** 採用しません。`screenrecord`の
-  約180秒という上限は、conformanceモジュール自身の実測所要時間とすでに数秒しか差がなく、モジュール全体を
-  覆う録画では、テストが1件増えただけで診断にもっとも必要な末尾から欠け始めてしまいます。
-- **結果にかかわらずアーティファクトを常に残す。** 採用しません。`screenrecord.py`のMakefileターゲットが
-  成功時には録画を破棄しているという、このコードベース自身の前例と合いません。加えて、成功したテストには
-  診断すべきものがありません。その録画を残したままにしても、テストが増えるたびにアップロードされる
-  アーティファクトが大きくなるだけで、利点がありません。
+  約180秒という上限は、conformanceモジュール自身の実測所要時間と数秒しか違いません。モジュール全体を
+  覆う録画では、テストが1件増えただけで、診断にもっとも必要な末尾から欠け始めます。
+- **結果にかかわらずアーティファクトを常に残す。** 採用しません。このコードベース自身の前例と合いません。
+  `screenrecord.py`のMakefileターゲットは、成功時には録画を破棄しています。また、診断用アーティファクトの
+  目的にも合いません。成功したテストには診断すべきものがなく、その録画を残すと、テストが増えるたびに
+  アップロードされるアーティファクトが大きくなるだけで、利点がありません。
 
 ## 進捗
 
