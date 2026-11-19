@@ -234,3 +234,28 @@ def test_an_injected_host_lookup_names_every_allowed_host() -> None:
 
     reason = cp.actuator_unavailable_reason("adb", _worker(), "windows", lookup)
     assert reason == "adb runs only on macOS or Linux; this worker runs on windows"
+
+
+def test_a_worker_without_a_build_field_builds_every_platform() -> None:
+    # Before the field existed every worker built any app, so leaving it out keeps that.
+    cap = parse_worker_capability("version: 1\ndrivers: [adb]\n")
+    assert cap.buildable == ("ios", "android")
+    assert cap.can_build("android") and cap.can_build("ios")
+    assert not cap.can_build("web")  # a web target has no app to build
+
+
+def test_a_worker_declares_the_platforms_it_builds() -> None:
+    cap = parse_worker_capability("version: 1\ndrivers: [adb, xcuitest]\nbuild: [android]\n")
+    assert cap.buildable == ("android",)
+    assert not cap.can_build("ios")
+    assert parse_worker_capability("version: 1\ndrivers: [adb]\nbuild: []\n").buildable == ()
+
+
+def test_the_shipped_default_builds_every_platform() -> None:
+    assert load_worker_capability().buildable == ("ios", "android")
+
+
+@pytest.mark.parametrize("build", ["[web]", "[android, android]"])
+def test_a_bad_build_list_is_refused(build: str) -> None:
+    with pytest.raises(WorkerCapabilityError):
+        parse_worker_capability(f"version: 1\ndrivers: [adb]\nbuild: {build}\n")

@@ -276,6 +276,10 @@
           <label><input type="checkbox" id="nodismiss"> disable alert-dismiss
             <span class="hint">The alert guard is on by default: it dismisses unexpected system prompts (Save Password, notification permission) that a scenario's own steps can't see or tap, natively on iOS with no model call and no API key. A prompt it can't name is left alone and named in the blocked step's own failure. Check to force it off for this run; a scenario can also set <code>preconditions.run.systemAlertHandling</code> itself.</span></label>
         </div>
+        <div class="checks localonly">
+          <label><input type="checkbox" id="rebuild" data-testid="replay.rebuild"> rebuild the app first
+            <span class="hint">Run the target's <code>subject.build</code> before the run even when its built app (<code>subject.path</code>) already exists, so a source change is never tested against a stale build. Off (default) builds only a missing app. A target with no <code>subject.build</code> refuses it.</span></label>
+        </div>
         <div class="checks webonly localonly">
           <label><input type="checkbox" id="headed" data-testid="replay.headed"> show browser (headed)
             <span class="hint">Run in a visible Chromium window in slow-motion so you can watch each step, instead of the default headless browser. The window opens on the machine running <code>serve</code> (so this is for a local server).</span></label>

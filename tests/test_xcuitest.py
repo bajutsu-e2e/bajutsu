@@ -23,6 +23,7 @@ import pytest
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.xcuitest import (
     _ACTUATION_TIMEOUT_SECONDS,
+    _APP_SWITCH_TIMEOUT_SECONDS,
     _KEEPALIVE_IDLE_RECONNECT_SECONDS,
     _MAX_ATTEMPTS,
     _RECOVERY_TIMEOUT_SECONDS,
@@ -910,6 +911,17 @@ def test_a_resolving_read_gets_the_actuation_window() -> None:
     assert _timeout_for("GET", "/elements?resolveAlerts=inTree") == _ACTUATION_TIMEOUT_SECONDS
     assert _timeout_for("GET", "/elements?resolveAlerts=false") == _SOCKET_TIMEOUT_SECONDS
     assert _timeout_for("GET", "/elements") == _SOCKET_TIMEOUT_SECONDS
+
+
+def test_an_app_switch_gets_a_window_that_outlasts_a_cold_launch() -> None:
+    # XCTest's `activate()` waits for the other app to launch and idle. On a loaded CI Simulator that
+    # outlived the 30-second write window, and the host respawned the runner mid-launch, so the two
+    # switch routes get their own longer, still bounded window. Other writes keep theirs.
+    assert _timeout_for("POST", "/app/enter") == _APP_SWITCH_TIMEOUT_SECONDS
+    assert _timeout_for("POST", "/app/leave") == _APP_SWITCH_TIMEOUT_SECONDS
+    assert _timeout_for("POST", "/tap") == _ACTUATION_TIMEOUT_SECONDS
+    assert _timeout_for("POST", "/app/target") == _ACTUATION_TIMEOUT_SECONDS
+    assert _ACTUATION_TIMEOUT_SECONDS < _APP_SWITCH_TIMEOUT_SECONDS <= 180  # still bounded
 
 
 class _FakeSocket:

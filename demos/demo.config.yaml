@@ -11,19 +11,19 @@ targets:
     platform: ios   # the XCUITest actuator (see docs/drivers.md)
     subject:
       id: com.bajutsu.showcase.ios.swiftui
-      # Built by `make -C demos/showcase swiftui-build`; path is relative to this config's
-      # directory (demos/), not the run's cwd (BE-0242).
+      # path and build are both relative to this config's directory (demos/), not the run's cwd
+      # (BE-0242): the build command runs there, where the path resolves.
       path: showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app
-      build: make -C demos/showcase swiftui-build
+      build: make -C showcase swiftui-build
       # The app reads SHOWCASE_UITEST to disable animations so condition waits stay tight.
       launch: { env: { SHOWCASE_UITEST: "1" } }
       idNamespaces: [stable, horse, search, log, notice, perm, net]
     driver:
-      # The XCUITest runner (`make -C demos/showcase runner-build`); path relative to this config's
-      # directory (demos/), like subject.path above.
+      # The XCUITest runner; its path and build command are relative to this config's directory
+      # (demos/), like subject.path above.
       runner:
         testRunner: ../BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun
-        build: make -C demos/showcase runner-build
+        build: make -C showcase runner-build
     # `${secrets.PASSWORD}` in the features tour resolves from the environment; its literal
     # value is masked in every run artifact.
     evidence: { secrets: [PASSWORD] }

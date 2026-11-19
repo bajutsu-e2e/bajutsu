@@ -1237,21 +1237,23 @@ def test_only_a_video_interval_measures_its_origin(tmp_path: Path) -> None:
     assert interval.measured_start is None
 
 
-def test_the_end_instant_follows_where_the_recording_actually_stops(tmp_path: Path) -> None:
+def test_the_end_instant_follows_where_the_recording_actually_stops(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     # Two shapes, one difference: a subprocess recorder stops the moment the signal lands and then
     # spends its finalize writing a clip it already captured, while Playwright films right through
     # the context close `stop()` performs. Run the same slow stop under both flags — the flagged one
     # must place the origin a whole close later, which is exactly the tail the other must not charge
-    # to the recording's head.
+    # to the recording's head. A fake clock that only the stop advances keeps the comparison exact:
+    # with a real sleep, a loaded runner's scheduling noise exceeded any tolerance worth asserting.
     close_seconds = 0.05
-    slept = 0.0
+    now = 1000.0
+    monkeypatch.setattr(time, "monotonic", lambda: now)
 
     class SlowStop:
         def stop(self, sig: int, timeout: float) -> None:
-            nonlocal slept
-            begin = time.monotonic()
-            time.sleep(close_seconds)
-            slept = time.monotonic() - begin
+            nonlocal now
+            now += close_seconds
 
         def await_stderr(self, needle: str, timeout: float) -> float | None:
             return None
@@ -1271,11 +1273,8 @@ def test_the_end_instant_follows_where_the_recording_actually_stops(tmp_path: Pa
         return interval.measured_start - time.monotonic()  # relative, so the two are comparable
 
     at_signal = measured(stops_when_stop_returns=False)
-    # Against the stop that actually happened, not the one asked for: only the unflagged run charges
-    # its stop to the tail, and a loaded machine oversleeps well past the 0.05s requested.
-    slept_at_signal = slept
     at_return = measured(stops_when_stop_returns=True)
-    assert at_return - at_signal == pytest.approx(slept_at_signal, abs=0.03)
+    assert at_return - at_signal == pytest.approx(close_seconds)
 
 
 def test_adopt_carries_the_span_bound_onto_the_relocated_capture(tmp_path: Path) -> None:

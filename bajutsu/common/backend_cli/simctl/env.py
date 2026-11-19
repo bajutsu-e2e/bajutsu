@@ -64,6 +64,11 @@ _PBCOPY_MAX_ATTEMPTS = 5
 _PBCOPY_RETRY_DELAY_S = 1.5
 _PBCOPY_TIMEOUT_S = 30.0
 _PBCOPY_TIMEOUT_EXIT = 60  # simctl's ETIMEDOUT — the one transient exit worth retrying
+
+# The read half of the same pasteboard sync stalls the same way, so `get_clipboard` retries it too.
+# Each attempt is bounded by `real_run`'s `pbpaste` deadline (20 s), so four attempts with the same
+# linear backoff cap a wedged read near 90 s, against the single 60-second attempt it replaces.
+_PBPASTE_MAX_ATTEMPTS = 4
 # `simctl get_app_container` on an app the device does not have: ENOENT. Measured on Xcode 26.6; an
 # unknown device exits 148 and a shut-down one 149, and neither is an absent app (BE-0455).
 _ABSENT_CONTAINER_EXIT = 2
@@ -306,8 +311,31 @@ class Env:
         raise last
 
     def get_clipboard(self) -> str:
-        # pbpaste returns the pasteboard content on stdout; RunFn already yields stdout.
-        return self._run(pbpaste_cmd(self.udid), None)
+        """The Simulator pasteboard's text, read with `simctl pbpaste`.
+
+        The host's pasteboard sync stalls transiently — simctl exits 60 (ETIMEDOUT), or the call
+        outlives its deadline — so a stalled read is retried; reading has no side effect. Any other
+        failure (an un-booted device, a bad UDID) raises at once.
+
+        Raises:
+            DeviceTimeout: Every attempt outlived its deadline.
+            subprocess.CalledProcessError: simctl failed, or exited 60 on every attempt.
+        """
+        last: subprocess.CalledProcessError | DeviceTimeout | None = None
+        for attempt in range(_PBPASTE_MAX_ATTEMPTS):
+            try:
+                # pbpaste returns the pasteboard content on stdout; RunFn already yields stdout.
+                return self._run(pbpaste_cmd(self.udid), None)
+            except subprocess.CalledProcessError as exc:
+                if exc.returncode != _PBCOPY_TIMEOUT_EXIT:
+                    raise
+                last = exc
+            except DeviceTimeout as exc:
+                last = exc
+            if attempt + 1 < _PBPASTE_MAX_ATTEMPTS:
+                time.sleep(_PBCOPY_RETRY_DELAY_S * (attempt + 1))
+        assert last is not None  # the loop runs at least once, so a failure sets `last`
+        raise last
 
     def home(self) -> None:
         self._run(home_cmd(self.udid), None)

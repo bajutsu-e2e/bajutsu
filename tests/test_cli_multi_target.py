@@ -753,6 +753,38 @@ def test_an_inferred_primary_follows_the_scenarios_the_tag_leaves(
     assert seen["scenarios"] == [f"update ({prefix})", f"companion ({prefix})"]
 
 
+def test_an_inferred_primary_the_tag_selects_away_is_never_built(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The Android device-group lane runs a file whose first scenario is iOS. A run builds a missing
+    # app, so building that inferred iOS primary before `--tag android` settled the real one ran
+    # an Xcode build on a Linux runner. Only the settled primary is built: the iOS build here would
+    # fail the run if it ran.
+    monkeypatch.setattr("bajutsu.common.backends.current_host_os", lambda *_: "linux")
+    monkeypatch.setattr("bajutsu.run.cli.current_host_os", lambda *_: "linux")
+
+    def stop(*_: object) -> None:
+        raise typer.Exit(7)
+
+    monkeypatch.setattr("bajutsu.run.cli._reject_unshareable_groups", stop)
+    cfg, files = _per_platform_files(tmp_path)
+    cfg.write_text(
+        cfg.read_text(encoding="utf-8").replace(
+            "ios-main: {platform: ios, subject: {id: com.example.main}}",
+            "ios-main: {platform: ios, subject: "
+            f"{{id: com.example.main, path: {tmp_path / 'Missing.app'}, build: 'false'}}}}",
+            1,
+        ),
+        encoding="utf-8",
+    )
+    assert "build: 'false'" in cfg.read_text(encoding="utf-8")
+    argv = ["run", *(a for f in files for a in ("--scenario", f)), "--tag", "android"]
+    argv += ["--backend", "android", "--udid", "booted", "--config", str(cfg)]
+    r = invoke(CliRunner(), app, argv)
+    assert r.exit_code == 7, r.output
+    assert "build failed" not in r.output
+
+
 def test_preconditions_are_checked_against_the_re_inferred_primary(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

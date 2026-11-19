@@ -1,6 +1,7 @@
-# The default worker capability (BE-0450): a local worker that offers every driver and sets no
-# target limit. Replace it for one process with `--worker-config <path>`; the file you pass is
-# used in place of this one, never merged with it.
+# The default worker capability (BE-0450): a local worker that offers every driver, builds the app
+# of every platform that has one, and sets no target limit. Replace it for one process with
+# `--worker-config <path>`; the file you pass is used in place of this one, never merged with it.
 version: 1
 environment: local
 drivers: [xcuitest, adb, playwright, fake]
+build: [ios, android]

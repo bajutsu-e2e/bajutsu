@@ -76,6 +76,9 @@ SETTING_ROUTING_PREFIX = "setting:"
 JOB_ROUTING_PREFIX = "job:"
 PLATFORM_ROUTING_PREFIX = "platform:"
 KIND_ROUTING_PREFIX = "kind:"
+# `build:<platform>`: the platforms whose app this worker can build from `subject.build`, as its
+# `worker.yaml` declares them, so a job that forces a build reaches a worker that can make it.
+BUILD_ROUTING_PREFIX = "build:"
 RESERVED_ROUTING_PREFIXES: tuple[str, ...] = (
     ENVIRONMENT_ROUTING_PREFIX,
     HOST_ROUTING_PREFIX,
@@ -86,13 +89,18 @@ RESERVED_ROUTING_PREFIXES: tuple[str, ...] = (
     JOB_ROUTING_PREFIX,
     PLATFORM_ROUTING_PREFIX,
     KIND_ROUTING_PREFIX,
+    BUILD_ROUTING_PREFIX,
 )
 RESERVED_ROUTING_REASON = (
-    "the environment:, host:, machine:, device:, cap:, setting:, job:, platform:, and kind: "
-    "prefixes are reserved: a worker advertises them itself, from its worker.yaml environment and "
-    "drivers, the machine it runs on, the server machine it shares, the devices it can run on, and "
-    "the jobs it can resolve"
+    "the environment:, host:, machine:, device:, cap:, setting:, job:, platform:, kind:, and build: "
+    "prefixes are reserved: a worker advertises them itself, from its worker.yaml environment, "
+    "drivers, and builds, the machine it runs on, the server machine it shares, the devices it can "
+    "run on, and the jobs it can resolve"
 )
+
+# The platforms whose app a `subject.build` command makes; a web target has no app binary to build.
+BuildPlatform = Literal["ios", "android"]
+BUILD_PLATFORMS: tuple[BuildPlatform, ...] = ("ios", "android")
 
 
 def reserved_routing_tokens(tokens: Iterable[str]) -> list[str]:
@@ -141,6 +149,10 @@ class WorkerCapability(BaseModel):
             advertises the real-device route beside the Simulator's (BE-0467). None, the default,
             advertises it as well, since such a worker served real-device jobs before; `false`
             keeps a Simulator-only Mac off them.
+        build: The platforms whose app this worker can build by running a target's
+            `subject.build`. None, the default, means every platform with an app to build, since a
+            worker built any app before the field existed; `[]` builds none, so a run that needs a
+            build stops instead of starting one the machine has no toolchain for.
     """
 
     model_config = ConfigDict(populate_by_name=True, extra="forbid", frozen=True)
@@ -152,6 +164,7 @@ class WorkerCapability(BaseModel):
     max_targets_per_job: PositiveInt | None = Field(default=None, alias="maxTargetsPerJob")
     drivers: tuple[str, ...]
     real_devices: bool | None = Field(default=None, alias="realDevices")
+    build: tuple[BuildPlatform, ...] | None = None
 
     @field_validator("environment")
     @classmethod
@@ -190,6 +203,25 @@ class WorkerCapability(BaseModel):
                 "runs one job at a time"
             )
         return self
+
+    @field_validator("build")
+    @classmethod
+    def _no_repeated_build(
+        cls, value: tuple[BuildPlatform, ...] | None
+    ) -> tuple[BuildPlatform, ...] | None:
+        if value is not None and len(set(value)) != len(value):
+            raise ValueError(f"build lists a platform twice: {list(value)}")
+        return value
+
+    @property
+    def buildable(self) -> tuple[BuildPlatform, ...]:
+        """The platforms whose app this worker can build, in a fixed order."""
+        declared = BUILD_PLATFORMS if self.build is None else self.build
+        return tuple(p for p in BUILD_PLATFORMS if p in declared)
+
+    def can_build(self, platform: str) -> bool:
+        """Whether this worker can build the app of a target on *platform* from `subject.build`."""
+        return platform in self.buildable
 
     @property
     def is_local(self) -> bool:

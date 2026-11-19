@@ -31,6 +31,7 @@ from bajutsu.serve import oplog
 from bajutsu.serve.authz import _record_audit
 from bajutsu.serve.capabilities import (
     RUN_INTENT_CAPABILITY,
+    build_capability,
     environment_capability,
     route_refusal,
 )
@@ -93,6 +94,36 @@ def _governed_build(state: ServeState, binding: ConfigBinding, build: str | None
     `driver.runner.build`.
     """
     return build if _build_trusted(state, binding) else None
+
+
+def _rebuild_flag(
+    body: dict[str, Any], target: str, build: str | None, overrides: ArtifactOverrides | None
+) -> tuple[bool, tuple[Any, int] | None]:
+    """The run request's `rebuild` flag, or the 400 that refuses it.
+
+    A forced build needs a command serve may run: without one the request would silently run the
+    existing binary, which is what `rebuild` was asked to prevent. A stored `binaryArtifact` replaces
+    the app the build makes, so forcing the build alongside one would build an app the run never
+    installs. A value that is not a boolean is refused rather than read as off: unlike `erase`, there
+    is no CLI default to fall back on, so dropping it would run the stale binary the caller meant to
+    replace.
+    """
+    raw = body.get("rebuild")
+    if raw is not None and not isinstance(raw, bool):
+        return False, ({"error": "rebuild must be a boolean"}, 400)
+    if raw is not True:
+        return False, None
+    if build is None:
+        return False, (
+            {
+                "error": f"rebuild needs target '{target}' to declare a subject.build this server "
+                "may run"
+            },
+            400,
+        )
+    if overrides is not None and overrides.binary is not None:
+        return False, ({"error": "rebuild cannot be combined with binaryArtifact"}, 400)
+    return True, None
 
 
 def _run_label(
@@ -529,6 +560,10 @@ def start_run(  # noqa: C901, PLR0911
     )
     app_path, build = target_build_info(cfg, target)
     build = _governed_build(state, binding, build)
+    rebuild, rebuild_err = _rebuild_flag(body, target, build, overrides)
+    if rebuild_err:
+        return rebuild_err
+    build_platform = target_batch_info(cfg, target)[0] if build else None
     # Per-run evidence-upload prefix (BE-0110): CI passes it to select the cloud lifecycle policy. It
     # becomes a storage key segment, so reject a non-string, a leading `/`, or `..` traversal here —
     # the same guard the upload-urls endpoint re-applies to the worker-relayed value.
@@ -539,7 +574,16 @@ def start_run(  # noqa: C901, PLR0911
     if not valid_relative_key(evidence_prefix, allow_empty=True):
         return {"error": "invalid evidence_prefix"}, 400
     capabilities, route_err = _run_capabilities(
-        state, org, session, cfg, target, backend, body, overrides, grid_capabilities
+        state,
+        org,
+        session,
+        cfg,
+        target,
+        backend,
+        body,
+        overrides,
+        grid_capabilities,
+        rebuild_platform=build_platform if rebuild else None,
     )
     if route_err:
         return route_err
@@ -550,6 +594,8 @@ def start_run(  # noqa: C901, PLR0911
             udids=_boot_targets(udid),
             app_path=app_path,
             build=build,
+            rebuild=rebuild,
+            build_platform=build_platform,
             materials=materials,
             # An uploaded bundle ships its own baselines and runs from its own tree, so the org's
             # stored baselines must not be materialized over them — `_download_baselines` clears the
@@ -883,12 +929,15 @@ def _run_capabilities(
     body: dict[str, Any],
     overrides: ArtifactOverrides | None,
     grid_capabilities: list[str] | None,
+    *,
+    rebuild_platform: str | None = None,
 ) -> tuple[list[str], tuple[Any, int] | None]:
     """The tokens a run job routes by, or the refusal when no live worker's routes can run it.
 
     Beside its platform and host (or its grid's environment), the job requires a `cap:` token for
     each capability its steps need and a `setting:` token for each setting it puts in effect, on the
-    route each target resolves to (BE-0467). A job no live worker can serve stays queued; it is
+    route each target resolves to (BE-0467). A forced build (*rebuild_platform*) requires
+    `build:<platform>`, so only a worker whose `worker.yaml` builds that platform's app takes it. A job no live worker can serve stays queued; it is
     refused only when a live worker drives its route and none advertises every token it needs.
     """
     base_caps = (
@@ -907,6 +956,8 @@ def _run_capabilities(
         exclude=str(body.get("exclude") or ""),
         grid=grid_capabilities is not None,
     )
+    if rebuild_platform:
+        needs = {**needs, build_capability(rebuild_platform): ["rebuild"]}
     capabilities = sorted({*base_caps, *needs})
     if state.repository is not None and (
         missing := route_refusal(capabilities, state.repository.live_worker_capabilities())
@@ -1260,6 +1311,7 @@ def start_record(
             udids=_boot_targets(udid),
             app_path=app_path,
             build=build,
+            build_platform=target_batch_info(cfg, str(body["target"]))[0] if build else None,
             out_path=authored.out,
             materials=materials,
             record_save=authored.save,
@@ -1353,6 +1405,7 @@ def start_crawl(
             udids=_boot_targets(udid),
             app_path=app_path,
             build=build,
+            build_platform=target_batch_info(cfg, target)[0] if build else None,
             actor=actor,
             org=org,
             capabilities=target_capabilities(cfg, target, backend),

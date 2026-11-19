@@ -32,6 +32,7 @@ from bajutsu.common.capability.route_tokens import (
 )
 from bajutsu.common.capability.settings_support import Route
 from bajutsu.common.capability.worker_capability import (
+    BUILD_ROUTING_PREFIX,
     DEVICE_ROUTING_PREFIX,
     ENVIRONMENT_ROUTING_PREFIX,
     HOST_ROUTING_PREFIX,
@@ -76,6 +77,11 @@ MACHINE_PREFIX = MACHINE_ROUTING_PREFIX
 # among the real devices connected to it, and a real-device run whose target names a `family`
 # requires it. Reserved, so a hand-written token cannot claim a device the worker lacks.
 DEVICE_PREFIX = DEVICE_ROUTING_PREFIX
+
+# The build axis: a local worker advertises `build:<platform>` for each platform whose app its
+# `worker.yaml` says it can build, and a job that forces a build (`rebuild`) requires it, so the
+# build never lands on a machine without that platform's toolchain.
+BUILD_PREFIX = BUILD_ROUTING_PREFIX
 
 # An any-of group (BE-0468): one stored token that a worker satisfies by advertising any one of its
 # members, written `anyof:<token>|<token>`. A `family` priority list needs it, since any one family
@@ -136,6 +142,11 @@ def machine_capability(machine_id: str) -> str:
 def device_capability(family: str) -> str:
     """The real-device-axis token for a device family, e.g. ``device:ipad``."""
     return f"{DEVICE_PREFIX}{family}"
+
+
+def build_capability(platform: str) -> str:
+    """The build-axis token for a platform whose app a worker can build, e.g. ``build:android``."""
+    return f"{BUILD_PREFIX}{platform}"
 
 
 def any_of_capability(tokens: Iterable[str]) -> str:

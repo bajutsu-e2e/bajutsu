@@ -259,15 +259,18 @@ key, driver, or environment, and any number below one.
 | `maxTargetsPerJob` | How many targets one scenario may declare, a positive integer. The count spans every driver and device group, so a Simulator target and a browser target count two. Omitted means unbounded. |
 | `drivers` | The drivers the worker offers, from `xcuitest`, `adb`, `playwright`, and `fake`. A driver the list omits is unavailable. |
 | `realDevices` | Whether a `local` worker that offers `xcuitest` also drives attached real iPhones, so serve routes real-device jobs to it ([capability routing](self-hosting.md#capability-routed-queues-be-0166), BE-0467). Omitted counts as `true`, as such a worker served real-device jobs before. Set `false` to keep a Simulator-only Mac off them. |
+| `build` | The platforms whose app the worker can build by running a target's `subject.build`, from `ios` and `android`. Omitted counts as both, as a worker built any app before the key existed; `[]` builds none. When a run needs a build — the app at `subject.path` is missing, or `--rebuild` asks for one — and the list omits the target's platform, `run` exits 2 and names the platform rather than start a build the machine has no toolchain for. The worker advertises `build:<platform>` for each listed platform it runs, so serve routes a forced build to it ([capability routing](self-hosting.md#capability-routed-queues-be-0166)). |
 
 The package ships a default at `bajutsu/common/capability/worker.yaml`.
 The default describes a
-local worker that offers every driver and sets no target limit:
+local worker that offers every driver, builds the app of both iOS and Android, and sets no target
+limit:
 
 ```yaml
 version: 1
 environment: local
 drivers: [xcuitest, adb, playwright, fake]
+build: [ios, android]
 ```
 
 An `appium` environment replaces the target-level `deviceProvider` that
@@ -1417,7 +1420,9 @@ Command builders are pure functions
 > the shared runner passes a deadline to every one-shot `simctl` subprocess.
 > The command itself
 > chooses the deadline: a long one for the commands whose duration the device or the app sets rather
-> than simctl (`bootstatus`, `boot`, `erase`, `install`), a short one for everything else.
+> than simctl (`bootstatus`, `boot`, `erase`, `install`, `uninstall`, `privacy`, `shutdown`, `terminate`), a short one for everything
+> else. The pasteboard read, `pbpaste`, takes a shorter bound still. Like the `pbcopy` write, it is
+> retried on simctl's transient exit 60.
 >
 > A call that never returns is the observable symptom of a wedged CoreSimulator.
 > It raises

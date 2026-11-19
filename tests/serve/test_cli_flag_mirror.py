@@ -46,6 +46,9 @@ def test_run_flag_surface_is_fully_classified() -> None:
         # --kind (BE-0468) narrows a target's iOS kinds on the command line; serve's run request has
         # no field for it yet, so a hosted run covers every kind the target lists.
         "kind",
+        # serve forces the build itself (`Job.rebuild`) before it spawns the run, so the spawned run
+        # never takes --rebuild and one job builds the app once.
+        "rebuild",
     }
     pass_through = {
         "backend",

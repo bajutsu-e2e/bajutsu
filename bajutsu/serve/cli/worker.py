@@ -51,6 +51,7 @@ from bajutsu.serve.capabilities import (
     MACHINE_ID_ENV,
     RUN_INTENT_CAPABILITY,
     WORKER_CAPABILITIES_ENV,
+    build_capability,
     devicectl_capabilities,
     environment_capability,
     host_capability,
@@ -316,6 +317,8 @@ def _advertised_capabilities(
             routes=worker_routes(drivable, real_devices=cap.real_devices),
         )
         | {host_token, RUN_INTENT_CAPABILITY}
+        # The platforms it runs whose app this machine also builds, so a forced build routes here.
+        | {build_capability(p) for p in cap.buildable if p in platforms}
     )
 
 
