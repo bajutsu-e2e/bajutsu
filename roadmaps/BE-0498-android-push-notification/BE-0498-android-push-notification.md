@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-android-push-notification-ja.md)
+**English** · [日本語](BE-0498-android-push-notification-ja.md)
 
-# BE-XXXX — Deliver a push notification to the app on Android
+# BE-0498 — Deliver a push notification to the app on Android
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-android-push-notification.md) |
+| Proposal | [BE-0498](BE-0498-android-push-notification.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0498") |
 | Topic | Platform support |
 | Related | [BE-0211](../BE-0211-android-device-control/BE-0211-android-device-control.md), [BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities.md), [BE-0233](../BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity.md), [BE-0481](../BE-0481-android-device-set-location/BE-0481-android-device-set-location.md) |
 <!-- /BE-METADATA -->
