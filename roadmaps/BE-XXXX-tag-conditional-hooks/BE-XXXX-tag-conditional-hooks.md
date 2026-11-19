@@ -64,8 +64,8 @@ command that it guards.
 
 Once this item ships, a reader can check two observable differences. A target declares a payment
 seed once, with `when: { tags: [payments] }`. A `--tag smoke` run's report then lists that entry as
-skipped by its condition. No in-repository script decides whether to do its work by inspecting
-`BAJUTSU_SCENARIO`.
+skipped by its condition. A full run then writes `hooks/beforeScenario/` logs for the payment
+scenarios alone, and none for the scenarios that the condition skipped.
 
 ## Detailed design
 
@@ -155,8 +155,12 @@ because a skipped entry writes no outputs.
 
 A `beforeRun` or `afterRun` entry has no single scenario to check. It evaluates `when` against the
 run's scenario set. The set holds the scenarios that remain after expansion, `--tag`, and
-`--exclude`. The set matches the list that the run hands to its scenario loop. The entry matches when at least one scenario
-in that set matches.
+`--exclude`, and that drive the entry's target. A scenario that never drives the target cannot
+make the target's entry run. The entry matches when at least one scenario in that set matches.
+
+An `exclude`-only `when` on a run-level entry would skip the entry only when every scenario in the
+set carries an excluded tag. No author intends that, so a `when` on `beforeRun` or `afterRun` fails
+to load without a non-empty `tags` list.
 
 The run computes the set once, before the first `beforeRun` entry, and keeps the result for the
 whole run. An `afterRun` entry then decides on the same set as its `beforeRun` counterpart. A
@@ -165,7 +169,7 @@ lists:
 
 | How the run starts | The scenario set |
 |---|---|
-| `bajutsu run`, with or without `--workers` | every scenario the run selected, across all workers |
+| `bajutsu run`, with or without `--workers` | every scenario the run selected that drives this entry's target, across all workers |
 | a `serve` job | the job's selection, since the worker runs the job as one `bajutsu run` |
 | `audit` | the scenarios it replays |
 | `record`, `crawl`, `repl` | empty, since these commands run no scenario file |
@@ -176,16 +180,16 @@ An empty set matches no condition. A conditional `beforeRun` entry never runs un
 ### Outputs of a conditional entry
 
 BE-0491 checks each `${hooks.<name>.<key>}` token when it loads a scenario. This item adds one rule
-to that check: a scenario that reads an entry's output must match the entry's `when`. Otherwise the
-load fails, and the error names the entry, its condition, and the scenario's tags.
+to that check: a scenario that reads the output of a conditional entry must match the entry's
+`when`, and for a run-level entry it must also drive the entry's target. Otherwise the load fails, and the error names the entry, its condition, and the scenario's tags.
 
 The rule holds for both levels. A scenario-level entry runs for the scenarios that match it and
 for no others. A run-level entry runs whenever its set holds a matching scenario. A scenario that
-reads the token is itself in that set. A token that passes the check thus always names an entry
+reads the token drives the entry's target, so it is itself in that set. A token that passes the check thus always names an entry
 that ran. A missing value surfaces at load time rather than in the middle of a run.
 
 The check runs on every scenario after expansion, one row at a time, and ignores `--tag` and
-`--exclude`. A mismatch is a defect in the files whichever subset a run selects. A smoke stage in CI
+`--exclude`. A mismatch is a defect in the files, whichever subset a run selects. A smoke stage in CI
 that skips the scenario still reports the defect.
 
 ### Evidence and the command policy
