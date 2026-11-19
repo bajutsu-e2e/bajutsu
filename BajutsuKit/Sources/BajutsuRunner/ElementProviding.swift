@@ -40,6 +40,20 @@ public enum AppActivationResult {
     case notForeground
 }
 
+/// The result of handing a URL to the operating system (BE-0487).
+public enum AppOpenResult: Sendable, Equatable {
+    /// The call returned without a failure, and the app reached `.runningForeground`.
+    case ok
+    /// `open(_:)` raised or recorded an XCTest failure, or the string is not a URL; the message names
+    /// which. Mid-scenario the app is usually in front already, so only this case shows that the
+    /// system refused the URL — the foreground wait cannot.
+    case notOpened(String)
+    /// The call returned, but the app never reached `.runningForeground` within the bounded poll.
+    case notForeground
+    /// The system predates `XCUIApplication.open(_:)` (iOS 16.4).
+    case unsupported
+}
+
 /// The result of a tap attempt, or of an `isHittable` query reusing the same resolution outcomes.
 public enum TapResult: Sendable {
     case ok
@@ -148,6 +162,11 @@ public protocol ElementProviding: AnyObject {
     /// target at the bottom of the stack, without activating it (BE-0447). Whichever app is in front
     /// stays in front; an `enterApp` block above the base is left where it is.
     func targetApp(bundleId: String)
+
+    /// Hand `url` to the operating system for the app at the top of the stack — the innermost
+    /// `enterApp`'s, else the base — and wait, on the same bounded poll as `enterApp`, until that app
+    /// holds the foreground (BE-0487). The app on the stack is unchanged either way.
+    func openUrl(_ url: String) -> AppOpenResult
 
     /// The target app's own process state, so the driver can tell a crash from a missing element.
     ///

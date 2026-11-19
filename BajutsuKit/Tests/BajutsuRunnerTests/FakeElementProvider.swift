@@ -64,6 +64,9 @@ final class FakeElementProvider: ElementProviding {
     var leaveAppCalls = 0
     // The bundle ids `targetApp` was called with (BE-0447).
     var targetAppCalls: [String] = []
+    // What `openUrl` reports, and the URLs it was called with (BE-0487).
+    var openUrlResult: AppOpenResult = .ok
+    var openUrlCalls: [String] = []
 
     func queryElements() -> [ElementSnapshot] {
         beforeQueryElements?()
@@ -173,6 +176,11 @@ final class FakeElementProvider: ElementProviding {
 
     func targetApp(bundleId: String) {
         targetAppCalls.append(bundleId)
+    }
+
+    func openUrl(_ url: String) -> AppOpenResult {
+        openUrlCalls.append(url)
+        return openUrlResult
     }
 
     func appState() -> AppRunState { appRunState }

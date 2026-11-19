@@ -1062,3 +1062,9 @@ def test_attribute_todo_names_each_operator() -> None:
     )
     assert '// TODO: attribute(name: "alt", contains: "logo") — web-only; not generated' in code
     assert '// TODO: attribute(name: "aria-busy", absent: true) — web-only; not generated' in code
+
+
+def test_open_url_is_a_labeled_todo() -> None:
+    # BE-0487: the driver's scoped `am start` intent has no counterpart in a generated test.
+    code = _gen('- name: x\n  steps:\n    - openUrl: "myapp://orders/42"\n')
+    assert '// TODO: openUrl("myapp://orders/42") — am start VIEW intent; not generated' in code

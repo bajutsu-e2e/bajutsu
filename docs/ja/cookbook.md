@@ -10,8 +10,8 @@
 
 関連: [scenarios](scenarios.md) · [selectors](selectors.md) · [network](network.md) · [Getting started](getting-started/index.md)
 
-showcase アプリをビルドするか web デモを配信すれば（[Getting started](getting-started/index.md) 参照）、
-以下のどれでも自分で実行できます。
+以下のどれも自分で実行できます。先に showcase アプリをビルドするか、web デモを配信してください
+（[Getting started](getting-started/index.md) を参照）。
 
 ```bash
 uv run bajutsu run --scenario <path-to-file> --target showcase-swiftui --backend ios --udid booted --no-erase
@@ -89,9 +89,9 @@ uv run bajutsu run --scenario <path-to-file> --target showcase-swiftui --backend
 
 実行時の権限プロンプト（通知、位置情報など）は、アプリ自身の UI ではなく**プロセス外のシステム
 アラート**です。iOS バックエンドはこれを直接タップできません。シナリオの `interrupts` に書く `systemAlert`
-エントリは、そのタップだけをリアクティブなアラートガードに任せます。ガードは決定論的なネイティブ経路で、スクリーンショットも
-モデルへの往復も使わずにプロンプトを見張り、「Allow」をタップします。その前後のアサーションはすべて
-機械チェックのままです。書くのは、想定するプロンプトと、そこで下す選択です。どのエントリも名指ししない
+エントリは、そのタップだけをリアクティブなアラートガードに任せます。ガードは決定論的なネイティブ経路で
+プロンプトを見張り、「Allow」をタップします。スクリーンショットもモデルへの往復も使いません。その前後の
+アサーションはすべて機械チェックのままです。書くのは、想定するプロンプトと、そこで下す選択です。どのエントリも名指ししない
 プロンプトに、ガードは答えません（[BE-0406](../../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md)、[BE-0473](../../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts-ja.md)）。
 実行時にプロンプトと固定したロケールからボタンを解決するので、このファイルは日本語のシミュレータでも
 正しいままです。`run` はモデルに届かないため、エントリは視覚向けの指示を持ちません
@@ -120,8 +120,8 @@ uv run bajutsu run --scenario <path-to-file> --target showcase-swiftui --backend
 
 `systemAlert` エントリはアラートの**ハンドラ**であって、アサーションではありません。合否の判定には
 一切関与せず、iOS バックエンドからは見えないアラートでステップが止まってしまうのを防ぐだけです。Android では
-同じシナリオがプロンプトなしで走ります（target の config が権限を事前付与しているため）。その場合
-ガードは何もしないまま待機するだけです。1 つのシナリオが 2 つのプラットフォームで分岐なく動きます。
+同じシナリオがプロンプトなしで走ります（target の config が権限を事前付与しているため）。その場合、
+ガードは何もしないまま待機するだけです。1 つのシナリオが、分岐なしで 2 つのプラットフォームで動きます。
 プラットフォーム間の整合性についての注記を含む全文は
 [`demos/showcase/scenarios/permission.yaml`](../../demos/showcase/scenarios/permission.yaml) にあります。
 
@@ -267,7 +267,7 @@ showcase 一式
 デバイス制御、ビジュアルリグレッション、relaunch と状態の永続化などを扱うシナリオがさらに 25 本
 ほどあります。各画面が公開する識別子は [showcase](showcase.md) にカタログがあります。web デモ
 （[`demos/web/scenarios/`](../../demos/web/scenarios/)）と、web UI 自身のドッグフーディング一式
-（[`demos/serve-ui/scenarios/`](../../demos/serve-ui/scenarios/)）も見る価値があります。後者は
+（[`demos/serve-ui/scenarios/`](../../demos/serve-ui/scenarios/)）も見る価値があります。ドッグフーディング一式は、
 ある程度複雑な単一ページアプリをテストする実例としても参考になります。ここに出てきたすべての
 レシピの背後にある step / wait / アサーションの文法全体は [scenarios](scenarios.md) に、形式的な
 EBNF は [dsl-grammar](dsl-grammar.md) にあります。

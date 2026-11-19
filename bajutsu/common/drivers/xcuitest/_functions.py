@@ -37,6 +37,16 @@ _SOCKET_TIMEOUT_SECONDS = 15
 # job's per-step budget by a wide margin.
 _ACTUATION_TIMEOUT_SECONDS = 30
 
+# Socket timeout for an app switch (`/app/enter`, `/app/leave`). The runner calls XCTest's
+# `activate()`, which does not return until the app has launched and gone idle, then polls up to 10 s
+# for the foreground. A cold launch on a loaded CI Simulator outlived the 30-second write window, and
+# the host read the slow switch as a mid-run crash. It then respawned the runner while `activate()`
+# was still launching the app, and that respawn's own device calls wedged CoreSimulator in the
+# on-device conformance lane. A switch is a write, so the retry never re-issues it; a longer window is
+# the one way to wait it out. Still bounded, so a runner that is truly hung fails loudly.
+_APP_SWITCH_TIMEOUT_SECONDS = 120
+_APP_SWITCH_PATHS = frozenset({"/app/enter", "/app/leave"})
+
 # How long a kept-alive connection (BE-0407 Unit 11) may sit idle before `_raw_http_transport` forces
 # a reconnect regardless of what `_is_stale`'s peek sees. `HTTPServer.swift`'s own idle timeout
 # (`HTTPServer.defaultReceiveTimeout`, `SO_RCVTIMEO`) is 10s; the peek narrows but cannot close the
@@ -111,10 +121,13 @@ def _timeout_for(method: str, path: str = "") -> float:
     Reads (`GET`) get the tight `_SOCKET_TIMEOUT_SECONDS` and lean on the BE-0207 retry to absorb a
     transient blip; a write (`POST`) cannot be retried after delivery, so it gets the longer, still
     bounded `_ACTUATION_TIMEOUT_SECONDS` to tolerate a slow actuation on a loaded host. A resolving
-    read gets the write's window, since it has given up the retry a read leans on.
+    read gets the write's window, since it has given up the retry a read leans on. An app switch gets
+    the longest window, `_APP_SWITCH_TIMEOUT_SECONDS`, because it waits on another app's launch.
     """
     if method == "GET" and not _is_resolving_read(method, path):
         return _SOCKET_TIMEOUT_SECONDS
+    if method == "POST" and path.partition("?")[0] in _APP_SWITCH_PATHS:
+        return _APP_SWITCH_TIMEOUT_SECONDS
     return _ACTUATION_TIMEOUT_SECONDS
 
 
@@ -169,11 +182,13 @@ def _decode(path: str, status_code: int, body: bytes) -> _Reply:
     size = (float(width), float(height)) if width is not None and height is not None else None
     # `POST /app/state` (BE-0424) carries the target app's process state; absent everywhere else.
     app_state = data.get("state")
+    reason = data.get("reason")
     return _Reply(
         status=str(status),
         elements=elements,
         size=size,
         app_state=str(app_state) if app_state is not None else None,
+        reason=str(reason) if reason is not None else None,
         raw=body,
     )
 

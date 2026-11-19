@@ -257,9 +257,11 @@ def test_launch_cmd_forwards_extras_as_intent_extras() -> None:
 
 
 def test_deeplink_cmd_is_scoped_to_the_package() -> None:
+    # One quoted shell line with `-W` and stderr folded in, so `am start`'s verdict is readable
+    # (BE-0487).
     assert adb.deeplink_cmd("S", "showcasecompose://stable", "com.x") == [
-        "adb", "-s", "S", "shell", "am", "start",
-        "-a", "android.intent.action.VIEW", "-d", "showcasecompose://stable", "com.x",
+        "adb", "-s", "S", "shell",
+        "am start -W -a android.intent.action.VIEW -d showcasecompose://stable com.x 2>&1",
     ]  # fmt: skip
 
 
@@ -341,6 +343,8 @@ def _resolve_activity_run(calls: list[list[str]]) -> adb.RunFn:
             return "com.bajutsu.showcase.android.compose/.MainActivity\n"
         if args == adb.devices_cmd():
             return ""  # make_driver's AdbDriver only queries on demand; start does not query
+        if "android.intent.action.VIEW" in " ".join(args):
+            return "Status: ok\n"  # the deeplink is read for a positive verdict (BE-0487)
         return ""
 
     return run

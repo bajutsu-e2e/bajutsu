@@ -2,7 +2,7 @@
 
 # CLI リファレンス
 
-> 実装: `bajutsu/cli/`（Typer。各コマンドは所属する機能のディレクトリに置かれます。例：`run/cli.py`、`record/cli.py` — `cli/commands/` には機能を持たない `doctor`/`lint`/`schema`/`config`/`report`/`runner` のみが残ります）。エントリポイントは `pyproject.toml` の `bajutsu = "bajutsu.cli:app"`。
+> 実装: `bajutsu/cli/`（Typer。各コマンドは所属する機能のディレクトリに置かれます。例：`run/cli.py`、`record/cli.py`）。`cli/commands/` に残るのは、機能を持たない `doctor`、`lint`、`schema`、`config`、`report`、`runner` だけです。エントリポイントは `pyproject.toml` の `bajutsu = "bajutsu.cli:app"`。
 > この CLI（コマンドラインインターフェース）のすべてのコマンドは `--target <name>` で 1 [アプリ](glossary.md#target-app-device)を選び、
 > `--config`（既定 `bajutsu.config.yaml`）で設定を指します。アプリ固有の差分は config 側にあります（[configuration](configuration.md)）。
 
@@ -13,7 +13,7 @@
 ## 共通
 
 - 全コマンドの前に `.env` を読み込みます（`_bootstrap`、下記）。
-- config が無い / アプリ未定義 / actuator 無し → メッセージを出して **終了コード 2**。
+- config がない、アプリが未定義、または actuator が使えないときの結果は、メッセージの出力と **終了コード 2**。
 - `--backend` は選択ではなく検査です。ターゲットは 1 つの `platform` を名指しし、それが actuator を
   決めます（[drivers](drivers.md#バックエンド選択と-actuator)）。このフラグが受け付けるのは、ターゲットの
   platform（例 `ios`）、その platform の actuator 名（`xcuitest`、`adb`、`playwright`）、`fake` です。
@@ -112,6 +112,7 @@ web backend が動く Windows では、`run` は BE-0449 以前と同じく run 
 | `--label` | config 自身の名前 | この run の履歴エントリに、短い自由記述のラベルを付けます。2 つの config の run を、run 一覧・Replay・run 統計ダッシュボードで読み分けられるようになります（[BE-0404](../../roadmaps/BE-0404-collapse-project-layer/BE-0404-collapse-project-layer-ja.md)）。ツールにとってラベルは不透明な値で、解析も config との照合も権限判定もしません。120 文字を超える値は、切り詰めずに拒否します |
 | `--config-offline` | off | Git ソースの `--config`（[configuration](configuration.md#git-リポジトリからの-configbe-0063)）向け。ローカルキャッシュだけを使い、ネットワークには一切触れません。ブランチはオフラインで解決できないので、pinned な `@<sha>` が必要です |
 | `--require-pinned-config` | off | Git ソースの `--config` 向け。コミット SHA を pin していなければ失敗します。ブランチや tag はゲート下で動きうるので、SHA だけを受け付けます |
+| `--rebuild` | off | ビルド済みアプリ（`subject.path`）がすでにあっても、run の前にターゲットの `subject.build` を実行します。ソースの変更を古いビルドで検証することがなくなります。このフラグがなければ、`run` はアプリが存在しないときだけビルドします。iOS と Android のどちらのターゲットでも、ローカルと Git のどちらの config でも同じです。run が扱う各ターゲットのビルドは、主ターゲットから順に、端末グループのメンバーとしてインストールするものも含めて、1回の run につき1回です。`subject.build` を宣言していないターゲットでは終了コード 2 で終わります。`devicefarm-host` か `appium` の worker 環境から端末を受け取るターゲットも同じです。こうした環境はアプリを自らインストールするので、ここではビルドしません。ビルドが必要なのに、このマシンの [worker 能力ファイル](drivers.md#worker-の能力検査be-0450)の `build` が target のプラットフォームを含まないときも、終了コード 2 で終わります |
 | `--worker-config` | 同梱の既定（`bajutsu/common/capability/worker.yaml`） | この run の判定に使う worker 能力ファイル。既定の代わりに使い、既定とはマージしません（[BE-0450](../../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability-ja.md)。[このマシンで動かせるもの](drivers.md#worker-の能力検査be-0450)を参照）。`run` は自分のホストか Appium グリッド経由でデバイスを動かすので、ファイルの `environment` は `local` か `appium` です。`devicefarm` のようなデバイスクラウドの環境は終了コード 2 で終わります。Device Farm のパッケージ内の実行は `devicefarm-host` を使います。デバイスは Device Farm が起動し、アプリもインストール済みなので、実行は `app.path` をインストールせずにそのビルドを起動します（[BE-0465](../../roadmaps/BE-0465-serve-ui-device-farm-fan-out/BE-0465-serve-ui-device-farm-fan-out-ja.md)）。`appium` のファイルは、グリッドの `endpoint` と、グリッドが受け持つ 1 つの `platform`（現在は `ios`）を名指しします。その platform のターゲットはエンドポイントをデバイスとして使い、シナリオのほかのターゲットはこのホストに残ります。グリッドのターゲットを 2 つ持つシナリオは拒否します（[BE-0452](../../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)）。`record`、`crawl`、`repl`、`audit`、`doctor`、`bajutsu mcp` も同じフラグを受け付けます |
 
 - 証跡は `FileSink(runs/<runId>, udid=..., log_predicate=...)` に書きます（[evidence](evidence.md#sink証跡の出力先)）。
@@ -188,7 +189,7 @@ drivers: [xcuitest, adb, playwright, fake]
 
 ## `doctor`
 
-**実行可能ゲート** + 現在画面の **規約充足度スコア**（AI 非依存。[configuration](configuration.md#doctor規約充足度スコア)）。
+**実行可能ゲート**と、現在画面の **規約充足度スコア**（AI 非依存。[configuration](configuration.md#doctor規約充足度スコア)）。
 
 ```bash
 bajutsu doctor --target <name> [--udid booted] [--backend ...] [--config ...] [--scenario <file.yaml>] [--environment-only] [--worker-config <worker.yaml>]
@@ -233,7 +234,7 @@ bajutsu doctor --target <name> [--udid booted] [--backend ...] [--config ...] [-
 
 ## `audit`
 
-シナリオの **静的な決定性スコア**です。`doctor` の規約充足度スコアの、デバイスを使わない従兄弟にあたります（AI 非依存。[selectors](selectors.md)、[BE-0049](../../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md)）。シナリオファイルを読み込み（`trace --explain` と同様に components / data を展開）、実行せずに、各シナリオがどれだけ再現可能かを報告します。
+シナリオの **静的な決定性スコア**です。`doctor` の規約充足度スコアの、デバイスを使わない対応物にあたります（AI 非依存。[selectors](selectors.md)、[BE-0049](../../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md)）。シナリオファイルを読み込み（`trace --explain` と同様に components / data を展開）、実行せずに、各シナリオがどれだけ再現可能かを報告します。
 
 ```bash
 bajutsu audit <scenario.yaml> [--json]
@@ -256,7 +257,7 @@ bajutsu audit --history <runs-dir>                         # 過去の run か�
 
 ## `coverage`
 
-スイートの **静的な e2e カバレッジマップ**です。`doctor` の規約充足度スコアの、read-only な従兄弟にあたります（AI 非依存。[BE-0050](../../roadmaps/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map-ja.md)）。`doctor` が1画面の*提供する* id を採点するのに対し、こちらはスイート全体が*行使する* id を採点します。アプリの設定済み `paths.scenarios` ディレクトリの `*.yaml` をすべて読み込み（components / data を展開）、参照している安定した id を namespace ごとにまとめ、アプリが宣言した `subject.idNamespaces`（[configuration](configuration.md#doctor規約充足度スコア)）に対して、実行せずに突き合わせます。
+スイートの **静的な e2e カバレッジマップ**です。`doctor` の規約充足度スコアの、read-only な対応物にあたります（AI 非依存。[BE-0050](../../roadmaps/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map-ja.md)）。`doctor` が1画面の*提供する* id を採点するのに対し、こちらはスイート全体が*行使する* id を採点します。アプリの設定済み `paths.scenarios` ディレクトリの `*.yaml` をすべて読み込み（components / data を展開）、参照している安定した id を namespace ごとにまとめ、アプリが宣言した `subject.idNamespaces`（[configuration](configuration.md#doctor規約充足度スコア)）に対して、実行せずに突き合わせます。
 
 ```bash
 bajutsu coverage --target <name> [--config ...] [--runs <dir>] [--crawl <screenmap>] [--json] [--html <path>]
@@ -472,7 +473,7 @@ bajutsu record --target <name> --goal "<自然言語ゴール>" [--out <file.yam
 | `--config` | `bajutsu.config.yaml` | config |
 | `--worker-config` | 同梱のデフォルト | [`run`](#run) と同じ worker 能力ファイル。`appium` のファイルを渡すと、グリッドの platform のターゲットをグリッド上でオーサリングします |
 
-- 内部で `launch_driver` → `record_loop(driver, goal, ClaudeAgent(), ...)` → `dump_scenarios` で書き出します。
+- 内部の流れ: `launch_driver` の結果を `record_loop(driver, goal, ClaudeAgent(), ...)` に渡し、`record_loop` の結果を `dump_scenarios` で書き出す流れ。
 - 出力: `recorded <N> steps -> <path>`。**要 `ANTHROPIC_API_KEY`**（`ClaudeAgent`）。
 - **Git の `--config` は読み取り専用入力です**（[BE-0063](../../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）。`record` は config を取得したチェックアウトから読みますが、生成したシナリオは**ローカル**へ書きます。`--out` 省略時は（読み取り専用の SHA キーのキャッシュであるチェックアウト内の `paths.scenarios` ディレクトリではなく）**カレントディレクトリ**に自動命名し、チェックアウト内を指す `--out` は拒否します。そのファイルをレビューし、通常の git でリポジトリへコミットしてください。
 - 続けて、オーサリング（およびアラートガード）の AI が消費したトークン量を示す `AI usage:` 行を
@@ -809,7 +810,7 @@ bajutsu codegen <scenario.yaml> --target <name> [--emit xcuitest | playwright | 
 ## `approve`
 
 実行で撮影したスクリーンショットを `visual` の**ベースライン**へ昇格させます。これはビジュアル
-リグレッションのループ（run → 確認 → approve → 再 run）の後半にあたります。`manifest.json` を読むだけなので
+リグレッションのループ（run、確認、approve、再 run）の後半にあたります。`manifest.json` を読むだけなので
 **Simulator 不要**で CI でもヘッドレスに動作し、WebUI の **Approve** ボタンの CLI 版です。
 
 ```bash
@@ -974,7 +975,10 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
 - アプリのビルド済みバイナリ（config `subject.path`）が無い場合は、先にそのアプリの `subject.build` コマンドを
   実行します（出力は job ログにストリーム）。ビルド失敗時は run を開始せず中止します。`targets.<name>.subject.build`
   に `subject.path` を生成するシェルコマンド（例: `make -C demos/showcase swiftui-build`）を設定すると、
-  手動ビルド無しに UI からオンデマンドでビルドできます。
+  手動ビルド無しに UI からオンデマンドでビルドできます。ビルドは iOS と Android のどちらのターゲットでも実行します。
+  Replay の **rebuild the app first** チェックボックス（`POST /api/run` の `rebuild: true`）は、アプリが
+  あってもビルドを実行します。ターゲットがサーバの実行してよい `subject.build` を宣言していないとき、
+  あるいはリクエストが `binaryArtifact` も指定しているときは、ステータス 400 で拒否します。
 - 操作 UI の下の **History** リストに過去の run（新しい順、pass/fail ドット、シナリオ要約）が並び、
   クリックでそのレポートを再表示します。`GET /api/runs` が裏側です。
 - run サブプロセスは worker が起動し、worker の環境（venv の `bin` を `PATH` 先頭に付与）と、lease が
@@ -1009,7 +1013,7 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
 
 ## `mcp`
 
-エージェント（Claude Desktop / Code）がシナリオを実行し、run の証跡を読めるように **MCP（Model Context Protocol）サーバ**を起動します。オプションの `bajutsu[mcp]` extra（`fastmcp`）が必要です。
+エージェント（Claude Desktop や Claude Code）がシナリオを実行し、run の証跡を読めるように **MCP（Model Context Protocol）サーバ**を起動します。オプションの `bajutsu[mcp]` extra（`fastmcp`）が必要です。
 
 ```bash
 bajutsu mcp [--config bajutsu.config.yaml] [--runs runs] [--transport stdio] [--worker-config <worker.yaml>]

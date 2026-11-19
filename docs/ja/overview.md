@@ -2,34 +2,39 @@
 
 # Bajutsu ドキュメント
 
-> 自然言語駆動の E2E（end-to-end）テストツールの実装に基づいたリファレンスです。決定的コアはプラット
-> フォーム非依存で、プラットフォーム固有の継ぎ目は 1 つの `Driver` インターフェースの背後の **backend**
-> だけです。つまり新しいプラットフォームは新しい backend です。iOS Simulator（XCUITest）、
-> web（Playwright）backend、Android（adb）backend はいずれも実装済みです。Flutter アプリはこれら
-> と同じ backend の上でそのまま動き、専用の backend を持ちません。
-> [`README.md`](../../README.md) が紹介、[`DESIGN.md`](../../DESIGN.md) が設計の根拠を扱うのに対し、この
-> ドキュメント群は **現状のコードが実際に何をするか** を機能ごとに説明します。今後の計画は
+> 自然言語駆動のエンドツーエンド（E2E）テストツールの、実装に基づいたリファレンスです。決定的コアは
+> プラットフォームに依存しません。プラットフォーム固有の継ぎ目は、1 つの `Driver` インターフェースの背後の
+> **backend** だけです。つまり、新しいプラットフォームは新しい backend になります。iOS Simulator
+> （XCUITest）backend、web（Playwright）backend、Android（adb）backend はいずれも実装済みです。Flutter
+> アプリは同じ backend の上でそのまま動き、専用の backend を持ちません。
+>
+> [`README.md`](../../README.md) は紹介を、[`DESIGN.md`](../../DESIGN.md) は設計の根拠を扱います。この
+> ドキュメント群は、**現状のコードが実際に何をするか**を機能ごとに説明します。今後の計画は
 > [ロードマップ](../../roadmaps/README-ja.md)にあります。
 
 Bajutsu は、自然言語で書かれた（または記録された）テストシナリオを受け取り、アプリを操作（tap / type /
-swipe / wait）し、**機械チェック可能なアサーション**で結果を検証します。backend を差し替えるだけで、同じシナリオが iOS Simulator（XCUITest）でもブラウザ
-（Playwright）でも動きます。Bajutsu は AI を CI（継続的インテグレーション）ゲートに持ち込みません。AI はシナリオの著者であり失敗時の調査役であって、合否は判定しません
-（[concepts](concepts.md) 参照）。
+swipe / wait）し、**機械チェック可能なアサーション**で結果を検証します。
 
-## 全体像（データフロー）
+プラットフォーム固有の継ぎ目は **backend** だけです。backend を差し替えれば、同じシナリオが iOS Simulator
+（XCUITest）でもブラウザ（Playwright）でも動きます。
+
+中心となる考え方は、AI を継続的インテグレーション（CI）のゲートに持ち込まないことです。AI はシナリオの
+著者であり失敗時の調査役であって、合否は判定しません（[concepts](concepts.md) 参照）。
+
+## データフローの全体像
 
 ![データフロー図。自然言語のゴールまたは人手編集がシナリオ YAML を生成し、Tier 2 の Orchestrator が backend 非依存の Driver API を通じて XCUITest・adb・Playwright のいずれかに対して決定的に実行します。合否は Reporter に渡り、失敗時は triage がシナリオへの修正案を提案します。](assets/diagrams/architecture-data-flow-ja.svg)
 
-各ボックスをどのモジュールが担当し、互いにどう依存しているか（同じシステムを依存レイヤとして見た図を
-含む）は [architecture](architecture.md) で説明します。
+[architecture](architecture.md) では、各ボックスをどのモジュールが担当し、モジュール同士がどう依存して
+いるかを説明します。同じシステムを依存レイヤとして見た図も含みます。
 
 ## トピック一覧（推奨の読む順）
 
 > **はじめての方は [Getting started チュートリアル](getting-started/index.md) から始めてください。** 手を
-> 動かして辿るチュートリアルです（インストール → ユニットテスト → シナリオ → 実機実行 →
-> レポート）。そのうえで、下のリファレンス各ページに戻ってきてください。**Mac のないマシン**（Linux、
-> Windows、コンテナ）では、代わりに [web トラック](getting-started/web.md)を辿ってください。Playwright
-> バックエンドでブラウザに対して同じループを辿ります。Xcode も Simulator も要りません。
+> 動かして辿るチュートリアルです（インストール → ユニットテスト → シナリオ → 実機実行 → レポート）。
+> 終えたら、下のリファレンス各ページに戻ってください。**Mac のないマシン**（Linux、Windows、コンテナ）
+> では、代わりに [web トラック](getting-started/web.md)を辿ってください。Playwright backend を使い、
+> ブラウザに対して同じループを回します。Xcode も Simulator も要りません。
 
 | # | ページ | 何を説明するか |
 |---|---|---|
@@ -77,12 +82,12 @@ bajutsu codegen <scenario.yaml> --target <name> -o UITests/Foo.swift
 bajutsu serve                                         # ローカル Web UI（Tier 1・CI 用ではない）
 ```
 
-詳細は [cli](cli.md) を参照してください。
+コマンドとオプションの全体は [cli](cli.md) にあります。
 
 ## このドキュメントの方針
 
-- **コードが正**：記述は現在の実装（`bajutsu/`）に対応づけ、要所で `file.py:line` を示します。
-- **設計と実装の差を明示**：[`DESIGN.md`](../../DESIGN.md) に書かれていても、まだ配線されていない機能
-  （外部 `mockServer` コマンド。シナリオの `mocks` で代替済み）は、各ページと
-  [architecture の実装状況](architecture.md#実装状況) で「未実装」と明記します。
+- **コードが正**：記述の 1 つ 1 つを現在の実装（`bajutsu/`）に対応づけ、要所で `file.py:line` を示します。
+- **設計と実装の差を明示**：[`DESIGN.md`](../../DESIGN.md) に書かれていても、まだコードに配線されていない
+  機能（外部 `mockServer` コマンド。シナリオの `mocks` で代替済み）は、各ページと
+  [architecture の実装状況](architecture.md#実装状況)で「未実装」と明記します。
 - **言語**：散文は日本語で書き（[`DESIGN.md`](../../DESIGN.md) に合わせます）、コード内のコメントと docstring は英語です。

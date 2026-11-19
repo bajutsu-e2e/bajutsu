@@ -38,24 +38,37 @@ _GLOBAL_DOMAIN = "-globalDomain"
 
 # The commands whose duration the device or the app sets, not simctl. `bootstatus` waits out a full
 # boot and `boot` / `erase` drive the same machinery, while `install` transfers a whole app bundle,
-# so its cost scales with the app under test — an input no bound can see. Sized against the roughly
+# so its cost scales with the app under test — an input no bound can see. `uninstall` drives the same
+# install daemon in reverse, removing the bundle and its data container. The first one after a CI boot
+# outlived the 60-second bound in the on-device conformance lane, while the lease right after it
+# succeeded. `privacy` reaches the Simulator's TCC daemon, which a fresh boot is still bringing up:
+# `privacy reset all` right after a reboot (the locale pin's, or the recovery ladder's) outlived the
+# same bound in the actuation, run, and conformance lanes alike. `shutdown` waits for the device to
+# stop and `terminate` for the app to exit, so the device and the app set their duration too; each
+# outlived the 60-second bound across the actuation, run, golden, and fault-injection lanes, most often
+# on the recovery ladder's reboot rung. Sized against the roughly
 # 80 seconds the iOS end-to-end workflow prices a CI Simulator boot at, since CI is both the slower
 # environment and the one where a hang matters; the headroom over that is deliberate, because the
 # bound exists to catch a call that will never return, not to police a slow one.
 _DEVICE_BLOCKING_TIMEOUT_S = 300.0
-_DEVICE_BLOCKING_SUBCOMMANDS = frozenset({"bootstatus", "boot", "erase", "install"})
+_DEVICE_BLOCKING_SUBCOMMANDS = frozenset(
+    {"bootstatus", "boot", "erase", "install", "uninstall", "privacy", "shutdown", "terminate"}
+)
 
 # Every other command costs only simctl's own small, bounded work, so nothing about the app or the
 # scenario can stretch it — `list` returns in well under a second. This sits far above all of them,
 # and still catches a wedge long before a CI job's own `timeout-minutes` would.
 #
-# The pasteboard is the one family the host itself can stall (see `_PBCOPY_*` above), and the two
-# halves are bounded differently on purpose. The write runs outside this helper with its own
-# per-attempt deadline and a retry, because it was measured stalling transiently and re-feeding the
-# same stdin is safe. The read (`pbpaste`) takes this bound and raises, because its result is the
-# scenario's data: retrying it is the device-level decision BE-0363 deferred to the recovery ladder,
-# and a read that raises at a named deadline already improves on the unbounded hang it replaced.
+# The pasteboard is the one family the host itself can stall (see `_PBCOPY_*` in `env.py`). Both
+# halves retry that stall: the write re-feeds the same stdin, and the read (`pbpaste`, below) has no
+# side effect, so asking again returns the same data once the host's pasteboard sync answers. A
+# single 60-second read was the most common way the on-device conformance suite went red: the stall
+# clears within seconds, but one attempt could not wait for it.
 _SIMCTL_TIMEOUT_S = 60.0
+
+# One `pbpaste` attempt's deadline. Short, because `Env.get_clipboard` retries a stalled read rather
+# than waiting one out: a healthy read returns in well under a second.
+_PBPASTE_TIMEOUT_S = 20.0
 
 
 def device_error(exc: subprocess.CalledProcessError) -> DeviceError:
@@ -419,8 +432,11 @@ def _timeout_for(args: list[str]) -> float:
     Classifying here rather than taking the bound from the caller is what lets a new call site
     inherit the right one without its author having to know a bound exists at all.
     """
-    if _subcommand_of(args) in _DEVICE_BLOCKING_SUBCOMMANDS:
+    subcommand = _subcommand_of(args)
+    if subcommand in _DEVICE_BLOCKING_SUBCOMMANDS:
         return _DEVICE_BLOCKING_TIMEOUT_S
+    if subcommand == "pbpaste":
+        return _PBPASTE_TIMEOUT_S
     return _SIMCTL_TIMEOUT_S
 
 

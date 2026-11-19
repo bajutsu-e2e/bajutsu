@@ -48,6 +48,10 @@ _VALUE_NOT_FOUND = "value-not-found"
 # `.runningForeground` within the runner's bounded poll — a wrong or uninstalled bundle
 # id, most often, for `enter_app`.
 _NOT_FOREGROUND = "not-foreground"
+# `/app/openUrl` only (BE-0487): `open(_:)` raised or recorded a failure, named in the reply's
+# `reason`; and the system predates `open(_:)` (iOS 16.4).
+_NOT_OPENED = "not-opened"
+_UNSUPPORTED = "unsupported"
 
 # Bounded re-resolution retry for a STALE actuation handle (BE-0289), held separate from BE-0207's
 # transport retry above even though it starts at the same values: the two loops bound different
@@ -107,6 +111,9 @@ class XcuitestDriver:
                 base.Capability.HANDLE_SYSTEM_ALERT,
                 base.Capability.PICKER_WHEEL,
                 base.Capability.APP_CONTEXT,
+                # `/app/openUrl` runs `XCUIApplication.open(_:)`, on a Simulator and a real device
+                # alike (BE-0487); an iOS before 16.4 fails at the step, which preflight cannot see.
+                base.Capability.OPEN_URL,
                 base.Capability.SELECT_PHOTOS,
                 base.Capability.HANDLE_TIPKIT_TIP,
                 base.Capability.HANDLE_NOTIFICATION_BANNER,
@@ -1108,8 +1115,37 @@ class XcuitestDriver:
         self.tap({"id": base.OS_BACK_BUTTON})
 
     def goto(self, url: str) -> None:  # noqa: ARG002  # Driver shape
-        # An iOS deep link is its own item (BE-0464's out-of-scope list), not a `navigate` alias.
-        raise base.UnsupportedAction("navigate is web-backend-only; iOS opens no URL mid-run")
+        # An iOS deep link is `openUrl` (BE-0487), not a `navigate` alias.
+        raise base.UnsupportedAction("navigate is web-backend-only; iOS uses openUrl")
+
+    def open_url(self, url: str) -> None:
+        """Hand *url* to the OS for the app the runner addresses, then wait for it in front (BE-0487).
+
+        The runner calls `XCUIApplication.open(_:)` on the top of its app stack — the innermost
+        `enter_app`'s, else the app under test — so the URL never goes to whichever app iOS would
+        pick. A system dialog the URL raises is left up, for an `interrupts` entry or a
+        `handleSystemAlert` step to answer. The refusal signal is whatever `open(_:)` raises or
+        records; should it report nothing for a URL no app handles, the step passes, and the
+        assertion that follows catches the wrong screen.
+
+        Raises:
+            SelectorError: The system refused the URL; the reason is the runner's own message.
+            ElementNotFound: The app never reached the foreground.
+            UnsupportedAction: The device runs an iOS before 16.4, which has no `open(_:)`.
+            XcuitestChannelError: Any other reply, a runner fault rather than a test outcome.
+        """
+        self._actuations.record(Actuation(gesture="openUrl", via="url", unit=_UNIT))
+        reply = self._transport("POST", "/app/openUrl", {"url": url})
+        if reply.status == _OK:
+            return
+        if reply.status == _NOT_OPENED:
+            reason = reply.reason or "the runner gave no reason"
+            raise base.SelectorError(f"openUrl: the system did not open the URL: {reason}")
+        if reply.status == _NOT_FOREGROUND:
+            raise base.ElementNotFound("openUrl: the app did not reach the foreground")
+        if reply.status == _UNSUPPORTED:
+            raise base.UnsupportedAction("openUrl needs iOS 16.4 or later on the device")
+        raise XcuitestChannelError(f"runner error opening a URL (status={reply.status})")
 
     def type_text(self, text: str) -> None:
         # `text` is deliberately absent from the record — not even its length (see `actuation.py`).

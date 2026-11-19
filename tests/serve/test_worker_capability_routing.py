@@ -163,6 +163,7 @@ def test_a_local_worker_serves_the_platforms_its_file_and_host_allow() -> None:
         "ios,web", "", _local("xcuitest", "playwright"), "darwin"
     )
     assert [c for c in caps if not is_route_token(c)] == [
+        "build:ios",
         "host:darwin",
         "job:run-intent",
         "platform:ios",
@@ -503,3 +504,11 @@ def test_the_worker_rereads_devicectl_at_most_once_per_interval() -> None:
     now[0] = 15.0
     assert tokens() == {"device:ipad"}
     assert calls == [0.0, 15.0]
+
+
+def test_a_worker_advertises_only_the_builds_it_declares() -> None:
+    from bajutsu.common.capability.worker_capability import parse_worker_capability
+
+    cap = parse_worker_capability("version: 1\ndrivers: [xcuitest, adb]\nbuild: [android]\n")
+    caps = worker_mod._advertised_capabilities("ios,android", "", cap, "darwin")
+    assert "build:android" in caps and "build:ios" not in caps

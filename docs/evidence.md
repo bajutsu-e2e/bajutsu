@@ -153,8 +153,8 @@ tree cannot: *where did this tap land, and how far did this swipe travel*.
 
 | Field | Meaning |
 |---|---|
-| `gesture` | the driver primitive — `tap`, `doubleTap`, `longPress`, `swipe`, `scroll`, `pinch`, `rotate`, the text primitives, `selectOption`, `setPickerValue`, `systemAlert`, `back`, `navigate` |
-| `via` | how the gesture reached its target: `coordinate` (the driver computed a point and sent it), `handle` (XCUITest actuated a snapshot handle), `identity` (the Android device resolved the element and chose the point), `bridge` (a WebView call addressed by element id), `focused` (a text primitive on whatever field holds focus), `key`, `history`, `url` (a page load by `navigate`; the URL itself is not recorded) |
+| `gesture` | the driver primitive — `tap`, `doubleTap`, `longPress`, `swipe`, `scroll`, `pinch`, `rotate`, the text primitives, `selectOption`, `setPickerValue`, `systemAlert`, `back`, `navigate`, `openUrl` |
+| `via` | how the gesture reached its target: `coordinate` (the driver computed a point and sent it), `handle` (XCUITest actuated a snapshot handle), `identity` (the Android device resolved the element and chose the point), `bridge` (a WebView call addressed by element id), `focused` (a text primitive on whatever field holds focus), `key`, `history`, `url` (a page load by `navigate`, or a URL handed to the operating system by `openUrl`; the URL itself is not recorded) |
 | `unit` | the coordinate space: `point` (iOS), `pixel` (Android), `cssPixel` (a browser page, or a WebView's own space) |
 | `points` | the coordinates the driver sent, in order — one for a tap, two for a drag's start and end. A two-finger gesture records the single anchor its two contacts were derived from, not the contacts |
 | `frame` · `target` | the resolved element's bounds and its accessibility identifier |
@@ -177,7 +177,7 @@ Three rules bound what a record may say, and every backend honors them:
     artifact discloses a secret's length)
   - a `selectOption`'s option
   - a `setPickerValue`'s value
-  - a `navigate` step's URL
+  - a `navigate` or `openUrl` step's URL
   - an element's accessibility label
 
   `target` is always the resolved accessibility identifier and nothing else. An element with no
@@ -321,6 +321,12 @@ each line's time and pairs the markers into `appTrace.json`.
     mp4 (no `moov` atom) and, on iOS, wedges the simulator's recording session.
   - `screenrecord` records device-side. On stop, its `Interval` also pulls the finished mp4 off the
     device and removes the device copy.
+  - Before that pull, the stop waits for this recording's own device-side `screenrecord` to exit. A
+    `screenrecord` that was already running before this one started (one leaked by an earlier
+    attempt, or another tool's) is excluded from that wait. Otherwise a leaked recording would hold
+    the scenario's end for the full 120s window after its steps had finished. The stop also sends
+    SIGINT to this recording's device-side process, so it finalizes even when `adb shell` does not
+    pass the local SIGINT on to the device.
   - If that pull fails (the device vanished), the sink drops that one artifact with a warning. It
     does not emit a path with no file behind it, and it does not fail an otherwise-passing scenario.
   - `adb screenrecord` caps a single recording at ~180s. That is the platform default/maximum, not

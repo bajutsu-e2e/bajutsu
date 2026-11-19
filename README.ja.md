@@ -54,8 +54,8 @@ swipe / wait）して、**機械チェック可能なアサーション**で結�
 ## 中核原則
 
 - **決定性ファースト。** 条件待機のみを使います。固定の待機は、理由を必須とし上限を設けた明示的な `sleep`
-  ステップに限ります。曖昧なセレクタは「最初の
-  一致を叩く」のではなく即失敗します。各テストはクリーン環境から開始します。
+  ステップに限ります。曖昧なセレクタは「最初の一致を叩く」のではなく即失敗します。各テストは
+  クリーン環境から開始します。
 - **安定セレクタ。** 非ローカライズでデータ由来の id を優先します。iOS なら `accessibilityIdentifier`、
   web なら `data-testid` です。テキストより id を選び、座標は最終手段です。
 - **安定度順ラダー。** UI 操作は最も安定する手段から試します（id による semantic tap → 座標 tap → …）。
@@ -202,10 +202,10 @@ make install               # 土台に加えて、config が使う backend だ�
 
 `make setup` は決定的ゲートが必要とする backend 非依存の土台です。`make install` はその上に重ねます。
 `--config`（`make install ARGS="--config demos/showcase/showcase.config.yaml"` のように渡します）を読み、
-`targets.*` が実際に使う backend と、AI プロバイダが設定されているかどうかを解決し、必要な pip extra と
-外部ツールだけを導入します（iOS なら XCUITest ランナーを組む Xcode の `xcodebuild`、web なら
-Playwright のブラウザ、AI が設定されていれば `anthropic` SDK）。冪等なので再実行しても安全です。
-作業ディレクトリに config がなければ、土台以外は何も導入しません。導入元の要件は単一のマッピング
+`targets.*` が実際に使う backend と、AI プロバイダが設定されているかどうかを解決します。
+そのうえで、必要な pip extra と外部ツールだけを導入します。iOS なら XCUITest ランナーを組む Xcode の
+`xcodebuild`、web なら Playwright のブラウザ、AI が設定されていれば `anthropic` SDK です。
+導入は冪等なので、再実行しても安全です。作業ディレクトリに config がなければ、土台以外は何も導入しません。導入元の要件は単一のマッピング
 （[`bajutsu/common/provisioning/`](bajutsu/common/provisioning)）にまとまっており、`doctor` の
 pre-flight と共有するので両者がずれることはありません。
 

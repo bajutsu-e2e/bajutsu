@@ -787,7 +787,8 @@ function initPanels(){
       url:'/api/run',body:{
         scenario:$('#scn').value,target:$('#target').value,udid:pickedUdids().join(',')||'booted',
         workers:parseInt($('#workers').value,10)||1,headed:$('#headed').checked||undefined,
-        erase:$('#erasedev').checked||undefined,systemAlertHandling:$('#nodismiss').checked?false:undefined},
+        erase:$('#erasedev').checked||undefined,rebuild:$('#rebuild').checked||undefined,
+        systemAlertHandling:$('#nodismiss').checked?false:undefined},
       onStart:d=>{state.runJobId=d.jobId;},
       onLog:line=>appendLine($('#out'),line),onDone:runDone});
   });

@@ -187,7 +187,10 @@ The same verdict covers the XCUITest runner's on-demand build, `driver.runner.bu
 not run that command itself; the run it spawns would, when the file at `driver.runner.testRunner`
 is missing. For an uploaded bundle, or a UI-bound Git config without `--allow-remote-build`, the
 spawned run refuses that build and fails with `driver.runner.build withheld` instead. Such a config
-ships its `.xctestrun` prebuilt at `testRunner`, which the run then uses as is.
+ships its `.xctestrun` prebuilt at `testRunner`, which the run then uses as is. The spawned run
+withholds the target's `subject.build` the same way: it skips the build of a missing app, and
+refuses a forced one (`rebuild`), so `serve`'s verdict holds even though `bajutsu run` builds a
+missing app on its own.
 
 ## Private-repository access for the Git config source (BE-0224)
 
@@ -1183,7 +1186,9 @@ deterministic `run` verdict.
   ([BE-0484](../roadmaps/BE-0484-job-group-lease/BE-0484-job-group-lease.md)). An iOS worker
   advertises `kind:simulator` when its inventory holds an iPhone or iPad Simulator. It advertises
   `kind:device` while it reads a real iPhone or iPad over `devicectl`. A worker capability file that
-  sets `realDevices: false` turns that token off. A Device Farm worker advertises
+  sets `realDevices: false` turns that token off. A local worker advertises `build:<platform>` for
+  each platform it runs whose app its file's `build` list says it can build, and a run that forces a
+  build (`rebuild`) requires that token. A Device Farm worker advertises
   `platform:android`, `platform:ios`, and `kind:device`. These are the platforms and the device kind
   the service reserves.
 - **A local worker refuses a platform it cannot serve.** At startup, the worker checks each

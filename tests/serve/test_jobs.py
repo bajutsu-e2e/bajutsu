@@ -400,6 +400,9 @@ def test_target_build_info_reads_config(tmp_path: Path) -> None:
             "  demo:\n"
             "    platform: ios\n"
             "    subject: {id: com.example.demo, path: build/Demo.app, build: make demo}\n"
+            "  droid:\n"
+            "    platform: android\n"
+            "    subject: {id: com.example.droid, path: build/demo.apk, build: make apk}\n"
             "  bare:\n"
             "    platform: ios\n"
             "    subject: {id: com.example.bare}\n"
@@ -407,6 +410,7 @@ def test_target_build_info_reads_config(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     assert srv.target_build_info(cfg, "demo") == ("build/Demo.app", "make demo")
+    assert srv.target_build_info(cfg, "droid") == ("build/demo.apk", "make apk")  # Android too
     assert srv.target_build_info(cfg, "bare") == (None, None)  # neither set
     assert srv.target_build_info(cfg, "nope") == (None, None)  # unknown app → no build
     assert srv.target_build_info(tmp_path / "missing.yaml", "demo") == (None, None)  # no config

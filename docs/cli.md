@@ -2,8 +2,8 @@
 
 # CLI reference
 
-> Implementation: `bajutsu/cli/` (Typer; each command lives beside its owning feature, e.g. `run/cli.py`, `record/cli.py` — `cli/commands/` holds only the feature-less `doctor`/`lint`/`schema`/`config`/`report`/`runner`). The entry point is `bajutsu = "bajutsu.cli:app"` in
-> `pyproject.toml`. Every command in this CLI (command-line interface) selects one [app](glossary.md#target-app-device) with `--target <name>` and points at config with
+> Implementation: `bajutsu/cli/`, built on Typer. Each command lives beside its owning feature, such as `run/cli.py` or `record/cli.py`. `cli/commands/` holds only the commands that belong to no feature: `doctor`, `lint`, `schema`, `config`, `report`, and `runner`. The entry point is `bajutsu = "bajutsu.cli:app"` in
+> `pyproject.toml`. Every command in this command-line interface (CLI) selects one [app](glossary.md#target-app-device) with `--target <name>` and points at config with
 > `--config` (default `bajutsu.config.yaml`). App-specific differences live in config
 > ([configuration](configuration.md)).
 
@@ -14,7 +14,7 @@ Related: [run-loop](run-loop.md) · [recording](recording.md) · [codegen](codeg
 ## Common
 
 - Every command loads `.env` first (`_bootstrap`, below).
-- Missing config / undefined app / no actuator → prints a message and exits with **code 2**.
+- A missing config, an undefined app, or no available actuator prints a message and exits with **code 2**.
 - `--backend` is a check, not a choice. A target names one `platform`, which decides the actuator
   ([drivers](drivers.md#backend-selection-and-the-actuator)). The flag accepts three values:
   - the target's platform, such as `ios`;
@@ -28,7 +28,9 @@ Related: [run-loop](run-loop.md) · [recording](recording.md) · [codegen](codeg
 
 ## `run`
 
-Runs a scenario **deterministically**; pass/fail is machine-only, and since [BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md) **no flag of `run`'s reaches a model at all**. Its **alert guard** is on unless `--no-system-alert-handling` turns it off. It answers each OS prompt a `systemAlert` interrupts entry names, in the scenario or its target. It answers through the native SpringBoard path (iOS XCUITest, no model). Any other prompt stays untouched. The blocked step's own failure names it — see [the `systemAlert` interrupts entries](scenarios.md#systemalert-the-system-alert-guard).
+Runs a scenario **deterministically**. Pass/fail is machine-only, and since [BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md) **no flag of `run` reaches a model at all**.
+
+The **alert guard** is on unless `--no-system-alert-handling` turns it off. The guard answers each OS prompt that a `systemAlert` interrupts entry names, in the scenario or its target. It answers through the native SpringBoard path (iOS XCUITest, no model). Any other prompt stays untouched, and the failure of the blocked step names it. See [the `systemAlert` interrupts entries](scenarios.md#systemalert-the-system-alert-guard).
 
 ```bash
 bajutsu run --target <name> [--scenario <file.yaml>] [options]
@@ -36,7 +38,7 @@ bajutsu run --scenario <self-declaring.yaml> [options]          # --target optio
 ```
 
 By default `run` loads **every `*.yaml`** in the app's configured scenarios dir
-(`targets.<name>.paths.scenarios`, see [configuration](configuration.md)) — so the config alone is enough
+(`targets.<name>.paths.scenarios`, see [configuration](configuration.md)), so the config alone is enough
 to run. Pass `--scenario <file>` to run one file instead, or repeat the flag to run several
 specific files in one process, sharing a single warm runner.
 
@@ -48,7 +50,7 @@ input, output, and error. The `PASS|FAIL` line stays on stdout and progress on s
 reads the terminal as before.
 
 The child process starts in a session of its own, so a Ctrl-C reaches `run` alone. `run` turns a
-SIGINT, a SIGTERM, or a SIGHUP into the cancel a `serve` job receives. The run then stops at its
+SIGINT, a SIGTERM, or a SIGHUP into the cancel that a `serve` job receives. The run then stops at its
 next safe boundary and still writes its manifest and report
 ([BE-0370](../roadmaps/BE-0370-graceful-run-cancel/BE-0370-graceful-run-cancel.md)). A signal
 that the caller already ignores stays ignored, as SIGHUP does under `nohup`.
@@ -63,7 +65,7 @@ Running the child in its own session changes three more things at the terminal:
   `--step` prompt in a run started with `&` still reads the terminal instead of stopping the job.
   Run `--step` in the foreground.
 
-If `run` itself dies without a signal it can catch (`kill -9`, an out-of-memory kill), the run
+If `run` itself dies without a signal that it can catch (`kill -9`, an out-of-memory kill), the run
 notices that its caller is gone and cancels itself the same way.
 
 On Windows, where the web backend runs, `run` executes the run body in the `run` process itself,
@@ -129,17 +131,18 @@ uses it as always. Each self-declaring file has it checked for membership instea
 | `--label` | the config's own name | tag this run's history entry with a short free-text label, so the runs of two configs stay readable apart in the run list, Replay, and the run-stats dashboard ([BE-0404](../roadmaps/BE-0404-collapse-project-layer/BE-0404-collapse-project-layer.md)). Opaque to the tool: never parsed, never matched against config, never consulted by authorization. A value longer than 120 characters is refused rather than shortened |
 | `--config-offline` | off | for a Git `--config` ([configuration](configuration.md#config-from-a-git-repository-be-0063)): use the local cache and never touch the network — needs a pinned `@<sha>`, since a branch can't be resolved offline |
 | `--require-pinned-config` | off | for a Git `--config`: fail unless it pins a commit SHA — a branch or tag can move under a gate, so only a SHA is accepted |
+| `--rebuild` | off | run the target's `subject.build` before the run even when its built app (`subject.path`) already exists, so a source change is never tested against a stale build. Without the flag, `run` builds only a missing app, for an iOS or an Android target and from a local or a Git config. Each target the run drives builds once per run, the primary first, including the device-group members it installs. A target that declares no `subject.build` exits 2, and so does a target whose device comes from a `devicefarm-host` or `appium` worker environment, which installs the app itself and never builds it here. The run also exits 2 when it needs a build and this machine's [worker capability file](drivers.md#worker-capability-check-be-0450) does not list the target's platform under `build` |
 | `--worker-config` | the shipped default (`bajutsu/common/capability/worker.yaml`) | the worker capability file `run` checks each scenario against; it replaces the default and never merges with it ([BE-0450](../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability.md)); see [what this machine can run](drivers.md#worker-capability-check-be-0450). `run` drives devices on its own host or through an Appium grid, so the file's `environment` is `local` or `appium`; a device-cloud environment such as `devicefarm` exits 2. The run inside a Device Farm package takes `devicefarm-host`, whose device Device Farm booted and installed the app on, so the run launches that build instead of installing `app.path` ([BE-0465](../roadmaps/BE-0465-serve-ui-device-farm-fan-out/BE-0465-serve-ui-device-farm-fan-out.md)). An `appium` file names the grid's `endpoint` and its one `platform` (today `ios`): targets of that platform take the endpoint as their device, the scenario's other targets stay on this machine, and a scenario with two grid targets is refused ([BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)). `record`, `crawl`, `repl`, `audit`, `doctor`, and `bajutsu mcp` take the same flag |
 
-- Evidence is written to `FileSink(runs/<runId>, udid=..., log_predicate=...)`
+- The run writes evidence to `FileSink(runs/<runId>, udid=..., log_predicate=...)`
   ([evidence](evidence.md#sinks-where-evidence-goes)).
 - `runId` is `YYYYMMDD-HHMMSS`.
-- Output: `PASS|FAIL  runs/<runId>/manifest.json`. **Exits 0 if every scenario passes, 1 on failure.**
+- Output: `PASS|FAIL  runs/<runId>/manifest.json`. The command **exits 0 if every scenario passes and 1 on failure.**
 - **Worker capability (BE-0450).** Before `run` resolves any target, it checks each scenario
   against the worker capability file and the host operating system. The file is `--worker-config`,
   or the shipped default. A scenario fails when it needs a driver this machine cannot run. It also
   fails when it declares more targets than `maxTargetsPerJob`. Its reason starts with
-  `worker-capability-unsupported:`. The run's results and report record it like any other
+  `worker-capability-unsupported:`. The run's results and report record the scenario like any other
   scenario that did not pass. `run` acquires no device for that scenario and runs the rest. When no scenario
   can run, `run` exits 2 and lists each reason.
 - **Device conditions form runs (BE-0452).** A target may declare a device condition:
@@ -208,16 +211,16 @@ matrix, or `--workers` above 1 exits 2 as well.
 
 ## `doctor`
 
-A **runnability gate** + the **convention score** for the current screen (AI-independent;
+A **runnability gate** plus the **convention score** for the current screen (AI-independent;
 [configuration](configuration.md#doctor-the-convention-score)).
 
 ```bash
 bajutsu doctor --target <name> [--udid booted] [--backend ...] [--config ...] [--scenario <file.yaml>] [--environment-only] [--worker-config <worker.yaml>]
 ```
 
-- First the env gate (`preflight.py`): the required CLIs for the actuator (`xcrun` / `xcodebuild`
-  for XCUITest) and a **booted Simulator**, printed as a ✓/✗ checklist. A missing
-  check **exits 1** (fail fast with a fixable hint).
+- `doctor` first runs the environment gate (`preflight.py`). The gate checks the required CLIs for the
+  actuator (`xcrun` and `xcodebuild` for XCUITest) and a **booted Simulator**, and prints a ✓/✗ checklist.
+  A missing check **exits 1**, failing fast with a fixable hint.
 - `--environment-only` stops right after that gate — render the `environment:` section, then exit 0
   (a pass) or 1 (a `✗`), skipping the screen probe below (on iOS, the cost of bringing up a
   short-lived XCUITest runner). A CI lane that only needs to verify the environment gate against a
@@ -254,16 +257,17 @@ bajutsu doctor --target <name> [--udid booted] [--backend ...] [--config ...] [-
   devices cannot be read. An open range then reads as
   "one run per available major version". `--backend fake` evaluates no condition and prints no
   section.
-- Otherwise, `query()`s via the actuator and renders `score(elements, subject.idNamespaces)`. Under a
+- When no earlier check stops it, `doctor` calls `query()` through the actuator and renders
+  `score(elements, subject.idNamespaces)`. Under a
   device condition, the probe scores the device of the target's first run, the one
   [`record`](#record) takes. **Exits 1 when the grade is Blocked, 0 otherwise.**
 
 ## `audit`
 
-A **static determinism score** for a scenario — the device-free cousin of `doctor`'s convention
+A **static determinism score** for a scenario: the device-free counterpart of `doctor`'s convention
 score (AI-independent; [selectors](selectors.md); [BE-0049](../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md)).
-It reads a scenario file (expanding components / data, like `trace --explain`) and reports, per
-scenario, how reproducible it is — without running it.
+`audit` reads a scenario file, expanding components and data like `trace --explain`. It reports, per
+scenario, how reproducible the scenario is, without running it.
 
 ```bash
 bajutsu audit <scenario.yaml> [--json]
@@ -271,19 +275,19 @@ bajutsu audit <scenario.yaml> [--json]
 
 - Grades each selector on the **stability ladder** ([selectors](selectors.md)): a unique `id` /
   `idMatches` is **stable**; `label` / `labelMatches` / `traits` / `value` is **moderate** (auxiliary,
-  no id); an `index` (nth-of-many) is **fragile**. Plus it flags **coordinate gestures**
+  no id); an `index` (nth-of-many) is **fragile**. The audit also flags **coordinate gestures**
   (`swipe {from,to}`, which a stable id could replace), **over-loose waits** (`until:
   screenChanged` / `settled`, which wait for no concrete condition), and every **fixed sleep**
   (`sleep`, with its reason); more than 10 seconds of fixed sleep in one scenario grades it
   `Moderate`.
 - Emits a per-scenario `grade` (`Stable` / `Moderate` / `Fragile`), a stability fraction, and the
-  located findings — as text, or `--json` for tooling.
+  located findings, as text or as `--json` for tooling.
 - **Advisory and read-only**: it never runs the scenario, never edits it, and **never gates CI** —
   a successful audit **exits 0 even with findings** (only a missing / unreadable scenario file
   exits 2). A finding is something to harden, not a verdict — the opposite of retry-to-pass, which
   hides flakiness.
 
-Two further modes prove determinism by *observation* rather than static grading:
+Two further modes prove determinism by *observation* instead of static grading:
 
 ```bash
 bajutsu audit <scenario.yaml> --repeat K --target <name>   # run K times, diff the outcomes (takes --worker-config, like run)
@@ -314,7 +318,7 @@ bajutsu audit --history <runs-dir>                         # mine past runs for 
 
 ## `coverage`
 
-A **static e2e coverage map** for a suite — the read-only cousin of `doctor`'s convention score
+A **static end-to-end (E2E) coverage map** for a suite: the read-only counterpart of `doctor`'s convention score
 (AI-independent; [BE-0050](../roadmaps/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md)).
 Where `doctor` grades the ids one screen *exposes*, this grades the ids a whole *suite* exercises:
 it walks every `*.yaml` in the app's configured `paths.scenarios` dir (expanding components / data), groups
@@ -367,13 +371,13 @@ bajutsu coverage --target <name> [--config ...] [--runs <dir>] [--crawl <screenm
 
 ## `impact`
 
-**Test impact analysis** — from a source change, which scenario steps that change is likely to affect
+**Test impact analysis** finds, from a source change, the scenario steps that the change is likely to affect
 (AI-independent; [BE-0321](../roadmaps/BE-0321-test-impact-analysis/BE-0321-test-impact-analysis.md)).
-It is the reverse of `coverage`: where `coverage` walks the suite forward to the app surface it
+`impact` is the reverse of `coverage`: where `coverage` walks the suite forward to the app surface it
 exercises, `impact` inverts the same static analysis into a map from each
 [stable id](glossary.md#scenario-authoring), screen, and asserted endpoint to the `(scenario, step)`
 pairs that reference it, then reads a change as a `git` diff and reports the steps a developer should
-review. A developer sees exactly the steps at risk before pushing; a CI pipeline can order them first
+review. A developer sees exactly the steps at risk before pushing, and a continuous-integration (CI) pipeline can order those steps first
 for fast feedback.
 
 ```bash
@@ -417,14 +421,14 @@ per-run `report.html` (AI-independent;
 [BE-0102](../roadmaps/BE-0102-run-stats-dashboard/BE-0102-run-stats-dashboard.md)). Where `coverage`
 answers *"what surface do we test?"* and `audit` answers *"is a scenario reproducible?"*, `stats`
 answers *"how is the whole suite doing over time?"* It aggregates the `manifest.json` of every run
-under a directory — no device, no AI, no verdict.
+under a directory, with no device, no AI, and no verdict.
 
 ```bash
 bajutsu stats --runs <dir> [--json] [--html <path>]
 ```
 
-- **`--runs <dir>`** is the directory of past runs to aggregate; it reads each run's `manifest.json`
-  (unreadable / malformed ones are skipped). A missing directory exits 2.
+- **`--runs <dir>`** is the directory of past runs to aggregate. `stats` reads each run's `manifest.json`
+  and skips an unreadable or malformed one. A missing directory exits 2.
 - Reports, as text or `--json` for tooling:
   - **Pass-rate over time** — overall and per day (the day is parsed from the run id's timestamp
     prefix; a custom-labelled run id has no day and buckets under `(no date)`).
@@ -447,18 +451,18 @@ bajutsu stats --runs <dir> [--json] [--html <path>]
 - **`--html <path>`** also writes a **self-contained HTML dashboard** of the same figures (inline CSS,
   a minimal inline-SVG trend line, no JavaScript, no external asset — it opens straight from disk).
   The text (or `--json`) output is unchanged; the path is confirmed on stderr.
-- **Advisory and read-only**: it never re-runs a scenario, never recomputes a verdict, and **never
-  gates CI** — an older manifest missing a newer field renders as "not captured", never as a failure.
-  Any threshold a team sets on its numbers is their own informational check.
+- **Advisory and read-only**: the command never re-runs a scenario, never recomputes a verdict, and **never
+  gates CI**. An older manifest that lacks a newer field renders as "not captured", never as a failure.
+  Any threshold a team sets on its numbers is that team's own informational check.
 
 ## `flakiness`
 
-A **ranked flaky-scenario surface** over the run history — the actionable counterpart to `audit
+A **ranked flaky-scenario surface** over the run history: the actionable counterpart to `audit
 --history` (AI-independent;
 [BE-0220](../roadmaps/BE-0220-flaky-suggestion-and-cross-run-fix/BE-0220-flaky-suggestion-and-cross-run-fix.md)).
 Where `audit --history` labels each scenario `flaky` / `deterministic` / `unproven`, `flakiness`
 sorts the whole suite flaky-first and scores how badly each one flips, so a team sees its worst
-offenders at a glance — no device, no AI, no verdict.
+offenders at a glance, with no device, no AI, and no verdict.
 
 ```bash
 bajutsu flakiness --history <runs-dir> [--json] [--window N]   # mine a directory of run manifests
@@ -501,17 +505,17 @@ bajutsu flakiness [--org <org>] [--json] [--window N]          # read the serve 
   <org>`** picks the tenant whose runs the database read mines.
 - A run with no `provenance.scenarioHash` (a pre-provenance run) or no recorded verdict can't be
   grouped and is reported as skipped, exactly as in `audit --history`.
-- **Advisory and read-only**: it only reports flakiness already recorded in history — it re-runs
+- **Advisory and read-only**: the command only reports flakiness already recorded in history. It re-runs
   nothing, recomputes no verdict, and **never gates CI**.
 
 ## `export`
 
-Bundles a finished run into a single portable `.zip` — `report.html` together with `manifest.json`,
+Bundles a finished run into a single portable `.zip`. The archive holds `report.html` together with `manifest.json`,
 `junit.xml`, `ctrf.json` ([reporting](reporting.md#ctrfjson)), the executed `scenario.yaml`, and
 **all** of its evidence (screenshots, video, `network.json`, …)
 ([BE-0060](../roadmaps/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md)).
 The whole `runs/<id>/` tree is rooted under a single `<id>/` folder, so `report.html`'s **relative**
-links resolve offline — the report works by double-click, no server.
+links resolve offline, so the report opens by double-click with no server.
 
 ```bash
 bajutsu export <run-id | run-dir> [-o out.zip] [--force]
@@ -520,7 +524,7 @@ bajutsu export <run-id | run-dir> [-o out.zip] [--force]
 - `<run>` is a run id (resolved under `--runs`, default `runs/`) or a path to a run directory.
 - Output defaults to `<id>.zip` beside the run dir; `-o/--output` overrides. It **refuses to
   overwrite** an existing file without `--force` (mirroring how `record` never silently overwrites).
-- Pure packaging of what the run already wrote: no device, no AI, no effect on any verdict. It
+- `export` is pure packaging of what the run already wrote, with no device, no AI, and no effect on any verdict. It
   archives **strictly the run dir** (never `.env`, config, or anything above it) and inherits the
   run's secret-scrubbing. `bajutsu run --zip` is the same archiver, run inline after the verdict;
   `bajutsu serve` offers it as a **Download** button beside the embedded report.
@@ -532,8 +536,8 @@ exchanges interleaved chronologically, followed by expectations, app-trace inter
 summary. Read-only (reads the saved `manifest.json` / `network.json` / `appTrace.json`, and
 `scenario.yaml` for provenance).
 
-- Each step shows the natural-language phrase it was recorded from — its [`from:`](scenarios.md#from-provenance)
-  provenance (BE-0044) — inline as `← "<phrase>"`; a run of steps sharing one phrase is labeled once.
+- Each step shows the natural-language phrase that it was recorded from, its [`from:`](scenarios.md#from-provenance)
+  provenance (BE-0044), inline as `← "<phrase>"`; a run of steps sharing one phrase is labeled once.
   A hand-authored scenario or an older run without provenance simply shows none.
 
 ```bash
@@ -541,7 +545,7 @@ bajutsu trace [<run-dir>] [--scenario <substr>] [--runs runs]
 bajutsu trace --explain <scenario.yaml>     # pre-run dry run (no device)
 ```
 
-- With no `<run-dir>`, uses the latest run under `runs/`. `--scenario` filters by name substring.
+- With no `<run-dir>`, `trace` uses the latest run under `runs/`. `--scenario` filters by name substring.
 - **Exits 2** if no run is found.
 - **`--explain <scenario.yaml>`** is the *pre-run* counterpart: instead of reading a finished run,
   it previews how the scenario's `capturePolicy` would fire (BE-0028). Action-triggered rules are
@@ -555,8 +559,8 @@ bajutsu trace --explain <scenario.yaml>     # pre-run dry run (no device)
 
 Re-renders a finished run's `report.html` (and re-emits `junit.xml` and `ctrf.json`,
 [reporting](reporting.md#ctrfjson)) from its **stored data**, with
-the **current** template — no device, no LLM, no re-run
-([BE-0068](../roadmaps/BE-0068-regenerable-reports/BE-0068-regenerable-reports.md)). So a
+the **current** template, and needs no device, no LLM, and no re-run
+([BE-0068](../roadmaps/BE-0068-regenerable-reports/BE-0068-regenerable-reports.md)). A
 template improvement or a rendering-bug fix reaches past runs without re-executing them; the
 verdict is read from the stored model, never recomputed.
 
@@ -568,7 +572,7 @@ bajutsu report --all [--runs runs]     # re-render every run dir (with a manifes
 - The render model is `manifest.json` (a versioned, lossless render input — `schemaVersion`) plus
   the executed `scenario.yaml`; the renderer reads only the run dir. An **older** run renders
   without error, with any newer-only section shown as "not captured" rather than invented.
-- It re-presents recorded outcomes — it never re-evaluates an assertion or alters a verdict — so it
+- `report` re-presents recorded outcomes. It never re-evaluates an assertion or alters a verdict, so it
   sits inside the determinism contract. `serve` uses the **same renderer on view**: it renders
   `report.html` fresh from each run's stored model on every request (falling back to the baked file
   if the model can't be loaded), so upgrading `serve` refreshes every report with no re-bake.
@@ -576,7 +580,7 @@ bajutsu report --all [--runs runs]     # re-render every run dir (with a manifes
 
 ## `triage`
 
-Diagnoses the first **failed** scenario in a run and suggests a minimal fix. This is **advisory** — it
+Diagnoses the first **failed** scenario in a run and suggests a minimal fix. The diagnosis is **advisory**: it
 never judges pass/fail (the AI boundary). It assembles failure context (the failing step and its
 reason, failed expectations, the element tree nearest the failure, the scenario) and runs a
 `TriageAgent`. The default is rule-based (`HeuristicTriageAgent`, no API key): it categorizes the
@@ -598,7 +602,7 @@ bajutsu triage [<run-dir>] --ai --apply <scenario-file> [--write] \
                [--rerun --target <name> [--backend ios] [--udid <udid>]]
 ```
 
-- Defaults to the latest run under `runs/`. **Exits 0** when the run has no failed scenario.
+- The default run is the latest one under `runs/`. The command **exits 0** when the run has no failed scenario.
 - `--rerun` requires `--write` (nothing to verify otherwise) and `--target`.
 - With `--ai`, an `AI usage:` line of the tokens the diagnosis consumed is printed to stderr after
   the diagnosis. The rule-based default uses no AI, so it prints nothing.
@@ -623,8 +627,8 @@ spinner most of the time, a network response that varied).
 bajutsu triage --flaky --scenario <name> --history <runs-dir> --ai [--apply <file> [--write]] [--json <path>]
 ```
 
-- **Requires `--ai`.** Cross-run diagnosis has no rule-based agent — the delta reasoning is exactly
-  the judgement-free investigator work the LLM does — so `--flaky` without `--ai` exits 2. It stays
+- **Requires `--ai`.** Cross-run diagnosis has no rule-based agent. The delta reasoning is exactly
+  the judgement-free investigator work that the LLM does, so `--flaky` without `--ai` exits 2. It stays
   advisory: the runs already decided pass/fail; this only explains and proposes, never on the
   verdict path (prime directive 1).
 - `--scenario <name>` picks the flaky scenario (matched as a substring of the run's scenario name,
@@ -641,7 +645,7 @@ bajutsu triage --flaky --scenario <name> --history <runs-dir> --ai [--apply <fil
   inline in both surfaces. A full YAML rewrite is deferred to a follow-up; the current fixes are the
   targeted structured edits.
 - **Exits 0** when the scenario's history has no failing run or no passing run to contrast
-  (nothing to diagnose as flaky) — advisory, like the other read-only modes.
+  (nothing to diagnose as flaky). The mode is advisory, like the other read-only modes.
 
 ## `record`
 
@@ -673,7 +677,7 @@ bajutsu record --target <name> --goal "<natural-language goal>" [--out <file.yam
 | `--config` | `bajutsu.config.yaml` | config |
 | `--worker-config` | the shipped default | the worker capability file, as in [`run`](#run); an `appium` file authors a target of the grid's platform on the grid |
 
-- Internally `launch_driver` → `record_loop(driver, goal, ClaudeAgent(), ...)` → `dump_scenarios`.
+- Internally, `launch_driver` feeds `record_loop(driver, goal, ClaudeAgent(), ...)`, whose result goes to `dump_scenarios`.
 - Output: `recorded <N> steps -> <path>`. **Needs `ANTHROPIC_API_KEY`** (`ClaudeAgent`).
 - **A Git `--config` is read-only input** ([BE-0063](../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source.md)):
   `record` reads the config from the fetched checkout, but the authored scenario goes **local** — with
@@ -686,11 +690,11 @@ bajutsu record --target <name> --goal "<natural-language goal>" [--out <file.yam
 ## `crawl`
 
 Explores the app **breadth-first** and writes a **screen map** of the reachable screens and the
-transitions between them (Tier 1; [BE-0038](../roadmaps/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)). Unlike `record`, which is
-*goal-directed* — AI explores toward one natural-language goal and writes one scenario — `crawl`
-is *systematic discovery*: it visits the screens it can reach and reports what it found. The
-exploration engine is **deterministic** (a screen's identity and the order candidate actions are
-tried are pure functions of the element tree); **no AI** is involved, and it is **never a
+transitions between them (Tier 1; [BE-0038](../roadmaps/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)). `record` is
+*goal-directed*: AI explores toward one natural-language goal and writes one scenario. `crawl`
+is instead *systematic discovery*: it visits the screens it can reach and reports what it found. The
+exploration engine is **deterministic**, since a screen's identity and the order in which candidate actions are
+tried are pure functions of the element tree. The engine involves **no AI**, and `crawl` is **never a
 pass/fail gate**.
 
 ```bash
@@ -722,9 +726,9 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
   `crawl` reads the config from the fetched checkout, but the screen map / screenshots go to the local
   `--out` run dir (default `runs/<timestamp>`), never into the read-only SHA-keyed cache; an `--out`
   inside the checkout is refused.
-- Traversal is by **deterministic replay**, not in-place backtracking: to revisit a known screen
-  the crawl relaunches the app to a clean start and replays the shortest recorded path to it,
-  then takes the next untried action — the same way `run` reaches any state.
+- Traversal is by **deterministic replay**, not in-place backtracking. To revisit a known screen,
+  the crawl relaunches the app to a clean start, replays the shortest recorded path to the screen,
+  and then takes the next untried action, the same way `run` reaches any state.
 - **Continue a past crawl** ([BE-0181](../roadmaps/BE-0181-crawl-continuation/BE-0181-crawl-continuation.md)):
   a crawl stops on `--max-screens`/`--max-steps` far more often than on `completed`, so
   `bajutsu crawl --out <existing run> --continue` picks the run's map back up and re-explores
@@ -772,14 +776,14 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
   screen is a label+info node, and screens that are the same UI in different states (a form empty vs
   filled) collapse into one node you can expand in place. Stops at the first of `--max-screens` /
   `--max-steps`.
-- On completion it also writes `<out>/screenmap.html` — a **self-contained** report (inline CSS, no
+- On completion the crawl also writes `<out>/screenmap.html`, a **self-contained** report (inline CSS, no
   JavaScript, no external asset) and the offline counterpart to the live **Crawl** tab: the screens
   laid out in BFS depth columns with their screenshots, the transitions drawn as a static inline SVG
   (amber, with a 🛡️ marker, where a step tapped through an OS alert), and the crash / dismissed-alert
   paths listed below. It sits beside `screenmap.json` and `screens/`, so it opens straight from the
   run dir — share or archive it without the web UI. Read-only and model-free, like the JSON.
-- On completion it also writes one `<out>/crashes/crash-NNN.yaml` per faithfully reproducible crash
-  — a **repro scenario** built from the crash's recorded action path, directly runnable by `run`, so
+- On completion the crawl also writes one `<out>/crashes/crash-NNN.yaml` per faithfully reproducible crash.
+  Each file is a **repro scenario** built from the crash's recorded action path, directly runnable by `run`, so
   a discovered crash becomes a committed Tier 2 regression after human review. The conversion is
   pure, deterministic, and model-free (`tap` / `type` / `fill` map to their steps). A path that taps a
   normalized coordinate (a vision-located control) has no selector to address, so it emits no
@@ -801,12 +805,12 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
 
 ### How a screen is identified (the fingerprint)
 
-Every screen is reduced to a **fingerprint** — a short, stable identity that lets the crawl tell a
-revisit from a genuinely new screen. This reduction is a pure, deterministic function of the element tree (no
+Every screen is reduced to a **fingerprint**, a short, stable identity that lets the crawl tell a
+revisit from a genuinely new screen. The reduction is a pure, deterministic function of the element tree (no
 AI, no screenshot pixels), which is what keeps the screen map reproducible: the same screen always
 hashes to the same value. Each node records both the fingerprint and its `kind`.
 
-- **Identifier fingerprint (`kind: "id"` — the normal case).** The sorted *set* of accessibility
+- **Identifier fingerprint (`kind: "id"`, the normal case).** The sorted *set* of accessibility
   identifiers present on the screen, hashed. Keying on *which* identifiers are present — not their
   on-screen text — makes the identity stable across locales and data changes: a list showing
   different rows, or a label in another language, is still the same screen. Each identifier is then
@@ -821,7 +825,7 @@ hashes to the same value. Each node records both the fingerprint and its `kind`.
   flipping a switch yields a *new* node: it is a distinct, separately-explorable state, which is how
   the crawl discovers an action that only becomes available once a precondition is met (e.g. a
   submit button enabled after every field is filled).
-- **Structural fingerprint (`kind: "structural"` — the fallback).** When a screen carries fewer than
+- **Structural fingerprint (`kind: "structural"`, the fallback).** When a screen carries fewer than
   two accessibility identifiers, the id set is too thin to identify it reliably, so the crawl hashes
   the **actionable elements' traits bucketed by coarse on-screen position** instead. This is less
   stable — layout jitter can shift it, and unrelated screens with a similar control skeleton can
@@ -856,11 +860,10 @@ engine is platform-neutral, so `bajutsu crawl --target <web-app> --backend web` 
 
 ## `repl`
 
-Opens a **manual shell** against the running app: read the current element tree, act on one of its
-ids, read it again ([BE-0423](../roadmaps/BE-0423-cli-repl-inspect-actuate/BE-0423-cli-repl-inspect-actuate.md)).
-It sits beside `record` (goal-directed AI authoring) and `crawl` (autonomous exploration) as a third
-way to reach a target through the same [driver](glossary.md#driver-backend-actuator-platform)
-interface — and is the only one of the three that asks no model anything and writes no scenario.
+Opens a **manual shell** against the running app. In the shell, you read the current element tree, act on one of its
+ids, and read the tree again ([BE-0423](../roadmaps/BE-0423-cli-repl-inspect-actuate/BE-0423-cli-repl-inspect-actuate.md)).
+Beside `record` (goal-directed AI authoring) and `crawl` (autonomous exploration), `repl` is a third way to reach a target through the same [driver](glossary.md#driver-backend-actuator-platform)
+interface. Of the three, only `repl` asks no model anything and writes no scenario.
 Use it to answer, in seconds, the question that otherwise costs a whole run-and-read-the-report
 cycle: what does this screen actually expose, and does that id resolve?
 
@@ -1019,7 +1022,7 @@ On every other route, `--attach` exits 2 before touching any device. Those route
 
 ## `codegen`
 
-Generates a **native test** from a scenario (AI-independent · structural mapping · [codegen](codegen.md)):
+Generates a **native test** from a scenario (AI-independent, structural mapping; see [codegen](codegen.md)):
 **XCUITest** (Swift, iOS), **Playwright** (TypeScript, web), or **UI Automator** (Kotlin, Android).
 
 ```bash
@@ -1040,9 +1043,9 @@ bajutsu codegen <scenario.yaml> --target <name> [--emit xcuitest | playwright | 
 
 ## `approve`
 
-Promotes a run's captured screenshots into `visual` **baselines** — the second half of the
-visual-regression loop (run → review → approve → re-run). Reads `manifest.json`, so it needs
-**no Simulator** and runs headless in CI; it is the CLI twin of the WebUI's **Approve** button.
+Promotes a run's captured screenshots into `visual` **baselines**, the second half of the
+visual-regression loop (run, review, approve, re-run). `approve` reads `manifest.json`, so it needs
+**no Simulator** and runs headless in CI. It is the CLI twin of the WebUI's **Approve** button.
 
 ```bash
 bajutsu approve [<run_dir>] --baselines <dir> [--scenario <id>] [--all] [--runs runs]
@@ -1057,16 +1060,16 @@ bajutsu approve [<run_dir>] --baselines <dir> [--scenario <id>] [--all] [--runs 
 | `--runs` | `runs` | runs root, used when `<run_dir>` is omitted |
 
 - Copies each visual check's captured `visual-actual.png` to `<dir>/<baseline>`. **Exits 0**
-  when ≥1 baseline was promoted, **1** when there was nothing to approve.
+  when at least one baseline was promoted and **1** when there was nothing to approve.
 
 ## `serve`
 
-A local web UI to **author, run, and explore** — a Tier-1 convenience, **not part of the CI
+A local web UI to **author, run, and explore**. It is a Tier-1 convenience and **not part of the CI
 gate**. Four top-level tabs over the CLI: **Record** authors a scenario from a goal
 (`python -m bajutsu record ...`), **Replay** runs a scenario and shows its report
 (`python -m bajutsu.run.internal ...`, the body of `bajutsu run`), **Crawl** explores the app and draws its screen map live
 (`python -m bajutsu crawl ...`), and **Stats** shows the aggregate run-stats dashboard across the
-run history (`bajutsu stats`). All run against the **active config**, which you open from
+run history (`bajutsu stats`). All of these tabs run against the **active config**, which you open from
 the file browser, a Git repository, or an uploaded `.zip` bundle (see "Open config" below).
 Each request queues a job. A `bajutsu worker` runs it, since the server runs none itself
 (BE-0449). The server streams the job's output. It serves the produced `runs/<id>/` tree. The
@@ -1080,12 +1083,12 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
 
 ### Authentication and security headers
 
-- **`--token` (or `$BAJUTSU_SERVE_TOKEN`) — authentication (BE-0051).** With a token set, every
+- **`--token` (or `$BAJUTSU_SERVE_TOKEN`) enables authentication (BE-0051).** With a token set, every
   request must authenticate: API clients send `Authorization: Bearer <token>`; the browser exchanges
   the token once via `POST /api/login` (the UI prompts on a 401), which sets an HttpOnly, SameSite
-  session cookie — the token is never put in a URL. **Binding a non-loopback `--host` (e.g. `0.0.0.0`)
+  session cookie, so the token is never put in a URL. **Binding a non-loopback `--host` (e.g. `0.0.0.0`)
   requires a token**, so the server is never exposed unauthenticated (it exits otherwise). With no
-  token the server is open, as before — only safe on loopback. Full multi-user auth (OAuth/RBAC) is
+  token the server is open, as before, which is safe only on loopback. Full multi-user auth (OAuth/RBAC) is
   out of scope here ([BE-0015](../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)).
 - **CSRF + security headers (BE-0051).** When a token is set, a state-changing POST whose `Origin`
   doesn't match the `Host` is rejected (defense-in-depth atop the `SameSite=Strict` session cookie);
@@ -1128,22 +1131,22 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   lets the UI poll `runs/<id>/screenmap.json` and draw the screen map as it grows (screens laid out
   in breadth-first layers, transitions as arrows). The **Stop** button aborts it, like Replay.
 - The **Stats** tab renders the aggregate run-stats dashboard
-  ([BE-0102](../roadmaps/BE-0102-run-stats-dashboard/BE-0102-run-stats-dashboard.md)) — the same
+  ([BE-0102](../roadmaps/BE-0102-run-stats-dashboard/BE-0102-run-stats-dashboard.md)). The dashboard shows the same
   read-only trend as `bajutsu stats`, live over the server's run history: pass-rate over time,
   slowest and flakiest scenarios, failure hotspots, and run volume. It reuses the same deterministic
   aggregator, reading each run's `manifest.json` from the artifact store (the run-id list comes from
-  the system of record when a database is wired, org-scoped, else the artifact store) — no device, no
-  AI, no verdict. It is served at `GET /stats` and refreshed with the tab's refresh button.
+  the system of record when a database is wired, org-scoped, else the artifact store), with no device, no
+  AI, and no verdict. The server serves the dashboard at `GET /stats`, and the tab's refresh button refreshes it.
 - The **Flaky** tab renders the ranked flaky-scenario surface
-  ([BE-0220](../roadmaps/BE-0220-flaky-suggestion-and-cross-run-fix/BE-0220-flaky-suggestion-and-cross-run-fix.md)) —
-  the same read-only ranking as `bajutsu flakiness`, live over the server's run history: scenarios
+  ([BE-0220](../roadmaps/BE-0220-flaky-suggestion-and-cross-run-fix/BE-0220-flaky-suggestion-and-cross-run-fix.md)).
+  The tab shows the same read-only ranking as `bajutsu flakiness`, live over the server's run history: scenarios
   sorted flaky-first by verdict flip rate, each row linking to the representative passing and failing
   runs' evidence. When a database is wired it groups straight from the provenance stamp on each run
   row (org-scoped); otherwise it builds the same records from each run's `manifest.json`. Each row
   also names the device OS version its runs happened on, and rows are grouped per version
   ([BE-0358](../roadmaps/BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact.md)).
-  No device, no AI, no verdict. It is served at `GET /flakiness` and refreshed with the tab's refresh
-  button.
+  The tab needs no device and no AI, and renders no verdict. The server serves it at `GET /flakiness`, and the tab's refresh
+  button refreshes it.
 - **Upload a bundle ([BE-0073](../roadmaps/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md)).**
   The "Open config" dialog has a third source, **Upload a bundle**, that lets a browser user **bring
   their own suite** to a hosted `serve` with no file-system access to the host. Drop a `.zip` whose
@@ -1214,13 +1217,16 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   findings of `bajutsu lint --config --target` against the bound config, each on its line
   ([BE-0467](../roadmaps/BE-0467-environment-specific-settings/BE-0467-environment-specific-settings.md)).
   With no target selected, the editor's lint reports nothing new. The scenario JSON Schema (`GET /api/schema`, the same output `bajutsu schema` prints)
-  also drives lightweight key completion (Ctrl/⌘+Space) and hover descriptions. Deterministic and
-  AI-free — no device or model runs; Save keeps its own validation guard, so the inline layer only
+  also drives lightweight key completion (Ctrl/⌘+Space) and hover descriptions. The validation is deterministic and
+  AI-free, so no device or model runs; Save keeps its own validation guard, so the inline layer only
   surfaces failures earlier.
 - If the app's built binary (config `subject.path`) is missing, the app's `subject.build` command runs first
   (its output streams into the job log); a build failure aborts the run before it spawns. Set
   `targets.<name>.subject.build` to the shell command that produces `subject.path` (e.g. `make -C demos/showcase
-  swiftui-build`) to build on demand from the UI without a manual build first.
+  swiftui-build`) to build on demand from the UI without a manual build first. The build runs for an iOS
+  or an Android target. Replay's **rebuild the app first** checkbox (`rebuild: true` on `POST /api/run`)
+  runs the build even when the app exists; the request is refused with 400 when the target declares no
+  `subject.build` the server may run, or when it also names a `binaryArtifact`.
 - A **History** list under the controls shows past runs (newest first, with a pass/fail dot and
   scenario summary); click one to reopen its report. `GET /api/runs` backs it.
 - The worker spawns the run subprocess. The subprocess inherits the worker's environment, with the
@@ -1249,7 +1255,7 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
 - **`--max-concurrent-runs` (default 4)** caps how many run/record jobs may run at once so one
   caller can't monopolize the scarce device (BE-0051); dispatch over the cap returns **429**. Set
   `0` for unlimited.
-- **`--evidence-store <uri>` (or `$BAJUTSU_EVIDENCE_STORE`) — upload each run's evidence
+- **`--evidence-store <uri>` (or `$BAJUTSU_EVIDENCE_STORE`) uploads each run's evidence
   ([BE-0110](../roadmaps/BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md)).** Point it at
   `s3://bucket/prefix` or `gs://bucket/prefix` and every completed run's tree is uploaded there,
   keyed `<prefix><evidence_prefix><runId>/…` so the path selects the cloud lifecycle policy. Unlike
@@ -1292,7 +1298,7 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
 
 ## `mcp`
 
-Starts an **MCP (Model Context Protocol) server** so an agent (Claude Desktop / Code) can run
+Starts a **Model Context Protocol (MCP) server** so an agent (Claude Desktop or Claude Code) can run
 scenarios and read run evidence. Needs the optional `bajutsu[mcp]` extra (`fastmcp`).
 
 ```bash
@@ -1306,7 +1312,7 @@ bajutsu mcp [--config bajutsu.config.yaml] [--runs runs] [--transport stdio] [--
 | `--transport` | `stdio` | `stdio` (a local agent) or `sse` (HTTP) |
 | `--worker-config` | the shipped default | the worker capability file the tools run under, as in [`run`](#run); an `appium` file sends `bajutsu_run` and `bajutsu_doctor` for a target of the grid's platform to the grid |
 
-- **Tools**: `bajutsu_run` (deterministic run) and `bajutsu_doctor` (convention score) — both mirror
+- **Tools**: `bajutsu_run` (deterministic run) and `bajutsu_doctor` (convention score). Both mirror
   the CLI, and no AI enters the verdict.
 - **Resources**: a finished run's `manifest.json` / `report.html` / `junit.xml` and any nested
   artifact (`bajutsu://runs/<id>/…`), plus `runs/latest`.
@@ -1318,8 +1324,8 @@ every deployment that runs jobs, on one machine as on the hosted server backend
 ([BE-0015](../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md);
 [self-hosting](self-hosting.md)). It leases a job from `/api/worker/lease` over plain HTTP (**no
 Redis or RQ**, BE-0106), runs it with the unchanged `run_job`, and posts the result back to
-`/api/worker/result`. It holds **no cloud credentials**: every object-store touch — downloading
-baselines before a run, uploading the run tree after — goes through presigned URLs the control
+`/api/worker/result`. It holds **no cloud credentials**: every object-store access, whether downloading
+baselines before a run or uploading the run tree after, goes through presigned URLs the control
 plane signs (BE-0160), so the worker needs only an HTTP client.
 
 A lease with nothing to run answers `204`. A worker whose `maxJobConcurrency` is above 1 — a
@@ -1423,8 +1429,8 @@ The other options configure the polling worker, and `--once` ignores them.
 
 ## `lint`
 
-Validates a scenario file against the grammar **without running it** — the same strict validation
-`run` applies at load. Exits 0 if valid, non-zero with the error otherwise.
+Validates a scenario file against the grammar **without running it**, with the same strict validation
+that `run` applies at load. The command exits 0 if the file is valid and non-zero with the error otherwise.
 
 ```bash
 bajutsu lint <scenario.yaml>
@@ -1458,8 +1464,8 @@ Without `--config`, the lint reads no config and behaves as it did before.
 
 ## `schema`
 
-Prints the scenario **JSON Schema** to stdout, for editor integration (autocomplete / inline
-validation). No options.
+Prints the scenario **JSON Schema** to stdout, for editor integration (autocomplete and inline
+validation). The command takes no options.
 
 ```bash
 bajutsu schema > bajutsu.schema.json
@@ -1467,7 +1473,7 @@ bajutsu schema > bajutsu.schema.json
 
 ## `config schema`
 
-Prints the **JSON Schema** of `bajutsu.config.yaml` to stdout, for editor integration. No options.
+Prints the **JSON Schema** of `bajutsu.config.yaml` to stdout, for editor integration. The command takes no options.
 
 ```bash
 bajutsu config schema > bajutsu.config.schema.json
@@ -1513,7 +1519,7 @@ signing file, or a build error.
 
 `_bootstrap` (`@app.callback`) loads `.env` before every command (implementation: `bajutsu/dotenv.py`).
 
-- `KEY=VALUE` form. Handles `#` comments, blank lines, an `export ` prefix, and quotes.
+- The format is `KEY=VALUE`. The loader handles `#` comments, blank lines, an `export ` prefix, and quotes.
 - **Never overrides an existing environment variable** (a real value always wins). `.env` is a
   fallback.
 - The path defaults to `.env`, changeable via `BAJUTSU_DOTENV`. It is `.gitignore`d.
@@ -1554,7 +1560,7 @@ run printed before the knob existed, so turning diagnostics on is always deliber
 BAJUTSU_LOG_LEVEL=DEBUG uv run bajutsu run --scenario …
 ```
 
-Reach for `DEBUG` when a step fails and the assertion message does not explain why — the timing
+Reach for `DEBUG` when a step fails and the assertion message does not explain why: the timing
 failures, where the question is not what the assertion said but which tree the actuator resolved
 against. On the adb backend, debug records each read and its device event mark, when the read-lag
 barrier opened and what closed it, how the tree settled, the frame each selector resolved to, and

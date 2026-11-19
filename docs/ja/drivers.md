@@ -66,6 +66,7 @@ class Driver(Protocol):
 | `textSelection` | フォーカス中フィールドの全選択と、クリップボードへのコピーとペースト | ✅ | ✅ | ✅ | ✅ |
 | `selectOption` | ネイティブ `<select>` を値で設定（web のみ） | — | — | ✅ | ✅ |
 | `urlNavigation` | `navigate` でシナリオの途中に URL を開く（web のみ。BE-0464） | — | — | ✅ | ✅ |
+| `openUrl` | `openUrl` でシナリオの途中に URL を OS へ渡す（iOS と Android。BE-0487） | ✅ | ✅ | — | ✅ |
 | `elementAttribute` | `attribute` アサーションのために要素の HTML 属性を 1 つ読み取る（web のみ。BE-0466） | — | — | ✅ | ✅ |
 | `handleSystemAlert` | iOS SpringBoard の許可プロンプトのボタンをネイティブにタップ | ✅ | — | — | ✅ |
 | `resolveAlerts` | 画面を読むリクエストの中で、ポリシーが指定するシステムアラートに答える（BE-0461、iOS のみ） | ✅ | — | — | — |
@@ -147,7 +148,9 @@ runner は各シナリオを actuator の能力と照合します（`bajutsu/com
 - `selectOption` は `selectOption` トークンを必要とします。web だけで通る `<select>` の切り替えなので、
   iOS / Android はデバイス作業の前に拒否されます。
 - `navigate` は `urlNavigation` を必要とします（web 専用）。`web:` / `app:` ブロックの中にあっても拒否されます。
-  検査がブロックの中まで追う構文は、`navigate` と `attribute` の 2 つです。
+- `openUrl` は `openUrl` を必要とします（iOS と Android）。`app:` ブロックの中にあっても拒否されます。
+  `web:` ブロックの中の `openUrl` は、ファイルを読み込む時点でシナリオのモデルが拒否します。
+  検査がブロックの中まで追う構文は、`navigate`、`openUrl`、`attribute` の 3 つです。
 - `attribute` アサーションは `elementAttribute` を必要とします（web 専用。BE-0466）。
   `expect`、ステップの `assert`、`if` と `interrupts` の条件、`web:` / `app:` ブロックの中、
   `interrupts` の復旧ステップのどこにあっても見つけます。そのため、iOS の WebView コンテキストも拒否されます。
@@ -219,14 +222,16 @@ runner は各シナリオを actuator の能力と照合します（`bajutsu/com
 | `maxTargetsPerJob` | 1 つのシナリオが宣言できる target の数で、正の整数です。すべてのドライバとデバイスグループをまたいで数えるので、Simulator の target とブラウザの target は合わせて 2 です。省くと上限なしになります。 |
 | `drivers` | worker が提供するドライバを `xcuitest`、`adb`、`playwright`、`fake` から選んで並べます。リストにないドライバは使えません。 |
 | `realDevices` | `xcuitest` を提供する `local` の worker が、接続した実機の iPhone も動かすかどうかです。`true` なら、serve は実機のジョブもその worker に振り分けます。省くと `true` とみなします。そうした worker は、これまでも実機のジョブを受けていたからです。Simulator だけの Mac を実機のジョブから外すには `false` にします（[能力に基づく振り分け](self-hosting.md#能力に基づくキューの振り分けbe-0166)、BE-0467）。 |
+| `build` | target の `subject.build` を実行してアプリをビルドできるプラットフォームを、`ios` と `android` から選んで並べます。省くと両方とみなします。このキーができる前から、worker はどのアプリもビルドしていたからです。`[]` にすると何もビルドしません。run がビルドを必要とするとき（`subject.path` のアプリが存在しないとき、または `--rebuild` を指定したとき）にリストが target のプラットフォームを含まなければ、`run` はツールチェーンのないマシンでビルドを始めずに、プラットフォーム名を示して終了コード 2 で終わります。worker は、リストにあり自身が動かすプラットフォームごとに `build:<platform>` を広告し、serve は強制ビルドのジョブをその worker に振り分けます（[能力に基づく振り分け](self-hosting.md#能力に基づくキューの振り分けbe-0166)）。 |
 
 パッケージは既定のファイルを `bajutsu/common/capability/worker.yaml` に同梱しています。
-既定は、すべてのドライバを提供し、target の数に上限を設けないローカルの worker を記述します。
+既定は、すべてのドライバを提供し、iOS と Android のどちらのアプリもビルドし、target の数に上限を設けないローカルの worker を記述します。
 
 ```yaml
 version: 1
 environment: local
 drivers: [xcuitest, adb, playwright, fake]
+build: [ios, android]
 ```
 
 `appium` の environment は、[BE-0452](../../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)
@@ -1047,7 +1052,8 @@ def make_driver(actuator, udid, *, base_url=None, runner_port=None) -> Driver:  
 
 > **すべての呼び出しに期限があります**（[BE-0363](../../roadmaps/BE-0363-simctl-subprocess-timeout/BE-0363-simctl-subprocess-timeout-ja.md)）:
 > 共有のランナーは、一回きりの `simctl` サブプロセスすべてに期限を渡します。
-> 値はコマンド自身から選ばれます。所要時間を simctl ではなくデバイスやアプリが決めるコマンド（`bootstatus`、`boot`、`erase`、`install`）には長い側を、それ以外には短い側を当てます。
+> 値はコマンド自身から選ばれます。所要時間を simctl ではなくデバイスやアプリが決めるコマンド（`bootstatus`、`boot`、`erase`、`install`、`uninstall`、`privacy`、`shutdown`、`terminate`）には長い側を、それ以外には短い側を当てます。
+> クリップボードを読む `pbpaste` には、さらに短い期限を当てます。書き込み側の `pbcopy` と同じく、simctl が一時的に返す exit 60 では読み直します。
 >
 > 返ってこない呼び出しは、CoreSimulator が固まったときに観測される症状です。
 > この呼び出しは、CI がジョブ全体を原因不明のまま打ち切るまでハングするのではなく、超過した期限とコマンドを名前で示す `simctl.DeviceTimeout` を送出します。

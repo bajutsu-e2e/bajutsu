@@ -1,22 +1,24 @@
 [English](../showcase.md) · **日本語**
 
-# showcase 群（プラットフォームをまたぐ唯一のフィクスチャ）
+# showcase 群
 
-> Bajutsu のテストフィクスチャは [`demos/showcase/`](../../demos/showcase) にあります。同じ画面契約を
-> 5 回実装しています。iOS の SwiftUI と UIKit、Android の Jetpack Compose と Views、そして両方の
-> プラットフォームを対象とする 1 つの Flutter コードベースです。ほとんどのツールキットはアクセシビリティ
-> 有／無の対で作られています（Flutter の iOS 版は今のところアクセシビリティ有のみです）。この 5 つの
-> コードベースから、[`demos/showcase/showcase.config.yaml`](../../demos/showcase/showcase.config.yaml)
-> に 12 個の `targets.<name>` を登録しています。実アプリが持つ操作面（push ナビゲーションを伴う 5 タブ、
-> 全コードベース共通の 4 種のモーダルと iOS 限定のネイティブアラート（あわせて 5 種）、テキスト入力、
-> ジェスチャ、非同期ロード、実通信＋モック可能な通信、OS アラートを出す画面）を、その全体を語れる最小の
-> アプリに収めています。
+> Bajutsu がプラットフォームをまたいで使う唯一のテストフィクスチャは、
+> [`demos/showcase/`](../../demos/showcase) にあります。同じ画面契約を 5 回実装しています。iOS の
+> SwiftUI と UIKit、Android の Jetpack Compose と Views、そして両方のプラットフォームを対象とする 1 つの
+> Flutter コードベースです。ほとんどのツールキットは、アクセシビリティ有と無の対で作られています
+> （Flutter の iOS 版は今のところアクセシビリティ有のみです）。5 つのコードベースは、
+> [`demos/showcase/showcase.config.yaml`](../../demos/showcase/showcase.config.yaml) に 12 個の
+> `targets.<name>` を登録しています。
+>
+> このフィクスチャは、実アプリが持つ操作面を、その全体を語れる最小のアプリに収めています。その操作面とは、
+> push ナビゲーションを伴う 5 タブ、全コードベース共通の 4 種のモーダルと iOS 限定のネイティブアラート
+> （あわせて 5 種）、テキスト入力、ジェスチャ、非同期ロード、実通信とモック可能な通信、OS アラートを出す画面です。
 >
 > BE-0079 でこれを**唯一**の iOS フィクスチャとし、旧来の `demo` / `sample` / `sample2` を退役させました。
 > その後 BE-0007 と BE-0008 が、この iOS フィクスチャを今日のプラットフォームをまたぐ姿へと広げ、Android
 > と Flutter の双子アプリを加えました。画面ごとの正式な契約（各識別子と各シナリオの対応）は
-> [`demos/showcase/SPEC.md`](../../demos/showcase/SPEC.md) にあります。本ページはそこへの入り口をまとめた
-> ものです。
+> [`demos/showcase/SPEC.md`](../../demos/showcase/SPEC.md) にあります。本ページは、その契約への入り口を
+> まとめたものです。
 
 関連：[シナリオ](scenarios.md) · [設定](configuration.md) · [codegen](codegen.md) · [cli](cli.md)
 
@@ -29,11 +31,11 @@ showcase は、Bajutsu の設計が依って立つ 2 つの軸を可視化しま
 - **ツールキット軸**（UIKit と SwiftUI）：アクセシビリティ ON の 2 プロダクト（`showcase-swiftui` /
   `showcase-uikit`）は*同一*の識別子契約を露出するので、共有の
   [`demos/showcase/scenarios/`](../../demos/showcase/scenarios) がどちらに対しても変更なしで動きます。
-  異なるのは backend が見る要素ツリーで、これこそクロスツールキットのドライバが吸収すべき差異です。
+  異なるのは backend が見る要素ツリーです。この差異こそ、クロスツールキットのドライバが吸収すべきものです。
 - **アクセシビリティ軸**（サフィックス無し ↔ `-noax`）：`-noax` ビルドは識別子を**一切**持ちません
-  （`subject.idNamespaces: []`）。これはセレクタ安定性の対照実験です（DESIGN §5）。同じゴールを両方に対して記録すると、
-  アクセシビリティ作業の価値が具体的な差分として現れます。また `record` / `doctor` の「アクセシビリティ欠如」の
-  題材でもあります。
+  （`subject.idNamespaces: []`）。`-noax` ビルドはセレクタ安定性の対照実験です（DESIGN §5）。同じゴールを
+  両方のビルドに対して記録すると、アクセシビリティ作業の価値が具体的な差分として現れます。`-noax` ビルドは、
+  `record` / `doctor` が「アクセシビリティ欠如」を扱うときの題材でもあります。
 
 ## ビルドと実行
 
@@ -41,9 +43,9 @@ showcase は、Bajutsu の設計が依って立つ 2 つの軸を可視化しま
 deeplink scheme（`showcase{swiftui,uikit}[noax]`）をそのまま使います。XcodeGen ＋ xcodebuild でビルドします
 （`project.yml` が信頼できる唯一の情報源で、`.xcodeproj` / `build/` は gitignore 対象です）。5 つめの iOS
 ターゲット `showcase-swiftui-bundled` は同じ SwiftUI アプリを使いますが、`driver.runner` の設定を持ちません。
-そのため Simulator 上の実行はローカルビルドのランナーではなく、wheel に同梱されたランナー（BE-0292）に
-解決されます。`bajutsu doctor --target showcase-swiftui-bundled` を実行すると、実際にどちらのランナーが
-使われているかを確認できます。残る 7 ターゲットは、Android の双子アプリ（[`android/`](../../demos/showcase/android)、
+そのため、Simulator 上の実行は、ローカルビルドのランナーではなく wheel に同梱されたランナー（BE-0292）に
+解決されます。実際にどちらのランナーが使われているかは、`bajutsu doctor --target showcase-swiftui-bundled`
+で確認できます。残る 7 ターゲットは、Android の双子アプリ（[`android/`](../../demos/showcase/android)、
 Jetpack Compose と Views、BE-0007）と、両プラットフォーム向けの Flutter の双子アプリ
 （[`flutter/`](../../demos/showcase/flutter)、BE-0008）です。それぞれ Gradle と Flutter SDK でビルドします。
 
@@ -62,16 +64,17 @@ make -C demos/showcase/android e2e-codegen # Android 版：シナリオ → UI A
 
 ## 起動環境フック
 
-ターゲットの `subject.launch.env`（またはシナリオの `preconditions.subject.launch.env`）で注入し、`SIMCTL_CHILD_<NAME>` として渡します（[drivers](drivers.md#環境管理simctl)）。
+これらの変数は、ターゲットの `subject.launch.env`（またはシナリオの `preconditions.subject.launch.env`）で
+注入します。アプリには `SIMCTL_CHILD_<NAME>` として渡ります（[drivers](drivers.md#環境管理simctl)）。
 
 BE-0079 で、*データ状態*と *push で開く画面*への起動時ショートカットを取り除きました。カタログは固定で（シードする
 手段はありません）、deeplink が詳細へ直接飛ぶこともありません（詳細は行のタップでのみ到達します）。
 BE-0107 では、画面への最後の起動時ショートカットである `SHOWCASE_TAB` を廃止して、この作業を完了しました。
-
 アプリはつねに Stable タブで起動し、ほかのタブへはネイティブのタブバーをタップして移動します。XCUITest
-backend はネイティブのタブバーの個々のタブをタップできるので、
-タブをまたぐシナリオは `--backend ios` で実行します。起動タブより先の画面はすべて UI を操作して辿り、
-シナリオはデータを注入せずアプリ自身の状態を観測します。
+backend はネイティブのタブバーの個々のタブをタップできるので、タブをまたぐシナリオは `--backend ios` で
+実行します。
+
+起動タブより先の画面は、すべて UI を操作して辿ります。シナリオはデータを注入せず、アプリ自身の状態を観測します。
 
 | 変数 | 効果 |
 |---|---|

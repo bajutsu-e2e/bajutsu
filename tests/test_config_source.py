@@ -517,8 +517,9 @@ def test_load_effective_local_config_allows_a_path_outside_its_dir(tmp_path: Pat
 
 def test_load_effective_local_config_returns_no_checkout_root(tmp_path: Path) -> None:
     # The rebase anchor must not leak into the third tuple element: `checkout_root` stays None for a
-    # local config so it keeps reading as "local, not a read-only Git checkout" — otherwise `run`'s
-    # on-demand build_if_missing and record/crawl's _refuse_out_in_checkout would switch on (BE-0242).
+    # local config so it keeps reading as "local, not a read-only Git checkout" — otherwise
+    # record/crawl's _refuse_out_in_checkout would switch on, and `run`'s build would run from the
+    # checkout root instead of the config file's own directory (BE-0242).
     from bajutsu.cli import _shared
 
     proj = tmp_path / "proj"
@@ -662,12 +663,16 @@ def test_run_builds_a_git_sourced_app_from_the_checkout_root(
         "materialize",
         lambda spec, *, offline=False: Materialized(root / "bajutsu.config.yaml", root, "sha"),
     )
-    # `--backend nope` makes the run exit cleanly after the build (the sandbox has no Simulator),
-    # so the test asserts only that the build ran — producing the binary under the checkout root.
-    r = invoke(
+    (root / "e2e" / "s.yaml").write_text(
+        "- name: s\n  steps:\n    - tap: { id: a }\n", encoding="utf-8"
+    )
+    monkeypatch.chdir(tmp_path)  # the fake run writes its runs/ tree here, not in the repository
+    # The build runs once the run has settled its primary and passed its checks, so the run must
+    # get that far: the fake backend needs no Simulator. The test asserts only that the build ran —
+    # producing the binary under the checkout root.
+    invoke(
         CliRunner(),
         app,
-        ["run", "--target", "demo", "--backend", "nope", "--config", "github:acme/repo@main"],
+        ["run", "--target", "demo", "--backend", "fake", "--config", "github:acme/repo@main"],
     )
     assert (root / "build" / "Demo.app").exists()  # built under the checkout, not the process cwd
-    assert r.exit_code == 2  # then the unavailable backend exits cleanly

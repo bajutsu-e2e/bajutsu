@@ -27,6 +27,7 @@ and `backends.capabilities_for` reads its `CAPABILITIES` without a device.
 from ._conn_state import _ConnState as _ConnState
 from ._drain_carry import _DrainCarry as _DrainCarry
 from ._functions import _ACTUATION_TIMEOUT_SECONDS as _ACTUATION_TIMEOUT_SECONDS
+from ._functions import _APP_SWITCH_TIMEOUT_SECONDS as _APP_SWITCH_TIMEOUT_SECONDS
 from ._functions import _BACKOFF_BASE_SECONDS as _BACKOFF_BASE_SECONDS
 from ._functions import _KEEPALIVE_IDLE_RECONNECT_SECONDS as _KEEPALIVE_IDLE_RECONNECT_SECONDS
 from ._functions import _LIVENESS_POLL_SECONDS as _LIVENESS_POLL_SECONDS

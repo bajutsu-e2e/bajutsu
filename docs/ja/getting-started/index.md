@@ -1,11 +1,10 @@
 [English](../../getting-started/index.md) · **日本語**
 
-# Getting started（はじめに）
+# Getting started
 
-> 手を動かして辿るチュートリアルです。読み終える頃には、Bajutsu をインストールし、ユニットテストを
-> 走らせ、シナリオを読み、実際のアプリを操作し、HTML レポートを開けているはずです。他のページが
-> 各機能の役割を説明するリファレンスであるのに対し、このページは手順を順に実行していくチュートリアル
-> です。
+> 手を動かして辿るチュートリアルです。Bajutsu のインストールから、ユニットテストの実行、シナリオの
+> 読解、実際のアプリの操作、HTML レポートの表示までを順に進めます。他のページは各機能の役割を説明する
+> リファレンスです。このページは、手順を順に実行していくチュートリアルです。
 
 関連: [cli](../cli.md) · [scenarios](../scenarios.md) · [run-loop](../run-loop.md) · [reporting](../reporting.md)
 
@@ -14,13 +13,15 @@
 ## 2 つのトラック、1 つのループ
 
 以下のステップ 1〜3 と 6 は、何を操作するかに関わらず共通です。インストール、ユニットテスト、
-シナリオを読む、レポートを読む、という部分です。異なるのはステップ 4〜5（対象アプリのビルドまたは
-配信と、それに対するシナリオの実行）だけで、これは **[backend](../glossary.md#driver-backend-actuator-platform)** ごとに変わります。「プラットフォームは
+シナリオを読む、レポートを読む、という部分です。異なるのはステップ 4〜5 だけです。対象アプリを
+ビルドまたは配信し、そのアプリに対してシナリオを実行する部分で、
+**[backend](../glossary.md#driver-backend-actuator-platform)** ごとに変わります。「プラットフォームは
 backend にすぎない」からです（[concepts](../concepts.md)）。
 
-- **[iOS トラック](ios.md)** — XCUITest backend で iOS Simulator 上まで完結します。macOS と Xcode が必要です。
-- **[web トラック](web.md)** — Playwright backend でブラウザに対して完結します。Linux、Windows、
-  macOS のどの OS でも動きます。Xcode も Simulator も不要です。
+- **[iOS トラック](ios.md)**：XCUITest backend で iOS Simulator 上まで完結します。macOS と Xcode が
+  必要です。
+- **[web トラック](web.md)**：Playwright backend でブラウザに対して完結します。Linux、Windows、
+  macOS のどの OS でも動き、Xcode も Simulator も不要です。
 
 自分のマシンに合うほうを選ぶか、両方試してください。同じシナリオスキーマ、ランナー、CLI が、
 どちらのターゲットも変わらず操作します。
@@ -62,27 +63,28 @@ CLI（コマンドラインインターフェース）が配線されている�
 uv run bajutsu --help
 ```
 
-`run` / `doctor` / `record` / `crawl` / `repl` / `codegen` / `trace` / `triage` / `approve` / `serve` / `mcp` / `worker` / `lint` / `schema` / `audit` / `coverage` / `export` / `flakiness` / `impact` / `report` / `stats` のコマンドが表示されるはずです
-（完全なリファレンスは [cli](../cli.md)）。
+`run` / `doctor` / `record` / `crawl` / `repl` / `codegen` / `trace` / `triage` / `approve` / `serve` /
+`mcp` / `worker` / `lint` / `schema` / `audit` / `coverage` / `export` / `flakiness` / `impact` /
+`report` / `stats` のコマンドが表示されます（完全なリファレンスは [cli](../cli.md)）。
 
-web トラックは、この上にもう 1 つだけインストール手順を足します（Playwright のブラウザ）。iOS
-トラックは Xcode さえあれば足り、XCUITest backend が Xcode を直接操作します。詳細は選んだ
+web トラックは、この上にもう 1 つだけインストール手順（Playwright のブラウザ）を足します。iOS
+トラックに必要なのは Xcode だけで、XCUITest backend が Xcode を直接操作します。詳細は選んだ
 トラックのページを参照してください。
 
 ---
 
 ## ステップ 2：ユニットテストを走らせる
 
-すべてが健全かを確かめる最速の手段です。決定性コア、シナリオスキーマ、アサーション、run ループを
-インメモリの fake driver に対して検証するユニットテストで、**実機にもブラウザにも一切触れません**。
+ユニットテストの実行は、すべてが健全かを確かめる最速の手段です。ユニットテストは、決定性コア、
+シナリオスキーマ、アサーション、run ループをインメモリの fake driver に対して検証します。
+**実機にもブラウザにも一切触れません**。
 
 ```bash
 uv run pytest -q          # テストスイート
 make check                # または: ruff（lint）+ mypy（strict 型）+ pytest をまとめて
 ```
 
-ここが green なら、このマシンでエンジンは動作しています。どちらのトラックに進んでも、この上に
-積み上がります。
+green なら、このマシンでエンジンは動作しています。どちらのトラックに進んでも、この結果が土台になります。
 
 ---
 
@@ -147,7 +149,7 @@ HTML レポートを開くと、各ステップとその結果、取得した証
 open runs/<runId>/report.html      # macOS。Linux では xdg-open を使ってください
 ```
 
-ターミナルを離れずに、完了した実行をテキストのタイムラインとして眺めることもできます。
+ターミナルを離れずに、完了した実行をテキストのタイムラインとして見ることもできます。
 
 ```bash
 uv run bajutsu trace               # runs/ 下の最新実行
@@ -159,18 +161,18 @@ uv run bajutsu trace               # runs/ 下の最新実行
 
 ## 次に読むもの
 
-これでループを一周する分が揃いました。インストール → ユニットテスト → シナリオ → 実機実行 →
-レポートです。同じシナリオ形式を使う入口があと 2 つあります。
+これで、インストール → ユニットテスト → シナリオ → 実機実行 → レポートというループを一周できます。
+同じシナリオ形式を使う入口があと 2 つあります。
 
 - **AI でオーサリングする。** Claude にゴールへ向けて探索させ、シナリオを書かせます（Tier 1）。
   `.env` ファイルに `ANTHROPIC_API_KEY=sk-ant-…` を置いてから、`bajutsu record --target <name>
   --goal "…"` を実行します。正確な呼び出し方は選んだトラックのページに載っています。Web UI
   （`make serve`）の **API key** ボタンからも、実行中のセッション用に同じキーを設定できます。
   キーは write-once です。マスクしたプレビューだけを表示し、設定後に内容を再表示することはありません。
-  変更するには新しいキーを設定します（読み出す手段はありません）。メモリ上に保持するだけでディスクには
-  書き込まないため、再起動をまたいで保持したい場合は、引き続き `.env` を使ってください。オーサリング
-  ループとシステムアラートガードの仕組みは [recording](../recording.md) を参照してください。Web UI の
-  各タブの操作方法は [web-ui](../web-ui.md) を参照してください。
+  変更するには新しいキーを設定します（読み出す手段はありません）。キーはメモリ上に保持するだけで
+  ディスクには書き込まないため、再起動をまたいで保持したい場合は、引き続き `.env` を使ってください。
+  オーサリングループとシステムアラートガードの仕組みは [recording](../recording.md) を参照してください。
+  Web UI の各タブの操作方法は [web-ui](../web-ui.md) を参照してください。
 - **ネイティブテストを出力する。** シナリオを XCUITest、Playwright、または UI Automator のネイティブ
   テストへ変換します（テスト実行時に Bajutsu のランタイムや AI は不要です）。
   ```bash

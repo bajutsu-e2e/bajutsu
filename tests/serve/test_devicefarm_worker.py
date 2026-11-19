@@ -273,6 +273,7 @@ def test_a_local_worker_defaults_to_ios(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setattr(simctl, "real_run", None)
     caps = worker_mod._advertised_capabilities("", "", _worker("local"), "darwin")
     assert [c for c in caps if not is_route_token(c)] == [
+        "build:ios",
         "host:darwin",
         "job:run-intent",
         "platform:ios",

@@ -8,30 +8,30 @@
 
 [![CI](https://github.com/bajutsu-e2e/bajutsu/actions/workflows/ci.yml/badge.svg)](https://github.com/bajutsu-e2e/bajutsu/actions/workflows/ci.yml) [![iOS E2E (Simulator)](https://github.com/bajutsu-e2e/bajutsu/actions/workflows/ios-e2e.yml/badge.svg)](https://github.com/bajutsu-e2e/bajutsu/actions/workflows/ios-e2e.yml) [![Web E2E (Playwright)](https://github.com/bajutsu-e2e/bajutsu/actions/workflows/web-e2e.yml/badge.svg)](https://github.com/bajutsu-e2e/bajutsu/actions/workflows/web-e2e.yml) [![Android E2E (emulator)](https://github.com/bajutsu-e2e/bajutsu/actions/workflows/android-e2e.yml/badge.svg)](https://github.com/bajutsu-e2e/bajutsu/actions/workflows/android-e2e.yml) [![Serve DB (Postgres)](https://github.com/bajutsu-e2e/bajutsu/actions/workflows/serve-db.yml/badge.svg)](https://github.com/bajutsu-e2e/bajutsu/actions/workflows/serve-db.yml)
 
-> Natural-language-driven E2E (end-to-end) testing built on a **backend-agnostic driver**: one
-> scenario format and one deterministic runner, where **a platform is a backend** behind that
-> one interface. Swap the backend and the same scenarios run on a different target — the iOS
-> Simulator (XCUITest), a web (Playwright) backend, and an Android (adb) backend are all
-> landed; Flutter apps run on those same iOS/Android backends unchanged, needing no new backend
-> ([BE-0008](roadmaps/BE-0008-flutter-support/BE-0008-flutter-support.md)).
+> Natural-language-driven E2E (end-to-end) testing built on a **backend-agnostic driver**. Bajutsu
+> has one scenario format and one deterministic runner, and **a platform is a backend** behind that
+> one interface. Swap the backend and the same scenarios run on a different target. The iOS
+> Simulator (XCUITest), a web (Playwright) backend, and an Android (adb) backend have all
+> landed. Flutter apps run on those same iOS and Android backends unchanged, needing no new
+> backend ([BE-0008](roadmaps/BE-0008-flutter-support/BE-0008-flutter-support.md)).
 > **Status: pre-alpha.** The deterministic core, the AI authoring loop (`record` / `crawl`),
 > the evidence subsystem, codegen, and self-healing triage are all implemented and
 > unit-tested (no Simulator needed). The iOS **XCUITest backend** is **validated
-> end-to-end on a real Simulator** — scenarios, evidence capture, and the triage self-heal loop
+> end-to-end on a real Simulator**: scenarios, evidence capture, and the triage self-heal loop
 > all run on-device. The **web (Playwright) backend** runs a deterministic `run` against a
 > browser on the Linux gate ([`demos/web`](demos/web/README.md)), and the **Android (adb)
 > backend** is validated end-to-end on an emulator ([`android-e2e.yml`](.github/workflows/android-e2e.yml)).
-> A hosted **server backend** — a hostable control plane plus Mac and Linux workers, for teams
-> that want `serve` shared instead of local — has also landed
+> A hosted **server backend** has also landed. It is a hostable control plane plus Mac and
+> Linux workers, for teams that want `serve` shared instead of local
 > ([`docs/self-hosting.md`](docs/self-hosting.md)).
 
-Bajutsu takes test scenarios written in (or recorded from) natural language, drives your app —
-taps / text / swipes / waits — and verifies the result with **machine-checkable assertions**.
+Bajutsu takes test scenarios written in (or recorded from) natural language, drives your app
+(taps, text, swipes, waits), and verifies the result with **machine-checkable assertions**.
 Everything but one seam is platform-neutral: the scenario format, selector resolution, the
 deterministic runner, the evidence subsystem, and the reporter never name a platform. That one seam
-is the **backend** — the driver that actuates the UI. Point the runner at a different backend and
+is the **backend**, the driver that actuates the UI. Point the runner at a different backend and
 the same scenario runs on a different target: the **iOS Simulator** (XCUITest), a **browser**
-(Playwright), or **Android** (adb). **Flutter** apps ride those same iOS/Android backends
+(Playwright), or **Android** (adb). **Flutter** apps ride those same iOS and Android backends
 unchanged, needing no new backend. Choosing a platform is choosing a backend, not adopting a
 different tool.
 
@@ -57,9 +57,8 @@ under [`docs/ja/`](docs/ja/README.md).
 ## Core principles
 
 - **Determinism first.** Condition waits only (the one fixed pause is an explicit, capped `sleep`
-  step that must state its reason); an ambiguous selector
-  fails immediately instead of "tapping whatever matched first"; each test starts from a
-  clean environment.
+  step that must state its reason). An ambiguous selector fails immediately instead of "tapping
+  whatever matched first". Each test starts from a clean environment.
 - **Stable selectors.** Prefer a non-localized, data-derived id — `accessibilityIdentifier`
   on iOS, `data-testid` on the web — over text; coordinates are the last resort.
 - **Stability ladder.** Bajutsu attempts UI actions most-stable-first (semantic tap by id →
@@ -202,21 +201,21 @@ make setup                 # base: .venv (Python 3.13) + dev tools + git hooks (
 make install               # base PLUS exactly the backends your config needs (config-aware)
 ```
 
-`make setup` is the config-agnostic floor the deterministic gate needs. `make install` builds on it:
-it reads your `--config` (pass one via `make install ARGS="--config demos/showcase/showcase.config.yaml"`),
-resolves which backends its `targets.*` actually use plus whether an AI provider is configured, and
-installs only those pip extras and external tools (the XCUITest runner built via Xcode's
-`xcodebuild` for iOS, Playwright's browser for web, the `anthropic` SDK when AI is configured) — idempotently, so it is
-safe to re-run. With no config in the working directory it installs nothing beyond the base. The
-requirements it draws from live in one mapping
-([`bajutsu/common/provisioning/`](bajutsu/common/provisioning)), shared with `doctor`'s pre-flight
-so the two never drift.
+`make setup` is the config-agnostic floor the deterministic gate needs. `make install` builds on it.
+It reads your `--config` (pass one via `make install ARGS="--config demos/showcase/showcase.config.yaml"`).
+From the config it resolves which backends the `targets.*` actually use, plus whether an AI provider
+is configured. It then installs only those pip extras and external tools: the XCUITest runner built
+via Xcode's `xcodebuild` for iOS, Playwright's browser for web, and the `anthropic` SDK when AI is
+configured. The install is idempotent, so it is safe to re-run. With no config in the working
+directory, it installs nothing beyond the base. The requirements live in one mapping
+([`bajutsu/common/provisioning/`](bajutsu/common/provisioning)). `doctor`'s pre-flight shares that
+mapping, so the two never drift.
 
 Installing from PyPI instead? The base package is AI-free: `pip install bajutsu` gets the
 deterministic authoring / running paths with no AI SDK, and `pip install bajutsu[ai]` (or
 `bajutsu[bedrock]`) adds the SDK for the Claude paths — see
 [What uses Claude](docs/ai-boundary.md#installing-the-claude-paths). The base package also carries
-the server stack. With it, `bajutsu serve` runs on one machine with no extra. For a
+the server stack, so `bajutsu serve` runs on one machine with no extra. For a
 hosted deployment, the `server` extra adds boto3 and the `db` extra adds psycopg.
 
 ## Usage
@@ -278,7 +277,7 @@ the target keys and their grouping.
 
 ## Demos
 
-Runnable demos, all through one entry point — `make -C demos <target>` ([`demos/`](demos/README.md)):
+Runnable demos all go through one entry point, `make -C demos <target>` ([`demos/`](demos/README.md)):
 
 - **[tour](demos/tour/README.md)** — `make -C demos tour`. The whole lifecycle (run → modify →
   diagnose) on a real Simulator, fully deterministic, **no API key**. (It also runs against an

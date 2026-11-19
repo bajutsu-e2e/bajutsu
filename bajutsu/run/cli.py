@@ -91,7 +91,7 @@ from bajutsu.common.runner import (
     run_and_report,
     run_matrix_and_report,
 )
-from bajutsu.common.runner.build import BuildError, build_if_missing
+from bajutsu.common.runner.build import BuildError, build_app
 from bajutsu.common.runner.device_provider import DeviceLease, acquire_device
 from bajutsu.common.runner.pipeline import with_lifecycle_phases
 from bajutsu.common.runner.types import AlertGuardFor, LeaseFn, TargetPool
@@ -385,7 +385,7 @@ def _resolve_config_and_engines(
     browsers: str,
     kind: str = "",
 ) -> tuple[LoadedConfig, Effective, dict[str, str] | None, list[str]]:
-    """Resolve the effective config (building a Git-sourced app on demand) and the engine list.
+    """Resolve the effective config and the engine list.
 
     Applies `--headed`, `--kind`, and `--browser`, then parses `--browsers` into the cross-browser
     matrix axis (BE-0076). Each flag picks among the kinds or browsers the target lists (BE-0468).
@@ -398,19 +398,7 @@ def _resolve_config_and_engines(
     """
     loaded = _load_config_with_source(config, offline=offline, require_pinned=require_pinned)
     eff = _effective_for(loaded, target_name)
-    config_source, checkout_root = loaded.source, loaded.root
-    # A Git-sourced config is fetched into a content-addressed checkout that holds no built binary,
-    # with no chance to build it by hand first — so build it on demand from the checkout root (where
-    # the config's `build` command is rooted). Local configs keep today's behavior: launch errors if
-    # the binary is missing (BE-0063).
-    if checkout_root is not None and isinstance(eff.platform_config, IosConfig):
-        try:
-            build_if_missing(
-                eff.platform_config.build, eff.platform_config.app_path, cwd=checkout_root
-            )
-        except BuildError as e:
-            typer.echo(str(e))
-            raise typer.Exit(2) from None
+    config_source = loaded.source
     # --headed/--no-headed overrides the target's `driver.headless` (web only; iOS ignores it).
     eff = _with_headed(eff, headed)
     # --kind narrows the target's `runsOn.ios.kind` to the kinds it names (iOS only; BE-0468).
@@ -778,7 +766,13 @@ def _reject_cross_browser_matrix_with_targets(
 
 
 def _reject_bad_device_groups(
-    scenarios: list[Scenario], target_effs: Mapping[str, Effective], *, checkout_root: Path | None
+    scenarios: list[Scenario],
+    target_effs: Mapping[str, Effective],
+    *,
+    checkout_root: Path | None,
+    rebuild: bool = False,
+    built: set[str] | None = None,
+    worker: WorkerCapability | None = None,
 ) -> None:
     """Refuse, before any device work, a device group the config cannot honor (BE-0447).
 
@@ -791,8 +785,9 @@ def _reject_bad_device_groups(
         for s in scenarios
         for problem in _device_group_problems(s, target_effs)
     ]
-    # Each build once for the whole run, however many scenarios install it: a failing Git build
-    # would otherwise be retried once per scenario.
+    # Each build once for the whole run, however many scenarios install it: a failing build would
+    # otherwise be retried once per scenario.
+    built = set() if built is None else built
     members = sorted(
         {
             step.install_app.from_
@@ -804,8 +799,12 @@ def _reject_bad_device_groups(
     for member in members:
         problems += _build_problems(
             target_effs[member],
+            member,
             checkout_root=checkout_root,
             label=f"installApp from {member!r}",
+            rebuild=rebuild,
+            built=built,
+            worker=worker,
         )
     # A group's other starting members install at lease time too, so their builds are made and
     # checked here as well; the run's primary already was. One that names no `appPath` is expected
@@ -825,8 +824,12 @@ def _reject_bad_device_groups(
         if _app_path(target_effs[member]) is not None:
             problems += _build_problems(
                 target_effs[member],
+                member,
                 checkout_root=checkout_root,
                 label=f"starting member {member!r}",
+                rebuild=rebuild,
+                built=built,
+                worker=worker,
             )
     if problems:
         typer.echo("device group preflight failed (BE-0447):\n  " + "\n  ".join(problems))
@@ -901,20 +904,154 @@ def _app_path(eff: Effective) -> str | None:
     return config.app_path if isinstance(config, IosConfig | AndroidConfig) else None
 
 
-def _build_problems(eff: Effective, *, checkout_root: Path | None, label: str) -> Iterator[str]:
-    # The scenario names a target, never a path, so the build a member puts on the device is that
-    # target's `appPath`, built on demand where the run already builds the primary's.
+def _build_command(eff: Effective) -> str | None:
+    """The target's `subject.build` command, or None for a target that declares none (or a web one)."""
     config = eff.platform_config
+    return config.build if isinstance(config, IosConfig | AndroidConfig) else None
+
+
+def _build_target(
+    eff: Effective,
+    name: str,
+    *,
+    checkout_root: Path | None,
+    rebuild: bool,
+    built: set[str],
+    worker: WorkerCapability | None = None,
+) -> None:
+    """Build *name*'s app when it is missing, or always under *rebuild* — once per run.
+
+    The command runs where its relative parts are rooted: a Git checkout's root (BE-0063), else the
+    local config file's own directory, the anchor `rebased` already resolved `subject.path` against.
+    A build the run needs must be one *worker* declares it can make (`worker.yaml` `build`), so a
+    machine without the platform's toolchain stops with the reason instead of a failing build.
+
+    Raises:
+        BuildError: The build was needed and failed, the worker cannot build the target's platform,
+            or a forced one was withheld.
+    """
+    command = _build_command(eff)
+    if command is None:
+        return
+    if eff.device_provider is not None and eff.device_provider.kind != "local":
+        # Every provider a worker hands out — `devicefarm-host`, `appium` — gives the device over
+        # with the app already installed, so a local build would be installed nowhere; on a Device
+        # Farm host the package even leaves `subject.path` out on purpose (BE-0465).
+        if rebuild:
+            raise BuildError(
+                f"--rebuild: target '{name}' takes its device from the "
+                f"'{eff.device_provider.kind}' provider, which installs the app itself"
+            )
+        return
+    cwd = checkout_root or eff.base_dir or Path.cwd()
+    force = rebuild and name not in built
+    app_path = _app_path(eff)
+    needed = force or (app_path is not None and not Path(app_path).exists())
+    if needed and worker is not None and not worker.can_build(eff.platform):
+        raise BuildError(
+            f"its {eff.platform} app needs a build, but this worker cannot build {eff.platform} "
+            f"apps: its worker.yaml `build` lists {list(worker.buildable)}"
+        )
+    build_app(command, app_path, cwd=cwd, force=force)
+    if force:
+        built.add(name)
+
+
+def _build_primary_or_exit(
+    eff: Effective,
+    name: str,
+    *,
+    checkout_root: Path | None,
+    rebuild: bool,
+    built: set[str],
+    worker: WorkerCapability | None,
+) -> None:
+    """Build the run's primary target's app as `_build_target` does, or exit 2 with the reason.
+
+    *built* collects the targets a forced build covered, so a device-group member that is also the
+    primary is not built twice in one run.
+
+    Raises:
+        typer.Exit: `--rebuild` on a target with no `subject.build`, or a needed build that failed
+            or that this worker cannot make (exit code 2).
+    """
+    if rebuild and _build_command(eff) is None:
+        # A forced build of nothing would read as a rebuild the run never made.
+        typer.echo(f"--rebuild needs target '{name}' to declare subject.build")
+        raise typer.Exit(2)
+    try:
+        _build_target(
+            eff, name, checkout_root=checkout_root, rebuild=rebuild, built=built, worker=worker
+        )
+    except BuildError as e:
+        typer.echo(f"target '{name}': {e}")
+        raise typer.Exit(2) from None
+
+
+def _build_targets_or_exit(
+    target_effs: Mapping[str, Effective],
+    primary: str,
+    *,
+    checkout_root: Path | None,
+    rebuild: bool,
+    built: set[str],
+    worker: WorkerCapability | None,
+) -> None:
+    """Build the app of every target the run drives: the primary first, then the others by name.
+
+    Each declared target installs its own `subject.path` on its device, so a flat multi-target
+    scenario's second target needs its build as much as the primary does. `--rebuild` requires a
+    `subject.build` of the primary alone; another target without one keeps its existing app.
+
+    Raises:
+        typer.Exit: A build the run needs failed or cannot run here (exit code 2).
+    """
+    _build_primary_or_exit(
+        target_effs[primary],
+        primary,
+        checkout_root=checkout_root,
+        rebuild=rebuild,
+        built=built,
+        worker=worker,
+    )
+    for name in sorted(set(target_effs) - {primary}):
+        try:
+            _build_target(
+                target_effs[name],
+                name,
+                checkout_root=checkout_root,
+                rebuild=rebuild,
+                built=built,
+                worker=worker,
+            )
+        except BuildError as e:
+            typer.echo(f"target '{name}': {e}")
+            raise typer.Exit(2) from None
+
+
+def _build_problems(
+    eff: Effective,
+    name: str,
+    *,
+    checkout_root: Path | None,
+    label: str,
+    rebuild: bool,
+    built: set[str],
+    worker: WorkerCapability | None = None,
+) -> Iterator[str]:
+    # The scenario names a target, never a path, so the build a member puts on the device is that
+    # target's `appPath`, built where the run already builds the primary's.
     app_path = _app_path(eff)
     if app_path is None:
         yield f"{label}: that target defines no appPath to install"
         return
-    if checkout_root is not None and isinstance(config, IosConfig):
-        try:
-            build_if_missing(config.build, app_path, cwd=checkout_root)
-        except BuildError as e:
-            yield f"{label}: {e}"
-            return
+    try:
+        _build_target(
+            eff, name, checkout_root=checkout_root, rebuild=rebuild, built=built, worker=worker
+        )
+    except BuildError as e:
+        yield f"{label}: {e}"
+        return
     if not Path(app_path).exists():
         yield f"{label}: its appPath {app_path!r} does not exist"
 
@@ -2864,6 +3001,14 @@ def run_body(
         "list; one run per named kind. A kind the target does not declare exits 2 (default: every "
         "listed kind)",
     ),
+    rebuild: bool = typer.Option(
+        False,
+        "--rebuild",
+        help="run subject.build for every target the run drives, before the run, even when its "
+        "built app (subject.path) already exists, so a source change is never tested against a "
+        "stale build; each target builds once. Exits 2 when the primary target declares no "
+        "subject.build (default: build only a missing app)",
+    ),
     # --- Reporting & output ---
     zip_run: bool = typer.Option(
         False,
@@ -3079,7 +3224,25 @@ def run_body(
     # pipeline, whose own guard would otherwise raise mid-run instead of this clean exit 2.
     _reject_cross_browser_matrix_with_targets(all_scenarios, engines)
     _reject_bad_target_config_hooks(target_effs, scenarios, target_name)
-    _reject_bad_device_groups(scenarios, target_effs, checkout_root=loaded.root)
+    # Built only now, once `--tag` / `--exclude` and the worker check have settled the primary: an
+    # inferred primary of a scenario selected away is never built (an iOS app on a Linux lane).
+    rebuilt: set[str] = set()
+    _build_targets_or_exit(
+        {**target_effs, target_name: eff},
+        target_name,
+        checkout_root=loaded.root,
+        rebuild=rebuild,
+        built=rebuilt,
+        worker=worker,
+    )
+    _reject_bad_device_groups(
+        scenarios,
+        target_effs,
+        checkout_root=loaded.root,
+        rebuild=rebuild,
+        built=rebuilt,
+        worker=worker,
+    )
     # Where this target's devices come from is a seam (BE-0236): the provider `acquire` returns the
     # udid spec the lanes resolve against (the `--udid` flag verbatim for the default local provider,
     # a reserved serial / endpoint for a device cloud) plus what it already did to the device
