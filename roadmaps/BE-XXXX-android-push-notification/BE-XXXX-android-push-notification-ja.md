@@ -82,13 +82,25 @@ showcase アプリが表示するタイトルを検証します。parity の表�
 `data` は文字列から文字列への対応表で、FCM のメッセージが持つ data と同じ形です。したがって、
 `data` から FCM のメッセージを組み立て直すアプリは、型を変換せずに済みます。
 
-`bajutsu/common/scenario/models/actions/push.py` の `Push` モデルが、次の2つの規則を検証します。
-どのバックエンドでも、シナリオの読み込み時に、端末の操作より前に失敗します。
+`bajutsu/common/scenario/models/actions/push.py` の `Push` モデルが、次の3つの規則を検証します。
+どのバックエンドでも、シナリオの読み込み時に、端末の操作より前に、書かれたままのペイロードを測って失敗します。
 
-- ペイロードに `aps` キーがなければなりません。`simctl push` と同じ条件です。
+- ペイロードに `aps` キーがなければなりません。`simctl push` と同じ条件です。`aps` の値はオブジェクトでなければなりません。
+  `aps.alert` がある場合は、文字列かオブジェクトです。`aps.alert` がオブジェクトのとき、`title` と `body` は、
+  ある場合に文字列です。型の規則はどのバックエンドでも同じなので、`{aps: "x"}`、`{aps: {alert: 5}}`、
+  `{aps: {alert: {title: {a: 1}}}}` は読み込み時に失敗します。
 - ペイロードは 4,096 バイト以下でなければなりません。測り方は、デフォルトの引数で作った
   `json.dumps(payload)` の長さです。iOS の経路は、同じ文字列を `simctl push` に渡すファイルへ書き出します。
   この文字列は基本ラテン文字の範囲外の文字をエスケープするので、文字数とバイト数は一致します。
+- ペイロードの値はすべて `json.dumps` でシリアライズできなければなりません。
+  シナリオのローダーはタイムスタンプを解決します。
+  そのため、引用符のない `at: 2024-01-01` は `datetime.date` として読み込まれます。
+  `json.dumps` はこれに `TypeError` を送出します。
+  Pydantic が包むのは、検証関数の `ValueError` と `AssertionError` です。`TypeError` は包みません。
+  そのためトレースバックが外へ出てしまいます。
+  共有する長さの関数がこれを捕まえ、`ValueError` を送出します。
+  この例外は問題のあるキーのパスを示し、値は示しません。
+  引用符のない日付は、読み込み時に明確な検証エラーで失敗します。
 
 `simctl push` は、この2つの場合をすでに自分で拒否します。ただし、端末の操作が始まってからで、
 メッセージも `simctl` 独自のものです。モデルの検証なら、より早い段階で原因を示して失敗できます。対応づけの側には、どちらの規則の写しも置きません。
@@ -96,6 +108,32 @@ showcase アプリが表示するタイトルを検証します。parity の表�
 基本ラテン文字の範囲外の文字を含む場合は、エンコード後のバイト数で数える APNs の上限より厳しくなります。
 上限があれば、ブロードキャストの
 `adb shell` の引数もシェルの長さの制限に十分収まります。
+
+`${vars.*}` や `${secrets.*}` のトークンは、読み込み後にペイロードを大きくします。
+実行時には置換後のステップを検証し直します。
+そのため、`bajutsu/common/orchestrator/substitution.py` の `_interp_step` は `eval` の先例（BE-0472）に従います。
+`eval` では、置換後ではなく書かれたままの `eval` を `Step.model_validate` に渡します。
+`ValidationError` は、置換後の文字列（秘密を含みうる）を `input_value=` に含めるからです。
+
+`_interp_step` は `push` でも同じ扱いをします。`model_validate` の前に、書かれたままの `push` に戻します。
+モデルの検証は、置換後の文字列を見ません。そのあとで、`extractBody` と同じく `model_copy` で置換後のペイロードを付け直します。
+ここでは何も送出しません。ここで送出すると、エラーがステップの外へ出てしまいます。
+ステップランナーがここで捕まえるのは `UncoveredSystemAlertLocale` です。
+`run_scenario` が変換するのは `ControlChannelError`、`UnsupportedAction`、`RunCancelled` だけです。
+それ以外のエラー（`ValidationError` や `DeviceError` など）は `run_all` を中断し、すべてのシナリオの結果を捨てます。
+
+代わりに `push` のハンドラ `_do_push` が、`eval` のハンドラと同じく再検査します。
+検証と共有する関数でペイロードの長さを測ります。
+上限を超えたら `base.SelectorError` を送出します。
+ステップランナーは `SelectorError` を、失敗したステップとして報告します。エラーには、測った長さと上限を書きます。
+たとえば「push payload is 4,180 bytes; the limit is 4,096」です。
+ペイロードの文字列と値は引用しません。
+置換が書き換えるのは値で、キーではありません。`aps` キーは増減しないので、`aps` があることの規則に再検査は要りません。
+型の規則にも再検査は要りません。実行時の束縛はすべて文字列であり（`_interp_step` は `Mapping[str, str]` を取ります）、
+`${vars.*}` や `${secrets.*}` のトークンは文字列になるからです。文字列でない `${params.*}` や `${row.*}` の値は読み込み時に置換され、
+展開後のステップに対して `Push` の検証が再び走ります（`expand.py`）。対応づけは、`aps` がオブジェクトであることと、
+3つのフィールドが検証済みの型であることを前提にできます。
+置換後に長さを測るので、`adb shell` の引数にも上限がかかります。
 
 `content-available` のサイレントプッシュのように、有効でも alert を持たないペイロードがあります。
 この場合、対応づけの結果に `title` と `body` はありません。ハンドラの経路は、`BajutsuPush` を
@@ -138,7 +176,7 @@ showcase アプリが表示するタイトルを検証します。parity の表�
 |---|---|---|
 | `RESULT_OK`（`1`） | ハンドラが処理を返した、または通知を出した | なし |
 | `RESULT_NO_NOTIFICATION_PERMISSION`（`4`） | デフォルトの処理で、アプリの通知が有効になっていない | `permissions: { notifications: grant }` |
-| `RESULT_PUSH_FAILED`（`5`） | ハンドラが例外を投げた場合です。結果データには、クリップボードの `get` と同じく base64 で符号化した例外のメッセージが入ります | ハンドラのメッセージ |
+| `RESULT_PUSH_FAILED`（`5`） | ハンドラが例外を投げた場合です。結果データには、クリップボードの `get` と同じく base64 で符号化した例外のメッセージが入ります。bajutsu はペイロードの文字列を自分では加えず、ハンドラのメッセージをそのまま渡します。メッセージはアプリの作者が管理でき、もっとも役に立つ診断情報だからです | ハンドラのメッセージ |
 | 未設定（`0`） | ブロードキャストを処理したレシーバがない | `BajutsuAndroid/README.md` と、アプリが起動している必要があること |
 
 デフォルトの処理では、順序が大切です。`title` と `body` のどちらもないペイロードは、権限を確認せずに
@@ -187,22 +225,34 @@ showcase のアプリはすでにこの権限を宣言しています。作業�
 - `_functions.py` に `map_push_payload(payload)` を加えます。上の対応表を適用します。サイズの上限は
   `Push` モデルが持ち、ここには置きません。
 - `_functions.py` に `parse_push_result(out)` を加えます。上の結果の表に従い、原因を示す
-  `DeviceError` を投げます。
+  `DeviceError` を投げます。メッセージはブロードキャストの argv を引用しません。argv には base64 の
+  ペイロードが入るためです。パーサは結果コードと結果データだけから原因を組み立てます。
 - `env.py` の `Env` に `push(package, payload)` を加えます。対応づけ、ブロードキャスト、結果の解釈を
   順に行います。
 - ブロードキャストは常にタイムアウトつきで実行します。現状の `real_run` はタイムアウトを設定せず、
   `RunFn` は `(list[str]) -> str` です。`_functions.py` に `PUSH_BROADCAST_TIMEOUT_S = 10` と、
-  それを `subprocess.run` に渡す実行関数を加えます。この関数は `subprocess.TimeoutExpired` を、
-  明確なメッセージの `DeviceError` に変えます。
-- `env.py` のデバイス制御のコメントブロック（242〜248 行目）は、`push` と `clearKeychain` の両方を配線しないと書いています。
+  それを `subprocess.run` に渡す実行関数を加えます。この関数は `subprocess.TimeoutExpired`、`subprocess.CalledProcessError`（デバイスがオフラインである、
+  見つからないなどの adb の非ゼロ終了）、`OSError` を `DeviceError` に変えます。メッセージには終了コードと
+  stderr だけを入れ、argv は入れません。この関数は `DeviceError` を自分で組み立て、コマンドを引用する
+  `device_error()` は通しません。`from None` で送出するので、トレースバックの連鎖にも argv は残りません。
+- `env.py` のデバイス制御のコメントブロック（256〜262 行目）は、`push` と `clearKeychain` の両方を配線しないと書いています。
+  ブロックの書き出しは「Device control: the Android peer」です。
   コメントは、`push` を BajutsuAndroid の push レシーバが配信すると書きます。
   配線しないのは `clearKeychain` だけです。
 - `env.py` の `Env.__init__` に、`push_run: RunFn` 引数を加えます。デフォルトは上限つきの実行関数です。
   `Env.push` は `push_run` を呼び、`subprocess.run` は直接呼びません。ユニットテストは、現在 `run` を
   差し替えているのと同じ方法で、偽の `push_run` を渡します。ユニットテストがタイムアウトのエラーを
   確かめます。
-- `bajutsu/common/scenario/models/actions/push.py` の `Push` に、検証を加えます。`aps` キーがあること
-  と、ペイロードが 4,096 バイト以下であることを求めます。測り方は上で述べたとおりです。
+- `bajutsu/common/scenario/models/actions/push.py` の `Push` に、検証を加えます。`aps` キーがあってその値がオブジェクトであること、`aps.alert` が文字列かオブジェクトであること、
+  `title` と `body` がある場合に文字列であること、ペイロードが 4,096 バイト以下であることを求めます。測り方は上で述べたとおりです。長さを測る処理は
+  1つの関数にまとめ、検証と `_do_push` が共有します。この関数は `json.dumps` の `TypeError` を捕まえます。
+  そして、問題のあるキーのパスを示す `ValueError` を送出します。値は示しません。
+- `bajutsu/common/scenario/models/actions/push.py` の `Push` の docstring を書き換えます。iOS の
+  `simctl push` と Android の BajutsuAndroid レシーバの両方の経路を書きます。
+- `bajutsu/common/orchestrator/substitution.py` の `_interp_step` を、`eval` と同じ形に変えます。
+  書かれたままの `push` を検証し、そのあとで置換後のペイロードを付け直します。何も送出しません。
+- `bajutsu/common/orchestrator/actions/handlers/device.py` の `_do_push` が、置換後のペイロードの長さを共有の関数で測ります。
+  上限を超えたら `base.SelectorError` を送出します。メッセージには長さと上限だけを書きます。
 - `aps` のない既存のフィクスチャや例は、同じ作業単位で直します。該当するのは1つです。
   `tests/test_codegen_uiautomator.py` の `test_device_control_and_helper_steps_are_labeled_todo` にある
   ペイロード `{}` を、`{ aps: { alert: hi } }` に変えます。ほかのプッシュのペイロードは、
@@ -226,6 +276,25 @@ Android のデバイス制御 `android_device_control` は、`bajutsu/common/pla
 そこで `AndroidEnvironment.__init__` に、同じ形の `push_run: RunFn` 引数を加えます。デフォルトは上限つきの
 実行関数で、`controller` がこれを `android_device_control` に渡します。このクラスは
 `platform_lifecycle/environments/android/android_environment.py` にあります。
+
+`android_device_control` の `push` は、エラーの変換も担います。
+`e.push(package, payload)` を囲んで `adb.DeviceError` を捕まえます。
+そして `base.SelectorError(str(exc)) from None` を送出します。
+対象は結果 `0`、`4`、`5` です。タイムアウトと adb の非ゼロ終了も対象です。
+メッセージは原因です。
+
+`_do_push` から `run_all` までの間に、`DeviceError` を捕まえる箇所はありません。
+`DeviceError` は `RuntimeError` の子クラスなので、実行が中断します。
+`loop/_functions.py` のステップのループは `SelectorError` を捕まえます。
+そのため、どの結果もステップを原因つきで失敗させ、実行は続きます。
+
+変換を `_do_push` には置きません。orchestrator はバックエンドに依存しません
+（`orchestrator/types/device_control.py`）。import するのは `backend_cli` でも `devices.errors` でもありません。
+基底の `DeviceError` をそこで捕まえると、iOS が変わります。
+`simctl` によるプッシュのエラーがすべて、ステップの失敗になります。`simctl.DeviceTimeout` も含まれます。
+BE-0363 は、このエラーをあえて伝播させます。
+そこで `_do_push` に捕捉は加えず、iOS の挙動は今のままです。
+`_do_push` の長さの検査は、すべてのバックエンドに対して `base.SelectorError` を送出し続けます。
 
 `bajutsu/common/drivers/adb/adb_driver.py` の `AdbDriver.CAPABILITIES` に `deviceControl.push` を
 加えます。これで capability の事前検査が、adb バックエンドでの `push` ステップを通します。
@@ -273,12 +342,19 @@ Android の2つの双子アプリ `demos/showcase/android/compose` と `demos/sh
 - `demos/showcase/android/Makefile` は、`E2E_SCENARIOS` と `E2E_VIEWS_SCENARIOS` の両方に `push` と
   `push_android` を加えます。
 - 古くなるコメントは、1か所ずつ次のように直します。
-  - `demos/showcase/scenarios/device.yaml`（11〜15 行目）は、push に Android の対応物がないと書いています。16 行目は
-    実行コマンドなので、そのまま残します。
-  - `demos/showcase/android/Makefile`（86 行目）は、push の部分を iOS 専用と呼んでいます。
-  - `.github/workflows/ios-e2e.yml`（613〜616 行目）は、`actuation` ジョブのシナリオ数を数えています。
+  - `demos/showcase/scenarios/device.yaml`（11〜15 行目）は、push に Android の対応物がないと書いています。
+    コメントには「has no faithful」とあります。16 行目は実行コマンドなので、そのまま残します。
+  - `demos/showcase/android/Makefile`（86 行目、「half lives in push.yaml」）は、push の部分を iOS 専用と呼んでいます。
+  - `.github/workflows/ios-e2e.yml`（621〜624 行目）は、`actuation` ジョブのシナリオ数を数えています。
+    コメントは「push.yaml holds two since BE-0416」と書いています。
     この数は、`push.yaml` が2つのシナリオを持つ前提です。
-  - `.github/workflows/ios-e2e.yml`（673〜674 行目）は、`push.yaml` を iOS 専用と呼んでいます。
+    バナーのシナリオはファイルを移すだけなので、シナリオの実行回数は23回のままです。ファイル数は11から12になるので、
+    「eleven files」は「twelve files」になり、「push.yaml holds two」の節は削除します。
+  - `.github/workflows/ios-e2e.yml`（680〜681 行目、`push.yaml (BE-0281)`）は、`push.yaml` を iOS 専用と呼んでいます。
+    作業単位 5 でこの項目の文言を直し、実行ステップの上にあるファイルごとのコメント一覧（670〜700 行目）に
+    `push_banner.yaml (BE-0416)` の項目を加えます。
+  - `.github/workflows/ios-e2e.yml`（612〜614 行目）は、BE-0322 の `actuation` ジョブを起動するシナリオを列挙しています。
+    この一覧に `push_banner` を加えます。
   - `demos/showcase/ios/scenarios-noax/push.yaml`（1〜4 行目）と
     `demos/showcase/ios/scenarios-noax/device.yaml`（5 行目）は、`push` に Android の対応物がないと書いています。
   - `demos/showcase/ios/swiftui/Sources/ShowcaseApp.swift`（18〜20 行目）にコメントがあります。
@@ -290,6 +366,10 @@ Android の2つの双子アプリ `demos/showcase/android/compose` と `demos/sh
     ブロックには、「push.yaml 自身の上の最初のシナリオ」がバナーを出さない、と書いてあります。
     `push_banner.yaml` には、その上にシナリオがありません。
     そのためコメントは、`push.yaml` のシナリオを指す書き方に直します。
+  - `tests/test_android_device_control.py`（406〜407 行目）には BE-0416 のコメントがあります。
+    このコメントは、`push.yaml` が 2 つ目のシナリオを持つと書いています。
+    分割後のファイルはシナリオを 1 つしか持たないので、この文を消します。
+    テストは名前での検索をそのまま使います。
 
   `-noax` の双子 `scenarios-noax/push.yaml` は基本のシナリオだけを持ち、バナーの双子はありません。
   `-noax` のレーンは `--exclude android` だけを付けてディレクトリ全体を実行し、ほかの絞り込みはありません。
@@ -310,15 +390,12 @@ API 34 で `background` ステップの後にプッシュする場合は、作�
 
 ### ドキュメント
 
-- `docs/drivers.md`（英語と日本語）のデバイス制御の注記で、`deviceControl.push` に Android を加えます。
-  capability の表は、作業単位 3 の側で扱います。
-- `docs/drivers.md` の adb の節にある「adb が公開する capability」の一覧（118〜131 行目）に、
-  `deviceControl.push` を加えます。届け方は BajutsuAndroid を通じたものです。
-  一覧の直後の文（132 行目）は、`push` と `clearKeychain` を非公開としています。
-  この文は、`clearKeychain` だけを挙げる形に直します。
-  `docs/ja/drivers.md`（121 行目）も同じように直します。
-  capability の表は作業単位 3 の担当です。この作業単位が扱うのは、この一覧と文だけです。
-- 同じ注記に、作業単位 4 の結果も書きます。API 34 で `background` ステップの後にプッシュする場合が、
+- adb の節にある**デバイス制御**の項目に、BajutsuAndroid 経由の `push` を加えます。
+  対象は `docs/drivers.md` の 900〜901 行目と、`docs/ja/drivers.md` の 700 行目です。
+  どちらも「一族の残りは未対応のままです」という趣旨の文で終わっています。
+  未対応として残る操作は `clearKeychain` だけになります。capability の表とその下の注記は、
+  作業単位 3 の側で扱います。
+- 同じ項目に、作業単位 4 の結果も書きます。API 34 で `background` ステップの後にプッシュする場合が、
   対応済みか未対応のどちらかです。振る舞いの差の表の `push` 行にも、同じ結果を書きます（次の項目）。
 - `docs/platform-parity.md` と `docs/ja/platform-parity.md` の「振る舞いの差」の表に、`push` の行を加えます。
   - iOS：`simctl push` が APNs のペイロードを届けます。
@@ -326,16 +403,29 @@ API 34 で `background` ステップの後にプッシュする場合は、作�
   - 注記：アプリが起動中で、BajutsuAndroid を組み込んでいる必要があります。
     デフォルトの経路では `notifications` の権限が要ります。
     `background` ステップの後にプッシュした場合の、作業単位 4 の結果も書きます。
-- `docs/drivers.md` の adb の節にある「adb が公開する capability」の一覧（118〜131 行目）に、
+- `docs/drivers.md` の adb の節にある「adb が公開する capability」の一覧（120〜131 行目）に、
   `deviceControl.push` を加えます。届け方は BajutsuAndroid を通じたものです。
-  一覧の直後の文（132 行目）は、`push` と `clearKeychain` を非公開としています。
+  一覧の直後の文（133 行目）は、`push` と `clearKeychain` を非公開としています。
   この文は、`clearKeychain` だけを挙げる形に直します。
-  `docs/ja/drivers.md`（121 行目）も同じように直します。
+  `docs/ja/drivers.md`（122 行目）も同じように直します。
   capability の表は作業単位 3 の担当です。この作業単位が扱うのは、この一覧と文だけです。
+- capability の表の下の注記は、Android エミュレータが `push` と `clearKeychain` 以外のすべての操作を実現すると書いています。
+  場所は `docs/drivers.md` の 106〜108 行目と、`docs/ja/drivers.md` の 99〜100 行目です。
+  これを `clearKeychain` だけを挙げる形に直します。表と同じく作業単位 3 の担当です。
+- `docs/scenarios.md` と `docs/ja/scenarios.md` には、`push` の記述が2か所あります。どちらも直します。
+  - ステップの表の行は、`docs/scenarios.md` の 1049 行目と `docs/ja/scenarios.md` の 753 行目にあります。
+    ここには、iOS では `simctl push`、Android ではアプリ内の BajutsuAndroid の受信側で配信すると書きます。
+  - `### setLocation / push (device control)` の節は、`docs/scenarios.md` の 1621〜1630 行目と
+    `docs/ja/scenarios.md` の 1150〜1158 行目にあります。ここに、Android への対応づけと権限の規則を加えます。
+    iOS では 2 つのステップとも `simctl` で Simulator を操作し、Android では `setLocation` がエミュレータのコンソールか
+    アプリ内の受信側（BE-0481）を使い、`push` が BajutsuAndroid の push 受信側を使うと書き改めます。
+    読み込み時のペイロードの規則も書きます。`aps` は必須でオブジェクトであること、`alert` は文字列か、`title` と `body` が
+    文字列のオブジェクトであること、ペイロードはデフォルトの `json.dumps` の文字列で測って 4,096 バイト以下であることです。
+    置換後のペイロードが上限を超えたステップは、実行時に失敗します。
 - `docs/ci.md` の `android-e2e.yml` の行（英語と日本語）に、smoke ジョブが `push.yaml` と
   `push_android.yaml` を実行するようになったと書きます。push の部分を iOS 専用とする記述は外します。
 - `docs/ci.md` の `ios-e2e.yml` の行（英語と日本語）は、`push.yaml` と並べて `push_banner.yaml` を挙げます。
-- `docs/codegen.md`（694 行目付近）と `docs/ja/codegen.md`（677 行目付近）は、「`push` には adb の
+- `docs/codegen.md`（712 行目付近）と `docs/ja/codegen.md`（693 行目付近）は、「`push` には adb の
   経路そのものがない」と書いています。`push` は `run` で動くと改めます。生成される UI Automator の
   コードは、`bajutsu run` に任せます。
 - `docs/architecture.md`（441 行目付近）と `docs/ja/architecture.md`（430 行目付近）は、
@@ -345,7 +435,7 @@ API 34 で `background` ステップの後にプッシュする場合は、作�
 - `docs/platform-parity.md` と `docs/ja/platform-parity.md`（17 行目付近）は、capability の例として
   `deviceControl.push` を挙げています。これを `handleNotificationBanner` に差し替えます。この
   capability は、表でギャップのまま残るからです。
-- `docs/drivers.md`（1077 行目付近）と `docs/ja/drivers.md`（835 行目付近）の Flutter の注記から、`push` を iOS 専用とする記述を外します。
+- `docs/drivers.md`（1081 行目付近）と `docs/ja/drivers.md`（838 行目付近）の Flutter の注記から、`push` を iOS 専用とする記述を外します。
   `demos/showcase/Makefile` のコメント（553〜560 行目付近）も同じです。代わりに、Flutter の Android レーンが
   `push` を引き続き除外する理由を書きます。Flutter アプリが BajutsuAndroid を組み込まないからです。
 
@@ -357,10 +447,10 @@ API 34 で `background` ステップの後にプッシュする場合は、作�
 | # | 作業単位 | ファイル | 完了条件 |
 |---|---|---|---|
 | 1 | プッシュ用のレシーバ、ハンドラ、`startPush` | `BajutsuAndroid/`（`README.md` と `README.ja.md` を含む） | ライブラリがビルドでき、2つの README が API と `POST_NOTIFICATIONS` の宣言を説明している |
-| 2 | ペイロードの対応づけ、コマンドの生成、結果の解釈、上限つきの実行経路、`Env.push`、`Push` モデルの検証、`aps` のないフィクスチャ、UI Automator の `push` のプレースホルダにある正しい理由 | `bajutsu/common/backend_cli/adb/`、`bajutsu/common/scenario/models/actions/push.py`、`bajutsu/codegen/uiautomator.py`、`tests/test_codegen_uiautomator.py` | 2つの表のすべての行、`aps` とサイズの規則、タイムアウトのエラーをユニットテストが確かめ、プレースホルダのテストが接頭辞だけでなく新しい文言を確認し、既存のテストも通る |
-| 3 | デバイス制御、capability、capability の表 | `device_control.py`、`android_environment.py`、`adb_driver.py`、`docs/platform-parity.md` と `docs/ja/platform-parity.md`、`docs/drivers.md` と `docs/ja/drivers.md` の capability の表、`tests/test_android_device_control.py` | 事前検査が adb での `push` を通し、`tests/test_platform_parity.py` とユニットテストが通る |
+| 2 | ペイロードの対応づけ、コマンドの生成、結果の解釈、上限つきの実行経路、`Env.push`、`Push` モデルの検証、`aps` のないフィクスチャ、UI Automator の `push` のプレースホルダにある正しい理由 | `bajutsu/common/backend_cli/adb/`、`bajutsu/common/scenario/models/actions/push.py`、`bajutsu/common/orchestrator/substitution.py`、`bajutsu/common/orchestrator/actions/handlers/device.py`、`bajutsu/codegen/uiautomator.py`、`tests/test_codegen_uiautomator.py`、`tests/` の新しいユニットテスト | 2つの表のすべての行、`aps`、型、サイズの規則（`{aps: "x"}`、`{aps: {alert: 5}}`、`{aps: {alert: {title: {a: 1}}}}` をそれぞれ検証のテストが拒否します。引用符のない日付を含むペイロードが読み込み時に `ValidationError` で失敗することも確かめます）、タイムアウトと非ゼロ終了のエラーをユニットテストが確かめ、`${vars.*}` と `${secrets.*}` を展開すると 4,096 バイトを超えるペイロードを試すテストがあり、そのテストは中断された実行ではなく失敗したステップを確かめ、bajutsu が書くエラーの文言にペイロードの文字列は含まれず、結果 `0`、`4`、`5`、タイムアウト、adb の非ゼロ終了がそれぞれ、`adb.DeviceError` になり、bajutsu が書くメッセージの文言にペイロードの文字列が含まれないこと（結果 `5` はハンドラのメッセージをそのまま渡します）をユニットテストが確かめ、プレースホルダのテストが接頭辞だけでなく新しい文言を確認し、既存のテストも通る |
+| 3 | デバイス制御、capability、capability の表 | `device_control.py`、`android_environment.py`、`adb_driver.py`、`bajutsu/common/drivers/base/capability.py`、`bajutsu/common/capability/capability_preflight.py`、`docs/platform-parity.md` と `docs/ja/platform-parity.md`、`docs/drivers.md` と `docs/ja/drivers.md` の capability の表とその下の注記、`tests/test_android_device_control.py`、`tests/test_capability_preflight.py` | 事前検査が adb での `push` を通し、結果 `0`、`4`、`5`、タイムアウト、adb の非ゼロ終了がそれぞれ、`android_device_control` を通って、中断された実行ではなく失敗したステップになり、bajutsu が書くメッセージの文言にペイロードの文字列は含まれず（結果 `5` はハンドラのメッセージをそのまま渡します）、`tests/test_platform_parity.py` とユニットテストが通る |
 | 4 | エミュレータでデフォルトの処理とバックグラウンドからの配信を確かめる | コミットするものはなし（進捗ログ） | 通知が出ること、権限がないときの失敗、API 34 での `background` ステップ後のプッシュの3つをすべて確認した |
-| 5 | showcase のハンドラ、表示、シナリオ、古くなるコメント | `demos/showcase/`（`SPEC.md` と `SPEC.ja.md` を含む）、`.github/workflows/ios-e2e.yml`、`tests/test_showcase_fixtures.py` | `push.yaml` と `push_android.yaml` が Android エミュレータで成功し、`push_banner.yaml` が iOS で成功し、showcase の2つの仕様ファイルに `perm.push.received` があり、フィクスチャのテストが新しい2つのタグを確認する |
+| 5 | showcase のハンドラ、表示、シナリオ、古くなるコメント | `demos/showcase/`（`SPEC.md` と `SPEC.ja.md` を含む）、`.github/workflows/ios-e2e.yml`、`tests/test_showcase_fixtures.py`、`tests/test_android_device_control.py`（コメント） | `push.yaml` と `push_android.yaml` が Android エミュレータで成功し、`push_banner.yaml` が iOS で成功し、showcase の2つの仕様ファイルに `perm.push.received` があり、フィクスチャのテストが新しい2つのタグを確認する |
 | 6 | 残りのドキュメント（バックグラウンド配信の注記を含む） | capability の表を除く `docs/` と `docs/ja/`（`codegen.md`、`architecture.md`、`platform-parity.md` の本文を含む）、`demos/showcase/Makefile` | `make check` が通る |
 
 作業単位 4 は、`startPush(this)` を呼ぶがハンドラを登録しない showcase の双子アプリを、使い捨てでビルドします。
@@ -375,17 +465,25 @@ API 34 で `background` ステップの後にプッシュする場合は、作�
   `test_preflight_admits_supported_steps_on_adb` に移します。
 - `UnsupportedAction` を期待していた `push` のケースは、`Env.push` による配信を期待します。
 - `push.yaml` を iOS 専用とするコメントも、これに合わせて直します。
-- モジュールの docstring（7〜8 行目）は、`push` は未対応のままだと書いています。Android ではアプリ内の
+- このテストファイルのモジュールの docstring（7〜8 行目）は、`push` は未対応のままだと書いています。Android ではアプリ内の
   レシーバを通して配信すると書き換えます。
 
-次のコメントも誤りになるので、合わせて直します。`device_control.py` の `android_device_control` の docstring（90〜94 行目）は、`push` が例外を送出すると書いています。`adb_driver.py` の `CAPABILITIES` のコメント（2508〜2509 行目）は、`push` を通知しないと書いています。`android_environment.py` の `controller` のコメント（590〜595 行目）も、`push` が例外を送出すると書いています。
-
-- `bajutsu/common/drivers/base/capability.py`（93〜95 行目）と
+- `android_device_control` の docstring（`device_control.py`、90〜93 行目）は、`push` が例外を送出すると書いています。
+- `CAPABILITIES` のコメント（`adb_driver.py`、2543〜2544 行目）は、`push` を通知しないと書いています。
+  該当の文には「all but `push`」とあります。
+- `AndroidEnvironment` クラスの docstring（`android_environment.py`、111〜114 行目）があります。
+  対応するサブセットを `push` なしで挙げ、
+  「the rest of the family stays unsupported」で終わっています。
+  BajutsuAndroid の push レシーバを通して配信する `push` を加えます。
+  未対応の操作は `clearKeychain` だけになります。
+- `controller` のコメント（`android_environment.py`、591〜596 行目）は、`push` が例外を送出すると書いています。
+  コメントの書き出しは「The subset Android can honor」です。
+- `bajutsu/common/drivers/base/capability.py`（94〜96 行目）と
   `bajutsu/common/capability/capability_preflight.py`（43〜45 行目）のコメントは、Android エミュレータを名指ししています。
   `setLocation` とクリップボードだけを支える backend だと書いているからです。
   名指しをやめ、ファミリーの一部を支える backend として一般的に書き直します。
 - `tests/test_capability_preflight.py` は、`_SUBSET` を Android エミュレータと説明しています（46〜48 行目）。
-  エミュレータが対応できない操作の例にも `push` を使っています（281 行目と 289 行目）。
+  エミュレータが対応できない操作の例にも `push` を使っています（270 行目と 289 行目）。
   `_SUBSET` は合成した一部対応の backend だと書き直します。
   `_SUBSET` は固定値なので、テストのデータは変えません。
 
