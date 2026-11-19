@@ -1,14 +1,14 @@
-[English](BE-XXXX-simslim-ci-simulator-slimming.md) · **日本語**
+[English](BE-0494-simslim-ci-simulator-slimming.md) · **日本語**
 
-# BE-XXXX — simslim で CI のシミュレータを軽量化し、iOS E2E レーンを速く安定させる
+# BE-0494 — simslim で CI のシミュレータを軽量化し、iOS E2E レーンを速く安定させる
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-simslim-ci-simulator-slimming-ja.md) |
+| 提案 | [BE-0494](BE-0494-simslim-ci-simulator-slimming-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **却下** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0494") |
 | トピック | CI / build infrastructure |
 | 関連 | [BE-0088](../BE-0088-overlap-simulator-boot/BE-0088-overlap-simulator-boot-ja.md), [BE-0218](../BE-0218-e2e-simulator-flaky-readiness-actuation/BE-0218-e2e-simulator-flaky-readiness-actuation-ja.md), [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery-ja.md), [BE-0354](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement-ja.md) |
 <!-- /BE-METADATA -->
