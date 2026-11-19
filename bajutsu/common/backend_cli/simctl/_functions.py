@@ -43,13 +43,16 @@ _GLOBAL_DOMAIN = "-globalDomain"
 # outlived the 60-second bound in the on-device conformance lane, while the lease right after it
 # succeeded. `privacy` reaches the Simulator's TCC daemon, which a fresh boot is still bringing up:
 # `privacy reset all` right after a reboot (the locale pin's, or the recovery ladder's) outlived the
-# same bound in the actuation, run, and conformance lanes alike. Sized against the roughly
+# same bound in the actuation, run, and conformance lanes alike. `shutdown` waits for the device to
+# stop and `terminate` for the app to exit, so the device and the app set their duration too; each
+# outlived the 60-second bound across the actuation, run, golden, and fault-injection lanes, most often
+# on the recovery ladder's reboot rung. Sized against the roughly
 # 80 seconds the iOS end-to-end workflow prices a CI Simulator boot at, since CI is both the slower
 # environment and the one where a hang matters; the headroom over that is deliberate, because the
 # bound exists to catch a call that will never return, not to police a slow one.
 _DEVICE_BLOCKING_TIMEOUT_S = 300.0
 _DEVICE_BLOCKING_SUBCOMMANDS = frozenset(
-    {"bootstatus", "boot", "erase", "install", "uninstall", "privacy"}
+    {"bootstatus", "boot", "erase", "install", "uninstall", "privacy", "shutdown", "terminate"}
 )
 
 # Every other command costs only simctl's own small, bounded work, so nothing about the app or the

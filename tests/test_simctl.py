@@ -801,13 +801,14 @@ def test_the_bound_is_chosen_from_the_subcommand() -> None:
         simctl.install_cmd("U", "/p.app"),
         simctl.uninstall_cmd("U", "com.x"),
         simctl.privacy_cmd("U", "reset", "all", "com.x"),
+        simctl.shutdown_cmd("U"),
+        simctl.terminate_cmd("U", "com.x"),
     ):
         assert simctl._timeout_for(cmd) == simctl._DEVICE_BLOCKING_TIMEOUT_S
     for cmd in (
         simctl.list_booted_cmd(),
         simctl.list_devicetypes_cmd(),
-        simctl.terminate_cmd("U", "com.x"),
-        simctl.shutdown_cmd("U"),
+        simctl.launch_cmd("U", "com.x"),
     ):
         assert simctl._timeout_for(cmd) == simctl._SIMCTL_TIMEOUT_S
     # A device that legitimately blocks must be given far longer than one that does not, or the
