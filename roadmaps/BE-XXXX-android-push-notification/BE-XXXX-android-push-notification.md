@@ -175,7 +175,7 @@ The receiver reports one of four results. The new codes `4` and `5` follow the l
 |---|---|---|
 | `RESULT_OK` (`1`) | the handler returned, or the notification was posted | — |
 | `RESULT_NO_NOTIFICATION_PERMISSION` (`4`) | default path, and notifications are not enabled for the app | `permissions: { notifications: grant }` |
-| `RESULT_PUSH_FAILED` (`5`) | the handler threw; the result data carries the exception message, base64-encoded like the clipboard `get` result. bajutsu adds no payload text of its own and passes the handler's message through verbatim: the app author controls it, and it is the most useful diagnostic | the handler's message |
+| `RESULT_PUSH_FAILED` (`5`) | the handler threw; the result data carries the exception message, base64-encoded like the clipboard `get` result. bajutsu adds no payload text of its own and passes the handler's message through verbatim: the app author controls it, and it is the most useful diagnostic. The handler holds the *substituted* payload, so bajutsu cannot tell a safe message from one that echoes `${secrets.*}` text. Unit 1's README states that a handler's exception message must not include the payload, and bajutsu does not redact it | the handler's message |
 | unset (`0`) | no receiver handled the broadcast | `BajutsuAndroid/README.md`, and that the app must be running |
 
 On the default path, the order matters. A payload with neither `title` nor `body` returns
@@ -235,9 +235,19 @@ This section covers `bajutsu/common/backend_cli/adb/`.
 - The device-control comment block in `env.py` (lines 256-262) leaves `push` and `clearKeychain`
   unwired. The block opens "Device control: the Android peer". The comment now says BajutsuAndroid's push receiver delivers `push`.
   `clearKeychain` alone stays unwired.
-- `Env.__init__` in `env.py` gains a `push_run: RunFn` parameter. It defaults to the bounded runner.
-  `Env.push` calls `push_run` and never `subprocess.run`. Unit tests pass a fake `push_run`, as they
-  fake `run` today. A unit test covers the timeout error.
+- `Env.__init__` in `env.py` gains an optional `push_run: RunFn | None` parameter. `Env.push` calls
+  the runner it resolves and never `subprocess.run`. When the caller passes no `push_run`, `Env`
+  derives it from `run`. Under `real_run` it takes the bounded runner. Under any other `run` it takes
+  that `run` itself. A caller that fakes `run` thus fakes the push broadcast too. None of the
+  `adb.Env(serial, run=…)` sites in `bajutsu/` and `tests/` changes. None of them can reach a real
+  device by leaving `push_run` out. A unit test fakes `subprocess.run` under the bounded runner to
+  cover the timeout error.
+- The clipboard (BE-0233) and location (BE-0481) broadcasts stay on the unbounded `real_run`. Their
+  errors keep the `device_error()` shape. Push alone needs the bound, because its receiver calls the app's
+  handler. A handler runs arbitrary app code and can block. The other two receivers run library code
+  that answers at once. One bounded runner for all three would give one error shape. It would also
+  change two shipped steps, so it stays out of scope here. The Unit 4 probe gives evidence for it. If a
+  push broadcast blocks after `background` on API 34, the other two can block the same way.
 - `bajutsu/common/scenario/models/actions/push.py` gains a validator on `Push`. It enforces the three rules above.
   The size measure lives in one function that the validator and `_do_push` share. That function catches the
   `TypeError` from `json.dumps` and raises `ValueError` naming the offending key path, never the value.
@@ -260,16 +270,16 @@ This section covers `bajutsu/common/backend_cli/adb/`.
 ### Host: device control and capability
 
 `android_device_control` in `bajutsu/common/platform_lifecycle/device_control.py` routes `push` to
-`Env.push(package, payload)`, in place of the current `UnsupportedAction`. It takes a `push_run: RunFn`
-parameter beside its existing `env_run`. The parameter defaults to the bounded runner and goes to
-`Env`. `tests/test_android_device_control.py` already fakes `env_run`. It passes a fake `push_run`
-the same way.
+`Env.push(package, payload)`, in place of the current `UnsupportedAction`. It builds `Env` from its
+existing `env_run`, as today, and passes no `push_run`. The default above then applies. Under
+`real_run` the push takes the bounded runner, and under a fake `env_run` it reaches that fake.
+`tests/test_android_device_control.py` already fakes `env_run`, so its push cases need no new
+parameter.
 
-`AndroidEnvironment` builds this control in `controller`. It passes its `adb_run` on as `env_run`, and
-passes no `push_run`. An environment built with a fake `adb_run` would then run real adb for a push.
-`tests/test_adb_lifecycle.py` and `tests/test_android_mock_location.py` build such environments.
-So `AndroidEnvironment.__init__` gains a matching `push_run: RunFn` parameter. It defaults to the
-bounded runner, and `controller` passes it to `android_device_control`. The class lives in
+`AndroidEnvironment` builds this control in `controller`. It passes its `adb_run` on as `env_run`.
+Some tests build environments with a fake `adb_run`. They live in `tests/test_adb_lifecycle.py` and
+`tests/test_android_mock_location.py`. A push there reaches that fake. Neither `android_device_control` nor
+`AndroidEnvironment` gains a parameter. The class lives in
 `platform_lifecycle/environments/android/android_environment.py`.
 
 The `push` of `android_device_control` also converts errors.
@@ -384,59 +394,72 @@ records all three results in this item's Progress log.
 
 ### Documentation
 
+Each documentation change lands in the unit whose code makes the old text false. Between two PRs, a
+page would otherwise contradict the code it describes. The same-change rule in `CLAUDE.md`
+(BE-0113) exists to prevent that.
+
+Unit 2 adds the payload rules, so it updates the pages that state the payload's shape:
+
+- `docs/dsl-grammar.md` (line 261) and `docs/ja/dsl-grammar.md` (line 259) state the `push` grammar.
+  The payload there is `map(string,any)`, with no constraint. Both pages now record the load-time
+  rules. The payload needs an `aps` object. `alert` is a string, or an object with string `title` and `body`. The
+  payload stays within 4,096 bytes.
+- The `### setLocation / push (device control)` section documents the same rules. It sits at
+  `docs/scenarios.md` lines 1621-1630 and `docs/ja/scenarios.md` lines 1150-1158. The measure is
+  the default `json.dumps` text. A step whose substituted payload grows past the limit
+  fails at run time.
+
+Unit 3 makes `push` work on Android. Every page that says otherwise changes in the same unit:
+
+- The capability tables and the note under them. The note says the emulator backs all but `push`
+  and `clearKeychain`. It sits at `docs/drivers.md` lines 106-108 and `docs/ja/drivers.md` lines
+  99-100. It now names `clearKeychain` alone. In both parity pages, the `deviceControl.push` row
+  turns to ✅ on Android. The work breakdown gives the details.
+- The adb section of `docs/drivers.md` lists what adb advertises (lines 120-131). The list gains
+  `deviceControl.push`, delivered through BajutsuAndroid. The next sentence (line 133) says `push`
+  and `clearKeychain` stay unadvertised. It now names `clearKeychain` alone. `docs/ja/drivers.md`
+  (line 122) changes the same way.
 - The adb section of `docs/drivers.md` has a **Device control** bullet at lines 900-901. It ends
   with "The rest of the family stays unsupported". The bullet adds `push`, delivered through
-  BajutsuAndroid. Its mirror at line 700 of `docs/ja/drivers.md` changes the same way. It leaves `clearKeychain` as the one unsupported operation. The capability tables
-  and the note under them belong to Unit 3, as described there.
-- The same bullet records the Unit 4 outcome. A push after a `background` step on API 34 is either
-  supported or unsupported. The `push` row of the platform-parity behavior table records it too
-  (next bullet).
+  BajutsuAndroid. Its mirror at line 700 of `docs/ja/drivers.md` changes the same way.
+  `clearKeychain` stays the one unsupported operation.
+- Two `push` passages in `docs/scenarios.md` and `docs/ja/scenarios.md`.
+  - The step-table row: `docs/scenarios.md` line 1049, `docs/ja/scenarios.md` line 753. It says
+    `simctl push` on iOS and the in-app BajutsuAndroid receiver on Android.
+  - The `### setLocation / push (device control)` section gains the Android mapping. It also gains
+    the permission rule. On iOS both steps drive the Simulator through `simctl`. On Android,
+    `setLocation` uses the emulator console or the in-app receiver (BE-0481). `push` uses the
+    BajutsuAndroid push receiver.
+- `docs/codegen.md` (line 712) and `docs/ja/codegen.md` (line 693) claim `push` has no adb route.
+  They now say it works under `run`. Generated UI Automator code leaves it to `bajutsu run`.
+- `docs/architecture.md` (about line 441) and `docs/ja/architecture.md` (about line 430) claim
+  `push` needs a receiver in the app's process. Both describe the route through BajutsuAndroid.
+- `docs/platform-parity.md` and `docs/ja/platform-parity.md` (about line 17) name
+  `deviceControl.push` as an example capability gap. They name `handleNotificationBanner` instead,
+  because it stays a gap in the table.
+- Two Flutter notes stop limiting `push` to iOS: `docs/drivers.md` (about line 1081) and
+  `docs/ja/drivers.md` (about line 838). Both say why the Flutter Android lane still excludes
+  `push`. The Flutter app does not link BajutsuAndroid.
+
+Unit 5 changes the showcase lanes, so it updates the pages that describe them:
+
+- The `android-e2e.yml` row of `docs/ci.md` (en + ja) says the smoke job now runs `push.yaml` and
+  `push_android.yaml`. It no longer limits the `push` half to iOS.
+- The `ios-e2e.yml` row of `docs/ci.md` (en + ja) names `push_banner.yaml` beside `push.yaml`.
+- The comment in `demos/showcase/Makefile` (about lines 553-560) stops limiting `push` to iOS. It
+  says why the Flutter Android lane still excludes `push`, as the Flutter notes do.
+
+Unit 6 records the Unit 4 outcome. A push after a `background` step on API 34 is either supported or
+unsupported:
+
+- The **Device control** bullet of `docs/drivers.md` and `docs/ja/drivers.md` states the outcome.
 - The "Differences in behavior" table gains a `push` row, in `docs/platform-parity.md` and its
   `docs/ja/` mirror.
   - iOS: `simctl push` delivers the APNs payload.
   - Android: the in-app receiver maps the payload. It then calls the app's handler or posts a
     local notification.
   - Notes: the app must be running and link BajutsuAndroid. The default path needs `notifications`
-    granted. The row also gives the Unit 4 outcome for a push after a `background` step.
-- The adb section of `docs/drivers.md` lists what adb advertises (lines 120-131).
-  The list gains `deviceControl.push`, delivered through BajutsuAndroid.
-  The next sentence (line 133) says `push` and `clearKeychain` stay unadvertised.
-  It now names `clearKeychain` alone. `docs/ja/drivers.md` (line 122) changes the same way.
-  Unit 3 owns the capability tables. This unit owns this list and sentence.
-- The note under the capability table says the emulator backs all but `push` and
-  `clearKeychain`. It sits at `docs/drivers.md` lines 106-108 and `docs/ja/drivers.md` lines 99-100.
-  It now names `clearKeychain` alone. Unit 3 owns it with the table.
-- `docs/scenarios.md` and `docs/ja/scenarios.md` carry two `push` passages. Both change.
-  - The step-table row: `docs/scenarios.md` line 1049, `docs/ja/scenarios.md` line 753.
-    It says `simctl push` on iOS and the in-app BajutsuAndroid receiver on Android.
-  - The `### setLocation / push (device control)` section: `docs/scenarios.md` lines 1621-1630,
-    `docs/ja/scenarios.md` lines 1150-1158.
-    It gains the Android mapping and the
-    permission rule.
-    It says that on iOS both steps drive the Simulator through `simctl`.
-    On Android, `setLocation` uses the emulator console or the in-app receiver (BE-0481).
-    `push` uses the BajutsuAndroid push receiver.
-    It also documents the load-time payload rules. The payload needs an `aps` object.
-    `alert` is a string, or an object with string `title` and `body`.
-    The payload stays within 4,096 bytes, measured as the default `json.dumps` text.
-    A step whose substituted payload grows past the limit fails at run time.
-- The `android-e2e.yml` row of `docs/ci.md` (en + ja) says the smoke job now runs `push.yaml` and
-  `push_android.yaml`. It no longer limits the `push` half to iOS.
-- The `ios-e2e.yml` row of `docs/ci.md` (en + ja) names `push_banner.yaml` beside `push.yaml`.
-- `docs/codegen.md` (line 712) and `docs/ja/codegen.md` (line 693) claim `push` has no adb
-  route. They now say it works under `run`. Generated UI Automator code leaves it to
-  `bajutsu run`.
-- `docs/architecture.md` (about line 441) and `docs/ja/architecture.md` (about line 430) claim
-  `push` needs a receiver in the app's process. That is now false. Both describe the route through
-  BajutsuAndroid. `CLAUDE.md` (BE-0113) requires the update in the same change.
-- `docs/platform-parity.md` and `docs/ja/platform-parity.md` (about line 17) name
-  `deviceControl.push` as an example capability. They name `handleNotificationBanner` instead,
-  because it stays a gap in the table.
-- Two Flutter notes stop limiting `push` to iOS: `docs/drivers.md` (about line 1081) and
-  `docs/ja/drivers.md` (about line 838). So does the comment in `demos/showcase/Makefile`
-  (about lines 553-560).
-  All three say why the Flutter Android lane still excludes `push`.
-  The Flutter app does not link BajutsuAndroid.
+    granted. The row also gives the Unit 4 outcome.
 
 `BajutsuAndroid/README.md` and `README.ja.md` belong to Unit 1, not to this section. Unit 1
 documents `Bajutsu.startPush`, the handler, the result codes, and the `POST_NOTIFICATIONS`
@@ -446,12 +469,12 @@ declaration.
 
 | # | Unit | Files | Done when |
 |---|---|---|---|
-| 1 | Push receiver, handler, and `startPush` | `BajutsuAndroid/`, including `README.md` and `README.ja.md` | the library builds; both READMEs cover the API and the permission |
-| 2 | Mapping, command builder, result parser, bounded run path, `Env.push`, `Push` model validator, fixtures without `aps`, the true reason in the UI Automator `push` placeholder | `bajutsu/common/backend_cli/adb/`, `bajutsu/common/scenario/models/actions/push.py`, `bajutsu/common/orchestrator/substitution.py`, `bajutsu/common/orchestrator/actions/handlers/device.py`, `bajutsu/codegen/uiautomator.py`, `tests/test_codegen_uiautomator.py`, and new unit tests under `tests/` | unit tests cover every row of both tables, the `aps`, type, and size rules (a validator test fails each of `{aps: "x"}`, `{aps: {alert: 5}}`, and `{aps: {alert: {title: {a: 1}}}}` at load; a payload carrying an unquoted date fails at load with a `ValidationError`), and the timeout error and the non-zero-exit error; a test grows a `${vars.*}` and a `${secrets.*}` payload past 4,096 bytes during substitution, and the test asserts a failing step, not an aborted run, and the error text that bajutsu writes holds no payload text; unit tests show that results `0`, `4`, `5`, a timeout, a non-zero adb exit, each raise `adb.DeviceError`, and the text bajutsu writes into the message holds no payload text (result `5` passes the handler's message through verbatim); the placeholder test asserts the full new string, not its prefix; the existing suite passes |
-| 3 | Device control, capability, capability tables | `device_control.py`, `android_environment.py`, `adb_driver.py`, `bajutsu/common/drivers/base/capability.py`, `bajutsu/common/capability/capability_preflight.py`, `docs/platform-parity.md` and `docs/ja/platform-parity.md`, `docs/drivers.md` and `docs/ja/drivers.md` capability tables and the note under them, `tests/test_android_device_control.py`, `tests/test_capability_preflight.py` | preflight admits `push` on adb; results `0`, `4`, `5`, a timeout, a non-zero adb exit, each give a failing step through `android_device_control`, not an aborted run, and the text bajutsu writes into the message holds no payload text (result `5` passes the handler's message through verbatim); `tests/test_platform_parity.py` and the unit tests pass |
+| 1 | Push receiver, handler, and `startPush` | `BajutsuAndroid/`, including `README.md` and `README.ja.md` | the library builds; both READMEs cover the API and the permission, and state that a handler's exception message must not include the payload |
+| 2 | Mapping, command builder, result parser, bounded run path, `Env.push`, `Push` model validator, fixtures without `aps`, the true reason in the UI Automator `push` placeholder | `bajutsu/common/backend_cli/adb/`, `bajutsu/common/scenario/models/actions/push.py`, `bajutsu/common/orchestrator/substitution.py`, `bajutsu/common/orchestrator/actions/handlers/device.py`, `bajutsu/codegen/uiautomator.py`, `tests/test_codegen_uiautomator.py`, new unit tests under `tests/`, `docs/dsl-grammar.md` and `docs/ja/dsl-grammar.md`, and the payload-rule passage of `docs/scenarios.md` and `docs/ja/scenarios.md` | unit tests cover every row of both tables, the `aps`, type, and size rules (a validator test fails each of `{aps: "x"}`, `{aps: {alert: 5}}`, and `{aps: {alert: {title: {a: 1}}}}` at load; a payload carrying an unquoted date fails at load with a `ValidationError`), and the timeout error and the non-zero-exit error; an `Env` built with a fake `run` and no `push_run` sends the push broadcast through that fake; a test grows a `${vars.*}` and a `${secrets.*}` payload past 4,096 bytes during substitution, and the test asserts a failing step, not an aborted run, and the error text that bajutsu writes holds no payload text; unit tests show that results `0`, `4`, `5`, a timeout, a non-zero adb exit, each raise `adb.DeviceError`, and the text bajutsu writes into the message holds no payload text (result `5` passes the handler's message through verbatim); the placeholder test asserts the full new string, not its prefix; the existing suite passes |
+| 3 | Device control, capability, capability tables | `device_control.py`, `android_environment.py`, `adb_driver.py`, `bajutsu/common/drivers/base/capability.py`, `bajutsu/common/capability/capability_preflight.py`, `docs/platform-parity.md` and `docs/ja/platform-parity.md` (the behavior-table row aside), `docs/drivers.md`, `docs/ja/drivers.md`, the step row and Android passage of `docs/scenarios.md` and `docs/ja/scenarios.md`, `docs/codegen.md`, `docs/ja/codegen.md`, `docs/architecture.md`, `docs/ja/architecture.md`, `tests/test_android_device_control.py`, `tests/test_capability_preflight.py` | preflight admits `push` on adb; results `0`, `4`, `5`, a timeout, a non-zero adb exit, each give a failing step through `android_device_control`, not an aborted run, and the text bajutsu writes into the message holds no payload text (result `5` passes the handler's message through verbatim); `tests/test_platform_parity.py` and the unit tests pass |
 | 4 | Probe the default path and background delivery | none committed (Progress log) | a posted notification, the permission failure, and a push after `background` on API 34 are observed |
-| 5 | Showcase handler, readout, scenarios, stale comments | `demos/showcase/`, `demos/showcase/SPEC.md`, `demos/showcase/SPEC.ja.md`, `.github/workflows/ios-e2e.yml`, `tests/test_showcase_fixtures.py`, `tests/test_android_device_control.py` (comment) | `push.yaml` and `push_android.yaml` pass on the Android emulator; `push_banner.yaml` passes on iOS; both showcase spec files list `perm.push.received`; the fixture test pins the two new tags |
-| 6 | Remaining documentation, including the background-delivery note | `docs/` and `docs/ja/` outside the capability tables (including `codegen.md`, `architecture.md`, and the prose of `platform-parity.md`), `demos/showcase/Makefile` | `make check` passes |
+| 5 | Showcase handler, readout, scenarios, stale comments | `demos/showcase/`, `demos/showcase/SPEC.md`, `demos/showcase/SPEC.ja.md`, `.github/workflows/ios-e2e.yml`, `tests/test_showcase_fixtures.py`, `tests/test_android_device_control.py` (comment), `docs/ci.md` and `docs/ja/ci.md` | `push.yaml` and `push_android.yaml` pass on the Android emulator; `push_banner.yaml` passes on iOS; both showcase spec files list `perm.push.received`; the fixture test pins the two new tags |
+| 6 | The Unit 4 outcome in the documentation | the **Device control** bullet of `docs/drivers.md` and `docs/ja/drivers.md`, the behavior table of `docs/platform-parity.md` and `docs/ja/platform-parity.md` | `make check` passes |
 
 Unit 4 builds a throwaway showcase twin whose `startPush(this)` call registers no handler. That is
 the one way to reach the default path, and the build stays local. Unit 4 follows Unit 3, because the
@@ -509,11 +532,11 @@ table is outside it. Its new row belongs to Unit 6.
 > (oldest first), linking the PRs.
 
 - [ ] Unit 1 — `PushReceiver`, `BajutsuPushHandler`, `Bajutsu.startPush`, and the READMEs (en + ja)
-- [ ] Unit 2 — mapping and parser, bounded run path, `Env.push`, `Push` validator, fixtures and placeholder
-- [ ] Unit 3 — Android `push`, the `AdbDriver.CAPABILITIES` entry, the capability tables, inverted tests
+- [ ] Unit 2 — the adb command path and the `Push` validator, with fixtures and payload docs
+- [ ] Unit 3 — Android `push` and its capability, inverted tests, and the docs that limit it to iOS
 - [ ] Unit 4 — probe the default path, the permission failure, and a push after `background` on API 34
-- [ ] Unit 5 — showcase handler and Permissions readout, the spec entries, scenarios, stale comments
-- [ ] Unit 6 — remaining documentation (en + ja), including the background-delivery note
+- [ ] Unit 5 — the showcase handler, readout, and scenarios, with their docs and comments
+- [ ] Unit 6 — the background-delivery outcome in the driver and parity docs (en + ja)
 
 ## References
 
