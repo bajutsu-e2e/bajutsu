@@ -453,6 +453,11 @@ e2e-visual: compose-build
 		--scenario demos/showcase/scenarios/visual/visual_android.yaml \
 		--baselines demos/showcase/scenarios/visual/baselines_android \
 		--target showcase-compose --udid $(SERIAL) --backend android --config $(CONFIG)
+	$(ANR_QUIET)
+	cd $(ROOT) && $(E2E_ENV) uv run --extra visual bajutsu run \
+		--scenario demos/showcase/scenarios/visual/status_bar_android.yaml \
+		--baselines demos/showcase/scenarios/visual/baselines_android \
+		--target showcase-compose --udid $(SERIAL) --backend android --config $(CONFIG)
 
 # On-device driver conformance (BE-0114 / BE-0270) for the adb backend: run the *same* backend-
 # agnostic contract (tests/driver_conformance.py) the XCUITest / Playwright / FakeDriver suites

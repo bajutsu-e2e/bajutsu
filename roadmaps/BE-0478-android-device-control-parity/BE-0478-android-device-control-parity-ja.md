@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0478](BE-0478-android-device-control-parity-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0478") |
 | 実装 PR | [#2399](https://github.com/bajutsu-e2e/bajutsu/pull/2399)（単位 1〜5） |
 | トピック | プラットフォーム対応 |
@@ -287,7 +287,7 @@ adb -s <serial> logcat -v year,usec,zone -T "<MM-DD hh:mm:ss.mmm>" -s <tag>:V
 - [x] アプリ単位のロケールによる `runsOn.android.locale` と、2段階の API レベル検査
 - [x] タグで絞り込んだ `logcat` による `appTrace` と、`APP_TRACE` の宣言
 - [x] `docs/` と `docs/ja/` のドキュメント
-- [ ] Android エミュレータのレーンでの実機確認
+- [x] Android エミュレータのレーンでの実機確認
 
 ログ：
 

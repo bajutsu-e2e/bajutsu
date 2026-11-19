@@ -283,6 +283,9 @@ the tap that triggered it return:
   value, and asserts it. A read that comes back with no string — the paste consent refused, or an
   empty pasteboard — publishes `(none)`, so a scenario answering that prompt with `choice: deny` has
   a value to wait for rather than a field it cannot tell from one never read
+- `sys.locale.value` — Android only: the language tag of the app's own configuration (`en-US`,
+  `ja-JP`), the per-app locale `runsOn.android.locale` or its `preconditions.device.android.locale`
+  override applies (BE-0478)
 
 **In-app browser** — the same section opens `SFSafariViewController` on `SHOWCASE_BROWSER_URL`.
 The browser draws its interface in a separate process, `com.apple.SafariViewService`. The backend

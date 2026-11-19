@@ -277,6 +277,9 @@ associated domain の仕掛けも要ります。無ければ iOS は何も申し
   アサートします。読み取りが文字列を返さなかったとき、つまりペーストの同意を拒否したときやペーストボードが
   空のときは、`(none)` を公開します。プロンプトに `choice: deny` で応答するシナリオが、一度も読んでいない
   フィールドと見分けのつかない状態ではなく、待って確かめられる値を得るためです
+- `sys.locale.value`：Android のみ。アプリ自身の構成が持つ言語タグ（`en-US`、`ja-JP`）。
+  `runsOn.android.locale`、またはそれを上書きする `preconditions.device.android.locale` が適用する
+  アプリ単位のロケールがここに表れます（BE-0478）
 
 **アプリ内ブラウザ**：同じ System セクションから、`SHOWCASE_BROWSER_URL` が指すページを
 `SFSafariViewController` で開きます。ブラウザは画面を別プロセス（`com.apple.SafariViewService`）で
