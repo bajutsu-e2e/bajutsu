@@ -1,14 +1,14 @@
-[English](BE-XXXX-android-heads-up-notification-dismiss.md) · **日本語**
+[English](BE-0496-android-heads-up-notification-dismiss.md) · **日本語**
 
-# BE-XXXX — Android の heads-up 通知を報告し、スワイプで消す
+# BE-0496 — Android の heads-up 通知を報告し、スワイプで消す
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-android-heads-up-notification-dismiss-ja.md) |
+| 提案 | [BE-0496](BE-0496-android-heads-up-notification-dismiss-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **承認済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0496") |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci-ja.md)、[BE-0416](../BE-0416-ios-notification-banner-swipe-dismiss/BE-0416-ios-notification-banner-swipe-dismiss-ja.md)、[BE-0478](../BE-0478-android-device-control-parity/BE-0478-android-device-control-parity-ja.md) |
 <!-- /BE-METADATA -->

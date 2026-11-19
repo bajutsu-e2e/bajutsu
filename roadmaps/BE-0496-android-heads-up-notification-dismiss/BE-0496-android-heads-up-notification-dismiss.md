@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-android-heads-up-notification-dismiss-ja.md)
+**English** · [日本語](BE-0496-android-heads-up-notification-dismiss-ja.md)
 
-# BE-XXXX — Report and swipe away an Android heads-up notification
+# BE-0496 — Report and swipe away an Android heads-up notification
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-android-heads-up-notification-dismiss.md) |
+| Proposal | [BE-0496](BE-0496-android-heads-up-notification-dismiss.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0496") |
 | Topic | Platform support |
 | Related | [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md), [BE-0416](../BE-0416-ios-notification-banner-swipe-dismiss/BE-0416-ios-notification-banner-swipe-dismiss.md), [BE-0478](../BE-0478-android-device-control-parity/BE-0478-android-device-control-parity.md) |
 <!-- /BE-METADATA -->
