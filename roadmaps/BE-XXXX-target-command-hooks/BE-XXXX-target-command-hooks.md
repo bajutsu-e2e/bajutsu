@@ -222,11 +222,14 @@ The raw area is a hardening boundary, since a sandboxed command can write into i
 
 - **Lifetime.** Bajutsu creates the raw directory per run with owner-only permissions and removes it
   once the final masked copy is taken. A run that dies before then has its raw directory removed
-  when the next run starts, so a plaintext secret never outlives its run.
+  when the next run starts, so a plaintext secret never outlives its run. Removing a file does not
+  erase its bytes from an unencrypted disk, so a worker that handles secrets keeps its raw area on
+  an encrypted volume.
 - **What is copied.** The copy goes file by file, by the names Bajutsu itself created for each
   entry's log and output file, never as a directory sweep. Bajutsu refuses a symbolic link or any
-  file that is not a regular file. A command therefore cannot pull host content, such as a key
-  file, into the run's evidence.
+  file that is not a regular file. It opens each file with `O_NOFOLLOW` and checks the opened file
+  itself, so a command cannot swap in a link between the check and the open. A command therefore
+  cannot pull host content, such as a key file, into the run's evidence.
 
 ### Where the commands run
 
