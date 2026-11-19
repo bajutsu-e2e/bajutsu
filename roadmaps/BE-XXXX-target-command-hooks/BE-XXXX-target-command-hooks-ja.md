@@ -151,8 +151,9 @@ Bajutsu は、各コマンドの出力をパイプではなくログファイル
 
 `beforeScenario` をアプリの起動より前に置くのは、アプリが起動時に投入済みのデータを読めるように
 するためです。`preconditions.inheritSetup: false` を指定したシナリオは、ターゲットの `setup` と
-あわせて `beforeScenario` も飛ばします。`afterScenario` は、現在のターゲットの `cleanup` と
-同じく実行します。
+あわせて、`beforeScenario` と `afterScenario` を対にして飛ばします。`afterScenario` のスクリプトは、
+たいてい `beforeScenario` のスクリプトが作ったものを片付けます。片方だけを実行すると、書かれて
+いない出力をもとに動いてしまいます。ターゲットの `cleanup` は、現在と同じく実行します。
 
 ラン全体も、すべてのシナリオを同じ形で包みます。`beforeRun` は最初のシナリオの前に実行し、
 `afterRun` はすべてのシナリオが終わってから実行します。`afterRun` と `afterScenario` は、
@@ -182,7 +183,8 @@ Bajutsu は、各コマンドの出力をパイプではなくログファイル
 
 シナリオは値を `${hooks.<name>.<key>}` で読みます。ランのループは、`${secrets.*}` と同じく
 アクションを実行する時点でトークンを置き換えます。シナリオのローダーは、各トークンを静的に確かめます。
-`name` が `beforeRun` と `beforeScenario` のどちらのエントリとも一致しないトークンは、読み込み時のエラーになります。コマンドが書かなかったキーは、
+`name` が `beforeRun` と `beforeScenario` のどちらのエントリとも一致しないトークンは、読み込み時のエラーになります。
+シナリオが `inheritSetup: false` で飛ばす `beforeScenario` のエントリを指すトークンも、同じく読み込み時のエラーです。コマンドが書かなかったキーは、
 フックとキーの両方を示してステップを失敗させます。シナリオが読めるのは、`beforeRun` の出力と、
 自分の `beforeScenario` の出力です。
 

@@ -147,8 +147,10 @@ One scenario runs in this order:
 4. The `afterScenario` rules whose `on` matches the verdict, in declaration order.
 
 The `beforeScenario` entries run ahead of the launch so the app reads seeded data at startup. A
-scenario that sets `preconditions.inheritSetup: false` skips the target's `beforeScenario` along
-with its `setup`. Its `afterScenario` still runs, as the target's `cleanup` does today.
+scenario that sets `preconditions.inheritSetup: false` skips the target's `beforeScenario` and
+`afterScenario` together, along with its `setup`. The two lists form a pair: an `afterScenario`
+script typically tears down what a `beforeScenario` script created, and running it alone would act
+on outputs that were never written. The target's `cleanup` still runs, as it does today.
 
 The run itself wraps every scenario the same way. `beforeRun` runs before the first scenario, and
 `afterRun` runs once every scenario is done. `afterRun` and `afterScenario` also run on a cancelled
@@ -178,7 +180,8 @@ malformed line fails the entry, so a typo never turns into a silently missing va
 
 A scenario reads a value as `${hooks.<name>.<key>}`. The run loop substitutes the token at action
 time, as it does for `${secrets.*}`. The scenario loader checks each token statically. A token
-naming no `beforeRun` or `beforeScenario` entry is a load error. A key the command never wrote fails the step and names
+naming no `beforeRun` or `beforeScenario` entry is a load error, and so is a token naming a
+`beforeScenario` entry that the scenario skips through `inheritSetup: false`. A key the command never wrote fails the step and names
 both the hook and the key. A scenario sees the outputs of `beforeRun` and of its own
 `beforeScenario` entries.
 
