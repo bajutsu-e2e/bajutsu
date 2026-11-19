@@ -14,7 +14,7 @@ iOS は `xcuitest` で、Android は `adb` で動きます。2つのバックエ
 ## 3つの表が扱う範囲
 
 **能力**（capability）は、バックエンドが `Driver.capabilities()` で宣言する名前付きの機能です。
-たとえば `multiTouch` や `deviceControl.push` があります。実行前の事前チェック（preflight）は、
+たとえば `multiTouch` や `handleNotificationBanner` があります。実行前の事前チェック（preflight）は、
 デバイスを確保する前に走ります。ここで止まるのは、ゲート対象の構文を、その能力を持たないバックエンドで使うシナリオです。
 すべての能力がゲート対象ではありません。`conditionWait`、`network`、`semanticTap`、`webView`、区間の証跡の能力は、
 コアが別の手段で満たすので、意図的にゲートしていません。
@@ -73,7 +73,7 @@ iOS の実機では、`simctl` が提供する能力がなくなります。こ�
 | `deviceGroup` | ✅ | ✅ | |
 | `deviceControl.setLocation` | ✅ | ✅ | ローカルのエミュレータ以外では、Android のアプリに BajutsuAndroid ライブラリが要ります。振る舞いの差の表を参照してください。 |
 | `deviceControl.clipboard` | ✅ | ✅ | Android ではアプリに BajutsuAndroid ライブラリが必要です。振る舞いの差の表を参照してください。 |
-| `deviceControl.push` | ✅ | gap | クリップボードと同じく、BajutsuAndroid ライブラリがアプリの中から通知を出せば実現できます。 |
+| `deviceControl.push` | ✅ | ✅ | Android のアプリに BajutsuAndroid ライブラリが要ります。振る舞いの差の表を参照してください。 |
 | `deviceControl.clearKeychain` | ✅ | n/a | Android には iOS の Keychain にあたる仕組みがありません。アプリの Android Keystore の鍵は、クリーンな再インストールでデータと一緒に消えます。 |
 | `deviceControl.background` | ✅ | ✅ | Android はホームキー（`KEYCODE_HOME`）を送ります（BE-0478）。アプリのプロセスは生きたままです。その後、アプリが前面のアクティビティでなくなるまで待ちます。 |
 | `deviceControl.foreground` | ✅ | ✅ | |

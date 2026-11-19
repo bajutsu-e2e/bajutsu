@@ -77,7 +77,7 @@ class Driver(Protocol):
 | `handleNotificationBanner` | 前面の通知バナーの位置を報告し、スワイプで消す（BE-0416、iOS のみ） | ✅ | — | — | ✅ |
 | `deviceControl.setLocation` | 疑似 GPS 位置の設定 | ✅ | ✅ | — | — |
 | `deviceControl.clipboard` | クリップボードの読み取り / 書き込み / クリア | ✅ | ✅ | — | — |
-| `deviceControl.push` | プッシュ通知の配信 | ✅ | — | — | — |
+| `deviceControl.push` | プッシュ通知の配信 | ✅ | ✅ | — | — |
 | `deviceControl.clearKeychain` | キーチェーンのクリア | ✅ | — | — | — |
 | `deviceControl.background` | アプリのバックグラウンド化 | ✅ | ✅ | — | — |
 | `deviceControl.foreground` | アプリを前面に出す（起動していなければ起動する） | ✅ | ✅ | — | — |
@@ -96,8 +96,8 @@ class Driver(Protocol):
 > これにより、バックエンドは自分が忠実に実現できる操作だけを公開できます。
 > 部分的にしか実現しないバックエンドも、残りを誤って公開せずに済みます。
 > XCUITest は `simctl` を通じて一族全体を実現します。
-> Android エミュレータは、`permissions.*` の 7 サービスを含め、`push` と `clearKeychain` 以外のすべてを実現します（BE-0478）。
-> `push` にはアプリのプロセス内のレシーバが必要で、Android には `clearKeychain` が消すキーチェーンがありません。
+> Android エミュレータは、`permissions.*` の 7 サービスを含め、`clearKeychain` 以外のすべてを実現します（BE-0478）。
+> Android には `clearKeychain` が消すキーチェーンがありません。
 > `background` と `foreground` は、BE-0447 が分けるまで 1 つの `appLifecycle` トークンでした。
 > デバイスグループの後から入るメンバーは `foreground` で起動するので、分ける必要がありました。
 
@@ -114,12 +114,13 @@ class Driver(Protocol):
 > - エミュレータが実現できるデバイス制御のサブセット。`deviceControl.setLocation`、
 >   `deviceControl.clipboard`（BE-0211）、`deviceControl.foreground`、`deviceControl.background`、
 >   `deviceControl.statusBar`（BE-0478）です。
+> - `deviceControl.push`。アプリ内の BajutsuAndroid のプッシュレシーバを通じて届けます（BE-0498）。
 > - `deviceControl.permissions.*` の 7 サービス。`pm grant` / `pm revoke` で実現します（BE-0276）。
 > - `deviceGroup`（BE-0447）。
 > - `appContext`。`am start` による `app:` ステップです。
 > - 証跡種別の `video`、`deviceLog`、`appTrace`。`screenrecord`、`logcat`、タグで絞った `logcat` で実現します（BE-0467、BE-0478）。
 >
-> `push`（アプリのプロセス内にレシーバがない）と `clearKeychain`（Android にキーチェーンがない）は公開しません。
+> `clearKeychain` は、Android にキーチェーンがないため公開しません。
 >
 > `fake` ドライバは、テストでそれらのコードパスを動かすためだけに、より広い能力集合
 > （semanticTap / conditionWait / multiTouch）を公開します。
@@ -699,7 +700,7 @@ Compose の値は自身の変化に対して `TYPE_WINDOW_CONTENT_CHANGED` を�
   どちらも web バックエンドと同じ driver の `driver_interval` seam から供給するので、バックエンド非依存の `capture` ポリシーがそのまま両方を運びます（[evidence](evidence.md)を参照）。
 - **ネットワーク**: adb backend はネットワークをネイティブには観測しません（`NETWORK` 能力を持ちません）。iOS と同じモックで対応します。
   アプリ側の collector の URL を launch env 経由で intent extra として渡すので、新しいコードパスなしに `mocks` が動きます。
-- **デバイス制御**: `setLocation` とクリップボード操作に対応し、一族の残りは未対応のままです。
+- **デバイス制御**: `setLocation`、クリップボード操作、`push` に対応します。`push` はアプリ内の BajutsuAndroid のプッシュレシーバに届けます（BE-0498）。`clearKeychain` だけが未対応のままです。
   `setLocation` は、ローカルの `emulator-<port>` の serial ではエミュレータのコンソール（`emu geo fix`、BE-0211）を使います。
   それ以外の対象は、実機と、`adb connect` で接続したエミュレータです。
   そうした対象では、まず adb がアプリに mock location の app-op を許可します。
@@ -832,12 +833,13 @@ id 規約は、上の iOS と Android のものと並べて記します（Flutte
   - **Android の device-control `clipboard`** は、`BajutsuAndroid` のアプリ内レシーバ（BE-0233）を往復します。
     そのため、`device.yaml` と `text_selection_android.yaml` の `setClipboard`／`clipboard` ステップは Flutter Android ターゲットで失敗します。
     iOS の device-control クリップボードは、アプリの協力なしに simctl を通るので、Flutter iOS ターゲットでは動きます。この差は Android だけのものです。
+  - **Android の `push` ステップ**は、BajutsuAndroid のプッシュレシーバに届きます（BE-0498）。Flutter アプリは BajutsuAndroid をリンクしていないため、Flutter Android のレーンは `push` を除外します。
 
   これらを除けば、Flutter ターゲットはネイティブ双子が回すのと同じ実機シナリオ群を通ります。
   外れるのは、Flutter とは無関係にプラットフォームで制限されるものだけです。
 
   - マルチタッチ（`gestures_multitouch`）は、adb では root 化したエミュレータを要します（ネイティブ Android アプリと同様）。
-  - `text_editing` と `device` の `push` 部分は、ネイティブのスイートでも iOS 専用です。
+  - `text_editing` は、ネイティブのスイートでも iOS 専用です。
 - **ディープリンクからタブへのルーティング。** Flutter ターゲットは、フレーバごとのスキームを登録します（Android の `VIEW` intent-filter、iOS の `CFBundleURLTypes`）。
   ネイティブ双子は、URI をタブへルーティングします。タブを選び、ルートまで戻し、開いているモーダルを閉じます。
   Flutter アプリは、まだ受け取った URI を処理しません。

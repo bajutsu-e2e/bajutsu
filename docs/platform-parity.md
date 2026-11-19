@@ -14,7 +14,7 @@ declares. A gap cannot open or close unless this page changes with it.
 ## What the three tables cover
 
 A **capability** is a named feature a backend declares through `Driver.capabilities()`. Two
-examples are `multiTouch` and `deviceControl.push`. The preflight check runs before a run leases a
+examples are `multiTouch` and `handleNotificationBanner`. The preflight check runs before a run leases a
 device. It stops a scenario that uses a gated step the chosen backend has no capability for. The
 check leaves some capabilities ungated, because the core supplies each one another way. Examples are
 `conditionWait`, `network`, `semanticTap`, and `webView`. The interval-evidence capabilities stay
@@ -77,7 +77,7 @@ column.
 | `deviceGroup` | ✅ | ✅ | |
 | `deviceControl.setLocation` | ✅ | ✅ | Off a local emulator, Android needs the BajutsuAndroid library in the app. See the behavior table. |
 | `deviceControl.clipboard` | ✅ | ✅ | Android needs the BajutsuAndroid library in the app. See the behavior table. |
-| `deviceControl.push` | ✅ | gap | The BajutsuAndroid library could post the notification from inside the app, the way it already handles the clipboard. |
+| `deviceControl.push` | ✅ | ✅ | Android needs the BajutsuAndroid library in the app. See the behavior table. |
 | `deviceControl.clearKeychain` | ✅ | n/a | Android has no keychain. The app's Android Keystore keys go away with its data on a clean reinstall. |
 | `deviceControl.background` | ✅ | ✅ | Android sends the home key (`KEYCODE_HOME`), which keeps the app's process alive (BE-0478). The step then waits until the app is no longer the resumed activity. |
 | `deviceControl.foreground` | ✅ | ✅ | |

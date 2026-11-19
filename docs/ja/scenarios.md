@@ -750,7 +750,7 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
 | `assert` | `assert: [ <Assertion>... ]` | ステップ途中の中間検証 |
 | `relaunch` | `relaunch: { env?: {...}, args?: [...] }` | アプリを terminate + 再起動し（launch env/args を再適用し、指定分で上書き）、ready まで待つ |
 | `setLocation` | `setLocation: { lat: <num>, lon: <num> }` | シミュレータの GPS 位置を上書きする（`simctl location set`） |
-| `push` | `push: { payload: {...} }` | この APNs（Apple Push Notification service）ペイロードで疑似プッシュ通知を配信する（`simctl push`） |
+| `push` | `push: { payload: {...} }` | この APNs（Apple Push Notification service）ペイロードで疑似プッシュ通知を配信する（iOS は `simctl push`、Android はアプリ内の BajutsuAndroid のプッシュレシーバ） |
 | `http` | `http: { method?, url, headers?, body?, status?, saveBody?, extractBody?: [{ var, path }] }` | HTTP リクエストを送る（テストデータ準備 / Webhook / API）。`status` を検証し、ボディを `${vars.<saveBody>}` に保存する、または `path` で指定した JSON のフィールドを `${vars.<var>}` に取り出す（[後述](#httpテストデータ準備用のリクエスト)） |
 | `totp` | `totp: { secret, into?: { var }, name? }` | RFC 6238 の時刻ベースワンタイムパスワード（2FA）をローカルで生成し `${vars.<var>}` に入れる。`name` を指定すると、後続の `otp` ステップ向けにシークレットも登録する |
 | `otp` | `otp: { from, into: { var }, minRemaining? }` | `totp` ステップが `from` の名前で登録したジェネレータの現在のコードを `${vars.<var>}` に入れる（[後述](#otp-で後から新しいコードを取得する)） |
@@ -1151,10 +1151,20 @@ Androidでは、`bundleId`にパッケージ名（たとえば`com.android.setti
 
 ```yaml
 - setLocation: { lat: 35.681, lon: 139.767 }              # simctl location set
-- push: { payload: { aps: { alert: "You have mail" } } }  # simctl push (APNs payload)
+- push: { payload: { aps: { alert: "You have mail" } } }  # APNs payload
 ```
 
-どちらも `simctl` 経由で Simulator を操作し、デバイスごとの制御チャネルが必要です。そのため fake ドライバや並列実行では使えず、その場合ステップはクリーンに失敗します（クラッシュはしません）。`push` は `payload` を APNs JSON として対象アプリに配信します。
+どちらのステップもデバイスごとの制御チャネルが必要です。そのため fake ドライバや並列実行では使えず、その場合ステップはクリーンに失敗します（クラッシュはしません）。iOS では、どちらも `simctl` 経由で Simulator を操作し、`push` は `payload` を APNs JSON として対象アプリに配信します。
+
+Android では、`setLocation` はローカルのエミュレータならエミュレータのコンソールを、それ以外なら BajutsuAndroid の位置レシーバを使います（BE-0481）。`push` はアプリ内の BajutsuAndroid のプッシュレシーバに届きます（BE-0498）。bajutsu はペイロードを次の 3 つのフィールドに変換します。
+
+| APNs のペイロード | Android のフィールド |
+|---|---|
+| 文字列の `aps.alert` | `body` |
+| `aps.alert.title` / `aps.alert.body` | `title` / `body` |
+| `aps` 以外のトップレベルのキー | `data` の項目。文字列でない値は JSON テキストになる |
+
+レシーバは、アプリが登録したハンドラを呼びます。ハンドラがなければローカル通知を出します。ハンドラのない経路には通知の権限が要り、シナリオは `permissions: { notifications: grant }` で許可します。アプリは起動していて、BajutsuAndroid をリンクしている必要があります（組み込み方は [`BajutsuAndroid/README.ja.md`](../../BajutsuAndroid/README.ja.md) にあります）。
 
 シナリオのローダは、どのバックエンドでも、デバイスを操作する前に `push` のペイロードを検査します。
 

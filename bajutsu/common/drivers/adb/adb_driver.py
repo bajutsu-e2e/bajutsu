@@ -2540,11 +2540,11 @@ class AdbDriver(CoordinateTreeDriver):
     HOST_OS: frozenset[str] | None = None
 
     # No semantic tap and no native network monitoring — the lean end of the capability model.
-    # Of the device-control family it advertises all but `push` (which needs a receiver in the app's
-    # process) and `clearKeychain` (Android has no keychain): `setLocation` over the emulator console
-    # on a local emulator (BE-0211) and through the app's in-app receiver elsewhere (BE-0481), `clipboard`
-    # over an ordered `am broadcast` to the app's in-app receiver (BajutsuAndroid, BE-0233; adb
-    # declares it because the backend can drive it given a cooperating app), `background` over the
+    # Of the device-control family it advertises all but `clearKeychain` (Android has no keychain):
+    # `setLocation` over the emulator console on a local emulator (BE-0211) and through the app's
+    # in-app receiver elsewhere (BE-0481), `clipboard` and `push` over an ordered `am broadcast` to the
+    # app's in-app receivers (BajutsuAndroid, BE-0233 / BE-0498; adb declares them because the backend
+    # can drive them given a cooperating app), `background` over the
     # Home key, and the status-bar pair over the System UI demo mode (BE-0478). The
     # per-operation tokens (BE-0212) let it declare exactly that subset, so preflight admits those
     # steps and fails the rest fast. A class constant so the preflight (BE-0082) reads it via
@@ -2570,6 +2570,8 @@ class AdbDriver(CoordinateTreeDriver):
                 base.Capability.PICKER_WHEEL,
                 base.Capability.DC_SET_LOCATION,
                 base.Capability.DC_CLIPBOARD,
+                # BajutsuAndroid's push receiver, given an app that calls `startPush` (BE-0498).
+                base.Capability.DC_PUSH,
                 # `am start` brings a member's app to the front, launching it when it is not running;
                 # and the shared resident channel lets members of a device group share one device
                 # (BE-0447).
