@@ -20,7 +20,7 @@ A config can declare commands that Bajutsu runs on the machine that executes a r
 `services.server.cmd`, `subject.build`, and `driver.runner.build`. Two `serve` options decide today
 whether such a command runs. `--upload-exec` governs an uploaded bundle's server command, and
 `--allow-remote-build` lets a Git config bound through the Web UI build. This item replaces both
-options with a `commands` block in the worker capability file, `worker.yaml`. The block sets one mode
+options with a `commandExecution` block in the worker capability file, `worker.yaml`. The block sets one mode
 per trust level of a config: an uploaded bundle, a Git config bound through the Web UI, or a config
 the operator chose.
 
@@ -68,7 +68,7 @@ hash of what ran.
 
 ## Detailed design
 
-### The `commands` block in `worker.yaml`
+### The `commandExecution` block in `worker.yaml`
 
 The worker capability file of
 [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md) gains one optional block:
@@ -77,7 +77,7 @@ The worker capability file of
 version: 1
 environment: local
 drivers: [playwright]
-commands:
+commandExecution:
   uploaded: sandbox
   remote: sandbox
   operator: allow
@@ -97,7 +97,7 @@ An omitted block or key takes the defaults `uploaded: sandbox`, `remote: sandbox
 command now runs in a container instead of on the bare host, matching how today's rules already
 treat that config's builds. A worker that sets a key to `sandbox` explicitly checks for Docker at startup and
 exits with a message naming the key when Docker is missing. A worker whose `sandbox` mode comes from
-the default advertises `commands:<source>` for that source only when Docker is present. Either way,
+the default advertises `command-execution:<source>` for that source only when Docker is present. Either way,
 a worker never accepts a job it would then fail. No default uses `named`, since it asks the operator
 to install scripts first. An operator who runs untrusted configs on a worker that holds secrets sets
 `uploaded: named` and `remote: named` there.
@@ -107,7 +107,7 @@ to install scripts first. An operator who runs untrusted configs on a worker tha
 A `namedCommands` block in `worker.yaml` lists the commands the worker's operator vouches for:
 
 ```yaml
-commands:
+commandExecution:
   uploaded: named
   remote: named
   operator: allow
@@ -171,27 +171,27 @@ has no way to set its own label. A `bajutsu run` started from a terminal or CI l
 job's label to the command it spawns (`run`, `record`, or `crawl`) through an option that takes the
 place of `--upload-exec`, and that command then uses the label instead of deriving one. The worker
 also passes its `worker.yaml` to each of the three, so the check inside the run reads the same
-`commands` block the worker advertised.
+`commandExecution` block the worker advertised.
 
 ### Routing
 
-The worker advertises one capability token per source it accepts: `commands:uploaded`,
-`commands:remote`, or `commands:operator`, for each source whose mode is not `deny`. `serve` adds
-`commands:<source>` to the required set of a job whose config declares at least one governed
+The worker advertises one capability token per source it accepts: `command-execution:uploaded`,
+`command-execution:remote`, or `command-execution:operator`, for each source whose mode is not `deny`. `serve` adds
+`command-execution:<source>` to the required set of a job whose config declares at least one governed
 command. The routing test of [BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues.md)
 is an all-of subset check, so a job that declares commands reaches only a worker that accepts its
 source.
 
-Named commands add two more tokens. A worker advertises `named:<source>` for each source whose mode
+Named commands add two more tokens. A worker advertises `named-execution:<source>` for each source whose mode
 is not `deny`, and `named-command:<name>` for each entry of `namedCommands`. A job whose config uses
-a named command requires `named:<source>` and `named-command:<name>` for each name it uses. A job
+a named command requires `named-execution:<source>` and `named-command:<name>` for each name it uses. A job
 that uses only named commands therefore reaches a `named` worker that has those scripts installed.
 
-`commands:`, `named:`, and `named-command:` join the reserved routing prefixes, so a worker's hand-written token override
-cannot claim a source its `commands` block denies. A job that no connected worker matches keeps waiting, with the existing notice that no
+`command-execution:`, `named-execution:`, and `named-command:` join the reserved routing prefixes, so a worker's hand-written token override
+cannot claim a source its `commandExecution` block denies. A job that no connected worker matches keeps waiting, with the existing notice that no
 worker is available.
 
-Workers are upgraded before `serve`. A worker that predates this item advertises no `commands:`
+Workers are upgraded before `serve`. A worker that predates this item advertises no `command-execution:`
 token, so it never leases a job that declares a governed command. Such a job waits until an upgraded
 worker connects. Routing the job to an old worker instead would be unsafe: the new `serve` no longer
 sends `--upload-exec`, so the old worker would run an uploaded command on its bare host.
@@ -219,7 +219,7 @@ An operator who wants a stricter policy for CLI runs on a machine passes that ma
 
 ### The command record
 
-Every run adds a `commands` list to its `manifest.json`. Each entry records one governed command
+Every run adds a `commandExecutions` list to its `manifest.json`. Each entry records one governed command
 the run met:
 
 | Field | Meaning |
@@ -239,7 +239,7 @@ then shows a different hash, even when its command line stayed the same. The lis
 
 `serve --upload-exec`, `$BAJUTSU_UPLOAD_EXEC`, `serve --allow-remote-build`, and
 `$BAJUTSU_ALLOW_REMOTE_BUILD` go away. `serve` refuses to start when it gets any of them, and the
-message names the `commands` block of `worker.yaml`. An operator who passed `--allow-remote-build`
+message names the `commandExecution` block of `worker.yaml`. An operator who passed `--allow-remote-build`
 sets `remote: allow` on the workers instead. The launchd plist that
 `serve --emit-launchagent` prints stops passing `--upload-exec`. The `--upload-exec` option of `run`, `record`, and
 `crawl`, which `serve` passed to the run today, goes away with it.
@@ -253,7 +253,7 @@ readiness URL.
 
 ### Migration
 
-- `bajutsu/common/capability/` reads, validates, and advertises the `commands` block.
+- `bajutsu/common/capability/` reads, validates, and advertises the `commandExecution` block.
 - `bajutsu/serve/server/worker_job.py` and `bajutsu/serve/commands.py` carry the source label in
   place of `upload_exec`.
 - `bajutsu/common/runner/launch_server.py` and `sandbox.py` take the mode from the run's policy
@@ -298,12 +298,12 @@ readiness URL.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] `worker.yaml`: the `commands` block, its defaults, validation, and the Docker check at startup.
+- [ ] `worker.yaml`: the `commandExecution` block, its defaults, validation, and the Docker check at startup.
 - [ ] Source label: carry `uploaded` / `remote` / `operator` in the job intent in place of `upload_exec`, pass it to `run`, `record`, and `crawl` through the option that carries the label, together with the worker's `worker.yaml`, and label CLI runs.
 - [ ] Named commands: the `named` mode, the `namedCommands` block and its validation, and running a named command.
-- [ ] Routing: advertise `commands:<source>`, `named:<source>`, and `named-command:<name>` tokens and add the requirements to jobs that declare commands.
+- [ ] Routing: advertise `command-execution:<source>`, `named-execution:<source>`, and `named-command:<name>` tokens and add the requirements to jobs that declare commands.
 - [ ] Run-time check: refuse a command the mode does not run (a spelled-out command line under `named` or `deny`, a `use` entry under `deny`), and skip builds the mode does not run, before device work.
-- [ ] Command record: the `commands` list in `manifest.json` and its place in the report.
+- [ ] Command record: the `commandExecutions` list in `manifest.json` and its place in the report.
 - [ ] Remove `serve --upload-exec`, `$BAJUTSU_UPLOAD_EXEC`, `serve --allow-remote-build`, `$BAJUTSU_ALLOW_REMOTE_BUILD`, and the `--upload-exec` option of `run`, `record`, and `crawl`.
 - [ ] Update the docs, `DESIGN.md`, and `docs/architecture.md` in both languages.
 

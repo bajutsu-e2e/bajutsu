@@ -370,7 +370,7 @@ hooks:
 
 - [ ] スキーマ：4つのフックのリストとエントリのモデル。`services.server` と `services.mockServer` を削除し、置き換え先を示す読み込みエラーを出す。
 - [ ] フック実行部：エントリ、制限時間、出力ファイル、環境変数、ログ、マスク。
-- [ ] コマンドの方針：フックのリストを姉妹提案の `commands` のモードと `manifest.json` の記録に通し、統制の対象を `services.server.cmd` から置き換える。
+- [ ] コマンドの方針：フックのリストを姉妹提案の `commandExecution` のモードと `manifest.json` の記録に通し、統制の対象を `services.server.cmd` から置き換える。
 - [ ] ラン単位のフェーズ：`beforeRun` / `afterRun` を `run`、`audit`、`record`、`crawl`、`repl` に組み込み、`services.server` の起動を置き換える。
 - [ ] シナリオ単位のフェーズ：`beforeScenario` / `afterScenario` をシナリオのライフサイクルに組み込む（`inheritSetup`、ワーカー、複数ターゲットの順序、取り消しを含む）。
 - [ ] `${hooks.<name>.<key>}` トークン：読み込み時の静的な確認と、アクション実行時の置き換え。

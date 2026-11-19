@@ -357,7 +357,7 @@ The removal migrates every in-repo user:
 
 - [ ] Schema: the four hook lists and their entry model; remove `services.server` and `services.mockServer` with a load error naming the replacement.
 - [ ] Hook runner: entries, timeouts, the output file, the environment, logs, and masking.
-- [ ] Command policy: route the hook lists through the sibling item's `commands` modes and its `manifest.json` record, replacing `services.server.cmd` as the governed command.
+- [ ] Command policy: route the hook lists through the sibling item's `commandExecution` modes and its `manifest.json` record, replacing `services.server.cmd` as the governed command.
 - [ ] Run-level phase: wire `beforeRun` / `afterRun` into `run`, `audit`, `record`, `crawl`, and `repl`, replacing the `services.server` bring-up.
 - [ ] Scenario-level phase: wire `beforeScenario` / `afterScenario` into the scenario lifecycle, including `inheritSetup`, workers, multi-target order, and cancellation.
 - [ ] The `${hooks.<name>.<key>}` token: static load-time check and action-time substitution.

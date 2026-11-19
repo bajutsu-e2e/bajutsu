@@ -21,7 +21,7 @@
 2つのオプションが、そうしたコマンドを実行するかを決めています。`--upload-exec` はアップロードされた
 バンドルのサーバーのコマンドを統制し、`--allow-remote-build` は Web UI から結び付けた Git の設定に
 ビルドを許します。本提案は、この2つのオプションを worker の capability ファイル `worker.yaml` の
-`commands` ブロックで置き換えます。このブロックは、設定の信頼の度合い（アップロードされたバンドル、
+`commandExecution` ブロックで置き換えます。このブロックは、設定の信頼の度合い（アップロードされたバンドル、
 Web UI から結び付けた Git の設定、運用者が選んだ設定）ごとに1つずつモードを決めます。
 
 信頼の度合いがもっとも低い出どころに対しては、worker がさらに踏み込んで、*名前付きコマンド*だけを
@@ -69,7 +69,7 @@ worker は受け付ける出どころを申告し、`serve` はコマンドを�
 
 ## 詳細設計
 
-### `worker.yaml` の `commands` ブロック
+### `worker.yaml` の `commandExecution` ブロック
 
 [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md) の worker の capability
 ファイルに、省略できるブロックを1つ加えます。
@@ -78,7 +78,7 @@ worker は受け付ける出どころを申告し、`serve` はコマンドを�
 version: 1
 environment: local
 drivers: [playwright]
-commands:
+commandExecution:
   uploaded: sandbox
   remote: sandbox
   operator: allow
@@ -100,7 +100,7 @@ commands:
 
 キーを明示的に `sandbox` にした worker は、起動時に Docker の有無を確かめます。Docker がなければ、
 そのキーを示すメッセージを出して終了します。デフォルト値で `sandbox` になった出どころについては、
-Docker があるときだけ `commands:<source>` を申告します。どちらの場合も、worker が
+Docker があるときだけ `command-execution:<source>` を申告します。どちらの場合も、worker が
 後で失敗するジョブを取ることはありません。`named` は、運用者が先にスクリプトを置く必要があるので、
 どのデフォルト値にも使いません。秘密の情報を持つ worker で信頼の低い設定を動かす運用者は、その
 worker で `uploaded: named` と `remote: named` を指定します。
@@ -110,7 +110,7 @@ worker で `uploaded: named` と `remote: named` を指定します。
 `worker.yaml` の `namedCommands` ブロックには、worker の運用者が保証するコマンドを列挙します。
 
 ```yaml
-commands:
+commandExecution:
   uploaded: named
   remote: named
   operator: allow
@@ -174,29 +174,29 @@ Linux のコンテナにはないからです。この扱いは、
 を付けます。ランを始めた人が設定を選んだからです。worker は、起動するコマンド（`run`、`record`、
 `crawl`）に、`--upload-exec` に代わるオプションでジョブのラベルを渡します。ラベルを受け取った
 コマンドは、自分で決めずにそのラベルを使います。worker は自分の `worker.yaml` も3つのコマンドに
-渡します。そのため、ランの中での確認は、worker が申告したのと同じ `commands` ブロックを読みます。
+渡します。そのため、ランの中での確認は、worker が申告したのと同じ `commandExecution` ブロックを読みます。
 
 ### 振り分け
 
 worker は、受け付ける出どころごとに capability のトークンを1つ申告します。モードが `deny` でない
-出どころについて、`commands:uploaded`、`commands:remote`、`commands:operator` を申告します。`serve` は、
+出どころについて、`command-execution:uploaded`、`command-execution:remote`、`command-execution:operator` を申告します。`serve` は、
 統制の対象になるコマンドを1つ以上宣言した設定のジョブについて、必要なトークンの集合に
-`commands:<source>` を加えます。
+`command-execution:<source>` を加えます。
 [BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues-ja.md) の振り分けは、
 必要なトークンがすべてそろっているかを確かめる部分集合の判定です。そのため、コマンドを宣言した
 ジョブは、その出どころを受け付ける worker にだけ届きます。
 
 名前付きコマンドのために、トークンを2種類加えます。worker は、モードが `deny` でない出どころごとに
-`named:<source>` を、`namedCommands` の各エントリについて `named-command:<name>` を申告します。
-名前付きコマンドを使う設定のジョブは、`named:<source>` と、使う名前ごとの `named-command:<name>` を
+`named-execution:<source>` を、`namedCommands` の各エントリについて `named-command:<name>` を申告します。
+名前付きコマンドを使う設定のジョブは、`named-execution:<source>` と、使う名前ごとの `named-command:<name>` を
 必要とします。名前付きコマンドだけを使うジョブは、そのスクリプトを置いた `named` の worker に
 届きます。
 
-`commands:`、`named:`、`named-command:` は予約済みのルーティング接頭辞に加わります。そのため、
-worker が手で書いたトークンの上書きで、`commands` ブロックが `deny` にした出どころを申告できません。接続中のどの worker とも合わないジョブは
+`command-execution:`、`named-execution:`、`named-command:` は予約済みのルーティング接頭辞に加わります。そのため、
+worker が手で書いたトークンの上書きで、`commandExecution` ブロックが `deny` にした出どころを申告できません。接続中のどの worker とも合わないジョブは
 待ち続け、利用できる worker がないという既存の通知が付きます。
 
-worker を `serve` より先に更新します。本提案より前の worker は `commands:` のトークンを申告しないので、
+worker を `serve` より先に更新します。本提案より前の worker は `command-execution:` のトークンを申告しないので、
 統制の対象になるコマンドを宣言したジョブを取りません。そうしたジョブは、更新済みの worker が
 接続するまで待ちます。古い worker に振り分けるのは危険です。新しい `serve` は `--upload-exec` を
 渡さないので、古い worker はアップロードされたコマンドをホスト上でそのまま実行してしまいます。
@@ -226,7 +226,7 @@ worker を `serve` より先に更新します。本提案より前の worker �
 
 ### コマンドの記録
 
-各ランは、`manifest.json` に `commands` のリストを加えます。各エントリは、ランが出会った統制対象の
+各ランは、`manifest.json` に `commandExecutions` のリストを加えます。各エントリは、ランが出会った統制対象の
 コマンドを1つずつ記録します。
 
 | フィールド | 意味 |
@@ -249,7 +249,7 @@ worker を `serve` より先に更新します。本提案より前の worker �
 - `serve --allow-remote-build` と `$BAJUTSU_ALLOW_REMOTE_BUILD`
 
 どれかを受け取った `serve` は起動を拒み、メッセージは
-`worker.yaml` の `commands` ブロックを示します。`--allow-remote-build` を渡していた運用者は、
+`worker.yaml` の `commandExecution` ブロックを示します。`--allow-remote-build` を渡していた運用者は、
 代わりに worker で `remote: allow` を指定します。
 `serve --emit-launchagent` が出力する launchd の plist も、`--upload-exec` を渡さなくなります。
 `serve` がランに渡していた `run`、`record`、`crawl` の `--upload-exec` オプションも、あわせて
@@ -264,7 +264,7 @@ worker を `serve` より先に更新します。本提案より前の worker �
 
 ### 移行
 
-- `bajutsu/common/capability/` は、`commands` ブロックを読み、検証し、申告します。
+- `bajutsu/common/capability/` は、`commandExecution` ブロックを読み、検証し、申告します。
 - `bajutsu/serve/server/worker_job.py` と `bajutsu/serve/commands.py` は、`upload_exec` に代えて
   出どころのラベルを運びます。
 - `bajutsu/common/runner/launch_server.py` と `sandbox.py` は、ランの方針の確認からモードを
@@ -309,12 +309,12 @@ worker を `serve` より先に更新します。本提案より前の worker �
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] `worker.yaml`：`commands` ブロック、デフォルト値、検証、起動時の Docker の確認。
+- [ ] `worker.yaml`：`commandExecution` ブロック、デフォルト値、検証、起動時の Docker の確認。
 - [ ] 出どころのラベル：`upload_exec` に代えて `uploaded` / `remote` / `operator` をジョブの intent で運び、ラベルを運ぶオプションで、worker の `worker.yaml` とともに `run`・`record`・`crawl` に渡し、CLI のランにもラベルを付ける。
 - [ ] 名前付きコマンド：`named` モード、`namedCommands` ブロックとその検証、名前付きコマンドの実行。
-- [ ] 振り分け：`commands:<source>`、`named:<source>`、`named-command:<name>` のトークンを申告し、コマンドを宣言したジョブに必要なトークンを加える。
+- [ ] 振り分け：`command-execution:<source>`、`named-execution:<source>`、`named-command:<name>` のトークンを申告し、コマンドを宣言したジョブに必要なトークンを加える。
 - [ ] ランの中での確認：モードが実行しないコマンド（`named` か `deny` の下で直接書いたコマンドライン、`deny` の下の `use` のエントリ）を、デバイスの作業より前に拒否し、モードが実行しないビルドを飛ばす。
-- [ ] コマンドの記録：`manifest.json` の `commands` のリストと、レポートでの表示。
+- [ ] コマンドの記録：`manifest.json` の `commandExecutions` のリストと、レポートでの表示。
 - [ ] `serve --upload-exec`、`$BAJUTSU_UPLOAD_EXEC`、`serve --allow-remote-build`、`$BAJUTSU_ALLOW_REMOTE_BUILD`、`run`・`record`・`crawl` の `--upload-exec` オプションを削除する。
 - [ ] ドキュメント、`DESIGN.md`、`docs/architecture.md` を両言語で更新する。
 
