@@ -58,9 +58,9 @@ Each path returns the ids of the queued jobs it cancelled. After the commit, its
 
 ### Recording why a job stopped
 
-Each job record gains a nullable `cancel_reason` column. The server writes `user` when a cancel route cancels a queued job or sets a leased job's cancel flag, and `failFast` when the stop above does either. The column stays `NULL` for a job that nobody cancelled.
+Each job record gains a nullable `cancel_reason` column. The server writes `user` when a cancel route cancels a queued job or sets a leased job's cancel flag, and `failFast` when the stop above does either. A write never replaces a reason already recorded, so the first reason wins. A person who cancelled a leased job keeps `user`, even when a sibling fails before the worker reads the flag. The column stays `NULL` for a job that neither a cancel route nor the stop cancelled, such as one that a worker's own stop signal cancelled.
 
-`GET /api/run-set/<groupId>` returns the column as `cancelReason` on each job. The group's `conclusion` keeps its present rule: `failure` wins over `cancelled`, so a group stopped by the flag concludes `failure`.
+`GET /api/run-set/<groupId>` returns the column as `cancelReason` on each job that ended cancelled (its status is `cancelled`, or its result reports a cancel), and `null` on every other job. The column records a request to stop, and a leased job can finish before its worker reads the flag. A job that finished without a cancel thus never reports a reason, whatever the column holds. The group's `conclusion` keeps its present rule: `failure` wins over `cancelled`, so a group stopped by the flag concludes `failure`.
 
 ### Determinism
 

@@ -71,7 +71,7 @@ A request names a sink and never a URL. A URL taken from a request would let any
 
 ### Recording events
 
-A group event is a row in a new table, `group_events`. A row holds the group, the sink, the event, a delivery state, an attempt count, the time of the next attempt, and the adapter's reference. The row lands in the same store transaction as the change that causes the event:
+A group event is a row in a new table, `group_events`. A row holds the group, the sink, the event, a delivery state, an attempt count, the time of the next attempt, the adapter's reference, and, for `completed`, the snapshot of the group that the adapter renders. The row lands in the same store transaction as the change that causes the event:
 
 - `queued`: the transaction that registers the group and its jobs;
 - `started`: the lease transaction that leases the group's first job;
@@ -81,11 +81,14 @@ Writing the event in the same transaction means a crash never loses an event tha
 
 The check output must tell a lost worker from a reported error without parsing prose. Today `reclaim_expired_leases` writes only `{"error": "lease expired after N attempts"}`, and `fail_job` writes the worker's free text under the same key. This item therefore adds a structured reason and the attempt count to the reclaim result, for example `{"reason": "lease-expired", "attempts": N}`. The adapter reads that field and never matches the message.
 
+The `completed` snapshot is built once, when the row is first claimed, and stored on the row. A retry after a long backoff therefore never reads an artifact again. The scenario name comes from the run intent that the job's stored spec carries. The `failed` row's failure line comes from the run's manifest, which the job's run id locates. When the manifest is unavailable, the row shows the exit code and the note `no failure detail recorded`.
+
 ### Delivering events
 
 A loop on the `serve` process delivers pending rows. The loop claims a row the way a worker claims a job, with a claim that expires. Two `serve` processes on one store thus never deliver the same row at once. A claim that expires makes delivery at-least-once, so an adapter whose creating call is not idempotent must recover the reference rather than create a second object. The `github-check` adapter lists all check runs of `head_sha` for the sink's check name (`filter=all`, since the default returns only the latest) and adopts the one whose `external_id` is the group id, before it creates one.
 
 - Events of one group and sink deliver in order. A `started` row waits until the `queued` row of the same group and sink is delivered or abandoned.
+- A process claims only the rows whose sink its own file defines. A row whose sink no process defines goes unclaimed, so it raises no error on any pass. Once such a row has outlived the window that the backoff allows, it becomes `abandoned`, and operational logging records the sink name. A replica that still runs the old file thus never abandons a row for a sink that an updated replica has just gained. The abandonment metric counts it under `format="unknown"`, since no definition names its format.
 - A failed delivery retries with a bounded exponential backoff. After its last attempt, the row becomes `abandoned`. Operational logging records the abandonment, and a counter metric, `bajutsu_group_events_abandoned_total`, counts it by format.
 - An adapter that finds no reference from an earlier event starts from scratch. For `github-check`, a `completed` event whose `queued` row was abandoned creates the check run in its completed state.
 - A delivery never changes a job, a group, or a conclusion. The group's verdict is fixed before its `completed` row exists.
@@ -112,10 +115,14 @@ The group's `conclusion` maps to the check's `conclusion` with the same name: `s
 | error | the job is `done` with another non-zero exit code | the exit code and its meaning, such as a usage error (2) or a signal |
 | worker lost | the job is `failed` and its result carries the lease-expiry reason | the attempt count |
 | worker error | the job is `failed` with an error a worker reported | the reported error, cut to one line |
-| cancelled | a person cancelled the job | none |
-| skipped | the job stopped because a sibling failed under the group's `failFast` flag | none; the failed rows name the failures |
+| cancelled | the job ended cancelled and its `cancelReason` is not `failFast` | none |
+| skipped | the job ended cancelled and its `cancelReason` is `failFast` | none; the failed rows name the failures |
 
-The `skipped` row depends on the item that adds `failFast` to `run-set` (slug `run-set-fail-fast`). Until that item lands, the adapter never writes the row.
+Every reason is untrusted text: a worker reports its own error, and a manifest holds a scenario's own message. The adapter strips control characters, escapes `|`, and wraps the reason in a code span whose delimiter is longer than any run of backticks inside it. No reported error can then split a row or render Markdown in the check.
+
+A job that ended cancelled takes the `cancelled` or `skipped` row, whatever its exit code.
+
+The `skipped` row depends on the item that adds `failFast` and `cancelReason` to `run-set` (slug `run-set-fail-fast`). Until that item lands, the adapter never writes the `skipped` row, and every job that ended cancelled shows as `cancelled`.
 
 GitHub caps `summary` at 65,535 characters. The adapter stops adding rows before the cap and ends the table with the count of rows left out. The adapter writes no annotations, since a scenario has no file and line in the pull request's diff.
 
@@ -131,7 +138,7 @@ GitHub caps `summary` at 65,535 characters. The adapter stops adding rows before
 
 ## Alternatives considered
 
-- **Have the Actions job poll and set its own status.** This needs no server change, and the job's own result already appears as a check. The runner waits for the whole group, which is the cost this item removes.
+- **Have the Actions job poll and set its own status.** This needs no server change, and the job's own result already appears as a check. But the runner waits for the whole group, which is the cost this item removes.
 - **Take a webhook URL in the request.** A URL in the request would make the abstraction a plain POST. A GitHub check run does not fit that shape: it needs an App token, and each update addresses an id the creation returned. A request-supplied URL is also an SSRF path into the network `serve` runs in.
 - **Extend the `notify:` list of BE-0099.** That list belongs to a target config and fires inside one `bajutsu run`. A group's lifecycle exists on `serve` alone, so the trigger cannot live in the run process. The new sinks reuse the word `format` for the same idea, an adapter per destination.
 - **Name the events `hooks`.** The scenario and target vocabulary already uses `hooks` for steps that run before and after a scenario. An event delivered to a sink is a notification, not a step, so this item keeps the notification vocabulary.
@@ -149,6 +156,7 @@ GitHub caps `summary` at 65,535 characters. The adapter stops adding rows before
 - [ ] The `notify` request field, its validation, its column, and the request digest
 - [ ] The `group_events` table and the rows written by registration, lease, and the terminal paths, cancels included
 - [ ] A structured lease-expiry reason in the reclaim result
+- [ ] The `completed` snapshot: scenario names and failure lines, built once and stored on the row
 - [ ] The delivery loop: claim, order, retry, abandonment, and the metric
 - [ ] The `github-check` adapter: installation by repository, the recovery lookup and the three calls, and the output
 - [ ] Documentation in both languages
