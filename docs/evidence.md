@@ -321,6 +321,12 @@ each line's time and pairs the markers into `appTrace.json`.
     mp4 (no `moov` atom) and, on iOS, wedges the simulator's recording session.
   - `screenrecord` records device-side. On stop, its `Interval` also pulls the finished mp4 off the
     device and removes the device copy.
+  - Before that pull, the stop waits for this recording's own device-side `screenrecord` to exit. A
+    `screenrecord` that was already running before this one started (one leaked by an earlier
+    attempt, or another tool's) is excluded from that wait. Otherwise a leaked recording would hold
+    the scenario's end for the full 120s window after its steps had finished. The stop also sends
+    SIGINT to this recording's device-side process, so it finalizes even when `adb shell` does not
+    pass the local SIGINT on to the device.
   - If that pull fails (the device vanished), the sink drops that one artifact with a warning. It
     does not emit a path with no file behind it, and it does not fail an otherwise-passing scenario.
   - `adb screenrecord` caps a single recording at ~180s. That is the platform default/maximum, not
