@@ -345,7 +345,7 @@ def _device_control_todo(step: Step) -> str:
             "in-app location receiver route (BE-0211, BE-0481) is not generated"
         )
     if step.push is not None:
-        return "// TODO: push — no adb device control; not generated"
+        return "// TODO: push — not generated; run it with bajutsu run"
     if (todo := totp_todo(step)) is not None:
         return todo
     if step.email is not None:

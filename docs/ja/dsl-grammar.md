@@ -256,7 +256,7 @@ Action    ::=
   | { assert:      list(<Assertion>) }
   | { relaunch:    { env?: map(string,string), args?: list(string) } }
   | { setLocation: { lat: number, lon: number } }
-  | { push:        { payload: map(string,any) } }          # APNs ペイロード 例 {aps:{alert:"…"}}
+  | { push:        { payload: map(string,any) } }          # APNs ペイロード 例 {aps:{alert:"…"}}。`aps` オブジェクトが必須、`aps.alert` は文字列か {title?: string, body?: string}、既定の json.dumps テキストで 4,096 バイト以内（BE-0498）
   | { http:        { method?: string, url: string, headers?: map(string,string), body?: string, status?: integer, saveBody?: string, extractBody?: list({ var: string, path: string }) } }  # method 既定 GET; saveBody → vars.<name>; extractBody → JSON path ごとに vars.<var>（BE-0440）
   | { totp:        { secret: string, into?: { var: string }, name?: string, minRemaining?: integer } }  # RFC 6238 OTP → vars.<var>（secret は base32）。name は otp 向けにシークレットを登録する（into と name の少なくとも一方が必要）。minRemaining は 1〜30（into が必要）で、残りがそれ未満なら次の 30 秒ウィンドウを待つ（BE-0474）
   | { otp:         { from: string, into: { var: string }, minRemaining?: integer } }  # totp ステップが from の名前で登録したジェネレータの現在のコード → vars.<var>。minRemaining は totp と同じ

@@ -41,7 +41,18 @@ def _interp_step(step: Step, bindings: Mapping[str, str]) -> Step:
     # also reads the written form to decide whether the result derives from a secret.
     if "eval" in dumped:
         interpolated["eval"] = dumped["eval"]
+    # `push` follows the same rule (BE-0498): the model validates the authored payload, and the
+    # substituted one is attached afterward, so a ValidationError never quotes a substituted value.
+    # The `push` handler re-measures the substituted payload against the size limit.
+    pushed = interpolated.get("push")
+    if pushed is not None:
+        interpolated["push"] = dumped["push"]
     result = Step.model_validate(interpolated)
+    if pushed is not None:
+        assert result.push is not None  # the authored `push` was put back above
+        result = result.model_copy(
+            update={"push": result.push.model_copy(update={"payload": pushed["payload"]})}
+        )
     if step.http is not None and step.http.extract_body is not None:
         assert result.http is not None  # the "http" key above was left in place, only trimmed
         result = result.model_copy(

@@ -42,8 +42,13 @@ bajutsu は空のクリップボードを成功と誤読せず、明確なエラ
 
 ## 組み込み
 
-ライブラリを追加し、`Application.onCreate` から `startClipboard(context)`、`startLocation(context)`、
-`startPush(context)` を一度ずつ呼びます。呼ぶのは **test/debug ビルドに限ります**。これらの呼び出しは、iOS の BajutsuKit の
+ライブラリを追加します。そのうえで、`Application.onCreate` から次の関数を一度ずつ呼びます。
+
+- `startClipboard(context)`
+- `startLocation(context)`
+- `startPush(context)`
+
+呼ぶのは **test/debug ビルドに限ります**。これらの呼び出しは、iOS の BajutsuKit の
 `App.init()` に対応します。
 
 レシーバはどの Activity よりも先に登録します。そうすれば、bajutsu が最初にどの画面を駆動しても、レシーバが
@@ -171,9 +176,9 @@ adb shell am broadcast -a dev.bajutsu.PUSH -p <package> --es title <b64> --es bo
 | `Bajutsu.startPush(this) { push -> … }` | ハンドラを呼び、ほかには何もしない |
 | `Bajutsu.startPush(this)` | ローカル通知を出す。`title` と `body` がどちらもなければ何もしない |
 
-ハンドラを登録すると、アプリのフォアグラウンドでの処理を検証できます。Firebase Cloud Messaging（FCM）を
-使うアプリは、テスト用のコードで `BajutsuPush` から `RemoteMessage` を組み立て、自分の `onMessageReceived`
-を呼べます。ライブラリ自体は Firebase に依存しません。レシーバはハンドラをメインスレッドで呼ぶため、
+ハンドラを登録すると、アプリのフォアグラウンドでの処理を検証できます。たとえば Firebase Cloud Messaging
+（FCM）を使うアプリなら、テスト用のコードで `BajutsuPush` から `RemoteMessage` を組み立てます。そのうえで
+自分の `onMessageReceived` を呼べます。ライブラリ自体は Firebase に依存しません。レシーバはハンドラをメインスレッドで呼ぶため、
 ハンドラはほかの broadcast レシーバと同じく、すぐに戻る必要があります。
 
 ```kotlin
@@ -187,7 +192,7 @@ if (BuildConfig.DEBUG) {
 **例外のメッセージにペイロードを含めてはいけません**。
 
 ハンドラがなければ、レシーバは `bajutsu` という名前のチャネルに通知を出し、アイコンにはアプリのランチャ
-アイコンを使います。通知をタップするとアプリの起動 Intent が開き、`data` の各項目が文字列の extra として
+アイコンを使います。通知をタップするとアプリの起動インテントが開き、`data` の各項目が文字列の extra として
 渡ります。サイレントプッシュのようにアラートのないペイロードは、何も出さずに成功します。
 
 ハンドラのない経路には通知の権限が要ります。ライブラリのマニフェストはリリースビルドにも統合されるため、

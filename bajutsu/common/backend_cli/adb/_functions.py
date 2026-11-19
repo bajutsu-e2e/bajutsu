@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import math
 import re
 import shlex
@@ -10,6 +11,7 @@ import subprocess
 from collections.abc import Iterable, Mapping
 from datetime import datetime, timedelta
 from pathlib import PurePosixPath
+from typing import Any
 
 from bajutsu.common.devices.id import is_valid_device_id
 
@@ -106,6 +108,18 @@ LOCATION_RESULT_NO_MOCK_PERMISSION = 2
 # receiver puts the platform's message in the result data.
 LOCATION_RESULT_MOCK_FAILED = 3
 
+# The `push` route (BE-0498): Android has no command that hands a notification to an app, so the same
+# ordered broadcast reaches BajutsuAndroid's push receiver, which calls the app's handler or posts a
+# local notification. The two failure codes follow the location receiver's, so no code changes
+# meaning; all must match BajutsuAndroid's `Bajutsu`.
+PUSH_ACTION = "dev.bajutsu.PUSH"
+PUSH_RESULT_OK = CLIPBOARD_RESULT_OK
+PUSH_RESULT_NO_NOTIFICATION_PERMISSION = 4
+PUSH_RESULT_FAILED = 5
+# The push receiver runs the app's handler, which is arbitrary app code that can block, so the push
+# broadcast alone runs under a bound (the clipboard and location receivers answer at once).
+PUSH_BROADCAST_TIMEOUT_S = 10
+
 # A property that reads "1" on an emulator image and is unset on a physical device: recent images set
 # the first, older ones the second. Shared by the device-facts reader and the location route.
 EMULATOR_PROPS = ("ro.boot.qemu", "ro.kernel.qemu")
@@ -131,6 +145,35 @@ def device_error(exc: subprocess.CalledProcessError) -> DeviceError:
 
 def real_run(args: list[str]) -> str:
     return subprocess.run(args, capture_output=True, text=True, check=True).stdout
+
+
+def bounded_push_run(args: list[str]) -> str:
+    """Run the push broadcast under `PUSH_BROADCAST_TIMEOUT_S`, never quoting its argv on failure.
+
+    The argv carries the base64 payload, which may hold substituted secrets, so the error is built
+    here instead of by `device_error`, and raised `from None` so the traceback chain drops it too.
+
+    Raises:
+        DeviceError: the broadcast timed out, adb exited non-zero (an offline or missing device), or
+            adb could not start. The message carries the exit code and stderr where there are any.
+    """
+    try:
+        return subprocess.run(
+            args, capture_output=True, text=True, check=True, timeout=PUSH_BROADCAST_TIMEOUT_S
+        ).stdout
+    except subprocess.TimeoutExpired:
+        raise DeviceError(
+            f"push: the app's push receiver did not answer within {PUSH_BROADCAST_TIMEOUT_S}s; "
+            "its handler may be blocking, or the app's process may be cached in the background"
+        ) from None
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr if isinstance(exc.stderr, str) else "").strip()
+        msg = f"push: adb failed (exit {exc.returncode})"
+        raise DeviceError(f"{msg}\n{detail}" if detail else msg) from None
+    except OSError as exc:
+        raise DeviceError(
+            f"push: could not run adb: {exc.strerror or type(exc).__name__}"
+        ) from None
 
 
 def _num(v: float) -> str:
@@ -1180,6 +1223,83 @@ def parse_clipboard_result(out: str) -> str:
         )
     d = _RESULT_DATA_RE.search(out)
     return base64.b64decode(d.group(1)).decode() if d else ""  # no data (set/clear) → empty read
+
+
+def map_push_payload(payload: Mapping[str, Any]) -> tuple[str | None, str | None, dict[str, str]]:
+    """Map an APNs-shaped *payload* to the push receiver's title, body, and data (BE-0498).
+
+    `aps.alert` as a string becomes the body; as an object, its `title` and `body` map across. Every
+    top-level key other than `aps` becomes a `data` entry: a string as-is, any other value as its
+    JSON text, like an FCM message's string-to-string data map. Every other `aps` key (`badge`,
+    `sound`, `alert.subtitle`, …) has no Android counterpart and is dropped. The `Push` model has
+    already checked that `aps` is an object and the alert fields are strings.
+    """
+    alert = payload["aps"].get("alert")
+    title: str | None = None
+    body: str | None = None
+    if isinstance(alert, str):
+        body = alert
+    elif isinstance(alert, dict):
+        title = alert.get("title")
+        body = alert.get("body")
+    data = {
+        key: value if isinstance(value, str) else json.dumps(value)
+        for key, value in payload.items()
+        if key != "aps"
+    }
+    return title, body, data
+
+
+def push_broadcast_cmd(
+    serial: str, package: str, title: str | None, body: str | None, data: Mapping[str, str]
+) -> list[str]:
+    """Broadcast a push to the app's push receiver, every field base64-encoded (shell-safe).
+
+    An unset or empty title or body omits its extra, since `adb shell` drops an empty trailing argv
+    element (see `set_primary_clip_cmd`); the receiver reads a missing one as unset.
+    """
+    extra: list[str] = []
+    if title:
+        extra += ["--es", "title", _b64(title)]
+    if body:
+        extra += ["--es", "body", _b64(body)]
+    extra += ["--es", "data", _b64(json.dumps(dict(data)))]
+    return _adb(serial, "shell", "am", "broadcast", "-a", PUSH_ACTION, "-p", package, *extra)
+
+
+def parse_push_result(out: str) -> None:
+    """Check an `am broadcast` reply from the push receiver, raising with the cause on failure.
+
+    The message never carries the broadcast argv or the `am` reply, which echo the payload. A
+    handler's own exception message (result `PUSH_RESULT_FAILED`) passes through verbatim: the app
+    author controls it, and BajutsuAndroid's README forbids it to include the payload.
+
+    Raises:
+        DeviceError: notifications are disabled on the default path, the app's handler threw, or no
+            receiver handled the broadcast at all.
+    """
+    m = _RESULT_CODE_RE.search(out)
+    code = int(m.group(1)) if m else 0
+    if code == PUSH_RESULT_OK:
+        return
+    if code == PUSH_RESULT_NO_NOTIFICATION_PERMISSION:
+        raise DeviceError(
+            "push: the app's notifications are not enabled, so no notification was posted. Grant them "
+            "with the precondition `permissions: { notifications: grant }`, and declare "
+            "android.permission.POST_NOTIFICATIONS in the app's debug manifest"
+        )
+    if code == PUSH_RESULT_FAILED:
+        d = _RESULT_DATA_RE.search(out)
+        try:
+            message = base64.b64decode(d.group(1)).decode(errors="replace") if d else ""
+        except ValueError:
+            message = ""
+        raise DeviceError(f"push: the app's push handler threw: {message or '(no message)'}")
+    raise DeviceError(
+        "push: the push broadcast was not handled: the app under test has no BajutsuAndroid push "
+        "receiver, or is not running. Call `Bajutsu.startPush` in the app (see "
+        "BajutsuAndroid/README.md), and launch the app before the push step"
+    )
 
 
 def is_emulator_serial(serial: str) -> bool:

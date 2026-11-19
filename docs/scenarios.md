@@ -1629,6 +1629,20 @@ Both drive the Simulator via `simctl` and need a per-device control channel, so 
 on the fake driver and in parallel runs. There the step fails cleanly rather than crashing. `push`
 delivers its `payload` as the APNs JSON to the app under test.
 
+The scenario loader checks the `push` payload before any device work, on every backend:
+
+- The payload carries an `aps` key, whose value is an object.
+- `aps.alert`, when present, is a string or an object. Its `title` and `body`, when present, are
+  strings.
+- The payload stays within 4,096 bytes. The measure is the length of the default `json.dumps` text.
+  `simctl push` receives that same text. The text escapes each character above code point 127, and
+  such a character counts as six.
+- Every value is JSON-serializable. An unquoted date such as `at: 2024-01-01` loads as a date and
+  fails; quote it as a string.
+
+A `${vars.*}` or `${secrets.*}` token can grow the payload after loading. A step whose substituted
+payload passes the limit fails at run time. Its message names the size and the limit alone.
+
 ### `http` (request, for test-data setup)
 
 ```yaml
