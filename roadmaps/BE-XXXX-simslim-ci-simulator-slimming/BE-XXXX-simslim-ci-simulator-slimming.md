@@ -118,8 +118,9 @@ Applied across the six or more Simulator jobs in `ios-e2e.yml`, slimming would m
 request wait longer.
 
 The stability claim stays unproven. Stock run 3 took 168 seconds to boot and 40 minutes to run, six
-times a normal run. That runner started with 54% free memory against about 80% for the other stock
-runs. The slow run fits the host starvation that BE-0218, BE-0344, and BE-0354 address. Even so,
+times a normal run. After the install, that runner reported 54% free memory against about 80% for
+the other stock runs. The reading came after the slow boot, so it is as much a symptom as a cause.
+The slow run fits the host starvation that BE-0218, BE-0344, and BE-0354 address. Even so,
 one slow run in six cannot separate a slimming effect from a bad runner. The existing recovery
 also carried stock run 3 to a pass.
 
@@ -135,15 +136,19 @@ Three costs weigh against adopting simslim without stronger evidence:
 
 ### What would make a new proposal worth writing
 
-A new proposal should target stability, not speed. It needs evidence this experiment lacks. That
-evidence is a larger sample, around ten runs per variant, with a threshold fixed before the run.
+A new proposal should target stability, not speed. It must first explain one result in the table
+above. The slimmed runs cut the Simulator footprint to 1.13 GB, from 3.20–4.14 GB for the two
+healthy stock runs. Yet the slimmed runs reported 64–65% host free, against 79–82% for those stock
+runs. The saving never showed up as host headroom, which is the premise a stability claim rests on.
+
+The proposal also needs evidence this experiment lacks. That evidence is a larger sample, around ten runs per variant, with a threshold fixed before the run.
 One example: stock runs show repeated outliers while slimmed runs show none. Even then, a pilot on
 the lanes with a history of stalls would come before the whole workflow.
 
 ## Alternatives considered
 
 - **Install simslim with `go install` at a pinned tag.** An earlier attempt in the same experiment
-  pinned v0.15.0 through Homebrew's Go. It traded a one-line install for an exact version. The
+  ran `go install` at tag v0.15.0, with Go itself installed from Homebrew. It traded a one-line install for an exact version. The
   experiment kept the Homebrew tap to match the tool's documented install. Either way, the results
   above do not depend on the install method.
 - **Slim a booted Simulator with `--no-reboot`.** That path keeps the first boot at stock cost and
