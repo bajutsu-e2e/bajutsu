@@ -202,9 +202,11 @@ a worker already holds the built binary or runner. The worker decides the build 
 ### The check inside the run
 
 `bajutsu run` checks the policy again before any device work, against the `worker.yaml` it reads.
-A `services.server.cmd` whose source maps to `deny` fails the run with exit 2, naming the command,
-its source, and the mode. A build under `deny` is skipped instead, as the table above says, so a run
-whose binary already exists still runs. That second check covers a run started without `serve`, and a worker whose
+A command the policy refuses fails the run with exit 2, naming the command, its source, and the
+mode. The policy refuses a command line the config spells out (`services.server.cmd`, or a hook
+entry with `cmd`) under `named` or `deny`, and a hook entry with `use` under `deny`. A build that the
+mode does not run is skipped instead, as the table above says, so a run whose binary already exists
+still runs, and a run whose binary is missing fails by naming the mode. That second check covers a run started without `serve`, and a worker whose
 advertisement no longer matches its file. The run writes `manifest.json` with the refused entry
 before it exits.
 
@@ -300,7 +302,7 @@ readiness URL.
 - [ ] Source label: carry `uploaded` / `remote` / `operator` in the job intent in place of `upload_exec`, pass it to `run`, `record`, and `crawl` through the option that carries the label, together with the worker's `worker.yaml`, and label CLI runs.
 - [ ] Named commands: the `named` mode, the `namedCommands` block and its validation, and running a named command.
 - [ ] Routing: advertise `commands:<source>`, `named:<source>`, and `named-command:<name>` tokens and add the requirements to jobs that declare commands.
-- [ ] Run-time check: refuse a `services.server.cmd` whose source maps to `deny`, and skip builds under `deny`, before device work.
+- [ ] Run-time check: refuse a command the mode does not run (a spelled-out command line under `named` or `deny`, a `use` entry under `deny`), and skip builds the mode does not run, before device work.
 - [ ] Command record: the `commands` list in `manifest.json` and its place in the report.
 - [ ] Remove `serve --upload-exec`, `$BAJUTSU_UPLOAD_EXEC`, `serve --allow-remote-build`, `$BAJUTSU_ALLOW_REMOTE_BUILD`, and the `--upload-exec` option of `run`, `record`, and `crawl`.
 - [ ] Update the docs, `DESIGN.md`, and `docs/architecture.md` in both languages.

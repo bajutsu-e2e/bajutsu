@@ -208,8 +208,11 @@ worker を `serve` より先に更新します。本提案より前の worker �
 ### ランの中での確認
 
 `bajutsu run` は、デバイスの作業より前に、読み込んだ `worker.yaml` に照らして方針をもう一度
-確かめます。出どころが `deny` に当たる `services.server.cmd` があれば、ランは終了コード2で失敗します。
-ビルドは、上の表のとおり `deny` の下では飛ばすだけです。バイナリがすでにあるランは、そのまま進みます。
+確かめます。方針が拒否するコマンドがあれば、ランは終了コード2で失敗します。
+方針が拒否するのは、`named` か `deny` の下で設定が直接書いたコマンドライン（`services.server.cmd` と、
+`cmd` を持つフックのエントリ）と、`deny` の下で `use` を持つフックのエントリです。モードが実行しない
+ビルドは、上の表のとおり飛ばすだけです。バイナリがすでにあるランはそのまま進み、バイナリがないランは
+モードを示して失敗します。
 メッセージは、コマンド、出どころ、モードを示します。この2度目の確認は、`serve` を通さずに始めた
 ランと、申告がファイルとずれた worker の両方を受け止めます。
 ランは、拒否したエントリを含む `manifest.json` を書いてから終了します。
@@ -310,7 +313,7 @@ worker を `serve` より先に更新します。本提案より前の worker �
 - [ ] 出どころのラベル：`upload_exec` に代えて `uploaded` / `remote` / `operator` をジョブの intent で運び、ラベルを運ぶオプションで、worker の `worker.yaml` とともに `run`・`record`・`crawl` に渡し、CLI のランにもラベルを付ける。
 - [ ] 名前付きコマンド：`named` モード、`namedCommands` ブロックとその検証、名前付きコマンドの実行。
 - [ ] 振り分け：`commands:<source>`、`named:<source>`、`named-command:<name>` のトークンを申告し、コマンドを宣言したジョブに必要なトークンを加える。
-- [ ] ランの中での確認：出どころが `deny` に当たる `services.server.cmd` を、デバイスの作業より前に拒否し、`deny` の下ではビルドを飛ばす。
+- [ ] ランの中での確認：モードが実行しないコマンド（`named` か `deny` の下で直接書いたコマンドライン、`deny` の下の `use` のエントリ）を、デバイスの作業より前に拒否し、モードが実行しないビルドを飛ばす。
 - [ ] コマンドの記録：`manifest.json` の `commands` のリストと、レポートでの表示。
 - [ ] `serve --upload-exec`、`$BAJUTSU_UPLOAD_EXEC`、`serve --allow-remote-build`、`$BAJUTSU_ALLOW_REMOTE_BUILD`、`run`・`record`・`crawl` の `--upload-exec` オプションを削除する。
 - [ ] ドキュメント、`DESIGN.md`、`docs/architecture.md` を両言語で更新する。
