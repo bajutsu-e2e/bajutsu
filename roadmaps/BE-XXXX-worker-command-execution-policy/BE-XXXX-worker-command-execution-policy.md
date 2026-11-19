@@ -24,6 +24,11 @@ options with a `commands` block in the worker capability file, `worker.yaml`. Th
 per trust level of a config: an uploaded bundle, a Git config bound through the Web UI, or a config
 the operator chose.
 
+For the least-trusted sources, a worker can go further and run only *named commands*: scripts the
+worker's operator installed on the worker and listed in `worker.yaml`. A config then picks a command
+by name instead of spelling out a command line, so the code that runs belongs to the worker, not to
+the config.
+
 The worker advertises the sources it accepts, and `serve` routes a job that declares commands to a
 worker that accepts the job's source. A run also records every command it executed, with the
 decision that let it run, so an operator can find a command that should not have run.
@@ -84,6 +89,7 @@ Each key names a config source, and each value is a mode:
 |---|---|
 | `allow` | The command runs on the worker's host. |
 | `sandbox` | The command runs in a throwaway Docker container on the worker's host, as BE-0090's `sandbox` mode does today. |
+| `named` | Only a named command that the worker lists in `namedCommands` runs, on the worker's host. A command line the config spells out never runs, and both builds are skipped. |
 | `deny` | No command from that source runs. The worker takes no job whose config from that source declares a command that *Routing* below adds a requirement for, and it skips both builds at run time. |
 
 An omitted block or key takes the defaults `uploaded: sandbox`, `remote: sandbox`, and
@@ -92,17 +98,51 @@ command now runs in a container instead of on the bare host, matching how today'
 treat that config's builds. A worker that sets a key to `sandbox` explicitly checks for Docker at startup and
 exits with a message naming the key when Docker is missing. A worker whose `sandbox` mode comes from
 the default advertises `commands:<source>` for that source only when Docker is present. Either way,
-a worker never accepts a job it would then fail.
+a worker never accepts a job it would then fail. No default uses `named`, since it asks the operator
+to install scripts first. An operator who runs untrusted configs on a worker that holds secrets sets
+`uploaded: named` and `remote: named` there.
+
+### Named commands
+
+A `namedCommands` block in `worker.yaml` lists the commands the worker's operator vouches for:
+
+```yaml
+commands:
+  uploaded: named
+  remote: named
+  operator: allow
+namedCommands:
+  seed-users:
+    path: /opt/bajutsu/hooks/seed-users.sh   # a file on the worker, outside any bundle or checkout
+    env: [SEED_COUNT]                        # the variables a config may set for this command
+```
+
+A config refers to a named command by its name, through the `use` field of a hook entry that the
+sibling hook proposal defines. The rules keep the config from steering what runs:
+
+- **The code belongs to the worker.** `path` is an absolute path on the worker. Bajutsu refuses a
+  path inside the config's directory, so a bundle cannot replace the file.
+- **No command line.** The config cannot add arguments. Bajutsu runs `path` directly, without a
+  shell.
+- **Listed variables alone.** The config may set only the variables in `env`. Bajutsu adds its own
+  context variables, such as `BAJUTSU_OUTPUT`, and passes nothing else from the config.
+- **No loader variables.** `worker.yaml` fails validation when `env` lists a variable that changes
+  how a process loads code: `PATH`, `LD_*`, `DYLD_*`, `NODE_OPTIONS`, `PYTHONPATH`, and the like.
+
+A named command runs on the worker's host under every mode except `deny`, since its code is the
+operator's own. The output file, the `${hooks.<name>.<key>}` tokens, and the logs work as for any
+other hook entry.
 
 ### The commands the block governs
 
 The block governs every command a config declares for Bajutsu to run:
 
-| Command | `allow` | `sandbox` | `deny` |
-|---|---|---|---|
-| `services.server.cmd` | runs on the host | runs in a container, as today | never runs |
-| `subject.build` | runs on the host when the binary is missing | never runs | never runs |
-| `driver.runner.build` | runs on the host when the runner is missing | never runs | never runs |
+| Command | `allow` | `sandbox` | `named` | `deny` |
+|---|---|---|---|---|
+| `services.server.cmd` | runs on the host | runs in a container, as today | never runs | never runs |
+| `subject.build` | runs on the host when the binary is missing | never runs | never runs | never runs |
+| `driver.runner.build` | runs on the host when the runner is missing | never runs | never runs | never runs |
+| a hook entry with `use` | runs on the host | runs on the host | runs on the host | never runs |
 
 Neither build runs under `sandbox`: an iOS build needs the macOS toolchain, which no Linux container
 provides. That matches the rule
@@ -112,7 +152,8 @@ the mode that kept the build from running.
 
 A sibling proposal, *Run external commands around a run and each scenario from target config*, adds
 four hook lists under `targets.<name>.hooks` and removes `services.server`. Once that proposal lands,
-its hook entries take the place of `services.server.cmd` in the table above.
+its hook entries with `cmd` take the place of `services.server.cmd` in the table above. Until then,
+no config can name a command, so the `use` row applies once the sibling proposal lands.
 
 ### The config source
 
@@ -139,7 +180,14 @@ The worker advertises one capability token per source it accepts: `commands:uplo
 `commands:<source>` to the required set of a job whose config declares at least one governed
 command. The routing test of [BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues.md)
 is an all-of subset check, so a job that declares commands reaches only a worker that accepts its
-source. `commands:` joins the reserved routing prefixes, so a worker's hand-written token override
+source.
+
+Named commands add two more tokens. A worker advertises `named:<source>` for each source whose mode
+is not `deny`, and `named-command:<name>` for each entry of `namedCommands`. A job whose config uses
+a named command requires `named:<source>` and `named-command:<name>` for each name it uses. A job
+that uses only named commands therefore reaches a `named` worker that has those scripts installed.
+
+`commands:`, `named:`, and `named-command:` join the reserved routing prefixes, so a worker's hand-written token override
 cannot claim a source its `commands` block denies. A job that no connected worker matches keeps waiting, with the existing notice that no
 worker is available.
 
@@ -179,7 +227,7 @@ the run met:
 | `source`, `mode` | the config source and the mode that applied |
 | `decision` | `ran`, `sandboxed`, or `refused` |
 | `exitCode` | the command's exit code, when it ran |
-| `sha256` | the hash of the command line, and of the executable file when that file lies inside the config's directory |
+| `sha256` | the hash of the command line, and of the executable file when that file lies inside the config's directory or is a named command's `path` |
 
 The report shows the list beside the run's other provenance. A script that changed between two runs
 then shows a different hash, even when its command line stayed the same. The list replaces the
@@ -230,7 +278,12 @@ readiness URL.
 - **Keep both, with the stricter value winning.** Rejected: a server-wide ceiling would put the
   policy in two places, and an operator reading one of them could not tell the effective mode.
 - **An allowlist of command paths.** Rejected: a path does not vouch for the file's contents. A
-  bundle can ship a harmful script under an allowed name.
+  bundle can ship a harmful script under an allowed name, and an allowed interpreter such as `node`
+  or `sh` runs whatever its arguments point at. Named commands keep the allowlist idea but list
+  files the worker owns, which closes both gaps.
+- **Named commands as the only way to run a command.** Rejected: a config the operator chose is
+  trusted today, and requiring every script to be installed on every worker would slow ordinary
+  development. The `named` mode applies to the sources an operator picks.
 - **An allowlist of approved hashes.** Deferred: it would stop a changed script from running, but
   it needs a flow for someone to review and approve each new hash. The command record above
   provides the hashes such a flow would start from.
@@ -245,7 +298,8 @@ readiness URL.
 
 - [ ] `worker.yaml`: the `commands` block, its defaults, validation, and the Docker check at startup.
 - [ ] Source label: carry `uploaded` / `remote` / `operator` in the job intent in place of `upload_exec`, pass it to `run`, `record`, and `crawl` through the option that carries the label, together with the worker's `worker.yaml`, and label CLI runs.
-- [ ] Routing: advertise `commands:<source>` tokens and add the requirement to jobs that declare commands.
+- [ ] Named commands: the `named` mode, the `namedCommands` block and its validation, and running a named command.
+- [ ] Routing: advertise `commands:<source>`, `named:<source>`, and `named-command:<name>` tokens and add the requirements to jobs that declare commands.
 - [ ] Run-time check: refuse a `services.server.cmd` whose source maps to `deny`, and skip builds under `deny`, before device work.
 - [ ] Command record: the `commands` list in `manifest.json` and its place in the report.
 - [ ] Remove `serve --upload-exec`, `$BAJUTSU_UPLOAD_EXEC`, `serve --allow-remote-build`, `$BAJUTSU_ALLOW_REMOTE_BUILD`, and the `--upload-exec` option of `run`, `record`, and `crawl`.

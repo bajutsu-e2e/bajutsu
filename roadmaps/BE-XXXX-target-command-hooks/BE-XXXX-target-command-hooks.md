@@ -116,6 +116,7 @@ A scenario then reads the seeded value without any preparation step of its own:
 | Field | Lists | Meaning |
 |---|---|---|
 | `cmd` | all | The command. Bajutsu splits it like a shell would, then runs it without a shell. Pipes or redirects need `sh -c` or a script. |
+| `use` | all | The name of a command the worker lists in `namedCommands` (sibling proposal), in place of `cmd`. An entry sets exactly one of `cmd` and `use`. With `use`, `env` may set only the variables the worker lists for that command, and `cwd` is ignored. |
 | `name` | all | An identifier, `[A-Za-z][A-Za-z0-9_]*` without `__`, unique across the four lists of every target the run drives. Required on an entry whose outputs are read. |
 | `cwd`, `env` | all | The working directory and extra environment, as `services.server` has them today. |
 | `timeout` | all | Seconds the command may take. Default 300. |
@@ -253,7 +254,9 @@ all is a separate decision, owned by the machine that runs them. A sibling propo
 decide whether config-declared commands run*, defines that decision: a policy in the worker's
 capability file, chosen per config source. That proposal replaces the `serve --upload-exec` option
 of [BE-0090](../BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md),
-and this item's hook lists are the commands it governs.
+and this item's hook lists are the commands it governs. An entry with `use` names a script the
+worker installed instead of spelling out a command line, so it can run on a worker whose `named`
+mode refuses every command line from an untrusted config.
 
 This item lands after the sibling proposal. Removing `services.server` first would leave uploaded
 web bundles without a governed way to start their server.
