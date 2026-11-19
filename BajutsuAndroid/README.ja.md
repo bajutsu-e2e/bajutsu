@@ -4,7 +4,7 @@
 
 BajutsuAndroid は、Android 上の [bajutsu](../) 向けのアプリ内デバイス支援ライブラリです。プラットフォームが
 アプリプロセスの内側からしか公開しない機能を、bajutsu が駆動できるようにします。test/debug 専用の
-Android ライブラリで、**クリップボード**、実機での**位置**、**ネットワーク捕捉**、`web:` ブロックが必要とする **WebView のデバッグ**を担います。iOS の
+Android ライブラリで、**クリップボード**、実機での**位置**、**プッシュ通知**、**ネットワーク捕捉**、`web:` ブロックが必要とする **WebView のデバッグ**を担います。iOS の
 [`BajutsuKit`](../BajutsuKit) パッケージに対応する Android 版にあたります。
 
 ## アプリ内支援が要る理由
@@ -42,8 +42,8 @@ bajutsu は空のクリップボードを成功と誤読せず、明確なエラ
 
 ## 組み込み
 
-ライブラリを追加し、`Application.onCreate` から `startClipboard(context)` と `startLocation(context)` を
-一度ずつ呼びます。呼ぶのは **test/debug ビルドに限ります**。これらの呼び出しは、iOS の BajutsuKit の
+ライブラリを追加し、`Application.onCreate` から `startClipboard(context)`、`startLocation(context)`、
+`startPush(context)` を一度ずつ呼びます。呼ぶのは **test/debug ビルドに限ります**。これらの呼び出しは、iOS の BajutsuKit の
 `App.init()` に対応します。
 
 レシーバはどの Activity よりも先に登録します。そうすれば、bajutsu が最初にどの画面を駆動しても、レシーバが
@@ -60,15 +60,16 @@ class MyApp : Application() {
         if (BuildConfig.DEBUG) {
             Bajutsu.startClipboard(this)
             Bajutsu.startLocation(this)
+            Bajutsu.startPush(this)
         }
     }
 }
 ```
 
-マニフェストの `<application android:name>` を、このクラスに向けます。2 つのレシーバはどちらも実行時に
+マニフェストの `<application android:name>` を、このクラスに向けます。レシーバはどれも実行時に
 登録され、マニフェストには何も宣言しません。そのため、各レシーバは対応する `start` 関数を呼んだときにだけ
 存在します。呼び出しは冪等なので、二重登録は起きません。実機で位置を設定する必要のないアプリは、
-`startLocation` を省けます。
+`startLocation` を省けます。`push` ステップを使わないアプリは `startPush` を省けます。
 
 ライブラリを Gradle のモジュールとして使うには、パスで取り込みます。showcase は
 [`demos/showcase/android/settings.gradle.kts`](../demos/showcase/android/settings.gradle.kts) でこうしています。
@@ -82,12 +83,13 @@ project(":bajutsu-android").projectDir = file("../../../BajutsuAndroid")
 
 ## 安全性
 
-2 つのレシーバはどちらも**エクスポートされて**おり、権限も設定していません。そのため、adb 経由でも、
+レシーバはどれも**エクスポートされて**おり、権限も設定していません。そのため、adb 経由でも、
 デバイスにインストールされたほかのアプリ経由でも、*あらゆる*ローカルアプリが broadcast を送れます。
 そうしたアプリはクリップボードを読み書きでき、bajutsu が mock location の許可を与えているあいだは
-アプリの位置も動かせます。
+アプリの位置も動かせます。さらに、アプリとして通知を出したり、自前のペイロードでアプリのプッシュハンドラを
+呼んだりもできます。
 
-このライブラリは**test/debug ビルド専用**です。`startClipboard` と `startLocation` の呼び出しを
+このライブラリは**test/debug ビルド専用**です。`startClipboard`、`startLocation`、`startPush` の呼び出しを
 `BuildConfig.DEBUG`（または独自のテストフラグ）で囲んでください。リリースビルドでは呼び出しが走りません。
 
 ## 実機での位置設定
@@ -138,6 +140,79 @@ provider は mock しないので、ライブラリは Play 開発者サービ�
 
 ライブラリは `ACCESS_MOCK_LOCATION` 権限を宣言しません。bajutsu がテストに使うエミュレータのイメージでは、
 この権限がなくても `appops set` で app-op を許可できます。
+
+## プッシュ通知
+
+この節では、`push` ステップのために
+[BE-0498](../roadmaps/BE-0498-android-push-notification/BE-0498-android-push-notification-ja.md)
+で加わった経路を説明します。Android にはアプリへ通知を渡すコマンドがないため、bajutsu はアプリを経由して
+ペイロードを届けます。シナリオは iOS と同じ Apple Push Notification service（APNs）のペイロードのまま書けます。
+bajutsu はホスト側で、そのペイロードを次の 3 つのフィールドに変換します。
+
+| APNs のペイロード | Android のフィールド |
+|---|---|
+| 文字列の `aps.alert` | `body` |
+| `aps.alert.title` | `title` |
+| `aps.alert.body` | `body` |
+| `aps` 以外のトップレベルのキー | `data`（文字列から文字列へのマップ）の項目。文字列でない値は JSON テキストになる |
+
+`badge` や `sound` などの残りの `aps` キーは Android に対応するものがないため、捨てます。そのうえで bajutsu は、
+各フィールドを base64 でエンコードした順序付き broadcast を送ります。
+
+```
+adb shell am broadcast -a dev.bajutsu.PUSH -p <package> --es title <b64> --es body <b64> --es data <b64(json)>
+```
+
+レシーバはフィールドをデコードして `BajutsuPush(title, body, data)` を作ります。その後の動作は、アプリが
+`startPush` をどう呼んだかで決まります。
+
+| 呼び出し | レシーバの動作 |
+|---|---|
+| `Bajutsu.startPush(this) { push -> … }` | ハンドラを呼び、ほかには何もしない |
+| `Bajutsu.startPush(this)` | ローカル通知を出す。`title` と `body` がどちらもなければ何もしない |
+
+ハンドラを登録すると、アプリのフォアグラウンドでの処理を検証できます。Firebase Cloud Messaging（FCM）を
+使うアプリは、テスト用のコードで `BajutsuPush` から `RemoteMessage` を組み立て、自分の `onMessageReceived`
+を呼べます。ライブラリ自体は Firebase に依存しません。レシーバはハンドラをメインスレッドで呼ぶため、
+ハンドラはほかの broadcast レシーバと同じく、すぐに戻る必要があります。
+
+```kotlin
+if (BuildConfig.DEBUG) {
+    Bajutsu.startPush(this) { push -> model.lastPushTitle = push.title.orEmpty() }
+}
+```
+
+ハンドラが例外を投げると、`push` ステップは失敗します。bajutsu は例外のメッセージをそのまま実行レポートに
+書き込みます。ハンドラが受け取るのは `${secrets.*}` トークンを置換したあとのペイロードです。そのため、
+**例外のメッセージにペイロードを含めてはいけません**。
+
+ハンドラがなければ、レシーバは `bajutsu` という名前のチャネルに通知を出し、アイコンにはアプリのランチャ
+アイコンを使います。通知をタップするとアプリの起動 Intent が開き、`data` の各項目が文字列の extra として
+渡ります。サイレントプッシュのようにアラートのないペイロードは、何も出さずに成功します。
+
+ハンドラのない経路には通知の権限が要ります。ライブラリのマニフェストはリリースビルドにも統合されるため、
+何も宣言しません。アプリの debug またはテスト用のマニフェストで宣言してください。
+
+```xml
+<uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+```
+
+宣言がないと `pm grant` が失敗し、API 33 以降では通知が無効のままになります。bajutsu が自分で権限を許可する
+ことはありません。シナリオが `permissions` の事前条件 `permissions: { notifications: grant }` で許可します。
+ハンドラのある経路は権限を確認しません。ハンドラがペイロードをどう扱うかは、アプリが決めることだからです。
+
+レシーバは次の 4 つの結果コードのどれかを返します。
+
+| 結果 | 意味 | bajutsu の報告 |
+|---|---|---|
+| `1` | ハンドラが戻った、または通知を出した | — |
+| `4` | ハンドラのない経路で、アプリの通知が無効 | 追加すべき `permissions` の事前条件 |
+| `5` | ハンドラが例外を投げた | 結果データに入ったハンドラの例外メッセージ |
+| `0` | broadcast を処理したレシーバがない | アプリが `startPush` を呼んでいない、または起動していない |
+
+broadcast がレシーバに届くのは、アプリのプロセスが動いているあいだだけです。iOS は起動していないアプリにも
+プッシュを届けられますが、Android のこの経路では届けられません。bajutsu はレシーバの応答を 10 秒待ち、
+それを過ぎるとステップを失敗させます。
 
 ## ネットワーク捕捉（BE-0283）
 
