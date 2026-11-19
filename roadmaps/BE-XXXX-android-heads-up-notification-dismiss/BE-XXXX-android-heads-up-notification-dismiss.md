@@ -24,8 +24,8 @@ on a step's target and take the step's tap.
 
 This proposal makes the adb driver report the heads-up notification's frame and declare the
 `handleNotificationBanner` capability. The existing guard then clears the banner on Android with no Android-specific code.
-The proposal also adds one check that iOS does not need: before a gesture on a resolved target, the adb driver
-clears a heads-up notification that covers the gesture's own point.
+The proposal also adds one check that iOS does not need: before a gesture on a resolved target or a literal point,
+the adb driver clears a heads-up notification that covers the gesture's own point.
 
 ## Motivation
 
@@ -65,14 +65,17 @@ cover the showcase, the tests, and the docs.
 ### Unit 1 — the heads-up tree, measured
 
 Measure the hierarchy of a heads-up notification on emulators at API 33, 34, and 35, and record the
-result in this item. Unit 2 keys on the result, so the measurement comes first. Record four facts:
+result in this item. Unit 2 keys on the result, so the measurement comes first. Record seven facts:
 
 - which SystemUI window holds the heads-up notification;
 - the resource ids that mark the notification row and its bounds;
 - what tells the heads-up notification apart from the expanded notification shade, which draws the
   same rows; and
 - whether an upward swipe from the row's center, travelling the distance Unit 4 computes, dismisses
-  the notification.
+  the notification;
+- the resource id that carries the notification's title and text;
+- the cost of one hierarchy read on the resident channel; and
+- the time from the dismissing swipe until the banner is gone, including one read.
 
 BE-0416's Unit 1 did the same for iOS, and its measurements shaped every later unit. A guessed
 identifier would make Unit 2 match the wrong node or none.
@@ -82,17 +85,26 @@ identifier would make Unit 2 match the wrong node or none.
 `narrowed_root` keeps dropping the SystemUI windows, so the app's elements stay unchanged. Before it
 drops them, it extracts the frame of the heads-up row that Unit 1 identified and returns the frame
 alongside the narrowed tree. The adb driver stores the frame with the tree it read.
-`notification_banner_frame` always takes a fresh read, because the orchestrator's guard calls it
-repeatedly to watch the banner leave.
+The same extraction pulls the notification's title and text from the row's text node (the resource id
+that Unit 1 measured). The driver therefore holds the frame and the text from one read.
 
-Unit 5 therefore gets the frame free with every read. The read already carries the SystemUI windows, and the
-extraction walks only the windows that `narrowed_root` already visits. The unit needs no new endpoint and
-no change to the resident server's Kotlin code.
+`notification_banner_frame` answers from the driver's current tree while that tree is still current
+(`_tree_current` in `adb_driver.py`, which any actuation invalidates). It takes a fresh read otherwise.
+The orchestrator's guard still sees a banner leave, because its swipe is an actuation, so every poll
+after the swipe is a fresh read. On the resident channel a read is a full round trip (400–600 ms).
+Always reading fresh would add about half a second to every Android step. Answering from a current tree
+avoids that cost when no gesture happened since the last read. The price of the choice is that a banner
+that appears while nothing actuates stays unseen until the next read.
+
+Unit 5's in-driver check gets the frame free with every read. The read already carries the SystemUI
+windows, and the extraction walks only the windows that `narrowed_root` already visits. The unit needs
+no new endpoint and no change to the resident server's Kotlin code.
 
 The `uiautomator dump` fallback reads the active window alone, so it never sees the heads-up window.
 On that path `notification_banner_frame` returns `None`, and the driver logs one warning per lease.
 The warning says that the banner guard is off until the resident channel returns. The fallback already
-warns that it runs degraded. The new warning names one more consequence.
+warns that it runs degraded. The new warning names one more consequence. The driver also records the
+fallback in the run's `manifest.json`, so that Unit 6's check can tell a run whose guard was off.
 `handleNotificationBanner` stays declared on both paths, since a capability that flips mid-lease
 would break the static parity table that `docs/platform-parity.md` and
 `tests/test_platform_parity.py` keep.
@@ -130,34 +142,64 @@ poll interval. A banner that appears after the previous step's sweep therefore s
 After the driver resolves the target, the adb driver checks the heads-up frame from the same read.
 It does so in `_device_act`'s resolve loop on the resident path and in `_resolve_frame_and_screen`
 on the coordinate path. When that frame contains the point the gesture is about to touch,
-the driver clears the banner first. It swipes by Unit 4's points and polls until the banner is gone,
-under the same bounded condition wait the orchestrator uses. It then re-resolves the target, because
-the screen may have moved under the banner. The check costs no extra read, because the frame arrived with the tree.
+the driver clears the banner first. It swipes by Unit 4's points and polls until the banner is gone.
+It then re-resolves the target, because the screen may have moved under the banner. The check costs no
+extra read, because the frame arrived with the tree.
+
+The check also covers the coordinate gestures, `swipe` and `drag` with literal points. They call
+`driver.swipe` without resolving a selector (the coordinate form in `gestures.py`). The driver checks
+the gesture's start point against the frame the same way. The swipe that the driver itself performs
+to dismiss the banner bypasses this check, because it targets the banner deliberately.
+
+The driver's clearance wait has its own named budget. It does not reuse the orchestrator's
+`_BANNER_CLEARANCE_TIMEOUT` (2 s), which is short by design because a leftover banner there costs one
+screenshot. Before a gesture, a leftover banner fails the step. On this backend one absence check is a
+full hierarchy read (400–600 ms per round trip per `AdbDriver.query`), so 2 s buys only three or four
+polls. Unit 1 measures the dismissal animation plus one read on the emulator lane, and the budget is
+sized from that measurement with margin.
 
 A heads-up notification still sliding in has no settled frame yet, and
 `notification_banner_swipe_points` returns `None` for it. The driver then reads again within the
-same bounded condition wait and swipes once the frame settles. The driver never proceeds with a
+same budget and swipes once the frame settles. The driver never proceeds with a
 gesture while a banner covers its point, unlike the orchestrator's sweep, which logs a warning and
 moves on. The sweep protects a screenshot, where a leftover banner costs one image. Here a leftover
 banner takes the tap and opens the notification's app. When the wait runs out with the banner still
-covering the point, settled or not, the driver raises `ElementNotTappable` and names the heads-up
-notification as the cause. The step then fails with that reason in the report, instead of failing
-later on a screen it never meant to reach.
+covering the point, settled or not, the driver raises a new, distinct exception,
+`NotificationBannerBlocking`, defined in `bajutsu/common/drivers/base/`. The step then fails with the
+banner named in the report, instead of failing later on a screen it never meant to reach.
+
+The type is not a subclass of `ElementNotTappable`, on purpose. `_tap_with_recovery`
+(`bajutsu/common/orchestrator/actions/handlers/gestures.py`) catches `ElementNotTappable` and answers
+with a bounded scroll down then up. A SystemUI heads-up window is anchored to the screen, so scrolling
+cannot clear it and would only scroll the app under test. A banner that auto-dismisses mid-recovery
+would also let the retried tap succeed on a screen the scenario never asked to scroll. A separate type
+means the scroll recovery never sees the failure.
 
 The orchestrator's sweep handles a banner that covers nothing the gesture touches. Clearing every
 banner before every gesture would spend a swipe and a condition wait on banners that block nothing.
+The adopted check covers every gesture whose point the banner covers, and no other.
 
 Each dismissal must reach the report. A new narrow protocol in `bajutsu/common/drivers/base/` carries
 one method, `drain_banner_dismissals()`, which returns the notification text of each banner the
-driver cleared since the last call. The orchestrator drains it where it already drains interruptions
-and records each entry as an `AlertEvent` of kind `notificationBanner`, the record iOS produces. The
-adb driver does not implement `InterruptionPolicyTarget`, because that protocol also carries a
-button policy that only XCUITest applies.
+driver cleared since the last call. The text is the one Unit 2 extracted, so a driver dismissal's
+`AlertEvent` label is the notification's own text, matching the contract of `AlertEvent` in
+`bajutsu/common/orchestrator/types/alert_event.py`. The orchestrator records each entry as an
+`AlertEvent` of kind `notificationBanner`, the record iOS produces.
+
+The orchestrator checks this protocol independently of `InterruptionPolicyTarget`. The
+`drain_interruptions` function in `bajutsu/common/orchestrator/types/_functions.py` returns an empty
+drain for any driver that is not an `InterruptionPolicyTarget`, so the new drain cannot live behind
+that guard. The adb driver does not implement `InterruptionPolicyTarget`, because that protocol also
+carries a button policy that only XCUITest applies. The orchestrator drains from `cfg.driver` (the
+native driver), not `active_driver`, at the same per-step point. A dismissal during a `web`-block step
+therefore does not strand in the native driver's store. `_step_runner.py` already applies the same
+rule to the sweep's own actuation.
 
 The orchestrator's own sweep records its dismissals too. Today `_clear_notification_banner` leaves
 only a swipe in the actuation log, so a banner the sweep clears leaves no `notificationBanner`
 record. The function now returns an `AlertEvent` of kind `notificationBanner` when its swipe is
-confirmed, with an empty label, since the sweep never reads the notification's text. Each caller
+confirmed, with an empty label, since the sweep never reads the notification's text. The two paths stay
+distinguishable in the report by that label. Each caller
 appends that record where it already keeps alerts:
 
 - the per-step sweep, to the step's `outcome.alerts`;
@@ -183,9 +225,14 @@ would pass on the tap and exercise nothing. No scenario assertion reads the run'
 the proof runs after the scenario instead. A new script,
 `scripts/assert_notification_banner_evidence.py`, reads the finished run's `manifest.json` and fails
 unless the scenario carries a dismissal of kind `notificationBanner`.
-`scripts/assert_app_crash_evidence.py` already checks crash evidence the same way. Unit 5 makes the
+`scripts/assert_app_crash_evidence.py` already checks crash evidence the same way. While the resident channel is up, Unit 5 makes the
 check deterministic: both clearing paths record the dismissal, so a banner that appeared leaves the
 record whichever path cleared it.
+
+The resident channel is a precondition of that check. When the driver reads through the
+`uiautomator dump` fallback, the manifest carries the marker from Unit 2, and the script fails with
+that cause named ("the resident channel was unavailable, so the banner guard was off"). It does not
+report a missing dismissal. A run that could not verify the guard never passes.
 
 The Android emulator lane runs the scenario and then the script. The lane is the one
 [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md) added. The
@@ -198,16 +245,26 @@ Cover the host side in the fast Python suite, with dump fixtures recorded in Uni
 - `narrowed_root` extracts the heads-up frame and still drops every SystemUI window;
 - the shade, expanded with the same rows, yields no frame;
 - the fallback path returns `None` and warns once per lease;
+- the extraction yields the notification's text along with the frame;
 - `notification_banner_swipe_points` scales both distances by `scale`;
+- `notification_banner_frame` answers from the current tree with no read, and a fresh read follows any
+  actuation;
 - the adb driver clears a covering banner before a tap, leaves a banner that covers nothing, and
   re-resolves the target after the swipe;
+- a coordinate swipe whose start point lies under the banner clears it first, and the dismissing
+  swipe itself is not re-checked;
 - a banner caught mid-slide is swiped once its frame settles, and a banner that never settles or
-  never clears within the wait fails the gesture with `ElementNotTappable` naming the banner;
-- each driver dismissal drains into an `AlertEvent` of kind `notificationBanner`;
+  never clears within the wait fails the gesture with `NotificationBannerBlocking` naming the banner,
+  and `_tap_with_recovery` does not scroll on it;
+- each driver dismissal drains into an `AlertEvent` of kind `notificationBanner` that carries the
+  notification's text as its label;
+- a dismissal on a driver that is not an `InterruptionPolicyTarget` still reaches the step's alerts,
+  including during a `web`-block step;
 - each of the orchestrator's three sweep sites records an `AlertEvent` of kind `notificationBanner`
   for a confirmed swipe, and none for an unconfirmed one; and
 - `assert_notification_banner_evidence.py` passes on a manifest that carries the record and fails on
-  one that does not.
+  one that does not, and fails with the resident-channel cause on a manifest that carries the
+  fallback marker.
 
 Replace `test_notification_banner_frame_is_none` in `tests/test_adb.py` with these tests.
 
@@ -242,7 +299,7 @@ describe the banner guard.
 | Drop `handleNotificationBanner` from the capabilities while the driver reads through the fallback path | The declaration would match reality, but it would change in the middle of a lease. The static parity table and its test assume a fixed declaration. |
 | Let each driver compute its own swipe points | Each platform could tune its distances, but the `Driver` interface would grow and the iOS driver would change. Scaling one function by density reuses distances that BE-0416 already measured. |
 | Rely on the orchestrator's per-step sweep alone | The change is smallest, but the sweep runs after each step's gesture. A banner that appears after the previous step's sweep still takes this step's tap. |
-| Clear any banner before every gesture, covering or not | The rule is simpler, but every gesture pays a swipe and a condition wait for banners that block nothing. |
+| Clear any banner before every gesture, covering or not | The rule is simpler, but every gesture pays a swipe and a condition wait for banners that block nothing. The adopted design covers every gesture whose point the banner covers, literal points included. |
 | Implement `InterruptionPolicyTarget` on the adb driver to report dismissals | No new type is needed, but `set_interruption_policy` would become an empty method. The protocol assumes that only XCUITest needs it, and the orchestrator branches on it. |
 | Record the dismissal as a plain swipe in the actuation log | The change is smallest, but the report would show an unexplained swipe. A reader could not tell that a banner had appeared. The orchestrator's sweep records exactly that today, which Unit 5 changes. |
 | Prove the banner's appearance with an app-side signal and assert on the tap alone | BE-0416's iOS scenario does this, and no host change is needed. The signal proves the app posted a notification, not that SystemUI showed it or that Bajutsu cleared it. |
@@ -255,11 +312,11 @@ describe the banner guard.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — measure the heads-up tree on API 33–35
-- [ ] Unit 2 — extract the frame from the resident dump; warn on the fallback path
+- [ ] Unit 1 — measure the heads-up tree, read cost, and dismissal time on API 33–35
+- [ ] Unit 2 — extract the frame and text from the resident dump; warn and mark the manifest on the fallback path
 - [ ] Unit 3 — declare `handleNotificationBanner` on the adb driver
 - [ ] Unit 4 — scale the swipe distances by display density
-- [ ] Unit 5 — clear a covering banner before a gesture, and record every dismissal, the orchestrator sweep's included
+- [ ] Unit 5 — clear a covering banner before a gesture, coordinate gestures included, and record every dismissal, the orchestrator sweep's included
 - [ ] Unit 6 — showcase button on both Android apps, the banner scenario, and the manifest check
 - [ ] Unit 7 — unit tests with heads-up dump fixtures
 - [ ] Unit 8 — docs (en + ja)
