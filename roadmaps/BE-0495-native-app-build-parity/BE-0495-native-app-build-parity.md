@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-native-app-build-parity-ja.md)
+**English** · [日本語](BE-0495-native-app-build-parity-ja.md)
 
-# BE-XXXX — Build the app on demand on every platform, and force a rebuild on request
+# BE-0495 — Build the app on demand on every platform, and force a rebuild on request
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-native-app-build-parity.md) |
+| Proposal | [BE-0495](BE-0495-native-app-build-parity.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0495") |
 | Implementing PR | [#2452](https://github.com/bajutsu-e2e/bajutsu/pull/2452) (units 1–6) |
 | Topic | Platform support |
 <!-- /BE-METADATA -->
