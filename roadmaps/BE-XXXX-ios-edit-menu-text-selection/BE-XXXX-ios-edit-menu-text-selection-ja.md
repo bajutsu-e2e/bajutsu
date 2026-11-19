@@ -15,7 +15,7 @@
 
 ## はじめに
 
-iOS Simulator では、テスト対象のアプリ以外のプロセスが pasteboard に一度でも書き込むと、その端末で `select` と `copy` の各ステップが効かなくなります。この状態は、端末を erase するか再起動するまで続きます。本項目は、2 つのステップの操作をハードウェアのショートカット（⌘A と ⌘C）から、システムの編集メニューにある「Select All」と「Copy」の項目に移します。編集メニューは、この状態の端末でも動きます。iOS の `paste` ステップはすでに同じメニューを操作しているので、テキスト選択に関わる 3 つのステップが 1 つの仕組みにそろいます。ドライバがメニューを開く操作の対象フィールドを特定できるよう、`paste(sel)` と同じく `Driver.select_all()` がフィールドの selector を受け取るように広げます。この変更はすべてのドライバに及びます。
+iOS Simulator では、テスト対象のアプリ以外のプロセスが pasteboard に一度でも書き込むと、その端末で `select` と `copy` の各ステップが効かなくなります。この状態は、SpringBoard が再起動するか、端末を再起動または erase するまで続きます。本項目は、2 つのステップの操作をハードウェアのショートカット（⌘A と ⌘C）から、システムの編集メニューにある「Select All」と「Copy」の項目に移します。編集メニューは、この状態の端末でも動きます。iOS の `paste` ステップはすでに同じメニューを操作しているので、テキスト選択に関わる 3 つのステップが 1 つの仕組みにそろいます。ドライバがメニューを開く操作の対象フィールドを特定できるよう、`paste(sel)` と同じく `Driver.select_all()` がフィールドの selector を受け取るように広げます。この変更はすべてのドライバに及びます。
 
 ## 動機
 
@@ -52,7 +52,7 @@ Bajutsu は iOS を直せませんが、ショートカットに頼るのをや�
 
 - `Driver` プロトコルと、トレース用のラッパー（`bajutsu/common/drivers/tracing.py`）
 - 6 つのドライバ：XCUITest、live XCUITest、adb、Playwright、WebView コンテキスト、フェイク
-- `bajutsu/common/orchestrator/actions/handlers/gestures.py` の `select` と `clear` のハンドラ（自前のフォーカス用タップをやめ、ステップの selector を渡します）
+- `bajutsu/common/orchestrator/actions/handlers/gestures.py` の `select` と `clear` のハンドラ（ステップの selector を渡します。`select` は自前のフォーカス用タップを常にやめ、`clear` は `TEXT_SELECTION` を持つバックエンドの場合だけやめます）
 
 ハンドラは、先にフィールドをタップするのをやめます。`_do_paste` が `paste` を呼ぶのと同じく、`_tap_with_recovery(lambda: driver.select_all(sel), driver, sel)` を呼びます。`paste(sel)` と同じく、`select_all(sel)` がフィールドへのフォーカスを自分で合わせます。iOS ではフォーカスのあるフィールドをタップすると編集メニューが開くので、ハンドラが別にタップすると、ドライバがラベルを数える前に「Select All」項目が画面に出てしまい、ドライバは新しく増えた項目を見つけられません。XCUITest 以外のドライバは、フィールドをタップしてから今までどおりに操作します。`clear` のハンドラは、最初にフィールドの現在の値を読むところを残します。フォーカス用のタップを `select_all(sel)` に任せるのは、`TEXT_SELECTION` を持つバックエンドの場合だけです。空のフィールドと、この機能を持たないバックエンドでは、文字数ぶんのバックスペースがフォーカスのあるフィールドに効くので、ハンドラが自分でタップします。`copy_selection()` は、`select` が残した選択範囲に対して働くので、形を変えません。
 

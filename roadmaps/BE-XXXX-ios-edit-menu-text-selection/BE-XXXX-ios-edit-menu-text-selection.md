@@ -16,8 +16,8 @@
 ## Introduction
 
 On the iOS Simulator, the `select` and `copy` steps stop working on a device once anything outside
-the app under test has written the pasteboard. The breakage lasts until the device is erased or
-rebooted. This item moves both steps off the hardware shortcuts (⌘A and ⌘C) and onto the system edit
+the app under test has written the pasteboard. The breakage lasts until SpringBoard restarts, or
+until the device is rebooted or erased. This item moves both steps off the hardware shortcuts (⌘A and ⌘C) and onto the system edit
 menu's "Select All" and "Copy" items, which keep working on a device in that state. The iOS `paste`
 step already drives the same menu, so the three text-selection steps end up on one mechanism. To let the driver aim the menu gesture at the field, the item also widens
 `Driver.select_all()` to take the field's selector, as `paste(sel)` already does, which touches every
@@ -82,7 +82,8 @@ as `paste(sel)`. The change reaches every place that declares or calls the metho
 - the `Driver` protocol and the tracing wrapper (`bajutsu/common/drivers/tracing.py`);
 - the six drivers: XCUITest, live XCUITest, adb, Playwright, the WebView context, and the fake driver;
 - the `select` and `clear` handlers in `bajutsu/common/orchestrator/actions/handlers/gestures.py`,
-  which drop their own focusing tap and pass the step's selector.
+  which pass the step's selector. `select` drops its own focusing tap outright, and `clear` drops
+  it only on a backend with `TEXT_SELECTION`.
 
 The handlers no longer tap the field first; they call
 `_tap_with_recovery(lambda: driver.select_all(sel), driver, sel)`, the way `_do_paste` calls `paste`.
