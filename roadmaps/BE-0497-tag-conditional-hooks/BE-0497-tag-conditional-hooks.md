@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-tag-conditional-hooks-ja.md)
+**English** · [日本語](BE-0497-tag-conditional-hooks-ja.md)
 
-# BE-XXXX — Gate a command hook on scenario tags
+# BE-0497 — Gate a command hook on scenario tags
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-tag-conditional-hooks.md) |
+| Proposal | [BE-0497](BE-0497-tag-conditional-hooks.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0497") |
 | Topic | Scenario authoring features |
 | Related | [BE-0034](../BE-0034-tags-selective-runs/BE-0034-tags-selective-runs.md), [BE-0491](../BE-0491-target-command-hooks/BE-0491-target-command-hooks.md), [BE-0492](../BE-0492-worker-command-execution-policy/BE-0492-worker-command-execution-policy.md) |
 <!-- /BE-METADATA -->

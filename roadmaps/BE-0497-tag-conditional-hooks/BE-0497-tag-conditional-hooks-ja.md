@@ -1,14 +1,14 @@
-[English](BE-XXXX-tag-conditional-hooks.md) · **日本語**
+[English](BE-0497-tag-conditional-hooks.md) · **日本語**
 
-# BE-XXXX — コマンド hook をシナリオのタグで絞り込む
+# BE-0497 — コマンド hook をシナリオのタグで絞り込む
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-tag-conditional-hooks-ja.md) |
+| 提案 | [BE-0497](BE-0497-tag-conditional-hooks-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **承認済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0497") |
 | トピック | シナリオ記述機能 |
 | 関連 | [BE-0034](../BE-0034-tags-selective-runs/BE-0034-tags-selective-runs-ja.md)、[BE-0491](../BE-0491-target-command-hooks/BE-0491-target-command-hooks-ja.md)、[BE-0492](../BE-0492-worker-command-execution-policy/BE-0492-worker-command-execution-policy-ja.md) |
 <!-- /BE-METADATA -->
