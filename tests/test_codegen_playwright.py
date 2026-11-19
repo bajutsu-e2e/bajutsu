@@ -529,3 +529,9 @@ def test_attribute_assertion_emits_to_have_attribute() -> None:
         "await expect(page.getByTestId('cart')).toHaveAttribute('data-state', /^(ready|idle)$/);",
         "await expect(page.getByTestId('submit')).not.toHaveAttribute('aria-busy');",
     ]
+
+
+def test_open_url_is_a_labeled_mobile_only_todo() -> None:
+    # BE-0487: the web backend opens a URL with `navigate`, never `openUrl`.
+    code = _gen('- name: x\n  steps:\n    - openUrl: "myapp://orders/42"\n')
+    assert "// TODO: openUrl('myapp://orders/42') — iOS / Android only; not generated" in code

@@ -193,8 +193,8 @@ def _step_desc_parts(action: str, payload: Any) -> list[Part]:  # noqa: C901, PL
         ]
     if action == "relaunch":
         return [("", "relaunch")]
-    if action == "navigate":
-        # The one string-valued action (BE-0464): its payload is the URL itself.
+    if action in ("navigate", "openUrl"):
+        # The string-valued actions (BE-0464, BE-0487): the payload is the URL itself.
         return [("str", str(payload))]
     return []
 

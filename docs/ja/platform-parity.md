@@ -60,7 +60,8 @@ iOS の実機では、`simctl` が提供する能力がなくなります。こ�
 | `textSelection` | ✅ | ✅ | Android 12 以降が必要です。振る舞いの差の表を参照してください。 |
 | `webView` | per-run | per-run | iOS では、アプリが BajutsuKit の WebView ブリッジを組み込んでいるときに付与されます。Android では、デバッグ可能なビルドが `Bajutsu.enableWebViewDebugging` を呼んでいるときに付与されます。run はそのページに Chrome DevTools Protocol で到達します（[BE-0482](../../roadmaps/BE-0482-android-webview-cdp/BE-0482-android-webview-cdp-ja.md)）。振る舞いの表も参照してください。 |
 | `selectOption` | n/a | n/a | web ページの `<select>` 要素を設定する能力で、web バックエンドだけが持ちます。 |
-| `urlNavigation` | n/a | n/a | シナリオの途中でブラウザに web アドレスを開かせる能力です。モバイルの2つのバックエンドは、ディープリンクを起動時の前提条件として開きます。 |
+| `urlNavigation` | n/a | n/a | シナリオの途中でブラウザに web アドレスを開かせる能力です。モバイルの2つのバックエンドは、代わりに `openUrl` でシナリオの任意の時点に URL を OS へ渡します。 |
+| `openUrl` | ✅ | ✅ | その時点でシナリオが操作しているアプリに向けて、URL を OS へ渡す能力です（[BE-0487](../../roadmaps/BE-0487-mobile-open-url-step/BE-0487-mobile-open-url-step-ja.md)）。iOS は 16.4 以降が必要です。web バックエンドは代わりに `navigate` でページを開きます。 |
 | `elementAttribute` | n/a | n/a | web ページの要素の属性を読む能力で、web バックエンドだけが持ちます。 |
 | `handleSystemAlert` | ✅ | n/a | Android のシステムダイアログは取得した要素ツリーに現れるので、通常の `tap` で操作できます。 |
 | `resolveAlerts` | ✅ | n/a | `handleSystemAlert` と同じ理由です。 |

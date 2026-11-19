@@ -552,3 +552,15 @@ def test_attribute_is_a_labeled_web_only_todo() -> None:
     assert '// TODO: attribute(name: "href", equals: "/docs") — web-only; not generated' in code
     assert '// TODO: attribute(name: "aria-busy", absent: true) — web-only; not generated' in code
     assert "unsupported assertion" not in code
+
+
+def test_open_url_generates_xcuiapplication_open() -> None:
+    # BE-0487: the same call the runner's `/app/openUrl` route makes.
+    code = _gen('- name: x\n  steps:\n    - openUrl: "myapp://orders/42"\n')
+    assert "if #available(iOS 16.4, *) {" in code
+    assert 'app.open(URL(string: "myapp://orders/42")!)' in code
+
+
+def test_open_url_with_a_token_is_a_labeled_todo() -> None:
+    code = _gen("- name: x\n  steps:\n    - openUrl: 'myapp://items/${vars.id}'\n")
+    assert '// TODO: openUrl("myapp://items/${vars.id}") — runtime-substituted URL' in code

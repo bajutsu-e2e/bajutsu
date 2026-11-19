@@ -51,6 +51,7 @@ final class RouterConcurrencyTests: XCTestCase {
         func enterApp(bundleId: String) -> AppActivationResult { .ok }
         func leaveApp() -> AppActivationResult { .ok }
         func targetApp(bundleId: String) {}
+        func openUrl(_ url: String) -> AppOpenResult { .ok }
         func appState() -> AppRunState { .runningForeground }
     }
 

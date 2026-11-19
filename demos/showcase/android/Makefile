@@ -141,12 +141,16 @@ SERIAL ?= booted
 # SHOWCASE_WEBVIEW, and `within` carries both id forms. Verified on a local arm64 emulator (API 34),
 # Compose and Views alike.
 #
+# `open_url_android` launches on the Log deep link, then opens deep links mid-scenario with `openUrl`
+# (BE-0487), the launch URL included, through `am start --activity-single-top`. Compose only: its
+# ids carry the dotted form alone, and the URLs name the Compose app's own scheme.
+#
 # Observed network capture lands in its own `e2e-network` target below (BE-0283); mocked network
 # (deterministic stub responses) stays a follow-up.
 E2E_SCENARIOS := smoke firstlook navigation search data_driven relaunch system components modals \
 	controls notices gestures gestures_multitouch permission device extract foreach interrupts \
 	text_entry_android text_selection_android picker_wheel select_photos select_photo_single app_android location_android \
-	webview
+	webview open_url_android
 
 # Raise the condition-wait ceiling for this lane only: the CI x86_64 software-rendered emulator
 # presents sheets/covers slower than the shared scenarios' 5s waits allow. A wait returns as soon as

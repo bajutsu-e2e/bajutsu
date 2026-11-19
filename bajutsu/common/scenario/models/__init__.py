@@ -40,6 +40,7 @@ from bajutsu.common.scenario.models.actions import (
     LongPress,
     Manual,
     Navigate,
+    OpenUrl,
     Otp,
     OverrideStatusBar,
     Paste,
@@ -99,6 +100,9 @@ from bajutsu.common.scenario.models.scenario import (
 )
 from bajutsu.common.scenario.models.scenario import (
     _check_http_extract_vars as _check_http_extract_vars,
+)
+from bajutsu.common.scenario.models.scenario import (
+    _check_open_urls as _check_open_urls,
 )
 from bajutsu.common.scenario.models.scenario import (
     _check_target_requirements as _check_target_requirements,
@@ -177,6 +181,7 @@ __all__ = [
     "Navigate",
     "Network",
     "NetworkFilter",
+    "OpenUrl",
     "Otp",
     "OverrideStatusBar",
     "Paste",

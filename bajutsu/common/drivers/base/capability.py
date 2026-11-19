@@ -28,6 +28,8 @@ class Capability:
     WEBVIEW = "webView"  # DOM query/tap inside an embedded WKWebView (BE-0037)
     SELECT_OPTION = "selectOption"  # set a native <select> by value; web only (BE-0191)
     URL_NAVIGATION = "urlNavigation"  # open a URL mid-scenario (`navigate`); web only (BE-0464)
+    # Hand a URL to the OS for the app the driver addresses (`openUrl`); iOS and Android (BE-0487)
+    OPEN_URL = "openUrl"
     ELEMENT_ATTRIBUTE = "elementAttribute"  # read one named HTML attribute; web only (BE-0466)
     # `select`/`copy` on the focused field (BE-0265). A backend that can select and copy natively
     # advertises this; a coordinate-only backend with no select-all handle does not and raises

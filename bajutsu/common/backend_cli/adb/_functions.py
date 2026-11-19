@@ -7,7 +7,7 @@ import math
 import re
 import shlex
 import subprocess
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from datetime import datetime, timedelta
 from pathlib import PurePosixPath
 
@@ -241,6 +241,18 @@ def screenrecord_pids_cmd(serial: str) -> list[str]:
     poll reads presence from stdout, not the exit code (the `RunFn` raises on a non-zero exit).
     """
     return _adb(serial, "shell", "pgrep -x screenrecord || true")
+
+
+def interrupt_pids_cmd(serial: str, pids: Iterable[str]) -> list[str]:
+    """Send SIGINT to device-side `pids` — stops a `screenrecord` so it finalizes its mp4.
+
+    `screenrecord` treats SIGINT as "stop and finalize", and a repeat is harmless, so this is safe to
+    send to a recorder the local client's own SIGINT already reached. `|| true` keeps a pid that has
+    already exited (`kill` exits 1) from raising in the `RunFn`. Each pid is quoted: the values come
+    from device output, and an unquoted metacharacter would run as extra shell.
+    """
+    quoted = " ".join(shlex.quote(pid) for pid in pids)
+    return _adb(serial, "shell", f"kill -INT {quoted} 2>/dev/null || true")
 
 
 def file_size_cmd(serial: str, device_path: str) -> list[str]:
@@ -1001,11 +1013,94 @@ def launch_cmd(serial: str, component: str, extras: Mapping[str, str] | None = N
     return cmd
 
 
-def deeplink_cmd(serial: str, url: str, package: str) -> list[str]:
-    """Open a deeplink, scoped to `package` so the intent resolves to the app under test."""
-    return _adb(
-        serial, "shell", "am", "start", "-a", "android.intent.action.VIEW", "-d", url, package
+_LINE_BREAKS = "\n\r\t"
+
+
+def view_intent_cmd(serial: str, url: str, package: str, *, single_top: bool = False) -> list[str]:
+    """Hand `url` to `package` as a `VIEW` intent and wait for `am start` to report on it (BE-0487).
+
+    Scoped to `package` so the intent never raises the chooser between two apps that claim the URL.
+    `adb shell` joins its arguments into one line the device's shell parses, so the URL and package
+    are `shlex.quote`d: unquoted, a query string's `&` ends the command, and a crafted URL runs one.
+    `-W` makes `am start` wait and print a `Status:` line, and `2>&1` folds the device-side stderr
+    (where `am` may write its `Error:` line) into the stdout `real_run` returns, while adb's own
+    transport faults stay on the host's stderr. Read the output with `view_intent_rejection`: the
+    exit status reports neither an unresolved nor an undelivered intent.
+
+    `single_top` adds `--activity-single-top`, so an activity already on top of its task receives
+    the URL through `onNewIntent` even when it matches the intent that started the task — which
+    Android otherwise answers by bringing the task forward and delivering nothing. The mid-scenario
+    `openUrl` sets it; the launch deeplink, sent right after a fresh launch, does not need it.
+
+    Raises:
+        DeviceError: `url` holds a line break or tab, which would forge a line of `am`'s output.
+    """
+    if any(c in url for c in _LINE_BREAKS):
+        # `am start` echoes the URL back in its `Starting:` line, so a line break inside it would
+        # forge one of the lines `view_intent_rejection` reads the verdict from.
+        raise DeviceError(f"a deep link must not contain a line break or tab: {url!r}")
+    flags = "-W --activity-single-top" if single_top else "-W"
+    line = (
+        f"am start {flags} -a android.intent.action.VIEW -d {shlex.quote(url)} "
+        f"{shlex.quote(package)} 2>&1"
     )
+    return _adb(serial, "shell", line)
+
+
+def deeplink_cmd(serial: str, url: str, package: str) -> list[str]:
+    """Open the launch deeplink, scoped to `package` so the intent resolves to the app under test."""
+    return view_intent_cmd(serial, url, package)
+
+
+# What `am start -W` prints for an intent that reached a running activity without starting one.
+_DELIVERED_TO_TOP = "Warning: Activity not started, intent has been delivered to currently running"
+# Every other outcome that starts nothing prints this prefix and then, under `-W`, `Status: ok` all
+# the same: the task brought forward, the switch canceled, the intent returned to the caller. None of
+# them delivered the URL, so the prefix rejects and the delivered-to-top line alone is let through.
+_NOT_STARTED = "Warning: Activity not started"
+
+
+def view_intent_rejection(out: str) -> str | None:
+    """Why `am start -W` did not deliver the `VIEW` intent, or None when it did (BE-0487).
+
+    Acceptance needs a positive signal — `Status: ok`, or the warning that the running top-most
+    activity received the intent — because `am start` exits 0 on an unresolved intent too. A
+    rejecting line wins over `Status: ok`, since `-W` prints its status after a warning: an `Error`
+    line, any `Activity not started` warning but the delivered-to-top one, or a line naming an
+    exception, each returned as the reason. Anything else (`Status: timeout`, no output) is
+    rejected with the whole output.
+    """
+    lines = [raw.strip() for raw in out.splitlines() if raw.strip()]
+    for line in lines:
+        # The `Starting: Intent { ... dat=<url> }` echo carries the URL, which may itself contain
+        # "Exception"; and the delivered-to-top warning is the one `not started` line that did
+        # deliver. Neither is read as a rejection.
+        if line.startswith(("Starting:", _DELIVERED_TO_TOP)):
+            continue
+        if line.startswith(("Error", _NOT_STARTED)) or "Exception" in line:
+            return line
+    if "Status: ok" in lines or any(line.startswith(_DELIVERED_TO_TOP) for line in lines):
+        return None
+    return " / ".join(lines) or "am start printed nothing"
+
+
+def send_view_intent(run: RunFn, cmd: list[str]) -> str | None:
+    """Run a `view_intent_cmd` through *run* and read its output with `view_intent_rejection`.
+
+    A non-zero exit that still carries `am`'s own output is read the same way, since that output
+    names why the intent failed; one with no output on stdout is adb's own transport fault (`error:
+    device offline`, on the host's stderr), re-raised for the caller to report as a `DeviceError`.
+
+    Raises:
+        subprocess.CalledProcessError: adb itself failed before `am start` printed anything.
+    """
+    try:
+        out = run(cmd)
+    except subprocess.CalledProcessError as exc:
+        if not (isinstance(exc.stdout, str) and exc.stdout.strip()):
+            raise
+        out = exc.stdout
+    return view_intent_rejection(out)
 
 
 # --- device control (BE-0211): the emulator-backed subset of the DeviceControl family ---

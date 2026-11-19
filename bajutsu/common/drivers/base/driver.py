@@ -63,6 +63,12 @@ class Driver(Protocol):
     # a backend advertising URL_NAVIGATION supports it; the rest raise UnsupportedAction. Named
     # `goto` because `BackendLifecycle.navigate()` already means "open baseUrl".
     def goto(self, url: str) -> None: ...
+    # Hand the absolute `url` to the operating system for the app the driver addresses right now —
+    # the app under test, or the innermost `enter_app` — and return once that app holds the
+    # foreground (BE-0487). The caller has already applied `open_url_problem`. A URL the OS rejects
+    # raises SelectorError (a test outcome); a lost device stays the backend's own fault. Only a
+    # backend advertising OPEN_URL supports it; the rest raise UnsupportedAction.
+    def open_url(self, url: str) -> None: ...
     # Two-finger gestures. scale > 1 zooms in, < 1 zooms out; radians > 0 rotates
     # clockwise. Only backends advertising MULTI_TOUCH support these.
     def pinch(self, sel: Selector, scale: float) -> None: ...

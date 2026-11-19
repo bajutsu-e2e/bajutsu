@@ -1745,9 +1745,39 @@ class AdbDriver(CoordinateTreeDriver):
         self._actuations.record(Actuation(gesture="back", via="key", unit=_UNIT))
         self._act(adb.keyevent_cmd(self.serial, adb.KEYCODE_BACK))
 
+    def open_url(self, url: str) -> None:
+        """Hand *url* to the app the driver addresses as a `VIEW` intent, then wait for it in front.
+
+        The app is the innermost `app:` block's, or the app under test (`_front_package`), so the
+        intent is scoped and never raises the chooser (BE-0487). `--activity-single-top` lets an
+        activity on top of its task receive a URL equal to the one that started the task, through
+        `onNewIntent`. The verdict comes from `am start`'s output, never its exit status; the
+        foreground wait cannot stand in for it, since the receiving app is usually in front already.
+
+        Raises:
+            UnsupportedAction: The driver addresses no app to scope the intent to.
+            SelectorError: Android did not deliver the intent — the reason is `am start`'s own line.
+            ElementNotFound: The app never reached the foreground after accepting the intent.
+            DeviceError: adb itself failed (device offline, not found).
+        """
+        package = self._front_package
+        if package is None:
+            # An unscoped intent could raise the chooser, so fail closed rather than send one.
+            raise base.UnsupportedAction("openUrl: the driver addresses no app to hand the URL to")
+        self._actuations.record(Actuation(gesture="openUrl", via="url", unit=_UNIT))
+        try:
+            problem = adb.send_view_intent(
+                self._act, adb.view_intent_cmd(self.serial, url, package, single_top=True)
+            )
+        except subprocess.CalledProcessError as exc:
+            raise adb.device_error(exc) from exc
+        if problem is not None:
+            raise base.SelectorError(f"openUrl: {package} did not receive the URL: {problem}")
+        self._await_front(package)
+
     def goto(self, url: str) -> None:  # noqa: ARG002  # Driver shape
-        # An Android intent is its own item (BE-0464's out-of-scope list), not a `navigate` alias.
-        raise base.UnsupportedAction("navigate is web-backend-only; Android opens no URL mid-run")
+        # An Android intent is `openUrl` (BE-0487), not a `navigate` alias.
+        raise base.UnsupportedAction("navigate is web-backend-only; Android uses openUrl")
 
     def pinch(self, sel: base.Selector, scale: float) -> None:
         # Two contacts spread from / close to the target centre by `scale`, driven as a raw two-slot
@@ -2237,6 +2267,10 @@ class AdbDriver(CoordinateTreeDriver):
             self._act(adb.launch_cmd(self.serial, component))
         except subprocess.CalledProcessError as exc:
             raise adb.device_error(exc) from exc
+        self._await_front(package)
+
+    def _await_front(self, package: str) -> None:
+        """Wait until *package* holds the resumed activity, within the `app:` block's bound."""
         last_error = ""
         for _ in base.deadline_ticks(_APP_FRONT_TIMEOUT, _APP_FRONT_POLL, _APP_FRONT_POLL_MAX):
             try:
@@ -2546,6 +2580,8 @@ class AdbDriver(CoordinateTreeDriver):
                 # `am start` brings another installed package forward and UI Automator reads whichever
                 # window is in front, so the `app:` step needs nothing from the app under test.
                 base.Capability.APP_CONTEXT,
+                # `am start` hands a `VIEW` intent to the addressed app mid-scenario (BE-0487).
+                base.Capability.OPEN_URL,
                 # The system photo picker by resource id. Its API 33 floor is checked when the step
                 # runs, as `multiTouch`'s root requirement is, since preflight reads this set with no
                 # device.

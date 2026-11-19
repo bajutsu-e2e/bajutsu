@@ -291,6 +291,8 @@ final class RunnerUITest: XCTestCase {
 
     override func record(_ issue: XCTIssue) {
         super.record(issue)
+        // A route that must report a soft failure as its outcome collects it here (BE-0487).
+        RecordedIssues.shared.record(issue.compactDescription)
         // A failure recorded before the server binds is a startup failure — chiefly the intermittent
         // iOS 26 launch/attach timeout ("Failed to launch …: Timed out attempting to launch app"),
         // which XCUITest gives its own ~39s ceiling. It leaves the runner unusable: the health server

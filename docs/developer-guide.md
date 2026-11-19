@@ -478,7 +478,7 @@ that the step loop polls directly. The rest dispatch through the action registry
 
 | Group | Fields | What they do |
 |---|---|---|
-| Gestures | `tap`, `tapPoint`, `doubleTap`, `longPress`, `swipe`, `drag`, `scroll`, `pinch`, `rotate`, `back`, `navigate` | Touch and navigation input. |
+| Gestures | `tap`, `tapPoint`, `doubleTap`, `longPress`, `swipe`, `drag`, `scroll`, `pinch`, `rotate`, `back`, `navigate`, `openUrl` | Touch and navigation input. |
 | Text and selection | `type`, `select`, `clear`, `delete`, `copy`, `paste`, `selectOption`, `setPickerValue` | Enter, select, copy, and paste text — `copy` requires a prior `select` (section 7.5). |
 | Conditions | `wait`, `assert` | Poll a condition or an assertion block; never a fixed sleep. |
 | App and device lifecycle | `relaunch`, `setLocation`, `push`, `clearKeychain`, `clearClipboard`, `setClipboard`, `background`, `foreground`, `overrideStatusBar`, `clearStatusBar`, `handleSystemAlert` | Drive the app's lifecycle and the simulated device around it. |

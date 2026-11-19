@@ -2,12 +2,12 @@
 
 # Claude を使う機能と使わない機能
 
-> 「Bajutsu のどの部分がモデルに到達し、どの部分が何も設定せずに動くのか」に対する正本です。これは
-> ツールの一級の性質であり、テストで保証されています
+> 「Bajutsu のどの部分がモデルに到達し、どの部分が何も設定せずに動くのか」に対する正本です。この
+> 分離は、ツールの一級の性質であり、テストで保証されています
 > （[BE-0101](../../roadmaps/BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config-ja.md)）。
 > 同じ線の反対側にある「あなたの AI、あなたのキー、あなたのデータ」という保証
 > （[self-hosting](self-hosting.md)、[BE-0047](../../roadmaps/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md)）
-> の、開発体験の面で対をなすものです。
+> に対して、開発体験の面で対をなします。
 
 関連: [cli](cli.md) · [concepts](concepts.md) · [recording](recording.md) · [self-hosting](self-hosting.md)
 
@@ -17,11 +17,17 @@
 
 Bajutsu はアーキテクチャに明確な線を引いています。決定論的な `run` と CI ゲートはモデルを一切
 呼ばず、Claude に到達するのは Tier 1 の作成と調査の経路だけです。軸は、特定の資格情報があるか
-どうかではなく、経路がそもそも Claude を呼ぶかどうかにあります。Claude へは四つの方法で到達できる
-ため（Anthropic API、Amazon Bedrock、ブラウザ経由の OAuth（SSO）でサインインする Anthropic CLI
-`ant`、または Claude の Pro / Max / Console のシートを使う Claude Code CLI `claude`）、「API キーが
-要る」という捉え方は、区切りの軸として誤りです。正しい軸は「Claude を使う」であり、プロバイダが
-増えても正しいままです。
+どうかではなく、経路がそもそも Claude を呼ぶかどうかにあります。
+
+Claude へは四つの方法で到達できます。
+
+- Anthropic API
+- Amazon Bedrock
+- ブラウザ経由の OAuth（SSO）でサインインする Anthropic CLI `ant`
+- Claude の Pro / Max / Console のシートを使う Claude Code CLI `claude`
+
+そのため、「API キーが要る」という捉え方は、区切りの軸として誤りです。正しい軸は「Claude を使う」
+であり、プロバイダが増えても正しいままです。
 
 Claude を使わない側のすべては、設定ゼロで動きます。資格情報も `.env` もログインも、いかなる AI の
 ランタイムも要りません。リポジトリをクローンした直後からそのまま動きます。
@@ -47,21 +53,27 @@ Claude を使わない側のすべては、設定ゼロで動きます。資格�
 | | `crawl` | Claude で自律的にアプリを探索し、画面マップを作る |
 | | `triage --ai` | ルールベースの代わりに Claude で失敗した実行を診断する |
 
-分類はコマンド名ではなく経路の粒度です。`triage` は Claude を使わず、`--ai` フラグ一つで Claude の
-経路に切り替わります。`run` は [BE-0402](../../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md) 以降、**フラグで開く例外を1つも持たない**まま
-Claude を使いません。アラートガード（`--system-alert-handling`。既定で有効）がかつての
-例外でした。ネイティブの SpringBoard 経路がプロンプトを名指しできないとき、ガードがスクリーンショットを
-モデルに読ませ、返ってきた座標をタップしていたからです。そのフォールバックは `run` から取り除かれたため、
-ガードは資格情報を必要とせず、参照もせず、名指しできないプロンプトには手を触れません。代わりに、ブロック
-されたステップ自身の失敗理由でそのプロンプトを名指しします。
+分類はコマンド名ではなく経路の粒度で行います。`triage` は Claude を使わず、`--ai` フラグ一つで
+Claude の経路に切り替わります。
 
-この分離は [Tier 1 と Tier 2 の境界](concepts.md)を目に見えるようにしたものです。ここに `run` や CI
+`run` は
+[BE-0402](../../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md)
+以降、**フラグで開く例外を1つも持たない**まま Claude を使いません。アラートガード
+（`--system-alert-handling`。既定で有効）がかつての例外でした。ネイティブの SpringBoard 経路が
+プロンプトを名指しできないとき、ガードがスクリーンショットをモデルに読ませ、返ってきた座標を
+タップしていたからです。
+
+そのフォールバックは `run` から取り除かれたため、ガードは資格情報を必要とせず、参照もせず、名指し
+できないプロンプトには手を触れません。代わりに、ブロックされたステップ自身の失敗理由でそのプロンプトを
+名指しします。
+
+この分離により、[Tier 1 と Tier 2 の境界](concepts.md)が目に見えるようになります。`run` や CI
 ゲートへモデルを持ち込む変更はありません。
 
 ## どこで見えるか
 
-分類は一度だけ（`bajutsu/common/capability/capabilities.py` に）定義し、あらゆる場所がそれを参照します。そのため表示面が
-食い違うことはありません。
+分類は `bajutsu/common/capability/capabilities.py` に一度だけ定義し、あらゆる表示面がその定義を
+参照します。そのため、表示面が食い違うことはありません。
 
 - **`bajutsu --help`** は、各トップレベルコマンドを *Claude-free (zero-config)* か *Uses Claude*
   のいずれかにまとめて表示します。
@@ -74,7 +86,8 @@ Claude を使いません。アラートガード（`--system-alert-handling`。
 
 ## Claude の経路をインストールする
 
-この分離は実行時だけでなく、パッケージングの境界でもあります（[BE-0111](../../roadmaps/BE-0111-ai-sdk-optional-dependency/BE-0111-ai-sdk-optional-dependency-ja.md)）。
+この分離は実行時だけでなく、パッケージングの境界でもあります
+（[BE-0111](../../roadmaps/BE-0111-ai-sdk-optional-dependency/BE-0111-ai-sdk-optional-dependency-ja.md)）。
 AI のソフトウェア開発キット（SDK）は任意インストールの extra なので、基本インストールは AI の依存を
 一切含みません。
 
@@ -83,8 +96,8 @@ AI のソフトウェア開発キット（SDK）は任意インストールの e
   モデルに到達することはありません。
 - `pip install bajutsu[ai]`：Claude の経路（`record`、`crawl`、`triage --ai`）を
   API キー・Bedrock・`ant` の各プロバイダで使うために、Anthropic の SDK を追加します。Amazon
-  Bedrock プロバイダを使う場合は代わりに `bajutsu[bedrock]` を指定します。同じ SDK の上に Bedrock 版を
-  重ねる形になります。`claude-code` プロバイダはどちらの extra も不要です。SDK ではなく外部の
+  Bedrock プロバイダを使う場合は、代わりに `bajutsu[bedrock]` を指定します。これは同じ SDK の上に
+  Bedrock 版を重ねます。`claude-code` プロバイダはどちらの extra も不要です。SDK ではなく外部の
   `claude` CLI を呼び出すためです。
 
 コントリビュータは `uv sync --group dev` ですべての extra をまとめて導入するため、ゲートは変わらず
@@ -106,7 +119,7 @@ Claude の経路をテストし続けます。AI-free の保証はあくまで**
   `CLAUDE_CODE_OAUTH_TOKEN` を設定します）。こちらもキーの代わりに Claude の Pro / Max / Console の
   シートを使います（BE-0176）。
 
-どの手段で認証するかは設定の問題です（[BE-0047](../../roadmaps/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md)、
+どの手段で認証するかは設定で決まります（[BE-0047](../../roadmaps/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md)、
 [BE-0053](../../roadmaps/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider-ja.md)、
 [BE-0163](../../roadmaps/BE-0163-ant-cli-oauth-provider/BE-0163-ant-cli-oauth-provider-ja.md)、
 [BE-0176](../../roadmaps/BE-0176-claude-code-ai-backend/BE-0176-claude-code-ai-backend-ja.md)
@@ -129,8 +142,9 @@ defaults:
 この一行をコミットすると、執筆と調査の 3 つのコマンド（`record`、`crawl`、`triage --ai`）は
 起動せずに設定名を告げて終了し、どのコード経路も AI バックエンドを構築できなくなります。
 `run` はどちらの向きにも無関係です。BE-0402 がモデルへ到達しうる唯一の経路を取り除いたため、
-無効にすべき AI 経路をそもそも持ちません。config の
-`ai.provider` は `$BAJUTSU_AI_PROVIDER` より優先されるため、環境を誰も管理していない継続的
-インテグレーション（CI）のランナーでもこの設定は効きます。優先順位の詳細と、
-`none` を提示しない `serve` の Settings のドロップダウンという唯一の例外は、
+無効にすべき AI 経路をそもそも持ちません。
+
+config の `ai.provider` は `$BAJUTSU_AI_PROVIDER` より優先されるため、環境を誰も管理していない
+継続的インテグレーション（CI）のランナーでもこの設定は効きます。優先順位の詳細と、`none` を提示しない
+`serve` の Settings のドロップダウンという唯一の例外は、
 [設定](configuration.md#ai-プロバイダaibe-0047)にあります。

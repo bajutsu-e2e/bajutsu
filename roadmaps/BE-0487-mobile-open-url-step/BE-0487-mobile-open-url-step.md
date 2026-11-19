@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0487](BE-0487-mobile-open-url-step.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0487") |
+| Implementing PR | [#2470](https://github.com/bajutsu-e2e/bajutsu/pull/2470) (units 1, 2, 4, 7; code for 3, 5, 6) |
 | Topic | Scenario authoring features |
 <!-- /BE-METADATA -->
 
@@ -290,13 +291,22 @@ job is the check for unit 5.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Scenario model
-- [ ] Driver surface and preflight
+- [x] Scenario model
+- [x] Driver surface and preflight
 - [ ] Android route
-- [ ] Launch deeplink fix
+- [x] Launch deeplink fix
 - [ ] iOS route
 - [ ] Showcase scenario
-- [ ] Docs
+- [x] Docs
+
+Log:
+
+- Proposed.
+- [#2470](https://github.com/bajutsu-e2e/bajutsu/pull/2470) — Landed units 1, 2, 4, and 7 in full, and the code and tests of units 3, 5, and 6. Units 3, 5, and 6 stay open until an on-device run meets their "done when". No Android emulator could be leased locally. The leased iOS Simulator sat in a device set that `bajutsu run` cannot reach. CI's on-device lanes run the new showcase scenarios: `open_url.yaml` in the gating XCUITest job of `ios-e2e.yml`, `open_url_android.yaml` in the Android Compose lane. Four details deviate from the design text.
+  - `real_run` still returns stdout alone. The adb command is one `shlex`-quoted `adb shell` line ending in `2>&1`. The device-side `Error` line therefore reaches stdout, while adb's own transport faults stay on the host's stderr and remain a `DeviceError`. A non-zero exit that still carries `am start` output is read like a zero one.
+  - The load-time checks run from the `Scenario` validator (`_open_urls.py`), not the model, for the reason BE-0464 gives. The `web:` ban there walks every nested step list and does not exempt a `${...}` value. `expand_components` runs it again after splicing components, so a `use:` under `web:` cannot slip an `openUrl` past it.
+  - A failure that `XCUIApplication.open(_:)` records as an XCTest issue returns normally under `continueAfterFailure`. A collector that `RunnerUITest.record(_:)` feeds (`RecordedIssues`) catches it, and `ActuationReply` gained a `reason` field to carry the message.
+  - Codegen emits `app.open(URL(string:)!)` under `#available(iOS 16.4, *)` for XCUITest and a labeled `// TODO` for UI Automator and Playwright, which the design did not cover.
 
 ## References
 

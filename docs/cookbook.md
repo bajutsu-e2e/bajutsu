@@ -2,14 +2,14 @@
 
 # Scenario cookbook
 
-> Task-oriented recipes: "I want to do X", answered by a complete, runnable scenario. [scenarios](scenarios.md)
-> is the grammar reference (every step kind, wait, and assertion); this page is worked examples.
-> Every recipe below is trimmed from a real file the repo's own CI runs — follow the link under
-> each one to see it in full context, including the parts trimmed here for focus.
+> Task-oriented recipes: each answers "I want to do X" with a complete, runnable scenario.
+> [scenarios](scenarios.md) is the grammar reference (every step kind, wait, and assertion); this
+> page holds worked examples. Every recipe below is trimmed from a real file that the repo's own CI
+> runs. The link under each recipe leads to the full file, including the parts trimmed here for focus.
 
 Related: [scenarios](scenarios.md) · [selectors](selectors.md) · [network](network.md) · [Getting started](getting-started/index.md)
 
-Run any of these yourself once you've built the showcase app or served the web demo (see
+To run any of these yourself, first build the showcase app or serve the web demo (see
 [Getting started](getting-started/index.md)):
 
 ```bash
@@ -21,9 +21,9 @@ uv run bajutsu run --scenario <path-to-file> --target showcase-swiftui --backend
 ## Navigate and assert a value changed
 
 The simplest useful shape: land on a screen, act on one element, assert the result. This scenario is the
-showcase's own guided tour — the same scenario [`demos/tour/demo.sh`](../demos/tour/demo.sh) runs,
-then deliberately breaks (an assertion, then a selector) to show a machine assertion catching the
-first and `triage` diagnosing the second.
+showcase's own guided tour. [`demos/tour/demo.sh`](../demos/tour/demo.sh) runs it, then deliberately
+breaks it twice: first an assertion, then a selector. A machine assertion catches the first break,
+and `triage` diagnoses the second.
 
 ```yaml
 - name: favorite a horse
@@ -40,14 +40,14 @@ first and `triage` diagnosing the second.
     - value: { sel: { id: horse.favorite.value }, equals: "on" }
 ```
 
-Every `wait` before a `tap` is a **condition wait**, not a fixed sleep — Bajutsu polls until the
-target id exists (or times out and fails loudly). Full file:
+Every `wait` before a `tap` is a **condition wait**, not a fixed sleep. Bajutsu polls until the
+target id exists, or times out and fails loudly. Full file:
 [`demos/showcase/scenarios/menu/tour.yaml`](../demos/showcase/scenarios/menu/tour.yaml).
 
 ## Search and filter a list
 
-Type into a field and assert the result count — plus the companion "no results" case, which is
-just as important to cover as the happy path.
+Type into a field and assert the result count. The companion "no results" case matters as much
+as the happy path, so the recipe covers both.
 
 ```yaml
 - name: filter narrows the catalog
@@ -80,18 +80,18 @@ just as important to cover as the happy path.
     - count: { sel: { idMatches: "search.row.*" }, equals: 0 }
 ```
 
-`idMatches` is a glob against the id — useful for asserting "how many rows" without naming each one.
+`idMatches` is a glob against the id, which lets a scenario assert "how many rows" without naming each one.
 Full file (including the cross-platform id-candidate-list form):
 [`demos/showcase/scenarios/search.yaml`](../demos/showcase/scenarios/search.yaml).
 
 ## Grant a system permission dialog
 
 A runtime permission prompt (notifications, location, …) is an **out-of-process system alert**, not
-part of the app's own UI — the iOS backend can't tap it directly. A `systemAlert` entry in the
-scenario's `interrupts` hands that one tap to the reactive alert guard, which watches for the prompt and taps "Allow" through a deterministic
-native accessibility query, with no screenshot and no model call, while every assertion around it
-stays machine-checked. Name the prompt you expect and the choice to make on it — the guard answers
-no prompt that no entry names
+part of the app's own UI, so the iOS backend cannot tap it directly. A `systemAlert` entry in the
+scenario's `interrupts` hands that one tap to the reactive alert guard. The guard watches for the
+prompt and taps "Allow" through a deterministic native accessibility query, with no screenshot and
+no model call, while every assertion around it stays machine-checked. Name the prompt you expect
+and the choice to make on it: the guard answers no prompt that no entry names
 ([BE-0406](../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts.md),
 [BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md)),
 and the run resolves the button from the prompt and the pinned locale, so the file stays correct on a
@@ -119,16 +119,16 @@ Japanese Simulator too. An entry carries no vision instruction, since `run` reac
     - value: { sel: { id: perm.notif.value }, equals: "authorized" }
 ```
 
-A `systemAlert` entry is an alert **handler**, never an assertion — it never touches the pass/fail
-verdict, only unblocks a step that would otherwise hang on an alert the iOS backend can't see into. On Android
-the same scenario runs with no prompt at all (the target config pre-grants the permission), so the
-guard stays idle — one scenario, two platforms, no branching. Full file with the
+A `systemAlert` entry is an alert **handler**, never an assertion. It never touches the pass/fail
+verdict; it merely unblocks a step that would otherwise hang on an alert the iOS backend cannot see
+into. On Android the same scenario runs with no prompt at all (the target config pre-grants the
+permission), so the guard stays idle: one scenario, two platforms, no branching. Full file with the
 platform-parity notes: [`demos/showcase/scenarios/permission.yaml`](../demos/showcase/scenarios/permission.yaml).
 
 ## Mock a network response
 
-`mocks` intercepts a request in-protocol and answers it deterministically — no real server, no
-flaky network, and `request` assertions confirm the mocked call happened.
+`mocks` intercepts a request in-protocol and answers it deterministically, with no real server and
+no flaky network. `request` assertions confirm that the mocked call happened.
 
 ```yaml
 - name: log submit answered by a mock, toast appears and clears
@@ -151,21 +151,21 @@ flaky network, and `request` assertions confirm the mocked call happened.
     - value: { sel: { id: log.status }, equals: "done" }
 ```
 
-`wait: { until: { gone: … } }` polls until an element *disappears* — useful for a transient toast
+`wait: { until: { gone: … } }` polls until an element *disappears*, which suits a transient toast
 like this one. Arm a wait for something transient on the step **right after** the action that
-triggers it, as above: a step boundary costs evidence capture (a screenshot and a tree read, which
-on a loaded CI device can run past a second), so a wait reached one step later can arrive to find
-the toast already gone. The `until: { request: … }` wait sits last here for that reason — the toast
-only appears once the response has landed, so by the time it runs, it is already satisfied. Full
+triggers it, as above. A step boundary costs evidence capture (a screenshot and a tree read, which
+on a loaded CI device can run past a second), so a wait reached one step later can find the toast
+already gone. For the same reason the `until: { request: … }` wait sits last here: the toast
+appears only once the response has landed, so the request wait is already satisfied when it runs. Full
 file (the request also carries an `Authorization` header; sensitive headers are masked in captured
 evidence by default, so this scenario needs no `redact` policy of its own for that):
 [`demos/showcase/scenarios/network_mock.yaml`](../demos/showcase/scenarios/network_mock.yaml).
 
 ## Run the same scenario over a data table
 
-`data` runs one scenario body once per row, each in its own clean environment, substituting
-`${row.*}` tokens — here in both the typed query and the asserted id, so each row proves the filter
-found exactly the horse it searched for.
+`data` runs one scenario body once per row, each in its own clean environment, and substitutes
+`${row.*}` tokens. Here the tokens appear in both the typed query and the asserted id, so each row
+proves that the filter found exactly the horse it searched for.
 
 ```yaml
 - name: search finds the seeded horse
@@ -192,8 +192,8 @@ Full file (with the cross-platform id-candidate-list form of each token):
 
 ## Reuse a step sequence as a component
 
-A **component** is a parameterized, reusable step sequence — a scenario DSL macro, expanded at load
-time (it never shows up as its own step in the run result). Define it once:
+A **component** is a parameterized, reusable step sequence: a scenario DSL macro that the loader
+expands at load time, so the component never appears as its own step in the run result. Define it once:
 
 ```yaml
 # _components/search_for.yaml
@@ -225,9 +225,9 @@ a caller: [`demos/showcase/scenarios/menu/features.yaml`](../demos/showcase/scen
 ## The same scenario shape on the web backend
 
 Every recipe above is written against the iOS showcase, but nothing in the step/expect grammar is
-iOS-specific — only the selector's underlying attribute changes (`accessibilityIdentifier` → the
-web's `data-testid`, through the same selector-resolution core). The web demo's own second scenario
-shows the same shape: navigate, act repeatedly, assert a final value, with evidence capture on top.
+iOS-specific. Only the selector's underlying attribute changes (`accessibilityIdentifier` becomes
+the web's `data-testid`, through the same selector-resolution core). The web demo's own second
+scenario shows the same shape: navigate, act repeatedly, assert a final value, with evidence capture on top.
 
 ```yaml
 scenarios:
@@ -255,12 +255,12 @@ web --config demos/web/demo.config.yaml` (see the [web track](getting-started/we
 
 ## Where these come from
 
-Every recipe on this page is a real scenario the repo's own CI runs — nothing here is
+Every recipe on this page is a real scenario that the repo's own CI runs; none is
 illustration-only. The showcase suite ([`demos/showcase/scenarios/`](../demos/showcase/scenarios/))
 has about 25 more covering gestures, multi-touch, device control, visual regression, relaunch/state
 persistence, and more; [showcase](showcase.md) catalogs the identifiers each screen exposes. The web
 demo ([`demos/web/scenarios/`](../demos/web/scenarios/)) and the web UI's own dogfooding suite
-([`demos/serve-ui/scenarios/`](../demos/serve-ui/scenarios/)) are worth a look too — the latter is
-itself a good example of testing a complex single-page app. For the full step/wait/assertion
+([`demos/serve-ui/scenarios/`](../demos/serve-ui/scenarios/)) are worth a look too. The dogfooding
+suite is itself a good example of testing a complex single-page app. For the full step/wait/assertion
 grammar behind every recipe here, see [scenarios](scenarios.md); for the formal EBNF, see
 [dsl-grammar](dsl-grammar.md).

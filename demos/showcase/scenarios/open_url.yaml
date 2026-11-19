@@ -1,0 +1,28 @@
+# openUrl (BE-0487): hand a deep link to the OS mid-scenario, after the scenario has already moved
+# the app off its launch screen, then drive and assert on the screen that link selects.
+#
+# The deep link reaches the app under test, the app the driver addresses outside any `app:` block.
+# A showcase deep link selects a tab and clears that tab's pushed screens (BE-0079), so the second
+# `openUrl` returning to Stable proves a URL reaches a running app that is already in front, not
+# only a cold one.
+#
+# Schemes are per product, so this file names the SwiftUI app's scheme literally and is tagged
+# `swiftui`: the UIKit and Flutter lanes drop that tag, as they do for picker_wheel.yaml. The
+# Android twin is open_url_android.yaml.
+- name: openUrl selects a tab mid-scenario and returns to a cleared Stable
+  tags: [swiftui]
+  preconditions:
+    subject:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
+  steps:
+    - wait: { for: { id: stable.row.3 }, timeout: 10 }
+    - tap: { id: stable.row.3 }
+    - wait: { for: { id: horse.title }, timeout: 5 }
+    - openUrl: "showcaseswiftui://log"
+    - wait: { for: { id: log.note }, timeout: 5 }
+    - openUrl: "showcaseswiftui://stable"
+    - wait: { for: { id: stable.row.3 }, timeout: 5 }
+  expect:
+    - exists: { id: stable.row.3 }
+    - exists: { id: horse.title, negate: true }

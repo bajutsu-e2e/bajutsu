@@ -137,7 +137,7 @@ preconditions:
 | `subject.reinstall` | `overwrite` \| `clean` \| `erase` | unset (the target's `subject.reinstall`, then `clean`) | How much state is reset before each run, weakest first: `overwrite` installs over the existing app (keeps its data); `clean` uninstalls and then installs (fresh app and data); `erase` wipes the whole device (`simctl erase`: apps, data, settings), then installs. The install needs the target config's `subject.path`. Android has no device-wide wipe, so `erase` there acts as `clean`. iOS and Android; a web target accepts `erase` alone, which its fresh browser context already satisfies ([BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md)) |
 | `subject.launch.env` | dict | `{}` | Launch environment, merged onto the target's `subject.launch.env` key by key. iOS injects it through `SIMCTL_CHILD_*`, Android as intent extras; on the web the Playwright code generator reads it |
 | `subject.launch.args` | list[str] | `[]` | Launch arguments, appended after the target's `subject.launch.args`. iOS only |
-| `subject.launch.deeplink` | str | unset (the target's `subject.launch.deeplink`) | A URL the app opens after launch (`simctl openurl` on iOS, an intent on Android) |
+| `subject.launch.deeplink` | str | unset (the target's `subject.launch.deeplink`) | A URL the app opens after launch (`simctl openurl` on iOS, an intent on Android). On Android, a deep link that no activity of the app resolves fails the launch with `am start`'s own reason (BE-0487) |
 | `device.ios.locale` | str | unset (the target's `runsOn.ios.locale`) | Force the locale and language at launch (`-AppleLocale` / `-AppleLanguages`), and pin the Simulator's system language. A value that differs from the target's forces a cold respawn |
 | `device.ios.seedPhotos` | list[str] | unset (the target's `runsOn.ios.seedPhotos`) | Images seeded into the Simulator's photo library on the erase path, in order; paths resolve against the scenario file, and a scenario's list replaces the target's |
 | `device.android.seedPhotos` | list[str] | unset (the target's `runsOn.android.seedPhotos`) | Images seeded into a directory Bajutsu owns in the device's shared storage, in order, on every reinstall level; paths resolve against the scenario file, and a scenario's list replaces the target's |
@@ -261,7 +261,17 @@ A `systemAlert` entry in an `interrupts` list names an operating-system prompt a
 The scenario's own top-level `interrupts` takes the entry. The target's `hooks.interrupts` takes it
 too ([configuration](configuration.md#system-alerts-and-tipkit-in-hooksinterrupts)).
 
-The iOS backend cannot see or tap **SpringBoard-level prompts** (a notification or App Tracking Transparency request, "Allow Paste"). These prompts cover the app and collapse its element tree, silently blocking a step. The **alert guard** clears them reactively. On the iOS XCUITest backend it takes a **deterministic native path** (BE-0315): reusing BE-0316's SpringBoard query, it reads which buttons the alert offers and taps the one a `systemAlert` entry names — no screenshot and no model round trip, so it clears the common prompts in well under a tenth of a second and runs **without `ANTHROPIC_API_KEY`**. Where nothing deterministic can act — a backend without the capability, an alert no entry of yours identifies, or a non-SpringBoard surface the query cannot enumerate that no entry identifies either (the in-tree path below clears the ones an entry does identify) — **the guard does nothing** ([BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md)). The blocked step or `wait` runs on to its own timeout, exactly as it would with no guard configured, and that timeout **names what the guard saw**: `wait timeout: for {'id': 'submit'} (10.0s) — an unhandled system alert is blocking the screen (buttons: Allow, Don't Allow)`, or the hedged `… — the screen appears blocked, possibly by a system alert or another overlay outside the app's view` where nothing enumerated it. Before BE-0402 that case fell back to an AI-vision guard reading a screenshot; `run` no longer does, so **no flag of `run`'s reaches a model at all**. (`record` and `crawl` keep that guard for authoring — [details](recording.md#dismissing-system-alerts-automatically).) For a `wait` step (`for`/`gone`/`settled`/`screenChanged`), the guard acts **mid-wait**: on XCUITest, each of the wait's own tree reads answers a prompt an entry names before it returns the tree, checking SpringBoard at most once per `pollInterval` (default one second) ([BE-0461](../roadmaps/BE-0461-request-boundary-alert-resolution/BE-0461-request-boundary-alert-resolution.md)). The wait recovers before its own timeout elapses rather than waiting for the step to fail first (BE-0269).
+The iOS backend cannot see or tap **SpringBoard-level prompts** (a notification or App Tracking Transparency request, "Allow Paste"). These prompts cover the app and collapse its element tree, silently blocking a step. The **alert guard** clears them reactively.
+
+On the iOS XCUITest backend, the guard takes a **deterministic native path** (BE-0315). It reuses BE-0316's SpringBoard query to read which buttons the alert offers, then taps the one a `systemAlert` entry names. The path takes no screenshot and no model round trip, so the guard clears the common prompts in well under a tenth of a second and runs **without `ANTHROPIC_API_KEY`**.
+
+Where nothing deterministic can act, **the guard does nothing** ([BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md)). Three cases fall there: a backend without the capability, an alert that no entry identifies, and a non-SpringBoard surface that the query cannot enumerate and no entry identifies either. (The in-tree path below clears the surfaces an entry does identify.)
+
+The blocked step or `wait` runs on to its own timeout, exactly as it would with no guard configured, and that timeout **names what the guard saw**: `wait timeout: for {'id': 'submit'} (10.0s) — an unhandled system alert is blocking the screen (buttons: Allow, Don't Allow)`. Where nothing enumerated the screen, the message is the hedged `… — the screen appears blocked, possibly by a system alert or another overlay outside the app's view`.
+
+Before BE-0402, all three cases fell back to an AI-vision guard reading a screenshot. `run` no longer does, so **no flag of `run`'s reaches a model at all**. (`record` and `crawl` keep that guard for authoring — [details](recording.md#dismissing-system-alerts-automatically).)
+
+For a `wait` step (`for`/`gone`/`settled`/`screenChanged`), the guard acts **mid-wait**. On XCUITest, each of the wait's own tree reads answers a prompt an entry names before it returns the tree, checking SpringBoard at most once per `pollInterval` (default one second) ([BE-0461](../roadmaps/BE-0461-request-boundary-alert-resolution/BE-0461-request-boundary-alert-resolution.md)). The wait recovers before its own timeout elapses rather than waiting for the step to fail first (BE-0269).
 
 On the XCUITest backend, a frozen screen stops a `for` or `screenChanged` wait before its deadline. A screen counts as frozen when both conditions below hold. A fresh SpringBoard check finds no alert. Yet for 10 seconds, no element below the application has carried a label or an identifier. We measured such a screen on an iOS 26.5 Simulator. A notification request can land while iOS presents its Save Password alert. That alert then halts mid-presentation. It never draws and is in no process's accessibility tree, yet it stays modal over the app. Nothing the guard can reach clears it, so the wait fails at that point with a reason like this:
 
@@ -271,7 +281,7 @@ wait stopped: for {'id': 'Close'} after 10.4s — no element below the applicati
 
 A scenario opts into this stop by declaring a `systemAlert` entry for an in-app prompt such as `savePassword`. Without one, a long empty tree may be the app's own unlabelled loading screen. The wait then keeps its own timeout. An app with a slower unlabelled loading screen raises the bound with `frozenScreenTimeout` on that entry. A value of `0` turns the stop off. A `gone` or `settled` wait never stops this way, because a frozen tree already satisfies it. A `handleSystemAlert` step does not either: it waits on SpringBoard, which can still raise its prompt.
 
-It is **on by default**. On XCUITest it rides the reads a step already makes, and a step that passes takes no retry, so a passing scenario pays one SpringBoard check per `pollInterval` at most. It needs **no `ANTHROPIC_API_KEY`** and consults none. No scenario or target key turns the guard off; `bajutsu run --no-system-alert-handling` turns it off for the whole run. A scenario declares what the guard answers with `systemAlert` entries in its own top-level `interrupts`, which layer over the target's `hooks.interrupts` ([below](#layering-a-key-reaches-a-run-from-three-places)).
+The guard is **on by default**. On XCUITest it rides the reads a step already makes, and a step that passes takes no retry, so a passing scenario pays one SpringBoard check per `pollInterval` at most. The guard needs **no `ANTHROPIC_API_KEY`** and consults none. No scenario or target key turns the guard off; `bajutsu run --no-system-alert-handling` turns it off for the whole run. A scenario declares what the guard answers with `systemAlert` entries in its own top-level `interrupts`, which layer over the target's `hooks.interrupts` ([below](#layering-a-key-reaches-a-run-from-three-places)).
 
 **The `systemAlert` entries are the guard's whole declaration**
 ([BE-0406](../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts.md),
@@ -474,9 +484,10 @@ interrupts:
   - { systemAlert: localNetwork, choice: grant }
 ```
 
-The app raises this prompt during launch, before the scenario's first step. The guard otherwise first looks inside a pending wait. A first `tap` could then land on the
-prompt. To prevent that, the guard reads the SpringBoard query once before the first step. It answers a declared
+The app raises this prompt during launch, before the scenario's first step. The guard otherwise first looks inside a pending wait, so a first `tap` could land on the
+prompt. To prevent that, the guard reads the SpringBoard query once before the first step and answers a declared
 prompt already on screen.
+
 That read is native alone. It never taps the app's own buttons. It leaves an undeclared alert
 alone. A first `handleSystemAlert` step keeps its own prompt. The step may choose the opposite of an
 entry's choice. A step names a prompt by `prompt`, so the title still tells a look-alike apart. A
@@ -562,7 +573,7 @@ re-render, `trace`, and `triage`), which translate its `scenario.yaml` to the ne
 ## handleSystemAlert (the deterministic system-alert step)
 
 The `systemAlert` guard above is **reactive**: it fires automatically wherever a prompt surfaces.
-`handleSystemAlert` is its proactive counterpart — an explicit,
+`handleSystemAlert` is its proactive counterpart: an explicit,
 **deterministic step** the author places at the exact point a prompt is expected, which taps the
 prompt's button by a native accessibility query, with **no screenshot and no model**
 ([BE-0316](../roadmaps/BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md)). Reach
@@ -585,8 +596,8 @@ To dismiss the prompt rather than accept it, target the dismissive button
   `id` / `idMatches` / `traits` / `value` / `within` at parse time.
 - **The label a run must match is the one the target's [`runsOn.ios.locale`](configuration.md#config-layering-defaults--targets)
   renders.** SpringBoard owns the prompt, so it used to render in whatever system language the
-  Simulator happened to carry — making `label: "Allow"` work by accident on an English machine and
-  fail on a Japanese one. A run now pins the Simulator's own system language to that `locale` before
+  Simulator happened to carry. A `label: "Allow"` therefore worked by accident on an English machine and
+  failed on a Japanese one. A run now pins the Simulator's own system language to that `locale` before
   the app launches, so `label` / `labelMatches` resolve identically on CI, on a teammate's Mac, and on
   a contributor's Simulator alike
   ([BE-0320](../roadmaps/BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md)).
@@ -652,7 +663,7 @@ The step rejects `choice: leave` at load, because a step that taps no button mea
 this step cannot, `savePassword`, which the step rejects at parse time —
 see [the surfaces table](#answering-more-than-one-prompt-differently) above. One step names the
 button by its meaning, so the same file grants the prompt under `en_US` and under `ja_JP` without an
-author transcribing either language's text — worth having even for English alone, whose deny buttons
+author transcribing either language's text. That pays off even for English alone, because English deny buttons
 spell their apostrophe typographically (`Don’t Allow`, `Don’t Allow Paste`), not as the ASCII
 character a hand-typed label carries.
 
@@ -661,15 +672,23 @@ button's position instead
 ([BE-0445](../roadmaps/BE-0445-system-alert-locale-agnostic-answer/BE-0445-system-alert-locale-agnostic-answer.md)):
 on all three prompts SpringBoard lists the deny button first and the grant button second, which was
 measured under English and Japanese on iOS 18.6 and 26.5, and under Arabic on 26.5, by tapping each
-button and reading the authorization status the app was left with. The order is the order
+button and reading the authorization status the app was left with.
+
+The order is the order
 SpringBoard reports, not the order on screen: Arabic draws the notification prompt's deny button on
-the right, and it is still the first button. `choice: grant` taps button 2 of 2 and `choice: deny` taps button 1 of 2. The rule
+the right, and it is still the first button. `choice: grant` taps button 2 of 2 and `choice: deny` taps button 1 of 2.
+
+The rule
 names nothing on an alert with any other number of buttons, and the step then waits out its timeout
 and names the buttons it saw, rather than tapping by position on an alert the rule was never
-measured against. The rule names a button, not a prompt: SpringBoard's own title and message are
+measured against.
+
+The rule names a button, not a prompt: SpringBoard's own title and message are
 localized too, so nothing language-independent tells one two-button prompt from another, and any
 two-button SpringBoard alert up while the step waits is answered by position. Place the step
-right after the action that raises its prompt. A run with no locale at all (`record`'s replay) answers the same way. The step's
+right after the action that raises its prompt.
+
+A run with no locale at all (`record`'s replay) answers the same way. The step's
 report row shows the button it tapped and the rule that chose it — `sel`, `label table: <locale>`,
 or `position: button 2 of 2`. Every other alert keeps naming its button through `sel`, unchanged.
 
@@ -751,13 +770,16 @@ two forms fails at load and names both forms.
 A screen entry names a `condition` — the same assertion DSL `if` uses —
 and the `steps` that clear the screen. The runner checks each entry **opportunistically**, wherever in
 the sequence the screen happens to appear, and runs the entry's `steps` when the condition matches.
+
 That check is free where it rides a tree already read for this step — a `wait`'s poll tick, or
 the fresh `before` a `screenChanged`-policy step reads when it has no carried-over tree to reuse.
 Every other non-`wait` step pays one extra `driver.query()`, including a `screenChanged`-policy step
 whose `before` is the previous step's carried-over tree (BE-0234), which the guard re-reads rather
-than trust as current. After the handler runs, the interrupted step resumes where it
-left off — a `wait` keeps polling toward its original timeout, an act step takes its action — so an
-author no longer has to predict the one spot to place an `if`.
+than trust as current.
+
+After the handler runs, the interrupted step resumes where it
+left off: a `wait` keeps polling toward its original timeout, and an act step takes its action. An
+author therefore no longer has to predict the one spot to place an `if`.
 
 ```yaml
 # config.yaml — an app-wide default: this app's onboarding screen, on every scenario
@@ -787,13 +809,17 @@ targets:
 An `interrupts` list set at the **config** level (`targets.<name>.hooks.interrupts`) is an app-wide
 default; a scenario's own `interrupts` is **appended** to it, config entries checked first — the
 same config-then-scenario layering every form of entry follows ([layering](#layering-a-key-reaches-a-run-from-three-places)). An entry's `steps` share the
-enclosing scenario's `vars.*` bindings, exactly as `if`'s branches do. A handler may itself `use` a
+enclosing scenario's `vars.*` bindings, exactly as `if`'s branches do.
+
+A handler may itself `use` a
 [component](#reuse-data-and-tags), which expands before the run. A config-level entry may too: a
 `use` under `targets.<name>.hooks.interrupts` resolves when the config loads, against the config
-file's directory ([reuse](#reuse-data-and-tags)). If a handler's
+file's directory ([reuse](#reuse-data-and-tags)).
+
+If a handler's
 own `steps` never clear its `condition` (a broken selector, a screen that re-renders identically),
-the entry fires only a small bounded number of times per step and then the step falls back to its
-ordinary outcome (pass, fail, or timeout) — a mis-set entry fails the step cleanly rather than
+the entry fires only a small bounded number of times per step, and then the step falls back to its
+ordinary outcome (pass, fail, or timeout). A mis-set entry thus fails the step cleanly rather than
 hanging the run.
 
 A scenario may declare two or more [targets](#targets--target-multi-target-scenarios-be-0428).
@@ -973,7 +999,9 @@ A selector identifies **which element** to act on or assert against. Provide one
 
 ### Cross-platform ids: a candidate list (BE-0221)
 
-A scenario is shared across platforms only to the extent its selectors are by `id`, and the driver decides which app-side attribute satisfies that `id`. But some platforms can't reproduce the SPEC id **verbatim**: Android's `android:id` (the Views toolkit) allows neither `.` nor `-`, so `stable.refresh` surfaces as `stable_refresh` and `search.results-empty` as `search_results_empty`. To keep **one** scenario running unchanged everywhere, give `id` / `idMatches` a **list of candidates** and the match becomes an OR over them:
+A scenario is shared across platforms only to the extent its selectors are by `id`, and the driver decides which app-side attribute satisfies that `id`. But some platforms can't reproduce the SPEC id **verbatim**: Android's `android:id` (the Views toolkit) allows neither `.` nor `-`, so `stable.refresh` surfaces as `stable_refresh` and `search.results-empty` as `search_results_empty`.
+
+To keep **one** scenario running unchanged everywhere, give `id` / `idMatches` a **list of candidates** and the match becomes an OR over them:
 
 ```yaml
 - wait: { for: { id: [stable.refresh, stable_refresh] }, timeout: 10 }
@@ -986,8 +1014,8 @@ List the underscore form only in a scenario a Views target actually runs: `E2E_V
 
 ## Step grammar (`steps`)
 
-Each step is **exactly one action** + optional modifiers (`capture:` / `name:`). Two or more
-actions in one step is a validation error (`scenario/models/steps.py` `_one_action`).
+Each step is **exactly one action** plus optional modifiers (`capture:` / `name:`). A step with two
+or more actions fails validation (`scenario/models/steps.py` `_one_action`).
 
 | Action | Form | Description |
 |---|---|---|
@@ -1009,6 +1037,7 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `scroll` | `scroll: { to: <Selector>, direction?: up\|down\|left\|right, within?: <Selector>, amount?: <frac>, maxScrolls?: <int> }` | scroll (non-inertially) until `to` is on-screen, or fail at a bound; `direction` is **scroll** direction (default `down`), the inverse of `swipe`'s |
 | `back` | `back: {}` | navigate back one level, each backend using its platform-correct primitive — the Android system back key, the iOS OS-provided back button, or web history ([BE-0210](../roadmaps/BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md)) |
 | `navigate` | `navigate: "<url>"` | load a URL in the current page, resolved against the target's `baseUrl` ([below](#navigate)); web only (iOS / Android fail in preflight) |
+| `openUrl` | `openUrl: "<url>"` | hand an absolute URL, such as a deep link, to the operating system for the app the scenario drives at that point, and wait until that app is in front ([below](#openurl)); iOS (16.4 or later) and Android (the web backend fails in preflight) |
 | `pinch` | `pinch: { sel: <Selector>, scale: <num> }` | two-finger magnify; `scale > 0` (`>1` zooms in, `<1` out) |
 | `rotate` | `rotate: { sel: <Selector>, radians: <num> }` | two-finger rotation; `>0` is clockwise |
 | `handleSystemAlert` | `handleSystemAlert: { sel: <Selector>, timeout: <sec> }` | tap a button on an iOS SpringBoard permission prompt, deterministically ([below](#handlesystemalert-the-deterministic-system-alert-step)); iOS (XCUITest) only. `sel` accepts only `label` / `labelMatches` / `index`, and resolves against the system language the run pins the Simulator to. In place of `sel`, `prompt: notifications\|tracking\|paste` + `choice: grant\|deny` names the button by meaning and lets the run resolve its label (BE-0320), or its position under a language the label table does not cover (BE-0445) |
@@ -1060,8 +1089,8 @@ Modifiers (a `use` step takes `target` alone — see the table row above):
 - type: { text: "hello", submit: true }                 # submit appends a newline / confirm (uses current focus)
 ```
 
-> Internally, when `into` is given, the target is `tap`ped before `type_text` (`orchestrator/actions/`
-> `_do_action`).
+> Internally, when `into` is given, `_do_action` (`orchestrator/actions/`) `tap`s the target before
+> it calls `type_text`.
 
 ### `selectOption`
 
@@ -1069,13 +1098,15 @@ Modifiers (a `use` step takes `target` alone — see the table row above):
 - selectOption: { sel: { id: nav.theme-picker }, option: midnight }   # set the <select> to the option whose value is "midnight"
 ```
 
-For a native HTML `<select>`, whose dropdown is not part of the page's element tree, a coordinate
-tap cannot switch the value deterministically. `selectOption` resolves the `<select>` through the
-same unique-match core every action uses, then sets the option by its **value** (not its visible
-label) and fires a `change` event, so the page reacts exactly as it would to a user's pick. The
-value matches what a `value` assertion reads back from the `<select>`, so a selection is directly
-assertable. `selectOption` is a web-only action — a `<select>` has no native counterpart on iOS or Android,
-so those backends fail the step with a clear "unsupported action" reason rather than doing nothing.
+The dropdown of a native HTML `<select>` is not part of the page's element tree, so a coordinate tap
+cannot switch the value deterministically. `selectOption` resolves the `<select>` through the same
+unique-match core every action uses. It then sets the option by its **value** (not its visible label)
+and fires a `change` event, so the page reacts exactly as it would to a user's pick. The value
+matches what a `value` assertion reads back from the `<select>`, so a selection is directly
+assertable.
+
+`selectOption` is a web-only action. A `<select>` has no native counterpart on iOS or Android, so
+those backends fail the step with a clear "unsupported action" reason rather than doing nothing.
 
 ### `navigate`
 
@@ -1085,22 +1116,84 @@ so those backends fail the step with a clear "unsupported action" reason rather 
 - navigate: "/items/${vars.itemId}"         # ${...} tokens are expanded like any step field
 ```
 
-`navigate` opens a URL in the middle of a scenario, for a page that no control links to (a link from
-an email, a shared-item URL), a deep page a UI walk would otherwise have to reach, or a redirect to
-exercise ([BE-0464](../roadmaps/BE-0464-web-navigate-step/BE-0464-web-navigate-step.md)). The value is
-a plain string, not a mapping. It resolves against the target's `baseUrl` the way a browser resolves a
-link (`urljoin`): `/settings` replaces any path in `baseUrl`, `settings` resolves against that path,
-and an absolute `http` / `https` URL is used as written, even on another origin. Any other scheme
-(`javascript:`, `file:`, `data:`) is rejected: a literal value when the scenario loads, and a value
-with a `${...}` token once the run has substituted it, which fails the step.
+`navigate` opens a URL in the middle of a scenario. Typical uses are a page that no control links to
+(a link from an email, a shared-item URL), a deep page a UI walk would otherwise have to reach, and
+a redirect to exercise ([BE-0464](../roadmaps/BE-0464-web-navigate-step/BE-0464-web-navigate-step.md)).
+The value is a plain string, not a mapping.
+
+The value resolves against the target's `baseUrl` the way a browser resolves a link (`urljoin`).
+`/settings` replaces any path in `baseUrl`, `settings` resolves against that path, and an absolute
+`http` / `https` URL is used as written, even on another origin. Any other scheme (`javascript:`,
+`file:`, `data:`) fails. The loader refuses a literal value when the scenario loads. A value with a
+`${...}` token fails the step once the run has substituted it.
 
 The step returns once the page's `load` event fires. It does not read the response status, so a 404
 page loads and the step passes; the next `assert` or `wait` decides the verdict. Cookies and storage
 persist, so `navigate` continues the session rather than resetting it. A failure the URL itself
 causes, such as an unresolvable host or a timeout, fails the step with the browser's message.
-`navigate` needs the `urlNavigation` capability, which only the web backend declares, so a scenario
-that uses it on iOS or Android fails in preflight, before any device is leased, including a
-`navigate` nested inside a `web:` block.
+
+`navigate` needs the `urlNavigation` capability, which only the web backend declares. A scenario that
+uses it on iOS or Android fails in preflight, before any device is leased, including a `navigate`
+nested inside a `web:` block.
+
+### `openUrl`
+
+```yaml
+- use: signIn
+- openUrl: "showcase://tabs/settings"          # the app under test receives the URL
+- assert: [{ exists: { id: settings.title } }]
+- openUrl: "showcase://items/${vars.itemId}"   # ${...} tokens are expanded like any step field
+- app:
+    bundleId: ${vars.browserId}                # the browser receives the URL
+    steps:
+      - openUrl: "https://example.com/promo"
+      - tap: { label: "Open in app" }
+```
+
+`openUrl` hands a URL to the operating system in the middle of a mobile scenario
+([BE-0487](../roadmaps/BE-0487-mobile-open-url-step/BE-0487-mobile-open-url-step.md)).
+The launch deep link (`subject.launch.deeplink`) opens before any step runs.
+So it cannot reach a screen that needs a signed-in user, and `openUrl` can.
+The value is a plain string, not a mapping, and must be an absolute URL such as `myapp://path`.
+A mobile backend has no `baseUrl`, so a relative value such as `/settings` fails the check.
+A `javascript:`, `data:`, or `file:` URL fails it too, since none of them names a place in an app.
+The scenario loader checks a literal value.
+The run checks a value with a `${...}` token after substitution, and fails the step on a bad one.
+
+The URL goes to the app the scenario drives at that point.
+Outside any `app:` block, the app under test receives it.
+Inside an `app:` block, the app the block names receives it.
+To open a URL in a browser, wrap the step in an `app:` block that names the browser.
+Scoping the URL to one app keeps the step deterministic.
+On Android, an unscoped intent can raise the app chooser when two installed apps claim one URL.
+
+The step passes when the operating system accepts the URL and the receiving app comes to the front.
+The wait for the front uses the bound of the `app:` block on that backend.
+That bound is about 10 seconds on iOS and 30 seconds on Android.
+The step waits for no screen content: a following `wait` or `assert` waits for the new screen.
+Each backend decides acceptance its own way:
+
+| Backend | How the URL is handed over | When the step fails |
+|---|---|---|
+| iOS (XCUITest) | the runner calls `XCUIApplication.open(_:)` on the receiving app | the call raises or records an XCTest issue, whose message becomes the reason; or the device runs an iOS before 16.4 |
+| Android (adb) | `am start -W --activity-single-top -a android.intent.action.VIEW -d <url> <package>` | `am start` prints an `Error` line, an exception, or a status other than `ok`; or it prints an `Activity not started` warning other than the one saying the running activity received the intent |
+
+On iOS, the receiving app is in front already mid-scenario, so the foreground wait proves nothing.
+The step then rests on what `open(_:)` raises or records.
+If `open(_:)` reports nothing for a URL that no app handles, the step passes.
+The assertion that follows then catches the wrong screen.
+
+On Android, `--activity-single-top` lets the step open the URL the launch deep link used.
+The activity on top of its task receives the URL through `onNewIntent`.
+The app must handle a deep link there, as most apps that accept deep links already do.
+
+A URL may raise a system confirmation dialog, such as a browser asking to open another app.
+The step leaves that dialog up, since it does not answer a prompt the real user would see.
+A `systemAlert` entry in `interrupts` or a following `handleSystemAlert` step clears it.
+`openUrl` needs the `openUrl` capability, which the iOS and Android backends declare.
+On the web backend, a scenario with `openUrl` fails in preflight; that backend uses `navigate`.
+The scenario loader refuses an `openUrl` inside a `web:` block.
+A step there runs against the page, which has no operating system to hand a URL to.
 
 ### `setPickerValue`
 
@@ -1111,47 +1204,53 @@ that uses it on iOS or Android fails in preflight, before any device is leased, 
 ```
 
 A wheel-style picker is an ordinary form control on both mobile platforms. No step but
-`setPickerValue` can set one. On iOS the picker is a `UIPickerView`, or a `UIDatePicker` switched to
-a wheel-only mode. On Android it is an `android.widget.NumberPicker`. A `DatePicker` or `TimePicker`
-in spinner mode counts too, since its fields are `NumberPicker` wheels. Its rows are not
-separately addressable elements, so `tap`, which addresses a resolved handle, cannot land on a
-specific one. The coordinate-driven steps fare no better: `swipe` / `drag` / `scroll` are bounded or
-directional drags that can spin a wheel roughly toward a value but cannot guarantee stopping on it,
-and `tapPoint` can only hit whatever row the wheel already shows. Asserting the result of any of
-those would depend on a drag distance matching the row height by chance — the approximate action
-Bajutsu rules out everywhere else. `setPickerValue` instead calls XCUITest's own
-`adjust(toPickerWheelValue:)` on the element the selector already resolved, so it is handle-based
-the way `tap` is rather than coordinate-based the way `swipe` is.
+`setPickerValue` can set one. On iOS the picker is a `UIPickerView`, or a `UIDatePicker` switched
+to a wheel-only mode. On Android it is an `android.widget.NumberPicker`. A `DatePicker` or
+`TimePicker` in spinner mode counts too, since its fields are `NumberPicker` wheels. The wheel's rows
+are not separately addressable elements, so `tap`, which addresses a resolved handle, cannot land on
+a specific row.
+
+The coordinate-driven steps fare no better. `swipe`, `drag`, and `scroll` are bounded or directional
+drags. They can spin a wheel roughly toward a value but cannot guarantee stopping on it. `tapPoint`
+can only hit whatever row the wheel already shows. Asserting the result of any of those steps would
+depend on a drag distance matching the row height by chance. Bajutsu rules out that approximate
+action everywhere else.
+
+On iOS, `setPickerValue` instead calls XCUITest's own `adjust(toPickerWheelValue:)` on the element
+the selector already resolved. The step is handle-based the way `tap` is, and not coordinate-based
+the way `swipe` is.
 
 On Android, the adb backend resolves the wheel the way a `tap` resolves its target. It then hands
 the wheel's identity to the resident UI Automator server, with no coordinate. The server steps the
 wheel one row at a time. Each step is the accessibility scroll action `NumberPicker` itself provides.
-After each step, the server reads the selected row back. When the shown row and the value both parse
-as integers, the walk starts toward the value. A year wheel thus takes the short way. Otherwise the
-walk goes forward first. On a wheel with ends, the walk turns back at the last row. A wrapping wheel
-stops once it comes back to the row it started on. A cap of 400 rows and a deadline bound the walk. The
-step needs the resident server: without it, the step fails instead of dragging the wheel by
-coordinates.
+After each step, the server reads the selected row back.
+
+When the shown row and the value both parse as integers, the walk starts toward the value, so a year
+wheel takes the short way. Otherwise the walk goes forward first. On a wheel with ends, the walk
+turns back at the last row. A wrapping wheel stops once it comes back to the row it started on. A
+cap of 400 rows and a deadline bound the walk. The step needs the resident server: without it, the
+step fails instead of dragging the wheel by coordinates.
 
 `sel` must resolve the wheel itself, which is seldom the element carrying the identifier. A
-`UIPickerView` publishes its identifier on the picker, and exposes the wheel as a separate child.
-A selector naming that identifier alone resolves the parent instead, and the step fails.
+`UIPickerView` publishes its identifier on the picker and exposes the wheel as a separate child. A
+selector naming that identifier alone resolves the parent instead, and the step fails, because
 `adjust(toPickerWheelValue:)` raises on any element that is not itself a wheel. Pairing the
-identifier with the `pickerWheel` trait, as above, reaches the child. On Android, a
-`NumberPicker`'s own node carries no `resource-id` at all. Put the identifier on a container around
-the wheel instead. The same `within` plus `pickerWheel` selector then reaches the wheel inside. The
-adb backend gives a `NumberPicker` node the `pickerWheel` trait, next to the `numberPicker` trait its
-class name yields.
+identifier with the `pickerWheel` trait, as above, reaches the child.
+
+On Android, a `NumberPicker`'s own node carries no `resource-id` at all. Put the identifier on a
+container around the wheel instead. The same `within` plus `pickerWheel` selector then reaches the
+wheel inside. The adb backend gives a `NumberPicker` node the `pickerWheel` trait, next to the
+`numberPicker` trait its class name yields.
 
 A value the wheel does not carry **fails the step**, naming the value, rather than leaving the wheel
-wherever it stopped — so the following assertion tests the app, not the gesture.
+wherever it stopped. The following assertion then tests the app, not the gesture.
 
 A multi-component picker (a year wheel beside a month wheel) exposes each component as its own
 `pickerWheel` element, and `sel` always addresses exactly one of them. Use the `within` / `traits` /
 `index` fields every selector already carries, one step per component. Both the component order and
 the row labels follow the locale the run pins. The example below assumes `ja_JP`, whose wheels read
-year | month | day. Under the config default `en_US` the wheels read month | day | year, with rows
-`May` and `2016`. `demos/showcase/scenarios/picker_wheel.yaml` pins no locale, and so reaches that
+year | month | day. Under the config default `en_US`, the wheels read month | day | year, with rows
+`May` and `2016`. `demos/showcase/scenarios/picker_wheel.yaml` pins no locale and so reaches that
 second layout:
 
 ```yaml
@@ -1163,25 +1262,26 @@ second layout:
     value: "5月"
 ```
 
-`within` scopes by frame containment, so its container must be large enough to hold the wheels.
-A wheel-mode `UIDatePicker` fails that test on its own. iOS lays the components out at their
-intrinsic height, then clips them to the picker. Every component reports a frame taller than the
-picker publishing it. A `within` naming the date picker then matches nothing at all. Put the
-identifier on a surrounding container whose frame covers the components instead. The showcase screen
-takes that route: `demos/showcase/ios/swiftui/Sources/PickerView.swift`. The screen groups the
-caption, the wheel, and the mirror text under one identifier.
+`within` scopes by frame containment, so its container must be large enough to hold the wheels. A
+wheel-mode `UIDatePicker` fails that test on its own: iOS lays the components out at their intrinsic
+height and then clips them to the picker, so every component reports a frame taller than the picker
+publishing it. A `within` naming the date picker then matches nothing at all. Put the identifier on
+a surrounding container whose frame covers the components instead. The showcase screen takes that
+route (`demos/showcase/ios/swiftui/Sources/PickerView.swift`) and groups the caption, the wheel, and
+the mirror text under one identifier.
 
-This also works around the `datePicker` classification gap ([selectors](selectors.md#normalized-traits-trait)):
-a `UIDatePicker`'s own container element falls to `other`, but the step addresses the wheel children
+This route also sidesteps the `datePicker` classification gap ([selectors](selectors.md#normalized-traits-trait)).
+A `UIDatePicker`'s own container element falls to `other`, but the step addresses the wheel children
 underneath it, which are classified `pickerWheel`, so the gap never bites here.
 
-`setPickerValue` runs on iOS (XCUITest) and Android (adb). On Android it drives any
-`NumberPicker`, one that a Jetpack Compose screen embeds through `AndroidView` included. A wheel that
-Compose draws itself stays out of scope. Compose ships no standard wheel, so each app's own wheel
-exposes a different accessibility shape. A web page has no picker wheel: a `<select>` expresses the
-same intent, and [`selectOption`](#selectoption) sets that. The web backend thus lacks the
-`pickerWheel` capability. Preflight stops the scenario there before any work starts, naming the
-step's location.
+`setPickerValue` runs on iOS (XCUITest) and Android (adb). On Android it drives any `NumberPicker`,
+including one that a Jetpack Compose screen embeds through `AndroidView`. A wheel that Compose draws
+itself stays out of scope: Compose ships no standard wheel, so each app's own wheel exposes a
+different accessibility shape.
+
+A web page has no picker wheel. A `<select>` expresses the same intent, and
+[`selectOption`](#selectoption) sets it. The web backend thus lacks the `pickerWheel` capability, and
+preflight stops the scenario there before any work starts, naming the step's location.
 
 ### `web` (entering a WebView's DOM)
 
@@ -1195,12 +1295,14 @@ step's location.
 
 A WebView is a browser view that a native app embeds. `web` runs its nested `steps` against the
 Document Object Model (DOM) of such a view. The steps address the page's normalized DOM, not the
-app's native accessibility tree: `data-testid` becomes `Element.identifier`. The block serves a hybrid
-screen, where part of the UI is web content inside the app. iOS support came with
+app's native accessibility tree: `data-testid` becomes `Element.identifier`. The block serves a
+hybrid screen, where part of the UI is web content inside the app. iOS support came with
 [BE-0037](../roadmaps/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support.md), and Android
-support with [BE-0482](../roadmaps/BE-0482-android-webview-cdp/BE-0482-android-webview-cdp.md). The same
-block runs unchanged on both platforms. Control returns to the native driver once the block's steps
-finish. The nested steps share the enclosing scenario's `vars.*` bindings, the same as `if`'s and
+support with [BE-0482](../roadmaps/BE-0482-android-webview-cdp/BE-0482-android-webview-cdp.md). The
+same block runs unchanged on both platforms. Control returns to the native driver once the block's
+steps finish.
+
+The nested steps share the enclosing scenario's `vars.*` bindings, the same as `if`'s and
 `forEach`'s do. The `capture` / `extract` modifiers are not allowed on the `web` step itself.
 
 **How the block names its WebView.** `within` is an ordinary selector, and it must carry an `id`.
@@ -1224,10 +1326,9 @@ with a reason that names what is missing.
   bridge when the run passes the port. The `WKWebView` carries an accessibility identifier.
 - **Android:** a debuggable build calls BajutsuAndroid's `Bajutsu.enableWebViewDebugging(context)`
   in `Application.onCreate`, or right before it creates its first WebView. Every debug build type
-  sets `android:debuggable`. The
-  helper does nothing in a non-debuggable build, so a release build never opens the socket. The
-  machine running bajutsu needs the `android` extra (`websockets`). `scripts/install.sh` installs it
-  when the configured backends include Android.
+  sets `android:debuggable`. The helper does nothing in a non-debuggable build, so a release build
+  never opens the socket. The machine running bajutsu needs the `android` extra (`websockets`).
+  `scripts/install.sh` installs it when the configured backends include Android.
 
 **What a block supports.** Inside the block, `tap` / `tapPoint` / `doubleTap` / `type` / `wait` /
 `assert` run. `longPress` / `swipe` / `drag` / `clear` / `delete` / `select` / `copy` /
@@ -1255,26 +1356,30 @@ reason. The block also leaves these cases out:
           - exists: { id: TabBarItemTitle }
 ```
 
-`app` drives another app's UI. It activates the named app by bundle id — any installed app,
-including one the test target never launched (a running app is brought forward) — and runs the
-nested `steps` against that app's own accessibility tree, not the test target's. The feasibility findings behind this behavior are recorded in
-`docs/specs/ios-cross-app-ui-control-feasibility.md`.
-Control returns to whatever was active before the block once its steps finish, the same
-enter/leave contract `web` uses — nesting an `app` block inside another returns to the immediate
-parent, not unconditionally to the test target. `bundleId` is a plain string, not a value drawn
-from a fixed set: any installed app can be named, including one the test target has no way to open
-itself. iOS (XCUITest) and Android (adb) support it; a scenario using it against the web backend
-fails preflight before any device work. `bundleId` must name an app already installed on the device —
-one that is slow to foreground (a cold launch, a permission prompt) fails the step with
-`ElementNotFound`. On iOS, one that is not installed at all is not guaranteed to fail this cleanly.
+`app` drives another app's UI. It activates the named app by bundle id (any installed app, including
+one the test target never launched; a running app is brought forward) and runs the nested `steps`
+against that app's own accessibility tree, not the test target's. The feasibility findings behind
+this behavior are recorded in `docs/specs/ios-cross-app-ui-control-feasibility.md`.
+
+Control returns to whatever was active before the block once its steps finish, the same enter/leave
+contract `web` uses. Nesting an `app` block inside another returns to the immediate parent, not
+unconditionally to the test target. `bundleId` is a plain string, not a value drawn from a fixed
+set: any installed app can be named, including one the test target has no way to open itself. iOS
+(XCUITest) and Android (adb) support the step; a scenario using it against the web backend fails
+preflight before any device work.
+
+`bundleId` must name an app already installed on the device. An app that is slow to foreground (a
+cold launch, a permission prompt) fails the step with `ElementNotFound`. On iOS, an app that is not
+installed at all is not guaranteed to fail this cleanly.
 
 On Android, `bundleId` is the package name (`com.android.settings`, say). The adb driver starts the
-package's launcher activity with `am start` and waits until that package holds the resumed activity,
-so a package with no launcher activity — including one that is not installed — fails the step with
+package's launcher activity with `am start` and waits until that package holds the resumed activity.
+A package with no launcher activity, including one that is not installed, fails the step with
 `ElementNotFound` before any launch. Leaving brings the app beneath back the same way, and the app
 under test keeps its process meanwhile, so the handoff never reads as a crash. As on iOS, an
-entered app is not reset: it keeps whatever state an earlier block or run left it in. One Android
-limit applies on the way back: when an app's launcher activity is `singleTask` or `singleInstance`
+entered app is not reset: it keeps whatever state an earlier block or run left it in.
+
+One Android limit applies on the way back: when an app's launcher activity is `singleTask` or `singleInstance`
 (or sets `clearTaskOnLaunch`), starting it again destroys every activity its task pushed above it, so
 that app comes back at its root screen rather than the screen it left.
 
@@ -1300,16 +1405,17 @@ every gap below.
 The constraints come from driving an operating-system screen the scenario does not own:
 
 - **Measured on the iOS Simulator, iOS 26.5.** We checked no real device and no other runtime.
-- **Pin the layout with `preconditions.subject.reinstall: erase`.** The long press lands on the icon grid's centre, which must
-  be empty wallpaper. After an erase and reinstall, SpringBoard opens on the page that holds the
-  test apps, and that page leaves its lower half free. Erasing also removes the widgets an earlier
-  run added, so the assertion on the new widget stays unambiguous.
-- **Pin the language with `preconditions.device.ios.locale`.** Every label is SpringBoard's own text. Even an
-  icon's `identifier` is its localized name: `Calendar` in English, `カレンダー` in Japanese.
+- **Pin the layout with `preconditions.subject.reinstall: erase`.** The long press lands on the icon
+  grid's centre, which must be empty wallpaper. After an erase and reinstall, SpringBoard opens on
+  the page that holds the test apps, and that page leaves its lower half free. Erasing also removes
+  the widgets an earlier run added, so the assertion on the new widget stays unambiguous.
+- **Pin the language with `preconditions.device.ios.locale`.** Every label is SpringBoard's own
+  text. Even an icon's `identifier` is its localized name: `Calendar` in English, `カレンダー` in
+  Japanese.
 - **A search result row is absent from the tree.** Once the gallery's search field holds text,
-  SpringBoard's snapshot reports the result list as an empty container. The row still shows on
-  screen. Tap the first row with `tapPoint` at its fixed place under the search field; on an iPhone
-  17 Pro that place is `{ x: 0.5, y: 0.29 }`.
+  SpringBoard's snapshot reports the result list as an empty container, although the row still
+  shows on screen. Tap the first row with `tapPoint` at its fixed place under the search field. On
+  an iPhone 17 Pro, that place is `{ x: 0.5, y: 0.29 }`.
 - **Pick a size with `drag`, not `swipe`.** The size carousel pages on a flick alone. The
   non-inertial scroll behind `swipe` settles back onto the page it started from.
 - **A host app's first launch can raise prompts.** Calendar asks for location and notifications
@@ -1323,14 +1429,15 @@ The constraints come from driving an operating-system screen the scenario does n
 - swipe: { from: [100, 400], to: [100, 200] }              # raw coordinates (last resort)
 ```
 
-`{on,direction}` and `{from,to}` must be **exactly one or the other** (mixing or omitting a side
-is a validation error).
+A `swipe` takes **exactly one or the other** of `{on,direction}` and `{from,to}`. Mixing the two forms
+or omitting a side is a validation error.
 
 The **directional** form means "scroll", and each backend realizes it with the primitive that
-actually scrolls: a real OS drag on iOS / Android, and — since a mouse drag does not scroll a web
-page — a wheel event (desktop) or a touch drag (a mobile [`runsOn.browser.emulate`](drivers.md#playwright-web))
-on web (BE-0227). The **coordinate** form is a literal pointer drag for its own sake (a canvas / map
-pan / drag handle), the same raw-drag last resort on every backend.
+actually scrolls. iOS and Android use a real OS drag. On web, a mouse drag does not scroll a page, so
+the backend uses a wheel event (desktop) or a touch drag (a mobile
+[`runsOn.browser.emulate`](drivers.md#playwright-web)) instead (BE-0227). The **coordinate** form is
+a literal pointer drag for its own sake (a canvas / map pan / drag handle), the same raw-drag last
+resort on every backend.
 
 ### `drag`
 
@@ -1339,13 +1446,15 @@ pan / drag handle), the same raw-drag last resort on every backend.
 - drag: { on: { id: volume.slider }, direction: up, amount: 0.3 }    # ... a fraction of the screen
 ```
 
-`drag` is an element-anchored **pointer drag** — it grabs the element and moves it in a direction,
-for a resize divider, a slider thumb, a reorder handle: any control you drag rather than scroll. It
-shares `swipe`'s directional geometry (`amount` is a fraction of the screen, `0 < amount ≤ 1`;
-omitted, a small default), but where a directional `swipe` **scrolls**, `drag` performs a genuine
-pointer drag. The distinction only bites on web: there a directional `swipe` is a wheel scroll that
-would leave a grabbed handle unmoved, so use `drag` for it; on iOS / Android a real OS drag both
-scrolls and moves handles, so the two coincide.
+`drag` is an element-anchored **pointer drag**. It grabs the element and moves it in a direction,
+which suits a resize divider, a slider thumb, a reorder handle, or any other control you drag rather
+than scroll. It shares `swipe`'s directional geometry (`amount` is a fraction of the screen,
+`0 < amount ≤ 1`; omitted, a small default). Where a directional `swipe` **scrolls**, `drag`
+performs a genuine pointer drag.
+
+The distinction only bites on web, where a directional `swipe` is a wheel scroll that would leave a
+grabbed handle unmoved. Use `drag` there. On iOS and Android, a real OS drag both scrolls and moves
+handles, so the two coincide.
 
 ### `scroll`
 
@@ -1361,38 +1470,43 @@ scrolls and moves handles, so the two coincide.
 the moment `to` resolves with its frame's **center** on-screen — the point a following `tap` aims at,
 so a target taller than the viewport still succeeds once its center is reached.
 
-Ending the scrolled region — the whole screen, or the container `within` names — takes evidence.
-`scroll` reports the end of the content, meaning the target is not in the region, only once two
-consecutive reads *show* the content standing still: an element the loop watched move is still there,
-has stopped, and belongs to the scrolling region rather than to chrome above it; or the region's bounds
-cut nothing off, so no frame can be hiding motion; or, where the tree can show neither, the screen as
-drawn did not change across the step either. A tree of plain rows meets the second on the first step,
-so a typo in `to` fails at once there; a tree that reports a window or root view spanning the screen
-never does, so the screen as drawn is what fails fast on those backends, one step later. Where no
-evidence is available at all, `scroll` keeps stepping and reports at `maxScrolls` (default 15) that it
-could not observe whether the region moved. That failure makes a different claim from the
-list having ended, and the difference is real: Android reports an element's bounds clipped to the part
-of it that is visible, so a row taller than the screen reports the same frame while content scrolls
-behind it.
+`scroll` reports the end of the content only on evidence. The end of the content means the target is
+not in the scrolled region, which is the whole screen or the container `within` names. `scroll`
+reports it only once two consecutive reads *show* the content standing still, by any of these signs:
 
-A step after which nothing that had been in view is on screen at all is the opposite error, because it
-may have carried the target past the viewport. Partly on screen counts, so an ordinary step on a screen
-showing one card at a time is not mistaken for it. `scroll` halves the step, scrolls back once to read
-the span that passed, and — when even the smallest step it will take still leaves nothing behind —
-fails naming the overshoot rather than reporting the target absent.
+- An element the loop watched move is still there, has stopped, and belongs to the scrolling region
+  rather than to chrome above it.
+- The region's bounds cut nothing off, so no frame can be hiding motion.
+- Where the tree can show neither, the screen as drawn did not change across the step either.
 
-`amount` sets how far one step travels, as a fraction of the viewport, in the range greater than 0
-and at most 1 — the same unit and the same range `swipe` and `drag` take for their own `amount`.
-Omitted, a step covers 0.6 of the viewport. Lower `amount` for a screen the default step crosses too
-coarsely to land on the target, and raise it for one that reveals so little per step that
-`maxScrolls` runs out before the target appears. `amount` decides where the loop starts and nothing else: the
-halving above still shrinks the step from wherever `amount` put it, and still stops at the same
-floor, which does not move with `amount`. An `amount` at or below that floor leaves the halving
-nothing to shrink, so the first step that overshoots fails the call outright, naming the step it
-took.
+A tree of plain rows meets the second sign on the first step, so a typo in `to` fails at once there.
+A tree that reports a window or root view spanning the screen never meets it, so on those backends
+the screen as drawn is what fails fast, one step later. Where no evidence is available at all,
+`scroll` keeps stepping and reports at `maxScrolls` (default 15) that it could not observe whether
+the region moved. That failure makes a different claim from the list having ended, and the
+difference is real: Android reports an element's bounds clipped to the part of it that is visible,
+so a row taller than the screen reports the same frame while content scrolls behind it.
+
+A step after which nothing that had been in view is on screen at all is the opposite error, because
+the step may have carried the target past the viewport. Partly on screen counts as in view, so an
+ordinary step on a screen showing one card at a time is not mistaken for an overshoot. On an
+overshoot, `scroll` halves the step and scrolls back once to read the span that passed. When even the
+smallest step it will take still leaves nothing behind, `scroll` fails naming the overshoot rather
+than reporting the target absent.
+
+`amount` sets how far one step travels, as a fraction of the viewport, greater than 0 and at most 1.
+This is the same unit and range `swipe` and `drag` take for their own `amount`. Omitted, a step
+covers 0.6 of the viewport. Lower `amount` for a screen the default step crosses too coarsely to land
+on the target. Raise it for a screen that reveals so little per step that `maxScrolls` runs out
+before the target appears.
+
+`amount` decides where the loop starts and nothing else. The halving above still shrinks the step
+from wherever `amount` put it, and still stops at the same floor, which does not move with `amount`.
+An `amount` at or below that floor leaves the halving nothing to shrink, so the first step that
+overshoots fails the call outright, naming the step it took.
 
 A re-read, not a single query, settles whether a step moved the region. The re-read matters on
-Android. There the accessibility tree arrives after the gesture has already moved the list. A read
+Android, where the accessibility tree arrives after the gesture has already moved the list. A read
 taken meanwhile describes the pre-scroll screen, which looks like the end of the content. Confirming
 costs Android's declared read budget, on the step that ends a failing `scroll`. Web and iOS pay
 nothing, because their reads do not lag. `within` scopes the gesture (and every decision above) to one
@@ -1400,11 +1514,13 @@ scrollable container; omitted, the whole screen scrolls.
 
 Use `scroll` to **reveal a target**, `swipe` for a **fixed gesture**, and `drag` to **move a grabbed
 handle**. Each step is non-inertial: it advances a bounded, screen-relative distance and leaves no
-momentum, so the same scenario reaches a target identically on a fast device and a slow CI emulator —
-the determinism a hand-tuned `swipe` chain cannot guarantee. The distance a step travels is the
-distance it asked for, on every backend: the driver conformance suite measures one step's realized
-travel and fails a backend whose content carries on past the gesture's own endpoints. A step that
-overshoots anyway is caught rather than assumed away, by the look-back above.
+momentum. The same scenario reaches a target identically on a fast device and a slow CI emulator,
+which is the determinism a hand-tuned `swipe` chain cannot guarantee.
+
+The distance a step travels is the distance it asked for, on every backend. The driver conformance
+suite measures one step's realized travel and fails a backend whose content carries on past the
+gesture's own endpoints. The look-back above catches a step that overshoots anyway, rather than
+assuming it away.
 
 > **`scroll`'s `direction` is the direction the content moves, not the finger** — the inverse of
 > `swipe`. `scroll: { direction: down }` reveals below-the-fold content (the driver swipes the finger
@@ -1419,7 +1535,15 @@ overshoots anyway is caught rather than assumed away, by the look-back above.
 - rotate: { sel: { id: gest.rotate }, radians: 1.57 }  # >0 clockwise (radians)
 ```
 
-`scale` must be **> 0** (a validation error otherwise). `pinch` / `rotate` require multi-touch, which the iOS (XCUITest) backend and the generated XCUITest (`pinch(withScale:)` / `rotate(_:)`) both provide; a backend without it fails with a "needs multiTouch" reason. `doubleTap` runs everywhere (two taps). (real files: [`demos/showcase/scenarios/gestures.yaml`](../demos/showcase/scenarios/gestures.yaml) for `doubleTap` / `longPress`, [`demos/showcase/scenarios/gestures_multitouch.yaml`](../demos/showcase/scenarios/gestures_multitouch.yaml) for `pinch` / `rotate`)
+`scale` must be **> 0**; otherwise validation fails. `pinch` / `rotate` require multi-touch, which both
+the iOS (XCUITest) backend and the generated XCUITest (`pinch(withScale:)` / `rotate(_:)`) provide.
+A backend without multi-touch fails with a "needs multiTouch" reason. `doubleTap` runs everywhere
+(two taps).
+
+Real files: [`demos/showcase/scenarios/gestures.yaml`](../demos/showcase/scenarios/gestures.yaml) for
+`doubleTap` / `longPress`, and
+[`demos/showcase/scenarios/gestures_multitouch.yaml`](../demos/showcase/scenarios/gestures_multitouch.yaml)
+for `pinch` / `rotate`.
 
 ### `wait` (condition wait)
 
@@ -1433,16 +1557,18 @@ A `wait` never sleeps for a fixed time (the one fixed pause is the separate [`sl
 - wait: { until: { request: { method: GET, path: /items, status: 200 } }, timeout: 8 }  # until a matching request is observed
 ```
 
-`for` and `until` are exclusive (only one). `until` is `screenChanged` / `settled` /
-`{ gone: <Selector> }` / `{ request: <RequestMatch> }`. The `request` form polls the network
-collector ([evidence](evidence.md), the `--network` run flag) until at least one observed exchange
-matches (same matcher as the [`request` assertion](#request-network-assertion): `method` / `url` /
-`urlMatches` / `path` / `pathMatches` / `status` / `bodyMatches`, all AND-ed; `count` raises the
-threshold). The endpoint is pinned by `url`
-(exact full URL) or `urlMatches` (regex/substring), or just `path`. Timeout handling differs by kind
-([run-loop](run-loop.md#waits-condition-waits-only)): `for` / `gone` / `screenChanged` / `request`
-time out = step failure; `settled` is a stabilization hint, so a timeout just proceeds with the
-current screen (it does not fail).
+`for` and `until` are mutually exclusive. `until` is `screenChanged` / `settled` /
+`{ gone: <Selector> }` / `{ request: <RequestMatch> }`.
+
+The `request` form polls the network collector ([evidence](evidence.md), the `--network` run flag)
+until at least one observed exchange matches. The matcher is the same as the
+[`request` assertion](#request-network-assertion)'s: `method` / `url` / `urlMatches` / `path` /
+`pathMatches` / `status` / `bodyMatches`, all AND-ed, with `count` raising the threshold. The
+endpoint is pinned by `url` (exact full URL), by `urlMatches` (regex/substring), or by `path` alone.
+
+Timeout handling differs by kind ([run-loop](run-loop.md#waits-condition-waits-only)). For
+`for` / `gone` / `screenChanged` / `request`, a timeout is a step failure. `settled` is a
+stabilization hint, so a timeout merely proceeds with the current screen and does not fail.
 
 ### `sleep` (fixed pause)
 
@@ -1467,12 +1593,12 @@ shows, use `sleep`. Typical cases are a server-side retry throttle, or an animat
 
 ### `assert` (mid-step verification)
 
-Verification mid-step. The DSL is the same as `expect` (next section), `visual` included. A
-step's own `assert` can carry a `visual` entry. That entry takes its own fresh, single-shot
-screenshot right there. The capture is scoped to that step's own evidence directory, so it never
-collides with the scenario's own `expect`-phase capture, nor with another step's. `responseSchema`
-is the one kind a step's `assert` cannot evaluate — it always fails there with "no schema context",
-so keep it in `expect`.
+`assert` verifies mid-step. The DSL is the same as `expect` (next section), `visual` included. A
+step's own `assert` can carry a `visual` entry, which takes its own fresh, single-shot screenshot
+right there. The capture is scoped to that step's own evidence directory, so it never collides with
+the scenario's `expect`-phase capture or with another step's. `responseSchema` is the one kind a
+step's `assert` cannot evaluate: it always fails there with "no schema context", so keep it in
+`expect`.
 
 ```yaml
 - assert:
@@ -1488,9 +1614,9 @@ so keep it in `expect`.
 
 A step-level check's first baseline is not yet reachable from `bajutsu approve` or the serve UI's
 Approve button. Both read merely the scenario's `expect` results today. Until that catches up,
-promote one by hand instead. The failing step's own `assertion_results` records a `visual.actual`
-path in the run's `manifest.json` (the report's raw JSON view shows it too). Copy the file at that
-path into the baselines directory, under the name the `baseline:` field gives.
+promote the baseline by hand. The failing step's own `assertion_results` records a
+`visual.actual` path in the run's `manifest.json` (the report's raw JSON view shows it too). Copy the
+file at that path into the baselines directory, under the name the `baseline:` field gives.
 
 ### `setLocation` / `push` (device control)
 
@@ -1499,9 +1625,9 @@ path into the baselines directory, under the name the `baseline:` field gives.
 - push: { payload: { aps: { alert: "You have mail" } } }  # simctl push (APNs payload)
 ```
 
-Both drive the Simulator via `simctl` and need a per-device control channel, so they are unavailable on
-the fake driver and in parallel runs — there the step fails cleanly (it does not crash). `push` delivers
-its `payload` as the APNs JSON to the app under test.
+Both drive the Simulator via `simctl` and need a per-device control channel, so they are unavailable
+on the fake driver and in parallel runs. There the step fails cleanly rather than crashing. `push`
+delivers its `payload` as the APNs JSON to the app under test.
 
 ### `http` (request, for test-data setup)
 
@@ -1520,28 +1646,40 @@ its `payload` as the APNs JSON to the app under test.
     - exists: { id: home.title }
 ```
 
-`http` issues the request from the runner over HTTP — it does **not** go through the UI driver — so a
-`status` mismatch fails the step, and `saveBody` stores the response body text as `${vars.<name>}` for
-later steps. Touching no device, it is the one device-independent action here.
+`http` issues the request from the runner over HTTP, and does **not** go through the UI driver. A
+`status` mismatch fails the step, and `saveBody` stores the response body text as
+`${vars.<name>}` for later steps. Because it touches no device, `http` is the one device-independent
+action here.
 
 `extractBody` (BE-0440) sits beside `saveBody` on the same step, and a step may set either, both, or
-neither: each entry parses the response body as JSON, walks a `path` of object keys and `[n]`
-(zero-based) array indexes, and stores the value it finds as `vars.<var>`. An opening key carries no
-leading dot (`data.token`); an index may follow a key or another index (`items[0].id`, `rows[0][1]`);
-and a path may open on an index when the body is itself a JSON array (`[0].id`). A string value is
-stored as-is; any other JSON value (number/boolean/null/object/array) renders as the same compact JSON
-text a captured event body field would (`42`, `true`, `null`, `{"id":42}`), so a later `${vars.*}`
-comparison reads the shape the API returned. A response body that fails to parse as JSON fails the
-step with the JSON parser's own message; a `path` that does not resolve — a missing key, an
-out-of-range index, a key applied to anything but an object, or an index applied to anything but an
-array — fails the step with an error naming the `var` and the `path`, as does a malformed `path` (a
-negative or non-numeric index, an empty segment, a trailing dot). `path` and `var` may themselves
-use `${vars.*}` / `${secrets.*}` substitution (`path: "items[${vars.i}].id"`), and a value
-substituted into a `path` must supply exactly one path segment — an empty one, or one carrying `.`,
-`[`, or `]`, fails the step, so a field name arriving from a response body can never redirect the
-walk to a different field. Two `extractBody` entries sharing one `var`, or an entry whose `var`
-equals `saveBody`, is a scenario load error — or, when only a substitution reveals the collision, a
-step failure at run time — never a silent overwrite decided by write order.
+neither. Each entry parses the response body as JSON, walks a `path`, and stores the value it finds
+as `vars.<var>`. A `path` walks object keys and `[n]` (zero-based) array indexes:
+
+- An opening key carries no leading dot (`data.token`).
+- An index may follow a key or another index (`items[0].id`, `rows[0][1]`).
+- A path may open on an index when the body is itself a JSON array (`[0].id`).
+
+A string value lands as-is. Any other JSON value (number/boolean/null/object/array) renders as
+the same compact JSON text a captured event body field would (`42`, `true`, `null`, `{"id":42}`), so
+a later `${vars.*}` comparison reads the shape the API returned.
+
+These cases fail the step:
+
+- A response body that fails to parse as JSON fails with the JSON parser's own message.
+- A `path` that does not resolve fails with an error naming the `var` and the `path`. A path does not
+  resolve when it hits a missing key, an out-of-range index, a key applied to anything but an
+  object, or an index applied to anything but an array.
+- A malformed `path` (a negative or non-numeric index, an empty segment, a trailing dot) fails the
+  same way.
+
+`path` and `var` may themselves use `${vars.*}` / `${secrets.*}` substitution
+(`path: "items[${vars.i}].id"`). A value substituted into a `path` must supply exactly one path
+segment. An empty segment, or one carrying `.`, `[`, or `]`, fails the step, so a field name arriving
+from a response body can never redirect the walk to a different field.
+
+Two `extractBody` entries sharing one `var`, or an entry whose `var` equals `saveBody`, is a scenario
+load error. When only a substitution reveals the collision, it is a step failure at run time. A
+collision is never a silent overwrite decided by write order.
 
 ### `totp` (two-factor one-time password)
 
@@ -1551,10 +1689,11 @@ step failure at run time — never a silent overwrite decided by write order.
 ```
 
 `totp` computes an [RFC 6238](https://datatracker.ietf.org/doc/html/rfc6238) time-based one-time
-password locally — from the shared `secret` (base32; keep it in `${secrets.*}`, not in the YAML) and
-the current time — and stores the current code in `${vars.<var>}` for a later `type` / `assert`.
-This automates a 2FA sign-in without a scripting escape hatch or an LLM: the value is a deterministic
-function of the secret and the clock ([BE-0046](../roadmaps/BE-0046-otp-email-steps/BE-0046-otp-email-steps.md)).
+password locally, from the shared `secret` (base32; keep it in `${secrets.*}`, not in the YAML) and
+the current time. It stores the current code in `${vars.<var>}` for a later `type` / `assert`. This
+automates a 2FA sign-in without a scripting escape hatch or an LLM, because the value is a
+deterministic function of the secret and the clock
+([BE-0046](../roadmaps/BE-0046-otp-email-steps/BE-0046-otp-email-steps.md)).
 
 A code is valid for one 30-second window of the clock, so a `totp` step that lands in the last
 seconds of a window can hand the app a code that expires before the following `type` and `tap`
@@ -1565,14 +1704,16 @@ submit it. Set `minRemaining` to the seconds those steps need:
 ```
 
 When the current window has fewer than `minRemaining` seconds left, the step waits for the next
-window to start, then generates the code
+window to start and then generates the code
 ([BE-0474](../roadmaps/BE-0474-totp-window-alignment/BE-0474-totp-window-alignment.md)). The value
-is an integer from 1 to 30. Omitting it means no wait. The wait ends on the window boundary the
-clock decides, never on an author-chosen pause, so it is bounded by one window and the determinism
-audit does not list it as a `fixed-sleep`. The live log labels the step `totp (≥10s left)`, and the
-report shows the time the wait took as the step's duration. If the wall clock jumps during the wait
-(a Network Time Protocol (NTP) correction, say), the step still passes and records a warning on its report row that states
-the jump and the seconds left, so a later sign-in that fails on an expired code shows its cause.
+is an integer from 1 to 30. Omitting it means no wait.
+
+The wait ends on the window boundary the clock decides, never on an author-chosen pause. One window
+bounds the wait, and the determinism audit does not list it as a `fixed-sleep`. The
+live log labels the step `totp (≥10s left)`, and the report shows the time the wait took as the
+step's duration. If the wall clock jumps during the wait (a Network Time Protocol (NTP) correction,
+say), the step still passes and records a warning on its report row that states the jump and the
+seconds left. A later sign-in that fails on an expired code then shows its cause.
 
 #### Fetch a fresh code later with `otp`
 
@@ -1614,16 +1755,18 @@ generator's name.
 - type: { text: "${vars.code}", into: { id: auth.otp } }
 ```
 
-`email` waits for a 2FA / verification code delivered by email: it polls a generic HTTP mailbox
+`email` waits for a 2FA / verification code delivered by email. It polls a generic HTTP mailbox
 (configured under `targets.<name>.services.mailbox`, see [configuration](configuration.md#mailbox-the-email-step))
-until a message that arrived **after the step started** satisfies `match`, then extracts the value
-from its body by the `bodyMatches` regex (first capturing group, or the whole match) into
-`${vars.<var>}`. The wait is a **condition wait with a mandatory `timeout`** (no fixed sleep): a
-timeout, a matched message whose body the regex can't hit, or an unreachable / non-2xx mailbox is a
-clean step failure — never a silent wrong value. Only mail newer than the step's start counts (keyed
-on message id, so a stale code from an earlier run is never matched), and among new matches the
-newest wins. Deterministic and LLM-free; the endpoint and credentials live in config-referenced
-`${secrets.*}`, so the scenario stays app-agnostic ([BE-0046](../roadmaps/BE-0046-otp-email-steps/BE-0046-otp-email-steps.md)).
+until a message that arrived **after the step started** satisfies `match`. It then extracts the value
+from the message body by the `bodyMatches` regex (first capturing group, or the whole match) into
+`${vars.<var>}`.
+
+The wait is a **condition wait with a mandatory `timeout`** (no fixed sleep). A timeout, a matched
+message whose body the regex can't hit, or an unreachable / non-2xx mailbox is a clean step failure,
+never a silent wrong value. Only mail newer than the step's start counts (keyed on message id, so a
+stale code from an earlier run is never matched), and among new matches the newest wins. The step is
+deterministic and LLM-free. The endpoint and credentials live in config-referenced `${secrets.*}`, so
+the scenario stays app-agnostic ([BE-0046](../roadmaps/BE-0046-otp-email-steps/BE-0046-otp-email-steps.md)).
 
 ### `generate` (a value computed at run time)
 
@@ -1639,33 +1782,38 @@ newest wins. Deterministic and LLM-free; the endpoint and credentials live in co
 - type: { text: "${vars.tomorrow}", into: { id: booking.date } }
 ```
 
-`generate` computes a value in the runner and stores it as `${vars.<var>}`, so a scenario can supply
-an input its author could not write as a literal — a username no earlier run has taken, tomorrow's
-date on a booking form, a reference that collides with no other scenario's. Data-driven rows
+`generate` computes a value in the runner and stores it as `${vars.<var>}`. A scenario can then supply
+an input its author could not write as a literal: a username no earlier run has taken, tomorrow's
+date on a booking form, or a reference that collides with no other scenario's. Data-driven rows
 ([reuse](#reuse-data-and-tags)) supply a fixed table chosen in advance, and `extract` captures a
 value the app already displays; neither invents a value the scenario did not already have
 ([BE-0377](../roadmaps/BE-0377-dynamic-value-generation/BE-0377-dynamic-value-generation.md)).
 
-Exactly one generator kind produces the value. **`random`** draws a `string` (a `length` of
-characters from a `charset` — `alnum` by default, or `alpha` / `numeric` / `hex`), an `int` in the
-inclusive range `[min, max]`, a `float` in `[min, max]` rounded to an optional `precision` of decimal
-places, or a version-4 `uuid`. **`datetime`** renders the current time as text: `format` takes a
-`strftime` pattern (ISO 8601 to the second when omitted), the signed `offsetSeconds` /
-`offsetMinutes` / `offsetHours` / `offsetDays` fields add together to shift it, and `timezone` takes
-an Internet Assigned Numbers Authority (IANA) zone name such as `America/Los_Angeles`. The default
-zone is UTC, so a scenario whose input must match a date the app renders in the device's own zone
-names that zone explicitly; pinning the *device* to a zone is a separate concern
+Exactly one generator kind produces the value:
+
+- **`random`** draws a `string` (a `length` of characters from a `charset`: `alnum` by default, or
+  `alpha` / `numeric` / `hex`), an `int` in the inclusive range `[min, max]`, a `float` in
+  `[min, max]` rounded to an optional `precision` of decimal places, or a version-4 `uuid`.
+- **`datetime`** renders the current time as text. `format` takes a `strftime` pattern (ISO 8601 to
+  the second when omitted). The signed `offsetSeconds` / `offsetMinutes` / `offsetHours` /
+  `offsetDays` fields add together to shift the time. `timezone` takes an Internet Assigned Numbers
+  Authority (IANA) zone name such as `America/Los_Angeles`.
+
+The default zone is UTC, so a scenario whose input must match a date the app renders in the device's
+own zone names that zone explicitly. Pinning the *device* to a zone is a separate concern
 ([BE-0158](../roadmaps/BE-0158-timezone-device-primitive/BE-0158-timezone-device-primitive.md)).
 
 The flow is deterministic even though the value is not. A `generate` step the loader accepted always
-executes and always succeeds — a generator draw or a clock read, no network and no model — and only
-the produced value differs between runs, the same way `totp`'s time-derived code already does. A
-`format` that cannot be rendered and a `timezone` that does not resolve fail the load, so no run
-ever substitutes a different value for one mid-flight. The run records each produced value in the
-manifest and the report, so a later failure shows which value the run actually used; a scenario that
-must check a specific value captures it through `${vars.*}` and compares against that capture, not
-against a literal it could not have known in advance. Every codegen target renders `generate` as a
-labeled `// TODO`, because the step runs in the runner rather than the app.
+executes and always succeeds, because the step draws from a generator or reads the clock, with no
+network and no model. The produced value alone differs between runs, the same way `totp`'s time-derived code already
+does. A `format` that cannot be rendered and a `timezone` that does not resolve fail the load, so no
+run ever substitutes a different value for one mid-flight.
+
+The run records each produced value in the manifest and the report, so a later failure shows which
+value the run actually used. A scenario that must check a specific value captures it through
+`${vars.*}` and compares against that capture, not against a literal it could not have known in
+advance. Every codegen target renders `generate` as a labeled `// TODO`, because the step runs in the
+runner rather than the app.
 
 ### `eval` (transform a value held in a variable)
 
@@ -1701,11 +1849,11 @@ sorted items. A banner reading `Order #A-1042 confirmed` may need to become `A-1
 the author asserts the whole string or moves the logic out of the scenario
 ([BE-0472](../roadmaps/BE-0472-eval-step-value-operations/BE-0472-eval-step-value-operations.md)).
 
-The name does not mean the step runs code. `ops` draws from a fixed vocabulary. A scenario cannot add
-an operation. `from` is a string with the usual `${...}` interpolation. Joining two variables needs no
-operation: `from: "${vars.a}-${vars.b}"` builds the joined string. Each entry of `ops` runs on the result of the one
-before it. An operation without arguments is a bare name. Every other operation is a mapping with one
-key.
+The name does not mean the step runs code. `ops` draws from a fixed vocabulary, and a scenario cannot
+add an operation. `from` is a string with the usual `${...}` interpolation. Joining two variables
+needs no operation: `from: "${vars.a}-${vars.b}"` builds the joined string. Each entry of `ops` runs
+on the result of the one before it. An operation without arguments is a bare name. Every other
+operation is a mapping with one key.
 
 | Operation | Form | Input → output | Behavior |
 |---|---|---|---|
@@ -1778,16 +1926,22 @@ A human takeover recorded during `record`.
 - manual: { label: "grant Face ID", bypass: "device-control biometric match (BE-0052)" }   # names the bridge an author could wire
 ```
 
-`record` emits a `manual` step when a blocker is an *operation* the AI cannot perform — a CAPTCHA, a
-biometric prompt, a gesture the agent repeatedly fails to resolve. The human operates the live device
-and hands control back (the `acted` handoff, [recording](recording.md#human-in-the-loop-handoff-be-0179));
-the step records a marker of the observed transition, not the raw gesture. `bypass`, when set, names
-the test-build flag or the device-control / device-state primitive (BE-0035 / BE-0052) an author could
-wire to make the step replayable; omitted, it marks a takeover with no such equivalent (a real CAPTCHA).
-Every codegen target renders it as a labeled `// TODO`. A `manual` step is **never a silent pass**: it
-has no deterministic run-time equivalent, so at `run` time it fails loudly with `ManualStepRequired`,
-surfacing `label` and the bypass hint (directives 1 and 2). Wiring the named `bypass` — then replacing
-the `manual` step with the deterministic action — is the author's path to a replayable scenario ([BE-0185](../roadmaps/BE-0185-record-human-takeover-step/BE-0185-record-human-takeover-step.md)).
+`record` emits a `manual` step when a blocker is an *operation* the AI cannot perform: a CAPTCHA, a
+biometric prompt, or a gesture the agent repeatedly fails to resolve. The human operates the live
+device and hands control back (the `acted` handoff,
+[recording](recording.md#human-in-the-loop-handoff-be-0179)). The step records a marker of the
+observed transition, not the raw gesture.
+
+`bypass`, when set, names the test-build flag or the device-control / device-state primitive
+(BE-0035 / BE-0052) an author could wire to make the step replayable. Omitted, it marks a takeover
+with no such equivalent (a real CAPTCHA). Every codegen target renders the step as a labeled
+`// TODO`.
+
+A `manual` step is **never a silent pass**. It has no deterministic run-time equivalent, so at `run`
+time it fails loudly with `ManualStepRequired`, surfacing `label` and the bypass hint (directives 1
+and 2). The author's path to a replayable scenario is to wire the named `bypass` and then replace the
+`manual` step with the deterministic action
+([BE-0185](../roadmaps/BE-0185-record-human-takeover-step/BE-0185-record-human-takeover-step.md)).
 
 ### Device & system control
 
@@ -1849,27 +2003,28 @@ On both platforms the override persists on the device until a `clearStatusBar` s
   element afterward when a step needs one.
 - An app that is not running, as after an `installApp`, launches the way `relaunch` would launch it.
   `foreground` then waits on a condition until the app is ready.
-- On Android, and on iOS inside a device group, a running app gets the same condition wait. When the app never reaches the front, the step fails with `AppNotInFront`.
-  The wait looks for the app's own screen, not the target's `subject.startWhen`: `subject.startWhen` names the
-  screen a launch lands on, and a resumed app comes back on whatever screen it left.
+- On Android, and on iOS inside a device group, a running app gets the same condition wait. When the
+  app never reaches the front, the step fails with `AppNotInFront`. The wait looks for the app's own
+  screen, not the target's `subject.startWhen`, because `subject.startWhen` names the screen a launch
+  lands on, and a resumed app comes back on whatever screen it left.
 
 `setClipboard` seeds the pasteboard for a paste flow ([BE-0052](../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)).
 
 ## `targets` / `target` (multi-target scenarios, BE-0428)
 
 A scenario's top-level `targets` field names every [target](glossary.md#target-app-device) it
-drives. An iOS target and a web target that are two clients of the same service are one example.
-One scenario can act on one target, then check the result on another. These interleave freely, in
-a single deterministic run with one verdict. Each entry names a `targets.<name>` config unit.
-`--target` already resolves that same unit. Naming the same target twice is a load error. A
-scenario that declares no `targets` (the default) keeps today's behavior unchanged. Every step in
-it must still omit `target`.
+drives. For example, an iOS target and a web target may be two clients of the same service. One
+scenario can act on one target and then check the result on another, and the two interleave freely
+in a single deterministic run with one verdict. Each entry names a `targets.<name>` config unit, the
+same unit `--target` already resolves. Naming the same target twice is a load error. A scenario that
+declares no `targets` (the default) keeps today's behavior unchanged, and every step in it must
+still omit `target`.
 
-`bajutsu run` launches every declared target before the scenario's first step. It tears them all
-down after the last one. No step waits for its target to launch. The interleaving above costs no
-extra startup. Each declared name resolves against the one config file the invocation loads. Both
-targets must appear side by side as `targets.<name>` entries there. Merging two config files has no
-support ([configuration](configuration.md#config-layering-defaults--targets)).
+`bajutsu run` launches every declared target before the scenario's first step and tears them all
+down after the last one. No step waits for its target to launch, so the interleaving above costs no
+extra startup. Each declared name resolves against the one config file the invocation loads, so both
+targets must appear side by side as `targets.<name>` entries there. Merging two config files is not
+supported ([configuration](configuration.md#config-layering-defaults--targets)).
 
 Under two or more `targets` and no `primaryTarget` (below), every step must set its own `target`.
 That includes an `if` / `forEach` / `web` wrapper, not merely a leaf action. Every top-level
@@ -1916,16 +2071,16 @@ time. Setting `primaryTarget` on a scenario that declares no `targets` fails at 
 With one declared target, `primaryTarget` may name that target and changes nothing.
 
 The default applies at every nesting depth. A nested step inside an `if` or `forEach` may omit
-`target`. It then runs against the primary, whatever target its wrapper names. A step may still name the primary
-explicitly; both spellings behave the same way. The loader never writes the resolved name back into
-the step. The serve editor and a run's `scenario.yaml` snapshot keep the step as terse as its author
-wrote it.
+`target`, and it then runs against the primary, whatever target its wrapper names. A step may still
+name the primary explicitly, and both spellings behave the same way. The loader never writes the
+resolved name back into the step, so the serve editor and a run's `scenario.yaml` snapshot keep the
+step as terse as its author wrote it.
 
-A self-declaring scenario resolves its own targets. `bajutsu run --scenario <file>` then needs no
-`--target` at all. An explicit `--target` passed beside one must name a target that scenario
-declares. A stale flag left over from editing the file stops the run. It never picks a target the
-file dropped. [The command-line reference](cli.md#when---target-is-optional) has the full rule,
-including which invocations still require `--target`.
+A self-declaring scenario resolves its own targets, so `bajutsu run --scenario <file>` needs no
+`--target` at all. An explicit `--target` passed beside such a scenario must name a target the
+scenario declares. A stale flag left over from editing the file stops the run and never picks a
+target the file dropped. [The command-line reference](cli.md#when---target-is-optional) has the full
+rule, including which invocations still require `--target`.
 
 With one declared target, a step may omit `target`. A step may also name that target directly, and
 both spellings behave the same way.
@@ -1991,12 +2146,14 @@ already uses. `bajutsu run`, the report, and the CLI never see a target group. T
 expanded steps.
 
 A target group always requires its own `target`, whatever the scenario declares. This holds even
-for a scenario declaring zero or one target. It holds even for one declaring a `primaryTarget`
-(above). A leaf action's own `target` does not work that way — it may omit `target` and run against
-the primary. A group's purpose is fixing a target for its own nested steps, so it always needs one.
-It also refuses `capture`, `extract`, `name`, and `from`. Each of those four reads off the one step
-the runner executes. A target group never reaches the runner. Expansion replaces it with its own
-nested steps first. Expansion would otherwise drop any of those four with no warning.
+for a scenario declaring zero or one target, and even for one declaring a `primaryTarget` (above). A
+leaf action differs: it may omit `target` and run against the primary. A group's purpose is fixing a
+target for its own nested steps, so it always needs one.
+
+A target group also refuses `capture`, `extract`, `name`, and `from`. Each of those four reads off
+the one step the runner executes, and a target group never reaches the runner: expansion first
+replaces it with its own nested steps. Expansion would otherwise drop any of those four with no
+warning.
 
 Every step nested directly inside a group's own `steps` must omit `target`. This covers a leaf
 action, an `if`, a `forEach`, and a `web`/`app` block alike. The group already fixed it. A child
@@ -2292,7 +2449,7 @@ are in [selectors](selectors.md#assertion-evaluation).
 - `requestSequence` checks a list of request matchers were **observed in order** ([details below](#requestsequence-ordered-requests)); needs the `--network` run flag.
 - `responseSchema` validates a captured **response body against a JSON Schema** ([details below](#responseschema-json-schema-of-a-response)); needs the `--network` run flag.
 - `visual` pixel-compares a screenshot against a baseline image ([details below](#visual-visual-regression)).
-- `clipboard` reads the device clipboard (`simctl pbpaste` on iOS; on Android, the BajutsuAndroid in-app receiver, [BE-0233](../roadmaps/BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity.md)) and checks **exactly one** of `equals` / `matches` (regex) — the read-back half of `setClipboard`, for verifying a "copy" action. It needs the per-device control channel, so it is unavailable on the fake driver / in parallel runs and fails cleanly there ([BE-0052](../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)).
+- `clipboard` reads the device clipboard (`simctl pbpaste` on iOS; on Android, the BajutsuAndroid in-app receiver, [BE-0233](../roadmaps/BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity.md)) and checks **exactly one** of `equals` / `matches` (regex). The assertion is the read-back half of `setClipboard`, for verifying a "copy" action. It needs the per-device control channel, so it is unavailable on the fake driver and in parallel runs, and fails cleanly there ([BE-0052](../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)).
 - `attribute` takes `sel:` + `name:` + **exactly one** of `equals` / `contains` / `matches` / `absent: true`. See [details below](#attribute-html-attribute-of-an-element) and [BE-0466](../roadmaps/BE-0466-web-attribute-assertion/BE-0466-web-attribute-assertion.md). The web (Playwright) backend reads the attribute on demand. Any other backend fails it before the device lease.
 
 > **Locale caveat**: string comparisons on `label`/`value` and assertions that look at visible
@@ -2390,8 +2547,8 @@ stub more traffic than the scenario says.
 
 `event` asserts on a behavior the screen never shows: an analytics / telemetry event the app **sent**
 ([BE-0048](../roadmaps/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md)).
-It is a pure check over the same observed exchanges `request` reads (needs the `--network` run flag),
-so the verdict stays machine-only — no LLM. It filters the timeline by the event's **endpoint** (the
+The check is pure, over the same observed exchanges `request` reads (needs the `--network` run flag),
+so the verdict stays machine-only, with no LLM. The assertion filters the timeline by the event's **endpoint** (the
 same `method` / `url` / `urlMatches` / `path` / `pathMatches` matcher as `request`), then by its
 `query` / `body` dictionaries, and checks how many exchanges survive against a count operator.
 
@@ -2419,10 +2576,10 @@ expect:
 
 ### `requestSequence` (ordered requests)
 
-`requestSequence` asserts that several requests happened **in a given order** — e.g. a token refresh
+`requestSequence` asserts that several requests happened **in a given order**, for example a token refresh
 *before* the protected call ([BE-0048](../roadmaps/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md)).
-It is a pure check over the observed timeline (needs the `--network` run flag), so the verdict stays
-machine-only. It takes a non-empty list of [`request` matchers](#request-network-assertion) (the same
+The check is pure, over the observed timeline (needs the `--network` run flag), so the verdict stays
+machine-only. The assertion takes a non-empty list of [`request` matchers](#request-network-assertion) (the same
 fields) and matches them as an **ordered subsequence**: each matcher must match a distinct exchange at
 a strictly later position than the previous one. Unrelated traffic **may interleave** between them, so
 the check is robust to noise; listing the same matcher twice requires two occurrences in order.
@@ -2441,8 +2598,8 @@ expect:
 ### `responseSchema` (JSON Schema of a response)
 
 `responseSchema` asserts that a captured **response body conforms to a JSON Schema** — a contract
-check the screen can't express ([BE-0048](../roadmaps/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md)).
-It is a pure, deterministic check over the observed timeline plus a stored schema file (needs the
+check the screen cannot express ([BE-0048](../roadmaps/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md)).
+The check is pure and deterministic, over the observed timeline plus a stored schema file (needs the
 `--network` run flag), so the verdict stays machine-only. `request` selects the exchange (the same
 matcher fields) whose response is validated; `schema` is a file path resolved within the target's
 **schemas directory** (`--schemas` flag, config `targets.<name>.paths.schemas`, or `schemas/` beside the
@@ -2456,9 +2613,9 @@ expect:
       schema: items.json        # resolved within the schemas dir
 ```
 
-> It validates the **first** matching exchange's response. It fails (rather than guessing) when no
-> exchange matches, the schema file is missing, the response has no body or isn't JSON, or the body
-> doesn't conform. The schemas dir resolves like `--baselines` for `visual`.
+> The assertion validates the **first** matching exchange's response. It fails (rather than guessing) when no
+> exchange matches, the schema file is missing, the response has no body or is not JSON, or the body
+> does not conform. The schemas dir resolves like `--baselines` for `visual`.
 
 ### `visual` (visual regression)
 
@@ -2486,7 +2643,7 @@ When `compare` is omitted, the engine falls back to the target's `evidence.visua
 `threshold` is the allowed percentage of differing pixels (default `0.0` = exact match), shared
 by all engines. `colorTolerance` (0–1, default `0.1`) sets the per-pixel perceptual color
 tolerance for `pixelmatch`; `antialiasing` (default `true`) discounts anti-aliased pixels from
-the diff. `exclude` masks regions before comparing, e.g. a status bar or a clock. Each entry is
+the diff. `exclude` masks regions before comparing, such as a status bar or a clock. Each entry is
 either a rectangle in screenshot pixels (`{ x, y, w, h }`) **or** a `{ selector: <Selector> }`
 that names an element to mask (BE-0171); the element is resolved to its frame at evaluation time.
 A baseline is created or updated with the `approve` command
@@ -2550,8 +2707,8 @@ covers what the element tree does not carry. Examples are a link's `href`, an im
 
 `attribute` works in a step's `assert`, in `expect`, in an `if` condition, and in an `interrupts`
 condition. A `wait` step cannot use it. The runner reads the attribute on demand, right after each
-query that feeds the block. A step's `assert` re-reads it on every tick of the condition wait. The poll stops once the attribute matches or the lane's wait floor runs out. The floor comes
-from `BAJUTSU_MIN_WAIT_TIMEOUT`. Element snapshots, goldens, crawl output, and reports gain no
+query that feeds the block. A step's `assert` re-reads it on every tick of the condition wait. The poll stops once the attribute matches or the lane's wait floor runs out.
+The floor comes from `BAJUTSU_MIN_WAIT_TIMEOUT`. Element snapshots, goldens, crawl output, and reports gain no
 field. A report shows merely the attributes an assertion names.
 
 The assertion needs the `elementAttribute` capability, and the web backend alone declares it. On
@@ -2634,7 +2791,9 @@ A small templating and macro layer wraps the core grammar. It runs **at load tim
 
 ### Components (`use` → reusable steps)
 
-A **component** is a list of `params` and a list of `steps` that reference them as `${params.<name>}`. A `use` step invokes it, binding params via `with`. `use` is a **compile-time macro**: `expand_components` (`scenario/expand.py`) replaces it with the component's substituted steps before the run. Expansion is recursive — a component may itself `use` another, up to depth 25. It raises an error on a missing or unknown param, a residual `${params.*}` referencing something undeclared, or a reference cycle. No `use` step survives into the run, so determinism is unaffected. Expansion reaches a scenario's own `steps` and the recovery `steps` of each [`interrupts`](#interrupts-handling-unpredictable-interstitial-screens) entry. It also reaches every `if` / `else` branch and `forEach` body inside them. It reaches every `web:` / `app:` block too. A `use` in any of these bodies expands at load time. A broken `use` in a branch the run never takes still fails the load.
+A **component** is a list of `params` and a list of `steps` that reference them as `${params.<name>}`. A `use` step invokes it, binding params via `with`. `use` is a **compile-time macro**: `expand_components` (`scenario/expand.py`) replaces it with the component's substituted steps before the run. Expansion is recursive: a component may itself `use` another, up to depth 25. Expansion raises an error on a missing or unknown param, a residual `${params.*}` referencing something undeclared, or a reference cycle. No `use` step survives into the run, so determinism is unaffected.
+
+Expansion reaches a scenario's own `steps` and the recovery `steps` of each [`interrupts`](#interrupts-handling-unpredictable-interstitial-screens) entry. It also reaches every `if` / `else` branch and `forEach` body inside them. It reaches every `web:` / `app:` block too. A `use` in any of these bodies expands at load time. A broken `use` in a branch the run never takes still fails the load.
 
 A `use` step takes one modifier alone: `target`. The loader refuses a `use` step that also sets any of `capture` / `extract` / `name` / `from`. Expansion replaces the whole step, so it would otherwise drop those fields with no warning. Expansion carries `target` forward instead, as [the multi-target rule below](#components-in-a-multi-target-scenario) describes.
 
@@ -2771,8 +2930,8 @@ steps:
   - tap: { id: home.tab }
 ```
 
-Unlike `use:`, `group:` takes no `params` and names no separate file. This is a purely local,
-one-off label for organizing one scenario's own `steps:`. It is not a mechanism for reuse across
+Unlike `use:`, `group:` takes no `params` and names no separate file. The group is a purely local,
+one-off label for organizing one scenario's own `steps:`. It does not reuse steps across
 scenarios. A named `use:` / `components:` call is the right tool once the same run of steps is
 called from more than one place.
 
