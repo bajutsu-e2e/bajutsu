@@ -66,7 +66,7 @@ groupNotify:
 - `github-check` の選択には `headSha` が必要で、値は小文字の16進数40桁です。それ以外の値はステータス 400 で拒否します。
 - リポジトリは、呼び出し側のマシンセッションから取ります。OIDC の交換で検証済みの `repository` クレームです。そのようなセッションを持たない呼び出し側（ブラウザーのセッションや共有トークン）が `github-check` の sink を指定すると、ステータス 400 を返します。こうしてワークフローは、自分のリポジトリにだけ check を書けます。
 - リクエストは、トークンの `sha` クレームではなく `headSha` を受け取ります。`pull_request` イベントでは、`GITHUB_SHA` と `sha` クレームは、GitHub がその実行のために作るマージコミットを指します。そのコミットに付けた check run は、プルリクエストに表示されません。ワークフローは代わりに `github.event.pull_request.head.sha` を渡します。
-- `notify` のリストは、リクエストダイジェストに加えます。同じグループキーで `notify` が異なるリクエストには、現在ほかの違いに対してそうしているのと同じく、ステータス 409 を返します。
+- `notify` のリストは、リクエストダイジェストに加えます。マシンセッションが解決したリポジトリも加えます。そのリポジトリが、check の書き込み先を決めるからです。同じグループキーで、そのどちらかが異なるリクエストには、現在ほかの違いに対してそうしているのと同じく、ステータス 409 を返します。
 - グループは、選択とリポジトリを `job_groups` の新しい列 `notify` に保存します。
 
 ### イベントの記録
@@ -79,9 +79,11 @@ groupNotify:
 
 イベントを同じトランザクションで書くので、ストアにすでに反映された変更のイベントが、クラッシュで失われることはありません。
 
+check の出力は、文面を解析せずに、ワーカーの喪失と報告されたエラーを区別できなければなりません。現在、`reclaim_expired_leases` は `{"error": "lease expired after N attempts"}` だけを書き、`fail_job` はワーカーの自由な文面を同じキーに書きます。そこでこの項目は、回収の結果に、構造化された理由と試行回数を加えます。たとえば `{"reason": "lease-expired", "attempts": N}` です。アダプターはこのフィールドを読み、メッセージを照合しません。
+
 ### イベントの配信
 
-`serve` のプロセス上のループが、未配信の行を配信します。ループは、ワーカーがジョブを取得するのと同じく、期限付きの取得で行を確保します。そのため、1つのストアを共有する2つの `serve` のプロセスが、同じ行を同時に配信することはありません。
+`serve` のプロセス上のループが、未配信の行を配信します。ループは、ワーカーがジョブを取得するのと同じく、期限付きの取得で行を確保します。そのため、1つのストアを共有する2つの `serve` のプロセスが、同じ行を同時に配信することはありません。確保は期限切れになるので、同じ行が2回以上配信されることがあります（at-least-once の配信）。作成の呼び出しが冪等でないアダプターは、2つめのオブジェクトを作らずに参照を回復しなければなりません。`github-check` のアダプターは、作成の前に、sink の check の名前で `head_sha` のすべての check run を一覧し（既定では最新のものしか返らないため `filter=all` を指定します）、`external_id` がグループの id と一致するものを採用します。
 
 - 1つのグループと sink の組のイベントは、順番どおりに配信します。`started` の行は、同じグループと sink の `queued` の行が配信されるか放棄されるまで待ちます。
 - 配信に失敗した行は、上限のある指数バックオフで再試行します。最後の試行でも失敗した行は `abandoned` になります。放棄は運用ログに記録し、カウンターのメトリクス `bajutsu_group_events_abandoned_total` で format ごとに数えます。
@@ -94,7 +96,7 @@ groupNotify:
 
 | イベント | GitHub の呼び出し | フィールド |
 |---|---|---|
-| `queued` | `POST /repos/{owner}/{repo}/check-runs` | `name`、`head_sha`、`status: queued`、グループの id を入れた `external_id` |
+| `queued` | `GET /repos/{owner}/{repo}/commits/{head_sha}/check-runs?check_name=…&filter=all` で、`external_id` がグループの id と一致する run を採用し、なければ `POST /repos/{owner}/{repo}/check-runs` | `name`、`head_sha`、`status: queued`、グループの id を入れた `external_id` |
 | `started` | `PATCH /repos/{owner}/{repo}/check-runs/{id}` | `status: in_progress`、`started_at` |
 | `completed` | `PATCH /repos/{owner}/{repo}/check-runs/{id}` | `status: completed`、`conclusion`、`completed_at`、`output` |
 
@@ -108,7 +110,7 @@ groupNotify:
 |---|---|---|
 | failed | ジョブが `done` で、終了コードが 1 | 実行のマニフェストにある最初の失敗の行 |
 | error | ジョブが `done` で、終了コードが 1 以外の非 0 | 終了コードとその意味（使い方の誤り（2）やシグナルなど） |
-| worker lost | すべての試行でリースが期限切れになり、ジョブが `failed` | 試行回数 |
+| worker lost | ジョブが `failed` で、結果にリース期限切れの理由がある | 試行回数 |
 | worker error | ワーカーが報告したエラーで、ジョブが `failed` | 報告されたエラーを1行に切り詰めたもの |
 | cancelled | 人がジョブを取り消した | なし |
 | skipped | グループの `failFast` のもとで兄弟のジョブが失敗し、ジョブが止まった | なし（失敗の行が原因を示します） |
@@ -146,8 +148,9 @@ GitHub は `summary` を 65,535 文字に制限しています。アダプター
 - [ ] sink のファイル、起動時の検証、App の確認
 - [ ] リクエストのフィールド `notify`、その検証、その列、リクエストダイジェスト
 - [ ] テーブル `group_events` と、登録、リース、取り消しを含む終端の経路が書き込む行
+- [ ] 回収の結果に加える、構造化されたリース期限切れの理由
 - [ ] 配信のループ（確保、順序、再試行、放棄、メトリクス）
-- [ ] `github-check` のアダプター（リポジトリによるインストールの解決、3つの呼び出し、出力）
+- [ ] `github-check` のアダプター（リポジトリによるインストールの解決、回復のための一覧と3つの呼び出し、出力）
 - [ ] 両言語のドキュメント
 
 ## 参考
@@ -156,5 +159,5 @@ GitHub は `summary` を 65,535 文字に制限しています。アダプター
 - [BE-0099 — 実行結果の Webhook 通知](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications-ja.md)：実行ごとの `notify:` のリストと、その `format` フィールドを定めています。
 - [BE-0414 — GitHub Actions の OIDC トークンで CI のジョブを serve に認証させる](../BE-0414-ci-oidc-machine-identity/BE-0414-ci-oidc-machine-identity-ja.md)：マシンセッションと、その `repository` クレームを定めています。
 - [BE-0224 — GitHub を取得元とする config での private リポジトリへのアクセス権限の付与](../BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth-ja.md)：この項目が再利用する GitHub App の認証情報を定めています。
-- [GitHub REST API: check runs](https://docs.github.com/en/rest/checks/runs)：作成と更新の呼び出し、状態と conclusion の値、出力の上限を説明しています。
+- [GitHub REST API: check runs](https://docs.github.com/en/rest/checks/runs)：作成、更新、一覧の呼び出し、状態と conclusion の値、`filter` の既定値、出力の上限を説明しています。
 - [GitHub Actions: events that trigger workflows, `pull_request`](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#pull_request)：プルリクエストでの `GITHUB_SHA` がマージコミットを指すことを説明しています。

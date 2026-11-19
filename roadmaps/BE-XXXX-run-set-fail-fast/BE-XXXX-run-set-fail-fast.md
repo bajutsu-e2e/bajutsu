@@ -37,7 +37,7 @@ The request digest, which tells a retry of a group key from a different request,
 
 ### What counts as a failure
 
-The trigger uses the same rule as the group's `conclusion`. A job triggers the stop when it reaches a terminal status without being cancelled, and either of two holds:
+The trigger uses the same rule as the group's `conclusion`. A job triggers the stop when it reaches a terminal status without being cancelled, and either of two conditions holds:
 
 - the job's status is `failed`, which covers a lease that expired on every attempt;
 - the job's status is `done` with an `exitCode` other than 0.
@@ -52,7 +52,7 @@ A job reaches a terminal status other than a cancel on three paths in the reposi
 - `fail_job`, when a worker reports an error;
 - `reclaim_expired_leases`, when a lease expires on its last attempt.
 
-Each path already writes the terminal status in one store transaction. When the job belongs to a group whose `fail_fast` is set and the job meets the failure rule, the same transaction marks the group's other unfinished jobs. A queued job becomes `cancelled`. A leased job gets its cancel flag, which its worker reads on the next heartbeat, as with a cancel today. Writing both in one transaction leaves no window in which a worker could lease a sibling after the failure is recorded.
+Each path already writes the terminal status in one store transaction. When the job belongs to a group whose `fail_fast` is set and the job meets the failure rule, the same transaction marks the group's other unfinished jobs. A queued job becomes `cancelled`. A leased job gets its cancel flag, which its worker reads on the next heartbeat, as with a cancel today. The stop fires only when the conditional write of the terminal status wins its row: `complete_job` and `fail_job` reject a stale worker's result, and `reclaim_expired_leases` rejects a lease that a heartbeat renewed, so a rejected write cancels nothing. Writing the terminal status and the marks in one transaction leaves no window in which a worker could lease a sibling after the failure is recorded.
 
 Each path returns the ids of the queued jobs it cancelled. After the commit, its caller closes the live log stream of each such job with the cancelled result, as the cancel route does today. No worker will ever post a result for those jobs, so without the close each would read as running forever. The reclaim path needs one more step. `reclaim_expired_leases` runs inside `lease_jobs`, which today discards the sweep's result, so the lease must hand those ids back to the lease route that holds the log bus. The implementation chooses how.
 

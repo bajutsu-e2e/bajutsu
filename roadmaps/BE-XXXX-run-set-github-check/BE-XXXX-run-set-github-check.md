@@ -66,7 +66,7 @@ A request names a sink and never a URL. A URL taken from a request would let any
 - A `github-check` selection needs `headSha`, 40 lowercase hexadecimal digits. The server refuses any other value with status 400.
 - The repository comes from the caller's machine session: the `repository` claim that the OIDC exchange verified. A caller with no such session (a browser session, or the shared token) gets status 400 when it names a `github-check` sink. A workflow can thus write checks to its own repository alone.
 - The request takes `headSha` rather than the token's `sha` claim. On a `pull_request` event, `GITHUB_SHA` and the `sha` claim name the merge commit GitHub creates for the run. A check run on that commit does not appear on the pull request. The workflow passes `github.event.pull_request.head.sha` instead.
-- The `notify` list joins the request digest. A repeated group key whose request differs in `notify` gets status 409, as any other difference does today.
+- The `notify` list joins the request digest, and so does the repository the machine session resolved, since that repository decides where the check is written. A repeated group key whose request differs in either gets status 409, as any other difference does today.
 - The group stores its selections and the repository in a new `notify` column of `job_groups`.
 
 ### Recording events
@@ -79,9 +79,11 @@ A group event is a row in a new table, `group_events`. A row holds the group, th
 
 Writing the event in the same transaction means a crash never loses an event that the store already reflects.
 
+The check output must tell a lost worker from a reported error without parsing prose. Today `reclaim_expired_leases` writes only `{"error": "lease expired after N attempts"}`, and `fail_job` writes the worker's free text under the same key. This item therefore adds a structured reason and the attempt count to the reclaim result, for example `{"reason": "lease-expired", "attempts": N}`. The adapter reads that field and never matches the message.
+
 ### Delivering events
 
-A loop on the `serve` process delivers pending rows. The loop claims a row the way a worker claims a job, with a claim that expires. Two `serve` processes on one store thus never deliver the same row at once.
+A loop on the `serve` process delivers pending rows. The loop claims a row the way a worker claims a job, with a claim that expires. Two `serve` processes on one store thus never deliver the same row at once. A claim that expires makes delivery at-least-once, so an adapter whose creating call is not idempotent must recover the reference rather than create a second object. The `github-check` adapter lists all check runs of `head_sha` for the sink's check name (`filter=all`, since the default returns only the latest) and adopts the one whose `external_id` is the group id, before it creates one.
 
 - Events of one group and sink deliver in order. A `started` row waits until the `queued` row of the same group and sink is delivered or abandoned.
 - A failed delivery retries with a bounded exponential backoff. After its last attempt, the row becomes `abandoned`. Operational logging records the abandonment, and a counter metric, `bajutsu_group_events_abandoned_total`, counts it by format.
@@ -94,7 +96,7 @@ The adapter resolves the App's installation for the stored repository and mints 
 
 | Event | GitHub call | Fields |
 |---|---|---|
-| `queued` | `POST /repos/{owner}/{repo}/check-runs` | `name`, `head_sha`, `status: queued`, `external_id` set to the group id |
+| `queued` | `GET /repos/{owner}/{repo}/commits/{head_sha}/check-runs?check_name=…&filter=all` to adopt a run whose `external_id` is the group id, else `POST /repos/{owner}/{repo}/check-runs` | `name`, `head_sha`, `status: queued`, `external_id` set to the group id |
 | `started` | `PATCH /repos/{owner}/{repo}/check-runs/{id}` | `status: in_progress`, `started_at` |
 | `completed` | `PATCH /repos/{owner}/{repo}/check-runs/{id}` | `status: completed`, `conclusion`, `completed_at`, `output` |
 
@@ -108,7 +110,7 @@ The group's `conclusion` maps to the check's `conclusion` with the same name: `s
 |---|---|---|
 | failed | the job is `done` with exit code 1 | the first failure line of the run's manifest |
 | error | the job is `done` with another non-zero exit code | the exit code and its meaning, such as a usage error (2) or a signal |
-| worker lost | the job is `failed` after its lease expired on every attempt | the attempt count |
+| worker lost | the job is `failed` and its result carries the lease-expiry reason | the attempt count |
 | worker error | the job is `failed` with an error a worker reported | the reported error, cut to one line |
 | cancelled | a person cancelled the job | none |
 | skipped | the job stopped because a sibling failed under the group's `failFast` flag | none; the failed rows name the failures |
@@ -146,8 +148,9 @@ GitHub caps `summary` at 65,535 characters. The adapter stops adding rows before
 - [ ] The sink file, its validation at startup, and the App check
 - [ ] The `notify` request field, its validation, its column, and the request digest
 - [ ] The `group_events` table and the rows written by registration, lease, and the terminal paths, cancels included
+- [ ] A structured lease-expiry reason in the reclaim result
 - [ ] The delivery loop: claim, order, retry, abandonment, and the metric
-- [ ] The `github-check` adapter: installation by repository, the three calls, and the output
+- [ ] The `github-check` adapter: installation by repository, the recovery lookup and the three calls, and the output
 - [ ] Documentation in both languages
 
 ## References
@@ -156,5 +159,5 @@ GitHub caps `summary` at 65,535 characters. The adapter stops adding rows before
 - [BE-0099 — Webhook notifications for run results](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications.md) — the per-run `notify:` list and its `format` field.
 - [BE-0414 — Authenticate a CI job to serve with a GitHub Actions OIDC token](../BE-0414-ci-oidc-machine-identity/BE-0414-ci-oidc-machine-identity.md) — the machine session and its `repository` claim.
 - [BE-0224 — Granting private-repository access for the GitHub config source](../BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth.md) — the GitHub App credentials this item reuses.
-- [GitHub REST API: check runs](https://docs.github.com/en/rest/checks/runs) — the create and update calls, their status and conclusion values, and the output limits.
+- [GitHub REST API: check runs](https://docs.github.com/en/rest/checks/runs) — the create, update, and list calls, their status and conclusion values, the `filter` default, and the output limits.
 - [GitHub Actions: events that trigger workflows, `pull_request`](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#pull_request) — `GITHUB_SHA` on a pull request names the merge commit.
