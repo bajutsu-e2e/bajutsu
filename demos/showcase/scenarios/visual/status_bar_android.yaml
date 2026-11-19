@@ -9,9 +9,9 @@
 #   - The `visual` expectation compares only the top 100-pixel strip. The demo mode freezes every icon,
 #     so the strip is identical from run to run; a live clock would churn it within a minute. The rest
 #     of the screen is masked (visual_android.yaml guards the app's own pixels), though the strip may
-#     still take in the top edge of the app bar. `threshold` is a percentage of the whole screen, masked
-#     pixels included, so 0.05 allows about 1,300 pixels, roughly 1% of the strip: enough for renderer
-#     noise, far too few to pass a bar that was never frozen.
+#     still take in the top edge of the app bar. `threshold` is 0: it is a percentage of the whole
+#     screen, masked pixels included, so even a small value would let one changed clock glyph through.
+#     The CI renderer is fixed and pixelmatch's `colorTolerance` already absorbs sub-visible noise.
 #   - `sys.locale.value` is the language tag of the app's own configuration, so it proves the locale
 #     reached the app, beyond the environment's read-back of `cmd locale get-app-locales`.
 #
@@ -51,7 +51,7 @@
     - scroll: { to: { id: sys.locale.value }, direction: down }
   expect:
     - value: { sel: { id: sys.locale.value }, equals: "ja-JP" }
-    - visual: { baseline: status_bar.png, threshold: 0.05, exclude: [{ x: 0, y: 100, w: 1080, h: 2300 }] }
+    - visual: { baseline: status_bar.png, threshold: 0.0, exclude: [{ x: 0, y: 100, w: 1080, h: 2300 }] }
   cleanup:
     - on: always
       steps:
