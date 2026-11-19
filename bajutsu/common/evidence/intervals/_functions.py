@@ -347,7 +347,11 @@ def _await_screenrecord_stopped(
     interrupted = False
     while time.monotonic() < deadline:
         try:
-            running = {pid for pid in run(adb.screenrecord_pids_cmd(serial)).split() if pid}
+            # Digits only: an image can print a banner into the output, and a non-pid token would
+            # never clear, holding the stop to its deadline.
+            running = {
+                pid for pid in run(adb.screenrecord_pids_cmd(serial)).split() if pid.isdigit()
+            }
         except (subprocess.CalledProcessError, OSError) as exc:
             _logger.warning(
                 "could not probe device-side screenrecord (%s); pulling anyway — the video may be "
@@ -359,10 +363,11 @@ def _await_screenrecord_stopped(
         if not own:
             return
         if baseline_pids is not None and not interrupted:
-            interrupted = True
             # Best-effort: the local SIGINT usually reached it already, and the wait still bounds it.
+            # Latched only once the send succeeds, so a transient adb failure is retried next poll.
             with contextlib.suppress(subprocess.CalledProcessError, OSError):
                 run(adb.interrupt_pids_cmd(serial, sorted(own)))
+                interrupted = True
         time.sleep(poll)
     _logger.warning(
         "device-side screenrecord still running after %ss; pulling anyway — the video may be "

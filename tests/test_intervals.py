@@ -1431,3 +1431,45 @@ def test_screenrecord_stop_without_a_baseline_waits_for_every_recorder_and_signa
         intervals._await_screenrecord_stopped("SER", device, None, timeout=0.01, poll=0.001)
     assert any("still running" in r.message for r in caplog.records)
     assert device.killed == []
+
+
+def test_interrupt_pids_cmd_quotes_each_pid() -> None:
+    from bajutsu.common.backend_cli import adb
+
+    # The pids come from device output, so a metacharacter must not run as extra shell.
+    cmd = adb.interrupt_pids_cmd("SER", ["1234", "1;reboot"])
+    assert cmd[-1] == "kill -INT 1234 '1;reboot' 2>/dev/null || true"
+
+
+def test_screenrecord_stop_ignores_non_pid_tokens(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A banner word in the pgrep output is not a process this recording owns; it must not hold the
+    # stop to its deadline.
+    _bounded_sleep(monkeypatch)
+    replies = iter(["banner 1234", "banner"])
+    killed: list[str] = []
+
+    def run(argv: list[str]) -> str:
+        if "pgrep" in argv[-1]:
+            return next(replies)
+        killed.append(argv[-1])
+        return ""
+
+    intervals._await_screenrecord_stopped("SER", run, frozenset(), poll=0.001)
+    assert killed == ["kill -INT 1234 2>/dev/null || true"]
+
+
+def test_screenrecord_stop_retries_a_failed_interrupt(monkeypatch: pytest.MonkeyPatch) -> None:
+    # One transient adb failure must not disable the device-side interrupt for the rest of the stop.
+    _bounded_sleep(monkeypatch)
+    sends = {"n": 0}
+
+    def run(argv: list[str]) -> str:
+        if "pgrep" in argv[-1]:
+            return "" if sends["n"] >= 2 else "1234"
+        sends["n"] += 1
+        if sends["n"] == 1:
+            raise OSError("device offline")
+        return ""
+
+    intervals._await_screenrecord_stopped("SER", run, frozenset(), poll=0.001)
+    assert sends["n"] == 2

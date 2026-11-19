@@ -248,9 +248,11 @@ def interrupt_pids_cmd(serial: str, pids: Iterable[str]) -> list[str]:
 
     `screenrecord` treats SIGINT as "stop and finalize", and a repeat is harmless, so this is safe to
     send to a recorder the local client's own SIGINT already reached. `|| true` keeps a pid that has
-    already exited (`kill` exits 1) from raising in the `RunFn`.
+    already exited (`kill` exits 1) from raising in the `RunFn`. Each pid is quoted: the values come
+    from device output, and an unquoted metacharacter would run as extra shell.
     """
-    return _adb(serial, "shell", f"kill -INT {' '.join(pids)} 2>/dev/null || true")
+    quoted = " ".join(shlex.quote(pid) for pid in pids)
+    return _adb(serial, "shell", f"kill -INT {quoted} 2>/dev/null || true")
 
 
 def file_size_cmd(serial: str, device_path: str) -> list[str]:
