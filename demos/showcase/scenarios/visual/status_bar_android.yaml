@@ -8,8 +8,8 @@
 #   - `foreground` brings back the same process; the Stable catalog is on screen again.
 #   - The `visual` expectation compares only the top 100-pixel strip. The demo mode freezes every icon,
 #     so the strip is identical from run to run; a live clock would churn it within a minute. The rest
-#     of the screen is masked (visual_android.yaml guards the app's own pixels), though the strip may
-#     still take in the top edge of the app bar. `threshold` is 0: it is a percentage of the whole
+#     of the screen is masked (visual_android.yaml guards the app's own pixels). The pixel_6 status bar
+#     is about 127 pixels tall, so the strip holds no app pixels. `threshold` is 0: it is a percentage of the whole
 #     screen, masked pixels included, so even a small value would let one changed clock glyph through.
 #     The CI renderer is fixed and pixelmatch's `colorTolerance` already absorbs sub-visible noise.
 #   - `sys.locale.value` is the language tag of the app's own configuration, so it proves the locale
