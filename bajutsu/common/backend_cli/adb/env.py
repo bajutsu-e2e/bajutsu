@@ -6,6 +6,7 @@ import contextlib
 import subprocess
 from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import Any
 
 from ._device_state import (
     APP_LOCALES_MIN_API,
@@ -23,6 +24,7 @@ from ._functions import (
     EMULATOR_PROPS,
     SEED_PHOTOS_CLEARED,
     SEED_PHOTOS_DIR,
+    bounded_push_run,
     checked_serial,
     clear_primary_clip_cmd,
     deeplink_cmd,
@@ -36,13 +38,16 @@ from ._functions import (
     launch_cmd,
     launcher_component,
     location_broadcast_cmd,
+    map_push_payload,
     media_scan_cmd,
     mock_location_appop_cmd,
     parse_clipboard_result,
     parse_location_result,
+    parse_push_result,
     pm_clear_cmd,
     pm_grant_cmd,
     pm_revoke_cmd,
+    push_broadcast_cmd,
     push_cmd,
     real_run,
     resolve_activity_cmd,
@@ -83,11 +88,16 @@ SERVICE_TO_ANDROID_PERMISSIONS: dict[str, tuple[str, ...]] = {
 class Env:
     """Thin adb front end for one device/emulator."""
 
-    def __init__(self, serial: str, run: RunFn = real_run) -> None:
+    def __init__(self, serial: str, run: RunFn = real_run, push_run: RunFn | None = None) -> None:
         # Validate at construction (like AdbDriver): Env is what AndroidEnvironment.start drives
         # for the real device-lifecycle path, so a bad serial fails here, not deep in a command.
         self.serial = checked_serial(serial)
         self._run = run
+        # The push broadcast runs under a bound (BE-0498). Derived from `run` when not given, so a
+        # caller that fakes `run` fakes the push too and can never reach a real device by omission.
+        if push_run is None:
+            push_run = bounded_push_run if run is real_run else run
+        self._push_run = push_run
 
     def boot_completed(self) -> bool:
         """Whether `sys.boot_completed` is `1` — the boot-readiness signal polled as a condition
@@ -257,9 +267,9 @@ class Env:
     # setLocation has two routes: the emulator console (`emu geo fix`, BE-0211) on a local emulator,
     # and BajutsuAndroid's in-app location receiver everywhere else (BE-0481). Clipboard goes through
     # the in-app clipboard receiver (BE-0233); both in-app routes take the target package to address
-    # the broadcast. Home and the status bar need no app at all (BE-0478). `push` needs a receiver in
-    # the app's process and Android has no keychain, so neither is wired (see
-    # `platform_lifecycle.device_control.android_device_control`).
+    # the broadcast. Home and the status bar need no app at all (BE-0478). BajutsuAndroid's push
+    # receiver delivers `push` (BE-0498). Android has no keychain, so `clearKeychain` alone is not
+    # wired (see `platform_lifecycle.device_control.android_device_control`).
 
     def has_emulator_console(self) -> bool:
         """Whether `emu geo fix` can reach this target: a local emulator's serial on an emulator image.
@@ -324,6 +334,18 @@ class Env:
 
     def get_clipboard(self, package: str) -> str:
         return parse_clipboard_result(self._run(get_primary_clip_cmd(self.serial, package)))
+
+    def push(self, package: str, payload: Mapping[str, Any]) -> None:
+        """Deliver an APNs-shaped *payload* to *package*'s BajutsuAndroid push receiver (BE-0498).
+
+        Raises:
+            DeviceError: see `bounded_push_run` and `parse_push_result`. No message quotes the
+                payload or the broadcast argv that carries it.
+        """
+        title, body, data = map_push_payload(payload)
+        parse_push_result(
+            self._push_run(push_broadcast_cmd(self.serial, package, title, body, data))
+        )
 
     def home(self) -> None:
         """Press Home, sending the app to the background with its process alive (BE-0478)."""

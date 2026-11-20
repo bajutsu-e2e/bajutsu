@@ -52,6 +52,8 @@ def test_dedicated_lane_scenarios_carry_their_exclusion_tag() -> None:
         ("paste.yaml", "textselection"),
         ("text_editing.yaml", "textselection"),
         ("system_alert_handling.yaml", "systemalert"),
+        ("push_banner.yaml", "systemalert"),
+        ("push_android.yaml", "android"),
         ("browser.yaml", "browser"),
         ("save_password_browser.yaml", "systemalert"),
         ("save_password_browser.yaml", "browser"),

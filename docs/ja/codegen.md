@@ -690,7 +690,7 @@ broadcast が処理されないのは、アプリが BajutsuAndroid のクリッ
 adb backend にはネットワーク傍受の面が無いので、ネットワークのアサーション（`request` / `requestSequence` /
 `responseSchema`）はすべて、理由を明記した `// TODO` を出力します。デバイス制御の残りも、理由を明記した `// TODO` を出力します。
 `setLocation` は `run` では動きますが、エミュレータコンソールやアプリ内受信側を使う経路を生成テストは持ちません。
-`push` には adb の経路そのものがありません。XCUITest 出力先も、自身のギャップを同じように示します。
+`push` も `run` では BajutsuAndroid のプッシュレシーバを通じて動きますが、生成した UI Automator のコードは `bajutsu run` に任せます。XCUITest 出力先も、自身のギャップを同じように示します。
 
 ## 名前の生成
 

@@ -40,9 +40,9 @@ The map gates only the **true hard requirements** the capability set cleanly dec
 - a device-control step needs the capability token for its own operation (BE-0212 split the coarse
   `deviceControl` of BE-0128 into per-operation tokens): `setLocation` needs
   `deviceControl.setLocation`, the clipboard steps need `deviceControl.clipboard`, `push` needs
-  `deviceControl.push`, and so on. A backend that backs only part of the family (the Android
-  emulator: setLocation + clipboard) thus passes preflight for what it supports and fails fast for
-  the rest, each unsupported step named individually. `relaunch` is not here: it is gated by the
+  `deviceControl.push`, and so on. A backend that backs only part of the family thus passes
+  preflight for what it supports and fails fast for the rest, each unsupported step named
+  individually. `relaunch` is not here: it is gated by the
   injected relauncher, not `DeviceControl`.
 - a `permissions` entry is not gated here: it is a setting applied before the steps, not a step, so
   the BE-0467 settings check (`settings_support.py`) judges each service against the same BE-0276

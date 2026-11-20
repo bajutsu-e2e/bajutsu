@@ -114,6 +114,10 @@ fun PermissionsScreen(model: AppModel) {
                 Text("Open Photo Picker (Single)")
             }
             Text("Selected: ${model.selectedPhotoCount}", Modifier.aid("perm.photos.value").stateValue(model.selectedPhotoCount.toString()))
+            // The title of the last push bajutsu delivered (SPEC §5.4, BE-0498); empty until one arrives.
+            // Last on the tab, so it shifts no row above it: status_bar_android.yaml's baseline frames
+            // the tab down to the photos section, and select_photos.yaml reads perm.photos.value there.
+            Text("Last push: ${PushInbox.lastTitle}", Modifier.aid("perm.push.received").stateValue(PushInbox.lastTitle))
         }
     }
 }

@@ -709,7 +709,8 @@ clipboard.
 Every network assertion (`request` / `requestSequence` / `responseSchema`) emits a labeled `// TODO`
 naming why, because the adb backend has no network-interception surface. The rest of the
 device-control family emits a labeled `// TODO` as well. `setLocation` works under `run`, but no
-generated route exists for it. `push` has no adb route at all. The XCUITest target labels its own gaps the same way.
+generated route exists for it. `push` works under `run` too, through BajutsuAndroid's push
+receiver. Generated UI Automator code leaves it to `bajutsu run`. The XCUITest target labels its own gaps the same way.
 
 ## Name generation
 

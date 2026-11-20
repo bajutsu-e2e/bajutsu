@@ -229,6 +229,8 @@ Log から到達するモーダル（5 つの提示様式）：
 - `perm.location.read`：Android のみ。`gps` provider に新しい位置を 1 回だけ要求するボタン（BE-0481）
 - `perm.location.reading`：Android のみ。取得した位置を小数 3 桁の `lat,lon` で示す。要求中は `reading`、
   位置がなければ `(none)`、権限がなければ `denied` になる
+- `perm.push.received`：Android のみ。アプリの BajutsuAndroid プッシュハンドラが最後に受け取ったプッシュの
+  タイトル（BE-0498）。プッシュが届くまでは空（Views では `perm_push_received`）
 - `perm.requestTracking`：ボタン → `ATTrackingManager.requestTrackingAuthorization`。フォームの最後の行に置く。**App Tracking Transparency のプロンプト**（SpringBoard）を上げる。BE-0445 のプローブは、このプロンプトを通知とペーストのプロンプトと並べて測る。
 - `perm.tracking.value`：`notDetermined`/`authorized`/`denied`
 

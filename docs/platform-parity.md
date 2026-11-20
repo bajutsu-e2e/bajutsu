@@ -14,7 +14,7 @@ declares. A gap cannot open or close unless this page changes with it.
 ## What the three tables cover
 
 A **capability** is a named feature a backend declares through `Driver.capabilities()`. Two
-examples are `multiTouch` and `deviceControl.push`. The preflight check runs before a run leases a
+examples are `multiTouch` and `handleNotificationBanner`. The preflight check runs before a run leases a
 device. It stops a scenario that uses a gated step the chosen backend has no capability for. The
 check leaves some capabilities ungated, because the core supplies each one another way. Examples are
 `conditionWait`, `network`, `semanticTap`, and `webView`. The interval-evidence capabilities stay
@@ -77,7 +77,7 @@ column.
 | `deviceGroup` | ✅ | ✅ | |
 | `deviceControl.setLocation` | ✅ | ✅ | Off a local emulator, Android needs the BajutsuAndroid library in the app. See the behavior table. |
 | `deviceControl.clipboard` | ✅ | ✅ | Android needs the BajutsuAndroid library in the app. See the behavior table. |
-| `deviceControl.push` | ✅ | gap | The BajutsuAndroid library could post the notification from inside the app, the way it already handles the clipboard. |
+| `deviceControl.push` | ✅ | ✅ | Android needs the BajutsuAndroid library in the app. See the behavior table. |
 | `deviceControl.clearKeychain` | ✅ | n/a | Android has no keychain. The app's Android Keystore keys go away with its data on a clean reinstall. |
 | `deviceControl.background` | ✅ | ✅ | Android sends the home key (`KEYCODE_HOME`), which keeps the app's process alive (BE-0478). The step then waits until the app is no longer the resumed activity. |
 | `deviceControl.foreground` | ✅ | ✅ | |
@@ -124,6 +124,7 @@ declare, or outside what the two tables cover.
 | `paste` | XCUITest taps the edit menu's Paste item, raised by a long press on the field. The menu follows the app's localization, so the driver accepts UIKit's Paste label in any language. | adb sends Ctrl+V through `input keycombination`, which needs Android 12 or later. | iOS does not use Cmd+V, which pastes nothing from a clipboard another process wrote, such as a `setClipboard` seed. Depending on the Simulator build, the edit-menu paste raises the paste-consent prompt, which a `paste` system-alert interrupt answers. The iOS lane runs `paste.yaml` ahead of `text_editing.yaml`, so its `setClipboard` seed checks that `select` and `copy` still work after another process wrote the pasteboard. |
 | `setLocation` | `simctl` sets it on the Simulator. | The emulator console sets it on a local emulator. Elsewhere, a receiver inside the app mocks the `gps` and `network` providers after adb grants the mock-location app-op ([BE-0481](../roadmaps/BE-0481-android-device-set-location/BE-0481-android-device-set-location.md)). | iOS does not set the location on a real device yet; [BE-0475](../roadmaps/BE-0475-ios-runner-set-location/BE-0475-ios-runner-set-location.md) covers it. On a real Android device, an app without BajutsuAndroid fails the step. |
 | A `web:` block | The bridge finds the `WKWebView` by the first id of `within`. A tap is a script click. | The run picks the page whose rectangle contains the frame `within` resolved to. A tap is a trusted touch, and ends once the page's click lands. | One `web:` block runs on both. On Android, two overlapping WebViews fail the step as ambiguous, and a release build opens no debugging socket. See [scenarios](scenarios.md#web-entering-a-webviews-dom). |
+| `push` | `simctl push` delivers the Apple Push Notification service (APNs) payload. | bajutsu maps the payload to a title, a body, and a data map. A receiver inside the app then calls the app's handler or posts a local notification ([BE-0498](../roadmaps/BE-0498-android-push-notification/BE-0498-android-push-notification.md)). | On Android the app must be running and link BajutsuAndroid. The default path needs `notifications` granted. A push after a `background` step arrived without delay on an API 34 emulator. |
 | Clipboard steps | `simctl` reads and writes the pasteboard. | A receiver inside the app does the work. The app must link BajutsuAndroid, and Android 10 or later lets only the focused app read the clipboard. | An app without BajutsuAndroid fails every clipboard step, and so does a read while the app is in the background. |
 
 ## How the test checks the tables

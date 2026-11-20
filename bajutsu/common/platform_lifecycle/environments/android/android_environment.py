@@ -110,8 +110,8 @@ class AndroidEnvironment:
     (BE-0283) — the same app-side capture iOS relies on, so a `request` assertion is satisfied without a
     native monitor. Device control backs the subset Android can honor: `setLocation` over the
     emulator console on a local emulator (BE-0211) and through the app's in-app BajutsuAndroid receiver
-    elsewhere (BE-0481), plus clipboard through that receiver (BE-0233); the rest of the family stays
-    unsupported.
+    elsewhere (BE-0481), plus clipboard (BE-0233) and `push` (BE-0498) through BajutsuAndroid's
+    receivers. `clearKeychain` stays the one unsupported operation, since Android has no keychain.
     """
 
     def __init__(
@@ -589,9 +589,10 @@ class AndroidEnvironment:
 
     def controller(self, eff: Effective) -> DeviceControl | None:
         # The subset Android can honor (setLocation over the console on a local emulator and over the
-        # app's in-app receiver elsewhere, BE-0481, + clipboard over that receiver, BE-0233, +
-        # `foreground` and `background` through this environment, BE-0447 / BE-0478, + the status bar
-        # over the demo mode); the rest of the family raises UnsupportedAction, and preflight
+        # app's in-app receiver elsewhere, BE-0481, + clipboard and `push` over BajutsuAndroid's
+        # receivers, BE-0233 / BE-0498, + `foreground` and `background` through this environment,
+        # BE-0447 / BE-0478, + the status bar over the demo mode); `clearKeychain` raises
+        # UnsupportedAction, and preflight
         # (BE-0212) rejects it up front from the adb capability set. The in-app broadcasts address
         # the app under test, so the package is threaded through.
         package = require_android(eff).package
