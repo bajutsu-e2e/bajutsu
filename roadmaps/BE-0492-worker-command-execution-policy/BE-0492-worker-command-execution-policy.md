@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0492") |
+| Implementing PR | [#2494](https://github.com/bajutsu-e2e/bajutsu/pull/2494) (units 1–8) |
 | Topic | Security hardening |
 | Related | [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md), [BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md), [BE-0090](../BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md), [BE-0121](../BE-0121-serve-csrf-host-allowlist/BE-0121-serve-csrf-host-allowlist.md), [BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues.md), [BE-0449](../BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md) |
 <!-- /BE-METADATA -->
@@ -308,6 +309,15 @@ readiness URL.
 - [x] Command record: the `commandExecutions` list in `manifest.json` and its place in the report.
 - [x] Remove `serve --upload-exec`, `$BAJUTSU_UPLOAD_EXEC`, `serve --allow-remote-build`, `$BAJUTSU_ALLOW_REMOTE_BUILD`, and the `--upload-exec` option of `run`, `record`, and `crawl`.
 - [x] Update the docs, `DESIGN.md`, and `docs/architecture.md` in both languages.
+
+Log:
+
+- 2026-11-20 — All eight units landed together ([#2494](https://github.com/bajutsu-e2e/bajutsu/pull/2494)).
+  - `worker.yaml` gains `commandExecution` and `namedCommands`; the worker advertises the sources it accepts, and a job whose config declares `services.server.cmd` routes only to a worker that runs commands from its source.
+  - `serve` labels each job `uploaded`, `remote`, or `operator`; the worker stamps the label and its own `worker.yaml` onto the `run`, `record`, or `crawl` it spawns, and decides its own pre-run build.
+  - A run checks the policy before any device work, refuses a spelled-out server command under `named` or `deny` even when a server already answers, and records every governed command in `manifest.json` as `commandExecutions`, shown in the report.
+  - `serve --upload-exec`, `--allow-remote-build`, their environment variables, the `--upload-exec` option of `run` / `record` / `crawl`, and `BAJUTSU_WITHHOLD_RUNNER_BUILD` are removed; `serve` refuses the removed options by name.
+  - An untrusted source's build travels as `governed_build`, and the legacy `withhold_runner_build` flag still travels, so a worker that predates this item never runs it.
 
 ## References
 

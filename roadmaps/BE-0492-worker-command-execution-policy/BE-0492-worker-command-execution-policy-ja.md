@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0492") |
+| 実装 PR | [#2494](https://github.com/bajutsu-e2e/bajutsu/pull/2494)（単位 1〜8） |
 | トピック | セキュリティ強化 |
 | 関連 | [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source-ja.md)、[BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md)、[BE-0090](../BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution-ja.md)、[BE-0121](../BE-0121-serve-csrf-host-allowlist/BE-0121-serve-csrf-host-allowlist-ja.md)、[BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues-ja.md)、[BE-0449](../BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs-ja.md)、[BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md) |
 <!-- /BE-METADATA -->
@@ -319,6 +320,15 @@ worker を `serve` より先に更新します。本提案より前の worker �
 - [x] コマンドの記録：`manifest.json` の `commandExecutions` のリストと、レポートでの表示。
 - [x] `serve --upload-exec`、`$BAJUTSU_UPLOAD_EXEC`、`serve --allow-remote-build`、`$BAJUTSU_ALLOW_REMOTE_BUILD`、`run`・`record`・`crawl` の `--upload-exec` オプションを削除する。
 - [x] ドキュメント、`DESIGN.md`、`docs/architecture.md` を両言語で更新する。
+
+ログ：
+
+- 2026-11-20 — 8 つの単位をまとめて実装しました（[#2494](https://github.com/bajutsu-e2e/bajutsu/pull/2494)）。
+  - `worker.yaml` に `commandExecution` と `namedCommands` を加えました。worker は受け付ける出どころを申告し、`services.server.cmd` を宣言した config のジョブは、その出どころのコマンドを実行する worker にだけ振り分けられます。
+  - `serve` は各ジョブに `uploaded`・`remote`・`operator` のラベルを付けます。worker はラベルと自身の `worker.yaml` を、起動する `run`・`record`・`crawl` に渡し、ラン前のビルドも自身で判断します。
+  - ランはデバイスの作業より前にポリシーを確認します。`named` か `deny` の下では、サーバーがすでに応答していても、直接書いたサーバーコマンドを拒否します。実行または拒否したコマンドは、すべて `manifest.json` の `commandExecutions` に記録し、レポートにも表示します。
+  - `serve --upload-exec`、`--allow-remote-build`、それぞれの環境変数、`run`・`record`・`crawl` の `--upload-exec` オプション、`BAJUTSU_WITHHOLD_RUNNER_BUILD` を削除しました。削除したオプションを渡すと、`serve` は名前を挙げて起動を拒否します。
+  - 信頼できない出どころのビルドは `governed_build` で運び、従来の `withhold_runner_build` フラグも引き続き送ります。そのため、この項目より前の worker がそのビルドを実行することはありません。
 
 ## 参考
 
