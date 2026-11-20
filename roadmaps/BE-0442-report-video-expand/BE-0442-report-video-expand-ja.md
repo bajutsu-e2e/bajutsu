@@ -115,18 +115,22 @@ if(v) videoHome.set(v, p);
 `vzMount`が戻す先を見失い、モーダルを閉じても録画が静かに消えてしまいます。
 
 `vzMount(player)`は、そのプレイヤーの`<video>`と`.vctl`操作バーの両方を、単純な`appendChild`で
-`.vz-video`へ移します。これは複製ではなくDOMの移動です。`.vctl`も一緒に移すのは、拡大表示でも
-再生/一時停止ボタンとシークバーを使えるようにするためです。動画だけを移すと、この操作バーが元の
-プレイヤーに取り残されてしまいます。再生位置、一時停止状態、すでに張られているイベントリスナー
-（`play` / `pause` / `timeupdate` / `syncSiblings`、
+`.vz-video`へ移します。これは複製ではなくDOMの移動です。
+
+`.vctl`も一緒に移すのは、拡大表示でも再生/一時停止ボタンとシークバーを使えるようにするためです。
+動画だけを移すと、この操作バーが元のプレイヤーに取り残されてしまいます。
+
+再生位置、一時停止状態、すでに張られているイベントリスナー（`play` / `pause` / `timeupdate` /
+`syncSiblings`、
 [report.js:796](../../bajutsu/templates/report.js)〜[report.js:822](../../bajutsu/templates/report.js)）
-は、要素を移動しただけでは外れないため、そのまま保たれます。移した`.vctl`が持つ`.vexpand`ボタンは、
-モーダルの中に移った時点で`closest('.player')`が`null`になり、押しても何も起きません。`vzMount`は
-このボタンに`hidden`を付け、何も起きないボタンをそのまま見せないようにします。`.vexpand`は自身の
-規則に`display:flex`を持つため、詳細度に関係なくUAスタイルシートの`[hidden]{display:none}`に勝って
-しまいます。`report.css`には`.vz-tabs[hidden]`や`.sttbl>tbody>tr[hidden]`と同じように、
-`.vexpand[hidden]{display:none}`という形でこの規則を書き直します。両方の子要素が抜けた元の
-`.player`には`hidden`を付けます。
+は、要素を移動しただけでは外れないため、そのまま保たれます。
+
+移した`.vctl`が持つ`.vexpand`ボタンは、モーダルの中に移った時点で`closest('.player')`が`null`に
+なり、押しても何も起きません。`vzMount`はこのボタンに`hidden`を付け、何も起きないボタンを
+そのまま見せないようにします。`.vexpand`は自身の規則に`display:flex`を持つため、詳細度に関係なく
+UAスタイルシートの`[hidden]{display:none}`に勝ってしまいます。`report.css`には
+`.vz-tabs[hidden]`や`.sttbl>tbody>tr[hidden]`と同じように、`.vexpand[hidden]{display:none}`という
+形でこの規則を書き直します。両方の子要素が抜けた元の`.player`には`hidden`を付けます。
 
 `vzRestore()`はこれを元へ戻します。`home.appendChild(vzActive)`で動画を戻し、続けて`.vz-video`に
 残っている`.vctl`の`.vexpand`から`hidden`を外してから、同じく`appendChild`で操作バーを戻します。
@@ -156,28 +160,35 @@ if(v) videoHome.set(v, p);
 区分ごとのループの中では、その区分自身の`table.sttbl`（`section.querySelector('table.sttbl')`）
 から`srcTable.querySelectorAll('tr.srow[data-target], tr.skip[data-target]')`を取り、
 ドキュメント上の並び順で行を集めます。セレクタの両側に`[data-target]`を付けているのは、`rowsFor`
-自身が使うのと同じ絞り込みです。ただし、runが到達しなかった`expect`を同じ`class="skip"`で描画する
-検証結果テーブル（`.extbl`、`exrow`マクロ、[report.html.j2:61](../../bajutsu/templates/report.html.j2)）
-を排除しているのは、この属性ではありません。その行は`data-target`をそもそも持たないものの、`.extbl`
+自身が使うのと同じ絞り込みです。
+
+runが到達しなかった`expect`は、同じ`class="skip"`で検証結果テーブル（`.extbl`、`exrow`マクロ、
+[report.html.j2:61](../../bajutsu/templates/report.html.j2)）に描画されます。この行を複製から
+排除しているのは、`[data-target]` ではありません。その行は`data-target`をそもそも持たないものの、`.extbl`
 自体が`rich()`の`.rich-scroll`と並ぶ兄弟要素であり、どの`.steps-sec`の外にもあります。そのため
-`srcTable`の絞り込みの時点で最初から対象外です。とはいえ`tr.skip`側の絞り込みを外してよいわけでは
-ありません。将来、`data-target`を持ち、かつ`.steps-sec`の内側に置かれる別の行種別が現れたとき、この
-絞り込みがなければそれが素通りしてしまいます。
+`srcTable`の絞り込みの時点で最初から対象外です。
+
+とはいえ`tr.skip`側の絞り込みを外してよいわけではありません。将来、`data-target`を持ち、かつ
+`.steps-sec`の内側に置かれる別の行種別が現れたとき、この絞り込みがなければそれが素通りして
+しまいます。
 
 集めた行それぞれは、`r.classList.contains('skip') || mine.indexOf(r) !== -1`という条件で残すか
 どうかを判定します。`mine`は、区分のループが始まる前に一度だけ求めた既存の`rowsFor(scn, target)`
-ヘルパー（[report.js:565](../../bajutsu/templates/report.js)）の戻り値です。`tr.skip`は無条件で
-残します。これは実行が途中で止まり、一度も走らなかったステップです
-（[rows.py](../../bajutsu/common/report/rows.py)の`_step_skip_row`）。`tr.skip`は自分の`target`を
-持ちません。そのステップを走らせるはずだった対象が、名乗る機会を得られなかったためです。そのため
-実行済みの行のようにプレイヤーへ絞り込めません。無条件にすべて残すのは、次にどの対象が実行する
-予定だったかにかかわらず、コンパクト表示がすでに同じ未実行ステップを1回だけ見せているのと同じ挙動に
-合わせるためです。単一ターゲットのシナリオでは`rowsFor`が持っている全行を返し、マルチターゲットの
-シナリオでは該当ターゲットの行だけを返します。`rowsFor`が返すのは本体行（`tr.srow[data-target]`）
-だけであり、その行自身の付随行（`.alertrow` / `.actrow` / `.genrow`）は含みません。そのため
-`vzBuildSteps`は、残した各行の直後にある付随行も、あれば同様に複製します。`tr.skip`は`data-t`を
-持たないため、ハイライトとシークの対象配列`cloneRows`には、本体行（`r.classList.contains('srow')`）
-だけを加えます。
+ヘルパー（[report.js:565](../../bajutsu/templates/report.js)）の戻り値です。
+
+- **スキップ行**：`tr.skip`は、実行が途中で止まり、一度も走らなかったステップです
+  （[rows.py](../../bajutsu/common/report/rows.py)の`_step_skip_row`）。`vzBuildSteps`は無条件で
+  残します。`tr.skip`は自分の`target`を持ちません。そのステップを走らせるはずだった対象が、
+  名乗る機会を得られなかったためです。そのため実行済みの行のようにプレイヤーへ絞り込めません。
+  無条件にすべて残すのは、次にどの対象が実行する予定だったかにかかわらず、コンパクト表示が
+  すでに同じ未実行ステップを1回だけ見せているのと同じ挙動に合わせるためです。
+- **実行済みの行**：単一ターゲットのシナリオでは`rowsFor`が持っている全行を返し、マルチターゲットの
+  シナリオでは該当ターゲットの行だけを返します。
+- **付随行**：`rowsFor`が返すのは本体行（`tr.srow[data-target]`）だけであり、その行自身の付随行
+  （`.alertrow` / `.actrow` / `.genrow`）は含みません。そのため`vzBuildSteps`は、残した各行の直後に
+  ある付随行も、あれば同様に複製します。
+- **ハイライト用の配列**：`tr.skip`は`data-t`を持たないため、ハイライトとシークの対象配列
+  `cloneRows`には、本体行（`r.classList.contains('srow')`）だけを加えます。
 
 あるターゲットの全ステップが（別のターゲットのステップが先に失敗したことにより）未実行だった場合、
 そのプレイヤー自身の`tr.srow`はありませんが、シナリオ共有のスキップ行はそれでもそのモーダルに
