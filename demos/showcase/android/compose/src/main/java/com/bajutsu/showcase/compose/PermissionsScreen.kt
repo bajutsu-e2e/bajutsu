@@ -138,12 +138,14 @@ fun PermissionsScreen(model: AppModel) {
             // section: the picker's return can scroll this column back to its top, where the photo
             // count has to stay in view for the select_photos scenarios that wait on it.
             Text("Banner", style = MaterialTheme.typography.titleMedium)
+            // The counter above the button: the scroll to the button stops once it shows, so a row
+            // below it could still sit under the fold when the scenario reads the count.
+            Text("Banner target taps: $bannerTaps", Modifier.aid("perm.bannerTaps").stateValue(bannerTaps.toString()))
             // Posts on a high-importance channel, which SystemUI presents as a heads-up notification
             // over the top of this screen (BE-0496).
             TextButton(onClick = { postHeadsUp(context) }, modifier = Modifier.aid("perm.postNotif")) {
                 Text("Post Notification")
             }
-            Text("Banner target taps: $bannerTaps", Modifier.aid("perm.bannerTaps").stateValue(bannerTaps.toString()))
         }
     }
 }
