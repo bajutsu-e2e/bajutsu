@@ -53,7 +53,12 @@ local バックエンドは、既定で `LocalExecutor` を使います（[`serv
 
 ホスト型のデプロイは、すでにキュー、セッション、アーティファクトの置き場を必要とします。ローカルでの起動は、クラウドのサービスなしにそれらを用意しなければなりません。ローカルの起動にリポジトリを付けると、保存先以外も変わるので、既定値を列挙します。
 
-- **キューの保存先**は、既定で SQLite です。runs のディレクトリの隣のファイルとし、キュー中のジョブは再起動後も残ります。PostgreSQL は、現在と同じく `BAJUTSU_DATABASE_URL` で選びます。worker は HTTP で server に届き、データベースを開かないので、同時に書くのは server 自身のリクエストのスレッドです。SQLite は `FOR UPDATE SKIP LOCKED` を使わないので、すべての状態遷移を、更新した行数を確かめる条件つきの `UPDATE` にし、遷移ごとに述語を持たせます。lease は `status = 'queued'`、ハートビート、結果、キャンセルは `status = 'leased' AND leased_by = :worker`、回収は `status = 'leased' AND leased_at < :cutoff` です。あるいは、各遷移を `BEGIN IMMEDIATE` の下で実行します。ファイルに置いた SQLite で、同時に lease するテストを行い、ハートビートと回収を競わせます。エンジンは、ログ先行書き込み（write-ahead logging、WAL）とビジータイムアウトを設定します。
+- **キューの保存先**は、既定で SQLite です。runs のディレクトリの隣のファイルとし、キュー中のジョブは再起動後も残ります。PostgreSQL は、現在と同じく `BAJUTSU_DATABASE_URL` で選びます。worker は HTTP で server に届き、データベースを開かないので、同時に書くのは server 自身のリクエストのスレッドです。SQLite は `FOR UPDATE SKIP LOCKED` を使わないので、すべての状態遷移を、更新した行数を確かめる条件つきの `UPDATE` にします。遷移ごとの述語は次のとおりです。
+  - lease は `status = 'queued'` を確かめます。
+  - ハートビート、結果、キャンセルは `status = 'leased' AND leased_by = :worker` を確かめます。
+  - 回収は `status = 'leased' AND leased_at < :cutoff` を確かめます。
+
+  あるいは、各遷移を `BEGIN IMMEDIATE` の下で実行します。ファイルに置いた SQLite で、同時に lease するテストを行い、ハートビートと回収を競わせます。エンジンは、ログ先行書き込み（write-ahead logging、WAL）とビジータイムアウトを設定します。
 - **マイグレーション**は、既定の SQLite では自動で実行します。現在の server は Alembic を実行しないからです。
 - **secrets の鍵** `BAJUTSU_SECRETS_KEY` は、現在、データベースを使う起動で必須です。ローカルの起動は、鍵を生成して runs のディレクトリの隣に保存します。ファイルは、所有者だけが読める権限（`0600`）の通常ファイル（symlink ではないもの）として原子的に作成し、安全でない既存のパスがあれば起動に失敗します。秘密を含むファイルの扱いは、`bajutsu/common/run_meta/artifact_perms.py` に合わせます。共有ホストで誰でも読める鍵は、BE-0136 の保護を無効にするからです。
 - **`hosted`** は、デプロイの設定のままにします。リポジトリがそれを含意すると、BE-0108 のファイルブラウザが消え、デバイスの前にいる作者に対して `record` のデバイスの引き継ぎ（BE-0185）が拒否されます。
@@ -71,17 +76,26 @@ local バックエンドと server バックエンドの違いは、これらの
 
 ### 分割をまたぐライブの出力
 
-ホスト型のモデルは、worker のコンソールログを、ジョブの完了後に届けます（[BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model-ja.md)、[`post_completion_logbus.py`](../../bajutsu/serve/server/post_completion_logbus.py)）。ローカルでの利用がそれを迂回していたあいだは、それで足りました。ローカルでの利用も worker を通るようになると、コンソールは再びライブでなければならず、`crawl` は探索グラフが育つあいだそれを必要とします。そこで worker はストリームを送ります。ログの断片とライブのアーティファクトの断片を、ハートビートの経路と同じく lease の持ち主を検査する worker 用の経路に送信し、server は、書き込みを受け付けるログバス（単一の server のプロセスならメモリ上のバス、複製をまたぐなら `RedisLogBus`）に、書き込みを無視する完了後のバスの代わりに公開し、Server-Sent Events（SSE）でブラウザに中継します。アップロードされた `console.log` は、耐久性のある写しとして残ります。ログのストリームは、どの種類を移すよりも先に入れるので、移した `run` もライブのコンソールを保ちます。アーティファクトのストリームは `crawl` とともに入り、最初の利用者は crawl のグラフです。これは [BE-0070](../BE-0070-live-run-artifacts-across-split/BE-0070-live-run-artifacts-across-split-ja.md) が未解決にしていた範囲です。
+ホスト型のモデルは、worker のコンソールログを、ジョブの完了後に届けます（[BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model-ja.md)、[`post_completion_logbus.py`](../../bajutsu/serve/server/post_completion_logbus.py)）。ローカルでの利用がそれを迂回していたあいだは、それで足りました。ローカルでの利用も worker を通るようになると、コンソールは再びライブでなければならず、`crawl` は探索グラフが育つあいだそれを必要とします。そこで worker はストリームを送ります。ログの断片とライブのアーティファクトの断片を、ハートビートの経路と同じく lease の持ち主を検査する worker 用の経路に送信します。server は、書き込みを受け付けるログバス（単一の server のプロセスならメモリ上のバス、複製をまたぐなら `RedisLogBus`）に、書き込みを無視する完了後のバスの代わりに公開します。そして Server-Sent Events（SSE）でブラウザに中継します。アップロードされた `console.log` は、耐久性のある写しとして残ります。ログのストリームは、どの種類を移すよりも先に入れるので、移した `run` もライブのコンソールを保ちます。アーティファクトのストリームは `crawl` とともに入り、最初の利用者は crawl のグラフです。これは [BE-0070](../BE-0070-live-run-artifacts-across-split/BE-0070-live-run-artifacts-across-split-ja.md) が未解決にしていた範囲です。
 
 `record` は、人へ制御を渡すこともあります。現在、server は、人の応答を実行の標準入力に書きます（BE-0179）。その入力は worker が持つので、応答は逆向きに、server から worker へ、ハートビートの応答に載せて運び、worker が書きます。デバイスの引き継ぎは、server のホストではなく、worker のホストに従います。
 
 ### 1 回実行の worker
 
-`bajutsu worker --once <spec>` は、server なしで 1 つのジョブ仕様を実行し、ジョブの終了コードで終了します。仕様は、キューがすでに保存している形（`worker_job.py` の `job_spec`）です。worker は、`--worker-config` で `worker.yaml` を読み、worker capability の検査を実行し、HTTP と署名付き URL の代わりにローカルの入出力で `execute_job_spec` を通してジョブを実行し、1 回実行のモードでは、リースしたジョブが使う、パイプでつないで統合した取得の代わりに、標準入力、標準出力、標準エラーを継承した子プロセスを起動します。実行の ID は、PASS の行ではなく、子が書いた実行のツリーから取り、起動する内部の run の入口には、解決した `--worker-config` のパスを渡します。アップロード済みのバンドルやアーティファクトの上書きを名指しする仕様は、明確なメッセージで拒否します。それらは署名付き URL で届き、1 回実行の worker にはそれがないからです。`worker --once` は、SIGINT と SIGTERM を、リース済みのジョブがハートビートで受け取るのと同じキャンセルに対応づけます。同じコマンドが、テスト、調査、次のラッパーに使われます。
+`bajutsu worker --once <spec>` は、server なしで 1 つのジョブ仕様を実行し、ジョブの終了コードで終了します。仕様は、キューがすでに保存している形（`worker_job.py` の `job_spec`）です。1 回実行のモードでは、worker は次のように動きます。
+
+- worker は、`--worker-config` で `worker.yaml` を読み、worker capability の検査を行います。
+- worker は、HTTP と署名付き URL の代わりにローカルの入出力で `execute_job_spec` を通してジョブを実行します。
+- worker は、リースしたジョブが使う、パイプでつないで統合した取得の代わりに、標準入力、標準出力、標準エラーを継承した子プロセスを起動します。
+- worker は、実行の ID を PASS の行ではなく、子が書いた実行のツリーから取ります。起動する内部の run の入口には、解決した `--worker-config` のパスを渡します。
+- worker は、アップロード済みのバンドルやアーティファクトの上書きを名指しする仕様を、明確なメッセージで拒否します。それらは署名付き URL で届き、1 回実行の worker にはそれがないからです。
+- worker は、SIGINT と SIGTERM を、リース済みのジョブがハートビートで受け取るのと同じキャンセルに対応づけます。
+
+同じコマンドが、テスト、調査、次のラッパーに使われます。
 
 ### 薄いラッパーとしての `bajutsu run`
 
-`bajutsu run` は、引数からジョブ仕様を作り、1 回実行の worker の経路を呼ぶので、コマンドラインと lease したジョブが 1 つの実装を通ります。避けるべき罠が 1 つあります。`run_job` は `job.cmd` に入っているものをそのまま起動し、現在の `run_command` は `python -m bajutsu run` を出すので、`run_job` を呼ぶ公開の `run` は、自分自身を起動してしまいます。そこで現在の `run` の本体を内部の入口に移し、仕様を作る側がその入口を出すようにします。変更の前にキューに入った仕様は、なお `-m bajutsu run` を名指ししますが、ラッパーに入り、ラッパーが内部の入口を 1 回起動するので、再帰はしません。
+`bajutsu run` は、引数からジョブ仕様を作り、1 回実行の worker の経路を呼ぶので、コマンドラインと lease したジョブが 1 つの実装を通ります。避けるべき落とし穴が 1 つあります。`run_job` は `job.cmd` に入っているものをそのまま起動し、現在の `run_command` は `python -m bajutsu run` を出すので、`run_job` を呼ぶ公開の `run` は、自分自身を起動してしまいます。そこで現在の `run` の本体を内部の入口に移し、仕様を作る側がその入口を出すようにします。変更の前にキューに入った仕様は、なお `-m bajutsu run` を名指ししますが、ラッパーに入り、ラッパーが内部の入口を 1 回起動するので、再帰はしません。
 
 ラッパーは、公開の挙動を保ちます。
 
