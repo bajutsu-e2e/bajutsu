@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0498") |
+| 実装 PR | [#2492](https://github.com/bajutsu-e2e/bajutsu/pull/2492)（単位 1〜6） |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0211](../BE-0211-android-device-control/BE-0211-android-device-control-ja.md), [BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities-ja.md), [BE-0233](../BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity-ja.md), [BE-0481](../BE-0481-android-device-set-location/BE-0481-android-device-set-location-ja.md) |
 <!-- /BE-METADATA -->
@@ -548,7 +549,7 @@ Android ではアプリに BajutsuAndroid ライブラリが必要であるこ�
 
 ログ：
 
-- 2026-11-20：作業単位 1〜6 をまとめて実装しました。作業単位 4 は、API 34 のエミュレータ（Pixel 8 の
+- 2026-11-20：作業単位 1〜6 をまとめて実装しました（[#2492](https://github.com/bajutsu-e2e/bajutsu/pull/2492)）。作業単位 4 は、API 34 のエミュレータ（Pixel 8 の
   イメージ）で `bajutsu run` を通して実施しました。使ったのは、`startPush(this)` がハンドラを登録しない
   showcase のローカルビルドです。確かめたのは次の 3 点です。
   - ハンドラのない経路は、`bajutsu` チャネルに通知を出しました。通知には送ったタイトルと本文、アプリを

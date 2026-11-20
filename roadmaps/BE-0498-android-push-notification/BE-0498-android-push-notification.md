@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0498") |
+| Implementing PR | [#2492](https://github.com/bajutsu-e2e/bajutsu/pull/2492) (units 1–6) |
 | Topic | Platform support |
 | Related | [BE-0211](../BE-0211-android-device-control/BE-0211-android-device-control.md), [BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities.md), [BE-0233](../BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity.md), [BE-0481](../BE-0481-android-device-set-location/BE-0481-android-device-set-location.md) |
 <!-- /BE-METADATA -->
@@ -542,7 +543,7 @@ table is outside it. Its new row belongs to Unit 6.
 
 Log:
 
-- 2026-11-20 — Units 1–6 landed together. Unit 4 ran on an API 34 emulator (Pixel 8 image) through
+- 2026-11-20 — Units 1–6 landed together ([#2492](https://github.com/bajutsu-e2e/bajutsu/pull/2492)). Unit 4 ran on an API 34 emulator (Pixel 8 image) through
   `bajutsu run`, with a local showcase build whose `startPush(this)` registers no handler. The
   probe showed three things:
   - The default path posted a notification on the `bajutsu` channel. It carried the pushed title
