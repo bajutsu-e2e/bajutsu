@@ -700,7 +700,7 @@ Compose の値は自身の変化に対して `TYPE_WINDOW_CONTENT_CHANGED` を�
   どちらも web バックエンドと同じ driver の `driver_interval` seam から供給するので、バックエンド非依存の `capture` ポリシーがそのまま両方を運びます（[evidence](evidence.md)を参照）。
 - **ネットワーク**: adb backend はネットワークをネイティブには観測しません（`NETWORK` 能力を持ちません）。iOS と同じモックで対応します。
   アプリ側の collector の URL を launch env 経由で intent extra として渡すので、新しいコードパスなしに `mocks` が動きます。
-- **デバイス制御**: `setLocation`、クリップボード操作、`push` に対応します。`push` はアプリ内の BajutsuAndroid のプッシュレシーバに届けます（BE-0498）。`clearKeychain` だけが未対応のままです。
+- **デバイス制御**: `setLocation`、クリップボード操作、`push` に対応します。`push` は、アプリのプロセスが動いているあいだ、アプリ内の BajutsuAndroid のプッシュレシーバに届けます（BE-0498）。`background` ステップのあとのプッシュにも対応します。API 34 のエミュレータでは遅れずに届きました。`clearKeychain` だけが未対応のままです。
   `setLocation` は、ローカルの `emulator-<port>` の serial ではエミュレータのコンソール（`emu geo fix`、BE-0211）を使います。
   それ以外の対象は、実機と、`adb connect` で接続したエミュレータです。
   そうした対象では、まず adb がアプリに mock location の app-op を許可します。

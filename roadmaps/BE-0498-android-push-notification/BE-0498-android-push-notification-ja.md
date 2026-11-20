@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0498](BE-0498-android-push-notification-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **承認済み** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0498") |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0211](../BE-0211-android-device-control/BE-0211-android-device-control-ja.md), [BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities-ja.md), [BE-0233](../BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity-ja.md), [BE-0481](../BE-0481-android-device-set-location/BE-0481-android-device-set-location-ja.md) |
@@ -539,12 +539,33 @@ Android ではアプリに BajutsuAndroid ライブラリが必要であるこ�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 作業単位 1：BajutsuAndroid の `PushReceiver`、`BajutsuPushHandler`、`Bajutsu.startPush`、README（英語と日本語）
-- [ ] 作業単位 2：adb のコマンド経路と `Push` モデルの検証、フィクスチャ、ペイロードの規則のドキュメント
-- [ ] 作業単位 3：Android の `push` とその capability、反転したテスト、`push` を iOS 専用とするドキュメント
-- [ ] 作業単位 4：エミュレータで、デフォルトの通知の処理、権限がないときの失敗、API 34 での `background` ステップ後のプッシュを確かめる
-- [ ] 作業単位 5：showcase のハンドラ、表示、シナリオと、関係するドキュメントやコメント
-- [ ] 作業単位 6：ドライバと parity のドキュメントに書くバックグラウンド配信の結果（英語と日本語）
+- [x] 作業単位 1：BajutsuAndroid の `PushReceiver`、`BajutsuPushHandler`、`Bajutsu.startPush`、README（英語と日本語）
+- [x] 作業単位 2：adb のコマンド経路と `Push` モデルの検証、フィクスチャ、ペイロードの規則のドキュメント
+- [x] 作業単位 3：Android の `push` とその capability、反転したテスト、`push` を iOS 専用とするドキュメント
+- [x] 作業単位 4：エミュレータで、デフォルトの通知の処理、権限がないときの失敗、API 34 での `background` ステップ後のプッシュを確かめる
+- [x] 作業単位 5：showcase のハンドラ、表示、シナリオと、関係するドキュメントやコメント
+- [x] 作業単位 6：ドライバと parity のドキュメントに書くバックグラウンド配信の結果（英語と日本語）
+
+ログ：
+
+- 2026-11-20：作業単位 1〜6 をまとめて実装しました。作業単位 4 は、API 34 のエミュレータ（Pixel 8 の
+  イメージ）で `bajutsu run` を通して実施しました。使ったのは、`startPush(this)` がハンドラを登録しない
+  showcase のローカルビルドです。確かめたのは次の 3 点です。
+  - ハンドラのない経路は、`bajutsu` チャネルに通知を出しました。通知には送ったタイトルと本文、アプリを
+    開く content intent が入っていました。
+  - `permissions: { notifications: revoke }` のもとでは、レシーバは `4` を返しました。ステップは
+    `permissions` の事前条件を示すメッセージで失敗し、実行は続きました。
+  - `background` ステップの直後のプッシュも、25 秒後のプッシュも遅れずに届きました。プッシュの
+    ステップはフォアグラウンドでの 2.2 秒に対して 2.6 秒でした。プロセスは直前のアプリの状態
+    （メモリ不足時の調整値 700）にあり、凍結されていませんでした。そのため作業単位 6 では、この場合を
+    対応済みとしました。
+
+  詳細設計との違いは 2 つあります。
+  - showcase のハンドラは、タイトルをアプリのモデルではなく、プロセス全体の `PushInbox` に保存します。
+    ハンドラは `Application.onCreate` で登録するため、その時点では Activity もモデルもまだありません。
+  - Android のレーンは、`push.yaml` と `push_android.yaml` を両方の双子でローカルに実行しました。
+    `push_banner.yaml` は中身を変えずに移したので、iOS での確認は `ios-e2e.yml` の `actuation` ジョブが
+    行います。
 
 ## 参考
 

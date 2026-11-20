@@ -902,8 +902,9 @@ A Compose value published `TYPE_WINDOW_CONTENT_CHANGED` for its own change, whic
   The launch env forwards the app-side collector URL as an intent extra.
   `mocks` thus work with no new code path.
 - **Device control.** It backs `setLocation`, the clipboard operations, and `push`. `push` reaches
-  BajutsuAndroid's push receiver in the app (BE-0498). `clearKeychain` stays the one unsupported
-  operation.
+  BajutsuAndroid's push receiver in the app (BE-0498), while the app's process runs. It also
+  delivers a push after a `background` step: on an API 34 emulator that push arrived without delay. `clearKeychain`
+  stays the one unsupported operation.
   `setLocation` takes the emulator console (`emu geo fix`, BE-0211) on a local `emulator-<port>` serial.
   Every other target mocks the `gps` and `network` providers through BajutsuAndroid's location receiver (BE-0481).
   Such a target is a real device, or an emulator reached with `adb connect`.

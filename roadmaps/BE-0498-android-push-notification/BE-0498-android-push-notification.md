@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0498](BE-0498-android-push-notification.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0498") |
 | Topic | Platform support |
 | Related | [BE-0211](../BE-0211-android-device-control/BE-0211-android-device-control.md), [BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities.md), [BE-0233](../BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity.md), [BE-0481](../BE-0481-android-device-set-location/BE-0481-android-device-set-location.md) |
@@ -533,12 +533,32 @@ table is outside it. Its new row belongs to Unit 6.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — `PushReceiver`, `BajutsuPushHandler`, `Bajutsu.startPush`, and the READMEs (en + ja)
-- [ ] Unit 2 — the adb command path and the `Push` validator, with fixtures and payload docs
-- [ ] Unit 3 — Android `push` and its capability, inverted tests, and the docs that limit it to iOS
-- [ ] Unit 4 — probe the default path, the permission failure, and a push after `background` on API 34
-- [ ] Unit 5 — the showcase handler, readout, and scenarios, with their docs and comments
-- [ ] Unit 6 — the background-delivery outcome in the driver and parity docs (en + ja)
+- [x] Unit 1 — `PushReceiver`, `BajutsuPushHandler`, `Bajutsu.startPush`, and the READMEs (en + ja)
+- [x] Unit 2 — the adb command path and the `Push` validator, with fixtures and payload docs
+- [x] Unit 3 — Android `push` and its capability, inverted tests, and the docs that limit it to iOS
+- [x] Unit 4 — probe the default path, the permission failure, and a push after `background` on API 34
+- [x] Unit 5 — the showcase handler, readout, and scenarios, with their docs and comments
+- [x] Unit 6 — the background-delivery outcome in the driver and parity docs (en + ja)
+
+Log:
+
+- 2026-11-20 — Units 1–6 landed together. Unit 4 ran on an API 34 emulator (Pixel 8 image) through
+  `bajutsu run`, with a local showcase build whose `startPush(this)` registers no handler. The
+  probe showed three things:
+  - The default path posted a notification on the `bajutsu` channel. It carried the pushed title
+    and body, and a content intent that opens the app.
+  - With `permissions: { notifications: revoke }`, the receiver answered `4`. The step failed with
+    the message that names the `permissions` precondition, and the run went on.
+  - A push right after a `background` step arrived without delay, and so did one sent 25 seconds
+    later. The push step took 2.6 seconds against 2.2 seconds in the foreground. The process sat in
+    the previous-app state (out-of-memory adjustment 700) and was not frozen. Unit 6 lists the case
+    as supported.
+
+  Two deviations from the Detailed design:
+  - The showcase handler stores the title in a process-wide `PushInbox`, not in the app model. The
+    handler registers in `Application.onCreate`, before any Activity and its model exist.
+  - The Android lanes ran `push.yaml` and `push_android.yaml` on both twins locally. `push_banner.yaml`
+    moved unchanged, so the `actuation` job of `ios-e2e.yml` verifies it on iOS.
 
 ## References
 
