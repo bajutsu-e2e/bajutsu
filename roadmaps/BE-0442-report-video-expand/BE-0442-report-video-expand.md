@@ -36,8 +36,8 @@ progress
 [report.js:858](../../bajutsu/templates/report.js)–[report.js:885](../../bajutsu/templates/report.js)).
 Nothing in the report offers a place to view the recording larger without losing that context.
 
-After this item ships, pressing a recording's new expand button opens a modal with the recording
-enlarged and the same step list, cloned, beside it. Clicking a cloned step seeks the enlarged video,
+After this item ships, pressing a recording's new expand button opens a modal. The modal shows the
+recording enlarged, with the same step list, cloned, beside it. Clicking a cloned step seeks the enlarged video,
 the same way a click seeks the video in the compact view today.
 
 ## Detailed design
@@ -110,15 +110,16 @@ came from:
 if(v) videoHome.set(v, p);
 ```
 
-The `if(v)` guard matters: `WeakMap.set` takes an object key alone, and `v` is `null` on a player with
-no `<video>` at all — calling `set` on that key throws. Registering ahead of the early return matters
-too: a player can carry a `<video>` while missing one of the three controls the return checks for,
-and `vzMount` never consults those controls itself — it touches merely the video and its `.vctl`.
+The `if(v)` guard matters: `WeakMap.set` takes an object key alone. `v` is `null` on a player with
+no `<video>` at all, and calling `set` on that key throws. Registering ahead of the early return
+matters too. A player can carry a `<video>` while missing one of the three controls the return
+checks for. `vzMount` never consults those controls itself, and it touches merely the video and its
+`.vctl`.
 Registering after the return would leave such a video with no recorded home. Closing the modal would
 then drop the recording instead of restoring it.
 
-`vzMount(player)` moves that player's `<video>` *and* its `.vctl` control bar into `.vz-video`,
-both with a plain `appendChild`. The operation is a DOM move, not a clone.
+`vzMount(player)` moves that player's `<video>` *and* its `.vctl` control bar into `.vz-video`.
+Both moves use a plain `appendChild`. The operation is a DOM move, not a clone.
 
 Moving `.vctl` along with the video is what keeps play/pause and the scrubber usable at the enlarged
 size. Moving the video alone would strand the controls on the now-empty player, behind the modal.
@@ -129,7 +130,7 @@ Playback position, pause state, and every listener already attached (`play` / `p
 survive untouched, because reparenting a node does not detach its listeners.
 
 The moved bar's own `.vexpand` button finds no `.player` ancestor to reopen once it sits inside the
-modal it already opened. `vzMount` therefore hides the button there, rather than leave a control
+modal it already opened. `vzMount` thus hides the button there, rather than leave a control
 that does nothing. `.vexpand` carries its own `display:flex`, which outranks the UA stylesheet's
 `[hidden]{display:none}` regardless of specificity. `report.css` restates the rule as
 `.vexpand[hidden]{display:none}`, the same way `.vz-tabs[hidden]` and `.sttbl>tbody>tr[hidden]`
@@ -141,7 +142,7 @@ still sitting in `.vz-video` goes back the same way, with its `.vexpand` unhidde
 both, in order, recreates `player`'s original child order, because a video and its `.vctl` are the
 two children `vzMount` ever takes out. Clearing `hidden` finishes the restore.
 
-Toggling a player's `hidden` changes `.players`' own height. `vzRestore` therefore also calls the
+Toggling a player's `hidden` changes `.players`' own height. `vzRestore` thus also calls the
 existing `syncResultHeight(scn)`
 ([report.js:529](../../bajutsu/templates/report.js)–[report.js:541](../../bajutsu/templates/report.js))
 to keep the Result tab's height bound current.
@@ -184,13 +185,13 @@ where `mine` is the result of the existing `rowsFor(scn, target)` helper
   ([rows.py](../../bajutsu/common/report/rows.py)'s `_step_skip_row`). `vzBuildSteps` keeps it
   unconditionally. The row carries no `target` of its own, because the step that would have run it
   never got the chance to name one. That rules out scoping it to one player's tab the way an
-  executed row can. Keeping every skip row matches what the compact table already shows: the same
-  skipped steps, once, regardless of which target was next in line.
-- **Executed rows.** A single-target scenario's own `rowsFor` call returns every row it has. A
+  executed row can. Keeping every skip row matches what the compact table already shows. It shows
+  the same skipped steps, once, regardless of which target was next in line.
+- **Rows that ran.** A single-target scenario's own `rowsFor` call returns every row it has. A
   multi-target scenario's call returns the matching target's own rows alone.
 - **Companion rows.** `rowsFor` returns body rows alone (`tr.srow[data-target]`), never a row's own
   companion rows (`.alertrow` / `.actrow` / `.genrow`). A step can emit up to all three
-  ([report.html.j2:45](../../bajutsu/templates/report.html.j2)). `vzBuildSteps` therefore also
+  ([report.html.j2:45](../../bajutsu/templates/report.html.j2)). `vzBuildSteps` thus also
   clones each kept row's own following companion rows, where any exist.
 - **Highlight array.** A skip row carries no `data-t`. `vzBuildSteps` clones it, but adds body rows
   alone (`r.classList.contains('srow')`) to `cloneRows`, the highlight/seek array.
