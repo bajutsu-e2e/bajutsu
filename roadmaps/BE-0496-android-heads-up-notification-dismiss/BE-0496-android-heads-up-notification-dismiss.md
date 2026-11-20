@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0496") |
+| Implementing PR | [#2498](https://github.com/bajutsu-e2e/bajutsu/pull/2498) |
 | Topic | Platform support |
 | Related | [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md), [BE-0416](../BE-0416-ios-notification-banner-swipe-dismiss/BE-0416-ios-notification-banner-swipe-dismiss.md), [BE-0478](../BE-0478-android-device-control-parity/BE-0478-android-device-control-parity.md) |
 <!-- /BE-METADATA -->
@@ -348,7 +349,7 @@ describe the banner guard.
 
 Log:
 
-- 2026-11-20 — Units 1–8 landed together (PR_LINK). Unit 1's measurements are under *Unit 1 result*
+- 2026-11-20 — Units 1–8 landed together ([#2498](https://github.com/bajutsu-e2e/bajutsu/pull/2498)). Unit 1's measurements are under *Unit 1 result*
   above, and the scenario passed with the driver clearing the banner on API 33, 34, and 35 emulators,
   for both showcase apps. Deviations from the Detailed design:
   - The fallback's manifest marker is a channel note, which the manifest already carries per
