@@ -39,7 +39,8 @@
         reason: >-
           SystemUI slides the heads-up notification in about a second after the post, later on a
           busy emulator, and nothing in the app's tree shows it; a wait has no condition to poll.
-          Three seconds stays well inside the banner's own six-second timeout
+          The android Makefile's target raises SystemUI's heads-up lifetime to a minute, so a slow
+          emulator's steps cannot outlast the banner
     - tap: { id: [perm.bannerTarget, perm_bannerTarget] }
   expect:
     - value: { sel: { id: [perm.bannerTaps, perm_bannerTaps] }, equals: "1" }

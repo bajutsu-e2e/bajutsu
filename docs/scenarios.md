@@ -427,14 +427,14 @@ beside that record, because the sweep reads the banner's position and nothing el
 On Android, the same guard covers a **heads-up notification**. The system user interface (SystemUI)
 slides this banner over the running app
 ([BE-0496](../roadmaps/BE-0496-android-heads-up-notification-dismiss/BE-0496-android-heads-up-notification-dismiss.md)).
-Android has nothing like XCUITest's interruption handling. Instead, the adb backend checks for the
-banner itself before each gesture. A banner may cover the point a tap or a swipe is about to touch. The backend then
-swipes the banner away and waits for its absence before the gesture. The report records that
+Android has nothing like XCUITest's interruption handling, so the adb backend checks for the banner
+itself before each gesture. When a banner covers the point a tap or a swipe is about to touch, the
+backend swipes it away and waits for its absence before the gesture. The report records that
 dismissal on the step, with the notification's own text beside it.
 
-A banner can still cover the point after six seconds. The step then fails and names the banner. The
-backend does not touch the point anyway, because the touch would open the notification's app. The
-run would then leave the scenario under test. The three sweeps above run on Android too.
+When the banner still covers the point after six seconds, the step fails and names it rather than
+touching the point: the touch would open the notification's app and carry the run away from the
+scenario under test. The three sweeps above run on Android too.
 
 The Android guard reads the banner from the resident UI Automator server. The backend uses that
 server whenever a build of the server exists. Without the server, the backend reads through

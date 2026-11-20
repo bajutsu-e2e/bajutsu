@@ -206,7 +206,6 @@ def test_the_sweep_confirms_a_banner_that_takes_a_few_reads_to_clear() -> None:
 
     device = _Device()
     device.swipes_to_clear = 1
-    driver = _driver(device)
     lingering = {"reads": 2}
     settled = device.fetch
 
