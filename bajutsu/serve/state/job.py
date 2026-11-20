@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import threading
-from bajutsu.common.capability.command_policy import CommandExecution
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, get_args
 
+from bajutsu.common.capability.command_policy import CommandExecution
 from bajutsu.run import INTERNAL_MODULE as INTERNAL_RUN_MODULE
 from bajutsu.serve.logbus import LogBus
 

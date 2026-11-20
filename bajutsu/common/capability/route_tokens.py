@@ -22,6 +22,7 @@ from collections.abc import Iterable, Mapping
 from typing import TYPE_CHECKING, get_args
 
 from bajutsu.common.capability import capability_preflight
+from bajutsu.common.capability.command_policy import COMMAND_EXECUTIONS_KEY, command_notices
 from bajutsu.common.capability.settings_support import (
     Route,
     route_for,
@@ -61,7 +62,7 @@ WORKER_ENVIRONMENT_KEY = "workerEnvironment"
 
 
 def report_notices(provenance: Mapping[str, object] | None) -> list[str]:
-    """The run-level notices a report shows for its manifest *provenance* (BE-0467, BE-0484)."""
+    """The run-level notices a report shows for its manifest *provenance* (BE-0467, BE-0484, BE-0492)."""
     provenance = provenance or {}
     notices = []
     if provenance.get(UNCHECKED_PROVENANCE_KEY) == UNCHECKED_PROVENANCE_VALUE:
@@ -71,6 +72,7 @@ def report_notices(provenance: Mapping[str, object] | None) -> list[str]:
             f"this run-set job ran on a worker whose environment is {environment!r} (BE-0484); "
             "another run of it may land elsewhere"
         )
+    notices += command_notices(provenance.get(COMMAND_EXECUTIONS_KEY))
     return notices
 
 

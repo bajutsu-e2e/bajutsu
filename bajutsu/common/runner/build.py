@@ -23,9 +23,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-from bajutsu.common.capability.command_policy import SUBJECT_BUILD_FIELD
 from bajutsu.common.capability import command_gate
 from bajutsu.common.capability.command_gate import CommandRefused
+from bajutsu.common.capability.command_policy import SUBJECT_BUILD_FIELD
 
 
 class BuildError(RuntimeError):

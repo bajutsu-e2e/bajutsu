@@ -292,3 +292,37 @@ def command_sha256(cmd: str, executable: Path | None = None) -> dict[str, str]:
         with contextlib.suppress(OSError):
             hashes["executable"] = hashlib.sha256(executable.read_bytes()).hexdigest()
     return hashes
+
+
+# The manifest provenance key the command record lives under (BE-0492).
+COMMAND_EXECUTIONS_KEY = "commandExecutions"
+
+_DECISION_WORDS = {
+    "ran": "ran on the host",
+    "sandboxed": "ran in a container",
+    "refused": "refused",
+}
+
+
+def command_notices(records: object) -> list[str]:
+    """One report notice per governed command a run met, read from its `commandExecutions`.
+
+    The notice states the field, the command line as recorded (already masked), the config source,
+    the worker's mode, and what happened, so a reader sees what the run executed beside its other
+    provenance. Anything that is not a list of records yields no notice.
+    """
+    if not isinstance(records, list):
+        return []
+    notices = []
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        decision = str(record.get("decision", ""))
+        outcome = _DECISION_WORDS.get(decision, decision)
+        if "exitCode" in record:
+            outcome += f" (exit {record['exitCode']})"
+        notices.append(
+            f"{record.get('field')} {record.get('cmd')!r} from the {record.get('source')} config: "
+            f"{outcome} under commandExecution {record.get('mode')} (BE-0492)"
+        )
+    return notices

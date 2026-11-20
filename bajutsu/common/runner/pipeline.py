@@ -30,6 +30,7 @@ from bajutsu.common.backends import (
 from bajutsu.common.cancellation import CANCELLED_FAILURE, CancelSource, not_cancelled
 from bajutsu.common.capability import capability_preflight
 from bajutsu.common.capability.capability_preflight import steps_for_target
+from bajutsu.common.capability.command_policy import COMMAND_EXECUTIONS_KEY
 from bajutsu.common.capability.settings_support import check_settings
 from bajutsu.common.config import Effective, resolve_preconditions, web_engine
 from bajutsu.common.devices import errors as device_errors
@@ -2501,7 +2502,7 @@ def _assemble_report(
     # decision, and a hash (BE-0492), so "what did this run execute, and what did the policy refuse?"
     # stays answerable. Copied, since the gate keeps the list it may still append to.
     if command_executions:
-        provenance["commandExecutions"] = [dict(entry) for entry in command_executions]
+        provenance[COMMAND_EXECUTIONS_KEY] = [dict(entry) for entry in command_executions]
     return write_report(
         run_dir,
         run_id,

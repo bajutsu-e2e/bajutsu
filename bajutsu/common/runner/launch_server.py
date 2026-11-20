@@ -27,10 +27,10 @@ import urllib.request
 from collections.abc import Callable
 from pathlib import Path
 
-from bajutsu.common.capability.command_policy import SERVER_FIELD
-from bajutsu.common.config import Effective, web_base_url
 from bajutsu.common.capability import command_gate
 from bajutsu.common.capability.command_gate import CommandGate
+from bajutsu.common.capability.command_policy import SERVER_FIELD
+from bajutsu.common.config import Effective, web_base_url
 
 _POLL_INTERVAL = 0.25  # seconds between readiness probes (the grain of the condition wait)
 

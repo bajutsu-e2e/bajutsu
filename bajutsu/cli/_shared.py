@@ -69,10 +69,10 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
     from bajutsu.common.agents.alerts import ClaudeAlertLocator
+    from bajutsu.common.capability.command_gate import CommandGate
     from bajutsu.common.devices.facts import DeviceFacts
     from bajutsu.common.drivers import base
     from bajutsu.common.orchestrator import AlertEvent
-    from bajutsu.common.capability.command_gate import CommandGate
     from bajutsu.common.scenario import Scenario
 
 
@@ -876,8 +876,8 @@ def _install_command_gate_or_exit(
     Every governed command the run meets afterwards — the server, the app build, the runner build —
     consults it, and `manifest.json` carries its record (BE-0492).
     """
-    from bajutsu.common.capability.command_policy import CONFIG_SOURCES, CommandPolicy
     from bajutsu.common.capability import command_gate
+    from bajutsu.common.capability.command_policy import CONFIG_SOURCES, CommandPolicy
 
     source = config_source or "operator"
     if source not in CONFIG_SOURCES:

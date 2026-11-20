@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from bajutsu.common.capability.command_policy import CommandExecution, CommandPolicy
 from bajutsu.common.capability import command_gate
+from bajutsu.common.capability.command_policy import CommandExecution, CommandPolicy
 from bajutsu.common.runner.build import BuildError, build_app
 
 
