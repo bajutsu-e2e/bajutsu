@@ -17,8 +17,8 @@
 
 A scenario that declares two or more [targets](../../docs/glossary.md#target-app-device)
 ([BE-0428](../BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution.md))
-gets every declared target's evidence nested under a folder named after that target. The folders sit
-inside the scenario's own evidence directory, as `runs/<runId>/<sid>/<target>/…`.
+gets every declared target's evidence nested under a folder named after that target once this item
+ships. The folders sit inside the scenario's own evidence directory, as `runs/<runId>/<sid>/<target>/…`.
 
 Today's layout is inconsistent. The *first* declared target ("the primary") writes straight into
 `<sid>/`. Every other declared target already writes into its own `<sid>/<target>/`. The per-step
@@ -31,8 +31,8 @@ this repository's own test suite and demos is of that kind today.
 ## Motivation
 
 [BE-0428](../BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution.md)
-let one scenario interleave steps across several targets in a single `bajutsu run` invocation, an
-iOS target and a web target, say. It also gave each target's scenario-wide recording (video, device
+let one scenario interleave steps across several targets — an iOS target and a web target, say — in a single
+`bajutsu run` invocation. It also gave each target's scenario-wide recording (video, device
 log, application trace) a folder named after that target, so a second target's `scenario.mp4` never
 collided with the first's. That folder convention applies only to the declared targets *other than
 the first*.
@@ -52,8 +52,8 @@ Per-step evidence never followed the convention in the first place. Every step's
 of a `before`/`after` hook, BE-0392). The name carries no target segment at all. A step's global
 run-order index keeps two targets' step folders from colliding by accident. But nothing in the directory
 layout tells a reader which target a given `<sid>/<stepId>/` folder belongs to. The reader
-must open `manifest.json` and match the step's recorded `target` field (`StepOutcome.target`,
-BE-0428) against it.
+must open `manifest.json` and read the `target` field (`StepOutcome.target`, BE-0428) that the step
+recorded for that folder's step id.
 
 A team investigating a failed cross-target scenario, the exact case BE-0428 exists to support, must
 rebuild that grouping by hand from the manifest, one step at a time. Opening the one

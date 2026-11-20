@@ -35,7 +35,7 @@ A later reader can tell the change arrived by running one notification-permissio
 The work splits into measuring what SpringBoard exposes, resolving a role from it, using the role on the step, reporting which role was tapped, and verifying on a real Simulator.
 
 1. **Measure which button properties are language-independent.** For each covered prompt (notifications, tracking, paste), boot Simulators pinned to at least five languages, including one right-to-left language. Dump every button's ordinal, frame, accessibility identifier, element type, and value.
-   - The production query cannot supply these properties. `XcuitestElementProvider.querySystemAlertButtons` reads the label and frame alone, and fills `identifier` and `value` with `nil` and `traits` with a fixed `button`.
+   - The production query cannot produce that dump. `XcuitestElementProvider.querySystemAlertButtons` reads the label and frame alone, and fills `identifier` and `value` with `nil` and `traits` with a fixed `button`.
    - The measurement runs through a probe of its own that reads each `XCUIElement` in full. The production query changes for a property the measurement proves stable, and for no other.
    - Record which properties stay identical across languages and iOS versions.
    - The save-password prompt stays on the label table, because it is drawn inside the app rather than by SpringBoard.
@@ -53,7 +53,7 @@ This item does not change the Simulator language pinning of BE-0320 and adds no 
 ## Alternatives considered
 
 - **Add more languages to the label table.** This is the simplest change, and BE-0320 already rejected it as the sole mechanism. The label table stays as the fallback in unit 3, because a prompt whose buttons expose no stable property still needs it.
-- **Pin only SpringBoard to English while the app keeps its own `locale`.** The existing English rows would then answer every run. In one run, the app and the alert would render different languages, which hides real localization defects in the screens next to the alert that a scenario asserts on.
+- **Pin only SpringBoard to English while the app keeps its own `locale`.** The existing English rows would then answer every run. In one run, the app and the alert would render different languages, which hides real localization defects in the alert-adjacent screens a scenario asserts on.
 - **Route unknown languages through the vision guard.** [BE-0402](../BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md) removed that fallback from `run`, since a model call must not decide a step's outcome (prime directive 1).
 
 ## Progress

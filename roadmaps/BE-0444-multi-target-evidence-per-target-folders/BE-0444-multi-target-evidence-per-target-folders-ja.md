@@ -15,7 +15,7 @@
 
 ## はじめに
 
-[ターゲット](../../docs/ja/glossary.md#target-app-device)を2つ以上宣言するシナリオ（[BE-0428](../BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution-ja.md)）では、宣言済みの各ターゲットの証跡を、そのターゲットの名前を冠したフォルダにまとめます。フォルダはシナリオ自身の証跡ディレクトリの中に、`runs/<runId>/<sid>/<target>/…` という形で並びます。
+本項目は、[ターゲット](../../docs/ja/glossary.md#target-app-device)を2つ以上宣言するシナリオ（[BE-0428](../BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution-ja.md)）について、宣言済みの各ターゲットの証跡を、そのターゲットの名前を冠したフォルダにまとめます。フォルダはシナリオ自身の証跡ディレクトリの中に、`runs/<runId>/<sid>/<target>/…` という形で並びます。
 
 今日のレイアウトは一貫していません。最初に宣言したターゲット（「primary」）だけが `<sid>/` 直下に書き込みます。それ以外の宣言済みターゲットは、すでに `<sid>/<target>/` へ書き込んでいます。ステップごとのスクリーンショットと要素ダンプは、どのターゲットが生成したかによらず、同じ平坦な `<sid>/<stepId>/` フォルダに置かれます。
 
