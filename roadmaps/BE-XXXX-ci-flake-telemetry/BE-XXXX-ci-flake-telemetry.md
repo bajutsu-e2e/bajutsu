@@ -6,10 +6,10 @@
 | Field | Value |
 |---|---|
 | Proposal | [BE-XXXX](BE-XXXX-ci-flake-telemetry.md) |
-| Author | [@handle](https://github.com/handle) |
+| Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| Implementing PR | Pending (filled in once the pull request is open) |
+| Implementing PR | [#2505](https://github.com/bajutsu-e2e/bajutsu/pull/2505) |
 | Topic | CI / build infrastructure |
 | Related | [BE-0361](../BE-0361-ios-ci-simulator-diagnostics/BE-0361-ios-ci-simulator-diagnostics.md), [BE-0367](../BE-0367-android-ci-emulator-diagnostics/BE-0367-android-ci-emulator-diagnostics.md), [BE-0049](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md), [BE-0220](../BE-0220-flaky-suggestion-and-cross-run-fix/BE-0220-flaky-suggestion-and-cross-run-fix.md) |
 <!-- /BE-METADATA -->
