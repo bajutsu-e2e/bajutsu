@@ -22,12 +22,15 @@ entries gain a `target: str | None = None` field.
 already gave this field to a `Step` and to a top-level `expect` entry. It names which of the
 scenario's declared [targets](../../docs/glossary.md#target-app-device) that entry concerns. An
 `interrupts` entry's `target` differs from those two fields in one way. It stays optional even
-once the scenario declares two or more targets. An entry that omits `target` watches the scenario's
-primary target. The primary target is the target `--target` names. For a scenario declaring its own
-`targets`, the first one declared plays that role instead. An entry that sets `target` watches that named target
-instead. A `Step` inside that entry's own `steps` inherits the entry's target when it omits its
-own. Those `steps` are the recovery steps that clear the interrupt. A `Step` inside them does not
-inherit the scenario's primary target.
+once the scenario declares two or more targets.
+
+An entry that omits `target` watches the scenario's primary target. The primary target is the target
+`--target` names. For a scenario declaring its own `targets`, the first declared target plays that
+role instead. An entry that sets `target` watches that named target.
+
+The entry's own `steps` are the recovery steps that clear the interrupt. A `Step` among them
+inherits the entry's target when the `Step` omits its own `target`. It does not inherit the
+scenario's primary target.
 
 This change also removes a restriction BE-0428 left in place on purpose. Today, a scenario
 declaring two or more targets refuses any non-empty `interrupts` list outright. That refusal fires
@@ -140,17 +143,18 @@ straight through to each target's own `_LoopConfig`. A filtered list there is al
 guard is already built once per `_StepRunner`
 ([`_step_runner.py:598-605`](../../bajutsu/common/orchestrator/loop/_step_runner.py)).
 
-`Interrupt.steps`' own routing needs no change either. `_StepRunner._route`
-([`_step_runner.py:87`](../../bajutsu/common/orchestrator/loop/_step_runner.py)) redirects a step
-to another runner. It does this when the step itself sets `target`, never otherwise. An omitted
-`target` leaves the step on
-`self` — the runner whose `_InterruptGuard` had fired. `_run_recovery`
-([`_step_runner.py:116`](../../bajutsu/common/orchestrator/loop/_step_runner.py)) runs
-`entry.steps` on that same `self`. This unit places each entry into the runner that owns it. That
-runner already is the entry's own effective target. An omitted `Step.target` inside `entry.steps`
-lands in the right place, with no extra mechanism. An earlier draft of this item computed an
-effective target instead. It swapped that value into the recovery run explicitly. *Alternatives
-considered* below records why review dropped that approach.
+`Interrupt.steps`' own routing needs no change either. The routing lives in `_StepRunner._route`
+([`_step_runner.py:87`](../../bajutsu/common/orchestrator/loop/_step_runner.py)).
+It redirects a step to another runner when the step sets `target`, and never otherwise. An omitted
+`target` leaves the step on `self`, the runner whose `_InterruptGuard` had fired.
+`_run_recovery` ([`_step_runner.py:116`](../../bajutsu/common/orchestrator/loop/_step_runner.py)) runs
+`entry.steps` on that same `self`.
+
+This unit places each entry into the runner that owns it. That runner already is the entry's own
+effective target. An omitted `Step.target` inside `entry.steps` lands in the right place, with no
+extra mechanism. An earlier draft of this item computed an effective target instead. It swapped that
+value into the recovery run explicitly. *Alternatives considered* below records why review dropped
+that approach.
 
 ### Unit 5: Test coverage
 

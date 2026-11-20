@@ -94,8 +94,8 @@ run failed before a verdict existed (see the provider flow below), and runs on b
 paths.
 
 The `...` bodies are no-op defaults **only for a hook that explicitly subclasses**
-`BatchLifecycleHook`. A structurally typed hook defines only one method and is not a
-`BatchLifecycleHook`. This is the shape that a `BAJUTSU_BATCH_HOOKS` factory most naturally
+`BatchLifecycleHook`. A structurally typed hook that defines only one method is not a
+`BatchLifecycleHook`, and that is the shape a `BAJUTSU_BATCH_HOOKS` factory most naturally
 returns. `mypy --strict` rejects such a hook at the assignment site. At runtime, the provider's
 unconditional `hook.after_run(...)` call would raise `AttributeError` *inside the teardown
 `finally`*, destroying the run's real outcome. A hook that implements only one step must

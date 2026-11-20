@@ -57,7 +57,7 @@ The corpus grew past the rule anyway. `main` carries 425 roadmap `*-ja.md` files
 register. Issue #1842 measured the result: 2,193 lines across 363 files end a sentence without a
 敬体 marker, excluding code fences, tables, headings, and block quotes. BE-0089's Japanese side,
 written three days after the conversion commit, reports 94% 常体 and reads as internally consistent
-throughout. The gap is not old debt that a late rule failed to cover. It is new prose that the rule
+throughout. The gap is not old debt that a late rule did not cover. It is new prose that the rule
 already governed, written non-compliant anyway.
 
 A reliable detector matters because an unreliable one produces the exact failure this item exists
@@ -153,7 +153,7 @@ This item adds that fourth exemption anyway. A work-item bullet names a task and
 that a reader follows, which is the same label-versus-prose distinction that the heading and
 体言止め-label exemptions turn on.
 
-The corpus is mixed on this point, not uniform. At least 39 `*-ja.md` items already write a
+The corpus is inconsistent on this point, not uniform. At least 39 `*-ja.md` items already write a
 single-line `## Progress` bullet in 敬体, so the exemption permits a form beside the one the norm
 already requires, rather than merely describing what exists. Two `Implemented` items that this
 proposal surveyed write the bullet the other way, and they differ from each other.
@@ -193,14 +193,14 @@ detector, and opens a small PR whenever time allows.
 
 This item also adds no guard against a converted file drifting back. Motivation already shows that
 drift is not hypothetical: about 347 files were written under a rule that already named 敬体 as the
-required register, and 363 of them drifted anyway, so the norm alone does not hold. A review-time
+required register, and 363 files across the corpus drifted anyway, so the norm alone does not hold. A review-time
 norm without tooling inherits that same failure mode after a file converts, and this item does not
 change that.
 
 The detector over-flags by design, so its raw candidate count cannot gate a file the way
 `coverage-floors.json` gates a coverage number. Two options remain real: a per-file
 candidate-count ratchet, or a gate scoped to only the `*-ja.md` files that a pull request touches.
-Both are left for a later item, since no converted file has drifted back yet to show which of the
+Both wait for a later item, since no converted file has drifted back yet to show which of the
 two is worth building.
 
 ## Alternatives considered
