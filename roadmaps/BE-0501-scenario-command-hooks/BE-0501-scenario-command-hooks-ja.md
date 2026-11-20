@@ -1,14 +1,14 @@
-[English](BE-XXXX-scenario-command-hooks.md) · **日本語**
+[English](BE-0501-scenario-command-hooks.md) · **日本語**
 
-# BE-XXXX — シナリオに外部コマンドを宣言し、そのシナリオの前後に実行する
+# BE-0501 — シナリオに外部コマンドを宣言し、そのシナリオの前後に実行する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-scenario-command-hooks-ja.md) |
+| 提案 | [BE-0501](BE-0501-scenario-command-hooks-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **承認済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0501") |
 | トピック | シナリオ記述機能 |
 | 関連 | [BE-0036](../BE-0036-utility-steps/BE-0036-utility-steps-ja.md)、[BE-0090](../BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution-ja.md)、[BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks-ja.md)、[BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)、[BE-0491](../BE-0491-target-command-hooks/BE-0491-target-command-hooks-ja.md)、[BE-0492](../BE-0492-worker-command-execution-policy/BE-0492-worker-command-execution-policy-ja.md) |
 <!-- /BE-METADATA -->

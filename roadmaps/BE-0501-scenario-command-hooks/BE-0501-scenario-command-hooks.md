@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-scenario-command-hooks-ja.md)
+**English** · [日本語](BE-0501-scenario-command-hooks-ja.md)
 
-# BE-XXXX — Declare external commands in a scenario to run before and after that scenario
+# BE-0501 — Declare external commands in a scenario to run before and after that scenario
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-scenario-command-hooks.md) |
+| Proposal | [BE-0501](BE-0501-scenario-command-hooks.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0501") |
 | Topic | Scenario authoring features |
 | Related | [BE-0036](../BE-0036-utility-steps/BE-0036-utility-steps.md), [BE-0090](../BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md), [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md), [BE-0491](../BE-0491-target-command-hooks/BE-0491-target-command-hooks.md), [BE-0492](../BE-0492-worker-command-execution-policy/BE-0492-worker-command-execution-policy.md) |
 <!-- /BE-METADATA -->
