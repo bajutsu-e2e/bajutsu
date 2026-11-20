@@ -28,8 +28,8 @@ existing "expand all" / "collapse all" controls toggle a scenario's groups too.
 
 `report.html`'s step table is flat. One row shows per step
 (`steprow` / `steptable`, [report.html.j2](../../bajutsu/templates/report.html.j2)). Nothing
-collapses a related run of steps. A scenario with a long step list produces a page a reviewer must
-scroll through in full — even when a single phase of the run failed.
+collapses a related run of steps. A scenario with a long step list produces a long page. A reviewer
+must scroll through all of it, even when a single phase of the run failed.
 
 Three existing constructs come close to naming a run of steps. Each solves a different problem.
 
@@ -47,13 +47,13 @@ No trace of the call's boundary survives to report generation. `report.html` ren
 component's steps as ordinary consecutive rows.
 
 `if` / `forEach` / `web` / `app` are runtime container steps with their own nested `steps:`. Their
-nested steps share their parent's numbering — a limitation `rows.py` documents in comments at two
+nested steps share their parent's numbering. `rows.py` documents this limitation in comments at two
 call sites ([rows.py](../../bajutsu/common/report/rows.py)). None of the four renders folded
 either.
 
 Once `group:` ships, an author names a run of steps once. `report.html` then hides a passing group
-behind a one-line summary. A failing group still opens on its own. A reviewer scanning a long run
-can tell which named section failed without expanding every step in the scenario.
+behind a one-line summary. A failing group still opens on its own. A reviewer scanning a long
+run can then tell which named section failed. Expanding every step is no longer needed.
 
 ## Detailed design
 
@@ -82,14 +82,14 @@ no sense on it. The existing `_no_modifiers_on_control_flow` validator then reje
 code.
 
 `use` sits outside that list today. It drops `capture` / `extract` at expansion time, without
-rejecting them. `group` does not copy that behavior. An author writing `group: { name: ...,
-capture: [...] }` could reasonably expect `capture` to take effect. A silent drop invites that
-mistake. Fixing the same gap in `use` falls outside this item. A separate issue tracks it
+rejecting them. `group` does not copy that behavior. An author who writes `group: { name: ...,
+capture: [...] }` may expect `capture` to work. A silent drop invites that mistake. Fixing the same gap in `use` falls outside this item. A separate issue tracks it
 ([#2057](https://github.com/bajutsu-e2e/bajutsu/issues/2057)).
 
-Expansion (described below) also discards `group`'s `name`, `from`, and `target` fields — the
-step-level `name`, not `Group.name`. This matches the treatment `use` gives `use.component` /
-`use.with_`'s siblings ([expand.py:76](../../bajutsu/common/scenario/expand.py) onward).
+Expansion (described below) also discards `group`'s `name`, `from`, and `target` fields. Here
+`name` means the step-level `name`, not `Group.name`. This matches the treatment `use` gives
+`use.component` / `use.with_`'s siblings
+([expand.py:76](../../bajutsu/common/scenario/expand.py) onward).
 
 ### Carrying the group's identity past expansion
 
@@ -104,70 +104,86 @@ report_group_id: int | None = Field(default=None, alias="_reportGroupId")
 
 `report_group` is the display name. `report_group_id` is a sequence number, one per `group`
 invocation. `_fold_groups` (below) finds a run of consecutive rows by matching `report_group_id`,
-not the name. Two separate `group: { name: retry }` calls in one scenario could otherwise land next
-to each other in the row list. They would then merge into a single, wrongly-counted fold.
+not the name.
+
+Matching by name would go wrong. Two separate `group: { name: retry }` calls in one scenario could
+land next to each other in the row list. They would merge into one wrongly-counted fold.
 
 Register both in `_MODIFIERS`
 ([_shared.py:8](../../bajutsu/common/scenario/models/steps/_shared.py)). Both are ordinary `Step`
-fields. They survive the `model_dump` / `model_validate` round trip `_interp_steps` already
-performs during `use` substitution ([expand.py](../../bajutsu/common/scenario/expand.py)). This
-needs no extra plumbing.
+fields.
+
+They survive the `model_dump` / `model_validate` round trip that `_interp_steps` already performs.
+That round trip happens during `use` substitution
+([expand.py](../../bajutsu/common/scenario/expand.py)).
+
+This needs no extra plumbing.
 
 No field validator turns away a value on either field. `Annotated[..., SkipJsonSchema()]` alone
 keeps both off the authoring surface, so `bajutsu schema` never shows them.
 
 The reason is the run path's internal round trip. `expand()` sets both fields through
-`model_copy(update=...)`, which makes `report_group` a *set*, non-default field once a `group:`
-scenario expands. The run path then re-validates that same dump twice:
+`model_copy(update=...)`. Once a `group:` scenario expands, `report_group` is therefore a *set*,
+non-default field. The run path then re-validates that same dump twice:
 
 - `redact_totp_secrets` runs on every scenario a run has finished, right before the run writes its
   evidence snapshot.
 - `load_run` reloads its own `scenario.yaml` the same way.
 
 `exclude_defaults=True` keeps a set field in both dumps. A validator that turns away anything but
-`None` would then turn away its own internal round trip. `serialize.py`'s `redact_totp_secrets`
-docstring records the matching issue, and BE-0401 hit the same shape on `systemAlertHandling.labels`.
+`None` would then turn away its own internal round trip.
+
+`serialize.py`'s `redact_totp_secrets` docstring records the matching issue. BE-0401 hit the same
+shape on `systemAlertHandling.labels`.
 
 An author could still write `_reportGroup` by hand and fake a fold. The schema itself never shows
 that key for them to find, though.
 
-A parallel array was the first design considered for this role, threaded alongside the existing
-`step_lines` mechanism
-([raw_source.py:36](../../bajutsu/common/scenario/raw_source.py)). We rejected it. `use`
-substitution discards the calling step object entirely. It keeps `use.component` and `use.with_`
-alone. A group name attached to a `use` step by array index would have nowhere to land, once that
-step's substitution runs. Living on `Step` itself avoids that problem. Propagating both fields
-through a `use` call inside a `group` then needs two extra arguments, threaded through the
-expansion recursion below.
+A parallel array was the first design considered for this role. It would have been threaded
+alongside the existing `step_lines` mechanism
+([raw_source.py:36](../../bajutsu/common/scenario/raw_source.py)). We rejected it.
+
+`use` substitution discards the calling step object entirely. It keeps `use.component` and
+`use.with_` alone. A group name attached to a `use` step by array index would have nowhere to land
+once that step's substitution runs. Living on `Step` itself avoids that problem.
+
+Propagating both fields through a `use` call inside a `group` then needs two extra arguments. The
+expansion recursion below threads them.
 
 ### Expansion: `group` and `use` share one recursion
 
 Add two arguments to `expand()` inside `expand_components`
-([expand.py:70](../../bajutsu/common/scenario/expand.py)). `group_ctx: str | None = None` names
-the group enclosing the current recursive call. `group_id: int | None = None` names that call's
-sequence number. The id comes from one counter, shared module-wide in `expand.py`
-(`itertools.count()`) — not a counter local to one `expand_components` call.
+([expand.py:70](../../bajutsu/common/scenario/expand.py)).
+
+- `group_ctx: str | None = None` names the group enclosing the current recursive call.
+- `group_id: int | None = None` names that call's sequence number.
+
+The id comes from one counter, shared module-wide in `expand.py` (`itertools.count()`). It is not a
+counter local to one `expand_components` call.
 
 A setup prelude expands through its own, separate `expand_components` call. This runs before
 `apply_setups` splices the prelude's steps onto the scenario's own
-([run/cli.py:292](../../bajutsu/run/cli.py)). A call-local counter would then hand out
-`group_id=0` twice: once to the last group in the prelude, once to the first group in the
-scenario's own `steps`. The two could merge into one fold, if they land adjacent. A module-wide
-counter never repeats a value, so this cannot happen. Its exact numbers need not be stable across
-runs; nothing outside one render depends on them.
+([run/cli.py:292](../../bajutsu/run/cli.py)).
+
+A call-local counter would then hand out `group_id=0` twice. One id would go to the last group in
+the prelude, the other to the first group in the scenario's own `steps`. The two could merge into
+one fold if they land adjacent.
+
+A module-wide counter never repeats a value, so this cannot happen. Its exact numbers need not be
+stable across runs. Nothing outside one render depends on them.
 
 At the top of the loop:
 
-- `st.group is not None`: if `group_ctx` is already set, raise. This is a `group` reached from
+- `st.group is not None`: if `group_ctx` is already set, raise. That case is a `group` reached from
   inside another `group`, even through an intervening `use`. Otherwise, draw a fresh id from the
-  counter, and recurse as `expand(st.group.steps, stack, resolve, group_ctx=st.group.name,
+  counter and recurse as `expand(st.group.steps, stack, resolve, group_ctx=st.group.name,
   group_id=new_id)`. Append the result to `out` unchanged.
-- `st.use is None` and `st.group is None` (an ordinary step): append it to `out`. Copy it with
-  `report_group=group_ctx` and `report_group_id=group_id`, when `group_ctx` is not `None`; append
-  it unchanged otherwise.
+- `st.use is None` and `st.group is None` (an ordinary step): when `group_ctx` is not `None`,
+  append a copy with `report_group=group_ctx` and `report_group_id=group_id`. Otherwise, append the
+  step unchanged.
 - `st.use is not None`: expand the substituted steps as `expand(substituted, [*stack, ref], nested,
   group_ctx=group_ctx, group_id=group_id)`, carrying both forward. A `use` call inside a `group`
-  then tags every step the component expands to, with that group's name and id.
+  then tags every step the component expands to with that group's name and id.
 
 Four call sites start this recursion: `scenario.steps`, `scenario.before`, each `after` rule's
 `steps`, and each `interrupts` entry's `steps`
@@ -208,91 +224,114 @@ wording would misdirect an author who wrote `group` instead.
 
 `_RUNTIME_ACTIONS`
 ([_registry.py:19](../../bajutsu/common/orchestrator/actions/_registry.py)) is `STEP_ACTIONS`
-minus `"use"`. It lists every action the run loop can dispatch. Adding `group` to `Step` puts it in
-`STEP_ACTIONS` too. Left unexcluded, it would then land in `_RUNTIME_ACTIONS` as well. Change the
-exclusion to `a not in ("use", "group")`. Without this change, a `group` left unexpanded — one
-routed through a component into an `if`, say — would reach the run loop and find no registered
+minus `"use"`.
+
+The list names every action the run loop can dispatch. Adding `group` to `Step` puts it in
+`STEP_ACTIONS` too. Left unexcluded, it would land in `_RUNTIME_ACTIONS` as well.
+
+Change the exclusion to `a not in ("use", "group")`. Without this change, a `group` left unexpanded
+(one routed through a component into an `if`, say) would reach the run loop and find no registered
 handler.
 
 ### Target config prelude and postlude steps
 
 `_no_component_in_target_steps`
 ([target_config.py:166](../../bajutsu/common/config/schema/target_config.py)) already refuses
-`use` in a target config's `before` / `after` / `interrupts`. The reason: those steps never pass
-through scenario-file expansion. Add `group` to the same refusal, for the same reason.
+`use` in a target config's `before` / `after` / `interrupts`.
+
+The reason: those steps never pass through scenario-file expansion. Add `group` to the same
+refusal, for the same reason.
 
 ### Reaching `report.html`
 
-`html_report` / `write_report` receive already-expanded `Scenario` objects. `scenario_dict(s)`
-([html.py:44](../../bajutsu/common/report/html.py)) dumps them by alias. `report_group` and
-`report_group_id` then reach each step's definition dict — `rows.py`'s `plan[i]` — as
-`_reportGroup` and `_reportGroupId`. This needs no new plumbing.
+`html_report` / `write_report` receive already-expanded `Scenario` objects.
+`scenario_dict(s)` ([html.py:44](../../bajutsu/common/report/html.py)) dumps them by alias.
+
+`report_group` and `report_group_id` then reach each step's definition dict (`rows.py`'s
+`plan[i]`) as `_reportGroup` and `_reportGroupId`. This needs no new plumbing.
 
 Add `group: str | None` and `group_id: int | None` parameters to `_step_detail` / `_step_run_row` /
 `_step_skip_row` ([rows.py:30](../../bajutsu/common/report/rows.py) onward), alongside the existing
-`from_` parameter. `_merged_rows` / `_phase_rows` / `_after_rows`
+`from_` parameter.
+
+`_merged_rows` / `_phase_rows` / `_after_rows`
 ([rows.py:382](../../bajutsu/common/report/rows.py) onward) pass `step_def.get("_reportGroup")` and
-`step_def.get("_reportGroupId")` straight through. `grouped_provenance`
-([from_grouping.py](../../bajutsu/common/report/from_grouping.py)) nulls a repeated `from:` value
-after its first row. This differs: every row in one group invocation keeps the same `group_id`
-throughout. A later pass needs it on every row, to find where a run starts and ends.
+`step_def.get("_reportGroupId")` straight through.
+
+`grouped_provenance` ([from_grouping.py](../../bajutsu/common/report/from_grouping.py)) nulls a
+repeated `from:` value after its first row.
+
+The group fields differ: every row in one group invocation keeps the same `group_id` throughout. A
+later pass needs the id on every row to find where a run starts and ends.
 
 The `steprow` macro can emit up to four `<tr>` elements per step: the body row, plus `alertrow` /
-`actrow` / `genrow` when the step calls for them. A step row's own `expand` key is always `None`
-([rows.py:201](../../bajutsu/common/report/rows.py),
-[rows.py:276](../../bajutsu/common/report/rows.py)). So a step never emits the fifth kind,
-`nxdetail` — only a network exchange row does
-([rows.py:340](../../bajutsu/common/report/rows.py),
-[rows.py:375](../../bajutsu/common/report/rows.py)). Exchange rows stay outside any group, by this
-item's scope. The fold, then, has no `nxdetail` state to collide with. It can reuse the same bare
-`hidden` attribute `nxdetail` already uses elsewhere. Folding must tag all four of a step's possible
-rows with the same `group_id`, not the body row alone.
+`actrow` / `genrow` when the step calls for them.
 
-Add one pure function, `_fold_groups(rows: list[dict]) -> list[dict]`. Run it once, at the end of
-each of the three row-building functions above. It inserts one heading row per run of consecutive
-rows sharing a `group_id`. A network exchange row, or a not-run step, can interrupt that run. Per
-this item's scope, an interrupted group renders as separate, independently headed folds, rather
-than one. Each fragment marks its own member rows `hidden`, unless that fragment contains a failing
-step. Input and output are plain dicts. `pytest` can test the function directly, without going
-through Jinja.
+A step row's own `expand` key is always `None`
+([rows.py:201](../../bajutsu/common/report/rows.py),
+[rows.py:276](../../bajutsu/common/report/rows.py)). A step thus never emits the fifth kind,
+`nxdetail`.
+
+A network exchange row alone does
+([rows.py:340](../../bajutsu/common/report/rows.py),
+[rows.py:375](../../bajutsu/common/report/rows.py)).
+
+Exchange rows stay outside any group, by this item's scope. The fold then has no `nxdetail` state
+to collide with, and it can reuse the same bare `hidden` attribute `nxdetail` already uses
+elsewhere. Folding must tag all four of a step's possible rows with the same `group_id`, not the
+body row alone.
+
+Add one pure function, `_fold_groups(rows: list[dict]) -> list[dict]`, and run it once at the end
+of each of the three row-building functions above. It inserts one heading row per run of
+consecutive rows sharing a `group_id`.
+
+A network exchange row or a not-run step can interrupt that run. Per this item's scope, an
+interrupted group renders as separate, independently headed folds rather than one. Each fragment
+marks its own member rows `hidden`, unless that fragment contains a failing step.
+
+Input and output are plain dicts, so `pytest` can test the function directly without going through
+Jinja.
 
 Extend the `steprow` macro in `report.html.j2`
 ([report.html.j2:42](../../bajutsu/templates/report.html.j2)) to render the heading row, and add
-`hidden` plus a `group_id` attribute to member rows. The toggle logic itself belongs in `report.js`,
-not `report.html.j2`. `toggleAll` (the "expand all" / "collapse all" buttons) is defined at
-[report.js:114](../../bajutsu/templates/report.js); `report.html.j2` carries no toggle logic of its
-own beyond the `onclick` call. Add a function there, to flip `hidden` for a `group_id` on a heading
-click. Extend `toggleAll` itself too, to open or close every group. Add heading-row styles to
-`report.css`.
+`hidden` plus a `group_id` attribute to member rows.
+
+The toggle logic itself belongs in `report.js`, not `report.html.j2`. `toggleAll` (the "expand
+all" / "collapse all" buttons) lives at [report.js:114](../../bajutsu/templates/report.js), and
+`report.html.j2` carries no toggle logic of its own beyond the `onclick` call. Add a function in
+`report.js` that flips `hidden` for a `group_id` on a heading click. Extend `toggleAll` itself to
+open or close every group. Add heading-row styles to `report.css`.
 
 ### Tools that read a scenario before expansion
 
 `load_scenario_file` expands neither `use` nor `group`.
 `bajutsu/serve/operations/audit.py:53` and `bajutsu/common/lint.py`'s `provenance_coverage` both
-load scenarios through it, and each walks `steps` for its own counts and displays. Once `group`
-exists, that walk stops at a `group` step, unless it also descends into `group.steps`. Left as is,
-each tool would drop the steps a `group` wraps from whatever it counts or shows. Add that descent to
-each tool's own step walk.
+load scenarios through it, and each walks `steps` for its own counts and displays.
 
-`bajutsu/analysis/trace.py:285` also calls `load_scenario_file`, but on `run_dir / "scenario.yaml"`
-— the executed scenario `pipeline.py` writes from the already-expanded `scenarios`
-([pipeline.py:1899](../../bajutsu/common/runner/pipeline.py) onward). No `group` step can survive
-there, so `trace.py` needs no matching change. `use` needs no matching fix anywhere here either: its
-steps stay invisible until expansion, regardless.
+Once `group` exists, that walk stops at a `group` step unless it also descends into `group.steps`.
+Left as is, each tool would drop the steps a `group` wraps from whatever it counts or shows. Add
+that descent to each tool's own step walk.
+
+`bajutsu/analysis/trace.py:285` also calls `load_scenario_file`, but on `run_dir / "scenario.yaml"`.
+That file is the executed scenario, which `pipeline.py` writes from the already-expanded
+`scenarios` ([pipeline.py:1899](../../bajutsu/common/runner/pipeline.py) onward).
+
+No `group` step can survive there, so `trace.py` needs no matching change. `use` needs no matching
+fix anywhere here either, because its steps stay invisible until expansion regardless.
 
 ## Alternatives considered
 
 - **Treat a `use:` / `components:` call as the fold unit.** `report.html` could fold under a called
   component's name, instead of introducing `group`. Rejected: extracting even a short, one-off run
-  of steps into a named component forces the param and file-scoping machinery BE-0030 and BE-0422
-  built for reuse across scenarios. That machinery is heavier than a long `report.html` calls for.
-  Folding a `use:` call's own steps stays open for later work — `group` and `use` already compose,
-  since a `group` may contain a `use`.
+  of steps into a named component forces the param and file-scoping machinery that BE-0030 and
+  BE-0422 built for reuse across scenarios. That machinery is heavier than a long `report.html`
+  calls for. Folding a `use:` call's own steps stays open for later work, because `group` and `use`
+  already compose: a `group` may contain a `use`.
 - **Extend `from:`'s grouping display into folding.** BE-0044's `grouped_provenance` already
   collapses a run of identical `from:` values into one label. Rejected: `from:` records the
   natural-language phrase `record` normalized a step from, not an author-chosen section name.
-  Reusing it for both purposes would blur what a reader of `report.html` is looking at: `record`'s
-  account of a step's origin, or the author's own organization.
+  Reusing it for both purposes would blur what a reader of `report.html` is looking at, which would
+  be either `record`'s account of a step's origin or the author's own organization.
 - **Implement `group` as a runtime container step, like `if` / `forEach` / `web` / `app`.**
   Rejected: a runtime container's nested steps already share their parent's numbering. `rows.py`
   documents this as a known source of misattributed rows after such a step

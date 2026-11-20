@@ -379,12 +379,12 @@ JavaScriptは `bajutsu/templates/report.js` に足します。`toggleAll` の定
 
 ## 参考
 
-- [docs/specs/step-groups-report-folding.md](../../docs/specs/step-groups-report-folding.md) —
+- [docs/specs/step-groups-report-folding.md](../../docs/specs/step-groups-report-folding.md)：
   この項目が要約している、詳細な技術設計（日本語）
-- [BE-0044 — Scenario provenance](../BE-0044-scenario-provenance/BE-0044-scenario-provenance-ja.md)
-  — この項目の代替案の節が区別している `from:` のグルーピング
+- [BE-0044 — Scenario provenance](../BE-0044-scenario-provenance/BE-0044-scenario-provenance-ja.md)：
+  この項目の代替案の節が区別している `from:` のグルーピング
 - [BE-0030 — Parameterized shared steps](../BE-0030-parameterized-shared-steps/BE-0030-parameterized-shared-steps-ja.md)、
-  [BE-0422 — Inline, scenario-local components](../BE-0422-inline-scenario-components/BE-0422-inline-scenario-components-ja.md)
-  — `group` があえて再利用しない `use:` / `components:` の仕組み
+  [BE-0422 — Inline, scenario-local components](../BE-0422-inline-scenario-components/BE-0422-inline-scenario-components-ja.md)：
+  `group` があえて再利用しない `use:` / `components:` の仕組み
 - [docs/scenarios.md](../../docs/scenarios.md#step-grammar-steps)、
-  [docs/reporting.md](../../docs/reporting.md#reporthtml) — この項目が更新するドキュメント
+  [docs/reporting.md](../../docs/reporting.md#reporthtml)：この項目が更新するドキュメント
