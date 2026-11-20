@@ -19,46 +19,59 @@
 `tap` (and `double_tap`, `long_press`, and the focus-tap inside `type`/`clear`/`select`) resolves a
 selector to one element and acts on its frame's center point. Resolution never asks whether that
 point is actually reachable on screen. An element can be uniquely matched, carry a valid frame, and
-still sit under a sticky header, a toast, or a dimmed modal backdrop, so the tap lands on the
-obstruction instead of the target. Each backend now checks, in the way most idiomatic to its own
-platform, that the resolved target is really the thing at its own point before acting. When it is
-not, the orchestrator takes a small, bounded, deterministic scroll to try to clear the obstruction —
-up to three `down` steps first, then, only if `down` never clears it, up to six `up` steps (widened,
-since `up` must first retrace the ground `down` already covered before it can make any net progress
-of its own) — then re-checks; if the target is still unreachable, the action fails with a new,
+still sit under a sticky header, a toast, or a dimmed modal backdrop. The tap then lands on the
+obstruction instead of the target.
+
+This item adds a check to each backend, in the way most idiomatic to its own platform. Before
+acting, the backend confirms that the resolved target is the thing at its own point. When it
+is not, the orchestrator takes a small, bounded, deterministic scroll to try to clear the
+obstruction:
+
+1. Up to three `down` steps first.
+2. Then, only if `down` never clears the obstruction, up to six `up` steps. The bound is wider
+   because `up` must first retrace the ground `down` already covered before it can make any net
+   progress of its own.
+
+The orchestrator then re-checks. If the target is still unreachable, the action fails with a new,
 dedicated error, `ElementNotTappable`, instead of the misleading `ElementNotFound`.
 
 ## Motivation
 
-`bajutsu/drivers/base.py`'s `Element` is a flat record — `identifier`, `label`, `traits`, `value`,
-`frame` — with no `children`, `parent`, or z-index. `resolve_unique` (`base.py:647`) already guards
-against *selector* ambiguity: two or more matches fail the step immediately, per prime directive 2.
+`bajutsu/drivers/base.py`'s `Element` is a flat record (`identifier`, `label`, `traits`, `value`,
+`frame`) with no `children`, `parent`, or z-index. `resolve_unique` (`base.py:647`) already guards
+against *selector* ambiguity: two or more matches fail the step at once, per prime directive 2.
 It has no way to guard against *occlusion*: one match with a real frame that is nonetheless not the
-front-most thing at that point. Each backend's tap path resolves a point and fires a platform
-primitive without ever asking whether that point is reachable. XCUITest's `tap()`
-(`BajutsuKit/Runner/Sources/XcuitestElementProvider.swift:57`) calls the native `XCUIElement.tap()`
-directly. Playwright's `tap` (`bajutsu/drivers/playwright.py:566`) calls `page.mouse.click(x, y)` at
-a raw coordinate, bypassing the actionability checks a locator-based click would give for free. adb's
-`tap` (`bajutsu/drivers/adb.py:1097`) resolves a frame and shells out to `adb.tap_cmd`, and its only
-existing recovery is "not found → scroll toward it" (`_scroll_into_view`, `adb.py:915`) — nothing
-covers "found, but covered."
+front-most thing at that point.
+
+Each backend's tap path resolves a point and fires a platform primitive without ever asking whether
+that point is reachable:
+
+- XCUITest's `tap()` (`BajutsuKit/Runner/Sources/XcuitestElementProvider.swift:57`) calls the native
+  `XCUIElement.tap()` directly.
+- Playwright's `tap` (`bajutsu/drivers/playwright.py:566`) calls `page.mouse.click(x, y)` at a raw
+  coordinate. That bypasses the actionability checks a locator-based click would give for free.
+- adb's `tap` (`bajutsu/drivers/adb.py:1097`) resolves a frame and shells out to `adb.tap_cmd`. Its
+  existing recovery covers one case: "not found → scroll toward it" (`_scroll_into_view`,
+  `adb.py:915`). Nothing covers "found, but covered."
 
 A scenario author has no way to see this happen. The run either does nothing, because the tap
-silently lands on the obstruction, or it fails with an `ElementNotFound` that actively misleads,
-since the selector did resolve.
+lands on the obstruction, or it fails with an `ElementNotFound` that misleads, since the
+selector did resolve.
 
 [BE-0326](../BE-0326-scroll-to-element/BE-0326-scroll-to-element.md) already solved a related but
-distinct problem — an element missing from the current viewport — with an explicit `scroll` action.
+distinct problem, an element missing from the current viewport, with an explicit `scroll` action.
 Its own "Alternatives considered" rejected making that scroll-into-view implicit inside `tap` as the
 primary idiom, reasoning that implicit auto-scroll hides intent. That reasoning does not transfer
-whole to this proposal. BE-0326 was rejecting implicit scrolling as a replacement for an author
-writing `scroll` when the author already knows a target starts off-screen. This proposal is not a
-substitute for that: an author who knows a target sits below the fold should still write `scroll`.
-This proposal is a correctness check on an element the selector already resolved, with a safety-net
-recovery that is deliberately narrow — a small step bound tried in two directions (`down` first,
-then a wider `up` fallback for a top-anchored obstruction `down` alone cannot clear), triggered only
-by the new occlusion signal — the same shape adb's own not-found fallback already has, now
-generalized to the obstructed case and widened to every backend.
+whole to this proposal.
+
+BE-0326 rejected implicit scrolling as a replacement for an author writing `scroll` when the author
+already knows a target starts off-screen. This proposal does not substitute for that: an author who
+knows a target sits below the fold should still write `scroll`. This proposal is a correctness check
+on an element the selector already resolved. Its safety-net recovery is narrow: a small
+step bound tried in two directions (`down` first, then a wider `up` fallback for a top-anchored
+obstruction that `down` alone cannot clear), triggered by the new occlusion signal alone. It has the
+same shape as adb's own not-found fallback, now generalized to the obstructed case and widened to
+every backend.
 
 ## Detailed design
 
@@ -66,116 +79,141 @@ generalized to the obstructed case and widened to every backend.
 
 A new `Driver` protocol method, `is_tappable(self, sel: Selector) -> bool` (`base.py`, alongside
 `tap` / `double_tap` / `long_press` in the `Driver` protocol at `base.py:186`–`218`), joins the
-protocol as a required member, not a narrow opt-in like `ViewportProvider` /
+protocol as a required member. It is not a narrow opt-in like `ViewportProvider` /
 `ReadLagProvider` / `SettledReadProvider` (`base.py:277`–`369`). It is required because the whole
-point is universal coverage: every backend resolves `sel` to one element through the same
-`resolve_unique` determinism core it already uses, then asks, in its own idiomatic way, whether that
-element is the thing actually reachable at its own point. `is_tappable` is a pure query — it never
-actuates — so the tap path can call it once to guard the actuation, and the scroll-recovery loop
-(below) can call it again, repeatedly, with no side effects.
+point is universal coverage. Every backend resolves `sel` to one element through the same
+`resolve_unique` determinism core it already uses. Then each backend asks, in its own idiomatic way,
+whether that element is the thing actually reachable at its own point.
+
+`is_tappable` is a pure query that never actuates. The tap path can call it once to guard
+the actuation, and the scroll-recovery loop (below) can call it again, repeatedly, with no side
+effects.
 
 **iOS (XCUITest)** uses the native signal the platform already computes. Apple's own documentation
 for [`isHittable`](https://developer.apple.com/documentation/xctest/xcuielement/1500561-ishittable)
 states that the property returns `false` when the element does not exist, is offscreen, or is
-covered by another element, and `true` otherwise — a native answer to reachability, not an
-approximation. We confirmed this on-device rather than trusting the documentation alone: a spike
-screen placed a target button under a fixed overlay inside a `ScrollView`, and five runs of an
-XCUITest test on iOS Simulator all showed `isHittable` reading `false` while the target sat under
-the overlay and `true` once a scroll moved the overlay clear, with the target's own frame confirming
-it stayed on-screen throughout (so the transition tracked occlusion, not offscreen-ness). Community
-reports (an [Apple Developer Forums thread](https://developer.apple.com/forums/thread/720155))
+covered by another element, and `true` otherwise. That is a native answer to reachability, not an
+approximation.
+
+We confirmed this on-device rather than trusting the documentation alone. A spike screen placed a
+target button under a fixed overlay inside a `ScrollView`. Five runs of an XCUITest test on iOS
+Simulator all showed `isHittable` reading `false` while the target sat under the overlay, and `true`
+once a scroll moved the overlay clear. The target's own frame confirmed it stayed on-screen
+throughout, so the transition tracked occlusion, not offscreen-ness.
+
+Community reports (an [Apple Developer Forums thread](https://developer.apple.com/forums/thread/720155))
 describe `isHittable` occasionally throwing a "Failed to determine hittability" error instead of
-returning a clean boolean; the spike's 60 total reads across five runs never reproduced that
-failure, which is a non-reproduction in one environment, not proof the issue does not exist
-elsewhere. `XcuitestElementProvider.tap(backingElement:taps:duration:)`
-(`BajutsuKit/Runner/Sources/XcuitestElementProvider.swift:57`) gains a guard immediately before its
-native tap calls — but only when the element's center lies inside `app.frame` (`centerIsOnScreen`),
-so a not-yet-scrolled-to target stays a `scroll` question rather than reading as covered:
-`if centerIsOnScreen(el) { guard el.isHittable else { return .notHittable } }`. `TapResult`
-(`BajutsuKit/Sources/BajutsuRunner/ElementProviding.swift`) gains a `.notHittable` case alongside
-its existing `.ok` / `.stale` / `.notFound`, and `xcuitest.py`'s `_actuate` gains a fourth status
-constant and branch that raises `base.ElementNotTappable`, parallel to its existing stale/not-found
-handling. `is_tappable(sel)` is realized as a lightweight variant of the same round trip: resolve the
-handle and ask the runner for `isHittable` without actuating.
+returning a clean boolean. The spike's 60 total reads across five runs never reproduced that
+failure. That is a non-reproduction in one environment, not proof the issue does not exist
+elsewhere.
+
+`XcuitestElementProvider.tap(backingElement:taps:duration:)`
+(`BajutsuKit/Runner/Sources/XcuitestElementProvider.swift:57`) gains a guard right before its
+native tap calls. The guard applies when the element's center lies inside `app.frame`
+(`centerIsOnScreen`) and not otherwise, so a not-yet-scrolled-to target stays a `scroll` question
+rather than reading as covered:
+`if centerIsOnScreen(el) { guard el.isHittable else { return .notHittable } }`.
+
+`TapResult` (`BajutsuKit/Sources/BajutsuRunner/ElementProviding.swift`) gains a `.notHittable` case
+alongside its existing `.ok` / `.stale` / `.notFound`. `xcuitest.py`'s `_actuate` gains a fourth
+status constant and branch that raises `base.ElementNotTappable`, parallel to its existing
+stale/not-found handling. `is_tappable(sel)` is realized as a lightweight variant of the same round
+trip: resolve the handle and ask the runner for `isHittable` without actuating.
 
 **Web (Playwright)** reuses the `document.elementFromPoint` pattern already precedented in this
 codebase, inside `select_option` (`bajutsu/drivers/playwright.py:764`–`782`). It resolves the
-target's center via the existing `base.frame_center(base.resolve_unique(...))`, then evaluates
+target's center via the existing `base.frame_center(base.resolve_unique(...))`. It then evaluates
 JavaScript that walks `document.elementFromPoint(x, y)` up its ancestor chain and checks whether the
 resolved target appears in that chain. A hit chain that never reaches the target means an unrelated
-element genuinely covers the point; `is_tappable` returns `false`, and `tap` / `double_tap` /
-`long_press` raise `base.ElementNotTappable` instead of calling `page.mouse.click` / `dblclick`.
+element genuinely covers the point. In that case `is_tappable` returns `false`, and `tap` /
+`double_tap` / `long_press` raise `base.ElementNotTappable` instead of calling `page.mouse.click` /
+`dblclick`.
+
 Every actuator already routes its point through one seam, `_center_with_element(sel)`
-(`playwright.py:531` — `tap`, `double_tap`, `long_press`, and `select_option` all call it directly;
-the thin `_center(sel)` wrapper around it, `playwright.py:527`, has no caller of its own), so the
-check replaces that seam with `_center_checked(sel)` rather than triplicating the logic. We
-keep raw coordinate actuation and add a point-test rather than switching to Playwright's own
-`locator.click()` (which carries its own actionability checks) for two reasons: `find_all` /
-`resolve_unique` (`base.py:534`, `647`) are the one determinism core every backend shares, and a Cascading
-Style Sheets (CSS) selector or text locator does not understand the OR'd id lists or `within`
-geometric scoping that core already handles; and `locator.click()`'s auto-wait carries an implicit
-timeout-and-retry shape that is not
-the "resolve once, verify once" contract the rest of the driver layer holds to.
+(`playwright.py:531`). `tap`, `double_tap`, `long_press`, and `select_option` all call it directly.
+The thin `_center(sel)` wrapper around it (`playwright.py:527`) has no caller of its own. The check
+replaces that seam with `_center_checked(sel)` rather than triplicating the logic.
+
+We keep raw coordinate actuation and add a point-test, rather than switching to Playwright's own
+`locator.click()` (which carries its own actionability checks). There are two reasons:
+
+- `find_all` / `resolve_unique` (`base.py:534`, `647`) are the one determinism core every backend
+  shares. A Cascading Style Sheets (CSS) selector or text locator does not understand the OR'd id
+  lists or `within` geometric scoping that core already handles.
+- `locator.click()`'s auto-wait carries an implicit timeout-and-retry shape. That shape is not the
+  "resolve once, verify once" contract the rest of the driver layer holds to.
 
 **Android (adb)** has no equivalent native signal, and the spike surfaced a real asymmetry between
 its two UI toolkits rather than one clean approximation. `bajutsu/drivers/adb.py`'s
-`parse_hierarchy` / `parse_hierarchy_with_identities` (`adb.py:295`–`345`) already walk the
-UI Automator dump in document order with no re-sort, mirroring the same "later sibling drawn after
-earlier ones" proxy XCUITest's own `flattenSnapshot`
-(`BajutsuKit/Sources/BajutsuRunner/PositionPath.swift:69`) already carries. On a spike screen with no
-elevation, document order matched the visual front-to-back order on both Jetpack Compose and the
-View system, confirming the ordinary case. On a spike screen using `Modifier.zIndex` in Compose to
-place an element that renders on top despite being declared first, the accessibility semantics tree
-itself reordered to match the visual result — the heuristic's expected blind spot did not
-materialize for Compose. On the equivalent spike using `View.elevation` in the View system, the blind
-spot did materialize: the elevated view rendered on top while staying earlier in document order, so
-reading document order alone would misjudge which element covers the point. A further, distinct
-limitation surfaced on Compose: a lightweight positioning modifier
-(`Modifier.absoluteOffset`) moved a view's rendered position on screen while the accessibility tree
-kept reporting its original bounds, so a purely coordinate-based check can start from an already
-wrong frame, independent of document-order accuracy. Given this, `base.py` gains a new helper
-alongside `_contains` (`base.py:527`) and `frame_center` (`base.py:737`) —
-`topmost_at_point(elements: list[Element], point: Point, target: Element) -> Element | None` — that
+`parse_hierarchy` / `parse_hierarchy_with_identities` (`adb.py:295`–`345`) already walk the UI
+Automator dump in document order with no re-sort. This mirrors the same "later sibling drawn after
+earlier ones" proxy that XCUITest's own `flattenSnapshot`
+(`BajutsuKit/Sources/BajutsuRunner/PositionPath.swift:69`) carries.
+
+The spike produced four findings:
+
+- On a spike screen with no elevation, document order matched the visual front-to-back order on both
+  Jetpack Compose and the View system. That confirms the ordinary case.
+- On a spike screen using `Modifier.zIndex` in Compose to place an element that renders on top
+  despite being declared first, the accessibility semantics tree itself reordered to match the
+  visual result. The heuristic's expected blind spot did not materialize for Compose.
+- On the equivalent spike using `View.elevation` in the View system, the blind spot did materialize.
+  The elevated view rendered on top while staying earlier in document order, so reading document
+  order alone would misjudge which element covers the point.
+- A further, distinct limitation surfaced on Compose. A lightweight positioning modifier
+  (`Modifier.absoluteOffset`) moved a view's rendered position on screen while the accessibility
+  tree kept reporting its original bounds. A purely coordinate-based check can start from
+  an already wrong frame, independent of document-order accuracy.
+
+Given these findings, `base.py` gains a new helper alongside `_contains` (`base.py:527`) and
+`frame_center` (`base.py:737`):
+`topmost_at_point(elements: list[Element], point: Point, target: Element) -> Element | None`. It
 scans the document-ordered list for the last element containing `point`, excluding the target's own
 descendants (tapping through a child still taps the target) and its ancestors. A non-`None` result
-means an unrelated element covers the point. `adb.py`'s `_resolve_frame_and_screen`
-(`adb.py:892`) calls it right after resolving the frame — after any not-found `_scroll_into_view`
-recovery, unchanged — raising `base.ElementNotTappable` on a match, before `adb.tap_cmd` ever fires.
-The Motivation section documents both known limits plainly: the check can misjudge a View-based
-layout that uses `elevation` (Compose's `zIndex` is unaffected), and a Compose layout using a
-lightweight offset modifier can hand it an already-stale frame.
+means an unrelated element covers the point.
 
-`_resolve_frame_and_screen` is not tap-exclusive: `adb.py:889` calls it for the tap family, and
+`adb.py`'s `_resolve_frame_and_screen` (`adb.py:892`) calls the helper right after resolving the
+frame, after any not-found `_scroll_into_view` recovery, which is unchanged. It raises
+`base.ElementNotTappable` on a match, before `adb.tap_cmd` ever fires. The Motivation section
+documents both known limits plainly: the check can misjudge a View-based layout that uses
+`elevation` (Compose's `zIndex` is unaffected), and a Compose layout using a lightweight offset
+modifier can hand it an already-stale frame.
+
+`_resolve_frame_and_screen` is not tap-exclusive. `adb.py:889` calls it for the tap family, and
 `adb.py:1295` calls it again for the two-finger `pinch` / `rotate` gestures. Wiring the check into
 this one shared seam means an occluded `pinch` / `rotate` target now raises `ElementNotTappable`
-too, which is the correct outcome for a target genuinely covered by another element. Its scroll
-safety net does not extend that far in this first slice, though: `_tap_with_recovery` (below) wraps
-only the tap family, so a `pinch` or `rotate` on an occluded target fails immediately, with no
-scroll attempt, once this check lands. Extending the recovery wrapper to the two-finger gestures is
-left for a follow-up rather than this proposal's first slice.
+too, which is the correct outcome for a target genuinely covered by another element.
 
-`is_tappable(sel)`'s own Android realization stays a separate, side-effect-free read: it settles a
-fresh tree, resolves `sel` with `resolve_unique`, and runs `topmost_at_point`, without going through
+The scroll safety net does not extend that far in this first slice, though. `_tap_with_recovery`
+(below) wraps the tap family alone, so a `pinch` or `rotate` on an occluded target fails
+immediately, with no scroll attempt, once this check lands. Extending the recovery wrapper to the
+two-finger gestures waits for a follow-up rather than this proposal's first slice.
+
+`is_tappable(sel)`'s own Android realization stays a separate, side-effect-free read. It settles a
+fresh tree, resolves `sel` with `resolve_unique`, and runs `topmost_at_point`. It does not go through
 `_resolve_frame_and_screen`'s not-found `_scroll_into_view` fallback. Routing `is_tappable` through
-that fallback would let a single query silently scroll the screen, which `scroll_until_tappable`'s
-stop predicate (below) calls repeatedly and would then double-count against its own step bound —
-exactly the "no side effects" property the tappability check promises on every backend. Only the
-actuation-time call through `_resolve_frame_and_screen` keeps the not-found scroll fallback; the
-tappability query itself never scrolls.
+that fallback would let a single query scroll the screen. `scroll_until_tappable`'s stop
+predicate (below) calls `is_tappable` repeatedly, so those scrolls would also double-count against
+its own step bound. That would break the "no side effects" property the tappability check promises
+on every backend. Only the actuation-time call through `_resolve_frame_and_screen` keeps the
+not-found scroll fallback. The tappability query itself never scrolls.
 
-We considered detecting cross-window occlusion — a dialog, a toast, or a system overlay covering the
-whole screen — through `AccessibilityWindowInfo.getLayer()`, an official Application Programming
-Interface (API) that reports windows' relative z-order. The spike found this less useful in
-practice than the API's existence suggests.
-Reading it at all requires setting `FLAG_RETRIEVE_INTERACTIVE_WINDOWS` on the UiAutomation's own
-`AccessibilityServiceInfo`; it is not set by default. A full-screen modal dialog, the most common
-real-world case, did not produce two coexisting windows at different layers to compare — the base
-window disappeared from `getWindows()` entirely and the dialog's window took its place, which means
-this common case surfaces through the target selector becoming unresolvable, not through a layer
-comparison. A toast did not appear in `getWindows()` at all, so this mechanism cannot detect a toast
-covering a button underneath it, a gap the spike could not close within its time budget. Given the
-setup cost and these two real gaps, this proposal keeps window-level occlusion detection out of its
-first slice; see Alternatives considered.
+We considered detecting cross-window occlusion (a dialog, a toast, or a system overlay covering the
+whole screen) through `AccessibilityWindowInfo.getLayer()`, an official Application Programming
+Interface (API) that reports windows' relative z-order. The spike found this less useful in practice
+than the API's existence suggests:
+
+- Reading the API at all requires setting `FLAG_RETRIEVE_INTERACTIVE_WINDOWS` on the UiAutomation's
+  own `AccessibilityServiceInfo`. It is not set by default.
+- A full-screen modal dialog, the most common real-world case, did not produce two coexisting
+  windows at different layers to compare. The base window disappeared from `getWindows()` entirely
+  and the dialog's window took its place. This common case surfaces through the target
+  selector becoming unresolvable, not through a layer comparison.
+- A toast did not appear in `getWindows()` at all. This mechanism cannot detect a toast
+  covering a button underneath it, a gap the spike could not close within its time budget.
+
+Given the setup cost and these two real gaps, this proposal keeps window-level occlusion detection
+out of its first slice. See Alternatives considered.
 
 ### A new typed error: `ElementNotTappable`
 
@@ -192,84 +230,97 @@ class ElementNotTappable(Exception):
     """
 ```
 
-`SelectorError`'s own docstring, "selector resolution failed," would be actively wrong here — the
-selector did resolve, so this is a sibling top-level exception, not a subclass. `loop.py:399`'s
-generic step-execution catch, `except (base.SelectorError, base.UnsupportedAction, NotImplementedError)
-as e: return False, str(e), [], None`, gains `base.ElementNotTappable` in that tuple, so a step that
-raises it still fails cleanly rather than crashing the run (prime directive 1). Each backend raises
-it at the point it would otherwise raise `ElementNotFound` for a genuinely missing element:
-`xcuitest.py`'s `_actuate` on the new not-hittable status, `playwright.py`'s tap methods on a failed
-hit-test, and `adb.py`'s `_resolve_frame_and_screen` on a non-`None` `topmost_at_point`.
+`SelectorError`'s own docstring, "selector resolution failed," would be wrong here, because the
+selector did resolve. The new error is a sibling top-level exception, not a subclass.
+
+`loop.py:399`'s generic step-execution catch is
+`except (base.SelectorError, base.UnsupportedAction, NotImplementedError) as e: return False, str(e), [], None`.
+It gains `base.ElementNotTappable` in that tuple, so a step that raises it still fails cleanly
+rather than crashing the run (prime directive 1). Each backend raises the error at the point where
+it would otherwise raise `ElementNotFound` for a genuinely missing element:
+
+- `xcuitest.py`'s `_actuate`, on the new not-hittable status.
+- `playwright.py`'s tap methods, on a failed hit-test.
+- `adb.py`'s `_resolve_frame_and_screen`, on a non-`None` `topmost_at_point`.
 
 ### Bounded, deterministic scroll recovery as a safety net
 
-Calling the existing `scroll_to_target(driver, sel, "down", None, max_scrolls)`
-(`bajutsu/orchestrator/actions/handlers/scroll.py:442`) whenever `is_tappable` fails looks like the
-obvious move, but it is a no-op bug: `scroll_to_target`'s stop condition is "`to` resolves and its
-frame center sits inside the viewport" (`_center_in_viewport`, `scroll.py:123`), and an occluded
-element's center is already inside the viewport — that is exactly why it is occluded rather than
-off-screen. Calling it unmodified returns immediately, without a single scroll step.
+The obvious move is to call the existing `scroll_to_target(driver, sel, "down", None, max_scrolls)`
+(`bajutsu/orchestrator/actions/handlers/scroll.py:442`) whenever `is_tappable` fails. That call is
+a no-op bug. `scroll_to_target`'s stop condition is "`to` resolves and its frame center sits inside
+the viewport" (`_center_in_viewport`, `scroll.py:123`). An occluded element's center is already
+inside the viewport, which is why it is occluded rather than off-screen. Called unmodified,
+the function returns at once, without a single scroll step.
 
-The fix generalizes `scroll_to_target` at its one hard-coded stop check rather than duplicating its
+The fix generalizes `scroll_to_target` at its one hard-coded stop check, rather than duplicating its
 several hundred lines of BE-0329 motion and end-of-content bookkeeping. Its loop body
 (`scroll.py:474`–`537`) takes its stop predicate as a parameter instead of hard-coding
-`_center_in_viewport`; `scroll_to_target` keeps its existing signature and behavior, supplying
-`_center_in_viewport` as the default, and a new function, `scroll_until_tappable(driver, sel,
-direction, within, max_scrolls)`, supplies `lambda frame, viewport: _center_in_viewport(frame,
-viewport) and driver.is_tappable(sel)` instead. Every other line — end-of-content fail-fast,
-overshoot detection, the read-lag re-read budget, the viewport contract — stays shared and
-unchanged.
+`_center_in_viewport`. `scroll_to_target` keeps its existing signature and behavior, supplying
+`_center_in_viewport` as the default. A new function,
+`scroll_until_tappable(driver, sel, direction, within, max_scrolls)`, supplies
+`lambda frame, viewport: _center_in_viewport(frame, viewport) and driver.is_tappable(sel)` instead.
+Every other line stays shared and unchanged: end-of-content fail-fast, overshoot detection, the
+read-lag re-read budget, and the viewport contract.
 
-The stop predicate conjoins both checks rather than relaxing to either alone, because the
-invariant this proposal exists to hold cuts both ways. `scroll_until_tappable` must never treat
-"scrolled into the viewport" as evidence of tappability — an occluded target's center is already
-inside the viewport, which is exactly why `_center_in_viewport` alone is a no-op stop check here —
-but it must just as much never treat "scrolled *out* of the viewport" as evidence of tappability
-either: several backends deliberately read an off-viewport point as "not covered" (a below-the-fold
-target is a `scroll` question, not an occlusion one), so `is_tappable` alone would let the loop
-"succeed" by scrolling the occluded target past the viewport instead of clear of the obstruction,
-and a coordinate tap that follows would land outside the viewport, touching nothing. Exhausting the
-scroll bound while either check still fails is always a failure, surfaced as `ElementNotTappable`,
-regardless of which internal signal (viewport membership, end-of-content, a bare re-query) looked
-satisfied along the way. Both the unit that adds `scroll_until_tappable` and the unit that tests it
-state this two-sided invariant explicitly, and the test suite carries a case that scrolls a target
-into the viewport while a second element still covers it, plus a case that clears the cover only
-after scrolling the target past the viewport, to confirm neither direction regresses into a false
-success.
+The stop predicate conjoins both checks rather than relaxing to either alone, because the invariant
+this proposal exists to hold cuts both ways:
+
+- `scroll_until_tappable` must never treat "scrolled into the viewport" as evidence of tappability.
+  An occluded target's center is already inside the viewport, which is why
+  `_center_in_viewport` alone is a no-op stop check here.
+- It must equally never treat "scrolled *out* of the viewport" as evidence of tappability.
+  Several backends read an off-viewport point as "not covered" (a below-the-fold target
+  is a `scroll` question, not an occlusion one). `is_tappable` alone would let the loop
+  "succeed" by scrolling the occluded target past the viewport instead of clear of the obstruction.
+  A coordinate tap that follows would then land outside the viewport, touching nothing.
+
+Exhausting the scroll bound while either check still fails is always a failure, surfaced as
+`ElementNotTappable`. This holds regardless of which internal signal (viewport membership,
+end-of-content, a bare re-query) looked satisfied along the way. Both the unit that adds
+`scroll_until_tappable` and the unit that tests it state this two-sided invariant explicitly. The
+test suite carries two cases to confirm neither direction regresses into a false success: one that
+scrolls a target into the viewport while a second element still covers it, and one that clears the
+cover only after scrolling the target past the viewport.
 
 `scroll.py` already imports `_SWIPE_FRACTION` and `_scroll_gesture` from `gestures.py`. Placing the
-recovery wiring in `gestures.py` (where `_do_tap` / `_do_double_tap` / `_do_long_press` already live)
-while needing to call `scroll_until_tappable` from `scroll.py` would make the two modules import
-each other. The fix is a small, mechanical prerequisite: extract `_SWIPE_FRACTION` and
+recovery wiring in `gestures.py` (where `_do_tap` / `_do_double_tap` / `_do_long_press` already
+live) while needing to call `scroll_until_tappable` from `scroll.py` would make the two modules
+import each other. The fix is a small, mechanical prerequisite. Extract `_SWIPE_FRACTION` and
 `_scroll_gesture` into a neutral module (for example, `_gesture_math.py`) that both `gestures.py` and
 `scroll.py` import from, with no behavior change. This lands before the recovery wiring, as its own
 unit.
 
-The wiring itself is a small wrapper in `gestures.py`, `_tap_with_recovery(actuate, driver, sel)`,
-that calls the specific `driver.tap(sel)` / `driver.double_tap(sel)` / `driver.long_press(sel,
-duration)`, and on `base.ElementNotTappable` calls `scroll_until_tappable(driver, sel, direction,
-None, _TAP_RECOVERY_MAX_SCROLLS * (i + 1))` for each `i, direction` in
-`enumerate(_TAP_RECOVERY_DIRECTIONS = ("down", "up"))`, stopping at the first direction that makes
-`sel` tappable, then retries the actuation exactly once. A single fixed direction cannot cover both
-common obstructions: `down`'s content motion moves the target toward the top of the screen, clearing
-a bottom-anchored cover (a toast, a snackbar, a sticky footer) but driving a target stuck under a
-top-anchored one (a sticky header) further underneath it, never out. `down` is tried first, since the
-bottom-anchored case is the more common one; `up` is tried only once `down`'s own bound is exhausted
-without success — and, because `up` starts from wherever `down`'s own steps left the target, it needs
-to retrace that ground before it can make any net progress of its own, hence the widened bound
-(`_TAP_RECOVERY_MAX_SCROLLS` for `down`, `_TAP_RECOVERY_MAX_SCROLLS * 2` for `up`, nine scroll calls
-in the worst case — still well under `scroll`'s own default of 15). Any failure along that path
-collapses to a single `base.ElementNotTappable`: the first attempt's own exception — which names
-what covered the target, via `base.raise_if_covered` — is interpolated into the final message
-rather than dropped, and the last direction's scroll failure that triggered the recovery is chained
-(`raise ... from exc`) alongside it, so neither fact is lost. `_do_tap`, `_do_double_tap`,
-`_do_long_press`, and the
-focus-tap call sites inside `_do_type`, `_do_clear`, `_do_delete`, and `_do_select` all switch their
-bare `driver.tap(sel)` call to this one shared wrapper, rather than seven copies of the same
-try/except. This is a safety net for the common case — a transient overlay, a sticky header or
-footer — not a search. An author who already knows a target needs scrolling in a specific direction,
-through a specific container, still writes the explicit `scroll` action; this net insures only
-against the case the author did not expect.
+The wiring itself is a small wrapper in `gestures.py`, `_tap_with_recovery(actuate, driver, sel)`.
+It calls the specific `driver.tap(sel)` / `driver.double_tap(sel)` / `driver.long_press(sel,
+duration)`. On `base.ElementNotTappable`, it calls
+`scroll_until_tappable(driver, sel, direction, None, _TAP_RECOVERY_MAX_SCROLLS * (i + 1))` for each
+`i, direction` in `enumerate(_TAP_RECOVERY_DIRECTIONS = ("down", "up"))`. It stops at the first
+direction that makes `sel` tappable, then retries the actuation once.
+
+A single fixed direction cannot cover both common obstructions. The content motion of `down` moves
+the target toward the top of the screen. That clears a bottom-anchored cover (a toast, a snackbar, a
+sticky footer), but drives a target stuck under a top-anchored one (a sticky header) further
+underneath it, never out. The wrapper tries `down` first, since the bottom-anchored case
+is the more common one. It tries `up` only once the bound of `down` is exhausted without success.
+
+Because `up` starts from wherever the steps of `down` left the target, it must retrace that ground
+before it can make any net progress of its own. Hence the widened bound: `_TAP_RECOVERY_MAX_SCROLLS`
+for `down`, and `_TAP_RECOVERY_MAX_SCROLLS * 2` for `up`. That is nine scroll calls in the worst
+case, still well under `scroll`'s own default of 15.
+
+Any failure along that path collapses to a single `base.ElementNotTappable`. The first attempt's own
+exception names what covered the target, via `base.raise_if_covered`, and the wrapper interpolates
+it into the final message rather than dropping it. The wrapper also chains the last direction's
+scroll failure that triggered the recovery (`raise ... from exc`), so neither fact is lost.
+
+`_do_tap`, `_do_double_tap`, `_do_long_press`, and the focus-tap call sites inside `_do_type`,
+`_do_clear`, `_do_delete`, and `_do_select` all switch their bare `driver.tap(sel)` call to this one
+shared wrapper, rather than seven copies of the same try/except.
+
+The wrapper is a safety net for the common case, a transient overlay or a sticky header or footer.
+It is not a search. An author who already knows a target needs scrolling in a specific direction,
+through a specific container, still writes the explicit `scroll` action. The net insures against the
+case the author did not expect.
 
 ### Work breakdown (`MECE`)
 
@@ -286,88 +337,102 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
    Selector) -> bool` to the `Driver` protocol in `base.py`. Refactor
    [`scroll_to_target`](../../bajutsu/orchestrator/actions/handlers/scroll.py) to take its stop
    predicate as a parameter, preserving its existing default and callers. Add
-   `scroll_until_tappable`, whose stop predicate is `is_tappable` itself — never a viewport or
+   `scroll_until_tappable`, whose stop predicate is `is_tappable` itself, never a viewport or
    existence check standing in for it.
-3. **iOS hit-test.** A `TapResult.notHittable` case
-   (`BajutsuKit/Sources/BajutsuRunner/ElementProviding.swift`); an `isHittable` guard in
-   `XcuitestElementProvider.tap` (`BajutsuKit/Runner/Sources/XcuitestElementProvider.swift:57`); a
-   `Router.tapResultResponse` mapping; a new status constant and branch in `xcuitest.py`'s
-   `_actuate`; `is_tappable` realized as the equivalent non-actuating query.
-4. **Web hit-test.** A `document.elementFromPoint`-based ancestor-chain check in
+3. **iOS hit-test.** Add a `TapResult.notHittable` case
+   (`BajutsuKit/Sources/BajutsuRunner/ElementProviding.swift`), an `isHittable` guard in
+   `XcuitestElementProvider.tap` (`BajutsuKit/Runner/Sources/XcuitestElementProvider.swift:57`), and a
+   `Router.tapResultResponse` mapping. Add a new status constant and branch in `xcuitest.py`'s
+   `_actuate`. Realize `is_tappable` as the equivalent non-actuating query.
+4. **Web hit-test.** Add a `document.elementFromPoint`-based ancestor-chain check in
    [`bajutsu/drivers/playwright.py`](../../bajutsu/drivers/playwright.py), generalizing the
    `select_option` precedent (`playwright.py:764`–`782`) into a shared `_center_checked(sel)` used
    by `tap` / `double_tap` / `long_press`.
-5. **Android hit-test.** `topmost_at_point` in [`bajutsu/drivers/base.py`](../../bajutsu/drivers/base.py),
-   wired into `adb.py`'s `_resolve_frame_and_screen` (`adb.py:892`), after the existing not-found
-   `_scroll_into_view` recovery, before the frame is returned to the actuator. This seam is shared
-   with the two-finger `pinch` / `rotate` gestures (`adb.py:1295`), so an occluded target there also
-   raises `ElementNotTappable`, without the scroll recovery this proposal's tap-only wrapper
-   provides — note this scope boundary explicitly rather than leaving it implicit. Realize
-   `is_tappable`'s Android query as its own settle-then-`resolve_unique`-then-`topmost_at_point`
-   path, never through `_resolve_frame_and_screen`'s not-found `_scroll_into_view` fallback, so the
-   query itself never scrolls. Document the known limits in code comments where the heuristic
-   lives: correct for Compose's `zIndex`, and for the ordinary undecorated case on both toolkits;
-   can misjudge a View-based layout using `elevation`; depends on accessibility bounds that a
-   lightweight Compose offset modifier can leave stale.
-6. **Orchestrator recovery wiring.** `_tap_with_recovery` in `gestures.py`, applied at every
+5. **Android hit-test.** Add `topmost_at_point` in
+   [`bajutsu/drivers/base.py`](../../bajutsu/drivers/base.py). Wire it into `adb.py`'s
+   `_resolve_frame_and_screen` (`adb.py:892`), after the existing not-found `_scroll_into_view`
+   recovery and before the frame returns to the actuator.
+
+   The seam is shared with the two-finger `pinch` / `rotate` gestures (`adb.py:1295`), so an
+   occluded target there also raises `ElementNotTappable`, without the scroll recovery this
+   proposal's tap-only wrapper provides. State this scope boundary explicitly rather than leaving it
+   implicit.
+
+   Realize `is_tappable`'s Android query as its own settle-then-`resolve_unique`-then-
+   `topmost_at_point` path, never through `_resolve_frame_and_screen`'s not-found
+   `_scroll_into_view` fallback, so the query itself never scrolls.
+
+   Document the known limits in code comments where the heuristic lives. The heuristic is correct
+   for Compose's `zIndex` and for the ordinary undecorated case on both toolkits. It can misjudge a
+   View-based layout using `elevation`. It depends on accessibility bounds that a lightweight
+   Compose offset modifier can leave stale.
+6. **Orchestrator recovery wiring.** Add `_tap_with_recovery` in `gestures.py`, applied at every
    `driver.tap` / `driver.double_tap` / `driver.long_press` call site, including the focus-taps
    inside `_do_type` / `_do_clear` / `_do_delete` / `_do_select`. Depends on Units 0 and 2.
 7. **`FakeDriver` support.** `FakeDriver.is_tappable`
    ([`bajutsu/drivers/fake.py`](../../bajutsu/drivers/fake.py)) reuses `topmost_at_point` directly
-   over `self.screen`, making the generic recovery loop testable on the fast Linux gate without a
-   device or emulator.
+   over `self.screen`. This makes the generic recovery loop testable on the fast Linux gate without
+   a device or emulator.
 8. **Driver conformance suite.** Add an obstruction case to
    [`tests/driver_conformance.py`](../../tests/driver_conformance.py): a screen with a target and a
    second element sharing its point, placed to be "on top" in whatever way each backend's fixture
-   expresses that. Assert `is_tappable` is false while covered and true for a separate, genuinely
-   uncovered element on the same screen; assert `driver.tap` itself raises `ElementNotTappable` for
-   the covered target — both at the driver seam directly, per
+   expresses that. Assert that `is_tappable` is false while covered, and true for a separate,
+   genuinely uncovered element on the same screen. Assert that `driver.tap` itself raises
+   `ElementNotTappable` for the covered target. Both assertions run at the driver seam directly, per
    [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md)'s existing
    pattern of one shared spec across every backend that implements the case (`FakeDriver` on the
    fast gate, Playwright's real-Chromium harness; the on-device iOS/Android harnesses do not yet).
-   The *orchestrator's* bounded-scroll recovery — raising `ElementNotTappable` only once the bound
-   is exhausted, and succeeding once a scroll clears the obstruction — is a distinct behavior this
-   suite does not exercise (it calls `driver.tap` directly, never `_tap_with_recovery`), so it stays
-   covered generically against `FakeDriver` in Unit 10's
+
+   The *orchestrator's* bounded-scroll recovery is a distinct behavior that this suite does not
+   exercise, because the suite calls `driver.tap` directly and never `_tap_with_recovery`. The
+   recovery raises `ElementNotTappable` once the bound is exhausted, and succeeds once a scroll
+   clears the obstruction. It stays covered generically against `FakeDriver` in Unit 10's
    `tests/orchestrator/test_tap_recovery.py`, not per real backend.
-9. **Docs.** Update the [`docs/drivers.md`](../../docs/drivers.md) note (currently describing adb's
-   not-found scroll recovery as adb-only and a robustness net, not the portable idiom) to describe
-   the now-portable tappability check and its scroll safety net, keeping the same framing: the
+9. **Docs.** Update the [`docs/drivers.md`](../../docs/drivers.md) note to describe the now-portable
+   tappability check and its scroll safety net. The note currently describes adb's not-found scroll
+   recovery as adb-only and a robustness net, not the portable idiom. Keep the same framing: the
    explicit `scroll` action is still the answer when an author already knows a target starts
-   off-screen; this check is a distinct, narrower correctness net for the obstructed-but-in-tree
+   off-screen, and this check is a distinct, narrower correctness net for the obstructed-but-in-tree
    case. Document `ElementNotTappable` alongside `ElementNotFound` / `AmbiguousSelector` in
    `docs/selectors.md` / `docs/drivers.md` and their `docs/ja/` mirrors.
-10. **Tests.** Per-backend unit tests for each hit-test mechanism in isolation (the `isHittable`
-    guard and the new `TapResult` case; the `elementFromPoint` ancestor-chain check, including the
-    case where the hit point lands on the target's own descendant, which is not an obstruction; the
-    descendant/ancestor exclusion and the genuinely-covering case in `topmost_at_point`).
-    Orchestrator-level tests over `FakeDriver` for `_tap_with_recovery`: success without recovery
-    when already tappable; recovery after N scroll steps; the recovery bound exhausted, raising
-    `ElementNotTappable`, never `ElementNotFound`; a target that scrolls into the viewport while
-    still covered, confirming this never reads as success; the ambiguous-selector path unaffected,
-    still raising `AmbiguousSelector` immediately, never reaching recovery.
+10. **Tests.** Write per-backend unit tests for each hit-test mechanism in isolation:
+    - the `isHittable` guard and the new `TapResult` case;
+    - the `elementFromPoint` ancestor-chain check, including the case where the hit point lands on
+      the target's own descendant, which is not an obstruction;
+    - the descendant/ancestor exclusion and the genuinely-covering case in `topmost_at_point`.
+
+    Write orchestrator-level tests over `FakeDriver` for `_tap_with_recovery`:
+    - success without recovery when the target is already tappable;
+    - recovery after N scroll steps;
+    - the recovery bound exhausted, raising `ElementNotTappable`, never `ElementNotFound`;
+    - a target that scrolls into the viewport while still covered, confirming this never reads as
+      success;
+    - the ambiguous-selector path unaffected, still raising `AmbiguousSelector` at once, never
+      reaching recovery.
 
 ### Prime directives preserved
 
 - **AI never judges.** The tappability check and its recovery are pure geometry, a native API read,
   or a Document Object Model (DOM) query, plus a deterministic bounded loop. No model call enters
-  this path. A step that
-  ultimately fails still fails through the ordinary `ElementNotTappable` step-failure path, the same
-  shape as any other selector or actuation failure.
+  this path. A step that ultimately fails still fails through the ordinary `ElementNotTappable`
+  step-failure path, the same shape as any other selector or actuation failure.
 - **Determinism first.** `is_tappable` never actuates and never has a fixed sleep, so it is safe to
-  call repeatedly with no side effects — but on adb it is not a bare single-shot read either: it
-  settles the tree first (a bounded catch-up read plus a stability poll, up to
-  `_SETTLE_DEADLINE_S = 8.0` s) and resolves with its own bounded retry (`_RESOLVE_TIMEOUT_S`) when
-  the target is momentarily absent, both deliberate (a transient empty read must still resolve
-  against the tree it settles to). `scroll_until_tappable`'s stop predicate calls it once per loop
-  iteration, so a bounded recovery on adb can spend real, bounded-but-nonzero time settling on top
-  of the settle each scroll step already pays for, rather than being free. The recovery loop itself
-  is `scroll_to_target`'s own already-deterministic, no-fixed-sleep, bounded stepping machinery,
-  reused apart from its stop predicate — the same end-of-content fail-fast, the same read-lag
-  budget, the same overshoot handling. Selector ambiguity is untouched: `resolve_unique` still fails
-  immediately on two or more matches, before any tappability question is asked, and the recovery
-  path is never entered for that case.
-- **App-agnostic.** The check is per-platform, not per-app — the kind of difference the driver layer
+  call repeatedly with no side effects. On adb it is not a bare single-shot read either. It settles
+  the tree first (a bounded catch-up read plus a stability poll, up to `_SETTLE_DEADLINE_S = 8.0` s).
+  It also resolves with its own bounded retry (`_RESOLVE_TIMEOUT_S`) when the target is momentarily
+  absent. Both are deliberate, because a transient empty read must still resolve against the tree it
+  settles to.
+
+  `scroll_until_tappable`'s stop predicate calls `is_tappable` once per loop iteration. A bounded
+  recovery on adb can spend real, bounded-but-nonzero time settling, on top of the settle
+  each scroll step already pays for. It is not free.
+
+  The recovery loop itself is `scroll_to_target`'s own already-deterministic, no-fixed-sleep,
+  bounded stepping machinery, reused apart from its stop predicate. It keeps the same
+  end-of-content fail-fast, the same read-lag budget, and the same overshoot handling. Selector
+  ambiguity is untouched: `resolve_unique` still fails at once on two or more matches, before
+  any tappability question is asked, and the recovery path is never entered for that case.
+- **App-agnostic.** The check is per-platform, not per-app, the kind of difference the driver layer
   already exists to hold. The generic policy, "if not tappable, scroll a bounded amount and re-check,
   else fail with a named error," lives once in the orchestrator layer, shared by every backend, with
   no per-app branching anywhere in it.
@@ -376,55 +441,55 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
 
 - **An explicit new scenario action (for example, `unobstruct`) instead of an implicit tap-time
   check.** Considered, for symmetry with `scroll`'s explicit-action shape. Rejected as the primary
-  mechanism. Occlusion is not something an author can generally know in advance — a toast that
-  happens to be up this run, a sticky header at a particular scroll offset — so there is no explicit
-  verb an author could reach for instead; asking every author to guard every tap with a defensive
-  step would be noise on the overwhelming majority of taps that are never occluded. A correctness
-  check with a narrow, bounded safety net fits a condition the author cannot anticipate; an explicit
-  `scroll` remains the right shape for a condition the author already knows about. The two are
-  complementary, not competing.
-- **A uniform `z_index` field added to `Element` for every backend.** Considered, since it would make
-  occlusion a single shared geometric check instead of three backend-specific ones. Rejected,
-  especially for web: DOM order is not a reliable paint-order proxy once CSS `z-index` and
-  `position` are involved, so a naively derived field for the web backend would often be wrong —
-  worse than no field, since it would look authoritative. Web already has a strictly better, exact
-  mechanism (`document.elementFromPoint`), and iOS already has one (`isHittable`) — both native
+  mechanism. An author cannot generally know occlusion in advance: a toast that happens to be up
+  this run, or a sticky header at a particular scroll offset. No explicit verb exists for the author
+  to reach for instead. Asking every author to guard every tap with a defensive step would add noise
+  to the overwhelming majority of taps that are never occluded. A correctness check with a narrow,
+  bounded safety net fits a condition the author cannot anticipate. An explicit `scroll` remains the
+  right shape for a condition the author already knows about. The two are complementary, not
+  competing.
+- **A uniform `z_index` field added to `Element` for every backend.** Considered, since it would
+  make occlusion a single shared geometric check instead of three backend-specific ones. Rejected,
+  for web above all. DOM order is not a reliable paint-order proxy once CSS `z-index` and `position`
+  are involved, so a naively derived field for the web backend would often be wrong. That is worse
+  than no field, since it would look authoritative. Web already has a strictly better, exact
+  mechanism (`document.elementFromPoint`), and iOS already has one (`isHittable`). Both are native
   answers to "what is actually at this point," not proxies. Only Android genuinely benefits from a
-  document-order geometric proxy, and even there the spike showed the proxy holds for Compose's
+  document-order geometric proxy. Even there, the spike showed the proxy holds for Compose's
   `zIndex` but not for View `elevation`, so a single shared field would still need the same
   per-toolkit caveat this proposal states directly instead.
 - **A fully rigorous same-window Android mechanism from the start** (reflecting into the app's real
   view hierarchy to read actual Z values). UiAutomator's accessibility API exposes no per-node Z
-  value, so this would require in-process reflection or a new, uniform app-side test-support hook —
-  a materially larger scope than this proposal's first slice. Left for a future proposal.
+  value. This approach would require in-process reflection or a new, uniform app-side test-support
+  hook, a materially larger scope than this proposal's first slice. Left for a future proposal.
 - **Wiring `AccessibilityWindowInfo.getLayer()` into v1 for cross-window occlusion (a dialog, a
   toast, or a system overlay covering the screen).** The spike confirmed the API works, but found it
   less useful than its existence suggests for the cases that matter most. A full-screen modal
   dialog, the most common real case, does not coexist with the base window at a different layer to
-  compare — the base window disappears from `getWindows()` entirely, so this case already surfaces
+  compare. The base window disappears from `getWindows()` entirely, so this case already surfaces
   through the target selector becoming unresolvable, without needing a layer comparison. A toast
   never appears in `getWindows()` at all, so this mechanism cannot close that gap regardless of
   effort spent on it here. Combined with the setup cost (`FLAG_RETRIEVE_INTERACTIVE_WINDOWS` is not
-  set by default), this proposal defers window-level occlusion detection to a future item rather than
-  build a mechanism whose two most common target cases it cannot cleanly cover.
+  set by default), this proposal defers window-level occlusion detection to a future item. The
+  alternative would build a mechanism that cannot cleanly cover its two most common target cases.
 - **Extending the check to `pinch` / `rotate` on iOS and web, to match Android.** Android's
   `pinch` / `rotate` share `_resolve_frame_and_screen` with `tap`, so an occluded two-finger target
-  already raises `ElementNotTappable` there, correctly — but iOS's `XcuitestElementProvider.gesture`
-  has no `isHittable` guard (only `tap` does), and web's `pinch` / `rotate` resolve through the
+  already raises `ElementNotTappable` there, correctly. But iOS's `XcuitestElementProvider.gesture`
+  has no `isHittable` guard (`tap` alone has one), and web's `pinch` / `rotate` resolve through the
   unchecked `_center_with_element` rather than `_center_checked`. The same scenario, a `pinch` on a
   partly covered target, passes on iOS and web and fails on Android. Left as-is for this first
-  slice: closing it means adding a new native check to each of the other two backends' own
+  slice. Closing the gap means adding a new native check to each of the other two backends' own
   two-finger call paths, which is more surface than the tap-family check this proposal is centrally
   about. Recorded here as a known, accepted asymmetry rather than a silent gap, alongside the
-  Android window-level occlusion deferral above — both are backend-parity gaps this proposal
-  chooses not to close in its first slice.
+  Android window-level occlusion deferral above. Both are backend-parity gaps this proposal chooses
+  not to close in its first slice.
 - **Skip recovery entirely; fail fast the moment occlusion is detected.** The minimal alternative,
-  and the floor this proposal's other units are useful without: `ElementNotTappable` alone, with no
+  and the floor this proposal's other units are useful without. `ElementNotTappable` alone, with no
   scroll safety net, would already turn a silent wrong-tap or a misleading `ElementNotFound` into an
-  honestly named failure. Rejected as the sole design because it does not meet the stated
-  requirement to take a corrective action before failing, and because the analogous net already
-  exists and is valued for the not-found case (adb's `_scroll_into_view`) — dropping it for the
-  obstructed case would leave a needless asymmetry between "missing" and "covered" failures.
+  honestly named failure. Rejected as the sole design for two reasons. It does not meet the stated
+  requirement to take a corrective action before failing. And the analogous net already exists and
+  is valued for the not-found case (adb's `_scroll_into_view`), so dropping it for the obstructed
+  case would leave a needless asymmetry between "missing" and "covered" failures.
 
 ## Progress
 
