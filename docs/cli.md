@@ -1288,13 +1288,21 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   same server. `serve` accepts either value, prints a warning, and ignores it. An unknown value
   still stops the start with a usage error. The next release removes the flag, so drop it from
   your command lines.
-- **Hosting flags (advanced).** `--emit-launchagent` prints a launchd plist to run `serve` as a
-  token-authenticated LaunchAgent on a single Mac; `--upload-exec` (or `$BAJUTSU_UPLOAD_EXEC`) governs whether an
-  **uploaded bundle**'s `services.server` command may run (`deny` / `reuse` / `sandbox`, default
-  `sandbox`); `--allow-remote-build` (or `$BAJUTSU_ALLOW_REMOTE_BUILD`) opts a UI-bound **Git**
-  config's `subject.build` and `driver.runner.build` commands into running on the host (off by
-  default). All are covered in
-  [self-hosting](self-hosting.md).
+- **Hosting flags (advanced).** `--emit-launchagent` prints a launchd plist. The plist runs `serve`
+  as a token-authenticated LaunchAgent on a single Mac, as [self-hosting](self-hosting.md) covers.
+- **Removed command-execution flags.** `serve` no longer decides whether a config's commands run.
+  The worker that runs a job decides, through the `commandExecution` block of its `worker.yaml`.
+  [Self-hosting](self-hosting.md#which-config-commands-a-worker-runs-be-0492) covers the block, and
+  [BE-0492](../roadmaps/BE-0492-worker-command-execution-policy/BE-0492-worker-command-execution-policy.md)
+  records the change. Four inputs went away with that move:
+  - `--upload-exec` and `$BAJUTSU_UPLOAD_EXEC`. The pair governed an uploaded bundle's
+    `services.server` command. Set `commandExecution.uploaded` on each worker instead.
+  - `--allow-remote-build` and `$BAJUTSU_ALLOW_REMOTE_BUILD`. The pair allowed host builds for a Git
+    config bound through the Web UI. Set `remote: allow` on each worker instead.
+
+  `serve` refuses to start when it gets any of the four, and the message names the
+  `commandExecution` block. The `--upload-exec` option of `run`, `record`, and `crawl` went away
+  too.
 
 ## `mcp`
 

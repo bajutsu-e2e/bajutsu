@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0492](BE-0492-worker-command-execution-policy.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0492") |
 | Topic | Security hardening |
 | Related | [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md), [BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md), [BE-0090](../BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md), [BE-0121](../BE-0121-serve-csrf-host-allowlist/BE-0121-serve-csrf-host-allowlist.md), [BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues.md), [BE-0449](../BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md) |
@@ -298,14 +298,16 @@ readiness URL.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] `worker.yaml`: the `commandExecution` block, its defaults, validation, and the Docker check at startup.
-- [ ] Source label: carry `uploaded` / `remote` / `operator` in the job intent in place of `upload_exec`, pass it to `run`, `record`, and `crawl` through the option that carries the label, together with the worker's `worker.yaml`, and label CLI runs.
-- [ ] Named commands: the `named` mode, the `namedCommands` block and its validation, and running a named command.
-- [ ] Routing: advertise `command-execution:<source>`, `named-execution:<source>`, and `named-command:<name>` tokens and add the requirements to jobs that declare commands.
-- [ ] Run-time check: refuse a command the mode does not run (a spelled-out command line under `named` or `deny`, a `use` entry under `deny`), and skip builds the mode does not run, before device work.
-- [ ] Command record: the `commandExecutions` list in `manifest.json` and its place in the report.
-- [ ] Remove `serve --upload-exec`, `$BAJUTSU_UPLOAD_EXEC`, `serve --allow-remote-build`, `$BAJUTSU_ALLOW_REMOTE_BUILD`, and the `--upload-exec` option of `run`, `record`, and `crawl`.
-- [ ] Update the docs, `DESIGN.md`, and `docs/architecture.md` in both languages.
+- [x] `worker.yaml`: the `commandExecution` block, its defaults, validation, and the Docker check at startup.
+- [x] Source label: carry `uploaded` / `remote` / `operator` in the job intent in place of `upload_exec`, pass it to `run`, `record`, and `crawl` through the option that carries the label, together with the worker's `worker.yaml`, and label CLI runs.
+- [x] Named commands: the `named` mode, the `namedCommands` block and its validation, and running a named command.
+  - The `named` mode, the block, its validation, and the resolution a runner calls before it runs one (`resolve_named_command`) shipped here. No config can name a command until [BE-0491](../BE-0491-target-command-hooks/BE-0491-target-command-hooks.md) adds the `use` field of a hook entry, so its hook runner is what executes the resolved script.
+- [x] Routing: advertise `command-execution:<source>`, `named-execution:<source>`, and `named-command:<name>` tokens and add the requirements to jobs that declare commands.
+  - The worker advertises all three token kinds, and a job whose config declares `services.server.cmd` requires `command-execution:<source>`. The `named-execution:` / `named-command:` requirements on a job wait for BE-0491's `use` field, since no config names a command before it. A worker advertises `command-execution:<source>` only for a source whose mode runs a spelled-out command line (`allow`, or `sandbox` with Docker present), not for `named`, so it never leases a job it would refuse.
+- [x] Run-time check: refuse a command the mode does not run (a spelled-out command line under `named` or `deny`, a `use` entry under `deny`), and skip builds the mode does not run, before device work.
+- [x] Command record: the `commandExecutions` list in `manifest.json` and its place in the report.
+- [x] Remove `serve --upload-exec`, `$BAJUTSU_UPLOAD_EXEC`, `serve --allow-remote-build`, `$BAJUTSU_ALLOW_REMOTE_BUILD`, and the `--upload-exec` option of `run`, `record`, and `crawl`.
+- [x] Update the docs, `DESIGN.md`, and `docs/architecture.md` in both languages.
 
 ## References
 
