@@ -334,14 +334,20 @@ the same rule as an `app` field no driven target has.
 scenario applies the `app` fields its platform has, so an iOS-and-web scenario can still set
 `launch.args` for its iOS side. When no target the scenario drives has the field, such as
 `launch.args` in a web-only scenario or `reinstall` against a web target alone, the run fails before
-any device work, naming the field. It never ignores the field. This differs on purpose from
+any device work, naming the field. It never ignores the field.
+
+This differs on purpose from
 `runsOn`, whose block for a platform the run does not drive has no effect: a `runsOn` block is keyed
 by platform and so says which platform it is for, while an unkeyed `app` or `run` field reads as
-meant for every target the scenario drives. The cost is accepted. A scenario file that several
+meant for every target the scenario drives.
+
+The cost is accepted. A scenario file that several
 single-platform targets pick up through `paths.scenarios`, such as an iOS scenario with
 `tipKitHandling` in a directory an Android target also reads, fails on the target that lacks the
 field, where today that target ignores it. Such a scenario names its `targets`, or moves to a
-directory that only the matching targets read. A scenario cannot set a field that identifies or builds the
+directory that only the matching targets read.
+
+A scenario cannot set a field that identifies or builds the
 app, such as `id`, `path`, `build`, `startWhen`, or `idNamespaces`; the target owns those.
 
 `seedPhotos` paths resolve against the file that declares them: the scenario file, or the config
@@ -381,7 +387,9 @@ preconditions:
 For each target a scenario drives, the effective `runsOn` starts from the target's `runsOn`. The
 scenario's block for that target's platform then overrides it field by field, so the scenario wins.
 A scenario may widen the target's value, as `os: ">=16"` over a target's `>=17` does; that
-follows from the scenario taking precedence. A block for a platform the run does not drive has no effect, which lets one scenario serve several
+follows from the scenario taking precedence.
+
+A block for a platform the run does not drive has no effect, which lets one scenario serve several
 platforms. Two targets of one platform on different devices share the block, and each takes its own
 device from the pool. A combination that needs more devices of a kind than the pool has fails like
 a missing device. A scenario that needs different conditions for the two targets splits into two
@@ -397,9 +405,13 @@ two targets.
 
 `runsOn` describes the environments a scenario runs in. It never creates a device, with one
 exception: a replacement for a Simulator that vanished mid-run, which keeps the vanished device's
-model and runtime (see *Defaults*). Bajutsu reads each available device: every udid of a `--udid`
+model and runtime (see *Defaults*).
+
+Bajutsu reads each available device: every udid of a `--udid`
 pool, every serial of the `--udid` pool on Android, or the browser a web lane launched. The default `--udid booted` names
-the one Simulator simctl resolves, so its pool has one device. A URL is no longer accepted as a udid;
+the one Simulator simctl resolves, so its pool has one device.
+
+A URL is no longer accepted as a udid;
 the `appium` environment of *Where a run happens* replaces that path. A physical Android device in
 the pool is matched like an emulator: its API level is read through `getprop`, and it never
 matches an `avd`.
@@ -414,16 +426,26 @@ matches an `avd`.
 
 Matching covers devices the invocation drives on its own host. A target whose `runsOn.kind` is
 `device` (a physical iPhone), or a run that goes to a device cloud or an Appium grid, has no pool
-to read before the run. Such a target may not declare `model`, `os`, or a list; the loader rejects them for
-`kind: device`, after merging defaults. A scenario whose effective `runsOn` declares conditions, from the target or from the
+to read before the run.
+
+Such a target may not declare `model`, `os`, or a list; the loader rejects them for
+`kind: device`, after merging defaults.
+
+A scenario whose effective `runsOn` declares conditions, from the target or from the
 scenario, and that runs against such a target or in a remote environment, fails before any device
-work and names the field; it is never ignored. The check is per target: in a scenario that mixes a
+work and names the field; it is never ignored.
+
+The check is per target: in a scenario that mixes a
 grid target with a local target, it looks only at the grid target's effective `runsOn`, and the local
-target's conditions are matched as usual. For a remote
+target's conditions are matched as usual.
+
+For a remote
 environment the check runs where the job is dispatched: the worker of BE-0448 fails such a scenario
 before it submits anything, so the plain `bajutsu run` on the Device Farm host never needs to know
 where it runs. `locale` and
-`seedPhotos` are device state rather than conditions, so they stay allowed there. Reading facts off
+`seedPhotos` are device state rather than conditions, so they stay allowed there.
+
+Reading facts off
 a reserved remote device is left to a later item. Until then, a suite that adopts conditions cannot
 run on Device Farm or on a physical iPhone, which is a cost this item accepts.
 
@@ -444,7 +466,9 @@ Every version compares on three components. A shorter version gains zeros: an iO
 carries major and minor, such as `18.2`, so its patch reads as zero, and an API level such as `34`
 reads as `34.0.0`. A longer one, such as Chrome's `130.0.6723.31`, drops the rest. Prerelease tags
 are not used: a range that names one is rejected at load, and a beta runtime compares by its
-numbers alone. A new `VersionSpec` in `bajutsu/common/devices/version.py` parses ranges, compares
+numbers alone.
+
+A new `VersionSpec` in `bajutsu/common/devices/version.py` parses ranges, compares
 versions, and lists the major versions a range covers. Unit 1 either adopts a maintained Python
 implementation of the grammar or implements it, and pins npm's own examples in tests. `DeviceOS`
 keeps its deliberate lack of comparison operators, because this item selects devices by
@@ -471,11 +495,17 @@ follows the same outcome rule by its shape; a run that a range bounded on both s
 fails once, naming the range and the launched version. Engines number their versions differently, so a
 `browser.version` range together with an engine list fails at load, and the same pair formed at
 run time by `--browsers` fails before any device work with exit code 2. The web backend installs a
-missing engine on demand, so an engine list never lacks a device. A multi-target scenario runs every
-combination of its targets' runs. A union whose sides overlap, such as `>=17 <19 || >=18`, runs each
+missing engine on demand, so an engine list never lacks a device.
+
+A multi-target scenario runs every
+combination of its targets' runs.
+
+A union whose sides overlap, such as `>=17 <19 || >=18`, runs each
 major version once, and a major version that a bounded side covers keeps the must-run outcome.
 A combination fails when any of its target runs fails; otherwise it is not applicable when any of
-them is. A range that matches everything, such as `*` or `>=0`, runs once per major
+them is.
+
+A range that matches everything, such as `*` or `>=0`, runs once per major
 version the pool has.
 
 ```yaml
@@ -499,7 +529,9 @@ checkout          fail          fail          pass                pass
 The split between failure and not applicable follows what the author asked for. A list or a bounded
 range names runs that must happen, so a missing device, often a misspelled model, fails rather than
 quietly dropping coverage. An open range such as `>=18` says where a scenario applies, so a pool
-with no iOS 18 device makes it not applicable there. A target-level range multiplies every
+with no iOS 18 device makes it not applicable there.
+
+A target-level range multiplies every
 scenario of the target. A bounded one fails each run a small pool cannot serve, and an open one
 still multiplies by the major versions the pool has: `os: ">=17"` on a pool with iOS 17 and iOS
 18 runs every scenario twice. A target that wants one run per scenario names one major version,
@@ -526,7 +558,9 @@ Every member of the set then shares model and release, so any idle member may ta
 `--workers` spreads runs over identical devices without changing what a run observes. A device
 group of [BE-0447](../BE-0447-install-app-step/BE-0447-install-app-step.md), whose member targets
 share one device, forms its runs once as a unit. Its members' effective conditions must agree, and
-a conflict fails when the scenario loads. Targets of one actuator share one pool, as today. `--browser` and
+a conflict fails when the scenario loads. Targets of one actuator share one pool, as today.
+
+`--browser` and
 `--browsers` override the web list for one run: the flag wins over the scenario, and the scenario
 wins over the target.
 
@@ -538,15 +572,25 @@ not applicable: showcase/ipad-split-view
   runsOn.ios.os  ">=18"  available: iOS 17.5 "iPhone 15" (5A3F...), iOS 17.5 "iPhone 16" (7B21...)
 ```
 
-The report lists it apart, and the flakiness history leaves it out. When every record is not
+The report lists it apart, and the flakiness history leaves it out.
+
+When every record is not
 applicable and no run executes, the invocation exits with code 1, as a failed invocation does, with
-"no run executed", so an empty invocation never reports green. Failures, including preflight and
+"no run executed", so an empty invocation never reports green.
+
+Failures, including preflight and
 capability failures, already exit non-zero: 1, or 2 when the capability check of BE-0450 leaves no
-scenario runnable. A filter that selects no scenario keeps today's behavior. A serve job
-whose every run is not applicable reports a failed job for the same reason. Together with the
+scenario runnable. A filter that selects no scenario keeps today's behavior.
+
+A serve job
+whose every run is not applicable reports a failed job for the same reason.
+
+Together with the
 failure of a missing listed value, this answers the main concern of
 [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md): a misconfigured pool cannot
-turn an entire invocation green by skipping it. A pool that lacks one OS version can still leave some
+turn an entire invocation green by skipping it.
+
+A pool that lacks one OS version can still leave some
 scenarios not applicable while the rest pass, so the summary line prints the count of not-applicable
 records beside the passes and failures.
 
@@ -554,11 +598,18 @@ records beside the passes and failures.
 content fingerprint and the device OS. The new key adds the target and the run's coordinates: the
 listed values and the major version per target. A layout failure on one model therefore never reads
 as a flaky scenario. Existing histories carry no coordinates, so they start fresh under the new key.
-The run manifest records each run's coordinates and the OS it observed. `record`, `crawl`, and `repl`
+
+The run manifest records each run's coordinates and the OS it observed.
+
+`record`, `crawl`, and `repl`
 never multiply runs; they take the first run's coordinates, which are the first listed value and
-the newest major version the pool has within the range, and fail when no device fits. Code generation emits no
+the newest major version the pool has within the range, and fail when no device fits.
+
+Code generation emits no
 device conditions: a generated test runs wherever it is launched, which the codegen documentation
-states. `bajutsu doctor` lists, for each scenario, its runs and the
+states.
+
+`bajutsu doctor` lists, for each scenario, its runs and the
 available devices that fit each one. With no pool to read, it reports the declared runs alone, and lists an open range as "one run per
 available major version", since those runs depend on the pool.
 
