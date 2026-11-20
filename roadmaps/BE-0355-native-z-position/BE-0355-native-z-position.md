@@ -16,57 +16,72 @@
 
 ## Introduction
 
-`bajutsu/drivers/base.py`'s `Element` — `identifier`, `label`, `traits`, `value`, `frame` — carries
-no signal for which element actually sits in front of another. [BE-0349](../BE-0349-tap-target-hittability-check/BE-0349-tap-target-hittability-check.md)
-already closed the tap-time correctness gap this leaves: iOS asks the platform's own `isHittable`,
-and Android's adb backend falls back to `topmost_at_point` (`bajutsu/drivers/base.py:830`), a
-document-order proxy for paint order. Neither exposes the underlying front-to-back relationship as
-evidence a scenario author, or an agent investigating a failure, can read after the fact —
-`elements.json` and the opt-in `rawTree` capture (see [docs/evidence.md](../../docs/evidence.md))
-both show every element's frame, but nothing about which one actually covers which. This proposal
-adds an optional `nativeZ` field to `Element`, populated with each element's real, app-measured
-front-to-back position when the app under test opts into a small Bajutsu-provided Software
-Development Kit (SDK) hook: iOS computes it from the app's own layer tree through an extension of
-BajutsuKit's existing in-app hook, and Android reads it from `View.getZ()` through the accessibility
-framework's own on-demand extra-data mechanism. The field is diagnostic only — every existing
-occlusion check keeps its current behavior unchanged — and stays `None` for any backend or app that
-does not cooperate, the same opt-in shape `ViewportProvider` / `ReadLagProvider` /
-`RawSourceProvider` already use.
+The `Element` type in `bajutsu/drivers/base.py` carries five fields.
+They are `identifier`, `label`, `traits`, `value`, and `frame`. None of them says which element actually sits in front of another.
+[BE-0349](../BE-0349-tap-target-hittability-check/BE-0349-tap-target-hittability-check.md) already
+closed the tap-time correctness gap that this leaves. iOS asks the platform's own `isHittable`.
+The adb backend of Android falls back to `topmost_at_point` (`bajutsu/drivers/base.py:830`).
+That function is a document-order proxy for paint order.
+
+Neither exposes the underlying front-to-back relationship as evidence.
+A scenario author cannot read it after the fact.
+Neither can an agent that investigates a failure. `elements.json` and the opt-in `rawTree` capture both show the frame of every element.
+See [docs/evidence.md](../../docs/evidence.md).
+Neither shows which element covers which.
+
+This proposal adds an optional `nativeZ` field to `Element`. The field holds the real front-to-back
+position of each element, as measured by the app itself.
+The app under test opts in through a small hook.
+The hook belongs to a Bajutsu-provided Software Development Kit (SDK).
+
+- iOS computes the position from the layer tree of the app.
+  It does so through an extension of the existing in-app hook of BajutsuKit.
+- Android reads the position from `View.getZ()`.
+  It does so through the on-demand extra-data mechanism of the accessibility framework.
+
+The field is diagnostic only. Every existing occlusion check keeps its current behavior. The field
+stays `None` for any backend or app that does not cooperate. `ViewportProvider`, `ReadLagProvider`,
+and `RawSourceProvider` already use the same opt-in shape.
 
 ## Motivation
 
-A step that fails with `ElementNotTappable`, or a scenario author debugging why two elements appear
-to overlap in a screenshot, has no way to read the actual stacking order out of the evidence bajutsu
-already writes. `elements.json` and `rawTree` both carry every element's frame, but the only signal
-for which element is on top is the array's own document order — the same proxy `topmost_at_point`
-already uses at tap time, and one its own docstring names as a heuristic, not a real z-index.
-Recovering the true stacking order today means leaving bajutsu entirely: attaching a platform
-debugger, or reading the app's own source, neither of which the captured evidence can point an
-investigator toward on its own.
+Consider a step that fails with `ElementNotTappable`.
+Consider also a scenario author who debugs why two elements appear to overlap in a screenshot. Neither can read the actual stacking order from the
+evidence that bajutsu already writes. `elements.json` and `rawTree` both carry the frame of every
+element. The sole signal for which element is on top is the document order of the array. That is the proxy that `topmost_at_point` already uses at tap time.
+Its own docstring names the proxy as a heuristic, not a real z-index.
 
-BE-0349 already closed the correctness question this gap leaves for actuation: iOS's native
-`isHittable` and Android's `topmost_at_point` both decide, accurately enough for tapping, whether a
-resolved element is reachable. That item's own *Alternatives considered* explicitly deferred the
-harder half of this problem to a future proposal — "a fully rigorous same-window Android mechanism
-… reflecting into the app's real view hierarchy to read actual Z values", calling it "a materially
-larger scope" than a tappability check needed. This proposal is that deferred mechanism, extended to
-iOS for symmetry. It also revisits a second alternative BE-0349 rejected, for a different reason: a
-uniform `z_index` field added to `Element` for every backend, rejected because a value *derived* from
-document order would look authoritative while staying wrong wherever paint order and document order
-diverge — Android's `View.elevation` is the reproduced case. `nativeZ` sidesteps that objection by
-construction: never derived from the tree bajutsu already has, only measured by the app itself
-and reported through explicit cooperation, so a backend or app that does not cooperate reports
-`None`, an honest absence, not a wrong guess.
+Recovering the true stacking order today means leaving bajutsu entirely.
+The investigator attaches a platform debugger, or reads the source of the app. The captured evidence cannot point an investigator toward
+either on its own.
 
-This proposal scopes `nativeZ` to diagnostics: it changes no runtime decision. `is_tappable`,
-`topmost_at_point`, and iOS's `isHittable` guard keep their current behavior unchanged, and no
-scenario assertion or selector reads the new field. Two reasons hold that boundary here rather than
-widening it to replace the occlusion heuristic BE-0349 already ships. First, whether Jetpack
-Compose's own accessibility-node generation forwards the extra data Android's mechanism depends on
-(below) is not yet confirmed, and gating an existing, working correctness check on an unverified
-mechanism would be premature. Second, keeping the two questions separate lets this proposal ship
-independently of whether a future one chooses to fold `nativeZ` back into `topmost_at_point`'s
-decision once that mechanism is proven.
+BE-0349 already closed the correctness question that this gap leaves for actuation. The native `isHittable` of iOS and the `topmost_at_point` of Android both decide whether a resolved element is reachable.
+Both are accurate enough for tapping. The *Alternatives considered* section of that item
+deferred the harder half of the problem to a future proposal: "a fully rigorous same-window Android
+mechanism … reflecting into the app's real view hierarchy to read actual Z values". It called that
+"a materially larger scope" than a tappability check needed. This proposal is that deferred
+mechanism, extended to iOS for symmetry.
+
+The proposal also revisits a second alternative that BE-0349 rejected, for a different reason. That
+alternative was a uniform `z_index` field added to `Element` for every backend. BE-0349 rejected it
+because a value *derived* from document order would look authoritative while staying wrong wherever
+paint order and document order diverge. The `View.elevation` of Android is the reproduced case.
+
+`nativeZ` sidesteps that objection by construction.
+It is never derived from the tree that bajutsu already has.
+The app itself measures it and reports it through explicit cooperation.
+A backend or app that does not cooperate reports `None`, an honest absence, not a wrong guess.
+
+This proposal scopes `nativeZ` to diagnostics. It changes no runtime decision. `is_tappable`, `topmost_at_point`, and the `isHittable` guard of iOS keep their current behavior.
+No scenario assertion or selector reads the new field. Two reasons hold that boundary here.
+The alternative is to widen it and replace the occlusion heuristic that BE-0349 already ships.
+
+1. Nobody has confirmed whether the accessibility-node generation of Jetpack Compose forwards the
+   extra data that the Android mechanism depends on (below).
+   Gating a working correctness check on an unverified mechanism would be premature.
+2. Keeping the two questions separate lets this proposal ship on its own.
+   A future proposal may fold `nativeZ` back into `topmost_at_point`.
+   That can happen once the mechanism is proven.
 
 ## Detailed design
 
@@ -84,290 +99,346 @@ class Element(TypedDict):
     nativeZ: float | None
 ```
 
-`nativeZ` holds the element's own real front-to-back position — computed by the app-side hook
-below, never derived from `elements`' own document order — when that hook reports one for the
-underlying view, and `None` in every other case: a backend with no such hook (Playwright), an app
-that has not opted in, or, on Android, a Compose screen if Unit 0's spike finds no way to carry the
-value through Compose's own accessibility-node generation. `resolve_unique`
-(`bajutsu/drivers/base.py:647`) and every existing selector match are unaffected — `nativeZ` joins the
-record the same way `frame` already does, read but never filtered on. What the number *means* is
-per-platform, and Unit 0 settles it before Units 2 and 3 encode it: iOS's responder reports a
-front-to-back *ordinal* from the layer walk, while Android reports `View.getZ()` in device pixels,
-and `getZ()` orders siblings within one parent rather than the whole tree — a child at `getZ() == 0`
-under a parent at `getZ() == 8` still composites in front of that parent's sibling at `getZ() == 4`.
-Two elements' `nativeZ` values are therefore not comparable across backends, and on Android not
-comparable across parents.
+`nativeZ` holds the real front-to-back position of the element. The app-side hook below computes it,
+and it is never derived from the document order of `elements`. The field is `None` in every other
+case:
 
-**Unit 0 settled this as per-backend units named explicitly, with one shared convention: a larger
-`nativeZ` is closer to the viewer, on every backend.** The alternative — normalizing both onto one
-cross-backend ordinal — was rejected because normalizing Android's `getZ()` into a tree-global
-ordinal means combining the app's measurement with the document order bajutsu already has, which is
-exactly the derivation this proposal's Motivation faults the rejected `z_index` alternative for. It
-would also discard what the Android reading carries beyond order: how far in front. Unit 6 records
-the choice in [`docs/evidence.md`](../../docs/evidence.md), so a reader cannot draw from `nativeZ`
-the same falsely authoritative conclusion.
+- a backend with no such hook (Playwright);
+- an app that has not opted in;
+- on Android, a Compose screen.
+  This holds if the spike of Unit 0 finds no way to carry the value through Compose.
+
+`resolve_unique` (`bajutsu/drivers/base.py:647`) and every existing selector match are unaffected.
+`nativeZ` joins the record the way `frame` already does: read, but never filtered on.
+
+What the number *means* is per-platform, and Unit 0 settles it before Units 2 and 3 encode it.
+
+- The responder of iOS reports a front-to-back *ordinal* from the layer walk.
+- Android reports `View.getZ()` in device pixels. `getZ()` orders siblings within one parent, not
+  the whole tree. Take a child at `getZ() == 0` under a parent at `getZ() == 8`.
+  It still composites in front of the sibling of that parent at `getZ() == 4`.
+
+The `nativeZ` values of two elements are therefore not comparable across backends.
+On Android, they are not comparable across parents either.
+
+**Unit 0 settled this as per-backend units, named explicitly.**
+One convention is shared: a larger `nativeZ` is closer to the viewer, on every backend.
+
+The alternative was to normalize both backends onto one cross-backend ordinal. Unit 0 rejected it.
+Normalizing the `getZ()` of Android into a tree-global ordinal means combining the measurement of the
+app with the document order that bajutsu already has.
+That is the derivation that the Motivation faults in the rejected `z_index` alternative.
+Normalizing would also discard what the Android reading carries beyond order: how far in front.
+
+Unit 6 records the choice in [`docs/evidence.md`](../../docs/evidence.md).
+A reader then cannot draw the same falsely authoritative conclusion from `nativeZ`.
 
 ### iOS: a new synchronous channel into BajutsuKit's in-app hook
 
 BajutsuKit already ships one opt-in in-app hook that computes something at runtime and reports it to
 the host: `BajutsuScreen` (`BajutsuKit/Sources/BajutsuKit/BajutsuScreen.swift`,
-[BE-0310](../BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness.md)),
-which swizzles `UIViewController.viewDidAppear` and POSTs each completed transition to a collector
-the Python side starts on the Simulator's shared loopback. That channel is one-directional and
-event-driven — the app pushes when a transition happens — which fits a screen-change signal but not
-this proposal's need: the driver must ask, synchronously, "what is this element's real position
-right now", timed to the same query it is already issuing. `BajutsuNet`'s collector receives; it does
-not answer. Closing that gap needs a genuinely new capability in BajutsuKit: a small in-app
-Hypertext Transfer Protocol (`HTTP`) responder, opt-in behind the same `BAJUTSU_COLLECTOR`-style
-launch environment gate `BajutsuNet`
-already uses, that the driver calls right alongside its own `/elements` query and that computes the
-answer fresh on each request rather than replaying a stale push. Being a *listener*, it needs
-protection the outbound collector's shape does not imply: bind loopback only, and require the same
-per-run shared secret `BajutsuNet` already carries (`BAJUTSU_COLLECTOR_TOKEN`,
-`BajutsuKit/Sources/BajutsuKit/BajutsuNet.swift:16`) on every request, since iOS loopback is not
-isolated between apps and this responder returns the app's whole view hierarchy. That constraint is
-an input to Unit 0's port-shape decision below, not an afterthought: a fixed well-known port is
-probeable by any co-resident app on a real device, a negotiated one is not.
+[BE-0310](../BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness.md)).
+It swizzles `UIViewController.viewDidAppear`.
+It POSTs each completed transition to a collector that the Python side starts.
+The collector listens on the shared loopback of the Simulator.
 
-What that responder computes is not `CALayer.zPosition` alone. Apple's own documentation for
-[`zPosition`](https://developer.apple.com/documentation/quartzcore/calayer/1410884-zposition) states
-plainly that the property "should not be used to specify the order of layer siblings" — the
-sublayer array's own order governs that in the ordinary, non-3D-transformed case most UIKit and
-SwiftUI screens are in. A raw `zPosition` passthrough would therefore read as authoritative while
-being often degenerate (zero for every element on a flat layout) — exactly the failure mode this
-proposal's Motivation faults BE-0349's rejected `z_index` alternative for. The responder instead
-walks the real layer tree — each `CALayer`'s `sublayers` order, with `zPosition` applied only where
-it is non-zero — and reports a definitive front-to-back index per accessibility element, keyed by the
-identifier `xcuitest.py`'s `_query_with_handles` (`bajutsu/drivers/xcuitest.py:533`) already resolves.
-Whether this computation needs to walk `UIView`s, `CALayer`s, or both to match what actually
-composites on screen for a `SwiftUI` view hierarchy — which does not expose its own layout tree as
-directly as UIKit's — was Unit 0's to confirm empirically, on-device, the same way BE-0349 confirmed
-`isHittable`'s behavior rather than trusting documentation alone.
+That channel is one-directional and event-driven: the app pushes when a transition happens.
+This fits a screen-change signal, but not the need of this proposal.
+The driver must ask, synchronously, "what is this element's real position right now".
+The question is timed to the same query that the driver already issues. The
+collector of `BajutsuNet` receives; it does not answer.
+
+Closing that gap needs a genuinely new capability in BajutsuKit.
+The capability is a small in-app Hypertext Transfer Protocol (`HTTP`) responder. It is opt-in.
+The gate is the same `BAJUTSU_COLLECTOR`-style launch environment that `BajutsuNet` already uses. The driver calls it right alongside its own `/elements` query.
+It computes the answer fresh on each request.
+It never replays a stale push.
+
+A *listener* needs protection that the shape of the outbound collector does not imply.
+It binds loopback and nothing else.
+It requires on every request the same per-run shared secret that `BajutsuNet` already carries (`BAJUTSU_COLLECTOR_TOKEN`, `BajutsuKit/Sources/BajutsuKit/BajutsuNet.swift:16`).
+iOS loopback is not isolated between apps.
+This responder returns the whole view hierarchy of the app. That constraint is an input to the port-shape decision of Unit 0 below, not an afterthought. Any co-resident app on a real device can probe a fixed well-known port.
+No app can probe a negotiated one.
+
+What the responder computes is not `CALayer.zPosition` alone. Apple's documentation for [`zPosition`](https://developer.apple.com/documentation/quartzcore/calayer/1410884-zposition) is plain.
+The property "should not be used to specify the order of layer siblings". Most UIKit and SwiftUI screens are in the ordinary, non-3D-transformed case.
+There, the order of the sublayer array governs sibling order.
+
+A raw `zPosition` passthrough would read as authoritative.
+It would often be degenerate, with zero for every element on a flat layout. That is the failure mode that the Motivation faults in the
+rejected `z_index` alternative of BE-0349.
+
+The responder instead walks the real layer tree. It follows the `sublayers` order of each `CALayer`.
+It applies `zPosition` where it is non-zero, and nowhere else.
+It reports a definitive front-to-back index per accessibility element. The index is keyed by the identifier that `_query_with_handles` already resolves.
+That function lives in `bajutsu/drivers/xcuitest.py:533`.
+
+A `SwiftUI` view hierarchy does not expose its layout tree as directly as UIKit does.
+Unit 0 had to confirm on device whether the computation walks `UIView`s, `CALayer`s, or both.
+The computation must match what composites on screen.
+BE-0349 confirmed the behavior of `isHittable` the same way, and did not trust documentation alone.
 
 **Unit 0's findings (measured on a booted Simulator against the showcase's UIKit and SwiftUI apps).**
 
 - **The responder is not a new capability after all.** `BajutsuWebView`
   ([`BajutsuKit/Sources/BajutsuKit/BajutsuWebView.swift`](../../BajutsuKit/Sources/BajutsuKit/BajutsuWebView.swift),
   BE-0037) already runs a loopback socket server inside the app under test, with a host-allocated
-  ephemeral port. This responder reuses that shape rather than inventing one, and adds the token
-  check the existing bridge does not have.
-- **The port is negotiated and the secret is its own.** `BAJUTSU_ZORDER_PORT` and
-  `BAJUTSU_ZORDER_TOKEN` are allocated per lease beside the WebView bridge's own port, so parallel
-  devices never contend and a fixed well-known port is never probeable. The secret is minted for
-  this responder rather than reusing `BAJUTSU_COLLECTOR_TOKEN` as this proposal first assumed:
-  that token exists only when a scenario runs a network collector, and a responder that must refuse
-  every unauthenticated request cannot depend on a secret that is often absent.
-- **A `UIView`-tree walk reports for UIKit.** Each view's front-to-back ordinal comes from the
-  `subviews` array with `zPosition` breaking the order only where an app set one, keyed by
-  `accessibilityIdentifier`.
-- **SwiftUI reports nothing, and no non-private path changes that.** Walking the whole view tree of
+  ephemeral port. This responder reuses that shape and adds the token check that the existing bridge
+  lacks.
+- **The port is negotiated, and the secret is its own.** `BAJUTSU_ZORDER_PORT` and
+  `BAJUTSU_ZORDER_TOKEN` are allocated per lease beside the own port of the WebView bridge. Parallel
+  devices never contend, and a fixed well-known port is never probeable. The secret is minted for
+  this responder, instead of reusing `BAJUTSU_COLLECTOR_TOKEN` as this proposal first assumed. That
+  token exists only when a scenario runs a network collector, and a responder that must refuse every
+  unauthenticated request cannot depend on a secret that is often absent.
+- **A `UIView`-tree walk reports for UIKit.** The front-to-back ordinal of each view comes from the
+  `subviews` array, and `zPosition` breaks the order only where an app set one. The ordinal is keyed
+  by `accessibilityIdentifier`.
+- **SwiftUI reports nothing, and no non-private path changes that.** A walk of the whole view tree of
   the SwiftUI showcase finds no `accessibilityIdentifier` anywhere and no vended accessibility
-  elements: the leaves are `CGDrawingView` / `_UIShapeHitTestingView`, because SwiftUI materializes
-  its accessibility elements only for an assistive technology attached to the process, which the app
-  querying itself is not. Bar-button and tab-bar items are likewise uncovered on both toolkits, being
-  `UIBarButtonItem` / `UITabBarItem` rather than views. Unit 2 therefore ships a UIKit-only first
-  slice, the symmetric twin of Unit 3's `View`-only one.
-- **Cost.** One `/zorder` round trip against a showcase-sized tree measured 2.0–2.4 ms; a refused
-  connection to an app with no responder measured 0.16 ms.
+  elements. The leaves are `CGDrawingView` and `_UIShapeHitTestingView`, because SwiftUI
+  materializes its accessibility elements only for an assistive technology attached to the process,
+  which an app that queries itself is not. Bar-button and tab-bar items are likewise uncovered on both toolkits.
+  They are `UIBarButtonItem` and `UITabBarItem` rather than views. Unit 2 therefore ships a UIKit-only first slice.
+  It is the symmetric twin of the `View`-only slice of Unit 3.
+- **Cost.**
+  One `/zorder` round trip against a showcase-sized tree measured 2.0–2.4 ms.
+  A refused connection to an app with no responder measured 0.16 ms.
 
 ### Android: the accessibility framework's own on-demand extra-data mechanism
 
-Android's accessibility framework publishes `AccessibilityNodeInfo` as a public Application
-Programming Interface (API). Android already has a first-class, opt-in mechanism for exactly this
-shape of problem, so this half needs no new channel. A `View` overrides
+The accessibility framework of Android publishes `AccessibilityNodeInfo`.
+It is a public Application Programming Interface (API). Android already has a first-class, opt-in mechanism for this shape of problem.
+This half needs no new channel.
+
+A `View` overrides
 [`addExtraDataToAccessibilityNodeInfo(AccessibilityNodeInfo, String, Bundle)`](https://developer.android.com/reference/android/view/View)
-to attach data an accessibility client did not ask for by default, and declares which extra-data
-keys it supports through `AccessibilityNodeInfo.setAvailableExtraData(List<String>)` inside the same
-override; a client — here, the resident server's own on-device request handler
-(`BajutsuAndroidUIAutomatorServer/server/src/androidTest/java/dev/bajutsu/android/server/ResidentServerTest.kt`'s
-`respondSource`, [BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md)),
-which already talks to the device as an `AccessibilityService` — calls
+to attach data that an accessibility client did not ask for by default. Inside the same override, it declares the extra-data keys it supports.
+It does so through `AccessibilityNodeInfo.setAvailableExtraData(List<String>)`.
+
+A client reads the data back. Here the client is the on-device request handler of the resident
+server: `respondSource` in
+`BajutsuAndroidUIAutomatorServer/server/src/androidTest/java/dev/bajutsu/android/server/ResidentServerTest.kt`
+([BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md)).
+It already talks to the device as an `AccessibilityService`.
+It calls
 [`AccessibilityNodeInfo.refreshWithExtraData(String key, Bundle args)`](https://developer.android.com/reference/android/view/accessibility/AccessibilityNodeInfo)
-per node and reads the result back from `getExtras()`, alongside the Extensible Markup Language
-(`XML`) dump `respondSource` already builds today. That pairing is not free: `respondSource`'s body
-comes from `settledDump` → `UiDevice.dumpWindowHierarchy`, which traverses and serializes in one
-platform call and exposes no per-node `AccessibilityNodeInfo` to refresh, so the extra data needs a
-second walk over `UiAutomation.getRootInActiveWindow()` — which covers only the active window, while
-`dumpWindowHierarchy` spans every window including the SystemUI status bar. Unit 0 settles how the
-two walks are reconciled and what the second one costs. This is the same mechanism the platform's own
-`EXTRA_DATA_TEXT_CHARACTER_LOCATION_KEY` uses for on-demand text bounds, so this proposal's Android
-SDK is a small helper apps call from a `View` subclass or a `ViewCompat` extension, reporting
-`view.getZ()` — elevation plus any translation on the z axis, the value that actually reorders
-Android's own real composited draw order, unlike iOS's `zPosition` above (BE-0349's own spike already
-confirmed this empirically for `View.elevation`) — under a Bajutsu-owned extra-data key.
-`dumpWindowHierarchy`'s `XML` format has no attribute slot for a value it does not itself define, so
-`respondSource` cannot add `nativeZ` as a new `XML` attribute directly; it instead returns the
-per-node values as a small side structure index-aligned with the `<node>` sequence of the `XML`
-body — keyed by document-order position, not by node identity. Identity alone cannot key this: the
-four-field `resource-id`/`content-desc`/`text`/`class` tuple `adb.py`'s own `_identity()`
-(`bajutsu/drivers/adb.py:307`) produces is deliberately *not* unique — the resident channel pairs it
-with `index` of `count` (`bajutsu/drivers/adb.py:104`–`106`) precisely because a list of identical
-rows collapses to a single identity — so an identity-keyed map would silently hand every such row
-the same `nativeZ`. `bajutsu/adb_resident.py`'s hierarchy fetch (`fetch_source`,
-`bajutsu/adb_resident.py:90`) stays the same single `GET /source` round trip it is today, now also
-carrying that side structure back; and `_elements_from_nodes` (`bajutsu/drivers/adb.py:322`), which
-walks the same `<node>` sequence `parse_hierarchy_with_identities` (`bajutsu/drivers/adb.py:336`)
-already aligns element *i* against, carries position *i*'s value into element *i*'s `nativeZ`. The
-added cost is inside `respondSource` itself: the reconciling second walk over the active window runs
-on every read regardless of whether the app opted in, and only the per-node `refreshWithExtraData`
-call inside that walk — reading `AccessibilityNodeInfo.getAvailableExtraData()` — is gated on a node
-already advertising the Bajutsu key. See Unit 0's cost finding below for the measured size of the
-walk itself, which the shipped slice does not gate.
+per node, and reads the result back from `getExtras()`.
+The call sits alongside the dump that `respondSource` already builds today.
+The dump is in Extensible Markup Language (`XML`).
+
+That pairing is not free. The body of `respondSource` comes from `settledDump`, which calls
+`UiDevice.dumpWindowHierarchy`. That call traverses and serializes in one step.
+It exposes no per-node `AccessibilityNodeInfo` to refresh. The extra data therefore needs a second walk
+over `UiAutomation.getRootInActiveWindow()`. That walk covers the active window alone.
+`dumpWindowHierarchy` spans every window, including the SystemUI status bar. Unit 0 settles how the
+two walks are reconciled and what the second one costs.
+
+The platform's own `EXTRA_DATA_TEXT_CHARACTER_LOCATION_KEY` uses the same mechanism.
+It serves on-demand text bounds. The Android SDK of this proposal is a small helper.
+Apps call it from a `View` subclass or a `ViewCompat` extension. It reports `view.getZ()` under a Bajutsu-owned
+extra-data key. `getZ()` is elevation plus any translation on the z axis, the value that actually
+reorders the real composited draw order of Android, unlike the `zPosition` of iOS above. The spike of
+BE-0349 already confirmed this empirically for `View.elevation`.
+
+The `XML` format of `dumpWindowHierarchy` has no attribute slot for a value it does not define.
+So `respondSource` cannot add `nativeZ` as a new `XML` attribute.
+It returns the per-node values as a small side structure.
+The structure is index-aligned with the `<node>` sequence of the `XML` body.
+It is keyed by document-order position and not by node identity.
+
+Identity alone cannot key this. The four-field `resource-id` / `content-desc` / `text` / `class`
+tuple that `_identity()` in `adb.py` (`bajutsu/drivers/adb.py:307`) produces is deliberately *not*
+unique. The resident channel pairs it with `index` of `count` (`bajutsu/drivers/adb.py:104`–`106`).
+A list of identical rows collapses to a single identity. An identity-keyed map would
+silently hand every such row the same `nativeZ`.
+
+The hierarchy fetch of `bajutsu/adb_resident.py` (`fetch_source`, `bajutsu/adb_resident.py:90`)
+stays the same single `GET /source` round trip as today, and now also carries that side structure
+back. `_elements_from_nodes` (`bajutsu/drivers/adb.py:322`) walks the same `<node>` sequence that
+`parse_hierarchy_with_identities` (`bajutsu/drivers/adb.py:336`) already aligns element *i* against.
+It carries the value at position *i* into the `nativeZ` of element *i*.
+
+The added cost sits inside `respondSource` itself.
+The reconciling second walk over the active window runs on every read.
+It runs even for an app that did not opt in.
+The per-node `refreshWithExtraData` call inside that walk is gated, on a node that already advertises the Bajutsu key through `AccessibilityNodeInfo.getAvailableExtraData()`.
+Nothing else in the walk is gated. Unit 0's cost finding below gives the measured size of the walk itself.
+The shipped slice does not gate that walk.
 
 **Unit 0's findings (measured on an API 34 emulator against the showcase's Compose and Views apps).**
 
-- **Compose forwards no app-declared extra-data key.** Two `Modifier.semantics` nodes declaring a
-  custom `SemanticsPropertyKey` named exactly the Bajutsu key advertised only Compose's own fixed set
-  (`androidx.compose.ui.semantics.id`, `…testTag`) plus the platform's own keys; no node answered the
-  Bajutsu key. Unit 3 therefore ships the `View`-only first slice this section already named as the
-  fallback. Two related readings, for a future item rather than this one: the resident channel's XML
-  carries a `drawing-order` attribute (which the `uiautomator dump` fallback does not), and it reads
-  `0` for every Compose node because a Compose node is not a real `View`; and Compose's own
-  accessibility tree already orders `Modifier.zIndex` siblings by paint order, so document order is
-  not wrong there the way it is for `View.elevation`.
+- **Compose forwards no app-declared extra-data key.** Two `Modifier.semantics` nodes declared a
+  custom `SemanticsPropertyKey` named exactly like the Bajutsu key. They advertised only the fixed
+  set of Compose (`androidx.compose.ui.semantics.id`, `…testTag`) plus the keys of the platform, and
+  no node answered the Bajutsu key. Unit 3 therefore ships the `View`-only first slice that this
+  section already named as the fallback. Two related readings are left for a future item. First, the
+  XML of the resident channel carries a `drawing-order` attribute (which the `uiautomator dump`
+  fallback does not), and it reads `0` for every Compose node because a Compose node is not a real
+  `View`. Second, the own accessibility tree of Compose already orders `Modifier.zIndex` siblings by
+  paint order, so document order is not wrong there the way it is for `View.elevation`.
 - **The API this section named does not exist.** The client-side getter is
-  `AccessibilityNodeInfo.getAvailableExtraData()`, not `getAvailableExtraDataKeys()`; only the setter
-  carries the `…ExtraData` name this section assumed both did.
-- **The platform does not route the on-demand callback through an accessibility delegate.** A
-  delegate's `onInitializeAccessibilityNodeInfo` is called, so `setAvailableExtraData` from one takes
-  effect — but `addExtraDataToAccessibilityNodeInfo` is not, so `refreshWithExtraData` returned true
-  and delivered nothing. The app-side helper therefore both declares the key and writes the value
-  into `AccessibilityNodeInfo.getExtras()` while the node is being built, which is delivered, and
-  keeps the on-demand override so a `View` subclass written to this section's original shape answers
-  too. `respondSource` reads the value already present first and asks only when it is absent, so the
-  common case costs no per-node round trip at all.
-- **A document-order-keyed side structure does not line up, by 28 nodes.** On a plain showcase
-  screen `dumpWindowHierarchy` returned 72 nodes spanning every window while
-  `getRootInActiveWindow()`'s walk returned 45, and the same element sat at document position 35 in
-  the body and index 7 in the walk. Each value is therefore keyed by what the host can recompute from
-  the `<node>` it is reading: bounds, class, package, and the occurrence index among nodes agreeing
-  on all three. Both sides walk the same accessibility tree depth-first, so the occurrence counts
-  agree, scoped to the active window — `narrow_to_active_window` drops SystemUI's own windows on
-  the host, but not a second window of the app under test itself (e.g. a dialog over its main
-  window), so two opted-in nodes sharing bounds, class, and package across the app's own windows
-  could shift each other's count. Recorded as a known limitation on `_native_z_key`'s docstring
-  rather than closed in this slice.
-- **The bounds half of that key must be screen-clipped, not raw.** `dumpWindowHierarchy`'s own
-  `bounds` attribute is a node's rect intersected with the display (`AccessibilityNodeInfoDumper` via
-  `AccessibilityNodeInfoHelper.getVisibleBoundsInScreen`), so a walk keying on the raw
-  `getBoundsInScreen()` rect disagreed with the host's recomputed key for any node hanging past the
-  display edge — reporting the honest absence instead of the app's real measurement on exactly the
-  clipped, partially off-screen layouts an investigator opens the evidence for. The walk now
-  intersects each rect with the device's own display bounds before keying, matching the dumper. This
-  reproduces only the display-edge half of that clipping, not clipping by an ancestor's own bounds
-  (e.g. a node inside a smaller scrollable container that never reaches the screen edge) — a narrower
-  gap left beside the multi-window limitation above.
-- **Cost.** A full per-node `refresh()` walk over 45 nodes measured 24 ms against a warm
-  `dumpWindowHierarchy`'s 19 ms; the eager path above avoids the per-node round trip entirely for an
-  app using the helper, but not the walk itself, which runs on every read regardless of whether the
-  app opted in (see *Cost stays opt-in on both platforms* above).
+  `AccessibilityNodeInfo.getAvailableExtraData()`, not `getAvailableExtraDataKeys()`. Only the setter
+  carries the `…ExtraData` name that this section assumed both did.
+- **The platform does not route the on-demand callback through an accessibility delegate.** The
+  `onInitializeAccessibilityNodeInfo` of a delegate is called, so `setAvailableExtraData` from one
+  takes effect. But `addExtraDataToAccessibilityNodeInfo` is not called, so `refreshWithExtraData`
+  returned true and delivered nothing. The app-side helper therefore both declares the key and
+  writes the value into `AccessibilityNodeInfo.getExtras()` while the node is being built, which is
+  delivered. It keeps the on-demand override, so a `View` subclass written to the original shape of
+  this section answers too. `respondSource` reads the value that is already present first, and asks
+  only when it is absent, so the common case costs no per-node round trip at all.
+- **A document-order-keyed side structure does not line up, by 28 nodes.** On a plain showcase screen,
+  `dumpWindowHierarchy` returned 72 nodes spanning every window, while the walk of
+  `getRootInActiveWindow()` returned 45. The same element sat at document position 35 in the body and
+  at index 7 in the walk. Each value is therefore keyed by what the host can recompute from the
+  `<node>` it is reading: bounds, class, package, and the occurrence index among nodes that agree on
+  all three. Both sides walk the same accessibility tree depth-first, so the occurrence counts agree,
+  scoped to the active window. `narrow_to_active_window` drops the own windows of SystemUI on the
+  host, but not a second window of the app under test itself (a dialog over its main window, for
+  example). Two opted-in nodes that share bounds, class, and package across the app's own windows
+  could shift each other's count. This is recorded as a known limitation in the docstring of
+  `_native_z_key`, and is not closed in this slice.
+- **The bounds half of that key must be screen-clipped, not raw.** The own `bounds` attribute of
+  `dumpWindowHierarchy` is the rect of a node intersected with the display
+  (`AccessibilityNodeInfoDumper` via `AccessibilityNodeInfoHelper.getVisibleBoundsInScreen`). A walk
+  that keyed on the raw `getBoundsInScreen()` rect disagreed with the recomputed key of the host for
+  any node hanging past the display edge. It reported the honest absence instead of the real
+  measurement of the app, on exactly the clipped, partially off-screen layouts that an investigator
+  opens the evidence for. The walk now intersects each rect with the own display bounds of the device
+  before keying, matching the dumper. This reproduces only the display-edge half of that clipping,
+  and not clipping by the own bounds of an ancestor (a node inside a smaller scrollable container
+  that never reaches the screen edge, for example). That is a narrower gap, left beside the
+  multi-window limitation above.
+- **Cost.** A full per-node `refresh()` walk over 45 nodes measured 24 ms, against 19 ms for a warm
+  `dumpWindowHierarchy`. The eager path above avoids the per-node round trip entirely for an app that
+  uses the helper, but not the walk itself, which runs on every read whether or not the app opted in
+  (see *Cost stays opt-in on both platforms* below).
 
 ### Cost stays opt-in on both platforms
 
-Neither platform's path costs a cooperating-app-free run more than one bounded probe. iOS's
-driver gets a connection refused — or, if a socket opens and never answers, a short connect/read
-timeout Unit 0 fixes — and `nativeZ` stays `None`, the same degrade `RawSourceProvider` gives a
-backend that never implements it. Because iOS cannot tell an uninstrumented app apart without
-attempting the connection, the driver caches that first failure for the session and stops probing,
-so a non-cooperating app pays the timeout once rather than on every `/elements` query; this is what
-keeps the read "bounded and synchronous" in the sense *Prime directives preserved* below claims.
-Android's per-node `refreshWithExtraData` round trip is gated on that node's own
-`getAvailableExtraData()` already advertising the Bajutsu key, so an uninstrumented app's tree walk
-pays one cheap existence check per node and nothing more *for that call*. For a cooperating app on
-either platform, Unit 0's spike also measures the actual per-element round-trip cost against a
-showcase-sized tree — the same per-read cost bar [BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md)'s
-own resident-channel motivation was held to — and records the result in this section before Units 2
-and 3 land.
+A run without a cooperating app pays one bounded probe on either platform, and no more.
 
-**As shipped, this section's title overstates Android's half.** The reconciling walk itself — not
-just the per-node call — runs on every `GET /source`, including for an app that never linked the
-helper: `respondSource` cannot know in advance that a tree carries no opted-in node without walking
-it first. Unit 0's own cost measurement (below) puts that walk in the same order as the resident
-channel's warm `dumpWindowHierarchy`, so it roughly doubles the per-read cost of every Android run,
-not only one that uses `nativeZ`. Left as a known gap rather than closed here: gating the walk on a
-signal the host sends only for a target that has opted into `nativeZ` (mirroring how `since=` is
-already threaded per read) would restore the opt-in cost this section originally promised, but that
-plumbing is a follow-up unit's to design and land, not this one's to improvise under review.
+On iOS, the driver gets a connection refused. If a socket opens and never answers, it gets a short
+connect or read timeout that Unit 0 fixes. Either way, `nativeZ` stays `None`.
+That is the degrade that `RawSourceProvider` gives a backend that never implements it. iOS cannot tell an uninstrumented app
+apart without attempting the connection. The driver caches that first failure for the session and stops probing.
+A non-cooperating app thus pays the timeout once rather than on every `/elements` query. This keeps the read "bounded and synchronous".
+*Prime directives preserved* below claims that.
+
+On Android, the per-node `refreshWithExtraData` round trip is gated.
+The gate is that the node already advertises the Bajutsu key in `getAvailableExtraData()`. The tree walk of an uninstrumented app pays one cheap existence check per node.
+It pays nothing more *for that call*.
+
+For a cooperating app on either platform, the spike of Unit 0 also measures a cost.
+The cost is the actual per-element round trip, against a showcase-sized tree. It holds the cost to the same per-read bar as the
+resident-channel motivation of
+[BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md),
+and records the result in this section before Units 2 and 3 land.
+
+**As shipped, the title of this section overstates Android's half.**
+The reconciling walk itself runs on every `GET /source`.
+The per-node call is not the only part that runs.
+That includes an app that never linked the helper.
+`respondSource` cannot know in advance that a tree carries no opted-in node without walking it.
+
+The cost measurement of Unit 0 (above) puts that walk in the same order as the warm
+`dumpWindowHierarchy` of the resident channel.
+The walk therefore roughly doubles the per-read cost of every Android run, not only one that uses `nativeZ`.
+
+This is left as a known gap rather than closed here.
+The host could send a signal only for a target that has opted into `nativeZ`, mirroring how `since=`
+is already threaded per read.
+Gating the walk on that signal would restore the opt-in cost that this section originally promised.
+That plumbing is a follow-up unit's to design and land.
+This unit does not improvise it under review.
 
 ### Work breakdown (`MECE`)
 
 Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
 
-0. **Spike.** Decide what `nativeZ` *means* across backends (a normalized cross-backend front-to-back
-   ordinal versus per-backend units named explicitly), per *Detailed design*'s "The `nativeZ` field"
-   above. On iOS: confirm the layer/view walk needed to report a definitive front-to-back index
-   for both UIKit and SwiftUI screens, on-device; fix the responder's connect/read timeout and the
-   session-scoped negative-cache design a non-cooperating app's single failed probe relies on; and
-   design the responder's shape, weighing security (a fixed local port is probeable by any
-   co-resident app on a real device) against the existing `BAJUTSU_COLLECTOR`-style launch
-   environment. On Android: confirm whether Jetpack Compose's accessibility-node generation
-   forwards a custom extra-data key declared through `Modifier.semantics`, on a small Compose screen
-   using `Modifier.zIndex` and `graphicsLayer`; and confirm how `UiAutomation.getRootInActiveWindow()`'s
-   node set (needed to call `refreshWithExtraData`) reconciles with `dumpWindowHierarchy`'s wider,
-   multi-window one, so the index-aligned side structure in *Detailed design* above actually lines up
-   with the `XML` body it accompanies rather than assuming it does. On both: measure the per-element
-   round-trip cost against a showcase-sized tree. Record every finding in *Detailed design* above
-   (works / needs a workaround / not supported) before Units 2 and 3 start, the same practice
-   BE-0349's own Log entry followed. Blocks Units 2 and 3.
+0. **Spike.** The spike decides what `nativeZ` *means* across backends: a normalized cross-backend
+   front-to-back ordinal, or per-backend units named explicitly. See "The `nativeZ` field" in
+   *Detailed design*. It also covers the following.
+   - On iOS, confirm on device the layer or view walk that reports a definitive front-to-back index
+     for both UIKit and SwiftUI screens.
+   - On iOS, fix the connect and read timeout of the responder, and the session-scoped negative
+     cache that the single failed probe of a non-cooperating app relies on.
+   - On iOS, design the shape of the responder. Weigh security (a fixed local port is probeable by
+     any co-resident app on a real device) against the existing `BAJUTSU_COLLECTOR`-style launch
+     environment.
+   - On Android, confirm whether the accessibility-node generation of Jetpack Compose forwards a
+     custom extra-data key declared through `Modifier.semantics`. Use a small Compose screen with
+     `Modifier.zIndex` and `graphicsLayer`.
+   - On Android, confirm how the node set of `UiAutomation.getRootInActiveWindow()` (needed to call
+     `refreshWithExtraData`) reconciles with the wider, multi-window set of
+     `dumpWindowHierarchy`. The index-aligned side structure must line up with the `XML` body it
+     accompanies, and the spike must not assume that it does.
+   - On both, measure the per-element round-trip cost against a showcase-sized tree.
+
+   Every finding is recorded in *Detailed design* above (works, needs a workaround, or not
+   supported) before Units 2 and 3 start, as the Log entry of BE-0349 did. Unit 0 blocks Units 2 and 3.
 1. **The `nativeZ` field.** Add it to `Element` (`bajutsu/drivers/base.py`). `Element` carries no
-   `total=False`, so every existing dict-literal construction site across every backend — adb,
-   XCUITest, the live XCUITest client, the web Document Object Model (DOM) parser, and
-   `record_capture.py`'s refused-capture
-   sentinel among them — must set `nativeZ` too, or `mypy --strict` (part of `make check`) fails the
-   build; that check is the safety net against missing one, so this unit need not enumerate every
-   site by hand. No behavior change, since nothing yet computes a real value for it.
-2. **iOS reporting.** The new BajutsuKit in-app responder, and `xcuitest.py`'s read of it into
-   `nativeZ`, scoped by Unit 0's findings.
-3. **Android reporting.** The app-side extra-data helper; `ResidentServerTest.kt`'s `respondSource`
-   opt-in per-node `refreshWithExtraData` calls and the side structure it returns alongside the `XML`
-   body; and `adb.py`'s read of that structure into `nativeZ`. Scoped by Unit 0's findings — a
-   `View`-only first slice if Compose turns out not to forward the key.
-4. **`FakeDriver` support.** A settable `nativeZ` per fixture element
-   (`bajutsu/drivers/fake.py`), so a scenario-level test can exercise a `nativeZ`-aware reader
-   without a real device.
-5. **Driver conformance suite.** Extend [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md)'s
-   suite (`tests/driver_conformance.py`) with a case asserting `nativeZ` is populated only when a
+   `total=False`, so every existing dict-literal construction site across every backend must set
+   `nativeZ` too. The sites include adb, XCUITest, the live XCUITest client, the web Document Object
+   Model (DOM) parser, and the refused-capture sentinel of `record_capture.py`. Otherwise
+   `mypy --strict` (part of `make check`) fails the build. That check is the safety net against
+   missing one, so this unit need not list every site by hand. No behavior changes, since nothing
+   yet computes a real value for it.
+2. **iOS reporting.** The new BajutsuKit in-app responder, and the read of it into `nativeZ` in
+   `xcuitest.py`, scoped by the findings of Unit 0.
+3. **Android reporting.** The app-side extra-data helper; the opt-in per-node
+   `refreshWithExtraData` calls in `respondSource` of `ResidentServerTest.kt`, with the side
+   structure that it returns alongside the `XML` body; and the read of that structure into
+   `nativeZ` in `adb.py`. The findings of Unit 0 scope it: a `View`-only first slice if Compose
+   does not forward the key.
+4. **`FakeDriver` support.** A settable `nativeZ` per fixture element (`bajutsu/drivers/fake.py`),
+   so a scenario-level test can exercise a `nativeZ`-aware reader without a real device.
+5. **Driver conformance suite.** Extend the suite of
+   [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md)
+   (`tests/driver_conformance.py`) with a case. The case asserts that `nativeZ` is populated when a
    fixture or backend explicitly reports it, and stays `None` otherwise.
-6. **Docs.** [`docs/evidence.md`](../../docs/evidence.md) and [`docs/architecture.md`](../../docs/architecture.md)
-   (and their `docs/ja/` mirrors), stating plainly that `nativeZ` is diagnostic only and does not
-   change `is_tappable`, `topmost_at_point`, or `isHittable`, and recording Unit 0's choice of what
-   `nativeZ` means across backends.
-7. **Tests.** Unit tests per backend for the new reporting path, plus a regression pinning that
-   `is_tappable` and `topmost_at_point` are unchanged by this proposal.
+6. **Docs.** [`docs/evidence.md`](../../docs/evidence.md) and
+   [`docs/architecture.md`](../../docs/architecture.md), with their `docs/ja/` mirrors. They state
+   plainly that `nativeZ` is diagnostic and does not change `is_tappable`, `topmost_at_point`, or
+   `isHittable`. They also record the choice of Unit 0 on what `nativeZ` means across backends.
+7. **Tests.** Unit tests per backend for the new reporting path, plus a regression that pins
+   `is_tappable` and `topmost_at_point` as unchanged by this proposal.
 
 ### Prime directives preserved
 
-- **AI never judges.** `nativeZ` is a measured value read through an app-side SDK call or an
-  accessibility API; no model call enters any path that produces or reads it.
+- **AI never judges.** `nativeZ` is a measured value, read through an app-side SDK call or an
+  accessibility API. No model call enters any path that produces or reads it.
 - **Determinism first.** Reading `nativeZ` is a bounded, synchronous call on both platforms, with no
-  polling and no fixed sleep — the same shape as reading `frame` today.
-- **App-agnostic.** The SDK hook is uniform and opt-in on both platforms, the same shape as
-  BajutsuKit's existing `viewDidAppear` swizzle: the tool and drivers gain one code path each, with
+  polling and no fixed sleep. It has the same shape as reading `frame` today.
+- **App-agnostic.** The SDK hook is uniform and opt-in on both platforms, the same shape as the
+  existing `viewDidAppear` swizzle of BajutsuKit. The tool and drivers gain one code path each, with
   no per-app branching anywhere in it. An app that never links the hook is unaffected and reports
   `None`.
 
 ## Alternatives considered
 
 - **Folding `nativeZ` into `topmost_at_point` / `is_tappable` now, instead of keeping it
-  diagnostic-only.** Considered, since it would let Android's occlusion check stop misjudging
-  `View.elevation` once a real value exists. Rejected for this proposal's first slice: Compose's
-  extra-data support is unconfirmed, and gating an existing, working correctness check on an
-  unverified mechanism would be premature. Left as a natural follow-up once Unit 0 confirms the
-  mechanism works.
+  diagnostic-only.** Considered, since it would let the occlusion check of Android stop misjudging
+  `View.elevation` once a real value exists. Rejected for the first slice of this proposal. The
+  extra-data support of Compose is unconfirmed, and gating an existing, working correctness check on
+  an unverified mechanism would be premature. It is a natural follow-up once Unit 0 confirms that
+  the mechanism works.
 - **A new opt-in capture kind alongside `rawTree`, instead of a routine `Element` field.**
-  Considered, for symmetry with `rawTree`'s own opt-in shape. Rejected: unlike `rawTree` — a snapshot
-  of the pre-parse device reply, deliberately kept out of `Element` itself
-  (see [docs/evidence.md](../../docs/evidence.md)) — `nativeZ` is a per-element property of the same
-  kind `frame` and `traits` already are, so it belongs on `Element` directly rather than in a second
-  artifact a reader would have to reconcile with `elements.json` by identity, the exact alignment
-  problem `capture()`'s own kind-ordering rule (`bajutsu/evidence/core.py:218`) already exists to
-  avoid for `rawTree`.
-- **A fully derived, non-measured z field, computed uniformly from document order plus
-  per-toolkit heuristics.** This is BE-0349's own rejected `z_index` alternative, restated; see
-  Motivation for why it does not survive here either.
-- **Cross-window occlusion (a system dialog or a toast covering the whole app).** Out of scope,
-  unchanged from BE-0349's own deferral: `AccessibilityWindowInfo.getLayer()` was found insufficient
-  for the two most common cases there, and this proposal does not reopen that question.
+  Considered, for symmetry with the own opt-in shape of `rawTree`. Rejected. `rawTree` is a snapshot
+  of the pre-parse device reply, deliberately kept out of `Element` itself (see
+  [docs/evidence.md](../../docs/evidence.md)). `nativeZ` is a per-element property of the same kind
+  as `frame` and `traits`. It belongs on `Element` directly, and not in a second artifact that a
+  reader would have to reconcile with `elements.json` by identity. That is the alignment problem that
+  the kind-ordering rule of `capture()` (`bajutsu/evidence/core.py:218`) already exists to avoid for
+  `rawTree`.
+- **A fully derived, non-measured z field, computed uniformly from document order plus per-toolkit
+  heuristics.** This is the rejected `z_index` alternative of BE-0349, restated. See the Motivation
+  for why it does not survive here either.
+- **Cross-window occlusion (a system dialog or a toast that covers the whole app).** Out of scope,
+  unchanged from the own deferral of BE-0349. `AccessibilityWindowInfo.getLayer()` was found
+  insufficient for the two most common cases there, and this proposal does not reopen that question.
 
 ## Progress
 
@@ -388,58 +459,72 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
 ### Log
 
 - The first slice landed the Python-side foundation and left every device-dependent unit to a later
-  change. `Element` gained `nativeZ` as a required field, so `mypy --strict` named all twelve of its
-  construction sites instead of letting one slip through. Ten of the twelve — the driver parsers,
-  `record_capture`, and the demo scripts — hardcode `None`: the honest absence a backend with no
-  app-side hook owes its reader. The remaining two are the evidence readers below, which carry
-  through whatever the artifact recorded. `FakeDriver` reports back
-  whatever `nativeZ` a test seeds, and keeps it through the frame translation its scrollable mode
-  applies. That seam is how the deterministic gate exercises a `nativeZ`-aware reader with no device.
+  change. `Element` gained `nativeZ` as a required field, so `mypy --strict` named all twelve
+  construction sites instead of letting one slip through. Ten of the twelve hardcode `None`: the
+  driver parsers, `record_capture`, and the demo scripts. That is the honest absence that a backend
+  with no app-side hook owes its reader. The remaining two are the evidence readers below, which
+  carry through whatever the artifact recorded.
+
+  `FakeDriver` reports back whatever `nativeZ` a test seeds, and keeps it through the frame
+  translation that its scrollable mode applies. That seam is how the deterministic gate exercises a
+  `nativeZ`-aware reader with no device.
+
   Two readers of persisted evidence now share one coercion, `base.native_z_from_json`: the
-  golden-file loader and `serve`'s pick resolver. A value that round-trips through an artifact keeps
-  the meaning it had coming off the driver. The golden loader also stops requiring the
-  field, because every golden recorded before this change lacks it, and because a golden pins
-  identity and state rather than a reading of the moment. The driver conformance suite pins the
-  contract as it stands across every backend: the field is always present, and always `None` until
-  an app measures one. `docs/evidence.md` and its Japanese mirror record what the field means and,
-  explicitly, that no occlusion check reads it. Unit 6 stays open for Unit 0's choice of what
-  `nativeZ` means across backends, and Unit 7 for the per-backend reporting paths Units 2 and 3 will
-  add. The regression net this slice does carry lives in `tests/test_native_z.py`, which pins both
-  the honest absence and the untouched behavior of `is_tappable` and `topmost_at_point`.
-- The second slice ran Unit 0's spike on real devices and shipped the two reporting paths it scoped.
-  What the spike found is recorded in *Detailed design* above; three findings changed the design
-  rather than merely confirming it. The iOS responder is not the new BajutsuKit capability this
-  proposal assumed, because `BajutsuWebView` already runs a loopback socket server inside the app
-  under test, so the new one copies that shape and adds the token check the existing one lacks. It
-  carries its own per-run secret instead of `BAJUTSU_COLLECTOR_TOKEN`, which exists only when a
-  scenario runs a network collector. And Android's framework does not route
-  `addExtraDataToAccessibilityNodeInfo` through an accessibility delegate, so the app-side helper
-  writes the position into the node's own extras as the node is built and keeps the on-demand
-  override for a `View` subclass; the resident server reads what is already there and asks only when
-  it is absent. The side structure rides in a response header, like the read mark, so the XML body
-  stays byte-identical to `uiautomator dump`'s — keyed by bounds, class, package, and occurrence,
-  because the device measures in a walk whose node sequence does not line up with the body's.
-  Both declarative toolkits report nothing, for the same underlying reason on each platform: SwiftUI
-  and Compose generate their own accessibility elements and expose no underlying one to measure. So
-  the shipped surface is UIKit and Android `View`, and everything else keeps the honest absence. The
-  showcase's Views app opts in from the one helper that already tags a view for testing, which is
-  what gives the Android path on-device coverage. The conformance contract moved with the code: it
-  no longer asserts the field is always absent, but that it is absent or a real finite measurement,
-  since a backend can now be on either side of the opt-in.
-- Review on the implementing PR found five more real issues, all fixed or recorded above rather than
-  deferred silently. `ZOrderResponder.positions()` latched its negative cache on a connect-phase
-  timeout too — `urllib` wraps that one in `URLError` rather than raising the bare `TimeoutError` the
-  read-phase clause already caught — permanently losing `nativeZ` for a lease whose app was merely
-  still coming up; fixed by inspecting the wrapped reason. Two comments beside `Element.nativeZ` and
-  `xcuitest.py`'s `_to_element` still said the iOS and Android paths were unshipped, which this PR
-  makes false; corrected to name what actually reports. The Android resident server's bounds key used
-  the raw `getBoundsInScreen()` rect while the dumped body it must match keys on the display-clipped
-  one `AccessibilityNodeInfoDumper` writes, silently dropping the position of any node hanging past
-  the screen edge; fixed by intersecting with the device's own display bounds before keying. And the
-  *Detailed design* prose above still named an API that does not exist and claimed the Android walk
-  cost "nothing beyond one cheap check", both refuted by Unit 0's own findings a few lines below it;
-  corrected in place (English and Japanese) and recorded as a known follow-up rather than optimized
-  under review-loop pressure.
+  golden-file loader and the pick resolver of `serve`. A value that round-trips through an artifact
+  keeps the meaning it had coming off the driver. The golden loader also stops requiring the field.
+  Every golden recorded before this change lacks it, and a golden pins identity and state rather
+  than a reading of the moment.
+
+  The driver conformance suite pins the contract as it stands across every backend: the field is
+  always present, and always `None` until an app measures one. `docs/evidence.md` and its Japanese
+  mirror record what the field means and, explicitly, that no occlusion check reads it. Unit 6
+  stays open for the choice of Unit 0 on what `nativeZ` means across backends. Unit 7 stays open for
+  the per-backend reporting paths that Units 2 and 3 will add. The regression net that this slice
+  does carry lives in `tests/test_native_z.py`. It pins both the honest absence and the untouched
+  behavior of `is_tappable` and `topmost_at_point`.
+- The second slice ran the spike of Unit 0 on real devices and shipped the two reporting paths that
+  it scoped. *Detailed design* above records what the spike found. Three findings changed the design
+  rather than merely confirming it.
+  - The iOS responder is not the new BajutsuKit capability that this proposal assumed.
+    `BajutsuWebView` already runs a loopback socket server inside the app under test, so the new
+    responder copies that shape and adds the token check that the existing one lacks. It carries its
+    own per-run secret instead of `BAJUTSU_COLLECTOR_TOKEN`, which exists only when a scenario runs a
+    network collector.
+  - The framework of Android does not route `addExtraDataToAccessibilityNodeInfo` through an
+    accessibility delegate. The app-side helper therefore writes the position into the own extras of
+    the node as the node is built, and keeps the on-demand override for a `View` subclass. The
+    resident server reads what is already there, and asks when it is absent.
+  - The side structure rides in a response header, like the read mark, so the XML body stays
+    byte-identical to that of `uiautomator dump`. It is keyed by bounds, class, package, and
+    occurrence, because the device measures in a walk whose node sequence does not line up with the
+    body.
+
+  Both declarative toolkits report nothing, for the same underlying reason on each platform. SwiftUI
+  and Compose generate their own accessibility elements and expose no underlying one to measure. The
+  shipped surface is therefore UIKit and Android `View`, and everything else keeps the honest
+  absence.
+
+  The Views app of the showcase opts in from the one helper that already tags a view for testing,
+  which is what gives the Android path on-device coverage. The conformance contract moved with the
+  code. It no longer asserts that the field is always absent. It asserts that the field is absent or
+  a real finite measurement, since a backend can now be on either side of the opt-in.
+- Review on the implementing PR found five more real issues. All were fixed or recorded above rather
+  than deferred without notice.
+  - `ZOrderResponder.positions()` latched its negative cache on a connect-phase timeout too.
+    `urllib` wraps that timeout in `URLError`, rather than raising the bare `TimeoutError` that the
+    read-phase clause already caught. The latch permanently lost `nativeZ` for a lease whose app was
+    still coming up. The fix inspects the wrapped reason.
+  - Two comments beside `Element.nativeZ` and `_to_element` in `xcuitest.py` still said that the iOS
+    and Android paths were unshipped, which this PR makes false. They were corrected to name what
+    actually reports.
+  - The bounds key of the Android resident server used the raw `getBoundsInScreen()` rect, while the
+    dumped body that it must match keys on the display-clipped rect that `AccessibilityNodeInfoDumper`
+    writes. The position of any node hanging past the screen edge was dropped. The fix intersects the
+    rect with the own display bounds of the device before keying.
+  - The *Detailed design* prose above still named an API that does not exist. It also claimed that
+    the Android walk cost "nothing beyond one cheap check". The Unit 0 findings a few lines below
+    refute both. They were corrected in place (English and Japanese) and recorded as a known
+    follow-up, rather than optimized under review-loop pressure.
 
 ## References
 
