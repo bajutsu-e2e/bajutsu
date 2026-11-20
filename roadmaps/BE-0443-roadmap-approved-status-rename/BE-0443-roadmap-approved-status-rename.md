@@ -47,7 +47,7 @@ workflow enforces this by comparing the item's `Status` field against the litera
 carrying the exemption label `single-approver proposal` needs only one approval instead
 ([L101-110](../../.github/workflows/roadmap-proposal-approvals.yml#L101-L110)).
 
-Most items that reach `main` with `Status: Proposal` therefore already cleared a two-reviewer
+Most items that reach `main` with `Status: Proposal` thus already cleared a two-reviewer
 review. The exemption label covers only a minority of merges.
 
 The name `Proposal` nonetheless reads as "still under consideration, not yet decided". A contributor
@@ -60,7 +60,7 @@ Renaming the value to `Approved` removes the mismatch. A reader sees that status
 review gate has passed (two approvals, or one under the `single-approver proposal` waiver), and the
 name reads as passed.
 
-After this item ships, three things differ:
+After this item ships, three differences appear:
 
 - `make roadmap-status STATUS="Proposal"` returns no items.
 - `make roadmap-status STATUS="Approved"` returns the items that used to carry `Proposal`.
@@ -80,8 +80,8 @@ item shipped. And `Status` has never claimed to describe anything beyond "does t
 implementation exist": a freshly scaffolded item, whatever its `Status` reads, plainly has none.
 
 The misreading this item removes is the public one. A stranger reads the **published** dashboard, or
-runs `roadmap-filter` against `main`. Every item listed there already cleared the review gate (two
-approvals, or one under the waiver label) before the value could appear at all.
+runs `roadmap-filter` against `main`. Every item listed there already cleared the review gate before the value could appear at all.
+The gate takes two approvals, or one under the waiver label.
 
 The paragraph in `docs/ai-development.md` that states the principle itself names `Proposal`, so it
 is in scope for this item's documentation updates too. A few other surfaces call implementing a
@@ -90,7 +90,7 @@ is in scope for this item's documentation updates too. A few other surfaces call
 [`docs/roadmap-workflow.md`](../../docs/roadmap-workflow.md), and
 [`docs/contributor-workflow-tutorial.md`](../../docs/contributor-workflow-tutorial.md). This item's
 own premise is that acceptance already happened at the two-approval merge. Those surfaces are
-therefore reworded to say implementing an `Approved` item **starts** it, not that starting it
+thus reworded to say implementing an `Approved` item **starts** it, not that starting it
 accepts it (see *Detailed design*).
 
 ## Detailed design
