@@ -55,14 +55,12 @@ def server_refusal(eff: Effective, gate: CommandGate) -> str | None:
     """Why *gate*'s policy refuses `eff.launch_server`'s command, recording it, or None (BE-0492).
 
     Checked before any device work, so a run whose server command will never run fails before it
-    reserves a device. None when no server is declared, when the mode runs the command, or when the
-    server already answers, since a reused server runs no command under any mode.
+    reserves a device. None when no server is declared or the mode runs the command. A server that
+    already answers does not change the answer: a config that declares a command its mode refuses
+    fails, and the run never probes a readiness URL that config chose.
     """
     ls = eff.launch_server
     if ls is None or gate.policy.action("command") != "refuse":
-        return None
-    ready_url = ls.ready_url or web_base_url(eff)
-    if ready_url and _probe(ready_url):
         return None
     try:
         gate.refuse(SERVER_FIELD, ls.cmd)
@@ -84,8 +82,9 @@ def start_launch_server(
     started and probed until `readyUrl` responds within `readyTimeout`.
 
     *gate* applies the worker's command policy to the command first (BE-0492): `allow` runs it on
-    this host, `sandbox` runs it in a container, and `named` / `deny` refuse it. A server that already
-    answers is reused under every mode, since the run then executes no command at all.
+    this host, `sandbox` runs it in a container, and `named` / `deny` refuse it, whether or not a
+    server already answers. Under `allow` and `sandbox`, a server that already answers is reused and
+    no command runs.
 
     Args:
         eff: The resolved target config; `launch_server` and `base_url` decide what to start and
@@ -98,7 +97,7 @@ def start_launch_server(
         A teardown callable (a no-op when nothing was started / an existing server is reused).
 
     Raises:
-        CommandRefused: The policy refuses the command and nothing already answers `readyUrl`.
+        CommandRefused: The policy refuses the command.
         RuntimeError: `launchServer` declares no `readyUrl` and the target has no `baseUrl`, or the
             command exited / the server wasn't ready within `readyTimeout`. `SandboxError` (a
             subclass) covers a misconfigured sandboxed command. The caller exits 2 with the message.
@@ -116,11 +115,14 @@ def start_launch_server(
     if not ready_url:
         raise RuntimeError("launchServer needs readyUrl (or set the target's subject.url to probe)")
 
+    # Decided before the probe: a refused command fails the run even when a server already answers,
+    # so a config the mode refuses cannot ride on one started elsewhere.
+    action = gate.check("command", SERVER_FIELD, ls.cmd)
     if _probe(ready_url):
         say(f"launchServer: {ready_url} already serving — reusing it (not started by bajutsu)")
         return lambda: None
 
-    if gate.check("command", SERVER_FIELD, ls.cmd) == "sandbox":
+    if action == "sandbox":
         try:
             teardown = start_sandboxed_server(eff, log=log)
         finally:

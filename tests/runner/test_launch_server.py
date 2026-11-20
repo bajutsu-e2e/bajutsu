@@ -59,11 +59,25 @@ def test_reuses_already_serving(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(ls, "_probe", lambda url, timeout=2.0: True)
     started: list[Any] = []
     monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: started.append(a))
-    gate = _gate("deny")
+    gate = _gate("sandbox")
     stop = ls.start_launch_server(_eff("services: { server: { cmd: 'serve it' } }"), gate=gate)
     stop()
     assert started == []
-    assert gate.records == []  # a reused server runs no command, under any mode
+    assert gate.records == []  # a reused server runs no command
+
+
+def test_a_refused_command_fails_even_when_a_server_answers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # BE-0492: a config whose mode refuses its command cannot ride on a server started elsewhere,
+    # and the run never probes the readiness URL that config chose.
+    probed: list[str] = []
+    monkeypatch.setattr(ls, "_probe", lambda url, timeout=2.0: probed.append(url) or True)
+    with pytest.raises(CommandRefused):
+        ls.start_launch_server(
+            _eff("services: { server: { cmd: 'serve it' } }"), gate=_gate("deny")
+        )
+    assert probed == []
 
 
 def test_starts_and_waits_until_ready(monkeypatch: pytest.MonkeyPatch) -> None:
