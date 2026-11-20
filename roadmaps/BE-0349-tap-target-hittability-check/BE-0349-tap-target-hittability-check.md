@@ -222,7 +222,7 @@ Add this to `bajutsu/drivers/base.py` alongside `ElementNotFound` / `AmbiguousSe
 
 ```python
 class ElementNotTappable(Exception):
-    """The selector resolved to one element, but it could not be reached at its own point
+    """The selector resolved to exactly one element, but it could not be reached at its own point
     (obstructed by another on-screen element, or the platform's own hit-test refused it) — even
     after the bounded scroll safety net tried to clear the obstruction.
 
@@ -268,7 +268,7 @@ this proposal exists to hold cuts both ways:
 - `scroll_until_tappable` must never treat "scrolled into the viewport" as evidence of tappability.
   An occluded target's center is already inside the viewport, which is why
   `_center_in_viewport` alone is a no-op stop check here.
-- It must as much never treat "scrolled *out* of the viewport" as evidence of tappability.
+- It must equally never treat "scrolled *out* of the viewport" as evidence of tappability.
   Several backends read an off-viewport point as "not covered" (a below-the-fold target
   is a `scroll` question, not an occlusion one). `is_tappable` alone would let the loop
   "succeed" by scrolling the occluded target past the viewport instead of clear of the obstruction.
@@ -300,7 +300,7 @@ direction that makes `sel` tappable, then retries the actuation once.
 A single fixed direction cannot cover both common obstructions. The content motion of `down` moves
 the target toward the top of the screen. That clears a bottom-anchored cover (a toast, a snackbar, a
 sticky footer), but drives a target stuck under a top-anchored one (a sticky header) further
-underneath it, never out. The wrapper  tries `down` first, since the bottom-anchored case
+underneath it, never out. The wrapper tries `down` first, since the bottom-anchored case
 is the more common one. It tries `up` only once the bound of `down` is exhausted without success.
 
 Because `up` starts from wherever the steps of `down` left the target, it must retrace that ground
@@ -486,7 +486,7 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
 - **Skip recovery entirely; fail fast the moment occlusion is detected.** The minimal alternative,
   and the floor this proposal's other units are useful without. `ElementNotTappable` alone, with no
   scroll safety net, would already turn a silent wrong-tap or a misleading `ElementNotFound` into an
-  named failure. Rejected as the sole design for two reasons. It does not meet the stated
+  honestly named failure. Rejected as the sole design for two reasons. It does not meet the stated
   requirement to take a corrective action before failing. And the analogous net already exists and
   is valued for the not-found case (adb's `_scroll_into_view`), so dropping it for the obstructed
   case would leave a needless asymmetry between "missing" and "covered" failures.

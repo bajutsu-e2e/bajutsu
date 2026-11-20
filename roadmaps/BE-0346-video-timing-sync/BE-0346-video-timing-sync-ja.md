@@ -56,7 +56,7 @@ Webアクチュエーターにはポーリングが不要です。`PlaywrightDri
 
 `run_scenario`（`bajutsu/orchestrator/loop.py`）では、シナリオのインターバルを開始して`scenario_start`を記録したあと、動画インターバルの`video_start_offset`を求めます。確認済みの`true_start`があれば`video_start_offset = true_start - scenario_start`とし、なければ`0.0`とします。この値を`_LoopConfig`に通し、`_StepRunner._run_one`で`outcome.started_at = max(0.0, (start - scenario_start) - video_start_offset)`として反映します。
 
-Android/Webではオフセットが負になり、各ステップの報告時刻は動画上でより後ろにシフトして、事前録画分の余分な映像を打ち消します。iOSでは、確認処理が完了してから`scenario_start`が記録されるため、残差は小さく収まります（`scenario_start`に触れないこととは異なる点を、動機の節で述べています）。
+Android/Webではオフセットが負になり、各ステップの報告時刻は動画上でより後ろにシフトして、事前録画分の余分な映像を打ち消します。iOSでは、確認処理が完了してから`scenario_start`が記録されるため、残差は小さく収まります。これが`scenario_start`に触れないこととどう違うかは、動機の節で述べています。
 
 補正後の絶対的な基準点は`RunResult.video_anchor_s`（`bajutsu/orchestrator/types.py`）として公開し、手順4で再利用します。このフィールドは単純な加算スカラーなので、`report/load.py`の復元処理に変更は要りません。ただし、生の`time.monotonic()`の値であり、生成したプロセスの外では意味を持ちません。そのため`manifest_dict`（`bajutsu/report/manifest.py`）は、この値を永続化するJSONから除外しなければなりません。素朴な`asdict()`に任せると、読み戻したときに意味のない値として書き出されます。
 

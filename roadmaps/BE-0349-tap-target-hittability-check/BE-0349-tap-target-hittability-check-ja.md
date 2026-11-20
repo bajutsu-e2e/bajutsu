@@ -61,9 +61,7 @@ BE-0326 が却下したのは、対象が最初から画面外にあると作者
 
 `XcuitestElementProvider.tap(backingElement:taps:duration:)`（`BajutsuKit/Runner/Sources/XcuitestElementProvider.swift:57`）は、ネイティブのタップ呼び出しの直前に、ガードを1つ得ます。
 
-ガードが働くのは、対象の中心が `app.frame` の内側にあるとき（`centerIsOnScreen`）にかぎります。
-
-まだスクロールして到達していない対象は、遮蔽ではなく `scroll` の問題のままにするためです。`if centerIsOnScreen(el) { guard el.isHittable else { return .notHittable } }` となります。
+ガードが働くのは、対象の中心が `app.frame` の内側にあるとき（`centerIsOnScreen`）にかぎります。まだスクロールして到達していない対象を、遮蔽ではなく `scroll` の問題のままにするためです。コードは `if centerIsOnScreen(el) { guard el.isHittable else { return .notHittable } }` となります。
 
 `TapResult`（`BajutsuKit/Sources/BajutsuRunner/ElementProviding.swift:31`）は、既存の `.ok` / `.stale` / `.notFound` の隣に `.notHittable` ケースを得ます。`xcuitest.py` の `_actuate` は、4つ目のステータス定数と分岐を得て、既存の stale / not-found の扱いと並行に `base.ElementNotTappable` を送出します。`is_tappable(sel)` は、同じ往復の軽量版として実現します。ハンドルを解決し、操作せずにランナーへ `isHittable` を尋ねるだけです。
 

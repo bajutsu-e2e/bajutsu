@@ -110,7 +110,7 @@ adds no device read, no query, and no round trip. The read-count invariant that
 `tests/orchestrator/test_read_count.py` pins (a plain `tap` issues zero loop-side reads) stays
 exactly as it is, and a unit below tests that it does. Memory is bounded for a different reason. The
 crawl, `record`'s replay, and the driver conformance suite also call the actuators, and none of them
-drains. The accumulator  caps itself, instead of growing with a long session.
+drains. The accumulator caps itself, instead of growing with a long session.
 
 **Rule three: the redaction boundary.** Three values a driver holds can carry a resolved
 `${secrets.*}`, because `_interp_step` (`bajutsu/orchestrator/substitution.py:14-29`) substitutes the
@@ -408,7 +408,7 @@ the report.
    also the ordinary, non-degraded channel for Playwright, the WebView driver, the fake, and iOS
    `swipe` / `scroll` / `tap_point`. The amendment says so, rather than implying every `coordinate`
    record is a degradation. An `index` selector fallback is a selector-resolution concern, not an
-   actuation one, and it stays open. The line  stays unticked, with its remaining half
+   actuation one, and it stays open. The line stays unticked, with its remaining half
    named.
 
    [`docs/architecture.md`](../../docs/architecture.md) and its Japanese mirror
@@ -420,7 +420,7 @@ the report.
      `steps[].duration_s` "the `actionLog`-equivalent information" (`reporting.md:69`). They also pin
      the schema version in prose twice: "it is `4` today" (`reporting.md:80`) and "`schemaVersion` is
      `4` once this block can appear" (`reporting.md:89-90`; `docs/ja/reporting.md:71`). The second is
-     stated rather than as a floor, so it becomes false at 5.
+     stated exactly rather than as a floor, so it becomes false at 5.
    - [`docs/run-loop.md`](../../docs/run-loop.md) and `docs/ja/run-loop.md` repeat the same
      `actionLog`-equivalent claim inside their `StepOutcome` field listing (`run-loop.md:111`). That
      listing also gains `actuations`, and `RunResult`'s listing gains `expect_actuations`.
