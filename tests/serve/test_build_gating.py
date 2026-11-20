@@ -222,8 +222,11 @@ def test_an_untrusted_build_never_reaches_a_worker_without_the_policy(source: st
     # requirement, so an untrusted source's build travels under a key only a new worker reads.
     spec = job_spec(srv.Job(cmd=["x"], build="touch pwned", config_source=source))
     assert spec["build"] is None and spec["governed_build"] == "touch pwned"
+    # The legacy flag an old worker withholds the runner build on keeps travelling too.
+    assert spec["withhold_runner_build"] is True
     operator = job_spec(srv.Job(cmd=["x"], build="make", config_source="operator"))
     assert operator["build"] == "make" and operator["governed_build"] is None
+    assert operator["withhold_runner_build"] is False
 
 
 def test_a_build_the_worker_ran_joins_the_runs_record(tmp_path: Path) -> None:

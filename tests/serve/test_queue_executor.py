@@ -64,6 +64,7 @@ def test_dispatch_enqueues_a_serializable_job_spec(tmp_path: Path) -> None:
         "build_platform": None,
         "config_source": "operator",  # the operator's own config (BE-0492)
         "governed_build": None,
+        "withhold_runner_build": False,
         "materials": {},  # no materials for a local-built job
         "out_path": None,  # not a record job
         "record_save": None,

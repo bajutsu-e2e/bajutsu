@@ -123,12 +123,10 @@ def start_launch_server(
         return lambda: None
 
     if action == "sandbox":
-        try:
-            teardown = start_sandboxed_server(eff, log=log)
-        finally:
-            # Recorded whether the container came up or not: a failed start is still a command the
-            # policy let run, and the run's report says so.
-            gate.record(SERVER_FIELD, ls.cmd, sandboxed=True)
+        # Recorded once the container serves: a misconfiguration fails before any container starts,
+        # and the report must not claim the command ran in one.
+        teardown = start_sandboxed_server(eff, log=log)
+        gate.record(SERVER_FIELD, ls.cmd, sandboxed=True)
         return teardown
 
     say(f"launchServer: starting target server — {ls.cmd!r}")

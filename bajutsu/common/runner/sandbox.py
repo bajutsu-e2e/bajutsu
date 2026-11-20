@@ -164,8 +164,8 @@ def start_sandboxed_server(
     that declares one).
 
     `bundle_root` is the **trusted** host directory bind-mounted read-only into the container and used
-    as the `docker build` context — the run's confined working directory (the extracted bundle), which
-    `serve` controls. It defaults to the process cwd. It is deliberately *not* taken from the
+    as the `docker build` context — the run's working directory, which the worker prepared (an
+    extracted bundle or a checkout). It defaults to the process cwd. It is deliberately *not* taken from the
     (untrusted) config `launchServer.cwd`, so a hostile config cannot bind or build from an arbitrary
     host path.
 

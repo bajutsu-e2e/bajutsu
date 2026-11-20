@@ -155,6 +155,9 @@ def job_spec(job: Job) -> dict[str, Any]:
         # only a worker applying the policy reads (`_spec_build`).
         "build": job.build if job.config_source == OPERATOR else None,
         "governed_build": None if job.config_source == OPERATOR else job.build,
+        # A pre-BE-0492 worker builds a run-set job's argv from its intent with no label, and withholds
+        # the runner build only on this flag, so it keeps travelling for an untrusted source.
+        "withhold_runner_build": job.config_source != OPERATOR,
         "rebuild": job.rebuild,
         "build_platform": job.build_platform,
         # Where the config came from (BE-0492), so the worker applies its own command policy.
