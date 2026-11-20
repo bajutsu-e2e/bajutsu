@@ -146,22 +146,24 @@ use: web-login > step 'submit': target 'showcase-swiftui' conflicts with the cal
 Expansion already tracks the chain of component names it has entered, for cycle detection.
 The message thus needs no new bookkeeping.
 
-The same rule also settles a case the current expansion would get wrong once the refusal lifts. When a target group inside a component
-holds a `use:` step, `expand_components` stamps the group's target after expanding the nested call.
-A nested step that names a different target then keeps that target. Under this item, the target
-group passes its target down to the nested `use:` as a caller target. A differing value then fails
-at load time.
+The same rule also settles a case the current expansion would get wrong once the refusal lifts.
+Suppose a target group inside a component holds a `use:` step. Today `expand_components` stamps the
+group's target after expanding the nested call, so a nested step that names a different target
+keeps that target. Under this item, the target group passes its target down to the nested `use:` as
+a caller target. A differing value then fails at load time.
 
 ### Expanding inside control-flow bodies
 
 `expand_components` walks the top of each step list today. It never descends into an `if` / `else`
 branch, a `forEach` body, or a `web:` / `app:` block. A `use:` step in one of those bodies thus
-stays unexpanded. Under two or more targets, the load-time refusal hides this gap inside an `if` / `forEach`
-body. The refusal does not reach a `web:` / `app:` block, whose steps skip it. Wherever the
-refusal does not apply, the scenario loads. The unexpanded `use:` step then reaches the run loop
-as a step with no action. The run loop then aborts the whole run with an `AssertionError`, not one failed
-scenario. [BE-0439](../BE-0439-step-groups-report-folding/BE-0439-step-groups-report-folding.md)
-records the same gap for a `group:` routed into such a body through a component.
+stays unexpanded.
+
+Under two or more targets, the load-time refusal hides this gap inside an `if` / `forEach` body.
+The refusal does not reach a `web:` / `app:` block, whose steps skip it. Wherever the refusal does
+not apply, the scenario loads. The unexpanded `use:` step then reaches the run loop as a step with
+no action, and the run loop aborts the whole run with an `AssertionError`, not one failed scenario.
+[BE-0439](../BE-0439-step-groups-report-folding/BE-0439-step-groups-report-folding.md) records the
+same gap for a `group:` routed into such a body through a component.
 
 Lifting the multi-target refusal would expose that gap to every multi-target scenario with a
 branch. This item thus makes `expand()` recurse into each body it can hold:
@@ -237,14 +239,15 @@ Every consumer that runs a scenario loads it through
 [`run/cli.py`](../../bajutsu/run/cli.py), and both call `expand_components`. With the recursion
 above, no `use:` step leaves that path unexpanded, so lifting the refusal adds no unexpanded route
 to the runner.
+
 Static readers such as `lint` and serve's audit parse the unexpanded file. They will now see a
 `use:` or `group:` step carrying `target`, and their tests should cover that shape.
 
 ### Interrupt recovery steps and lifecycle phases
 
 A `use:` or `group:` step may now appear in an `interrupts` entry's recovery `steps` under two or
-more targets. Expansion stamps a named caller target as it does elsewhere. When the caller omits `target`, an expanded
-recovery step that omits `target` keeps the existing recovery rule of
+more targets. Expansion stamps a named caller target as it does elsewhere. When the caller omits
+`target`, an expanded recovery step that omits `target` keeps the existing recovery rule of
 [BE-0438](../BE-0438-multi-target-interrupts/BE-0438-multi-target-interrupts.md). The step stays on
 the runner whose interrupt guard fired, and it never resolves through `primaryTarget`.
 
@@ -272,9 +275,10 @@ single-target and multi-target scenarios alike.
 
 ### Docs
 
-- [`docs/scenarios.md`](../../docs/scenarios.md) and its `docs/ja/` mirror: the step table's `use`
-  row allows `target`; the *Limits* section and the `group:` paragraph drop their refusals; the
-  reuse section gains a two-target example of each row of the table above.
+- [`docs/scenarios.md`](../../docs/scenarios.md) and its `docs/ja/` mirror:
+  - The step table's `use` row allows `target`.
+  - The *Limits* section and the `group:` paragraph drop their refusals.
+  - The reuse section gains a two-target example of each row of the table above.
 - [`docs/architecture.md`](../../docs/architecture.md) and `DESIGN.md`, where either describes
   component expansion or the target rule.
 - The showcase scenario `cross_platform_app_web.yaml` calls its web sign-in through a component.
@@ -287,7 +291,7 @@ single-target and multi-target scenarios alike.
 3. **Recursion.** Make `expand()` descend into every control-flow body listed above. Raise a
    load-time error on a `group:` it finds there.
 4. **Stamping.** In `expand_components`, carry a caller target through `use:`, `group:`, and
-   target-group expansion; stamp it with the depth rule; raise the conflict error with the
+   target-group expansion. Stamp it with the depth rule, and raise the conflict error with the
    component chain.
 5. **Tests.** Cover each of the following cases:
    - a `use:` inside each kind of body, in a single-target and a multi-target scenario;
