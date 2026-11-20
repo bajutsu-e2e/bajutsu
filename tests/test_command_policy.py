@@ -231,11 +231,14 @@ def test_report_notices_list_each_command_the_run_met() -> None:
             ]
         }
     )
-    assert notices == [
+    sandboxed = (
         "services.server.cmd './start.sh' from the uploaded config: ran in a container under "
-        "commandExecution sandbox (BE-0492)",
+        "commandExecution sandbox (BE-0492)"
+    )
+    built = (
         "subject.build 'make' from the operator config: ran on the host (exit 0) under "
-        "commandExecution allow (BE-0492)",
-    ]
+        "commandExecution allow (BE-0492)"
+    )
+    assert notices == [sandboxed, built]
     assert report_notices({"commandExecutions": "garbage"}) == []
     assert report_notices({"commandExecutions": ["garbage"]}) == []
