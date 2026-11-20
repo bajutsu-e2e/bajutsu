@@ -44,7 +44,9 @@ target を動かす環境を指定するキーもありません。iOS のバー
 
 ### 前提となる項目
 
-この項目は、[BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch-ja.md)と[BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md)が入ってから着手します。ここでいう「入った」とは、最終的な2つの削除を除き、両項目のすべての作業単位がマージされた状態を指します。1つは、BE-0448 の作業単位5による`cloudBatchBudget`とサーバー側の予算の仕組み（`deviceBudget`、`max_concurrent_batch`、`try_register(device_budget=…)`）の削除です。もう1つは、BE-0450 による`requires`の削除です。これらは、非推奨になりながらもまだ受け付けられています。この項目の作業単位4が、それらをすべて取り除きます。そのため、fan-out の要求の`deviceBudget`の非推奨期間は、BE-0448 だけの場合より早く、スキーマの切り替えの時点で終わります。この2つは、worker capability のファイル`worker.yaml`と`environment:<name>`による振り分けを提供し、target から外れるキーはそこへ移ります（「どこで実行するか」を参照）。先に着手すると、一括でスキーマを切り替える時点で、`deviceProvider`と`cloudBatch`の移る先がありません。
+この項目は、[BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch-ja.md)と[BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md)が入ってから着手します。ここでいう「入った」とは、最終的な2つの削除を除き、両項目のすべての作業単位がマージされた状態を指します。1つは、BE-0448 の作業単位5による`cloudBatchBudget`とサーバー側の予算の仕組み（`deviceBudget`、`max_concurrent_batch`、`try_register(device_budget=…)`）の削除です。もう1つは、BE-0450 による`requires`の削除です。これらは、非推奨になりながらもまだ受け付けられています。この項目の作業単位4が、それらをすべて取り除きます。そのため、fan-out の要求の`deviceBudget`の非推奨期間は、BE-0448 だけの場合より早く、スキーマの切り替えの時点で終わります。
+
+BE-0448 と BE-0450 は、worker capability のファイル`worker.yaml`と`environment:<name>`による振り分けを提供し、target から外れるキーはそこへ移ります（「どこで実行するか」を参照）。先に着手すると、一括でスキーマを切り替える時点で、`deviceProvider`と`cloudBatch`の移る先がありません。
 
 ### 11個のキー
 
