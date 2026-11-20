@@ -17,48 +17,55 @@
 
 A scenario that declares two or more [targets](../../docs/glossary.md#target-app-device)
 ([BE-0428](../BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution.md))
-gets every declared target's own evidence nested under a folder named after that target, inside the
-scenario's own evidence directory: `runs/<runId>/<sid>/<target>/…` in place of today's inconsistent
-mix, where the *first* declared target ("the primary") writes straight into `<sid>/`, every other
-declared target already writes into its own `<sid>/<target>/`, and every declared target's per-step
-screenshots and element dumps land in the same flat `<sid>/<stepId>/` folders regardless of which one
-produced them. A scenario that declares zero or one target — every scenario in this repository's own
-test suite and demos today — keeps its current, unchanged layout.
+gets every declared target's evidence nested under a folder named after that target. The folders sit
+inside the scenario's own evidence directory, as `runs/<runId>/<sid>/<target>/…`.
+
+Today's layout is inconsistent. The *first* declared target ("the primary") writes straight into
+`<sid>/`. Every other declared target already writes into its own `<sid>/<target>/`. The per-step
+screenshots and element dumps of every declared target land in the same flat `<sid>/<stepId>/`
+folders, whichever target produced them.
+
+A scenario that declares zero or one target keeps its current, unchanged layout. Every scenario in
+this repository's own test suite and demos is of that kind today.
 
 ## Motivation
 
 [BE-0428](../BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution.md)
-let one scenario interleave steps across several targets — an iOS target and a web target, say —
-in a single `bajutsu run` invocation, and gave each target's own scenario-wide recording (video,
-device log, application trace) a folder named after that target, so a second target's own
-`scenario.mp4` never collided with the first's. That folder convention, though, only ever applies to
-every declared target *except* the first one. `_ScenarioRunner._run_on_lease`'s own per-target loop
+let one scenario interleave steps across several targets in a single `bajutsu run` invocation, an
+iOS target and a web target, say. It also gave each target's scenario-wide recording (video, device
+log, application trace) a folder named after that target, so a second target's `scenario.mp4` never
+collided with the first's. That folder convention applies only to the declared targets *other than
+the first*.
+
+The asymmetry shows in two places. `_ScenarioRunner._run_on_lease`'s per-target loop
 (`bajutsu/common/runner/pipeline.py`) already writes a non-primary target's recordings and network
-capture under `<sid>/<name>/`, but the primary's own recordings and network capture still land
-straight under `<sid>/`, alongside `manifest.json`, `junit.xml`, and every other run-level file. The
-same run-loop code (`bajutsu/common/orchestrator/loop/_functions.py`) that starts and finishes each
-target's own scenario-wide interval recording repeats the same asymmetry: it namespaces every *extra*
-target's `scenario.mp4` under its own name, but leaves the primary's flat.
+capture under `<sid>/<name>/`, but the primary's recordings and network capture still land straight
+under `<sid>/`, alongside `manifest.json`, `junit.xml`, and every other run-level file. The run-loop
+code that starts and finishes each target's scenario-wide interval recording
+(`bajutsu/common/orchestrator/loop/_functions.py`) repeats the asymmetry: it namespaces every *extra*
+target's `scenario.mp4` under that target's name, but leaves the primary's flat.
 
-Per-step evidence never got the same convention in the first place. Every step's `before.png`,
-`after.png`, and `elements.json` are named from the step's own id alone
+Per-step evidence never followed the convention in the first place. Every step's `before.png`,
+`after.png`, and `elements.json` are named from the step's id alone
 (`bajutsu/common/orchestrator/loop/_step_runner.py`'s
-`step_id = f"{self.cfg.sid}/{prefix}{step.name or f'step{idx}'}"`, where `prefix` is a `before`/`after`
-hook's own phase label, BE-0392), with no target segment at all — a step's global run-order index keeps two different targets' step
-folders from colliding by accident, but nothing about the directory layout tells a reader which
-target a given `<sid>/<stepId>/` folder belongs to short of opening `manifest.json` and matching the
-step's own recorded `target` field (`StepOutcome.target`, BE-0428) against it. A team investigating a
-failed cross-target scenario — the exact case BE-0428 exists to support — has to reconstruct that
-grouping by hand from the manifest, one step at a time, rather than simply opening the one target's
-folder whose steps are failing.
+`step_id = f"{self.cfg.sid}/{prefix}{step.name or f'step{idx}'}"`, where `prefix` is the phase label
+of a `before`/`after` hook, BE-0392). The name carries no target segment at all. A step's global
+run-order index keeps two targets' step folders from colliding by accident. But nothing in the directory
+layout tells a reader which target a given `<sid>/<stepId>/` folder belongs to. The reader
+must open `manifest.json` and match the step's recorded `target` field (`StepOutcome.target`,
+BE-0428) against it.
 
-This item removes both gaps at once, by nesting *every* declared target's evidence — the primary
-included, at the step level as well as the scenario level — under one folder named after that target.
-Once it ships, a scenario declaring `targets: [showcase-app, web]` produces
-`runs/<runId>/<sid>/showcase-app/` and `runs/<runId>/<sid>/web/`, each holding that target's own
-`scenario.mp4`, `network.json`, and every `<stepId>/` folder its own steps wrote — a reader can point
-at either folder and see only that target's own recording, log, and per-step screenshots, with
-nothing from the other target mixed in and no detour through the manifest needed to tell them apart.
+A team investigating a failed cross-target scenario, the exact case BE-0428 exists to support, must
+rebuild that grouping by hand from the manifest, one step at a time. Opening the one
+target's folder whose steps are failing would be simpler.
+
+This item removes both gaps at once. It nests *every* declared target's evidence under one folder
+named after that target, the primary included, at the step level as well as the scenario level. Once
+the item ships, a scenario declaring `targets: [showcase-app, web]` produces
+`runs/<runId>/<sid>/showcase-app/` and `runs/<runId>/<sid>/web/`. Each folder holds that target's
+`scenario.mp4`, `network.json`, and every `<stepId>/` folder its steps wrote. A reader can point at
+either folder and see only that target's recording, log, and per-step screenshots, with nothing from
+the other target mixed in and no detour through the manifest.
 
 ## Detailed design
 
