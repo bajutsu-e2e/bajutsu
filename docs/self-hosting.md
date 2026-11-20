@@ -145,52 +145,179 @@ such as `GET /api/apikey`. A non-browser client (no `Origin` header) is unaffect
 bind, that host otherwise; a wildcard bind (`0.0.0.0` / `::`), whose reachable names can't be
 enumerated, disables the `Host` check and leaves CSRF as the cross-origin guard.
 
-## Uploaded-config command execution (BE-0090)
+## Which config commands a worker runs (BE-0492)
 
-An uploaded `.zip` bundle can carry a config whose `services.server.cmd` (and, once wired,
-`services.mockServer.cmd`) names a shell command to bring up the app under test. That command is **untrusted
-input**, so `serve` never runs it on the bare host. The `--upload-exec` option (or the
-`BAJUTSU_UPLOAD_EXEC` environment variable, for the hosted backend) chooses what happens when an
-*uploaded* bundle's run needs that command — it applies only to upload-sourced configs; a local or
-Git-sourced config is operator-trusted and unaffected:
+A config can declare commands that Bajutsu runs on the machine that carries out a run:
 
-- **`sandbox`** (the default) — run the command inside a throwaway **Docker** container, never on the
-  `serve` host. The bundle declares its runtime with **exactly one** of `dockerImage` (a published
-  base image, e.g. `node:20-slim`) or `dockerfile` (a bundle-relative path that `serve` builds with
-  `docker build`), plus a `port` (the in-container listen port). The container is hardened —
-  `--rm`, all capabilities dropped, no new privileges, a read-only root filesystem with a `tmpfs`
-  scratch, a non-root user, CPU/memory/pid caps, and only its one port published to a **loopback**
-  host port — and torn down after the run. Docker must be installed on the `serve` host.
-- **`reuse`** — never run the uploaded command; only probe an operator-provisioned server already
-  answering at `subject.url`. If nothing answers, the run fails loud rather than starting anything.
-- **`deny`** — refuse the uploaded command outright; like `reuse`, an externally-answering server is
-  accepted, otherwise the run fails loud.
+- `services.server.cmd` starts the server that hosts the app under test.
+- `subject.build` builds the app when its binary is missing.
+- `driver.runner.build` builds the XCUITest runner when its `.xctestrun` file is missing.
 
-No mode ever runs an uploaded command on the bare host, and none silently falls back to doing so — a
-blocked or misconfigured `services.server` fails with a clear error, never a flaky-looking run. The
-decision (denied / reused / sandboxed, and the image when sandboxed) is recorded in the run's
-`manifest.json` provenance, so "what did this run execute, and what was suppressed?" stays answerable.
+A worker, the machine that runs scenarios, runs these commands and carries their risk. The
+worker's own capability file, `worker.yaml`, decides whether each one runs
+([BE-0492](../roadmaps/BE-0492-worker-command-execution-policy/BE-0492-worker-command-execution-policy.md)).
+`serve` makes no such decision. It labels each job with the source of its config, and the worker
+applies its policy to that source.
 
-## Remote-config command execution (BE-0121)
+### The config source
 
-A config bound at startup with `--config` (a local path or a `github:` spec you typed yourself) is
-**operator-trusted**: `serve` runs its `subject.build` command normally. A Git config bound **later,
-through the UI's "from Git" picker** (`POST /api/config` with a `git` spec), is a different trust
-level — a cross-origin request could have bound it — so it is treated like an uploaded bundle: its
-`subject.build` command is **never run on the host by default**. Pass `--allow-remote-build` (or set
-`BAJUTSU_ALLOW_REMOTE_BUILD=1`) to opt in when you deliberately drive runs off a UI-bound Git config
-whose build you trust. Without the opt-in the run proceeds with the build suppressed, exactly as an
-uploaded bundle's build is suppressed — no silent host-side command execution from a config that
-arrived over the network.
+`serve` gives every job one of three source labels. The config itself has no way to set its own
+label.
 
-The same verdict covers the XCUITest runner's on-demand build, `driver.runner.build`. `serve` does
-not run that command itself; the run it spawns would, when the file at `driver.runner.testRunner`
-is missing. For an uploaded bundle, or a UI-bound Git config without `--allow-remote-build`, the
-spawned run refuses that build and fails with `driver.runner.build withheld` instead. Such a config
-ships its `.xctestrun` prebuilt at `testRunner`, which the run then uses as is. The spawned run
-withholds the target's `subject.build` the same way: it skips the build of a missing app, and
-refuses a forced one (`rebuild`), so `serve`'s verdict holds even though `bajutsu run` builds a
-missing app on its own.
+| Source | The config came from |
+|---|---|
+| `uploaded` | a `.zip` bundle a browser user uploaded |
+| `remote` | a Git repository that a Web UI user bound after `serve` started, through the "from Git" picker or `POST /api/config` |
+| `operator` | the operator's own choice: the config `serve` started with, a config from the local file browser, or the config a terminal or CI run names |
+
+A Git config bound after startup counts as `remote`: a cross-origin request could have bound it. A
+terminal or CI run labels its config `operator`, because the person who started the run chose it.
+The worker passes the label to each `run`, `record`, or `crawl` it spawns. It also passes its own
+`--worker-config` to each of them.
+
+### The `commandExecution` block
+
+The `commandExecution` block in `worker.yaml` sets one mode per source:
+
+```yaml
+version: 1
+environment: local
+drivers: [playwright]
+commandExecution:
+  uploaded: sandbox
+  remote: sandbox
+  operator: allow
+```
+
+The mode decides what happens to each governed command:
+
+| Command | `allow` | `sandbox` | `named` | `deny` |
+|---|---|---|---|---|
+| `services.server.cmd` | runs on the worker's host | runs in a Docker container | refused | refused |
+| `subject.build` | runs on the host when the binary is missing | does not run | does not run | does not run |
+| `driver.runner.build` | runs on the host when the runner is missing | does not run | does not run | does not run |
+| a named command | runs on the host | runs on the host | runs on the host | refused |
+
+An omitted block or key takes the defaults `uploaded: sandbox`, `remote: sandbox`, and
+`operator: allow`. These defaults keep the earlier behavior, with one tightening. The server command
+of a `remote` config now runs in a container instead of on the bare host.
+
+Neither build runs in a container. An iOS build needs the macOS toolchain, and no Linux container
+provides it. Under any mode but `allow`, a config ships its binary prebuilt at `subject.path`. It
+ships its runner prebuilt at `driver.runner.testRunner` too. A run that finds either one missing
+fails. Its error names the mode that kept the build from running. An uploaded bundle already ships
+its binary this way.
+
+Under `allow` and `sandbox`, the run reuses a server that already answers the readiness URL. No
+command runs then. Under `named` and `deny`, the run refuses a declared `services.server.cmd`. It
+does so even when a server already answers. The policy decides before any probe, so the run never probes the readiness
+URL of a refused config.
+
+### Running a server command in a container
+
+Under `sandbox`, the server command runs in a throwaway Docker container on the worker's host. The
+config declares the runtime under `services.server` with **exactly one** of two fields, plus a
+port:
+
+- `dockerImage` names a published base image, such as `node:20-slim`.
+- `dockerfile` names a path inside the config's directory. The worker builds it with
+  `docker build`.
+- `port` names the port the server listens on inside the container.
+
+The container drops all capabilities and forbids new privileges. It runs as a non-root user on a
+read-only root filesystem, with a `tmpfs` scratch. CPU, memory, and process caps bound it. It
+publishes its one port to a loopback port on the host, and the worker removes it after the run.
+
+The worker's host needs Docker. Suppose a worker's file sets a source to `sandbox` explicitly. The
+worker then checks for `docker` on its `PATH` at startup. When `docker` is missing, the worker exits
+with a message naming the key. A `sandbox` mode that comes from the default does not stop the
+worker. That worker withholds the routing token for the source instead. It never leases a job it
+would then fail.
+
+### Named commands
+
+A `namedCommands` block lists the scripts the worker's operator vouches for:
+
+```yaml
+commandExecution:
+  uploaded: named
+  remote: named
+  operator: allow
+namedCommands:
+  seed-users:
+    path: /opt/bajutsu/hooks/seed-users.sh   # a file on the worker, outside any bundle or checkout
+    env: [SEED_COUNT]                        # the variables a config may set for this command
+```
+
+The worker checks each entry at startup and refuses a file that breaks one of three rules:
+
+- The name matches `[A-Za-z][A-Za-z0-9_-]*`.
+- `path` is absolute.
+- `env` lists no variable that changes how a process loads code. Examples are `PATH`,
+  `NODE_OPTIONS`, and `PYTHONPATH`, plus any `LD_*` or `DYLD_*` name.
+
+A named command runs on the worker's host under every mode except `deny`. Its code belongs to the
+operator. No config field can name a named command yet. The hook entries of
+[BE-0491](../roadmaps/BE-0491-target-command-hooks/BE-0491-target-command-hooks.md) add that field.
+Suppose a worker holds secrets and runs untrusted configs. Its operator can set `uploaded: named`
+and `remote: named` there today. Those modes refuse every server command from the two sources.
+
+### How the policy reaches routing and the run
+
+The worker advertises its policy as routing tokens
+([capability-routed queues](#capability-routed-queues-be-0166)):
+
+- `command-execution:<source>` for each source whose mode is `allow`, or `sandbox` with Docker
+  present.
+- `named-execution:<source>` for each source whose mode is not `deny`.
+- `named-command:<name>` for each entry of `namedCommands`.
+
+A job whose config declares `services.server.cmd` requires `command-execution:<source>` for its
+source. A build adds no token, because `serve` cannot know whether a worker already holds the
+binary. A job keeps waiting while no connected worker matches it. Workers older than BE-0492
+advertise none of these tokens, and they never lease such a job.
+
+The run checks the policy again before any device work, against the `worker.yaml` it reads. This
+second check covers a run started without `serve`. When the policy refuses a server command, every
+scenario fails with the refusal. The run still writes `manifest.json` and its report. Its exit
+code is 2. The `audit` and `repl` commands stay under the operator's own policy.
+
+### The command record
+
+A run records each governed command it met. The list sits under `commandExecutions`, in the
+provenance of `manifest.json`. Each entry holds these fields:
+
+| Field | Meaning |
+|---|---|
+| `field` | where the config declared the command, such as `services.server.cmd` |
+| `cmd` | the command line, with `${secrets.*}` values masked |
+| `source`, `mode` | the config source and the mode that applied |
+| `decision` | `ran`, `sandboxed`, or `refused` |
+| `exitCode` | the command's exit code, when it ran |
+| `sha256` | the hash of the command line, and of the executable when that file sits inside the config's directory |
+
+The HTML report shows one run-level notice per entry. When a script changes between two runs, its
+hash changes, even when its command line stays the same. The list replaces the `uploadExec`
+provenance entry of earlier releases.
+
+### Moving from the removed `serve` flags
+
+BE-0492 removed four inputs of `serve`. Two are flags, `--upload-exec` and
+`--allow-remote-build`. The other two are the variables `$BAJUTSU_UPLOAD_EXEC` and
+`$BAJUTSU_ALLOW_REMOTE_BUILD`. `serve` refuses to start when it gets any of them, and the message
+names the `commandExecution` block. The LaunchAgent that `serve --emit-launchagent` prints no longer
+passes `--upload-exec`.
+
+| Earlier setting | What to set on each worker |
+|---|---|
+| `--upload-exec sandbox` (the default) | nothing; `uploaded: sandbox` is the default |
+| `--upload-exec deny` | `uploaded: deny` |
+| `--upload-exec reuse` | `uploaded: sandbox`, or `uploaded: deny` (see below) |
+| `--allow-remote-build` | `remote: allow` |
+
+The `reuse` mode has no successor, so a former `reuse` user picks `sandbox` or `deny`. Under
+`sandbox`, a server that already answers is still reused. `deny` now fails a run whose config
+declares a server command, even when a server already answers.
 
 ## Private-repository access for the Git config source (BE-0224)
 
@@ -320,7 +447,7 @@ below, covers that case.
 |---|---|---|
 | **Config** | File browser + Git + upload; own filesystem, paths unconfined | Git + upload only; file browser disabled, 403 (BE-0108) |
 | **Scenario and run artifacts** | `scenarios/` and `runs/` on disk, with the queue and the run history in `.bajutsu/queue.db`; soft-delete leaves a `.deleted` marker in the run tree | Object store (S3/GCS) + Postgres; soft-delete sets `deleted_at` (BE-0239) |
-| **App binary** | `subject.path` on disk; build only when missing — never for an uploaded bundle, which ships its binary prebuilt | An uploaded bundle's binary ships to the worker via presigned URLs, no build runs (BE-0413); a Git-sourced config still has the worker build from the checkout, remote build gated (BE-0121) |
+| **App binary** | `subject.path` on disk; build only when missing — never for an uploaded bundle, which ships its binary prebuilt | An uploaded bundle's binary ships to the worker via presigned URLs, no build runs (BE-0413); a Git-sourced config still has the worker build from the checkout, when the worker's `commandExecution` runs builds for the config's source (BE-0492) |
 | **Authoring against a live screen** | Capture mode and Edit's live picker both hold a driver open in the `serve` process | Neither is offered: both controls are disabled, each carrying the reason (#1721) |
 
 - **Config.** Both sides bind from up to three sources, but the file browser disappears the moment
@@ -349,18 +476,20 @@ below, covers that case.
   server backend both keep Capture, since the devices are on the machine (BE-0449). The Record tab keeps
   working: `POST /api/record` dispatches a job the way a run does, so a recording made through the
   AI path still runs hosted.
-- **App binary.** An uploaded bundle already carries a prebuilt binary, so its `subject.build` never runs
-  regardless of tier (`_governed_build`, DESIGN §1 "Bajutsu does not build the app"). Hosted, the
+- **App binary.** An uploaded bundle already carries a prebuilt binary, so under the default
+  `uploaded: sandbox` its `subject.build` never runs, on either tier (DESIGN §1 "Bajutsu does not
+  build the app"). Hosted, the
   worker still needs the bytes: the job lease response's `bundle_urls` field carries one presigned
   GET URL per stored object the bundle is made of, and the worker fetches them over plain HTTP and
   reassembles its own workspace before the run starts (BE-0413) — no shared filesystem, and no
   build. A Git-sourced (or, locally, file-browser-sourced) config instead resolves `subject.path` from
   the bound config and, if it's missing, runs the config's `subject.build` command; hosted, a Mac worker
   builds from the same checkout materials the control plane resolved for the job, exchanging bytes
-  over presigned URLs rather than a shared filesystem (BE-0160, above). The remote-build gate is
-  orthogonal to the tier: any config bound later through the UI's "from Git" picker has its `subject.build`
-  suppressed by default, whether the UI sits on a laptop's Tier A or Tier B's control plane — only a
-  config supplied at startup is operator-trusted (see *Remote-config command execution*, above). The
+  over presigned URLs rather than a shared filesystem (BE-0160, above). Whether the build runs does
+  not depend on the tier. The worker's `commandExecution` decides it per config source. A config
+  bound later through the UI's "from Git" picker is `remote`, whose default `sandbox` runs no build,
+  on a laptop's Tier A and on Tier B's control plane alike (see *Which config commands a worker
+  runs*, above). The
   web (Playwright) backend has no binary concept on either side; the browser engine installs on demand
   instead.
 
@@ -1043,11 +1172,17 @@ To declare what one machine can run, pass a worker capability file with
 drivers the machine offers. Its `maxTargetsPerJob` caps the targets one scenario may hold at once.
 Without the flag, the worker uses the shipped default. The default offers every driver and sets no
 target limit. The worker validates the file at startup, before it leases any job. It hands the file's
-absolute path to every `bajutsu run` it spawns. Each leased run checks its scenarios against the file.
+absolute path to each `bajutsu run`, `bajutsu record`, and `bajutsu crawl` it spawns. Each leased
+run checks its scenarios against the file.
 A scenario that needs a driver this machine cannot run fails with a
 `worker-capability-unsupported:` reason. The control plane never reads
 the file. [Drivers](drivers.md#worker-capability-check-be-0450) describes the file format and the
 check.
+
+The same file holds the worker's `commandExecution` block. That block decides, per config source,
+whether a config's commands run on this machine. The `namedCommands` block lists the scripts the
+operator vouches for. [Which config commands a worker runs](#which-config-commands-a-worker-runs-be-0492)
+covers both blocks.
 
 A worker whose file sets `environment: devicefarm` also reads its job budget there (BE-0448). The
 file's top-level `maxJobConcurrency` caps the jobs that worker holds at once. While every slot holds
@@ -1279,7 +1414,17 @@ deterministic `run` verdict.
   one-time notice, and go away in the next release. The inventory and the worker capability file
   now supply what the override was for. An override can also claim a runtime the machine lacks.
   Neither may carry the reserved `environment:`, `host:`, `machine:`, `device:`, `cap:`,
-  `setting:`, `job:`, `platform:`, or `kind:` prefix, which the worker fills itself. A worker rejects such a token at startup.
+  `setting:`, `job:`, `platform:`, `kind:`, `command-execution:`, `named-execution:`, or
+  `named-command:` prefix, which the worker fills itself. A worker rejects such a token at startup.
+  An override thus cannot claim a config source that the worker's `commandExecution` block refuses.
+- **A job with a server command needs a worker that runs it.** A job whose config declares
+  `services.server.cmd` requires `command-execution:<source>`, where the source is `uploaded`, `remote`, or
+  `operator`. A worker advertises that token for a source whose mode is `allow`, or `sandbox` with
+  Docker present. It also advertises `named-execution:<source>` for each source not set to `deny`,
+  and `named-command:<name>` for each named command. A build adds no token. The worker decides the
+  build at run time
+  ([Which config commands a worker runs](#which-config-commands-a-worker-runs-be-0492),
+  [BE-0492](../roadmaps/BE-0492-worker-command-execution-policy/BE-0492-worker-command-execution-policy.md)).
 - **An unroutable job** — one whose required capabilities no live worker advertises — stays queued
   rather than being leased to an incompatible worker or dropped, and is surfaced by the
   `bajutsu_unroutable_jobs` metric (below) so the operator knows to add a worker with the missing

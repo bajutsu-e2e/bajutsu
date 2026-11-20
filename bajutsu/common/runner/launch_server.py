@@ -9,7 +9,8 @@ the iOS `build` hook (which produces the `.app` before a run), but for a long-ru
 It stays inside the prime directives: the lifecycle is deterministic infrastructure (a shell command
 plus an HTTP readiness poll, no LLM), and readiness is a *condition wait* — poll until the server
 answers — never a blind fixed sleep. If `readyUrl` already answers, the server was started elsewhere
-(a Makefile, CI, a manual launch); we reuse it and never tear it down.
+(a Makefile, CI, a manual launch); we reuse it and never tear it down. Whether the command may
+run at all is the worker's command policy (BE-0492), which the run's gate applies first.
 """
 
 from __future__ import annotations
@@ -24,7 +25,11 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable
+from pathlib import Path
 
+from bajutsu.common.capability import command_gate
+from bajutsu.common.capability.command_gate import CommandGate, CommandRefused
+from bajutsu.common.capability.command_policy import SERVER_FIELD
 from bajutsu.common.config import Effective, web_base_url
 
 _POLL_INTERVAL = 0.25  # seconds between readiness probes (the grain of the condition wait)
@@ -46,76 +51,83 @@ def _probe(url: str, timeout: float = 2.0) -> bool:
         return False
 
 
-def _decision(decision: str) -> dict[str, str | None]:
-    """A launchServer policy-decision record (BE-0090), matching the sandbox path's shape."""
-    return {"decision": decision, "field": "launchServer", "source": None, "image": None}
+def server_refusal(eff: Effective, gate: CommandGate) -> str | None:
+    """Why *gate*'s policy refuses `eff.launch_server`'s command, recording it, or None (BE-0492).
+
+    Checked before any device work, so a run whose server command will never run fails before it
+    reserves a device. None when no server is declared or the mode runs the command. A server that
+    already answers does not change the answer: a config that declares a command its mode refuses
+    fails, and the run never probes a readiness URL that config chose.
+    """
+    ls = eff.launch_server
+    if ls is None or gate.policy.action("command") != "refuse":
+        return None
+    try:
+        gate.refuse(SERVER_FIELD, ls.cmd)
+    except CommandRefused as e:
+        return str(e)
+    raise AssertionError("CommandGate.refuse always raises")  # pragma: no cover
 
 
 def start_launch_server(
     eff: Effective,
     *,
-    upload_exec: str | None = None,
+    gate: CommandGate | None = None,
     log: Callable[[str], None] | None = None,
-) -> tuple[Callable[[], None], dict[str, str | None] | None]:
-    """Bring up `eff.launch_server` (the web target's host) if declared, returning `(teardown, decision)`.
+) -> Callable[[], None]:
+    """Bring up `eff.launch_server` (the web target's host) if declared, returning its teardown.
 
     Idempotent: a no-op stop is returned when no server is declared, or when `readyUrl` already
     answers (an externally-started server is reused and left running). Otherwise the command is
     started and probed until `readyUrl` responds within `readyTimeout`.
 
-    `upload_exec` governs an *uploaded* bundle's command (BE-0090): `None` is an ungoverned,
-    operator-trusted local/Git run (the bare-host path below); `sandbox` runs the command in a
-    container; `reuse` / `deny` never run the command and only accept an externally-answering
-    `readyUrl`. `serve` sets the flag only for an upload-sourced config, so a local run is unaffected.
+    *gate* applies the worker's command policy to the command first (BE-0492): `allow` runs it on
+    this host, `sandbox` runs it in a container, and `named` / `deny` refuse it, whether or not a
+    server already answers. Under `allow` and `sandbox`, a server that already answers is reused and
+    no command runs.
 
     Args:
         eff: The resolved target config; `launch_server` and `base_url` decide what to start and
             probe.
-        upload_exec: The upload-execution policy (`deny` / `reuse` / `sandbox`), or None when the run
-            is not upload-governed.
+        gate: The run's command gate, which decides and records the command; the installed gate
+            (`command_gate.current`) when None.
         log: Receives one-line status messages. None uses the default logger.
 
     Returns:
-        A teardown callable (a no-op when nothing was started / an existing server is reused), and a
-        policy-decision record — None for an ungoverned run, else `denied` / `reused` / `sandboxed`.
+        A teardown callable (a no-op when nothing was started / an existing server is reused).
 
     Raises:
+        CommandRefused: The policy refuses the command.
         RuntimeError: `launchServer` declares no `readyUrl` and the target has no `baseUrl`, or the
             command exited / the server wasn't ready within `readyTimeout`. `SandboxError` (a
-            subclass) covers a forbidden or misconfigured upload-governed command. The caller exits 2
-            with the message.
+            subclass) covers a misconfigured sandboxed command. The caller exits 2 with the message.
     """
     # Deferred import: sandbox imports this module's probe/log helpers, so importing it at module
     # scope would be circular.
-    from bajutsu.common.runner.sandbox import SandboxError, start_sandboxed_server
+    from bajutsu.common.runner.sandbox import start_sandboxed_server
 
     ls = eff.launch_server
     if ls is None:
-        return (lambda: None), None
+        return lambda: None
     say = log or _default_log
-    if upload_exec == "sandbox":
-        return start_sandboxed_server(eff, log=log)
+    gate = gate if gate is not None else command_gate.current()
     ready_url = ls.ready_url or web_base_url(eff)
     if not ready_url:
         raise RuntimeError("launchServer needs readyUrl (or set the target's subject.url to probe)")
 
-    if upload_exec in ("deny", "reuse"):
-        # Neither mode runs the uploaded command: only an externally-answering readyUrl is accepted,
-        # else the run fails loud (DESIGN §2 — no silent fallback to running the command).
-        if _probe(ready_url):
-            verdict = "denied" if upload_exec == "deny" else "reused"
-            say(f"launchServer({upload_exec}): {ready_url} answered externally — not running cmd")
-            return (lambda: None), _decision(verdict)
-        raise SandboxError(
-            f"launchServer({upload_exec}): nothing answering {ready_url} and the uploaded cmd is "
-            f"not run under '{upload_exec}' — cmd: {ls.cmd!r}"
-        )
-    if upload_exec is not None:
-        raise SandboxError(f"unknown --upload-exec mode: {upload_exec!r}")
-
+    # Decided before the probe: a refused command fails the run even when a server already answers,
+    # so a config the mode refuses cannot ride on one started elsewhere.
+    action = gate.check("command", SERVER_FIELD, ls.cmd)
     if _probe(ready_url):
         say(f"launchServer: {ready_url} already serving — reusing it (not started by bajutsu)")
-        return (lambda: None), None
+        return lambda: None
+
+    if action == "sandbox":
+        # Recorded once the container serves: a misconfiguration fails before any container starts,
+        # and the report must not claim the command ran in one.
+        teardown = start_sandboxed_server(eff, log=log)
+        gate.record(SERVER_FIELD, ls.cmd, sandboxed=True)
+        return teardown
 
     say(f"launchServer: starting target server — {ls.cmd!r}")
     proc = subprocess.Popen(
@@ -126,18 +138,22 @@ def start_launch_server(
         stderr=subprocess.DEVNULL,
         start_new_session=True,  # own process group, so teardown reaches the server's children too
     )
+    cwd = Path(ls.cwd) if ls.cwd else None
     deadline = time.monotonic() + ls.ready_timeout
     while time.monotonic() < deadline:
         if proc.poll() is not None:
+            gate.record(SERVER_FIELD, ls.cmd, exit_code=proc.returncode, cwd=cwd)
             raise RuntimeError(
                 f"launchServer: command exited (code {proc.returncode}) before {ready_url} "
                 f"was ready — cmd: {ls.cmd!r}"
             )
         if _probe(ready_url):
             say(f"launchServer: {ready_url} ready")
-            return (lambda: _terminate(proc, say)), None
+            gate.record(SERVER_FIELD, ls.cmd, cwd=cwd)
+            return lambda: _terminate(proc, say)
         time.sleep(_POLL_INTERVAL)
     _terminate(proc, say)
+    gate.record(SERVER_FIELD, ls.cmd, exit_code=proc.returncode, cwd=cwd)
     raise RuntimeError(
         f"launchServer: {ready_url} not ready after {ls.ready_timeout}s — cmd: {ls.cmd!r}"
     )

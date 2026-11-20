@@ -28,7 +28,14 @@ from typing import TYPE_CHECKING, Any
 from bajutsu.common.agents.ai_config import PROVIDER_MANAGED_ENV
 from bajutsu.common.backend_cli import simctl as _simctl
 from bajutsu.common.cancellation import GRACE_ENV, grace_seconds
-from bajutsu.common.config import RUNNER_BUILD_WITHHELD_ENV
+from bajutsu.common.capability.command_gate import CommandGate
+from bajutsu.common.capability.command_policy import (
+    COMMAND_EXECUTIONS_KEY,
+    CONFIG_SOURCES,
+    SUBJECT_BUILD_FIELD,
+    CommandPolicy,
+    ConfigSource,
+)
 from bajutsu.common.devices import os as device_os
 from bajutsu.common.devices.runs import coordinates_from_manifest
 from bajutsu.common.evidence.redaction import Redactor
@@ -91,8 +98,6 @@ def _spawn_env(job: Job) -> dict[str, str]:
         # reproducing the silent gap for every ordinary cancel — `serve`'s longer window could never
         # rescue a run that already killed itself.
         e[GRACE_ENV] = f"{grace_seconds():g}"
-    if job.withhold_runner_build:
-        e[RUNNER_BUILD_WITHHELD_ENV] = "1"
     return e
 
 
@@ -418,6 +423,12 @@ def _boot_devices(state: ServeState, job: Job) -> bool:
     return True
 
 
+def _job_source(job: Job) -> ConfigSource:
+    """*job*'s config source; an unknown label reads as `uploaded`, so it never gains trust."""
+    source = job.config_source
+    return source if source in CONFIG_SOURCES else "uploaded"
+
+
 def _build_app(state: ServeState, job: Job) -> bool:
     """Build the app's binary when it is missing, or always when ``job.rebuild`` asks.  Returns
     True if the run may proceed: nothing to build (no ``build`` command, or — without
@@ -440,6 +451,15 @@ def _build_app(state: ServeState, job: Job) -> bool:
             f"this worker cannot build {job.build_platform} apps (worker.yaml `build`) "
             "— skipping the run",
         )
+        with job.lock:
+            job.exit_code = 2
+            job.status = "done"
+        return False
+    policy = CommandPolicy(source=_job_source(job), execution=job.command_execution)
+    if policy.action("build") != "host":
+        # This worker's command policy does not run the config's build for its source (BE-0492):
+        # name the mode rather than start the run against a missing or stale binary.
+        _log(job, f"{policy.refusal(SUBJECT_BUILD_FIELD, job.build)} — skipping the run")
         with job.lock:
             job.exit_code = 2
             job.status = "done"
@@ -482,6 +502,11 @@ def _build_app(state: ServeState, job: Job) -> bool:
             job.status = "done"
         return False
     _log(job, "build ok")
+    # The spawned run then finds the binary in place and builds nothing, so the build's record
+    # travels with the job and joins the run's own in its manifest (BE-0492).
+    gate = CommandGate(policy=policy, config_dir=cwd)
+    gate.record(SUBJECT_BUILD_FIELD, job.build, exit_code=code, cwd=cwd)
+    job.command_records.extend(gate.records)
     return True
 
 
@@ -540,11 +565,13 @@ def fail_unrun_job(state: ServeState, job: Job, reason: str) -> None:
 def _record_provenance(state: ServeState, job: Job) -> None:
     """Record an uploaded bundle's provenance into its run's manifest.json (BE-0073). The run
     subprocess owns the manifest; serve, which alone knows the upload's filename + zip sha256, adds
-    a `provenance` block afterward so "what did this run execute?" is answerable (DESIGN §2). A
-    no-op for a normal run (`provenance` unset) or one that produced no run id (a build/boot
-    failure). Best-effort: a failure here is logged, never raised — it must not strand job
+    a `provenance` block afterward so "what did this run execute?" is answerable (DESIGN §2). The
+    record of a build the worker ran before the run joins it too (BE-0492). A no-op for a run with
+    neither, or one that produced no run id (a build/boot failure). Best-effort: a failure here is logged, never raised — it must not strand job
     finalization (this runs in run_job's `finally`)."""
-    if job.provenance is None or job.run_id is None or not valid_run_id(job.run_id):
+    if (job.provenance is None and not job.command_records) or (
+        job.run_id is None or not valid_run_id(job.run_id)
+    ):
         return
     # The run wrote into the --runs-dir we passed (serve's store under base_cwd, since the run's cwd
     # is the bundle root); the run id is a single safe segment (checked above), so this can't escape
@@ -559,11 +586,18 @@ def _record_provenance(state: ServeState, job: Job) -> None:
         reader = RunArtifactReader(run_dir)
         data = json.loads(reader.read_text("manifest.json"))
         # Merge, don't overwrite: the run subprocess already wrote a `provenance` block (scenario
-        # fingerprint, and BE-0090's `uploadExec` decision). serve adds the upload identity it alone
-        # knows; clobbering would drop both of the subprocess's records.
+        # fingerprint, and the `commandExecutions` it met). serve adds the upload identity it alone
+        # knows, and the worker's own build ran before the run, so its record goes first.
         existing = data.get("provenance")
         existing = existing if isinstance(existing, dict) else {}
-        data["provenance"] = {**existing, **job.provenance}
+        merged = {**existing, **(job.provenance or {})}
+        if job.command_records:
+            ran = existing.get(COMMAND_EXECUTIONS_KEY)
+            merged[COMMAND_EXECUTIONS_KEY] = [
+                *job.command_records,
+                *(ran if isinstance(ran, list) else []),
+            ]
+        data["provenance"] = merged
         RunArtifactWriter(run_dir, Redactor(None)).write_json("manifest.json", data)
     except (OSError, ValueError):
         logger.warning("failed to record bundle provenance into %s", run_dir, exc_info=True)

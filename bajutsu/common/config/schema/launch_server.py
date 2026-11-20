@@ -22,8 +22,9 @@ class LaunchServer(_Model):
     ready_timeout: float = Field(default=30.0, alias="readyTimeout")  # seconds before giving up
     cwd: str | None = None  # working directory (default: the run's cwd)
     env: dict[str, str] = Field(default_factory=dict)  # extra environment for the server
-    # Sandbox runtime for an uploaded bundle's `cmd` (BE-0090). `serve --upload-exec=sandbox` runs
-    # `cmd` inside a throwaway container instead of on the host; exactly one of these declares how
+    # Sandbox runtime for `cmd` (BE-0090). A worker whose `commandExecution` sets `sandbox` for the
+    # config's source (BE-0492) runs `cmd` inside a throwaway container instead of on the host;
+    # exactly one of these declares how
     # the container is built (enforced at the sandbox decision point, not here — a non-sandbox
     # config legitimately ships neither).
     docker_image: str | None = Field(

@@ -294,7 +294,7 @@ def test_land_batch_run_does_not_land_through_a_symlinked_run_directory(tmp_path
 
 def test_record_provenance_merges_not_clobbers(tmp_path: Path) -> None:
     # BE-0090: the run subprocess already wrote a provenance block (scenario fingerprint + the
-    # uploadExec decision); serve must merge its upload identity in, not overwrite both away.
+    # commandExecutions record); serve must merge its upload identity in, not overwrite both away.
     import json
 
     from bajutsu.serve.jobs import _record_provenance
@@ -302,7 +302,10 @@ def test_record_provenance_merges_not_clobbers(tmp_path: Path) -> None:
     runs = tmp_path / "runs"
     run_dir = runs / "20260610-1"
     run_dir.mkdir(parents=True)
-    subprocess_block = {"scenarioHash": "sha256:abc", "uploadExec": {"decision": "sandboxed"}}
+    subprocess_block = {
+        "scenarioHash": "sha256:abc",
+        "commandExecutions": [{"decision": "sandboxed"}],
+    }
     (run_dir / "manifest.json").write_text(
         json.dumps({"runId": "20260610-1", "provenance": subprocess_block}), encoding="utf-8"
     )
@@ -311,7 +314,7 @@ def test_record_provenance_merges_not_clobbers(tmp_path: Path) -> None:
     _record_provenance(state, job)
     prov = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))["provenance"]
     assert prov["scenarioHash"] == "sha256:abc"  # subprocess block survives
-    assert prov["uploadExec"] == {"decision": "sandboxed"}  # the decision survives
+    assert prov["commandExecutions"] == [{"decision": "sandboxed"}]  # the record survives
     assert prov["source"] == "upload" and prov["sha256"] == "z"  # serve's identity merged in
 
 

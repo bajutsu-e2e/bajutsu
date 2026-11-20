@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0492](BE-0492-worker-command-execution-policy-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **承認済み** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0492") |
+| 実装 PR | [#2494](https://github.com/bajutsu-e2e/bajutsu/pull/2494)（単位 1〜8） |
 | トピック | セキュリティ強化 |
 | 関連 | [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source-ja.md)、[BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md)、[BE-0090](../BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution-ja.md)、[BE-0121](../BE-0121-serve-csrf-host-allowlist/BE-0121-serve-csrf-host-allowlist-ja.md)、[BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues-ja.md)、[BE-0449](../BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs-ja.md)、[BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md) |
 <!-- /BE-METADATA -->
@@ -309,14 +310,25 @@ worker を `serve` より先に更新します。本提案より前の worker �
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] `worker.yaml`：`commandExecution` ブロック、デフォルト値、検証、起動時の Docker の確認。
-- [ ] 出どころのラベル：`upload_exec` に代えて `uploaded` / `remote` / `operator` をジョブの intent で運び、ラベルを運ぶオプションで、worker の `worker.yaml` とともに `run`・`record`・`crawl` に渡し、CLI のランにもラベルを付ける。
-- [ ] 名前付きコマンド：`named` モード、`namedCommands` ブロックとその検証、名前付きコマンドの実行。
-- [ ] 振り分け：`command-execution:<source>`、`named-execution:<source>`、`named-command:<name>` のトークンを申告し、コマンドを宣言したジョブに必要なトークンを加える。
-- [ ] ランの中での確認：モードが実行しないコマンド（`named` か `deny` の下で直接書いたコマンドライン、`deny` の下の `use` のエントリ）を、デバイスの作業より前に拒否し、モードが実行しないビルドを飛ばす。
-- [ ] コマンドの記録：`manifest.json` の `commandExecutions` のリストと、レポートでの表示。
-- [ ] `serve --upload-exec`、`$BAJUTSU_UPLOAD_EXEC`、`serve --allow-remote-build`、`$BAJUTSU_ALLOW_REMOTE_BUILD`、`run`・`record`・`crawl` の `--upload-exec` オプションを削除する。
-- [ ] ドキュメント、`DESIGN.md`、`docs/architecture.md` を両言語で更新する。
+- [x] `worker.yaml`：`commandExecution` ブロック、デフォルト値、検証、起動時の Docker の確認。
+- [x] 出どころのラベル：`upload_exec` に代えて `uploaded` / `remote` / `operator` をジョブの intent で運び、ラベルを運ぶオプションで、worker の `worker.yaml` とともに `run`・`record`・`crawl` に渡し、CLI のランにもラベルを付ける。
+- [x] 名前付きコマンド：`named` モード、`namedCommands` ブロックとその検証、名前付きコマンドの実行。
+  - `named` モード、ブロック、その検証、そしてスクリプトを実行する前にランナーが呼ぶ解決処理（`resolve_named_command`）は、この項目で入りました。フックのエントリの `use` フィールドは [BE-0491](../BE-0491-target-command-hooks/BE-0491-target-command-hooks-ja.md) が加えます。それまでは名前付きコマンドを指定できる config がないため、解決したスクリプトを実行するのは BE-0491 のフックの実行部です。
+- [x] 振り分け：`command-execution:<source>`、`named-execution:<source>`、`named-command:<name>` のトークンを申告し、コマンドを宣言したジョブに必要なトークンを加える。
+  - worker は 3 種類のトークンをすべて申告します。config が `services.server.cmd` を宣言したジョブは `command-execution:<source>` を必要とします。ジョブ側の `named-execution:` と `named-command:` の要件は、BE-0491 の `use` フィールドを待ちます。それまでは、名前付きコマンドを指定する config がないためです。worker が `command-execution:<source>` を申告するのは、直接書いたコマンドラインを実行するモード（`allow`、または Docker がある場合の `sandbox`）の出どころに限ります。`named` の出どころには申告しません。拒否するジョブを借り受けないようにするためです。
+- [x] ランの中での確認：モードが実行しないコマンド（`named` か `deny` の下で直接書いたコマンドライン、`deny` の下の `use` のエントリ）を、デバイスの作業より前に拒否し、モードが実行しないビルドを飛ばす。
+- [x] コマンドの記録：`manifest.json` の `commandExecutions` のリストと、レポートでの表示。
+- [x] `serve --upload-exec`、`$BAJUTSU_UPLOAD_EXEC`、`serve --allow-remote-build`、`$BAJUTSU_ALLOW_REMOTE_BUILD`、`run`・`record`・`crawl` の `--upload-exec` オプションを削除する。
+- [x] ドキュメント、`DESIGN.md`、`docs/architecture.md` を両言語で更新する。
+
+ログ：
+
+- 2026-11-20 — 8 つの単位をまとめて実装しました（[#2494](https://github.com/bajutsu-e2e/bajutsu/pull/2494)）。
+  - `worker.yaml` に `commandExecution` と `namedCommands` を加えました。worker は受け付ける出どころを申告し、`services.server.cmd` を宣言した config のジョブは、その出どころのコマンドを実行する worker にだけ振り分けられます。
+  - `serve` は各ジョブに `uploaded`・`remote`・`operator` のラベルを付けます。worker はラベルと自身の `worker.yaml` を、起動する `run`・`record`・`crawl` に渡し、ラン前のビルドも自身で判断します。
+  - ランはデバイスの作業より前にポリシーを確認します。`named` か `deny` の下では、サーバーがすでに応答していても、直接書いたサーバーコマンドを拒否します。実行または拒否したコマンドは、すべて `manifest.json` の `commandExecutions` に記録し、レポートにも表示します。
+  - `serve --upload-exec`、`--allow-remote-build`、それぞれの環境変数、`run`・`record`・`crawl` の `--upload-exec` オプション、`BAJUTSU_WITHHOLD_RUNNER_BUILD` を削除しました。削除したオプションを渡すと、`serve` は名前を挙げて起動を拒否します。
+  - 信頼できない出どころのビルドは `governed_build` で運び、従来の `withhold_runner_build` フラグも引き続き送ります。そのため、この項目より前の worker がそのビルドを実行することはありません。
 
 ## 参考
 

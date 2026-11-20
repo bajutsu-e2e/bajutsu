@@ -31,6 +31,7 @@ import typer
 
 from bajutsu import crawl as crawl_engine
 from bajutsu.cli._shared import (
+    CONFIG_SOURCE_HELP,
     DEFAULT_CONFIG,
     WORKER_CONFIG_HELP,
     _ai_redactor,
@@ -38,6 +39,7 @@ from bajutsu.cli._shared import (
     _command_preconditions_or_exit,
     _device_udid_or_exit,
     _first_run_or_exit,
+    _install_command_gate_or_exit,
     _install_usage_ledger,
     _load_device_worker_or_exit,
     _load_effective_with_source,
@@ -284,7 +286,6 @@ class _CrawlPlan:
     erase: bool
     system_alert_handling: bool
     alert_vision_instruction: str
-    upload_exec: str
 
 
 def _build_lane(
@@ -330,9 +331,7 @@ def _execute(plan: _CrawlPlan, guide: crawl_engine.Guide, report: Report) -> cra
     # Bring up the app's target server (the web baseUrl host) if it declares launchServer — reused
     # if already serving, started otherwise (waiting on its readiness probe). Stopped when this
     # command exits (atexit), since the crawl is a single linear flow with no run-style teardown.
-    stop_server, _exec_decision = _start_launch_server_or_exit(
-        plan.eff, upload_exec=plan.upload_exec or None
-    )
+    stop_server = _start_launch_server_or_exit(plan.eff)
     atexit.register(stop_server)
 
     workers = len(plan.udids)  # one lane per resolved udid (the pool is already capped)
@@ -520,12 +519,8 @@ def crawl(
         help="AI output language for the guide's streamed reasoning — ja / en / auto; overrides "
         "`ai.language`, default leaves the config (auto stays English for crawl)",
     ),
-    upload_exec: str = typer.Option(
-        "",
-        "--upload-exec",
-        hidden=True,
-        help="internal: serve sets this for an uploaded bundle to govern its launchServer command "
-        "(deny | reuse | sandbox); empty = ungoverned local/Git run (BE-0090)",
+    config_origin: str = typer.Option(
+        "operator", "--config-source", hidden=True, help=CONFIG_SOURCE_HELP
     ),
     worker_config: Annotated[
         Path | None, typer.Option("--worker-config", help=WORKER_CONFIG_HELP)
@@ -558,6 +553,8 @@ def crawl(
         typer.echo(msg, err=True)
 
     worker = _load_device_worker_or_exit(worker_config)
+    # The worker's command policy governs the config's server and runner build (BE-0492).
+    _install_command_gate_or_exit(config_origin, worker, config_dir=eff.base_dir)
     eff = _with_worker_device(eff, worker)
     actuator, _ = _select_actuator_or_exit(backend, eff, [], worker)
     # The device comes through the target's provider, as in `run`: the `--udid` pool, or the grid
@@ -633,7 +630,6 @@ def crawl(
         erase=erase,
         system_alert_handling=system_alert_handling_enabled,
         alert_vision_instruction=alert_vision_instruction,
-        upload_exec=upload_exec,
     )
     screen_map = _execute(plan, crawl_guide, say)
     _finish(plan, screen_map)

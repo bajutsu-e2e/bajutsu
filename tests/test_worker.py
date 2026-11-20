@@ -59,6 +59,9 @@ def _stub_advertised_capabilities(monkeypatch: pytest.MonkeyPatch) -> None:
     test_capabilities.py; a test that cares about flag wiring overrides this with its own recorder."""
     monkeypatch.setattr(worker_mod, "_advertised_capabilities", lambda *a, **k: ["platform:ios"])
     monkeypatch.setattr(worker_mod, "devicectl_capabilities", lambda **k: set())
+    # The command-policy tokens (BE-0492) are covered by test_command_policy.py; stubbing them keeps
+    # a lease body independent of whether this machine has Docker.
+    monkeypatch.setattr(worker_mod, "_command_policy_tokens_or_exit", lambda *a, **k: [])
 
 
 class _Handler(BaseHTTPRequestHandler):
