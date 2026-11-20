@@ -132,7 +132,7 @@ def test_a_refused_server_command_fails_before_any_device_is_reserved(
     assert len(list(runs.glob("*/manifest.json"))) == 1
 
 
-def test_server_refusal_is_none_when_the_server_already_answers(
+def test_server_refusal_ignores_an_answering_server(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from bajutsu.common import config
@@ -149,5 +149,7 @@ def test_server_refusal_is_none_when_the_server_already_answers(
     )
     gate = CommandGate(policy=CommandPolicy("uploaded", CommandExecution(uploaded="deny")))
     monkeypatch.setattr(launch_server, "_probe", lambda url, timeout=2.0: True)
-    assert launch_server.server_refusal(eff, gate) is None and gate.records == []
+    refusal = launch_server.server_refusal(eff, gate)
+    assert refusal is not None and "uploaded: deny" in refusal
+    assert [r["decision"] for r in gate.records] == ["refused"]
     assert launch_server.server_refusal(eff, CommandGate()) is None
