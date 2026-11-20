@@ -38,7 +38,7 @@ Bajutsuは決定的な`visual`アサーション種別(BE-0029)をすでに実�
 モーダルが開いた直後、次のステップが閉じる前に、その描画を確認したい場合があります。現状では、
 その検証を最後の画面へ移すためだけに、1つのシナリオを複数へ分割するしかありません。2つ目は、
 この制約が執筆時には見えないことです。スキーマは`assert:`内の`visual`を受け入れます。シナリオの
-ドキュメントは`assert`が`expect`とドメイン固有言語（DSL）を共有すると説明するだけで、しかも
+ドキュメントは`assert`が`expect`とドメイン固有言語（DSL）を共有すると説明するだけで、そのうえ
 `visual`セクション自体の例がすでに`- assert:`の下に書かれています。この例外について、著者への
 警告はどこにもありません。そのため著者は実行時になって初めてこの制約に気づきます。しかもその
 メッセージは、著者が対処できる原因を何も示しません。
@@ -67,8 +67,8 @@ BE-0029、BE-0165、BE-0171がすでに用意した`VisualMatch`スキーマ、`
     それぞれで、このprefixとステップの`StepOutcome.index`を`_run_step_body`へ渡す必要があります。
   - `_poll_asserts`の変更は不要です。撮影は`_poll_asserts`の実行より前に済んでいるからです。
   - `SchemaContext`は同じ分岐で引き続き落とします。BE-0250 Unit 2がここで落としたのは
-    リファクタリング前の挙動を保つためであり、ステップレベルのassertに`responseSchema`が読む
-    ネットワーク交信が存在しないからではありません。この扱いを見直すのは別の変更であり、
+    リファクタリング前の挙動を保つためでした。ステップレベルのassertに、`responseSchema`の読む
+    ネットワーク交信がないからではありません。この扱いを見直すのは別の変更であり、
     本提案の対象外とします。
 - **`visual`エントリを含むステップの`assert:`ブロックごとに、スクリーンショットをちょうど
   1回だけ撮影します。** タイミングは`_poll_asserts`の実行直前です。これにより、そのブロック内の
@@ -103,7 +103,7 @@ BE-0029、BE-0165、BE-0171がすでに用意した`VisualMatch`スキーマ、`
   クリアの両方を踏襲します。マーカーの一時停止だけではありません。** 現状、この2つは別々の
   場所にあります。`_capture_visual_actual`自体は、`_hides_touch_markers`がシナリオのタッチ
   マーカー描画を検出した場合に、`capability_suspended`でマーカーを一時停止するだけです。バナーの
-  クリアは別の呼び出しで、`_evaluate_expect`がその直前に呼ぶ
+  クリアは別の呼び出しです。`_evaluate_expect`がその直前に呼ぶ
   `_clear_notification_banner_before_visual_capture`が行います。
   - ステップレベルのキャプチャにも、`expect`とまったく同じく両方が必要です。バナーのクリアを
     省くと、BE-0416 Unit 8が防ごうとしているのとまったく同じ画像破損を再現してしまいます。
@@ -156,8 +156,8 @@ BE-0029、BE-0165、BE-0171がすでに用意した`VisualMatch`スキーマ、`
   レベルの検証の最初のbaselineは、手動でのコピーが必要になります。
 - **`bajutsu approve`とレポートのvisualストリップには手を付けず、そのことを明記します。**
   - `approve`(`bajutsu/serve/cli/approve.py`)は、シナリオの`expect_results`しか走査しません。
-    レポートのbaseline/actual/diffストリップとApproveボタン(`bajutsu/common/report/rows.py`の
-    `_visual_row`)も、`expect`側の行にしか描画されません。どちらも、ステップの
+    レポートのbaseline/actual/diffストリップとApproveボタンも、`expect`側の行にしか描画されません。
+    この描画は、`bajutsu/common/report/rows.py`の`_visual_row`が担います。どちらも、ステップの
     `assertion_results`は見ていません。
   - 著者は、ステップレベルの検証の最初のbaselineを手動で用意します。baselineがまだ存在しない場合
     でも、失敗した結果は撮影結果のパスを`assertion_results[].visual.actual`として、実行の
