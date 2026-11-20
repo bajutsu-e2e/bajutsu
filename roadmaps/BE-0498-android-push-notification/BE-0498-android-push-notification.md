@@ -555,11 +555,14 @@ Log:
     the previous-app state (out-of-memory adjustment 700) and was not frozen. Unit 6 lists the case
     as supported.
 
-  Two deviations from the Detailed design:
+  Three deviations from the Detailed design:
   - The showcase handler stores the title in a process-wide `PushInbox`, not in the app model. The
     handler registers in `Application.onCreate`, before any Activity and its model exist.
   - The Android lanes ran `push.yaml` and `push_android.yaml` on both twins locally. `push_banner.yaml`
     moved unchanged, so the `actuation` job of `ios-e2e.yml` verifies it on iOS.
+  - The readout sits last on the Permissions tab. The design assumed no visual baseline covers that
+    tab, but `status_bar_android.yaml` frames it down to the photos section. A readout higher up
+    shifted that baseline and pushed `perm.photos.value` below the fold for `select_photos.yaml`.
 
 ## References
 

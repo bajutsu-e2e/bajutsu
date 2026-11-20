@@ -110,7 +110,6 @@ class PermissionsTab(private val activity: MainActivity) {
             requestNotif,
             notifValue,
             notifGranted,
-            pushReceived,
             activity.label("Location"),
             requestLocation,
             locationValue,
@@ -125,6 +124,8 @@ class PermissionsTab(private val activity: MainActivity) {
             openPhotos,
             openPhoto,
             photosValue,
+            // Last on the tab, so it shifts no row above it (the Compose twin's reason).
+            pushReceived,
         )
         root = activity.vstack(activity.header("Permissions"), activity.scrollPage(form)).apply {
             (getChildAt(1).layoutParams as LinearLayout.LayoutParams).apply { height = 0; weight = 1f }

@@ -18,7 +18,10 @@ def _unserializable_path(value: object, path: str) -> str | None:
     """The key path of the first value under *value* that `json.dumps` cannot encode, if any."""
     if isinstance(value, dict):
         for key, item in value.items():
-            found = _unserializable_path(item, f"{path}.{key}" if path else str(key))
+            where = f"{path}.{key}" if path else str(key)
+            if not isinstance(key, str):  # a date key: `json.dumps` rejects the key itself
+                return where
+            found = _unserializable_path(item, where)
             if found is not None:
                 return found
         return None

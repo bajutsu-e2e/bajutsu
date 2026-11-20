@@ -77,8 +77,6 @@ fun PermissionsScreen(model: AppModel) {
                 // A positive condition the run can wait for once granted.
                 Text("Granted", Modifier.aid("perm.notif.authorized"))
             }
-            // The title of the last push bajutsu delivered (SPEC §5.4, BE-0498); empty until one arrives.
-            Text("Last push: ${PushInbox.lastTitle}", Modifier.aid("perm.push.received").stateValue(PushInbox.lastTitle))
 
             Text("Location", style = MaterialTheme.typography.titleMedium)
             TextButton(onClick = { locationLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION) }, modifier = Modifier.aid("perm.requestLocation")) {
@@ -116,6 +114,10 @@ fun PermissionsScreen(model: AppModel) {
                 Text("Open Photo Picker (Single)")
             }
             Text("Selected: ${model.selectedPhotoCount}", Modifier.aid("perm.photos.value").stateValue(model.selectedPhotoCount.toString()))
+            // The title of the last push bajutsu delivered (SPEC §5.4, BE-0498); empty until one arrives.
+            // Last on the tab, so it shifts no row above it: status_bar_android.yaml's baseline frames
+            // the tab down to the photos section, and select_photos.yaml reads perm.photos.value there.
+            Text("Last push: ${PushInbox.lastTitle}", Modifier.aid("perm.push.received").stateValue(PushInbox.lastTitle))
         }
     }
 }

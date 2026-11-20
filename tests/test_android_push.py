@@ -62,6 +62,13 @@ def test_push_limit_counts_an_escaped_character_as_its_escape() -> None:
     assert push_payload_size({"aps": {}, "x": "é"}) == len('{"aps": {}, "x": "\\u00e9"}')
 
 
+def test_an_unquoted_date_key_fails_at_load_naming_its_path() -> None:
+    yaml = "- name: x\n  steps:\n    - push: { payload: { aps: { alert: hi }, meta: { 2024-01-01: x } } }\n"
+    with pytest.raises(ValidationError) as info:
+        load_scenarios(yaml)
+    assert "'meta.2024-01-01' is not JSON-serializable" in str(info.value)
+
+
 def test_an_unquoted_date_fails_at_load_naming_its_path_not_its_value() -> None:
     yaml = "- name: x\n  steps:\n    - push: { payload: { aps: { alert: hi }, meta: { at: 2024-01-01 } } }\n"
     with pytest.raises(ValidationError) as info:
@@ -347,3 +354,30 @@ def test_a_substituted_payload_within_the_limit_is_delivered_substituted() -> No
     result = run_scenario(FakeDriver(), scn, control=ctrl, bindings={"vars.msg": "hello"})  # type: ignore[arg-type]
     assert result.ok
     assert ctrl.pushes == [{"aps": {"alert": "hello"}}]
+
+
+def test_a_nested_push_is_left_authored_for_its_own_substitution() -> None:
+    # The outer step must not validate a substituted nested payload (it would raise and abort the
+    # run); the nested step is substituted, and re-measured, when it runs on its own.
+    from bajutsu.common.orchestrator.substitution import _interp_step
+
+    step = Step.model_validate(
+        {
+            "forEach": {
+                "sel": {"id": "${vars.row}"},
+                "as": "r",
+                "steps": [{"push": {"payload": {"aps": {"alert": "${secrets.BIG}"}}}}],
+            }
+        }
+    )
+    big = SECRET + "x" * PUSH_PAYLOAD_LIMIT
+    result = _interp_step(step, {"secrets.BIG": big, "vars.row": "row"})
+    assert result.for_each is not None
+    assert result.for_each.sel.id == "row"  # the outer step is still substituted
+    nested = result.for_each.steps[0].push
+    assert nested is not None
+    assert nested.payload == {"aps": {"alert": "${secrets.BIG}"}}
+    # Run on its own, the nested step substitutes and keeps the size re-check for the handler.
+    inner = _interp_step(result.for_each.steps[0], {"secrets.BIG": big})
+    assert inner.push is not None
+    assert inner.push.payload == {"aps": {"alert": big}}

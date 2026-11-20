@@ -1657,7 +1657,7 @@ The scenario loader checks the `push` payload before any device work, on every b
   fails; quote it as a string.
 
 A `${vars.*}` or `${secrets.*}` token can grow the payload after loading. A step whose substituted
-payload passes the limit fails at run time. Its message names the size and the limit alone.
+payload exceeds the limit fails at run time. Its message names the size and the limit alone.
 
 ### `http` (request, for test-data setup)
 

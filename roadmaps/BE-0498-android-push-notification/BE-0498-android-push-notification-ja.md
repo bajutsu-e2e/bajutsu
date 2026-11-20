@@ -561,12 +561,15 @@ Android ではアプリに BajutsuAndroid ライブラリが必要であるこ�
     （メモリ不足時の調整値 700）にあり、凍結されていませんでした。そのため作業単位 6 では、この場合を
     対応済みとしました。
 
-  詳細設計との違いは 2 つあります。
+  詳細設計との違いは 3 つあります。
   - showcase のハンドラは、タイトルをアプリのモデルではなく、プロセス全体の `PushInbox` に保存します。
     ハンドラは `Application.onCreate` で登録するため、その時点では Activity もモデルもまだありません。
   - Android のレーンは、`push.yaml` と `push_android.yaml` を両方の双子でローカルに実行しました。
     `push_banner.yaml` は中身を変えずに移したので、iOS での確認は `ios-e2e.yml` の `actuation` ジョブが
     行います。
+  - 表示は Permissions タブの最後に置きました。設計はこのタブを覆う画像のベースラインがないと
+    想定していましたが、`status_bar_android.yaml` が写真の節までを撮っています。表示を上に置くと、
+    そのベースラインがずれ、`select_photos.yaml` が読む `perm.photos.value` も画面外に押し出されました。
 
 ## 参考
 
