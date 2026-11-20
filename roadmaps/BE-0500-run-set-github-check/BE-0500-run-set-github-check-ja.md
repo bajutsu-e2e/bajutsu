@@ -1,14 +1,14 @@
-[English](BE-XXXX-run-set-github-check.md) · **日本語**
+[English](BE-0500-run-set-github-check.md) · **日本語**
 
-# BE-XXXX — run-set のグループを GitHub の check run として公開する
+# BE-0500 — run-set のグループを GitHub の check run として公開する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-run-set-github-check-ja.md) |
+| 提案 | [BE-0500](BE-0500-run-set-github-check-ja.md) |
 | 提案者 | [@paihu](https://github.com/paihu) |
 | 状態 | **承認済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0500") |
 | トピック | 外部サービスとの連携 |
 | 関連 | [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications-ja.md), [BE-0224](../BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth-ja.md), [BE-0414](../BE-0414-ci-oidc-machine-identity/BE-0414-ci-oidc-machine-identity-ja.md), [BE-0484](../BE-0484-job-group-lease/BE-0484-job-group-lease-ja.md) |
 <!-- /BE-METADATA -->

@@ -1,14 +1,14 @@
-[English](BE-XXXX-run-set-fail-fast.md) · **日本語**
+[English](BE-0499-run-set-fail-fast.md) · **日本語**
 
-# BE-XXXX — run-set のグループを最初の失敗で止める
+# BE-0499 — run-set のグループを最初の失敗で止める
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-run-set-fail-fast-ja.md) |
+| 提案 | [BE-0499](BE-0499-run-set-fail-fast-ja.md) |
 | 提案者 | [@paihu](https://github.com/paihu) |
 | 状態 | **承認済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0499") |
 | トピック | Device-cloud execution |
 | 関連 | [BE-0484](../BE-0484-job-group-lease/BE-0484-job-group-lease-ja.md) |
 <!-- /BE-METADATA -->

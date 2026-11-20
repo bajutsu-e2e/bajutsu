@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-run-set-github-check-ja.md)
+**English** · [日本語](BE-0500-run-set-github-check-ja.md)
 
-# BE-XXXX — Publish a run-set group as a GitHub check run
+# BE-0500 — Publish a run-set group as a GitHub check run
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-run-set-github-check.md) |
+| Proposal | [BE-0500](BE-0500-run-set-github-check.md) |
 | Author | [@paihu](https://github.com/paihu) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0500") |
 | Topic | Integration with external services |
 | Related | [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications.md), [BE-0224](../BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth.md), [BE-0414](../BE-0414-ci-oidc-machine-identity/BE-0414-ci-oidc-machine-identity.md), [BE-0484](../BE-0484-job-group-lease/BE-0484-job-group-lease.md) |
 <!-- /BE-METADATA -->
