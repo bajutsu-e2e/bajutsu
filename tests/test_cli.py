@@ -2267,10 +2267,8 @@ def test_serve_refuses_the_removed_command_policy_options(
 ) -> None:
     # The worker's worker.yaml decides now (BE-0492); a server-side value would decide nothing, so
     # serve stops and names the new home rather than starting with it silently ignored.
-    import bajutsu.serve as srv
-
     started: list[object] = []
-    monkeypatch.setattr(srv, "serve", lambda **kw: started.append(kw))
+    monkeypatch.setattr("bajutsu.serve.serve", lambda **kw: started.append(kw))
     for name, value in env.items():
         monkeypatch.setenv(name, value)
     r = invoke(runner, app, ["serve", *args, "--config", "bajutsu.config.yaml"])
@@ -2283,10 +2281,8 @@ def test_serve_ignores_an_allow_remote_build_env_that_read_as_off(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # `false` never asked for a remote build, so it does not stop the server (BE-0492).
-    import bajutsu.serve as srv
-
     started: list[object] = []
-    monkeypatch.setattr(srv, "serve", lambda **kw: started.append(kw))
+    monkeypatch.setattr("bajutsu.serve.serve", lambda **kw: started.append(kw))
     monkeypatch.setenv("BAJUTSU_ALLOW_REMOTE_BUILD", "false")
     r = invoke(runner, app, ["serve", "--config", "bajutsu.config.yaml"])
     assert r.exit_code == 0 and len(started) == 1
