@@ -374,16 +374,50 @@ def test_android_control_push_under_real_run_is_bounded(
     assert base64.b64encode(_SECRET.encode()).decode() not in str(info.value)
 
 
-@pytest.mark.parametrize(
-    "code", [0, adb.PUSH_RESULT_NO_NOTIFICATION_PERMISSION, adb.PUSH_RESULT_FAILED]
-)
-def test_a_failed_android_push_fails_its_step_not_the_run(code: int) -> None:
-    ctrl = platform_lifecycle.android_device_control("E", _PKG, env_run=_reply(code))
+def _push_step_result(ctrl: DeviceControl) -> str:
+    """Run one push step through *ctrl*, check it failed the step, and return the failure text."""
     scn = Scenario(name="s", steps=[Step(push=Push(payload={"aps": {"alert": _SECRET}}))])
     result = run_scenario(FakeDriver(), scn, control=ctrl)
     assert not result.ok
-    assert "push" in (result.failure or "")
     assert _SECRET not in repr(result)
+    assert base64.b64encode(_SECRET.encode()).decode() not in repr(result)
+    return result.failure or ""
+
+
+@pytest.mark.parametrize(
+    ("env_run", "message"),
+    [
+        (_reply(0), "no BajutsuAndroid push receiver"),
+        (_reply(adb.PUSH_RESULT_NO_NOTIFICATION_PERMISSION), "notifications: grant"),
+        (
+            _reply(adb.PUSH_RESULT_FAILED, base64.b64encode(b"handler broke").decode()),
+            "push handler threw: handler broke",
+        ),
+    ],
+)
+def test_a_failed_android_push_fails_its_step_not_the_run(
+    env_run: Callable[[list[str]], str], message: str
+) -> None:
+    ctrl = platform_lifecycle.android_device_control("E", _PKG, env_run=env_run)
+    assert message in _push_step_result(ctrl)
+
+
+@pytest.mark.parametrize(
+    ("raised", "message"),
+    [
+        (subprocess.TimeoutExpired(cmd=["adb"], timeout=10), "did not answer within"),
+        (subprocess.CalledProcessError(1, ["adb"], stderr="device offline"), "exit 1"),
+    ],
+)
+def test_a_bounded_android_push_failure_fails_its_step_not_the_run(
+    monkeypatch: pytest.MonkeyPatch, raised: Exception, message: str
+) -> None:
+    def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        raise raised
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    ctrl = platform_lifecycle.android_device_control("emulator-5554", _PKG)
+    assert message in _push_step_result(ctrl)
 
 
 # --- capability declaration + preflight (BE-0212 tokens) ---

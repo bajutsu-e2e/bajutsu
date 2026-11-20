@@ -168,6 +168,10 @@ def bounded_push_run(args: list[str]) -> str:
         ) from None
     except subprocess.CalledProcessError as exc:
         detail = (exc.stderr if isinstance(exc.stderr, str) else "").strip()
+        # adb or `am` can echo an argv element in a usage error; blank every `--es` value first.
+        for i, arg in enumerate(args[:-2]):
+            if arg == "--es":
+                detail = detail.replace(args[i + 2], "<redacted>")
         msg = f"push: adb failed (exit {exc.returncode})"
         raise DeviceError(f"{msg}\n{detail}" if detail else msg) from None
     except OSError as exc:

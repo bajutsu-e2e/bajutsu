@@ -85,6 +85,10 @@ def test_an_unquoted_date_fails_at_load_naming_its_path_not_its_value() -> None:
             {"aps": {"alert": "a", "badge": 3, "sound": "x"}, "id": "42", "n": 7, "o": {"k": [1]}},
             (None, "a", {"id": "42", "n": "7", "o": '{"k": [1]}'}),
         ),
+        (
+            {"aps": {}, "ok": True, "none": None, "jp": "日本"},
+            (None, None, {"ok": "true", "none": "null", "jp": "日本"}),
+        ),
     ],
 )
 def test_map_push_payload(
@@ -224,8 +228,16 @@ def test_env_push_maps_and_sends_through_a_faked_run() -> None:
     ]
 
 
-def test_env_push_takes_the_bounded_runner_under_real_run() -> None:
-    assert adb.Env("emulator-5554")._push_run is adb.bounded_push_run
+def test_env_push_takes_the_bounded_runner_under_real_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, Any] = {}
+
+    def fake_run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        seen.update(kwargs)
+        return subprocess.CompletedProcess(args, 0, stdout="result=1", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    adb.Env("emulator-5554").push("com.demo", {"aps": {}})
+    assert seen["timeout"] == adb.PUSH_BROADCAST_TIMEOUT_S
 
 
 def test_env_push_prefers_an_explicit_push_run() -> None:
@@ -242,13 +254,61 @@ def test_env_push_prefers_an_explicit_push_run() -> None:
     assert len(calls) == 1
 
 
-@pytest.mark.parametrize("code", ["0", "4"])
-def test_env_push_raises_device_error_without_payload_text(code: str) -> None:
-    def fake_run(args: list[str]) -> str:
-        return f"Broadcast completed: result={code}"
+def _replying(reply: str) -> adb.RunFn:
+    return lambda args: reply
 
+
+def _raising(exc: Exception) -> adb.RunFn:
+    def run(args: list[str]) -> str:
+        raise exc
+
+    return run
+
+
+@pytest.mark.parametrize(
+    ("push_run", "message"),
+    [
+        (_replying("Broadcast completed: result=0"), "no BajutsuAndroid push receiver"),
+        (_replying("Broadcast completed: result=4"), "notifications: grant"),
+        (
+            _replying(f'Broadcast completed: result=5, data="{_b64("handler broke")}"'),
+            "push handler threw: handler broke",
+        ),
+        (_raising(adb.DeviceError("push: the receiver did not answer")), "did not answer"),
+        (_raising(adb.DeviceError("push: adb failed (exit 1)")), "exit 1"),
+    ],
+)
+def test_env_push_raises_device_error_without_payload_text(
+    push_run: adb.RunFn, message: str
+) -> None:
+    def run(args: list[str]) -> str:
+        raise AssertionError("push must go through push_run")
+
+    with pytest.raises(adb.DeviceError, match=message) as info:
+        adb.Env("emulator-5554", run=run, push_run=push_run).push(
+            "com.demo", {"aps": {"alert": SECRET}}
+        )
+    assert SECRET not in str(info.value)
+    assert _b64(SECRET) not in str(info.value)
+
+
+@pytest.mark.parametrize(
+    "raised",
+    [
+        subprocess.TimeoutExpired(cmd=["adb"], timeout=10),
+        # adb echoing an argv value on stderr must not carry the payload into the message.
+        subprocess.CalledProcessError(1, ["adb"], stderr=f"error: bad extra {_b64(SECRET)}"),
+    ],
+)
+def test_env_push_under_real_run_raises_without_payload_text(
+    monkeypatch: pytest.MonkeyPatch, raised: Exception
+) -> None:
+    def fake_run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        raise raised
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
     with pytest.raises(adb.DeviceError) as info:
-        adb.Env("emulator-5554", run=fake_run).push("com.demo", {"aps": {"alert": SECRET}})
+        adb.Env("emulator-5554").push("com.demo", {"aps": {"alert": SECRET}})
     assert SECRET not in str(info.value)
     assert _b64(SECRET) not in str(info.value)
 

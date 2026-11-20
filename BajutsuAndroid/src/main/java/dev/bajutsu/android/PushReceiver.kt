@@ -53,7 +53,9 @@ class PushReceiver(private val handler: BajutsuPushHandler?) : BroadcastReceiver
         if (handler != null) {
             try {
                 handler.onPush(push)
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                // Throwable, not Exception: a test handler's `TODO()` or `assert` throws an Error,
+                // which must come back as the handler's failure, not crash the app as "no receiver".
                 resultCode = Bajutsu.RESULT_PUSH_FAILED
                 resultData = encode(e.message ?: e.javaClass.name)
                 return

@@ -1650,8 +1650,9 @@ The scenario loader checks the `push` payload before any device work, on every b
 - `aps.alert`, when present, is a string or an object. Its `title` and `body`, when present, are
   strings.
 - The payload stays within 4,096 bytes. The measure is the length of the default `json.dumps` text.
-  `simctl push` receives that same text. The text escapes each character above code point 127, and
-  such a character counts as six.
+  `simctl push` receives that same text. The text escapes each character above code point 127 as `\uXXXX`, so
+  such a character counts as six. A character outside the Basic Multilingual Plane, such as an emoji,
+  counts as twelve.
 - Every value is JSON-serializable. An unquoted date such as `at: 2024-01-01` loads as a date and
   fails; quote it as a string.
 
