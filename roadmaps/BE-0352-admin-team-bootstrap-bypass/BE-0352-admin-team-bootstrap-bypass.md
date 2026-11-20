@@ -90,8 +90,8 @@ What follows depends on whether a shared token exists:
 
 The check fires precisely when `oauth is None` *and* at least one of the three GitHub variables is
 set. That describes a half-configured deployment, not a deliberately token-auth-only one. It prints
-that GitHub OAuth is only partly configured and that GitHub sign-in will 404 until all three GitHub
-variables are set. The message names whichever of the two fallbacks the deployment fell into (`token`
+that GitHub OAuth is only partly configured and that GitHub sign-in will 404. It keeps printing
+until all three GitHub variables are set. The message names whichever of the two fallbacks the deployment fell into (`token`
 is already a parameter of `_build_server_state`). It also names exactly which of `cid` / `secret` /
 `redirect` is unset, instead of listing the whole triple as a checklist. An operator who mistyped a
 variable *name* (`_REDIRECT_URL` for `_REDIRECT_URI`, say) would otherwise see all three look present

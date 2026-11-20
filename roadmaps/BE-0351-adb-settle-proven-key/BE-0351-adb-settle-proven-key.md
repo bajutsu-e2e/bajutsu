@@ -169,7 +169,7 @@ withhold it rather than mismatch it:
 - **`web` blocks.** Inside a `web` block, the post-step capture always targets the native driver,
   because a `WebContextDriver` cannot screenshot. `elements.json` there is written from the *web*
   driver's tree. A `rawTree` request is dropped there rather than serviced. The native driver's dump
-  would describe an unrelated backend and read, which is worse than no artifact.
+  would describe an unrelated backend and an unrelated read, which is worse than no artifact.
 - **Label redaction.** `write_raw_tree` refuses the artifact outright when `redactor.has_label_rules`
   is true (`redact.labels` configured). It logs why and writes neither file. `redact_elements` masks a
   labeled element's `value` structurally, using the parsed tree. The raw dump is free text with no

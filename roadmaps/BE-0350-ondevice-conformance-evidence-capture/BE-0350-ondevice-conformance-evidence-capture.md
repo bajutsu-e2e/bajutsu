@@ -38,7 +38,7 @@ content)`. A screen recording would settle this kind of scroll-timing mismatch a
 
 The job's own log ends with `No files were found with the provided path: runs/. No artifacts will
 be uploaded.` The workflow's "Upload run artifacts" step already exists and already targets
-`runs/`, the path every scenario-driven Android job populates. Neither on-device pytest suite ever
+`runs/`, the path every scenario-driven Android job populates. Neither Android on-device pytest suite ever
 writes anything under that path.
 
 The missing capture follows from how these suites reach the device. The capture code itself is not
@@ -160,8 +160,8 @@ The coverage claims in the Introduction and in Unit 3 therefore hold for a failu
 test's own function-scoped setup. A failure during a suite's own module-scoped bring-up sits
 outside this item's scope.
 
-The hook must reset the per-attempt outcome at each "setup" report and accumulate it, never reset
-it, afterward. Latching it true forever would be wrong. The iOS conformance suite's own
+The hook must reset the per-attempt outcome at each "setup" report, then only accumulate it —
+never reset it again. Latching it true forever would be wrong. The iOS conformance suite's own
 `backend_crash_recovery` marker (BE-0334) re-runs a whole item, this fixture included, via
 `_initrequest()` on an infrastructure-fault retry. The re-run reuses the same `pytest.Item` and
 therefore the same stash across attempts. A tag that only ever turned true would still read
