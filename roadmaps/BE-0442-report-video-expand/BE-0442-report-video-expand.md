@@ -118,25 +118,31 @@ Registering after the return would leave such a video with no recorded home. Clo
 then drop the recording instead of restoring it.
 
 `vzMount(player)` moves that player's `<video>` *and* its `.vctl` control bar into `.vz-video`,
-both with a plain `appendChild` — a DOM move, not a clone. Moving `.vctl` along with the video is
-what keeps play/pause and the scrubber usable at the enlarged size; moving the video alone would
-strand the controls on the now-empty player, behind the modal. Playback position, pause state, and
-every listener already attached (`play` / `pause` / `timeupdate` / `syncSiblings`,
-[report.js:796](../../bajutsu/templates/report.js)–[report.js:822](../../bajutsu/templates/report.js))
-survive untouched — reparenting a node does not detach its listeners. The moved bar's own
-`.vexpand` button finds no `.player` ancestor to reopen once it sits inside the modal it already
-opened, so `vzMount` hides it there rather than leave a control that does nothing. `.vexpand`
-carries its own `display:flex`, which outranks the UA stylesheet's `[hidden]{display:none}`
-regardless of specificity — `report.css` restates the rule as `.vexpand[hidden]{display:none}`, the
-same way `.vz-tabs[hidden]` and `.sttbl>tbody>tr[hidden]` already do for their own `display`
-declarations. `player` itself gets `hidden` once both children have moved out.
+both with a plain `appendChild`. The operation is a DOM move, not a clone.
 
-`vzRestore()` reverses this: `home.appendChild(vzActive)` puts the video back, then the `.vctl`
-still sitting in `.vz-video` — its `.vexpand` unhidden first — goes back the same way. Appending
-both, in order, recreates `player`'s original child order. A video and its `.vctl` are the two
-children `vzMount` ever takes out. Clearing `hidden` finishes the restore. Toggling a
-player's `hidden` changes `.players`' own height, so `vzRestore` also calls the existing
-`syncResultHeight(scn)`
+Moving `.vctl` along with the video is what keeps play/pause and the scrubber usable at the enlarged
+size. Moving the video alone would strand the controls on the now-empty player, behind the modal.
+
+Playback position, pause state, and every listener already attached (`play` / `pause` /
+`timeupdate` / `syncSiblings`,
+[report.js:796](../../bajutsu/templates/report.js)–[report.js:822](../../bajutsu/templates/report.js))
+survive untouched, because reparenting a node does not detach its listeners.
+
+The moved bar's own `.vexpand` button finds no `.player` ancestor to reopen once it sits inside the
+modal it already opened. `vzMount` therefore hides the button there, rather than leave a control
+that does nothing. `.vexpand` carries its own `display:flex`, which outranks the UA stylesheet's
+`[hidden]{display:none}` regardless of specificity. `report.css` restates the rule as
+`.vexpand[hidden]{display:none}`, the same way `.vz-tabs[hidden]` and `.sttbl>tbody>tr[hidden]`
+already do for their own `display` declarations. `player` itself gets `hidden` once both children
+have moved out.
+
+`vzRestore()` reverses this move. `home.appendChild(vzActive)` puts the video back. Then the `.vctl`
+still sitting in `.vz-video` goes back the same way, with its `.vexpand` unhidden first. Appending
+both, in order, recreates `player`'s original child order, because a video and its `.vctl` are the
+two children `vzMount` ever takes out. Clearing `hidden` finishes the restore.
+
+Toggling a player's `hidden` changes `.players`' own height. `vzRestore` therefore also calls the
+existing `syncResultHeight(scn)`
 ([report.js:529](../../bajutsu/templates/report.js)–[report.js:541](../../bajutsu/templates/report.js))
 to keep the Result tab's height bound current.
 
@@ -158,30 +164,36 @@ whole scenario.
 Within each section's loop, `vzBuildSteps` reads that section's own `table.sttbl`
 (`section.querySelector('table.sttbl')`) and collects
 `srcTable.querySelectorAll('tr.srow[data-target], tr.skip[data-target]')` in document order.
-`[data-target]` matters on both halves of the selector, the same guard `rowsFor` itself applies —
-scoping `srcTable.querySelectorAll` to one `.steps-sec`'s own `table.sttbl` is what keeps an
-unevaluated `expect`'s own `tr.skip` (the expectations table's `.extbl`, the `exrow` macro,
-[report.html.j2:61](../../bajutsu/templates/report.html.j2)) out of the clone, not this attribute:
-that row carries no `data-target` of its own either way, but `.extbl` sits outside every
-`.steps-sec` — a sibling of `.rich-scroll` in `rich()` — so it is never in scope to begin with.
-Dropping the guard on `tr.skip` would still be wrong, though: without it, a future row type that
-does carry a `data-target` and does live inside a `.steps-sec` could reach this query unfiltered.
+`[data-target]` matters on both halves of the selector, the same guard `rowsFor` itself applies.
+
+Scoping `srcTable.querySelectorAll` to one `.steps-sec`'s own `table.sttbl` is what keeps an
+unevaluated `expect`'s own `tr.skip` out of the clone, not this attribute. That row belongs to the
+expectations table's `.extbl` (the `exrow` macro,
+[report.html.j2:61](../../bajutsu/templates/report.html.j2)) and carries no `data-target` of its own
+either way. `.extbl` sits outside every `.steps-sec`, as a sibling of `.rich-scroll` in `rich()`, so
+it is never in scope to begin with.
+
+Dropping the guard on `tr.skip` would still be wrong. Without it, a future row type that does carry
+a `data-target` and does live inside a `.steps-sec` could reach this query unfiltered.
 
 `vzBuildSteps` keeps each candidate row when `r.classList.contains('skip') || mine.indexOf(r) !== -1`,
 where `mine` is the result of the existing `rowsFor(scn, target)` helper
-([report.js:565](../../bajutsu/templates/report.js)), called once before the section loop starts. It
-keeps a skip row — a step that never ran, execution stopped at an earlier failure
-([rows.py](../../bajutsu/common/report/rows.py)'s `_step_skip_row`) — unconditionally: the row
-carries no `target` of its own (the step that would have run it never got the chance to name one),
-which rules out scoping it to one player's tab the way an executed row can. Keeping every one matches
-what the compact table already shows — the same skipped steps, once, regardless of which target
-was next in line. A single-target scenario's own `rowsFor` call returns every row it has; a
-multi-target one returns the matching target's own alone. `rowsFor` returns body rows alone
-(`tr.srow[data-target]`), never a row's own companion rows (`.alertrow` / `.actrow` / `.genrow` — a
-step can emit up to all three, [report.html.j2:45](../../bajutsu/templates/report.html.j2)). So
-`vzBuildSteps` also clones each kept row's own following companion rows, where any exist. A skip
-row carries no `data-t`. `vzBuildSteps` clones it, but adds body rows alone
-(`r.classList.contains('srow')`) to `cloneRows`, the highlight/seek array.
+([report.js:565](../../bajutsu/templates/report.js)), called once before the section loop starts.
+
+- **Skip rows.** A skip row is a step that never ran because execution stopped at an earlier failure
+  ([rows.py](../../bajutsu/common/report/rows.py)'s `_step_skip_row`). `vzBuildSteps` keeps it
+  unconditionally. The row carries no `target` of its own, because the step that would have run it
+  never got the chance to name one. That rules out scoping it to one player's tab the way an
+  executed row can. Keeping every skip row matches what the compact table already shows: the same
+  skipped steps, once, regardless of which target was next in line.
+- **Executed rows.** A single-target scenario's own `rowsFor` call returns every row it has. A
+  multi-target scenario's call returns the matching target's own rows alone.
+- **Companion rows.** `rowsFor` returns body rows alone (`tr.srow[data-target]`), never a row's own
+  companion rows (`.alertrow` / `.actrow` / `.genrow`). A step can emit up to all three
+  ([report.html.j2:45](../../bajutsu/templates/report.html.j2)). `vzBuildSteps` therefore also
+  clones each kept row's own following companion rows, where any exist.
+- **Highlight array.** A skip row carries no `data-t`. `vzBuildSteps` clones it, but adds body rows
+  alone (`r.classList.contains('srow')`) to `cloneRows`, the highlight/seek array.
 
 A multi-target scenario can leave every step of one target skipped, when another target's step fails
 first. That target's own player has no `tr.srow` at all, yet the scenario's shared skip rows still

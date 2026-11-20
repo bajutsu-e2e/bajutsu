@@ -19,17 +19,24 @@ A roadmap item's `Status` field takes one of five values today
 ([BE-0366](../BE-0366-roadmap-rejected-status/BE-0366-roadmap-rejected-status.md)):
 `Implemented`, `In progress`, `Proposal`, `Deferred`, and `Rejected`. This item renames one of
 them: `Proposal` (Japanese: 提案) becomes `Approved` (Japanese: 承認済み). The other four values,
-and their Japanese labels, stay unchanged. The rename touches every place that reads or writes the
-literal `Status` value — roadmap scripts, CI workflows, existing roadmap item files, documentation,
-Agent Package Manager (APM) skill sources, and their gate tests — and nothing else. It leaves the
-generic word "proposal", which names the act of proposing a new roadmap item rather than a `Status`
-value, exactly where it stands today: the `ideation` and `propose-and-build` skill names, the
-`roadmap-proposal-approvals.yml` workflow's job name and its exemption label
-`single-approver proposal`, and the roadmap metadata table's separate `Proposal` field, which links
-to the item's own file (a self-reference, in the Swift-Evolution style every item's metadata block
-already follows). It also leaves the dashboard bucket's indigo color and
-the `class Proposal` dataclass in `bajutsu/common/agents/protocols/proposal.py` — an unrelated
-data type an agent uses to propose its next action — untouched.
+and their Japanese labels, stay unchanged.
+
+The rename touches every place that reads or writes the literal `Status` value, and nothing else:
+roadmap scripts, CI workflows, existing roadmap item files, documentation, Agent Package Manager
+(APM) skill sources, and their gate tests.
+
+The generic word "proposal" names the act of proposing a new roadmap item rather than a `Status`
+value. It stays exactly where it stands today:
+
+- the `ideation` and `propose-and-build` skill names
+- the `roadmap-proposal-approvals.yml` workflow's job name and its exemption label
+  `single-approver proposal`
+- the roadmap metadata table's separate `Proposal` field, which links to the item's own file (a
+  self-reference, in the Swift-Evolution style every item's metadata block already follows)
+
+The dashboard bucket's indigo color stays untouched too. So does the `class Proposal` dataclass in
+`bajutsu/common/agents/protocols/proposal.py`, an unrelated data type an agent uses to propose its
+next action.
 
 ## Motivation
 
@@ -40,43 +47,51 @@ workflow enforces this by comparing the item's `Status` field against the litera
 carrying the exemption label `single-approver proposal` needs only one approval instead
 ([L101-110](../../.github/workflows/roadmap-proposal-approvals.yml#L101-L110)).
 
-Most items that reach `main` with `Status: Proposal`, therefore, already cleared a two-reviewer
-review — the exemption label covers only a minority of merges. The name `Proposal` nonetheless
-reads as "still under consideration, not yet decided". A contributor scanning the roadmap dashboard
-can misread a reviewed, ready-to-build item as one the maintainers have not yet accepted. A new
-contributor who picks a first task from the dashboard's "Show open only" view acts on that
-misreading directly, passing over ready-to-build work as if it still awaited a decision.
+Most items that reach `main` with `Status: Proposal` therefore already cleared a two-reviewer
+review. The exemption label covers only a minority of merges.
 
-Renaming the value to `Approved` removes the mismatch: a status a reader sees only after the
-review gate has passed — two approvals, or one under the `single-approver proposal` waiver — reads
-as passed. After this item ships, `make roadmap-status
-STATUS="Proposal"` returns no items, `make roadmap-status STATUS="Approved"` returns the items that
-used to carry `Proposal`, and the roadmap dashboard's bucket that used to read "Proposals" reads
-"Approved".
+The name `Proposal` nonetheless reads as "still under consideration, not yet decided". A contributor
+scanning the roadmap dashboard can misread a reviewed, ready-to-build item as one the maintainers
+have not yet accepted. A new contributor who picks a first task from the dashboard's "Show open
+only" view acts on that misreading directly, passing over ready-to-build work as if it still awaited
+a decision.
 
-The rename does not conflict with the "the code decides the Status" principle
-[`docs/ai-development.md`](../../docs/ai-development.md#roadmap-items-be-ids-strict) states: that
+Renaming the value to `Approved` removes the mismatch. A reader sees that status only after the
+review gate has passed (two approvals, or one under the `single-approver proposal` waiver), and the
+name reads as passed.
+
+After this item ships, three things differ:
+
+- `make roadmap-status STATUS="Proposal"` returns no items.
+- `make roadmap-status STATUS="Approved"` returns the items that used to carry `Proposal`.
+- The roadmap dashboard's bucket that used to read "Proposals" reads "Approved".
+
+The rename does not conflict with the "the code decides the Status" principle that
+[`docs/ai-development.md`](../../docs/ai-development.md#roadmap-items-be-ids-strict) states. That
 principle's axis is whether an item's implementation exists, not whether the item has been
-reviewed. `Approved` is a new name for the same status — no implementation yet — not a new axis. A
-freshly scaffolded item, before its proposal PR has seen any review, also carries `Status: Approved`
-under this rule, and `roadmap-filter` ([`scripts/roadmap_query.py`](../../scripts/roadmap_query.py))
-reads a `BE-0443` placeholder on a local branch exactly like a numbered item, so a session working on
-an unreviewed proposal can see that value before review. That is not a new failure mode: the
+reviewed. `Approved` is a new name for the same status (no implementation yet), not a new axis.
+
+A freshly scaffolded item, before its proposal PR has seen any review, also carries
+`Status: Approved` under this rule. `roadmap-filter` ([`scripts/roadmap_query.py`](../../scripts/roadmap_query.py))
+reads a `BE-0443` placeholder on a local branch exactly like a numbered item, so a session working
+on an unreviewed proposal can see that value before review. That is not a new failure mode. The
 scaffolder's previous default, `Proposal`, was visible the same way on a local branch before this
-item shipped, and `Status` has never claimed to describe anything beyond "does this item's
-implementation exist" — a freshly scaffolded item, whatever its `Status` reads, plainly has none.
-The misreading this item removes is the public one: a stranger reading the **published** dashboard
-or running `roadmap-filter` against `main`, where every listed item already cleared the review gate
-— two approvals, or one under the waiver label — before the value could appear there at all. The
-paragraph in `docs/ai-development.md` that
-states the principle itself names `Proposal`, so it is in scope for this item's documentation
-updates too, alongside a few surfaces that call implementing a `Proposal` the moment it is
-*accepted* ([`.apm/skills/implement-be/SKILL.md`](../../.apm/skills/implement-be/SKILL.md),
-[`docs/roadmap-workflow.md`](../../docs/roadmap-workflow.md),
-[`docs/contributor-workflow-tutorial.md`](../../docs/contributor-workflow-tutorial.md)): this item's
-own premise is that acceptance already happened at the two-approval merge, so those surfaces are
-reworded to say implementing an `Approved` item **starts** it, not that starting it accepts it
-(see *Detailed design*).
+item shipped. And `Status` has never claimed to describe anything beyond "does this item's
+implementation exist": a freshly scaffolded item, whatever its `Status` reads, plainly has none.
+
+The misreading this item removes is the public one. A stranger reads the **published** dashboard, or
+runs `roadmap-filter` against `main`. Every item listed there already cleared the review gate (two
+approvals, or one under the waiver label) before the value could appear at all.
+
+The paragraph in `docs/ai-development.md` that states the principle itself names `Proposal`, so it
+is in scope for this item's documentation updates too. A few other surfaces call implementing a
+`Proposal` the moment it is *accepted*:
+[`.apm/skills/implement-be/SKILL.md`](../../.apm/skills/implement-be/SKILL.md),
+[`docs/roadmap-workflow.md`](../../docs/roadmap-workflow.md), and
+[`docs/contributor-workflow-tutorial.md`](../../docs/contributor-workflow-tutorial.md). This item's
+own premise is that acceptance already happened at the two-approval merge. Those surfaces are
+therefore reworded to say implementing an `Approved` item **starts** it, not that starting it
+accepts it (see *Detailed design*).
 
 ## Detailed design
 

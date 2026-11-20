@@ -114,14 +114,20 @@ performs during `use` substitution ([expand.py](../../bajutsu/common/scenario/ex
 needs no extra plumbing.
 
 No field validator turns away a value on either field. `Annotated[..., SkipJsonSchema()]` alone
-keeps both off the authoring surface. `bajutsu schema` never shows them. `expand()` sets both
-through `model_copy(update=...)`. That makes `report_group` a *set*, non-default field once a
-`group:` scenario expands. The run path then re-validates that same dump twice.
-`redact_totp_secrets` runs on every scenario a run has finished. It runs right before the run
-writes its evidence snapshot. `load_run` reloads its own `scenario.yaml` the same way.
+keeps both off the authoring surface, so `bajutsu schema` never shows them.
+
+The reason is the run path's internal round trip. `expand()` sets both fields through
+`model_copy(update=...)`, which makes `report_group` a *set*, non-default field once a `group:`
+scenario expands. The run path then re-validates that same dump twice:
+
+- `redact_totp_secrets` runs on every scenario a run has finished, right before the run writes its
+  evidence snapshot.
+- `load_run` reloads its own `scenario.yaml` the same way.
+
 `exclude_defaults=True` keeps a set field in both dumps. A validator that turns away anything but
 `None` would then turn away its own internal round trip. `serialize.py`'s `redact_totp_secrets`
-docstring records the matching issue. BE-0401 hit the same shape on `systemAlertHandling.labels`.
+docstring records the matching issue, and BE-0401 hit the same shape on `systemAlertHandling.labels`.
+
 An author could still write `_reportGroup` by hand and fake a fold. The schema itself never shows
 that key for them to find, though.
 

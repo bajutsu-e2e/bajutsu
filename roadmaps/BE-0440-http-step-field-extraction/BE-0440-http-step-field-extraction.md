@@ -23,12 +23,15 @@ the whole body; it names the field it needs.
 
 ## Motivation
 
-A test-data service commonly answers with a JSON object, not a bare scalar: a login endpoint
-returns `{"data": {"token": "...", "user": {"id": 42}}}`, not the token alone. `saveBody` stores
-that whole object as text, and no step can reach a field inside it today. A scenario that needs
-merely `data.token` must either ask the service for a narrower response shape, which it may not
-offer, or give up on the field. Once `extractBody` ships, a scenario points an `http` step at a
-JSON API and reads a nested field directly into `${vars.token}`.
+A test-data service commonly answers with a JSON object, not a bare scalar. A login endpoint, for
+example, returns `{"data": {"token": "...", "user": {"id": 42}}}`, not the token alone.
+
+`saveBody` stores that whole object as text, and no step can reach a field inside it today. A
+scenario that needs merely `data.token` has two options. It can ask the service for a narrower
+response shape, which the service may not offer. Or it can give up on the field.
+
+Once `extractBody` ships, a scenario points an `http` step at a JSON API and reads a nested field
+directly into `${vars.token}`.
 
 ## Detailed design
 
@@ -49,22 +52,28 @@ neither:
 
 Fields and contract:
 
-- **`extractBody`** — a list of `{ var, path }` entries. Each parses the response body as JSON,
-  walks `path`, and stores the value it finds as `vars.<var>`. `extractBody` stores a string value
-  as-is; it stores any other JSON value (number/boolean/null/object/array) as the same text
-  `_json_text` (`bajutsu/common/assertions/evaluate/_functions.py`) already produces for a captured
-  body field — `42`, `true`, `null`, `{"id":42}` — rather than defining a second renderer for the
-  same concept. A later `${vars.*}` comparison then reads the same shape the API returned, never a
-  Python-specific rendering like `None` or `True`.
+- **`extractBody`** — a list of `{ var, path }` entries. Each entry parses the response body as
+  JSON, walks `path`, and stores the value it finds as `vars.<var>`.
+  - `extractBody` stores a string value as-is.
+  - It stores any other JSON value (number, boolean, null, object, or array) as the text that
+    `_json_text` (`bajutsu/common/assertions/evaluate/_functions.py`) already produces for a
+    captured body field: `42`, `true`, `null`, `{"id":42}`. No second renderer for the same concept
+    exists.
+  - A later `${vars.*}` comparison therefore reads the same shape the API returned, never a
+    Python-specific rendering like `None` or `True`.
 - **`path`** is a sequence of object keys and `[n]` (zero-based) array indexes, in any order and any
-  number: an opening key carries no leading dot (`data.token`); an index may follow a key
-  (`items[0].id`) or another index (`rows[0][1]`); and a path may open on an index
-  when the response body is itself a JSON array (`[0].id`). An index is a non-negative decimal
-  integer: `[-1]` is a malformed path, never an index counted from the end the way Python's list
-  indexing reads it. A malformed path — a negative or non-numeric index, an empty segment
-  (`a..b`), or a trailing dot — fails the step with an error naming the `var` and the `path`. The
-  grammar stops there: no wildcards, no filters, no computed segments. BE-0036 already rejected a
-  general `shell`/`exec` step on the same grounds (see its *Alternatives considered*): a small,
+  number:
+  - An opening key carries no leading dot (`data.token`).
+  - An index may follow a key (`items[0].id`) or another index (`rows[0][1]`).
+  - A path may open on an index when the response body is itself a JSON array (`[0].id`).
+
+  An index is a non-negative decimal integer. `[-1]` is a malformed path, never an index counted
+  from the end the way Python's list indexing reads it. A malformed path fails the step with an
+  error naming the `var` and the `path`. A path is malformed when it has a negative or non-numeric
+  index, an empty segment (`a..b`), or a trailing dot.
+
+  The grammar stops there: no wildcards, no filters, no computed segments. BE-0036 already rejected
+  a general `shell`/`exec` step on the same grounds (see its *Alternatives considered*). A small,
   fixed grammar stays auditable from the scenario file alone, where a general expression language
   would not.
 - A response body that fails to parse as JSON, or a `path` that does not resolve, fails the step
@@ -76,25 +85,27 @@ Fields and contract:
   - an index applied to anything but an array (a string, number, boolean, or `null` included)
 
   A scenario never reads a placeholder or an empty value in place of the field it asked for.
-- `extractBody` and `saveBody` read the same response body independently; setting both stores the
+- `extractBody` and `saveBody` read the same response body independently. Setting both stores the
   whole text under `saveBody`'s name and the named fields under `extractBody`'s, from one request.
-  Two `extractBody` entries with the same `var`, or an entry whose `var` equals `saveBody`, is a
-  scenario load error — never a silent overwrite decided by write order. That check runs in the
-  scenario loader itself, never as `Step` model validation: a model validator would re-fire on the
-  substituted step below and raise an uncaught error, in place of the handler's own clean step
-  failure.
-- Like every other step field, a scenario may write `path` and `var` themselves with `${vars.*}` /
-  `${secrets.*}` scenario-variable substitution (`path: "items[${vars.i}].id"`); the runner
-  substitutes those tokens before parsing `path`, the same way it already does for `url` or
-  `saveBody`. A substituted value is one path segment, never new path structure: a value carrying
-  `.`, `[`, or `]` fails the step with the same malformed-path error, so a field name that reaches
-  the scenario from a response body can never redirect the walk to a different field. "No computed
-  segments" describes the grammar itself: it never branches on the response body's own content, and
-  says nothing about a scenario parameterizing a field with its own declared variables. The
-  path-grammar check runs purely on the substituted step, never on the scenario as loaded, where
-  `path` may still hold a raw `${vars.*}` token. The loader-level duplicate-`var` check above runs
-  again on the substituted step; a collision that substitution alone reveals fails the step at run
-  time with the same error naming the `var`.
+  - Two `extractBody` entries with the same `var`, or an entry whose `var` equals `saveBody`, are a
+    scenario load error, never a silent overwrite decided by write order.
+  - That check runs in the scenario loader itself, never as `Step` model validation. A model
+    validator would re-fire on the substituted step below and raise an uncaught error, in place of
+    the handler's own clean step failure.
+- Like every other step field, `path` and `var` accept `${vars.*}` / `${secrets.*}` scenario-variable
+  substitution (`path: "items[${vars.i}].id"`). The runner substitutes those tokens before parsing
+  `path`, the same way it already does for `url` or `saveBody`.
+  - A substituted value is one path segment, never new path structure. A value carrying `.`, `[`,
+    or `]` fails the step with the same malformed-path error, so a field name that reaches the
+    scenario from a response body can never redirect the walk to a different field.
+  - "No computed segments" describes the grammar itself: the grammar never branches on the response
+    body's own content. The phrase says nothing about a scenario parameterizing a field with its own
+    declared variables.
+  - The path-grammar check runs purely on the substituted step, never on the scenario as loaded,
+    where `path` may still hold a raw `${vars.*}` token.
+  - The loader-level duplicate-`var` check above runs again on the substituted step. A collision
+    that substitution alone reveals fails the step at run time with the same error naming the
+    `var`.
 
 Prime directives preserved:
 

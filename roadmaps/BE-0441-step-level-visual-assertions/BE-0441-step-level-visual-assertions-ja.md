@@ -55,85 +55,95 @@ BE-0029、BE-0165、BE-0171がすでに用意した`VisualMatch`スキーマ、`
 
 - **ステップレベルの`assert_`分岐で`visual=None`を強制するのをやめます。** 代わりに、
   `dataclasses.replace(cfg.ctx.visual, prefix=…, screenshot_path=…)`で、ステップ専用の
-  `VisualContext`を構築します。条件は、ステップの`assert:`リストに`visual`エントリがあり、
-  かつ`_StepRunner`が持つルーティング先の実行コンテキスト(`cfg.ctx`)がすでに1つ持っている
-  場合です。この条件は、`_capture_visual_actual`が`expect`側で適用する`ctx.visual is not None`
-  と同じゲートです。固定の実行レベルコンテキストではなく`cfg.ctx`から導くことで、第二の
-  ターゲットを指すステップも、そのターゲット自身のbaselineと比較できます(BE-0428)。
-  `bajutsu/common/orchestrator/loop/_step_runner.py`の`_StepRunner._handle_action`は、
-  すでにステップのエビデンスprefix(`step_id`)を計算している唯一の場所です。3か所ある呼び出し
-  箇所のそれぞれで、このprefixとステップの`StepOutcome.index`を`_run_step_body`へ渡す必要が
-  あります。`_poll_asserts`の変更は不要です。撮影は`_poll_asserts`の実行より前に済んでいる
-  からです。`SchemaContext`は同じ分岐で引き続き落とします。BE-0250 Unit 2がここで落としたのは
-  リファクタリング前の挙動を保つためであり、ステップレベルのassertに`responseSchema`が読む
-  ネットワーク交信が存在しないからではありません。この扱いを見直すのは別の変更であり、
-  本提案の対象外とします。
+  `VisualContext`を構築します。
+  - 構築する条件は2つです。ステップの`assert:`リストに`visual`エントリがあること、そして
+    `_StepRunner`が持つルーティング先の実行コンテキスト(`cfg.ctx`)がすでにvisualコンテキストを
+    1つ持っていることです。この条件は、`_capture_visual_actual`が`expect`側で適用する
+    `ctx.visual is not None`と同じゲートです。
+  - 固定の実行レベルコンテキストではなく`cfg.ctx`から導くことで、第二のターゲットを指すステップも、
+    そのターゲット自身のbaselineと比較できます(BE-0428)。
+  - `bajutsu/common/orchestrator/loop/_step_runner.py`の`_StepRunner._handle_action`は、すでに
+    ステップのエビデンスprefix(`step_id`)を計算している唯一の場所です。3か所ある呼び出し箇所の
+    それぞれで、このprefixとステップの`StepOutcome.index`を`_run_step_body`へ渡す必要があります。
+  - `_poll_asserts`の変更は不要です。撮影は`_poll_asserts`の実行より前に済んでいるからです。
+  - `SchemaContext`は同じ分岐で引き続き落とします。BE-0250 Unit 2がここで落としたのは
+    リファクタリング前の挙動を保つためであり、ステップレベルのassertに`responseSchema`が読む
+    ネットワーク交信が存在しないからではありません。この扱いを見直すのは別の変更であり、
+    本提案の対象外とします。
 - **`visual`エントリを含むステップの`assert:`ブロックごとに、スクリーンショットをちょうど
   1回だけ撮影します。** タイミングは`_poll_asserts`の実行直前です。これにより、そのブロック内の
   すべての`visual`エントリが、同じ1枚の撮影結果と比較されます。末尾の`expect`ブロックが現在
-  行っている方式と同じです。`_evaluate_expect`もすでに同じ方式です。`_capture_visual_actual`
-  経由で、`expect:`ブロックの評価前に1回だけ撮影します。`_poll_asserts`はすでに`visual`を
-  `_READ_ONCE_KINDS`の1つとして扱っており、各ポーリングで再読み込みされるのはUIツリーだけです。
-  そのため、ステップレベルの検証はティックごとに新しいスクリーンショットを必要としません。
-  撮影には、`_poll_asserts`が要素ツリーの問い合わせに使うのと同じdriver、すなわちそのステップ
-  自身のactive driverを使います。常に`cfg.driver`を使うわけではありません。要素スコープの
-  検証では、クロップの座標系を要素ツリーの座標系と一致させる必要があるためです。`web:`ブロック
-  の内側では、そのactive driverが`WebContextDriver`になり、その`screenshot`は
-  `UnsupportedAction`を送出します。そのブロックにネストした`visual`アサーションは、誤った画面を
-  サイレントに比較するのではなく、この撮影自体で明確に失敗します(詳細は後述)。
+  行っている方式と同じです。
+  - `_evaluate_expect`もすでに同じ方式です。`_capture_visual_actual`経由で、`expect:`ブロックの
+    評価前に1回だけ撮影します。
+  - `_poll_asserts`はすでに`visual`を`_READ_ONCE_KINDS`の1つとして扱っており、各ポーリングで
+    再読み込みされるのはUIツリーだけです。そのため、ステップレベルの検証はティックごとに新しい
+    スクリーンショットを必要としません。
+  - 撮影には、`_poll_asserts`が要素ツリーの問い合わせに使うのと同じdriver、すなわちそのステップ
+    自身のactive driverを使います。常に`cfg.driver`を使うわけではありません。要素スコープの
+    検証では、クロップの座標系を要素ツリーの座標系と一致させる必要があるためです。
+  - `web:`ブロックの内側では、そのactive driverが`WebContextDriver`になり、その`screenshot`は
+    `UnsupportedAction`を送出します。そのブロックにネストした`visual`アサーションは、誤った画面を
+    サイレントに比較するのではなく、この撮影自体で明確に失敗します(詳細は後述)。
 - **ステップごとのスクリーンショットの保存先を、そのステップ自身のエビデンスprefixと
-  outcomeインデックスに限定します。** `write_screenshot`はすでにステップの`after.png`に
-  このprefixを使っていますが、ステップ名は一意である必要がありません。そのため`for_each`の
-  中にある名前付きステップは、反復のたびに同じprefixを再利用してしまいます。`StepOutcome.index`
-  が一意なのは1つのフェーズの中だけです。実行全体では一意ではありません。`before`、シナリオ
-  自身の`steps`、`after`の各ディスパッチは、それぞれ自分専用の`_StepCounter`をゼロから
-  始めます。ただし、エビデンスprefix自体がすでにフェーズ名を含んでいるため、`before`フェーズの
-  `index == 0`とシナリオ自身の最初のステップの`index == 0`は、それでも別々のディレクトリに
-  収まります。prefixとindexを組み合わせることで、あるステップのvisualキャプチャは、シナリオ
-  自身の`visual-actual.png`とも、同じステップの別の実行とも衝突しません。1回の実行内での
-  リトライ(TipKitのリトライやalert guardのリトライ)は同じindexを再利用するため、ステップが
-  保持する結果は、その実行の最終試行のピクセルを指したままになります。
+  outcomeインデックスに限定します。**
+  - `write_screenshot`はすでにステップの`after.png`にこのprefixを使っています。ただしステップ名は
+    一意である必要がないため、`for_each`の中にある名前付きステップは、反復のたびに同じprefixを
+    再利用してしまいます。そこで、撮影の保存先を`StepOutcome.index`でさらに一段深く分けます。
+  - `StepOutcome.index`が一意なのは1つのフェーズの中だけで、実行全体では一意ではありません。
+    `before`、シナリオ自身の`steps`、`after`の各ディスパッチは、それぞれ自分専用の
+    `_StepCounter`をゼロから始めるからです。ただし、エビデンスprefix自体がすでにフェーズ名を
+    含んでいるため、`before`フェーズの`index == 0`とシナリオ自身の最初のステップの`index == 0`は、
+    それでも別々のディレクトリに収まります。
+  - prefixとindexを組み合わせることで、あるステップのvisualキャプチャは、シナリオ自身の
+    `visual-actual.png`とも、同じステップの別の実行とも衝突しません。
+  - 1回の実行内でのリトライ(TipKitのリトライやalert guardのリトライ)は同じindexを再利用する
+    ため、ステップが保持する結果は、その実行の最終試行のピクセルを指したままになります。
 - **`expect`のvisualキャプチャがすでに適用している、タッチマーカーの一時停止と通知バナーの
-  クリアの両方を踏襲します。マーカーの一時停止だけではありません。** `_capture_visual_actual`
-  自体は、`_hides_touch_markers`がシナリオのタッチマーカー描画を検出した場合に、
-  `capability_suspended`でマーカーを一時停止するだけです。バナーのクリアは別の呼び出しで、
-  `_evaluate_expect`がその直前に呼ぶ`_clear_notification_banner_before_visual_capture`が
-  行います。ステップレベルのキャプチャにも、`expect`とまったく同じく両方が必要です。バナーの
-  クリアを省くと、BE-0416 Unit 8が防ごうとしているのとまったく同じ画像破損を再現してしまいます。
-  ただし、このラッパーではなく素の`_clear_notification_banner`を再利用します。ラッパーは
-  スワイプをexpectフェーズのアクチュエーション一覧へ排出してしまうためです。ステップは
-  すでに独自の末尾処理`drain_actuations`(`_StepRunner._handle_action`)を持っており、driver
-  自身のログからスワイプを拾い上げて、そのステップ自身の`StepOutcome.actuations`や
-  `dropped_actuations`に、新たな配線なしで記録します。マーカーの一時停止のほうは、
-  `_run_step_body`が現在は受け取っていない入力を必要とします。実行のcollectorである`channel`
-  と`hide_markers`フラグです。現状はどちらも`run_scenario`だけが持つローカル変数です。
-  どちらも`_LoopConfig`(とターゲットごとの構築処理)まで届く必要があります。この一時停止中に
-  control channelが失敗した場合は、`expect`側で`_capture_visual_actual`が同じ失敗を起こした
-  ときと同じく、シナリオ全体を失敗させます。ステップレベルの検証だからといって、それをその
-  ステップだけの失敗に変える特別扱いはしません。
+  クリアの両方を踏襲します。マーカーの一時停止だけではありません。** 現状、この2つは別々の
+  場所にあります。`_capture_visual_actual`自体は、`_hides_touch_markers`がシナリオのタッチ
+  マーカー描画を検出した場合に、`capability_suspended`でマーカーを一時停止するだけです。バナーの
+  クリアは別の呼び出しで、`_evaluate_expect`がその直前に呼ぶ
+  `_clear_notification_banner_before_visual_capture`が行います。
+  - ステップレベルのキャプチャにも、`expect`とまったく同じく両方が必要です。バナーのクリアを
+    省くと、BE-0416 Unit 8が防ごうとしているのとまったく同じ画像破損を再現してしまいます。
+  - ただし、このラッパーではなく素の`_clear_notification_banner`を再利用します。ラッパーは
+    スワイプをexpectフェーズのアクチュエーション一覧へ排出してしまうためです。ステップは
+    すでに独自の末尾処理`drain_actuations`(`_StepRunner._handle_action`)を持っており、driver
+    自身のログからスワイプを拾い上げて、そのステップ自身の`StepOutcome.actuations`や
+    `dropped_actuations`に、新たな配線なしで記録します。
+  - マーカーの一時停止のほうは、`_run_step_body`が現在は受け取っていない入力を必要とします。
+    実行のcollectorである`channel`と`hide_markers`フラグです。現状はどちらも`run_scenario`だけが
+    持つローカル変数です。どちらも`_LoopConfig`(とターゲットごとの構築処理)まで届く必要が
+    あります。
+  - この一時停止中にcontrol channelが失敗した場合は、`expect`側で`_capture_visual_actual`が同じ
+    失敗を起こしたときと同じく、シナリオ全体を失敗させます。ステップレベルの検証だからといって、
+    その失敗をステップだけの失敗に変える特別扱いはしません。
 - **マーカーチャンネルが必要なシナリオを判定するために、ステップツリー全体を走査します。**
   `run --touch-markers`がどのシナリオにマーカーチャンネルを与えるかを決めている
   `_visual_asserting_scenarios`(`bajutsu/run/cli.py`)は、現在は`expect`とシナリオ最上位の
-  `steps`しか見ていません。あらゆるフェーズ(`before`、`steps`、各`after`規則)と、`interrupts`
-  の各エントリが持つ復旧用`steps`も走査する必要があります。interruptの復旧ステップは、通常の
-  ステップとまったく同じ`exec_steps`の仕組みを通って実行されるため、そこに置いた
-  ステップレベルの`visual`アサーションも実際にキャプチャを行うからです。見落とすと、その
-  キャプチャのマーカーが隠されないままになります。それぞれのステップ一覧の中では、
-  `capability_preflight`自身の走査がすでに行っているのと同じように、`if`と`for_each`にネスト
-  したステップも走査し、さらに`app:`ブロックも対象に含めます。`app:`ブロックの内側は、その
-  走査が再帰しない箇所ですが、内部のステップは他のステップと同じネイティブ側のdriverで動き
-  ます。前項と一貫させ、`web:`ブロックは対象外とします。そこにネストした`visual`アサーションは、
-  マーカーチャンネルの有無にかかわらず、そもそも成功しえないからです。
+  `steps`しか見ていません。
+  - あらゆるフェーズ(`before`、`steps`、各`after`規則)と、`interrupts`の各エントリが持つ復旧用
+    `steps`も走査する必要があります。interruptの復旧ステップは、通常のステップとまったく同じ
+    `exec_steps`の仕組みを通って実行されるため、そこに置いたステップレベルの`visual`アサーションも
+    実際にキャプチャを行うからです。見落とすと、そのキャプチャのマーカーが隠されないままになります。
+  - それぞれのステップ一覧の中では、`capability_preflight`自身の走査がすでに行っているのと同じように、
+    `if`と`for_each`にネストしたステップも走査します。さらに`app:`ブロックも対象に含めます。
+    `app:`ブロックは、その走査が再帰しない箇所ですが、内部のステップは他のステップと同じ
+    ネイティブ側のdriverで動きます。
+  - 前項と一貫させ、`web:`ブロックは対象外とします。そこにネストした`visual`アサーションは、
+    マーカーチャンネルの有無にかかわらず、そもそも成功しえないからです。
 - **既知の制約: `app:`ブロックにネストしたステップレベルの`visual`アサーションは、マーカーの
-  一時停止が誤ったアプリへ向かう可能性があります。** `app:`はテスト対象とは別のアプリを前面に
-  出します。シナリオのメインアプリがタッチマーカーを描画している場合、そのアプリはネストした
-  キャプチャの一時停止コマンドが届く時点でバックグラウンドに回っており、バックグラウンドの
-  アプリはcontrol channelの応答を`capability_suspended`のackタイムアウト内に返せないことが
-  あります。これはコードを読んで導いた、もっともらしいタイミングリスクであり、実機で確認した
-  ものではありません。正しく直すには、ステップループが「今`app:`ブロックの内側にいるか」を
-  追跡し、その場合は一時停止をスキップする必要があり、これは実機での検証を要する別の変更です。
-  それまでは、マーカーを描画するシナリオと`app:`にネストした`visual`検証の組み合わせを避けて
-  ください。
+  一時停止が誤ったアプリへ向かう可能性があります。**
+  - `app:`はテスト対象とは別のアプリを前面に出します。シナリオのメインアプリがタッチマーカーを
+    描画している場合、そのアプリはネストしたキャプチャの一時停止コマンドが届く時点でバック
+    グラウンドに回っています。バックグラウンドのアプリは、control channelの応答を
+    `capability_suspended`のackタイムアウト内に返せないことがあります。
+  - これはコードを読んで導いた、もっともらしいタイミングリスクであり、実機で確認したものでは
+    ありません。正しく直すには、ステップループが「今`app:`ブロックの内側にいるか」を追跡し、
+    その場合は一時停止をスキップする必要があります。これは実機での検証を要する別の変更です。
+  - それまでは、マーカーを描画するシナリオと`app:`にネストした`visual`検証の組み合わせを避けて
+    ください。
 - **旧挙動を固定しているテストを更新します。** `tests/orchestrator/test_loop.py`の
   `test_step_level_assert_drops_visual_context`(BE-0250 Unit 2で追加)を、新しい挙動を検証する
   内容に更新します。ステップレベルの`visual`アサーションが実際に比較すること、
@@ -145,17 +155,18 @@ BE-0029、BE-0165、BE-0171がすでに用意した`VisualMatch`スキーマ、`
   まだステップ自身の`assertion_results`を読まないことを明記します(次項)。そのため、ステップ
   レベルの検証の最初のbaselineは、手動でのコピーが必要になります。
 - **`bajutsu approve`とレポートのvisualストリップには手を付けず、そのことを明記します。**
-  `approve`(`bajutsu/serve/cli/approve.py`)は、シナリオの`expect_results`しか走査しません。
-  レポートのbaseline/actual/diffストリップとApproveボタン(`bajutsu/common/report/rows.py`の
-  `_visual_row`)も、`expect`側の行にしか描画されません。どちらも、ステップの
-  `assertion_results`は見ていません。著者は、ステップレベルの検証の最初のbaselineを手動で
-  用意します。baselineがまだ存在しない場合でも、失敗した結果は撮影結果のパスを
-  `assertion_results[].visual.actual`として、実行の`manifest.json`に必ず記録します。この
-  パスは、`element:`を指定した検証では要素のクロップ画像を、それ以外では画面全体のキャプチャ
-  を指します。`approve`自身が`expect`に対してすでに使い分けているのと同じ区別です。著者は、
-  その正確なファイルを、`baseline:`フィールドが指定する名前でbaselineディレクトリへコピー
-  します。`approve`とレポートをステップレベルの結果に対応させること自体は独立した作業であり、
-  本提案には含めず、別の項目に委ねます。
+  - `approve`(`bajutsu/serve/cli/approve.py`)は、シナリオの`expect_results`しか走査しません。
+    レポートのbaseline/actual/diffストリップとApproveボタン(`bajutsu/common/report/rows.py`の
+    `_visual_row`)も、`expect`側の行にしか描画されません。どちらも、ステップの
+    `assertion_results`は見ていません。
+  - 著者は、ステップレベルの検証の最初のbaselineを手動で用意します。baselineがまだ存在しない場合
+    でも、失敗した結果は撮影結果のパスを`assertion_results[].visual.actual`として、実行の
+    `manifest.json`に必ず記録します。このパスは、`element:`を指定した検証では要素のクロップ画像を、
+    それ以外では画面全体のキャプチャを指します。`approve`自身が`expect`に対してすでに使い分けて
+    いるのと同じ区別です。著者は、その正確なファイルを、`baseline:`フィールドが指定する名前で
+    baselineディレクトリへコピーします。
+  - `approve`とレポートをステップレベルの結果に対応させること自体は独立した作業であり、本提案には
+    含めず、別の項目に委ねます。
 
 ## 検討した代替案
 

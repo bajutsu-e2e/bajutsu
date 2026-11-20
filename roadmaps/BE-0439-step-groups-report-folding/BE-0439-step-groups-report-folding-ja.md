@@ -115,17 +115,23 @@ report_group_id: int | None = Field(default=None, alias="_reportGroupId")
 （[expand.py](../../bajutsu/common/scenario/expand.py)）。追加の配線は要りません。
 
 フィールドバリデータで値を拒否することはしません。`Annotated[..., SkipJsonSchema()]` だけで、
-両方を著者向けの項目から隠します。`bajutsu schema` の出力にこの2つは載りません。`expand()` は
-`model_copy(update=...)` でこの2つを設定します。これにより、`group:` を含むシナリオが展開された
-あと、`report_group` は*設定済み*の非デフォルト値になります。`run` 経路は、同じダンプを2回
-再検証します。`redact_totp_secrets` は、実行を終えたすべてのシナリオに対して走ります。エビデンス
-のスナップショットを書き出す直前に走ります。`load_run` も、自分自身の `scenario.yaml` を同じ
-ように再読み込みします。`exclude_defaults=True` は、設定済みのフィールドをどちらのダンプからも
-落としません。`None` 以外を拒否するバリデータを足すと、この内部の往復そのものを拒否してしまい
-ます。`serialize.py` の `redact_totp_secrets` のdocstringに、同じ形の問題の記録があります。
-BE-0401 が `systemAlertHandling.labels` で踏んだのと同じ形です。著者が `_reportGroup` を手で
-書いて偽のfoldを作れる余地は残ります。ただし、著者がその項目を見つける手段であるスキーマ自体に、
-この項目は載りません。
+両方を著者向けの項目から隠します。`bajutsu schema` の出力にこの2つは載りません。
+
+理由は、`run` 経路が内部で行う往復にあります。`expand()` は `model_copy(update=...)` でこの2つを
+設定します。これにより、`group:` を含むシナリオが展開されたあと、`report_group` は*設定済み*の
+非デフォルト値になります。`run` 経路は、同じダンプを2回再検証します。
+
+- `redact_totp_secrets` は、実行を終えたすべてのシナリオに対して、エビデンスのスナップショットを
+  書き出す直前に走ります。
+- `load_run` も、自分自身の `scenario.yaml` を同じように再読み込みします。
+
+`exclude_defaults=True` は、設定済みのフィールドをどちらのダンプからも落としません。`None` 以外を
+拒否するバリデータを足すと、この内部の往復そのものを拒否してしまいます。`serialize.py` の
+`redact_totp_secrets` のdocstringに、同じ形の問題の記録があります。BE-0401 が
+`systemAlertHandling.labels` で踏んだのと同じ形です。
+
+著者が `_reportGroup` を手で書いて偽のfoldを作れる余地は残ります。ただし、著者がその項目を見つける
+手段であるスキーマ自体に、この項目は載りません。
 
 この役割の最初の設計案は、既存の `step_lines` の仕組み
 （[raw_source.py:36](../../bajutsu/common/scenario/raw_source.py)）に沿った並行配列でした。この
