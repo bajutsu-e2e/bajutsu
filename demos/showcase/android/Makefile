@@ -5,7 +5,7 @@
 # `run` / `doctor` land with the BE-0007 adb backend; until then these targets only build.
 .PHONY: build-all wrapper \
 	compose-build compose-noax-build compose-previous-build views-build views-noax-build e2e e2e-pool e2e-network e2e-golden \
-	e2e-fallback e2e-visual e2e-conformance e2e-fault-injection e2e-app-crash e2e-codegen e2e-device-group \
+	e2e-fallback e2e-visual e2e-conformance e2e-fault-injection e2e-app-crash e2e-notification-banner e2e-codegen e2e-device-group \
 	e2e-location-connect clean
 
 HERE := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
@@ -525,6 +525,51 @@ e2e-app-crash: compose-build
 		fi
 	cd $(ROOT) && uv run python scripts/assert_app_crash_evidence.py \
 		"$$(find $(APP_CRASH_RUNS) -mindepth 1 -maxdepth 1 -type d)"
+
+# BE-0496: a heads-up notification over a control. The scenario posts one from the Permissions tab
+# and taps the control under it; the adb driver must swipe the banner away first. The tap alone would
+# pass on a run whose notification never appeared, so the verdict is the assertion script, which
+# reads the finished run's manifest for a `notificationBanner` dismissal and names the cause when the
+# resident channel was down (the guard needs its SystemUI windows). Both toolkits run it, each into
+# its own fresh runs directory under gitignored `tmp/`, found the way `e2e-app-crash` finds its one
+# run. Builds the resident server too: without it reads fall back to `uiautomator dump`, which cannot
+# see the banner. Not part of `make check`: it needs a booted AVD, so android-e2e.yml drives it in its
+# own `notification-banner (adb)` job. Rerunning it locally within a minute fails the evidence check:
+# SystemUI snoozes an app's heads-ups for a minute after one is swiped away, so the next post shows no
+# banner at all. The CI job runs each toolkit once on a fresh emulator, and the two toolkits are two
+# packages, so it never meets the snooze.
+#
+# SystemUI drops a heads-up after about five seconds, and a step on a software-rendered CI emulator
+# takes seconds of its own: on the first CI run the tap arrived after the banner had left, so the run
+# exercised nothing. SystemUI stretches that lifetime to the accessibility timeout the user asked for,
+# so the target raises both timeouts to a minute for its runs and deletes them afterwards, failed run
+# or not, leaving the device's own defaults behind.
+NOTIFICATION_BANNER_RUNS := $(ROOT)/tmp/showcase-android-notification-banner-runs
+HEADS_UP_TIMEOUTS := accessibility_interactive_ui_timeout_ms accessibility_non_interactive_ui_timeout_ms
+e2e-notification-banner: compose-build views-build
+	$(MAKE) -C $(ROOT)/BajutsuAndroidUIAutomatorServer build
+	$(ANR_QUIET)
+	$(TOUCH_DEBUG_OFF)
+	rm -rf $(NOTIFICATION_BANNER_RUNS)
+	for k in $(HEADS_UP_TIMEOUTS); do $(ADB) shell settings put secure $$k 60000 || exit 1; done
+	status=0; \
+	for t in showcase-compose showcase-views; do \
+		runs="$(NOTIFICATION_BANNER_RUNS)/$$t"; \
+		echo "=== $$t / notification_banner_android ==="; \
+		(cd $(ROOT) && $(E2E_ENV) uv run bajutsu run \
+			--scenario demos/showcase/scenarios/notification_banner_android.yaml \
+			--runs-dir "$$runs" --target "$$t" --udid $(SERIAL) --backend android \
+			--config $(CONFIG)) ||:; \
+		run_dir_count="$$(find "$$runs" -mindepth 1 -maxdepth 1 -type d | wc -l)"; \
+		if [ "$$run_dir_count" -ne 1 ]; then \
+			echo "expected exactly one run directory under $$runs/, found $$run_dir_count" >&2; \
+			status=1; break; \
+		fi; \
+		(cd $(ROOT) && uv run python scripts/assert_notification_banner_evidence.py \
+			"$$(find "$$runs" -mindepth 1 -maxdepth 1 -type d)") || { status=1; break; }; \
+	done; \
+	for k in $(HEADS_UP_TIMEOUTS); do $(ADB) shell settings delete secure $$k >/dev/null || status=1; done; \
+	exit $$status
 
 # The device-group lane (BE-0447), the Android twin of demos/showcase/Makefile's `e2e-device-group`:
 # two apps on one emulator. device_group_update.yaml starts on the `previous` Compose flavor and

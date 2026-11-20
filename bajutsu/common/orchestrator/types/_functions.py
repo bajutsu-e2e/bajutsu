@@ -249,6 +249,23 @@ def _policy_rule(rule: ResolvedAlertRule) -> tuple[frozenset[str], str, frozense
     return (rule.identifying_labels, rule.tap_label, rule.excluded_labels)
 
 
+def drain_banner_dismissals(driver: base.Driver) -> list[AlertEvent]:
+    """The notification banners a backend swiped away on its own since the last drain (BE-0496).
+
+    Each becomes the `notificationBanner` record the iOS interruption monitor's banner path produces,
+    labelled with the notification's own text, so a dismissal reads alike whichever platform and
+    whichever path cleared it. Checked apart from `drain_interruptions`, which answers nothing for a
+    backend that is not an `InterruptionPolicyTarget`: the adb driver clears banners before a gesture
+    but takes no interruption policy. A backend without the opt-in contributes nothing.
+    """
+    if not isinstance(driver, base.BannerDismissalReporter):
+        return []
+    return [
+        AlertEvent(label=text, kind="notificationBanner")
+        for text in driver.drain_banner_dismissals()
+    ]
+
+
 def drain_interruptions(driver: base.Driver) -> DrainedInterruptionEvents:
     """The prompts the backend answered, declined and cleared at interruption time since the last drain.
 

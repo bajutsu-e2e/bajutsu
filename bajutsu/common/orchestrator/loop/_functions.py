@@ -61,6 +61,7 @@ from bajutsu.common.orchestrator.types import (
     _no_network,
     channel_degraded,
     drain_actuations,
+    drain_banner_dismissals,
     drain_channel_notes,
     drain_interruptions,
     scenario_slug,
@@ -192,6 +193,7 @@ def _evaluate_expect(
     cancelled: CancelSource = not_cancelled,
     target_runtimes: Mapping[str, TargetRuntime] | None = None,
     primary_target: str = "",
+    expect_alerts: list[AlertEvent] | None = None,
 ) -> tuple[list[AssertionResult], int]:
     """Evaluate the trailing `expect` block as a condition wait (BE-0245), via `_poll_asserts`.
 
@@ -211,6 +213,7 @@ def _evaluate_expect(
     `control`/`network`/`channel` for every other one. `expect_actuations` stays one flat list for
     the whole phase regardless of which target's banner sweep drained into it — it is evidence
     bookkeeping, not a per-target verdict input, so nothing needs it split apart.
+    `expect_alerts` likewise receives every target's banner-sweep dismissal (BE-0496).
 
     Returns the merged results and how many actuations the banner sweep(s) this triggers had to
     drop — the caller's own share of `RunResult.dropped_expect_actuations`.
@@ -228,7 +231,7 @@ def _evaluate_expect(
         group_channel = channel if rt is None else cast("Collector | None", rt.channel)
         group_entries = [expect[i] for i in indexes]
         dropped += _clear_notification_banner_before_visual_capture(
-            group_ctx, group_driver, clock, expect_actuations, wall_offset_s
+            group_ctx, group_driver, clock, expect_actuations, wall_offset_s, expect_alerts
         )
         _capture_visual_actual(
             group_ctx,
@@ -616,7 +619,10 @@ def _run_step_body(
                 # swipe into the expect-phase actuations list, but this swipe belongs to this step —
                 # the ordinary end-of-step `drain_actuations` call already picks it up from the
                 # driver's own log, the same way it picks up every other actuation the step made.
-                _clear_notification_banner(driver, clock)
+                # Its dismissal record joins this step's alerts for the same reason (BE-0496).
+                swept = _clear_notification_banner(driver, clock)
+                if swept is not None and alerts is not None:
+                    alerts.append(swept)
                 _capture_visual_actual(
                     EvalContext(visual=visual_ctx),
                     driver,
@@ -654,6 +660,7 @@ def _run_step_body(
     except (
         base.SelectorError,
         base.ElementNotTappable,
+        base.NotificationBannerBlocking,
         base.UnsupportedAction,
         NotImplementedError,
     ) as e:
@@ -1122,6 +1129,7 @@ def run_scenario(  # noqa: C901, PLR0912, PLR0915
                         cancelled=cancelled,
                         expect_actuations=expect_actuations,
                         wall_offset_s=wall_offset_s,
+                        expect_alerts=expect_alerts,
                         target_runtimes=(
                             roster.live(target_runtimes) if roster is not None else target_runtimes
                         ),
@@ -1139,6 +1147,7 @@ def run_scenario(  # noqa: C901, PLR0912, PLR0915
                     # chance to read what happened here.
                     expect_drained = drain_interruptions(driver)
                     expect_alerts.extend(expect_drained.alerts)
+                    expect_alerts.extend(drain_banner_dismissals(driver))
                     expect_undeclared.extend(expect_drained.undeclared)
                     if not assertions.passed(expect_results) and alert_guard is not None:
                         cleared, expect_block_note = _recover_expect_from_alert(
@@ -1159,6 +1168,7 @@ def run_scenario(  # noqa: C901, PLR0912, PLR0915
                                 cancelled=cancelled,
                                 expect_actuations=expect_actuations,
                                 wall_offset_s=wall_offset_s,
+                                expect_alerts=expect_alerts,
                                 target_runtimes=(
                                     roster.live(target_runtimes)
                                     if roster is not None
@@ -1176,6 +1186,7 @@ def run_scenario(  # noqa: C901, PLR0912, PLR0915
                         # still covered.
                         retry_drained = drain_interruptions(driver)
                         expect_alerts.extend(retry_drained.alerts)
+                        expect_alerts.extend(drain_banner_dismissals(driver))
                         expect_undeclared.extend(retry_drained.undeclared)
                     if not assertions.passed(expect_results):
                         failure = "expect: " + _fail_reason(expect_results)
@@ -1335,7 +1346,7 @@ _BANNER_CLEARANCE_TIMEOUT = 2.0
 _BANNER_CLEARANCE_POLL = 0.1
 
 
-def _clear_notification_banner(driver: base.Driver, clock: Clock) -> None:
+def _clear_notification_banner(driver: base.Driver, clock: Clock) -> AlertEvent | None:
     """Swipe away a foreground notification banner if one is showing right now (BE-0416 Unit 8).
 
     A single unconditional check, no rate limit: for the `expect`-phase visual capture and a
@@ -1359,34 +1370,58 @@ def _clear_notification_banner(driver: base.Driver, clock: Clock) -> None:
     a downward or zero-length drag, which SpringBoard would read as its own notification-shade
     gesture instead. The next poll (this call, or the per-step sweep's own next tick) reads the
     frame again once it has settled.
+
+    The swipe's distances are scaled by the backend's own units per point
+    (`base.DisplayScaleProvider`), since they were measured in iOS points and an Android backend
+    addresses raw pixels (BE-0496 Unit 4); a backend without the protocol works in points already.
+
+    Returns:
+        A `notificationBanner` record when the swipe is confirmed, for the caller to keep with its
+        own alerts (BE-0496 Unit 5), so a banner this sweep clears reaches the report rather than
+        only an unexplained swipe in the actuation log. Its label is empty: the sweep reads only a
+        frame, never the notification's text, which is also what tells it apart from a dismissal a
+        driver or the interruption monitor made. None when nothing was swiped or the banner outlived
+        the wait.
     """
     if base.Capability.HANDLE_NOTIFICATION_BANNER not in driver.capabilities():
-        return
+        return None
     frame = driver.notification_banner_frame()
     if frame is None:
-        return
-    points = base.notification_banner_swipe_points(frame)
+        return None
+    scale = driver.display_scale() if isinstance(driver, base.DisplayScaleProvider) else 1.0
+    points = base.notification_banner_swipe_points(frame, scale)
     if points is None:
-        return
+        return None
     # Re-checked immediately before the gesture, mirroring `RunnerUITest.swift`'s own `banner.exists`
     # guard: the banner can lose the race with its own auto-dismissal between the frame read above
     # and this swipe, and a flick delivered at its former position would land on whatever the app
     # under test draws there — a gesture the scenario never asked for, recorded as its own actuation.
     if driver.notification_banner_frame() is None:
-        return
+        return None
     frm, to = points
-    driver.swipe(frm, to)
+    try:
+        driver.swipe(frm, to)
+    except base.NotificationBannerBlocking as exc:
+        # A backend that guards its own gestures (BE-0496) can refuse this flick if the banner moved
+        # between the reads. The sweep protects a screenshot, so it logs and leaves the banner rather
+        # than unwinding the whole run.
+        _logger.warning("notification banner sweep could not swipe: %s", exc)
+        return None
     deadline = clock.now() + _BANNER_CLEARANCE_TIMEOUT
     while True:
         if driver.notification_banner_frame() is None:
-            return
+            # A read channel that degraded since the swipe may have gone blind to banners, so an
+            # absence it reports confirms nothing; claiming a dismissal on it would misreport.
+            if isinstance(driver, base.ChannelHealthReporter) and driver.channel_degraded():
+                return None
+            return AlertEvent(kind="notificationBanner")
         if clock.now() >= deadline:
             _logger.warning(
                 "notification banner still on screen %.0fs after the swipe; the capture that "
                 "follows may carry it (BE-0416)",
                 _BANNER_CLEARANCE_TIMEOUT,
             )
-            return
+            return None
         clock.sleep(_BANNER_CLEARANCE_POLL)
 
 
@@ -1396,6 +1431,7 @@ def _clear_notification_banner_before_visual_capture(
     clock: Clock,
     expect_actuations: list[Actuation],
     wall_offset_s: float,
+    expect_alerts: list[AlertEvent] | None = None,
 ) -> int:
     """`_clear_notification_banner`, gated on an actual `visual` assertion being present.
 
@@ -1406,6 +1442,9 @@ def _clear_notification_banner_before_visual_capture(
     otherwise strand until some later drain (the next scenario's first step, since a lease's
     driver outlives one scenario) picks it up as a phantom actuation nobody performed there.
 
+    `expect_alerts` receives the sweep's `notificationBanner` record, beside the phase's other
+    dismissals (`RunResult.expect_alerts`).
+
     Returns:
         How many records that drain had to discard — the caller's own share of
         `RunResult.dropped_expect_actuations`, since this function has no `StepOutcome` of its
@@ -1413,7 +1452,9 @@ def _clear_notification_banner_before_visual_capture(
     """
     if ctx.visual is None:
         return 0
-    _clear_notification_banner(driver, clock)
+    swept = _clear_notification_banner(driver, clock)
+    if swept is not None and expect_alerts is not None:
+        expect_alerts.append(swept)
     return _drain_into_expect_actuations(driver, expect_actuations, wall_offset_s)
 
 
@@ -1433,7 +1474,7 @@ def _drain_into_expect_actuations(
 
 def _sweep_notification_banner(
     driver: base.Driver, clock: Clock, alert_guard: AlertGuardConfig | None, state: StepLoopState
-) -> None:
+) -> AlertEvent | None:
     """Clear a foreground notification banner sitting on screen, before it corrupts a screenshot.
 
     Unlike the interruption-monitor path (BE-0416 Unit 4), a banner nothing is interacting with
@@ -1449,14 +1490,18 @@ def _sweep_notification_banner(
     resolved for this scenario when the guard is configured, so the two SpringBoard polls (this
     one and `_AlertGuardGate`'s own) share one cadence; a scenario with the guard off still gets
     BE-0315's plain default, since nothing here is the guard's to turn off.
+
+    Returns:
+        `_clear_notification_banner`'s dismissal record, for the step's own alerts; None on a tick
+        the rate limit skipped or one that cleared nothing.
     """
     interval = alert_guard.poll_interval if alert_guard is not None else DEFAULT_ALERT_POLL_INTERVAL
     now = clock.now()
     last = state.last_notification_banner_poll_at
     if last is not None and now - last < interval:
-        return
+        return None
     state.last_notification_banner_poll_at = now
-    _clear_notification_banner(driver, clock)
+    return _clear_notification_banner(driver, clock)
 
 
 def _run_if(

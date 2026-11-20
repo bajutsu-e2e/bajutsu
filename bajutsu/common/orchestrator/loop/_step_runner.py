@@ -29,6 +29,7 @@ from bajutsu.common.orchestrator.types import (
     SystemAlertTap,
     UndeclaredInterruption,
     drain_actuations,
+    drain_banner_dismissals,
     drain_channel_notes,
     drain_interruptions,
     prompt_title_check,
@@ -1184,6 +1185,9 @@ class _StepRunner:
                     self.cfg.ctx,
                     wait_trace=trace,
                     selection=self.state.selection,
+                    # The rerun arms no guard, so this list receives only a step-level `visual`
+                    # capture's own banner dismissal (BE-0496), which belongs to this step too.
+                    alerts=outcome.alerts,
                     system_alert_taps=system_alert_taps,
                     warnings=step_warnings,
                     system_alert_title=system_alert_title,
@@ -1349,9 +1353,11 @@ class _StepRunner:
         # the swipe this performs is itself an actuation, and this step's own `drain_actuations`
         # call is what has to carry it — after the drain, it would silently miss this step's
         # outcome and surface as a phantom actuation on whichever step runs next.
-        _sweep_notification_banner(
+        banner_swept = _sweep_notification_banner(
             self.cfg.driver, self.cfg.clock, self.cfg.alert_guard, self.state
         )
+        if banner_swept is not None:
+            outcome.alerts.append(banner_swept)
 
         # What the driver actually did to the screen during this step. Drained once, after the body has
         # finished, rather than per attempt: when the alert guard dismissed a prompt and retried, both
@@ -1383,6 +1389,11 @@ class _StepRunner:
             # `_drain_step_interruptions` extends `outcome` rather than replacing it, so calling it
             # again for the native driver composes with what `active_driver` already contributed.
             self._drain_step_interruptions(self.cfg.driver, outcome)
+        # A banner the native driver swiped away before one of this step's gestures (BE-0496). From
+        # `cfg.driver`, never `active_driver`: a `web`-block step's WebView driver clears no banner,
+        # and the native store it would otherwise skip outlives the step, so the record would surface
+        # on whichever native step drained next.
+        outcome.alerts.extend(drain_banner_dismissals(self.cfg.driver))
 
         # The post-action shutter, taken here rather than down with the rest of the post-step
         # capture. Every step records `after.png` (the capture call below drops `screenshot.after`

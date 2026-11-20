@@ -376,6 +376,8 @@ def test_android_lane_surface() -> None:
         is_relevant([".github/actions/collect-android-diagnostics/action.yml"], "android") is True
     )
     assert is_relevant(["scripts/collect_android_diagnostics.sh"], "android") is True
+    # The heads-up evidence check the `notification-banner (adb)` job runs (BE-0496).
+    assert is_relevant(["scripts/assert_notification_banner_evidence.py"], "android") is True
     # The `uiautomator (codegen)` job (BE-0294) regenerates its test with `bajutsu codegen`, so the
     # codegen CLI command is android-relevant — the one CLI command besides `run` this lane drives.
     assert is_relevant(["bajutsu/codegen/cli.py"], "android") is True
