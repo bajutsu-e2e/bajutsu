@@ -142,48 +142,173 @@ CSRF の Origin チェックと **`Host` ヘッダの許可リスト**は、ト�
 バインドすればループバックの名前、それ以外はそのホストです。ワイルドカードのバインド（`0.0.0.0` や `::`）は到達しうる
 名前を列挙できないため `Host` チェックを無効化し、クロスオリジンの防御は CSRF が担います。
 
-## アップロードされた config のコマンド実行（BE-0090）
+## worker が実行する config のコマンド（BE-0492）
 
-アップロードされた `.zip` バンドルは、テスト対象アプリを起動するシェルコマンドを `services.server.cmd`
-（および、配線され次第 `services.mockServer.cmd`）に持つ config を同梱できます。このコマンドは**信頼できない入力**なので、
-`serve` がホスト上で直接実行することはありません。**アップロードされた**バンドルの run がこのコマンドを必要とする
-ときの挙動は、`--upload-exec` オプション（ホスト型 backend では環境変数 `BAJUTSU_UPLOAD_EXEC`）で選びます。これが
-効くのはアップロード由来の config だけで、ローカルや Git 由来の config は運用者が信頼しているため影響を受けません。
+config は、run を実行するマシンで Bajutsu が実行するコマンドを宣言できます。
 
-- **`sandbox`**（既定）：コマンドを使い捨ての **Docker** コンテナの中で実行し、`serve` ホストには決して触れさせません。
-  バンドルはランタイムを、`dockerImage`（公開済みのベースイメージ。例 `node:20-slim`）か `dockerfile`（バンドル相対の
-  パスで、`serve` が `docker build` でビルドします）のどちらか一方で宣言し、加えて `port`（コンテナ内の待ち受けポート）
-  を指定します。コンテナはハードニングされ（`--rm`、全ケーパビリティの剥奪、権限昇格の禁止、読み取り専用ルート
-  ファイルシステムと `tmpfs` のスクラッチ、非 root ユーザ、CPU・メモリ・pid の上限、そして単一のポートだけを
-  **ループバック**のホストポートへ publish）、run の後に破棄します。`serve` ホストには Docker が必要です。
-- **`reuse`**：アップロードされたコマンドは実行せず、`subject.url` ですでに応答している運用者提供のサーバをプローブする
-  だけです。何も応答しなければ、何かを起動するのではなく run を fail loud させます。
-- **`deny`**：アップロードされたコマンドをきっぱり拒否します。`reuse` と同様、外部で応答するサーバがあれば受け入れ、
-  なければ run を fail loud させます。
+- `services.server.cmd` は、テスト対象のアプリをホストするサーバーを起動します。
+- `subject.build` は、アプリのバイナリがないときにアプリをビルドします。
+- `driver.runner.build` は、`.xctestrun` ファイルがないときに XCUITest runner をビルドします。
 
-どのモードもアップロードされたコマンドをホスト上で実行することはなく、黙ってそこへフォールバックすることも
-ありません。ブロックされた、あるいは設定の誤った `services.server` は、flaky に見える run ではなく明確なエラーで
-失敗します。その判断（denied / reused / sandboxed、sandbox のときは使ったイメージ）は run の `manifest.json` の
-provenance に記録されるので、「この run は何を実行し、何を抑止したのか」に、あとから答えられる状態を保てます。
+これらのコマンドを実行し、そのリスクを負うのは worker（シナリオを実行するマシン）です。そこで、各コマンドを
+実行するかどうかは、worker 自身の能力ファイル `worker.yaml` が決めます
+（[BE-0492](../../roadmaps/BE-0492-worker-command-execution-policy/BE-0492-worker-command-execution-policy-ja.md)）。
+`serve` はこの判断をしません。`serve` は各 job に config の出所を示すラベルを付け、worker がその出所に
+自分のポリシーを当てはめます。
 
-## リモート config のコマンド実行（BE-0121）
+### config の出所
 
-起動時に `--config` でバインドした config（自分で入力したローカルパスや `github:` の spec）は**運用者が信頼している**ため、
-`serve` はその `subject.build` コマンドを通常どおり実行します。あとから **UI の「from Git」ピッカー**でバインドした Git config
-（`git` の spec を伴う `POST /api/config`）は信頼のレベルが違います。クロスオリジンのリクエストがそれをバインドした
-可能性があるので、アップロードされたバンドルと同じ扱いにし、その `subject.build` コマンドは**既定ではホスト上で実行しません**。
-UI からバインドした Git config でその build を信頼して run を回したいときは、`--allow-remote-build`（または環境変数
-`BAJUTSU_ALLOW_REMOTE_BUILD=1`）で明示的に opt-in してください。opt-in がなければ、アップロードされたバンドルの build が
-抑止されるのと同じように build を抑止したまま run が進みます。ネットワーク越しに届いた config から、黙ってホスト側で
-コマンドが実行されることはありません。
+`serve` は、すべての job に次の3つのラベルのどれかを付けます。config が自分のラベルを決める手段はありません。
 
-XCUITest runner をその場でビルドする `driver.runner.build` にも、同じ判定を適用します。このコマンドを実行するのは
-`serve` 自身ではなく、`serve` が起動する run です。run は `driver.runner.testRunner` のファイルが無いときにこのコマンドを実行します。
-アップロードされたバンドルと、`--allow-remote-build` なしで UI からバインドした Git config では、起動された run が
-このビルドを拒否し、`driver.runner.build withheld` というエラーで失敗します。こうした config では、`.xctestrun` を
-ビルド済みの状態で `testRunner` の位置に同梱してください。run はそのファイルをそのまま使います。
-起動された run は、ターゲットの `subject.build` も同じように差し止めます。存在しないアプリのビルドは行わず、
-強制ビルド（`rebuild`）は拒否します。`bajutsu run` は存在しないアプリを自らビルドしますが、これで `serve` の判定が保たれます。
+| 出所 | config の入手元 |
+|---|---|
+| `uploaded` | ブラウザの利用者がアップロードした `.zip` バンドル |
+| `remote` | `serve` の起動後に、Web UI の利用者が「from Git」ピッカーか `POST /api/config` で bind した Git リポジトリ |
+| `operator` | 運用者自身が選んだ config。`serve` の起動時の config、ローカルのファイルブラウザで選んだ config、ターミナルや CI の run が指定する config が該当します |
+
+起動後に bind した Git の config は `remote` として扱います。クロスオリジンのリクエストによって bind された
+可能性があるからです。ターミナルや CI から始めた run は、config を `operator` とします。run を始めた人が config を
+選んでいるからです。worker は、起動する `run`、`record`、`crawl` にラベルを渡します。自分の
+`--worker-config` も合わせて渡します。
+
+### `commandExecution` ブロック
+
+`worker.yaml` の `commandExecution` ブロックは、出所ごとにモードを1つ定めます。
+
+```yaml
+version: 1
+environment: local
+drivers: [playwright]
+commandExecution:
+  uploaded: sandbox
+  remote: sandbox
+  operator: allow
+```
+
+各コマンドの扱いは、モードで次のように決まります。
+
+| コマンド | `allow` | `sandbox` | `named` | `deny` |
+|---|---|---|---|---|
+| `services.server.cmd` | worker のホストで実行します | Docker コンテナの中で実行します | 拒否します | 拒否します |
+| `subject.build` | バイナリがないとき、ホストで実行します | 実行しません | 実行しません | 実行しません |
+| `driver.runner.build` | runner がないとき、ホストで実行します | 実行しません | 実行しません | 実行しません |
+| named command | ホストで実行します | ホストで実行します | ホストで実行します | 拒否します |
+
+ブロックやキーを省くと、既定値の `uploaded: sandbox`、`remote: sandbox`、`operator: allow` になります。
+既定値は以前の挙動を保ちますが、1点だけ厳しくなりました。`remote` の config のサーバーコマンドは、
+ホスト上ではなくコンテナの中で実行します。
+
+どちらのビルドも、コンテナの中では実行しません。iOS のビルドには macOS のツールチェインが要り、
+Linux のコンテナはそれを提供しないからです。`allow` 以外のモードでは、config がビルド済みのバイナリを
+`subject.path` に同梱します。runner も、ビルド済みのものを `driver.runner.testRunner` に同梱します。
+どちらかがないと run は失敗し、エラーはビルドを止めたモードを示します。アップロードされたバンドルは、
+もともとこの形でバイナリを同梱しています。
+
+`allow` と `sandbox` では、readiness URL がすでに応答するサーバーを再利用し、コマンドは実行しません。
+`named` と `deny` では、サーバーがすでに応答していても、宣言された `services.server.cmd` を拒否します。
+ポリシーはプローブより前に決まるので、拒否した config の readiness URL を run がプローブすることはありません。
+
+### サーバーコマンドをコンテナで実行する
+
+`sandbox` では、サーバーコマンドを worker のホスト上の使い捨ての Docker コンテナで実行します。
+config は `services.server` に、ランタイムを示す2つのフィールドのうち**ちょうど1つ**と、ポートを書きます。
+
+- `dockerImage` は、公開済みのベースイメージを指定します。例は `node:20-slim` です。
+- `dockerfile` は、config のディレクトリの中のパスを指定します。worker が `docker build` でビルドします。
+- `port` は、コンテナの中でサーバーが待ち受けるポートを指定します。
+
+コンテナは全ケーパビリティを剥奪し、権限昇格を禁じます。非 root ユーザーで、読み取り専用のルート
+ファイルシステムと `tmpfs` のスクラッチの上で動きます。CPU、メモリ、プロセス数には上限があります。
+公開するのは1つのポートだけで、ホストのループバックのポートへ publish します。worker は run の後に
+コンテナを破棄します。
+
+worker のホストには Docker が必要です。ファイルで出所を明示的に `sandbox` にした worker は、起動時に
+`PATH` 上の `docker` を確かめます。`docker` がなければ、該当するキーを示すメッセージを出して終了します。
+既定値から来た `sandbox` では、worker は終了しません。その出所のルーティングトークンを広告しないだけです。
+そのため、引き受けたあとで失敗する job を lease することはありません。
+
+### named command
+
+`namedCommands` ブロックには、worker の運用者が責任を持つスクリプトを並べます。
+
+```yaml
+commandExecution:
+  uploaded: named
+  remote: named
+  operator: allow
+namedCommands:
+  seed-users:
+    path: /opt/bajutsu/hooks/seed-users.sh   # worker 上のファイル。バンドルやチェックアウトの外に置く
+    env: [SEED_COUNT]                        # このコマンドに config が設定してよい変数
+```
+
+worker は起動時に各エントリを確かめ、次の3つの規則のどれかに反するファイルを拒否します。
+
+- 名前は `[A-Za-z][A-Za-z0-9_-]*` に合う必要があります。
+- `path` は絶対パスである必要があります。
+- `env` には、プロセスがコードを読み込む方法を変える変数を含められません。`PATH`、`NODE_OPTIONS`、
+  `PYTHONPATH` と、`LD_*` や `DYLD_*` で始まる変数が該当します。
+
+named command は、`deny` 以外のどのモードでも worker のホストで実行します。コードが運用者のものだからです。
+今のところ、named command を参照できる config のフィールドはありません。そのフィールドは
+[BE-0491](../../roadmaps/BE-0491-target-command-hooks/BE-0491-target-command-hooks-ja.md) の hook のエントリが加えます。
+秘密情報を持つ worker で信頼できない config を実行するなら、運用者はそこで `uploaded: named` と
+`remote: named` を設定できます。この2つのモードは、2つの出所のサーバーコマンドをすべて拒否します。
+
+### ポリシーがルーティングと run に届く仕組み
+
+worker は、ポリシーをルーティングトークンとして広告します
+（[能力に基づくキューの振り分け](#能力に基づくキューの振り分けbe-0166)を参照）。
+
+- `command-execution:<source>`：モードが `allow` の出所と、Docker があるときの `sandbox` の出所ごとに広告します。
+- `named-execution:<source>`：モードが `deny` でない出所ごとに広告します。
+- `named-command:<name>`：`namedCommands` のエントリごとに広告します。
+
+config が `services.server.cmd` を宣言する job は、その出所の `command-execution:<source>` を要求します。
+ビルドはトークンを足しません。worker がビルド済みのバイナリを持っているかを、`serve` は知りえないからです。
+条件に合う worker が接続していないあいだ、job は待ち続けます。BE-0492 より前の worker はこれらの
+トークンを1つも広告しないので、そうした job を lease しません。
+
+run は、デバイスを使う前に、自分が読む `worker.yaml` でポリシーをもう一度判定します。この2度目の判定が、
+`serve` を通さずに始めた run を受け持ちます。ポリシーがサーバーコマンドを拒否すると、すべてのシナリオが
+その拒否で失敗します。それでも run は `manifest.json` とレポートを書き、終了コード 2 で終わります。
+`audit` と `repl` は、運用者自身のポリシーのまま動きます。
+
+### コマンドの記録
+
+run は、出会った統制対象のコマンドを記録します。記録は `manifest.json` の provenance の
+`commandExecutions` に入り、各エントリは次のフィールドを持ちます。
+
+| フィールド | 意味 |
+|---|---|
+| `field` | config がコマンドを宣言した場所。例は `services.server.cmd` です |
+| `cmd` | コマンドライン。`${secrets.*}` の値はマスクします |
+| `source`、`mode` | config の出所と、適用したモード |
+| `decision` | `ran`、`sandboxed`、`refused` のいずれか |
+| `exitCode` | コマンドを実行したときの終了コード |
+| `sha256` | コマンドラインのハッシュ。実行ファイルが config のディレクトリの中にあれば、そのファイルのハッシュも記録します |
+
+run のレポートは、エントリごとに run 単位の notice を1つ表示します。2つの run のあいだでスクリプトが
+変わると、コマンドラインが同じでもハッシュが変わります。この一覧は、以前のリリースの `uploadExec`
+という provenance のエントリを置き換えます。
+
+### 廃止した `serve` のフラグからの移行
+
+BE-0492 で、`serve` の入力を4つ廃止しました。2つはフラグの `--upload-exec` と `--allow-remote-build` です。
+残りの2つは、環境変数の `$BAJUTSU_UPLOAD_EXEC` と `$BAJUTSU_ALLOW_REMOTE_BUILD` です。どれかを受け取ると `serve` は
+起動を拒否し、メッセージで `commandExecution` ブロックを案内します。`serve --emit-launchagent` が出力する
+LaunchAgent も、`--upload-exec` を渡さなくなりました。
+
+| 以前の設定 | 各 worker に設定する値 |
+|---|---|
+| `--upload-exec sandbox`（既定） | 設定不要です。`uploaded: sandbox` が既定です |
+| `--upload-exec deny` | `uploaded: deny` |
+| `--upload-exec reuse` | `uploaded: sandbox` か `uploaded: deny` |
+| `--allow-remote-build` | `remote: allow` |
+
+`reuse` モードには後継がありません。`reuse` を使っていた運用者は、`sandbox` か `deny` を選びます。
+`sandbox` では、すでに応答するサーバーを引き続き再利用します。`deny` では、サーバーコマンドを宣言した
+config の run が失敗するようになりました。サーバーがすでに応答していても同じです。
 
 ## Git config source の非公開リポジトリへのアクセス（BE-0224）
 
@@ -308,7 +433,7 @@ serve ホストの `--root` を辿る**ファイルブラウザ**です。サー
 |---|---|---|
 | **config** | ファイルブラウザ + Git + アップロード。自分のファイルシステムで、パスの閉じ込めなし | Git とアップロードのみ。ファイルブラウザは無効、403（BE-0108） |
 | **シナリオと run の成果物** | `scenarios/`、`runs/` をディスク上に保持し、キューと run の履歴は `.bajutsu/queue.db` に保持。ソフトデリートは run のツリーに `.deleted` の印を残す | オブジェクトストレージ（S3/GCS）+ Postgres。ソフトデリートは `deleted_at` を設定（BE-0239） |
-| **アプリバイナリ** | `subject.path` をディスク上に保持。存在しないときだけ build（アップロードされたバンドルはビルド済みのバイナリを持つため build しません） | アップロードされたバンドルのバイナリは presigned URL で worker に届き、build は走りません（BE-0413）。Git 由来の config は引き続き worker がチェックアウトから build します。リモート build はゲート付き（BE-0121） |
+| **アプリバイナリ** | `subject.path` をディスク上に保持。存在しないときだけ build（アップロードされたバンドルはビルド済みのバイナリを持つため build しません） | アップロードされたバンドルのバイナリは presigned URL で worker に届き、build は走りません（BE-0413）。Git 由来の config は引き続き worker がチェックアウトから build します。build するかどうかは、config の出所ごとに worker の `commandExecution` が決めます（BE-0492） |
 | **実機の画面を見ながらの作成** | Capture モードと Edit モードのライブピッカーが、`serve` プロセス内に driver を開いたまま保持 | どちらも提供しない。2つの操作は理由付きで無効化（#1721） |
 
 - **config。** どちらの側も最大3つのソースからバインドしますが、`hosted` が true になった瞬間にファイル
@@ -336,19 +461,19 @@ serve ホストの `--root` を辿る**ファイルブラウザ**です。サー
   `bajutsu serve --asgi` も、サーバ backend のローカル起動も、デバイスがその機械の上にあるので Capture を
   残します（BE-0449）。Record タブは動き続けます。`POST /api/record` は run と同じように job をディスパッチするため、AI 経由での
   記録はホスト型でも動きます。
-- **アプリバイナリ。** アップロードされたバンドルはすでにビルド済みのバイナリを持っているため、Tier に関わら
-  ず `subject.build` は実行されません（`_governed_build`、DESIGN §1「Bajutsu はアプリをビルドしない」）。ホスト型
+- **アプリバイナリ。** アップロードされたバンドルはすでにビルド済みのバイナリを持っています。そのため既定の
+  `uploaded: sandbox` では、Tier に関わらず `subject.build` を実行しません（DESIGN §1「Bajutsu はアプリをビルドしない」）。ホスト型
   では、worker がそのバイトを受け取る必要があります。job のリース応答に含まれる `bundle_urls` フィールドが、
   バンドルを構成する各オブジェクトへの presigned GET URL を1つずつ運び、worker はそれを HTTP 経由で取得して
   run を始める前に自分のワークスペースへ再構成します（BE-0413）。共有ファイルシステムは不要で、build も走り
   ません。Git 由来（またはローカルではファイルブラウザ由来）の config は従来どおり、バインドした config から
   `subject.path` を解決し、それが存在しなければ config の `subject.build` コマンドを実行します。ホスト型では、Mac の
   worker が、コントロールプレーンがその job 用に解決したのと同じチェックアウトの素材から build します。共有
-  ファイルシステムではなく、署名した presigned URL 経由でバイトをやり取りします（前述の BE-0160）。リモート
-  build のゲートは Tier とは独立しています。**UI の「from Git」
-  ピッカー**で後からバインドした config は、その UI がノート PC 上の Tier A にあるか Tier B のコントロール
-  プレーンにあるかに関わらず、`subject.build` が既定で抑止されます。起動時に与えた config だけがオペレータ信頼として
-  扱われます（前述の「リモート config のコマンド実行」を参照してください）。web（Playwright）backend には
+  ファイルシステムではなく、署名した presigned URL 経由でバイトをやり取りします（前述の BE-0160）。build を
+  実行するかどうかは Tier とは関係なく、worker の `commandExecution` が config の出所ごとに決めます。**UI の
+  「from Git」ピッカー**で後からバインドした config の出所は `remote` です。その既定の `sandbox` は build を
+  実行しません。UI がノート PC 上の Tier A にあっても、Tier B のコントロールプレーンにあっても同じです
+  （前述の「worker が実行する config のコマンド」を参照してください）。web（Playwright）backend には
   どちらの側にもバイナリという概念自体がなく、ブラウザエンジンがオンデマンドでインストールされるだけです。
 
 ### 1台のマシンで動かすサーバ backend（BE-0449）
@@ -1004,10 +1129,15 @@ worker は作業ディレクトリの `.bundles/<org>/<id>/` にそのツリー�
 worker 能力ファイルを渡します（[BE-0450](../../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability-ja.md)）。このファイルには、マシンが提供するドライバと、1 つのシナリオが
 同時に持てる target の数（`maxTargetsPerJob`）を書きます。フラグを省くと、worker は同梱の既定を使います。
 既定はすべてのドライバを提供し、target の数に上限を設けません。worker は起動時、job をリースする前に
-ファイルを検証します。さらに、起動するすべての `bajutsu run` にファイルの絶対パスを渡します。リースした run は、
+ファイルを検証します。さらに、起動する `bajutsu run`、`bajutsu record`、`bajutsu crawl` のそれぞれにファイルの絶対パスを渡します。リースした run は、
 それぞれのシナリオをこのファイルに照らして検査します。このマシンで動かせないドライバを必要とするシナリオは、
 `worker-capability-unsupported:` で始まる理由により失敗します。コントロールプレーンはこのファイルを読みません。ファイルの形式と検査の内容は
 [drivers](drivers.md#worker-の能力検査be-0450) で説明しています。
+
+同じファイルには、worker の `commandExecution` ブロックも書きます。このブロックは、config のコマンドを
+このマシンで実行するかどうかを、config の出所ごとに決めます。`namedCommands` ブロックには、運用者が責任を
+持つスクリプトを並べます。2つのブロックは
+[worker が実行する config のコマンド](#worker-が実行する-config-のコマンドbe-0492)で説明しています。
 
 ファイルが `environment: devicefarm` のようにデバイスクラウドを指す worker は、ジョブの予算もこのファイルから
 読みます（BE-0448）。最上位の `maxJobConcurrency` が同時に持てるジョブの数で、枠がすべて埋まっている間、
@@ -1234,9 +1364,17 @@ Linux の web ワーカーに渡って失敗しかねません。それは本物
 - **ワーカーの手書きの入力は非推奨です。** ワーカーの `--capabilities` と `$BAJUTSU_WORKER_CAPABILITIES` は
   トークンをそのまま加えます。どちらも今回のリリースでは引き続き効き、1 回だけ通知を記録します。次のリリース
   で削除します。Simulator 在庫と worker 能力ファイルが、上書きの用途をすでに担っているからです。上書きは、
-  マシンにないランタイムを広告できてしまう点でも問題です。どちらも、予約済みの接頭辞 `environment:`、
-  `host:`、`machine:`、`device:`、`cap:`、`setting:`、`job:`、`platform:`、`kind:` を含められません。ワーカーがいずれも自分で埋めるからです。ワーカーは起動時に、そのトークンを
-  拒否します。
+  マシンにないランタイムを広告できてしまう点でも問題です。どちらも、予約済みの接頭辞を含められません。
+  予約済みの接頭辞は `environment:`、`host:`、`machine:`、`device:`、`cap:`、`setting:`、`job:`、`platform:`、
+  `kind:`、`command-execution:`、`named-execution:`、`named-command:` です。ワーカーがいずれも自分で埋めるからです。ワーカーは起動時に、そのトークンを
+  拒否します。そのため上書きによって、ワーカーの `commandExecution` ブロックが拒む config の出所を名乗ることはできません。
+- **サーバーコマンドを持つジョブの振り分け。** config が `services.server.cmd`
+  を宣言するジョブは、`command-execution:<source>` を要求します。出所は `uploaded`、`remote`、`operator`
+  のいずれかです。ワーカーは、モードが `allow` の出所と、Docker があるときの `sandbox` の出所について、
+  このトークンを広告します。`deny` でない出所ごとの `named-execution:<source>` と、named command ごとの
+  `named-command:<name>` も広告します。ビルドはトークンを足しません。ビルドするかどうかは、ワーカーが run の
+  時点で決めます（[worker が実行する config のコマンド](#worker-が実行する-config-のコマンドbe-0492)、
+  [BE-0492](../../roadmaps/BE-0492-worker-command-execution-policy/BE-0492-worker-command-execution-policy-ja.md)）。
 - **振り分け不能のジョブ**、すなわち必要とする capability を稼働中のどのワーカーも広告していないジョブは、
   非互換のワーカーにリースされたり捨てられたりせず、キューに残ります。そして `bajutsu_unroutable_jobs`
   メトリクス（下記）で顕在化するので、運用者は不足している capability を持つワーカーを足せばよいと分かります。
@@ -1351,7 +1489,7 @@ BE-0015 で今後の作業です。
 
 **データベースを繋いだデプロイの移行。** Alembic のマイグレーションは通常どおり実行します。追加するのは列だけで、データは書き込みません。次回の起動時に、`serve` 自身が、この serve を**起動したときの** config の `orgs:` のメンバーシップをデータベースへ写します。そのため、既存のデプロイは移行前と同じ顔ぶれを受け入れ続けます。
 
-この書き写しが起きるのは、**`orgs` テーブルが空のときの一度だけ**です。org が1つでも入っている状態で起動すれば、廃止済みのものが1つあるだけでも、何も書き写しません。起動後に Web UI や `POST /api/config` で bind した config は、そもそも一切書き写しません。これらの bind が受け取る config は、その内容がこちらの管理下にないからです。同じファイルの `subject.build` を `--allow-remote-build` まで統制の外に置く信頼境界（[リモート config のコマンド実行](#リモート-config-のコマンド実行be-0121)を参照）と同じ線で、誰がサインインできるかを決めさせません。加えて、書き写した行は bind より長く残るため、bind を切り替えても許可を取り消せなくなります。移行後に org を増やすときは、Orgs ページで宣言してください。
+この書き写しが起きるのは、**`orgs` テーブルが空のときの一度だけ**です。org が1つでも入っている状態で起動すれば、廃止済みのものが1つあるだけでも、何も書き写しません。起動後に Web UI や `POST /api/config` で bind した config は、そもそも一切書き写しません。これらの bind が受け取る config は、その内容がこちらの管理下にないからです。同じ config のコマンドを `remote` という出所として worker の統制下に置く信頼境界（[worker が実行する config のコマンド](#worker-が実行する-config-のコマンドbe-0492)を参照）と同じ線で、誰がサインインできるかを決めさせません。加えて、書き写した行は bind より長く残るため、bind を切り替えても許可を取り消せなくなります。移行後に org を増やすときは、Orgs ページで宣言してください。
 
 以後、この4つのフィールドをファイルが決めることはなくなり、まだ宣言しているエントリがあれば `serve` が `event=org.membership.ignored`（`check=orgs_membership_ignored`）として org 名を挙げて警告します。該当のエントリは、都合のよいときに `targets:` だけへ削ぎ落としてください。このフィールドは引き続き読みますし、書き写しの起きる起動より前に削ぎ落としても後に削ぎ落としても同じです。`targets:` だけを宣言したエントリは書き写しの対象から外れるので、誰も受け入れない状態で org が固定されることはありません。
 

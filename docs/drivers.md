@@ -260,6 +260,8 @@ key, driver, or environment, and any number below one.
 | `drivers` | The drivers the worker offers, from `xcuitest`, `adb`, `playwright`, and `fake`. A driver the list omits is unavailable. |
 | `realDevices` | Whether a `local` worker that offers `xcuitest` also drives attached real iPhones, so serve routes real-device jobs to it ([capability routing](self-hosting.md#capability-routed-queues-be-0166), BE-0467). Omitted counts as `true`, as such a worker served real-device jobs before. Set `false` to keep a Simulator-only Mac off them. |
 | `build` | The platforms whose app the worker can build by running a target's `subject.build`, from `ios` and `android`. Omitted counts as both, as a worker built any app before the key existed; `[]` builds none. When a run needs a build — the app at `subject.path` is missing, or `--rebuild` asks for one — and the list omits the target's platform, `run` exits 2 and names the platform rather than start a build the machine has no toolchain for. The worker advertises `build:<platform>` for each listed platform it runs, so serve routes a forced build to it ([capability routing](self-hosting.md#capability-routed-queues-be-0166)). |
+| `commandExecution` | Whether the commands a config declares run on this worker, one mode per config source: `uploaded`, `remote`, and `operator`. Each mode is `allow`, `sandbox`, `named`, or `deny`. Omitted keys take `uploaded: sandbox`, `remote: sandbox`, and `operator: allow` ([BE-0492](../roadmaps/BE-0492-worker-command-execution-policy/BE-0492-worker-command-execution-policy.md)). |
+| `namedCommands` | The scripts the worker's operator vouches for, keyed by a name that matches `[A-Za-z][A-Za-z0-9_-]*`. Each entry holds an absolute `path` and an `env` list of the variables a config may set. `env` may not list a variable that changes how a process loads code, such as `PATH` or `LD_PRELOAD`. |
 
 The package ships a default at `bajutsu/common/capability/worker.yaml`.
 The default describes a
@@ -289,6 +291,27 @@ drivers: [xcuitest, adb, playwright, fake]
 Targets of the grid's platform take the endpoint as their device.
 The scenario's other targets stay on this host.
 Bajutsu refuses a scenario with two grid targets.
+
+A worker that runs untrusted configs and holds secrets can refuse their server commands:
+
+```yaml
+version: 1
+environment: local
+drivers: [playwright]
+commandExecution:
+  uploaded: named
+  remote: named
+  operator: allow
+namedCommands:
+  seed-users:
+    path: /opt/bajutsu/hooks/seed-users.sh
+    env: [SEED_COUNT]
+```
+
+Under `named`, a server command from an uploaded bundle or a Web-UI-bound Git config never runs.
+The operator's own configs keep running their commands on the host.
+[Self-hosting](self-hosting.md#which-config-commands-a-worker-runs-be-0492) covers each mode, the
+routing tokens the block adds, and the record each run keeps.
 
 `bajutsu worker` accepts `--worker-config <path>`.
 So does each command that drives a device: `run` / `record` / `crawl` / `repl` / `audit` / `doctor` / `bajutsu mcp`.
