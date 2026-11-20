@@ -10,7 +10,7 @@
 | 状態 | **承認済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | トピック | シナリオ記述機能 |
-| 関連 | [BE-0036](../BE-0036-utility-steps/BE-0036-utility-steps-ja.md)、[BE-0090](../BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution-ja.md)、[BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks-ja.md)、[BE-0491](../BE-0491-target-command-hooks/BE-0491-target-command-hooks-ja.md)、[BE-0492](../BE-0492-worker-command-execution-policy/BE-0492-worker-command-execution-policy-ja.md) |
+| 関連 | [BE-0036](../BE-0036-utility-steps/BE-0036-utility-steps-ja.md)、[BE-0090](../BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution-ja.md)、[BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks-ja.md)、[BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)、[BE-0491](../BE-0491-target-command-hooks/BE-0491-target-command-hooks-ja.md)、[BE-0492](../BE-0492-worker-command-execution-policy/BE-0492-worker-command-execution-policy-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -86,7 +86,10 @@ steps:
 
 ブロックが受け付けるのは `beforeScenario` と `afterScenario` だけです。シナリオは run ではないため、
 `beforeRun` と `afterRun` を持ちません。どちらかを宣言したシナリオはロード時に失敗し、エラーは、run 単位の
-コマンドは `targets.<name>.hooks` に属すると伝えます。
+コマンドは `targets.<name>.hooks` に属すると伝えます。`hooks` の下に `setup`、`cleanup`、`interrupts` を
+書いたシナリオも、ロード時に失敗します。シナリオでは、これら 3 つは
+[BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md) が定めたとおり
+トップレベルのフィールドのままで、エラーは使うべきトップレベルのフィールドを示します。
 
 エントリのフィールドは、BE-0491 がシナリオ単位のリストに定めるものと同じです。
 
@@ -107,7 +110,8 @@ steps:
 1. ターゲットの `beforeScenario` エントリを、宣言順に実行します。
 2. シナリオの `beforeScenario` エントリを、宣言順に実行します。
 3. デバイスの確保とアプリの起動を行います。
-4. BE-0392 の `before` ステップ、`steps`、`expect`、`after` ルールを実行します。
+4. シナリオの `setup` ステップ、`steps`、`expect`、`cleanup` ルールを実行します。2 つのフェーズは
+   BE-0392 が `before` と `after` として導入し、BE-0452 が改名しました。
 5. 判定に一致する `on` を持つシナリオの `afterScenario` ルールを、宣言順に実行します。
 6. 判定に一致する `on` を持つターゲットの `afterScenario` ルールを、宣言順に実行します。
 
@@ -116,7 +120,7 @@ steps:
 シナリオが複数のターゲットを扱うときは、この列のうちターゲット側に BE-0491 の複数ターゲットの順序を適用し、
 シナリオ自身のエントリは中心に置きます。
 
-BE-0392 の `before` / `after` ステップは、アプリのセッションの内側に留まります。`hooks` のコマンドは
+シナリオの `setup` ステップと `cleanup` ルールは、アプリのセッションの内側に留まります。`hooks` のコマンドは
 その外側で走ります。起動の前と、判定が出たあとです。コマンドはアプリの起動前にデータを用意できますが、
 ステップにはできないため、2 つの仕組みは重なりません。
 
@@ -133,6 +137,9 @@ BE-0491 の値の受け渡しの規則は、そのまま適用します。コマ
 シナリオ自身のエントリと、シナリオが扱うターゲットのエントリです。別々の 2 本のシナリオが同じ名前を使って
 かまいません。各シナリオの出力は、そのシナリオの内側に閉じるからです。ローダーは各トークンを静的に検査します。
 見えている `beforeRun` または `beforeScenario` のどのエントリも指さないトークンは、ロードエラーです。
+`preconditions.inheritSetup: false` を設定したシナリオからは、ターゲットのエントリは見えません。
+そのため、それらを指すトークンは BE-0491 の定めどおりロードエラーとなり、その名前がシナリオ自身の名前と
+衝突することもありません。
 
 ### 失敗と判定
 
@@ -144,8 +151,8 @@ BE-0491 の失敗の表は、そのまま成り立ち、1 点だけ追加しま�
 | シナリオの `afterScenario` エントリ | 失敗は、成功したシナリオの判定になり、既存の失敗がある場合はその後ろに追記します。後続のルールは実行します。 |
 
 ターゲット側の `beforeScenario` が失敗した場合も、シナリオ自身の `beforeScenario` エントリは飛ばします。
-そのとき、シナリオ自身の `afterScenario` ルールは、開始したエントリに対応するものだけを実行します。
-書かれなかった出力に後始末が作用することを防ぐためです。
+そのとき、シナリオ自身の `afterScenario` ルールも一緒に飛ばします。BE-0491 が `inheritSetup: false` の
+もとで 2 つのリストを対で扱うのと同じです。書かれなかった出力に後始末が作用することはありません。
 
 ### コマンドを実行してよいか
 
@@ -159,6 +166,11 @@ config source ごとに判定するため、1 つの判定が両方を覆いま�
 実行されます。したがって、この worker は、インストール済みのスクリプトを名前で指すシナリオを受け入れ、
 コマンドラインを書き下すシナリオを拒否します。本提案は、独自のポリシー軸を足しません。
 
+ただし、BE-0492 のルーティングへの入力を 1 つ足します。`serve` は `command-execution:<source>`、
+`named-execution:<source>`、`named-command:<name>` を、ジョブの config に加えてシナリオファイルからも
+導きます。コマンドがシナリオにしかないジョブも、その source を受け入れ、名前付きのスクリプトを持つ
+worker に届きます。
+
 `sandbox` モードでは、シナリオのエントリは、シナリオが最初に宣言したターゲットのコンテナで実行します。
 コンテナは、BE-0491 の `hooks.sandbox` ブロックが定めます。
 
@@ -166,11 +178,13 @@ config source ごとに判定するため、1 つの判定が両方を覆いま�
 
 実行する場所は BE-0491 に従います。コマンドは、`bajutsu run` を実行するマシン上の `bajutsu run`
 プロセスで走ります。Web UI のジョブでは、ジョブを確保した worker です。`run` と `audit` はシナリオ側の
-リストを実行します。`record`、`crawl`、`repl` はシナリオファイルを実行しないため、どちらの階層も実行しません。
+リストを実行します。`record`、`crawl`、`repl` はシナリオファイルを実行しないため、シナリオ側のリストは実行しません。
+ターゲットの `beforeRun` と `afterRun` は、BE-0491 の定めどおり実行します。
 
 シナリオのコマンドの出力は、run ディレクトリの
-`hooks/<list>/scenario/<scenario-index>/<name-or-index>.log` に置きます。`scenario` というディレクトリ名が、
-BE-0491 のターゲット単位のログと区別します。マスクと生の領域の境界は BE-0491 の定めに従います。レポートは、
+`hooks/<list>/_scenario/<scenario-index>/<name-or-index>.log` に置きます。BE-0491 のパスでは、
+この位置にターゲットの名前が入ります。そのため、ローダーは `_scenario` という名前のターゲットを拒否し、
+2 つの階層のログが同じパスに置かれることはありません。マスクと生の領域の境界は BE-0491 の定めに従います。レポートは、
 シナリオの hook フェーズを、由来の階層を示すラベルを付けた独立したブロックとして表示します。
 
 ### 基本原則
@@ -195,7 +209,7 @@ BE-0491 の後に実装し、シナリオ側のスキーマ、ロード時のト
   この判断は逆転します。
 - **シナリオの `steps` に `cmd` エントリを置く**：BE-0036 の理由で棄却しました。さらに、アプリの起動後に
   実行されるため、アプリが起動時に読むデータを用意できません。
-- **BE-0392 の `before` / `after` がコマンドを受け付けるようにする**：棄却しました。これらのフェーズは
+- **シナリオの `setup` / `cleanup` がコマンドを受け付けるようにする**：棄却しました。これらのフェーズは
   起動後のアプリセッションの内側で動きます。シード用のコマンドは起動前に走る必要があります。
 - **シナリオのリストがターゲットのリストを置き換える**：棄却しました。1 件足しただけのシナリオが、共有の
   エントリをすべて黙って落とします。共有のシードを書き忘れても、失敗は原因から遠い場所に出ます。
@@ -212,7 +226,7 @@ BE-0491 の後に実装し、シナリオ側のスキーマ、ロード時のト
 - [ ] スキーマ：シナリオのトップレベル `hooks` ブロック、そのエントリモデル、`beforeRun` / `afterRun` に対するロードエラー。
 - [ ] トークン検査：1 本のシナリオから見えるエントリに対する `${hooks.<name>.<key>}` の解決と、名前の一意性。
 - [ ] 実行順：`inheritSetup: false`、複数ターゲットの run、失敗経路を含め、シナリオのエントリをターゲットのエントリの内側に入れ子にする。
-- [ ] ポリシー：`use` とサンドボックスのコンテナを含め、シナリオのエントリを BE-0492 のモードと `manifest.json` の記録に通す。
+- [ ] ポリシー：`use` とサンドボックスのコンテナを含め、シナリオのエントリを BE-0492 のモード、`manifest.json` の記録、ルーティングのトークンに通す。
 - [ ] 証跡：シナリオ単位のログのパスと、ラベル付きのレポートブロック。
 - [ ] テストと、両言語のドキュメントおよび `DESIGN.md` の更新。
 
@@ -223,7 +237,7 @@ BE-0491 の後に実装し、シナリオ側のスキーマ、ロード時のト
 - [BE-0090](../BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution-ja.md)：
   アップロードされた config が宣言するコマンドに対する現行のポリシー。
 - [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks-ja.md)：シナリオの
-  `before` / `after` ステップのフェーズ。
+  準備と後始末のフェーズ。現在の名前は `setup` と `cleanup` です。
 - [BE-0491](../BE-0491-target-command-hooks/BE-0491-target-command-hooks-ja.md)：本提案が拡張する、
   ターゲット単位のコマンド hook。
 - [BE-0492](../BE-0492-worker-command-execution-policy/BE-0492-worker-command-execution-policy-ja.md)：

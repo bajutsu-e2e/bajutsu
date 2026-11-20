@@ -10,7 +10,7 @@
 | Status | **Approved** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Topic | Scenario authoring features |
-| Related | [BE-0036](../BE-0036-utility-steps/BE-0036-utility-steps.md), [BE-0090](../BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md), [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks.md), [BE-0491](../BE-0491-target-command-hooks/BE-0491-target-command-hooks.md), [BE-0492](../BE-0492-worker-command-execution-policy/BE-0492-worker-command-execution-policy.md) |
+| Related | [BE-0036](../BE-0036-utility-steps/BE-0036-utility-steps.md), [BE-0090](../BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md), [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md), [BE-0491](../BE-0491-target-command-hooks/BE-0491-target-command-hooks.md), [BE-0492](../BE-0492-worker-command-execution-policy/BE-0492-worker-command-execution-policy.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -90,7 +90,10 @@ steps:
 
 The block accepts only `beforeScenario` and `afterScenario`. A scenario is not a run, so it has no
 `beforeRun` or `afterRun`. A scenario that declares either one fails to load, and the error says
-that run-level commands belong to `targets.<name>.hooks`.
+that run-level commands belong to `targets.<name>.hooks`. A scenario that writes `setup`, `cleanup`,
+or `interrupts` under `hooks` fails to load too. At the scenario level those three stay top-level
+fields, as [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)
+named them, and the error names the top-level field to use.
 
 An entry has the fields that BE-0491 defines for its scenario-level lists.
 
@@ -111,7 +114,8 @@ One scenario runs in this order:
 1. The target's `beforeScenario` entries, in declaration order.
 2. The scenario's `beforeScenario` entries, in declaration order.
 3. The device lease and the app launch.
-4. The scenario's `before` steps of BE-0392, its `steps`, its `expect`, and its `after` rules.
+4. The scenario's `setup` steps, its `steps`, its `expect`, and its `cleanup` rules. BE-0392
+   introduced the two phases as `before` and `after`, and BE-0452 renamed them.
 5. The scenario's `afterScenario` rules whose `on` matches the verdict, in declaration order.
 6. The target's `afterScenario` rules whose `on` matches the verdict, in declaration order.
 
@@ -120,7 +124,7 @@ prepares, so the scenario's teardown runs first and never finds the target's dat
 When a scenario drives several targets, BE-0491's multi-target order applies to the target-level
 part of this sequence, and the scenario's own entries sit at the center.
 
-BE-0392's `before` and `after` steps keep their place inside the app session. The commands in
+The scenario's `setup` steps and `cleanup` rules keep their place inside the app session. The commands in
 `hooks` run outside it: before the launch, and after the verdict exists. The two mechanisms do not
 overlap, because a command can seed data before the app starts, which a step cannot.
 
@@ -137,7 +141,9 @@ them as `${hooks.<name>.<key>}`.
 A `name` must be unique among the entries one scenario can see: its own entries and the entries of
 the targets it drives. Two different scenarios may reuse a name, because each scenario's outputs
 stay inside that scenario. The loader checks each token statically. A token that names no visible
-`beforeRun` or `beforeScenario` entry is a load error.
+`beforeRun` or `beforeScenario` entry is a load error. A target's entries are not visible to a
+scenario that sets `preconditions.inheritSetup: false`. A token naming one therefore stays the load
+error BE-0491 defines, and the name of one never collides with the scenario's own.
 
 ### Failures and the verdict
 
@@ -148,9 +154,10 @@ The failure table of BE-0491 holds, with one addition.
 | A scenario `beforeScenario` entry | The scenario fails with `beforeScenario: <name>: …` and skips its launch and steps. Every `afterScenario` rule that matches still runs, at both levels. |
 | A scenario `afterScenario` entry | The failure becomes the verdict on a passing scenario, and is appended behind an existing failure. Later rules still run. |
 
-A target-level `beforeScenario` failure still skips the scenario's own `beforeScenario` entries. The
-scenario's own `afterScenario` rules then run only for entries that started, so a teardown never
-acts on outputs that were never written.
+A target-level `beforeScenario` failure skips the scenario's own `beforeScenario` entries, and it
+skips the scenario's own `afterScenario` rules with them. BE-0491 treats the two lists as a pair in
+the same way under `inheritSetup: false`. A teardown then never acts on outputs that were never
+written.
 
 ### Whether a command may run
 
@@ -163,6 +170,11 @@ Under a `named` mode, a `cmd` entry in a scenario is refused like a `cmd` entry 
 `use` entry runs. Such a worker therefore accepts a scenario that names an installed script and
 rejects a scenario that spells out a command line. This item adds no policy axis of its own.
 
+The item does add one input to BE-0492's routing. `serve` derives `command-execution:<source>`,
+`named-execution:<source>`, and `named-command:<name>` from a job's scenario files as well as from
+its config. A job whose only commands sit in a scenario therefore still reaches a worker that
+accepts its source and holds the named scripts.
+
 Under the `sandbox` mode, the scenario's entries run in the container of the scenario's first
 declared target, which BE-0491's `hooks.sandbox` block defines.
 
@@ -170,11 +182,12 @@ declared target, which BE-0491's `hooks.sandbox` block defines.
 
 Placement follows BE-0491. The commands run in the `bajutsu run` process on the machine that runs
 it, which for a Web UI job is the worker that leased the job. `run` and `audit` run the scenario
-lists. `record`, `crawl`, and `repl` run no scenario file, so they run neither level.
+lists. `record`, `crawl`, and `repl` run no scenario file, so they run no scenario-level list. The
+target's `beforeRun` and `afterRun` still run for them, as BE-0491 specifies.
 
-A scenario's command output goes to `hooks/<list>/scenario/<scenario-index>/<name-or-index>.log`
-under the run directory. The `scenario` directory name separates it from the target-level logs of
-BE-0491. Masking and the raw-area boundary are the ones BE-0491 specifies. The report shows the
+A scenario's command output goes to `hooks/<list>/_scenario/<scenario-index>/<name-or-index>.log`
+under the run directory. In BE-0491's paths that position holds a target's name. The loader
+therefore refuses a target named `_scenario`, so the logs of the two levels never share a path. Masking and the raw-area boundary are the ones BE-0491 specifies. The report shows the
 scenario's hook phases as their own blocks, labeled with the level they came from.
 
 ### Prime directives
@@ -200,7 +213,7 @@ check, and the two-level ordering.
   mostly in `named` mode, where `use` already supplies this indirection.
 - **A `cmd` entry in the scenario's `steps`.** Rejected for the reason BE-0036 gives. It also runs
   after the app launch, so it cannot seed data the app reads at startup.
-- **Extend BE-0392's `before` / `after` to accept commands.** Rejected: those phases run inside the
+- **Extend the scenario's `setup` / `cleanup` to accept commands.** Rejected: those phases run inside the
   app session, after the launch. A seed command must run before the launch.
 - **A scenario's lists replace the target's lists.** Rejected: a scenario that adds one entry would
   silently drop every shared one, and forgetting to repeat a shared seed fails far from the cause.
@@ -218,7 +231,7 @@ check, and the two-level ordering.
 - [ ] Schema: the scenario's top-level `hooks` block, its entry model, and the load error for `beforeRun` / `afterRun`.
 - [ ] Token check: resolve `${hooks.<name>.<key>}` against the entries one scenario can see, including name uniqueness.
 - [ ] Ordering: nest the scenario's entries inside the target's, including `inheritSetup: false`, multi-target runs, and failure paths.
-- [ ] Policy: route the scenario's entries through BE-0492's modes and its `manifest.json` record, including `use` and the sandbox container.
+- [ ] Policy: route the scenario's entries through BE-0492's modes, its `manifest.json` record, and its routing tokens, including `use` and the sandbox container.
 - [ ] Evidence: the scenario-level log paths and the labeled report blocks.
 - [ ] Tests, plus the docs and `DESIGN.md` updates in both languages.
 
@@ -229,7 +242,7 @@ check, and the two-level ordering.
 - [BE-0090](../BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md):
   today's policy for commands that uploaded configs declare.
 - [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks.md): the
-  scenario's `before` and `after` step phases.
+  scenario's setup and teardown phases, now named `setup` and `cleanup`.
 - [BE-0491](../BE-0491-target-command-hooks/BE-0491-target-command-hooks.md): the target-level
   command hooks that this item extends.
 - [BE-0492](../BE-0492-worker-command-execution-policy/BE-0492-worker-command-execution-policy.md):
