@@ -200,9 +200,14 @@ class ResidentServer:
         # narrowing already built from it. `narrowed` is what tells a `rawTree` capture the two differ
         # — an active-window dump with no system decor to strip would otherwise have it write two
         # copies of the same body.
-        root, narrowed = narrowed_root(read.text)
+        root, narrowed, banner = narrowed_root(read.text)
         return HierarchyRead(
-            read.text, read.mark, native_z=read.native_z, root=root, narrowed=narrowed
+            read.text,
+            read.mark,
+            native_z=read.native_z,
+            root=root,
+            narrowed=narrowed,
+            heads_up=banner,
         )
 
     def _read_with_recovery(self, since: float | None) -> HierarchyRead:

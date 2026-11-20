@@ -81,7 +81,7 @@ The two mobile backends differ in what they support.
 | `handleTipkitTip` | dismiss a blocking Apple TipKit tip (iOS only) | ✅ | — | — | ✅ |
 | `appContext` | activate another installed app and drive it with the `app:` step | ✅ | ✅ | — | ✅ |
 | `selectPhotos` | pick images from the system photo picker by position (`PHPickerViewController` on iOS, dropped on an Apple Silicon Simulator; the Android 13+ photo picker over adb) | ✅ | ✅ | — | ✅ |
-| `handleNotificationBanner` | report and swipe away a foreground notification banner (BE-0416; iOS only) | ✅ | — | — | ✅ |
+| `handleNotificationBanner` | report and swipe away a foreground notification banner (BE-0416) or an Android heads-up notification (BE-0496) | ✅ | ✅ | — | ✅ |
 | `deviceControl.setLocation` | set the simulated GPS location | ✅ | ✅ | — | — |
 | `deviceControl.clipboard` | read / write / clear the clipboard | ✅ | ✅ | — | — |
 | `deviceControl.push` | deliver a push notification | ✅ | — | — | — |

@@ -499,7 +499,9 @@ _NOTIFICATION_BANNER_SWIPE_TRAVEL = 20.0
 _NOTIFICATION_BANNER_SWIPE_TOP_MARGIN = 8.0
 
 
-def notification_banner_swipe_points(frame: Frame) -> tuple[Point, Point] | None:
+def notification_banner_swipe_points(
+    frame: Frame, scale: float = 1.0
+) -> tuple[Point, Point] | None:
     """The `swipe` `frm`/`to` points that dismiss a notification banner measured at `frame` (BE-0416).
 
     `frame` is read from SpringBoard's own coordinate space (`Driver.notification_banner_frame`),
@@ -517,6 +519,12 @@ def notification_banner_swipe_points(frame: Frame) -> tuple[Point, Point] | None
     a shape only a banner still sliding into place produces. The caller's next poll reads the frame
     again once it has settled, rather than attempting a gesture too weak to act on.
 
+    `scale` is the backend's own coordinate units per point (`DisplayScaleProvider`), applied to both
+    distances. They were measured in iOS points, and a backend that addresses raw pixels travels them
+    as pixels otherwise: on API 33-35 emulators at 420 dpi, an unscaled 20-pixel flick left a heads-up
+    notification in place until its own timeout, while the scaled one, ending 52 pixels above the
+    banner, cleared it (BE-0496 Unit 1).
+
     Returns:
         `(frm, to)` — the banner's own center, and a point above its top edge (never past
         `_NOTIFICATION_BANNER_SWIPE_TOP_MARGIN`, where SpringBoard would instead claim the drag as
@@ -524,7 +532,8 @@ def notification_banner_swipe_points(frame: Frame) -> tuple[Point, Point] | None
     """
     x, y, w, h = frame
     cx, cy = x + w / 2, y + h / 2
-    top = max(_NOTIFICATION_BANNER_SWIPE_TOP_MARGIN, y - _NOTIFICATION_BANNER_SWIPE_TRAVEL)
-    if cy - top < _NOTIFICATION_BANNER_SWIPE_TRAVEL:
+    travel = _NOTIFICATION_BANNER_SWIPE_TRAVEL * scale
+    top = max(_NOTIFICATION_BANNER_SWIPE_TOP_MARGIN * scale, y - travel)
+    if cy - top < travel:
         return None
     return (cx, cy), (cx, top)

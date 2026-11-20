@@ -174,14 +174,14 @@ def mark_capture(
     if kind == "tap":
         try:
             session.driver.tap(raw)
-        except base.ElementNotTappable as exc:
+        except (base.ElementNotTappable, base.NotificationBannerBlocking) as exc:
             return {"error": str(exc)}, 409
         step = step_for_tap(sel)
     elif kind == "type":
         text = str(body.get("text", ""))
         try:
             session.driver.tap(raw)
-        except base.ElementNotTappable as exc:
+        except (base.ElementNotTappable, base.NotificationBannerBlocking) as exc:
             return {"error": str(exc)}, 409
         session.driver.type_text(text)
         step = step_for_type(sel, text, session.redactor)

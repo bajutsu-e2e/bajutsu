@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from xml.etree import ElementTree as ET
 
+from .heads_up_banner import HeadsUpBanner
+
 
 # A resident UI Automator server (BE-0245) returns the hierarchy over an already-open channel,
 # skipping the ~2.4 s per-invocation `uiautomator dump` startup. Its response is UI Automator's own
@@ -37,6 +39,10 @@ class HierarchyRead:
     the way it is because the device measures those values in a second walk whose node sequence does
     not line up with the dumped body's. Empty on the dump fallback, on a server that does not report
     it, and on an app that opted no view in.
+
+    `heads_up` is the heads-up notification the body's SystemUI windows showed, read before
+    narrowing drops them (BE-0496). None on the dump fallback, which never carries those windows, and
+    whenever no heads-up was pinned.
     """
 
     text: str
@@ -44,3 +50,4 @@ class HierarchyRead:
     native_z: dict[str, float] = field(default_factory=dict)
     root: ET.Element | None = None
     narrowed: bool = False
+    heads_up: HeadsUpBanner | None = None

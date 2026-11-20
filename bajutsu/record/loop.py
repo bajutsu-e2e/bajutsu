@@ -439,7 +439,7 @@ def _execute_with_recovery(
     """Execute a step; if it fails because a prompt is covering the app, clear it and retry."""
     try:
         execute(driver, step, clock, selection=selection)
-    except (base.SelectorError, base.ElementNotTappable):
+    except (base.SelectorError, base.ElementNotTappable, base.NotificationBannerBlocking):
         if guard is None:
             return False
         (report or (lambda _m: None))(
@@ -448,7 +448,7 @@ def _execute_with_recovery(
         clear_blocking(driver, guard, clock, report=report)
         try:
             execute(driver, step, clock, selection=selection)
-        except (base.SelectorError, base.ElementNotTappable):
+        except (base.SelectorError, base.ElementNotTappable, base.NotificationBannerBlocking):
             return False
         else:
             return True

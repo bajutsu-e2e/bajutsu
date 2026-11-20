@@ -73,7 +73,7 @@ column.
 | `appContext` | ✅ | ✅ | Android starts the other package's launcher activity with `am start` and waits until that package holds the resumed activity. UI Automator reads whichever app's window is in front. |
 | `selectPhotos` | ✅ | ✅ | adb finds the Android 13+ photo picker's cells and add button by resource id, so the same steps run on both platforms. On iOS, an Apple Silicon Simulator drops the capability at run time. |
 | `handleTipkitTip` | ✅ | n/a | TipKit is an iOS framework. |
-| `handleNotificationBanner` | ✅ | gap | An Android heads-up notification appears in the tree as a SystemUI node. |
+| `handleNotificationBanner` | ✅ | ✅ | Android reads a heads-up notification from SystemUI's own window, which the resident UI Automator server's read carries beside the app's tree ([BE-0496](../roadmaps/BE-0496-android-heads-up-notification-dismiss/BE-0496-android-heads-up-notification-dismiss.md)). Without that server, reads go through `uiautomator dump`, which sees the active window alone, so the banner guard is off. |
 | `deviceGroup` | ✅ | ✅ | |
 | `deviceControl.setLocation` | ✅ | ✅ | Off a local emulator, Android needs the BajutsuAndroid library in the app. See the behavior table. |
 | `deviceControl.clipboard` | ✅ | ✅ | Android needs the BajutsuAndroid library in the app. See the behavior table. |

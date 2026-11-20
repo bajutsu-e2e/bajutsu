@@ -69,7 +69,7 @@ iOS の実機では、`simctl` が提供する能力がなくなります。こ�
 | `appContext` | ✅ | ✅ | Android は別のパッケージのランチャーアクティビティを `am start` で起動し、そのパッケージが resumed のアクティビティを持つまで待ちます。UI Automator は前面にあるアプリのウィンドウを読みます。 |
 | `selectPhotos` | ✅ | ✅ | adb は Android 13 以降の写真選択画面のセルと追加ボタンを resource id で探すので、同じステップが両プラットフォームで動きます。iOS では、Apple Silicon のシミュレータで実行時にこの能力が外れます。 |
 | `handleTipkitTip` | ✅ | n/a | TipKit は iOS のフレームワークです。 |
-| `handleNotificationBanner` | ✅ | gap | Android のヘッドアップ通知は、SystemUI のノードとして要素ツリーに現れます。 |
+| `handleNotificationBanner` | ✅ | ✅ | Android は、ヘッドアップ通知を SystemUI 自身のウィンドウから読みます。常駐 UI Automator サーバーの読み取りは、アプリのツリーと並べてこのウィンドウも運びます（[BE-0496](../../roadmaps/BE-0496-android-heads-up-notification-dismiss/BE-0496-android-heads-up-notification-dismiss-ja.md)）。サーバーがない場合は `uiautomator dump` で読みます。`uiautomator dump` はアクティブなウィンドウしか見ないため、バナーのガードは働きません。 |
 | `deviceGroup` | ✅ | ✅ | |
 | `deviceControl.setLocation` | ✅ | ✅ | ローカルのエミュレータ以外では、Android のアプリに BajutsuAndroid ライブラリが要ります。振る舞いの差の表を参照してください。 |
 | `deviceControl.clipboard` | ✅ | ✅ | Android ではアプリに BajutsuAndroid ライブラリが必要です。振る舞いの差の表を参照してください。 |

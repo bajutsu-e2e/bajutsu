@@ -44,6 +44,11 @@ BajutsuAndroidUIAutomatorServer は、自己完結した UI Automator インス�
 `bajutsu.common.backend_cli.adb_resident.narrowed_root` が SystemUI の装飾ウィンドウを取り除くので、
 両方の経路が同じ Element を返します。ロードマップ項目の作業単位 2 が、この等価化を求めています。
 
+`narrowed_root` は、SystemUI のウィンドウを取り除く前に、そこからヘッドアップ通知のフレームとタイトルと本文を読みます。
+adb ドライバは、その結果を使って、操作の点を覆うバナーを操作の前にスワイプで消します
+（[BE-0496](../roadmaps/BE-0496-android-heads-up-notification-dismiss/BE-0496-android-heads-up-notification-dismiss-ja.md)）。
+`uiautomator dump` のフォールバックはこのウィンドウを運ばないため、バナーのガードにはこのサーバーが必要です。
+
 ### Python 側の実装
 
 Python 側は、`adb forward`、`fetch_hierarchy` の配線、デバイスのリース（貸し出し）に結んだライフサイクルの
