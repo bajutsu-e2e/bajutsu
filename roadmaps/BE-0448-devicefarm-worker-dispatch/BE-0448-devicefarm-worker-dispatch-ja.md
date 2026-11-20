@@ -15,7 +15,7 @@
 
 ## はじめに
 
-`environment` が `devicefarm` の worker が、Device Farm への投入そのものを行います。worker は、キューからシナリオごとのジョブを lease し、AWS Device Farm に実行を投入して待ち、判定を返します。AWS の認証情報は、その worker が持ちます。現在は同じ投入処理が server のプロセスの中で動くため、server が AWS のロールを持ち、長い待ちのたびにスレッドを 1 つ占有します。本項目は、その投入を、ホスト型がローカル実行にすでに使っている worker のモデルに移します。別の種類の worker は作りません。worker は worker であり、何を担当できるかは、worker capability で宣言します。
+`environment` が `devicefarm` の worker が、Device Farm への投入そのものを行います。worker は、キューからシナリオごとのジョブを lease し、Amazon Web Services（AWS）の Device Farm に実行を投入して待ち、判定を返します。AWS の認証情報は、その worker が持ちます。現在は同じ投入処理が server のプロセスの中で動くため、server が AWS のロールを持ち、長い待ちのたびにスレッドを 1 つ占有します。本項目は、その投入を、ホスト型がローカル実行にすでに使っている worker のモデルに移します。別の種類の worker は作りません。worker は worker であり、何を担当できるかは、worker capability で宣言します。
 
 **ジョブ同時実行の予算**も worker が持ち、worker capability のファイルで述べます。`worker.yaml` の最上位の `maxJobConcurrency` が、worker が同時に進行できるジョブの数です。worker は、満杯のあいだ lease の要求を送りません。lease するかどうかの判断とデバイスを確保するかどうかの判断が、1 か所での 1 つの判断になります。worker と server は、同じマシンで動かせます。
 
@@ -23,7 +23,7 @@
 
 ## 動機
 
-[BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out-ja.md) の Device Farm へのファンアウトは、現在、server が自分のプロセスの中で投入の全体を実行するときだけ動きます。その Unit 5 で、worker 経由の経路の部品はすでに用意されました。依頼はジョブの仕様（`Job.batch`）に載って運ばれ、予約した実行の識別子（ARN）は DB に保存されるので、再度 lease されたジョブは、投入し直さずに待ちを再開します。ただし経路は完成していません。[`jobs.py`](../../bajutsu/serve/jobs.py) の `_run_batch_job` の docstring によれば、worker はパッケージの置き場を持たない状態を自分で作るので、キューから lease した Device Farm のジョブは、サービスのパッケージ検証で失敗します。`run-set` のエンドポイントは、ファンアウトがまだ分割構成で動かないため、[BE-0431](../BE-0431-job-scoped-artifact-override/BE-0431-job-scoped-artifact-override-ja.md) のジョブ単位のアーティファクトの上書きも拒否します（[`dispatch.py`](../../bajutsu/serve/operations/dispatch.py)）。
+[BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out-ja.md) の Device Farm へのファンアウトは、現在、server が自分のプロセスの中で投入の全体を実行するときだけ動きます。その Unit 5 で、worker 経由の経路の部品はすでに用意されました。依頼はジョブの仕様（`Job.batch`）に載って運ばれ、予約した実行の識別子（Amazon Resource Name、ARN）は DB に保存されるので、再度 lease されたジョブは、投入し直さずに待ちを再開します。ただし経路は完成していません。[`jobs.py`](../../bajutsu/serve/jobs.py) の `_run_batch_job` の docstring によれば、worker はパッケージの置き場を持たない状態を自分で作るので、キューから lease した Device Farm のジョブは、サービスのパッケージ検証で失敗します。`run-set` のエンドポイントは、ファンアウトがまだ分割構成で動かないため、[BE-0431](../BE-0431-job-scoped-artifact-override/BE-0431-job-scoped-artifact-override-ja.md) のジョブ単位のアーティファクトの上書きも拒否します（[`dispatch.py`](../../bajutsu/serve/operations/dispatch.py)）。
 
 投入を server に置いたままにすると、3 つの問題が残ります。
 
@@ -31,7 +31,11 @@
 - **長い待ちが server を占有します。** 1 回の実行は最大 150 分かかり、その間、server のスレッドを 1 つ使います。
 - **予算を数える場所が、デバイスを確保する場所から離れています。** デバイス予算 `K` は server のジョブ管理の上限であり、確保は投入の中で後から行われます。上限がすでに判断してしまっているので、worker は、lease してよいかを問い合わせられません。
 
-実装後に確認できる違いは 3 つあります。ホスト型のバックエンドと Device Farm 用に設定した 1 台の worker で、Device Farm の target に `POST /api/run-set` を送ると、worker がジョブを lease し、それぞれが、`manifest.json` から判定を決めた実行を残します。待ちの途中で server または worker を再起動しても、ARN が保存されていれば、二度目の投入をせず、同じ Device Farm の実行が再開します。worker が server に HTTP でしか届かない構成でも同じです。実行の予約と ARN の保存のあいだに止まると、二度目の実行が生じうるので、この区間は「詳細設計」に未解決として記録します。そして server のプロセスは、AWS の認証情報を持ちません。
+実装後に確認できる違いは3つあります。
+
+- ホスト型のバックエンドと Device Farm 用に設定した 1 台の worker で、Device Farm の target に `POST /api/run-set` を送ると、worker がジョブを lease し、それぞれが、`manifest.json` から判定を決めた実行を残します。
+- 待ちの途中で server または worker を再起動しても、ARN が保存されていれば、二度目の投入をせず、同じ Device Farm の実行が再開します。worker が server に HTTP でしか届かない構成でも同じです。実行の予約と ARN の保存のあいだに止まると、二度目の実行が生じうるので、この区間は「詳細設計」に未解決として記録します。
+- server のプロセスは、AWS の認証情報を持ちません。
 
 ## 詳細設計
 
@@ -81,7 +85,9 @@ worker は、Device Farm の端末を自分では操作しません。端末は 
 
 ### ルーティング
 
-`Job.batch` を持つジョブは、target の `cloudBatch` フィールドから導いた `environment:<name>` の 1 つだけを要求します。`platform:*` トークンも、`host:<os>` トークンも、target の `requires` のトークンも要求しません。端末とそのホストは、Device Farm のものだからです。環境のトークンを要求するのは、`Job.batch` を持つジョブだけです。同じ target からローカルで動くジョブは、ローカルの要求のままです。既存の capability によるルーティング（[BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues-ja.md)）が、広告する集合がその要求を覆う worker にだけ、ジョブを渡します。空の必須集合はどの worker でも担当できるので、部分集合の判定だけでは、ローカルのジョブが Device Farm の worker に渡ってしまいます。そこで `can_serve` のルーティング判定に規則を 1 つ加えます。`environment:*` トークンを広告する worker は、そのトークンを要求するジョブだけを担当します。lease とルーティング不能の数は `can_serve` を共有するので、どちらにもこの規則が効きます。どの worker にも処理できない Device Farm のジョブは、他のジョブと同じく、待機したまま、ルーティング不能として表示されます。
+`Job.batch` を持つジョブは、target の `cloudBatch` フィールドから導いた `environment:<name>` の 1 つだけを要求します。`platform:*` トークンも、`host:<os>` トークンも、target の `requires` のトークンも要求しません。端末とそのホストは、Device Farm のものだからです。環境のトークンを要求するのは、`Job.batch` を持つジョブだけです。同じ target からローカルで動くジョブは、ローカルの要求のままです。
+
+既存の capability によるルーティング（[BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues-ja.md)）が、広告する集合がその要求を覆う worker にだけ、ジョブを渡します。空の必須集合はどの worker でも担当できるので、部分集合の判定だけでは、ローカルのジョブが Device Farm の worker に渡ってしまいます。そこで `can_serve` のルーティング判定に規則を 1 つ加えます。`environment:*` トークンを広告する worker は、そのトークンを要求するジョブだけを担当します。lease とルーティング不能の数は `can_serve` を共有するので、どちらにもこの規則が効きます。どの worker にも処理できない Device Farm のジョブは、他のジョブと同じく、待機したまま、ルーティング不能として表示されます。
 
 ### 認証情報
 
@@ -97,7 +103,11 @@ server は、依頼のパスを、自分のパッケージの根ではなくバ�
 
 ### worker が持つ同時実行の予算
 
-予算は、コマンドラインのオプションではなく、worker の `worker.yaml` の最上位の `maxJobConcurrency` です。worker は、進行中の自分のジョブが `maxJobConcurrency` に等しいあいだ、lease の要求を送りません。要求からトークンを外す方法は使えません。lease の要求のたびに、worker の登録済みの集合が置き換わるので、待ちのジョブがあるまさにそのときに、待機中の Device Farm のジョブがルーティング不能と表示されます。しかも worker は、残ったトークンが覆うジョブの担当候補のままです。満杯のあいだ、スロットのハートビートが worker を生きたものとして登録し続けるので、広告する集合は変わりません。lease してから結果を送信するまでのジョブを進行中と数えるので、証跡をアップロードしているだけのスロットは `maxJobConcurrency` に数えられなくなり、worker は lease の要求を再開できます。`maxJobConcurrency` を省略すると 1 つずつのジョブになります。これは今の worker と同じ動作で、既定でも Device Farm のクォータを守れます。使用中の Device Farm の端末数は、worker の進行中のジョブの合計になり、運用者は、`maxJobConcurrency` の合計をクォータ内に収めます。worker が 1 台のときは、`maxJobConcurrency` が正確な上限です。
+予算は、コマンドラインのオプションではなく、worker の `worker.yaml` の最上位の `maxJobConcurrency` です。worker は、進行中の自分のジョブが `maxJobConcurrency` に等しいあいだ、lease の要求を送りません。要求からトークンを外す方法は使えません。lease の要求のたびに、worker の登録済みの集合が置き換わるので、待ちのジョブがあるまさにそのときに、待機中の Device Farm のジョブがルーティング不能と表示されます。しかも worker は、残ったトークンが覆うジョブの担当候補のままです。満杯のあいだ、スロットのハートビートが worker を生きたものとして登録し続けるので、広告する集合は変わりません。
+
+lease してから結果を送信するまでのジョブを進行中と数えるので、証跡をアップロードしているだけのスロットは `maxJobConcurrency` に数えられなくなり、worker は lease の要求を再開できます。`maxJobConcurrency` を省略すると 1 つずつのジョブになります。これは今の worker と同じ動作で、既定でも Device Farm のクォータを守れます。
+
+使用中の Device Farm の端末数は、worker の進行中のジョブの合計になり、運用者は、`maxJobConcurrency` の合計をクォータ内に収めます。worker が 1 台のときは、`maxJobConcurrency` が正確な上限です。
 
 並行実行は、worker のループの実質的な変更です。現在のループは、ジョブを 1 つ lease し、結果と証跡が終わるまで待ちます。環境がデバイスクラウドで、`maxJobConcurrency` が 1 を超える worker は、スロットのモデルを使います。
 
@@ -108,11 +118,23 @@ server は、依頼のパスを、自分のパッケージの根ではなくバ�
 
 `maxJobConcurrency` を既定のままにした worker は、今の単一スロットのループのままです。`local` の worker が受け付けるのは 1 だけです。worker capability の項目のとおり、ローカルで並行して動くジョブには、ジョブごとに割り当てるデバイスが要り、それは別の作業だからです。
 
-したがって、Device Farm の数を絞っていた server 側の設定はなくなります。target ごとの `cloudBatchBudget`、依頼ごとの `deviceBudget`、ジョブ管理の `max_concurrent_batch`、`try_register(device_budget=…)` は、server が投入を実行していたから存在したもので、`maxJobConcurrency` が 4 つとも置き換えます。`cloudBatchBudget` を設定した config や、`deviceBudget` を送る依頼は、1 リリースのあいだ非推奨とし、`maxJobConcurrency` を名指しした通知を出します。そのあいだは、今の server 側の上限として引き続き効かせ、その後、同じ名前を添えて拒否します。ジョブ管理の全体、ユーザー単位、組織単位の上限は、待機中のジョブも数えるので、大きな実行の集合を切り詰めることがあります。Device Farm のファンアウトについてそれらを引き上げるかどうかは、ここでは決めません。
+したがって、Device Farm の数を絞っていた server 側の設定はなくなります。target ごとの `cloudBatchBudget`、依頼ごとの `deviceBudget`、ジョブ管理の `max_concurrent_batch`、`try_register(device_budget=…)` は、server が投入を実行していたから存在したもので、`maxJobConcurrency` が 4 つとも置き換えます。`cloudBatchBudget` を設定した config や、`deviceBudget` を送る依頼は、1 リリースのあいだ非推奨とし、`maxJobConcurrency` を名指しした通知を出します。そのあいだは、今の server 側の上限として引き続き効かせ、その後、同じ名前を添えて拒否します。
+
+ジョブ管理の全体、ユーザー単位、組織単位の上限は、待機中のジョブも数えるので、大きな実行の集合を切り詰めることがあります。Device Farm のファンアウトについてそれらを引き上げるかどうかは、ここでは決めません。
 
 ### 再起動と lease の喪失
 
-lease のハートビートは待ちの間も動くので、150 分続く実行も lease を保ちます。保存した ARN は、worker が失われても残らなければなりません。現状、その保存先に届くのは、データベースの接続を持つプロセスだけです（[`jobs.py`](../../bajutsu/serve/jobs.py)）。HTTP で server に届く worker は、その接続を持ちません。そこで、lease の応答が保存済みの ARN を運び、実行を予約した時点で ARN を保存する worker 用の新しい経路を加えます。この経路は、ハートビートの経路と同じ方法で lease の持ち主を検査するので、lease を回収された worker が上書きすることはありません。worker は、保存に成功するか経路が拒否するまで、保存を再試行します。再試行は lease 3 つ分の期限で打ち切ります。経路の 409 は lease の喪失を意味します。それ以外の拒否は server か設定の誤りです。3 つのどの場合も、再開の手がかりとなる ARN を server は持ちません。そのため worker は実行を止め、ジョブは原因を添えて失敗します。lease を失ったときに予約済みの Device Farm の実行を止めるのは、ARN が保存されていない場合だけです。そのような実行は、他の worker が再開できないからです。ARN が保存済みなら、worker は実行に手を触れず、lease を回収した worker が再開します。実行の予約と ARN の保存のあいだに止まった worker は、その実行を持ち主のないものにします。再度 lease されたジョブは投入し直し、最初の実行は、Device Farm が終わらせるまで端末を保ちます。worker は、各実行にジョブの ID の名前を付けるので、運用者はそれを見つけて止められます。その名前で実行を探して再開する方法には、Device Farm のクライアントの `list_runs` が要るので、後続の項目に回します。ハートビートの応答のキャンセルのフラグは、`stop_run` で予約済みの Device Farm の実行を止め、結果をキャンセル済みとして送信します。停止シグナルも同じです。対象は `bajutsu worker --once` での SIGINT や SIGTERM です。繰り返し動く `bajutsu worker` への停止シグナルも対象で、BE-0449 以来と同じく保持中のジョブを取り消します。lease を切れるままにする上の停止の方針は、単位 4 のスロットモデルに属し、キャンセルなしに止まる worker にだけ適用します。再度 lease されたジョブは、同じ実行の待ちを再開し、判定の読み方は何も変わりません。すべての worker にデータベースの接続を要求する方法でも動きますが、BE-0160 が取り除いた種類の認証情報を、worker がもう 1 つ持つことになります。
+lease のハートビートは待ちの間も動くので、150 分続く実行も lease を保ちます。保存した ARN は、worker が失われても残らなければなりません。現状、その保存先に届くのは、データベースの接続を持つプロセスだけです（[`jobs.py`](../../bajutsu/serve/jobs.py)）。HTTP で server に届く worker は、その接続を持ちません。
+
+そこで、lease の応答が保存済みの ARN を運び、実行を予約した時点で ARN を保存する worker 用の新しい経路を加えます。この経路は、ハートビートの経路と同じ方法で lease の持ち主を検査するので、lease を回収された worker が上書きすることはありません。worker は、保存に成功するか経路が拒否するまで、保存を再試行します。再試行は lease 3 つ分の期限で打ち切ります。経路の 409 は lease の喪失を意味します。それ以外の拒否は server か設定の誤りです。409 の場合も、それ以外の拒否の場合も、期限に達した場合も、再開の手がかりとなる ARN を server は持ちません。そのため worker は実行を止め、ジョブは原因を添えて失敗します。
+
+lease を失ったときに予約済みの Device Farm の実行を止めるのは、ARN が保存されていない場合だけです。そのような実行は、他の worker が再開できないからです。ARN が保存済みなら、worker は実行に手を触れず、lease を回収した worker が再開します。
+
+実行の予約と ARN の保存のあいだに止まった worker は、その実行を持ち主のないものにします。再度 lease されたジョブは投入し直し、最初の実行は、Device Farm が終わらせるまで端末を保ちます。worker は、各実行にジョブの ID の名前を付けるので、運用者はそれを見つけて止められます。その名前で実行を探して再開する方法には、Device Farm のクライアントの `list_runs` が要るので、後続の項目に回します。
+
+ハートビートの応答のキャンセルのフラグは、`stop_run` で予約済みの Device Farm の実行を止め、worker は結果をキャンセル済みとして送信します。停止シグナルも同じです。対象は `bajutsu worker --once` での SIGINT や SIGTERM です。繰り返し動く `bajutsu worker` への停止シグナルも対象で、BE-0449 以来、その worker は保持中のジョブを取り消します。lease を切れるままにする上の停止の方針は、単位 4 のスロットモデルに属し、キャンセルなしに止まる worker にだけ適用します。再度 lease されたジョブは、同じ実行の待ちを再開し、判定の読み方は何も変わりません。
+
+すべての worker にデータベースの接続を要求する方法でも動きますが、BE-0160 が取り除いた種類の認証情報を、worker がもう 1 つ持つことになります。
 
 ### 結果と実行の取り込み
 
@@ -130,7 +152,9 @@ worker は、実行のツリーを一時ディレクトリにダウンロード�
 
 ### 境界
 
-本項目は、server のプロセス内の投入（`_run_batch_job` と、server による `register_batch_providers` の呼び出し）を取り除きます。これは、server がジョブを実行しないようにする項目の `run-set` の段階です。本項目は、BE-0431 のアーティファクトの上書きも、`run-set` で拒否したままにします。各上書きを Device Farm の依頼に対応づける作業は、別の作業です。Device Farm のホスト、テストの仕様、`manifest.json` から判定を読む方法は変えません。コマンドの名前は `bajutsu serve` のままで、本項目は概念を server と呼びます。
+- **取り除くもの：** server のプロセス内の投入（`_run_batch_job` と、server による `register_batch_providers` の呼び出し）です。これは、server がジョブを実行しないようにする項目の `run-set` の段階です。
+- **拒否したままにするもの：** `run-set` での BE-0431 のアーティファクトの上書きです。各上書きを Device Farm の依頼に対応づける作業は、別の作業です。
+- **変えないもの：** Device Farm のホスト、テストの仕様、`manifest.json` から判定を読む方法です。コマンドの名前は `bajutsu serve` のままで、本項目は概念を server と呼びます。
 
 ### プライムディレクティブへの適合
 

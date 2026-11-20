@@ -22,12 +22,15 @@ entries gain a `target: str | None = None` field.
 already gave this field to a `Step` and to a top-level `expect` entry. It names which of the
 scenario's declared [targets](../../docs/glossary.md#target-app-device) that entry concerns. An
 `interrupts` entry's `target` differs from those two fields in one way. It stays optional even
-once the scenario declares two or more targets. An entry that omits `target` watches the scenario's
-primary target. The primary target is the target `--target` names. For a scenario declaring its own
-`targets`, the first one declared plays that role instead. An entry that sets `target` watches that named target
-instead. A `Step` inside that entry's own `steps` inherits the entry's target when it omits its
-own. Those `steps` are the recovery steps that clear the interrupt. A `Step` inside them does not
-inherit the scenario's primary target.
+once the scenario declares two or more targets.
+
+An entry that omits `target` watches the scenario's primary target. The primary target is the target
+`--target` names. For a scenario declaring its own `targets`, the first declared target plays that
+role instead. An entry that sets `target` watches that named target.
+
+The entry's own `steps` are the recovery steps that clear the interrupt. A `Step` among them
+inherits the entry's target when the `Step` omits its own `target`. It does not inherit the
+scenario's primary target.
 
 This change also removes a restriction BE-0428 left in place on purpose. Today, a scenario
 declaring two or more targets refuses any non-empty `interrupts` list outright. That refusal fires
@@ -60,7 +63,7 @@ that same fallback to `interrupts`. A scenario declaring two or more targets kee
 
 ## Detailed design
 
-### Unit 1 — `Interrupt.target`
+### Unit 1: `Interrupt.target`
 
 [`Interrupt`](../../bajutsu/common/scenario/models/steps/interrupt.py) gains
 `target: str | None = None`. Its docstring documents that an omitted value resolves to the primary
@@ -68,7 +71,7 @@ target. `Step.target` ([`step.py:131`](../../bajutsu/common/scenario/models/step
 untouched. BE-0428 already requires a `Step`'s own `target` once the scenario declares two or more
 targets. That rule keeps holding, unchanged, alongside this new, always-optional field.
 
-### Unit 2 — Validation
+### Unit 2: Validation
 
 [`_check_target`](../../bajutsu/common/scenario/models/scenario/_targets.py) gains a
 `required: bool = True` parameter. With `required=False`, the function skips a branch. That branch
@@ -88,7 +91,7 @@ nested inside `web:`/`app:` forbids `target` outright. The new mode covers a `St
 still name a declared target. The recovery steps never require `target`. An omitted one falls back
 to the enclosing entry's target, not the scenario's primary one.
 
-### Unit 3 — Config-level `interrupts` reject `target`
+### Unit 3: Config-level `interrupts` reject `target`
 
 [`TargetConfig.interrupts`](../../bajutsu/common/config/schema/target_config.py) already lives
 inside one `targets.<name>` block. Letting an entry there name a different target would contradict
@@ -106,7 +109,7 @@ dispatch that step to the `ios` runner at runtime. That is the same hole this un
 one level down. The walk reuses a shape `_no_component_in_target_steps` already builds. That shape
 is `[s for entry in self.interrupts for s in entry.steps]`.
 
-### Unit 4 — Runtime composition
+### Unit 4: Runtime composition
 
 [`_runtime_for`](../../bajutsu/common/runner/pipeline.py) copies every `scenario.interrupts`
 entry into each target's `TargetRuntime.interrupts`. It does this today, unconditionally.
@@ -140,19 +143,20 @@ straight through to each target's own `_LoopConfig`. A filtered list there is al
 guard is already built once per `_StepRunner`
 ([`_step_runner.py:598-605`](../../bajutsu/common/orchestrator/loop/_step_runner.py)).
 
-`Interrupt.steps`' own routing needs no change either. `_StepRunner._route`
-([`_step_runner.py:87`](../../bajutsu/common/orchestrator/loop/_step_runner.py)) redirects a step
-to another runner. It does this when the step itself sets `target`, never otherwise. An omitted
-`target` leaves the step on
-`self` — the runner whose `_InterruptGuard` had fired. `_run_recovery`
-([`_step_runner.py:116`](../../bajutsu/common/orchestrator/loop/_step_runner.py)) runs
-`entry.steps` on that same `self`. This unit places each entry into the runner that owns it. That
-runner already is the entry's own effective target. An omitted `Step.target` inside `entry.steps`
-lands in the right place, with no extra mechanism. An earlier draft of this item computed an
-effective target instead. It swapped that value into the recovery run explicitly. *Alternatives
-considered* below records why review dropped that approach.
+`Interrupt.steps`' own routing needs no change either. The routing lives in `_StepRunner._route`
+([`_step_runner.py:87`](../../bajutsu/common/orchestrator/loop/_step_runner.py)).
+It redirects a step to another runner when the step sets `target`, and never otherwise. An omitted
+`target` leaves the step on `self`, the runner whose `_InterruptGuard` had fired.
+`_run_recovery` ([`_step_runner.py:116`](../../bajutsu/common/orchestrator/loop/_step_runner.py)) runs
+`entry.steps` on that same `self`.
 
-### Unit 5 — Test coverage
+This unit places each entry into the runner that owns it. That runner already is the entry's own
+effective target. An omitted `Step.target` inside `entry.steps` lands in the right place, with no
+extra mechanism. An earlier draft of this item computed an effective target instead. It swapped that
+value into the recovery run explicitly. *Alternatives considered* below records why review dropped
+that approach.
+
+### Unit 5: Test coverage
 
 A new regression test confirms `interrupts` still fires on the ordinary single-target path. It
 covers two scenarios. One declares no `targets`. The other declares one target, with no
@@ -165,7 +169,7 @@ target its `target` field (or the fallback) names. The same target clears it. Th
 `targets.<name>.interrupts` entry. It confirms that entry's recovery steps run against that
 config's own target. They never run against the scenario's primary target.
 
-### Unit 6 — Documentation
+### Unit 6: Documentation
 
 [`docs/scenarios.md`](../../docs/scenarios.md) carries two sections that need updating, for
 different reasons. The

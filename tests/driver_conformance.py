@@ -678,8 +678,8 @@ class DriverConformanceContract:
         driver.type_text(f"{token}x")
         driver.delete_text(1)  # actuates everywhere, capability-independent; leaves `token` typed
         if base.Capability.TEXT_SELECTION in driver.capabilities():
-            driver.select_all()  # must not raise
-            driver.copy_selection()  # must not raise
+            driver.select_all({"id": FIELD_ID})  # must not raise
+            driver.copy_selection({"id": FIELD_ID})  # must not raise
             # Not raising is not the effect (#2390): a copy that silently does nothing passed here
             # on every lane. Select-all takes the whole field, including text an earlier test left
             # in it, so the clipboard must contain the token rather than equal it.
@@ -693,11 +693,10 @@ class DriverConformanceContract:
             # so "this backend surfaces no value" stays distinct from "the paste inserted nothing",
             # which the emptied field would hide.
             surfaces_value = bool(field_value(driver))
-            # Re-focus first, as the orchestrator does before any edit. The clipboard wait above
-            # can run for seconds, and on a loaded CI Simulator the field lost keyboard focus in
-            # that time: the backspace below then raised (`deleteText failed (stale)`).
-            driver.tap({"id": FIELD_ID})
-            driver.select_all()
+            # `select_all` re-focuses the field itself. The clipboard wait above can run for
+            # seconds, and on a loaded CI Simulator the field lost keyboard focus in that time: the
+            # backspace below then raised (`deleteText failed (stale)`).
+            driver.select_all({"id": FIELD_ID})
             driver.delete_text(1)
             driver.paste({"id": FIELD_ID})  # must not raise
             if surfaces_value:
@@ -706,9 +705,9 @@ class DriverConformanceContract:
                 )
         else:
             with pytest.raises(base.UnsupportedAction):
-                driver.select_all()
+                driver.select_all({"id": FIELD_ID})
             with pytest.raises(base.UnsupportedAction):
-                driver.copy_selection()
+                driver.copy_selection({"id": FIELD_ID})
             with pytest.raises(base.UnsupportedAction):
                 driver.paste({"id": FIELD_ID})
 

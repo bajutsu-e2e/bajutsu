@@ -536,9 +536,9 @@ def test_select_all_and_copy_are_unsupported_on_the_live_route() -> None:
     # live route they fail loudly (determinism first) rather than silently no-op'ing.
     driver = XcuitestLiveDriver(WebDriverClient(_FakeGrid([])))
     with pytest.raises(base.UnsupportedAction):
-        driver.select_all()
+        driver.select_all({"id": "f"})
     with pytest.raises(base.UnsupportedAction):
-        driver.copy_selection()
+        driver.copy_selection({"id": "f"})
     with pytest.raises(base.UnsupportedAction):
         driver.paste({"id": "f"})
 

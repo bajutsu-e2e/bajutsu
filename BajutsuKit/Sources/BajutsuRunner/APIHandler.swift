@@ -297,18 +297,6 @@ final class APIHandler: APIProtocol {
         return .ok(.init(body: .json(actuationReply(result))))
     }
 
-    func selectAll(_ input: Operations.selectAll.Input) async throws -> Operations.selectAll.Output {
-        let result = await appActuation(self.provider.selectAll)
-        return .ok(.init(body: .json(actuationReply(result))))
-    }
-
-    func copySelection(
-        _ input: Operations.copySelection.Input
-    ) async throws -> Operations.copySelection.Output {
-        let result = await appActuation(self.provider.copySelection)
-        return .ok(.init(body: .json(actuationReply(result))))
-    }
-
     /// Move a picker wheel to the row carrying `value` (BE-0356). Unlike the other actuations this
     /// can report `value-not-found`: the wheel resolved and moved, but never showed the value.
     func setPickerValue(

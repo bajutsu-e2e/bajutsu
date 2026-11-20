@@ -52,8 +52,8 @@ def test_tap_type_and_wait() -> None:
 
 
 def test_text_editing_steps_emit_xcuitest_peers() -> None:
-    # BE-0265: clear -> select-all + delete, delete -> repeated delete key, select -> Cmd+A,
-    # copy -> Cmd+C on the app.
+    # BE-0265: clear -> select-all + delete, delete -> repeated delete key. select and copy go
+    # through the edit menu, as the driver does (BE-0493).
     code = _gen(
         "- name: x\n  steps:\n"
         "    - clear: { into: { id: form.note } }\n"
@@ -61,13 +61,55 @@ def test_text_editing_steps_emit_xcuitest_peers() -> None:
         "    - select: { into: { id: form.note } }\n"
         "    - copy: {}\n"
     )
-    assert 'el("form.note").typeKey("a", modifierFlags: .command)' in code
-    assert 'el("form.note").typeText(XCUIKeyboardKey.delete.rawValue)' in code
+    assert "modifierFlags: .command" not in code
+    assert "app.typeText(XCUIKeyboardKey.delete.rawValue)" in code
     assert (
         'el("form.note").typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 2))'
         in code
     )
-    assert 'app.typeKey("c", modifierFlags: .command)' in code
+
+
+def test_select_raises_the_edit_menu_then_taps_select_all() -> None:
+    code = _gen("- name: x\n  steps:\n    - select: { into: { id: form.note } }\n")
+    lines = [line.strip() for line in code.splitlines()]
+    start = lines.index('el("form.note").tap()')
+    assert lines[start : start + 4] == [
+        'el("form.note").tap()',
+        (
+            'if !app.staticTexts["Select All"].waitForExistence(timeout: 1.0) '
+            '{ el("form.note").press(forDuration: 0.6) }'
+        ),
+        (
+            'XCTAssertTrue(app.staticTexts["Select All"].waitForExistence(timeout: 5.0), '
+            '"wait for the edit menu Select All")'
+        ),
+        'app.staticTexts["Select All"].tap()',
+    ]
+
+
+def test_copy_taps_the_copy_item_the_select_left_up() -> None:
+    code = _gen("- name: x\n  steps:\n    - select: { into: { id: form.note } }\n    - copy: {}\n")
+    lines = [line.strip() for line in code.splitlines()]
+    assert lines[lines.index('app.staticTexts["Select All"].tap()') + 1 :][:2] == [
+        (
+            'XCTAssertTrue(app.staticTexts["Copy"].waitForExistence(timeout: 5.0), '
+            '"wait for the edit menu Copy")'
+        ),
+        'app.staticTexts["Copy"].tap()',
+    ]
+
+
+def test_clear_selects_through_the_menu_then_deletes_once() -> None:
+    code = _gen("- name: x\n  steps:\n    - clear: { into: { id: form.note } }\n")
+    lines = [line.strip() for line in code.splitlines()]
+    guard = lines.index('if app.staticTexts["Select All"].waitForExistence(timeout: 5.0) {')
+    assert lines[guard + 1 : guard + 4] == [
+        'app.staticTexts["Select All"].tap()',
+        "app.typeText(XCUIKeyboardKey.delete.rawValue)",
+        "}",
+    ]
+    # An empty field offers no Select All: the exported clear skips the delete, never asserts.
+    assert "XCTAssertTrue" not in code
 
 
 def test_paste_taps_the_edit_menu_paste_item() -> None:
@@ -456,7 +498,7 @@ def test_extract_capture_fails_loudly() -> None:
 _COVERAGE_DIR = Path(__file__).resolve().parents[1] / "demos" / "showcase" / "scenarios"
 # (construct, source scenario, a distinguishing emitted Swift primitive)
 _COVERAGE_CASES = [
-    ("select/copy (Cmd+A / Cmd+C)", "text_editing.yaml", 'typeKey("a", modifierFlags: .command)'),
+    ("select/copy (edit menu)", "text_editing.yaml", 'app.staticTexts["Select All"].tap()'),
     ("delete key", "text_editing.yaml", "XCUIKeyboardKey.delete.rawValue"),
     ("longPress", "gestures.yaml", ".press(forDuration:"),
     ("directional swipe", "gestures.yaml", ".swipeUp()"),

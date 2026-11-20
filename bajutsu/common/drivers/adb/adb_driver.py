@@ -2403,13 +2403,14 @@ class AdbDriver(CoordinateTreeDriver):
         self._act(adb.keyevents_cmd(self.serial, [adb.KEYCODE_DEL] * count))
         self._arm_catchup(pre_key, mark)
 
-    def select_all(self) -> None:
-        # Ctrl+A selects the focused field's whole content (BE-0265).
+    def select_all(self, sel: base.Selector) -> None:
+        # Focus, then Ctrl+A selects the field's whole content (BE-0265).
+        self.tap(sel)
         self._actuations.record(Actuation(gesture="selectAll", via="focused", unit=_UNIT))
         self._act(adb.keycombination_cmd(self.serial, [adb.KEYCODE_CTRL_LEFT, adb.KEYCODE_A]))
 
-    def copy_selection(self) -> None:
-        # Ctrl+C copies the active selection to the clipboard, read back by the `clipboard` assertion.
+    def copy_selection(self, sel: base.Selector) -> None:  # noqa: ARG002  # Driver shape
+        # Ctrl+C copies the selection `select_all` left live, read back by the `clipboard` assertion.
         self._actuations.record(Actuation(gesture="copy", via="focused", unit=_UNIT))
         self._act(adb.keycombination_cmd(self.serial, [adb.KEYCODE_CTRL_LEFT, adb.KEYCODE_C]))
 

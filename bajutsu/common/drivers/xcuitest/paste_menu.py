@@ -1,18 +1,22 @@
-"""UIKit's edit-menu "Paste" label in every language an iOS runtime ships.
+"""UIKit's edit-menu "Paste", "Select All", and "Copy" labels in every language an iOS runtime ships.
 
-The iOS `paste` step taps the edit menu's Paste item rather than sending Cmd+V: a hardware Cmd+V
-inserts nothing when the clipboard was written by another process (a `setClipboard` step, which goes
-through simctl), and reports no error either. The edit menu's Paste is a system paste control that
-does read such a clipboard. Depending on the Simulator build it may raise iOS's paste-consent prompt,
-which a scenario answers by declaring `interrupts: [{ systemAlert: paste, choice: grant }]`.
+The iOS `paste`, `select`, and `copy` steps tap the system edit menu's items rather than sending
+Cmd+V, Cmd+A, or Cmd+C. A hardware Cmd+V inserts nothing when the clipboard was written by another
+process (a `setClipboard` step, which goes through simctl), and reports no error either; the edit
+menu's Paste is a system paste control that does read such a clipboard (BE-0489). Depending on the
+Simulator build it may raise iOS's paste-consent prompt, which a scenario answers by declaring
+`interrupts: [{ systemAlert: paste, choice: grant }]`. Cmd+A and Cmd+C stop working on a Simulator
+once any process other than the foreground app has written the pasteboard, until SpringBoard
+restarts, while the menu's Select All and Copy keep working (BE-0493).
 
-The menu item carries no identifier, only its label, and UIKit renders that label in the *app's*
+The menu items carry no identifier, only their labels, and UIKit renders a label in the *app's*
 localization, not the device language: an app that ships no Japanese strings shows "Paste" on a
-Japanese device. So the label cannot be looked up from the scenario's locale; the driver instead
-accepts any of these labels and requires exactly one to be on screen.
+Japanese device. So a label cannot be looked up from the scenario's locale; the driver instead
+accepts any of a table's labels and requires exactly one to be newly on screen.
 
-Values are UIKit's own `Localizable.strings` entries for the key `Paste`, read from the iOS 26.5
-Simulator runtime's `UIKitCore.framework`, not transcribed by hand.
+Values are UIKit's own `Localizable.strings` entries for the keys `Paste`, `Select All`, and `Copy`,
+read from the iOS 26.5 Simulator runtime's `UIKitCore.framework` by
+`roadmaps/BE-0489-paste-step/misc/extract_paste_labels.py`, not transcribed by hand.
 """
 
 from __future__ import annotations
@@ -73,4 +77,118 @@ PASTE_MENU_LABEL_BY_LANGUAGE: dict[str, str] = {
     "zh_TW": "貼上",
 }
 
+SELECT_ALL_MENU_LABEL_BY_LANGUAGE: dict[str, str] = {
+    "ar": "تحديد الكل",
+    "bg": "Избери всичко",
+    "bn": "সবকটি বেছে নিন",
+    "ca": "Selecciona‑ho tot",
+    "cs": "Vybrat vše",
+    "da": "Vælg alt",
+    "de": "Alles auswählen",
+    "el": "Επιλογή όλων",
+    "en": "Select All",
+    "en_AU": "Select All",
+    "en_GB": "Select All",
+    "es": "Seleccionar todo",
+    "es_419": "Selec. todo",
+    "fi": "Valitse kaikki",
+    "fr": "Tout sélectionner",
+    "fr_CA": "Tout sélectionner",
+    "gu": "તમામ સિલેક્ટ કરો",
+    "he": "בחירת הכול",
+    "hi": "सभी चुनें",
+    "hr": "Odaberi sve",
+    "hu": "Az összes kijelölése",
+    "id": "Pilih Semua",
+    "it": "Seleziona tutto",
+    "ja": "すべてを選択",
+    "kk": "Барлығын таңдау",
+    "kn": "ಎಲ್ಲವನ್ನೂ ಆಯ್ಕೆಮಾಡಿ",
+    "ko": "전체 선택",
+    "lt": "Pasirinkti viską",
+    "ml": "എല്ലാം സെലക്റ്റ് ചെയ്യൂ",
+    "mr": "सर्व सिलेक्ट करा",
+    "ms": "Pilih Semua",
+    "nl": "Selecteer alles",
+    "no": "Marker alt",
+    "or": "ସବୁ ଚୟନ କରନ୍ତୁ",
+    "pa": "ਸਭ ਚੁਣੋ",
+    "pl": "Zaznacz wszystko",
+    "pt": "Selecionar Tudo",
+    "pt_PT": "Selecionar tudo",
+    "ro": "Selectați tot",
+    "ru": "Выбрать все",
+    "sk": "Vybrať všetko",
+    "sl": "Izberi vse",
+    "sv": "Markera allt",
+    "ta": "அனைத்தையும் தேர்ந்தெடு",
+    "te": "అన్నింటినీ ఎంచుకోండి",
+    "th": "เลือกทั้งหมด",
+    "tr": "Tümünü Seç",
+    "uk": "Вибрати все",
+    "ur": "سبھی کو منتخب کریں",
+    "vi": "Chọn tất cả",
+    "zh_CN": "全选",
+    "zh_HK": "全選",
+    "zh_TW": "全選",
+}
+
+COPY_MENU_LABEL_BY_LANGUAGE: dict[str, str] = {
+    "ar": "نسخ",
+    "bg": "Копирай",
+    "bn": "কপি",
+    "ca": "Copia",
+    "cs": "Kopírovat",
+    "da": "Kopier",
+    "de": "Kopieren",
+    "el": "Αντιγραφή",
+    "en": "Copy",
+    "en_AU": "Copy",
+    "en_GB": "Copy",
+    "es": "Copiar",
+    "es_419": "Copiar",
+    "fi": "Kopioi",
+    "fr": "Copier",
+    "fr_CA": "Copier",
+    "gu": "કૉપિ કરો",
+    "he": "העתקה",
+    "hi": "कॉपी",
+    "hr": "Kopiraj",
+    "hu": "Másolás",
+    "id": "Salin",
+    "it": "Copia",
+    "ja": "コピー",
+    "kk": "Көшіру",
+    "kn": "ಕಾಪಿ",
+    "ko": "복사하기",
+    "lt": "Kopijuoti",
+    "ml": "കോപ്പി",
+    "mr": "कॉपी करा",
+    "ms": "Salin",
+    "nl": "Kopieer",
+    "no": "Kopier",
+    "or": "କପି କରନ୍ତୁ",
+    "pa": "ਕਾਪੀ",
+    "pl": "Kopiuj",
+    "pt": "Copiar",
+    "pt_PT": "Copiar",
+    "ro": "Copiați",
+    "ru": "Скопировать",
+    "sk": "Kopírovať",
+    "sl": "Kopiraj",
+    "sv": "Kopiera",
+    "ta": "நகலெடு",
+    "te": "కాపీ",
+    "th": "คัดลอก",
+    "tr": "Kopyala",
+    "uk": "Скопіювати",
+    "ur": "کاپی",
+    "vi": "Sao chép",
+    "zh_CN": "拷贝",
+    "zh_HK": "複製",
+    "zh_TW": "拷貝",
+}
+
 PASTE_MENU_LABELS: frozenset[str] = frozenset(PASTE_MENU_LABEL_BY_LANGUAGE.values())
+SELECT_ALL_MENU_LABELS: frozenset[str] = frozenset(SELECT_ALL_MENU_LABEL_BY_LANGUAGE.values())
+COPY_MENU_LABELS: frozenset[str] = frozenset(COPY_MENU_LABEL_BY_LANGUAGE.values())

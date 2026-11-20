@@ -56,10 +56,6 @@ final class Router {
             return handleType(request)
         case ("POST", "/deleteText"):
             return handleDeleteText(request)
-        case ("POST", "/selectAll"):
-            return tapResultResponse(onMainCatching(self.provider.selectAll))
-        case ("POST", "/copy"):
-            return tapResultResponse(onMainCatching(self.provider.copySelection))
         case ("POST", "/setPickerValue"):
             return handleSetPickerValue(request)
         case ("POST", "/interruptionPolicy"):

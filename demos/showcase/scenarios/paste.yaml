@@ -12,16 +12,15 @@
 # (BE-0369). The third pastes into a field that already holds text and focus, where the focusing tap
 # raises the edit menu itself.
 #
-# The in-app scenario comes first, and the file runs only on the `actuation` CI lane after
-# text_editing.yaml, because on the iOS Simulator a `setClipboard` leaves in-app select-all and copy
-# (⌘A / ⌘C) doing nothing on that device until it is erased. The `pasteboard` tag keeps the file out
-# of the local bulk runs, which discover every scenario file in name order and would run it before
-# text_editing.yaml.
+# A `setClipboard` breaks the iOS Simulator's hardware select-all and copy shortcuts until SpringBoard
+# restarts, so the iOS driver selects and copies through the edit menu too (BE-0493). The `actuation`
+# CI lane runs this file ahead of text_editing.yaml to keep that checked. The `textselection` tag
+# keeps both files out of `run-flutter`: Flutter's own text-selection toolbar offers no Copy item.
 #
 # Runs on iOS (XCUITest), on the SwiftUI and UIKit a11y apps alike.
 #   bajutsu run --scenario paste.yaml --target showcase-swiftui ...
 - name: paste back what copy took from the field
-  tags: [pasteboard]
+  tags: [textselection]
   preconditions:
     subject:
       launch:
@@ -47,7 +46,7 @@
     - value: { sel: { id: search.count }, equals: "1" }
 
 - name: paste text seeded with setClipboard
-  tags: [pasteboard]
+  tags: [textselection]
   preconditions:
     subject:
       launch:
@@ -65,7 +64,7 @@
     - value: { sel: { id: search.count }, equals: "1" }
 
 - name: paste at the caret of a field that already holds text
-  tags: [pasteboard]
+  tags: [textselection]
   preconditions:
     subject:
       launch:

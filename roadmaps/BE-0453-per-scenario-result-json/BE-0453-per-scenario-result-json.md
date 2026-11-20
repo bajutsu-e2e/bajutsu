@@ -110,7 +110,7 @@ configuration.
 Log:
 
 - [#2128](https://github.com/bajutsu-e2e/bajutsu/pull/2128) — Proposal and implementation together,
-  completing the item. With `--trace-driver` on, the verdict is written before the trace is flushed,
+  completing the item. With `--trace-driver` on, the runner writes the verdict before it flushes the trace,
   so a process killed while serializing the trace still keeps the finished scenario's result.
 
 ## References

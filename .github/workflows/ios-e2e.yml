@@ -584,10 +584,10 @@ jobs:
   #   - device.yaml / push.yaml: `setLocation`, clipboard round-trip, and a simctl `push` — the
   #     device-control family, the iOS twin of Android's device control (BE-0210). Both run on the
   #     launch tab.
-  #   - text_editing.yaml: `select` + `copy` (⌘A / ⌘C), then `delete` and `clear` on the Search field,
-  #     with the copied text read back through the `clipboard` assertion — the four text-editing
-  #     actuators no other scenario drove. It crosses to the Search tab, so once stable it can move up
-  #     into the `run` job beside search.yaml.
+  #   - text_editing.yaml: `select` + `copy` (the edit menu's Select All and Copy, BE-0493), then
+  #     `delete` and `clear` on the Search field, with the copied text read back through the
+  #     `clipboard` assertion — the four text-editing actuators no other scenario drove. It crosses
+  #     to the Search tab, so once stable it can move up into the `run` job beside search.yaml.
   #   - paste_system_alert.yaml (BE-0369): the lane's only genuine *cross-process* paste —
   #     `setClipboard` writes the pasteboard from outside the app, so the app's read raises iOS's
   #     paste-consent prompt, answered natively by `handleSystemAlert: { prompt: paste }` — granted
@@ -681,11 +681,12 @@ jobs:
       #     BajutsuAndroid's push receiver (BE-0498).
       #   - push_banner.yaml (BE-0416): a foreground notification banner the interruption monitor clears
       #     before a tap — iOS-only (SwiftUI delegate + `handleSystemAlert`), split out of push.yaml.
+      #   - paste.yaml (iOS-only): `paste` through the edit menu, of an in-app `copy` and of a
+      #     `setClipboard` seed. Ahead of text_editing.yaml on purpose: a `setClipboard` breaks the
+      #     Simulator's hardware select-all and copy shortcuts until SpringBoard restarts, and the
+      #     driver's edit-menu `select` and `copy` must keep working after it (BE-0493).
       #   - text_editing.yaml (iOS-only): `select` + `copy` round-trip the Search field's text, then
       #     `delete` + `clear` — the four editing actuators no other scenario drove (Search tab).
-      #   - paste.yaml (iOS-only): `paste` through the edit menu, of an in-app `copy` and of a
-      #     `setClipboard` seed. After text_editing.yaml, because a `setClipboard` leaves in-app ⌘A / ⌘C
-      #     doing nothing on the device for every scenario after it.
       #   - system_alert_handling.yaml: the reactive `systemAlertHandling.rules` guard answering each
       #     covered SpringBoard prompt with no `handleSystemAlert` step — notifications denied, and
       #     tracking and paste each granted and denied. The deny scenarios are what prove the rule
@@ -714,8 +715,8 @@ jobs:
             demos/showcase/scenarios/device.yaml
             demos/showcase/scenarios/push.yaml
             demos/showcase/scenarios/push_banner.yaml
-            demos/showcase/scenarios/text_editing.yaml
             demos/showcase/scenarios/paste.yaml
+            demos/showcase/scenarios/text_editing.yaml
             demos/showcase/scenarios/system_alert_handling.yaml
             demos/showcase/scenarios/paste_system_alert.yaml
           target: showcase-swiftui

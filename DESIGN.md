@@ -17,7 +17,7 @@
 
 **やらないこと（スコープ外と明示）**
 - ユニット / 結合テスト（XCTest の領域。E2E に集中）
-- アプリのビルド自体（既存 `xcodebuild` 成果物を前提に受け取る）
+- アプリのビルドツールチェーン自体（Bajutsu 自身はアプリをビルドせず、`subject.build` に書かれた既存コマンドを呼ぶだけ。ビルド手順自体は実装しない）
 
 > **デバイスクラウド実行について（BE-0236）。** かつてここには、「実機 / クラウドデバイスファーム」をスコープ外として挙げていました。BE-0236 でこの姿勢を改め、**device provider** の seam を導入しました。device provider は、run が駆動するデバイスの取得元を差し替えられる仕組みです。provider は worker 能力ファイル（`worker.yaml`）の `environment` で選びます。既定の `local` は従来のローカル接続デバイスで、そのままです。`environment: appium` にすると、ネットワーク越しに予約したクラウドデバイスなど、別のデバイスを run に渡せます。以前は target の `deviceProvider` で選んでいましたが、[BE-0452](roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md) でこのキーを worker 側へ移しました。
 >

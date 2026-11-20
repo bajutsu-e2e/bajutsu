@@ -24,27 +24,29 @@ schedules a Device Farm run, and collects the verdict. It lives in
 added `pre_test_commands` so a caller can splice device-host setup into the `pre_test`
 phase. That hook runs *on the Device Farm host*, during the run, as shell.
 
-Some per-run setup cannot run there. It must run where `submit` runs — in the
-`serve` process — before the package is built, and its result must reach the app
-under test through configuration rather than through a device-host command. Nothing
-today lets a deployment participate in the batch lifecycle at that point.
+Some per-run setup cannot run on the Device Farm host. It must run where `submit` runs, in the
+`serve` process, before the package is built. Its result must reach the app under test through
+configuration, not through a device-host command. Today nothing lets a deployment participate in
+the batch lifecycle at that point.
 
-This proposal adds a server-side lifecycle hook: a `before_submit` step that runs in
-the `serve` process before packaging and may inject launch environment variables into
-the run config, and an `after_run` step that runs after the verdict is collected.
-Setup and teardown specific to one deployment's backend then live entirely outside
-`bajutsu/`, the same way `pre_test_commands` keeps device-host setup outside `bajutsu/`.
+This proposal adds a server-side lifecycle hook with two steps:
+
+- `before_submit` runs in the `serve` process before packaging and may inject launch environment
+  variables into the run config.
+- `after_run` runs after the verdict is collected.
+
+Setup and teardown specific to one deployment's backend then live entirely outside `bajutsu/`,
+the same way `pre_test_commands` keeps device-host setup outside `bajutsu/`.
 
 ## Motivation
 
-Prime directive 3 keeps Bajutsu app-agnostic. Per-app differences live in
-configuration or in caller-supplied hooks, never inside the tool. BE-0432 established
-this for device-host setup. A second, distinct case has surfaced from the same
-integration: a staging backend behind an IP allowlist, reached from a Device Farm
-device through a per-run authenticated relay.
+Prime directive 3 keeps Bajutsu app-agnostic: per-app differences live in configuration or in
+caller-supplied hooks, never inside the tool. BE-0432 established this rule for device-host
+setup. A second, distinct case has surfaced from the same integration: a staging backend behind
+an IP allowlist, reached from a Device Farm device through a per-run authenticated relay.
 
-That relay authenticates each run with a short-lived, per-run credential. Two
-properties of that credential are what BE-0432's `pre_test_commands` cannot satisfy:
+The relay authenticates each run with a short-lived, per-run credential. Two properties of that
+credential are what BE-0432's `pre_test_commands` cannot satisfy:
 
 - **It must be minted where the credentials to mint it live.** Minting a per-run
   credential is itself a privileged operation against the deployment's own
@@ -60,13 +62,12 @@ properties of that credential are what BE-0432's `pre_test_commands` cannot sati
   there; only the run config, packaged and re-parsed on the device by `bajutsu run`,
   can.
 
-There is also a symmetric teardown need: once the run ends, the per-run credential
-should be released rather than left to expire. `submit` is the only place that knows
-the run has ended.
+A symmetric teardown need also exists: once the run ends, the per-run credential should be
+released rather than left to expire, and `submit` is the only place that knows the run has ended.
 
-As with BE-0432, none of this belongs inside Bajutsu. Another deployment might mint a
-different credential, inject different variables, or need nothing at all. Bajutsu must
-offer one generic seam and stay out of what a caller does with it.
+As with BE-0432, none of this belongs inside Bajutsu. Another deployment might mint a different
+credential, inject different variables, or need nothing at all. Bajutsu must offer one generic
+seam and stay out of what a caller does with it.
 
 ## Detailed design
 
@@ -93,13 +94,12 @@ run failed before a verdict existed (see the provider flow below), and runs on b
 paths.
 
 The `...` bodies are no-op defaults **only for a hook that explicitly subclasses**
-`BatchLifecycleHook`. A structurally-typed hook — the shape a `BAJUTSU_BATCH_HOOKS`
-factory most naturally returns — that defines only one method is not a
-`BatchLifecycleHook`: `mypy --strict` rejects it at the assignment site, and at runtime
-the provider's unconditional `hook.after_run(...)` call would raise `AttributeError`
-*inside the teardown `finally`*, destroying the run's real outcome. So a hook that wants
-to implement only one step must inherit from the protocol class to pick up the no-op
-default for the other.
+`BatchLifecycleHook`. A structurally typed hook that defines only one method is not a
+`BatchLifecycleHook`, and that is the shape a `BAJUTSU_BATCH_HOOKS` factory most naturally
+returns. `mypy --strict` rejects such a hook at the assignment site. At runtime, the provider's
+unconditional `hook.after_run(...)` call would raise `AttributeError` *inside the teardown
+`finally`*, destroying the run's real outcome. A hook that implements only one step must
+therefore inherit from the protocol class to pick up the no-op default for the other.
 
 `ctx.job_id` is the stable identifier the serve layer already assigns each job
 (`bajutsu/serve/state/job.py`), and the same key the batch checkpoint is stored under
@@ -169,39 +169,37 @@ config is byte-identical.
 
 ### The checkpoint-resume path
 
-A checkpoint-resume happens after a restart: `submit` finds a persisted run ARN
-(`checkpoint.load()`), returns `collect_run(...)` for the already-scheduled run, and
-skips rendering, packaging, upload, and therefore `before_submit` and the config merge
-(`bajutsu/serve/batch_provider/device_farm_batch_provider.py`). The hooks are fresh
-objects in a new process; `before_submit` never ran here, so `ctx.launch_env` is empty
-and the in-memory hook holds no handle on whatever the pre-restart `before_submit`
-minted.
+A checkpoint-resume happens after a restart. `submit` finds a persisted run ARN
+(`checkpoint.load()`) and returns `collect_run(...)` for the already-scheduled run. It skips
+rendering, packaging, and upload, and therefore skips `before_submit` and the config merge
+(`bajutsu/serve/batch_provider/device_farm_batch_provider.py`). The hooks are fresh objects in a
+new process, and `before_submit` never ran there. As a result, `ctx.launch_env` is empty, and the
+in-memory hook holds no handle on whatever the pre-restart `before_submit` minted.
 
-`after_run` still runs on this path, in the same `finally`, with the resumed run's
-verdict. For teardown to actually release the credential, `before_submit` must persist
-the minted credential's identity to **durable per-job state keyed by `ctx.job_id`**, and
-`after_run` looks it up by that same `job_id` and releases it. Because `job_id` is stable
-across the restart, the resumed `after_run` — though it runs in a fresh process with an
-empty `ctx.launch_env` — can still find and release the credential.
+`after_run` still runs on this path, in the same `finally`, with the resumed run's verdict. For
+teardown to release the credential, `before_submit` must persist the minted credential's identity
+to **durable per-job state keyed by `ctx.job_id`**. `after_run` then looks the credential up by
+that same `job_id` and releases it. Because `job_id` is stable across the restart, the resumed
+`after_run` can find and release the credential even though it runs in a fresh process with an
+empty `ctx.launch_env`.
 
-That durable store is the caller's own, outside `bajutsu/` (a deployment might use a
-row in its own database, a DynamoDB item, etc.), consistent with prime directive 3.
-Bajutsu's only contribution is the guarantee that `ctx.job_id` is the same value on the
-original submit and on the resume, giving the hook a stable correlation key.
+That durable store is the caller's own, outside `bajutsu/` (a deployment might use a row in its
+own database or a DynamoDB item), consistent with prime directive 3. Bajutsu's only contribution
+is the guarantee that `ctx.job_id` is the same value on the original submit and on the resume,
+which gives the hook a stable correlation key.
 
 ### Loading hooks — server-side only
 
-Hooks are wired at process start, never from a request. `batch_bootstrap` reads an
-environment variable — `BAJUTSU_BATCH_HOOKS`, a comma-separated list of
-`module:factory` paths — and `importlib`-loads each factory, passing the results to
-`DeviceFarmBatchProvider`. A deployment ships its hook module in the image and names
-it in that variable.
+Hooks are wired at process start, never from a request. `batch_bootstrap` reads the environment
+variable `BAJUTSU_BATCH_HOOKS`, a comma-separated list of `module:factory` paths, and
+`importlib`-loads each factory. It passes the results to `DeviceFarmBatchProvider`. A deployment
+ships its hook module in the image and names the module in that variable.
 
-This mirrors BE-0432's trust boundary exactly. `DeviceFarmBatchProvider` builds its
-`render_test_spec` arguments from an HTTP request body; a hook, by contrast, mints
-credentials and mutates the packaged config, so routing hook selection or hook
-configuration through the request would hand a client the same host-credential and
-config-tampering reach BE-0432 refuses. Therefore:
+This design mirrors BE-0432's trust boundary exactly. `DeviceFarmBatchProvider` builds its
+`render_test_spec` arguments from an HTTP request body. A hook, by contrast, mints credentials and
+mutates the packaged config. Routing hook selection or hook configuration through the request
+would hand a client the same host-credential and config-tampering reach that BE-0432 refuses. The
+rules are:
 
 - no `serve` endpoint, no config field, and no `BatchRequest` field may select or
   configure a hook;
@@ -212,12 +210,12 @@ selection, in the same spirit as BE-0432's AST check on `render_test_spec`.
 
 ### What reaches the device
 
-The per-run values injected via `ctx.launch_env` land in the packaged config and
-therefore in the run's Device Farm artifacts, visible to principals with access to
-the deployment's own Device Farm project. This is the same exposure `pre_test_commands`
-content already has, and it is within the deployment's own cloud account — not visible
-to other tenants sharing device egress. Hooks that inject secrets should mint
-short-lived, per-run values (which is the motivating case) rather than long-lived ones.
+The per-run values injected via `ctx.launch_env` land in the packaged config, and so in the
+run's Device Farm artifacts. Principals with access to the deployment's own Device Farm project
+can see them. `pre_test_commands` content already has the same exposure, and the exposure stays
+within the deployment's own cloud account, invisible to other tenants sharing device egress. Hooks
+that inject secrets should mint short-lived, per-run values (the motivating case) rather than
+long-lived ones.
 
 ## Alternatives considered
 

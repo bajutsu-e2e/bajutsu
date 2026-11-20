@@ -448,7 +448,7 @@ It does not resolve through frame-center coordinates.
     ([selectors](selectors.md#elementnottappable-a-resolved-but-unreachable-target)).
 - `wait_for`: uses the runner's native condition waiting.
 - `pinch` / `rotate`: two-finger multi-touch gestures performed natively by the runner.
-- `select` / `copy` / `paste`: native text selection and clipboard paste on the focused field.
+- `select` / `copy` / `paste`: the driver taps the system edit menu's Select All, Copy, and Paste items, raised on the field the step names ([BE-0493](../roadmaps/BE-0493-ios-edit-menu-text-selection/BE-0493-ios-edit-menu-text-selection.md)).
 - `screenshot`: `simctl io screenshot`.
 - `enter_app` / `leave_app`: the `app:` step.
   Unlike the `SFSafariViewController` merge above, these
@@ -1098,6 +1098,13 @@ Out of scope (see the roadmap item for the reasoning):
   slice.
   No shared scenario drives a literal-scheme deeplink today (`navigation.yaml` / `notices.yaml`
   use launch env and taps only), so the on-device verification is unaffected.
+- **The `copy` step on iOS.** The XCUITest driver selects and copies through UIKit's edit menu
+  ([BE-0493](../roadmaps/BE-0493-ios-edit-menu-text-selection/BE-0493-ios-edit-menu-text-selection.md)).
+  Flutter draws its own text-selection toolbar instead. That toolbar exposes the same "Select All"
+  and "Paste" labels, so `select`, `clear`, and `paste` work on the Flutter iOS target. It closes
+  once "Select All" selects the text, though, and offers no "Copy" item afterwards, so `copy` fails
+  with `ElementNotFound`. `run-flutter` leaves `paste.yaml` and `text_editing.yaml`, whose scenarios
+  copy, out of its run through the `textselection` tag.
 - **Flutter Web (CanvasKit).** It paints to a canvas and surfaces no DOM elements.
   The Playwright backend cannot resolve them.
 - **The iOS `noax` twin.** The a11y build is the surfacing proof.

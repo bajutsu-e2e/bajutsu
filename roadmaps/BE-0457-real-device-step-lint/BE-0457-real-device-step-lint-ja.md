@@ -173,6 +173,7 @@ def lint_diagnostics(
 そこで `capability_preflight` に、`(ステップ, covering_reason, 理由)` の3つ組を返す `unsupported` の別版を追加します。
 `covering_reason` は、そのステップ自身か、それを囲む `if`、`forEach`、`web`、`app` のステップのうち、もっとも近い `skipOnRealDevice` の理由です。
 対象外のステップでは `None` です。ステップの検査と `extract` の検査は、後述する実行の preflight と同様にこの値を読みます。
+
 lint は各ステップの `source_loc` を読み、既存の走査（`_resolve_line`、`lint.py:154`）がそれを行番号に対応付けます。
 コンポーネントの中の指摘は、そのコンポーネントを取り込んだ `use:` の行に付きます。
 

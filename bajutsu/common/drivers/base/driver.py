@@ -74,18 +74,19 @@ class Driver(Protocol):
     def pinch(self, sel: Selector, scale: float) -> None: ...
     def rotate(self, sel: Selector, radians: float) -> None: ...
     def type_text(self, text: str) -> None: ...
-    # Text-editing primitives on the currently focused field (the orchestrator focuses it with a
-    # `tap` first, the same contract `type_text` relies on) — BE-0265. `delete_text` removes `count`
-    # characters from the end (backspace-equivalent); `select_all` selects the whole content;
-    # `copy_selection` copies the active selection to the clipboard; `paste` focuses the field `sel`
-    # names and inserts the clipboard at the caret that tap leaves, replacing any selection — it
-    # focuses the field itself because iOS reads the screen before that tap, to tell the edit menu
-    # it pastes through from app content. A backend that can't select, copy, or paste natively (a
-    # single-touch / coordinate-only backend) raises UnsupportedAction rather than faking it,
-    # mirroring the multi-touch gestures — codegen→XCUITest is the iOS path.
+    # Text-editing primitives (BE-0265). `delete_text` removes `count` characters from the end of the
+    # currently focused field (backspace-equivalent; the orchestrator focuses it with a `tap` first,
+    # the same contract `type_text` relies on). `select_all` focuses the field `sel` names and
+    # selects its whole content; `copy_selection` copies the selection a `select_all` on `sel` made
+    # to the clipboard; `paste` focuses the field `sel` names and inserts the clipboard at the caret
+    # that tap leaves, replacing any selection. The three take the field's selector and focus it
+    # themselves because iOS drives them through the system edit menu, and must read the screen
+    # before its own touch to tell the menu's items from app content (BE-0489, BE-0493). A backend
+    # that can't select, copy, or paste natively (a single-touch / coordinate-only backend) raises
+    # UnsupportedAction rather than faking it, mirroring the multi-touch gestures.
     def delete_text(self, count: int) -> None: ...
-    def select_all(self) -> None: ...
-    def copy_selection(self) -> None: ...
+    def select_all(self, sel: Selector) -> None: ...
+    def copy_selection(self, sel: Selector) -> None: ...
     def paste(self, sel: Selector) -> None: ...
     # Set a native `<select>` (resolved by `sel`) to the option whose value is `option`. Web-only:
     # a `<select>` has no native counterpart on iOS / Android, so those backends raise

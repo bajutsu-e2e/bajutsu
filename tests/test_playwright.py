@@ -826,16 +826,18 @@ def test_delete_text_presses_backspace_count_times() -> None:
     assert page.keyboard.pressed == ["Backspace", "Backspace", "Backspace"]
 
 
-def test_select_all_presses_control_or_meta_a() -> None:
+def test_select_all_focuses_the_field_then_presses_control_or_meta_a() -> None:
     # `ControlOrMeta`, not `Control`: Ctrl+A selects nothing in Chromium on a macOS host (#2390).
-    drv, page = _driver([])
-    drv.select_all()
+    drv, page = _driver([_rec(identifier="form.coupon", frame=[10, 20, 40, 10])])
+    page.evaluate_returns = [{"ok": True, "cover": None, "rect": None}]
+    drv.select_all({"id": "form.coupon"})
+    assert page.mouse.calls == [("click", 30.0, 25.0)]
     assert page.keyboard.pressed == ["ControlOrMeta+a"]
 
 
 def test_copy_selection_presses_control_or_meta_c() -> None:
     drv, page = _driver([])
-    drv.copy_selection()
+    drv.copy_selection({"id": "form.coupon"})
     assert page.keyboard.pressed == ["ControlOrMeta+c"]
 
 

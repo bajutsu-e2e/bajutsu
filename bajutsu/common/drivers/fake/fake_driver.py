@@ -230,13 +230,15 @@ class FakeDriver:
         self._actuations.record(Actuation(gesture="deleteText", via="focused", unit=_UNIT))
         self._record("delete_text", count)
 
-    def select_all(self) -> None:
+    def select_all(self, sel: base.Selector) -> None:
+        self.tap(sel)
         self._actuations.record(Actuation(gesture="selectAll", via="focused", unit=_UNIT))
         self._record("select_all", None)
 
-    def copy_selection(self) -> None:
+    def copy_selection(self, sel: base.Selector) -> None:
         self._actuations.record(Actuation(gesture="copy", via="focused", unit=_UNIT))
-        self._record("copy_selection", None)
+        # The field is recorded so a test can see `copy` reach the field its `select` named (BE-0493).
+        self._record("copy_selection", sel)
 
     def paste(self, sel: base.Selector) -> None:
         self.tap(sel)

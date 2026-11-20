@@ -143,7 +143,7 @@ XcodeGen（`xcodegen`）が `project.yml` から Xcode プロジェクトを生�
 ステージング先の spec では、SPM パッケージのパスも `../..` からステージング先のルートへ書き換えます。
 そのうえで `xcodebuild build-for-testing -destination generic/platform=iOS -skipPackagePluginValidation`
 を実行します。`-skipPackagePluginValidation` は、`OpenAPIGenerator` ビルドプラグインを非対話で動かすために
-必要です。`-allowProvisioningUpdates` を付けるのは自動署名のときだけです。最後に、現在の `runner-build-device` と同じく、
+必要です。同じコマンドに `-allowProvisioningUpdates` を付けるのは自動署名のときだけです。最後に、現在の `runner-build-device` と同じく、
 1 つだけある `*.xctestrun` を `BajutsuRunner.xctestrun` へコピーします。
 
 ### キャッシュとそのキー
@@ -200,8 +200,9 @@ bajutsu runner build --device [--signing PATH] [--out DIR] [--force]
 `testRunner` がなければ、上の探索順の 2 と 3 で署名ファイルを探してキーを計算し、完全なディレクトリが
 あればキャッシュ済みの `.xctestrun` を使います。ミスの場合のエラーは 2 種類に分けます。署名ファイルが
 見つからなければ、実行を失敗させ、探した 2 か所を示します。ディレクトリがなければ、実行をすぐ失敗させ、
-実行すべき `bajutsu runner build --device` のコマンドをそのまま示します。実行中に暗黙でビルドすることはしません。
-署名ビルドは遅く、Keychain のプロンプトを出すことがあり、Apple 側に識別子を登録することもあるため、
+実行すべき `bajutsu runner build --device` のコマンドをそのまま示します。
+
+実行中に暗黙でビルドすることはしません。署名ビルドは遅く、Keychain のプロンプトを出すことがあり、Apple 側に識別子を登録することもあるため、
 プール実行の途中に置くべきではないからです。`testRunner` を明示した場合は、引き続きキャッシュより優先します。
 
 ### showcase の Makefile
