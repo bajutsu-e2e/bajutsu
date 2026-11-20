@@ -51,7 +51,9 @@ target の数にも同じ欠落があります。複数 target のシナリオ�
 
 `maxTargetsPerJob` は、すべてのドライバーの target を、シナリオごとにまとめて数えます。別々のシナリオを並べて動かす `--workers` のレーンは、足し合わせません。`2` なら、1 回のジョブが Simulator とブラウザを同時に操作できます。`1` なら、どちらか一方だけです。
 
-ファイルは、不変の値として読み込み、スキーマに照らして検証します。未知のドライバー名、未知の環境、正でない数は、読み込み時にエラーになります。`local` 以外の環境は、Bajutsu が登録できる batch provider の種類（[`serve/batch_provider`](../../bajutsu/serve/batch_provider/_functions.py)。現在は `devicefarm`）を名指ししなければなりません。そのプロバイダーを実際に登録できるか（たとえば `DEVICEFARM_PROJECT_ARN` が設定されているか）は、Device Farm の dispatch の項目が述べるとおり、worker の起動時に確かめます。クラウドを加えるとは、そのプロバイダーの種類を加えることなので、ファイルは環境を名指すだけで、定義はしません。`local` の worker が受け付ける `maxJobConcurrency` は 1 だけです。ローカルの worker で複数のジョブを同時に動かすには、ジョブごとにデバイスを割り当てる仕組みが要り、それは別の作業です。ローダーは、それより大きい値を、その旨を添えて拒否します。`bajutsu run` の `--workers` のレーンには影響しません。
+ファイルは、不変の値として読み込み、スキーマに照らして検証します。未知のドライバー名、未知の環境、正でない数は、読み込み時にエラーになります。`local` 以外の環境は、Bajutsu が登録できる batch provider の種類（[`serve/batch_provider`](../../bajutsu/serve/batch_provider/_functions.py)。現在は `devicefarm`）を名指ししなければなりません。そのプロバイダーを実際に登録できるか（たとえば `DEVICEFARM_PROJECT_ARN` が設定されているか）は、Device Farm の dispatch の項目が述べるとおり、worker の起動時に確かめます。クラウドを加えるとは、そのプロバイダーの種類を加えることなので、ファイルは環境を名指すだけで、定義はしません。
+
+`local` の worker が受け付ける `maxJobConcurrency` は 1 だけです。ローカルの worker で複数のジョブを同時に動かすには、ジョブごとにデバイスを割り当てる仕組みが要り、それは別の作業です。そのためローダーは、それより大きい値を、その旨を添えて拒否します。`bajutsu run` の `--workers` のレーンには影響しません。
 
 ### ドライバーとマシンから得るもの
 
@@ -99,7 +101,7 @@ drivers: [adb, xcuitest]
 
 ファイルは、ルーティング用トークンを宣言しません。worker が広告する runtime と機種のトークン（`ios18`、`ipad`）は、現在と同じく、Simulator の一覧（[`serve/capabilities.py`](../../bajutsu/serve/capabilities.py)）から、マシンが実際に持つものとして導きます。宣言は lease の成功を約束できず、手書きの在庫は、実際の在庫からずれていく 2 つ目の情報源になるからです。target の上限は事情が違います。実行前にそれを答えるプローブがないので、宣言します。
 
-`bajutsu worker`（`bajutsu worker --once` を含む）と `bajutsu run` は、`--worker-config <path>` を受け取ります。開発者のマシンも worker だからです。`bajutsu run` は、server がジョブを実行しないようにする項目が述べるとおり、1 回実行の worker の薄いラッパーで、`environment` が `local` でないファイルを拒否します。`run` は自分のホストのデバイスを操作するコマンドであり、クラウドへは投入しないからです。`--worker-config` の指定がなければ既定のファイルを使います。環境変数も、作業ディレクトリの暗黙の探索もないので、有効なファイルは常にコマンドラインで名指ししたものです。server は、worker ではないので、このファイルを読みません。
+`bajutsu worker`（`bajutsu worker --once` を含む）と `bajutsu run` は、`--worker-config <path>` を受け取ります。開発者のマシンも worker だからです。`bajutsu run` は、server がジョブを実行しないようにする項目が述べるとおり、1 回実行の worker の薄いラッパーです。このコマンドは、`environment` が `local` でないファイルを拒否します。`run` は自分のホストのデバイスを操作するコマンドであり、クラウドへは投入しないからです。`--worker-config` の指定がなければ既定のファイルを使います。環境変数も、作業ディレクトリの暗黙の探索もないので、有効なファイルは常にコマンドラインで名指ししたものです。server は、worker ではないので、このファイルを読みません。
 
 ### `--capabilities` と `requires` の廃止
 
@@ -109,9 +111,13 @@ drivers: [adb, xcuitest]
 
 ジョブの必須集合は、`platform:<p>` と、単一のホスト OS でしか動かないドライバーの `host:<os>` になります。iOS の runtime や機種を要求することは `requires` で可能でしたが、`requires` がなくなると、新しい供給源が要ります。target の `device` フィールドから要求を導く作業は別の項目であり、それまでは、ジョブが iOS の runtime や機種を要求することはできません。
 
-worker が広告するのは、次の情報源の和集合です。`--platform` の `platform:*` トークン、Simulator の一覧から導くトークン、動いている OS の `host:<os>`、環境が `local` でないときの `environment:<name>` です。環境が `local` でない worker は、自分のホストではデバイスを操作しないので、`platform:*` トークンを広告せず、`--platform` の既定値を使わず、明示された `--platform` は環境を名指ししたメッセージで拒否します。`local` の worker は、起動時に `--platform` をファイルとホストに照らして検査します。ファイルが省いているか、ホストが動かせないときは、提供できない platform を広告せず、ドライバーを名指ししたメッセージで終了します。既定の `--platform ios` のまま起動した Linux のマシンは、何もせず待ち続ける状態から起動時のエラーに変わります。これは正しい失敗です。
+worker が広告するのは、次の情報源の和集合です。`--platform` の `platform:*` トークン、Simulator の一覧から導くトークン、動いている OS の `host:<os>`、環境が `local` でないときの `environment:<name>` です。環境が `local` でない worker は、自分のホストではデバイスを操作しないので、`platform:*` トークンを広告せず、`--platform` の既定値を使わず、明示された `--platform` は環境を名指ししたメッセージで拒否します。`local` の worker は、起動時に `--platform` をファイルとホストに照らして検査します。ファイルが省いているか、ホストが動かせないときは、提供できない platform を広告せず、ドライバーを名指ししたメッセージで終了します。この検査により、既定の `--platform ios` のまま起動した Linux のマシンは、何もせず待ち続ける状態から起動時のエラーに変わります。これは正しい失敗です。
 
-`--capabilities`、`$BAJUTSU_WORKER_CAPABILITIES`、`requires` は、1 リリースのあいだ非推奨とします。`--capabilities` と環境変数は次のリリースで削除し、`requires` は、target の `device` から要求を導く項目が入ってから削除します。それより前に削除すると、`ios18` や `ipad` を要求するジョブが、対応する worker に届く手段を失うからです。非推奨の期間は、引き続き受け付け、通知を一度だけ出します（`warn_once`、[`deprecations.py`](../../bajutsu/common/deprecations.py)）。フラグと環境変数の通知は、トークンが今後、一覧とファイルから得られると伝えます。`requires` の通知は、iOS の runtime や機種を要求することが、target の `device` から要求を導けるようになるまでサポートされないと伝えます。削除後の `requires` も同じ理由で失敗しますが、`requires` には置き換え先のキーがないので、置き換え先を名指ししない削除のエラーを使います。これらが有効なあいだ、3 つのどれかに予約された接頭辞 `environment:` のトークンがあれば、その予約を名指ししたメッセージで、起動時または config の読み込み時に拒否します。この接頭辞を広告できるのは、登録済みのプロバイダーだけだからです。`--platform` は残します。ドライバーを選ぶ指定であり、capability トークンではないからです。
+`--capabilities`、`$BAJUTSU_WORKER_CAPABILITIES`、`requires` は、1 リリースのあいだ非推奨とします。`--capabilities` と環境変数は次のリリースで削除し、`requires` は、target の `device` から要求を導く項目が入ってから削除します。それより前に削除すると、`ios18` や `ipad` を要求するジョブが、対応する worker に届く手段を失うからです。
+
+非推奨の期間は、3 つとも引き続き受け付け、通知を一度だけ出します（`warn_once`、[`deprecations.py`](../../bajutsu/common/deprecations.py)）。フラグと環境変数の通知は、トークンが今後、一覧とファイルから得られると伝えます。`requires` の通知は、iOS の runtime や機種を要求することが、target の `device` から要求を導けるようになるまでサポートされないと伝えます。削除後の `requires` も同じ理由で失敗しますが、`requires` には置き換え先のキーがないので、置き換え先を名指ししない削除のエラーを使います。
+
+3 つが有効なあいだ、3 つのどれかに予約された接頭辞 `environment:` のトークンがあれば、その予約を名指ししたメッセージで、起動時または config の読み込み時に拒否します。この接頭辞を広告できるのは、登録済みのプロバイダーだけだからです。`--platform` は残します。ドライバーを選ぶ指定であり、capability トークンではないからです。
 
 ### シナリオの要求の導出
 

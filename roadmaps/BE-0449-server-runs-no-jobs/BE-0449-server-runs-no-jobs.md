@@ -49,9 +49,9 @@ Today the UI writes the AI key and the `${secrets.X}` values into the server's e
 
 ### One machine, two processes
 
-An operator on one machine starts `bajutsu serve` and `bajutsu worker`. The server alone executes nothing, and it says so: a queued job with no live worker carries a "no worker available" notice, so an operator who forgets the worker does not wait in silence.
+An operator on one machine starts `bajutsu serve` and `bajutsu worker`. The server alone executes nothing, and says so: a queued job with no live worker carries a "no worker available" notice, so an operator who forgets the worker does not wait in silence.
 
-The hosted deployment already needs a queue, sessions, and a place for artifacts. A local start must supply them without cloud services. Attaching a repository to the local start changes more than storage, so the defaults are listed here.
+The hosted deployment already needs a queue, sessions, and a place for artifacts, so a local start must supply all three without cloud services. Attaching a repository to the local start changes more than storage, so the defaults are listed here.
 
 - **The queue store** is SQLite by default, a file beside the runs directory, so queued jobs survive a restart. `BAJUTSU_DATABASE_URL` selects PostgreSQL as it does today. A worker reaches the server over HTTP and never opens the database, so the concurrent writers are the server's own request threads. SQLite skips `FOR UPDATE SKIP LOCKED`, so every status transition becomes a conditional `UPDATE` that checks the row count, each with its own predicate: the lease on `status = 'queued'`; the heartbeat, the result, and the cancel on `status = 'leased' AND leased_by = :worker`; the reclaim on `status = 'leased' AND leased_at < :cutoff`. Alternatively, each transition runs under `BEGIN IMMEDIATE`. A test leases concurrently on a file-backed SQLite and races a heartbeat against a reclaim. The engine sets write-ahead logging and a busy timeout.
 - **Migrations** run automatically on the default SQLite, since the server never runs Alembic today.
@@ -60,7 +60,7 @@ The hosted deployment already needs a queue, sessions, and a place for artifacts
 - **Run history** comes from the database window once a repository exists, so runs that `bajutsu run` wrote from the command line, and runs already under `runs/`, would vanish from the local UI. The server indexes the run trees under `runs/`, both the existing ones and those that `bajutsu run` writes from the command line, into the runs table at start and on a rescan. The file store mounts the runs tree at the default org's `artifacts/` prefix, so their artifacts resolve. Targets are org-scoped once a repository exists, and a local start uses one default org.
 - **The artifact store** gets a filesystem implementation. The object store accepts only `s3://` and `gs://` today ([`object_store.py`](../../bajutsu/serve/server/object_store.py)). A `file://` store lets the worker write a run tree and the server read it. The worker still reaches it through the signed-URL interface of [BE-0160](../BE-0160-worker-credential-free-uploads/BE-0160-worker-credential-free-uploads.md), and the server serves those URLs for this store. Each URL is signed with an HMAC key that the server generates and persists under the same rules as the secrets key (atomic `0600` creation, regular file, unsafe existing path rejected), expires, binds the object key and content type into the signature, and is confined to the store root by the existing key validation. The routes accept nothing else.
 
-The local backend and the server backend then differ in these defaults and nothing else. The `--backend` flag loses its meaning and is deprecated in one release and removed in the next.
+With these defaults in place, the local backend and the server backend differ in nothing else. The `--backend` flag loses its meaning and is deprecated in one release and removed in the next.
 
 ### Cancellation across the split
 
@@ -81,7 +81,7 @@ The hosted model delivers a worker's console log after the job completes ([BE-01
 
 ### `bajutsu run` as a thin wrapper
 
-`bajutsu run` builds the job spec from its arguments and calls the one-shot worker path, so the command line and a leased job run through one implementation. There is a trap to avoid. `run_job` spawns whatever `job.cmd` holds, and today `run_command` emits `python -m bajutsu run`, so a public `run` that calls `run_job` would spawn itself. The body of the current `run` therefore moves behind an internal entry point, and the spec builders emit that entry point. A spec queued before the change still names `-m bajutsu run`; it enters the wrapper, which spawns the internal entry point once, so it does not recurse.
+`bajutsu run` builds the job spec from its arguments and calls the one-shot worker path, so the command line and a leased job run through one implementation. One pitfall needs avoiding. `run_job` spawns whatever `job.cmd` holds, and today `run_command` emits `python -m bajutsu run`, so a public `run` that calls `run_job` would spawn itself. The body of the current `run` therefore moves behind an internal entry point, and the spec builders emit that entry point. A spec queued before the change still names `-m bajutsu run`; it enters the wrapper, which spawns the internal entry point once, so it does not recurse.
 
 The wrapper keeps the public behaviour:
 
@@ -90,7 +90,7 @@ The wrapper keeps the public behaviour:
 - SIGINT and SIGTERM go to the same cancel path, so an interrupt does not orphan a run that keeps driving the device.
 - The wrapper exits with the child's code, or 128 plus the signal number after a signal.
 
-The parity test runs `bajutsu run` as a subprocess, since the existing suite calls it in process and would not see the extra layer. The layer costs one process, which the item accepts for a single pipeline.
+The parity test runs `bajutsu run` as a subprocess, since the existing suite calls it in process and would not see the extra layer. The wrapper layer costs one process, which this item accepts in return for a single pipeline.
 
 The wrapper is a local command: it rejects a `worker.yaml` whose `environment` is not `local`. A Device Farm submission is the job of a worker whose environment is `devicefarm`, and `bajutsu worker --once` with that file submits a single Device Farm job spec without a server.
 

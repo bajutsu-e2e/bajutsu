@@ -21,9 +21,9 @@ The step is for a wait that no condition on the screen, the accessibility tree, 
 
 ## Motivation
 
-Waiting in a scenario is a condition wait: the `wait` step polls `query()` until a selector appears, disappears, or the screen settles, and it requires a `timeout` ([`docs/scenarios.md`](../../docs/scenarios.md), [BE-0118](../BE-0118-wait-for-contract-unification/BE-0118-wait-for-contract-unification.md)). The run loop's wait never sleeps for a fixed duration. This is the right default, and the item keeps it.
+Waiting in a scenario is a condition wait: the `wait` step polls `query()` until a selector appears, disappears, or the screen settles, and it requires a `timeout` ([`docs/scenarios.md`](../../docs/scenarios.md), [BE-0118](../BE-0118-wait-for-contract-unification/BE-0118-wait-for-contract-unification.md)). The run loop's wait never sleeps for a fixed duration. That default is right, and this item keeps it.
 
-Some waits have no observable condition, though. A server throttles a retry for a fixed interval and shows nothing until the interval ends. An animation outlives the point where the tree stops changing, so `until: settled` returns early. A scenario that records a demo video needs a screen to stay visible for a moment, and no element encodes "long enough to read". In each case the author works around the missing step. The workaround is either a `wait` on an unrelated element, which hides the real reason in a condition that happens to hold late enough, or a retry loop that burns device time. Both look deterministic and are not, because the delay the author needed was never written down.
+Some waits have no observable condition, though. A server throttles a retry for a fixed interval and shows nothing until the interval ends. An animation outlives the point where the tree stops changing, so `until: settled` returns early. A scenario that records a demo video needs a screen to stay visible for a moment, and no element encodes "long enough to read". In each case the author works around the missing step. The workaround is either a `wait` on an unrelated element, which hides the real reason in a condition that happens to hold late enough, or a retry loop that burns device time. Neither workaround is deterministic, although both look it, because the delay the author needed was never written down.
 
 The observable difference is threefold:
 
@@ -42,11 +42,13 @@ The observable difference is threefold:
 | `seconds` | number, required | The pause length. Greater than zero and at most 30. Strict, so a boolean or a quoted string is refused rather than coerced. |
 | `reason` | string, required | Why no condition can express this wait. Not empty after trimming whitespace. |
 
-The cap of 30 seconds is a constant, `MAX_SLEEP_SECONDS`, in the model module. A longer fixed pause is almost certainly a missing condition, so the loader rejects it with a message that points at `wait`. The model takes no `timeout` and no selector, since a sleep has no condition.
+The 30-second cap is a constant, `MAX_SLEEP_SECONDS`, in the model module. A longer fixed pause is almost certainly a missing condition, so the loader rejects it with a message that points at `wait`. The model takes no `timeout` and no selector, since a sleep has no condition.
 
 ### Execution
 
-The run loop executes `sleep` beside `wait`, not through a driver handler, because the step touches no device. The loop calls the injected `Clock.sleep` ([`clock.py`](../../bajutsu/common/orchestrator/types/clock.py)) in slices of a quarter second, so a test with a fake clock advances time without waiting, and a cancelled run leaves the pause within one slice. The step succeeds once the pause ends. A `record` or `enrich` replay honors the pause too, since the delay it stands in for is just as real there. It issues no `query()`, sends no input, and does not apply `BAJUTSU_MIN_WAIT_TIMEOUT`, because that floor raises condition-wait ceilings and a fixed pause has no ceiling. It is available on every backend, including the fake driver, and needs no capability token.
+The run loop executes `sleep` beside `wait`, not through a driver handler, because the step touches no device. The loop calls the injected `Clock.sleep` ([`clock.py`](../../bajutsu/common/orchestrator/types/clock.py)) in slices of a quarter second, so a test with a fake clock advances time without waiting, and a cancelled run leaves the pause within one slice. The step succeeds once the pause ends. A `record` or `enrich` replay honors the pause too, since the delay the step stands in for is just as real there.
+
+The step issues no `query()` and sends no input. It does not apply `BAJUTSU_MIN_WAIT_TIMEOUT`, because that floor raises condition-wait ceilings and a fixed pause has no ceiling. The step is available on every backend, including the fake driver, and needs no capability token.
 
 The step skips the interrupt check that precedes an acting step, as `wait` does, since a pause acts on nothing. The end-of-step system-alert guard fires on a failed step alone, and a pause never fails short of cancellation. A prompt that appears during the pause is handled by the next step that queries the tree.
 
@@ -68,11 +70,11 @@ The three emitters translate the pause, so a generated test matches the scenario
 | `uiautomator` | `Thread.sleep(<milliseconds>)` with the reason as a comment |
 | `playwright` | The Playwright page's own fixed-wait call, with the reason as a comment |
 
-The Playwright emitter writes TypeScript, so its call is `await page.waitForTimeout(<milliseconds>)`. Each emitter keeps the reason, so a generated test stays as reviewable as the scenario.
+The Playwright emitter writes TypeScript, so the call it emits is `await page.waitForTimeout(<milliseconds>)`. Each emitter keeps the reason, so a generated test stays as reviewable as the scenario.
 
 ### Serve Author editor
 
-The Web UI's Author editor ([`serve.author.mjs`](../../bajutsu/templates/serve.author.mjs)) edits scenario YAML as text. It validates every edit through `/api/lint`, which runs the scenario loader, and grades it through `/api/audit`, so the cap, the non-empty rule, and the `fixed-sleep` finding reach the editor without code of their own. The editor's step list labels a `sleep` as `sleep 2s — <reason>`.
+The Web UI's Author editor ([`serve.author.mjs`](../../bajutsu/templates/serve.author.mjs)) edits scenario YAML as text. It validates every edit through `/api/lint`, which runs the scenario loader, and grades it through `/api/audit`, so the cap, the non-empty rule, and the `fixed-sleep` finding reach the editor without code of their own. The editor's step list labels each `sleep` as `sleep 2s — <reason>`.
 
 ### Prime-directive compliance
 

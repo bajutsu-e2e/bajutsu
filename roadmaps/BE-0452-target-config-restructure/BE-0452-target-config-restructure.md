@@ -29,11 +29,15 @@ which gains fields on iOS. The other seven, `platform` among them, keep one shap
 
 `runsOn` states the environments a target runs in: device, OS, and browser. A scenario can state
 its own `runsOn` under `preconditions`, and the scenario's value takes precedence over the
-target's. A list (of models, AVDs, or browser engines), or a version range bounded on both sides, asks for one run per value or
-per major version, and a run that no available device can take fails. A scenario whose open condition, such
-as `>=18`, no available device meets is recorded as not applicable instead of being run. The change
-drops backward compatibility on purpose: an old config fails to load and names the key it no longer
-accepts.
+target's.
+
+A list (of models, AVDs, or browser engines), or a version range bounded on both sides, asks for one
+run per value or per major version. A run that no available device can take fails. A scenario whose
+open condition, such as `>=18`, no available device meets is recorded as not applicable instead of
+being run.
+
+The change drops backward compatibility on purpose: an old config fails to load and names the key it
+no longer accepts.
 
 ## Motivation
 
@@ -87,10 +91,12 @@ and [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md) have la
 means every unit of those items has merged except two final removals, which stay deprecated but
 accepted: unit 5 of BE-0448 removing `cloudBatchBudget` and the server-side budget machinery
 (`deviceBudget`, `max_concurrent_batch`, and `try_register(device_budget=…)`), and BE-0450 removing
-`requires`. Unit 4 of this item removes them all. This ends the deprecation window of `deviceBudget`
-on the fan-out request at the switch-over, earlier than BE-0448 alone would. Those items provide the worker capability file, `worker.yaml`, and the `environment:<name>` routing that the
-keys leaving the target move onto (see *Where a run happens*). Starting earlier would leave
-`deviceProvider` and `cloudBatch` with no destination at the atomic schema switch-over.
+`requires`. Unit 4 of this item removes them all, which ends the deprecation window of `deviceBudget`
+on the fan-out request at the switch-over, earlier than BE-0448 alone would.
+
+BE-0448 and BE-0450 provide the worker capability file, `worker.yaml`, and the `environment:<name>`
+routing that the keys leaving the target move onto (see *Where a run happens*). Starting earlier
+would leave `deviceProvider` and `cloudBatch` with no destination at the atomic schema switch-over.
 
 ### The eleven keys
 

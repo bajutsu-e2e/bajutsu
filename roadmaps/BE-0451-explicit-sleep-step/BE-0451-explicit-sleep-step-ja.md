@@ -21,7 +21,7 @@
 
 ## 動機
 
-シナリオの待機は条件待ちです。`wait` step は、セレクタの出現、消失、または画面の安定まで `query()` を poll し、`timeout` を必須とします（[`docs/ja/scenarios.md`](../../docs/ja/scenarios.md)、[BE-0118](../BE-0118-wait-for-contract-unification/BE-0118-wait-for-contract-unification.md)）。run loop の wait が固定時間だけ待つことはありません。これは正しい既定であり、本項目も維持します。
+シナリオの待機は条件待ちです。`wait` step は、セレクタの出現、消失、または画面の安定まで `query()` を poll し、`timeout` を必須とします（[`docs/ja/scenarios.md`](../../docs/ja/scenarios.md)、[BE-0118](../BE-0118-wait-for-contract-unification/BE-0118-wait-for-contract-unification.md)）。run loop の wait が固定時間だけ待つことはありません。この既定は正しく、本項目も維持します。
 
 一方で、観測できる条件を持たない待機が存在します。サーバーが再試行を一定時間だけ絞り、終わるまで何も表示しない場合があります。アニメーションがツリーの変化の止まる時点より長く続き、`until: settled` が早く戻る場合もあります。デモ動画を録るシナリオでは、画面をしばらく見せ続ける必要があり、「読むのに十分な長さ」を表す要素はありません。どの場合も、作者は欠けた step を回避しています。回避策は、無関係な要素への `wait` か、デバイス時間を浪費する再試行ループです。前者は本当の理由を「たまたま十分遅く成立する条件」に隠します。どちらも決定的に見えますが、作者が必要とした遅延がどこにも書かれていないため、決定的ではありません。
 
@@ -46,7 +46,9 @@
 
 ### 実行
 
-run loop は、driver のハンドラではなく `wait` と並べて `sleep` を実行します。この step はデバイスに触れないためです。loop は注入された `Clock.sleep`（[`clock.py`](../../bajutsu/common/orchestrator/types/clock.py)）を 0.25 秒ずつ区切って呼びます。fake clock を使うテストは待たずに時刻を進められ、キャンセルされた run は 1 区切り以内に待機を抜けます。待機が終わると step は成功します。`record` や `enrich` の再生でも待機を守ります。`sleep` が表す遅延は、再生時にも同じく存在するためです。`query()` も入力もなく、`BAJUTSU_MIN_WAIT_TIMEOUT` も適用しません。この下限は条件待ちの上限を引き上げるもので、固定待機に上限という概念がないからです。fake driver を含むすべての backend で使え、capability token は要りません。
+run loop は、driver のハンドラではなく `wait` と並べて `sleep` を実行します。この step はデバイスに触れないためです。loop は注入された `Clock.sleep`（[`clock.py`](../../bajutsu/common/orchestrator/types/clock.py)）を 0.25 秒ずつ区切って呼びます。fake clock を使うテストは待たずに時刻を進められ、キャンセルされた run は 1 区切り以内に待機を抜けます。待機が終わると step は成功します。`record` や `enrich` の再生でも待機を守ります。`sleep` が表す遅延は、再生時にも同じく存在するためです。
+
+この step は `query()` も入力も行いません。`BAJUTSU_MIN_WAIT_TIMEOUT` も適用しません。この下限は条件待ちの上限を引き上げるもので、固定待機に上限という概念がないからです。fake driver を含むすべての backend で使え、capability token は要りません。
 
 待機は何にも作用しないので、`wait` と同じく、作用する step の前に行う割り込みの確認を省きます。step 末尾のシステムアラートガードは失敗した step でだけ動き、`sleep` はキャンセル以外で失敗しません。待機中に出たプロンプトは、ツリーを query する次の step が処理します。
 
