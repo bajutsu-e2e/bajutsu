@@ -16,141 +16,166 @@
 
 ## はじめに
 
-serve Web UI の **Replay** タブが実行できるのは、束縛中の config が持つターゲットの scenario scope
-に、すでに置かれているシナリオだけです。scenario scope は、ローカルでは scenarios ディレクトリを指し、
-ホスト型デプロイでは [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)
-のプロジェクトごとのストレージを指します。シナリオを新しく足す手段がありません。この提案は、Replay に
-アップロード操作を追加します。手元の `.yaml` シナリオファイル、または複数をまとめた `.zip` を選ぶと、
-そのままそのスコープへ配置され、その場で選択・実行できるようになります。アップロードの対象は常にすでに
-開いている config で、config を新しく束縛する手段は増やしません。同名のファイルはその場で上書きし、UI
-には上書きが起きたことを表示します。
+serve Web UI の **Replay** タブは、束縛中の config が持つターゲットの scenario scope にあるシナリオ
+を実行します。scenario scope は、ローカルでは scenarios ディレクトリを指します。ホスト型デプロイでは、
+[BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) のプロジェクトごとの
+ストレージを指します。Replay には、この scope へシナリオを足す手段がありません。
+
+この提案は、Replay にアップロード操作を追加します。手元の `.yaml` シナリオファイル、または複数をまと
+めた `.zip` を選ぶと、そのまま scope へ配置されます。配置したシナリオは、その場で選択・実行できます。
+
+アップロードの対象は、常にすでに開いている config です。config を新しく束縛する手段は増やしません。
+同名のファイルはその場で上書きし、UI には上書きが起きたことを表示します。
 
 ## 動機
 
-Replay のシナリオ一覧は常に `GET /api/scenarios` から届き、その内部で
-`state.for_org(org).scenarios.scope(target)`（`bajutsu/serve/operations/reads.py`）を呼びます。
-config が束縛されていなければこの呼び出しは `None` を返すため、一覧はエラーにならず、黙って空になり
-ます。`"open a config first"` という明示的なエラーは、実際にシナリオを実行・作成する
-`start_run`・`start_record`（`bajutsu/serve/operations/dispatch.py`）の側が返すものです。
-現状、このスコープにシナリオを足す経路は 3 つです。1 つは、サーバのファイルシステムへ手作業で置く経路
-で、これはホスト型デプロイでは使えない、ローカル限定の手段です
-（[BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)）。もう 1 つは
-`record` を実行し、AI にシナリオを書かせる経路です。最後の 1 つは、zip／compose のアップロード一式を
-使って config 全体を差し替える経路です
-（[BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md) ／
-[BE-0268](../BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts-ja.md)）。
+Replay のシナリオ一覧は、常に `GET /api/scenarios` から届きます（`bajutsu/serve/operations/reads.py`）。
+このエンドポイントは、内部で `state.for_org(org).scenarios.scope(target)` を呼びます。config が束縛
+されていなければ、この呼び出しは scope として `None` を返します。そのため一覧はエラーにならず、黙っ
+て空になります。
 
-3 つ目の経路は、よくある場面には大がかりすぎます。ローカル・Git 由来・以前のアップロードのいずれかで
-config がすでに開いている状態で、手で書いた、あるいは他所から持ち込んだシナリオファイルを 1 つか
-数個、足したい・差し替えたいだけの場面です。compose 経路（BE-0268）は、config を束縛し直す意図が
-なくても config アーティファクトを求め続けます。`bind_composition` は、それを持たない
-リクエストを受け付けません（`bajutsu/serve/operations/upload.py`）。旧来の bundle アップロード
-（BE-0073）は、稼働中の設定をまるごと捨てます。どちらの経路も「開いているものにシナリオを足す」
-ではなく、「別のプロジェクトを開く」です。
+`"open a config first"` という明示的なエラーを返すのは、`start_run` と `start_record` です。この 2
+つは、シナリオを実行・作成する操作です（`bajutsu/serve/operations/dispatch.py`）。
 
-このギャップは、ホスト型デプロイでもっとも大きくなります。オペレータがサーバのファイルシステムに触れられず、
-ファイルを直接置けないためです。`record` による AI オーサリングも、あらゆるシナリオに向くわけでは
-ありません。Bajutsu の外ですでにレビュー済み・調整済みのシナリオを、Replay に届けるためだけに AI で
+現状、この scope にシナリオを足す経路は 3 つあります。
+
+- サーバのファイルシステムへ手作業で置く経路です。ホスト型デプロイでは使えない、ローカル限定の手段で
+  す（[BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)）。
+- `record` を実行し、AI にシナリオを書かせる経路です。
+- zip／compose のアップロード一式を使って、config 全体を差し替える経路です（[BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md)
+  ／ [BE-0268](../BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts-ja.md)）。
+
+3 つ目の経路は、よくある場面には大がかりすぎます。ローカル、Git 由来、以前のアップロードのいずれかで、
+config がすでに開いているとします。そこへ、手で書いたシナリオファイルや他所から持ち込んだシナリオフ
+ァイルを、1 つか数個だけ足す、あるいは差し替える場面です。
+
+compose 経路（BE-0268）は、config を束縛し直す意図がなくても `config` アーティファクトを求め続けます。
+`bind_composition` は、それを持たないリクエストを受け付けません（`bajutsu/serve/operations/upload.py`）。
+旧来の bundle アップロード（BE-0073）は、稼働中の設定をまるごと捨てます。どちらの経路も、「開いてい
+るものにシナリオを足す」操作ではなく、「別のプロジェクトを開く」操作です。
+
+このギャップは、ホスト型デプロイで最も大きくなります。オペレータがサーバのファイルシステムに触れられ
+ず、ファイルを直接置けないためです。`record` による AI オーサリングも、あらゆるシナリオに向くわけで
+はありません。Bajutsu の外ですでにレビュー済み・調整済みのシナリオを、Replay に届けるためだけに AIで
 書き直させる理由はありません。すでに開いている config に絞ったアップロード操作は、config の束縛には
-一切触れずにこのギャップを埋めます。
+一切触れずに、このギャップを埋めます。
 
 ## 詳細設計
 
-どちらのアップロード経路も、既存の `ScenarioScope`／`ScenarioStore` の seam
-（`bajutsu/serve/scenarios.py`）を通ります。`save_scenario`、`start_run`、`start_record` はすでにこの
-seam を共有しており、
-[BE-0051](../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md) の
-パス閉じ込めと BE-0015 の org スコープはそのまま効き続けます。どちらの経路も新しい信頼境界を開かず、
-すでに束縛済みの config が開いたスコープへ、新しい配置手段を足すだけです。どちらも `state.config` が
-すでに束縛済みで有効な `target` を必要とします。単体ファイルの経路は、そのスコープの解決に失敗した
-とき `save_scenario` がすでに返しているエラー、`"path must be a *.yaml under the scenarios dir"` を
-そのまま受け継ぎます。新しい zip エンドポイントも、同じ場面に対して自前の同等なエラーを返します。
-この提案は、config を束縛・差し替える手段を増やしません。
+どちらのアップロード経路も、既存の `ScenarioScope`／`ScenarioStore` の seam（`bajutsu/serve/scenarios.py`）
+を通ります。`save_scenario`、`start_run`、`start_record` は、すでにこの seam を共有しています。その
+ため、[BE-0051](../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md) の
+パス閉じ込めと BE-0015 の org スコープは、そのまま効き続けます。
 
-ロールベースアクセス制御（RBAC、BE-0015 7c-2）は、上記の `ScenarioScope` の seam とは別の仕組みで、
-それ自体の更新が要ります。`bajutsu/serve/authz.py` は、状態を変える `POST` を明示的な許可リスト
-（`_ADMIN_PATHS`／`_EDITOR_PATHS`）で守っており、どちらにも載っていないパスはゲートなしで通ります。
-単体ファイルの経路は既存の `POST /api/scenario` を再利用し、すでに `_EDITOR_PATHS` に入っているため
-変更は要りません。新しい `POST /api/scenarios/upload` はまだ存在しないルートなので、この提案は
-`/api/scenario` と同じ階層で `_EDITOR_PATHS` に加え、放置すれば生まれていたはずの抜け穴を防ぎます。
+どちらの経路も、新しい信頼境界を開きません。すでに束縛済みの config が開いた scope へ、新しい配置手
+段を足すだけです。どちらも `state.config` が束縛済みで、有効な `target` があることを必要とします。
+scope の解決に失敗したとき、単体ファイルの経路は `save_scenario` のエラーをそのまま受け継ぎます。エ
+ラーの文言は `"path must be a *.yaml under the scenarios dir"` です。新しい zip エンドポイントも、同
+じ場面で自前の同等なエラーを返します。この提案は、config を束縛・差し替える手段を増やしません。
 
-- **既存の単体シナリオ保存経路に、上書きの通知を足す。** `POST /api/scenario`
-  （`bajutsu/serve/operations/reads.py` の `save_scenario`）は、すでに任意の名前の `.yaml` ファイルを
-  ターゲットのスコープへ書き込んでいますが、その応答には、保存が既存ファイルを置き換えたという合図が
-  今のところありません。この合図を足します。`scope.save(ref, text)` の前に `scope.read(ref)` を呼び、
-  すでに内容が返るかどうかを確かめます。返れば応答は `overwritten: true` を報告し、そうでなければ
-  `false` を報告します。今日 `save_scenario` を呼んでいる Author エディタの Save ボタンは、この新しい
-  応答フィールド以外、挙動が変わりません。
+ロールベースアクセス制御（RBAC、BE-0015 7c-2）は、`ScenarioScope` の seam とは別の仕組みです。RBACに
+は、それ自体の更新が要ります。`bajutsu/serve/authz.py` は、状態を変える `POST` を明示的な許可リスト
+（`_ADMIN_PATHS`／`_EDITOR_PATHS`）で守っています。どちらにも載っていないパスは、ゲートなしで通りま
+す。
 
-- **Replay タブに、単体ファイルの「シナリオをアップロード」操作を置く。** Replay の Form にある
-  シナリオピッカーの隣に、アップロード操作を追加します。マークアップは `bajutsu/templates/serve.html.j2`
-  に置き、配線は `bajutsu/templates/serve.panels.mjs` に置きます。compose ピッカーがすでに使っている
-  ファイル入力のパターン（`cmp-scenarios-file`）を踏襲します。この操作は、選んだ `.yaml` ファイルの
-  テキストをクライアント側で読み取り、Author エディタの Save ボタンが使うのと同じ `/api/scenario`
-  エンドポイントへ、ファイル自身の名前をパスとして送信します。こうすると、アップロードでスコープへ
-  着地したシナリオは、Save や `record` で着地したシナリオと区別が付きません。成功すると、新しい
-  `overwritten` フラグから「追加しました」「上書きしました」のいずれかを報告し、シナリオ一覧を再読み込み
-  して、そのファイルをその場で選択・実行できるようにします。config とターゲットの両方が選ばれるまでは
-  操作を有効にしません。これは、他の Replay の操作がすでに課している前提と同じです。
+単体ファイルの経路は、既存の `POST /api/scenario` を再利用します。このパスはすでに `_EDITOR_PATHS`に
+入っているため、変更は要りません。新しい `POST /api/scenarios/upload` は、まだ存在しないルートです。
+この提案は、このルートを `/api/scenario` と同じ階層で `_EDITOR_PATHS` に加えます。放置すれば生まれて
+いたはずの抜け穴を、これで防ぎます。
+
+- **既存の単体シナリオ保存経路に、上書きの通知を足す。** `POST /api/scenario` は、任意の名前の
+  `.yaml` ファイルをターゲットの scope へ書き込みます（`bajutsu/serve/operations/reads.py` の
+  `save_scenario`）。この応答には、保存が既存ファイルを置き換えたという合図が、今のところありません。
+  この合図を足します。`scope.save(ref, text)` の前に `scope.read(ref)` を呼び、すでに内容が返るかど
+  うかを確かめます。返れば応答は `overwritten: true` を報告し、そうでなければ `false` を報告します。
+  `save_scenario` を呼んでいる Author エディタの Save ボタンは、この新しい応答フィールド以外、挙動が
+  変わりません。
+
+- **Replay タブに、単体ファイルの「シナリオをアップロード」操作を置く。** Replay の Form にあるシナ
+  リオピッカーの隣に、アップロード操作を追加します。マークアップは `bajutsu/templates/serve.html.j2`
+  に置きます。配線は `bajutsu/templates/serve.panels.mjs` に置きます。compose ピッカーが使っているフ
+  ァイル入力のパターン（`cmp-scenarios-file`）を踏襲します。
+
+  この操作は、選んだ `.yaml` ファイルのテキストをクライアント側で読み取ります。そのテキストを、
+  Author エディタの Save ボタンが使う `/api/scenario` エンドポイントへ送信します。パスには、ファイル
+  自身の名前を使います。アップロードで scope に着地したシナリオは、Save や `record` で着地したシナリ
+  オと区別が付きません。
+
+  成功すると、新しい `overwritten` フラグから「追加しました」「上書きしました」のいずれかを報告しま
+  す。続けてシナリオ一覧を再読み込みし、そのファイルをその場で選択・実行できるようにします。configと
+  ターゲットの両方が選ばれるまでは、操作を有効にしません。他の Replay の操作も、すでに同じ前提を課し
+  ています。
 
 - **シナリオ一式に対する zip アップロード。** 新しいエンドポイント `POST /api/scenarios/upload` は、
-  生のリクエストボディを受け取り、`/api/upload` や `/api/artifacts/*` と同じくメインのリクエストループの
-  外で処理します。指定したターゲットのスコープに向けて、1 つ以上の `.yaml` を含む `.zip` を受け付けます。
-  新しいオペレーション `upload_scenarios` は、`save_scenario` と同じスコープを解決したうえで、アーカイブの
-  最上位にある `*.yaml` エントリだけを読みます。スコープにサブディレクトリという概念はなく、
-  `list_scenarios` が平坦に `glob("*.yaml")` するのと揃えています。抽出中は、シナリオのテキストに見合った
-  資源の上限（エントリ数、エントリごとのサイズ、合計サイズ。いずれも、アプリバイナリ向けの BE-0073 の
-  bundle の上限よりはるかに小さくします）と、`bajutsu/serve/uploads.py` がすでに bundle に適用している
-  zip-slip の封じ込めの両方を効かせます。すべてのエントリは、書き込む前に `load_scenario_file` で解析
-  します。解析に失敗するエントリが 1 つでもあれば zip 全体を打ち切り、何も書き込みません。これにより、
-  不備のあるバッチが部分的な上書きを残すことはありません。これは、`start_run_set`
-  （`bajutsu/serve/operations/dispatch.py`）がシナリオの fan-out にすでに適用している、
-  「どれかに触れる前にすべてを確かめる」パターンと同じです。成功すれば各ファイルを `scope.save(name,
-  text)` で書き込み、応答は各名前を「新規作成」か「上書き」として一覧します。このルートは
-  `bajutsu/serve/authz.py` の `_EDITOR_PATHS` に加え、`/api/scenario` と同じ RBAC の階層に置くため、
-  ホスト型デプロイの viewer からは届きません。Replay の Form には、もう 1 つのアップロード操作
-  （あるいは、選んだファイルの拡張子で振り分ける同一の操作）を足し、`.zip` をここへ送って、単体ファイル
-  の経路とそろえた新規作成／上書きの要約を描画します。
+  生のリクエストボディを受け取ります。`/api/upload` や `/api/artifacts/*` と同じく、メインのリクエス
+  トループの外で処理します。指定したターゲットの scope に向けて、1 つ以上の `.yaml` を含む `.zip` を
+  受け付けます。
 
-- **テストとドキュメント。** `save_scenario` の新しい `overwritten` フィールドを、ユニットテストで
-  確かめます。同じ ref への 1 回目の保存では false、2 回目では true になることを確認します。
-  `upload_scenarios` もユニットテストで確かめます。1 つの zip に入れた 2 つの正しいシナリオが両方とも
-  配置され、`list_scenarios` にも両方現れること、解析に失敗するエントリが 1 つでもあれば何も書き込まれ
-  ないこと、zip-slip のエントリとサイズ超過のエントリがどちらも拒まれることを確認します。新しい
-  アップロード操作には `data-testid` を付けます。既存の Replay フィクスチャの隣に、dogfood の E2E
-  シナリオも追加します。web backend にはネイティブのファイル選択を操作する step がないため、この
-  シナリオは操作が存在し、有効になっていることだけを確かめます。追加／上書き／all-or-nothing／
-  zip-slip／サイズ超過の挙動は、Python のユニットテストと HTTP テストが最初から最後まで確かめます。
-  `docs/architecture.md` とその
-  `docs/ja/` の対応を更新し、Replay が config を束縛し直すことなく、束縛済み config の scenario scope
-  へ直接シナリオを配置できるようになったことを記します。
+  新しいオペレーション `upload_scenarios` は、`save_scenario` と同じ scope を解決します。そのうえで、
+  アーカイブの最上位にある `*.yaml` エントリだけを読みます。scope にサブディレクトリという概念はあり
+  ません。`list_scenarios` が平坦に `glob("*.yaml")` するのと揃えています。
+
+  抽出中は、2 つの封じ込めを効かせます。1 つは、シナリオのテキストに見合った資源の上限です。エントリ
+  数、エントリごとのサイズ、合計サイズの 3 つを制限します。いずれも、アプリバイナリ向けの BE-0073 の
+  bundle の上限よりはるかに小さくします。もう 1 つは、`bajutsu/serve/uploads.py` が bundle にすでに
+  適用している zip-slip の封じ込めです。
+
+  すべてのエントリは、書き込む前に `load_scenario_file` で解析します。解析に失敗するエントリが 1 つ
+  でもあれば、zip 全体を打ち切り、何も書き込みません。不備のあるバッチが、部分的な上書きを残すことは
+  ありません。同じ「どれかに触れる前にすべてを確かめる」パターンは、`start_run_set` がシナリオの
+  fan-out にすでに適用しています（`bajutsu/serve/operations/dispatch.py`）。
+
+  成功すれば、各ファイルを `scope.save(name, text)` で書き込みます。応答は、各名前を「新規作成」か「上
+  書き」として一覧します。このルートは `bajutsu/serve/authz.py` の `_EDITOR_PATHS` に加え、
+  `/api/scenario` と同じ RBAC の階層に置きます。ホスト型デプロイの viewer からは届きません。
+
+  Replay の Form には、もう 1 つのアップロード操作を足します。あるいは、選んだファイルの拡張子で振り
+  分ける同一の操作にします。この操作は `.zip` をこのエンドポイントへ送ります。描画する新規作成／上書
+  きの要約は、単体ファイルの経路と同じです。
+
+- **テストとドキュメント。** `save_scenario` の新しい `overwritten` フィールドを、ユニットテストで確
+  かめます。同じ ref への 1 回目の保存では false、2 回目では true になることを確認します。
+  `upload_scenarios` もユニットテストで確かめます。
+  - 1 つの zip に入れた 2 つの正しいシナリオが両方とも配置され、`list_scenarios` にも両方現れること。
+  - 解析に失敗するエントリが 1 つでもあれば、何も書き込まれないこと。
+  - zip-slip のエントリとサイズ超過のエントリが、どちらも拒まれること。
+
+  新しいアップロード操作には、`data-testid` を付けます。既存の Replay フィクスチャの隣に、dogfood の
+  E2E シナリオも追加します。web backend にはネイティブのファイル選択を操作する step がありません。そ
+  のため、このシナリオは操作が存在し、有効になっていることだけを確かめます。追加、上書き、
+  all-or-nothing、zip-slip、サイズ超過の挙動は、Python のユニットテストと HTTP テストが最初から最後
+  まで確かめます。
+
+  `docs/architecture.md` とその `docs/ja/` の対応も更新します。Replay が config を束縛し直すことなく、
+  束縛済み config の scenario scope へ直接シナリオを配置できることを記します。
 
 ## 検討した代替案
 
-- **config を一切束縛せずにシナリオを実行する。** シナリオ自体は backend 非依存ですが、実行にはターゲットの
-  backend・デバイス・アプリのパスが要り、素のシナリオファイルはそのどれも持っていません。したがって
-  アップロードは、単独で成立するのではなく、すでに束縛済みの config のターゲットに対して解決します。
-  この項目は、シナリオの実行に必要なものを変えず、シナリオファイルがその情報をすでに持つスコープへ
-  届く経路だけを変えます。
+- **config を一切束縛せずにシナリオを実行する。** シナリオ自体は backend 非依存です。しかし実行には
+  ターゲットの backend、デバイス、アプリのパスが要り、素のシナリオファイルはそのどれも持っていません。
+  したがってアップロードは、単独では成立しません。すでに束縛済みの config のターゲットに対して解決し
+  ます。この項目は、シナリオの実行に必要なものを変えません。変えるのは、シナリオファイルがその情報を
+  すでに持つ scope へ届く経路だけです。
 
 - **BE-0268 の compose／アーティファクトアップロードの経路を、この用途にも使い回す。**
-  `POST /api/artifacts/scenarios` は、アップロードした `.zip`／`.yaml` をコンテンツハッシュでキャッシュ
-  済みですが、`bind_composition` は、オペレータに config を束縛し直す意図がなくても `config`
-  アーティファクトを求め続けます。`bind_composition` は、それを持たないリクエストを受け付けません。
-  この経路を拡張するとすれば、scenarios のレグへ届くためだけに、当て馬の config レグを供給する仕組みを
-  作ることになります。これは、config がすでに束縛済みであることを前提にした専用のエンドポイントを
-  足すより手間が増えます。この提案は、まさにその前提が成り立つ場面のためにあります。
+  `POST /api/artifacts/scenarios` は、アップロードした `.zip`／`.yaml` をコンテンツハッシュでキャッ
+  シュ済みです。しかし `bind_composition` は、オペレータに config を束縛し直す意図がなくても、
+  `config` アーティファクトを求め続けます。それを持たないリクエストは、受け付けません。
 
-- **ネストしたディレクトリ構成の zip を受け付ける。** スコープには、今のところサブディレクトリという
-  概念がありません。`list_scenarios` はディレクトリを平坦に glob します。ネストしたエントリを入れても
+  この経路を拡張するなら、scenarios のレグへ届くためだけに、当て馬の config レグを供給する仕組みを作
+  ることになります。config がすでに束縛済みであることを前提にした専用のエンドポイントを足すより、手
+  間が増えます。この提案は、まさにその前提が成り立つ場面のためにあります。
+
+- **ネストしたディレクトリ構成の zip を受け付ける。** scope には、今のところサブディレクトリという概
+  念がありません。`list_scenarios` はディレクトリを平坦に glob します。ネストしたエントリを入れても、
   一覧には現れません。最上位の `*.yaml` だけを平坦に読む今回の設計は、既存のモデルとそのまま合います。
-  ここを見直す価値が出るのは、スコープ自体が他の場所でサブディレクトリを持つようになったときであり、
-  それまでは見直しません。
+  ここを見直す価値が出るのは、scope 自体が他の場所でサブディレクトリを持つようになったときです。それ
+  までは見直しません。
 
-- **zip の一部エントリが解析に失敗したとき、成功した分だけ書き込む。** all-or-nothing を選び、この案は
-  見送りました。バッチが部分的に着地すると、スコープは、アップロードした本人が求めてはいない状態になり、
-  あとから追いにくくなります。`start_run_set` も、同じ理由で、どれかに触れる前にすべての項目を
-  確かめています。
+- **zip の一部エントリが解析に失敗したとき、成功した分だけ書き込む。** all-or-nothing を選び、この案
+  は見送りました。バッチが部分的に着地すると、scope は、アップロードした本人が求めていない状態になり
+  ます。その状態は、あとから追いにくくなります。`start_run_set` も、同じ理由で、どれかに触れる前にす
+  べての項目を確かめています。
 
 ## 進捗
 
