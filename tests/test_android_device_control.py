@@ -479,9 +479,7 @@ def test_device_is_preflight_clean_on_adb() -> None:
 
 
 def test_push_scenario_is_admitted_by_preflight_on_adb() -> None:
-    # adb advertises `deviceControl.push` (BE-0498), so preflight admits push.yaml's basic scenario.
-    # push.yaml carries a second scenario since BE-0416 (the notification-banner fixture), so this
-    # selects the original by name rather than assuming the file holds a single flow.
+    # adb advertises `deviceControl.push` (BE-0498), so preflight admits push.yaml's scenario.
     scenarios = load_scenarios(_PUSH.read_text(encoding="utf-8"))
     scenario = next(s for s in scenarios if s.name == "receive a push notification")
     assert capability_preflight.unsupported(scenario, AdbDriver.CAPABILITIES) == []

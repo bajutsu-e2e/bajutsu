@@ -77,6 +77,8 @@ fun PermissionsScreen(model: AppModel) {
                 // A positive condition the run can wait for once granted.
                 Text("Granted", Modifier.aid("perm.notif.authorized"))
             }
+            // The title of the last push bajutsu delivered (SPEC §5.4, BE-0498); empty until one arrives.
+            Text("Last push: ${PushInbox.lastTitle}", Modifier.aid("perm.push.received").stateValue(PushInbox.lastTitle))
 
             Text("Location", style = MaterialTheme.typography.titleMedium)
             TextButton(onClick = { locationLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION) }, modifier = Modifier.aid("perm.requestLocation")) {

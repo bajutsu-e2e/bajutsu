@@ -16,7 +16,7 @@ struct ShowcaseApp: App {
             UIView.setAnimationsEnabled(false)
         }
         // Only the banner fixture needs a foreground banner: left on for every mode, `push.yaml`'s
-        // first scenario would raise one too, and only on a Simulator that still holds the grant
+        // scenario would raise one too, and only on a Simulator that still holds the grant
         // this fixture's own scenario made (BE-0416 Unit 5).
         if ProcessInfo.processInfo.environment["SHOWCASE_NOTIFICATION_BANNER"] != nil {
             UNUserNotificationCenter.current().delegate = Self.notificationPresenter

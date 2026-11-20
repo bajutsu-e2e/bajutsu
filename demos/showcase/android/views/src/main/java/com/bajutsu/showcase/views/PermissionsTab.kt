@@ -38,6 +38,13 @@ class PermissionsTab(private val activity: MainActivity) {
         val requestNotif = activity.textButton("Request Notifications") {
             notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }.aid("perm_requestNotif")
+        // The title of the last push bajutsu delivered (SPEC §5.4, BE-0498); empty until one arrives.
+        val pushReceived = activity.secondaryLabel("Last push: ${PushInbox.lastTitle}")
+            .aid("perm_push_received").stateValue(PushInbox.lastTitle)
+        PushInbox.onChange = { title ->
+            pushReceived.text = "Last push: $title"
+            pushReceived.stateValue(title)
+        }
 
         val locationValue = activity.secondaryLabel("Location: notDetermined")
             .aid("perm_location_value").stateValue("notDetermined")
@@ -103,6 +110,7 @@ class PermissionsTab(private val activity: MainActivity) {
             requestNotif,
             notifValue,
             notifGranted,
+            pushReceived,
             activity.label("Location"),
             requestLocation,
             locationValue,

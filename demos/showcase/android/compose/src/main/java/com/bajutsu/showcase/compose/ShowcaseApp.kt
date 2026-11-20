@@ -4,7 +4,7 @@ import android.app.Application
 import dev.bajutsu.android.Bajutsu
 
 /**
- * Registers BajutsuAndroid's clipboard (BE-0233) and location (BE-0481) receivers at the process
+ * Registers BajutsuAndroid's clipboard (BE-0233), location (BE-0481), and push (BE-0498) receivers at the process
  * entry point.
  *
  * `Application.onCreate` is the Android peer of BajutsuKit's `App.init()` on iOS: it runs once per
@@ -18,6 +18,9 @@ class ShowcaseApp : Application() {
         if (BuildConfig.DEBUG) {
             Bajutsu.startClipboard(this)
             Bajutsu.startLocation(this) // the in-app setLocation route on a real device (BE-0481)
+            // The `push` step on Android (BE-0498): the handler path, so the suite exercises the
+            // app's own handling; the readout on the Permissions tab shows the pushed title.
+            Bajutsu.startPush(this) { push -> PushInbox.lastTitle = push.title.orEmpty() }
         }
     }
 }

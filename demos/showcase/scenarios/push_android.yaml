@@ -1,0 +1,27 @@
+# push on Android (BE-0498): the step reaches the app's own handling, not only the device. bajutsu maps
+# the APNs payload to a title, a body, and a data map on the host and sends it to BajutsuAndroid's
+# push receiver, which calls the handler the showcase registers in `ShowcaseApp`. The handler stores
+# the pushed title, and the Permissions tab shows it at `perm.push.received`, empty until a push
+# arrives, so the wait below holds a value only the push can produce (prime directive 2).
+#
+# The showcase registers a handler, so this lane exercises the handler path; the default path (a
+# local notification when no handler is registered) has no showcase twin and is covered by the
+# BE-0498 Unit 4 probe instead. Each id lists both its dotted SPEC form (Compose) and its underscore
+# form (Views), so the selector resolves whichever tree renders (BE-0221). Tagged `android` so the
+# iOS bulk lanes, which sweep this directory, exclude it: iOS has no in-app handler readout, and
+# push.yaml covers the step there.
+- name: push reaches the app's push handler (android)
+  tags: [device, android]
+  preconditions:
+    subject:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
+  steps:
+    - tap: { label: "Permissions", traits: [button] }
+    # The tab transition is asynchronous, so wait for the tab's own first control before pushing.
+    - wait: { for: { id: [perm.requestNotif, perm_requestNotif] }, timeout: 10 }
+    - push: { payload: { aps: { alert: { title: "Order shipped", body: "Your order is on its way" } }, orderId: "42" } }
+    - scroll: { to: { id: [perm.push.received, perm_push_received] }, direction: down }
+    - wait: { for: { id: [perm.push.received, perm_push_received], value: "Order shipped" }, timeout: 15 }
+  expect:
+    - value: { sel: { id: [perm.push.received, perm_push_received] }, equals: "Order shipped" }

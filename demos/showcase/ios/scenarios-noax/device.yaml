@@ -2,7 +2,7 @@
 # and round-trip the clipboard, then re-assert the settled screen. The steps drive the device, not the
 # app UI, so the flow runs on the Stable catalog and re-asserts the app stays there (by the visible
 # "Horse 1" row). `setLocation` and the clipboard are device-control operations independent of app
-# accessibility; `push` lives in push.yaml (no faithful Android equivalent). Run over XCUITest.
+# accessibility; `push` lives in push.yaml. Run over XCUITest.
 - name: override the device location and round-trip the clipboard
   tags: [system]
   preconditions:
