@@ -72,7 +72,12 @@ def test_a_refused_command_fails_even_when_a_server_answers(
     # BE-0492: a config whose mode refuses its command cannot ride on a server started elsewhere,
     # and the run never probes the readiness URL that config chose.
     probed: list[str] = []
-    monkeypatch.setattr(ls, "_probe", lambda url, timeout=2.0: probed.append(url) or True)
+
+    def probe(url: str, timeout: float = 2.0) -> bool:
+        probed.append(url)
+        return True
+
+    monkeypatch.setattr(ls, "_probe", probe)
     with pytest.raises(CommandRefused):
         ls.start_launch_server(
             _eff("services: { server: { cmd: 'serve it' } }"), gate=_gate("deny")
