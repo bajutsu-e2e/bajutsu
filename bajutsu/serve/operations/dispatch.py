@@ -114,8 +114,9 @@ def _rebuild_flag(
 ) -> tuple[bool, tuple[Any, int] | None]:
     """The run request's `rebuild` flag, or the 400 that refuses it.
 
-    A forced build needs a command serve may run: without one the request would silently run the
-    existing binary, which is what `rebuild` was asked to prevent. A stored `binaryArtifact` replaces
+    A forced build needs a `subject.build` to force: without one the request would silently run the
+    existing binary, which is what `rebuild` was asked to prevent. Whether the build may run is the
+    worker's command policy (BE-0492), which refuses it there by name. A stored `binaryArtifact` replaces
     the app the build makes, so forcing the build alongside one would build an app the run never
     installs. A value that is not a boolean is refused rather than read as off: unlike `erase`, there
     is no CLI default to fall back on, so dropping it would run the stale binary the caller meant to
@@ -128,10 +129,7 @@ def _rebuild_flag(
         return False, None
     if build is None:
         return False, (
-            {
-                "error": f"rebuild needs target '{target}' to declare a subject.build this server "
-                "may run"
-            },
+            {"error": f"rebuild needs target '{target}' to declare a subject.build"},
             400,
         )
     if overrides is not None and overrides.binary is not None:

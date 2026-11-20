@@ -214,3 +214,45 @@ def test_a_server_command_adds_its_source_requirement(tmp_path: Path) -> None:
     assert list(_command_needs(cfg, "web", uploaded)) == ["command-execution:uploaded"]
     assert _command_needs(cfg, "plain", uploaded) == {}
     assert _command_needs(tmp_path / "missing.yaml", "web", uploaded) == {}
+
+
+@pytest.mark.parametrize("source", ["uploaded", "remote"])
+def test_an_untrusted_build_never_reaches_a_worker_without_the_policy(source: str) -> None:
+    # A worker that predates BE-0492 runs whatever `build` holds, and a build adds no routing
+    # requirement, so an untrusted source's build travels under a key only a new worker reads.
+    spec = job_spec(srv.Job(cmd=["x"], build="touch pwned", config_source=source))
+    assert spec["build"] is None and spec["governed_build"] == "touch pwned"
+    operator = job_spec(srv.Job(cmd=["x"], build="make", config_source="operator"))
+    assert operator["build"] == "make" and operator["governed_build"] is None
+
+
+def test_a_build_the_worker_ran_joins_the_runs_record(tmp_path: Path) -> None:
+    # The spawned run finds the binary in place and builds nothing, so the worker's build record
+    # must reach the manifest through the job (BE-0492).
+    import json
+
+    from bajutsu.serve.jobs import _record_provenance
+
+    state = _state(tmp_path)
+    job = srv.Job(
+        cmd=["x"],
+        app_path="Demo.app",
+        build="touch Demo.app",
+        config_source="operator",
+        bus=srv.InMemoryLogBus(),
+        cwd=tmp_path,
+    )
+    assert _build_app(state, job)
+    [entry] = job.command_records
+    assert (entry["field"], entry["decision"], entry["exitCode"]) == ("subject.build", "ran", 0)
+
+    job.run_id = "run-1"
+    run_dir = state.base_cwd / state.runs_dir / "run-1"
+    run_dir.mkdir(parents=True)
+    ran = {"field": "services.server.cmd", "decision": "ran"}
+    (run_dir / "manifest.json").write_text(
+        json.dumps({"provenance": {"commandExecutions": [ran]}}), encoding="utf-8"
+    )
+    _record_provenance(state, job)
+    merged = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert merged["provenance"]["commandExecutions"] == [entry, ran]

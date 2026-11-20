@@ -13,6 +13,7 @@ import json
 import socket
 from pathlib import Path
 
+import pytest
 from run_cli import invoke
 from typer.testing import CliRunner
 
@@ -115,3 +116,38 @@ def test_the_same_config_under_the_operator_source_tries_to_run_it(tmp_path: Pat
 def test_an_unknown_source_is_a_usage_error(tmp_path: Path) -> None:
     code, output, _ = _run(tmp_path, "{}", "elsewhere")
     assert code == 2 and "--config-source 'elsewhere'" in output
+
+
+def test_a_refused_server_command_fails_before_any_device_is_reserved(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import bajutsu.run.cli as run_cli
+
+    def reserved(*_a: object, **_k: object) -> object:
+        raise AssertionError("a refused run reserved a device")
+
+    monkeypatch.setattr(run_cli, "_acquire_targets", reserved)
+    code, output, runs = _run(tmp_path, "{uploaded: named}", "uploaded")
+    assert code == 2 and "uploaded: named" in output
+    assert len(list(runs.glob("*/manifest.json"))) == 1
+
+
+def test_server_refusal_is_none_when_the_server_already_answers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from bajutsu.common import config
+    from bajutsu.common.capability.command_gate import CommandGate
+    from bajutsu.common.capability.command_policy import CommandExecution, CommandPolicy
+    from bajutsu.common.runner import launch_server
+
+    eff = config.resolve(
+        config.load_config(
+            "targets: {web: {platform: web, subject: {url: 'http://127.0.0.1:8/'}, "
+            "services: {server: {cmd: x}}}}"
+        ),
+        "web",
+    )
+    gate = CommandGate(policy=CommandPolicy("uploaded", CommandExecution(uploaded="deny")))
+    monkeypatch.setattr(launch_server, "_probe", lambda url, timeout=2.0: True)
+    assert launch_server.server_refusal(eff, gate) is None and gate.records == []
+    assert launch_server.server_refusal(eff, CommandGate()) is None

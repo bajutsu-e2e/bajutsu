@@ -46,7 +46,12 @@ def _refuse_removed_command_policy(*, upload_exec: str, allow_remote_build: bool
             ("--upload-exec", bool(upload_exec)),
             ("$BAJUTSU_UPLOAD_EXEC", bool(os.environ.get("BAJUTSU_UPLOAD_EXEC"))),
             ("--allow-remote-build", allow_remote_build),
-            ("$BAJUTSU_ALLOW_REMOTE_BUILD", bool(os.environ.get("BAJUTSU_ALLOW_REMOTE_BUILD"))),
+            # A value that read as "off" before asked for nothing, so it need not stop the server.
+            (
+                "$BAJUTSU_ALLOW_REMOTE_BUILD",
+                os.environ.get("BAJUTSU_ALLOW_REMOTE_BUILD", "").strip().lower()
+                in {"1", "true", "yes", "on", "y", "t"},
+            ),
         )
         if given
     ]

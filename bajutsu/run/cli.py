@@ -95,7 +95,7 @@ from bajutsu.common.runner import (
 )
 from bajutsu.common.runner.build import BuildError, build_app
 from bajutsu.common.runner.device_provider import DeviceLease, acquire_device
-from bajutsu.common.runner.launch_server import start_launch_server
+from bajutsu.common.runner.launch_server import server_refusal, start_launch_server
 from bajutsu.common.runner.pipeline import with_lifecycle_phases
 from bajutsu.common.runner.types import AlertGuardFor, LeaseFn, TargetPool
 from bajutsu.common.scenario import (
@@ -931,7 +931,7 @@ def _build_target(
 
     Raises:
         BuildError: The build was needed and failed, the worker cannot build the target's platform,
-            or a forced one was withheld.
+            or the worker's command policy does not run it.
     """
     command = _build_command(eff)
     if command is None:
@@ -2315,7 +2315,22 @@ def _dispatch(plan: _RunPlan) -> tuple[list[RunResult], Path, list[dict[str, str
     try:
         stop_server = start_launch_server(plan.eff, gate=plan.command_gate)
     except RuntimeError as e:  # CommandRefused included
-        _fail_before_scenarios(plan, str(e))
+        _fail_before_scenarios(
+            _UnstartedRun(
+                eff=plan.eff,
+                scenarios=plan.scenarios,
+                runs_dir=plan.runs_dir,
+                run_id=plan.run_id,
+                secret_values=plan.secret_values,
+                source_name=plan.source_name,
+                description=plan.description,
+                plan_sources=plan.plan_sources,
+                config_source=plan.config_source,
+                label=plan.label,
+                gate=plan.command_gate,
+            ),
+            str(e),
+        )
     try:
         if plan.matrix is not None:
             return _dispatch_runs(plan, plan.matrix, progress_fn)
@@ -2329,31 +2344,48 @@ def _dispatch(plan: _RunPlan) -> tuple[list[RunResult], Path, list[dict[str, str
         stop_server()
 
 
-def _fail_before_scenarios(plan: _RunPlan, message: str) -> NoReturn:
+@dataclass(frozen=True)
+class _UnstartedRun:
+    """What a run that fails before its first scenario needs to write its report (BE-0492)."""
+
+    eff: Effective
+    scenarios: list[Scenario]
+    runs_dir: Path
+    run_id: str
+    secret_values: list[str]
+    source_name: str | None
+    description: str | None
+    plan_sources: Mapping[str, ScenarioPlanSource]
+    config_source: dict[str, str] | None
+    label: str
+    gate: CommandGate
+
+
+def _fail_before_scenarios(run: _UnstartedRun, message: str) -> NoReturn:
     """Fail every scenario with *message*, write the run's report, and exit 2 (BE-0492).
 
     For a server command the policy refused or that failed to come up: the command's record lands
-    in `manifest.json` like any run's, so an operator finds it in the history. No device is leased,
-    since every scenario fails before its first step.
+    in `manifest.json` like any run's, so an operator finds it in the history. No scenario takes a
+    device, since every one fails before its first step.
     """
 
     def no_device(*_args: object, **_kwargs: object) -> NoReturn:
         raise AssertionError("a run whose server never came up leases no device")
 
     _, manifest = run_and_report(
-        plan.eff,
-        plan.scenarios,
+        run.eff,
+        run.scenarios,
         cast("LeaseFn", no_device),
-        plan.runs_dir,
-        plan.run_id,
-        secret_values=plan.secret_values,
-        source_name=plan.source_name,
-        description=plan.description,
-        plan_sources=plan.plan_sources,
-        worker_failures=dict.fromkeys(range(len(plan.scenarios)), message),
-        config_source=plan.config_source,
-        command_executions=plan.command_gate.records,
-        label=plan.label or None,
+        run.runs_dir,
+        run.run_id,
+        secret_values=run.secret_values,
+        source_name=run.source_name,
+        description=run.description,
+        plan_sources=run.plan_sources,
+        worker_failures=dict.fromkeys(range(len(run.scenarios)), message),
+        config_source=run.config_source,
+        command_executions=run.gate.records,
+        label=run.label or None,
     )
     typer.echo(message)
     typer.echo(f"FAIL  {manifest}")
@@ -3253,6 +3285,25 @@ def run_body(
     gate = _install_command_gate_or_exit(
         config_origin, worker, config_dir=loaded.root or eff.base_dir, secret_values=secret_values
     )
+    # A server command the policy refuses fails the run here, before any build or device
+    # reservation, rather than after every target's device is held (BE-0492).
+    if (refusal := server_refusal(eff, gate)) is not None:
+        _fail_before_scenarios(
+            _UnstartedRun(
+                eff=eff,
+                scenarios=all_scenarios,
+                runs_dir=Path(runs_dir),
+                run_id=new_run_id(),
+                secret_values=secret_values,
+                source_name=source_name,
+                description=description,
+                plan_sources=plan_sources,
+                config_source=config_source,
+                label=label,
+                gate=gate,
+            ),
+            refusal,
+        )
     _reject_web_flags_across_targets(target_effs, headed=headed, browser=browser, browsers=browsers)
     _reject_kind_across_targets(target_effs, kind=kind)
     # Every scenario, not only the runnable ones: the matrix still carries the failed ones to the
