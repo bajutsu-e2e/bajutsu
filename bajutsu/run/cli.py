@@ -10,7 +10,7 @@ import typing
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any, NoReturn, cast
 
 if TYPE_CHECKING:
     from bajutsu.common.doctor import Score
@@ -18,11 +18,13 @@ if TYPE_CHECKING:
 import typer
 
 from bajutsu.cli._shared import (
+    CONFIG_SOURCE_HELP,
     DEFAULT_CONFIG,
     WORKER_CONFIG_HELP,
     LoadedConfig,
     _backends,
     _effective_for,
+    _install_command_gate_or_exit,
     _load_config_with_source,
     _load_device_worker_or_exit,
     _log_subsystem_default,
@@ -32,7 +34,6 @@ from bajutsu.cli._shared import (
     _resolve_browser,
     _resolve_kind,
     _select_actuator_or_exit,
-    _start_launch_server_or_exit,
     _with_erase_flag,
     _with_headed,
     _with_worker_device,
@@ -92,7 +93,9 @@ from bajutsu.common.runner import (
     run_matrix_and_report,
 )
 from bajutsu.common.runner.build import BuildError, build_app
+from bajutsu.common.capability.command_gate import CommandGate, CommandRefused
 from bajutsu.common.runner.device_provider import DeviceLease, acquire_device
+from bajutsu.common.runner.launch_server import start_launch_server
 from bajutsu.common.runner.pipeline import with_lifecycle_phases
 from bajutsu.common.runner.types import AlertGuardFor, LeaseFn, TargetPool
 from bajutsu.common.scenario import (
@@ -2237,7 +2240,9 @@ class _RunPlan:
     progress: bool
     zip_run: bool
     evidence_store: str
-    upload_exec: str
+    # The worker's command policy for this run's config, and the record of every governed command
+    # it met (BE-0492); `manifest.json` carries the record as `commandExecutions`.
+    command_gate: CommandGate
     # `--score`: emit the app's entry-screen convention score once (doctor's grade, inline) so CI needs
     # no separate `doctor` cold-spawn. Diagnostic only — never on the verdict path.
     score: bool
@@ -2307,20 +2312,54 @@ def _dispatch(plan: _RunPlan) -> tuple[list[RunResult], Path, list[dict[str, str
     # Bring up the app's target server (the web baseUrl host) if it declares `launchServer`, waiting
     # on its readiness probe; reused if already serving. The pool leases lazily (the web driver
     # navigates at lease time), so the server only needs to be up before the run, not before the pool.
-    stop_server, exec_decision = _start_launch_server_or_exit(
-        plan.eff, upload_exec=plan.upload_exec or None
-    )
+    try:
+        stop_server = start_launch_server(plan.eff, gate=plan.command_gate)
+    except CommandRefused as e:
+        _refuse_run(plan, str(e))
+    except RuntimeError as e:
+        typer.echo(str(e))
+        raise typer.Exit(2) from None
     try:
         if plan.matrix is not None:
-            return _dispatch_runs(plan, plan.matrix, progress_fn, exec_decision)
+            return _dispatch_runs(plan, plan.matrix, progress_fn)
         if len(plan.engines) > 1:
-            return (*_dispatch_matrix(plan, progress_fn, exec_decision), [])
-        return (*_dispatch_single(plan, progress_fn, exec_decision), [])
+            return (*_dispatch_matrix(plan, progress_fn), [])
+        return (*_dispatch_single(plan, progress_fn), [])
     except device_errors.DeviceError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
     finally:
         stop_server()
+
+
+def _refuse_run(plan: _RunPlan, message: str) -> NoReturn:
+    """Fail every scenario with the policy's refusal, write the run's report, and exit 2 (BE-0492).
+
+    The refused command leaves its trace in `manifest.json` like any run, so an operator finds it in
+    the history; no device is leased, since every scenario fails before its first step.
+    """
+
+    def no_device(*_args: object, **_kwargs: object) -> NoReturn:
+        raise AssertionError("a run its command policy refused leases no device")
+
+    _, manifest = run_and_report(
+        plan.eff,
+        plan.scenarios,
+        cast("LeaseFn", no_device),
+        plan.runs_dir,
+        plan.run_id,
+        secret_values=plan.secret_values,
+        source_name=plan.source_name,
+        description=plan.description,
+        plan_sources=plan.plan_sources,
+        worker_failures=dict.fromkeys(range(len(plan.scenarios)), message),
+        config_source=plan.config_source,
+        command_executions=plan.command_gate.records,
+        label=plan.label or None,
+    )
+    typer.echo(message)
+    typer.echo(f"FAIL  {manifest}")
+    raise typer.Exit(2)
 
 
 def _open_pools(plan: _RunPlan) -> dict[str, tuple[LeaseFn, Callable[[], None]]]:
@@ -2398,7 +2437,6 @@ def _close_pools(
 def _dispatch_single(
     plan: _RunPlan,
     progress_fn: Callable[[str], None] | None,
-    exec_decision: dict[str, str | None] | None,
 ) -> tuple[list[RunResult], Path]:
     """The single-engine path — exactly today's flow: one pool per platform, one `run_and_report`."""
     pools = _open_pools(plan)
@@ -2436,7 +2474,7 @@ def _dispatch_single(
             resolve_actuator=lambda s: select_actuator_for_scenario(plan.backends, s),
             worker_failures=plan.worker_failures,
             config_source=plan.config_source,
-            exec_provenance=exec_decision,
+            command_executions=plan.command_gate.records,
             label=plan.label or None,
             golden_context=plan.golden_context,
             lease_udid_spec=plan.udid_spec,
@@ -2456,7 +2494,6 @@ def _dispatch_single(
 def _dispatch_matrix(
     plan: _RunPlan,
     progress_fn: Callable[[str], None] | None,
-    exec_decision: dict[str, str | None] | None,
 ) -> tuple[list[RunResult], Path]:
     """The cross-browser matrix (BE-0076): one pass per engine against its own pool.
 
@@ -2517,7 +2554,7 @@ def _dispatch_matrix(
         secret_values=plan.secret_values,
         label=plan.label or None,
         config_source=plan.config_source,
-        exec_provenance=exec_decision,
+        command_executions=plan.command_gate.records,
         cancelled=plan.cancelled,
         worker_failures=plan.worker_failures,
     )
@@ -2527,7 +2564,6 @@ def _dispatch_runs(
     plan: _RunPlan,
     matrix: DeviceMatrix,
     progress_fn: Callable[[str], None] | None,
-    exec_decision: dict[str, str | None] | None,
 ) -> tuple[list[RunResult], Path, list[dict[str, str]]]:
     """The runs `runsOn` conditions formed (BE-0452): one pass per cell, then ONE report.
 
@@ -2602,7 +2638,7 @@ def _dispatch_runs(
         plan_sources=plan.plan_sources,
         secret_values=plan.secret_values,
         config_source=plan.config_source,
-        exec_provenance=exec_decision,
+        command_executions=plan.command_gate.records,
         label=plan.label or None,
         worker_failures=plan.worker_failures,
     )
@@ -3032,12 +3068,8 @@ def run_body(
         "policy. Runs after the verdict, so an upload failure can't affect pass/fail (BE-0110). "
         "Needs the s3 or gcs extra",
     ),
-    upload_exec: str = typer.Option(
-        "",
-        "--upload-exec",
-        hidden=True,
-        help="internal: serve sets this for an uploaded bundle to govern its launchServer command "
-        "(deny | reuse | sandbox); empty = ungoverned local/Git run (BE-0090)",
+    config_origin: str = typer.Option(
+        "operator", "--config-source", hidden=True, help=CONFIG_SOURCE_HELP
     ),
     # --- Config sourcing ---
     config: str = typer.Option(DEFAULT_CONFIG),
@@ -3218,6 +3250,11 @@ def run_body(
     # Every declared target's own `secrets` names, not only the primary's — a `${secrets.X}` a step
     # routed elsewhere uses may be declared only on that target's own config (BE-0428).
     secret_bindings, secret_values = _resolve_secrets(target_effs.values())
+    # Before any build: the worker's command policy decides whether the config's builds, server, and
+    # runner build run here (BE-0492).
+    gate = _install_command_gate_or_exit(
+        config_origin, worker, config_dir=loaded.root or eff.base_dir, secret_values=secret_values
+    )
     _reject_web_flags_across_targets(target_effs, headed=headed, browser=browser, browsers=browsers)
     _reject_kind_across_targets(target_effs, kind=kind)
     # Every scenario, not only the runnable ones: the matrix still carries the failed ones to the
@@ -3346,7 +3383,7 @@ def run_body(
                 zip_run=zip_run,
                 label=label,
                 evidence_store=evidence_store,
-                upload_exec=upload_exec,
+                command_gate=gate,
                 score=score,
                 trace_driver=trace_driver,
                 step_gate=step_gate,

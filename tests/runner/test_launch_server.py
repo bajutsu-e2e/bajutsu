@@ -12,7 +12,15 @@ from typing import Any
 import pytest
 
 from bajutsu.common import config
+from bajutsu.common.capability.command_gate import CommandGate, CommandRefused
+from bajutsu.common.capability.command_policy import CommandExecution, CommandPolicy
 from bajutsu.common.runner import launch_server as ls
+
+
+def _gate(mode: str) -> CommandGate:
+    return CommandGate(
+        policy=CommandPolicy(source="uploaded", execution=CommandExecution(uploaded=mode))  # type: ignore[arg-type]
+    )
 
 
 def _eff(extra: str = "") -> config.Effective:
@@ -39,10 +47,11 @@ def test_no_launch_server_is_noop(monkeypatch: pytest.MonkeyPatch) -> None:
     # No `services.server` declared: never shells out, and the stop callable is a no-op.
     started: list[Any] = []
     monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: started.append(a))
-    stop, decision = ls.start_launch_server(_eff())
+    gate = _gate("deny")
+    stop = ls.start_launch_server(_eff(), gate=gate)
     stop()
     assert started == []
-    assert decision is None  # no services.server → nothing governed
+    assert gate.records == []  # no services.server → nothing governed
 
 
 def test_reuses_already_serving(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -50,10 +59,11 @@ def test_reuses_already_serving(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(ls, "_probe", lambda url, timeout=2.0: True)
     started: list[Any] = []
     monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: started.append(a))
-    stop, decision = ls.start_launch_server(_eff("services: { server: { cmd: 'serve it' } }"))
+    gate = _gate("deny")
+    stop = ls.start_launch_server(_eff("services: { server: { cmd: 'serve it' } }"), gate=gate)
     stop()
     assert started == []
-    assert decision is None  # ungoverned (local/Git) reuse records no policy decision
+    assert gate.records == []  # a reused server runs no command, under any mode
 
 
 def test_starts_and_waits_until_ready(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -64,10 +74,18 @@ def test_starts_and_waits_until_ready(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: fake)
     terminated: list[Any] = []
     monkeypatch.setattr(ls, "_terminate", lambda proc, say: terminated.append(proc))
-    stop, _decision = ls.start_launch_server(_eff("services: { server: { cmd: 'serve it' } }"))
+    gate = CommandGate()
+    stop = ls.start_launch_server(_eff("services: { server: { cmd: 'serve it' } }"), gate=gate)
     assert terminated == []  # not torn down until we stop it
     stop()
     assert terminated == [fake]
+    [entry] = gate.records
+    assert (entry["field"], entry["source"], entry["mode"], entry["decision"]) == (
+        "services.server.cmd",
+        "operator",
+        "allow",
+        "ran",
+    )
 
 
 def test_timeout_raises_and_terminates(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -141,41 +159,18 @@ def test_probe_status_branches(monkeypatch: pytest.MonkeyPatch) -> None:
     assert ls._probe("http://x/") is False  # a live 5xx is "up" but not "ready"
 
 
-def test_upload_exec_reuse_accepts_an_external_server(monkeypatch: pytest.MonkeyPatch) -> None:
-    # reuse: never runs the uploaded cmd; an externally-answering readyUrl is accepted (decision reused).
-    monkeypatch.setattr(ls, "_probe", lambda url, timeout=2.0: True)
-    started: list[Any] = []
-    monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: started.append(a))
-    stop, decision = ls.start_launch_server(
-        _eff("services: { server: { cmd: 'serve it' } }"), upload_exec="reuse"
-    )
-    stop()
-    assert started == []  # uploaded cmd never runs
-    assert decision == {
-        "decision": "reused",
-        "field": "launchServer",
-        "source": None,
-        "image": None,
-    }
-
-
-def test_upload_exec_deny_fails_loud_with_no_server(monkeypatch: pytest.MonkeyPatch) -> None:
-    # deny + nothing answering readyUrl: the run that needs the server fails loud (no bare-host run).
+@pytest.mark.parametrize("mode", ["named", "deny"])
+def test_a_refused_command_never_runs(monkeypatch: pytest.MonkeyPatch, mode: str) -> None:
+    # `named` and `deny` never run a command line the config spells out (BE-0492): the run fails
+    # loud, naming the source and the mode, and the refusal is recorded.
     monkeypatch.setattr(ls, "_probe", lambda url, timeout=2.0: False)
     started: list[Any] = []
     monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: started.append(a))
-    with pytest.raises(RuntimeError, match="deny"):
-        ls.start_launch_server(
-            _eff("services: { server: { cmd: 'serve it' } }"), upload_exec="deny"
-        )
+    gate = _gate(mode)
+    with pytest.raises(CommandRefused, match=f"uploaded: {mode}"):
+        ls.start_launch_server(_eff("services: { server: { cmd: 'serve it' } }"), gate=gate)
     assert started == []  # never reaches the bare-host Popen
-
-
-def test_upload_exec_unknown_mode_fails_loud() -> None:
-    with pytest.raises(RuntimeError, match="unknown --upload-exec"):
-        ls.start_launch_server(
-            _eff("services: { server: { cmd: 'serve it' } }"), upload_exec="bogus"
-        )
+    assert [e["decision"] for e in gate.records] == ["refused"]
 
 
 def test_fail_loud_message_escapes_untrusted_cmd(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -184,14 +179,14 @@ def test_fail_loud_message_escapes_untrusted_cmd(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(ls, "_probe", lambda url, timeout=2.0: False)
     with pytest.raises(RuntimeError) as exc:
         ls.start_launch_server(
-            _eff('services: { server: { cmd: "serve\\nINJECTED" } }'), upload_exec="deny"
+            _eff('services: { server: { cmd: "serve\\nINJECTED" } }'), gate=_gate("deny")
         )
     msg = str(exc.value)
     assert "\\nINJECTED" in msg  # repr-escaped
     assert "\nINJECTED" not in msg  # no raw newline reached the message
 
 
-def test_upload_exec_sandbox_delegates_to_sandbox(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_sandbox_mode_delegates_to_sandbox(monkeypatch: pytest.MonkeyPatch) -> None:
     # sandbox mode hands off to the sandbox module rather than the bare-host Popen.
     from bajutsu.common.runner import sandbox
 
@@ -199,17 +194,28 @@ def test_upload_exec_sandbox_delegates_to_sandbox(monkeypatch: pytest.MonkeyPatc
 
     def _fake_sandbox(eff: Any, **_k: Any) -> Any:
         called.append(eff)
-        return (lambda: None), {"decision": "sandboxed"}
+        return lambda: None
 
+    monkeypatch.setattr(ls, "_probe", lambda url, timeout=2.0: False)
     monkeypatch.setattr(sandbox, "start_sandboxed_server", _fake_sandbox)
     started: list[Any] = []
     monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: started.append(a))
-    _stop, decision = ls.start_launch_server(
+    gate = _gate("sandbox")
+    ls.start_launch_server(
         _eff("services: { server: { cmd: 'serve it', port: 8080, dockerImage: 'img' } }"),
-        upload_exec="sandbox",
+        gate=gate,
     )
     assert len(called) == 1 and started == []
-    assert decision == {"decision": "sandboxed"}
+    assert [e["decision"] for e in gate.records] == ["sandboxed"]
+
+
+def test_without_a_gate_the_installed_one_decides(monkeypatch: pytest.MonkeyPatch) -> None:
+    from bajutsu.common.capability import command_gate
+
+    monkeypatch.setattr(ls, "_probe", lambda url, timeout=2.0: False)
+    command_gate.install(_gate("deny"))
+    with pytest.raises(CommandRefused):
+        ls.start_launch_server(_eff("services: { server: { cmd: 'serve it' } }"))
 
 
 def test_terminate_kills_a_real_process() -> None:

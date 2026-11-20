@@ -20,9 +20,15 @@ import threading
 from contextlib import nullcontext
 from dataclasses import asdict
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from bajutsu.common.backend_cli import simctl as _simctl
+from bajutsu.common.capability.command_policy import (
+    CONFIG_SOURCES,
+    OPERATOR,
+    CommandExecution,
+    ConfigSource,
+)
 from bajutsu.common.capability.route_tokens import WORKER_ENVIRONMENT_KEY
 from bajutsu.common.capability.worker_capability import BATCH_PROVIDERS
 from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR
@@ -147,7 +153,8 @@ def job_spec(job: Job) -> dict[str, Any]:
         "build": job.build,
         "rebuild": job.rebuild,
         "build_platform": job.build_platform,
-        "withhold_runner_build": job.withhold_runner_build,
+        # Where the config came from (BE-0492), so the worker applies its own command policy.
+        "config_source": job.config_source,
         "materials": dict(job.materials),
         # record: where in the workspace the authored file lands + (app, ref) to persist it as.
         "out_path": job.out_path,
@@ -290,7 +297,7 @@ def resolve_run_intent(spec: dict[str, Any], environment: str) -> dict[str, Any]
         intent["target"],
         config=intent["config"],
         baselines="baselines" if spec.get("materialize_baselines") else "",
-        upload_exec=str(intent.get("upload_exec") or ""),
+        config_source=str(intent.get("config_source") or ""),
         label=str(spec.get("label") or ""),
     )
     return {**spec, "cmd": cmd, "graceful_cancel": True}
@@ -369,25 +376,31 @@ def _local_interpreter(cmd: list[str]) -> list[str]:
     return cmd
 
 
-def _run_argv_head(cmd: list[str]) -> int | None:
-    """How many leading words of *cmd* name a run, or None when *cmd* is not a recognised run argv.
+# The commands that read `worker.yaml`: `run` for its capability check and command policy, and
+# `record` / `crawl` for the command policy that governs the config's server and builds (BE-0492).
+_WORKER_CONFIG_COMMANDS = ("run", "record", "crawl")
 
-    Two forms are recognised: ``python -m bajutsu.run.internal``, which the spec builders emit
-    (BE-0449), and ``python -m bajutsu run``, which a spec queued before that change still names.
+
+def _run_argv_head(cmd: list[str]) -> int | None:
+    """How many leading words of *cmd* name a command that reads `worker.yaml`, or None.
+
+    Recognised: ``python -m bajutsu.run.internal``, which the spec builders emit (BE-0449),
+    ``python -m bajutsu run``, which a spec queued before that change still names, and
+    ``python -m bajutsu record`` / ``crawl``.
     """
     if cmd[1:3] == ["-m", _INTERNAL_RUN_MODULE]:
         return 3
-    if cmd[1:4] == ["-m", "bajutsu", "run"]:
+    if cmd[1:3] == ["-m", "bajutsu"] and cmd[3:4] and cmd[3] in _WORKER_CONFIG_COMMANDS:
         return 4
     return None
 
 
 def _with_worker_config(cmd: list[str], worker_config: Path | None) -> list[str]:
-    """Hand a leased ``bajutsu run`` the worker's own capability file (BE-0450).
+    """Hand a leased ``bajutsu run`` / ``record`` / ``crawl`` the worker's own capability file.
 
     The worker alone holds `worker.yaml` — the server is not a worker and never sets the flag — so
-    the run it spawns must read the same file to apply the same check. Only `run` takes the flag;
-    the other commands' argv is returned unchanged. A worker started without a file still strips a
+    the command it spawns must read the same file to apply the same check (BE-0450) and the same
+    command policy (BE-0492). Any other command's argv is returned unchanged. A worker started without a file still strips a
     spec-supplied flag from a recognised run argv (`_run_argv_head`), so the run falls back to the
     shipped default rather than the spec's choice.
     """
@@ -503,7 +516,8 @@ def execute_job_spec(
         rebuild=bool(spec.get("rebuild")),
         build_platform=spec.get("build_platform"),
         can_build=_can_build(spec, worker_config),
-        withhold_runner_build=bool(spec.get("withhold_runner_build")),
+        config_source=_spec_source(spec),
+        command_execution=_command_execution(spec, worker_config),
         out_path=spec.get("out_path"),  # so the terminal-status payload reports it (record jobs)
         # Whether this job's spawn is a cooperatively-cancellable `run` (BE-0370).
         graceful_cancel=bool(spec.get("graceful_cancel")),
@@ -565,6 +579,32 @@ def _can_build(spec: dict[str, Any], worker_config: Path | None) -> bool:
     from bajutsu.common.capability.worker_capability import load_worker_capability
 
     return load_worker_capability(worker_config).can_build(str(platform))
+
+
+def _spec_source(spec: dict[str, Any]) -> ConfigSource:
+    """The job's config source; a spec that names none, or one this worker does not know, is the
+    strictest reading rather than the operator's, so an unlabelled config never gains trust."""
+    source = spec.get("config_source")
+    if source is None:
+        # A spec from a server before BE-0492 carries no label, and its jobs were labelled by the
+        # removed `withhold_runner_build` flag alone; only that flag's absence meant trusted.
+        return "uploaded" if spec.get("withhold_runner_build") else OPERATOR
+    return cast("ConfigSource", source) if source in CONFIG_SOURCES else "uploaded"
+
+
+def _command_execution(spec: dict[str, Any], worker_config: Path | None) -> CommandExecution:
+    """This worker's `commandExecution` modes, which decide whether a job's build runs (BE-0492).
+
+    The worker's own file decides, not the server: a mode that does not run builds for the job's
+    source leaves a missing binary to fail the job, naming the mode (`jobs._build_app`). Read only
+    for a job with a build, as `_can_build` is; any other job keeps the shipped defaults, which no
+    path consults.
+    """
+    if not spec.get("build") or worker_config is None:
+        return CommandExecution()
+    from bajutsu.common.capability.worker_capability import load_worker_capability
+
+    return load_worker_capability(worker_config).command_execution
 
 
 def _batch_worker_capability(

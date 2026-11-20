@@ -34,6 +34,31 @@ def _is_loopback(host: str) -> bool:
         return False  # a hostname we can't classify — treat as non-loopback (needs a token)
 
 
+def _refuse_removed_command_policy(*, upload_exec: str, allow_remote_build: bool) -> None:
+    """Refuse the server-wide command options BE-0492 moved onto each worker, naming the new home.
+
+    The worker that runs a config's commands now decides whether they run, so a value given to the
+    server would silently decide nothing; failing loudly tells the operator where it went.
+    """
+    removed = [
+        name
+        for name, given in (
+            ("--upload-exec", bool(upload_exec)),
+            ("$BAJUTSU_UPLOAD_EXEC", bool(os.environ.get("BAJUTSU_UPLOAD_EXEC"))),
+            ("--allow-remote-build", allow_remote_build),
+            ("$BAJUTSU_ALLOW_REMOTE_BUILD", bool(os.environ.get("BAJUTSU_ALLOW_REMOTE_BUILD"))),
+        )
+        if given
+    ]
+    if removed:
+        typer.echo(
+            f"{', '.join(removed)}: removed (BE-0492). Whether a config's commands run is now each "
+            "worker's decision: set the commandExecution block of its worker.yaml (for example "
+            "`remote: allow` in place of --allow-remote-build)"
+        )
+        raise typer.Exit(2)
+
+
 def _bind_startup_config(config: str) -> tuple[Path | None, Path | None, dict[str, str] | None]:
     """Resolve `--config` to the served config path, its working directory, and its provenance.
 
@@ -119,9 +144,8 @@ def serve(
     upload_exec: str = typer.Option(
         "",
         "--upload-exec",
-        help="policy for an uploaded bundle's launchServer command (BE-0090): "
-        "deny | reuse | sandbox (default sandbox; or set BAJUTSU_UPLOAD_EXEC). A local/Git config "
-        "is operator-trusted and unaffected.",
+        hidden=True,
+        help="removed (BE-0492): set commandExecution in each worker's worker.yaml",
     ),
     evidence_store: str = typer.Option(
         "",
@@ -135,10 +159,8 @@ def serve(
     allow_remote_build: bool = typer.Option(
         False,
         "--allow-remote-build",
-        envvar="BAJUTSU_ALLOW_REMOTE_BUILD",
-        help="run the `build:` command of a Git config bound at runtime through the UI (BE-0121). "
-        "Off by default: an API-bound Git config is untrusted, so its build is never run on the "
-        "host unless you opt in here. A local/startup config is operator-trusted and unaffected.",
+        hidden=True,
+        help="removed (BE-0492): set commandExecution.remote in each worker's worker.yaml",
     ),
 ) -> None:
     """Launch a local web UI to run scenarios and view their reports (Tier 1; not for CI).
@@ -176,11 +198,7 @@ def serve(
             raise typer.Exit(2)
         typer.echo(BACKEND_DEPRECATION, err=True)
 
-    # The flag wins, then the env mirror (for the hosted backend), then the safe-yes default.
-    resolved_upload_exec = upload_exec or os.environ.get("BAJUTSU_UPLOAD_EXEC") or "sandbox"
-    if resolved_upload_exec not in ("deny", "reuse", "sandbox"):
-        typer.echo(f"unknown --upload-exec {resolved_upload_exec!r} (choose: deny, reuse, sandbox)")
-        raise typer.Exit(2)
+    _refuse_removed_command_policy(upload_exec=upload_exec, allow_remote_build=allow_remote_build)
 
     # Resolve --evidence-store to a credentialed store now (BE-0110), failing fast with a clean hint
     # — not a traceback — on a malformed URI or a missing cloud SDK, mirroring the --asgi / --config
@@ -202,7 +220,6 @@ def serve(
                 port=port,
                 config=config or None,
                 token=resolved_token or None,
-                upload_exec=resolved_upload_exec,
             )
         )
         return
@@ -226,9 +243,7 @@ def serve(
             baselines_dir=Path(baselines) if baselines else None,
             max_concurrent=max_concurrent_runs,
             token=resolved_token or None,
-            upload_exec=resolved_upload_exec,
             evidence=evidence,
-            allow_remote_build=allow_remote_build,
             asgi=asgi,
             cwd=cwd,
             config_provenance=config_provenance,

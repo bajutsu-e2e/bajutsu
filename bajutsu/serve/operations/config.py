@@ -657,7 +657,8 @@ def seed_orgs_from_bound_config(state: ServeState) -> None:
     Called from `serve()` at startup and from nowhere else. Deliberately *not* from the API binds
     (`bind_config`, `bind_git_config`, the upload and compose binds): those accept a configuration
     whose content the deployment does not own — BE-0121 says as much of the same file's `build:`,
-    which stays ungoverned until `--allow-remote-build` opts in — and seeding from one would hand
+    whose jobs carry the `remote` source a worker's command policy reads (BE-0492) — and seeding
+    from one would hand
     that file authority over who may sign in. Before this item that authority existed but was live
     and reversible, because sign-in re-read the file every time; a seeded row outlives the bind, so
     rebinding away would no longer revoke it. An org first declared through an API bind is therefore
@@ -761,11 +762,12 @@ def bind_config(
     # bundle itself cannot survive into a value built from this file alone (BE-0393 unit 1). `cwd` is
     # the config's own directory, so its relative paths resolve from beside it (BE-0242).
     #
-    # A local file's *build:* stays trusted even when bound through this API endpoint (BE-0121), unlike
+    # A local file stays the operator's own (`operator` source, BE-0492) even when bound through this
+    # API endpoint (BE-0121), unlike
     # a Git spec or an upload: this endpoint can only bind a file `_confined_config_path` already found
     # inside `--root`, so the operator (who chose what lives under `--root`) already controls every
     # candidate's content — there is no path by which this bind hands an attacker-authored `build:` to
-    # the host, the exact capability BE-0121 gates behind `--allow-remote-build`. Leaving
+    # the host, the exact capability the `remote` source's command policy governs. Leaving
     # `git_from_api` at its default is what expresses that. The `confine=True` above is a separate,
     # narrower guard: it stops an in-`--root` config's own path *fields* from resolving outside the
     # directory its relative paths are defined against, regardless of who bound it — orthogonal to,
@@ -836,8 +838,8 @@ def bind_git_config(
     # together (BE-0393 unit 1): `cwd` is the checkout root, so the config's relative paths resolve
     # from the fetched tree; the provenance lets `/api/config/content` show the resolved commit; and
     # `git_from_api` marks it as arriving over the API rather than from the operator's startup flags,
-    # so its `build:` command is untrusted and stays ungoverned until --allow-remote-build opts in
-    # (BE-0121). A Git-sourced config is bound *as* the acting org, and its content is not this
+    # so its jobs carry the `remote` config source whose commands each worker's policy governs
+    # (BE-0121, BE-0492). A Git-sourced config is bound *as* the acting org, and its content is not this
     # deployment's, so that org owns every target it declares and its `orgs:` block partitions
     # nothing (BE-0375).
     state.rebind(

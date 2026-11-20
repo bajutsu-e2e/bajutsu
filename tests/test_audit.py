@@ -508,8 +508,8 @@ def test_repeat_audit_still_stops_the_server_when_shutdown_raises(
 
         return object(), shutdown
 
-    def fake_start_launch_server_or_exit(eff: object, on_error: object) -> tuple[object, None]:
-        return (lambda: stopped.append(True)), None
+    def fake_start_launch_server_or_exit(eff: object, on_error: object) -> object:
+        return lambda: stopped.append(True)
 
     monkeypatch.setattr(
         audit_command,

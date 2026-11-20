@@ -62,7 +62,7 @@ def test_dispatch_enqueues_a_serializable_job_spec(tmp_path: Path) -> None:
         "build": "make build",
         "rebuild": False,
         "build_platform": None,
-        "withhold_runner_build": False,  # a trusted config keeps its runner build (#2282)
+        "config_source": "operator",  # the operator's own config (BE-0492)
         "materials": {},  # no materials for a local-built job
         "out_path": None,  # not a record job
         "record_save": None,

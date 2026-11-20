@@ -491,7 +491,7 @@ def test_record_writes_the_authored_scenario(
     monkeypatch.setattr(rec, "make_agent", lambda *a, **k: object())
     monkeypatch.setattr(rec, "launch_driver", lambda *a, **k: (object(), None))
     monkeypatch.setattr(
-        "bajutsu.cli._shared.start_launch_server", lambda *a, **k: (lambda: None, None)
+        "bajutsu.cli._shared.start_launch_server", lambda *a, **k: (lambda: None)
     )
     monkeypatch.setattr(rec, "record_loop", lambda *a, **k: authored)
 
@@ -552,7 +552,7 @@ def test_record_needs_human_handoff_exits_3(
     monkeypatch.setattr(rec, "make_agent", lambda *a, **k: object())
     monkeypatch.setattr(rec, "launch_driver", lambda *a, **k: (object(), None))
     monkeypatch.setattr(
-        "bajutsu.cli._shared.start_launch_server", lambda *a, **k: (lambda: None, None)
+        "bajutsu.cli._shared.start_launch_server", lambda *a, **k: (lambda: None)
     )
 
     def _needs_human(*_a: object, **_k: object) -> object:
@@ -613,7 +613,7 @@ def test_record_device_error_exits_2(tmp_path: Path, monkeypatch: pytest.MonkeyP
     )
     monkeypatch.setattr(rec, "make_agent", lambda *a, **k: object())
     monkeypatch.setattr(
-        "bajutsu.cli._shared.start_launch_server", lambda *a, **k: (lambda: None, None)
+        "bajutsu.cli._shared.start_launch_server", lambda *a, **k: (lambda: None)
     )
     monkeypatch.setattr(rec, "launch_driver", no_device)
     r = invoke(
@@ -2259,20 +2259,30 @@ def test_serve_rejects_invalid_upload_exec() -> None:
     assert "upload-exec" in r.output
 
 
-def test_serve_upload_exec_env_mirror_and_flag_precedence(monkeypatch: pytest.MonkeyPatch) -> None:
-    # The flag wins; absent a flag the BAJUTSU_UPLOAD_EXEC env var is honoured (hosted backend).
+@pytest.mark.parametrize(
+    ("args", "env"),
+    [
+        (["--upload-exec", "reuse"], {}),
+        (["--allow-remote-build"], {}),
+        ([], {"BAJUTSU_UPLOAD_EXEC": "deny"}),
+        ([], {"BAJUTSU_ALLOW_REMOTE_BUILD": "1"}),
+    ],
+)
+def test_serve_refuses_the_removed_command_policy_options(
+    monkeypatch: pytest.MonkeyPatch, args: list[str], env: dict[str, str]
+) -> None:
+    # The worker's worker.yaml decides now (BE-0492); a server-side value would decide nothing, so
+    # serve stops and names the new home rather than starting with it silently ignored.
     import bajutsu.serve as srv
 
-    captured: dict[str, object] = {}
-    monkeypatch.setattr(srv, "serve", lambda **kw: captured.update(kw))
-    monkeypatch.setenv("BAJUTSU_UPLOAD_EXEC", "deny")
-    r = invoke(runner, app, ["serve", "--config", "bajutsu.config.yaml"])
-    from_env = captured["upload_exec"]
-    assert r.exit_code == 0 and from_env == "deny"  # env honoured when no flag
-    captured.clear()
-    r = invoke(runner, app, ["serve", "--upload-exec", "reuse", "--config", "bajutsu.config.yaml"])
-    from_flag = captured["upload_exec"]
-    assert r.exit_code == 0 and from_flag == "reuse"  # flag wins over env
+    started: list[object] = []
+    monkeypatch.setattr(srv, "serve", lambda **kw: started.append(kw))
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    r = invoke(runner, app, ["serve", *args, "--config", "bajutsu.config.yaml"])
+    assert r.exit_code == 2
+    assert "commandExecution" in r.output and "BE-0492" in r.output
+    assert started == []
 
 
 def test_serve_themes_flag_and_default_theme(
@@ -2466,7 +2476,7 @@ def test_crawl_web_builds_one_browser_lane_per_worker(
     monkeypatch.setattr("bajutsu.cli._shared.ensure_web_runtime", lambda *a, **k: None)
     monkeypatch.setattr("bajutsu.cli._shared.select_actuator", lambda *a, **k: "playwright")
     monkeypatch.setattr(
-        "bajutsu.cli._shared.start_launch_server", lambda *a, **k: ((lambda: None), None)
+        "bajutsu.cli._shared.start_launch_server", lambda *a, **k: (lambda: None)
     )
 
     launched = {"n": 0}

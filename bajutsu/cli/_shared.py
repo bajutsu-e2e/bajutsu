@@ -72,6 +72,7 @@ if TYPE_CHECKING:
     from bajutsu.common.devices.facts import DeviceFacts
     from bajutsu.common.drivers import base
     from bajutsu.common.orchestrator import AlertEvent
+    from bajutsu.common.capability.command_gate import CommandGate
     from bajutsu.common.scenario import Scenario
 
 
@@ -856,25 +857,58 @@ def _first_run_or_exit(
         raise typer.Exit(2) from None
 
 
+CONFIG_SOURCE_HELP = (
+    "internal: where the config came from (uploaded | remote | operator), which the worker that "
+    "spawns this command sets so the worker.yaml commandExecution policy applies to the config's "
+    "commands (BE-0492); a terminal or CI run is the operator's own"
+)
+
+
+def _install_command_gate_or_exit(
+    config_source: str,
+    worker: WorkerCapability,
+    *,
+    config_dir: Path | None,
+    secret_values: Sequence[str] = (),
+) -> CommandGate:
+    """Install this process's command gate from `--config-source` and the worker's file, or exit 2.
+
+    Every governed command the run meets afterwards — the server, the app build, the runner build —
+    consults it, and `manifest.json` carries its record (BE-0492).
+    """
+    from bajutsu.common.capability.command_policy import CONFIG_SOURCES, CommandPolicy
+    from bajutsu.common.capability import command_gate
+
+    source = config_source or "operator"
+    if source not in CONFIG_SOURCES:
+        typer.echo(f"--config-source {source!r}: expected one of {', '.join(CONFIG_SOURCES)}")
+        raise typer.Exit(2)
+    policy = CommandPolicy(source=source, execution=worker.command_execution)
+    return command_gate.install(
+        command_gate.CommandGate(
+            policy=policy, config_dir=config_dir, secret_values=list(secret_values)
+        )
+    )
+
+
 def _start_launch_server_or_exit(
     eff: Effective,
     *,
-    upload_exec: str | None = None,
     on_error: Callable[[], None] | None = None,
-) -> tuple[Callable[[], None], dict[str, str | None] | None]:
+) -> Callable[[], None]:
     """Bring up the target's launch server (the web baseUrl host) if declared, or exit 2 (BE-0260).
 
-    The launch-server bring-up all four commands share: start the server (reused if already
-    serving, waiting on its readiness probe) and surface a startup failure as a clean exit 2. The
-    call-site teardown difference stays at the call site (`run`'s `finally`, `crawl` / `record`'s
-    `atexit`); `on_error` runs before the exit for the one caller (`audit`) that must first tear
-    down an already-created device-pool lease.
+    The launch-server bring-up the commands share: start the server (reused if already serving,
+    waiting on its readiness probe) under the run's installed command gate (BE-0492), and surface a
+    startup failure or a refused command as a clean exit 2. The call-site teardown difference stays
+    at the call site (`run`'s `finally`, `crawl` / `record`'s `atexit`); `on_error` runs before the
+    exit for the one caller (`audit`) that must first tear down an already-created device-pool lease.
 
     Returns:
-        The server teardown callable and the exec-provenance decision (from `start_launch_server`).
+        The server teardown callable.
     """
     try:
-        return start_launch_server(eff, upload_exec=upload_exec)
+        return start_launch_server(eff)
     except RuntimeError as e:
         typer.echo(str(e))
         if on_error is not None:

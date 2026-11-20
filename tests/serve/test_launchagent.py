@@ -57,26 +57,13 @@ def test_plist_runs_serve_with_host_port_config() -> None:
     assert args[args.index("--config") + 1] == "bajutsu.config.yaml"
 
 
-def test_plist_carries_non_default_upload_exec() -> None:
-    # A non-default upload-exec policy must reach the installed daemon (BE-0090); the default
-    # `sandbox` is omitted so the common case keeps the plist clean.
-    deny = _args(
-        _plist_of(
-            srv.launchagent_plist(
-                host="127.0.0.1", port=8765, config=None, token=None, upload_exec="deny"
-            )
-        )
+def test_plist_carries_no_command_policy() -> None:
+    # The command policy lives in each worker's worker.yaml now (BE-0492), so the server's plist
+    # carries none.
+    args = _args(
+        _plist_of(srv.launchagent_plist(host="127.0.0.1", port=8765, config=None, token=None))
     )
-    assert deny[deny.index("--upload-exec") + 1] == "deny"
-    default = _args(
-        _plist_of(
-            srv.launchagent_plist(
-                host="127.0.0.1", port=8765, config=None, token=None, upload_exec="sandbox"
-            )
-        )
-    )
-    assert "--upload-exec" not in default  # default omitted
-
+    assert "--upload-exec" not in args and "--allow-remote-build" not in args
 
 def test_plist_keepalive_and_logs() -> None:
     pl = _plist(host="127.0.0.1", port=8765, config=None, token=None)

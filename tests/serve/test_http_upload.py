@@ -218,7 +218,8 @@ def test_run_off_bundle_records_provenance_in_manifest(tmp_path: Path) -> None:
 
 def test_run_off_bundle_never_builds_from_uploaded_config(tmp_path: Path) -> None:
     # An uploaded config that declares a `build` must never have it executed on the host (DESIGN §1):
-    # the bundle ships a prebuilt binary, so only one process — the run — is ever spawned.
+    # the bundle ships a prebuilt binary, and the worker's default `uploaded: sandbox` runs no build
+    # (BE-0492), so a bundle missing its binary fails the job before anything is spawned.
     cfg = (
         "targets:\n"
         "  demo:\n"
@@ -237,8 +238,8 @@ def test_run_off_bundle_never_builds_from_uploaded_config(tmp_path: Path) -> Non
         _post_bytes(port, "/api/upload?name=suite.zip", _bundle_zip(config=cfg))
         _, resp = _post(port, "/api/run", {"target": "demo", "scenario": "smoke.yaml"})
         _wait_done(port, resp["jobId"])
-        # Exactly one spawn — the run — and it is `bajutsu run`, never the config's `build` command.
-        assert len(spawned) == 1 and srv.Job(cmd=spawned[0]).kind == "run"
+        # Nothing is spawned: neither the config's `build` command nor a run against no binary.
+        assert spawned == []
         # The build (`touch …`) must not have been spawned. Match on each spawned command's
         # executable, not a substring of its args: the run's interpreter path can legitimately
         # contain "touch" (e.g. a checkout under a "multitouch" directory), which a substring

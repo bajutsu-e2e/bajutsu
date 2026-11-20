@@ -23,12 +23,17 @@ import tempfile
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from bajutsu.common.agents.ai_config import PROVIDER_MANAGED_ENV
 from bajutsu.common.backend_cli import simctl as _simctl
 from bajutsu.common.cancellation import GRACE_ENV, grace_seconds
-from bajutsu.common.config import RUNNER_BUILD_WITHHELD_ENV
+from bajutsu.common.capability.command_policy import (
+    CONFIG_SOURCES,
+    SUBJECT_BUILD_FIELD,
+    CommandPolicy,
+    ConfigSource,
+)
 from bajutsu.common.devices import os as device_os
 from bajutsu.common.devices.runs import coordinates_from_manifest
 from bajutsu.common.evidence.redaction import Redactor
@@ -91,8 +96,6 @@ def _spawn_env(job: Job) -> dict[str, str]:
         # reproducing the silent gap for every ordinary cancel — `serve`'s longer window could never
         # rescue a run that already killed itself.
         e[GRACE_ENV] = f"{grace_seconds():g}"
-    if job.withhold_runner_build:
-        e[RUNNER_BUILD_WITHHELD_ENV] = "1"
     return e
 
 
@@ -433,6 +436,12 @@ def _boot_devices(state: ServeState, job: Job) -> bool:
     return True
 
 
+def _job_source(job: Job) -> ConfigSource:
+    """*job*'s config source; an unknown label reads as `uploaded`, so it never gains trust."""
+    source = job.config_source
+    return cast("ConfigSource", source) if source in CONFIG_SOURCES else "uploaded"
+
+
 def _build_app(state: ServeState, job: Job) -> bool:
     """Build the app's binary when it is missing, or always when ``job.rebuild`` asks.  Returns
     True if the run may proceed: nothing to build (no ``build`` command, or — without
@@ -455,6 +464,15 @@ def _build_app(state: ServeState, job: Job) -> bool:
             f"this worker cannot build {job.build_platform} apps (worker.yaml `build`) "
             "— skipping the run",
         )
+        with job.lock:
+            job.exit_code = 2
+            job.status = "done"
+        return False
+    policy = CommandPolicy(source=_job_source(job), execution=job.command_execution)
+    if policy.action("build") != "host":
+        # This worker's command policy does not run the config's build for its source (BE-0492):
+        # name the mode rather than start the run against a missing or stale binary.
+        _log(job, f"{policy.refusal(SUBJECT_BUILD_FIELD, job.build)} — skipping the run")
         with job.lock:
             job.exit_code = 2
             job.status = "done"

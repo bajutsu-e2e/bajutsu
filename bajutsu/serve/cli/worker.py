@@ -322,6 +322,36 @@ def _advertised_capabilities(
     )
 
 
+def _command_policy_tokens_or_exit(
+    capability: WorkerCapability, *, docker: bool | None = None
+) -> list[str]:
+    """The command-policy tokens this worker advertises, or stop when its file needs absent Docker.
+
+    A source the file sets to `sandbox` itself promises a container this host cannot start without
+    Docker, so the worker stops at startup and names the key rather than failing every such job. A
+    `sandbox` that comes from the default only withholds that source's token (BE-0492).
+
+    Args:
+        capability: The worker.yaml in force.
+        docker: Whether Docker is present; probed on this host when None (for tests).
+
+    Raises:
+        typer.BadParameter: A source set to `sandbox` explicitly, and no Docker on this host.
+    """
+    from bajutsu.common.capability.command_policy import advertised_tokens, docker_available
+
+    execution = capability.command_execution
+    present = docker_available() if docker is None else docker
+    if not present and (explicit := execution.explicit_sandbox_sources()):
+        keys = ", ".join(f"commandExecution.{s}" for s in explicit)
+        raise typer.BadParameter(
+            f"{keys} is 'sandbox', which runs a config's command in a Docker container, but no "
+            "`docker` is on this host's PATH: install Docker or pick another mode",
+            param_hint="--worker-config",
+        )
+    return advertised_tokens(execution, capability.named_commands, docker=present)
+
+
 def _device_reader(
     caps: Iterable[str], worker_capability: WorkerCapability
 ) -> Callable[[], set[str]] | None:
@@ -542,6 +572,7 @@ def worker(
     # The capability set this worker advertises on every lease (BE-0166), computed once at startup
     # (the Simulator pool is assumed stable per worker); its real devices are re-read per lease.
     caps = _advertised_capabilities(platform, capabilities, capability)
+    caps = sorted({*caps, *_command_policy_tokens_or_exit(capability)})
     if machine := _machine_token(machine_id, server_state_dir, capability):
         caps = sorted({*caps, machine})
     devices = _device_reader(caps, capability)

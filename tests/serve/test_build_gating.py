@@ -1,6 +1,11 @@
-"""BE-0121: a Git config bound at runtime via the API is untrusted, so its `build:` command runs
-only behind the `--allow-remote-build` opt-in — mirroring the `build = None` guard uploaded bundles
-already get (BE-0090). A local or startup-bound config stays operator-trusted."""
+"""BE-0492: each job carries the source of its config, and the worker's own `worker.yaml` decides
+whether that config's commands run.
+
+An uploaded bundle is `uploaded`, a Git config bound at runtime through the API is `remote`
+(BE-0121), and a local or startup-bound config is the operator's own. `serve` only labels; the
+worker applies its `commandExecution` block, both to the build it runs itself and, through
+`--config-source` and `--worker-config`, inside the command it spawns.
+"""
 
 from __future__ import annotations
 
@@ -12,34 +17,35 @@ import pytest
 from _shared import FakeProc, _post, _serve, project
 
 from bajutsu import serve as srv
-from bajutsu.common.config import RUNNER_BUILD_WITHHELD_ENV
-from bajutsu.serve.jobs import _spawn_env
-from bajutsu.serve.operations.dispatch import _governed_build, _register_and_dispatch
-from bajutsu.serve.server.worker_job import execute_job_spec, job_spec
+from bajutsu.serve.operations.dispatch import (
+    _command_needs,
+    _config_source,
+    _register_and_dispatch,
+)
+from bajutsu.common.capability.command_policy import CommandExecution
+from bajutsu.serve.jobs import _build_app
+from bajutsu.serve.server.worker_job import (
+    _command_execution,
+    _spec_source,
+    execute_job_spec,
+    job_spec,
+)
 
 
 def _state(tmp_path: Path) -> srv.ServeState:
     return srv.ServeState(runs_dir=tmp_path / "runs", root=tmp_path, cwd=tmp_path)
 
 
-def test_governed_build_keeps_a_trusted_config_build(tmp_path: Path) -> None:
-    # A local/startup config (neither an upload nor an API-bound Git config) is operator-trusted:
-    # its build command is left intact.
+class _Upload:
+    def __init__(self) -> None:
+        self.worker_ref = {"id": "a" * 64}
+
+
+def test_each_binding_maps_to_its_source(tmp_path: Path) -> None:
     state = _state(tmp_path)
-    assert _governed_build(state, state.binding, "make build") == "make build"
-
-
-def test_governed_build_nulls_api_bound_git_build(tmp_path: Path) -> None:
-    state = _state(tmp_path)
-    state.binding = replace(state.binding, git_from_api=True)
-    assert _governed_build(state, state.binding, "make build") is None
-
-
-def test_governed_build_runs_api_bound_git_build_with_opt_in(tmp_path: Path) -> None:
-    state = _state(tmp_path)
-    state.binding = replace(state.binding, git_from_api=True)
-    state.allow_remote_build = True
-    assert _governed_build(state, state.binding, "make build") == "make build"
+    assert _config_source(state.binding) == "operator"
+    assert _config_source(replace(state.binding, git_from_api=True)) == "remote"
+    assert _config_source(replace(state.binding, upload=_Upload())) == "uploaded"  # type: ignore[arg-type]
 
 
 def test_api_bound_git_config_is_marked_untrusted(
@@ -76,9 +82,6 @@ def test_api_bound_git_config_is_marked_untrusted(
         server.server_close()
 
 
-# --- #2282: driver.runner.build gets the same verdict, enforced inside the spawned run ---------
-
-
 class _Recording:
     def __init__(self) -> None:
         self.jobs: list[srv.Job] = []
@@ -94,57 +97,120 @@ def _dispatched(state: srv.ServeState) -> srv.Job:
     return job
 
 
-def test_a_trusted_config_keeps_its_runner_build(tmp_path: Path) -> None:
-    job = _dispatched(_state(tmp_path))
-    assert job.withhold_runner_build is False
-    assert RUNNER_BUILD_WITHHELD_ENV not in _spawn_env(job)
-
-
-def test_an_api_bound_git_config_withholds_its_runner_build(tmp_path: Path) -> None:
+def test_a_dispatched_job_carries_its_binding_source(tmp_path: Path) -> None:
     state = _state(tmp_path)
+    assert _dispatched(state).config_source == "operator"
     state.binding = replace(state.binding, git_from_api=True)
-    job = _dispatched(state)
-    assert job.withhold_runner_build is True
-    assert _spawn_env(job)[RUNNER_BUILD_WITHHELD_ENV] == "1"
-
-
-def test_the_remote_build_opt_in_also_allows_the_runner_build(tmp_path: Path) -> None:
-    state = _state(tmp_path)
-    state.binding = replace(state.binding, git_from_api=True)
-    state.allow_remote_build = True
-    assert _dispatched(state).withhold_runner_build is False
-
-
-def test_an_uploaded_bundle_withholds_its_runner_build(tmp_path: Path) -> None:
-    class _Upload:
-        def __init__(self) -> None:
-            self.worker_ref = {"id": "a" * 64}
-
-    state = _state(tmp_path)
+    assert _dispatched(state).config_source == "remote"
     state.binding = replace(state.binding, upload=_Upload())  # type: ignore[arg-type]
-    assert _dispatched(state).withhold_runner_build is True
+    assert _dispatched(state).config_source == "uploaded"
 
 
-@pytest.mark.parametrize("withhold", [True, False])
-def test_a_worker_spawn_carries_the_withheld_runner_build(tmp_path: Path, withhold: bool) -> None:
-    # A remote worker rebuilds the job from its spec, so the verdict must travel in it and reach
-    # the env of the run the worker spawns.
-    spec = job_spec(srv.Job(cmd=["bajutsu", "run"], withhold_runner_build=withhold))
-    seen: list[dict[str, str]] = []
-
-    def popen(_cmd: list[str], **kw: Any) -> FakeProc:
-        seen.append(kw["env"])
-        return FakeProc([], 0)
-
-    execute_job_spec({**spec, "job_id": "1"}, popen=popen, cwd=tmp_path, bus=srv.InMemoryLogBus())
-    assert (seen[0].get(RUNNER_BUILD_WITHHELD_ENV) == "1") is withhold
-
-
-def test_a_dispatch_without_a_binding_takes_the_deployments_verdict(tmp_path: Path) -> None:
+def test_a_dispatch_without_a_binding_takes_the_deployments_source(tmp_path: Path) -> None:
     # A caller that omits `binding` spawns against the deployment's (`_freeze_binding`), so the
-    # verdict must come from that binding too rather than defaulting to trusted.
+    # label must come from that binding too rather than defaulting to the operator's.
     state = _state(tmp_path)
     state.binding = replace(state.binding, git_from_api=True)
     state.executor = _Recording()
     job, _ = _register_and_dispatch(state, srv.Job(cmd=["x"]))
-    assert job is not None and job.withhold_runner_build is True
+    assert job is not None and job.config_source == "remote"
+
+
+def test_the_source_travels_in_the_job_spec() -> None:
+    spec = job_spec(srv.Job(cmd=["x"], config_source="remote"))
+    assert spec["config_source"] == "remote"
+    assert _spec_source(spec) == "remote"
+
+
+@pytest.mark.parametrize(
+    ("spec", "source"),
+    [
+        ({}, "operator"),  # a pre-BE-0492 trusted job
+        ({"withhold_runner_build": True}, "uploaded"),  # a pre-BE-0492 untrusted job
+        ({"config_source": "elsewhere"}, "uploaded"),  # an unknown label never gains trust
+    ],
+)
+def test_an_unlabelled_or_unknown_spec_reads_strictly(spec: dict[str, Any], source: str) -> None:
+    assert _spec_source(spec) == source
+
+
+def _worker_file(tmp_path: Path, block: str) -> Path:
+    path = tmp_path / "worker.yaml"
+    path.write_text(f"version: 1\ndrivers: [fake]\n{block}", encoding="utf-8")
+    return path
+
+
+def test_the_worker_reads_its_modes_from_its_file(tmp_path: Path) -> None:
+    allow = _worker_file(tmp_path, "commandExecution: {remote: allow}\n")
+    assert _command_execution({"build": "make"}, allow).remote == "allow"
+    assert _command_execution({"build": "make"}, None) == CommandExecution()
+    # A job with no build never reads the file, as `_can_build` does not.
+    assert _command_execution({}, tmp_path / "missing.yaml") == CommandExecution()
+
+
+@pytest.mark.parametrize(
+    ("source", "modes", "builds"),
+    [
+        ("operator", {}, True),
+        ("remote", {}, False),  # the default `sandbox` runs no build
+        ("uploaded", {}, False),
+        ("remote", {"remote": "allow"}, True),
+        ("operator", {"operator": "deny"}, False),
+        ("bogus", {"uploaded": "deny", "operator": "allow"}, False),  # unknown reads as uploaded
+    ],
+)
+def test_the_worker_policy_decides_the_build(
+    tmp_path: Path, source: str, modes: dict[str, str], builds: bool
+) -> None:
+    job = srv.Job(
+        cmd=["x"],
+        app_path="Demo.app",
+        build="touch Demo.app",
+        config_source=source,
+        command_execution=CommandExecution(**modes),  # type: ignore[arg-type]
+        bus=srv.InMemoryLogBus(),
+        cwd=tmp_path,
+    )
+    assert _build_app(_state(tmp_path), job) is builds
+    assert (tmp_path / "Demo.app").exists() is builds
+    if not builds:
+        assert job.exit_code == 2
+
+
+def test_a_refused_build_fails_the_job_naming_the_mode(tmp_path: Path) -> None:
+    # The app is missing and the worker's policy does not build an uploaded config's app: the job
+    # fails with the reason rather than spawning a run against no binary.
+    spec = job_spec(
+        srv.Job(
+            cmd=["bajutsu", "run"],
+            app_path="Demo.app",
+            build="touch Demo.app",
+            build_platform="ios",
+            config_source="uploaded",
+        )
+    )
+    spawned: list[list[str]] = []
+
+    def popen(cmd: list[str], **_kw: Any) -> FakeProc:
+        spawned.append(cmd)
+        return FakeProc([], 0)
+
+    job = execute_job_spec(
+        {**spec, "job_id": "1"}, popen=popen, cwd=tmp_path, bus=srv.InMemoryLogBus()
+    )
+    assert spawned == [] and job.exit_code == 2
+    assert not (tmp_path / "Demo.app").exists()
+
+
+def test_a_server_command_adds_its_source_requirement(tmp_path: Path) -> None:
+    cfg = tmp_path / "c.yaml"
+    cfg.write_text(
+        "targets:\n  web:\n    platform: web\n    subject: {url: 'http://127.0.0.1:8/'}\n"
+        "    services: {server: {cmd: ./start.sh}}\n  plain:\n    platform: web\n"
+        "    subject: {url: 'http://127.0.0.1:8/'}\n",
+        encoding="utf-8",
+    )
+    uploaded = replace(_state(tmp_path).binding, upload=_Upload())  # type: ignore[arg-type]
+    assert list(_command_needs(cfg, "web", uploaded)) == ["command-execution:uploaded"]
+    assert _command_needs(cfg, "plain", uploaded) == {}
+    assert _command_needs(tmp_path / "missing.yaml", "web", uploaded) == {}

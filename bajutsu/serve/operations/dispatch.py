@@ -17,6 +17,12 @@ from typing import Any
 
 import yaml
 
+from bajutsu.common.capability.command_policy import (
+    OPERATOR,
+    SERVER_FIELD,
+    ConfigSource,
+    command_requirement,
+)
 from bajutsu.common.capability.worker_capability import APPIUM
 from bajutsu.common.cloud.devicefarm import (
     DeviceFarmError,
@@ -67,33 +73,40 @@ _logger = logging.getLogger("bajutsu.serve.operations")
 _BUNDLE_CONFIG = "bajutsu.config.yaml"
 
 
-def _build_trusted(state: ServeState, binding: ConfigBinding) -> bool:
-    """Whether serve may run the build commands *binding*'s config declares on the host.
+def _config_source(binding: ConfigBinding) -> ConfigSource:
+    """Where *binding*'s config came from, the label the worker's command policy reads (BE-0492).
 
-    An uploaded bundle ships prebuilt binaries, so its builds never run on the host — DESIGN §1
-    "Bajutsu does not build the app" (BE-0073). A Git config bound at runtime via the API is equally
-    untrusted (a cross-origin request could have bound it), so its builds are withheld too unless the
-    operator opted in with --allow-remote-build (BE-0121). A local or startup-bound config is
-    operator-trusted and keeps them.
-
-    One verdict covers both builds this gate governs: `subject.build`, which serve runs itself
-    (`_governed_build`), and `driver.runner.build`, which the spawned run would run on demand and so
-    is refused there through `Job.withhold_runner_build` (#2282). An uploaded bundle's
-    `launchServer.dockerfile` is a separate case, governed by `--upload-exec` instead
-    (`bajutsu.common.runner.sandbox`).
+    An uploaded bundle is `uploaded`; a Git config a Web UI user bound after startup is `remote`,
+    since a cross-site request could have bound it (BE-0121); every other binding is the operator's
+    own choice. The config itself has no way to set its label.
     """
     if binding.upload is not None:
-        return False
-    return not (binding.git_from_api and not state.allow_remote_build)
+        return "uploaded"
+    return "remote" if binding.git_from_api else OPERATOR
 
 
-def _governed_build(state: ServeState, binding: ConfigBinding, build: str | None) -> str | None:
-    """The `subject.build` command serve may run for *binding*'s config, or None when it's untrusted.
+def _source_flag(binding: ConfigBinding) -> str:
+    """The `--config-source` value a spawned command takes; empty for the operator's own config."""
+    source = _config_source(binding)
+    return "" if source == OPERATOR else source
 
-    The trust model is `_build_trusted`'s; `_register_and_dispatch` applies the same verdict to
-    `driver.runner.build`.
+
+def _command_needs(cfg: Path, target: str, binding: ConfigBinding) -> dict[str, list[str]]:
+    """The route need a job adds when its config declares a governed command line (BE-0492).
+
+    Only a command line the config spells out (`services.server.cmd`) routes, to a worker that runs
+    commands from the config's source. Whether a build runs depends on whether the worker already
+    holds the binary, which `serve` cannot know, so the worker decides that at run time. A config
+    that does not resolve adds nothing here; the run's own check still judges it.
     """
-    return build if _build_trusted(state, binding) else None
+    try:
+        eff = resolve(load_config_file(cfg), target)
+    except (OSError, ValueError, KeyError):
+        return {}
+    if eff.launch_server is None:
+        return {}
+    source = _config_source(binding)
+    return {command_requirement(source): [f"its {source} config declares {SERVER_FIELD}"]}
 
 
 def _rebuild_flag(
@@ -312,13 +325,11 @@ def _prepare_job(
     # so a remote worker needs no settings of its own. Done here — the single tail every start_*
     # endpoint (run / record / crawl / triage) funnels through — so every AI-capable job is covered.
     job.env_overlay = resolve_provider_env(state, job.org)
-    # The spawned run executes `driver.runner.build` itself, past `_governed_build`, so the same
-    # trust verdict travels to it here — the one tail every start_* endpoint funnels through
-    # (#2282). Taken from the binding the job will actually spawn against, so a caller that omits
-    # `binding` and inherits the deployment's in `_freeze_binding` cannot fail open.
-    job.withhold_runner_build = not _build_trusted(
-        state, binding if binding is not None else state.binding
-    )
+    # The worker applies its own command policy to the config's commands (BE-0492), so the source
+    # label travels with the job — the one tail every start_* endpoint funnels through. Taken from
+    # the binding the job will actually spawn against, so a caller that omits `binding` and inherits
+    # the deployment's in `_freeze_binding` cannot fail open.
+    job.config_source = _config_source(binding if binding is not None else state.binding)
     if binding is not None:
         job.cwd = binding.cwd
         if binding.upload is not None and ship_bundle:
@@ -537,9 +548,8 @@ def start_run(  # noqa: C901, PLR0911
         else ("baselines" if on_worker else str(state.baselines_dir)),
         headed=_bool_flag(body, "headed"),
         runs_dir=runs_dir,
-        # Govern the uploaded bundle's launchServer command (BE-0090); a local/Git config is
-        # operator-trusted and ungoverned, so it gets no flag.
-        upload_exec=state.upload_exec if binding.upload is not None else "",
+        # Where the config came from, so the run applies the worker's command policy (BE-0492).
+        config_source=_source_flag(binding),
         # The rest of `run`'s flag surface, now reachable from the request body (BE-0134). These are
         # safe to take from the client: tag selectors, the web engine axis (the CLI validates the
         # engine names), the network toggle, the post-verdict --zip, and the alert/log knobs.
@@ -559,7 +569,6 @@ def start_run(  # noqa: C901, PLR0911
         # can emit all four (the flag surface stays complete), but they stay config-driven here.
     )
     app_path, build = target_build_info(cfg, target)
-    build = _governed_build(state, binding, build)
     rebuild, rebuild_err = _rebuild_flag(body, target, build, overrides)
     if rebuild_err:
         return rebuild_err
@@ -584,6 +593,7 @@ def start_run(  # noqa: C901, PLR0911
         overrides,
         grid_capabilities,
         rebuild_platform=build_platform if rebuild else None,
+        command_needs=_command_needs(cfg, target, binding),
     )
     if route_err:
         return route_err
@@ -885,7 +895,12 @@ def _run_set_refusal(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]
 
 
 def _group_routes(
-    state: ServeState, cfg: Path, target: str, scope: ScenarioScope, names: list[str]
+    state: ServeState,
+    cfg: Path,
+    target: str,
+    scope: ScenarioScope,
+    names: list[str],
+    command_needs: dict[str, list[str]],
 ) -> tuple[list[list[str]], tuple[Any, int] | None]:
     """Each named scenario's routing tokens, or the refusal naming one no live worker can run.
 
@@ -902,7 +917,10 @@ def _group_routes(
     for name in names:
         text = scope.read(name)
         if text not in needs_of:
-            needs_of[text] = scenario_route_needs(cfg, target, "", text, directory)
+            needs_of[text] = {
+                **scenario_route_needs(cfg, target, "", text, directory),
+                **command_needs,
+            }
         needs = needs_of[text]
         capabilities = sorted({*base, *needs})
         if missing := route_refusal(capabilities, live):
@@ -931,6 +949,7 @@ def _run_capabilities(
     grid_capabilities: list[str] | None,
     *,
     rebuild_platform: str | None = None,
+    command_needs: dict[str, list[str]] | None = None,
 ) -> tuple[list[str], tuple[Any, int] | None]:
     """The tokens a run job routes by, or the refusal when no live worker's routes can run it.
 
@@ -958,6 +977,7 @@ def _run_capabilities(
     )
     if rebuild_platform:
         needs = {**needs, build_capability(rebuild_platform): ["rebuild"]}
+    needs = {**needs, **(command_needs or {})}
     capabilities = sorted({*base_caps, *needs})
     if state.repository is not None and (
         missing := route_refusal(capabilities, state.repository.live_worker_capabilities())
@@ -1117,7 +1137,9 @@ def start_run_set(  # noqa: C901, PLR0911
     )
     if requests_err:
         return requests_err
-    routes, route_err = _group_routes(state, cfg, target, scope, names)
+    routes, route_err = _group_routes(
+        state, cfg, target, scope, names, _command_needs(cfg, target, binding)
+    )
     if route_err:
         return route_err
     label, label_err = _run_label(binding, body)
@@ -1141,7 +1163,7 @@ def start_run_set(  # noqa: C901, PLR0911
         return bundle_err
     config_text = cfg.read_text(encoding="utf-8")
     app_digest = _app_digest(batch_app, bundle, binding)
-    upload_exec = state.upload_exec if binding.upload is not None else ""
+    config_source = _source_flag(binding)
     jobs: list[Job] = []
     for (request, materials), capabilities in zip(requests, routes, strict=True):
         if materials:
@@ -1149,7 +1171,7 @@ def start_run_set(  # noqa: C901, PLR0911
             # config travels too, at the bundle-relative path the request names.
             materials[request.config] = config_text
         job = Job(
-            intent=replace(request, upload_exec=upload_exec),
+            intent=replace(request, config_source=config_source),
             materials=materials,
             materialize_baselines=binding.upload is None,
             provenance=_provenance(binding, None),
@@ -1315,10 +1337,9 @@ def start_record(
         system_alert_handling=system_alert_handling,
         headed=_bool_flag(body, "headed"),
         config=config_arg,
-        upload_exec=state.upload_exec if binding.upload is not None else "",
+        config_source=_source_flag(binding),
     )
     app_path, build = target_build_info(cfg, body["target"])
-    build = _governed_build(state, binding, build)
     job, capped = _register_and_dispatch(
         state,
         Job(
@@ -1332,7 +1353,12 @@ def start_record(
             record_save=authored.save,
             actor=actor,
             org=org,
-            capabilities=target_capabilities(cfg, str(body["target"]), backend),
+            capabilities=sorted(
+                {
+                    *target_capabilities(cfg, str(body["target"]), backend),
+                    *_command_needs(cfg, str(body["target"]), binding),
+                }
+            ),
         ),
         binding=binding,
     )
@@ -1408,10 +1434,9 @@ def start_crawl(
         resume_src=resume_src if resuming else "",
         resume_key=resume_key if resuming else "",
         continue_crawl=continuing,
-        upload_exec=state.upload_exec if binding.upload is not None else "",
+        config_source=_source_flag(binding),
     )
     app_path, build = target_build_info(cfg, target)
-    build = _governed_build(state, binding, build)
     # Cap concurrency like run/record: crawl is long and device-heavy (BE-0051 slice 5).
     job, capped = _register_and_dispatch(
         state,
@@ -1423,7 +1448,12 @@ def start_crawl(
             build_platform=target_batch_info(cfg, target)[0] if build else None,
             actor=actor,
             org=org,
-            capabilities=target_capabilities(cfg, target, backend),
+            capabilities=sorted(
+                {
+                    *target_capabilities(cfg, target, backend),
+                    *_command_needs(cfg, target, binding),
+                }
+            ),
         ),
         binding=binding,
     )

@@ -6,7 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from bajutsu.common.config import RUNNER_BUILD_WITHHELD_ENV
+from bajutsu.common.capability.command_policy import CommandExecution, CommandPolicy
+from bajutsu.common.capability import command_gate
 from bajutsu.common.runner.build import BuildError, build_app
 
 
@@ -61,18 +62,39 @@ def test_a_forced_build_without_a_command_is_a_noop(tmp_path: Path) -> None:
     build_app(None, str(tmp_path / "Demo.app"), cwd=tmp_path, force=True)
 
 
-def test_a_withheld_on_demand_build_is_skipped(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def _install(source: str, **modes: str) -> command_gate.CommandGate:
+    policy = CommandPolicy(source=source, execution=CommandExecution(**modes))  # type: ignore[arg-type]
+    return command_gate.install(command_gate.CommandGate(policy=policy))
+
+
+@pytest.mark.parametrize("mode", ["sandbox", "named", "deny"])
+def test_a_needed_build_the_policy_does_not_run_fails_naming_the_mode(
+    tmp_path: Path, mode: str
 ) -> None:
-    # A run serve spawned for an untrusted config must not execute the config's build: the missing
-    # binary is left to fail the run, as it did before a local config built on demand.
-    monkeypatch.setenv(RUNNER_BUILD_WITHHELD_ENV, "1")
+    # No Linux container has the macOS toolchain, so no mode but `allow` runs a build (BE-0492);
+    # a run whose binary is missing then fails naming the mode instead of starting without it.
+    gate = _install("uploaded", uploaded=mode)
+    with pytest.raises(BuildError, match=f"uploaded: {mode}"):
+        build_app("touch built", str(tmp_path / "Demo.app"), cwd=tmp_path)
+    assert not (tmp_path / "built").exists()
+    assert [(r["field"], r["decision"]) for r in gate.records] == [("subject.build", "refused")]
+
+
+def test_an_existing_binary_needs_no_build_under_any_mode(tmp_path: Path) -> None:
+    (tmp_path / "Demo.app").mkdir()
+    gate = _install("uploaded", uploaded="deny")
     build_app("touch built", str(tmp_path / "Demo.app"), cwd=tmp_path)
-    assert not (tmp_path / "built").exists()
+    assert gate.records == []
 
 
-def test_a_withheld_forced_build_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv(RUNNER_BUILD_WITHHELD_ENV, "1")
-    with pytest.raises(BuildError, match="withheld"):
-        build_app("touch built", None, cwd=tmp_path, force=True)
-    assert not (tmp_path / "built").exists()
+def test_an_allowed_build_is_recorded_with_its_exit_code(tmp_path: Path) -> None:
+    gate = _install("remote", remote="allow")
+    build_app("touch built", None, cwd=tmp_path, force=True)
+    assert (tmp_path / "built").exists()
+    [entry] = gate.records
+    assert (entry["source"], entry["mode"], entry["decision"], entry["exitCode"]) == (
+        "remote",
+        "allow",
+        "ran",
+        0,
+    )

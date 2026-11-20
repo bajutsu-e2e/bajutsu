@@ -65,6 +65,20 @@ def _reset_usage_ledger() -> Iterator[None]:
 
 
 @pytest.fixture(autouse=True)
+def _reset_command_gate() -> Iterator[None]:
+    """Drop the process-wide command gate a CLI-command test installed (BE-0492).
+
+    `run` / `record` / `crawl` install the gate in a module global that outlives the test, so a
+    later test in the same worker would otherwise inherit another test's policy.
+    """
+    from bajutsu.common.capability import command_gate
+
+    command_gate._installed.clear()
+    yield
+    command_gate._installed.clear()
+
+
+@pytest.fixture(autouse=True)
 def _fresh_clone_resident_gate(monkeypatch: pytest.MonkeyPatch) -> None:
     """Pin the Android resident read channel to a fresh clone's state for every test (BE-0245).
 

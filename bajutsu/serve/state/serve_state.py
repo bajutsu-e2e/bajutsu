@@ -106,19 +106,11 @@ class ServeState:
     # repoint the binding's `cwd`. Runs off a Git/upload bind still land their tree here
     # (BE-0063/BE-0073).
     base_cwd: Path = field(init=False)
-    # Policy for an uploaded bundle's launchServer command (and the latent mockServer.cmd, once it is
-    # wired) (BE-0090): deny | reuse | sandbox. Default `sandbox` runs it in a throwaway container,
-    # never on the serve host; it applies only to upload-sourced configs (a local/Git config is
-    # operator-trusted and ungoverned). serve() sets it from --upload-exec / BAJUTSU_UPLOAD_EXEC.
-    upload_exec: str = "sandbox"
     # Host-header allowlist (BE-0121): the hostnames a request's `Host` may name, set by
     # `make_server` from the bound interface. Empty — a wildcard bind, whose reachable names can't be
     # enumerated — disables the check; a loopback/named bind enforces its own names, closing the
     # DNS-rebinding path to endpoints like /api/apikey.
     allowed_hosts: frozenset[str] = frozenset()
-    # Opt-in to run an API-bound Git config's `build:` command on the host (BE-0121). Off by default;
-    # serve() sets it from --allow-remote-build / BAJUTSU_ALLOW_REMOTE_BUILD.
-    allow_remote_build: bool = False
     # Whether this is a hosted deployment, the single source of truth for deployment-aware config
     # sourcing (BE-0108). A deployment setting, not implied by a repository (BE-0449): the server
     # backend reads it from `BAJUTSU_HOSTED`, defaulting to True only when `BAJUTSU_SERVER_STORE`
@@ -614,8 +606,8 @@ class ServeState:
 
         The whole binding is replaced rather than mutated field by field, so no reader can observe a
         bundle paired with the previous source's `cwd` or provenance (BE-0393 unit 1). A bundle is not
-        a Git source, so it carries no commit provenance and is governed by `upload_exec` rather than
-        the Git trust flag. The owning org is read off the bundle rather than stamped by the caller
+        a Git source, so it carries no commit provenance, and its jobs carry the `uploaded` config
+        source the worker's command policy reads (BE-0492). The owning org is read off the bundle rather than stamped by the caller
         afterwards: every caller set it to exactly this, and a caller that forgot left the previous
         owner's partition in place (BE-0375).
 

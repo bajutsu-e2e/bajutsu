@@ -244,10 +244,10 @@ def _repeat_audit(
     # Bring up the target's `launchServer` (the web baseUrl host) if declared, like `run` does, so a
     # web target with a server-backed baseUrl can be audited; reused if already serving, torn down
     # in the finally below.
-    # Audit is a CLI-only longitudinal tool; serve never spawns it for an uploaded bundle, so it
-    # stays ungoverned (upload_exec=None — today's bare-host path). `on_error=shutdown` tears down
+    # Audit is a CLI-only longitudinal tool that no worker spawns, so its config is the operator's
+    # own and the default command gate applies (BE-0492). `on_error=shutdown` tears down
     # any device pool already created before exiting if the server fails to come up.
-    stop_server, _exec_decision = _start_launch_server_or_exit(eff, on_error=shutdown)
+    stop_server = _start_launch_server_or_exit(eff, on_error=shutdown)
     try:
         # One run at a time, K times each (workers=1 keeps the K runs under identical
         # conditions — the point of the diff). run_dir=None: the audit compares outcomes, not

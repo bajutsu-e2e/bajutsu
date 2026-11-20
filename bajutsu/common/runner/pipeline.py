@@ -2167,7 +2167,7 @@ def run_and_report(
     resolve_actuator: Callable[[Scenario], str] | None = None,
     worker_failures: Mapping[int, str] | None = None,
     config_source: dict[str, str] | None = None,
-    exec_provenance: dict[str, str | None] | None = None,
+    command_executions: list[dict[str, Any]] | None = None,
     label: str | None = None,
     golden_context: GoldenContext | None = None,
     lease_udid_spec: str = "booted",
@@ -2236,7 +2236,7 @@ def run_and_report(
         plan_sources=plan_sources,
         secret_values=secret_values,
         config_source=config_source,
-        exec_provenance=exec_provenance,
+        command_executions=command_executions,
         target=eff.target,
         label=label,
     )
@@ -2256,7 +2256,7 @@ def run_matrix_and_report(
     plan_sources: Mapping[str, ScenarioPlanSource] | None = None,
     secret_values: list[str] | None = None,
     config_source: dict[str, str] | None = None,
-    exec_provenance: dict[str, str | None] | None = None,
+    command_executions: list[dict[str, Any]] | None = None,
     label: str | None = None,
     cancelled: CancelSource = not_cancelled,
     worker_failures: Mapping[int, str] | None = None,
@@ -2318,7 +2318,7 @@ def run_matrix_and_report(
         plan_sources=plan_sources,
         secret_values=secret_values,
         config_source=config_source,
-        exec_provenance=exec_provenance,
+        command_executions=command_executions,
         target=eff.target,
         label=label,
     )
@@ -2340,7 +2340,7 @@ def report_run_matrix(
     plan_sources: Mapping[str, ScenarioPlanSource] | None = None,
     secret_values: list[str] | None = None,
     config_source: dict[str, str] | None = None,
-    exec_provenance: dict[str, str | None] | None = None,
+    command_executions: list[dict[str, Any]] | None = None,
     label: str | None = None,
     worker_failures: Mapping[int, str] | None = None,
 ) -> Path:
@@ -2366,7 +2366,7 @@ def report_run_matrix(
         plan_sources=plan_sources,
         secret_values=secret_values,
         config_source=config_source,
-        exec_provenance=exec_provenance,
+        command_executions=command_executions,
         target=eff.target,
         label=label,
         plan_order=plan_order,
@@ -2451,7 +2451,7 @@ def _assemble_report(
     plan_sources: Mapping[str, ScenarioPlanSource] | None = None,
     secret_values: list[str] | None = None,
     config_source: dict[str, str] | None = None,
-    exec_provenance: dict[str, str | None] | None = None,
+    command_executions: list[dict[str, Any]] | None = None,
     target: str | None = None,
     label: str | None = None,
     plan_order: Sequence[int] | None = None,
@@ -2497,11 +2497,11 @@ def _assemble_report(
     provenance = run_provenance(
         scenario_yaml, git_revision=git_revision(), config_source=config_source
     )
-    # Record what the upload-execution policy did with this run's launchServer command (BE-0090) —
-    # denied / reused / sandboxed, and (when sandboxed) the image — so "what did this run execute,
-    # and what was suppressed?" stays answerable. None for an ungoverned (local/Git) run.
-    if exec_provenance is not None:
-        provenance["uploadExec"] = exec_provenance
+    # Every command the config declared that the run met, with its source, the worker's mode, the
+    # decision, and a hash (BE-0492), so "what did this run execute, and what did the policy refuse?"
+    # stays answerable. Copied, since the gate keeps the list it may still append to.
+    if command_executions:
+        provenance["commandExecutions"] = [dict(entry) for entry in command_executions]
     return write_report(
         run_dir,
         run_id,

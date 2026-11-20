@@ -59,7 +59,7 @@ def test_run_flag_surface_is_fully_classified() -> None:
         "headed",
         "baselines",
         "runs_dir",
-        "upload_exec",
+        "config_origin",
         "browser",
         "browsers",
         "tag",
@@ -109,7 +109,7 @@ def test_record_flag_surface_is_fully_classified() -> None:
         # --kind (BE-0468): a hosted record takes the target's first kind, as `--kind` is unset.
         "kind",
     }
-    pass_through = {"backend", "udid", "erase", "system_alert_handling", "headed", "upload_exec"}
+    pass_through = {"backend", "udid", "erase", "system_alert_handling", "headed", "config_origin"}
     # serve forces --handoff to `stream` (a human at the browser answers over SSE), never a knob (BE-0179).
     serve_forced = {"handoff"}
     assert base_handled | not_serve_exposed | pass_through | serve_forced == _option_names("record")
@@ -138,7 +138,7 @@ def test_crawl_flag_surface_is_fully_classified() -> None:
         "resume_src",
         "resume_key",
         "continue_crawl",
-        "upload_exec",
+        "config_origin",
     }
     assert base_handled | not_serve_exposed | pass_through == _option_names("crawl")
 
