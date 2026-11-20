@@ -33,10 +33,10 @@ document in 敬体, bullet lists included." A `## Progress` / `## 進捗` checkl
 and 体言止め-label exemption that `japanese-document-writing` already has, because a work-item
 bullet names a task and is not prose a reader follows.
 
-The implementation converts one file in full:
+The implementation converts one file in full, the Japanese side of
 [BE-0089](../BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation-ja.md). Issue
-#1842 names its Japanese side as 94% 常体. Converting that file proves that the detector and the
-conversion recipe hold together on a real file.
+#1842 names that side as 94% 常体. The conversion proves that the detector and the conversion
+recipe hold together on a real file.
 
 Converting the rest of the corpus is **not** part of this item. About 362 more files still need the
 same treatment after that. This item leaves that work untracked on purpose. Issue #1842 stays open
@@ -45,8 +45,8 @@ opens a small PR whenever time allows.
 
 ## Motivation
 
-Commit `c34ed6110` (2026-06-24) converted every roadmap `*-ja.md` file that existed then, 78 files,
-to 敬体. The commit codified the rule in five places, among them `CLAUDE.md` and the Japanese
+Commit `c34ed6110` (2026-06-24) converted all 78 roadmap `*-ja.md` files that existed then to
+敬体. The commit codified the rule in five places, among them `CLAUDE.md` and the Japanese
 writing skill (now `japanese-document-writing`).
 [BE-0278](../BE-0278-tech-writing-skill/BE-0278-tech-writing-skill.md) later placed that skill
 under the umbrella `document-writing` norm, and commit `5a586e4` extended the rule explicitly to
@@ -84,7 +84,7 @@ quotes, and `## Progress` / `## 進捗` checklist bullets. This is the exclusion
 #1842's own manual measurement used, plus the checklist carve-out that this item adds.
 
 Next, the scan joins each paragraph's hard-wrapped lines into one block. This repository wraps prose
-at roughly 100 columns, and only a paragraph's last line carries `。`. Splitting on raw lines would
+at roughly 100 columns. Only a paragraph's last line carries `。`. Splitting on raw lines would
 flag nearly every wrapped continuation line as an unterminated sentence. The scan then splits the
 remaining text into sentences on `。`, `！`, and `？`. A block with no terminal mark (most often a
 体言止め label) counts as one sentence.
@@ -109,8 +109,8 @@ is the one that Issue #1842's own proposed direction already settled on.
 
 The detector runs through `uv run scripts/ja_register_check.py <path>...`, wrapped by
 `make ja-register-check ARGS="<path>..."` for consistency with this repository's other `make`
-targets. It stays out of `make check`. The corpus already carries about 2,193 candidate lines, and
-gating on a number that large would fail the whole gate for every contributor until the backlog
+targets. It stays out of `make check`. The corpus already carries about 2,193 candidate lines.
+Gating on a number that large would fail the whole gate for every contributor until the backlog
 clears. This matches how [`document-writing`](../../.apm/skills/document-writing/SKILL.md) already
 treats prose quality, as a review-time norm rather than a gate.
 
@@ -198,8 +198,9 @@ norm without tooling inherits that same failure mode after a file converts, and 
 change that.
 
 The detector over-flags by design, so its raw candidate count cannot gate a file the way
-`coverage-floors.json` gates a coverage number. Two options remain real: a per-file
-candidate-count ratchet, or a gate scoped to only the `*-ja.md` files that a pull request touches.
+`coverage-floors.json` gates a coverage number. Two options remain real. One is a per-file
+candidate-count ratchet. The other is a gate scoped to the `*-ja.md` files that a pull request
+touches.
 Both wait for a later item, since no converted file has drifted back yet to show which of the
 two is worth building.
 

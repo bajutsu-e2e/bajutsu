@@ -173,7 +173,7 @@ A checkpoint-resume happens after a restart. `submit` finds a persisted run ARN
 (`checkpoint.load()`) and returns `collect_run(...)` for the already-scheduled run. It skips
 rendering, packaging, and upload, and therefore skips `before_submit` and the config merge
 (`bajutsu/serve/batch_provider/device_farm_batch_provider.py`). The hooks are fresh objects in a
-new process, and `before_submit` never ran there. Consequently `ctx.launch_env` is empty, and the
+new process, and `before_submit` never ran there. As a result, `ctx.launch_env` is empty, and the
 in-memory hook holds no handle on whatever the pre-restart `before_submit` minted.
 
 `after_run` still runs on this path, in the same `finally`, with the resumed run's verdict. For
@@ -199,7 +199,7 @@ This design mirrors BE-0432's trust boundary exactly. `DeviceFarmBatchProvider` 
 `render_test_spec` arguments from an HTTP request body. A hook, by contrast, mints credentials and
 mutates the packaged config. Routing hook selection or hook configuration through the request
 would hand a client the same host-credential and config-tampering reach that BE-0432 refuses. The
-rules are therefore:
+rules are:
 
 - no `serve` endpoint, no config field, and no `BatchRequest` field may select or
   configure a hook;
@@ -210,7 +210,7 @@ selection, in the same spirit as BE-0432's AST check on `render_test_spec`.
 
 ### What reaches the device
 
-The per-run values injected via `ctx.launch_env` land in the packaged config and therefore in the
+The per-run values injected via `ctx.launch_env` land in the packaged config, and so in the
 run's Device Farm artifacts. Principals with access to the deployment's own Device Farm project
 can see them. `pre_test_commands` content already has the same exposure, and the exposure stays
 within the deployment's own cloud account, invisible to other tenants sharing device egress. Hooks
