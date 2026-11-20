@@ -30,6 +30,14 @@ from pydantic import (
 
 from bajutsu.common import _yaml
 from bajutsu.common.backends import IMPLEMENTED, PLATFORMS
+from bajutsu.common.capability.command_policy import (
+    COMMAND_EXECUTION_PREFIX,
+    NAMED_COMMAND_NAME,
+    NAMED_COMMAND_PREFIX,
+    NAMED_EXECUTION_PREFIX,
+    CommandExecution,
+    NamedCommand,
+)
 from bajutsu.common.config.schema import DeviceProvider
 
 DEFAULT_WORKER_CONFIG = Path(__file__).with_name("worker.yaml")
@@ -90,12 +98,18 @@ RESERVED_ROUTING_PREFIXES: tuple[str, ...] = (
     PLATFORM_ROUTING_PREFIX,
     KIND_ROUTING_PREFIX,
     BUILD_ROUTING_PREFIX,
+    # The command policy's tokens (BE-0492): a hand-written one could claim a source the worker's
+    # `commandExecution` block denies.
+    COMMAND_EXECUTION_PREFIX,
+    NAMED_EXECUTION_PREFIX,
+    NAMED_COMMAND_PREFIX,
 )
 RESERVED_ROUTING_REASON = (
-    "the environment:, host:, machine:, device:, cap:, setting:, job:, platform:, kind:, and build: "
-    "prefixes are reserved: a worker advertises them itself, from its worker.yaml environment, "
-    "drivers, and builds, the machine it runs on, the server machine it shares, the devices it can "
-    "run on, and the jobs it can resolve"
+    "the environment:, host:, machine:, device:, cap:, setting:, job:, platform:, kind:, build:, "
+    "command-execution:, named-execution:, and named-command: prefixes are reserved: a worker "
+    "advertises them itself, from its worker.yaml environment, drivers, builds, and command policy, "
+    "the machine it runs on, the server machine it shares, the devices it can run on, and the jobs "
+    "it can resolve"
 )
 
 # The platforms whose app a `subject.build` command makes; a web target has no app binary to build.
@@ -153,6 +167,8 @@ class WorkerCapability(BaseModel):
             `subject.build`. None, the default, means every platform with an app to build, since a
             worker built any app before the field existed; `[]` builds none, so a run that needs a
             build stops instead of starting one the machine has no toolchain for.
+        command_execution: Whether a command a config declares runs, per config source (BE-0492).
+        named_commands: The scripts the worker's operator installed, which a config may run by name.
     """
 
     model_config = ConfigDict(populate_by_name=True, extra="forbid", frozen=True)
@@ -165,6 +181,18 @@ class WorkerCapability(BaseModel):
     drivers: tuple[str, ...]
     real_devices: bool | None = Field(default=None, alias="realDevices")
     build: tuple[BuildPlatform, ...] | None = None
+    command_execution: CommandExecution = Field(
+        default_factory=CommandExecution, alias="commandExecution"
+    )
+    named_commands: dict[str, NamedCommand] = Field(default_factory=dict, alias="namedCommands")
+
+    @field_validator("named_commands")
+    @classmethod
+    def _named_command_names(cls, value: dict[str, NamedCommand]) -> dict[str, NamedCommand]:
+        bad = sorted(n for n in value if not NAMED_COMMAND_NAME.match(n))
+        if bad:
+            raise ValueError(f"namedCommands name(s) {bad} must match {NAMED_COMMAND_NAME.pattern}")
+        return value
 
     @field_validator("environment")
     @classmethod

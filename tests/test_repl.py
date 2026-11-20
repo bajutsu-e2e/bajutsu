@@ -975,7 +975,7 @@ def _stub_launch(
     monkeypatch.setattr(
         repl_cli,
         "_start_launch_server_or_exit",
-        lambda eff, **kw: (lambda: stopped.append("stop"), None),
+        lambda eff, **kw: lambda: stopped.append("stop"),
     )
 
     def launch(*_args: object, **_kwargs: object) -> tuple[FakeDriver, None]:
@@ -1008,7 +1008,7 @@ def test_repl_never_resolves_a_udid_for_the_web_backend(
     monkeypatch.setattr("bajutsu.cli._shared.ensure_web_runtime", lambda *a, **k: None)
     monkeypatch.setattr("bajutsu.cli._shared.select_actuator", lambda *a, **k: "playwright")
     monkeypatch.setattr(
-        repl_cli, "_start_launch_server_or_exit", lambda eff, **kw: ((lambda: None), None)
+        repl_cli, "_start_launch_server_or_exit", lambda eff, **kw: (lambda: None)
     )
 
     def unexpected(*_a: object, **_k: object) -> str:
@@ -1037,7 +1037,7 @@ def test_repl_resolves_a_udid_through_the_selected_environment_for_adb(
         "bajutsu.common.backend_cli.adb.resolve_serial", lambda u, run=None: "ADB-SERIAL"
     )
     monkeypatch.setattr(
-        repl_cli, "_start_launch_server_or_exit", lambda eff, **kw: ((lambda: None), None)
+        repl_cli, "_start_launch_server_or_exit", lambda eff, **kw: (lambda: None)
     )
     captured: dict[str, object] = {}
 
@@ -1062,7 +1062,7 @@ def test_repl_defaults_to_no_erase_on_the_live_webdriver_route(
     # `--erase` must default to off there rather than the local route's on.
     monkeypatch.setattr("bajutsu.cli._shared.select_actuator", lambda *a, **k: "xcuitest")
     monkeypatch.setattr(
-        repl_cli, "_start_launch_server_or_exit", lambda eff, **kw: ((lambda: None), None)
+        repl_cli, "_start_launch_server_or_exit", lambda eff, **kw: (lambda: None)
     )
     captured: dict[str, object] = {}
 
@@ -1098,7 +1098,7 @@ def test_repl_rejects_explicit_erase_on_the_live_webdriver_route(
     # of an UnsupportedAction traceback out of the environment's own `start`.
     monkeypatch.setattr("bajutsu.cli._shared.select_actuator", lambda *a, **k: "xcuitest")
     monkeypatch.setattr(
-        repl_cli, "_start_launch_server_or_exit", lambda eff, **kw: ((lambda: None), None)
+        repl_cli, "_start_launch_server_or_exit", lambda eff, **kw: (lambda: None)
     )
 
     def unexpected(*_a: object, **_k: object) -> tuple[FakeDriver, None]:
@@ -1181,7 +1181,7 @@ def test_repl_uses_the_tui_front_end_on_a_real_terminal(
         "bajutsu.common.backend_cli.simctl.resolve_udid", lambda u, run=None: "FAKE-UDID"
     )
     monkeypatch.setattr(
-        repl_cli, "_start_launch_server_or_exit", lambda eff, **kw: (lambda: None, None)
+        repl_cli, "_start_launch_server_or_exit", lambda eff, **kw: (lambda: None)
     )
 
     def launch(*_args: object, **_kwargs: object) -> tuple[FakeDriver, None]:
@@ -1333,7 +1333,7 @@ def _stub_attach(
         "bajutsu.common.backend_cli.simctl.resolve_udid", lambda u, run=None: "FAKE-UDID"
     )
     monkeypatch.setattr(
-        repl_cli, "_start_launch_server_or_exit", lambda eff, **kw: ((lambda: None), None)
+        repl_cli, "_start_launch_server_or_exit", lambda eff, **kw: (lambda: None)
     )
     monkeypatch.setattr(repl_cli, "environment_for", lambda *a, **k: env)
     captured: dict[str, object] = {}

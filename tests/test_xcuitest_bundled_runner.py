@@ -95,34 +95,40 @@ def test_the_build_command_runs_in_build_cwd(
     assert seen == [tmp_path]
 
 
-def test_a_withheld_build_is_refused_without_running(
+def _install_deny() -> object:
+    from bajutsu.common.capability import command_gate
+    from bajutsu.common.capability.command_policy import CommandExecution, CommandPolicy
+
+    return command_gate.install(
+        command_gate.CommandGate(
+            policy=CommandPolicy(source="uploaded", execution=CommandExecution(uploaded="deny"))
+        )
+    )
+
+
+def test_a_build_the_policy_does_not_run_is_refused_without_running(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # #2282: serve marks the run of an untrusted config; its `driver.runner.build` must not reach
-    # the host's shell, and the failure names why rather than a bare missing testRunner.
-    from bajutsu.common.config import RUNNER_BUILD_WITHHELD_ENV
-
+    # BE-0492: the worker's command policy keeps an untrusted config's `driver.runner.build` off the
+    # host's shell, and the failure names the mode rather than a bare missing testRunner.
     cfg = XcuitestConfig.model_validate(
         {"testRunner": str(tmp_path / "Built.xctestrun"), "build": "make runner"}
     )
     ran: list[list[str]] = []
     monkeypatch.setattr(subprocess, "run", lambda argv, **_kw: ran.append(argv))
-    monkeypatch.setenv(RUNNER_BUILD_WITHHELD_ENV, "1")
-    with pytest.raises(simctl.DeviceError, match=r"driver\.runner\.build withheld"):
+    gate = _install_deny()
+    with pytest.raises(simctl.DeviceError, match=r"driver\.runner\.build .*uploaded: deny"):
         xcuitest._resolve_runner(cfg, "simulator", build_cwd=tmp_path)
     assert ran == []
+    assert [e["decision"] for e in gate.records] == ["refused"]  # type: ignore[attr-defined]
 
 
-def test_a_withheld_build_still_uses_an_existing_test_runner(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # Withholding only stops the build; a bundle that ships its runner prebuilt still runs.
-    from bajutsu.common.config import RUNNER_BUILD_WITHHELD_ENV
-
+def test_a_refused_build_still_uses_an_existing_test_runner(tmp_path: Path) -> None:
+    # The policy only stops the build; a bundle that ships its runner prebuilt still runs.
     runner = tmp_path / "Built.xctestrun"
     runner.write_bytes(b"")
     cfg = XcuitestConfig.model_validate({"testRunner": str(runner), "build": "make runner"})
-    monkeypatch.setenv(RUNNER_BUILD_WITHHELD_ENV, "1")
+    _install_deny()
     assert xcuitest._resolve_runner(cfg, "simulator") == runner
 
 

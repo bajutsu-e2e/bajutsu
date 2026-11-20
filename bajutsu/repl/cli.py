@@ -174,7 +174,7 @@ def repl(
     # Bring the app's target server up if the config declares launchServer — without it a web
     # target opens the browser on a host that is not listening, and every `tree` reads the error
     # page. Stopped when this command exits (atexit), the way `record` and `crawl` stop theirs.
-    stop_server, _exec_decision = _start_launch_server_or_exit(eff)
+    stop_server = _start_launch_server_or_exit(eff)
     atexit.register(stop_server)
 
     # Unlike `record` / `crawl`, which keep stdout for their one final result line and narrate

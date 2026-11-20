@@ -55,9 +55,17 @@ def test_the_flag_is_inserted_into_a_leased_run(tmp_path: Path) -> None:
     ]
 
 
-@pytest.mark.parametrize("subcommand", ["record", "crawl", "triage"])
-def test_other_commands_are_left_alone(tmp_path: Path, subcommand: str) -> None:
+@pytest.mark.parametrize("subcommand", ["record", "crawl"])
+def test_record_and_crawl_take_the_workers_file(tmp_path: Path, subcommand: str) -> None:
+    # Both run the config's server and runner build, so the worker's command policy reaches them
+    # through the same file (BE-0492).
     cmd = [sys.executable, "-m", "bajutsu", subcommand, "--target", "demo"]
+    out = _with_worker_config(cmd, tmp_path / "w.yaml")
+    assert out == [*cmd[:4], "--worker-config", str((tmp_path / "w.yaml").resolve()), *cmd[4:]]
+
+
+def test_other_commands_are_left_alone(tmp_path: Path) -> None:
+    cmd = [sys.executable, "-m", "bajutsu", "triage", "--target", "demo"]
     assert _with_worker_config(cmd, tmp_path / "w.yaml") == cmd
 
 

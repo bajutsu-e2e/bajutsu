@@ -169,13 +169,10 @@ class Effective:
         check — not because the file it binds is less trusted (`bind_config` only ever resolves a file
         `_confined_config_path` already found inside `--root`, an operator-controlled tree, so its
         content is no less trusted than the CLI's), but so a config's path *fields* can't point outside
-        that same already-sanctioned tree, regardless of bind source. This is independent of `build:`
-        trust (`bajutsu.serve.operations.dispatch._build_trusted`): `bind_config` keeps a local
-        config's build trusted exactly as the CLI path does, since neither can hand the host an
-        attacker-authored command the way an API-bound Git spec or upload can. That verdict covers
-        `driver.runner.build` too: rebasing makes its working directory `root` (#2277), but whether
-        it runs at all is `serve`'s call — the spawned run refuses it for an untrusted binding
-        (#2282).
+        that same already-sanctioned tree, regardless of bind source. Whether a config's commands run
+        at all is a separate decision, the worker's command policy (BE-0492), which reads the config's
+        source: rebasing makes `driver.runner.build`'s working directory `root` (#2277), but the
+        policy decides whether it runs.
         """
         root_resolved = root.resolve()
         confine_resolved = confine_to.resolve() if confine_to is not None else root_resolved

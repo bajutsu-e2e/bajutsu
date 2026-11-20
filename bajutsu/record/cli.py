@@ -10,6 +10,7 @@ from typing import Annotated
 import typer
 
 from bajutsu.cli._shared import (
+    CONFIG_SOURCE_HELP,
     DEFAULT_CONFIG,
     WORKER_CONFIG_HELP,
     _ai_redactor,
@@ -17,6 +18,7 @@ from bajutsu.cli._shared import (
     _command_preconditions_or_exit,
     _device_udid_or_exit,
     _first_run_or_exit,
+    _install_command_gate_or_exit,
     _install_usage_ledger,
     _load_device_worker_or_exit,
     _load_effective_with_source,
@@ -184,12 +186,8 @@ def record(
         help="AI output language for the authored prose (from: provenance, reasoning) — "
         "ja / en / auto; overrides `ai.language`, default leaves the config (auto follows the goal)",
     ),
-    upload_exec: str = typer.Option(
-        "",
-        "--upload-exec",
-        hidden=True,
-        help="internal: serve sets this for an uploaded bundle to govern its launchServer command "
-        "(deny | reuse | sandbox); empty = ungoverned local/Git run (BE-0090)",
+    config_origin: str = typer.Option(
+        "operator", "--config-source", hidden=True, help=CONFIG_SOURCE_HELP
     ),
     handoff: str = typer.Option(
         "auto",
@@ -235,6 +233,8 @@ def record(
     redactor = _ai_redactor(eff)
     authoring_agent = make_agent(ai=eff.ai, redactor=redactor)
     worker = _load_device_worker_or_exit(worker_config)
+    # The worker's command policy governs the config's server and runner build (BE-0492).
+    _install_command_gate_or_exit(config_origin, worker, config_dir=eff.base_dir)
     eff = _with_worker_device(eff, worker)
     actuator, _ = _select_actuator_or_exit(backend, eff, [], worker)
     # The device comes through the target's provider, as in `run`: the `--udid` pool, or the grid
@@ -253,7 +253,7 @@ def record(
 
     # Bring up the app's target server (the web baseUrl host) if it declares launchServer — reused
     # if already serving, started otherwise. Stopped when this command exits (atexit).
-    stop_server, _exec_decision = _start_launch_server_or_exit(eff, upload_exec=upload_exec or None)
+    stop_server = _start_launch_server_or_exit(eff)
     atexit.register(stop_server)
 
     # Narrate the otherwise-silent device work (reinstall + boot + launch) so the watcher

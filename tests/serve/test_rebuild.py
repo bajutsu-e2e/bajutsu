@@ -85,14 +85,15 @@ def test_rebuild_on_a_target_without_a_build_is_refused(tmp_path: Path) -> None:
     assert not recorder.jobs
 
 
-def test_rebuild_on_a_withheld_build_is_refused(tmp_path: Path) -> None:
-    # An API-bound Git config without --allow-remote-build has its build nulled, so a forced build
-    # has nothing serve may run.
+def test_rebuild_of_a_remote_config_leaves_the_decision_to_the_worker(tmp_path: Path) -> None:
+    # The server no longer decides whether an API-bound Git config's build runs (BE-0492): the job
+    # carries the build and its `remote` source, and the worker's `commandExecution` decides.
     state, recorder = _state(tmp_path)
     state.binding = replace(state.binding, git_from_api=True)
     _resp, code = _run(state, rebuild=True)
-    assert code == 400
-    assert not recorder.jobs
+    assert code == 200
+    (job,) = recorder.jobs
+    assert job.rebuild is True and job.build and job.config_source == "remote"
 
 
 def test_rebuild_with_a_binary_artifact_is_refused(tmp_path: Path) -> None:

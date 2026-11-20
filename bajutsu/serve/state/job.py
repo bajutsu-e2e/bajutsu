@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+from bajutsu.common.capability.command_policy import CommandExecution
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, get_args
@@ -46,8 +47,8 @@ class RunIntent:
     """What a `run-set` job runs, leaving where to the worker that leases it (BE-0484).
 
     Paths are relative to the job's workspace and the application is a logical reference, as in a
-    cloud-batch request. *upload_exec* is the server's `launchServer` policy for an uploaded bundle
-    (BE-0090), empty for any other binding.
+    cloud-batch request. *config_source* is where the config came from (BE-0492), which the
+    worker's `commandExecution` policy reads; empty means the operator's own config.
     """
 
     scenario: str
@@ -55,7 +56,7 @@ class RunIntent:
     config: str
     platform: str
     app_path: str
-    upload_exec: str = ""
+    config_source: str = ""
 
 
 @dataclass
@@ -77,10 +78,14 @@ class Job:
     # whose app is missing on a worker that cannot build it fails with the reason instead of
     # running a build the machine has no toolchain for.
     can_build: bool = True
-    # Whether the spawned run must refuse the config's `driver.runner.build` (#2282): set by
-    # `_register_and_dispatch` for the same untrusted bindings `_governed_build` nulls `build` for,
-    # and carried in the job spec so a remote worker's spawn refuses it too.
-    withhold_runner_build: bool = False
+    # Where the job's config came from (BE-0492): `uploaded`, `remote`, or `operator`. Set at
+    # dispatch from the binding and carried in the job spec, so the worker that runs the job applies
+    # its own `commandExecution` policy to the config's commands.
+    config_source: str = "operator"
+    # Worker-side only: the `commandExecution` modes of the worker that runs the job, read from its
+    # `worker.yaml`. The shipped defaults apply until the worker sets them, so a job built any other
+    # way still refuses an untrusted source's build rather than running it.
+    command_execution: CommandExecution = field(default_factory=CommandExecution)
     status: str = "running"  # running | done
     # Whether this job has given up its concurrency-cap slot. Separate from `status` because a job
     # that ran on a remote worker keeps `status == "running"` on the control plane by design

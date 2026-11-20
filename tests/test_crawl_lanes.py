@@ -384,7 +384,6 @@ def _plan_for_lane(tmp_path: Path, *, actuator: str = "xcuitest") -> object:
         erase=False,
         system_alert_handling=False,
         alert_vision_instruction="",
-        upload_exec="",
     )
 
 

@@ -44,7 +44,7 @@ def run_command(
     baselines: str = "",
     headed: bool | None = None,
     runs_dir: str = "",
-    upload_exec: str = "",
+    config_source: str = "",
     browser: str = "",
     browsers: str = "",
     tag: str = "",
@@ -98,7 +98,7 @@ def run_command(
             "headed": headed,
             "baselines": baselines,
             "runs_dir": runs_dir,
-            "upload_exec": upload_exec,
+            "config_origin": config_source,
             "browser": browser,
             "browsers": browsers,
             "tag": tag,
@@ -131,7 +131,7 @@ def record_command(
     system_alert_handling: bool | None = None,
     headed: bool | None = None,
     config: str = "bajutsu.config.yaml",
-    upload_exec: str = "",
+    config_source: str = "",
 ) -> list[str]:
     """The ``python -m bajutsu record --out OUT --target … --goal …`` argv for an authoring request —
     the Tier-1 record loop the Record tab drives.  ``erase`` / ``system_alert_handling`` mirror
@@ -164,7 +164,7 @@ def record_command(
             "erase": erase,
             "system_alert_handling": system_alert_handling,
             "headed": headed,
-            "upload_exec": upload_exec,
+            "config_origin": config_source,
         },
     )
     return cmd
@@ -186,7 +186,7 @@ def crawl_command(
     resume_src: str = "",
     resume_key: str = "",
     continue_crawl: bool = False,
-    upload_exec: str = "",
+    config_source: str = "",
 ) -> list[str]:
     """The ``python -m bajutsu crawl --target … --out …`` argv for a crawl request — the explorer the
     Crawl tab drives.  ``out`` is the run dir the screen map is streamed into
@@ -228,7 +228,7 @@ def crawl_command(
             "erase": False if resuming else erase,
             "system_alert_handling": system_alert_handling,
             "headed": headed,
-            "upload_exec": upload_exec,
+            "config_origin": config_source,
             "resume_src": resume_src if resuming else "",
             "resume_key": resume_key if resuming else "",
             "continue_crawl": continue_crawl,

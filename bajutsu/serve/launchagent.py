@@ -21,7 +21,6 @@ def launchagent_plist(
     port: int,
     config: str | None,
     token: str | None,
-    upload_exec: str = "sandbox",
     python: str | None = None,
     working_dir: str | None = None,
     log_dir: str = "~/Library/Logs",
@@ -46,10 +45,6 @@ def launchagent_plist(
     ]
     if config:
         args += ["--config", config]
-    if upload_exec and upload_exec != "sandbox":
-        # Carry a non-default upload-exec policy into the installed daemon (BE-0090); the default
-        # needs no flag, so the common case keeps the plist clean.
-        args += ["--upload-exec", upload_exec]
 
     logs = Path(log_dir).expanduser()
     plist: dict[str, object] = {
