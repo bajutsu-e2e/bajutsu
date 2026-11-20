@@ -47,9 +47,11 @@ The runner is the first of four channels with this flaw:
 | WebView bridge ([BE-0037](../BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support.md)) | app, on the device | host → device | `BAJUTSU_WEBVIEW_PORT` |
 | Network collector ([BE-0283](../BE-0283-android-network-capture/BE-0283-android-network-capture.md)) | Bajutsu, on the host | device → host | `BAJUTSU_COLLECTOR` |
 
-The control channel ([BE-0365](../BE-0365-in-app-control-channel/BE-0365-in-app-control-channel.md)) and the screen-transition reports both ride the collector, so they
-share its fate. On a real device, the last three channels fail without a clear error. `nativeZ` reads
-as absent, a WebView reads as empty, and a network assertion sees no exchanges.
+The control channel ([BE-0365](../BE-0365-in-app-control-channel/BE-0365-in-app-control-channel.md))
+and the screen-transition reports both ride the collector, so they share its fate.
+
+On a real device, the last three channels fail without a clear error. `nativeZ` reads as absent, a
+WebView reads as empty, and a network assertion sees no exchanges.
 
 The observable outcome: `bajutsu run` with `deviceType: device` passes the showcase `firstlook`
 scenario on a USB-attached iPhone. A network scenario on that iPhone records its exchanges instead
@@ -112,14 +114,14 @@ picks one that answers.
 2. **Fail fast.** When the run needs the collector and no candidate exists, the run fails before any
    device work. The error names `xcuitest.hostAddress` and `BAJUTSU_HOST_ADDRESS`.
 3. **Binding.** On a real device, the collector binds every IPv4 and IPv6 interface (`::`, falling
-   back to `0.0.0.0` on a host without IPv6) instead of `127.0.0.1`. The collector already requires the per-run token on every request, so a device on
-   the local network that lacks the token gets a 401. The Simulator keeps the loopback binding.
+   back to `0.0.0.0` on a host without IPv6) instead of `127.0.0.1`. The collector already requires
+   the per-run token on every request, so a device on the local network that lacks the token gets a
+   401. The Simulator keeps the loopback binding.
 4. **Injection.** `BAJUTSU_COLLECTOR` carries one URL per candidate, separated by commas. A single
    URL, as on the Simulator, keeps today's format.
 5. **Selection in the app.** BajutsuKit splits the value. Unless the value is the Simulator's
    loopback URL, it probes each candidate with an authenticated `GET /ping` in parallel, even a
-   single one. It keeps the first candidate, in the host's
-   order, that answered 204. The search runs in the background, so the launch never waits for it.
+   single one. It keeps the first candidate, in the host's order, that answered 204. The search runs in the background, so the launch never waits for it.
    It retries every second for up to two minutes, because a fresh install holds every
    local-network connection until the Local Network prompt is answered. Reports made meanwhile wait
    in a buffer of 1,000 and go out in order once a collector answers. With no answer by the

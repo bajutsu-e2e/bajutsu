@@ -56,8 +56,8 @@ assertions as the same scenario without the flags.
    reported as `cancelled`, its evidence is finalized by the existing unwind, and the run exits 1.
    At a failure pause, `quit` returns instead, so the scenario keeps the reason it failed with.
 5. **Verdict.** A command that acts on the app (`tap`, `type`, `scroll`, `back`, `step <yaml>`) makes the
-   run hand-driven. The first such command's verb is recorded in `RunResult.interactive` and in
-   `result.json`. The rest of the line is never kept: `type` and `step` can carry a value typed in by
+   run hand-driven. The run records the first such command's verb in `RunResult.interactive` and in
+   `result.json`. It never keeps the rest of the line: `type` and `step` can carry a value typed in by
    hand that is no configured secret, and the result is persisted and uploaded.
    A scenario whose steps all passed then fails with `interactive: <verb>`. A scenario that already
    failed keeps its own reason. Reads (`tree`, `find`, `screenshot`) and stepping leave the verdict alone.
@@ -81,13 +81,17 @@ assertions as the same scenario without the flags.
 
 The gate sits at the step boundary because that is where cancellation is already checked
 ([BE-0370](../BE-0370-graceful-run-cancel/BE-0370-graceful-run-cancel.md)): the step has not
-acted, so nothing is half-actuated and the screen is settled. It fires for the scenario's own steps, never for a
-`before` or `after` hook phase or for an `interrupts` rule's recovery steps. Recovery runs from
-inside a step already under way, so a pause there would spend that step's timeout. Because the pause happens before `_run_one` starts its clock,
-a step's recorded duration and every condition wait's timeout are unaffected by how long the operator
-stays at the prompt. The scenario's video keeps recording through the pause. An app that reacts to elapsed time can
-still behave differently after a long pause, which is why the gate drops the cached `before` tree
-and screenshot whenever it held the loop.
+acted, so nothing is half-actuated and the screen is settled.
+
+The gate fires for the scenario's own steps, never for a `before` or `after` hook phase or for an
+`interrupts` rule's recovery steps. Recovery runs from inside a step already under way, so a pause
+there would spend that step's timeout.
+
+The pause happens before `_run_one` starts its clock. A step's recorded duration and every condition
+wait's timeout are therefore unaffected by how long the operator stays at the prompt. The scenario's
+video keeps recording through the pause. An app that reacts to elapsed time can still behave
+differently after a long pause, so the gate drops the cached `before` tree and screenshot whenever it
+held the loop.
 
 The protocol lives in `common/orchestrator` and the prompt in `run`, because the import contract keeps the
 deterministic core free of `bajutsu.run` and `bajutsu.repl`. The core calls a gate it knows only as a
