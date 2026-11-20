@@ -429,6 +429,30 @@ def _with_worker_config(cmd: list[str], worker_config: Path | None) -> list[str]
     return [*cmd[:head], "--worker-config", str(worker_config.resolve()), *rest]
 
 
+def _with_config_source(cmd: list[str], source: ConfigSource) -> list[str]:
+    """Stamp the job's config source onto a run / record / crawl argv, replacing any the argv carries.
+
+    The worker applies its command policy by this label (BE-0492), so it takes the label from the
+    spec's own field (`_spec_source`, strict for an unlabelled spec) rather than trusting a
+    `--config-source` inside the spec's argv: a spec from a server that predates the label carries
+    none there, and the run would otherwise read its config as the operator's.
+    """
+    head = _run_argv_head(cmd)
+    if head is None:
+        return cmd
+    rest = [
+        arg
+        for i, arg in enumerate(cmd[head:], start=head)
+        if not (
+            arg == "--config-source"
+            or arg.startswith("--config-source=")
+            or cmd[i - 1] == "--config-source"
+        )
+    ]
+    label = [] if source == OPERATOR else ["--config-source", source]
+    return [*cmd[:head], *label, *rest]
+
+
 def execute_job_spec(
     spec: dict[str, Any],
     *,
@@ -505,10 +529,13 @@ def execute_job_spec(
     )
     job = Job(
         id=str(spec["job_id"]),  # keep the control plane's id so logs/results line up
-        cmd=(
-            _with_worker_config(_local_interpreter(_spec_argv(spec)), worker_config)
-            if apply_worker_config
-            else _local_interpreter(_spec_argv(spec))
+        cmd=_with_config_source(
+            (
+                _with_worker_config(_local_interpreter(_spec_argv(spec)), worker_config)
+                if apply_worker_config
+                else _local_interpreter(_spec_argv(spec))
+            ),
+            _spec_source(spec),
         ),
         udids=list(spec.get("udids") or []),
         app_path=spec.get("app_path"),

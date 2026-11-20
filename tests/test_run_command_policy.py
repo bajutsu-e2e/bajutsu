@@ -101,7 +101,15 @@ def test_the_same_config_under_the_operator_source_tries_to_run_it(tmp_path: Pat
     code, output, runs = _run(tmp_path, "{uploaded: deny}", "operator")
     assert code == 2
     assert "exited (code 1)" in output and "does not run" not in output
-    assert not list(runs.glob("*/manifest.json"))
+    # The failed start still leaves its record, with the command's exit code.
+    [manifest] = runs.glob("*/manifest.json")
+    [entry] = json.loads(manifest.read_text(encoding="utf-8"))["provenance"]["commandExecutions"]
+    assert (entry["source"], entry["mode"], entry["decision"], entry["exitCode"]) == (
+        "operator",
+        "allow",
+        "ran",
+        1,
+    )
 
 
 def test_an_unknown_source_is_a_usage_error(tmp_path: Path) -> None:

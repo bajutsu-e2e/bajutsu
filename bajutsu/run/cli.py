@@ -58,7 +58,7 @@ from bajutsu.common.cancellation import (
     not_cancelled,
 )
 from bajutsu.common.capability import capability_preflight
-from bajutsu.common.capability.command_gate import CommandGate, CommandRefused
+from bajutsu.common.capability.command_gate import CommandGate
 from bajutsu.common.capability.worker_capability import WorkerCapability
 from bajutsu.common.config import (
     AndroidConfig,
@@ -2314,11 +2314,8 @@ def _dispatch(plan: _RunPlan) -> tuple[list[RunResult], Path, list[dict[str, str
     # navigates at lease time), so the server only needs to be up before the run, not before the pool.
     try:
         stop_server = start_launch_server(plan.eff, gate=plan.command_gate)
-    except CommandRefused as e:
-        _refuse_run(plan, str(e))
-    except RuntimeError as e:
-        typer.echo(str(e))
-        raise typer.Exit(2) from None
+    except RuntimeError as e:  # CommandRefused included
+        _fail_before_scenarios(plan, str(e))
     try:
         if plan.matrix is not None:
             return _dispatch_runs(plan, plan.matrix, progress_fn)
@@ -2332,15 +2329,16 @@ def _dispatch(plan: _RunPlan) -> tuple[list[RunResult], Path, list[dict[str, str
         stop_server()
 
 
-def _refuse_run(plan: _RunPlan, message: str) -> NoReturn:
-    """Fail every scenario with the policy's refusal, write the run's report, and exit 2 (BE-0492).
+def _fail_before_scenarios(plan: _RunPlan, message: str) -> NoReturn:
+    """Fail every scenario with *message*, write the run's report, and exit 2 (BE-0492).
 
-    The refused command leaves its trace in `manifest.json` like any run, so an operator finds it in
-    the history; no device is leased, since every scenario fails before its first step.
+    For a server command the policy refused or that failed to come up: the command's record lands
+    in `manifest.json` like any run's, so an operator finds it in the history. No device is leased,
+    since every scenario fails before its first step.
     """
 
     def no_device(*_args: object, **_kwargs: object) -> NoReturn:
-        raise AssertionError("a run its command policy refused leases no device")
+        raise AssertionError("a run whose server never came up leases no device")
 
     _, manifest = run_and_report(
         plan.eff,
