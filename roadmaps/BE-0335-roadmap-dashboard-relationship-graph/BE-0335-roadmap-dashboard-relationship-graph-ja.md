@@ -16,7 +16,7 @@
 
 ## はじめに
 
-ロードマップステータスダッシュボードに、項目どうしの関係を描く関係図を追加します。このダッシュボードは GitHub Pages のページで、これまでに3つの変更を重ねています。
+ロードマップステータスダッシュボードに、項目どうしの関係を描く関係図を追加します。このダッシュボードは GitHub Pages のページで、これまでに3つのロードマップ項目がその形を作ってきました。
 
 - [BE-0094](../BE-0094-roadmap-status-dashboard/BE-0094-roadmap-status-dashboard-ja.md) が、各項目のメタデータからページを生成します。
 - [BE-0219](../BE-0219-roadmap-dashboard-search/BE-0219-roadmap-dashboard-search-ja.md) が、検索ボックスを追加しました。

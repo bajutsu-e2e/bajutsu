@@ -22,7 +22,7 @@ The Android backend of Bajutsu drives a gesture in three steps:
 2. The host computes the target's pixel center.
 3. The host injects a touch at that coordinate.
 
-Nothing between the second step and the third proves the screen still matches the tree the coordinate came from. Six roadmap items have made the read fresher: the resident reader, a settle poll bounded by wall-clock time, an actuation-anchored barrier, and a device-clock read mark. The `gestures` scenario still fails intermittently on the `smoke (adb)` continuous-integration (CI) job. Making a read fresher cannot close a gap that opens after the read.
+Nothing between the second step and the third proves the screen still matches the tree the coordinate came from. Six roadmap items have made the read fresher, among them the resident reader, a settle poll bounded by wall-clock time, an actuation-anchored barrier, and a device-clock read mark. The `gestures` scenario still fails intermittently on the `smoke (adb)` continuous-integration (CI) job. Making a read fresher cannot close a gap that opens after the read.
 
 This item removes the gap instead of shortening it. The device resolves the target and injects the gesture in one on-device operation, so the bounds a touch lands on are the bounds the device holds at the moment it injects. The host keeps every decision the deterministic core owns: which element a selector means, and whether that selector is ambiguous. The two other backends already work this way. The Android backend is the outlier, and this item ends that.
 

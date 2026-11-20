@@ -18,7 +18,7 @@
 
 `bajutsu run` recovers from a Simulator infrastructure fault. A `base.BackendCrashError` in the middle of a scenario counts as infrastructure, not as a verdict. The pipeline discards the dead lease, leases a fresh device in a cold respawn, and re-runs the scenario. The retries are bounded by `crash_retries` (BE-0323). The cold spawn itself is diagnosable and self-healing (BE-0319).
 
-The on-device driver conformance suite inherits none of that recovery. Among the iOS jobs that **gate a merge**, it is the one job that drives the device through Bajutsu's driver and still bypasses the pipeline's recovery. The other two iOS jobs differ:
+The on-device driver conformance suite inherits none of that recovery. Among the iOS jobs that **gate a merge**, it is the one job that drives the device through Bajutsu's driver and still bypasses the pipeline's recovery. Two other gating iOS jobs differ:
 
 - `codegen` runs native XCUITest and was never on the pipeline's path.
 - `bundled-runner` reaches the device through `bajutsu run`, so it already inherits the recovery.
