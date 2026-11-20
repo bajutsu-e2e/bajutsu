@@ -318,6 +318,100 @@ unclassified. [`pr-followup`](../.apm/skills/pr-followup/SKILL.md) runs it befor
 a host flake is not answered with a code change and a regression is not waved through as a flake.
 The skill reports; it never edits, pushes, or re-runs.
 
+### Measuring a flaky lane across runs
+
+The collection above explains one red job. It cannot show which factor recurring red jobs share.
+Each piece is free text in one job's artifact. A per-job telemetry record closes that gap. It lines
+the evidence up across runs, so a reader can compare red jobs with green ones.
+
+**What every job writes.** Each lane's diagnostics `collect` phase ends with one more step. It runs
+on green jobs as well as red ones. That step runs `summarize` from
+[`scripts/ci_telemetry.py`](../scripts/ci_telemetry.py). It re-reads files the job already wrote. It
+calls no device and no network, so it costs well under a second. Its output is
+`runs/diagnostics/ci-telemetry/ci-telemetry.json` plus a copy of every run manifest. The action
+uploads that directory as its own small artifact, `ci-telemetry-<job>-<attempt>-<suffix>`. With it,
+a cross-run report never downloads videos. The record holds four groups of facts.
+
+| Group | Fields |
+|---|---|
+| Keys that line jobs up | workflow, job, run id, attempt, runner name, runner image |
+| Machine | OS version, hardware model, CPU count, memory, Xcode version (iOS) |
+| Measurements | load from `host-telemetry.log`, render probe, stall captures per trigger |
+| Each scenario | verdict, failing action, duration, first `wait`, longest `wait` |
+
+Both load samplers also append one CPU line from a two-sample `top`, prefixed `Interval`. A
+single-sample `top` reports CPU time averaged since boot. The interval line alone says how idle the
+machine was at that moment.
+
+**Candidate causes.** Each job gets the labels below when its signal is present, red or green. The
+labels come from fixed thresholds over measured numbers. They hint at where to look and never touch
+a verdict.
+
+| Candidate cause | Signal and threshold |
+|---|---|
+| `host-resources` | load above 1.5 per CPU, measured idle below 5 percent, free memory below 10 percent, I/O wait above 20 percent, or hypervisor steal above 10 percent |
+| `device-slow-or-wedged` | a device boot or wait step above 240 seconds, a pre-run screenshot that hung or took over 10 seconds, or a `runner-crash` stall capture |
+| `channel-timeout` | a runner-channel retry or mid-run channel crash in the job log |
+| `video-start` | an unconfirmed recording start in the log, a zero-byte render-probe recording, or a `video-no-bytes` or `screenrecord-no-growth` stall capture |
+| `network-or-deps` | a network error in the log, or a failing step that merely sets up, installs, or downloads |
+| `runner-contention` | a job that queued longer than 300 seconds |
+| `app-wait-timeout` | a failing `wait` step with none of the signals above |
+| `test-assertion` | any other failing step with none of the signals above |
+
+The last two labels are residual. A red job with no infrastructure signal is where a real defect or a
+too-tight wait shows up. Time of day and runner image are not labels. The report compares them as
+dimensions instead.
+
+**Running the analysis.** These steps run on a workstation. The GitHub command-line tool `gh` there
+needs access to the repository.
+
+1. Fetch the recent runs of one workflow. The command reads the last 30 completed runs and downloads
+   their telemetry artifacts. It joins each record with facts from the API. Those facts are the job's
+   conclusion, its queue time, and each step's duration. The command also counts four warnings in
+   each job log:
+
+   - channel retries
+   - channel crashes
+   - unconfirmed recording starts
+   - network errors
+
+   ```bash
+   python3 scripts/ci_telemetry.py fetch --workflow ios-e2e.yml --limit 30 --out tmp/ci-telemetry
+   ```
+
+   The command prints `N job record(s) → tmp/ci-telemetry/records.jsonl`. A job without a telemetry
+   artifact still gets a record from the API alone. A job that stopped before its `collect` step
+   thus stays in the count. The command skips a cancelled job. The E2E workflows cancel a
+   superseded run when a newer push arrives. Such a run says nothing about the code or the machine.
+
+2. Print the report.
+
+   ```bash
+   python3 scripts/ci_telemetry.py report tmp/ci-telemetry
+   ```
+
+   The report holds four tables:
+
+   - each candidate cause with its count on red jobs and on green jobs
+   - each metric's median on red jobs and on green jobs
+   - the red rate along each dimension the record carries, such as runner image or hour of day
+   - the red jobs that carry no label
+
+   Pass `--json` to get the same data for a script.
+
+3. Rank the scenarios themselves. The fetch output holds every manifest, and `bajutsu flakiness`
+   reads that directory directly:
+
+   ```bash
+   uv run bajutsu flakiness --history tmp/ci-telemetry/manifests
+   ```
+
+**Reading the report.** A cause is worth fixing when its red count is high and its green count is
+low. A cause that shows up as often on green jobs explains nothing about the red ones. A red rate
+that jumps on one runner image or hardware model points at the machine, not the code. A red job left
+with no label goes to [`investigate-ci-failure`](../.apm/skills/investigate-ci-failure/SKILL.md).
+That skill reads the job's full `runs/` artifact.
+
 ## Running bajutsu in your app's CI
 
 > bajutsu is pre-release (unpublished). Until it is on PyPI, vendor it (a submodule or a
