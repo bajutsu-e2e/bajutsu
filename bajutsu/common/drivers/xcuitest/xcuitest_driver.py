@@ -1167,7 +1167,7 @@ class XcuitestDriver:
     def select_all(self, sel: base.Selector) -> None:
         # Through the edit menu's Select All, not Cmd+A: Cmd+A stops working on a Simulator once
         # another process writes the pasteboard, until SpringBoard restarts (BE-0493).
-        self._select_all(sel, self._edit_menu_label_counts())
+        self._select_all(sel, self._edit_menu_label_counts(), "select")
 
     def copy_selection(self, sel: base.Selector) -> None:
         # Through the edit menu's Copy, not Cmd+C, for the same reason as `select_all`. The menu the
@@ -1176,7 +1176,7 @@ class XcuitestDriver:
         # replaces the Select All one. `select` only ever selects everything, and every step that
         # could change the field ends the selection, so this reproduces the selection it made.
         baseline = self._edit_menu_label_counts()
-        self._select_all(sel, baseline)
+        self._select_all(sel, baseline, "copy")
         label = self._new_edit_menu_label(
             COPY_MENU_LABELS, baseline, _EDIT_MENU_TIMEOUT, "Copy", lower=False
         )
@@ -1209,11 +1209,11 @@ class XcuitestDriver:
             )
         self.tap({"label": label})
 
-    def _select_all(self, sel: base.Selector, baseline: Counter[str]) -> None:
+    def _select_all(self, sel: base.Selector, baseline: Counter[str], step: str) -> None:
         label = self._raise_edit_menu_item(sel, SELECT_ALL_MENU_LABELS, "Select All", baseline)
         if label is None:
             raise base.ElementNotFound(
-                f"select: the edit menu showed no new Select All item within "
+                f"{step}: the edit menu showed no new Select All item within "
                 f"{_EDIT_MENU_TIMEOUT:g}s (an empty field offers none); edit-menu labels on "
                 f"screen: {self._edit_menu_labels_on_screen()}"
             )

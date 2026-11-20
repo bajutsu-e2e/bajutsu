@@ -106,7 +106,7 @@ final class ComponentsUITests: XCTestCase {
 | `longPress` | `.press(forDuration: <sec>)` |
 | `type`（`into` あり） | `el(id).tap()` + `.typeText(...)` |
 | `type`（`into` なし） | `app.typeText(...)` |
-| `clear` | 下の `select` と同じ手順のあと、`app.typeText(XCUIKeyboardKey.delete.rawValue)` を 1 回送ります。XCUIElement には「clear」の基本操作がないため、全選択と削除の組み合わせでドライバー自身の clear（BE-0265）を忠実に再現します |
+| `clear` | 下の `select` と同じ手順のあと、`app.typeText(XCUIKeyboardKey.delete.rawValue)` を 1 回送ります。XCUIElement には「clear」の基本操作がないため、全選択と削除の組み合わせでドライバー自身の clear（BE-0265）を忠実に再現します。空のフィールドには Select All が出ないため、メニューの待機と削除は `XCTAssertTrue` ではなく `if` の中に置きます。そのため空のフィールドでも、ドライバーの clear と同じくステップは成功します |
 | `delete { count }` | `.tap()` + 削除キーを `count` 回（`typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count:))`、BE-0265） |
 | `select` | `.tap()` のあと、1 秒以内に `app.staticTexts["Select All"]` が現れなければ `.press(forDuration: 0.6)` で長押しを加え、その項目の出現を `waitForExistence(timeout: 5.0)` で待ってからタップします。ドライバーと同じく編集メニューを使います。別のプロセスが pasteboard に書き込むと、Simulator ではハードウェアの ⌘A が効かなくなるためです（BE-0493） |
 | `copy` | 直前の `select` が画面に残した `app.staticTexts["Copy"]` の出現を `waitForExistence(timeout: 5.0)` で待ってからタップします。書き出したテストはドライバーのように選択し直さないので、`copy` を続けて 2 回行うには、2 回目の前にも `select` の手順が必要です |

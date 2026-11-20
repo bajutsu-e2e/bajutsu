@@ -108,7 +108,7 @@ the selector at `el("UNSUPPORTED_SELECTOR")`, an honest gap rather than a wrong 
 | `longPress` | `.press(forDuration: <sec>)` |
 | `type` (with `into`) | `el(id).tap()` + `.typeText(...)` |
 | `type` (no `into`) | `app.typeText(...)` |
-| `clear` | the `select` sequence below, then one `app.typeText(XCUIKeyboardKey.delete.rawValue)`. XCUIElement has no "clear" primitive, so select-all and delete is the faithful peer of the driver's own clear (BE-0265) |
+| `clear` | the `select` sequence below, then one `app.typeText(XCUIKeyboardKey.delete.rawValue)`. XCUIElement has no "clear" primitive, so select-all and delete is the faithful peer of the driver's own clear (BE-0265). An empty field offers no Select All, so the menu wait and the delete sit under an `if` rather than an `XCTAssertTrue`, and the step passes on an empty field as the driver's clear does |
 | `delete { count }` | `.tap()` + `count` delete keypresses (`typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count:))`, BE-0265) |
 | `select` | `.tap()`, a `.press(forDuration: 0.6)` unless `app.staticTexts["Select All"]` appears within a second, then a `waitForExistence(timeout: 5.0)` on that item and its `.tap()`. This is the edit menu, as the driver uses it: the hardware ⌘A stops working on a Simulator once another process writes the pasteboard (BE-0493) |
 | `copy` | a `waitForExistence(timeout: 5.0)` on `app.staticTexts["Copy"]`, the item the preceding `select` left on screen, and its `.tap()`. The exported test does not select again the way the driver does, so a second `copy` in a row needs the `select` sequence before it again |

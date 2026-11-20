@@ -27,10 +27,6 @@ class SelectionState:
 
     sel: Selector | None = None
 
-    @property
-    def active(self) -> bool:
-        return self.sel is not None
-
     def establish(self, sel: Selector) -> None:
         self.sel = sel
 

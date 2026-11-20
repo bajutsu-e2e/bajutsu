@@ -3434,9 +3434,20 @@ def test_select_all_fails_loudly_when_the_menu_offers_no_select_all(
 ) -> None:
     _fast_paste(monkeypatch)
     transport, sent = _paste_transport([_PASTE_ITEM])
-    with pytest.raises(base.ElementNotFound, match="Select All"):
+    with pytest.raises(base.ElementNotFound, match=r"^select: .*Select All"):
         _driver(transport).select_all({"id": "form.coupon"})
     assert sent == [_FIELD_TAP, _FIELD_PRESS]
+
+
+def test_copy_names_its_own_step_when_the_reselection_finds_no_select_all(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # `copy` re-selects through the shared Select All gesture; its failure must name `copy`, the step
+    # the scenario wrote, not a `select` that already succeeded.
+    _fast_paste(monkeypatch)
+    transport, _sent = _paste_transport([_PASTE_ITEM])
+    with pytest.raises(base.ElementNotFound, match=r"^copy: .*Select All"):
+        _driver(transport).copy_selection({"id": "form.coupon"})
 
 
 def test_select_all_never_takes_app_content_for_the_menu(monkeypatch: pytest.MonkeyPatch) -> None:

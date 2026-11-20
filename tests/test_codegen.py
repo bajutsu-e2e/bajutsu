@@ -75,10 +75,14 @@ def test_select_raises_the_edit_menu_then_taps_select_all() -> None:
     start = lines.index('el("form.note").tap()')
     assert lines[start : start + 4] == [
         'el("form.note").tap()',
-        'if !app.staticTexts["Select All"].waitForExistence(timeout: 1.0) '
-        '{ el("form.note").press(forDuration: 0.6) }',
-        'XCTAssertTrue(app.staticTexts["Select All"].waitForExistence(timeout: 5.0), '
-        '"wait for the edit menu Select All")',
+        (
+            'if !app.staticTexts["Select All"].waitForExistence(timeout: 1.0) '
+            '{ el("form.note").press(forDuration: 0.6) }'
+        ),
+        (
+            'XCTAssertTrue(app.staticTexts["Select All"].waitForExistence(timeout: 5.0), '
+            '"wait for the edit menu Select All")'
+        ),
         'app.staticTexts["Select All"].tap()',
     ]
 
@@ -87,8 +91,10 @@ def test_copy_taps_the_copy_item_the_select_left_up() -> None:
     code = _gen("- name: x\n  steps:\n    - select: { into: { id: form.note } }\n    - copy: {}\n")
     lines = [line.strip() for line in code.splitlines()]
     assert lines[lines.index('app.staticTexts["Select All"].tap()') + 1 :][:2] == [
-        'XCTAssertTrue(app.staticTexts["Copy"].waitForExistence(timeout: 5.0), '
-        '"wait for the edit menu Copy")',
+        (
+            'XCTAssertTrue(app.staticTexts["Copy"].waitForExistence(timeout: 5.0), '
+            '"wait for the edit menu Copy")'
+        ),
         'app.staticTexts["Copy"].tap()',
     ]
 
@@ -96,8 +102,14 @@ def test_copy_taps_the_copy_item_the_select_left_up() -> None:
 def test_clear_selects_through_the_menu_then_deletes_once() -> None:
     code = _gen("- name: x\n  steps:\n    - clear: { into: { id: form.note } }\n")
     lines = [line.strip() for line in code.splitlines()]
-    tapped = lines.index('app.staticTexts["Select All"].tap()')
-    assert lines[tapped + 1] == "app.typeText(XCUIKeyboardKey.delete.rawValue)"
+    guard = lines.index('if app.staticTexts["Select All"].waitForExistence(timeout: 5.0) {')
+    assert lines[guard + 1 : guard + 4] == [
+        'app.staticTexts["Select All"].tap()',
+        "app.typeText(XCUIKeyboardKey.delete.rawValue)",
+        "}",
+    ]
+    # An empty field offers no Select All: the exported clear skips the delete, never asserts.
+    assert "XCTAssertTrue" not in code
 
 
 def test_paste_taps_the_edit_menu_paste_item() -> None:

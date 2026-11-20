@@ -323,11 +323,17 @@ def _emit_step(step: Step) -> list[str]:  # noqa: C901, PLR0911, PLR0912
         # No XCUIElement "clear" primitive: select-all through the edit menu, then delete the whole
         # selection — the same sequence the driver actuates on a TEXT_SELECTION backend (BE-0265).
         # The delete goes to the app, not the element: typing into the element could tap it again,
-        # which ends the selection (BE-0493).
+        # which ends the selection (BE-0493). An empty field offers no Select All, so the delete is
+        # guarded instead of asserted: the driver's clear does nothing there either.
         target = _element(step.clear.into.as_selector())
+        item = 'app.staticTexts["Select All"]'
         return [
-            *_raise_edit_menu_item(target, "Select All"),
-            "app.typeText(XCUIKeyboardKey.delete.rawValue)",
+            f"{target}.tap()",
+            f"if !{item}.waitForExistence(timeout: 1.0) {{ {target}.press(forDuration: 0.6) }}",
+            f"if {item}.waitForExistence(timeout: 5.0) {{",
+            f"  {item}.tap()",
+            "  app.typeText(XCUIKeyboardKey.delete.rawValue)",
+            "}",
         ]
     if step.delete is not None:
         # Focus, then type the delete key `count` times — one native backspace per key (BE-0265).
