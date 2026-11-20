@@ -114,7 +114,7 @@ listener であるこのレスポンダには、送り出すだけの collector 
 
 ### Android: アクセシビリティフレームワーク自身のオンデマンド追加データ機構
 
-Android のアクセシビリティフレームワークは、`AccessibilityNodeInfo` を公開の Application Programming Interface（`API`）として公開しています。Android には、まさにこの種の問題向けの、公式かつ opt-in な機構がすでにあります。この側には、新しいチャネルは要りません。
+Android のアクセシビリティフレームワークは、`AccessibilityNodeInfo` を公開の Application Programming Interface（`API`）として提供しています。Android には、まさにこの種の問題向けの、公式かつ opt-in な機構がすでにあります。この側には、新しいチャネルは要りません。
 
 `View` は、[`addExtraDataToAccessibilityNodeInfo(AccessibilityNodeInfo, String, Bundle)`](https://developer.android.com/reference/android/view/View) をオーバーライドします。これで、アクセシビリティクライアントが既定では要求しないデータを付加できます。同じオーバーライドの中で、どの追加データキーに対応しているかを、`AccessibilityNodeInfo.setAvailableExtraData(List<String>)` を通じて宣言します。
 
@@ -161,7 +161,7 @@ Android のノードごとの `refreshWithExtraData` 往復は、そのノード
 
 **実装が完了した時点で、この節の見出しは Android 側の実態を言い過ぎています。** 突き合わせのための走査そのものは、ヘルパーを一度もリンクしていないアプリでも、`GET /source` のたびに走ります。`respondSource` には、木を実際に歩いてみるまで、opt-in したノードが 1 つもないと知る手立てがないからです。
 
-Unit 0 自身のコスト計測（後述）は、この走査を、常駐チャネルのウォームな `dumpWindowHierarchy` と同程度の重さだと示しています。そのため `nativeZ` を使わない Android の実行でも、読み取りごとのコストはおよそ倍になります。
+Unit 0 自身のコスト計測（前述）は、この走査を、常駐チャネルのウォームな `dumpWindowHierarchy` と同程度の重さだと示しています。そのため `nativeZ` を使わない Android の実行でも、読み取りごとのコストはおよそ倍になります。
 
 ここでは解消せず、既知の課題として残します。この節が本来約束していた opt-in のコストを取り戻す道は、この走査自体をゲートすることです。ゲートする信号は、`nativeZ` に opt-in したターゲットに対してのみ、ホストが送ります（`since=` をすでに読み取りごとに通しているのと同じ形）。ただしその配線は、後続の Unit が設計して仕上げるべきものであり、このレビューの場で即興に作るべきではありません。
 

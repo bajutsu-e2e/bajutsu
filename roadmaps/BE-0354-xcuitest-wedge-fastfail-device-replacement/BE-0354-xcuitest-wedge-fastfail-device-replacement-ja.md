@@ -45,11 +45,11 @@ recordVideo produced no new bytes in runs/20260809-233753/00-stable-catalog-smok
 
 その 15 秒後、runner チャネルは 3 分間続く連鎖に入りました。
 
-1. スクリーンショットの読み出しが、リトライ予算を超えてタイムアウトする。
-2. クラッシュ復旧層が、runner の health エンドポイントをポーリングする。
-3. health は答える。
-4. 復旧層が、読み出しを再発行する。
-5. その読み出しが、再びタイムアウトする。
+1. スクリーンショットの読み出しが、リトライ予算を超えてタイムアウトします。
+2. クラッシュ復旧層が、runner の health エンドポイントをポーリングします。
+3. health は答えます。
+4. 復旧層が、読み出しを再発行します。
+5. その読み出しが、再びタイムアウトします。
 
 ```
 runner channel GET /screenshot failed (attempt 1/3), retrying: timed out

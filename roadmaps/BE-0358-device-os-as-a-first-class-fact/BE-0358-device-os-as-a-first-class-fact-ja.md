@@ -56,10 +56,10 @@ flaky          runs=2 passed=1  native alert cancel leaves a distinct result
 
 この誤判定の下には、もっと素朴な欠落があります。**レポートより下では、OS バージョンをそもそも読めません。** バージョンは次の順に運ばれます。
 
-1. `simctl.runtime_label`（と adb 側の対応物）が文字列を作る。
-2. pool が文字列を `Lease` へ書き込む。
-3. pipeline が、シナリオの実行後に文字列を `RunResult` へ写す。
-4. レポート（Environment タブと CTRF 出力）と manifest が、文字列を消費する。
+1. `simctl.runtime_label`（と adb 側の対応物）が文字列を作ります。
+2. pool が文字列を `Lease` へ書き込みます。
+3. pipeline が、シナリオの実行後に文字列を `RunResult` へ写します。
+4. レポート（Environment タブと CTRF 出力）と manifest が、文字列を消費します。
 
 どのドライバもバージョンを受け取らず、解析済みの形も存在せず、バージョンを比較する補助関数もリポジトリのどこにもありません。実測した OS 差にぶつかったドライバは、分岐するにせよ失敗にそう書くにせよ、いま自分がどの OS の上にいるかを名指す手段を持っていません。
 
@@ -96,9 +96,9 @@ manifest は、シナリオごとの項目に `device_runtime` をすでに持�
 
 **OS はキーだけでなく出力にも届かなければなりません。** グループを分けるのは、修正の半分です。いまの出力は OS を持ちません。
 
-- `ScenarioHistory` は、`scenario_hash` と名前と件数しか持たない。
-- `render_longitudinal` は、名前と分類しか印字しない。
-- ホスト側の `FlakyScenario` も、同じ形である。
+- `ScenarioHistory` は、`scenario_hash` と名前と件数しか持ちません。
+- `render_longitudinal` は、名前と分類しか印字しません。
+- ホスト側の `FlakyScenario` も、同じ形です。
 
 したがって、OS で分かれた 2 つの履歴は、名前もハッシュも同じで区別の手がかりがない 2 行として並びます。`--json` も同じだけ曖昧になります。どちらのソートキーもこの組では同点になるので、順序は入力順まかせです。
 

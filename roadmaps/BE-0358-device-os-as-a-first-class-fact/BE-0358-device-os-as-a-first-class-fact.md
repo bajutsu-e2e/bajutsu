@@ -26,7 +26,7 @@ We propose three changes:
 
 - a small parsed type;
 - its use as part of the grouping key in both flakiness surfaces;
-- one channel that hands the parsed version to the driver, so that a decision which must differ by
+- one channel that hands the parsed version to the driver, so that a decision that must differ by
   OS has somewhere to read the version instead of having no access to it.
 
 ## Motivation

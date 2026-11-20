@@ -17,7 +17,7 @@
 
 The resident XCUITest runner already recognizes a `UIPickerView`/`UIDatePicker` wheel as an
 element: `typeName(_:)` classifies it as `pickerWheel`
-(`BajutsuKit/Runner/Sources/XcuitestElementProvider.swift`). No step can set its value, however.
+(`BajutsuKit/Runner/Sources/XcuitestElementProvider.swift`). However, no step can set its value.
 This item adds `setPickerValue`, a step that moves a picker wheel to an exact value the way
 XCUITest's own `XCUIElement.adjust(toPickerWheelValue:)` does. The step closes the one gap left in
 wheel-style picker automation on the XCUITest backend.

@@ -324,8 +324,8 @@ On iOS, the driver gets a connection refused. If a socket opens and never answer
 connect or read timeout that Unit 0 fixes. Either way, `nativeZ` stays `None`.
 That is the degrade that `RawSourceProvider` gives a backend that never implements it. iOS cannot tell an uninstrumented app
 apart without attempting the connection. The driver caches that first failure for the session and stops probing.
-A non-cooperating app thus pays the timeout once rather than on every `/elements` query. This keeps the read "bounded and synchronous".
-*Prime directives preserved* below claims that.
+A non-cooperating app thus pays the timeout once rather than on every `/elements` query. That one
+probe is what *Prime directives preserved* below means by a "bounded and synchronous" read.
 
 On Android, the per-node `refreshWithExtraData` round trip is gated.
 The gate is that the node already advertises the Bajutsu key in `getAvailableExtraData()`. The tree walk of an uninstrumented app pays one cheap existence check per node.
@@ -338,9 +338,8 @@ resident-channel motivation of
 and records the result in this section before Units 2 and 3 land.
 
 **As shipped, the title of this section overstates Android's half.**
-The reconciling walk itself runs on every `GET /source`.
-The per-node call is not the only part that runs.
-That includes an app that never linked the helper.
+The reconciling walk itself, and not merely the per-node call, runs on every `GET /source`. The
+walk runs even for an app that never linked the helper.
 `respondSource` cannot know in advance that a tree carries no opted-in node without walking it.
 
 The cost measurement of Unit 0 (above) puts that walk in the same order as the warm

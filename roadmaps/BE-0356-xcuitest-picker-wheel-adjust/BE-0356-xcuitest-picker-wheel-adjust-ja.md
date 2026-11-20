@@ -45,8 +45,8 @@ XCUITest 自身は、この問題を `XCUIElement.adjust(toPickerWheelValue:)` �
 
 **スキーマ。** `Step`（`bajutsu/scenario/models/steps.py`）は判別共用体ではありません。すべてのアクションが optional field として並び、`_one_action` が「ちょうど1つだけ設定されていること」を強制します。必要なスキーマ変更は次の2つだけです。
 
-- `bajutsu/scenario/models/actions.py` に、既存の `Drag` や `Swipe` と同じパターンで `SetPickerValue(sel: Selector, value: str)` を定義する。
-- `Step` に `set_picker_value` フィールドを1つ追加する。
+- `bajutsu/scenario/models/actions.py` に、既存の `Drag` や `Swipe` と同じパターンで `SetPickerValue(sel: Selector, value: str)` を定義します。
+- `Step` に `set_picker_value` フィールドを1つ追加します。
 
 次の5か所は、このフィールドから自動的に追従します。
 

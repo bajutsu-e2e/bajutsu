@@ -37,8 +37,8 @@ straight back.
 
 Two layers engage: the channel's in-place recovery and the erase-forcing retry. Each spends its
 full budget proving a dead end. One remedy changes more than the device's data: a replacement.
-The mid-run path never reaches it. The job then fails with no scenario verdict.
-It first spends ten minutes or more on machinery that cannot work.
+The mid-run path never reaches it. The job spends ten minutes or more on machinery that cannot
+work, then fails with no scenario verdict.
 
 This item makes the recovery stack classify that dead end in seconds.
 It lands the retry on a device that can serve it. It has four parts.
@@ -55,10 +55,9 @@ The same idempotent call times out on every re-issue. The channel fails over to 
   machinery that
   [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery.md) built for a
   vanished device.
-- The evidence layer already detects a screen-capture stall.
-The stall appears as the recording file confirmation timing out.
-It selects that rung directly. The stall identifies the degradation class that an erase
-  was observed not to clear.
+- The evidence layer already detects a screen-capture stall. The stall appears as the recording
+  file confirmation timing out. The stall selects the replacement rung directly, because it
+  identifies the degradation class that an erase was observed not to clear.
 
 ## Motivation
 
@@ -97,8 +96,8 @@ observed that case mid-gesture. Here the loop rode out three full recovery cycle
 timeout ladder plus a health wait. The session was never going to serve the read.
 The device's screen-capture pipeline had wedged underneath a runner whose HTTP server was fine.
 
-The signal that separates the two cases was present from the first cycle. A *recovered* runner may time out again on the very next re-issue of the same idempotent call.
-Such a runner is not flapping.
+The signal that separates the two cases was present from the first cycle. A *recovered* runner that
+times out again on the very next re-issue of the same idempotent call is not flapping.
 It is wedged. Three minutes after the first timeout, the channel finally gave up.
 The crash recovery of the pipeline took over.
 
