@@ -86,8 +86,6 @@ fun PermissionsScreen(model: AppModel) {
             Modifier.verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text("Banner target taps: $bannerTaps", Modifier.aid("perm.bannerTaps").stateValue(bannerTaps.toString()))
-
             Text("Notifications", style = MaterialTheme.typography.titleMedium)
             // Raises the POST_NOTIFICATIONS runtime dialog (out-of-process — the alert-guard fixture).
             TextButton(onClick = { notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) }, modifier = Modifier.aid("perm.requestNotif")) {
@@ -97,11 +95,6 @@ fun PermissionsScreen(model: AppModel) {
             if (model.notifStatus == "authorized") {
                 // A positive condition the run can wait for once granted.
                 Text("Granted", Modifier.aid("perm.notif.authorized"))
-            }
-            // Posts on a high-importance channel, which SystemUI presents as a heads-up notification
-            // over the top of this screen (BE-0496).
-            TextButton(onClick = { postHeadsUp(context) }, modifier = Modifier.aid("perm.postNotif")) {
-                Text("Post Notification")
             }
 
             Text("Location", style = MaterialTheme.typography.titleMedium)
@@ -140,6 +133,17 @@ fun PermissionsScreen(model: AppModel) {
                 Text("Open Photo Picker (Single)")
             }
             Text("Selected: ${model.selectedPhotoCount}", Modifier.aid("perm.photos.value").stateValue(model.selectedPhotoCount.toString()))
+
+            // The banner fixture's controls come last (BE-0496), so they add nothing above the Photos
+            // section: the picker's return can scroll this column back to its top, where the photo
+            // count has to stay in view for the select_photos scenarios that wait on it.
+            Text("Banner", style = MaterialTheme.typography.titleMedium)
+            // Posts on a high-importance channel, which SystemUI presents as a heads-up notification
+            // over the top of this screen (BE-0496).
+            TextButton(onClick = { postHeadsUp(context) }, modifier = Modifier.aid("perm.postNotif")) {
+                Text("Post Notification")
+            }
+            Text("Banner target taps: $bannerTaps", Modifier.aid("perm.bannerTaps").stateValue(bannerTaps.toString()))
         }
     }
 }
