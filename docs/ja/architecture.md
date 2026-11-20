@@ -87,10 +87,10 @@ flowchart TB
 | `common/drivers/actuation` | `Actuation`/`ActuationLog` です。各ドライバがステップの結果へ書き足す、具体的なジェスチャーの記録です。座標、経路、プラットフォームが受理したかを持ちます。`actionLog` 証跡種別を支えます（BE-0345）。 | [evidence](evidence.md#各ステップが画面に対して実際に行ったことactionlog) |
 | `common/drivers/coordinate_tree.py` | `CoordinateTreeDriver` です。座標系のバックエンド（adb）が継承する共有基底クラスです（BE-0254）。一時的な空ツリーへのリトライ、安定キーによる settle、`_resolve`、`wait_for` を提供します。 | [drivers](drivers.md#adbandroid) |
 | `common/drivers/fake` | インメモリの `FakeDriver`（実機不要テスト用） | [drivers](drivers.md#fakedriver) |
-| `common/drivers/xcuitest` | XCUITest バックエンド（iOS）です。BE-0290 で idb を撤去して以来、iOS の唯一の backend です。実機上に常駐する runner が、semantic tap / ネイティブ条件待ち / テキスト選択 / multi-touch を提供します（BE-0019）。 | [drivers](drivers.md#xcuitestios) |
+| `common/drivers/xcuitest` | XCUITest バックエンド（iOS）です。BE-0290 で idb を撤去して以来、iOS の唯一の backend です。実機上に常駐する runner が、semantic tap / ネイティブ条件待ち / multi-touch を提供します（BE-0019）。テキスト選択は、ドライバがシステムの編集メニューへのタップから組み立てます（BE-0493）。 | [drivers](drivers.md#xcuitestios) |
 | `common/drivers/adb` | adb バックエンド（Android）です。`tap`/`long_press`/`double_tap` は、resident server の `POST /act` で端末側にて解決し、inject します。channel が使えないときは、`uiautomator dump` による frame 中心の座標 tap にフォールバックします（BE-0339）。 | [drivers](drivers.md#adbandroid) |
 | `common/drivers/playwright` | Playwright web バックエンド（ブラウザ）です。第一段で、決定的 run を扱います。 | [drivers](drivers.md#playwrightweb) |
-| `common/drivers/xcuitest_live` | live-route の XCUITest ドライバです。常駐 runner のチャネルの代わりに、予約済みのデバイスクラウド上の iOS デバイスを W3C WebDriver（Appium の XCUITest ドライバ）で駆動します。`appium` デバイスプロバイダ向けです（BE-0238）。実装済みなのは、セッションのライフサイクル、query/tap/screenshot/readiness、ジェスチャ、テキスト入力です。`selectAll`/`copy` は Appium 側に相当機能がなく、明示的に失敗します。`paste` も、編集メニューを使う組み合わせをこの経路に配線していないため、明示的に失敗します。実デバイスクラウドのグリッドに対する検証は未了です（[BE-0303](../../roadmaps/BE-0303-xcuitest-live-real-grid-verification/BE-0303-xcuitest-live-real-grid-verification-ja.md)）。 | — |
+| `common/drivers/xcuitest_live` | live-route の XCUITest ドライバです。常駐 runner のチャネルの代わりに、予約済みのデバイスクラウド上の iOS デバイスを W3C WebDriver（Appium の XCUITest ドライバ）で駆動します。`appium` デバイスプロバイダ向けです（BE-0238）。実装済みなのは、セッションのライフサイクル、query/tap/screenshot/readiness、ジェスチャ、テキスト入力です。`select`、`copy`、`paste` は明示的に失敗します。ローカルのドライバはこの 3 つをシステムの編集メニューへのタップから組み立てますが、その組み立てをこの経路には配線していないためです（BE-0493）。実デバイスクラウドのグリッドに対する検証は未了です（[BE-0303](../../roadmaps/BE-0303-xcuitest-live-real-grid-verification/BE-0303-xcuitest-live-real-grid-verification-ja.md)）。 | — |
 | `common/drivers/elements.py` | 正規化済み要素ツリーに対する、プラットフォーム非依存の述語と幾何ヘルパー（`screen_size_from_elements`、`shows_app_ui`）です。assertions、crawl、runner パイプライン、record が共有します。 | [drivers](drivers.md) |
 | `common/drivers/dom.py` | DOM → `Element` の正規化です。Playwright バックエンドと WebView ブリッジが共有します。 | [drivers](drivers.md#playwrightweb) |
 | `common/drivers/web_network.py` | web のネットワーク観測です。Playwright 側の `Collector` が、`requestfinished` を iOS 側と同じ `NetworkExchange` モデルへ橋渡しします。`page.route` によるプロセス内 mock スタブも持ちます。 | [drivers](drivers.md#playwrightweb) |
@@ -384,7 +384,7 @@ iOS 側の対になるジョブ `pool (xcuitest)` は、Simulator を 2 台起�
   - `--backend` はフォールバックのリストではなく検査です。受け付けるのは、target のプラットフォーム、その actuator、`fake` のいずれかです。それ以外の値では終了コード 2 で終了します（BE-0452）。
   - actuator を複数持つプラットフォームであれば、**シナリオごと**にコスト順で解決します（BE-0240）。iOS が単一 actuator になった今、どのプラットフォームもコスト順と安定度順が食い違いません。
 - **XCUITest バックエンド**（`common/drivers/xcuitest`）は、iOS の唯一の actuator です（BE-0290）。実機上に常駐する runner（`BajutsuKit`）を loopback HTTP 経由で駆動します。
-  - runner は、semantic（identifier）tap、ネイティブの条件待ち、テキスト選択、`pinch`/`rotate` の multi-touch ジェスチャを提供します。
+  - runner は、semantic（identifier）tap、ネイティブの条件待ち、`pinch`/`rotate` の multi-touch ジェスチャを提供します。テキスト選択は、ドライバがその tap を組み合わせ、システムの編集メニューから行います（BE-0493）。
   - runner は XCTest のオートメーションスナップショットを読み取ります。このスナップショットはグループコンテナの内側まで降りるので、座標系 backend と違って完全に展開された要素ツリーを描き出します。
   - 汎用の runner（`XCUIApplication(bundleIdentifier:)`）は、アプリ側の統合なしに任意のアプリを bundle id で駆動します。Xcode の `xcodebuild` を必要とします（BE-0019）。
   - Simulator を対象にした target は、runner の設定を必要としません。`driver.runner.testRunner` と `driver.runner.build` のどちらも指定しないときは、wheel にパッケージデータとして同梱された Simulator 用 runner に解決します。初回利用時に、コンテンツハッシュ鍵の書き込み可能なキャッシュへ展開します。明示的な `testRunner` や `build` は、この既定より優先します（BE-0292）。

@@ -174,15 +174,20 @@ def _do_clear(driver: base.Driver, step: Step, _r: object, _c: object, _b: objec
     # The `value` read only decides whether there's anything to clear (BE-0265) — nothing to delete
     # on an empty field.
     current = base.resolve_unique(driver.query(), sel)["value"] or ""
-    _tap_with_recovery(lambda: driver.tap(sel), driver, sel)
+    selects = bool(current) and base.Capability.TEXT_SELECTION in driver.capabilities()
+    if not selects:
+        # The counted backspace run below acts on whichever field has focus, so focus this one.
+        _tap_with_recovery(lambda: driver.tap(sel), driver, sel)
     if not current:
         return
-    if base.Capability.TEXT_SELECTION in driver.capabilities():
+    if selects:
         # Select the field's whole content, then backspace once: a backspace with an active
         # selection removes the selection, so this is correct regardless of where the focusing tap
         # actually lands the caret — unlike backspacing `len(current)` times, which assumed the tap
         # moves the caret to the end (a caret placed mid-string could leave a remainder undeleted).
-        driver.select_all()
+        # `select_all` focuses the field itself: on iOS a separate focusing tap would already raise
+        # the edit menu it drives (BE-0493).
+        _tap_with_recovery(lambda: driver.select_all(sel), driver, sel)
         driver.delete_text(1)
         # The select-all's effect is unverifiable from here and a chord the platform maps elsewhere
         # would leave the field all but untouched, so confirm and finish with the counted run rather
@@ -206,18 +211,11 @@ def _do_delete(driver: base.Driver, step: Step, _r: object, _c: object, _b: obje
 @_handler("select")
 def _do_select(driver: base.Driver, step: Step, _r: object, _c: object, _b: object) -> None:
     assert step.select is not None
-    # `mode` is always "all" for now (BE-0265): focus the field, then platform select-all.
+    # `mode` is always "all" for now (BE-0265). The driver focuses the field itself, like `paste`: on
+    # iOS a separate focusing tap would raise the edit menu before the driver counts its labels
+    # (BE-0493).
     sel = step.select.into.as_selector()
-    _tap_with_recovery(lambda: driver.tap(sel), driver, sel)
-    driver.select_all()
-
-
-@_handler("copy_")
-def _do_copy(driver: base.Driver, step: Step, _r: object, _c: object, _b: object) -> None:
-    # The "is a selection live?" precondition is enforced in `_do_action` (uniform across backends);
-    # here we just actuate the platform copy of whatever `select` left selected.
-    assert step.copy_ is not None
-    driver.copy_selection()
+    _tap_with_recovery(lambda: driver.select_all(sel), driver, sel)
 
 
 @_handler("paste")

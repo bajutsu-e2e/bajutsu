@@ -1058,16 +1058,12 @@ def test_delete_text_arms_the_read_barrier(monkeypatch: pytest.MonkeyPatch) -> N
     assert driver._catchup is None
 
 
-def test_select_all_is_ctrl_a_keycombination() -> None:
-    # Ctrl(113)+A(29) chord — the editor "select all" shortcut on a focused field (BE-0265).
+def test_select_all_focuses_the_field_then_sends_ctrl_a() -> None:
+    # The driver focuses the field (BE-0493), then a Ctrl(113)+A(29) chord selects its content
+    # (BE-0265).
     calls: list[list[str]] = []
-
-    def run(args: list[str]) -> str:
-        calls.append(args)
-        return ""
-
-    AdbDriver("U", run=run).select_all()
-    assert calls == [["adb", "-s", "U", "shell", "input", "keycombination", "113", "29"]]
+    AdbDriver("U", run=_root_touch_run(calls)).select_all({"id": "stable_refresh"})
+    assert calls[-1] == ["adb", "-s", "U", "shell", "input", "keycombination", "113", "29"]
 
 
 def test_copy_selection_is_ctrl_c_keycombination() -> None:
@@ -1078,7 +1074,7 @@ def test_copy_selection_is_ctrl_c_keycombination() -> None:
         calls.append(args)
         return ""
 
-    AdbDriver("U", run=run).copy_selection()
+    AdbDriver("U", run=run).copy_selection({"id": "f"})
     assert calls == [["adb", "-s", "U", "shell", "input", "keycombination", "113", "31"]]
 
 
@@ -2386,8 +2382,8 @@ def test_every_actuator_invalidates_the_cached_tree() -> None:
         lambda d: d.pinch({"id": "stable_refresh"}, 2.0),
         lambda d: d.rotate({"id": "stable_refresh"}, 1.0),
         lambda d: d.delete_text(2),
-        lambda d: d.select_all(),
-        lambda d: d.copy_selection(),
+        lambda d: d.select_all({"id": "stable_refresh"}),
+        lambda d: d.copy_selection({"id": "stable_refresh"}),
         lambda d: d.paste({"id": "stable_refresh"}),
     ]
     for actuate in actuations:

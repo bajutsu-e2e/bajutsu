@@ -153,6 +153,27 @@ def test_clear_with_no_reported_value_deletes_nothing() -> None:
     assert [a[0] for a in actions] == ["tap"]
 
 
+def test_copy_reaches_the_field_its_select_named() -> None:
+    # iOS copies by raising the edit menu on the selected field again, so `copy` hands the driver
+    # the selector of the `select` that established the selection (BE-0493).
+    ok, actions, failure = _run(
+        "    - select: { into: { id: form.note } }\n    - copy: {}\n",
+        [_field("form.note", "hello")],
+    )
+    assert ok, failure
+    assert actions[-1] == ("copy_selection", {"id": "form.note"})
+
+
+def test_select_leaves_the_focusing_tap_to_the_driver() -> None:
+    # One tap, the driver's own: a separate focusing tap in the handler would raise the iOS edit
+    # menu before the driver counts its labels (BE-0493).
+    ok, actions, failure = _run(
+        "    - select: { into: { id: form.note } }\n", [_field("form.note", "hello")]
+    )
+    assert ok, failure
+    assert [a[0] for a in actions] == ["tap", "select_all"]
+
+
 def test_one_selection_can_be_copied_twice() -> None:
     ok, actions, failure = _run(
         "    - select: { into: { id: form.note } }\n    - copy: {}\n    - copy: {}\n",

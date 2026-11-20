@@ -639,7 +639,7 @@ def test_step_select_then_copy_share_one_persistent_selection() -> None:
     assert session.dispatch("step {select: {into: {id: stable.text}}}") == ["ran step: select"]
     assert session.dispatch("step {copy: {}}") == ["ran step: copy"]
     assert ("select_all", None) in driver.actions
-    assert ("copy_selection", None) in driver.actions
+    assert ("copy_selection", {"id": "stable.text"}) in driver.actions
 
 
 def test_yaml_key_returns_the_alias_where_the_python_field_name_differs() -> None:

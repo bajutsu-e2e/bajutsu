@@ -231,6 +231,33 @@ def _count_expr(sel: base.Selector) -> str:
     return f"{query}.count" if query is not None else "0"
 
 
+def _await_and_tap_edit_menu_item(label: str) -> list[str]:
+    """Wait for the edit menu's `label` item, then tap it (BE-0489, BE-0493).
+
+    The driver waits for the item too; `tap()` itself carries no existence wait. The label is the
+    English one; an app localized elsewhere renders its own.
+    """
+    item = f"app.staticTexts[{_s(label)}]"
+    return [
+        f'XCTAssertTrue({item}.waitForExistence(timeout: 5.0), "wait for the edit menu {label}")',
+        f"{item}.tap()",
+    ]
+
+
+def _raise_edit_menu_item(target: str, label: str) -> list[str]:
+    """Raise the edit menu on the field `target`, then tap its `label` item (BE-0489, BE-0493).
+
+    A tap on an already-focused field raises the menu itself, so long-press only when it has not:
+    a second tap reads as a double-tap on a UIKit field.
+    """
+    item = f"app.staticTexts[{_s(label)}]"
+    return [
+        f"{target}.tap()",
+        f"if !{item}.waitForExistence(timeout: 1.0) {{ {target}.press(forDuration: 0.6) }}",
+        *_await_and_tap_edit_menu_item(label),
+    ]
+
+
 # One branch per scenario step kind: the count tracks the schema's size, not tangled logic, and a
 # split would leave no single place a new scenario step kind clearly belongs (BE-0386).
 def _emit_step(step: Step) -> list[str]:  # noqa: C901, PLR0911, PLR0912
@@ -293,13 +320,14 @@ def _emit_step(step: Step) -> list[str]:  # noqa: C901, PLR0911, PLR0912
             lines.append(f"app.typeText({_s(step.type.text)})")
         return lines
     if step.clear is not None:
-        # No XCUIElement "clear" primitive: focus, select-all, then delete the whole selection —
-        # the same sequence the runner's driver actuates on a TEXT_SELECTION backend (BE-0265).
+        # No XCUIElement "clear" primitive: select-all through the edit menu, then delete the whole
+        # selection — the same sequence the driver actuates on a TEXT_SELECTION backend (BE-0265).
+        # The delete goes to the app, not the element: typing into the element could tap it again,
+        # which ends the selection (BE-0493).
         target = _element(step.clear.into.as_selector())
         return [
-            f"{target}.tap()",
-            f'{target}.typeKey("a", modifierFlags: .command)',
-            f"{target}.typeText(XCUIKeyboardKey.delete.rawValue)",
+            *_raise_edit_menu_item(target, "Select All"),
+            "app.typeText(XCUIKeyboardKey.delete.rawValue)",
         ]
     if step.delete is not None:
         # Focus, then type the delete key `count` times — one native backspace per key (BE-0265).
@@ -310,22 +338,17 @@ def _emit_step(step: Step) -> list[str]:  # noqa: C901, PLR0911, PLR0912
             f"count: {step.delete.count}))",
         ]
     if step.select is not None:
-        # Focus, then Cmd+A selects the whole field (BE-0265).
-        target = _element(step.select.into.as_selector())
-        return [f"{target}.tap()", f'{target}.typeKey("a", modifierFlags: .command)']
+        # The edit menu's Select All, as the driver taps it: Cmd+A stops working once another process
+        # writes the pasteboard (BE-0493).
+        return _raise_edit_menu_item(_element(step.select.into.as_selector()), "Select All")
     if step.copy_ is not None:
-        return ['app.typeKey("c", modifierFlags: .command)']
+        # The Copy item the preceding `select` left on screen. Unlike the driver, the exported test
+        # does not select again, so a second `copy` in a row needs the `select` before it again.
+        return _await_and_tap_edit_menu_item("Copy")
     if step.paste is not None:
         # The edit menu's Paste, as the driver taps it: Cmd+V pastes nothing from another process's
-        # clipboard. A tap on an already-focused field raises the menu itself, so long-press only when
-        # it has not (a second tap reads as a double-tap on a UIKit field). The label is the English
-        # one; an app localized elsewhere renders its own.
-        target = _element(step.paste.into.as_selector())
-        paste_item = 'app.staticTexts["Paste"]'
-        raise_menu = f"if !{paste_item}.waitForExistence(timeout: 1.0) {{ {target}.press(forDuration: 0.6) }}"
-        # The driver waits for the menu's item too; `tap()` itself carries no existence wait.
-        await_item = f'XCTAssertTrue({paste_item}.waitForExistence(timeout: 5.0), "wait for the edit menu Paste")'
-        return [f"{target}.tap()", raise_menu, await_item, f"{paste_item}.tap()"]
+        # clipboard (BE-0489).
+        return _raise_edit_menu_item(_element(step.paste.into.as_selector()), "Paste")
     if step.sleep is not None:
         return [
             sleep_comment(step.sleep.reason),

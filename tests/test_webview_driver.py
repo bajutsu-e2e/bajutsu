@@ -131,9 +131,9 @@ def test_unsupported_actions_raise() -> None:
     with pytest.raises(base.UnsupportedAction):
         driver.delete_text(1)  # BE-0265: text-editing steps unsupported in the web context yet
     with pytest.raises(base.UnsupportedAction):
-        driver.select_all()
+        driver.select_all({"id": "f"})
     with pytest.raises(base.UnsupportedAction):
-        driver.copy_selection()
+        driver.copy_selection({"id": "f"})
     with pytest.raises(base.UnsupportedAction):
         driver.paste({"id": "f"})
     with pytest.raises(base.UnsupportedAction):

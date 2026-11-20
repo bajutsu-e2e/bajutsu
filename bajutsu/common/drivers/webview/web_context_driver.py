@@ -141,10 +141,10 @@ class WebContextDriver:
     def delete_text(self, count: int) -> None:  # noqa: ARG002  # Driver shape
         raise UnsupportedAction("delete/clear is not supported in web context (first slice)")
 
-    def select_all(self) -> None:
+    def select_all(self, sel: Selector) -> None:  # noqa: ARG002  # Driver shape
         raise UnsupportedAction("select is not supported in web context (first slice)")
 
-    def copy_selection(self) -> None:
+    def copy_selection(self, sel: Selector) -> None:  # noqa: ARG002  # Driver shape
         raise UnsupportedAction("copy is not supported in web context (first slice)")
 
     def paste(self, sel: Selector) -> None:  # noqa: ARG002  # Driver shape

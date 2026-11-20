@@ -41,8 +41,6 @@ final class RouterConcurrencyTests: XCTestCase {
         func screenSize() -> (width: Double, height: Double) { (390, 844) }
         func typeText(_ text: String) -> TapResult { .ok }
         func deleteText(count: Int) -> TapResult { .ok }
-        func selectAll() -> TapResult { .ok }
-        func copySelection() -> TapResult { .ok }
         func setPickerValue(backingElement: AnyObject, value: String) -> TapResult { .ok }
         func querySystemAlertButtons() -> [ElementSnapshot] { [] }
         func tapSystemAlertButton(backingElement: AnyObject) -> TapResult { .ok }

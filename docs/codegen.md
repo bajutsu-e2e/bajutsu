@@ -108,11 +108,11 @@ the selector at `el("UNSUPPORTED_SELECTOR")`, an honest gap rather than a wrong 
 | `longPress` | `.press(forDuration: <sec>)` |
 | `type` (with `into`) | `el(id).tap()` + `.typeText(...)` |
 | `type` (no `into`) | `app.typeText(...)` |
-| `clear` | `.tap()` + select-all (`typeKey("a", modifierFlags: .command)`) + delete — no XCUIElement "clear" primitive, so focus/select-all/delete is the faithful peer of the runner's own clear (BE-0265) |
+| `clear` | the `select` sequence below, then one `app.typeText(XCUIKeyboardKey.delete.rawValue)`. XCUIElement has no "clear" primitive, so select-all and delete is the faithful peer of the driver's own clear (BE-0265) |
 | `delete { count }` | `.tap()` + `count` delete keypresses (`typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count:))`, BE-0265) |
-| `select` | `.tap()` + select-all (BE-0265) |
-| `copy` | `app.typeKey("c", modifierFlags: .command)` |
-| `paste` | `.tap()`, a `.press(forDuration: 0.6)` unless the edit menu is already up, then a `waitForExistence(timeout: 5.0)` on `app.staticTexts["Paste"]` and its `.tap()` — the edit menu, as the driver uses it; the label is English, so an app localized elsewhere needs its own |
+| `select` | `.tap()`, a `.press(forDuration: 0.6)` unless `app.staticTexts["Select All"]` appears within a second, then a `waitForExistence(timeout: 5.0)` on that item and its `.tap()`. This is the edit menu, as the driver uses it: the hardware ⌘A stops working on a Simulator once another process writes the pasteboard (BE-0493) |
+| `copy` | a `waitForExistence(timeout: 5.0)` on `app.staticTexts["Copy"]`, the item the preceding `select` left on screen, and its `.tap()`. The exported test does not select again the way the driver does, so a second `copy` in a row needs the `select` sequence before it again |
+| `paste` | `.tap()`, a `.press(forDuration: 0.6)` unless the edit menu is already up, then a `waitForExistence(timeout: 5.0)` on `app.staticTexts["Paste"]` and its `.tap()` — the edit menu, as the driver uses it. The `select`, `copy`, and `paste` labels are English, so an app localized elsewhere needs its own |
 | `back` | taps the OS navigation back button — the same element (and shared constant) the XCUITest driver taps at run time (BE-0210) |
 | `navigate` | `// TODO: navigate(url: …) — web-only; not generated` (BE-0464) |
 | `openUrl` | `app.open(URL(string: "<url>")!)` inside `if #available(iOS 16.4, *)`, with an `XCTFail` on an earlier system — the call the runner's `/app/openUrl` route makes; a value with a `${...}` token becomes a `// TODO` (BE-0487) |

@@ -106,11 +106,11 @@ final class ComponentsUITests: XCTestCase {
 | `longPress` | `.press(forDuration: <sec>)` |
 | `type`（`into` あり） | `el(id).tap()` + `.typeText(...)` |
 | `type`（`into` なし） | `app.typeText(...)` |
-| `clear` | `.tap()` + 全選択（`typeKey("a", modifierFlags: .command)`）+ 削除。XCUIElement には「clear」の基本操作が無いため、フォーカス→全選択→削除で runner 自身の clear（BE-0265）を忠実に再現します |
+| `clear` | 下の `select` と同じ手順のあと、`app.typeText(XCUIKeyboardKey.delete.rawValue)` を 1 回送ります。XCUIElement には「clear」の基本操作がないため、全選択と削除の組み合わせでドライバー自身の clear（BE-0265）を忠実に再現します |
 | `delete { count }` | `.tap()` + 削除キーを `count` 回（`typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count:))`、BE-0265） |
-| `select` | `.tap()` + 全選択（BE-0265） |
-| `copy` | `app.typeKey("c", modifierFlags: .command)` |
-| `paste` | `.tap()` のあと、編集メニューがまだ出ていなければ `.press(forDuration: 0.6)` で長押しを加え、`app.staticTexts["Paste"]` の出現を `waitForExistence(timeout: 5.0)` で待ってからタップし、編集メニューから貼り付けます。ドライバーと同じ方法です。ラベルは英語なので、ほかの言語にローカライズしたアプリでは書き換えが必要です |
+| `select` | `.tap()` のあと、1 秒以内に `app.staticTexts["Select All"]` が現れなければ `.press(forDuration: 0.6)` で長押しを加え、その項目の出現を `waitForExistence(timeout: 5.0)` で待ってからタップします。ドライバーと同じく編集メニューを使います。別のプロセスが pasteboard に書き込むと、Simulator ではハードウェアの ⌘A が効かなくなるためです（BE-0493） |
+| `copy` | 直前の `select` が画面に残した `app.staticTexts["Copy"]` の出現を `waitForExistence(timeout: 5.0)` で待ってからタップします。書き出したテストはドライバーのように選択し直さないので、`copy` を続けて 2 回行うには、2 回目の前にも `select` の手順が必要です |
+| `paste` | `.tap()` のあと、編集メニューがまだ出ていなければ `.press(forDuration: 0.6)` で長押しを加え、`app.staticTexts["Paste"]` の出現を `waitForExistence(timeout: 5.0)` で待ってからタップし、編集メニューから貼り付けます。ドライバーと同じ方法です。`select`、`copy`、`paste` のラベルは英語なので、ほかの言語にローカライズしたアプリでは書き換えが必要です |
 | `back` | OS のナビゲーション戻るボタンを tap します。XCUITest ドライバが実行時に tap するのと同じ要素（共有定数、BE-0210） |
 | `navigate` | `// TODO: navigate(url: …) — web-only; not generated`（BE-0464） |
 | `openUrl` | `if #available(iOS 16.4, *)` の中の `app.open(URL(string: "<url>")!)`。それより前のシステムでは `XCTFail` にします。ランナーの `/app/openUrl` ルートと同じ呼び出しです。`${...}` トークンを含む値は `// TODO` になります（BE-0487） |

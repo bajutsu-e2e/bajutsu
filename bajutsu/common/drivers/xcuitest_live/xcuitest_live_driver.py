@@ -327,13 +327,13 @@ class XcuitestLiveDriver:
         self._actuations.record(Actuation(gesture="deleteText", via="focused", unit=_UNIT))
         self._client.send_keys(self._client.active_element(), BACKSPACE_KEY * count)
 
-    def select_all(self) -> None:
+    def select_all(self, sel: base.Selector) -> None:  # noqa: ARG002  # Driver shape
         raise base.UnsupportedAction(
             "selectAll is not reachable over the live Appium / WebDriver route (BE-0238); it has no "
             "first-class XCUITest command"
         )
 
-    def copy_selection(self) -> None:
+    def copy_selection(self, sel: base.Selector) -> None:  # noqa: ARG002  # Driver shape
         raise base.UnsupportedAction(
             "copy is not reachable over the live Appium / WebDriver route (BE-0238); it has no "
             "first-class XCUITest command"

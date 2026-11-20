@@ -21,10 +21,10 @@ Two pieces live here, both faked at the network boundary so no grid is needed on
 Slice A landed session lifecycle, `query` / `tap` / `screenshot` / readiness. Slice B wires input and
 gestures onto Appium's XCUITest `mobile:` commands (over `POST /execute/sync`), the driver's native
 counterparts of the local runner's semantic endpoints: a coordinate tap, double tap, touch-and-hold,
-drag, pinch, and rotate, plus text entry through W3C send-keys to the active element. `selectAll` and
-`copy` have no first-class Appium XCUITest command — the local runner does them natively — and
-`paste`'s edit-menu composition is not wired onto this route, so all three fail loudly on the live
-route rather than silently no-op'ing (determinism first). The run-time
+drag, pinch, and rotate, plus text entry through W3C send-keys to the active element. `select`, `copy`,
+and `paste` have no first-class Appium XCUITest command, and the local driver's composition of them
+from taps on the system edit menu is not wired onto this route (BE-0493), so all three fail loudly
+on the live route rather than silently no-op'ing (determinism first). The run-time
 capability narrowing, config, and docs (Slice C) are the remaining follow-on.
 """
 

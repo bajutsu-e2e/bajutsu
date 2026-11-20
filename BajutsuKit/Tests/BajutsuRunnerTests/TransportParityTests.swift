@@ -252,21 +252,8 @@ final class TransportParityTests: XCTestCase {
             try reference("POST", "/deleteText", json: ["count": 3]),
             "/deleteText"
         )
-        // The driver posts `{}` to the two that take no parameters, so that is what is sent here.
-        try assertSame(
-            try wire("POST", "/selectAll", json: [:]),
-            try reference("POST", "/selectAll", json: [:]),
-            "/selectAll"
-        )
-        try assertSame(
-            try wire("POST", "/copy", json: [:]),
-            try reference("POST", "/copy", json: [:]),
-            "/copy"
-        )
         XCTAssertEqual(provider.typeCalls, ["hello"])
         XCTAssertEqual(provider.deleteTextCalls, [3])
-        XCTAssertEqual(provider.selectAllCalls, 1)
-        XCTAssertEqual(provider.copyCalls, 1)
     }
 
     /// The alert pair resolves against a store of its own (BE-0316), so reading a handle minted by

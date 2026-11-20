@@ -328,9 +328,8 @@ actuation** — the selector resolves in Bajutsu, not on the grid.
 What the WebDriver transport cannot drive is narrowed away up front, the same way the real-device
 path narrows the `simctl`-backed families:
 
-- **Native text selection** (`select` / `copy`) has no first-class Appium XCUITest command — the
-  local runner does select-all and clipboard copy natively, but the endpoint exposes no faithful
-  counterpart. **`paste`** is refused too: the local driver pastes through the edit menu, and that
+- **Text selection and paste** (`select` / `copy` / `paste`) have no first-class Appium XCUITest
+  command. The local driver composes all three from taps on the system edit menu, and that
   composition is not wired onto the live route.
 - **`simctl` device control and permission grants** do not apply on the live route either, exactly
   as on any other real device (see the caveats below).

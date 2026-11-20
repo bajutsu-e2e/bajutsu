@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0493](BE-0493-ios-edit-menu-text-selection-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **承認済み** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0493") |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0265](../BE-0265-text-editing-steps/BE-0265-text-editing-steps-ja.md)、[BE-0489](../BE-0489-paste-step/BE-0489-paste-step-ja.md)、[BE-0052](../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)、[BE-0381](../BE-0381-runner-openapi-contract/BE-0381-runner-openapi-contract-ja.md) |
@@ -139,15 +139,29 @@ iOS 26.5 Simulator では、編集メニューを使うと `select` や `copy` 1
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] Driver API：フィールドへのフォーカスを自分で合わせる `select_all(sel)` と、`SelectionState` が記録する selector を受け取る `copy_selection(sel)`（プロトコル、トレース用ラッパー、すべてのドライバ、`select`、`clear`、`copy` のハンドラ）
-- [ ] 「Select All」と「Copy」のラベル表と、それを作り直す抽出スクリプトの拡張
-- [ ] 編集メニューを使う XCUITest ドライバの `select_all` と `copy_selection`、およびユニットテスト
-- [ ] Runner：契約、プロトコル、ルーター、ハンドラ、provider、フェイクからの `/selectAll` と `/copy` の削除
-- [ ] `select`、`copy`、`clear` の XCUITest コード生成とテスト
-- [ ] `actuation` レーンの順序、`pasteboard` タグと除外リストの整理、`run-flutter` での `textselection` タグ、iOS 26.5 Simulator での確認（SwiftUI と UIKit のアプリ）
-- [ ] 前のステップが残した編集メニューを閉じてから操作する `paste`
-- [ ] Flutter：実機でツールバーのラベルを確かめ、`textselection` の除外を外すか、`docs/drivers.md` に制限を記録する
-- [ ] 英語と日本語のドキュメント
+- [x] Driver API：フィールドへのフォーカスを自分で合わせる `select_all(sel)` と、`SelectionState` が記録する selector を受け取る `copy_selection(sel)`（プロトコル、トレース用ラッパー、すべてのドライバ、`select`、`clear`、`copy` のハンドラ）
+- [x] 「Select All」と「Copy」のラベル表と、それを作り直す抽出スクリプトの拡張
+- [x] 編集メニューを使う XCUITest ドライバの `select_all` と `copy_selection`、およびユニットテスト
+- [x] Runner：契約、プロトコル、ルーター、ハンドラ、provider、フェイクからの `/selectAll` と `/copy` の削除
+- [x] `select`、`copy`、`clear` の XCUITest コード生成とテスト
+- [x] `actuation` レーンの順序、`pasteboard` タグと除外リストの整理、`run-flutter` での `textselection` タグ、iOS 26.5 Simulator での確認（SwiftUI と UIKit のアプリ）
+- [x] 前のステップが残した編集メニューを閉じてから操作する `paste`
+- [x] Flutter：実機でツールバーのラベルを確かめ、`textselection` の除外を外すか、`docs/drivers.md` に制限を記録する
+- [x] 英語と日本語のドキュメント
+
+ログ：
+
+- [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM) — 単位 1-9。本項目全体を実装しました。
+  `select_all(sel)` と `copy_selection(sel)` をすべてのドライバに通し、`copy` は `select` が記録した
+  selector を受け取ります。XCUITest ドライバは、3 つのラベル表を使って編集メニューの「Select All」と
+  「Copy」を操作します。ランナーの `/selectAll` と `/copy` は削除しました。設計との違いが 1 つあります。
+  前のステップが残したメニューを、専用の tap では閉じません。ジェスチャ自身の最初の tap でメニューを閉じ、
+  ラベル数の基準値は、数が減ったのを観測するたびに下げます。こうすると、残っていた項目を新しい項目と
+  取り違えず、余分な tap がダブルタップと読まれることもありません。iOS 26.5 Simulator では、1 台の端末で
+  `paste.yaml` のあとに `text_editing.yaml` を実行し、SwiftUI と UIKit のどちらのアプリでも通りました。
+  Flutter を確認したところ、Flutter のツールバーは「Select All」と「Paste」を持つので、`select`、`clear`、
+  `paste` は動きました。一方で、ツールバーは「Select All」のあとに閉じて「Copy」項目を出さないので、
+  `copy` は失敗します。`run-flutter` は `textselection` の除外を残し、`docs/drivers.md` にこの制限を記録しました。
 
 ## 参考
 

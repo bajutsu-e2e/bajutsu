@@ -957,16 +957,17 @@ class PlaywrightDriver:
             self._page.keyboard.press("Backspace")
 
     @_wedge_guard
-    def select_all(self) -> None:
-        # Select-all on the focused field (BE-0265). `ControlOrMeta` is Cmd on a macOS host, where
-        # Chromium reads Ctrl+A as "caret to line start" and selects nothing (#2390).
+    def select_all(self, sel: base.Selector) -> None:
+        # Focus, then select-all (BE-0265). `ControlOrMeta` is Cmd on a macOS host, where Chromium
+        # reads Ctrl+A as "caret to line start" and selects nothing (#2390).
+        self.tap(sel)
         self._record_actuation(Actuation(gesture="selectAll", via="focused", unit=_UNIT))
         self._page.keyboard.press("ControlOrMeta+a")
 
     @_wedge_guard
-    def copy_selection(self) -> None:
+    def copy_selection(self, sel: base.Selector) -> None:  # noqa: ARG002  # Driver shape
         # Copies the active selection to the clipboard (BE-0265); Cmd+C on a macOS host, where Ctrl+C
-        # copies nothing (#2390).
+        # copies nothing (#2390). The selection `select_all` made is still live, so `sel` goes unused.
         self._record_actuation(Actuation(gesture="copy", via="focused", unit=_UNIT))
         self._page.keyboard.press("ControlOrMeta+c")
 

@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0493](BE-0493-ios-edit-menu-text-selection.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0493") |
 | Topic | Platform support |
 | Related | [BE-0265](../BE-0265-text-editing-steps/BE-0265-text-editing-steps.md), [BE-0489](../BE-0489-paste-step/BE-0489-paste-step.md), [BE-0052](../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md), [BE-0381](../BE-0381-runner-openapi-contract/BE-0381-runner-openapi-contract.md) |
@@ -237,15 +237,30 @@ deterministic step outweighs it.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Driver API: `select_all(sel)` that focuses the field itself, and `copy_selection(sel)` with `SelectionState` recording the selector, across the protocol, the tracing wrapper, every driver, and the `select`, `clear`, and `copy` handlers.
-- [ ] Label tables for "Select All" and "Copy", with the extraction script extended to regenerate them.
-- [ ] XCUITest driver `select_all` and `copy_selection` through the edit menu, with unit tests.
-- [ ] Runner: remove `/selectAll` and `/copy` from the contract, protocol, router, handler, provider, and fakes.
-- [ ] XCUITest codegen for `select`, `copy`, and `clear`, with tests.
-- [ ] `actuation` lane order, the `pasteboard` tag and exclude lists, the `textselection` tag on `run-flutter`, verified on the iOS 26.5 Simulator (SwiftUI and UIKit apps).
-- [ ] `paste` dismisses an edit menu an earlier step left on screen.
-- [ ] Flutter: check the toolbar's labels on a device, then drop the `textselection` exclusion or record the limitation in `docs/drivers.md`.
-- [ ] English and Japanese documentation.
+- [x] Driver API: `select_all(sel)` that focuses the field itself, and `copy_selection(sel)` with `SelectionState` recording the selector, across the protocol, the tracing wrapper, every driver, and the `select`, `clear`, and `copy` handlers.
+- [x] Label tables for "Select All" and "Copy", with the extraction script extended to regenerate them.
+- [x] XCUITest driver `select_all` and `copy_selection` through the edit menu, with unit tests.
+- [x] Runner: remove `/selectAll` and `/copy` from the contract, protocol, router, handler, provider, and fakes.
+- [x] XCUITest codegen for `select`, `copy`, and `clear`, with tests.
+- [x] `actuation` lane order, the `pasteboard` tag and exclude lists, the `textselection` tag on `run-flutter`, verified on the iOS 26.5 Simulator (SwiftUI and UIKit apps).
+- [x] `paste` dismisses an edit menu an earlier step left on screen.
+- [x] Flutter: check the toolbar's labels on a device, then drop the `textselection` exclusion or record the limitation in `docs/drivers.md`.
+- [x] English and Japanese documentation.
+
+Log:
+
+- [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM) — Units 1-9. Shipped the whole item.
+  `select_all(sel)` and `copy_selection(sel)` reach every driver, `copy` takes the selector the
+  `select` recorded, and the XCUITest driver drives the edit menu's Select All and Copy from the
+  three label tables. The runner's `/selectAll` and `/copy` are gone. One deviation from this design:
+  no separate tap dismisses a menu an earlier step left up. The gesture's own focusing tap closes it,
+  and the label baseline follows each count down as it is observed, so a lingering item is never
+  taken for a new one and no extra tap can read as a double-tap. On the iOS 26.5 Simulator,
+  `paste.yaml` and then `text_editing.yaml` passed on one device, on the SwiftUI and UIKit apps
+  alike. The Flutter check found that Flutter's toolbar exposes "Select All" and "Paste", so
+  `select`, `clear`, and `paste` work, but it closes after Select All with no "Copy" item, so `copy`
+  fails. `run-flutter` keeps the `textselection` exclusion, and `docs/drivers.md` records the
+  limitation.
 
 ## References
 

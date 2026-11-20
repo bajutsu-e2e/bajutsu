@@ -30,7 +30,7 @@ from ._functions import (
 from ._health_wait import _HealthWait
 from ._reply import _Reply
 from ._shared import _OK, _TIPKIT_DISMISS_REGION, TransportFn
-from .paste_menu import PASTE_MENU_LABELS
+from .paste_menu import COPY_MENU_LABELS, PASTE_MENU_LABELS, SELECT_ALL_MENU_LABELS
 from .runner_target import RunnerTarget
 from .xcuitest_channel_error import XcuitestChannelError
 
@@ -70,12 +70,15 @@ _GRID_CELL_POLL_SECONDS = 0.3
 # iOS reports every frame and coordinate in points, so that is the space stamped on this backend's
 # actuation records.
 _UNIT = "point"
-# How long `paste` waits for the edit menu its tap raises; the menu animates in within a second.
-_PASTE_MENU_TIMEOUT = 5.0
-# How long `paste` looks for a menu its focusing tap raised before long-pressing for one instead.
-_PASTE_MENU_AFTER_TAP = 1.0
+# How long `paste`, `select_all`, and `copy_selection` wait for an edit-menu item to appear; the
+# menu animates in within a second.
+_EDIT_MENU_TIMEOUT = 5.0
+# How long they look for a menu their focusing tap raised before long-pressing for one instead.
+_EDIT_MENU_AFTER_TAP = 1.0
 # Long enough for iOS to read the press as a long press, which raises the edit menu.
-_PASTE_MENU_PRESS = 0.6
+_EDIT_MENU_PRESS = 0.6
+# Every label an edit-menu item the driver taps can carry, in any language (see `paste_menu`).
+_EDIT_MENU_LABELS = PASTE_MENU_LABELS | SELECT_ALL_MENU_LABELS | COPY_MENU_LABELS
 
 
 class XcuitestDriver:
@@ -1161,61 +1164,123 @@ class XcuitestDriver:
         if reply.status != _OK:
             raise XcuitestChannelError(f"deleteText failed ({reply.status})")
 
-    def select_all(self) -> None:
-        self._actuations.record(Actuation(gesture="selectAll", via="focused", unit=_UNIT))
-        reply = self._transport("POST", "/selectAll", {})
-        if reply.status != _OK:
-            raise XcuitestChannelError(f"selectAll failed ({reply.status})")
+    def select_all(self, sel: base.Selector) -> None:
+        # Through the edit menu's Select All, not Cmd+A: Cmd+A stops working on a Simulator once
+        # another process writes the pasteboard, until SpringBoard restarts (BE-0493).
+        self._select_all(sel, self._edit_menu_label_counts())
 
-    def copy_selection(self) -> None:
-        self._actuations.record(Actuation(gesture="copy", via="focused", unit=_UNIT))
-        reply = self._transport("POST", "/copy", {})
-        if reply.status != _OK:
-            raise XcuitestChannelError(f"copy failed ({reply.status})")
+    def copy_selection(self, sel: base.Selector) -> None:
+        # Through the edit menu's Copy, not Cmd+C, for the same reason as `select_all`. The menu the
+        # `select` step left up is not reused: nothing in a later step can reopen a menu for a
+        # selection that still exists, so this selects the field again and taps the Copy item that
+        # replaces the Select All one. `select` only ever selects everything, and every step that
+        # could change the field ends the selection, so this reproduces the selection it made.
+        baseline = self._edit_menu_label_counts()
+        self._select_all(sel, baseline)
+        label = self._new_edit_menu_label(
+            COPY_MENU_LABELS, baseline, _EDIT_MENU_TIMEOUT, "Copy", lower=False
+        )
+        if label is None:
+            raise base.ElementNotFound(
+                f"copy: the menu that replaced Select All showed no new Copy item within "
+                f"{_EDIT_MENU_TIMEOUT:g}s (a toolkit that draws its own selection toolbar may offer "
+                f"none); edit-menu labels on screen: {self._edit_menu_labels_on_screen()}"
+            )
+        self.tap({"label": label})
 
     def paste(self, sel: base.Selector) -> None:
         # Through the edit menu, not Cmd+V, which pastes nothing from another process's clipboard
-        # (see `paste_menu`). The labels on screen are counted before any touch, so only a Paste item
-        # the gesture *added* counts as the menu's: app content that happens to carry a Paste label is
-        # never mistaken for it, and if it shares the menu's label the final tap resolves ambiguously
-        # and fails loudly (prime directive 2). Each gesture records its own actuation.
-        before = self._paste_label_counts()
-        self.tap(sel)
-        # A tap on a field that already had focus raises the menu itself, and a further gesture would
-        # dismiss it. Otherwise a long press raises it; a second tap would not, since a UIKit text
-        # field reads two quick taps as a double-tap.
-        label = self._new_paste_label(before, _PASTE_MENU_AFTER_TAP)
+        # (see `paste_menu`). Each gesture records its own actuation.
+        baseline = self._edit_menu_label_counts()
+        label = self._raise_edit_menu_item(sel, PASTE_MENU_LABELS, "Paste", baseline)
         if label is None:
-            self.long_press(sel, _PASTE_MENU_PRESS)
-            label = self._new_paste_label(before, _PASTE_MENU_TIMEOUT)
-        if label is None:
-            # A menu left up by an earlier step was counted in `before`, so the one this raised added
-            # nothing; name that case rather than blaming the clipboard.
+            # A menu an earlier step left up has left by now, so a Paste label still counted in the
+            # baseline stayed on screen: app content, which hides the menu's own item from the count.
+            stayed = sorted(lb for lb in PASTE_MENU_LABELS if baseline[lb])
             cause = (
-                f"a Paste item was already on screen before the gesture ({sorted(before)}); "
-                "dismiss the earlier menu first"
-                if before
+                f"a Paste label already on screen before the gesture stayed there ({stayed})"
+                if stayed
                 else "empty clipboard, or a field that offers no paste"
             )
             raise base.ElementNotFound(
                 f"paste: the edit menu showed no new Paste item within "
-                f"{_PASTE_MENU_TIMEOUT:g}s ({cause})"
+                f"{_EDIT_MENU_TIMEOUT:g}s ({cause}); edit-menu labels on screen: "
+                f"{self._edit_menu_labels_on_screen()}"
             )
         self.tap({"label": label})
 
-    def _paste_label_counts(self) -> Counter[str]:
-        """How many on-screen elements carry each language's Paste label, right now."""
-        return Counter(label for el in self.query() if (label := el["label"]) in PASTE_MENU_LABELS)
+    def _select_all(self, sel: base.Selector, baseline: Counter[str]) -> None:
+        label = self._raise_edit_menu_item(sel, SELECT_ALL_MENU_LABELS, "Select All", baseline)
+        if label is None:
+            raise base.ElementNotFound(
+                f"select: the edit menu showed no new Select All item within "
+                f"{_EDIT_MENU_TIMEOUT:g}s (an empty field offers none); edit-menu labels on "
+                f"screen: {self._edit_menu_labels_on_screen()}"
+            )
+        self.tap({"label": label})
 
-    def _new_paste_label(self, before: Counter[str], timeout: float) -> str | None:
-        """The one Paste label that gained elements since `before`, waited for up to `timeout`."""
+    def _raise_edit_menu_item(
+        self,
+        sel: base.Selector,
+        labels: frozenset[str],
+        item: str,
+        baseline: Counter[str],
+    ) -> str | None:
+        """Raise the edit menu on the field `sel` names, and return its new `item` label, if any.
+
+        `baseline` counts the labels on screen before any touch, so only an item the gesture
+        *added* counts as the menu's: app content that carries the same label is never mistaken for
+        it, and if it shares the menu's label the final tap resolves ambiguously and fails loudly
+        (prime directive 2). The tap also dismisses a menu an earlier step left up, so a lingering
+        item is no new one.
+        """
+        self.tap(sel)
+        # A tap on a field that already had focus raises the menu itself, and a further gesture
+        # would dismiss it. Otherwise a long press raises it; a second tap would not, since a UIKit
+        # text field reads two quick taps as a double-tap. The wait after the tap is the only window
+        # in which a lingering menu can leave, so it is the only one that lowers `baseline`.
+        label = self._new_edit_menu_label(labels, baseline, _EDIT_MENU_AFTER_TAP, item, lower=True)
+        if label is None:
+            self.long_press(sel, _EDIT_MENU_PRESS)
+            label = self._new_edit_menu_label(
+                labels, baseline, _EDIT_MENU_TIMEOUT, item, lower=False
+            )
+        return label
+
+    def _edit_menu_label_counts(self) -> Counter[str]:
+        """How many on-screen elements carry each edit-menu label the driver taps, right now."""
+        return Counter(label for el in self.query() if (label := el["label"]) in _EDIT_MENU_LABELS)
+
+    def _edit_menu_labels_on_screen(self) -> list[str]:
+        """The edit-menu labels on screen right now, named in a failure so an unmapped one shows."""
+        return sorted(self._edit_menu_label_counts())
+
+    def _new_edit_menu_label(
+        self,
+        labels: frozenset[str],
+        baseline: Counter[str],
+        timeout: float,
+        item: str,
+        *,
+        lower: bool,
+    ) -> str | None:
+        """The one label in `labels` that gained elements over `baseline`, waited for up to `timeout`.
+
+        With `lower`, `baseline` follows each count down as it is observed: an item that leaves — a
+        menu an earlier step left up, dismissed by the gesture's tap — would otherwise hide the same
+        item in the menu the gesture raises. Outside that window it stays put, so app content that
+        drops out of the tree for a moment and comes back is never taken for a new menu item.
+        """
         for _ in base.deadline_ticks(timeout, 0.1, 0.5):
-            now = self._paste_label_counts()
-            added = {label for label, n in now.items() if n > before[label]}
+            now = self._edit_menu_label_counts()
+            if lower:
+                for label in list(baseline):
+                    baseline[label] = min(baseline[label], now[label])
+            added = {label for label in labels if now[label] > baseline[label]}
             if len(added) > 1:
-                # Two languages' Paste appearing at once leaves no single menu item to choose.
+                # Two languages' labels appearing at once leaves no single menu item to choose.
                 raise base.AmbiguousSelector(
-                    f"paste: several Paste labels appeared at once ({sorted(added)})"
+                    f"{item.lower()}: several {item} labels appeared at once ({sorted(added)})"
                 )
             if added:
                 return added.pop()

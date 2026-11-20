@@ -224,18 +224,6 @@ final class APIHandlerParityTests: XCTestCase {
                 guard case .ok(let ok) = out, case .json(let p) = ok.body else { throw ParityError.shape }
                 return try self.generated(p)
             }),
-            ("/selectAll", "/selectAll", [:], {
-                let out = try await APIHandler(provider: FakeElementProvider())
-                    .selectAll(.init(body: .json(.init())))
-                guard case .ok(let ok) = out, case .json(let p) = ok.body else { throw ParityError.shape }
-                return try self.generated(p)
-            }),
-            ("/copy", "/copy", [:], {
-                let out = try await APIHandler(provider: FakeElementProvider())
-                    .copySelection(.init(body: .json(.init())))
-                guard case .ok(let ok) = out, case .json(let p) = ok.body else { throw ParityError.shape }
-                return try self.generated(p)
-            }),
         ]
         for (name, path, body, run) in cases {
             assertSame(
