@@ -164,7 +164,7 @@ UAスタイルシートの`[hidden]{display:none}`に勝ってしまいます。
 
 runが到達しなかった`expect`は、同じ`class="skip"`で検証結果テーブル（`.extbl`、`exrow`マクロ、
 [report.html.j2:61](../../bajutsu/templates/report.html.j2)）に描画されます。この行を複製から
-排除しているのは、この属性ではありません。その行は`data-target`をそもそも持たないものの、`.extbl`
+排除しているのは、`[data-target]` ではありません。その行は`data-target`をそもそも持たないものの、`.extbl`
 自体が`rich()`の`.rich-scroll`と並ぶ兄弟要素であり、どの`.steps-sec`の外にもあります。そのため
 `srcTable`の絞り込みの時点で最初から対象外です。
 

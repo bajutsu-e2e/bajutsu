@@ -117,8 +117,8 @@ report_group_id: int | None = Field(default=None, alias="_reportGroupId")
 フィールドバリデータで値を拒否することはしません。`Annotated[..., SkipJsonSchema()]` だけで、
 両方を著者向けの項目から隠します。`bajutsu schema` の出力にこの2つは載りません。
 
-理由は、`run` 経路が内部で行う往復にあります。`expand()` は `model_copy(update=...)` でこの2つを
-設定します。これにより、`group:` を含むシナリオが展開されたあと、`report_group` は*設定済み*の
+バリデータを置かない理由は、`run` 経路が内部で行う往復にあります。`expand()` は
+`model_copy(update=...)` でこの2つを設定します。これにより、`group:` を含むシナリオが展開されたあと、`report_group` は*設定済み*の
 非デフォルト値になります。`run` 経路は、同じダンプを2回再検証します。
 
 - `redact_totp_secrets` は、実行を終えたすべてのシナリオに対して、エビデンスのスナップショットを

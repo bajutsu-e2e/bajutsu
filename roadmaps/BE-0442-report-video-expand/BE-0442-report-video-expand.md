@@ -167,7 +167,7 @@ Within each section's loop, `vzBuildSteps` reads that section's own `table.sttbl
 `[data-target]` matters on both halves of the selector, the same guard `rowsFor` itself applies.
 
 Scoping `srcTable.querySelectorAll` to one `.steps-sec`'s own `table.sttbl` is what keeps an
-unevaluated `expect`'s own `tr.skip` out of the clone, not this attribute. That row belongs to the
+unevaluated `expect`'s own `tr.skip` out of the clone, not `[data-target]`. That row belongs to the
 expectations table's `.extbl` (the `exrow` macro,
 [report.html.j2:61](../../bajutsu/templates/report.html.j2)) and carries no `data-target` of its own
 either way. `.extbl` sits outside every `.steps-sec`, as a sibling of `.rich-scroll` in `rich()`, so

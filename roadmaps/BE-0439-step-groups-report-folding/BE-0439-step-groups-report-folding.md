@@ -122,9 +122,9 @@ This needs no extra plumbing.
 No field validator turns away a value on either field. `Annotated[..., SkipJsonSchema()]` alone
 keeps both off the authoring surface, so `bajutsu schema` never shows them.
 
-The reason is the run path's internal round trip. `expand()` sets both fields through
-`model_copy(update=...)`. Once a `group:` scenario expands, `report_group` is therefore a *set*,
-non-default field. The run path then re-validates that same dump twice:
+The reason no validator rejects a value is the run path's internal round trip. `expand()` sets
+both fields through `model_copy(update=...)`. Once a `group:` scenario expands, `report_group` is
+therefore a *set*, non-default field. The run path then re-validates that same dump twice:
 
 - `redact_totp_secrets` runs on every scenario a run has finished, right before the run writes its
   evidence snapshot.

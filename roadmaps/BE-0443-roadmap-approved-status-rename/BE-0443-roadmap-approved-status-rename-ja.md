@@ -19,7 +19,7 @@
 （[BE-0366](../BE-0366-roadmap-rejected-status/BE-0366-roadmap-rejected-status-ja.md)）。
 `Implemented`、`In progress`、`Proposal`、`Deferred`、`Rejected` です。本項目はこのうちの1つを
 改称します。`Proposal`（提案）を `Approved`（承認済み）に変更します。他の4つの値と、それぞれの
-日本語表記は変更しません。改称の対象は、`状態` の値を直接読み書きしている箇所すべてです。対象はこれに限ります。
+日本語表記は変更しません。改称の対象は、`状態` の値を直接読み書きしている次の箇所に限ります。
 
 - ロードマップ関連スクリプト
 - CI ワークフロー

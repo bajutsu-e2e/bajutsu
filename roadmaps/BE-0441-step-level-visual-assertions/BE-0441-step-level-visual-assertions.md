@@ -57,8 +57,9 @@ assertion kind and no new `Driver` method.
 - **Stop forcing `visual=None` in the step-level `assert_` branch.** Build a per-step
   `VisualContext` instead, via `dataclasses.replace(cfg.ctx.visual, prefix=…, screenshot_path=…)`.
   - Build it whenever two conditions hold: the step's `assert:` list carries a `visual` entry, and
-    the routing runner's own context (`cfg.ctx` in `_StepRunner`) already carries one. This is the
-    same `ctx.visual is not None` gate `_capture_visual_actual` applies at `expect`.
+    the routing runner's own context (`cfg.ctx` in `_StepRunner`) already carries one. That second
+    condition is the same `ctx.visual is not None` gate `_capture_visual_actual` applies at
+    `expect`.
   - Deriving the context from `cfg.ctx`, not from a fixed run-level context, keeps a step that names
     a second target comparing against that target's own baselines (BE-0428).
   - `_StepRunner._handle_action`, in `bajutsu/common/orchestrator/loop/_step_runner.py`, is the one
@@ -95,8 +96,8 @@ assertion kind and no new `Driver` method.
   - A retry of one execution (the TipKit retry, the alert-guard retry) reuses that execution's own
     index, so the result the step keeps points at its own final attempt's pixels.
 - **Preserve the touch-marker suspension and notification-banner clearing that `expect`'s visual
-  capture already applies, both of them.** The two live in different places today:
-  `_capture_visual_actual` itself only suspends the touch markers, via `capability_suspended`,
+  capture already applies, both of them, not just the marker suspension.** The two live in
+  different places today: `_capture_visual_actual` itself only suspends the touch markers, via `capability_suspended`,
   whenever `_hides_touch_markers` says the scenario draws them. The banner clear is the separate
   call `_evaluate_expect` makes right before it, `_clear_notification_banner_before_visual_capture`.
   - A step-level capture needs both, precisely as `expect`'s does. Dropping the banner clear
