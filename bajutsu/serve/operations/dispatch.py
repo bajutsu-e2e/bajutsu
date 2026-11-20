@@ -101,7 +101,7 @@ def _command_needs(cfg: Path, target: str, binding: ConfigBinding) -> dict[str, 
     """
     try:
         eff = resolve(load_config_file(cfg), target)
-    except (OSError, ValueError, KeyError):
+    except (OSError, ValueError, KeyError, yaml.YAMLError):
         return {}
     if eff.launch_server is None:
         return {}

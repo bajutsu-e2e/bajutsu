@@ -200,3 +200,21 @@ def test_a_device_cloud_worker_without_a_provider_stops_at_startup(
     monkeypatch.delenv("DEVICEFARM_PROJECT_ARN", raising=False)
     with pytest.raises(typer.BadParameter, match="registered no provider"):
         worker_mod._register_environment_or_exit("devicefarm")
+
+
+def test_the_worker_stamps_the_specs_source_over_the_argvs() -> None:
+    # The label comes from the spec's own field, never from a `--config-source` the argv carries
+    # (BE-0492): an argv from an older server carries none, and one claiming `operator` must not win.
+    from bajutsu.serve.server.worker_job import _with_config_source
+
+    cmd = [sys.executable, "-m", "bajutsu", "record", "--config-source", "operator", "--goal", "g"]
+    assert _with_config_source(cmd, "uploaded") == [
+        *cmd[:4],
+        "--config-source",
+        "uploaded",
+        "--goal",
+        "g",
+    ]
+    assert _with_config_source(cmd, "operator") == [*cmd[:4], "--goal", "g"]
+    triage = [sys.executable, "-m", "bajutsu", "triage", "--x"]
+    assert _with_config_source(triage, "uploaded") == triage

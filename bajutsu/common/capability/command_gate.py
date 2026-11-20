@@ -73,7 +73,8 @@ class CommandGate:
             CommandRefused: Always.
         """
         self._append(field_name, cmd, "refused")
-        raise CommandRefused(self.policy.refusal(field_name, cmd))
+        # The message reaches stdout and every scenario's failure, so it carries the masked line.
+        raise CommandRefused(self.policy.refusal(field_name, self._mask(cmd)))
 
     def record(
         self,
@@ -129,7 +130,7 @@ class CommandGate:
             candidate = (cwd or self.config_dir) / candidate
         try:
             resolved = candidate.resolve()
-        except OSError:
+        except (OSError, ValueError):  # ValueError: a NUL byte in the path
             return None
         if not resolved.is_file() or not resolved.is_relative_to(self.config_dir.resolve()):
             return None
