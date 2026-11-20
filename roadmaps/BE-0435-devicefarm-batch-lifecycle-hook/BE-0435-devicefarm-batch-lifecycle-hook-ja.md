@@ -24,16 +24,19 @@ Device Farm run のスケジュール、判定（verdict）の収集を行いま
 は `pre_test_commands` を追加し、呼び出し側が `pre_test` フェーズにデバイスホスト側のセットアップを
 差し込めるようにしました。このフックは *Device Farm ホスト上*で、run の最中に、シェルとして実行されます。
 
-しかし、そこでは実行できない per-run セットアップがあります。それは `submit` が動く場所——`serve`
-プロセス——で、パッケージのビルド前に実行される必要があり、その結果はデバイスホストのコマンド
-ではなく **設定（config）を通じて**テスト対象アプリに届かなければなりません。現状、デプロイ側が
-バッチのライフサイクルのこの地点に関与する手段は存在しません。
+しかし、Device Farm ホスト上では実行できない per-run セットアップがあります。このセットアップは、
+`submit` が動く場所である `serve` プロセスで、パッケージのビルド前に実行される必要があります。
+結果は、デバイスホストのコマンドではなく **設定（config）を通じて**テスト対象アプリに届かなければ
+なりません。現状、デプロイ側がバッチのライフサイクルのこの地点に関与する手段は存在しません。
 
-本提案は、サーバ側のライフサイクルフックを追加します。すなわち、パッケージング前に `serve`
-プロセス内で走り run config に launch 環境変数を注入できる `before_submit` ステップと、判定
-収集後に走る `after_run` ステップです。特定デプロイのバックエンド固有のセットアップ/ティアダウンは、
-`pre_test_commands` がデバイスホスト側のセットアップを `bajutsu/` の外に保つのと同様に、完全に
-`bajutsu/` の外に置かれます。
+本提案は、サーバ側のライフサイクルフックを追加します。フックは次の2つのステップからなります。
+
+- `before_submit` は、パッケージング前に `serve` プロセス内で走り、run config に launch 環境変数を
+  注入できます。
+- `after_run` は、判定の収集後に走ります。
+
+特定デプロイのバックエンド固有のセットアップとティアダウンは、`pre_test_commands` がデバイスホスト側の
+セットアップを `bajutsu/` の外に保つのと同様に、完全に `bajutsu/` の外に置かれます。
 
 ## 動機
 
@@ -48,17 +51,17 @@ BE-0432 の `pre_test_commands` では満たせません。
 - **クレデンシャルは、それを発行できる権限が存在する場所で発行されなければなりません。** per-run
   クレデンシャルの発行自体が、デプロイ自身のインフラに対する特権操作です。`serve` プロセスは
   その権限を持ちます（例：フェデレーションされたクラウド ID）。Device Farm ホストは持ちませんし、
-  意図的に持たせてはなりません——BE-0432 は既に、run のクラウド認証情報を行使しうるホストへ
+  意図的に持たせてはなりません。BE-0432 は既に、run のクラウド認証情報を行使しうるホストへ
   呼び出し側入力を流すことを拒否しています。したがって発行は run 開始前に `serve` で行うほかありません。
 
 - **その結果はホストではなくテスト対象アプリに届かなければなりません。** アプリは launch 環境変数
-  （iOS の `launchEnvironment`、Android の launch intent extras——いずれも既に config の
+  （iOS の `launchEnvironment` と Android の launch intent extras で、いずれも既に config の
   `targets.<name>.launchEnv` によって運ばれます）から自身のネットワークスタックを構成します。
   デバイスホストの `pre_test` コマンドはそこに値を置けません。パッケージされデバイス上で
   `bajutsu run` に再パースされる run config だけがそれを置けます。
 
 対称的なティアダウンの必要もあります。run が終わったら、per-run クレデンシャルは失効を待つのではなく
-解放すべきです。run が終わったことを知るのは `submit` だけです。
+解放すべきであり、run が終わったことを知るのは `submit` だけです。
 
 BE-0432 と同様、これらは一切 Bajutsu の内部に属しません。別のデプロイは別のクレデンシャルを発行し、
 別の変数を注入し、あるいは何も必要としないかもしれません。Bajutsu は一つの汎用的な継ぎ目（seam）を
@@ -88,12 +91,12 @@ class BatchLifecycleHook(Protocol):
 失敗した場合は `None` を受け取ります（下の provider フローを参照）。いずれの経路でも実行されます。
 
 `...` の本体が no-op の既定として働くのは、**`BatchLifecycleHook` を明示的にサブクラス化した
-フックの場合のみ**です。構造的部分型として満たすフック——`BAJUTSU_BATCH_HOOKS` の factory が
-最も自然に返す形——が片方のメソッドしか定義していない場合、それは `BatchLifecycleHook` では
-ありません。`mypy --strict` は代入箇所で弾きますし、実行時には provider の無条件の
-`hook.after_run(...)` 呼び出しが *ティアダウンの `finally` の中で* `AttributeError` を送出し、
-run の本来の結果を壊してしまいます。したがって片方のステップだけを実装したいフックは、もう一方の
-no-op 既定を受け継ぐためにプロトコルクラスを継承しなければなりません。
+フックの場合のみ**です。片方のメソッドしか定義しない構造的部分型のフックは、`BatchLifecycleHook`
+ではありません。`BAJUTSU_BATCH_HOOKS` の factory が最も自然に返すのは、この形です。`mypy --strict`
+は代入箇所で弾きます。実行時には、provider の無条件の `hook.after_run(...)` 呼び出しが
+*ティアダウンの `finally` の中で* `AttributeError` を送出し、run の本来の結果を壊してしまいます。
+したがって、片方のステップだけを実装したいフックは、もう一方の no-op 既定を受け継ぐために
+プロトコルクラスを継承しなければなりません。
 
 `ctx.job_id` は serve 層が各ジョブに既に割り当てている安定した識別子であり
 （`bajutsu/serve/state/job.py`）、バッチ checkpoint が保存されるキーと同じものです
@@ -120,8 +123,8 @@ checkpoint 再開とで同一であり、再起動をまたいでティアダウ
    - マージ後のテキストを `build_package` に `extra_texts` の per-submit オーバーレイとして渡します。
      このとき **config の arcname を、走査対象の `entries` から除外**し、zip にマージ後の config が
      ちょうど一つだけ入るようにします（`build_package` の `extra_texts` ループは arcname を
-     *追加*するのであって、走査で入った同名エントリを置換しません——
-     `bajutsu/common/cloud/devicefarm/_functions.py`）。
+     *追加*するのであって、走査で入った同名エントリを置換しないためです。
+     `bajutsu/common/cloud/devicefarm/_functions.py` を参照）。
 4. **衝突ガード（loud に失敗する）。** デバイス上で `bajutsu run` は二つの launch env ソースを
    `{**target_env, **scenario.preconditions.launch_env}` としてマージします
    （`bajutsu/run/cli.py:993`）。そのため、シナリオが自身の `preconditions.launchEnv` に同じキーを
@@ -131,13 +134,13 @@ checkpoint 再開とで同一であり、再起動をまたいでティアダウ
    シナリオがあれば、パッケージング前に submit 時点でシナリオ名・キー・ファイルを示すメッセージと
    ともに例外を送出します。（これは provider にシナリオ preconditions の狭い読み取りを新たに与えます。
    現状 provider はシナリオをファイルパスとしてのみ扱います。）
-5. スペックの描画、パッケージのビルド、アップロード、スケジュール、収集——ここは不変です。
+5. スペックの描画、パッケージのビルド、アップロード、スケジュール、収集は、変更しません。
 6. `finally` の中で、各フックの `hook.after_run(ctx, verdict)` を逆順に実行します。ティアダウンが
    セットアップと鏡写しになり、常に走るようにするためです。`verdict` は `Verdict | None` です。
    パッケージング・アップロード・収集が verdict の存在する前に失敗した場合は `None` になり、それでも
    ティアダウンは走り、元の例外はそのまま伝播します（未バインドの `verdict` による
-   `UnboundLocalError` に置き換わることはありません）——ただしフック自身の `after_run` も例外を
-   送出した場合は次の段落のとおりになります。
+   `UnboundLocalError` に置き換わることはありません）。ただし、フック自身の `after_run` も例外を
+   送出した場合は、次の段落のとおりになります。
 7. `submit` は、この `finally` の中でフックが送出した例外を1つも捨てません。送出するのは多くても
    1つで、それ以外はすべてログに出力します。1つを送出するかどうかは、verdict を収集できたかどうかで
    決まります。
@@ -165,17 +168,18 @@ checkpoint 再開とで同一であり、再起動をまたいでティアダウ
 ### checkpoint 再開パス
 
 checkpoint 再開は再起動後に起こります。`submit` は永続化された run ARN を見つけ
-（`checkpoint.load()`）、既にスケジュール済みの run に対して `collect_run(...)` を返し、描画・
-パッケージング・アップロード——したがって `before_submit` と config マージ——をスキップします
-（`bajutsu/serve/batch_provider/device_farm_batch_provider.py`）。フックは新しいプロセス内の新規
-オブジェクトです。ここでは `before_submit` は実行されていないため `ctx.launch_env` は空であり、
-メモリ上のフックは、再起動前の `before_submit` が発行したものへの handle を一切持ちません。
+（`checkpoint.load()`）、既にスケジュール済みの run に対して `collect_run(...)` を返します。
+描画、パッケージング、アップロードはスキップされ、したがって `before_submit` と config マージも
+スキップされます（`bajutsu/serve/batch_provider/device_farm_batch_provider.py`）。フックは新しい
+プロセス内の新規オブジェクトです。ここでは `before_submit` が実行されていないため、
+`ctx.launch_env` は空です。メモリ上のフックは、再起動前の `before_submit` が発行したものへの
+handle を一切持ちません。
 
 `after_run` はこのパスでも、同じ `finally` の中で、再開した run の verdict とともに実行されます。
 ティアダウンが実際にクレデンシャルを解放するには、`before_submit` が発行したクレデンシャルの
 同一性を **`ctx.job_id` をキーとする durable な per-job state に永続化**し、`after_run` が同じ
 `job_id` でそれを引いて解放する必要があります。`job_id` は再起動をまたいで安定なので、再開された
-`after_run` は——新しいプロセスで `ctx.launch_env` が空であっても——クレデンシャルを見つけて
+`after_run` は、新しいプロセスで `ctx.launch_env` が空であっても、クレデンシャルを見つけて
 解放できます。
 
 その durable store は呼び出し側自身のものであり、`bajutsu/` の外にあります（デプロイは自身の
@@ -183,7 +187,7 @@ checkpoint 再開は再起動後に起こります。`submit` は永続化され
 Bajutsu の唯一の寄与は、`ctx.job_id` が最初の submit と再開とで同じ値である、という保証であり、
 これがフックに安定した相関キーを与えます。
 
-### フックのロード——サーバ側限定
+### フックのロードはサーバ側に限る
 
 フックはプロセス起動時に配線され、リクエストからは決して配線されません。`batch_bootstrap` は
 環境変数 `BAJUTSU_BATCH_HOOKS`（`module:factory` パスのカンマ区切りリスト）を読み、各 factory を
@@ -191,9 +195,10 @@ Bajutsu の唯一の寄与は、`ctx.job_id` が最初の submit と再開とで
 モジュールをイメージに同梱し、その変数で名前を指定します。
 
 これは BE-0432 の信頼境界をそのまま踏襲します。`DeviceFarmBatchProvider` は `render_test_spec` の
-引数を HTTP リクエストボディから組み立てます。一方フックはクレデンシャルを発行しパッケージされる
-config を書き換えるため、フックの選択や設定をリクエスト経由にすると、BE-0432 が拒否したのと同じ
-「ホスト認証情報への到達」と「config 改ざん」をクライアントに与えてしまいます。したがって：
+引数を HTTP リクエストボディから組み立てます。一方フックはクレデンシャルを発行し、パッケージされる
+config を書き換えます。フックの選択や設定をリクエスト経由にすると、BE-0432 が拒否したのと同じ
+「ホスト認証情報への到達」と「config 改ざん」をクライアントに与えてしまいます。したがって、次の
+規則を置きます。
 
 - いかなる `serve` エンドポイント、config フィールド、`BatchRequest` フィールドもフックを
   選択・設定してはなりません。
@@ -205,9 +210,10 @@ BE-0432 の `render_test_spec` に対する AST チェックと同じ精神で�
 ### デバイスに届くもの
 
 `ctx.launch_env` 経由で注入された per-run の値は、パッケージされる config に載り、したがって run の
-Device Farm アーティファクトに載ります。これはデプロイ自身の Device Farm プロジェクトへアクセス
-できるプリンシパルから見えます。これは `pre_test_commands` の内容が既に持つのと同じ露出であり、
-デプロイ自身のクラウドアカウント内に閉じます——デバイス egress を共有する他テナントからは見えません。
+Device Farm アーティファクトに載ります。デプロイ自身の Device Farm プロジェクトへアクセスできる
+プリンシパルには、この値が見えます。`pre_test_commands` の内容が既に持つのと同じ露出であり、
+露出はデプロイ自身のクラウドアカウント内に閉じます。デバイス egress を共有する他テナントからは
+見えません。
 秘密値を注入するフックは、長命な値ではなく短命な per-run 値（＝本提案の動機となるケース）を発行
 すべきです。
 

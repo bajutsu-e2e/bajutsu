@@ -21,12 +21,15 @@
 [BE-0428](../BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution-ja.md)が
 `Step`と`expect`のトップレベルエントリにすでに与えているフィールドと同じ形です。どちらも、シナリオが
 宣言する[ターゲット](../../docs/ja/glossary.md#target-app-device)のうち、そのエントリがどれを指すかを
-名指します。ただし`interrupts`エントリの`target`は、`Step`・`expect`の2つとは違い、シナリオが2つ以上の
-ターゲットを宣言していても常に省略できます。省略したエントリは、シナリオのprimary targetを監視します。
-primary targetとは、`--target`が名指すターゲットのことです。シナリオが自身で`targets`を宣言している
-場合は、その最初の1つがこれにあたります。`target`を設定したエントリは、その名指したターゲットを監視します。そのエントリ自身の`steps`
-(割り込みを解除する手順)内の`Step`は、自分の`target`を省略すると、シナリオのprimary targetではなく、
-囲むエントリのtargetを継承します。
+名指します。ただし`interrupts`エントリの`target`は、`Step`・`expect`の2つとは1点だけ違います。
+シナリオが2つ以上のターゲットを宣言していても、常に省略できます。
+
+`target`を省略したエントリは、シナリオのprimary targetを監視します。primary targetとは、`--target`が
+名指すターゲットのことです。シナリオが自身で`targets`を宣言している場合は、その最初の1つがこれに
+あたります。`target`を設定したエントリは、その名指したターゲットを監視します。
+
+エントリ自身の`steps`は、割り込みを解除するリカバリ手順です。その中の`Step`は、自分の`target`を
+省略すると、シナリオのprimary targetではなく、囲むエントリのtargetを継承します。
 
 この変更は、BE-0428がわざと残した制限も取り除きます。現状、シナリオが2つ以上のターゲットを宣言していると、
 `interrupts`の各エントリの中身を見るより前に、空でない`interrupts`リストそのものをロード時に拒否します。
@@ -60,7 +63,7 @@ Bajutsuの[複数のバックエンド](../../docs/ja/architecture.md#drivers-an
 
 ## 詳細設計
 
-### 単位1 — `Interrupt.target`
+### 単位1：`Interrupt.target`
 
 [`Interrupt`](../../bajutsu/common/scenario/models/steps/interrupt.py)に
 `target: str | None = None`を追加します。省略時はprimary targetへ解決される旨をdocstringに書きます。
@@ -68,7 +71,7 @@ Bajutsuの[複数のバックエンド](../../docs/ja/architecture.md#drivers-an
 シナリオが2つ以上のターゲットを宣言した場合に`Step`自身の`target`を必須とするBE-0428のルールは、
 この常に省略可能な新フィールドの隣で、変わらず保たれます。
 
-### 単位2 — 検証ロジック
+### 単位2：検証ロジック
 
 [`_check_target`](../../bajutsu/common/scenario/models/scenario/_targets.py)に
 `required: bool = True`引数を追加します。`required=False`のときは、`len(known) >= 2`かつ
@@ -88,7 +91,7 @@ Bajutsuの[複数のバックエンド](../../docs/ja/architecture.md#drivers-an
 中から選びます。この割り込み解除の手順が`target`を必須としないのは、省略時にシナリオのprimary
 targetではなく、囲むエントリのtargetへフォールバックするからです。
 
-### 単位3 — config-levelのinterruptsはtargetを拒否する
+### 単位3：config-levelのinterruptsはtargetを拒否する
 
 [`TargetConfig.interrupts`](../../bajutsu/common/config/schema/target_config.py)は、すでに1つの
 `targets.<name>`ブロックの内側にあります。そこにあるエントリが別のターゲット名を名指せてしまうと、
@@ -106,7 +109,7 @@ targetではなく、囲むエントリのtargetへフォールバックする�
 防ぐはずの穴です。走査には、`_no_component_in_target_steps`がすでに組み立てている形をそのまま使います。
 その形は`[s for entry in self.interrupts for s in entry.steps]`です。
 
-### 単位4 — 実行時の合成
+### 単位4：実行時の合成
 
 [`_runtime_for`](../../bajutsu/common/runner/pipeline.py)は現在、`scenario.interrupts`の全エントリを、
 宣言済みの各ターゲットの`TargetRuntime.interrupts`へ無条件にコピーしています。
@@ -143,13 +146,15 @@ config由来のinterrupts(`run_defaults.interrupts`)は、どちらの場合も�
 Step自身が`target`を設定しているときにだけ別のランナーへ配送し直します。省略したときは`self`、
 つまり`_InterruptGuard`が発火したランナーのままです。
 `_run_recovery`([`_step_runner.py:116`](../../bajutsu/common/orchestrator/loop/_step_runner.py))は、
-その同じ`self`の上で`entry.steps`を実行します。この単位が各エントリを、それを所有するランナーへ
-置きさえすれば、そのランナーはすでにそのエントリ自身の実効targetを担っています。`entry.steps`内で
-`Step.target`を省略しても、追加の仕組みなしに正しい場所へ届きます。この項目の初期の草案では、
-実効targetを明示的に計算し、リカバリ実行にその値を差し替えていました。その手法をレビューで
-採らなかった理由は、後述の「検討した代替案」にまとめます。
+その同じ`self`の上で`entry.steps`を実行します。
 
-### 単位5 — テストの網羅
+この単位は、各エントリを、それを所有するランナーへ置きます。そのランナーは、すでにそのエントリ
+自身の実効targetを担っています。そのため、`entry.steps`内で`Step.target`を省略しても、追加の仕組み
+なしに正しい場所へ届きます。この項目の初期の草案では、実効targetを明示的に計算し、リカバリ実行に
+その値を差し替えていました。その手法をレビューで採らなかった理由は、後述の「検討した代替案」に
+まとめます。
+
+### 単位5：テストの網羅
 
 新しい回帰テストで、`interrupts`が通常の単一ターゲットの道でも今までどおり発火することを確認します。
 2つのシナリオを対象にします。1つは`targets`を宣言しないシナリオです。もう1つは、`targets.<name>`
@@ -164,7 +169,7 @@ config-levelの`targets.<name>.interrupts`エントリを宣言します。そ�
 設定が属するターゲットに対して実行され、シナリオのprimary targetへは決して向かわないことを
 確認します。
 
-### 単位6 — ドキュメント
+### 単位6：ドキュメント
 
 [`docs/scenarios.md`](../../docs/scenarios.md)には、理由の異なる2つの更新が必要です。
 [`interrupts`](../../docs/ja/scenarios.md#interrupts-handling-unpredictable-interstitial-screens)節は、
