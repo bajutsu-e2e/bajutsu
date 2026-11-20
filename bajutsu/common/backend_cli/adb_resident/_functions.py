@@ -24,7 +24,9 @@ from bajutsu.common.drivers.adb import (
     AdbPickerRefused,
     AdbResidentError,
     AdbResidentTimeout,
+    HeadsUpBanner,
     HierarchyRead,
+    heads_up_banner,
     slice_hierarchy_root,
 )
 
@@ -93,14 +95,19 @@ _SYSTEM_DECOR_PACKAGES = frozenset({"com.android.systemui"})
 _warned: set[str] = set()
 
 
-def narrowed_root(xml: str) -> tuple[ET.Element | None, bool]:
-    """Parse `xml` once and drop its system-decor windows; the tree, and whether any were dropped.
+def narrowed_root(xml: str) -> tuple[ET.Element | None, bool, HeadsUpBanner | None]:
+    """Parse `xml` once and drop its system-decor windows; the tree, whether any were dropped, and
+    the heads-up notification those windows showed.
 
     `dumpWindowHierarchy` emits one top-level `<node>` per window; `uiautomator dump` scopes to the
     active window. Removing the SystemUI status/navigation-bar windows reconciles the two so
     `parse_hierarchy` produces identical Elements. A tree with no system window (the active-window dump
-    itself) comes back untouched with False, and unparseable input yields `(None, False)` so the
-    driver's existing empty-tree handling still applies.
+    itself) comes back untouched with False, and unparseable input yields `(None, False, None)` so
+    the driver's existing empty-tree handling still applies.
+
+    The heads-up notification is read from those same windows before they go (BE-0496): the read
+    already carries them, so the banner guard costs no second read and no endpoint of its own. The
+    app's elements stay exactly what they were.
 
     The tree, not a string: the parse this had to do to strip a window is the same parse the driver
     would otherwise repeat on the string it produced, so handing the tree over is what removes the
@@ -115,11 +122,12 @@ def narrowed_root(xml: str) -> tuple[ET.Element | None, bool]:
     """
     root = slice_hierarchy_root(xml)
     if root is None:
-        return None, False
+        return None, False, None
     decor = [window for window in root if window.get("package") in _SYSTEM_DECOR_PACKAGES]
+    banner = heads_up_banner(root) if decor else None
     for window in decor:
         root.remove(window)
-    return root, bool(decor)
+    return root, bool(decor), banner
 
 
 def _is_stale(conn: http.client.HTTPConnection) -> bool:
@@ -545,11 +553,11 @@ def _act_read(resp: http.client.HTTPResponse, raw: bytes) -> HierarchyRead | Non
     except UnicodeDecodeError:
         _warn_once("resident actuation returned an undecodable tree; reading again instead")
         return None
-    root, narrowed = narrowed_root(text)
+    root, narrowed, banner = narrowed_root(text)
     if root is None:
         _warn_once("resident actuation returned an unparseable tree; reading again instead")
         return None
-    return HierarchyRead(text, mark, root=root, narrowed=narrowed)
+    return HierarchyRead(text, mark, root=root, narrowed=narrowed, heads_up=banner)
 
 
 def _warn_once(message: str) -> None:

@@ -43,6 +43,12 @@ scoping to the active window. The app content is identical.
 `bajutsu.common.backend_cli.adb_resident.narrowed_root` drops the SystemUI decor windows, so both paths
 yield the same Elements. Unit 2 of the roadmap item requires this equivalence.
 
+Before dropping the SystemUI windows, `narrowed_root` reads a heads-up notification from them: its
+frame, title, and text. The adb driver uses that reading to swipe a banner away before a gesture it
+covers
+([BE-0496](../roadmaps/BE-0496-android-heads-up-notification-dismiss/BE-0496-android-heads-up-notification-dismiss.md)).
+The `uiautomator dump` fallback never carries these windows, so the banner guard needs this server.
+
 ### Python side
 
 The Python side reaches this socket through three pieces: `adb forward`, the `fetch_hierarchy` wiring,

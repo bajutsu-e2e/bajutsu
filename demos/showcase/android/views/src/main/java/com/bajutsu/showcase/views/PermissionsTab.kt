@@ -1,6 +1,8 @@
 package com.bajutsu.showcase.views
 
 import android.Manifest
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -15,6 +17,7 @@ import android.widget.LinearLayout
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia
+import androidx.core.app.NotificationCompat
 import java.util.Locale
 
 // Tab: Permissions (SPEC §5.4 / §7) — the OS-integration screen. It owns the two deliberate
@@ -38,6 +41,20 @@ class PermissionsTab(private val activity: MainActivity) {
         val requestNotif = activity.textButton("Request Notifications") {
             notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }.aid("perm_requestNotif")
+
+        // Posts on a high-importance channel, which SystemUI presents as a heads-up notification over
+        // the top of this screen: the fixture for the banner guard (BE-0496). The banner target is
+        // the page's first row, so the banner covers it; its counter is what shows that a tap reached
+        // it rather than the banner.
+        val postNotif = activity.textButton("Post Notification") { postHeadsUp() }.aid("perm_postNotif")
+        val bannerTaps = activity.secondaryLabel("Banner target taps: 0")
+            .aid("perm_bannerTaps").stateValue("0")
+        var bannerTapCount = 0
+        val bannerTarget = activity.textButton("Banner Target") {
+            bannerTapCount++
+            bannerTaps.text = "Banner target taps: $bannerTapCount"
+            bannerTaps.stateValue(bannerTapCount.toString())
+        }.aid("perm_bannerTarget")
 
         val locationValue = activity.secondaryLabel("Location: notDetermined")
             .aid("perm_location_value").stateValue("notDetermined")
@@ -99,10 +116,13 @@ class PermissionsTab(private val activity: MainActivity) {
             .aid("perm_openPhotoPickerSingle")
 
         val form = activity.vstack(
+            bannerTarget,
+            bannerTaps,
             activity.label("Notifications"),
             requestNotif,
             notifValue,
             notifGranted,
+            postNotif,
             activity.label("Location"),
             requestLocation,
             locationValue,
@@ -163,9 +183,31 @@ class PermissionsTab(private val activity: MainActivity) {
         }, FRESH_FIX_TIMEOUT_MS)
     }
 
+    private var postedCount = 0
+
+    private fun postHeadsUp() {
+        val manager = activity.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.createNotificationChannel(
+            NotificationChannel(HEADS_UP_CHANNEL, "Heads-up", NotificationManager.IMPORTANCE_HIGH),
+        )
+        val notification = NotificationCompat.Builder(activity, HEADS_UP_CHANNEL)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle("Showcase notification")
+            .setContentText("A heads-up banner over the app")
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .build()
+        // An empty shade and a fresh id per tap: SystemUI does not alert again for an update to a
+        // notification already in the shade, so reposting one id shows the banner only once.
+        manager.cancelAll()
+        manager.notify(HEADS_UP_ID_BASE + postedCount++, notification)
+    }
+
     private fun clipboard(): ClipboardManager =
         activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
 }
+
+private const val HEADS_UP_CHANNEL = "showcase_heads_up"
+private const val HEADS_UP_ID_BASE = 4960
 
 /** How long a read waits for a fix delivered to it before it reports the last known one. */
 private const val FRESH_FIX_TIMEOUT_MS = 5_000L
