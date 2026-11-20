@@ -150,7 +150,11 @@ def job_spec(job: Job) -> dict[str, Any]:
         "cmd": list(job.cmd),
         "udids": list(job.udids),
         "app_path": job.app_path,
-        "build": job.build,
+        # A worker that predates BE-0492 has no command policy and runs whatever `build` holds, so
+        # only the operator's own build goes there; any other source's travels under a key that
+        # only a worker applying the policy reads (`_spec_build`).
+        "build": job.build if job.config_source == OPERATOR else None,
+        "governed_build": None if job.config_source == OPERATOR else job.build,
         "rebuild": job.rebuild,
         "build_platform": job.build_platform,
         # Where the config came from (BE-0492), so the worker applies its own command policy.
@@ -529,17 +533,19 @@ def execute_job_spec(
     )
     job = Job(
         id=str(spec["job_id"]),  # keep the control plane's id so logs/results line up
-        cmd=_with_config_source(
-            (
-                _with_worker_config(_local_interpreter(_spec_argv(spec)), worker_config)
-                if apply_worker_config
-                else _local_interpreter(_spec_argv(spec))
-            ),
-            _spec_source(spec),
+        # A local `bajutsu run` (`apply_worker_config=False`) keeps the flags its caller typed,
+        # `--config-source` included; a leased job takes the worker's file and the spec's label.
+        cmd=(
+            _with_config_source(
+                _with_worker_config(_local_interpreter(_spec_argv(spec)), worker_config),
+                _spec_source(spec),
+            )
+            if apply_worker_config
+            else _local_interpreter(_spec_argv(spec))
         ),
         udids=list(spec.get("udids") or []),
         app_path=spec.get("app_path"),
-        build=spec.get("build"),
+        build=_spec_build(spec),
         rebuild=bool(spec.get("rebuild")),
         build_platform=spec.get("build_platform"),
         can_build=_can_build(spec, worker_config),
@@ -601,11 +607,17 @@ def _can_build(spec: dict[str, Any], worker_config: Path | None) -> bool:
     every platform), may build as before.
     """
     platform = spec.get("build_platform")
-    if not spec.get("build") or not platform or worker_config is None:
+    if not _spec_build(spec) or not platform or worker_config is None:
         return True
     from bajutsu.common.capability.worker_capability import load_worker_capability
 
     return load_worker_capability(worker_config).can_build(str(platform))
+
+
+def _spec_build(spec: dict[str, Any]) -> str | None:
+    """The job's `subject.build`, wherever the spec carries it (see `job_spec`)."""
+    build = spec.get("build") or spec.get("governed_build")
+    return str(build) if build else None
 
 
 def _spec_source(spec: dict[str, Any]) -> ConfigSource:
@@ -627,7 +639,7 @@ def _command_execution(spec: dict[str, Any], worker_config: Path | None) -> Comm
     for a job with a build, as `_can_build` is; any other job keeps the shipped defaults, which no
     path consults.
     """
-    if not spec.get("build") or worker_config is None:
+    if not _spec_build(spec) or worker_config is None:
         return CommandExecution()
     from bajutsu.common.capability.worker_capability import load_worker_capability
 

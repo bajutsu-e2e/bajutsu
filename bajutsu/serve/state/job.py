@@ -86,6 +86,9 @@ class Job:
     # `worker.yaml`. The shipped defaults apply until the worker sets them, so a job built any other
     # way still refuses an untrusted source's build rather than running it.
     command_execution: CommandExecution = field(default_factory=CommandExecution)
+    # Worker-side only: the `commandExecutions` records of commands the worker ran for the job before
+    # spawning it (its `subject.build`), merged into the run's manifest afterwards (BE-0492).
+    command_records: list[dict[str, Any]] = field(default_factory=list)
     status: str = "running"  # running | done
     # Whether this job has given up its concurrency-cap slot. Separate from `status` because a job
     # that ran on a remote worker keeps `status == "running"` on the control plane by design

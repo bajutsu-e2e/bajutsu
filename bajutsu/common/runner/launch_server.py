@@ -28,7 +28,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from bajutsu.common.capability import command_gate
-from bajutsu.common.capability.command_gate import CommandGate
+from bajutsu.common.capability.command_gate import CommandGate, CommandRefused
 from bajutsu.common.capability.command_policy import SERVER_FIELD
 from bajutsu.common.config import Effective, web_base_url
 
@@ -49,6 +49,26 @@ def _probe(url: str, timeout: float = 2.0) -> bool:
         return e.code < 400
     except (urllib.error.URLError, OSError, ValueError):  # not listening yet / bad url
         return False
+
+
+def server_refusal(eff: Effective, gate: CommandGate) -> str | None:
+    """Why *gate*'s policy refuses `eff.launch_server`'s command, recording it, or None (BE-0492).
+
+    Checked before any device work, so a run whose server command will never run fails before it
+    reserves a device. None when no server is declared, when the mode runs the command, or when the
+    server already answers, since a reused server runs no command under any mode.
+    """
+    ls = eff.launch_server
+    if ls is None or gate.policy.action("command") != "refuse":
+        return None
+    ready_url = ls.ready_url or web_base_url(eff)
+    if ready_url and _probe(ready_url):
+        return None
+    try:
+        gate.refuse(SERVER_FIELD, ls.cmd)
+    except CommandRefused as e:
+        return str(e)
+    raise AssertionError("CommandGate.refuse always raises")  # pragma: no cover
 
 
 def start_launch_server(
@@ -101,8 +121,12 @@ def start_launch_server(
         return lambda: None
 
     if gate.check("command", SERVER_FIELD, ls.cmd) == "sandbox":
-        teardown = start_sandboxed_server(eff, log=log)
-        gate.record(SERVER_FIELD, ls.cmd, sandboxed=True)
+        try:
+            teardown = start_sandboxed_server(eff, log=log)
+        finally:
+            # Recorded whether the container came up or not: a failed start is still a command the
+            # policy let run, and the run's report says so.
+            gate.record(SERVER_FIELD, ls.cmd, sandboxed=True)
         return teardown
 
     say(f"launchServer: starting target server — {ls.cmd!r}")
