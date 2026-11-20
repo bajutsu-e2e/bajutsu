@@ -71,25 +71,29 @@ the other target mixed in and no detour through the manifest.
 
 ### When the new folder applies
 
-The nesting this item adds only ever activates for a scenario declaring **two or more** entries in
-`Scenario.targets` — the same condition `_ScenarioRunner._run_on_lease` already tests today, as
-`others` (the non-primary leases dict, empty unless the scenario declares a second target) and
-equivalently `len(target_runtimes or {}) >= 2` inside `run_scenario`
-(`bajutsu/common/orchestrator/loop/_functions.py`). A scenario declaring zero targets (every legacy,
-single-target scenario) or exactly one (a self-declaring scenario naming only its primary,
-[BE-0436](../BE-0436-primary-target-default/BE-0436-primary-target-default.md)) keeps today's flat
-`<sid>/…` layout untouched — there is only ever one target's evidence in either case, so a folder
-named after it would add a path segment with nothing to disambiguate. Every reader and writer this
-item changes tests the same condition, so a run's directory tree never mixes the two conventions
-within one scenario's own evidence.
+The nesting this item adds activates for a scenario declaring **two or more** entries in
+`Scenario.targets`. `_ScenarioRunner._run_on_lease` already tests the same condition today, as
+`others` (the non-primary leases dict, empty unless the scenario declares a second target).
+`run_scenario` (`bajutsu/common/orchestrator/loop/_functions.py`) tests it equivalently as
+`len(target_runtimes or {}) >= 2`.
+
+A scenario declaring zero targets (every legacy, single-target scenario) keeps today's flat
+`<sid>/…` layout untouched. So does a scenario declaring one target (a self-declaring scenario
+naming just its primary,
+[BE-0436](../BE-0436-primary-target-default/BE-0436-primary-target-default.md)). Either case holds
+the evidence of a single target, so a folder named after that target would add a path segment with
+nothing to disambiguate.
+
+Every reader and writer this item changes tests the same condition. A run's directory tree
+never mixes the two conventions within one scenario's own evidence.
 
 ### Writers: nest every declared target's evidence, primary included
 
 Four write paths change. Three of them, in `bajutsu/common/runner/pipeline.py` and
 `bajutsu/common/orchestrator/loop/_functions.py`, already build a *non-primary* target's evidence
-path as `f"{sid}/{name}"`; each extends the same treatment to the primary once the scenario declares
-a second target, rather than leaving the primary's own path bare `sid`. The fourth, per-step evidence,
-gains a target segment for the first time, for every declared target alike:
+path as `f"{sid}/{name}"`. Each extends the same treatment to the primary once the scenario declares
+a second target, instead of leaving the primary's own path as bare `sid`. The fourth, per-step
+evidence, gains a target segment for the first time, for every declared target alike:
 
 - `_ScenarioRunner._run_on_lease`'s `VisualContext` for the primary's own scenario-level `expect`
   assertions (`screenshot_path`/`prefix`, today built from bare `sid`).
@@ -98,77 +102,85 @@ gains a target segment for the first time, for every declared target alike:
   `f"{sid}/{name}"` once a second target is declared, `name` covering the primary too).
 - `run_scenario`'s own `sink.start_scenario_intervals(sid, …)` / `finish_scenario_intervals(sid, …)`
   calls for the primary's scenario-wide video / device log / application trace.
-- `_step_runner.py`'s `step_id` construction, which gains the *routed* step's own target name as a
-  path segment ahead of the step name (`f"{self.cfg.sid}/{target}/{prefix}{step.name or f'step{idx}'}"`,
+- `_step_runner.py`'s `step_id` construction. It gains the *routed* step's own target name as a path
+  segment ahead of the step name (`f"{self.cfg.sid}/{target}/{prefix}{step.name or f'step{idx}'}"`,
   keeping the existing `prefix` untouched) whenever the scenario's declared-target count is two or
-  more — determined from `len(self.by_target)`, the same map `_run_steps` already builds with one
-  entry per declared target (primary included, per its own BE-0428 comment). `self.target` (already
-  tracked per `_StepRunner`, BE-0428/BE-0438) names the segment; a step nested inside a `web:` block
-  still carries no target of its own and inherits the enclosing block's runner, so it lands under
-  that runner's own target folder exactly as every other step it shares a runner with does.
+  more. `len(self.by_target)` gives that count: `_run_steps` already builds the map with one entry
+  per declared target, primary included, per its own BE-0428 comment. `self.target` (already tracked
+  per `_StepRunner`, BE-0428/BE-0438) names the segment. A step nested inside a `web:` block still
+  carries no target of its own and inherits the enclosing block's runner. It lands under
+  that runner's own target folder, as every other step sharing that runner does.
 
-`driver_trace.json` (the optional `--trace` diagnostic,
+This item deliberately leaves `driver_trace.json` (the optional `--trace` diagnostic,
 `bajutsu/common/runner/pipeline.py`'s `run_one`) and the crash-diagnostics directory
-(`_write_crash_artifacts`, `_CRASH_DIAGNOSTICS_DIR`) are deliberately **not** touched — see *Not
-doing* below.
+(`_write_crash_artifacts`, `_CRASH_DIAGNOSTICS_DIR`) **untouched**; see *Not doing* below.
 
 ### Readers: two call sites assumed a fixed, un-nested depth
 
-Everywhere else that serves or scans recorded evidence — `bajutsu/common/report/`'s manifest, JUnit,
-Common Test Report Format (CTRF), and HTML generation; `report.html.j2`'s asset links; serve's
-general `/runs/{path}` artifact route; `RunArtifactWriter` itself — reads or writes each artifact's
-already-composed relative name verbatim, so none of it assumes a fixed folder depth and none of it
-needs to change for this item. Two call sites do assume a fixed depth and must change together with
-the writers above:
+These places serve or scan recorded evidence:
+
+- `bajutsu/common/report/`'s manifest, JUnit, Common Test Report Format (CTRF), and HTML generation
+- `report.html.j2`'s asset links
+- serve's general `/runs/{path}` artifact route
+- `RunArtifactWriter` itself
+
+Each reads or writes an artifact's already-composed relative name verbatim, so none of them assumes
+a fixed folder depth, and none needs to change for this item. Two call sites do assume a fixed depth
+and must change together with the writers above:
 
 - `bajutsu/serve/operations/reads.py`'s `_step_artifacts()` (the Author → Edit step picker,
   [BE-0013](../BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md)) rebuilds a step's id from
-  the scenario's own loaded YAML — `f"{sid}/{step.name or f'step{idx}'}"` — to look its recorded
-  artifacts up by that key, rather than reading the id back off a recorded artifact name. It gains
-  the same target segment the writer now produces, read from the step's own `resolved_target`
-  property (`Step`, BE-0436) — the writer names its own segment from the live `_StepRunner`'s
-  `self.target` instead, which this static, run-less reader has no equivalent of — once the
-  scenario's own `targets` field names two or more entries. A multi-target run recorded before this
-  item shipped still has its evidence at the old flat id, so a nested-key lookup that misses falls
-  back to the flat one rather than assuming every stored run already matches the new convention —
-  safe because the writer never produces a flat id for a multi-target run going forward, so the two
-  keys never both name a real, different step. The Play/Replay step list this same function seeds
-  stays a flat, run-less list unaffected by any of this (BE-0262).
+  the scenario's own loaded YAML, as `f"{sid}/{step.name or f'step{idx}'}"`. It looks the step's
+  recorded artifacts up by that key, rather than reading the id back off a recorded artifact name.
+  The function gains the same target segment the writer now produces, once the scenario's own
+  `targets` field names two or more entries. It reads the segment from the step's own
+  `resolved_target` property (`Step`, BE-0436). The writer names its segment from the live
+  `_StepRunner`'s `self.target` instead, which this static, run-less reader has no equivalent of.
+
+  A multi-target run recorded before this item shipped still has its evidence at the old flat id.
+  A nested-key lookup that misses falls back to the flat one, rather than assuming every
+  stored run already matches the new convention. The fallback is safe because the writer never
+  produces a flat id for a multi-target run going forward, so the two keys never both name a real,
+  different step. The Play/Replay step list this same function seeds stays a flat, run-less list,
+  unaffected by any of this (BE-0262).
 - `bajutsu/analysis/coverage/_functions.py`'s `_evidence_files()` and
   `bajutsu/analysis/cli/coverage.py`'s `_element_lists()` (the `bajutsu coverage` command) glob a
-  fixed depth under the run set's own directory — `*/*/<name>` (two segments) from
-  `_evidence_files()`'s unfiltered branch, `*/<name>` (one segment) from its per-run-id branch — to
-  find every `network.json` and `elements.json` the run set recorded. That fixed count already
-  misses a non-primary target's own `network.json` today, one folder deeper than either branch
-  reaches — a latent gap this item's own motivation would otherwise leave in place for the *primary*
-  target too. It misses `elements.json` far more broadly: that file lives one folder deeper still, at
-  `<sid>/<stepId>/elements.json`, so today's fixed count never finds it at all, for a single-target
-  run as much as a multi-target one — a pre-existing defect this item did not introduce, distinct
-  from the multi-target gap above, but one the same fix closes. `_evidence_files()` widens to match
-  any depth (`**/<name>`) instead of a fixed count, which finds `network.json` for every declared
-  target and `elements.json` for every step, for a single-target run and a multi-target one alike.
-  `bajutsu/analysis/cli/coverage.py`'s own glob is retired rather than widened in parallel: a new
-  `read_element_lists()`, beside `read_exchanges()` and `read_observed_ids()` in
-  `bajutsu/analysis/coverage/_functions.py`, wraps `_evidence_files()` once for `elements.json` and
-  is now the one place that enumerates and parses it, reused by `read_observed_ids()` and by the
-  CLI's screens-visited dimension alike — closing the exact duplication that let the two copies go
-  wrong in the same way in the first place.
+  fixed depth under the run set's own directory. `_evidence_files()`'s unfiltered branch uses
+  `*/*/<name>` (two segments), and its per-run-id branch uses `*/<name>` (one segment). The globs
+  find every `network.json` and `elements.json` the run set recorded, but the fixed count has two
+  gaps:
+  - It already misses a non-primary target's own `network.json` today, which sits one folder deeper
+    than either branch reaches. Without this item, the same gap would remain for the *primary*
+    target too.
+  - It misses `elements.json` far more broadly. That file lives one folder deeper still, at
+    `<sid>/<stepId>/elements.json`, so today's fixed count never finds it, in a single-target run
+    as much as a multi-target one. This is a pre-existing defect this item did not introduce,
+    distinct from the multi-target gap above, but the same fix closes it.
+
+  `_evidence_files()` widens to match any depth (`**/<name>`) instead of a fixed count. It then
+  finds `network.json` for every declared target and `elements.json` for every step, in a
+  single-target run and a multi-target one alike. `bajutsu/analysis/cli/coverage.py`'s own glob is
+  retired rather than widened in parallel. A new `read_element_lists()`, beside `read_exchanges()`
+  and `read_observed_ids()` in `bajutsu/analysis/coverage/_functions.py`, wraps `_evidence_files()`
+  once for `elements.json`. It is now the one place that enumerates and parses that file, reused by
+  `read_observed_ids()` and by the CLI's screens-visited dimension alike. This closes the exact
+  duplication that let the two copies go wrong in the same way in the first place.
 
 ### Not doing
 
 - **`driver_trace.json` stays at `<sid>/driver_trace.json`, un-nested.** `run --trace` opens one
-  trace context around the whole scenario, spanning every backend a multi-target scenario launches,
-  not one target's own driver alone — there is no single target to attribute it to, so nesting it
-  under any one target's folder would misname what the file actually covers.
+  trace context around the whole scenario. The context spans every backend a multi-target scenario
+  launches, not one target's own driver alone. No single target owns the file, so nesting it under
+  any one target's folder would misname what it covers.
 - **The crash-diagnostics directory (`_write_crash_artifacts`, `_CRASH_DIAGNOSTICS_DIR`) is left
-  exactly where it is today.** It already writes under a bare `<sid>/`, for whichever lease's backend
-  crashed, primary or not — a pre-existing gap this item does not newly introduce, and closing it
-  needs its own per-target attribution design (which lease crashed, threaded through the retry
-  loop's own failure path) that is out of this item's scope.
+  where it is today.** It already writes under a bare `<sid>/`, for whichever lease's backend
+  crashed, primary or not. This is a pre-existing gap that this item does not newly introduce.
+  Closing it needs its own per-target attribution design (which lease crashed, threaded through the
+  retry loop's own failure path), which is out of this item's scope.
 - **No sanitization is added for a target name used as a path segment.** A non-primary target's
-  folder name has been an unsanitized config key since BE-0428 shipped; this item only extends the
-  same, already-accepted convention to the primary target and to per-step folders, and does not
-  revisit whether a target name itself needs the kind of narrow sanitizer
+  folder name has been an unsanitized config key since BE-0428 shipped. This item extends the same,
+  already-accepted convention to the primary target and to per-step folders. It does not revisit
+  whether a target name itself needs the kind of narrow sanitizer
   [BE-0417](../BE-0417-scenario-result-folder-naming/BE-0417-scenario-result-folder-naming.md) added
   for a scenario's own source-file stem.
 
@@ -182,15 +194,19 @@ the writers above:
    `bajutsu/analysis/coverage/_functions.py` and `bajutsu/analysis/cli/coverage.py`.
 3. **Docs.** [`docs/reporting.md`](../../docs/reporting.md)'s Output layout section gains the
    `<target>/` level for a scenario declaring two or more targets, and its `docs/ja/` mirror.
-4. **Tests.** A multi-target scenario's evidence lands under `<sid>/<target>/…` for every target
-   (primary and non-primary alike), at both the scenario level (video/deviceLog/network.json) and
-   the step level (screenshots/elements.json); a zero- or one-declared-target scenario's evidence
-   is byte-for-byte unchanged from today; the serve step-picker resolves a multi-target run's
-   per-step artifacts through the new, target-qualified id, and falls back to the old flat id for a
-   multi-target run recorded before this item shipped; the widened coverage globs find every
-   declared target's own `network.json` in a multi-target run, and — a fixture built from a real
-   `<sid>/<stepId>/elements.json` layout, unlike today's flat test fixture — now find `elements.json`
-   at all, in a single-target run as much as a multi-target one.
+4. **Tests.** The tests cover five points:
+   - A multi-target scenario's evidence lands under `<sid>/<target>/…` for every target (primary
+     and non-primary alike), at both the scenario level (video/deviceLog/network.json) and the step
+     level (screenshots/elements.json).
+   - A zero- or one-declared-target scenario's evidence is byte-for-byte unchanged from today.
+   - The serve step-picker resolves a multi-target run's per-step artifacts through the new,
+     target-qualified id. It falls back to the old flat id for a multi-target run recorded before
+     this item shipped.
+   - The widened coverage globs find every declared target's own `network.json` in a multi-target
+     run.
+   - The widened coverage globs now find `elements.json` at all, in a single-target run as much as
+     a multi-target one. The fixture is built from a real `<sid>/<stepId>/elements.json` layout,
+     unlike today's flat test fixture.
 
 ## Alternatives considered
 
