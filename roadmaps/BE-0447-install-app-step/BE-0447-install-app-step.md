@@ -306,7 +306,7 @@ that omit one (BE-0446). Three rules keep the new steps consistent with that sta
 Expansion records the component chain on each step it produces, so the post-expansion check can
 name it. Before expansion, the load-time pass cannot see a component's `setPrimaryTarget`. For that
 reason, after the first top-level `use:` or `group:` step, the pass stops resolving omitted targets
-and checking `installApp.from`. It leaves both to the pass that runs after expansion.
+and checking `installApp.from`. The pass leaves both to the check that runs after expansion.
 
 ### Switching between apps on one device
 
@@ -474,8 +474,9 @@ that data survives an `installApp` followed by `foreground`.
 ### Scope
 
 An `installApp` step never moves the primary by itself. The scenario says so with
-`setPrimaryTarget`, so the point where routing changes is a line the reader can see. Until then,
-steps that omit `target` resolve to the primary the scenario declared. When the `installApp`
+`setPrimaryTarget`, so the point where routing changes is a line the reader can see.
+
+Until then, steps that omit `target` resolve to the primary the scenario declared. When the `installApp`
 replaced that primary's own build (the same identifier), the primary is the retired member. A step
 after the install then either names the installed member or follows a `setPrimaryTarget`.
 
