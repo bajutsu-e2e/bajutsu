@@ -25,7 +25,7 @@ The on-device driver conformance suite inherits none of that recovery. Among the
 
 The conformance suite obtains its device by calling `launch_driver` directly from a module-scoped `pytest` fixture. A comment in the iOS workflow says as much: "a pytest-ondevice harness, not a `bajutsu run`". A Simulator fault during the suite therefore turns the required `E2E (iOS)` check red on a pull request that cannot have caused the fault.
 
-This item proposes two changes. The harness classifies an infrastructure fault and recovers from it the way the pipeline does. A genuine contract violation keeps failing as loudly as it does today.
+This item proposes classifying an infrastructure fault in the harness and recovering from it the way the pipeline does. A genuine contract violation keeps failing as loudly as it does today.
 
 ## Motivation
 
