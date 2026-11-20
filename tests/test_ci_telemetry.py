@@ -64,6 +64,15 @@ def test_parses_the_linux_sampler() -> None:
     assert load["mem_free_min_pct"] == pytest.approx(25.0)
 
 
+def test_since_boot_iowait_and_steal_give_way_to_the_interval_reading() -> None:
+    text = (
+        "%Cpu(s): 10.0 us, 3.0 sy, 0.0 ni, 40.0 id, 45.0 wa, 0.0 hi, 0.0 si, 30.0 st\n"
+        "Interval %Cpu(s): 10.0 us, 3.0 sy, 0.0 ni, 80.0 id, 1.0 wa, 0.0 hi, 0.0 si, 2.0 st\n"
+    )
+    load = ct.parse_host_telemetry(text)
+    assert (load["iowait_max"], load["steal_max"]) == (1.0, 2.0)
+
+
 def test_single_sample_cpu_is_used_only_without_an_interval_reading() -> None:
     load = ct.parse_host_telemetry("CPU usage: 1% user, 1% sys, 98.0% idle\n")
     assert load["cpu_idle_min"] == 98.0
@@ -210,6 +219,40 @@ def test_a_failure_with_no_infrastructure_signal_is_residual() -> None:
     assert ct.candidate_causes({"scenarios": [{"ok": True}]}) == []
 
 
+def test_a_fetched_failure_without_log_signals_is_not_residual() -> None:
+    record: dict[str, Any] = {
+        "api": {"conclusion": "failure"},
+        "log_signals": None,
+        "scenarios": [{"ok": False, "failed_action": "wait"}],
+    }
+    assert ct.candidate_causes(record) == ["log-signals-unknown"]
+    record["log_signals"] = {}
+    assert ct.candidate_causes(record) == ["app-wait-timeout"]
+    summary = ct.aggregate([{**record, "log_signals": None, "causes": ["log-signals-unknown"]}])
+    assert len(summary["unexplained"]) == 1
+
+
+def test_the_toolchain_step_is_not_a_device_boot() -> None:
+    facts = ct.job_facts(
+        {
+            "steps": [
+                {
+                    "name": "Set up the iOS toolchain",
+                    "conclusion": "success",
+                    "started_at": "2026-01-01T00:00:00Z",
+                    "completed_at": "2026-01-01T00:10:00Z",
+                }
+            ]
+        }
+    )
+    assert not facts["device_boot_s"]
+
+
+def test_hour_bucket_prefers_the_job_start() -> None:
+    record = {"hour_utc": 9, "api": {"started_at": "2026-01-01T07:50:00Z"}}
+    assert ct._hour_bucket(record) == "04-07h UTC"
+
+
 def test_a_failing_run_step_is_not_a_dependency_failure() -> None:
     record = {"api": {"failed_step": "Run scenarios"}, "scenarios": []}
     assert ct.candidate_causes(record) == []
@@ -314,8 +357,13 @@ class _FakeGh:
                 {"id": 2, "name": "golden", "conclusion": "success", "runner_name": "r2"},
                 {"id": 3, "name": "visual", "conclusion": "skipped", "runner_name": None},
                 {"id": 4, "name": "network", "conclusion": "cancelled", "runner_name": "r4"},
+                {"id": 5, "name": "device-group", "conclusion": "cancelled", "runner_name": "r5"},
             ]
             return "\n".join(json.dumps(j) for j in jobs) + "\n"
+        if args[0] == "api" and args[1].endswith("/annotations"):
+            if args[1].endswith("/5/annotations"):
+                return "The job has exceeded the maximum execution time of 60 minutes.\n"
+            return ""
         if args[0] == "api" and args[-1].endswith("/logs"):
             if args[-1].endswith("/2/logs"):
                 raise subprocess.CalledProcessError(1, "gh")
@@ -327,9 +375,13 @@ def test_fetch_joins_records_with_the_api(tmp_path: Path) -> None:
     record = ct.summarize(_runs(tmp_path, ok=False), "ios", env={"RUNNER_NAME": "r1"})
     gh = _FakeGh(record, _manifest(ok=False))
     out = tmp_path / "fetched"
-    assert ct.fetch("o/r", "ios-e2e.yml", 5, out, gh=gh) == 2
+    assert ct.fetch("o/r", "ios-e2e.yml", 5, out, gh=gh) == 3
     records = ct.load_records(out)
     by_job = {r["api"]["job_name"]: r for r in records}
+    # A superseded job is left out; one its timeout killed counts red.
+    assert "network" not in by_job
+    assert by_job["device-group"]["api"]["conclusion"] == "timed_out"
+    assert ct.is_failed(by_job["device-group"])
     assert by_job["actuation"]["log_signals"]["channel_retries"] == 1
     assert "channel-timeout" in by_job["actuation"]["causes"]
     assert by_job["actuation"]["scenarios"]  # joined with the uploaded record

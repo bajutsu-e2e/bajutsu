@@ -76,7 +76,9 @@ DEVICE_BOOT_SLOW = 240.0  # seconds spent in a step that boots or waits for the 
 
 # Steps whose name says they boot or wait for the device. Matched case-insensitively against the
 # GitHub step name, which is the one label every lane already gives these steps.
-_BOOT_STEP = re.compile(r"simulator|emulator|avd|boot|toolchain", re.IGNORECASE)
+# Not `toolchain`: the iOS toolchain step is a composite action whose duration is mostly the package
+# install, so it would turn a slow mirror into a slow-device label. `_DEPS_STEP` covers it.
+_BOOT_STEP = re.compile(r"simulator|emulator|avd|boot", re.IGNORECASE)
 # Steps that only fetch or install dependencies. A job that fails in one of these failed before
 # any scenario ran, which is the dependency-fetch cause rather than a device or test one.
 _DEPS_STEP = re.compile(
@@ -154,7 +156,7 @@ def parse_host_telemetry(text: str) -> dict[str, Any]:
         elif cpu := _cpu_fields(line):
             interval = line.startswith("Interval")
             for name, value in cpu.items():
-                series[f"{name}_interval" if name == "idle" and interval else name].append(value)
+                series[f"{name}_interval" if interval else name].append(value)
         elif m := re.search(r"System-wide memory free percentage:\s*(\d+)%", line):
             series["mem_free"].append(float(m.group(1)))
         elif stripped.startswith("Mem:") and len(numbers := _floats(stripped)) >= 6:
@@ -166,6 +168,8 @@ def parse_host_telemetry(text: str) -> dict[str, Any]:
     load, mem_free, disk_mb = series["load"], series["mem_free"], series["disk_mb"]
     idle_interval = series["idle_interval"]
     idle = idle_interval or series["idle"]
+    iowait = series["iowait_interval"] or series["iowait"]
+    steal = series["steal_interval"] or series["steal"]
     # macOS `top` prints cumulative disk traffic; the per-interval delta is what shows a burst.
     disk_delta = [disk_mb[i + 1] - disk_mb[i] for i in range(len(disk_mb) - 1)]
     disk_delta = [d for d in disk_delta if d >= 0]
@@ -175,8 +179,8 @@ def parse_host_telemetry(text: str) -> dict[str, Any]:
         "load1_median": statistics.median(load) if load else None,
         "cpu_idle_min": min(idle, default=None),
         "cpu_idle_measured": bool(idle_interval),
-        "iowait_max": max(series["iowait"], default=None),
-        "steal_max": max(series["steal"], default=None),
+        "iowait_max": max(iowait, default=None),
+        "steal_max": max(steal, default=None),
         "mem_free_min_pct": min(mem_free, default=None),
         "disk_mb_per_sample_max": round(max(disk_delta), 1) if disk_delta else None,
     }
@@ -476,6 +480,23 @@ def _job_log_signals(gh: Gh, repo: str, job_id: Any) -> dict[str, int] | None:
         return None  # logs expired or withheld: unknown, which is not the same as zero
 
 
+_TIMEOUT_ANNOTATION = "exceeded the maximum execution time"
+
+
+def _timed_out(gh: Gh, repo: str, job_id: Any) -> bool:
+    """Whether a cancelled job was killed by its `timeout-minutes` rather than superseded.
+
+    The jobs API reports both as `cancelled`; the timeout leaves an annotation on the check run.
+    """
+    try:
+        messages = gh(
+            ["api", f"repos/{repo}/check-runs/{job_id}/annotations", "--jq", ".[].message"]
+        )
+    except subprocess.CalledProcessError:
+        return False
+    return _TIMEOUT_ANNOTATION in messages
+
+
 def fetch(
     repo: str,
     workflow: str,
@@ -505,8 +526,12 @@ def fetch(
         # share would attach one job's telemetry to the other, so such jobs stay API-only.
         names = Counter(str(f["runner_name"]) for f in jobs)
         for facts in jobs:
-            # A cancelled job is neither red nor green: the E2E workflows cancel a superseded run
-            # when a newer push arrives, and counting those as failures would inflate every rate.
+            # A superseded run's cancelled jobs are neither red nor green: the E2E workflows cancel
+            # one when a newer push arrives. A job its `timeout-minutes` killed is also `cancelled`,
+            # but it is the wedged-device case this report exists for, so it counts red.
+            cancelled = facts["conclusion"] == "cancelled" and facts["job_id"]
+            if cancelled and _timed_out(gh, repo, facts["job_id"]):
+                facts["conclusion"] = "timed_out"
             if facts["conclusion"] in (None, "skipped", "cancelled"):
                 continue
             name = str(facts["runner_name"])
@@ -589,7 +614,11 @@ def candidate_causes(record: Mapping[str, Any]) -> list[str]:
     infra = bool(causes)
     failing = [s for s in record.get("scenarios") or [] if s.get("ok") is False]
     if failing and not infra:
-        if any(_is_wait(str(s.get("failed_action") or "")) for s in failing):
+        if record.get("api") and not isinstance(record.get("log_signals"), dict):
+            # Log signals unknown (withheld, or `--no-logs`): "no infrastructure signal" is not
+            # established, so a residual label would blame the code on missing evidence.
+            causes.append("log-signals-unknown")
+        elif any(_is_wait(str(s.get("failed_action") or "")) for s in failing):
             causes.append("app-wait-timeout")
         else:
             causes.append("test-assertion")
@@ -629,9 +658,10 @@ def _job_label(record: Mapping[str, Any]) -> str:
 
 
 def _hour_bucket(record: Mapping[str, Any]) -> str:
-    hour = record.get("hour_utc")
-    if hour is None and (started := (record.get("api") or {}).get("started_at")):
-        hour = int(started[11:13])
+    # The job's start hour: `hour_utc` is stamped in the `collect` phase, after the job ran, so a
+    # joined record would otherwise land up to an hour later than an API-only one.
+    started = (record.get("api") or {}).get("started_at")
+    hour = int(started[11:13]) if started else record.get("hour_utc")
     return (
         f"{int(hour) // 4 * 4:02d}-{int(hour) // 4 * 4 + 3:02d}h UTC" if hour is not None else "?"
     )
@@ -692,7 +722,8 @@ def aggregate(records: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
             "failed_step": (r.get("api") or {}).get("failed_step"),
         }
         for r in red
-        if not r.get("causes")
+        # An unread log leaves the job unexplained too: its label records missing evidence.
+        if not set(r.get("causes") or []) - {"log-signals-unknown"}
     ]
     return {
         "jobs": len(records),

@@ -359,7 +359,8 @@ a verdict.
 | `test-assertion` | any other failing step with none of the signals above |
 
 The last two labels are residual. A red job with no infrastructure signal is where a real defect or a
-too-tight wait shows up. Time of day and runner image are not labels. The report compares them as
+too-tight wait shows up. A fetched red job whose log could not be read gets
+`log-signals-unknown` instead, because the log signals above were never checked. Time of day and runner image are not labels. The report compares them as
 dimensions instead.
 
 **Running the analysis.** These steps run on a workstation. The GitHub command-line tool `gh` there
@@ -383,6 +384,8 @@ needs access to the repository.
    artifact still gets a record from the API alone. A job that stopped before its `collect` step
    thus stays in the count. The command skips a cancelled job. The E2E workflows cancel a
    superseded run when a newer push arrives. Such a run says nothing about the code or the machine.
+   A job that its `timeout-minutes` killed is also reported as cancelled. The command tells the two
+   apart by the timeout annotation on the job, and counts a killed job as red.
 
 2. Print the report.
 

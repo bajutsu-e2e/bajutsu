@@ -120,7 +120,9 @@ For each of a workflow's last `N` completed runs, the command performs four step
 A job with no telemetry artifact still gets a record from the API alone. That record keeps the job
 in the denominator: a job that died before its `collect` step still counts as red. A job log that
 the API withholds is recorded as unknown rather than as zero. A cancelled job is left out: the E2E
-workflows cancel a superseded run when a newer push arrives, and that run carries no signal.
+workflows cancel a superseded run when a newer push arrives, and that run carries no signal. A job
+that its `timeout-minutes` killed is also reported as cancelled; the timeout annotation on the job
+tells it apart, and that job counts as red.
 The join uses the runner name, so jobs of one run that share a runner name stay API-only.
 
 The log patterns copy warnings that `bajutsu` itself writes. A test pins each pattern against its
@@ -154,7 +156,8 @@ not explain the red ones, and the report can show that only when both sides carr
 | `test-assertion` | any other failing step with none of the signals above |
 
 The last two rules are residual. They name a failing scenario that no infrastructure signal
-accompanies, which is where a real defect or a too-tight wait appears. The report compares time of
+accompanies, which is where a real defect or a too-tight wait appears. A fetched red job whose log
+could not be read gets `log-signals-unknown` instead, because its log signals were never checked. The report compares time of
 day and runner image as dimensions rather than as causes, because no single job carries them as a
 signal.
 
