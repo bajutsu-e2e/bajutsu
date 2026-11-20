@@ -14,6 +14,7 @@
 # text_selection_android.yaml (issue #2389).
 #   bajutsu run --scenario text_editing.yaml --target showcase-swiftui ...
 - name: select and copy the field text, then clear and delete it
+  tags: [textselection]
   preconditions:
     subject:
       launch:

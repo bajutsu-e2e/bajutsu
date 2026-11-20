@@ -297,7 +297,9 @@ final class AlertResolutionTests: XCTestCase {
             ("scroll", {
                 _ = try await self.handler.scroll(.init(body: .json(.init(from: [0, 0], to: [0, 9]))))
             }),
-            ("selectAll", { _ = try await self.handler.selectAll(.init(body: .json(.init()))) }),
+            ("deleteText", {
+                _ = try await self.handler.deleteText(.init(body: .json(.init(count: 1))))
+            }),
         ]
         for (name, actuate) in actuations {
             _ = try await read()

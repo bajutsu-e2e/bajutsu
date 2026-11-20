@@ -345,8 +345,8 @@ final class HTTPServer {
             }
             // The same invariant as the unterminated header above, applied to the body: a client that
             // stopped short never finished sending this request, so it must not reach a handler.
-            // Returning it with a nil body would leave that call to each route, and `/selectAll` and
-            // `/copy` read no body at all — they would actuate the device on a truncated request.
+            // Returning it with a nil body would leave that call to each route, and `/app/leave`
+            // reads no body at all — it would actuate the device on a truncated request.
             // The receive timeout above makes the short read reachable from a peer that merely
             // stalls, not only from one that closed, which is what makes the guard load-bearing.
             guard totalRead == contentLength else { return .malformed }

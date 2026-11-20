@@ -162,8 +162,8 @@ final class HTTPServerResilienceTests: XCTestCase {
         )
     }
 
-    /// The header test's invariant, applied to the body. `/selectAll` and `/copy` read no body at
-    /// all, so a truncated request that reached a handler would actuate the device rather than draw
+    /// The header test's invariant, applied to the body. `/app/leave` reads no body at all, so a
+    /// truncated request that reached a handler would actuate the device rather than draw
     /// the loud `400 missing or invalid JSON body` the body-reading routes answer with. The receive
     /// timeout is what makes the case reachable from a peer that merely stalls mid-body, where
     /// before only a peer that closed got this far.
@@ -179,7 +179,7 @@ final class HTTPServerResilienceTests: XCTestCase {
         let fd = try Self.connect(port: port)
         defer { close(fd) }
         // A complete header declaring 64 bytes, then a body that stops short and never resumes.
-        Self.write(fd, "POST /selectAll HTTP/1.1\r\nContent-Length: 64\r\n\r\n{\"partial\":")
+        Self.write(fd, "POST /app/leave HTTP/1.1\r\nContent-Length: 64\r\n\r\n{\"partial\":")
 
         XCTAssertTrue(
             Self.readAll(fd).hasPrefix("HTTP/1.1 400 "),
@@ -187,7 +187,7 @@ final class HTTPServerResilienceTests: XCTestCase {
         )
         XCTAssertEqual(
             reached.wait(timeout: .now()), .timedOut,
-            "/selectAll takes no body, so dispatching a truncated request would actuate the device"
+            "/app/leave takes no body, so dispatching a truncated request would actuate the device"
         )
     }
 
@@ -206,7 +206,7 @@ final class HTTPServerResilienceTests: XCTestCase {
 
             let fd = try Self.connect(port: port)
             defer { close(fd) }
-            Self.write(fd, "POST /selectAll HTTP/1.1\r\nContent-Length: \(declared)\r\n\r\n")
+            Self.write(fd, "POST /app/leave HTTP/1.1\r\nContent-Length: \(declared)\r\n\r\n")
 
             XCTAssertTrue(
                 Self.readAll(fd).hasPrefix("HTTP/1.1 400 "),

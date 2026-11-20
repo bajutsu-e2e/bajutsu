@@ -34,8 +34,6 @@ final class FakeElementProvider: ElementProviding {
     var scrollCalls: [(fromX: Double, fromY: Double, toX: Double, toY: Double)] = []
     var typeCalls: [String] = []
     var deleteTextCalls: [Int] = []
-    var selectAllCalls = 0
-    var copyCalls = 0
     // The picker-wheel rows `setPickerValue` records, and the result it reports (BE-0356). Kept apart
     // from the shared `tapResult` so a test can script a `.valueNotFound` wheel without changing what
     // every other actuation returns.
@@ -126,16 +124,6 @@ final class FakeElementProvider: ElementProviding {
 
     func deleteText(count: Int) -> TapResult {
         deleteTextCalls.append(count)
-        return tapResult
-    }
-
-    func selectAll() -> TapResult {
-        selectAllCalls += 1
-        return tapResult
-    }
-
-    func copySelection() -> TapResult {
-        copyCalls += 1
         return tapResult
     }
 

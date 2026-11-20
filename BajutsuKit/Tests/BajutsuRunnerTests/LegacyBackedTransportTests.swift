@@ -31,7 +31,7 @@ final class LegacyBackedTransportTests: XCTestCase {
                 "GET /health", "GET /elements", "GET /screen", "GET /screenshot",
                 "POST /tap", "POST /isHittable", "POST /gesture", "POST /swipe", "POST /scroll",
                 "POST /setPickerValue",
-                "POST /type", "POST /deleteText", "POST /selectAll", "POST /copy",
+                "POST /type", "POST /deleteText",
                 "POST /systemAlert/query", "POST /systemAlert/tap", "POST /systemAlert/resolve",
                 "POST /notificationBanner/query",
                 "POST /interruptionPolicy", "POST /interruptionPolicy/drain",

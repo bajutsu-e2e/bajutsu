@@ -232,40 +232,6 @@ paths:
                 $ref: "#/components/schemas/ActuationReply"
         "400":
           $ref: "#/components/responses/BadRequest"
-  /selectAll:
-    post:
-      operationId: selectAll
-      summary: Select the whole content of the focused field.
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/EmptyRequest"
-      responses:
-        "200":
-          description: The actuation outcome.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ActuationReply"
-  /copy:
-    post:
-      operationId: copySelection
-      summary: Copy the active selection to the clipboard.
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/EmptyRequest"
-      responses:
-        "200":
-          description: The actuation outcome.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ActuationReply"
   /setPickerValue:
     post:
       operationId: setPickerValue

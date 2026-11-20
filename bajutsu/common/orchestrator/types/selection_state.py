@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from bajutsu.common.drivers.base import Selector
+
 
 @dataclass
 class SelectionState:
@@ -17,13 +19,16 @@ class SelectionState:
     then a `wait` for a menu, then `copy` is a valid sequence. A `copy` with no live selection fails
     the step rather than silently copying nothing.
 
+    The state also records the field the `select` named, because iOS copies by raising the edit
+    menu on that field again rather than through a shortcut on whatever has focus (BE-0493).
+
     The transitions live on this type (not in the caller) so the contract stays in one place.
     """
 
-    active: bool = False
+    sel: Selector | None = None
 
-    def establish(self) -> None:
-        self.active = True
+    def establish(self, sel: Selector) -> None:
+        self.sel = sel
 
     def invalidate(self) -> None:
-        self.active = False
+        self.sel = None

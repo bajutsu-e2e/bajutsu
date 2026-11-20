@@ -243,8 +243,8 @@ final class ContractConformanceTests: XCTestCase {
         )
         XCTAssertEqual(delete.count, 3)
 
-        // `/selectAll`, `/copy`, `/systemAlert/query`, and `/notificationBanner/query` are sent an
-        // empty object, not an absent body, so the schema has to accept `{}`.
+        // `/app/leave`, `/systemAlert/query`, and `/notificationBanner/query` are sent an empty
+        // object, not an absent body, so the schema has to accept `{}`.
         XCTAssertNoThrow(
             try decoder.decode(Components.Schemas.EmptyRequest.self, from: Data("{}".utf8))
         )

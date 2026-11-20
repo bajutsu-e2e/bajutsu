@@ -329,19 +329,6 @@ final class XcuitestElementProvider: ElementProviding {
         return .ok
     }
 
-    func selectAll() -> TapResult {
-        // Cmd+A selects the focused field's whole content — the hardware-keyboard shortcut the
-        // Simulator honors (BE-0265).
-        app.typeKey("a", modifierFlags: .command)
-        return .ok
-    }
-
-    func copySelection() -> TapResult {
-        // Cmd+C copies the active selection to the clipboard, read back by the `clipboard` assertion.
-        app.typeKey("c", modifierFlags: .command)
-        return .ok
-    }
-
     func setPickerValue(backingElement: AnyObject, value: String) -> TapResult {
         guard let backing = backingElement as? PositionPathBacking else { return .notFound }
         guard let el = liveElement(for: backing) else { return .stale }

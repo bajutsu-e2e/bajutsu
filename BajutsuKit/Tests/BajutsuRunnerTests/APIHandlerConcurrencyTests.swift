@@ -64,8 +64,6 @@ final class APIHandlerConcurrencyTests: XCTestCase {
         func scroll(fromX: Double, fromY: Double, toX: Double, toY: Double) -> TapResult { .ok }
         func screenSize() -> (width: Double, height: Double) { (390, 844) }
         func deleteText(count: Int) -> TapResult { .ok }
-        func selectAll() -> TapResult { .ok }
-        func copySelection() -> TapResult { .ok }
         func setPickerValue(backingElement: AnyObject, value: String) -> TapResult { .ok }
         func querySystemAlertButtons() -> [ElementSnapshot] { [] }
         func tapSystemAlertButton(backingElement: AnyObject) -> TapResult { .ok }

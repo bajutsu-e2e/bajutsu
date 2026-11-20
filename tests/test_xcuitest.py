@@ -321,36 +321,22 @@ def test_pinch_and_rotate_emit_gesture_requests_with_the_handle() -> None:
     ]
 
 
-def test_text_editing_requests_carry_the_action_payload() -> None:
-    # delete/select/copy each POST to their own endpoint; the runner types the native key or key
-    # chord on the focused field (BE-0265). Focus is a prior tap the orchestrator issues.
+def test_delete_text_carries_the_count() -> None:
+    # The runner types the native delete key on the focused field (BE-0265).
     sent: list[tuple[str, str, Mapping[str, Any] | None]] = []
 
     def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         sent.append((method, path, body))
         return _Reply(status="ok")
 
-    d = _driver(transport)
-    d.delete_text(3)
-    d.select_all()
-    d.copy_selection()
-    assert sent == [
-        ("POST", "/deleteText", {"count": 3}),
-        ("POST", "/selectAll", {}),
-        ("POST", "/copy", {}),
-    ]
+    _driver(transport).delete_text(3)
+    assert sent == [("POST", "/deleteText", {"count": 3})]
 
 
-def test_text_editing_raises_on_a_non_ok_reply() -> None:
-    # A failed actuation is loud on every text-editing endpoint, never a silent no-op (determinism
-    # first) — the three share one guard shape, so pin all three.
-    d = _driver(lambda m, p, b: _Reply(status="error"))
+def test_delete_text_raises_on_a_non_ok_reply() -> None:
+    # A failed actuation is loud, never a silent no-op (determinism first).
     with pytest.raises(XcuitestChannelError):
-        d.delete_text(1)
-    with pytest.raises(XcuitestChannelError):
-        d.select_all()
-    with pytest.raises(XcuitestChannelError):
-        d.copy_selection()
+        _driver(lambda m, p, b: _Reply(status="error")).delete_text(1)
 
 
 def test_select_option_unsupported() -> None:
@@ -3278,8 +3264,8 @@ def _paste_transport(
 
 def _fast_paste(monkeypatch: pytest.MonkeyPatch) -> None:
     # One read per wait, so a menu that never comes costs no wall time on the gate.
-    monkeypatch.setattr(xcuitest_driver_module, "_PASTE_MENU_AFTER_TAP", 0.0)
-    monkeypatch.setattr(xcuitest_driver_module, "_PASTE_MENU_TIMEOUT", 0.0)
+    monkeypatch.setattr(xcuitest_driver_module, "_EDIT_MENU_AFTER_TAP", 0.0)
+    monkeypatch.setattr(xcuitest_driver_module, "_EDIT_MENU_TIMEOUT", 0.0)
 
 
 def test_paste_focuses_then_long_presses_to_raise_the_menu_then_taps_paste(
@@ -3360,3 +3346,192 @@ def test_paste_names_a_menu_already_up_before_the_step(monkeypatch: pytest.Monke
     transport, _sent = _paste_transport([], app=[_PASTE_ITEM])
     with pytest.raises(base.ElementNotFound, match="already on screen"):
         _driver(transport).paste({"id": "form.coupon"})
+
+
+def _menu_item(handle: str, label: str) -> dict[str, Any]:
+    return _el_wire(handle, None, label, traits=["staticText"])
+
+
+_SELECT_ALL_ITEM = _menu_item("h-select-all", "Select All")
+_COPY_ITEM = _menu_item("h-copy", "Copy")
+_SELECT_ALL_TAP = ("POST", "/tap", {"handle": "h-select-all"})
+_COPY_TAP = ("POST", "/tap", {"handle": "h-copy"})
+
+
+def _edit_menu_transport(
+    *,
+    raised_by: str = "press",
+    menu: str | None = None,
+    app: list[dict[str, Any]] | None = None,
+) -> tuple[TransportFn, list[tuple[str, str, Mapping[str, Any] | None]]]:
+    """A runner that models the iOS 26.5 edit menu on the coupon field (BE-0493).
+
+    With no selection the menu offers Select All and Paste; after Select All it offers Cut, Copy,
+    and Paste. A tap on the field while a menu is up closes it and ends the selection; otherwise
+    the menu rises on a long press, or on the tap itself when `raised_by="tap"`. Tapping a menu item
+    closes the menu. `menu="selection"` starts with the menu a `select` step leaves up.
+    """
+    sent: list[tuple[str, str, Mapping[str, Any] | None]] = []
+    state: dict[str, str | None] = {"menu": menu}
+    items = {
+        "caret": [_SELECT_ALL_ITEM, _PASTE_ITEM],
+        "selection": [_menu_item("h-cut", "Cut"), _COPY_ITEM, _PASTE_ITEM],
+    }
+
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            field = _el_wire("h-field", "form.coupon", None, traits=["textField"])
+            shown = items[state["menu"]] if state["menu"] else []
+            return _elements(field, *(app or []), *shown)
+        sent.append((method, path, body))
+        fields = body or {}
+        handle = fields.get("handle")
+        if path == "/tap" and handle == "h-field":
+            if "duration" in fields:
+                state["menu"] = "caret"
+            elif state["menu"]:
+                state["menu"] = None
+            elif raised_by == "tap":
+                state["menu"] = "caret"
+        elif path == "/tap" and handle == "h-select-all":
+            state["menu"] = "selection"
+        elif path == "/tap":
+            state["menu"] = None
+        return _Reply(status="ok")
+
+    return transport, sent
+
+
+def test_select_all_long_presses_for_the_menu_then_taps_select_all(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Cmd+A stops working once another process writes the pasteboard, so iOS selects through the
+    # edit menu (BE-0493).
+    _fast_paste(monkeypatch)
+    transport, sent = _edit_menu_transport()
+    _driver(transport).select_all({"id": "form.coupon"})
+    assert sent == [_FIELD_TAP, _FIELD_PRESS, _SELECT_ALL_TAP]
+
+
+def test_select_all_uses_the_menu_its_focusing_tap_raised(monkeypatch: pytest.MonkeyPatch) -> None:
+    _fast_paste(monkeypatch)
+    transport, sent = _edit_menu_transport(raised_by="tap")
+    _driver(transport).select_all({"id": "form.coupon"})
+    assert sent == [_FIELD_TAP, _SELECT_ALL_TAP]
+
+
+def test_select_all_accepts_the_label_in_the_apps_own_localization(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fast_paste(monkeypatch)
+    transport, sent = _paste_transport([_menu_item("h-sa", "すべてを選択")])
+    _driver(transport).select_all({"id": "form.coupon"})
+    assert sent[-1] == ("POST", "/tap", {"handle": "h-sa"})
+
+
+def test_select_all_fails_loudly_when_the_menu_offers_no_select_all(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fast_paste(monkeypatch)
+    transport, sent = _paste_transport([_PASTE_ITEM])
+    with pytest.raises(base.ElementNotFound, match=r"^select: .*Select All"):
+        _driver(transport).select_all({"id": "form.coupon"})
+    assert sent == [_FIELD_TAP, _FIELD_PRESS]
+
+
+def test_copy_names_its_own_step_when_the_reselection_finds_no_select_all(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # `copy` re-selects through the shared Select All gesture; its failure must name `copy`, the step
+    # the scenario wrote, not a `select` that already succeeded.
+    _fast_paste(monkeypatch)
+    transport, _sent = _paste_transport([_PASTE_ITEM])
+    with pytest.raises(base.ElementNotFound, match=r"^copy: .*Select All"):
+        _driver(transport).copy_selection({"id": "form.coupon"})
+
+
+def test_select_all_never_takes_app_content_for_the_menu(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The app's own "Select All" button was on screen before any touch and stays, so it is not the
+    # menu's item.
+    _fast_paste(monkeypatch)
+    app = [_el_wire("h-app", "app.all", "Select All", traits=["button"], frame=(0, 500, 10, 10))]
+    transport, sent = _paste_transport([], app=app)
+    with pytest.raises(base.ElementNotFound):
+        _driver(transport).select_all({"id": "form.coupon"})
+    assert ("POST", "/tap", {"handle": "h-app"}) not in sent
+
+
+def test_copy_selects_again_then_taps_the_copy_item_that_replaced_select_all(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The menu `select` left up is dismissed by the gesture's own tap rather than reused: no later
+    # step can reopen a menu for a selection that still exists (BE-0493).
+    _fast_paste(monkeypatch)
+    transport, sent = _edit_menu_transport(menu="selection")
+    _driver(transport).copy_selection({"id": "form.coupon"})
+    assert sent == [_FIELD_TAP, _FIELD_PRESS, _SELECT_ALL_TAP, _COPY_TAP]
+
+
+def test_copy_twice_in_a_row_raises_the_menu_each_time(monkeypatch: pytest.MonkeyPatch) -> None:
+    _fast_paste(monkeypatch)
+    transport, sent = _edit_menu_transport(menu="selection")
+    d = _driver(transport)
+    d.copy_selection({"id": "form.coupon"})
+    d.copy_selection({"id": "form.coupon"})
+    assert sent.count(_COPY_TAP) == 2
+
+
+def test_copy_refuses_a_menu_item_that_shares_app_contents_label(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fast_paste(monkeypatch)
+    app = [_el_wire("h-app", "app.copy", "Copy", traits=["button"], frame=(0, 500, 10, 10))]
+    transport, sent = _edit_menu_transport(app=app)
+    with pytest.raises(base.AmbiguousSelector):
+        _driver(transport).copy_selection({"id": "form.coupon"})
+    assert ("POST", "/tap", {"handle": "h-app"}) not in sent
+
+
+def test_copy_fails_loudly_when_select_all_raises_no_copy(monkeypatch: pytest.MonkeyPatch) -> None:
+    _fast_paste(monkeypatch)
+    transport, _sent = _paste_transport([_SELECT_ALL_ITEM])
+    with pytest.raises(base.ElementNotFound, match="Copy"):
+        _driver(transport).copy_selection({"id": "form.coupon"})
+
+
+def test_paste_dismisses_the_menu_a_select_left_up(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The `select` menu holds a Paste item; the gesture's tap closes it, and the Paste the long
+    # press raises is the one tapped (BE-0493).
+    _fast_paste(monkeypatch)
+    transport, sent = _edit_menu_transport(menu="selection")
+    _driver(transport).paste({"id": "form.coupon"})
+    assert sent == [_FIELD_TAP, _FIELD_PRESS, ("POST", "/tap", {"handle": "h-paste"})]
+
+
+def test_app_content_that_drops_out_after_the_long_press_is_never_a_new_menu_item(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The app's own "Select All" leaves the tree for one read after the long press, then returns,
+    # while the menu never rises. Only the wait after the focusing tap may lower the baseline, so
+    # its return is no new item: the step fails rather than tapping the app's button (BE-0493).
+    # Two reads per wait, untimed: after the long press, the one the button is missing from, then its
+    # return.
+    monkeypatch.setattr(base, "deadline_ticks", lambda *_a, **_k: iter([None, None]))
+    app = _el_wire("h-app", "app.all", "Select All", traits=["button"], frame=(0, 500, 10, 10))
+    reads_after_press = {"n": 0}
+    sent: list[tuple[str, str, Mapping[str, Any] | None]] = []
+
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            field = _el_wire("h-field", "form.coupon", None, traits=["textField"])
+            if any("duration" in (b or {}) for _m, _p, b in sent):
+                reads_after_press["n"] += 1
+            hidden = reads_after_press["n"] == 1
+            return _elements(field, *([] if hidden else [app]))
+        sent.append((method, path, body))
+        return _Reply(status="ok")
+
+    with pytest.raises(base.ElementNotFound, match="labels on screen"):
+        _driver(transport).select_all({"id": "form.coupon"})
+    assert ("POST", "/tap", {"handle": "h-app"}) not in sent
+    assert reads_after_press["n"] >= 2  # the return was read, not just the gap

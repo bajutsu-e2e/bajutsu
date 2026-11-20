@@ -112,18 +112,24 @@ def _do_action(
     """
     selection = selection if selection is not None else SelectionState()
     kind = _action_of(step)
+    # The whole selection contract lives here, in one place, so it stays uniform across backends and
+    # the handlers stay stateless (BE-0265): `copy` needs a selection `select` established, keeps it
+    # (a selection can be copied more than once), and every other action invalidates it. `copy` has
+    # no handler of its own because the field it copies from is selection state, not a step field:
+    # iOS raises the edit menu on that field again to reach its Copy item (BE-0493).
+    if kind == _COPY:
+        if selection.sel is None:
+            raise base.UnsupportedAction(
+                "copy requires an active selection — add a `select` step before it (BE-0265)"
+            )
+        driver.copy_selection(selection.sel)
+        return
     handler = _HANDLERS.get(kind)
     if handler is None:
         raise AssertionError("unhandled action")
-    # The whole selection contract lives here, in one place, so it stays uniform across backends and
-    # the handlers stay stateless (BE-0265): `copy` needs a selection `select` established, keeps it
-    # (a selection can be copied more than once), and every other action invalidates it.
-    if kind == _COPY and not selection.active:
-        raise base.UnsupportedAction(
-            "copy requires an active selection — add a `select` step before it (BE-0265)"
-        )
     handler(driver, step, relaunch, control, bindings)
     if kind == _SELECT:
-        selection.establish()
-    elif kind != _COPY:
+        assert step.select is not None
+        selection.establish(step.select.into.as_selector())
+    else:
         selection.invalidate()

@@ -111,12 +111,6 @@ public protocol ElementProviding: AnyObject {
     /// Delete `count` characters from the end of the focused field (backspace; BE-0265).
     func deleteText(count: Int) -> TapResult
 
-    /// Select the whole content of the focused field (BE-0265).
-    func selectAll() -> TapResult
-
-    /// Copy the active selection to the clipboard (BE-0265).
-    func copySelection() -> TapResult
-
     /// Move the picker wheel identified by its backing reference to the row whose value is `value`
     /// (BE-0356), reporting `.valueNotFound` when the wheel never shows it.
     ///

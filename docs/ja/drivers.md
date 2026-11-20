@@ -361,7 +361,7 @@ frame 中心の座標に解決することはありません。
     （[selectors](selectors.md#elementnottappable-解決はしたが到達できない対象)）。
 - `wait_for`: runner のネイティブな条件待機を使います。
 - `pinch` / `rotate`: runner がネイティブに実行する 2 本指の multi-touch ジェスチャです。
-- `select` / `copy` / `paste`: フォーカス中フィールドのネイティブなテキスト選択とペーストです。
+- `select` / `copy` / `paste`: ステップが指すフィールドで編集メニューを出し、その「Select All」「Copy」「Paste」をドライバがタップします（[BE-0493](../../roadmaps/BE-0493-ios-edit-menu-text-selection/BE-0493-ios-edit-menu-text-selection-ja.md)）。
 - `screenshot`: `simctl io screenshot`。
 - `enter_app` / `leave_app`: `app:` ステップです。上の `SFSafariViewController` のマージとは違い、2 つのツリーをマージすることはありません。
   `enter_app` は、新しい `XCUIApplication(bundleIdentifier:)` を runner 自身の app スタックへ push して `.activate()` します。
@@ -844,6 +844,11 @@ id 規約は、上の iOS と Android のものと並べて記します（Flutte
   スキームを登録しているのは、BE-0007 のディープリンク実行の後続スライスが `am start -a VIEW -d <scheme>://<tab>` や `simctl openurl` で駆動できるようにするためです。
   アプリ側のハンドラは、そのスライスで入ります。
   リテラルスキームのディープリンクを駆動する共有シナリオは今はなく（`navigation.yaml` や `notices.yaml` は launch env とタップだけで駆動します）、実機検証には影響しません。
+- **iOS の `copy` ステップ。** XCUITest ドライバは、UIKit の編集メニューを使って選択とコピーをします（[BE-0493](../../roadmaps/BE-0493-ios-edit-menu-text-selection/BE-0493-ios-edit-menu-text-selection-ja.md)）。
+  Flutter は、編集メニューの代わりに独自のテキスト選択ツールバーを描きます。
+  このツールバーも「Select All」と「Paste」のラベルを持つので、Flutter の iOS ターゲットでも `select`、`clear`、`paste` は動きます。
+  ただし、「Select All」で文字列を選択するとツールバーが閉じ、そのあと「Copy」項目が出ないので、`copy` は `ElementNotFound` で失敗します。
+  `run-flutter` は、コピーするシナリオを含む `paste.yaml` と `text_editing.yaml` を、`textselection` タグで実行から外します。
 - **Flutter Web（CanvasKit）。** canvas へ描き、要素を DOM に出さないので、Playwright バックエンドでは解決できません。
 - **iOS の `noax` 双子。** a11y ビルドが公開の実証です。identifier を持たない別の iOS バンドルには、Flutter フレーバによる bundle id の分離が要り、後続作業とします。
   Android の `noax` 双子は同梱します（`showcase-flutter-android-noax`）。Gradle のプロダクトフレーバでビルドします。
