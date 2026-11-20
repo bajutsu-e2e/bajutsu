@@ -71,7 +71,7 @@ A request names a sink and never a URL. A URL taken from a request would let any
 
 ### Recording events
 
-A group event is a row in a new table, `group_events`. A row holds the group, the sink, the event, a delivery state, an attempt count, the time of the next attempt, the adapter's reference, and, for `completed`, the snapshot of the group that the adapter renders. The row lands in the same store transaction as the change that causes the event:
+A group event is a row in a new table, `group_events`. A row holds the group, the sink, the event, the time the event happened, a delivery state, an attempt count, the time of the next attempt, the adapter's reference, and, for `completed`, the snapshot of the group that the adapter renders. The adapter sends that recorded time as `started_at` and `completed_at`, never the time of its own delivery. The row lands in the same store transaction as the change that causes the event:
 
 - `queued`: the transaction that registers the group and its jobs;
 - `started`: the lease transaction that leases the group's first job;
@@ -85,10 +85,12 @@ The `completed` snapshot is built once, when the row is first claimed, and store
 
 ### Delivering events
 
-A loop on the `serve` process delivers pending rows. The loop claims a row the way a worker claims a job, with a claim that expires. Two `serve` processes on one store thus never deliver the same row at once. A claim that expires makes delivery at-least-once, so an adapter whose creating call is not idempotent must recover the reference rather than create a second object. The `github-check` adapter lists all check runs of `head_sha` for the sink's check name (`filter=all`, since the default returns only the latest) and adopts the one whose `external_id` is the group id, before it creates one.
+A loop on the `serve` process delivers pending rows. The loop claims a row the way a worker claims a job, with a claim that expires. Two `serve` processes on one store thus never deliver the same row at once. A claim that expires makes delivery at-least-once, so an adapter whose creating call is not idempotent must recover the reference rather than create a second object. The `github-check` adapter lists all check runs of `head_sha` for the sink's check name (`filter=all`, since the default returns only the latest) and adopts the one whose `external_id` is the group id and whose `status` is `queued`, before it creates one. A run that carries the group id but stays `completed` is the remnant of a refused takeover and is ignored.
+
+A re-run of the workflow registers a new group, because the group key carries `GITHUB_RUN_ATTEMPT`. The re-run exists to replace the earlier result, so the new group takes over the earlier check run rather than adding a second one beside it. When no run carries the group id, the `queued` delivery adopts the newest run of the same name that is already `completed`. It sets that run back to `queued`, writes the new group id into `external_id`, and clears `output`, `conclusion`, and `completed_at`. The adapter adopts a completed run alone, so a group never takes the check of a group that is still running. Two takeovers can still race, so the delivery loop serialises `queued` rows per repository, `head_sha`, and check name: a `queued` row waits while another `queued` row with the same three is claimed. After the first takeover the run is `queued`, not `completed`, so the second delivery creates a new run. GitHub's documentation does not state whether a completed check run accepts a return to `queued`. When GitHub refuses the update, or answers with a run whose `status` is not `queued`, the adapter creates a new run instead.
 
 - Events of one group and sink deliver in order. A `started` row waits until the `queued` row of the same group and sink is delivered or abandoned.
-- A process claims only the rows whose sink its own file defines. A row whose sink no process defines goes unclaimed, so it raises no error on any pass. Once such a row has outlived the window that the backoff allows, it becomes `abandoned`, and operational logging records the sink name. A replica that still runs the old file thus never abandons a row for a sink that an updated replica has just gained. The abandonment metric counts it under `format="unknown"`, since no definition names its format.
+- A process claims only the rows whose sink its own file defines. A row whose sink no process defines goes unclaimed, so it raises no error on any pass. Once such a row has outlived the window that the backoff allows, it becomes `abandoned`, and operational logging records the sink name. That window therefore bounds a rollout: once the window elapses, a replica on the old file abandons a row for a sink that an updated replica has just gained, so the window must exceed the time a `serve` rollout takes. The abandonment metric counts it under `format="unknown"`, since no definition names its format.
 - A failed delivery retries with a bounded exponential backoff. After its last attempt, the row becomes `abandoned`. Operational logging records the abandonment, and a counter metric, `bajutsu_group_events_abandoned_total`, counts it by format.
 - An adapter that finds no reference from an earlier event starts from scratch. For `github-check`, a `completed` event whose `queued` row was abandoned creates the check run in its completed state.
 - A delivery never changes a job, a group, or a conclusion. The group's verdict is fixed before its `completed` row exists.
@@ -99,7 +101,7 @@ The adapter resolves the App's installation for the stored repository and mints 
 
 | Event | GitHub call | Fields |
 |---|---|---|
-| `queued` | `GET /repos/{owner}/{repo}/commits/{head_sha}/check-runs?check_name=…&filter=all` to adopt a run whose `external_id` is the group id, else `POST /repos/{owner}/{repo}/check-runs` | `name`, `head_sha`, `status: queued`, `external_id` set to the group id |
+| `queued` | `GET /repos/{owner}/{repo}/commits/{head_sha}/check-runs?check_name=…&filter=all` to adopt a run whose `external_id` is the group id and `status: queued`, else the newest `completed` run of the same name through `PATCH`, else `POST /repos/{owner}/{repo}/check-runs` | `name`, `head_sha`, `status: queued`, `external_id` set to the group id (the takeover `PATCH` sends `status: queued`, `external_id`, and a cleared `output`, `conclusion`, and `completed_at`) |
 | `started` | `PATCH /repos/{owner}/{repo}/check-runs/{id}` | `status: in_progress`, `started_at` |
 | `completed` | `PATCH /repos/{owner}/{repo}/check-runs/{id}` | `status: completed`, `conclusion`, `completed_at`, `output` |
 
@@ -143,7 +145,7 @@ GitHub caps `summary` at 65,535 characters. The adapter stops adding rows before
 - **Extend the `notify:` list of BE-0099.** That list belongs to a target config and fires inside one `bajutsu run`. A group's lifecycle exists on `serve` alone, so the trigger cannot live in the run process. The new sinks reuse the word `format` for the same idea, an adapter per destination.
 - **Name the events `hooks`.** The scenario and target vocabulary already uses `hooks` for steps that run before and after a scenario. An event delivered to a sink is a notification, not a step, so this item keeps the notification vocabulary.
 - **Publish one check run per scenario.** Forty scenarios would add forty entries to the pull request's checks list. A single check with a table keeps the list readable, and its conclusion can serve as one required check.
-- **Answer GitHub's re-run button.** A re-run request reaches the App as a `check_run` webhook with the `rerequested` action. `serve` would then need an inbound webhook endpoint and a way to register the group again. A re-run of the workflow already registers a fresh group, because the group key carries `GITHUB_RUN_ATTEMPT`. This item leaves the button out.
+- **Answer GitHub's re-run button.** A re-run request reaches the App as a `check_run` webhook with the `rerequested` action. `serve` would then need an inbound webhook endpoint and a way to register the group again. A re-run of the workflow already registers a fresh group, because the group key carries `GITHUB_RUN_ATTEMPT`, and that group takes over the earlier check run. This item leaves the button out.
 - **Give a queued job a deadline, so that "no worker" becomes an outcome.** `POST /api/run-set` already refuses a scenario that no live worker can serve, with status 400. The dispatching Actions job then fails, and its log names the missing tokens. A worker that goes away after registration still leaves a job waiting with no outcome. A deadline would close that gap, but it changes the queue's semantics for every job, not only for group jobs. This item leaves the deadline to a separate item.
 
 ## Progress
@@ -158,7 +160,7 @@ GitHub caps `summary` at 65,535 characters. The adapter stops adding rows before
 - [ ] A structured lease-expiry reason in the reclaim result
 - [ ] The `completed` snapshot: scenario names and failure lines, built once and stored on the row
 - [ ] The delivery loop: claim, order, retry, abandonment, and the metric
-- [ ] The `github-check` adapter: installation by repository, the recovery lookup and the three calls, and the output
+- [ ] The `github-check` adapter: installation by repository, the recovery lookup, the takeover of an earlier attempt's run, the three calls, and the output
 - [ ] Documentation in both languages
 
 ## References
