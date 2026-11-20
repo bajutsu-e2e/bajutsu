@@ -232,8 +232,8 @@ supplies is its platform's own.
   discards a lease on every recovered crash, with the same defect. It would also put process
   management in a test file rather than behind the seam that owns it. Rejected as a workaround for
   one symptom.
-- **Leave it, since both suites usually pass.** The suites do pass most runs, because the defect
-  bites when a lease is discarded, which takes a crash or an injected fault first. When it does
+- **Leave it, since both suites usually pass.** The suites do pass most runs: nothing discards a
+  lease without a crash or an injected fault first, and the defect bites nowhere else. When it does
   bite, it produces a red check on a pull request that cannot have caused it. That is the exact
   outcome that BE-0334 exists to prevent, arriving through the recovery path of BE-0334 itself. On
   the fault-injection lane, that check blocked no merge at the time (BE-0305 has since promoted the

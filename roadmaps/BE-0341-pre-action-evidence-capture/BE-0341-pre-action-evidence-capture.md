@@ -251,8 +251,8 @@ otherwise. The call never queries to fill that gap.
    [evidence.md](../../docs/evidence.md#a-capturepolicy-rule-based). The rule's post-step write
    still fires and overwrites the pre-step one on disk.
 
-   A rule's condition (`screenChanged` / `result: error`) is knowable after the step ran. What the
-   rule wants to see is the post-action state. An error rule that shows the screen the step left
+   A rule's condition (`screenChanged` / `result: error`) becomes knowable after the step ran, never
+   before. The rule wants the post-action state. An error rule that shows the screen the step left
    broken is correct, and this item must not suppress it. This item changes the *default*, the
    artifact that every step gets when no rule matches. It never changes a rule's own explicit
    request.
@@ -376,9 +376,9 @@ the codebase (`docs/evidence.md`, `DESIGN.md`). Reusing them costs one fixed con
 Unit 5). In exchange, the name means what it says.
 
 **Make every rule-fired instant kind pre-step too, not just the baseline.** Motivation covers the
-grounds for rejecting this in adjacent detail. The `screenChanged` and `result: error` triggers are
-decidable after the step runs. They are meant to capture the post-action state: the error that the
-step produced, or the change that the step caused. Moving those captures pre-step would fix no
+grounds for rejecting this in adjacent detail. The `screenChanged` and `result: error` triggers
+become decidable after the step runs, never before. They are meant to capture the post-action
+state: the error that the step produced, or the change that the step caused. Moving those captures pre-step would fix no
 defect. It would remove the ability to see what went wrong.
 
 **Give `elements` its own before/after modifier, mirroring `screenshot`.** This would remove the

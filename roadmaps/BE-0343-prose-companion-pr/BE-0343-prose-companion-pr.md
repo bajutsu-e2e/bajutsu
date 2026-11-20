@@ -63,10 +63,10 @@ That advisory status is why the fix should not wait until merge. An unfixed word
 uncorrected for the rest of the review, in the diff that a human is reading and about to approve.
 The reviewer never sees the corrected wording before the pull request merges.
 
-Deferring the fix to *after* merge trades the CI-cost problem for a visibility problem.
+Deferring the fix to *after* merge trades the CI-cost problem for a visibility problem instead of
+solving the original one.
 [BE-0222](../BE-0222-daily-doc-freshness-pr/BE-0222-daily-doc-freshness-pr.md)'s scheduled
-refreshers take that route to reconcile other kinds of drift. It does not solve the original
-problem.
+refreshers take that route to reconcile other kinds of drift.
 
 What is needed is a way to apply the fix immediately, while the source pull request is still open.
 The fix must not route through that pull request's own branch and CI cycle. A companion pull
@@ -124,9 +124,9 @@ it finds at least one, it performs four steps:
    branch built forward from a superseded commit would silently lose ancestry with it. Starting
    fresh from the current head sidesteps that: nothing carries over, so nothing needs to re-sync.
 
-   A suggestion whose target line no longer matches is skipped, with a note in the body of the
-   companion pull request. The source pull request edited that line since the finding posted. The
-   job never guess-applies a suggestion. This is the same conservatism that the repository already
+   A suggestion whose target line no longer matches — because the source pull request edited that
+   line after the finding posted — is skipped, with a note in the body of the companion pull
+   request. The job never guess-applies a suggestion. This is the same conservatism that the repository already
    holds in `docs-refresh-prompt.md` and elsewhere.
 3. Force-pushes the rebuilt companion branch. The branch is named deterministically from the number
    of the source pull request (for example `prose-fix/pr-<N>`). The push is guarded like the rolling
@@ -187,14 +187,15 @@ reviewer.
 - **Reuse [BE-0222](../BE-0222-daily-doc-freshness-pr/BE-0222-daily-doc-freshness-pr.md)'s scheduled
   refresh design, deferring the fix to after the source pull request merges.** This was the original
   shape of this item. A third `refresh.yml` caller rereads `docs/**` and roadmap prose on a daily
-  cron and opens one rolling Draft PR against `main`. Rejected, for three reasons:
+  cron and opens one rolling Draft PR against `main`. Rejected, for two reasons:
   - Waiting until the source pull request merges leaves the wording issue uncorrected for the rest
     of the review. The human reviewer never sees the corrected text before approving. That is the
     opposite of the immediacy this item exists to provide.
   - The scheduled pass would re-derive each finding independently, rather than apply the exact
     suggestion already drafted. A specific fix would then be likely to land, but not guaranteed.
-  - If the CI cost of the companion pull request, or its cross-branch trust surface, ever proves
-    worse in practice than this trade-off, revisit this alternative.
+
+  If the CI cost of the companion pull request, or its cross-branch trust surface, ever proves worse
+  in practice than this trade-off, revisit this alternative.
 - **Base the companion PR on `main` instead of the source branch.** Rejected. A fix to text that the
   source pull request introduces does not exist on `main` until that pull request merges. A
   `main`-based companion pull request could not carry such a fix at all while the source pull

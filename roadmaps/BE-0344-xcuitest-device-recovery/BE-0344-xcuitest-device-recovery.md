@@ -67,8 +67,8 @@ discarding its runner, and the retry spawns onto the device that had just refuse
 app.
 
 What the retry then did is the finding. In three of the four failures, `xcodebuild` resolved its
-destination and emitted two lines about it. It then produced no further output at all. It never
-reached `Running tests...` until the remaining budget ran out 150 to 180 seconds later. In the
+destination and emitted two lines about it. It then produced no further output at all, and never
+reached `Running tests...`. The remaining budget ran out 150 to 180 seconds later. In the
 fourth failure, it exited with code 70 after about 70 seconds:
 
 ```
