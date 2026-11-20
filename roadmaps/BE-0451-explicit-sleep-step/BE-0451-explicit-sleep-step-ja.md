@@ -21,7 +21,7 @@
 
 ## 動機
 
-シナリオの待機は条件待ちです。`wait` step は、セレクタの出現、消失、または画面の安定まで `query()` を poll し、`timeout` を必須とします（[`docs/ja/scenarios.md`](../../docs/ja/scenarios.md)、[BE-0118](../BE-0118-wait-for-contract-unification/BE-0118-wait-for-contract-unification.md)）。run loop の wait が固定時間だけ待つことはありません。この既定は正しく、本項目も維持します。
+シナリオの待機は条件待ちです。`wait` step は、セレクタの出現、消失、または画面の安定まで `query()` を poll し、`timeout` を必須とします（[`docs/ja/scenarios.md`](../../docs/ja/scenarios.md)、[BE-0118](../BE-0118-wait-for-contract-unification/BE-0118-wait-for-contract-unification.md)）。run loop の wait が固定時間だけ待つことはありません。その既定は正しいので、本項目も維持します。
 
 一方で、観測できる条件を持たない待機が存在します。サーバーが再試行を一定時間だけ絞り、終わるまで何も表示しない場合があります。アニメーションがツリーの変化の止まる時点より長く続き、`until: settled` が早く戻る場合もあります。デモ動画を録るシナリオでは、画面をしばらく見せ続ける必要があり、「読むのに十分な長さ」を表す要素はありません。どの場合も、作者は欠けた step を回避しています。回避策は、無関係な要素への `wait` か、デバイス時間を浪費する再試行ループです。前者は本当の理由を「たまたま十分遅く成立する条件」に隠します。どちらも決定的に見えますが、作者が必要とした遅延がどこにも書かれていないため、決定的ではありません。
 
