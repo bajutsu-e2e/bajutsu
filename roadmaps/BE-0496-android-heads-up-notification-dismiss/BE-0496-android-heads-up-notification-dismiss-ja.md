@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0496") |
+| 実装 PR | [#2498](https://github.com/bajutsu-e2e/bajutsu/pull/2498) |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci-ja.md)、[BE-0416](../BE-0416-ios-notification-banner-swipe-dismiss/BE-0416-ios-notification-banner-swipe-dismiss-ja.md)、[BE-0478](../BE-0478-android-device-control-parity/BE-0478-android-device-control-parity-ja.md) |
 <!-- /BE-METADATA -->
@@ -338,7 +339,7 @@ heads-up 通知がツリーに現れるとする対応表の注記を書き換�
 
 ログ：
 
-- 2026-11-20 — 単位 1〜8 をまとめて着地させました（PR_LINK）。Unit 1 の実測値は、上の「Unit 1 の実測結果」に
+- 2026-11-20 — 単位 1〜8 をまとめて着地させました（[#2498](https://github.com/bajutsu-e2e/bajutsu/pull/2498)）。Unit 1 の実測値は、上の「Unit 1 の実測結果」に
   あります。API 33、34、35 のエミュレーターで、両方の showcase アプリについて、ドライバーが通知バナーを消して
   シナリオが通ることを確かめました。詳細設計から外れた点は次のとおりです。
   - フォールバックの経路で manifest に残す印は、チャネルの記録にしました。manifest はこの記録をシナリオごと、
