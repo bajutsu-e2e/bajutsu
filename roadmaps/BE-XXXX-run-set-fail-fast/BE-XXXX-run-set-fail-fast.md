@@ -21,7 +21,7 @@ A `run-set` registers one job per scenario of a target, as a **group** with its 
 
 ## Motivation
 
-A pull request that breaks login breaks most scenarios of a suite. Each later scenario fails on the same screen, after the same timeouts. A group of forty scenarios then holds devices and worker slots for the whole suite, and the answer was known after the first failure. On a device cloud, every one of those runs is also billed device time.
+A pull request that breaks login breaks most scenarios of a suite. Each later scenario fails on the same screen, after the same timeouts. A group of forty scenarios then holds devices and worker slots for the whole suite, even though the answer is known after the first failure. On a device cloud, every one of those runs is also billed device time.
 
 The group already has the parts a stop needs. `POST /api/run-set/<groupId>/cancel` cancels every unfinished job of a group. A queued job becomes `cancelled` at once, and a leased job stops on its worker's next heartbeat. What is missing is a trigger: nothing calls that cancel when a job of the group fails. A caller could poll the group and cancel by hand. Each caller would then repeat the same polling loop, and the stop would wait on the caller's polling interval.
 

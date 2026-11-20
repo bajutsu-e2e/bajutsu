@@ -52,7 +52,7 @@ groupNotify:
 - `format` accepts `github-check` alone in this item. An unknown format stops `serve` at startup, with an error that names the sink.
 - A `github-check` sink needs the GitHub App that the Git config source already reads ([BE-0224](../BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth.md)): `BAJUTSU_GITHUB_APP_ID`, plus `BAJUTSU_GITHUB_APP_PRIVATE_KEY` or `BAJUTSU_GITHUB_APP_PRIVATE_KEY_FILE`. `serve` refuses to start when a `github-check` sink exists and the App is not configured. The App needs the `checks: write` permission on each repository it publishes to.
 
-A request names a sink and never a URL. A URL taken from a request would let any caller make `serve` send requests into its own network, a server-side request forgery (SSRF). Defining every destination in operator configuration closes that path.
+A request names a sink and never a URL. A URL taken from a request would let any caller make `serve` send requests into the network `serve` runs in, a server-side request forgery (SSRF). Defining every destination in operator configuration closes that path.
 
 ### Selecting a sink in the request
 
