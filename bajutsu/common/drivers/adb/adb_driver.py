@@ -2377,9 +2377,12 @@ class AdbDriver(CoordinateTreeDriver):
         A fresh read, or the post-gesture tree a device-side gesture's reply carried while that tree
         still waits for the next read (`_seeded_tree`, as fresh as a read) (BE-0496). Never the
         cached tree: the orchestrator polls this between swipes and sleeps that actuate nothing, so
-        a cached answer would keep reporting a banner that left, or miss one that arrived. Unit 1 measured a read at about 45 ms on a still screen, cheap enough for the
-        sweep's once-per-interval cadence. The check before a gesture reads its own cache instead
-        (`_banner_frame`), since the resolve it follows has just read.
+        a cached answer would keep reporting a banner that left, or miss one that arrived. Unit 1
+        measured a read at about 45 ms on a still screen, cheap enough for the sweep's
+        once-per-interval cadence. The checks before a gesture answer from the tree in hand instead:
+        a selector path reads `_heads_up` straight from the resolve that has just read, and a
+        literal coordinate gesture goes through `_banner_frame`, which reads only once an actuation
+        has retired that tree.
 
         None on the `uiautomator dump` fallback, which reads the active window alone and so can never
         see one; the guard is off there, as the channel notes say, and no read is spent finding that

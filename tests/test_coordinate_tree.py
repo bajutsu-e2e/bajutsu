@@ -9,6 +9,7 @@ against a copy of the test. Adb-specific behavior (wall-clock settle, scroll-int
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 
 import pytest
@@ -105,8 +106,10 @@ def test_a_retried_transient_empty_is_reported(
         "— a transient empty; retrying in 0.00s (attempt 1/5)" in caplog.text
     )
     # The record's logger, too: both fault-injection lanes attach to this name, so a record moved to
-    # another logger would leave them waiting for something that can never arrive.
-    assert [record.name for record in caplog.records] == [_LOGGER]
+    # another logger would leave them waiting for something that can never arrive. Warnings only: the
+    # adb fake reads through `uiautomator dump`, whose INFO note that the banner guard is off (BE-0496)
+    # reaches the capture whenever an earlier test on this worker left a logger at INFO.
+    assert [r.name for r in caplog.records if r.levelno >= logging.WARNING] == [_LOGGER]
 
 
 @_BACKENDS

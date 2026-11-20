@@ -542,13 +542,23 @@ e2e-app-crash: compose-build
 # see the banner. Not part of `make check`: it needs a booted AVD, so android-e2e.yml drives it in its
 # own `notification-banner (adb)` job. Rerunning it locally within a minute fails the evidence check:
 # SystemUI snoozes an app's heads-ups for a minute after one is swiped away, so the next post shows no
-# banner at all. The CI job runs each toolkit once on a fresh emulator, so it never meets the snooze.
+# banner at all. The CI job runs each toolkit once on a fresh emulator, and the two toolkits are two
+# packages, so it never meets the snooze.
+#
+# SystemUI drops a heads-up after about five seconds, and a step on a software-rendered CI emulator
+# takes seconds of its own: on the first CI run the tap arrived after the banner had left, so the run
+# exercised nothing. SystemUI stretches that lifetime to the accessibility timeout the user asked for,
+# so the target raises both timeouts to a minute for its runs and deletes them afterwards, failed run
+# or not, leaving the device's own defaults behind.
 NOTIFICATION_BANNER_RUNS := $(ROOT)/tmp/showcase-android-notification-banner-runs
+HEADS_UP_TIMEOUTS := accessibility_interactive_ui_timeout_ms accessibility_non_interactive_ui_timeout_ms
 e2e-notification-banner: compose-build views-build
 	$(MAKE) -C $(ROOT)/BajutsuAndroidUIAutomatorServer build
 	$(ANR_QUIET)
 	$(TOUCH_DEBUG_OFF)
 	rm -rf $(NOTIFICATION_BANNER_RUNS)
+	for k in $(HEADS_UP_TIMEOUTS); do $(ADB) shell settings put secure $$k 60000 || exit 1; done
+	status=0; \
 	for t in showcase-compose showcase-views; do \
 		runs="$(NOTIFICATION_BANNER_RUNS)/$$t"; \
 		echo "=== $$t / notification_banner_android ==="; \
@@ -559,11 +569,13 @@ e2e-notification-banner: compose-build views-build
 		run_dir_count="$$(find "$$runs" -mindepth 1 -maxdepth 1 -type d | wc -l)"; \
 		if [ "$$run_dir_count" -ne 1 ]; then \
 			echo "expected exactly one run directory under $$runs/, found $$run_dir_count" >&2; \
-			exit 1; \
+			status=1; break; \
 		fi; \
 		(cd $(ROOT) && uv run python scripts/assert_notification_banner_evidence.py \
-			"$$(find "$$runs" -mindepth 1 -maxdepth 1 -type d)") || exit 1; \
-	done
+			"$$(find "$$runs" -mindepth 1 -maxdepth 1 -type d)") || { status=1; break; }; \
+	done; \
+	for k in $(HEADS_UP_TIMEOUTS); do $(ADB) shell settings delete secure $$k >/dev/null || status=1; done; \
+	exit $$status
 
 # The device-group lane (BE-0447), the Android twin of demos/showcase/Makefile's `e2e-device-group`:
 # two apps on one emulator. device_group_update.yaml starts on the `previous` Compose flavor and
