@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0493") |
+| Implementing PR | [#2493](https://github.com/bajutsu-e2e/bajutsu/pull/2493) |
 | Topic | Platform support |
 | Related | [BE-0265](../BE-0265-text-editing-steps/BE-0265-text-editing-steps.md), [BE-0489](../BE-0489-paste-step/BE-0489-paste-step.md), [BE-0052](../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md), [BE-0381](../BE-0381-runner-openapi-contract/BE-0381-runner-openapi-contract.md) |
 <!-- /BE-METADATA -->
@@ -249,7 +250,7 @@ deterministic step outweighs it.
 
 Log:
 
-- [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM) — Units 1-9. Shipped the whole item.
+- [#2493](https://github.com/bajutsu-e2e/bajutsu/pull/2493) — Units 1-9. Shipped the whole item.
   `select_all(sel)` and `copy_selection(sel)` reach every driver, `copy` takes the selector the
   `select` recorded, and the XCUITest driver drives the edit menu's Select All and Copy from the
   three label tables. The runner's `/selectAll` and `/copy` are gone. One deviation from this design:

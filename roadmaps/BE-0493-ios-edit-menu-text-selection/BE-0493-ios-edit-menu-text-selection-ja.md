@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0493") |
+| 実装 PR | [#2493](https://github.com/bajutsu-e2e/bajutsu/pull/2493) |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0265](../BE-0265-text-editing-steps/BE-0265-text-editing-steps-ja.md)、[BE-0489](../BE-0489-paste-step/BE-0489-paste-step-ja.md)、[BE-0052](../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)、[BE-0381](../BE-0381-runner-openapi-contract/BE-0381-runner-openapi-contract-ja.md) |
 <!-- /BE-METADATA -->
@@ -151,7 +152,7 @@ iOS 26.5 Simulator では、編集メニューを使うと `select` や `copy` 1
 
 ログ：
 
-- [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM) — 単位 1-9。本項目全体を実装しました。
+- [#2493](https://github.com/bajutsu-e2e/bajutsu/pull/2493) — 単位 1-9。本項目全体を実装しました。
   `select_all(sel)` と `copy_selection(sel)` をすべてのドライバに通し、`copy` は `select` が記録した
   selector を受け取ります。XCUITest ドライバは、3 つのラベル表を使って編集メニューの「Select All」と
   「Copy」を操作します。ランナーの `/selectAll` と `/copy` は削除しました。設計との違いが 1 つあります。
