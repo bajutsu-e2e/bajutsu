@@ -18,12 +18,12 @@
 
 A [multi-target scenario](../../docs/scenarios.md#targets--target-multi-target-scenarios-be-0428)
 ([BE-0428](../BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution.md))
-gains an optional top-level field, `primaryTarget`, naming the first entry of its own `targets`
-list — the same one the runner already treats as primary for leasing and crash recovery (see
-*Declaring `primaryTarget`* below). Once a scenario sets it, a step, an `if` / `forEach` / `web` /
-`app` wrapper, or a top-level `expect` entry may omit `target` again, the same way it always could on
-a single-target scenario — and an omitted one now runs against the primary instead of raising a load
-error:
+gains an optional top-level field, `primaryTarget`. The field names the first entry of the
+scenario's own `targets` list, which is the entry the runner already treats as primary for leasing
+and crash recovery (see *Declaring `primaryTarget`* below). Once a scenario sets the field, a step,
+an `if` / `forEach` / `web` / `app` wrapper, or a top-level `expect` entry may omit `target` again,
+as it always could on a single-target scenario. An omitted `target` now runs against the primary
+instead of raising a load error:
 
 ```yaml
 - name: liking a post on the app shows up on the web
@@ -40,13 +40,13 @@ error:
       value: { sel: { id: "post.${vars.postId}.likeCount" }, equals: "1" }
 ```
 
-Leaving `primaryTarget` unset keeps today's rule unchanged, at every declared-target count: every
-step and every top-level `expect` entry still names its own `target` explicitly once `targets` holds
-two or more entries, and `targets` of zero or one entries behaves exactly as it does today either
-way. Setting `primaryTarget` changes that only for a scenario declaring two or more targets. Setting
-it on a scenario declaring none is itself a load error, and setting it on a scenario declaring exactly
-one is legal only when it names that one target — both spelled out in *Declaring `primaryTarget`*
-below.
+Leaving `primaryTarget` unset keeps today's rule unchanged at every declared-target count. Once
+`targets` holds two or more entries, every step and every top-level `expect` entry still names its
+own `target` explicitly. A `targets` list of zero or one entries behaves exactly as it does today
+either way. Setting `primaryTarget` changes the rule only for a scenario declaring two or more
+targets. Setting `primaryTarget` on a scenario declaring none is a load error, and setting it on a
+scenario declaring exactly one target is legal only when it names that target. *Declaring
+`primaryTarget`* below spells out both cases.
 
 ## Motivation
 
@@ -54,26 +54,31 @@ BE-0428's own validator, `_check_target_requirements`
 ([`bajutsu/common/scenario/models/scenario/_targets.py:80-143`](../../bajutsu/common/scenario/models/scenario/_targets.py)),
 requires `target` on every step and every `expect` entry once a scenario names two or more targets.
 That rule is deliberate. BE-0428's own *Alternatives considered* rules out any implicit source for a
-step's destination, one a reader would otherwise have to memorize. The rule fits a scenario that keeps
-switching targets throughout. It fits less well a scenario built around one target's own flow, checked
-once against a second target — the shape BE-0428's own worked example already shows: one `tap`
-against `showcase-app`, then a `wait` and a `value` assertion against `showcase-web` to confirm it
-landed
-([`docs/scenarios.md:1193-1206`](../../docs/scenarios.md)). Naming `target: showcase-app` on that one
-step carries real information there: a reader has no other way to know which target the step acts on.
+step's destination, because a reader would otherwise have to memorize the source.
 
-The same statement carries no new information on the fourth or the tenth step of a longer flow that
-never leaves `showcase-app`. Each repetition after the first states a fact the scenario's own shape
-already settled. Only the one step that finally turns to `showcase-web` says something the reader did
-not already know, and it says that no more clearly surrounded by ten identical neighbors than by one.
+The rule fits a scenario that keeps switching targets throughout. It fits less well a scenario
+built around one target's own flow, checked once against a second target. BE-0428's own worked
+example shows this shape: one `tap` against `showcase-app`, then a `wait` and a `value` assertion
+against `showcase-web` to confirm that the tap landed
+([`docs/scenarios.md:1193-1206`](../../docs/scenarios.md)). In that example, naming
+`target: showcase-app` on the one step carries real information, because a reader has no other way
+to know which target the step acts on.
+
+On the fourth or the tenth step of a longer flow that never leaves `showcase-app`, the same
+statement carries no new information. Each repetition after the first states a fact that the
+scenario's own shape already settled. Only the one step that finally turns to `showcase-web` tells
+the reader something new, and it says so no more clearly surrounded by ten identical neighbors than
+by one.
 
 `primaryTarget` answers a narrower question than BE-0428's own validator does. It does not say
 *which* target a step runs against. It says *which one goes unstated*. Once a scenario declares that
-answer, a step states its own target only where the target is not that answer — the same economy a
-single-target scenario already gets by never stating `target` at all. A reader can then read a
-cross-target scenario's shape at a glance: a step carrying an explicit `target` other than the primary
-is the one that acts on a different platform. Nothing else needs a second look — including a step that
-restates the primary's own name explicitly, which stays legal but adds nothing either way.
+answer, a step states its own target only where the target differs from the answer. A single-target
+scenario already gets the same economy by never stating `target` at all.
+
+A reader can then read a cross-target scenario's shape at a glance: a step carrying an explicit
+`target` other than the primary is the one that acts on a different platform. Nothing else needs a
+second look, including a step that restates the primary's own name explicitly. Such a step stays
+legal but adds nothing either way.
 
 ## Detailed design
 
@@ -90,20 +95,25 @@ Leaving `primaryTarget` unset is always legal, and changes nothing. Setting it w
 empty is a load error: `primaryTarget is set but the scenario declares no targets`, mirroring
 `_check_target`'s own message for that same shape on a step's own `target`. Setting it to any other
 value is legal only when that value is `targets`' own first entry, `targets[0]` — rejected otherwise
-with a load error naming both the value given and the one required. This is a real restriction, not a
-stand-in for "any declared target": `_lease_set` and `_target_runtimes`
+with a load error naming both the value given and the one required.
+
+This restriction is real, not a stand-in for "any declared target". `_lease_set` and
+`_target_runtimes`
 ([`bajutsu/common/runner/pipeline.py:930-943, 1000-1007`](../../bajutsu/common/runner/pipeline.py))
-already single out `targets[0]` as *the* primary throughout the runner today — its lease is the one
-the crash-recovery loop judges, and `_runtime_for`
-([`bajutsu/common/runner/pipeline.py:1011-1060`](../../bajutsu/common/runner/pipeline.py)) reuses its
-already-resolved evidence context verbatim, rather than rebuilding it through the target-config-first
-path every other declared target goes through. Letting `primaryTarget` name a different entry would
-let the scenario file's own idea of "primary" and the runner's own diverge silently; requiring the
-match keeps the two one fact, and it is why leasing, crash recovery, and evidence-context resolution
-need no change of their own later in this item — only the two places described below that dispatch a
-step by its own resolved target. A `targets` list of exactly one target accepts a matching
-`primaryTarget` too, rather than rejecting it as redundant, for the same reason as always: `targets[0]`
-is also that one entry.
+already single out `targets[0]` as *the* primary throughout the runner today. The crash-recovery
+loop judges the lease of `targets[0]`, and `_runtime_for`
+([`bajutsu/common/runner/pipeline.py:1011-1060`](../../bajutsu/common/runner/pipeline.py)) reuses
+that target's already-resolved evidence context verbatim. Every other declared target goes through
+the target-config-first path instead, and `_runtime_for` does not rebuild the primary's context
+through that path.
+
+Letting `primaryTarget` name a different entry would let the scenario file's idea of "primary" and
+the runner's idea diverge silently. Requiring a match keeps the two as one fact. For the same
+reason, leasing, crash recovery, and evidence-context resolution need no change later in this item.
+Only the two places described below, which dispatch a step by its resolved target, change.
+
+A `targets` list of exactly one target accepts a matching `primaryTarget` too, rather than
+rejecting it as redundant, because `targets[0]` is also that one entry.
 
 ### Resolving an omission without rewriting it
 
@@ -184,20 +194,23 @@ into a given scenario — `st.model_copy(deep=True)` for every step in `cache[re
 validator ever runs against it, so each scenario's own validation pass sets `_resolved_target` on that
 scenario's own copy alone.
 
-One pre-existing gap in `_steps_for_target` is worth naming rather than leaving for a reader to find
-later. Its own docstring already limits the narrowing to top-level entries: "a nested `if` / `forEach`
-body keeps whatever it holds, since a nested step carries its own `target` and the preflight walks
-into it anyway" ([`pipeline.py:1266-1269`](../../bajutsu/common/runner/pipeline.py)). BE-0428 already
-lets a nested step name a target different from its enclosing wrapper's own, so a nested step whose
-target differs from the wrapper that carried it into the preflight's filtered list is checked against
-the wrong backend's capabilities today — independently of this item, reachable already by writing that
-mismatch out by hand. This item does not create the gap. It does make the same construct a little
-easier to reach without meaning to, since a nested step that merely omits `target` now resolves to the
-primary silently, rather than forcing its author to notice and name a target themselves. Closing
-`_steps_for_target`'s own top-level-only narrowing is not this item's to fix — the gap predates it, and
-BE-0428 never closed it either — but the work breakdown below adds a test that reaches this exact
-shape, so the gap stays visible rather than silently passing, and names it as a known limitation for
-whichever item takes on `_steps_for_target`'s own recursion next.
+One pre-existing gap in `_steps_for_target` is worth naming here rather than leaving for a reader to
+find later. Its docstring already limits the narrowing to top-level entries: "a nested `if` /
+`forEach` body keeps whatever it holds, since a nested step carries its own `target` and the
+preflight walks into it anyway" ([`pipeline.py:1266-1269`](../../bajutsu/common/runner/pipeline.py)).
+
+BE-0428 already lets a nested step name a target different from its enclosing wrapper's target.
+Such a nested step is checked against the wrong backend's capabilities today, whenever its target
+differs from the wrapper that carried it into the preflight's filtered list. An author can already
+reach this mismatch by writing it out by hand, independently of this item.
+
+This item does not create the gap. It does make the same construct a little easier to reach without
+meaning to: a nested step that merely omits `target` now resolves to the primary silently, rather
+than forcing its author to notice and name a target. Closing the top-level-only narrowing in
+`_steps_for_target` is not this item's job, because the gap predates it and BE-0428 never closed it
+either. The work breakdown below adds a test that reaches this exact shape. The test keeps the gap
+visible instead of silently passing, and names the gap as a known limitation for whichever item
+takes on `_steps_for_target`'s recursion next.
 
 The resolution is flat, not inherited from an enclosing `if` / `forEach`. A step nested inside either
 one, that omits `target`, resolves to the primary directly through its own `resolved_target` — never

@@ -60,7 +60,7 @@ that same fallback to `interrupts`. A scenario declaring two or more targets kee
 
 ## Detailed design
 
-### Unit 1 — `Interrupt.target`
+### Unit 1: `Interrupt.target`
 
 [`Interrupt`](../../bajutsu/common/scenario/models/steps/interrupt.py) gains
 `target: str | None = None`. Its docstring documents that an omitted value resolves to the primary
@@ -68,7 +68,7 @@ target. `Step.target` ([`step.py:131`](../../bajutsu/common/scenario/models/step
 untouched. BE-0428 already requires a `Step`'s own `target` once the scenario declares two or more
 targets. That rule keeps holding, unchanged, alongside this new, always-optional field.
 
-### Unit 2 — Validation
+### Unit 2: Validation
 
 [`_check_target`](../../bajutsu/common/scenario/models/scenario/_targets.py) gains a
 `required: bool = True` parameter. With `required=False`, the function skips a branch. That branch
@@ -88,7 +88,7 @@ nested inside `web:`/`app:` forbids `target` outright. The new mode covers a `St
 still name a declared target. The recovery steps never require `target`. An omitted one falls back
 to the enclosing entry's target, not the scenario's primary one.
 
-### Unit 3 — Config-level `interrupts` reject `target`
+### Unit 3: Config-level `interrupts` reject `target`
 
 [`TargetConfig.interrupts`](../../bajutsu/common/config/schema/target_config.py) already lives
 inside one `targets.<name>` block. Letting an entry there name a different target would contradict
@@ -106,7 +106,7 @@ dispatch that step to the `ios` runner at runtime. That is the same hole this un
 one level down. The walk reuses a shape `_no_component_in_target_steps` already builds. That shape
 is `[s for entry in self.interrupts for s in entry.steps]`.
 
-### Unit 4 — Runtime composition
+### Unit 4: Runtime composition
 
 [`_runtime_for`](../../bajutsu/common/runner/pipeline.py) copies every `scenario.interrupts`
 entry into each target's `TargetRuntime.interrupts`. It does this today, unconditionally.
@@ -152,7 +152,7 @@ lands in the right place, with no extra mechanism. An earlier draft of this item
 effective target instead. It swapped that value into the recovery run explicitly. *Alternatives
 considered* below records why review dropped that approach.
 
-### Unit 5 — Test coverage
+### Unit 5: Test coverage
 
 A new regression test confirms `interrupts` still fires on the ordinary single-target path. It
 covers two scenarios. One declares no `targets`. The other declares one target, with no
@@ -165,7 +165,7 @@ target its `target` field (or the fallback) names. The same target clears it. Th
 `targets.<name>.interrupts` entry. It confirms that entry's recovery steps run against that
 config's own target. They never run against the scenario's primary target.
 
-### Unit 6 — Documentation
+### Unit 6: Documentation
 
 [`docs/scenarios.md`](../../docs/scenarios.md) carries two sections that need updating, for
 different reasons. The
