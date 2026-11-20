@@ -209,8 +209,8 @@ locations. If the directory is absent, the run fails at once with the exact
 `bajutsu runner build --device` command to run.
 
 The run never builds implicitly. A signing build is slow, can raise a Keychain prompt, and can
-register identifiers with Apple, and none of that belongs in the middle of a pooled run. An explicit `testRunner` still wins
-over the cache.
+register identifiers with Apple. None of that belongs in the middle of a pooled run. An explicit
+`testRunner` still wins over the cache.
 
 ### The showcase Makefile
 

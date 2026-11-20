@@ -60,8 +60,8 @@ completes. `result.json` is the partial record an interrupted run leaves behind.
 
 The scenario runner's per-scenario entry point writes the file once the scenario's result is
 final. A crash-recovery retry counts as part of the same scenario, so the file holds the last
-attempt's result. The write happens with `--trace-driver` on or off. It masks secret values
-as `manifest.json` does. It does not apply the config's `redact.fields`, which masks
+attempt's result. The write happens with `--trace-driver` on or off. The write masks secret values
+exactly as `manifest.json` does. It does not apply the config's `redact.fields`, which masks
 matching JSON keys: the entry's own keys, such as `reason`, would then differ from the manifest's.
 A run with no run directory writes nothing.
 
