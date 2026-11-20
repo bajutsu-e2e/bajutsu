@@ -23,7 +23,7 @@ import tempfile
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 from bajutsu.common.agents.ai_config import PROVIDER_MANAGED_ENV
 from bajutsu.common.backend_cli import simctl as _simctl
@@ -439,7 +439,7 @@ def _boot_devices(state: ServeState, job: Job) -> bool:
 def _job_source(job: Job) -> ConfigSource:
     """*job*'s config source; an unknown label reads as `uploaded`, so it never gains trust."""
     source = job.config_source
-    return cast("ConfigSource", source) if source in CONFIG_SOURCES else "uploaded"
+    return source if source in CONFIG_SOURCES else "uploaded"
 
 
 def _build_app(state: ServeState, job: Job) -> bool:

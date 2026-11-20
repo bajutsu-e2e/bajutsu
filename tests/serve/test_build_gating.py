@@ -17,13 +17,13 @@ import pytest
 from _shared import FakeProc, _post, _serve, project
 
 from bajutsu import serve as srv
+from bajutsu.common.capability.command_policy import CommandExecution
+from bajutsu.serve.jobs import _build_app
 from bajutsu.serve.operations.dispatch import (
     _command_needs,
     _config_source,
     _register_and_dispatch,
 )
-from bajutsu.common.capability.command_policy import CommandExecution
-from bajutsu.serve.jobs import _build_app
 from bajutsu.serve.server.worker_job import (
     _command_execution,
     _spec_source,

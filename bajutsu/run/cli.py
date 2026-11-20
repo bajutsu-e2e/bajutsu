@@ -58,6 +58,7 @@ from bajutsu.common.cancellation import (
     not_cancelled,
 )
 from bajutsu.common.capability import capability_preflight
+from bajutsu.common.capability.command_gate import CommandGate, CommandRefused
 from bajutsu.common.capability.worker_capability import WorkerCapability
 from bajutsu.common.config import (
     AndroidConfig,
@@ -93,7 +94,6 @@ from bajutsu.common.runner import (
     run_matrix_and_report,
 )
 from bajutsu.common.runner.build import BuildError, build_app
-from bajutsu.common.capability.command_gate import CommandGate, CommandRefused
 from bajutsu.common.runner.device_provider import DeviceLease, acquire_device
 from bajutsu.common.runner.launch_server import start_launch_server
 from bajutsu.common.runner.pipeline import with_lifecycle_phases

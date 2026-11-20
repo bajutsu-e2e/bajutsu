@@ -65,6 +65,7 @@ def test_plist_carries_no_command_policy() -> None:
     )
     assert "--upload-exec" not in args and "--allow-remote-build" not in args
 
+
 def test_plist_keepalive_and_logs() -> None:
     pl = _plist(host="127.0.0.1", port=8765, config=None, token=None)
     assert pl["RunAtLoad"] is True

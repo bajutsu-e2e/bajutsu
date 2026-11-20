@@ -19,6 +19,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from bajutsu.common.backend_cli import simctl
+from bajutsu.common.capability import command_gate
+from bajutsu.common.capability.command_gate import CommandRefused
 from bajutsu.common.capability.command_policy import RUNNER_BUILD_FIELD
 from bajutsu.common.config import XcuitestConfig
 from bajutsu.common.drivers.zorder import ZOrderResponder
@@ -38,8 +40,6 @@ from bajutsu.common.platform_lifecycle.environments.device_runner.signing import
     describe_lookup,
     find_signing_file,
 )
-from bajutsu.common.capability import command_gate
-from bajutsu.common.capability.command_gate import CommandRefused
 
 from ._attempt_failure import _AttemptFailure
 from ._recovery import _Recovery

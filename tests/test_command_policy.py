@@ -202,3 +202,40 @@ def test_command_sha256_hashes_the_line_and_the_executable(tmp_path: Path) -> No
     assert first["cmd"] == second["cmd"]
     assert first["executable"] != second["executable"]
     assert set(command_sha256("x", tmp_path / "missing")) == {"cmd"}
+
+
+# --- the report's notices ------------------------------------------------------------------------
+
+
+def test_report_notices_list_each_command_the_run_met() -> None:
+    from bajutsu.common.capability.route_tokens import report_notices
+
+    notices = report_notices(
+        {
+            "commandExecutions": [
+                {
+                    "field": "services.server.cmd",
+                    "cmd": "./start.sh",
+                    "source": "uploaded",
+                    "mode": "sandbox",
+                    "decision": "sandboxed",
+                },
+                {
+                    "field": "subject.build",
+                    "cmd": "make",
+                    "source": "operator",
+                    "mode": "allow",
+                    "decision": "ran",
+                    "exitCode": 0,
+                },
+            ]
+        }
+    )
+    assert notices == [
+        "services.server.cmd './start.sh' from the uploaded config: ran in a container under "
+        "commandExecution sandbox (BE-0492)",
+        "subject.build 'make' from the operator config: ran on the host (exit 0) under "
+        "commandExecution allow (BE-0492)",
+    ]
+    assert report_notices({"commandExecutions": "garbage"}) == []
+    assert report_notices({"commandExecutions": ["garbage"]}) == []
