@@ -633,11 +633,13 @@ def unpack_conditions(
 
     Reads each destination block (BE-0469). Device state (`locale`, `seedPhotos`) and how a target is
     driven (a single iOS `kind`, `emulate`) are not conditions; an integer range (`apiLevel: 34`)
-    becomes its text, as the target's model reads it.
+    becomes its text, as the target's model reads it. `ignoredSettings` sits beside the destination
+    blocks but names settings the environment cannot apply (BE-0473), so it holds no condition.
     """
     out: dict[str, str | list[str]] = {}
     for destination, block in value.items():
-        if not isinstance(block, Mapping):
+        # Spelled out rather than imported: the config schema that defines the key imports this module.
+        if not isinstance(block, Mapping) or destination == "ignoredSettings":
             continue
         for key, raw in block.items():
             # A browser's kind counts, as `browser.engine` did; a single iOS kind is how the target
