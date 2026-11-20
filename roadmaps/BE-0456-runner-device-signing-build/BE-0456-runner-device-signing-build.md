@@ -148,8 +148,9 @@ settings cannot do. The staged copy changes, never the committed file.
 The staged spec also rewrites the SPM package path from `../..` to the staged root. The build then
 runs `xcodebuild build-for-testing -destination generic/platform=iOS
 -skipPackagePluginValidation` (the `OpenAPIGenerator` build plugin needs that flag
-non-interactively). It adds `-allowProvisioningUpdates` for automatic signing only. It then copies the
-single `*.xctestrun` to `BajutsuRunner.xctestrun`, as `runner-build-device` does today.
+non-interactively), and adds `-allowProvisioningUpdates` to that command for automatic signing
+only. It then copies the single `*.xctestrun` to `BajutsuRunner.xctestrun`, as
+`runner-build-device` does today.
 
 ### The cache and its key
 

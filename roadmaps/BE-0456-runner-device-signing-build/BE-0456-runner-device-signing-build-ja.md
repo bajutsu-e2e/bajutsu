@@ -143,7 +143,7 @@ XcodeGen（`xcodegen`）が `project.yml` から Xcode プロジェクトを生�
 ステージング先の spec では、SPM パッケージのパスも `../..` からステージング先のルートへ書き換えます。
 そのうえで `xcodebuild build-for-testing -destination generic/platform=iOS -skipPackagePluginValidation`
 を実行します。`-skipPackagePluginValidation` は、`OpenAPIGenerator` ビルドプラグインを非対話で動かすために
-必要です。`-allowProvisioningUpdates` を付けるのは自動署名のときだけです。最後に、現在の `runner-build-device` と同じく、
+必要です。同じコマンドに `-allowProvisioningUpdates` を付けるのは自動署名のときだけです。最後に、現在の `runner-build-device` と同じく、
 1 つだけある `*.xctestrun` を `BajutsuRunner.xctestrun` へコピーします。
 
 ### キャッシュとそのキー
