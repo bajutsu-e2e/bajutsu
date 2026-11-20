@@ -43,9 +43,9 @@ class PermissionsTab(private val activity: MainActivity) {
         }.aid("perm_requestNotif")
 
         // Posts on a high-importance channel, which SystemUI presents as a heads-up notification over
-        // the top of this screen: the fixture for the banner guard (BE-0496). The banner target is
-        // the page's first row, so the banner covers it; its counter is what shows that a tap reached
-        // it rather than the banner.
+        // the top of this screen: the fixture for the banner guard (BE-0496). The banner target sits
+        // in the title row, so the banner covers it; its counter is what shows that a tap reached it
+        // rather than the banner.
         val postNotif = activity.textButton("Post Notification") { postHeadsUp() }.aid("perm_postNotif")
         val bannerTaps = activity.secondaryLabel("Banner target taps: 0")
             .aid("perm_bannerTaps").stateValue("0")
@@ -116,13 +116,10 @@ class PermissionsTab(private val activity: MainActivity) {
             .aid("perm_openPhotoPickerSingle")
 
         val form = activity.vstack(
-            bannerTarget,
-            bannerTaps,
             activity.label("Notifications"),
             requestNotif,
             notifValue,
             notifGranted,
-            postNotif,
             activity.label("Location"),
             requestLocation,
             locationValue,
@@ -137,8 +134,23 @@ class PermissionsTab(private val activity: MainActivity) {
             openPhotos,
             openPhoto,
             photosValue,
+            // The banner fixture's controls come last (BE-0496), so they add nothing above the Photos
+            // section: the picker's return can scroll this page back to its top, where the photo
+            // count has to stay in view for the select_photos scenarios that wait on it.
+            activity.label("Banner"),
+            // The counter above the button: the scroll to the button stops once it shows, so a row
+            // below it could still sit under the fold when the scenario reads the count.
+            bannerTaps,
+            postNotif,
         )
-        root = activity.vstack(activity.header("Permissions"), activity.scrollPage(form)).apply {
+        // The banner target shares the title's row, outside the scroll page, the band a heads-up
+        // notification lands over, as the Compose twin's app bar action does.
+        val title = activity.header("Permissions")
+        val headerRow = activity.hstack(title, bannerTarget).apply {
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            (title.layoutParams as LinearLayout.LayoutParams).apply { width = 0; weight = 1f }
+        }
+        root = activity.vstack(headerRow, activity.scrollPage(form)).apply {
             (getChildAt(1).layoutParams as LinearLayout.LayoutParams).apply { height = 0; weight = 1f }
         }
     }

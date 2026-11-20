@@ -33,8 +33,8 @@
   steps:
     - tap: { label: "Permissions", traits: [button] }
     - wait: { for: { id: [perm.bannerTarget, perm_bannerTarget] }, timeout: 10 }
-    # Compose keeps the post button at the foot of its scrolling column; Views shows it near the top,
-    # where this scroll is a no-op.
+    # Both toolkits keep the post button and the counter at the foot of the scrolling page, below the
+    # Photos section, while the target stays in the title row above the page.
     - scroll: { to: { id: [perm.postNotif, perm_postNotif] }, direction: down }
     - tap: { id: [perm.postNotif, perm_postNotif] }
     - sleep:

@@ -364,8 +364,11 @@ Log:
     both touch a literal point the banner can cover.
   - The clearance wait is six seconds. A swipe that has not cleared the banner after 2.5 seconds is
     sent again. One gesture clears at most three banners before it fails.
-  - In the Compose app, the banner target sits in the top app bar. A content row there starts below
-    the banner on API 35.
+  - The banner target sits in the title band above the scrolling page: the top app bar in Compose,
+    the title row in Views. A content row there starts below the banner on API 35. The post button
+    and the tap counter sit at the foot of the page, below the Photos section. Placed above it, they
+    pushed the photo count out of view once the picker's return scrolled the page to its top, and
+    `select_photos` timed out on CI.
   - The scenario grants `notifications`, since the Views target does not pre-grant it. Its
     `systemAlert` entry sets a 30-second `pollInterval`, so the per-step sweep does not clear the
     banner before the driver's own check meets it. A capped three-second `sleep` waits for the
