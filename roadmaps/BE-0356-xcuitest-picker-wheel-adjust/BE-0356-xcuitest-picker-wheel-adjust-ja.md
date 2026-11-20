@@ -15,7 +15,9 @@
 
 ## はじめに
 
-常駐する XCUITest ランナーは、`UIPickerView` や `UIDatePicker` のホイールをすでに要素として認識しています。`typeName(_:)` がこれを `pickerWheel` として分類します（`BajutsuKit/Runner/Sources/XcuitestElementProvider.swift`）。しかし、その値を設定するステップは存在しません。この項目では、XCUITest 自身が提供する `XCUIElement.adjust(toPickerWheelValue:)` と同じ方法でホイールを指定した値へ動かす新しいステップ `setPickerValue` を追加し、XCUITest バックエンドにおけるホイール型ピッカー自動化に残る最後の隙間を埋めます。
+常駐する XCUITest ランナーは、`UIPickerView` や `UIDatePicker` のホイールをすでに要素として認識しています。`typeName(_:)` がこれを `pickerWheel` として分類します（`BajutsuKit/Runner/Sources/XcuitestElementProvider.swift`）。しかし、その値を設定するステップは存在しません。
+
+この項目では、新しいステップ `setPickerValue` を追加します。XCUITest 自身が提供する `XCUIElement.adjust(toPickerWheelValue:)` と同じ方法で、ホイールを指定した値へ動かすステップです。これにより、XCUITest バックエンドのホイール型ピッカー自動化に残る最後の隙間を埋めます。
 
 ```yaml
 - setPickerValue: { sel: { id: some.picker.identifier }, value: "大学" }
@@ -23,39 +25,96 @@
 
 ## 動機
 
-テキストフィールドの `inputView` の背後に `UIPickerView` やホイール型の `UIDatePicker` を表示するフォームは、iOS では珍しくありません。サードパーティ製フォームライブラリの `.picker(PickerContext)` スタイルは素の `UIPickerView` を描画しますし、年月を入力する項目は、`UIDatePicker` を非公開の `mode` の raw value でホイール専用表示へ切り替える形でよく実装されます。どちらも奇異な実装ではなく、テキストフィールドへ入力して `value` アサーションで検証するのとまったく同じように、シナリオが入力し検証すべきごく普通の iOS フォームパターンです。
+テキストフィールドの `inputView` の背後に `UIPickerView` やホイール型の `UIDatePicker` を表示するフォームは、iOS では珍しくありません。サードパーティ製フォームライブラリの `.picker(PickerContext)` スタイルは、素の `UIPickerView` を描画します。年月を入力する項目は、`UIDatePicker` を非公開の `mode` の raw value でホイール専用表示へ切り替える形でよく実装されます。
 
-シナリオがすでに使えるどのステップも、ホイールを厳密な値へ設定できません。`tap` は座標ではなく解決済みのハンドルに作用するため、特定の行を狙えません。ホイールの個々の値は、それぞれ独立した要素として存在しないからです。`swipe` / `drag` / `scroll` は、シナリオのドメイン特化言語（DSL）の中で座標を扱うドラッグ系のステップです。いずれも範囲指定または方向指定のドラッグで、ホイールをおおまかに目的の値へ向けて回すことはできても、座標ドラッグである以上、ちょうどそこで止まる保証はありません。結果の値をアサーションで検証できるかどうかが、ドラッグの距離が行の高さへたまたま一致するかどうかに左右されてしまいます。DSL のもう1つの座標系ステップである `tapPoint` も同様です。固定した1点をタップするだけなので、ホイールがすでに表示している値には当たっても、表示していない値へ動かすことはできません。これは、プライムディレクティブ2がほかのすべてのステップに対してすでに禁じている座標ドラッグの危険性と同じです。曖昧な操作や近似的な操作は、成り行き任せの結果を成功として扱うのではなく、失敗としなければなりません。ところが、ホイールの値を設定するシナリオには、今日それに代わるステップがありません。
+どちらも奇異な実装ではありません。テキストフィールドへ入力して `value` アサーションで検証するのと同じように、シナリオが入力し検証すべき、ごく普通の iOS フォームパターンです。
 
-XCUITest 自身は、この問題を `XCUIElement.adjust(toPickerWheelValue:)` で解決しています。この呼び出しは座標ではなく、解決済みのホイール要素に対して直接作用します。呼び出しの形は、このコードベースにおける `tap` の実装モデルと同じくハンドルベースです。`XcuitestDriver.tap` はセレクタをハンドルへ解決してから、そのハンドルに対して actuate します（`bajutsu/drivers/xcuitest.py`）。`swipe` / `drag` のような座標ベースではありません。`setPickerValue` が `tap` と同じ形を踏襲するのはこの理由からであり、既存のどのステップにも埋められない隙間を埋めます。
+シナリオがすでに使えるどのステップも、ホイールを厳密な値へ設定できません。
+
+- `tap` は座標ではなく解決済みのハンドルに作用するため、特定の行を狙えません。ホイールの個々の値は、それぞれ独立した要素として存在しないからです。
+- `swipe`、`drag`、`scroll` は、シナリオのドメイン特化言語（DSL）で座標を扱うドラッグ系のステップです。いずれも範囲指定または方向指定のドラッグであり、ホイールをおおまかに目的の値へ向けて回せても、ちょうどそこで止まる保証はありません。結果の値をアサーションで検証できるかどうかが、ドラッグの距離が行の高さへたまたま一致するかどうかに左右されます。
+- DSL のもう1つの座標系ステップである `tapPoint` も同様です。固定した1点をタップするだけなので、ホイールがすでに表示している値には当たっても、表示していない値へ動かせません。
+
+これは、プライムディレクティブ2がほかのすべてのステップに対してすでに禁じている、座標ドラッグの危険性と同じです。曖昧な操作や近似的な操作は、成り行き任せの結果を成功として扱わず、失敗としなければなりません。ところが、ホイールの値を設定するシナリオには、今日それに代わるステップがありません。
+
+XCUITest 自身は、この問題を `XCUIElement.adjust(toPickerWheelValue:)` で解決しています。この呼び出しは座標ではなく、解決済みのホイール要素に対して直接作用します。
+
+呼び出しの形は、このコードベースにおける `tap` の実装モデルと同じくハンドルベースです。`XcuitestDriver.tap` はセレクタをハンドルへ解決してから、そのハンドルに対して actuate します（`bajutsu/drivers/xcuitest.py`）。`swipe` や `drag` のような座標ベースではありません。`setPickerValue` が `tap` と同じ形を踏襲するのはこの理由からであり、既存のどのステップにも埋められない隙間を埋めます。
 
 ## 詳細設計
 
-**スキーマ。** `Step`（`bajutsu/scenario/models/steps.py`）は判別共用体ではなく、すべてのアクションが optional field として並び、`_one_action` が「ちょうど1つだけ設定されていること」を強制します。`bajutsu/scenario/models/actions.py` に既存の `Drag` / `Swipe` と同じパターンで `SetPickerValue(sel: Selector, value: str)` を定義し、`Step` に `set_picker_value` フィールドを1つ追加すれば、必要なスキーマ変更はそれで終わりです。`_STEP_ACTIONS`（`Step.model_fields` から導出）、`STEP_ACTIONS`（`bajutsu/scenario/models/__init__.py`）、「ちょうど1つ」というバリデーション、`_RUNTIME_ACTIONS`（`bajutsu/orchestrator/actions/_registry.py`）、`_ACTION_KEYS`（`bajutsu/analysis/impact.py`）は、いずれもそのフィールドから自動的に追従します。
+**スキーマ。** `Step`（`bajutsu/scenario/models/steps.py`）は判別共用体ではありません。すべてのアクションが optional field として並び、`_one_action` が「ちょうど1つだけ設定されていること」を強制します。必要なスキーマ変更は次の2つだけです。
 
-**複数コンポーネントのホイールへのアドレス指定。** ホイール専用モードの `UIDatePicker` は、年と月を2つの独立したコンポーネントとしてレイアウトし、それぞれが `pickerWheel` 型の要素になります。ランナーのスナップショット走査（`XcuitestElementProvider.swift` の `SnapshotNode` ツリー）はすでに要素の子を汎用的に再帰しているため、この2つのコンポーネントは今日すでに個別のノードとして現れており、親の `UIDatePicker` だけが現れるわけではありません。`Selector`（`bajutsu/scenario/models/selector.py`）は、まさにこの種の絞り込みのために `within` / `traits` / `index` をすでに持っています。`handleSystemAlert` が複数のボタンから1つを選ぶのに使っているのと同じ `index` の使い方です。`setPickerValue` の `sel` は常にこうしたコンポーネントの1つを指すため、`value` は単純な文字列のままにできます。`within: { id: birthdate.picker }, traits: [pickerWheel], index: 0` で年のホイールを、`index: 1` で月のホイールを選び、`value: "2016年"` と `value: "4月"` はそれぞれ別のステップになります。実機では、`within` が名指しするコンテナがコンポーネントを包含している必要があります。iOS が各ホイールを、ピッカーよりも高いフレームで報告するためです。識別子は `UIDatePicker` 自体ではなく、外側のコンテナに付けます。これは、ほかのすべてのセレクタベースのステップがすでに持っているアドレス指定の仕組みを再利用するものであり、`setPickerValue` 専用の第二の指定方法を新たに増やすものではありません。
+- `bajutsu/scenario/models/actions.py` に、既存の `Drag` や `Swipe` と同じパターンで `SetPickerValue(sel: Selector, value: str)` を定義します。
+- `Step` に `set_picker_value` フィールドを1つ追加します。
 
-**実行時のディスパッチ。** `bajutsu/orchestrator/actions/handlers/gestures.py` に、`_do_tap` と同じ形で `@_handler("set_picker_value")` の関数を追加し、`driver.set_picker_value(step.set_picker_value.sel, step.set_picker_value.value)` を呼びます。これを追加しないと、フィールドが設定された瞬間に `_registry.py` の `_do_action` が `AssertionError("unhandled action")` を送出します。スキーマの追加だけでは配線されない、唯一の実行時の部品がこのハンドラです。
+次の5か所は、このフィールドから自動的に追従します。
 
-**ドライバプロトコル。** `Driver`（`bajutsu/drivers/base.py`）に `set_picker_value(self, sel: Selector, value: str) -> None` を追加し、具象 `Driver` のすべてに実装します。`XcuitestDriver` は `tap` と同じ方法で実装します。`_resolve_handle` が `sel` をハンドルへ解決し、`_actuate` が `tap` と同じ stale ハンドル再試行ループでそれをランナーへ送ります。`adb.py` と `playwright.py` は `base.UnsupportedAction` を送出する実装にします。これは、ネイティブな `<select>` を持たない2つのバックエンド（`xcuitest.py` と `adb.py`）に対して `select_option` がすでに使っている形と同じですが、対応が裏返っています。ピッカーホイールは iOS 固有の UI コントロールであり、web 専用の `<select>` とは逆の関係にあるため、今度は Android と web が実装の不備ではなく設計上非対応になります。`webview.py` の `WebContextDriver` も自身の `select_option` と同じく `UnsupportedAction` を送出します（`WKWebView` の DOM にもピッカーホイールはありません）。`xcuitest_live.py` の `XcuitestLiveDriver`（BE-0238 が追加したデバイスクラウド向けの W3C WebDriver 経路で、常駐ランナーの `XcuitestDriver` とは別に存在するもう1つの XCUITest 系実装）も、この項目では `UnsupportedAction` を送出します。同じプラットフォームである以上 Appium の XCUITest ドライバ経由でライブ経路の実装が可能かもしれませんが、それは別途ビルド時に評価する事柄であり、この項目ではコミットしません。
+- `_STEP_ACTIONS`（`Step.model_fields` から導出）
+- `STEP_ACTIONS`（`bajutsu/scenario/models/__init__.py`）
+- 「ちょうど1つ」というバリデーション
+- `_RUNTIME_ACTIONS`（`bajutsu/orchestrator/actions/_registry.py`）
+- `_ACTION_KEYS`（`bajutsu/analysis/impact.py`）
 
-`fake.py` には `select_option` と同じ形以上のものが必要です。`FakeDriver.select_option` は `sel` が一意に解決できるかしか確認せず、選択肢そのものは検証しません。そのため、この項目が必要とする「値が存在しない」という振る舞いには `select_option` 側に対応するテストがありません（`tests/test_select_option.py` はパース・ディスパッチ・fake への記録だけを扱い、存在しない option のケースを持ちません）。値が存在しない場合の検出は、この項目の中心にある振る舞いです。`adjust(toPickerWheelValue:)` 自身では検出できないために Swift ランナー側で値の読み戻しという回避策が必要になる（後述）のと同じ理由で、実機なしの高速なユニットテストの経路も必要とします。年月ホイールの兄弟コンポーネント（年と月それぞれのホイール）は、それ自体の識別子を持ちません。上記の「複数コンポーネントのホイールへのアドレス指定」で `within` / `traits` / `index` だけで両者を区別しているのは、まさにこの理由からです。そのため識別子をキーにしたシードでは両者を区別できません。そこで `fake.py` に、フィクスチャの `screen` リストに含まれる特定の `Element` オブジェクトの `id()` をキーとするシードされた `picker_wheel_options: dict[int, list[str]]` を追加します。`handleSystemAlert` のために `system_alert_buttons` がすでにメインの `screen` とは別にシードしているのと同じ形ですが、識別子ではなくオブジェクトの同一性でキーにすることで、識別子を持たない兄弟要素どうしもそれぞれ自分の選択肢を保持できます。`FakeDriver.set_picker_value` は、まず `sel` を一意に解決します（一致がゼロなら `ElementNotFound`、複数なら `AmbiguousSelector` という、ほかのすべてのアクションと同じ規律です）。そのうえで `value` をその要素のシードされた選択肢と照合し、一致すれば actuation を記録し、一致しなければ見つからなかった値を名指しして `ElementNotFound` を送出します。解決できた要素にシードのエントリがまったく無い場合は、値が存在しないのではなくフィクスチャ側の誤りなので、`ElementNotFound` へ落とさず別の明確なエラーを送出します。そうしないと、キーが古くなった場合（scrollable モードで `query()` が返すコピーや、`screen` を作り直す `react` コールバックが原因になり得ます）に、値が存在しない場合のテストが誤った理由で通ってしまいます。これにより、複数コンポーネントの場合も含め、ハンドラのディスパッチ、preflight、値が存在しない場合の経路のすべてを、Simulator なしでテスト可能に保ちます。
+**複数コンポーネントのホイールへのアドレス指定。** ホイール専用モードの `UIDatePicker` は、年と月を2つの独立したコンポーネントとしてレイアウトします。それぞれが `pickerWheel` 型の要素です。ランナーのスナップショット走査（`XcuitestElementProvider.swift` の `SnapshotNode` ツリー）は、すでに要素の子を汎用的に再帰しています。このため2つのコンポーネントは、親の `UIDatePicker` とは別に、今日すでに個別のノードとして現れます。
 
-**ケーパビリティと preflight。** `Capability`（`bajutsu/drivers/base.py`）に `PICKER_WHEEL` を追加し、常駐ランナーの `XcuitestDriver.CAPABILITIES` と `FakeDriver.CAPABILITIES` の frozenset にこれを加えます（ほかのバックエンドには加えません）。さらに `capability_preflight.py` の `_REQUIREMENTS` に、`HANDLE_SYSTEM_ALERT` のエントリと同じ形で1件追加します。これにより、`PICKER_WHEEL` を広告しないバックエンドで `setPickerValue` を使うシナリオは、デバイス側の処理が始まる前の preflight の時点で、シナリオ内のステップの位置を示しながら失敗します。
+`Selector`（`bajutsu/scenario/models/selector.py`）は、この種の絞り込みのために `within`、`traits`、`index` をすでに持っています。`handleSystemAlert` が複数のボタンから1つを選ぶのに使っているのと同じ `index` の使い方です。`setPickerValue` の `sel` は常にこうしたコンポーネントの1つを指すので、`value` は単純な文字列のままにできます。たとえば `within: { id: birthdate.picker }, traits: [pickerWheel], index: 0` で年のホイールを、`index: 1` で月のホイールを選びます。`value: "2016年"` と `value: "4月"` は、それぞれ別のステップです。
 
-**Swift ランナー。** `Router.swift`（`BajutsuKit/Sources/BajutsuRunner/`）に `("POST", "/setPickerValue")` という新しいルートと `handleSetPickerValue` 関数を追加します。`handleTap` と同じ方法でリクエストのハンドルを `SnapshotStore` から解決し、新しい `ElementProviding.setPickerValue(backingElement:value:)` を呼びます。`XcuitestElementProvider`（`BajutsuKit/Runner/Sources/`）は、`liveElement(for:)` で実体を解決してから `el.adjust(toPickerWheelValue: value)` を呼ぶ実装にします。`tap(backingElement:taps:duration:)` がすでに使っているのと同じ、実体要素の解決方法です。
+実機では、`within` が名指しするコンテナがコンポーネントを包含している必要があります。iOS が各ホイールを、ピッカーよりも高いフレームで報告するためです。したがって識別子は、`UIDatePicker` 自体ではなく外側のコンテナに付けます。この方法は、ほかのすべてのセレクタベースのステップがすでに持つアドレス指定の仕組みを再利用します。`setPickerValue` 専用の第二の指定方法を新たに増やすことはしません。
 
-**ホイールに存在しない値の検出。** `adjust(toPickerWheelValue:)` は例外を送出せず、戻り値も返しません。指定した文字列がホイールの表示値にならなかった場合、XCTest はそれを送出された失敗ではなく、ソフトな `XCTIssue` として記録するだけです。`RunnerUITest` の `continueAfterFailure = true`（`BajutsuKit/Runner/Sources/RunnerUITest.swift`）は、まさにこの種のソフトな issue を、常駐ランナーを終了させないまま許容するために存在します。つまり、呼び出し側は、値が反映されなかったことを例外から検知できません。そこで provider は、呼び出し後にホイールの値を読み戻し、要求した文字列と比較する必要があります。このとき一度だけ読むのではなく、上限を決めた小さな回数までサンプリングします。減速がまだ収まっていないホイールを「存在しない値」と誤って報告しないためです。これは `actuateUntilStateChanges`（`BajutsuKit/Sources/BajutsuRunner/GestureRetry.swift`）が `el.value` に現れる着地を観測する際にすでに採用している、回数上限つきサンプリングの規律と同じです。一致しなかった場合には、既存の `.notFound` / `.notHittable`（`ElementProviding.swift`）と並ぶ新しいケースを返します。`.notFound` を再利用しないのは、その既存のメッセージ（セレクタを名指しする「actuatable な要素が見つからない」という文面）が、解決済みで生きている要素の値がたまたま一致しなかっただけの場合に、誤った説明になってしまうためです。`Router` はそのケースを専用のレスポンスステータスへ対応づけます。`_actuate`（`bajutsu/drivers/xcuitest.py`）のステータス分岐は、現状 `_OK` / `_STALE` / `_NOT_FOUND` / `_NOT_HITTABLE` の4通りに固定されており、それ以外のステータスはすべて `XcuitestChannelError`（`SelectorError` ではなく基盤側のエラー）を送出する catch-all に落ちます。そのため `set_picker_value` は、この4つと並ぶ独自の分岐をそこに追加し、見つからなかった値を名指しして `base.ElementNotFound` を送出する必要があります。これは、存在しない値に対する `select_option` 自身の前例に倣うものです。`playwright.py` の `select_option` は、存在しない `<select>` の option を `SelectorError` の一種である `ElementNotFound` として再送出しており、その分岐さえ加われば run loop の既存のセレクタ失敗処理でそのまま扱えます。
+**実行時のディスパッチ。** `bajutsu/orchestrator/actions/handlers/gestures.py` に、`_do_tap` と同じ形で `@_handler("set_picker_value")` の関数を追加します。この関数は `driver.set_picker_value(step.set_picker_value.sel, step.set_picker_value.value)` を呼びます。追加しないと、フィールドが設定された瞬間に `_registry.py` の `_do_action` が `AssertionError("unhandled action")` を送出します。スキーマの追加だけでは配線されない、唯一の実行時の部品がこのハンドラです。
 
-**`datePicker` の分類の隙間は影響を受けません。** `docs/selectors.md` は、`UIDatePicker` 自体のコンテナ要素が `typeName(_:)` の switch に `.datePicker` の case を持たないために `other` へ分類される、という既知のトレードオフをすでに記述しています。`setPickerValue` はこの分類に依存しません。親のコンテナではなく、ホイール型の `UIDatePicker` が子として公開する個々の `pickerWheel` コンポーネント要素をアドレス指定するためです。したがって、このステップは今日すでに、素の `UIPickerView` のホイールを操作するのとまったく同じように `UIDatePicker` のホイールを操作でき、親要素の分類の隙間をこのステップのために閉じる必要はありません。`docs/selectors.md` には、親要素が `other` に落ちても `setPickerValue` 経由なら `datePicker` の値を設定できる、という一文を追記します。
+**ドライバプロトコル。** `Driver`（`bajutsu/drivers/base.py`）に `set_picker_value(self, sel: Selector, value: str) -> None` を追加し、具象 `Driver` のすべてに実装します。
 
-**codegen。** `bajutsu/codegen/xcuitest.py` の `_emit_step` に、`step.set_picker_value` に対して `element.adjust(toPickerWheelValue: "...")` を出力するケースを、既存の `handle_system_alert` のケースと同じ形で追加します。`adb` と `playwright` の emitter に新しいコードは不要です。認識されないステップは、`selectOption` が今日この2つの emitter ですでに落ちているのと同じ `// TODO: unsupported step` のスタブへ自然に落ちるからです。
+`XcuitestDriver` は `tap` と同じ方法で実装します。`_resolve_handle` が `sel` をハンドルへ解決し、`_actuate` が `tap` と同じ stale ハンドル再試行ループでハンドルをランナーへ送ります。
 
-**ドキュメント。** `docs/scenarios.md` のステップ文法の一覧表に1行を追加し、`### drag` と同じ体裁で `### setPickerValue` の節を追加します（上記の YAML 例と、*動機* で述べた「座標ドラッグでは駄目な理由」を含みます）。`docs/ja/scenarios.md` にも日本語版を追加します。`docs/drivers.md` のケーパビリティ表には `pickerWheel` の行を追加します（xcuitest のみ対応）。`docs/ja/drivers.md` にも同じ行を追加します。`docs/selectors.md` と `docs/ja/selectors.md` には、上記の `datePicker` に関する一文を追記します。
+`adb.py` と `playwright.py` は、`base.UnsupportedAction` を送出する実装にします。これは、ネイティブな `<select>` を持たない2つのバックエンド（`xcuitest.py` と `adb.py`）に対して `select_option` がすでに使っている形と同じですが、対応が裏返っています。ピッカーホイールは iOS 固有の UI コントロールであり、web 専用の `<select>` とは逆の関係にあります。そのため今度は Android と web が、実装の不備ではなく設計上非対応になります。
 
-**テスト。** `tests/test_select_option.py` のパース・ディスパッチ・fake への記録という形に、上記の `picker_wheel_options` を組み合わせて、次の4つのユニットテストを追加します。
+`webview.py` の `WebContextDriver` も、自身の `select_option` と同じく `UnsupportedAction` を送出します。`WKWebView` の DOM にもピッカーホイールはないからです。
 
-- fake のホイールがシードで持つ選択肢を `value` に指定してディスパッチすると、`driver.set_picker_value` に届き actuation が記録されること
+`xcuitest_live.py` の `XcuitestLiveDriver` は、BE-0238 が追加したデバイスクラウド向けの W3C WebDriver 経路です。常駐ランナーの `XcuitestDriver` とは別に存在する、もう1つの XCUITest 系実装でもあります。この項目では、これも `UnsupportedAction` を送出します。同じプラットフォームである以上、Appium の XCUITest ドライバ経由でライブ経路を実装できるかもしれません。しかしそれは別途ビルド時に評価する事柄であり、この項目ではコミットしません。
+
+`fake.py` には、`select_option` と同じ形以上のものが必要です。`FakeDriver.select_option` は、`sel` が一意に解決できるかしか確認せず、選択肢そのものを検証しません。そのため、この項目が必要とする「値が存在しない」という振る舞いには、`select_option` 側に対応するテストがありません。`tests/test_select_option.py` が扱うのは、パース、ディスパッチ、fake への記録だけで、存在しない option のケースを持ちません。
+
+値が存在しない場合の検出は、この項目の中心にある振る舞いです。`adjust(toPickerWheelValue:)` 自身では検出できないために、Swift ランナー側で値の読み戻しという回避策が必要になります（後述）。同じ理由で、実機を使う経路とは別に、高速なユニットテストの経路も必要です。
+
+年月ホイールの兄弟コンポーネント（年と月それぞれのホイール）は、それ自体の識別子を持ちません。上記の「複数コンポーネントのホイールへのアドレス指定」で `within`、`traits`、`index` だけで両者を区別しているのは、この理由からです。したがって、識別子をキーにしたシードでは両者を区別できません。
+
+そこで `fake.py` に、シードされた `picker_wheel_options: dict[int, list[str]]` を追加します。キーは、フィクスチャの `screen` リストに含まれる特定の `Element` オブジェクトの `id()` です。`handleSystemAlert` のために `system_alert_buttons` が、メインの `screen` とは別にシードしているのと同じ形です。ただし識別子ではなくオブジェクトの同一性でキーにするので、識別子を持たない兄弟要素どうしも、それぞれ自分の選択肢を保持できます。
+
+`FakeDriver.set_picker_value` は、まず `sel` を一意に解決します。一致がゼロなら `ElementNotFound`、複数なら `AmbiguousSelector` を送出します。これは、ほかのすべてのアクションと同じ規律です。次に `value` を、その要素のシードされた選択肢と照合します。一致すれば actuation を記録し、一致しなければ、見つからなかった値を名指しして `ElementNotFound` を送出します。
+
+解決できた要素にシードのエントリがまったく無い場合は、値が存在しないのではなくフィクスチャ側の誤りです。`ElementNotFound` へ落とさず、別の明確なエラーを送出します。そうしないと、キーが古くなった場合に、値が存在しない場合のテストが誤った理由で通ってしまいます。古いキーの原因には、scrollable モードで `query()` が返すコピーや、`screen` を作り直す `react` コールバックがあります。これにより、複数コンポーネントの場合も含め、ハンドラのディスパッチ、preflight、値が存在しない場合の経路のすべてを、Simulator なしでテストできます。
+
+**ケーパビリティと preflight。** `Capability`（`bajutsu/drivers/base.py`）に `PICKER_WHEEL` を追加します。常駐ランナーの `XcuitestDriver.CAPABILITIES` と `FakeDriver.CAPABILITIES` の frozenset がこれを広告し、ほかのバックエンドは広告しません。さらに `capability_preflight.py` の `_REQUIREMENTS` に、`HANDLE_SYSTEM_ALERT` のエントリと同じ形で1件追加します。`PICKER_WHEEL` を広告しないバックエンドで `setPickerValue` を使うシナリオは、デバイス側の処理が始まる前の preflight の時点で、シナリオ内のステップの位置を示しながら失敗します。
+
+**Swift ランナー。** `Router.swift`（`BajutsuKit/Sources/BajutsuRunner/`）に、`("POST", "/setPickerValue")` という新しいルートと `handleSetPickerValue` 関数を追加します。この関数は、`handleTap` と同じ方法でリクエストのハンドルを `SnapshotStore` から解決し、新しい `ElementProviding.setPickerValue(backingElement:value:)` を呼びます。`XcuitestElementProvider`（`BajutsuKit/Runner/Sources/`）は、`liveElement(for:)` で実体を解決してから `el.adjust(toPickerWheelValue: value)` を呼ぶ実装にします。実体要素の解決方法は、`tap(backingElement:taps:duration:)` がすでに使っているものと同じです。
+
+**ホイールに存在しない値の検出。** `adjust(toPickerWheelValue:)` は例外を送出せず、戻り値も返しません。指定した文字列がホイールの表示値にならなかった場合、XCTest は失敗を送出せず、ソフトな `XCTIssue` として記録するだけです。`RunnerUITest` の `continueAfterFailure = true`（`BajutsuKit/Runner/Sources/RunnerUITest.swift`）は、この種のソフトな issue を、常駐ランナーを終了させないまま許容するために存在します。したがって呼び出し側は、値が反映されなかったことを例外から検知できません。
+
+そこで provider は、呼び出し後にホイールの値を読み戻し、要求した文字列と比較します。このとき一度だけ読むのではなく、上限を決めた小さな回数までサンプリングします。減速がまだ収まっていないホイールを、「存在しない値」と誤って報告しないためです。`actuateUntilStateChanges`（`BajutsuKit/Sources/BajutsuRunner/GestureRetry.swift`）が `el.value` に現れる着地を観測する際に採用している、回数上限つきサンプリングの規律と同じです。
+
+一致しなかった場合、provider は新しい `TapResult` のケースを返します。既存の `.notFound` や `.notHittable`（`ElementProviding.swift`）と並ぶケースです。`.notFound` を再利用しないのは、その既存のメッセージ（セレクタを名指しする「actuatable な要素が見つからない」という文面）が、解決済みで生きている要素の値がたまたま一致しなかっただけの場合に、誤った説明になるためです。`Router` は、このケースを専用のレスポンスステータスへ対応づけます。
+
+現状、`_actuate`（`bajutsu/drivers/xcuitest.py`）のステータス分岐は、`_OK`、`_STALE`、`_NOT_FOUND`、`_NOT_HITTABLE` の4通りに固定されています。それ以外のステータスはすべて、`XcuitestChannelError`（`SelectorError` ではなく基盤側のエラー）を送出する catch-all に落ちます。そのため `set_picker_value` は、この4つと並ぶ独自の分岐をそこに追加します。この分岐は、見つからなかった値を名指しして `base.ElementNotFound` を送出します。
+
+これは、存在しない値に対する `select_option` 自身の前例に倣うものです。`playwright.py` の `select_option` は、存在しない `<select>` の option を、`SelectorError` の一種である `ElementNotFound` として再送出します。この分岐さえ加われば、run loop の既存のセレクタ失敗処理でそのまま扱えます。
+
+**`datePicker` の分類の隙間は影響を受けません。** `docs/selectors.md` は、`UIDatePicker` 自体のコンテナ要素が `typeName(_:)` の switch に `.datePicker` の case を持たないために `other` へ分類される、という既知のトレードオフをすでに記述しています。`setPickerValue` は、この分類に依存しません。親のコンテナではなく、ホイール型の `UIDatePicker` が子として公開する、個々の `pickerWheel` コンポーネント要素をアドレス指定するためです。
+
+したがって、このステップは今日すでに、素の `UIPickerView` のホイールを操作するのとまったく同じように `UIDatePicker` のホイールを操作できます。親要素の分類の隙間を、このステップのために閉じる必要はありません。`docs/selectors.md` には、親要素が `other` に落ちても `setPickerValue` 経由なら `datePicker` の値を設定できる、という一文を追記します。
+
+**codegen。** `bajutsu/codegen/xcuitest.py` の `_emit_step` に、`step.set_picker_value` に対して `element.adjust(toPickerWheelValue: "...")` を出力するケースを追加します。形は既存の `handle_system_alert` のケースと同じです。`adb` と `playwright` の emitter に新しいコードは不要です。認識されないステップは、`selectOption` が今日この2つの emitter ですでに落ちているのと同じ `// TODO: unsupported step` のスタブへ自然に落ちるからです。
+
+**ドキュメント。**
+
+- `docs/scenarios.md` のステップ文法の一覧表に1行を追加し、`### drag` と同じ体裁で `### setPickerValue` の節を追加します。節には、上記の YAML 例と、*動機* で述べた「座標ドラッグでは駄目な理由」を含めます。`docs/ja/scenarios.md` にも日本語版を追加します。
+- `docs/drivers.md` のケーパビリティ表には、`pickerWheel` の行を追加します（xcuitest のみ対応）。`docs/ja/drivers.md` にも同じ行を追加します。
+- `docs/selectors.md` と `docs/ja/selectors.md` には、上記の `datePicker` に関する一文を追記します。
+
+**テスト。** `tests/test_select_option.py` のパース、ディスパッチ、fake への記録という形に、上記の `picker_wheel_options` を組み合わせて、次の4つのテストを追加します。
+
+- fake のホイールがシードで持つ選択肢を `value` に指定してディスパッチすると、`driver.set_picker_value` に届き、actuation が記録されること
 - fake のホイールがシードで持たない選択肢を `value` に指定してディスパッチすると、`ElementNotFound` で失敗すること
 - `Capability.PICKER_WHEEL` を持たないバックエンド（`adb` または `playwright`）で `setPickerValue` を使うシナリオを実行すると、actuation を試みる前に preflight の時点で失敗すること
 - `tests/driver_conformance.py` の `test_select_option_capability_matches_behavior` にならった `PICKER_WHEEL` のケースを追加すること。トークンを広告するバックエンドは `UnsupportedAction` を送出してはならず、広告しないバックエンドは黙って no-op にせず必ず送出しなければならないことを検証します
@@ -64,20 +123,20 @@ XCUITest 自身は、この問題を `XCUIElement.adjust(toPickerWheelValue:)` �
 
 - **複数コンポーネントのピッカー全体を1回で指定する `component` / `values` 構造
   （`value: { component: 0, value: "2016年" }` や `values: ["2016年", "4月"]`）。** 採用しませんでした。
-  `Selector` はすでに `within` / `traits` / `index` によって1つのコンポーネントをアドレス指定でき、
+  `Selector` は、`within`、`traits`、`index` によって1つのコンポーネントをすでにアドレス指定でき、
   これはほかのすべてのセレクタベースのステップが使っている仕組みと同じです。`setPickerValue`
-  専用の第二の指定方法を新たに設けることは、既存のフィールドにない指定力を何も加えないまま、
-  同じ仕組みを重複させるだけになります。
+  専用の第二の指定方法を新たに設けても、既存のフィールドにない指定力は何も加わらず、
+  同じ仕組みが重複するだけです。
 - **`scroll` の範囲付きループにならい、ホイールの値が一致した時点で止まる座標ドラッグのステップ。**
   採用しませんでした。ピッカーホイールの行の高さやスクロールの物理特性は問い合わせ可能な状態では
-  なく、目的の値へ到達するのにドラッグをどこまで進めればよいかを縛る手がかりがありません。これは
-  `swipe` / `drag` がまさにこの用途のために抱えている非決定性そのものであり（*動機*）、だからこそ
-  この用途には使えません。`adjust(toPickerWheelValue:)` が決定的なのは、座標ではなく XCTest が
-  すでに解決済みの要素に対して作用するからです。
+  なく、目的の値へ到達するのにドラッグをどこまで進めればよいかを縛る手がかりがありません。
+  `swipe` と `drag` は、まさにこの用途で同じ非決定性を抱えており（*動機*）、この用途には使えません。
+  `adjust(toPickerWheelValue:)` が決定的なのは、座標ではなく、XCTest が解決済みの要素に対して
+  作用するからです。
 - **新しいステップ名を作らず、`tap` に `value` 修飾子を足して再利用する。** 採用しませんでした。
-  `tap` はどのバックエンドでもどの要素種別でも、解決済みの要素を起動するという同じ意味を持ちます。
+  `tap` は、どのバックエンドでもどの要素種別でも、解決済みの要素を起動するという同じ意味を持ちます。
   解決された要素がたまたまピッカーホイールかどうかでその意味を分岐させると、1つのステップの契約が
-  バックエンドと要素種別に依存することになります。`select_option` の前例は、これとは逆に、
+  バックエンドと要素種別に依存します。`select_option` の前例は、これとは逆に、
   別の種類のコントロールには別のステップ名を用意するというものです。
 
 ## 進捗
