@@ -174,6 +174,23 @@ def test_the_lease_route_closes_the_streams_of_the_jobs_it_stopped(tmp_path: Pat
     assert state.logbus.final("2") is not None and state.logbus.final("3") is not None
 
 
+def test_a_job_failed_for_unreadable_secrets_closes_the_streams_of_the_jobs_it_stopped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import bajutsu.serve.operations.worker as worker_ops
+
+    def broken(_state: ServeState, _org: str) -> dict[str, str]:
+        raise RuntimeError("database is down")
+
+    monkeypatch.setattr(worker_ops, "lease_secret_env", broken)
+    state = _group(tmp_path)
+
+    assert ops.worker_lease(state, "w1") == ({}, 204)
+
+    assert _statuses(state) == ["failed", "cancelled", "cancelled"]
+    assert state.logbus.final("2") is not None and state.logbus.final("3") is not None
+
+
 def test_the_result_route_closes_the_streams_of_the_jobs_it_stopped(tmp_path: Path) -> None:
     state = _group(tmp_path)
     assert _repo(state).lease_job("w1") is not None

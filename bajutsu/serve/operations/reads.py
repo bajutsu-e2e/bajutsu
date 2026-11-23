@@ -1104,7 +1104,8 @@ def job_group_view(
     ``exitCode`` and ``runId``, and, once it ended cancelled, ``cancelReason``: ``user`` for a
     cancel route, ``failFast`` for the group's own stop (BE-0499), else None. ``conclusion`` is
     ``pending`` while any job is unfinished, then ``failure`` when a job that was *not* cancelled
-    failed or exited non-zero, else ``cancelled`` when any was cancelled, else ``success``. It reads row statuses and exit codes alone, so no
+    did not end ``done`` with exit code 0, a result that reports none included, else ``cancelled``
+    when any was cancelled, else ``success``. It reads row statuses and exit codes alone, so no
     model sits on the verdict.
 
     Args:
