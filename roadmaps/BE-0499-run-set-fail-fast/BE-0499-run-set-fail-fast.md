@@ -9,6 +9,7 @@
 | Author | [@paihu](https://github.com/paihu) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0499") |
+| Implementing PR | [#2506](https://github.com/bajutsu-e2e/bajutsu/pull/2506) |
 | Topic | Device-cloud execution |
 | Related | [BE-0484](../BE-0484-job-group-lease/BE-0484-job-group-lease.md) |
 <!-- /BE-METADATA -->
@@ -86,6 +87,17 @@ The flag never changes a verdict. A group with a failing job concludes `failure`
 - [x] The stop on the three terminal paths
 - [x] The `cancel_reason` column and the `cancelReason` field of the group read
 - [x] Documentation in both languages
+
+Log:
+
+- 2026-11-23 — [#2506](https://github.com/bajutsu-e2e/bajutsu/pull/2506) landed all four units. `POST /api/run-set` takes `failFast`, and the
+  request digest covers it. A failing job of a fail-fast group cancels its unfinished siblings,
+  and `GET /api/run-set/<groupId>` reports each cancelled job's `cancelReason`. The cancelled
+  queued jobs' ids reach the routes through an `on_stopped` callback rather than a changed return
+  type, which keeps `complete_job` and `fail_job` returning a boolean. Every stop takes the
+  group's row lock before any job row, so two failures of one group never deadlock on PostgreSQL.
+  The reclaim sweep therefore fails an exhausted fail-fast job in a transaction of its own, after
+  the sweep commits. `docs/self-hosting.md` describes no request body, so it needed no change.
 
 ## References
 

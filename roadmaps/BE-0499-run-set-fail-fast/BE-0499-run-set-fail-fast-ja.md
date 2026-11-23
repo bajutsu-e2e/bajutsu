@@ -9,6 +9,7 @@
 | 提案者 | [@paihu](https://github.com/paihu) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0499") |
+| 実装 PR | [#2506](https://github.com/bajutsu-e2e/bajutsu/pull/2506) |
 | トピック | Device-cloud execution |
 | 関連 | [BE-0484](../BE-0484-job-group-lease/BE-0484-job-group-lease-ja.md) |
 <!-- /BE-METADATA -->
@@ -86,6 +87,18 @@
 - [x] 3つの終端の経路での停止
 - [x] 列 `cancel_reason` と、グループの読み出しの `cancelReason`
 - [x] 両言語のドキュメント
+
+ログ：
+
+- 2026-11-23：[#2506](https://github.com/bajutsu-e2e/bajutsu/pull/2506) で4つの単位をすべて実装しました。`POST /api/run-set` は `failFast` を受け取り、
+  リクエストダイジェストもこのフラグを含みます。fail-fast のグループでジョブが失敗すると、同じグループの
+  終わっていないジョブを取り消します。`GET /api/run-set/<groupId>` は、取り消されたジョブごとに
+  `cancelReason` を返します。取り消したキュー済みジョブの id は、戻り値を変えずに `on_stopped`
+  コールバックでルートへ渡します。`complete_job` と `fail_job` の戻り値を真偽値のまま保つためです。
+  停止はどれも、ジョブの行より先にグループの行のロックを取ります。そのため、同じグループで2つの失敗が
+  重なっても、PostgreSQL でデッドロックしません。同じ理由で、試行回数を使い切った fail-fast のジョブは、
+  リース回収の掃除がコミットした後に、別のトランザクションで失敗させます。`docs/self-hosting.md` は
+  リクエストの本体を説明していないので、変更は不要でした。
 
 ## 参考
 
