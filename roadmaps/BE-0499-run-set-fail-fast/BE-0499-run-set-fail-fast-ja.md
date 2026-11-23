@@ -69,7 +69,7 @@
 
 ### ドキュメント
 
-`docs/devicefarm.md` と `docs/self-hosting.md` は、両言語で `run-set` のリクエストを説明しています。両方のページに、このフィールドと `cancelReason` の値を追記します。
+`docs/devicefarm.md` は、両言語で `run-set` のリクエストを説明しています。このページに、このフィールドと `cancelReason` の値を追記します。`docs/self-hosting.md` は `run-set` のリクエストの本体を説明していないので、変更は不要です。
 
 ## 検討した代替案
 

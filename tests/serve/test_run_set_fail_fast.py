@@ -14,7 +14,7 @@ from _shared import queue_repository
 
 from bajutsu.serve import operations as ops
 from bajutsu.serve.server.db import QueuedJob, SqlRepository
-from bajutsu.serve.state import ServeState
+from bajutsu.serve.state import Job, ServeState
 
 
 def _group(
@@ -124,7 +124,7 @@ def test_a_leased_sibling_is_flagged_for_its_worker(tmp_path: Path) -> None:
 
 def test_a_lease_that_expires_on_its_last_attempt_stops_the_group(tmp_path: Path) -> None:
     repo = queue_repository()
-    expiring = SqlRepository(repo._engine, lease_timeout=timedelta(microseconds=1), max_attempts=1)
+    expiring = SqlRepository(repo._engine, lease_timeout=timedelta(seconds=-1), max_attempts=1)
     state = _group(tmp_path, repository=expiring)
     assert expiring.lease_job("w1") is not None
     stopped: list[str] = []
@@ -137,7 +137,7 @@ def test_a_lease_that_expires_on_its_last_attempt_stops_the_group(tmp_path: Path
 
 def test_the_lease_route_closes_the_streams_of_the_jobs_it_stopped(tmp_path: Path) -> None:
     repo = queue_repository()
-    expiring = SqlRepository(repo._engine, lease_timeout=timedelta(microseconds=1), max_attempts=1)
+    expiring = SqlRepository(repo._engine, lease_timeout=timedelta(seconds=-1), max_attempts=1)
     state = _group(tmp_path, repository=expiring)
     assert expiring.lease_job("w1") is not None
 
@@ -156,6 +156,18 @@ def test_the_result_route_closes_the_streams_of_the_jobs_it_stopped(tmp_path: Pa
 
     assert (payload, status) == ({"ok": True}, 200)
     assert state.logbus.final("2") is not None and state.logbus.final("3") is not None
+
+
+def test_a_stop_marks_this_replicas_own_job_cancelled(tmp_path: Path) -> None:
+    state = _group(tmp_path)
+    sibling = state.admit(Job(id="2", cmd=["bajutsu", "run"]))
+    assert _repo(state).lease_job("w1") is not None
+
+    ops.worker_result(
+        state, {"job_id": "1", "worker_id": "w1", "result": {"ok": False, "error": "boom"}}
+    )
+
+    assert sibling.cancelled
 
 
 def test_a_persons_cancel_keeps_its_reason_when_a_sibling_fails_later(tmp_path: Path) -> None:

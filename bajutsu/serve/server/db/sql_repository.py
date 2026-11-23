@@ -1726,7 +1726,7 @@ def _stop_group(session: Session, group_id: str, job_id: str) -> list[str]:
                     .values(
                         status="cancelled",
                         result=cancelled_job_result(sibling),
-                        cancel_reason=_FAIL_FAST_CANCEL,
+                        cancel_reason=func.coalesce(JobRecord.cancel_reason, _FAIL_FAST_CANCEL),
                     )
                 )
             )

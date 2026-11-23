@@ -69,7 +69,7 @@ The flag never changes a verdict. A group with a failing job concludes `failure`
 
 ### Documentation
 
-`docs/devicefarm.md` and `docs/self-hosting.md` describe the `run-set` request in both languages. Both pages gain the field and the `cancelReason` value.
+`docs/devicefarm.md` describes the `run-set` request in both languages, and it gains the field and the `cancelReason` value. `docs/self-hosting.md` describes no `run-set` request body, so it needs no change.
 
 ## Alternatives considered
 
