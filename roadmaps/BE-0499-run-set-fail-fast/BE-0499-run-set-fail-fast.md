@@ -69,7 +69,7 @@ The flag never changes a verdict. A group with a failing job concludes `failure`
 
 ### Documentation
 
-`docs/devicefarm.md` describes the `run-set` request in both languages, and it gains the field and the `cancelReason` value. `docs/self-hosting.md` describes no `run-set` request body, so it needs no change.
+`docs/devicefarm.md` describes the `run-set` request in both languages, and it gains the field and the `cancelReason` value. `docs/architecture.md`'s *Job groups* bullet gains the fail-fast stop, and its concurrency-caps sub-bullet narrows "a group is thus never cut short" to the caps, which the flag now makes untrue in general (BE-0113). `docs/self-hosting.md` describes no `run-set` request body, so it needs no change.
 
 ## Alternatives considered
 

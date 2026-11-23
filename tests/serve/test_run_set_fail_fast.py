@@ -135,6 +135,34 @@ def test_a_lease_that_expires_on_its_last_attempt_stops_the_group(tmp_path: Path
     assert stopped == ["2", "3"]
 
 
+def test_two_leases_of_one_group_that_expire_on_their_last_attempt_both_end(
+    tmp_path: Path,
+) -> None:
+    repo = queue_repository()
+    expiring = SqlRepository(repo._engine, lease_timeout=timedelta(seconds=-1), max_attempts=1)
+    state = _group(tmp_path, repository=repo)
+    assert repo.lease_job("w1") is not None
+    assert repo.lease_job("w1") is not None
+
+    assert expiring.lease_jobs("w2") == []
+
+    assert _statuses(state) == ["failed", "cancelled", "cancelled"]
+    assert _reasons(state) == [None, "failFast", "failFast"]
+
+
+def test_a_leased_sibling_that_outruns_the_stop_reports_no_reason(tmp_path: Path) -> None:
+    state = _group(tmp_path)
+    repo = _repo(state)
+    assert repo.lease_job("w1") is not None
+    assert repo.lease_job("w2") is not None
+
+    assert repo.fail_job("1", "device lost", worker_id="w1")
+    assert repo.complete_job("2", {"exitCode": 0}, worker_id="w2")
+
+    assert _statuses(state) == ["failed", "done", "cancelled"]
+    assert _reasons(state) == [None, None, "failFast"]
+
+
 def test_the_lease_route_closes_the_streams_of_the_jobs_it_stopped(tmp_path: Path) -> None:
     repo = queue_repository()
     expiring = SqlRepository(repo._engine, lease_timeout=timedelta(seconds=-1), max_attempts=1)

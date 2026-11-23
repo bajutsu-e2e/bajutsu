@@ -1350,8 +1350,12 @@ class SqlRepository:
         for job_id, previous_attempts in deferred:
             with Session(self._engine) as session:
                 group_id = self._lock_fail_fast_group(session, job_id)
+                # Re-read: an earlier deferred job's stop may have flagged this one, a bundle-mate.
+                cancelling = bool(
+                    session.scalar(select(JobRecord.cancel_requested).where(JobRecord.id == job_id))
+                )
                 status = _reclaim_row(
-                    session, job_id, previous_attempts, False, cutoff, max_attempts
+                    session, job_id, previous_attempts, cancelling, cutoff, max_attempts
                 )
                 if status == "failed" and group_id is not None:
                     stopped += _stop_group(session, group_id, job_id)

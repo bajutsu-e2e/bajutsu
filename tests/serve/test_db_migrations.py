@@ -412,3 +412,41 @@ def test_0026_makes_a_group_key_unique_within_its_org(migration_db_url: str) -> 
         assert "digest" not in {c["name"] for c in inspect(engine).get_columns("job_groups")}
     finally:
         engine.dispose()
+
+
+@pytest.mark.parametrize("migration_db_url", _DIALECTS, indirect=True)
+def test_0027_adds_an_unset_fail_fast_flag_and_cancel_reason_to_existing_rows(
+    migration_db_url: str,
+) -> None:
+    """0027 lands under a live queue: an existing group does not stop on a failure, and an existing
+    job holds no cancel reason. The downgrade's table rebuilds on SQLite must keep both rows."""
+    from alembic import command
+
+    cfg = _alembic_config()
+    command.upgrade(cfg, "0026")
+    engine = create_engine(migration_db_url)
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("INSERT INTO job_groups (id, org_id, key) VALUES ('g1', 'o', 'k')"))
+            conn.execute(
+                text(
+                    "INSERT INTO jobs (id, org_id, spec, capabilities, status, attempts, result, "
+                    "batch_state) VALUES ('j1', 'o', '{}', '[]', 'leased', 0, '{}', '{}')"
+                )
+            )
+        command.upgrade(cfg, "0027")
+        with engine.connect() as conn:
+            assert [tuple(r) for r in conn.execute(text("SELECT fail_fast FROM job_groups"))] == [
+                (False,)
+            ]
+            assert conn.execute(text("SELECT cancel_reason FROM jobs")).scalar_one() is None
+        command.downgrade(cfg, "0026")
+        assert "fail_fast" not in {c["name"] for c in inspect(engine).get_columns("job_groups")}
+        assert "cancel_reason" not in {c["name"] for c in inspect(engine).get_columns("jobs")}
+        with engine.connect() as conn:
+            assert conn.execute(text("SELECT id FROM job_groups")).scalar_one() == "g1"
+            assert [tuple(r) for r in conn.execute(text("SELECT id, status FROM jobs"))] == [
+                ("j1", "leased")
+            ]
+    finally:
+        engine.dispose()
