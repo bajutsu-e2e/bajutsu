@@ -1080,8 +1080,6 @@ def cancel_job(
         # puts the "cancelled" line on its log stream, as a cancel always has.
         jobs.cancel_job(job)
     if applied and status == "cancelled":
-        # No worker will ever post a result for a job cancelled while queued, so the server writes
-        # the terminal view itself, or the job would read as running forever.
         state.logbus.close(job_id, json.dumps(cancelled_job_result(job_id)))
     # This request stopped the in-memory job even when the dispatcher, seeing that, moved the row
     # first, so it reports the cancel it caused rather than the row's "already finished".
@@ -1098,9 +1096,10 @@ def job_group_view(
     """One `run-set` group: each job's status and verdict, and the group's conclusion (BE-0484).
 
     The row status says only whether a job finished, so each job also carries its run's
-    ``exitCode`` and ``runId``. ``conclusion`` is ``pending`` while any job is unfinished, then
-    ``failure`` when a job that was *not* cancelled failed or exited non-zero, else ``cancelled``
-    when any was cancelled, else ``success``. It reads row statuses and exit codes alone, so no
+    ``exitCode`` and ``runId``, and, once it ended cancelled, ``cancelReason``: ``user`` for a
+    cancel route, ``failFast`` for the group's own stop (BE-0499), else None. ``conclusion`` is
+    ``pending`` while any job is unfinished, then ``failure`` when a job that was *not* cancelled
+    failed or exited non-zero, else ``cancelled`` when any was cancelled, else ``success``. It reads row statuses and exit codes alone, so no
     model sits on the verdict.
 
     Args:
@@ -1125,6 +1124,8 @@ def job_group_view(
             "status": row["status"],
             "exitCode": row["result"].get("exitCode"),
             "runId": row["result"].get("runId"),
+            # The column records a request to stop, which a leased job can outrun by finishing.
+            "cancelReason": row["cancel_reason"] if _ended_cancelled(row) else None,
         }
         for row in rows
     ]
@@ -1141,13 +1142,17 @@ def _group_conclusion(rows: list[dict[str, Any]]) -> str:
     # Anything not terminal counts as unfinished, so a status added later never reads as a failure.
     if any(row["status"] not in TERMINAL_JOB_STATUSES for row in rows):
         return "pending"
-    cancelled = [row["status"] == "cancelled" or row["result"].get("cancelled") for row in rows]
+    cancelled = [_ended_cancelled(row) for row in rows]
     if any(
         not c and (row["status"] != "done" or row["result"].get("exitCode") != 0)
         for row, c in zip(rows, cancelled, strict=True)
     ):
         return "failure"
     return "cancelled" if any(cancelled) else "success"
+
+
+def _ended_cancelled(row: dict[str, Any]) -> bool:
+    return row["status"] == "cancelled" or bool(row["result"].get("cancelled"))
 
 
 def cancel_job_group(

@@ -494,9 +494,12 @@ Two requests count as the same when they agree on each of these:
 - the config
 - the application
 - the run label
+- the `failFast` flag
 
 The comparison leaves the placement out, since a request names none. A key registered before
 BE-0484 unit 5 also covered the environment. Repeating that key after the upgrade returns 409.
+BE-0499 added `failFast` to the comparison. A key registered before that change also
+returns 409 after the upgrade.
 
 A GitHub Actions job builds its key from four variables:
 
@@ -512,6 +515,21 @@ through the same cancel as `POST /api/jobs/<id>/cancel`. The route needs the edi
 group's org. The response lists the jobs it cancelled. A queued job becomes `cancelled` at once. A
 leased job keeps its `leased` status until its worker stops the run. Until then, `conclusion`
 stays `pending`.
+
+A request may also set `failFast: true` to stop the group once its first job fails (BE-0499).
+The flag defaults to `false`, and serve refuses a value other than a boolean with a 400 error. A
+job fails when it ends `failed` or exits non-zero without a cancel, the same rule `conclusion`
+uses. The first such job cancels every unfinished job of its group, as the group cancel does. A
+queued job becomes `cancelled` at once, and a leased job stops at its worker's next lease renewal.
+
+The flag never changes the verdict. A group with a failing job concludes `failure` with or
+without it. Lease order decides which other scenarios ran before the stop. Two runs of one group
+can thus differ in the set of scenarios they ran.
+
+Each job of the group read carries `cancelReason`. A job that a cancel route stopped reads
+`user`. A job that the group's own stop cancelled reads `failFast`. Every other job reads
+`null`, a job its worker stopped on its own included. A job keeps the first reason recorded. A
+job that a person cancelled thus reads `user` even when a sibling fails before its worker stops.
 
 Both routes answer 404 for a group of an org the caller does not belong to. The cancel route also
 answers 404 to a member below the editor role in the group's org. A `GET` still reads that group. A pipeline reaches the

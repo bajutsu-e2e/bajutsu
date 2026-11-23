@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0499](BE-0499-run-set-fail-fast-ja.md) |
 | 提案者 | [@paihu](https://github.com/paihu) |
-| 状態 | **承認済み** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0499") |
 | トピック | Device-cloud execution |
 | 関連 | [BE-0484](../BE-0484-job-group-lease/BE-0484-job-group-lease-ja.md) |
@@ -82,10 +82,10 @@
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] リクエストのフィールド `failFast`、その列、リクエストダイジェスト
-- [ ] 3つの終端の経路での停止
-- [ ] 列 `cancel_reason` と、グループの読み出しの `cancelReason`
-- [ ] 両言語のドキュメント
+- [x] リクエストのフィールド `failFast`、その列、リクエストダイジェスト
+- [x] 3つの終端の経路での停止
+- [x] 列 `cancel_reason` と、グループの読み出しの `cancelReason`
+- [x] 両言語のドキュメント
 
 ## 参考
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 import zlib
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -41,6 +41,10 @@ _CANCEL_ATTEMPTS = 5
 # The clock skew a spent-`jti` row must outlive, matching `bajutsu.serve.oidc`'s own allowance —
 # duplicated as a constant rather than imported so this module stays free of the OIDC one.
 _REPLAY_SKEW_SECONDS = 60
+
+# Why a job was cancelled (BE-0499): a cancel route, or a fail-fast group's stop.
+_USER_CANCEL = "user"
+_FAIL_FAST_CANCEL = "failFast"
 
 
 def _run_fields(run: RunRecord) -> dict[str, Any]:
@@ -648,6 +652,7 @@ class SqlRepository:
         digest: str,
         compat_key: str | None,
         jobs: Sequence[QueuedJob],
+        fail_fast: bool = False,
     ) -> str | None:
         from sqlalchemy.exc import IntegrityError
         from sqlalchemy.orm import Session
@@ -659,7 +664,9 @@ class SqlRepository:
             held = self._group_by_key(session, org_id, key)
             if held is not None:
                 return held.id if held.digest == digest else None
-            session.add(JobGroup(id=group_id, org_id=org_id, key=key, digest=digest))
+            session.add(
+                JobGroup(id=group_id, org_id=org_id, key=key, digest=digest, fail_fast=fail_fast)
+            )
             session.add_all(
                 JobRecord(
                     id=job.id,
@@ -703,7 +710,9 @@ class SqlRepository:
 
         with Session(self._engine) as session:
             row = session.get(JobGroup, group_id)
-            return None if row is None else {"id": row.id, "org_id": row.org_id, "key": row.key}
+            if row is None:
+                return None
+            return {"id": row.id, "org_id": row.org_id, "key": row.key, "fail_fast": row.fail_fast}
 
     def group_jobs(self, group_id: str) -> list[dict[str, Any]]:
         from sqlalchemy import func, select
@@ -714,14 +723,14 @@ class SqlRepository:
         # Jobs of one request often share a `created_at` second on SQLite; ids are the registry's
         # counter, so ordering by length then text keeps "9" ahead of "10".
         query = (
-            select(JobRecord.id, JobRecord.status, JobRecord.result)
+            select(JobRecord.id, JobRecord.status, JobRecord.result, JobRecord.cancel_reason)
             .where(JobRecord.group_id == group_id)
             .order_by(JobRecord.created_at, func.length(JobRecord.id), JobRecord.id)
         )
         with Session(self._engine) as session:
             return [
-                {"id": i, "status": status, "result": result}
-                for i, status, result in session.execute(query)
+                {"id": i, "status": status, "result": result, "cancel_reason": reason}
+                for i, status, result, reason in session.execute(query)
             ]
 
     def max_job_id(self) -> int:
@@ -788,13 +797,16 @@ class SqlRepository:
         *,
         max_jobs: int = 1,
         caps: ConcurrencyCaps | None = None,
+        on_stopped: Callable[[list[str]], None] | None = None,
     ) -> list[LeasedJob]:
         from bajutsu.serve.capabilities import can_serve, checks_routes
         from bajutsu.serve.server.models import JobRecord
 
         # Sweep dead workers' leases back into the queue before serving, so a stuck job is picked up
         # on the next poll without a separate reaper process.
-        self.reclaim_expired_leases(self._lease_timeout, max_attempts=self._max_attempts)
+        self.reclaim_expired_leases(
+            self._lease_timeout, max_attempts=self._max_attempts, on_stopped=on_stopped
+        )
         advertised = set(capabilities)
         # A worker that checks no routes drops the route tokens from every verdict, so jobs that
         # differ in those tokens alone share its verdict and pair by base key (BE-0484).
@@ -1272,15 +1284,20 @@ class SqlRepository:
             return token if _rowcount(taken) == 1 else None
 
     def reclaim_expired_leases(
-        self, timeout: timedelta, *, max_attempts: int = DEFAULT_LEASE_MAX_ATTEMPTS
+        self,
+        timeout: timedelta,
+        *,
+        max_attempts: int = DEFAULT_LEASE_MAX_ATTEMPTS,
+        on_stopped: Callable[[list[str]], None] | None = None,
     ) -> list[str]:
-        from sqlalchemy import delete, select, update
+        from sqlalchemy import delete, select
         from sqlalchemy.orm import Session
 
-        from bajutsu.serve.server.models import JobRecord, WorkerRecord
+        from bajutsu.serve.server.models import JobGroup, JobRecord, WorkerRecord
 
         cutoff = datetime.now(UTC) - timeout
         requeued: list[str] = []
+        deferred: list[tuple[str, int]] = []
         with Session(self._engine) as session:
             # Prune dead workers in the same sweep the leases use — a worker not seen within the
             # timeout is dead by the same definition, so its registry row stops counting toward
@@ -1300,56 +1317,84 @@ class SqlRepository:
                 # one delayed heartbeat stall queue service for every worker.
                 scan = scan.with_for_update(skip_locked=True)
             expired = session.execute(scan).all()
+            failing = [
+                job_id
+                for job_id, attempts, cancelling in expired
+                if attempts + 1 >= max_attempts and not cancelling
+            ]
+            fail_fast = (
+                set(
+                    session.scalars(
+                        select(JobRecord.id)
+                        .join(JobGroup, JobGroup.id == JobRecord.group_id)
+                        .where(JobRecord.id.in_(failing), JobGroup.fail_fast.is_(True))
+                    )
+                )
+                if failing
+                else set()
+            )
             for job_id, previous_attempts, cancelling in expired:
-                attempts = previous_attempts + 1
-                exhausted = attempts >= max_attempts
-                # A job a cancel already reached is not run again when its worker dies: it ends
-                # `cancelled`, the outcome its requester asked for (BE-0449).
-                outcome = _reclaimed_outcome(
-                    job_id, attempts, exhausted=exhausted, cancelling=cancelling
+                if job_id in fail_fast:
+                    # Its failure stops the group, which takes the group's lock before any job
+                    # row; this transaction already holds every scanned row (BE-0499).
+                    deferred.append((job_id, previous_attempts))
+                    continue
+                status = _reclaim_row(
+                    session, job_id, previous_attempts, cancelling, cutoff, max_attempts
                 )
-                # Re-checked in the UPDATE itself: a heartbeat that renewed the lease since the scan
-                # moved `leased_at` past the cutoff, so that live worker's job matches no row and is
-                # left alone rather than reclaimed out from under it (BE-0449). `attempts` must still
-                # read what the scan saw, so a count from before a concurrent reclaim never
-                # overwrites the newer one, whatever the replicas' clocks say. The cancel flag must
-                # too, so a cancel landing after the scan is never re-queued with the flag still set.
-                reclaimed = session.execute(
-                    update(JobRecord)
-                    .where(
-                        JobRecord.id == job_id,
-                        JobRecord.status == "leased",
-                        JobRecord.leased_at < cutoff,
-                        JobRecord.attempts == previous_attempts,
-                        JobRecord.cancel_requested == cancelling,
-                    )
-                    .values(
-                        attempts=attempts,
-                        leased_by=None,
-                        leased_at=None,
-                        # The paused `record` died with the lease, so its handoff ends too.
-                        handoff_pending=False,
-                        handoff_response=None,
-                        **outcome,
-                    )
-                )
-                if _rowcount(reclaimed) == 1 and outcome["status"] == "queued":
+                if status == "queued":
                     requeued.append(job_id)
             session.commit()
+        stopped: list[str] = []
+        for job_id, previous_attempts in deferred:
+            with Session(self._engine) as session:
+                group_id = self._lock_fail_fast_group(session, job_id)
+                status = _reclaim_row(
+                    session, job_id, previous_attempts, False, cutoff, max_attempts
+                )
+                if status == "failed" and group_id is not None:
+                    stopped += _stop_group(session, group_id, job_id)
+                session.commit()
+        if stopped and on_stopped is not None:
+            on_stopped(stopped)
         return requeued
 
     def complete_job(
-        self, job_id: str, result: dict[str, Any], *, worker_id: str | None = None
+        self,
+        job_id: str,
+        result: dict[str, Any],
+        *,
+        worker_id: str | None = None,
+        on_stopped: Callable[[list[str]], None] | None = None,
     ) -> bool:
-        return self._finish_job(job_id, status="done", payload=result, worker_id=worker_id)
-
-    def fail_job(self, job_id: str, error: str, *, worker_id: str | None = None) -> bool:
         return self._finish_job(
-            job_id, status="failed", payload={"error": error}, worker_id=worker_id
+            job_id, status="done", payload=result, worker_id=worker_id, on_stopped=on_stopped
+        )
+
+    def fail_job(
+        self,
+        job_id: str,
+        error: str,
+        *,
+        worker_id: str | None = None,
+        on_stopped: Callable[[list[str]], None] | None = None,
+    ) -> bool:
+        return self._finish_job(
+            job_id,
+            status="failed",
+            payload={"error": error},
+            worker_id=worker_id,
+            on_stopped=on_stopped,
         )
 
     def _finish_job(
-        self, job_id: str, *, status: str, payload: dict[str, Any], worker_id: str | None
+        self,
+        job_id: str,
+        *,
+        status: str,
+        payload: dict[str, Any],
+        worker_id: str | None,
+        on_stopped: Callable[[list[str]], None] | None = None,
     ) -> bool:
         """Transition a still-leased job to a terminal *status*, returning False when it may not.
 
@@ -1366,17 +1411,43 @@ class SqlRepository:
         if worker_id is not None:
             conditions.append(JobRecord.leased_by == worker_id)
         with Session(self._engine) as session:
+            group_id = (
+                self._lock_fail_fast_group(session, job_id) if _failed(status, payload) else None
+            )
             finished = session.execute(
                 update(JobRecord)
                 .where(*conditions)
                 # A finished job keeps no handoff answer: it may hold a one-time password.
                 .values(status=status, result=payload, handoff_pending=False, handoff_response=None)
             )
+            applied = _rowcount(finished) == 1
+            stopped = _stop_group(session, group_id, job_id) if applied and group_id else []
             session.commit()
-            return _rowcount(finished) == 1
+        if stopped and on_stopped is not None:
+            on_stopped(stopped)
+        return applied
+
+    def _lock_fail_fast_group(self, session: Session, job_id: str) -> str | None:
+        """The fail-fast group *job_id* belongs to, locked, or None when it has none.
+
+        Every stop takes the group's lock before any job row, so two failures of one group stop it
+        one after the other rather than each holding a row the other's stop waits on.
+        """
+        from sqlalchemy import select
+
+        from bajutsu.serve.server.models import JobGroup, JobRecord
+
+        query = (
+            select(JobGroup.id)
+            .join(JobRecord, JobRecord.group_id == JobGroup.id)
+            .where(JobRecord.id == job_id, JobGroup.fail_fast.is_(True))
+        )
+        if self._engine.dialect.name != "sqlite":
+            query = query.with_for_update(of=JobGroup)
+        return session.scalar(query)
 
     def cancel_job(self, job_id: str) -> tuple[str, bool] | None:
-        from sqlalchemy import update
+        from sqlalchemy import func, update
         from sqlalchemy.orm import Session
 
         from bajutsu.serve.server.models import JobRecord
@@ -1391,7 +1462,11 @@ class SqlRepository:
                 queued = session.execute(
                     update(JobRecord)
                     .where(JobRecord.id == job_id, JobRecord.status == "queued")
-                    .values(status="cancelled", result=cancelled_job_result(job_id))
+                    .values(
+                        status="cancelled",
+                        result=cancelled_job_result(job_id),
+                        cancel_reason=func.coalesce(JobRecord.cancel_reason, _USER_CANCEL),
+                    )
                 )
                 if _rowcount(queued) == 1:
                     session.commit()
@@ -1399,7 +1474,10 @@ class SqlRepository:
                 leased = session.execute(
                     update(JobRecord)
                     .where(JobRecord.id == job_id, JobRecord.status == "leased")
-                    .values(cancel_requested=True)
+                    .values(
+                        cancel_requested=True,
+                        cancel_reason=func.coalesce(JobRecord.cancel_reason, _USER_CANCEL),
+                    )
                 )
                 session.commit()
                 if _rowcount(leased) == 1:
@@ -1562,6 +1640,111 @@ class SqlRepository:
 
 # The advisory-lock namespaces of the three capped scopes, in the order a lease takes them.
 _DEPLOYMENT_SCOPE, _ORG_SCOPE, _USER_SCOPE = 1, 2, 3
+
+
+def _reclaim_row(
+    session: Session,
+    job_id: str,
+    previous_attempts: int,
+    cancelling: bool,
+    cutoff: datetime,
+    max_attempts: int,
+) -> str | None:
+    """Reclaim one expired lease, returning the job's new status, or None when the row moved."""
+    from sqlalchemy import update
+
+    from bajutsu.serve.server.models import JobRecord
+
+    attempts = previous_attempts + 1
+    # A job a cancel already reached is not run again when its worker dies: it ends
+    # `cancelled`, the outcome its requester asked for (BE-0449).
+    outcome = _reclaimed_outcome(
+        job_id, attempts, exhausted=attempts >= max_attempts, cancelling=cancelling
+    )
+    # Re-checked in the UPDATE itself: a heartbeat that renewed the lease since the scan moved
+    # `leased_at` past the cutoff, so that live worker's job matches no row and is left alone rather
+    # than reclaimed out from under it (BE-0449). `attempts` must still read what the scan saw, so a
+    # count from before a concurrent reclaim never overwrites the newer one, whatever the replicas'
+    # clocks say. The cancel flag must too, so a cancel landing after the scan is never re-queued
+    # with the flag still set.
+    reclaimed = session.execute(
+        update(JobRecord)
+        .where(
+            JobRecord.id == job_id,
+            JobRecord.status == "leased",
+            JobRecord.leased_at < cutoff,
+            JobRecord.attempts == previous_attempts,
+            JobRecord.cancel_requested == cancelling,
+        )
+        .values(
+            attempts=attempts,
+            leased_by=None,
+            leased_at=None,
+            # The paused `record` died with the lease, so its handoff ends too.
+            handoff_pending=False,
+            handoff_response=None,
+            **outcome,
+        )
+    )
+    return str(outcome["status"]) if _rowcount(reclaimed) == 1 else None
+
+
+def _failed(status: str, payload: dict[str, Any]) -> bool:
+    """Whether a job finishing as *status* with *payload* failed, by the group conclusion's rule."""
+    if status == "failed":
+        return True
+    return status == "done" and not payload.get("cancelled") and payload.get("exitCode") != 0
+
+
+def _stop_group(session: Session, group_id: str, job_id: str) -> list[str]:
+    """Cancel the unfinished siblings of the failed *job_id* in its fail-fast *group_id* (BE-0499).
+
+    The caller holds the group's lock. A finishing job stops the group in the transaction that
+    records the failure, so no worker leases a sibling after it. A queued sibling ends ``cancelled``
+    at once; a leased one is flagged for its worker's heartbeat, as `cancel_job` does. Returns the
+    queued ids it cancelled, whose log streams the caller closes.
+    """
+    from sqlalchemy import func, select, update
+
+    from bajutsu.serve.server.models import JobRecord
+
+    siblings = (JobRecord.group_id == group_id, JobRecord.id != job_id)
+
+    def cancel_queued() -> list[str]:
+        queued = session.scalars(
+            select(JobRecord.id)
+            .where(*siblings, JobRecord.status == "queued")
+            .order_by(JobRecord.created_at, func.length(JobRecord.id), JobRecord.id)
+        ).all()
+        return [
+            sibling
+            for sibling in queued
+            if _rowcount(
+                session.execute(
+                    update(JobRecord)
+                    .where(JobRecord.id == sibling, JobRecord.status == "queued")
+                    .values(
+                        status="cancelled",
+                        result=cancelled_job_result(sibling),
+                        cancel_reason=_FAIL_FAST_CANCEL,
+                    )
+                )
+            )
+            == 1
+        ]
+
+    stopped = cancel_queued()
+    session.execute(
+        update(JobRecord)
+        .where(*siblings, JobRecord.status == "leased")
+        .values(
+            cancel_requested=True,
+            cancel_reason=func.coalesce(JobRecord.cancel_reason, _FAIL_FAST_CANCEL),
+        )
+    )
+    # A reclaim may have re-queued a sibling between the two passes, out of both; the leased pass
+    # waited out any reclaim still holding a row, so this pass sees it.
+    return stopped + cancel_queued()
 
 
 def _capped_scopes(caps: ConcurrencyCaps, org_id: str, actor: str | None) -> list[tuple[int, str]]:

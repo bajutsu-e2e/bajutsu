@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from datetime import datetime, timedelta
 from typing import Any, Protocol, runtime_checkable
 
@@ -240,6 +240,7 @@ class Repository(Protocol):
         digest: str,
         compat_key: str | None,
         jobs: Sequence[QueuedJob],
+        fail_fast: bool = False,
     ) -> str | None:
         """Write one `run-set` group and every job of it in one transaction (BE-0484).
 
@@ -251,6 +252,7 @@ class Repository(Protocol):
             digest: What the request asked to run, which tells a retry from a different request.
             compat_key: What a worker may share between the group's jobs: config, binary, platform,
                 and target.
+            fail_fast: Whether the group's first failing job cancels its unfinished jobs (BE-0499).
 
         Returns:
             The id of the group holding *key*: *group_id* once written, or the existing group's id,
@@ -259,10 +261,11 @@ class Repository(Protocol):
         """
 
     def get_job_group(self, group_id: str) -> dict[str, Any] | None:
-        """The group's ``id``, ``org_id``, and ``key``, or None when no group has that id."""
+        """The group's ``id``, ``org_id``, ``key``, and ``fail_fast``, or None when no group has that id."""
 
     def group_jobs(self, group_id: str) -> list[dict[str, Any]]:
-        """Each job of the group, oldest first, as its ``id``, ``status``, and ``result``."""
+        """Each job of the group, oldest first, as its ``id``, ``status``, ``result``, and
+        ``cancel_reason`` (BE-0499)."""
 
     def max_job_id(self) -> int:
         """The highest numeric job id persisted so far, or 0 if the table is empty.
@@ -291,6 +294,7 @@ class Repository(Protocol):
         *,
         max_jobs: int = 1,
         caps: ConcurrencyCaps | None = None,
+        on_stopped: Callable[[list[str]], None] | None = None,
     ) -> list[LeasedJob]:
         """Atomically lease the oldest queued job *worker_id* can serve, with its group's followers.
 
@@ -304,6 +308,8 @@ class Repository(Protocol):
             max_jobs: The worker's free slots, which bound the bundle.
             caps: The server's concurrency caps, applied to a group's jobs here rather than at
                 registration; a plain job was capped when it registered. None is unlimited.
+            on_stopped: Called with the queued jobs the lease's sweep cancelled (see
+                `reclaim_expired_leases`).
 
         Returns:
             The leased jobs, oldest first. A group a cap holds back stays queued, and the lease
@@ -395,7 +401,11 @@ class Repository(Protocol):
         """
 
     def reclaim_expired_leases(
-        self, timeout: timedelta, *, max_attempts: int = DEFAULT_LEASE_MAX_ATTEMPTS
+        self,
+        timeout: timedelta,
+        *,
+        max_attempts: int = DEFAULT_LEASE_MAX_ATTEMPTS,
+        on_stopped: Callable[[list[str]], None] | None = None,
     ) -> list[str]:
         """Re-queue leases with no heartbeat within *timeout*; fail the ones past *max_attempts*.
 
@@ -403,20 +413,41 @@ class Repository(Protocol):
         so its lease ages past the timeout and returns to ``queued`` for another worker — but a
         poison job that keeps killing its worker is failed once it hits the attempt cap, and one a
         cancel already reached is marked ``cancelled`` rather than run again.
+
+        A job failed this way stops its fail-fast group (BE-0499): its queued siblings are
+        cancelled, and *on_stopped* is called with their ids after the commit, so the caller closes
+        their log streams. Its leased siblings are flagged for their workers.
         """
 
     def complete_job(
-        self, job_id: str, result: dict[str, Any], *, worker_id: str | None = None
+        self,
+        job_id: str,
+        result: dict[str, Any],
+        *,
+        worker_id: str | None = None,
+        on_stopped: Callable[[list[str]], None] | None = None,
     ) -> bool:
         """Mark a still-leased job ``done`` with its *result*; False if it is no longer leasable.
 
         A reclaimed, re-leased, or already-finished job rejects the write (when *worker_id* is
         given, only that leaseholder may complete it), so a stale worker never overwrites the winner.
+
+        A non-zero exit code on a job not cancelled stops its fail-fast group, as for
+        `reclaim_expired_leases`, and calls *on_stopped* with the queued ids it cancelled.
         """
 
-    def fail_job(self, job_id: str, error: str, *, worker_id: str | None = None) -> bool:
-        """Mark a still-leased job ``failed`` with *error*; False if it is no longer leasable (see
-        `complete_job`)."""
+    def fail_job(
+        self,
+        job_id: str,
+        error: str,
+        *,
+        worker_id: str | None = None,
+        on_stopped: Callable[[list[str]], None] | None = None,
+    ) -> bool:
+        """Mark a still-leased job ``failed`` with *error*; False if it is no longer leasable.
+
+        Stops a fail-fast group and calls *on_stopped* as `complete_job` does.
+        """
 
     def cancel_job(self, job_id: str) -> tuple[str, bool] | None:
         """Cancel a job wherever it is in the queue, returning its status afterwards (BE-0449).
@@ -425,6 +456,7 @@ class Repository(Protocol):
         so no worker ever leases it. A ``leased`` job stays leased and gets its cancel-requested flag
         set, which the heartbeat hands to the worker; the worker's cancelled result then finishes it.
         A job already ``done``, ``failed``, or ``cancelled`` is left alone, and its status returned.
+        Either cancel records the reason ``user`` unless the job already holds one (BE-0499).
 
         Returns:
             The job's status after the call and whether this call cancelled it, or None when no

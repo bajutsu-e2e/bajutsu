@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0499](BE-0499-run-set-fail-fast.md) |
 | Author | [@paihu](https://github.com/paihu) |
-| Status | **Approved** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0499") |
 | Topic | Device-cloud execution |
 | Related | [BE-0484](../BE-0484-job-group-lease/BE-0484-job-group-lease.md) |
@@ -82,10 +82,10 @@ The flag never changes a verdict. A group with a failing job concludes `failure`
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] The `failFast` request field, its column, and the request digest
-- [ ] The stop on the three terminal paths
-- [ ] The `cancel_reason` column and the `cancelReason` field of the group read
-- [ ] Documentation in both languages
+- [x] The `failFast` request field, its column, and the request digest
+- [x] The stop on the three terminal paths
+- [x] The `cancel_reason` column and the `cancelReason` field of the group read
+- [x] Documentation in both languages
 
 ## References
 

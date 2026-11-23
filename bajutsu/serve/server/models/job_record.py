@@ -49,6 +49,9 @@ class JobRecord(Base):
     # the worker keeps its lease while it stops the run; the heartbeat response carries the flag, and
     # only the worker's cancelled result moves the row to ``cancelled``.
     cancel_requested: Mapped[bool] = mapped_column(default=False, server_default=false())
+    # Who stopped a cancelled job: `user` for a cancel route, `failFast` for a group's stop (BE-0499).
+    # The first reason written stays; None for a job neither cancelled.
+    cancel_reason: Mapped[str | None] = mapped_column(default=None)
     # A `record` on a worker paused for a person (BE-0449 unit 8): set when the worker posts the
     # handoff request, cleared when the person answers. The answer waits in `handoff_response` as a
     # Fernet token under the secrets key, since it may carry a value such as a one-time password,
