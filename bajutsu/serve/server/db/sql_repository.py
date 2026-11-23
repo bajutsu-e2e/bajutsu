@@ -14,6 +14,7 @@ from ._shared import (
     DEFAULT_RUN_LIMIT,
     TERMINAL_JOB_STATUSES,
     cancelled_job_result,
+    job_failed,
 )
 from .concurrency_caps import ConcurrencyCaps
 from .job_metrics import JobMetrics
@@ -1412,7 +1413,7 @@ class SqlRepository:
             conditions.append(JobRecord.leased_by == worker_id)
         with Session(self._engine) as session:
             group_id = (
-                self._lock_fail_fast_group(session, job_id) if _failed(status, payload) else None
+                self._lock_fail_fast_group(session, job_id) if job_failed(status, payload) else None
             )
             finished = session.execute(
                 update(JobRecord)
@@ -1687,13 +1688,6 @@ def _reclaim_row(
         )
     )
     return str(outcome["status"]) if _rowcount(reclaimed) == 1 else None
-
-
-def _failed(status: str, payload: dict[str, Any]) -> bool:
-    """Whether a job finishing as *status* with *payload* failed, by the group conclusion's rule."""
-    if status == "failed":
-        return True
-    return status == "done" and not payload.get("cancelled") and payload.get("exitCode") != 0
 
 
 def _stop_group(session: Session, group_id: str, job_id: str) -> list[str]:

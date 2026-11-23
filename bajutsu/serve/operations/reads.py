@@ -40,7 +40,12 @@ from bajutsu.serve.operations._common import (
 from bajutsu.serve.operations.config import FS_DISABLED_ERROR, launch_label
 from bajutsu.serve.operations.runs import sweep_expired_trash
 from bajutsu.serve.orgs import DEFAULT_ORG
-from bajutsu.serve.server.db import TERMINAL_JOB_STATUSES, RunRecord, cancelled_job_result
+from bajutsu.serve.server.db import (
+    TERMINAL_JOB_STATUSES,
+    RunRecord,
+    cancelled_job_result,
+    job_failed,
+)
 from bajutsu.serve.state import ServeState
 
 _REPORT_SUFFIX = "/report.html"
@@ -1142,13 +1147,9 @@ def _group_conclusion(rows: list[dict[str, Any]]) -> str:
     # Anything not terminal counts as unfinished, so a status added later never reads as a failure.
     if any(row["status"] not in TERMINAL_JOB_STATUSES for row in rows):
         return "pending"
-    cancelled = [_ended_cancelled(row) for row in rows]
-    if any(
-        not c and (row["status"] != "done" or row["result"].get("exitCode") != 0)
-        for row, c in zip(rows, cancelled, strict=True)
-    ):
+    if any(job_failed(row["status"], row["result"]) for row in rows):
         return "failure"
-    return "cancelled" if any(cancelled) else "success"
+    return "cancelled" if any(_ended_cancelled(row) for row in rows) else "success"
 
 
 def _ended_cancelled(row: dict[str, Any]) -> bool:

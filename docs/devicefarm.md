@@ -518,9 +518,11 @@ stays `pending`.
 
 A request may also set `failFast: true` to stop the group once its first job fails (BE-0499).
 The flag defaults to `false`, and serve refuses a value other than a boolean with a 400 error. A
-job fails when it ends `failed` or exits non-zero without a cancel, the same rule `conclusion`
-uses. The first such job cancels every unfinished job of its group, as the group cancel does. A
-queued job becomes `cancelled` at once, and a leased job stops at its worker's next lease renewal.
+job fails when it ends `failed`, or ends `done` without a cancel and reports an exit code other
+than 0 — reporting none at all included, which the `conclusion` table above calls *reported no
+verdict*. That is the same rule `conclusion` uses. The first such job cancels every unfinished job
+of its group, as the group cancel does. A queued job becomes `cancelled` at once, and a leased
+job stops at its worker's next lease renewal.
 
 The flag never changes the verdict. A group with a failing job concludes `failure` with or
 without it. Lease order decides which other scenarios ran before the stop. Two runs of one group

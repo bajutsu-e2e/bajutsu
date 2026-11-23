@@ -432,8 +432,9 @@ class Repository(Protocol):
         A reclaimed, re-leased, or already-finished job rejects the write (when *worker_id* is
         given, only that leaseholder may complete it), so a stale worker never overwrites the winner.
 
-        A non-zero exit code on a job not cancelled stops its fail-fast group, as for
-        `reclaim_expired_leases`, and calls *on_stopped* with the queued ids it cancelled.
+        An exit code other than 0, none reported included, on a job not cancelled stops its
+        fail-fast group, as for `reclaim_expired_leases`, and calls *on_stopped* with the queued
+        ids it cancelled.
         """
 
     def fail_job(

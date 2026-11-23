@@ -50,8 +50,8 @@ def _reasons(state: ServeState) -> list[str | None]:
 
 @pytest.mark.parametrize(
     "result",
-    [{"ok": False, "error": "device lost"}, {"exitCode": 1}],
-    ids=["failed", "non-zero exit"],
+    [{"ok": False, "error": "device lost"}, {"exitCode": 1}, {"ok": True}],
+    ids=["failed", "non-zero exit", "no exit code"],
 )
 def test_a_failing_job_cancels_its_queued_siblings(
     tmp_path: Path, result: dict[str, object]
