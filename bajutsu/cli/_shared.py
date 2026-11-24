@@ -1007,9 +1007,8 @@ def _start_hooks_or_exit(
             calls `after_run` itself, since it knows the verdict.
         scenario_targets: The targets a scenario's own commands may need a container of (BE-0501);
             non-empty exactly when some scenario declares a command.
-
-    `scenarios` is the set a run-level `when` reads (BE-0497): what `audit` replays, and empty for
-    the commands that run no scenario file, where no condition matches.
+        scenarios: The set a run-level `when` reads (BE-0497): what `audit` replays, and empty for
+            the commands that run no scenario file, where no condition matches.
 
     Returns:
         The session, or None when neither the target nor a scenario declares a hook command.
