@@ -20,7 +20,6 @@ mirror).
 
 from __future__ import annotations
 
-import atexit
 import json
 import subprocess
 from dataclasses import dataclass
@@ -331,9 +330,7 @@ def _execute(plan: _CrawlPlan, guide: crawl_engine.Guide, report: Report) -> cra
     # Run the target's `beforeRun` hooks if it declares any (BE-0491) — the bring-up that replaced
     # `services.server`. The matching `afterRun` runs when this command exits (atexit), since the
     # crawl is a single linear flow with no run-style teardown.
-    hooks = _start_hooks_or_exit(plan.eff, run_id=new_run_id("crawl-"))
-    if hooks is not None:
-        atexit.register(lambda: hooks.after_run("success"))
+    _start_hooks_or_exit(plan.eff, run_id=new_run_id("crawl-"), teardown_at_exit=True)
 
     workers = len(plan.udids)  # one lane per resolved udid (the pool is already capped)
     if not plan.environment.has_devices():

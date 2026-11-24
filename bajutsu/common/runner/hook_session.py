@@ -168,7 +168,9 @@ def start_session(
         runner=runner,
         phases=phases,
         run_id=run_id,
-        run_dir=run_dir,
+        # Absolute for the same reason as the raw area: `BAJUTSU_RUN_DIR` must name a path a command
+        # running in another working directory can still reach.
+        run_dir=run_dir.resolve() if run_dir is not None else None,
         outputs=HookOutputs(),
         sandboxes=_sandboxes(phases, gate=gate, raw_dir=raw, base_dir=base_dir),
     )

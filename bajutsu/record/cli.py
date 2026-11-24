@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import atexit
 import os
 from pathlib import Path
 from typing import Annotated
@@ -255,9 +254,7 @@ def record(
     # Run the target's `beforeRun` hooks if it declares any (BE-0491) — the bring-up that replaced
     # `services.server`, so a web target's own host is serving before the browser opens. The
     # matching `afterRun` runs when this command exits (atexit).
-    hooks = _start_hooks_or_exit(eff, run_id=new_run_id("record-"))
-    if hooks is not None:
-        atexit.register(lambda: hooks.after_run("success"))
+    _start_hooks_or_exit(eff, run_id=new_run_id("record-"), teardown_at_exit=True)
 
     # Narrate the otherwise-silent device work (reinstall + boot + launch) so the watcher
     # knows what's happening before the agent takes over. Progress goes to stderr, like the

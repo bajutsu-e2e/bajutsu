@@ -96,8 +96,11 @@ targets:
         kind: chromium                         # chromium / chrome / edge / firefox / webkit; --browser overrides per run
         emulate: iPhone 13                     # omitted = a desktop context; else a Playwright device preset
     driver: { headless: true }                 # false = a visible (headed) browser; --headed overrides per run
-    services:
-      server: { cmd: "python -m http.server 8787", readyUrl: "http://127.0.0.1:8787/" }
+    hooks:
+      beforeRun:
+        - { name: server, cmd: "./scripts/serve-demo.sh", timeout: 30 }   # exits once :8787 answers
+      afterRun:
+        - { cmd: "./scripts/stop-demo.sh" }
     paths: { scenarios: demos/web/scenarios }
 ```
 
@@ -121,8 +124,8 @@ The shared groups hold the same fields on every platform:
 
 | Group | Fields |
 |---|---|
-| `services` | `server` (bring up the app's own host for the run, below), `mockServer`, `mailbox` (an external inbox the run polls and never starts, [below](#mailbox-the-email-step)) |
-| `hooks` | `setup`, `cleanup`, `interrupts` (screens, system alerts, and TipKit, [below](#system-alerts-and-tipkit-in-hooksinterrupts)) |
+| `services` | `mailbox` (an external inbox the run polls and never starts, [below](#mailbox-the-email-step)) |
+| `hooks` | `setup`, `cleanup`, `interrupts` (screens, system alerts, and TipKit, [below](#system-alerts-and-tipkit-in-hooksinterrupts)), and the four external-command lists `beforeRun` / `afterRun` / `beforeScenario` / `afterScenario` with their `sandbox` block ([below](#external-commands-around-a-run-and-each-scenario-hooks-be-0491)) |
 | `evidence` | `capture`, `redact`, `collectNetwork`, `visualCompare`, `secrets` |
 | `paths` | `scenarios`, `baselines`, `schemas`, `goldens` |
 
@@ -499,7 +502,7 @@ platforms — rather than `effective.bundle_id` directly, which does not exist.
 | `platform_config.device_mode` (`WebConfig`) | `runsOn.browser.emulate` | web only: the device mode a browser context is created with — omitted for a desktop context, or a Playwright device preset name (e.g. `iPhone 13`) that emulates its viewport / touch / device scale / user agent, driving the web target as that mobile device. It is desktop-browser emulation (Chrome DevTools' device toolbar), not a real device ([drivers → Playwright](drivers.md#playwright-web)). Resolved **lazily** against `playwright.devices` in the driver, so config load never imports Playwright; an unknown preset fails loudly at driver start, not at config load ([BE-0228](../roadmaps/BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation.md)) |
 | `conditions` | `runsOn` | the device conditions the target declares ([above](#device-conditions-runson)), ranges as written; `run` forms its runs from them, and `doctor` lists those runs |
 | `device_provider` | `--worker-config` | where this target's devices come from. The config no longer names it: an `appium` environment in the `worker.yaml` the command runs under hands the grid's endpoint to the targets of the grid's platform ([what a machine can run](#what-a-machine-can-run-outside-the-config-be-0450)), and every other target takes the built-in `local` provider (the `--udid` path). Bajutsu drives that endpoint end to end over a live W3C WebDriver transport ([iOS device cloud](ios-device-cloud.md#live--an-appium-endpoint-provider), [BE-0236](../roadmaps/BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md), [BE-0238](../roadmaps/BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md)) |
-| `launch_server` | `services.server` | optional `{cmd, readyUrl, readyTimeout, cwd, env}` — bring up the app's host for the run, then tear it down: probe `readyUrl` (default `subject.url`), reuse it if already serving (under the worker's `allow` or `sandbox` mode), else run `cmd` and wait until ready (a condition wait, never a fixed sleep). The web analogue of `subject.build` ([BE-0059](../roadmaps/BE-0059-launch-target-server/BE-0059-launch-target-server.md)). Whether `cmd` runs, and where, is the decision of the worker that executes the run: the `commandExecution` block of its `worker.yaml` sets a mode per config source, and an uploaded bundle's command runs in a Docker container by default (see [self-hosting](self-hosting.md#which-config-commands-a-worker-runs-be-0492), [BE-0492](../roadmaps/BE-0492-worker-command-execution-policy/BE-0492-worker-command-execution-policy.md)); a `sandbox` run needs the extra fields `dockerImage` (a Docker image reference, e.g. `node:20-slim`) **or** `dockerfile` (a bundle-relative path built with `docker build`) — exactly one — plus `port` (the in-container listen port, published to a loopback host port) ([BE-0090](../roadmaps/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md)) |
+| `hooks.before_run` / `.after_run` / `.before_scenario` / `.after_scenario` / `.sandbox` | `hooks.beforeRun` / `.afterRun` / `.beforeScenario` / `.afterScenario` / `.sandbox` | the external commands that run around the run and around each scenario, each entry `{cmd | use, name, cwd, env, timeout, on, mask}` ([below](#external-commands-around-a-run-and-each-scenario-hooks-be-0491)). A command hands values back through `$BAJUTSU_OUTPUT`, which a scenario reads as `${hooks.<name>.<key>}`. Whether a command runs, and where, is the decision of the worker that executes the run: the `commandExecution` block of its `worker.yaml` sets a mode per config source, and an uploaded bundle's commands run in one Docker container per run by default ([self-hosting](self-hosting.md#which-config-commands-a-worker-runs-be-0492), [BE-0492](../roadmaps/BE-0492-worker-command-execution-policy/BE-0492-worker-command-execution-policy.md)). These lists replaced `services.server`, whose readiness probe now lives in the script that starts the server ([BE-0491](../roadmaps/BE-0491-target-command-hooks/BE-0491-target-command-hooks.md)) |
 | `run_defaults.system_alerts` / `.ios_tip_kit_handling` | the `systemAlert` and `tipKit` entries of `hooks.interrupts` | per-app defaults for the system-alert guard and the TipKit guard, which a scenario's own `interrupts` layers over ([BE-0177](../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md), [BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md)). A `systemAlert` entry answers its prompt even inside a scenario that declares entries for other prompts; the run prints a notice when it does, and the scenario overrides it with its own entry for that prompt. The layering rules are [below](#system-alerts-and-tipkit-in-hooksinterrupts) and in [scenarios](scenarios.md#layering-a-key-reaches-a-run-from-three-places). `tipKit: dismiss` defaults the TipKit guard (iOS only, built-in **off**); `--ios-tipkit-handling`/`--no-ios-tipkit-handling` override it for every scenario |
 | `run_defaults.setup` / `.cleanup` / `.interrupts` | `hooks.setup` / `hooks.cleanup` / `hooks.interrupts` | steps that wrap every scenario of the target: `setup` runs ahead of a scenario's own `setup`, `cleanup` behind its own `cleanup` (a rule takes `on: always`, `success`, or `failure`, the words a scenario's `cleanup` rule uses), and `interrupts` are checked before the scenario's. A hook step may call a component with `use: { component: <file>, with: … }`: the loader resolves it when the config loads, against the config file's directory, and refuses a reference that leaves the suite root ([BE-0174](../roadmaps/BE-0174-scenario-ref-path-containment/BE-0174-scenario-ref-path-containment.md)). `group:` and `setMocks` stay rejected there. A scenario skips every declared target's `hooks.setup` with `preconditions.inheritSetup: false`; the cleanup still runs. The `systemAlert` and `tipKit` entries of `hooks.interrupts` resolve into the two fields of the row above, so `.interrupts` holds the screen entries alone |
 | `locale` | `runsOn.ios.locale` | iOS: applied at launch (`simctl` launch args), built-in `en_US`. On the XCUITest backend it also pins the **Simulator's own system language** on every cold spawn — written to the device's global preference domain, then rebooted so SpringBoard renders it — so an out-of-process permission prompt's button text is the one this `locale` predicts rather than whatever language the Simulator happened to carry; a scenario whose `preconditions.device.ios.locale` differs from the pinned one forces a cold respawn rather than reusing a warm runner ([BE-0320](../roadmaps/BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md)). A `handleSystemAlert` step under a language outside the label table (English and Japanese) answers by the button's position instead; a `systemAlert` entry in `interrupts` under such a language still fails the scenario before any device work ([BE-0445](../roadmaps/BE-0445-system-alert-locale-agnostic-answer/BE-0445-system-alert-locale-agnostic-answer.md)) |
@@ -510,7 +513,6 @@ platforms — rather than `effective.bundle_id` directly, which does not exist.
 | `start_when` | `subject.startWhen` | optional `startWhen: { exists: { id: … } }` — a selector the launch waits for before the run starts, instead of the default "the app rendered any 2+ elements". It takes the form an `interrupts` entry uses for its `condition`, without `negate`. Use it for an app whose first interactive screen is a modal over always-present chrome (the element-count heuristic can return before the modal presents). Its `id` / `idMatches` accept an OR candidate list like a scenario selector (`startWhen: { exists: { id: [stable.row.1, stable_row_1] } }`, BE-0221), so one `startWhen` covers a target whose native id syntax differs. A condition wait, never a fixed sleep. Set it only when **every** scenario for the target starts on that same screen; when first screens vary per scenario, lead each scenario with a `wait` step instead. `startWhen` stays the strongest readiness signal: on iOS, a target linking `BajutsuKit`'s screen-transition observer (BE-0310) gets a reported-screen-change rung above the namespace/count heuristics for free, but an explicit `startWhen` still outranks it. The observer signal governs only when no `startWhen` is set |
 | `id_namespaces` | `subject.idNamespaces` | referenced by doctor |
 | `reserved_namespaces` | top-level `reservedNamespaces` | informational (doctor scores against the app's `idNamespaces` only) |
-| `mock_server` | `services.mockServer` | ⚠️ schema only · not wired |
 | `evidence_dirs.scenarios` | `paths.scenarios` | this target's scenarios dir — `run --target` loads every `*.yaml` here; `record` writes new ones here. Relative to the config file's own directory (like `subject.path` and the sibling `paths.baselines` / `.schemas` / `.goldens`), so the config behaves the same wherever `bajutsu` runs from (BE-0242). `run --scenario` / `record --out` override it |
 | `capture` | `evidence.capture` | the default evidence ([the note in evidence](evidence.md#three-ways-to-request-evidence)) |
 | `redact` | `evidence.redact` (defaults ∪ target) | merged (below) |
@@ -604,6 +606,207 @@ target. Within one layer, the smallest value wins. A shorter interval satisfies 
 asked for a longer one. The guard has one frozen-screen bound. That bound is the most tolerant
 value among the entries that answer a prompt: the largest, with `0` (the stop off) over any value.
 [Scenarios](scenarios.md#layering-a-key-reaches-a-run-from-three-places) walks through each rule.
+
+### External commands around a run and each scenario (`hooks`, BE-0491)
+
+Test data a scenario depends on has to come from somewhere. Four lists under
+`targets.<name>.hooks` run external commands that prepare it. The same lists tear it down
+afterwards. A command can seed data through a web application programming interface (API). It can
+place a file, or start the app's own server. A command can also hand values back to the scenario
+through an output file.
+
+The scenario domain-specific language (DSL) gains no `shell` step from this.
+[BE-0036](../roadmaps/BE-0036-utility-steps/BE-0036-utility-steps.md) rejected one. A scenario that
+runs any command stops being portable. A reviewer can no longer read what it does either. The
+commands live in the target's config instead, where an operator owns them.
+
+| List | Runs | Scope of its outputs |
+|---|---|---|
+| `beforeRun` | once, before the first scenario | the whole run |
+| `afterRun` | once, after the last scenario, on every path out of the run | — |
+| `beforeScenario` | before each scenario, ahead of the app launch | that scenario |
+| `afterScenario` | after each scenario, once its verdict exists | — |
+
+```yaml
+targets:
+  web:
+    platform: web
+    subject: { url: "http://127.0.0.1:8787/index.html" }
+    hooks:
+      beforeRun:
+        - name: server
+          cmd: "./scripts/start-server.sh"    # starts the server, waits until it answers, exits
+          timeout: 60
+      beforeScenario:
+        - name: user
+          cmd: "./scripts/create-user.sh"     # writes userId=... to $BAJUTSU_OUTPUT
+      afterScenario:
+        - cmd: "./scripts/delete-user.sh"     # reads $BAJUTSU_HOOK__user__userId
+      afterRun:
+        - cmd: "./scripts/stop-server.sh"
+```
+
+A scenario then reads the seeded value with no preparation step of its own:
+
+```yaml
+- name: sign in as a seeded user
+  steps:
+    - type: { text: "${hooks.user.userId}", into: { id: login.username } }
+```
+
+#### Fields of one entry
+
+| Field | Lists | Meaning |
+|---|---|---|
+| `cmd` | all | The command. Bajutsu splits it like a shell would, then runs it without a shell. A pipe or a redirect needs `sh -c` or a script |
+| `use` | all | The name of a command the worker lists in `namedCommands`, in place of `cmd`. An entry sets exactly one of `cmd` and `use`. With `use`, `env` may set purely the variables the worker lists for that command, and `cwd` is ignored ([self-hosting](self-hosting.md#which-config-commands-a-worker-runs-be-0492)) |
+| `name` | all | An identifier, `[A-Za-z][A-Za-z0-9_]*` without `__`, unique across the four lists of every target the run drives. Required on an entry whose outputs are read |
+| `cwd`, `env` | all | The working directory and extra environment. A relative `cwd` resolves against the config file's own directory |
+| `timeout` | all | Seconds the command may take. Default 300 |
+| `on` | `afterRun`, `afterScenario` | `always`, `success`, or `failure`. Default `always`. The same words a scenario's `cleanup` rule uses |
+| `mask` | all | When true, this entry's output values are masked in evidence, as a `${secrets.*}` value is. Default false |
+
+#### Lifecycle and order
+
+Each entry runs to completion before the next entry starts. A non-zero exit or an expired `timeout`
+fails the entry. On a timeout, Bajutsu stops the command's whole process group.
+
+A script may leave a process running after the script exits. One example is a server started in
+the background. Bajutsu neither tracks nor stops that process. Two duties therefore fall to the
+script that starts a server:
+
+- **Readiness.** The script exits once the server accepts requests. Each script picks the check its
+  own server needs: an HTTP probe, a port check, or a line in a log. The entry's `timeout` bounds
+  the wait. The readiness check stays a condition wait rather than a fixed sleep.
+- **Teardown.** An `afterRun` or `afterScenario` entry stops the server.
+
+One scenario runs in this order:
+
+1. The `beforeScenario` entries, in declaration order.
+2. The device lease and the app launch.
+3. The `setup` steps, then `steps` and `expect`, then the `cleanup` rules.
+4. The `afterScenario` entries whose `on` matches the verdict, in declaration order.
+
+The `beforeScenario` entries run ahead of the launch, which lets the app read seeded data at
+startup. A scenario that sets `preconditions.inheritSetup: false` skips the target's `setup`, and
+both scenario lists. The two lists form a pair. An `afterScenario` script typically tears down what
+a `beforeScenario` script created. The target's `cleanup` still runs.
+
+A scenario can drive more than one target. The run then executes the hooks of every target it
+drives. Within each list the targets run in the order the scenario declares them. The `after` lists
+run in the reverse order, so the last target prepared is the first one torn down.
+
+#### Failures and the verdict
+
+A hook never judges the app. A hook failure fails a run or a scenario because the precondition or
+the teardown did not hold. No command decides what passes.
+
+| Failure in | Effect |
+|---|---|
+| `beforeRun` | No scenario runs. The `afterRun` entries for `always` and `failure` run. The run exits 2 |
+| `beforeScenario` | The scenario fails with `beforeScenario: <name>: …` and skips its launch and steps. Its `afterScenario` entries still run |
+| `afterScenario` | The rule a scenario `cleanup` follows: the failure becomes the verdict on a passing scenario, and is appended behind an existing failure |
+| `afterRun` | Every scenario keeps its verdict. The report records the failure, and the run exits 2 |
+
+A later `afterScenario` or `afterRun` entry still runs after an earlier entry fails. Skipping the
+rest of a teardown is the outcome teardown exists to avoid. A cancelled run still runs both `after`
+lists — a `SIGTERM`, or the Web UI's Cancel button. The slice of the cancellation grace window a
+scenario's own `cleanup` uses bounds them.
+
+#### Passing values: the output file and the environment
+
+Each entry runs with an environment variable `BAJUTSU_OUTPUT` naming a fresh, empty file. The
+command writes one `key=value` line per value. A key follows the same pattern as `name`. A
+malformed line fails the entry. A typo never turns into a value that goes missing without a
+word.
+
+A scenario reads a value as `${hooks.<name>.<key>}`. The run loop substitutes the token at action
+time, as it does for `${secrets.*}`. A scenario sees the outputs of `beforeRun` and of its own
+`beforeScenario` entries. The run refuses a token that can never resolve, before any device work.
+Two shapes cannot resolve. One names no `beforeRun` or `beforeScenario` entry at all. The other
+names a `beforeScenario` entry the scenario skips through `inheritSetup: false`. A key the command
+never wrote fails the scenario and names both the hook and the key.
+
+Every later command in scope reads earlier outputs as environment variables. Each carries the name
+`BAJUTSU_HOOK__<name>__<key>`. The double underscore keeps the mapping unambiguous. That is why
+`name` and the key forbid `__`. Each command also receives context variables:
+
+| Variable | Set for |
+|---|---|
+| `BAJUTSU_RUN_ID`, `BAJUTSU_RUN_DIR`, `BAJUTSU_TARGET` | every entry (`BAJUTSU_RUN_DIR` is unset under `sandbox`) |
+| `BAJUTSU_SCENARIO`, `BAJUTSU_SCENARIO_FILE`, `BAJUTSU_WORKER` | `beforeScenario` and `afterScenario` |
+| `BAJUTSU_VERDICT` (`success` or `failure`) | `afterRun` and `afterScenario` |
+
+`BAJUTSU_WORKER` is the worker index under `run --workers`. A scenario's hooks run in the worker
+that runs the scenario itself. Parallel scenarios run their hooks in parallel. A script that
+touches shared state can pick its data or its port by that index. So can one that starts a server
+per scenario.
+
+#### Where the commands run, and whether they may
+
+The commands run on the machine that runs the scenarios:
+
+| How the run starts | Where the hooks run |
+|---|---|
+| `bajutsu run` from a terminal or continuous integration (CI) | that machine |
+| the `serve` Web UI | the `bajutsu worker` that leased the job |
+| a device-cloud batch | the device-cloud host, where the batch runs `bajutsu run` |
+
+A seed API a hook calls, or a file a hook places, must be reachable from that machine.
+
+Whether a given machine runs a given config's commands at all is a separate decision. That machine
+owns it. The `commandExecution` block of the worker's `worker.yaml` sets a mode per config source
+([self-hosting](self-hosting.md#which-config-commands-a-worker-runs-be-0492)). An entry with `use`
+names a script the worker installed. Such an entry runs even where a `named` mode refuses every
+command line from an untrusted config.
+
+Each Bajutsu command runs the lists that fit it:
+
+| Command | `beforeRun` / `afterRun` | `beforeScenario` / `afterScenario` |
+|---|---|---|
+| `run` (and the jobs `serve` hands to workers) | yes | yes |
+| `audit` | yes | yes, since it replays scenarios through the run loop |
+| `record`, `crawl`, `repl` | yes | no; these commands run no scenario file |
+
+#### The sandbox container (`hooks.sandbox`)
+
+Under the worker's `sandbox` mode, a target's hook entries run in one container. That container
+lives for the whole run. A server a `beforeRun` script starts keeps serving until `afterRun`. The
+target declares the container in a `hooks.sandbox` block:
+
+```yaml
+hooks:
+  sandbox:
+    dockerImage: "node:20-slim"   # or dockerfile: a path inside the config's directory
+    ports: [8787]                 # published to the worker's loopback interface
+```
+
+- **One container per run.** Bajutsu starts it before `beforeRun`, with an idle command of its own
+  in place of the image's default. Each entry then runs inside it with `docker exec`. Bajutsu
+  removes the container once `afterRun` is done.
+- **Ports.** Bajutsu publishes each port in `ports` to the same port on the worker's loopback
+  interface. The browser or the app on the worker then reaches the server at `127.0.0.1:<port>`.
+- **Files.** Bajutsu mounts the config's directory read-only, as the worker prepared it. The
+  directory holding the output files is mounted writable instead. Bajutsu rewrites
+  `BAJUTSU_OUTPUT` to that file's path inside the container. `BAJUTSU_RUN_DIR` stays unset there:
+  the run directory has no mount.
+
+A target whose hooks meet the `sandbox` mode needs that block. Without one the run fails before any
+device work, and the message names the block.
+
+#### Evidence
+
+A command's standard output and standard error go to the run directory. The run-level lists write
+to `hooks/<list>/<target>/<name-or-index>.log`. The scenario-level lists write to
+`hooks/<list>/<target>/<scenario-index>/<name-or-index>.log`. The report shows each hook phase as
+its own block, apart from the scenario's numbered steps. The same holds for `setup` and `cleanup`
+already.
+
+Masking applies to the logs. Each command writes to a raw file outside the run directory. Bajutsu
+then copies that file in, replacing `${secrets.*}` values and the values of an entry with
+`mask: true`. The raw area carries owner-only permissions, and goes at the end of the run. The copy
+refuses a symbolic link, and any file that is not a regular one. That bound keeps a sandboxed
+command from pulling content off the machine into the run's evidence.
 
 ### Environment-specific settings (`runsOn.ignoredSettings`, BE-0467)
 
