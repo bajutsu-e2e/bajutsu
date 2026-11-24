@@ -188,6 +188,39 @@ def test_completion_is_recorded_once() -> None:
     assert _of(repo, "completed") == ["github", "other"]
 
 
+def test_a_clean_finish_takes_no_group_lock_when_the_group_notifies_nobody() -> None:
+    repo = _repo(notify=None, fail_fast=True)
+
+    with Session(repo._engine) as session:
+        assert repo._lock_group(session, "1", failing=False) is None
+        assert repo._lock_group(session, "1", failing=True) == ("g1", True)
+
+
+def test_a_notifying_group_is_locked_on_every_finish() -> None:
+    repo = _repo()
+
+    with Session(repo._engine) as session:
+        assert repo._lock_group(session, "1", failing=False) == ("g1", False)
+
+
+def test_a_lease_records_started_once_whatever_the_bundle_size() -> None:
+    from sqlalchemy import event as sa_event
+
+    repo = _repo()
+    inserts: list[str] = []
+
+    def count(conn: Any, cursor: Any, statement: str, *_rest: Any) -> None:
+        if statement.lstrip().upper().startswith("INSERT") and "group_events" in statement:
+            inserts.append(statement)
+
+    sa_event.listen(repo._engine, "before_cursor_execute", count)
+
+    assert len(repo.lease_jobs("w1", max_jobs=2)) == 2
+
+    assert len(inserts) == 1
+    assert _of(repo, "started") == ["github", "other"]
+
+
 def test_the_group_keeps_its_notify_selection() -> None:
     repo = _repo()
 

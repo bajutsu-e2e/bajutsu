@@ -279,6 +279,81 @@ def test_a_queued_claim_yields_to_an_earlier_sibling_another_pass_took_at_once()
     ] == ["g1"]
 
 
+def test_a_pass_whose_only_claim_yielded_looks_again_instead_of_ending(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sqlalchemy import update
+
+    repo = queue_repository()
+    _register(repo, "g1", _notify(), ("1",))
+    _register(repo, "g2", _notify(sha="b" * 40), ("2",))
+    original = SqlRepository._yield_contended
+    calls: list[int] = []
+
+    def yield_everything_once(
+        session: Session, claimed: list[GroupEventClaim], now: datetime
+    ) -> Any:
+        calls.append(len(claimed))
+        if len(calls) > 1:
+            return original(session, claimed, now)
+        for claim in claimed:
+            session.execute(
+                update(GroupEvent)
+                .where(GroupEvent.id == claim.id)
+                .values(claimed_until=None, claim_token=None)
+            )
+        session.commit()
+        return []
+
+    monkeypatch.setattr(SqlRepository, "_yield_contended", staticmethod(yield_everything_once))
+    now = datetime.now(UTC) + timedelta(seconds=1)
+
+    claimed = repo.claim_group_events(["github"], now=now, hold=timedelta(minutes=1), limit=1)
+
+    assert len(calls) == 2
+    assert len(claimed) == 1
+
+
+def test_a_yielded_claim_is_logged_so_a_repeated_collision_can_be_seen(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from sqlalchemy import update
+
+    repo = queue_repository()
+    _register(repo, "g1", _notify(), ("1",))
+    _register(repo, "g2", _notify(), ("2",))
+    now = datetime.now(UTC) + timedelta(seconds=1)
+    held = now + timedelta(minutes=1)
+    with Session(repo._engine) as session:
+        for group, token in (("g1", "other"), ("g2", "mine")):
+            session.execute(
+                update(GroupEvent)
+                .where(GroupEvent.group_id == group)
+                .values(claimed_until=held, claim_token=token)
+            )
+        session.commit()
+        row = session.scalars(select(GroupEvent).where(GroupEvent.group_id == "g2")).one()
+        mine = GroupEventClaim(
+            id=row.id,
+            token="mine",
+            group_id="g2",
+            org_id="default",
+            sink="github",
+            event="queued",
+            occurred_at=row.occurred_at,
+            attempts=0,
+            reference=None,
+            snapshot=None,
+            notify=_notify(),
+        )
+        with caplog.at_level("INFO"):
+            repo._yield_contended(session, [mine], now)
+
+    contended = [r for r in caplog.records if getattr(r, "event", "") == "group_event.contended"]
+    assert len(contended) == 1
+    assert contended[0].group == "g2" and contended[0].sink == "github"  # type: ignore[attr-defined]
+
+
 def test_the_loop_runs_passes_on_a_daemon_thread(monkeypatch: pytest.MonkeyPatch) -> None:
     import threading
 

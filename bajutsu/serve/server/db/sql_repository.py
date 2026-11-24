@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 import zlib
 from collections.abc import Callable, Collection, Iterable, Iterator, Sequence
@@ -31,6 +32,9 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import InstrumentedAttribute, Session
 
     from bajutsu.serve.server.models import GroupEvent, JobGroup, JobRecord
+
+# The delivery loop's logger, so a yielded claim reads beside the retries and abandonments (BE-0500).
+_contended_log = logging.getLogger("bajutsu.serve.group_notify")
 
 # The order one group and sink's events deliver in (BE-0500).
 _RANKS = {"queued": 0, "started": 1, "completed": 2}
@@ -991,6 +995,11 @@ class SqlRepository:
                 for row in session.scalars(query).all()
                 for claimed in self._claim_row(session, row, worker_id, advertised)
             ]
+            if leased:
+                # One `started` per lease transaction rather than per row (BE-0500): the event is
+                # per group, and the unique index still absorbs a later lease of the same group. A
+                # plain job (`_claim_plain`) belongs to no group, so it records none.
+                _record_group_event(session, group_id, "started")
             session.commit()
             return leased
 
@@ -1079,8 +1088,6 @@ class SqlRepository:
         )
         if _rowcount(claimed) != 1:
             return []
-        if row.group_id is not None:
-            _record_group_event(session, row.group_id, "started")
         caps = list(row.capabilities or [])
         spec = dict(row.spec)
         # A worker from before BE-0467 serves the job on today's tokens alone, so the job carries
@@ -1456,7 +1463,7 @@ class SqlRepository:
         if worker_id is not None:
             conditions.append(JobRecord.leased_by == worker_id)
         with Session(self._engine) as session:
-            locked = self._lock_group(session, job_id)
+            locked = self._lock_group(session, job_id, failing=job_failed(status, payload))
             finished = session.execute(
                 update(JobRecord)
                 .where(*conditions)
@@ -1475,13 +1482,21 @@ class SqlRepository:
             on_stopped(stopped)
         return applied
 
-    def _lock_group(self, session: Session, job_id: str) -> tuple[str, bool] | None:
-        """The group *job_id* belongs to and its fail-fast flag, locked, or None when its group
-        neither stops on a failure nor notifies a sink.
+    def _lock_group(
+        self, session: Session, job_id: str, *, failing: bool = True
+    ) -> tuple[str, bool] | None:
+        """The group *job_id* belongs to and its fail-fast flag, locked, or None when nothing the
+        group does at this finish needs the lock.
 
         Every stop and every completion check takes the group's lock before any job row, so two
         failures of one group stop it one after the other rather than each holding a row the other's
         stop waits on, and the last two jobs to finish never both read the other as unfinished.
+        A fail-fast flag matters only to a *failing* finish, so a clean finish of a group that
+        notifies nobody takes no lock and serializes behind nothing (BE-0499 took none).
+
+        Args:
+            failing: Whether this finish is a failure. Pass the default where the job is cancelled
+                or reclaimed, which can complete a group whether or not it failed.
         """
         from sqlalchemy import or_, select
 
@@ -1492,7 +1507,9 @@ class SqlRepository:
             .join(JobRecord, JobRecord.group_id == JobGroup.id)
             .where(
                 JobRecord.id == job_id,
-                or_(JobGroup.fail_fast.is_(True), JobGroup.notify.is_not(None)),
+                or_(JobGroup.fail_fast.is_(True), JobGroup.notify.is_not(None))
+                if failing
+                else JobGroup.notify.is_not(None),
             )
         )
         if self._engine.dialect.name != "sqlite":
@@ -1620,15 +1637,27 @@ class SqlRepository:
     def claim_group_events(
         self, sinks: Collection[str], *, now: datetime, hold: timedelta, limit: int = 20
     ) -> list[GroupEventClaim]:
+        if not sinks:
+            return []
+        claimed, yielded = self._claim_due_events(sinks, now, hold, limit)
+        if yielded and not claimed:
+            # Every claim yielded to another pass's. Look again, now that its commit is visible,
+            # rather than end the pass with other groups' events still due.
+            claimed, _ = self._claim_due_events(sinks, now, hold, limit)
+        return claimed
+
+    def _claim_due_events(
+        self, sinks: Collection[str], now: datetime, hold: timedelta, limit: int
+    ) -> tuple[list[GroupEventClaim], bool]:
+        """One scan-and-claim round of `claim_group_events`, and whether a claim yielded in it."""
         from sqlalchemy import select, update
         from sqlalchemy.orm import Session
 
         from bajutsu.serve.server.models import GroupEvent, JobGroup
 
-        if not sinks:
-            return []
-        # ponytail: reads every pending row of the known sinks per pass; the pending set is the
-        # undelivered tail, so filter in SQL if a backlog ever makes this scan heavy.
+        # ponytail: reads every pending row of the known sinks, up to twice per claim (once more when
+        # every claim yielded) rather than once per pass (`deliver_once` claims with `limit=1`);
+        # filter in SQL if a backlog makes this heavy.
         scan = (
             select(GroupEvent, JobGroup.notify, JobGroup.org_id)
             .join(JobGroup, JobGroup.id == GroupEvent.group_id)
@@ -1674,11 +1703,16 @@ class SqlRepository:
                 if _rowcount(taken) == 1:
                     claimed.append(_claim(row, token, org, notify))
             session.commit()
+            taken_count = len(claimed)
             claimed = self._yield_contended(session, claimed, now)
             references = _latest_references(session, claimed)
-        return [
-            replace(c, reference=references.get((c.group_id, c.sink), c.reference)) for c in claimed
-        ]
+        return (
+            [
+                replace(c, reference=references.get((c.group_id, c.sink), c.reference))
+                for c in claimed
+            ],
+            len(claimed) < taken_count,
+        )
 
     @staticmethod
     def _yield_contended(
@@ -1693,6 +1727,7 @@ class SqlRepository:
         """
         from sqlalchemy import select, update
 
+        from bajutsu.serve import oplog
         from bajutsu.serve.server.models import GroupEvent, JobGroup
 
         queued = [c for c in claimed if c.event == "queued"]
@@ -1723,6 +1758,15 @@ class SqlRepository:
                     .values(claimed_until=None, claim_token=None)
                 )
                 released.add(claim.id)
+                # A release leaves no attempt count and no retry time, so without this line a pair
+                # of replicas that keeps colliding would stall a check with a clean log.
+                oplog.log_event(
+                    _contended_log,
+                    "group_event.contended",
+                    f"yielded {claim.event} of group {claim.group_id} to another delivery",
+                    sink=claim.sink,
+                    group=claim.group_id,
+                )
         session.commit()
         return [c for c in claimed if c.id not in released]
 

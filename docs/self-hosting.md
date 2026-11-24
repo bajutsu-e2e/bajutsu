@@ -1167,6 +1167,10 @@ an hour, `serve` gives the event up. The `group_event.abandoned` log line record
 The `bajutsu_group_events_abandoned_total` metric counts it. The group, its jobs, and its runs
 stay as they were.
 
+Two replicas can claim the same event at once. Each then yields its claim, and the event stays
+due for a later pass. A yield counts no attempt. A pair of replicas that keeps colliding leaves
+a `group_event.contended` log line as the sole trace.
+
 **Roll out a new sink within 46 minutes.** A replica claims the events of its own sinks alone. A replica abandons an event whose sink no file on it defines. The replica
 waits until the event is about 46 minutes old. Update every replica's sink file within that time.
 
