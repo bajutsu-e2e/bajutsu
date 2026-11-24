@@ -84,7 +84,7 @@ def test_narrow_leaves_the_active_window_dump_untouched() -> None:
 def test_narrow_answers_no_tree_for_unparseable_input() -> None:
     # Garbage/mid-transition text yields no tree, and the driver's empty-tree degrade applies as
     # before — narrowing never masks a bad read.
-    assert adb_resident.narrowed_root("null root node") == (None, False)
+    assert adb_resident.narrowed_root("null root node") == (None, False, None)
 
 
 # A second non-SystemUI window (a permission dialog, say) — same shape as `_APP_WINDOW` but its own
@@ -1461,3 +1461,37 @@ def test_act_separates_a_reply_lost_after_the_send_from_one_never_sent() -> None
     finally:
         _SourceHandler.act_drop_reply = False
         server.shutdown()
+
+
+_HEADS_UP = (Path(__file__).parent / "fixtures" / "be0496" / "heads_up_api34.xml").read_text()
+
+
+def test_a_confirmed_gestures_reply_carries_the_heads_up_banner() -> None:
+    # BE-0496: the tree a gesture's reply carries is read before narrowing too, so a banner the
+    # gesture's own reply shows is known without the read the reply replaces.
+    port, server = _serve_act_tree(_HEADS_UP.encode("utf-8"))
+    try:
+        outcome = _tap(port)
+        assert outcome.read is not None
+        assert outcome.read.heads_up is not None
+        assert outcome.read.heads_up.frame == (42.0, 153.0, 996.0, 218.0)
+    finally:
+        server.shutdown()
+
+
+def test_start_returned_fetch_carries_the_heads_up_banner(tmp_path: Path) -> None:
+    # BE-0496: the ordinary read keeps the banner the SystemUI windows showed before they are dropped.
+    server_apk, test_apk = _apks(tmp_path)
+    srv = adb_resident.ResidentServer(
+        "U",
+        run=lambda args: "41000\n" if "forward" in args and "--remove" not in args else "",
+        spawn=lambda argv: _FakeProc(),
+        fetch=lambda port, _since: HierarchyRead(_HEADS_UP),
+        server_apk=server_apk,
+        test_apk=test_apk,
+    )
+    read = srv.start().fetch(None)
+    assert read.heads_up is not None
+    assert read.heads_up.text == "Showcase notification — A heads-up banner over the app"
+    assert read.root is not None
+    assert not [n for n in read.root.iter("node") if n.get("package") == "com.android.systemui"]

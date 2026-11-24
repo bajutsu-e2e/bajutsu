@@ -54,8 +54,10 @@ from .app_not_in_front import AppNotInFront
 from .backend_crash_error import BackendCrashError
 from .backend_lifecycle import BackendLifecycle
 from .background_screenshot_provider import BackgroundScreenshotProvider
+from .banner_dismissal_reporter import BannerDismissalReporter
 from .capability import Capability
 from .channel_health_reporter import ChannelHealthReporter
+from .display_scale_provider import DisplayScaleProvider
 from .drained_interruptions import DrainedInterruptions
 from .driver import Driver
 from .element import Element
@@ -65,6 +67,7 @@ from .evidence_provider import EvidenceProvider
 from .gave_up_alert import GaveUpAlert
 from .interruption_policy_target import InterruptionPolicyTarget
 from .manual_step_required import ManualStepRequired
+from .notification_banner_blocking import NotificationBannerBlocking
 from .queryable import Queryable
 from .raw_source import RawSource
 from .raw_source_provider import RawSourceProvider
@@ -104,8 +107,10 @@ __all__ = [
     "BackendCrashError",
     "BackendLifecycle",
     "BackgroundScreenshotProvider",
+    "BannerDismissalReporter",
     "Capability",
     "ChannelHealthReporter",
+    "DisplayScaleProvider",
     "DrainedInterruptions",
     "Driver",
     "Element",
@@ -116,6 +121,7 @@ __all__ = [
     "GaveUpAlert",
     "InterruptionPolicyTarget",
     "ManualStepRequired",
+    "NotificationBannerBlocking",
     "Point",
     "Queryable",
     "RawSource",

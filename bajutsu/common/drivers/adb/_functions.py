@@ -9,6 +9,7 @@ from xml.etree import ElementTree as ET
 from bajutsu.common.drivers import base
 
 from ._shared import NodeIdentity, logger
+from .heads_up_banner import HeadsUpBanner
 
 # uiautomator's bounds attribute, e.g. "[0,100][200,220]".
 _BOUNDS = re.compile(r"\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]")
@@ -17,6 +18,11 @@ _BOUNDS = re.compile(r"\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]")
 # `wm size` prints "Physical size: WxH" and, when the display has been resized, an "Override size:
 # WxH" that is the effective resolution — the override wins when present (BE-0326).
 _WM_SIZE = re.compile(r"^\s*(Physical|Override)\s+size:\s*(\d+)x(\d+)\s*$", re.MULTILINE)
+# `wm density` prints "Physical density: N" and, when overridden, "Override density: N" — the same
+# override-wins rule as `wm size`.
+_WM_DENSITY = re.compile(r"^\s*(Physical|Override)\s+density:\s*(\d+)\s*$", re.MULTILINE)
+# Android's baseline density: one density-independent pixel is one pixel at 160 dpi.
+_BASELINE_DPI = 160.0
 
 
 def _strip_pkg(resource_id: str) -> str | None:
@@ -81,6 +87,19 @@ def _parse_wm_size(out: str) -> base.Point:
     if size is None:
         raise ValueError(f"could not parse `wm size` output: {out!r}")
     return size
+
+
+def _parse_wm_density(out: str) -> float:
+    """Parse `adb shell wm density` output to the pixels in one density-independent pixel (dp).
+
+    Prefers an Override density over the Physical one, and fails loudly rather than guessing a scale
+    for a gesture distance (determinism first), like `_parse_wm_size`.
+    """
+    found = dict(_WM_DENSITY.findall(out or ""))
+    dpi = found.get("Override") or found.get("Physical")
+    if dpi is None or int(dpi) <= 0:
+        raise ValueError(f"could not parse `wm density` output: {out!r}")
+    return int(dpi) / _BASELINE_DPI
 
 
 def _derived_label(node: ET.Element) -> str | None:
@@ -321,6 +340,73 @@ def slice_hierarchy_root(text: str) -> ET.Element | None:
         return ET.fromstring(text[start : end + len("</hierarchy>")])  # noqa: S314
     except ET.ParseError:
         return None
+
+
+# SystemUI's own identifiers for a heads-up notification, measured on API 33, 34, and 35 emulators
+# (BE-0496 Unit 1). While a heads-up is pinned, the status bar shows the posting app's name in
+# `heads_up_status_bar_view`, and the shade window shrinks to the banner, holding one visible
+# notification row. The expanded shade draws the same rows but has no such status-bar view, which is
+# what tells the two apart. The title and body ids are the platform's own notification template ones.
+_SYSTEMUI = "com.android.systemui"
+_HEADS_UP_STATUS_BAR = "com.android.systemui:id/heads_up_status_bar_view"
+_NOTIFICATION_ROW = "com.android.systemui:id/expandableNotificationRow"
+_NOTIFICATION_TEXT_IDS = ("android:id/title", "android:id/text")
+
+
+def heads_up_banner(root: ET.Element) -> HeadsUpBanner | None:
+    """The heads-up notification a whole-device dump shows, or None when none is pinned.
+
+    `root` is the `<hierarchy>` of a dump that carries SystemUI's windows, which only the resident
+    channel's `dumpWindowHierarchy` does: the `uiautomator dump` fallback reads the active window
+    alone, so it can never see one. Keyed on SystemUI's identifiers alone, the same for every app
+    (prime directive 3). A row with no area is a banner caught mid-layout and reads as none, so the
+    caller's next read sees it once it has a frame.
+    """
+    systemui = [window for window in root if window.get("package") == _SYSTEMUI]
+    if not any(n.get("resource-id") == _HEADS_UP_STATUS_BAR for w in systemui for n in w.iter()):
+        return None
+    rows = 0
+    malformed = [0]
+    for window in systemui:
+        for node in window.iter("node"):
+            if node.get("resource-id") != _NOTIFICATION_ROW:
+                continue
+            rows += 1
+            frame = _bounds(node.get("bounds", ""), malformed)
+            if frame[2] <= 0 or frame[3] <= 0:
+                continue
+            parts = [
+                text
+                for wanted in _NOTIFICATION_TEXT_IDS
+                for n in node.iter("node")
+                if n.get("resource-id") == wanted and (text := (n.get("text") or "").strip())
+            ]
+            return HeadsUpBanner(frame=frame, text=" — ".join(parts))
+    # The status bar says a heads-up is pinned, yet no row can be read: SystemUI drew it under an
+    # identifier this build does not know, or with bounds that do not parse. Either way the guard
+    # sees no banner, so the cause is said once rather than left to look like "none was there". A
+    # row with no area is a banner mid-layout, the ordinary case, and stays quiet.
+    if rows == 0:
+        _warn_heads_up_once(
+            f"a heads-up notification is pinned but no {_NOTIFICATION_ROW} row was found; "
+            "the notification banner guard cannot see it on this build"
+        )
+    elif malformed[0]:
+        _warn_heads_up_once(
+            "a heads-up notification row carries bounds that do not parse; "
+            "the notification banner guard cannot see it"
+        )
+    return None
+
+
+# One warning per cause per process: a build that names the row differently does so on every read.
+_heads_up_warned: set[str] = set()
+
+
+def _warn_heads_up_once(message: str) -> None:
+    if message not in _heads_up_warned:
+        _heads_up_warned.add(message)
+        logger.warning(message)
 
 
 def parse_hierarchy(text: str) -> list[base.Element]:

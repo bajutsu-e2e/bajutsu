@@ -1,6 +1,8 @@
 package com.bajutsu.showcase.compose
 
 import android.Manifest
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -26,10 +28,15 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.app.NotificationCompat
 import java.util.Locale
 
 // Tab: Permissions (SPEC §5.4 / §7) — the OS-integration screen. It owns the two deliberate
@@ -58,9 +65,21 @@ fun PermissionsScreen(model: AppModel) {
         model.selectedPhotoCount = if (uri != null) 1 else 0
     }
     val imagesOnly = PickVisualMediaRequest(PickVisualMedia.ImageOnly)
+    // The banner guard's fixture (BE-0496): the counter shows whether a tap reached the app bar's
+    // banner target rather than the heads-up notification over it.
+    var bannerTaps by remember { mutableIntStateOf(0) }
 
     Column(Modifier.fillMaxSize()) {
-        TopAppBar(title = { Text("Permissions") })
+        // The banner target sits in the app bar, the band a heads-up notification lands over at every
+        // API level measured (33-35); the content column below starts under the banner's lower edge.
+        TopAppBar(
+            title = { Text("Permissions") },
+            actions = {
+                TextButton(onClick = { bannerTaps++ }, modifier = Modifier.aid("perm.bannerTarget")) {
+                    Text("Banner Target")
+                }
+            },
+        )
         // Scrollable like the Views twin's scroll page, so a shorter screen can still reach the
         // Photos section the select_photos scenarios scroll to.
         Column(
@@ -114,6 +133,19 @@ fun PermissionsScreen(model: AppModel) {
                 Text("Open Photo Picker (Single)")
             }
             Text("Selected: ${model.selectedPhotoCount}", Modifier.aid("perm.photos.value").stateValue(model.selectedPhotoCount.toString()))
+
+            // The banner fixture's controls sit below Photos (BE-0496), adding nothing above that
+            // section: the picker's return can scroll this column back to its top, where the photo
+            // count has to stay in view for the select_photos scenarios that wait on it.
+            Text("Banner", style = MaterialTheme.typography.titleMedium)
+            // The counter above the button: the scroll to the button stops once it shows, so a row
+            // below it could still sit under the fold when the scenario reads the count.
+            Text("Banner target taps: $bannerTaps", Modifier.aid("perm.bannerTaps").stateValue(bannerTaps.toString()))
+            // Posts on a high-importance channel, which SystemUI presents as a heads-up notification
+            // over the top of this screen (BE-0496).
+            TextButton(onClick = { postHeadsUp(context) }, modifier = Modifier.aid("perm.postNotif")) {
+                Text("Post Notification")
+            }
             // The title of the last push bajutsu delivered (SPEC §5.4, BE-0498); empty until one arrives.
             // Last on the tab, so it shifts no row above it: status_bar_android.yaml's baseline frames
             // the tab down to the photos section, and select_photos.yaml reads perm.photos.value there.
@@ -163,6 +195,27 @@ private fun readLocation(context: Context, onReading: (String) -> Unit) {
     main.postDelayed({
         report(runCatching { manager.getLastKnownLocation(LocationManager.GPS_PROVIDER) }.getOrNull())
     }, FRESH_FIX_TIMEOUT_MS)
+}
+
+private const val HEADS_UP_CHANNEL = "showcase_heads_up"
+private const val HEADS_UP_ID_BASE = 4960
+private var postedCount = 0
+
+private fun postHeadsUp(context: Context) {
+    val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    manager.createNotificationChannel(
+        NotificationChannel(HEADS_UP_CHANNEL, "Heads-up", NotificationManager.IMPORTANCE_HIGH),
+    )
+    val notification = NotificationCompat.Builder(context, HEADS_UP_CHANNEL)
+        .setSmallIcon(android.R.drawable.ic_dialog_info)
+        .setContentTitle("Showcase notification")
+        .setContentText("A heads-up banner over the app")
+        .setPriority(NotificationCompat.PRIORITY_HIGH)
+        .build()
+    // An empty shade and a fresh id per tap: SystemUI does not alert again for an update to a
+    // notification already in the shade, so reposting one id shows the banner only once.
+    manager.cancelAll()
+    manager.notify(HEADS_UP_ID_BASE + postedCount++, notification)
 }
 
 private fun clipboard(context: Context): ClipboardManager =

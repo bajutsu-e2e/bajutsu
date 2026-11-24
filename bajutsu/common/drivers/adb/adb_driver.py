@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
 import contextvars
 import functools
+import logging
 import math
 import subprocess
 import threading
@@ -21,7 +23,12 @@ from bajutsu.common.drivers.elements import screen_size_from_elements
 from bajutsu.common.evidence import intervals
 
 from ._catchup import _Catchup
-from ._functions import _parse_wm_size, elements_with_identities, slice_hierarchy_root
+from ._functions import (
+    _parse_wm_density,
+    _parse_wm_size,
+    elements_with_identities,
+    slice_hierarchy_root,
+)
 from ._shared import NodeIdentity, logger
 from .act_outcome import ActOutcome
 from .act_request import ActRequest
@@ -31,6 +38,7 @@ from .adb_gesture_rejected import AdbGestureRejected
 from .adb_picker_refused import AdbPickerRefused
 from .adb_resident_error import AdbResidentError
 from .channel_recovery import ChannelRecovery
+from .heads_up_banner import HeadsUpBanner
 from .hierarchy_read import HierarchyRead
 from .photo_picker import PICKER_PACKAGES, PickerState, read_picker_state
 
@@ -99,6 +107,20 @@ _APP_FRONT_POLL_MAX = 1.0
 # Re-reads of the picker while waiting are spaced by the poll interval.
 _PHOTO_PICKER_MIN_API = 33
 _PHOTO_PICKER_POLL_S = 0.25
+
+
+# The channel note a lease gets once its reads go through `uiautomator dump`, which reads the active
+# window alone and so never sees SystemUI's heads-up window (BE-0496). Public because the showcase's
+# evidence check (`scripts/assert_notification_banner_evidence.py`) looks for it in the manifest, to
+# fail a run whose guard was off with that cause named rather than as a missing dismissal.
+BANNER_GUARD_OFF_NOTE = (
+    "notification banner guard off: reads via uiautomator dump cannot see a heads-up notification"
+)
+
+
+def _covers(frame: base.Frame, point: base.Point) -> bool:
+    """Whether `point` lies inside `frame`, edges included."""
+    return base.contains(frame, (point[0], point[1], 0.0, 0.0))
 
 
 def _has_cell(state: PickerState, *, index: int) -> bool:
@@ -443,6 +465,18 @@ class AdbDriver(CoordinateTreeDriver):
         # the next `query()` to consume it in place of a read. None whenever there is none — before
         # the first gesture, after that read, and after anything that moves the screen since.
         self._seeded_tree: list[base.Element] | None = None
+        # The heads-up notification the last read's SystemUI windows showed (BE-0496). None on the
+        # dump fallback, which cannot see those windows, and whenever no heads-up was pinned. Set by
+        # every read, so it always describes the same screen as `_last_tree`.
+        self._heads_up: HeadsUpBanner | None = None
+        # The text of each banner this driver cleared before a gesture, drained per step into the
+        # report (`drain_banner_dismissals`).
+        self._banner_dismissals: list[str] = []
+        # Latches the one note, per lease, that the banner guard is off while reads go through the
+        # dump: the fallback already warns that it runs degraded, and this names one more consequence.
+        self._banner_guard_off_noted = False
+        # `wm density` / 160, resolved once: the density is fixed for a run, like `wm size`.
+        self._display_scale: float | None = None
         # What this driver actually actuated, drained per step by the run loop. Android is the one
         # backend with two actuation channels, so the record's `via` is what tells a reader whether a
         # gesture went device-side (`identity`) or fell back to a host coordinate (`coordinate`).
@@ -647,6 +681,7 @@ class AdbDriver(CoordinateTreeDriver):
         self._native_z = read.native_z
         self._raw_reply = read.text
         self._parsed_root = read.root if read.narrowed else None
+        self._heads_up = read.heads_up
         self._identities = {id(el): ident for el, ident in zip(els, identities, strict=True)}
         self._last_tree = els
         self._record_tree(els)
@@ -762,6 +797,7 @@ class AdbDriver(CoordinateTreeDriver):
                 # `last_raw_source`.
                 self._raw_reply = read.text
                 self._parsed_root = read.root if read.narrowed else None
+                self._heads_up = read.heads_up
             except AdbResidentError as exc:
                 logger.warning(
                     "resident hierarchy read failed (%s); falling back to `uiautomator dump` for "
@@ -799,6 +835,8 @@ class AdbDriver(CoordinateTreeDriver):
         # and no measured position either, so every element reports the honest absence.
         self._read_mark = None
         self._native_z = {}
+        self._heads_up = None
+        self._note_banner_guard_off()
         t0 = time.monotonic()
         text = self._run(adb.dump_cmd(self.serial))
         logger.debug(
@@ -1180,19 +1218,7 @@ class AdbDriver(CoordinateTreeDriver):
         also raises `ElementNotTappable` here, correctly, though the scroll safety net
         (`_tap_with_recovery`, above the driver) wraps only the tap family in this first slice.
         """
-        tree = self._settle()
-        try:
-            el, tree = self._resolve(sel, timeout=self._RESOLVE_TIMEOUT_S, initial_tree=tree)
-        except base.AppNotInFront:
-            # Another app's tree is never "absent here": it must not read as untappable or be
-            # scrolled through, so it fails the step by name instead (BE-0447).
-            raise
-        except base.ElementNotFound:
-            # Not in the current viewport — scroll toward it and re-query (BE-0210). An ambiguous
-            # match still fails fast: only not-found triggers a scroll, so `resolve_unique`'s
-            # AmbiguousSelector propagates unchanged. The settled tree seeds the first scroll so it
-            # is oriented on stable frames rather than a fresh (possibly mid-transition) read.
-            el, tree = self._scroll_into_view(sel, tree)
+        el, tree = self._resolve_target(sel)
         # The single most useful line when an actuation lands on nothing: the coordinate it is about
         # to touch, and the tree it came from. A frame from a stale read looks entirely ordinary on
         # its own — it is only wrong relative to where the content actually is.
@@ -1201,8 +1227,49 @@ class AdbDriver(CoordinateTreeDriver):
         # `zIndex` and the ordinary undecorated case on either toolkit; can misjudge a View-based
         # layout that uses `elevation`, which reorders drawing without reordering the accessibility
         # tree (measured on-device during this feature's design spike, not merely theorized).
-        base.raise_if_covered(tree, el, sel)
         return el["frame"], screen_size_from_elements(tree), el
+
+    def _resolve_target(self, sel: base.Selector) -> tuple[base.Element, list[base.Element]]:
+        """Settle, resolve `sel` uniquely, and make sure nothing covers it; the element and its tree.
+
+        Shared by both actuation paths, the device-side one (`_device_act`) and the coordinate one
+        (`_resolve_frame_and_screen`), so neither can exempt a target from a check the other makes.
+
+        A heads-up notification covering the target's center is swiped away first, and the target
+        resolved again on the screen that leaves (BE-0496): `adb shell input` and the device's own
+        injection both deliver a touch to the topmost window, which is SystemUI's, so the touch would
+        open the notification's app instead. The banner arrives with the read the resolve already
+        took, so the check costs no read of its own. The number of banners one gesture clears is
+        bounded, so a stream of them fails the step rather than holding it forever.
+        """
+        cleared = 0
+        while True:
+            tree = self._settle()
+            try:
+                el, tree = self._resolve(sel, timeout=self._RESOLVE_TIMEOUT_S, initial_tree=tree)
+            except base.AppNotInFront:
+                # Another app's tree is never "absent here": it must not read as untappable or be
+                # scrolled through, so it fails the step by name instead (BE-0447).
+                raise
+            except base.ElementNotFound:
+                # Not in the current viewport — scroll toward it and re-query (BE-0210). An
+                # ambiguous match still fails fast: only not-found triggers a scroll, so
+                # `resolve_unique`'s AmbiguousSelector propagates unchanged. The settled tree seeds
+                # the first scroll so it is oriented on stable frames rather than a fresh (possibly
+                # mid-transition) read.
+                el, tree = self._scroll_into_view(sel, tree)
+            center = base.frame_center(el["frame"])
+            if self._heads_up is not None and _covers(self._heads_up.frame, center):
+                if cleared == self._BANNER_CLEARS_PER_GESTURE:
+                    raise base.NotificationBannerBlocking(
+                        f"notification banners kept covering {sel!r}: "
+                        f"{cleared} cleared, another arrived"
+                    )
+                self._clear_banner_covering(center)
+                cleared += 1
+                continue
+            base.raise_if_covered(tree, el, sel)
+            return el, tree
 
     def is_tappable(self, sel: base.Selector) -> bool:
         """Whether `sel` resolves to a unique element that is not covered by another.
@@ -1309,6 +1376,20 @@ class AdbDriver(CoordinateTreeDriver):
     # re-read is the fix and usually succeeds at once; a target that keeps moving is a moving target,
     # not a channel fault, so the attempts are few. Mirrors the XCUITest channel's own bound (BE-0289).
     _STALE_MAX_ATTEMPTS = 3
+    # The heads-up clearance before a gesture (BE-0496). Sized from Unit 1's measurement on API 33-35
+    # emulators: from the dismissing swipe until a read confirmed the banner gone took at most 2.3s,
+    # the confirming read included. A swipe that has not cleared it after `_BANNER_RESWIPE_S` is
+    # taken as missed (a banner swiped mid-slide) and sent again; `_BANNER_CLEARANCE_S` leaves room
+    # for that second swipe's own dismissal. Its own budget, not the orchestrator's 2s sweep wait,
+    # which is short because a leftover banner there costs one screenshot, not the step.
+    _BANNER_CLEARANCE_S = 6.0
+    _BANNER_RESWIPE_S = 2.5
+    _BANNER_POLL_S = 0.1
+    # How many banners one resolve clears before it fails: a notification storm must not hold a
+    # step forever, and three in a row is already far past anything a test device sends. Counted per
+    # `_resolve_target` call, so a gesture whose device-side attempt goes stale and resolves again
+    # starts a fresh count; each pass is still bounded by its own clearance waits.
+    _BANNER_CLEARS_PER_GESTURE = 3
 
     # Fallback guards, each a distinct reason the coordinate path takes the gesture, inside the
     # bounded stale-retry loop on the actuation path: the count tracks those cases, and a split
@@ -1403,16 +1484,7 @@ class AdbDriver(CoordinateTreeDriver):
         if self._act_fn is None or self._act_unavailable:
             return False
         for _ in range(self._STALE_MAX_ATTEMPTS):
-            tree = self._settle()
-            try:
-                el, tree = self._resolve(sel, timeout=self._RESOLVE_TIMEOUT_S, initial_tree=tree)
-            except base.AppNotInFront:
-                # Another app's tree is never "absent here": it must not read as untappable or be
-                # scrolled through, so it fails the step by name instead (BE-0447).
-                raise
-            except base.ElementNotFound:
-                el, tree = self._scroll_into_view(sel, tree)
-            base.raise_if_covered(tree, el, sel)
+            el, _tree = self._resolve_target(sel)
             ordinal = self._device_ordinal(el, kind, sel)
             if ordinal is None:
                 return False
@@ -1523,6 +1595,7 @@ class AdbDriver(CoordinateTreeDriver):
         self._actuate_centered(adb.tap_cmd(self.serial, x, y))
 
     def tap_point(self, p: base.Point) -> None:
+        self._clear_banner_at(p)
         self._actuations.record(Actuation(gesture="tap", via="coordinate", unit=_UNIT, points=(p,)))
         self._act(adb.tap_cmd(self.serial, p[0], p[1]))
 
@@ -1655,6 +1728,7 @@ class AdbDriver(CoordinateTreeDriver):
         self._actuate_centered(adb.swipe_cmd(self.serial, x, y, x, y, ms))
 
     def swipe(self, frm: base.Point, to: base.Point) -> None:
+        self._clear_banner_at(frm, to)
         pre_key = self._pan_baseline()
         mark = self._capture_mark()
         self._actuations.record(
@@ -1716,6 +1790,7 @@ class AdbDriver(CoordinateTreeDriver):
         # keeps the list moving with the finger and stopping when the gesture ends, so the scroll
         # leaves no fling momentum. A short swipe over the same distance flings — its post-lift
         # travel varies by device, which is exactly the non-determinism the `scroll` action removes.
+        self._clear_banner_at(frm, to)
         pre_key = self._pan_baseline()
         mark = self._capture_mark()
         duration_ms = self._scroll_duration_ms(frm, to)
@@ -2295,9 +2370,158 @@ class AdbDriver(CoordinateTreeDriver):
         return []
 
     def notification_banner_frame(self) -> base.Frame | None:
-        # No SpringBoard on Android; a heads-up notification reaches the app's own tree, unlike an
-        # iOS foreground banner, so this backend never advertises HANDLE_NOTIFICATION_BANNER (BE-0416).
-        return None
+        """The heads-up notification's frame, from a fresh resident read or a pending post-gesture tree.
+
+        A heads-up notification lives in SystemUI's own window, which the app's tree never carries;
+        the resident read sees it in the same dump and keeps it beside the tree (`narrowed_root`).
+        A fresh read, or the post-gesture tree a device-side gesture's reply carried while that tree
+        still waits for the next read (`_seeded_tree`, as fresh as a read) (BE-0496). Never the
+        cached tree: the orchestrator polls this between swipes and sleeps that actuate nothing, so
+        a cached answer would keep reporting a banner that left, or miss one that arrived. Unit 1
+        measured a read at about 45 ms on a still screen, cheap enough for the sweep's
+        once-per-interval cadence. The checks before a gesture answer from the tree in hand instead:
+        a selector path reads `_heads_up` straight from the resolve that has just read, and a
+        literal coordinate gesture goes through `_banner_frame`, which reads only once an actuation
+        has retired that tree.
+
+        None on the `uiautomator dump` fallback, which reads the active window alone and so can never
+        see one; the guard is off there, as the channel notes say, and no read is spent finding that
+        out.
+        """
+        if self._fetch_hierarchy is None:
+            self._note_banner_guard_off()
+            return None
+        return self._read_banner_frame()
+
+    def _banner_frame(self) -> base.Frame | None:
+        """The banner as the current tree saw it, read afresh only once an actuation retired that tree."""
+        if self._fetch_hierarchy is None:
+            self._note_banner_guard_off()
+            return None
+        if self._tree_current:
+            return self._heads_up.frame if self._heads_up is not None else None
+        return self._read_banner_frame()
+
+    def _read_banner_frame(self) -> base.Frame | None:
+        if self._seeded_tree is not None:
+            # A device-side gesture's own reply carried a post-gesture tree, and its banner with it
+            # (`_seed_from_act`): already as fresh as a read, and the next `query()` still needs it.
+            return self._heads_up.frame if self._heads_up is not None else None
+        # Cleared first, so a read that fails before it records a banner cannot leave the previous
+        # one standing.
+        self._heads_up = None
+        with contextlib.suppress(base.AppNotInFront):
+            # The read sets `_heads_up` before it judges whose tree it is, so even another member's
+            # app in front leaves the banner known.
+            self.query()
+        return self._heads_up.frame if self._heads_up is not None else None
+
+    def display_scale(self) -> float:
+        """Raw pixels per density-independent pixel (`base.DisplayScaleProvider`), from `wm density`.
+
+        The banner swipe's distances were measured in iOS points, and a dp spans nearly the same
+        physical length, so this is what turns them into this backend's raw-pixel coordinates.
+        Cached: the density is fixed for a run.
+        """
+        if self._display_scale is None:
+            self._display_scale = _parse_wm_density(self._run(adb.wm_density_cmd(self.serial)))
+        return self._display_scale
+
+    def drain_banner_dismissals(self) -> list[str]:
+        """The banners cleared before a gesture since the last call (`base.BannerDismissalReporter`)."""
+        drained, self._banner_dismissals = self._banner_dismissals, []
+        return drained
+
+    def _note_banner_guard_off(self) -> None:
+        """Say once per lease that a read path blind to SystemUI has switched the banner guard off.
+
+        A channel note as well as a log line, because the note reaches the run's manifest: a run whose
+        guard was off must be told apart from one that met no banner (BE-0496 Unit 6). The line is a
+        warning when the resident channel was lost or failed to start, and informational when the
+        lease never had one: a run that opted out of the server, or never built it, chose the dump on
+        purpose and would otherwise be warned on every lease.
+        """
+        if self._banner_guard_off_noted:
+            return
+        self._banner_guard_off_noted = True
+        level = logging.WARNING if self._channel_loss is not None else logging.INFO
+        logger.log(level, BANNER_GUARD_OFF_NOTE)
+        self._channel_notes.append(BANNER_GUARD_OFF_NOTE)
+
+    def _clear_banner_at(self, point: base.Point, to: base.Point | None = None) -> None:
+        """Clear a heads-up notification covering a literal gesture's `point` before it lands.
+
+        The coordinate gestures resolve no selector, so they bring no read of their own; the frame
+        comes from `_banner_frame`, which reads only when the tree has gone stale. A swipe
+        that starts on the banner and ends at or above its top edge is the dismissal flick itself —
+        the orchestrator's own sweep, or a scenario swiping the banner on purpose — so it is delivered
+        as asked rather than cleared first, which would leave it to land on whatever lay beneath.
+        """
+        frame = self._banner_frame()
+        if frame is None or not _covers(frame, point):
+            return
+        if to is not None and to[1] <= frame[1]:
+            return
+        self._clear_banner_covering(point)
+
+    def _clear_banner_covering(self, point: base.Point) -> bool:
+        """Swipe away the heads-up notification the last read showed over `point`, and confirm it.
+
+        Returns False at once when no banner covers the point. Otherwise the banner is swiped upward
+        by the same scaled distances the orchestrator's sweep uses, and reads poll until it no longer
+        covers the point; True then, since the screen under it may have moved and the caller resolves
+        again. A banner still sliding in has no settled frame (`notification_banner_swipe_points`
+        returns None) and is read again rather than swiped. One that survives its swipe past the time
+        a measured dismissal takes is swiped again.
+
+        Unlike the orchestrator's sweep, this never proceeds with the banner still there: the sweep
+        protects a screenshot, where a leftover banner costs one image, while here the banner would
+        take the touch and open the notification's app. So the wait running out raises
+        `NotificationBannerBlocking`, naming the banner, and the step fails on it rather than later on
+        a screen it never meant to reach. The swipe goes straight to the device, not through `swipe`,
+        whose own check would otherwise judge the dismissal flick a gesture to clear the way for.
+        """
+        banner = self._heads_up
+        if banner is None or not _covers(banner.frame, point):
+            return False
+        text = banner.text
+        deadline = time.monotonic() + self._BANNER_CLEARANCE_S
+        swiped_at: float | None = None
+        while True:
+            banner = self._heads_up
+            if banner is None or not _covers(banner.frame, point):
+                if swiped_at is not None:
+                    self._banner_dismissals.append(text)
+                return True
+            now = time.monotonic()
+            if now >= deadline:
+                raise base.NotificationBannerBlocking(
+                    f"a notification banner ({banner.text or 'no text'}) covered the gesture's "
+                    f"point {point} and did not clear within {self._BANNER_CLEARANCE_S:.0f}s"
+                )
+            points = (
+                base.notification_banner_swipe_points(banner.frame, self.display_scale())
+                if swiped_at is None or now - swiped_at >= self._BANNER_RESWIPE_S
+                else None
+            )
+            if points is not None:
+                frm, to = points
+                self._actuations.record(
+                    Actuation(gesture="swipe", via="coordinate", unit=_UNIT, points=(frm, to))
+                )
+                self._act(adb.swipe_cmd(self.serial, frm[0], frm[1], to[0], to[1]))
+                swiped_at = time.monotonic()
+                text = banner.text or text
+            else:
+                time.sleep(self._BANNER_POLL_S)
+            self.query()
+            if self._fetch_hierarchy is None:
+                # The read fell back to `uiautomator dump`, which cannot see SystemUI: no banner on it
+                # means "cannot tell", not "gone", and the touch must not go out on that guess.
+                raise base.NotificationBannerBlocking(
+                    "cannot confirm that a notification banner over the gesture's point cleared: "
+                    "reads fell back to uiautomator dump, which cannot see it"
+                )
 
     def dismiss_blocking_tip(self, tree: list[base.Element] | None = None) -> bool:  # noqa: ARG002  # Driver shape
         # TipKit is an iOS framework. Android's nearest equivalents (`TooltipCompat`, Compose
@@ -2593,6 +2817,11 @@ class AdbDriver(CoordinateTreeDriver):
                 base.Capability.VIDEO,
                 base.Capability.DEVICE_LOG,
                 base.Capability.APP_TRACE,
+                # A heads-up notification read from the resident dump's SystemUI windows, swiped away
+                # by the orchestrator's sweep and before any gesture it covers (BE-0496). Declared on
+                # the dump fallback too, where the frame reads None: a capability that flipped
+                # mid-lease would break the static parity table.
+                base.Capability.HANDLE_NOTIFICATION_BANNER,
             }
         )
         | base.ANDROID_PERMISSION_CAPABILITIES

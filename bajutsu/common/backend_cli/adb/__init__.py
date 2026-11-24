@@ -158,6 +158,7 @@ from ._functions import (
     view_intent_cmd,
     view_intent_rejection,
     wait_for_device_cmd,
+    wm_density_cmd,
     wm_size_cmd,
 )
 from ._functions import _adb as _adb
@@ -328,5 +329,6 @@ __all__ = [
     "view_intent_cmd",
     "view_intent_rejection",
     "wait_for_device_cmd",
+    "wm_density_cmd",
     "wm_size_cmd",
 ]

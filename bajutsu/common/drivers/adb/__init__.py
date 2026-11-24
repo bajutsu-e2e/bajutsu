@@ -38,12 +38,18 @@ from ._functions import _elements_from_nodes as _elements_from_nodes
 from ._functions import _identity as _identity
 from ._functions import _native_z_key as _native_z_key
 from ._functions import _norm_class as _norm_class
+from ._functions import _parse_wm_density as _parse_wm_density
 from ._functions import _parse_wm_size as _parse_wm_size
 from ._functions import _strip_pkg as _strip_pkg
 from ._functions import _to_element as _to_element
 from ._functions import _traits as _traits
 from ._functions import _warn_malformed_bounds as _warn_malformed_bounds
-from ._functions import elements_with_identities, parse_hierarchy, slice_hierarchy_root
+from ._functions import (
+    elements_with_identities,
+    heads_up_banner,
+    parse_hierarchy,
+    slice_hierarchy_root,
+)
 from ._shared import NodeIdentity, logger
 from .act_outcome import ActOutcome
 from .act_request import ActRequest
@@ -51,6 +57,7 @@ from .adb_act_uncertain import AdbActUncertain
 from .adb_act_unsupported import AdbActUnsupported
 from .adb_driver import _UNIT as _UNIT
 from .adb_driver import (
+    BANNER_GUARD_OFF_NOTE,
     ActFn,
     AdbDriver,
     ClockFetch,
@@ -65,9 +72,11 @@ from .adb_picker_refused import AdbPickerRefused
 from .adb_resident_error import AdbResidentError
 from .adb_resident_timeout import AdbResidentTimeout
 from .channel_recovery import ChannelRecovery
+from .heads_up_banner import HeadsUpBanner
 from .hierarchy_read import HierarchyRead
 
 __all__ = [
+    "BANNER_GUARD_OFF_NOTE",
     "ActFn",
     "ActOutcome",
     "ActRequest",
@@ -81,6 +90,7 @@ __all__ = [
     "ChannelRecovery",
     "ClockFetch",
     "GestureFn",
+    "HeadsUpBanner",
     "HierarchyFetch",
     "HierarchyRead",
     "NodeIdentity",
@@ -88,6 +98,7 @@ __all__ = [
     "RunFn",
     "TypeFn",
     "elements_with_identities",
+    "heads_up_banner",
     "logger",
     "parse_hierarchy",
     "slice_hierarchy_root",

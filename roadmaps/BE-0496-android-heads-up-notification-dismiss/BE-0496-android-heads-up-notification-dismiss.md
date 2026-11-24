@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0496](BE-0496-android-heads-up-notification-dismiss.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0496") |
+| Implementing PR | [#2498](https://github.com/bajutsu-e2e/bajutsu/pull/2498) |
 | Topic | Platform support |
 | Related | [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md), [BE-0416](../BE-0416-ios-notification-banner-swipe-dismiss/BE-0416-ios-notification-banner-swipe-dismiss.md), [BE-0478](../BE-0478-android-device-control-parity/BE-0478-android-device-control-parity.md) |
 <!-- /BE-METADATA -->
@@ -79,6 +80,31 @@ result in this item. Unit 2 keys on the result, so the measurement comes first. 
 
 BE-0416's Unit 1 did the same for iOS, and its measurements shaped every later unit. A guessed
 identifier would make Unit 2 match the wrong node or none.
+
+#### Unit 1 result
+
+We measured on Pixel emulators at API 33, 34, and 35, all at 1080 by 2400 pixels and 420 dpi. The
+showcase app posted on a high-importance channel, and the resident server read every window. The
+dumps are in `tests/fixtures/be0496/`.
+
+| Fact | Measured |
+|---|---|
+| Window | The notification shade's own SystemUI window, cropped to the banner while a heads-up is pinned: `[42,0][1038,387]` on API 33, `[42,0][1038,371]` on API 34, and `[42,0][1038,302]` on API 35. |
+| Row and its bounds | `com.android.systemui:id/expandableNotificationRow` inside `notification_stack_scroller`: `[42,157][1038,387]`, `[42,153][1038,371]`, and `[42,84][1038,302]`. Only the pinned row is visible to the dump. |
+| Heads-up versus shade | The status bar's `com.android.systemui:id/heads_up_status_bar_view`, which shows the posting app's name, is present while a heads-up is pinned. The expanded shade draws the same rows in one full-screen window with no such view. |
+| Upward swipe | A swipe from the row's center to 20 dp above its top edge dismissed the banner on all three levels. A 20-pixel swipe did not, and the banner stayed until its own timeout, about six seconds later. |
+| Title and text | `android:id/title` and `android:id/text`, the platform's notification template. |
+| Cost of one read | 41–45 ms at the median and 56–85 ms at the 95th percentile, on a still screen. A read during the banner's slide-in waits for the animation and takes up to 1.8 s. |
+| Swipe until gone | At most 2.3 s from the start of the swipe until a read that confirmed the banner gone ended, that read included. |
+
+Two findings shaped the later units beyond the seven facts:
+
+- A heads-up swiped away snoozes heads-ups from the same app for a minute
+  (`heads_up_snooze_length_ms`), and SystemUI does not alert again for an update to a notification
+  already in the shade. Unit 6's button therefore clears the shade and posts under a fresh id.
+- The read is far cheaper than the 400–600 ms this item assumed when it chose to answer from the
+  current tree. `notification_banner_frame` therefore reads afresh on every call, as the Log below
+  explains.
 
 ### Unit 2 — the frame, read from the resident dump
 
@@ -312,14 +338,54 @@ describe the banner guard.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — measure the heads-up tree, read cost, and dismissal time on API 33–35
-- [ ] Unit 2 — extract the frame and text from the resident dump; warn and mark the manifest on the fallback path
-- [ ] Unit 3 — declare `handleNotificationBanner` on the adb driver
-- [ ] Unit 4 — scale the swipe distances by display density
-- [ ] Unit 5 — clear a covering banner before a gesture, coordinate gestures included, and record every dismissal, the orchestrator sweep's included
-- [ ] Unit 6 — showcase button on both Android apps, the banner scenario, and the manifest check
-- [ ] Unit 7 — unit tests with heads-up dump fixtures
-- [ ] Unit 8 — docs (en + ja)
+- [x] Unit 1 — measure the heads-up tree, read cost, and dismissal time on API 33–35
+- [x] Unit 2 — extract the frame and text from the resident dump; warn and mark the manifest on the fallback path
+- [x] Unit 3 — declare `handleNotificationBanner` on the adb driver
+- [x] Unit 4 — scale the swipe distances by display density
+- [x] Unit 5 — clear a covering banner before a gesture, coordinate gestures included, and record every dismissal, the orchestrator sweep's included
+- [x] Unit 6 — showcase button on both Android apps, the banner scenario, and the manifest check
+- [x] Unit 7 — unit tests with heads-up dump fixtures
+- [x] Unit 8 — docs (en + ja)
+
+Log:
+
+- 2026-11-20 — Units 1–8 landed together ([#2498](https://github.com/bajutsu-e2e/bajutsu/pull/2498)). Unit 1's measurements are under *Unit 1 result*
+  above, and the scenario passed with the driver clearing the banner on API 33, 34, and 35 emulators,
+  for both showcase apps. Deviations from the Detailed design:
+  - The fallback's manifest marker is a channel note, which the manifest already carries per
+    scenario and per step. The driver adds it once per lease, and the evidence script looks for it.
+    A new manifest field would have recorded the same fact twice.
+  - The log line beside that note is a warning only when the resident channel was lost or failed to
+    start. A lease that opted out of the server, or never built it, logs the line as information,
+    since that run chose the dump on purpose.
+  - `narrowed_root` returns the banner as a third element of its tuple, instead of a second value
+    beside the tree.
+  - The check before a gesture also covers `tapPoint` and the directional `swipe`'s scroll, since
+    both touch a literal point the banner can cover.
+  - The clearance wait is six seconds. A swipe that has not cleared the banner after 2.5 seconds is
+    sent again. One gesture clears at most three banners before it fails.
+  - The banner target sits in the title band above the scrolling page: the top app bar in Compose,
+    the title row in Views. A content row there starts below the banner on API 35. The post button
+    and the tap counter sit at the foot of the page, below the Photos section. Placed above it, they
+    pushed the photo count out of view once the picker's return scrolled the page to its top, and
+    `select_photos` timed out on CI.
+  - The scenario grants `notifications`, since the Views target does not pre-grant it. Its
+    `systemAlert` entry sets a 30-second `pollInterval`, so the per-step sweep does not clear the
+    banner before the driver's own check meets it. A capped three-second `sleep` waits for the
+    banner to slide in, because nothing in the app's tree shows it. Two seconds missed the banner
+    once on an emulator that had just booted.
+  - The evidence script also fails a run whose scenario failed, naming the tap that did not land.
+  - `notification_banner_frame` takes a fresh read on every call, instead of answering from the
+    current tree. The sweep polls it after its swipe and before it, with nothing actuating in
+    between, so a cached answer kept a banner that had left: the confirmation timed out, and the
+    re-check before the swipe could flick at the app. The check before a gesture still reuses the
+    tree its resolve read, and both answer from the post-gesture tree a device-side gesture's reply
+    carried while that tree waits for the next read.
+  - A read that falls back to `uiautomator dump` while the driver waits for a banner to clear fails
+    the gesture rather than counting as a clearance, and the sweep records no dismissal on a degraded
+    channel. A pinned heads-up whose row the extraction cannot read logs a warning once.
+  - `record`, `crawl`, the interactive shell, `serve`'s capture endpoint, and the enrichment replay
+    handle `NotificationBannerBlocking` wherever they already handle `ElementNotTappable`.
 
 ## References
 

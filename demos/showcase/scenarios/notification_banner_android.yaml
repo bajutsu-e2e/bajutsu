@@ -1,0 +1,49 @@
+# A heads-up notification over a control on Android (BE-0496). The Permissions tab's "Post
+# Notification" button posts on a high-importance channel, which SystemUI presents as a heads-up
+# notification over the top of the screen, where the "Banner Target" row sits. Left alone, the
+# target's tap would go to SystemUI's window and open the notification instead. The adb driver
+# reads the banner from the resident dump, swipes it away before the tap, and records the
+# dismissal; the counter then shows that the tap reached its control.
+#
+# The tap alone proves nothing, since a run whose notification never appeared would pass on it too.
+# `scripts/assert_notification_banner_evidence.py` therefore reads the finished run's manifest and
+# fails unless the scenario carries a `notificationBanner` dismissal, or names the cause when the
+# resident channel was down and the guard was off. The android Makefile's `e2e-notification-banner`
+# target runs both.
+#
+# The `systemAlert` entry is a no-op here, since the scenario grants POST_NOTIFICATIONS up front.
+# Its long `pollInterval` is what spaces the orchestrator's per-step banner sweep, which shares the
+# guard's cadence. Without it the sweep after the `sleep` step would clear the banner first. Either path records the dismissal, but the driver's own clearing before a gesture is the
+# one only a device can prove, so this scenario leaves the banner to it.
+#
+# Each id lists both its dotted SPEC form (Compose) and its underscore form (Views), so the selector
+# resolves whichever tree renders (BE-0221). Tagged `android` so the iOS lanes never select it.
+- name: a heads-up notification over a control is cleared before the tap
+  tags: [notification, android]
+  # Granted here, not left to the target: showcase-views keeps the permission dialog its own
+  # Permissions tab exists to raise, so it does not pre-grant POST_NOTIFICATIONS.
+  permissions:
+    notifications: grant
+  preconditions:
+    subject:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
+  interrupts:
+    - { systemAlert: notifications, choice: grant, pollInterval: 30 }
+  steps:
+    - tap: { label: "Permissions", traits: [button] }
+    - wait: { for: { id: [perm.bannerTarget, perm_bannerTarget] }, timeout: 10 }
+    # Both toolkits keep the post button and the counter at the foot of the scrolling page, below the
+    # Photos section, while the target stays in the title row above the page.
+    - scroll: { to: { id: [perm.postNotif, perm_postNotif] }, direction: down }
+    - tap: { id: [perm.postNotif, perm_postNotif] }
+    - sleep:
+        seconds: 3
+        reason: >-
+          SystemUI slides the heads-up notification in about a second after the post, later on a
+          busy emulator, and nothing in the app's tree shows it; a wait has no condition to poll.
+          The android Makefile's target raises SystemUI's heads-up lifetime to a minute, so a slow
+          emulator's steps cannot outlast the banner
+    - tap: { id: [perm.bannerTarget, perm_bannerTarget] }
+  expect:
+    - value: { sel: { id: [perm.bannerTaps, perm_bannerTaps] }, equals: "1" }

@@ -345,6 +345,9 @@ _LANE_PATHS: dict[str, str] = {
         r"|tests/test_fault_injection_ondevice_android\.py$"
         # The pool-isolation assertion this lane's two-device job gates on — see the iOS fragment.
         r"|scripts/assert_pool_isolation\.py$"
+        # The heads-up proof the `notification-banner (adb)` job gates on (BE-0496); no other lane
+        # runs it, so a change confined to it would otherwise fire nothing.
+        r"|scripts/assert_notification_banner_evidence\.py$"
         r"|\.github/workflows/android-e2e\.yml$"
         r"|\.github/actions/setup-android-toolchain/"
         # The lane's own diagnostics collection (BE-0367): the host-telemetry action every job

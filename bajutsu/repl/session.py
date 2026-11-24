@@ -52,6 +52,7 @@ class ReplExit(Exception):
 COMMAND_ERRORS: tuple[type[Exception], ...] = (
     base.SelectorError,
     base.ElementNotTappable,
+    base.NotificationBannerBlocking,
     base.UnsupportedAction,
     device_errors.DeviceError,
     subprocess.CalledProcessError,

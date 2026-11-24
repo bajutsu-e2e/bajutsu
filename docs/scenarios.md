@@ -420,8 +420,26 @@ the `expect`-phase capture a `visual` assertion there reads; and once more befor
 the system-alert guard's own poll interval, so a passing scenario pays it once per interval, not once
 per step. The `expect`-phase and step-level `visual` captures each pay their own query
 unconditionally instead, since either runs far less often than every step. Like the interruption
-path above, all three sites run with no scenario or CLI toggle of their own, on the iOS XCUITest
-backend alone.
+path above, all three sites run with no scenario or CLI toggle of their own. A banner that one of
+the three sites clears reaches the report as the same `notificationBanner` record. No text sits
+beside that record, because the sweep reads the banner's position and nothing else.
+
+On Android, the same guard covers a **heads-up notification**. The system user interface (SystemUI)
+slides this banner over the running app
+([BE-0496](../roadmaps/BE-0496-android-heads-up-notification-dismiss/BE-0496-android-heads-up-notification-dismiss.md)).
+Android has nothing like XCUITest's interruption handling, so the adb backend checks for the banner
+itself before each gesture. When a banner covers the point a tap or a swipe is about to touch, the
+backend swipes it away and waits for its absence before the gesture. The report records that
+dismissal on the step, with the notification's own text beside it.
+
+When the banner still covers the point after six seconds, the step fails and names it rather than
+touching the point: the touch would open the notification's app and carry the run away from the
+scenario under test. The three sweeps above run on Android too.
+
+The Android guard reads the banner from the resident UI Automator server. The backend uses that
+server whenever a build of the server exists. Without the server, the backend reads through
+`uiautomator dump`, which cannot see SystemUI's window. The guard is then off, and the run's channel
+notes say so once.
 
 ### Answering more than one prompt differently
 

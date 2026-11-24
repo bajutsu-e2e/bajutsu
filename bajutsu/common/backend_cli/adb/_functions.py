@@ -389,6 +389,11 @@ def wm_size_cmd(serial: str) -> list[str]:
     return _adb(serial, "shell", "wm", "size")
 
 
+def wm_density_cmd(serial: str) -> list[str]:
+    """`adb shell wm density` — the display density in dpi, for gestures sized in dp (BE-0496)."""
+    return _adb(serial, "shell", "wm", "density")
+
+
 def double_tap_cmd(serial: str, x: float, y: float) -> list[str]:
     """Both taps of a double-tap in a single `adb shell` round-trip (BE-0210) — the non-root fallback.
 

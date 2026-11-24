@@ -109,6 +109,9 @@
 
     <!-- perm / sys -->
     <item name="perm_requestNotif" type="id" />
+    <item name="perm_postNotif" type="id" />
+    <item name="perm_bannerTarget" type="id" />
+    <item name="perm_bannerTaps" type="id" />
     <item name="perm_notif_value" type="id" />
     <item name="perm_notif_authorized" type="id" />
     <item name="perm_requestLocation" type="id" />
