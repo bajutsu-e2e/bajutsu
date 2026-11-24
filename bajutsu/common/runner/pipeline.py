@@ -27,7 +27,13 @@ from bajutsu.common.backends import (
     device_replacement_supported,
     erase_precondition_supported,
 )
-from bajutsu.common.cancellation import CANCELLED_FAILURE, CancelSource, not_cancelled
+from bajutsu.common.cancellation import (
+    CANCELLED_FAILURE,
+    CancelSource,
+    cancelled_teardown_seconds,
+    grace_seconds,
+    not_cancelled,
+)
 from bajutsu.common.capability import capability_preflight
 from bajutsu.common.capability.capability_preflight import steps_for_target
 from bajutsu.common.capability.command_policy import COMMAND_EXECUTIONS_KEY
@@ -255,6 +261,9 @@ class _ScenarioRunner:
     # and app launch, so the app reads seeded data at startup; `afterScenario` runs once its verdict
     # exists. None when no target declares a hook command.
     hooks: HookSession | None = None
+    # The evidence subdirectory this pass writes under (`<engine>/` in a cross-browser matrix), so
+    # one pass's hook logs never overwrite another's. Empty for a single-engine run.
+    evidence_prefix: str = ""
     # Which worker each thread is, for `BAJUTSU_WORKER`: assigned on a thread's first scenario and
     # kept for the run, since the pool carries no worker number of its own.
     worker_index: WorkerIndex = field(default_factory=WorkerIndex)
@@ -522,11 +531,7 @@ class _ScenarioRunner:
         if self.hooks is None or not s.preconditions.inherit_setup:
             return {}
         names = s.target_names if s.targets else [self.eff.target]
-        return {
-            name: phase
-            for name in names
-            if (phase := self.hooks.phases.get(name)) is not None
-        }
+        return {name: phase for name in names if (phase := self.hooks.phases.get(name)) is not None}
 
     def _hook_context(self, s: Scenario, sid: str, **extra: object) -> Callable[[str], HookContext]:
         """Builds one target's hook context for this scenario."""
@@ -538,8 +543,53 @@ class _ScenarioRunner:
             scenario_file=s.source_stem,
             worker=self.worker_index.current(),
             scenario_index=index,
+            log_prefix=self.evidence_prefix,
             **extra,
         )
+
+    def _never_runs(self, i: int, s: Scenario, sid: str) -> RunResult | None:
+        """This scenario's result when it never runs at all, or None when it does.
+
+        Two cases, checked before anything is prepared for it — the hook phases included, since a
+        scenario that never runs must not seed data and then tear it down (BE-0491). The worker
+        check comes first: that scenario would never have run, so its reason is the truer one.
+
+        A cancel that landed before the scenario started (BE-0370) fails it rather than dropping
+        it, so `run_all` still returns exactly one result per scenario in declaration order and
+        nothing downstream needs to know cancellation happened at all — an operator who cancels
+        early in a long suite sees every scenario that never ran counted as a failure too, the
+        accepted consequence of treating a cancelled run as failed at all.
+        """
+        if (worker_failure := self.worker_failures.get(i)) is not None:
+            if self.progress is not None:
+                self.progress(
+                    f"✘ scenario {i + 1}/{self.total}: {s.name} (unsupported on this worker)"
+                )
+            return RunResult(
+                scenario=s.name, ok=False, steps=[], backend="", sid=sid, failure=worker_failure
+            )
+        if self.cancelled():
+            if self.progress is not None:
+                self.progress(f"✘ scenario {i + 1}/{self.total}: {s.name} (cancelled)")
+            return RunResult(
+                scenario=s.name,
+                ok=False,
+                steps=[],
+                backend=self.actuator or "",
+                sid=sid,
+                failure=CANCELLED_FAILURE,
+            )
+        return None
+
+    def _teardown_deadline(self) -> float | None:
+        """When a cancelled run's hook teardown must finish by, or None when nothing cancelled it.
+
+        The same slice of the grace window a scenario's own `cleanup` phase is bounded by, so a
+        `SIGTERM` is not held off for one more `timeout` per entry (default 300s each).
+        """
+        if not self.cancelled():
+            return None
+        return float(time.monotonic() + cancelled_teardown_seconds(grace_seconds()))
 
     def _before_scenario(self, s: Scenario, sid: str) -> HookPhaseResult | None:
         """Run every declared target's `beforeScenario`, or None when there is nothing to run.
@@ -558,7 +608,13 @@ class _ScenarioRunner:
             sandboxes=self.hooks.sandboxes,
         )
 
-    def _after_scenario(self, s: Scenario, sid: str, result: RunResult) -> None:
+    def _after_scenario(
+        self,
+        s: Scenario,
+        sid: str,
+        result: RunResult,
+        outputs: HookOutputs | None = None,
+    ) -> None:
         """Run `afterScenario` for the verdict this scenario reached, and fold in its failures.
 
         The rule a scenario's own `cleanup` follows: a teardown failure becomes the verdict on a
@@ -574,8 +630,12 @@ class _ScenarioRunner:
             "afterScenario",
             phases,
             self._hook_context(s, sid, verdict=verdict),
-            inherited=self.hooks.outputs,
+            # What this scenario's own `beforeScenario` wrote, not just the run-level outputs: a
+            # teardown script reads the very value its `beforeScenario` counterpart created, which
+            # is the shape the item's own example has (delete the user that was just created).
+            inherited=outputs if outputs is not None else self.hooks.outputs,
             sandboxes=self.hooks.sandboxes,
+            deadline=self._teardown_deadline(),
         )
         self.hooks.records += after.records
         if after.ok:
@@ -592,6 +652,10 @@ class _ScenarioRunner:
         skips the launch and the steps, and `afterScenario` once the verdict exists — before the
         verdict is written, so `result.json` carries what a failed teardown did to it.
         """
+        # Ahead of any hook: a scenario the worker cannot run, or one a cancel already landed on,
+        # never runs — so it must not seed data and tear it down either.
+        if (skip := self._never_runs(i, s, sid)) is not None:
+            return skip
         before = self._before_scenario(s, sid)
         if before is not None:
             self.hooks.records += before.records  # type: ignore[union-attr]
@@ -602,17 +666,19 @@ class _ScenarioRunner:
                 steps=[],
                 backend=self.actuator or "",
                 sid=sid,
-                failure=f"beforeScenario: {before.reason}",
+                failure=before.reason,
             )
-            self._after_scenario(s, sid, result)
+            self._after_scenario(s, sid, result, before.outputs)
             self._write_result(s, sid, result)
             return result
         outputs = (before.outputs if before is not None else None) or (
             self.hooks.outputs if self.hooks is not None else None
         )
-        if outputs is not None and (
-            why := missing_hook_key(find_tokens(s.model_dump(by_alias=True)), outputs)
-        ) is not None:
+        if (
+            outputs is not None
+            and (why := missing_hook_key(find_tokens(s.model_dump(by_alias=True)), outputs))
+            is not None
+        ):
             # Checked once the commands have run, since the command decides which keys it writes.
             # The load-time check already proved the hook *name* is one this scenario can read.
             result = RunResult(
@@ -626,8 +692,13 @@ class _ScenarioRunner:
             self._after_scenario(s, sid, result)
             self._write_result(s, sid, result)
             return result
+        if outputs is not None:
+            # A `mask: true` hook value is a secret of this scenario's evidence too: registering it
+            # here masks it in every artifact the scenario writes from now on, and in the finished
+            # result, not only in the hook's own log (BE-0472's seam).
+            derived.register(outputs.secret_values())
         result = self._run_one_impl(i, s, sid, derived, outputs)
-        self._after_scenario(s, sid, result)
+        self._after_scenario(s, sid, result, outputs)
         # Every consumer from here on — result.json, the manifest and reports, CI annotations, a
         # webhook — reads these fields, so masking them once here covers each (BE-0472).
         mask_derived_text(result, Redactor(None).with_values(derived.values))
@@ -703,31 +774,8 @@ class _ScenarioRunner:
         *hook_outputs* is what `beforeRun` and this scenario's own `beforeScenario` entries wrote
         (BE-0491); its values reach the steps as `${hooks.<name>.<key>}`.
         """
-        # Checked ahead of a cancel: this scenario would never have run, so its reason is the truer one.
-        if (worker_failure := self.worker_failures.get(i)) is not None:
-            if self.progress is not None:
-                self.progress(
-                    f"✘ scenario {i + 1}/{self.total}: {s.name} (unsupported on this worker)"
-                )
-            return RunResult(
-                scenario=s.name, ok=False, steps=[], backend="", sid=sid, failure=worker_failure
-            )
-        # A cancel that landed before this scenario started (BE-0370). It is failed rather than
-        # dropped, so `run_all` still returns exactly one result per scenario in declaration order
-        # and nothing downstream needs to know cancellation happened at all — an operator who
-        # cancels early in a long suite sees every scenario that never ran counted as a failure too,
-        # the accepted consequence of treating a cancelled run as failed at all.
-        if self.cancelled():
-            if self.progress is not None:
-                self.progress(f"✘ scenario {i + 1}/{self.total}: {s.name} (cancelled)")
-            return RunResult(
-                scenario=s.name,
-                ok=False,
-                steps=[],
-                backend=self.actuator or "",
-                sid=sid,
-                failure=CANCELLED_FAILURE,
-            )
+        if (skip := self._never_runs(i, s, sid)) is not None:
+            return skip
         if self.progress is not None:
             self.progress(f"▶ scenario {i + 1}/{self.total}: {s.name}")
         # Resolve this scenario's actuator and capability set. With a per-scenario resolver (BE-0240)
@@ -2099,6 +2147,7 @@ def run_all(
     trace_driver: bool = False,
     step_gate: StepGate | None = None,
     hooks: HookSession | None = None,
+    evidence_prefix: str = "",
 ) -> list[RunResult]:
     """Run every scenario, each on a freshly leased device, and return one result per scenario.
 
@@ -2227,8 +2276,13 @@ def run_all(
     # `redact` unions every declared target's own config (BE-0428): a value one target's config
     # marks secret is scrubbed everywhere, not only from that one target's own capture. Widening the
     # redaction set is the safer error, unlike a field with only one right answer (`caps`, `mailbox`).
+    # A `mask: true` hook's values are masked everywhere this run writes, not only in the hook's
+    # own log: the run-level ones are known before the first scenario, so they join the run's
+    # redaction set here (a scenario's own join its `DerivedSecrets`, per scenario).
+    masked_by_hooks = hooks.outputs.secret_values() if hooks is not None else []
     redactor = Redactor(
-        _union_redact(target_effs.values() if target_effs else [eff]), values=secret_values
+        _union_redact(target_effs.values() if target_effs else [eff]),
+        values=[*(secret_values or []), *masked_by_hooks],
     )
     # One mailbox reader for the whole run (it's per-target, not per-device): the `email` step polls
     # it, with ${secrets.*} in the url/headers resolved from the same secret bindings (BE-0046).
@@ -2289,6 +2343,7 @@ def run_all(
         step_gate=step_gate,
         result_redactor=Redactor(None, values=secret_values),
         hooks=hooks,
+        evidence_prefix=evidence_prefix,
     )
     if workers > 1:
         # >1 hands each worker its own device + per-device resources; the runner is frozen and
@@ -2382,7 +2437,14 @@ def run_and_report(
     # it recorded rather than a teardown that happened after it was written (BE-0491). The command's
     # own `finally` backstops the paths that never reach here, and the phase is idempotent.
     if hooks is not None:
-        hooks.after_run("success" if all(r.ok for r in results) else "failure")
+        hooks.after_run(
+            "success" if all(r.ok for r in results) else "failure",
+            deadline=(
+                time.monotonic() + cancelled_teardown_seconds(grace_seconds())
+                if cancelled()
+                else None
+            ),
+        )
     manifest = _assemble_report(
         # The same fold `run_all` already applied, over the same per-target config, so the report
         # pairs each outcome with the step definition that actually produced it — a config-level

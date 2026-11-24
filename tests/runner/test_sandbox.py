@@ -135,12 +135,10 @@ def test_build_run_argv_mounts_the_config_read_only_and_the_raw_area_writable() 
 
 
 def test_exec_argv_carries_the_entry_environment_and_container_cwd() -> None:
-    argv = sandbox.build_exec_argv(
-        "c1", ["./seed.sh"], env={"B": "2", "A": "1"}, cwd="/bundle/sub"
-    )
+    argv = sandbox.build_exec_argv("c1", ["./seed.sh"], env={"B": "2", "A": "1"}, cwd="/bundle/sub")
     assert argv[:2] == ["docker", "exec"]
     assert argv[argv.index("-w") + 1] == "/bundle/sub"
-    assert ["-e", "A=1"] == argv[2:4] and ["-e", "B=2"] == argv[4:6]  # sorted, so argv is stable
+    assert argv[2:4] == ["-e", "A=1"] and argv[4:6] == ["-e", "B=2"]  # sorted, so argv is stable
     assert argv[-2:] == ["c1", "./seed.sh"]
 
 
@@ -155,9 +153,7 @@ def test_wrap_rewrites_the_output_path_and_drops_the_run_directory(tmp_path: Pat
         {"BAJUTSU_OUTPUT": str(out), "BAJUTSU_RUN_DIR": str(tmp_path / "runs"), "SEED": "1"},
         None,
     )
-    passed = dict(
-        argv[i + 1].split("=", 1) for i, a in enumerate(argv) if a == "-e"  # noqa: B905
-    )
+    passed = dict(argv[i + 1].split("=", 1) for i, a in enumerate(argv) if a == "-e")
     assert passed["BAJUTSU_OUTPUT"] == f"{sandbox.HOOK_DIR}/beforeRun/web/0.output"
     assert "BAJUTSU_RUN_DIR" not in passed
     assert passed["SEED"] == "1"
@@ -203,9 +199,7 @@ def test_resolve_image_builds_dockerfile(tmp_path: Path) -> None:
     assert str(tmp_path / "docker/Dockerfile") in rec.exec_calls[0]
 
 
-@pytest.mark.parametrize(
-    "body", [{}, {"dockerImage": "img", "dockerfile": "Dockerfile"}]
-)
+@pytest.mark.parametrize("body", [{}, {"dockerImage": "img", "dockerfile": "Dockerfile"}])
 def test_the_schema_requires_exactly_one_image_source(body: dict[str, str]) -> None:
     # Caught when the config loads, so a run never reaches the container with an ambiguous image.
     with pytest.raises(ValueError, match="exactly one of"):
@@ -215,7 +209,7 @@ def test_the_schema_requires_exactly_one_image_source(body: dict[str, str]) -> N
 def test_resolve_image_rejects_a_dockerfile_escaping_the_config_directory(tmp_path: Path) -> None:
     rec = _Recorder()
     sb = HookSandbox.model_construct(docker_image=None, dockerfile="../../etc/Dockerfile", ports=[])
-    with pytest.raises(sandbox.SandboxError, match="without '..'"):
+    with pytest.raises(sandbox.SandboxError, match=r"without '\.\.'"):
         sandbox.resolve_image(sb, exec_fn=rec.exec_fn, bundle_cwd=str(tmp_path), tag="t")
 
 
@@ -228,7 +222,7 @@ def test_resolve_image_build_failure_fails_loud(tmp_path: Path) -> None:
 
 def test_real_exec_surfaces_docker_stderr() -> None:
     # Without docker's own diagnostic a failure is just "docker command failed" with no clue why.
-    with pytest.raises(sandbox.SandboxError, match="No such file|docker command failed"):
+    with pytest.raises(sandbox.SandboxError, match=r"No such file|docker command failed"):
         sandbox._real_exec(["/nonexistent/docker", "ps"])
 
 
@@ -290,9 +284,7 @@ def test_a_root_worker_hands_the_output_half_to_the_container_user(
     (out / "0.output").write_text("", encoding="utf-8")
     chowned: list[tuple[str, int, int]] = []
     monkeypatch.setattr(sandbox.os, "getuid", lambda: 0)
-    monkeypatch.setattr(
-        sandbox.os, "chown", lambda p, u, g: chowned.append((Path(p).name, u, g))
-    )
+    monkeypatch.setattr(sandbox.os, "chown", lambda p, u, g: chowned.append((Path(p).name, u, g)))
     sandbox.grant_container_access(tmp_path / "out")
     assert ("0.output", 65534, 65534) in chowned
     assert ("out", 65534, 65534) in chowned

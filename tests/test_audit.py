@@ -524,9 +524,7 @@ def test_repeat_audit_still_stops_the_server_when_shutdown_raises(
     )
     monkeypatch.setattr(audit_command, "environment_for", lambda actuator, udid: _FakeEnv())
     monkeypatch.setattr(audit_command, "device_pool", fake_device_pool)
-    monkeypatch.setattr(
-        audit_command, "_start_hooks_or_exit", fake_start_hooks_or_exit
-    )
+    monkeypatch.setattr(audit_command, "_start_hooks_or_exit", fake_start_hooks_or_exit)
     monkeypatch.setattr(audit_command, "run_all", lambda *a, **k: [])
     monkeypatch.setattr(analysis_audit, "repeat_diff", lambda runs: object())
 

@@ -2666,8 +2666,11 @@ def _dispatch_matrix(
                 force_erase_on_retry=plan.force_erase_on_retry,
                 cancelled=plan.cancelled,
                 # Each engine pass runs the scenarios again, so each runs their own
-                # `beforeScenario` / `afterScenario`; the run-level pair wraps every pass once.
+                # `beforeScenario` / `afterScenario`; the run-level pair wraps every pass once. The
+                # engine names the pass's own evidence subdirectory, so one pass's hook logs never
+                # overwrite another's — the same split its other evidence already gets.
                 hooks=plan.hooks,
+                evidence_prefix=engine,
             )
         finally:
             shutdown()
