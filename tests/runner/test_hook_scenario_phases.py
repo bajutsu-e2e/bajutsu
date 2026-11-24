@@ -404,18 +404,202 @@ def test_a_scenario_that_never_runs_still_reports_its_progress_line(tmp_path: Pa
     assert any("cancelled" in line for line in lines)
 
 
-def test_a_cancelled_run_bounds_its_scenario_teardown(tmp_path: Path) -> None:
+def test_a_cancelled_run_bounds_its_scenario_teardown(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     # The teardown deadline is the slice of the grace window a scenario's own `cleanup` uses, so a
-    # cancelled run does not wait one more `timeout` per entry.
+    # cancelled run does not wait one more `timeout` per entry. The cancel has to land *during* the
+    # scenario: one that arrives first returns at `_never_runs`, before any hook runs at all.
+    import time as _time
+
+    from bajutsu.common import cancellation
+
+    monkeypatch.setattr(cancellation, "grace_seconds", lambda: 1.0)
     phases = HookPhases(
         after_scenario=[HookCommand(cmd=_script(tmp_path, "slow2.sh", "sleep 30"), timeout=300)]
     )
     session, eff = _session(tmp_path, phases)
-    # Cancelled from the start: the scenario fails before its steps, and the teardown still runs
-    # under a bound rather than the entry's own 300 seconds.
-    import time as _time
+    landed = {"yet": False}
+
+    def cancelled() -> bool:
+        return landed["yet"]
+
+    def lease(e: object, s: object) -> object:
+        landed["yet"] = True  # the cancel arrives once the scenario is already under way
+        return _lease(e, s)  # type: ignore[arg-type]
 
     started = _time.monotonic()
-    [result] = run_all(eff, [_scenario()], _lease, hooks=session, cancelled=lambda: True)
+    [result] = run_all(eff, [_scenario()], lease, hooks=session, cancelled=cancelled)  # type: ignore[arg-type]
+    elapsed = _time.monotonic() - started
     assert not result.ok
-    assert _time.monotonic() - started < 60  # the grace slice, never the entry's 300s
+    # The teardown ran and was cut short: the entry's own timeout is 300s, the grace slice a second.
+    assert elapsed < 20, elapsed
+    [record] = [r for r in session.records if r.list_name == "afterScenario"]
+    assert record.failure is not None and "timed out" in record.failure
+
+
+def test_a_skipped_and_a_failed_entry_reach_the_report_through_the_manifest(
+    tmp_path: Path,
+) -> None:
+    # The manifest and the report meet here: rename a key on either side and the blocks lose the
+    # skipped and failed rendering while every other test stays green.
+    import json
+
+    from bajutsu.common.capability.route_tokens import HOOKS_KEY, report_hook_phases
+    from bajutsu.common.evidence.redaction import Redactor
+    from bajutsu.common.evidence.sink import RunArtifactWriter
+    from bajutsu.common.runner.pipeline import run_and_report
+    from bajutsu.common.scenario import Redact
+
+    run_dir = tmp_path / "runs" / "r1"
+    phases = HookPhases(
+        after_run=[
+            HookCommand(name="stop", cmd=_script(tmp_path, "boom3.sh", "exit 5")),
+            HookCommand(on="failure", cmd=_script(tmp_path, "never.sh", "true")),
+        ]
+    )
+    eff = replace(_eff(), hooks=phases, base_dir=tmp_path)
+    session = HookSession(
+        runner=HookRunner(
+            raw_dir=raw_root(tmp_path / "runs", "r1"),
+            base_dir=tmp_path,
+            writer=RunArtifactWriter(run_dir, Redactor(Redact(), [])),
+        ),
+        phases=phases_of({"demo": eff}),
+        run_id="r1",
+        run_dir=run_dir,
+    )
+    _results, manifest = run_and_report(
+        eff, [_scenario()], _lease, tmp_path / "runs", "r1", hooks=session
+    )
+    records = json.loads(manifest.read_text(encoding="utf-8"))["provenance"][HOOKS_KEY]
+    [block] = report_hook_phases(records)
+    assert block["list"] == "afterRun" and block["ok"] is False
+    entries = cast("list[dict[str, Any]]", block["entries"])
+    assert entries[0]["reason"] == "exited 5" and entries[0]["ok"] is False
+    assert entries[1]["skipped"] is True and "`on: failure`" in str(entries[1]["reason"])
+
+
+def test_the_report_html_renders_the_hook_block_and_its_log_link(tmp_path: Path) -> None:
+    # The template is the one place a Jinja key typo would ship silently.
+    from bajutsu.common.report.html import html_report
+
+    html = html_report(
+        "r1",
+        [],
+        hook_phases=[
+            {
+                "list": "beforeRun",
+                "ok": False,
+                "entries": [
+                    {
+                        "entry": "srv",
+                        "target": "demo",
+                        "log": "hooks/beforeRun/demo/srv.log",
+                        "skipped": False,
+                        "reason": "exited 1",
+                        "ok": False,
+                    }
+                ],
+            }
+        ],
+    )
+    assert "hook commands" in html
+    assert 'href="hooks/beforeRun/demo/srv.log"' in html
+    assert "demo/srv" in html and "exited 1" in html
+
+
+def test_the_teardown_phase_runs_once_however_often_it_is_asked(tmp_path: Path) -> None:
+    # Every real run asks twice: the pipeline before the report, then the command's own finally.
+    # Running a teardown twice would undo more than its `before` entry created.
+    counted = tmp_path / "count.txt"
+    phases = HookPhases(
+        after_run=[HookCommand(cmd=_script(tmp_path, "once.sh", f"echo x >> {counted}"))]
+    )
+    session, _eff_unused = _session(tmp_path, phases)
+    first = session.after_run("success")
+    assert session.after_run("failure") is first
+    assert counted.read_text().split() == ["x"]
+
+
+def _sandboxed_session(tmp_path: Path, phases: HookPhases) -> tuple[HookSession, Effective]:
+    """A session whose policy sandboxes the config's commands, so `_sandboxes` builds a runtime."""
+    from bajutsu.common.capability.command_gate import CommandGate
+    from bajutsu.common.capability.command_policy import CommandExecution, CommandPolicy
+    from bajutsu.common.runner.hook_session import start_session
+
+    eff = replace(_eff(), hooks=phases, base_dir=tmp_path)
+    gate = CommandGate(
+        policy=CommandPolicy(source="uploaded", execution=CommandExecution(uploaded="sandbox"))
+    )
+    session = start_session(
+        {"demo": eff},
+        run_id="r1",
+        runs_dir=tmp_path / "runs",
+        run_dir=tmp_path / "runs" / "r1",
+        gate=gate,
+        base_dir=tmp_path,
+    )
+    assert session is not None
+    return session, eff
+
+
+def test_a_sandboxed_target_gets_one_container_started_and_removed(tmp_path: Path) -> None:
+    # The security claim of the feature: under `sandbox` the command runs in the container, and the
+    # container is removed when the run ends.
+    from bajutsu.common.runner import sandbox as sandbox_mod
+
+    phases = HookPhases(
+        before_run=[HookCommand(name="srv", cmd="./start.sh")],
+        after_run=[HookCommand(cmd="./stop.sh")],
+        sandbox=__import__(
+            "bajutsu.common.config.schema.hook_command", fromlist=["HookSandbox"]
+        ).HookSandbox.model_validate({"dockerImage": "node:20-slim"}),
+    )
+    session, _eff_unused = _sandboxed_session(tmp_path, phases)
+    [runtime] = session.sandboxes.values()
+    started: list[str] = []
+    removed: list[str] = []
+    object.__setattr__(runtime, "run_fn", lambda argv, log=None: _AliveProc())
+
+    def record_exec(argv: list[str]) -> None:
+        (started if argv[-1] == "true" else removed).append(argv[-1])
+
+    object.__setattr__(runtime, "exec_fn", record_exec)
+    object.__setattr__(session.runner, "_run", lambda argv, env, cwd, timeout, log: 0)
+    assert session.before_run().ok
+    assert started  # the readiness probe ran, so the container was up before the first entry
+    assert session.after_run("success").ok
+    assert runtime.container in removed
+    assert isinstance(runtime, sandbox_mod.SandboxRuntime)
+
+
+def test_a_container_that_cannot_start_fails_the_before_run_phase(tmp_path: Path) -> None:
+    # A bring-up failure is a phase failure: no scenario runs, and the teardown still gets its turn.
+    from bajutsu.common.runner.sandbox import SandboxError
+
+    phases = HookPhases(
+        before_run=[HookCommand(cmd="./start.sh")],
+        sandbox=__import__(
+            "bajutsu.common.config.schema.hook_command", fromlist=["HookSandbox"]
+        ).HookSandbox.model_validate({"dockerImage": "node:20-slim"}),
+    )
+    session, _eff_unused = _sandboxed_session(tmp_path, phases)
+    [runtime] = session.sandboxes.values()
+
+    def refuse(_argv: list[str], _log: object = None) -> object:
+        raise SandboxError("docker: no such image")
+
+    object.__setattr__(runtime, "run_fn", refuse)
+    result = session.before_run()
+    assert not result.ok
+    assert "no such image" in result.reason and "demo sandbox" in result.reason
+
+
+class _AliveProc:
+    """A container process that stays up, so the readiness probe decides when it is ready."""
+
+    returncode = 0
+
+    def poll(self) -> int | None:
+        return None

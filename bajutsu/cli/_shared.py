@@ -892,6 +892,17 @@ def _install_command_gate_or_exit(
     )
 
 
+def _report_teardown(session: HookSession) -> None:
+    """Run the `afterRun` teardown at exit and say so when it failed (BE-0491).
+
+    A command that keeps no verdict of its own still has to report a teardown that did not hold:
+    dropping the phase's result would leave a test tenant undeleted with nobody told.
+    """
+    outcome = session.after_run("success")
+    if not outcome.ok:
+        typer.echo(f"afterRun failed: {outcome.reason}", err=True)
+
+
 def _start_hooks_or_exit(
     eff: Effective,
     *,
@@ -923,14 +934,24 @@ def _start_hooks_or_exit(
     Returns:
         The session, or None when the target declares no hook command at all.
     """
+    from bajutsu.common.evidence.sink import RunArtifactWriter
     from bajutsu.common.runner.hook_session import start_session
 
+    # A writer even for a command that keeps no report: without one each command's log would be
+    # written to the raw area and deleted unread by the teardown, so a failed hook's own error
+    # message would never reach anyone. It also makes `mask: true` mean something here.
+    writer = (
+        RunArtifactWriter(run_dir or (runs_dir or Path()) / run_id, Redactor(eff.redact))
+        if runs_dir is not None or run_dir is not None
+        else None
+    )
     try:
         session = start_session(
             {eff.target: eff},
             run_id=run_id,
             runs_dir=runs_dir,
             run_dir=run_dir,
+            writer=writer,
             named_commands=worker.named_commands if worker is not None else None,
             base_dir=eff.base_dir,
         )
@@ -944,7 +965,7 @@ def _start_hooks_or_exit(
     result = session.before_run()
     if result.ok:
         if teardown_at_exit:
-            atexit.register(lambda: session.after_run("success"))
+            atexit.register(lambda: _report_teardown(session))
         return session
     session.after_run("failure")
     typer.echo(result.reason)

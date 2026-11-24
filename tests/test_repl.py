@@ -961,25 +961,18 @@ def _grid_worker(tmp_path: Path) -> Path:
 
 def _stub_launch(
     monkeypatch: pytest.MonkeyPatch, driver: FakeDriver | None, *, error: str = ""
-) -> list[str]:
+) -> None:
     """Stand in for the device boundary, so the command body around it runs for real.
 
-    The driver launch, the udid probe, and the launch server are the external edges; stubbing just
-    those leaves config resolution, actuator selection, the shell loop, and the exit path covered.
-    Returns the list the launch-server teardown appends to, so a test can assert it was stopped.
+    The driver launch, the udid probe, and the target's hook commands are the external edges;
+    stubbing just those leaves config resolution, actuator selection, the shell loop, and the exit
+    path covered. The hook teardown is registered inside `_start_hooks_or_exit` itself (BE-0491),
+    which this replaces, so the stub has none of its own to run.
     """
-    stopped: list[str] = []
     monkeypatch.setattr(
         "bajutsu.common.backend_cli.simctl.resolve_udid", lambda u, run=None: "FAKE-UDID"
     )
-
-    class _FakeHooks:
-        """Stands in for the run's hook session; `after_run` is what `repl` registers at exit."""
-
-        def after_run(self, verdict: str) -> None:
-            stopped.append("stop")
-
-    monkeypatch.setattr(repl_cli, "_start_hooks_or_exit", lambda eff, **kw: _FakeHooks())
+    monkeypatch.setattr(repl_cli, "_start_hooks_or_exit", lambda eff, **kw: None)
 
     def launch(*_args: object, **_kwargs: object) -> tuple[FakeDriver, None]:
         if error:
@@ -988,7 +981,6 @@ def _stub_launch(
         return driver, None
 
     monkeypatch.setattr(repl_cli, "launch_driver", launch)
-    return stopped
 
 
 def test_repl_never_resolves_a_udid_for_the_web_backend(

@@ -10,10 +10,12 @@ import pytest
 
 from bajutsu.common.capability.command_gate import CommandGate
 from bajutsu.common.capability.command_policy import CommandExecution, CommandPolicy, NamedCommand
-from bajutsu.common.config.schema.hook_command import HookCommand
+from bajutsu.common.config import HookPhases
+from bajutsu.common.config.schema.hook_command import HookCommand, HookSandbox
 from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.common.runner import hook_commands as hc
+from bajutsu.common.runner import sandbox
 from bajutsu.common.scenario import Redact
 
 
@@ -33,6 +35,11 @@ def _runner(tmp_path: Path, **kw: object) -> hc.HookRunner:
 
 def _ctx(**kw: object) -> hc.HookContext:
     return hc.HookContext(run_id="20260101-000000", target="web", **kw)  # type: ignore[arg-type]
+
+
+def _ctx_for(target: str, **kw: object) -> hc.HookContext:
+    """The context one target's commands receive, for a `run_phase` across several targets."""
+    return hc.HookContext(run_id="20260101-000000", target=target, **kw)  # type: ignore[arg-type]
 
 
 def test_entries_run_in_order_to_completion(tmp_path: Path) -> None:
@@ -592,3 +599,242 @@ def test_an_evidence_prefix_separates_one_matrix_pass_from_another(tmp_path: Pat
         ),
     )
     assert result.records[0].log == "hooks/firefox/beforeScenario/web/00/user.log"
+
+
+def test_a_run_time_refusal_is_recorded_under_the_entry_s_own_field(tmp_path: Path) -> None:
+    # The field a refusal lands under must match the one a command that ran is recorded with, or a
+    # reader of `manifest.json` cannot line the two up (BE-0492).
+    gate = CommandGate(
+        policy=CommandPolicy(source="uploaded", execution=CommandExecution(uploaded="deny"))
+    )
+    runner = _runner(tmp_path, gate=gate)
+    runner.run_list(
+        "beforeRun", [HookCommand(name="srv", cmd=_script(tmp_path, "d.sh", "true"))], _ctx()
+    )
+    assert [r["field"] for r in gate.records] == ["hooks.beforeRun[srv].cmd"]
+
+
+def test_a_named_command_refusal_is_recorded_under_the_same_field(tmp_path: Path) -> None:
+    gate = CommandGate(
+        policy=CommandPolicy(source="uploaded", execution=CommandExecution(uploaded="deny"))
+    )
+    runner = _runner(tmp_path, gate=gate)
+    runner.run_list("afterRun", [HookCommand(use="seed")], _ctx(verdict="success"))
+    assert [r["field"] for r in gate.records] == ["hooks.afterRun[0].cmd"]
+
+
+def test_the_manifest_records_are_ordered_by_phase_then_scenario(tmp_path: Path) -> None:
+    # Parallel workers append to one list, so arrival order depends on thread timing; two identical
+    # runs must still write identical evidence.
+    records = [
+        hc.HookRecord("afterRun", "stop", "web", None),
+        hc.HookRecord("beforeScenario", "user", "web", None, scenario=2),
+        hc.HookRecord("beforeRun", "srv", "web", None),
+        hc.HookRecord("afterScenario", "rm", "web", None, scenario=1),
+        hc.HookRecord("beforeScenario", "user", "web", None, scenario=0),
+    ]
+    out = hc.hook_record_dicts(records)
+    assert [(r["list"], r.get("scenario")) for r in out] == [
+        ("beforeRun", None),
+        ("beforeScenario", 0),
+        ("beforeScenario", 2),
+        ("afterScenario", 1),
+        ("afterRun", None),
+    ]
+
+
+def test_a_named_pipe_at_the_output_path_fails_rather_than_hanging(tmp_path: Path) -> None:
+    # The entry's own `timeout` is already spent by the time the output file is read, so a blocking
+    # open would hold the run with nothing left to bound it (prime directive 2).
+    raw = hc.raw_root(tmp_path / "runs", "r1")
+    runner = hc.HookRunner(raw_dir=raw, base_dir=tmp_path)
+    planted = raw / hc.OUT_SUBDIR / "beforeRun" / "web" / "fifo.output"
+    planted.parent.mkdir(parents=True, exist_ok=True)
+    body = 'rm -f "$BAJUTSU_OUTPUT"; mkfifo "$BAJUTSU_OUTPUT"'
+    result = runner.run_list(
+        "beforeRun",
+        [HookCommand(name="fifo", cmd=_script(tmp_path, "fifo.sh", body), timeout=5)],
+        _ctx(),
+    )
+    assert not result.ok
+    assert "could not be read" in result.reason
+    assert planted.is_fifo()  # the entry failed instead of blocking on the open
+
+
+def test_an_output_file_the_command_deleted_fails_the_entry(tmp_path: Path) -> None:
+    # Reporting a lost file as an empty one would mark the entry green and leave a scenario blaming
+    # the script for not writing a value it could not read.
+    runner = _runner(tmp_path)
+    result = runner.run_list(
+        "beforeRun",
+        [HookCommand(name="gone", cmd=_script(tmp_path, "rm.sh", 'rm -f "$BAJUTSU_OUTPUT"'))],
+        _ctx(),
+    )
+    assert not result.ok and "could not be read" in result.reason
+
+
+def test_both_halves_of_the_raw_area_exist_before_any_entry_runs(tmp_path: Path) -> None:
+    # The writable half is the container's bind-mount source; a missing source would have the Docker
+    # daemon create it as root instead.
+    raw = hc.raw_root(tmp_path / "runs", "r1")
+    for half in (hc.OUT_SUBDIR, hc.LOGS_SUBDIR):
+        assert (raw / half).is_dir()
+        assert (raw / half).stat().st_mode & 0o777 == 0o700
+
+
+def test_a_masked_entry_s_own_log_is_masked_too(tmp_path: Path) -> None:
+    # Registering the mask after the copy would leave the entry's own log in plaintext until the
+    # end-of-run recopy, which a run killed earlier never reaches.
+    run_dir = tmp_path / "runs" / "r1"
+    writer = RunArtifactWriter(run_dir, Redactor(Redact(), []))
+    runner = _runner(tmp_path, writer=writer)
+    body = 'echo "pw=hunter2" > $BAJUTSU_OUTPUT; echo "generated pw=hunter2"'
+    result = runner.run_list(
+        "beforeRun",
+        [HookCommand(name="cred", mask=True, cmd=_script(tmp_path, "own.sh", body))],
+        _ctx(run_dir=run_dir),
+    )
+    assert result.ok, result.reason
+    assert "hunter2" not in (run_dir / "hooks" / "beforeRun" / "web" / "cred.log").read_text()
+
+
+def test_a_skipped_conditional_entry_records_why(tmp_path: Path) -> None:
+    runner = _runner(tmp_path)
+    result = runner.run_list(
+        "afterRun",
+        [HookCommand(on="failure", cmd=_script(tmp_path, "nope.sh", "true"))],
+        _ctx(verdict="success"),
+    )
+    record = result.records[0]
+    assert record.skipped and record.reason is not None
+    assert "`on: failure`" in record.reason and "'success'" in record.reason
+
+
+def test_a_repeated_output_key_fails_the_entry(tmp_path: Path) -> None:
+    # `port=8080` followed by `port=` (an unset variable) is the silently-missing value the
+    # malformed-line rule exists to prevent.
+    values, why = hc.parse_outputs("port=8080\nport=\n")
+    assert values == {} and why is not None and "again" in why
+
+
+def test_the_multi_target_order_is_declared_then_reversed(tmp_path: Path) -> None:
+    # The last target prepared is the first one torn down, so a dependency is never stopped while
+    # the thing using it is still up.
+    order = tmp_path / "targets.txt"
+    runner = _runner(tmp_path)
+    phases = {
+        name: HookPhases(
+            before_run=[
+                HookCommand(cmd=_script(tmp_path, f"b-{name}.sh", f"echo before-{name} >> {order}"))
+            ],
+            after_run=[
+                HookCommand(cmd=_script(tmp_path, f"a-{name}.sh", f"echo after-{name} >> {order}"))
+            ],
+        )
+        for name in ("alpha", "beta")
+    }
+    hc.run_phase(runner, "beforeRun", phases, _ctx_for)
+    hc.run_phase(runner, "afterRun", phases, lambda t: _ctx_for(t, verdict="success"))
+    assert order.read_text().split() == [
+        "before-alpha",
+        "before-beta",
+        "after-beta",
+        "after-alpha",
+    ]
+
+
+def test_a_before_list_stops_at_the_first_failing_target(tmp_path: Path) -> None:
+    ran = tmp_path / "second.txt"
+    runner = _runner(tmp_path)
+    phases = {
+        "alpha": HookPhases(before_run=[HookCommand(cmd=_script(tmp_path, "fa.sh", "exit 1"))]),
+        "beta": HookPhases(
+            before_run=[HookCommand(cmd=_script(tmp_path, "fb.sh", f"touch {ran}"))]
+        ),
+    }
+    result = hc.run_phase(runner, "beforeRun", phases, _ctx_for)
+    assert not result.ok and not ran.exists()
+
+
+def test_an_after_list_visits_every_target_even_after_a_failure(tmp_path: Path) -> None:
+    ran = tmp_path / "both.txt"
+    runner = _runner(tmp_path)
+    phases = {
+        "alpha": HookPhases(
+            after_run=[HookCommand(cmd=_script(tmp_path, "aa.sh", f"echo a >> {ran}"))]
+        ),
+        "beta": HookPhases(after_run=[HookCommand(cmd=_script(tmp_path, "ab.sh", "exit 1"))]),
+    }
+    result = hc.run_phase(runner, "afterRun", phases, lambda t: _ctx_for(t, verdict="failure"))
+    assert not result.ok
+    assert ran.read_text().split() == ["a"]  # beta failed first (reverse order), alpha still ran
+
+
+def test_one_target_s_outputs_reach_the_next_target_s_command(tmp_path: Path) -> None:
+    seen = tmp_path / "chain.txt"
+    runner = _runner(tmp_path)
+    phases = {
+        "alpha": HookPhases(
+            before_run=[
+                HookCommand(
+                    name="a", cmd=_script(tmp_path, "ca.sh", 'echo "k=v" > $BAJUTSU_OUTPUT')
+                )
+            ]
+        ),
+        "beta": HookPhases(
+            before_run=[
+                HookCommand(cmd=_script(tmp_path, "cb.sh", f'echo "$BAJUTSU_HOOK__a__k" > {seen}'))
+            ]
+        ),
+    }
+    result = hc.run_phase(runner, "beforeRun", phases, _ctx_for)
+    assert result.ok, result.reason
+    assert seen.read_text().strip() == "v"
+
+
+def test_two_targets_sharing_a_hook_name_is_refused(tmp_path: Path) -> None:
+    # A `${hooks.<name>.<key>}` token could not say which command it meant.
+    phases = {
+        "alpha": HookPhases(before_run=[HookCommand(name="srv", cmd="true")]),
+        "beta": HookPhases(before_run=[HookCommand(name="srv", cmd="true")]),
+    }
+    why = hc.duplicate_hook_name(phases)
+    assert why is not None and "'srv'" in why
+    assert hc.duplicate_hook_name({"alpha": phases["alpha"]}) is None
+
+
+def test_a_sandboxed_entry_runs_in_the_container_and_is_recorded_as_such(tmp_path: Path) -> None:
+    # The security claim of the feature: under `sandbox` the command must not run on the host.
+    calls: list[list[str]] = []
+
+    def fake(
+        argv: list[str], env: dict[str, str], cwd: Path | None, timeout: float, log: Path | None
+    ) -> int:
+        calls.append(argv)
+        return 0
+
+    gate = CommandGate(
+        policy=CommandPolicy(source="uploaded", execution=CommandExecution(uploaded="sandbox"))
+    )
+    raw = hc.raw_root(tmp_path / "runs", "20260101-000000")
+    runtime = sandbox.SandboxRuntime(
+        sandbox=HookSandbox.model_validate({"dockerImage": "node:20-slim"}),
+        bundle_cwd=tmp_path,
+        raw_dir=raw / hc.OUT_SUBDIR,
+    )
+    runner = _runner(tmp_path, gate=gate, runner=fake)
+    result = runner.run_list(
+        "beforeRun", [HookCommand(name="srv", cmd="./s.sh")], _ctx(), sandbox=runtime
+    )
+    assert result.ok, result.reason
+    assert calls[0][:2] == ["docker", "exec"]
+    assert [r["decision"] for r in gate.records] == ["sandboxed"]
+
+
+def test_a_sandboxed_entry_without_a_container_fails_naming_the_block(tmp_path: Path) -> None:
+    gate = CommandGate(
+        policy=CommandPolicy(source="uploaded", execution=CommandExecution(uploaded="sandbox"))
+    )
+    runner = _runner(tmp_path, gate=gate)
+    result = runner.run_list("beforeRun", [HookCommand(cmd="./s.sh")], _ctx())
+    assert not result.ok and "hooks.sandbox" in result.reason

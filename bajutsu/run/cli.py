@@ -2425,6 +2425,7 @@ def _dispatch(plan: _RunPlan) -> tuple[list[RunResult], Path, list[dict[str, str
                 config_source=plan.config_source,
                 label=plan.label,
                 gate=plan.command_gate,
+                hooks=plan.hooks,
             ),
             before.reason,
         )
@@ -2456,6 +2457,9 @@ class _UnstartedRun:
     config_source: dict[str, str] | None
     label: str
     gate: CommandGate
+    # The run's hook session, so a run that failed in `beforeRun` still renders the hook block and
+    # the link to the log its command wrote (BE-0491).
+    hooks: HookSession | None = None
 
 
 def _fail_before_scenarios(run: _UnstartedRun, message: str) -> NoReturn:
@@ -2476,6 +2480,7 @@ def _fail_before_scenarios(run: _UnstartedRun, message: str) -> NoReturn:
         run.runs_dir,
         run.run_id,
         secret_values=run.secret_values,
+        hooks=run.hooks,
         source_name=run.source_name,
         description=run.description,
         plan_sources=run.plan_sources,
@@ -2975,17 +2980,17 @@ def _finish(
             not_applicable=not_applicable,
         )
     typer.echo(f"{'PASS' if ok else 'FAIL'}  {manifest}")
-    # A failed teardown leaves every scenario's verdict alone and fails the run itself, as a failed
-    # `beforeRun` does (BE-0491). Printed after the verdict line, which `serve` reads this run's id
-    # from, so the id reaches it either way.
-    teardown = plan.hooks.finished if plan.hooks is not None else None
-    if teardown is not None and not teardown.ok:
-        typer.echo(f"afterRun failed: {teardown.reason}")
-        raise typer.Exit(2)
     if plan.zip_run:
         _write_zip(manifest)
     if plan.evidence_store:
         _upload_evidence(manifest, plan.evidence_store)
+    # A failed teardown leaves every scenario's verdict alone and fails the run itself, as a failed
+    # `beforeRun` does (BE-0491). Checked after `--zip` and `--evidence-store`, which a run whose
+    # teardown misbehaved is exactly the run someone wants the evidence of.
+    teardown = plan.hooks.finished if plan.hooks is not None else None
+    if teardown is not None and not teardown.ok:
+        typer.echo(f"afterRun failed: {teardown.reason}")
+        raise typer.Exit(2)
     raise typer.Exit(0 if ok else 1)
 
 

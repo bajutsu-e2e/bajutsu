@@ -6,6 +6,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 
 from bajutsu.common.config.schema.hook_command import HookCommand, HookSandbox
+from bajutsu.common.config.schema.hooks import COMMAND_LISTS
 
 # The two lists a run meets once, around every scenario, and the two it meets per scenario.
 RUN_LISTS: tuple[str, ...] = ("beforeRun", "afterRun")
@@ -29,13 +30,18 @@ class HookPhases:
 
     @property
     def lists(self) -> dict[str, list[HookCommand]]:
-        """The four lists keyed by the name a report block and a log path use."""
-        return {
+        """The four lists keyed by the name a report block and a log path use.
+
+        Keyed off `COMMAND_LISTS` rather than restating the names, so the lifecycle order lives in
+        one place and a fifth list cannot be added here and forgotten there.
+        """
+        by_name = {
             "beforeRun": self.before_run,
             "beforeScenario": self.before_scenario,
             "afterScenario": self.after_scenario,
             "afterRun": self.after_run,
         }
+        return {name: by_name[name] for name in COMMAND_LISTS}
 
     @property
     def any_command(self) -> bool:

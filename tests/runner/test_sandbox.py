@@ -43,6 +43,7 @@ class _Recorder:
         ready_after: int = 0,
     ) -> None:
         self.run_calls: list[list[str]] = []
+        self.run_logs: list[Any] = []
         self.exec_calls: list[list[str]] = []
         self._proc = proc or _FakeProc(code=None)
         self._build_error = build_error
@@ -50,8 +51,9 @@ class _Recorder:
         self._ready_after = ready_after
         self._probes = 0
 
-    def run_fn(self, argv: list[str]) -> Any:
+    def run_fn(self, argv: list[str], log: Any = None) -> Any:
         self.run_calls.append(argv)
+        self.run_logs.append(log)
         return self._proc
 
     def exec_fn(self, argv: list[str]) -> None:
@@ -148,9 +150,10 @@ def test_wrap_rewrites_the_output_path_and_drops_the_run_directory(tmp_path: Pat
     rec = _Recorder()
     runtime = _runtime(tmp_path, rec)
     out = tmp_path / "raw" / "beforeRun" / "web" / "0.output"
-    argv, _ = runtime.wrap(
+    argv = runtime.wrap(
         ["./seed.sh"],
-        {"BAJUTSU_OUTPUT": str(out), "BAJUTSU_RUN_DIR": str(tmp_path / "runs"), "SEED": "1"},
+        {"BAJUTSU_OUTPUT": str(out), "BAJUTSU_RUN_DIR": str(tmp_path / "runs")},
+        {"SEED": "1"},
         None,
     )
     passed = dict(argv[i + 1].split("=", 1) for i, a in enumerate(argv) if a == "-e")
@@ -159,11 +162,23 @@ def test_wrap_rewrites_the_output_path_and_drops_the_run_directory(tmp_path: Pat
     assert passed["SEED"] == "1"
 
 
+def test_wrap_passes_none_of_the_worker_s_own_environment(tmp_path: Path) -> None:
+    # The container holds a command the worker does not trust, and the worker's process carries its
+    # own credentials; handing those over would undo what --cap-drop / --read-only / --user are for.
+    rec = _Recorder()
+    runtime = _runtime(tmp_path, rec)
+    argv = runtime.wrap(["./seed.sh"], {"BAJUTSU_RUN_ID": "r1"}, {"SEED": "1"}, None)
+    passed = dict(argv[i + 1].split("=", 1) for i, a in enumerate(argv) if a == "-e")
+    assert sorted(passed) == ["BAJUTSU_RUN_ID", "SEED"]
+    for leaked in ("AWS_SECRET_ACCESS_KEY", "ANTHROPIC_API_KEY", "GITHUB_TOKEN", "HOME", "PATH"):
+        assert leaked not in passed
+
+
 def test_wrap_resolves_a_cwd_inside_the_mounted_config_directory(tmp_path: Path) -> None:
     rec = _Recorder()
     runtime = _runtime(tmp_path, rec)
     (tmp_path / "bundle" / "scripts").mkdir(parents=True)
-    argv, _ = runtime.wrap(["./s.sh"], {}, tmp_path / "bundle" / "scripts")
+    argv = runtime.wrap(["./s.sh"], {}, {}, tmp_path / "bundle" / "scripts")
     assert argv[argv.index("-w") + 1] == f"{sandbox.WORKDIR}/scripts"
 
 
@@ -172,7 +187,7 @@ def test_wrap_falls_back_to_the_workdir_for_a_cwd_outside_the_mount(tmp_path: Pa
     rec = _Recorder()
     runtime = _runtime(tmp_path, rec)
     (tmp_path / "bundle").mkdir(parents=True)
-    argv, _ = runtime.wrap(["./s.sh"], {}, tmp_path / "elsewhere")
+    argv = runtime.wrap(["./s.sh"], {}, {}, tmp_path / "elsewhere")
     assert argv[argv.index("-w") + 1] == sandbox.WORKDIR
 
 
@@ -270,7 +285,7 @@ def test_one_container_serves_the_whole_run(tmp_path: Path) -> None:
     runtime = _runtime(tmp_path, rec)
     runtime.start()
     for _ in range(3):
-        runtime.wrap(["./s.sh"], {}, None)
+        runtime.wrap(["./s.sh"], {}, {}, None)
     assert len(rec.run_calls) == 1
 
 
@@ -299,3 +314,119 @@ def test_a_non_root_worker_changes_no_owner(
     )
     (tmp_path / "out").mkdir()
     sandbox.grant_container_access(tmp_path / "out")
+
+
+def test_grant_container_access_without_a_root_touches_nothing_above_the_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Walking the parents without a bound would chown the runs directory, the project directory and
+    # the filesystem root to `nobody` on a root worker.
+    chowned: list[str] = []
+    monkeypatch.setattr(sandbox.os, "getuid", lambda: 0)
+    monkeypatch.setattr(sandbox.os, "chown", lambda p, u, g: chowned.append(str(p)))
+    out = tmp_path / "runs" / ".hook-raw" / "r1" / "out"
+    out.mkdir(parents=True)
+    sandbox.grant_container_access(out)
+    assert chowned == [str(out)]
+
+
+def test_grant_container_access_stops_at_the_given_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    chowned: list[str] = []
+    monkeypatch.setattr(sandbox.os, "getuid", lambda: 0)
+    monkeypatch.setattr(sandbox.os, "chown", lambda p, u, g: chowned.append(str(p)))
+    root = tmp_path / "runs" / ".hook-raw" / "r1" / "out"
+    target = root / "beforeRun" / "web" / "0.output"
+    target.parent.mkdir(parents=True)
+    target.write_text("", encoding="utf-8")
+    sandbox.grant_container_access(target, root=root)
+    assert str(root) in chowned
+    assert str(root.parent) not in chowned  # never above the mount
+    assert str(tmp_path) not in chowned
+
+
+def test_a_chown_that_fails_is_reported_rather_than_suppressed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A silently failed hand-over leaves the container unable to write its output file, which would
+    # otherwise surface as a hook that exited 0 having written nothing.
+    monkeypatch.setattr(sandbox.os, "getuid", lambda: 0)
+
+    def refuse(*_a: object) -> None:
+        raise PermissionError("read-only mount")
+
+    monkeypatch.setattr(sandbox.os, "chown", refuse)
+    (tmp_path / "out").mkdir()
+    with pytest.raises(sandbox.SandboxError, match="could not hand"):
+        sandbox.grant_container_access(tmp_path / "out")
+
+
+def test_dockers_own_diagnostic_reaches_the_error(tmp_path: Path) -> None:
+    # Exit 125 is docker's "the run could not start"; the sentence saying why is the one thing the
+    # operator needs, and a DEVNULL would have discarded it.
+    log = tmp_path / "docker.log"
+    log.write_text(
+        "docker: Error response from daemon: port is already allocated.\n", encoding="utf-8"
+    )
+    rec = _Recorder(proc=_FakeProc(code=125))
+    runtime = _runtime(tmp_path, rec, docker_log=log)
+    with pytest.raises(sandbox.SandboxError, match="port is already allocated"):
+        runtime.start()
+
+
+def test_the_last_probe_refusal_is_reported_with_the_readiness_timeout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # "the container is not up yet" and "the daemon refuses this user" look the same to the probe;
+    # reporting a bare readiness timeout for the second sends the operator to the wrong place.
+    monkeypatch.setattr(sandbox, "_READY_TIMEOUT", 0.05)
+    monkeypatch.setattr(sandbox, "_POLL_INTERVAL", 0.01)
+
+    class _Denied(_Recorder):
+        def exec_fn(self, argv: list[str]) -> None:
+            self.exec_calls.append(argv)
+            if argv[-1] == "true":
+                raise sandbox.SandboxError(
+                    "permission denied while trying to connect to the socket"
+                )
+
+    rec = _Denied()
+    runtime = _runtime(tmp_path, rec)
+    with pytest.raises(sandbox.SandboxError, match="permission denied"):
+        runtime.start()
+
+
+def test_a_container_that_cannot_be_removed_is_reported(tmp_path: Path) -> None:
+    # Suppressing every cause would report a clean teardown while the container keeps its ports,
+    # which fails every later run of that config at bring-up.
+    said: list[str] = []
+
+    class _Stuck(_Recorder):
+        def exec_fn(self, argv: list[str]) -> None:
+            self.exec_calls.append(argv)
+            if argv[:3] == ["docker", "rm", "-f"]:
+                raise sandbox.SandboxError("Cannot connect to the Docker daemon")
+
+    runtime = _runtime(tmp_path, _Stuck(), log=said.append)
+    runtime.stop()
+    assert any("could not remove container" in line for line in said)
+    assert any("docker rm -f" in line for line in said)
+
+
+def test_an_image_built_from_a_dockerfile_is_removed_with_its_container(tmp_path: Path) -> None:
+    # The tag carries the container's own uuid, so leaving it behind adds one image per run.
+    rec = _Recorder()
+    sb = HookSandbox.model_validate({"dockerfile": "Dockerfile"})
+    runtime = _runtime(tmp_path, rec, sandbox=sb)
+    runtime.start()
+    runtime.stop()
+    assert ["docker", "image", "rm", "-f", f"bajutsu-sandbox:{runtime.container}"] in rec.exec_calls
+
+
+def test_a_named_image_is_never_removed(tmp_path: Path) -> None:
+    rec = _Recorder()
+    runtime = _runtime(tmp_path, rec)  # dockerImage: node:20-slim
+    runtime.start()
+    runtime.stop()
+    assert not any(c[:3] == ["docker", "image"] for c in rec.exec_calls)

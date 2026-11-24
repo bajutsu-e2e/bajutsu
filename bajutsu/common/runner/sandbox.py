@@ -16,11 +16,11 @@ from __future__ import annotations
 
 import contextlib
 import os as os
-import shlex
 import subprocess
+import sys
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -28,7 +28,7 @@ from bajutsu.common.config.schema.hook_command import HookSandbox
 
 # The container runs as a long-lived process we must poll for early exit; the short docker commands
 # (`build`, `exec`, `rm`) run to completion. Defaults reach the real daemon; tests inject fakes.
-RunFn = Callable[[list[str]], "subprocess.Popen[bytes]"]
+RunFn = Callable[..., "subprocess.Popen[bytes]"]
 ExecFn = Callable[[list[str]], None]
 
 WORKDIR = "/bundle"  # where the config's directory is bind-mounted read-only inside the container
@@ -53,8 +53,17 @@ class SandboxError(RuntimeError):
     """A sandboxed hook could not run. Raised loudly — never a fallback to the bare host."""
 
 
-def _real_run(argv: list[str]) -> subprocess.Popen[bytes]:
-    return subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+def _real_run(argv: list[str], log: Path | None = None) -> subprocess.Popen[bytes]:
+    """Start the container, keeping docker's own output where a failure can be read from it.
+
+    Written to a file rather than a pipe: the container outlives this call, and a pipe it inherited
+    would keep the reader waiting. Without a log path the output is dropped, which only a caller
+    that has nowhere to put it should do.
+    """
+    if log is None:
+        return subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    sink = log.open("ab")
+    return subprocess.Popen(argv, stdout=sink, stderr=subprocess.STDOUT)
 
 
 def _real_exec(argv: list[str]) -> None:
@@ -92,28 +101,44 @@ def grant_container_access(path: Path, *, root: Path | None = None) -> None:
     directory over, so the owner is changed rather than the mode widened: the files stay
     owner-only, with the container's own user as that owner.
 
-    Every directory on the way to the file is handed over too, up to *root* when given: a file the
-    container owns is still out of reach behind a root-owned `0700` directory, and the per-entry
-    directories are created after the container has started.
+    With *root*, the directories between *path* and *root* are handed over too, that root included:
+    a file the container owns is still out of reach behind a root-owned `0700` directory, and the
+    per-entry directories are created after the container has started. Without *root*, *path* alone
+    is handed over — never its parents, which would walk out of the raw area and up to the
+    filesystem root.
 
     A no-op for every non-root worker, where the container already runs as the file's owner.
+
+    Raises:
+        SandboxError: An owner could not be changed, which would leave the container unable to
+            write the output file it is handed.
     """
     if os.getuid() != 0:
         return
     uid, gid = (int(part) for part in _NOBODY.split(":"))
-    targets = [path, *(path.rglob("*") if path.is_dir() else [])]
-    # The parents, from the file up to (and including) the mounted root, so the container can
-    # traverse to what it owns.
-    parent = path.parent
-    stop = (root or path).resolve()
-    while True:
-        targets.append(parent)
-        if parent.resolve() == stop or parent == parent.parent:
-            break
-        parent = parent.parent
+    targets = [path, *(sorted(path.rglob("*")) if path.is_dir() else [])]
+    if root is not None:
+        stop = root.resolve()
+        parent = path.parent
+        while True:
+            targets.append(parent)
+            if parent.resolve() == stop or parent == parent.parent:
+                break
+            parent = parent.parent
     for target in targets:
-        with contextlib.suppress(OSError):
+        try:
             os.chown(target, uid, gid)
+        except OSError as e:
+            raise SandboxError(
+                f"could not hand {target} to the container's user ({uid}:{gid}): {e} — a sandboxed "
+                "command could not write its $BAJUTSU_OUTPUT there"
+            ) from e
+
+
+def _default_log(msg: str) -> None:
+    """Where a runtime with no logger of its own says what it did: the operator's terminal."""
+    sys.stderr.write(msg + "\n")
+    sys.stderr.flush()
 
 
 def _container_name() -> str:
@@ -246,6 +271,11 @@ class SandboxRuntime:
     exec_fn: ExecFn = _real_exec
     log: Callable[[str], None] | None = None
     container: str = field(default_factory=_container_name)
+    # Where docker's own output goes, so a container that cannot start says why. None drops it.
+    docker_log: Path | None = None
+    # The tag `resolve_image` built from a `dockerfile`, which `stop` removes; a named `dockerImage`
+    # is the operator's own and is left alone.
+    built_tag: str | None = field(default=None, repr=False)
     _proc: subprocess.Popen[bytes] | None = field(default=None, repr=False)
 
     def start(self) -> None:
@@ -256,12 +286,12 @@ class SandboxRuntime:
                 became ready within the bounded wait.
         """
         say = self.log or (lambda _m: None)
-        image, _ = resolve_image(
-            self.sandbox,
-            exec_fn=self.exec_fn,
-            bundle_cwd=str(self.bundle_cwd),
-            tag=f"bajutsu-sandbox:{self.container}",
+        tag = f"bajutsu-sandbox:{self.container}"
+        image, record = resolve_image(
+            self.sandbox, exec_fn=self.exec_fn, bundle_cwd=str(self.bundle_cwd), tag=tag
         )
+        if record.get("source") == "dockerfile":
+            self.built_tag = tag
         say(f"hooks(sandbox): starting container {self.container} from {image}")
         self._proc = self.run_fn(
             build_run_argv(
@@ -270,40 +300,69 @@ class SandboxRuntime:
                 container_name=self.container,
                 bundle_cwd=str(self.bundle_cwd),
                 raw_dir=str(self.raw_dir),
-            )
+            ),
+            self.docker_log,
         )
         deadline = time.monotonic() + _READY_TIMEOUT
+        # The last probe refusal, kept rather than dropped: "the container is not up yet" and "the
+        # docker daemon refuses this user" look the same here, and reporting a readiness timeout
+        # for the second sends the operator looking in the wrong place.
+        last: SandboxError | None = None
         while time.monotonic() < deadline:
             if self._proc.poll() is not None:
                 raise SandboxError(
                     f"hooks sandbox container exited (code {self._proc.returncode}) before it was "
-                    f"ready — image {image!r}"
+                    f"ready — image {image!r}{self._docker_said()}"
                 )
             try:
                 self.exec_fn(["docker", "exec", self.container, "true"])
-            except SandboxError:
+            except SandboxError as e:
+                last = e
                 time.sleep(_POLL_INTERVAL)
                 continue
             return
         self.stop()
+        said = f"; the last `docker exec` said: {last}" if last is not None else ""
         raise SandboxError(
             f"hooks sandbox container {self.container} was not ready after {_READY_TIMEOUT:g}s"
+            f"{said}{self._docker_said()}"
         )
 
+    def _docker_said(self) -> str:
+        """The tail of docker's own output, or an empty string when there is none to read.
+
+        Exit 125 is docker's "the run could not start", and the sentence explaining it — a port
+        already allocated, no such image, an invalid mount — is the one thing the operator needs.
+        """
+        if self.docker_log is None:
+            return ""
+        try:
+            text = self.docker_log.read_text(encoding="utf-8", errors="replace").strip()
+        except OSError:
+            return ""
+        return f" — docker said: {text[-2000:]}" if text else ""
+
     def wrap(
-        self, argv: list[str], env: dict[str, str], cwd: Path | None
-    ) -> tuple[list[str], dict[str, str]]:
-        """This entry's argv and environment, rewritten to run inside the container."""
-        inside = dict(env)
-        inside.pop("BAJUTSU_RUN_DIR", None)
+        self,
+        argv: list[str],
+        bajutsu_env: Mapping[str, str],
+        declared: Mapping[str, str],
+        cwd: Path | None,
+    ) -> list[str]:
+        """This entry's argv, rewritten to run inside the container.
+
+        Two environments go in, and nothing else: *bajutsu_env* is the `BAJUTSU_*` set Bajutsu
+        built for this entry, and *declared* is the `env` the config wrote on it. The worker's own
+        environment is deliberately absent. The container holds a command the worker does not
+        trust, and the worker's process carries its own credentials — handing those over would
+        undo what `--cap-drop=ALL`, `--read-only` and `--user` are for.
+        """
+        inside = {k: v for k, v in bajutsu_env.items() if k.startswith("BAJUTSU_")}
+        inside.pop("BAJUTSU_RUN_DIR", None)  # the run directory has no mount inside the container
         if (out := inside.get("BAJUTSU_OUTPUT")) is not None:
             inside["BAJUTSU_OUTPUT"] = self.in_container(Path(out))
-        # The host's own environment means nothing inside the container, so only the variables
-        # Bajutsu and the entry set are passed through.
-        passed = {k: v for k, v in inside.items() if k.startswith("BAJUTSU_")}
-        passed.update({k: v for k, v in env.items() if not k.startswith("BAJUTSU_")})
         container_cwd = self.in_bundle(cwd) if cwd is not None else None
-        return build_exec_argv(self.container, argv, env=passed, cwd=container_cwd), {}
+        return build_exec_argv(self.container, argv, env={**inside, **declared}, cwd=container_cwd)
 
     def in_container(self, host_path: Path) -> str:
         """A path inside the mounted raw area, as the container sees it."""
@@ -318,6 +377,10 @@ class SandboxRuntime:
         try:
             rel = Path(host_path).resolve().relative_to(self.bundle_cwd.resolve())
         except ValueError:
+            (self.log or _default_log)(
+                f"hooks(sandbox): cwd {host_path} lies outside the mounted config directory; "
+                f"the command runs in {WORKDIR} instead"
+            )
             return WORKDIR
         return WORKDIR if rel == Path() else f"{WORKDIR}/{rel.as_posix()}"
 
@@ -332,16 +395,22 @@ class SandboxRuntime:
         "No such container" — that is success for teardown, and must not mask the real error on the
         early-exit path.
         """
-        say = self.log or (lambda _m: None)
+        say = self.log or _default_log
         say(f"hooks(sandbox): stopping container {self.container}")
-        with contextlib.suppress(SandboxError):
+        try:
             self.exec_fn(["docker", "rm", "-f", self.container])
-
-
-def sandbox_command_line(cmd: str) -> list[str]:
-    """A hook entry's `cmd` split the way the host path splits it, for the container to run.
-
-    Kept beside the container so both paths read one rule: the command is split like a shell would
-    and then run without one, so a pipe or a redirect needs `sh -c` or a script either way.
-    """
-    return shlex.split(cmd)
+        except SandboxError as e:
+            if "No such container" not in str(e):
+                # Every other cause leaves the container running and holding its published ports,
+                # which fails every later run of this config at bring-up. Saying so beats a clean
+                # teardown report that is not true.
+                say(
+                    f"hooks(sandbox): could not remove container {self.container}: {e} — it may "
+                    f"still be running and holding its published port(s); remove it with "
+                    f"`docker rm -f {self.container}`"
+                )
+        if self.built_tag is not None:
+            # An image built from the config's `dockerfile` is tagged per run, so leaving it behind
+            # would add one image per run to the worker's disk.
+            with contextlib.suppress(SandboxError):
+                self.exec_fn(["docker", "image", "rm", "-f", self.built_tag])

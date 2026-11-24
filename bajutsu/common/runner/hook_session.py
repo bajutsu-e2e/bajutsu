@@ -8,6 +8,7 @@ outputs `beforeRun` wrote stay visible to each scenario's own hooks and to `afte
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -17,6 +18,7 @@ from bajutsu.common.capability.command_policy import NamedCommand
 from bajutsu.common.config import Effective, HookPhases
 from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.common.runner.hook_commands import (
+    LOGS_SUBDIR,
     OUT_SUBDIR,
     HookContext,
     HookFailure,
@@ -24,6 +26,7 @@ from bajutsu.common.runner.hook_commands import (
     HookPhaseResult,
     HookRecord,
     HookRunner,
+    _default_log,
     duplicate_hook_name,
     raw_root,
     run_phase,
@@ -33,6 +36,8 @@ from bajutsu.common.runner.sandbox import (
     SandboxRuntime,
     grant_container_access,
 )
+
+_logger = logging.getLogger(__name__)
 
 
 def phases_of(effs: Mapping[str, Effective]) -> dict[str, HookPhases]:
@@ -86,7 +91,7 @@ class HookSession:
         """
         for target, runtime in self.sandboxes.items():
             try:
-                grant_container_access(runtime.raw_dir)
+                grant_container_access(runtime.raw_dir, root=runtime.raw_dir)
                 runtime.start()
             except SandboxError as e:
                 return HookPhaseResult(
@@ -121,13 +126,22 @@ class HookSession:
             deadline=deadline,
         )
         self.records += result.records
+        # Latched the moment the phase itself is done, before anything that could raise: a second
+        # `after_run` would re-run every teardown command, which would undo more than the `before`
+        # entries created.
+        self.finished = result
         for runtime in self.sandboxes.values():
             runtime.stop()
-        # Taken again before the raw area goes: a background process a script started may have
-        # written to its log after the script itself exited.
-        self.runner.recopy(self.records)
-        self.runner.cleanup()
-        self.finished = result
+        try:
+            # Taken again before the raw area goes: a background process a script started may have
+            # written to its log after the script itself exited.
+            self.runner.recopy(self.records)
+        except OSError as e:
+            # Evidence, not the verdict: a full disk or a read-only run directory must not end the
+            # run here, and must not leave the raw area behind either.
+            _logger.warning("afterRun: copying the hook logs into the run directory failed (%s)", e)
+        finally:
+            self.runner.cleanup()
         return result
 
 
@@ -199,6 +213,10 @@ def _sandboxes(
             sandbox=phase.sandbox,
             bundle_cwd=base_dir or Path.cwd(),
             raw_dir=raw_dir / OUT_SUBDIR,
+            # Docker's own output, in the half of the raw area no container can reach: a container
+            # that cannot start then says why instead of leaving a bare exit code.
+            docker_log=raw_dir / LOGS_SUBDIR / f"docker-{target}.log",
+            log=_default_log,
         )
         for target, phase in phases.items()
         if phase.sandbox is not None

@@ -290,7 +290,9 @@ def _repeat_audit(
             shutdown()
         finally:
             if hooks is not None:
-                hooks.after_run("failure" if failed else "success")
+                outcome = hooks.after_run("failure" if failed else "success")
+                if not outcome.ok:
+                    typer.echo(f"afterRun failed: {outcome.reason}")
 
     if as_json:
         typer.echo(json.dumps([dataclasses.asdict(r) for r in reports], indent=2))

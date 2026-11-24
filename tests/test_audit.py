@@ -29,6 +29,7 @@ from bajutsu.analysis.audit import (
 from bajutsu.cli import app
 from bajutsu.common.assertions import AssertionResult
 from bajutsu.common.orchestrator import RunResult, StepOutcome
+from bajutsu.common.runner.hook_commands import HookPhaseResult
 from bajutsu.common.scenario import load_expanded_scenarios, load_scenarios
 
 runner = CliRunner()
@@ -509,10 +510,14 @@ def test_repeat_audit_still_stops_the_server_when_shutdown_raises(
         return object(), shutdown
 
     class _FakeHooks:
-        """Stands in for the run's hook session: `after_run` is the teardown audit must still run."""
+        """Stands in for the run's hook session: `after_run` is the teardown audit must still run.
 
-        def after_run(self, verdict: str) -> None:
+        It returns a real phase result, since `audit` reads it to report a teardown that failed.
+        """
+
+        def after_run(self, verdict: str) -> HookPhaseResult:
             stopped.append(True)
+            return HookPhaseResult()
 
     def fake_start_hooks_or_exit(eff: object, **_kw: object) -> object:
         return _FakeHooks()

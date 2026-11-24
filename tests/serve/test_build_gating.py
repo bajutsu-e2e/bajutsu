@@ -218,6 +218,25 @@ def test_a_hook_command_adds_its_source_requirement(tmp_path: Path) -> None:
     assert _command_needs(tmp_path / "missing.yaml", "web", uploaded) == {}
 
 
+def test_a_named_hook_command_routes_on_the_worker_s_own_script(tmp_path: Path) -> None:
+    # A `use:` entry needs a worker that runs named commands from this source *and* one that has
+    # installed that very script — two separate tokens (BE-0491).
+    cfg = tmp_path / "named.yaml"
+    cfg.write_text(
+        "targets:\n  web:\n    platform: web\n    subject: {url: 'http://127.0.0.1:8/'}\n"
+        "    hooks:\n"
+        "      beforeRun: [{use: seed}]\n"
+        "      afterRun: [{cmd: ./stop.sh}]\n",
+        encoding="utf-8",
+    )
+    uploaded = replace(_state(tmp_path).binding, upload=_Upload())  # type: ignore[arg-type]
+    assert sorted(_command_needs(cfg, "web", uploaded)) == [
+        "command-execution:uploaded",
+        "named-command:seed",
+        "named-execution:uploaded",
+    ]
+
+
 @pytest.mark.parametrize("source", ["uploaded", "remote"])
 def test_an_untrusted_build_never_reaches_a_worker_without_the_policy(source: str) -> None:
     # A worker that predates BE-0492 runs whatever `build` holds, and a build adds no routing
