@@ -793,3 +793,51 @@ def test_referenced_ids_uses_only_the_primary_candidate() -> None:
         "  expect:\n    - count: { sel: { idMatches: [stable.row.*, stable_row_*] }, atLeast: 1 }\n"
     )
     assert referenced_ids(scenarios[0]) == {"stable.refresh", "stable.row.*"}
+
+
+def test_repeat_cli_rejects_an_unresolvable_hook_token(tmp_path: Path) -> None:
+    # BE-0501: a token naming no visible hook fails before any device work, as `run` does.
+    scn, cfg = _audit_project(tmp_path)
+    scn.write_text(
+        "- name: x\n  hooks: {beforeScenario: [{name: card, cmd: x}]}\n"
+        "  steps:\n    - type: {text: '${hooks.nope.id}', into: {id: a}}\n",
+        encoding="utf-8",
+    )
+    argv = ["audit", str(scn), "--repeat", "2", "--target", "demo", "--config", str(cfg)]
+    result = runner.invoke(app, argv)
+    assert result.exit_code == 2
+    assert "names no hook" in result.output
+
+
+def test_repeat_runs_a_scenario_s_own_commands_every_time(tmp_path: Path) -> None:
+    # BE-0501: audit replays the scenario, so its preparation runs before each repeat.
+    seen = tmp_path / "seen.txt"
+    script = tmp_path / "seed.sh"
+    script.write_text(f"#!/bin/sh\necho x >> {seen}\nexit 3\n", encoding="utf-8")
+    script.chmod(0o755)
+    scn = tmp_path / "s.yaml"
+    scn.write_text(
+        f"- name: x\n  hooks: {{beforeScenario: [{{cmd: '{script}'}}]}}\n"
+        "  steps:\n    - tap: { id: home.start }\n",
+        encoding="utf-8",
+    )
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "targets:\n  demo:\n    platform: web\n    subject: {url: 'http://127.0.0.1:8/'}\n",
+        encoding="utf-8",
+    )
+    argv = ["audit", str(scn), "--repeat", "2", "--target", "demo", "--backend", "fake"]
+    result = runner.invoke(app, [*argv, "--config", str(cfg)])
+    assert seen.read_text().split() == ["x", "x"], result.output
+
+
+def test_a_failed_teardown_of_a_repeat_is_reported(tmp_path: Path) -> None:
+    scn, cfg = _audit_project(tmp_path)
+    cfg.write_text(
+        "targets:\n  demo:\n    platform: web\n    subject: {url: 'http://127.0.0.1:8/'}\n"
+        "    hooks: {afterRun: [{cmd: 'false'}]}\n",
+        encoding="utf-8",
+    )
+    argv = ["audit", str(scn), "--repeat", "2", "--target", "demo", "--backend", "fake"]
+    result = runner.invoke(app, [*argv, "--config", str(cfg)])
+    assert "afterRun failed: " in result.output

@@ -506,3 +506,9 @@ def test_the_rendered_report_labels_the_scenario_level() -> None:
     page = html_report("r1", [], hook_phases=phases)
     assert "beforeScenario (target)" in page and "web/seed" in page
     assert "beforeScenario (scenario)" in page and "pay/card" in page
+
+
+def test_two_targets_sharing_a_hook_name_start_no_session(tmp_path: Path) -> None:
+    effs = _effs(web=HookPhases(before_run=_named("a")), admin=HookPhases(after_run=_named("a")))
+    with pytest.raises(ValueError, match="both declare a hook named 'a'"):
+        start_session(effs, run_id="r", runs_dir=tmp_path)

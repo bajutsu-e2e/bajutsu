@@ -23,6 +23,7 @@ from bajutsu.common.capability.command_policy import CommandExecution
 from bajutsu.serve.commands import run_command
 from bajutsu.serve.helpers import scenario_command_needs
 from bajutsu.serve.jobs import _build_app
+from bajutsu.serve.operations import dispatch
 from bajutsu.serve.operations.dispatch import (
     _command_needs,
     _config_source,
@@ -332,7 +333,9 @@ def test_a_client_written_scenario_is_labelled_apart_from_its_config() -> None:
     assert _scenario_source(Runnable(arg="a.yaml")) is None
 
 
-def test_a_scenario_in_an_artifact_is_read_for_routing(tmp_path: Path) -> None:
+def test_a_scenario_in_an_artifact_is_read_for_routing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     path = tmp_path / "s.zip"
     with zipfile.ZipFile(path, "w") as archive:
         archive.writestr("a.yaml", "text")
@@ -340,6 +343,8 @@ def test_a_scenario_in_an_artifact_is_read_for_routing(tmp_path: Path) -> None:
     with zipfile.ZipFile(path) as archive:
         assert _zip_text(archive, "a.yaml") == "text"
         assert _zip_text(archive, "b.yaml") is None
+        monkeypatch.setattr(dispatch, "_MAX_ROUTED_SCENARIO", 3)
+        assert _zip_text(archive, "a.yaml") is None  # left to the worker's own check
 
 
 @pytest.mark.parametrize("text", [None, "- name: [", "- nonsense: 1\n"])
