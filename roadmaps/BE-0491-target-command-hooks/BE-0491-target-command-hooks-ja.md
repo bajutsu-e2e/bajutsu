@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0491") |
+| 実装 PR | [#2512](https://github.com/bajutsu-e2e/bajutsu/pull/2512) |
 | トピック | シナリオ記述機能 |
 | 関連 | [BE-0036](../BE-0036-utility-steps/BE-0036-utility-steps-ja.md)、[BE-0059](../BE-0059-launch-target-server/BE-0059-launch-target-server-ja.md)、[BE-0090](../BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution-ja.md)、[BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks-ja.md)、[BE-0449](../BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs-ja.md)、[BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md) |
 <!-- /BE-METADATA -->
@@ -380,7 +381,7 @@ hooks:
 
 ログ：
 
-- 2026-11-24：9つの作業単位をまとめて実装しました。4つのリスト、エントリのモデル、`hooks.sandbox`
+- 2026-11-24（[#2512](https://github.com/bajutsu-e2e/bajutsu/pull/2512)）：9つの作業単位をまとめて実装しました。4つのリスト、エントリのモデル、`hooks.sandbox`
   ブロックをスキーマに追加し、`services.server` と `services.mockServer` は置き換え先を示す読み込み
   エラーとともに削除しました。実行部は各エントリを独自のプロセスグループでシェルを介さずに起動し、
   エントリ自身の `timeout` で上限を与え、出力とログをパイプではなくファイルへ書きます。値は
