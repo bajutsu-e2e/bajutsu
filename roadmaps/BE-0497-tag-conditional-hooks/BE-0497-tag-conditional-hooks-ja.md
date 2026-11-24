@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0497") |
+| 実装 PR | [#2514](https://github.com/bajutsu-e2e/bajutsu/pull/2514) |
 | トピック | シナリオ記述機能 |
 | 関連 | [BE-0034](../BE-0034-tags-selective-runs/BE-0034-tags-selective-runs-ja.md)、[BE-0491](../BE-0491-target-command-hooks/BE-0491-target-command-hooks-ja.md)、[BE-0492](../BE-0492-worker-command-execution-policy/BE-0492-worker-command-execution-policy-ja.md) |
 <!-- /BE-METADATA -->
@@ -253,7 +254,7 @@ CI の smoke の段階でも、欠陥を報告します。
 
 ログ：
 
-- 2026-11-24 — 全単位をまとめて実装しました。BE-0491 と BE-0501 の上に積んでいます。
+- 2026-11-24 — 全単位をまとめて実装しました。BE-0491 と BE-0501 の上に積んでいます（[#2514](https://github.com/bajutsu-e2e/bajutsu/pull/2514)）。
   - 両方の階層の hook エントリが `when: { tags, exclude }` を受け付けます。判定は、`--tag` と `--exclude` と同じ述語（`bajutsu/common/scenario/tags.py`）です。
   - `run` は `beforeRun` の前にシナリオ集合を確定します。`audit` は再生するシナリオを使い、`record`、`crawl`、`repl` は空の集合を渡します。
   - `run` と `audit` は、タグが一致しないエントリの出力を読むシナリオを拒否します。選択されず、`targets` も書いていないシナリオは、実行できるターゲットが config に 1 つもないときだけ失敗します。そのシナリオが駆動するターゲットは `--target` で決まるからです。

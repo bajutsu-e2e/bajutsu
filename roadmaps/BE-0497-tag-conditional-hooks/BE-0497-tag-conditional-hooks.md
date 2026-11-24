@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0497") |
+| Implementing PR | [#2514](https://github.com/bajutsu-e2e/bajutsu/pull/2514) |
 | Topic | Scenario authoring features |
 | Related | [BE-0034](../BE-0034-tags-selective-runs/BE-0034-tags-selective-runs.md), [BE-0491](../BE-0491-target-command-hooks/BE-0491-target-command-hooks.md), [BE-0492](../BE-0492-worker-command-execution-policy/BE-0492-worker-command-execution-policy.md) |
 <!-- /BE-METADATA -->
@@ -251,7 +252,7 @@ wait for the sibling proposal.
 
 Log:
 
-- 2026-11-24 — All units landed together, stacked on BE-0491 and BE-0501.
+- 2026-11-24 — All units landed together, stacked on BE-0491 and BE-0501 ([#2514](https://github.com/bajutsu-e2e/bajutsu/pull/2514)).
   - A hook entry at either level takes `when: { tags, exclude }`, under the predicate that `--tag` and `--exclude` share (`bajutsu/common/scenario/tags.py`).
   - `run` fixes its scenario set before `beforeRun`, `audit` uses the scenarios it replays, and `record`, `crawl`, and `repl` pass an empty set.
   - `run` and `audit` reject a scenario that reads the output of an entry its tags skip. A deselected scenario that names no `targets` fails only when no target of the config could run it, since `--target` decides what it drives.
