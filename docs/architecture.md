@@ -956,7 +956,6 @@ Each red run spent about half an hour of a runner billed at 10x. BE-0361 measure
 
 | Feature | Status | Location |
 |---|---|---|
-| `services.mockServer` (external mock command) | Config schema only. The `cmd`/`port` external server is **not implemented**. Scenario `mocks` (declarative in-protocol stubs, implemented) supersede it. | `common/config/schema/mock_server.py` `MockServer` |
 | `appTrace` interval evidence on the **web** backend | `appTrace` streams the app's own log: `os_log` on iOS, a tag-filtered `logcat` on Android (BE-0478). The Playwright backend implements the `video` and `deviceLog`-equivalent (console / page-error) interval kinds instead (BE-0054), but has no `appTrace` analogue. | `common/evidence/intervals` · `common/drivers/playwright` |
 | `nativeZ` on a **SwiftUI** or **Jetpack Compose** screen | Both reporting paths are shipped (BE-0355), but each declarative toolkit generates its own accessibility elements and exposes no underlying one to measure. SwiftUI materializes its elements only for an assistive technology attached to the process, so the app's own view tree carries no identifiers. Compose forwards no app-declared extra-data key through its node generation. UIKit and Android `View` screens in an opted-in app report a position. SwiftUI and Compose screens read `None`. The field is diagnostic only: no selector or occlusion check reads it. | `BajutsuKit/Sources/BajutsuKit/BajutsuZOrder.swift` · `BajutsuAndroid/…/BajutsuZOrder.kt` |
 

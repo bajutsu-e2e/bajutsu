@@ -862,7 +862,8 @@ config plus a scenario list into a report.
 | `types.py` | `Lease` | A live driver bundled with its sink, relaunch, control, and collector. |
 | `device_provider.py` | `DeviceProvider`, `DeviceLease`, `_LocalProvider`, `_AppiumProvider` | Where the run's devices come from: local, or a reserved cloud device. |
 | `recovery.py` | `RetryDecision`, `CrashRecoveryBudget`, `RunCrashRecoveryBudget` | Whether a crashed backend earns a retry, and how much wall-clock time recovery may spend. |
-| `launch.py` · `launch_server.py` | `launch_driver` | Build the driver and bring the app up. |
+| `launch.py` | `launch_driver` | Build the driver and bring the app up. |
+| `hook_commands.py` · `hook_session.py` | `HookRunner` · `HookSession` | Run the target's external hook commands around the run and each scenario (BE-0491). |
 | `mailbox.py` | transport registry | Resolve the `email` step's transport by kind. |
 
 **`_ScenarioRunner`** is a frozen dataclass that holds one run's shared context. The context covers

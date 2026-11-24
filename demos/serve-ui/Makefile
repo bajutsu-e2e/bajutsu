@@ -34,7 +34,8 @@ serve-ui: web-scenarios
 
 # End-to-end: drive the serve Web UI through the Playwright backend with the Tier-A deterministic
 # scenarios. The app under test (the inner serve) is brought up and torn down by the config's
-# `launchServer` (targets.webui), so the run is self-contained — no hand-started server here. No
+# `hooks.beforeRun` / `hooks.afterRun` pair (targets.webui), so the run is self-contained — no
+# hand-started server here. No
 # device, no Simulator, no LLM — pass/fail is the scenarios' machine assertions only.
 e2e: web-deps web-scenarios
 	cd $(ROOT) && uv run bajutsu run --target webui --backend web --config $(CONFIG) --no-network

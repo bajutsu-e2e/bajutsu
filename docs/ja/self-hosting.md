@@ -146,7 +146,8 @@ CSRF の Origin チェックと **`Host` ヘッダの許可リスト**は、ト�
 
 config は、run を実行するマシンで Bajutsu が実行するコマンドを宣言できます。
 
-- `services.server.cmd` は、テスト対象のアプリをホストするサーバーを起動します。
+- `hooks.*` のエントリの `cmd` は、シナリオが必要とするものを用意します。テスト対象のアプリをホストする
+  サーバーの起動もここに含まれます。
 - `subject.build` は、アプリのバイナリがないときにアプリをビルドします。
 - `driver.runner.build` は、`.xctestrun` ファイルがないときに XCUITest runner をビルドします。
 
@@ -189,7 +190,8 @@ commandExecution:
 
 | コマンド | `allow` | `sandbox` | `named` | `deny` |
 |---|---|---|---|---|
-| `services.server.cmd` | worker のホストで実行します | Docker コンテナの中で実行します | 拒否します | 拒否します |
+| `hooks.*` のエントリの `cmd` | worker のホストで実行します | run ごとに 1 つのコンテナの中で実行します | 拒否します | 拒否します |
+| `hooks.*` のエントリの `use` | worker のホストで実行します | worker のホストで実行します | worker のホストで実行します | 拒否します |
 | `subject.build` | バイナリがないとき、ホストで実行します | 実行しません | 実行しません | 実行しません |
 | `driver.runner.build` | runner がないとき、ホストで実行します | 実行しません | 実行しません | 実行しません |
 | named command | ホストで実行します | ホストで実行します | ホストで実行します | 拒否します |
@@ -204,23 +206,26 @@ Linux のコンテナはそれを提供しないからです。`allow` 以外の
 どちらかがないと run は失敗し、エラーはビルドを止めたモードを示します。アップロードされたバンドルは、
 もともとこの形でバイナリを同梱しています。
 
-`allow` と `sandbox` では、readiness URL がすでに応答するサーバーを再利用し、コマンドは実行しません。
-`named` と `deny` では、サーバーがすでに応答していても、宣言された `services.server.cmd` を拒否します。
-ポリシーはプローブより前に決まるので、拒否した config の readiness URL を run がプローブすることはありません。
+`named` と `deny` では、config が書き下したコマンドラインをすべて拒否します。ポリシーはデバイスを扱う前に
+決まるので、コマンドが実行されない run はデバイスを予約する前に失敗します。`use` で worker 導入済みの
+スクリプトを指すエントリは、`deny` 以外のすべてのモードで実行されます。そのスクリプトは運用者自身の
+コードだからです。
 
-### サーバーコマンドをコンテナで実行する
+### config のコマンドをコンテナで実行する
 
-`sandbox` では、サーバーコマンドを worker のホスト上の使い捨ての Docker コンテナで実行します。
-config は `services.server` に、ランタイムを示す2つのフィールドのうち**ちょうど1つ**と、ポートを書きます。
+`sandbox` では、ターゲットの hook コマンドを worker のホスト上の使い捨ての Docker コンテナで実行します。
+1 つのコンテナが run 全体を受け持つので、`beforeRun` のスクリプトが起動したサーバーは `afterRun` まで
+応答し続けます。config は `hooks.sandbox` に、ランタイムを示す2つのフィールドのうち**ちょうど1つ**と、
+publish するポートを書きます。
 
 - `dockerImage` は、公開済みのベースイメージを指定します。例は `node:20-slim` です。
 - `dockerfile` は、config のディレクトリの中のパスを指定します。worker が `docker build` でビルドします。
-- `port` は、コンテナの中でサーバーが待ち受けるポートを指定します。
+- `ports` は、コンテナの中でコマンドが待ち受けるポートを並べます。
 
-コンテナは全ケーパビリティを剥奪し、権限昇格を禁じます。非 root ユーザーで、読み取り専用のルート
-ファイルシステムと `tmpfs` のスクラッチの上で動きます。CPU、メモリ、プロセス数には上限があります。
-公開するのは1つのポートだけで、ホストのループバックのポートへ publish します。worker は run の後に
-コンテナを破棄します。
+コンテナは全ケーパビリティを剥奪し、権限昇格を禁じます。worker 自身の非 root ユーザーで、読み取り専用の
+ルートファイルシステムと `tmpfs` のスクラッチの上で動きます。CPU、メモリ、プロセス数には上限があります。
+宣言された各ポートを、ホストの同じループバックポートへ publish します。worker は run の後にコンテナを
+破棄します。
 
 worker のホストには Docker が必要です。ファイルで出所を明示的に `sandbox` にした worker は、起動時に
 `PATH` 上の `docker` を確かめます。`docker` がなければ、該当するキーを示すメッセージを出して終了します。
@@ -264,7 +269,8 @@ worker は、ポリシーをルーティングトークンとして広告しま�
 - `named-execution:<source>`：モードが `deny` でない出所ごとに広告します。
 - `named-command:<name>`：`namedCommands` のエントリごとに広告します。
 
-config が `services.server.cmd` を宣言する job は、その出所の `command-execution:<source>` を要求します。
+config が `hooks.*` のコマンドラインを宣言する job は、その出所の `command-execution:<source>` を要求します。
+named command を使う job は、`named-execution:<source>` とそのスクリプトの `named-command:<name>` を要求します。
 ビルドはトークンを足しません。worker がビルド済みのバイナリを持っているかを、`serve` は知りえないからです。
 条件に合う worker が接続していないあいだ、job は待ち続けます。BE-0492 より前の worker はこれらの
 トークンを1つも広告しないので、そうした job を lease しません。
@@ -281,7 +287,7 @@ run は、出会った統制対象のコマンドを記録します。記録は 
 
 | フィールド | 意味 |
 |---|---|
-| `field` | config がコマンドを宣言した場所。例は `services.server.cmd` です |
+| `field` | config がコマンドを宣言した場所。例は `hooks.beforeRun[server].cmd` です |
 | `cmd` | コマンドライン。`${secrets.*}` の値はマスクします |
 | `source`、`mode` | config の出所と、適用したモード |
 | `decision` | `ran`、`sandboxed`、`refused` のいずれか |
@@ -1368,8 +1374,8 @@ Linux の web ワーカーに渡って失敗しかねません。それは本物
   予約済みの接頭辞は `environment:`、`host:`、`machine:`、`device:`、`cap:`、`setting:`、`job:`、`platform:`、
   `kind:`、`command-execution:`、`named-execution:`、`named-command:` です。ワーカーがいずれも自分で埋めるからです。ワーカーは起動時に、そのトークンを
   拒否します。そのため上書きによって、ワーカーの `commandExecution` ブロックが拒む config の出所を名乗ることはできません。
-- **サーバーコマンドを持つジョブの振り分け。** config が `services.server.cmd`
-  を宣言するジョブは、`command-execution:<source>` を要求します。出所は `uploaded`、`remote`、`operator`
+- **config のコマンドを持つジョブの振り分け。** config が `hooks.*` のコマンドラインを
+  宣言するジョブは、`command-execution:<source>` を要求します。出所は `uploaded`、`remote`、`operator`
   のいずれかです。ワーカーは、モードが `allow` の出所と、Docker があるときの `sandbox` の出所について、
   このトークンを広告します。`deny` でない出所ごとの `named-execution:<source>` と、named command ごとの
   `named-command:<name>` も広告します。ビルドはトークンを足しません。ビルドするかどうかは、ワーカーが run の

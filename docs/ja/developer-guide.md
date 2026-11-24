@@ -860,7 +860,8 @@ iOS と Android と web を 1 つのインターフェースで動かせます�
 | `types.py` | `Lease` | 生きたドライバに、シンク、再起動、デバイス操作、コレクタを束ねたものです。 |
 | `device_provider.py` | `DeviceProvider`、`DeviceLease`、`_LocalProvider`、`_AppiumProvider` | run のデバイスの出どころです。ローカルか、予約したクラウド端末かを決めます。 |
 | `recovery.py` | `RetryDecision`、`CrashRecoveryBudget`、`RunCrashRecoveryBudget` | クラッシュした backend に再試行を与えるか、回復に何秒まで費やせるかを決めます。 |
-| `launch.py` · `launch_server.py` | `launch_driver` | ドライバを組み立て、アプリを立ち上げます。 |
+| `launch.py` | `launch_driver` | ドライバを組み立て、アプリを立ち上げます。 |
+| `hook_commands.py`・`hook_session.py` | `HookRunner`・`HookSession` | run と各シナリオの前後で、ターゲットの外部 hook コマンドを実行します（BE-0491）。 |
 | `mailbox.py` | 転送方式のレジストリ | `email` ステップの転送方式を種類で解決します。 |
 
 **`_ScenarioRunner`** は、1 回の run が共有する文脈を持つ凍結 dataclass です。解決済みの設定、

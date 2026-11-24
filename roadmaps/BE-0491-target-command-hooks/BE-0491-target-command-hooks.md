@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0491](BE-0491-target-command-hooks.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0491") |
 | Topic | Scenario authoring features |
 | Related | [BE-0036](../BE-0036-utility-steps/BE-0036-utility-steps.md), [BE-0059](../BE-0059-launch-target-server/BE-0059-launch-target-server.md), [BE-0090](../BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md), [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks.md), [BE-0449](../BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md) |
@@ -355,15 +355,31 @@ The removal migrates every in-repo user:
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Schema: the four hook lists and their entry model; remove `services.server` and `services.mockServer` with a load error naming the replacement.
-- [ ] Hook runner: entries, timeouts, the output file, the environment, logs, and masking.
-- [ ] Command policy: route the hook lists through the sibling item's `commandExecution` modes and its `manifest.json` record, replacing `services.server.cmd` as the governed command.
-- [ ] Run-level phase: wire `beforeRun` / `afterRun` into `run`, `audit`, `record`, `crawl`, and `repl`, replacing the `services.server` bring-up.
-- [ ] Scenario-level phase: wire `beforeScenario` / `afterScenario` into the scenario lifecycle, including `inheritSetup`, workers, multi-target order, and cancellation.
-- [ ] The `${hooks.<name>.<key>}` token: static load-time check and action-time substitution.
-- [ ] Sandbox: the `hooks.sandbox` block and the per-run container, its ports, mounts, and paths.
-- [ ] Report: hook phases as their own blocks, with links to the logs.
-- [ ] Migrate `demos/serve-ui/dogfood.config.yaml`, and update the docs, `DESIGN.md`, and `docs/architecture.md` in both languages.
+- [x] Schema: the four hook lists and their entry model; remove `services.server` and `services.mockServer` with a load error naming the replacement.
+- [x] Hook runner: entries, timeouts, the output file, the environment, logs, and masking.
+- [x] Command policy: route the hook lists through the sibling item's `commandExecution` modes and its `manifest.json` record, replacing `services.server.cmd` as the governed command.
+- [x] Run-level phase: wire `beforeRun` / `afterRun` into `run`, `audit`, `record`, `crawl`, and `repl`, replacing the `services.server` bring-up.
+- [x] Scenario-level phase: wire `beforeScenario` / `afterScenario` into the scenario lifecycle, including `inheritSetup`, workers, multi-target order, and cancellation.
+- [x] The `${hooks.<name>.<key>}` token: static load-time check and action-time substitution.
+- [x] Sandbox: the `hooks.sandbox` block and the per-run container, its ports, mounts, and paths.
+- [x] Report: hook phases as their own blocks, with links to the logs.
+- [x] Migrate `demos/serve-ui/dogfood.config.yaml`, and update the docs, `DESIGN.md`, and `docs/architecture.md` in both languages.
+
+Log:
+
+- 2026-11-24: All nine units shipped together. The four lists, their entry model, and the
+  `hooks.sandbox` block are in the schema, and `services.server` and `services.mockServer` left it
+  with a load error naming the replacement. The runner spawns each entry in its own process group
+  without a shell, bounded by its own `timeout`, writing output and logs to files rather than a
+  pipe. Values come back through `$BAJUTSU_OUTPUT` and reach later commands as
+  `BAJUTSU_HOOK__<name>__<key>` and the scenario as `${hooks.<name>.<key>}`. Every entry goes
+  through the worker's command policy and into `manifest.json`, which also carries what each phase
+  did so the report can draw one block per list. Two details depart from the text above. The
+  `BAJUTSU_SCENARIO_FILE` variable carries the scenario file's stem rather than its path, because
+  the run loop holds no path for a scenario; a `Scenario.source_path` would supply one. A
+  `${hooks.*}` key the command never wrote fails the *scenario* rather than the individual step,
+  since the substitution primitive leaves an unknown token intact by design and failing per step
+  would change how `${vars.*}` behaves too.
 
 ## References
 

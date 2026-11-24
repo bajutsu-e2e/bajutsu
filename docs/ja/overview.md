@@ -88,6 +88,5 @@ bajutsu serve                                         # ローカル Web UI（Ti
 
 - **コードが正**：記述の 1 つ 1 つを現在の実装（`bajutsu/`）に対応づけ、要所で `file.py:line` を示します。
 - **設計と実装の差を明示**：[`DESIGN.md`](../../DESIGN.md) に書かれていても、まだコードに配線されていない
-  機能（外部 `mockServer` コマンド。シナリオの `mocks` で代替済み）は、各ページと
-  [architecture の実装状況](architecture.md#実装状況)で「未実装」と明記します。
+  機能は、各ページと [architecture の実装状況](architecture.md#実装状況)で「未実装」と明記します。
 - **言語**：散文は日本語で書き（[`DESIGN.md`](../../DESIGN.md) に合わせます）、コード内のコメントと docstring は英語です。
