@@ -182,7 +182,11 @@ def _started(run: _Simctl, runner: _Runner, monkeypatch: pytest.MonkeyPatch) -> 
     env._lease_driver = XcuitestDriver(transport=runner.transport)
     env._launch_inputs = (ResolvedPreconditions(), {"BAJUTSU_COLLECTOR": "http://x"})
     monkeypatch.setattr(
-        backends, "make_driver", lambda *a, **k: XcuitestDriver(transport=runner.transport)
+        backends,
+        "make_driver",
+        lambda *a, **k: XcuitestDriver(
+            transport=runner.transport, url_schemes=k.get("url_schemes")
+        ),
     )
     return env
 
@@ -204,6 +208,19 @@ def test_a_starting_member_installs_launches_and_joins_the_group(
     assert isinstance(lease_driver, XcuitestDriver)
     with pytest.raises(base.AppNotInFront):
         lease_driver.query()
+
+
+def test_a_starting_member_checks_its_own_builds_url_schemes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    env = _started(_Simctl(), _Runner(front=_AUTH), monkeypatch)
+    monkeypatch.setattr(
+        env, "_url_schemes", lambda b: frozenset({"auth"}) if b == _AUTH else frozenset()
+    )
+    member = env.start_member(_eff(_AUTH), ResolvedPreconditions(), install=False)
+    member.open_url("auth://x")
+    with pytest.raises(base.SelectorError, match="does not declare"):
+        member.open_url("other://x")
 
 
 def test_a_clean_member_reinstalls_and_resets_its_permissions(

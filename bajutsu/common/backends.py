@@ -36,6 +36,7 @@ if TYPE_CHECKING:
         PickerFn,
         TypeFn,
     )
+    from bajutsu.common.drivers.xcuitest import UrlSchemeSource
     from bajutsu.common.drivers.zorder import ZOrderSource
     from bajutsu.common.scenario import Scenario
 
@@ -551,6 +552,7 @@ def make_driver(
     api_level: int | None = None,
     launched_at: Callable[[], tuple[float, str] | None] | None = None,
     zorder: ZOrderSource | None = None,
+    url_schemes: UrlSchemeSource | None = None,
 ) -> base.Driver:
     """Construct the driver for an actuator, wiring up its backend-specific arguments.
 
@@ -568,8 +570,9 @@ def make_driver(
     `device_os`, the parsed OS version of the device it is driving (BE-0358), so a driver-level
     failure can name the OS it happened on. `zorder` is the in-app responder that measures each
     element's front-to-back position (BE-0355); without one, or with an app that never answers,
-    every element keeps the `nativeZ: None` a backend with no such hook owes its reader. Every other
-    actuator ignores all four. `device_os`
+    every element keeps the `nativeZ: None` a backend with no such hook owes its reader. `url_schemes`
+    names the URL schemes an app's build declares, for `openUrl` to check (BE-0487). Every other
+    actuator ignores all five. `device_os`
     travels as a keyword rather than as a `Driver` member because that Protocol is
     `@runtime_checkable` with no shared base class: a data member there would be a declaration every
     backend and every inline test double has to repeat.
@@ -618,6 +621,7 @@ def make_driver(
             device_os=device_os,
             is_real_device=is_real_device,
             zorder=zorder,
+            url_schemes=url_schemes,
         )
     if actuator == "playwright":
         # Lazy: keep Playwright (a heavy optional dep) off the default import path.

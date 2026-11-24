@@ -1193,13 +1193,29 @@ Each backend decides acceptance its own way:
 
 | Backend | How the URL is handed over | When the step fails |
 |---|---|---|
-| iOS (XCUITest) | the runner calls `XCUIApplication.open(_:)` on the receiving app | the call raises or records an XCTest issue, whose message becomes the reason; or the device runs an iOS before 16.4 |
+| iOS (XCUITest) | the runner calls `XCUIApplication.open(_:)` on the receiving app | the call raises or records an XCTest issue, whose message becomes the reason; or the receiving app declares no such scheme; or the device runs an iOS before 16.4 |
 | Android (adb) | `am start -W --activity-single-top -a android.intent.action.VIEW -d <url> <package>` | `am start` prints an `Error` line, an exception, or a status other than `ok`; or it prints an `Activity not started` warning other than the one saying the running activity received the intent |
 
 On iOS, the receiving app is in front already mid-scenario, so the foreground wait proves nothing.
-The step then rests on what `open(_:)` raises or records.
-If `open(_:)` reports nothing for a URL that no app handles, the step passes.
-The assertion that follows then catches the wrong screen.
+Nor does `open(_:)` itself: it hands any URL straight to the app, whatever scheme the app declares.
+The app would then show a screen that no link could open for a real user.
+The step prevents that by checking the URL's scheme against the app's `Info.plist`.
+A scheme missing from `CFBundleURLTypes` fails the step before the URL reaches the app.
+
+The check needs a build the host can read:
+
+| Device | Receiving app | Build the step reads |
+|---|---|---|
+| Simulator | any app | the bundle installed on the Simulator |
+| real device | the app under test | the `.app` bundle at `subject.path`, which a real device accepts with `runsOn.ignoredSettings.install` declared |
+| real device | an app an `app:` block names | none |
+
+On a real device, keep `subject.path` in step with the build on the device.
+Nothing compares the two, and a stale bundle fails a scheme that the newer build declares.
+The step skips the check when it reads no build, or a build with another bundle id.
+It also skips `http` and `https`, which reach an app through its associated domains.
+An unchecked URL passes once the app is in front.
+The assertion that follows must then catch a wrong screen.
 
 On Android, `--activity-single-top` lets the step open the URL the launch deep link used.
 The activity on top of its task receives the URL through `onNewIntent`.
