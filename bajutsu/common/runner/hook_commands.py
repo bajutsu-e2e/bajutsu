@@ -240,6 +240,9 @@ class HookRecord:
 
     list_name: str
     label: str
+    # Which target's phase this entry belongs to, so a report labels the block rather than
+    # inferring it from the log path.
+    target: str
     # The run-dir-relative path of the masked log, or None when nothing was copied (no run
     # directory, or the raw file was refused).
     log: str | None
@@ -440,14 +443,21 @@ class HookRunner:
         after = list_name.startswith("after")
         for index, entry in enumerate(entries):
             if after and entry.on != "always" and entry.on != context.verdict:
-                result.records.append(HookRecord(list_name, entry.label, None, skipped=True))
+                result.records.append(
+                    HookRecord(list_name, entry.label, context.target, None, skipped=True)
+                )
                 continue
             left = None if deadline is None else deadline - time.monotonic()
             if left is not None and left <= 0:
                 self._say(f"{list_name}: {entry.label} — teardown budget spent; not run")
                 result.records.append(
                     HookRecord(
-                        list_name, entry.label, None, skipped=True, reason="teardown budget spent"
+                        list_name,
+                        entry.label,
+                        context.target,
+                        None,
+                        skipped=True,
+                        reason="teardown budget spent",
                     )
                 )
                 continue
@@ -494,13 +504,13 @@ class HookRunner:
             raw_log, raw_out = self._raw_paths(segments, slot)
         except (OSError, ValueError) as e:
             return (
-                HookRecord(list_name, entry.label, None, failure=str(e)),
+                HookRecord(list_name, entry.label, context.target, None, failure=str(e)),
                 HookFailure(list_name, entry.label, str(e)),
                 {},
             )
         if sandbox is not None and raw_out is not None:
             # Created after the container started, so the hand-over is per entry, not once at start.
-            grant_container_access(raw_out)
+            grant_container_access(raw_out, root=self._raw / OUT_SUBDIR if self._raw else None)
         log_name = "/".join([HOOK_FIELD, *segments, f"{slot}.log"])
         try:
             argv, env, cwd, sandboxed = self._resolve(
@@ -508,7 +518,7 @@ class HookRunner:
             )
         except (CommandRefused, NamedCommandError, SandboxError, ValueError) as e:
             return (
-                HookRecord(list_name, entry.label, None, failure=str(e)),
+                HookRecord(list_name, entry.label, context.target, None, failure=str(e)),
                 HookFailure(list_name, entry.label, str(e)),
                 {},
             )
@@ -537,7 +547,8 @@ class HookRunner:
                 reason = f"wrote a malformed $BAJUTSU_OUTPUT file: {why}"
         log = self.copy_log(raw_log, log_name)
         failure = HookFailure(list_name, entry.label, reason) if reason is not None else None
-        return HookRecord(list_name, entry.label, log, failure=reason), failure, values
+        record = HookRecord(list_name, entry.label, context.target, log, failure=reason)
+        return record, failure, values
 
     def _record_field(self, list_name: str, slot: str) -> str:
         """How `manifest.json` names the command's declaring field (BE-0492)."""
@@ -730,6 +741,27 @@ def _terminate(proc: subprocess.Popen[bytes]) -> None:
             proc.kill()
         with contextlib.suppress(subprocess.TimeoutExpired):
             proc.wait(timeout=5)
+
+
+def hook_record_dicts(records: Iterable[HookRecord]) -> list[dict[str, object]]:
+    """The hook records as the manifest carries them, in the order the run met the entries."""
+    out: list[dict[str, object]] = []
+    for record in records:
+        entry: dict[str, object] = {
+            "list": record.list_name,
+            "entry": record.label,
+            "target": record.target,
+        }
+        if record.log is not None:
+            entry["log"] = record.log
+        if record.skipped:
+            entry["skipped"] = True
+        if record.reason is not None:
+            entry["reason"] = record.reason
+        if record.failure is not None:
+            entry["failure"] = record.failure
+        out.append(entry)
+    return out
 
 
 def run_phase(

@@ -255,7 +255,8 @@ def test_a_before_run_hook_failure_exits_2_after_its_cleanup(
             eff, run_id="r1", runs_dir=tmp_path / "runs", on_error=lambda: cleaned.append(True)
         )
     assert cleaned == [True]
-    assert "beforeRun failed" in capsys.readouterr().out
+    # The reason already names the list and the entry, so nothing prefixes it again.
+    assert capsys.readouterr().out.startswith("beforeRun: ")
 
 
 # --- the scenario's inheritSetup --------------------------------------------------------------

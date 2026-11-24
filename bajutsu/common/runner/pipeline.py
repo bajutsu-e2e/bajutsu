@@ -37,6 +37,7 @@ from bajutsu.common.cancellation import (
 from bajutsu.common.capability import capability_preflight
 from bajutsu.common.capability.capability_preflight import steps_for_target
 from bajutsu.common.capability.command_policy import COMMAND_EXECUTIONS_KEY
+from bajutsu.common.capability.route_tokens import HOOKS_KEY
 from bajutsu.common.capability.settings_support import check_settings
 from bajutsu.common.config import Effective, HookPhases, resolve_preconditions, web_engine
 from bajutsu.common.devices import errors as device_errors
@@ -85,7 +86,9 @@ from bajutsu.common.runner.hook_commands import (
     HookContext,
     HookOutputs,
     HookPhaseResult,
+    HookRecord,
     WorkerIndex,
+    hook_record_dicts,
     missing_hook_key,
     run_phase,
 )
@@ -689,7 +692,7 @@ class _ScenarioRunner:
                 sid=sid,
                 failure=why,
             )
-            self._after_scenario(s, sid, result)
+            self._after_scenario(s, sid, result, outputs)
             self._write_result(s, sid, result)
             return result
         if outputs is not None:
@@ -2462,6 +2465,7 @@ def run_and_report(
         command_executions=command_executions,
         target=eff.target,
         label=label,
+        hook_records=hooks.records if hooks is not None else (),
     )
     return results, manifest
 
@@ -2483,6 +2487,7 @@ def run_matrix_and_report(
     label: str | None = None,
     cancelled: CancelSource = not_cancelled,
     worker_failures: Mapping[int, str] | None = None,
+    hooks: HookSession | None = None,
 ) -> tuple[list[RunResult], Path]:
     """Run the scenarios once per engine, then assemble ONE report at `runs_dir/run_id` (BE-0076).
 
@@ -2531,6 +2536,17 @@ def run_matrix_and_report(
             r.engine = engine  # tag each verdict with its rendering engine for the matrix
             _reroot_evidence(r, engine)  # its evidence lives under <engine>/ in the one report
         results.extend(passed)
+    # One teardown for the whole matrix, after the last pass and before the report: the run-level
+    # pair wraps every pass once, so a server one `beforeRun` brought up served them all (BE-0491).
+    if hooks is not None:
+        hooks.after_run(
+            "success" if all(r.ok for r in results) else "failure",
+            deadline=(
+                time.monotonic() + cancelled_teardown_seconds(grace_seconds())
+                if cancelled()
+                else None
+            ),
+        )
     manifest = _assemble_report(
         with_lifecycle_phases(eff, scenarios, skip=worker_failures or {}),
         results,
@@ -2544,6 +2560,7 @@ def run_matrix_and_report(
         command_executions=command_executions,
         target=eff.target,
         label=label,
+        hook_records=hooks.records if hooks is not None else (),
     )
     return results, manifest
 
@@ -2679,6 +2696,7 @@ def _assemble_report(
     label: str | None = None,
     plan_order: Sequence[int] | None = None,
     not_applicable: list[dict[str, str]] | None = None,
+    hook_records: Sequence[HookRecord] = (),
 ) -> Path:
     """Write the run's report artifacts under `run_dir` from its (possibly engine-tagged) results.
 
@@ -2725,6 +2743,10 @@ def _assemble_report(
     # stays answerable. Copied, since the gate keeps the list it may still append to.
     if command_executions:
         provenance[COMMAND_EXECUTIONS_KEY] = [dict(entry) for entry in command_executions]
+    # What each hook phase did, with the run-dir-relative path of its masked log (BE-0491), so the
+    # report renders the phases as their own blocks and an offline re-render can too.
+    if hook_records:
+        provenance[HOOKS_KEY] = hook_record_dicts(hook_records)
     return write_report(
         run_dir,
         run_id,

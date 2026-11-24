@@ -2426,7 +2426,7 @@ def _dispatch(plan: _RunPlan) -> tuple[list[RunResult], Path, list[dict[str, str
                 label=plan.label,
                 gate=plan.command_gate,
             ),
-            f"beforeRun: {before.reason}",
+            before.reason,
         )
     try:
         if plan.matrix is not None:

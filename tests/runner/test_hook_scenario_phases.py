@@ -256,9 +256,89 @@ def test_a_masked_hook_value_is_masked_in_the_scenario_s_own_result(tmp_path: Pa
     )
     session, eff = _session(tmp_path, phases)
     # A step that fails and quotes the value back, so the masking is observable in the result.
-    scenario = Scenario.model_validate(
-        {"name": "demo", "steps": [{"tap": {"id": "sekret99"}}]}
-    )
+    scenario = Scenario.model_validate({"name": "demo", "steps": [{"tap": {"id": "sekret99"}}]})
     [result] = run_all(eff, [scenario], _lease, hooks=session)
     assert not result.ok and result.failure is not None
     assert "sekret99" not in result.failure
+
+
+def test_a_before_run_failure_is_not_prefixed_twice(tmp_path: Path) -> None:
+    # `HookFailure` already names the list and the entry; the run-level path must not say it again.
+    phases = HookPhases(
+        before_run=[HookCommand(name="srv", cmd=_script(tmp_path, "r.sh", "exit 4"))]
+    )
+    session, _eff_unused = _session(tmp_path, phases)
+    result = session.before_run()
+    assert not result.ok
+    assert result.reason == "beforeRun: srv: exited 4"
+
+
+def test_the_report_renders_each_hook_phase_as_its_own_block(tmp_path: Path) -> None:
+    # A phase is its own block, apart from the scenario's numbered steps, the way `setup` and
+    # `cleanup` already are, and each entry links the masked log Bajutsu copied into evidence.
+    import json
+
+    from bajutsu.common.capability.route_tokens import HOOKS_KEY, report_hook_phases
+    from bajutsu.common.evidence.redaction import Redactor
+    from bajutsu.common.evidence.sink import RunArtifactWriter
+    from bajutsu.common.runner.pipeline import run_and_report
+    from bajutsu.common.scenario import Redact
+
+    run_dir = tmp_path / "runs" / "r1"
+    phases = HookPhases(
+        before_run=[
+            HookCommand(
+                name="srv", cmd=_script(tmp_path, "s1.sh", 'echo "port=8787" > $BAJUTSU_OUTPUT')
+            )
+        ],
+        before_scenario=[HookCommand(name="user", cmd=_script(tmp_path, "s2.sh", "echo seeding"))],
+        after_run=[HookCommand(cmd=_script(tmp_path, "s3.sh", "echo stopping"))],
+    )
+    eff = replace(_eff(), hooks=phases, base_dir=tmp_path)
+    session = HookSession(
+        runner=HookRunner(
+            raw_dir=raw_root(tmp_path / "runs", "r1"),
+            base_dir=tmp_path,
+            writer=RunArtifactWriter(run_dir, Redactor(Redact(), [])),
+        ),
+        phases=phases_of({"demo": eff}),
+        run_id="r1",
+        run_dir=run_dir,
+    )
+    assert session.before_run().ok
+    results, manifest = run_and_report(
+        eff, [_scenario()], _lease, tmp_path / "runs", "r1", hooks=session
+    )
+    assert [r.ok for r in results] == [True]
+    records = json.loads(manifest.read_text(encoding="utf-8"))["provenance"][HOOKS_KEY]
+    assert [r["list"] for r in records] == ["beforeRun", "beforeScenario", "afterRun"]
+    blocks = report_hook_phases(records)
+    assert [b["list"] for b in blocks] == ["beforeRun", "beforeScenario", "afterRun"]
+    assert all(b["ok"] for b in blocks)
+    # Every entry links its own log, and the log is really there, masked, under the run directory.
+    logs = [e["log"] for b in blocks for e in b["entries"]]  # type: ignore[index]
+    assert logs == [
+        "hooks/beforeRun/demo/srv.log",
+        "hooks/beforeScenario/demo/00/user.log",
+        "hooks/afterRun/demo/0.log",
+    ]
+    assert (
+        run_dir / "hooks" / "beforeScenario" / "demo" / "00" / "user.log"
+    ).read_text().strip() == ("seeding")
+
+
+def test_a_failed_hook_marks_its_block_and_names_the_reason() -> None:
+    from bajutsu.common.capability.route_tokens import report_hook_phases
+
+    [block] = report_hook_phases(
+        [{"list": "afterRun", "entry": "stop", "target": "demo", "failure": "exited 1"}]
+    )
+    assert block["ok"] is False
+    assert block["entries"][0]["reason"] == "exited 1"  # type: ignore[index]
+
+
+def test_an_older_manifest_renders_no_hook_block() -> None:
+    from bajutsu.common.capability.route_tokens import report_hook_phases
+
+    assert report_hook_phases(None) == []
+    assert report_hook_phases("not a list") == []
