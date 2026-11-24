@@ -1210,6 +1210,8 @@ The check needs a build the host can read:
 | real device | the app under test | the `.app` bundle at `subject.path`, which a real device accepts with `runsOn.ignoredSettings.install` declared |
 | real device | an app an `app:` block names | none |
 
+On a real device, keep `subject.path` in step with the build on the device.
+Nothing compares the two, and a stale bundle fails a scheme that the newer build declares.
 The step skips the check when it reads no build, or a build with another bundle id.
 It also skips `http` and `https`, which reach an app through its associated domains.
 An unchecked URL passes once the app is in front.

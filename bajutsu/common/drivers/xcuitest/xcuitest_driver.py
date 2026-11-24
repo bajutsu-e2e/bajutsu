@@ -1170,10 +1170,17 @@ class XcuitestDriver:
         declared = self._url_schemes(bundle_id)
         if declared is None or scheme in declared:
             return
+        # On a real device the build is the configured one, which nothing compared with the device's,
+        # so the reason names it: a stale `.app` must not read as a fault of the app.
+        source = (
+            "; read from the build at subject.path, which may differ from the one on the device"
+            if self.is_real_device
+            else ""
+        )
         raise base.SelectorError(
             f"openUrl: {bundle_id or 'the app under test'} does not declare the URL scheme "
             f"{scheme!r}, so the system would not route the URL to it "
-            f"(declared: {', '.join(sorted(declared)) or 'none'})"
+            f"(declared: {', '.join(sorted(declared)) or 'none'}{source})"
         )
 
     def type_text(self, text: str) -> None:

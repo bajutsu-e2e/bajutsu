@@ -588,6 +588,16 @@ def test_an_undeclared_scheme_fails_before_the_url_is_sent() -> None:
     assert not driver.drain_actuations().records
 
 
+def test_a_real_device_refusal_names_the_configured_build() -> None:
+    driver = _schemes({None: frozenset({"myapp"})}, [])
+    with pytest.raises(base.SelectorError) as on_simulator:
+        driver.open_url("other://x")
+    assert "subject.path" not in str(on_simulator.value)
+    driver.is_real_device = True
+    with pytest.raises(base.SelectorError, match=r"declared: myapp; read from .*subject\.path"):
+        driver.open_url("other://x")
+
+
 def test_a_build_that_declares_no_scheme_refuses_any_custom_one() -> None:
     with pytest.raises(base.SelectorError, match="declared: none"):
         _schemes({None: frozenset()}, []).open_url("myapp://x")
