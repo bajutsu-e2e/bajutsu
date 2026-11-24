@@ -118,13 +118,14 @@ def grant_container_access(path: Path, *, root: Path | None = None) -> None:
     uid, gid = (int(part) for part in _NOBODY.split(":"))
     targets = [path, *(sorted(path.rglob("*")) if path.is_dir() else [])]
     if root is not None:
+        # Walk up from *path* itself: `HookSession.before_run` passes `root=path`, where there is
+        # nothing in between, and a walk that started at `path.parent` would already be above
+        # `stop` and would hand every ancestor up to `/` to the container's user.
         stop = root.resolve()
-        parent = path.parent
-        while True:
-            targets.append(parent)
-            if parent.resolve() == stop or parent == parent.parent:
-                break
+        parent = path
+        while parent.resolve() != stop and parent != parent.parent:
             parent = parent.parent
+            targets.append(parent)
     for target in targets:
         try:
             os.chown(target, uid, gid)

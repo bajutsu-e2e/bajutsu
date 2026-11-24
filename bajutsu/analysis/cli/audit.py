@@ -251,7 +251,9 @@ def _repeat_audit(
     runs, failed = _audit_runs(
         scenarios, eff, actuator, udids, udid, fake=_backends(backend, eff.backend) == ["fake"]
     )
-    pools = _RunPools(backends, runs_root() / new_run_id("audit-"))
+    audit_run_id = new_run_id("audit-")
+    audit_run_dir = runs_root() / audit_run_id
+    pools = _RunPools(backends, audit_run_dir)
     shutdown = pools.shutdown
 
     # Run the target's `beforeRun` hooks if declared, like `run` does, so a web target whose own
@@ -261,7 +263,9 @@ def _repeat_audit(
     # pool already created before exiting if a hook fails.
     hooks = _start_hooks_or_exit(
         eff,
-        run_id=new_run_id("audit-"),
+        run_id=audit_run_id,
+        runs_dir=runs_root(),
+        run_dir=audit_run_dir,
         on_error=shutdown,
         scenario_targets=sandbox_targets(scenarios, eff.target),
         scenarios=[s for s, *_ in runs],

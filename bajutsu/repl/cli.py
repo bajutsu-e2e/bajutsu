@@ -45,6 +45,7 @@ from bajutsu.common.platform_lifecycle.environments.xcuitest_live import (
     XcuitestLiveEnvironment,
     is_webdriver_endpoint,
 )
+from bajutsu.common.run_meta.files import runs_root
 from bajutsu.common.run_meta.id import new_run_id
 from bajutsu.common.runner import launch_driver
 from bajutsu.repl.loop import repl_loop
@@ -174,7 +175,14 @@ def repl(
     # Run the target's `beforeRun` hooks if it declares any (BE-0491) — without them a web target
     # opens the browser on a host that is not listening, and every `tree` reads the error page. The
     # matching `afterRun` runs when this command exits (atexit), as `record` and `crawl` run theirs.
-    _start_hooks_or_exit(eff, run_id=new_run_id("repl-"), teardown_at_exit=True)
+    hook_run_id = new_run_id("repl-")
+    _start_hooks_or_exit(
+        eff,
+        run_id=hook_run_id,
+        runs_dir=runs_root(),
+        run_dir=runs_root() / hook_run_id,
+        teardown_at_exit=True,
+    )
 
     # Unlike `record` / `crawl`, which keep stdout for their one final result line and narrate
     # progress to stderr, this shell's output *is* the product: every command's answer goes to

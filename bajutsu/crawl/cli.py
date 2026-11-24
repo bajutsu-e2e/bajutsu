@@ -330,7 +330,14 @@ def _execute(plan: _CrawlPlan, guide: crawl_engine.Guide, report: Report) -> cra
     # Run the target's `beforeRun` hooks if it declares any (BE-0491) — the bring-up that replaced
     # `services.server`. The matching `afterRun` runs when this command exits (atexit), since the
     # crawl is a single linear flow with no run-style teardown.
-    _start_hooks_or_exit(plan.eff, run_id=new_run_id("crawl-"), teardown_at_exit=True)
+    hook_run_id = new_run_id("crawl-")
+    _start_hooks_or_exit(
+        plan.eff,
+        run_id=hook_run_id,
+        runs_dir=runs_root(),
+        run_dir=runs_root() / hook_run_id,
+        teardown_at_exit=True,
+    )
 
     workers = len(plan.udids)  # one lane per resolved udid (the pool is already capped)
     if not plan.environment.has_devices():
