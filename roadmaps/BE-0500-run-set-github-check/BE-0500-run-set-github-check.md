@@ -9,6 +9,7 @@
 | Author | [@paihu](https://github.com/paihu) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0500") |
+| Implementing PR | [#2516](https://github.com/bajutsu-e2e/bajutsu/pull/2516) |
 | Topic | Integration with external services |
 | Related | [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications.md), [BE-0224](../BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth.md), [BE-0414](../BE-0414-ci-oidc-machine-identity/BE-0414-ci-oidc-machine-identity.md), [BE-0484](../BE-0484-job-group-lease/BE-0484-job-group-lease.md) |
 <!-- /BE-METADATA -->
@@ -162,6 +163,16 @@ GitHub caps `summary` at 65,535 characters. The adapter stops adding rows before
 - [x] The delivery loop: claim, order, retry, abandonment, and the metric
 - [x] The `github-check` adapter: installation by repository, the recovery lookup, the takeover of an earlier attempt's run, the three calls, and the output
 - [x] Documentation in both languages
+
+Log:
+
+- 2026-11-24 — [#2516](https://github.com/bajutsu-e2e/bajutsu/pull/2516) landed all eight units. `serve --group-notify-config` loads the sinks, and
+  `POST /api/run-set` takes `notify`. A group records `queued`, `started`, and `completed` in
+  `group_events`, each in the transaction that causes it. A loop on `serve` delivers the events
+  through the `github-check` adapter, which writes one check run per group. The `skipped` row
+  ships at once, because the fail-fast item had already landed as BE-0499. Review added two
+  guards: a delivery skips a run that a later group has taken over, and the lookup filters by
+  `app_id`.
 
 ## References
 

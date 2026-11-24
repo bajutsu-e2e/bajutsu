@@ -9,6 +9,7 @@
 | 提案者 | [@paihu](https://github.com/paihu) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0500") |
+| 実装 PR | [#2516](https://github.com/bajutsu-e2e/bajutsu/pull/2516) |
 | トピック | 外部サービスとの連携 |
 | 関連 | [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications-ja.md), [BE-0224](../BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth-ja.md), [BE-0414](../BE-0414-ci-oidc-machine-identity/BE-0414-ci-oidc-machine-identity-ja.md), [BE-0484](../BE-0484-job-group-lease/BE-0484-job-group-lease-ja.md) |
 <!-- /BE-METADATA -->
@@ -162,6 +163,16 @@ GitHub は `summary` を 65,535 文字に制限しています。アダプター
 - [x] 配信のループ（確保、順序、再試行、放棄、メトリクス）
 - [x] `github-check` のアダプター（リポジトリによるインストールの解決、回復のための一覧、前の試行の run の引き継ぎ、3つの呼び出し、出力）
 - [x] 両言語のドキュメント
+
+ログ：
+
+- 2026-11-24：[#2516](https://github.com/bajutsu-e2e/bajutsu/pull/2516) で8つの単位をすべて実装しました。`serve --group-notify-config` が sink を読み込み、
+  `POST /api/run-set` は `notify` を受け取ります。グループは `queued`、`started`、`completed` を
+  `group_events` に記録し、各イベントはそのイベントを起こしたトランザクションの中で書かれます。`serve` 上の
+  ループが `github-check` アダプターを通じてイベントを配信し、アダプターはグループごとに1つの check run を
+  書きます。fail-fast の項目が BE-0499 として先に入っていたため、`skipped` の行は最初から出します。
+  レビューを受けて、2つの確認を加えました。後のグループに引き継がれた run への配信は見送り、run の一覧は
+  `app_id` で絞ります。
 
 ## 参考
 
