@@ -239,7 +239,9 @@ def _repeat_audit(
     runs, failed = _audit_runs(
         scenarios, eff, actuator, udids, udid, fake=_backends(backend, eff.backend) == ["fake"]
     )
-    pools = _RunPools(backends, runs_root() / new_run_id("audit-"))
+    audit_run_id = new_run_id("audit-")
+    audit_run_dir = runs_root() / audit_run_id
+    pools = _RunPools(backends, audit_run_dir)
     shutdown = pools.shutdown
 
     # Run the target's `beforeRun` hooks if declared, like `run` does, so a web target whose own
@@ -247,7 +249,13 @@ def _repeat_audit(
     # Audit is a CLI-only longitudinal tool that no worker spawns, so its config is the operator's
     # own and the default command gate applies (BE-0492). `on_error=shutdown` tears down any device
     # pool already created before exiting if a hook fails.
-    hooks = _start_hooks_or_exit(eff, run_id=new_run_id("audit-"), on_error=shutdown)
+    hooks = _start_hooks_or_exit(
+        eff,
+        run_id=audit_run_id,
+        runs_dir=runs_root(),
+        run_dir=audit_run_dir,
+        on_error=shutdown,
+    )
     teardown: HookPhaseResult | None = None
     try:
         # One run at a time, K times each (workers=1 keeps the K runs under identical

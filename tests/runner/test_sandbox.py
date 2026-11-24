@@ -430,3 +430,55 @@ def test_a_named_image_is_never_removed(tmp_path: Path) -> None:
     runtime.start()
     runtime.stop()
     assert not any(c[:3] == ["docker", "image"] for c in rec.exec_calls)
+
+
+def test_grant_container_access_with_path_equal_to_root_touches_only_that_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The shape `HookSession.before_run` actually uses: `root=path`. A walk that started at
+    # `path.parent` would already be above `stop` and would chown every ancestor up to `/`.
+    chowned: list[str] = []
+    monkeypatch.setattr(sandbox.os, "getuid", lambda: 0)
+    monkeypatch.setattr(sandbox.os, "chown", lambda p, u, g: chowned.append(str(p)))
+    out = tmp_path / "runs" / ".hook-raw" / "r1" / "out"
+    out.mkdir(parents=True)
+    sandbox.grant_container_access(out, root=out)
+    assert chowned == [str(out)]
+    for above in (out.parent, out.parent.parent, tmp_path, Path("/")):
+        assert str(above) not in chowned
+
+
+def test_real_run_keeps_dockers_output_when_given_a_log(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Written to a file rather than a pipe: the container outlives the call, and a pipe it inherited
+    # would keep the reader waiting.
+    import subprocess as sp
+
+    seen: list[tuple[object, object]] = []
+
+    def fake_popen(argv: list[str], stdout: object, stderr: object) -> None:
+        seen.append((stdout, stderr))
+
+    monkeypatch.setattr("subprocess.Popen", fake_popen)
+    sandbox._real_run(["docker", "run"], tmp_path / "docker.log")
+    with_log = seen[-1]
+    assert with_log[1] == sp.STDOUT
+    assert not isinstance(with_log[0], int)  # a real file, not DEVNULL
+    sandbox._real_run(["docker", "run"], None)
+    assert seen[-1] == (sp.DEVNULL, sp.DEVNULL)
+
+
+@pytest.mark.parametrize(
+    ("image", "dockerfile", "word"),
+    [(None, None, "neither"), ("img", "Dockerfile", "both")],
+)
+def test_resolve_image_guards_a_hand_built_sandbox(
+    tmp_path: Path, image: str | None, dockerfile: str | None, word: str
+) -> None:
+    # The schema admits exactly one, so this guard only answers a `HookSandbox` built in code —
+    # and it must fail loud there rather than run with an ambiguous image.
+    rec = _Recorder()
+    sb = HookSandbox.model_construct(docker_image=image, dockerfile=dockerfile, ports=[])
+    with pytest.raises(sandbox.SandboxError, match=word):
+        sandbox.resolve_image(sb, exec_fn=rec.exec_fn, bundle_cwd=str(tmp_path), tag="t")

@@ -33,7 +33,7 @@ from bajutsu.common.config import (
     resolve,
 )
 from bajutsu.common.config.schema._merge import merge_defaults, merge_layer
-from bajutsu.common.scenario import Scenario
+from bajutsu.common.scenario import Redact, Scenario
 
 
 def _eff(text: str, name: str = "t") -> Effective:
@@ -859,3 +859,32 @@ def test_the_teardown_can_be_registered_at_exit(
     assert len(registered) == 1
     registered[0]()
     assert marker.exists()
+
+
+_IOS_TARGET = "t"
+
+
+def test_the_scenario_less_commands_keep_their_hook_logs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Without a runs directory the log went to a temporary one the teardown deleted unread, so a
+    # failed hook under `record` / `crawl` / `repl` / `audit` reported only its exit code (BE-0491).
+    script = tmp_path / "say.sh"
+    script.write_text(
+        "#!/bin/sh\necho 'the seed endpoint refused the request'\nexit 1\n", encoding="utf-8"
+    )
+    script.chmod(0o755)
+    eff = replace(
+        _eff(_IOS),
+        hooks=HookPhases(before_run=[HookCommand(name="seed", cmd=str(script))]),
+        base_dir=tmp_path,
+        redact=Redact(),
+    )
+    runs = tmp_path / "runs"
+    with pytest.raises(typer.Exit):
+        _shared._start_hooks_or_exit(
+            eff, run_id="r1", runs_dir=runs, run_dir=runs / "r1", teardown_at_exit=True
+        )
+    # The command's own output survives in the run directory, which is what says *why* it failed.
+    log = runs / "r1" / "hooks" / "beforeRun" / _IOS_TARGET / "seed.log"
+    assert log.read_text().strip() == "the seed endpoint refused the request"

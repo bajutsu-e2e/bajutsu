@@ -2608,6 +2608,7 @@ def report_run_matrix(
     label: str | None = None,
     worker_failures: Mapping[int, str] | None = None,
     hooks: HookSession | None = None,
+    cancelled: CancelSource = not_cancelled,
 ) -> Path:
     """Write ONE report for the runs `runsOn` conditions formed across *scenarios* (BE-0452).
 
@@ -2625,7 +2626,14 @@ def report_run_matrix(
     # `afterRun` block it recorded (BE-0491); the phase is idempotent, so the command's own
     # `finally` can still backstop it.
     if hooks is not None:
-        hooks.after_run("success" if all(r.ok for r in results) else "failure")
+        hooks.after_run(
+            "success" if all(r.ok for r in results) else "failure",
+            deadline=(
+                time.monotonic() + cancelled_teardown_seconds(grace_seconds())
+                if cancelled()
+                else None
+            ),
+        )
     return _assemble_report(
         with_lifecycle_phases(eff, scenarios, dict(target_effs or {}), skip=worker_failures or {}),
         results,
