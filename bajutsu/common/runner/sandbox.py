@@ -15,6 +15,7 @@ daemon; only the real `docker run` / `docker build` is exercised outside the gat
 from __future__ import annotations
 
 import contextlib
+import os
 import shlex
 import subprocess
 import time
@@ -36,7 +37,7 @@ WORKDIR = "/bundle"  # where the config's directory is bind-mounted read-only in
 HOOK_DIR = "/bajutsu-hooks"
 # Resource caps for the disposable container. Conservative, documented defaults — a hostile command
 # cannot exhaust the host even before the deeper per-tenant isolation of BE-0015 / BE-0016.
-_USER = "65534:65534"  # nobody:nogroup — never root inside the container
+_NOBODY = "65534:65534"  # nobody:nogroup — the fallback when the worker itself runs as root
 _CPUS = "1.0"
 _MEMORY = "512m"
 _PIDS_LIMIT = "256"
@@ -67,6 +68,38 @@ def _real_exec(argv: list[str]) -> None:
         raise SandboxError(f"docker command failed: {cmd}{f' — {detail}' if detail else ''}") from e
     except OSError as e:  # docker not installed / not on PATH
         raise SandboxError(f"docker command failed: {cmd} — {e}") from e
+
+
+def container_user() -> str:
+    """The `--user` the container runs as: the worker's own account, never root.
+
+    The raw area's output files are the worker's, owner-only, and the container has to write the one
+    belonging to the entry it runs — so it runs as that same user rather than as `nobody`, which
+    could not open the file at all. A worker running as root falls back to `nobody`: root in the
+    container is the thing this flag exists to prevent, and a root worker is already outside what
+    this hardening can protect.
+    """
+    uid, gid = os.getuid(), os.getgid()
+    return _NOBODY if uid == 0 else f"{uid}:{gid}"
+
+
+def grant_container_access(out_dir: Path) -> None:
+    """Let the container's user write the mounted output half of the raw area.
+
+    When the worker runs as root the container cannot run as that user — root inside the container
+    is what `--user` exists to prevent — so it runs as `nobody` instead and cannot open a
+    root-owned, owner-only file. Only root reaches this branch, and only root can hand the
+    directory over, so the owner is changed rather than the mode widened: the files stay
+    owner-only, with the container's own user as that owner.
+
+    A no-op for every non-root worker, where the container already runs as the file's owner.
+    """
+    if os.getuid() != 0:
+        return
+    uid, gid = (int(part) for part in _NOBODY.split(":"))
+    for path in (out_dir, *out_dir.rglob("*")):
+        with contextlib.suppress(OSError):
+            os.chown(path, uid, gid)
 
 
 def _container_name() -> str:
@@ -139,7 +172,7 @@ def build_run_argv(
         "--tmpfs",
         "/tmp",  # noqa: S108 — scratch inside the read-only container, not a host temp path
         "--user",
-        _USER,
+        container_user(),
         "--cpus",
         _CPUS,
         "--memory",
@@ -191,6 +224,9 @@ class SandboxRuntime:
 
     sandbox: HookSandbox
     bundle_cwd: Path
+    # The *writable half* of the run's raw area (`<raw>/out`), the only part a command inside the
+    # container can reach. The logs live in the other half, which is never mounted: under `sandbox`
+    # the host captures the `docker exec` client's output, so the container writes no log itself.
     raw_dir: Path
     run_fn: RunFn = _real_run
     exec_fn: ExecFn = _real_exec
@@ -273,6 +309,10 @@ class SandboxRuntime:
 
     def stop(self) -> None:
         """Remove the container, best-effort.
+
+        This is also what stops a process an expired `timeout` left running *inside* the container:
+        the timeout stops the host-side `docker exec` client, not the command it started, so the
+        in-container process lives until the container goes — which is here, after `afterRun`.
 
         A container `--rm` already auto-removed (it exited on its own) makes `docker rm -f` fail with
         "No such container" — that is success for teardown, and must not mask the real error on the

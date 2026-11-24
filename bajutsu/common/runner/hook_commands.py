@@ -30,6 +30,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import threading
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -45,7 +46,7 @@ from bajutsu.common.capability.command_policy import (
 from bajutsu.common.config.effective.hook_phases import HookPhases
 from bajutsu.common.config.schema.hook_command import HookCommand, invalid_hook_name
 from bajutsu.common.evidence.sink import RunArtifactWriter
-from bajutsu.common.run_meta.artifact_perms import make_run_dir, restrict_file
+from bajutsu.common.run_meta.artifact_perms import make_run_dir
 from bajutsu.common.runner.sandbox import SandboxError, SandboxRuntime
 
 # The process seam `HookRunner` spawns through: argv, environment, working directory, the timeout it
@@ -60,9 +61,69 @@ HOOK_FIELD = "hooks"
 # Where the raw (unmasked) logs and output files of one run live: a sibling of the run directories,
 # never inside the run directory that ships as evidence.
 RAW_DIRNAME = ".hook-raw"
+# The raw area has two halves. `out/` is the only one a sandboxed command can reach: it is mounted
+# into the container, so the container may create and write the output files there. `logs/` is never
+# mounted — under `sandbox` the host captures the `docker exec` client's own output, so the
+# container never needs to write a log at all — which keeps a command from planting a link at a
+# later entry's log path and having the host write through it.
+OUT_SUBDIR = "out"
+LOGS_SUBDIR = "logs"
 # The file naming the process that owns a raw directory, so a stale sweep never deletes the raw area
 # of a run that is still going — several workers run side by side on one machine.
 _OWNER_FILE = "owner.pid"
+
+
+def safe_segment(value: str, what: str) -> str:
+    """*value* as one path segment, or raise: it must not climb, nest, or hide.
+
+    A target name is an unvalidated map key under `targets:`, and it becomes a directory of the raw
+    area and of the evidence tree. A name like `../../x` would otherwise appear to write outside
+    both, so it is refused where the path is built rather than trusted.
+
+    Raises:
+        ValueError: *value* is empty, holds a separator, or starts with a dot.
+    """
+    if not value or value.startswith(".") or "/" in value or "\\" in value or value == "..":
+        raise ValueError(
+            f"{what} {value!r} cannot name a directory of the run's evidence: it must be one path "
+            "segment, without a separator and not starting with a dot"
+        )
+    return value
+
+
+def _safe_dir(root: Path, *segments: str) -> Path:
+    """Create `root/segments…` one level at a time, refusing a symbolic link at any level.
+
+    `mkdir(parents=True)` would happily walk a link a sandboxed command planted inside the mounted
+    half of the raw area, so each level is created or checked on its own and a link anywhere on the
+    path fails loudly.
+
+    Raises:
+        ValueError: A component of the path exists and is a symbolic link.
+    """
+    path = make_run_dir(root)
+    for segment in segments:
+        path = path / segment
+        if path.is_symlink():
+            raise ValueError(f"refusing to use a symlinked hook directory: {path}")
+        path = make_run_dir(path)
+    return path
+
+
+def _create_fresh(path: Path, mode: int) -> None:
+    """Create *path* empty, failing rather than writing through a link that is already there.
+
+    `O_EXCL | O_NOFOLLOW` is what makes this safe in the half of the raw area a sandboxed command
+    can write: an existing file (a link it planted at a later entry's predictable path, say) is
+    removed first, and if it reappears between the two calls the create fails instead of truncating
+    whatever it points at.
+
+    Raises:
+        OSError: The file could not be created, a planted link included.
+    """
+    with contextlib.suppress(FileNotFoundError):
+        path.unlink()
+    os.close(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, mode))
 
 
 def _default_log(msg: str) -> None:
@@ -139,6 +200,12 @@ class HookOutputs:
     def secret_values(self) -> list[str]:
         """The values to mask in evidence — those of an entry that asked to be masked."""
         return [v for name in self.masked for v in self.values.get(name, {}).values()]
+
+    def copy(self) -> HookOutputs:
+        """An independent copy, so a caller that adds to it cannot write into the original."""
+        return HookOutputs(
+            values={name: dict(keys) for name, keys in self.values.items()}, masked=set(self.masked)
+        )
 
     def merged(self, other: HookOutputs) -> HookOutputs:
         """These outputs with *other*'s laid on top, leaving both untouched."""
@@ -326,6 +393,7 @@ class HookRunner:
         *,
         inherited: HookOutputs | None = None,
         sandbox: SandboxRuntime | None = None,
+        cwd_base: Path | None = None,
     ) -> HookPhaseResult:
         """Run one list's entries in declaration order and return what they produced.
 
@@ -343,15 +411,21 @@ class HookRunner:
                 these commands and carried into the result.
             sandbox: This target's per-run container, when the worker's policy sandboxes its
                 commands (BE-0492); each entry then runs inside it instead of on the host.
+            cwd_base: Where these entries' relative `cwd` resolves, in place of the runner's own
+                base directory. For entries declared in another file — a scenario's own (BE-0501) —
+                that is the directory of the file that declared them. It does not move the
+                directory a named command may not live inside, which stays the config's own.
         """
-        result = HookPhaseResult(outputs=inherited or HookOutputs())
+        # Copied, never shared: a scenario's own lists start from the run-level outputs, and two
+        # workers writing into that one object would leak one scenario's values into another's.
+        result = HookPhaseResult(outputs=inherited.copy() if inherited is not None else HookOutputs())
         after = list_name.startswith("after")
         for index, entry in enumerate(entries):
             if after and entry.on != "always" and entry.on != context.verdict:
                 result.records.append(HookRecord(list_name, entry.label, None, skipped=True))
                 continue
             record, failure, values = self._run_entry(
-                list_name, index, entry, context, result, sandbox
+                list_name, index, entry, context, result, sandbox, cwd_base
             )
             result.records.append(record)
             if failure is not None:
@@ -374,16 +448,24 @@ class HookRunner:
         context: HookContext,
         so_far: HookPhaseResult,
         sandbox: SandboxRuntime | None = None,
+        cwd_base: Path | None = None,
     ) -> tuple[HookRecord, HookFailure | None, dict[str, str]]:
         slot = entry.name or str(index)
-        stem = f"{list_name}/{context.target}"
-        if context.scenario_index is not None:
-            stem = f"{stem}/{context.scenario_index:02d}"
-        log_name = f"{HOOK_FIELD}/{stem}/{slot}.log"
-        raw_log, raw_out = self._raw_paths(stem, slot)
+        try:
+            segments = [safe_segment(list_name, "a hook list"), safe_segment(context.target, "a target name")]
+            if context.scenario_index is not None:
+                segments.append(f"{context.scenario_index:02d}")
+            raw_log, raw_out = self._raw_paths(segments, slot)
+        except (OSError, ValueError) as e:
+            return (
+                HookRecord(list_name, entry.label, None, failure=str(e)),
+                HookFailure(list_name, entry.label, str(e)),
+                {},
+            )
+        log_name = "/".join([HOOK_FIELD, *segments, f"{slot}.log"])
         try:
             argv, env, cwd, sandboxed = self._resolve(
-                entry, context, so_far.outputs, raw_out, sandbox
+                entry, context, so_far.outputs, raw_out, sandbox, cwd_base
             )
         except (CommandRefused, NamedCommandError, SandboxError, ValueError) as e:
             return (
@@ -421,17 +503,26 @@ class HookRunner:
         """How `manifest.json` names the command's declaring field (BE-0492)."""
         return f"{HOOK_FIELD}.{list_name}[{slot}].cmd"
 
-    def _raw_paths(self, stem: str, slot: str) -> tuple[Path | None, Path | None]:
-        """This entry's raw log and output file, created owner-only, or `(None, None)`."""
+    def _raw_paths(self, segments: Sequence[str], slot: str) -> tuple[Path | None, Path | None]:
+        """This entry's raw log and output file, created fresh, or `(None, None)`.
+
+        The log lands in the half of the raw area no container can reach; the output file lands in
+        the mounted half, since a sandboxed command has to be able to write it. Both are created
+        empty rather than appended to, so a key one entry wrote can never be read as a later
+        entry's own value.
+
+        Raises:
+            ValueError: A component of either path is a symbolic link.
+            OSError: A file could not be created fresh (see `_create_fresh`).
+        """
         if self._raw is None:
             return None, None
-        directory = make_run_dir(self._raw / stem)
-        log, out = directory / f"{slot}.log", directory / f"{slot}.output"
-        for path in (log, out):
-            # Truncated, not appended: the output file is a *fresh, empty* file per entry, so a key
-            # one entry wrote can never be read as a later entry's own value.
-            path.write_text("", encoding="utf-8")
-            restrict_file(path)
+        log = _safe_dir(self._raw / LOGS_SUBDIR, *segments) / f"{slot}.log"
+        out = _safe_dir(self._raw / OUT_SUBDIR, *segments) / f"{slot}.output"
+        _create_fresh(log, 0o600)
+        # The container runs as the worker's own user (see `sandbox.container_user`), so owner-only
+        # is what lets it write; group and world still get nothing.
+        _create_fresh(out, 0o600)
         return log, out
 
     def _resolve(
@@ -441,23 +532,32 @@ class HookRunner:
         outputs: HookOutputs,
         raw_out: Path | None,
         sandbox: SandboxRuntime | None,
+        cwd_base: Path | None = None,
     ) -> tuple[list[str], dict[str, str], Path | None, bool]:
         """This entry's argv, environment, and working directory, with the gate consulted first.
 
         Returns the four as `(argv, env, cwd, sandboxed)`; `sandboxed` is what the command record
         states, so the report never claims a command ran in a container when it ran on the host.
         """
-        named = self._resolve_named(entry) if entry.use is not None else None
-        if named is not None:
+        if entry.use is not None:
             # A named command's code is the operator's own, so it runs on the host under every mode
-            # but `deny` — inside no container, and with only the variables the worker listed.
-            return [named.path], {**os.environ, **context.env(), **named.env}, None, False
+            # but `deny`, inside no container. The worker's `env` list bounds what the *config* may
+            # set, which is why `entry.env` passes through `resolve_named_command`; Bajutsu's own
+            # context and the outputs of earlier commands are not the config's doing, so they reach
+            # it like any other entry — the item has every later command see them.
+            named = self._resolve_named(entry)
+            env = {**os.environ, **context.env(), **outputs.env(), **named.env}
+            if raw_out is not None:
+                env["BAJUTSU_OUTPUT"] = str(raw_out)
+            else:
+                env.pop("BAJUTSU_OUTPUT", None)
+            return [named.path], env, None, False
         assert entry.cmd is not None  # the schema admits exactly one of `cmd` / `use`
         action = self._gate.check("command", self._record_field("hooks", entry.label), entry.cmd)
         argv = shlex.split(entry.cmd)
         if not argv:
             raise ValueError(f"`cmd` {entry.cmd!r} splits into no command")
-        cwd = self._cwd(entry.cwd)
+        cwd = self._cwd(entry.cwd, cwd_base)
         env = {**os.environ, **context.env(), **outputs.env(), **entry.env}
         if raw_out is not None:
             env["BAJUTSU_OUTPUT"] = str(raw_out)
@@ -487,12 +587,13 @@ class HookRunner:
             named, entry.use, config_dir=self._base or Path.cwd(), env=entry.env
         )
 
-    def _cwd(self, configured: str | None) -> Path | None:
-        """A relative `cwd` resolved against this runner's base directory."""
+    def _cwd(self, configured: str | None, base: Path | None = None) -> Path | None:
+        """A relative `cwd` resolved against *base*, else this runner's own base directory."""
+        root = base if base is not None else self._base
         if configured is None:
-            return self._base
+            return root
         path = Path(configured)
-        return path if path.is_absolute() else (self._base or Path.cwd()) / path
+        return path if path.is_absolute() else (root or Path.cwd()) / path
 
     def copy_log(self, raw_log: Path | None, name: str) -> str | None:
         """Copy one raw log into the run directory with secrets masked, or None.
@@ -518,7 +619,11 @@ class HookRunner:
         for record in records:
             if record.log is None:
                 continue
-            raw = self._raw / record.log.removeprefix(f"{HOOK_FIELD}/") if self._raw else None
+            raw = (
+                self._raw / LOGS_SUBDIR / record.log.removeprefix(f"{HOOK_FIELD}/")
+                if self._raw
+                else None
+            )
             self.copy_log(raw, record.log)
 
     def cleanup(self) -> None:
@@ -595,6 +700,7 @@ def run_phase(
     *,
     inherited: HookOutputs | None = None,
     sandboxes: Mapping[str, SandboxRuntime] | None = None,
+    cwd_base: Path | None = None,
 ) -> HookPhaseResult:
     """Run one list across every target a run or a scenario drives, and merge the outcome.
 
@@ -610,6 +716,8 @@ def run_phase(
         context: Builds the context for one target's commands, given the target name.
         inherited: Outputs already in scope, visible to these commands.
         sandboxes: The per-run container of each target whose commands the worker sandboxes.
+        cwd_base: Where these entries' relative `cwd` resolves, for entries declared in another
+            file; see `HookRunner.run_list`.
     """
     merged = HookPhaseResult(outputs=inherited or HookOutputs())
     after = list_name.startswith("after")
@@ -624,6 +732,7 @@ def run_phase(
             context(target),
             inherited=merged.outputs,
             sandbox=(sandboxes or {}).get(target),
+            cwd_base=cwd_base,
         )
         merged.outputs = one.outputs
         merged.failures += one.failures
@@ -676,4 +785,75 @@ def hook_refusal(phases: Mapping[str, HookPhases], gate: CommandGate) -> str | N
                     f"of this {gate.policy.source} config, and target {target!r} declares no "
                     "`hooks.sandbox` block to run them in (BE-0491)"
                 )
+    return None
+
+
+class WorkerIndex:
+    """A stable zero-based index per worker thread, for `BAJUTSU_WORKER`.
+
+    `run --workers` maps the scenarios over a thread pool, which carries no worker number of its
+    own, so one is assigned here on each thread's first scenario and kept for the rest of the run. A
+    script that touches shared state, or that starts a server per scenario, can then pick its data
+    or its port by that index and never collide with a sibling worker.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._ids: dict[int, int] = {}
+
+    def current(self) -> int:
+        """This thread's index, assigned on first use."""
+        thread = threading.get_ident()
+        with self._lock:
+            return self._ids.setdefault(thread, len(self._ids))
+
+
+def missing_hook_key(referenced: Iterable[str], outputs: HookOutputs) -> str | None:
+    """Why a `${hooks.<name>.<key>}` token this scenario uses has no value, or None (BE-0491).
+
+    The hook *name* is checked statically when the run loads; a *key* can only be checked once the
+    command has run, since the command decides which keys it writes. A key it never wrote names both
+    the hook and the key, rather than leaving the token in the step's own text.
+    """
+    for token in sorted(referenced):
+        if not token.startswith("hooks."):
+            continue
+        _, _, rest = token.partition("hooks.")
+        name, _, key = rest.partition(".")
+        if not key:
+            return f"${{{token}}} names no output key; a token reads `hooks.<name>.<key>`"
+        if name not in outputs.values:
+            return f"${{{token}}}: hook {name!r} wrote no output at all"
+        if key not in outputs.values[name]:
+            wrote = ", ".join(sorted(outputs.values[name])) or "nothing"
+            return f"${{{token}}}: hook {name!r} never wrote {key!r} (it wrote {wrote})"
+    return None
+
+
+def unknown_hook_tokens(
+    referenced: Iterable[str], readable: Iterable[str], *, skipped: Iterable[str] = ()
+) -> str | None:
+    """Why a `${hooks.*}` token can never resolve, checked when the run loads, or None.
+
+    A token naming no `beforeRun` or `beforeScenario` entry of a target this scenario drives is an
+    error before anything runs, as is one naming a `beforeScenario` entry the scenario skips through
+    `preconditions.inheritSetup: false` — the value would never be written, so the run would fail
+    halfway through instead of at load.
+    """
+    names, skipped_names = set(readable), set(skipped)
+    for token in sorted(referenced):
+        if not token.startswith("hooks."):
+            continue
+        name = token.removeprefix("hooks.").partition(".")[0]
+        if name in skipped_names:
+            return (
+                f"${{{token}}} reads the hook {name!r}, which this scenario skips: "
+                "`preconditions.inheritSetup: false` skips the target's beforeScenario entries"
+            )
+        if name not in names:
+            known = ", ".join(sorted(names)) or "none"
+            return (
+                f"${{{token}}} names no hook this scenario can read; a token reads a `beforeRun` or "
+                f"`beforeScenario` entry of a target it drives (known: {known})"
+            )
     return None

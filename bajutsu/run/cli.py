@@ -1129,6 +1129,42 @@ def _reject_bad_target_config_hooks(
         raise typer.Exit(2) from None
 
 
+def _reject_unknown_hook_tokens(
+    target_effs: Mapping[str, Effective], scenarios: list[Scenario], primary: str
+) -> None:
+    """Fail fast on a `${hooks.<name>.<key>}` token that can never resolve (BE-0491).
+
+    Checked when the run loads, before any device work: a token naming no `beforeRun` or
+    `beforeScenario` entry of a target the scenario drives would otherwise fail halfway through the
+    suite, and so would one naming a `beforeScenario` entry the scenario skips through
+    `preconditions.inheritSetup: false`. Whether each *key* was written can only be known once the
+    command has run, which the run loop checks per scenario.
+    """
+    from bajutsu.common.runner.hook_commands import unknown_hook_tokens
+    from bajutsu.common.scenario.interp import find_tokens
+
+    for s in scenarios:
+        names = s.target_names if s.targets else [primary]
+        readable: set[str] = set()
+        skipped: set[str] = set()
+        for name in names:
+            eff = target_effs.get(name)
+            if eff is None:
+                continue
+            readable |= {e.name for e in eff.hooks.before_run if e.name is not None}
+            scenario_level = {e.name for e in eff.hooks.before_scenario if e.name is not None}
+            if s.preconditions.inherit_setup:
+                readable |= scenario_level
+            else:
+                skipped |= scenario_level
+        why = unknown_hook_tokens(
+            find_tokens(s.model_dump(by_alias=True)), readable, skipped=skipped
+        )
+        if why is not None:
+            typer.echo(f"scenario {s.name!r}: {why}")
+            raise typer.Exit(2)
+
+
 def _reject_unmatchable_conditions(
     scenarios: list[Scenario],
     target_effs: Mapping[str, Effective],
@@ -2431,7 +2467,7 @@ def _fail_before_scenarios(run: _UnstartedRun, message: str) -> NoReturn:
     """
 
     def no_device(*_args: object, **_kwargs: object) -> NoReturn:
-        raise AssertionError("a run whose server never came up leases no device")
+        raise AssertionError("a run whose beforeRun hooks never came up leases no device")
 
     _, manifest = run_and_report(
         run.eff,
@@ -2577,6 +2613,7 @@ def _dispatch_single(
             force_erase_on_retry=plan.force_erase_on_retry,
             cancelled=plan.cancelled,
             step_gate=plan.step_gate,
+            hooks=plan.hooks,
         )
     finally:
         _close_pools(pools)
@@ -2628,6 +2665,9 @@ def _dispatch_matrix(
                 trace_driver=plan.trace_driver,
                 force_erase_on_retry=plan.force_erase_on_retry,
                 cancelled=plan.cancelled,
+                # Each engine pass runs the scenarios again, so each runs their own
+                # `beforeScenario` / `afterScenario`; the run-level pair wraps every pass once.
+                hooks=plan.hooks,
             )
         finally:
             shutdown()
@@ -2831,6 +2871,7 @@ def _run_cell(
             force_erase_on_retry=plan.force_erase_on_retry,
             cancelled=plan.cancelled,
             step_gate=plan.step_gate,
+            hooks=plan.hooks,
         )
     finally:
         # The engine stays in the label: two web pools can differ only by it, and a shared label
@@ -3380,6 +3421,7 @@ def run_body(
     # pipeline, whose own guard would otherwise raise mid-run instead of this clean exit 2.
     _reject_cross_browser_matrix_with_targets(all_scenarios, engines)
     _reject_bad_target_config_hooks(target_effs, scenarios, target_name)
+    _reject_unknown_hook_tokens({**target_effs, target_name: eff}, all_scenarios, target_name)
     # Built only now, once `--tag` / `--exclude` and the worker check have settled the primary: an
     # inferred primary of a scenario selected away is never built (an iOS app on a Linux lane).
     rebuilt: set[str] = set()

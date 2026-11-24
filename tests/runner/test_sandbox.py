@@ -86,9 +86,19 @@ def test_build_run_argv_has_hardening_flags() -> None:
     )
     for flag in ("--cap-drop=ALL", "--security-opt=no-new-privileges", "--read-only", "--rm"):
         assert flag in argv
-    assert argv[argv.index("--user") + 1] == "65534:65534"  # never root inside the container
+    assert argv[argv.index("--user") + 1] == sandbox.container_user()
     assert argv[argv.index("--memory") + 1] == "512m"
     assert argv[argv.index("--pids-limit") + 1] == "256"
+
+
+def test_the_container_user_is_the_worker_never_root(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The container has to write the entry's output file in the mounted raw area, which is the
+    # worker's own, so it runs as that user; a root worker falls back to `nobody`.
+    monkeypatch.setattr(sandbox.os, "getuid", lambda: 1000)
+    monkeypatch.setattr(sandbox.os, "getgid", lambda: 1000)
+    assert sandbox.container_user() == "1000:1000"
+    monkeypatch.setattr(sandbox.os, "getuid", lambda: 0)
+    assert sandbox.container_user() == "65534:65534"
 
 
 def test_build_run_argv_replaces_the_image_default_with_an_idle_command() -> None:
@@ -268,3 +278,32 @@ def test_one_container_serves_the_whole_run(tmp_path: Path) -> None:
     for _ in range(3):
         runtime.wrap(["./s.sh"], {}, None)
     assert len(rec.run_calls) == 1
+
+
+def test_a_root_worker_hands_the_output_half_to_the_container_user(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A root worker's container runs as `nobody`, which cannot open a root-owned owner-only file; the
+    # owner is handed over rather than the mode widened, so the files stay owner-only.
+    out = tmp_path / "out" / "beforeRun"
+    out.mkdir(parents=True)
+    (out / "0.output").write_text("", encoding="utf-8")
+    chowned: list[tuple[str, int, int]] = []
+    monkeypatch.setattr(sandbox.os, "getuid", lambda: 0)
+    monkeypatch.setattr(
+        sandbox.os, "chown", lambda p, u, g: chowned.append((Path(p).name, u, g))
+    )
+    sandbox.grant_container_access(tmp_path / "out")
+    assert ("0.output", 65534, 65534) in chowned
+    assert ("out", 65534, 65534) in chowned
+
+
+def test_a_non_root_worker_changes_no_owner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sandbox.os, "getuid", lambda: 501)
+    monkeypatch.setattr(
+        sandbox.os, "chown", lambda *a: pytest.fail("a non-root worker changed an owner")
+    )
+    (tmp_path / "out").mkdir()
+    sandbox.grant_container_access(tmp_path / "out")
