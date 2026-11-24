@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0487") |
-| Implementing PR | [#2470](https://github.com/bajutsu-e2e/bajutsu/pull/2470) (units 1, 2, 4, 7; code for 3, 5, 6), PRLINK (units 3, 5, 6) |
+| Implementing PR | [#2470](https://github.com/bajutsu-e2e/bajutsu/pull/2470) (units 1, 2, 4, 7; code for 3, 5, 6), [#2511](https://github.com/bajutsu-e2e/bajutsu/pull/2511) (units 3, 5, 6) |
 | Topic | Scenario authoring features |
 <!-- /BE-METADATA -->
 
@@ -307,7 +307,7 @@ Log:
   - The load-time checks run from the `Scenario` validator (`_open_urls.py`), not the model, for the reason BE-0464 gives. The `web:` ban there walks every nested step list and does not exempt a `${...}` value. `expand_components` runs it again after splicing components, so a `use:` under `web:` cannot slip an `openUrl` past it.
   - A failure that `XCUIApplication.open(_:)` records as an XCTest issue returns normally under `continueAfterFailure`. A collector that `RunnerUITest.record(_:)` feeds (`RecordedIssues`) catches it, and `ActuationReply` gained a `reason` field to carry the message.
   - Codegen emits `app.open(URL(string:)!)` under `#available(iOS 16.4, *)` for XCUITest and a labeled `// TODO` for UI Automator and Playwright, which the design did not cover.
-- PRLINK — Closed units 3, 5, and 6 on device evidence, and added a scheme check to unit 5.
+- [#2511](https://github.com/bajutsu-e2e/bajutsu/pull/2511) — Closed units 3, 5, and 6 on device evidence, and added a scheme check to unit 5.
   - Units 3 and 6: the [Android](https://github.com/bajutsu-e2e/bajutsu/actions/runs/45323704367) and [iOS](https://github.com/bajutsu-e2e/bajutsu/actions/runs/45323704265) end-to-end runs passed `open_url_android.yaml` and `open_url.yaml`. The Android scenario opens its launch deeplink's URL again with `openUrl`.
   - Unit 5: we drove `/app/openUrl` on iOS 18.6 and 27.0 Simulators with a scheme no app declares. `open(_:)` raised and recorded nothing. It also delivered the URL: the showcase switched to the tab that URL named. The same held for `https` without associated domains.
   - A step that passes on a URL no link can deliver hides a broken link. The design asked for a documented limit; this change adds a check. The driver compares the scheme with the receiving app's `CFBundleURLTypes` before it calls the runner. The Simulator reads the installed bundle. A real device reads the `.app` at `subject.path`, for the app under test alone. `http`, `https`, and an unreadable build stay unchecked. We confirmed the Simulator check on iOS 27.0, for the showcase and for the system browser. No real device was available, so the real-device check is unconfirmed.
