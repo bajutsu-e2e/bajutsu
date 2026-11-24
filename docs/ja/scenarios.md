@@ -743,6 +743,25 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
 `name` は、1 本のシナリオから見えるエントリのあいだで一意でなければなりません。見えるエントリとは、シナリオ自身の
 エントリと、シナリオが扱うターゲットのエントリです。別々のシナリオは同じ名前を使えます。値が混ざらないからです。
 
+### データの行と `when`
+
+エントリの `when` には、エントリを実行するシナリオのタグを書きます
+（[configuration](configuration.md#一部のシナリオでだけエントリを実行するwhenbe-0497)）。`hooks` ブロックは、
+すべてのデータ行で共有されます。`tags` に `${row.*}` を書けば、コマンドを実行する行を選べます。
+
+```yaml
+- name: checkout as ${row.plan}
+  tags: [checkout, "${row.plan}"]
+  data:
+    - { plan: free }
+    - { plan: premium }
+  hooks:
+    beforeScenario:
+      - name: subscription
+        cmd: "./scripts/grant-premium.sh"
+        when: { tags: [premium] }
+```
+
 ### コマンドの実行可否
 
 ターゲットのコマンドと同じく、シナリオを実行する worker が決めます

@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0497](BE-0497-tag-conditional-hooks.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0497") |
 | Topic | Scenario authoring features |
 | Related | [BE-0034](../BE-0034-tags-selective-runs/BE-0034-tags-selective-runs.md), [BE-0491](../BE-0491-target-command-hooks/BE-0491-target-command-hooks.md), [BE-0492](../BE-0492-worker-command-execution-policy/BE-0492-worker-command-execution-policy.md) |
@@ -241,13 +241,22 @@ wait for the sibling proposal.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Shared predicate: factor the tag rule out of `select_scenarios` into one function that selection and hook conditions call.
-- [ ] Schema: the `when` block on every hook entry at both levels, with the load error for an empty block.
-- [ ] Scenario-level evaluation: gate `beforeScenario` and `afterScenario` entries at both levels on `when`, combined with `inheritSetup` and `on`.
-- [ ] Run-level evaluation: fix the run's scenario set before `beforeRun`, gate `beforeRun` and `afterRun` on it, and treat `record`, `crawl`, and `repl` as an empty set.
-- [ ] Token check: reject a scenario that reads the output of an entry whose `when` it does not match, per expanded scenario.
-- [ ] Evidence: the `skipped (when)` label in the report and the `skipped` decision in `commandExecutions`.
-- [ ] Docs: `docs/configuration.md`, `docs/scenarios.md`, `docs/run-loop.md`, `DESIGN.md`, and `docs/architecture.md`, each with its Japanese mirror.
+- [x] Shared predicate: factor the tag rule out of `select_scenarios` into one function that selection and hook conditions call.
+- [x] Schema: the `when` block on every hook entry at both levels, with the load error for an empty block.
+- [x] Scenario-level evaluation: gate `beforeScenario` and `afterScenario` entries at both levels on `when`, combined with `inheritSetup` and `on`.
+- [x] Run-level evaluation: fix the run's scenario set before `beforeRun`, gate `beforeRun` and `afterRun` on it, and treat `record`, `crawl`, and `repl` as an empty set.
+- [x] Token check: reject a scenario that reads the output of an entry whose `when` it does not match, per expanded scenario.
+- [x] Evidence: the `skipped (when)` label in the report and the `skipped` decision in `commandExecutions`.
+- [x] Docs: `docs/configuration.md`, `docs/scenarios.md`, `docs/run-loop.md`, `DESIGN.md`, and `docs/architecture.md`, each with its Japanese mirror.
+
+Log:
+
+- 2026-11-24 — All units landed together, stacked on BE-0491 and BE-0501.
+  - A hook entry at either level takes `when: { tags, exclude }`, under the predicate that `--tag` and `--exclude` share (`bajutsu/common/scenario/tags.py`).
+  - `run` fixes its scenario set before `beforeRun`, `audit` uses the scenarios it replays, and `record`, `crawl`, and `repl` pass an empty set.
+  - `run` and `audit` reject a scenario that reads the output of an entry its tags skip. A deselected scenario that names no `targets` fails only when no target of the config could run it, since `--target` decides what it drives.
+  - A skipped entry shows as `skipped (when)` in the report and `skipped` in `commandExecutions`.
+  - `docs/run-loop.md` describes no command hook, so it did not change.
 
 ## References
 

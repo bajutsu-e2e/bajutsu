@@ -1050,6 +1050,25 @@ error names the variable. A `name` must be unique among the entries one scenario
 own and those of the targets it drives. Two scenarios may share a name, because their values stay
 apart.
 
+### Data rows and `when`
+
+An entry's `when` names the tags it runs for
+([configuration](configuration.md#running-an-entry-for-some-scenarios-when-be-0497)). Every data row
+shares the `hooks` block. A `${row.*}` token in `tags` then picks the rows that run a command:
+
+```yaml
+- name: checkout as ${row.plan}
+  tags: [checkout, "${row.plan}"]
+  data:
+    - { plan: free }
+    - { plan: premium }
+  hooks:
+    beforeScenario:
+      - name: subscription
+        cmd: "./scripts/grant-premium.sh"
+        when: { tags: [premium] }
+```
+
 ### Whether the commands run
 
 The worker that runs the scenario decides, as it does for the target's commands
