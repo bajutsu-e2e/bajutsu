@@ -831,13 +831,36 @@ def test_repeat_runs_a_scenario_s_own_commands_every_time(tmp_path: Path) -> Non
     assert seen.read_text().split() == ["x", "x"], result.output
 
 
-def test_a_failed_teardown_of_a_repeat_is_reported(tmp_path: Path) -> None:
-    scn, cfg = _audit_project(tmp_path)
+def test_a_failed_after_run_of_a_repeat_audit_is_reported_and_exits_2(tmp_path: Path) -> None:
+    # A teardown that did not hold exits 2, as it does for `run` (BE-0491); `audit` reporting it and
+    # exiting 0 would leave whatever a `beforeRun` hook started undone with nobody told.
+    scn = tmp_path / "s.yaml"
+    scn.write_text("- name: x\n  steps: []\n", encoding="utf-8")
+    cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "targets:\n  demo:\n    platform: web\n    subject: {url: 'http://127.0.0.1:8/'}\n"
-        "    hooks: {afterRun: [{cmd: 'false'}]}\n",
+        "targets:\n"
+        "  demo:\n"
+        "    platform: ios\n"
+        "    subject: {id: com.example.demo}\n"
+        "    hooks:\n"
+        "      beforeRun: [{name: seed, cmd: 'true'}]\n"
+        "      afterRun: [{name: teardown, cmd: 'false'}]\n",
         encoding="utf-8",
     )
-    argv = ["audit", str(scn), "--repeat", "2", "--target", "demo", "--backend", "fake"]
-    result = runner.invoke(app, [*argv, "--config", str(cfg)])
-    assert "afterRun failed: " in result.output
+    result = runner.invoke(
+        app,
+        [
+            "audit",
+            str(scn),
+            "--repeat",
+            "2",
+            "--target",
+            "demo",
+            "--backend",
+            "fake",
+            "--config",
+            str(cfg),
+        ],
+    )
+    assert result.exit_code == 2, result.output
+    assert "afterRun failed" in result.output and "teardown" in result.output
