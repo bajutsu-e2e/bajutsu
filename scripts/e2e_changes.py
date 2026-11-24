@@ -355,6 +355,8 @@ _LANE_PATHS: dict[str, str] = {
         # The script the lane's two-emulator job runs (BE-0298): it boots the second emulator and
         # invokes the isolation assertion, so only this lane can exercise a change to it.
         r"|scripts/android_pool_e2e\.sh$"
+        # The display-cutout pin `e2e-visual` runs before its pixel compare: only this lane runs it.
+        r"|scripts/android_pin_display_cutout\.sh$"
     ),
     "web": (
         r"|bajutsu/common/drivers/playwright/"

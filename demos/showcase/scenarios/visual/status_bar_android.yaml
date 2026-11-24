@@ -12,6 +12,9 @@
 #     is about 127 pixels tall, so the strip holds no app pixels. `threshold` is 0: it is a percentage of the whole
 #     screen, masked pixels included, so even a small value would let one changed clock glyph through.
 #     The CI renderer is fixed and pixelmatch's `colorTolerance` already absorbs sub-visible noise.
+#     `e2e-visual` first pins the pixel_6 display cutout and restarts System UI against it
+#     (scripts/android_pin_display_cutout.sh), since the emulator applies the cutout at a varying
+#     point of boot and the bar's geometry followed it.
 #   - `sys.locale.value` is the language tag of the app's own configuration, so it proves the locale
 #     reached the app, beyond the environment's read-back of `cmd locale get-app-locales`.
 #
