@@ -46,6 +46,7 @@ from bajutsu.common.capability.command_policy import (
 )
 from bajutsu.common.config.effective.hook_phases import HookPhases
 from bajutsu.common.config.schema.hook_command import HookCommand, invalid_hook_name
+from bajutsu.common.config.schema.hooks import COMMAND_LISTS
 from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.common.run_meta.artifact_perms import make_run_dir
 from bajutsu.common.runner.sandbox import (
@@ -215,12 +216,6 @@ class HookOutputs:
             values={name: dict(keys) for name, keys in self.values.items()}, masked=set(self.masked)
         )
 
-    def merged(self, other: HookOutputs) -> HookOutputs:
-        """These outputs with *other*'s laid on top, leaving both untouched."""
-        return HookOutputs(
-            values={**self.values, **other.values}, masked=self.masked | other.masked
-        )
-
 
 @dataclass(frozen=True)
 class HookFailure:
@@ -246,6 +241,9 @@ class HookRecord:
     # The run-dir-relative path of the masked log, or None when nothing was copied (no run
     # directory, or the raw file was refused).
     log: str | None
+    # The scenario this entry belongs to, by run order, or None for a run-level entry. Parallel
+    # workers append to one list, so the report sorts on this rather than on arrival order.
+    scenario: int | None = None
     skipped: bool = False
     failure: str | None = None
     # Why it was skipped, when the reason is not simply its `on` (a spent teardown budget).
@@ -287,6 +285,10 @@ def raw_root(runs_dir: Path | None, run_id: str) -> Path:
     _sweep_stale(root, run_id)
     own = make_run_dir(root / run_id)
     (own / _OWNER_FILE).write_text(str(os.getpid()), encoding="utf-8")
+    # Both halves up front, owner-only: the writable one is the container's bind-mount source, and
+    # a missing source would have the Docker daemon create it as root instead.
+    make_run_dir(own / OUT_SUBDIR)
+    make_run_dir(own / LOGS_SUBDIR)
     return own
 
 
@@ -334,9 +336,14 @@ def _read_regular(path: Path) -> str | None:
     became one between the check and the open — must never pull host content into the evidence tree.
     `O_NOFOLLOW` refuses the link at open time, and the check runs on the opened descriptor, so
     there is no window to swap the file in.
+
+    `O_NONBLOCK` covers the other shape the same command can plant: a named pipe, which
+    `O_NOFOLLOW` admits and whose open blocks for as long as no one writes to it. The entry's own
+    `timeout` has already been spent by then, so a blocking open would hold the run with nothing
+    left to bound it. The flag is a no-op for the regular file this is meant to read.
     """
     try:
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     except OSError:
         return None
     with os.fdopen(fd, encoding="utf-8", errors="replace") as fh:
@@ -363,6 +370,8 @@ def parse_outputs(text: str) -> tuple[dict[str, str], str | None]:
         key = key.strip()
         if (why := invalid_hook_name(key)) is not None:
             return {}, f"line {number} output key {why}"
+        if key in values:
+            return {}, f"line {number} writes {key!r} again, which line order alone would resolve"
         values[key] = value
     return values, None
 
@@ -445,8 +454,19 @@ class HookRunner:
         after = list_name.startswith("after")
         for index, entry in enumerate(entries):
             if after and entry.on != "always" and entry.on != context.verdict:
+                # The report shows a bare skip otherwise, and a caller that forgot the verdict
+                # would silently skip every conditional entry of the list.
+                assert context.verdict is not None, "an after list needs the run's verdict"
                 result.records.append(
-                    HookRecord(list_name, entry.label, context.target, None, skipped=True)
+                    HookRecord(
+                        list_name,
+                        entry.label,
+                        context.target,
+                        None,
+                        scenario=context.scenario_index,
+                        skipped=True,
+                        reason=f"`on: {entry.on}` does not match the verdict {context.verdict!r}",
+                    )
                 )
                 continue
             left = None if deadline is None else deadline - time.monotonic()
@@ -458,6 +478,7 @@ class HookRunner:
                         entry.label,
                         context.target,
                         None,
+                        scenario=context.scenario_index,
                         skipped=True,
                         reason="teardown budget spent",
                     )
@@ -475,8 +496,9 @@ class HookRunner:
             if entry.name is not None:
                 result.outputs.values[entry.name] = values
                 if entry.mask:
+                    # The values themselves were registered with the writer in `_run_entry`, before
+                    # this entry's own log was copied; this records which hook asked for it.
                     result.outputs.masked.add(entry.name)
-                    self._mask(values.values())
         return result
 
     def _run_entry(
@@ -506,7 +528,14 @@ class HookRunner:
             raw_log, raw_out = self._raw_paths(segments, slot)
         except (OSError, ValueError) as e:
             return (
-                HookRecord(list_name, entry.label, context.target, None, failure=str(e)),
+                HookRecord(
+                    list_name,
+                    entry.label,
+                    context.target,
+                    None,
+                    scenario=context.scenario_index,
+                    failure=str(e),
+                ),
                 HookFailure(list_name, entry.label, str(e)),
                 {},
             )
@@ -514,13 +543,21 @@ class HookRunner:
             # Created after the container started, so the hand-over is per entry, not once at start.
             grant_container_access(raw_out, root=self._raw / OUT_SUBDIR if self._raw else None)
         log_name = "/".join([HOOK_FIELD, *segments, f"{slot}.log"])
+        field = self._record_field(list_name, slot)
         try:
             argv, env, cwd, sandboxed = self._resolve(
-                entry, context, so_far.outputs, raw_out, sandbox, cwd_base
+                entry, context, so_far.outputs, raw_out, sandbox, cwd_base, field
             )
         except (CommandRefused, NamedCommandError, SandboxError, ValueError) as e:
             return (
-                HookRecord(list_name, entry.label, context.target, None, failure=str(e)),
+                HookRecord(
+                    list_name,
+                    entry.label,
+                    context.target,
+                    None,
+                    scenario=context.scenario_index,
+                    failure=str(e),
+                ),
                 HookFailure(list_name, entry.label, str(e)),
                 {},
             )
@@ -529,14 +566,16 @@ class HookRunner:
         timeout = entry.timeout if budget is None else min(entry.timeout, budget)
         try:
             code = self._run(argv, env, cwd, timeout, raw_log)
-        except subprocess.TimeoutExpired:
-            code, reason = -1, f"timed out after {timeout:g}s"
+        except subprocess.TimeoutExpired as expired:
+            note = expired.output.decode(errors="replace") if expired.output else ""
+            code = -1
+            reason = f"timed out after {timeout:g}s{f' {note}' if note else ''}"
         except OSError as e:  # the executable is missing / not executable
             code, reason = -1, f"could not start: {e}"
         if reason is None and code != 0:
             reason = f"exited {code}"
         self._gate.record(
-            self._record_field(list_name, slot),
+            field,
             entry.cmd if entry.cmd is not None else f"use:{entry.use}",
             sandboxed=sandboxed,
             exit_code=code,
@@ -544,12 +583,33 @@ class HookRunner:
         )
         values: dict[str, str] = {}
         if reason is None and raw_out is not None:
-            values, why = parse_outputs(_read_regular(raw_out) or "")
-            if why is not None:
-                reason = f"wrote a malformed $BAJUTSU_OUTPUT file: {why}"
+            # Three causes read the same through `None` — the file is gone, it is no longer the
+            # regular file Bajutsu created, or it could not be opened — and all three mean the
+            # entry's values are lost. Reporting them as an empty file would mark it green.
+            text = _read_regular(raw_out)
+            if text is None:
+                reason = (
+                    "its $BAJUTSU_OUTPUT file could not be read: it is gone, or is no longer the "
+                    f"regular file Bajutsu created ({raw_out})"
+                )
+            else:
+                values, why = parse_outputs(text)
+                if why is not None:
+                    reason = f"wrote a malformed $BAJUTSU_OUTPUT file: {why}"
+        if reason is None and entry.mask:
+            # Registered before the log is copied, so this entry's *own* log is masked too. The
+            # writer masks every artifact written from that call on, and its log comes next.
+            self._mask(values.values())
         log = self.copy_log(raw_log, log_name)
         failure = HookFailure(list_name, entry.label, reason) if reason is not None else None
-        record = HookRecord(list_name, entry.label, context.target, log, failure=reason)
+        record = HookRecord(
+            list_name,
+            entry.label,
+            context.target,
+            log,
+            scenario=context.scenario_index,
+            failure=reason,
+        )
         return record, failure, values
 
     def _record_field(self, list_name: str, slot: str) -> str:
@@ -586,11 +646,14 @@ class HookRunner:
         raw_out: Path | None,
         sandbox: SandboxRuntime | None,
         cwd_base: Path | None = None,
+        field: str = HOOK_FIELD,
     ) -> tuple[list[str], dict[str, str], Path | None, bool]:
         """This entry's argv, environment, and working directory, with the gate consulted first.
 
         Returns the four as `(argv, env, cwd, sandboxed)`; `sandboxed` is what the command record
         states, so the report never claims a command ran in a container when it ran on the host.
+        *field* is how `manifest.json` names this entry, so a refusal raised here is recorded under
+        the same name as a command that ran.
         """
         if entry.use is not None:
             # A named command's code is the operator's own, so it runs on the host under every mode
@@ -598,39 +661,46 @@ class HookRunner:
             # set, which is why `entry.env` passes through `resolve_named_command`; Bajutsu's own
             # context and the outputs of earlier commands are not the config's doing, so they reach
             # it like any other entry — the item has every later command see them.
-            named = self._resolve_named(entry)
+            named = self._resolve_named(entry, field)
             env = {**os.environ, **context.env(), **outputs.env(), **named.env}
             if raw_out is not None:
                 env["BAJUTSU_OUTPUT"] = str(raw_out)
             else:
-                env.pop("BAJUTSU_OUTPUT", None)
+                env.pop("BAJUTSU_OUTPUT", None)  # never a stale value from the worker's own
             return [named.path], env, None, False
         assert entry.cmd is not None  # the schema admits exactly one of `cmd` / `use`
-        action = self._gate.check("command", self._record_field("hooks", entry.label), entry.cmd)
+        action = self._gate.check("command", field, entry.cmd)
         argv = shlex.split(entry.cmd)
         if not argv:
             raise ValueError(f"`cmd` {entry.cmd!r} splits into no command")
         cwd = self._cwd(entry.cwd, cwd_base)
-        env = {**os.environ, **context.env(), **outputs.env(), **entry.env}
+        # What Bajutsu itself gives the command, kept apart from the worker's own environment: the
+        # container receives this set and the entry's own `env`, and nothing else.
+        bajutsu_env = {**context.env(), **outputs.env()}
         if raw_out is not None:
-            env["BAJUTSU_OUTPUT"] = str(raw_out)
-        else:
-            env.pop("BAJUTSU_OUTPUT", None)
+            bajutsu_env["BAJUTSU_OUTPUT"] = str(raw_out)
         if action != "sandbox":
+            env = {**os.environ, **bajutsu_env, **entry.env}
+            if raw_out is None:
+                # A stale value inherited from the worker's own environment would have the command
+                # write its values into another run's file.
+                env.pop("BAJUTSU_OUTPUT", None)
             return argv, env, cwd, False
         if sandbox is None:
             raise SandboxError(
                 f"{entry.label}: the worker's commandExecution sandboxes this config's commands, "
                 "but no `hooks.sandbox` container was started for this target (BE-0491)"
             )
-        wrapped, _ = sandbox.wrap(argv, env, cwd)
-        # The container's own cwd and environment are in the argv; the host-side spawn passes none.
+        # The container's own cwd and environment ride in the `docker exec` argv. The host-side
+        # spawn of that client passes the worker's environment, which the client needs to reach the
+        # daemon and which never crosses into the container.
+        wrapped = sandbox.wrap(argv, bajutsu_env, entry.env, cwd)
         return wrapped, {**os.environ}, None, True
 
-    def _resolve_named(self, entry: HookCommand) -> ResolvedNamedCommand:
+    def _resolve_named(self, entry: HookCommand, field: str) -> ResolvedNamedCommand:
         """The worker's script for `use:`, with the variables this entry sets (BE-0492)."""
         assert entry.use is not None
-        self._gate.check("named", self._record_field("hooks", entry.label), f"use:{entry.use}")
+        self._gate.check("named", field, f"use:{entry.use}")
         from bajutsu.common.capability.command_policy import NamedCommand
 
         named: Mapping[str, NamedCommand] = {
@@ -659,6 +729,10 @@ class HookRunner:
             return None
         text = _read_regular(raw_log)
         if text is None:
+            self._say(
+                f"{name}: the raw hook log was refused — it is no longer the regular file Bajutsu "
+                "created, so no log reaches the run's evidence"
+            )
             return None
         self._writer.write_text(name, text)
         return name
@@ -680,11 +754,20 @@ class HookRunner:
             self.copy_log(raw, record.log)
 
     def cleanup(self) -> None:
-        """Remove this run's raw area, so a plaintext secret never outlives the run."""
+        """Remove this run's raw area, so a plaintext secret never outlives the run.
+
+        A failure never fails the run — the verdict does not depend on cleanup — but it is said out
+        loud, because what it leaves behind is the unmasked output of a `mask: true` hook.
+        """
         if self._raw is None:
             return
-        with contextlib.suppress(OSError):
+        try:
             shutil.rmtree(self._raw)
+        except OSError as e:
+            self._say(
+                f"the raw hook area could not be removed: {e} — it may hold unmasked hook output; "
+                f"remove {self._raw} by hand"
+            )
 
 
 def _spawn(
@@ -721,39 +804,66 @@ def _spawn(
         )
         try:
             return proc.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            _terminate(proc)
+        except subprocess.TimeoutExpired as expired:
+            # The kill's own failure travels on the timeout rather than replacing it: a
+            # `PermissionError` escaping here would be reported as "could not start", the opposite
+            # of what happened, and the surviving process would go unmentioned.
+            if (note := _terminate(proc)) is not None:
+                expired.output = note.encode()
             raise
 
 
-def _terminate(proc: subprocess.Popen[bytes]) -> None:
-    """SIGTERM the command's process group, then SIGKILL after a short grace. Idempotent."""
+def _terminate(proc: subprocess.Popen[bytes]) -> str | None:
+    """SIGTERM the command's process group, then SIGKILL after a short grace. Idempotent.
+
+    Returns:
+        What went wrong, when the command could not be stopped, so the caller can say it beside the
+        timeout. None when the command is gone.
+    """
     if proc.poll() is not None:
-        return
+        return None
     try:
         os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
     except (ProcessLookupError, PermissionError):
-        proc.terminate()
+        with contextlib.suppress(OSError):
+            proc.terminate()
     try:
         proc.wait(timeout=5)
     except subprocess.TimeoutExpired:
         try:
             os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-        except (ProcessLookupError, PermissionError):
-            proc.kill()
-        with contextlib.suppress(subprocess.TimeoutExpired):
+        except (ProcessLookupError, PermissionError) as e:
+            try:
+                proc.kill()
+            except OSError:
+                return f"and could not be stopped: {e}"
+        try:
             proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            return "and is still running: it did not go on SIGKILL"
+    return None
 
 
 def hook_record_dicts(records: Iterable[HookRecord]) -> list[dict[str, object]]:
-    """The hook records as the manifest carries them, in the order the run met the entries."""
+    """The hook records as the manifest carries them, in a deterministic order.
+
+    Sorted by the phase's place in one run's lifecycle, then by scenario, rather than kept in
+    arrival order: parallel workers append their scenarios' records to one list, so arrival order
+    depends on thread timing and two identical runs would write different evidence. The sort is
+    stable, so the entries of one scenario keep their declaration order.
+    """
+    order = {name: i for i, name in enumerate(COMMAND_LISTS)}
     out: list[dict[str, object]] = []
-    for record in records:
+    for record in sorted(
+        records, key=lambda r: (order.get(r.list_name, len(order)), r.scenario or 0)
+    ):
         entry: dict[str, object] = {
             "list": record.list_name,
             "entry": record.label,
             "target": record.target,
         }
+        if record.scenario is not None:
+            entry["scenario"] = record.scenario
         if record.log is not None:
             entry["log"] = record.log
         if record.skipped:

@@ -1734,3 +1734,51 @@ def test_destination_blocks_resolve_to_the_target_conditions_and_state() -> None
     web = resolve(cfg, "w")
     assert web.conditions == {"browser.version": ">=17"}  # one engine is the default, not a list
     assert _web(web).device_mode == "iPhone 13"
+
+
+@pytest.mark.parametrize(
+    ("entry", "message"),
+    [
+        ({}, "exactly one of"),
+        ({"cmd": "x", "use": "y"}, "exactly one of"),
+        ({"cmd": "   "}, "cannot be empty"),
+        ({"cmd": "x", "name": "1bad"}, "must start with a letter"),
+        ({"cmd": "x", "name": "has__dunder"}, "contains '__'"),
+        ({"cmd": "x", "timeout": 0}, "must be positive"),
+    ],
+)
+def test_a_malformed_hook_entry_is_refused(entry: dict[str, object], message: str) -> None:
+    # The user-facing error surface of the four lists (BE-0491).
+    with pytest.raises(ValidationError, match=message):
+        load_config(
+            "targets:\n  web:\n    platform: web\n    subject: {url: 'http://x/'}\n"
+            f"    hooks: {{beforeRun: [{entry!r}]}}\n".replace("'", '"')
+        )
+
+
+def test_a_before_list_entry_cannot_set_on() -> None:
+    # No verdict exists before the thing it precedes, so `on` belongs to the after lists.
+    with pytest.raises(ValidationError, match=r"cannot set `on`"):
+        load_config(
+            "targets:\n  web:\n    platform: web\n    subject: {url: 'http://x/'}\n"
+            "    hooks: {beforeScenario: [{on: always, cmd: x}]}\n"
+        )
+
+
+def test_two_entries_of_one_target_cannot_share_a_hook_name() -> None:
+    # A `${hooks.<name>.<key>}` token must name one command.
+    with pytest.raises(ValidationError, match="two entries are named"):
+        load_config(
+            "targets:\n  web:\n    platform: web\n    subject: {url: 'http://x/'}\n"
+            "    hooks:\n"
+            "      beforeRun: [{name: srv, cmd: a}]\n"
+            "      afterRun: [{name: srv, cmd: b}]\n"
+        )
+
+
+def test_a_sandbox_port_outside_the_range_is_refused() -> None:
+    with pytest.raises(ValidationError, match=r"ports must be in 1\.\.65535"):
+        load_config(
+            "targets:\n  web:\n    platform: web\n    subject: {url: 'http://x/'}\n"
+            "    hooks: {sandbox: {dockerImage: node:20-slim, ports: [0]}}\n"
+        )

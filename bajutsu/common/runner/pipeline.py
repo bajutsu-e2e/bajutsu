@@ -700,7 +700,26 @@ class _ScenarioRunner:
             # here masks it in every artifact the scenario writes from now on, and in the finished
             # result, not only in the hook's own log (BE-0472's seam).
             derived.register(outputs.secret_values())
-        result = self._run_one_impl(i, s, sid, derived, outputs)
+        try:
+            result = self._run_one_impl(i, s, sid, derived, outputs)
+        except BaseException as exc:
+            # A `DeviceError` is re-raised on purpose deeper in, and a crash can escape too. The two
+            # scenario lists are a pair, so a `beforeScenario` that already seeded must be undone
+            # even when the scenario never reached a verdict of its own (BE-0491).
+            self._after_scenario(
+                s,
+                sid,
+                RunResult(
+                    scenario=s.name,
+                    ok=False,
+                    steps=[],
+                    backend=self.actuator or "",
+                    sid=sid,
+                    failure=f"the scenario raised before it produced a verdict: {exc}",
+                ),
+                outputs,
+            )
+            raise
         self._after_scenario(s, sid, result, outputs)
         # Every consumer from here on — result.json, the manifest and reports, CI annotations, a
         # webhook — reads these fields, so masking them once here covers each (BE-0472).
