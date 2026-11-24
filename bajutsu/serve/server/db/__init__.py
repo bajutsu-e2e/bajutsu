@@ -18,6 +18,7 @@ from ._shared import (
     DEFAULT_RUN_LIMIT,
     TERMINAL_JOB_STATUSES,
     cancelled_job_result,
+    job_failed,
 )
 from .concurrency_caps import ConcurrencyCaps
 from .job_metrics import JobMetrics
@@ -43,5 +44,6 @@ __all__ = [
     "SqlRepository",
     "cancelled_job_result",
     "engine_from_url",
+    "job_failed",
     "repository_from_env",
 ]

@@ -11,7 +11,7 @@ from bajutsu.common.evidence.redaction import mask_credential_shapes
 from bajutsu.common.handoff import DEFAULT_TIMEOUT_SECONDS, REQUEST_LINE_PREFIX, request_from_json
 from bajutsu.serve.capabilities import environment_capability
 from bajutsu.serve.helpers import valid_run_id, valid_sha256
-from bajutsu.serve.jobs import lease_secret_env, persist_run
+from bajutsu.serve.jobs import close_cancelled, lease_secret_env, persist_run
 from bajutsu.serve.logbus import ARTIFACT_LINE_PREFIX
 from bajutsu.serve.orgs import DEFAULT_ORG
 from bajutsu.serve.server.object_store import baseline_prefix, org_prefix, upload_store_key
@@ -141,7 +141,11 @@ def worker_lease(
     advertised = _clean_capabilities(capabilities)
     state.repository.register_worker(worker_id, advertised)
     leased = state.repository.lease_jobs(
-        worker_id, advertised, max_jobs=max_jobs or 1, caps=state.concurrency_caps
+        worker_id,
+        advertised,
+        max_jobs=max_jobs or 1,
+        caps=state.concurrency_caps,
+        on_stopped=lambda ids: close_cancelled(state, ids),
     )
     if not leased:
         return {}, 204
@@ -214,7 +218,12 @@ def _fail_unread_secrets(state: ServeState, job_id: str, worker_id: str) -> dict
     """Fail a just-leased job whose org's secrets could not be read, and end its live stream."""
     assert state.repository is not None  # caller guards
     error = "could not read the org's stored secrets, so the job did not start"
-    if state.repository.fail_job(job_id, error=error, worker_id=worker_id):
+    if state.repository.fail_job(
+        job_id,
+        error=error,
+        worker_id=worker_id,
+        on_stopped=lambda ids: close_cancelled(state, ids),
+    ):
         state.logbus.publish(job_id, f"error: {error}")
         state.logbus.close(job_id, json.dumps({"ok": False, "error": error}))
     return {}
@@ -406,20 +415,27 @@ def worker_result(state: ServeState, body: dict[str, Any]) -> tuple[dict[str, An
     if info is None:
         return {"error": f"job {job_id} not found"}, 404
     failed = result.get("ok") is False or "error" in result
+    stopped: list[str] = []
     if result.get("cancelled") is True:
         applied = state.repository.cancel_leased_job(job_id, result, worker_id=worker_id)
     elif failed:
         applied = state.repository.fail_job(
-            job_id, error=result.get("error", "unknown"), worker_id=worker_id
+            job_id,
+            error=result.get("error", "unknown"),
+            worker_id=worker_id,
+            on_stopped=stopped.extend,
         )
     else:
-        applied = state.repository.complete_job(job_id, result=result, worker_id=worker_id)
+        applied = state.repository.complete_job(
+            job_id, result=result, worker_id=worker_id, on_stopped=stopped.extend
+        )
     if not applied:
         # The lease was reclaimed (and maybe re-leased) or the job already finished — this is a stale
         # worker's result, so drop it rather than clobber the winning run, and leave its log stream be.
         return {"error": "job is no longer leased by this worker; result ignored"}, 409
     _persist_worker_run(state, info, result, ok=not failed)
     state.logbus.close(job_id, json.dumps(result))
+    close_cancelled(state, stopped)
     state.live_log_budget.forget(job_id)
     state.live_artifact_budget.forget(job_id)
     state.live_handoff_budget.forget(job_id)

@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0499](BE-0499-run-set-fail-fast-ja.md) |
 | 提案者 | [@paihu](https://github.com/paihu) |
-| 状態 | **承認済み** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0499") |
+| 実装 PR | [#2506](https://github.com/bajutsu-e2e/bajutsu/pull/2506) |
 | トピック | Device-cloud execution |
 | 関連 | [BE-0484](../BE-0484-job-group-lease/BE-0484-job-group-lease-ja.md) |
 <!-- /BE-METADATA -->
@@ -68,7 +69,7 @@
 
 ### ドキュメント
 
-`docs/devicefarm.md` と `docs/self-hosting.md` は、両言語で `run-set` のリクエストを説明しています。両方のページに、このフィールドと `cancelReason` の値を追記します。
+`docs/devicefarm.md` は、両言語で `run-set` のリクエストを説明しています。このページに、このフィールドと `cancelReason` の値を追記します。`docs/architecture.md` の「job のグループ」の項目には、fail-fast による停止を追記します。同じ項目のうち同時実行の上限を説明する箇所にある「グループが途中で切られることはありません」は、このフラグによって一般には成り立たなくなるので、上限による場合に限る記述に改めます（BE-0113）。`docs/self-hosting.md` は `run-set` のリクエストの本体を説明していないので、変更は不要です。
 
 ## 検討した代替案
 
@@ -82,10 +83,22 @@
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] リクエストのフィールド `failFast`、その列、リクエストダイジェスト
-- [ ] 3つの終端の経路での停止
-- [ ] 列 `cancel_reason` と、グループの読み出しの `cancelReason`
-- [ ] 両言語のドキュメント
+- [x] リクエストのフィールド `failFast`、その列、リクエストダイジェスト
+- [x] 3つの終端の経路での停止
+- [x] 列 `cancel_reason` と、グループの読み出しの `cancelReason`
+- [x] 両言語のドキュメント
+
+ログ：
+
+- 2026-11-23：[#2506](https://github.com/bajutsu-e2e/bajutsu/pull/2506) で4つの単位をすべて実装しました。`POST /api/run-set` は `failFast` を受け取り、
+  リクエストダイジェストもこのフラグを含みます。fail-fast のグループでジョブが失敗すると、同じグループの
+  終わっていないジョブを取り消します。`GET /api/run-set/<groupId>` は、取り消されたジョブごとに
+  `cancelReason` を返します。取り消したキュー済みジョブの id は、戻り値を変えずに `on_stopped`
+  コールバックでルートへ渡します。`complete_job` と `fail_job` の戻り値を真偽値のまま保つためです。
+  停止はどれも、ジョブの行より先にグループの行のロックを取ります。そのため、同じグループで2つの失敗が
+  重なっても、PostgreSQL でデッドロックしません。同じ理由で、試行回数を使い切った fail-fast のジョブは、
+  リース回収の掃除がコミットした後に、別のトランザクションで失敗させます。`docs/self-hosting.md` は
+  リクエストの本体を説明していないので、変更は不要でした。
 
 ## 参考
 

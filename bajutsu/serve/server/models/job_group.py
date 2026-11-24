@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Index
+from sqlalchemy import Index, false
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ._functions import _created_at
@@ -23,4 +23,6 @@ class JobGroup(Base):
     # What the request asked to run, so a repeated key tells a retry from a different request. None
     # on a group written before BE-0484 unit 3, whose key no request can repeat.
     digest: Mapped[str | None] = mapped_column(default=None)
+    # The first failing job cancels the group's unfinished jobs (BE-0499).
+    fail_fast: Mapped[bool] = mapped_column(default=False, server_default=false())
     created_at: Mapped[datetime] = _created_at()

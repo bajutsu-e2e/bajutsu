@@ -40,6 +40,10 @@ runs:
             date -u +%Y-%m-%dT%H:%M:%SZ
             top -bn1 2>&1 | head -20
             free -m 2>&1
+            # top -bn1 reports CPU averaged since boot; the second of two samples measures the last
+            # second, including I/O wait and hypervisor steal. Prefixed so the telemetry parser
+            # prefers it.
+            top -bn2 -d1 2>/dev/null | grep "^%Cpu" | tail -1 | sed "s/^/Interval /"
           } >>runs/diagnostics/host-telemetry.log 2>&1
           sleep "$1"
         done' _ "$INTERVAL" >/dev/null 2>&1 &
@@ -56,3 +60,30 @@ runs:
           kill "$(cat "$pidfile")" 2>/dev/null || true
           rm -f "$pidfile"
         fi
+
+    # One machine-readable record per job, written on green jobs too (docs/ci.md, "Measuring a flaky
+    # lane across runs"). It re-reads only what the job already wrote under `runs/`, so it costs well
+    # under a second and needs no device. System `python3`: the script is stdlib-only.
+    - name: Write the CI telemetry record
+      id: telemetry
+      if: inputs.phase == 'collect'
+      shell: bash
+      run: |
+        set +e
+        script="${GITHUB_ACTION_PATH:-.github/actions/collect-android-diagnostics}/../../../scripts/ci_telemetry.py"
+        if python3 "$script" summarize --lane android --runs runs --out runs/diagnostics/ci-telemetry; then
+          echo "name=ci-telemetry-${GITHUB_JOB}-${GITHUB_RUN_ATTEMPT}-$(date +%s)-${RANDOM}" >>"$GITHUB_OUTPUT"
+        else
+          echo "::warning::bajutsu diagnostics: the CI telemetry record was not written"
+        fi
+        exit 0
+
+    # A small artifact of its own, so the cross-run report never downloads a run's videos.
+    - name: Upload the CI telemetry record
+      if: inputs.phase == 'collect' && steps.telemetry.outputs.name != ''
+      continue-on-error: true
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+      with:
+        name: ${{ steps.telemetry.outputs.name }}
+        path: runs/diagnostics/ci-telemetry/
+        if-no-files-found: ignore

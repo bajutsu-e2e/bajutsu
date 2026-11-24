@@ -446,7 +446,13 @@ e2e-fallback: compose-build
 # tab-bar navigation. Not part of `make check`: it needs a booted AVD, so android-e2e.yml drives it
 # in its own `visual (adb)` job (a separate AVD boot). The pixel compare needs Pillow, so this
 # pulls in the `visual` extra (the element-tree golden does not) — the adb backend itself has none.
+#
+# The pin script runs first: the emulator enables the pixel_6 display-cutout overlays at a varying
+# point of boot, sometimes not at all, and System UI keeps whatever geometry it laid out first. The
+# status-bar strip then moved by a few pixels to half the bar's height between runs. The script pins
+# the overlays and restarts System UI against them (its header has the observed failure modes).
 e2e-visual: compose-build
+	cd $(ROOT) && ADB="$(ADB)" scripts/android_pin_display_cutout.sh
 	$(ANR_QUIET)
 	$(TOUCH_DEBUG_OFF)
 	cd $(ROOT) && $(E2E_ENV) uv run --extra visual bajutsu run \

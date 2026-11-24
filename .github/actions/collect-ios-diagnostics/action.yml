@@ -210,6 +210,9 @@ runs:
             /usr/bin/top -l 1 -n 15 -o mem
             /usr/bin/vm_stat
             /usr/bin/memory_pressure
+            # A single-sample top reports CPU averaged since boot; only a two-sample one measures the
+            # last interval. One line, one second, prefixed so the telemetry parser prefers it.
+            /usr/bin/top -l 2 -n 0 -s 1 | /usr/bin/grep '^CPU usage' | /usr/bin/tail -1 | /usr/bin/sed 's/^/Interval /'
           } >>"$telemetry" 2>&1
           sleep 20
         done
@@ -422,3 +425,37 @@ runs:
           [ "$rc" -eq 0 ] || echo "::warning::bajutsu diagnostics: the guest unified-log extract failed (exit $rc) — the render-wedge evidence is missing"
         fi
         exit 0
+
+    # One machine-readable record per job, written on green jobs too, so a recurring flake can be
+    # compared against the runs that did not flake (docs/ci.md, "Measuring a flaky lane across runs").
+    # It only re-reads what the steps above and the run already wrote: no device call, no network,
+    # well under a second. System `python3` for the same reason as the synthesis-stream recorder —
+    # the script is stdlib-only and not every job has synced an environment by now.
+    - name: Write the CI telemetry record
+      id: telemetry
+      if: inputs.phase == 'collect'
+      shell: bash
+      env:
+        DEST: ${{ inputs.dest }}
+      run: |
+        set +e
+        script="${GITHUB_ACTION_PATH:-.github/actions/collect-ios-diagnostics}/../../../scripts/ci_telemetry.py"
+        if python3 "$script" summarize --lane ios --runs "$(dirname "$DEST")" --diagnostics "$DEST" --out "$DEST/ci-telemetry"; then
+          # Unique per call: `bundled-runner` collects twice in one job, and an artifact name may
+          # appear only once per workflow run. The later record is a superset; `fetch` keeps it.
+          echo "name=ci-telemetry-${GITHUB_JOB}-${GITHUB_RUN_ATTEMPT}-$(date +%s)-${RANDOM}" >>"$GITHUB_OUTPUT"
+        else
+          echo "::warning::bajutsu diagnostics: the CI telemetry record was not written"
+        fi
+        exit 0
+
+    # Its own small artifact rather than only a file inside `runs/`: the cross-run report reads one
+    # record and the manifests from dozens of runs, and must not download each run's videos to do so.
+    - name: Upload the CI telemetry record
+      if: inputs.phase == 'collect' && steps.telemetry.outputs.name != ''
+      continue-on-error: true
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+      with:
+        name: ${{ steps.telemetry.outputs.name }}
+        path: ${{ inputs.dest }}/ci-telemetry/
+        if-no-files-found: ignore

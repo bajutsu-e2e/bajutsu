@@ -376,6 +376,9 @@ def test_android_lane_surface() -> None:
         is_relevant([".github/actions/collect-android-diagnostics/action.yml"], "android") is True
     )
     assert is_relevant(["scripts/collect_android_diagnostics.sh"], "android") is True
+    # The display-cutout pin `e2e-visual` runs before its pixel compare (status_bar_android).
+    assert is_relevant(["scripts/android_pin_display_cutout.sh"], "android") is True
+    assert is_relevant(["scripts/android_pin_display_cutout.sh"], "ios") is False
     # The `uiautomator (codegen)` job (BE-0294) regenerates its test with `bajutsu codegen`, so the
     # codegen CLI command is android-relevant — the one CLI command besides `run` this lane drives.
     assert is_relevant(["bajutsu/codegen/cli.py"], "android") is True

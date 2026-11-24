@@ -11,6 +11,7 @@ from __future__ import annotations
 import threading
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pytest
 from sqlalchemy import Engine, select
@@ -394,10 +395,10 @@ def test_a_bundle_whose_secrets_cannot_be_read_fails_every_job_even_if_one_fail_
 
     fail = repo.fail_job
 
-    def flaky_fail(job_id: str, error: str, *, worker_id: str | None = None) -> bool:
+    def flaky_fail(job_id: str, error: str, **kwargs: Any) -> bool:
         if job_id == "1":
             raise RuntimeError("write lost")
-        return fail(job_id, error, worker_id=worker_id)
+        return fail(job_id, error, **kwargs)
 
     monkeypatch.setattr(worker_ops, "lease_secret_env", broken)
     monkeypatch.setattr(repo, "fail_job", flaky_fail)

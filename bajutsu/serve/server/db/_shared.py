@@ -11,6 +11,17 @@ DEFAULT_LEASE_MAX_ATTEMPTS = 3
 TERMINAL_JOB_STATUSES = ("done", "failed", "cancelled")
 
 
+def job_failed(status: str, result: dict[str, Any]) -> bool:
+    """Whether a job that ended as *status* with *result* failed (BE-0499).
+
+    One rule for the group's `conclusion` and its fail-fast stop: a job not cancelled fails unless
+    it ended ``done`` with exit code 0, so a result that reports no exit code is a failure.
+    """
+    if status == "cancelled" or result.get("cancelled"):
+        return False
+    return status != "done" or result.get("exitCode") != 0
+
+
 def cancelled_job_result(job_id: str) -> dict[str, Any]:
     """The terminal result of a cancelled job whose own run reported none (BE-0449).
 
