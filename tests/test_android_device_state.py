@@ -46,7 +46,6 @@ def _eff() -> Effective:
         launch_args=[],
         id_namespaces=[],
         reserved_namespaces=[],
-        mock_server=None,
         capture=[],
         redact=Redact(),
     )

@@ -33,7 +33,6 @@ def _eff(*, device_provider: DeviceProvider | None = None) -> Effective:
         launch_args=[],
         id_namespaces=[],
         reserved_namespaces=[],
-        mock_server=None,
         capture=[],
         redact=Redact(),
         device_provider=device_provider,

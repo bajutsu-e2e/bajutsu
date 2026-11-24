@@ -508,8 +508,14 @@ def test_repeat_audit_still_stops_the_server_when_shutdown_raises(
 
         return object(), shutdown
 
-    def fake_start_launch_server_or_exit(eff: object, on_error: object) -> object:
-        return lambda: stopped.append(True)
+    class _FakeHooks:
+        """Stands in for the run's hook session: `after_run` is the teardown audit must still run."""
+
+        def after_run(self, verdict: str) -> None:
+            stopped.append(True)
+
+    def fake_start_hooks_or_exit(eff: object, **_kw: object) -> object:
+        return _FakeHooks()
 
     monkeypatch.setattr(
         audit_command,
@@ -519,7 +525,7 @@ def test_repeat_audit_still_stops_the_server_when_shutdown_raises(
     monkeypatch.setattr(audit_command, "environment_for", lambda actuator, udid: _FakeEnv())
     monkeypatch.setattr(audit_command, "device_pool", fake_device_pool)
     monkeypatch.setattr(
-        audit_command, "_start_launch_server_or_exit", fake_start_launch_server_or_exit
+        audit_command, "_start_hooks_or_exit", fake_start_hooks_or_exit
     )
     monkeypatch.setattr(audit_command, "run_all", lambda *a, **k: [])
     monkeypatch.setattr(analysis_audit, "repeat_diff", lambda runs: object())
@@ -527,7 +533,7 @@ def test_repeat_audit_still_stops_the_server_when_shutdown_raises(
     with pytest.raises(AttributeError, match="no close on this driver"):
         audit_command._repeat_audit(scenarios, 2, "demo", "", "booted", str(cfg), False)
 
-    assert stopped == [True]  # stop_server still ran despite shutdown() raising
+    assert stopped == [True]  # the afterRun teardown still ran despite shutdown() raising
 
 
 # --- remaining usage-error branches + _read_manifests (BE-0117) ---

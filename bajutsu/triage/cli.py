@@ -293,7 +293,6 @@ def _ai_effective(config: str, target_name: str) -> Effective:
         launch_args=[],
         id_namespaces=[],
         reserved_namespaces=[],
-        mock_server=None,
         capture=[],
         redact=Redact(),
     )
