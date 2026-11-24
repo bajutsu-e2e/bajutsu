@@ -29,7 +29,14 @@ for overlay in "${OVERLAYS[@]}"; do
 done
 
 # A pinned overlay that did not take would make the restart below pointless; fail loudly instead.
-insets=$($ADB shell dumpsys window displays | grep -o -m1 'DisplayCutout{insets=Rect([^)]*)' || true)
+# The enable is committed synchronously but the display reconfiguration that follows it is not, so
+# this is a bounded poll like the System UI wait below rather than a single read.
+insets=
+for ((i = 0; i < ATTEMPTS; i++)); do
+  insets=$($ADB shell dumpsys window displays | grep -o -m1 'DisplayCutout{insets=Rect([^)]*)' || true)
+  [[ "$insets" == *"Rect(0, $STATUS_BAR_HEIGHT - 0, 0)"* ]] && break
+  sleep 0.5
+done
 if [[ "$insets" != *"Rect(0, $STATUS_BAR_HEIGHT - 0, 0)"* ]]; then
   echo "android_pin_display_cutout: unexpected display cutout: ${insets:-none}" >&2
   exit 1
@@ -44,7 +51,10 @@ for ((i = 0; i < ATTEMPTS; i++)); do
   if [[ -n "$pid" && "$pid" != "$old_pid" ]]; then
     window=$($ADB shell dumpsys window windows \
       | sed -n '/Window{[^}]* StatusBar}:/,/WindowStateAnimator/p' || true)
-    if [[ "$window" == *"isReadyForDisplay()=true"* \
+    # Tie the window to the new process: WM can still be carrying the dead System UI's StatusBar,
+    # whose frame already matches in the "enabled after" case.
+    if [[ "$window" == *"mSession=Session{"*" $pid:"* \
+      && "$window" == *"isReadyForDisplay()=true"* \
       && "$window" == *"frame=[0,0][1080,$STATUS_BAR_HEIGHT]"* ]]; then
       echo "android_pin_display_cutout: System UI $old_pid -> $pid, status bar ${STATUS_BAR_HEIGHT}px"
       exit 0
