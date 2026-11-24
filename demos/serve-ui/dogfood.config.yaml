@@ -17,12 +17,14 @@ targets:
     # device-cloud fan-out dogfood dispatches), confines its file browser to demos/serve-ui via
     # --root, and serves runs from the committed crawl-history fixture (BE-0181) so the Crawl
     # History tab has a deterministic past run to reopen.
+    # A relative path in an entry resolves against this config file's own directory, so each script
+    # is named from here and finds the repository root itself.
     hooks:
       beforeRun:
         - name: server
-          cmd: "./demos/serve-ui/scripts/start-inner-serve.sh"
+          cmd: "./scripts/start-inner-serve.sh"
           timeout: 60
       afterRun:
         # `on` defaults to `always`, which is what a teardown wants, so it is left unwritten.
-        - cmd: "./demos/serve-ui/scripts/stop-inner-serve.sh"
+        - cmd: "./scripts/stop-inner-serve.sh"
     paths: { scenarios: scenarios }

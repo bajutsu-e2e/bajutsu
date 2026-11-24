@@ -49,6 +49,7 @@ from bajutsu.common.platform_lifecycle import environment_for
 from bajutsu.common.run_meta.files import runs_root
 from bajutsu.common.run_meta.id import new_run_id
 from bajutsu.common.runner import device_pool, run_all
+from bajutsu.common.runner.hook_commands import HookPhaseResult
 from bajutsu.common.runner.pipeline import with_lifecycle_phases
 from bajutsu.common.runner.types import LeaseFn
 from bajutsu.common.scenario import Scenario, _scenarios_declaring_targets, load_expanded_scenarios
@@ -247,6 +248,7 @@ def _repeat_audit(
     # own and the default command gate applies (BE-0492). `on_error=shutdown` tears down any device
     # pool already created before exiting if a hook fails.
     hooks = _start_hooks_or_exit(eff, run_id=new_run_id("audit-"), on_error=shutdown)
+    teardown: HookPhaseResult | None = None
     try:
         # One run at a time, K times each (workers=1 keeps the K runs under identical
         # conditions — the point of the diff). run_dir=None: the audit compares outcomes, not
@@ -290,14 +292,18 @@ def _repeat_audit(
             shutdown()
         finally:
             if hooks is not None:
-                outcome = hooks.after_run("failure" if failed else "success")
-                if not outcome.ok:
-                    typer.echo(f"afterRun failed: {outcome.reason}")
+                teardown = hooks.after_run("failure" if failed else "success")
 
     if as_json:
         typer.echo(json.dumps([dataclasses.asdict(r) for r in reports], indent=2))
     else:
         typer.echo("\n\n".join(_audit.render_repeat(r) for r in reports))
+    # A failed teardown exits 2, as it does for `run` (BE-0491): the audit's own verdict stands, and
+    # the precondition that did not hold is reported beside it rather than left to exit 0. Raised
+    # here rather than in the `finally` above, where it would mask an exception already in flight.
+    if teardown is not None and not teardown.ok:
+        typer.echo(f"afterRun failed: {teardown.reason}")
+        raise typer.Exit(2)
     if failed:
         raise typer.Exit(1)
 
