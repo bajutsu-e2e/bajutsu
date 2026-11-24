@@ -41,6 +41,13 @@ class PermissionsTab(private val activity: MainActivity) {
         val requestNotif = activity.textButton("Request Notifications") {
             notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }.aid("perm_requestNotif")
+        // The title of the last push bajutsu delivered (SPEC §5.4, BE-0498); empty until one arrives.
+        val pushReceived = activity.secondaryLabel("Last push: ${PushInbox.lastTitle}")
+            .aid("perm_push_received").stateValue(PushInbox.lastTitle)
+        PushInbox.onChange = { title ->
+            pushReceived.text = "Last push: $title"
+            pushReceived.stateValue(title)
+        }
 
         // Posts on a high-importance channel, which SystemUI presents as a heads-up notification over
         // the top of this screen: the fixture for the banner guard (BE-0496). The banner target sits
@@ -134,7 +141,7 @@ class PermissionsTab(private val activity: MainActivity) {
             openPhotos,
             openPhoto,
             photosValue,
-            // The banner fixture's controls come last (BE-0496), so they add nothing above the Photos
+            // The banner fixture's controls sit below Photos (BE-0496), adding nothing above that
             // section: the picker's return can scroll this page back to its top, where the photo
             // count has to stay in view for the select_photos scenarios that wait on it.
             activity.label("Banner"),
@@ -142,6 +149,8 @@ class PermissionsTab(private val activity: MainActivity) {
             // below it could still sit under the fold when the scenario reads the count.
             bannerTaps,
             postNotif,
+            // Last on the tab, so it shifts no row above it (the Compose twin's reason).
+            pushReceived,
         )
         // The banner target shares the title's row, outside the scroll page, the band a heads-up
         // notification lands over, as the Compose twin's app bar action does.

@@ -93,8 +93,8 @@ class Capability:
     DEVICE_GROUP = "deviceGroup"
     # The `DeviceControl` family, one token per operation (BE-0212, split from the coarse
     # `deviceControl` of BE-0128). A backend advertises exactly the operations it can honor, so
-    # preflight gates each device-control step on its own operation — the Android emulator backs
-    # setLocation + clipboard but not the rest. Operations that always ship together share a token
+    # preflight gates each device-control step on its own operation — a backend that backs only part
+    # of the family passes for that part and fails fast for the rest. Operations that always ship together share a token
     # (the clipboard read/write/clear trio; background/foreground; the status-bar override/clear pair).
     DC_SET_LOCATION = "deviceControl.setLocation"
     DC_CLIPBOARD = "deviceControl.clipboard"  # setClipboard / getClipboard / clearClipboard

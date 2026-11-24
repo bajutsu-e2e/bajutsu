@@ -84,7 +84,7 @@ The two mobile backends differ in what they support.
 | `handleNotificationBanner` | report and swipe away a foreground notification banner (BE-0416) or an Android heads-up notification (BE-0496) | ✅ | ✅ | — | ✅ |
 | `deviceControl.setLocation` | set the simulated GPS location | ✅ | ✅ | — | — |
 | `deviceControl.clipboard` | read / write / clear the clipboard | ✅ | ✅ | — | — |
-| `deviceControl.push` | deliver a push notification | ✅ | — | — | — |
+| `deviceControl.push` | deliver a push notification | ✅ | ✅ | — | — |
 | `deviceControl.clearKeychain` | clear the keychain | ✅ | — | — | — |
 | `deviceControl.background` | send the app to the background | ✅ | ✅ | — | — |
 | `deviceControl.foreground` | bring the app to the front, launching it if needed | ✅ | ✅ | — | — |
@@ -103,9 +103,9 @@ The two mobile backends differ in what they support.
 > A backend can thus advertise exactly the operations it can
 > honor.
 > XCUITest backs the whole family through `simctl`.
-> The Android emulator backs every operation but `push` and `clearKeychain`, all seven
-> `permissions.*` services included (BE-0478).
-> `push` needs a receiver inside the app's process, and Android has no keychain for `clearKeychain` to clear.
+> The Android emulator backs every operation but `clearKeychain`, all seven `permissions.*`
+> services included (BE-0478).
+> Android has no keychain for `clearKeychain` to clear.
 > The split makes that subset expressible without green-lighting the rest.
 > `background` and `foreground` were one `appLifecycle` token until BE-0447 split them, because
 > a device group's later member comes up at its `foreground`.
@@ -125,12 +125,13 @@ The two mobile backends differ in what they support.
 > - The emulator-backed device-control subset: `deviceControl.setLocation`,
 >   `deviceControl.clipboard` (BE-0211), `deviceControl.foreground`, `deviceControl.background`,
 >   and `deviceControl.statusBar` (BE-0478).
+> - `deviceControl.push`, delivered through BajutsuAndroid's push receiver in the app (BE-0498).
 > - The seven `deviceControl.permissions.*` services, through `pm grant` / `pm revoke` (BE-0276).
 > - `deviceGroup` (BE-0447).
 > - `appContext`, the `app:` step, through `am start`.
 > - The `video` / `deviceLog` / `appTrace` evidence kinds: `screenrecord`, `logcat`, and a tag-filtered `logcat` (BE-0467, BE-0478).
 >
-> `push` (no receiver in the app's process) and `clearKeychain` (no keychain on Android) stay unadvertised.
+> `clearKeychain` stays unadvertised, because Android has no keychain.
 >
 > The `fake` driver advertises a richer capability set (semanticTap / conditionWait / multiTouch)
 > merely to exercise those code paths in tests.
@@ -900,8 +901,10 @@ A Compose value published `TYPE_WINDOW_CONTENT_CHANGED` for its own change, whic
 - **Network.** The adb backend does not observe the network natively (no `NETWORK` capability). The story is the same mocked one as on iOS.
   The launch env forwards the app-side collector URL as an intent extra.
   `mocks` thus work with no new code path.
-- **Device control.** It backs `setLocation` and the clipboard operations.
-  The rest of the family stays unsupported.
+- **Device control.** It backs `setLocation`, the clipboard operations, and `push`. `push` reaches
+  BajutsuAndroid's push receiver in the app (BE-0498), while the app's process runs. It also
+  delivers a push after a `background` step: on an API 34 emulator that push arrived without delay. `clearKeychain`
+  stays the one unsupported operation.
   `setLocation` takes the emulator console (`emu geo fix`, BE-0211) on a local `emulator-<port>` serial.
   Every other target mocks the `gps` and `network` providers through BajutsuAndroid's location receiver (BE-0481).
   Such a target is a real device, or an emulator reached with `adb connect`.
@@ -1074,6 +1077,8 @@ Out of scope (see the roadmap item for the reasoning):
     (BE-0233), so the `setClipboard` / `clipboard` steps of `device.yaml` and
     `text_selection_android.yaml` fail on the Flutter Android target. iOS device-control clipboard goes through simctl with no app cooperation. It works on the Flutter iOS target.
     This gap is Android-only.
+  - **The Android `push` step** reaches BajutsuAndroid's push receiver (BE-0498). The Flutter app
+    does not link BajutsuAndroid, so the Flutter Android lane excludes `push`.
 
   Beyond these, the Flutter targets pass the same on-device scenario sets the native twins run.
   The
@@ -1081,7 +1086,7 @@ Out of scope (see the roadmap item for the reasoning):
 
   - Multi-touch (`gestures_multitouch`) needs a rooted emulator on adb, as for the native Android
     apps.
-  - `text_editing` and the `push` half of `device` are iOS-only in the native suite too.
+  - `text_editing` is iOS-only in the native suite too.
 - **Deeplink-to-tab routing.** The Flutter targets register the per-flavor scheme (the Android
   `VIEW` intent-filter, the iOS `CFBundleURLTypes`).
   The native twins route the URI to a tab: they

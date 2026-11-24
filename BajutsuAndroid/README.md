@@ -4,10 +4,15 @@ English · [日本語](README.ja.md)
 
 BajutsuAndroid is the in-app device support library for [bajutsu](../) on Android. It is a test/debug-only
 Android library that lets bajutsu drive capabilities the platform exposes only from inside the app
-process. It backs the **clipboard**, the **location** on a real device, **network capture**, and the **WebView
-debugging** a `web:` block needs. It is
-the Android peer of the iOS
-[`BajutsuKit`](../BajutsuKit) package.
+process. It backs five capabilities:
+
+- the **clipboard**
+- the **location** on a real device
+- **push notifications**
+- **network capture**
+- the **WebView debugging** a `web:` block needs
+
+The library is the Android peer of the iOS [`BajutsuKit`](../BajutsuKit) package.
 
 ## Why in-app support
 
@@ -43,9 +48,14 @@ fails loudly rather than reading an empty clipboard as success.
 
 ## Integrate
 
-Add the library, then call `startClipboard(context)` and `startLocation(context)` once from
-`Application.onCreate`, in a **test/debug build only**. These calls are the Android peer of
-BajutsuKit's `App.init()`.
+Add the library, then call these functions once each from `Application.onCreate`:
+
+- `startClipboard(context)`
+- `startLocation(context)`
+- `startPush(context)`
+
+Call them in a **test/debug build only**. These calls are the Android peer
+of BajutsuKit's `App.init()`.
 
 Register the receiver before any Activity, so it is ready whichever screen bajutsu drives first. A
 launcher `Activity.onCreate` can be skipped when a multi-Activity app resumes into another entry.
@@ -60,6 +70,7 @@ class MyApp : Application() {
         if (BuildConfig.DEBUG) {
             Bajutsu.startClipboard(this)
             Bajutsu.startLocation(this)
+            Bajutsu.startPush(this)
         }
     }
 }
@@ -68,7 +79,8 @@ class MyApp : Application() {
 Point the manifest's `<application android:name>` at this class. The manifest declares neither
 receiver. Each `start` function registers its receiver at runtime. A receiver exists once you call its
 function, and not before. Each call is idempotent, so it never double-registers. An app that does not need the
-location on a real device can skip `startLocation`.
+location on a real device can skip `startLocation`. An app whose scenarios use no `push` step can
+skip `startPush`.
 
 To use the library as a Gradle module, include it by path. The showcase does this in
 [`demos/showcase/android/settings.gradle.kts`](../demos/showcase/android/settings.gradle.kts):
@@ -82,12 +94,15 @@ Then depend on the module: `implementation(project(":bajutsu-android"))`.
 
 ## Safety
 
-Both receivers are **exported** with no permission. *Any* local app can therefore send the broadcast,
-whether through adb or as another app installed on the device. Such an app can read or write the
-clipboard, and it can move the app's location while bajutsu holds the mock-location grant.
+Every receiver is **exported** with no permission. *Any* local app can send the broadcast, through
+adb or as another app installed on the device. Such an app can act in three ways:
 
-Use the library in **test/debug builds only**. Gate the `startClipboard` and `startLocation` calls
-behind `BuildConfig.DEBUG` (or your own test flag), so the calls never run in a release build.
+- read or write the clipboard
+- move the app's location while bajutsu holds the mock-location grant
+- post a notification as the app, or call the app's push handler with a payload of its own
+
+Use the library in **test/debug builds only**. Gate the three `start` calls behind
+`BuildConfig.DEBUG` or your own test flag. The calls then never run in a release build.
 
 ## Location on a real device
 
@@ -144,6 +159,80 @@ and its Play services version. Nobody has checked that behavior on hardware yet.
 
 The library declares no `ACCESS_MOCK_LOCATION` permission. On the emulator images bajutsu tests,
 `appops set` grants the app-op without it.
+
+## Push notifications
+
+This section covers the `push` route that
+[BE-0498](../roadmaps/BE-0498-android-push-notification/BE-0498-android-push-notification.md) added.
+Android has no command that hands a notification to an app. bajutsu delivers the payload through the
+app instead. The scenario keeps the Apple Push Notification service (APNs) payload it uses on iOS.
+bajutsu maps that payload to three fields on the machine that runs it:
+
+| APNs payload | Android field |
+|---|---|
+| `aps.alert` as a string | `body` |
+| `aps.alert.title` | `title` |
+| `aps.alert.body` | `body` |
+| every top-level key other than `aps` | an entry of `data`, a string-to-string map; a non-string value arrives as JSON text |
+
+bajutsu drops the other `aps` keys, such as `badge` and `sound`, which have no Android counterpart.
+bajutsu then sends an ordered broadcast with each field base64-encoded:
+
+```
+adb shell am broadcast -a dev.bajutsu.PUSH -p <package> --es title <b64> --es body <b64> --es data <b64(json)>
+```
+
+The receiver decodes the fields into a `BajutsuPush(title, body, data)`. What it does next depends on
+how the app called `startPush`:
+
+| Call | What the receiver does |
+|---|---|
+| `Bajutsu.startPush(this) { push -> … }` | calls the handler and nothing else |
+| `Bajutsu.startPush(this)` | posts a local notification, or nothing when `title` and `body` are both unset |
+
+A handler exercises the app's foreground handling. Take an app that uses Firebase Cloud Messaging
+(FCM). Its test code can build a `RemoteMessage` from the `BajutsuPush` and call its own
+`onMessageReceived`. The library itself never depends on Firebase. The receiver calls the handler on
+the main thread. Like any broadcast receiver, the handler must return at once.
+
+```kotlin
+if (BuildConfig.DEBUG) {
+    Bajutsu.startPush(this) { push -> model.lastPushTitle = push.title.orEmpty() }
+}
+```
+
+A handler that throws fails the `push` step. bajutsu writes the exception's message into the run's
+report verbatim. The handler receives the payload after bajutsu substitutes any `${secrets.*}` token.
+**The exception message must not include the payload**.
+
+Without a handler, the receiver posts the notification on a channel named `bajutsu`. The
+notification uses the app's launcher icon. Tapping it opens the app's launch intent, with each `data`
+entry as a string extra. A payload with no alert, such as a silent push, posts nothing and succeeds.
+
+The default path needs the notification permission. The library manifest merges into release builds
+and declares nothing. Declare the permission in the app's debug or test manifest:
+
+```xml
+<uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+```
+
+Without that declaration, `pm grant` fails, and notifications stay off on API 33 and later. bajutsu
+never grants the permission on its own. A scenario grants it with the `permissions` precondition:
+`permissions: { notifications: grant }`. The handler path skips the check. What a handler does with
+the payload is the app's decision.
+
+The receiver answers with one of four result codes:
+
+| Result | Meaning | What bajutsu reports |
+|---|---|---|
+| `1` | The handler returned, or the notification was posted | — |
+| `4` | Default path, and the app's notifications are off | The `permissions` precondition to add |
+| `5` | The handler threw | The handler's exception message, from the result data |
+| `0` | No receiver handled the broadcast | The app does not call `startPush`, or is not running |
+
+A broadcast reaches the receiver while the app's process runs, and at no other time. iOS can deliver
+a push to an app that is not running; Android cannot through this route. bajutsu stops waiting for
+the receiver after ten seconds and fails the step.
 
 ## Network capture (BE-0283)
 

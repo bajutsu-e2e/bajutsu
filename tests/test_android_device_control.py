@@ -4,8 +4,9 @@
 over an ordered `am broadcast` to an in-app receiver (BajutsuAndroid), because since Android 10 only
 the foreground app / default IME may touch the clipboard — `cmd clipboard` answers "No shell command
 implementation" on-device, a silent no-op. The backend still advertises `clipboard` (it can drive it
-given a cooperating app, as the iOS clipboard rides simctl). `push` needs a receiver in the app's
-process and Android has no keychain, so both stay unsupported; `background` and the status bar are in
+given a cooperating app, as the iOS clipboard rides simctl). Android delivers `push` through
+BajutsuAndroid's in-app push receiver (BE-0498). Android has no keychain, so `clearKeychain` stays
+unsupported; `background` and the status bar are in
 `test_android_device_state.py` (BE-0478). Fast gate over an injected `adb` runner (no device):
 command shape, the broadcast result parse (base64 + loud-fail on no receiver), the clipboard
 round-trip against a fake receiver, that the supported subset delegates and the rest raise, and that
@@ -16,6 +17,7 @@ fast.
 from __future__ import annotations
 
 import base64
+import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
@@ -26,8 +28,10 @@ from bajutsu.common.backend_cli import adb
 from bajutsu.common.capability import capability_preflight
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.adb import AdbDriver
+from bajutsu.common.drivers.fake import FakeDriver
+from bajutsu.common.orchestrator import run_scenario
 from bajutsu.common.orchestrator.types import DeviceControl
-from bajutsu.common.scenario import Scenario, load_scenarios
+from bajutsu.common.scenario import Push, Scenario, Step, load_scenarios
 
 _PKG = "com.bajutsu.showcase.android.compose"
 
@@ -292,7 +296,6 @@ def test_android_control_clipboard_round_trip() -> None:
 @pytest.mark.parametrize(
     "call",
     [
-        lambda c: c.push({"aps": {"alert": "hi"}}),
         lambda c: c.clear_keychain(),
         lambda c: c.foreground(),
     ],
@@ -307,6 +310,116 @@ def test_android_control_unsupported_operations_raise(
         call(ctrl)
 
 
+def test_android_control_push_delivers_through_the_push_receiver() -> None:
+    calls: list[list[str]] = []
+
+    def fake_receiver(args: list[str]) -> str:
+        calls.append(args)
+        return _ok_reply()
+
+    ctrl = platform_lifecycle.android_device_control("E", _PKG, env_run=fake_receiver)
+    ctrl.push({"aps": {"alert": {"title": "T", "body": "B"}}, "id": "7"})
+    assert calls == [adb.push_broadcast_cmd("E", _PKG, "T", "B", {"id": "7"})]
+
+
+_SECRET = "s3cr3t-token-value"
+
+
+def _reply(code: int, data: str | None = None) -> Callable[[list[str]], str]:
+    line = f"Broadcast completed: result={code}" + (f', data="{data}"' if data else "")
+    return lambda args: line
+
+
+@pytest.mark.parametrize(
+    ("env_run", "message"),
+    [
+        (_reply(0), "no BajutsuAndroid push receiver"),
+        (_reply(adb.PUSH_RESULT_NO_NOTIFICATION_PERMISSION), "notifications: grant"),
+        (
+            _reply(adb.PUSH_RESULT_FAILED, base64.b64encode(b"handler broke").decode()),
+            "push handler threw: handler broke",
+        ),
+    ],
+)
+def test_android_control_push_failure_is_a_selector_error_without_the_payload(
+    env_run: Callable[[list[str]], str], message: str
+) -> None:
+    ctrl = platform_lifecycle.android_device_control("E", _PKG, env_run=env_run)
+    with pytest.raises(base.SelectorError, match=message) as info:
+        ctrl.push({"aps": {"alert": _SECRET}})
+    assert _SECRET not in str(info.value)
+    assert base64.b64encode(_SECRET.encode()).decode() not in str(info.value)
+
+
+@pytest.mark.parametrize(
+    ("raised", "message"),
+    [
+        (subprocess.TimeoutExpired(cmd=["adb"], timeout=10), "did not answer within"),
+        (subprocess.CalledProcessError(1, ["adb"], stderr="device offline"), "exit 1"),
+    ],
+)
+def test_android_control_push_under_real_run_is_bounded(
+    monkeypatch: pytest.MonkeyPatch, raised: Exception, message: str
+) -> None:
+    # Under the real runner the push takes the bounded one, so a hung handler or an offline device
+    # fails the push without quoting the argv that carries the payload.
+    def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        assert kwargs.get("timeout") == adb.PUSH_BROADCAST_TIMEOUT_S
+        raise raised
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    ctrl = platform_lifecycle.android_device_control("emulator-5554", _PKG)
+    with pytest.raises(base.SelectorError, match=message) as info:
+        ctrl.push({"aps": {"alert": _SECRET}})
+    assert base64.b64encode(_SECRET.encode()).decode() not in str(info.value)
+
+
+def _push_step_result(ctrl: DeviceControl) -> str:
+    """Run one push step through *ctrl*, check it failed the step, and return the failure text."""
+    scn = Scenario(name="s", steps=[Step(push=Push(payload={"aps": {"alert": _SECRET}}))])
+    result = run_scenario(FakeDriver(), scn, control=ctrl)
+    assert not result.ok
+    assert _SECRET not in repr(result)
+    assert base64.b64encode(_SECRET.encode()).decode() not in repr(result)
+    return result.failure or ""
+
+
+@pytest.mark.parametrize(
+    ("env_run", "message"),
+    [
+        (_reply(0), "no BajutsuAndroid push receiver"),
+        (_reply(adb.PUSH_RESULT_NO_NOTIFICATION_PERMISSION), "notifications: grant"),
+        (
+            _reply(adb.PUSH_RESULT_FAILED, base64.b64encode(b"handler broke").decode()),
+            "push handler threw: handler broke",
+        ),
+    ],
+)
+def test_a_failed_android_push_fails_its_step_not_the_run(
+    env_run: Callable[[list[str]], str], message: str
+) -> None:
+    ctrl = platform_lifecycle.android_device_control("E", _PKG, env_run=env_run)
+    assert message in _push_step_result(ctrl)
+
+
+@pytest.mark.parametrize(
+    ("raised", "message"),
+    [
+        (subprocess.TimeoutExpired(cmd=["adb"], timeout=10), "did not answer within"),
+        (subprocess.CalledProcessError(1, ["adb"], stderr="device offline"), "exit 1"),
+    ],
+)
+def test_a_bounded_android_push_failure_fails_its_step_not_the_run(
+    monkeypatch: pytest.MonkeyPatch, raised: Exception, message: str
+) -> None:
+    def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        raise raised
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    ctrl = platform_lifecycle.android_device_control("emulator-5554", _PKG)
+    assert message in _push_step_result(ctrl)
+
+
 # --- capability declaration + preflight (BE-0212 tokens) ---
 
 
@@ -317,8 +430,8 @@ def test_adb_advertises_the_device_control_subset_it_can_honor() -> None:
     assert base.Capability.DC_FOREGROUND in caps
     assert base.Capability.DC_BACKGROUND in caps
     assert base.Capability.DC_STATUS_BAR in caps
-    # push needs a receiver in the app's process, and Android has no keychain to clear.
-    assert base.Capability.DC_PUSH not in caps
+    # push reaches BajutsuAndroid's push receiver (BE-0498); Android has no keychain to clear.
+    assert base.Capability.DC_PUSH in caps
     assert base.Capability.DC_CLEAR_KEYCHAIN not in caps
 
 
@@ -343,6 +456,7 @@ def _sc(**body: object) -> Scenario:
         {"background": {}},
         {"overrideStatusBar": {"time": "9:41"}},
         {"clearStatusBar": {}},
+        {"push": {"payload": {"aps": {"alert": "hi"}}}},
     ],
 )
 def test_preflight_admits_supported_steps_on_adb(step: dict[str, object]) -> None:
@@ -352,7 +466,6 @@ def test_preflight_admits_supported_steps_on_adb(step: dict[str, object]) -> Non
 @pytest.mark.parametrize(
     "step",
     [
-        {"push": {"payload": {"aps": {"alert": "hi"}}}},
         {"clearKeychain": {}},
     ],
 )
@@ -366,8 +479,8 @@ def test_preflight_rejects_unsupported_steps_on_adb(step: dict[str, object]) -> 
 # device.yaml is the single cross-backend device-environment scenario — `setLocation` and the
 # clipboard are advertised by every device backend (clipboard via simctl on iOS, the BajutsuAndroid
 # in-app receiver on Android, BE-0233), so one file runs on iOS (XCUITest) and Android (adb)
-# alike. The iOS-only `push` half lives in push.yaml, kept out of this shared file because adb does not
-# advertise `deviceControl.push` (asserted below), so the shared scenario stays preflight-clean on Android.
+# alike. The `push` half lives in push.yaml, which Android delivers through BajutsuAndroid's push
+# receiver (BE-0498) and so admits at preflight too (asserted below).
 
 _SCENARIOS_DIR = Path(__file__).resolve().parent.parent / "demos" / "showcase" / "scenarios"
 _DEVICE = _SCENARIOS_DIR / "device.yaml"
@@ -399,13 +512,8 @@ def test_device_is_preflight_clean_on_adb() -> None:
     assert capability_preflight.unsupported(_single(_DEVICE), AdbDriver.CAPABILITIES) == []
 
 
-def test_push_scenario_is_rejected_by_preflight_on_adb() -> None:
-    # push.yaml is iOS-only: adb does not advertise `deviceControl.push`, so preflight fails the
-    # scenario fast rather than letting the run reach a runtime UnsupportedAction. This is why the
-    # push flow is split out of the shared device.yaml (which stays runnable on Android) (BE-0007).
-    # push.yaml carries a second scenario since BE-0416 (the notification-banner fixture), so this
-    # selects the original by name rather than assuming the file holds a single flow.
+def test_push_scenario_is_admitted_by_preflight_on_adb() -> None:
+    # adb advertises `deviceControl.push` (BE-0498), so preflight admits push.yaml's scenario.
     scenarios = load_scenarios(_PUSH.read_text(encoding="utf-8"))
     scenario = next(s for s in scenarios if s.name == "receive a push notification")
-    reasons = capability_preflight.unsupported(scenario, AdbDriver.CAPABILITIES)
-    assert any("push" in r for r in reasons), reasons
+    assert capability_preflight.unsupported(scenario, AdbDriver.CAPABILITIES) == []

@@ -41,13 +41,44 @@ def _interp_step(step: Step, bindings: Mapping[str, str]) -> Step:
     # also reads the written form to decide whether the result derives from a secret.
     if "eval" in dumped:
         interpolated["eval"] = dumped["eval"]
+    # `push` follows the same rule (BE-0498): the model validates the authored payload, and the
+    # substituted one is attached afterward, so a ValidationError never quotes a substituted value.
+    # The `push` handler re-measures the substituted payload against the size limit. A `push` nested
+    # in a control-flow body (`forEach`, `if`, `group`, …) is restored too and left authored: each
+    # nested step comes back through here when it runs, and is substituted then.
+    pushed = interpolated.get("push")
+    _restore_authored_push(interpolated, dumped)
     result = Step.model_validate(interpolated)
+    if pushed is not None:
+        assert result.push is not None  # the authored `push` was put back above
+        result = result.model_copy(
+            update={"push": result.push.model_copy(update={"payload": pushed["payload"]})}
+        )
     if step.http is not None and step.http.extract_body is not None:
         assert result.http is not None  # the "http" key above was left in place, only trimmed
         result = result.model_copy(
             update={"http": result.http.model_copy(update={"extract_body": step.http.extract_body})}
         )
     return result
+
+
+def _restore_authored_push(interpolated: object, authored: object) -> None:
+    """Put the authored `push` back wherever one sits in *interpolated*, at any depth.
+
+    `interp.interpolate` rewrites values only, so *interpolated* has *authored*'s exact shape and the
+    two walk in step. A `push` action is an object whose one key is `payload` (the model forbids
+    extras), which keeps a `push` key in other data, such as a mock's JSON body, substituted.
+    """
+    if isinstance(interpolated, dict) and isinstance(authored, dict):
+        for key, value in interpolated.items():
+            original = authored.get(key)
+            if key == "push" and isinstance(original, dict) and original.keys() == {"payload"}:
+                interpolated[key] = original
+            elif key in authored:
+                _restore_authored_push(value, original)
+    elif isinstance(interpolated, list) and isinstance(authored, list):
+        for item, original in zip(interpolated, authored, strict=False):
+            _restore_authored_push(item, original)
 
 
 def _resolve_system_alert(step: Step, locale: str | None) -> Step:

@@ -1064,7 +1064,7 @@ or more actions fails validation (`scenario/models/steps.py` `_one_action`).
 | `assert` | `assert: [ <Assertion>... ]` | mid-step verification |
 | `relaunch` | `relaunch: { env?: {...}, args?: [...] }` | terminate + relaunch the app (re-applying launch env/args, plus the given overrides), then wait until ready |
 | `setLocation` | `setLocation: { lat: <num>, lon: <num> }` | override the simulated GPS location (`simctl location set`) |
-| `push` | `push: { payload: {...} }` | deliver a simulated push notification (`simctl push`) with this APNs (Apple Push Notification service) payload |
+| `push` | `push: { payload: {...} }` | deliver a simulated push notification with this APNs (Apple Push Notification service) payload: `simctl push` on iOS, the in-app BajutsuAndroid push receiver on Android |
 | `http` | `http: { method?, url, headers?, body?, status?, saveBody?, extractBody?: [{ var, path }] }` | issue an HTTP request (test-data setup / webhook / API); checks `status`, stores the body as `${vars.<saveBody>}`, and/or pulls named JSON fields into `${vars.<var>}` by `path` ([below](#http-request-for-test-data-setup)) |
 | `totp` | `totp: { secret, into?: { var }, name? }` | generate an RFC 6238 time-based one-time password (2FA) locally into `${vars.<var>}`; `name` also registers the secret for later `otp` steps |
 | `otp` | `otp: { from, into: { var }, minRemaining? }` | write the current code of the generator a `totp` step registered as `from` into `${vars.<var>}` ([below](#fetch-a-fresh-code-later-with-otp)) |
@@ -1640,12 +1640,42 @@ file at that path into the baselines directory, under the name the `baseline:` f
 
 ```yaml
 - setLocation: { lat: 35.681, lon: 139.767 }              # simctl location set
-- push: { payload: { aps: { alert: "You have mail" } } }  # simctl push (APNs payload)
+- push: { payload: { aps: { alert: "You have mail" } } }  # APNs payload
 ```
 
-Both drive the Simulator via `simctl` and need a per-device control channel, so they are unavailable
-on the fake driver and in parallel runs. There the step fails cleanly rather than crashing. `push`
-delivers its `payload` as the APNs JSON to the app under test.
+Both steps need a per-device control channel. The fake driver and parallel runs have none, and
+there the step fails cleanly rather than crashing. On iOS, both drive the Simulator through
+`simctl`. `push` delivers its `payload` as the APNs JSON to the app under test.
+
+On Android, `setLocation` uses the emulator console on a local emulator. Elsewhere it uses
+BajutsuAndroid's location receiver (BE-0481). `push` goes to BajutsuAndroid's push receiver in the app (BE-0498).
+bajutsu maps the payload to three fields:
+
+| APNs payload | Android field |
+|---|---|
+| `aps.alert` as a string | `body` |
+| `aps.alert.title` / `aps.alert.body` | `title` / `body` |
+| every top-level key other than `aps` | an entry of `data`; a non-string value arrives as JSON text |
+
+The receiver calls the handler the app registered, or else posts a local notification. The default
+path needs the notification permission. A scenario grants it with
+`permissions: { notifications: grant }`. The app must be running and must link BajutsuAndroid.
+[`BajutsuAndroid/README.md`](../BajutsuAndroid/README.md) covers the integration.
+
+The scenario loader checks the `push` payload before any device work, on every backend:
+
+- The payload carries an `aps` key, whose value is an object.
+- `aps.alert`, when present, is a string or an object. Its `title` and `body`, when present, are
+  strings.
+- The payload stays within 4,096 bytes. The measure is the length of the default `json.dumps` text.
+  `simctl push` receives that same text. The text escapes each character above code point 127 as `\uXXXX`, so
+  such a character counts as six. A character outside the Basic Multilingual Plane, such as an emoji,
+  counts as twelve.
+- Every value is JSON-serializable. An unquoted date such as `at: 2024-01-01` loads as a date and
+  fails; quote it as a string.
+
+A `${vars.*}` or `${secrets.*}` token can grow the payload after loading. A step whose substituted
+payload exceeds the limit fails at run time. Its message names the size and the limit alone.
 
 ### `http` (request, for test-data setup)
 

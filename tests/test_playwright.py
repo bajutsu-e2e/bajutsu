@@ -1401,7 +1401,7 @@ def test_screenshot_timeout_on_every_attempt_still_wedges(monkeypatch: pytest.Mo
 
 
 def test_screenshot_does_not_retry_a_closed_page(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Only a timeout is the navigation race; a closed target is a real wedge, reported at once."""
+    """A timeout or a refused capture is the navigation race; a closed target is a real wedge."""
     from bajutsu.common.backend_cli import simctl
 
     _stub_playwright_errors(monkeypatch)
@@ -1410,6 +1410,58 @@ def test_screenshot_does_not_retry_a_closed_page(monkeypatch: pytest.MonkeyPatch
         PlaywrightDriver("http://app.test/", page=page).screenshot("after.png")
     assert page.shot_timeouts == [5_000]
     assert page.load_waits == []
+
+
+_CAPTURE_REFUSED = (
+    "Page.screenshot: Protocol error (Page.captureScreenshot): Unable to capture screenshot"
+)
+
+
+def test_screenshot_retries_a_refused_capture_after_the_new_document_paints(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Chromium refuses a capture that lands just after a script-initiated navigation commits; the
+    recapture once the new document has painted succeeds (issue #2509)."""
+    from bajutsu.common.drivers.playwright.playwright_driver import _SETTLE_JS
+
+    _stub_playwright_errors(monkeypatch)
+    page = _NavigatingPage([], [_NavPwError(_CAPTURE_REFUSED)])
+    PlaywrightDriver("http://app.test/", page=page).screenshot("after.png")
+
+    assert page.shot == "after.png"
+    assert page.shot_timeouts == [5_000, None]
+    assert page.load_waits == ["domcontentloaded"]
+    assert page.evaluated == [_SETTLE_JS]
+
+
+def test_screenshot_refused_on_every_attempt_still_wedges(monkeypatch: pytest.MonkeyPatch) -> None:
+    from bajutsu.common.backend_cli import simctl
+
+    _stub_playwright_errors(monkeypatch)
+    page = _NavigatingPage([], [])
+
+    def refuse(*, path: str, timeout: float | None = None) -> object:
+        page.shot_timeouts.append(timeout)
+        raise _NavPwError(_CAPTURE_REFUSED)
+
+    page.screenshot = refuse  # type: ignore[method-assign]
+    with pytest.raises(simctl.DeviceError, match="Unable to capture screenshot"):
+        PlaywrightDriver("http://app.test/", page=page).screenshot("after.png")
+    assert page.shot_timeouts == [5_000, None]
+
+
+def test_wedge_message_does_not_call_a_run_fault_recoverable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only the crawl recovers from a wedge, so the message a `run` sees must not promise recovery
+    (issue #2509)."""
+    from bajutsu.common.backend_cli import simctl
+
+    _stub_playwright_errors(monkeypatch)
+    page = _NavigatingPage([], [_NavPwError("Target crashed")])
+    with pytest.raises(simctl.DeviceError) as info:
+        PlaywrightDriver("http://app.test/", page=page).screenshot("after.png")
+    assert str(info.value) == "web browser fault: Target crashed"
 
 
 def test_query_reruns_on_the_new_document_when_navigation_destroys_its_context(
@@ -1580,6 +1632,34 @@ def test_an_iframe_navigation_or_an_aborted_one_is_not_waited_for() -> None:
     driver.screenshot("after.png")
 
     assert page.calls == ["settle", "shot:5000"]
+
+
+def test_a_refused_capture_before_a_script_navigation_commits_waits_for_the_commit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A capture refused while a page script's navigation is still in flight waits for its commit
+    before recapturing, since the old document already satisfies the load wait (issue #2509)."""
+    _stub_playwright_errors(monkeypatch)
+
+    class _RefusingPage(_SubmittingPage):
+        def screenshot(self, *, path: str, timeout: float | None = None) -> object:
+            if not self.calls:
+                self.calls.append(f"shot:{timeout}")
+                self.fire("request", _NavRequest())  # no input started it, so no settle ran
+                raise _NavPwError(_CAPTURE_REFUSED)
+            return super().screenshot(path=path, timeout=timeout)
+
+    page = _RefusingPage([])
+    PlaywrightDriver("http://app.test/", page=page).screenshot("after.png")
+
+    assert page.calls == [
+        "shot:5000",
+        "wait:framenavigated",
+        "load:domcontentloaded",
+        "settle",
+        "shot:None",
+    ]
+    assert page.shot == "after.png"
 
 
 def test_a_query_after_a_navigating_tap_reads_the_new_document() -> None:

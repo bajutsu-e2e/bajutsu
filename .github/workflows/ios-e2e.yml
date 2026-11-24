@@ -610,7 +610,7 @@ jobs:
     name: actuation (xcuitest)
     needs: [changes, build]
     # BE-0322: runs on a shared-code change, or when one of its scenarios (navigation / extract /
-    # foreach / data_driven / relaunch / device / push / text_editing / paste /
+    # foreach / data_driven / relaunch / device / push / push_banner / text_editing / paste /
     # system_alert_handling / paste_system_alert) changed.
     if: >-
       needs.changes.outputs.relevant == 'true' &&
@@ -618,9 +618,9 @@ jobs:
       contains(fromJSON(needs.changes.outputs.affected), 'actuation'))
     runs-on: macos-latest
     # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the 6h
-    # default. Install (no build) + the twenty-three scenario runs the eleven files below produce (each
+    # default. Install (no build) + the twenty-three scenario runs the twelve files below produce (each
     # file holds one scenario except: data_driven.yaml's three `${row.*}` rows expand to three,
-    # push.yaml holds two since BE-0416's foreground-banner scenario, paste.yaml holds three,
+    # paste.yaml holds three,
     # system_alert_handling.yaml holds five, and paste_system_alert.yaml holds four) is ~37min — the
     # dominant term is twelve cold XCTest-host
     # startups, one per two runs at this lane's warm-reuse cap — so 60 catches a real hang with
@@ -677,8 +677,10 @@ jobs:
       #   - relaunch.yaml (BE-0285): flip an in-app control, `relaunch`, and assert the state reset.
       #   - device.yaml (BE-0281): `setLocation` + clipboard round-trip (simctl-backed, launch tab) —
       #     the iOS twin of android-e2e.yml's device-control coverage (BE-0210).
-      #   - push.yaml (BE-0281): a simctl `push` delivery — iOS-only (no faithful Android-emulator
-      #     equivalent, so it lives apart from the cross-backend device.yaml).
+      #   - push.yaml (BE-0281): a `push` delivery — simctl here; Android runs the same file through
+      #     BajutsuAndroid's push receiver (BE-0498).
+      #   - push_banner.yaml (BE-0416): a foreground notification banner the interruption monitor clears
+      #     before a tap — iOS-only (SwiftUI delegate + `handleSystemAlert`), split out of push.yaml.
       #   - paste.yaml (iOS-only): `paste` through the edit menu, of an in-app `copy` and of a
       #     `setClipboard` seed. Ahead of text_editing.yaml on purpose: a `setClipboard` breaks the
       #     Simulator's hardware select-all and copy shortcuts until SpringBoard restarts, and the
@@ -712,6 +714,7 @@ jobs:
             demos/showcase/scenarios/relaunch.yaml
             demos/showcase/scenarios/device.yaml
             demos/showcase/scenarios/push.yaml
+            demos/showcase/scenarios/push_banner.yaml
             demos/showcase/scenarios/paste.yaml
             demos/showcase/scenarios/text_editing.yaml
             demos/showcase/scenarios/system_alert_handling.yaml

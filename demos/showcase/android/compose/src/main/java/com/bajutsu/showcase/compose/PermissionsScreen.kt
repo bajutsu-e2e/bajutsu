@@ -134,7 +134,7 @@ fun PermissionsScreen(model: AppModel) {
             }
             Text("Selected: ${model.selectedPhotoCount}", Modifier.aid("perm.photos.value").stateValue(model.selectedPhotoCount.toString()))
 
-            // The banner fixture's controls come last (BE-0496), so they add nothing above the Photos
+            // The banner fixture's controls sit below Photos (BE-0496), adding nothing above that
             // section: the picker's return can scroll this column back to its top, where the photo
             // count has to stay in view for the select_photos scenarios that wait on it.
             Text("Banner", style = MaterialTheme.typography.titleMedium)
@@ -146,6 +146,10 @@ fun PermissionsScreen(model: AppModel) {
             TextButton(onClick = { postHeadsUp(context) }, modifier = Modifier.aid("perm.postNotif")) {
                 Text("Post Notification")
             }
+            // The title of the last push bajutsu delivered (SPEC §5.4, BE-0498); empty until one arrives.
+            // Last on the tab, so it shifts no row above it: status_bar_android.yaml's baseline frames
+            // the tab down to the photos section, and select_photos.yaml reads perm.photos.value there.
+            Text("Last push: ${PushInbox.lastTitle}", Modifier.aid("perm.push.received").stateValue(PushInbox.lastTitle))
         }
     }
 }

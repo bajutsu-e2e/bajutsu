@@ -83,7 +83,7 @@ SERIAL ?= booted
 # (`emu geo fix`) and round-trips the clipboard, then re-asserts the settled screen. This is the *same*
 # device.yaml the iOS lane runs — `setLocation` and the clipboard are advertised by every device
 # backend (clipboard via simctl on iOS, the in-app BajutsuAndroid receiver on Android, BE-0233), so one
-# file is preflight-clean on iOS and Android alike (the iOS-only `push` half lives in push.yaml). It
+# file is preflight-clean on iOS and Android alike (the `push` half lives in push.yaml). It
 # runs on the Stable launch tab, needing no tab-bar navigation. `cmd clipboard` is a no-op on-device,
 # so the clipboard runs through the receiver the showcase embeds — the read-back is the strong
 # assertion PR #934 wanted. Verified on a local arm64 emulator.
@@ -150,7 +150,7 @@ SERIAL ?= booted
 E2E_SCENARIOS := smoke firstlook navigation search data_driven relaunch system components modals \
 	controls notices gestures gestures_multitouch permission device extract foreach interrupts \
 	text_entry_android text_selection_android picker_wheel select_photos select_photo_single app_android location_android \
-	webview open_url_android
+	webview open_url_android push push_android
 
 # Raise the condition-wait ceiling for this lane only: the CI x86_64 software-rendered emulator
 # presents sheets/covers slower than the shared scenarios' 5s waits allow. A wait returns as soon as
@@ -178,7 +178,7 @@ E2E_ENV = BAJUTSU_MIN_WAIT_TIMEOUT=$(E2E_WAIT_FLOOR) BAJUTSU_LOG_LEVEL=$(E2E_LOG
 # `device.yaml` carries the underscore form, so it joins (verified on a local arm64 emulator).
 E2E_VIEWS_SCENARIOS := smoke firstlook navigation search data_driven relaunch system extract foreach \
 	interrupts device text_entry_android text_selection_android picker_wheel select_photos select_photo_single location_android \
-	webview
+	webview push push_android
 
 # The wrapper jar IS committed (like any standard Android repo), so a fresh clone builds with no
 # extra step. Only run this to bump the pinned Gradle version — never as part of a build, since it

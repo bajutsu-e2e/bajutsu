@@ -129,11 +129,11 @@ runner-build-device:
 # stays tagged `xcuitest` and excluded here — a legacy split from when a coordinate backend could not
 # reach the tab bar — and `run-swiftui-tabs`/`run-uikit-tabs` below run it on its own; both paths run
 # on XCUITest now. `permission_system_alert.yaml` (BE-0316), `paste_system_alert.yaml` (BE-0369),
-# `system_alert_handling.yaml`, and push.yaml's second scenario (BE-0416) are tagged `systemalert` and
+# `system_alert_handling.yaml`, and push_banner.yaml (BE-0416) are tagged `systemalert` and
 # excluded too: these bulk runs discover every scenario file and do not reset per-scenario device
 # state, so the `notDetermined` prompt each one answers is not guaranteed here (and
 # paste_system_alert.yaml's own decline leaves the pasteboard holding its own string for whatever
-# scenario the lane discovers next); push.yaml's banner scenario also needs a screen
+# scenario the lane discovers next); push_banner.yaml also needs a screen
 # (SHOWCASE_NOTIFICATION_BANNER) that exists on the SwiftUI target only. Each runs instead on a
 # named iOS CI scenario list (`run` for the first, `actuation` for the rest), where
 # what precedes it is controlled rather than discovered. A dedicated tag keeps them out without
@@ -556,7 +556,8 @@ run-flutter: flutter-build runner-build
 # text_entry_android's non-ASCII text needs ACTION_SET_TEXT, which no one has checked on a Flutter
 # field, so it joins this set only once this lane has run it. `adb root`
 # enables the `sendevent` path the gestures double-tap and multi-touch use, exactly as the native
-# android-e2e lane does; `text_editing` / `push` stay iOS-only in the native suite too.
+# android-e2e lane does; `text_editing` stays iOS-only in the native suite too. `push` reaches the
+# in-app BajutsuAndroid push receiver (BE-0498), which the Flutter app does not link, so it stays out.
 # BAJUTSU_MIN_WAIT_TIMEOUT=15 mirrors the native Compose lane (demos/showcase/android/Makefile): a
 # CI x86_64 software-rendered emulator presents sheets/covers slower than the shared scenarios' 5s
 # waits allow, so the modal/component scenarios need a higher wait ceiling. It is a ceiling on a

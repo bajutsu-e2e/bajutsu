@@ -23,6 +23,9 @@ object Bajutsu {
     /** Broadcast action bajutsu sends location operations on (BE-0481). Must match `adb/_functions.py`. */
     const val LOCATION_ACTION: String = "dev.bajutsu.LOCATION"
 
+    /** Broadcast action bajutsu sends push notifications on (BE-0498). Must match `adb/_functions.py`. */
+    const val PUSH_ACTION: String = "dev.bajutsu.PUSH"
+
     /** Result code the receiver sets so a run can tell "handled" from "no receiver". Must match `adb.py`. */
     const val RESULT_OK: Int = 1
 
@@ -38,8 +41,21 @@ object Bajutsu {
      */
     const val RESULT_MOCK_FAILED: Int = 3
 
+    /**
+     * Result code the push receiver sets when it would post a notification and the app's
+     * notifications are not enabled (BE-0498). Must match `adb/_functions.py`.
+     */
+    const val RESULT_NO_NOTIFICATION_PERMISSION: Int = 4
+
+    /**
+     * Result code the push receiver sets when the app's push handler threw; the result data carries
+     * the exception message, base64-encoded. Must match `adb/_functions.py`.
+     */
+    const val RESULT_PUSH_FAILED: Int = 5
+
     private var registered = false
     private var locationRegistered = false
+    private var pushRegistered = false
 
     /**
      * Register the clipboard receiver so bajutsu can drive the clipboard through this app.
@@ -80,6 +96,32 @@ object Bajutsu {
             ContextCompat.RECEIVER_EXPORTED,
         )
         locationRegistered = true
+    }
+
+    /**
+     * Register the push receiver so bajutsu's `push` step reaches this app (BE-0498).
+     *
+     * With a [handler], each push calls it on the main thread and nothing else, which exercises the
+     * app's own foreground handling. Without one, each push posts a local notification on a `bajutsu`
+     * channel, which needs `POST_NOTIFICATIONS` declared in the app's debug or test manifest and
+     * granted by the scenario's `permissions` precondition.
+     *
+     * Call once from `Application.onCreate`, in a **test/debug build only**, next to
+     * [startClipboard]. A push reaches the app only while its process runs. The receiver is exported
+     * with no permission, so any local app can post a notification or call the handler through it;
+     * it must never ship in a release build. Idempotent: a second call is a no-op, and keeps the
+     * first call's handler.
+     */
+    @JvmOverloads
+    fun startPush(context: Context, handler: BajutsuPushHandler? = null) {
+        if (pushRegistered) return
+        ContextCompat.registerReceiver(
+            context.applicationContext,
+            PushReceiver(handler),
+            IntentFilter(PUSH_ACTION),
+            ContextCompat.RECEIVER_EXPORTED,
+        )
+        pushRegistered = true
     }
 
     /**

@@ -14,7 +14,7 @@ iOS は `xcuitest` で、Android は `adb` で動きます。2つのバックエ
 ## 3つの表が扱う範囲
 
 **能力**（capability）は、バックエンドが `Driver.capabilities()` で宣言する名前付きの機能です。
-たとえば `multiTouch` や `deviceControl.push` があります。実行前の事前チェック（preflight）は、
+たとえば `multiTouch` や `handleNotificationBanner` があります。実行前の事前チェック（preflight）は、
 デバイスを確保する前に走ります。ここで止まるのは、ゲート対象の構文を、その能力を持たないバックエンドで使うシナリオです。
 すべての能力がゲート対象ではありません。`conditionWait`、`network`、`semanticTap`、`webView`、区間の証跡の能力は、
 コアが別の手段で満たすので、意図的にゲートしていません。
@@ -73,7 +73,7 @@ iOS の実機では、`simctl` が提供する能力がなくなります。こ�
 | `deviceGroup` | ✅ | ✅ | |
 | `deviceControl.setLocation` | ✅ | ✅ | ローカルのエミュレータ以外では、Android のアプリに BajutsuAndroid ライブラリが要ります。振る舞いの差の表を参照してください。 |
 | `deviceControl.clipboard` | ✅ | ✅ | Android ではアプリに BajutsuAndroid ライブラリが必要です。振る舞いの差の表を参照してください。 |
-| `deviceControl.push` | ✅ | gap | クリップボードと同じく、BajutsuAndroid ライブラリがアプリの中から通知を出せば実現できます。 |
+| `deviceControl.push` | ✅ | ✅ | Android のアプリに BajutsuAndroid ライブラリが要ります。振る舞いの差の表を参照してください。 |
 | `deviceControl.clearKeychain` | ✅ | n/a | Android には iOS の Keychain にあたる仕組みがありません。アプリの Android Keystore の鍵は、クリーンな再インストールでデータと一緒に消えます。 |
 | `deviceControl.background` | ✅ | ✅ | Android はホームキー（`KEYCODE_HOME`）を送ります（BE-0478）。アプリのプロセスは生きたままです。その後、アプリが前面のアクティビティでなくなるまで待ちます。 |
 | `deviceControl.foreground` | ✅ | ✅ | |
@@ -118,6 +118,7 @@ iOS の実機では、`simctl` が提供する能力がなくなります。こ�
 | `paste` | XCUITest は、フィールドの長押しで出る編集メニューの「Paste」項目をタップします。メニューはアプリのローカライズに従うので、ドライバーは UIKit の Paste ラベルをどの言語でも受け付けます。 | adb は `input keycombination` で Ctrl+V を送ります。Android 12 以降が必要です。 | iOS では Cmd+V を使いません。`setClipboard` で入れた内容のように、別のプロセスが書いたクリップボードを Cmd+V では貼り付けられないためです。Simulator のビルドによっては編集メニューからの貼り付けで同意ダイアログが出るので、`paste` のシステムアラートの指定で応答します。iOS のレーンは `paste.yaml` を `text_editing.yaml` より前に実行します。`paste.yaml` の `setClipboard` のあとでも `select` と `copy` が動くことを、これで確かめます。 |
 | `setLocation` | シミュレータ上で `simctl` が設定します。 | ローカルのエミュレータではコンソールが設定します。それ以外では、adb が mock location の app-op を許可したあと、アプリ内のレシーバが `gps` と `network` の provider を mock します（[BE-0481](../../roadmaps/BE-0481-android-device-set-location/BE-0481-android-device-set-location-ja.md)）。 | iOS はまだ実機で位置を設定できず、[BE-0475](../../roadmaps/BE-0475-ios-runner-set-location/BE-0475-ios-runner-set-location-ja.md) が扱います。Android の実機では、BajutsuAndroid を組み込んでいないアプリはこのステップで失敗します。 |
 | `web:` ブロック | ブリッジが `within` の最初の id で `WKWebView` を探します。タップはスクリプトによるクリックです。 | `within` が解決したフレームを矩形に含むページを、run が選びます。タップは信頼されたタッチで、ページにクリックが届いた時点で終わります。 | 同じ `web:` ブロックが両方で動きます。Android では、重なり合う 2 つの WebView はあいまいとしてステップを失敗させます。リリースビルドはデバッグ用ソケットを開きません。[シナリオ](scenarios.md#webwebview-の-dom-コンテキストに入る)を参照してください。 |
+| `push` | `simctl push` が Apple Push Notification service（APNs）のペイロードを届けます。 | bajutsu がペイロードをタイトル、本文、データのマップに変換します。そのあとアプリ内のレシーバが、アプリのハンドラを呼ぶか、ローカル通知を出します（[BE-0498](../../roadmaps/BE-0498-android-push-notification/BE-0498-android-push-notification-ja.md)）。 | Android では、アプリが起動していて、BajutsuAndroid をリンクしている必要があります。ハンドラのない経路には `notifications` の許可が要ります。API 34 のエミュレータでは、`background` ステップのあとのプッシュも遅れずに届きました。 |
 | クリップボードのステップ | `simctl` がペーストボードを読み書きします。 | アプリ内の受信部が処理します。アプリが BajutsuAndroid をリンクしている必要があります。Android 10 以降は、フォーカスを持つアプリしかクリップボードを読めません。 | BajutsuAndroid のないアプリでは、クリップボードのステップはすべて失敗します。アプリがバックグラウンドにあるときの読み取りも失敗します。 |
 
 ## テストによる表の検証
