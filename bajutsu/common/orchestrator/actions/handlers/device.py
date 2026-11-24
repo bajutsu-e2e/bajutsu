@@ -8,6 +8,7 @@ from bajutsu.common.drivers import base
 from bajutsu.common.orchestrator.actions._registry import _handler, _need_control
 from bajutsu.common.orchestrator.types import DeviceControl, RelaunchFn
 from bajutsu.common.scenario import Step
+from bajutsu.common.scenario.models.actions.push import PUSH_PAYLOAD_LIMIT, push_payload_size
 
 
 @_handler("relaunch")
@@ -33,6 +34,14 @@ def _do_set_location(
 @_handler("push")
 def _do_push(_d: object, step: Step, _r: object, control: DeviceControl | None, _b: object) -> None:
     assert step.push is not None
+    # A `${vars.*}` / `${secrets.*}` token can grow the payload past the limit the model checked at
+    # load; `_interp_step` skips re-validation so no error quotes the substituted text (BE-0498).
+    # The message carries the size alone, never the payload.
+    size = push_payload_size(step.push.payload)
+    if size > PUSH_PAYLOAD_LIMIT:
+        raise base.SelectorError(
+            f"push payload is {size:,} bytes; the limit is {PUSH_PAYLOAD_LIMIT:,}"
+        )
     _need_control(control, "push").push(step.push.payload)
 
 

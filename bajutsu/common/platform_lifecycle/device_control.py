@@ -71,6 +71,19 @@ def device_control(
     return _Control()
 
 
+def _android_push(e: adb.Env, package: str, payload: dict[str, object]) -> None:
+    """Deliver *payload* through the app's push receiver, failing the step (not the run) on error.
+
+    Converted here, not in the backend-agnostic `_do_push`: a catch of the base `DeviceError` there
+    would also turn iOS's `simctl.DeviceTimeout` into a failing step, where BE-0363 lets it propagate.
+    No message quotes the payload (see `adb.Env.push`).
+    """
+    try:
+        e.push(package, payload)
+    except adb.DeviceError as exc:
+        raise base.SelectorError(str(exc)) from None
+
+
 def android_device_control(
     serial: str,
     package: str,
@@ -87,9 +100,11 @@ def android_device_control(
     device, or an emulator reached with `adb connect` — mocks the location through the app's in-app
     BajutsuAndroid receiver. The clipboard operations also run over an ordered `am broadcast` to the
     app (BE-0233) — hence `package`, to address both broadcasts at the app under test. `background`
-    presses Home and the status-bar pair drives the System UI demo mode (BE-0478). `push` needs a
-    receiver in the app's process, and Android has no keychain for `clearKeychain` to clear, so both
-    raise `UnsupportedAction`. Preflight (BE-0212) rejects those steps up front from the adb backend's
+    presses Home and the status-bar pair drives the System UI demo mode (BE-0478). `push` reaches
+    BajutsuAndroid's in-app push receiver over the same kind of broadcast (BE-0498); its
+    `adb.DeviceError` becomes a `SelectorError`, so a failed delivery fails its step rather than the
+    run. Android has no keychain for `clearKeychain` to clear, so that alone raises
+    `UnsupportedAction`. Preflight (BE-0212) rejects the step up front from the adb backend's
     advertised subset, so this raise is the runtime backstop, never a silent no-op.
 
     Args:
@@ -126,8 +141,8 @@ def android_device_control(
         def clear_clipboard(self) -> None:
             e.clear_clipboard(package)
 
-        def push(self, payload: dict[str, object]) -> None:  # noqa: ARG002  # DeviceControl shape
-            raise _unsupported("push")
+        def push(self, payload: dict[str, object]) -> None:
+            _android_push(e, package, payload)
 
         def clear_keychain(self) -> None:
             raise _unsupported("clearKeychain")

@@ -739,13 +739,13 @@ def test_wait_until_request_and_settle_and_request_sequence_are_todo() -> None:
 def test_device_control_and_helper_steps_are_labeled_todo() -> None:
     code = _gen(
         "- name: x\n  steps:\n"
-        "    - push: { payload: {} }\n"
+        "    - push: { payload: { aps: { alert: hi } } }\n"
         "    - totp: { secret: GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ, into: { var: code } }\n"
         "    - email: { match: { subjectMatches: Verify }, extract: { var: pin, "
         "bodyMatches: 'PIN (\\d+)' }, timeout: 10 }\n"
         "    - background: {}\n"
     )
-    assert "// TODO: push" in code
+    assert "// TODO: push — not generated; run it with bajutsu run" in code
     assert "// TODO: totp(into: code)" in code
     assert "// TODO: email(into: pin)" in code
     assert "// TODO: unsupported step" in code

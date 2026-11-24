@@ -43,9 +43,9 @@ _FULL = _LEAN_IOS | {
 # device-control token (e.g. Playwright, or a future backend without a real DeviceControl wired),
 # used to prove device-control steps are gated.
 _NO_CONTROL = _LEAN_IOS - base.DEVICE_CONTROL_ALL - base.IOS_PERMISSION_CAPABILITIES
-# A backend that supports only part of the family (the Android emulator: setLocation + clipboard,
-# plus the whole permission vocabulary, BE-0210/BE-0276) — used to prove preflight admits the
-# supported subset and fails fast for the rest.
+# A synthetic backend that supports only part of the family (setLocation + clipboard, plus the whole
+# permission vocabulary) — used to prove preflight admits the supported subset and fails fast for the
+# rest. It models no real backend, so it stays fixed as real backends grow.
 _SUBSET = {
     base.Capability.QUERY,
     base.Capability.ELEMENTS,
@@ -278,7 +278,7 @@ def test_subset_backend_admits_its_supported_operations(step: dict[str, object])
 def test_subset_backend_rejects_its_unsupported_operations(
     step: dict[str, object], token: str
 ) -> None:
-    # Operations the emulator can't honor are failed fast, each named by its own token.
+    # Operations the partial backend can't honor are failed fast, each named by its own token.
     reasons = capability_preflight.unsupported(_sc(steps=[step]), _SUBSET)
     assert len(reasons) == 1
     assert reasons[0].startswith("step 1: ")
