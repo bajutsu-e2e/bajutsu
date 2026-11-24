@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0501") |
+| 実装 PR | [#2513](https://github.com/bajutsu-e2e/bajutsu/pull/2513) |
 | トピック | シナリオ記述機能 |
 | 関連 | [BE-0036](../BE-0036-utility-steps/BE-0036-utility-steps-ja.md)、[BE-0090](../BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution-ja.md)、[BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks-ja.md)、[BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)、[BE-0491](../BE-0491-target-command-hooks/BE-0491-target-command-hooks-ja.md)、[BE-0492](../BE-0492-worker-command-execution-policy/BE-0492-worker-command-execution-policy-ja.md) |
 <!-- /BE-METADATA -->
@@ -244,6 +245,14 @@ BE-0491 の後に実装し、シナリオ側のスキーマ、ロード時のト
 - [x] ポリシー：`use` とサンドボックスのコンテナを含め、シナリオのエントリを BE-0492 のモード、`manifest.json` の記録、ルーティングのトークンに通す。
 - [x] 証跡：シナリオ単位のログのパスと、ラベル付きのレポートブロック。
 - [x] テストと、両言語のドキュメントおよび `DESIGN.md` の更新。
+
+ログ：
+
+- 2026-11-24 — 6 つの単位をまとめて実装しました（[#2513](https://github.com/bajutsu-e2e/bajutsu/pull/2513)）。
+  - シナリオのリストは、BE-0491 がたどるフェーズの最も内側の項目として走ります。1 つの順序の規則が両方の階層に働きます。
+  - シナリオは独自の出所を持つようになりました。提案が想定していなかった点です。`serve` は、クライアントが書いたシナリオを、operator が開いた config に対して実行できるからです。
+  - エントリの `cmd` や `env` に書いたトークンは、ロードエラーになりました。コマンドは値を環境変数から読むからです。
+  - worker は、ジョブのコマンドラインから `--config-source` と `--worker-config` を除くとき、ほかのオプションの値を残します。残さなければ、クライアントが別の config を指定できました。
 
 ## 参考
 

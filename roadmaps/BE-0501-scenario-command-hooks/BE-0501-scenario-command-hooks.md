@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0501") |
+| Implementing PR | [#2513](https://github.com/bajutsu-e2e/bajutsu/pull/2513) |
 | Topic | Scenario authoring features |
 | Related | [BE-0036](../BE-0036-utility-steps/BE-0036-utility-steps.md), [BE-0090](../BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md), [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md), [BE-0491](../BE-0491-target-command-hooks/BE-0491-target-command-hooks.md), [BE-0492](../BE-0492-worker-command-execution-policy/BE-0492-worker-command-execution-policy.md) |
 <!-- /BE-METADATA -->
@@ -251,6 +252,14 @@ check, and the two-level ordering.
 - [x] Policy: route the scenario's entries through BE-0492's modes, its `manifest.json` record, and its routing tokens, including `use` and the sandbox container.
 - [x] Evidence: the scenario-level log paths and the labeled report blocks.
 - [x] Tests, plus the docs and `DESIGN.md` updates in both languages.
+
+Log:
+
+- 2026-11-24 — All six units landed together ([#2513](https://github.com/bajutsu-e2e/bajutsu/pull/2513)).
+  - The scenario's lists run as the innermost entry of the phases BE-0491 walks, so one order rule serves both levels.
+  - The scenario gained a source of its own, which the proposal did not foresee: `serve` can run a scenario a client wrote against a config the operator bound.
+  - A token inside an entry's `cmd` or `env` became a load error, because a command reads its values from the environment.
+  - The worker's handling of `--config-source` and `--worker-config` in a job's command line keeps another option's value, which a client could otherwise use to name a different config.
 
 ## References
 
