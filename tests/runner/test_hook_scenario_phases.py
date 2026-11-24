@@ -641,3 +641,43 @@ def test_the_backstop_does_not_run_a_teardown_the_pipeline_already_ran(tmp_path:
 
     run_cli._finish_hooks(_Plan())  # type: ignore[arg-type]
     assert counted.read_text().split() == ["x"]
+
+
+def test_a_hookless_run_starts_no_session(tmp_path: Path) -> None:
+    # None rather than an empty session, so every call site can tell at a glance that a run without
+    # hook commands does no hook work at all.
+    from bajutsu.common.runner.hook_session import start_session
+
+    eff = replace(_eff(), base_dir=tmp_path)
+    assert start_session({"demo": eff}, run_id="r1", runs_dir=tmp_path / "runs") is None
+
+
+def test_two_targets_sharing_a_hook_name_refuse_to_start(tmp_path: Path) -> None:
+    # A `${hooks.<name>.<key>}` token could not say which command it meant, so the run fails before
+    # any device work rather than resolving it arbitrarily.
+    from bajutsu.common.runner.hook_session import start_session
+
+    phases = HookPhases(before_run=[HookCommand(name="srv", cmd="true")])
+    effs = {
+        name: replace(_eff(), target=name, hooks=phases, base_dir=tmp_path)
+        for name in ("alpha", "beta")
+    }
+    with pytest.raises(ValueError, match="'srv'"):
+        start_session(effs, run_id="r1", runs_dir=tmp_path / "runs")
+
+
+def test_a_failed_log_copy_does_not_end_the_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Evidence, not the verdict: a full disk must not end the run here, and must not leave the raw
+    # area behind either — that area holds the unmasked output of a `mask: true` hook.
+    phases = HookPhases(after_run=[HookCommand(cmd=_script(tmp_path, "t.sh", "true"))])
+    session, _eff_unused = _session(tmp_path, phases)
+
+    def refuse(_records: object) -> None:
+        raise OSError("No space left on device")
+
+    monkeypatch.setattr(session.runner, "recopy", refuse)
+    result = session.after_run("success")
+    assert result.ok  # the phase itself succeeded
+    assert session.finished is result  # latched, so a second call cannot re-run the teardown
