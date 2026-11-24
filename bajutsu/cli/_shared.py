@@ -934,7 +934,7 @@ def _start_hooks_or_exit(
     if result.ok:
         return session
     session.after_run("failure")
-    typer.echo(f"beforeRun failed: {result.reason}")
+    typer.echo(result.reason)
     if on_error is not None:
         on_error()
     raise typer.Exit(2) from None

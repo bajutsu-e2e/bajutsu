@@ -83,8 +83,8 @@ def container_user() -> str:
     return _NOBODY if uid == 0 else f"{uid}:{gid}"
 
 
-def grant_container_access(out_dir: Path) -> None:
-    """Let the container's user write the mounted output half of the raw area.
+def grant_container_access(path: Path, *, root: Path | None = None) -> None:
+    """Let the container's user reach and write *path* in the mounted half of the raw area.
 
     When the worker runs as root the container cannot run as that user — root inside the container
     is what `--user` exists to prevent — so it runs as `nobody` instead and cannot open a
@@ -92,14 +92,28 @@ def grant_container_access(out_dir: Path) -> None:
     directory over, so the owner is changed rather than the mode widened: the files stay
     owner-only, with the container's own user as that owner.
 
+    Every directory on the way to the file is handed over too, up to *root* when given: a file the
+    container owns is still out of reach behind a root-owned `0700` directory, and the per-entry
+    directories are created after the container has started.
+
     A no-op for every non-root worker, where the container already runs as the file's owner.
     """
     if os.getuid() != 0:
         return
     uid, gid = (int(part) for part in _NOBODY.split(":"))
-    for path in (out_dir, *out_dir.rglob("*")):
+    targets = [path, *(path.rglob("*") if path.is_dir() else [])]
+    # The parents, from the file up to (and including) the mounted root, so the container can
+    # traverse to what it owns.
+    parent = path.parent
+    stop = (root or path).resolve()
+    while True:
+        targets.append(parent)
+        if parent.resolve() == stop or parent == parent.parent:
+            break
+        parent = parent.parent
+    for target in targets:
         with contextlib.suppress(OSError):
-            os.chown(path, uid, gid)
+            os.chown(target, uid, gid)
 
 
 def _container_name() -> str:
