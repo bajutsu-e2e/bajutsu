@@ -15,6 +15,7 @@ name: Auto-merge (bypass App)
 # PRs are stacked on). That refusal is expected, not a failure, so it becomes a notice. `edited` with
 # a base change onto the default branch retries once the stack below has merged and the PR has been
 # retargeted, so nobody has to close and reopen it.
+# The bottom PR of a stack already targets the default branch, so nothing retries it.
 on:
   pull_request:
     types: [opened, reopened, ready_for_review, edited]
@@ -70,7 +71,7 @@ jobs:
           # Only GitHub's stacked-PR refusal is tolerated, in either wording it has used; every other
           # error still fails the job.
           if grep -qE "Auto-merge is not supported for stacked pull requests|This pull request is part of a stack" <<<"$out"; then
-            echo "::notice::Auto-merge is not available while this PR is stacked. It is enabled once the PRs below it merge and this PR is retargeted onto the default branch."
+            echo "::notice::Auto-merge was not enabled because this PR is part of a stack. A PR based on another PR's branch is retried once it is retargeted onto the default branch. A PR already on the default branch gets no further attempt, so merge it by hand."
             exit 0
           fi
           exit 1
