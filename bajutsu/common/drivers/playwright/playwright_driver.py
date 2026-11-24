@@ -527,12 +527,17 @@ class PlaywrightDriver:
             self._page.evaluate(_SETTLE_JS)
         if not self._navigation_pending:
             return
-        with contextlib.suppress(*_playwright_error_types()):
-            self._page.wait_for_event(
-                "framenavigated", predicate=_is_main_frame, timeout=_DOCUMENT_WAIT_MS
-            )
-        # A navigation that never committed (a 204 response) must not make every later read wait.
-        self._navigation_pending = False
+        self._await_commit()
+
+    def _await_commit(self) -> None:
+        """Wait, bounded, for a seen main-frame navigation to commit, then for its document."""
+        if self._navigation_pending:
+            with contextlib.suppress(*_playwright_error_types()):
+                self._page.wait_for_event(
+                    "framenavigated", predicate=_is_main_frame, timeout=_DOCUMENT_WAIT_MS
+                )
+            # A navigation that never committed (a 204 response) must not make every later read wait.
+            self._navigation_pending = False
         self._await_document()
 
     def _evaluate_across_navigation(self, expression: str) -> Any:
@@ -1087,8 +1092,10 @@ class PlaywrightDriver:
                 if _is_playwright_timeout(exc):
                     self._await_document()
                 elif _is_capture_failure(exc):
-                    # The capture fails just after the commit, so also let the new document paint.
-                    self._await_document()
+                    # The refusal brackets the commit, so wait out a swap still in flight (the old,
+                    # complete document would satisfy the load wait at once), then let the new
+                    # document paint.
+                    self._await_commit()
                     with contextlib.suppress(*_playwright_error_types()):
                         self._page.evaluate(_SETTLE_JS)
                 else:

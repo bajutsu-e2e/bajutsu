@@ -1634,6 +1634,34 @@ def test_an_iframe_navigation_or_an_aborted_one_is_not_waited_for() -> None:
     assert page.calls == ["settle", "shot:5000"]
 
 
+def test_a_refused_capture_before_a_script_navigation_commits_waits_for_the_commit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A capture refused while a page script's navigation is still in flight waits for its commit
+    before recapturing, since the old document already satisfies the load wait (issue #2509)."""
+    _stub_playwright_errors(monkeypatch)
+
+    class _RefusingPage(_SubmittingPage):
+        def screenshot(self, *, path: str, timeout: float | None = None) -> object:
+            if not self.calls:
+                self.calls.append(f"shot:{timeout}")
+                self.fire("request", _NavRequest())  # no input started it, so no settle ran
+                raise _NavPwError(_CAPTURE_REFUSED)
+            return super().screenshot(path=path, timeout=timeout)
+
+    page = _RefusingPage([])
+    PlaywrightDriver("http://app.test/", page=page).screenshot("after.png")
+
+    assert page.calls == [
+        "shot:5000",
+        "wait:framenavigated",
+        "load:domcontentloaded",
+        "settle",
+        "shot:None",
+    ]
+    assert page.shot == "after.png"
+
+
 def test_a_query_after_a_navigating_tap_reads_the_new_document() -> None:
     page = _SubmittingPage([("request", _NavRequest())])
     driver = PlaywrightDriver("http://app.test/", page=page)
