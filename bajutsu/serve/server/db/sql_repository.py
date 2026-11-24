@@ -754,6 +754,7 @@ class SqlRepository:
         # Jobs of one request often share a `created_at` second on SQLite; ids are the registry's
         # counter, so ordering by length then text keeps "9" ahead of "10".
         columns = [JobRecord.id, JobRecord.status, JobRecord.result, JobRecord.cancel_reason]
+        keys = ("id", "status", "result", "cancel_reason") + (("spec",) if include_spec else ())
         if include_spec:
             columns.append(JobRecord.spec)
         query = (
@@ -761,9 +762,8 @@ class SqlRepository:
             .where(JobRecord.group_id == group_id)
             .order_by(JobRecord.created_at, func.length(JobRecord.id), JobRecord.id)
         )
-        keys = ("id", "status", "result", "cancel_reason", "spec")
         with Session(self._engine) as session:
-            return [dict(zip(keys, row, strict=False)) for row in session.execute(query)]
+            return [dict(zip(keys, row, strict=True)) for row in session.execute(query)]
 
     def max_job_id(self) -> int:
         # Pulls every job id into Python to find the max — fine for a once-per-boot startup query,

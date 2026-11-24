@@ -66,6 +66,7 @@ def _pass(
     adapter: _Adapter,
     *,
     at: timedelta = timedelta(seconds=1),
+    base: datetime | None = None,
     snapshots: list[str] | None = None,
     sinks: dict[str, GroupSink] = _SINKS,
 ) -> list[tuple[str, str]]:
@@ -75,7 +76,7 @@ def _pass(
         return {"conclusion": "success", "total": 1, "passed": 1, "rows": []}
 
     before = len(adapter.calls)
-    moment = datetime.now(UTC) + at
+    moment = (base or datetime.now(UTC)) + at
     deliver_once(repo, sinks, {"github-check": adapter}, snapshot_for, clock=lambda: moment)
     return [(c.event, c.reference or "") for c in adapter.calls[before:]]
 
@@ -136,12 +137,16 @@ def test_a_failure_retries_after_its_backoff() -> None:
     _register(repo, "g1", _notify(), ("1",))
     adapter = _Adapter()
     adapter.failing = True
-    _pass(repo, adapter)
+    # One base for every pass, so the margins are exact rather than a few seconds of real clock.
+    base = datetime.now(UTC)
+    _pass(repo, adapter, base=base)
     adapter.failing = False
 
     first_retry = delivery.backoff(1)
-    assert _pass(repo, adapter, at=first_retry - timedelta(seconds=2)) == []
-    assert _pass(repo, adapter, at=first_retry + timedelta(seconds=2)) == [("queued", "")]
+    assert _pass(repo, adapter, base=base, at=first_retry - timedelta(seconds=2)) == []
+    assert _pass(repo, adapter, base=base, at=first_retry + timedelta(seconds=2)) == [
+        ("queued", "")
+    ]
 
 
 def test_the_backoff_grows_and_is_bounded() -> None:
