@@ -43,7 +43,7 @@ def snapshot_reader(state: ServeState) -> SnapshotFor:
     def snapshot_for(claim: GroupEventClaim) -> dict[str, object]:
         assert state.repository is not None  # start_group_notify started no loop without one
         return group_snapshot(
-            state.repository.group_jobs(claim.group_id),
+            state.repository.group_jobs(claim.group_id, include_spec=True),
             lambda run_id: read_run_manifest(state, run_id, claim.org_id),
         )
 

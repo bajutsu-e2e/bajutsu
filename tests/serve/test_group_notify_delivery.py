@@ -336,6 +336,15 @@ def test_a_row_no_process_defines_is_abandoned_once_it_outlives_the_backoff() ->
     assert adapter.calls == []
 
 
+def test_an_orphan_sweep_naming_no_sink_abandons_nothing() -> None:
+    repo = queue_repository()
+    _register(repo, "g1", _notify(), ("1",))
+    later = datetime.now(UTC) + delivery.ABANDON_AFTER + timedelta(minutes=1)
+
+    assert repo.abandon_orphan_group_events([], before=later) == []
+    assert _states(repo)[("g1", "queued")] == "pending"
+
+
 def test_each_claim_is_held_from_the_moment_it_is_taken() -> None:
     repo = queue_repository()
     _register(repo, "g1", _notify(), ("1",))

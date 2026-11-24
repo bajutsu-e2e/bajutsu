@@ -575,6 +575,24 @@ def test_a_job_group_round_trips_with_its_jobs_in_registration_order(
     assert repo.get_job_group("missing") is None
 
 
+def test_a_group_jobs_read_carries_each_spec_only_when_asked(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    repo = _repo(serve_engine)
+    spec = {"intent": {"scenario": "login.yaml"}}
+    repo.register_job_group(
+        "g1",
+        org_id="o1",
+        key="k1",
+        digest="d",
+        compat_key=None,
+        jobs=[QueuedJob(id="1", spec=spec)],
+    )
+
+    assert "spec" not in repo.group_jobs("g1")[0]
+    assert repo.group_jobs("g1", include_spec=True)[0]["spec"] == spec
+
+
 def test_the_db_executor_stores_a_jobs_actor(serve_engine: Callable[..., Engine]) -> None:
     from bajutsu.serve.server.models import JobRecord
 

@@ -269,9 +269,9 @@ class Repository(Protocol):
     def get_job_group(self, group_id: str) -> dict[str, Any] | None:
         """The group's ``id``, ``org_id``, ``key``, and ``fail_fast``, or None when no group has that id."""
 
-    def group_jobs(self, group_id: str) -> list[dict[str, Any]]:
+    def group_jobs(self, group_id: str, *, include_spec: bool = False) -> list[dict[str, Any]]:
         """Each job of the group, oldest first, as its ``id``, ``status``, ``result``, and
-        ``cancel_reason`` (BE-0499)."""
+        ``cancel_reason`` (BE-0499), plus its ``spec`` when *include_spec* (BE-0500)."""
 
     def max_job_id(self) -> int:
         """The highest numeric job id persisted so far, or 0 if the table is empty.

@@ -745,7 +745,7 @@ class SqlRepository:
                 "notify": row.notify,
             }
 
-    def group_jobs(self, group_id: str) -> list[dict[str, Any]]:
+    def group_jobs(self, group_id: str, *, include_spec: bool = False) -> list[dict[str, Any]]:
         from sqlalchemy import func, select
         from sqlalchemy.orm import Session
 
@@ -753,22 +753,17 @@ class SqlRepository:
 
         # Jobs of one request often share a `created_at` second on SQLite; ids are the registry's
         # counter, so ordering by length then text keeps "9" ahead of "10".
+        columns = [JobRecord.id, JobRecord.status, JobRecord.result, JobRecord.cancel_reason]
+        if include_spec:
+            columns.append(JobRecord.spec)
         query = (
-            select(
-                JobRecord.id,
-                JobRecord.status,
-                JobRecord.result,
-                JobRecord.cancel_reason,
-                JobRecord.spec,
-            )
+            select(*columns)
             .where(JobRecord.group_id == group_id)
             .order_by(JobRecord.created_at, func.length(JobRecord.id), JobRecord.id)
         )
+        keys = ("id", "status", "result", "cancel_reason", "spec")
         with Session(self._engine) as session:
-            return [
-                {"id": i, "status": status, "result": result, "cancel_reason": reason, "spec": spec}
-                for i, status, result, reason, spec in session.execute(query)
-            ]
+            return [dict(zip(keys, row, strict=False)) for row in session.execute(query)]
 
     def max_job_id(self) -> int:
         # Pulls every job id into Python to find the max — fine for a once-per-boot startup query,
@@ -1791,6 +1786,9 @@ class SqlRepository:
 
         from bajutsu.serve.server.models import GroupEvent
 
+        if not sinks:
+            # An empty `not_in` renders always-true, which would abandon every pending row.
+            return []
         with Session(self._engine) as session:
             orphans = session.execute(
                 select(GroupEvent.id, GroupEvent.sink).where(
