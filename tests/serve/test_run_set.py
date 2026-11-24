@@ -785,6 +785,39 @@ def test_a_group_key_reused_for_a_different_request_is_a_conflict(tmp_path: Path
     assert len(registered.jobs) == 2
 
 
+@pytest.mark.parametrize("flag", ["yes", 1, None])
+def test_fan_out_refuses_a_non_boolean_fail_fast(tmp_path: Path, flag: object) -> None:
+    scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml"])
+    state, registered = _state(tmp_path, cfg, scn_dir)
+
+    payload, status = start_run_set(state, {**_DF, "failFast": flag})
+
+    assert status == 400
+    assert "failFast" in payload["error"]
+    assert registered.jobs == []
+
+
+def test_fan_out_stores_the_fail_fast_flag_on_its_group(tmp_path: Path) -> None:
+    scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml"])
+    state, _ = _state(tmp_path, cfg, scn_dir)
+    assert state.repository is not None
+
+    fast, _ = start_run_set(state, {**_DF, "failFast": True})
+    slow, _ = start_run_set(state, _DF)
+
+    groups = [state.repository.get_job_group(p["groupId"]) for p in (fast, slow)]
+    assert [g and g["fail_fast"] for g in groups] == [True, False]
+
+
+def test_a_group_key_reused_with_only_fail_fast_changed_is_a_conflict(tmp_path: Path) -> None:
+    scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml"])
+    state, _ = _state(tmp_path, cfg, scn_dir)
+    request = {**_DF, "groupKey": "ci-1"}
+    start_run_set(state, request)
+
+    assert start_run_set(state, {**request, "failFast": True})[1] == 409
+
+
 def test_a_machine_registers_its_group_under_its_own_org(tmp_path: Path) -> None:
     cfg = _local_bundle_project(tmp_path)
     with cfg.open("a", encoding="utf-8") as f:
@@ -840,8 +873,8 @@ def test_a_queued_group_reads_as_pending_with_each_jobs_status(tmp_path: Path) -
         "groupKey": "k1",
         "conclusion": "pending",
         "jobs": [
-            {"id": "1", "status": "queued", "exitCode": None, "runId": None},
-            {"id": "2", "status": "queued", "exitCode": None, "runId": None},
+            {"id": "1", "status": "queued", "exitCode": None, "runId": None, "cancelReason": None},
+            {"id": "2", "status": "queued", "exitCode": None, "runId": None, "cancelReason": None},
         ],
     }
 

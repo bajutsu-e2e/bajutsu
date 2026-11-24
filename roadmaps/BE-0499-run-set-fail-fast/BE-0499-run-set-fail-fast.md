@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0499](BE-0499-run-set-fail-fast.md) |
 | Author | [@paihu](https://github.com/paihu) |
-| Status | **Approved** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0499") |
+| Implementing PR | [#2506](https://github.com/bajutsu-e2e/bajutsu/pull/2506) |
 | Topic | Device-cloud execution |
 | Related | [BE-0484](../BE-0484-job-group-lease/BE-0484-job-group-lease.md) |
 <!-- /BE-METADATA -->
@@ -68,7 +69,7 @@ The flag never changes a verdict. A group with a failing job concludes `failure`
 
 ### Documentation
 
-`docs/devicefarm.md` and `docs/self-hosting.md` describe the `run-set` request in both languages. Both pages gain the field and the `cancelReason` value.
+`docs/devicefarm.md` describes the `run-set` request in both languages, and it gains the field and the `cancelReason` value. `docs/architecture.md`'s *Job groups* bullet gains the fail-fast stop, and its concurrency-caps sub-bullet narrows "a group is thus never cut short" to the caps, which the flag now makes untrue in general (BE-0113). `docs/self-hosting.md` describes no `run-set` request body, so it needs no change.
 
 ## Alternatives considered
 
@@ -82,10 +83,21 @@ The flag never changes a verdict. A group with a failing job concludes `failure`
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] The `failFast` request field, its column, and the request digest
-- [ ] The stop on the three terminal paths
-- [ ] The `cancel_reason` column and the `cancelReason` field of the group read
-- [ ] Documentation in both languages
+- [x] The `failFast` request field, its column, and the request digest
+- [x] The stop on the three terminal paths
+- [x] The `cancel_reason` column and the `cancelReason` field of the group read
+- [x] Documentation in both languages
+
+Log:
+
+- 2026-11-23 — [#2506](https://github.com/bajutsu-e2e/bajutsu/pull/2506) landed all four units. `POST /api/run-set` takes `failFast`, and the
+  request digest covers it. A failing job of a fail-fast group cancels its unfinished siblings,
+  and `GET /api/run-set/<groupId>` reports each cancelled job's `cancelReason`. The cancelled
+  queued jobs' ids reach the routes through an `on_stopped` callback rather than a changed return
+  type, which keeps `complete_job` and `fail_job` returning a boolean. Every stop takes the
+  group's row lock before any job row, so two failures of one group never deadlock on PostgreSQL.
+  The reclaim sweep therefore fails an exhausted fail-fast job in a transaction of its own, after
+  the sweep commits. `docs/self-hosting.md` describes no request body, so it needed no change.
 
 ## References
 

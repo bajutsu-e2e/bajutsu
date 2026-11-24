@@ -1123,6 +1123,9 @@ def start_run_set(  # noqa: C901, PLR0911
     label, label_err = _run_label(binding, body)
     if label_err:
         return label_err
+    fail_fast = body.get("failFast", False)
+    if not isinstance(fail_fast, bool):
+        return {"error": "failFast must be a boolean"}, 400
     # Last of the checks: snapshotting the binary reads and copies it whole, so every plain body
     # refusal above stays free.
     ships_files = bool(requests[0][1])
@@ -1169,8 +1172,10 @@ def start_run_set(  # noqa: C901, PLR0911
             config_text,
             app_digest,
             label,
+            fail_fast,
         ),
         compat_key=_compat_key(config_text, app_digest, platform, target),
+        fail_fast=fail_fast,
         audit=(actor, org, target, ci_job),
     )
 
@@ -1182,6 +1187,7 @@ def _register_group(
     key: str,
     digest: str,
     compat_key: str,
+    fail_fast: bool,
     audit: tuple[str | None, str, str, dict[str, str] | None],
 ) -> tuple[Any, int]:
     """Write *jobs* to the queue as one group, all or nothing, and admit them once written (BE-0484).
@@ -1207,7 +1213,13 @@ def _register_group(
             QueuedJob(id=job_id, spec=spec, capabilities=sorted(set(job.capabilities)), actor=actor)
         )
     held = state.repository.register_job_group(
-        group_id, org_id=org, key=key, digest=digest, compat_key=compat_key, jobs=rows
+        group_id,
+        org_id=org,
+        key=key,
+        digest=digest,
+        compat_key=compat_key,
+        jobs=rows,
+        fail_fast=fail_fast,
     )
     if held is None:
         return {"error": f"groupKey {key!r} already names a different run-set request"}, 409
@@ -1228,12 +1240,15 @@ def _request_digest(
     config_text: str,
     app_digest: str | None,
     label: str | None,
+    fail_fast: bool,
 ) -> str:
     """What a `run-set` request asks to run, so a repeated group key tells a retry from another
     request (BE-0484). The scenarios are a set: a retry need not list them in the same order."""
     config_digest = hashlib.sha256(config_text.encode()).hexdigest()
     return hashlib.sha256(
-        json.dumps([target, sorted(scenarios), config_digest, app_digest, label]).encode()
+        json.dumps(
+            [target, sorted(scenarios), config_digest, app_digest, label, fail_fast]
+        ).encode()
     ).hexdigest()
 
 

@@ -332,6 +332,21 @@ def _register_proc(job: Job, proc: Any, *, graceful: bool = False) -> bool:
     return not kill
 
 
+def close_cancelled(state: ServeState, job_ids: list[str]) -> None:
+    """End the live view of jobs the server cancelled while queued.
+
+    No worker will ever post a result for them, so the server writes the terminal view itself, or
+    each job would read as running forever. Its own `Job`, when this process holds one, is marked
+    cancelled too.
+    """
+    from bajutsu.serve.server.db import cancelled_job_result
+
+    for job_id in job_ids:
+        if (job := state.jobs.get(job_id)) is not None:
+            cancel_job(job)
+        state.logbus.close(job_id, json.dumps(cancelled_job_result(job_id)))
+
+
 def cancel_job(job: Job) -> bool:
     """Request cancellation of a running job: flag it and stop its current subprocess (the
     streamed output then ends and run_job marks the job done).  Returns False if already
