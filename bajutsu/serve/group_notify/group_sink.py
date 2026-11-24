@@ -90,8 +90,22 @@ def _check_github_app(env: Mapping[str, str]) -> None:
             "a github-check sink needs the GitHub App: set BAJUTSU_GITHUB_APP_ID and "
             "BAJUTSU_GITHUB_APP_PRIVATE_KEY or BAJUTSU_GITHUB_APP_PRIVATE_KEY_FILE"
         )
-    # Read now, so a key file that is missing stops startup rather than every delivery.
-    if not env.get("BAJUTSU_GITHUB_APP_PRIVATE_KEY") and key_file and not Path(key_file).is_file():
+    # Read and sign now, so a key that is missing, malformed, passphrase-protected, or not RSA (or a
+    # missing `githubapp` extra) stops startup rather than every delivery.
+    from bajutsu.common.github import GitHubAccessError
+    from bajutsu.common.github.app import check_app_key
+
+    key = env.get("BAJUTSU_GITHUB_APP_PRIVATE_KEY")
+    if not key:
+        try:
+            key = Path(str(key_file)).read_text(encoding="utf-8")
+        except OSError as e:
+            raise GroupNotifyConfigError(
+                f"BAJUTSU_GITHUB_APP_PRIVATE_KEY_FILE={key_file!r} names no readable file"
+            ) from e
+    try:
+        check_app_key(env["BAJUTSU_GITHUB_APP_ID"], key)
+    except GitHubAccessError as e:
         raise GroupNotifyConfigError(
-            f"BAJUTSU_GITHUB_APP_PRIVATE_KEY_FILE={key_file!r} names no readable file"
-        )
+            f"a github-check sink cannot sign with the configured GitHub App: {e}"
+        ) from e

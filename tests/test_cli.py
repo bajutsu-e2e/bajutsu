@@ -2150,6 +2150,7 @@ def test_serve_loads_the_group_notify_sinks(
     sinks.write_text("groupNotify:\n  - name: github\n    format: github-check\n", "utf-8")
     monkeypatch.setenv("BAJUTSU_GITHUB_APP_ID", "1")
     monkeypatch.setenv("BAJUTSU_GITHUB_APP_PRIVATE_KEY", "pem")
+    monkeypatch.setattr("bajutsu.common.github.app.check_app_key", lambda *_a: None)
     captured: dict[str, object] = {}
     monkeypatch.setattr(srv, "serve", lambda **kw: captured.update(kw))  # don't start a server
 

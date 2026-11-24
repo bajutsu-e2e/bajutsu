@@ -137,6 +137,16 @@ def _app_jwt(app_id: str, private_key_pem: str, *, now: int | None = None) -> st
     return f"{header}.{claims}.{_b64url(signature)}"
 
 
+def check_app_key(app_id: str, private_key_pem: str) -> None:
+    """Sign one throwaway App JWT, offline, so a key that cannot sign fails where it is configured.
+
+    Raises:
+        GitHubAccessError: `cryptography` is missing, or the key is malformed, passphrase-protected,
+            or not RSA.
+    """
+    _app_jwt(app_id, private_key_pem)
+
+
 def _b64url(data: bytes) -> str:
     """base64url without padding — the JWT segment encoding (RFC 7515)."""
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")

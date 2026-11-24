@@ -60,6 +60,11 @@ def machine_repository(identity: str | None) -> str | None:
     (`Principal.kind`) — never a string convention a future identity format could break. This answers
     a different question: having already established what the caller is, how should the audit trail
     name it? A mis-read there writes a slightly wrong log line rather than admitting anyone.
+
+    One caller raises those stakes: a `run-set`'s `notify` (BE-0500) reads this to pick the
+    repository its check runs go to, so there a mis-read writes to the wrong repository. It is
+    unreachable while a GitHub login cannot contain `:` and a token session carries no identity; a
+    new identity format must keep it so, or derive that repository from the stored principal.
     """
     if identity is None or not identity.startswith(_MACHINE_PREFIX):
         return None

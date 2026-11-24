@@ -9,10 +9,21 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 
 from bajutsu.serve.group_notify import GroupNotifyConfigError, GroupSink, load_group_sinks
 
-_APP = {"BAJUTSU_GITHUB_APP_ID": "1", "BAJUTSU_GITHUB_APP_PRIVATE_KEY": "pem"}
+_PEM = (
+    rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    .private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    )
+    .decode("utf-8")
+)
+_APP = {"BAJUTSU_GITHUB_APP_ID": "1", "BAJUTSU_GITHUB_APP_PRIVATE_KEY": _PEM}
 
 
 def _file(tmp_path: Path, body: str) -> Path:
@@ -69,10 +80,18 @@ def test_a_github_check_sink_needs_the_github_app(tmp_path: Path, env: dict[str,
 def test_a_key_file_satisfies_the_app_check(tmp_path: Path) -> None:
     path = _file(tmp_path, "groupNotify:\n  - name: github\n    format: github-check\n")
     key = tmp_path / "app.pem"
-    key.write_text("PEM", encoding="utf-8")
+    key.write_text(_PEM, encoding="utf-8")
     env = {"BAJUTSU_GITHUB_APP_ID": "1", "BAJUTSU_GITHUB_APP_PRIVATE_KEY_FILE": str(key)}
 
     assert set(load_group_sinks(path, env)) == {"github"}
+
+
+def test_a_key_that_cannot_sign_is_refused_at_startup(tmp_path: Path) -> None:
+    path = _file(tmp_path, "groupNotify:\n  - name: github\n    format: github-check\n")
+    env = {"BAJUTSU_GITHUB_APP_ID": "1", "BAJUTSU_GITHUB_APP_PRIVATE_KEY": "not a pem"}
+
+    with pytest.raises(GroupNotifyConfigError, match="cannot sign"):
+        load_group_sinks(path, env)
 
 
 def test_a_key_file_that_does_not_exist_is_refused_at_startup(tmp_path: Path) -> None:

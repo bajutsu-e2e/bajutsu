@@ -103,7 +103,8 @@ def _deliver(
     try:
         if claim.event == "completed" and claim.snapshot is None:
             snapshot = snapshot_for(claim)
-            repository.save_group_event_snapshot(claim.id, claim.token, snapshot)
+            if not repository.save_group_event_snapshot(claim.id, claim.token, snapshot):
+                _warn_lapsed(claim, sink, "could not store the snapshot of")
             claim = replace(claim, snapshot=snapshot)
         reference = adapters[sink.format](claim, sink)
     except Exception as e:  # any adapter failure is a retry, never a crash of the loop
@@ -137,7 +138,22 @@ def _deliver(
                 attempts=attempts,
             )
         return
-    repository.settle_group_event(claim.id, claim.token, state="delivered", reference=reference)
+    if not repository.settle_group_event(
+        claim.id, claim.token, state="delivered", reference=reference
+    ):
+        _warn_lapsed(claim, sink, "delivered")
+
+
+def _warn_lapsed(claim: GroupEventClaim, sink: GroupSink, did: str) -> None:
+    # The claim lapsed (or an orphan sweep abandoned the row) mid-delivery, so another process may
+    # deliver the event again; say so, rather than leave a duplicate check run unexplained.
+    _log.warning(
+        "group-notify %s %s of group %s to %r after its claim lapsed; it may be delivered again",
+        did,
+        claim.event,
+        claim.group_id,
+        sink.name,
+    )
 
 
 def start_delivery_loop(

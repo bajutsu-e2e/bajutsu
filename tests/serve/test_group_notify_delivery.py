@@ -382,6 +382,33 @@ def test_a_store_error_on_one_claim_does_not_stop_the_pass() -> None:
     assert sorted(c.group_id for c in adapter.calls) == ["g1", "g2"]
 
 
+def test_a_delivery_whose_claim_lapsed_is_logged(caplog: pytest.LogCaptureFixture) -> None:
+    repo = queue_repository()
+    _register(repo, "g1", _notify(), ("1",))
+    repo.settle_group_event = lambda *_a, **_k: False
+
+    _pass(repo, _Adapter())
+
+    assert "after its claim lapsed" in caplog.text
+    assert "g1" in caplog.text
+
+
+def test_a_snapshot_whose_claim_lapsed_is_logged_and_still_delivered(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    repo = queue_repository()
+    _register(repo, "g1", _notify(), ("1",))
+    leased = repo.lease_job("w1")
+    assert leased is not None
+    assert repo.complete_job(leased.id, {"exitCode": 0})
+    repo.save_group_event_snapshot = lambda *_a, **_k: False
+
+    delivered = [e for _ in range(3) for e, _r in _pass(repo, _Adapter())]
+
+    assert "completed" in delivered
+    assert "could not store the snapshot of completed" in caplog.text
+
+
 def test_delivery_never_touches_the_jobs() -> None:
     repo = queue_repository()
     _register(repo, "g1", _notify(), ("1",))
