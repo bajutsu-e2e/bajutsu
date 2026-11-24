@@ -1,14 +1,14 @@
-[English](BE-XXXX-ci-flake-telemetry.md) · **日本語**
+[English](BE-0502-ci-flake-telemetry.md) · **日本語**
 
-# BE-XXXX — 実機系 CI ジョブを毎回計測し、繰り返す不安定な失敗を原因までたどれるようにする
+# BE-0502 — 実機系 CI ジョブを毎回計測し、繰り返す不安定な失敗を原因までたどれるようにする
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-ci-flake-telemetry-ja.md) |
+| 提案 | [BE-0502](BE-0502-ci-flake-telemetry-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0502") |
 | 実装 PR | [#2505](https://github.com/bajutsu-e2e/bajutsu/pull/2505) |
 | トピック | CI / build infrastructure |
 | 関連 | [BE-0361](../BE-0361-ios-ci-simulator-diagnostics/BE-0361-ios-ci-simulator-diagnostics-ja.md)、[BE-0367](../BE-0367-android-ci-emulator-diagnostics/BE-0367-android-ci-emulator-diagnostics-ja.md)、[BE-0049](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md)、[BE-0220](../BE-0220-flaky-suggestion-and-cross-run-fix/BE-0220-flaky-suggestion-and-cross-run-fix-ja.md) |

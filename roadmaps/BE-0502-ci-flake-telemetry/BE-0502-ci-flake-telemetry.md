@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-ci-flake-telemetry-ja.md)
+**English** · [日本語](BE-0502-ci-flake-telemetry-ja.md)
 
-# BE-XXXX — Measure every on-device CI job so a recurring flake can be traced to its cause
+# BE-0502 — Measure every on-device CI job so a recurring flake can be traced to its cause
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-ci-flake-telemetry.md) |
+| Proposal | [BE-0502](BE-0502-ci-flake-telemetry.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0502") |
 | Implementing PR | [#2505](https://github.com/bajutsu-e2e/bajutsu/pull/2505) |
 | Topic | CI / build infrastructure |
 | Related | [BE-0361](../BE-0361-ios-ci-simulator-diagnostics/BE-0361-ios-ci-simulator-diagnostics.md), [BE-0367](../BE-0367-android-ci-emulator-diagnostics/BE-0367-android-ci-emulator-diagnostics.md), [BE-0049](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md), [BE-0220](../BE-0220-flaky-suggestion-and-cross-run-fix/BE-0220-flaky-suggestion-and-cross-run-fix.md) |
