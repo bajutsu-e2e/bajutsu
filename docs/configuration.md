@@ -748,7 +748,8 @@ The scenario set holds the scenarios that drive the entry's target:
 
 | Command | Scenario set |
 |---|---|
-| `run` (and the jobs `serve` hands to workers) | the scenarios left after `--tag` and `--exclude`, across all workers |
+| `run` | the scenarios left after `--tag` and `--exclude`, across every worker lane of that run |
+| a job `serve` hands to a worker | that job's own scenarios. A run set starts one job per scenario file, and each job is a run of its own |
 | `audit` | the scenarios `audit` replays |
 | `record`, `crawl`, `repl` | empty, since these commands run no scenario file |
 

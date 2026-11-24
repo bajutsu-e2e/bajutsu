@@ -379,6 +379,11 @@ def _reject_unmet_hook_conditions(
             continue
     phases = {name: eff.hooks for name, eff in effs.items()}
 
+    def body(s: Scenario) -> dict[str, object]:
+        # Not its own `hooks`: a token in a command is refused outright (BE-0501), so the reader is
+        # told to use the variable instead, whatever the tags.
+        return s.model_dump(by_alias=True, exclude={"hooks"})
+
     def unmet(s: Scenario, driven: list[str]) -> str | None:
         # A target's setup and cleanup steps fold into the scenario, so it reads their tokens too.
         folded = [
@@ -390,7 +395,7 @@ def _reject_unmet_hook_conditions(
                 *effs[name].run_defaults.cleanup,
             )
         ]
-        referenced = find_tokens([s.model_dump(by_alias=True), *folded])
+        referenced = find_tokens([body(s), *folded])
         return unmet_hook_condition(referenced, phases, driven, s.tags, own_phases(s))
 
     def runs_under(s: Scenario, target: str) -> bool:
@@ -399,7 +404,7 @@ def _reject_unmet_hook_conditions(
         readable = {*phases[target].named(), *(own.named() if own is not None else ())}
         names = {
             t.removeprefix("hooks.").partition(".")[0]
-            for t in find_tokens(s.model_dump(by_alias=True))
+            for t in find_tokens(body(s))
             if t.startswith("hooks.")
         }
         return names <= readable and unmet(s, [target]) is None

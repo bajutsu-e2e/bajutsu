@@ -55,8 +55,7 @@ def _project(tmp_path: Path, scenarios: str) -> None:
     (tmp_path / "s.yaml").write_text(scenarios, encoding="utf-8")
 
 
-def _invoke(tmp_path: Path, *flags: str, scenarios: str = SCENARIOS) -> Result:
-    _project(tmp_path, scenarios)
+def _run_site(tmp_path: Path, *flags: str) -> Result:
     return invoke(
         CliRunner(),
         app,
@@ -66,6 +65,11 @@ def _invoke(tmp_path: Path, *flags: str, scenarios: str = SCENARIOS) -> Result:
             *("--runs-dir", str(tmp_path / "runs"), *flags),
         ],
     )
+
+
+def _invoke(tmp_path: Path, *flags: str, scenarios: str = SCENARIOS) -> Result:
+    _project(tmp_path, scenarios)
+    return _run_site(tmp_path, *flags)
 
 
 def _run(tmp_path: Path, *flags: str) -> tuple[list[str], dict[str, str]]:
@@ -230,3 +234,21 @@ def test_a_reader_in_the_target_s_own_setup_is_checked(tmp_path: Path) -> None:
     result = _run_web(tmp_path)
     assert result.exit_code == 2
     assert "beforeScenario hook 'user'" in result.output
+
+
+def test_a_token_in_a_scenario_s_own_command_gets_the_command_error(tmp_path: Path) -> None:
+    # A command reads the variable, never the token, so the message names the variable whether or
+    # not the row's tags match.
+    _project(
+        tmp_path,
+        "scenarios:\n"
+        "  - name: free\n"
+        "    tags: [free]\n"
+        "    steps: []\n"
+        "    hooks:\n"
+        "      beforeScenario: [{name: sub, cmd: 'true', when: {tags: [premium]}}]\n"
+        "      afterScenario: [{cmd: 'revoke ${hooks.sub.id}', when: {tags: [premium]}}]\n",
+    )
+    result = _run_site(tmp_path)
+    assert result.exit_code == 2
+    assert "BAJUTSU_HOOK__sub__id" in result.output
