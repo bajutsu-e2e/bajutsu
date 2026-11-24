@@ -6,6 +6,7 @@ genuinely cross-command pieces belong here, so adding a command rarely edits thi
 
 from __future__ import annotations
 
+import atexit
 import json
 import os
 from dataclasses import dataclass, replace
@@ -899,15 +900,25 @@ def _start_hooks_or_exit(
     run_dir: Path | None = None,
     worker: WorkerCapability | None = None,
     on_error: Callable[[], None] | None = None,
+    teardown_at_exit: bool = False,
 ) -> HookSession | None:
     """Run the target's `beforeRun` hooks if it declares any, or exit 2 (BE-0491).
 
     The run-level bring-up the scenario-less commands share (`record`, `crawl`, `repl`) and that
     `audit` reuses: start every `beforeRun` entry under the run's installed command gate (BE-0492),
-    and surface a failed or refused command as a clean exit 2. The caller runs `afterRun` through
-    the returned session's own `after_run`, keeping the teardown difference at the call site
-    (`atexit` for `record` / `crawl` / `repl`, an explicit call for `audit`); `on_error` runs before
-    the exit for the one caller that must first tear down an already-created device-pool lease.
+    and surface a failed or refused command as a clean exit 2.
+
+    Args:
+        eff: The resolved target config, whose `hooks` decide what runs.
+        run_id: Stamped into every command's `BAJUTSU_RUN_ID`, and names the raw area.
+        runs_dir: Where the raw area sits; None keeps it in a private temporary directory.
+        run_dir: This run's own directory, for `BAJUTSU_RUN_DIR`.
+        worker: The worker whose `namedCommands` a `use:` entry resolves against.
+        on_error: Runs before the exit, for the one caller that must first tear down an
+            already-created device-pool lease.
+        teardown_at_exit: Register the `afterRun` teardown with `atexit`, which the three commands
+            that run no scenario file want (`record` / `crawl` / `repl`). `audit` leaves it off and
+            calls `after_run` itself, since it knows the verdict.
 
     Returns:
         The session, or None when the target declares no hook command at all.
@@ -932,6 +943,8 @@ def _start_hooks_or_exit(
         return None
     result = session.before_run()
     if result.ok:
+        if teardown_at_exit:
+            atexit.register(lambda: session.after_run("success"))
         return session
     session.after_run("failure")
     typer.echo(result.reason)

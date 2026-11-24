@@ -9,12 +9,14 @@ from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
+from typing import Any, cast
 
+import pytest
 from _runner import _eff, _fake_driver, _lease
 
-from bajutsu.common.config import HookCommand, HookPhases
+from bajutsu.common.config import Effective, HookCommand, HookPhases
 from bajutsu.common.runner.hook_commands import HookRunner, raw_root
-from bajutsu.common.runner.hook_session import HookSession, phases_of
+from bajutsu.common.runner.hook_session import HookSession, phases_of, start_session
 from bajutsu.common.runner.pipeline import run_all
 from bajutsu.common.scenario import Scenario
 
@@ -26,7 +28,7 @@ def _script(tmp_path: Path, name: str, body: str) -> str:
     return str(path)
 
 
-def _session(tmp_path: Path, phases: HookPhases) -> tuple[HookSession, object]:
+def _session(tmp_path: Path, phases: HookPhases) -> tuple[HookSession, Effective]:
     eff = replace(_eff(), hooks=phases, base_dir=tmp_path)
     session = HookSession(
         runner=HookRunner(raw_dir=raw_root(tmp_path / "runs", "r1"), base_dir=tmp_path),
@@ -316,7 +318,8 @@ def test_the_report_renders_each_hook_phase_as_its_own_block(tmp_path: Path) -> 
     assert [b["list"] for b in blocks] == ["beforeRun", "beforeScenario", "afterRun"]
     assert all(b["ok"] for b in blocks)
     # Every entry links its own log, and the log is really there, masked, under the run directory.
-    logs = [e["log"] for b in blocks for e in b["entries"]]  # type: ignore[index]
+    entries = [e for b in blocks for e in cast("list[dict[str, Any]]", b["entries"])]
+    logs = [e["log"] for e in entries]
     assert logs == [
         "hooks/beforeRun/demo/srv.log",
         "hooks/beforeScenario/demo/00/user.log",
@@ -334,7 +337,8 @@ def test_a_failed_hook_marks_its_block_and_names_the_reason() -> None:
         [{"list": "afterRun", "entry": "stop", "target": "demo", "failure": "exited 1"}]
     )
     assert block["ok"] is False
-    assert block["entries"][0]["reason"] == "exited 1"  # type: ignore[index]
+    entries = cast("list[dict[str, Any]]", block["entries"])
+    assert entries[0]["reason"] == "exited 1"
 
 
 def test_an_older_manifest_renders_no_hook_block() -> None:
@@ -342,3 +346,76 @@ def test_an_older_manifest_renders_no_hook_block() -> None:
 
     assert report_hook_phases(None) == []
     assert report_hook_phases("not a list") == []
+
+
+def test_the_raw_area_and_run_directory_are_absolute(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A command may run in a working directory of its own, where a relative runs directory would
+    # name a path it cannot reach — `BAJUTSU_OUTPUT` then fails to open.
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "sub").mkdir()
+    seen = tmp_path / "out.txt"
+    phases = HookPhases(
+        before_run=[
+            HookCommand(
+                name="seed",
+                cwd="sub",
+                cmd=_script(
+                    tmp_path,
+                    "rel.sh",
+                    f'echo "$BAJUTSU_OUTPUT" > {seen}; echo "k=v" > "$BAJUTSU_OUTPUT"',
+                ),
+            )
+        ]
+    )
+    eff = replace(_eff(), hooks=phases, base_dir=tmp_path)
+    session = start_session(
+        {"demo": eff},
+        run_id="r1",
+        runs_dir=Path("runs"),
+        run_dir=Path("runs/r1"),
+        base_dir=tmp_path,
+    )
+    assert session is not None
+    assert session.run_dir is not None and session.run_dir.is_absolute()
+    result = session.before_run()
+    assert result.ok, result.reason
+    assert Path(seen.read_text().strip()).is_absolute()
+    assert result.outputs.values["seed"] == {"k": "v"}
+
+
+def test_a_scenario_that_never_runs_still_reports_its_progress_line(tmp_path: Path) -> None:
+    lines: list[str] = []
+    phases = HookPhases(before_scenario=[HookCommand(cmd=_script(tmp_path, "np.sh", "true"))])
+    session, eff = _session(tmp_path, phases)
+    run_all(
+        eff,
+        [_scenario()],
+        _lease,
+        hooks=session,
+        progress=lines.append,
+        worker_failures={0: "unsupported here"},
+    )
+    run_all(
+        eff, [_scenario()], _lease, hooks=session, progress=lines.append, cancelled=lambda: True
+    )
+    assert any("unsupported on this worker" in line for line in lines)
+    assert any("cancelled" in line for line in lines)
+
+
+def test_a_cancelled_run_bounds_its_scenario_teardown(tmp_path: Path) -> None:
+    # The teardown deadline is the slice of the grace window a scenario's own `cleanup` uses, so a
+    # cancelled run does not wait one more `timeout` per entry.
+    phases = HookPhases(
+        after_scenario=[HookCommand(cmd=_script(tmp_path, "slow2.sh", "sleep 30"), timeout=300)]
+    )
+    session, eff = _session(tmp_path, phases)
+    # Cancelled from the start: the scenario fails before its steps, and the teardown still runs
+    # under a bound rather than the entry's own 300 seconds.
+    import time as _time
+
+    started = _time.monotonic()
+    [result] = run_all(eff, [_scenario()], _lease, hooks=session, cancelled=lambda: True)
+    assert not result.ok
+    assert _time.monotonic() - started < 60  # the grace slice, never the entry's 300s

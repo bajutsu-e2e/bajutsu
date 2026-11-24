@@ -2691,6 +2691,7 @@ def _dispatch_matrix(
         command_executions=plan.command_gate.records,
         cancelled=plan.cancelled,
         worker_failures=plan.worker_failures,
+        hooks=plan.hooks,
     )
 
 
@@ -2775,6 +2776,7 @@ def _dispatch_runs(
         command_executions=plan.command_gate.records,
         label=plan.label or None,
         worker_failures=plan.worker_failures,
+        hooks=plan.hooks,
     )
     return results, manifest, not_applicable
 

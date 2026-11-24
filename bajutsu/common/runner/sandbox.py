@@ -15,7 +15,7 @@ daemon; only the real `docker run` / `docker build` is exercised outside the gat
 from __future__ import annotations
 
 import contextlib
-import os
+import os as os
 import shlex
 import subprocess
 import time

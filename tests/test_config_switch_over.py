@@ -9,6 +9,7 @@ environment, and the loader's merge of `defaults` into a target.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -815,3 +816,46 @@ def test_a_family_is_matched_on_a_real_device_but_not_on_a_remote_one() -> None:
     remote = replace(device, device_provider=DeviceProvider(kind="appium", endpoint="http://grid/"))
     (problem,) = remote_condition_problems(remote, remote.conditions)
     assert "runsOn.ios.family" in problem
+
+
+def test_a_hookless_target_starts_no_hook_session(tmp_path: Path) -> None:
+    # A target that declares no hook command does no hook work at all: the helper returns None, so
+    # every call site can tell at a glance (BE-0491).
+    assert (
+        _shared._start_hooks_or_exit(
+            replace(_eff(_IOS), base_dir=tmp_path), run_id="r1", runs_dir=tmp_path / "runs"
+        )
+        is None
+    )
+
+
+def test_the_teardown_can_be_registered_at_exit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # `record` / `crawl` / `repl` run no scenario file, so their teardown rides `atexit` rather than
+    # a verdict they do not have.
+    registered: list[Callable[[], object]] = []
+
+    def record(fn: Callable[[], object]) -> Callable[[], object]:
+        registered.append(fn)
+        return fn
+
+    monkeypatch.setattr("atexit.register", record)
+    marker = tmp_path / "torn.txt"
+    script = tmp_path / "stop.sh"
+    script.write_text(f"#!/bin/sh\ntouch {marker}\n", encoding="utf-8")
+    script.chmod(0o755)
+    eff = replace(
+        _eff(_IOS),
+        hooks=HookPhases(
+            before_run=[HookCommand(cmd="true")], after_run=[HookCommand(cmd=str(script))]
+        ),
+        base_dir=tmp_path,
+    )
+    session = _shared._start_hooks_or_exit(
+        eff, run_id="r1", runs_dir=tmp_path / "runs", teardown_at_exit=True
+    )
+    assert session is not None
+    assert len(registered) == 1
+    registered[0]()
+    assert marker.exists()

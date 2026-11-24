@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import atexit
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -175,9 +174,7 @@ def repl(
     # Run the target's `beforeRun` hooks if it declares any (BE-0491) — without them a web target
     # opens the browser on a host that is not listening, and every `tree` reads the error page. The
     # matching `afterRun` runs when this command exits (atexit), as `record` and `crawl` run theirs.
-    hooks = _start_hooks_or_exit(eff, run_id=new_run_id("repl-"))
-    if hooks is not None:
-        atexit.register(lambda: hooks.after_run("success"))
+    _start_hooks_or_exit(eff, run_id=new_run_id("repl-"), teardown_at_exit=True)
 
     # Unlike `record` / `crawl`, which keep stdout for their one final result line and narrate
     # progress to stderr, this shell's output *is* the product: every command's answer goes to

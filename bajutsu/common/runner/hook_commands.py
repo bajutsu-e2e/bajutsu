@@ -280,7 +280,9 @@ def raw_root(runs_dir: Path | None, run_id: str) -> Path:
     """
     if runs_dir is None:
         return Path(tempfile.mkdtemp(prefix="bajutsu-hook-"))
-    root = Path(runs_dir) / RAW_DIRNAME
+    # Absolute: an entry may run in a working directory of its own (`cwd`, or a config in a
+    # subdirectory), where a relative runs directory would name a path the command cannot reach.
+    root = Path(runs_dir).resolve() / RAW_DIRNAME
     make_run_dir(root)
     _sweep_stale(root, run_id)
     own = make_run_dir(root / run_id)
@@ -791,6 +793,8 @@ def run_phase(
         sandboxes: The per-run container of each target whose commands the worker sandboxes.
         cwd_base: Where these entries' relative `cwd` resolves, for entries declared in another
             file; see `HookRunner.run_list`.
+        deadline: A monotonic instant every entry must finish by, which a cancelled run's teardown
+            sets; see `HookRunner.run_list`.
     """
     merged = HookPhaseResult(outputs=inherited or HookOutputs())
     after = list_name.startswith("after")

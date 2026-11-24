@@ -2195,6 +2195,11 @@ def run_all(
             pass this, the cross-browser matrix passes `actuator`.
         worker_failures: Scenarios the worker capability check (BE-0450) already failed, keyed by
             index into *scenarios*, each with its prefixed reason; they are reported, never leased.
+        hooks: The run's hook session (BE-0491). Each scenario then runs its target's
+            `beforeScenario` / `afterScenario` entries and reads `${hooks.<name>.<key>}`. None
+            leaves the run without hook phases.
+        evidence_prefix: The evidence subdirectory this pass writes under (`<engine>` in a
+            cross-browser matrix), so one pass's hook logs never overwrite another's.
         golden_context: Goldens directory for `golden` assertions (BE-0006). None disables them.
         lease_udid_spec: The run's resolved udid spec (the provider's `udid_spec`). A WebDriver URL
             routes the run to the live XCUITest environment, so the preflight narrows to that
@@ -2583,6 +2588,7 @@ def report_run_matrix(
     command_executions: list[dict[str, Any]] | None = None,
     label: str | None = None,
     worker_failures: Mapping[int, str] | None = None,
+    hooks: HookSession | None = None,
 ) -> Path:
     """Write ONE report for the runs `runsOn` conditions formed across *scenarios* (BE-0452).
 
@@ -2596,6 +2602,11 @@ def report_run_matrix(
     """
     run_dir = runs_dir / run_id
     prepare_run_dir(runs_dir, run_id)
+    # The run's teardown before the report, as `run_and_report` does it, so the report shows the
+    # `afterRun` block it recorded (BE-0491); the phase is idempotent, so the command's own
+    # `finally` can still backstop it.
+    if hooks is not None:
+        hooks.after_run("success" if all(r.ok for r in results) else "failure")
     return _assemble_report(
         with_lifecycle_phases(eff, scenarios, dict(target_effs or {}), skip=worker_failures or {}),
         results,
@@ -2611,6 +2622,7 @@ def report_run_matrix(
         label=label,
         plan_order=plan_order,
         not_applicable=not_applicable,
+        hook_records=hooks.records if hooks is not None else (),
     )
 
 
