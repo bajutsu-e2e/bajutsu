@@ -9,6 +9,8 @@ worker applies its `commandExecution` block, both to the build it runs itself an
 
 from __future__ import annotations
 
+import sys
+import zipfile
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -18,15 +20,23 @@ from _shared import FakeProc, _post, _serve, project
 
 from bajutsu import serve as srv
 from bajutsu.common.capability.command_policy import CommandExecution
+from bajutsu.serve.commands import run_command
+from bajutsu.serve.helpers import scenario_command_needs
 from bajutsu.serve.jobs import _build_app
 from bajutsu.serve.operations.dispatch import (
     _command_needs,
     _config_source,
     _register_and_dispatch,
+    _scenario_source,
+    _zip_text,
 )
+from bajutsu.serve.scenarios import Runnable
 from bajutsu.serve.server.worker_job import (
     _command_execution,
+    _spec_scenario_source,
     _spec_source,
+    _with_config_source,
+    _with_worker_config,
     execute_job_spec,
     job_spec,
 )
@@ -237,6 +247,26 @@ def test_a_named_hook_command_routes_on_the_worker_s_own_script(tmp_path: Path) 
     ]
 
 
+def test_a_scenario_hook_adds_its_source_requirement() -> None:
+    # BE-0501: a job whose only commands sit in a scenario still routes by them.
+    text = (
+        "- name: seeded\n  tags: [seed]\n  hooks:\n"
+        "    beforeScenario: [{cmd: ./seed.sh}]\n    afterScenario: [{use: wipe}]\n"
+        "  steps: [{back: {}}]\n"
+        "- name: plain\n  steps: [{back: {}}]\n"
+    )
+
+    def needs(exclude: str = "") -> dict[str, list[str]]:
+        return scenario_command_needs(text, "uploaded", exclude=exclude)
+
+    assert needs() == {
+        "command-execution:uploaded": ["seeded: hooks.beforeScenario"],
+        "named-execution:uploaded": ["seeded: hooks.afterScenario"],
+        "named-command:wipe": ["seeded: hooks.afterScenario"],
+    }
+    assert needs(exclude="seed") == {}
+
+
 @pytest.mark.parametrize("source", ["uploaded", "remote"])
 def test_an_untrusted_build_never_reaches_a_worker_without_the_policy(source: str) -> None:
     # A worker that predates BE-0492 runs whatever `build` holds, and a build adds no routing
@@ -280,3 +310,51 @@ def test_a_build_the_worker_ran_joins_the_runs_record(tmp_path: Path) -> None:
     _record_provenance(state, job)
     merged = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
     assert merged["provenance"]["commandExecutions"] == [entry, ran]
+
+
+def test_a_scenario_source_is_stamped_by_the_worker_alone() -> None:
+    # BE-0501: the label comes from the spec's own field, never from the argv the spec carries.
+    run = [sys.executable, "-m", "bajutsu.run.internal", "--scenario-source", "operator"]
+    stamped = _with_config_source(run, "operator", "uploaded")
+    assert stamped[3:] == ["--scenario-source", "uploaded"]
+    assert _with_config_source(run, "operator")[3:] == []
+    assert _spec_scenario_source({"scenario_source": "elsewhere"}) == "uploaded"
+    assert _spec_scenario_source({"scenario_source": ""}) is None
+    assert _spec_scenario_source({}) is None
+    # A server that predates the label shipped the scenario without saying who wrote it.
+    assert _spec_scenario_source({"materials": {"scenarios/a.yaml": "x"}}) == "uploaded"
+    assert _spec_scenario_source({"overrides": {"scenarios": "a" * 64}}) == "uploaded"
+    assert job_spec(srv.Job(cmd=["x"], scenario_source="uploaded"))["scenario_source"] == "uploaded"
+
+
+def test_a_client_written_scenario_is_labelled_apart_from_its_config() -> None:
+    assert _scenario_source(Runnable(arg="a.yaml", client_written=True)) == "uploaded"
+    assert _scenario_source(Runnable(arg="a.yaml")) is None
+
+
+def test_a_scenario_in_an_artifact_is_read_for_routing(tmp_path: Path) -> None:
+    path = tmp_path / "s.zip"
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("a.yaml", "text")
+        archive.writestr("b.yaml", b"\xff\xfe")
+    with zipfile.ZipFile(path) as archive:
+        assert _zip_text(archive, "a.yaml") == "text"
+        assert _zip_text(archive, "b.yaml") is None
+
+
+@pytest.mark.parametrize("text", [None, "- name: [", "- nonsense: 1\n"])
+def test_a_scenario_that_does_not_load_adds_no_command_need(text: str | None) -> None:
+    # The run judges it either way, so the job routes on its platform and host alone.
+    assert scenario_command_needs(text, "uploaded") == {}
+
+
+@pytest.mark.parametrize("flag", ["--scenario-source", "--config-source", "--worker-config"])
+@pytest.mark.parametrize("joined", [True, False])
+def test_a_client_value_spelled_like_a_label_stays_a_value(flag: str, joined: bool) -> None:
+    # Dropping it would let `--tag` swallow `--exclude` and turn the next value into an option.
+    tag = f"{flag}=x" if joined else flag
+    cmd = run_command("a.yaml", "web", tag=tag, exclude="--config=evil.yaml")
+    stamped = _with_config_source(_with_worker_config(cmd, None), "operator", "uploaded")
+    tail = stamped[stamped.index("--tag") :]
+    assert tail == ["--tag", tag, "--exclude", "--config=evil.yaml"]
+    assert stamped[3:5] == ["--scenario-source", "uploaded"]

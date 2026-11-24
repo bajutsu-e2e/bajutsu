@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0501](BE-0501-scenario-command-hooks-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **承認済み** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0501") |
 | トピック | シナリオ記述機能 |
 | 関連 | [BE-0036](../BE-0036-utility-steps/BE-0036-utility-steps-ja.md)、[BE-0090](../BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution-ja.md)、[BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks-ja.md)、[BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)、[BE-0491](../BE-0491-target-command-hooks/BE-0491-target-command-hooks-ja.md)、[BE-0492](../BE-0492-worker-command-execution-policy/BE-0492-worker-command-execution-policy-ja.md) |
@@ -71,7 +71,7 @@ BE-0491 が決めるのは、ターゲットがそのすべてのシナリオに
 
 ```yaml
 name: checkout with an expired card
-target: web
+targets: [web]
 hooks:
   beforeScenario:
     - name: card
@@ -141,6 +141,9 @@ BE-0491 の値の受け渡しの規則は、そのまま適用します。コマ
 そのため、それらを指すトークンは BE-0491 の定めどおりロードエラーとなり、その名前がシナリオ自身の名前と
 衝突することもありません。
 
+トークンを書く場所はシナリオのステップです。コマンドは値を環境変数から読みます。`cmd` や `env` に
+`${hooks.<name>.<key>}` を書いたエントリはロードエラーとなり、エラーは読むべき変数の名前を示します。
+
 ### 失敗と判定
 
 BE-0491 の失敗の表は、そのまま成り立ち、1 点だけ追加します。
@@ -154,17 +157,29 @@ BE-0491 の失敗の表は、そのまま成り立ち、1 点だけ追加しま�
 そのとき、シナリオ自身の `afterScenario` ルールも一緒に飛ばします。BE-0491 が `inheritSetup: false` の
 もとで 2 つのリストを対で扱うのと同じです。書かれなかった出力に後始末が作用することはありません。
 
+すべての `afterScenario` ルールは、1 つの判定に答えます。`steps`、`expect`、`cleanup` が出した判定です。
+ルールの失敗はシナリオの結果を変えますが、後続のルールのどれが一致するかは変えません。
+
 ### コマンドを実行してよいか
 
 シナリオのコマンドは、ターゲットのコマンドと同じ worker ポリシーに従います。シナリオファイルと、ターゲットを
-含む config は、同じ config source から届きます。config source は、アップロードされたバンドル、Git の
+含む config は、多くの場合に同じ config source から届きます。config source は、アップロードされたバンドル、Git の
 チェックアウト、ローカルのパスのいずれかです。
 [BE-0492](../BE-0492-worker-command-execution-policy/BE-0492-worker-command-execution-policy-ja.md) は
-config source ごとに判定するため、1 つの判定が両方を覆います。
+config source ごとに判定するため、その場合は 1 つの判定が両方を覆います。
+
+`serve` は、クライアントが書いたシナリオを、operator が開いた config に対して実行することもあります。
+`scenariosArtifact` でシナリオを差し替えるジョブ
+（[BE-0431](../BE-0431-job-scoped-artifact-override/BE-0431-job-scoped-artifact-override-ja.md)）と、保存された
+シナリオを config のツリーとは別に持つストアです。このシナリオは独自の出所 `uploaded` を持ち、
+コマンドはその出所のモードに従います。config のコマンドは、config の出所のままです。
+`serve` はラベルをジョブに載せ、worker が `--scenario-source` として run に付けます。ジョブの
+コマンドラインに書かれた値は捨てます。config 自身のツリーに保存したローカルのシナリオは、config の出所のままです。
 
 `named` モードでは、シナリオの `cmd` エントリはターゲットの `cmd` エントリと同様に拒否され、`use` エントリは
 実行されます。したがって、この worker は、インストール済みのスクリプトを名前で指すシナリオを受け入れ、
-コマンドラインを書き下すシナリオを拒否します。本提案は、独自のポリシー軸を足しません。
+コマンドラインを書き下すシナリオを拒否します。本提案はポリシー軸を足しません。シナリオの出所が、
+BE-0492 の定めるモードのどれに従うかを決めます。
 
 ただし、BE-0492 のルーティングへの入力を 1 つ足します。`serve` は `command-execution:<source>`、
 `named-execution:<source>`、`named-command:<name>` を、ジョブの config に加えてシナリオファイルからも
@@ -223,12 +238,12 @@ BE-0491 の後に実装し、シナリオ側のスキーマ、ロード時のト
 > 作業の進行に合わせて更新してください。チェックリストは「詳細設計」の MECE な作業分解（作業単位ごとに
 > 1 つのチェックボックス）に対応し、ログには変更内容と時期を古い順に、PR へのリンクとともに記録します。
 
-- [ ] スキーマ：シナリオのトップレベル `hooks` ブロック、そのエントリモデル、`beforeRun` / `afterRun` に対するロードエラー。
-- [ ] トークン検査：1 本のシナリオから見えるエントリに対する `${hooks.<name>.<key>}` の解決と、名前の一意性。
-- [ ] 実行順：`inheritSetup: false`、複数ターゲットの run、失敗経路を含め、シナリオのエントリをターゲットのエントリの内側に入れ子にする。
-- [ ] ポリシー：`use` とサンドボックスのコンテナを含め、シナリオのエントリを BE-0492 のモード、`manifest.json` の記録、ルーティングのトークンに通す。
-- [ ] 証跡：シナリオ単位のログのパスと、ラベル付きのレポートブロック。
-- [ ] テストと、両言語のドキュメントおよび `DESIGN.md` の更新。
+- [x] スキーマ：シナリオのトップレベル `hooks` ブロック、そのエントリモデル、`beforeRun` / `afterRun` に対するロードエラー。
+- [x] トークン検査：1 本のシナリオから見えるエントリに対する `${hooks.<name>.<key>}` の解決と、名前の一意性。
+- [x] 実行順：`inheritSetup: false`、複数ターゲットの run、失敗経路を含め、シナリオのエントリをターゲットのエントリの内側に入れ子にする。
+- [x] ポリシー：`use` とサンドボックスのコンテナを含め、シナリオのエントリを BE-0492 のモード、`manifest.json` の記録、ルーティングのトークンに通す。
+- [x] 証跡：シナリオ単位のログのパスと、ラベル付きのレポートブロック。
+- [x] テストと、両言語のドキュメントおよび `DESIGN.md` の更新。
 
 ## 参考
 

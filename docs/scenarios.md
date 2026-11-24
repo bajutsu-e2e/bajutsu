@@ -74,6 +74,7 @@ misinterpret rather than merely reject; a purely additive optional field needs n
 | `steps` | list | required | The ordered actions (below) |
 | `expect` | list | `[]` | Final assertions after all steps pass ([selectors](selectors.md#assertion-evaluation)) |
 | `cleanup` | list | `[]` | Teardown rules — each `{ on: always \| success \| failure, steps }`, run once the verdict exists, on every path out of `steps` ([below](#setup--cleanup-setup-and-teardown-phases)) |
+| `hooks` | object | none | External commands that run around this scenario alone, outside the app session: `beforeScenario` and `afterScenario` ([below](#hooks-external-commands-around-one-scenario)) |
 | `capturePolicy` | list | `[]` | Repeatedly-firing evidence rules ([evidence](evidence.md#a-capturepolicy-rule-based)) |
 | `network` | object | none | `{ filter: { domains: [...] } }` — `filter.domains` scopes which observed requests are interleaved into the report's Steps timeline (by URL host; a parent domain matches subdomains). Unset shows all; the Network tab always lists them all ([reporting](reporting.md#reporthtml)) |
 | `mocks` | list | `[]` | Deterministic network stubs — a matching outgoing request gets a canned response instead of hitting the network ([network mocks](#network-mocks-deterministic-stubs)) |
@@ -989,6 +990,76 @@ UI Automator wrap the test body in `try` / `catch` / `finally`, since an asserti
 throws, so the `catch` sees the very failure the verdict would have been. XCUITest registers a single
 `addTeardownBlock` instead, because `XCTAssert` records a failure rather than throwing, and reads the
 outcome from `testRun?.hasSucceeded` ([codegen](codegen.md)).
+
+## `hooks` (external commands around one scenario)
+
+A scenario's `hooks` block runs commands that this scenario alone needs. One example seeds an
+account with an expired card. The target's own lists sit under `targets.<name>.hooks` and serve
+every scenario of the target ([configuration](configuration.md#external-commands-around-a-run-and-each-scenario-hooks-be-0491)).
+
+```yaml
+- name: checkout with an expired card
+  hooks:
+    beforeScenario:
+      - name: card
+        cmd: "./scripts/create-expired-card.sh"   # writes cardId=... to $BAJUTSU_OUTPUT
+        timeout: 30
+    afterScenario:
+      - cmd: "./scripts/delete-card.sh"           # reads $BAJUTSU_HOOK__card__cardId
+  steps:
+    - type: { text: "${hooks.card.cardId}", into: { id: checkout.card } }
+```
+
+The block holds two lists, `beforeScenario` and `afterScenario`. An entry takes
+[the fields of a target's entry](configuration.md#fields-of-one-entry). One difference holds: a
+relative `cwd` resolves against the scenario file's directory. A key that belongs elsewhere fails
+the load, and the error names its place. `beforeRun`, `afterRun`, and `sandbox` belong to the
+target. `setup`, `cleanup`, and `interrupts` are the scenario's own top-level fields.
+
+A command is no step. It runs before the launch or after the verdict, so it can seed data that the
+app reads at startup. It asserts nothing about the app. It fails the scenario when a precondition or
+a teardown did not hold.
+
+### The order around the target's commands
+
+The two levels nest. One scenario runs in this order:
+
+1. The target's `beforeScenario` entries.
+2. The scenario's `beforeScenario` entries.
+3. The device lease and the app launch, then the scenario's steps from `setup` to `cleanup`.
+4. The scenario's `afterScenario` entries whose `on` matches the verdict.
+5. The target's `afterScenario` entries whose `on` matches the verdict.
+
+A scenario that drives two or more targets keeps its own entries inside every target's.
+`preconditions.inheritSetup: false` skips the target's two lists and keeps the scenario's own.
+
+| Failure in | Effect |
+|---|---|
+| a target's `beforeScenario` entry | Both of the scenario's lists stay skipped, along with the launch. The target's `afterScenario` entries run |
+| the scenario's `beforeScenario` entry | The scenario fails with `beforeScenario: <name>: …` and skips its launch. The `afterScenario` entries of both levels run |
+| the scenario's `afterScenario` entry | The failure becomes the verdict on a passing scenario, and is appended behind an existing failure. Later entries still run |
+
+One verdict decides every `afterScenario` entry: the verdict that `steps`, `expect`, and `cleanup`
+reached. A failing entry never changes which later entries match.
+
+### Names and tokens
+
+A step reads a value as `${hooks.<name>.<key>}`. A command reads it from the environment, as
+`BAJUTSU_HOOK__<name>__<key>`. A token inside an entry's `cmd` or `env` fails the load, and the
+error names the variable. A `name` must be unique among the entries one scenario sees: its
+own and those of the targets it drives. Two scenarios may share a name, because their values stay
+apart.
+
+### Whether the commands run
+
+The worker that runs the scenario decides, as it does for the target's commands
+([self-hosting](self-hosting.md#the-source-of-a-scenario)). `run` and `audit` run the two lists.
+`codegen` emits no command. Under `sandbox`, the entries run in one container: that of the
+scenario's first declared target. That target needs a `hooks.sandbox` block.
+
+A command's log goes to `hooks/<list>/_scenario/<scenario-index>/<name-or-index>.log` in the run
+directory. No target may take the name `_scenario`. The report shows the
+scenario's commands in blocks of their own, labeled `(scenario)`.
 
 ## Selectors (addressing an element)
 

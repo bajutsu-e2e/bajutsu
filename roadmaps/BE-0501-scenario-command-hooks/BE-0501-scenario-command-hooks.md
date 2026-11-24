@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0501](BE-0501-scenario-command-hooks.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0501") |
 | Topic | Scenario authoring features |
 | Related | [BE-0036](../BE-0036-utility-steps/BE-0036-utility-steps.md), [BE-0090](../BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md), [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md), [BE-0491](../BE-0491-target-command-hooks/BE-0491-target-command-hooks.md), [BE-0492](../BE-0492-worker-command-execution-policy/BE-0492-worker-command-execution-policy.md) |
@@ -75,7 +75,7 @@ A scenario gains one optional top-level field.
 
 ```yaml
 name: checkout with an expired card
-target: web
+targets: [web]
 hooks:
   beforeScenario:
     - name: card
@@ -145,6 +145,10 @@ stay inside that scenario. The loader checks each token statically. A token that
 scenario that sets `preconditions.inheritSetup: false`. A token naming one therefore stays the load
 error BE-0491 defines, and the name of one never collides with the scenario's own.
 
+A token belongs in the scenario's steps. A command reads a value from its environment, so an entry
+whose `cmd` or `env` holds a `${hooks.<name>.<key>}` token is a load error that names the variable
+to read.
+
 ### Failures and the verdict
 
 The failure table of BE-0491 holds, with one addition.
@@ -159,16 +163,29 @@ skips the scenario's own `afterScenario` rules with them. BE-0491 treats the two
 the same way under `inheritSetup: false`. A teardown then never acts on outputs that were never
 written.
 
+One verdict decides every `afterScenario` rule: the verdict the steps, `expect`, and `cleanup`
+reached. A failing rule changes the scenario's result and never changes which later rules match.
+
 ### Whether a command may run
 
-A scenario's commands follow the same worker policy as the target's commands. The scenario file and
-the config that holds the target arrive from the same config source: an uploaded bundle, a Git
-checkout, or a local path. [BE-0492](../BE-0492-worker-command-execution-policy/BE-0492-worker-command-execution-policy.md)
-decides per config source, so one decision covers both.
+A scenario's commands follow the same worker policy as the target's commands. Most often the
+scenario file and the config that holds the target arrive from the same config source: an uploaded
+bundle, a Git checkout, or a local path. [BE-0492](../BE-0492-worker-command-execution-policy/BE-0492-worker-command-execution-policy.md)
+decides per config source, so one decision then covers both.
+
+`serve` can also run a scenario that a client wrote against a config that the operator bound: a job
+that replaces the scenarios with a `scenariosArtifact`
+([BE-0431](../BE-0431-job-scoped-artifact-override/BE-0431-job-scoped-artifact-override.md)), or a store
+that holds saved scenarios apart from the config's tree. Such a scenario carries a source of its
+own, `uploaded`, and its commands answer to the mode for that source. The config's commands keep
+the config's source. `serve` puts the label in the job, and the worker stamps it on the run as
+`--scenario-source`, dropping any value the job's command line carries. A local scenario saved into
+the config's own tree keeps the config's source.
 
 Under a `named` mode, a `cmd` entry in a scenario is refused like a `cmd` entry in a target, and a
 `use` entry runs. Such a worker therefore accepts a scenario that names an installed script and
-rejects a scenario that spells out a command line. This item adds no policy axis of its own.
+rejects a scenario that spells out a command line. This item adds no policy axis: a scenario's
+source picks among the modes BE-0492 defines.
 
 The item does add one input to BE-0492's routing. `serve` derives `command-execution:<source>`,
 `named-execution:<source>`, and `named-command:<name>` from a job's scenario files as well as from
@@ -228,12 +245,12 @@ check, and the two-level ordering.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Schema: the scenario's top-level `hooks` block, its entry model, and the load error for `beforeRun` / `afterRun`.
-- [ ] Token check: resolve `${hooks.<name>.<key>}` against the entries one scenario can see, including name uniqueness.
-- [ ] Ordering: nest the scenario's entries inside the target's, including `inheritSetup: false`, multi-target runs, and failure paths.
-- [ ] Policy: route the scenario's entries through BE-0492's modes, its `manifest.json` record, and its routing tokens, including `use` and the sandbox container.
-- [ ] Evidence: the scenario-level log paths and the labeled report blocks.
-- [ ] Tests, plus the docs and `DESIGN.md` updates in both languages.
+- [x] Schema: the scenario's top-level `hooks` block, its entry model, and the load error for `beforeRun` / `afterRun`.
+- [x] Token check: resolve `${hooks.<name>.<key>}` against the entries one scenario can see, including name uniqueness.
+- [x] Ordering: nest the scenario's entries inside the target's, including `inheritSetup: false`, multi-target runs, and failure paths.
+- [x] Policy: route the scenario's entries through BE-0492's modes, its `manifest.json` record, and its routing tokens, including `use` and the sandbox container.
+- [x] Evidence: the scenario-level log paths and the labeled report blocks.
+- [x] Tests, plus the docs and `DESIGN.md` updates in both languages.
 
 ## References
 

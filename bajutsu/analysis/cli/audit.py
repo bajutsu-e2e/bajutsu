@@ -50,6 +50,7 @@ from bajutsu.common.run_meta.files import runs_root
 from bajutsu.common.run_meta.id import new_run_id
 from bajutsu.common.runner import device_pool, run_all
 from bajutsu.common.runner.pipeline import with_lifecycle_phases
+from bajutsu.common.runner.scenario_hooks import sandbox_targets, scenario_hook_error
 from bajutsu.common.runner.types import LeaseFn
 from bajutsu.common.scenario import Scenario, _scenarios_declaring_targets, load_expanded_scenarios
 from bajutsu.run.device_matrix import (
@@ -159,6 +160,14 @@ def _history_audit(history: str, as_json: bool) -> None:
         typer.echo(_audit.render_longitudinal(report))
 
 
+def _refuse_bad_hooks(scenarios: list[Scenario], eff: Effective) -> None:
+    """Exit 2 on a scenario whose hook names or tokens do not resolve, as `run` does (BE-0501)."""
+    for s in scenarios:
+        if (why := scenario_hook_error(s, {eff.target: eff}, eff.target)) is not None:
+            typer.echo(f"scenario {s.name!r}: {why}")
+            raise typer.Exit(2)
+
+
 def _repeat_audit(
     scenarios: list[Scenario],
     repeat: int,
@@ -215,6 +224,7 @@ def _repeat_audit(
     except ValueError as e:
         typer.echo(f"config-level before/after hook: {e}")
         raise typer.Exit(2) from None
+    _refuse_bad_hooks(scenarios, eff)
     # Mirror `run`/`doctor`: validate the backend before touching device CLIs, so an unknown /
     # unavailable actuator exits cleanly instead of crashing later.
     worker = _load_device_worker_or_exit(worker_config)
@@ -246,7 +256,12 @@ def _repeat_audit(
     # Audit is a CLI-only longitudinal tool that no worker spawns, so its config is the operator's
     # own and the default command gate applies (BE-0492). `on_error=shutdown` tears down any device
     # pool already created before exiting if a hook fails.
-    hooks = _start_hooks_or_exit(eff, run_id=new_run_id("audit-"), on_error=shutdown)
+    hooks = _start_hooks_or_exit(
+        eff,
+        run_id=new_run_id("audit-"),
+        on_error=shutdown,
+        scenario_targets=sandbox_targets(scenarios, eff.target),
+    )
     try:
         # One run at a time, K times each (workers=1 keeps the K runs under identical
         # conditions — the point of the diff). run_dir=None: the audit compares outcomes, not

@@ -65,6 +65,11 @@ def option_names(name: Command) -> frozenset[str]:
     return frozenset(_options(name))
 
 
+def value_options(name: Command) -> frozenset[str]:
+    """Every spelling of ``bajutsu <name>``'s options that take a value as their next word."""
+    return frozenset(s for o in _options(name).values() if not o.is_bool_flag for s in o.opts)
+
+
 def flag_args(name: Command, values: Mapping[str, FlagValue]) -> list[str]:
     """Render argv fragments for ``bajutsu <name>``'s flags, keyed by ``click`` parameter name.
 

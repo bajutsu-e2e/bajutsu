@@ -618,7 +618,8 @@ through an output file.
 The scenario domain-specific language (DSL) gains no `shell` step from this.
 [BE-0036](../roadmaps/BE-0036-utility-steps/BE-0036-utility-steps.md) rejected one. A scenario that
 runs any command stops being portable. A reviewer can no longer read what it does either. The
-commands live in the target's config instead, where an operator owns them.
+commands live in the target's config instead, where an operator owns them. A scenario's own `hooks`
+block keeps the same distance: it sits apart from the steps.
 
 | List | Runs | Scope of its outputs |
 |---|---|---|
@@ -695,6 +696,11 @@ a `beforeScenario` script created. The target's `cleanup` still runs.
 A scenario can drive more than one target. The run then executes the hooks of every target it
 drives. Within each list the targets run in the order the scenario declares them. The `after` lists
 run in the reverse order, so the last target prepared is the first one torn down.
+
+A scenario may declare commands of its own, which run inside the target's
+([scenarios](scenarios.md#hooks-external-commands-around-one-scenario),
+[BE-0501](../roadmaps/BE-0501-scenario-command-hooks/BE-0501-scenario-command-hooks.md)). Keep a
+command here when every scenario of the target needs it.
 
 #### Failures and the verdict
 

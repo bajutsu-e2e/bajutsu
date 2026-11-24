@@ -33,7 +33,7 @@ import tempfile
 import threading
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from bajutsu.common.capability import command_gate
@@ -161,6 +161,9 @@ class HookContext:
     # The evidence subdirectory this pass writes under (`<engine>` in a cross-browser matrix), so
     # one pass's logs never overwrite another's. Empty for a run that writes at the top level.
     log_prefix: str = ""
+    # Stands in for the target in the log path and the command record, for a scenario's own entries
+    # (BE-0501): `BAJUTSU_TARGET` still names the target the scenario drives first.
+    level: str | None = None
 
     def env(self) -> dict[str, str]:
         """The context variables a command of this phase receives."""
@@ -248,6 +251,9 @@ class HookRecord:
     failure: str | None = None
     # Why it was skipped, when the reason is not simply its `on` (a spent teardown budget).
     reason: str | None = None
+    # The scenario whose own list declared the entry, or None for a target's (BE-0501): the report
+    # draws the two levels as separate blocks.
+    declared_by: str | None = None
 
 
 @dataclass
@@ -257,6 +263,9 @@ class HookPhaseResult:
     outputs: HookOutputs = field(default_factory=HookOutputs)
     failures: list[HookFailure] = field(default_factory=list)
     records: list[HookRecord] = field(default_factory=list)
+    # The keys of the phases whose entries began, so a caller can tell which level a `before` list
+    # stopped ahead of (BE-0501).
+    reached: list[str] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -499,6 +508,8 @@ class HookRunner:
                     # The values themselves were registered with the writer in `_run_entry`, before
                     # this entry's own log was copied; this records which hook asked for it.
                     result.outputs.masked.add(entry.name)
+        if context.level is not None:
+            result.records = [replace(r, declared_by=context.scenario) for r in result.records]
         return result
 
     def _run_entry(
@@ -521,7 +532,7 @@ class HookRunner:
                     else []
                 ),
                 safe_segment(list_name, "a hook list"),
-                safe_segment(context.target, "a target name"),
+                safe_segment(context.level or context.target, "a target name"),
             ]
             if context.scenario_index is not None:
                 segments.append(f"{context.scenario_index:02d}")
@@ -543,10 +554,10 @@ class HookRunner:
             # Created after the container started, so the hand-over is per entry, not once at start.
             grant_container_access(raw_out, root=self._raw / OUT_SUBDIR if self._raw else None)
         log_name = "/".join([HOOK_FIELD, *segments, f"{slot}.log"])
-        field = self._record_field(list_name, slot)
+        field_name = self._record_field(list_name, slot, context)
         try:
             argv, env, cwd, sandboxed = self._resolve(
-                entry, context, so_far.outputs, raw_out, sandbox, cwd_base, field
+                entry, context, so_far.outputs, raw_out, sandbox, cwd_base, field_name=field_name
             )
         except (CommandRefused, NamedCommandError, SandboxError, ValueError) as e:
             return (
@@ -574,8 +585,8 @@ class HookRunner:
             code, reason = -1, f"could not start: {e}"
         if reason is None and code != 0:
             reason = f"exited {code}"
-        self._gate.record(
-            field,
+        self._gate_for(context).record(
+            field_name,
             entry.cmd if entry.cmd is not None else f"use:{entry.use}",
             sandboxed=sandboxed,
             exit_code=code,
@@ -612,9 +623,14 @@ class HookRunner:
         )
         return record, failure, values
 
-    def _record_field(self, list_name: str, slot: str) -> str:
+    def _gate_for(self, context: HookContext) -> CommandGate:
+        """The gate that judges this entry, a scenario's own by the scenario's source (BE-0501)."""
+        return self._gate if context.level is None else self._gate.for_scenario()
+
+    def _record_field(self, list_name: str, slot: str, context: HookContext) -> str:
         """How `manifest.json` names the command's declaring field (BE-0492)."""
-        return f"{HOOK_FIELD}.{list_name}[{slot}].cmd"
+        prefix = "scenario." if context.level is not None else ""
+        return f"{prefix}{HOOK_FIELD}.{list_name}[{slot}].cmd"
 
     def _raw_paths(self, segments: Sequence[str], slot: str) -> tuple[Path | None, Path | None]:
         """This entry's raw log and output file, created fresh, or `(None, None)`.
@@ -646,7 +662,8 @@ class HookRunner:
         raw_out: Path | None,
         sandbox: SandboxRuntime | None,
         cwd_base: Path | None = None,
-        field: str = HOOK_FIELD,
+        *,
+        field_name: str,
     ) -> tuple[list[str], dict[str, str], Path | None, bool]:
         """This entry's argv, environment, and working directory, with the gate consulted first.
 
@@ -661,7 +678,7 @@ class HookRunner:
             # set, which is why `entry.env` passes through `resolve_named_command`; Bajutsu's own
             # context and the outputs of earlier commands are not the config's doing, so they reach
             # it like any other entry — the item has every later command see them.
-            named = self._resolve_named(entry, field)
+            named = self._resolve_named(entry, field_name, context)
             env = {**os.environ, **context.env(), **outputs.env(), **named.env}
             if raw_out is not None:
                 env["BAJUTSU_OUTPUT"] = str(raw_out)
@@ -669,7 +686,7 @@ class HookRunner:
                 env.pop("BAJUTSU_OUTPUT", None)  # never a stale value from the worker's own
             return [named.path], env, None, False
         assert entry.cmd is not None  # the schema admits exactly one of `cmd` / `use`
-        action = self._gate.check("command", field, entry.cmd)
+        action = self._gate_for(context).check("command", field_name, entry.cmd)
         argv = shlex.split(entry.cmd)
         if not argv:
             raise ValueError(f"`cmd` {entry.cmd!r} splits into no command")
@@ -697,10 +714,12 @@ class HookRunner:
         wrapped = sandbox.wrap(argv, bajutsu_env, entry.env, cwd)
         return wrapped, {**os.environ}, None, True
 
-    def _resolve_named(self, entry: HookCommand, field: str) -> ResolvedNamedCommand:
+    def _resolve_named(
+        self, entry: HookCommand, field_name: str, context: HookContext
+    ) -> ResolvedNamedCommand:
         """The worker's script for `use:`, with the variables this entry sets (BE-0492)."""
         assert entry.use is not None
-        self._gate.check("named", field, f"use:{entry.use}")
+        self._gate_for(context).check("named", field_name, f"use:{entry.use}")
         from bajutsu.common.capability.command_policy import NamedCommand
 
         named: Mapping[str, NamedCommand] = {
@@ -864,6 +883,8 @@ def hook_record_dicts(records: Iterable[HookRecord]) -> list[dict[str, object]]:
         }
         if record.scenario is not None:
             entry["scenario"] = record.scenario
+        if record.declared_by is not None:
+            entry["declaredBy"] = record.declared_by
         if record.log is not None:
             entry["log"] = record.log
         if record.skipped:
@@ -884,7 +905,7 @@ def run_phase(
     *,
     inherited: HookOutputs | None = None,
     sandboxes: Mapping[str, SandboxRuntime] | None = None,
-    cwd_base: Path | None = None,
+    cwd_bases: Mapping[str, Path] | None = None,
     deadline: float | None = None,
 ) -> HookPhaseResult:
     """Run one list across every target a run or a scenario drives, and merge the outcome.
@@ -901,8 +922,8 @@ def run_phase(
         context: Builds the context for one target's commands, given the target name.
         inherited: Outputs already in scope, visible to these commands.
         sandboxes: The per-run container of each target whose commands the worker sandboxes.
-        cwd_base: Where these entries' relative `cwd` resolves, for entries declared in another
-            file; see `HookRunner.run_list`.
+        cwd_bases: Where the relative `cwd` of one key's entries resolves, for entries declared in
+            another file; see `HookRunner.run_list`.
         deadline: A monotonic instant every entry must finish by, which a cancelled run's teardown
             sets; see `HookRunner.run_list`.
     """
@@ -913,13 +934,14 @@ def run_phase(
         entries = phases[target].lists[list_name]
         if not entries:
             continue
+        merged.reached.append(target)
         one = runner.run_list(
             list_name,
             entries,
             context(target),
             inherited=merged.outputs,
             sandbox=(sandboxes or {}).get(target),
-            cwd_base=cwd_base,
+            cwd_base=(cwd_bases or {}).get(target),
             deadline=deadline,
         )
         merged.outputs = one.outputs
@@ -949,7 +971,9 @@ def duplicate_hook_name(phases: Mapping[str, HookPhases]) -> str | None:
     return None
 
 
-def hook_refusal(phases: Mapping[str, HookPhases], gate: CommandGate) -> str | None:
+def hook_refusal(
+    phases: Mapping[str, HookPhases], gate: CommandGate, *, prefix: str = ""
+) -> str | None:
     """Why *gate*'s policy will not run one of these hook commands, recording it, or None.
 
     Checked before any device work, so a run whose hook command can never run fails before it
@@ -961,7 +985,7 @@ def hook_refusal(phases: Mapping[str, HookPhases], gate: CommandGate) -> str | N
         for list_name, index, entry in phase.entries():
             kind: CommandKind = "named" if entry.use is not None else "command"
             action = gate.policy.action(kind)
-            field_name = f"{HOOK_FIELD}.{list_name}[{entry.name or index}].cmd"
+            field_name = f"{prefix}{HOOK_FIELD}.{list_name}[{entry.name or index}].cmd"
             if action == "refuse":
                 try:
                     gate.refuse(field_name, entry.cmd or f"use:{entry.use}")

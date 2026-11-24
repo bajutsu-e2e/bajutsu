@@ -66,7 +66,7 @@ from bajutsu.common.run_meta.files import is_soft_deleted
 from bajutsu.common.scenario import tip_kit_entry
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Collection, Sequence
 
     from bajutsu.common.agents.alerts import ClaudeAlertLocator
     from bajutsu.common.capability.command_gate import CommandGate
@@ -871,6 +871,7 @@ def _install_command_gate_or_exit(
     *,
     config_dir: Path | None,
     secret_values: Sequence[str] = (),
+    scenario_source: str = "",
 ) -> CommandGate:
     """Install this process's command gate from `--config-source` and the worker's file, or exit 2.
 
@@ -884,10 +885,18 @@ def _install_command_gate_or_exit(
     if source not in CONFIG_SOURCES:
         typer.echo(f"--config-source {source!r}: expected one of {', '.join(CONFIG_SOURCES)}")
         raise typer.Exit(2)
+    if scenario_source and scenario_source not in CONFIG_SOURCES:
+        typer.echo(
+            f"--scenario-source {scenario_source!r}: expected one of {', '.join(CONFIG_SOURCES)}"
+        )
+        raise typer.Exit(2)
     policy = CommandPolicy(source=source, execution=worker.command_execution)
     return command_gate.install(
         command_gate.CommandGate(
-            policy=policy, config_dir=config_dir, secret_values=list(secret_values)
+            policy=policy,
+            config_dir=config_dir,
+            secret_values=list(secret_values),
+            scenario_source=scenario_source or None,
         )
     )
 
@@ -912,6 +921,7 @@ def _start_hooks_or_exit(
     worker: WorkerCapability | None = None,
     on_error: Callable[[], None] | None = None,
     teardown_at_exit: bool = False,
+    scenario_targets: Collection[str] = (),
 ) -> HookSession | None:
     """Run the target's `beforeRun` hooks if it declares any, or exit 2 (BE-0491).
 
@@ -930,9 +940,11 @@ def _start_hooks_or_exit(
         teardown_at_exit: Register the `afterRun` teardown with `atexit`, which the three commands
             that run no scenario file want (`record` / `crawl` / `repl`). `audit` leaves it off and
             calls `after_run` itself, since it knows the verdict.
+        scenario_targets: The targets a scenario's own commands may need a container of (BE-0501);
+            non-empty exactly when some scenario declares a command.
 
     Returns:
-        The session, or None when the target declares no hook command at all.
+        The session, or None when neither the target nor a scenario declares a hook command.
     """
     from bajutsu.common.evidence.sink import RunArtifactWriter
     from bajutsu.common.runner.hook_session import start_session
@@ -954,6 +966,7 @@ def _start_hooks_or_exit(
             writer=writer,
             named_commands=worker.named_commands if worker is not None else None,
             base_dir=eff.base_dir,
+            scenario_targets=scenario_targets,
         )
     except ValueError as e:  # two targets sharing a hook name
         typer.echo(str(e))

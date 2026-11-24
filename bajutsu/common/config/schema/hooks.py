@@ -18,7 +18,7 @@ from bajutsu.common.scenario import (
 )
 
 from ._model import _Model
-from .hook_command import HookCommand, HookSandbox, _reject_outcome_on_before
+from .hook_command import HookCommand, HookSandbox, reject_outcome_on_before
 
 # The four external-command lists (BE-0491), in the order one run meets them.
 COMMAND_LISTS: tuple[str, ...] = ("beforeRun", "beforeScenario", "afterScenario", "afterRun")
@@ -90,8 +90,8 @@ class Hooks(_Model):
         # A `before` entry has no verdict to answer, and a name shared by two entries of one target
         # would make `${hooks.<name>.<key>}` ambiguous. Uniqueness *across* targets is checked where
         # the run knows which targets it drives, since one target cannot see another's config here.
-        _reject_outcome_on_before(self.before_run, "hooks.beforeRun")
-        _reject_outcome_on_before(self.before_scenario, "hooks.beforeScenario")
+        reject_outcome_on_before(self.before_run, "hooks.beforeRun")
+        reject_outcome_on_before(self.before_scenario, "hooks.beforeScenario")
         seen: dict[str, str] = {}
         for list_name, entries in self.command_lists.items():
             for entry in entries:

@@ -430,3 +430,16 @@ def test_a_named_image_is_never_removed(tmp_path: Path) -> None:
     runtime.start()
     runtime.stop()
     assert not any(c[:3] == ["docker", "image"] for c in rec.exec_calls)
+
+
+def test_wrap_names_the_scenario_file_only_when_the_container_mounts_it(tmp_path: Path) -> None:
+    # BE-0501: a scenario outside the mounted directory has no path inside the container.
+    runtime = _runtime(tmp_path, _Recorder())
+
+    def seen(source: Path) -> list[str]:
+        argv = runtime.wrap(["./x"], {"BAJUTSU_SCENARIO_FILE": str(source)}, {}, None)
+        return [a for a in argv if a.startswith("BAJUTSU_SCENARIO_FILE=")]
+
+    inside = tmp_path / "bundle" / "scenarios" / "a.yaml"
+    assert seen(inside) == [f"BAJUTSU_SCENARIO_FILE={sandbox.WORKDIR}/scenarios/a.yaml"]
+    assert seen(tmp_path / "elsewhere.yaml") == []

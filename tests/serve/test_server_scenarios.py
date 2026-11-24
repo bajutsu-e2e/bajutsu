@@ -30,6 +30,8 @@ SCENARIO = "- name: a\n  steps: []\n"
 class FakeScenarioStorage:
     """Per-project scenario storage, in memory: {app: {ref: yaml}}."""
 
+    config_tree = True
+
     def __init__(self, projects: dict[str, dict[str, str]]) -> None:
         self._projects = projects
 
@@ -74,6 +76,8 @@ def test_list_read_save_delegate_to_storage() -> None:
 
 class PermissiveStorage:
     """A storage that would return for *any* ref — so a leak proves the scope didn't pre-reject."""
+
+    config_tree = True
 
     def has_app(self, app: str, *, session: str | None = None, org: str = "") -> bool:
         return True

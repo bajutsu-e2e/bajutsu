@@ -17,3 +17,8 @@ class Runnable:
 
     arg: str
     materials: dict[str, str] = field(default_factory=dict)
+    # Whether a client wrote the text rather than the config's own source providing it (BE-0501), so
+    # its hook commands answer to the `uploaded` policy whatever the config's source is.
+    client_written: bool = False
+    # The text serve reads for routing alone, when no scope holds it: an override's entry.
+    text: str | None = None

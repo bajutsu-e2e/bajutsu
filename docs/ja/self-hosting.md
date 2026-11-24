@@ -172,6 +172,24 @@ config は、run を実行するマシンで Bajutsu が実行するコマンド
 選んでいるからです。worker は、起動する `run`、`record`、`crawl` にラベルを渡します。自分の
 `--worker-config` も合わせて渡します。
 
+### シナリオの出所
+
+シナリオは[自身のコマンド](scenarios.md#hooks1-本のシナリオの前後で実行する外部コマンド)を宣言できます。
+多くの場合、シナリオは config とともに届き、コマンドは config の出所に従います。次の 2 つの場合は、
+クライアントが config とは別にシナリオを書きます。
+
+- `scenariosArtifact` が、1 つの job のシナリオを差し替える場合です。
+- 保存されたシナリオを、config 自身のツリーとは別のストアが持つ場合です。
+
+どちらの場合も、シナリオのコマンドの出所は `uploaded` になります。config のコマンドは config の出所のままです。
+`serve` がラベルを job に載せ、worker が起動する `run` に `--scenario-source` として渡します。job の
+コマンドラインに書かれたラベルは効きません。このラベルより前のサーバーから届いた job も、シナリオを同梱していれば
+`uploaded` とみなします。
+
+config 自身のツリーに保存したシナリオは、config の出所に従います。したがって、そこへ保存できる人は誰でも、
+その出所のモードでコマンドを実行できます。保存できる人全員を信頼しているのでなければ、その出所のモードを
+`named` か `deny` にします。
+
 ### `commandExecution` ブロック
 
 `worker.yaml` の `commandExecution` ブロックは、出所ごとにモードを1つ定めます。
@@ -272,6 +290,7 @@ worker は、ポリシーをルーティングトークンとして広告しま�
 
 config が `hooks.*` のコマンドラインを宣言する job は、その出所の `command-execution:<source>` を要求します。
 named command を使う job は、`named-execution:<source>` とそのスクリプトの `named-command:<name>` を要求します。
+job のシナリオファイルのコマンドも、シナリオの出所で同じトークンを足します。
 ビルドはトークンを足しません。worker がビルド済みのバイナリを持っているかを、`serve` は知りえないからです。
 条件に合う worker が接続していないあいだ、job は待ち続けます。BE-0492 より前の worker はこれらの
 トークンを1つも広告しないので、そうした job を lease しません。

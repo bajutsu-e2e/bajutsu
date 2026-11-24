@@ -34,6 +34,7 @@ from bajutsu.common.capability.worker_capability import BATCH_PROVIDERS
 from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR
 from bajutsu.run import INTERNAL_MODULE as _INTERNAL_RUN_MODULE
 from bajutsu.serve import oplog
+from bajutsu.serve._cli_flags import Command, value_options
 from bajutsu.serve.commands import run_command
 from bajutsu.serve.jobs import _kill, _pgid_of, _still_running, cancel_job, run_job
 from bajutsu.serve.logbus import InMemoryLogBus, LogBus
@@ -162,6 +163,9 @@ def job_spec(job: Job) -> dict[str, Any]:
         "build_platform": job.build_platform,
         # Where the config came from (BE-0492), so the worker applies its own command policy.
         "config_source": job.config_source,
+        # Where the scenario came from, when not from there (BE-0501). Stamped onto the argv by the
+        # worker, so a worker that predates it ignores it; such a worker loads no scenario `hooks`.
+        "scenario_source": job.scenario_source,
         "materials": dict(job.materials),
         # record: where in the workspace the authored file lands + (app, ref) to persist it as.
         "out_path": job.out_path,
@@ -388,6 +392,10 @@ def _local_interpreter(cmd: list[str]) -> list[str]:
 _WORKER_CONFIG_COMMANDS = ("run", "record", "crawl")
 
 
+# `python -m bajutsu.run.internal`: the words before the options of the argv the spec builders emit.
+_INTERNAL_HEAD = 3
+
+
 def _run_argv_head(cmd: list[str]) -> int | None:
     """How many leading words of *cmd* name a command that reads `worker.yaml`, or None.
 
@@ -396,10 +404,37 @@ def _run_argv_head(cmd: list[str]) -> int | None:
     ``python -m bajutsu record`` / ``crawl``.
     """
     if cmd[1:3] == ["-m", _INTERNAL_RUN_MODULE]:
-        return 3
+        return _INTERNAL_HEAD
     if cmd[1:3] == ["-m", "bajutsu"] and cmd[3:4] and cmd[3] in _WORKER_CONFIG_COMMANDS:
         return 4
     return None
+
+
+def _run_argv_command(cmd: list[str], head: int) -> Command:
+    """The command *cmd*'s *head* names."""
+    return "run" if head == _INTERNAL_HEAD else cast("Command", cmd[head - 1])
+
+
+def _without_options(cmd: list[str], head: int, drop: tuple[str, ...]) -> list[str]:
+    """The words after *head* without the options in *drop*, each taking a value.
+
+    Another option's value is kept whatever it looks like: a client picks a `--tag` value, and
+    dropping one spelled `--config-source=x` would leave `--tag` to swallow the next option and turn
+    the client's following value into an option of its own.
+    """
+    takes_value = value_options(_run_argv_command(cmd, head))
+    rest: list[str] = []
+    words = iter(cmd[head:])
+    for word in words:
+        if word in drop:
+            next(words, None)
+        elif word.partition("=")[0] in drop:
+            continue
+        else:
+            rest.append(word)
+            if word in takes_value:
+                rest.extend(v for v in (next(words, None),) if v is not None)
+    return rest
 
 
 def _with_worker_config(cmd: list[str], worker_config: Path | None) -> list[str]:
@@ -422,22 +457,20 @@ def _with_worker_config(cmd: list[str], worker_config: Path | None) -> list[str]
         raise ValueError(f"cannot apply --worker-config to an unrecognised run argv: {cmd[:4]}")
     # A spec that carries its own `--worker-config` must not override the worker's: the file is the
     # worker's declaration, and the last value of a repeated option wins.
-    rest = [
-        arg
-        for i, arg in enumerate(cmd[head:], start=head)
-        if not (
-            arg == "--worker-config"
-            or arg.startswith("--worker-config=")
-            or cmd[i - 1] == "--worker-config"
-        )
-    ]
+    rest = _without_options(cmd, head, ("--worker-config",))
     if worker_config is None:
         return [*cmd[:head], *rest]
     return [*cmd[:head], "--worker-config", str(worker_config.resolve()), *rest]
 
 
-def _with_config_source(cmd: list[str], source: ConfigSource) -> list[str]:
-    """Stamp the job's config source onto a run / record / crawl argv, replacing any the argv carries.
+# The labels a worker stamps itself, dropped from any argv a spec carries.
+_SOURCE_FLAGS = ("--config-source", "--scenario-source")
+
+
+def _with_config_source(
+    cmd: list[str], source: ConfigSource, scenario_source: ConfigSource | None = None
+) -> list[str]:
+    """Stamp the job's config and scenario sources onto a run / record / crawl argv.
 
     The worker applies its command policy by this label (BE-0492), so it takes the label from the
     spec's own field (`_spec_source`, strict for an unlabelled spec) rather than trusting a
@@ -447,16 +480,10 @@ def _with_config_source(cmd: list[str], source: ConfigSource) -> list[str]:
     head = _run_argv_head(cmd)
     if head is None:
         return cmd
-    rest = [
-        arg
-        for i, arg in enumerate(cmd[head:], start=head)
-        if not (
-            arg == "--config-source"
-            or arg.startswith("--config-source=")
-            or cmd[i - 1] == "--config-source"
-        )
-    ]
+    rest = _without_options(cmd, head, _SOURCE_FLAGS)
     label = [] if source == OPERATOR else ["--config-source", source]
+    if scenario_source is not None and _run_argv_command(cmd, head) == "run":
+        label += ["--scenario-source", scenario_source]
     return [*cmd[:head], *label, *rest]
 
 
@@ -542,6 +569,7 @@ def execute_job_spec(
             _with_config_source(
                 _with_worker_config(_local_interpreter(_spec_argv(spec)), worker_config),
                 _spec_source(spec),
+                _spec_scenario_source(spec),
             )
             if apply_worker_config
             else _local_interpreter(_spec_argv(spec))
@@ -631,6 +659,23 @@ def _spec_source(spec: dict[str, Any]) -> ConfigSource:
         # A spec from a server before BE-0492 carries no label, and its jobs were labelled by the
         # removed `withhold_runner_build` flag alone; only that flag's absence meant trusted.
         return "uploaded" if spec.get("withhold_runner_build") else OPERATOR
+    return cast("ConfigSource", source) if source in CONFIG_SOURCES else "uploaded"
+
+
+def _spec_scenario_source(spec: dict[str, Any]) -> ConfigSource | None:
+    """The job's scenario source when it differs from the config's, read as strictly as the latter.
+
+    An unknown label reads as `uploaded`, and so does a missing one on a job whose scenario travels
+    apart from the config's own tree: a server that predates the label (BE-0501) shipped it without
+    saying who wrote it. An empty label is the server's word that the sources are one.
+    """
+    source = spec.get("scenario_source")
+    if source is None:
+        overrides = spec.get("overrides")
+        shipped = isinstance(overrides, dict) and overrides.get("scenarios")
+        return "uploaded" if shipped or spec.get("materials") else None
+    if source == "":
+        return None
     return cast("ConfigSource", source) if source in CONFIG_SOURCES else "uploaded"
 
 

@@ -267,6 +267,18 @@ def test_a_scenarios_override_runs_a_scenario_only_it_holds(tmp_path: Path) -> N
     assert job.provenance == {"scenariosArtifact": sha}
 
 
+def test_an_override_scenario_answers_to_the_uploaded_source(tmp_path: Path) -> None:
+    # BE-0501: whoever posts the artifact wrote its commands, not whoever bound the config.
+    state, store = _hosted(tmp_path)
+    hooked = _SCENARIO + "  hooks: {beforeScenario: [{cmd: x}]}\n"
+    sha = _store(store, "scenarios", _zip({"scenarios/added.yaml": hooked.encode()}))
+    _resp, code = _run(state, scenario="added.yaml", scenariosArtifact=sha)
+    assert code == 200, _resp
+    job = _dispatched(state)
+    assert (job.config_source, job.scenario_source) == ("operator", "uploaded")
+    assert "command-execution:uploaded" in job.capabilities
+
+
 def test_a_scenario_name_is_reduced_to_its_basename_before_the_lookup(tmp_path: Path) -> None:
     state, store = _hosted(tmp_path)
     sha = _store(store, "scenarios", _zip({"scenarios/added.yaml": _SCENARIO.encode()}))
