@@ -378,3 +378,164 @@ def test_output_is_never_piped_so_a_background_server_cannot_block_the_run(tmp_p
     )
     assert result.ok, result.reason
     subprocess.run(["pkill", "-f", "sleep 20"], check=False, capture_output=True)
+
+
+def test_a_planted_symlink_at_a_later_entry_s_output_path_is_never_written_through(
+    tmp_path: Path,
+) -> None:
+    # Under `sandbox` the output half of the raw area is mounted writable, so a command can plant a
+    # link at the predictable path of an entry that has not run yet. The link is removed and a fresh
+    # regular file created in its place; what it pointed at is never touched.
+    raw = hc.raw_root(tmp_path / "runs", "r1")
+    runner = hc.HookRunner(raw_dir=raw, base_dir=tmp_path)
+    victim = tmp_path / "host-secret"
+    victim.write_text("KEEP ME", encoding="utf-8")
+    planted = raw / hc.OUT_SUBDIR / "beforeRun" / "web" / "later.output"
+    planted.parent.mkdir(parents=True)
+    planted.symlink_to(victim)
+    result = runner.run_list(
+        "beforeRun",
+        [HookCommand(name="later", cmd=_script(tmp_path, "ok.sh", "true"))],
+        _ctx(),
+    )
+    assert result.ok, result.reason
+    assert victim.read_text() == "KEEP ME"  # the link was removed, not followed
+    assert not planted.is_symlink() and planted.is_file()
+
+
+def test_a_symlinked_directory_in_the_raw_path_is_refused(tmp_path: Path) -> None:
+    # `mkdir(parents=True)` would walk a planted directory link, so each level is checked.
+    raw = hc.raw_root(tmp_path / "runs", "r1")
+    runner = hc.HookRunner(raw_dir=raw, base_dir=tmp_path)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (raw / hc.OUT_SUBDIR).mkdir(parents=True, exist_ok=True)
+    (raw / hc.OUT_SUBDIR / "beforeRun").symlink_to(elsewhere, target_is_directory=True)
+    result = runner.run_list(
+        "beforeRun", [HookCommand(cmd=_script(tmp_path, "ok2.sh", "true"))], _ctx()
+    )
+    assert not result.ok and "symlink" in result.reason
+
+
+def test_the_log_half_of_the_raw_area_is_separate_from_the_mounted_half(tmp_path: Path) -> None:
+    # The container writes no log of its own (the host captures `docker exec`'s output), so the log
+    # half is never mounted and a command cannot reach a later entry's log path at all.
+    raw = hc.raw_root(tmp_path / "runs", "r1")
+    runner = hc.HookRunner(raw_dir=raw, base_dir=tmp_path)
+    runner.run_list(
+        "beforeRun",
+        [HookCommand(name="x", cmd=_script(tmp_path, "s.sh", 'echo hi; echo "k=v" > $BAJUTSU_OUTPUT'))],
+        _ctx(),
+    )
+    assert (raw / hc.LOGS_SUBDIR / "beforeRun" / "web" / "x.log").read_text().strip() == "hi"
+    assert (raw / hc.OUT_SUBDIR / "beforeRun" / "web" / "x.output").read_text().strip() == "k=v"
+
+
+@pytest.mark.parametrize("name", ["../../escape", "a/b", ".hidden", ""])
+def test_a_target_name_that_is_not_one_path_segment_is_refused(tmp_path: Path, name: str) -> None:
+    # A target name is an unvalidated map key under `targets:`, and it becomes a directory of the
+    # raw area and of the evidence tree.
+    runner = _runner(tmp_path)
+    result = runner.run_list(
+        "beforeRun",
+        [HookCommand(cmd=_script(tmp_path, "seg.sh", "true"))],
+        hc.HookContext(run_id="r1", target=name),
+    )
+    assert not result.ok and "one path segment" in result.reason
+
+
+def test_inherited_outputs_are_copied_not_written_into(tmp_path: Path) -> None:
+    # Two workers each run their own scenario's lists starting from the run-level outputs; writing
+    # into that one object would leak one scenario's values into another's.
+    runner = _runner(tmp_path)
+    run_level = hc.HookOutputs(values={"server": {"port": "8787"}})
+    result = runner.run_list(
+        "beforeScenario",
+        [HookCommand(name="user", cmd=_script(tmp_path, "mku.sh", 'echo "id=7" > $BAJUTSU_OUTPUT'))],
+        _ctx(scenario_index=0),
+        inherited=run_level,
+    )
+    assert result.outputs.values == {"server": {"port": "8787"}, "user": {"id": "7"}}
+    assert run_level.values == {"server": {"port": "8787"}}  # untouched
+
+
+def test_a_named_command_reads_earlier_outputs_and_writes_its_own(tmp_path: Path) -> None:
+    # The worker's `env` list bounds what the *config* may set; Bajutsu's own context and the
+    # outputs of earlier commands are not the config's doing, so a `use` entry sees them too.
+    worker_dir = tmp_path / "worker"
+    worker_dir.mkdir()
+    script = _script(
+        worker_dir,
+        "seed.sh",
+        'echo "seen=$BAJUTSU_HOOK__first__token" > "$BAJUTSU_OUTPUT"',
+    )
+    gate = CommandGate(
+        policy=CommandPolicy(source="uploaded", execution=CommandExecution(uploaded="named"))
+    )
+    runner = _runner(
+        tmp_path / "config", gate=gate, named_commands={"seed": NamedCommand(path=script)}
+    )
+    result = runner.run_list(
+        "beforeRun",
+        [HookCommand(name="second", use="seed")],
+        _ctx(),
+        inherited=hc.HookOutputs(values={"first": {"token": "t-1"}}),
+    )
+    assert result.ok, result.reason
+    assert result.outputs.values["second"] == {"seen": "t-1"}
+
+
+def test_a_relative_cwd_can_resolve_against_a_per_call_base(tmp_path: Path) -> None:
+    # Entries declared in another file resolve their `cwd` against that file's directory, without
+    # moving the directory a named command may not live inside (BE-0501's seam).
+    other = tmp_path / "scenarios" / "sub"
+    other.mkdir(parents=True)
+    seen = tmp_path / "base.txt"
+    runner = _runner(tmp_path)
+    runner.run_list(
+        "beforeScenario",
+        [HookCommand(cmd=_script(tmp_path, "pwd2.sh", f"pwd > {seen}"), cwd="sub")],
+        _ctx(),
+        cwd_base=tmp_path / "scenarios",
+    )
+    assert seen.read_text().strip() == str(other.resolve())
+
+
+# --- the ${hooks.<name>.<key>} token ---
+
+
+def test_a_token_naming_no_readable_hook_fails_when_the_run_loads() -> None:
+    assert hc.unknown_hook_tokens({"hooks.user.id"}, {"server"}) is not None
+    assert hc.unknown_hook_tokens({"hooks.user.id"}, {"user", "server"}) is None
+    assert hc.unknown_hook_tokens({"vars.x", "secrets.Y"}, set()) is None
+
+
+def test_a_token_naming_a_skipped_before_scenario_hook_says_why() -> None:
+    # `inheritSetup: false` skips the target's beforeScenario entries, so the value is never written.
+    why = hc.unknown_hook_tokens({"hooks.user.id"}, {"server"}, skipped={"user"})
+    assert why is not None and "inheritSetup" in why
+
+
+def test_a_key_the_command_never_wrote_names_the_hook_and_the_key() -> None:
+    outputs = hc.HookOutputs(values={"user": {"userId": "u-1"}})
+    assert hc.missing_hook_key({"hooks.user.userId"}, outputs) is None
+    why = hc.missing_hook_key({"hooks.user.email"}, outputs)
+    assert why is not None and "'user'" in why and "'email'" in why
+    assert "wrote userId" in why
+    assert hc.missing_hook_key({"hooks.other.k"}, outputs) is not None
+
+
+def test_worker_indexes_are_stable_per_thread() -> None:
+    import threading
+
+    index = hc.WorkerIndex()
+    seen: list[int] = []
+    assert index.current() == 0 and index.current() == 0  # stable on the same thread
+
+    def other() -> None:
+        seen.append(index.current())
+
+    t = threading.Thread(target=other)
+    t.start()
+    t.join()
+    assert seen == [1]

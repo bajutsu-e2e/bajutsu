@@ -17,6 +17,7 @@ from bajutsu.common.capability.command_policy import NamedCommand
 from bajutsu.common.config import Effective, HookPhases
 from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.common.runner.hook_commands import (
+    OUT_SUBDIR,
     HookContext,
     HookFailure,
     HookOutputs,
@@ -27,7 +28,11 @@ from bajutsu.common.runner.hook_commands import (
     raw_root,
     run_phase,
 )
-from bajutsu.common.runner.sandbox import SandboxError, SandboxRuntime
+from bajutsu.common.runner.sandbox import (
+    SandboxError,
+    SandboxRuntime,
+    grant_container_access,
+)
 
 
 def phases_of(effs: Mapping[str, Effective]) -> dict[str, HookPhases]:
@@ -81,6 +86,7 @@ class HookSession:
         """
         for target, runtime in self.sandboxes.items():
             try:
+                grant_container_access(runtime.raw_dir)
                 runtime.start()
             except SandboxError as e:
                 return HookPhaseResult(
@@ -187,7 +193,7 @@ def _sandboxes(
         target: SandboxRuntime(
             sandbox=phase.sandbox,
             bundle_cwd=base_dir or Path.cwd(),
-            raw_dir=raw_dir,
+            raw_dir=raw_dir / OUT_SUBDIR,
         )
         for target, phase in phases.items()
         if phase.sandbox is not None

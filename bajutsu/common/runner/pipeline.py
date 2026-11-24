@@ -32,7 +32,7 @@ from bajutsu.common.capability import capability_preflight
 from bajutsu.common.capability.capability_preflight import steps_for_target
 from bajutsu.common.capability.command_policy import COMMAND_EXECUTIONS_KEY
 from bajutsu.common.capability.settings_support import check_settings
-from bajutsu.common.config import Effective, resolve_preconditions, web_engine
+from bajutsu.common.config import Effective, HookPhases, resolve_preconditions, web_engine
 from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.drivers import base, tracing
 from bajutsu.common.drivers.base import BackendCrashError
@@ -75,6 +75,15 @@ from bajutsu.common.report import (
     scenario_source_meta,
     write_report,
 )
+from bajutsu.common.runner.hook_commands import (
+    HookContext,
+    HookOutputs,
+    HookPhaseResult,
+    WorkerIndex,
+    missing_hook_key,
+    run_phase,
+)
+from bajutsu.common.runner.hook_session import HookSession
 from bajutsu.common.runner.mailbox import build_mailbox_reader
 from bajutsu.common.runner.recovery import (
     CrashRecoveryBudget,
@@ -98,6 +107,7 @@ from bajutsu.common.scenario import (
     dump_scenario_file,
     redact_totp_secrets,
 )
+from bajutsu.common.scenario.interp import find_tokens
 
 # Re-exported from `recovery` (BE-0334): the crash-retry count/budget bookkeeping now lives there so
 # the on-device conformance harness drives the same recovery and the two cannot drift. Kept importable
@@ -241,6 +251,13 @@ class _ScenarioRunner:
     # Scenarios the worker capability check (BE-0450) already failed, keyed by their index in the
     # run: each is reported with its reason and never leased, so no device is acquired for it.
     worker_failures: Mapping[int, str] = field(default_factory=dict)
+    # The run's hook phases (BE-0491). `beforeScenario` runs ahead of this scenario's device lease
+    # and app launch, so the app reads seeded data at startup; `afterScenario` runs once its verdict
+    # exists. None when no target declares a hook command.
+    hooks: HookSession | None = None
+    # Which worker each thread is, for `BAJUTSU_WORKER`: assigned on a thread's first scenario and
+    # kept for the run, since the pool carries no worker number of its own.
+    worker_index: WorkerIndex = field(default_factory=WorkerIndex)
     # Emit the app's entry-screen convention score once per run (the first scenario's freshly launched
     # driver), folding `doctor`'s Ready/Partial/Blocked tell into the run so CI needs no separate
     # `doctor` invocation that would cold-spawn a second XCUITest runner. Purely diagnostic and off the
@@ -494,11 +511,123 @@ class _ScenarioRunner:
             return self._run_one_traced(i, s, sid, derived)
         return self._run_one_recorded(i, s, sid, derived)
 
+    def _scenario_phases(self, s: Scenario) -> dict[str, HookPhases]:
+        """The hook phases of every target this scenario drives, in declared order (BE-0491).
+
+        A scenario with `preconditions.inheritSetup: false` drives none: the two scenario lists form
+        a pair, and an `afterScenario` script typically tears down what a `beforeScenario` script
+        created, so running it alone would act on outputs that were never written. The target's
+        `cleanup` still runs, as it does today.
+        """
+        if self.hooks is None or not s.preconditions.inherit_setup:
+            return {}
+        names = s.target_names if s.targets else [self.eff.target]
+        return {
+            name: phase
+            for name in names
+            if (phase := self.hooks.phases.get(name)) is not None
+        }
+
+    def _hook_context(self, s: Scenario, sid: str, **extra: object) -> Callable[[str], HookContext]:
+        """Builds one target's hook context for this scenario."""
+        assert self.hooks is not None
+        index = int(sid.split("-", 1)[0]) if sid.split("-", 1)[0].isdigit() else None
+        return lambda target: self.hooks.context(  # type: ignore[union-attr]
+            target,
+            scenario=s.name,
+            scenario_file=s.source_stem,
+            worker=self.worker_index.current(),
+            scenario_index=index,
+            **extra,
+        )
+
+    def _before_scenario(self, s: Scenario, sid: str) -> HookPhaseResult | None:
+        """Run every declared target's `beforeScenario`, or None when there is nothing to run.
+
+        Runs ahead of the device lease and the app launch, so the app reads seeded data at startup.
+        """
+        phases = self._scenario_phases(s)
+        if not phases or self.hooks is None:
+            return None
+        return run_phase(
+            self.hooks.runner,
+            "beforeScenario",
+            phases,
+            self._hook_context(s, sid),
+            inherited=self.hooks.outputs,
+            sandboxes=self.hooks.sandboxes,
+        )
+
+    def _after_scenario(self, s: Scenario, sid: str, result: RunResult) -> None:
+        """Run `afterScenario` for the verdict this scenario reached, and fold in its failures.
+
+        The rule a scenario's own `cleanup` follows: a teardown failure becomes the verdict on a
+        passing scenario, and is appended behind an existing failure. Every declared target is
+        visited, in reverse declared order, and a rule still runs after an earlier one failed.
+        """
+        phases = self._scenario_phases(s)
+        if not phases or self.hooks is None:
+            return
+        verdict = "success" if result.ok else "failure"
+        after = run_phase(
+            self.hooks.runner,
+            "afterScenario",
+            phases,
+            self._hook_context(s, sid, verdict=verdict),
+            inherited=self.hooks.outputs,
+            sandboxes=self.hooks.sandboxes,
+        )
+        self.hooks.records += after.records
+        if after.ok:
+            return
+        result.failure = f"{result.failure}; {after.reason}" if result.failure else after.reason
+        result.ok = False
+
     def _run_one_recorded(
         self, i: int, s: Scenario, sid: str, derived: DerivedSecrets
     ) -> RunResult:
-        """`_run_one_impl`, then its verdict persisted to `<sid>/result.json` straight away."""
-        result = self._run_one_impl(i, s, sid, derived)
+        """`_run_one_impl`, then its verdict persisted to `<sid>/result.json` straight away.
+
+        The scenario's own hook phases wrap it (BE-0491): `beforeScenario` first, whose failure
+        skips the launch and the steps, and `afterScenario` once the verdict exists — before the
+        verdict is written, so `result.json` carries what a failed teardown did to it.
+        """
+        before = self._before_scenario(s, sid)
+        if before is not None:
+            self.hooks.records += before.records  # type: ignore[union-attr]
+        if before is not None and not before.ok:
+            result = RunResult(
+                scenario=s.name,
+                ok=False,
+                steps=[],
+                backend=self.actuator or "",
+                sid=sid,
+                failure=f"beforeScenario: {before.reason}",
+            )
+            self._after_scenario(s, sid, result)
+            self._write_result(s, sid, result)
+            return result
+        outputs = (before.outputs if before is not None else None) or (
+            self.hooks.outputs if self.hooks is not None else None
+        )
+        if outputs is not None and (
+            why := missing_hook_key(find_tokens(s.model_dump(by_alias=True)), outputs)
+        ) is not None:
+            # Checked once the commands have run, since the command decides which keys it writes.
+            # The load-time check already proved the hook *name* is one this scenario can read.
+            result = RunResult(
+                scenario=s.name,
+                ok=False,
+                steps=[],
+                backend=self.actuator or "",
+                sid=sid,
+                failure=why,
+            )
+            self._after_scenario(s, sid, result)
+            self._write_result(s, sid, result)
+            return result
+        result = self._run_one_impl(i, s, sid, derived, outputs)
+        self._after_scenario(s, sid, result)
         # Every consumer from here on — result.json, the manifest and reports, CI annotations, a
         # webhook — reads these fields, so masking them once here covers each (BE-0472).
         mask_derived_text(result, Redactor(None).with_values(derived.values))
@@ -559,12 +688,20 @@ class _ScenarioRunner:
     # behavioral risk, so it waits for a refactor of its own rather than riding a lint ceiling
     # (BE-0386).
     def _run_one_impl(  # noqa: C901, PLR0912, PLR0915
-        self, i: int, s: Scenario, sid: str, derived: DerivedSecrets
+        self,
+        i: int,
+        s: Scenario,
+        sid: str,
+        derived: DerivedSecrets,
+        hook_outputs: HookOutputs | None = None,
     ) -> RunResult:
         """`run_one`'s actual body.
 
         Runs once per crash-recovery attempt, inside — or, when `--trace-driver` is off, without —
         the open trace `run_one` wraps it in.
+
+        *hook_outputs* is what `beforeRun` and this scenario's own `beforeScenario` entries wrote
+        (BE-0491); its values reach the steps as `${hooks.<name>.<key>}`.
         """
         # Checked ahead of a cancel: this scenario would never have run, so its reason is the truer one.
         if (worker_failure := self.worker_failures.get(i)) is not None:
@@ -911,7 +1048,9 @@ class _ScenarioRunner:
                         # work, not recovery. A mid-step crash below re-arms the clock.
                         self.run_crash_budget.add_recovery_time(self._now() - recovery_started)
                         recovery_started = None
-                    return self._run_on_lease(lz, others, handler, i, s, sid, derived, actuator)
+                    return self._run_on_lease(
+                        lz, others, handler, i, s, sid, derived, actuator, hook_outputs
+                    )
                 except BackendCrashError as crash:
                     # Nothing is released here: `_lease_set` already rolls back its own partial
                     # bring-up, and `_run_on_lease` owns the whole set's release in its `finally`
@@ -1406,6 +1545,17 @@ class _ScenarioRunner:
             if trailer:
                 result.failure = (result.failure or "") + trailer
 
+    def _bindings_with_hooks(self, hook_outputs: HookOutputs | None) -> Mapping[str, str] | None:
+        """The run's secret bindings with this scenario's `hooks.<name>.<key>` values laid on top.
+
+        A hook value is substituted at action time, exactly as a `${secrets.*}` is, so a step reads
+        it through the same primitive rather than through a second mechanism. A run whose targets
+        declare no hook command passes the bindings through untouched.
+        """
+        if hook_outputs is None or not hook_outputs.values:
+            return self.bindings
+        return {**(self.bindings or {}), **hook_outputs.bindings()}
+
     def _run_on_lease(
         self,
         lz: Lease,
@@ -1416,6 +1566,7 @@ class _ScenarioRunner:
         sid: str,
         derived: DerivedSecrets,
         actuator: str | None,
+        hook_outputs: HookOutputs | None = None,
     ) -> RunResult:
         """Run one scenario on an already-leased device and return its result.
 
@@ -1498,7 +1649,7 @@ class _ScenarioRunner:
                 scenario_id=sid,
                 network=(lz.collector.snapshot if lz.collector is not None else _no_network),
                 relaunch=lz.relaunch,
-                bindings=self.bindings,
+                bindings=self._bindings_with_hooks(hook_outputs),
                 control=lz.control,
                 progress=self.progress,
                 ctx=primary_ctx,
@@ -1947,6 +2098,7 @@ def run_all(
     cancelled: CancelSource = not_cancelled,
     trace_driver: bool = False,
     step_gate: StepGate | None = None,
+    hooks: HookSession | None = None,
 ) -> list[RunResult]:
     """Run every scenario, each on a freshly leased device, and return one result per scenario.
 
@@ -2136,6 +2288,7 @@ def run_all(
         trace_driver=trace_driver,
         step_gate=step_gate,
         result_redactor=Redactor(None, values=secret_values),
+        hooks=hooks,
     )
     if workers > 1:
         # >1 hands each worker its own device + per-device resources; the runner is frozen and
@@ -2177,6 +2330,7 @@ def run_and_report(
     cancelled: CancelSource = not_cancelled,
     trace_driver: bool = False,
     step_gate: StepGate | None = None,
+    hooks: HookSession | None = None,
 ) -> tuple[list[RunResult], Path]:
     """Run the scenarios, then write the run's artifacts under `runs_dir/run_id`.
 
@@ -2222,7 +2376,13 @@ def run_and_report(
         cancelled=cancelled,
         trace_driver=trace_driver,
         step_gate=step_gate,
+        hooks=hooks,
     )
+    # The run's teardown, before the report is assembled, so the report shows the `afterRun` block
+    # it recorded rather than a teardown that happened after it was written (BE-0491). The command's
+    # own `finally` backstops the paths that never reach here, and the phase is idempotent.
+    if hooks is not None:
+        hooks.after_run("success" if all(r.ok for r in results) else "failure")
     manifest = _assemble_report(
         # The same fold `run_all` already applied, over the same per-target config, so the report
         # pairs each outcome with the step definition that actually produced it — a config-level

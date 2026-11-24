@@ -229,6 +229,15 @@ def command_requirement(source: ConfigSource) -> str:
     return f"{COMMAND_EXECUTION_PREFIX}{source}"
 
 
+def named_requirement(source: ConfigSource) -> str:
+    """The token a job whose config runs a named command requires (BE-0491).
+
+    Separate from the script's own `named-command:<name>`: a worker may run named commands from this
+    source and still not have installed the one this config asks for, so a job needs both.
+    """
+    return f"{NAMED_EXECUTION_PREFIX}{source}"
+
+
 class NamedCommandError(ValueError):
     """A named command a config uses cannot run on this worker."""
 
